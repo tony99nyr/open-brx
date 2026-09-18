@@ -1,6 +1,6 @@
 # Bench: crits, anti-armour, and the perk levers (2026-09-18)
 
-About 45 minutes, two guns at the desk, no rig. It answers the questions the perk rework (S50) rests on. It
+About 50 minutes, two guns at the desk, no rig. It answers the questions the perk rework (S50) rests on. It
 also answers the one that gates a poison weapon (S16). Every
 step follows the method rules learned on 2026-09-17: cover the victim's gun sensor at close range (F228), give the
 victim the `$SIR` row for the shooter's damage key, and expect about 3 s between a tool call and the gun.
@@ -156,6 +156,28 @@ match, which is a balance decision, not a bug fix.
    `$ALCD` that did not refill. Reproduce it on the Energy Rifle: pull the lever and hold for one second, two seconds,
    then four, and record which holds refill. The 2026-09-17 bench measured a refill 3.5 to 3.9 s after the pull starts,
    with taps of 0.2 s refilling nothing, so the boundary between "too short" and "works" is the thing to pin.
+
+## 8. Does one Shotgun pull fire TWO words? (3 min, and it may move the whole ladder)
+
+`$WEAP` **t1 = 2** means the shot leaves the gun laser AND the shooter's headset LED, and **t12 is the
+headset word's damage**. The Shotgun is t5 45 / t12 70. If both words travel, a victim can take either
+or both, and **45 + 70 is 115, exactly the standard pool**: one trigger pull would kill outright.
+
+The emitter is the SHOOTER's, so the test covers the SHOOTER, not the victim. That is the correction
+that matters: an earlier draft of this step had it backwards and would have measured nothing.
+
+1. Arm A with the stock Shotgun. B at 999 HP with a plain `$SIR` row, both sensors exposed.
+2. **Gun only**: cover A's HEADSET, leave A's gun emitter clear, fire one shot at B.
+3. **Headset only**: cover A's gun emitter, leave A's headset clear, fire one shot at B.
+4. Read B's `$HIR` each time: magnitude, protocol (token 2) and sensor (token 1).
+
+**Reading.** 45 in step 2 and 70 in step 3 proves two emitters with two damages, and the Shotgun, Rocket
+Launcher and Plasma Sniper all need redoing in §2.2, the dominance check and the close-range band. 45
+both times means t12 is inert on this firmware and the ladder stands. Nothing in step 3 means the
+headset does not emit for this weapon at all, which is equally worth knowing.
+
+**Faster, if the IR rig is up:** point A at the receiver and pull once. Count the words and their
+magnitudes. One pull, one answer, no victim needed.
 
 ## Close
 

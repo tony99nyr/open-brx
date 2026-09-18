@@ -136,6 +136,24 @@ naming which of the first two it was compared against:
 past night's file under `~/.brx-mcp/mc/`. The same report is served live for the CURRENT session at
 `GET /api/diag/matches` (`API.md`).
 
+## Reporting a bug
+
+A bug report is one zip with the session's evidence in it, safe to attach to a public GitHub issue:
+
+```
+cd mcp && python -m brx_mcp.mc.report --open        # the newest session under ~/.brx-mcp/sessions/
+python -m brx_mcp.mc.report <launch-id or folder> [--out DIR] [--json]
+```
+
+The zip holds `session.sqlite`, `mc.log`, `manifest.json`, `diag.json`, `environment.json` and a
+`README.txt`. Before anything is written, `report.py` replaces player names (`Player 1`), sticker ids
+(`TAGGER-1`), headset PINs (`[PIN]`), BLE addresses (`BLE-1`), IP addresses (`LAN-IP-1`), Wi-Fi names,
+the tunnel host, the home folder, the user name and every token. The same value gets the same alias in
+every file. It then searches every byte of the zip again for each original value; one hit and it stops
+and writes nothing. `--open` opens the GitHub bug form (environment prefilled) and shows the zip, so the
+reporter drags it in. MC does the same on demand with `POST /api/report` (`API.md`). GitHub issues are
+public, so the reporter still opens the zip and checks it before posting.
+
 ## Where the rest is
 
 - **`API.md`** — the server ⇄ web-UI contract (REST + `/ui-ws` snapshot), incl. the operator-token rule.

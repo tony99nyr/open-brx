@@ -206,10 +206,11 @@ sounds — and moves the numbers.
 | Stinger | cqb | 15 | 250 | 8 | **1.75** | 60.0 | 43.5 | 18 | 144 | 1700 | 99% | — | cycle 120→250, res 72→144 |
 | Bolt Rifle | assault | 13 | 225 | 9 | **1.80** | 57.8 | 38.7 | 18 | 180 | 2000 | 98% | — | **stock** |
 | SMG | cqb | 8 | 95 | 15 | **1.33** | 84.2 | 61.7 | 72 | 288 | 2500 | 100% | 5 | **2026-09-17**: cycle 140→95 (`wire.fire_ms`) |
+| Toxin Rifle | assault | 8 | 110 | 15 | **1.54** | 72.7 | 49.0 | 30 | 180 | 1600 | 99% | 5 | **2026-09-18, NOT FINISHED (hidden)**: the gun lands the direct hit and the POISON is a node tick clock that is not built (S16). 4 damage a second for 5 s, refreshed on each hit, never stacked: worth 20, so twelve hits make it lethal even if the target breaks contact, which is the same 1.21 s the Assault Rifle needs to finish outright. §7.5 |
 | Suppressor | support | 8 | 140 | 15 | **1.96** | 57.1 | 48.0 | 75 | 384 | 2000 | 100% | — | **2026-09-17**: cycle 160→140 (`wire.fire_ms`); mag 48→75 (§2.3, family-scoped dominance) |
 | Assault Rifle | assault | 9 | 100 | 13 | **1.20** | 90.0 | 62.6 | 32 | 192 | 1400 | 100% | — | **2026-09-17**: cycle 140→100 (`wire.fire_ms`, native Battle Company speed) |
 | Energy Rifle | support | 9 | 150 | 13 | **1.80** | 60.0 | 57.0 | 300 | 600 | 2400 | 100% | 6 | **2026-09-17**: cycle 200→150 (`wire.fire_ms`); overheat switched ON (F229: `t38`=150 override, `t35`=D11) |
-| Charge Rifle | support | 85 | 1250 | 3 | **0.57** | 68.0 (charge only) | 45.3 (charge only) | 40 | 80 | 2500 | 92% | 14 | **2026-09-17**: dmg 87→85 (`wire.dmg`, the CHARGE damage; tap damage `t37`=20 unchanged), mag/res 12/12→40/80, `rounds_per_charge`=10 (F225/F226/S43); `htk`/`ttk s` now count 1 charge + 2 taps (release-to-kill), not `ceil(pool/85)`. **2026-09-18 bench**: the tap cadence is **285 ms**, measured, not the 500 ms placeholder, so release-to-kill falls 1.00 s → **0.57 s**. The charge costing exactly 10 rounds, the 85 charge and the 20 tap were all confirmed on the wire in the same run. `DPS` and `sust` count CHARGES only (85 / 1.25 s, and 4 charges a magazine against `4 × 1.25 + reload`); the tap is a second cadence and no single figure covers both, so `ttk s` is the column that reads the mixed kill |
+| Charge Rifle | support | 85 | 1250 | 3 | **0.57** | 68.0 | 45.3 | 40 | 80 | 2500 | 92% | 14 | **2026-09-17**: dmg 87→85 (`wire.dmg`, the CHARGE damage; tap damage `t37`=20 unchanged), mag/res 12/12→40/80, `rounds_per_charge`=10 (F225/F226/S43); `htk`/`ttk s` now count 1 charge + 2 taps (release-to-kill), not `ceil(pool/85)`. **2026-09-18 bench**: the tap cadence is **285 ms**, measured, not the 500 ms placeholder, so release-to-kill falls 1.00 s → **0.57 s**. The charge costing exactly 10 rounds, the 85 charge and the 20 tap were all confirmed on the wire in the same run. `DPS` and `sust` count CHARGES only (85 / 1.25 s, and 4 charges a magazine against `4 × 1.25 + reload`); the tap is a second cadence and no single figure covers both, so `ttk s` is the column that reads the mixed kill |
 | Rocket Launcher | power | 115 | 1000 | 1 | **0.00** | 115.0 | 50.0 | 2 | 2 | 2600 | 91% | — | res 8→2, reload 1200→2600 |
 | Energy Launcher | power | 115 | 1600 | 1 | **0.00** | 71.9 | 50.0 | 2 | 2 | 1400 | 91% | — | cycle 360→1600, mag 1→2, res 6→2 |
 | Ion Sniper | power | 115 | 1400 | 1 | **0.00** | 82.1 | 47.9 | 2 | 2 | 2000 | 91% | — | cycle 1000→1400, res 12→2 |
@@ -1192,6 +1193,35 @@ What it buys us, all with no firmware change:
 as a broken tagger. The node can detect it with no new wire support, because the accuracy token is
 already parsed for recoil: a `$HIR` that moves no pool plus live accuracy at 0. That is **S53**.
 
+### 6.3f Two axes the firmware has and we have never used
+
+Both from the 2026-09-18 V4_31 trace (LaserTagMods session). Traces, not bench proof, but both are
+concrete enough to design against.
+
+**A real alt-fire.** `$WEAP` tokens 7 to 11 are live: **t7 is a chance percentage, t8/t9 are the `$SIR`
+key that roll uses, t10 is its damage, t11 its crit chance**. They are empty on all 20 captured frames
+because no stock weapon uses them, not because the firmware ignores them. When the roll hits, the barrel
+word AND any headset word switch to the t8/t9 key. So "one shot in eight is a different kind of shot,
+answered by a different row of the victim's table" is buildable with no firmware change. That was listed
+as blocked in `perk-design.md` §4 and is not.
+
+Combined with the crit finding it gives a clean proc mechanism: `t7` decides how often, `t8/t9` decides
+what it is. A poison round on 15% of shots is exactly this shape.
+
+**Crit damage is one token, and it is not the one we thought.** `$PSET` **t6** is the crit damage
+multiplier: on a crit roll the shooter multiplies by `(100 + t6)/100`. We ship 50, which is the whole of
+the x1.5 we measured. The pair is:
+
+| token | what it is | who owns it |
+|---|---|---|
+| `$WEAP` t6 | crit CHANCE, a percentage of shots | the weapon |
+| `$PSET` t6 | crit DAMAGE, `(100 + t6)/100` | the player |
+
+⚠️ This also closes an old dead end. `$PSET` t6 was recorded as "unknown, 0 to 200 swept, no effect",
+and the reason is now obvious: every stock weapon ships `$WEAP` t6 = 0, so a crit never rolled and there
+was nothing for the multiplier to scale. **A crit-damage perk is one `$PSET` token**, and it is a
+per-player lever rather than a per-weapon one, which is exactly what a perk wants.
+
 ### 6.4 What a weapon is now
 
 The design space widened from one number to five independent choices:
@@ -1211,6 +1241,274 @@ rebalance should treat the `$SIR` table as a first-class part of a weapon's defi
 fixed backdrop.
 
 ---
+
+## 7. The triangle, and what belongs in which slot
+
+Written 2026-09-18, after the bench turned four `$SIR` functions from guesses into measurements. Tony's
+brief: "lets be thorough and balance and placement and rock paper scissor". This section is the answer,
+and every number in it comes from a `$HP` delta.
+
+### 6.5 Range is a carrier frequency, so our range ladder is largely fiction
+
+⭐ **2026-09-18, V4_31 disassembly via the LaserTagMods session** (trace, not bench proof). The gun's IR
+carrier is **`38000 − 125 × (100 − range)` Hz**, and exactly 38 kHz at 100 or above. **Emitter power does
+not move with range at all**: the PWM duty is set by the indoor/outdoor level alone, about 20% and 38%.
+
+So a low `t2` does not shorten the beam. It **detunes the carrier out of the receiver's roughly 38 kHz
+band-pass**, and the "range" we have been tuning is really "how far out of tune is this shot". That
+explains both of our measurements exactly: `t2` = 5 is 26.1 kHz and landed 0 of 38 shots even muzzle to
+dome, and the knee we found near 31 is 29.4 kHz, the edge of the pass-band. **The knee belongs to the
+receiver, not the firmware.**
+
+⚠️ **What that does to the shipped ladder.** Converting our own values:
+
+| band | carrier | weapons | what it means |
+|---|---|---|---|
+| 32.4 to 38 kHz | inside the pass-band | Sniper 100, AMR and Charge 85, AR and Burst 70, Suppressor and Energy Rifle 55 | **seven weapons, all inside the receiver's window.** "Sniper 100 versus Suppressor 55" is probably not a difference a player can feel |
+| 28.25 to 29.25 kHz | on the knee | SMG, Breacher and Haze 30, Shotgun and the heavies 22 | **six weapons in the steep region**, where sunlight, angle and reflection dominate and behaviour is unstable |
+
+That is the worst of both: the long weapons are undifferentiated and the short ones are erratic. It also
+means **range may not be a usable balance axis in the direction we assumed** — you can make a weapon
+short by detuning it, but you cannot make a sniper reach further than an assault rifle, because both are
+already inside the window.
+
+**So calibration changes.** S49 was going to walk a portable receiver out and read metres per `t2` value.
+The right experiment is now to measure the **receiver's response curve in kHz**, once, and then pick each
+weapon's value from that curve. Values above the knee barely move, so the whole design question is which
+weapons sit below it and by how much.
+
+### 7.0 ⚠️ Three weapons fire TWO words per trigger pull, and one of them is 70
+
+Named 2026-09-18 from Battle Company's own weapon sheets, via the LaserTagMods material. **`t1` is
+`WeaponIRSource`**: 0 gun laser, 1 headset only, **2 gun AND headset**, 3 double gun, 4 double gun plus
+headset, 5 dry fire. Exactly three stock weapons set 2, and for those **`t12` is a second word's damage**
+with `t13`/`t42` its outdoor/indoor reach.
+
+| weapon | gun laser (`t5`, range `t2`) | headset word (`t12`, range `t13`/`t42`) |
+|---|---|---|
+| Shotgun | 45 | **70** |
+| Rocket Launcher | 115 | **115** |
+| Plasma Sniper | 25 | **80** |
+
+**It is the SHOOTER's headset that emits**, not the victim's that receives a bonus. Three things agree:
+`t1` names an IR *source*; V4_30 builds an `$IRTX` frame and sends it to the gun's own headset to emit;
+and the community scoring readme says a swap-in headset lacking the high-power LED "means no shotguns,
+melee, explosions", which is a statement about the shooter's hardware. `t37`/`t38`
+(`HeadsetDirection`/`HeadsetRepeat`) probably steer that word and set how many times it repeats.
+
+**So one Shotgun pull may put two words in the air**, at 45 and at 70, with different ranges. A victim
+can take either, or **both**. And 45 + 70 is **115**, which is exactly the standard pool: if both words
+reach the same person, a single trigger pull kills them outright.
+
+Our catalogue models one word of 45 and a ladder position of 3 hits at 1.60 s. Every bench run we have
+done would have missed the second word, because at a bench the operator holds both guns and shoots a
+covered gun sensor at arm's length, and in a game you shoot a person across a field.
+
+⚠️ **Sourced, not measured.** The test is which EMITTER sent which word, so it is run on the shooter:
+fire once with the shooter's headset covered and the gun exposed, then once with the gun covered and the
+headset exposed, reading the victim's `$HIR` magnitude, protocol and sensor each time. The IR rig
+settles it faster still: one pull at the receiver, count the words. Until then, treat the Shotgun's
+numbers here as the GUN-LASER case, which is the only one any bench has tested.
+
+✅ **Seen on the wire once, 2026-09-18 (Callsign capture cap30, victim's gun).** One Shotgun pull from a
+single shooter landed `$HIR,4,0,1,0,45,0,0` and then `$HIR,4,0,1,0,70,0,0` **88 ms later**, on the same
+sensor, killing a player with 79 left. The cycle is 900 ms, so it was one pull. What the capture does not
+say: the distance, and which emitter sent which word, so the §8 bench still decides the design.
+
+**What this means for range.** Callsign never shortens the Shotgun: its frame carries `t2` = 100, the
+same as every Callsign gun. What varies with distance is only the 70-damage headset word, through
+`t13` 80 outdoors and `t42` 30 indoors (35.5 and 29.25 kHz by §6.5's formula). So Callsign's Shotgun is
+"45 at any range, 115 up close", not "short range". That is a better shape than our `t2` = 22, which
+puts the Shotgun's only word on the unstable knee of the receiver curve.
+
+### 7.1 There are only four ways to take someone down
+
+| way | mechanism | what it is good against | what it is bad against |
+|---|---|---|---|
+| **Plain damage** | fn 1: drains shield, then armour, then health | a bare target: nothing is faster | anything wearing a big pool |
+| **Armour piercing** | fn 2 or 6: straight to health, ignores armour | a heavily armoured target | a bare target, because its damage has to be cut |
+| **Stripping** | fn 20: removes every protective layer and CANNOT kill | a big pool, with a teammate to finish | a bare target: it does literally nothing |
+| **Denial** | fn 23: the target's accuracy falls to 0 for about 3 s | anyone who has to aim | anyone who simply walks away |
+
+A fifth, **damage over time**, is node-driven and not built (S16). It is the answer to walking away,
+which is what makes it the natural counter to denial.
+
+### 7.2 The triangle, in seconds
+
+The Assault Rifle chassis at 9 damage and 100 ms, against the three pools we ship. Armour Piercing is
+priced at **`t5` = 3**, one third of base. That number is not "about 60%": it is the integer that works.
+0.4 x 9 is 3.6, and rounding it to 4 gives AP a 1.10 s kill that beats plain damage everywhere, which
+is the exact failure the price exists to prevent.
+
+| target | plain damage | armour piercing (t5 = 3) | winner |
+|---|---|---|---|
+| standard, 45 + 70 | **1.20 s** | 1.40 s | plain |
+| Body Armor, 45 + 95 | 1.50 s | **1.40 s** | AP, narrowly |
+| Shields preset, 45 + 105 | 1.60 s | 1.40 s | AP, and only because the preset moved to 45 health: see §7.3 |
+
+The first two rows are the whole point: **the armoured player beats the plain rifle, and the plain
+rifle beats the armour-piercing one.** Neither margin is large, which is what keeps the choice a
+preference rather than a solved problem.
+
+### 7.3 Measured: armour piercing ignores the shield too, so the Shields preset moves to 45 health
+
+Bench 2026-09-18, the playtest session, two guns. Victim at **45 health / 70 armour / 120 shield** (the
+shield granted with `$LIFE,0,0,120` after spawn, because a spawn shield is always 0), its `<4,0>` row on
+fn 2, shooter keyed to that cell at magnitude 9. Five shots:
+
+```
+$HP,36,70,120   $HP,27,70,120   $HP,18,70,120   $HP,9,70,120   $HP,0,70,120  (died)
+```
+
+Every shot took exactly 9 off **health**. The armour never moved from 70 and the shield never moved from
+120: **the victim died with a full shield and full armour standing.** So fn 2 does not drain the layers
+in order, it ignores both of them. The protocol note that said so was right, but it had been a reading
+rather than a run, and it is now a measurement.
+
+**The consequence, and it is the branch that costs us a number.** With only 30 health under the shield,
+bypassing the shield means bypassing almost everything: Armour Piercing would kill a Shields-preset
+player in **0.90 s** against a plain rifle's 1.60 s. That is not a triangle, it is a hard counter.
+
+**The Shields preset therefore carries 45 health, not 30**, keeping the pool at 150 (45 + 105). Armour
+Piercing then needs the same 1.40 s against it as against anyone else, which is the design in one line:
+**armour piercing does not care what you are wearing.** The plain rifle still beats it against a bare
+target and still loses to it against armour, so the triangle closes.
+
+⚠️ The preset is not a stored number: `is_shields_preset()` reads "this game's base armour is zero", and
+the host sets the health. So this is guidance the host can override, which is why `validate()` now warns
+when a shield-only game carries less health than an Armour Piercing weapon needs to face.
+
+### 7.4 Placement: the slot is part of the balance
+
+Three slots, and each one answers a different question.
+
+| slot | the question it answers | what may go in it |
+|---|---|---|
+| **Primary** | how do you kill someone | anything lethal |
+| **Secondary** | what do you do about what they are wearing, or what they are doing | the lethal backups, plus the two weapons that cannot kill |
+| **Perk** | what are you willing to give up | see `perk-design.md` |
+
+**The rule that falls out, and it is a real one: a weapon that cannot kill may never be a primary.**
+A player whose primary cannot finish anyone is not playing a hard game, they are holding a broken
+tagger. The stripper (fn 20) and smoke (fn 23) are both in that class: measured, useful, and unable to
+take a single point of health. They are secondaries, and carrying one costs the player their backup gun,
+which is the price that makes them fair. That rule wants a validator and a test, not a convention.
+
+### 7.5 Where each new thing goes
+
+| piece | slot | why |
+|---|---|---|
+| **Toxin Rifle** (DoT) | primary | it kills, slowly, and it punishes disengaging. Its direct damage is about half its family's, because the tick is the payload |
+| **Armour Piercing** | primary | it kills, and at `t5` = 3 it is the answer to armour and nothing else |
+| **Stripper** (fn 20) | secondary | it cannot kill. It undresses a target through EVERY layer and carries overflow between them, so one player strips and another finishes. A pure team weapon |
+| **Smoke** (fn 23) | secondary | it cannot kill. It buys three seconds in which the target cannot hit anything |
+| **Crit chance** (`t6`) | a weapon TRAIT, never a slot | it is variance, not power: it makes a slow weapon occasionally fast |
+
+**Two hard rules on crit**, both measured. It is a straight percentage the gun rolls, and it multiplies
+whatever the word would have done, **including an armour-piercing hit** (bench 2026-09-18: 13 damage
+straight to health through untouched armour). So **Armour Piercing must never carry a crit chance**: the
+0.4-to-0.33 price assumes every hit lands for the same cut amount. And a crit weapon must never be the
+highest-damage weapon in its family, because variance on top of a big number is how a one-shot weapon
+becomes a no-counterplay weapon.
+
+### 7.5b The Toxin Rifle, and the number that makes it interesting
+
+Declared 2026-09-18, **hidden until the node tick clock exists** (S16). The gun lands the direct hit
+today; the poison is a clock on the victim's own phone, and nothing on the wire can tick, because the
+same bench proved the whole fn 24-27 family applies no damage at all.
+
+| lever | value | why |
+|---|---|---|
+| direct damage | **8** at 110 ms | slower than the Assault Rifle on purpose: the rounds are not the payload |
+| poison | **4 a second for 5 s**, refreshed on each hit, never stacked | worth 20 damage, which is more than two rifle hits |
+| `$SIR` cell | `<11,0>` fn 1 | protocol 11 is the stock enum's "gas", and the node keys its clock off that protocol arriving in `$HIR` token 2 |
+
+**The number that makes it interesting is 12.** Fired straight it kills in 1.54 s, clearly worse than
+the rifle's 1.20 s. But the poison is worth 20, so **twelve hits are lethal even if the target breaks
+contact**, and twelve hits take 1.21 s. It matches the anchor rifle's speed exactly, and pays for it in
+a way no other weapon does: **you never see the kill land.** They may reach a respawn station, or a
+medic, and you will not know until the scoreboard moves.
+
+That is also what makes it the natural counter to the Haze and to any player who disengages: it is the
+only weapon that keeps working after the shooting stops. Refresh rather than stack is deliberate; two
+poison shooters must not double the clock, or a pair becomes an execution.
+
+⚠️ It stays `hidden` until `spec/node.md` §3.17 is built. Enabled early it is simply a worse SMG, and
+`caution` on the row says so.
+
+### 7.7 Armour Piercing takes two levers, not one
+
+The perk shipped at `_AP_DAMAGE_MULT = 0.4`, described as a 60% cut. Worked across the catalogue on
+2026-09-18, **that left Armour Piercing strictly better on 11 of 13 weapons**: the same time to kill or
+faster, and it ignores every protective layer. It was not a counter-pick, it was the correct pick.
+
+**Two reasons, and both matter.**
+
+First, a multiplier cannot price this perk at all. Bypassing armour takes a standard target from a 115
+pool down to 45 health, and **45/115 is 0.39**. Any multiplier near 0.4 therefore leaves hits-to-kill
+unchanged, which is a perk that costs nothing. The number chosen to look like a heavy penalty was almost
+exactly the number that makes the penalty vanish.
+
+Second, **damage alone cannot price it either, because damage is an integer.** On an 8-damage weapon the
+only choices are 3, which gives exactly the hits-to-kill its plain rounds already need and so is free,
+and 2, which is useless. There is nothing in between. Priced on damage alone the perk fitted **two**
+weapons in the whole arsenal.
+
+**The fix is to drop the cycle as well** (Tony's suggestion, and it is the right one). That makes the
+trade continuous instead of stepping in huge jumps, so every plain-damage weapon can carry the perk. It
+is also what the perk should feel like: heavier rounds, fewer of them, slower. Armour Piercing changes
+what your gun IS rather than just weakening it.
+
+| weapon | plain | with Armour Piercing | against a bare target |
+|---|---|---|---|
+| Assault Rifle | 9 at 100 ms | 7 at 225 ms | 0.15 s slower |
+| SMG | 8 at 95 ms | 5 at 184 ms | 0.14 s slower |
+| Shotgun | 45 at 800 ms | 15 at 1000 ms | 0.40 s slower |
+| Suppressor | 8 at 140 ms | 3 at 155 ms | 0.21 s slower |
+| Energy Rifle | 9 at 150 ms | 8 at 405 ms | 0.23 s slower |
+
+Each pair is chosen to land the time to kill in the **middle** of the window between plain-against-bare
+and plain-against-armoured, so the cost is felt rather than technical, and `ap_fire_ms` is never faster
+than the weapon's own cycle.
+
+**What is still refused.** A weapon whose cell is already a headset-multiplier row (fn 36/37) is refused
+by an older rule, because re-keying it would change what the weapon does rather than where its damage
+goes. A charge weapon is refused because its hits-to-kill is release-and-tap maths. And a **one-shot
+weapon has no window at all**: the Rocket Launcher kills a standard target in one hit, a time to kill of
+zero, and you cannot sell a bypass to a weapon that already kills outright.
+
+Two guards hold all of this: `test_armour_piercing_is_priced_fairly_on_every_weapon_that_carries_it`
+walks every priced weapon and checks both ends of the trade plus the cycle direction, and
+`test_armour_piercing_is_refused_on_a_weapon_with_no_fair_price` proves the refusal. ⚠️ The test they
+replace **asserted the bug**: it required the perk to beat a plain rifle against a BARE target, which is
+the definition of a strict upgrade.
+
+### 7.6 The support weapons, and why they publish zeros
+
+Two weapons deliberately cannot kill. They are the only rows carrying `lethal: false`, they are refused
+in the primary slot by `validate()` and kept out of the primary pool by `policy.pool()`, and carrying
+one costs the player their backup gun. That cost is the whole balance.
+
+| weapon | cell | what a hit does | measured |
+|---|---|---|---|
+| **Breacher** | `<5,0>` fn 20 | takes 9 off whatever the target is WEARING, through every layer in order, with the overflow carrying between them. It cannot touch health. Pointed at a teammate it does the opposite and grants armour, because fn 20 is dual-polarity | shield 120 to 0, then armour 70 to 0, health fixed at 999 throughout; eleven further hits on a bare target moved nothing |
+| **Haze** | `<7,0>` fn 23 | the target's live accuracy falls to 0 for about three seconds. They keep firing and keep spending rounds, and every shot misses. It takes no health | accuracy 100 to 0 in the same millisecond as the hit, recovering 0, 2, 4, 7, 12 over about 3 s, nothing left behind |
+
+**They publish `dmg`, `htk` and `ttk_ms` of zero, and that is deliberate.** Their frames carry real
+magnitudes, so the ordinary derivation would advertise the Breacher at an 8 damage bar and 13 hits to
+kill. A player reading that would expect it to kill in 13 hits, and it cannot kill at all. The zeros are
+the honest number, `test_a_support_weapon_publishes_zeros_and_is_documented` enforces them, and the same
+guard requires each weapon to appear in this table so the exemption cannot be used to hide a row.
+
+**What they are for.** The Breacher is a team weapon: one player undresses a target and another finishes,
+and against a bare opponent it does nothing whatsoever. It is the answer to a big pool that is not simply
+more damage, and it is the only answer that works identically against Body Armor and the Shields preset.
+The Haze buys three seconds in which someone cannot shoot back: crossing open ground, breaking a firing
+line, taking a point off a defender. Neither wins a duel, which is exactly why neither may be a primary.
+
+⚠️ **The Haze needs the HUD before it ships to players** (S53). A player whose shots stop landing, with
+no explanation on screen, will report a broken tagger. The tell needs no new wire support: a `$HIR` that
+moves no pool, together with live accuracy at 0.
 
 ## Appendix — token positions
 

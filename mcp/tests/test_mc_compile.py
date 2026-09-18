@@ -267,7 +267,11 @@ def test_catalog_excludes_hidden_melee_and_flags_verified():
     # 2026-09-17 (arsenal review): force_rifle/bolt_rifle/stinger/plasma_sniper/laser_cannon/
     # ion_sniper/energy_launcher/glock joined melee as `hidden` — 9 pickable primaries + 2 pickable
     # sidearms (usp/deagle) + 2 catalogue-visible-but-pickup_only heavies (rocket_launcher/rail_gun) = 13.
-    assert len(ids) == 13, f"the §3 roster is 9 primaries + 2 sidearms + 2 pickup-only heavies, got {len(ids)}"
+    # 2026-09-18 (weapon-design.md §7.4): the stripper and the smoke joined as `lethal: false`
+    # SECONDARIES, visible in the catalogue like everything above, so the roster is now 15.
+    assert len(ids) == 15, (
+        f"the §3 roster is 9 primaries + 2 sidearms + 2 pickup-only heavies + 2 support "
+        f"secondaries, got {len(ids)}")
     by = {w["weapon_id"]: w for w in cat.all()}
     # `verified` now means SHIPPED EXACTLY AS CAPTURED. 2026-09-17 moved two more weapons off it: the
     # AR is rebalanced (now at the captured 100 ms rather than the earlier 140 ms throttle), and the
@@ -287,7 +291,7 @@ def test_every_weapon_is_based_on_its_own_captured_frame():
     import json, pathlib
     rows = json.loads((pathlib.Path(__file__).resolve().parents[1]
                        / "brx_mcp/mc/weapons.json").read_text())["weapons"]
-    assert len(rows) == 22
+    assert len(rows) == 25   # every row in the file, hidden and support rows included
     for w in rows:
         cap = w.get("capture") or {}
         if w.get("based_on"):        # a sidearm rides another weapon's captured frame (weapons.json `_note`, based_on)
@@ -589,6 +593,35 @@ def test_sir_effect_guard_is_an_ERROR_for_a_weapon_that_deals_no_damage():
     assert any("DEALS NO DAMAGE" in e and "assault_rifle" in e for e in r["errors"]), r["errors"]
 
 
+def test_a_weapon_that_cannot_kill_is_refused_in_the_primary_slot_and_allowed_in_the_second():
+    """§7.4 PLACEMENT, decided 2026-09-18 after the bench measured two functions that cannot kill:
+    fn 20 strips every protective layer and never touches health, and fn 23 drops the victim's accuracy
+    to 0 for about three seconds. Both are real, useful weapons, and `lethal: false` in the catalogue is
+    how a row says "this is deliberate, not the Energy Launcher accident all over again".
+
+    The rule: a support weapon may NOT be a primary, because a player whose primary cannot finish anyone
+    is not playing a hard game, they are holding a broken tagger. It belongs in slot 2, where carrying it
+    costs the player their backup gun, and that cost is what makes it fair.
+
+    The fixture marks a real catalogue row `lethal: false` for the duration of the call, so the test
+    exercises the validator rather than a weapon that does not exist yet."""
+    row = C.catalog._by_id["assault_rifle"]
+    row["lethal"] = False
+    try:
+        # PRIMARY: refused, and the message says where it belongs
+        r = C.validate(_cfg(), [_player(weapons=("assault_rifle",))])
+        assert r["ok"] is False, r
+        assert any("cannot kill" in e and "PRIMARY" in e and "assault_rifle" in e for e in r["errors"]), r["errors"]
+        # SECONDARY: allowed, and it raises no error of its own
+        r2 = C.validate(_cfg(), [_player(weapons=("sniper_rifle", "assault_rifle"))])
+        assert r2["ok"] is True, r2
+        assert not any("assault_rifle" in e for e in r2["errors"]), r2["errors"]
+    finally:
+        row.pop("lethal", None)
+    # CONTROL: with the flag gone the same loadout is ordinary and still fine in either slot
+    assert C.validate(_cfg(), [_player(weapons=("assault_rifle",))])["ok"] is True
+
+
 def test_sir_guard_flags_multiplier_rows_because_published_htk_is_computed_on_raw_t5():
     """`_to_gc()` never maps `crit_modifier` off the compiled `config` dict at all -- it is not a
     per-game configurable field on the wire, only the `gameconfig.py` GameConfig dataclass default
@@ -780,10 +813,17 @@ def test_shipped_roster_satisfies_the_mag_invariant_at_the_default_pool():
     one charge (10 on the Charge Rifle, bench 2026-09-17), so `hits_to_kill` (which counts the charge
     and the taps that finish the kill) understates what the magazine has to hold. `compile.py`'s own
     loadout warning grades the same way (F226/S43); a cell weapon with a costlier charge must break
-    this guard rather than ship unable to kill on one magazine."""
+    this guard rather than ship unable to kill on one magazine.
+
+    2026-09-18, weapon-design.md §7.4/§7.6: a `lethal: false` row (the stripper, the smoke) can never
+    satisfy "kills on one magazine" -- it cannot kill at all, on any number of magazines -- so the
+    invariant does not apply to it. The exemption is narrow: it is keyed on the catalogue's own
+    `lethal` flag, not on the weapon id, so a future LETHAL weapon still has to earn this guard."""
     cat = WeaponCatalog()
+    support = {w["weapon_id"] for w in cat.all() if cat._row(w["weapon_id"]).get("lethal") is False}
     bad = [w["weapon_id"] for w in cat.all()
-           if int(cat._row(w["weapon_id"])["mag"]) < cat.rounds_to_kill(w["weapon_id"], 115)]
+           if w["weapon_id"] not in support
+           and int(cat._row(w["weapon_id"])["mag"]) < cat.rounds_to_kill(w["weapon_id"], 115)]
     assert not bad, f"weapons that cannot kill on one magazine at the 115 pool: {bad}"
 
 
@@ -879,12 +919,21 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
     today, the Charge Rifle) is release-to-kill, not first-shot-to-kill (`time_to_kill()`): the charge
     is pre-built behind cover, so its `ttk_ms` is deliberately allowed BELOW the 1.2s floor, the same
     way a one-shot weapon's `htk == 1` already exempts it -- the floor describes sustained-fire combat
-    time, and a pre-charged ambush is not that."""
+    time, and a pre-charged ambush is not that.
+
+    **Support weapons are not in this model at all.** 2026-09-18, weapon-design.md §7.4/§7.6: a
+    `lethal: false` row's FRAME still carries a real damage magnitude (the smoke's captured 6, the
+    stripper's captured 9), so `hits_to_kill()`/`time_to_kill()` happily derive a TTK for a weapon that
+    cannot take a point of health -- the smoke lands at a fictional 13.3s. Neither the TTK band nor the
+    dominance/lead axes mean anything for a weapon with no kill at all, so support rows are excluded
+    before either check runs, the same way §2.2/§2.3 exclude them in `test_weapon_derivations.py`."""
     cat = WeaponCatalog()
     rows = []
     for w in cat.all():
         wid = w["weapon_id"]
         r = cat._row(wid)
+        if r.get("lethal") is False:
+            continue
         htk = cat.hits_to_kill(wid, 115)
         ttk = cat.time_to_kill(wid, 115)
         mag = r["mag"]
@@ -1588,13 +1637,22 @@ def test_k_no_stock_weapon_and_no_shipped_pool_is_blocked_by_the_new_errors():
     `energy_launcher` is the one row in `weapons.json` that does (its captured word keys $SIR 9,3, a
     status function). It is therefore excluded from EVERY pool (`policy.UNPLAYABLE_IDS`), so no player
     can be handed it; the catalogue page still lists it with its `caution`. The day the launcher's row
-    is fixed on the bench, delete the id from that set."""
+    is fixed on the bench, delete the id from that set.
+
+    2026-09-18, weapon-design.md §7.4: a `lethal: false` row (the stripper, the smoke) is REFUSED in
+    slot 0 on purpose -- that is `test_a_weapon_that_cannot_kill_is_refused_in_the_primary_slot_and_allowed_in_the_second`
+    above, not a bug this guard should paper over. So a support weapon is armed here in slot 1, behind
+    a real primary, the only placement §7.4 allows it."""
     from brx_mcp.mc import policy as _policy
     real = Compiler()
     weapons, perks = real.weapon_catalog(), real.perk_catalog()
+    # `weapon_catalog()` is the UI view and does not carry `lethal` -- read it off the internal
+    # catalogue row, the same place `validate()` itself reads it from.
+    support_ids = {w["weapon_id"] for w in weapons if real.catalog._by_id[w["weapon_id"]].get("lethal") is False}
     for w in weapons:
         wid = w["weapon_id"]
-        r = real.validate(_cfg(), [_player(weapons=(wid,))])
+        picks = ("assault_rifle", wid) if wid in support_ids else (wid,)
+        r = real.validate(_cfg(), [_player(weapons=picks)])
         if wid in _policy.UNPLAYABLE_IDS:
             assert not r["ok"], f"{wid} is in UNPLAYABLE_IDS but validates clean - drop it from the set"
             continue
@@ -1606,7 +1664,8 @@ def test_k_no_stock_weapon_and_no_shipped_pool_is_blocked_by_the_new_errors():
         for slot in ("primary", "secondary_weapons"):
             for wid in pl[slot]:
                 assert wid not in _policy.UNPLAYABLE_IDS, f"preset {name} offers {wid} in {slot}"
-                r = real.validate(_cfg(), [_player(weapons=(wid,))])
+                picks = ("assault_rifle", wid) if wid in support_ids else (wid,)
+                r = real.validate(_cfg(), [_player(weapons=picks)])
                 assert r["ok"], f"preset {name} offers {wid} in {slot}, which validate() blocks: {r['errors']}"
 
 
@@ -1637,10 +1696,16 @@ def test_round3_field4_zero_damage_on_a_DAMAGE_row_is_an_error_and_a_grant_row_i
     assert not r["ok"], r
     assert any("dudgun" in e and "0 DAMAGE" in e.upper() for e in r["errors"]), r["errors"]
 
-    # The same weapon on a GRANT row is a HEAL, not a broken gun: warned about, never blocked. The
-    # shipped table carries no grant row (functions 1, 24, 36, 37, 38 only), so the exemption is
-    # pinned against a table that does -- a bench fix that adds one must not start erroring.
-    assert 11 in _SIR_GRANT and not any(v in _SIR_GRANT for v in sir.values()), sorted(set(sir.values()))
+    # The same weapon on a GRANT row is a HEAL, not a broken gun: warned about, never blocked.
+    # ⚠ 2026-09-18: the shipped table now carries exactly ONE grant function, fn 20 on the support cell
+    # `<5,0>`, and that is deliberate. fn 20 is DUAL-POLARITY: against an enemy it strips every
+    # protective layer and cannot touch health (measured that day), and against a teammate it grants
+    # armour. So the stripper repairs allies from the same trigger, which is the whole appeal. The
+    # invariant this line protects is still worth having, so it is narrowed rather than dropped: no
+    # grant function may reach a cell that is NOT one of the deliberate support cells.
+    support_cells = {("5", "0"), ("7", "0")}
+    stray = {cell: fn for cell, fn in sir.items() if fn in _SIR_GRANT and cell not in support_cells}
+    assert 11 in _SIR_GRANT and not stray, stray
     hp = list(parts)
     hp[T["proto"] + 1], hp[T["subtype"] + 1] = "7", "5"
     heal = {**dud, "weapon_id": "healgun", "name": "Heal", "capture": {"frame": ",".join(hp)}}

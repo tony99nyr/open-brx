@@ -61,6 +61,8 @@ The script cannot update a download: to get a newer version, download it again. 
 - `--yes` accepts the default answer to every question, for an unattended run. It never deletes a
   broken `.venv` folder: it stops and asks you to delete it.
 - `--cloudflared` asks about `cloudflared` again, even if you said no before.
+- `--report` makes a bug report for your newest session and opens a prefilled GitHub issue. See
+  [Running a match](/docs/run-a-game/) → *Reporting a problem*.
 - `--help` prints all the options.
 
 Anything after `--` goes to Mission Control itself, for example `./start.sh -- --port 9000`.

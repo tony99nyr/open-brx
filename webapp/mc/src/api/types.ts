@@ -169,6 +169,25 @@ export interface Api {
   resumeOrphan(match_id: string): Promise<State>;
   /** Bench 2026-09-17: `POST /api/match/orphan/end` — END THEIR MATCH, to the phones reporting it only. */
   endOrphan(match_id: string): Promise<State>;
+  /** "Report a problem" — `POST /api/report`. Bundles this session's evidence into a zip, with
+   *  names, tagger ids, IP addresses and the access code stripped server-side (`removed` counts what
+   *  was taken out). Allowed in every phase; can take a few seconds. `download` is the path to fetch
+   *  the zip from (`GET /api/report/{file}`, token-gated the same as any other operator call);
+   *  `issue_url` opens a pre-filled GitHub issue. `too_large` says the zip is over GitHub's 25 MB
+   *  attachment limit — the server never trims it, so the panel still offers the issue and the
+   *  download, and says a developer will ask for the file another way. Rejects with status 404/405
+   *  on a server that predates this route. */
+  makeReport(): Promise<ReportResult>;
+}
+
+/** The body `POST /api/report` answers with (see `Api.makeReport`). */
+export interface ReportResult {
+  file: string;
+  download: string;
+  issue_url: string;
+  summary: Record<string, unknown>;
+  removed: Record<string, number>;
+  too_large: boolean;
 }
 
 /** A27 — the body of the 409 `POST /api/phase` answers with. Every field optional: this is read off a

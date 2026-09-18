@@ -17,6 +17,8 @@ from _session import match_config
 T0 = 5_000_000
 C = Compiler()
 W = [w for w in C.weapon_catalog()]
+# the RAW catalogue rows (not the trimmed views): `ap_dmg` and the other design fields live here
+ROWS = C.catalog._rows if hasattr(C.catalog, "_rows") else list(C.catalog._by_id.values())
 PK = default_perks().all()
 _TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
           {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2}]
@@ -116,19 +118,26 @@ def test_perk_view_forwards_every_effect_key():
 # `pickup_only` (2026-09-17): rocket_launcher/rail_gun stay catalogue-visible (in `W`) but are never in
 # a starting-loadout pool. Counted rather than hard-coded so a catalog change is the only edit needed.
 _OPEN = len([w for w in W if w["weapon_id"] not in P.UNPLAYABLE_IDS and not w.get("pickup_only")])
+# 2026-09-18 (weapon-design.md §7.4): a `lethal: false` row (the stripper, the smoke) is a legal
+# SECONDARY but never a primary, so the primary pool is `_OPEN` minus the support weapons -- the two
+# pool sizes stop being the same number the day a support weapon ships.
+_SUPPORT = {w["weapon_id"] for w in W if w.get("lethal") is False}
+_OPEN_PRIMARY = _OPEN - len(_SUPPORT)
 
 
 def test_presets_and_pools():
-    assert _OPEN == 11, f"the visible, pickable arsenal moved ({len(W)} weapons in the catalog)"
+    assert _OPEN == 13, f"the visible, pickable arsenal moved ({len(W)} weapons in the catalog)"
+    assert _SUPPORT == {"stripper", "smoke_gun"}, _SUPPORT
     assert "energy_launcher" not in P.pool(P.preset_rules("open"), W, PK)["primary"], "a zero-damage weapon is never offered"
     lp = P.pool(P.preset_rules("open"), W, PK)
     assert "rocket_launcher" not in lp["primary"] and "rail_gun" not in lp["primary"], "heavies are pickup_only, never a starting pick"
-    assert len(lp["primary"]) == _OPEN and len(lp["secondary_weapons"]) == _OPEN and len(lp["perks"]) == 5   # 5 VISIBLE perks: the two node-local ones are hidden until the phone half is built
+    assert not (_SUPPORT & set(lp["primary"])), "a support weapon must never be offered as a primary"
+    assert len(lp["primary"]) == _OPEN_PRIMARY and len(lp["secondary_weapons"]) == _OPEN and len(lp["perks"]) == 5   # 5 VISIBLE perks: the two node-local ones are hidden until the phone half is built
     lp = P.pool(P.preset_rules("no_heavies"), W, PK)
     # unchanged by UNPLAYABLE_IDS/pickup_only: the visible `heavy`-tagged rows (rocket_launcher/rail_gun)
     # were already excluded from `open` by `pickup_only`, so `no_heavies` (which ALSO excludes `heavy`)
     # lands on the same count as `open`.
-    assert len(lp["primary"]) == _OPEN and "rail_gun" not in lp["primary"] and "amr" in lp["primary"]
+    assert len(lp["primary"]) == _OPEN_PRIMARY and "rail_gun" not in lp["primary"] and "amr" in lp["primary"]
     assert "rocket_launcher" not in lp["secondary_weapons"] and len(lp["perks"]) == 5
     lp = P.pool(P.preset_rules("snipers"), W, PK)
     # `reasons` is additive and present only where a slot came out empty (round-2 review 2026-09-12)
@@ -338,12 +347,14 @@ def test_compile_perk_effects():
     assert int(_tok(f, 15)) == int(_tok(w0, 15)) // 2
     pset = [x for x in b["head"] if x.startswith("$PSET")][0].split(",")
     assert pset[4] == "50"                                              # 70 - 20
-    # armor_piercing (S50, new): the PRIMARY's $SIR key (t3/t4) is re-keyed onto the permanent AP
-    # cell and its damage (t5) cut to ~40%. Secondary/melee untouched (primary only).
+    # armor_piercing (S50): the PRIMARY's $SIR key (t3/t4) is re-keyed onto the permanent AP cell and
+    # its damage (t5) replaced by the weapon's own `ap_dmg`. Secondary/melee untouched (primary only).
+    # 2026-09-18: `ap_dmg` is a PER-WEAPON number, not the old 0.4 multiplier, because 45/115 is 0.39 so
+    # any multiplier near it left hits-to-kill unchanged and the perk free (§7.7).
     b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "armor_piercing"}), _TEAMS)
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
     assert (_tok(f, 3), _tok(f, 4)) == ("4", "0")                        # compile._AP_CELL
-    assert int(_tok(f, 5)) == round(int(_tok(w0, 5)) * 0.4)              # compile._AP_DAMAGE_MULT
+    assert int(_tok(f, 5)) == next(r["ap_dmg"] for r in ROWS if r["weapon_id"] == "assault_rifle")
     # Empty slot 2 with no easy_reload override: ALT is fn 98, the inert one. The 2026-08-27 review had
     # it cycle to slot 0 only, on the reasoning that a cycle with one target is a no-op; the bench
     # disproved that on 2026-09-17 (match 592e444eff, Tony: "the alt button is reloading the charge
@@ -361,28 +372,67 @@ def test_compile_perk_effects():
     assert any(f == "$AMMO,0,32,192,1,*" for f in tut)
 
 
-def test_armor_piercing_hits_to_kill_matches_a_normal_rifle_at_the_full_pool_and_beats_it_against_armour():
-    """S50: the ~40% damage cut (`compile._AP_DAMAGE_MULT`) is the whole point of the balance pass --
-    it must land Armour Piercing at ROUGHLY the same hits-to-kill as a normal rifle against a bare
-    target (the full 45+70 pool, since AP only ever has to clear the 45 HP underneath it), and FEWER
-    hits than a normal rifle needs against that same armoured pool. Break the 0.4 constant (raise it)
-    and AP stops being a counter-pick and becomes a strict upgrade -- exactly the S50 "obvious OP"
-    failure this whole rework exists to fix."""
-    pool = 115   # the 45 HP + 70 armour default (compile.DEFAULT_POOL)
-    normal_dmg = C.catalog.damage("assault_rifle")
-    normal_htk = C.catalog.hits_to_kill("assault_rifle", pool)
-    ap_dmg = max(1, round(normal_dmg * 0.4))   # compile._AP_DAMAGE_MULT, mirrored (not imported: the
-    #                                            constant's VALUE is what a bench sign-off pins, not its name)
-    ap_htk = -(-45 // ap_dmg)   # ceil(45 / ap_dmg): AP bypasses the 70 armour entirely, HP is the whole fight
-    assert abs(ap_htk - normal_htk) <= 1, (
-        f"Armour Piercing's htk ({ap_htk}) drifted too far from a normal rifle's ({normal_htk}) at the "
-        "full pool -- the 0.4 cut is supposed to land it close, not strictly better, on a BARE target")
-    assert ap_htk < normal_htk, "Armour Piercing must still beat a normal rifle against an armoured target"
-    # prove it end to end through the compiled frame, not just the arithmetic above
+def test_armour_piercing_is_priced_fairly_on_every_weapon_that_carries_it():
+    """The triangle, as a test (weapon-design.md §7.2, §7.7).
+
+    ⚠ The test this replaces asserted the BUG. It required `ap_htk < normal_htk` where `normal_htk` was
+    measured against the BARE 45+70 pool, so it demanded that Armour Piercing beat a plain rifle against
+    an unarmoured target, which is the definition of a strict upgrade. Worked across the catalogue on
+    2026-09-18, the shipped 0.4 multiplier left AP strictly better on 11 of 13 weapons.
+
+    The real rule is that Armour Piercing must be a TRADE, so for every weapon that carries the pair:
+
+      * SLOWER than the plain weapon against a standard 45+70 target, because AP still has to clear the
+        45 HP underneath and it pays for the bypass; and
+      * FASTER than the plain weapon against an armoured 45+95 one, because that is the whole point;
+      * and its cycle is never FASTER than the weapon's own, because the perk is heavier rounds.
+
+    It takes BOTH levers. A multiplier cannot do it, because bypassing armour takes the pool from 115 to
+    45 and 45/115 is 0.39, so anything near the old 0.4 left hits-to-kill unchanged. Damage alone cannot
+    do it either, because damage is an integer and the steps are too coarse: on an 8-damage weapon 3 is
+    free and 2 is useless. Dropping the CYCLE as well makes the trade continuous, which is why every
+    plain-damage weapon can now carry the perk instead of only two."""
+    priced = [w for w in ROWS if w.get("ap_dmg")]
+    assert priced, "no weapon carries an Armour Piercing price: delete this guard or the fields"
+    for w in priced:
+        wid = w["weapon_id"]
+        assert w.get("ap_fire_ms"), f"{wid} has ap_dmg but no ap_fire_ms: the pair is not optional"
+        base, cyc = C.catalog.damage(wid), C.catalog.cycle_ms(wid)
+        ap_d, ap_c = int(w["ap_dmg"]), int(w["ap_fire_ms"])
+        assert ap_c >= cyc, f"{wid}: Armour Piercing fires FASTER ({ap_c} ms) than the plain weapon ({cyc} ms)"
+        # time to kill, in ms: (hits - 1) x cycle. AP faces the 45 HP alone; plain faces the whole pool.
+        plain_bare = (C.catalog.hits_to_kill(wid, 115) - 1) * cyc
+        plain_armoured = (C.catalog.hits_to_kill(wid, 140) - 1) * cyc
+        ap_ttk = (-(-45 // ap_d) - 1) * ap_c
+        assert ap_ttk > plain_bare, (
+            f"{wid}: Armour Piercing kills a BARE target in {ap_ttk} ms against the plain weapon's "
+            f"{plain_bare} ms — a strict upgrade, not a counter-pick ({ap_d} dmg at {ap_c} ms)")
+        assert ap_ttk < plain_armoured, (
+            f"{wid}: Armour Piercing needs {ap_ttk} ms against an ARMOURED target and the plain weapon "
+            f"needs {plain_armoured} ms — the perk buys nothing ({ap_d} dmg at {ap_c} ms)")
+    # end to end through the compiled frame, not just the arithmetic
     b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "armor_piercing"}), _TEAMS)
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
-    assert int(_tok(f, 5)) == ap_dmg
+    ar = next(w for w in ROWS if w["weapon_id"] == "assault_rifle")
+    assert int(_tok(f, 5)) == ar["ap_dmg"] and int(_tok(f, 14)) == ar["ap_fire_ms"], f
 
+
+def test_armour_piercing_is_refused_on_a_weapon_with_no_fair_price():
+    """The other half of §7.7: a weapon that cannot be priced must not carry the perk at all.
+
+    The Rocket Launcher is the clean example, and the reason is structural rather than arithmetic. It
+    deals 115, so it kills a standard 45+70 target in ONE hit, which is a time to kill of zero. There is
+    no window between "slower than plain against a bare target" and "faster than plain against an
+    armoured one" to aim at, because the first number cannot be beaten downwards. A one-shot weapon
+    cannot be sold a bypass: it already bypasses everything by killing outright."""
+    rocket = next(w for w in ROWS if w["weapon_id"] == "rocket_launcher")
+    assert rocket.get("ap_dmg") is None, "the Rocket Launcher has gained an Armour Piercing price"
+    try:
+        C.compile(_cfg(), _player({"weapons": [{"weapon_id": "rocket_launcher"}], "perk": "armor_piercing"}), _TEAMS)
+    except ValueError as e:
+        assert "ARMOUR-PIERCING GUARD" in str(e) and "ap_dmg" in str(e), e
+    else:
+        raise AssertionError("the compiler shipped Armour Piercing on a weapon with no fair price")
 
 def test_armor_piercing_is_refused_on_a_charge_weapon_and_its_sir_row_is_bench_guarded():
     """S50: 'a weapon whose damage key is already special must be refused' -- the choice made here is
@@ -401,8 +451,19 @@ def test_armor_piercing_is_refused_on_a_charge_weapon_and_its_sir_row_is_bench_g
     # their stock cells key fn 36/37 (the CONFIRMED headset-multiplier rows, `_SIR_TABLE`), which the
     # same guard also refuses: a $SIR key swap onto plain fn 2 would silently drop that multiplier
     # too, another way "the damage key is already special" (S50's own phrase).
-    for wid in ("assault_rifle", "smg", "shotgun", "suppressor", "energy_rifle"):
+    # 2026-09-18 (§7.7): every PLAIN-DAMAGE weapon can carry the perk, because the price is a damage AND
+    # a cycle. Damage alone could not do it: it is an integer, and on an 8-damage weapon 3 is free while
+    # 2 is useless. What is still refused is a weapon with no window to aim at, which a one-shot weapon
+    # has by definition, plus everything the cell check above already refuses.
+    for wid in ("assault_rifle", "energy_rifle", "smg", "shotgun", "suppressor"):
         C.compile(_cfg(), _player({"weapons": [{"weapon_id": wid}], "perk": "armor_piercing"}), _TEAMS)   # must not raise
+    for wid in ("rocket_launcher",):
+        try:
+            C.compile(_cfg(), _player({"weapons": [{"weapon_id": wid}], "perk": "armor_piercing"}), _TEAMS)
+        except ValueError as e:
+            assert "ap_dmg" in str(e), e
+        else:
+            raise AssertionError(f"{wid} has no fair Armour Piercing price and must be refused")
     for wid in ("sniper_rifle", "amr"):
         try:
             C.compile(_cfg(), _player({"weapons": [{"weapon_id": wid}], "perk": "armor_piercing"}), _TEAMS)
@@ -795,7 +856,10 @@ def test_weapon_view_htk_ttk_caution():
     cat = net.pushes("assign", "node0")[-1][2]["catalog"]["weapons"]
     assert all("htk" in w for w in cat)
     cautioned = {w["weapon_id"]: w["caution"] for w in cat if w.get("caution")}
-    assert set(cautioned) == {"energy_rifle"}, cautioned
+    # The Haze joined on 2026-09-18: it takes no health and drops the target's accuracy to 0 for about
+    # three seconds, which reads as a broken tagger until the HUD says otherwise (S53). That is exactly
+    # what a `caution` is for, so the pin grows rather than the field being dropped from the push.
+    assert set(cautioned) == {"energy_rifle", "smoke_gun"}, cautioned
 
 
 # ------------------------------------------------------------------ A10 §8 saved games (presets)
@@ -1489,3 +1553,30 @@ def test_round3_merge4_a_policy_fixed_to_an_unplayable_weapon_self_corrects_and_
         raise AssertionError("pushed a config fixed to a weapon this game does not offer at all")
     except ValueError as e:
         assert "energy_launcher" in str(e), e
+
+
+def test_a_thin_shield_only_game_warns_when_someone_carries_armour_piercing():
+    """§7.3, from the 2026-09-18 bench: armour piercing ignores the SHIELD as well as the armour. The
+    victim died with a full 120 shield and a full 70 armour standing, every shot taking 9 off health.
+
+    So in a shield-only game the shield buys nothing at all against that perk, and the whole fight is the
+    health underneath. At the 30 health the preset used to carry, Armour Piercing kills in 0.90 s against
+    a plain rifle's 1.60 s: a hard counter, not a trade. The preset moved to 45 for that reason, but
+    `is_shields_preset()` only reads "this game's base armour is zero" and a host sets the health freely,
+    so MC says it rather than shipping a game where one perk beats the entire defensive choice."""
+    thin = dict(_cfg(), health={"max_hp": 30, "max_armor": 0, "max_shield": 120})
+    ap = _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "armor_piercing"})
+    warns = " ".join(C.validate(thin, [ap])["warnings"])
+    assert "shield-only" in warns and "IGNORES the shield" in warns and "30 HP" in warns, warns
+    # CONTROL 1: the same thin game with NOBODY carrying the perk is silent -- the shield is a real
+    # buffer against everything else, and warning about it would be noise.
+    plain = _player({"weapons": [{"weapon_id": "assault_rifle"}]})
+    assert "shield-only" not in " ".join(C.validate(thin, [plain])["warnings"])
+    # CONTROL 2: at the preset's own 45 health the warning is gone, which is what makes it actionable
+    # rather than a permanent grumble a host learns to ignore.
+    ok = dict(_cfg(), health={"max_hp": 45, "max_armor": 0, "max_shield": 105})
+    assert "shield-only" not in " ".join(C.validate(ok, [ap])["warnings"])
+    # CONTROL 3: an ARMOURED game says nothing however thin the health, because the armour is what the
+    # perk is sold against -- that is the trade working, not a problem.
+    armoured = dict(_cfg(), health={"max_hp": 30, "max_armor": 70, "max_shield": 0})
+    assert "shield-only" not in " ".join(C.validate(armoured, [ap])["warnings"])

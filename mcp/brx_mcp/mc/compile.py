@@ -263,6 +263,12 @@ def play_volume(environment: str | None) -> int:
 _MAX_ARMOR_ADD: dict[str, int] = {"body_armor": 25, "quick_switch": -20}
 
 
+# §7.3: the health the Shields preset carries, and the floor the warning below measures against. It
+# was 30 until the 2026-09-18 bench proved armour piercing ignores a shield, which made the shield worth
+# nothing against that perk and left only the health underneath to fight through.
+_SHIELDS_MIN_HP = 45
+
+
 def is_shields_preset(config: GameConfig) -> bool:
     """S50 (docs/perk-design.md §2): true when this game's BASE health config carries zero armour,
     so a shield pool is the player's only non-HP buffer (the Shields preset -- 30 HP + 120 shield +
@@ -374,12 +380,14 @@ _SIR_PLAIN_DAMAGE = frozenset({1, 3, 4, 5, 7, 29, 30, 33})   # 3 added 2026-08-2
 # armour AND shields, straight to HP.
 _AP_CELL: tuple[str, str] = ("4", "0")
 _AP_FN = 2
-# ~40% of normal (a 60% cut). The number is the point (docs/perk-design.md §2): against the standard
-# 45+70 pool, bypassing armour takes the effective pool from 115 to 45, a 61% reduction on its own --
-# so a SMALLER damage cut (the S50 draft's 20%) would leave Armour Piercing simply the best weapon in
-# the game. ~60% roughly cancels the bypass, so the perk reads as "about the same time to kill,
-# whatever they are wearing" rather than "faster than everyone".
-_AP_DAMAGE_MULT = 0.4
+# ⚠️ 2026-09-18: Armour Piercing's damage is a PER-WEAPON number (`ap_dmg` in weapons.json), not a
+# multiplier, and this constant is gone. A multiplier cannot price the perk at all. Bypassing armour
+# takes a standard target from a 115 pool to 45 HP, and 45/115 is 0.39, so a multiplier near the old
+# 0.4 leaves hits-to-kill UNCHANGED: the perk skips every layer and costs nothing. Worked across the
+# catalogue, 0.4 left Armour Piercing STRICTLY BETTER on 11 of 13 weapons, the Assault Rifle killing in
+# 1.10 s against anything versus its plain 1.20 s. Integer damage is the other half of the problem: at
+# 8 damage the only choices are 3, which is free, and 2, which is useless, with nothing in between, so
+# most weapons have no fair price and simply cannot carry the perk. See weapon-design.md §7.7.
 
 
 def assert_armor_piercing_armed(head: list[str]) -> None:
@@ -880,6 +888,11 @@ class WeaponCatalog:
             row["pickup_only"] = True
         if w.get("recoil"):     # S42 (2026-09-17): the declared target profile -- weapons.json `_note`
             row["recoil"] = w["recoil"]
+        if w.get("lethal") is False:   # 2026-09-18, weapon-design.md §7.4: cannot kill (stripper, smoke).
+            # `policy.pool()`'s `_support_ids` reads this off the SAME `Weapon` view it is handed, so
+            # dropping it here would leave the primary-slot exclusion dead: `loadout_pool()` calls
+            # `weapon_catalog()`, which routes through THIS method, not the raw catalogue row.
+            row["lethal"] = False
         return row
 
     def all(self) -> list[Weapon]:
@@ -1014,17 +1027,22 @@ class WeaponCatalog:
         # most weapons carry no `wire.dmg` at all, so the base to scale falls back to `damage()`
         # (the number this catalogue already publishes as `dmg_hit`, wire.dmg if set else the
         # captured frame's own t5 -- never the raw hardware capture ignoring an existing rebalance).
-        dmg_mult = float((mods or {}).get("dmg_mult") or 1)
-        if wire.get("dmg") is not None or dmg_mult != 1:
-            base_dmg = int(wire["dmg"]) if wire.get("dmg") is not None else self.damage(weapon_id)
-            # `max(1, ...)` only guards the MULTIPLIER path (Armour Piercing must never round a live
-            # weapon's damage down to 0): an explicit `wire.dmg` literal is written verbatim, 0
-            # included -- that is FIELD-4's own fixture (a weapon whose catalog `dmg: 0` must compile
-            # to a gun that deals no damage, not a floored 1, or the "0 DAMAGE" validate() guard this
-            # exact case exists to catch can never trip again).
-            resolved = int(round(base_dmg * dmg_mult))
-            put("dmg", max(1, resolved) if dmg_mult != 1 else resolved)
-        if wire.get("fire_ms") is not None:
+        # 2026-09-18: Armour Piercing now passes an ABSOLUTE damage (`dmg_abs`, the weapon's own
+        # `ap_dmg`) rather than a multiplier, because no multiplier prices the perk fairly: 45/115 is
+        # 0.39, so anything near the old 0.4 left hits-to-kill unchanged and the perk free. §7.7.
+        dmg_abs = (mods or {}).get("dmg_abs")
+        if dmg_abs is not None:
+            put("dmg", max(1, int(dmg_abs)))
+        elif wire.get("dmg") is not None:
+            # An explicit `wire.dmg` literal is written verbatim, 0 included: that is FIELD-4's own
+            # fixture (a weapon whose catalog `dmg: 0` must compile to a gun that deals no damage, not a
+            # floored 1, or the "0 DAMAGE" validate() guard this exact case exists to catch can never
+            # trip again).
+            put("dmg", int(wire["dmg"]))
+        fire_abs = (mods or {}).get("fire_abs")
+        if fire_abs is not None:
+            put("fire", int(fire_abs))         # Armour Piercing's own cycle (§7.7)
+        elif wire.get("fire_ms") is not None:
             put("fire", int(wire["fire_ms"]))
         mag, reserve, reload_ms = self._ammo(weapon_id, mods)
         put("mag", mag); put("clipstart", mag)                 # tok39 == tok16
@@ -1397,11 +1415,24 @@ class Compiler:
         # EXISTS, never that its function is right) would have passed. An uncovered cell is now an error
         # at compile time rather than a plausible wrong table on the gun (the F40 "absence reports as
         # health" shape).
-        if cell not in sir:
+        fn = sir.get(cell)
+        if fn is None:
+            # 2026-09-18: a weapon may instead DECLARE its own function with `sir_fn`, and then the row is
+            # conditional: `sir_table()` already appends a row for any plan cell the base table lacks, so
+            # the cell ships only in games that actually contain the weapon. That matters because
+            # `hitaudio.MAX_SIR_ROWS` is 14 and the base table is 11: three permanent rows for three new
+            # weapons took the table to the ceiling and left the class-sound allocator no budget at all.
+            # A game with no Breacher in it should not push the Breacher's row to every gun.
+            # The F53 error below still stands for a weapon that declares NOTHING, which is the case it
+            # was written for: an uncovered cell must never default to function 0 and silently change a
+            # weapon's damage class.
+            fn = row.get("sir_fn")
+        if fn is None:
             raise ValueError(
                 f"F53: weapon {weapon_id!r} fires on IR cell {cell} and the $SIR table has no row for it "
-                f"-- add the cell to compile._SIR_TABLE (with the function it needs, not 0) before it ships")
-        return _ha.Entry(weapon_id, _ha.class_for(row.get("role"), weapon_id), cell, sir[cell])
+                f"-- add the cell to compile._SIR_TABLE, or give the catalogue row a `sir_fn` so the row "
+                f"ships only in games that carry the weapon (with the function it needs, not 0)")
+        return _ha.Entry(weapon_id, _ha.class_for(row.get("role"), weapon_id), cell, fn)
 
     def hit_plan(self, roster, rekey: bool = False) -> "_ha.Plan":
         """The A17 `$SIR` plan for ONE MATCH, from every weapon on the roster.
@@ -1503,7 +1534,6 @@ class Compiler:
         else:
             warnings.append("stun is on but no rostered weapon fires on cell <8,0> and MC arms no station for "
                             "it: nothing in this game can stun (the source is a $WEAP t3=8 slot or a proto-8 station)")
-
     @staticmethod
     def _rekey(frame: str, cell) -> str:
         """`$WEAP` with tok3/tok4 (the IR word's B and U fields) pointed at `cell`. Nothing else moves."""
@@ -1529,6 +1559,19 @@ class Compiler:
           also guards a future primary built the same way.
         """
         name = player.get("display") or player.get("player_id") or "this player"
+        if self.catalog._row(weapon_id).get("ap_dmg") is None or self.catalog._row(weapon_id).get("ap_fire_ms") is None:
+            # 2026-09-18 (§7.7): most weapons have NO fair Armour Piercing damage, and that is
+            # arithmetic rather than an oversight. Bypassing armour takes a standard target from a 115
+            # pool to 45 HP, so the perk only costs something if its damage is well under 45/115 of the
+            # weapon's own, and damage is an integer: at 8 the choices are 3 (which leaves hits-to-kill
+            # unchanged, so the perk is free) and 2 (which is useless), with nothing between. A weapon
+            # that cannot be priced must not carry the perk, or Armour Piercing is strictly better than
+            # not taking it, which is what shipped until this was measured.
+            raise ValueError(
+                f"S50 ARMOUR-PIERCING GUARD: refusing to compile {name}'s Armour Piercing primary "
+                f"{weapon_id!r} — the catalogue gives it no `ap_dmg`, so there is no damage value that "
+                f"makes the perk a trade rather than a free upgrade on this weapon (weapon-design.md "
+                f"§7.7). Armour Piercing needs a low-damage, high-rate primary")
         if self.catalog.rounds_per_charge(weapon_id) > 1:
             raise ValueError(
                 f"S50 ARMOUR-PIERCING GUARD: refusing to compile {name}'s Armour Piercing primary "
@@ -1587,7 +1630,12 @@ class Compiler:
         armor_piercing = bool(fx.get("armor_piercing"))
         if armor_piercing:
             self._refuse_if_ap_ineligible(w0, player)
-            mods = {**mods, "dmg_mult": _AP_DAMAGE_MULT}
+            ap_row = self.catalog._row(w0)
+            # BOTH levers (§7.7). Damage alone cannot price the perk, because damage is an integer and
+            # the steps are too coarse: on an 8-damage weapon 3 is free and 2 is useless. Slowing the
+            # cycle as well makes the trade continuous, and it is what the perk should feel like anyway:
+            # heavier rounds, fewer of them, slower.
+            mods = {**mods, "dmg_abs": int(ap_row["ap_dmg"]), "fire_abs": int(ap_row["ap_fire_ms"])}
 
         # A15.1: roll the un-picked $PSET voice fields for THIS push; explicit picks always win
         voice, picks = player.get("voice", "male"), (player.get("voice_slots") or {})
@@ -2240,9 +2288,22 @@ class Compiler:
         _pi, _si = T["proto"] + 1, T["subtype"] + 1
         flagged: set[str] = set()
         for p in roster:
-            for w in (p.get("loadout", {}) or {}).get("weapons", []):
+            for slot, w in enumerate((p.get("loadout", {}) or {}).get("weapons", [])):
                 wid = w.get("weapon_id")
                 if wid not in self.catalog._by_id or wid in flagged:
+                    continue
+                # §7.4 PLACEMENT: a weapon the catalogue marks `lethal: false` is deliberately unable to
+                # kill (the fn-20 stripper, the fn-23 smoke, both measured 2026-09-18). That is a real
+                # design, and the three errors below must not treat it as the accident they were written
+                # for. What it may NOT be is a PRIMARY: a player whose primary cannot finish anyone is
+                # not playing a hard game, they are holding a broken tagger. Slot 0 is the primary.
+                if self.catalog._by_id[wid].get("lethal") is False:
+                    if slot == 0:
+                        flagged.add(wid)
+                        errors.append(
+                            f"{wid} cannot kill (lethal: false) and is in the PRIMARY slot. A support "
+                            f"weapon belongs in slot 2, where carrying it costs the player their backup "
+                            f"gun (weapon-design.md §7.4)")
                     continue
                 try:
                     frame = self.catalog.resolve(wid, 0).split(",")
@@ -2315,6 +2376,22 @@ class Compiler:
                             "the guaranteed end is time_limit_s (A4.8) — winner is provisional until recap")
 
         self._validate_stun(config, roster, errors, warnings)   # F15/A20 (own hunk: the stun's shape + its source)
+        # §7.3 (bench 2026-09-18): armour piercing ignores the SHIELD as well as the armour -- a victim
+        # died with a full 120 shield and full 70 armour standing. So in a shield-only game the shield
+        # buys NOTHING against it and the whole fight is the health underneath. At the 30 health the
+        # preset used to carry, that is a 0.90 s kill against a plain rifle's 1.60 s, which is a hard
+        # counter rather than a trade. The preset now carries 45, but a host sets the health freely
+        # (`is_shields_preset` only reads "base armour is zero"), so say it rather than silently
+        # shipping a game where one perk beats the entire defensive choice.
+        if is_shields_preset(config) and any(
+                (p.get("loadout") or {}).get("perk") == "armor_piercing" for p in roster):
+            hp = int((config.get("health") or {}).get("max_hp") or 0)
+            if hp and hp < _SHIELDS_MIN_HP:
+                warnings.append(
+                    f"this is a shield-only game ({hp} HP, no armour) and someone carries Armour "
+                    f"Piercing, which IGNORES the shield entirely (bench 2026-09-18): the whole fight is "
+                    f"the {hp} HP underneath, and the shield buys nothing against it. The Shields preset "
+                    f"carries {_SHIELDS_MIN_HP} HP for exactly this reason (weapon-design.md §7.3)")
         return {"ok": not errors, "errors": errors, "warnings": warnings}
 
     def weapon_catalog(self) -> list[Weapon]:

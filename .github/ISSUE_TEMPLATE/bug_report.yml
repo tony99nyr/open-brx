@@ -1,0 +1,45 @@
+name: Bug report
+description: Report a problem with Open BRX Mission Control.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. This form is public. Anyone can read it, so check your attached
+        report file before you post.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Say what went wrong. Give as much detail as you can.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: Say what should have happened instead.
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the steps that led to the problem, in order.
+  - type: textarea
+    id: report
+    attributes:
+      label: Bug report file
+      description: |
+        Drag your `open-brx-report-<launch-id>.zip` file here. Open it first and check it: this
+        issue is public.
+
+        Make one with one of these:
+        - `./start.sh --report` (macOS, Linux)
+        - `start.cmd --report` (Windows)
+        - The console's **Report a problem** button
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: The report link fills this in for you. Leave it as it is.
+      render: text

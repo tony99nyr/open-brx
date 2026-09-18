@@ -104,7 +104,10 @@ writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
 console.log(`Session evidence: ${evidence}`);
 openBrowser(url);
 const stop = signal => { if (child.exitCode === null) child.kill(signal); };
-process.on('SIGINT', () => stop('SIGINT'));
+// Ctrl+C in a terminal reaches Mission Control directly: it is in the same process group. Forwarding it
+// again made a second interrupt, and uvicorn printed a traceback on every normal stop. So wait, and send
+// SIGTERM only if Mission Control is still running (a SIGINT sent to this process alone, e.g. `kill -INT`).
+process.on('SIGINT', () => { setTimeout(() => stop('SIGTERM'), 5000).unref(); });
 process.on('SIGTERM', () => stop('SIGTERM'));
 await new Promise(resolveExit => child.once('exit', (code, signal) => {
   manifest.status = code === 0 || signal === 'SIGINT' || signal === 'SIGTERM' ? 'stopped' : 'crashed';
@@ -114,3 +117,10 @@ await new Promise(resolveExit => child.once('exit', (code, signal) => {
 }));
 log.end();
 process.exitCode = manifest.status === 'stopped' ? 0 : 1;
+// A demo (--ephemeral) keeps no session store here, so there is nothing to report: say nothing then.
+if (existsSync(join(evidence, 'session.sqlite'))) {
+  const reportCmd = `${isWindows ? 'start.cmd' : './start.sh'} --report ${launchId}`;
+  console.log(manifest.status === 'crashed'
+    ? `Mission Control stopped with an error. To report it, run ${reportCmd}`
+    : `Found a problem? ${reportCmd} makes a bug report for this session.`);
+}

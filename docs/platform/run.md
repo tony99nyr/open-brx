@@ -175,6 +175,25 @@ database (`~/.brx-mcp/mc/session-<id>.sqlite`) and the log you saved above. Resu
 and every finished match of the session stays available. Starting the next game is one action, and
 you can keep or clear the roster. Power the taggers off between sessions.
 
+## Reporting a problem
+
+Found a bug? Make a report and file it on GitHub:
+
+```
+./start.sh --report
+```
+
+(`start.cmd --report` on Windows, or press **Report a problem** in the console.)
+
+The command finds your newest Mission Control session and writes a zip file,
+`open-brx-report-<launch-id>.zip`, in that session's folder under `~/.brx-mcp/sessions/`. It prints
+the full path. It replaces player names, tagger ids, PINs, IP addresses, your
+home folder and tokens first. It does not change names shorter than 3 letters, bare numbers, or
+text you typed (team and game names). So **open the zip and check it before you post**: the issue
+you file is public.
+It then opens a prefilled GitHub issue in your browser and shows the zip in your file manager.
+Drag the zip into the issue form, describe what happened, and submit it.
+
 ## When something goes wrong
 
 **Only some of the taggers joined.** A headset that is off, unpaired or flat makes its tagger refuse to

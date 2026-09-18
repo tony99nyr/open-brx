@@ -155,6 +155,11 @@ def mc_dir() -> Path:
 class Store:
     def __init__(self, session_id: str, path: Path | None = None, read_only: bool = False):
         self.path = path or (mc_dir() / f"session-{session_id}.sqlite")
+        # Set BEFORE the read-only branch returns. Merge 2026-09-18: the read-only path and the
+        # `_closed` guards landed on separate branches, neither touching the other's lines, and the
+        # combination left a read-only Store with no `_closed` at all -- so every method that guards
+        # on it raised AttributeError, and a resume silently imported no facts (`test_mc_resume`).
+        self._closed = False
         if read_only:
             # F-2026-09-17e: a resume only ever READS another process's store (`state._import_facts`),
             # so it must never create a WAL/SHM file beside a store it does not own, nor race that
@@ -183,16 +188,22 @@ class Store:
         self.session_id = session_id
 
     def log(self, node_id, kind, seq, t, t_recv, match_id, parked, body) -> None:
+        if self._closed:
+            return
         self.db.execute("INSERT INTO envelopes(node_id,kind,seq,t,t_recv,match_id,parked,body) VALUES (?,?,?,?,?,?,?,?)",
                         (node_id, kind, seq, t, t_recv, match_id, 1 if parked else 0, json.dumps(body, default=str)))
         self.db.commit()
 
     def match_started(self, match_id: str, config: dict, go_live_t: int) -> None:
+        if self._closed:
+            return
         self.db.execute("INSERT OR REPLACE INTO matches(match_id,session_id,config,go_live_t) VALUES (?,?,?,?)",
                         (match_id, self.session_id, json.dumps(config), go_live_t))
         self.db.commit()
 
     def match_ended(self, match_id: str, recap: dict) -> None:
+        if self._closed:
+            return
         self.db.execute("UPDATE matches SET ended_t=?, recap=? WHERE match_id=?",
                         (int(time.time() * 1000), json.dumps(recap, default=str), match_id))
         self.db.commit()
@@ -203,6 +214,8 @@ class Store:
         Field 2026-08-30: "the recap doesn't show the previous game once another is started ... we have
         no way to view previous". The rows were always being written here; nothing ever read them back.
         """
+        if self._closed:
+            return []           # after close() (shutdown) a reader gets nothing, not ProgrammingError
         out = []
         # rowid breaks the tie: two matches can end in the same millisecond, and without it sqlite
         # falls back to insertion order — i.e. OLDEST first, exactly the wrong way round.
@@ -236,6 +249,8 @@ class Store:
         replay (`state._match_facts`) wants five kinds out of it. Reading them all back meant a
         `json.loads` of every heartbeat body — twice per late death — to throw the result away.
         """
+        if self._closed:
+            return []
         q, args = "SELECT node_id,kind,seq,t,t_recv,match_id,parked,body FROM envelopes", []
         conds = []
         if match_id is not None:
@@ -253,4 +268,24 @@ class Store:
                  "parked": bool(r[6]), "body": json.loads(r[7])} for r in self.db.execute(q + " ORDER BY id", args)]
 
     def close(self) -> None:
-        self.db.close()
+        """Fold the WAL back into the main file and close. Idempotent, and it never raises.
+
+        WAL mode (see `__init__`) keeps recent commits in `session.sqlite-wal` until a checkpoint. A
+        process that exits without one leaves the evidence split over three files, and a copy of
+        `session.sqlite` alone then misses the newest rows. `TRUNCATE` writes every WAL frame into the
+        main file and empties the WAL; switching back to the rollback journal removes `-wal`/`-shm`,
+        so the evidence folder ends with ONE self-contained file. Both steps are best effort: another
+        connection (a bug report being built) can hold a read lock, and a shutdown must not fail on it.
+        """
+        if self._closed:
+            return
+        self._closed = True
+        for pragma in ("PRAGMA wal_checkpoint(TRUNCATE)", "PRAGMA journal_mode=DELETE"):
+            try:
+                self.db.execute(pragma).fetchall()
+            except Exception:
+                pass
+        try:
+            self.db.close()
+        except Exception:
+            pass

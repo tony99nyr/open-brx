@@ -177,6 +177,12 @@ answer and writing it into the manual.
 Open an issue or a pull request against `main`. Small, well-scoped changes are easier to review than
 large ones, especially anything touching the protocol layer or the spec.
 
+For a **Mission Control** bug, use the
+[bug report form](https://github.com/tony99nyr/open-brx/issues/new/choose) and attach a report zip:
+run `./start.sh --report` (`start.cmd --report` on Windows), or press **Report a problem** in the
+console. Open the zip and check it before you post: the issue is public. See `docs/platform/run.md`
+→ *Reporting a problem*.
+
 For a **hardware/protocol** bug report or finding, include what you'd want if you were debugging it
 cold:
 - The tagger's firmware/generation (e.g. Tactix2 v4.32) and whether a headset was paired and powered.

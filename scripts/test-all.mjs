@@ -99,7 +99,7 @@ const JOBS = [
   { name: 'app-moments', cwd: 'app', cmd: ['node', 'tools/moments.mjs'], www: true, ui: true, mb: 500, secs: 60 },
   // two real MCs and two phone HUDs against the built console, so it needs webapp/mc/dist as well as app/www
   { name: 'app-e2e', cwd: 'app', cmd: ['node', 'tools/e2e.mjs'], www: true, dist: true, ui: true, mb: 1000, secs: 65 },
-  ...[['koth', 45], ['backhaul', 20], ['kit-continue', 22], ['end-delivery', 13], ['standby', 87], ['m2-ui', 46], ['game-edit', 32], ['operator-menu', 18]].map(([s, t]) => e2e(s, t)),
+  ...[['koth', 45], ['backhaul', 20], ['kit-continue', 22], ['end-delivery', 13], ['standby', 87], ['m2-ui', 46], ['game-edit', 32], ['operator-menu', 18], ['report', 15]].map(([s, t]) => e2e(s, t)),
 ].filter(j => (UI || !j.ui) && (!filters.length || filters.some(f => j.name.includes(f))));
 
 if (LIST) { for (const j of JOBS) console.log(j.name); process.exit(0); }

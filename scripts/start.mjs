@@ -24,6 +24,8 @@ const USAGE = `Usage: ./start.sh [options] [-- Mission Control options]     (Win
   --no-update      do not check GitHub for a newer version
   --yes            accept the default answer to every question (it never deletes a broken .venv)
   --cloudflared    ask about cloudflared again, even if you said no before
+  --report [SESSION]  make a bug report zip for a session (default: the newest) and open a
+                       prefilled GitHub issue in your browser
   --help           show this help
 
 Anything after -- goes to Mission Control unchanged (for example: -- --port 9000).`;
@@ -32,9 +34,13 @@ const args = process.argv.slice(2);
 const dash = args.indexOf('--');
 const own = dash === -1 ? args : args.slice(0, dash);
 const passthrough = dash === -1 ? [] : args.slice(dash + 1);
-const known = new Set(['--demo', '--setup-only', '--no-update', '--yes', '--cloudflared', '--help', '-h']);
+const known = new Set(['--demo', '--setup-only', '--no-update', '--yes', '--cloudflared', '--report', '--help', '-h']);
+// --report can take one optional value straight after it: the session to report on.
+const reportAt = own.indexOf('--report');
+const reportSession = reportAt !== -1 && own[reportAt + 1] && !own[reportAt + 1].startsWith('-') ? own[reportAt + 1] : null;
 for (const arg of own) {
-  if (!known.has(arg)) { console.error(`Unknown option: ${arg}\n\n${USAGE}`); process.exit(2); }
+  if (known.has(arg) || arg === reportSession) continue;
+  console.error(`Unknown option: ${arg}\n\n${USAGE}`); process.exit(2);
 }
 if (own.includes('--help') || own.includes('-h')) { console.log(USAGE); process.exit(0); }
 const opt = name => own.includes(name);
@@ -49,7 +55,8 @@ const winget = isWindows ? which('winget') : null;
 const color = process.stdout.isTTY && !process.env.NO_COLOR;
 const paint = (code, text) => (color ? `\x1b[${code}m${text}\x1b[0m` : text);
 let stepNo = 0;
-const step = title => console.log(`\n${paint('1', `[${++stepNo}/5] ${title}`)}`);
+const stepTotal = own.includes('--report') ? 2 : 5;
+const step = title => console.log(`\n${paint('1', `[${++stepNo}/${stepTotal}] ${title}`)}`);
 const ok = text => console.log(`  ${paint('32', 'ok')}  ${text}`);
 const note = text => console.log(`  ${paint('33', '--')}  ${text}`);
 function stop(message, ...fix) {
@@ -291,13 +298,34 @@ function start() {
   child.on('exit', code => process.exit(code ?? 1));
 }
 
+// ---- 6. report (--report only) ---------------------------------------------------------------------
+function report() {
+  step('Making a bug report');
+  const venv = venvPython();
+  const reportArgs = ['-m', 'brx_mcp.mc.report', ...(reportSession ? [reportSession] : []), '--open'];
+  const result = spawnSync(venv, reportArgs, {
+    cwd: root, stdio: 'inherit',
+    env: { ...process.env, PYTHONPATH: join(root, 'mcp'), PYTHONIOENCODING: 'utf-8' },
+  });
+  process.exit(result.status ?? 1);
+}
+
 const [major, minor] = process.versions.node.split('.').map(Number);
 if (major < 20 || (major === 20 && minor < 11)) {
   stop(`Node.js ${process.versions.node} is too old; Open BRX needs 20.11 or later.`, 'Install the current LTS from https://nodejs.org/');
 }
-if (!process.env.OPEN_BRX_JUST_UPDATED) console.log(paint('1', 'Open BRX Mission Control: setup and start'));
-await update();
-await python();
-consoleUi();
-await cloudflared();
-start();
+if (!process.env.OPEN_BRX_JUST_UPDATED) {
+  console.log(paint('1', opt('--report') ? 'Open BRX Mission Control: bug report' : 'Open BRX Mission Control: setup and start'));
+}
+if (opt('--report')) {
+  // A report needs the Python package installed, nothing else: skip the update, console and
+  // cloudflared steps so a broken console or a stale clone never blocks reporting a bug.
+  await python();
+  report();
+} else {
+  await update();
+  await python();
+  consoleUi();
+  await cloudflared();
+  start();
+}

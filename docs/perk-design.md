@@ -49,25 +49,28 @@ ladder, and every pick has a named enemy.
 | perk | what the player gets | what it costs | beaten by |
 |---|---|---|---|
 | **Body Armor** | +25 armour, about 20% more pool | reloads take 25% longer | Armour Piercing, and anything that ticks |
-| **Armour Piercing** | your primary ignores armour and shields, straight to health | about 60% less damage per hit | a bare-pool opponent, who takes the damage cut for free |
+| **Armour Piercing** | your primary ignores armour and shields, straight to health | heavier rounds: less damage AND a slower cycle, set per weapon (§7.7) | a bare-pool opponent, who takes the damage cut for free |
 | **Quick Hands** | reload in half the time | magazine and reserve cut by 20% | Extended Mags, in a long fight |
 | **Extended Mags** | double magazine and reserve | weapon swap 30% slower | Quick Switch, at close range |
 | **Quick Switch** | draw your second weapon in half the time | 20 less armour | Body Armor, in a straight exchange |
 | **Motion Tracker** | nearby enemies appear on your HUD as a list, with no bearing and no range | the slot itself: you carry information instead of power | anyone who accepts being seen and shoots first |
 | **Second Wind** | once a life, the hit that would nearly finish you leaves you standing | the condition: it pays nothing in a fight you win, and nothing at all against a weapon that kills through it | a weapon that kills through it in one hit |
 
-**Why Armour Piercing at minus 60% and not minus 20%.** The S50 draft priced it at a 20% damage cut.
-That is wrong: against the standard 45 + 70 pool, ignoring armour cuts the effective pool from 115 to
-45, which is a 61% reduction. A 20% damage cut against a 61% smaller pool is simply the best gun in the
-game. The cut has to roughly cancel the bypass, so the perk reads as "the same time to kill, whatever
-they are wearing" rather than "faster than everyone".
+**Why Armour Piercing is priced per weapon, not by a multiplier.** ⚠️ Corrected 2026-09-18 after
+working it across the catalogue: **a multiplier cannot price this perk at all**, and the shipped 0.4
+left it strictly better on 11 of 13 weapons. Bypassing armour takes a standard target from a 115 pool
+to 45 health, and 45/115 is 0.39, so any multiplier near 0.4 leaves hits-to-kill unchanged and the perk
+costs nothing. Damage alone cannot fix it either, because damage is an integer: at 8 damage the only
+choices are 3, which is free, and 2, which is useless. **Dropping the cycle as well makes the trade
+continuous**, so every plain-damage weapon can carry the perk, and it is what the perk should feel like:
+heavier rounds, fewer of them, slower. `weapon-design.md` §7.7 has the pairs and the arithmetic.
 
 **Why Body Armor drops from +50 to +25.** At +50 the AR needed six more hits, which is the single
 largest swing in the arsenal and lands on the weapon most players pick anyway. At +25 it is about two
 extra hits on a fast weapon and one on a slow one: still felt, no longer decisive. Tony, 2026-09-17:
 "maybe 50 is too much armor and it should be 25".
 
-**Body Armor must be preset-aware.** Under the Shields preset (30 HP + 120 shield + **no** armour), the
+**Body Armor must be preset-aware.** Under the Shields preset (45 HP + 105 shield + **no** armour), the
 compiler adds `max_armor_add` on top of the preset's base armour and reintroduces a whole armour layer
 the preset was designed not to have. Under Shields, Body Armor grants **shield**, not armour. That is a
 branch in `armed_armor()`, and it is on the list below.

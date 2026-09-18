@@ -59,7 +59,8 @@ opens it in your browser. The second run starts straight away. [Install](docs/pl
 describes each step, and what to do without git.
 
 No taggers on hand? `./start.sh --demo` runs a full demo match with 8 simulated players, no hardware
-needed. Run `./start.sh --help` for the rest of the options.
+needed. Hit a bug? `./start.sh --report` makes a scrubbed bug report and opens a prefilled GitHub
+issue. Run `./start.sh --help` for the rest of the options.
 
 Developers: after `./start.sh` has set the machine up, `pnpm mc` (or `node scripts/mc.mjs`) starts
 Mission Control directly, without the update and install steps. `mcp/brx_mcp/mc/README.md` covers every flag and the

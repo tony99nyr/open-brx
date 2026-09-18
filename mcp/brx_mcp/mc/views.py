@@ -133,6 +133,11 @@ def weapon_view(w: Weapon, pool: int = DEFAULT_POOL) -> WeaponView:
         view["caution"] = caution                                      # A10: known live problem
     if w.get("pickup_only"):
         view["pickup_only"] = True                    # 2026-09-17: catalogue-visible, never in a loadout pool
+    if w.get("lethal") is False:
+        # 2026-09-18 (weapon-design.md §7.4): this weapon deliberately cannot kill and may never be a
+        # PRIMARY. Both UIs mirror that rule client-side, so the field has to travel with the row or the
+        # console happily offers an operator a pick the server refuses at arming.
+        view["lethal"] = False
     if recoil := w.get("recoil"):
         view["recoil"] = recoil                         # S42: the declared target profile -- the node's only source of it
     return view

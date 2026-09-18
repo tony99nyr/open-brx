@@ -90,6 +90,11 @@ class _AuthMiddleware:
     # `/api/diag/matches` serves the whole session's raw telemetry and scans the store to build it —
     # so it is gated like a write even though it writes nothing.
     _TOKEN_GETS = ("/api/diag/matches",)
+    # The bug-report zip (`GET /api/report/<file>`) is the same telemetry, packed for download. The UI
+    # fetches it with the header and saves a blob, so this prefix takes the header ONLY: a `?tok=` link
+    # would put the operator token in browser history and in any log of the URL.
+    _TOKEN_GET_PREFIXES = ("/api/report/",)
+    _HEADER_ONLY_PREFIXES = ("/api/report/",)
 
     def __init__(self, app, token: str | None):
         self.app, self.token = app, token
@@ -100,8 +105,9 @@ class _AuthMiddleware:
             method = scope.get("method", "GET")
             need = (scope["type"] == "websocket" and path == "/ui-ws") or \
                    (scope["type"] == "http" and path.startswith("/api/")
-                    and (method not in ("GET", "HEAD", "OPTIONS") or path in self._TOKEN_GETS))
-            if need and not self._ok(scope):
+                    and (method not in ("GET", "HEAD", "OPTIONS") or path in self._TOKEN_GETS
+                         or path.startswith(self._TOKEN_GET_PREFIXES)))
+            if need and not self._ok(scope, header_only=path.startswith(self._HEADER_ONLY_PREFIXES)):
                 if scope["type"] == "websocket":
                     await send({"type": "websocket.accept"})          # accept, then close so the client sees 4401
                     await send({"type": "websocket.close", "code": 4401})
@@ -122,11 +128,13 @@ class _AuthMiddleware:
         except (TypeError, ValueError, UnicodeError):
             return False
 
-    def _ok(self, scope) -> bool:
+    def _ok(self, scope, header_only: bool = False) -> bool:
         headers = {k.decode(errors="ignore").lower(): v.decode(errors="ignore") for k, v in scope.get("headers", [])}
         auth = headers.get("authorization", "")
         if auth.startswith("Bearer ") and self._eq(auth[7:]):
             return True
+        if header_only:
+            return False
         from urllib.parse import parse_qs
         qs = parse_qs(scope.get("query_string", b"").decode(errors="ignore"))
         tok = qs.get("tok", [None])[0]
@@ -540,6 +548,70 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             logging.getLogger("brx.mc").exception("diag unavailable")
             return JSONResponse([])
 
+    # Report files THIS server built, by name. The download route serves nothing else, so a crafted
+    # name (`..`, a slash, another session's zip) is a 404 before any path is formed from it.
+    reports_built: dict[str, Path] = {}
+
+    def _report_known() -> dict[str, list[str]]:
+        """What only the live server knows: the roster's names and the armory's gun ids. Best effort."""
+        from . import report as _report
+        players = list(s.players.values()) + list(getattr(s, "standby", {}).values())
+        known: dict[str, list[str]] = {
+            _report.PLAYER: [str(p.get("display") or "") for p in players],
+            _report.PIN: [str(p.get("gun_id") or "") for p in players],
+            _report.WIFI: [str(s.lan.get("ssid") or "")],
+            _report.TAGGER: [], _report.BLE: []}
+        try:
+            for rec in s.armory.list() or []:
+                known[_report.TAGGER].append(str(rec.get("sticker") or ""))
+                known[_report.PIN] += [str(rec.get("gun_id") or ""), str(rec.get("headset_pin") or "")]
+                ble = rec.get("ble") or {}
+                known[_report.BLE] += [str(ble.get("address") or ""), str(ble.get("uuid") or "")]
+        except Exception:
+            log.warning("report: armory list unavailable; the armory file is still read")
+        return known
+
+    async def report_build(_):
+        """`python -m brx_mcp.mc.report` for THIS session, on demand: a scrubbed zip the operator can
+        attach to a public GitHub issue. Allowed in every phase (a bug can happen mid-match): the report
+        reads its own COPY of the store through the sqlite backup API, in a worker thread, so it never
+        shares or blocks the live connection. Operator-token gated (a POST)."""
+        if not s.store:
+            return _err("this Mission Control has no session database, so there is nothing to report", 409)
+        from . import report as _report
+        from ..storage import home_dir
+        store_path = Path(s.store.path)
+        evidence = store_path.parent
+        # A launcher run keeps `session.sqlite` in its own evidence folder; a manual run shares
+        # `~/.brx-mcp/mc/` with every other session, so its zips go to `reports/` instead.
+        out_dir = evidence if store_path.name == "session.sqlite" else home_dir() / "reports"
+        launch_id = None if store_path.name == "session.sqlite" else f"session-{s.store.session_id}"
+        secrets = [t for t in (token, getattr(s, "join_secret", None)) if t]
+        known = _report_known()
+        try:
+            loop = asyncio.get_running_loop()
+            res = await loop.run_in_executor(None, lambda: _report.build_report(
+                evidence, out_dir, sqlite_path=store_path, launch_id=launch_id, secrets=secrets, known=known))
+        except _report.ReportLeak as e:
+            return _err(str(e), 500)
+        except Exception:
+            logging.getLogger("brx.mc").exception("report failed")
+            return _err("the report could not be built; see the Mission Control log", 500)
+        name = res.zip_path.name
+        reports_built[name] = res.zip_path
+        return JSONResponse({"file": name, "download": f"/api/report/{name}", "issue_url": res.issue_url,
+                             "summary": res.summary, "removed": res.removed, "too_large": res.too_large})
+
+    async def report_download(req):
+        from starlette.responses import FileResponse
+        from . import report as _report
+        name = req.path_params.get("file", "")
+        path = reports_built.get(name) if _report.REPORT_NAME.fullmatch(name) else None
+        if path is None or not path.is_file():
+            return _err("no such report", 404)
+        return FileResponse(str(path), media_type="application/zip", filename=name,
+                            content_disposition_type="attachment")
+
     _SAFE_NAME = __import__("re").compile(r"[^A-Za-z0-9._-]")
 
     def _csv(body: str, name: str) -> Response:
@@ -790,6 +862,8 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/recap", recap),
         Route("/api/matches", match_history),
         Route("/api/diag/matches", diag_matches),
+        Route("/api/report", report_build, methods=["POST"]),
+        Route("/api/report/{file}", report_download),
         Route("/api/recap.csv", recap_csv),
         Route("/api/matches/{mid}.csv", match_csv),
         Route("/api/session/new", new_session, methods=["POST"]),
@@ -819,6 +893,11 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             if tun is not None:
                 with contextlib.suppress(Exception):
                     await tun.shutdown()
+            # Fold the WAL into `session.sqlite` and close it, so the evidence folder ends with one
+            # self-contained file (`Store.close` is idempotent and never raises).
+            if s.store is not None:
+                with contextlib.suppress(Exception):
+                    s.store.close()
 
     app = Starlette(routes=routes, lifespan=lifespan,
                     middleware=[Middleware(CORSMiddleware, allow_origins=["*"],

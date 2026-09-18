@@ -35,7 +35,7 @@ Validated against capture `$GSET,0,0,1,0,1,0,50,1,*`:
 | # | field | example | meaning |
 |---|---|---|---|
 | 1 | friendlyFire | 0 | **GUN-ENFORCED both directions** (bench 2026-08-26, brx-ir four-cell IR emitter, 2×+control): FF=0 blocks same-team damage AND enemy heals; FF=1 opens the gate — exactly as labelled. (An intermediate same-day gun-probe read it not-enforced but only reached FF=1 with an unverified victim team.) |
-| 2 | outdoorMode | 0 | indoor(0)/outdoor(1) IR range profile |
+| 2 | outdoorMode | 0 | APK name only. **Not the app's venue switch:** cap30 (2026-09-18) sends 0 with Callsign's venue on OUTDOOR, its default. Measured as a receive gate, see `brx-protocol.md` `$GSET` |
 | 3 | gunLaserRegion | 1 | gun-laser region/zone |
 | 4 | autoAmbientLight | 0 | auto ambient-light compensation |
 | 5 | gyroscope | 1 | gyro enable |
@@ -297,7 +297,7 @@ Cross-validated: the 38-member metadata field list aligned against the two known
 | tok | AR | ChargeRifle | field | conf |
 |---|---|---|---|---|
 | 0 | 0 | 1 | **slot** | ✓ |
-| 2 | 100 | 100 | (scale/enable const) | ~ |
+| 2 | 100 | 100 | **`gunRangeOutdoor`** — the field list above names it, and the 2026-09-17 garden bench PROVED it is the range lever (F231/F234): `t2`=5 landed 0 hits from 38 shots at any distance, muzzle to dome included; `t2`=100 reached about 200 ft; the transition sits roughly between 13 and 26 with a flat shelf above about 31. MC writes it from `wire.range_outdoor_pct` OUTDOORS ONLY and floors it at 13. ⚠️ This row used to read "(scale/enable const)" because both captured samples carry 100 and the diff could not discriminate it: the teardown had the NAME right and the meaning unpinned. Still unknown: whether the scale is a percentage or an index, and where the knee is | ✅ bench-proven |
 | 3 | 0 | 8 | primaryPowerType (IRSource enum) | ~ |
 | 4 | 0 | 0 | primaryDamageType (DamageType enum) | ~ |
 | 5 | **24** | **150** | **primaryDamage** | ✓ (M-4=24) |
@@ -322,10 +322,10 @@ Cross-validated: the 38-member metadata field list aligned against the two known
 | 33 | D02 | D37 | reloadPart3_SoundName | ✓ |
 | 34 | D18 | A73 | noAmmo_SoundName | ~ |
 | 35–36 | — | C19,C04 | weaponFeatureA/B sounds | ~ |
-| 37–38 | — | 20,150 | **overheat enable/params** — populated ONLY on the stock Charge Rifle; t24/t35 are INERT without them (SMG transplant enabled its dead heat gauge — bench 2026-08-26); t37-vs-t38 semantics unmapped | ✅ gate proven |
+| 37–38 | — | 20,150 | **overheat enable/params** — populated ONLY on the stock Charge Rifle; t24/t35 are INERT without them (SMG transplant enabled its dead heat gauge — bench 2026-08-26); t37-vs-t38 semantics unmapped | ✅ gate proven | ⭐ **2026-09-18 (V4_31 trace, LaserTagMods session): the meaning depends on `t1`, which resolves the apparent conflict with our bench.** When **t1 is 1 or 2** the gun emits a headset word and **t37 is its DIRECTION, t38 its REPEAT** (loop = max(1, t38), interval t23 clamped to at least 200 ms; 100 repeats until stopped). When **t1 is 0 or 3 neither reaches IR at all** — the Charge Rifle's case, since its t1 is empty. So the 2026-09-17 bench measuring **t37 as the charge weapon's TAP DAMAGE** stands: the two readings are different branches of the same token, not a contradiction.
 | 39 | 32 | 100 | clipStartingAmmo (= maxClip here) | ~ |
 | 40 | 9999999 | 9999999 | ammoReserv (unlimited) | ~ (identical in both frames — not discriminable by the diff) |
-| 41 | 75 | 75 | gunRange % | ~ |
+| 41 | 75 | 75 | `gunRangeIndoor` — ⚠️ **PROVEN INERT OUTDOORS** (F231, 2026-09-17): identical on every gun and changing it moved nothing at any distance, so it is NOT the range lever the name suggests and `resolve()` never writes it. Whether it does anything INDOORS is untested, so the captured value ships unchanged | ✅ inert outdoors |
 
 The always-empty positions (secondary-fire ~7–13 and extra-headset ~42–43) are the **~6 named fields
 left unpinned** by the two samples (44 wire tokens − 38 named members ≈ 6; they occupy a few adjacent
@@ -359,7 +359,7 @@ positional sound set — each slot is a named game-event sound. Note fields are 
 | **IRTX** | iRPower, soundOnHit, rangeOutdoor, rangeIndoor | raw IR transmit |
 | **LIFE** | addedHP, addedArmor, addedShields | grant health/armor/shields |
 | **BHIT** | damage, isCriticalShot, powerLevel | apply a hit to the gun (host-inflicted damage!) |
-| **BUMP** | hP, armor, shields | adjust current pools |
+| **BUMP** | hP, armor, shields | adjust current pools. ⚠️ **Field order is WRONG on the wire**: Callsign sends `$BUMP,12,,1,,,*` to add 12 armour (cap30, 2026-09-18) |
 | **MELEE** | intensity | melee event |
 | **VIB** | isEnableVibration | haptics toggle |
 | **PLAY** | (soundName,) addToQue1, addToQue2, loopingTime, stun, isNeedQueue | richer than we used |

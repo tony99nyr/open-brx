@@ -879,13 +879,17 @@ def test_an_emp_under_config_stun_disarms_every_slot_extends_on_a_second_word_an
         st, mgr, clock = mk_stun(stun=10)
         assert st.stun_enabled and st.stun_s == 10.0
         await live(st)
-        # F121/A23 + F209: the live table is the `sir_pool` take the node writes once the gun can fire -- the
-        # head ships the cell disarmed (fn 28), because fn 24 is the delayed-blast family.
+        # F121/A23 + F209: the live table is the `sir_pool` take the node writes once the gun can fire --
+        # the head ships the cell disarmed (fn 28).
+        #
+        # F253 (bench 2026-09-18): the live function is fn 23, NOT fn 24. fn 24 does no damage AND leaves
+        # the victim's gun manufacturing a fake $HIR every 5.07 s until the next $SPAWN, so a stunned
+        # player was told they were being shot by nobody. fn 23 is the real effect: accuracy 100 -> 0 in
+        # the same millisecond, no pool moves, the gun still fires but every shot misses, and it recovers
+        # by itself in about 3 s. Tony's name for it is smoke, not stun.
         live_rows = [f for f in st.bundle["sir_pool"][0] if f.startswith("$SIR,8,0,")]
         assert live_rows and live_rows[0].split(",")[4] == "23", (
-        # fn 23 since 2026-09-18 (main's F253): fn 24 dealt no damage AND left the victim's gun firing a
-        # phantom `$HIR` every 5.07 s for the rest of the life. fn 23 drops live accuracy to 0 instead.
-        f"the <8,0> cell is fn 23 (accuracy to 0, no pool moves) when stun is on: {live_rows}")
+            f"the <8,0> cell is fn 23 (smoke: accuracy to 0, no pool moves) when stun is on: {live_rows}")
         head = [f for f in st.bundle["head"] if f.startswith("$SIR,8,0,")]
         assert head and head[0].split(",")[4] == "28", f"the head must not arm the EMP cell: {head}"
         spawn = st._spawn_ammo()

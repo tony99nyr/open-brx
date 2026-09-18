@@ -26,8 +26,16 @@ firmware host string (`devhost.03`) — both already public in our docs. They we
 `~/.brx-mcp/device-backups/` and contain **no headset PIN or serial**; those come from the USB
 `QUERY`/`SETUP` console, never from BLE, and stay out of the repo by policy.
 
+**Scrubbed captures (2026-09-18 on).** A PacketLogger trace also records every HCI event, which includes
+the advertising reports of every Bluetooth device in the room: neighbours' addresses and names (cap30 carried a
+printer and two unrelated device names) plus the phone's other links. Committed traces keep **only the ATT records
+on the connection handle(s) that carry `$` frames**; every HCI command/event and every other connection is
+dropped. Check that `python -m brx_mcp.btsnoop` prints the same transcript before and after, and that `strings`
+on the result shows nothing but `$` traffic.
+
 | File | What it is | Why it matters |
 |---|---|---|
+| `2026-09-18-callsign-shield-recharge.btsnoop` | **Callsign shield recharge, and one Shotgun kill** (cap30), victim's gun, app venue OUTDOOR (the default). Four recharges after hits, one shield break, then a Shotgun pull that kills. **Scrubbed** (see Privacy). | **Overturns F65**: the recharge is `$BUMP,12,,1,,,*` (+12 armour per frame, ~0.5 s apart, 6.2-6.6 s after the last hit) under one `$PLAY,W20,3,6,VA8C`; Callsign's "shield" is the ARMOUR pool. **Measures F71**: one Shotgun pull lands two words, 45 then 70, 88 ms apart. Also shows `$GSET` token 2 = 0 with the app on Outdoor. |
 | `2026-08-25-two-gun-3-kills-sflash.btsnoop` | **The `$SFLASH` capture — operator-annotated end to end.** The captured iPhone **hosted** the game (a second phone joined with the other tagger). 262 s: connect → arm → **3 kills scored** → manual *Settings ▸ End Game*. The captured gun is the **shooter** — never hit (`$ALCD` ammo 36→6, `$BUT` bursts, zero `$HIR`). 3× `$SFLASH` + 3× `$PLAY,,4,6,V3A`. | **Source of §7o.** Proves the green-sight kill-confirm and the announcer ride plain BLE, and that the app's arm is byte-identical to ours. The single most important capture we have. |
 | `2026-08-25-our-app-ios-double-init-drop.btsnoop` | **Our own app failing**, not Callsign — the BRX Companion app on an iPhone X connecting two guns. 864 HCI packets, 81 s, **zero UART frames written**: both guns connect, notifications are enabled, then disabled, then the links drop. All three disconnects are HCI reason **`0x16` Connection Terminated By Local Host** — the phone hung up. | Root-caused the "tagger keeps connecting and disconnecting": the plugin's `initialize()` *replaces* the object owning the CBCentralManager and all peripherals, and the app called it per-`setGun`, so **connecting Gun B disconnected Gun A**. Fixed by memoizing. Also the template for diagnosing our own BLE bugs — reason codes name who hung up. |
 | `2026-08-25-offline-game-playerid-69.btsnoop` | Single device, **Start Offline Game**, with the app's **player id set to 69**. 55 frames, 58 s, one gun, no combat. | **The P2 lead.** `$PSET` token 1 — `0` in every other capture we have — comes across as **63**, the 6-bit maximum (the IR shot payload's player field is 6 bits, 0–63, per `brx-ir-protocol.md`). So 69 was clamped, and **`$PSET` token 1 looks like the player id**, settable over BLE. Needs one confirming capture at a small value. |

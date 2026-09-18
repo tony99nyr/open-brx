@@ -175,6 +175,15 @@ _SIR_TABLE = (
     # constants; nothing imports across the two files to enforce it, so a change to either without
     # the other silently reopens the F11 failure the guard exists to prevent.
     "$SIR,4,0,,2,0,0,1,,*",
+    # ⚠️ 2026-09-18: the three cells for the new support and poison weapons (`<5,0>` fn 20 stripper,
+    # `<7,0>` fn 23 smoke, `<11,0>` poison) were briefly PERMANENT rows here and had to come out again.
+    # `hitaudio.MAX_SIR_ROWS` is 14, this table was 11, and three more took it to exactly the ceiling,
+    # leaving the class-sound allocator ZERO budget: it stopped separating weapon families and four
+    # hit-audio tests went red. That ceiling is a COMMUNITY figure and has never been measured (F39), so
+    # raising it would be inventing headroom rather than finding it.
+    # The right fix is a CONDITIONAL table: a game with no Breacher in it should not push the Breacher's
+    # row to every gun. That needs the roster threaded into `sir_table()` and is filed as its own job.
+    # Until then the three weapons are `hidden` in weapons.json and their rows are not shipped.
 )
 # $BMAP button map — mandatory or the trigger gives the "disabled" chirp.
 _BMAP = (

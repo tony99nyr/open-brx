@@ -16,6 +16,10 @@ tagger driven one token at a time. Captures decode with `python -m brx_mcp.btsno
 
 ### BLE capture on iOS (the one that works)
 
+0. **Install Apple's Bluetooth logging profile on the iPhone** (Safari on the phone:
+   developer.apple.com/bug-reporting/profiles-and-logs → Bluetooth → iOS; Settings → Profile Downloaded →
+   Install; restart). **It expires after a few days**, and a lapsed profile gives a trace that opens but
+   records nothing (cost a session 2026-09-18). Test: toggle Bluetooth on the phone and watch for lines.
 1. Plug the iPhone into a Mac. Open **PacketLogger** (it ships in Apple's "Additional Tools for
    Xcode" download, not in Xcode itself), then **File → New iOS Trace**. **Confirm lines are
    scrolling before you do anything.**
