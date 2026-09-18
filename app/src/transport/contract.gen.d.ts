@@ -80,6 +80,11 @@ export type PoolEmptyCode = 'off' | 'fixed_missing' | 'only_ids_missing' | 'need
 export type StationKind = 'respawn' | 'powerup' | 'extraction' | 'bomb' | 'control';
 export type TunnelStatus = 'off' | 'starting' | 'up' | 'error';
 export type TunnelProviderValue = 'cloudflared' | 'manual';
+/** 2026-09-16: the PRE-ARM CHECK's ACKED cell. `none` = no head pushed for this lobby; `waiting` = pushed,
+ *  no answer yet (never a fault); `failed` = refused ack, offline or unbound phone, or no answer in time. */
+export type SyncAckState = 'acked' | 'waiting' | 'failed' | 'none';
+/** A47: the three operator actions MC may send to ONE bound player phone (`state.py operator_action`). */
+export type OperatorCmd = 'resync' | 'respawn' | 'relink';
 
 // ---- kind vocabularies ----
 export declare const MC_KINDS: ReadonlySet<McKind>;
@@ -87,12 +92,13 @@ export type McKind = 'ack' | 'alert' | 'apply' | 'assign' | 'config' | 'control'
 export declare const NODE_KINDS: ReadonlySet<NodeKind>;
 export type NodeKind = 'ack_config' | 'bind' | 'event' | 'event_batch' | 'hello' | 'loadout_browse' | 'loadout_request' | 'log_data' | 'log_offer' | 'ready' | 'status' | 'time_req';
 export declare const CONTROL_CMDS: ReadonlySet<ControlCmd>;
-export type ControlCmd = 'abort_start' | 'end' | 'panic' | 'recall' | 'release_utility';
+export type ControlCmd = 'abort_start' | 'end' | 'panic' | 'recall' | 'release_utility' | 'relink' | 'respawn' | 'resync';
 /** ⚠ This is a WHITELIST and an unlisted type is REJECTED at the socket, not ignored downstream --
  *  so a fact the phone learns to send reaches nothing until it is named here (the F40/F60 shape:
- *  both ends report healthy). `possession` is the objective-mode tally (mc/API.md, F70). */
+ *  both ends report healthy). `possession` is the objective-mode tally (mc/API.md, F70).
+ *  A47: the phone's answer to an operator action (never scored) */
 export declare const PERSISTED_EVENT_TYPES: ReadonlySet<PersistedEventType>;
-export type PersistedEventType = 'death' | 'hit_taken' | 'possession' | 'respawn' | 'team_change';
+export type PersistedEventType = 'death' | 'hit_taken' | 'operator_result' | 'possession' | 'respawn' | 'team_change';
 export declare const STATION_KINDS: ReadonlySet<StationKind>;
 /** The command words a NODE must never write to its gun, whatever a bundle or a debug panel says:
  *  persistent state, pairing, DFU, the IR word-format switch, factory tests, and `$DPLAY`, which
@@ -152,13 +158,14 @@ export interface LoadoutOverrides {
 }
 
 /** weapons[] is canonical: [primary] or [primary, secondary]; `perk` is its OWN slot and rides
- *  beside a secondary weapon (AR + pistol + Quick Switch). The one exception: a perk whose
- *  effects.alt_reload is true (Easy Reload) takes the ALT button, so the server refuses it beside
- *  a second weapon; the UI warns and drops the other one (A9/A14, loadout.md §2). */
+ *  beside a secondary weapon (AR + pistol + Quick Switch). The one exception: S50 (2026-09-17)
+ *  moved it from a perk to `overrides.easy_reload` (a per-player accessibility switch, host-set
+ *  only) -- it still takes the ALT button, so the server refuses it beside a second weapon; the
+ *  host UI warns and drops the other one (A14, loadout.md §2/§2.1). */
 export interface Loadout {
   /** [primary] or [primary, secondary]; index == gun slot; NEVER empty (A10) */
   weapons: WeaponSel[];
-  /** A14: the perk slot — rides beside a secondary weapon (loadout.md §2); an ALT-button perk (easy_reload) is the one that can't */
+  /** A14: the perk slot — rides beside a secondary weapon (loadout.md §2) */
   perk?: string | null;
   overrides?: LoadoutOverrides;
 }
@@ -322,8 +329,12 @@ export interface Stun {
 
 /** S42 (2026-09-17): a weapon's TARGET accuracy profile -- `weapons.json` `recoil`, declared-only
  *  on the wire (compile.py `resolve()` never writes t21/t22 from it). `app/src/engine.js` is the sole
- *  reader: it pins both tokens to `value` on every accuracy write, stepping `value` down by `per_shot`
- *  toward `floor` per shot and back up toward `ceiling` at `recover_ms` per step once the player stops. */
+ *  reader. **F259 (2026-09-18): a STATE MACHINE, not a per-shot walk** -- `_recoilProfile` derives
+ *  `crisp`/`degraded`/`heavy` states from this shape (`ceiling`/`floor` become `crisp`/`degraded`,
+ *  `per_shot` sizes `after_shots`, `recover_ms` floors `settle_ms`): CRISP until the burst reaches
+ *  `after_shots` rounds (DEGRADED), HEAVY after `heavy_after_shots`, and back to CRISP in one step
+ *  once the trigger is quiet for `settle_ms`. `weapons.json` still ships this old ladder shape,
+ *  field for field; `docs/spec/node.md` §3.15 has the state machine's full rule table. */
 export interface Recoil {
   ceiling: number;
   floor: number;
@@ -465,7 +476,7 @@ export interface FrameBundle {
   player_id: string;
   /** config head, NO $SPAWN, no countdown sound; ends with $TID */
   head: string[];
-  /** $PLAYX,0 -> $SPAWN,, -> $AMMO... -> $BMAP,0,0 */
+  /** A44: fn-28 $SIR table -> $PLAYX,0 -> $SPAWN,, -> $AMMO... -> $BMAP,0,0; the live table is a sir_pool take written once the gun can fire */
   spawn: string[];
   revive: string[];
   end: string[];
@@ -504,7 +515,7 @@ export interface FrameBundle {
    *  deathScream token differs. A pinned `death_scream` (or a one-take family) = one frame = head[4].
    *  A17: each take ALSO carries its own hitHp/hitArrmor/hitShield/hitCrit draw (hitaudio.MATERIAL_POOLS). */
   pset_pool?: string[];
-  /** A17: one full `$SIR` table per take -- the node writes one before every `$SPAWN` and again after a
+  /** A17/A44: one full live `$SIR` table per take, the ONLY live carrier -- the node writes one once the gun can fire after every spawn/revive, and again after a
    *  lull, so the same weapon does not land the same clip all match. Re-sending `$SIR` rows is the F11 repair
    *  path, so the write is safe by construction; the rows are identical apart from their sound tokens. */
   sir_pool?: string[][];
@@ -538,6 +549,8 @@ export interface Weapon {
   pickup_only?: boolean;
   /** S42: the declared target accuracy profile (weapons.json `recoil`) */
   recoil?: Recoil;
+  /** A48: rounds of the cell one FULL charge spends. `WeaponCatalog.rounds_per_charge()` resolves weapons.json's absent-means-1 row to a concrete integer, so a real compiled Weapon always carries this; NotRequired only for a hand-built fixture that skips it */
+  rounds_per_charge?: number;
   /** 2026-09-18, weapon-design.md §7.4: False = cannot kill; absent means true */
   lethal?: boolean;
   /** F62 (2026-09-18): $WEAP t6 primaryCritChance, 0-100; absent = never crits */
@@ -588,6 +601,8 @@ export interface WeaponView {
    *  to travel with the row or a console offers a pick that is refused at arming.
    *  S42: the declared target accuracy profile -- the node's `weaponRow(id).recoil` */
   recoil?: Recoil;
+  /** A48: rounds of the cell one FULL charge spends -- the HUD's NOT ENOUGH ENERGY line reads this, never a hard-coded cost. `views.weapon_view()` resolves the catalogue's absent-means-1 row, so a real WeaponView always carries this; NotRequired only for a hand-built fixture that skips it */
+  rounds_per_charge?: number;
   /** F62 (2026-09-18): $WEAP t6 primaryCritChance, 0-100; absent = never crits */
   crit_pct?: number;
 }
@@ -614,6 +629,9 @@ export interface Preflight {
   foreground?: boolean;
   gun_linked?: boolean;
   headset_ok?: boolean;
+  /** Bench 2026-09-17: true while the gun keeps dropping the link seconds after each connect (2+ quick
+   *  drops in a row, BrxLink.flapping), which is what a headset that is off looks like. Optional. */
+  gun_flapping?: boolean;
 }
 
 /** One player or utility node in `State.snapshot()`.
@@ -643,10 +661,13 @@ export interface NodeView {
   log?: LogView | null;
   reach?: 'lan' | 'backhaul';
   last_reach?: 'lan' | 'backhaul';
+  /** F208: the node's last `status.pool_stale` / `pool_stale_ms`. Absent = not stale, or an older app. */
+  pool_stale?: 'silent' | 'no_fire' | 'write_lost';
+  pool_stale_ms?: number;
 }
 
 export interface Event {
-  type?: 'hit_taken' | 'death' | 'respawn' | 'team_change' | 'status' | 'possession';
+  type?: 'hit_taken' | 'death' | 'respawn' | 'team_change' | 'status' | 'possession' | 'operator_result';
   t?: number;
   match_id?: string | null;
   node_id?: string;
@@ -664,6 +685,14 @@ export interface Event {
   desync?: boolean;
   /** respawn */
   resync?: boolean;
+  /** A47: the operator's FORCE RESPAWN, not a respawn after a death (scoring keeps the streak) */
+  operator?: boolean;
+  /** operator_result (A47): what the phone DID with an operator action MC sent (`control{resync|respawn|relink}`).
+   *  Persisted like every fact, and read for the operator's feed and menu only: it never reaches the scorer. */
+  cmd?: OperatorCmd;
+  ok?: boolean;
+  /** present on a refusal: the phone's own reason ("stunned", "not live", ...) */
+  why?: string;
   /** team_change */
   tid?: number;
   /** possession (F70, objective modes) — a CUMULATIVE tally for ONE control point, resent as it grows.
@@ -702,6 +731,13 @@ export interface Event {
    *  still on, every ~2 s, for the rest of the game -- the difference that made a whole field night
    *  of stale pushes invisible. Optional: an older app omits it and MC then makes no claim. */
   config_id?: string;
+  /** F208: the pool this status reports is STALE, and why. A gun that died kept a byte-identical status
+   *  for 105 s and looked like a healthy idle player. `"silent"` = no gun frame for 185 s; `"no_fire"` =
+   *  three trigger presses in a row got no shot back; `"write_lost"` = this life's spawn or revive write was
+   *  lost and the phone did not repeat it (pl4: RESYNC GUN clears it). `pool_stale_ms` = ms since the gun last reported a
+   *  pool. Absent = not stale, or an older app: MC then shows no cue at all. */
+  pool_stale?: 'silent' | 'no_fire' | 'write_lost';
+  pool_stale_ms?: number;
 }
 
 export interface ScoreRow {
@@ -739,6 +775,18 @@ export interface ScoreRow {
   after_end_deaths?: number;
 }
 
+/** A47: the last operator action MC sent to one player, and what the phone said about it.
+ *  `state` is "sent" until the phone's `operator_result` fact arrives, then "done" or "refused". With no
+ *  answer OPERATOR_NO_ANSWER_MS after the send it reads "no_answer" (an older app, a dropped socket); a late
+ *  answer still replaces it. For relink, "done" means the phone STARTED the relink, not that the gun is back. */
+export interface OperatorStatus {
+  cmd: OperatorCmd;
+  state: 'sent' | 'done' | 'refused' | 'no_answer';
+  why: string | null;
+  sent_t: number;
+  result_t: number | null;
+}
+
 export interface LiveRow {
   player_id: string;
   display: string;
@@ -762,6 +810,11 @@ export interface LiveRow {
   status: 'alive' | 'down' | 'stale';
   sync_age_ms: number;
   respawn_in_s: number | null;
+  /** F208: the bound node's `pool_stale` / `pool_stale_ms`, as NodeView. Absent = not stale. */
+  pool_stale?: 'silent' | 'no_fire' | 'write_lost';
+  pool_stale_ms?: number;
+  /** A47: the latest operator action for this player in THIS match. Absent = none sent. */
+  operator?: OperatorStatus;
 }
 
 export interface LiveView {
@@ -771,6 +824,10 @@ export interface LiveView {
   ends_t: number;
   score: Record<string, number>;
   rows: LiveRow[];
+  /** A47: an ADOPTED match only. True when every bound phone that has reported a claim says it has ended
+   *  (`kitted` for this match, or another match), and at least one does. MC never ends an adopted match
+   *  itself; the console asks the operator to press END. Absent = no such claim. */
+  phones_ended?: boolean;
 }
 
 export interface StartNodeView {
@@ -1115,6 +1172,13 @@ export interface ReadinessRow {
   last_seen_age_ms: number | null;
   /** `status.preflight.gun_linked` as last reported */
   gun_linked: boolean | null;
+  /** `status.preflight.gun_flapping` (bench 2026-09-17). The card shows one steady HEADSET OFF line while
+   *  it is true. An older server omits it, so a reader treats a missing key as false. */
+  gun_flapping?: boolean;
+  /** F208: `status.pool_stale`; None = not stale or not reported */
+  pool_stale: 'silent' | 'no_fire' | 'write_lost' | null;
+  /** F208: `status.pool_stale_ms`; None = not reported */
+  pool_stale_ms: number | null;
   fw: string | null;
   phone_batt: number | null;
   ssid_ok: boolean | null;
@@ -1211,6 +1275,7 @@ export interface SyncRow {
   gun_sent: boolean;
   gun_acked: boolean;
   gun_echo: 'proven' | 'mismatch' | 'not_echoed' | null;
+  ack_state: SyncAckState;
 }
 
 export interface SyncTotals {
@@ -1241,6 +1306,18 @@ export interface VersionsView {
 
 export interface NoticesView {
   mc_verify?: string;
+}
+
+/** Bench 2026-09-17: bound phones report ARMED/LIVE in a match this MC did not start.
+ *
+ *  Absent from `State` unless at least one such phone is heard now. `players` are display names.
+ *  `can_resume` is false while MC runs or recaps a match of its own (END THEIR MATCH still works). */
+export interface OrphanMatchView {
+  match_id: string;
+  phones: number;
+  players: string[];
+  arm_state: 'armed' | 'live';
+  can_resume: boolean;
 }
 
 export interface RestoredFromView {
@@ -1290,6 +1367,10 @@ export interface State {
   recap?: RecapView | null;
   notices?: NoticesView;
   end_delivery?: EndDeliveryView;
+  /** bench 2026-09-17: absent unless phones are in a match MC did not start */
+  orphan_match?: OrphanMatchView;
+  /** `--bench-volume N`: every $VOL MC compiles plays at N. Absent on a normal run */
+  bench_volume?: number;
   /** S50 build 4: {player_id: resolved effect},
    *  one entry per player carrying a perk (absent players carry none;
    *  the whole key absent when nobody on the roster has a perk). The
@@ -1306,6 +1387,16 @@ export interface Envelope {
   seq?: number;
   t: number;
   body: Record<string, unknown>;
+}
+
+/** A47: `POST /api/players/{pid}/operator`. `pushed` means only that a socket took the push: no ack
+ *  kind exists for `control`, so the phone's own log and the next heartbeat are the receipt. */
+export interface OperatorActionResult {
+  ok: boolean;
+  cmd: OperatorCmd;
+  player_id: string;
+  match_id: string;
+  pushed: boolean;
 }
 
 // ---- required-field tables (mcp/brx_mcp/mc/envelope.py) ----

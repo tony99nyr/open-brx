@@ -21,11 +21,24 @@ The BRX runs games three ways. You can play from the gun's own menu, with no pho
 - Classes, factions, perks and killstreaks: Nexus/Resistance/Vanguard, the 9+ characters, the perk row, the streak rewards.
 - The grenade's game modes: Frag, Assault, Hill, Respawn, CTF, and how each one really behaves.
 
-> **Two arsenals, one gun.** The gun-menu weapons (M-4, SMG-X3, MG-7, SR-100, TAC-87 and others) are presets the firmware carries for play without a phone. The Callsign app's 19 weapons get sent to the gun over Bluetooth when the game starts. They fill the same 6 weapon slots with different numbers. This section covers the Callsign 19 in full, because we captured every one of them on the wire (20 frames). The five gun-menu weapons are listed from Battle Company's manual.
+> **Three arsenals, one gun.** The gun-menu weapons (M-4, SMG-X3, MG-7, SR-100, TAC-87 and others) are presets the firmware carries for play without a phone. The Callsign app's 19 weapons get sent to the gun over Bluetooth when the game starts. Open BRX sends a third set, its own catalogue, the same way. All three fill the same 6 weapon slots with different numbers, so a gun is only ever running one of them. This page covers the Callsign 19 in full, because we captured every one of them on the wire (20 frames). The five gun-menu weapons are listed from Battle Company's manual. Open BRX's own numbers are balance choices rather than captures, and they live in `docs/reference/weapons.md` and the platform pages, not here.
 
 ## The complete Callsign arsenal
 
-> **How to read the numbers.** The table's columns are Weapon, Role, Damage, Cycle ms, Mag, Reserve, Reload ms, Heat/shot and Fire sound. Damage is the raw number the weapon puts in every shot. It is what your target's gun takes off before any class multiplier. Cycle ms is milliseconds between shots; for charge weapons it is the charge time. Mag is the magazine size, and Reserve is your total spare rounds (the app shows reserve as magazines: mags x clip = reserve). Heat/shot is the value the frame's heat token carries. Four weapons set it: SMG 5, Energy Rifle 6, Charge Rifle 14, Plasma Sniper 30. A heat number on its own does nothing, because the two tokens that switch the overheat system on are set only on the Charge Rifle, so it is the only stock weapon whose gauge actually climbs. Hits to kill is against the default 115-point pool (45 HP + 70 armor), given only for weapons whose shots land as standard damage on the target's effect table. It is in the per-weapon notes below, not in the table. Two caveats on those numbers: hits to kill assumes damage does not depend on which sensor is struck (a Callsign capture shows 18 per hit on headset sensor 0 against 9 per hit on gun body sensor 4, same victim, same life), and Reserve is the frame's `t17` token, which is exactly twice its other spare-ammo token (`t40`), so which of the two is a player's true spare-round count is unsettled.
+> **How to read the numbers.** The table has nine columns: Weapon, Role, Damage, Cycle ms, Mag, Reserve, Reload ms, Heat/shot and Fire sound.
+>
+> - **Damage** is the raw number the weapon puts in every shot. The target's gun takes this off before any class multiplier applies.
+> - **Cycle ms** is the time between shots, in milliseconds. For a charge weapon, it is the charge time instead.
+> - **Mag** is the magazine size.
+> - **Reserve** is your total spare rounds. The app shows reserve as magazines: mags x clip = reserve.
+> - **Heat/shot** is the value the frame's heat token carries. Four weapons set it: SMG 5, Energy Rifle 6, Charge Rifle 14, Plasma Sniper 30. A heat number alone does nothing. A separate token, t38, switches the overheat system on. Callsign sets t38 only on the Charge Rifle, so that is the only stock weapon whose gauge climbs. Open BRX switches it on for the Energy Rifle too.
+>
+> **Hits to kill** is not a table column. Find it in the per-weapon notes below. It counts hits against the default 115-point pool (45 HP + 70 armor). It applies only to weapons whose shots land as standard damage on the target's effect table.
+>
+> Two caveats apply to hits to kill and to Reserve.
+>
+> - Hits to kill assumes damage does not depend on which sensor is struck. The Head shots row further down answers why it does: `$GSET` t7 scales a headset hit, and Callsign ships t7 at 50. One Callsign capture showed 18 damage per hit on the headset (sensor 0). The same capture showed 9 damage per hit on the gun body (sensor 4), on the same victim in the same life.
+> - Reserve is the frame's `t40` token: the rounds a Callsign gun gives you. The frame also holds `t17`, which is always exactly twice `t40`. The gun counts `t40`, and its own ammo readout mirrors that count. This was proven on four weapons on 2026-09-16.
 
 The table below lists every weapon the Callsign app can hand you, with the numbers it actually sends. The search box does a plain text match across all nine columns, so type part of a weapon name, a role or a sound name to narrow the list.
 
@@ -35,81 +48,81 @@ weapons
 
 19 weapons come out of 20 captured frames. The 20th frame is the app's unnamed default secondary (`T01`, 45 dmg, 6-round clip, 4 mags, 0.4 s shell reload). That is the Shotgun itself, slotted as your sidearm before you pick one.
 
-> **Range is not what the app's bar shows.** The app draws a different range bar for each weapon, but the range field in the frames it sends reads the same value (75) on all 18 guns. Melee reads 20. A separate "extra headset range" value shows up on three weapons: 30 on the Shotgun and the Rocket Launcher, 40 on the Plasma Sniper.
+> **Range is not what the app's bar shows.** The app draws a different range bar for each weapon, but the range field in the frames it sends reads the same value (75) on all 18 guns. Melee reads 20. A separate "extra headset range" value shows up on three weapons: 30 on the Shotgun and the Rocket Launcher, 40 on the Plasma Sniper. A garden test on 2026-09-17 found that this range field does nothing outdoors. The other range token, which Callsign also sets to the same value (100) on every gun, turns out not to be a distance control either. It sets the emitter's carrier frequency, and a low value simply detunes the beam until the receiver can no longer hear it. Range in this system is a matter of whether the receiver is listening on your frequency, not of how hard you shout.
 
 > **Stock Callsign hits soft and fast.** The standard-damage automatics deal 8 to 15 per hit every 75 to 120 ms. They need 8 to 15 hits, which is about a second of landed fire. The Rocket Launcher, Rail Gun, Laser Cannon and Ion Sniper deal 115: that drops a full-health player in one shot. The two snipers deal 80 every 225 to 300 ms and kill in two hits, in 0.23 to 0.30 s.
 
 ### Assault Rifle
 
-Assault, full auto, 9 dmg, 100 ms, 32/384, reload 1.4 s. This is the baseline gun. It takes 13 hits to kill, and 1.2 s if every shot lands. (The gun-menu M-4 is printed at 24 damage in Battle Company's manual. The app's Assault Rifle sends 9.)
+Assault, full auto, 9 dmg, 100 ms, 32/192, reload 1.4 s. This is the baseline gun. It takes 13 hits to kill, and 1.2 s if every shot lands. (The gun-menu M-4 is printed at 24 damage in Battle Company's manual. The app's Assault Rifle sends 9.)
 
 ### Burst Rifle
 
-Assault, 3 rounds per trigger pull, 75 ms inside the burst, 275 ms between bursts, 9 dmg, 36/216, reload 1.7 s. One of only two weapons with native burst timing.
+Assault, 3 rounds per trigger pull, 75 ms inside the burst, 275 ms between bursts, 9 dmg, 36/108, reload 1.7 s. One of only two weapons with native burst timing.
 
 ### Force Rifle
 
-Assault, 3-round burst (100 ms / 250 ms between), 9 dmg, 36/144, 1.7 s. You reload it with a "pull back, let go" motion on the handle.
+Assault, 3-round burst (100 ms / 250 ms between), 9 dmg, 36/72, 1.7 s. You reload it with a "pull back, let go" motion on the handle.
 
 ### Bolt Rifle
 
-Assault, single shot, 13 dmg, 225 ms, 18/180, 2.0 s. The rifle with the biggest damage number.
+Assault, single shot, 13 dmg, 225 ms, 18/90, 2.0 s. The rifle with the biggest damage number.
 
 ### SMG
 
-CQB, full auto, 8 dmg, 90 ms, 72/288, 2.5 s, heat 5/shot. 8 damage is the lowest in the arsenal, so the SMG is the slowest automatic to empty a health pool: 15 hits and 1.26 s, against the Stinger's 8 hits in 0.84 s, the Suppressor's 15 in 1.05 s, the Energy Rifle's 13 in 1.08 s and the Assault Rifle's 13 in 1.2 s. What you buy for that is staying power. 72 rounds is the biggest magazine of any automatic bar the Energy Rifle, nearly five kills without reloading, and the price is the longest reload in the game at 2.5 s (tied with the Charge Rifle). Its heat token reads 5, but the overheat gate is not set, so it never overheats.
+CQB, full auto, 8 dmg, 90 ms, 72/144, 2.5 s, heat 5/shot. 8 damage is the lowest in the arsenal, so the SMG is the slowest automatic to empty a health pool: 15 hits and 1.26 s, against the Stinger's 8 hits in 0.84 s, the Suppressor's 15 in 1.05 s, the Energy Rifle's 13 in 1.08 s and the Assault Rifle's 13 in 1.2 s. What you buy for that is staying power. 72 rounds is the biggest magazine of any automatic bar the Energy Rifle, nearly five kills without reloading, and the price is the longest reload in the game at 2.5 s (tied with the Charge Rifle). Its heat token reads 5, but the overheat gate is not set, so it never overheats.
 
 ### Shotgun
 
-CQB, single shot, 45 dmg, 900 ms, 6/24, shell-by-shell reload at 0.4 s per shell. Three hits to kill. It is the only weapon with the "Shells" reload type.
+CQB, single shot, 45 dmg, 900 ms, 6/12, shell-by-shell reload at 0.4 s per shell. Three hits to kill. It is the only weapon with the "Shells" reload type.
 
 ### Stinger
 
-CQB, full auto, 15 dmg, 120 ms, 18/72, 1.7 s. The hardest-hitting automatic: 8 hits, and 0.84 s to kill.
+CQB, full auto, 15 dmg, 120 ms, 18/36, 1.7 s. The hardest-hitting automatic: 8 hits, and 0.84 s to kill.
 
 ### Sniper Rifle
 
-Marksman, bolt-action single shot, 80 dmg, 300 ms, 4/24, 1.7 s. Two hits to kill.
+Marksman, bolt-action single shot, 80 dmg, 300 ms, 4/12, 1.7 s. Two hits to kill.
 
 ### Plasma Sniper
 
-Marksman, single shot, 80 dmg, 225 ms, 10/80, 2.0 s, heat 30/shot. The fastest multi-hit time-to-kill in the arsenal at 0.23 s: the 115-damage weapons kill outright in one shot. Its heat token reads 30, the highest number in the arsenal, but the two gate tokens are empty in its captured frame, so as Callsign sends it there is no heat lockout. What limits you is the 10-round magazine and the 2 s reload.
+Marksman, single shot, 80 dmg, 225 ms, 10/40, 2.0 s, heat 30/shot. The fastest multi-hit time-to-kill in the arsenal at 0.23 s: the 115-damage weapons kill outright in one shot. Its heat token reads 30, the highest number in the arsenal, but the token that switches overheat on is empty in its captured frame, so as Callsign sends it there is no heat lockout. What limits you is the 10-round magazine and the 2 s reload.
 
 ### AMR
 
-Support, single shot only, 18 dmg, 360 ms, 14/56, 1.4 s. A slow, deliberate pace.
+Support, single shot only, 18 dmg, 360 ms, 14/28, 1.4 s. A slow, deliberate pace.
 
 ### Suppressor
 
-Support, full auto, 8 dmg, 75 ms, 48/288, 2.0 s. Quiet (not silent) and no muzzle flash. It is the only weapon with the stealth fields set.
+Support, full auto, 8 dmg, 75 ms, 48/144, 2.0 s. Quiet (not silent) and no muzzle flash. It is the only weapon with the stealth fields set.
 
 ### Energy Rifle
 
-Support, full auto, 9 dmg, 90 ms, 300-round clip, 600 reserve, 2.4 s, heat 6/shot. 300 rounds is the biggest magazine in the arsenal by a wide margin, and 13 hits kill, so that is roughly 23 kills before you reload. Its heat token reads 6, but like the SMG and the Plasma Sniper it ships without the gate tokens, so nothing stops the burst except the magazine.
+Support, full auto, 9 dmg, 90 ms, 300-round clip, 300 reserve, 2.4 s, heat 6/shot. 300 rounds is the biggest magazine in the arsenal by a wide margin, and 13 hits kill, so that is roughly 23 kills before you reload. Its heat token reads 6, but like the SMG and the Plasma Sniper it ships without the token that switches overheat on, so in Callsign nothing stops the burst except the magazine. Open BRX switches it on: the gun then locks out at about 30 rounds of full auto, and it does not cool by itself, so you work the reload lever to vent the heat.
 
 ### Charge Rifle
 
-Support, hold to charge and fire when you let go, 100 dmg, 1.25 s charge, 100/200, 2.5 s, heat 14/shot. Two hits to kill. It is the one weapon with both a charge-up sound and a release sound, and the one weapon whose overheat gate is actually set, so its heat gauge is the only stock gauge that climbs and locks out.
+Support, hold to charge and fire when you let go, 100 dmg, 1.25 s charge, 100/100, 2.5 s, heat 14/shot. Two charges kill. Open BRX's own charge rifle is a different weapon: one full charge costs ten rounds of the cell, a tap fires for less, and the kill is one charge plus two taps. It is the one weapon with both a charge-up sound and a release sound, and the one weapon whose overheat gate is actually set, so its heat gauge is the only stock gauge that climbs and locks out.
 
 ### Rocket Launcher
 
-Power, single shot, 115 dmg (explosive damage type), 1.0 s, 2/8, 1.2 s. A one-shot kill.
+Power, single shot, 115 dmg (explosive damage type), 1.0 s, 2/4, 1.2 s. A one-shot kill.
 
 ### Rail Gun
 
-Power, charges and fires itself after about 1.2 s (a tap also fires), 115 dmg (armor-piercing type), 1/6, 2.4 s. A one-shot kill. It has no release sound, because it fires itself.
+Power, charges and fires itself after about 1.2 s (a tap also fires), 115 dmg (armor-piercing type), 1/3, 2.4 s. A one-shot kill. It has no release sound, because it fires itself.
 
 ### Laser Cannon
 
-Power, you must hold it to charge, and a tap does nothing. 115 dmg, 1.5 s charge, 4/8, 2.0 s. A one-shot kill.
+Power, you must hold it to charge, and a tap does nothing. 115 dmg, 1.5 s charge, 4/4, 2.0 s. A one-shot kill.
 
 ### Energy Launcher
 
-Power, full auto on the wire, but with a 1-round clip every shot is followed by a reload. 115 magnitude, 360 ms, 1/6, 1.4 s. Six spare rounds.
+Power, full auto on the wire, but with a 1-round clip every shot is followed by a reload. 115 magnitude, 360 ms, 1/3, 1.4 s. Three spare rounds.
 
 ### Ion Sniper
 
-Power, single shot, alien-sounding, 115 dmg, 1.0 s, 2/12, 2.0 s. A one-shot kill, with the most reserve in the power tier.
+Power, single shot, alien-sounding, 115 dmg, 1.0 s, 2/6, 2.0 s. A one-shot kill, with the most reserve in the power tier.
 
 ### Melee
 
@@ -163,7 +176,7 @@ Every player is a pool of points: 45 health and 70 armor by default, which is 11
 | What is a shield? | A third pool that sits above armor. Nexus-style classes use it (Guardian 125, Marauder 150, Sentinel 175). You spawn with it empty: `$PSET` token 5 sets the ceiling, not the starting amount. Two things fill it. An IR grant (a `$SIR` shield function, or armor that overflows) fills it in a native game, and a host can fill or drain it over Bluetooth with `$LIFE,0,0,<n>,*`, measured on the bench on 2026-09-11 with no IR involved. |
 | Can a medic heal me? | Yes. The Supremacy Medic's medi-gel pulse is a heal shot, and the community confirms it heals by shooting teammates. A host can also grant health directly. |
 | Do heals overfill? | No. A heal adds to your pool and stops at the maximum. |
-| Head shots? | The headset has four sensor domes, one of them at the back, and the gun body has a sensor of its own. Every shot carries a crit flag, but no stock weapon sets it. A crit multiplies damage by `1 + $GSET t7/100`. That is a per-game setting: x1.5 at the shipped t7=50, and t7=0 turns crits off. |
+| Head shots? | The headset has four sensor domes, one of them at the back, and the gun body has a sensor of its own. Every shot carries a crit flag, but no stock weapon sets it. The headset multiplier is a per-game setting, `$GSET` t7, and it applies to two effect-table functions on the headset sensor only, not to a crit flag. Callsign captures carry t7=50, which scales those two functions up on the headset, by x1.25 and by x2. **Open BRX ships t7=0, so every hit lands the same wherever it strikes**: four of the five sensors are on the headset and BRX players aim there. |
 | Can friendly fire hurt me? | Only if the game turns it on. With friendly fire off the gun itself blocks same-team damage, and blocks enemy "heals" the same way (subject to the caveat under *How a kill actually works*). Free-for-all is one team with friendly fire on. |
 
 > **Heals and boosts "add", they never "set".** When a phone or host gives health to a live gun, the amount is added to your current pool and stops at the maximum. Nobody can set you to a lower number this way, and a grant to a full-health player does nothing. That is why Halo-style regenerating shields, health-on-kill and medic roles all work the same way: a host watches your pool and tops it up.
@@ -237,7 +250,7 @@ The mode LED colour shows what you picked. Modes marked with a star are Callsign
 | Game time | Off, 5, 10, 15, 20, 30 min |
 | Respawn | Off, 15, 30, 60 s, Ramp 45, Ramp 90 |
 | Volume | 1-5 |
-| Indoor / outdoor | hold ALT 3 s (it sticks across power-cycles; indoor dims the green hit LEDs, turns on the RGB LEDs, and shrinks explosion/melee range; bright sun cuts hit radius about 50%) |
+| Indoor / outdoor | press ALT quickly in succession at power-on (it sticks across power-cycles; indoor dims the green hit LEDs, turns on the RGB LEDs, and shrinks explosion/melee range; bright sun cuts hit radius about 50%) |
 | Region | USA / International (the app's `GunLaserRegion` setting). This is a factory setting, so leave it alone |
 
 The Callsign app's modes are the complete list found in the app, with what each one is built from. The app screens group them under categories (Team Arena, Battle Royale, Battle Lines, Faction Wars, Infection) and mode tiles (Arena, Team Arena, Team Snipers, Capture the Flag).

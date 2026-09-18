@@ -62,7 +62,7 @@ PROTOCOL_V = 1
 # `(major, minor)` while major == 0 and `major` alone from 1.0.0 on. `APP_MINOR` is read ONLY in the 0.x
 # regime; once the app cuts 1.0.0, bump APP_MAJOR and APP_MINOR stops mattering.
 APP_MAJOR = 0
-APP_MINOR = 2
+APP_MINOR = 3
 
 
 def parse_app_ver(app_ver: str | None) -> tuple[int, int, int] | None:
@@ -163,12 +163,13 @@ class LoadoutOverrides(TypedDict, total=False):
 
 class Loadout(TypedDict):
     """weapons[] is canonical: [primary] or [primary, secondary]; `perk` is its OWN slot and rides
-    beside a secondary weapon (AR + pistol + Quick Switch). The one exception: a perk whose
-    effects.alt_reload is true (Easy Reload) takes the ALT button, so the server refuses it beside
-    a second weapon; the UI warns and drops the other one (A9/A14, loadout.md §2).
+    beside a secondary weapon (AR + pistol + Quick Switch). The one exception: S50 (2026-09-17)
+    moved it from a perk to `overrides.easy_reload` (a per-player accessibility switch, host-set
+    only) -- it still takes the ALT button, so the server refuses it beside a second weapon; the
+    host UI warns and drops the other one (A14, loadout.md §2/§2.1).
     """
     weapons: list[WeaponSel]              # [primary] or [primary, secondary]; index == gun slot; NEVER empty (A10)
-    perk: NotRequired[str | None]         # A14: the perk slot — rides beside a secondary weapon (loadout.md §2); an ALT-button perk (easy_reload) is the one that can't
+    perk: NotRequired[str | None]         # A14: the perk slot — rides beside a secondary weapon (loadout.md §2)
     overrides: NotRequired[LoadoutOverrides]
 
 
@@ -401,8 +402,12 @@ class Stun(TypedDict):
 class Recoil(TypedDict):
     """S42 (2026-09-17): a weapon's TARGET accuracy profile -- `weapons.json` `recoil`, declared-only
     on the wire (compile.py `resolve()` never writes t21/t22 from it). `app/src/engine.js` is the sole
-    reader: it pins both tokens to `value` on every accuracy write, stepping `value` down by `per_shot`
-    toward `floor` per shot and back up toward `ceiling` at `recover_ms` per step once the player stops."""
+    reader. **F259 (2026-09-18): a STATE MACHINE, not a per-shot walk** -- `_recoilProfile` derives
+    `crisp`/`degraded`/`heavy` states from this shape (`ceiling`/`floor` become `crisp`/`degraded`,
+    `per_shot` sizes `after_shots`, `recover_ms` floors `settle_ms`): CRISP until the burst reaches
+    `after_shots` rounds (DEGRADED), HEAVY after `heavy_after_shots`, and back to CRISP in one step
+    once the trigger is quiet for `settle_ms`. `weapons.json` still ships this old ladder shape,
+    field for field; `docs/spec/node.md` §3.15 has the state machine's full rule table."""
     ceiling: int
     floor: int
     per_shot: int
@@ -487,7 +492,7 @@ class FrameBundle(TypedDict):
     config_id: str
     player_id: str
     head: list[str]      # config head, NO $SPAWN, no countdown sound; ends with $TID
-    spawn: list[str]     # $PLAYX,0 -> $SPAWN,, -> $AMMO... -> $BMAP,0,0
+    spawn: list[str]     # A44: fn-28 $SIR table -> $PLAYX,0 -> $SPAWN,, -> $AMMO... -> $BMAP,0,0; the live table is a sir_pool take written once the gun can fire
     revive: list[str]
     end: list[str]
     panic: list[str]
@@ -515,7 +520,7 @@ class FrameBundle(TypedDict):
     #                                      so the firmware's death scream changes per life. One full $PSET per death-scream take; only the
     #                                      deathScream token differs. A pinned `death_scream` (or a one-take family) = one frame = head[4].
     #                                      A17: each take ALSO carries its own hitHp/hitArrmor/hitShield/hitCrit draw (hitaudio.MATERIAL_POOLS).
-    sir_pool: NotRequired[list[list[str]]]   # A17: one full `$SIR` table per take -- the node writes one before every `$SPAWN` and again after a
+    sir_pool: NotRequired[list[list[str]]]   # A17/A44: one full live `$SIR` table per take, the ONLY live carrier -- the node writes one once the gun can fire after every spawn/revive, and again after a
     #                                      lull, so the same weapon does not land the same clip all match. Re-sending `$SIR` rows is the F11 repair
     #                                      path, so the write is safe by construction; the rows are identical apart from their sound tokens.
     hit_audio: NotRequired[dict]         # A17: {rekey: bool, cells{weapon_id: "p,s"}, classes{"p,s": family}, shared[families sharing a cell],
@@ -540,6 +545,7 @@ class Weapon(TypedDict):
     caution: NotRequired[str]      # A10: human copy for a known LIVE problem (weapons.json `caution`)
     pickup_only: NotRequired[bool]  # 2026-09-17: catalogue-visible but never in a player loadout pool (policy.py)
     recoil: NotRequired[Recoil]     # S42: the declared target accuracy profile (weapons.json `recoil`)
+    rounds_per_charge: NotRequired[int]  # A48: rounds of the cell one FULL charge spends. `WeaponCatalog.rounds_per_charge()` resolves weapons.json's absent-means-1 row to a concrete integer, so a real compiled Weapon always carries this; NotRequired only for a hand-built fixture that skips it
     lethal: NotRequired[bool]       # 2026-09-18, weapon-design.md §7.4: False = cannot kill; absent means true
     crit_pct: NotRequired[int]      # F62 (2026-09-18): $WEAP t6 primaryCritChance, 0-100; absent = never crits
 
@@ -582,6 +588,7 @@ class WeaponView(TypedDict):
                                     # the server refuses one in slot 0 and both UIs mirror that, so the field has
                                     # to travel with the row or a console offers a pick that is refused at arming.
     recoil: NotRequired[Recoil]     # S42: the declared target accuracy profile -- the node's `weaponRow(id).recoil`
+    rounds_per_charge: NotRequired[int]  # A48: rounds of the cell one FULL charge spends -- the HUD's NOT ENOUGH ENERGY line reads this, never a hard-coded cost. `views.weapon_view()` resolves the catalogue's absent-means-1 row, so a real WeaponView always carries this; NotRequired only for a hand-built fixture that skips it
     crit_pct: NotRequired[int]      # F62 (2026-09-18): $WEAP t6 primaryCritChance, 0-100; absent = never crits
 
 
@@ -608,6 +615,9 @@ class Preflight(TypedDict, total=False):
     foreground: bool
     gun_linked: bool
     headset_ok: bool
+    # Bench 2026-09-17: true while the gun keeps dropping the link seconds after each connect (2+ quick
+    # drops in a row, BrxLink.flapping), which is what a headset that is off looks like. Optional.
+    gun_flapping: NotRequired[bool]
 
 
 class NodeView(TypedDict):
@@ -638,10 +648,13 @@ class NodeView(TypedDict):
     log: NotRequired[LogView | None]
     reach: NotRequired[Literal["lan", "backhaul"]]
     last_reach: NotRequired[Literal["lan", "backhaul"]]
+    # F208: the node's last `status.pool_stale` / `pool_stale_ms`. Absent = not stale, or an older app.
+    pool_stale: NotRequired[Literal["silent", "no_fire", "write_lost"]]
+    pool_stale_ms: NotRequired[int]
 
 
 class Event(TypedDict, total=False):
-    type: Literal["hit_taken", "death", "respawn", "team_change", "status", "possession"]
+    type: Literal["hit_taken", "death", "respawn", "team_change", "status", "possession", "operator_result"]
     t: int
     match_id: str | None
     node_id: str
@@ -659,6 +672,12 @@ class Event(TypedDict, total=False):
     desync: bool
     # respawn
     resync: bool
+    operator: bool   # A47: the operator's FORCE RESPAWN, not a respawn after a death (scoring keeps the streak)
+    # operator_result (A47): what the phone DID with an operator action MC sent (`control{resync|respawn|relink}`).
+    # Persisted like every fact, and read for the operator's feed and menu only: it never reaches the scorer.
+    cmd: Literal["resync", "respawn", "relink"]
+    ok: bool
+    why: str   # present on a refusal: the phone's own reason ("stunned", "not live", ...)
     # team_change
     tid: int
     # possession (F70, objective modes) — a CUMULATIVE tally for ONE control point, resent as it grows.
@@ -697,6 +716,13 @@ class Event(TypedDict, total=False):
     # still on, every ~2 s, for the rest of the game -- the difference that made a whole field night
     # of stale pushes invisible. Optional: an older app omits it and MC then makes no claim.
     config_id: str
+    # F208: the pool this status reports is STALE, and why. A gun that died kept a byte-identical status
+    # for 105 s and looked like a healthy idle player. `"silent"` = no gun frame for 185 s; `"no_fire"` =
+    # three trigger presses in a row got no shot back; `"write_lost"` = this life's spawn or revive write was
+    # lost and the phone did not repeat it (pl4: RESYNC GUN clears it). `pool_stale_ms` = ms since the gun last reported a
+    # pool. Absent = not stale, or an older app: MC then shows no cue at all.
+    pool_stale: Literal["silent", "no_fire", "write_lost"]
+    pool_stale_ms: int
 
 
 class ScoreRow(TypedDict):
@@ -728,10 +754,27 @@ class ScoreRow(TypedDict):
     after_end_deaths: NotRequired[int]
 
 
+class OperatorStatus(TypedDict):
+    """A47: the last operator action MC sent to one player, and what the phone said about it.
+    `state` is "sent" until the phone's `operator_result` fact arrives, then "done" or "refused". With no
+    answer OPERATOR_NO_ANSWER_MS after the send it reads "no_answer" (an older app, a dropped socket); a late
+    answer still replaces it. For relink, "done" means the phone STARTED the relink, not that the gun is back."""
+    cmd: Literal["resync", "respawn", "relink"]
+    state: Literal["sent", "done", "refused", "no_answer"]
+    why: str | None
+    sent_t: int
+    result_t: int | None
+
+
 class LiveRow(ScoreRow):
     status: Literal["alive", "down", "stale"]
     sync_age_ms: int
     respawn_in_s: int | None
+    # F208: the bound node's `pool_stale` / `pool_stale_ms`, as NodeView. Absent = not stale.
+    pool_stale: NotRequired[Literal["silent", "no_fire", "write_lost"]]
+    pool_stale_ms: NotRequired[int]
+    # A47: the latest operator action for this player in THIS match. Absent = none sent.
+    operator: NotRequired[OperatorStatus]
 
 
 class LiveView(TypedDict):
@@ -741,6 +784,10 @@ class LiveView(TypedDict):
     ends_t: int
     score: dict[str, int]
     rows: list[LiveRow]
+    # A47: an ADOPTED match only. True when every bound phone that has reported a claim says it has ended
+    # (`kitted` for this match, or another match), and at least one does. MC never ends an adopted match
+    # itself; the console asks the operator to press END. Absent = no such claim.
+    phones_ended: NotRequired[bool]
 
 
 class StartNodeView(TypedDict):
@@ -1084,6 +1131,11 @@ class ReadinessRow(TypedDict):
     battery_age_ms: int | None
     last_seen_age_ms: int | None    # ms since this node's last packet; None when no node is bound
     gun_linked: bool | None         # `status.preflight.gun_linked` as last reported
+    # `status.preflight.gun_flapping` (bench 2026-09-17). The card shows one steady HEADSET OFF line while
+    # it is true. An older server omits it, so a reader treats a missing key as false.
+    gun_flapping: NotRequired[bool]
+    pool_stale: Literal["silent", "no_fire", "write_lost"] | None   # F208: `status.pool_stale`; None = not stale or not reported
+    pool_stale_ms: int | None                        # F208: `status.pool_stale_ms`; None = not reported
     fw: str | None
     phone_batt: int | None
     ssid_ok: bool | None
@@ -1167,6 +1219,11 @@ class GameAnnouncementView(TypedDict):
     total: int
 
 
+# 2026-09-16: the PRE-ARM CHECK's ACKED cell. `none` = no head pushed for this lobby; `waiting` = pushed,
+# no answer yet (never a fault); `failed` = refused ack, offline or unbound phone, or no answer in time.
+SyncAckState = Literal["acked", "waiting", "failed", "none"]
+
+
 class SyncRow(TypedDict):
     player_id: str
     display: str
@@ -1177,6 +1234,7 @@ class SyncRow(TypedDict):
     gun_sent: bool
     gun_acked: bool
     gun_echo: Literal["proven", "mismatch", "not_echoed"] | None
+    ack_state: SyncAckState
 
 
 class SyncTotals(TypedDict):
@@ -1207,6 +1265,18 @@ class VersionsView(TypedDict):
 
 class NoticesView(TypedDict):
     mc_verify: NotRequired[str]
+
+
+class OrphanMatchView(TypedDict):
+    """Bench 2026-09-17: bound phones report ARMED/LIVE in a match this MC did not start.
+
+    Absent from `State` unless at least one such phone is heard now. `players` are display names.
+    `can_resume` is false while MC runs or recaps a match of its own (END THEIR MATCH still works)."""
+    match_id: str
+    phones: int
+    players: list[str]
+    arm_state: Literal["armed", "live"]
+    can_resume: bool
 
 
 class RestoredFromView(TypedDict):
@@ -1256,6 +1326,8 @@ class State(TypedDict):
     recap: NotRequired[RecapView | None]
     notices: NotRequired[NoticesView]
     end_delivery: NotRequired[EndDeliveryView]
+    orphan_match: NotRequired[OrphanMatchView]   # bench 2026-09-17: absent unless phones are in a match MC did not start
+    bench_volume: NotRequired[int]     # `--bench-volume N`: every $VOL MC compiles plays at N. Absent on a normal run
     perk_effects: NotRequired[dict[str, PerkEffectsResolved]]   # S50 build 4: {player_id: resolved effect},
     #                                     one entry per player carrying a perk (absent players carry none;
     #                                     the whole key absent when nobody on the roster has a perk). The
@@ -1290,8 +1362,24 @@ MC_KINDS = {"welcome", "assign", "tutorial", "config", "start", "feedback", "con
                                 # the phone's `MC_KINDS` (app/src/transport/envelope.js) must list it too, or
                                 # the arming message is dropped as malformed before `onMessage` ever sees it.
 CONTROL_CMDS = {"end", "panic", "abort_start", "recall",
+                "resync", "respawn", "relink",   # A47 (bench 2026-09-17): the LIVE board's operator menu for ONE
+                                                 # player phone. Each names `player_id` and `match_id`; the phone
+                                                 # ignores one for another match or player (`engine.js control`).
                 "release_utility"}   # A41 (2026-09-13): MC -> ONE utility node, an operator-driven cure for a
                                       # phone stuck in utility mode (field 2026-09-12: the phone's own exit is
                                       # the same undiscoverable seven-tap gesture its settings drawer uses, and
                                       # no MC message could reach it at all). `utility.js` takes it exactly the
                                       # way its own BACK TO HUD button does -- `state.py release_station`.
+
+# A47: the three operator actions MC may send to ONE bound player phone (`state.py operator_action`).
+OperatorCmd = Literal["resync", "respawn", "relink"]
+
+
+class OperatorActionResult(TypedDict):
+    """A47: `POST /api/players/{pid}/operator`. `pushed` means only that a socket took the push: no ack
+    kind exists for `control`, so the phone's own log and the next heartbeat are the receipt."""
+    ok: bool
+    cmd: OperatorCmd
+    player_id: str
+    match_id: str
+    pushed: bool

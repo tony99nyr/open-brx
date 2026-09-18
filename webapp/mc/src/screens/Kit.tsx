@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { registrySig } from '../api/derive';
-import type { Loadout, PerkView, PhaseRefusal, Player, WeaponView } from '../api/types';
+import type { Loadout, LoadoutOverrides, PerkView, PhaseRefusal, Player, WeaponSel, WeaponView } from '../api/types';
 import { useStore } from '../store';
 import { EvictButton } from '../ui/EvictButton';
 import { StandbySection, guardedOnce, standDownLocked } from '../ui/Standby';
@@ -8,7 +8,6 @@ import { CHAMFER, F, PERK_COLOR, T, TAB, fmtAge, roleOf, teamColor } from '../to
 import { UNPLAYABLE_IDS, takesAlt } from './gameSummary';
 import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, SectionRule, Seg, SegBar, StripedSlot, Tag, ValueBox, onKey } from '../ui';
 import { GameEditPanel } from '../ui/GameEditPanel';
-import { VenueModeReminder } from '../ui/VenueModeReminder';
 import { UnrosteredPhonesBanner } from '../ui/UnrosteredPhones';
 
 type Slot = 'primary' | 'secondary' | 'perk';   // A14: the perk is its own slot
@@ -28,6 +27,18 @@ export function poolOf(p: Player | undefined, gameHp: number, gameAr: number) {
     mult: gamePool > 0 ? (hp + armor) / gamePool : 1,
   };
 }
+/** The per-player block with some switches removed, or `undefined` when none survive.
+ *
+ *  `undefined` drops the whole `overrides` key from the JSON, which is how the server is told to
+ *  clear it. The two switches in the block are INDEPENDENT (S50, loadout.md §2): the POOL handicap
+ *  and Easy Reload answer different needs, so a write that clears one must carry the other through.
+ *  Clearing the pool used to send the block absent, which took a player's reload button with it. */
+function withoutKeys(ov: LoadoutOverrides | undefined, ...keys: (keyof LoadoutOverrides)[]): LoadoutOverrides | undefined {
+  const rest: LoadoutOverrides = { ...(ov ?? {}) };
+  for (const k of keys) delete rest[k];
+  return Object.keys(rest).length ? rest : undefined;
+}
+
 const PRESET_LABEL: Record<string, string> = { open: 'OPEN', no_heavies: 'NO HEAVIES', snipers: 'SNIPERS ONLY', custom: 'CUSTOM RULES' };
 
 /** F127 (field 2026-09-11) -- who KIT -> LOBBY would strand.
@@ -318,11 +329,24 @@ export function Kit() {
     setConfirm({ pid: sp.player_id, key, label }); return true;
   };
   const pickPrimary = (w: WeaponView) => setLoadout({ weapons: [{ weapon_id: w.weapon_id }, ...(lo.weapons ?? []).slice(1, 2)], perk: lo.perk ?? null }, w.weapon_id, { slot: 'primary', id: w.weapon_id, label: w.name });
-  // A14: a second weapon keeps the perk — unless the perk is the ALT-button one, which it then drops (after a confirm)
+  // A14/S50: a second weapon keeps the perk — unless something already owns the ALT button, which the
+  // pick then drops (after a confirm). Two things can own it: a perk that claims it (`effects.alt_reload`;
+  // no row carries it today, and the rule tests the EFFECT so a future one is covered), and this player's
+  // Easy Reload override. A second weapon needs ALT to swap, so the server refuses either pair outright —
+  // the confirm names what goes, rather than letting the operator collect a 400.
   const pickSecondary = (w: WeaponView) => {
-    const drops = takesAlt(perk) ? perk : undefined;
-    if (drops && needsConfirm(`weapon:${w.weapon_id}`, `DROPS ${drops.name.toUpperCase()} — TAP AGAIN`)) return;
-    return setLoadout({ weapons: [prim0, { weapon_id: w.weapon_id }], perk: drops ? null : (lo.perk ?? null) }, w.weapon_id, { slot: 'secondary', id: w.weapon_id, label: w.name });
+    const dropsPerk = takesAlt(perk) ? perk : undefined;
+    const dropsEasy = !dropsPerk && !!lo.overrides?.easy_reload;
+    const ask = dropsPerk ? `DROPS ${dropsPerk.name.toUpperCase()} — TAP AGAIN`
+      : dropsEasy ? 'DROPS EASY RELOAD — TAP AGAIN' : null;
+    if (ask && needsConfirm(`weapon:${w.weapon_id}`, ask)) return;
+    return setLoadout({
+      weapons: [prim0, { weapon_id: w.weapon_id }],
+      perk: dropsPerk ? null : (lo.perk ?? null),
+      // untouched unless THIS pick takes the button off Easy Reload: leaving the key out keeps whatever
+      // the player already has (the pool handicap rides through an unrelated weapon pick)
+      ...(dropsEasy ? { overrides: withoutKeys(lo.overrides, 'easy_reload') } : {}),
+    }, w.weapon_id, { slot: 'secondary', id: w.weapon_id, label: w.name });
   };
   // A14: a perk rides beside the weapons — Easy Reload is the one that takes the second weapon with it (after a confirm)
   const pickPerk = async (k: PerkView) => {
@@ -331,17 +355,32 @@ export function Kit() {
     await setLoadout({ weapons: drops ? [prim0] : (lo.weapons ?? [prim0]), perk: k.perk_id }, undefined, { slot: 'perk', id: k.perk_id, label: k.name });
     if (drops && sp && trying[sp.player_id] === drops.weapon_id) await run(() => api.endTryout(sp.player_id));   // the dropped secondary was being tried out: quiet the gun (e2e lane finding)
   };
-  // A per-player POOL override. Sent as part of the loadout because that is where the server keeps
-  // it; `weapons` must ride along or the PATCH is rejected as a shape error (state.py _clean_loadout).
-  // Passing `undefined` drops the key from the JSON, which is how the server is told to clear it.
-  const setPool = (next: { max_hp?: number; max_armor?: number } | undefined) => {
+  // The per-player ACCESSIBILITY block (`loadout.overrides`, loadout.md §2): the POOL handicap and
+  // Easy Reload. Sent as part of the loadout because that is where the server keeps it; `weapons`
+  // must ride along or the PATCH is rejected as a shape error (state.py _clean_loadout).
+  const setOverrides = (next: LoadoutOverrides | undefined, weapons?: WeaponSel[]) => {
     if (!sp) return;
-    const weapons = lo.weapons?.length ? lo.weapons : [prim0];
-    return setLoadout({ weapons, perk: lo.perk ?? null, overrides: next });
+    const ws = weapons ?? (lo.weapons?.length ? lo.weapons : [prim0]);
+    return setLoadout({ weapons: ws, perk: lo.perk ?? null, overrides: next });
   };
-  const patchPool = (k: 'max_hp' | 'max_armor', v: number) => {
-    const cur = lo.overrides ?? {};
-    return setPool({ ...cur, [k]: v });
+  const patchPool = (k: 'max_hp' | 'max_armor', v: number) => setOverrides({ ...(lo.overrides ?? {}), [k]: v });
+  // MATCH THE GAME POOL drops the two POOL numbers and nothing else. It used to send the block
+  // absent, so evening up a handicap also switched off a player's Easy Reload, silently.
+  const clearPool = () => setOverrides(withoutKeys(lo.overrides, 'max_hp', 'max_armor'));
+  /** EASY RELOAD on or off, leaving the POOL alone for the same reason.
+   *
+   *  ALT cannot both reload and swap weapons (a hardware fact: Easy Reload maps ALT to RELOAD with
+   *  `$BMAP,1,97`), so the server refuses the override beside a second weapon. Switching it ON
+   *  therefore drops that weapon, after a confirm that names it — the same two-tap the ALT-button
+   *  perk used to get, now asked of the switch that owns the button. */
+  const setEasyReload = async (on: boolean) => {
+    if (!sp || !!lo.overrides?.easy_reload === on) return;                 // a tap on the current state writes nothing
+    const drops = on ? secondaryW : undefined;
+    if (drops && needsConfirm('easy_reload', `DROPS THEIR ${drops.name.toUpperCase()} — TAP AGAIN`)) return;
+    const rest = withoutKeys(lo.overrides, 'easy_reload');
+    await setOverrides(on ? { ...(rest ?? {}), easy_reload: true } : rest, drops ? [prim0] : undefined);
+    // the dropped secondary was being tried out: quiet the gun (the same tidy-up pickPerk does)
+    if (drops && trying[sp.player_id] === drops.weapon_id) await run(() => api.endTryout(sp.player_id));
   };
 
   const clearSecondary = () => setLoadout({ weapons: [prim0], perk: lo.perk ?? null }, undefined, { slot: 'secondary', id: null, label: 'EMPTY' });
@@ -402,9 +441,6 @@ export function Kit() {
             return { ok: true };
           }} />
         </span>} />
-      {/* F162: the ALT-hold backstop. KIT is where the guns are handed out, so it is the last screen
-          where walking the rack is still cheap — see ui/VenueModeReminder. */}
-      <VenueModeReminder screen="kit" style={{ marginBottom: 12 }} />
       {/* F-3/A39: a connected phone with nobody in the roster claiming it — last night's "4 guns
           connected, only 2 in lobby" confusion, made visible where the operator is actually looking. */}
       <UnrosteredPhonesBanner style={{ marginBottom: 12 }} />
@@ -453,6 +489,12 @@ export function Kit() {
                         ? <span data-pool-chip={pl.player_id} title={`Armed at ${pp.hp} HP / ${pp.armor} AR — the game pool is ${gameHp} / ${gameAr}`}
                             style={{ color: T.warn, whiteSpace: 'nowrap' }}>◆ {pp.hp}/{pp.armor} POOL</span>
                         : null; })()}
+                      {/* The OTHER accessibility switch, marked for the same reason as the pool: the host
+                          has to see who is set up differently without selecting them one at a time. */}
+                      {pl.loadout?.overrides?.easy_reload && (
+                        <span data-easy-chip={pl.player_id} title={`The ALT button reloads ${pl.display}'s gun`}
+                          style={{ color: T.acc, whiteSpace: 'nowrap' }}>◆ ALT RELOADS</span>
+                      )}
                     </span>
                   </span>
                   {/* READY / TRYING / NO PHONE never shrinks and never wraps: on a phone the roster
@@ -555,7 +597,8 @@ export function Kit() {
                   item={perk} kind={perk ? 'perk' : 'none'}
                   overridden={overridden('perk')} onReapply={reapply}
                   onClear={perk && !slotLocked('perk') ? clearPerk : undefined} />
-                <PoolCard hp={gameHp} armor={gameAr} pool={playerPool} onSet={patchPool} onClear={() => setPool(undefined)} name={sp.display} />
+                <PoolCard hp={gameHp} armor={gameAr} pool={playerPool} onSet={patchPool} onClear={clearPool} name={sp.display}
+                  easy={!!lo.overrides?.easy_reload} onEasy={setEasyReload} easyAsk={confirmFor('easy_reload')} />
                 <div style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro, padding: '2px 4px' }}>
                   {pol?.hud_select ? '▲ PLAYERS PICK ON THEIR PHONE — ANYTHING YOU SET HERE OVERRIDES IT AND SHOWS ON THEIR SCREEN' : '▲ PHONE PICKS ARE OFF — YOU KIT EVERY PLAYER HERE'}
                 </div>
@@ -570,7 +613,9 @@ export function Kit() {
                     </div>
                     <div style={{ font: F.chk(500, 13), color: T.dim, maxWidth: '54ch', lineHeight: 1.5 }}>
                       {slot === 'perk'
-                        ? (perkRule?.choice === 'off' ? 'The ruleset switched perks off for everyone. Change it in GAMES.' : 'A perk rides beside the weapons — pick one below, or leave it empty; that is a valid kit. Easy Reload takes the ALT button, so it drops the second weapon.')
+                        // S50: Easy Reload is no longer a perk, so it no longer belongs in the perk copy —
+                        // it is a per-player accessibility switch on the POOL card above.
+                        ? (perkRule?.choice === 'off' ? 'The ruleset switched perks off for everyone. Change it in GAMES.' : 'A perk rides beside the weapons — pick one below, or leave it empty; that is a valid kit.')
                         : secRule?.choice === 'off' ? 'The ruleset switched slot 2 off for everyone. Change it in BUILD.' : 'The alt-fire button does nothing. Pick a second weapon from the arsenal below — or leave it empty; that is a valid kit.'}
                     </div>
                   </div>
@@ -750,7 +795,9 @@ function ArsenalHeader({ slot, rule, pool, weapons, preset, onClear, onBuild }:
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
           {onClear && <GhostButton size={10} pad="6px 12px" onClick={onClear} title={slot === 'perk' ? 'No perk this game' : 'Leave slot 2 empty — alt-fire does nothing'}>{slot === 'perk' ? 'NONE · NO PERK' : 'NONE · LEAVE EMPTY'}</GhostButton>}
           <span style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro, marginLeft: 'auto' }}>
-            {slot === 'perk' ? <>A PERK RIDES BESIDE THE WEAPONS · <b style={{ color: T.dim }}>EASY RELOAD</b> TAKES THE ALT BUTTON AND DROPS THE SECOND WEAPON</>
+            {/* S50: Easy Reload left this slot for the per-player accessibility card, so the perk line
+                no longer advertises it — nothing in this rack can take the ALT button today. */}
+            {slot === 'perk' ? <>A PERK RIDES BESIDE BOTH WEAPONS · <b style={{ color: T.dim }}>EASY RELOAD</b> IS ON THE POOL CARD NOW</>
               : <>SLOT 2 IS A {sidearms ? 'SIDEARM' : 'WEAPON'} · PERKS HAVE THEIR OWN SLOT</>}
           </span>
         </div>
@@ -920,18 +967,43 @@ function StatRow({ label, pct }: { label: string; pct: number }) {
   );
 }
 
-/** The per-player POOL override (modes §1.1). Deliberately loud: a player armed differently from
- *  everyone else is a rule of the match, not a setting, so it states the game's own numbers beside
- *  the player's and says whose gun it changes. Clearing it is one tap. */
-function PoolCard({ hp, armor, pool, onSet, onClear, name }: {
+/** The two per-player ACCESSIBILITY switches, in one card on the kit rail (`loadout.overrides`,
+ *  modes §1.1): EASY RELOAD, and the POOL override.
+ *
+ *  Deliberately loud, both of them: a player armed or set up differently from everyone else is a rule
+ *  of the match, not a setting, so the card states the game's own numbers beside the player's and
+ *  says whose gun it changes. Clearing either is one tap.
+ *
+ *  They share a card because they answer the same question — is this player set up differently? — and
+ *  nothing else: the two are INDEPENDENT, and each is written without touching the other (S50, Tony
+ *  2026-09-17: a younger player takes both, a left-handed player takes Easy Reload and no extra
+ *  health). Easy Reload reads in the ACCENT colour rather than the pool's amber, because it is a
+ *  setting and not a caution: it gives the player nothing an able player would want. */
+function PoolCard({ hp, armor, pool, onSet, onClear, name, easy, onEasy, easyAsk }: {
   hp: number; armor: number; name: string;
   pool: ReturnType<typeof poolOf>;
   onSet: (k: 'max_hp' | 'max_armor', v: number) => void; onClear: () => void;
+  easy: boolean; onEasy: (on: boolean) => void; easyAsk: string | null;
 }) {
   const on = pool.set;
   const mult = pool.mult.toFixed(pool.mult % 1 === 0 ? 0 : 1);
+  const who = name.toUpperCase();
   return (
     <div data-pool-card style={{ border: `1px solid ${on ? T.warn : T.line}`, background: T.panelDeep, padding: '8px 10px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ font: F.chk(700, 11), letterSpacing: '.18em', color: easy ? T.acc : T.dim }}>EASY RELOAD</span>
+        <Seg value={easy ? 'on' : 'off'} onChange={v => onEasy(v === 'on')} size={10} pad="4px 12px"
+          label={`easy reload for ${name}`}
+          titles={{ off: `${name} reloads with the lever, like everyone else`, on: `The ALT button reloads ${name}'s gun` }}
+          options={[{ value: 'off', label: 'OFF' }, { value: 'on', label: 'ON' }]} />
+      </div>
+      {easyAsk && <span role="alert" data-easy-ask style={{ font: F.chk(700, 10), letterSpacing: '.12em', color: T.warn }}>▲ {easyAsk}</span>}
+      <div data-easy-note style={{ font: F.mono(500, 9), letterSpacing: '.1em', color: easy ? T.acc : T.micro, lineHeight: 1.6 }}>
+        {easy
+          ? `▲ ON PURPOSE: ${who} RELOADS WITH THE ALT BUTTON, NOT THE LEVER. NO SECOND WEAPON, BECAUSE ALT CANNOT DO BOTH.`
+          : '▲ THE ALT BUTTON RELOADS, FOR A PLAYER WHO CANNOT WORK THE RELOAD LEVER. IT WINS NO FIGHTS: IT COSTS THE SECOND WEAPON.'}
+      </div>
+      <span style={{ height: 1, background: T.line }} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <span style={{ font: F.chk(700, 11), letterSpacing: '.18em', color: on ? T.warn : T.dim }}>POOL</span>
         <span data-pool-state style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: on ? T.warn : T.micro }}>

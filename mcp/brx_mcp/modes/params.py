@@ -3,7 +3,7 @@
 The wire `GameConfig` used to be mode-agnostic: `mode, health, respawn, scoring, teams, loadout_policy,
 presentation` and nothing else, so an objective mode's own knobs (`score_target`, `channel_s`, `detonation_s`,
 …) lived only in the CLI dataclass (`gameconfig.py`) and could not be set from Mission Control at all
-(`docs/archive/mode-extensibility.md` G1). `GameConfig.mode_params` is the slot; THIS module is how an engine
+(`docs/spec/modes.md` §2.1, A18/E1). `GameConfig.mode_params` is the slot; THIS module is how an engine
 says what may go in it.
 
 An engine declares a `PARAMS` class attribute:

@@ -97,7 +97,15 @@ EVENTS: dict[str, dict] = {
     "healed":        dict(source="hud", group="player",    desc="health restored",                   sound="voice:healed", gun_led=None,  headset=None),  # ear-confirmed 2026-09-11: Tony -- V37 "patched up" and V87 "Bleeding stopped" both clean
     "armour_up":     dict(source="hud", group="player",    desc="armour granted",                    sound=snd.ADD_ARMOR, gun_led=None, headset=None),  # ear-confirmed 2026-09-11: Tony -- "Halo announcer, body armor" (VA1G)
     "shield_up":     dict(source="hud", group="player",    desc="shield granted",                    sound=snd.ADD_SHIELD, gun_led=None,   headset=None),  # ear-confirmed 2026-09-11: Tony -- "shields online with a sound effect" (VA8C)
-    "low_health":    dict(source="hud", group="player",    desc="HP below 15: a heartbeat loop, once per life (A17.2 -- was 'armour gone', which fired at full health)", sound="N74", gun_led=None, headset=pg.PINK),  # ear-confirmed 2026-09-11: Tony -- "yeah heartbeat, it could be looped. i like that more for critical health", replacing "voice:hurt_loop" (V06 "guy breathing heavy in pain"); N75 is a second heartbeat take, N25 a faster one (pool/tier candidates, not wired)
+    # -- S29/S45: the four moments of a shield recharge. The gun plays NOTHING for a `$LIFE` grant (bench
+    #    2026-09-17 step 7), so all four are the node's. Every id lives in `voices.ROLE_FIXED`, one line each,
+    #    because Tony picks them by ear and has already changed his mind twice; a host swaps one per game here.
+    "shield_down":     dict(source="hud", group="player",  desc="the shield broke: you are on health now",       sound="voice:shield_down",     gun_led=None, headset=None),  # ear-picked 2026-09-18 (N101)
+    "shield_charging": dict(source="hud", group="player",  desc="a recharge started: the first grant of the refill", sound="voice:shield_charging", gun_led=None, headset=None),  # ear-picked 2026-09-18 (N102), replacing A34-played-twice
+    "shield_online":   dict(source="hud", group="player",  desc="the shield finished charging: full again",      sound="voice:shield_full",     gun_led=None, headset=None),  # ear-picked 2026-09-17 (VA6Y), not re-ruled since
+    "shield_loop":     dict(source="hud", group="player",  desc="replayed on its own length while the shield is down, until the recharge starts", sound="voice:shield_loop", gun_led=None, headset=None),  # ear-picked 2026-09-17 (N74). Set `sound: null` to turn the loop off -- Tony has not ruled on whether it survives `shield_down`
+    "reload_nag":      dict(source="hud", group="player",  desc="empty magazine, reserve left, trigger pulled anyway: the 5th dry pull and every 3rd after it", sound="voice:reload_nag", gun_led=None, headset=None),  # VX73, ear-confirmed on a gun 2026-09-18
+    "low_health":    dict(source="hud", group="player",    desc="HP below 15: a heartbeat loop, once per life (A17.2 -- was 'armour gone', which fired at full health)", sound="VA86", gun_led=None, headset=pg.PINK),  # was N74 until 2026-09-18, the SAME id `voices.ROLE_FIXED["shield_loop"]` plays every 1.94 s while the shield is down -- a once-a-life critical warning that is also the sound already looping is no warning at all. VA86 is "Health Critical." in the catalogue (status_health group), which names this exact moment; VA87 "health low." was the other candidate but says the weaker thing. N75/N25 (the other heartbeat takes) and VA8B ("Shields depleted.") were rejected: N75/N25 keep the same shield-vs-health mix-up as N74, and VA8B is already reserved by `compile.py`/`cues()` as Callsign's own hurt line -- and its own catalogue text is about shields, not health. Not yet ear-confirmed on a gun.
     # -- the shooter's kill feedback (MC `feedback` push; ONE of these per kill, most specific wins) --
     "kill":          dict(source="mc", group="announcer", desc="you scored a kill",                 sound="voice:kill", gun_led=None, headset=None, flash="green"),
     "first_blood":   dict(source="mc", group="announcer", desc="first kill of the match",           sound="VA7H", gun_led=None,      headset=None, flash="green"),
@@ -779,7 +787,7 @@ def led_table(profile: dict, team: int | None, night: bool, leds_on: bool, ffa: 
     """event -> [[frame, hold_s], ...]: the tuned 3-flash gun burst ending on the gun's rest frame, then
     an optional static `$HLED` for the headset that HOLDS for `STATIC_EVENT_HLED_HOLD_S` and reverts to
     the headset's own rest frame (finding #6 above -- a hold of 0.0 used to mean "and never revert").
-    Empty when LEDs are off for the game (night / blackout) or the profile turned gun flashes off."""
+    Empty when LEDs are off for the game (blackout) or the profile turned gun flashes off. Night only dims."""
     if not leds_on:
         return {}
     out: dict[str, list] = {}
@@ -819,7 +827,7 @@ def led_table(profile: dict, team: int | None, night: bool, leds_on: bool, ffa: 
         h = spec.get("headset")
         if h is not None and ev != "low_health":          # low_health keeps Callsign's blink (cues.hurt_led)
             rest = hf["rest"] if hf else HEADSET_DARK
-            seq.append([f"$HLED,{h},0,,,10,,*", STATIC_EVENT_HLED_HOLD_S])
+            seq.append([_hled(int(h), night), STATIC_EVENT_HLED_HOLD_S])   # dim at night (bench 2026-09-17: this paint was still 10)
             seq.append([rest, 0.0])
         if seq:
             out[ev] = seq

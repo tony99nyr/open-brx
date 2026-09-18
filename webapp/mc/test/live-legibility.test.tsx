@@ -290,3 +290,20 @@ describe('RECAP reads the A24 fields too', () => {
     m.unmount();
   });
 });
+
+// Review finding (2026-09-13): the respawn countdown was built with `fmtClock(...).slice(1)`, a
+// hand-stripped leading character that happened to look right under ten minutes and broke at ten
+// minutes or more (a 600s respawn read "RESPAWN 0:00"). `fmtDuration` reads it correctly either way.
+describe('LIVE — the respawn countdown is a duration, not a hand-stripped clock', () => {
+  it('reads a short respawn correctly', async () => {
+    const m = await liveScreen([row({ status: 'down', respawn_in_s: 5 })]);
+    expect(m.find('[data-cell="status"]')[0].textContent).toBe('RESPAWN 0:05');
+    m.unmount();
+  });
+
+  it('does not collapse a ten-minute-or-more respawn to 0:00', async () => {
+    const m = await liveScreen([row({ status: 'down', respawn_in_s: 600 })]);
+    expect(m.find('[data-cell="status"]')[0].textContent).toBe('RESPAWN 10:00');
+    m.unmount();
+  });
+});

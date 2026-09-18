@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { setNotice } from '../notice';
-import { coverageLine, endDeliveryLine } from '../api/derive';
+import { coverageLine, endDeliveryLine, poolStaleLabel } from '../api/derive';
 import { STALE_AFTER_MS, type LiveRow } from '../api/types';
 import { useStore } from '../store';
-import { F, T, fmtAge, fmtClock, teamColor } from '../tokens';
+import { F, T, fmtAge, fmtClock, fmtDuration, teamColor } from '../tokens';
 import { columnEdges, type Column } from './columns';
 import { Blink, GhostButton, Num, ScrollX, Tag } from '../ui';
+import { OrphanMatch } from '../ui/OrphanMatch';
+import { OperatorMenu, operatorMenuId } from './OperatorMenu';
 
 // S24 (game test 2026-09-11, D4): the board was `minmax(130px,1.5fr) 40px 40px 40px 52px 56px 48px …`
 // at `gap:'0 10px'` with 9 px headers over 14-16 px values, and K/D/A were three identical right-aligned
@@ -63,12 +65,18 @@ export function Live() {
   const { state, feed, run, api, serverNow, connected } = useStore();
   const [endConfirm, setEndConfirm] = useState(false);
   const [recallConfirm, setRecallConfirm] = useState(false);
+  const [menuFor, setMenuFor] = useState<string | null>(null);   // A47: the row whose operator menu is open
   const [, tick] = useState(0);
   useEffect(() => { const id = setInterval(() => tick(x => x + 1), 500); return () => clearInterval(id); }, []);
   if (!state) return null;
   const lv = state.live;
   if (!lv) {
-    return <div className="screen" style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: T.micro }}>NO MATCH LIVE — THE BOARD FILLS WHEN NODES GO LIVE AT T-0.</div>;
+    return (
+      <div className="screen" style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: T.micro }}>
+        <OrphanMatch />
+        NO MATCH LIVE — THE BOARD FILLS WHEN NODES GO LIVE AT T-0.
+      </div>
+    );
   }
   // POST /api/control answers 200 with `ok:false` when it REFUSES — an END with no scorer, or a
   // second END after the recap is written (state.py `control`). The old handler read `reached`/`nodes`
@@ -103,6 +111,7 @@ export function Live() {
 
   return (
     <div className="screen">
+      <OrphanMatch />
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center', gap: 10, marginBottom: 8 }}>
         {/* 11px, not 9: it names how much of the park is covered, which is content, not decoration
             (the console's floor, audit 2026-09-12 — this tag was the one the sweep still caught).
@@ -142,6 +151,15 @@ export function Live() {
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
         <div style={{ flex: '2 1 560px', minWidth: 0 }}>
+          {lv.phones_ended && (
+            // A47 review: an ADOPTED match that every phone has already ended. MC never ends an adopted match
+            // on its own guess (it holds no config for it), so the operator is told once, in one line.
+            <div data-testid="phones-ended" role="status"
+              style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.line2}`, borderLeft: `3px solid ${T.warn}`,
+                font: F.mono(500, 11), letterSpacing: '.1em', color: T.warn, lineHeight: 1.5 }}>
+              PHONES HAVE ENDED THIS MATCH: PRESS END
+            </div>
+          )}
           {edLine && (
             <div data-testid="end-delivery" role={edLine.ok ? undefined : 'alert'}
               style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${edLine.ok ? T.line2 : T.bad}`,
@@ -163,9 +181,15 @@ export function Live() {
               ))}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
-              {rows.map(r => <Row key={r.player_id} r={r} endUnconfirmed={edUnconfirmed.has(r.player_id)} />)}
+              {rows.map(r => (
+                <div key={r.player_id} style={{ display: 'contents' }}>
+                  <Row r={r} endUnconfirmed={edUnconfirmed.has(r.player_id)} open={menuFor === r.player_id}
+                    onToggle={() => setMenuFor(m => (m === r.player_id ? null : r.player_id))} />
+                  {menuFor === r.player_id && <OperatorMenu r={r} matchId={lv.match_id} onClose={() => setMenuFor(null)} />}
+                </div>
+              ))}
             </div>
-            <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.dim, marginTop: 8, lineHeight: 1.5 }}>K / A / ACC ARE MC-DERIVED — RECONCILED AT SYNC POINTS. OUT-OF-RANGE NODES SHOW LAST KNOWN + AGE, NEVER "GONE". STK IS THE LONGEST STREAK OF THE MATCH; A <span style={{ color: T.micro }}>~</span> BEFORE ACC MEANS IT HAS NOT SETTLED.</div>
+            <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.dim, marginTop: 8, lineHeight: 1.5 }}>TAP A PLAYER FOR RESYNC, RESPAWN OR RELINK. K / A / ACC ARE MC-DERIVED — RECONCILED AT SYNC POINTS. OUT-OF-RANGE NODES SHOW LAST KNOWN + AGE, NEVER "GONE". STK IS THE LONGEST STREAK OF THE MATCH; A <span style={{ color: T.micro }}>~</span> BEFORE ACC MEANS IT HAS NOT SETTLED.</div>
             <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
               {endConfirm ? (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
@@ -182,7 +206,7 @@ export function Live() {
               </>) : (
                 <GhostButton color={T.warn} border={T.warn} hoverClass="hov-warnbg" onClick={() => setRecallConfirm(true)} title="Two-step: revive and hold every node in range">RECALL</GhostButton>
               )}
-              <span style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>EARLY END / RECALL REACH ONLY NODES IN RANGE — THE REST END AT {fmtClock(lv.time_limit_s)}.</span>
+              <span style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>EARLY END / RECALL REACH ONLY NODES IN RANGE — THE REST END AT MATCH TIME {fmtClock(lv.time_limit_s)}.</span>
             </div>
           </div>
           </ScrollX>
@@ -254,14 +278,26 @@ function TimeCell({ remaining, sub, dim }: { remaining: number; sub: string; dim
   );
 }
 
-function Row({ r, endUnconfirmed }: { r: LiveRow; endUnconfirmed?: boolean }) {
+function Row({ r, endUnconfirmed, open, onToggle }: { r: LiveRow; endUnconfirmed?: boolean; open?: boolean; onToggle?: () => void }) {
   const dead = r.status === 'down', stale = r.status === 'stale';
   const syncWarn = stale || r.sync_age_ms > STALE_AFTER_MS;   // contracts §9, generated from types.py
   const stk = bestStreak(r);
+  const silent = poolStaleLabel(r.pool_stale, r.pool_stale_ms);      // F208: grey, beside the name, never a status
+  // longhand sides, not `border` + `borderLeft`: React warns when the shorthand changes on a rerender (A47 opens the row)
+  const rim = `1px solid ${endUnconfirmed ? T.bad : open ? T.acc : T.row}`;
   return (
-    <div data-end-unconfirmed={endUnconfirmed ? r.player_id : undefined}
-      style={{ display: 'grid', gridTemplateColumns: COLS, gap: GAP, alignItems: 'center', padding: '10px 14px', background: dead ? 'rgba(255,82,82,.05)' : T.panel, border: `1px solid ${endUnconfirmed ? T.bad : T.row}`, borderLeft: `3px solid ${teamColor(r.team_id)}` }}>
-      <span style={{ font: F.chk(700, 14), letterSpacing: '.1em' }}>{r.display}</span>
+    <div data-end-unconfirmed={endUnconfirmed ? r.player_id : undefined} data-live-row={r.player_id}
+      role="button" tabIndex={0} aria-expanded={!!open} aria-controls={operatorMenuId(r.player_id)}
+      aria-label={`${r.display} operator actions`} title="Operator actions: resync, respawn or relink this player's gun"
+      onClick={onToggle} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle?.(); } }}
+      style={{ cursor: 'pointer', display: 'grid', gridTemplateColumns: COLS, gap: GAP, alignItems: 'center', padding: '10px 14px', background: dead ? 'rgba(255,82,82,.05)' : T.panel, borderTop: rim, borderRight: rim, borderBottom: rim, borderLeft: `3px solid ${teamColor(r.team_id)}` }}>
+      <span style={{ font: F.chk(700, 14), letterSpacing: '.1em', minWidth: 0 }}>
+        {/* A47 review: the row is a control, so it has to look like one */}
+        <span data-row-affordance="1" aria-hidden="true" style={{ color: open ? T.acc : T.dim, marginRight: 6, display: 'inline-block',
+          transform: open ? 'rotate(90deg)' : undefined }}>▸</span>{r.display}
+        {silent && <span data-gun-silent={r.player_id} title="The phone says this gun's health and ammo readout may be out of date."
+          style={{ display: 'block', font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>{silent}</span>}
+      </span>
       <span data-cell="k" style={{ textAlign: 'right', font: F.osw(700, 17), ...edge('k') }}><Num value={r.kills} /></span>
       <span data-cell="d" style={{ textAlign: 'right', font: F.osw(600, 16), color: T.dim }}><Num value={r.deaths} /></span>
       <span data-cell="a" style={{ textAlign: 'right', font: F.osw(600, 16), color: T.dim }}><Num value={r.assists} /></span>
@@ -271,9 +307,12 @@ function Row({ r, endUnconfirmed }: { r: LiveRow; endUnconfirmed?: boolean }) {
       {/* A42: the END overrides ALIVE/LAST KNOWN here on purpose. Once the match is over, whether this
           player was alive is history; whether their HUD took the end is the only live question about
           them, and it is the one the operator is standing on the field trying to answer. */}
+      {/* The respawn countdown is a duration (unpadded minutes), not a clock — `fmtClock(...).slice(1)`
+          only looked right under ten minutes (it turned "00:05" into "0:05") and broke at ten minutes
+          or more ("10:00" became "0:00"). `fmtDuration` gives the same unpadded reading directly. */}
       <span data-cell="status" data-end-confirm={endUnconfirmed ? 'pending' : undefined}
         title={endUnconfirmed ? 'This HUD has not confirmed the end — that tagger may still be in the match' : undefined}
-        style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: endUnconfirmed ? T.bad : stale ? T.warn : dead ? T.bad : T.ok, ...edge('status') }}>{endUnconfirmed ? 'END NOT CONFIRMED' : stale ? 'LAST KNOWN' : dead ? `RESPAWN ${fmtClock(r.respawn_in_s ?? 0).slice(1)}` : 'ALIVE'}</span>
+        style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: endUnconfirmed ? T.bad : stale ? T.warn : dead ? T.bad : T.ok, ...edge('status') }}>{endUnconfirmed ? 'END NOT CONFIRMED' : stale ? 'LAST KNOWN' : dead ? `RESPAWN ${fmtDuration(r.respawn_in_s ?? 0)}` : 'ALIVE'}</span>
       <span style={{ textAlign: 'right', font: F.mono(500, 11), letterSpacing: '.04em', color: syncWarn ? T.warn : T.faint }}>{fmtAge(r.sync_age_ms)}{stale ? ' AGO' : ''}</span>
     </div>
   );

@@ -172,8 +172,8 @@ try {
 
     // The console has FIVE tabs — 01 ARMORY … 05 MATCH — and NO recap tab: MATCH is where the live board
     // and the recap both live, chosen by `state.phase` (measured here, 2026-09-13). The nav button's text
-    // is the number AND the label ("05 MATCH"), and "NEW MATCH ▸" sits right beside it, so the matcher has
-    // to be the whole normalised label rather than a loose /MATCH/.
+    // is the number AND the label ("05 MATCH"), and the phase tag beside it reads "■ MATCH OVER" once the
+    // match ends, so the matcher has to be the whole normalised label rather than a loose /MATCH/.
     await goTo(pg, /^\d+ MATCH$/);
     const rec = pg.locator('[data-testid="end-delivery-recap"]');
     if (expect(await rec.count() === 1, 'the MATCH tab shows the recap, carrying the end-delivery block')) {

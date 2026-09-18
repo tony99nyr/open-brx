@@ -99,13 +99,18 @@ export const CONTROL_CMDS = new Set([
   'panic',
   'recall',
   'release_utility',
+  'relink',
+  'respawn',
+  'resync',
 ]);
 /** ⚠ This is a WHITELIST and an unlisted type is REJECTED at the socket, not ignored downstream --
  *  so a fact the phone learns to send reaches nothing until it is named here (the F40/F60 shape:
- *  both ends report healthy). `possession` is the objective-mode tally (mc/API.md, F70). */
+ *  both ends report healthy). `possession` is the objective-mode tally (mc/API.md, F70).
+ *  A47: the phone's answer to an operator action (never scored) */
 export const PERSISTED_EVENT_TYPES = new Set([
   'death',
   'hit_taken',
+  'operator_result',
   'possession',
   'respawn',
   'team_change',
@@ -199,6 +204,7 @@ export const EVENT_REQUIRED = {
   respawn: [],
   team_change: ['tid'],
   possession: ['hold_ms'],
+  operator_result: ['cmd', 'ok'],
 };
 export const ACCEPT_MIN = {
   result: ['match_id'],

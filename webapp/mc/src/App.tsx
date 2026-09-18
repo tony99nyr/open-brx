@@ -54,7 +54,7 @@ function Screen() {
 }
 
 /** S25: the spectator board renders WITHOUT the command bar. That bar carries PANIC, the phase nav and
- *  NEW MATCH — every one of which is a control, and this screen is pointed at a room. It is not enough
+ *  the ☰ menu — every one of which is a control, and this screen is pointed at a room. It is not enough
  *  to leave controls off `Spectate.tsx` while the shell around it still has them. */
 function Shell() {
   const { view } = useStore();

@@ -3,6 +3,8 @@
 import golden from '../../mcp/brx_mcp/mc/golden_bundle.json';
 
 import { DEMO_WEAPONS, DEMO_PERKS } from './demo-catalog.js';   // a COPY of the server catalog shape (regenerate from weapons.json when it changes)
+import { GunPicker } from './gunpicker.js';   // F258: the stage drives the picker the phone drives
+import { NUS } from './brxlink.js';
 
 // ?demo            scripted match (kit → arm → live → down → redeploy…)
 // ?demo&kit        stops at KITTED so the LOADOUT browser can be explored (fake MC answers picks after ~300 ms)
@@ -128,14 +130,58 @@ export function startDemo({ engine, log }) {
   if (stageName != null) {
     const hud = () => (typeof window !== 'undefined' && window.brx) ? window.brx.hud : null;
     const gunObj = { name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' };
+    // ---- F258 picker stages ----
+    // The bench's room (2026-09-18), in the order the adverts arrived there: the loud household
+    // devices first, the two taggers last and quietest.
+    const NOISY_ROOM = [
+      { deviceId: 'tv1', name: 'Samsung Q80 TV', rssi: -41, uuids: [] },
+      { deviceId: 'tv2', name: '[LG] webOS TV', rssi: -44, uuids: [] },
+      { deviceId: 'hatch', name: 'Hatch Rest', rssi: -48, uuids: [] },
+      { deviceId: 'scu', name: 'WL_SCU', rssi: -52, uuids: [] },
+      { deviceId: 'mac1', name: '4C:11:AE:90:22:01', rssi: -55, uuids: [] },
+      { deviceId: 'gun1', name: 'ALPHA-FE30', rssi: -70, uuids: [NUS] },
+      { deviceId: 'gun2', name: 'BRAVO-9498', rssi: -74, uuids: [NUS] },
+    ];
+    let stagePicker = null;
+    /** Feeds adverts to the stage's picker. `keep` re-uses the picker already on the stage, which is
+     *  what makes "the readings moved, the rows did not" testable. */
+    const scanRoom = (hits, assigned = null, keep = false) => {
+      if (!keep || !stagePicker) stagePicker = new GunPicker();
+      stagePicker.setAssigned(assigned);
+      for (const h of hits) stagePicker.observe(h);
+      return stagePicker.list();
+    };
+    const paintScan = (rows, inUse = {}) => {
+      const h = hud(); if (!h) return;
+      h.setScan(rows.map(r => (inUse[r.deviceId] ? { ...r, inUse: true } : r)));
+      h.render(engine.state());
+    };
     const ev = {
       // link + MC
       linkGun: () => engine.onBleConnected(gunObj), dropGun: () => engine.onBleDropped(), relinkGun: () => engine.onBleConnected(),
+      // bench 2026-09-17: the headset is off, so the gun keeps dropping the link (BrxLink.flapping)
+      flapGun: (count = 3) => { engine.onBleDropped(); engine.setGunFlapping({ count, next_retry_at: Date.now() + 30000 }); },
       resyncProbe: () => engine._beginResync('demo'),   // the trigger-first resync prompt (a lobby/armed reconnect, or a resume) — a live rejoin RECONCILES instead (S7.1)
       battery: pct => engine.feedFrame(`$VOLTS,8101,3789,${pct},48,*`),
       mcBound: () => engine.setWsState('bound'), mcLost: () => engine.setWsState('closed'),
       mcRejected: () => engine.setWsState('rejected', { reason: 'roster_full', code: 4003 }),
-      scan: () => { const h = hud(); if (h) { h.setScan([{ deviceId: 'a', basename: 'GUN-A', tail: '3D4F', rssi: -52 }, { deviceId: 'b', basename: 'GUN-B', tail: '7C21', rssi: -71, inUse: true }, { deviceId: 'c', basename: 'GUN-C', tail: 'B0E9', rssi: -83 }]); h.render(engine.state()); } },
+      // F258: every picker stage runs the adverts through the REAL `GunPicker` the phone uses, so the
+      // stage predicts app.js instead of hand-posing a list that nothing on a phone would produce.
+      scan: () => paintScan(scanRoom([
+        { deviceId: 'a', name: 'GUN-A-3D4F', rssi: -52, uuids: [NUS] },
+        { deviceId: 'b', name: 'GUN-B-7C21', rssi: -71, uuids: [NUS] },
+        { deviceId: 'c', name: 'GUN-C-B0E9', rssi: -83, uuids: [NUS] },
+      ]), { b: true }),
+      // F258 (bench 2026-09-18): the room the picker was measured in — two televisions, a QLED, a
+      // Hatch Rest, a WL_SCU and bare MAC addresses, with the taggers arriving LAST and quietest.
+      scanNoisy: (assigned = null) => paintScan(scanRoom(NOISY_ROOM, assigned)),
+      // The same room a second later: every signal reading has moved, and two of them have swapped
+      // which is louder. Not one row may move, and not one row node may be replaced.
+      scanAgain: () => paintScan(scanRoom(NOISY_ROOM.map((d, i) => ({ ...d, rssi: -20 - ((i * 37) % 70) })), null, true)),
+      scanOther: () => { const h = hud(); if (!h) return; h.setScanOther(!h.scanOther); h.render(engine.state()); },
+      // F211: the picker with Bluetooth off (game-test-2026-09-13.md C2). `platform` defaults to 'web'
+      // (no enable/settings buttons — iOS has neither); pass 'android' for the button variant.
+      bluetoothOff: (platform) => { const h = hud(); if (h) { h.bluetoothOn = false; if (platform) h.platform = platform; h.setScan([]); h.render(engine.state()); } },
       // kit-out
       assign: () => engine.onMcMessage({ kind: 'assign', body: { player, team, roster, catalog, policy, game } }),
       kitOpen: open => { policy.kit_open = open; ev.assign(); },
@@ -186,7 +232,11 @@ export function startDemo({ engine, log }) {
       panic: () => engine.onMcMessage({ kind: 'control', body: { cmd: 'panic' } }),
       endOk: () => engine.ackEnd(),
       score: (kills = 3, deaths = 1, assists = 1) => engine.onMcMessage({ kind: 'score', body: { kills, deaths, assists, accuracy: 41, hits: 11, shots: 28, shots_total: 28,
-        board: { teams: [{ team_id: teamKey, name: team.name, score: 18 }, { team_id: foeKey, name: foe.name, score: 21 }], cap: 25 } } }),
+        board: { teams: [{ team_id: teamKey, name: team.name, score: 18 }, { team_id: foeKey, name: foe.name, score: 21 }], cap: 25 }, rows: RESULT_ROWS } }),   // `rows`: every player's ScoreRow, as MC's live push carries (state.py `_push_scores`)
+      // Bench 2026-09-17: the FFA shape of the same push -- no team on any row, and the board is the top three players.
+      scoreFfa: () => { config.mode = 'ffa'; const rows = RESULT_ROWS.map(r => ({ ...r, team_id: null }));
+        engine.onMcMessage({ kind: 'score', body: { ...rows[0], shots_total: rows[0].shots, rows,
+          board: { teams: rows.slice().sort((a, b) => b.kills - a.kills).slice(0, 3).map(r => ({ team_id: 'ffa', name: r.display, score: r.kills })), cap: 25 } } }); },
       // A24: the board one kill off the cap. Paired with `mcLost` this is the DOWN screen the A31 line exists for.
       capBoard: () => engine.onMcMessage({ kind: 'score', body: { kills: 9, deaths: 3, assists: 2, accuracy: 38, hits: 40, shots: 105, shots_total: 105,
         board: { teams: [{ team_id: teamKey, name: team.name, score: 24 }, { team_id: foeKey, name: foe.name, score: 21 }], cap: 25 } } }),
@@ -232,6 +282,10 @@ export function startDemo({ engine, log }) {
       perk: id => { player.loadout = { ...player.loadout, perk: id }; ev.assign(); },   // A14: the perk rides beside the weapons
       fullKit: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'usp' }], perk: 'quick_switch' }; ev.assign(); },   // A14: AR + pistol + Quick Switch
       quickSwitch: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: 'quick_switch' }; bundle.swap_ms = 425; ev.assign(); },   // two weapons AND the perk; MC compiles tok15 = 425 into the bundle (bench 2026-09-04)
+      // Bench 2026-09-17 (brx-weapons item 6): charge_rifle's cell reads "ammo left" but a full charge
+      // costs 10 -- the first $ALCD sets the 40-cell cap, the second lands the test value.
+      chargeRifle: () => { player.loadout = { weapons: [{ weapon_id: 'charge_rifle' }] }; },
+      chargeAmmo: (ammo, reserve = 80) => { engine.feedFrame('$ALCD,40,100,0,80,0,*'); engine.feedFrame(`$ALCD,${ammo},100,0,${reserve},0,*`); },
       alt: () => { engine.feedFrame('$BUT,1,1,*'); engine.feedFrame('$BUT,1,0,*'); },   // the ALT button: a swap with two weapons, a reload with one
       altCycle: () => {                                     // what a real swap looks like: ALT, then the next shot reports the new slot
         if (engine._slotCount() < 2) ev.twoWeapons();
@@ -244,8 +298,8 @@ export function startDemo({ engine, log }) {
         setTimeout(reload, Math.round(((w && w.reload_s) || 1.5) * 1000));
       },
       alert: (kind = 'next_kill_wins', text) => engine.onMcMessage({ kind: 'alert', body: { kind, text: text || ({ next_kill_wins: 'NEXT KILL WINS', bomb_planted: 'BOMB PLANTED', point_captured: 'POINT CAPTURED', lead_taken: 'YOUR TEAM LEADS', time_60: 'ONE MINUTE LEFT', vip_down: 'VIP DOWN' })[kind] || kind.replace(/_/g, ' ').toUpperCase(), t: Date.now() } }),
-      killMedals: (medals = ['double_kill', 'killing_spree'], victim = 'VIPER') => engine.onMcMessage({ kind: 'feedback', body: { player_id: 'p-demo', kind: 'kill', t: Date.now(), cue: golden.cues.kill, victim_team: foeKey, victim, medals } }),
-      killConfirm: (victim = 'VIPER') => engine.onMcMessage({ kind: 'feedback', body: { player_id: 'p-demo', kind: 'kill', t: Date.now(), cue: golden.cues.kill, victim_team: foeKey, victim } }),
+      killMedals: (medals = ['double_kill', 'killing_spree'], victim = 'VIPER') => engine.onMcMessage({ kind: 'feedback', body: { player_id: 'p-demo', kind: 'kill', t: Date.now(), cue: golden.cues.kill, victim_team: foeKey, victim: 'p-' + String(victim).toLowerCase(), victim_display: victim, medals } }),
+      killConfirm: (victim = 'VIPER') => engine.onMcMessage({ kind: 'feedback', body: { player_id: 'p-demo', kind: 'kill', t: Date.now(), cue: golden.cues.kill, victim_team: foeKey, victim: 'p-' + String(victim).toLowerCase(), victim_display: victim } }),
       // the gun (what the tagger would report)
       fire: n => fire(n == null ? 1 : n), reload, hit: d => hit(d == null ? 9 : d),
       spawnEcho: () => { hp = engine.maxHp; armor = engine.maxArmor; mag = 32; reserve = 384; lcd(); },
@@ -274,9 +328,17 @@ export function startDemo({ engine, log }) {
     const live = [...lobby, [900, () => ev.start(0.4)], [1800, 'spawnEcho']];
     const STAGES = {
       'idle':              [[0, 'scan']],
+      // F258: the bench's room. The taggers are the only rows; the rest waits behind the fold.
+      'idle-noisy':        [[0, () => ev.scanNoisy()]],
+      'idle-noisy-open':   [[0, () => ev.scanNoisy()], [150, 'scanOther']],
+      'idle-assigned':     [[0, () => ev.scanNoisy('BRAVO')]],   // MC told this phone which gun it carries
+      'idle-bt-off':         [[0, () => ev.bluetoothOff()]],           // F211: no enable/settings buttons (iOS-like)
+      'idle-bt-off-android': [[0, () => ev.bluetoothOff('android')]],  // F211: TURN ON BLUETOOTH + BLUETOOTH SETTINGS
       'connected':         [[0, 'linkGun'], [50, () => ev.battery(82)]],
       // F137 (field 2026-09-12): MC binds while the player still sits on the pre-kit CONNECTED screen —
       // the one case that used to need an UNRELATED field to also change before the screen ever caught up.
+      'kitted-headset-off': [...kitted, [400, () => ev.flapGun(3)]],   // bench 2026-09-17: HEADSET OFF? + RECONNECT NOW
+      'connected-headset-off': [[0, 'linkGun'], [50, () => ev.battery(82)], [400, () => ev.flapGun(2)]],   // the same, before MC binds
       'connected-linked':  [[0, 'linkGun'], [400, 'mcBound']],
       'setup':             [[0, () => { policy.kit_open = false; }], ...kit],
       'briefing':          kit,
@@ -300,6 +362,8 @@ export function startDemo({ engine, log }) {
       'loadout-perk-conflict': [[0, 'twoWeapons'], ...kitted, [400, () => ev.openLoadout('perk')]],
       'tryout':            [...kitted, [400, () => ev.tryout('smg')]],
       'lobby':             lobby,
+      // Bench 2026-09-16: readied up in the kit, then the host pushed the lobby (the state Tony saw grey).
+      'lobby-ready':       [...kitted, [400, () => ev.ready(true)], [700, 'config']],
       // A27/A30 (loadout.md §4.4): the host pushed the lobby while this player was still in the rack.
       'lobby-kit-locked':  [...kitted, [400, () => ev.openLoadout('primary')], [700, 'config']],
       // A38 x A39 (T2 integration): benched from the kit screen, and benched out of a pushed LOBBY —
@@ -314,6 +378,10 @@ export function startDemo({ engine, log }) {
       'live-hit':          [...live, [2300, () => { ev.hit(); ev.hit(); ev.hit(); }]],
       'live-lowhp':        [...live, [2300, 'lowHp']],
       'live-lowammo':      [...live, [2300, () => ev.fire(29)]],
+      // Bench 2026-09-17 (brx-weapons item 6): a charge_rifle cell too small for one full charge (10) shows
+      // NOT ENOUGH ENERGY, not the plain low-ammo warning; at exactly the cost it does not.
+      'live-charge-low':   [[0, 'chargeRifle'], ...live, [2300, () => ev.chargeAmmo(9)]],
+      'live-charge-ok':    [[0, 'chargeRifle'], ...live, [2300, () => ev.chargeAmmo(10)]],
       'live-kill':         [...live, [2300, () => ev.killConfirm()]],
       'down':              [...live, [2300, () => ev.score(3, 1, 1)], [2350, 'die']],
       'live-reload':       [...live, [2300, () => ev.fire(12)], [2600, 'reloadCycle']],
@@ -332,6 +400,9 @@ export function startDemo({ engine, log }) {
       'resync':            [...live, [2300, 'dropGun'], [3300, 'relinkGun']],   // a live rejoin → the 3 s RECONCILING takeover (S7.1)
       'resync-prompt':     [...live, [2300, 'resyncProbe']],                     // the trigger-first resync prompt itself
       'live-mclost':       [...live, [2300, 'mcLost']],
+      // Bench 2026-09-17: MC's live score push has landed -- what the scores overlay (tap the name or the clock) reads.
+      'live-scores':       [...live, [2300, () => ev.score(3, 1, 1)]],
+      'live-scores-ffa':   [[0, () => { config.mode = 'ffa'; }], ...live, [2300, () => ev.scoreFfa()]],
       'mc-rejected':       [...kitted, [400, 'mcRejected']],
       'result':            [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end']],
       'over':              [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, 'endOk']],
@@ -375,7 +446,7 @@ export function startDemo({ engine, log }) {
   const afterSpawn = 4200 + 9000;
   setTimeout(() => { hp = 45; armor = 70; mag = 32; reserve = 384; lcd(); }, afterSpawn + 400);
   setTimeout(() => fire(3), afterSpawn + 2500);
-  setTimeout(() => engine.onMcMessage({ kind: 'feedback', body: { player_id: 'p-demo', kind: 'kill', t: Date.now(), cue: golden.cues.kill, victim_team: 'yellow', victim: 'VIPER' } }), afterSpawn + 4500);
+  setTimeout(() => engine.onMcMessage({ kind: 'feedback', body: { player_id: 'p-demo', kind: 'kill', t: Date.now(), cue: golden.cues.kill, victim_team: 'yellow', victim: 'p-viper', victim_display: 'VIPER' } }), afterSpawn + 4500);
   setTimeout(() => { hit(); hit(); hit(); }, afterSpawn + 9000);
   setTimeout(() => { for (let i = 0; i < 6; i++) hit(); }, afterSpawn + 12000);
   setTimeout(() => fire(20), afterSpawn + 13000);

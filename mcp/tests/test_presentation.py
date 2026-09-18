@@ -4,6 +4,7 @@ from contextlib import contextmanager
 
 from brx_mcp import poolgauge as pg
 from brx_mcp import sounds as snd
+from brx_mcp import voices as V
 from brx_mcp.mc import presentation as P
 from brx_mcp.mc.compile import golden_bundle
 from brx_mcp.mc import compile as C
@@ -130,18 +131,45 @@ def test_voice_role_sounds_resolve_per_player_through_the_compiler():
         P.merge(None, {"events": {"respawned": {"sound": "voice:dance"}}})
 
 
-def test_low_health_plays_a_heartbeat_loop_regardless_of_voice_family():
+def test_low_health_plays_a_fixed_id_regardless_of_voice_family():
     """Tony, 2026-09-11 (bench, ear-confirmed): "yeah heartbeat, it could be looped. i like that more
-    for critical health" -- N74 (a bare fx id) replaces the player's own "voice:hurt_loop" line
-    (V06 "guy breathing heavy in pain"), so `hurt` no longer varies by voice family. The long death
-    (voice:long_death) is still retired and can no longer be picked for any presentation event."""
+    for critical health" -- a bare fx id replaces the player's own "voice:hurt_loop" line (V06 "guy
+    breathing heavy in pain"), so `hurt` no longer varies by voice family. 2026-09-18: the heartbeat
+    take (N74) moved to VA86 ("Health Critical.") because N74 is also `shield_loop`'s id -- see
+    `presentation.EVENTS["low_health"]`'s comment. The long death (voice:long_death) is still retired
+    and can no longer be picked for any presentation event."""
     config, player = _golden_inputs()
     b = C._DEFAULT.compile(config, {**player, "voice": "heavy"}, config["teams"])
-    assert b["cues"]["hurt"] == "$PLAY,N74,4,6,,,,,*"
+    assert b["cues"]["hurt"] == "$PLAY,,4,6,VA86,,,,*"
     b2 = C._DEFAULT.compile(config, {**player, "voice": "scout"}, config["teams"])
-    assert b2["cues"]["hurt"] == "$PLAY,N74,4,6,,,,,*"          # same heartbeat now, no longer per-family
+    assert b2["cues"]["hurt"] == "$PLAY,,4,6,VA86,,,,*"          # same id now, no longer per-family
     with raises(ValueError):
         P.merge(None, {"events": {"low_health": {"sound": "voice:long_death"}}})
+
+
+def test_no_two_player_group_events_resolve_to_the_same_sound_id():
+    """Each "player" group event means one specific thing to the wearer (armour granted, shield broke,
+    health critical...). Two such events on the same sound id are one sound with two meanings, and the
+    ear cannot tell them apart -- `low_health` and `shield_loop` both landed on N74 by separate ear
+    picks (2026-09-17/18) before this caught it. Walks every preset, since an event's sound can be
+    overridden per preset."""
+    for name in P.PRESETS:
+        prof = P.resolve({"presentation": P.profile_from_preset(name)})
+        by_id: dict[str, list[str]] = {}
+        for ev, spec in prof["events"].items():
+            if spec["group"] != "player":
+                continue
+            s = spec["sound"]
+            if not s:
+                continue
+            if s.startswith("voice:"):
+                role = s[len("voice:"):]
+                if role not in V.NODE_ROLES:
+                    continue   # varies by voice family (spawn, healed, ...): no single id to compare here
+                s = V.ROLE_FIXED[role][0]
+            by_id.setdefault(s, []).append(ev)
+        collisions = {sid: evs for sid, evs in by_id.items() if len(evs) > 1}
+        assert not collisions, (name, collisions)
 
 
 # --- compiled into the bundle ---------------------------------------------------- #
@@ -168,7 +196,7 @@ def test_standard_bundle_carries_led_bursts_and_verified_cues():
     assert b["cues"]["multi"] == "$PLAY,,4,6,VA7E,,,,*"          # "Double Kill", transcript-verified
     assert b["cues"]["first_blood"] == "$PLAY,,4,6,VA7H,,,,*"
     assert b["cues"]["objective_scored"] == f"$PLAY,,4,6,{snd.OBJECTIVE_SCORED},,,,*"
-    assert b["cues"]["hurt"] == "$PLAY,N74,4,6,,,,,*"            # the heartbeat loop (Tony 2026-09-11, ear-confirmed: good at critical health)
+    assert b["cues"]["hurt"] == "$PLAY,,4,6,VA86,,,,*"           # "Health Critical." -- distinct from shield_loop's N74 (2026-09-18)
     assert b["cues"]["kill"].startswith("$PLAY,,4,6,")
 
 
@@ -178,7 +206,7 @@ def test_silenced_mutes_the_announcer_and_drops_the_gun_flashes_but_keeps_the_pl
     assert b["leds"] == {}
     for ev in ("kill", "multi", "medal", "first_blood", "objective_scored", "lead_taken", "victory", "game_over"):
         assert b["cues"][ev] == "", ev                  # present and deliberately mute -> $SFLASH only
-    assert b["cues"]["hurt"] == "$PLAY,N74,4,6,,,,,*"  # the low-health heartbeat loop survives (group "player", not gated by announcer)
+    assert b["cues"]["hurt"] == "$PLAY,,4,6,VA86,,,,*"  # the low-health alert survives (group "player", not gated by announcer)
     assert b["cues"]["countdown"] == "$PLAY,VA81,4,6,,,,,*"
     assert b["headset"]["pregame"] == ["$HLED,1,0,,,10,,*"]   # the lobby team colour is not "announcer stuff" (A11.6: dark in play)
     # led-language.md §3.5 "readout off" (2026-09-07 gap, caught by the engine lane): a silenced sniper

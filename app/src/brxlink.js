@@ -3,13 +3,65 @@
 // every phase, retired by a generation token); continuous
 // low-latency scan picker; hardened reassembler; 20-byte chunked writes with pacing; per-device
 // write queue; auto-reconnect that hands the engine a resync opportunity.
-import { BleClient, textToDataView, dataViewToText } from '@capacitor-community/bluetooth-le';
+import { BleClient, BluetoothLe, textToDataView, dataViewToText, dataViewToHexString } from '@capacitor-community/bluetooth-le';
+import { Capacitor } from '@capacitor/core';
 
 export const NUS = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 export const RX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 export const TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Bench 2026-09-17 (match 592e444eff, Pixel 5): the spawn write left the phone over 62 s, one chunk every
+// 6-11 s, and the player could not shoot for a minute. Android logcat showed each native write done in
+// 1-2 ms, and the JS ring stamped each chunk within 40 ms of its native call. The delay was the ANSWER:
+// the plugin's reply reached JS 1 s late at T-10 and 11 s late by T+100 s, on the same native-to-JS
+// channel as the low-latency beacon scan (57 results/s, the busiest scan of the day). The app skipped
+// about 600 frames every 10 s until the scan restart dropped the backlog.
+//  - BleClient's own queue made every call wait for the previous call's answer, so a slow answer to a
+//    scan stop or an isEnabled() also held the gun write. Gun writes now call the plugin directly: the
+//    bridge delivers calls in call order, and the native side runs them in that order.
+//  - The write loop waits for an answer for at most WRITE_ACK_CAP_MS, then goes on at the normal pacing.
+//    A healthy answer still holds the next chunk, so the GATT write permit is kept as before.
+export const WRITE_ACK_CAP_MS = 50;
+/** How many times one batch sends again from a frame a late chunk error hit, before it reports failure. */
+export const LATE_RESENDS = 2;
+
+/** Writes one chunk to the gun's NUS RX characteristic through the plugin itself, not BleClient's queue.
+ *  Native builds take a hex string (what BleClient sends); the web build takes the DataView. */
+export function directWriter(plugin = BluetoothLe, platform = () => Capacitor.getPlatform()) {
+  return (deviceId, dv) => plugin.writeWithoutResponse({
+    deviceId, service: NUS, characteristic: RX, value: platform() === 'web' ? dv : dataViewToHexString(dv),
+  });
+}
+
+// F210: docs/manual/dev.md's headset note — "the headset must be linked or the gun will connect,
+// answer a quick $PING, then drop within seconds and echo nothing to config. After a gun-initiated
+// $DISCONNECT,*, back off at least 5 s before reconnecting." A gun with no headset linked repeats
+// this forever, and `_connectWithRetry`'s own backoff only grows on a FAILED `ble.connect()` call —
+// a connect that SUCCEEDS and then drops seconds later never fails, so a single flap reconnects at
+// once (as any ordinary drop should), but a REPEATING flap now backs off instead of spinning as fast
+// as the hardware allows.
+const FLAP_MS = 5000;
+// Bench 2026-09-17: a flat 5 s wait still reconnected every 5-6 s forever, and the tagger says "phone
+// connected" on every connect. Each further quick drop now waits longer: 5 s, 15 s, 30 s, then 60 s.
+// The steps are multiples of `flapMs`, so a test can shrink the whole schedule with one option.
+const FLAP_STEPS = [1, 3, 6, 12];
+/** How long to wait after the `streak`th quick drop in a row (streak 2 is the first wait). */
+export function flapDelay(streak, flapMs = FLAP_MS) {
+  return flapMs * FLAP_STEPS[Math.min(Math.max(streak - 2, 0), FLAP_STEPS.length - 1)];
+}
+
+// Bench 2026-09-17 (match e6cbe0ae09): RELINK GUN in a LIVE match took the phone off the gun for 34 s. The
+// phone log: the forced disconnect at once, then three plugin connects that each ran out the plugin's
+// default 10 s timeout, with a growing retry backoff (443, 857, 1939 ms) between them, then a connect that
+// took under a second. A relink now waits at most RELINK_DISCONNECT_CAP_MS for the disconnect, gives each
+// connect RELINK_CONNECT_MS (a connect to a gun that is there took about 1 s on the bench), and waits only
+// RELINK_GAP_MS between attempts. After RELINK_ATTEMPTS it ends, and the normal reconnect loop takes over.
+const RELINK_DISCONNECT_CAP_MS = 2000;
+const RELINK_CONNECT_MS = 5000;
+const RELINK_GAP_MS = 250;
+const RELINK_ATTEMPTS = 9;
 
 /** Split an advert name "<sticker>-<tail>" → {name, basename, tail}. Never uses the BLE deviceId. */
 export function splitAdvert(name, deviceId) {
@@ -50,37 +102,126 @@ export const WRITE_PACING = Object.freeze({ chunkGapMs: 8, frameGapMs: 18, block
 export class BrxLink {
   constructor({ ble = BleClient, log = () => {}, onFrame = () => {}, onDrop = () => {}, onUp = () => {},
                 unbounded = () => false, chunkGapMs = WRITE_PACING.chunkGapMs, frameGapMs = WRITE_PACING.frameGapMs,
-                blockFrames = WRITE_PACING.blockFrames, blockPauseMs = WRITE_PACING.blockPauseMs } = {}) {
-    this.ble = ble; this.log = log; this.onFrame = onFrame; this.onDrop = onDrop; this.onUp = onUp;
+                blockFrames = WRITE_PACING.blockFrames, blockPauseMs = WRITE_PACING.blockPauseMs,
+                now = () => Date.now(), flapMs = FLAP_MS,
+                onFlap = () => {}, onRelink = () => {}, relinkConnectMs = RELINK_CONNECT_MS, relinkAttempts = RELINK_ATTEMPTS,
+                relinkGapMs = RELINK_GAP_MS, relinkDisconnectCapMs = RELINK_DISCONNECT_CAP_MS,
+                writeChunk = null, ackCapMs = WRITE_ACK_CAP_MS } = {}) {
+    // The real plugin gets the direct path; an injected test double keeps its own writeWithoutResponse.
+    this.writeChunk = writeChunk || (ble === BleClient ? directWriter() : (id, dv) => ble.writeWithoutResponse(id, NUS, RX, dv));
+    this.ackCapMs = ackCapMs;
+    this.lateAcks = 0;     // chunks whose answer took longer than ackCapMs (diagnostics)
+    this.onRelink = onRelink;
+    this.relinkConnectMs = relinkConnectMs; this.relinkAttempts = relinkAttempts; this.relinkGapMs = relinkGapMs; this.relinkDisconnectCapMs = relinkDisconnectCapMs;
+    this.ble = ble; this.log = log; this.onFrame = onFrame; this.onDrop = onDrop; this.onUp = onUp; this.onFlap = onFlap;
     this.unbounded = unbounded; this.chunkGapMs = chunkGapMs; this.frameGapMs = frameGapMs;
     this.blockFrames = blockFrames; this.blockPauseMs = blockPauseMs;
+    this.now = now; this.flapMs = flapMs;
     this.deviceId = null; this.advert = null; this.connected = false; this.retries = 0; this.lastReason = null;
     this._init = null; this._q = Promise.resolve(); this._scanning = false; this._re = new Reassembler();
+    this.lateLost = 0;     // late chunk errors that landed after their batch had resolved (diagnostics)
+    this.lastLateLost = null;   // pl4: {label, frame, of, text} of the last one
+    this._scanOp = Promise.resolve(); this._scanTok = 0;   // scan start/stop run one at a time, in call order
+    this._linkSeq = 0;     // bumps per native connect; a retired link's disconnect callback is ignored (relink)
+    this._relinking = false;
     this.frames = [];      // last frames in/out (diagnostics)
     // Every connect()/disconnect() bumps the generation. A retry loop carries the generation it
     // started in and exits the moment it goes stale, so a loop chasing an abandoned gun can never
     // outlive its device — nor hold `_reconnecting` and block the next gun's reconnect.
     this._gen = 0;
     this._wake = null;     // resolves the pending backoff early (the TAP TO RECONNECT pill)
+    this._upAt = 0;        // F210: when this device last connected successfully
+    this._flapStreak = 0;  // F210: consecutive connect-then-quick-drop cycles for THIS device
+    this._flapNextAt = 0;  // when the current flap wait ends (0 when no wait is running)
+    this._stableTimer = null;   // clears the flap count once a link has stayed up for `flapMs`
+  }
+  /** `{count, next_retry_at}` while the gun keeps dropping the link (2+ quick drops in a row), else null.
+   *  `next_retry_at` is this device's clock (`now()`), or null when no wait is running. */
+  get flapping() {
+    if (this._flapStreak < 2) return null;
+    return { count: this._flapStreak, next_retry_at: this._flapNextAt || null };
+  }
+  _setFlap(streak, nextAt = 0) {
+    const was = JSON.stringify(this.flapping);
+    this._flapStreak = streak; this._flapNextAt = nextAt;
+    if (JSON.stringify(this.flapping) !== was) { try { this.onFlap(this.flapping); } catch (_) { /* a listener must not break the link */ } }
+  }
+  /** A user action (RECONNECT NOW, RELINK, picking a gun) starts the backoff again from the start. */
+  resetFlap() { this._setFlap(0); }
+  /** True from a RELINK press until the link is back up or the relink gives up. The HUD disables RELINK GUN meanwhile. */
+  get relinking() { return this._relinking; }
+  _setRelinking(v) {
+    if (this._relinking === v) return;
+    this._relinking = v;
+    try { this.onRelink(v); } catch (_) { /* a listener must not break the link */ }
+  }
+  _armStable() {
+    clearTimeout(this._stableTimer);
+    const seq = this._linkSeq;
+    const t = this._stableTimer = setTimeout(() => {
+      this._stableTimer = null;
+      if (this.connected && seq === this._linkSeq && this._flapStreak) { this._log('gun link held: flap count cleared', 'li'); this._setFlap(0); }
+    }, this.flapMs);
+    if (t && typeof t.unref === 'function') t.unref();   // node tests: a held link must not keep the process open
   }
   ensureInit() { return (this._init ||= this.ble.initialize({ androidNeverForLocation: true })); }
 
   /** Continuous scan; calls onHit({deviceId, name, rssi, uuids}) for every advert until stop().
-   *  scanMode 2 = low latency (the gun picker), 1 = balanced (the beacon watch that stays open all match).
+   *  scanMode 2 = low latency (the gun picker and the match-time beacon watch, scanwatch.js), 1 = balanced.
    *  Nameless adverts pass only when they carry a service UUID: utility items advertise no name on Android
-   *  (the device name is not settable per app), their whole identity is the UUID (beacon.js). */
-  async scan(onHit, { scanMode = 2 } = {}) {
+   *  (the device name is not settable per app), their whole identity is the UUID (beacon.js).
+   *  `onRaw()` runs for EVERY result the plugin delivers, before any filter: each one crossed the
+   *  native-to-JS bridge that gun notifications share, so a flood guard must count them all (scanwatch.js). */
+  async scan(onHit, { scanMode = 2, onRaw = null } = {}) {
     if (this._scanning) throw new Error('a scan is already open');
-    await this.ensureInit(); this._scanning = true;
-    await this.ble.requestLEScan({ allowDuplicates: true, scanMode }, res => {   // no service filter: Android misses taggers whose UUID rides in the scan response (bench 2026-08-25); the app filters by name instead
-      const d = res.device || {}; if (!d.deviceId) return;
-      const name = d.name || res.localName || '';
-      const uuids = Array.isArray(res.uuids) ? res.uuids : [];
-      if (!name && !uuids.length) return;
-      onHit({ deviceId: d.deviceId, name, rssi: res.rssi, uuids, txPower: res.txPower });
+    this._scanning = true; const tok = ++this._scanTok;   // claim the radio before the first await
+    return this._scanSerial(async () => {
+      try {
+        await this.ensureInit();
+        await this.ble.requestLEScan({ allowDuplicates: true, scanMode }, res => {   // no service filter: Android misses taggers whose UUID rides in the scan response (bench 2026-08-25); the app filters by name instead
+          if (onRaw) onRaw();
+          const d = res.device || {}; if (!d.deviceId) return;
+          const name = d.name || res.localName || '';
+          const uuids = Array.isArray(res.uuids) ? res.uuids : [];
+          if (!name && !uuids.length) return;
+          onHit({ deviceId: d.deviceId, name, rssi: res.rssi, uuids, txPower: res.txPower });
+        });
+      } catch (e) { if (tok === this._scanTok) this._scanning = false; throw e; }   // a refused start is not an open scan
     });
   }
-  async stopScan() { try { await this.ble.stopLEScan(); } catch (_) { /* ignore */ } this._scanning = false; }
+  /** Playtest 2026-09-13: `_scanning` was cleared when a stop RESOLVED, so a slow stop that overlapped a
+   *  newer scan cleared the flag under it and the "already open" guard let a third scan in. Now the flag
+   *  is the latest intent, set synchronously, and the native calls run strictly in call order. */
+  stopScan() {
+    this._scanning = false; this._scanTok++;
+    return this._scanSerial(async () => { try { await this.ble.stopLEScan(); } catch (_) { /* ignore */ } });
+  }
+  get scanning() { return this._scanning; }
+  _scanSerial(fn) { const p = this._scanOp.then(fn, fn); this._scanOp = p.catch(() => {}); return p; }
+
+  // F211: adapter-off detection. `@capacitor-community/bluetooth-le` reports `true` on web, so the demo
+  // and the desktop rig see an always-on adapter and behave exactly as before.
+  /** Reports whether Bluetooth is on right now. */
+  async isEnabled() { try { return !!(await this.ble.isEnabled()); } catch (_) { return true; } }
+  /** Calls `cb(on)` whenever the adapter turns on or off; returns a stop function. A plugin build too
+   *  old to carry the notification (or the web shim) yields a no-op stop, so a call site never has to
+   *  branch on plugin version. */
+  async watchEnabled(cb) {
+    if (typeof this.ble.startEnabledNotifications !== 'function') return () => {};
+    await this.ble.startEnabledNotifications(v => cb(!!v));
+    return () => { try { this.ble.stopEnabledNotifications(); } catch (_) { /* ignore */ } };
+  }
+  /** Android only: show the system "turn on Bluetooth?" prompt. Resolves false where the plugin has no
+   *  such call (iOS, web) so the HUD can decide whether to show the button at all. */
+  async requestEnable() {
+    if (typeof this.ble.requestEnable !== 'function') return false;
+    try { await this.ble.requestEnable(); return true; } catch (e) { this._log('bluetooth enable request: ' + (e && e.message || e), 'le'); return false; }
+  }
+  /** Android only: open the OS Bluetooth settings page. */
+  async openBluetoothSettings() {
+    if (typeof this.ble.openBluetoothSettings !== 'function') return false;
+    try { await this.ble.openBluetoothSettings(); return true; } catch (e) { this._log('open bluetooth settings: ' + (e && e.message || e), 'le'); return false; }
+  }
 
   _log(m, cls) { this.log(m, cls); }
   _note(dir, f) { this.frames.push({ t: Date.now(), dir, f }); if (this.frames.length > 60) this.frames.shift(); }
@@ -91,16 +232,22 @@ export class BrxLink {
     if (this._wake) this._wake();      // ...and WAKE it, or it sleeps out its backoff still holding
                                        // `_reconnecting`, which blocks the new gun's reconnect entirely
     this.advert = splitAdvert(advertName, deviceId);
-    await this._connectWithRetry(deviceId, 5, false, this._gen);
+    if (!await this._connectWithRetry(deviceId, 5, false, this._gen)) return false;   // a newer connect won (bench 2026-09-17): claiming the link here ran onUp with the gun down
     this.deviceId = deviceId; this.connected = true; this.retries = 0;
+    this._upAt = this.now(); this._setFlap(0);   // F210: a freshly picked gun starts with a clean flap count
+    this._armStable();
     this.onUp(this.advert);
   }
-  async _connectWithRetry(id, attempts, forever = false, gen = this._gen) {
+  /** `relink` (a user RELINK): a bounded plugin connect timeout, a short fixed gap instead of the growing
+   *  backoff, and `attempts` is a hard limit even when `unbounded()` (armed/live) would retry forever. */
+  async _connectWithRetry(id, attempts, forever = false, gen = this._gen, relink = false) {
     let last;
     for (let i = 1; ; i++) {
       if (gen !== this._gen) { this._log('reconnect abandoned — a different gun was selected', 'li'); return false; }
+      const t0 = this.now();
       try {
-        await this.ble.connect(id, () => this._dropped());
+        const seq = ++this._linkSeq;
+        await this.ble.connect(id, () => { if (seq === this._linkSeq) this._dropped(); }, relink ? { timeout: this.relinkConnectMs } : undefined);
         if (gen !== this._gen) {                       // the gun came back AFTER we moved on: let it go,
           try { await this.ble.disconnect(id); } catch (_) { /* ignore */ }   // or two devices feed the engine
           return false;
@@ -109,10 +256,11 @@ export class BrxLink {
         return true;
       } catch (e) {
         last = e; this.retries = i;
-        const keep = forever || this.unbounded() || i < attempts;
+        const keep = relink ? i < attempts : forever || this.unbounded() || i < attempts;
         if (!keep) throw last;
-        const delay = Math.min(10000, 500 * 2 ** Math.min(i - 1, 5)) * (0.8 + 0.4 * Math.random());
-        this._log(`connect ${i}${forever || this.unbounded() ? '' : '/' + attempts} failed — retrying in ${Math.round(delay)} ms`, 'le');
+        const delay = relink ? this.relinkGapMs : Math.min(10000, 500 * 2 ** Math.min(i - 1, 5)) * (0.8 + 0.4 * Math.random());
+        // the time the attempt took and the plugin's reason: a 10 s "Connection timeout." and a fast GATT error need different fixes
+        this._log(`connect ${i}${!relink && (forever || this.unbounded()) ? '' : '/' + attempts} failed after ${this.now() - t0} ms (${e && e.message || e}) — retrying in ${Math.round(delay)} ms`, 'le');
         await this._waitOrWake(delay);
       }
     }
@@ -128,12 +276,72 @@ export class BrxLink {
 
   /** The user asked to reconnect NOW: skip the remaining backoff, or start a loop if none is running. */
   retryNow() {
+    this.resetFlap();
     if (this._wake) { this._log('reconnect: retrying now', 'li'); this._wake(); return; }
     if (this.deviceId && !this.connected) this._reconnect();
   }
-  _dropped() {
+  /** RELINK GUN (playtest 2026-09-13): on a link the app believed was up, `retryNow()` did nothing, so the
+   *  button was inert exactly when the operator needed it. Now a live link is really cycled: release the
+   *  GATT link, then take the normal drop path, so the forever-reconnect loop reconnects and `onUp` runs
+   *  the engine's relink (it re-writes the head only in the phases where that is safe, never mid-match). */
+  /*  Bench 2026-09-17: the relink now runs its OWN reconnect, at once and bounded (see RELINK_CONNECT_MS), not
+   *  the drop path's retry and flap backoff. It resolves true when the link is back, false when it gave up. A
+   *  press while a relink runs is ignored (`relinking`), and a press on a link that is already down stays
+   *  `retryNow()`. */
+  async relink() {
+    const id = this.deviceId; if (!id) return false;
+    if (this._relinking) { this._log('relink: already relinking, press ignored', 'li'); return false; }
+    this.resetFlap();
+    if (!this.connected) { this.retryNow(); return true; }
+    const gen = this._gen;
+    this._setRelinking(true);
+    try {
+      this._log('relink: forcing a disconnect and a fresh connect', 'li');
+      this._linkSeq++;                   // this link's own disconnect callback must not run the drop path a second time
+      const t0 = this.now();
+      let cap = null;
+      const released = await Promise.race([
+        this.ble.disconnect(id).then(() => true, () => true),   // best-effort
+        new Promise(res => { cap = setTimeout(() => res(false), this.relinkDisconnectCapMs); }),
+      ]);
+      clearTimeout(cap);
+      this._log(released ? `relink: gun released in ${this.now() - t0} ms` : `relink: no disconnect confirm in ${this.relinkDisconnectCapMs} ms, connecting anyway`, 'li');
+      if (this.deviceId !== id || gen !== this._gen || !this.connected) return false;   // a new gun was picked, or it already dropped
+      this._markDown();
+      this._reconnecting = true; this._reconnectGen = gen;   // one loop per gun: a RECONNECT tap now cannot start a second one
+      let ok = false;
+      try { ok = await this._connectWithRetry(id, this.relinkAttempts, false, gen, true); }
+      catch (e) { this._log(`relink: no link after ${this.relinkAttempts} attempts (${e && e.message || e}), back to the normal reconnect loop`, 'le'); }
+      finally { if (this._reconnectGen === gen) this._reconnecting = false; }
+      if (gen !== this._gen || this.deviceId !== id) return false;
+      if (ok) { this.connected = true; this._upAt = this.now(); this._armStable(); this._log(`reconnected (relink, ${this.now() - t0} ms)`, 'lk'); this.onUp(this.advert); return true; }
+      this._reconnect();
+      return false;
+    } finally { this._setRelinking(false); }
+  }
+  _markDown() {
     this.connected = false; this._log(`*** gun disconnected ***`, 'le'); this.onDrop();
-    if (this.deviceId) this._reconnect();
+    clearTimeout(this._stableTimer); this._stableTimer = null;
+  }
+  _dropped() {
+    this._markDown();
+    if (!this.deviceId) return;
+    // F210: a quick drop right after connecting is normal ONCE (a manual relink, a genuine radio blip)
+    // and retries at once, same as always. A REPEATING quick drop (headset not linked: the gun connects,
+    // answers a $PING, then drops itself within seconds — forever) now backs off instead of reconnecting
+    // as fast as the hardware allows, which used to spin the radio and re-run onUp()'s relink side effects
+    // every cycle with no way out short of linking the headset.
+    const flapped = this._upAt && (this.now() - this._upAt) < this.flapMs;
+    const streak = flapped ? this._flapStreak + 1 : 0;
+    if (streak >= 2) {
+      const gen = this._gen, wait = flapDelay(streak, this.flapMs);
+      this._setFlap(streak, this.now() + wait);
+      this._log(`gun keeps dropping seconds after connecting (${streak} in a row). Is the headset on? Backing off ${wait} ms`, 'li');
+      this._waitOrWake(wait).then(() => {
+        if (this._flapStreak) this._setFlap(this._flapStreak);   // the wait is over (or cut short): no retry time to show
+        if (this.deviceId && gen === this._gen) this._reconnect();
+      });
+    } else { this._setFlap(streak); this._reconnect(); }
   }
   /** B4: the engine's link watchdog calls this when the gun has gone silent for too long while we still
    *  read as `connected` — the native disconnect callback this whole file otherwise depends on may never
@@ -161,7 +369,7 @@ export class BrxLink {
     const gen = this._gen;
     try {
       if (await this._connectWithRetry(this.deviceId, 0, true, gen) && gen === this._gen) {
-        this.connected = true; this._log('reconnected', 'lk'); this.onUp(this.advert);
+        this.connected = true; this._upAt = this.now(); this._armStable(); this._log('reconnected', 'lk'); this.onUp(this.advert);
       }
     }
     catch (e) { this._log('reconnect stopped: ' + (e && e.message || e), 'le'); }
@@ -170,31 +378,90 @@ export class BrxLink {
   async disconnect() {
     this._gen++;                       // stop any forever-loop before it re-adopts this gun
     if (this._wake) this._wake();
+    clearTimeout(this._stableTimer); this._stableTimer = null; this._setFlap(0);
     const id = this.deviceId; this.deviceId = null; this.connected = false;
     if (id) { try { await this.ble.disconnect(id); } catch (_) { /* ignore */ } }
   }
   _notify(value) { for (const f of this._re.pump(dataViewToText(value))) { this._note('rx', f); this.onFrame(f); } }
 
-  /** Write frames verbatim, in order, chunked at 20 bytes with pacing; serialized per device. A block pause
-   *  (`blockFrames` > 0) sleeps `blockPauseMs` after every `blockFrames` frames of ONE write, so the gun's
-   *  one-byte-per-loop parser can drain its buffer mid-arm (transport-hardening.md §3; off by default). */
-  write(frames) {
+  /** Write frames verbatim, in order, chunked at 20 bytes with pacing; serialized per device. Each chunk
+   *  waits for the plugin's answer for at most `ackCapMs` (see WRITE_ACK_CAP_MS).
+   *
+   *  A block pause (`blockFrames` > 0) sleeps `blockPauseMs` after every `blockFrames` frames of ONE write,
+   *  so the gun's one-byte-per-loop parser can drain its buffer mid-arm (transport-hardening.md §3; off by
+   *  default).
+   *
+   *  A LATE chunk error (past the cap) belongs to the batch that sent the chunk, never to the link (pl3
+   *  review 2026-09-17). The old link-wide flag let a late error from batch N cut batch N+1 partway, which
+   *  dropped `$SPAWN`/`$AMMO`/`$BMAP` with no retry while batch N still reported true. Now:
+   *  - A late error that lands while its own batch is still sending marks that batch. At the next frame
+   *    boundary the batch sends again from the start of the earliest failed frame, so every frame stays
+   *    whole and in order. The frames between that one and the boundary go twice.
+   *  - After LATE_RESENDS re-sends the batch finishes its frames anyway and resolves false, so the caller's
+   *    retry runs. It never stops partway.
+   *  - A late error that lands after its batch resolved is logged at `le` with the batch label and the frame
+   *    (pl4: a lost trigger row must be visible in the phone log), counted (`lateLost`) and kept as
+   *    `lastLateLost`. It cannot touch any other batch.
+   *  `label`: what the batch is, for that log line (the engine passes its `why`). */
+  write(frames, label = '') {
     const id = this.deviceId; if (!id) return Promise.resolve(false);
     const list = Array.isArray(frames) ? frames : [frames];
+    const batch = { failed: null, open: true, label, list };   // `failed`: the earliest frame index a late error hit
     this._q = this._q.then(async () => {
-      let n = 0;
-      for (const frame of list) {
-        this._note('tx', frame);
-        for (let o = 0; o < frame.length; o += 20) {
-          await this.ble.writeWithoutResponse(id, NUS, RX, textToDataView(frame.substr(o, 20)));
-          if (frame.length > 20) await sleep(this.chunkGapMs);
+      let late = 0, chunks = 0, resends = 0, lost = false, sentFrames = 0;
+      try {
+        for (let i = 0; i < list.length;) {
+          const frame = list[i];
+          this._note('tx', frame);
+          for (let o = 0; o < frame.length; o += 20) {
+            chunks++;
+            if (!await this._sendChunk(id, textToDataView(frame.substr(o, 20)), batch, i)) late++;
+            if (frame.length > 20) await sleep(this.chunkGapMs);
+          }
+          await sleep(this.frameGapMs);
+          i++;
+          if (batch.failed != null) {
+            const from = batch.failed; batch.failed = null;
+            if (resends < LATE_RESENDS) {
+              resends++; i = from;
+              this._log(`write: a chunk of frame ${from + 1} of ${list.length} was lost -- sending again from that frame`, 'le');
+            } else lost = true;   // finish the batch, then report the loss
+          }
+          sentFrames++;
+          if (this.blockFrames > 0 && this.blockPauseMs > 0 && sentFrames % this.blockFrames === 0 && i < list.length) await sleep(this.blockPauseMs);
         }
-        await sleep(this.frameGapMs);
-        n++;
-        if (this.blockFrames > 0 && this.blockPauseMs > 0 && n % this.blockFrames === 0 && n < list.length) await sleep(this.blockPauseMs);
-      }
+      } finally { batch.open = false; }
+      if (late) { this.lateAcks += late; this._log(`write answers slow: ${late} of ${chunks} chunk(s) past ${this.ackCapMs} ms, sent on without them`, 'le'); }
+      if (lost) { this._log(`write: chunks still lost after ${LATE_RESENDS} re-send(s) -- the batch is sent but reports failure`, 'le'); return false; }
       return true;
-    }).catch(e => { this._log('write err: ' + (e && e.message || e), 'le'); return false; });
+    }).catch(e => { batch.open = false; this._log('write err: ' + (e && e.message || e), 'le'); return false; });
     return this._q;
+  }
+  /** Sends one chunk of frame `frameIdx` in `batch`. Resolves true when the plugin answered within `ackCapMs`,
+   *  false when the cap ran out first. An error inside the cap rejects (the batch stops, as before). A LATER
+   *  error marks only `batch` (see `write`). */
+  _sendChunk(id, dv, batch = null, frameIdx = 0) {
+    let sent;
+    try { sent = Promise.resolve(this.writeChunk(id, dv)); } catch (e) { return Promise.reject(e); }
+    return new Promise((resolve, reject) => {
+      let done = false;
+      const t = setTimeout(() => { done = true; resolve(false); }, this.ackCapMs);
+      sent.then(() => { if (done) return; done = true; clearTimeout(t); resolve(true); },
+        e => {
+          if (!done) { done = true; clearTimeout(t); reject(e); return; }
+          const msg = e && e.message || e;
+          if (batch && batch.open) {
+            batch.failed = batch.failed == null ? frameIdx : Math.min(batch.failed, frameIdx);
+            this._log('write err (after the answer cap): ' + msg, 'le');
+          } else {
+            this.lateLost++;
+            const b = batch || { label: '', list: [] };
+            const frame = String(b.list[frameIdx] || '');
+            this.lastLateLost = { label: b.label, frame: frameIdx, of: b.list.length, text: frame };
+            this._log('write err (after the answer cap): ' + msg + ' -- its batch had already been sent'
+              + ` (batch ${b.label ? `"${b.label}"` : 'unlabelled'}, frame ${frameIdx + 1} of ${b.list.length}: ${frame.slice(0, 32)}), LOST`, 'le');
+          }
+        });
+    });
   }
 }

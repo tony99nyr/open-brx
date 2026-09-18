@@ -9,7 +9,9 @@ import path from 'node:path';
 
 // $WEAP token positions, from the bench-proven map in docs/manual/dev.md.
 // The frame is `$WEAP,<t0>,<t1>,...`, so token N sits at split index N+1.
-const TOK = { damage: 5, cycle: 14, mag: 16, reserve: 17, reload: 18, heat: 24, sound: 27 };
+// F207 (bench 2026-09-16/17): the player's spare rounds are **t40**, and the gun's `$ALCD` reserve mirrors it.
+// t17 is twice t40 in every captured frame, so publishing t17 as "Reserve" doubled the number a player carries.
+const TOK = { damage: 5, cycle: 14, mag: 16, reserve: 40, reload: 18, heat: 24, sound: 27 };
 const tok = (frame, n) => {
   const v = frame.split(',')[n + 1];
   return v === undefined || v === '' ? null : v;
@@ -28,7 +30,7 @@ export function buildWeapons(repo) {
     return {
       id: w.weapon_id, name: w.name, role: w.role,
       dmg: num(TOK.damage), cycle_ms: num(TOK.cycle), mag: num(TOK.mag),
-      // t17 carries 32768 as an "unlimited" flag rather than a round count (dev.md's $WEAP map).
+      // The reserve tokens carry 32768 as an "unlimited" flag rather than a round count (dev.md's $WEAP map).
       // No captured stock weapon uses it today, but printing "32768" as spare rounds would be a
       // published falsehood the moment one did.
       reserve: num(TOK.reserve) === 32768 ? 'unlimited' : num(TOK.reserve),

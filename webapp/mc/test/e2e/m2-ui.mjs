@@ -525,17 +525,16 @@ async function runMock(browser, viteBase, vp, tag) {
   await pg.locator('[data-logsync] button', { hasText: before === 'auto' ? 'MANUAL' : 'AUTO' }).click();
   await until(async () => (await modeNow()) !== before, 8000, 'the LOG SYNC switch to move');
   ok(`A25: LOG SYNC ${before} → ${await modeNow()} (the switch writes and the snapshot comes back)`);
-  // F129: what AUTO does, and that LOGS ignores the switch, lived only in a `title` — unhoverable on
-  // a touch console. It is a visible legend now, and it follows the switch.
-  const legend = await pg.locator('[data-logsync-legend]').evaluate(el =>
-    ({ t: (el.textContent || '').replace(/\s+/g, ' ').trim(), fs: parseFloat(getComputedStyle(el).fontSize) }));
-  expect(/NEVER GATED/.test(legend.t.toUpperCase()), `the legend says the LOGS button is never gated (saw ${JSON.stringify(legend.t)})`);
-  expect(new RegExp(`^${await modeNow()}`, 'i').test(legend.t), `and it describes the mode the switch is in (${legend.t.slice(0, 24)}…)`);
-  expect(legend.fs >= 11, `at ${legend.fs}px`);
-  ok(`A25 legend: "${legend.t}"`);
-  const states = await pg.locator('[data-node-card] [data-log-state]').evaluateAll(els =>
+  // Bench 2026-09-17 (Tony): no legend under the switch; the LOG SYNC label carries a short tooltip.
+  expect(await pg.locator('[data-logsync-legend]').count() === 0, 'no legend under the LOG SYNC switch');
+  const tip = await pg.locator('[data-logsync-label]').getAttribute('title');
+  expect(new RegExp(`^${await modeNow()}`, 'i').test(tip || ''), `the tooltip describes the mode the switch is in (${tip})`);
+  ok(`A25 tooltip: "${tip}"`);
+  // F-armory-dedup (2026-09-17): not scoped to `[data-node-card]` any more — a bound phone's log row now
+  // lives on its GUN CARD instead, once that phone's own node card is hidden as a duplicate.
+  const states = await pg.locator('[data-log-state]').evaluateAll(els =>
     els.map(e => `${e.dataset.logState}:${e.textContent.replace(/\s+/g, ' ').trim()}`));
-  expect(states.length > 0, 'every node card carries a log row');
+  expect(states.length > 0, 'every phone card carries a log row');
   expect(new Set(states.map(x => x.split(':')[0])).size > 1,
     `the demo field shows MORE THAN ONE log state, so the states can be told apart (${states.join(' | ')})`);
   ok(`A25 log states: ${states.slice(0, 4).join('  ')}`);
@@ -548,26 +547,28 @@ async function runMock(browser, viteBase, vp, tag) {
   ok(`A25: LOGS asked and said so   ${await shot(pg, `05-${tag}-logsync`)}`);
   await audit(pg, 'main', `${tag} ARMORY`);
 
-  // F129, and only on a phone: the LOGS tap above left a toast in the command bar, and the match is
-  // over, so NEW MATCH is beside it. They used to share one nowrap row and the toast took the width:
-  // "NEW MATCH ▸" wrapped onto three lines, a 72px button (measured 2026-09-12). The toast has its
-  // own row under the bar now. Measured with a toast ON SCREEN — that is the whole condition.
+  // F129, and only on a phone: the LOGS tap above left a toast in the command bar, and the ☰ menu
+  // button is beside it. They used to share one nowrap row and the toast took the width: the primary
+  // button beside it wrapped onto three lines, 72px tall (measured 2026-09-12; that button was the
+  // command bar's own NEW SESSION, cut 2026-09-17 — the ☰ menu now stands in as the control that is
+  // always there). The toast has its own row under the bar now. Measured with a toast ON SCREEN — that
+  // is the whole condition.
   if (vp.width < 500) {
     const cb = await pg.evaluate(() => {
       const group = document.querySelector('header .cb-notices');
       const toast = group && (group.textContent || '').trim() ? group : null;   // the group is always there; a TOAST is not
-      const btn = [...document.querySelectorAll('header button')].find(b => /NEW MATCH/.test(b.textContent || ''));
+      const btn = document.querySelector('header button[aria-haspopup="menu"]');
       if (!toast || !btn) return { toast: !!toast, btn: !!btn };
       const t = toast.getBoundingClientRect(), b = btn.getBoundingClientRect();
       return { toast: true, btn: true, h: Math.round(b.height), w: Math.round(b.width),
                ownRow: Math.round(t.bottom) <= Math.round(b.top) + 2 || Math.round(b.bottom) <= Math.round(t.top) + 2,
                text: (toast.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40) };
     });
-    expect(cb.toast && cb.btn, `the walk has both a toast and NEW MATCH on screen (toast ${cb.toast}, button ${cb.btn})`);
+    expect(cb.toast && cb.btn, `the walk has both a toast and the ☰ menu on screen (toast ${cb.toast}, button ${cb.btn})`);
     if (cb.toast && cb.btn) {
-      expect(cb.h <= 56, `NEW MATCH stays one line beside a toast (${cb.h}px tall, ${cb.w}px wide)`);
+      expect(cb.h <= 56, `the ☰ menu stays one line beside a toast (${cb.h}px tall, ${cb.w}px wide)`);
       expect(cb.ownRow, 'and the toast is on a row of its own, not squeezing it');
-      ok(`F129 toast row: NEW MATCH ${cb.h}px with "${cb.text}…" above it   ${await shot(pg, `07-${tag}-toast-row`)}`);
+      ok(`F129 toast row: ☰ menu ${cb.h}px with "${cb.text}…" above it   ${await shot(pg, `07-${tag}-toast-row`)}`);
     }
 
     // the KIT roster becomes a horizontal strip on a phone, and its status tag used to be pushed
@@ -728,7 +729,11 @@ const stale = s => ({
   options: undefined,           // A25: no option table — the LOG SYNC switch must not render at all
   versions: undefined,          // A29: the server's own tally — an older MC has none and the console counts nodes
   readiness: s.readiness ? { ...s.readiness, app_vers: undefined, board: (s.readiness.board || []).map(b => { const { app_ver, platform, ...r } = b; void app_ver; void platform; return r; }) } : s.readiness,
-  nodes: (s.nodes || []).map(n => { const { app_ver, platform, log, ...r } = n; void app_ver; void platform; void log; return r; }),
+  // F-armory-dedup (2026-09-17): `player_id` stripped too, purely so this walk's phones stay under
+  // PHONES ON THE NET (a bound phone's own card is now hidden behind its gun card) — the assertions
+  // below are about the NODE's fallback when `app_ver`/`platform`/`log` are absent, which needs an
+  // actual node card on screen to read.
+  nodes: (s.nodes || []).map(n => { const { app_ver, platform, log, player_id, ...r } = n; void app_ver; void platform; void log; void player_id; return r; }),
   live: s.live ? { ...s.live, rows: (s.live.rows || []).map(r => { const { best_streak, multi_best, first_blood, acc_provisional, shots_total, ...rest } = r; void best_streak; void multi_best; void first_blood; void acc_provisional; void shots_total; return rest; }) } : s.live,
   recap: s.recap ? { ...s.recap, after_end: undefined, rows: (s.recap.rows || []).map(r => { const { best_streak, multi_best, first_blood, acc_provisional, shots_total, ...rest } = r; void best_streak; void multi_best; void first_blood; void acc_provisional; void shots_total; return rest; }) } : s.recap,
 });

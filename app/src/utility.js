@@ -4,6 +4,7 @@
 // calibrate the radius by standing where "at the station" should be and pressing SET.
 // No gun, no engine: the revive itself happens on the player's phone (engine.js _triggerPulled).
 import { BrxLink } from './brxlink.js';
+import { ScanGuard, SCAN_MODES, stationScanStep } from './scanwatch.js';   // the BLE flood guard (bench 2026-09-17)
 import { Presence, encodeUuid, KIND, TEAM_ANY, PLAYER_STATE } from './beacon.js';
 import { ControlPoint, ControlAdvertiser, CONTROL_STATE, NEUTRAL as CONTROL_NEUTRAL, claimable, DEFAULT_CAPTURE_S, DEFAULT_NET_CAP } from './control.js';   // kind 5: the control point (utility.md §5, K1)
 import { Transport } from './transport/transport.js';   // utility.md §5b/§5c: the phone joins MC at muster to be ARMED (contracts A13.5)
@@ -83,6 +84,7 @@ const link = new BrxLink({ log });
 const presence = new Presence({ defaultThreshold: settings.threshold, dwellMs: settings.dwell, alpha: 0.35, game: settings.game });
 const wasAlive = new Map();          // player id → alive bit, to count revives that happened here
 let revives = 0, scanning = false, _lastScanRestart = 0, _scanBusy = false, _twin = 0;
+const scanGuard = new ScanGuard(); let _scanModeIdx = 0, _scanModeSince = 0;   // a crowded field drops the player watch to balanced (scanwatch.js)
 const SCAN_RESTART_MS = 8000;        // S6: a long scan STALLS on Android, worse while we also advertise — restart it on this cadence (8s > the ~6s floor Android's ~5-starts/30s throttle imposes)
 
 /** The advert triple this kind publishes. A control point's is LIVE state (owner / progress / contested),
@@ -210,7 +212,8 @@ async function startScan() {
   // scanMode 2 (low latency), not 1 (balanced): Android throttles a balanced scan so hard that presence
   // froze on the player side (app.js, hardware 2026-09-04), and the station reads player adverts through
   // the same starved radio (S6). A station is usually stationary/plugged, so the battery cost is fine.
-  try { await link.scan(hit => { if (hit.uuids && hit.uuids.length) presence.observe(hit.uuids, hit.rssi, Date.now()); }, { scanMode: 2 }); _lastScanRestart = Date.now(); log('watching for players'); }
+  scanGuard.reset(Date.now());
+  try { await link.scan(hit => { if (hit.uuids && hit.uuids.length) presence.observe(hit.uuids, hit.rssi, Date.now()); }, { scanMode: SCAN_MODES[_scanModeIdx], onRaw: () => scanGuard.hit(Date.now()) }); _lastScanRestart = Date.now(); log('watching for players'); }
   catch (e) { scanning = false; log('scan: ' + (e && e.message || e), 'le'); }
 }
 // S6: stop+start to recover a scan whose callbacks Android silently paused (advertise+scan on one radio
@@ -233,7 +236,13 @@ function tick() {
   // players. Mirrors the player-side beacon-scan refresh in app.js.
   if (isNative() && !_scanBusy) {
     if (!scanning) { startScan().catch(() => {}); }
-    else if (now - _lastScanRestart >= SCAN_RESTART_MS) refreshScan().catch(() => {});
+    else {
+      const { rate, over } = scanGuard.check(now);
+      const step = stationScanStep({ over, idx: _scanModeIdx, since: _scanModeSince, now });
+      if (step.tripped) log(`ble scan flood: ${rate} results/s (budget ${scanGuard.budget}); player watch drops to scanMode ${SCAN_MODES[step.idx]}`, 'le');
+      _scanModeIdx = step.idx; _scanModeSince = step.since;
+      if (step.restart || now - _lastScanRestart >= SCAN_RESTART_MS) refreshScan().catch(() => {});
+    }
   }
   presence.defaultThreshold = settings.threshold;
   presence.game = settings.game;

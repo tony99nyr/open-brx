@@ -20,12 +20,12 @@ export type {
   McConfidence, RecapView, WinnerView, PossessionView, AfterEndPlayer, AfterEndView,
   MatchHistoryRow, ModeInfo, NodeView, StationControl, StationReport, StationArmed, StationView,
   LiveView, StartNodeView, StartView, State, GameConfigBase, LanView, KitView, LobbyAck,
-  LobbyView, GameAnnouncementView, SyncRow, SyncTotals, SyncView, SessionOptions, VersionsView,
-  NoticesView, RestoredFromView, SnapshotFeedRow,
-  TunnelStatus, TunnelProviderValue, ValuePair,
+  LobbyView, GameAnnouncementView, SyncAckState, SyncRow, SyncTotals, SyncView, SessionOptions, VersionsView,
+  NoticesView, RestoredFromView, SnapshotFeedRow, OrphanMatchView, OperatorActionResult, OperatorStatus,
+  TunnelStatus, TunnelProviderValue, ValuePair
 } from './contract.gen';
 export type {
-  ArmState, ControlCmd, ItemKind, LoadoutPreset, McKind, NodeDeniedCommand, NodeKind, PersistedEventType, Phase,
+  ArmState, ControlCmd, ItemKind, LoadoutPreset, McKind, NodeDeniedCommand, NodeKind, OperatorCmd, PersistedEventType, Phase,
   SlotChoice, StationKind, StationSourceId, WinBy,
 } from './contract.gen';
 // values (verbatimModuleSyntax: a value re-export may not ride in a `export type` statement)
@@ -33,7 +33,8 @@ export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, STALE_AFTER_MS, STATION_KINDS, STAT
 
 import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LogView, Phase, Player,
   PerkView, ScanRow, StationKind, StationView, VoiceList, PhaseRefusalBody, ModeInfo,
-  WeaponView, SavedGame, LanPublic, MatchHistoryRow, PresentationView, RecapView, State } from './contract.gen';
+  WeaponView, SavedGame, LanPublic, MatchHistoryRow, PresentationView, RecapView, State,
+  OperatorActionResult, OperatorCmd } from './contract.gen';
 
 export type TunnelProvider = import('./contract.gen').TunnelProviderValue | null;
 
@@ -41,7 +42,16 @@ export type FeedTag = 'DOUBLE KILL' | 'TRIPLE KILL' | `STREAK ×${number}` | 'FI
   /** A11.4/F118: a global-state alert MC pushed to the nodes. `ALERT` reached everyone bound, `WITHHELD`
    *  reached nobody (mc_confidence refused it, or no node was in coverage), `ROLE` is a role assignment
    *  (VIP/carrier). The `text` is the OPERATOR's third-person copy — render it VERBATIM, never re-word. */
-  | 'ALERT' | 'WITHHELD' | 'ROLE';
+  | 'ALERT' | 'WITHHELD' | 'ROLE'
+  /** A47: the operator's menu on the LIVE board sent RESYNC / RESPAWN / RELINK to one player's phone, or
+   *  that phone answered (`operator_result`). */
+  | 'OPERATOR'
+  /** A34: a phone came back live in a match MC retired, or the operator ended a match MC did not start. */
+  | 'RECONCILED'
+  /** Bench 2026-09-17: MC restarted and resumed (or adopted) the match in play. */
+  | 'RESUMED'
+  /** A note about a match MC did not start (an adopted match): MC records it and ends nothing. */
+  | 'NOTE';
 export interface FeedEntry { t_match_s: number; text: string; tag?: FeedTag; kind: 'kill' | 'sync' | 'info' | 'alert' }
 
 /** loadout.md §3.2 (server pass 2, 2026-09-12) — why a slot's pool came out EMPTY. A closed
@@ -114,6 +124,9 @@ export interface Api {
   rangeVerdict(weapon_id: string, verdict: 'pass' | 'issue', note?: string): Promise<unknown>;
   endTryout(id: string): Promise<void>;
   setReady(id: string, ready: boolean): Promise<Player>;
+  /** Bench 2026-09-17: MARK ALL READY -- the roster-wide `host_override`, LOBBY only. Marks every
+   *  rostered, non-standby player ready (never touches acks/config); refused outside LOBBY. */
+  readyAll(): Promise<{ ok: boolean; readied: string[] }>;
   /** `repushed` (R2-1): this call landed on an ALREADY-PUSHED lobby, so it was a RE-PUSH — same game
    *  number, fresh heads, every judgement about the old head dropped. `config_id` is the head that
    *  was just pushed; a RE-push MINTS A FRESH ONE (F6), which is what makes it provable — an ack
@@ -139,12 +152,23 @@ export interface Api {
   control(cmd: 'end' | 'recall' | 'panic', confirm?: boolean): Promise<{
     ok: boolean; ended?: boolean; reached?: number; pushed?: number; nodes?: number; phase?: Phase; error?: string;
   }>;
+  /** A47: `POST /api/players/{pid}/operator {cmd, match_id}` -- the LIVE board's operator menu, to ONE bound
+   *  player's phone. 409 outside ARMED/LIVE, for a stale match, or a phone out of reach, with the reason in
+   *  `error`. `pushed` means a socket took it (no ack kind exists for `control`). A server that predates it 404s. */
+  operatorAction(player_id: string, cmd: OperatorCmd, match_id: string): Promise<OperatorActionResult>;
   getRecap(): Promise<RecapView>;
   matchHistory(): Promise<MatchHistoryRow[]>;
   recapCsvUrl(): string;
   /** an ARCHIVED match's stats table — `recapCsvUrl` only ever serves the LIVE scorer (W1/F6) */
   matchCsvUrl(match_id: string): string;
   newSession(keep_roster: boolean): Promise<State>;
+  /** RECAP's NEXT MATCH (2026-09-16): roll forward with the roster and the game kept, then LOAD that
+   *  game. Answers the full State. A server that predates it answers 404. */
+  nextMatch(): Promise<State>;
+  /** Bench 2026-09-17: `POST /api/match/orphan/resume` — RESUME MATCH on the match `state.orphan_match` names. */
+  resumeOrphan(match_id: string): Promise<State>;
+  /** Bench 2026-09-17: `POST /api/match/orphan/end` — END THEIR MATCH, to the phones reporting it only. */
+  endOrphan(match_id: string): Promise<State>;
   /** "Report a problem" — `POST /api/report`. Bundles this session's evidence into a zip, with
    *  names, tagger ids, IP addresses and the access code stripped server-side (`removed` counts what
    *  was taken out). Allowed in every phase; can take a few seconds. `download` is the path to fetch

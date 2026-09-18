@@ -30,7 +30,9 @@ base and needs a dark theme, not a true blackout.
 
 **Real content, never lorem.** Handles a host would type: `REAPER`, `VIPER`, `NOMAD`, `GHOST`, `HAVOC`, `SABLE`.
 Gun names `GUN-A`, shown as `GUN-A-3D4F` (`<sticker>-<tail>`; real sticker ids never enter the repo). TDM
-defaults HP `45`, armor `70`, ammo `32 / 192` (the AR). Modes: TDM, FFA, Infection, Last Man Standing,
+defaults HP `45`, armor `70`, ammo `32 / 192` (the AR's captured Callsign numbers; **F253** is open on
+whether the shipped weapon reaches the gun at 192 or 96 spare rounds, so read this as Mission Control's own
+catalogue figure, not a settled in-game count). Modes: TDM, FFA, Infection, Last Man Standing,
 Extraction. Player numbers `#1`–`#63`. Scoreboard columns: Player · Team · K · D · A · K/D · Acc% · Streak ·
 Medals. Recap honors: MVP, Most Kills, Best K/D, Sharpshooter, Survivor, First Blood, Multikill, Assistant.
 Timers and counts are tabular numerals; K/D and Acc% one decimal.
@@ -68,8 +70,14 @@ presented stale as current — round 5), Companion batt/fw slot (future → "—
 screen off) · **red** blocks the push (no phone on the gun, identity unknown/reverted, wrong Wi-Fi / MC
 unreachable, never synced); after the push a gun that didn't **echo** turns red and blocks start. An operator
 checklist strip: mobile data off, auto-join field SSID, auto-lock off, Do-Not-Disturb on. Summary + gate:
-**"6/8 green, 2 amber, 0 red — GO"**; gate is **no reds**, not all-green; STANDBY while the roster is empty;
-show *why* a gun is red. Device-first muster: claim a phone + gun in one gesture.
+**"6/8 green, 2 amber, 0 red — GO"**; gate is **no reds**, not all-green; STANDBY while the roster is empty.
+The gate button is the status (bench 2026-09-17, `derive.armoryGate`): `N GUNS BLOCKED` (disabled, a red no
+push cures), `WAITING FOR N PHONES` (pressable), `NO PLAYERS YET ▸`, else `HARDWARE READY ▸`; it goes to GAMES.
+To its left, `ENABLE BACKHAUL` (`derive.backhaulOffer`) shows only when cloudflared is available and not
+`manual`, the link is off or in error, and the board is non-empty and all green. It posts `/api/tunnel
+{on:true}` without waiting, reads STARTING…, then a quiet BACKHAUL ON tag; an error is one quiet line.
+Show *why* a gun is red. Device-first muster: claim a phone + gun in one gesture. A claim never moves the console off ARMORY
+(2026-09-17): CONTINUE TO KIT is the operator's own tap, however many gamertags they set first.
 
 ### A2 · GAMES — "pick the game", and the GAME DESIGNER — "define a game"
 Tony: picking tonight's game and defining a game are different jobs; BUILD had both and buried the defining
@@ -131,9 +139,11 @@ secondary is weapon | empty, perk is perk | empty; a rule-locked slot shows a pa
 **arsenal** for the selected slot (a gallery, not a dropdown: weapon art, class tag as "CLASS n" with a tooltip
 — never a bare protocol number, HITS TO KILL against the host's pool instead of a range bar, the pool summary
 once in the header "13 OF 18 · NO HEAVIES", out-of-pool tiles dimmed; the PERK slot shows the perk grid with an
-effects block) → hero for the selected item. Picking Easy Reload over a loaded secondary (or the reverse) is a
-two-tap confirm on the tile ("DROPS THEIR SMG — TAP AGAIN"). A rejected host pick is recorded and shown as the
-host's error, never blamed on the phone (round 8). Tablet ≤ 900 px: the roster becomes a horizontal strip.
+effects block) → hero for the selected item. **Easy Reload is not in the perk grid**: it is the other
+accessibility toggle, on the same pool card as HP / armour (S50, 2026-09-17), because it is a per-player
+switch, not a balance pick. Setting it over a loaded secondary (or the reverse) is a two-tap confirm ("DROPS
+THEIR SMG — TAP AGAIN"). A rejected host pick is recorded and shown as the host's error, never blamed on the
+phone (round 8). Tablet ≤ 900 px: the roster becomes a horizontal strip.
 
 ### A4 · Weapon try-out
 Changing a weapon **arms that player's gun privately** so they fire + reload to feel it — no game start,
@@ -167,8 +177,14 @@ entries. Per-player rows: number, name, team, K / D / A, K/D, accuracy, streak, 
 N/M nodes; the rest end at 12:00". **TV mode** for a spectator display (read-only, no token).
 
 ### A8 · RECAP (the payoff)
-**Winner** up top (team, or top player in FFA), celebratory but tactical; **NEW MATCH** is the primary action
-(round 4 #19). **Provisional state** until every phone has flushed: "N players still out — kills provisional"
+**Winner** up top (team, or top player in FFA), celebratory but tactical; **NEXT MATCH ▸** is the primary action
+(A43, 2026-09-16, replacing round 4 #19's NEW MATCH): it keeps the roster and the game (same mode and settings),
+LOADs that game and lands on GAMES, one tap from KIT. There is no "pick a mode" step and no banner telling the
+operator the match ended: any GAMES or KIT action after the whistle (an edit, LOAD, a push) starts the next
+match the same way. MC rolls on that first action, not at the whistle, so the recap stays on screen until the
+operator moves on and stays in the history picker after. Bench 2026-09-17: the command bar's own NEW SESSION
+control was cut (redundant with NEXT MATCH ▸ and the LOAD-rolls-forward path); Armory's NEW SESSION, CLEAR
+ROSTER (shown after a restore) still drops the roster there. **Provisional state** until every phone has flushed: "N players still out — kills provisional"
 + a provisional export, finalized vs provisional designed distinctly. **Honors** as award cards — none under 3
 scored players; MVP / MOST KILLS require kills > 0; SURVIVOR reads "FEWEST DEATHS · N". **Full stats table**
 (all players, all columns, MEDALS) + **EXPORT CSV**; a history picker over this session's finished matches.
@@ -181,5 +197,6 @@ MISSION CONTROL" until the push lands, "MC-ARMED · game N" after.
 
 ## Deliverables to iterate
 The screens A1–A8 + the designer, each with a **desktop** and a **tablet** variant for KIT and LIVE. Keep it
-one product with the Phone HUD. Every control gets a screen-truth assertion in `tools/e2e.mjs` before the
+one product with the Phone HUD. Every control gets a screen-truth assertion in the e2e suite
+(`webapp/mc/test/e2e/*.mjs`, run by the `e2e:*` scripts in `webapp/mc/package.json`) before the
 screen is called done, and a compat step against a server without its new routes (round 7).

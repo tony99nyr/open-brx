@@ -3,7 +3,7 @@ import type { Phase } from '../api/types';
 import { useStore, type View } from '../store';
 import { clearNotice, useNotice } from '../notice';
 import { F, T } from '../tokens';
-import { HazardButton, GhostButton, PrimaryButton } from '../ui';
+import { HazardButton, GhostButton } from '../ui';
 import { ReportPanel } from '../ui/ReportPanel';
 
 // LIVE and RECAP are one tab. Tony, 2026-09-02: "one or the other is useful at a time, there is a lot
@@ -79,16 +79,22 @@ export function CommandBar() {
                 style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3, fontFamily: "'Chakra Petch'", background: active ? '#0c1420' : 'transparent',
                   border: 'none', borderBottom: `2px solid ${active ? T.acc : 'transparent'}`, padding: '8px 16px 7px', cursor: 'pointer', color: active ? T.ink : T.dim, minHeight: 44 }}>
                 <span style={{ font: F.mono(600, 9), letterSpacing: '.2em', color: active ? T.acc : 'rgba(92,113,134,.7)' }}>0{i + 1}</span>
-                <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.22em' }}>{label}{id === 'build' && view === 'designer' ? <span style={{ color: T.acc }}> ▸ DESIGNER</span> : ''}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.22em' }}>{label}{id === 'build' && view === 'designer' ? <span style={{ color: T.acc }}> ▸ DESIGNER</span> : ''}
+                  {/* Bench 2026-09-17: phones are in a match this MC did not start. Only while that is true. */}
+                  {id === 'live' && state?.orphan_match && (
+                    <span data-testid="match-tab-dot" role="img" aria-label="phones in a match this MC did not start"
+                      style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: T.warn, marginLeft: 8, verticalAlign: 'middle' }} />
+                  )}</span>
               </button>
             );
           })}
         </nav>
         {/* THE TOASTS, in a row of their own. They used to share the nowrap row below with the phase
-            tag, NEW MATCH and the menu, so at 393px a notice took the width and squeezed
-            "NEW MATCH ▸" onto three lines — a 72px button, measured (round-2 review 2026-09-12).
-            `.cb-notices` keeps them inline on a desk and gives them a full-width row under the bar on
-            a phone; the controls beside them wrap rather than compress. */}
+            tag and the menu, so at 393px a notice took the width and squeezed a primary button onto
+            three lines — measured (round-2 review 2026-09-12; the squeezed control at the time was
+            the command bar's own NEW SESSION, cut 2026-09-17). `.cb-notices` keeps them inline on a
+            desk and gives them a full-width row under the bar on a phone; the controls beside them
+            wrap rather than compress. */}
         <div className="cb-notices">
           {/* an action that failed must still say so somewhere immediate */}
           {error && (
@@ -125,8 +131,12 @@ export function CommandBar() {
                          color: state?.phase === 'live' ? T.bad : state?.phase === 'armed' ? T.warn : state?.phase === 'recap' ? T.ok : T.dim }}>
             {state?.phase === 'live' ? '● LIVE' : state?.phase === 'armed' ? '▲ ARMED' : state?.phase === 'recap' ? '■ MATCH OVER' : '◇ SETUP'}
           </span>
-          {state?.phase === 'recap' && (
-            <PrimaryButton size={12} onClick={async () => { const ok = await run(() => api.newSession(true)); if (ok !== undefined) setView('muster'); }}>NEW MATCH ▸</PrimaryButton>
+          {/* `--bench-volume N`: every gun plays at N, not the venue level. Say it where nobody can miss it. */}
+          {state?.bench_volume != null && (
+            <span data-testid="bench-volume" title={`MC was started with --bench-volume ${state.bench_volume}: every gun plays at ${state.bench_volume}, not the venue level. Not for a real game.`}
+              style={{ font: F.chk(700, 12), letterSpacing: '.16em', color: T.warn, border: `1px solid ${T.warn}`, padding: '5px 10px' }}>
+              BENCH VOL {state.bench_volume}
+            </span>
           )}
 
           {/* One button instead of a red hazard control and a wall of telemetry (Tony, 2026-09-02):

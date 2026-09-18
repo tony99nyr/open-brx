@@ -122,7 +122,11 @@ Run it three times. If the reload survives every time, the writer can relax its 
 If it does not, the stim pack must hold its revert until the reload finishes, which is a design constraint worth
 knowing before it is built.
 
-## 6. How many spare rounds does a gun ACTUALLY carry? (2 min, F253)
+## 6. How many spare rounds does a gun ACTUALLY carry? ✅ ANSWERED 2026-09-18 (F255)
+
+**Do not run this rung.** `$AMMO,0,32,192` rides `frames.spawn` AND `frames.revive`, so the gun is set to the full catalogue reserve at every spawn and the HUD agrees with it; the halved `t40` is live only in the ~200 ms between the `$WEAP` and the `$SPAWN`. The player carries the catalogue number, the HUD is right, and there is
+nothing to count. Kept for the reasoning below, which is the trap: a value on the wire is not a value in play until
+you check what overwrites it.
 
 `resolve()` writes the catalogue's `reserve` to **t17** and half of it to **t40**, keeping Battle
 Company's own captured invariant. F207 proved the gun's reported reserve mirrors **t40**. So the

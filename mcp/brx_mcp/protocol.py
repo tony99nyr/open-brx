@@ -87,7 +87,7 @@ KNOWN_COMMANDS: dict[str, CommandInfo] = {
     "IT": _c(9, False, "[jay] $IT,<gunId>,4,0,0,0,0,0,75,0 'set player id and lock'; unproven on v4.32"),
     "RADSK": _c(0, False, "[jay] the headset keepalive; JEDGE sends it to the gun every 4 s as a fake headset"),
     # -- in-game effects and pools (protocol §3.2) --------------------------------------------------
-    "LIFE": _c(4, True, "[bench] additive, takes negatives; [disasm] t4 = 0 add / 1 set clamped / 2 set unclamped"),
+    "LIFE": _c(4, True, "[bench] additive, takes negatives (S29/F109: hp and armour 2026-09-09, shields 2026-09-17); [disasm] t4 = 0 add / 1 set clamped / 2 set unclamped"),
     "BUMP": _c(5, False, "[disasm, sheet, apk2018] $BUMP,<amount>,<hp 0/1>,<armour 0/1>,<shield 0/1>,<sound>: a cascade. Our 3-token probe was inert (no flag set); the armour flag is proven on the wire by the 2026-09-18 Callsign capture ($BUMP,12,,1,,,*)"),
     "STUN": _c(1, False, "[disasm, apk2018] $STUN,<ms>: a timed stun. Our bare $STUN,* was 0 ms"),
     "PRES": _c(3, False, "[disasm] $PRES,<proto>,<sub>,<pct>: per-cell damage x (100+pct)/100"),

@@ -17,9 +17,9 @@
 // from ARMORY like kit-continue.mjs, proving the same flow against the real server this worktree
 // carries), locked (armed/live refuses an edit and says RECALL), stale (an MC with `/api/modes`
 // missing and no `loadout_policy` on the wire — the shape a pre-A10 or older server would send —
-// renders without crashing and shows the degraded state instead of a blank control), venue (F199:
-// the "SET EACH GUN TO <VENUE> (HOLD ALT 3 S)" reminder on GAMES + KIT at desk and phone width, its
-// dismissal, its re-arm on a venue change, and a config with no `environment` at all), faults
+// renders without crashing and shows the degraded state instead of a blank control), venue (F162:
+// the manual link beside the venue setting on GAMES, at desk and phone width, proving no popup
+// renders on GAMES or KIT, including against a config with no `environment` at all), faults
 // (A36/A37: `?mock&faults=1` puts a stale ack, an echo mismatch, a pool fault and a gun that does
 // not echo on four otherwise-green guns, so all four states can be looked at without hardware).
 import { chromium } from 'playwright';
@@ -469,9 +469,12 @@ async function runLocked(browser, viteBase) {
   await until(() => pg.locator('header nav button:has-text("KIT")').count().then(n => n > 0), 5000, 'the KIT nav tab');
   await pg.locator('header nav button:has-text("KIT")').first().click();
   await until(() => onKit(pg), 5000, 'KIT to open from the nav while the match is live');
-  await until(async () => (await panel(pg).locator('[data-testid="game-edit-toggle"]').innerText()).includes('LOCKED — LIVE'),
-    5000, 'the collapsed header to name the lock');
-  ok(`header: LOCKED — LIVE, without even opening the panel   ${await shot(pg, '20-locked-header')}`);
+  // 2026-09-16 (Tony): the collapsed row carries no yellow LOCKED badge any more; it reads VIEW LOADED
+  // GAME, and the open panel below is what explains the lock.
+  await until(async () => (await panel(pg).locator('[data-testid="game-edit-toggle"]').innerText()).includes('VIEW LOADED GAME'),
+    5000, 'the collapsed header');
+  expect(!(await panel(pg).locator('[data-testid="game-edit-toggle"]').innerText()).includes('LOCKED'), 'no LOCKED badge on the row');
+  ok(`header: VIEW LOADED GAME, no LOCKED badge   ${await shot(pg, '20-locked-header')}`);
   await openPanel(pg);
   const txt = await panel(pg).innerText();
   expect(/RECALL/.test(txt), `opening it explains RECALL is the way out (saw ${JSON.stringify(txt.slice(0, 160))})`);
@@ -523,18 +526,20 @@ async function runStale(browser, viteBase, mcBase) {
   void mcBase;
 }
 
-// ---------------------------------------------------------- venue (F199, the ALT beam-width backstop)
-/** The indoor/outdoor reminder, driven the way the operator drives it: pick the venue on GAMES, walk
- *  to KIT, dismiss it, change the venue, watch it come back. ALT selects beam width, not range:
- *  outdoor gave roughly twice the aim tolerance across three guns. The outdoor range failure came
- *  from `$GSET` token 2 crippling hit reception, a separate setting now pinned to 0 at both venues.
- *  MC cannot make the physical ALT selection, so the reminder gets a real-browser step rather than
- *  only a jsdom one.
+// ---------------------------------------------------------- venue (F162, the ALT beam-width backstop)
+/** 2026-09-16 (bench): the dismissable "SET EACH GUN TO <VENUE> (HOLD ALT 3 S)" banner is gone ,
+ *  nagging the operator on every screen, every session, was "obnoxious" and it had to be dismissed
+ *  again on several tabs. In its place, GAMES carries one small, quiet link beside the venue setting
+ *  that opens the manual page explaining how to set the gun's own native ALT mode, in a new tab. No
+ *  dismiss state, no storage: a link needs none. MC still cannot make the physical ALT selection, so
+ *  this stays a real-browser step rather than only a jsdom one, to prove the link is really there and
+ *  really points at the manual.
  *
  *  Runs against the REAL python MC, at desk and phone width, and then against a server whose config
- *  carries no `environment` at all (the pre-venue shape) — where it must say nothing rather than
- *  name a venue nobody picked. */
-const reminder = pg => pg.locator('[data-testid="venue-mode-reminder"]');
+ *  carries no `environment` at all (the pre-venue shape), where it must still show no popup. */
+const MANUAL_ALT_MODE_URL = 'https://open-brx.iamrossi.workers.dev/manual/operate#indoor-vs-outdoor-mode';
+const reminder = pg => pg.locator('[data-testid="venue-mode-reminder"], [data-testid="venue-mode-dismiss"]');
+const manualLink = pg => pg.locator('[data-testid="venue-mode-manual-link"]');
 /** GAMES is the `build` view; reach it the way the operator does, through the nav tab. */
 async function toGames(pg) {
   await pg.locator('header nav button:has-text("GAMES")').first().click();
@@ -551,61 +556,33 @@ async function pickVenue(pg, want, mcBase) {
 }
 async function runVenue(browser, viteBase, mcBase, vp = { width: 1280, height: 800 }, tag = 'desk') {
   step = `venue/${tag}`; stepFailedAt = failures.length;
-  console.log(`\n[${step}] the ALT-hold reminder on GAMES + KIT, ${vp.width}x${vp.height}`);
+  console.log(`\n[${step}] the manual link beside the venue setting on GAMES, ${vp.width}x${vp.height}`);
   const pg = await newPage(browser, viteBase, vp);
   await pg.goto(`${viteBase}/`, { waitUntil: 'domcontentloaded' });
   await until(() => pg.locator('header nav button').count().then(n => n > 0), 15000, 'the command bar');
   await toGames(pg);
   await noCrash(pg);
 
-  // Start from INDOOR so the OUTDOOR pick below is always a real change (the desk run leaves the
-  // shared server wherever it finished, and a no-op click proves nothing).
-  await pickVenue(pg, 'indoor', mcBase);
+  await until(() => manualLink(pg).count().then(n => n === 1), 5000, 'the manual link beside the venue setting');
+  const href = await manualLink(pg).getAttribute('href');
+  expect(href === MANUAL_ALT_MODE_URL, `it points at the manual anchor (saw ${href})`);
+  expect((await manualLink(pg).getAttribute('target')) === '_blank', 'it opens in a new tab');
+  expect((await manualLink(pg).getAttribute('rel') ?? '').split(/\s+/).includes('noopener'), 'it carries rel="noopener"');
+  expect(await reminder(pg).count() === 0, 'no dismissable popup renders any more');
+  ok(`GAMES: manual link present, no popup   ${await shot(pg, `40-venue-games-link-${tag}`)}`);
+
+  // switching venue must not resurrect a popup, and the link must not move or disappear
   await pickVenue(pg, 'outdoor', mcBase);
-  // The reminder may already be on screen naming the OLD venue, so waiting for `count() === 1` would
-  // pass against the previous render. Wait for the TEXT that changes.
-  await until(async () => /SET EACH GUN TO OUTDOOR/.test(await reminder(pg).innerText().catch(() => '')),
-    5000, 'the reminder on GAMES to name OUTDOOR');
-  const txt = (await reminder(pg).innerText()).replace(/\s+/g, ' ');
-  expect(/SET EACH GUN TO OUTDOOR/.test(txt), `it names the venue that was just picked (saw ${JSON.stringify(txt.slice(0, 120))})`);
-  expect(/ALT 3 S/.test(txt), 'it says HOW (hold ALT 3 s)');
-  expect(/BEAM WIDTH, NOT RANGE/.test(txt), 'it accurately names what ALT changes');
-  expect(/ROUGHLY 2× THE AIM TOLERANCE/.test(txt), 'it gives the measured outdoor effect');
-  expect(/PERSISTS ACROSS POWER CYCLES/.test(txt), 'it says why the rack must be checked at either venue');
-  // it must be readable, not a 9px footnote, and it must fit the viewport it is in
-  const box = await reminder(pg).boundingBox();
-  expect(box && box.width <= vp.width, `it fits the ${vp.width}px viewport (width ${box && Math.round(box.width)})`);
-  ok(`GAMES: "${txt.slice(0, 90)}"   ${await shot(pg, `40-venue-games-outdoor-${tag}`)}`);
-
-  // the step is actionable on KIT too — that is where the guns are handed out
-  await toKit(pg);
-  await until(() => reminder(pg).count().then(n => n === 1), 5000, 'the reminder to be on KIT as well');
-  ok(`KIT carries the same reminder   ${await shot(pg, `41-venue-kit-outdoor-${tag}`)}`);
-
-  // DISMISS is a real control: it removes it, here AND on the screen it was raised from
-  const btn = pg.locator('[data-testid="venue-mode-dismiss"]');
-  const bb = await btn.boundingBox();
-  expect(bb && bb.height >= 36 && bb.width >= 36, `DISMISS is a real tap target (${bb && Math.round(bb.width)}x${bb && Math.round(bb.height)})`);
-  await btn.click();
-  await until(() => reminder(pg).count().then(n => n === 0), 4000, 'the reminder to go away on KIT');
-  // …and it stays dismissed on KIT, but NOT on GAMES (polish loop 2026-09-13). GAMES is where the
-  // venue is PICKED and KIT is where the rack is actually walked, so acknowledging the instruction
-  // on one screen is not doing it on the other: the dismissal is keyed by (screen, venue).
-  await toGames(pg);
-  expect(await reminder(pg).count() === 1, 'GAMES keeps its own reminder — dismissing on KIT is not walking the rack');
-  await pg.locator('[data-testid="venue-mode-dismiss"]').click();   // …and answer it here too
-  await until(() => reminder(pg).count().then(n => n === 0), 4000, 'the reminder to go away on GAMES as well');
-  await toKit(pg);
-  expect(await reminder(pg).count() === 0, 'KIT stays dismissed: an operator who walked the rack is not nagged again');
-  await toGames(pg);
-  ok(`dismissed per screen, both answered   ${await shot(pg, `42-venue-dismissed-${tag}`)}`);
-
-  // ...but changing the venue is a NEW physical step on every gun, so it must come back
   await pickVenue(pg, 'indoor', mcBase);
-  await until(async () => /SET EACH GUN TO INDOOR/.test(await reminder(pg).innerText().catch(() => '')),
-    5000, 'the reminder to re-arm after a venue change, naming the NEW venue');
-  expect(await reminder(pg).count() === 1, 'exactly one reminder is back');
-  ok(`venue change re-armed it, naming INDOOR   ${await shot(pg, `43-venue-rearmed-${tag}`)}`);
+  expect(await reminder(pg).count() === 0, 'a venue change still shows no popup');
+  expect(await manualLink(pg).count() === 1, 'the link is still there after a venue change');
+  ok(`venue change: still just the link, no popup   ${await shot(pg, `41-venue-games-after-change-${tag}`)}`);
+
+  // KIT is where the guns are handed out, no control lives there, so no popup and no link either
+  await toKit(pg);
+  expect(await reminder(pg).count() === 0, 'KIT carries no popup');
+  expect(await manualLink(pg).count() === 0, 'the link lives beside the setting on GAMES, not on KIT');
+  ok(`KIT: no popup, no stray link   ${await shot(pg, `42-venue-kit-clean-${tag}`)}`);
   await pg.context().close();
 }
 

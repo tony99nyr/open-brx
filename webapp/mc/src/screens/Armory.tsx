@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import QRCode from 'qrcode';
-import { blocksPush, isRoutableLanIp, reachLabel, reachTooltip, registrySig, sentenceCase, splitBlocker, staleReachReason } from '../api/derive';
+import { armoryGate, backhaulOffer, GUN_FLAPPING_LINE, poolStaleLabel, isRoutableLanIp, reachLabel, reachTooltip, registrySig, sentenceCase, splitBlocker, staleReachReason } from '../api/derive';
 import { STALE_AFTER_MS, type LogView, type ReadinessRow, type TunnelStatus } from '../api/types';
 import { setNotice } from '../notice';
 import { useStore } from '../store';
@@ -92,6 +92,7 @@ export function Armory() {
   // Keyed on WHICH GUNS MC knows about, so a SCAN that enrols a new gun shows up in KNOWN GUNS —
   // NOT SEEN without a reload. NOT on `readiness.t`: that is a clock, and at 4 snapshots a second it
   // refetches the armory ~4x/s for as long as this screen is open (review 2026-09-01).
+  const backhaul = useBackhaul();   // ENABLE BACKHAUL beside the gate (bench 2026-09-17)
   const sig = registrySig(state);
   useEffect(() => { api.armory().then(setRegistry).catch(() => { /* keep the last good list — a transient failure must not empty KNOWN GUNS */ }); }, [api, sig]);
   if (!state) return null;
@@ -99,31 +100,29 @@ export function Armory() {
   const board = readiness.board;
   // A13.5: a utility phone is a station, not a companion; it has its own card in ITEMS below.
   const phones = (state.nodes ?? []).filter(n => n.node_type !== 'utility');
+  // F-armory-dedup (operator, bench 2026-09-17): "a linked phone for a rostered player appears twice —
+  // once as the gun card, once under PHONES ON THE NET. Confusing." A board row IS that phone once it
+  // reads `node: 'linked'` (`state.py`'s `nid` is the same node this loop is walking), so PHONES ON THE
+  // NET now lists only what the gun cards do NOT already say: a phone with no bound player, or one
+  // bound to a player who is not on this board at all (removed from the roster, say). Everything a
+  // hidden card carried that the gun card did not — the LOGS button, the build chip — moved onto
+  // GunCard itself (below) rather than being dropped.
+  const boardLinkedPlayerIds = new Set(board.filter(g => g.node === 'linked').map(g => g.player_id));
+  const visiblePhones = phones.filter(n => !(n.player_id && boardLinkedPlayerIds.has(n.player_id)));
+  const hiddenPhoneCount = phones.length - visiblePhones.length;
   const nGreen = board.filter(g => g.status === 'green').length;
   const nAmber = board.filter(g => g.status === 'amber').length;
   const nRed = board.filter(g => g.status === 'red').length;
   const nWaiting = board.filter(g => g.status === 'waiting').length;
   // "waiting" is not a fault and must not be reported as one: it just means the phone has not
   // arrived yet (Tony, 2026-09-01 — a board full of disconnected guns "looked like critical errors").
-  // No separate status line under CONTINUE. Tony, 2026-09-02: "we dont need this extra status. maybe
-  // a disabled status on the button and thats it" — so the button IS the status: it says what it is
-  // waiting for, and is disabled while it waits.
-  // R2-2 (polish loop iteration 2, 2026-09-13): CONTINUE is navigation towards the LOBBY, and the
-  // LOBBY is where A36's three proofs are CURED — so a row whose only reds are the three must not
-  // stand between the operator and the button that fixes it. `nRed` stays the honest count on the
-  // RED tile (those rows ARE red); `nRedGating` is what the gate asks.
-  // F1 (iteration 3): the gate asks the SERVER's question (`derive.blocksPush`, mirroring
-  // `push_config._blocks_push`) instead of "is every blocker on this row push-cured". The two differ
-  // on a row carrying a curable blocker AND an uncurable one — that row still has to block CONTINUE,
-  // and it still has to be counted as one a re-push will partly help.
-  const gatingReds = board.filter(g => g.status === 'red' && blocksPush(g));
-  const nRedGating = gatingReds.length;
-  const nRedCurable = nRed - nRedGating;
-  const gateLabel = nRedGating ? `${nRedGating} GUN${nRedGating === 1 ? '' : 'S'} BLOCKED` : 'CONTINUE ▸';
-  const gateWhy = nRedGating ? (gatingReds[0]?.blockers?.[0] ?? 'Clear the fault to continue')
-    : nRedCurable ? `${nRedCurable} gun${nRedCurable === 1 ? '' : 's'} answered for an older config — RE-PUSH CONFIG on LOBBY`
-    : nWaiting ? 'Open the BRX app on each phone and set its gun'
-    : nGreen ? '' : 'Power the guns and open the app on each phone';
+  // No separate status line under the gate button. Tony, 2026-09-02: "we dont need this extra status.
+  // maybe a disabled status on the button and thats it". The history of the gate (R2-2: a red a
+  // RE-PUSH cures does not block; F1: the gate asks the server's `blocksPush`) lives on
+  // `derive.armoryGate`.
+  // Bench 2026-09-17 (Tony): CONTINUE ▸ became HARDWARE READY ▸, and the label is the status: it names
+  // what it waits for. The gate did not move (`derive.armoryGate`).
+  const gate = armoryGate(board);
 
   return (
     <div className="screen" style={{ maxWidth: 1380, margin: '0 auto' }}>
@@ -137,23 +136,17 @@ export function Armory() {
           {/* A25: the session switch. Rendered ONLY when the server sends an option table — an older MC
               has no `/api/options` to PUT to, and a switch that writes to a 404 is worse than none. */}
           {state.options?.log_sync && (
-            // What AUTO means, and that the LOGS button ignores this switch, lived ONLY in a `title`
-            // — which nobody hovers and a touch console cannot show at all, so the one rule the
-            // operator needs was invisible (round-2 review 2026-09-12). One legend line under the
-            // switch, at the console's 11 px floor for text that carries meaning.
-            <span data-logsync={state.options.log_sync} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: 5, maxWidth: 380 }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ font: F.mono(600, 11), letterSpacing: '.16em', color: T.micro }}>LOG SYNC</span>
-                <Seg label="log sync" value={state.options.log_sync}
-                  options={[{ value: 'auto' as const, label: 'AUTO' }, { value: 'manual' as const, label: 'MANUAL' }]}
-                  onChange={v => run(() => api.setOptions({ log_sync: v }))} pad="5px 12px" />
-              </span>
-              <span data-logsync-legend="1" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro, lineHeight: 1.5, textAlign: 'left' }}>
-                {state.options.log_sync === 'auto'
-                  ? 'AUTO: MC ASKS EACH PHONE ON ITS OWN — AT THE RECAP, ON AN OFFER, AND WHEN ONE COMES BACK IN RANGE.'
-                  : 'MANUAL: MC NEVER ASKS ON ITS OWN — ONLY THE LOGS BUTTON DOES.'}
-                {' · '}THE LOGS BUTTON IS NEVER GATED BY IT.
-              </span>
+            // Bench 2026-09-17 (Tony): the always-visible legend under this switch was noise. What each mode does
+            // is a short tooltip on the LOG SYNC label; the LOGS button works in both modes.
+            <span data-logsync={state.options.log_sync} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <span data-logsync-label="1"
+                title={state.options.log_sync === 'auto'
+                  ? 'Auto: MC collects each phone log after the match. The LOGS button always works.'
+                  : 'Manual: MC collects a log only when you press LOGS.'}
+                style={{ font: F.mono(600, 11), letterSpacing: '.16em', color: T.micro, cursor: 'help' }}>LOG SYNC</span>
+              <Seg label="log sync" value={state.options.log_sync}
+                options={[{ value: 'auto' as const, label: 'AUTO' }, { value: 'manual' as const, label: 'MANUAL' }]}
+                onChange={v => run(() => api.setOptions({ log_sync: v }))} pad="5px 12px" />
             </span>
           )}
           {phones.length > 0 && (
@@ -169,14 +162,19 @@ export function Armory() {
             {nWaiting > 0 && <CountBlock value={nWaiting} label="NO PHONE" color={T.micro} />}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-            {/* Disabled on REDS only. Amber never blocked continuing and must not start now — this
-                is navigation to GAMES; the real gate is the lobby push. */}
-            <button type="button" className={!nRedGating ? 'hov-accbg' : ''} disabled={!!nRedGating} title={gateWhy}
-              onClick={async () => { await run(() => api.setPhase('build')); setView('build'); }}
-              style={{ font: F.osw(700, 20), letterSpacing: '.22em', padding: '10px 26px 10px 32px', whiteSpace: 'nowrap',
-                background: nRedGating ? 'transparent' : nGreen ? T.ok : T.panelAlt, color: nRedGating ? T.micro : nGreen ? T.accInk : T.dim,
-                border: `1px solid ${nRedGating ? T.line2 : nGreen ? T.ok : T.line}`, clipPath: CHAMFER.tl14,
-                cursor: nRedGating ? 'not-allowed' : 'pointer', minHeight: 48 }}>{gateLabel}</button>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              {backhaul.control}
+              {/* Disabled on REDS a push cannot cure, only. Amber and a waiting phone never blocked
+                  going on: this is navigation to GAMES; the real gate is the lobby push. */}
+              <button type="button" data-testid="armory-gate" data-gate-ready={gate.ready ? '1' : '0'}
+                className={!gate.disabled ? 'hov-accbg' : ''} disabled={gate.disabled} title={gate.why}
+                onClick={async () => { await run(() => api.setPhase('build')); setView('build'); }}
+                style={{ font: F.osw(700, 20), letterSpacing: '.22em', padding: '10px 26px 10px 32px', whiteSpace: 'nowrap',
+                  background: gate.disabled ? 'transparent' : gate.ready && nGreen ? T.ok : T.panelAlt, color: gate.disabled ? T.micro : gate.ready && nGreen ? T.accInk : T.dim,
+                  border: `1px solid ${gate.disabled ? T.line2 : gate.ready && nGreen ? T.ok : T.line}`, clipPath: CHAMFER.tl14,
+                  cursor: gate.disabled ? 'not-allowed' : 'pointer', minHeight: 48 }}>{gate.label}</button>
+            </div>
+            {backhaul.errLine}
           </div>
         </>
       } />
@@ -189,14 +187,26 @@ export function Armory() {
       </div>
       <Items />
       {phones.length > 0 && (
-        /* `data-nodes` is the count this section BELIEVES it is rendering; each card carries
+        /* `data-nodes` is the count this section BELIEVES it is RENDERING AS CARDS; each card carries
            `data-node-card`. A test can then wait for "every phone card is on screen" instead of
-           sleeping through the first snapshots — the sleep is what hid the arm_state crash below. */
-        <div style={{ marginTop: 20 }} data-nodes={phones.length}>
-          <SectionRule label={`PHONES ON THE NET // ${phones.length}`} hint="WITH OR WITHOUT A GUN" />
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 12 }}>
-            {phones.map(n => <NodeCard key={n.node_id} n={n} registry={registry} />)}
-          </div>
+           sleeping through the first snapshots — the sleep is what hid the arm_state crash below.
+           F-armory-dedup: that count is now `visiblePhones`, not every connected phone — a phone
+           already shown on a gun card above is not rendered again here. `data-phones-total` keeps the
+           full connected count on the page for anything that needs to know a phone exists at all. */
+        <div style={{ marginTop: 20 }} data-nodes={visiblePhones.length} data-phones-total={phones.length}>
+          {visiblePhones.length > 0 && (<>
+            <SectionRule label={`PHONES ON THE NET // ${visiblePhones.length}`} hint="WITH OR WITHOUT A GUN" />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 12 }}>
+              {visiblePhones.map(n => <NodeCard key={n.node_id} n={n} registry={registry} />)}
+            </div>
+          </>)}
+          {/* every remaining connected phone already has a gun card above — say so once, quietly,
+              instead of a section that either repeats them or simply vanishes with no explanation. */}
+          {hiddenPhoneCount > 0 && (
+            <div data-hidden-phones={hiddenPhoneCount} style={{ marginTop: visiblePhones.length > 0 ? 10 : 0, font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro }}>
+              {hiddenPhoneCount} PHONE{hiddenPhoneCount === 1 ? ' IS' : 'S ARE'} ON PLAYER CARDS ABOVE
+            </div>
+          )}
         </div>
       )}
       {registry.filter(r => !readiness.unclaimed.some(u => u.gun_id === r.gun_id) && !readiness.board.some(b => b.gun_id === r.gun_id) && !(state?.nodes ?? []).some(n => (n.gun_tail || '').toUpperCase() === (r.ble?.tail || '—').toUpperCase())).length > 0 && (
@@ -226,6 +236,53 @@ export function Armory() {
   );
 }
 
+/** ENABLE BACKHAUL (bench 2026-09-17): a one-tap start for the internet link, beside HARDWARE READY,
+ *  offered only once every rostered phone is on the board and green (`derive.backhaulOffer`). It calls
+ *  the same route as REACH's TURN ON and never waits on the link: the operator can go on to GAMES while
+ *  the link starts. After a press it stays as a quiet BACKHAUL ON tag, so the press visibly landed; a
+ *  link that was already up before this screen pressed anything shows nothing here (REACH says so). An
+ *  error is one quiet line under the row and never touches HARDWARE READY. */
+function useBackhaul(): { control: ReactNode; errLine: ReactNode } {
+  const { state, api } = useStore();
+  const [pressed, setPressed] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const { offer, status } = backhaulOffer(state);
+  // `sending` holds STARTING… from the press until the next snapshot moves `lan.public.status`, so the
+  // button does not flash back between the route's reply and the snapshot that follows it.
+  useEffect(() => { setSending(false); }, [status]);
+  const start = () => {
+    setPressed(true); setSending(true); setErr(null);
+    // not awaited by the caller: navigation must never wait on the link
+    api.setTunnel(true).catch(e => { setErr((e as Error).message || 'the link did not start'); setSending(false); });
+  };
+  const linkErr = status === 'up' ? null : err ?? (pressed && status === 'error' ? (state?.lan.public?.error || 'the link did not start') : null);
+  // one quiet line under the button row, so the row itself keeps its alignment
+  const errLine = linkErr ? (
+    <span data-backhaul-error="1" title={linkErr}
+      style={{ font: F.mono(500, 11), letterSpacing: '.06em', color: T.warn, maxWidth: 'min(420px, calc(100vw - 32px))',
+               minWidth: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+      BACKHAUL FAILED: {linkErr}
+    </span>
+  ) : null;
+  let control: ReactNode = null;
+  if (status === 'starting' || (sending && status !== 'up')) {
+    control = <span data-backhaul="starting" style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.dim, padding: '8px 4px' }}>STARTING…</span>;
+  } else if (status === 'up') {
+    control = pressed ? <span data-backhaul="on"><OutlineTag color={T.ok} border={T.ok} title="The internet link is up. REACH shows its address.">BACKHAUL ON</OutlineTag></span> : null;
+  } else if (offer) {
+    control = (
+      <button type="button" data-backhaul="offer" onClick={start} className="hov-acc"
+        title="Start the internet link so phones can reach MC off the field Wi-Fi"
+        style={{ minHeight: 44, background: 'transparent', border: `1px solid ${T.line2}`, color: T.dim,
+                 font: F.chk(700, 12), letterSpacing: '.18em', padding: '10px 16px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+        ENABLE BACKHAUL
+      </button>
+    );
+  }
+  return { control, errLine };
+}
+
 /** F142 (field 2026-09-12, ISSUE 11/11b) — a `--demo` session persisted into `~/.brx-mcp/` and was
  *  silently RESTORED on the next real launch: two ghost players with no phone sat on the roster and
  *  were mistaken for real ones until match 2 was already mid-setup. The only tell in the field was one
@@ -252,7 +309,7 @@ function RestoredBanner() {
         onClick={async () => { setBusy(true); try { await run(() => api.newSession(false)); } finally { setBusy(false); } }}
         style={{ marginLeft: 'auto', font: F.chk(700, 11), letterSpacing: '.2em', padding: '8px 16px', minHeight: 36,
                  background: 'transparent', border: `1px solid ${T.warn}`, color: busy ? T.micro : T.warn, cursor: busy ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
-        {busy ? 'STARTING…' : 'FRESH SESSION ▸'}
+        {busy ? 'STARTING…' : 'NEW SESSION, CLEAR ROSTER ▸'}
       </button>
     </div>
   );
@@ -271,6 +328,14 @@ function GunCard({ g }: { g: ReadinessRow }) {
   // S38 (field 2026-09-12, ISSUE 13): the gamertag lived only in the connected-nodes strip at the top —
   // the card that carries everything ELSE about this player's gear said nothing about who was holding it.
   const player = g.player_id ? (state?.players ?? []).find(p => p.player_id === g.player_id) : undefined;
+  // F-armory-dedup (2026-09-17): a rostered player's phone used to carry the LOGS button and its app
+  // build ONLY on the separate node card under PHONES ON THE NET — which Armory() now hides for a
+  // linked, rostered phone (it is right here already). `player.node_id` is the same id `state.py`
+  // resolves into `nid` for this row; the tail match is the fallback for the demo's own "gun claimed,
+  // no roster player" preview rows, which carry no `player` object to read a node_id off.
+  const nodeId = player?.node_id
+    || (state?.nodes ?? []).find(n => (n.gun_tail || '—').toUpperCase() === (g.tail || '—').toUpperCase())?.node_id
+    || null;
   // F144/F155 (field 2026-09-12, ISSUE 14/30): the row's own view of its path to MC — `reach`/`last_reach`
   // now ride directly on the ReadinessRow (state.py stamps them the same way it stamps everything else
   // here), so this reads the ROW, never a separate `state.nodes` lookup that could name a different node
@@ -327,7 +392,14 @@ function GunCard({ g }: { g: ReadinessRow }) {
         </div>
       ) : (
       <div style={{ display: 'grid', gridTemplateColumns: '82px 1fr', gap: '6px 10px', alignItems: 'center' }}>
-        <Micro>GUN</Micro><Val color={stale ? T.warn : g.gun_linked ? T.ink : g.gun_linked === false ? T.bad : T.micro}>{stale ? `UNKNOWN — LAST DATA ${fmtAge(age ?? 0)} AGO` : g.gun_linked ? 'LINKED' : g.gun_linked === false ? 'LINK LOST' : '—'}</Val>
+        {/* Bench 2026-09-17: a headset that is off makes the gun drop the link every few seconds. The phone
+            reports `gun_flapping`, and this row holds one steady amber line instead of LINKED / LINK LOST in turn. */}
+        <Micro>GUN</Micro><span data-gun-flapping={!stale && g.gun_flapping ? 'true' : undefined}>{!stale && g.gun_flapping
+          ? <Val color={T.warn}>{GUN_FLAPPING_LINE}</Val>
+          : <Val color={stale ? T.warn : g.gun_linked ? T.ink : g.gun_linked === false ? T.bad : T.micro}>{stale ? `UNKNOWN: LAST DATA ${fmtAge(age ?? 0)} AGO` : g.gun_linked ? 'LINKED' : g.gun_linked === false ? 'LINK LOST' : '—'}</Val>}
+          {/* F208: grey information beside the link state, never a warning and never on a stale card */}
+          {!stale && poolStaleLabel(g.pool_stale, g.pool_stale_ms) && <span data-gun-silent={g.player_id} title="The phone says this gun's health and ammo readout may be out of date."
+            style={{ marginLeft: 8, font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>{poolStaleLabel(g.pool_stale, g.pool_stale_ms)}</span>}</span>
         <Micro>HEADSET</Micro><span data-headset={stale ? 'stale' : g.headset_proof ?? g.headset}><Val color={stale ? T.micro : g.headset === 'proven' ? T.ink : g.headset === 'absent' ? T.micro : T.warn}>{hs}</Val></span>
         {/* A37 — the WEAPON check, said out loud in THREE states. The headset row above answers "did
             the gun answer at all"; this one answers "did it answer with the weapon we compiled". It
@@ -352,14 +424,26 @@ function GunCard({ g }: { g: ReadinessRow }) {
           {stale && <span style={{ font: F.mono(500, 8), color: T.micro }}>*OLD</span>}
         </span>
         <Micro>LINK</Micro><Val color={stale ? T.warn : T.dim}>{linkText}</Val>   {/* this branch only runs when a node IS linked */}
+        {/* F-armory-dedup: phone battery and firmware, carried by the row (`state.py readiness()` puts
+            both on `ReadinessRow` already) but never SHOWN here before today — they lived only on the
+            node card this fix now hides for a bound phone, so a rostered player's card said nothing
+            about either. */}
+        {g.phone_batt != null && (<><Micro>PH BATT</Micro><Val color={g.phone_batt < 20 ? T.bad : T.dim}>{g.phone_batt}%</Val></>)}
+        {g.fw && (<><Micro>FIRMWARE</Micro><Val color={T.dim}>{g.fw}</Val></>)}
+        <AppVerRow app_ver={g.app_ver} platform={g.platform} />
         {/* A25: the same log view as the node card, on the per-player board — this is the one the
             operator is reading before a match, and "whose log is still owed" is a per-PLAYER question. */}
         {g.log && (<><Micro>LOG</Micro><LogCell log={g.log} /></>)}
         {/* COMPANION row returns when the ESP32 rider exists — an always-empty row reads as broken (critic #25) */}
       </div>
       )}
+      {/* F-armory-dedup: the LOGS button used to exist only on the node card, which is now hidden for
+          this exact phone (a linked, rostered player). `PullLogButton` is never gated by LOG SYNC — see
+          its own docstring — so it belongs wherever the operator is actually looking. */}
+      {g.node === 'linked' && nodeId && <PullLogButton node_id={nodeId} />}
       {(() => {
-        const raw = [...(g.blockers ?? []).map(b => [b, true] as const), ...(g.ambers ?? []).map(b => [b, false] as const)];
+        // The HEADSET OFF amber already sits in the GUN row above: once is enough on the card.
+        const raw = [...(g.blockers ?? []).map(b => [b, true] as const), ...(g.ambers ?? []).filter(b => b !== GUN_FLAPPING_LINE).map(b => [b, false] as const)];
         // F155 (field 2026-09-12, ISSUE 30): a node whose last known path was the internet tunnel used
         // to read "WRONG WI-FI" the moment that tunnel dropped — sending the operator to the phone's
         // Wi-Fi settings for a fault that is entirely MC's tunnel. When we know the real reason, it
@@ -397,6 +481,33 @@ function Val({ children, color }: { children: React.ReactNode; color: string }) 
   return <span style={{ font: F.chk(600, 12), letterSpacing: '.08em', color }}>{children}</span>;
 }
 
+/** A29's build chip — shared verbatim by GunCard (S38: the readiness row already carries `app_ver`/
+ *  `platform`) and NodeCard, so a rostered phone's card and an unclaimed phone's card can never drift
+ *  apart on how they read the same fact. `None` renders UNKNOWN rather than hiding the row — an app
+ *  that predates A29 reports nothing at all, and a row that vanishes reads as "fine" (see NodeCard's
+ *  own note on optional fields). */
+function AppVerRow({ app_ver, platform }: { app_ver?: string | null; platform?: string | null }) {
+  return (
+    <>
+      <Micro>APP</Micro>
+      <span data-app-ver={app_ver ?? ''} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+        <Val color={app_ver ? T.ink : T.micro}>{verShort(app_ver) || 'UNKNOWN'}</Val>
+        {app_ver?.includes('+') && (() => {
+          const meta = app_ver.split('+').slice(1).join('+');
+          const flag = meta.indexOf('-');
+          const [sha, rest] = flag < 0 ? [meta, ''] : [meta.slice(0, flag), meta.slice(flag)];
+          return (
+            <span title={app_ver} style={{ font: F.mono(500, 11), color: T.faint, minWidth: 0, wordBreak: 'break-all' }}>
+              +{sha}{rest && <span style={{ color: T.warn }}>{rest}</span>}
+            </span>
+          );
+        })()}
+        {platform && <span style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>{platform.toUpperCase()}</span>}
+      </span>
+    </>
+  );
+}
+
 
 /** A connected companion phone — with or without a gun. Same card language as GunCard.
  *
@@ -420,11 +531,25 @@ function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { t
   // who is sitting out and offers the way back instead.
   const parkedHolder = gunId ? (state?.standby ?? []).find(pl => (pl.gun_id || '').toUpperCase() === String(gunId).toUpperCase()) : undefined;
   const [claiming, setClaiming] = useState(false);
-  const claim = async (team: string) => {
-    if (!name.trim() || !gunId || claiming) return;
+  // F-armory-claim (2026-09-16): the card used to send `team_id: 'blue'|'yellow'`, which the server
+  // refuses outright in FFA (only `ffa` exists there) -- the error landed in the shared strip, the
+  // card looked unchanged, and the operator read that as "nothing happened". A gamertag claim never
+  // needs a team: the server auto-balances one when it is omitted (state.py add_player), and a team
+  // swap stays a LOBBY job. `claimErr` shows a refusal ON THIS CARD, not only in the shared strip --
+  // the inner try/catch grabs the message before `run` swallows it into the shared error state.
+  const [claimErr, setClaimErr] = useState<string | null>(null);
+  const claim = async () => {
+    const display = name.trim();
+    if (!display || !gunId || claiming) return;
     setClaiming(true);
-    try { await run(() => api.addPlayer({ display: name.trim(), team_id: team, gun_id: gunId })); setName(''); }
-    finally { setClaiming(false); }
+    setClaimErr(null);
+    try {
+      const ok = await run(async () => {
+        try { return await api.addPlayer({ display, gun_id: gunId }); }
+        catch (e) { setClaimErr((e as Error).message); throw e; }
+      });
+      if (ok) setName('');
+    } finally { setClaiming(false); }
   };
   const accent = hasGun ? T.acc : T.warn;
   const age = n.last_seen_ms ?? 0;
@@ -442,33 +567,9 @@ function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { t
         {n.fw && (<><Micro>FIRMWARE</Micro><Val color={T.dim}>{n.fw}</Val></>)}
         {/* A29: always rendered, even when the phone has not said — "UNKNOWN" is the answer the
             operator needs (an app that predates A29 reports nothing at all), and a row that simply
-            vanishes reads as "fine". */}
-        <Micro>APP</Micro>
-        <span data-app-ver={n.app_ver ?? ''} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-          <Val color={n.app_ver ? T.ink : T.micro}>{verShort(n.app_ver) || 'UNKNOWN'}</Val>
-          {/* the git sha is what tells "0.1.9 from the release" from "0.1.9 from your tree" apart. It used
-              to be cut to 7 characters with the WHOLE string parked in a `title` — which on the match-day
-              touch console is nowhere, because there is no hover. The build metadata the app stamps is a
-              short sha plus an optional `-dirty` (app/scripts/build.mjs), so it is 13 characters at worst:
-              there was never anything to truncate. `-dirty` says this phone is running somebody's working
-              tree rather than a build anyone can reproduce, which is the single most important thing this
-              row can tell an operator, so it is shown and it is shown in the warning colour. */}
-          {n.app_ver?.includes('+') && (() => {
-            const meta = n.app_ver.split('+').slice(1).join('+');
-            const flag = meta.indexOf('-');                      // the sha, then whatever the build stamped after it
-            const [sha, rest] = flag < 0 ? [meta, ''] : [meta.slice(0, flag), meta.slice(flag)];
-            return (
-              // 11 px, not 10: every part of this chip carries meaning (version, sha, `-dirty`,
-              // platform) and the tiny-text sweep fails anything meaning-bearing under 11 px — it
-              // caught this one at both viewports (review 2026-09-12). It WRAPS rather than shrinking:
-              // the row has a whole line to spend and the metadata is 13 characters at worst.
-              <span title={n.app_ver} style={{ font: F.mono(500, 11), color: T.faint, minWidth: 0, wordBreak: 'break-all' }}>
-                +{sha}{rest && <span style={{ color: T.warn }}>{rest}</span>}
-              </span>
-            );
-          })()}
-          {n.platform && <span style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>{n.platform.toUpperCase()}</span>}
-        </span>
+            vanishes reads as "fine". The chip itself, sha/`-dirty`/platform and all, is `AppVerRow` —
+            shared with GunCard so a bound phone's card cannot say something different. */}
+        <AppVerRow app_ver={n.app_ver} platform={n.platform} />
         <Micro>LOG</Micro><LogCell log={n.log ?? undefined} />
       </div>
       {/* A25: always asks, whatever `log_sync` is set to — `reason: "manual"` is never gated. */}
@@ -483,16 +584,16 @@ function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { t
         </div>
       )}
       {hasGun && !n.player_id && !gunClaimed && !parkedHolder && (
-        <form onSubmit={e => { e.preventDefault(); claim('blue'); }} style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: `1px solid ${T.line2}`, paddingTop: 10 }}>
+        <form onSubmit={e => { e.preventDefault(); claim(); }} style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: `1px solid ${T.line2}`, paddingTop: 10 }}>
           <div style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.acc }}>▸ WHO CARRIES THIS?</div>
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="GAMERTAG" maxLength={24} aria-label={`gamertag for ${n.gun_name}`}
+          <input value={name} onChange={e => { setName(e.target.value); setClaimErr(null); }} placeholder="GAMERTAG" maxLength={24} aria-label={`gamertag for ${n.gun_name}`}
             style={{ background: T.panelDeep, border: `1px solid ${T.line2}`, color: T.ink, font: F.osw(600, 15), letterSpacing: '.06em', padding: '9px 12px', outline: 'none', width: '100%', boxSizing: 'border-box' }} />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" onClick={() => claim('blue')} disabled={!name.trim() || claiming}
-              style={{ flex: 1, padding: '10px 0', background: name.trim() ? '#0f2438' : T.panelDeep, color: name.trim() ? '#7cc4ff' : T.micro, border: '1px solid #24486b', font: F.chk(700, 11), letterSpacing: '.2em', cursor: name.trim() ? 'pointer' : 'default' }}>JOIN BLUE</button>
-            <button type="button" onClick={() => claim('yellow')} disabled={!name.trim() || claiming}
-              style={{ flex: 1, padding: '10px 0', background: name.trim() ? '#2e2408' : T.panelDeep, color: name.trim() ? T.warn : T.micro, border: '1px solid #6b5824', font: F.chk(700, 11), letterSpacing: '.2em', cursor: name.trim() ? 'pointer' : 'default' }}>JOIN YELLOW</button>
-          </div>
+          <button type="submit" disabled={!name.trim() || claiming}
+            style={{ padding: '10px 0', background: T.panelDeep, color: name.trim() ? T.acc : T.micro, border: `1px solid ${name.trim() ? T.acc : T.line2}`, font: F.chk(700, 11), letterSpacing: '.2em', cursor: name.trim() ? 'pointer' : 'default' }}>
+            {claiming ? 'SETTING…' : 'SET GAMERTAG'}
+          </button>
+          {/* the operator's team stays a LOBBY decision; the server auto-balances a new claim */}
+          {claimErr && <div role="alert" data-claim-error={n.node_id ?? ''} style={{ font: F.chk(700, 11), letterSpacing: '.05em', color: T.warn, textTransform: 'none' }}>▲ {claimErr.toUpperCase()}</div>}
         </form>
       )}
     </div>

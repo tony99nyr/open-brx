@@ -1,136 +1,71 @@
-// F199 — the ALT-hold beam-width backstop.
+// F162 supersedes the dismissable venue reminder (bench, 2026-09-16): a banner that had to be
+// dismissed on every screen, every session, was "obnoxious" (Tony's word). It is gone. In its place
+// GAMES carries one small, quiet link beside the venue setting that opens the manual page explaining
+// how to set the gun's own native ALT mode, in a new tab. There is no dismiss state and no storage
+// to test any more: a link needs none.
 //
-// The gun's indoor/outdoor setting (hold ALT 3 s) changes beam width and PERSISTS ACROSS POWER
-// CYCLES. Outdoor mode gave roughly twice the aim tolerance across three guns in the 2026-09-13
-// field measurement. It does not control range: the outdoor range failure was `$GSET` token 2
-// crippling hit reception, and that separate receiver setting is now pinned to 0 at both venues.
-//
-// A physical field step belongs on screen at the moment it is actionable (the `SetupSteps`
-// precedent, ui/SetupSteps.tsx), so this renders on GAMES (where the venue is picked) and KIT (where
-// guns are handed out), dismissable once per session and RE-ARMED when the venue changes.
-import { beforeEach, describe, expect, it } from 'vitest';
+// Review 2026-09-16 (MEDIUM): the link used to sit INSIDE the `fieldset disabled={venueInert}` group,
+// so it faded to 50% opacity and read as disabled whenever the venue control itself was locked. The
+// link always works (it just opens the manual), so it now sits beside that group, not inside it.
+import { describe, expect, it } from 'vitest';
 import { Games } from '../src/screens/Games';
 import { Kit } from '../src/screens/Kit';
-import { VenueModeReminder, resetVenueModeDismissal } from '../src/ui/VenueModeReminder';
 import { demo, mountScreen } from './harness';
-import type { State } from '../src/api/types';
 
-function atVenue(base: State, environment: 'indoor' | 'outdoor'): State {
-  return { ...base, config: { ...base.config, environment } };
-}
+const MANUAL_ALT_MODE_URL = 'https://open-brx.iamrossi.workers.dev/manual/operate#indoor-vs-outdoor-mode';
 
-describe('venue-mode reminder', () => {
-  beforeEach(() => { resetVenueModeDismissal(); });
-
-  it('names the venue and accurately describes the measured beam-width effect', async () => {
+describe('the venue-mode manual link', () => {
+  it('sits beside the venue setting on GAMES, points at the manual anchor, and opens in a new tab', async () => {
     const d = await demo();
-    for (const env of ['outdoor', 'indoor'] as const) {
-      resetVenueModeDismissal();
-      const m = await mountScreen(<VenueModeReminder />, { state: atVenue(d.state, env) });
-      const box = m.find('[data-testid="venue-mode-reminder"]')[0];
-      expect(box, `${env}: no reminder rendered`).toBeTruthy();
-      const t = box.textContent ?? '';
-      expect(t).toContain(env.toUpperCase());
-      expect(t).toMatch(/ALT/);
-      expect(t).toMatch(/3 S/);
-      expect(t).toMatch(/BEAM WIDTH/);
-      expect(t).toMatch(/NOT RANGE/);
-      expect(t).toMatch(/ROUGHLY 2× THE AIM TOLERANCE/);
-      // The physical selection must be made at both venues because it survives a restart.
-      expect(t).toMatch(/POWER CYCLE/);
-      m.unmount();
-    }
-  });
-
-  it('the dismiss control actually removes it, and is a real tap target', async () => {
-    const d = await demo();
-    const m = await mountScreen(<VenueModeReminder />, { state: atVenue(d.state, 'outdoor') });
-    const btn = m.find('[data-testid="venue-mode-dismiss"]')[0];
-    expect(btn, 'no dismiss control').toBeTruthy();
-    expect(btn.getAttribute('aria-label')).toBeTruthy();
-    // ui-build-verify §2: tap targets >= 36px. jsdom has no layout, so assert the declared minimum.
-    expect(parseInt(btn.style.minHeight || '0', 10)).toBeGreaterThanOrEqual(36);
-    expect(parseInt(btn.style.minWidth || '0', 10)).toBeGreaterThanOrEqual(36);
-    await m.click(/DISMISS|✕/);
-    expect(m.find('[data-testid="venue-mode-reminder"]').length).toBe(0);
+    const m = await mountScreen(<Games />, { state: d.state, weapons: d.weapons, perks: d.perks, api: d.api });
+    const link = m.find('[data-testid="venue-mode-manual-link"]')[0] as HTMLAnchorElement | undefined;
+    expect(link, 'no manual link rendered beside the venue setting').toBeTruthy();
+    expect(link!.getAttribute('href')).toBe(MANUAL_ALT_MODE_URL);
+    expect(link!.getAttribute('target')).toBe('_blank');
+    // `noopener` is required; a page may also add `noreferrer`, so check the token rather than the
+    // whole attribute string.
+    expect((link!.getAttribute('rel') ?? '').split(/\s+/)).toContain('noopener');
+    expect(link!.getAttribute('aria-label')).toBe("How to set the gun's mode (opens in a new tab)");
+    // it sits BESIDE the venue control group, not inside it -- the group is a real `fieldset disabled`
+    // when the venue is locked, and the link must not fade with it (review 2026-09-16).
+    const venueGroup = m.find('[role="group"][aria-label="venue"]')[0];
+    expect(venueGroup, 'no venue control group found').toBeTruthy();
+    expect(venueGroup!.contains(link!), 'the link must not be inside the dimmable group').toBe(false);
+    expect(link!.closest('fieldset'), 'the link must not be inside any fieldset that can be disabled').toBeFalsy();
     m.unmount();
   });
 
-  it('a dismissal sticks on the screen it was made on, and re-arms when the venue changes', async () => {
+  it('has a real tap target: 11px+ text and a 44px minimum height', async () => {
+    // Review 2026-09-16 (MEDIUM): 10.5px text and no minimum height measured as a roughly 14px tap
+    // height, inside a group that was also dimmed to 50% opacity -- it read, and behaved, as disabled.
     const d = await demo();
-    const m = await mountScreen(<VenueModeReminder screen="games" />, { state: atVenue(d.state, 'outdoor') });
-    await m.click(/DISMISS|✕/);
+    const m = await mountScreen(<Games />, { state: d.state, weapons: d.weapons, perks: d.perks, api: d.api });
+    const link = m.find('[data-testid="venue-mode-manual-link"]')[0] as HTMLAnchorElement;
+    const style = getComputedStyle(link);
+    expect(parseFloat(style.fontSize || '0'), `font-size was ${style.fontSize}`).toBeGreaterThanOrEqual(11);
+    expect(parseFloat(style.minHeight || '0'), `min-height was ${style.minHeight}`).toBeGreaterThanOrEqual(44);
     m.unmount();
-
-    // same session, same screen, same venue: still dismissed — nobody wants nagging all night
-    const again = await mountScreen(<VenueModeReminder screen="games" />, { state: atVenue(d.state, 'outdoor') });
-    expect(again.find('[data-testid="venue-mode-reminder"]').length).toBe(0);
-    again.unmount();
-
-    // ...but switching venue is a NEW physical step on every gun, so it comes back
-    const flipped = await mountScreen(<VenueModeReminder screen="games" />, { state: atVenue(d.state, 'indoor') });
-    expect(flipped.find('[data-testid="venue-mode-reminder"]').length).toBe(1);
-    expect(flipped.text()).toContain('INDOOR');
-    flipped.unmount();
   });
 
-  // LOW (polish loop, 2026-09-13) — both review lenses flagged the same component.
-  it('dismissing on GAMES does not hide it on KIT, where the guns are in hand', async () => {
+  it('stays at full opacity even while the venue control is locked', async () => {
     const d = await demo();
-    const games = await mountScreen(<VenueModeReminder screen="games" />, { state: atVenue(d.state, 'outdoor') });
-    await games.click(/DISMISS|✕/);
-    games.unmount();
-    // GAMES is where the venue is PICKED; KIT is where the rack is actually walked. Acknowledging
-    // the instruction on the planning screen is not doing it on the handing-out screen.
-    const kit = await mountScreen(<VenueModeReminder screen="kit" />, { state: atVenue(d.state, 'outdoor') });
-    expect(kit.find('[data-testid="venue-mode-reminder"]').length).toBe(1);
-    await kit.click(/DISMISS|✕/);
-    expect(kit.find('[data-testid="venue-mode-reminder"]').length).toBe(0);
-    kit.unmount();
-    // …and each screen keeps its own answer
-    const back = await mountScreen(<VenueModeReminder screen="games" />, { state: atVenue(d.state, 'outdoor') });
-    expect(back.find('[data-testid="venue-mode-reminder"]').length).toBe(0);
-    back.unmount();
+    const m = await mountScreen(<Games />, {
+      state: { ...d.state, phase: 'armed' }, weapons: d.weapons, perks: d.perks, api: d.api,
+    });
+    const link = m.find('[data-testid="venue-mode-manual-link"]')[0] as HTMLAnchorElement;
+    // The link's OWN opacity, not an ancestor's -- it must never inherit the fieldset's dimming.
+    expect(getComputedStyle(link).opacity).not.toBe('0.5');
+    m.unmount();
   });
 
-  it('INDOOR → OUTDOOR → INDOOR does not re-show a venue already dismissed', async () => {
-    const d = await demo();
-    const first = await mountScreen(<VenueModeReminder screen="kit" />, { state: atVenue(d.state, 'indoor') });
-    await first.click(/DISMISS|✕/);
-    first.unmount();
-    // a venue change is a new step, so OUTDOOR shows...
-    const out = await mountScreen(<VenueModeReminder screen="kit" />, { state: atVenue(d.state, 'outdoor') });
-    expect(out.find('[data-testid="venue-mode-reminder"]').length).toBe(1);
-    await out.click(/DISMISS|✕/);
-    out.unmount();
-    // ...and coming BACK to a venue the operator already walked the rack for does not.
-    const backIndoor = await mountScreen(<VenueModeReminder screen="kit" />, { state: atVenue(d.state, 'indoor') });
-    expect(backIndoor.find('[data-testid="venue-mode-reminder"]').length,
-      'the guns are already on INDOOR — this reminder was answered').toBe(0);
-    backIndoor.unmount();
-  });
-
-  it('renders on GAMES and on KIT', async () => {
+  it('renders no venue warning or dismiss control on GAMES or KIT', async () => {
     const d = await demo();
     for (const Screen of [Games, Kit]) {
-      resetVenueModeDismissal();
-      const m = await mountScreen(<Screen />, {
-        state: atVenue(d.state, 'outdoor'), weapons: d.weapons, perks: d.perks, api: d.api,
-      });
-      expect(m.find('[data-testid="venue-mode-reminder"]').length,
-        `${Screen.name}: reminder missing`).toBe(1);
-      expect(m.text()).toContain('OUTDOOR');
+      const m = await mountScreen(<Screen />, { state: d.state, weapons: d.weapons, perks: d.perks, api: d.api });
+      expect(m.find('[data-testid="venue-mode-reminder"]').length, `${Screen.name}: a reminder banner still renders`).toBe(0);
+      expect(m.find('[data-testid="venue-mode-dismiss"]').length, `${Screen.name}: a dismiss control still renders`).toBe(0);
+      expect(m.find('[role="status"][data-testid*="venue"]').length, `${Screen.name}: something venue-shaped still uses role="status"`).toBe(0);
       m.unmount();
     }
-  });
-
-  it('says nothing when the server predates this UI (no environment on the config)', async () => {
-    const d = await demo();
-    const cfg = { ...d.state.config } as Record<string, unknown>;
-    delete cfg.environment;
-    const stale = { ...d.state, config: cfg } as unknown as State;
-    const m = await mountScreen(<VenueModeReminder />, { state: stale });
-    expect(m.find('[data-testid="venue-mode-reminder"]').length).toBe(0);
-    m.unmount();
   });
 });

@@ -169,7 +169,9 @@ def test_damage_per_pull_adds_the_declared_headset_dmg_and_damage_stays_gun_body
 
 
 def test_gun_range_outdoor_pct_ships_the_catalogue_value_outdoors_only():
-    """F234: t2 (`gunRangeOutdoor`) is the confirmed venue lever. Outdoor ships each weapon's
+    """F234: t2 (`gunRangeOutdoor`) is the confirmed venue lever. It sets the emitter's carrier
+    frequency, not its power (2026-09-18, protocol/brx-protocol.md), so these values are a shipped
+    table, not a calibrated metre ladder. Outdoor ships each weapon's
     catalogue starting value (`weapons.json` `wire.range_outdoor_pct`, docs/weapon-design.md §4.2);
     indoor and an unset venue both keep the weapon's captured t2, because indoor is unmeasured
     (F231 open) and must never be invented. A weapon with no catalogue value (every hidden/cut
@@ -264,6 +266,22 @@ def test_every_weapon_has_a_derivable_damage_and_cycle():
         assert CAT.damage(wid) > 0, f"{wid}: no damage on the wire"
         assert CAT.fire_ms(wid) > 0, f"{wid}: no fire interval on the wire"
         assert CAT.cycle_ms(wid) > 0, f"{wid}: no cycle"
+
+
+def test_rounds_per_charge_is_a_two_state_field_never_a_third():
+    """Review finding (2026-09-13): `weapons.json`'s `_note` declares one rule for `rounds_per_charge`
+    -- absent means 1, every other value is the real cost of one charge. A row that wrote an explicit
+    1 would be a THIRD state (absent-means-1 on one row, explicit-means-1 on another) that forces a
+    reader to know a row's history before trusting the number. `WeaponCatalog.rounds_per_charge()` is
+    the one place that resolves the default; every consumer reads that, and this test keeps the raw
+    catalogue itself honest about the two states it is allowed to have."""
+    for w in ROWS:
+        wid = w["weapon_id"]
+        if "rounds_per_charge" not in w:
+            continue
+        rpc = w["rounds_per_charge"]
+        assert isinstance(rpc, int) and rpc >= 1, f"{wid}: rounds_per_charge must be an integer >= 1, got {rpc!r}"
+        assert rpc != 1, f"{wid}: an explicit 1 duplicates the 'absent' state -- drop the key instead"
 
 
 def test_burst_and_charge_classification_matches_the_frame():

@@ -495,6 +495,24 @@ proves the GUN received it, not that the headset executed it.
 
 ---
 
+## Weapon bench method (2026-09-17)
+
+**"A step measuring the gun-body sensor at 2 m reads the headset instead."**
+**Cover the victim's gun sensor** for any step that reads damage or the sensor field at close range.
+Left uncovered, it catches headset shots at 2 m and reports sensor 4, not the gun-body sensor the step
+meant to read (F228).
+
+**"The shooter fires and the victim registers nothing, not even a `$HIR`."**
+**A victim needs the `$SIR` row for the shooter's damage key**, not just a generic row. Each weapon's
+IR word keys to its own `<protocol, function>` cell: the Charge Rifle keys to `<8,0>`, and without a
+matching row the victim ignores every one of its hits.
+
+**"A step needs to land inside a short window (a reload) and keeps missing it."**
+**The MCP tool loop takes about 3 s** from an event to the next write, sent one line at a time. Anything
+that must land inside a 2 s window needs a small timing script instead.
+
+---
+
 ## Capturing IR
 
 **"The IR LED isn't lighting — I checked with my phone camera."**
@@ -575,8 +593,57 @@ came from a human's senses.
 proxy was never tested against the behaviour it stood in for.
 
 **Damage is a property of the (weapon, victim's `$SIR` table) PAIR — never of the weapon alone.**
-`$HIR` tok5 is the **raw magnitude**; applied damage depends on the **SENSOR** (bench 2026-09-11, F23): the gun body is always ×1, and only a **headset** hit on fn 36/37 scales, by `$GSET` t7 — **fn 36 = floor(magnitude × (1 + t7/200)), fn 37 = floor(magnitude × (1 + 2·t7/100))**. At the shipped t7=50 that reads ×1.25 / ×2 (the ×1.25 truncates, so 7 lands as 8). The `$HIR` crit bit (tok6) read 0 on every measured hit and is a separate, unconfirmed axis.
+`$HIR` tok5 is the **raw magnitude**; applied damage depends on the **SENSOR** (bench 2026-09-11, F23): the gun body is always ×1, and only a **headset** hit on fn 36/37 scales, by `$GSET` t7 — **fn 36 = floor(magnitude × (1 + t7/200)), fn 37 = floor(magnitude × (1 + 2·t7/100))**. At the Callsign capture's t7=50 that reads ×1.25 / ×2 (the ×1.25 truncates, so 7 lands as 8), but Open BRX compiles **t7 = 0**, so no sensor scales and every hit lands at its raw magnitude: BRX players aim at the headset, which holds four of the five sensors, so a headset multiplier would only make the aim everybody already uses pay twice. The `$HIR` crit bit (tok6) read 0 on every measured hit and is a separate, unconfirmed axis.
 Anything that validates a weapon in isolation is blind to a whole class of bug.
+
+**A simulated gun that answers instantly is not a gun.** Twice on 2026-09-18 a test suite passed while the
+hardware misbehaved, and both times the harness was the liar. The recoil simulator applied the node's
+writes instantly and silently; the real gun RESETS its magazine on every `$WEAP` and answers with an
+`$ALCD` about 40 ms later, which is the whole bug. A harness for anything that writes to a gun must queue
+the write with a flight time and answer it the way the gun does, or it is testing a machine nobody owns.
+
+**Sample where the player looks, not where your loop runs.** The same lane's "the ammo never rises"
+assertion sampled once per tick and PASSED against the broken code, because the reset frame and the
+restore frame arrive together and the raw value was overwritten before the next tick looked. The HUD
+re-renders on every gun frame, so a player sees what a per-tick sampler cannot. Assert per frame.
+
+**The frame you send is not the frame the game sends, unless you got it from `resolve()`.** On 2026-09-18
+a bench run armed a Shotgun and a Plasma Sniper by hand, from the CAPTURED `$WEAP` in `weapons.json`, and
+reported the result as the shipped weapon. The capture prices those weapons at 45 and 25 with a second
+word of 70 and 80; Open BRX ships 20/20 and 25/10. The measurement was right and the arithmetic was
+right, and the conclusion ("a one-pull kill") was about Callsign's gun rather than ours. Print the real
+frame first and paste that:
+
+```
+cd mcp && python3 -c "
+import sys; sys.path.insert(0,'.')
+from brx_mcp.mc.compile import Compiler
+C=Compiler()
+print(C.catalog.resolve('shotgun', 0))"
+```
+
+`resolve(weapon_id, slot, mods, environment=...)` takes the perk mods and the venue too, so an
+armour-piercing or outdoor frame comes out of the same call instead of being rebuilt by hand. Same shape
+as the two traps below: a harness that exercises something adjacent to what ships proves nothing about
+what ships.
+
+**Capture the site screenshots AFTER you commit the UI change, never before.** `site/shots.mjs` stamps
+the manifest with `git rev-parse HEAD:app/src`, so a capture taken while the change is still uncommitted
+records the OLD hash, and the guard goes red the moment you commit. The order is: commit the UI, run
+`cd site && npm run shots`, commit `site/shots/`. Found 2026-09-18, after two captures in a row went
+stale on the commit that followed them. CI does it in the right order by construction, because it only
+ever captures at a committed sha.
+
+**Never write GitHub's skip keyword in a commit message, not even to explain it.** GitHub scans the whole
+message, so a commit that described the shots job's loop guard and quoted the token ran no CI at all: no
+red build, no queued run, only the Cloudflare check (2026-09-18). Say "the skip keyword" in prose and
+leave the literal token in the workflow file, where it is inert.
+
+**Break a guard in the file the code actually reads.** A screen-truth step for the perk picker went on
+passing after `mcp/brx_mcp/mc/perks.json` was edited, because the phone reads the GENERATED
+`app/src/demo-catalog.js`. A guard you "proved" by breaking the source of a generated file was never
+broken at all. Break the generated artefact, watch the test fail, then regenerate. Same shape as a
+guard that reads `HEAD` while the tree is dirty (2026-09-17).
 
 **Close a question in EVERY file in the same commit, or it is not closed.** Two independent cold-read
 handoff tests both scored this repo down for the same thing, and it was never a wrong fact — it was a

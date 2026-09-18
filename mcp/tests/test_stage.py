@@ -10,6 +10,7 @@ from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.stage import stage as S           # the hill parity tests read its constants by name
 from brx_mcp.stage.stage import GunStage, ir_words
 from brx_mcp.mc import presentation as P
+from brx_mcp.mc.compile import Compiler
 from brx_mcp import poolgauge as PG
 
 
@@ -27,9 +28,28 @@ def mk(**profile):
 
 def tx(mgr, alias="stage"):
     try:
-        return [e["raw"] for e in mgr.get_events(alias)["events"] if e["direction"] == "tx"]
+        # every event, not the fake's default first 200: a long test (12 revives) ran past that cap once F206
+        # added a $TID after each $PSET, and "the LAST write" silently became a write from the middle of the run
+        return [e["raw"] for e in mgr.get_events(alias, max_events=10**6)["events"] if e["direction"] == "tx"]
     except KeyError:          # never connected
         return []
+
+
+def tid_follows_pset(frames, tid):
+    """F206: the last `$PSET` of a write must be followed, LATER IN THE SAME WRITE, by `$TID,<tid>,*`.
+
+    Later, not at the next index. F206 got fixed twice, independently, and the merge carries both cures:
+    `compile.py` re-asserts `$TID` inside the spawn and revive bursts, right after `$SPAWN`, and
+    `stage.write` -> `_tid_after_pset` inserts one when a write carries none at all. The burst's own
+    `$TID` now sits behind the eleven disarmed `$SIR` rows the F209 twin puts in front of `$SPAWN`, so the
+    `$PSET` and the `$TID` are no longer neighbours. The rule was always the ordering; the adjacency was a
+    coincidence of the old frame order, and pinning it is what broke. A write with no `$PSET` passes.
+
+    Callers that care about frame COST should also assert the count: exactly one `$TID` per write, because
+    the two cures must never both fire (see `_tid_after_pset`, which declines when a `$TID` already
+    follows the `$PSET`)."""
+    last_pset = max((i for i, f in enumerate(frames) if f.startswith("$PSET,")), default=-1)
+    return last_pset < 0 or f"$TID,{tid},*" in frames[last_pset + 1:]
 
 
 async def settle(st):
@@ -133,7 +153,7 @@ def test_an_ir_hit_on_the_fake_gun_plays_the_victim_overlay_and_a_kill_plays_the
         st, mgr = mk(gun="health")
         st.patch_presentation({"headset": {"hit": "red"}})       # opt-in hit colour so the headset flash is testable
         await st.connect("FA:KE:00:00:00:01")
-        await st.arm(); await st.spawn(); await settle(st)
+        await st.arm(); await st.spawn(); await settle(st); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         st.poll()                                                  # the fake's $LCD after $SPAWN
         after_spawn = tx(mgr)[tx(mgr).index("$SPAWN,,*"):]
         assert all(f in after_spawn for f in st.bundle["gun"]["take"]), "the take (blank + full-health paint) followed the spawn"
@@ -174,7 +194,7 @@ def test_an_ir_hit_on_the_fake_gun_plays_the_victim_overlay_and_a_kill_plays_the
         # exactly what engine.js does; the sound (if any) and the headset blink still play
         assert any("event died" in l["text"] or ("died" in l["text"] and "dropped" in l["text"]) for l in st.log)
         n = len(tx(mgr))
-        await st.revive(); await settle(st)
+        await st.revive(); await settle(st); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         new = tx(mgr)[n:]
         # §3.2: `down.stop` ($HLOOP,0,0,*) is its own write, first, ahead of everything else in revive()
         off = 0
@@ -185,6 +205,11 @@ def test_an_ir_hit_on_the_fake_gun_plays_the_victim_overlay_and_a_kill_plays_the
         pool = st.bundle.get("pset_pool") or []
         if pool:
             assert new[off] in pool
+            # F206: the team goes back on before the write ends -- see `tid_follows_pset` for why this is an
+            # ordering and not an index. The revive burst carries the `$TID` itself, so `_tid_after_pset`
+            # adds nothing and the gun reads ONE team byte per revive, not two.
+            assert tid_follows_pset(new, st.profile["tid"]), new
+            assert new.count(f"$TID,{st.profile['tid']},*") == 1, new
             off += 1
         assert new[off:off + len(st.bundle["revive"])] == st.bundle["revive"] and st.alive
         assert all(f in new for f in st.bundle["gun"]["take"]) and st._gun_band == st.bundle["gun"]["rest"]   # the take again after the revive
@@ -211,7 +236,7 @@ def test_ir_words_are_the_bench_derived_ones():
 def test_dry_run_without_a_gun_logs_the_frames_instead_of_failing():
     async def run():
         st, mgr = mk()
-        await st.arm(); await st.spawn(); await settle(st)
+        await st.arm(); await st.spawn(); await settle(st); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         st.event("lead_taken"); await settle(st)
         kinds = [l["kind"] for l in st.log]
         assert "tx" in kinds and not tx(mgr)
@@ -273,7 +298,7 @@ def test_poll_never_replays_frames_it_already_handled():
         st, mgr = mk(gun="native")
         st.patch_presentation({"headset": {"hit": "red"}})   # hit_taken carries no default reaction any more (A16 §6 finding #5): give it one to prove the dedup
         await st.connect("FA:KE:00:00:00:01")
-        await st.arm(); await st.spawn(); await settle(st); st.poll()
+        await st.arm(); await st.spawn(); await settle(st); st.poll(); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         await st.ir("shot"); st.poll(); await settle(st)   # priming hit: past the first-life shield-sync blip, see test_an_ir_hit_on_the_fake_gun_...
         hits = lambda: sum(1 for l in st.log if l["why"] == "headset hit")
         n = hits()
@@ -311,7 +336,7 @@ def test_a_hit_reacts_the_instant_its_frame_decodes_not_on_the_next_poll_tick():
         await st.connect("FA:KE:00:00:00:01")
         await st.arm()
         st.bundle["cues"]["countdown"] = ""    # this test is about the HIT path, not the spawn countdown wait
-        await st.spawn(); await settle(st)
+        await st.spawn(); await settle(st); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         s = mgr.sessions["stage"]
         t0 = time.monotonic()
         n0 = _hit_via_on_frame(st, mgr)
@@ -335,7 +360,7 @@ def test_latency_does_not_grow_under_rapid_fire_and_an_in_flight_burst_never_del
         await st.connect("FA:KE:00:00:00:01")
         await st.arm()
         st.bundle["cues"]["countdown"] = ""
-        await st.spawn(); await settle(st)
+        await st.spawn(); await settle(st); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         s = mgr.sessions["stage"]
         deltas = []
         for _ in range(4):
@@ -358,7 +383,7 @@ def test_poll_does_not_re_react_to_a_frame_the_instant_callback_already_handled(
         st, mgr = mk(gun="native")
         st.patch_presentation({"headset": {"hit": "red"}})   # hit_taken carries no default reaction any more (A16 §6 finding #5): give it one to prove the dedup
         await st.connect("FA:KE:00:00:00:01")
-        await st.arm(); await st.spawn(); await settle(st); st.poll()
+        await st.arm(); await st.spawn(); await settle(st); st.poll(); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         _hit_via_on_frame(st, mgr); await settle(st)   # priming hit: past the first-life shield-sync blip, see test_an_ir_hit_on_the_fake_gun_...
         hits = lambda: sum(1 for l in st.log if l["why"] == "headset hit")
         n = hits()
@@ -388,7 +413,7 @@ def test_spawn_waits_the_countdown_lead_before_the_burst_and_skips_the_wait_with
         assert calls[0] == GunStage.COUNTDOWN_LEAD_S, "the lead wait must happen, and before anything else awaited in spawn()"
         frames = tx(mgr)
         i_cd = frames.index(st.bundle["cues"]["countdown"])
-        i_spawn0 = frames.index(st.bundle["spawn"][0])
+        i_spawn0 = frames.index("$SPAWN,,*")   # F209: spawn[0] is the fn-28 twin, which the head also carries
         assert i_cd < i_spawn0, "the countdown cue must be written before the spawn burst, not after"
         await settle(st)
         calls.clear()
@@ -487,7 +512,7 @@ def test_kill_button_plays_the_top_medals_lights_too():
     async def run():
         st, mgr = mk()
         await st.connect("FA:KE:00:00:00:01")
-        await st.arm(); await st.spawn(); await settle(st)
+        await st.arm(); await st.spawn(); await settle(st); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         n = len(tx(mgr))
         st.kill(["first_blood"]); await settle(st)
         new = tx(mgr)[n:]
@@ -503,7 +528,7 @@ def test_down_writes_nothing_at_death_one_rearm_insurance_then_stops_before_revi
     async def run():
         st, mgr = mk()
         await st.connect("FA:KE:00:00:00:01")
-        await st.arm(); await st.spawn(); await settle(st); st.poll()
+        await st.arm(); await st.spawn(); await settle(st); st.poll(); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         down = st.bundle["headset"]["down"]
         assert down == {"rearm": "$HLOOP,2,750,*", "stop": "$HLOOP,0,0,*", "rearm_after_ms": 2500}
         n = len(tx(mgr))
@@ -513,7 +538,7 @@ def test_down_writes_nothing_at_death_one_rearm_insurance_then_stops_before_revi
         assert new.count(down["rearm"]) == 1, "exactly one rearm write, no repeating pulse"
         n = len(tx(mgr)); await settle(st)
         assert len(tx(mgr)) == n, "the rearm does not repeat while still down"
-        await st.revive(); await settle(st)
+        await st.revive(); await settle(st); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         assert down["stop"] in tx(mgr)[n:], "down stop written before the revive frames"
         n = len(tx(mgr)); await settle(st)
         assert len(tx(mgr)) == n, "alive again: nothing keeps firing"
@@ -789,7 +814,10 @@ def test_spawn_plays_one_take_of_the_spawn_pool_and_the_pset_cry_field_is_empty(
 
     # A15.3: a fresh death-scream $PSET (one of `pset_pool`) now rides FIRST in the same write, ahead of $PLAYX
     scream_pool = st.bundle.get("pset_pool") or []
-    prefix = (1 if scream_pool else 0) + len(st.bundle["spawn"])       # [$PSET?] $PLAYX,0 $SPAWN $AMMO $AMMO $BMAP
+    spawn = st.bundle["spawn"]
+    # [$PSET]? <$SIR twin> $PLAYX,0 $SPAWN $TID $AMMO $AMMO $BMAP. The `$PSET` is ONE frame, not two: the
+    # spawn burst re-asserts `$TID` itself (F206), so `_tid_after_pset` inserts nothing behind the `$PSET`.
+    prefix = (1 if scream_pool else 0) + len(spawn)
 
     async def run():
         seen = set()
@@ -799,8 +827,12 @@ def test_spawn_plays_one_take_of_the_spawn_pool_and_the_pset_cry_field_is_empty(
             i = len(all_) - 1 - all_[::-1].index("$SFLASH,*")          # the LAST spawn write (the fake's log is a ring)
             new = all_[i - prefix:]                                    # [$PSET?] $PLAYX,0 $SPAWN $AMMO $AMMO $BMAP $SFLASH <take> …
             if scream_pool:
-                assert new[0] in scream_pool
-            assert new[prefix - len(st.bundle["spawn"]):prefix] == st.bundle["spawn"] and new[prefix] == "$SFLASH,*", new
+                # F206 is an ordering, not an index (`tid_follows_pset`): the spawn burst's own `$TID` sits
+                # behind the F209 twin's eleven `$SIR` rows. One `$TID` per write, never two.
+                assert new[0] in scream_pool, new
+                assert tid_follows_pset(new, st.profile["tid"]), new
+                assert new.count(f"$TID,{st.profile['tid']},*") == 1, new
+            assert new[prefix - len(spawn):prefix] == spawn and new[prefix] == "$SFLASH,*", new
             i = prefix
             assert new[i + 1] in pool, new
             assert _voice_plays(new) == [new[i + 1]], "exactly one spawn line per spawn"
@@ -1514,7 +1546,10 @@ def test_the_control_point_constants_the_advert_layout_and_the_source_gate_are_t
     assert S.STUN_DEFAULT_S == float(num("STUN_DEFAULT_S")) == 10.0
     assert re.search(r"`\$AMMO,\$\{slot\},0,0,1,\*`", src), "engine.js `_stun` no longer disarms with $AMMO,<slot>,0,0,1"
     assert re.search(r"`\$AMMO,\$\{slot\},\$\{mag\},\$\{res\},1,\*`", src), "engine.js `_stunRestore` no longer restores the live pair"
-    assert re.search(r"_onAmmo\(mag, reserve, slot = 0\) \{[^}]*?if \(this\.stunned\) return;", src, re.S), "engine.js `_onAmmo` no longer ignores $ALCD while stunned"
+    # review 2026-09-17: a heat-recording one-liner (its own braces) now sits ABOVE the stunned guard on
+    # purpose (a stun window can land mid-cooldown), so this no longer requires zero `}` before the guard --
+    # only that the guard still comes before the F147 try-out confirmation logic further down.
+    assert re.search(r"_onAmmo\(mag, reserve, slot = 0(?:, heat = null)?\) \{.*?if \(this\.stunned\) return;.*?F147", src, re.S), "engine.js `_onAmmo` no longer ignores $ALCD while stunned before its other logic"
     assert re.search(r"this\.stunned\.until = Math\.max\(this\.stunned\.until, now \+ ms\)", src), "a second EMP must EXTEND the stun"
     assert re.search(r"_stunRestore\('died'\)", src), "death must cancel the stun"
     # F57: the low-health crossing plays no grunt and stamps the pain gate
@@ -2018,4 +2053,32 @@ def test_tryout_frame_slot_mirrors_the_engine():
     assert fn(None, ["$TID,1,*", "$AMMO,1,30,*", "$WEAP,0,1,*"]) == 1
     assert fn(None, ["$CLEAR,*", "$TID,1,*"]) == 0
     assert fn(None, []) == 0 and fn(None, None) == 0
+
+
+class _ArmourBumpCompiler(Compiler):
+    """A real Compiler whose bundle's `$PSET` armour is bumped +50, standing in for the body_armor
+    perk's `max_armor_add` compile.py bakes into the head -- the stage's fixed profile player has no
+    perk slot of its own to trigger this for real, so this is the one way to prove the stage reads
+    the pool BACK OFF the compiled head, not off `config.health`."""
+    def compile(self, cfg, player, teams, **kw):
+        bundle = super().compile(cfg, player, teams, **kw)
+        head = list(bundle["head"])
+        for i, f in enumerate(head):
+            if f.startswith("$PSET,"):
+                p = f.split(","); p[4] = str(int(p[4]) + 50); head[i] = ",".join(p)
+        bundle["head"] = head
+        return bundle
+
+
+def test_f213_max_armor_comes_from_the_compiled_pset_not_config_health():
+    """F213: `compile.py` bakes per-player overrides and the body_armor perk's `max_armor_add` into
+    the pushed `$PSET`; `config.health.max_armor` alone never carries either. The stage's `recompile()`
+    must read `max_hp`/`max_armor` back off the compiled head (`mc.frames.head_pool`), like
+    engine.js's `_headPool()`, or a body-armor bench run understates its own armour ceiling."""
+    mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1)])
+    st = GunStage(mgr, None, compiler=_ArmourBumpCompiler(), sleep=_nosleep, voice_verdict_sink=lambda _r: None)
+    st.set_profile(mode="tdm")
+    assert st.config["health"]["max_armor"] == 70, "the config itself is untouched -- only the head is bumped"
+    assert st.max_armor == 120, "the stage's ceiling follows the compiled $PSET, not config.health"
+    assert st.max_hp == 45, "hp is unaffected by the armour-only bump"
 

@@ -140,9 +140,20 @@ python -m brx_mcp.mc                    # real node server; binds every interfac
 #          (a new operator token every launch; --token <fixed> to choose it; --no-auth on a trusted bench)
 ```
 
-Flags (`brx_mcp/mc/__main__.py`): `--host` (default `0.0.0.0`), `--port` (UI, default **8765**),
-`--ws-port` (nodes, default **8766**), `--fake-net` (no phones — dry run), `--token <t>` (fixed operator
-token), `--no-auth` (no token — trusted bench only).
+Flags (`brx_mcp/mc/__main__.py`; `--help` lists every one, including the dev/test-only flags left out here):
+`--host` (default `0.0.0.0`), `--port` (UI, default **8765**), `--ws-port` (nodes, default **8766**),
+`--fake-net` (no phones — dry run), `--token <t>` (fixed operator token), `--no-auth` (no token — trusted
+bench only).
+
+Field-relevant flags beyond the basics:
+- `--advertise <ip>` — put this address in the QR/mDNS instead of the one MC auto-detects. Needed on a WSL2
+  host: MC auto-detects WSL2's own NAT address, which no phone can reach; pass the Windows LAN address
+  instead (from `ipconfig`). See `wsl-dev-runbook.md` → *MC on this box* for the portproxy this still needs.
+- `--public-url <wss://…>` — a public node URL you already run (named tunnel, Tailscale Funnel, port
+  forward); MC hands it out but never starts or stops it.
+- `--tunnel` — expose the node socket (never the API) through a `cloudflared` quick tunnel at boot.
+- `--bench-volume [N]` — every `$VOL` MC compiles plays at N (default 65) instead of the venue volume.
+  Bench only, never a real game.
 
 **Operator token.** Every mutating console action (`POST/PUT/PATCH/DELETE /api/*`, and the live `/ui-ws`
 feed) needs the per-launch operator token; read-only GETs are open so a spectator can watch. Open the
@@ -185,10 +196,11 @@ in-coverage early-end, provisional until recap).
 
 ### Kit — set each player up (while they gear up)
 Per player: **display name, team, voice**, and three loadout slots — **primary, secondary and perk**
-(`PATCH /api/players/{id}`). The perk is its own slot beside the two weapons; **Easy Reload** is the
-exception that takes the second weapon with it, and the UI asks twice before dropping it. A player can
-also be armed with a **pool** (HP / armour) different from the game's, and their row shows a chip when a
-host set one deliberately.
+(`PATCH /api/players/{id}`). The perk is its own slot beside the two weapons. A player can also be
+armed with a **pool** (HP / armour) different from the game's, and their row shows a chip when a host
+set one deliberately. **Easy Reload** is not a perk: it is the other per-player accessibility switch,
+set the same way as the pool. It still takes the second weapon with it (the ALT button that would
+reload leaves no button to switch weapons), and the console asks twice before dropping it.
 
 What each slot may hold comes from the game's **loadout policy** — `POST /api/loadout/pool` previews it,
 and the KIT screen greys out anything the policy refuses and says which rule did it. Phones may self-serve
@@ -255,7 +267,7 @@ starts the next game (keep or clear the roster).
 | **GUN LINK LOST — BLOCKS START** | the phone's BLE to its tagger dropped | power-cycle the tagger with its headset on; re-tap Set Gun |
 | **IDENTITY REVERTED — RE-STAMP $NAME** | the gun's stored name reverted (opened in Callsign) | re-enroll the gun's name; **never open the Callsign app on an enrolled gun** |
 | **GUN DID NOT ANSWER CONFIG — HEADSET OFF?** | empty `gun_echo` after the push | connect/replace the headset, power-cycle, re-push |
-| (amber) BATTERY / SCREEN OFF / FIRMWARE UNREAD | non-blocking notices | fine to start; charge / wake / ignore |
+| (amber) BATTERY / SCREEN OFF | non-blocking notices | fine to start; charge / wake / ignore |
 
 Other field issues:
 - **A phone won't rejoin the SSID** after a drop → confirm **auto-join** is on for that SSID and mobile

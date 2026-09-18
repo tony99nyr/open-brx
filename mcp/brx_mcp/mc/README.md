@@ -69,11 +69,19 @@ than 8765 work for the SERVED UI only: the Vite dev server proxies to :8765 and 
 | `--fake-net` | in-memory node transport instead of the WebSocket server. **Alone it seeds nothing**: no players, no nodes, an empty MUSTER. |
 | `--demo --fake-net` | the two together are what "simulated nodes" means: `DemoDriver` plays 8 fake phones through the whole match. |
 | `--ephemeral` | no `~/.brx-mcp/session.json` read or write, and a throwaway presets shelf. `--demo` already implies both; the flag matters for a REAL run you do not want to inherit or overwrite the last bench roster with. |
+| `--session-file PATH` | restore from, and persist to, this `session.json` instead of `~/.brx-mcp` (e2e fixtures use it to run against a private, disposable session). |
+| `--evidence-dir DIR` | write this launch's SQLite session store under the supplied directory instead of the default location. |
+| `--demo-speed N` | multiplies `--demo`'s simulated match pace (default 1.0). Only `DemoDriver` (`--demo --fake-net`) reads it. |
+| `--token TOKEN` | fix the operator token instead of a random one per launch. Ignored with `--no-auth`. |
 | `--no-auth` | no operator token. Otherwise the URL is printed with `#tok=…` and every non-GET needs it (`API.md` → Operator auth). |
 | `--tunnel` | A28: expose the **node socket only** through a `cloudflared` quick tunnel at boot — no account, no domain, no login. The public `wss://…trycloudflare.com/ws` goes into `lan.public`, into the join QR as `&pub=`, and out to every connected node as `join`. Needs `cloudflared` on PATH (`lan.public.available` says whether it was found); `POST /api/tunnel {on}` is the same switch at runtime. The LAN path is untouched either way. |
 | `--public-url wss://…` | A28: a public node URL **you** already run (named Cloudflare tunnel, Tailscale Funnel, port forward). `provider: "manual"` — MC hands it out and never starts or stops it, so `POST /api/tunnel` answers 409. |
+| `--advertise IP` | T3-A: put this address in the QR/mDNS instead of the one MC auto-detects, without moving where it binds. Fixes the WSL2-NAT case: MC auto-detects the WSL2 NAT address, a phone cannot reach it, and the UI shows `lan.warning` (`API.md`) until you pass the real Windows LAN address here (from `ipconfig`). |
+| `--bench-volume [N]` | bench run only: every `$VOL` MC compiles (match heads at any venue, try-outs) plays at N, default 65, 0-100. Without it, heads use the venue volume (80 indoors, 90 outdoors) and try-outs 69. The banner says `BENCH VOLUME N: not for a real game`, the state carries `bench_volume`, and the console header shows a BENCH VOL tag. `npm run mc -- --bench-volume` forwards it. |
 | `--port` / `--ws-port` / `--host` | HTTP UI+REST (8765), node WebSocket (8766), bind address (default 0.0.0.0, already every interface). |
-| `-v` | debug logging. The banner is stdout, the log lines are **stderr**; capture both (`… > mc.log 2>&1`, `docs/mac-dev-runbook.md` §2). |
+| `-v` / `--verbose` | debug logging. The banner is stdout, the log lines are **stderr**; capture both (`… > mc.log 2>&1`, `docs/mac-dev-runbook.md` §2). |
+
+Run `python -m brx_mcp.mc --help` for the full, current flag list: this table can go stale, the `--help` output cannot.
 
 Other launches:
 

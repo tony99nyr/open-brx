@@ -204,3 +204,75 @@ def test_the_whistle_clears_an_echo_proof_for_the_next_match():
     assert s.nodes["node0"].get("headset") != "proven", "the echo proof rode into the next match"
     beat(net, clock, ps[0])
     assert row(s)["headset_proof"] != "echo"
+
+
+# ---- bench 2026-09-17: a headset that is off makes the gun drop the link every few seconds ----
+# The phone counts the quick drops (BrxLink.flapping) and reports `preflight.gun_flapping`. The row used
+# to swap GUN LINK LOST (red) for HEADSET CONFIRMING (amber) with every 5-6 s cycle.
+
+def flap_beat(net, clock, p, gun_linked, flapping=True, i=0):
+    pf = {"ssid_ok": True, "mc_reachable": True, "phone_batt": 90, "screen_on": True, "foreground": True,
+          "gun_linked": gun_linked, "gun_flapping": flapping}
+    net.simulate_status(f"node{i}", {"player_id": p["player_id"], "hp": 45, "armor": 70, "ammo": 36, "alive": True,
+                                     "shots": 0, "battery": 80, "fw": "v4.32", "arm_state": "kitted", "synced": True,
+                                     "preflight": pf}, clock["t"])
+
+
+def test_a_flapping_gun_reads_one_steady_headset_off_line_across_the_cycle():
+    from brx_mcp.mc.state import GUN_FLAPPING_LINE
+    s, net, clock, ps = mk()
+    hello(net, clock, ps[0])
+    seen = []
+    for linked in (True, False, True, False):      # the link comes up for a second, then drops again
+        flap_beat(net, clock, ps[0], gun_linked=linked)
+        clock["t"] += 2_000
+        r = row(s)
+        seen.append((r["status"], tuple(r["blockers"]), tuple(r["ambers"]), r["gun_flapping"]))
+    assert len(set(seen)) == 1, f"the row must not change with each link cycle: {seen}"
+    r = row(s)
+    assert r["ambers"] == [GUN_FLAPPING_LINE]
+    assert not any("GUN LINK LOST" in b for b in r["blockers"]) and not any("CONFIRMING" in a for a in r["ambers"])
+    assert r["status"] == "amber" and s.readiness()["go"], "amber never blocks, and flapping adds no new red"
+    assert r["headset"] == "unknown" and r["gun_flapping"] is True
+
+
+def test_when_the_phone_stops_reporting_flapping_the_plain_link_rules_return():
+    s, net, clock, ps = mk()
+    hello(net, clock, ps[0])
+    flap_beat(net, clock, ps[0], gun_linked=False)
+    assert row(s)["gun_flapping"] is True
+    clock["t"] += 2_000
+    flap_beat(net, clock, ps[0], gun_linked=False, flapping=False)
+    r = row(s)
+    assert r["gun_flapping"] is False
+    assert "GUN LINK LOST — BLOCKS START" in r["blockers"] and r["status"] == "red"
+    beat(net, clock, ps[0])                        # an older app sends no gun_flapping at all
+    assert row(s)["gun_flapping"] is False
+
+
+def test_a_gun_that_answered_the_push_then_goes_dark_still_blocks_start():
+    """F-2026-09-17b: the flapping amber is for an UNPROVEN headset. A gun that already echoed THIS
+    push and then goes dark and flaps is a real fault (the headset was on, then died), so the red must
+    return, not the flapping amber."""
+    from brx_mcp.mc.state import GUN_FLAPPING_LINE
+    s, net, clock, ps = mk()
+    hello(net, clock, ps[0]); beat(net, clock, ps[0])
+    s.push_config(force=True)
+    net.simulate_node_message("node0", "ack_config", {"config_id": s.config["config_id"], "ok": True,
+                                                      "gun_echo": "$LCD,0,0,0,0,0,0,*"}, clock["t"])
+    assert row(s)["headset"] == "proven" and row(s)["headset_proof"] == "echo"
+
+    clock["t"] += 2_000
+    flap_beat(net, clock, ps[0], gun_linked=False, flapping=True)
+    r = row(s)
+    assert "GUN LINK LOST — BLOCKS START" in r["blockers"], "the push already proved the head; going dark now is a fault"
+    assert r["status"] == "red"
+    assert GUN_FLAPPING_LINE not in r["ambers"]
+
+
+def test_the_console_renders_the_same_headset_off_words():
+    """The Armory card drops its list copy of the amber by exact match, so the two strings must agree."""
+    from pathlib import Path
+    from brx_mcp.mc.state import GUN_FLAPPING_LINE
+    derive = Path(__file__).resolve().parents[2] / "webapp" / "mc" / "src" / "api" / "derive.ts"
+    assert f"GUN_FLAPPING_LINE = '{GUN_FLAPPING_LINE}'" in derive.read_text(encoding="utf-8")

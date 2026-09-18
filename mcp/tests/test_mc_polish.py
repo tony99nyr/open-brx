@@ -769,9 +769,12 @@ def test_unbound_stale_nodes_prune_without_a_count_gate():
 
 # ---------------------------------------------------------------- A9.1 bench voice preview (Tony 2026-08-26)
 def _kit_bound():
-    """A player kitted with a bound (n1) node — the pre-lobby state where a voice/name edit previews."""
+    """A player kitted with a bound (n1) node — the pre-lobby state where a voice/name edit previews.
+    Adding a player never moves the phase (2026-09-17), so KIT is reached the way the operator does it:
+    CONTINUE TO KIT (`set_phase`)."""
     s = _sess(); s.set_config({"mode": "tdm", "time_limit_s": 60})
     p = s.add_player("REAPER", team_id="blue", gun_id="GUN-A")
+    s.set_phase("kit")
     s._bind("n1", p)
     assert s.phase == "kit" and s.players[p["player_id"]]["node_id"] == "n1"
     return s, p

@@ -1,6 +1,6 @@
 # Time-to-kill: the model shooters use, and how it applies to BRX
 
-Reference for weapon balance work (docs/game-test-2026-09-11.md Block D item D2). Ground rules
+Reference for weapon balance work (docs/archive/game-test-2026-09-11.md Block D item D2). Ground rules
 below come from shipped-shooter community analysis and one probability-theory paper; BRX facts
 come from `mcp/brx_mcp/mc/weapons.json`, `protocol/brx-protocol.md`, and `mcp/brx_mcp/mc/compile.py`.
 
@@ -150,7 +150,7 @@ should scale with mag the same way the current rows do, roughly 5-6x mag size.
 
 ## Shipped 2026-09-12
 
-D2 (`docs/game-test-2026-09-11.md`) landed with one change from §5's proposal: the **USP's mag went
+D2 (`docs/archive/game-test-2026-09-11.md`) landed with one change from §5's proposal: the **USP's mag went
 16 → 20**. At `p=0.7` a 13-hit USP with a 16-round mag empties the magazine before landing the kill
 roughly three fights in four (a 25% one-mag-kill rate); 20 rounds brings that to a more usable 77%
 without moving its ideal TTK (the mag size never enters the ideal-TTK formula). Reserve for all three
@@ -168,7 +168,7 @@ is a strict win on every published axis. Deagle's reserve was raised (36 → 48)
 | **Deagle** (most dmg, slowest) | 26 / 480 / 7 / 48 | 1920 ms | ~2949 ms | ~65% | 32.7 | 11 |
 
 (`expected ttk` and `one-mag kill` as in §5, now binomial-exact for all three since every mag is
-small enough to sum directly. `sustained dps` and `kills/kit` are the two axes
+small enough to sum directly. **F255 (closed 2026-09-18):** the `reserve` and `kills/kit` figures here are the catalogue number, and the bench confirmed a player really carries it: `$AMMO,0,32,192` rides `frames.spawn` AND `frames.revive`, so the gun is set to the full catalogue reserve at every spawn and the HUD agrees with it; the halved `t40` is live only in the ~200 ms between the `$WEAP` and the `$SPAWN`. `sustained dps` and `kills/kit` are the two axes
 `test_ttk_band_and_no_strictly_dominant_weapon` checks alongside TTK — `mag*dmg/(mag*fire_ms +
 reload_ms)` and `(mag+reserve)//htk`.)
 
@@ -187,7 +187,7 @@ table, not only among the three pistols.
 
 **Wire tokens changed** (`mcp/brx_mcp/mc/weapons.json`, `wire` block + top-level `mag`/`reserve`):
 
-| weapon | dmg (t5) | fire_ms (t14) | mag (t16/t39) | reserve (t17/t40) |
+| weapon | dmg (t5) | fire_ms (t14) | mag (t16/t39) | reserve (catalogue, written to t17) |
 |---|---|---|---|---|
 | USP | 13 → **9** | 200 → **160** | 12 → **20** | 72 → **120** |
 | Glock | 9 → **13** | 150 → **240** | 20 → **16** | 120 → **64** |

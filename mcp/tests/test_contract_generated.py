@@ -173,7 +173,7 @@ def test_station_kinds_keep_source_order_not_sorted():
 
 
 def test_a_kind_vocabulary_type_name_that_collides_with_a_literal_alias_is_not_redeclared():
-    """Once types.py grows a `StationKind = Literal[...]` alias (docs/archive/spec-contract-dry-2026-09-12.md §3), the
+    """Once types.py grows a `StationKind = Literal[...]` alias (A24), the
     generator reuses that name for STATION_KINDS' companion type instead of inventing
     `StationKindId` -- but it must NOT also re-emit `export type StationKind = ...` for the kind
     vocabulary, or the two declarations collide (TS2300 "Duplicate identifier"). Exercises
@@ -329,7 +329,7 @@ def test_a_non_string_literal_member_raises_unmapped_type():
 
 
 def test_the_generator_cannot_be_fooled_by_a_tuple_field():
-    """Nothing on the wire is a tuple (docs/archive/spec-contract-dry-2026-09-12.md §2.2) -- the mapper must refuse one
+    """Nothing on the wire is a tuple -- the mapper must refuse one
     loudly, naming the field, rather than emit something plausible-looking and wrong."""
     mod = _load()
 
@@ -371,7 +371,7 @@ def test_accept_min_fields_must_be_a_subset_of_required():
 
 
 def test_accept_min_matches_the_live_envelope_table_exactly():
-    """Phase-agnostic (docs/archive/spec-contract-dry-2026-09-12.md §3): whatever ACCEPT_MIN is on envelope.py right now --
+    """Phase-agnostic: whatever ACCEPT_MIN is on envelope.py right now --
     `{}` today, `{"result": ("match_id",)}` once the app lane's change lands -- the render must
     reproduce it byte-for-byte in BOTH files, built independently of the generator's own model via
     the same `getattr(envelope, "ACCEPT_MIN", {})` fallback the generator itself uses."""

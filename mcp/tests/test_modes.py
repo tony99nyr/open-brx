@@ -5,7 +5,7 @@ import asyncio
 from brx_mcp.gameconfig import GameConfig
 from brx_mcp.modes import (
     DeathmatchEngine, InfectionEngine, LastManStandingEngine, GameDriver,
-    build_engine, GameOver, Respawn, Score, Eliminate, SetTeam, Callout, Heal,
+    build_engine, GameOver, Respawn, Score, Eliminate, SetTeam, Callout, Heal, SendFrame,
 )
 from brx_mcp.modes.driver import assign_teams
 from brx_mcp import poolgauge as pg
@@ -566,6 +566,37 @@ def test_driver_setup_configs_then_spawns_all_guns():
     assert last_start < first_spawn
     spawned = {pid for pid, f in order if f.startswith("$SPAWN")}
     assert spawned == {"g1", "g2"}
+
+
+def test_f206_the_driver_follows_every_pset_with_the_guns_team():
+    """F206 (bench 2026-09-16): any `$PSET` clears the gun's team until a `$TID` follows. `_send` is the driver's
+    one door: every `$PSET` goes out with the gun's current team right behind it, and a flipped team wins."""
+    sent = []
+
+    async def sender(pid, frame):
+        sent.append((pid, frame))
+
+    def mine(pid):
+        return [f for p, f in sent if p == pid]
+
+    drv = GameDriver(GameConfig(mode="tdm", game_time_s=0, respawn_s=5), {"g1": 1, "g2": 2}, sender,
+                     announce=lambda *_: None)
+    asyncio.run(drv.setup())
+    for pid, tid in (("g1", 1), ("g2", 2)):
+        frames = mine(pid)
+        p = next(i for i, f in enumerate(frames) if f.startswith("$PSET,"))
+        assert frames[p + 1] == f"$TID,{tid},*", frames
+    sent.clear()
+
+    async def scenario():
+        await drv.execute([SetTeam("g1", 3)])
+        await drv.execute([SendFrame("g1", "$PSET,5,0,45,70,70,50,,*")])     # a lone $PSET, no $SPAWN
+        await drv.execute([Respawn("g1")])                                   # no $PSET: nothing added
+    asyncio.run(scenario())
+    frames = mine("g1")
+    p = frames.index("$PSET,5,0,45,70,70,50,,*")
+    assert frames[p + 1] == "$TID,3,*", frames
+    assert frames.count("$TID,3,*") == 2, "one from SetTeam, one after the $PSET; the respawn adds none"
 
 
 def test_a_burst_task_collected_after_the_loop_closed_does_not_print_a_traceback():

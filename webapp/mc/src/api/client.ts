@@ -1,4 +1,4 @@
-import type { Api, FeedEntry, GameConfig, Player, ReportResult, State } from './types';
+import type { Api, FeedEntry, GameConfig, OperatorActionResult, Player, ReportResult, State } from './types';
 
 // ---- operator token (server requires it on mutating /api/* and on /ui-ws) ----
 const TOK_KEY = 'brx_mc_tok';
@@ -166,6 +166,7 @@ export function createHttpApi(): Api {
     rangeVerdict: (weapon_id, verdict, note) => post('/api/range/verdict', { weapon_id, verdict, note }),
     endTryout: async id => { await j(`/api/players/${id}/tryout`, { method: 'DELETE' }); },
     setReady: (id, ready) => post(`/api/players/${id}/ready`, { ready }),
+    readyAll: () => post('/api/lobby/ready_all'),
     // LOAD: tell the phones which game is loaded. NO frames, NO head, no gun write (state.py
     // `load_game`). Deliberately a different route from the push below — that one configures guns.
     loadGame: () => post('/api/games/load', {}),
@@ -174,11 +175,28 @@ export function createHttpApi(): Api {
     reschedule: runway_s => post('/api/start/reschedule', { runway_s }),
     abort: () => post('/api/start/abort'),
     control: (cmd, confirm) => post('/api/control', { cmd, confirm }),
+    operatorAction: (id, cmd, match_id) => post<OperatorActionResult>(`/api/players/${encodeURIComponent(id)}/operator`, { cmd, match_id })
+      .catch((e: Error & { status?: number; body?: unknown }) => {
+        // a route-less 404 is an OLD server; a 404 carrying the server's own `error` is its words (as `skewOr404`)
+        if (e?.status === 404 && typeof (e.body as { error?: unknown } | undefined)?.error !== 'string') {
+          throw Object.assign(new Error('THE MC SERVER PREDATES THIS UI (no operator route). RESTART IT: python -m brx_mcp.mc'), { status: 404 });
+        }
+        throw e;
+      }),
     getRecap: () => j('/api/recap'),
     matchHistory: () => j('/api/matches'),
     recapCsvUrl: () => '/api/recap.csv',
     matchCsvUrl: (match_id: string) => `/api/matches/${encodeURIComponent(match_id)}.csv`,
     newSession: keep_roster => post('/api/session/new', { keep_roster }),
+    // An MC started before 2026-09-16 has no such route: say so. (The command bar's own NEW SESSION
+    // control left on 2026-09-17 — LOAD after a match, or RECAP's NEXT MATCH ▸, already cover it — so
+    // a restart is the only fallback worth naming here.)
+    nextMatch: () => post<State>('/api/match/next', {}).catch((e: Error & { status?: number }) => {
+      if (e?.status === 404) throw new Error('THIS MC PREDATES NEXT MATCH: RESTART IT (python -m brx_mcp.mc)');
+      throw e;
+    }),
+    resumeOrphan: match_id => post<State>('/api/match/orphan/resume', { match_id }),
+    endOrphan: match_id => post<State>('/api/match/orphan/end', { match_id }),
     makeReport: () => post<ReportResult>('/api/report').catch(reportSkewOr404),
   };
 }

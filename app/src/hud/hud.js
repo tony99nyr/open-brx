@@ -36,6 +36,82 @@ const ALERT_FAMILY = { objective_taken: 'objective', objective_scored: 'objectiv
 const OUTCOME_WORD = { win: 'WIN', lose: 'LOSE', draw: 'DRAW', undecided: 'UNDECIDED' };
 const MEDAL_LABEL = { first_blood: 'FIRST BLOOD', double_kill: 'DOUBLE KILL', triple_kill: 'TRIPLE KILL', killtacular: 'KILLTACULAR', killing_spree: 'KILLING SPREE', unstoppable: 'UNSTOPPABLE' };
 const splitGun = g => { if (!g) return ['—', '']; return [esc(g.basename || g.name || ''), esc(g.tail || '')]; };
+
+// F258: one picker row, built once and then written in place. The signal bars light at these dBm
+// thresholds, weakest first; the heights are the design's rising staircase.
+const SIG_THRESHOLDS = [-85, -75, -65, -55];
+const SCAN_ROW = '<span class="nm"></span><span class="inuse" hidden>IN USE</span><span class="sig">'
+  + SIG_THRESHOLDS.map((_, i) => `<i style="height:${6 + i * 4}px"></i>`).join('') + '<b></b></span>';
+/** Bench 2026-09-17: bullet-shaped pips read as one pip per round, so a 12-pip gauge on a 4-round sniper mag
+ *  lied by 3 pips a shot. Pips now count exactly the magazine size — one pip per round — up to this many; past
+ *  it they stop reading as bullets and the gauge switches to a continuous bar (exact count stays in the digits
+ *  beside it). 30 is the largest count the pip row fits at 667×375 (the SE stage viewport) without reaching the
+ *  vitals plate on the other corner, and it sits in the gap the weapon catalogue leaves between a doubled
+ *  (Extended Mags) marksman mag — sniper 4→8, AMR 14→28 — and a doubled sidearm or assault mag — glock 16→32,
+ *  bolt rifle 18→36, stinger 18→36 — so the perk never straddles the threshold either way. */
+const AMMO_PIP_MAX = 30;
+/** Bench 2026-09-17: `weapon_class` ("ballistic" | "energy" | "melee", `st.weaponClass`) decides the
+ *  reload-versus-overheat WORDING (RECHARGE/HOLD TO RECHARGE for energy, RELOAD for ballistic) -- that is
+ *  its only job. The old id regex is the named fallback for a pre-A48 bundle that carries no class at
+ *  all. */
+const isEnergyWeapon = st => {
+  const cls = st && st.weaponClass;
+  if (cls) return cls === 'energy';
+  return /energy|charge/i.test(String((st && st.weaponId) || ''));
+};
+/** Bench 2026-09-17: a full charge on the charge rifle spends 10 of its 40-charge cell, so a
+ *  cell under 10 fires nothing even though it reads as "ammo left". A48 (merge 2026-09-17) put that cost in
+ *  the catalogue as `rounds_per_charge`, which the node passes through as `st.roundsPerCharge`, so the cost
+ *  is now read per weapon and the charge-rifle id no longer appears in this rule. The constant stays as the
+ *  named fallback for a pre-A48 bundle, and is used ONLY for the charge rifle, the one weapon it was
+ *  measured on -- never guessed onto another energy weapon. */
+const CHARGE_RIFLE_FULL_CHARGE_COST = 10;
+/** What one full charge costs this weapon's cell, or null when it does not charge.
+ *  ⚠ `> 1`, not `> 0` (polish 2026-09-17): a weapon that spends ONE round per shot does not charge, and
+ *  `rounds_per_charge` now always reaches the node as a concrete number (MC resolves the catalogue's
+ *  absent-means-1 row), so a `> 0` test made every bullet weapon look like a charge weapon. A sniper
+ *  rifle with an empty magazine then read NOT ENOUGH ENERGY instead of RELOAD. Same question as
+ *  `usesCellGauge` below, which is why both ask it the same way. A present value of 1 is an answer, so
+ *  it never falls through to the pre-A48 id fallback. */
+const chargeCost = st => {
+  if (st && st.roundsPerCharge != null) return st.roundsPerCharge > 1 ? st.roundsPerCharge : null;
+  // Same short-circuit as `usesCellGauge`, and for the same reason: a post-A48 bundle carries a class,
+  // so a missing `roundsPerCharge` there means the catalogue default of 1, not "ask the weapon id". Only
+  // a bundle with NEITHER field is old enough for the id fallback. Without this line the two disagreed
+  // on a transitional bundle: the charge rifle got the NOT ENOUGH ENERGY note with the big-magazine bar.
+  if (st && st.weaponClass) return null;
+  return (st && st.weaponId === 'charge_rifle') ? CHARGE_RIFLE_FULL_CHARGE_COST : null;
+};
+/** F248 (2026-09-17): `weapon_class` decides WORDING (isEnergyWeapon above), never which
+ *  ammo gauge to draw -- the arsenal merge picked the gauge from `weapon_class === "energy"`, which is
+ *  WIDER than the old id match, so the Rail Gun (class "energy", `mag` 2, one round per shot) drew a
+ *  percentage instead of its two pips. The rule agreed then: draw the CELL gauge (percentage
+ *  bar / cell-count pills) exactly when a full charge costs MORE than one round (`rounds_per_charge > 1`);
+ *  otherwise draw the ordinary per-round pips or big-magazine bar, whatever the class says. A post-A48
+ *  bundle always carries `weaponClass`, so a weapon with no explicit `rounds_per_charge` -- the catalogue
+ *  default of 1, e.g. the Rail Gun -- reads as "not a cell gauge" via that branch alone. Only a bundle with
+ *  NEITHER field (pre-A48, before either concept existed) falls back to the named charge-rifle constant,
+ *  then the old id regex -- which never matched "rail_gun" in the first place, so this bug could not have
+ *  existed before A48 widened the class match. */
+const usesCellGauge = st => {
+  if (st && st.roundsPerCharge != null) return st.roundsPerCharge > 1;
+  if (st && st.weaponClass) return false;
+  return (st && st.weaponId === 'charge_rifle') ? CHARGE_RIFLE_FULL_CHARGE_COST > 1
+    : /energy|charge/i.test(String((st && st.weaponId) || ''));
+};
+/** pl4 (bench 2026-09-17, Energy Rifle): an energy weapon's reload is a HOLD of the lever. Taps of 0.15-0.23 s
+ *  refilled nothing; a hold of 0.7 s or more refilled the whole cell in one step. So the prompt says how, and it
+ *  is always steady (never blinking), whether the cell is empty or only below a charge: one calm rule. The
+ *  empty-cell digit already warns, and NOT ENOUGH ENERGY shows only while the cell still reads above 0. */
+const HOLD_TO_RECHARGE = 'HOLD TO RECHARGE';
+/** The digit beside the gauge: a round count for a bullet weapon or a low-cost energy weapon (the Rail
+ *  Gun), a percentage of the cell for a weapon whose full charge costs more than one round (F248, see
+ *  usesCellGauge above). */
+const magText = st => usesCellGauge(st)
+  // Bench 2026-09-18 (Tony): the per-cent sign is noise in a fight -- the number alone reads faster and
+  // the bar beside it already says it is a proportion, not a round count.
+  ? `${Math.max(0, Math.min(100, Math.round(100 * st.ammo / (st.mag || Math.max(st.ammo, 1)))))}`
+  : pad2(st.ammo);
 // Polish-loop pass 1 (2026-09-12): the discovered-MC row shows the HOST, never the raw ws://…/ws join URL.
 const mcHost = url => { try { return new URL(url).host; } catch (_) { return String(url || ''); } };
 // Polish-loop pass 2: `d.source` (app.js, landed) is 'sweep' (a port sweep on the joined Wi-Fi) or 'mdns'
@@ -135,28 +211,70 @@ function statBlock(r, opts = {}) {
     (facts ? `<div class="facts">${facts}</div>` : '');
 }
 
+// The skin switch draws its own icons: a text ☀ fell back to a different glyph in the phone's font.
+const SKIN_MOON = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M15 3a9 9 0 1 0 6.5 15.2A7.5 7.5 0 0 1 15 3z"/></svg>';
+const SKIN_SUN = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></g></svg>';
+
 export class Hud {
   constructor(root, handlers = {}) {
     this.root = root; this.h = handlers;
     this.frame = root.querySelector('#frame'); this.hudEl = root.querySelector('#hud');
     this.overlay = root.querySelector('#overlay'); this.chips = root.querySelector('#chips');
     this.diag = root.querySelector('#diag'); this.info = root.querySelector('#info');
+    this.skin = root.querySelector('#skin');   // the day/night skin switch (a sibling of #hud, so it needs its own listener)
+    if (this.skin) this.skin.addEventListener('click', e => this._click(e));
     this.sig = null; this.scan = []; this.link = {}; this.diagData = {}; this.mcUrl = '';
+    this.scanOther = false;   // F258: the "other devices" fold on the picker, closed to start with
+    // F211: adapter-off state, app.js-owned (like `mcUrl`/`discovered` below) — the picker's own concern,
+    // never round-tripped through the engine. `platform` gates the Android-only enable/settings buttons.
+    this.bluetoothOn = true; this.platform = 'web';
     this.discovered = null;   // {url, at} a LAN-sweep hit MC never auto-joined — null once bound or nothing found
     this._joinConfirm = null; // {act, at} the armed/live two-tap guard on CONNECT / SCAN QR (below)
+    this._gunConfirm = null;  // {at} the LIVE two-tap guard on RELINK GUN (bench 2026-09-17, below)
     this.lo = { tab: 'primary', filter: 'weapons', focus: null, confirm: null };   // LOADOUT browser UI state (tab / filter / focused row / A14 two-tap confirm {key, drop})
     this._moment = null; this._momentTimer = null; this._lastTminus = null; this.mcPill = false;   // live: the MC-range pill is opt-in (tap the MC label)
     // A24 FINAL RESULTS: which screen the player has reopened after OK (null | 'result' | 'history') and which
     // half of the segmented toggle they are on (null = pick from the mode: teams for a team game, players for FFA).
     this.view = null; this.rtab = null; this._lastSt = null;
+    // Bench 2026-09-17: the live scores overlay (null | 'team' | 'player'). A VIEW like `view` above: opening it
+    // sends nothing and touches no engine state. `_cueAt` / `_cueT` drive the ammo gauge's shot-ready cue.
+    this.board = null; this._cueAt = null; this._cueT = null;
     this.info.addEventListener('click', () => this.toggleDiag());
     this.hudEl.addEventListener('click', e => this._click(e));
     this.diag.addEventListener('click', e => this._click(e));
+    // The chip bar is a sibling of #hud, so its pill buttons (GUN LINK LOST, RECONNECT NOW) need their own listener:
+    // without it a tap on them reached no handler at all (bench 2026-09-17).
+    this.chips.addEventListener('click', e => this._click(e));
     let pressT = null;
     // (removed 2026-08-26, critic #9: a resting glove/chin tripped the invisible 900 ms night toggle — NIGHT lives in the diag panel)
     this.hudEl.addEventListener('pointerup', () => { if (pressT) clearTimeout(pressT); pressT = null; });
     this.hudEl.addEventListener('pointerleave', () => { if (pressT) clearTimeout(pressT); pressT = null; });
+    // Bench 2026-09-16: a player could not tell whether a tap landed. One delegated pair on #frame (the
+    // parent of #hud, #diag and the ⓘ button) covers every tappable thing — a native button, a
+    // data-act row/pill/tile, or role="button" — so no control needs its own press handler. pointerdown
+    // fires on touch-down on both WKWebView and Android WebView (unlike CSS :active, which iOS can miss);
+    // pointerup/cancel always clears it, and a window-level fallback catches a release outside the frame
+    // (a drag that ends off-screen). Disabled/aria-disabled controls are skipped so a locked tile never
+    // flashes pressed.
+    this.frame.addEventListener('pointerdown', e => this._tapDown(e));
+    this.frame.addEventListener('pointerup', () => this._tapUp());
+    this.frame.addEventListener('pointercancel', () => this._tapUp());
+    window.addEventListener('pointerup', () => this._tapUp());
+    window.addEventListener('pointercancel', () => this._tapUp());
     window.addEventListener('resize', () => this.fit()); this.fit();
+  }
+  // See the constructor comment above for why this is one delegated pair, not per-button code.
+  _tapDown(e) {
+    const el = e.target.closest('button, [data-act], [role="button"]');
+    if (!el || el.disabled || el.getAttribute('aria-disabled') === 'true') return;
+    if (this._pressedEl && this._pressedEl !== el) this._pressedEl.classList.remove('tap-press');
+    this._pressedEl = el;
+    el.classList.add('tap-press');
+  }
+  _tapUp() {
+    if (!this._pressedEl) return;
+    this._pressedEl.classList.remove('tap-press');
+    this._pressedEl = null;
   }
   fit() {
     // On the phone the OS status bar (clock / battery / signal) is drawn OVER the web view — Android 15 forces
@@ -181,6 +299,12 @@ export class Hud {
     this.frame.style.transform = `scale(${s})`;
   }
   _click(e) {
+    // The scores overlay closes on a tap anywhere outside its panel. The ⓘ, the day/night switch, the diag
+    // panel and the chip bar keep their own taps (they are not part of the live screen under the overlay).
+    if (this.board && !e.target.closest('.bdpanel, [data-act="onBoard"], #skin, #info, #diag, #chips')) {
+      this.board = null; this.sig = null; if (this._lastSt) this.render(this._lastSt);
+      return;
+    }
     const el = e.target.closest('[data-act]'); if (!el) return;
     const act = el.dataset.act, arg = el.dataset.arg;
     // The results / history screens are a VIEW of what the engine already holds — reopening them changes nothing
@@ -207,6 +331,20 @@ export class Hud {
       if (this._joinConfirm && this._joinConfirm.act === act && now - this._joinConfirm.at < 4000) { this._joinConfirm = null; this.renderDiag(); }   // second tap: revert the warning now, then let it through below
       else { this._joinConfirm = { act, at: now }; this.renderDiag(); return; }
     } else if (this._joinConfirm) this._joinConfirm = null;   // any other tap (or a phase change) drops a stale confirm
+    // Bench 2026-09-17: RELINK GUN takes the phone off the gun, so on a LIVE link it asks for a second tap within 4 s.
+    // The GUN LINK LOST pill shares the act, but only shows with the link down, where a tap takes nothing away.
+    if (act === 'onReconnectGun' && el.closest('#diag')) {
+      if (this.diagData && this.diagData.link && this.diagData.link.relinking) return;   // a relink is running: the button reads RELINKING…
+      if (this._lastSt && this._lastSt.phase === 'live' && this._lastSt.bleUp) {
+        if (this._gunConfirm && Date.now() - this._gunConfirm.at < 4000) { this._gunConfirm = null; this.renderDiag(); }
+        else { this._gunConfirm = { at: Date.now() }; this.renderDiag(); return; }
+      }
+    } else if (this._gunConfirm) { this._gunConfirm = null; if (this.diag.classList.contains('open')) this.renderDiag(); }
+    if (act === 'onBoard' || act === 'onBoardTab' || act === 'onBoardClose') {
+      this.board = act === 'onBoardClose' ? null : (arg === 'player' ? 'player' : 'team');
+      this.sig = null; if (this._lastSt) this.render(this._lastSt);
+      return;
+    }
     if (act === 'onEndOk') this.view = null;                                     // OK still acks the end (app handler below)
     else if (act === 'onShowResults' || act === 'onShowHistory' || act === 'onCloseView' || act === 'onResultTab') {
       if (act === 'onShowResults') this.view = 'result';
@@ -218,7 +356,13 @@ export class Hud {
     }
     const fn = this.h[act]; if (fn) fn(arg, el);
   }
-  setScan(list) { this.scan = list; this.sig = null; }
+  // F258 (bench 2026-09-18): this used to clear the structural signature, so every scan hit rebuilt
+  // the whole screen and destroyed every row node under the player's finger. A scan hit is not a
+  // screen change: `_patchScan` writes the rows in place on the next render, and the picker's empty
+  // placeholder and its "other devices" fold are patched the same way. Nothing here is structure.
+  setScan(list) { this.scan = list || []; }
+  /** Opens or closes the "other devices" fold (F258). A view, like `board`: it sends nothing. */
+  setScanOther(open) { this.scanOther = !!open; }
   setLink(link) { this.link = link; }
   // Polish-loop pass 1 (2026-09-12): a LAN sweep hit MC is no longer auto-joined (app.js, another lane) — it
   // hands the player the choice instead. `null` clears the row (nothing found, or MC is already bound).
@@ -241,11 +385,18 @@ export class Hud {
   render(st) {
     this._lastSt = st;
     if (!st.ended) this.view = null;   // a new match retires a reopened results/history screen
+    if (this.board && !(st.phase === 'live' && st.alive)) this.board = null;   // the scores overlay belongs to the live screen only
     this.frame.dataset.team = st.teamKey || 'blue';
     this.frame.dataset.env = st.night ? 'night' : '';
+    if (this.board) this.frame.dataset.board = this.board; else delete this.frame.dataset.board;
     const sig = [st.phase, st.alive, !!st.killedBy, st.night, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.underFire, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
-      st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.battery != null && st.battery <= 15,
-      st.kills > 0, st.deaths > 0, st.assists > 0, accShown(st) != null, st.reserve != null, this.scan.length, st.bleUp, st.ended,
+      st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.reserve === 0, (st.mag || 0) > AMMO_PIP_MAX, st.battery != null && st.battery <= 15,
+      st.heatEverSeen, st.overheatShown,   // bench 2026-09-17: OVERHEAT prompt/overlay and the heat bar's existence are structural, not patched in place. `st.overheating` (the mechanic) is not read here at all: the HUD draws the display window only
+      chargeCost(st) != null && st.ammo != null && st.ammo < chargeCost(st), st.reserve > 0,   // OUT OF ENERGY / RECHARGE prompt + the NOT ENOUGH ENERGY note are structural too
+      // F258: `this.scan.length` used to sit here, so every scan hit that added a device rebuilt the
+      // whole screen. The picker's rows, its empty placeholder and its fold are all patched in place
+      // by `_patchScan` now, so nothing about the scan is structure any more.
+      st.kills > 0, st.deaths > 0, st.assists > 0, accShown(st) != null, st.reserve != null, st.bleUp, st.ended, this.bluetoothOn,
       this.discovered && this.discovered.url,   // Polish-loop pass 1: the discovered-MC row on the pre-join screen (`_joinConfirm` only touches the diag panel, patched directly, not here)
       st.rejoin, !!st.pendingTeardown, this.sync && this.sync.bound, this.sync && this.sync.pending,
       // F137 (field 2026-09-12, found verifying the fix below): the pre-kit CONNECTED screen swaps a whole
@@ -270,7 +421,8 @@ export class Hud {
       // A24 FINAL RESULTS: the headline changes when the result lands and again when the settle window expires,
       // and the toggle/history are structure. `resultWait` is in here because "MC NOT REACHED" appears with NO
       // message arriving — nothing else in the signature moves at that moment.
-      this.view, this.rtab, st.resultWait, st.result && st.result.match_id, st.result && st.result.outcome,
+      this.view, this.rtab, st.resultWait,
+      this.board, this.board && st.scoreAt, this.board && st.fragLimit,   // bench 2026-09-17: the scores overlay rebuilds on a new MC push while it is open st.result && st.result.match_id, st.result && st.result.outcome,
       st.result && st.result.provisional, st.result && st.result.rows && st.result.rows.length,
       this.history && this.history.length, this.sessionId, st.game && st.game.mc_verify].join('|');   // synced / headEcho stay patched in place (F137: wsState moved INTO the signature above — see the note there)
     const panel = st.phase === 'kitted' && ((st.ended && (!st.endAck || !!this.view)) || (!st.ended && st.kitOpen && !st.briefSeen && !this._tryoutShown(st)) || (!st.ended && st.browsing && !this._tryoutShown(st)));
@@ -287,11 +439,26 @@ export class Hud {
       }
     }
     this._patch(st);
+    this._patchScan();   // F258: the picker's rows are written in place, never rebuilt
+    this._shotCue(st);
+    this._skinSwitch(st);
     this._chips(st);
     this._moments(st);
     this._fitBriefing();
     this._fitMcLinked();
     this._fitLoDetailName();
+  }
+
+  /** Bench 2026-09-17: the skin is each player's own choice. The switch shows the skin a tap gives (☾ on day, ☀ on
+   *  night). The live night label names NIGHT OPS only when the venue is set to it; otherwise it is just "NIGHT". */
+  _skinSwitch(st) {
+    const on = !!st.night;
+    if (this.skin) {
+      if (this.skin.dataset.on !== String(on)) { this.skin.dataset.on = String(on); this.skin.innerHTML = on ? SKIN_SUN : SKIN_MOON; }
+      if (this.skin.getAttribute('aria-checked') !== String(on)) this.skin.setAttribute('aria-checked', String(on));
+    }
+    const lab = this.hudEl.querySelector('.nightlab'), txt = st.nightOps ? 'NIGHT OPS' : 'NIGHT';
+    if (lab && lab.textContent !== txt) lab.textContent = txt;
   }
 
   /** F137 (field 2026-09-12): "MC LINKED ✓ — WAITING FOR KIT-OUT" at the design 28px wrapped to two
@@ -378,21 +545,102 @@ export class Hud {
     }
   }
 
+  // F211: with Bluetooth off the picker used to just sit empty, with no line telling the player why
+  // (game-test-2026-09-13.md C2). `bluetoothOn` is app.js-owned (constructor note above) and re-checked
+  // on every SET MY GUN tap and on the OS adapter-state notification, so this only ever shows what the
+  // phone reports right now. The buttons only appear where the plugin actually offers them (Android).
+  _idleBtOff() {
+    const android = this.platform === 'android';
+    return `<div class="sc bad"><i></i>BLUETOOTH IS OFF</div>
+      <div class="small bad" style="letter-spacing:normal;font-weight:400;line-height:1.5">Turn on Bluetooth to see nearby taggers.</div>
+      ${android ? `<button class="bigbtn ghost" data-act="onEnableBluetooth"><span class="unskew">TURN ON BLUETOOTH</span></button>
+      <button class="bigbtn ghost" data-act="onOpenBluetoothSettings"><span class="unskew">BLUETOOTH SETTINGS</span></button>` : ''}
+      <div class="help">The list fills in on its own once Bluetooth is back on.</div>`;
+  }
+
+  // F258: the picker's list is now a FIXED structure that `_patchScan` writes into — four boxes that
+  // never come and go, so a row node survives every re-render and a tap can land on it.
+  _scanList() {
+    return `<div class="list"><div class="taggers"></div>
+      <div class="small nonefound">no taggers yet…</div>
+      <button class="othertog" data-act="onScanOther" hidden><span class="unskew"></span></button>
+      <div class="others" hidden></div></div>`;
+  }
+
   _idle(st = {}) {
-    const rows = this.scan.map(d => {
-      const [nm, tail] = splitGun(d);
-      const bars = [-85, -75, -65, -55].map((thr, i) => `<i style="height:${6 + i * 4}px" class="${d.rssi != null && d.rssi >= thr ? 'on' : ''}"></i>`).join('');
-      return `<div class="tagrow ${d.inUse ? 'used' : ''}" data-act="onPick" data-arg="${esc(d.deviceId)}"><span class="nm">${nm}<b>-${tail}</b></span>` +
-        (d.inUse ? `<span class="inuse">IN USE</span>` : `<span class="sig">${bars}<b>${d.rssi != null ? d.rssi : ''}</b></span>`) + `</div>`;
-    }).join('');
     return `<div class="idle"><div class="scan"></div>
       <div class="l"><span class="wm">BRX<b>/</b></span><span class="sub">COMBAT HUD</span>
         ${st.rejoin ? '<span class="note" style="color:var(--warn)">MATCH IN PROGRESS — SET YOUR GUN TO REJOIN</span>' : ''}
         <button class="bigbtn" data-act="onSetGun"><span class="unskew">SET MY GUN ▸</span></button>
         <button class="bigbtn ghost" data-act="onDemo"><span class="unskew">DESKTOP DEMO</span></button>
         <button class="bigbtn ghost util" data-act="onUtility"><span class="unskew">▣ UTILITY MODE</span></button></div>
-      <div class="r"><div class="sc"><i></i>SCANNING FOR TAGGERS</div><div class="list">${rows || '<div class="small">no taggers yet…</div>'}</div>
-        <div class="help">Tagger not listed? Power-cycle it — it'll appear within a couple seconds.</div></div></div>`;
+      <div class="r">${this.bluetoothOn === false ? this._idleBtOff() :
+        `<div class="sc"><i></i>SCANNING FOR TAGGERS</div>${this._scanList()}
+        <div class="help">Tagger not listed? Power-cycle it — it'll appear within a couple seconds.</div>`}</div></div>`;
+  }
+
+  /** F258 (bench 2026-09-18): a scan hit must never destroy a row. This reconciles the picker's DOM
+   *  against `this.scan` — it writes the signal reading into the row that is already on screen, adds
+   *  the rows that are new, and moves a row only when its order genuinely changed. Rows the picker
+   *  ranked as `other` (neither the assigned gun, nor a Nordic UART advert, nor a tagger-shaped name)
+   *  go behind a fold, so a muster does not put a player's own gun at position 12 behind two
+   *  televisions and a Hatch Rest. */
+  _patchScan() {
+    const list = this.hudEl.querySelector('.idle .list'); if (!list) return;
+    const main = list.querySelector('.taggers'), other = list.querySelector('.others');
+    const tog = list.querySelector('.othertog'), none = list.querySelector('.nonefound');
+    if (!main || !other || !tog || !none) return;
+    const near = this.scan.filter(d => !d.other), far = this.scan.filter(d => d.other);
+    this._patchScanRows(main, near);
+    this._patchScanRows(other, far);
+    const hideNone = near.length > 0;
+    if (none.hidden !== hideNone) none.hidden = hideNone;
+    if (tog.hidden !== (far.length === 0)) tog.hidden = far.length === 0;
+    const lab = `${this.scanOther ? '▾' : '▸'} OTHER DEVICES (${far.length})`;
+    const span = tog.firstElementChild;
+    if (span && span.textContent !== lab) span.textContent = lab;
+    if (other.hidden === this.scanOther) other.hidden = !this.scanOther;
+  }
+
+  /** Reconciles one box's `.tagrow` children against `rows`, keyed on `deviceId`. */
+  _patchScanRows(box, rows) {
+    const have = new Map();
+    for (const el of box.children) if (el.dataset && el.dataset.arg) have.set(el.dataset.arg, el);
+    let prev = null;
+    for (const d of rows) {
+      let el = have.get(d.deviceId);
+      if (el) have.delete(d.deviceId);
+      else {
+        el = this.root.createElement('div');
+        el.className = 'tagrow'; el.dataset.act = 'onPick'; el.dataset.arg = d.deviceId;
+        el.innerHTML = SCAN_ROW;
+      }
+      this._writeScanRow(el, d);
+      const want = prev ? prev.nextElementSibling : box.firstElementChild;
+      if (want !== el) box.insertBefore(el, want);   // only a REAL order change moves a node
+      prev = el;
+    }
+    for (const el of have.values()) el.remove();
+  }
+
+  /** Writes one row's visible facts, touching only what actually changed. */
+  _writeScanRow(el, d) {
+    const [nm, tail] = splitGun(d);
+    const cls = d.inUse ? 'tagrow used' : 'tagrow';
+    if (el.className !== cls) el.className = cls;
+    const name = el.querySelector('.nm'), html = `${nm}<b>-${tail}</b>`;
+    if (name && name.innerHTML !== html) name.innerHTML = html;
+    const inuse = el.querySelector('.inuse'), sig = el.querySelector('.sig');
+    if (inuse && inuse.hidden !== !d.inUse) inuse.hidden = !d.inUse;
+    if (sig && sig.hidden !== !!d.inUse) sig.hidden = !!d.inUse;
+    if (!sig) return;
+    const bars = sig.querySelectorAll('i');
+    SIG_THRESHOLDS.forEach((thr, i) => {
+      const on = d.rssi != null && d.rssi >= thr ? 'on' : '';
+      if (bars[i] && bars[i].className !== on) bars[i].className = on;
+    });
+    const num = sig.querySelector('b'), txt = d.rssi != null ? String(d.rssi) : '';
+    if (num && num.textContent !== txt) num.textContent = txt;
   }
 
   _lobby(st, mode) {
@@ -450,7 +698,11 @@ export class Hud {
       foot = `<div class="setup"><div class="pulse"><i></i><i></i><i></i></div><div class="in"><div class="t">SITTING OUT — the host puts you back</div><div class="s">Nothing to do for now. Your tagger is STILL LIVE — it can fire, and it can be tagged. The host puts you back in.</div></div></div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, 'kitted')}</div>`;
     } else if (mode === 'kitted') {
-      foot = `${lead}<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady"><span class="unskew">${st.ready ? 'READY ✓' : 'READY UP'}</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
+      // Bench 2026-09-16: "only the label changes" — `st.ready` already IS the confirmed state (a tap
+      // only sets it once `setReady` clears the standby/phase/clock-sync guards, engine.js), so the
+      // green treatment below tracks the same flag; `aria-pressed` says so explicitly, for a11y and so
+      // a test can read the confirmed state without parsing a colour.
+      foot = `${lead}<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady" aria-pressed="${!!st.ready}"><span class="unskew">${st.ready ? 'READY ✓' : 'READY UP'}</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>${st.game ? '<button class="briefbtn" data-act="onBriefing"><span class="unskew">▤ BRIEFING</span></button>' : ''}`;
     } else if (mode === 'over') {
       // F117: this is the one control gating the next match and it read as a status line — declarative label,
@@ -459,7 +711,7 @@ export class Hud {
       // The note is `_readyNote`, the same one the kitted screen renders and patches: `setReady` REFUSES while
       // the clock is unsynced, and the hard-coded note said nothing about it — the one control gating the next
       // match went dead with no explanation on screen.
-      foot = `<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady"><span class="unskew">${st.ready ? 'READY ✓' : 'READY FOR NEXT MATCH ▸'}</span></button><div class="note" id="readynote">${this._readyNote(st, 'over')}</div>`;
+      foot = `<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady" aria-pressed="${!!st.ready}"><span class="unskew">${st.ready ? 'READY ✓' : 'READY FOR NEXT MATCH ▸'}</span></button><div class="note" id="readynote">${this._readyNote(st, 'over')}</div>`;
       // A24 (game test D3: "let players get back to results after OK · maybe a match history"). The outcome word
       // is printed here ONLY out of `st.result` — with no result the line simply does not carry one.
       const rw = st.result ? (OUTCOME_WORD[st.result.outcome] || null) : null;
@@ -471,10 +723,16 @@ export class Hud {
       // player whose kit-out window ended (a push or re-push that landed) before they ever hit READY
       // UP, this is the only door left. Same control, same note the kitted screen uses; a player who
       // is already `ready` still reads STANDING BY below, unchanged.
-      foot = `${lead}<button class="ready off" data-act="onReady"><span class="unskew">READY UP</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
+      foot = `${lead}<button class="ready off" data-act="onReady" aria-pressed="false"><span class="unskew">READY UP</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     } else {
-      foot = `${lead}<button class="ready wait"><span class="unskew">STANDING BY</span></button><div class="note">${st.kitLocked ? 'The plates above are what you take in. Waiting for the host to start the countdown.' : 'Loadout is on the gun. Waiting for the host to start the countdown.'}</div>`;
+      // Bench 2026-09-16: a READY player in the lobby fell through to this grey STANDING BY button, so readying
+      // up only changed the label. A confirmed `st.ready` now wears the green `.ready.wait.on` and says READY.
+      // Playtest review 2026-09-13: this button has no `data-act` -- it does nothing on tap -- but it still got
+      // `.tap-press` feedback (the delegated handler matches any `<button>`) and `aria-pressed`, so it looked and
+      // was announced as a toggle. `aria-disabled="true"` makes the press handler skip it (it already checks
+      // this attribute); drop `aria-pressed` since it is not a control. The green `.on` ready state stays.
+      foot = `${lead}<button class="ready wait${st.ready ? ' on' : ''}" aria-disabled="true"><span class="unskew">${st.ready ? 'READY ✓ · STANDING BY' : 'STANDING BY'}</span></button><div class="note">${st.kitLocked ? 'The plates above are what you take in. Waiting for the host to start the countdown.' : 'Loadout is on the gun. Waiting for the host to start the countdown.'}</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     }
     return `<div class="lobby"><div class="scan"></div><div class="edgeglow"></div>
@@ -852,13 +1110,37 @@ export class Hud {
     const low = st.hp <= st.maxHp * .25 && st.alive;
     // only nag when genuinely low: live+alive, mag known, not a fresh mag (it blinked constantly on the bench)
     const lowMag = !!(st.alive && st.mag && st.ammo < st.mag && st.ammo / st.mag <= .15);
+    // bench 2026-09-17: a reload gives nothing back once the reserve is also empty, so RELOAD is a false
+    // promise at that point — say OUT OF AMMO instead. The state the HUD gets from the node has no LIVE
+    // round count for the other slot (only its catalogue max), so this never guesses a "swap" hint; it
+    // would need that count added to the node's state before it could say so honestly.
+    const outOfAmmo = !!(st.alive && st.ammo === 0 && st.reserve === 0);
+    const energy = isEnergyWeapon(st);
+    // Bench 2026-09-17: a charge weapon only (not a tap-only or bullet weapon) -- a live cell too small for
+    // one full charge fires nothing, whether that cell is empty or holds a few rounds. `belowCharge` drives
+    // both which big prompt shows (severity depends on the reserve, not the cell) and the small note below.
+    // A48: the cost comes from the catalogue (`rounds_per_charge`), so a second charge weapon needs no code.
+    const cost = chargeCost(st);
+    const belowCharge = !!(st.alive && cost != null && st.ammo != null && st.ammo < cost);
+    // reserve empty too: this is a dead end, same severity as OUT OF AMMO (that case is already
+    // handled by `outOfAmmo` above, so this only adds the 1-9-with-no-reserve state it missed).
+    const energyOut = belowCharge && !(st.reserve > 0);
+    // reserve has something to draw on: one calm prompt, whether the cell reads 0 or a partial charge.
+    const energyLow = belowCharge && st.reserve > 0;
+    // Bench 2026-09-17: the full-screen OVERHEAT takeover was keyed to `st.overheating`, the MECHANIC's
+    // reading, which the node echoes back for up to 25 s after the lockout is over (engine.js
+    // `HEAT_STALE_MS`). `st.overheatShown` is the DISPLAY window, about 6 s, and the word, the overlay and
+    // the heat bar all read it -- maint review 2026-09-17: the bar still read the mechanic, so it could sit
+    // hot for up to 19 s after the word had gone. The engine always sets the field, so there is no fallback.
+    const overheating = !!(st.alive && st.overheatShown);
     const [nm] = splitGun(st.gun);
     const stat = (k, v) => `<span>${k}<b class="${v == null ? 'mut' : ''}" id="st-${k}">${v == null ? '—' : v}</b></span>`;
     const kb = st.killedBy ? `` : '';
     return `<div class="alive"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
       ${low ? '<div class="firevig"></div>' : ''}
-      <div class="clockplate"><div class="in"><span class="t tab" id="clock">${mmss(st.clockMs)}</span><span class="m">${esc(st.mode)}</span></div></div>
-      <div class="ident"><span class="arrow"></span><span class="cs">${esc(st.callsign || nm)}</span><span class="sq">${esc(st.teamName)} SQUAD</span></div>
+      ${overheating ? '<div class="heatvig"></div><div class="heatword">OVERHEAT</div>' : ''}
+      <div class="clockplate" data-act="onBoard" data-arg="team" role="button" aria-label="Team scores"><div class="in"><span class="t tab" id="clock">${mmss(st.clockMs)}</span><span class="m">${esc(st.mode)}</span></div></div>
+      <div class="ident" data-act="onBoard" data-arg="player" role="button" aria-label="Player scores"><span class="arrow"></span><span class="cs">${esc(st.callsign || nm)}</span><span class="sq">${esc(st.teamName)} SQUAD</span></div>
       <div class="topright"><span class="link"><span id="linkdot" class="dot ${st.bleUp ? '' : 'off'}"></span><span id="linklab">${st.bleUp ? 'GUN' : 'NO GUN'}</span></span><button class="link mclink" data-act="onToggleMcPill" aria-label="Mission Control link"><span id="mcdot" class="dot ${st.wsState === 'bound' ? '' : 'ws'}"></span>MC</button>
         <span class="batt tab"><span class="shell"><span class="fill" id="battfill" style="right:${100 - (st.battery || 0)}%"></span></span><span id="batt">${st.battery != null ? st.battery + '%' : '—'}</span></span></div>
       ${st.battery != null && st.battery <= 15 ? `<div class="battwarn">GUN BATT ${st.battery}% — CHARGE SOON</div>` : ''}
@@ -867,11 +1149,83 @@ export class Hud {
       <div class="vitals"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span><span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span></div>
         <div class="bar ${low ? 'low' : ''}"><i id="hpbar" style="width:${Math.round(100 * st.hp / st.maxHp)}%"></i></div>
         <div class="bar armor"><i id="shbar" style="width:${Math.round(100 * st.armor / st.maxArmor)}%"></i></div></div>
-      <div class="ammo">${lowMag ? `<span class="reload ${st.ammo === 0 ? 'solid' : ''}"><span class="unskew">RELOAD ▸▸</span></span>` : ''}
-        <div class="nums"><span class="mag tab ${lowMag ? 'warn' : ''}" id="mag">${pad2(st.ammo)}</span><span class="res tab" id="res">/${st.reserve != null ? st.reserve : '—'}</span></div>
+      <div class="ammo">${outOfAmmo ? `<span class="reload out solid"><span class="unskew">${energy ? 'OUT OF ENERGY' : 'OUT OF AMMO'}</span></span>`
+          : overheating ? `<span class="reload hot solid"><span class="unskew">OVERHEAT</span></span>`
+          : energyOut ? `<span class="reload out solid"><span class="unskew">OUT OF ENERGY</span></span>`
+          : energyLow ? `<span class="reload solid"><span class="unskew">${HOLD_TO_RECHARGE}</span></span>`
+          : lowMag ? (energy ? `<span class="reload solid"><span class="unskew">${HOLD_TO_RECHARGE}</span></span>`
+            : `<span class="reload ${st.ammo === 0 ? 'solid' : ''}"><span class="unskew">RELOAD ▸▸</span></span>`) : ''}
+        <div class="nums"><span class="mag tab ${lowMag ? 'warn' : ''}" id="mag">${magText(st)}</span><span class="res tab" id="res">${this._resText(st)}</span></div>
+        ${belowCharge && st.ammo > 0 ? '<div class="enote">NOT ENOUGH ENERGY</div>' : ''}
         <div class="pips" id="pips">${this._pips(st)}</div>
+        ${this._heatBar(st)}
         <span class="wn"><span class="slot">${st.activeSlot ? 'SECONDARY' : 'PRIMARY'}</span>${esc(st.weapon)}</span></div>
-      <div class="nightlab">NIGHT OPS</div>${kb}</div>`;
+      <div class="nightlab">NIGHT OPS</div>${kb}${this.board ? this._board(st) : ''}</div>`;
+  }
+  /** Bench 2026-09-17: how old the scores on the overlay are. MC pushes every change to a bound phone, so the
+   *  numbers are current while the link is up; off the link they are the last push, and the label gives its age. */
+  _boardAge(st) {
+    if (!st.scoreAt) return 'NO SCORES YET';
+    if (st.wsState === 'bound') return 'LIVE';
+    const s = Math.max(0, Math.round((Date.now() - st.scoreAt) / 1000));
+    return `AS OF ${s < 60 ? s + ' S' : Math.floor(s / 60) + ' MIN'} AGO`;
+  }
+  /** Bench 2026-09-17: the live scores overlay, opened from the player name (PLAYERS tab) or the match clock
+   *  (TEAMS tab). Everything on it is what the phone already holds: MC's last `score` push (`rows` = every
+   *  player's ScoreRow, `board` = team totals, or the top three in FFA) and, before any push, this phone's own
+   *  line. It sits between the vitals and the ammo digits, and a tap outside it or on ✕ closes it. */
+  _board(st) {
+    const ffa = st.mode === 'FFA';
+    const tab = this.board === 'player' ? 'player' : 'team';
+    const rows = this._resultRows({ rows: st.scoreRows || [] });
+    const myId = st.player && st.player.player_id;
+    const v = x => num(x) == null ? '—' : x;
+    const acc = r => num(r.accuracy) == null ? '—' : Math.round(r.accuracy) + '%';
+    const name = r => esc(String(r.display || r.player_id || '—').toUpperCase());
+    const stale = !!st.scoreAt && st.wsState !== 'bound';
+    let body;
+    if (tab === 'player' || ffa) {
+      const list = rows.length ? rows : [{ player_id: myId, display: st.callsign, kills: st.kills, deaths: st.deaths, assists: st.assists, accuracy: accShown(st) }];
+      const cols = tab === 'player';
+      body = `<div class="bdlist"><div class="bdr bdh ${cols ? '' : 'rank'}"><span>#</span><span class="pn">PLAYER</span>${cols ? '<span>K</span><span>D</span><span>A</span><span>ACC</span>' : '<span>KILLS</span>'}</div>
+        ${list.map((r, i) => `<div class="bdr ${cols ? '' : 'rank'} ${myId && r.player_id === myId ? 'me' : ''}"><span class="tab">${i + 1}</span><span class="pn">${name(r)}</span>${cols
+          ? `<span class="tab">${v(r.kills)}</span><span class="tab">${v(r.deaths)}</span><span class="tab">${v(r.assists)}</span><span class="tab">${acc(r)}</span>`
+          : `<span class="tab">${v(r.kills)}</span>`}</div>`).join('')}
+        ${rows.length ? '' : '<div class="bdnone">YOUR OWN LINE · MISSION CONTROL HAS SENT NO SCORES</div>'}</div>`;
+    } else {
+      const teams = st.board && Array.isArray(st.board.teams) ? st.board.teams.filter(t => t && typeof t === 'object') : [];
+      body = teams.length ? `<div class="bdteams">${teams.map(t => {
+        const k = String(t.team_id == null ? '' : t.team_id).toLowerCase(); const mine = !!(st.teamKey && k === st.teamKey);
+        const ps = rows.filter(r => String(r.team_id == null ? '' : r.team_id).toLowerCase() === k);
+        return `<div class="bdteam ${mine ? 'mine' : ''}">${this._teamChip(t, mine)}
+          ${ps.map(r => `<div class="bdr tp ${myId && r.player_id === myId ? 'me' : ''}"><span class="pn">${name(r)}</span><span class="tab">${v(r.kills)} · ${v(r.deaths)} · ${v(r.assists)}</span></div>`).join('')}</div>`; }).join('')}</div>
+        ${st.board && num(st.board.cap) != null ? `<div class="bdcap">FIRST TO ${st.board.cap} · K · D · A</div>` : ''}`
+        : '<div class="bdnone">NO TEAM TOTALS FROM MISSION CONTROL YET</div>';
+    }
+    return `<div class="bdscrim"></div><div class="bdpanel" role="dialog" aria-label="Match scores">
+      <div class="bdhead"><div class="bdseg" role="group">
+        <button class="sg ${tab === 'team' ? 'on' : ''}" aria-pressed="${tab === 'team'}" data-act="onBoardTab" data-arg="team"><span class="unskew">${ffa ? 'STANDINGS' : 'TEAMS'}</span></button>
+        <button class="sg ${tab === 'player' ? 'on' : ''}" aria-pressed="${tab === 'player'}" data-act="onBoardTab" data-arg="player"><span class="unskew">PLAYERS</span></button></div>
+        <span class="bdage ${stale ? 'stale' : ''}" id="bdage">${this._boardAge(st)}</span>
+        <button class="bdx" data-act="onBoardClose" aria-label="Close scores">✕</button></div>
+      <div class="bdbody">${body}</div></div>`;
+  }
+  /** Bench 2026-09-17: the ammo gauge's shot-ready cue. After a shot from a weapon with at least 400 ms between
+   *  rounds the engine reports {at, ms, leftMs}; the gauge dims (`data-cool="on"` on the frame, which survives a
+   *  structural rebuild) until `leftMs` has passed, then shines once (`ready`, 250 ms). The timer starts at this
+   *  render, after the engine read `leftMs`, so the shine can only be late, never early. Timers only: no per-frame work. */
+  _shotCue(st) {
+    const c = st.phase === 'live' ? st.shotCooldown : null;
+    const at = c ? c.at : null;
+    if (at === this._cueAt) return;
+    this._cueAt = at;
+    if (this._cueT) { clearTimeout(this._cueT); this._cueT = null; }
+    if (!c || !(c.leftMs > 0)) { delete this.frame.dataset.cool; return; }   // no cue, or the render came after the round was due
+    this.frame.dataset.cool = 'on';
+    this._cueT = setTimeout(() => {
+      this.frame.dataset.cool = 'ready';
+      this._cueT = setTimeout(() => { this._cueT = null; delete this.frame.dataset.cool; }, 250);
+    }, c.leftMs);
   }
   /** The DOWN screen's middle block: the countdown in auto mode, or in scanner mode the respawn LESSON (utility.md
    *  §4.3, live bench 2026-09-04: "the very first time someone dies… the HUD should make it obvious"):
@@ -925,11 +1279,60 @@ export class Hud {
     const mine = (bd && Array.isArray(bd.teams)) ? bd.teams.find(t => t && String(t.team_id == null ? '' : t.team_id).toLowerCase() === st.teamKey) : null;
     return [num(mine && mine.score), num(st.kills)].some(v => v != null && v >= cap - 1 && v < cap);
   }
+  /** Bench 2026-09-17 (Tony): "25% /80" made no sense -- a percentage beside a reserve in ROUNDS, on a
+   *  weapon with no rounds. A bullet weapon (and, per F248, a low-cost energy weapon like the Rail Gun)
+   *  keeps `/reserve`; a cell-gauge weapon gets one pill per FULL spare cell (floor(reserve / clip)) plus a
+   *  dimmer half-filled pill for a part cell (reserve % clip > 0), and nothing at all once the reserve is
+   *  empty (the OUT OF ENERGY prompt already says that). */
+  _resText(st) {
+    if (!usesCellGauge(st)) return `/${st.reserve != null ? st.reserve : '—'}`;
+    const clip = st.mag || Math.max(st.ammo, 1);
+    const reserve = st.reserve || 0;
+    if (!(reserve > 0)) return '';
+    const full = Math.floor(reserve / clip);
+    const left = reserve % clip;
+    let s = ''; for (let i = 0; i < full; i++) s += '<i class="cell"></i>';
+    // Bench 2026-09-18 (Tony): "the little amber shells did not deplete correctly, they appeared to be
+    // half full after a reload". The part cell was painted at a FIXED half, so 5 rounds and 39 rounds
+    // looked identical. Fill it at its real fraction instead, with a floor so a nearly empty cell is
+    // still visible rather than a sliver of nothing.
+    if (left > 0) {
+      const pct = Math.max(12, Math.round(100 * left / clip));
+      s += `<i class="cell partial" style="--fill:${pct}%"></i>`;
+    }
+    return `<span class="cells">${s}</span>`;
+  }
+  /** Bench 2026-09-17: the thin build-up bar for a weapon that heats ($ALCD token 5), shown only once the
+   *  active slot has reported heat>0 this life (`heatEverSeen`) -- a weapon that never heats never draws
+   *  this at all. `hot` reads `overheatShown`, the SAME field as the OVERHEAT prompt and overlay in `_live()`,
+   *  so the bar and the word can never disagree (maint review 2026-09-17: it read `st.overheating`, the
+   *  mechanic's 25 s window, and stayed hot for up to 19 s after the word cleared). */
+  _heatBar(st) {
+    if (!st.heatEverSeen) return '';
+    const pct = Math.max(0, Math.min(100, Math.round(st.heat || 0)));
+    return `<div class="heat ${st.overheatShown ? 'hot' : ''}" id="heat"><i style="width:${pct}%"></i></div>`;
+  }
+  /** A cell-gauge weapon (F248: `rounds_per_charge > 1`, see usesCellGauge above) gets the percentage bar
+   *  (no round to pip). Everything else -- a bullet weapon, or a low-cost energy weapon like the Rail Gun
+   *  -- gets one pip per round up to AMMO_PIP_MAX; above it, a continuous bar (the exact count is already
+   *  the digits beside this gauge, in `#mag`/`#res`). Same warn rule throughout: alive, a known mag, at or
+   *  under 15% left. */
   _pips(st) {
-    const n = 12, mag = st.mag || Math.max(st.ammo, 1);
-    const lit = Math.round(n * Math.min(1, st.ammo / mag));
+    const mag = st.mag || Math.max(st.ammo, 1);
     const warn = !!(st.alive && st.mag && st.ammo < st.mag && st.ammo / st.mag <= .15);
-    let s = ''; for (let i = 0; i < n; i++) s += `<i class="${i < lit ? (warn ? 'warn' : '') : 'spent'}"></i>`;
+    if (usesCellGauge(st)) {
+      const pct = Math.max(0, Math.min(100, Math.round(100 * st.ammo / mag)));
+      return `<div class="bar energy ${warn ? 'warn' : ''}"><i style="width:${pct}%"></i></div>`;
+    }
+    if (mag > AMMO_PIP_MAX) {
+      const pct = Math.max(0, Math.min(100, Math.round(100 * st.ammo / mag)));
+      // "ammobar" (not "ammo"): the ammo COLUMN also uses `.ammo` (position:absolute;right:36px;bottom:32px),
+      // and this bar sits inside `.pips`, which is `position:relative` -- a shared class name here pulled
+      // the bar out of flow and made it float over the mag digits (bench 2026-09-17).
+      return `<div class="bar ammobar ${warn ? 'warn' : ''}"><i style="width:${pct}%"></i></div>`;
+    }
+    const lit = Math.max(0, Math.min(mag, Math.round(st.ammo)));
+    let s = ''; for (let i = 0; i < mag; i++) s += `<i class="${i < lit ? (warn ? 'warn' : '') : 'spent'}"></i>`;
     return s;
   }
 
@@ -970,15 +1373,21 @@ export class Hud {
       if (mode === 'kitted' || mode === 'over' || (mode === 'lobby' && !st.kitOpen && !st.ready)) setHtml('readynote', this._readyNote(st, mode));
     }
     if (st.phase === 'live') {
-      set('clock', mmss(st.clockMs)); set('hp', st.hp); set('sh', st.armor); set('mag', pad2(st.ammo)); set('res', `/${st.reserve != null ? st.reserve : '—'}`);
+      set('clock', mmss(st.clockMs)); set('hp', st.hp); set('sh', st.armor); set('mag', magText(st)); setHtml('res', this._resText(st));
       set('batt', st.battery != null ? st.battery + '%' : '—');
       const hb = q('hpbar'); if (hb) hb.style.width = `${Math.round(100 * st.hp / st.maxHp)}%`;
       const sb = q('shbar'); if (sb) sb.style.width = `${Math.round(100 * st.armor / st.maxArmor)}%`;
       const bf = q('battfill'); if (bf) bf.style.right = `${100 - (st.battery || 0)}%`;
       const pips = q('pips'); if (pips) { const html = this._pips(st); if (pips.innerHTML !== html) pips.innerHTML = html; }
+      const heat = q('heat'); if (heat) {
+        const pct = Math.max(0, Math.min(100, Math.round(st.heat || 0)));
+        const i = heat.querySelector('i'); if (i && i.style.width !== `${pct}%`) i.style.width = `${pct}%`;
+        const cls = 'heat' + (st.overheatShown ? ' hot' : ''); if (heat.className !== cls) heat.className = cls;   // the DISPLAY window, same as `_heatBar`/`_live`
+      }
       set('st-K', st.kills == null ? '—' : st.kills); set('st-D', st.deaths); set('st-A', st.assists == null ? '—' : st.assists); if (accShown(st) != null) set('st-ACC', accShown(st) + '%');
       const dot = q('linkdot'); if (dot) { const cls = 'dot ' + (st.bleUp ? '' : 'off'); if (dot.className !== cls) dot.className = cls; }
       set('linklab', st.bleUp ? 'GUN' : 'NO GUN');
+      if (this.board) { set('bdage', this._boardAge(st)); const ag = q('bdage'); if (ag) ag.classList.toggle('stale', !!st.scoreAt && st.wsState !== 'bound'); }
       const md = q('mcdot'); if (md) { const cls = 'dot ' + (st.wsState === 'bound' ? '' : 'ws'); if (md.className !== cls) md.className = cls; }
     }
   }
@@ -995,7 +1404,11 @@ export class Hud {
     // A tappable pill, not just a status: the retry now runs forever, but a player who has just
     // switched the gun on should not have to wait out a backoff — or go hunting in the debug panel,
     // which is where the only reconnect control used to live (Tony, field 2026-09-01).
-    if (st.phase !== 'idle' && !st.bleUp) pills.push(`<button class="pill bad" data-act="onReconnectGun"><span class="unskew">GUN LINK LOST — TAP TO RECONNECT</span></button>`);
+    // Bench 2026-09-17: a gun with its headset off accepts the link and drops it within seconds, over and
+    // over. The GUN LINK LOST pill then blinked on and off with every cycle. While the phone counts 2+
+    // quick drops in a row, one steady line says the likely cause, whether the link is up this second or not.
+    if (st.phase !== 'idle' && st.gunFlapping) pills.push(`<span class="pill warn" data-flap="${st.gunFlapping.count}"><span class="unskew">HEADSET OFF? TURN THE HEADSET ON.</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
+    else if (st.phase !== 'idle' && !st.bleUp) pills.push(`<button class="pill bad" data-act="onReconnectGun"><span class="unskew">GUN LINK LOST — TAP TO RECONNECT</span></button>`);
     if (st.moment && st.moment.kind === 'go' && st.phase === 'live' && st.bleUp) pills.push(`<span class="pill ok"><span class="unskew">WEAPONS HOT</span></span>`);   // never 'hot' while the gun link is down
     const prompt = st.resync ? `<div class="prompt"><span class="unskew"><span class="pl">GUN RELINKED</span><span class="pi">${esc(st.resync.prompt).toUpperCase()}</span></span></div>` : '';
     const html = `<div class="chipbar">${pills.join('')}</div>${prompt}`;
@@ -1285,7 +1698,8 @@ export class Hud {
         ${sec('PREFLIGHT', 'dg-pf')}${sec('LINK', 'dg-link')}${sec('ENGINE', 'dg-eng')}${sec('TIMINGS', 'dg-tim')}
         ${sec('LAST FRAMES', 'dg-frames', true)}${sec('HISTORY', 'dg-hist')}${sec('LOG', 'dg-log', true)}
       </div>
-      <div class="btns"><button data-act="onCloseDiag" class="closex">CLOSE</button><button data-act="onReconnectGun">RELINK GUN</button><button data-act="onReconnectMc">RELINK MC</button><button data-act="onShareLog">SHARE LOG</button><button data-act="onToggleNight">NIGHT</button></div>`;
+      <div class="gunhint" id="dg-gunhint" role="status" aria-live="assertive"></div>
+      <div class="btns"><button data-act="onCloseDiag" class="closex">CLOSE</button><button data-act="onReconnectGun" id="dg-relinkgun">RELINK GUN</button><button data-act="onReconnectMc">RELINK MC</button><button data-act="onShareLog">SHARE LOG</button><button data-act="onToggleNight">NIGHT</button></div>`;
   }
   renderDiag() {
     this._diagShell();
@@ -1317,6 +1731,13 @@ export class Hud {
     // F147-adjacent (pass 1 LOW): this input was built once from `this.mcUrl` and never rebuilt, so a QR
     // rescan (which sets `hud.mcUrl` — app.js, another lane) left the panel showing the address it replaced.
     // Only while the field is not focused — the same rule `render()`'s own `typing` guard already applies.
+    // Bench 2026-09-17: RELINK GUN's LIVE confirm line, and RELINKING… (disabled) while `link.relinking`.
+    const relinking = !!(d.link && d.link.relinking);
+    const gunConfirm = !relinking && !!(this._gunConfirm && Date.now() - this._gunConfirm.at < 4000);
+    if (this._gunConfirm && !gunConfirm) this._gunConfirm = null;
+    put('dg-gunhint', gunConfirm ? '<span class="warn">RELINK TAKES THE PHONE OFF THE GUN FOR A FEW SECONDS. TAP AGAIN TO RELINK.</span>' : '');
+    const rb = this.diag.querySelector('#dg-relinkgun');
+    if (rb) { const label = relinking ? 'RELINKING…' : 'RELINK GUN'; if (rb.textContent !== label) rb.textContent = label; if (rb.disabled !== relinking) rb.disabled = relinking; }
     const mcInp = this.diag.querySelector('.mcurlfield');
     if (mcInp && document.activeElement !== mcInp && mcInp.value !== (this.mcUrl || '')) mcInp.value = this.mcUrl || '';
     put('dg-pf', kv(pf));

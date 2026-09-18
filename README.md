@@ -148,7 +148,7 @@ codex mcp add brx -- python -m brx_mcp         # Codex CLI; Cursor/others: comma
 
 M1 Identify ✅ → M2 Control ✅ → M3 Protocol depth (`$WEAP` map, the 2,477-file sound bank, per-player id over
 BLE, the IR word) ✅ → M4 Pilot game (per-player node + Mission Control + live scoreboard): **built and tested in
-software** (`cd mcp && python3 run_tests.py`, incl. 14 full-stack e2e in `test_mc_e2e.py`) and **run on hardware**:
+software** (`cd mcp && python3 run_tests.py`, incl. the full-stack e2e suite in `test_mc_e2e.py`) and **run on hardware**:
 two whole two-phone matches outdoors (2026-08-30, 2026-09-01); a dispersed start, more than two phones and the
 20-minute soak are still owed (`docs/field-runbook-mc.md`) → M5 Arena (objectives, items) → M6 Companion + scale. Spec of record:
 **`docs/spec/`**; decisions: `docs/adr/`; open work: `docs/FOLLOWUPS.md`.

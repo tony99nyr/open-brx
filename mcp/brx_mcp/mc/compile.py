@@ -59,6 +59,16 @@ VOL_PLAY = VOL_BY_ENV["indoor"]    # unknown venue -> the QUIETER of the two (se
 VOL_TRYOUT = 69                    # a try-out is fired at ARM'S LENGTH from the player's own head,
                                    # so it keeps the quieter Callsign value (review 2026-08-31).
                                    # The field complaint was about hearing a game across a field.
+# `--bench-volume [N]` (bench 2026-09-16): a bench run plays every $VOL MC compiles at N. 30 is barely
+# audible and the venue value is too loud at a bench. Not for a real game.
+BENCH_VOLUME_DEFAULT = 55
+
+
+def check_volume(value) -> int:
+    """A $VOL level: an integer 0-100. Raises ValueError otherwise."""
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 100:
+        raise ValueError(f"volume must be an integer 0-100, got {value!r}")
+    return value
 
 # ---------------------------------------------------------------------------
 # Venue range (F234, correcting F135/B6) -- see docs/weapon-design.md §4.2 and
@@ -67,10 +77,13 @@ VOL_TRYOUT = 69                    # a try-out is fired at ARM'S LENGTH from the
 # CORRECTED READING, do not revert: this plumbing used to scale `$WEAP` t41 (`gunRangeIndoor`) by
 # venue. The 2026-09-17 garden test (Q15/F231) proved t41 is a NULL outdoors -- two slots
 # differing only in t41 (5 vs 75) scored 27/27 vs 55/57 at every paced distance, 3 m to ~200 ft --
-# while the SAME session found the real emitted-power control at `$WEAP` t2 (APK name
+# while the SAME session found the token that does move hits at `$WEAP` t2 (APK name
 # `gunRangeOutdoor`): t2=5 landed 0 hits from 38 shots at any distance, t2=100 (the shipped value
 # on every gun) reaches ~200 ft, with a floor, a transition around 13-26, and a flat shelf from
-# ~31 up. F234 filed the fix: move this plumbing from t41 to t2. t41 stays written EXACTLY as the
+# ~31 up. t2 sets the emitter's CARRIER FREQUENCY, not its power (V4_31 disassembly, 2026-09-18,
+# `protocol/brx-protocol.md`): a low value detunes the word out of the receiver's band-pass near
+# 38 kHz, it does not shorten the beam. So read the shelf as the pass-band, not as a power plateau.
+# F234 filed the fix: move this plumbing from t41 to t2. t41 stays written EXACTLY as the
 # capture carries it from here on (see `resolve()` -- there is no longer a `put("range_indoor", ...)`
 # call at all) because indoor behaviour is still unmeasured (F231 open) and a guessed indoor value
 # would be a false promise.
@@ -78,6 +91,8 @@ VOL_TRYOUT = 69                    # a try-out is fired at ARM'S LENGTH from the
 # RANGE_OUTDOOR_FLOOR is not a design choice, it is a hard measured fact: t2=5 landed on nobody at
 # any distance the garden could pace, including muzzle-on-dome. A weapon compiled under the floor
 # is a weapon that silently cannot hit anyone, so `gun_range_outdoor_pct` refuses to compile one.
+# The floor is a property of the RECEIVER, not of the firmware: 13 sits at 27.1 kHz, far enough
+# below the ~38 kHz band-pass that the receiver drops the word. The firmware clamps nothing.
 RANGE_OUTDOOR_FLOOR = 13
 
 
@@ -107,10 +122,11 @@ def gun_range_outdoor_pct(base_captured: int, wire_value: int | None, environmen
 # ---------------------------------------------------------------------------
 # Experimental emitted-IR controls over BLE (F162)
 # ---------------------------------------------------------------------------
-# The gun has a native indoor/outdoor toggle -- hold ALT 3 s -- that changes beam WIDTH (roughly
-# double the aim tolerance in outdoor mode) and persists across power cycles. The 2026-09-13 field
-# checks did not reproduce the t2 reception failure through this toggle; native play reached about
-# 200 ft in both toggle states. Its full behavior is not characterised.
+# The gun has a native indoor/outdoor toggle -- ALT pressed quickly in succession at power-on --
+# that changes beam WIDTH (roughly double the aim tolerance in outdoor mode) and persists across
+# power cycles. The 2026-09-13 field checks did not reproduce the t2 reception failure through
+# this toggle; native play reached about 200 ft in both toggle states. Its full behavior is not
+# characterised.
 #
 # `$GSET` t2 is a SEPARATE receiver control (not `$WEAP` t2 / `gunRangeOutdoor` above, a different
 # command's token 2): t2=1 crippled hit reception at 30 ft, and t2=0 restored it. Shipping heads
@@ -216,7 +232,7 @@ def _headset_colour(tid: int, leds: bool, ffa: bool = False, night: bool = False
     """The pre-game headset team colour, or nothing (WHITE for every player in FFA -- Q19, no team
     identity to protect there).
 
-    Skipped when the game has LEDs off: `gc._led_frames()` blanks the GUN for night/blackout play, and
+    Skipped when the game has LEDs off: `gc._led_frames()` blanks the GUN for blackout play (night only dims), and
     lighting the headset in the same head would mark every player in the lobby — exactly what that
     setting exists to prevent (review 2026-09-01).
 
@@ -529,10 +545,13 @@ _OBJECTIVE_SIR_ROW = "$SIR,15,0,,28,0,0,1,,*"
 #   fn 8      silent, but still FLASHES the headset -- and every registered hit wipes the headset
 #             colour (bench 2026-09-03), so a shot in the lobby would strip the pregame team colour
 #             that is the operator's only way to read teams, and nothing repaints it until go-live.
-#   fn 23     audio suppression: registers, moves no pool, and silences the gun for 6-8 s.
-#   fn 24-27  the DELAYED BLAST family: fn 24 applies the word's magnitude as real damage ~4 s AFTER
-#             it arrives (bench 2026-09-11). A countdown hit would land in the first seconds of the
-#             match. These must never reach a spawn-protection table -- `assert_spawn_protected`.
+#   fn 23     accuracy suppression: registers, moves no pool, drops live accuracy to 0 and recovers
+#             on its own (P18/A20).
+#   fn 24-27  the PHANTOM HIT family: apply no damage, but the victim's gun then manufactures a fake
+#             `$HIR` every 5.07 s, with sound, vibration and a headset flash, until the next `$SPAWN`
+#             (P18, closed 2026-09-18 -- retracts the earlier "delayed real damage" reading). A
+#             countdown hit would haunt the player into the match proper. These must never reach a
+#             spawn-protection table -- `assert_spawn_protected`.
 #   fn 35, 31/32/34  unswept: no idea what the player feels.
 # The sound token is blanked with the function: fn 28's "no sound" was measured on a row with an empty
 # `<soundID>`, and a row's own sound plays whenever the row fires (§5). A pregame hit is therefore
@@ -558,12 +577,12 @@ def sir_spawn_protected(rows) -> list[str]:
     return out
 
 
-def assert_spawn_protected(head: list[str]) -> None:
+def assert_spawn_protected(head: list[str], name: str = "head") -> None:
     """F121: no `$SIR` row in a HEAD may move a pool. Raises naming the rows that would.
 
     The head is written at the lobby push and again on every relink and resync, i.e. everywhere the
     player is NOT live. A row here that damages, heals or delay-blasts is a hit the gun takes and the
-    match never books."""
+    match never books. F209: the spawn and revive writes hold the same rule (`name` says which list)."""
     bad = []
     for row, cell in zip(head, _sir_cells(head)):
         if cell == ("", ""):
@@ -573,25 +592,70 @@ def assert_spawn_protected(head: list[str]) -> None:
             bad.append((row, fn))
     if bad:
         raise ValueError(
-            "F121 GUARD: this head arms hit reception before the player is live -- a countdown hit "
-            "would take real pools off a gun while MC books nothing: "
+            f"F121 GUARD: this {name} arms hit reception before the player can fire -- a hit in that "
+            "window would take real pools off a gun that cannot shoot back: "
             + ", ".join(f"{r} (fn {f})" for r, f in bad))
 
 
-def assert_arms_at_spawn(head: list[str], spawn: list[str]) -> None:
-    """F121: every cell the head disarmed MUST be re-armed by the spawn burst. Raises if one is not.
+# F209 (field 2026-09-13, bench 2026-09-16: "you can actually get hit during respawn before you can
+# shoot"). A23 put the real table AHEAD of `$SPAWN`, so hit reception came back in the same write as the
+# respawn while the weapon came later: `$AMMO` +30-170 ms and `$BMAP,0,0` +300 ms after `$SPAWN` on the
+# wire, and the whole write starts 0.7-1.2 s before `$SPAWN` (the `$PSET`, its `$TID` and ten `$SIR`
+# rows go first). The spawn and revive writes now carry the fn-28 twin, and the node writes the real
+# table afterwards as one `sir_pool` take: on the gun's first shot, or `engine.js SPAWN_PROTECT_MAX_MS`
+# after the write, whichever is first. `sir_pool` is therefore ALWAYS the carrier: one take of the fixed
+# table when class sounds are off, the rolled takes when they are on.
+def assert_arms_after_spawn(head: list[str], bundle) -> None:
+    """F121/F209: every cell the head disarmed MUST be re-armed by every `sir_pool` take, and the spawn
+    and revive writes must not arm anything themselves. Raises if either fails.
 
-    The failure this guards is F11 wearing a different hat: a cell left on fn 28 for the whole match
-    registers every hit from that weapon and takes nothing off, so both ends report healthy while one
-    player is immortal."""
-    live = {c for c in _sir_cells([f for f in spawn if f.startswith("$SIR")]) if c != ("", "")}
-    missing = [c for c in _sir_cells([f for f in head if f.startswith("$SIR")])
-               if c != ("", "") and c not in live]
-    if missing:
-        raise ValueError(
-            "F121 GUARD: the spawn frames do not re-arm every cell the head disarmed, so these "
-            "weapons would take nothing off this player all match: "
-            + ", ".join(f"<{c[0]},{c[1]}>" for c in missing))
+    A cell left on fn 28 for a whole life is F11 wearing a different hat: the gun registers every hit
+    from that weapon and takes nothing off, so both ends report healthy while one player is immortal."""
+    for name in ("spawn", "revive"):
+        assert_spawn_protected(list(bundle.get(name) or []), name)
+    pool = [list(t) for t in (bundle.get("sir_pool") or []) if t]
+    if not pool:
+        raise ValueError("F121 GUARD: no sir_pool take re-arms the $SIR table after $SPAWN -- every "
+                         "player would register every hit and take nothing off it")
+    head_cells = [c for c in _sir_cells([f for f in head if f.startswith("$SIR")]) if c != ("", "")]
+    for take in pool:
+        live = _sir_index(take)
+        # the hill beacon row is fn 28 in BOTH tables, so it is the one cell a take may leave silent
+        missing = [c for c in head_cells if c != ("15", "0") and live.get(c) in (None, _SPAWN_PROTECT_FN)]
+        if missing:
+            raise ValueError(
+                "F121 GUARD: a sir_pool take does not re-arm every cell the head disarmed, so these "
+                "weapons would take nothing off this player all life: "
+                + ", ".join(f"<{c[0]},{c[1]}>" for c in missing))
+
+
+# Bench 2026-09-16: a gun could fire during the ARMED countdown. The lobby head carried the full
+# seven-row button map, and its trigger row `$BMAP,0,0` maps the trigger to fire. The head now holds
+# the trigger on function 98, the no-op function the captured table gives select/left/right. The T-0
+# spawn write and every revive map it back to fire AFTER `$SPAWN`, as Callsign does.
+# UNVERIFIED on hardware: no capture shows 98 on the trigger. The evidence is only that buttons 3-5 on
+# 98 fire nothing, and that a gun with no trigger row "chirps disabled". A row that holds the trigger
+# (not an absent one) also overrides a map left by a try-out, whatever `$CLEAR` resets.
+TRIGGER_HELD = "$BMAP,0,98,,,,,*"
+TRIGGER_LIVE = "$BMAP,0,0,,,,,*"
+
+
+def hold_trigger(bmap) -> list[str]:
+    """The head's button map with the trigger row swapped for the held row."""
+    return [TRIGGER_HELD if row.startswith("$BMAP,0,") else row for row in bmap]
+
+
+def assert_trigger_held_until_spawn(head: list[str], spawn: list[str], revive: list[str]) -> None:
+    """Bench 2026-09-16: no head may map the trigger to fire, and spawn and revive must map it after
+    `$SPAWN`. A revive needs it too: `engine.js _resyncNotLive` re-writes the head on a live node and
+    then revives. Raises ValueError naming the frame list that is wrong."""
+    if any(f.startswith("$BMAP,0,") and f != TRIGGER_HELD for f in head):
+        raise ValueError("TRIGGER GUARD: the head maps the trigger, so a player can fire during the "
+                         f"countdown. The head's trigger row must be {TRIGGER_HELD}")
+    for name, frames in (("spawn", spawn), ("revive", revive)):
+        if "$SPAWN,,*" not in frames or TRIGGER_LIVE not in frames[frames.index("$SPAWN,,*") + 1:]:
+            raise ValueError(f"TRIGGER GUARD: {name} does not map the trigger ({TRIGGER_LIVE}) after "
+                             "$SPAWN, so the player goes live and cannot fire")
 
 
 def _bundle_frames(value) -> list[str]:
@@ -621,30 +685,18 @@ def assert_no_denied_frames(bundle) -> None:
 
 
 def assert_rearms_every_life(bundle) -> None:
-    """F121: a REVIVE must put the real table back too. Raises if neither carrier does.
+    """F121/F209: a REVIVE must lead to the real table too. Raises if nothing carries it.
 
-    Two paths write it and exactly one is active per bundle: `revive` carries the rows itself, or (A17
-    class sounds) `sir_pool` does -- the node writes one pool take immediately BEFORE `frames.revive`,
-    so shipping both would clobber the take's sounds with a fixed draw. The reason this cannot be left
-    to "the table is still live from spawn": `engine.js _resyncNotLive` re-writes the HEAD on a live
-    node and then revives, so a revive that does not re-arm leaves that player immortal for good."""
-    rows = [f for f in bundle.get("revive", []) if f.startswith("$SIR")]
-    pool = [t for t in (bundle.get("sir_pool") or []) if t]
-    head_cells = [c for c in _sir_cells([f for f in bundle.get("head", []) if f.startswith("$SIR")])
-                  if c != ("", "")]
-    carriers = ([rows] if rows else []) + [list(t) for t in pool]
-    if not carriers:
-        raise ValueError("F121 GUARD: no revive path re-arms the $SIR table -- a respawned player "
-                         "would register every hit and take nothing off it")
-    for take in carriers:
-        cells = {c for c in _sir_cells(take) if c != ("", "")}
-        missing = [c for c in head_cells if c not in cells and c != ("15", "0")]   # the beacon row is fn 28 in BOTH tables
-        if missing:
-            raise ValueError(
-                "F121 GUARD: a revive $SIR take does not re-arm "
-                + ", ".join(f"<{c[0]},{c[1]}>" for c in missing))
-# F15 / A20: the host-driven STUN (EMP). The proven chain: a proto-8 IR word -> the victim's `$SIR,8,0,,23` row
-# -> the NODE writes
+    Since F209 the carrier is one `sir_pool` take, written by the node after the revive write (the gun's
+    first shot or the protection cap). The reason this cannot be left to "the table is still live from
+    the last life": `engine.js _resyncNotLive` re-writes the HEAD on a live node and then revives, and the
+    revive write itself now holds the fn-28 twin. An infection flip is a revive too."""
+    head = list(bundle.get("head") or [])
+    assert_arms_after_spawn(head, bundle)
+    for tid, frames in (bundle.get("team_flip") or {}).items():
+        assert_spawn_protected(list(frames), f"team_flip[{tid}]")
+# F15 / A20: the host-driven STUN (EMP). The proven chain: a proto-8 IR word -> the victim's `$SIR,8,0,,24` row
+# (fn 24 = a STATUS function: `$HIR` fires, pools do not move, the gun plays fn 24's own clip) -> the NODE writes
 # `$AMMO,<slot>,0,0,1,*` for its live slots and restores the LIVE counts when `config.stun.duration_s` runs out
 # (`engine.js _stun`). The native stun is not relied on (2/5 singles, lasts until death). The cell is the stock
 # `<8,0>` row -- the CHARGE RIFLE's plain damage (fn 1 since F225, 2026-09-17; fn 38 before that
@@ -672,7 +724,7 @@ def stun_enabled(config) -> bool:
 
 
 def _with_stun_row(rows: list[str]) -> list[str]:
-    """The table with the `<8,0>` cell's function swapped to fn 24, in place (stock order kept, sound token
+    """The table with the `<8,0>` cell's function swapped to fn 23 (P18/F253), in place (stock order kept, sound token
     carried over so a class-layer draw survives); appended if the table had no such cell."""
     out: list[str] = []
     done = False
@@ -861,6 +913,11 @@ class WeaponCatalog:
             "weap_frame": self.resolve(w["weapon_id"], 0),
             "verified": bool(w.get("verified", False)),
         }
+        # A48: what one full charge costs the cell. The node reads it, and after F248 the HUD picks the
+        # ammo gauge from it, so send the RESOLVED number rather than the raw field: `weapons.json` writes
+        # the key only where it is not 1 (`_note`: "Absent = 1"), and the node must never have to know
+        # that rule. `rounds_per_charge()` is the one place the default lives.
+        row["rounds_per_charge"] = self.rounds_per_charge(w["weapon_id"])
         if w.get("caution"):    # A10: known live problem, human copy
             row["caution"] = w["caution"]
         if w.get("pickup_only"):   # 2026-09-17: catalogue-visible, never in a loadout pool (policy.py)
@@ -892,13 +949,15 @@ class WeaponCatalog:
     # idx15 (tok14) is the FIRE INTERVAL — bench-proven 2026-08-26. tok15 is the WEAPON-SWAP DELAY (ms) —
     # bench-proven 2026-09-04 (850 → 1700 doubled the swap, 425 halved it, 100 ran at 100; linear, no floor).
     # The gun applies the LARGER of the two loaded slots' values whichever direction you swap, so a swap
-    # perk must scale every slot (docs/archive/bench-weap-tokens-2026-09-04.md).
+    # perk must scale every slot (docs/spec/loadout.md §1.2, `switch_mult`).
     # acc_ceiling/acc_floor (t21/t22, docs/weapon-design.md §4.4): named here so a test can locate them,
     # but `resolve()` never writes either -- every weapon ships t21==t22==100 (native walk off, F230),
     # and S42's `recoil` catalogue field only ever reaches the wire through `app/src/engine.js`, which
     # pins both to the live accuracy value on every write. See `weapons.json` `_note` (S42).
-    # "range_outdoor" (t2, `gunRangeOutdoor`) is the confirmed emitted-power/venue lever (F231/F234,
-    # 2026-09-17 garden test). "range_indoor" (t41, `gunRangeIndoor`) is kept only so a test can pin
+    # "range_outdoor" (t2, `gunRangeOutdoor`) is the confirmed venue lever (F231/F234, 2026-09-17
+    # garden test). It sets the emitter's carrier frequency, not its power (2026-09-18 V4_31
+    # disassembly): a low value detunes the word out of the receiver's band-pass near 38 kHz, it does
+    # not shorten the beam. "range_indoor" (t41, `gunRangeIndoor`) is kept only so a test can pin
     # it untouched -- do NOT write it from `gun_range_outdoor_pct` or any venue map; see the F234
     # comment block above `RANGE_OUTDOOR_FLOOR`.
     _T = {"proto": 3, "subtype": 4, "dmg": 5, "crit": 6, "headset_dmg": 12, "headset_range_outdoor": 13,
@@ -1035,7 +1094,7 @@ class WeaponCatalog:
         # so there is a dual emitter fire, one from tagger, weaker damage, and one from headset, greater
         # damage" -- which READS AS the tagger sending the smaller word and the headset the larger one,
         # though that stays SOURCED and not settled: a capture cannot show which emitter fired, and no
-        # bench has yet covered one emitter at a time (F254's run does it in passing).
+        # bench has yet covered one emitter at a time (F275's run does it in passing).
         # `resolve()` therefore no longer MIRRORS t5 onto t12: it writes a DECLARED
         # `wire.headset_dmg`, priced independently of t5 (see `WeaponCatalog.damage_per_pull()`). A
         # weapon whose capture carries a t12 but declares no `wire.headset_dmg` is REFUSED, not silently
@@ -1109,7 +1168,7 @@ class WeaponCatalog:
         put("reserve", reserve); put("reserve_half", reserve // 2)   # tok17 == 2 * tok40 (`_ammo` keeps it even)
         put("reload", reload_ms)
         put("swap", self.swap_ms(weapon_id, mods))
-        # t2 (F234): the venue-scaled range lever. t41 is deliberately NOT written here (see the
+        # t2 (F234): the venue-scaled carrier-frequency lever. t41 is deliberately NOT written here (see the
         # `_T` comment and the F234 block above `RANGE_OUTDOOR_FLOOR`) -- it stays exactly as the
         # capture carries it, byte for byte.
         put("range_outdoor", gun_range_outdoor_pct(
@@ -1347,9 +1406,20 @@ class WeaponCatalog:
 class Compiler:
     """Implements interfaces.Compiler."""
 
-    def __init__(self, catalog: WeaponCatalog | None = None, perks: PerkCatalog | None = None) -> None:
+    def __init__(self, catalog: WeaponCatalog | None = None, perks: PerkCatalog | None = None,
+                 bench_volume: int | None = None) -> None:
         self.catalog = catalog or WeaponCatalog()
         self.perks = perks or PerkCatalog()
+        # None = the venue volume. A number = `--bench-volume`: every $VOL this compiler writes.
+        self.bench_volume = None if bench_volume is None else check_volume(bench_volume)
+
+    def play_volume(self, environment: str | None) -> int:
+        """The $VOL for a match head: the bench volume when set, else the venue volume."""
+        return play_volume(environment) if self.bench_volume is None else self.bench_volume
+
+    def tryout_volume(self) -> int:
+        """The $VOL for a try-out: the bench volume when set, else VOL_TRYOUT."""
+        return VOL_TRYOUT if self.bench_volume is None else self.bench_volume
 
     def perk_effects(self, player: Player | None) -> dict:
         """The passive knobs of the player's slot-2 perk (loadout.md §1.2/§2); {} when none."""
@@ -1399,7 +1469,7 @@ class Compiler:
             respawn_s=config["respawn"]["delay_s"],
             respawns=0 if config["respawn"]["type"] == "none" else None,
             frag_limit=config["scoring"].get("frag_limit") or 0,
-            volume=play_volume(config["environment"]),
+            volume=self.play_volume(config["environment"]),
             outdoor=config["environment"] == "outdoor",
             leds=(led.get("mode", "team") != "off") and not blackout,
             friendly_fire=(config["mode"] == "ffa"),  # FFA needs the gun to register same-$TID hits
@@ -1735,7 +1805,7 @@ class Compiler:
         # head — config, per player, SILENT (no $SPAWN, no $PLAY,VA81); ends with $TID (§1.1)
         env = config.get("environment")
         _gset = gc._gset()
-        head = [f"$VOL,{play_volume(env)},0,*", "$CLEAR,*", "$START,*",
+        head = [f"$VOL,{self.play_volume(env)},0,*", "$CLEAR,*", "$START,*",
                 _gset,
                 # F162: EMPTY today (`DRIVE_IO_MODE` is "off") -- the staged venue-mode candidates,
                 # right after $GSET so a bench rung changes one thing next to the frame it copies.
@@ -1748,10 +1818,11 @@ class Compiler:
         head.append(self._rekey(self.catalog.resolve("melee", 4, swap_mods, environment=env), plan.cell_for("melee")))
         bmap = list(gc._bmap())
         if not w1 and not gc.alt_reload:
-            # Empty slot 2 (A10 §2): the stock ALT row cycles to slot 1, which we no longer load — an UNVERIFIED
-            # button-map state on real guns (brx-opus review 2026-08-27). Cycle only to slot 0 instead, so ALT is a
-            # no-op by construction ("alt-fire does nothing"). easy_reload keeps ALT→97. Bench item: FOLLOWUPS "Needs Tony at the bench" (A10a).
-            bmap = [("$BMAP,1,100,0,0,99,99,*" if row.startswith("$BMAP,1,") else row) for row in bmap]
+            # Empty slot 2 (A10 §2): with one $WEAP slot loaded, weapon-cycle (fn 100) has nothing to cycle to and
+            # falls back to RELOADING (protocol §BMAP; bench 2026-09-17, Tony: "the alt button is reloading the charge
+            # rifle"). So ALT gets fn 98, the inert function select/left/right use: alt-fire does nothing.
+            # easy_reload keeps ALT→97 on purpose.
+            bmap = [("$BMAP,1,98,,,,,*" if row.startswith("$BMAP,1,") else row) for row in bmap]
         # Headset colour. We never sent ANY lit-state $HLED, which is why our headsets sat dark for a
         # whole match (field 2026-08-30) — that part is solid, and this frame is the fix.
         #
@@ -1784,7 +1855,7 @@ class Compiler:
         # F121/A23: the HEAD carries the same cells DISARMED -- hits register, nothing moves. The real
         # table below rides the spawn and revive bursts, where the player actually goes live.
         sir_pregame = sir_spawn_protected(sir_live)
-        head += sir_pregame + bmap + gc._led_frames() + hled + gun_pre + [f"$TID,{tid},*"]   # §1.1: head ends with $TID
+        head += sir_pregame + hold_trigger(bmap) + gc._led_frames() + hled + gun_pre + [f"$TID,{tid},*"]   # §1.1: head ends with $TID
         assert_sir_covers_weapons(head)      # A17: no armed weapon may key a cell this head has no row for
         assert_sir_covers_objective(head, config["mode"])   # F79: no objective mode may ship with no way to hear its own beacon
         assert_spawn_protected(head)         # F121: and none of those rows may move a pool before go-live
@@ -1807,32 +1878,29 @@ class Compiler:
         # A11.7 (S4): the gun body is taken by the NODE `gun.after_spawn_s` after every $SPAWN (blank, then the
         # rest frame) -- a blank inside this burst does not take, the spawn animation re-enables the breathing
         # (stage ladder 2026-09-04: +1.0 s / +1.5 s breathing, +2.0 s solid). So spawn/revive carry no $GLED.
-        # F121/A23: the REAL $SIR table leads the burst, so hit reception is armed by the time `$SPAWN`
-        # makes the player live -- and never a moment before. Cells persist, so this is a swap of the
-        # head's fn-28 registrars, not an addition (the F11 repair path is the same write).
+        # F121/A23 + F209: the fn-28 twin leads the burst, NOT the real table. The gun can fire only after
+        # `$AMMO` and `$BMAP,0,0` land, behind `$SPAWN`, so a table armed ahead of `$SPAWN` let a player be
+        # hit before they could shoot. The node writes the real table afterwards, as one `sir_pool` take
+        # (engine.js `_armLife`). The twin is needed on a revive: the last life's live table is still on the gun.
         # F206: `$TID` is re-asserted right after every `$SPAWN`. The gun keeps ONE team byte, written by
         # `$TID`, `$TEAM` and `$PSET` t2 alike (V4_31 disassembly, 2026-09-18), and the node writes a
         # `pset_pool` `$PSET` in the same burst as `$SPAWN`. That `$PSET` now carries the team too; this
         # frame is the belt to its braces, and it is what LaserTagMods' own hosted-game path does (a
         # second `$TID` after the gun's start). A live `$TID` write changes hit resolution at once and
         # repaints nothing (bench 2026-09-07), so it is safe after `$SPAWN`.
-        spawn = list(sir_live) + ["$PLAYX,0,*", "$SPAWN,,*", f"$TID,{tid},*"] + ammo + ["$BMAP,0,0,,,,,*"] + play_hled
-        # revive = $SPAWN + loadout $AMMOs (NO $HLOOP, NO $BMAP — §1.1 replaces RESPAWN_SEQUENCE)
-        # F121: the table again, because a revive is not always preceded by a spawn -- `engine.js
-        # _resyncNotLive` re-writes the HEAD on a live node and revives from there. Omitted only when
-        # A17 class sounds are on: the node writes one `sir_pool` take (a full real table) immediately
-        # BEFORE `frames.revive`, and a copy here would clobber that take's sounds with a fixed draw.
-        # `assert_rearms_every_life` holds the invariant whichever carrier is active.
-        revive_sir = [] if _cs else list(sir_live)
+        spawn = list(sir_pregame) + ["$PLAYX,0,*", "$SPAWN,,*", f"$TID,{tid},*"] + ammo + [TRIGGER_LIVE] + play_hled
 
+        # revive = the twin + $SPAWN + $TID + loadout $AMMOs + the trigger row (NO $HLOOP; §1.1 replaces
+        # RESPAWN_SEQUENCE). Bench 2026-09-16: the head holds the trigger, and a live resync re-writes the
+        # head before it revives, so the revive maps the trigger again too.
         def _revive_for(team: int) -> list[str]:
             # One revive burst per TEAM: the plain `revive` is the arming team's; an infection flip
             # (below) needs the same burst ending on the team the gun has just joined, because the
             # `pset_pool` `$PSET` the node writes before it still carries the ARMING team.
-            return revive_sir + ["$SPAWN,,*", f"$TID,{team},*"] + ammo + play_hled
+            return list(sir_pregame) + ["$SPAWN,,*", f"$TID,{team},*"] + ammo + [TRIGGER_LIVE] + play_hled
 
         revive = _revive_for(tid)
-        assert_arms_at_spawn(head, spawn)    # F121: every disarmed cell comes back live at $SPAWN
+        assert_trigger_held_until_spawn(head, spawn, revive)
 
         bundle: FrameBundle = {
             "config_id": config["config_id"],
@@ -1842,7 +1910,7 @@ class Compiler:
             "revive": revive,
             "end": list(END_SEQUENCE),
             "panic": list(PANIC_SEQUENCE),
-            "cues": self.cues(voice, voice_slots),
+            "cues": self.cues(voice, voice_slots, night=night),
             # the swap delay the gun will actually enforce between slots 0 and 1: the larger tok15 of the two
             # (bench 2026-09-04). The HUD's SWITCHING takeover runs for exactly this long.
             "swap_ms": max([int(f.split(",")[16]) for f in head if f.startswith("$WEAP,0,") or f.startswith("$WEAP,1,")] or [850]),
@@ -1895,12 +1963,13 @@ class Compiler:
         # F206 GUARD: every $PSET this bundle can write carries the team its $TID frames carry. The node
         # writes one of `pset_pool` in the same burst as every $SPAWN, so a stray 0 here is the whole bug.
         assert_team_byte_consistent(head + spawn + revive + bundle["pset_pool"])
-        # A17: the class layer, rolled the same way -- one full $SIR table per take. The node writes one
-        # before every $SPAWN and again after a lull, so the same weapon does not land the same clip all
-        # match. Re-sending $SIR rows is the F11 REPAIR path, so this write is bench-safe by construction.
-        # `_cs` is settled at the top of compile(): it also decides whether `revive` carries the $SIR
-        # rows itself (F121) -- exactly one carrier, or the take's sounds get clobbered.
-        bundle["sir_pool"] = [self.sir_table(plan, hits_rng, _cs, stun=stun_enabled(config)) for _ in range(_SIR_TAKES)] if _cs else []
+        # A17: the class layer, rolled the same way -- one full $SIR table per take, so the same weapon does
+        # not land the same clip all match. Re-sending $SIR rows is the F11 REPAIR path, so this write is
+        # bench-safe by construction. F209: the node writes one take after every spawn and revive.
+        # F209: `sir_pool` is the ONLY carrier of the real table after a spawn or revive, so it is never empty:
+        # one take of the fixed table (the objective row included) when class sounds are off.
+        bundle["sir_pool"] = ([self.sir_table(plan, hits_rng, _cs, stun=stun_enabled(config)) for _ in range(_SIR_TAKES)]
+                              if _cs else [list(sir_live)])
         bundle["hit_audio"] = {"rekey": bool(config.get("hit_audio_rekey", False)),
                                "cells": {w: f"{c[0]},{c[1]}" for w, c in plan.cells.items()},
                                "classes": {f"{c[0]},{c[1]}": k for c, (k, _fn) in plan.groups.items()},
@@ -1995,7 +2064,7 @@ class Compiler:
         # F206: token 2 = 1, the same team as the `$TID,1` below (one team byte, last writer wins).
         pset = "$PSET,0,1,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*"
         return [
-            f"$VOL,{VOL_TRYOUT},0,*", "$CLEAR,*", "$START,*",   # $START IS required — bench 2026-08-25: without it the gun
+            f"$VOL,{self.tryout_volume()},0,*", "$CLEAR,*", "$START,*",   # $START IS required — bench 2026-08-25: without it the gun
                                                      # spawns but the trigger only reloads, it will not fire IR
             f"$GSET,0,{GSET_T2_SAFE},1,0,1,0,0,1,*",    # FF off; t2 stays safe at every venue; t7 (crit_modifier) matches the GameConfig default of 0 (2026-09-17)
             pset,
@@ -2030,10 +2099,11 @@ class Compiler:
                 out[role] = ids
         return out
 
-    def cues(self, voice: str, slots: dict | None = None) -> dict[str, str]:
+    def cues(self, voice: str, slots: dict | None = None, night: bool = False) -> dict[str, str]:
         """A6: pre-composed `$PLAY` frames (node writes verbatim; only $SFLASH/$PLAYX,0 are its own
         templates). Two-slot `$PLAY,<fx>,4,6,<voice>,,,,*`: token1 = SFX, token4 = voice line.
-        `slots["kill"]` (A15) replaces the family's kill line."""
+        `slots["kill"]` (A15) replaces the family's kill line. `night` dims the one light here, `hurt_led`
+        (led-language.md §3.4: low health is dim at night, token 5 = 1; bench 2026-09-17 found it still at 10)."""
         kill = _voices.role_id(voice, "kill", slots) or kill_line(voice)
         return {
             "countdown": "$PLAY,VA81,4,6,,,,,*",         # confirmed 3-2-1-GO (VA81, slot 1)
@@ -2045,7 +2115,7 @@ class Compiler:
             # in 2026-08-23-two-tagger-combat (@340.5s, @361.5s). This, not a per-hit flash, is almost
             # certainly the "headset blinks green" Tony remembered (he flagged his own uncertainty).
             "hurt":      "$PLAY,VA8B,3,6,,,,,*",
-            "hurt_led":  f"$HLED,7,4,90,90,{HEADSET_ALERT_BRIGHTNESS},15,*",
+            "hurt_led":  f"$HLED,7,4,90,90,{pg.BRIGHT_DIM if night else HEADSET_ALERT_BRIGHTNESS},15,*",
             "tick":      "$PLAY,U16,4,6,,,,,*",             # provisional id; 4,6 required — the empty-token form is SILENT (bench 2026-08-25) SFX tick (real bank id)
             "klaxon":    "$PLAY,U16,4,6,,,,,*",             # provisional id; 4,6 required — the empty-token form is SILENT (bench 2026-08-25)
             "multi":     "$PLAY,,4,6,VA46,,,,*",          # provisional (nRF-native is silent over BLE)

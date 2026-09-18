@@ -19,6 +19,14 @@ def test_set_config_in_recap_rolls_session():
     assert len(s.players) == 2          # roster kept
 
 
+def test_any_config_edit_in_recap_rolls_session():
+    """2026-09-16: not only a MODE pick. A venue or setting edit starts the next match too."""
+    s, net, clock, ps = mk()
+    s.phase = "recap"
+    s.set_config({"night": True})
+    assert s.phase == "build" and s.config["night"] is True and len(s.players) == 2
+
+
 def test_set_config_mid_match_still_blocked():
     s, net, clock, ps = mk()
     s.phase = "live"

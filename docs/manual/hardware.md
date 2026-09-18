@@ -37,7 +37,7 @@ Controls at a glance:
 
 - **Trigger**: fires the gun. Before a game it also flips through weapons and characters and picks menu items. A switch sits behind it, and you can test that switch with a meter if the gun stops firing.
 - **Reload handle** (right side, screws on): pull it to reload. Pulling it also starts a stock game. A small switch sits under two screws beneath it.
-- **ALT button** (orange): flips through perks before a game. Hold it 3 s to switch between indoor and outdoor mode.
+- **ALT button** (orange): flips through perks before a game. Press it quickly in succession during the gun's native configuration step, right after power-on, to switch between indoor and outdoor mode.
 - **SELECT**: moves you through the settings menus. Hold it while you power on to enter USB disk mode for firmware and sound updates.
 - **LEFT / RIGHT** (the direction pad): flip through game modes and teams. Hold LEFT at power-on for target (sighting) mode. Hold RIGHT at power-on for accessory and headset pairing mode. Hold LEFT+RIGHT for 5 s in a game to return to the menu.
 - **Power switch**: a slide switch by the barrel. A tagger that turns itself on and off usually has a worn one.

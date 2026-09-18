@@ -16,8 +16,10 @@ Run: python3 run_tests.py ui_catalog
 """
 from __future__ import annotations
 
+import ast
 import importlib.util
 import pathlib
+import re
 
 from _skip import Skipped
 
@@ -144,3 +146,98 @@ def test_the_missing_marker_error_does_not_kill_the_suite():
         raise AssertionError("_splice still raises SystemExit — run_tests.py catches only Exception, so a "
                              "missing marker would abort the suite instead of failing this test")
     raise AssertionError("_splice accepted text with no markers at all")
+
+
+# 2026-09-17 (DRY drift): `data.ts`'s `MODES` scoring/respawn defaults are a hand-kept copy of
+# `state.py`'s `MODES`, and FFA drifted silently to a 15 frag limit against a served 25. Neither file
+# is generated (the mock's `base()`/`defaults: base(...)` shape does not fit `gen_ui_catalog.py`'s
+# splice-a-block approach), so this reads both sources as text and pins the numbers directly.
+
+def _server_modes() -> dict[str, dict]:
+    """`state.py`'s `MODES` list, read as a Python literal rather than imported — the mock's tsc/vitest
+    gate has no reason to import the MC package, and this stays a plain-text read like the rest of
+    this file's checks."""
+    text = (REPO / "mcp" / "brx_mcp" / "mc" / "state.py").read_text(encoding="utf-8")
+    anchor = "MODES: list[ModeRow] = ["
+    start = text.index(anchor) + len(anchor) - 1     # the anchor string's own trailing "["
+    depth, end = 0, None
+    for i in range(start, len(text)):
+        if text[i] == "[":
+            depth += 1
+        elif text[i] == "]":
+            depth -= 1
+            if depth == 0:
+                end = i + 1
+                break
+    assert end is not None, "MODES list in state.py has no closing bracket — did its shape change?"
+    modes = ast.literal_eval(text[start:end])
+    return {m["mode"]: m for m in modes}
+
+
+def _paren_span(text: str, open_idx: int) -> int:
+    """The index one past the `)` that closes the `(` at `open_idx`."""
+    depth = 0
+    for i in range(open_idx, len(text)):
+        if text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+    raise AssertionError("unbalanced parens in data.ts's MODES array")
+
+
+_RESPAWN_RE = re.compile(r"respawn:\s*\{\s*type:\s*'(\w+)',\s*delay_s:\s*([\d.]+)\s*\}")
+_SCORING_RE = re.compile(r"scoring:\s*\{\s*frag_limit:\s*(null|\d+),\s*win_by:\s*'(\w+)'\s*\}")
+
+
+def _mock_mode_defaults() -> dict[str, dict]:
+    """`data.ts`'s `MODES` array: each row is `base(mode, overrides?)`, and an override only appears
+    when that mode disagrees with `base()`'s own respawn/scoring defaults — so a mode with no
+    `respawn`/`scoring` override inherits `base()`'s, exactly as `{...base_obj, ...over}` does at
+    runtime."""
+    path = REPO / "webapp" / "mc" / "src" / "mock" / "data.ts"
+    text = path.read_text(encoding="utf-8")
+
+    base_src = text[text.index("const base = ("):text.index("const KOTH_PARAMS")]
+    base_respawn, base_scoring = _RESPAWN_RE.search(base_src), _SCORING_RE.search(base_src)
+    assert base_respawn and base_scoring, "base()'s own respawn/scoring shape changed — update this parser"
+    base_defaults = {
+        "respawn": {"type": base_respawn.group(1), "delay_s": float(base_respawn.group(2))},
+        "frag_limit": int(base_scoring.group(1)),
+        "win_by": base_scoring.group(2),
+    }
+
+    modes_src = text[text.index("export const MODES: ModeInfo[] = ["):text.index("// guns:")]
+    out: dict[str, dict] = {}
+    for m in re.finditer(r"MODE_TEXT\.(\w+),", modes_src):
+        mode = m.group(1)
+        call_idx = modes_src.index(f"base('{mode}'", m.end())
+        call_end = _paren_span(modes_src, modes_src.index("(", call_idx))
+        call_src = modes_src[call_idx:call_end]
+        respawn, scoring = _RESPAWN_RE.search(call_src), _SCORING_RE.search(call_src)
+        out[mode] = {
+            "respawn": ({"type": respawn.group(1), "delay_s": float(respawn.group(2))}
+                        if respawn else base_defaults["respawn"]),
+            "frag_limit": ((None if scoring.group(1) == "null" else int(scoring.group(1)))
+                           if scoring else base_defaults["frag_limit"]),
+            "win_by": scoring.group(2) if scoring else base_defaults["win_by"],
+        }
+    return out
+
+
+def test_mock_mode_defaults_match_the_server():
+    """The console mock's `frag_limit`/`win_by`/`respawn` per mode are a hand-kept copy of `state.py`'s
+    `MODES`, and FFA drifted to a 15 frag limit against the server's 25 (2026-09-17). Pin every mode's
+    numbers against the source of truth so the demo never teaches a wrong rule."""
+    server = _server_modes()
+    mock = _mock_mode_defaults()
+    mismatches = []
+    for mode, row in server.items():
+        got = mock.get(mode)
+        assert got is not None, f"data.ts's MODES has no entry for {mode!r}"
+        want = {"frag_limit": row["frag_limit"], "win_by": row["win_by"],
+                "respawn": {"type": row["respawn"]["type"], "delay_s": float(row["respawn"]["delay_s"])}}
+        if got != want:
+            mismatches.append(f"{mode}: data.ts has {got}, state.py has {want}")
+    assert not mismatches, "the mock's mode defaults drifted from state.py:\n" + "\n".join(mismatches)

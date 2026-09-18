@@ -411,6 +411,14 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         except ValueError as e:
             return _err(str(e))
 
+    async def ready_all(_req):
+        """Bench 2026-09-17: MARK ALL READY, the roster-wide sibling of `ready` above. Same
+        `host_override` cure, every rostered (non-standby) player at once."""
+        try:
+            return JSONResponse(s.ready_all())
+        except ValueError as e:
+            return _err(str(e))
+
     async def games_load(_req):
         """LOAD: announce the game to every bound phone. No frames, no head, no gun write --
         `state.py load_game()`. The LOBBY push is still the only thing that configures a gun."""
@@ -468,6 +476,16 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             return JSONResponse(s.control(b.get("cmd", ""), confirm=bool(b.get("confirm"))))
         except ValueError as e:
             return _err(str(e))
+
+    async def operator_action(req):
+        """A47: the LIVE board's operator menu -- `control{resync|respawn|relink}` to ONE player's phone.
+        `state.py operator_action()`. Token-gated like every non-GET route."""
+        b = await body(req)
+        try:
+            return JSONResponse(s.operator_action(req.path_params["pid"], str(b.get("cmd") or ""),
+                                                  str(b.get("match_id") or "")))
+        except ValueError as e:
+            return _err(str(e), getattr(e, "status", 400))
 
     async def recap(_):
         r = s.recap()
@@ -632,6 +650,34 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         # A recap with no rows is a real match that scored nobody. Serve the header row: an empty
         # download is a truthful answer, and a 404 here reads as "that match is gone".
         return _csv(rows_csv(rows if isinstance(rows, list) else []), f"recap-{mid}.csv")
+
+    async def match_next(_req):
+        """RECAP's NEXT MATCH (2026-09-16): roll forward with the roster and the game kept, then LOAD
+        that game. `state.py next_match()`. Answers the full State, like `session/new`."""
+        try:
+            s.next_match()
+        except ValueError as e:
+            return _err(str(e), getattr(e, "status", 400))
+        return JSONResponse(s.snapshot())
+
+    async def orphan_resume(req):
+        """RESUME MATCH (bench 2026-09-17): adopt the match bound phones report and this MC did not start.
+        `state.py adopt_orphan()`. Answers the full State."""
+        b = await body(req)
+        try:
+            s.adopt_orphan(str(b.get("match_id") or ""))
+        except ValueError as e:
+            return _err(str(e), getattr(e, "status", 400))
+        return JSONResponse(s.snapshot())
+
+    async def orphan_end(req):
+        """END THEIR MATCH (bench 2026-09-17): `control{end, match_id}` to the phones reporting it only."""
+        b = await body(req)
+        try:
+            s.end_orphan(str(b.get("match_id") or ""))
+        except ValueError as e:
+            return _err(str(e), getattr(e, "status", 400))
+        return JSONResponse(s.snapshot())
 
     async def new_session(req):
         b = await body(req)
@@ -804,6 +850,8 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/stations/{nid}", delete_station, methods=["DELETE"]),
         Route("/api/stations/{nid}/release", release_station, methods=["POST"]),
         Route("/api/players/{pid}/ready", ready, methods=["POST"]),
+        Route("/api/players/{pid}/operator", operator_action, methods=["POST"]),
+        Route("/api/lobby/ready_all", ready_all, methods=["POST"]),
         Route("/api/games/load", games_load, methods=["POST"]),
         Route("/api/lobby/push", lobby_push, methods=["POST"]),
         Route("/api/tunnel", tunnel, methods=["POST"]),
@@ -819,6 +867,9 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/recap.csv", recap_csv),
         Route("/api/matches/{mid}.csv", match_csv),
         Route("/api/session/new", new_session, methods=["POST"]),
+        Route("/api/match/next", match_next, methods=["POST"]),
+        Route("/api/match/orphan/resume", orphan_resume, methods=["POST"]),
+        Route("/api/match/orphan/end", orphan_end, methods=["POST"]),
         WebSocketRoute("/ui-ws", ui_ws),
     ]
     if UI_DIST.exists():

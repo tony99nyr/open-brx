@@ -15,7 +15,7 @@ second list while diagnosing a bug in the third.
 So the same weapon carries two sets of numbers on purpose. The Assault Rifle is 9 damage at 100 ms in
 both, because the rebalance kept those, but its spare ammunition, its range and its accuracy tokens
 differ. **Every table in this document says which arsenal it is**, and every reserve figure names the
-token it came from, because "reserve" alone is ambiguous even inside one arsenal (F253).
+token it came from, because "reserve" alone is ambiguous even inside one arsenal (F255).
 
 
 > ## ✅ FIXED 2026-09-18 — the Energy Launcher's zero damage had a one-line cause
@@ -198,7 +198,7 @@ sounds — and moves the numbers.
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | *Melee* | melee | 90 | 1000 | 2 | **1.00** | 90.0 | 90.0 | 1 | 0 | 0 | 0% | — | **stock** |
 | Sniper Rifle | marksman | 60 | 1500 | 2 | **1.50** | 40.0 | 31.2 | 4 | 24 | 1700 | 92% | — | dmg 80→60, cycle 300→1500 |
-| Shotgun | cqb | 20 | 800 | 3 | **1.60** | 25.0 | 23.1 | 6 | 24 | 400 | 12% | — | **2026-09-18**: dmg 45→20 (`wire.dmg`, the gun word); OUR chosen 20-damage headset word (`wire.headset_dmg`, t12) stacks unconditionally on top, 40 real per pull; the second word itself is measured (Callsign's own 70, cap30), the 20 is a balance number we picked (htk/TTK unchanged, 2 pulls short, 3 kills either way), but `dmg`/`dps`/`sust`/one-mag % here are the GUN WORD ALONE, not the real per-pull total. Magazine deliberately left at 6/24: the AMR now covers it on every axis, and rather than buy a lead with an unexamined number, `test_ttk_band_and_no_strictly_dominant_weapon` names the `(amr, shotgun)` pair in `KNOWN_DOMINANCE`. The suite is GREEN, not red, and the exemption fails the moment the pair stops dominating, so it cannot outlive F254; §7 |
+| Shotgun | cqb | 20 | 800 | 3 | **1.60** | 25.0 | 23.1 | 6 | 24 | 400 | 12% | — | **2026-09-18**: dmg 45→20 (`wire.dmg`, the gun word); OUR chosen 20-damage headset word (`wire.headset_dmg`, t12) stacks unconditionally on top, 40 real per pull; the second word itself is measured (Callsign's own 70, cap30), the 20 is a balance number we picked (htk/TTK unchanged, 2 pulls short, 3 kills either way), but `dmg`/`dps`/`sust`/one-mag % here are the GUN WORD ALONE, not the real per-pull total. Magazine deliberately left at 6/24: the AMR now covers it on every axis, and rather than buy a lead with an unexamined number, `test_ttk_band_and_no_strictly_dominant_weapon` names the `(amr, shotgun)` pair in `KNOWN_DOMINANCE`. The suite is GREEN, not red, and the exemption fails the moment the pair stops dominating, so it cannot outlive F275; §7 |
 | Plasma Sniper | marksman | 25 | 400 | 4 | **1.20** | 62.5 | 41.7 | 10 | 80 | 2000 | 95% | 30 | dmg 80→25, cycle 225→400; **2026-09-18**: htk 5→4, TTK 1.60→1.20s (our chosen 10-damage headset word, `wire.headset_dmg`/t12, stacks unconditionally, 35 real per pull; ⚠️ this weapon has NEVER been captured -- cap30 fired only a Shotgun -- so its second word rests on a sourced t12=80 and nothing else); `dmg`/`dps`/`sust`/one-mag % here are the gun word alone, same caveat as the Shotgun; §7 |
 | AMR | support | 21 | 400 | 6 | **2.00** | 52.5 | 42.0 | 14 | 56 | 1400 | 99% | — | dmg 18→24, cycle 360→400; **2026-09-18** (F62): dmg 24→21, htk 5→6, TTK 1.60→2.00s — 30% `crit_pct` (a crit is x1.5 truncated, so 21→31) pays for itself: average damage per hit holds at 24.15, but the published number is now the GUARANTEED five-hit-plus kill, six hits when unlucky. Mag/reserve untouched |
 | Force Rifle | assault | 10 | 100 +250 | 12 | **1.65** | 66.7 | 50.7 | 36 | 144 | 1700 | 100% | — | dmg 9→10 |
@@ -210,7 +210,7 @@ sounds — and moves the numbers.
 | Suppressor | support | 8 | 140 | 15 | **1.96** | 57.1 | 48.0 | 75 | 384 | 2000 | 100% | — | **2026-09-17**: cycle 160→140 (`wire.fire_ms`); mag 48→75 (§2.3, family-scoped dominance) |
 | Assault Rifle | assault | 9 | 100 | 13 | **1.20** | 90.0 | 62.6 | 32 | 192 | 1400 | 100% | — | **2026-09-17**: cycle 140→100 (`wire.fire_ms`, native Battle Company speed) |
 | Energy Rifle | support | 9 | 150 | 13 | **1.80** | 60.0 | 57.0 | 300 | 600 | 2400 | 100% | 6 | **2026-09-17**: cycle 200→150 (`wire.fire_ms`); overheat switched ON (F229: `t38`=150 override, `t35`=D11) |
-| Charge Rifle | support | 85 | 1250 | 3 | **0.57** | 68.0 | 45.3 | 40 | 80 | 2500 | 92% | 14 | **2026-09-17**: dmg 87→85 (`wire.dmg`, the CHARGE damage; tap damage `t37`=20 unchanged), mag/res 12/12→40/80, `rounds_per_charge`=10 (F225/F226/S43); `htk`/`ttk s` now count 1 charge + 2 taps (release-to-kill), not `ceil(pool/85)`. **2026-09-18 bench**: the tap cadence is **285 ms**, measured, not the 500 ms placeholder, so release-to-kill falls 1.00 s → **0.57 s**. The charge costing exactly 10 rounds, the 85 charge and the 20 tap were all confirmed on the wire in the same run |
+| Charge Rifle | support | 85 | 1250 | 3 | **0.57** | 68.0 | 45.3 | 40 | 80 | 2500 | 92% | 14 | **2026-09-17**: dmg 87→85 (`wire.dmg`, the CHARGE damage; tap damage `t37`=20 unchanged), mag/res 12/12→40/80, `rounds_per_charge`=10 (F225/F226/S43); `htk`/`ttk s` now count 1 charge + 2 taps (release-to-kill), not `ceil(pool/85)`. **2026-09-18 bench**: the tap cadence is **285 ms**, measured, not the 500 ms placeholder, so release-to-kill falls 1.00 s → **0.57 s**. The charge costing exactly 10 rounds, the 85 charge and the 20 tap were all confirmed on the wire in the same run. `DPS` and `sust` count CHARGES only (85 / 1.25 s, and 4 charges a magazine against `4 × 1.25 + reload`); the tap is a second cadence and no single figure covers both, so `ttk s` is the column that reads the mixed kill |
 | Rocket Launcher | power | 115 | 1000 | 1 | **0.00** | 115.0 | 50.0 | 2 | 2 | 2600 | 91% | — | res 8→2, reload 1200→2600 |
 | Energy Launcher | power | 115 | 1600 | 1 | **0.00** | 71.9 | 50.0 | 2 | 2 | 1400 | 91% | — | cycle 360→1600, mag 1→2, res 6→2 |
 | Ion Sniper | power | 115 | 1400 | 1 | **0.00** | 82.1 | 47.9 | 2 | 2 | 2000 | 91% | — | cycle 1000→1400, res 12→2 |
@@ -314,7 +314,7 @@ Bolt Rifle and Melee — their stock numbers already sat in the band.
   kill slower than rifles"; "rate of fire on the pistol usp should be quicker to match counter strike.
   less damage but faster rof." The original pass (2026-09-04) copied the Counter-Strike identity
   literally — Glock fastest+weakest, USP in the middle — but that left the Deagle and USP both
-  killing faster than every rifle (docs/game-test-2026-09-11.md D2). The 2026-09-12 pass instead gives
+  killing faster than every rifle (docs/archive/game-test-2026-09-11.md D2). The 2026-09-12 pass instead gives
   all three the SAME **1.92 s** ideal TTK, strictly slower than the slowest rifle (Bolt Rifle, 1.80 s),
   and reverses the Glock/USP identities to match Tony's brief directly: the **USP-S is now the
   fastest trigger and the weakest hit** (9 dmg / 160 ms / 13 hits), suppressed and flashless
@@ -612,18 +612,25 @@ was never a missing field; we were overwriting the right one with the AR's value
 
 *Status: **PROVEN 2026-08-26** — one-field bench flip (sniper t20 7→0 single→auto; captured Burst Rifle = true 3-round bursts). See §5 U1.*
 
-### 4.2 `t2` is the range lever, not `t41` (corrected 2026-09-17)
+### 4.2 `t2` is the range lever, not `t41` (corrected 2026-09-17; its mechanism corrected 2026-09-18)
 
 **This section used to argue range was an unrecovered gap sitting at `t41`. That was wrong, and the
 correction is recorded here rather than deleted.** The garden range test (2026-09-17,
 `docs/experiment-log/2026-09.md`, evidence in `docs/evidence/2026-09-17-range-t41/`) ran two `$WEAP`
 slots differing only in `t41` (5 vs 75) outdoors: the low slot scored **27 of 27** hits against the
 stock slot's **55 of 57**, at 3 m, 10 m, 20 m, 40 m and about 200 ft. **`t41` is a null outdoors.**
-The same session found the real emitted-power control at **`t2` (APK name `gunRangeOutdoor`)**:
+The same session found the token that does move hits at **`t2` (APK name `gunRangeOutdoor`)**:
 `t2 = 5` landed **0 hits from 38 shots** at any distance, including muzzle on the dome; `t2 = 100`
 (the value every captured gun ships) reaches about 200 ft. Between them the ladder showed a floor,
 a real transition roughly **13 to 26**, and a flat shelf from about **31 to 100** where every value
 behaved alike at any distance the garden could pace out.
+
+⚠️ **`t2` is a CARRIER FREQUENCY, not a power (V4_31 disassembly, 2026-09-18).** The measurements
+above all stand. What they prove does not. A low `t2` does not shorten the beam: it detunes the word
+out of the receiver's band-pass near 38 kHz. **Read the flat shelf as the pass-band and the 13-to-26
+band as its edge**, and calibrate in kHz, not as a percentage ladder. The formula, the kHz
+conversion of every shipped value and what it does to this section are in §6.5; the source of record
+is `protocol/brx-protocol.md`, the `$WEAP` row headed "range is a CARRIER FREQUENCY".
 
 **`t41` reads 75 on all eighteen guns (20 on melee) and is deliberately never written any more.**
 `WeaponCatalog.resolve()` leaves it exactly as the capture carries it, because indoor behaviour is
@@ -657,7 +664,14 @@ guesses** sitting at or inside the 13-26 transition band, where the method could
 cleanly (F232's first-two-shots effect and the 8-shot groups); they are pending **S49**, the portable
 IR receiver, which lets one person map the transition band properly (several fixed receivers at once,
 full mags, first two shots discarded, dome shaded). The Shotgun moved off that band 2026-09-18; its own
-open range question is now `t13`/`t42` (F254), not `t2`.
+open range question is now `t13`/`t42` (F275), not `t2`.
+
+⚠️ **The 2026-09-18 carrier-frequency reading puts the whole table in question, and the call is
+Tony's: §6.5 converts every row above into kHz and works through it.** In short, the seven weapons
+at 55 and up all sit inside the receiver's pass-band and probably play alike, and the six at 30 and
+22 sit on the knee, where the effect is not "shorter range" but "the receiver drops words". Keep the
+numbers until S49 measures the receiver's response curve; do not read this table as a calibrated
+metre ladder.
 
 A weapon with no `wire.range_outdoor_pct` (every hidden/cut weapon, the sidearms, melee) keeps its
 captured `t2` unchanged at every venue. **Indoor stays honest**: no venue has an indoor range value.
@@ -710,13 +724,13 @@ first.
 
 | # | unknown | blocks | how to settle |
 |---|---|---|---|
-| **U2** | ~~`t41` range~~ **CORRECTED 2026-09-17: `t41` is a null outdoors** (garden test, 27/27 hits at t41=5 vs 55/57 at t41=75, every paced distance). **The real range lever is `t2` (`gunRangeOutdoor`, F231/F234), now §4.2's shipped table.** Still open: whether `t2` can fence a weapon to a chosen distance above its shelf (~31-100), and every indoor value (F231). | the range axis (outdoor, closed; indoor, open) | Indoor: run the same ladder indoors, dome shaded. Above the shelf: **S49**'s portable IR receiver, several fixed receivers at once, full mags, first two shots discarded. |
+| **U2** | ~~`t41` range~~ **CORRECTED 2026-09-17: `t41` is a null outdoors** (garden test, 27/27 hits at t41=5 vs 55/57 at t41=75, every paced distance). **The token that does move hits is `t2` (`gunRangeOutdoor`, F231/F234), now §4.2's shipped table.** ⚠️ **2026-09-18: `t2` sets the emitter's CARRIER FREQUENCY, not its power** (V4_31 disassembly; `protocol/brx-protocol.md`). A low value detunes the word out of the receiver's band-pass instead of shortening the beam, so the shelf is the pass-band. Still open, and now harder: whether `t2` can fence a weapon to a chosen distance above its shelf (~31-100), and every indoor value (F231). | the range axis (outdoor, closed; indoor, open) | Indoor: run the same ladder indoors, dome shaded. Above the shelf: **S49**'s portable IR receiver, several fixed receivers at once, full mags, first two shots discarded. |
 | **U1** | ~~`t20` confirmation~~ ✅ **CLOSED 2026-08-26: PROVEN by one-field flip** — sniper t20 7→0 went single-shot→full-auto on the bench; captured Burst Rifle fired true 3-round bursts (exp-log). | — | done |
 | **U4** | **How the 3-part reload chain relates to `reload_ms`.** Six stock frames "overrun" a sequential model, so the model is wrong. | any future reload-sound work | One weapon, one long chain, one stopwatch. Also answers whether `t19` changes it. |
 | **U5** | **Does a held trigger retrigger the fire sample from zero, or ring under the next shot?** Decides whether sample duration constrains anything at all. | custom weapon sound design | Fire the AR (1.76 s sample, 190 ms cycle) and listen. |
 | **U6** | ~~victim behaviour per damage type~~ — **CLOSED 2026-08-26, then PARTLY REOPENED by the IR work (§6.2).** The hit-SFX half stands. The conclusion *"presentation only; damage is always t5"* does **not**: `t3`/`t4` are the `$SIR` composite key, and the table MC pushes maps two of the three subtypes in use to **multiplier** functions. Damage is `t5 × the row's multiplier`. The earlier test was sound — every row it exercised happened to be a standard-damage row. | §2's balance table (§6.2) | done — the multiplier values were confirmed 2026-09-02 (U10). |
 | **U10** | ~~REOPENED 2026-08-27 — what switches the fn 36/37 multipliers on?~~ ✅ **CLOSED 2026-09-02, fully explained 2026-09-11 (F23): the multipliers are REAL but HEADSET-only and t7-scaled. fn 36 = floor(magnitude × (1 + t7/200)), fn 37 = floor(magnitude × (1 + 2·t7/100)); at t7=50, which was the default until the 2026-09-17 arsenal review set the compiled `crit_modifier` to **0**, so the multipliers are OFF today (§6.2) that is ×1.25 / ×2.** 16 trials across magnitudes 20/40/9/7 and 8 `$SIR` row-tail shapes, with an fn 1 control on subtype 0 in every trial. The ×1.25 **truncates** (7 × 1.25 = 8.75 → **8**). Row tails do not gate it. *Reconciled:* the 2026-08-27 matrix that read ×1.0 in all 24 cells was rig-pinned to the GUN BODY (always ×1); the ×1.25/×2 runs measured the HEADSET. Both were correct — different sensors. See §6.2. | §2's balance — the five multiplied weapons are real and §6.2's retune/flatten decision is live | done |
-| **U11′** | **Which status function, if any, is a real STUN? — OPEN (reopened 2026-08-27).** fn 23 is eliminated as a stun: it **silences the gun AND zeroes its accuracy** — the silence was heard by ear (stands), while the `$ALCD` token 2 drop cited as its proof is live ACCURACY (bench-proven 2026-09-09, §4.4), not the audio level this row said. One number was doing duty for two claims; see F66. Getting hit with fn 23 forces it down and it recovers over ~6–8 s; the gun fires and emits IR normally, ammo and health preserved, `$SPAWN` clears it early. Category 10 remains unbuilt; next lead is capturing the native Sentinel EMP ability. The 2026-08-26 "it is an EMP" reading and its correction: `docs/experiment-log.md` 2026-08-26/27. | stun weapons | capture the Sentinel EMP |
+| **U11′** | **Which status function, if any, is a real STUN? — CLOSED 2026-09-18.** fn 23 is not a classic stun (it deals no damage and the gun keeps firing), but it is a real, shippable effect: it drives the victim's LIVE ACCURACY to 0 in the same millisecond as the `$HIR`, no pool moves, every shot the victim fires misses, and it recovers on its own over a few seconds (§6.3e, "Smoke"). What changed the answer: the 2026-09-18 bench measured it against `$SIR,8,0,,23`, the same cell A20's host-driven stun uses, and found the accuracy-zero effect alone is enough to take a player out of a fight — no second mechanism needed. `config.stun` ships fn 23 for exactly this reason (F253, §6.3e). Category 10 "Stun" (a `$SIR` function that disarms or drops HP directly) is still unbuilt; fn 23 is the primitive we ship instead. | stun weapons | none — see §6.3e |
 | **U7** | ~~Damage ceiling in the IR payload~~ ✅ **CLOSED 2026-08-26** — read straight off the wire on our own VS1838B: the field is **8 bits (max 255)** and the rocket's 115 decoded exactly. A 2× powerup is expressible on anything up to 127. | future powerups | **Now directly readable** — the `D8` field on a VS1838B capture (bench-plan Session 1½b). |
 | **U8** | **`t17` vs `t40`.** Every captured frame obeys `t17 == 2 × t40` and we preserve it, but *why* is unknown — is `t40` a per-magazine count and `t17` a total? | nothing today; would matter for a resupply powerup | Set them independently and watch `$ALCD`. |
 | **U9** | ~~reserve via $AMMO on re-push~~ ✅ **CLOSED 2026-08-26**: a bare $WEAP re-push resets mag/reserve to the frame's baked-in values — pickups MUST re-send $AMMO (exp-log). | — | done |
@@ -1042,8 +1056,9 @@ by 8.0 s, 3/3 reps); `$AMMO`/`$WEAP` re-pushes do not move it, `$SPAWN` clears i
 frame is `$ALCD,32,0,0,192,0` (ammo and health preserved). A **sensory-disruption** weapon: no fire sound, no
 reload chain, no overheat cue, but it forces your accuracy to zero without a shot fired, below whatever
 the weapon's own `t22` floor is. It works under protocols 0/5/7/10 alike, so it belongs to the function.
-**Category 10 "Stun" remains UNBUILT**: no `$SIR` function has produced a stun, `$STUN`-over-BLE is a no-op, and
-the live lead is to capture the native Sentinel EMP ability (U11′). The 2026-08-26 "fn 23 is an EMP / weapon
+**Category 10 ships as fn 23** (U11′, closed 2026-09-18): no pool moves and the victim's live accuracy goes to 0,
+which is the effect §6.3e describes. `$STUN`-over-BLE is still a no-op, and the native Sentinel EMP capture is no
+longer needed. The 2026-08-26 "fn 23 is an EMP / weapon
 disable" reading and its retraction are in `docs/experiment-log.md` 2026-08-26/27.
 
 **Three clean negatives worth carrying** — each one closes a design direction someone would otherwise
@@ -1136,7 +1151,10 @@ function needs per-player keys before it can ship beside the others. And a victi
 invisible at the weapon, so a weapon built on one reads as balanced in `weapons.json` and plays as
 something else entirely.
 
-### 6.3d ⚠️ This document's reserve columns are unproven (F253)
+### 6.3d This document's reserve columns are proven (F255, closed 2026-09-18)
+
+**Answered on the bench, 2026-09-18.** `$AMMO,0,32,192` rides `frames.spawn` AND `frames.revive`, so the gun is set to the full catalogue reserve at every spawn and the HUD agrees with it; the halved `t40` is live only in the ~200 ms between the `$WEAP` and the `$SPAWN`. The columns below stand as written. What follows is the
+reasoning that made them look wrong, kept because it is the trap, not the answer.
 
 `resolve()` writes the catalogue's `reserve` to **t17** and `reserve // 2` to **t40**, which keeps
 Battle Company's own captured invariant `t17 == 2 * t40`. F207 (field, 2026-09-13) proved the gun's
@@ -1345,7 +1363,7 @@ which knows the live slot after a mid-life weapon swap, where Mission Control on
 statement, credited per this repo's hard rule on protocol discovery: "it actually is both ... so
 there is a dual emitter fire. one from tagger, weaker damage and one from headset, greater damage." Read onto the cap30
 capture that means the gun sent the 45 and the headset the 70. The capture ITSELF cannot show which
-emitter fired which word, so this stays sourced until a bench covers one emitter at a time (F254's own
+emitter fired which word, so this stays sourced until a bench covers one emitter at a time (F275's own
 run does it for free). Our compiled Shotgun does NOT
 mirror Callsign's own 45/70 split: it ships `wire.dmg` 20 and `wire.headset_dmg` 20 (40 together, a
 3-pull kill at the weapon's existing 800 ms cycle, so no other weapon on the ladder moves), and locks

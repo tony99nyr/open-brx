@@ -54,7 +54,9 @@ SLOT_ROLES: dict[str, tuple[str, str]] = {
 ROLE_WORDS = {"intro": "intro", "gas_death": "gas death (tear gas)", "death_scream": "death scream", "hurt_loop": "hurt loop",
               "healed": "healed", "kill_confirm": "kill confirm", "defeat_taunt": "defeat taunt", "pain": "pain",
               "boast": "boast", "long_death": "long death (unused)", "taunt": "taunt", "name": "name", "extra": "extra line",
-              "spawn": "spawn line", "pain_short": "short pain", "pain_long": "long pain", "pain_melee": "melee grunt"}
+              "spawn": "spawn line", "pain_short": "short pain", "pain_long": "long pain", "pain_melee": "melee grunt",
+              "reload_nag": "reload nag", "shield_down": "shield depleted", "shield_charging": "shield charging",
+              "shield_full": "shields online", "shield_loop": "shield-down heartbeat"}
 
 # The six `$PSET` voice fields (APK field names), in frame order, and the slot each takes by default
 # (`gameconfig._VOICE_SLOTS`: 3 I C G E 7). `kill` is the seventh voice-dependent id: the bundle's kill cue.
@@ -63,7 +65,24 @@ PSET_FIELD = {"death_scream": "deathScream", "respawn_cry": "battleRespawnCry", 
               "short_pain": "shortPain", "long_pain": "longPain", "pain_relief": "painRelief"}
 PSET_PLAYS_ON = {"death_scream": "died", "respawn_cry": "respawned", "melee_grunt": "hit_taken",
                  "short_pain": "hit_taken", "long_pain": "hit_taken", "pain_relief": "healed"}
-VOICE_ROLES = PSET_ROLES + ("kill", "spawn")      # A15.2: `spawn` pins the node's spawn line (a one-id pool)
+# Roles the node plays for a STATE of the gun rather than for the character: the reload nag and the four
+# shield moments. They are here, and not as literal ids in `presentation.EVENTS`, for two reasons.
+#
+#   1. A per-pack pick. The reload nag fires on the 5th dry pull and every 3rd after it, so a player hears it
+#      hundreds of times a match. One fixed id means every player in every pack hears the same voice, which
+#      wears out and undoes the point of choosing a character. `voice_slots: {reload_nag: "<id>"}` gives a
+#      player or a host their own line, exactly as it does for the kill line.
+#   2. One place to swap. Tony decides these by ear at the bench and has changed his mind twice already, so
+#      the id has to be a one-line edit, not a rewrite. That line is `ROLE_FIXED` below.
+#
+# ⚠ HONEST LIMIT, and do not read the mechanism as more than it is: the character families carry no line for
+# any of these. The gun's 22-slot family layout has no imperative "Reload" (`VX73` is the announcer's, and the
+# per-pack `VD7`/`VH7`/`VL7`/`VM7`/`VP7` "Reloaded" are past tense AND already the `healed` slot), and the
+# shield moments are effects and the `VA6` announcer. So today every pack resolves to the SAME id and
+# `FAMILY_ROLE` is empty. The wiring is per-pack; the bank is not. A family earns a row the moment a line for
+# it is confirmed by ear.
+NODE_ROLES = ("reload_nag", "shield_down", "shield_charging", "shield_full", "shield_loop")
+VOICE_ROLES = PSET_ROLES + ("kill", "spawn") + NODE_ROLES   # A15.2: `spawn` pins the node's spawn line (a one-id pool)
 # A15.3: a pick in `melee_grunt` / `short_pain` / `long_pain` puts a FIRMWARE pain back into that `$PSET` field
 # (the escape hatch); by default the three ship empty and the node plays `pain_*` itself.
 # which of the family's slots make sense in each `$PSET` field (first = the default), for the pickers
@@ -76,7 +95,34 @@ PSET_CANDIDATES = {"death_scream": "345", "respawn_cry": "", "melee_grunt": "",
                    "short_pain": "", "long_pain": "", "pain_relief": "7", "kill": "A89KL"}
 # sounds a presentation event may name: "voice:<role>" resolves per player to that role's line (A15)
 SOUND_ROLES = ("kill", "spawn", "intro", "gas_death", "death_scream", "hurt_loop", "healed", "kill_confirm", "defeat_taunt",
-               "pain", "pain_short", "pain_long", "pain_melee", "boast", "taunt", "name")
+               "pain", "pain_short", "pain_long", "pain_melee", "boast", "taunt", "name") + NODE_ROLES
+
+# THE ONE PLACE TO SWAP A NODE-ROLE ID. Every one of these is Tony's ear, at a bench, against the real thing,
+# and every one of them is expected to change again -- there are live A/B candidates for most of them. Editing
+# a row here changes the id everywhere: the compiled bundle, the stage, the pickers.
+#
+#   reload_nag       VX73  "Reload" (voice:menu, 1.0 s). The bank's only imperative. EAR-CONFIRMED on a gun
+#                          2026-09-18, Tony: "yes that is the right sound".
+#   shield_down      N101  Tony 2026-09-18, by ear through a gun: the shield-DEPLETED cue. It overturns the
+#                          2026-09-17 decision to have no cue at the break at all. Catalogued as a 2.6 s
+#                          falling one-shot, which is the right shape for a pool failing.
+#   shield_charging  N102  Tony 2026-09-18, same session: the CHARGING-UP sound, played once on the first
+#                          grant of a recharge. It replaces `A34` played twice through the refill (2026-09-17).
+#                          Catalogued "rising / charge-up, 2.1 s" -- the shape the pick needs.
+#   shield_full      VA6Y  "Shields Online" (2.0 s), Tony 2026-09-17 against a real 3.6 s refill: "that last
+#                          one was the best one yet". NOT ruled on again since `shield_charging` moved, so it
+#                          stands until he says otherwise.
+#   shield_loop      N74   The heartbeat, looped by the node while the shield is down (2026-09-17). Also NOT
+#                          re-ruled. ⚠ `presentation.EVENTS["low_health"]` plays the SAME id at HP < 15, so a
+#                          shieldless player on low health hears one sound meaning two things -- flagged, not
+#                          fixed here, because both were chosen by ear and only Tony can separate them.
+#
+# Still to A/B at the bench, from the same conversation: `W20` + `VA8B` (Callsign's own recipe, from a capture
+# on 2026-09-18) against `N101`, and `A34` against `N102`.
+ROLE_FIXED = {"reload_nag": ["VX73"], "shield_down": ["N101"], "shield_charging": ["N102"],
+              "shield_full": ["VA6Y"], "shield_loop": ["N74"]}
+# Per-FAMILY takes of a `ROLE_FIXED` role: `{family prefix: {role: [ids]}}`. Empty on purpose -- see NODE_ROLES.
+FAMILY_ROLE: dict[str, dict[str, list[str]]] = {}
 # role -> every slot that carries it, in slot order (the first is the deterministic default; the whole list is
 # the pool the node rolls from, A15.1). `kill` = the kill confirms + the taunts, the documented kill line first.
 ROLE_SLOTS = {"intro": "1", "gas_death": "2", "death_scream": "345", "hurt_loop": "6", "healed": "7",
@@ -181,6 +227,9 @@ def role_ids(voice: str | None, role: str, slots: dict | None = None) -> list[st
         return [ov[role]]
     fam = family(voice)
     on = snd.on_gun_ids()
+    if role in ROLE_FIXED:
+        # A node-state role (NODE_ROLES): this family's own take if it has one, else the shared default.
+        return [i for i in ((FAMILY_ROLE.get(fam) or {}).get(role) or ROLE_FIXED[role]) if i in on]
     if role == "kill":
         from .mc.compile import kill_line
         first = kill_line(voice)

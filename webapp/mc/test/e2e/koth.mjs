@@ -718,7 +718,7 @@ step('f88-multipoint-refused', async ({ browser, base }) => {
 step('load-path', async ({ browser, base }) => {
   // Every step shares ONE server, and a step that pushed (`setup-steps-prematch` arms a match) leaves
   // the session LOADED — which is the other state of this tab. The un-loaded half of this walk needs a
-  // session nothing has been loaded into, and NEW MATCH keeping the roster is the operator's own way
+  // session nothing has been loaded into, and NEW SESSION keeping the roster is the operator's own way
   // to get one (`state.py new_session`: phase muster, `lobby_pushed` false, acks dropped, roster kept).
   const fresh = await fetch(`${base}/api/session/new`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"keep_roster":true}' });
   if (!fresh.ok) throw new Error(`load-path: POST /api/session/new ${fresh.status} ${(await fresh.text()).slice(0, 160)}`);

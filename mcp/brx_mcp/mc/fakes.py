@@ -8,7 +8,7 @@ import time
 from typing import Callable
 
 from ..gameconfig import GSET_T2_SAFE
-from .compile import HEADSET_ALERT_BRIGHTNESS, VOL_TRYOUT, play_volume   # one volume policy for the real and the fake paths
+from .compile import HEADSET_ALERT_BRIGHTNESS, TRIGGER_HELD, TRIGGER_LIVE, VOL_TRYOUT, check_volume, play_volume   # one volume policy for the real and the fake paths
 from . import frames as _frames        # A36: a fake gun answers from the head it was actually sent
 from .types import (ArmoryRecord, FrameBundle, GameConfig, PerkView, Player, ScanRow, Team, VoiceOption, Weapon, WeaponView,
                     MAX_PLAYERS)
@@ -75,29 +75,36 @@ def weapon_views() -> list[WeaponView]:
 class FakeCompiler:
     """Trivial but shape-correct: $PSET carries player_num, head has no $SPAWN, spawn has one."""
 
+    def __init__(self, bench_volume: int | None = None) -> None:
+        self.bench_volume = None if bench_volume is None else check_volume(bench_volume)   # `--bench-volume`, as Compiler
+
     def compile(self, config: GameConfig, player: Player, teams: list[Team], roll=None,
                 plan=None) -> FrameBundle:
         tid = next((t["tid"] for t in teams if t["team_id"] == player.get("team_id")), 0)
         hp, ar = config["health"]["max_hp"], config["health"]["max_armor"]
         weapons = [w["weapon_id"] for w in player["loadout"]["weapons"]] or ["assault_rifle"]
-        head = [f"$VOL,{play_volume(config.get('environment'))},0,*", "$CLEAR,*", "$START,*",
+        head = [f"$VOL,{play_volume(config.get('environment')) if self.bench_volume is None else self.bench_volume},0,*", "$CLEAR,*", "$START,*",
                 f"$GSET,{1 if config['mode'] == 'ffa' else 0},{GSET_T2_SAFE},1,0,1,0,0,1,*",  # t7 (crit_modifier) 0: the GameConfig default (2026-09-17)
                 f"$PSET,{player['player_num']},0,{hp},{ar},{ar},50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*"]
         head += [f"$WEAP,{i},<{w}>,*" for i, w in enumerate(weapons[:2])] + ["$WEAP,4,<melee>,*"]
         # F121/A23: this class is a RUNTIME FALLBACK that can reach a real tagger, so it is spawn-protected
         # like the real compiler -- fn 28 pregame (registers a `$HIR`, moves no pool, no player feedback),
-        # the damage row with `$SPAWN` and with every revive. It still satisfies F11 either way: rows are
-        # PRESENT after the `$CLEAR`, which is what makes a gun hittable at all.
-        head += ["$SIR,0,0,,28,0,0,1,,*", "$BMAP,0,0,,,,,*", f"$TID,{tid},*"]
+        # fn 28 again in spawn and revive (F209), and the damage row as the one `sir_pool` take the node
+        # writes once the gun can fire. It still satisfies F11 either way: rows are PRESENT after the
+        # `$CLEAR`, which is what makes a gun hittable at all.
+        # Bench 2026-09-16: the head holds the trigger; spawn and revive map it (compile.TRIGGER_HELD).
+        sir_protected = ["$SIR,0,0,,28,0,0,1,,*"]
+        head += [*sir_protected, TRIGGER_HELD, f"$TID,{tid},*"]
         sir_live = ["$SIR,0,0,,1,0,0,1,,*"]
         ammo = [f"$AMMO,{i},36,108,1,*" for i in range(len(weapons[:2]))]
         return {"config_id": config["config_id"], "player_id": player["player_id"], "head": head,
-                "spawn": [*sir_live, "$PLAYX,0,*", "$SPAWN,,*", *ammo, "$BMAP,0,0,,,,,*"],
-                "revive": [*sir_live, "$SPAWN,,*", *ammo],
+                "spawn": [*sir_protected, "$PLAYX,0,*", "$SPAWN,,*", *ammo, TRIGGER_LIVE],
+                "revive": [*sir_protected, "$SPAWN,,*", *ammo, TRIGGER_LIVE],
+                "sir_pool": [sir_live],
                 "end": ["$SPAWN,,*", "$PLAYX,0,*", "$STOP,*", "$CLEAR,*", "$HLOOP,0,0,*", "$HLED,0,0,0,0,0,0,*"],
                 "panic": ["$CLEAR,*", "$SP,99,*"],
                 "team_flip": {str(t["tid"]): [f"$TID,{t['tid']},*"] for t in teams if t["tid"] != tid},
-                "cues": self.cues(player.get("voice", "male"))}
+                "cues": self.cues(player.get("voice", "male"), night=bool(config.get("night")))}
 
     def tutorial_frames(self, weapon: Weapon, environment: str) -> list[str]:
         # ⚠️ The `$SIR` row is NOT decoration. `$CLEAR` wipes the `$SIR` table and a gun with no rows
@@ -105,12 +112,12 @@ class FakeCompiler:
         # This class is a RUNTIME FALLBACK -- `mc/__main__.py` selects it whenever the real compiler
         # raises -- so this bundle can reach a real tagger, and without the row it would leave that
         # player unhittable for the match. `test_clear_safety` now enumerates this file.
-        return [f"$VOL,{VOL_TRYOUT},0,*", "$CLEAR,*", f"$GSET,0,{GSET_T2_SAFE},1,0,1,0,0,1,*",   # t7 (crit_modifier) 0: the GameConfig default (2026-09-17)
+        return [f"$VOL,{VOL_TRYOUT if self.bench_volume is None else self.bench_volume},0,*", "$CLEAR,*", f"$GSET,0,{GSET_T2_SAFE},1,0,1,0,0,1,*",   # t7 (crit_modifier) 0: the GameConfig default (2026-09-17)
                 "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*",
                 "$SIR,0,0,,1,0,0,1,,*",
                 f"$WEAP,0,<{weapon['weapon_id']}>,*", "$SPAWN,,*", "$PLAYX,0,*", "$AMMO,0,36,108,1,*", "$BMAP,0,0,,,,,*"]
 
-    def cues(self, voice: str, slots: dict | None = None) -> dict[str, str]:   # A15: slots as the real compiler
+    def cues(self, voice: str, slots: dict | None = None, night: bool = False) -> dict[str, str]:   # A15: slots, night as the real compiler
         # A6.3: cues are pre-composed $PLAY frames the node writes verbatim
         # `hurt`/`hurt_led` are here so the demo and every fake-backed test exercise the same key set
         # the real compiler emits — without them the low-health alert path is unreachable in the
@@ -123,7 +130,7 @@ class FakeCompiler:
         return {"countdown": "$PLAY,VA81,4,6,,,,,*", "kill": "$PLAY,,4,6,VAA,,,,*",
                 "game_over": "$PLAY,,4,6,VA33,,,,*",   # neutral "game over" -- what the real compiler ships
                 "victory": "$PLAY,VSF,4,6,JAY,,,,*",   # winners only, and only when MC sends it at recap
-                "hurt": "$PLAY,VA8B,3,6,,,,,*", "hurt_led": f"$HLED,7,4,90,90,{HEADSET_ALERT_BRIGHTNESS},15,*"}
+                "hurt": "$PLAY,VA8B,3,6,,,,,*", "hurt_led": f"$HLED,7,4,90,90,{1 if night else HEADSET_ALERT_BRIGHTNESS},15,*"}
 
     def validate(self, config: GameConfig, roster: list[Player], opts: dict | None = None) -> dict:
         errors, warnings = [], []
@@ -352,6 +359,34 @@ class DemoDriver:
             await asyncio.sleep(2.0 / self.speed)
             self.tick()
 
+    def _answer_operator(self, now: int, phase: str) -> None:
+        """A47: the demo phone answers an operator action with its `operator_result` fact, as
+        `engine.js _operator` does: resync/respawn only while LIVE, resync never while down."""
+        for (nid, kind, body) in list(self.net.pushed):
+            if (nid is None or kind != "control" or body.get("cmd") not in ("resync", "respawn", "relink")
+                    or body.get("_answered")):
+                continue
+            body["_answered"] = True
+            nd = next((n for n in self.nodes if n["node_id"] == nid and n["player_id"] == body.get("player_id")), None)
+            mid = (self.s.start_info or {}).get("match_id")
+            if nd is None or not mid or body.get("match_id") != mid:
+                continue
+            cmd, why = body["cmd"], None
+            if cmd != "relink" and phase != "live":
+                why = "not live"
+            elif cmd == "resync" and not nd["alive"]:
+                why = "down"
+            elif cmd == "respawn":
+                nd["alive"] = True
+                nd["dead_until"] = 0
+                self.net.simulate_event(nid, {"type": "respawn", "t": now, "match_id": mid, "node_id": nid,
+                                              "player_id": nd["player_id"], "operator": True}, now, seq=nd["seq"])
+                nd["seq"] += 1
+            self.net.simulate_event(nid, {"type": "operator_result", "t": now, "match_id": mid, "node_id": nid,
+                                          "player_id": nd["player_id"], "cmd": cmd, "ok": why is None,
+                                          **({"why": why} if why else {})}, now, seq=nd["seq"])
+            nd["seq"] += 1
+
     def tick(self):
         now = self._now()
         phase = self.s.phase
@@ -393,6 +428,7 @@ class DemoDriver:
                     echo = f"$ALCD,{ammo[0]},100,0,{ammo[1]},0,*" if ammo else "$LCD,0,0,0,0,0,0,*"
                     self.net.simulate_node_message(n["node_id"], "ack_config",
                         {"config_id": body["config"]["config_id"], "ok": True, "gun_echo": echo}, now)
+        self._answer_operator(now, phase)
         if phase != "live" or not self.s.start_info:
             return
         mid = self.s.start_info["match_id"]

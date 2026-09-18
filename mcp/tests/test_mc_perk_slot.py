@@ -21,6 +21,7 @@ def _mk(mode="tdm"):
     s = Session(FakeCompiler(), net, FakeArmory(demo_armory()), now_ms=lambda: clock["t"])
     s.set_config({"mode": mode})
     p = s.add_player("REAPER", team_id="blue", gun_id="GUN-A")
+    s.set_phase("kit")   # adding a player never moves the phase (2026-09-17) -- CONTINUE TO KIT does
     tail = demo_armory()[0]["ble"]["tail"]
     net.simulate_hello("node0", f"GUN-A-{tail}")
     net.simulate_status("node0", {"player_id": p["player_id"], "hp": 45, "armor": 70, "ammo": 36, "alive": True, "shots": 0,

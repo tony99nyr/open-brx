@@ -139,7 +139,7 @@ await step('a KILL is not clobbered by a hit landing in the same moment', async 
   await page.evaluate(() => {
     const e = window.brx.engine;
     e.onMcMessage({ kind: 'feedback',
-      body: { kind: 'kill', victim: 'BRAVO', victim_team: 'yellow', t: Date.now() } });
+      body: { kind: 'kill', victim: 'p-bravo', victim_display: 'BRAVO', victim_team: 'yellow', t: Date.now() } });
     e.feedFrame('$HIR,4,0,19,2,9,0,3,*');
     e.feedFrame(`$HP,${e.hp},${Math.max(0, e.armor - 1)},0,*`);
     if (e.moment && e.moment.kind !== 'kill') throw new Error('the hit overwrote the kill moment');
@@ -167,7 +167,7 @@ await step('a pool GAIN renders with a + amount and the pool name', async () => 
 
 await step('kill confirm renders CONFIRMED and the elimination banner', async () => {
   await page.evaluate(() => window.brx.engine.onMcMessage(
-    { kind: 'feedback', body: { kind: 'kill', victim: 'BRAVO', victim_team: 'yellow', t: Date.now() } }));
+    { kind: 'feedback', body: { kind: 'kill', victim: 'p-bravo', victim_display: 'BRAVO', victim_team: 'yellow', t: Date.now() } }));
   const el = page.locator('.mo.kill').first();
   await el.waitFor({ state: 'visible', timeout: 3000 });
   const txt = (await el.textContent()) || '';

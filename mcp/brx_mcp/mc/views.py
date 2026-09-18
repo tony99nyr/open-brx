@@ -125,6 +125,10 @@ def weapon_view(w: Weapon, pool: int = DEFAULT_POOL) -> WeaponView:
             "verified": bool(w.get("verified")),
             "tags": list(w.get("tags") or []), "role": w.get("role", ""),
             "htk": htk, "ttk_ms": ttk_ms}                                       # A10, now at the host's pool
+    # A48: the cost of one full charge, for the HUD's NOT ENOUGH ENERGY line. Resolved, not raw: the
+    # catalogue omits the key wherever it is 1 (`_note`: "Absent = 1"), and a consumer must never have to
+    # know that. `WeaponCatalog.rounds_per_charge()` is the same rule in the one place it belongs.
+    view["rounds_per_charge"] = int(w.get("rounds_per_charge") or 1)
     if caution := w.get("caution"):
         view["caution"] = caution                                      # A10: known live problem
     if w.get("pickup_only"):

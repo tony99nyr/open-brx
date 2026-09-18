@@ -362,8 +362,9 @@ class Scorer:
         if kind == "death":
             return self._death(pid, ev, t, suppress_awards)
         if kind == "respawn":
+            if not ev.get("operator"):   # A47: the operator's FORCE RESPAWN is not a new life after a death
+                st.streak = 0
             st.alive = True
-            st.streak = 0
             return "scored"
         if kind == "team_change":
             tid = int(ev.get("tid", -1))
@@ -455,8 +456,11 @@ class Scorer:
                 if self.now_ms() - t <= FEEDBACK_MAX_AGE_MS and not suppress:
                     # kind stays "kill" (older nodes play their kill line); `medals` is the A11.4 stack,
                     # which a current node plays INSTEAD of the plain line, one after another.
+                    # `victim` is a player_id (for matching); `victim_display` is what the kill banner shows
+                    # (field 2026-09-17: the phone rendered the raw id because only the id rode here).
                     body = {"player_id": killer, "kind": "kill", "t": t, "medals": list(kill.get("medals") or []),
-                            "victim": victim, "victim_team": self.stats[victim].team_id}
+                            "victim": victim, "victim_team": self.stats[victim].team_id,
+                            "victim_display": (self.players.get(victim) or {}).get("display") or None}
                     self.on_feedback(killer, body)
         # Polish 2026-09-04: alerts after EVERY scored death, not only enemy kills -- a team kill (kills -= 1)
         # can flip the lead, and a death with no known shooter still leaves a last survivor.

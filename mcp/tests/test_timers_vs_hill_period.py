@@ -19,6 +19,7 @@ PERIOD_S = hb.BEACON_PERIOD_S
 
 # name -> why a 5 s emitter cannot keep it from firing (or why it is not a fuse at all)
 JUDGED = {
+    "SHIELD_REGEN_DELAY_S": "S29 (2026-09-18): the quiet a player must hold before shields refill. Reset ONLY by\n                             real damage -- `engine.js _onHp` resets `_shieldQuietAt` under `if (dmg > 0)`, and a\n                             hill beacon (`$HIR` tok2 = 15, the silent fn-28 row) moves no pool, so `dmg` is 0 and\n                             the beacon cannot hold the refill off. That mattered: standing on a point would\n                             otherwise mean never recharging",
     "OFFLINE_AFTER_MS": "node heartbeat age, fed by the phone's status cadence, not by any IR frame",
     "STALE_AFTER_MS": "same: a socket-liveness threshold on the status heartbeat",
     "SYNC_FRESH_MS": "clock-sync freshness on time_req/time_res, not on game frames",
@@ -30,6 +31,8 @@ JUDGED = {
     "RESYNC_PROBE_S": "the node's resync prompt cadence, driven by the operator's trigger pull",
     "STALE_LIVE_RETELL_MS": "A34: how long MC waits before re-telling the SAME phone that the SAME retired match "
                             "ended; keyed off that phone's status heartbeat (`arm_state`/`match_id`), never an IR frame",
+    "SYNC_ACK_TIMEOUT_MS": "2026-09-16: how long the PRE-ARM CHECK shows a pushed gun as waiting for its config ack; "
+                           "read off the push time and the ack message, never an IR frame, and it gates nothing",
     "DEFAULT_RUNWAY_S": "the countdown length, not a fuse",
     "PRUNE_AFTER_MS": "unbound-node record lifetime on the socket's silence",
     "HELLO_TIMEOUT_S": "grace for a hello after connect; a frame cannot reset it",
@@ -44,6 +47,8 @@ JUDGED = {
     "_STUN_DEFAULT_S": "F15: the EMP disarm length when config.stun names none; started by a proto-8 $HIR only, and the <15,0> beacon row (fn 28) never reaches the <8,0> cell",
     "_STUN_MAX_S": "F15: the validator's ceiling on config.stun.duration_s, not a timer that runs",
     "STUN_DEFAULT_S": "the stage's mirror of engine.js STUN_DEFAULT_S: same proto-8-only start as _STUN_DEFAULT_S; a beacon is proto 15 and cannot extend it",
+    "GUN_QUIET_STALE_S": "F208: the stage's mirror of engine.js GUN_QUIET_STALE_MS, a display flag and not a fuse; a beacon IS a "
+                         "gun frame and proves the link, so a beacon resetting it is the intended behaviour",
     "T_MIN_MS": "an envelope timestamp sanity bound, not a timer",
     "T_MAX_MS": "an envelope timestamp sanity bound, not a timer",
     "REPLAY_PERIOD_MS": "the F77 detector's own window for a ~5 s replay; it MEASURES the period rather than resetting on it",
@@ -51,6 +56,10 @@ JUDGED = {
     "TERM_GRACE_S": "A28.1: terminate-then-kill grace for the cloudflared child; a process wait, not a game timer",
     "DNS_CAP_S": "F140: how long MC holds `starting` while the tunnel hostname does not resolve at Cloudflare; driven by DNS-over-HTTPS answers on the host, and nothing on the IR wire reaches it",
     "DOH_TIMEOUT_S": "F140: the socket timeout on one DNS-over-HTTPS query; an HTTP wait on the host, not a game timer",
+    "HEAT_STALE_S": "review 2026-09-17: the stage's mirror of engine.js HEAT_STALE_MS -- reset only by a real $ALCD "
+                    "heat token from a shot/report; a hill beacon is proto 15, never an $ALCD, so it cannot extend it",
+    "OPERATOR_NO_ANSWER_MS": "pl4: how long MC waits for a phone's `operator_result` before it shows NO ANSWER; ended "
+                             "only by that fact over the MC socket, and nothing on the IR wire reaches it",
     "LOCKUP_AFTER_S": "bench-screamers-2026-09-19.md Phase C: the soak tool's own LOCK-UP threshold (no $PONG for "
                       "10s). Not a game timer at all -- the soak instrument runs no objective/mode and never sees "
                       "a hill beacon",

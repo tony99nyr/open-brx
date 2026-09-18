@@ -10,6 +10,10 @@ Every weapon selectable in the official Callsign app, captured over BLE while ar
 **named by the operator at capture time** (the wire carries no weapon name; token 27 is only a
 *sound* id, and two different weapons share `C03`).
 
+**This file is the captured Callsign wire, not the game we ship.** The numbers Open BRX actually sends live in
+`mcp/brx_mcp/mc/weapons.json`, and `docs/weapon-design.md` explains the balance behind them. Read this page for
+what Battle Company's app puts on the wire; read the catalogue for what a player gets.
+
 Field decode and the evidence behind it: `protocol/callsign-extract/protocol-classes.md`.
 Raw traces: `protocol/captures/raw/`. Regenerate the underlying table with
 `python -m brx_mcp.weapmap protocol/captures/raw/*.btsnoop`.
@@ -20,7 +24,7 @@ for every function including the fn 36/37 multiplier pair. **Applied** damage on
 more: magnitude × the victim's `$SIR`-function multiplier, where fn 36/37 scale with the compiled
 `$GSET criticalShotModifier` (t7) — not a flat "1.5 if crit"; see `protocol/brx-protocol.md` §5 and
 `session-findings-2026-08.md` §7r). `cycle` = `t14`, the per-shot cycle time in ms, which for charge weapons is the
-charge time. `clip`/`reserve` = `t16`/**`t40`**. ⚠ The token matters: a captured frame carries `t17` at exactly twice `t40`, and which one a gun really spends is open (F253). This table reads `t40`, so the Assault Rifle's 192 is the stock gun's spare rounds under that reading. `heat` = `t24`, non-zero only on weapons that overheat.
+charge time. `clip`/`reserve` = `t16`/**`t40`**. ⚠ The token matters: a captured frame carries `t17` at exactly twice `t40` (F207: the gun's own `$ALCD` reserve mirrors `t40`, so `t40` is the player's spare-round count and `t17` is twice it). This table reads `t40`, so the Assault Rifle's 192 is the stock gun's spare rounds under that reading. F255 (closed): `$AMMO,<slot>,<clip>,<reserve>` rides both `frames.spawn` and `frames.revive`, so the gun is set to the full catalogue reserve at every spawn and the HUD agrees with it. `heat` = `t24`, non-zero only on weapons that overheat.
 
 | weapon | sound | behaviour | dmg | cycle ms | clip | reserve | heat |
 |---|---|---|---|---|---|---|---|

@@ -434,6 +434,7 @@ def test_phone_loadout_request_roundtrip_real_stack():
         async with Stack(mode="ffa", time_limit_s=30) as s:            # ffa → NO HEAVIES
             a = s.add_player("REAPER", "GUN-A")
             b = s.add_player("VIPER", "GUN-B")
+            s.session.set_phase("kit")   # adding a player never moves the phase (2026-09-17)
             na = await s.connect_node("GUN-A")
             nb = await s.connect_node("GUN-B")
             assert await until(lambda: na.player_id == a["player_id"] and nb.player_id == b["player_id"])

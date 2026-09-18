@@ -19,10 +19,11 @@ Evidence: committed at [`evidence/2026-09-13-session-3782dc77/`](evidence/2026-0
 carries the compiled heads MC pushed **and** six node-log uploads, which is why nine of the eleven were
 root-caused without a gun.
 
-- 🔍 **F206** team modes register nothing (116 shots, 0 hits in TDM). `$GSET` t1 `friendlyFire` is the only
-  variable across the three heads; **F49** at game scale. The critical one.
-- 🔍 **F207** the `GUN ECHO ≠ CONFIG` START refusal is a false positive on every gun — the gun's `$ALCD` reserve
-  mirrors `$WEAP` t40 and the check compares it to t17. Answers **F201**.
+- ✅ **F206** team modes register nothing (116 shots, 0 hits in TDM). `$GSET` t1 `friendlyFire` is the only
+  variable across the three heads; **F49** at game scale. The critical one. Closed 2026-09-16: resend `$TID`
+  after the last `$PSET` of any write.
+- ✅ **F207** the `GUN ECHO ≠ CONFIG` START refusal is a false positive on every gun — the gun's `$ALCD` reserve
+  mirrors `$WEAP` t40 and the check compares it to t17. Answers **F201**. Closed 2026-09-16.
 - 🔍 **F208** a gun can die with the HUD holding the player alive, for 105 s, with no operator resync.
 - 🔍 **F209** the respawn delay collapses to 0 in a burst; spawn protection does not hold post-respawn.
 - ✅ **Worked:** `$GSET` t2 stayed 0 in all three heads and **outdoor FFA registered at an indoor-comparable
@@ -33,7 +34,7 @@ root-caused without a gun.
 
 ## Session 3 — 2026-09-11 night, MacBook host, 1v1 on two taggers
 
-**The whole session is written up, issue by issue, in [`game-test-2026-09-11.md`](game-test-2026-09-11.md) — do not duplicate it here.**
+**The whole session is written up, issue by issue, in [`archive/game-test-2026-09-11.md`](archive/game-test-2026-09-11.md) — do not duplicate it here.**
 iPhone on that day's tree, Android on APK 0.1.8. 25 ids were filed (F110-F127 and S20-S26); their status lives
 in `FOLLOWUPS.md`, and the sheet holds the symptom, evidence, mechanism and fix for each.
 
@@ -76,7 +77,7 @@ Evidence: `~/.brx-mcp/mc/session-8bbf96ab.sqlite` (both phones' BLE frame rings 
 | F2-22 | Armory card: title wrapped, tag clipped, four meaningless rows | ✅ | The sticker usually already ends in the tail (`the control tagger`), so printing `-3D4F` again wrapped the title and pushed the status tag off the card. A tagger with no phone showed GUN/HEADSET/BATTERY as `—` plus an empty meter; it now shows LINK and LAST SEEN only. Each message is `STATEMENT — INSTRUCTION` and is rendered as two lines, the instruction in sentence case. |
 | F2-23 | "What do these blue bars represent?" | ✅ | A `SegBar` rendered *after* each `Progress` number, so with two side by side the bar sat between `2/2 KITTED` and `0/2 READY` and read as belonging to either. The fraction already says it exactly, so the bar is gone. |
 | F2-24 | KIT lists players with no phone or tagger as KITTED | ✅ | A restored roster outlives the gear. The loadout exists, the hardware does not, and calling that KITTED is a lie — those rows now read **NO PHONE**, and the KITTED count only counts players we can actually reach. (The full device-first restructure is still F2-12.) |
-| F2-25 | Status line under CONTINUE was shouted and redundant | ✅ | Removed; the button carries its own state (`CONTINUE ▸` / `2 GUNS BLOCKED`) with the reason in its tooltip. Careful: it disables on **reds only** — amber never blocked continuing, and a first cut that required all-green would have stalled a board with a firmware advisory. |
+| F2-25 | Status line under CONTINUE was shouted and redundant | ✅ | Removed; the button carries its own state (`CONTINUE ▸` / `2 GUNS BLOCKED`; renamed `HARDWARE READY ▸` on 2026-09-17) with the reason in its tooltip. Careful: it disables on **reds only** — amber never blocked continuing, and a first cut that required all-green would have stalled a board with a firmware advisory. |
 
 | F2-26 | Voice picker showed a bare `·` after most names | ✅ | It marked "not confirmed by ear" — real information in a place that could not carry it: a `·` inside a native `<select>` has no legend and no tooltip. Asking what it meant *was* the failure. Gone; the Debug page says `15 personas · 1 confirmed by ear, the rest inferred`. |
 | F2-27 | Designer: too much colour, too much caps, labels misaligned | ✅ | The class was printed on all 36 weapon tiles in its own saturated colour, on both halves of the screen, duplicating the five chips above — which were themselves solid colour fills. Tiles now show just the name (class stays in the tooltip). Chips carry colour on a 3px edge. The RULES row used `space-between` inside auto-fit cells of differing widths, so no control lined up with any other; now a fixed two-column grid with hints on their own line. Explainer paragraphs are sentence case. |

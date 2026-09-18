@@ -27,6 +27,7 @@ export const DEMO_WEAPONS = [
     "role": "marksman",
     "htk": 6,
     "ttk_ms": 2000,
+    "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
       "floor": 100,
@@ -65,6 +66,7 @@ export const DEMO_WEAPONS = [
     "role": "assault",
     "htk": 13,
     "ttk_ms": 1200,
+    "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
       "floor": 70,
@@ -102,6 +104,7 @@ export const DEMO_WEAPONS = [
     "role": "assault",
     "htk": 12,
     "ttk_ms": 1558,
+    "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
       "floor": 85,
@@ -141,6 +144,7 @@ export const DEMO_WEAPONS = [
     "role": "marksman",
     "htk": 3,
     "ttk_ms": 570,
+    "rounds_per_charge": 10,
     "recoil": {
       "ceiling": 100,
       "floor": 100,
@@ -179,6 +183,7 @@ export const DEMO_WEAPONS = [
     "role": "sidearm",
     "htk": 5,
     "ttk_ms": 1920,
+    "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
       "floor": 100,
@@ -216,6 +221,7 @@ export const DEMO_WEAPONS = [
     "role": "assault",
     "htk": 13,
     "ttk_ms": 1800,
+    "rounds_per_charge": 1,
     "caution": "Overheats after about 30 rounds of full auto, and it does not cool on its own: work the reload lever to vent the heat (about three pulls, or one held pull), then keep holding to recharge the cell.",
     "recoil": {
       "ceiling": 100,
@@ -255,6 +261,7 @@ export const DEMO_WEAPONS = [
     "role": "power",
     "htk": 1,
     "ttk_ms": 1200,
+    "rounds_per_charge": 1,
     "pickup_only": true,
     "recoil": {
       "ceiling": 100,
@@ -294,6 +301,7 @@ export const DEMO_WEAPONS = [
     "role": "power",
     "htk": 1,
     "ttk_ms": 0,
+    "rounds_per_charge": 1,
     "pickup_only": true,
     "recoil": {
       "ceiling": 100,
@@ -332,6 +340,7 @@ export const DEMO_WEAPONS = [
     "role": "cqb",
     "htk": 3,
     "ttk_ms": 1600,
+    "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
       "floor": 100,
@@ -369,6 +378,7 @@ export const DEMO_WEAPONS = [
     "role": "cqb",
     "htk": 15,
     "ttk_ms": 1330,
+    "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
       "floor": 55,
@@ -406,6 +416,7 @@ export const DEMO_WEAPONS = [
     "role": "support",
     "htk": 20,
     "ttk_ms": 13300,
+    "rounds_per_charge": 1,
     "caution": "The Haze needs the HUD that tells a flashed player why nothing is landing (S53) before players meet it.",
     "lethal": false,
     "recoil": {
@@ -446,6 +457,7 @@ export const DEMO_WEAPONS = [
     "role": "marksman",
     "htk": 2,
     "ttk_ms": 1500,
+    "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
       "floor": 100,
@@ -483,6 +495,7 @@ export const DEMO_WEAPONS = [
     "role": "support",
     "htk": 13,
     "ttk_ms": 1320,
+    "rounds_per_charge": 1,
     "lethal": false,
     "recoil": {
       "ceiling": 100,
@@ -521,6 +534,7 @@ export const DEMO_WEAPONS = [
     "role": "assault",
     "htk": 15,
     "ttk_ms": 1960,
+    "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
       "floor": 55,
@@ -559,6 +573,7 @@ export const DEMO_WEAPONS = [
     "role": "sidearm",
     "htk": 13,
     "ttk_ms": 1920,
+    "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
       "floor": 100,

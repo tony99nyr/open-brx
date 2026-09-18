@@ -218,6 +218,12 @@ class GameDriver:
             self.announce(f"(send to {pid} failed: {type(e).__name__}: {e})")
             if critical:
                 self.arming_failures.setdefault(pid, []).append(frame)
+        # F206 (bench 2026-09-16): any `$PSET` clears the gun's team until a `$TID` follows; `$SPAWN` and `$SIR`
+        # do not. The driver writes frame by frame, so this is its one door: every `$PSET` is followed at once by
+        # the gun's team. `self.players` is updated by `SetTeam` first, so a flipped team wins. Mirrors
+        # engine.js `_tidAfterPset`.
+        if frame.startswith("$PSET,") and pid in self.players:
+            await self._send(pid, f"$TID,{self.players[pid]},*", critical=critical)
 
     # -- action execution ---------------------------------------------------- #
     async def execute(self, actions: list[Action]) -> None:

@@ -8,7 +8,13 @@ import { chromium } from 'playwright';
 import http from 'http'; import fs from 'fs'; import path from 'path'; import os from 'os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { DEMO_PERKS } from '../src/demo-catalog.js';
+import { DEMO_PERKS, DEMO_WEAPONS } from '../src/demo-catalog.js';
+// Derived, never typed: `demo-catalog.js` is the artefact the PHONE reads (generated from weapons.json
+// by mcp/tools/gen_ui_catalog.py), and a row is IN it only when it is not `hidden`. `sidearm` is the
+// same predicate DESIGNER counts PISTOLS with (Designer.tsx SlotEditor); a `pickup_only` sidearm is
+// never offered. Unhiding the glock must MOVE this step, not break it -- and whoever unhides it will
+// not open this file. Names are upper-cased because the rack draws them that way.
+const SIDEARM_NAMES = DEMO_WEAPONS.filter(w => (w.tags || []).includes('sidearm') && !w.pickup_only).map(w => w.name.toUpperCase());
 const HERE = path.dirname(fileURLToPath(import.meta.url)), ROOT = path.resolve(HERE, '..'), WWW = path.join(ROOT, 'www');
 const OUT = path.join(ROOT, 'shots', 'screens');
 const ONLY = process.env.ONLY;
@@ -56,7 +62,7 @@ const b = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });  
 const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 667, height: 375 }];
 const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted',
   'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
-  'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
+  'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked', 'live-scores', 'live-scores-ffa']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
 let stepIdx = 0;   // counts every step this run selects; identical control flow in every shard, so `% count` partitions them
 const step = async (name, fn) => { if (ONLY && !name.includes(ONLY)) return; if (SHARD && stepIdx++ % SHARD[1] !== SHARD[0]) return; try { await fn(); console.log(`  ok   ${name}`); pass++; } catch (e) { console.log(`  FAIL ${name}: ${String(e.message || e).slice(0, 300)}`); fail++; errs.push(name); } };
 const open = async (view, stage, extra = '', ms) => {
@@ -71,12 +77,14 @@ const open = async (view, stage, extra = '', ms) => {
 // what every screen must satisfy (#1/#2/#3/#5/#7/#8/#10/#12/#14/#22): no sideways overflow, nothing under the ⓘ box, no wrapped plate row
 const invariants = pg => pg.evaluate(() => {
   const out = []; const info = document.getElementById('info').getBoundingClientRect();
+  const skinEl = document.getElementById('skin'), skin = skinEl ? skinEl.getBoundingClientRect() : null;   // the day/night switch under the ⓘ (bench 2026-09-17)
   const hit = (a, b) => a.left < b.right - 2 && a.right > b.left + 2 && a.top < b.bottom - 2 && a.bottom > b.top + 2;
   for (const e of document.querySelectorAll('#hud *, #overlay *, #chips *')) {
     const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden') continue;
     if (cs.overflowX !== 'visible' && e.scrollWidth > e.clientWidth + 1) out.push(`sideways overflow: .${e.className} ${e.scrollWidth}>${e.clientWidth}`);
     const txt = e.childElementCount === 0 && (e.textContent || '').trim(); if (!txt) continue;
     const r = e.getBoundingClientRect(); if (r.width && hit(r, info)) out.push(`under the ⓘ button: "${txt.slice(0, 30)}"`);
+    if (r.width && skin && hit(r, skin)) out.push(`under the day/night switch: "${txt.slice(0, 30)}"`);
   }
   const plates = Array.from(document.querySelectorAll('.lobby .plates > .plate')).map(p => Math.round(p.getBoundingClientRect().top));
   if (plates.length > 1 && new Set(plates).size > 1) out.push('plates row wrapped: tops ' + plates.join(','));
@@ -113,7 +121,7 @@ const notSheared = (r, sels) => {
 
 for (const view of VIEWS) {
   console.log(`\n== ${view.name} ${view.width}×${view.height} ==`);
-  for (const st of ['idle', 'connected', 'mc-rejected', 'setup', 'briefing', 'kitted', 'kitted-ready', 'loadout-primary', 'loadout-secondary', 'loadout-picked', 'loadout-arming', 'loadout-info', 'kitted-perk', 'kitted-full', 'loadout-perk', 'tryout', 'lobby', 'lobby-kit-locked', 'kit-refused', 'armed', 'live', 'live-nogun', 'resync', 'live-kill', 'live-reload', 'down', 'redeploy', 'result', 'over',
+  for (const st of ['idle', 'idle-noisy', 'idle-noisy-open', 'idle-assigned', 'connected', 'mc-rejected', 'setup', 'briefing', 'kitted', 'kitted-ready', 'kitted-headset-off', 'connected-headset-off', 'loadout-primary', 'loadout-secondary', 'loadout-picked', 'loadout-arming', 'loadout-info', 'kitted-perk', 'kitted-full', 'loadout-perk', 'tryout', 'lobby', 'lobby-kit-locked', 'kit-refused', 'armed', 'live', 'live-nogun', 'resync', 'live-kill', 'live-reload', 'down', 'redeploy', 'result', 'over',
     'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
     'down-at-cap-offline', 'armed-with-mc-verify']) {
     await step(`${view.name} ${st}: invariants`, async () => { const pg = await open(view, st); const bad = await invariants(pg); await pg.close(); must(bad.length === 0, bad.join(' ; ')); });
@@ -132,6 +140,113 @@ for (const view of VIEWS) {
   await step(`${view.name} #2 idle list: no horizontal scrollbar`, async () => {
     const pg = await open(view, 'idle'); const r = await pg.evaluate(() => { const l = document.querySelector('.idle .list'); return { ox: getComputedStyle(l).overflowX, sw: l.scrollWidth, cw: l.clientWidth, rows: document.querySelectorAll('.tagrow').length }; }); await pg.close();
     must(r.rows === 3, 'rows ' + r.rows); must(r.ox === 'hidden' && r.sw <= r.cw + 1, JSON.stringify(r));
+  });
+  // ---- F258 (bench 2026-09-18): the gun picker in a room full of Bluetooth ----
+  // What Tony saw: SCANNING FOR TAGGERS, then every device in the room in signal order (two
+  // televisions, a QLED, a Hatch Rest, bare MAC addresses) with the two real taggers at positions 7
+  // and 12 — and no tap or scroll ever landed, because the list was rebuilt on every scan hit.
+  await step(`${view.name} F258 idle-noisy: the taggers are the only rows; the room is behind a fold`, async () => {
+    const pg = await open(view, 'idle-noisy');
+    const r = await pg.evaluate(() => ({
+      shown: Array.from(document.querySelectorAll('.taggers .tagrow .nm')).map(e => e.textContent.trim()),
+      folded: document.querySelectorAll('.others .tagrow').length,
+      foldVisible: getComputedStyle(document.querySelector('.others')).display !== 'none',
+      tog: (document.querySelector('.othertog') || {}).textContent || '',
+      togVisible: !!document.querySelector('.othertog') && getComputedStyle(document.querySelector('.othertog')).display !== 'none',
+    }));
+    await pg.close();
+    must(r.shown.length === 2, 'the picker shows ' + r.shown.length + ' rows, not the two taggers: ' + JSON.stringify(r.shown));
+    must(/ALPHA-FE30/.test(r.shown[0]) && /BRAVO-9498/.test(r.shown[1]), 'the two taggers are not the visible rows: ' + JSON.stringify(r.shown));
+    must(r.folded === 5 && !r.foldVisible, 'the room is not folded away: ' + JSON.stringify(r));
+    must(r.togVisible && /OTHER DEVICES \(5\)/.test(r.tog), 'no way back to the other devices: ' + JSON.stringify(r));
+  });
+  // A real tap on the toggle, through the HUD's own click handler and app.js's `onScanOther` — not the
+  // stage event. The fold is the only way back to a device the ranking got wrong, so it must be tappable.
+  await step(`${view.name} F258 idle-noisy: tapping OTHER DEVICES opens the fold and shows the rest of the room`, async () => {
+    const pg = await open(view, 'idle-noisy');
+    await pg.click('.othertog');
+    await pg.waitForTimeout(200);
+    const r = await pg.evaluate(() => ({
+      folded: Array.from(document.querySelectorAll('.others .tagrow .nm')).map(e => e.textContent.trim()),
+      visible: getComputedStyle(document.querySelector('.others')).display !== 'none',
+      tog: (document.querySelector('.othertog') || {}).textContent || '',
+    }));
+    await pg.close();
+    must(r.visible && r.folded.length === 5, 'the fold did not open on a tap: ' + JSON.stringify(r));
+    must(r.folded.some(t => /Samsung/.test(t)), 'the televisions are not reachable at all: ' + JSON.stringify(r.folded));
+    must(/▾/.test(r.tog), 'the toggle does not say it is open: ' + JSON.stringify(r.tog));
+  });
+  // A finger landing in the middle of a tagger row must hit THAT row, not a neighbour and not the box
+  // behind it. This is the screen-truth half of "no tap ever landed".
+  await step(`${view.name} F258 idle-noisy: a finger in the middle of a tagger row hits that row`, async () => {
+    const pg = await open(view, 'idle-noisy');
+    const r = await pg.evaluate(() => {
+      const sc = parseFloat(getComputedStyle(document.getElementById('frame')).transform.split(',')[3] || 1) || 1;   // the #frame is scaled: tap targets are judged in DESIGN px, as step #23 does
+      return Array.from(document.querySelectorAll('.taggers .tagrow')).map(row => {
+        const b = row.getBoundingClientRect();
+        const el = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+        const hit = el && el.closest('.tagrow');
+        return { want: row.dataset.arg, got: hit ? hit.dataset.arg : null, h: Math.round(b.height / sc) };
+      });
+    });
+    await pg.close();
+    must(r.length === 2 && r.every(x => x.got === x.want), 'a tap in a row does not reach that row: ' + JSON.stringify(r));
+    must(r.every(x => x.h >= 44), 'a tagger row is under the 44px tap target: ' + JSON.stringify(r));
+  });
+  await step(`${view.name} F258 idle-assigned: the gun MC assigned to this player is offered first`, async () => {
+    const pg = await open(view, 'idle-assigned');
+    const first = await pg.evaluate(() => (document.querySelector('.taggers .tagrow .nm') || {}).textContent || '');
+    await pg.close();
+    must(/BRAVO-9498/.test(first), 'the assigned gun is not the first row: ' + JSON.stringify(first));
+  });
+  // The reason no tap landed: four samples a second apart gave 12 rows, 12 rows, 2 rows, then 5 in a
+  // different order. Every row node must survive a repaint, and the signal readings must not move a row.
+  await step(`${view.name} F258 idle-noisy: a repaint keeps every row NODE and its order, and still updates the signal`, async () => {
+    const pg = await open(view, 'idle-noisy');
+    const before = await pg.evaluate(() => {
+      const rows = Array.from(document.querySelectorAll('.idle .list .tagrow'));
+      rows.forEach((e, i) => { e.dataset.mark = 'm' + i; });   // a mark only this node carries
+      return { ids: rows.map(e => e.dataset.arg), rssi: rows.map(e => (e.querySelector('.sig b') || {}).textContent) };
+    });
+    await pg.evaluate(() => window.brxDemo.scanAgain());
+    await pg.waitForTimeout(200);
+    const after = await pg.evaluate(() => {
+      const rows = Array.from(document.querySelectorAll('.idle .list .tagrow'));
+      return { ids: rows.map(e => e.dataset.arg), marks: rows.map(e => e.dataset.mark), rssi: rows.map(e => (e.querySelector('.sig b') || {}).textContent) };
+    });
+    await pg.close();
+    must(before.ids.length === 7, 'the fixture room is not 7 devices: ' + JSON.stringify(before.ids));
+    must(JSON.stringify(after.ids) === JSON.stringify(before.ids), 'the readings moved a row: ' + JSON.stringify([before.ids, after.ids]));
+    must(after.marks.every((m, i) => m === 'm' + i), 'a row node was destroyed and rebuilt: ' + JSON.stringify(after.marks));
+    must(JSON.stringify(after.rssi) !== JSON.stringify(before.rssi), 'the signal readings never updated, so this step proves nothing: ' + JSON.stringify(before.rssi));
+  });
+  // F211 (game-test-2026-09-13.md C2): the picker used to sit empty with no message when Bluetooth was off.
+  await step(`${view.name} F211 idle-bt-off: the Bluetooth-off message replaces the list, no Android-only buttons`, async () => {
+    const pg = await open(view, 'idle-bt-off');
+    const r = await pg.evaluate(() => ({
+      rows: document.querySelectorAll('.tagrow').length,
+      msg: (document.querySelector('.idle .sc.bad') || {}).textContent || '',
+      enable: !!document.querySelector('[data-act="onEnableBluetooth"]'),
+      settings: !!document.querySelector('[data-act="onOpenBluetoothSettings"]'),
+    }));
+    await pg.close();
+    must(r.rows === 0, 'still shows tagger rows with Bluetooth off: ' + JSON.stringify(r));
+    must(/BLUETOOTH IS OFF/.test(r.msg), 'no Bluetooth-off message on screen: ' + JSON.stringify(r));
+    must(!r.enable && !r.settings, 'a plugin button appeared off Android: ' + JSON.stringify(r));
+  });
+  await step(`${view.name} F211 idle-bt-off-android: TURN ON BLUETOOTH + BLUETOOTH SETTINGS are tappable and each does something`, async () => {
+    const pg = await open(view, 'idle-bt-off-android');
+    const before = await pg.evaluate(() => {
+      const sc = parseFloat(getComputedStyle(document.getElementById('frame')).transform.split(',')[3] || 1) || 1;   // the #frame is scaled: tap targets are judged in DESIGN px, as step #23 does
+      const rc = sel => { const e = document.querySelector(sel); if (!e) return null; const r = e.getBoundingClientRect(); return { w: r.width / sc, h: r.height / sc }; };
+      return { enable: rc('[data-act="onEnableBluetooth"]'), settings: rc('[data-act="onOpenBluetoothSettings"]'), logLen: (window.brx.log || []).length };
+    });
+    must(before.enable && before.enable.h >= 36, 'TURN ON BLUETOOTH missing or too small a tap target: ' + JSON.stringify(before));
+    must(before.settings && before.settings.h >= 36, 'BLUETOOTH SETTINGS missing or too small a tap target: ' + JSON.stringify(before));
+    await pg.click('[data-act="onEnableBluetooth"]'); await pg.waitForTimeout(200);
+    const after = await pg.evaluate(() => (window.brx.log || []).length);
+    await pg.close();
+    must(after > before.logLen, 'tapping TURN ON BLUETOOTH left no trace — the control looks dead');
   });
   await step(`${view.name} #4 connected: URL field, SCAN QR and the hint sit on one centre line`, async () => {
     const pg = await open(view, 'connected'); const ys = await pg.evaluate(() => ['.mcin', '.qrbtn', '.note.join'].map(s => { const r = document.querySelector(s).getBoundingClientRect(); return r.top + r.height / 2; })); await pg.close();
@@ -174,6 +289,32 @@ for (const view of VIEWS) {
     must(before === '', 'stats shown at zero: "' + before + '"'); must(/^K2$/.test(after), 'after a score push: "' + after + '"');
   });
   await step(`${view.name} #16 gun-link-lost pill and NO GUN label`, async () => { const pg = await open(view, 'live-nogun'); const t = await text(pg); const bad = await invariants(pg); await pg.close(); must(t.includes('NO GUN') && t.includes('GUN LINK LOST'), 'text'); must(bad.length === 0, bad.join(';')); });
+  // Bench 2026-09-17: a headset that is off makes the gun drop the link every few seconds. One steady line
+  // and a RECONNECT NOW button, never the GUN LINK LOST pill blinking with each cycle.
+  await step(`${view.name} flap-1 headset off: one steady line, RECONNECT NOW, and the tap answers`, async () => {
+    const pg = await open(view, 'kitted-headset-off');
+    const read = () => pg.evaluate(() => { const ps = Array.from(document.querySelectorAll('.chipbar .pill')); const b = document.querySelector('.chipbar [data-act="onReconnectNow"]'); const br = b && b.getBoundingClientRect();
+      const pl = document.querySelector('.lobby .plates'); return { pills: ps.map(p => p.textContent.trim()), btn: br ? { h: br.height, hit: Math.max(br.height, parseFloat(getComputedStyle(b, '::after').height) || 0), w: br.width, bottom: br.bottom, vis: getComputedStyle(b).visibility, op: getComputedStyle(document.querySelector('.chipbar')).opacity } : null, platesTop: pl ? pl.getBoundingClientRect().top : null }; });
+    const r = await read();
+    must(r.pills.includes('HEADSET OFF? TURN THE HEADSET ON.') && r.pills.includes('RECONNECT NOW'), 'line or button missing: ' + JSON.stringify(r.pills));
+    must(!r.pills.some(t => /GUN LINK LOST/.test(t)), 'the link-lost pill shows beside the headset line: ' + JSON.stringify(r.pills));
+    must(r.btn && r.btn.hit >= 36 && r.btn.w >= 80, 'RECONNECT NOW tap target too small: ' + JSON.stringify(r.btn));
+    must(r.platesTop == null || r.btn.bottom <= r.platesTop + 1, 'the button covers the plates: ' + JSON.stringify(r));
+    const bad = await invariants(pg); must(bad.length === 0, bad.join(';'));
+    await pg.evaluate(() => window.brxDemo.relinkGun()); await pg.waitForTimeout(400);   // the gun takes the link again for a second
+    const up = await read(); must(up.pills.includes('HEADSET OFF? TURN THE HEADSET ON.'), 'the line blinks off on a momentary link: ' + JSON.stringify(up.pills));
+    await pg.evaluate(() => window.brxDemo.dropGun()); await pg.waitForTimeout(300);
+    await pg.screenshot({ path: `${OUT}/${view.name}-headset-off.png` });
+    await pg.click('.chipbar [data-act="onReconnectNow"]'); await pg.waitForTimeout(400);
+    const after = await read(); await pg.close();
+    must(!after.pills.includes('HEADSET OFF? TURN THE HEADSET ON.'), 'RECONNECT NOW left the line up: ' + JSON.stringify(after.pills));
+    must(after.pills.some(t => /GUN LINK LOST/.test(t)), 'after the tap the plain link state is back: ' + JSON.stringify(after.pills));
+  });
+  await step(`${view.name} flap-2 headset off before MC binds: the line and the button show on the CONNECTED screen`, async () => {
+    const pg = await open(view, 'connected-headset-off'); const pills = await pg.evaluate(() => Array.from(document.querySelectorAll('.chipbar .pill')).map(p => p.textContent.trim()));
+    await pg.screenshot({ path: `${OUT}/${view.name}-headset-off-connected.png` }); await pg.close();
+    must(pills.includes('HEADSET OFF? TURN THE HEADSET ON.') && pills.includes('RECONNECT NOW') && !pills.some(t => /GUN LINK LOST/.test(t)), JSON.stringify(pills));
+  });
   await step(`${view.name} #32 live off MC range: amber dot, no pill; tapping MC shows the detail`, async () => {
     const pg = await open(view, 'live-mclost'); const read = () => pg.evaluate(() => ({ dot: document.querySelector('#mcdot').className, pills: Array.from(document.querySelectorAll('.chipbar .pill')).map(p => p.textContent.trim()) }));
     let r = await read(); must(/\bws\b/.test(r.dot), 'MC dot not amber: ' + r.dot); must(!r.pills.some(t => /MISSION CONTROL/.test(t)), 'pill shown unasked: ' + r.pills);
@@ -204,6 +345,43 @@ for (const view of VIEWS) {
     const pg = await open(view, 'kitted', '&team=red'); const r = await pg.evaluate(() => ({ team: document.getElementById('frame').dataset.team, chip: document.querySelector('.lobby .chip').textContent })); await pg.close(); must(r.team === 'red' && /RED/.test(r.chip), JSON.stringify(r));
   });
   await step(`${view.name} ux-1 plate subtitles never wrap (NO ALT-FIRE / SET AT ARM TIME)`, async () => { const pg = await open(view, 'kitted'); const r = await oneLine(pg, '.plate.slot .s'); await pg.close(); must(r.length === 3 && r.every(x => x[2]), JSON.stringify(r)); });   // A14: three plates
+  // Bench 2026-09-17: the HUD skin is the player's own. One visible switch on every screen, tappable at both widths,
+  // and a tap flips the screen both ways mid-match with no diag panel involved.
+  for (const st of ['kitted', 'lobby', 'armed', 'live', 'down', 'result']) await step(`${view.name} skin-1 ${st}: the day/night switch is visible, on top and as big as the ⓘ`, async () => {
+    const pg = await open(view, st);
+    const r = await pg.evaluate(() => { const e = document.getElementById('skin'); if (!e) return null; const b = e.getBoundingClientRect(), cs = getComputedStyle(e);
+      const top = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+      const i = document.getElementById('info').getBoundingClientRect();
+      return { w: b.width, h: b.height, cssW: e.offsetWidth, cssH: e.offsetHeight, iw: i.width, ih: i.height, right: b.right, bottom: b.bottom, vis: cs.display !== 'none' && cs.visibility !== 'hidden' && Number(cs.opacity) > 0.3, onTop: !!top && (top === e || e.contains(top)), label: e.getAttribute('aria-label'), checked: e.getAttribute('aria-checked') }; });
+    await pg.close();
+    must(r, 'no #skin switch on the page');
+    must(r.vis && r.onTop, `switch hidden or covered: ${JSON.stringify(r)}`);
+    must(r.cssW >= 36 && r.cssH >= 36 && r.w >= r.iw - 0.5 && r.h >= r.ih - 0.5 && r.right <= view.width && r.bottom <= view.height, `switch too small or off screen: ${JSON.stringify(r)}`);
+    must(r.label === 'night' && r.checked === 'false', `a day screen reads night=false: ${JSON.stringify(r)}`);
+  });
+  await step(`${view.name} skin-2 live: a tap goes night, a second tap goes day, with no diag panel`, async () => {
+    const pg = await open(view, 'live');
+    const env = () => pg.evaluate(() => ({ env: document.getElementById('frame').dataset.env || '', checked: document.getElementById('skin').getAttribute('aria-checked') }));
+    const a = await env();
+    await pg.click('#skin'); await pg.waitForTimeout(400); const b1 = await env();
+    await pg.screenshot({ path: `${OUT}/${view.name}-skin-live-tapped-night.png` });
+    await pg.click('#skin'); await pg.waitForTimeout(400); const c = await env();
+    const diagOpen = await pg.evaluate(() => document.getElementById('diag').classList.contains('open'));
+    await pg.close();
+    must(a.env === '' && a.checked === 'false', 'setup: starts on day ' + JSON.stringify(a));
+    must(b1.env === 'night' && b1.checked === 'true', 'first tap did not go night: ' + JSON.stringify(b1));
+    must(c.env === '' && c.checked === 'false', 'second tap did not go day: ' + JSON.stringify(c));
+    must(!diagOpen, 'the switch opened the diagnostics panel');
+  });
+  await step(`${view.name} skin-3 night: the live label reads NIGHT OPS only with NIGHT OPS set`, async () => {
+    const pg = await open(view, 'live', '&night');
+    const r = await pg.evaluate(() => { const l = document.querySelector('.nightlab'); return { env: document.getElementById('frame').dataset.env, lab: l && l.textContent, vis: !!l && getComputedStyle(l).display !== 'none', checked: document.getElementById('skin').getAttribute('aria-checked') }; });
+    await pg.evaluate(() => { window.brx.engine.config = { ...window.brx.engine.config, night: false }; window.brx.engine._changed(); }); await pg.waitForTimeout(400);
+    const r2 = await pg.evaluate(() => ({ env: document.getElementById('frame').dataset.env, lab: document.querySelector('.nightlab') && document.querySelector('.nightlab').textContent }));
+    await pg.close();
+    must(r.env === 'night' && r.vis && r.lab === 'NIGHT OPS' && r.checked === 'true', 'NIGHT OPS night: ' + JSON.stringify(r));
+    must(r2.env === 'night' && r2.lab === 'NIGHT', 'a player-chosen night without NIGHT OPS: ' + JSON.stringify(r2));
+  });
   await step(`${view.name} ux-2 night DOWN: team chips and KILLED BY are dim, not daylight`, async () => {
     const pg = await open(view, 'down', '&night'); const r = await pg.evaluate(() => Array.from(document.querySelectorAll('.down .recap .tm, .down .kb b')).map(e => getComputedStyle(e).backgroundColor)); await pg.close();
     must(r.length === 3 && r.every(c => c === 'rgb(42, 13, 13)'), 'chips ' + r.join(' '));
@@ -286,10 +464,11 @@ for (const view of VIEWS) {
     must(r.win === 425 && r.up, JSON.stringify(r)); must(!r2.up && r2.lab === 'READY' && r2.slot === 1, JSON.stringify(r2));
   });
   await step(`${view.name} #44 sidearm-only slot 2: SIDEARMS chip, pistol rows, SIDEARM role`, async () => {
-    // 2026-09-17 (arsenal review): glock is `hidden` now, so only usp/deagle remain pickable sidearms.
+    // The pistol rows are derived (SIDEARM_NAMES, top of this file), so an arsenal change moves this step.
     const pg = await open(view, 'loadout-sidearms'); const r = await pg.evaluate(() => ({ chips: Array.from(document.querySelectorAll('.fch')).map(c => c.textContent.trim()), rows: Array.from(document.querySelectorAll('.lrow .nm')).map(e => e.textContent.trim()), roles: Array.from(new Set(Array.from(document.querySelectorAll('.lrow .role')).map(e => e.textContent.trim()))), detail: (document.querySelector('.lodetail .rolechip') || {}).textContent }));
     await pg.close();
-    must(r.chips[0] === 'SIDEARMS · 2' && /^NONE/.test(r.chips[1]) && r.chips.length === 2, 'chips ' + r.chips); must(r.rows.length === 2 && r.rows.includes('USP-S') && r.rows.includes('DESERT EAGLE'), 'rows ' + r.rows); must(r.roles.length === 1 && r.roles[0] === 'SIDEARM' && r.detail === 'SIDEARM', 'role ' + r.roles + ' / ' + r.detail);
+    must(SIDEARM_NAMES.length >= 2, 'the pickable pistols collapsed to ' + SIDEARM_NAMES.length + ': a sidearm-only slot 2 cannot mean anything below 2');
+    must(r.chips[0] === `SIDEARMS · ${SIDEARM_NAMES.length}` && /^NONE/.test(r.chips[1]) && r.chips.length === 2, 'chips ' + r.chips); must(r.rows.slice().sort().join('|') === SIDEARM_NAMES.slice().sort().join('|'), 'rows ' + r.rows + ' want ' + SIDEARM_NAMES); must(r.roles.length === 1 && r.roles[0] === 'SIDEARM' && r.detail === 'SIDEARM', 'role ' + r.roles + ' / ' + r.detail);
   });
   // A14: the perk is its own slot (Tony 2026-09-04: "you should be able to have AR and pistol and quick switch perk")
   await step(`${view.name} #52 three plates on ONE row (PRIMARY / SECONDARY / PERK), HP·ARMOR in the header, nothing clipped`, async () => {
@@ -744,6 +923,16 @@ for (const view of VIEWS) {
     const pg = await open(view, 'live-kill', '', 3000); const r = await pg.evaluate(() => { const k = document.querySelector('.mo.kill'); if (!k) return null; const c = k.querySelector('.c').getBoundingClientRect(), f = k.getBoundingClientRect(); return { mid: (c.top + c.height / 2 - f.top) / f.height, big: parseFloat(getComputedStyle(k.querySelector('.k')).fontSize), bg: getComputedStyle(k).backgroundImage }; }); await pg.close();
     must(r, 'no kill overlay'); must(r.mid > .3 && r.mid < .6, 'not centred: ' + r.mid); must(r.big >= 90, 'KILL ' + r.big + 'px'); must(/0\.9/.test(r.bg), 'HUD not dimmed behind it');
   });
+  await step(`${view.name} kill-name KILL CONFIRMED names the victim by gamertag, never by player_id (field 2026-09-17)`, async () => {
+    // MC's wire: `victim` is a player_id. The banner resolves it; a bare id on screen is the bug.
+    const pg = await open(view, 'live', '', 3000);
+    const r = await pg.evaluate(async () => { const e = window.brx.engine; const foe = e.roster.find(x => x.player_id !== (e.player && e.player.player_id));
+      e.onMcMessage({ kind: 'feedback', body: { player_id: e.player.player_id, kind: 'kill', t: Date.now(), victim: foe.player_id, victim_team: foe.team_id } });
+      for (let i = 0; i < 30 && !document.querySelector('.mo.kill .vt'); i++) await new Promise(res => setTimeout(res, 50));
+      const vt = document.querySelector('.mo.kill .vt'); return { txt: vt ? vt.textContent.trim() : null, id: foe.player_id, display: foe.display }; });
+    await pg.close();
+    must(r.txt, 'no kill banner'); must(r.txt.includes(r.display.toUpperCase()), `banner says ${JSON.stringify(r.txt)}, not ${r.display}`); must(!r.txt.includes(r.id), `banner shows the player_id: ${r.txt}`);
+  });
   await step(`${view.name} #25/#26 DOWN: recap instead of ghost numbers`, async () => {
     const read = () => pg.evaluate(() => ({ ghost: !!document.querySelector('.down .ghost'), recap: (document.querySelector('.down .recap') || {}).textContent || '', bottoms: Array.from(document.querySelectorAll('.down .recap > .rc')).map(s => Math.round(s.getBoundingClientRect().bottom / 3)), tiles: document.querySelectorAll('.down .recap > .rc').length, chips: document.querySelectorAll('.down .recap .tm').length }));
     const pg = await open(view, 'down'); let r = await read();
@@ -761,7 +950,7 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} #22 the post-match button is one line, plates intact`, async () => { const pg = await open(view, 'over'); const r = await oneLine(pg, '.foot .ready'); must(r.length === 1, 'no post-match button'); const btn = await pg.evaluate(() => document.querySelector('.foot .ready').textContent.trim()); await pg.close(); must(btn === 'READY FOR NEXT MATCH \u25b8', 'button copy: ' + btn); must(r.every(x => x[2]), JSON.stringify(r)); });   // F117 2026-09-11: was "MATCH COMPLETE", which read as a status line
 
-  // ---------- 2026-09-11 field session, Block A (docs/game-test-2026-09-11.md) ----------
+  // ---------- 2026-09-11 field session, Block A (docs/archive/game-test-2026-09-11.md) ----------
   await step(`${view.name} F110 briefing: the title and the description are not sheared by their box`, async () => {
     const sels = ['.bfname', '.bfdesc', '.bfk', '.bfrules', '.bfload'];
     const pg = await open(view, 'briefing'); const r = await sheared(pg, sels); await pg.close();
@@ -1041,6 +1230,38 @@ for (const view of VIEWS) {
     must(r.teams.every(t => t.players.length === 2), 'each team should list its two players: ' + JSON.stringify(r.teams.map(t => t.players)));
     must(r.teams.some(t => /REAPER/.test(t.players.join(' '))), 'this player is not in the team list');
     must(r.hold && /HELD/.test(r.hold), 'possession was pushed and is not shown: ' + r.hold);
+  });
+  // Bench 2026-09-18 (Tony): on YOUR team's card the left edge carries the team colour, and the names sat
+  // hard against it -- twice over, at 9px of padding and then at 15px. What a person reads is not the padding
+  // number: it is the clear space between the INNER face of that coloured edge and the first glyph, and a
+  // 13px name in a ~17px line box needs its own line-height of it before the column stops looking pinned to
+  // a rule. The chip leans (skewX -12deg), so its bounding box juts further left than the padding and left
+  // the same edge ragged -- the chip and the list must share one left edge, not two.
+  await step(`${view.name} A24 result-win-team: the team card's contents clear the coloured left edge, on one left edge`, async () => {
+    const pg = await open(view, 'result-win-team');
+    const r = await pg.evaluate(() => {
+      const scale = parseFloat(getComputedStyle(document.getElementById('frame')).transform.split(',')[3] || 1);
+      const card = document.querySelector('.result .rteam.mine'), cs = getComputedStyle(card), cr = card.getBoundingClientRect();
+      // the coloured edge is the border plus any inset rail painted behind it (box-shadow does not take space)
+      let rail = 0;
+      if (/inset/.test(cs.boxShadow || '')) {
+        const n = (cs.boxShadow.replace(/rgba?\([^)]*\)/g, '').match(/-?[\d.]+(?=px)/g) || []);
+        rail = Math.abs(parseFloat(n[0] || 0));
+      }
+      const lefts = {};
+      for (const [k, sel] of [['chip', '.tm'], ['held', '.thold'], ['header', '.tph span'], ['name', '.tp .pn']]) {
+        const e = card.querySelector(sel); lefts[k] = e ? (e.getBoundingClientRect().left - cr.left) / scale : null;
+      }
+      return { edge: parseFloat(cs.borderLeftWidth) + rail, lefts };
+    });
+    await pg.close();
+    const vals = Object.entries(r.lefts);
+    must(vals.every(([, v]) => v != null), 'a card part is missing: ' + JSON.stringify(r.lefts));
+    const CLEAR = 17, SUB = 0.5;   // one line-height of the 13px names; the frame's scale transform costs a sub-pixel
+    for (const [k, v] of vals) must(v - r.edge >= CLEAR - SUB,
+      `${k} sits ${v.toFixed(1)}px from the card edge, only ${(v - r.edge).toFixed(1)}px clear of the ${r.edge}px coloured edge -- a 13px name needs its own line-height: ${JSON.stringify(r.lefts)}`);
+    const spread = Math.max(...vals.map(([, v]) => v)) - Math.min(...vals.map(([, v]) => v));
+    must(spread <= 1.5, `the card's left edge is ragged by ${spread.toFixed(1)}px -- the leaning chip and the list must line up: ${JSON.stringify(r.lefts)}`);
   });
   await step(`${view.name} A24 result: the TEAMS/PLAYERS toggle actually changes the screen`, async () => {
     const pg = await open(view, 'result-win-team');
@@ -1556,6 +1777,63 @@ await step('polish-3 diag-live: the two-tap hint is an assertive live region', a
   must(r.role === 'status', 'missing role="status": ' + JSON.stringify(r));
   must(r.live === 'assertive', 'missing/weak aria-live (must be assertive, not polite): ' + JSON.stringify(r));
 });
+// ---------- Bench 2026-09-17 (match e6cbe0ae09): RELINK GUN mid-match ----------
+// A press took the phone off the gun with no warning, and a second press during the relink did nothing
+// visible. The REAL BrxLink runs here, over a fake plugin whose connect the step releases by hand, so the
+// button state comes from `link.relinking` through app.js's diag push, exactly as on the phone.
+const fakeGunPlugin = pg => pg.evaluate(() => {
+  const l = window.brx.link, w = window.__ble = { disconnects: 0, connects: 0, release: null };
+  l.ble = { initialize: async () => {}, disconnect: async () => { w.disconnects++; }, startNotifications: async () => {}, writeWithoutResponse: async () => {},
+    connect: () => { w.connects++; return new Promise(res => { w.release = res; }); } };
+  l.deviceId = 'A'; l.connected = true; l.advert = { name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' };
+});
+const relinkView = pg => pg.evaluate(() => { const b = document.querySelector('#diag [data-act="onReconnectGun"]'), h = document.getElementById('dg-gunhint'), d = document.getElementById('diag');
+  return { label: b.textContent, disabled: b.disabled, hint: h ? h.textContent : '', hintFits: !h || h.scrollWidth <= h.clientWidth + 1, hintInPanel: !h || !h.textContent || h.getBoundingClientRect().right <= d.getBoundingClientRect().right + 1,
+    live: h ? h.getAttribute('aria-live') : null, ...window.__ble }; });
+for (const view of VIEWS) {
+  await step(`${view.name} relink diag-live: RELINK GUN mid-match needs a confirm tap, then reads RELINKING… and ignores presses`, async () => {
+    const pg = await open(view, 'diag-live', '', 5200);
+    await fakeGunPlugin(pg);
+    const before = await relinkView(pg);
+    await pg.click('#diag [data-act="onReconnectGun"]'); await pg.waitForTimeout(120);
+    const one = await relinkView(pg);
+    await pg.click('#diag [data-act="onReconnectGun"]'); await pg.waitForTimeout(400);
+    const two = await relinkView(pg);
+    await pg.click('#diag [data-act="onReconnectGun"]', { force: true }); await pg.waitForTimeout(400);
+    const three = await relinkView(pg);
+    await pg.evaluate(() => window.__ble.release()); await pg.waitForTimeout(600);
+    const up = await relinkView(pg);
+    await pg.screenshot({ path: `${OUT}/${view.name}-relink-live-done.png` });
+    await pg.close();
+    must(before.label === 'RELINK GUN' && !before.hint, 'before any tap: ' + JSON.stringify(before));
+    must(one.disconnects === 0, 'the first tap mid-match took the phone off the gun: ' + JSON.stringify(one));
+    must(one.hint === 'RELINK TAKES THE PHONE OFF THE GUN FOR A FEW SECONDS. TAP AGAIN TO RELINK.' && one.live === 'assertive', 'no confirm line after the first tap: ' + JSON.stringify(one));
+    must(one.hintFits && one.hintInPanel, 'the confirm line does not fit the panel: ' + JSON.stringify(one));
+    must(two.disconnects === 1 && two.connects === 1, 'the confirm tap did not relink at once: ' + JSON.stringify(two));
+    must(two.label === 'RELINKING…' && two.disabled && !two.hint, 'the button does not show the running relink: ' + JSON.stringify(two));
+    must(three.disconnects === 1 && three.connects === 1 && three.label === 'RELINKING…', 'a press during the relink did something: ' + JSON.stringify(three));
+    must(up.label === 'RELINK GUN' && !up.disabled, 'the button did not come back once the link was up: ' + JSON.stringify(up));
+  });
+}
+await step('relink diag-live: an unconfirmed RELINK GUN reverts after a few seconds', async () => {
+  const pg = await open(VIEWS[0], 'diag-live', '', 5200);
+  await fakeGunPlugin(pg);
+  await pg.click('#diag [data-act="onReconnectGun"]'); await pg.waitForTimeout(4600);
+  const later = await relinkView(pg);
+  await pg.click('#diag [data-act="onReconnectGun"]'); await pg.waitForTimeout(120);
+  const again = await relinkView(pg);
+  await pg.close();
+  must(!later.hint && later.disconnects === 0, 'the confirm line did not clear: ' + JSON.stringify(later));
+  must(again.disconnects === 0 && /TAP AGAIN/.test(again.hint), 'a tap after the window relinked without a fresh confirm: ' + JSON.stringify(again));
+});
+await step('relink idle-diag: RELINK GUN stays one tap outside a live match', async () => {
+  const pg = await open(VIEWS[0], 'idle-diag');
+  await fakeGunPlugin(pg);
+  await pg.click('#diag [data-act="onReconnectGun"]'); await pg.waitForTimeout(400);
+  const r = await relinkView(pg);
+  await pg.evaluate(() => window.__ble.release()); await pg.close();
+  must(r.disconnects === 1 && !r.hint, 'RELINK GUN needed a second tap outside a match: ' + JSON.stringify(r));
+});
 await step('polish-1 idle-diag: SCAN QR stays one-tap outside a live match', async () => {
   const pg = await open(VIEWS[0], 'idle-diag');
   await pg.evaluate(() => { window.__calls = 0; window.brx.hud.h.onScanQr = () => { window.__calls++; }; });
@@ -1702,6 +1980,918 @@ await step('polish-3 loadout-perk: a perk picked after a timed-out weapon arm sh
   must(r.eqMark === '✓', 'the perk row does not read a plain confirmed ✓: ' + r.eqMark);
   must(r.heroText === 'EQUIPPED', 'the perk hero pane: ' + r.heroText);
 });
+
+// ---------- Bench 2026-09-16: press feedback on EVERY tappable thing (hud.js `_tapDown`/`_tapUp`) ----------
+// A player could not tell whether a tap landed. One delegated pointerdown/up pair on #frame adds/clears
+// `.tap-press`. These steps dispatch real pointer events (not clicks) so they prove the mechanism itself,
+// not just that the act still fires.
+await step('press feedback: a native button (ⓘ) presses on pointerdown and clears on pointerup', async () => {
+  const pg = await open(VIEWS[0], 'idle');
+  const cls = async () => pg.evaluate(() => document.getElementById('info').className);
+  must(!/tap-press/.test(await cls()), 'started pressed');
+  await pg.locator('#info').dispatchEvent('pointerdown', { pointerId: 1, bubbles: true });
+  must(/tap-press/.test(await cls()), 'pointerdown did not press the ⓘ button');
+  await pg.locator('#info').dispatchEvent('pointerup', { pointerId: 1, bubbles: true });
+  must(!/tap-press/.test(await cls()), 'pointerup did not clear the ⓘ button');
+  await pg.close();
+});
+await step('press feedback: a data-act tile (SET MY GUN) presses on pointerdown and clears on pointerup', async () => {
+  const pg = await open(VIEWS[0], 'idle');
+  const sel = '.bigbtn[data-act="onSetGun"]';
+  const cls = async () => pg.evaluate(s => document.querySelector(s).className, sel);
+  await pg.locator(sel).dispatchEvent('pointerdown', { pointerId: 1, bubbles: true });
+  must(/tap-press/.test(await cls()), 'pointerdown did not press SET MY GUN: ' + await cls());
+  await pg.locator(sel).dispatchEvent('pointerup', { pointerId: 1, bubbles: true });
+  must(!/tap-press/.test(await cls()), 'pointerup did not clear SET MY GUN');
+  await pg.close();
+});
+await step('press feedback: a loadout row presses on pointerdown and clears on pointercancel', async () => {
+  const pg = await open(VIEWS[0], 'loadout-primary');
+  const sel = '.lrow[data-arg="weapon:smg"]';
+  const cls = async () => pg.evaluate(s => document.querySelector(s).className, sel);
+  await pg.locator(sel).dispatchEvent('pointerdown', { pointerId: 1, bubbles: true });
+  must(/tap-press/.test(await cls()), 'pointerdown did not press the SMG row: ' + await cls());
+  await pg.locator(sel).dispatchEvent('pointercancel', { pointerId: 1, bubbles: true });
+  must(!/tap-press/.test(await cls()), 'pointercancel did not clear the SMG row');
+  await pg.close();
+});
+await step('press feedback: a locked (disabled) loadout tab never shows pressed', async () => {
+  const pg = await open(VIEWS[0], 'loadout-primary', '&locked');
+  const sel = '.lotab[data-arg="primary"]';
+  const fixture = await pg.evaluate(s => { const el = document.querySelector(s); return { locked: el.classList.contains('locked'), disabled: el.disabled }; }, sel);
+  must(fixture.locked && fixture.disabled, 'fixture: the primary tab is not actually locked here: ' + JSON.stringify(fixture));
+  await pg.locator(sel).dispatchEvent('pointerdown', { pointerId: 1, bubbles: true });
+  const cls = await pg.evaluate(s => document.querySelector(s).className, sel);
+  await pg.close();
+  must(!/tap-press/.test(cls), 'a locked loadout tab must never show pressed feedback: ' + cls);
+});
+
+// ---------- Bench 2026-09-16: READY UP must turn clearly green, and only on the CONFIRMED state ----------
+// Tony's bench report: pressing READY only changed the label. `st.ready` (hud.js) is already set by
+// `engine.setReady`, which refuses a tap while the clock is unsynced or the player is benched/wrong
+// phase — so it is the CONFIRMED state, not the raw tap. These steps prove the green treatment tracks
+// that flag, an `aria-pressed` mirror exists for it, and a refused tap never shows green.
+await step('ready control: READY UP is not green before the player readies', async () => {
+  const pg = await open(VIEWS[0], 'kitted');
+  const r = await pg.evaluate(() => {
+    const btn = document.querySelector('.lobby .ready[data-act="onReady"]');
+    return { text: btn.textContent.trim(), off: btn.classList.contains('off'), pressed: btn.getAttribute('aria-pressed') };
+  });
+  await pg.close();
+  must(r.text === 'READY UP', 'label: ' + r.text);
+  must(r.off, 'READY UP must wear the not-ready (grey) treatment before the tap');
+  must(r.pressed === 'false', 'aria-pressed must read false before the player readies: ' + r.pressed);
+});
+await step('ready control: READY turns solid --ok green once the engine confirms it', async () => {
+  const pg = await open(VIEWS[0], 'kitted-ready');
+  const r = await pg.evaluate(() => {
+    const btn = document.querySelector('.lobby .ready[data-act="onReady"]');
+    const probe = document.createElement('div'); probe.style.background = 'var(--ok)'; document.body.appendChild(probe);
+    const ok = getComputedStyle(probe).backgroundColor; probe.remove();
+    return { text: btn.textContent.trim(), off: btn.classList.contains('off'), pressed: btn.getAttribute('aria-pressed'), bg: getComputedStyle(btn).backgroundColor, ok };
+  });
+  await pg.close();
+  must(r.text === 'READY ✓', 'label: ' + r.text);
+  must(!r.off, 'a confirmed ready must drop the grey .off treatment');
+  must(r.bg === r.ok, `confirmed READY must paint the --ok token, got ${r.bg} vs token ${r.ok}`);
+  must(r.pressed === 'true', 'aria-pressed must read true once the engine confirms ready: ' + r.pressed);
+});
+await step('ready control: a tap the engine refuses (clock not synced) never turns the button green', async () => {
+  const pg = await open(VIEWS[0], 'kitted');
+  await pg.evaluate(() => { window.brx.engine.isSynced = () => false; });   // A38-style guard: setReady must refuse this tap
+  await pg.click('.lobby .ready[data-act="onReady"]');
+  await pg.waitForTimeout(300);
+  const r = await pg.evaluate(() => {
+    const btn = document.querySelector('.lobby .ready[data-act="onReady"]');
+    return { text: btn.textContent.trim(), off: btn.classList.contains('off'), pressed: btn.getAttribute('aria-pressed'), confirmed: window.brx.engine.state().ready };
+  });
+  await pg.close();
+  must(!r.confirmed, 'engine.ready flipped true despite the sync guard refusing the tap');
+  must(r.off, 'a refused ready must stay in the not-ready (grey) treatment: ' + JSON.stringify(r));
+  must(r.text === 'READY UP', 'label must not claim ready after a refused tap: ' + r.text);
+  must(r.pressed === 'false', 'aria-pressed must stay false after a refused tap: ' + r.pressed);
+});
+await step('ready control: a READY player in the pushed LOBBY sees a green READY, not a grey STANDING BY', async () => {
+  const pg = await open(VIEWS[0], 'lobby-ready');
+  const r = await pg.evaluate(() => {
+    const btn = document.querySelector('.lobby .ready.wait');
+    const probe = document.createElement('div'); probe.style.background = 'var(--ok)'; document.body.appendChild(probe);
+    const ok = getComputedStyle(probe).backgroundColor; probe.remove();
+    return { ready: window.brx.engine.state().ready, has: !!btn, text: btn && btn.textContent.trim(), on: btn && btn.classList.contains('on'),
+             bg: btn && getComputedStyle(btn).backgroundColor, ok, over: btn && btn.scrollWidth > btn.clientWidth + 1 };
+  });
+  await pg.close();
+  must(r.ready, 'fixture: the lobby stage state is not a ready player: ' + JSON.stringify(r));
+  must(r.has, 'no STANDING BY control in the pushed lobby');
+  must(/READY \u2713/.test(r.text), 'a ready player in the lobby must read READY: ' + r.text);
+  must(r.on && r.bg === r.ok, `a ready player in the lobby must paint --ok, got ${r.bg} vs ${r.ok}`);
+  must(!r.over, 'the READY label overflows its button');
+});
+await step('ready control: pressed feedback (.tap-press) still works on READY UP', async () => {
+  const pg = await open(VIEWS[0], 'kitted');
+  const sel = '.lobby .ready[data-act="onReady"]';
+  const cls = async () => pg.evaluate(s => document.querySelector(s).className, sel);
+  await pg.locator(sel).dispatchEvent('pointerdown', { pointerId: 1, bubbles: true });
+  must(/tap-press/.test(await cls()), 'pointerdown did not press READY UP: ' + await cls());
+  await pg.locator(sel).dispatchEvent('pointerup', { pointerId: 1, bubbles: true });
+  must(!/tap-press/.test(await cls()), 'pointerup did not clear READY UP');
+  await pg.close();
+});
+// Playtest review 2026-09-13: STANDING BY has no `data-act` -- a tap does nothing -- so it must read
+// `aria-disabled` (the press handler already skips that), carry no `aria-pressed` (it is not a toggle),
+// and never show `.tap-press` on a real pointerdown.
+await step('ready control: the inert STANDING BY button is marked aria-disabled, has no aria-pressed, and never shows .tap-press', async () => {
+  const pg = await open(VIEWS[0], 'lobby');
+  const sel = '.lobby .ready.wait';
+  const before = await pg.evaluate(s => { const e = document.querySelector(s);
+    return { text: e.textContent.trim(), act: e.dataset.act || null, ariaDisabled: e.getAttribute('aria-disabled'), ariaPressed: e.getAttribute('aria-pressed') }; }, sel);
+  await pg.locator(sel).dispatchEvent('pointerdown', { pointerId: 1, bubbles: true });
+  const cls = await pg.evaluate(s => document.querySelector(s).className, sel);
+  await pg.locator(sel).dispatchEvent('pointerup', { pointerId: 1, bubbles: true });
+  await pg.close();
+  must(before.act === null, 'fixture: STANDING BY must stay inert (no data-act): ' + JSON.stringify(before));
+  must(before.ariaDisabled === 'true', 'STANDING BY must announce aria-disabled: ' + JSON.stringify(before));
+  must(before.ariaPressed === null, 'STANDING BY must carry no aria-pressed -- it is not a toggle: ' + JSON.stringify(before));
+  must(!/tap-press/.test(cls), 'a pointerdown on the inert STANDING BY button must never show pressed feedback: ' + cls);
+});
+
+// ---------- ammo gauge (bench 2026-09-17): one pip per round up to AMMO_PIP_MAX, a continuous bar past
+// it, an energy weapon (charge/energy in its id) always gets the percentage bar, and OUT OF AMMO/OUT OF
+// ENERGY replace a reload prompt that would lie once the reserve is also empty. Drives the live engine
+// directly (`window.brx.engine`, the same handle `demo.js`'s own stage harness uses) so a real weapon's
+// real magazine size is on screen — the `live` stage's golden bundle only ever spawns an assault rifle. ----------
+const setAmmo = async (pg, weaponId, slot, mag, reserve, ammo, heat = 0) => {
+  await pg.evaluate(({ weaponId, slot, mag, reserve }) => {
+    const e = window.brx.engine;
+    e.player.loadout.weapons[slot] = { weapon_id: weaponId };
+    e.frames.spawn = e.frames.spawn.map(f => f.startsWith(`$AMMO,${slot},`) ? `$AMMO,${slot},${mag},${reserve},1,*` : f);
+  }, { weaponId, slot, mag, reserve });
+  // F259 (2026-09-18): the node IGNORES an `$ALCD` that raises the magazine while it is still waiting for the
+  // gun to echo a magazine the node itself wrote (`_acctAmmo`'s echo window, ACC_ECHO_MS) — swapping the weapon
+  // above is one of the things that makes it write. A single injected frame can land inside that window and be
+  // dropped, and the step then asserts against the PREVIOUS state: two ammo steps read as a HUD bug that way
+  // (2026-09-18), because a swallowed frame looks exactly like a screen that refused to move. So feed until the
+  // engine reports the number back. A swallowed frame becomes a retry, and a state that never lands fails HERE,
+  // naming the state, instead of silently later as a wrong pixel. Polled slowly on purpose: each feed is a whole
+  // frame through the engine, and a tight rAF loop would put dozens of them through it per window.
+  await pg.waitForFunction(({ slot, ammo, reserve, heat }) => {
+    const e = window.brx.engine;
+    e.feedFrame(`$ALCD,${ammo},100,${slot},${reserve},${heat},*`);   // ALWAYS feed: a step can re-send the same magazine with a different reserve
+    const s = e.state();
+    return s.ammo === ammo && s.reserve === reserve;
+  }, { slot, ammo, reserve, heat }, { polling: 200, timeout: 5000 })
+    .catch(async () => { throw new Error(`setAmmo: the engine never took ${weaponId} ${ammo}/${mag} (reserve ${reserve}, heat ${heat}), it reads ${JSON.stringify(await pg.evaluate(() => { const s = window.brx.engine.state(); return { ammo: s.ammo, reserve: s.reserve }; }))}`); });
+};
+const gaugeState = pg => pg.evaluate(() => ({
+  pips: document.querySelectorAll('#pips > i').length,
+  lit: document.querySelectorAll('#pips > i:not(.spent)').length,
+  bar: !!document.querySelector('#pips > .bar'),
+  // "ammobar", not "ammo" -- item 1 (bench 2026-09-17): the bar's own class must never collide with the
+  // ammo COLUMN's `.ammo` (position:absolute;right:36px;bottom:32px), which floated the bar over the digits.
+  ammoBar: !!document.querySelector('#pips > .bar.ammobar'),
+  energyBar: !!document.querySelector('#pips > .bar.energy'),
+  mag: (document.getElementById('mag') || {}).textContent,
+  prompt: (document.querySelector('.ammo .reload .unskew') || {}).textContent || null,
+  // item 6 revision (bench 2026-09-17): NOT ENOUGH ENERGY moved from a second big prompt to a small
+  // note under the digits, so a state check needs both: the ONE big prompt, and this note's presence.
+  note: (document.querySelector('.ammo .enote') || {}).textContent || null,
+  bigPrompts: document.querySelectorAll('.ammo .reload').length,
+}));
+await step('ammo gauge se: a 4-round sniper mag gets exactly 4 pips, one per round, and firing one clears exactly one', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'sniper_rifle', 0, 4, 24, 4); await pg.waitForTimeout(400);
+  let r = await gaugeState(pg);
+  must(r.pips === 4 && r.lit === 4 && !r.bar, `a 4-round mag must show 4 discrete pips, all lit, not a bar: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-sniper-full.png` });
+  await setAmmo(pg, 'sniper_rifle', 0, 4, 24, 3); await pg.waitForTimeout(400);
+  r = await gaugeState(pg);
+  must(r.pips === 4 && r.lit === 3, `firing one round of a 4-round mag must clear exactly one pip (3 of 4 lit), got ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-sniper-fired1.png` });
+  await pg.close();
+});
+await step('ammo gauge se: a 36-round mag (burst rifle) uses the continuous bar, not 36 pips', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'burst_rifle', 0, 36, 216, 36); await pg.waitForTimeout(400);
+  const r = await gaugeState(pg);
+  must(r.bar && r.ammoBar && r.pips === 0, `a 36-round mag must render as the ammo bar, never 36 pips: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-burst-bar.png` });
+  await pg.close();
+});
+// ---------- item 1 (bench 2026-09-17): the big-mag bar shared the class name `ammo` with the ammo
+// COLUMN's own `position:absolute;right:36px;bottom:32px` rule. Since `.pips` is `position:relative`
+// (63278ea4), that pulled the bar out of flow, over the mag digits, and collapsed `.pips` to 0x0. ----------
+await step('ammo gauge se: the big-mag bar sits clear of the mag digits and the pips box does not collapse', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'assault_rifle', 0, 32, 192, 32); await pg.waitForTimeout(400);
+  const r = await pg.evaluate(() => {
+    const rect = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { t: b.top, b: b.bottom, w: b.width, h: b.height }; };
+    const bar = document.querySelector('#pips > .bar');
+    return { pips: rect(document.getElementById('pips')), bar: rect(bar), mag: rect(document.getElementById('mag')), barClass: bar ? bar.className : null };
+  });
+  must(r.pips && r.pips.w > 0 && r.pips.h > 0, `the pips box must not collapse to 0px on a big mag: ${JSON.stringify(r.pips)}`);
+  must(r.bar && r.bar.w > 0 && r.bar.h > 0, `the ammo bar must actually render: ${JSON.stringify(r)}`);
+  must(!/(^| )ammo( |$)/.test(r.barClass || ''), `the bar's class must not be "ammo" -- it collides with the .ammo column: ${r.barClass}`);
+  must(r.bar.t >= r.mag.b, `the bar must sit below the mag digits, not float over them: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-bigmag-bar.png` });
+  await pg.close();
+});
+await step('ammo gauge se: the ready shine still shows on a big (>30) mag now the pips box no longer collapses', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'assault_rifle', 0, 32, 192, 32); await pg.waitForTimeout(400);
+  const r = await pg.evaluate(() => {
+    document.getElementById('frame').dataset.cool = 'ready';
+    const pips = document.querySelector('.ammo .pips'); const af = getComputedStyle(pips, '::after'); const b = pips.getBoundingClientRect();
+    return { anim: af.animationName, w: b.width, h: b.height };
+  });
+  must(r.w > 0 && r.h > 0, `the pips box needs real size for the shine to be visible: ${JSON.stringify(r)}`);
+  must(r.anim === 'readyshine', `the ready shine must be armed on a big mag too: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-bigmag-readyshine.png` });
+  await pg.close();
+});
+await step('ammo gauge se: swapping from the sniper to a 36-round mag re-renders the gauge from pips to the bar', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'sniper_rifle', 0, 4, 24, 4); await pg.waitForTimeout(400);
+  let r = await gaugeState(pg);
+  must(r.pips === 4 && !r.bar, `pre-swap: expected 4 pips: ${JSON.stringify(r)}`);
+  await setAmmo(pg, 'burst_rifle', 0, 36, 216, 36); await pg.waitForTimeout(400);
+  r = await gaugeState(pg);
+  must(r.bar && r.ammoBar && r.pips === 0, `post-swap to a 36-round mag: expected the bar, not pips: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-swap-to-bar.png` });
+  await pg.close();
+});
+await step('ammo prompt se: mag 0 / reserve 0 reads OUT OF AMMO, never RELOAD', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'sniper_rifle', 0, 4, 0, 0); await pg.waitForTimeout(400);
+  const r = await gaugeState(pg);
+  must(r.prompt === 'OUT OF AMMO', `mag 0 / reserve 0 must read OUT OF AMMO (a reload would give nothing back), got ${JSON.stringify(r.prompt)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-out-of-ammo.png` });
+  await pg.close();
+});
+await step('ammo prompt se: mag 0 / reserve > 0 keeps RELOAD (a reload still gives rounds back)', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'sniper_rifle', 0, 4, 24, 0); await pg.waitForTimeout(400);
+  const r = await gaugeState(pg);
+  must(/^RELOAD/.test(r.prompt || ''), `mag 0 / reserve 24 must keep the RELOAD prompt, got ${JSON.stringify(r.prompt)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-reload.png` });
+  await pg.close();
+});
+await step('ammo gauge se: an energy weapon (charge rifle) shows the cell bar and its proportion, never pips or a round count', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 12, 12, 6); await pg.waitForTimeout(400);
+  const r = await gaugeState(pg);
+  must(r.bar && r.energyBar && !r.ammoBar && r.pips === 0, `an energy weapon must render the energy bar, never pips: ${JSON.stringify(r)}`);
+  // Bench 2026-09-18 (Tony): the per-cent SIGN is gone, the number is still the proportion of the cell.
+  // `12` would be a round count and `50` is half a cell, so this still catches the gauge reading rounds.
+  must(r.mag === '50', `an energy weapon's digit must read the cell proportion, not a round count: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-energy-half.png` });
+  await pg.close();
+});
+await step('ammo prompt se: an energy weapon at 0/0 reads OUT OF ENERGY, never OUT OF AMMO', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 12, 0, 0); await pg.waitForTimeout(400);
+  const r = await gaugeState(pg);
+  must(r.prompt === 'OUT OF ENERGY', `an energy weapon at 0/0 must read OUT OF ENERGY, got ${JSON.stringify(r.prompt)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-energy-out.png` });
+  await pg.close();
+});
+await step('ammo prompt se: an energy weapon with reserve left reads HOLD TO RECHARGE, never RELOAD', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 12, 12, 0); await pg.waitForTimeout(400);
+  const r = await gaugeState(pg);
+  must(r.prompt === 'HOLD TO RECHARGE', `an energy weapon at 0 with reserve must read HOLD TO RECHARGE, got ${JSON.stringify(r.prompt)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-energy-recharge.png` });
+  await pg.close();
+});
+// ---------- energy severity revision (bench 2026-09-17, item 6 reworked): a charge rifle cell under one
+// full charge (10, `CHARGE_RIFLE_FULL_CHARGE_COST` in hud.js) fires nothing, but the ORIGINAL fix made
+// this a second big prompt (NOT ENOUGH ENERGY, red) sitting beside RECHARGE, and dropped it alone with
+// no big prompt at all once the reserve ran out too -- a player with nothing left saw the mildest-looking
+// screen of the three. New rule: severity comes from the RESERVE, not the cell. Below one full charge (or
+// empty) with a reserve to draw on reads one calm RECHARGE, exactly like the empty-cell case already did.
+// Below one full charge with NO reserve reads OUT OF ENERGY, same big red prompt as mag 0 / reserve 0.
+// NOT ENOUGH ENERGY survives only as a small note under the digits, never a second big prompt. ----------
+// ---------- A48 (merge 2026-09-17): the HUD reads the CLASS and the CHARGE COST off the catalogue ----------
+// `weapon_class` ("ballistic" | "energy" | "melee") replaced the old "energy or charge in the weapon id"
+// guess, and `rounds_per_charge` replaced the hard-coded 10.
+// ---------- F248 (2026-09-17): `weapon_class === "energy"` is WIDER than the old id match, so
+// this test originally asserted the Rail Gun (2-round mag, one round per shot) drew the percentage/cell
+// gauge -- that assertion WAS the bug. The agreed rule: the gauge is a CELL gauge exactly when
+// `rounds_per_charge > 1`; `weapon_class` still, and only, picks the RELOAD/RECHARGE wording. ----------
+await step('ammo gauge se: the Rail Gun (2-round mag, one round per shot) shows pips, not the cell gauge, though its class is energy', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  const cls = await pg.evaluate(() => {
+    const w = window.brx.engine.catalog.weapons.find(x => x.weapon_id === 'rail_gun');
+    return w && w.weapon_class;
+  });
+  must(cls === 'energy', `pre-condition: the catalogue must still call the rail gun energy, got ${JSON.stringify(cls)}`);
+  await setAmmo(pg, 'rail_gun', 0, 2, 2, 1); await pg.waitForTimeout(400);
+  let r = await gaugeState(pg);
+  must(r.pips === 2 && r.lit === 1 && !r.bar, `a 2-round Rail Gun must show 2 pips, one round per shot, never the cell gauge: ${JSON.stringify(r)}`);
+  must(r.mag === '01', `the digit beside the pips must read a round count, not a percentage: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-class-railgun.png` });
+  // weapon_class still picks the WORDING: an empty Rail Gun with reserve reads HOLD TO RECHARGE, not RELOAD,
+  // and 0/0 reads OUT OF ENERGY, not OUT OF AMMO -- the class keeps that job even though the gauge above it
+  // is now pips.
+  await setAmmo(pg, 'rail_gun', 0, 2, 2, 0); await pg.waitForTimeout(400);
+  r = await gaugeState(pg);
+  must(r.prompt === 'HOLD TO RECHARGE', `an empty Rail Gun with reserve must still read HOLD TO RECHARGE (class energy): ${JSON.stringify(r)}`);
+  await setAmmo(pg, 'rail_gun', 0, 2, 0, 0); await pg.waitForTimeout(400);
+  r = await gaugeState(pg);
+  must(r.prompt === 'OUT OF ENERGY', `0/0 on an energy-class weapon must still read OUT OF ENERGY, not OUT OF AMMO: ${JSON.stringify(r)}`);
+  await pg.close();
+});
+// ---------- F248: a bundle from before A48 carries neither `weapon_class` nor `rounds_per_charge` at all
+// (simulated here with a catalogue row removed, or an id the catalogue never had) -- the HUD must fall back
+// to the named charge-rifle constant, then the old id regex, exactly as it did before A48 existed. ----------
+await step('ammo gauge se: an old (pre-A48) bundle with no catalogue row falls back to the charge-rifle constant, then the id match', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  // The charge rifle's OWN id, but with its row missing from the catalogue -- as if this were a pre-A48
+  // bundle that had never heard of `rounds_per_charge`. The named CHARGE_RIFLE_FULL_CHARGE_COST constant
+  // must still put it on the cell gauge.
+  await pg.evaluate(() => { window.brx.engine.catalog.weapons = window.brx.engine.catalog.weapons.filter(w => w.weapon_id !== 'charge_rifle' && w.weapon_id !== 'rail_gun'); });
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 25); await pg.waitForTimeout(400);
+  let r = await gaugeState(pg);
+  must(r.energyBar && r.pips === 0, `an unrecognised charge_rifle id must still fall back to the named constant and draw the cell gauge: ${JSON.stringify(r)}`);
+  // An unrecognised id that merely CONTAINS "energy" falls back to the old id regex.
+  await setAmmo(pg, 'legacy_energy_cannon', 0, 40, 80, 25); await pg.waitForTimeout(400);
+  r = await gaugeState(pg);
+  must(r.energyBar && r.pips === 0, `an unrecognised id matching the old energy/charge regex must still draw the cell gauge: ${JSON.stringify(r)}`);
+  // The Rail Gun's id never matched that regex (no "energy"/"charge" in "rail_gun"), so with no catalogue
+  // row at all it must fall all the way through to pips -- exactly as it did before weapon_class existed.
+  await setAmmo(pg, 'rail_gun', 0, 2, 2, 1); await pg.waitForTimeout(400);
+  r = await gaugeState(pg);
+  must(r.pips === 2 && !r.bar, `an unrecognised rail_gun id must fall back to pips, not the id regex: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-pre-a48-fallback.png` });
+  await pg.close();
+});
+await step('ammo note se: NOT ENOUGH ENERGY follows rounds_per_charge from the catalogue, not a constant', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  // Move the charge rifle's cost off the old hard-coded 10. A cell of 15 is ABOVE 10 and BELOW 20, so the
+  // note can only appear if the HUD read the catalogue value.
+  await pg.evaluate(() => { window.brx.engine.catalog.weapons.find(x => x.weapon_id === 'charge_rifle').rounds_per_charge = 20; });
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 15); await pg.waitForTimeout(400);
+  let r = await gaugeState(pg);
+  must(r.note === 'NOT ENOUGH ENERGY', `a cell of 15 under a catalogue cost of 20 must show the note: ${JSON.stringify(r)}`);
+  // And back: a cell of 25 clears it at the same catalogue cost.
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 25); await pg.waitForTimeout(400);
+  r = await gaugeState(pg);
+  must(r.note === null, `a cell of 25 is above the catalogue cost of 20 -- no note: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-charge-cost.png` });
+  await pg.close();
+});
+await step('ammo prompt se: a charge rifle cell of 9 (under the 10-cost full charge) with reserve reads one calm RECHARGE, plus the small note', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 9); await pg.waitForTimeout(400);
+  const r = await gaugeState(pg);
+  must(r.bigPrompts === 1 && r.prompt === 'HOLD TO RECHARGE', `9 of 40 with reserve must read one HOLD TO RECHARGE prompt, got ${JSON.stringify(r)}`);
+  must(r.note === 'NOT ENOUGH ENERGY', `the small note must still say why: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-energy-not-enough.png` });
+  await pg.close();
+});
+await step('ammo prompt se: a charge rifle cell of 9 with NO reserve reads OUT OF ENERGY, plus the small note, never NOT ENOUGH ENERGY as the big prompt', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 0, 9); await pg.waitForTimeout(400);
+  const r = await gaugeState(pg);
+  must(r.bigPrompts === 1 && r.prompt === 'OUT OF ENERGY', `9 of 40 with no reserve must read OUT OF ENERGY (the player can neither fire nor recharge): ${JSON.stringify(r)}`);
+  must(r.note === 'NOT ENOUGH ENERGY', `the small note must still say why: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-energy-out-of-energy-no-reserve.png` });
+  await pg.close();
+});
+await step('ammo prompt se: 0/40 and 5/40 with reserve read the identical RECHARGE prompt -- one consistent style regardless of the cell', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 0); await pg.waitForTimeout(400);
+  const empty = await pg.evaluate(() => { const el = document.querySelector('.ammo .reload'); return { cls: el.className, text: el.textContent.trim() }; });
+  await pg.screenshot({ path: `${OUT}/se-ammo-energy-recharge-empty.png` });
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 5); await pg.waitForTimeout(400);
+  const partial = await pg.evaluate(() => { const el = document.querySelector('.ammo .reload'); return { cls: el.className, text: el.textContent.trim() }; });
+  must(empty.cls === partial.cls, `0/40 and 5/40 with reserve must render the same prompt style, got ${JSON.stringify({ empty, partial })}`);
+  must(empty.text === 'HOLD TO RECHARGE' && partial.text === 'HOLD TO RECHARGE', `both must read HOLD TO RECHARGE: ${JSON.stringify({ empty, partial })}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-energy-recharge-partial.png` });
+  await pg.close();
+});
+// ---------- pl4 (2026-09-17): an empty energy cell with reserve showed three amber items at once (a blinking
+// RECHARGE, the amber 0%, and NOT ENOUGH ENERGY). The note is only for a cell that still reads above 0, and the
+// prompt is steady whether the cell is empty or below a charge. The Energy Rifle bench found taps refill
+// nothing and a hold refills the whole cell, so the prompt says HOLD TO RECHARGE. ----------
+for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
+  await step(`ammo prompt ${tag}: an empty energy cell with reserve reads one steady HOLD TO RECHARGE and no NOT ENOUGH ENERGY note`, async () => {
+    const pg = await open(view, 'live');
+    for (const [w, mag, ammo] of [['charge_rifle', 40, 0], ['charge_rifle', 40, 5], ['energy_rifle', 40, 0], ['energy_rifle', 40, 4]]) {
+      await setAmmo(pg, w, 0, mag, 80, ammo); await pg.waitForTimeout(400);
+      const r = await gaugeState(pg);
+      const box = await pg.evaluate(() => { const el = document.querySelector('.ammo .reload'); const b = el.getBoundingClientRect(); return { anim: getComputedStyle(el).animationName, right: b.right, left: b.left, vw: innerWidth, sw: el.scrollWidth, cw: el.clientWidth }; });
+      must(r.bigPrompts === 1 && r.prompt === 'HOLD TO RECHARGE', `${w} ${ammo}/${mag} with reserve: ${JSON.stringify(r)}`);
+      must(box.anim === 'none', `${w} ${ammo}/${mag}: HOLD TO RECHARGE must not blink: ${JSON.stringify(box)}`);
+      must(box.left >= 0 && box.right <= box.vw && box.sw <= box.cw + 1, `${w} ${ammo}/${mag}: the prompt must fit at ${tag}: ${JSON.stringify(box)}`);
+      must(r.note === (w === 'charge_rifle' && ammo > 0 ? 'NOT ENOUGH ENERGY' : null), `${w} ${ammo}/${mag}: the note shows only for a cell above 0 that is below a charge: ${JSON.stringify(r)}`);
+      const bad = await invariants(pg); must(bad.length === 0, bad.join(' ; '));
+      if (ammo === 0 && w === 'charge_rifle') await pg.screenshot({ path: `${OUT}/${tag}-ammo-energy-hold-to-recharge.png` });
+    }
+    await pg.close();
+  });
+}
+await step('ammo prompt se: a charge rifle cell of exactly 10 (the full-charge cost) shows neither the NOT ENOUGH ENERGY note nor a RECHARGE/OUT OF ENERGY prompt', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 10); await pg.waitForTimeout(400);
+  const r = await gaugeState(pg);
+  must(r.note === null, `10 of 40 is a full charge and must show no NOT ENOUGH ENERGY note: ${JSON.stringify(r)}`);
+  must(r.prompt === null, `10 of 40 needs no reload/recharge prompt at all: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-energy-enough.png` });
+  await pg.close();
+});
+await step('ammo prompt se: the NOT ENOUGH ENERGY note never shows for a bullet weapon or a tap-only energy weapon', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'burst_rifle', 0, 36, 216, 9); await pg.waitForTimeout(400);
+  let r = await gaugeState(pg);
+  must(r.note === null, `a bullet weapon must never show the NOT ENOUGH ENERGY note: ${JSON.stringify(r)}`);
+  await setAmmo(pg, 'energy_rifle', 0, 40, 80, 9); await pg.waitForTimeout(400);
+  r = await gaugeState(pg);
+  must(r.note === null, `only charge_rifle has a known full-charge cost -- energy_rifle must not show the note: ${JSON.stringify(r)}`);
+  await pg.close();
+});
+for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
+  for (const night of [false, true]) {
+    await step(`${tag} energy severity ${night ? 'night' : 'day'}: OUT OF ENERGY + the small note lays out cleanly at both sizes`, async () => {
+      const pg = await open(view, 'live', night ? '&night' : '');
+      await setAmmo(pg, 'charge_rifle', 0, 40, 0, 9); await pg.waitForTimeout(400);
+      const r = await gaugeState(pg);
+      must(r.bigPrompts === 1 && r.prompt === 'OUT OF ENERGY' && r.note === 'NOT ENOUGH ENERGY', `9 of 40, no reserve, at ${tag}/${night ? 'night' : 'day'}: ${JSON.stringify(r)}`);
+      const bad = await invariants(pg); must(bad.length === 0, bad.join(' ; '));
+      await pg.screenshot({ path: `${OUT}/${tag}-energy-out-note-${night ? 'night' : 'day'}.png` });
+      await pg.close();
+    });
+  }
+}
+
+// ---------- energy gauge layout + reserve pills (bench 2026-09-17, Tony -- real charge rifle, 40-round
+// energy cell, 80 in reserve). The cell overflowed its own frame, and "25% /80" mixed a percentage with a
+// round count on a weapon that has no rounds. ----------
+const energyBox = pg => pg.evaluate(() => {
+  const frame = document.querySelector('.pips .bar.energy'); const fill = frame ? frame.querySelector('i') : null;
+  const r = el => el ? el.getBoundingClientRect() : null;
+  return { frame: r(frame), fill: r(fill), resHtml: (document.getElementById('res') || {}).innerHTML || '',
+    resText: (document.getElementById('res') || {}).textContent || '', cells: document.querySelectorAll('#res .cell').length,
+    fullCells: document.querySelectorAll('#res .cell:not(.partial)').length, partialCells: document.querySelectorAll('#res .cell.partial').length };
+});
+for (const view of VIEWS) {
+  await step(`${view.name} energy gauge: the segmented cell sits inside its own frame`, async () => {
+    const pg = await open(view, 'live');
+    await setAmmo(pg, 'charge_rifle', 0, 40, 80, 25); await pg.waitForTimeout(400);
+    const r = await energyBox(pg);
+    must(r.frame && r.fill, `no energy bar rendered: ${JSON.stringify(r)}`);
+    const pad = 0.5;   // sub-pixel rounding only — a real overflow measured ~2.4-3px at se (bench 2026-09-17)
+    must(r.fill.top >= r.frame.top - pad && r.fill.bottom <= r.frame.bottom + pad,
+      `the segment fill must sit inside the frame's own box, not overflow it: frame ${JSON.stringify(r.frame)} fill ${JSON.stringify(r.fill)}`);
+    await pg.screenshot({ path: `${OUT}/${view.name}-energy-frame-fit.png` });
+    await pg.close();
+  });
+}
+await step('energy reserve se: 40/80 (a 40-round cell, 2 spares) shows exactly 2 full pills and no "/80" text', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 40); await pg.waitForTimeout(400);
+  const r = await energyBox(pg);
+  must(r.cells === 2 && r.fullCells === 2 && r.partialCells === 0, `40/80 must show 2 full pills, none partial: ${JSON.stringify(r)}`);
+  must(!/\/\s*80/.test(r.resText) && !/\d/.test(r.resText), `#res must carry no digits at all for an energy weapon, got text ${JSON.stringify(r.resText)} (html ${r.resHtml})`);
+  await pg.screenshot({ path: `${OUT}/se-energy-reserve-2full.png` });
+  await pg.close();
+});
+await step('energy reserve se: 40/60 shows 1 full pill plus 1 partial pill', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 60, 40); await pg.waitForTimeout(400);
+  const r = await energyBox(pg);
+  must(r.cells === 2 && r.fullCells === 1 && r.partialCells === 1, `40/60 must show 1 full pill + 1 partial: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-energy-reserve-1full1partial.png` });
+  await pg.close();
+});
+await step('energy reserve se: reserve 0 shows no pills at all (OUT OF ENERGY already says it)', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 0, 0); await pg.waitForTimeout(400);
+  const r = await energyBox(pg);
+  must(r.cells === 0, `reserve 0 must show zero pills: ${JSON.stringify(r)}`);
+  const prompt = await pg.evaluate(() => (document.querySelector('.ammo .reload .unskew') || {}).textContent || null);
+  must(prompt === 'OUT OF ENERGY', `reserve 0 / mag 0 must still read OUT OF ENERGY: ${prompt}`);
+  await pg.screenshot({ path: `${OUT}/se-energy-reserve-zero.png` });
+  await pg.close();
+});
+// ---------- Bench 2026-09-18 (Tony): "i like the amber pill for charge rifle", then: they still need polish.
+// A spare charge is an OBJECT, so the casing, the cap and the highlight belong to the canister and must
+// survive every fill level -- only the charge inside moves. Two things broke that. A part-full canister
+// dropped its glow and went translucent, so it read as a different material from the full ones beside it.
+// And the night skin painted the part-full canister at a HARD-CODED 50%: the very bug Tony reported for the
+// day skin ("they appeared to be half full after a reload") was still live behind `[data-env="night"]`. ----------
+for (const view of VIEWS) {
+  for (const night of [false, true]) {
+    await step(`${view.name} energy reserve ${night ? 'night' : 'day'}: a spare canister keeps its casing, cap and highlight at every fill, and only the charge moves`, async () => {
+      const pg = await open(view, 'live', night ? '&night' : '');
+      const read = async reserve => {
+        await setAmmo(pg, 'charge_rifle', 0, 40, reserve, 25); await pg.waitForTimeout(400);
+        return pg.evaluate(() => {
+          const pick = e => {
+            const cs = getComputedStyle(e), bef = getComputedStyle(e, '::before'), aft = getComputedStyle(e, '::after');
+            return { op: cs.opacity, bg: cs.backgroundImage, border: cs.borderLeftColor, bw: cs.borderLeftWidth,
+              cap: { c: bef.content, h: parseFloat(bef.height) || 0, w: parseFloat(bef.width) || 0 },
+              spec: { c: aft.content, h: parseFloat(aft.height) || 0, w: parseFloat(aft.width) || 0 } };
+          };
+          const cells = Array.from(document.querySelectorAll('#res .cell'));
+          return { full: cells.filter(e => !e.classList.contains('partial')).map(pick),
+                   part: cells.filter(e => e.classList.contains('partial')).map(pick) };
+        });
+      };
+      const low = await read(83);    // 2 full spares + 3 of a 40-round charge: the floor fill
+      const high = await read(118);  // 2 full spares + 38 of 40: almost a whole spare charge
+      await pg.screenshot({ path: `${OUT}/${view.name}-energy-canister-${night ? 'night' : 'day'}.png` });
+      const bad = await invariants(pg);   // three canisters plus their gaps must still fit the readout row
+      await pg.close();
+      must(bad.length === 0, bad.join(' ; '));
+      for (const [tag, r] of [['3 of 40', low], ['38 of 40', high]]) {
+        must(r.full.length === 2 && r.part.length === 1, `${tag}: expected 2 full canisters and 1 part-full: ${JSON.stringify({ full: r.full.length, part: r.part.length })}`);
+        const p = r.part[0], f = r.full[0];
+        must(p.op === '1', `${tag}: the part-full canister went translucent (opacity ${p.op}) -- it is the same object, just less charged`);
+        must(p.border === f.border && p.bw === f.bw, `${tag}: the casing changes with the fill (part ${p.bw} ${p.border} vs full ${f.bw} ${f.border})`);
+        for (const [who, c] of [['full', f], ['part-full', p]]) {
+          must(c.cap.c !== 'none' && c.cap.h >= 2 && c.cap.w >= 3, `${tag}: the ${who} canister has no cap across its top (::before ${JSON.stringify(c.cap)})`);
+          must(c.spec.c !== 'none' && c.spec.h >= 6 && c.spec.w >= 1, `${tag}: the ${who} canister has no highlight down its glass (::after ${JSON.stringify(c.spec)})`);
+        }
+        // Chromium drops the default 180deg from the computed value, so a vertical fill is "no angle at all"
+        // and a sideways one names its angle. Either way this is the paint, not the source.
+        must(/linear-gradient/.test(p.bg) && !/(90deg|270deg|to right|to left)/.test(p.bg),
+          `${tag}: the charge sweeps sideways like a bar segment instead of standing in the canister: ${p.bg.slice(0, 90)}`);
+      }
+      must(low.part[0].bg !== high.part[0].bg,
+        `3 of 40 and 38 of 40 paint the identical canister -- the fill is hard-coded, not the real fraction: ${low.part[0].bg.slice(0, 120)}`);
+      must(low.full[0].bg === high.full[0].bg, 'a FULL canister must not change when the reserve does');
+    });
+  }
+}
+await step('ammo reserve se: a bullet weapon still shows plain "/reserve" text, never pills', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'burst_rifle', 0, 36, 216, 30); await pg.waitForTimeout(400);
+  const r = await energyBox(pg);
+  must(r.cells === 0, `a bullet weapon must never show cell pills: ${JSON.stringify(r)}`);
+  must(r.resText === '/216', `a bullet weapon's #res must read plain "/reserve", got ${JSON.stringify(r.resText)}`);
+  await pg.close();
+});
+// F248: the Energy Rifle has no `rounds_per_charge` (one round per shot, like the Rail Gun), so per the
+// agreed rule it now renders the ordinary big-magazine bar (mag 300 > AMMO_PIP_MAX) and a plain "/reserve"
+// count, never the cell gauge -- this test used to expect the (buggy) percentage bar and reserve pills.
+for (const view of VIEWS) {
+  await step(`${view.name} energy-class gauge night: the big-magazine bar and plain reserve still read at night, no overflow with a long weapon name`, async () => {
+    const pg = await open(view, 'live', '&night');
+    await setAmmo(pg, 'energy_rifle', 0, 300, 600, 150); await pg.waitForTimeout(400);
+    const r = await pg.evaluate(() => {
+      const frame = document.querySelector('.pips .bar.ammobar');
+      const cs = frame ? getComputedStyle(frame) : null;
+      return { visible: !!frame && cs.display !== 'none' && cs.visibility !== 'hidden', cells: document.querySelectorAll('#res .cell').length, resText: (document.getElementById('res') || {}).textContent || '', wn: (document.querySelector('.ammo .wn') || {}).textContent };
+    });
+    must(r.visible, `a low-cost energy weapon's big magazine must still render the ordinary bar at night: ${JSON.stringify(r)}`);
+    must(r.cells === 0 && r.resText === '/600', `it keeps the plain round-count reserve, never cell pills: ${JSON.stringify(r)}`);
+    const bad = await invariants(pg); must(bad.length === 0, bad.join(' ; '));
+    await pg.screenshot({ path: `${OUT}/${view.name}-energy-night.png` });
+    await pg.close();
+  });
+}
+
+// ---------- weapon heat + OVERHEAT (bench 2026-09-17, match 592e444eff: a charge rifle locked out past
+// heat 100 and the HUD said nothing at all). ----------
+const heatState = pg => pg.evaluate(() => {
+  const bar = document.getElementById('heat'); const vig = document.querySelector('.heatvig'); const word = document.querySelector('.heatword');
+  return { barPresent: !!bar, barHot: !!(bar && bar.classList.contains('hot')), barWidth: bar ? bar.querySelector('i').style.width : null,
+    overlay: !!vig, word: word ? word.textContent : null, prompt: (document.querySelector('.ammo .reload .unskew') || {}).textContent || null,
+    pointerEvents: vig ? getComputedStyle(vig).pointerEvents : null };
+});
+await step('heat bar se: a weapon that has never heated draws no heat bar', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'assault_rifle', 0, 32, 192, 32, 0); await pg.waitForTimeout(400);
+  const r = await heatState(pg);
+  must(!r.barPresent, `a weapon at heat 0 that has never heated must show no heat bar: ${JSON.stringify(r)}`);
+  await pg.close();
+});
+await step('heat bar se: heat rising shows the bar tracking the level, below the lockout it is not OVERHEAT yet', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 30, 55); await pg.waitForTimeout(400);
+  const r = await heatState(pg);
+  must(r.barPresent && !r.barHot && r.barWidth === '55%', `heat 55 must show the bar at 55%, not hot: ${JSON.stringify(r)}`);
+  must(r.prompt !== 'OVERHEAT', `heat 55 (under the lockout) must not say OVERHEAT: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-heat-rising.png` });
+  await pg.close();
+});
+for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
+  for (const night of [false, true]) {
+    await step(`${tag} OVERHEAT ${night ? 'night' : 'day'}: heat past the lockout shows the prompt and the full-frame overlay, vitals stay visible, no taps blocked`, async () => {
+      const pg = await open(view, 'live', night ? '&night' : '');
+      await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108); await pg.waitForTimeout(400);
+      const r = await heatState(pg);
+      must(r.barPresent && r.barHot, `heat 108 must show the heat bar, hot: ${JSON.stringify(r)}`);
+      must(r.overlay && r.word === 'OVERHEAT', `heat 108 must show the full-frame OVERHEAT overlay: ${JSON.stringify(r)}`);
+      must(r.prompt === 'OVERHEAT', `heat 108 must show the OVERHEAT prompt in place of RECHARGE: ${JSON.stringify(r)}`);
+      must(r.pointerEvents === 'none', `the overlay must never block a tap: pointer-events ${r.pointerEvents}`);
+      const boxes = await pg.evaluate(() => {
+        const rect = el => el ? el.getBoundingClientRect() : null;
+        return { hp: rect(document.getElementById('hp')), sh: rect(document.getElementById('sh')), mag: rect(document.getElementById('mag')),
+          hpVisible: document.getElementById('hp') ? getComputedStyle(document.getElementById('hp')).visibility !== 'hidden' : false,
+          // a tap over HP must still hit something in the vitals column, not the pointer-events:none overlay
+          hitsVitals: (() => { const hp = document.getElementById('hp'); if (!hp) return null; const b = hp.getBoundingClientRect();
+            const el = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return !!(el && (el === hp || hp.contains(el) || el.closest('.vitals'))); })() };
+      });
+      must(boxes.hp && boxes.sh && boxes.hpVisible, `HP/armor must stay visible under the overlay: ${JSON.stringify(boxes)}`);
+      must(boxes.hitsVitals, `a tap over the vitals must still land on the vitals, not be intercepted by the overlay: ${JSON.stringify(boxes)}`);
+      const bad = await invariants(pg); must(bad.length === 0, bad.join(' ; '));
+      await pg.screenshot({ path: `${OUT}/${tag}-overheat-${night ? 'night' : 'day'}.png` });
+      await pg.close();
+    });
+  }
+}
+await step('heat bar se: heat falls back under the lockout and the OVERHEAT state clears', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108); await pg.waitForTimeout(400);
+  let r = await heatState(pg);
+  must(r.overlay && r.prompt === 'OVERHEAT', `pre-condition: must start overheating: ${JSON.stringify(r)}`);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 0); await pg.waitForTimeout(400);   // the gun's own next $ALCD after a reload/cooldown reports heat 0
+  r = await heatState(pg);
+  must(!r.overlay, `heat back to 0 must clear the full-frame overlay: ${JSON.stringify(r)}`);
+  must(r.prompt !== 'OVERHEAT', `heat back to 0 must clear the OVERHEAT prompt: ${JSON.stringify(r)}`);
+  must(r.barPresent && !r.barHot && r.barWidth === '0%', `the heat bar itself stays (this weapon has heated before) but reads empty and not hot: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-heat-cleared.png` });
+  await pg.close();
+});
+// ---------- item 3 (bench 2026-09-17, playtest pl3): the OVERHEAT overlay/prompt used to key off
+// `st.overheating` directly, which the node can echo back for up to 25 s after a stale reading (see
+// engine.js `HEAT_STALE_MS`). `overheatShown` is the engine's narrower field (true only while the reading
+// is live, about 6 s); this lane switches the HUD to read it, falling back to `overheating` while the
+// engine field is still undefined (pl3-engine has not merged yet -- `window.__hud`/`window.brx.engine`
+// drive this directly since the demo engine cannot set the new field itself). ----------
+await step('heat bar se: st.overheatShown, once set, overrides the stale st.overheating field', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108); await pg.waitForTimeout(400);
+  let r = await heatState(pg);
+  must(r.overlay && r.prompt === 'OVERHEAT', `pre-condition: must start overheating: ${JSON.stringify(r)}`);
+  // a stale-but-true st.overheating with overheatShown explicitly false must hide the takeover
+  await pg.evaluate(() => { const h = window.__hud; h.sig = null; h.render({ ...window.brx.engine.state(), overheatShown: false }); });
+  r = await heatState(pg);
+  must(!r.overlay && r.prompt !== 'OVERHEAT', `overheatShown:false must hide OVERHEAT even though the stale st.overheating is still true: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-overheatshown-false-hides.png` });
+  // the reverse: overheatShown explicitly true must show it even with the old field false
+  await pg.evaluate(() => { const h = window.__hud; h.sig = null; h.render({ ...window.brx.engine.state(), overheating: false, overheatShown: true }); });
+  r = await heatState(pg);
+  must(r.overlay && r.prompt === 'OVERHEAT', `overheatShown:true must show OVERHEAT even with the old field false: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-overheatshown-true-shows.png` });
+  await pg.close();
+});
+// ---------- item 5 (bench 2026-09-17): `.reload.hot`/`.reload.out` stayed a solid bright block with white
+// text at night -- the one light-discipline miss in this file. Dark fill, `var(--num)` text, no glow. ----------
+await step('night se: the OVERHEAT (.reload.hot) prompt drops the solid bright fill and white text', async () => {
+  const pg = await open(VIEWS[1], 'live', '&night');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108); await pg.waitForTimeout(400);
+  const r = await pg.evaluate(() => { const el = document.querySelector('.reload.hot'); const cs = getComputedStyle(el); return { bg: cs.backgroundColor, color: cs.color }; });
+  must(r.color !== 'rgb(255, 255, 255)', `night must not show white text on OVERHEAT: ${JSON.stringify(r)}`);
+  must(r.bg === 'rgb(42, 12, 12)', `night must use the dark night fill on OVERHEAT, not the bright day block: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-reload-hot-night.png` });
+  await pg.close();
+});
+await step('night se: the OUT OF ENERGY (.reload.out) prompt drops the solid bright fill and white text', async () => {
+  const pg = await open(VIEWS[1], 'live', '&night');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 0, 0); await pg.waitForTimeout(400);
+  const r = await pg.evaluate(() => { const el = document.querySelector('.reload.out'); const cs = getComputedStyle(el); return { bg: cs.backgroundColor, color: cs.color }; });
+  must(r.color !== 'rgb(255, 255, 255)', `night must not show white text on OUT OF ENERGY: ${JSON.stringify(r)}`);
+  must(r.bg === 'rgb(42, 12, 12)', `night must use the dark night fill on OUT OF ENERGY, not the bright day block: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-reload-out-night.png` });
+  await pg.close();
+});
+// ---------- item 2 (bench 2026-09-17): the plain RELOAD/RECHARGE prompt (no `.hot`/`.out`) was missed by
+// the fixes above and still blinked bright amber at night. ----------
+await step('night se: the plain RELOAD/RECHARGE prompt stops blinking and drops the bright amber fill', async () => {
+  const pg = await open(VIEWS[1], 'live', '&night');
+  await setAmmo(pg, 'sniper_rifle', 0, 4, 24, 0); await pg.waitForTimeout(400);
+  const r = await pg.evaluate(() => { const el = document.querySelector('.reload'); const cs = getComputedStyle(el); return { bg: cs.backgroundColor, color: cs.color, anim: cs.animationName }; });
+  must(r.anim === 'none', `night must stop the RELOAD blink, got animation ${JSON.stringify(r.anim)}`);
+  must(r.bg === 'rgb(42, 12, 12)', `night must use the dark night fill, not the bright amber block: ${JSON.stringify(r)}`);
+  must(r.color !== 'rgb(26, 18, 0)', `night must not keep the day's dark-on-amber text colour: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-reload-plain-night.png` });
+  await pg.close();
+});
+await step('night se: OVERHEAT/OUT OF ENERGY (.reload.hot/.reload.out) still win over the plain .reload night rule', async () => {
+  const pg = await open(VIEWS[1], 'live', '&night');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 0, 0); await pg.waitForTimeout(400);
+  const r = await pg.evaluate(() => { const el = document.querySelector('.reload.out'); const cs = getComputedStyle(el); return { bg: cs.backgroundColor, color: cs.color }; });
+  must(r.bg === 'rgb(42, 12, 12)' && r.color !== 'rgb(255, 255, 255)', `the plain .reload night rule must not have knocked .reload.out off its own colours: ${JSON.stringify(r)}`);
+  await pg.close();
+});
+
+// ---------- shot-ready cue (bench 2026-09-17): a weapon with >= 400 ms between rounds dims the gauge after each
+// shot and shines once when the next round is due. Timed from the gun's own `$ALCD`, so never early. ----------
+/** Put a full 44-field `$WEAP,<slot>` with token 14 = `ms` into the head the engine holds (the demo's head is a stub). */
+const setWeap = (pg, slot, ms) => pg.evaluate(({ slot, ms }) => {
+  const e = window.brx.engine; const f = `$WEAP,${slot},` + Array(41).fill('0').map((x, i) => i === 13 ? String(ms) : x).join(',') + ',*';
+  e.frames.head = [...e.frames.head.filter(x => !x.startsWith(`$WEAP,${slot},`)), f];
+}, { slot, ms });
+/** Fire one round (mag -> mag-1) and record every `data-cool` change on #frame with its time since the shot. */
+const shotTrace = (pg, weaponId, ms, waitMs) => pg.evaluate(async ({ weaponId, ms, waitMs }) => {
+  const e = window.brx.engine, fr = document.getElementById('frame'); const trace = [];
+  e.player.loadout.weapons[0] = { weapon_id: weaponId };
+  e.frames.spawn = e.frames.spawn.map(f => f.startsWith('$AMMO,0,') ? '$AMMO,0,4,24,1,*' : f);
+  e.feedFrame('$ALCD,4,100,0,24,0,*'); await new Promise(r => setTimeout(r, 300));
+  let t0 = 0; let dimOpacity = null, dimMag = null, shine = null;
+  const mo = new MutationObserver(() => {
+    const v = fr.dataset.cool || ''; trace.push({ v, t: Math.round(performance.now() - t0) });
+    if (v === 'on' && dimOpacity == null) setTimeout(() => { dimOpacity = +getComputedStyle(document.querySelector('.ammo .pips')).opacity; dimMag = +getComputedStyle(document.getElementById('mag')).opacity; }, 150);
+    if (v === 'ready' && shine == null) { const pips = document.querySelector('.ammo .pips'); const af = getComputedStyle(pips, '::after');
+      shine = { anim: af.animationName, display: af.display, filter: getComputedStyle(pips).filter, magFilter: getComputedStyle(document.getElementById('mag')).filter }; }
+  });
+  mo.observe(fr, { attributes: true, attributeFilter: ['data-cool'] });
+  t0 = performance.now(); e.feedFrame('$ALCD,3,100,0,24,0,*');
+  await new Promise(r => setTimeout(r, waitMs)); mo.disconnect();
+  return { trace, dimOpacity, dimMag, shine, after: fr.dataset.cool || '', opacityAfter: +getComputedStyle(document.querySelector('.ammo .pips')).opacity };
+}, { weaponId, ms, waitMs });
+for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
+  for (const night of [false, true]) {
+    await step(`${tag} shot cue ${night ? 'night' : 'day'}: a sniper (1500 ms a round) dims after the shot and shines once when the round is due, never early`, async () => {
+      const pg = await open(view, 'live', night ? '&night' : '');
+      await setWeap(pg, 0, 1500);
+      const shoot = shotTrace(pg, 'sniper_rifle', 1500, 2100);
+      await pg.waitForTimeout(300 + 700); await pg.screenshot({ path: `${OUT}/${tag}-shotcue-dim-${night ? 'night' : 'day'}.png` });
+      await pg.waitForTimeout(540); await pg.screenshot({ path: `${OUT}/${tag}-shotcue-ready-${night ? 'night' : 'day'}.png` });
+      const r = await shoot; await pg.close();
+      const on = r.trace.find(x => x.v === 'on'), ready = r.trace.find(x => x.v === 'ready');
+      must(on && on.t < 150, `the gauge must dim at the shot: ${JSON.stringify(r)}`);
+      must(r.dimOpacity != null && r.dimOpacity < 0.8, `the dim must be visible (pips opacity under 0.8): ${JSON.stringify(r)}`);
+      must(ready && ready.t >= 1500 && ready.t < 1800, `the ready cue must come at or after 1500 ms, never early: ${JSON.stringify(r.trace)}`);
+      if (night) must(r.dimMag != null && r.dimMag < 0.8, `night hides the pips, so the round digits must dim too: ${JSON.stringify(r)}`);
+      if (night) must(r.shine && r.shine.display === 'none' && /brightness/.test(r.shine.magFilter), `night: no moving shine, a dim brightness step on the digits instead: ${JSON.stringify(r.shine)}`);
+      else must(r.shine && r.shine.anim === 'readyshine', `day: the green shine must run on ready: ${JSON.stringify(r.shine)}`);
+      must(r.after === '' && r.opacityAfter === 1, `the cue must clear after the shine: ${JSON.stringify(r)}`);
+    });
+  }
+}
+await step('se shot cue reduced motion: a brightness step, no moving shine', async () => {
+  const pg = await b.newPage({ viewport: { width: VIEWS[1].width, height: VIEWS[1].height }, reducedMotion: 'reduce' });
+  await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=live`); await pg.waitForTimeout(4200);
+  await setWeap(pg, 0, 600);
+  const r = await shotTrace(pg, 'sniper_rifle', 600, 1100); await pg.close();
+  must(r.trace.some(x => x.v === 'ready'), `pre-condition: the ready cue must fire: ${JSON.stringify(r.trace)}`);
+  must(r.shine && r.shine.display === 'none' && /brightness/.test(r.shine.filter), `reduced motion must swap the shine for a brightness step: ${JSON.stringify(r.shine)}`);
+});
+await step('se shot cue CONTROL: an automatic weapon (assault rifle, 140 ms a round) gets no dim and no shine', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setWeap(pg, 0, 140);
+  const r = await shotTrace(pg, 'assault_rifle', 140, 900); await pg.close();
+  must(r.trace.length === 0, `an automatic weapon must never dim or shine: ${JSON.stringify(r.trace)}`);
+});
+
+// ---------- live scores overlay (bench 2026-09-17): the player name opens PLAYERS, the clock opens TEAMS ----------
+const boardState = pg => pg.evaluate(() => {
+  const p = document.querySelector('.bdpanel'); const rect = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
+  return { open: !!p, tab: (document.querySelector('.bdseg .sg[aria-pressed="true"] .unskew') || {}).textContent || null,
+    rows: document.querySelectorAll('.bdlist .bdr:not(.bdh)').length, me: Array.from(document.querySelectorAll('.bdr.me')).map(x => x.textContent.replace(/\s+/g, ' ').trim()),
+    teams: Array.from(document.querySelectorAll('.bdteam .tm')).map(x => x.textContent.trim()), age: (document.getElementById('bdage') || {}).textContent || null,
+    stale: !!document.querySelector('#bdage.stale'), panel: rect(p), hp: rect(document.getElementById('hp')), mag: rect(document.getElementById('mag')),
+    chipsOpacity: getComputedStyle(document.getElementById('chips')).opacity };
+});
+const apart = (a, c) => !(a.l < c.r && a.r > c.l && a.t < c.b && a.b > c.t);
+for (const view of VIEWS) {
+  await step(`${view.name} scores overlay: the player name opens PLAYERS, every player row, my row highlighted, ✕ closes`, async () => {
+    const pg = await open(view, 'live-scores');
+    must(!(await boardState(pg)).open, 'the overlay must start closed');
+    await pg.click('.ident'); await pg.waitForTimeout(200);
+    const r = await boardState(pg);
+    await pg.screenshot({ path: `${OUT}/${view.name}-scores-player.png` });
+    must(r.open && r.tab === 'PLAYERS', `the name must open the PLAYERS tab: ${JSON.stringify(r)}`);
+    must(r.rows === 4, `all four of MC's rows must show: ${JSON.stringify(r)}`);
+    must(r.me.length === 1 && /REAPER/.test(r.me[0]) && /34%/.test(r.me[0]), `my row (REAPER, with accuracy) must be the one highlighted: ${JSON.stringify(r.me)}`);
+    must(r.age === 'LIVE' && !r.stale, `a bound link reads LIVE: ${JSON.stringify(r)}`);
+    must(apart(r.panel, r.hp) && apart(r.panel, r.mag), `the panel must leave the HP and ammo digits clear: ${JSON.stringify(r)}`);
+    const bad = await invariants(pg); must(bad.length === 0, bad.join(' ; '));
+    await pg.dispatchEvent('.bdx', 'pointerdown'); const pressed = await pg.evaluate(() => document.querySelector('.bdx').classList.contains('tap-press'));
+    await pg.dispatchEvent('.bdx', 'pointerup');
+    must(pressed, 'the ✕ must show the tap-press feedback');
+    await pg.click('.bdx'); await pg.waitForTimeout(200);
+    const c = await boardState(pg); await pg.close();
+    must(!c.open, `✕ must close the overlay: ${JSON.stringify(c)}`);
+  });
+  await step(`${view.name} scores overlay: the clock opens TEAMS with MC's totals, a tap outside the panel closes it`, async () => {
+    const pg = await open(view, 'live-scores');
+    await pg.click('.clockplate'); await pg.waitForTimeout(200);
+    const r = await boardState(pg);
+    await pg.screenshot({ path: `${OUT}/${view.name}-scores-team.png` });
+    must(r.open && r.tab === 'TEAMS', `the clock must open the TEAMS tab: ${JSON.stringify(r)}`);
+    must(r.teams.length === 2 && /18/.test(r.teams[0]) && /21/.test(r.teams[1]), `both team totals from MC's board: ${JSON.stringify(r.teams)}`);
+    must(r.me.length === 1 && /REAPER/.test(r.me[0]), `my row is highlighted under my team: ${JSON.stringify(r.me)}`);
+    must(r.chipsOpacity === '0', `the chip bar must not draw over the open panel: ${r.chipsOpacity}`);
+    await pg.click('.bdseg .sg[data-arg="player"]'); await pg.waitForTimeout(200);
+    must((await boardState(pg)).tab === 'PLAYERS', 'the PLAYERS tab button must switch tabs');
+    const box = r.panel; const scale = await pg.evaluate(() => document.getElementById('frame').getBoundingClientRect().width / 844);
+    await pg.mouse.click(box.l - 40 * scale, box.t + 60 * scale); await pg.waitForTimeout(200);
+    const c = await boardState(pg); await pg.close();
+    must(!c.open, `a tap outside the panel must close it: ${JSON.stringify(c)}`);
+  });
+  await step(`${view.name} scores overlay: off the MC link the label gives the age of the last push`, async () => {
+    const pg = await open(view, 'live-scores');
+    await pg.evaluate(() => { window.brxDemo.mcLost(); window.brx.engine.scoreAt = Date.now() - 12000; });
+    await pg.click('.ident'); await pg.waitForTimeout(300);
+    const r = await boardState(pg);
+    await pg.screenshot({ path: `${OUT}/${view.name}-scores-stale.png` });
+    await pg.close();
+    must(r.open && /^AS OF 1[23] S AGO$/.test(r.age || '') && r.stale, `a stale board must say how old it is: ${JSON.stringify(r)}`);
+  });
+}
+// ---------- item 2 (bench 2026-09-17): `#frame[data-board] #chips{opacity:0}` hid the link-status pills
+// but `button.pill` opts back into pointer-events, so a hidden RECONNECT/GUN LINK LOST button still sat
+// over the panel's own tab row and could swallow a tap meant for TEAMS/PLAYERS. ----------
+await step('scores overlay: a hidden pill under the tab row cannot intercept the tap meant for the tab', async () => {
+  const pg = await open(VIEWS[1], 'live-scores');
+  await pg.evaluate(() => window.brx.engine.onBleDropped());   // renders the GUN LINK LOST button into #chips
+  await pg.click('.clockplate'); await pg.waitForTimeout(200);
+  const r = await pg.evaluate(() => {
+    // check the point where the hidden pill and the panel HEAD actually overlap on screen, not the tab's
+    // own centre (the two boxes only partly overlap, and the tab's centre can sit just outside the pill).
+    const btn = document.querySelector('[data-act="onReconnectGun"]'); const head = document.querySelector('.bdhead');
+    const b = btn.getBoundingClientRect(), h = head.getBoundingClientRect();
+    const overlaps = b.left < h.right && b.right > h.left && b.top < h.bottom && b.bottom > h.top;
+    const x = (Math.max(b.left, h.left) + Math.min(b.right, h.right)) / 2, y = (Math.max(b.top, h.top) + Math.min(b.bottom, h.bottom)) / 2;
+    const el = document.elementFromPoint(x, y);
+    return { overlaps, hitsHead: !!(el && (el === head || head.contains(el))), btnPE: getComputedStyle(btn).pointerEvents,
+      chipsPE: getComputedStyle(document.getElementById('chips')).pointerEvents };
+  });
+  must(r.overlaps, 'pre-condition: the hidden pill and the panel head must actually overlap for this check to mean anything');
+  must(r.btnPE === 'none', `the hidden pill button must not stay tappable while the board is open: ${JSON.stringify(r)}`);
+  must(r.hitsHead, `a tap where the pill overlaps the panel head must reach the panel, not the hidden pill underneath: ${JSON.stringify(r)}`);
+  await pg.click('.bdseg .sg[data-arg="player"]'); await pg.waitForTimeout(200);
+  const s = await boardState(pg); await pg.close();
+  must(s.tab === 'PLAYERS', `the tap must actually switch the tab: ${JSON.stringify(s)}`);
+});
+// ---------- item 3 (bench 2026-09-17): the empty-board badge was long enough to push the ✕ off the panel ----------
+await step('scores overlay: the empty-board badge is short and stays clear of the ✕', async () => {
+  const pg = await open(VIEWS[1], 'live-scores');
+  await pg.evaluate(() => { window.brx.engine.scoreAt = null; });
+  await pg.click('.ident'); await pg.waitForTimeout(200);
+  const r = await pg.evaluate(() => {
+    const rect = el => { const b = el.getBoundingClientRect(); return { l: b.left, r: b.right }; };
+    const age = document.getElementById('bdage'), x = document.querySelector('.bdx');
+    return { text: age.textContent, age: rect(age), x: rect(x), overflow: getComputedStyle(age).textOverflow };
+  });
+  must(r.text === 'NO SCORES YET', `the badge copy must be short, got ${JSON.stringify(r.text)}`);
+  must(r.overflow === 'ellipsis', `the badge must ellipsize rather than push its neighbour: ${r.overflow}`);
+  must(r.age.r <= r.x.l, `the badge must stay left of the ✕, not overlap it: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-scores-empty-badge.png` });
+  await pg.close();
+});
+// ---------- item 4 (bench 2026-09-17): the overlay tabs and ✕ were under the 44px tap-target floor ----------
+await step('scores overlay: the tabs and the ✕ meet the 44px tap-target floor', async () => {
+  const pg = await open(VIEWS[1], 'live-scores');
+  await pg.click('.clockplate'); await pg.waitForTimeout(200);
+  // #frame is the 844x390 design scaled to fit the viewport (top-of-file comment), so a raw getBoundingClientRect
+  // reads SCALED px -- divide back to design px, same trick the "tap outside the panel" step above uses.
+  const r = await pg.evaluate(() => {
+    const scale = document.getElementById('frame').getBoundingClientRect().width / 844;
+    const h = el => el.getBoundingClientRect().height / scale;
+    return { tabs: Array.from(document.querySelectorAll('.bdseg .sg')).map(h), x: h(document.querySelector('.bdx')) };
+  });
+  must(r.tabs.length > 0 && r.tabs.every(v => v >= 44), `every overlay tab must be at least 44px tall (design px): ${JSON.stringify(r.tabs)}`);
+  must(r.x >= 44, `the ✕ must be at least 44px tall (design px): ${r.x}`);
+  await pg.close();
+});
+await step('se scores overlay FFA: the clock opens STANDINGS, a kills ranking with my row highlighted', async () => {
+  const pg = await open(VIEWS[1], 'live-scores-ffa');
+  await pg.click('.clockplate'); await pg.waitForTimeout(200);
+  const r = await boardState(pg);
+  await pg.screenshot({ path: `${OUT}/se-scores-ffa.png` });
+  await pg.close();
+  must(r.open && r.tab === 'STANDINGS' && r.rows === 4 && r.teams.length === 0, `FFA has no teams: the TEAM tab is the standings: ${JSON.stringify(r)}`);
+  must(r.me.length === 1 && /REAPER/.test(r.me[0]), `my row is highlighted: ${JSON.stringify(r.me)}`);
+});
+for (const view of VIEWS) {
+  await step(`${view.name} scores overlay night: dim panel, and the day/night switch still works with it open`, async () => {
+    const pg = await open(view, 'live-scores', '&night');
+    await pg.click('.clockplate'); await pg.waitForTimeout(200);
+    const r = await boardState(pg);
+    await pg.screenshot({ path: `${OUT}/${view.name}-scores-night.png` });
+    must(r.open && r.tab === 'TEAMS', `night: the clock must open the overlay: ${JSON.stringify(r)}`);
+    await pg.click('#skin'); await pg.waitForTimeout(300);
+    const s2 = await pg.evaluate(() => document.getElementById('frame').dataset.env || '');
+    const c = await boardState(pg); await pg.close();
+    must(s2 === '', `the day/night switch must still switch with the overlay open: env ${s2}`);
+    must(c.open, 'the skin switch must not close the overlay');
+  });
+}
+
+// ---------- OVERHEAT vs WEAPONS HOT (bench 2026-09-17): the pill covered the centre of the word ----------
+for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
+  for (const night of [false, true]) {
+    await step(`${tag} OVERHEAT ${night ? 'night' : 'day'}: the word and the WEAPONS HOT pill do not overlap`, async () => {
+      const pg = await open(view, 'live', night ? '&night' : '');
+      await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108); await pg.waitForTimeout(300);
+      const r = await pg.evaluate(() => {
+        const rect = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
+        const pill = Array.from(document.querySelectorAll('.chipbar .pill')).find(p => /WEAPONS HOT/.test(p.textContent));
+        return { word: rect(document.querySelector('.heatword')), pill: rect(pill) };
+      });
+      await pg.screenshot({ path: `${OUT}/${tag}-overheat-weapons-hot-${night ? 'night' : 'day'}.png` });
+      await pg.close();
+      must(r.word && r.pill, `both must be on screen for the check to mean anything: ${JSON.stringify(r)}`);
+      must(apart(r.word, r.pill), `OVERHEAT and WEAPONS HOT overlap: ${JSON.stringify(r)}`);
+    });
+  }
+}
+
 await b.close(); srv.close();
 console.log(`\n${pass} passed, ${fail} failed${fail ? ': ' + errs.join(', ') : ''}`);
 process.exit(fail ? 1 : 0);

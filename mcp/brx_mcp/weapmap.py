@@ -45,8 +45,9 @@ FIELDS = {
     40: "ammoReserv", 41: "gunRangeIndoor", 42: "extraHeadsetRangeIn",
 }
 # Positions the 2-frame derivation could not validate — the ones worth watching.
-# Position 2 (gunRangeOutdoor) left this set 2026-09-17: bench-proven as the emitted-power/range
-# lever by the garden ladder test (F231, docs/experiment-log/2026-09.md).
+# Position 2 (gunRangeOutdoor) left this set 2026-09-17: the garden ladder test tied it to whether a
+# shot lands (F231, docs/experiment-log/2026-09.md). It sets the emitter's CARRIER FREQUENCY, not its
+# power (V4_31 disassembly, 2026-09-18) -- see protocol/brx-protocol.md.
 UNVALIDATED = set(range(7, 14)) | {17, 40, 21, 22, 19, 30, 37, 38}
 
 

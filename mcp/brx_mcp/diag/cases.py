@@ -34,7 +34,12 @@ CONFIG = (
     # reporting alive and healthy -- F11, in the one tool whose job is to answer "can this gun be
     # hit?". Pinned by tests/test_diag_config_parity.py.
     *_SIR_TABLE,
-    *_BMAP,
+    # One `$WEAP` slot is loaded here, so ALT (fn 100, weapon cycle) has nothing to cycle to and the
+    # firmware falls back to RELOADING (bench 2026-09-17, Tony: "the alt button is reloading the charge
+    # rifle"). `compile.py` maps that case to fn 98, the inert one; the diag tool shipped the stock row
+    # and reproduced the bug in the one tool whose job is to answer "is this gun behaving?"
+    # (merge review 2026-09-18).
+    *[("$BMAP,1,98,,,,,*" if row.startswith("$BMAP,1,") else row) for row in _BMAP],
 )
 SPAWN = ("$SPAWN,,*", "$AMMO,0,36,108,1,*", "$BMAP,0,0,,,,,*")
 # (There was an `END = ("$STOP,*", "$CLEAR,*")` here. It was never referenced by anything, and a

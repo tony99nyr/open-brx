@@ -36,7 +36,7 @@ import { F, PERK_COLOR, T } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, Shelf, StripedSlot, SwitchConfirm, Tag, Toggle, onKey } from '../ui';
 import { emptyRequiredSlots, gameSig, poolEmptyMessage, rulesLine, splitLine } from './gameSummary';
 import { MODE_ART } from '../modeArt';
-import { VenueModeReminder } from '../ui/VenueModeReminder';
+import { VenueModeManualLink } from '../ui/VenueModeReminder';
 import { GameEditPanel } from '../ui/GameEditPanel';
 import { GameSentStatus, GameSettings, LoadStatus, gameSettingRows } from '../ui/LoadedGame';
 
@@ -46,18 +46,17 @@ import { GameSentStatus, GameSettings, LoadStatus, gameSettingRows } from '../ui
  *  debrief — a tap here used to fail SILENTLY: the store's `error` is a small dismissable strip the
  *  operator can easily miss, and nothing on the Games screen itself said why nothing happened. This
  *  says which door is still open — and names the RIGHT one: `armed` is undone by ABORT, not RECALL. */
-export const CONFIG_EDITABLE_PHASES = new Set(['muster', 'build', 'kit', 'lobby']);
-/** Round-2 fix pass (2026-09-12): the lock is SPLIT, because the server splits it.
- *
- *  `state.py set_config` takes ANY config edit in muster/build/kit/lobby; in `recap` it takes exactly
- *  ONE patch — an explicit MODE — and that pick rolls the finished session forward
- *  (`new_session(keep_roster=True)`, landing in BUILD with the roster kept). It refuses everything in
- *  armed/live. */
-export const MODE_PICK_PHASES = new Set(['muster', 'build', 'kit', 'lobby', 'recap']);
+/** 2026-09-16: RECAP is editable too. `state.py set_config` (and LOAD, and a phase move) in `recap`
+ *  rolls the finished session forward first (`_roll_forward_from_recap`: roster and game kept), so any
+ *  GAMES action after the whistle simply works on the next match. Tony: "why? just make a new one".
+ *  Only armed/live refuse. */
+export const CONFIG_EDITABLE_PHASES = new Set(['muster', 'build', 'kit', 'lobby', 'recap']);
+/** Kept as its own name for the callers that ask "may a game card be played?"; today it is the same
+ *  set, because the server no longer splits a mode pick from any other edit. */
+export const MODE_PICK_PHASES = CONFIG_EDITABLE_PHASES;
 export function lockedReason(phase: string): string {
   if (phase === 'armed') return 'GAME SETTINGS ARE LOCKED — THE MATCH IS ARMED. ABORT ON THE MATCH TAB RETURNS IT TO THE LOBBY.';
   if (phase === 'live') return 'GAME SETTINGS ARE LOCKED — THE MATCH IS LIVE. END OR RECALL IT ON THE MATCH TAB TO EDIT THE GAME AGAIN.';
-  if (phase === 'recap') return 'THIS MATCH ENDED — PICK A MODE TO START THE NEXT ONE, OR NEW MATCH (TOP RIGHT).';
   return `GAME SETTINGS ARE LOCKED — THE MATCH IS ALREADY IN ${phase.toUpperCase()}.`;
 }
 
@@ -67,16 +66,24 @@ export function Games() {
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
   const [confirmSwitch, setConfirmSwitch] = useState<string | null>(null);   // tapping a card while the draft is TUNED — NOT SAVED (review #16)
   const [editing, setEditing] = useState(false);        // the ACTIVE state's EDIT draft is open
+  const [draftDirty, setDraftDirty] = useState(false);  // ...and whether it actually holds a change (`GameEditPanel`'s own `dirty`, mirrored up)
   const [picking, setPicking] = useState(false);        // ...and the card shelves are showing under it
   const [busy, setBusy] = useState(false);              // a LOAD / RE-PUSH is in flight
   const [recentLoad, setRecentLoad] = useState(false);  // the few seconds after one, so the count reads as moving
   const reload = useCallback(() => api.getPresets().then(setGames).catch(() => {}), [api]);
   useEffect(() => { reload(); }, [reload]);
   useEffect(() => { if (!recentLoad) return; const h = setTimeout(() => setRecentLoad(false), 4_000); return () => clearTimeout(h); }, [recentLoad]);
+  // Bench 2026-09-17: `editing` must never outlive its own draft UI. The EDIT panel only renders
+  // while `loaded` (below) is true, so if a game were ever to become un-loaded with `editing` still
+  // true (an older server's snapshot, a finished match rolling forward under this tab), the operator
+  // would be left with `guarded()` refusing a pick over a draft they can no longer see, let alone
+  // cancel. Reset both the moment there is nothing loaded to edit.
+  const loaded = !!state?.game?.loaded || !!state?.lobby?.pushed;
+  useEffect(() => { if (!loaded) { setEditing(false); setDraftDirty(false); } }, [loaded]);
   if (!state) return null;
   const cfg = state.config;
-  const locked = !CONFIG_EDITABLE_PHASES.has(state.phase);          // VENUE / LOAD / EDIT — the general config edits
-  const modeLocked = !MODE_PICK_PHASES.has(state.phase);            // playing a stock mode or a saved game — recap takes these too
+  const locked = !CONFIG_EDITABLE_PHASES.has(state.phase);          // VENUE / LOAD / EDIT / playing a card
+  const modeLocked = !MODE_PICK_PHASES.has(state.phase);
   // F141 polish (field 2026-09-12): the applied config's OWN pool, server-computed — a policy that
   // excludes every weapon in a slot can reach `state.config` from a saved game or a race even without
   // visiting DESIGNER this session, and `state.py push_config` refuses such a head
@@ -103,9 +110,10 @@ export function Games() {
   // deliberately does not write a gun, so `pushed` no longer becomes true at LOAD — that split is the
   // whole point. A lobby push still implies a loaded game (and is what an older server without a
   // `game` block reports), so it counts too. Both survive armed/live and both are dropped by
-  // `_finish()`, so a debrief is back to picking the next game.
+  // `_finish()`, so a debrief shows the card picker with the last game still selected: LOAD (or
+  // RECAP's NEXT MATCH) starts the next match on it. (`loaded` itself is computed above, before the
+  // early return, so the editing-reset effect can see it too.)
   const gate = pushGate(state);
-  const loaded = !!state.game?.loaded || state.lobby.pushed;
   const gameSent = state.game?.sent ?? 0;
   const gameTotal = state.game?.total ?? state.players.length;
 
@@ -114,7 +122,7 @@ export function Games() {
   // DIFFERENT game/mode is exactly how an operator escapes a bad one; it must never be the gate that
   // traps them.
   // MERGE-3 (round-3 fix pass, 2026-09-13): in RECAP, tapping the game you just played is "run it
-  // back" — the commonest action on that screen, and the server's own documented play-again path.
+  // back". Since 2026-09-16 LOAD does the same with no tap, and so does RECAP's NEXT MATCH.
   const runItBack = state.phase === 'recap';
   const tappable = (on: boolean) => !on || runItBack;
   // F-6 (2026-09-13): a mode/game switch RESHAPES the roster onto the target's own declared teams
@@ -125,10 +133,19 @@ export function Games() {
     // together, and a card tap here used to call `putConfig`/`applyPreset` IMMEDIATELY. The draft
     // stayed open, but its patch is diffed against `cfg` (`GameEditPanel`'s `patchOf`), and this tap
     // had just moved `cfg` out from under it -- so SAVE would then send a patch against a game nobody
-    // drafted. Editing and switching games are two different intents; block the second until the
-    // first is finished (SAVE AND LOAD) or discarded (CANCEL), the same way a dirty draft already
-    // asks before letting CANCEL itself discard it.
-    if (editing) { setNotice('FINISH EDITING FIRST — SAVE AND LOAD, OR CANCEL THE OPEN DRAFT, BEFORE PICKING ANOTHER GAME', true); return; }
+    // drafted.
+    //
+    // REVISED (bench 2026-09-17): the fix above was a REFUSAL — "FINISH EDITING FIRST... BEFORE
+    // PICKING ANOTHER GAME" — and Tony hit it stone cold: he had opened EDIT, left it, forgotten it
+    // was open, and got a sticky error with no visible draft on screen to finish or cancel. Tony's
+    // call: picking another game while a draft is open DISCARDS the draft and proceeds, same as any
+    // other "this drops your unsaved game" case on this screen (`custom` below). No error either way
+    // -- only a one-line, auto-clearing notice, and only when the draft actually held a change.
+    if (editing) {
+      setEditing(false);
+      if (draftDirty) setNotice('UNSAVED EDITS DISCARDED', false, 4_000);
+      setDraftDirty(false);
+    }
     if (modeLocked) { setNotice(lockedReason(state.phase), true); return; }   // never a silent tap (F151)
     if ((custom || splitFor(targetTeams)) && confirmSwitch !== key) { setConfirmSwitch(key); return; }
     setConfirmSwitch(null); go();
@@ -188,14 +205,26 @@ export function Games() {
   // where the control went (a real `fieldset disabled`, plus a guard, never a tap that does nothing).
   const venueInert = locked || editing;
   const venueChips = (
-    <fieldset disabled={venueInert} style={{ border: 'none', margin: 0, padding: 0 }}>
-      <div role="group" aria-label="venue" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '6px 12px', border: `1px solid ${T.line}`, background: T.panelDeep, opacity: venueInert ? 0.5 : 1 }}>
-        <span style={{ font: F.mono(600, 10), letterSpacing: '.24em', color: T.dim }}>VENUE</span>
-        <Seg value={cfg.environment} options={[{ value: 'indoor', label: 'INDOOR' }, { value: 'outdoor', label: 'OUTDOOR' }]} onChange={v => { if (!venueInert) run(() => api.putConfig({ environment: v })); }} pad="9px 14px" />
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: F.chk(600, 11), letterSpacing: '.14em', color: cfg.night ? T.ink : T.dim }}>NIGHT OPS <Toggle on={cfg.night} onChange={v => { if (!venueInert) run(() => api.putConfig({ night: v })); }} label="night ops" /></span>
-        {editing && <span data-testid="venue-in-draft" style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.warn }}>IN THE DRAFT BELOW</span>}
-      </div>
-    </fieldset>
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+      <fieldset disabled={venueInert} style={{ border: 'none', margin: 0, padding: 0 }}>
+        <div role="group" aria-label="venue" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, padding: '6px 12px', border: `1px solid ${T.line}`, background: T.panelDeep, opacity: venueInert ? 0.5 : 1 }}>
+          <span style={{ font: F.mono(600, 10), letterSpacing: '.24em', color: T.dim }}>VENUE</span>
+          <Seg value={cfg.environment} options={[{ value: 'indoor', label: 'INDOOR' }, { value: 'outdoor', label: 'OUTDOOR' }]} onChange={v => { if (!venueInert) run(() => api.putConfig({ environment: v })); }} pad="9px 14px" />
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: F.chk(600, 11), letterSpacing: '.14em', color: cfg.night ? T.ink : T.dim }}>NIGHT OPS <Toggle on={cfg.night} onChange={v => { if (!venueInert) run(() => api.putConfig({ night: v })); }} label="night ops" /></span>
+          {editing && <span data-testid="venue-in-draft" style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.warn }}>IN THE DRAFT BELOW</span>}
+        </div>
+      </fieldset>
+      {/* Bench 2026-09-17: NIGHT OPS was tapped mid-match and the LEDs did not change, with nothing on screen to
+          say why. The venue is part of the config, and a config push to a gun in play clears `spawned`, so it
+          stays locked until the match ends. Kept OUTSIDE the faded fieldset so the reason is readable. */}
+      {locked && <span data-testid="venue-locked" style={{ font: F.mono(600, 11), letterSpacing: '.1em', color: T.dim }}>LOCKED WHILE THE MATCH IS {state.phase.toUpperCase()}</span>}
+      {/* F162 (revised 2026-09-16): this is a NUMBER MC sends and a PHYSICAL switch on every gun
+          that MC cannot reach, so a quiet link to the how-to sits right beside the control that raises
+          the question, not a dismissable banner nagging every screen, see ui/VenueModeReminder.
+          Kept OUTSIDE the fieldset above: the link works whether or not venue itself is editable right
+          now (F-review 2026-09-16), so it must not fade into the disabled group. */}
+      <VenueModeManualLink />
+    </div>
   );
 
   const errorsAndWarnings = (
@@ -328,10 +357,6 @@ export function Games() {
           )}
         </div>
       </div>
-      {/* F162: the VENUE chips above are a number MC sends AND a switch on every gun that MC cannot
-          reach. This is the half the operator has to do, so it sits directly under the control that
-          raises it rather than at the bottom of the summary rail — see ui/VenueModeReminder. */}
-      <VenueModeReminder screen="games" style={{ marginBottom: 18 }} />
       {blocked && (
         <div role="alert" data-testid="games-locked" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
           background: 'rgba(255,82,82,.08)', border: `1px solid ${T.bad}`, borderLeft: `3px solid ${T.bad}`, padding: '12px 16px' }}>
@@ -379,7 +404,7 @@ export function Games() {
                 <span data-testid="game-edit-open">
                   <GhostButton size={12} pad="10px 16px" color={T.ink} border={T.line2} disabled={locked}
                     title={locked ? lockedReason(state.phase) : 'Open this game for editing. Nothing is sent until SAVE AND LOAD.'}
-                    onClick={() => { if (!locked) setEditing(true); }}>EDIT ▸</GhostButton>
+                    onClick={() => { if (!locked) { setDraftDirty(false); setEditing(true); } }}>EDIT ▸</GhostButton>
                 </span>
               )}
             </div>
@@ -428,7 +453,7 @@ export function Games() {
           </div>
 
           {editing
-            ? <GameEditPanel alwaysOpen onDone={() => setEditing(false)} />
+            ? <GameEditPanel alwaysOpen onDone={() => { setEditing(false); setDraftDirty(false); }} onDirtyChange={setDraftDirty} />
             : <GameSettings testid="game-settings" rows={gameSettingRows(cfg, mode, weapons, perks, { full: true, players: state.players })} />}
           {errorsAndWarnings}
 

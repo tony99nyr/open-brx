@@ -3,8 +3,8 @@ import { RUNWAYS, useRunway } from '../runway';
 import { RE_PUSH_HERE, STALE_ACK_FAULT, blocksPush, coverageLine, curedByPush, pushGate, reachLabel, reachOf, reachTooltip, sentenceCase, splitBlocker } from '../api/derive';
 import type { Player } from '../api/types';
 import { useStore } from '../store';
-import { F, T, TAB, teamColor } from '../tokens';
-import { BTN_RESET, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag, useNarrow } from '../ui';
+import { F, T, TAB, fmtClock, teamColor } from '../tokens';
+import { BTN_RESET, GhostButton, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag, useNarrow } from '../ui';
 import { SetupSteps } from '../ui/SetupSteps';
 import { PreArmSummary, armOverrideCopy } from '../ui/PreArmSummary';
 import { McVerify } from '../ui/McVerify';
@@ -18,6 +18,7 @@ export function Lobby() {
   const [runway, setRunway] = useRunway();   // survives a tab switch (field 2026-08-30)
   const [drag, setDrag] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);          // RE-PUSH in flight (R2-1)
+  const [readyAllBusy, setReadyAllBusy] = useState(false);   // MARK ALL READY in flight (bench 2026-09-17)
   if (!state) return null;
   const { players, lobby, readiness, teams } = state;
   const teamIds = state.config.mode === 'ffa' ? ['ffa'] : state.config.teams.map(t => t.team_id);
@@ -87,6 +88,15 @@ export function Lobby() {
     try { await run(() => api.pushLobby(force)); } finally { setBusy(false); }
   };
   const reteam = (p: Player, team_id: string) => { if (p.team_id !== team_id) run(() => api.patchPlayer(p.player_id, { team_id })); };
+  // Bench 2026-09-17: a config re-push from LOBBY (e.g. the inline `GameEditPanel`) resets every
+  // player's READY to false with the fresh head — correct, but with two players already readied up
+  // the operator's only fix used to be tapping each one's HOST OVERRIDE by hand. One call, the
+  // roster-wide sibling of `api.setReady` (`state.py ready_all()`); never touches acks or the config.
+  const readyAll = async () => {
+    if (readyAllBusy) return;
+    setReadyAllBusy(true);
+    try { await run(() => api.readyAll()); } finally { setReadyAllBusy(false); }
+  };
 
   // ---- the two buttons' gates, written once ------------------------------------------------
   // F1: the RE-PUSH shows whenever a re-push would CHANGE something — a row carrying a blocker only a
@@ -193,12 +203,14 @@ export function Lobby() {
           <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
             <Step n={1} done={allReady} label={<>Ready <b style={{ font: F.osw(700, 16), color: allReady ? T.ok : T.warn }}>{nReady}/{players.length}</b></>} />
             <Step n={2} done={allAcked} label={<>Config pushed {lobby.pushed && <b style={{ font: F.osw(700, 16), color: allAcked ? T.ok : T.warn }}>{acked}/{players.length}</b>}</>} />
+            {/* Bench 2026-09-17 (Tony): the countdown length is chosen only when ARM COUNTDOWN is the next
+                action: the lobby is pushed and every gun has acked (in sync). Before that it is plain text. */}
             <Step n={3} done={false} label={
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>Countdown
-                <select aria-label="countdown length" value={String(runway)} onChange={e => setRunway(Number(e.target.value))}
+                {lobby.pushed && allAcked && <select aria-label="countdown length" value={String(runway)} onChange={e => setRunway(Number(e.target.value))}
                   style={{ background: T.inset, color: T.ink, border: `1px solid ${T.line2}`, font: F.osw(700, 16), padding: '4px 8px', minHeight: 36, cursor: 'pointer' }}>
-                  {RUNWAYS.map(r => <option key={r} value={r}>{`${String(Math.floor(r / 60)).padStart(2, '0')}:${String(r % 60).padStart(2, '0')}`}</option>)}
-                </select>
+                  {RUNWAYS.map(r => <option key={r} value={r}>{fmtClock(r)}</option>)}
+                </select>}
               </span>} />
           </div>
           <span style={{ flex: 1 }} />
@@ -251,7 +263,12 @@ export function Lobby() {
             || (faults.length
               ? `${faults.length} gun${faults.length === 1 ? '' : 's'} cannot start`
               : waitWhy
-                || (notReady.length ? `Not ready yet: ${notReady.join(', ')}` : '')
+                // Bench 2026-09-16: LOBBY reached from GAMES without KIT. Nothing had opened the kit and
+                // nothing was pushed, so the phones said HOST IS SETTING UP and could not ready up. The line
+                // named the players and not the step that frees them.
+                || (notReady.length
+                  ? `Not ready yet: ${notReady.join(', ')}${lobby.pushed ? '' : '. Their phones say HOST IS SETTING UP until you open KIT or push the config.'}`
+                  : '')
                 // A36: "no echo" and "echoed the LAST game" are different problems with different
                 // answers, and this line used to be able to name NEITHER — a stale ack is `ok:true`,
                 // so it fell out of the filter and the sentence rendered as "No config echo from  —
@@ -327,6 +344,9 @@ export function Lobby() {
       )}
       {!allReady && players.length > 0 && (
         <div data-mark-ready="1" style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', font: F.mono(500, 11), letterSpacing: '.14em', color: T.dim }}>
+          <GhostButton onClick={readyAll} disabled={readyAllBusy} title="Marks every rostered player ready. Never touches the gun config or the acks — arming still checks those exactly as before.">
+            {readyAllBusy ? 'MARKING ALL READY…' : 'MARK ALL READY ▸'}
+          </GhostButton>
           <span style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: T.micro, marginRight: 4 }}>MARK READY</span>
           {players.filter(p => !p.ready).map(p => (
             <button key={p.player_id} type="button" className="hov-acc-ink hit44" style={{ ...BTN_RESET, cursor: 'pointer', color: T.dim, minHeight: 28 }} onClick={() => run(() => api.setReady(p.player_id, true))}>{p.display} ▸</button>

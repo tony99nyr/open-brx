@@ -10,9 +10,9 @@ import { LoadStatus } from './LoadedGame';
 type Slot = 'primary' | 'secondary';
 const toggleId = (xs: string[], x: string) => (xs.includes(x) ? xs.filter(y => y !== x) : [...xs, x]);
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
-/** the phases `state.py set_config` takes a full config patch in (recap takes a MODE only, and that
- *  path is a mode card on GAMES, not this panel) */
-const EDITABLE = new Set(['muster', 'build', 'kit', 'lobby']);
+/** the phases `state.py set_config` takes a config patch in. RECAP too since 2026-09-16: the edit rolls
+ *  the finished session forward first, roster and game kept. */
+const EDITABLE = new Set(['muster', 'build', 'kit', 'lobby', 'recap']);
 
 /** B3 (field 2026-09-12): editing the LOADED game meant leaving KIT/LOBBY for the GAMES stepper or the
  *  full DESIGNER. Tony: "the flow for editing the current loaded game is very bad. i need to be able
@@ -35,8 +35,8 @@ const EDITABLE = new Set(['muster', 'build', 'kit', 'lobby']);
  *  nothing), and still carries a fallback: if the request lands in the race between the phase
  *  advancing and this panel's next render, the server's refusal is rewritten with the one instruction
  *  that unblocks it (RECALL) and surfaces in the normal error strip -- never swallowed. */
-export function GameEditPanel({ style, alwaysOpen = false, onDone }:
-  { style?: React.CSSProperties; alwaysOpen?: boolean; onDone?: () => void }) {
+export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange }:
+  { style?: React.CSSProperties; alwaysOpen?: boolean; onDone?: () => void; onDirtyChange?: (dirty: boolean) => void }) {
   const { state, modes, weapons, perks, run, api, openDesigner } = useStore();
   /** the config being edited, or null for "not editing". NOTHING here is sent until SAVE AND LOAD. */
   const [draft, setDraft] = useState<GameConfig | null>(() => (alwaysOpen && state ? clone(state.config) : null));
@@ -102,6 +102,10 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone }:
   };
   const patch = draft ? patchOf(draft) : {};
   const dirty = Object.keys(patch).length > 0;
+  // GAMES's `editing` flag (Games.tsx `guarded`) needs to tell an UNTOUCHED draft (silently dropped)
+  // from a CHANGED one (worth one word: UNSAVED EDITS DISCARDED) when the operator picks a different
+  // game while this panel is still open. That question belongs here, next to `dirty` itself.
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   /** The reshape this SAVE would produce -- the SAME predicate GAMES's mode tiles show, never a second
    *  one. Asked of the DRAFT, which is why the per-tap confirm this panel used to carry is gone: the
    *  question belongs to the tap that actually moves people, and that tap is SAVE AND LOAD. */
@@ -161,9 +165,11 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone }:
         <button type="button" data-testid="game-edit-toggle" onClick={() => (open ? cancel() : startEdit())} aria-expanded={open}
           style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 14px',
                    background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', minHeight: 44, color: T.ink }}>
-          <span style={{ font: F.chk(700, 12), letterSpacing: '.2em', color: T.acc }}>{open ? '▾' : '▸'} EDIT LOADED GAME</span>
-          {/* G (round-2, 2026-09-12): 11px, not 10.5 — this chip and the LOCKED badge below are the two
-              things a host reads at arm's length on the collapsed row. */}
+          {/* 2026-09-16, Tony: "VIEW" is more intuitive and less distracting. Opening it shows the loaded
+              game; nothing changes until SAVE. */}
+          <span style={{ font: F.chk(700, 12), letterSpacing: '.2em', color: T.acc }}>{open ? '▾' : '▸'} VIEW LOADED GAME</span>
+          {/* G (round-2, 2026-09-12): 11px, not 10.5 — the host reads this chip at arm's length on the
+              collapsed row. */}
           <span style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>
             {(modes.find(m => m.mode === cfg.mode)?.abbr ?? cfg.mode.toUpperCase())} · {cfg.night ? 'NIGHT' : 'DAY'} · HP {cfg.health.max_hp}/{cfg.health.max_armor}
           </span>
@@ -173,7 +179,8 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone }:
               are exactly when "are the guns caught up?" is the live question, so closing the panel
               must not take the answer off the screen with it (caught by the jsdom suite, 2026-09-13). */}
           <LoadStatus pushed={pushed} acked={acked} total={total} recent={recentEdit} />
-          {locked && <span role="status" style={{ font: F.chk(700, 11), letterSpacing: '.14em', color: T.warn }}>LOCKED — {state.phase.toUpperCase()}</span>}
+          {/* 2026-09-16: no yellow LOCKED badge on this row (Tony). After a match nothing is locked any
+              more, and in ARMED/LIVE the open panel still says why every control is disabled. */}
         </button>
       )}
       {open && (
@@ -181,9 +188,7 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone }:
           {locked && (
             <div role="alert" data-testid="game-edit-locked" style={{ font: F.chk(700, 12), letterSpacing: '.08em', lineHeight: 1.5,
                                                                        color: T.warn, background: 'rgba(255,176,32,.08)', border: `1px solid ${T.warn}`, padding: '9px 12px' }}>
-              {state.phase === 'recap'
-                ? '▲ THIS MATCH ENDED — PICK A MODE ON GAMES TO ROLL THE SESSION FORWARD, OR PRESS NEW MATCH.'
-                : `▲ THE MATCH IS ${state.phase.toUpperCase()} — MC REFUSES CONFIG EDITS ONCE IT HAS STARTED. RECALL FIRST, THEN EDIT.`}
+              {`▲ THE MATCH IS ${state.phase.toUpperCase()}. MC REFUSES CONFIG EDITS ONCE IT HAS STARTED. RECALL FIRST, THEN EDIT.`}
             </div>
           )}
           {/* A real `disabled`, not a tap that quietly does nothing (ui-build-verify): every control

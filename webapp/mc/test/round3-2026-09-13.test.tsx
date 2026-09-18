@@ -27,30 +27,47 @@ async function mountWithView(screen: React.ReactNode, f: Parameters<typeof makeS
   return Object.assign(m, { views });
 }
 
-describe('UX-1 — the recap advertises the play-again path', () => {
-  it('offers KEEP THIS ROSTER beside NEW MATCH, and the tap lands on GAMES', async () => {
+describe('UX-1 — the recap advertises the play-again path (NEXT MATCH since 2026-09-16)', () => {
+  // Tony, bench 2026-09-16: "why? just make a new one". The recap's KEEP THIS ROSTER? PICK A MODE ON
+  // GAMES pointed at a banner that said the same thing again. The primary action now starts the next
+  // match itself, roster and game kept, and lands on GAMES with the game loaded.
+  it('the primary action is NEXT MATCH ▸, it calls the server, and it lands on GAMES', async () => {
     const d = await demo();
     const state: State = { ...d.state, phase: 'recap', recap: RECAP };
-    const m = await mountWithView(<Recap />, { ...d, state, view: 'recap' });
-    const link = m.find('[data-testid="recap-play-again"]')[0];
-    expect(link, `the recap must name the roster-keeping path, saw: ${m.text()}`).toBeTruthy();
-    expect(link.textContent).toContain('PICK A MODE ON GAMES');
-    // meaning-bearing copy, and a real tap target (design brief: >= 11px, >= 36px)
-    const size = parseFloat(getComputedStyle(link).fontSize || '0');
-    expect(size >= 11, `the line is ${size}px`).toBe(true);
-    expect(parseFloat(getComputedStyle(link).minHeight || '0') >= 36).toBe(true);
-    await act(async () => { link.click(); });
+    const nextMatch = vi.fn(async () => ({ ...state, phase: 'build' }) as State);
+    const m = await mountWithView(<Recap />, { ...d, state, view: 'recap', api: { nextMatch } });
+    expect(m.find('[data-testid="recap-play-again"]').length, 'the looping CTA is gone').toBe(0);
+    expect(m.text()).not.toMatch(/PICK A MODE/);
+    const btn = m.find('[data-testid="recap-next-match"] button')[0] as HTMLButtonElement;
+    expect(btn, `saw: ${m.text()}`).toBeTruthy();
+    expect(btn.textContent).toBe('NEXT MATCH ▸');
+    expect(btn.disabled).toBe(false);
+    expect(parseFloat(getComputedStyle(btn).fontSize || '0') >= 11).toBe(true);
+    await act(async () => { btn.click(); });
+    expect(nextMatch).toHaveBeenCalledTimes(1);
     expect(m.views).toContain('build');
     m.unmount();
   });
 
-  it('is absent when there is no roster to keep', async () => {
+  it('a refused NEXT MATCH stays on the recap and does not navigate', async () => {
     const d = await demo();
-    const state: State = { ...d.state, phase: 'recap', players: [], recap: RECAP };
-    const m = await mountScreen(<Recap />, { ...d, state, view: 'recap' });
-    expect(m.find('[data-testid="recap-play-again"]').length,
-      'with nobody rostered, "keep this roster" is a lie').toBe(0);
+    const state: State = { ...d.state, phase: 'recap', recap: RECAP };
+    const nextMatch = vi.fn(async () => { throw new Error('THIS MC PREDATES NEXT MATCH: RESTART IT, OR USE NEW SESSION (TOP RIGHT)'); });
+    const m = await mountWithView(<Recap />, { ...d, state, view: 'recap', api: { nextMatch } });
+    await act(async () => { (m.find('[data-testid="recap-next-match"] button')[0] as HTMLButtonElement).click(); });
+    expect(m.views).not.toContain('build');
     m.unmount();
+  });
+
+  it('the mock rolls forward with the roster AND the game kept, and the game is LOADED', async () => {
+    const backend = new MockBackend();
+    const before = await backend.getState();
+    await backend.setPhase('recap');
+    const after = await backend.nextMatch();
+    expect(after.phase).toBe('build');
+    expect(after.game?.loaded).toBe(true);
+    expect(after.config.mode).toBe(before.config.mode);
+    expect(after.players.length).toBe(before.players.length);
   });
 });
 

@@ -63,11 +63,13 @@ Every player carries three slots.
 | Secondary | Any weapon, including the three pistols | Optional. |
 | Perk | One perk | Optional, and it rides beside the secondary. An assault rifle, a pistol and a perk is a legal kit. |
 
-Five perks are offered, and every one of them costs something. Body Armor gives 25 extra armour and
+Five perks are offered today, and every one of them costs something. Body Armor gives 25 extra armour and
 slows your reload by a quarter. Extended Mags doubles the primary's magazine and reserve and slows
 your weapon swap. Quick Hands halves the reload time and cuts your magazine by a fifth. Quick Switch
 halves the swap delay, 0.85 s down to 0.43 s, and takes 20 armour off you. Armour Piercing sends your
 primary straight through armour and shields to health, at about 40 percent of its normal damage.
+Two more are designed and not yet offered: Motion Tracker, which puts nearby enemies on your HUD, and
+Second Wind, which lets you survive the hit that would finish you, once a life.
 
 The point is that no perk is a free upgrade. Body Armor buys survival with reload speed, Quick Hands
 buys reload speed with ammunition, and Armour Piercing is the answer to Body Armor: against a bare

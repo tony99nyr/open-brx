@@ -1,11 +1,12 @@
 // In-browser mock of the MC server (mcp/brx_mcp/mc/API.md). Stateful enough for every UI interaction.
 import type {
-  Api, ConfigView, Coverage, FeedEntry, GameConfig, LanPublic, LiveRow, Loadout, LoadoutPolicy, LogView, MatchHistoryRow, ModeInfo, NodeView, PerkView, Phase, Player,
+  Api, ConfigView, Coverage, FeedEntry, GameConfig, LanPublic, LiveRow, Loadout, LoadoutPolicy, LogView, MatchHistoryRow, ModeInfo, NodeView, OperatorActionResult, OperatorCmd, PerkView, Phase, Player,
   ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, ReportResult, SavedGame, ScanRow, ScoreRow, StartView, State, StationAssignment, StationKind, StationSourceId,
   StationView, TunnelProvider, TunnelStatus, WeaponView,
 } from '../api/types';
 import { STATION_KINDS, STATION_SOURCE_IDS } from '../api/types';
 import { withPolicy } from '../screens/gameSummary';
+import { GUN_FLAPPING_LINE } from '../api/derive';
 import { GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
 import { PRESETS, apply as applyPolicy, conflict, defaultPolicy, pool as poolOf, presetOf, reject } from './policy';
 
@@ -219,6 +220,9 @@ export class MockBackend implements Api {
   // Mock-only debug hook, read once at construction: `?mock&tunnelfail=1` makes the NEXT TURN ON fail
   // instead of coming up, so the e2e suite (and a human) can drive the persistent "TUNNEL DOWN" banner
   // without a real cloudflared process to kill. One-shot, like a real flaky start.
+  // Mock-only debug hook: `?mock&allgreen=1` turns every linked row green, so ARMORY's HARDWARE READY ▸
+  // and ENABLE BACKHAUL (bench 2026-09-17) can be seen in a browser. The default demo keeps a red gun.
+  private demoAllGreen = typeof location !== 'undefined' && new URLSearchParams(location.search).get('allgreen') === '1';
   private tunnelFailNext = typeof location !== 'undefined' && new URLSearchParams(location.search).get('tunnelfail') === '1';
   // the server's validate() errors ride on every snapshot (config_errors); the demo used to hardcode []
   // so a refusal shown in the PUT response vanished from the rail on the very next tick
@@ -228,6 +232,8 @@ export class MockBackend implements Api {
   /** `?mock&laststale=1` — one node goes dark with a known internet-tunnel history, so the console can
    *  show "NOT REACHED FOR Ns" (and "TUNNEL DOWN" once the tunnel is also off) without a real dropped
    *  socket to arrange. */
+  // Bench 2026-09-17: `?mock&flap=1` shows GUN-C with its headset off, so its phone reports `gun_flapping`.
+  private demoFlap = typeof location !== 'undefined' && new URLSearchParams(location.search).get('flap') === '1';
   private demoLastStale = typeof location !== 'undefined' && new URLSearchParams(location.search).get('laststale') === '1';
   /** `?mock&nossid=1` — MC could not read the phone's Wi-Fi network name (any platform without a
    *  detector), so the REACH block must print "LAN · ip:port", never a mode word standing in for one. */
@@ -261,6 +267,12 @@ export class MockBackend implements Api {
    *  so the banner must read 1, not 2. The rule is only legible when both cases are on screen at once. */
   private demoStalePhone = typeof location !== 'undefined' && new URLSearchParams(location.search).get('stalephone') === '1';
   private restoredFrom: { at: number; players: number } | null = null;
+  /** `?mock&orphan=1` — bench 2026-09-17: two bound phones report a LIVE match this MC did not start (MC
+   *  restarted with no snapshot). Mirrors `state.py orphan_match_view()`: present only while unresolved,
+   *  RESUME MATCH adopts it (MUSTER/BUILD/KIT/LOBBY only), END THEIR MATCH clears it. */
+  private orphan_: { match_id: string; player_ids: string[] } | null =
+    typeof location !== 'undefined' && new URLSearchParams(location.search).get('orphan') === '1'
+      ? { match_id: 'm-lost', player_ids: ['p1', 'p2'] } : null;
 
   constructor() {
     this.players = PLAYERS.map(([display, team_id, gi], i) => ({
@@ -445,9 +457,11 @@ export class MockBackend implements Api {
       // recognise each. GUN-F's link is still counting up (it is already an amber row for its unread
       // battery, so the extra advisory perturbs no other card's status); every other linked phone has
       // held its link past the 10 s a headless gun cannot survive. After the push the echo takes over.
+      const flapping = !red && this.demoFlap && sticker === 'GUN-C';
+      if (flapping) ambers.push(GUN_FLAPPING_LINE);   // one steady amber, as `state.py readiness()` writes it
       const confirming = !red && !this.pushed && sticker === 'GUN-F';
       if (confirming) ambers.push('HEADSET · CONFIRMING (LINK 4 s)');
-      const proof = red || confirming ? null : this.pushed ? 'echo' as const : 'link' as const;
+      const proof = red || confirming || flapping ? null : this.pushed ? 'echo' as const : 'link' as const;
       // F155 pass 1 (2026-09-12): `?mock&laststale=1` puts GUN-F through a node that WAS bound (it
       // reported over the internet path earlier this session — `lastReach` seeded in the constructor)
       // and has since gone dark, as distinct from a gun that was NEVER powered at all. `present` (and
@@ -482,6 +496,8 @@ export class MockBackend implements Api {
         battery_pct: waiting ? null : batt ?? null, battery_age_ms: waiting || batt == null ? null : 4000,
         last_seen_age_ms: waiting ? null : red ? (droppedBackhaul ? 130_000 : null) : link * 1000,
         gun_linked: waiting || red ? null : true,
+        gun_flapping: flapping,
+        pool_stale: null, pool_stale_ms: null,
         fw: 'v4.32', phone_batt: 80, ssid_ok: true, mc_reachable: !red && !waiting, synced: !red && !waiting,
         screen_on: true, foreground: true,
         // A28.3 / F155: the server stamps `reach` from the socket path and clears it on disconnect; `last_reach` outlives it.
@@ -491,6 +507,7 @@ export class MockBackend implements Api {
         blockers: waiting ? [] : blockers,
       };
     });
+    if (this.demoAllGreen) board.forEach((r, i) => { if (r.status !== 'waiting') board[i] = { ...r, status: 'green', blockers: [], ambers: [] }; });
     const rf = this.rosterFault();
     // F-3/A39 (2026-09-13): a connected phone (`node: 'linked'`) with no player claiming it, and not
     // the gun of someone currently on STANDBY (a deliberate stand-down, not a stray) — mirrors
@@ -621,6 +638,7 @@ export class MockBackend implements Api {
       live: this.live_ ? this.liveView() : undefined,
       recap: this.recap_ ? clone(this.recap_) : undefined,
       end_delivery: this.endDelivery(),      // A42
+      orphan_match: this.orphanView(),
     };
   }
   /** A42 — did the END reach every player's HUD? Plain `?mock` shows the ordinary answer (all of them
@@ -635,6 +653,18 @@ export class MockBackend implements Api {
    *  them rather than frozen at the spent end of the ladder. */
   private endedAt?: number;
 
+  private orphanView() {
+    const o = this.orphan_;
+    if (!o) return undefined;
+    const players = o.player_ids.map(id => this.players.find(p => p.player_id === id)?.display ?? id).sort();
+    return { match_id: o.match_id, phones: players.length, players, arm_state: 'live' as const,
+             can_resume: ['muster', 'build', 'kit', 'lobby'].includes(this.phase) && !this.start_ };
+  }
+  /** Test hook, the same shape as `?mock&orphan=1`. */
+  setOrphan(match_id: string | null, player_ids: string[] = ['p1', 'p2']) {
+    this.orphan_ = match_id ? { match_id, player_ids } : null;
+    this.emit();
+  }
   private endDelivery() {
     if (this.endedAt === undefined) return undefined;
     const total = this.players.length;
@@ -696,6 +726,7 @@ export class MockBackend implements Api {
       for (const r of this.live_.rows) {
         if (r.status === 'down') { r.respawn_in_s = Math.max(0, (r.respawn_in_s ?? 0) - 1); if (r.respawn_in_s === 0) r.status = 'alive'; }
         r.sync_age_ms = r.status === 'stale' ? r.sync_age_ms + 1000 : Math.floor(Math.random() * 4000);
+        if (r.pool_stale_ms != null) r.pool_stale_ms += 1000;
       }
       if (Math.random() < 0.12) this.simKill();
       this.emit();
@@ -709,7 +740,7 @@ export class MockBackend implements Api {
     const k = alive.find(r => r.player_id === killerId) ?? alive[Math.floor(Math.random() * alive.length)];
     let v = alive[Math.floor(Math.random() * alive.length)];
     if (v === k) v = alive[(alive.indexOf(k) + 1) % alive.length];
-    k.kills++; k.streak++; k.hits += 3; k.shots += 6; v.deaths++; v.streak = 0; v.status = 'down'; v.respawn_in_s = this.config.respawn.delay_s;
+    for (const x of [k, v]) { delete x.pool_stale; delete x.pool_stale_ms; } k.kills++; k.streak++; k.hits += 3; k.shots += 6; v.deaths++; v.streak = 0; v.status = 'down'; v.respawn_in_s = this.config.respawn.delay_s;
     // F116: `best_streak` is the longest of the match and NEVER resets — `streak` is 0 for whoever
     // died last, which is what made a 9-kill row read "streak 0" on the field.
     k.best_streak = Math.max(k.best_streak ?? 0, k.streak);
@@ -754,6 +785,10 @@ export class MockBackend implements Api {
         accuracy: null, kd: 0, streak: 0, medals: [], status: d[6] === 'stale' ? 'stale' : 'alive', sync_age_ms: d[7] * 1000,
         respawn_in_s: null };
     });
+    // F208: one player's gun has gone quiet, so ?mock shows the grey GUN SILENT cue. Its age counts up
+    // each tick and the claim clears the moment that player kills or dies (their gun spoke).
+    const quiet = rows.find(r => r.status === 'alive');
+    if (quiet) { quiet.pool_stale = 'silent'; quiet.pool_stale_ms = 190_000; }
     this.live_ = { rows, feed: [], go_live_t: s.go_live_t, match_id: s.match_id }; this.endedAt = undefined;
     this.feed({ t_match_s: 0, text: `MATCH LIVE — ${rows.length} NODES SPAWNED`, kind: 'sync', tag: 'SYNC POINT' });
   }
@@ -845,6 +880,7 @@ export class MockBackend implements Api {
    *  refusal is a 409 carrying WHO is not ready, so the console shows the server's list rather than
    *  its own guess — and the mock has to refuse the same way, or `?mock` proves nothing about it. */
   async setPhase(phase: string, force?: boolean) {
+    await this.rollFromRecap();          // leaving RECAP by the nav starts the next match (`state.py set_phase`)
     if (phase === 'lobby' && this.phase === 'kit' && !force) {
       const notReady = this.players.filter(p => !p.ready);
       if (notReady.length) {
@@ -938,19 +974,10 @@ export class MockBackend implements Api {
     // GAMES STEPPER, and that lock lives in `Games.tsx`, where it can explain itself. A mock stricter
     // than the server is the same defect in the other direction: a demo that refuses what the field
     // does every match.
-    // Round-2 fix pass (2026-09-12): RECAP is not a flat refusal on the real server. `state.py
-    // set_config` takes exactly ONE patch there — an explicit MODE — and rolls the finished session
-    // forward (`new_session(keep_roster=True)`, which lands in BUILD with the roster kept and the
-    // recap archived). That is the documented play-again path, and `?mock` has to predict it or the
-    // demo shows a console that cannot start the next match without throwing the roster away.
-    let rolled = false;
-    if (this.phase === 'recap') {
-      if (!partial.mode) {
-        throw Object.assign(new Error('match is over — pick a mode on Build (or press NEW MATCH) to roll the session; other config edits need a fresh session'), { status: 409 });
-      }
-      await this.newSession(true);
-      rolled = true;
-    }
+    // 2026-09-16: in RECAP, ANY config edit rolls the finished session forward (`state.py
+    // _roll_forward_from_recap`: roster kept, game kept, recap archived) and then applies. The old
+    // server took a MODE pick only; Tony: "why? just make a new one".
+    const rolled = await this.rollFromRecap();
     if (!(['muster', 'build', 'kit', 'lobby'] as Phase[]).includes(this.phase)) {
       throw Object.assign(new Error(`game settings are locked: the match is already in ${this.phase.toUpperCase()} — RECALL or END it first to edit the game again`), { status: 409 });
     }
@@ -1047,9 +1074,19 @@ export class MockBackend implements Api {
   async addPlayer(p: { display: string; team_id?: string; gun_id?: string; voice?: string }): Promise<Player> {
     const parked = p.gun_id && this.standby.find(x => (x.gun_id || '').toUpperCase() === p.gun_id!.toUpperCase());
     if (parked) throw new Error(`gun ${p.gun_id} is on standby with ${parked.display} - PLAY puts them back`);
+    const teams = this.config.teams ?? [];
+    if (p.team_id != null && !teams.some(t => t.team_id === p.team_id)) throw new Error(`unknown team_id '${p.team_id}'`);
+    // mirrors state.py add_player: an omitted team_id auto-balances onto the lightest declared team
+    // (a bare gamertag claim from ARMORY never asks the operator to pick a side -- F-armory-claim).
+    let teamId = p.team_id ?? null;
+    if (teamId == null && teams.length) {
+      const counts = new Map(teams.map(t => [t.team_id, 0]));
+      for (const q of this.players) if (counts.has(q.team_id ?? '')) counts.set(q.team_id!, (counts.get(q.team_id!) ?? 0) + 1);
+      teamId = teams.map(t => t.team_id).reduce((best, id) => (counts.get(id)! < counts.get(best)! ? id : best));
+    }
     const used = new Set(this.players.map(x => x.player_num));
     let n = 1; while (used.has(n)) n++;
-    const pl: Player = { player_id: uid('p'), player_num: n, display: p.display.toUpperCase(), team_id: p.team_id ?? null, node_id: null,
+    const pl: Player = { player_id: uid('p'), player_num: n, display: p.display.toUpperCase(), team_id: teamId, node_id: null,
       gun_id: p.gun_id ?? null, loadout: applyPolicy(this.config.loadout_policy, { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, this.pool(), PERKS), voice: p.voice ?? 'male', ready: false };
     this.players.push(pl); this.emit(); return clone(pl);
   }
@@ -1170,11 +1207,24 @@ export class MockBackend implements Api {
     if (this.phase === 'kit' && this.players.length && this.players.every(x => x.ready)) this.phase = 'lobby';
     this.emit(); return clone(p);
   }
+  /** Bench 2026-09-17: MARK ALL READY -- the roster-wide `host_override`, mirroring `state.py
+   *  ready_all()`. LOBBY only, `this.players` alone (STANDBY lives in `this.standby`, untouched),
+   *  and never touches acks or the config head. */
+  async readyAll() {
+    if (this.phase !== 'lobby') throw new Error('mark all ready only runs on LOBBY');
+    const readied: string[] = [];
+    for (const p of this.players) {
+      if (!p.ready) { p.ready = true; delete this.trying[p.player_id]; delete this.browsing[p.player_id]; readied.push(p.player_id); }
+    }
+    this.emit();
+    return { ok: true, readied };
+  }
   /** LOAD: announce the game, write no gun (`state.py load_game`). `pushed` stays FALSE. */
   async loadGame() {
     if (this.phase === 'armed' || this.phase === 'live') {
       throw new Error('cannot load a game once the match has started — ABORT or RECALL first');
     }
+    await this.rollFromRecap();          // a LOAD after the whistle loads the NEXT match
     const cfg = this.config.config_id;
     this.gameLoaded = true;
     // DELIVERY: only a player whose phone is actually connected is counted. The demo ships one
@@ -1183,6 +1233,22 @@ export class MockBackend implements Api {
     if (this.phase === 'muster') this.phase = 'build';
     this.emit();
     return { ok: true, config_id: cfg, sent: Object.keys(this.gameSent).length, total: this.players.length };
+  }
+
+  /** `state.py _roll_forward_from_recap` — in RECAP only: roster and game kept, back to muster. */
+  private async rollFromRecap() {
+    if (this.phase !== 'recap') return false;
+    await this.newSession(true);
+    return true;
+  }
+  /** `state.py next_match` — RECAP's NEXT MATCH ▸: roll, then LOAD the same game (lands on GAMES). */
+  async nextMatch() {
+    if (this.phase === 'armed' || this.phase === 'live') {
+      throw Object.assign(new Error(`the match is ${this.phase.toUpperCase()}: END it before starting the next one`), { status: 409 });
+    }
+    await this.rollFromRecap();
+    await this.loadGame();
+    return this.state();
   }
 
   /** `state.py sync_summary()` — the four pre-arm facts per player, with honest denominators. */
@@ -1195,7 +1261,13 @@ export class MockBackend implements Api {
       // the mock has no compiled bundles; a real push is what configures a gun, and its ack is the
       // proof of it, so both halves are read off the same push the demo models.
       gun_sent: this.pushed,
-      gun_acked: !!(this.acks[p.player_id]?.ok) && this.acks[p.player_id]?.config_id === cur,
+      gun_acked: this.pushed && !!(this.acks[p.player_id]?.ok) && this.acks[p.player_id]?.config_id === cur,
+      // `state.py _sync_ack_state`. The mock acks at the push itself, so `waiting` only shows for a
+      // bound phone with no ack yet; there is no timeout to model.
+      ack_state: (!this.pushed ? 'none'
+        : this.acks[p.player_id]?.ok && this.acks[p.player_id]?.config_id === cur ? 'acked'
+        : !p.node_id || this.acks[p.player_id]?.config_id === cur ? 'failed'
+        : 'waiting') as 'acked' | 'waiting' | 'failed' | 'none',
       // mirrors `state.py _echo_state`: NULL when there is no check to report at all (nothing pushed,
       // or no ack for THIS config). A demo that reported `not_echoed` there would be inventing a
       // check that never ran, which is what the console must never render.
@@ -1217,6 +1289,7 @@ export class MockBackend implements Api {
   }
 
   async pushLobby(force?: boolean) {
+    await this.rollFromRecap();          // a push after the whistle is for the NEXT match
     const rf = this.rosterFault();
     if (rf) throw new Error(rf);          // round-2 B: not a readiness judgement, so `force` does not open it
     // A37: the three A36 proofs all SAY "RE-PUSH" and are cured by this very call, so they do not
@@ -1305,6 +1378,65 @@ export class MockBackend implements Api {
     this.emit();
     return { ok: true, ended: true, reached: nodes, pushed: nodes, nodes, phase: this.phase };
   }
+  /** (player_id, cmd) -> ms of the last accepted send: `state.py OPERATOR_REPEAT_MS`, the double-tap guard. */
+  private opSent: Record<string, number> = {};
+  /** A47: `state.py operator_action`, with the same refusals, so `?mock` is never more permissive than MC.
+   *  The demo phone answers with an `operator_result` a moment later (`_on_operator_result`). */
+  async operatorAction(player_id: string, cmd: OperatorCmd, match_id: string): Promise<OperatorActionResult> {
+    const refuse = (msg: string, status = 409) => { throw Object.assign(new Error(msg), { status, body: { error: msg } }); };
+    if (!['resync', 'respawn', 'relink'].includes(cmd)) refuse(`unknown operator action '${cmd}'`, 400);
+    const current = this.live_?.match_id ?? this.start_?.match_id;
+    if (!['armed', 'live'].includes(this.phase) || !current) refuse(`no match is ARMED or LIVE (phase ${this.phase.toUpperCase()})`);
+    if (!match_id || match_id !== current) refuse('that match is over: the board was stale. Look at the player again');
+    const word = cmd.toUpperCase();
+    if (cmd !== 'relink' && this.phase !== 'live') refuse(`${word} NEEDS A LIVE MATCH: the phone refuses it before T-0`);
+    const p = this.players.find(x => x.player_id === player_id);
+    if (!p) return refuse('unknown player', 400);
+    const who = p.display.toUpperCase();
+    const row = this.live_?.rows.find(r => r.player_id === player_id);
+    if (cmd === 'respawn' && this.config.respawn.type === 'none' && row?.status === 'down') {
+      refuse(`${who} IS OUT: THIS MODE HAS NO RESPAWN, SO FORCE RESPAWN WOULD CHANGE WHO SURVIVES`);
+    }
+    if (!p.node_id || (row && row.status === 'stale')) refuse(`${who}'S PHONE IS OUT OF REACH: nothing was sent`);
+    const key = `${player_id}|${cmd}`, t = now();
+    if (this.opSent[key] != null && t - this.opSent[key] < 2000) refuse(`${word} WAS JUST SENT TO ${who}: wait for the phone`);
+    this.opSent[key] = t;
+    const tm = () => (this.live_ ? Math.max(0, Math.floor((now() - this.live_.go_live_t) / 1000)) : 0);
+    if (row) row.operator = { cmd, state: 'sent', why: null, sent_t: t, result_t: null };
+    this.feed({ t_match_s: tm(), kind: 'alert', tag: 'OPERATOR', text: `SENT ${word} TO ${who}` });
+    this.emit();
+    setTimeout(() => {
+      const r = this.live_?.rows.find(x => x.player_id === player_id);
+      if (!r || this.live_?.match_id !== match_id || r.operator?.sent_t !== t) return;
+      if (cmd === 'respawn') { r.status = 'alive'; r.respawn_in_s = null; }
+      r.operator = { cmd, state: 'done', why: null, sent_t: t, result_t: now() };
+      this.feed({ t_match_s: tm(), kind: 'alert', tag: 'OPERATOR',
+                  text: cmd === 'respawn' ? `RESPAWNED ${who} (OPERATOR)` : `${word} DONE: ${who}` });
+      this.emit();
+    }, 1200);
+    return { ok: true, cmd, player_id, match_id, pushed: true };
+  }
+  async resumeOrphan(match_id: string) {
+    if (!this.orphan_ || this.orphan_.match_id !== match_id) {
+      throw Object.assign(new Error('no phone reports that match any more'), { status: 409 });
+    }
+    if (!['muster', 'build', 'kit', 'lobby'].includes(this.phase) || this.start_) {
+      throw Object.assign(new Error(`MC is in ${this.phase.toUpperCase()}: end or leave that first, then resume their match`), { status: 409 });
+    }
+    this.orphan_ = null;
+    this.schedule(0, 1, match_id);
+    this.goLive();
+    this.emit();
+    return this.state();
+  }
+  async endOrphan(match_id: string) {
+    if (!this.orphan_ || this.orphan_.match_id !== match_id) {
+      throw Object.assign(new Error('no phone reports that match any more'), { status: 409 });
+    }
+    this.orphan_ = null;
+    this.emit();
+    return this.state();
+  }
   async matchHistory() { return clone(this.history_); }
   async getRecap() { if (!this.recap_) throw new Error('no recap yet'); return clone(this.recap_); }
   recapCsvUrl() { return this.csvOf(this.recap_); }
@@ -1319,7 +1451,7 @@ export class MockBackend implements Api {
     this.phase = 'muster'; this.pushed = false; this.acks = {}; this.start_ = undefined; this.live_ = undefined; this.recap_ = undefined; this.endedAt = undefined;
     this.gameLoaded = false; this.gameSent = {};
     this.session_id = uid('sess');
-    this.restoredFrom = null;   // F142: FRESH SESSION is the acknowledgment — a restored banner never lingers
+    this.restoredFrom = null;   // F142: NEW SESSION, CLEAR ROSTER is the acknowledgment — a restored banner never lingers
     if (!keep_roster) this.players = []; else for (const p of this.players) p.ready = false;
     this.emit(); return this.state();
   }

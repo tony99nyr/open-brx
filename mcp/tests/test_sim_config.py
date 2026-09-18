@@ -88,7 +88,7 @@ def test_gset_outdoor_token2():
     It was written to pin "the venue drives token 2", which turned out to be the 2026-09-12 field
     failure: at t2=1 the RECEIVING gun barely registers hits (a full clip at 30 ft landed nothing),
     and an outdoor venue was the only thing that sent 1. Inverted into a guard so the old behaviour
-    cannot come back quietly. See docs/HANDOFF-gset-t2-2026-09-13.md."""
+    cannot come back quietly. See docs/archive/HANDOFF-gset-t2-2026-09-13.md."""
     ind = _toks(_find(GameConfig(outdoor=False).setup_frames(), "$GSET,")[0])
     out = _toks(_find(GameConfig(outdoor=True).setup_frames(), "$GSET,")[0])
     assert ind[2] == "0" and out[2] == "0", (

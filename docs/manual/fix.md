@@ -168,7 +168,7 @@ community)**
 |---|---|---|
 | Pushed game config (weapon, health pools, team) | Yes. Reconnect, re-spawn, reload, and it plays on with the config intact | No. The gun boots live with nothing loaded, so the whole head must be sent again |
 | Alive/dead status and ammo count | Yes (the gun keeps counting) | No |
-| Indoor/outdoor mode (ALT 3 s) | Yes | Yes |
+| Indoor/outdoor mode (ALT at power-on) | Yes | Yes |
 | On-gun menu settings (lives, time, respawn, volume) | Yes | Yes. They are remembered per game mode |
 | Owner-assigned gun name | Yes | Yes (advert refreshes at boot) |
 | Headset pairing (PIN) | Yes | Yes, but the gun needs the headset re-linked before Bluetooth will hold |
@@ -195,9 +195,12 @@ When the gun fires but nothing lands, nothing is heard, or nothing lasts.
 3. **Bright sunlight?** → The gun's hit radius shrinks by about half in full sun, because of IR
    noise filtering. Range is best in shade and at night. Typical max is ~600 ft in good
    conditions.
-4. **Wrong indoor/outdoor mode?** → Hold ALT for 3 s to toggle it. The setting survives power
-   cycles. Outdoor mode roughly doubled aim tolerance on three guns, while native shots reached
-   about 200 ft in both states. The field test found no emitted-range change.
+4. **Wrong indoor/outdoor mode?** → During the gun's native configuration step, at power-on,
+   press ALT quickly in succession to toggle it. The setting survives power cycles. Outdoor mode
+   roughly doubled aim tolerance on three guns, while native shots reached
+   about 200 ft in both states. The field test found no emitted-range change. Check which mode
+   is currently set by watching the green hit LED on a hit: dimmer means indoor, full brightness
+   means outdoor. Compare against a gun whose mode you already know.
 5. **Is the scope sighted?** → Boot in target mode (hold LEFT at power-on: yellow team, 0 damage,
    unlimited ammo). Direct hits flash the target green. Sight indoors at ~20 ft and outdoors at
    ~300 ft. Snipers want 300–400 ft; shotgun and SMG want 50–100 ft.

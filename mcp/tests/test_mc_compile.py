@@ -89,7 +89,7 @@ def test_spawn_shape():
     assert any(f.startswith("$AMMO,0,") for f in sp) and any(f.startswith("$AMMO,1,") for f in sp)
 
 
-def test_revive_is_spawn_plus_ammo_no_bmap_no_hloop():
+def test_revive_is_spawn_plus_ammo_plus_trigger_no_hloop():
     b = C.compile(_cfg(), _player(), _TEAMS)
     rv = b["revive"]
     # F121/A23: the real table leads a revive too -- `engine.js _resyncNotLive` re-writes the (disarmed)
@@ -100,8 +100,10 @@ def test_revive_is_spawn_plus_ammo_no_bmap_no_hloop():
     rv = rv[len(sir):]
     assert rv[0] == "$SPAWN,,*"
     assert rv[1] == "$TID,1,*", "F206: the team is re-asserted right after every $SPAWN"
-    assert all(f.startswith("$AMMO,") for f in rv[2:])          # A11.6: dark headset in play -> no $HLED tail; A11.7: no $GLED here
-    assert not any(f.startswith("$BMAP") for f in rv), "revive must not re-map buttons"
+    # Bench 2026-09-16: the head holds the trigger, so the revive maps it again (a live resync re-writes the head)
+    assert rv[-1] == "$BMAP,0,0,,,,,*"
+    assert all(f.startswith("$AMMO,") for f in rv[2:-1])          # A11.6: dark headset in play -> no $HLED tail; A11.7: no $GLED here
+    assert [f for f in rv if f.startswith("$BMAP")] == ["$BMAP,0,0,,,,,*"], "revive maps only the trigger"
     assert not any("HLOOP" in f for f in rv), "revive drops $HLOOP,0,0 (belongs in end)"
 
 
@@ -1010,8 +1012,8 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
     # was dropping about half its shots at 10 m -- but it also erased the only thing distinguishing the
     # Shotgun from a slow rifle, because that range knee is decorative for most weapons anyway (F231:
     # everything 55-100 sits on one flat shelf). The Shotgun's real identity has to come from the headset
-    # word's OWN reach (t13/t42, F254), a genuine close-range bonus, not from a magazine buff bought
-    # without believing the number. F254's bench (needs outdoor space, approved, not yet run) decides it.
+    # word's OWN reach (t13/t42, F275), a genuine close-range bonus, not from a magazine buff bought
+    # without believing the number. F275's bench (needs outdoor space, approved, not yet run) decides it.
     # Do not raise the Shotgun's `mag` and do not touch the AMR to clear this.
     # ✅ EMPTY, AND THAT IS THE POINT (2026-09-18). It briefly held ("amr", "shotgun"): taking the
     # Shotgun's t2 off F231's unstable band fixed its reliability and cost it the only thing that
@@ -1535,31 +1537,35 @@ def test_stun_ships_the_emp_row_only_when_the_config_asks():
     manufacturing a fake `$HIR` every 5.07 s until the next `$SPAWN`, so a stunned player was told they
     were being shot by nobody for the rest of the life. fn 23 is the real primitive, measured the same
     session: live accuracy 100 -> 0 in the same millisecond as the `$HIR`, no pool moves, the gun still
-    fires but every shot misses, and it recovers on its own. Tony calls it a flashbang rather than a
-    stun, which is the better name for it.
+    fires but every shot misses, and it recovers on its own. Tony calls it smoke rather than a stun,
+    which is the better name for it.
 
-    F121/A23 moved the LIVE table out of the head and into the spawn burst, so the stun row is asserted
-    where it now lands. The head's copy of the cell is a disarmed fn-28 registrar in both cases -- a
+    F121/A23 moved the LIVE table out of the head, and F209 moved it again, into the `sir_pool` take the node
+    writes once the gun can fire, so the stun row is asserted where it now lands. The head's copy of the cell is a disarmed fn-28 registrar in both cases -- a
     countdown EMP must not stun either."""
     from brx_mcp.mc.compile import _STUN_SIR_ROW
     from brx_mcp.gameconfig import _SIR_TABLE
     # CONTROL: no stun -> the stock table, in stock order, untouched
     b = C.compile(_cfg(), _player(), _TEAMS)
-    assert _sir_fn(b["spawn"]) == 1, "stock: the charge rifle's plain damage (fn 1 since F225, 2026-09-17)"
-    assert [f for f in b["spawn"] if f.startswith("$SIR,")] == list(_SIR_TABLE)
+    # A44 (ours): the spawn write carries the fn-28 twin table; the REAL table is the `sir_pool` take.
+    assert _sir_fn(b["sir_pool"][0]) == 1, "stock: the charge rifle's plain damage (fn 1 since F225, 2026-09-17)"
+    assert [f for f in b["sir_pool"][0] if f.startswith("$SIR,")] == list(_SIR_TABLE)
     assert _sir_fn(b["head"]) == 28, "F121: the head's copy of the cell moves no pool"
     # stun on -> fn 23 on the SAME cell, in the SAME position, nothing else moved
     on = C.compile(dict(_cfg(), stun={"duration_s": 10}), _player(), _TEAMS)
-    rows_on = [f for f in on["spawn"] if f.startswith("$SIR,")]
-    assert _sir_fn(on["spawn"]) == 23
-    assert _sir_fn(on["head"]) == 28, "F121: a countdown EMP must not flashbang anyone pregame either"
+    # The carrier is A44's `sir_pool` take, not the spawn write: a player inside spawn protection cannot
+    # be smoked before their gun can answer, so the spawn write carries the disarmed fn-28 twin.
+    rows_on = [f for f in on["sir_pool"][0] if f.startswith("$SIR,")]
+    assert _sir_fn(on["sir_pool"][0]) == 23
+    assert _sir_fn(on["head"]) == 28, "F121: a countdown EMP must not smoke anyone pregame either"
+    assert _sir_fn(on["spawn"]) == 28, "A44: the spawn write is the twin, so protection covers the EMP too"
     assert rows_on.index(_STUN_SIR_ROW) == list(_SIR_TABLE).index("$SIR,8,0,,1,0,0,1,,*"), "in place, not appended"
     assert [r for r in rows_on if not r.startswith("$SIR,8,0,")] == [r for r in _SIR_TABLE if not r.startswith("$SIR,8,0,")]
     assert "$SIR,8,0,,23,0,0,1,,*" in rows_on and _STUN_SIR_ROW.split(",")[3] == "", "the sound token stays EMPTY (F43: never invent a sound id)"
     assert not ({int(r.split(",")[4]) for r in rows_on if r.split(",")[4].isdigit()} & {24, 25, 26, 27}), \
         "F253: the phantom family must not reach ANY shipped table"
     # `{}` is the 10 s default and still ships the row
-    assert _sir_fn(C.compile(dict(_cfg(), stun={}), _player(), _TEAMS)["spawn"]) == 23
+    assert _sir_fn(C.compile(dict(_cfg(), stun={}), _player(), _TEAMS)["sir_pool"][0]) == 23
 
 
 def test_stun_row_rides_every_sir_pool_take_too():

@@ -42,7 +42,7 @@ def test_gset_token2_is_zero_indoors_and_outdoors():
         assert _t2(cfg) == "0", (
             f"$GSET t2 shipped {_t2(cfg)!r} with outdoor={outdoor}. It must be 0 at BOTH venues: "
             "t2=1 cripples hit reception on the receiving gun (field 2026-09-13). "
-            "See docs/HANDOFF-gset-t2-2026-09-13.md"
+            "See docs/archive/HANDOFF-gset-t2-2026-09-13.md"
         )
 
 

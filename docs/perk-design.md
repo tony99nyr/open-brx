@@ -37,9 +37,9 @@ Body Armor was a strict upgrade: +570 to +1500 ms of extra survival on every lif
 convenience perks paid nothing at all on a life with no reload and no swap. A perk that is always on
 and never costs anything is not a choice.
 
-Easy Reload is not in this document. It **moves** to the per-player accessibility block, which is a
-decided but unshipped part of S50: today it still sits in the perk slot (`perks.json`). It exists
-because Tony's daughter cannot work the reload lever, so it must never compete with a balance pick.
+Easy Reload is not in this document. It **moved** to the per-player accessibility block (S50, shipped
+2026-09-17): it is `loadout.overrides.easy_reload` now, not a row in `perks.json`. It exists because
+Tony's daughter cannot work the reload lever, so it must never compete with a balance pick.
 
 ## 2. The core set
 
@@ -174,12 +174,13 @@ stations, because station adverts are already broadcast openly to every phone.
 5. **How big is the Motion Tracker's bubble?** The RSSI threshold was tuned for walking up to a
    station, not for a fight. Measure it between two phones before the perk ships, and retune the
    threshold and the dwell for players. If the bubble is small, the perk is a trap pick.
-6. **The preset-aware branch** §2 asks for: under the Shields preset, Body Armor must compile to shield
-   rather than armour. `armed_armor()` is preset-blind today, so a Body Armor pick there takes the pool
-   from 150 to 200 AND adds a drain step the preset was designed without. Tracked in S50, not built.
-7. **The catalogue still ships the old numbers.** `perks.json` reads `max_armor_add: 50` and copy that
-   promises "50 extra armor". Everything in §2 is decided and unbuilt, exactly like the Easy Reload
-   move. Read the document as the target, and the file as what a gun gets today.
+6. **The preset-aware branch is built** (S50, shipped 2026-09-17). `armed_armor()` takes a `shields`
+   flag from `is_shields_preset()`, and under that preset it hands the grant to `armed_shield()` rather
+   than adding an armour layer the preset was designed without. Both ends floor at 0, which a cost perk
+   with a negative grant needs.
+7. **The catalogue caught up.** `perks.json` now reads `max_armor_add: 25` and copy that promises "25
+   extra armor", matching §2's decision. The Easy Reload move (above) shipped too. What is left in §2
+   is the Motion Tracker bubble (point 5), which needs a measurement before it can ship at all.
 
 ## 6. Appendix: the working inventory
 

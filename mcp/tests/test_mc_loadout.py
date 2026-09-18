@@ -39,6 +39,9 @@ def mk(n=2, mode="tdm", compiler=None):
     s = Session(compiler or FakeCompiler(), net, FakeArmory(demo_armory()), now_ms=lambda: clock["t"])
     s.set_config({"mode": mode, "time_limit_s": 60})
     ps = [s.add_player(f"OP{i}", gun_id=f"GUN-{chr(65 + i)}") for i in range(n)]
+    # Adding a player never moves the phase (2026-09-17) -- reach KIT the way the operator does,
+    # with an explicit CONTINUE TO KIT, so the loadout picks below land in the open window.
+    s.set_phase("kit")
     return s, net, clock, ps
 
 
@@ -352,9 +355,12 @@ def test_compile_perk_effects():
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
     assert (_tok(f, 3), _tok(f, 4)) == ("4", "0")                        # compile._AP_CELL
     assert int(_tok(f, 5)) == next(r["ap_dmg"] for r in ROWS if r["weapon_id"] == "assault_rifle")
-    # empty slot 2 with no easy_reload override: ALT cycles to slot 0 only (never to the unloaded
-    # slot 1 — brx-opus review); a real secondary keeps the stock 0↔1 cycle.
-    assert "$BMAP,1,100,0,0,99,99,*" in base["head"] and "$BMAP,1,100,0,1,99,99,*" not in base["head"]
+    # Empty slot 2 with no easy_reload override: ALT is fn 98, the inert one. The 2026-08-27 review had
+    # it cycle to slot 0 only, on the reasoning that a cycle with one target is a no-op; the bench
+    # disproved that on 2026-09-17 (match 592e444eff, Tony: "the alt button is reloading the charge
+    # rifle"), because fn 100 with nothing to cycle to falls back to RELOADING. A real secondary keeps
+    # the stock 0<->1 cycle.
+    assert "$BMAP,1,98,,,,,*" in base["head"] and not any(f.startswith("$BMAP,1,100") for f in base["head"])
     two = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}]}), _TEAMS)
     assert "$BMAP,1,100,0,1,99,99,*" in two["head"]
     # S50: Easy Reload is `loadout.overrides.easy_reload` now, not a perk -- ALT button = reload.
@@ -862,6 +868,19 @@ def test_weapon_view_htk_ttk_caution():
     # 2026-09-17 (F229) because it overheats after about 30 rounds and only a HELD reload lever clears
     # the lockout, which reads as a broken gun to a player who does not know it.
     assert "overheat" in views["energy_rifle"]["caution"].lower(), views["energy_rifle"]
+    # A48 (merge 2026-09-17): `rounds_per_charge` must reach the node, because the phone HUD's
+    # NOT ENOUGH ENERGY line reads the real cost of one full charge instead of a hard-coded 10.
+    # It rides both shapes -- `Weapon` (contracts §3, what `assign.catalog` carries) and `WeaponView`.
+    assert views["charge_rifle"]["rounds_per_charge"] == 10, views["charge_rifle"]
+    assert C.catalog._to_weapon(C.catalog._row("charge_rifle"))["rounds_per_charge"] == 10
+    # Review finding (2026-09-13): the field used to ride on ABSENCE meaning "does not charge", which
+    # made the same "not set" state mean two different things once a cell weapon could legitimately
+    # cost 1 round a charge. `WeaponCatalog.rounds_per_charge()` and `weapon_view()` now always resolve
+    # the catalogue's absent-means-1 row to a concrete integer, so an ordinary weapon reads 1, not absent.
+    assert views["assault_rifle"]["rounds_per_charge"] == 1, views["assault_rifle"]
+    # And the class is on every row, so the HUD never has to read an energy weapon out of its id.
+    assert views["energy_rifle"]["weapon_class"] == "energy"
+    assert views["assault_rifle"]["weapon_class"] == "ballistic"
     # the phone gets the same rows in assign.catalog, cautions included
     s, net, clock, ps = mk(1, compiler=C)
     online(s, net, clock, ps[0], 0)

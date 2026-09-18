@@ -55,7 +55,7 @@ def test_station_config_is_an_mc_kind_on_both_ends_of_the_wire():
         raise AssertionError("station_config without an id was accepted")
     except E.EnvelopeError as e:
         assert e.reason == "missing_field", e.reason
-    # MC_KINDS is generated (contract-DRY, docs/archive/spec-contract-dry-2026-09-12.md §4): envelope.js re-exports it from
+    # MC_KINDS is generated (contract-DRY; mcp/tools/gen_contract.py): envelope.js re-exports it from
     # contract.gen.js rather than defining it literally, so the parity check reads the generated file.
     js = (REPO / "app/src/transport/contract.gen.js").read_text(encoding="utf-8")
     m = re.search(r"export const MC_KINDS = new Set\(\[(.*?)\]\);", js, re.S)
@@ -543,6 +543,94 @@ def test_a_late_fact_after_end_keeps_the_stations_rows_in_the_recap():
     s.net.simulate_event(p["node_id"], {"type": "hit_taken", "shooter_num": 0, "shooter_team": 0, "dmg": 9, "t": s.now_ms(), "match_id": s.scorer.match_id}, s.now_ms())
     assert s.phase == "recap"
     assert s.last_recap.get("stations") == [{"node_id": "util-1", "kind": "respawn", "id": 1, "team": 1, "heard": True, "revives": 2}], s.last_recap.get("stations")
+
+
+def test_a_late_fact_after_a_roll_keeps_match_1s_stations_not_match_2s():
+    """F206 (review 2026-09-16): `_ingest_retired` re-took match 1's recap with `_scorer_recap`, which
+    reads `self.stations` LIVE. Once the operator rolled to match 2 and the station heartbeat moved on,
+    a late match-1 fact rewrote match 1's archive row with match 2's station report. The rows must be
+    frozen at `_finish` and reused for a retired scorer."""
+    s = _joined(_sess(respawn={"type": "scanner", "delay_s": 15}))
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 1})
+    s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False,
+                                     "role": "utility", "kind": "respawn", "station_id": 1, "armed": True,
+                                     "revives": 2}, s.now_ms())
+    s.push_config(force=True)
+    s.start(runway_s=3, force=True)
+    mid1 = s.scorer.match_id
+    p = next(pl for pl in s.players.values() if pl.get("node_id"))
+    t_kill = s.now_ms()
+    s.control("end")
+    assert s.last_recap["stations"][0]["revives"] == 2, "CONTROL: match 1 ended on 2 revives"
+    s.next_match()   # roll forward, roster + game kept, match 1 retired
+    # match 2's station heartbeat moves on to a different count
+    s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False,
+                                     "role": "utility", "kind": "respawn", "station_id": 1, "armed": True,
+                                     "revives": 9}, s.now_ms())
+    # a fact for match 1, flushed late from the phone's outbox
+    s.net.simulate_event(p["node_id"], {"type": "hit_taken", "shooter_num": 0, "shooter_team": 0, "dmg": 9,
+                                        "t": t_kill, "match_id": mid1}, s.now_ms())
+    rows = s._ended[mid1]["recap"]["stations"]
+    assert rows == [{"node_id": "util-1", "kind": "respawn", "id": 1, "team": 1, "heard": True, "revives": 2}], rows
+
+
+def test_a_late_fact_in_recap_before_any_roll_keeps_the_frozen_stations():
+    """Review 2026-09-16: `_restore_recap` and `recap()` called `_scorer_recap(self.scorer)` with no frozen
+    rows while still in RECAP, before any roll -- so they read the CURRENT stations, not the ones frozen at
+    the whistle. The operator can set/clear/release stations in RECAP -- match 2's setup -- and that must
+    not leak into match 1's still-open debrief, no roll required. (A heartbeat whose assignment is
+    UNCHANGED is a different case, and IS allowed to land late -- see
+    `test_a_same_assignment_late_station_heartbeat_in_recap_lands` below.)"""
+    s = _joined(_sess(respawn={"type": "scanner", "delay_s": 15}))
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 1})
+    s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False,
+                                     "role": "utility", "kind": "respawn", "station_id": 1, "armed": True,
+                                     "revives": 2}, s.now_ms())
+    s.push_config(force=True)
+    s.start(runway_s=3, force=True)
+    p = next(pl for pl in s.players.values() if pl.get("node_id"))
+    t_kill = s.now_ms()
+    s.control("end")
+    assert s.phase == "recap"
+    assert s.last_recap["stations"][0]["revives"] == 2, "CONTROL: match ended on 2 revives"
+    # still in RECAP -- no roll -- the operator reassigns the station for match 2 (a new id)
+    s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 2})
+    s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False,
+                                     "role": "utility", "kind": "respawn", "station_id": 2, "armed": True,
+                                     "revives": 9}, s.now_ms())
+    frozen = [{"node_id": "util-1", "kind": "respawn", "id": 1, "team": 1, "heard": True, "revives": 2}]
+    # the `recap()` accessor must not pick up the reassigned heartbeat either, with no late fact at all
+    assert s.recap()["stations"] == frozen, s.recap()["stations"]
+    # a fact for the finished match, flushed late from the phone's outbox, while still in RECAP
+    s.net.simulate_event(p["node_id"], {"type": "hit_taken", "shooter_num": 0, "shooter_team": 0, "dmg": 9,
+                                        "t": t_kill, "match_id": s.scorer.match_id}, s.now_ms())
+    assert s.last_recap["stations"] == frozen, s.last_recap["stations"]
+
+
+def test_a_same_assignment_late_station_heartbeat_in_recap_lands():
+    """F206 addendum, 2026-09-17: utility.md §5c/§5d.6 -- a station is self-authoritative and "reports ...
+    to MC when it is next in Wi-Fi range". A station out of coverage at the whistle must not be stuck
+    showing `heard: False` (or a stale count) forever just because `_finish` froze the row -- as long as
+    its ASSIGNMENT (node_id + kind + id) has not moved on to a NEXT match, its late heartbeat must update
+    the frozen row and the archive row, same as a late scoring fact does."""
+    s = _joined(_sess(respawn={"type": "scanner", "delay_s": 15}))
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 1})
+    s.push_config(force=True)
+    s.start(runway_s=3, force=True)
+    s.control("end")
+    assert s.phase == "recap"
+    assert s.last_recap["stations"] == [{"node_id": "util-1", "kind": "respawn", "id": 1, "team": 1,
+                                          "heard": False, "revives": None}], "CONTROL: never heard from this station yet"
+    # the station was out of Wi-Fi range at the whistle and only now reports in, SAME assignment
+    s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False,
+                                     "role": "utility", "kind": "respawn", "station_id": 1, "armed": True,
+                                     "revives": 4}, s.now_ms())
+    landed = [{"node_id": "util-1", "kind": "respawn", "id": 1, "team": 1, "heard": True, "revives": 4}]
+    assert s.recap()["stations"] == landed, s.recap()["stations"]
+    assert s.last_recap["stations"] == landed, s.last_recap["stations"]
 
 
 def test_a_player_phone_that_rehellos_as_utility_is_unbound_like_an_evict():

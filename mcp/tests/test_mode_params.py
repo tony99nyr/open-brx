@@ -1,7 +1,7 @@
 """A18 / E1 — `GameConfig.mode_params`: a mode's own rules, declared by its engine, validated by MC,
 carried on the wire, and READ by the engine instead of a literal.
 
-The gap it closes (docs/archive/mode-extensibility.md G1): the wire config had no slot for a mode's
+The gap it closes (docs/spec/modes.md §2.1, A18/E1): the wire config had no slot for a mode's
 parameters, so an objective mode could not be configured from Mission Control at all. Every test here
 carries a CONTROL: the same path with the knob absent, a mode that declares none, or the old CLI
 dataclass, so a pass proves the parameter did the work and not something that happened alongside it.

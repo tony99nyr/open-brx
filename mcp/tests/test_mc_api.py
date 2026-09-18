@@ -296,3 +296,20 @@ def test_standby_routes():
     c.post(f"/api/players/{pid}/standby")
     assert c.delete(f"/api/players/{pid}").json()["ok"]
     assert c.get("/api/state").json()["standby"] == []
+
+
+def test_match_next_rolls_a_recap_forward_and_loads_the_same_game():
+    """2026-09-16: RECAP's NEXT MATCH ▸. 409 while a match runs; in RECAP, the State comes back on GAMES
+    with the same game loaded and the roster kept."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net = _client()
+    c.put("/api/config", json={"mode": "ffa", "time_limit_s": 300})
+    c.post("/api/players", json={"display": "reaper", "gun_id": "GUN-A"})
+    s.phase = "live"
+    assert c.post("/api/match/next").status_code == 409
+    s.phase = "recap"
+    r = c.post("/api/match/next")
+    assert r.status_code == 200, r.text
+    st = r.json()
+    assert st["phase"] == "build" and st["game"]["loaded"] is True, st["phase"]
+    assert st["config"]["mode"] == "ffa" and st["config"]["time_limit_s"] == 300 and len(st["players"]) == 1

@@ -35,9 +35,9 @@ the per-piece sections below for what each test suite needs beyond that.
 
 The repo has several independently-testable pieces. Run the one you touched before opening a PR.
 
-**Everything at once:** `npm run test:all` from the repo root runs the unit gates of all four pieces in parallel
-(about 30 s). `npm run test:all -- --ui` adds the browser gates: `app` screens, moments, logsync and e2e, and the seven
-`webapp/mc` e2e scripts (about 2 min on a 32-core box, was about 30 min run one by one). Jobs start inside a memory budget: half the free memory, at most 8 GB (`MEM_BUDGET_MB=` overrides), and a job that runs past 10 min, or three times its typical time if that is longer, is killed (`JOB_TIMEOUT_S=` sets the 10 min). A second run in the same checkout waits for the first. `npm run test:all -- site mcp` runs only the jobs whose
+**Everything at once:** `pnpm run test:all` from the repo root runs the unit gates of all four pieces in parallel
+(about 30 s). `pnpm run test:all -- --ui` adds the browser gates: `app` screens, moments, logsync and e2e, and every
+`webapp/mc` e2e script (about 2 min on a 32-core box, was about 30 min run one by one). Jobs start inside a memory budget: half the free memory, at most 8 GB (`MEM_BUDGET_MB=` overrides), and a job that runs past 10 min, or three times its typical time if that is longer, is killed (`JOB_TIMEOUT_S=` sets the 10 min). A second run in the same checkout waits for the first. `pnpm run test:all -- site mcp` runs only the jobs whose
 names match, and `-- --list` prints the names. It builds `app/www` once first, gives every e2e script its own free
 ports, and writes one log per job (`scripts/test-all.mjs` states the parallel-safety rules it depends on).
 
@@ -81,7 +81,7 @@ in `docs/site/README.md` + `docs/site/FORMAT.md`:
 cd app && npm run build   # the landing embeds the real phone HUD; site/build.mjs fails without app/www
 cd site && npm run build && npm test
 ```
-`npm test` builds first, then runs the Playwright suite (~90 browser steps). That suite is the UI
+`npm test` builds first, then runs the Playwright suite over two projects, desktop and phone. That suite is the UI
 verification checklist for the generated site and refuses to run against a stale build, so always let
 it build rather than reusing an old `webapp/`. **The generated pages are git-ignored** (`.gitignore`):
 a push to `main` deploys the site, and Cloudflare rebuilds it itself (`wrangler.toml`'s `[build]` runs

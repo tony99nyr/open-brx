@@ -3,12 +3,15 @@
 // Every one of them was found by a person looking at a screen. None of them needed hardware, a
 // server, or a browser to catch (W5, handoff-post-first-match).
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Armed } from '../src/screens/Armed';
 import { Armory } from '../src/screens/Armory';
 import { Catalog } from '../src/screens/Catalog';
 import { Designer } from '../src/screens/Designer';
 import { Kit } from '../src/screens/Kit';
+import { Lobby } from '../src/screens/Lobby';
 import { Recap } from '../src/screens/Recap';
 import { CommandBar } from '../src/frame/CommandBar';
+import { MockBackend } from '../src/mock/backend';
 import { counted, demo, makeStore, mount, mountScreen, starved } from './harness';
 import { StoreCtx } from '../src/store';
 import { isRoutableLanIp } from '../src/api/derive';
@@ -27,6 +30,20 @@ describe('the command bar labels every view', () => {
     // (2026-09-02), so assert what the bar is FOR: it still renders, and still offers the nav.
     expect(m.text()).toMatch(/MISSION CONTROL/);
     expect(m.text()).toMatch(/ARMORY/);
+    m.unmount();
+  });
+
+  it('carries no RECAP-only NEW SESSION control any more', async () => {
+    // Bench 2026-09-17 (Tony): picking a game and pressing LOAD after a match already starts the next
+    // one (A43), and RECAP's own NEXT MATCH ▸ covers the one-tap case, so the command bar's separate
+    // NEW SESSION control was redundant. It is gone; only Armory's restored-roster banner still offers
+    // a NEW SESSION control, and that is a different button on a different screen.
+    const d = await demo();
+    const state = { ...d.state, phase: 'recap' as State['phase'] };
+    const m = await mountScreen(<CommandBar />, { ...d, state, view: 'recap' });
+    const btn = m.find('button').find(b => (b.textContent ?? '').includes('NEW SESSION'));
+    expect(btn, 'the command bar must not offer NEW SESSION any more').toBeFalsy();
+    expect(m.text().toUpperCase()).not.toContain('ROSTER KEPT');
     m.unmount();
   });
 
@@ -65,6 +82,38 @@ describe('the runway outlives a tab switch', () => {
       const mod = await import('../src/runway');
       expect(mod.getRunway()).toBe(want ?? mod.DEFAULT_RUNWAY);
     }
+  });
+});
+
+describe('the countdown length picker shows only before arming (F160, bench 2026-09-17)', () => {
+  it('LOBBY shows the countdown picker only once every gun has acked the push', async () => {
+    // Bench 2026-09-17 (Tony): during the PUSH CONFIG step the picker was noise. It appears when
+    // ARM COUNTDOWN is the next action.
+    const api = new MockBackend();
+    const before = await api.getState();
+    const m1 = await mount(<StoreCtx.Provider value={makeStore({ state: { ...before, lobby: { ...before.lobby, pushed: false, acks: {}, all_acked: false } }, view: 'lobby' }, { api })}><Lobby /></StoreCtx.Provider>);
+    expect(m1.find('select[aria-label="countdown length"]').length, 'no picker before the push').toBe(0);
+    m1.unmount();
+    // The positive case (pushed, every gun acked, ARM COUNTDOWN enabled, picker shown) runs in a real
+    // browser in app/tools/e2e.mjs, which picks 01:00 from this select right after the two acks land.
+  });
+
+  it('ARMED renders no countdown picker — only the read-only value the server armed', async () => {
+    // Real path, not a hand-built fixture: push, then start, the way the operator does.
+    const api = new MockBackend();
+    await api.pushLobby(true);
+    await api.start(90, true);
+    const state = await api.getState();
+    expect(state.start).toBeTruthy();   // the screen's real branch, not "NO SCHEDULE"
+    const store = makeStore({ state, view: 'armed' }, { api });
+    const m = await mount(<StoreCtx.Provider value={store}><Armed /></StoreCtx.Provider>);
+    // Before the fix, this was a live-looking Seg control that did nothing once armed — picking a
+    // different option never changed what RESCHEDULE actually sent (`shownRunway` always wins over
+    // the local pick). A picker that cannot act is worse than none: replace it with plain text.
+    expect(m.find('select[aria-label="countdown length"]').length).toBe(0);
+    expect(m.find('[role="group"]').length).toBe(0);
+    expect(m.find('[data-testid="armed-countdown-length"]')[0]?.textContent).toMatch(/01:30/);
+    m.unmount();
   });
 });
 
@@ -325,10 +374,10 @@ describe('exporting an archived match', () => {
 });
 
 describe('controls that must not fire twice', () => {
-  it('NEW MATCH disables itself in flight', async () => {
-    // `newSession()` rebuilds the whole session; a double-tap on a slow field LAN fired it twice and
+  it('NEXT MATCH disables itself in flight', async () => {
+    // The recap's primary rebuilds the whole session; a double-tap on a slow field LAN fired it twice and
     // the second landed on a session the first had already replaced. The ledger claimed this fix
-    // with no test behind it (review 2026-09-01).
+    // with no test behind it (review 2026-09-01). Since 2026-09-16 the primary is NEXT MATCH.
     const d = await demo();
     let release: (() => void) | null = null;
     const inFlight = new Promise<void>(r => { release = r; });
@@ -337,10 +386,10 @@ describe('controls that must not fire twice', () => {
       ...d, state: withLive(d.state), view: 'recap',
       api: {
         matchHistory: async () => [],
-        newSession: async () => { calls++; await inFlight; return d.state; },
+        nextMatch: async () => { calls++; await inFlight; return d.state; },
       },
     });
-    await m.click('NEW MATCH');
+    await m.click('NEXT MATCH');
     expect(calls).toBe(1);
     expect(m.text()).toContain('STARTING');
     const btn = m.find('button').find(b => /STARTING/.test(b.textContent ?? ''));
@@ -421,12 +470,12 @@ describe('the RECAP selection and its export error', () => {
     await m.click('· FFA');
     expect(m.text()).toContain('ARCHIVED MATCH');
 
-    // NEW MATCH: the session is rebuilt, the history is empty, and the phase moves — which is what
+    // NEW SESSION: the session is rebuilt, the history is empty, and the phase moves — which is what
     // re-runs the fetch. The selection now points at a match the server no longer lists.
     rows = [archived('m8', 'tdm')];        // m7 is gone; m8 remains so the picker still shows
     await m.update(render('muster'));
     expect(m.text(), 'a vanished selection must not still render as archived').not.toContain('ARCHIVED MATCH');
-    expect(m.text(), 'the live match must be fully in charge again').toContain('NEW MATCH');
+    expect(m.text(), 'the live match must be fully in charge again').toContain('NEXT MATCH');
 
     // The real symptom: the screen shows the LIVE recap while the picker highlights NOTHING, so the
     // operator cannot tell which match they are reading. THIS MATCH must be selected again.

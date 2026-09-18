@@ -51,9 +51,9 @@ contracts §3 `FrameBundle` fields like this:
 
 | bundle field | built from | contents / rules |
 |---|---|---|
-| `head` | `setup_frames()` **minus its trailing `$PLAYX,0` + `$PLAY,VA81`**, then the presentation paints, then `$TID,<player.team.tid>` | `$VOL,<play_volume(environment)>` → `$CLEAR` → `$START` → `$GSET` (**t2 pinned to 0 at every venue**) → **`$PSET,<player_num>,0,<HP>,<armor>,<shield>,…`** → `$WEAP` per loaded slot (melee in slot 4; `$WEAP,1` only when a secondary exists, A10.1) → `$SIR` ×n → `$BMAP` ×n (Easy Reload → `$BMAP,1,97`) → LED / headset pregame frames (A11.6/A11.7) → `$TID`. **Silent by construction and silent on the gun** (bench 2026-08-25 §7r). **Never contains `$SPAWN`.** |
+| `head` | `setup_frames()` **minus its trailing `$PLAYX,0` + `$PLAY,VA81`**, then the presentation paints, then `$TID,<player.team.tid>` | `$VOL,<play_volume(environment)>` → `$CLEAR` → `$START` → `$GSET` (**t2 pinned to 0 at every venue**) → **`$PSET,<player_num>,0,<HP>,<armor>,<shield>,…`** → `$WEAP` per loaded slot (melee in slot 4; `$WEAP,1` only when a secondary exists, A10.1) → `$SIR` ×n → `$BMAP` ×n (Easy Reload → `$BMAP,1,97`; the trigger row is held as `$BMAP,0,98` so nobody fires before T-0, bench 2026-09-16, UNVERIFIED on hardware) → LED / headset pregame frames (A11.6/A11.7) → `$TID`. **Silent by construction and silent on the gun** (bench 2026-08-25 §7r). **Never contains `$SPAWN`.** |
 | `spawn` | `["$PLAYX,0,*"] + spawn_frames()` | `$PLAYX,0` → `$SPAWN,,` → `$AMMO,<slot>,<mag>,<reserve>,1` per loaded slot (perk `ammo_mult` applied) → `$BMAP,0,0` → the headset team tail when `headset_team` (A11.2). The T-0 tail. |
-| `revive` | `["$SPAWN,,*"] + the $AMMO frames of spawn_frames()` | Respawn re-arm; explicit `$AMMO`s make the *reserve* loadout-correct after a mid-life reload. |
+| `revive` | `["$SPAWN,,*"] + the $AMMO frames of spawn_frames() + $BMAP,0,0` | Respawn re-arm; explicit `$AMMO`s make the *reserve* loadout-correct after a mid-life reload. The trigger row is there because a live resync re-writes the held head before it revives. |
 | `end` | `END_SEQUENCE` | `$SPAWN,,` → `$PLAYX,0` → `$STOP` → `$CLEAR` → `$HLOOP,0,0` → `$HLED,0,0,0,0,0,0` (revives a dead gun so it isn't stuck in death-glow, silences the spawn voice, blanks the headset; `$TID` untouched). The node then plays **`cues.game_over`** (A5.10). |
 | `panic` | `PANIC_SEQUENCE` | `$CLEAR,*` → `$SP,99,*` |
 | `team_flip?` | `$TID,<tid>` per other team | **infection** only: the frames that move *this* gun to the infected team on death. Node writes `team_flip[<tid>]` then `revive` and emits **`team_change{tid}`** (A5.8). A live `$TID` write flips hit resolution immediately (bench 2026-08-25). |
@@ -268,7 +268,7 @@ free-form `led` object for everything but the night blank.
 | **Night** | any / true | `$GLED,,,,5,,,*` + no `leds` bursts; the HUD blackout |
 
 `$GSET` t2 is pinned to 0 in every compiled head, tutorial and utility path. Field testing on 2026-09-13
-showed t2=1 cripples hit reception on the receiving gun; it is not the physical ALT-hold control. The theory
+showed t2=1 cripples hit reception on the receiving gun; it is not the gun's native ALT mode. The theory
 that t2=1 rejects reflected indoor shots is untested, so venue must not select it.
 
 `is_night_mode()` mirrors `gameconfig.is_night_mode`; `night` also drives the node's blackout HUD.
@@ -308,7 +308,7 @@ presentation.resolve(config)     -> rows for GET /api/presentation (A11.5)
 
 ## 8. Open questions
 
-- **Range** — `t41` reads 75 on every gun and was PROVEN INERT outdoors (F231, 2026-09-17). The real lever is `t2` `gunRangeOutdoor`, fed by `wire.range_outdoor_pct` and written outdoors only, with a floor of 13. See `../weapon-design.md` §4.2.
+- **Range** — `t41` reads 75 on every gun and was PROVEN INERT outdoors (F231, 2026-09-17): the firmware reads it only indoors, and only when it is itself non-zero. The lever we write is `t2` `gunRangeOutdoor`, fed by `wire.range_outdoor_pct` and written outdoors only, with a floor of 13. ⚠️ `t2` sets the emitter's CARRIER FREQUENCY, not its power (2026-09-18, `../../protocol/brx-protocol.md`), so the shipped values are uncalibrated. See `../weapon-design.md` §4.2.
 - **`$SIR` table: flatten to fn 1 or retune the five multiplied weapons** — `../weapon-design.md` §6.2, Tony's
   call; the Energy Launcher bug is fixed either way in the same commit.
 - **Voice per-slot map** beyond HEAVY — by ear or the `voice-profiles` endpoint (apk-harvest).

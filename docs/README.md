@@ -10,7 +10,7 @@ specified. Then **[`manual/`](manual/)**, the confirmed-facts manual the public 
 | **Running a match today** | [`field-runbook-mc.md`](field-runbook-mc.md) · [`field-process.md`](field-process.md) · [`field-issues.md`](field-issues.md) |
 | **Starting Mission Control on the dev box** (no hardware, no phones) | [`../mcp/brx_mcp/mc/README.md`](../mcp/brx_mcp/mc/README.md) → *Start it*: the one command, what it prints, the busy-port trap, served vs dev UI |
 | **Trying LEDs, sounds and events on ONE gun at the bench** | [`gun-stage.md`](gun-stage.md) (`python -m brx_mcp stage`) |
-| **Changing the code** | [`spec/README.md`](spec/README.md) → [`spec/contracts.md`](spec/contracts.md) · [`adr/`](adr/) · [`HANDOFF-dry-2026-09-13.md`](HANDOFF-dry-2026-09-13.md), the completed contract-DRY execution record; remaining F42 cleanup is tracked in [`FOLLOWUPS.md`](FOLLOWUPS.md) |
+| **Changing the code** | [`spec/README.md`](spec/README.md) → [`spec/contracts.md`](spec/contracts.md) · [`adr/`](adr/) · [`archive/HANDOFF-dry-2026-09-13.md`](archive/HANDOFF-dry-2026-09-13.md), the completed contract-DRY execution record; remaining F42 cleanup is tracked in [`FOLLOWUPS.md`](FOLLOWUPS.md) |
 | **An AI agent working on this repo** | `../CLAUDE.md` for hard rules + environment, then [`HANDOFF.md`](HANDOFF.md) |
 
 ## Status — three living files, one job each
@@ -32,7 +32,6 @@ Around them: **[`gotchas.md`](gotchas.md)** (field lore by symptom, plus the ben
 |---|---|
 | **[`game-test-2026-09-13.md`](game-test-2026-09-13.md)** | **the 2026-09-13 game test.** 2 players, 3 matches; eleven ids (F206-F216), four of them 🔴. Nine were root-caused from the MC store alone (it carries the compiled heads AND the phones' node logs) |
 | **[`evidence/2026-09-13-session-3782dc77/`](evidence/2026-09-13-session-3782dc77/)** | the sanitised MC store behind that sheet — compiled heads, gun echoes, event timeline, node logs, and the `extract.py` that rebuilds them |
-| **[`game-test-2026-09-11.md`](game-test-2026-09-11.md)** | **the 2026-09-11 game test.** Every issue from a 1v1 on two taggers, self-contained: symptom, evidence, mechanism, fix |
 | **[`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md)** | **the NEXT sitting.** The four readings still open (three of the original six were answered 2026-09-11), deliberately self-contained — run it without reading anything else |
 | [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) | the WHOLE queue, grouped by setup block. FOLLOWUPS §9 is the register (ids); this is the running order |
 | [`bench-grenade.md`](bench-grenade.md) | the grenade/hill rungs. Read its *What is answered* table first, then *Still to run* |

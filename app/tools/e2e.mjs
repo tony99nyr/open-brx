@@ -37,12 +37,27 @@ fs.rmSync(OUT, { recursive: true, force: true }); fs.mkdirSync(OUT, { recursive:
 const VISIBLE_WEAPONS = DEMO_WEAPONS.length;
 const PRIMARY_ALLOWED = DEMO_WEAPONS.filter(w => !w.pickup_only && w.lethal !== false).length;
 const SECONDARY_ALLOWED = DEMO_WEAPONS.filter(w => !w.pickup_only).length;
-for (const [label, n] of [['visible', VISIBLE_WEAPONS], ['primary pool', PRIMARY_ALLOWED], ['secondary weapons pool', SECONDARY_ALLOWED]]) {
-  if (n < 6) { console.error(`FATAL: derived arsenal ${label} collapsed to ${n} — DEMO_WEAPONS looks empty or mis-shapen`); process.exit(3); }
+// The PISTOLS counts read the same way, and `sidearm` is DESIGNER's own predicate for them
+// (Designer.tsx SlotEditor: `weapons.filter(w => w.tags.includes('sidearm'))` for the denominator,
+// the allowed rows for the numerator). One trigger moves all three sidearm gates at once — unhiding
+// the glock — and whoever does that will not open this file, so none of them may be typed.
+const SIDEARMS = DEMO_WEAPONS.filter(w => (w.tags ?? []).includes('sidearm'));
+const SIDEARM_IDS = SIDEARMS.filter(w => !w.pickup_only).map(w => w.weapon_id);
+const SIDEARM_NAMES = SIDEARMS.filter(w => !w.pickup_only).map(w => w.name);
+const SIDEARM_POOL = `SIDEARMS ONLY · ${SIDEARM_IDS.length} OF ${SIDEARMS.length} PISTOLS`;
+for (const [label, n, floor] of [['visible', VISIBLE_WEAPONS, 6], ['primary pool', PRIMARY_ALLOWED, 6],
+                                 ['secondary weapons pool', SECONDARY_ALLOWED, 6], ['sidearm pool', SIDEARM_IDS.length, 2]]) {
+  if (n < floor) { console.error(`FATAL: derived arsenal ${label} collapsed to ${n} — DEMO_WEAPONS looks empty or mis-shapen`); process.exit(3); }
 }
 const BASE_POOL = `${PRIMARY_ALLOWED} OF ${VISIBLE_WEAPONS}`;               // NO HEAVIES and OPEN both land here (primary)
 const AR_OFF_POOL = `${PRIMARY_ALLOWED - 1} OF ${VISIBLE_WEAPONS}`;         // one primary (Assault Rifle) tapped off
 const SECONDARY_WEAPONS_POOL = `${SECONDARY_ALLOWED} OF ${VISIBLE_WEAPONS} WEAPONS`;   // secondary slot, WEAPONS kind, OPEN rules
+/** A derived string is DATA, and data in a pattern position must be escaped, or the guard's meaning stops
+ *  being ours and becomes the catalogue's to change. Ship a weapon called `USP-S (Mk2)` or `Rail Gun [heavy]`
+ *  and an unescaped assertion does not fail: it quietly starts matching a pattern nobody wrote, which is the
+ *  same fault as a guard that reads text instead of behaviour. Returns `s` as a RegExp LITERAL. EVERY
+ *  `new RegExp(...)` built from catalogue-derived text in this file goes through here -- one helper, no copies. */
+const rxLit = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** A port from the environment, else a free one from the OS. Two runs in two worktrees must not share a port. */
 const freePort = () => new Promise((res, rej) => { const s = net.createServer(); s.unref(); s.on('error', rej); s.listen(0, () => { const { port } = s.address(); s.close(() => res(port)); }); });
 const envPort = async (name) => { const v = process.env[name]; if (v === undefined || v === '') return freePort(); const n = Number(v); if (!Number.isInteger(n) || n <= 0 || n > 65535) { console.error(`FATAL: ${name}=${v} is not a port`); process.exit(3); } return n; };
@@ -238,8 +253,8 @@ await step('scan armory from the UI → rows appear', async () => {
   await until(async () => (await mc.locator(`text=${guns[0].gun_id}`).count()) > 0, 8000, 'armory row rendered');
   await shot(mc, 'armory-scanned'); await tapAudit(mc, 'armory'); await textAudit(mc, 'armory');
 });
-await step('CONTINUE ▸ on Armory advances to GAMES — the GAMES screen renders (dead GO chip regression)', async () => {
-  await mc.click('button:has-text("CONTINUE ▸")');
+await step('the ARMORY gate (HARDWARE READY ▸, or what it waits for) advances to GAMES — the GAMES screen renders (dead GO chip regression)', async () => {
+  await mc.click('[data-testid="armory-gate"]');
   await until(async () => (await st()).phase === 'build', 6000, 'server phase build');
   await until(async () => (await mc.locator('button[aria-label="create a game"]').count()) > 0, 6000, 'GAMES screen rendered (CREATE A GAME card)');
   expect((await mc.locator('text=PICK THE GAME').count()) > 0, 'GAMES header missing');
@@ -284,7 +299,7 @@ await step('config: fast respawn + short match for the run', async () => {
 });
 await step('LOAD ▸ on GAMES shows the LOADED GAME state; CONTINUE TO KIT ▸ advances to KIT — the KIT screen renders', async () => {
   // GAMES has two states since 47a87830 / f7b29c9f (Games.tsx header): LOAD ▸ announces the game to the phones and
-  // stays on GAMES, then CONTINUE TO KIT ▸ is the way on. ARMORY keeps a bare CONTINUE ▸.
+  // stays on GAMES, then CONTINUE TO KIT ▸ is the way on. ARMORY's gate is HARDWARE READY ▸.
   await mc.click('[data-testid="game-load"] button:has-text("LOAD ▸")');
   await until(async () => (await st()).game?.loaded === true, 6000, 'server game.loaded');
   await until(async () => (await mc.locator('[data-testid="active-game-config"]').count()) > 0, 6000, 'GAMES shows the LOADED GAME state');
@@ -395,7 +410,7 @@ await step('weapon description renders in the hero panel', async () => {
   // whitespace, so it matches the rendered text however the panel wraps it
   const words = (smg.desc || '').trim().split(/\s+/).slice(0, 5);
   expect(words.length >= 4, `the SMG description is too short to assert on: ${smg.desc}`);
-  const probe = new RegExp(words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+'), 'i');
+  const probe = new RegExp(words.map(rxLit).join('\\s+'), 'i');
   await until(async () => (await mc.locator(`text=${probe}`).count()) > 0, 6000,
               `the SMG description did not render (looked for "${words.join(' ')}" from demo-catalog.js)`);
 });
@@ -498,7 +513,11 @@ await step('(b2) defect-2: a missing weapon photo in the phone rack shows a glyp
     await hudA.click('.lotab[data-arg="primary"]');
     const row = hudA.locator('.lrow[data-arg="weapon:smg"] .thumb');
     await until(async () => (await row.evaluate(el => getComputedStyle(el.querySelector('.wpic')).display)) === 'none', 6000, 'the broken <img> is hidden on the SMG row');
-    expect((await row.evaluate(el => getComputedStyle(el.querySelector('.wpicfb')).display)) === 'flex', 'the fallback glyph is not shown');
+    // Wait for the glyph too, do not assert it straight after the hide. `onerror` hides the <img> and
+    // shows the fallback in two separate style writes, so a synchronous assert here races the second
+    // one and fails intermittently with "the fallback glyph is not shown" while the UI is correct
+    // (seen 2026-09-18). The repo's rule: wait for the condition, never for the previous condition.
+    await until(async () => (await row.evaluate(el => getComputedStyle(el.querySelector('.wpicfb')).display)) === 'flex', 6000, 'the fallback glyph is not shown on the SMG row');
     expect((await row.locator('svg').count()) > 0, 'no fallback glyph rendered on the SMG row');
     // .lrow .thumb is a fixed 66×36 CSS box (index.html) — the frame itself is scaled to fit the
     // viewport (`_fitMcLinked`-style transform), so read the authored size, not a scaled bounding rect.
@@ -540,11 +559,11 @@ await step('(d) hudA PERK tab → Body Armor → MC PERK card + roster show BODY
   await shot(hudA, 'hudA-loadout-perk'); await shot(mc, 'kit-phone-perk');
 });
 await step('(e) no heavy is listed on the phone under NO HEAVIES', async () => {
-  // 2026-09-17 (arsenal review): the visible, pickable primary pool is 11 rows now (9 primaries + 2
-  // sidearms), not 16 — 8 weapons joined melee as `hidden` and rocket_launcher/rail_gun are
-  // `pickup_only` (already excluded before NO HEAVIES' own rule applies).
+  // The phone's PRIMARY tab lists exactly the MC primary pool: a pistol is a legal primary, a
+  // `pickup_only` heavy is excluded before NO HEAVIES' own rule applies, and a non-lethal support gun
+  // may never be a primary. That is PRIMARY_ALLOWED, derived at the top of this file.
   await hudA.click('.lotab[data-arg="primary"]');
-  await until(async () => (await hudA.locator('.lrow').count()) === 11, 5000, '11 rows (9 primaries + usp/deagle)');
+  await until(async () => (await hudA.locator('.lrow').count()) === PRIMARY_ALLOWED, 5000, `${PRIMARY_ALLOWED} rows (the primary pool)`);
   expect((await hudA.locator('.lrow[data-arg="weapon:rocket_launcher"]').count()) === 0, 'rocket launcher listed under NO HEAVIES');
 });
 await step('(f) READY UP while a try-out is armed ends it; first ready does NOT advance to lobby', async () => {
@@ -636,7 +655,7 @@ await step('(h3) copy "e2e test" → play the COPY → the copy\'s card is PLAYI
   expect((await mc.locator('div[role="button"][aria-label="play e2e test"]').first().getAttribute('aria-pressed')) !== 'true', 'the ORIGINAL is still marked PLAYING');
   // A LOADED game (47a87830) heads the tab as SAVED GAME // LOADED; the picker rail reads // PLAYING before a LOAD.
   const rail = await mc.locator('text=/SAVED GAME \\/\\/ (PLAYING|LOADED)/').first().locator('xpath=..').textContent();
-  expect(new RegExp(copy.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(rail), 'rail title is not the copy: ' + rail.slice(0, 80));
+  expect(new RegExp(rxLit(copy.name), 'i').test(rail), 'rail title is not the copy: ' + rail.slice(0, 80));
   await shot(mc, 'games-play-copy');
   for (const nm of [copy.name, 'e2e test']) {
     await mc.click(`button[aria-label="delete ${nm}"]`); await mc.click('button:has-text("CONFIRM DELETE")');
@@ -672,13 +691,16 @@ await step('(i) KIT host-side slot 2: pick a secondary weapon → card + roster 
   await endTryout();
   await shot(mc, 'kit-secondary-host');
 });
-await step('(i2) A12: sidearm-only slot 2 → KIT arsenal header reads "SIDEARMS · 2", only pistol tiles, hint says SIDEARM; a pistol equips; rules restored', async () => {
+await step(`(i2) A12: sidearm-only slot 2 → KIT arsenal header reads "${SIDEARM_IDS.length} SIDEARMS", only pistol tiles, hint says SIDEARM; a pistol equips; rules restored`, async () => {
   await api('PUT', '/api/config', { loadout_policy: { secondary: { kinds: ['sidearm'] } } });
-  // glock is `hidden` now (2026-09-17 arsenal cut): only usp/deagle remain pickable sidearms.
-  await until(async () => JSON.stringify((await st()).loadout_pool.secondary_weapons) === JSON.stringify(['usp', 'deagle']), 6000, 'server pool = the two visible pistols');
+  // Compared as a SET: which pistols the server offers is this step's point, and the order is the
+  // server's own (see the SIDEARM_IDS derivation at the top of this file — a hidden weapon has no row).
+  const wantIds = [...SIDEARM_IDS].sort().join(',');
+  await until(async () => [...(await st()).loadout_pool.secondary_weapons].sort().join(',') === wantIds, 6000, `server pool = the visible pistols (${wantIds})`);
   await mc.locator('div[role="button"]:has-text("BRAVO")').first().click();
   await mc.locator('div[role="button"]:has-text("SECONDARY")').first().click();
-  await until(async () => (await mc.locator('text=ARSENAL // SECONDARY · 2 SIDEARMS').count()) > 0, 6000, 'arsenal header reads 2 SIDEARMS');   // A14: no kind Seg on slot 2 any more
+  const sidearmHdr = `ARSENAL // SECONDARY · ${SIDEARM_IDS.length} SIDEARMS`;
+  await until(async () => (await mc.locator(`text=${sidearmHdr}`).count()) > 0, 6000, `arsenal header reads ${sidearmHdr}`);   // A14: no kind Seg on slot 2 any more
   expect((await mc.locator('button:has-text("WEAPONS ·")').count()) === 0, 'a WEAPONS chip should not show under a sidearm-only rule');
   await until(async () => (await mc.locator('div[role="button"][aria-label*="Desert Eagle"]').count()) > 0, 6000, 'pistol tiles for slot 2');
   expect((await mc.locator('text=SLOT 2 IS A SIDEARM').count()) > 0, 'the hint should read SLOT 2 IS A SIDEARM');
@@ -751,10 +773,12 @@ await step('PUSH CONFIG & ARM from the Lobby UI → 2/2 acked', async () => {
   if ((await st()).phase !== 'lobby') { await mc.click('button:has-text("CONTINUE ▸")'); }
   await until(async () => (await st()).phase === 'lobby', 6000, 'server phase lobby');
   await until(async () => (await mc.locator('button:has-text("PUSH CONFIG & ARM")').count()) > 0, 6000, 'lobby rail visible');
-  expect((await mc.locator('text=00:10').count()) > 0, 'quick 10s runway preset missing');
+  // Bench 2026-09-17: the countdown picker appears only once the push is in sync, beside ARM COUNTDOWN.
+  expect((await mc.locator('select[aria-label="countdown length"]').count()) === 0, 'no countdown picker before the push');
   await mc.click('button:has-text("PUSH CONFIG & ARM")');
   await until(async () => { const s = await st(); const a = s.lobby.acks || {}; return Object.values(a).filter(x => x.ok).length === 2; }, 20000, '2 acks');
   await until(async () => (await mc.locator('button:has-text("ARM COUNTDOWN")').count()) > 0, 8000, 'arm button');
+  await until(async () => (await mc.locator('select[aria-label="countdown length"] option', { hasText: '00:10' }).count()) > 0, 8000, 'quick 10s runway preset in the picker once in sync');
   await shot(mc, 'lobby-acked');
 });
 await step('HUDs show ARMED-PENDING then echo OK (head landed)', async () => {
@@ -823,9 +847,16 @@ await step('RELOAD warns only when actually low; pips track the real mag (loadou
   await hudA.waitForTimeout(400);
   expect((await hudA.locator('.reload').count()) === 0, `RELOAD must not nag at ~60% of ${M}`);
   const st1 = await hudA.evaluate(() => window.brx.engine.state());
-  const lit = await hudA.locator('.alive .pips i:not(.spent)').count();
-  const want = Math.round(12 * st1.ammo / st1.mag);
-  expect(Math.abs(lit - want) <= 1, `pips ${lit}/12 should track ${st1.ammo}/${st1.mag} (want ~${want})`);
+  // Bench 2026-09-17: one pip per round up to 30 rounds, a continuous bar above that.
+  if (st1.mag <= 30) {
+    const lit = await hudA.locator('.alive .pips i:not(.spent)').count();
+    expect(lit === st1.ammo, `pips ${lit} should equal the rounds left ${st1.ammo}/${st1.mag}`);
+  } else {
+    expect((await hudA.locator('.alive .pips > i').count()) === 0, `a ${st1.mag}-round mag shows a bar, not pips`);
+    // "ammobar", not "ammo" -- item 1 (bench 2026-09-17): the bar's class must never collide with the
+    // ammo COLUMN's own `.ammo` (position:absolute), which floated the bar over the mag digits.
+    expect((await hudA.locator('.alive .bar.ammobar').count()) > 0, `a ${st1.mag}-round mag shows the ammo bar`);
+  }
   const low = Math.max(0, st1.ammo - Math.max(1, Math.floor(M * 0.1)));
   await hudA.evaluate(n => window.fakeGun.fire(n), low);             // down to ~10%
   await until(async () => (await hudA.locator('.reload').count()) > 0, 3000, `RELOAD must warn at ~10% of ${M}`);
@@ -918,8 +949,11 @@ await step('MC recap: rows + yellow wins + CSV exports', async () => {
   expect(csv.includes('ALPHA') && csv.includes('BRAVO'), 'CSV missing players');
   await shot(mc, 'recap'); await tapAudit(mc, 'recap');
 });
-await step('NEW MATCH → muster; the HUD LEAVES MATCH COMPLETE and shows SETTING UP THE GAME (kit closed until the host reaches KIT — screen truth)', async () => {
-  await mc.click('text=NEW MATCH');
+await step('NEW SESSION → muster; the HUD LEAVES MATCH COMPLETE and shows SETTING UP THE GAME (kit closed until the host reaches KIT — screen truth)', async () => {
+  // Bench 2026-09-17: the RECAP-only NEW SESSION control left the command bar (A43 — LOAD after a
+  // match already starts the next one, and RECAP's NEXT MATCH ▸ covers the one-tap case). This step
+  // needs the same server transition (a fresh muster, roster kept), so it calls the route directly.
+  await api('POST', '/api/session/new', { keep_roster: true });
   await until(async () => (await st()).phase === 'muster', 8000, 'muster');
   expect((await st()).players.length === 2, 'roster not kept');
   await until(async () => (await hudA.locator('text=MATCH COMPLETE').count()) === 0, 10000, 'over screen must clear on new match');
@@ -970,7 +1004,7 @@ await step(`designer-controls 0: CUSTOMIZE FREE-FOR-ALL opens the designer at NO
   await ensureMc();
   await mc.locator('nav button').nth(1).click();
   await shelves(); await mc.click('button[aria-label="customize FREE-FOR-ALL"]');
-  await until(async () => new RegExp(BASE_POOL).test(await D.pSum()), 6000, `FFA base starts at NO HEAVIES (${BASE_POOL})`);
+  await until(async () => new RegExp(rxLit(BASE_POOL)).test(await D.pSum()), 6000, `FFA base starts at NO HEAVIES (${BASE_POOL})`);
   expect(dimmed(await D.art('Rocket Launcher')) && dimmed(await D.art('Rail Gun')), 'heavy tiles are not dimmed under NO HEAVIES');
   // The DESIGNER offers only weapons a player can be issued (1c83b745): the Energy Launcher
   // (UNPLAYABLE_IDS) is ALSO `hidden` now (2026-09-17), so it has no row for a stronger reason too.
@@ -986,7 +1020,7 @@ await step(`designer-controls 1: template OPEN → ${BASE_POOL}; heavies stay di
   // at all) the HEAVY chip's own members read 0/2 allowed — "mixed", not fully on — and the tiles
   // stay dimmed even though nothing is explicitly excluding them by rule.
   await mc.click('button[title="Everything, players pick all three slots"]');
-  await until(async () => new RegExp(BASE_POOL).test(await D.pSum()), 4000, `OPEN → ${BASE_POOL}`);
+  await until(async () => new RegExp(rxLit(BASE_POOL)).test(await D.pSum()), 4000, `OPEN → ${BASE_POOL}`);
   expect(dimmed(await D.art('Rocket Launcher')), 'rocket launcher should stay dimmed under OPEN (pickup_only)');
   expect((await D.chip('HEAVY').getAttribute('aria-pressed')) === 'mixed', 'HEAVY chip should read PARTIAL (mixed) under OPEN, not on');
   expect((await mc.locator('button[title="Everything, players pick all three slots"][aria-pressed="true"]').count()) === 1, 'OPEN template not shown as selected');
@@ -1007,18 +1041,18 @@ await step(`designer-controls 3: HEAVY chip off (from OPEN) → still ${BASE_POO
   // but fully off taps to off) — but the pool count does not move, because rocket_launcher/rail_gun
   // were already out of it via pickup_only, not the tag rule.
   await mc.click('button[title="Everything, players pick all three slots"]');
-  await until(async () => new RegExp(BASE_POOL).test(await D.pSum()), 4000, 'OPEN again');
+  await until(async () => new RegExp(rxLit(BASE_POOL)).test(await D.pSum()), 4000, 'OPEN again');
   expect((await D.chip('HEAVY').getAttribute('aria-pressed')) === 'mixed', 'HEAVY chip should start PARTIAL under OPEN');
   await D.chip('HEAVY').click();
   await until(async () => (await D.chip('HEAVY').getAttribute('aria-pressed')) === 'false', 4000, 'HEAVY chip → off');
-  expect(new RegExp(BASE_POOL).test(await D.pSum()), 'pool count should not move — pickup_only already excluded both heavies: ' + await D.pSum());
+  expect(new RegExp(rxLit(BASE_POOL)).test(await D.pSum()), 'pool count should not move — pickup_only already excluded both heavies: ' + await D.pSum());
   expect(dimmed(await D.art('Rocket Launcher')) && dimmed(await D.art('Rail Gun')), 'heavy tiles not dimmed after HEAVY off');
   expect(lit(await D.art('Sniper Rifle')) && lit(await D.art('SMG')), 'a non-heavy tile went dim');
   await shot(mc, 'designer-heavy-off');
 });
 await step(`designer-controls 4: tap the Assault Rifle tile → ${AR_OFF_POOL}, that tile dimmed and labelled off`, async () => {
   await D.prim().locator('button[aria-label^="Assault Rifle"]').click();
-  await until(async () => new RegExp(AR_OFF_POOL).test(await D.pSum()), 4000, `tile off → ${AR_OFF_POOL}`);
+  await until(async () => new RegExp(rxLit(AR_OFF_POOL)).test(await D.pSum()), 4000, `tile off → ${AR_OFF_POOL}`);
   expect((await D.prim().locator('button[aria-label="Assault Rifle, off"]').count()) === 1, 'assault rifle tile not labelled off');
   expect(dimmed(await D.art('Assault Rifle')), 'assault rifle tile not dimmed');
   await shot(mc, 'designer-tile-off');
@@ -1032,7 +1066,7 @@ await step('designer-controls 5: tapping a pickup_only heavy tile ("allow throug
   // anything may read as broken rather than as "this weapon is pickup-only".
   await D.prim().locator('button[aria-label="Rail Gun, off"]').click();
   await new Promise(r => setTimeout(r, 400));
-  expect(new RegExp(AR_OFF_POOL).test(await D.pSum()), `pool count must not move (still ${AR_OFF_POOL}, assault rifle stays off from step 4) — pickup_only overrides the per-id override: ` + await D.pSum());
+  expect(new RegExp(rxLit(AR_OFF_POOL)).test(await D.pSum()), `pool count must not move (still ${AR_OFF_POOL}, assault rifle stays off from step 4) — pickup_only overrides the per-id override: ` + await D.pSum());
   expect(dimmed(await D.art('Rail Gun')), 'rail gun tile should still read off (dimmed) — pickup_only, not the chip, excludes it');
   expect(dimmed(await D.art('Rocket Launcher')), 'the other heavy should stay dimmed too');
   await shot(mc, 'designer-allow-through-chip-is-a-no-op-for-pickup-only');
@@ -1051,31 +1085,33 @@ await step('designer-controls 7: slot 2 OFF → "OFF — ALT-FIRE DOES NOTHING",
   await until(async () => /SMG FOR EVERYONE · NO SLOT 2/.test(await D.rail()), 4000, 'summary rail follows');
   await shot(mc, 'designer-slot2-off');
 });
-await step(`designer-controls 7b (A12/A14): slot 2 PLAYER → SIDEARMS chip → "SIDEARMS ONLY · 2 OF 2 PISTOLS", only usp/deagle allowed, WEAPONS chip off; SIDEARMS again is a no-op (slot 2 always admits one kind); WEAPONS → ${SECONDARY_WEAPONS_POOL}`, async () => {
-  // glock is `hidden`, so only 2 pistols (usp, deagle) are pickable. Secondary has no `lethal` filter
+await step(`designer-controls 7b (A12/A14): slot 2 PLAYER → SIDEARMS chip → "${SIDEARM_POOL}", only the pickable pistols allowed, WEAPONS chip off; SIDEARMS again is a no-op (slot 2 always admits one kind); WEAPONS → ${SECONDARY_WEAPONS_POOL}`, async () => {
+  // The pistol counts are derived (SIDEARM_POOL, top of this file): a hidden weapon has no row at all,
+  // so unhiding the glock moves this step instead of breaking it. Secondary has no `lethal` filter
   // (computePool never checks it for the secondary slot), so its pool is bigger than the primary's —
   // SECONDARY_WEAPONS_POOL, not BASE_POOL.
   await D.sec().locator('button:has-text("PLAYER")').click();
-  await until(async () => new RegExp(SECONDARY_WEAPONS_POOL).test(await D.sSum()), 4000, `slot 2 back to PLAYER (${SECONDARY_WEAPONS_POOL})`);
+  await until(async () => new RegExp(rxLit(SECONDARY_WEAPONS_POOL)).test(await D.sSum()), 4000, `slot 2 back to PLAYER (${SECONDARY_WEAPONS_POOL})`);
   const kind = (label) => D.sec().locator(`button:has-text("${label}")`).first();
   await kind('SIDEARMS').click();
-  await until(async () => /SIDEARMS ONLY · 2 OF 2 PISTOLS/.test(await D.sSum()), 4000, 'SIDEARMS chip → sidearms only, got: ' + await D.sSum());
+  await until(async () => new RegExp(rxLit(SIDEARM_POOL)).test(await D.sSum()), 4000, `SIDEARMS chip → ${SIDEARM_POOL}, got: ` + await D.sSum());
   expect((await kind('SIDEARMS').getAttribute('aria-pressed')) === 'true' && (await kind('WEAPONS').getAttribute('aria-pressed')) === 'false', 'SIDEARMS should be on and WEAPONS off (they are exclusive)');
   const allowed = (await D.sec().locator('button[aria-label$=", allowed"]').evaluateAll(bs => bs.map(b => b.getAttribute('aria-label')))).filter(l => !/ perk, allowed$/.test(l));   // perk tiles are allowed too — the check is about WEAPONS
-  expect(allowed.length === 2 && !/Glock/.test(allowed.join()) && /USP/.test(allowed.join()) && /Desert Eagle/.test(allowed.join()), 'only usp/deagle should be allowed (glock is hidden), got: ' + allowed.join(' | '));
+  const wantPistols = [...SIDEARM_NAMES].sort().join(' | ');
+  expect(allowed.map(l => l.replace(/, allowed$/, '')).sort().join(' | ') === wantPistols, `only the pickable pistols should be allowed, want ${wantPistols}, got: ` + allowed.join(' | '));
   expect((await D.sec().locator('button[aria-label="SMG, off"]').count()) === 1, 'the SMG should read off under SIDEARMS');
   expect(/SLOT 2.*SIDEARM|SIDEARM/.test(await D.rail()), 'the rail should mention sidearms');
   await shot(mc, 'designer-sidearms-only');
   await kind('SIDEARMS').click();                     // A14: perks left slot 2, so the last kind cannot be switched off
   await sleep(400);
-  expect(/SIDEARMS ONLY · 2 OF 2 PISTOLS/.test(await D.sSum()) && (await kind('SIDEARMS').getAttribute('aria-pressed')) === 'true', 'the last kind must stay on, got: ' + await D.sSum());
+  expect(new RegExp(rxLit(SIDEARM_POOL)).test(await D.sSum()) && (await kind('SIDEARMS').getAttribute('aria-pressed')) === 'true', 'the last kind must stay on, got: ' + await D.sSum());
   await kind('WEAPONS').click();
-  await until(async () => new RegExp(SECONDARY_WEAPONS_POOL).test(await D.sSum()), 4000, `WEAPONS on → ${SECONDARY_WEAPONS_POOL}`);
+  await until(async () => new RegExp(rxLit(SECONDARY_WEAPONS_POOL)).test(await D.sSum()), 4000, `WEAPONS on → ${SECONDARY_WEAPONS_POOL}`);
   expect((await D.sec().locator('button[aria-label="USP-S, allowed"]').count()) === 1, 'the pistols are ordinary weapons under WEAPONS');
 });
 await step(`designer-controls 8: base switch to TEAM DEATHMATCH resets the rules (${BASE_POOL}, rail BASE TDM) and SAVE lands the card`, async () => {
   await mc.click('button[aria-pressed="false"]:has-text("TEAM DEATHMATCH")');
-  await until(async () => /TEAM DEATHMATCH/.test(await D.rail()) && new RegExp(BASE_POOL).test(await D.pSum()), 4000, 'base → TDM, rules reset');
+  await until(async () => /TEAM DEATHMATCH/.test(await D.rail()) && new RegExp(rxLit(BASE_POOL)).test(await D.pSum()), 4000, 'base → TDM, rules reset');
   // rocket_launcher is `pickup_only` — it stays dimmed on every reset, whatever the base mode's rules
   // are, so "rules reset" is proven by the count/rail above instead, and by a non-heavy tile that a
   // previous step's exclusion (assault_rifle, step 4) also un-dims here.
@@ -1167,22 +1203,22 @@ await step('compat-older-server: new UI renders GAMES / DESIGNER / KIT against a
   await pg.click('button[title="Everything, players pick all three slots"]');
   // rocket_launcher/rail_gun are `pickup_only`, so OPEN already excludes them before the HEAVY chip's
   // own rule applies — see the BASE_POOL derivation at the top of this file.
-  await until(async () => new RegExp(BASE_POOL).test(await pg.getByTestId('primary-summary').textContent()), 4000, `OPEN → ${BASE_POOL} (pool computed locally)`);
+  await until(async () => new RegExp(rxLit(BASE_POOL)).test(await pg.getByTestId('primary-summary').textContent()), 4000, `OPEN → ${BASE_POOL} (pool computed locally)`);
   // the rules must be LIVE with no server help: a chip dims its class, a tile tap switches one weapon (Tony, round 8)
   const prim = pg.locator('[aria-label="primary slot rules"]');
   await prim.locator('button:has-text("HEAVY")').first().click();
   // pickup_only already excluded rocket_launcher/rail_gun, so the count does not move — only the
   // chip's own state flips from PARTIAL (mixed) to explicit OFF.
   await until(async () => (await prim.locator('button:has-text("HEAVY")').first().getAttribute('aria-pressed')) === 'false', 4000, 'HEAVY chip → off against a stale server');
-  expect(new RegExp(BASE_POOL).test(await pg.getByTestId('primary-summary').textContent()), 'pool count should not move: ' + await pg.getByTestId('primary-summary').textContent());
+  expect(new RegExp(rxLit(BASE_POOL)).test(await pg.getByTestId('primary-summary').textContent()), 'pool count should not move: ' + await pg.getByTestId('primary-summary').textContent());
   expect((await prim.locator('button[aria-label="Rocket Launcher, off"]').count()) === 1, 'rocket launcher tile not shown as off');
   await prim.locator('button[aria-label^="Assault Rifle"]').click();
-  await until(async () => new RegExp(AR_OFF_POOL).test(await pg.getByTestId('primary-summary').textContent()), 4000, `tile tap → ${AR_OFF_POOL} against a stale server`);
+  await until(async () => new RegExp(rxLit(AR_OFF_POOL)).test(await pg.getByTestId('primary-summary').textContent()), 4000, `tile tap → ${AR_OFF_POOL} against a stale server`);
   // tapping a pickup_only heavy's own tile ("allow just this one") cannot bring it into the pool —
   // pickup_only overrides the per-id override the same way it overrides the tag rule.
   await prim.locator('button[aria-label="Rocket Launcher, off"]').click();
   await new Promise(r => setTimeout(r, 400));
-  expect(new RegExp(AR_OFF_POOL).test(await pg.getByTestId('primary-summary').textContent()), 'pickup_only heavy must not enter the pool via a tile tap: ' + await pg.getByTestId('primary-summary').textContent());
+  expect(new RegExp(rxLit(AR_OFF_POOL)).test(await pg.getByTestId('primary-summary').textContent()), 'pickup_only heavy must not enter the pool via a tile tap: ' + await pg.getByTestId('primary-summary').textContent());
   expect((await prim.locator('button[aria-label="Rocket Launcher, off"]').count()) === 1, 'rocket launcher tile should still read off');
   expect((await prim.locator('button[disabled]').count()) === 0, 'tiles disabled against a stale server');
   await backToGames(pg); await shelves(pg); await pg.click('button[aria-label="customize FREE-FOR-ALL"]'); await pg.waitForTimeout(500); await noCrash('DESIGNER (customize)');

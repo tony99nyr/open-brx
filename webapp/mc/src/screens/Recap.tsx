@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import type { MatchHistoryRow, RecapStationRow, RecapView, ScoreRow } from '../api/types';
 import { endDeliveryLine } from '../api/derive';
 import { useStore } from '../store';
-import { CHAMFER, F, T, fmtClock, teamColor } from '../tokens';
+import { CHAMFER, F, T, fmtDuration, teamColor } from '../tokens';
 import { BTN_RESET, Brackets, Num, SectionRule, PrimaryButton } from '../ui';
+import { OrphanMatch } from '../ui/OrphanMatch';
 import { bestStreak } from './Live';
 import { columnEdges, type Column } from './columns';
 
@@ -44,7 +45,7 @@ export function Recap() {
   const liveId = state?.live?.match_id ?? null;
   useEffect(() => { api.matchHistory().then(setHistory).catch(() => setHistory([])); }, [api, liveId, state?.phase]);
   // The match still on screen is in the store too — showing it again as an "archived" chip hid its own
-  // NEW MATCH and EXPORT CSV buttons when clicked. THIS MATCH is the only chip for it.
+  // NEXT MATCH and EXPORT CSV buttons when clicked. THIS MATCH is the only chip for it.
   const archive = history.filter(h => h.match_id !== liveId);
   // A selection that no longer exists (new session, or it became the live match) must not silently
   // fall back to the live recap with nothing highlighted — drop it so the UI matches what is shown.
@@ -77,6 +78,7 @@ export function Recap() {
   ) : null;
   if (!rc) return (
     <div className="screen">
+      <OrphanMatch />
       {picker}
       <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro }}>
         {archive.length ? 'PICK A MATCH ABOVE TO SEE ITS RESULT.' : 'NO RECAP YET — THE MATCH ENDS AT THE TIME LIMIT ON EVERY NODE.'}
@@ -119,6 +121,7 @@ export function Recap() {
 
   return (
     <div className="screen">
+      <OrphanMatch />
       {picker}
       {(past ?? history.find(h => h.match_id === liveId))?.config && <MatchConfig row={(past ?? history.find(h => h.match_id === liveId))!} />}
       {past && (
@@ -175,7 +178,10 @@ export function Recap() {
       )}
       {/* an ARCHIVED match must be described by ITS OWN mode, not the config the host is drafting
           now — the header read "MATCH COMPLETE · TDM · 05:00" over a recap of a 3-minute FFA */}
-      <div style={{ font: F.mono(500, 11), letterSpacing: '.22em', color: T.dim, marginBottom: 8 }}>[ A8 // MATCH COMPLETE · {(past ? past.mode : state.config.mode).toUpperCase()}{past ? '' : ` · ${fmtClock(state.config.time_limit_s ?? 0)}`} ]</div>
+      {/* the match length is a DURATION (a fixed span, over before this screen shows), not a clock still
+          counting down, so it prints unpadded like every other span on this screen (fmtClock would pad
+          it to "10:00" beside unpadded possession spans such as "7:21") */}
+      <div style={{ font: F.mono(500, 11), letterSpacing: '.22em', color: T.dim, marginBottom: 8 }}>[ A8 // MATCH COMPLETE · {(past ? past.mode : state.config.mode).toUpperCase()}{past ? '' : ` · ${fmtDuration(state.config.time_limit_s ?? 0)}`} ]</div>
       <Brackets color="#ffd23f" size={18} style={{ background: `linear-gradient(90deg,rgba(255,210,63,.1),transparent 60%),linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, padding: '22px 26px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '18px 44px', marginBottom: 18 }}>
         <div>
           <div style={{ font: F.osw(700, 46), letterSpacing: '.08em', lineHeight: 1.15 }}>
@@ -231,27 +237,24 @@ export function Recap() {
               setCsvErr(null);
             } : undefined}
             style={{ font: F.chk(700, 12), letterSpacing: '.18em', padding: '11px 22px', background: 'transparent', border: `1px solid ${T.line2}`, color: T.dim, textDecoration: 'none', minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>⬇ EXPORT CSV{rc.provisional ? ' (PROVISIONAL)' : ''}</a>
-          {/* NEW MATCH stays live-only: an archived match is a record, not a place to start from */}
-          {/* disabled in-flight: newSession() rebuilds the whole session, and a double-tap on a slow
-              LAN fired it twice — the second landing on a session the first had already replaced */}
-          {/* UX-1 (round-3 fix pass, 2026-09-13): NEW MATCH was the ONLY way forward on this screen,
-              and it throws the roster away. The server's documented play-again path — pick a mode,
-              which rolls the session forward with the roster KEPT (`state.py set_config` in recap) —
-              lived only on GAMES, a tab away, where nothing on the recap pointed. One line, beside
-              the button it qualifies. Absent with nobody rostered: "keep this roster" would be a lie. */}
-          {!past && state.players.length > 0 && (
-            <button type="button" data-testid="recap-play-again" className="hov-acc" onClick={() => setView('build')}
-              style={{ ...BTN_RESET, font: F.chk(700, 12), letterSpacing: '.14em', padding: '11px 18px', minHeight: 44,
-                       background: 'transparent', border: `1px solid ${T.line2}`, color: T.acc, cursor: 'pointer' }}>
-              KEEP THIS ROSTER? PICK A MODE ON GAMES ▸
-            </button>
+          {/* NEXT MATCH stays live-only: an archived match is a record, not a place to start from. */}
+          {/* 2026-09-16 (Tony: "why? just make a new one"): the primary action starts the next match with
+              the roster AND the game kept (`POST /api/match/next`: roll forward, then LOAD the same
+              game) and lands on GAMES, which is where LOAD always leaves the operator: the loaded game
+              on screen, EDIT beside it, CONTINUE TO KIT one tap away. Bench 2026-09-17: the command
+              bar's separate NEW SESSION control was cut — picking a game and pressing LOAD already
+              starts the next one (A43), and this button covers the one-tap case. Disabled in flight: a
+              double-tap on a slow LAN fired twice. */}
+          {!past && (
+            <span data-testid="recap-next-match">
+              <PrimaryButton size={13} disabled={starting} onClick={async () => {
+                if (starting) return;
+                setStarting(true);
+                try { const s = await run(() => api.nextMatch()); if (s) setView('build'); }
+                finally { setStarting(false); }
+              }}>{starting ? 'STARTING…' : 'NEXT MATCH ▸'}</PrimaryButton>
+            </span>
           )}
-          {!past && <PrimaryButton size={13} disabled={starting} onClick={async () => {
-            if (starting) return;
-            setStarting(true);
-            try { const s = await run(() => api.newSession(true)); if (s) setView('muster'); }
-            finally { setStarting(false); }
-          }}>{starting ? 'STARTING…' : 'NEW MATCH ▸'}</PrimaryButton>}
         </div>
       </Brackets>
       <AfterWhistle rc={rc} name={name} />
@@ -470,7 +473,6 @@ function AfterEnd({ a, name }: { a: NonNullable<RecapView['after_end']>; name: (
 function Possession({ p, label }: { p: NonNullable<RecapView['possession']>; label: (id: string) => string }) {
   const held = Object.entries(p.by_team).sort((a, b) => b[1] - a[1]);
   const top = held[0]?.[1] ?? 0;
-  const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
   const thin = p.of_s != null && p.observed_s < p.of_s * 0.75;
   return (
     <div data-testid="possession" style={{ marginBottom: 18, border: `1px solid ${T.line}`, background: T.panelDeep }}>
@@ -485,16 +487,16 @@ function Possession({ p, label }: { p: NonNullable<RecapView['possession']>; lab
                   it became digit cells (2026-09-12). A bar a test can name cannot be confused. */}
               <span data-poss-bar={id} style={{ display: 'block', height: '100%', width: `${top ? Math.round((secs / top) * 100) : 0}%`, background: teamColor(id) }} />
             </span>
-            <span style={{ font: F.osw(700, 20), minWidth: 72, textAlign: 'right' }}><Num value={mmss(secs)} /></span>
+            <span style={{ font: F.osw(700, 20), minWidth: 72, textAlign: 'right' }}><Num value={fmtDuration(secs)} /></span>
           </div>
         ))}
         {p.neutral_s > 0 && (
           <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro }}>
-            NEUTRAL {mmss(p.neutral_s)} — NOBODY HELD THE POINT (A HILL BROADCASTS TEAM 2 WHEN UNOWNED)
+            NEUTRAL {fmtDuration(p.neutral_s)} — NOBODY HELD THE POINT (A HILL BROADCASTS TEAM 2 WHEN UNOWNED)
           </div>
         )}
         <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: thin ? T.warn : T.micro, lineHeight: 1.5 }}>
-          {thin ? '▲ ' : ''}BEST COVERAGE {mmss(p.observed_s)}{p.of_s ? ` OF ${mmss(p.of_s)}` : ''} — A HILL IS ONLY SEEN BY A GUN IN BEACON RANGE, SO THIS IS A FLOOR, NOT A FULL ACCOUNT.
+          {thin ? '▲ ' : ''}BEST COVERAGE {fmtDuration(p.observed_s)}{p.of_s ? ` OF ${fmtDuration(p.of_s)}` : ''} — A HILL IS ONLY SEEN BY A GUN IN BEACON RANGE, SO THIS IS A FLOOR, NOT A FULL ACCOUNT.
         </div>
       </div>
     </div>

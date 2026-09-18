@@ -55,9 +55,25 @@ export const STRIPES = (a = 8, b = 16) => `repeating-linear-gradient(45deg,${T.s
 export const HAZARD = 'repeating-linear-gradient(135deg,#ff5252 0 5px,#0c0507 5px 10px)';
 export const SEG_OVERLAY = (cell: number) => `repeating-linear-gradient(90deg,transparent 0 ${cell}px,${T.page} ${cell}px ${cell + 2}px)`;
 
+// A COUNTDOWN — a value counting down or up against the match clock (T-minus, a runway length). Both
+// halves are zero-padded, so it always occupies the same width as it ticks (avoids the digits jumping
+// about), and it floors: a countdown must never round UP to a time that has not arrived yet.
 export const fmtClock = (s: number) => {
   const v = Math.max(0, Math.floor(s));
   return `${String(Math.floor(v / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`;
+};
+// A DURATION — a span already over and being reported (possession held, coverage seen), not a value
+// still moving. Minutes are NOT padded (a duration reads as "7:21", never "07:21"), and the seconds
+// round rather than floor: nothing here is still counting down, so rounding to the nearest second is
+// the more honest read than truncating one off the true span. Do not fold this into `fmtClock` — a
+// clock that rounds is wrong, and a duration padded to two digits reads like a clock it is not.
+// Rounds the WHOLE span before splitting it, not the seconds half alone — `Math.round(s % 60)` can
+// carry to 60 (119.7 would print "1:60"). `scoring.py`'s `possession()` rounds `by_team`/`neutral_s`/
+// `observed_s` to whole seconds before they ever reach the wire, so no live value is fractional today;
+// this is for the day one is (a mock fixture, or a server field that stops pre-rounding).
+export const fmtDuration = (s: number) => {
+  const v = Math.max(0, Math.round(s));   // clamp at zero, the way fmtClock does: a negative span must never print "-1:-5"
+  return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`;
 };
 // Tiered: a gun powered off overnight rendered as "1093m32s AGO", which nobody can read as 18 hours
 // (field 2026-09-02). Seconds below a minute, then minutes, hours, days.

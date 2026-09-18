@@ -47,9 +47,10 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
 ## Environment (important)
 
 - **Package manager: `pnpm` at the repo root** (`packageManager: pnpm@9.15.0`) — `pnpm mc`, `pnpm run test:all`.
-  ⚠️ **`app/` and `site/` are the exception: they are npm-locked** (each has its own `package-lock.json`, and
-  `build`/`build:ci` run `npm ci` there, which is what Cloudflare executes). So: pnpm for anything at the root,
-  `npm` inside `app/` and `site/`. Do not `pnpm install` in those two — it would strand the lockfile CI depends on.
+  ⚠️ **`app/`, `site/` and `webapp/mc/` are the exception: they are npm-locked** (each has its own
+  `package-lock.json`; `build`/`build:ci` run `npm ci` in `app/` and `site/`, which is what Cloudflare executes, and
+  `.github/workflows/ci.yml` runs `npm ci` in `webapp/mc/`). So: pnpm for anything at the root,
+  `npm` inside those three. Do not `pnpm install` in them: it would strand the lockfile CI depends on.
   If `app/` ever fails with *"This is not the tsc command you are looking for"*, its `node_modules` is incomplete
   (`typescript` is a declared devDependency): `cd app && npm install`. Note npm versions shuffle `peer` markers in
   `package-lock.json` on install — that churn is noise, do not commit it.
@@ -63,12 +64,12 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   (`.github/ISSUE_TEMPLATE/bug_report.yml`). To read one: unzip, then `python -m brx_mcp.mc.diag session.sqlite`.
   The scrub's rules and its guard live in `report.py`'s docstring; a guard refusal means a scrub gap, never
   loosen the guard to get a zip out. Tests: `test_mc_report.py`, `test_launcher.py`, `test/e2e/report.mjs`.
-- **Which tests to run.** Run all of them from the repo root with `npm run test:all`. Do not run the suites one by one
+- **Which tests to run.** Run all of them from the repo root with `pnpm run test:all`. Do not run the suites one by one
   as the final check. The script prints one table and a log path per job; open the log of a failed job.
-  - While you iterate: run only the suite you touch (`npm run test:all -- mcp`, `-- mc-vitest`, `-- site`; `-- --list`
+  - While you iterate: run only the suite you touch (`pnpm run test:all -- mcp`, `-- mc-vitest`, `-- site`; `-- --list`
     names the jobs), or one file (`cd mcp && python3 run_tests.py <substring>`).
-  - Before you commit any code change: `npm run test:all` (about 30 s; mcp, webapp/mc tsc + vitest, app tsc + tests, site).
-  - Before you commit a change to `app/src`, `webapp/mc/src`, a UI gate or an e2e script: `npm run test:all -- --ui`
+  - Before you commit any code change: `pnpm run test:all` (about 30 s; mcp, webapp/mc tsc + vitest, app tsc + tests, site).
+  - Before you commit a change to `app/src`, `webapp/mc/src`, a UI gate or an e2e script: `pnpm run test:all -- --ui`
     (about 2 min; adds the phone and Mission Control browser gates).
   - It runs inside a memory budget (at most 8 GB, `MEM_BUDGET_MB=`). A second run in the same checkout waits for the first.
   - The per-suite detail and flags are in `CONTRIBUTING.md` → *Running things*. The pyright gate runs inside the mcp suite.

@@ -127,17 +127,27 @@ v1 rows: `body_armor` (verified), `extended_mags` (verified), `quick_hands` (unv
 Loadout {
   weapons: WeaponSel[],            // [primary] or [primary, secondary]; index == gun slot. NEVER empty (primary required).
   perk?: string | null,            // A14: the PERK slot — rides BESIDE a secondary weapon (AR + pistol + Quick Switch is a legal kit)
-  overrides?: { max_hp?: 1..999, max_armor?: 0..999 }   // per-player POOL: the handicap knob
+  overrides?: { max_hp?: 1..999, max_armor?: 0..999, easy_reload?: boolean }   // per-player POOL + accessibility (§2.1)
 }
 ```
 **A14 (Tony, 2026-09-04): "non-activated perks should be an extra thing outside of the secondary slot."** The v1 perks
 are passive head-frame knobs, so nothing about them competes with slot 1 — the old "slot 2 = weapon OR perk" rule was a
-UI convention, not a hardware fact. **The one hardware exception:** a perk that takes the **ALT button**
-(`effects.alt_reload` — Easy Reload maps ALT to RELOAD via `$BMAP,1,97`) leaves no button to switch weapons with, so it
-**cannot ride with a second weapon**. The host API refuses the pair; a phone pick applies and knocks the other slot out
-(§4.2 `dropped`); both UIs warn with a two-tap confirm before sending ("EASY RELOAD TAKES THE ALT BUTTON — DROPS YOUR SMG ·
-TAP AGAIN"). A new perk that claims a button in future joins the rule by setting `alt_reload` (or a sibling key the
-compiler names) — the UIs test the effect, not the perk id.
+UI convention, not a hardware fact.
+
+### 2.1 Easy Reload — a per-player accessibility switch, not a perk (S50, 2026-09-17)
+
+Easy Reload maps the **ALT button** to RELOAD (`$BMAP,1,97`). It exists because a player may not be able to work the
+reload lever (Tony: his daughter), so it is accessibility, not balance: it moved OUT of the perk slot and INTO
+`loadout.overrides.easy_reload`, beside the per-player pool handicap (§2), the other accessibility control. The two
+switches are independent: a player may take Easy Reload with no extra pool, or the pool handicap with no Easy Reload.
+
+The hardware exception rides WITH it: the ALT button leaves no button to switch weapons with, so `easy_reload` still
+**cannot ride with a second weapon**, nor with a weapon whose reload is a held per-shell chain (F123, the Shotgun's
+`reload_type: "chain"`, where one ALT tap fires one reload event and the magazine never comes back). Both are host-side
+**policy rejects** (`policy.validate_loadout`), never a phone pick: `easy_reload` is set only by the host
+(`state._check_loadout`), and `apply()`'s auto-fix resolves a conflict by dropping the SECOND WEAPON first (the override
+is the host's explicit accessibility setting) or, if the primary itself chain-reloads, by dropping the override instead
+(a primary is mandatory, so the weapon that already resolved is the one that stands).
 
 Validation (`state._check_loadout`): 1–2 weapons, ids from the catalog (visible only), `perk` from the visible perk
 catalog. Then **policy enforcement** (§3.3) — a violating loadout (out of pool, or the ALT-button pair) is
@@ -145,7 +155,8 @@ catalog. Then **policy enforcement** (§3.3) — a violating loadout (out of poo
 
 Compiler (`compile.py`): slot 1 `$WEAP`/`$AMMO,1` emitted **only when a secondary exists** (no more silent shotgun);
 `melee` slot 4 unchanged. Perk effects: `max_armor_add` → `$PSET` armor; `ammo_mult` → `$AMMO,0` + primary frame
-t16/t39 (mag) and t17/t40 (reserve; keep t17 == 2×t40 and t39 == t16); `reload_mult` → t18; `alt_reload` → `_bmap()`.
+t16/t39 (mag) and t17/t40 (reserve; keep t17 == 2×t40 and t39 == t16); `reload_mult` → t18. S50: `overrides.easy_reload`
+→ `_bmap()` (`$BMAP,1,97`); no current perk row sets `effects.alt_reload` (§1.2), so that key compiles nothing today.
 Tutorial frames are unaffected (a try-out is the raw weapon).
 
 ### The per-player pool (the handicap knob)
@@ -216,8 +227,9 @@ small mirror of `policy.py` for the demo only).
 `"N LOADOUTS RESET BY NO HEAVIES"` (preset label) until the next config PUT.
 Runs on every `PUT /api/config` that touches `loadout_policy` or `mode`, on `POST /api/players`, and on session
 reset. For every player: `fixed` → slot set to `fixed_id`; `off` → that slot cleared; an item not in the pool →
-primary falls to the first allowed weapon (`assault_rifle` if allowed), secondary / perk cleared. A14: a fixed ALT-button
-perk (Easy Reload) beside a second weapon keeps the perk (the host's rule put it there) and drops the weapon. Changes re-send
+primary falls to the first allowed weapon (`assault_rifle` if allowed), secondary / perk cleared. S50: `overrides.easy_reload`
+beside a second weapon keeps the override (the host's own accessibility setting) and drops the weapon; beside a
+chain-reload primary it is the override that gives way instead, since a primary is mandatory (§2.1). Changes re-send
 `assign` (and re-compile/re-push `config` if already pushed) exactly like `PATCH /api/players`.
 Writers: `choice:"player"` → phone AND host may write (host is the override; last write wins and both see it in the
 next `assign`/snapshot); `"host"` → host only (phone browser shows a lock); `"fixed"`/`"off"` → nobody (BUILD only).
@@ -249,9 +261,10 @@ loadout_request { node_id, player_id, slot: "primary"|"secondary"|"perk", kind: 
 - Reply always: **`loadout_ack`** (MC → node, NEW `MC_KINDS` entry) `{ slot, ok: boolean, reason?: string, dropped?: {slot, id, name}, loadout }` —
   `reason` is human copy the HUD shows verbatim (`"Host locked this slot"`, `"Heavies are off for this game"`,
   `"Try-outs are closed — the game is being armed"`, A12: `"Only sidearms go in the secondary slot this game"`).
-  **A14 `dropped`:** the pick applied AND knocked the other slot out — Easy Reload over a loaded SMG → `{slot:"secondary",
-  id:"smg", name:"SMG"}` + `reason "Easy Reload takes the ALT button — SMG dropped"`; a second weapon over Easy Reload →
-  `{slot:"perk", …}` + `"Shotgun needs the ALT button to switch — Easy Reload dropped"`. The pick that arrives last wins.
+  **`dropped`:** the pick applied AND knocked the other slot out. **S50: `easy_reload` moved to the host-only
+  `loadout.overrides`, which this channel never writes, so a `loadout_request` can no longer create or resolve the
+  ALT-button conflict**: `policy.dropped_by()` now always returns `(None, None)`. The field stays on the wire for a
+  future conflict of this shape; none exists today.
 ### 4.3 `loadout_browse` (node → MC) — NEW, presence only
 ```jsonc
 loadout_browse { node_id, player_id, open: boolean }        // HUD opened/closed the loadout browser
@@ -280,10 +293,9 @@ State.kit += { browsing: { [player_id]: t_ms } }             // MC roster shows 
   `$WEAP`; ✓ = MC acked the pick, ⟳ = still arming. The row's ⓘ opens its detail.
   A12: when `policy.secondary.kinds` holds `"sidearm"` and not `"weapon"` the weapons chip reads `SIDEARMS · n`
   (the pool already holds only pistols) and the hint reads "Pick a sidearm"; role label `SIDEARM`.
-  **Tap a row = equip** (sends `loadout_request`, row shows ✓ on `loadout_ack`); perks equip on tap, no try.
-  **A14 ALT-button warning:** tapping Easy Reload while a second weapon is loaded (or a weapon while Easy Reload is on)
-  does NOT send — the row turns amber and the action bar says "EASY RELOAD TAKES THE ALT BUTTON — DROPS YOUR SMG · TAP
-  AGAIN"; the second tap sends, and the ack chip then reads "EQUIPPED ✓ · SMG DROPPED". Tapping anything else cancels.
+  **Tap a row = equip** (sends `loadout_request`, row shows ✓ on `loadout_ack`); perks equip on tap, no try. **S50:**
+  Easy Reload is no longer a row in the perk tab; it is a host-only override (§2.1), so the phone browser has no
+  ALT-button warning flow to show and no two-tap confirm to send.
 - Try-out panel (existing) gains `DONE` → back to the browser. READY UP works from KITTED as before.
 
 ### 4.6 Phone: setting-up → BRIEFING → kit editor (Tony, 2026-08-27)

@@ -19,7 +19,7 @@ Run: python3 run_tests.py spawn_protection
 """
 from brx_mcp.gameconfig import _SIR_TABLE
 from brx_mcp.mc.compile import (Compiler, _OBJECTIVE_SIR_ROW, _SPAWN_PROTECT_FN, _sir_cells,
-                                _sir_index, assert_arms_at_spawn, assert_rearms_every_life,
+                                _sir_index, assert_arms_after_spawn, assert_rearms_every_life,
                                 assert_spawn_protected, golden_bundle, sir_spawn_protected)
 from _session import match_config
 
@@ -81,34 +81,38 @@ def test_the_pregame_table_keeps_every_cell_the_live_one_has():
     assert _sir_cells(_sir(b["head"])) == _sir_cells(_sir(b["spawn"]))
 
 
-# ---- (b) the spawn burst arms the real table ----------------------------------
-def test_the_spawn_burst_carries_the_real_table_and_leads_with_it():
+# ---- (b) F209: the spawn burst stays silent, the sir_pool take arms ------------
+# Field 2026-09-13 and bench 2026-09-16: "you can actually get hit during respawn before you can shoot".
+# The real table used to lead the spawn and revive writes, so hit reception came back with `$SPAWN` while
+# `$AMMO` and `$BMAP,0,0` came after it. Now both writes carry the fn-28 twin and the node writes one
+# `sir_pool` take once the gun fires or the cap runs out (engine.js `_armLife`).
+def test_the_spawn_and_revive_writes_arm_nothing_themselves():
+    for mode in ("tdm", "ffa", "koth", "infection"):
+        for cfg in (_cfg(mode), _cfg(mode, hit_audio_class=True)):
+            b = C.compile(cfg, _player(), _TEAMS)
+            for k in ("spawn", "revive"):
+                fns = _fns(b[k])
+                assert fns and all(f == _SPAWN_PROTECT_FN for f in fns), f"{mode} {k} arms before the gun can fire: {_sir(b[k])}"
+                assert b[k][0].startswith("$SIR"), f"{mode} {k}: the twin leads, so the last life's live table is gone before $SPAWN"
+                assert _sir_cells(_sir(b[k])) == _sir_cells(_sir(b["head"])), f"{mode} {k}: the same cells as the head"
+            for tid, frames in (b.get("team_flip") or {}).items():
+                assert all(f == _SPAWN_PROTECT_FN for f in _fns(frames)), f"{mode} flip to {tid} arms at once"
+
+
+def test_the_sir_pool_take_is_the_one_carrier_of_the_real_table():
     b = C.compile(_cfg(), _player(), _TEAMS)
-    rows = _sir(b["spawn"])
-    assert rows == list(_SIR_TABLE), "the stock table, verbatim, where the player goes live"
-    assert b["spawn"][:len(rows)] == rows, "armed BEFORE the $SPAWN that makes the player live"
-    assert b["spawn"][len(rows)] == "$PLAYX,0,*" and b["spawn"][len(rows) + 1] == "$SPAWN,,*"
+    assert b["sir_pool"] == [list(_SIR_TABLE)], "class sounds off: one take, the stock table verbatim"
+    for mode in ("koth", "domination"):
+        b = C.compile(_cfg(mode), _player(), _TEAMS)
+        assert _OBJECTIVE_SIR_ROW in b["sir_pool"][0], f"{mode}: the take keeps the beacon row"
 
 
-def test_every_life_gets_the_real_table_back():
-    """A revive is not always preceded by a spawn: `engine.js _resyncNotLive` re-writes the HEAD on a
-    LIVE node and revives from there, so a revive that did not re-arm would leave that player immortal
-    for the rest of the match — F11 wearing the opposite hat."""
-    b = C.compile(_cfg(), _player(), _TEAMS)
-    assert _sir(b["revive"]) == list(_SIR_TABLE)
-    assert b["revive"][0].startswith("$SIR"), "the table leads the revive write too"
-
-
-def test_with_class_sounds_on_the_sir_pool_take_is_the_revive_carrier_instead():
-    """A17 writes one `sir_pool` take immediately BEFORE `frames.revive` (engine.js `_revive`). Shipping
-    the rows in both places would clobber that take's rolled sounds with one fixed draw, so exactly one
-    carrier is active per bundle — and `assert_rearms_every_life` holds the invariant either way."""
+def test_with_class_sounds_on_every_take_is_a_real_table():
+    """A17's rolled takes are the carrier too; the stock rows never ride the spawn or revive write."""
     b = C.compile(_cfg(hit_audio_class=True), _player(), _TEAMS)
-    assert b["sir_pool"], "class sounds on: the pool exists"
-    assert not _sir(b["revive"]), "no second copy to clobber the take"
-    assert _sir(b["spawn"]), "the first life still arms from the spawn burst"
+    assert len(b["sir_pool"]) > 1, "class sounds on: the rolled pool"
     for take in b["sir_pool"]:
-        assert set(_sir_cells(take)) >= set(_sir_cells(_sir(b["spawn"]))) - {("15", "0")}
+        assert set(_sir_cells(take)) >= set(_sir_cells(_sir(b["head"]))) - {("15", "0")}
         assert set(_sir_index(take).values()) & {1, 36, 37, 38}, "a take is a REAL table, not a registrar"
 
 
@@ -122,6 +126,7 @@ def test_the_hill_beacon_row_is_untouched_in_both_tables():
         assert _OBJECTIVE_SIR_ROW in b["head"], f"{mode} head cannot hear its own beacon"
         assert _OBJECTIVE_SIR_ROW in b["spawn"], f"{mode} spawn burst cannot hear its own beacon"
         assert _OBJECTIVE_SIR_ROW in b["revive"], f"{mode} revive cannot hear its own beacon"
+        assert _OBJECTIVE_SIR_ROW in b["sir_pool"][0], f"{mode} arm take cannot hear its own beacon"
     # CONTROL: a non-objective mode ships no proto-15 cell in either table
     b = C.compile(_cfg("tdm"), _player(), _TEAMS)
     assert not any(f.startswith("$SIR,15,0,") for f in b["head"] + b["spawn"])
@@ -158,27 +163,43 @@ def test_assert_spawn_protected_raises_on_the_bug_it_exists_to_catch():
     assert_spawn_protected(["$CLEAR,*"] + sir_spawn_protected(_SIR_TABLE) + ["$TID,1,*"])
 
 
-def test_assert_arms_at_spawn_raises_when_a_cell_is_left_disarmed():
-    head = sir_spawn_protected(_SIR_TABLE)
-    good = list(_SIR_TABLE)
-    assert_arms_at_spawn(head, good + ["$SPAWN,,*"])
-    short = [r for r in good if not r.startswith("$SIR,13,")]     # melee never re-armed
+def test_assert_arms_after_spawn_raises_on_the_F209_bundle_and_on_a_cell_left_disarmed():
+    b = C.compile(_cfg(), _player(), _TEAMS)
+    assert_arms_after_spawn(b["head"], b)
+    # the bug itself: the pre-F209 shape, the live table leading the revive write
+    pre = dict(b, revive=list(_SIR_TABLE) + [f for f in b["revive"] if not f.startswith("$SIR")])
     try:
-        assert_arms_at_spawn(head, short + ["$SPAWN,,*"])
-        raise AssertionError("expected the F121 guard to raise on a cell that never comes back")
+        assert_arms_after_spawn(b["head"], pre)
+        raise AssertionError("expected the guard to raise on a revive that arms before the gun can fire")
+    except ValueError as e:
+        assert "revive" in str(e) and "F121" in str(e), e
+    # a take that never re-arms melee: that cell would take nothing off the player all life
+    short = dict(b, sir_pool=[[r for r in _SIR_TABLE if not r.startswith("$SIR,13,")]])
+    try:
+        assert_arms_after_spawn(b["head"], short)
+        raise AssertionError("expected the guard to raise on a cell that never comes back")
     except ValueError as e:
         assert "13,1" in str(e) and "F121" in str(e), e
+    try:
+        assert_arms_after_spawn(b["head"], dict(b, sir_pool=[]))
+        raise AssertionError("expected the guard to raise when nothing carries the real table")
+    except ValueError as e:
+        assert "sir_pool" in str(e), e
 
 
 def test_assert_rearms_every_life_raises_when_neither_carrier_has_the_table():
     b = C.compile(_cfg(), _player(), _TEAMS)
     assert_rearms_every_life(b)
-    broken = dict(b, revive=[f for f in b["revive"] if not f.startswith("$SIR")])
     try:
-        assert_rearms_every_life(broken)
+        assert_rearms_every_life(dict(b, sir_pool=[]))
         raise AssertionError("expected the F121 guard to raise when no revive path re-arms")
     except ValueError as e:
         assert "F121" in str(e), e
+    try:
+        assert_rearms_every_life(dict(b, team_flip={"3": ["$TID,3,*"] + list(_SIR_TABLE) + ["$SPAWN,,*"]}))
+        raise AssertionError("expected the guard to raise on an infection flip that arms at once")
+    except ValueError as e:
+        assert "team_flip" in str(e), e
 
 
 def test_sir_spawn_protected_leaves_non_sir_frames_alone():
@@ -191,8 +212,9 @@ def test_the_golden_bundle_is_spawn_protected_too():
     """`app/src/demo.js` and the node's own tests import this file — a stale one ships the old head to
     every demo and every engine test."""
     b = golden_bundle()
-    assert all(f == _SPAWN_PROTECT_FN for f in _fns(b["head"]))
-    assert _sir(b["spawn"]) == list(_SIR_TABLE) and _sir(b["revive"]) == list(_SIR_TABLE)
+    for k in ("head", "spawn", "revive"):
+        assert all(f == _SPAWN_PROTECT_FN for f in _fns(b[k])), k
+    assert b["sir_pool"] == [list(_SIR_TABLE)]
 
 
 def test_a_MALFORMED_sir_row_is_rejected_rather_than_waved_through_pregame():

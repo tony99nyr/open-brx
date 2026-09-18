@@ -1,8 +1,13 @@
 """T1-C: disabled candidate controls for emitted IR, plus the shipped t2 reception guard.
 
 Field evidence 2026-09-13 separated two controls that this file previously treated as candidates for
-the same behavior. The native ALT-hold toggle changes beam width and persists across power cycles.
-`$GSET` t2 changes hit reception and must ship 0. Neither is an emitted-range control.
+the same behavior. The gun's native ALT mode (set at power-on) changes beam width and persists across power cycles.
+`$GSET` t2 changes hit reception and must ship 0.
+
+`$GSET` t2 is a receiver control, never an emitter one. The ALT mode IS an emitter control: the
+V4_31 trace (2026-09-18, protocol/brx-protocol.md) shows the indoor/outdoor level alone sets the
+emitter's PWM duty, about 20% indoors and 38% outdoors, and selects whether t41/t42 are read. We do
+not drive it over BLE, so it stays out of the compiled head.
 
 The separate t3 and `$IRTX` emitted-range candidates remain disabled and unconfirmed.
 
@@ -47,7 +52,7 @@ def test_off_emits_nothing_and_leaves_gset_alone():
 
     t2 `outdoorMode` USED to track the venue here. It no longer does: it is pinned to 0 at both venues
     because t2=1 cripples hit reception on the receiving gun (field 2026-09-13 — a full clip at 30 ft
-    registered nothing). See docs/HANDOFF-gset-t2-2026-09-13.md."""
+    registered nothing). See docs/archive/HANDOFF-gset-t2-2026-09-13.md."""
     for env, t2 in (("indoor", "0"), ("outdoor", "0")):
         head = _head(env)
         assert mcc.venue_mode_frames(head[3], env) == []
@@ -62,7 +67,7 @@ def test_head_is_byte_identical_to_the_pre_gate_head():
 
     ⚠ This is NO LONGER the head the field ran on 2026-09-12. That head carried `$GSET` t2=1 at an
     outdoor venue, and that 1 is the bug: it cripples hit reception on the receiving gun. t2 is now
-    pinned to 0. See docs/HANDOFF-gset-t2-2026-09-13.md."""
+    pinned to 0. See docs/archive/HANDOFF-gset-t2-2026-09-13.md."""
     head = _head("outdoor")
     assert head[:4] == ["$VOL,90,0,*", "$CLEAR,*", "$START,*", "$GSET,0,0,1,0,1,0,0,1,*"], head[:4]
     # $PSET's tail is the per-player voice pack (A15) and belongs to other tests; what this one pins
