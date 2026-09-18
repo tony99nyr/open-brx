@@ -52,6 +52,13 @@ Each step tries one suspected trigger. Arm the gun with the bench victim head (`
 |---|---|---|---|
 | A1 | hang loop | `$DPLAY,A10,4,*` (the shield loop, a looping sound; token 3 is untraced). Send it with `confirm=true` AND `allow_hang=true` on the `send` tool, one frame, never in a batch | LOCK-UP with the loop still playing |
 | A2 | control for A1 | `$DPLAY` with a short one-shot sound, sent as A1 is: `confirm=true` AND `allow_hang=true` on the `send` tool, one frame, never in a batch | the gun answers again after the sound ends |
+
+**→ 2026-09-18, run.** A1: no `$PONG` to two pings 8 s apart, no reply to a follow-up `$PLAYX,0`, and no audio played
+at all; the gun spoke only "connected" and "phone disconnected" over the session, and the BLE link dropped about
+15 s in. A reconnect answered `$PING` at once, with no power cycle needed. A2 (`$DPLAY,U37,4,*`, one-shot): answered
+`$PING` immediately, no hang. Reading: the hang-loop mechanism is real (A1 blocked the gun and A2 did not), but this
+run recovered on a reconnect rather than needing a power cycle, so call it a partial screamer here. `$DPLAY` stays
+on the never-send list either way.
 | A3 | hang loop, other channel | repeat A1 with token 2 = 1, 2 and 3 | shows which channels hang |
 | A4 | lost `*` (stale tokens) | send `$AMMO,0,17,50,1` (no `*`), then `$AMMO,0,23,50,1,*`, then read the `$ALCD` magazine. Run it with and without a `$*` sent before the second frame. The steps and the control are in levers §25 | without `$*`: BAD FRAME, the magazine is not 23; with `$*`: 23. (The old `$QUERY` form could not show this: `$QUERY` ignores its tokens) |
 | A5 | long token | send a `$PLAY` frame with one 400-character token. Use `$PLAY` only: never a frame that writes stored settings (`$NAME`, `$PIN`, `$PAIR`) | LOCK-UP or BAD FRAME |

@@ -352,3 +352,18 @@ polish loop (commits b7c095c4, 0003df1a, 16a8f72f, 3a02e263, 476d5b17, faa64843,
 - 2026-09-17 **F218** the charge-rifle match gave no false GUN NOT FIRING report, except during
   overheat lockout, which is now fixed. The swap-to-empty-slot half of the original check did not run
   today; it continues as **F247**.
+
+# Closed 2026-09-18: firmware levers bench, session 1
+
+Two guns, Tactix-E20D and Tactix-3D4F, then Tactix-E20D alone with the ESP32 IR rig as emitter. Full findings:
+`docs/experiment-log/2026-09.md` (2026-09-18 entries, "firmware levers session 1"). Claim checklist:
+`docs/bench-firmware-levers-2026-09-19.md`.
+
+- 2026-09-18 **F276** not a defect: five single pulls from a flat 20/20 Shotgun gave TWO `$HIR` of 20
+  every time, 60 to 75 ms apart, including one pull where both landed on sensor 0 as distinct frames.
+  The 159 ms beacon block does not merge identical words, so the published 3-pull kill stands.
+- 2026-09-18 **F65** answered in full: `$BUMP,<amount>,<hp 0/1>,<armour 0/1>,<shield 0/1>,<sound>,*`
+  is confirmed (negative cascades armour then HP, positive heals HP then spills into armour, each
+  pool flag gates independently), and the original "inert" reading was two flags of 0, which the gun
+  correctly ignores with no `$HP` reply at all. The shield flag and the sound token are still
+  untested.
