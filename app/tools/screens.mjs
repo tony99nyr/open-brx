@@ -394,13 +394,13 @@ for (const view of VIEWS) {
     must(r.ps[1].h === 'USP-S' && r.ps[2].h === 'QUICK SWITCH', 'AR + pistol + Quick Switch expected: ' + JSON.stringify(r.ps)); must(/HP 45 · ARMOR 70/.test(r.hpar), 'HP·ARMOR moved to the header: ' + r.hpar);
     must(r.ps.every(p => !p.clipped), 'plate title clipped: ' + JSON.stringify(r.ps));
   });
-  await step(`${view.name} #53 PERK tab: three tabs on one line, 7 perk rows + NONE, tapping a perk keeps the second weapon`, async () => {
+  await step(`${view.name} #53 PERK tab: three tabs on one line, 5 perk rows + NONE, tapping a perk keeps the second weapon`, async () => {
     const pg = await open(view, 'loadout-perk', '', 2000); const r = await pg.evaluate(() => ({ tabs: Array.from(document.querySelectorAll('.lotab')).map(t => ({ k: t.querySelector('.k').textContent.trim(), top: Math.round(t.getBoundingClientRect().top) })), chips: Array.from(document.querySelectorAll('.fch')).map(c => c.textContent.trim()), rows: document.querySelectorAll('.lrow').length, eq: (document.querySelector('.lrow.eq .nm2 b') || {}).textContent }));
     await pg.click('.lrow[data-arg="perk:body_armor"]'); await pg.waitForTimeout(700);
     const after = await pg.evaluate(() => { const lo = window.brx.engine.state().loadout; return { perk: lo.perk && lo.perk.perk_id, sec: lo.secondary && lo.secondary.weapon_id, chip: (document.querySelector('.ackchip') || {}).textContent || '' }; }); await pg.close();
     must(r.tabs.map(t => t.k).join('|') === 'PRIMARY|SECONDARY|PERK' && new Set(r.tabs.map(t => t.top)).size === 1, 'tabs: ' + JSON.stringify(r.tabs));
     // S50 (2026-09-17): 5 -> 7 rows (armor_piercing, motion_tracker, second_wind joined; easy_reload left for `loadout.overrides.easy_reload`).
-    must(r.chips[0] === 'PERKS · 7' && /^NONE/.test(r.chips[1]), 'chips ' + r.chips); must(r.rows === 7 && r.eq === 'QUICK SWITCH', 'rows/equipped: ' + r.rows + ' ' + r.eq);
+    must(r.chips[0] === 'PERKS · 5' && /^NONE/.test(r.chips[1]), 'chips ' + r.chips); must(r.rows === 5 && r.eq === 'QUICK SWITCH', 'rows/equipped: ' + r.rows + ' ' + r.eq);
     // 2026-09-17 (arsenal review): glock is `hidden` now — `fullKit` (app/src/demo.js) picks usp instead.
     must(after.perk === 'body_armor' && after.sec === 'usp', 'a perk pick must not displace the pistol: ' + JSON.stringify(after)); must(/EQUIPPED/.test(after.chip) && !/DROPPED/.test(after.chip), 'ack chip: ' + after.chip);
   });
