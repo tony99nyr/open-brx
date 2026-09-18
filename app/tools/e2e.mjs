@@ -340,8 +340,10 @@ await step('hudA shows the try-out hero panel (art + stats)', async () => {
   await until(async () => (await hudA.locator('.tryout').count()) > 0, 6000, 'hero panel');
   expect((await hudA.locator('.tryout .nm').textContent()).includes('SMG'), 'panel is not the SMG');
   expect((await hudA.locator('.tryout .ln').textContent()).includes('MAG 72'), 'panel missing MAG 72');
-  const bg = await hudA.evaluate(() => document.querySelector('.tryout .art').style.backgroundImage);
-  expect(bg.includes('smg.jpg'), 'panel art is not smg.jpg');
+  // A26/defect-2 (2026-09-18): weapon art moved from a CSS background-image (no onerror hook) to an
+  // <img>, so a missing jpg can show a fallback glyph instead of the empty box — see the .wpic step below.
+  const src = await hudA.evaluate(() => document.querySelector('.tryout .art .wpic')?.getAttribute('src') || '');
+  expect(src.includes('smg.jpg'), 'panel art is not smg.jpg');
   await shot(hudA, 'hudA-tryout'); await shot(mc, 'kit-trying');
 });
 await step('weapon description renders in the hero panel', async () => {
@@ -399,6 +401,30 @@ await step('(a) GAMES: play FREE-FOR-ALL (its default ruleset is NO HEAVIES) →
   expect(dis === 'true', 'Rocket Launcher tile is not aria-disabled under NO HEAVIES');
   await shot(mc, 'kit-no-heavies');
 });
+await step('(a2) defect-2: a missing weapon photo on the KIT arsenal tile shows a glyph, not a silent empty box', async () => {
+  // `WeaponArt` (Kit.tsx) renders an <img>, whose onError swaps in a generic weapon glyph — a CSS
+  // background-image has no such hook, and a missing jpg used to leave the plain #0a1626-toned tile
+  // with nothing on screen saying why (field 2026-09-18, `stripper`/`smoke_gun` before their art
+  // landed). Force every weapon jpg to 404 and remount the arsenal grid (PERK unmounts it, PRIMARY
+  // remounts it) so its <img>s are recreated under the route.
+  await mc.route('**/assets/weapons/*.jpg', route => route.fulfill({ status: 404, body: '' }));
+  expectHttpErrors = true;
+  try {
+    await mc.locator('div[role="button"][aria-pressed]:has-text("PERK")').first().click();
+    await mc.locator('div[role="button"]:has-text("PRIMARY")').first().click();
+    const tile = mc.locator('div[role="button"][aria-label*="SMG"]').first();
+    await until(async () => (await tile.locator('img').count()) === 0, 6000, 'the broken <img> is gone from the SMG tile');
+    expect((await tile.locator('svg').count()) > 0, 'no fallback glyph rendered on the SMG tile');
+    const box = await tile.locator('svg').first().boundingBox();
+    expect(!!box && box.width > 4 && box.height > 4, 'fallback glyph has no visible size: ' + JSON.stringify(box));
+    // the WeaponHero panel (the big art beside the slot rail) uses the same component — same check
+    // there. NB: the always-mounted PRIMARY/SECONDARY/PERK rail icons also use it but never remount
+    // here (nothing changed their weapon_id), so their already-loaded photo is correctly untouched —
+    // this only asserts the panes that DID remount under the 404 route.
+    await until(async () => (await mc.locator('[data-testid="weapon-hero-art"][data-art="fallback"]').count()) > 0, 6000, 'hero panel is still showing the broken <img>');
+    await shot(mc, 'kit-missing-art');
+  } finally { await mc.unroute('**/assets/weapons/*.jpg'); expectHttpErrors = false; }
+});
 await step('(b) hudA: PRIMARY plate → browser → SMG row → EQUIPPED ✓ → MC roster shows SMG (ack + catalog DELIVERED)', async () => {
   await hudA.click('.plate.slot.tap[data-arg="primary"]');
   await until(async () => (await hudA.locator('.lo').count()) > 0, 5000, 'loadout browser open');
@@ -412,6 +438,33 @@ await step('(b) hudA: PRIMARY plate → browser → SMG row → EQUIPPED ✓ →
   expect(cat >= 13, 'assign did not carry the catalog (weapons=' + cat + ')');
   await until(async () => (await mc.locator('div[role="button"]:has-text("ALPHA")').first().textContent()).includes('SMG'), 6000, 'MC roster line shows SMG');
   await shot(hudA, 'hudA-loadout-equipped'); await shot(mc, 'kit-phone-pick');
+});
+await step('(b2) defect-2: a missing weapon photo in the phone rack shows a glyph, not a silent #0a1626 box', async () => {
+  // hud.js `weaponArt` renders an <img> whose onerror swaps to a generic glyph (`.wpicfb`) — a CSS
+  // background-image has no error hook, and a missing jpg used to leave the plain box on screen with
+  // nothing saying why (field 2026-09-18). Force every weapon jpg to 404 and switch tabs and back so
+  // the rack's <img>s are recreated under the route.
+  await hudA.route('**/assets/weapons/*.jpg', route => route.fulfill({ status: 404, body: '' }));
+  expectHttpErrors = true;
+  try {
+    await hudA.click('.lotab[data-arg="secondary"]');
+    await hudA.click('.lotab[data-arg="primary"]');
+    const row = hudA.locator('.lrow[data-arg="weapon:smg"] .thumb');
+    await until(async () => (await row.evaluate(el => getComputedStyle(el.querySelector('.wpic')).display)) === 'none', 6000, 'the broken <img> is hidden on the SMG row');
+    expect((await row.evaluate(el => getComputedStyle(el.querySelector('.wpicfb')).display)) === 'flex', 'the fallback glyph is not shown');
+    expect((await row.locator('svg').count()) > 0, 'no fallback glyph rendered on the SMG row');
+    // .lrow .thumb is a fixed 66×36 CSS box (index.html) — the frame itself is scaled to fit the
+    // viewport (`_fitMcLinked`-style transform), so read the authored size, not a scaled bounding rect.
+    const size = await row.evaluate(el => ({ w: parseFloat(getComputedStyle(el).width), h: parseFloat(getComputedStyle(el).height) }));
+    expect(Math.round(size.w) === 66 && Math.round(size.h) === 36, 'the fallback shifted the row-thumb size: ' + JSON.stringify(size));
+    // the detail hero pane uses the same helper — same check there. ⓘ on a DIFFERENT row (shotgun, not
+    // yet equipped/rendered) so this is a fresh <img> under the route, not the already-focused SMG one
+    // hud.js only just skipped re-rendering unchanged.
+    await hudA.click('.lrow[data-arg="weapon:shotgun"] .linfo');
+    await until(async () => (await hudA.locator('.lodetail .art .wpicfb').isVisible().catch(() => false)), 6000, 'hero pane fallback glyph');
+    expect((await hudA.locator('.lodetail .art .wpic').evaluate(el => getComputedStyle(el).display)) === 'none', 'hero pane still shows the broken <img>');
+    await shot(hudA, 'hudA-loadout-missing-art');
+  } finally { await hudA.unroute('**/assets/weapons/*.jpg'); expectHttpErrors = false; }
 });
 // A26 (S20): TRY IT is gone. The SMG row tapped in (b) equipped it AND armed it for test-firing, so MC's
 // TRYING chip must already be up with NO second control touched — and the player must still be in the rack,
