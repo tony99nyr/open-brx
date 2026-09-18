@@ -513,14 +513,14 @@ export const PERKS: PerkView[] = [
   {
     "perk_id": "body_armor",
     "name": "Body Armor",
-    "desc": "Start every life with extra armor -- about a fifth of the game's health pool (+23 at the usual 45 HP / 70 armor). Armor soaks hits before your health does. The rig is heavier though: your reload takes a quarter longer.",
+    "desc": "Start every life with 25 extra armor, about a fifth more health pool. Armor soaks hits before your health does. The rig is heavier though: your reload takes a quarter longer.",
     "tags": [
       "passive",
       "defense"
     ],
     "mechanism": "passive",
     "effects": {
-      "max_armor_add": 23,
+      "max_armor_add": 25,
       "reload_mult": 1.25
     },
     "verified": true,
@@ -561,14 +561,14 @@ export const PERKS: PerkView[] = [
   {
     "perk_id": "quick_switch",
     "name": "Quick Switch",
-    "desc": "Draw your second weapon in half the time: the gun's swap delay drops from 0.85 s to 0.43 s. A lighter rig means less padding though -- about a twelfth of the game's health pool comes off your armor (-9 at the usual 45 HP / 70 armor).",
+    "desc": "Draw your second weapon in half the time: the gun's swap delay drops from 0.85 s to 0.43 s. A lighter rig means less padding though -- 20 less armor.",
     "tags": [
       "passive",
       "handling"
     ],
     "mechanism": "passive",
     "effects": {
-      "max_armor_add": -9,
+      "max_armor_add": -20,
       "switch_mult": 0.5
     },
     "verified": true,
@@ -577,7 +577,7 @@ export const PERKS: PerkView[] = [
   {
     "perk_id": "armor_piercing",
     "name": "Armor Piercing",
-    "desc": "Your primary ignores armor and shields, straight to health -- but it hits for less than half as hard, so it is only the better choice against an armored or shielded target.",
+    "desc": "Your primary ignores armor and shields, straight to health -- but it hits for about 60% less, so it is only the better choice against an armored or shielded target.",
     "tags": [
       "passive",
       "offense"
@@ -586,6 +586,32 @@ export const PERKS: PerkView[] = [
     "effects": {
       "armor_piercing": true
     },
+    "verified": false,
+    "hidden": false
+  },
+  {
+    "perk_id": "motion_tracker",
+    "name": "Motion Tracker",
+    "desc": "Nearby enemies show on your HUD, no direction, refreshed every few seconds. You carry information instead of firepower -- anyone who accepts being seen can still shoot first.",
+    "tags": [
+      "passive",
+      "utility"
+    ],
+    "mechanism": "passive",
+    "effects": {},
+    "verified": false,
+    "hidden": false
+  },
+  {
+    "perk_id": "second_wind",
+    "name": "Second Wind",
+    "desc": "Once a life, the hit that would finish you leaves you standing instead. It costs nothing up front, because it only pays when you are already losing -- and a weapon that kills in one hit goes through it anyway.",
+    "tags": [
+      "passive",
+      "defense"
+    ],
+    "mechanism": "passive",
+    "effects": {},
     "verified": false,
     "hidden": false
   }

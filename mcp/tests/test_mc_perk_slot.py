@@ -148,7 +148,7 @@ def test_pool_preview_route_returns_the_perk_list():
     r = c.post("/api/loadout/pool", json={"loadout_policy": {"perk": {"choice": "off"}}})
     assert r.status_code == 200 and r.json()["pool"]["perks"] == [] and r.json()["policy"]["perk"]["choice"] == "off"
     r = c.post("/api/loadout/pool", json={"loadout_policy": {"preset": "no_heavies"}})
-    assert len(r.json()["pool"]["perks"]) == 5 and "secondary_perks" not in r.json()["pool"]
+    assert len(r.json()["pool"]["perks"]) == 7 and "secondary_perks" not in r.json()["pool"]
 
 
 # ---------------------------------------------------------------- what the phone is told
@@ -159,7 +159,7 @@ def test_node_view_and_brief_carry_the_perk_rule():
     assert pol["perk"] == {"choice": "player", "allowed_perk_ids": [k["perk_id"] for k in PK]}
     assert "allowed_perk_ids" not in pol["secondary"] and "perk" not in pol["secondary"]["kinds"]
     line = s.game_brief()["loadout_line"]
-    assert "a perk of your choice (5)" in line and "slot 2: a second weapon" in line
+    assert "a perk of your choice (7)" in line and "slot 2: a second weapon" in line
     s.set_config({"loadout_policy": {"perk": {"choice": "fixed", "fixed_id": "body_armor"}}})
     assert "everyone gets Body Armor" in s.game_brief()["loadout_line"]
     s.set_config({"loadout_policy": {"perk": {"choice": "off"}}})

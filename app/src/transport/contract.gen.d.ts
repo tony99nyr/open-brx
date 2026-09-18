@@ -245,10 +245,10 @@ export interface LoadoutPool {
 /** The effect knobs the compiler acts on -- exactly `perks.EFFECT_KEYS`, which `PerkCatalog.__init__`
  *  refuses a perks.json row for exceeding. Every key is optional: a row carries only what it changes.
  *
- *  S50 (2026-09-17): `max_armor_add` here is the DOCUMENTATION value at the default 45+70 pool (an
- *  integer, since `app/src/hud/hud.js` / `webapp/mc/src/screens/Kit.tsx` render it literally) --
- *  `compile._POOL_GRANT_PCT` is the compiled number, a percentage of the player's own hp+armor pool,
- *  keyed by perk_id rather than read out of this field. */
+ *  S50 (2026-09-17, docs/perk-design.md §2): `max_armor_add` is a FLAT armour grant/cost (body_armor
+ *  +25, quick_switch -20) -- `compile._MAX_ARMOR_ADD` is the one table the compiled arithmetic reads,
+ *  keyed by perk_id; this field is its wire-visible documentation, kept an integer because
+ *  `app/src/hud/hud.js` / `webapp/mc/src/screens/Kit.tsx` render it literally. */
 export interface PerkEffects {
   /** added to $PSET armour (or, base armour 0: $PSET shield) -- capped at 255, */
   max_armor_add?: number;
