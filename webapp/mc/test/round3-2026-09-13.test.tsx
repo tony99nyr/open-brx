@@ -12,7 +12,7 @@ import { Recap } from '../src/screens/Recap';
 import { MockBackend } from '../src/mock/backend';
 import { StoreCtx, type View } from '../src/store';
 import { computePool, emptyRequiredSlots, poolEmptyMessage } from '../src/screens/gameSummary';
-import type { LoadoutPolicy, ModeInfo, RecapView, SlotRule, State } from '../src/api/types';
+import type { LoadoutPolicy, ModeInfo, RecapView, SlotRule, State, WeaponView } from '../src/api/types';
 import { demo, makeStore, mount, mountScreen } from './harness';
 
 const RECAP: RecapView = { winner: { player_id: 'p1' }, score: {}, provisional: false, honors: [], missing: [],
@@ -76,10 +76,21 @@ describe('UX-2 — a slot FIXED to an unplayable weapon', () => {
     ({ choice: 'player', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: null, ...over });
   const policy = (over: Partial<LoadoutPolicy>): LoadoutPolicy =>
     ({ preset: 'custom', hud_select: true, primary: rule(), secondary: rule(), perk: rule({ kinds: ['perk'] }), ...over });
+  // 2026-09-17 (arsenal review): the real `energy_launcher` row is now ALSO `hidden` (one of the 8
+  // arsenal cuts), so it no longer reaches `d.weapons` at all — a fixed_id/only_ids naming it now
+  // reads `fixed_missing`/`only_ids_missing` (the weapon is not OFFERED), not `unplayable` (the
+  // weapon is offered but BLOCKED). These two tests still need a catalogue-present-but-unplayable
+  // row to pin the `unplayable` mechanism itself, so they add a synthetic one (same id).
+  const withSyntheticLauncher = (weapons: WeaponView[]): WeaponView[] => {
+    const template = weapons[0];
+    return [...weapons, { ...template, weapon_id: 'energy_launcher', name: 'Energy Launcher',
+      weapon_class: 'energy', role: 'power', tags: ['power', 'heavy'] }];
+  };
 
   it('reads `unplayable`, not `filtered`, and the line NAMES the weapon', async () => {
     const d = await demo();
-    const pool = computePool(policy({ primary: rule({ choice: 'fixed', fixed_id: 'energy_launcher' }) }), d.weapons, d.perks);
+    const weapons = withSyntheticLauncher(d.weapons);
+    const pool = computePool(policy({ primary: rule({ choice: 'fixed', fixed_id: 'energy_launcher' }) }), weapons, d.perks);
     expect(pool.primary).toEqual([]);
     expect(pool.reasons?.primary).toBe('unplayable');
     const msg = poolEmptyMessage('PRIMARY', 'unplayable', 'Energy Launcher');
@@ -90,8 +101,16 @@ describe('UX-2 — a slot FIXED to an unplayable weapon', () => {
 
   it('an allow-list naming nothing but the launcher is the same fact', async () => {
     const d = await demo();
-    const pool = computePool(policy({ primary: rule({ only_ids: ['energy_launcher'] }) }), d.weapons, d.perks);
+    const weapons = withSyntheticLauncher(d.weapons);
+    const pool = computePool(policy({ primary: rule({ only_ids: ['energy_launcher'] }) }), weapons, d.perks);
     expect(pool.reasons?.primary).toBe('unplayable');
+  });
+
+  it('against the LIVE catalogue (energy_launcher hidden too, 2026-09-17), a fixed_id naming it is `fixed_missing`', async () => {
+    const d = await demo();
+    const pool = computePool(policy({ primary: rule({ choice: 'fixed', fixed_id: 'energy_launcher' }) }), d.weapons, d.perks);
+    expect(pool.primary).toEqual([]);
+    expect(pool.reasons?.primary).toBe('fixed_missing');
   });
 
   it('does NOT block PLAY/CONTINUE: MC self-corrects the loadouts and pushes', async () => {
@@ -209,8 +228,14 @@ describe('MERGE-5 / FIELD-2 — one list, two screens', () => {
   });
 
   it('the CATALOGUE tags it NOT PLAYABLE, and tags nothing else', async () => {
+    // 2026-09-17: the real energy_launcher row is `hidden` now too, so it no longer reaches the
+    // catalogue at all — add a synthetic UNPLAYABLE_IDS row (same shape a real one would have) so
+    // this still pins the CATALOGUE's NOT PLAYABLE tagging mechanism itself.
     const d = await demo();
-    const m = await mountScreen(<Catalog />, { ...d, view: 'catalog' });
+    const template = d.weapons[0];
+    const weapons: WeaponView[] = [...d.weapons, { ...template, weapon_id: 'energy_launcher', name: 'Energy Launcher',
+      weapon_class: 'energy', role: 'power', tags: ['power', 'heavy'] }];
+    const m = await mountScreen(<Catalog />, { ...d, weapons, view: 'catalog' });
     const tagged = m.find('[data-testid="not-playable"]');
     expect(tagged.length, `expected exactly one NOT PLAYABLE tag, saw ${tagged.length}`).toBe(1);
     const row = tagged[0].closest('tr');

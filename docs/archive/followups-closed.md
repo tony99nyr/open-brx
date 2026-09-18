@@ -8,6 +8,16 @@ Ordered by close date. Evidence for every claim is in `docs/experiment-log/`.
 
 ---
 
+# Closed 2026-09-17 — the garden range test
+
+**F170** (closed 2026-09-17) — repeat the hosted/native control at the far mark (~200 ft) with the shipped t2=0
+config. Answered by the range test (`experiment-log/2026-09.md`, 2026-09-17 afternoon): a **hosted** head written
+over BLE from the MacBook, `$GSET` t2=0, physical outdoor mode, bright sun, landed **12 hits at ~200 ft** with the
+stock-range slot, alongside 7 hits from the reduced-t41 slot at the same mark. The hosted t2=0 far-mark result the
+2026-09-13 handoff never recorded now exists, and it matches the native ~200 ft reach.
+
+---
+
 # Closed 2026-09-13 — GSET t2 handoff
 
 - 2026-09-13 **F197** t2 pin completed, reviewed and validated across real/fallback player, try-out and

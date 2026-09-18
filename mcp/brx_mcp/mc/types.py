@@ -359,6 +359,17 @@ class Stun(TypedDict):
     duration_s: NotRequired[int]   # F15/A20: seconds a hit EMP keeps the gun disarmed (default 10, 1..60)
 
 
+class Recoil(TypedDict):
+    """S42 (2026-09-17): a weapon's TARGET accuracy profile -- `weapons.json` `recoil`, declared-only
+    on the wire (compile.py `resolve()` never writes t21/t22 from it). `app/src/engine.js` is the sole
+    reader: it pins both tokens to `value` on every accuracy write, stepping `value` down by `per_shot`
+    toward `floor` per shot and back up toward `ceiling` at `recover_ms` per step once the player stops."""
+    ceiling: int
+    floor: int
+    per_shot: int
+    recover_ms: int
+
+
 class GameConfigBase(TypedDict):
     config_id: str
     mode: str
@@ -411,6 +422,12 @@ class GameConfigBase(TypedDict):
     #                                              MC pushes them the `vip` headset role (`alert.role`) once the match is
     #                                              live and again after each of their respawns. Never stored in a saved
     #                                              game (a preset names no person).
+    recoil: NotRequired[bool]                    # S42: node-driven recoil (the accuracy ceiling/floor is OURS, not the
+    #                                              gun's native walk -- F230). DEFAULT ON: absent or `true` = on, only an
+    #                                              explicit `false` turns it off. No FrameBundle change needed -- `config`
+    #                                              already rides every push wholesale, and `app/src/engine.js` reads
+    #                                              `config.recoil !== false`. Seam for stance/flinch (also S42, not built
+    #                                              here): a future switch for either can sit right beside this one.
 
 
 class GameConfig(GameConfigBase):
@@ -470,6 +487,7 @@ class Weapon(TypedDict):
     weapon_id: str
     name: str
     cls: str
+    weapon_class: str           # ballistic|energy|melee (weapons.json `class`, A10, 2026-09-17): ballistic reloads, energy overheats/charges; not the same as `cls` above (raw protocol class byte)
     desc: NotRequired[str]     # house-written armory blurb (weapons.json `desc`); "" if a row lacks one
     stats: dict
     weap_frame: str
@@ -478,6 +496,9 @@ class Weapon(TypedDict):
     tags: NotRequired[list[str]]   # A10 policy vocabulary (loadout.md §1.1)
     role: NotRequired[str]
     caution: NotRequired[str]      # A10: human copy for a known LIVE problem (weapons.json `caution`)
+    pickup_only: NotRequired[bool]  # 2026-09-17: catalogue-visible but never in a player loadout pool (policy.py)
+    recoil: NotRequired[Recoil]     # S42: the declared target accuracy profile (weapons.json `recoil`)
+    rounds_per_charge: NotRequired[int]  # A48: rounds of the cell one FULL charge spends (weapons.json `rounds_per_charge`); absent on a weapon that does not charge
 
 
 class WeaponBars(TypedDict):
@@ -492,6 +513,7 @@ class WeaponView(TypedDict):
     weapon_id: str
     name: str
     cls: str
+    weapon_class: str           # ballistic|energy|melee (weapons.json `class`, A10, 2026-09-17): ballistic reloads, energy overheats/charges; not the same as `cls` above (raw protocol class byte)
     desc: str
     clip: int
     mags: int
@@ -511,6 +533,9 @@ class WeaponView(TypedDict):
     caution: NotRequired[str]
     ammo_total: NotRequired[int]
     bars: NotRequired[WeaponBars]
+    pickup_only: NotRequired[bool]  # 2026-09-17: catalogue-visible but never in a player loadout pool (policy.py)
+    recoil: NotRequired[Recoil]     # S42: the declared target accuracy profile -- the node's `weaponRow(id).recoil`
+    rounds_per_charge: NotRequired[int]  # A48: rounds of the cell one FULL charge spends -- the HUD's NOT ENOUGH ENERGY line reads this, never a hard-coded cost
 
 
 class SavedGame(TypedDict):

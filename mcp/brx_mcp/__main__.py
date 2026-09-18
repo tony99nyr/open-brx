@@ -162,7 +162,8 @@ GAME_CONFIG = [
     "$CLEAR,*",
     "$START,*",
     # t2 stays 0: field 2026-09-13 showed 1 cripples hit reception on the receiving gun.
-    "$GSET,1,0,1,0,1,0,50,1,*",
+    # t7 (crit_modifier) is 0: the GameConfig default (2026-09-17, arsenal review).
+    "$GSET,1,0,1,0,1,0,0,1,*",
     # tokens 3-5 = HP,armor,shield (45,70,70); tail is the app's audio set
     "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*",
     # slot 0 primary, slot 1 secondary, slot 4 melee

@@ -68,7 +68,7 @@ Hardware-true, from `session-findings-2026-08.md` §7r and the 2026-08-26 damage
 |---|---|
 | **htk** | `ceil(pool / dmg)`, where `pool` is the host's `max_hp + max_armor` (115 at the defaults, and the column used throughout this document) — it MOVES with the health config, see §2.5. Also see §6.2: this is the raw-`t5` reading and is wrong for five shipped weapons |
 | **cycle** | `t14`, ms between shots (for charge weapons, the charge time) |
-| **TTK** | `(htk-1) × cycle`; charge weapons `htk × cycle`; burst weapons use the burst-average cycle |
+| **TTK** | `(htk-1) × cycle`; burst weapons use the burst-average cycle. ⚠️ **Charge weapons are the exception since 2026-09-17**: their kill is one held charge plus the taps that finish it, so TTK is measured from the RELEASE and the charge time is setup, not combat (§2.2, S43). |
 | **burst average** | `(2 × t14 + t23) / 3` — three rounds at `t14` spacing, `t23` between bursts |
 | **sustained DPS** | `mag × dmg / (mag × cycle + reload_ms)` |
 | **total kills** | `(mag + reserve) // htk` |
@@ -165,75 +165,132 @@ sounds — and moves the numbers.
    model in the thirty seconds before the whistle, a reload still kills, and a guideline never blocks.
    The wording names the shape — the gun you fight with, a sidearm in the primary slot, or a backup.
    What DOES block is a weapon that cannot damage anyone at all (§6.2).
-5. **TTK band 1.5–3.5 s** at the 115 pool for everything that is not a one-shot weapon.
-6. **No strict dominance.** No weapon may be ≥ another on TTK, sustained DPS **and** total kills at
-   once. Checked in a test, not by eye.
+5. **TTK band 1.20–3.50 s** at the 115 pool for everything that is not a one-shot weapon or a charge
+   weapon (the band moved from 1.5 s on 2026-09-17 to admit the AR's native 100 ms cycle; a charge
+   weapon is exempt because its setup is not combat time).
+6. **No strict dominance WITHIN A FAMILY, and every weapon leads somewhere.** Since 2026-09-17 the
+   check runs per family (fire mode plus `weapon_class`) on four axes: ideal TTK, kills per clip,
+   one-magazine kill chance at p = 0.7, and sustained DPS. "Total kills from a full kit" is retired,
+   because a respawn refills the kit. Checked in a test, not by eye (§2.3).
 7. **One-shot weapons are a pickup tier**: 2-round magazine, 4 total kills, and each differentiated
    by charge behaviour rather than by numbers.
 8. **`htk` is the design unit, not DPS** — IR hits are discrete and misses are normal.
 
 ### 2.2 The table
 
-| weapon | role | dmg | cycle ms | htk | **TTK s** | DPS | sust | mag | reserve | reload | mag/total kills | heat | changed |
+| weapon | role | dmg | cycle ms | htk | **TTK s** | DPS | sust | mag | reserve | reload | one-mag kill % (p=0.7) | heat | changed |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| *Melee* | melee | 90 | 1000 | 2 | **1.00** | 90.0 | 90.0 | 1 | 0 | 0 | 0 / 0 | — | **stock** |
-| Sniper Rifle | marksman | 60 | 1500 | 2 | **1.50** | 40.0 | 31.2 | 4 | 24 | 1700 | 2 / 14 | — | dmg 80→60, cycle 300→1500 |
-| Shotgun | cqb | 45 | 800 | 3 | **1.60** | 56.2 | 51.9 | 6 | 24 | 400 | 2 / 10 | — | cycle 900→800 |
-| Plasma Sniper | marksman | 25 | 400 | 5 | **1.60** | 62.5 | 41.7 | 10 | 80 | 2000 | 2 / 18 | 30 | dmg 80→25, cycle 225→400 |
-| AMR | support | 24 | 400 | 5 | **1.60** | 60.0 | 48.0 | 14 | 56 | 1400 | 2 / 14 | — | dmg 18→24, cycle 360→400 |
-| Force Rifle | assault | 10 | 100 +250 | 12 | **1.65** | 66.7 | 50.7 | 36 | 144 | 1700 | 3 / 15 | — | dmg 9→10 |
-| Burst Rifle | assault | 9 | 75 +275 | 13 | **1.70** | 63.5 | 47.6 | 36 | 216 | 1700 | 2 / 19 | — | **stock** |
-| Stinger | cqb | 15 | 250 | 8 | **1.75** | 60.0 | 43.5 | 18 | 144 | 1700 | 2 / 20 | — | cycle 120→250, res 72→144 |
-| Bolt Rifle | assault | 13 | 225 | 9 | **1.80** | 57.8 | 38.7 | 18 | 180 | 2000 | 2 / 22 | — | **stock** |
-| SMG | cqb | 8 | 140 | 15 | **1.96** | 57.1 | 45.8 | 72 | 288 | 2500 | 4 / 24 | 5 | cycle 90→140 |
-| Suppressor | support | 8 | 160 | 15 | **2.24** | 50.0 | 39.7 | 48 | 384 | 2000 | 3 / 28 | — | cycle 75→160, res 288→384 |
-| Assault Rifle | assault | 9 | 140 | 13 | **1.68** | 64.3 | 49.0 | 32 | 192 | 1400 | 2 / 17 | — | cycle 100→140, res 384→192 |
-| Energy Rifle | support | 9 | 200 | 13 | **2.40** | 45.0 | 43.3 | 300 | 600 | 2400 | 23 / 69 | 6 | cycle 90→200 |
-| Charge Rifle | support | 100 | 1250 | 2 | **2.50** | 80.0 | 76.2 | 40 | 80 | 2500 | 20 / 60 | 14 | mag 100→40, res 200→80 (bench 2026-09-17: a full charge spends about 10, so the kill counts here are per round, not per charge) |
-| Rocket Launcher | power | 115 | 1000 | 1 | **0.00** | 115.0 | 50.0 | 2 | 2 | 2600 | 2 / 4 | — | res 8→2, reload 1200→2600 |
-| Energy Launcher | power | 115 | 1600 | 1 | **0.00** | 71.9 | 50.0 | 2 | 2 | 1400 | 2 / 4 | — | cycle 360→1600, mag 1→2, res 6→2 |
-| Ion Sniper | power | 115 | 1400 | 1 | **0.00** | 82.1 | 47.9 | 2 | 2 | 2000 | 2 / 4 | — | cycle 1000→1400, res 12→2 |
-| Rail Gun | power | 115 | 1200 | 1 | **1.20** | 95.8 | 47.9 | 2 | 2 | 2400 | 2 / 4 | — | mag 1→2, res 6→2 |
-| Laser Cannon | power | 115 | 1500 | 1 | **1.50** | 76.7 | 50.0 | 2 | 2 | 1600 | 2 / 4 | — | mag 4→2, res 8→2, reload 2000→1600 |
-| Desert Eagle | sidearm | 26 | 480 | 5 | **1.92** | 54.2 | 32.7 | 7 | 48 | 2200 | 1 / 11 | — | **D2 2026-09-12** (Bolt Rifle frame) |
-| USP-S | sidearm | 9 | 160 | 13 | **1.92** | 56.2 | 33.3 | 20 | 120 | 2200 | 1 / 10 | — | **D2 2026-09-12** (Bolt Rifle frame, suppressed) |
-| Glock-18 | sidearm | 13 | 240 | 9 | **1.92** | 54.2 | 34.4 | 16 | 64 | 2200 | 1 / 8 | — | **D2 2026-09-12** (Bolt Rifle frame) |
+| *Melee* | melee | 90 | 1000 | 2 | **1.00** | 90.0 | 90.0 | 1 | 0 | 0 | 0% | — | **stock** |
+| Sniper Rifle | marksman | 60 | 1500 | 2 | **1.50** | 40.0 | 31.2 | 4 | 24 | 1700 | 92% | — | dmg 80→60, cycle 300→1500 |
+| Shotgun | cqb | 45 | 800 | 3 | **1.60** | 56.2 | 51.9 | 6 | 24 | 400 | 93% | — | cycle 900→800 |
+| Plasma Sniper | marksman | 25 | 400 | 5 | **1.60** | 62.5 | 41.7 | 10 | 80 | 2000 | 95% | 30 | dmg 80→25, cycle 225→400 |
+| AMR | support | 24 | 400 | 5 | **1.60** | 60.0 | 48.0 | 14 | 56 | 1400 | 100% | — | dmg 18→24, cycle 360→400 |
+| Force Rifle | assault | 10 | 100 +250 | 12 | **1.65** | 66.7 | 50.7 | 36 | 144 | 1700 | 100% | — | dmg 9→10 |
+| Burst Rifle | assault | 11 | 75 +275 | 11 | **1.42** | 77.6 | 58.2 | 36 | 216 | 1700 | 100% | — | **2026-09-17**: dmg 9→11 (`wire.dmg`) |
+| Stinger | cqb | 15 | 250 | 8 | **1.75** | 60.0 | 43.5 | 18 | 144 | 1700 | 99% | — | cycle 120→250, res 72→144 |
+| Bolt Rifle | assault | 13 | 225 | 9 | **1.80** | 57.8 | 38.7 | 18 | 180 | 2000 | 98% | — | **stock** |
+| SMG | cqb | 8 | 95 | 15 | **1.33** | 84.2 | 61.7 | 72 | 288 | 2500 | 100% | 5 | **2026-09-17**: cycle 140→95 (`wire.fire_ms`) |
+| Suppressor | support | 8 | 140 | 15 | **1.96** | 57.1 | 48.0 | 75 | 384 | 2000 | 100% | — | **2026-09-17**: cycle 160→140 (`wire.fire_ms`); mag 48→75 (§2.3, family-scoped dominance) |
+| Assault Rifle | assault | 9 | 100 | 13 | **1.20** | 90.0 | 62.6 | 32 | 192 | 1400 | 100% | — | **2026-09-17**: cycle 140→100 (`wire.fire_ms`, native Battle Company speed) |
+| Energy Rifle | support | 9 | 150 | 13 | **1.80** | 60.0 | 57.0 | 300 | 600 | 2400 | 100% | 6 | **2026-09-17**: cycle 200→150 (`wire.fire_ms`); overheat switched ON (F229: `t38`=150 override, `t35`=D11) |
+| Charge Rifle | support | 85 | 1250 | 3 | **1.00** | 68.0 | 45.3 | 40 | 80 | 2500 | 92% | 14 | **2026-09-17**: dmg 87→85 (`wire.dmg`, the CHARGE damage; tap damage `t37`=20 unchanged), mag/res 12/12→40/80, `rounds_per_charge`=10 (F225/F226/S43); `htk`/`ttk s` now count 1 charge + 2 taps (release-to-kill), not `ceil(pool/85)` |
+| Rocket Launcher | power | 115 | 1000 | 1 | **0.00** | 115.0 | 50.0 | 2 | 2 | 2600 | 91% | — | res 8→2, reload 1200→2600 |
+| Energy Launcher | power | 115 | 1600 | 1 | **0.00** | 71.9 | 50.0 | 2 | 2 | 1400 | 91% | — | cycle 360→1600, mag 1→2, res 6→2 |
+| Ion Sniper | power | 115 | 1400 | 1 | **0.00** | 82.1 | 47.9 | 2 | 2 | 2000 | 91% | — | cycle 1000→1400, res 12→2 |
+| Rail Gun | power | 115 | 1200 | 1 | **1.20** | 95.8 | 47.9 | 2 | 2 | 2400 | 91% | — | mag 1→2, res 6→2 |
+| Laser Cannon | power | 115 | 1500 | 1 | **1.50** | 76.7 | 50.0 | 2 | 2 | 1600 | 91% | — | mag 4→2, res 8→2, reload 2000→1600 |
+| Desert Eagle | sidearm | 26 | 480 | 5 | **1.92** | 54.2 | 32.7 | 7 | 48 | 2200 | 65% | — | **D2 2026-09-12** (Bolt Rifle frame) |
+| USP-S | sidearm | 9 | 160 | 13 | **1.92** | 56.2 | 32.6 | 19 | 120 | 2200 | 67% | — | **D2 2026-09-12** (Bolt Rifle frame, suppressed); **2026-09-17**: mag 20→19 (§2.3, family-scoped dominance) |
+| Glock-18 | sidearm | 13 | 240 | 9 | **1.92** | 54.2 | 34.4 | 16 | 64 | 2200 | 93% | — | **D2 2026-09-12** (Bolt Rifle frame) |
+
+**"One-mag kill %"** (2026-09-17, replaces the old "mag/total kills" column) is `P(at least htk hits in
+mag shots)` at a stated field accuracy `p=0.7`, binomial exact — the same formula the sidearm proposal
+used (`docs/reference/ttk-model.md` §Sidearm proposal). Reserve ammo is no longer a balance axis: a
+respawn refills the whole kit, so how many kills a full kit could theoretically produce said nothing
+about any single life. The Charge Rifle's `mag`/`reserve` are ROUNDS of its 10-round cell
+(`rounds_per_charge`), so its one-mag figure is computed on 4 charges (`40 / 10`), not 40 hits.
 
 Three weapons ship **exactly as Battle Company sent them** (`verified: true`): the Burst Rifle, the
 Bolt Rifle and Melee — their stock numbers already sat in the band.
 
 **Role identities**
 
-- **Assault Rifle** — the anchor, and the one weapon players arrive already attached to. Cycle 100 →
-  **140 ms**, reserve 384 → **192** (17 kills); damage untouched at the captured 9.
-  **Retuned 2026-08-30 after the first live match** — Tony: *"the classic assault rifle doesn't feel
-  like the native m4 at all. it feels slow."* He was right, and it was deliberate: the previous 190 ms
-  was simply the first cycle at which the AR stopped strictly dominating, and it cost the weapon its
-  identity. The dominance was never really about rate — it was rate **plus** the deepest pool in the
-  game. Paying for speed out of the reserve instead buys back 36 % of the fire rate at zero dominance.
-  Measured across the whole arsenal (see the table): at the native 100 ms with a 384 reserve the AR
-  strictly dominates **ten** of the seventeen picker weapons; at 140/192 it dominates **none**.
-  Shipping the true 100 ms is a one-token change (`wire.fire_ms`) for anyone who wants stock feel over
-  a balanced arsenal — it fails `test_ttk_band_and_no_strictly_dominant_weapon`, by design.
-- **Burst Rifle** — stock. A real three-round burst the gun enforces, and the most total ammo of the
-  burst pair (19 kills).
-- **Force Rifle** — the burst rifle's heavier twin: 10 damage instead of 9, so 12 hits instead of 13
-  and a faster kill, paid for in half the reserve and a slower five-part reload.
+- **Assault Rifle** — the anchor, and the one weapon players arrive already attached to. **2026-09-17
+  arsenal review: back to Battle Company's native 100 ms cycle** (`wire.fire_ms`), reversing the
+  2026-08-30 retune to 140 ms; damage untouched at the captured 9. Tony's call, made with the
+  historical dominance finding on the table (below): at 140/192 the AR dominated nothing under the old
+  three-axis check; at native 100/192 it strictly dominates several other picker weapons under BOTH
+  the old axes and the new one-magazine-kill-chance axis (§2.3) — the accuracy/stance/flinch system
+  (S42, node-driven, not the native spray decay F230 showed is not usable) is the intended real-world
+  equaliser, not this static check. Under the family-scoped rule that shipped the same day (§2.3) the
+  test is GREEN: the AR leads its family on time to kill and sustained DPS, and the SMG and Suppressor
+  lead on kills per clip. ⚠️ **That is a paper lead, not a felt one.** Until stance and recoil ship,
+  a player who picks on feel has no reason to take anything else in this family, so the AR's cost is
+  owed and unpaid.
+- **Burst Rifle** — **2026-09-17: damage 9 → 11** (`wire.dmg`), 13 hits → 11, so the real three-round
+  burst separates further from the SMG-class assault weapons on hits-to-kill, not only on cadence
+  (75 ms intra-burst + 275 ms gap, unchanged). No longer ships byte-for-byte (`verified: false`).
+- **Force Rifle** — hidden since the 2026-09-17 cuts, and its old "heavier twin" identity is gone:
+  the Burst Rifle went to 11 damage that day while the Force Rifle stayed at 10, so it is now the
+  lighter AND slower of the burst pair (12 hits and 1.65 s against 11 hits and 1.42 s), with half the
+  reserve and a slower five-part reload. It is kept for custom games, not retuned.
 - **Bolt Rifle** — stock. Single shot, 9 hits, 22 kills.
-- **SMG** — four kills a magazine, 24 across the kit, and a heat value (`t24 = 5`) — **inert as shipped: overheat requires t37/t38, which only the Charge Rifle carries (bench 2026-08-26)**.
+- **SMG** — **2026-09-17: cycle 140 → 95 ms** (`wire.fire_ms`), four kills a magazine, 24 across the
+  kit, and a heat value (`t24 = 5`) — **inert as shipped: overheat requires t37/t38, which only the
+  Charge Rifle carries (bench 2026-08-26)**.
 - **Shotgun** — three hits, six shells, a **400 ms Shells-type reload** — the highest sustained
-  output in the arsenal from its shallowest ammo pool.
+  output in the arsenal from its shallowest ammo pool. Unchanged in the 2026-09-17 pass; its numbers
+  already matched Tony's target.
 - **Stinger** — full auto, eight hits, 20 kills. Reserve doubled so it is not simply the SMG's worse
   sibling.
-- **Sniper Rifle** — the only two-hit weapon outside the power tier, on a 1.5 s cycle.
+- **Sniper Rifle** — the only two-hit weapon outside the power tier, on a 1.5 s cycle. Unchanged in the
+  2026-09-17 pass.
 - **Plasma Sniper** — a marksman rifle that fires like a carbine and **overheats** (`t24 = 30`).
   Damage dropped hard (80 → 25) precisely so its cycle could stay fast enough for the heat mechanic
   to matter.
-- **AMR** — the hardest-hitting automatic (24 a hit) and the shallowest (14 kills).
-- **Suppressor** — quiet, no muzzle flash, **28 kills**: the deepest total pool, the slowest kill.
-- **Energy Rifle** — 23 kills on one magazine, 69 across the kit. The ammo weapon.
-- **Charge Rifle** — hold-and-release charge with a heat budget. Its 100/200 ammo (100 kills) was the
-  single most dominant thing in the arsenal; cut to 12/12.
+- **AMR** — the hardest-hitting automatic (24 a hit) and the shallowest (14 kills). Unchanged in the
+  2026-09-17 pass.
+- **Suppressor** — **2026-09-17: cycle 160 → 140 ms** (`wire.fire_ms`); quiet, no muzzle flash, the
+  deepest total pool, the slowest kill. **Mag 48 → 75** (a second 2026-09-17 change, §2.3): the
+  family-scoped dominance test pairs it against the SMG (same fire mode, same `weapon_class`), which
+  beat it on ideal TTK and sustained DPS; the deeper magazine gives Suppressor an outright lead on
+  kills per clip (5 vs the SMG's 4) — the smallest number change that stops the SMG dominating it.
+- **Energy Rifle** — **2026-09-17 (F229): cycle 200 → 150 ms** (`wire.fire_ms`), and overheat switched
+  ON — `wire` cannot address `t38` directly, so it ships as an `overrides` entry: `t38 = 150` (the
+  bench-proven "on" value) and `t35 = D11` (the SMG's captured overheat sound, ear-confirmed on a real
+  overheat). Full auto locks it out near heat 99 after about 30 shots; unlike the Charge Rifle it does
+  not cool on its own, and only the reload lever (a **hold**, not a tap) clears the lockout — the same
+  hold that refills the 300-round cell. 23 kills on one magazine, 69 across the kit still hold; only
+  the cycle moved.
+- **Charge Rifle** — **2026-09-17 (F225/F226/S43): the balance-breaking bug and the ambush design.**
+  `<8,0>` used to key `$SIR` function 38, which HALVES every hit (a 100-magnitude charge landed 50);
+  re-keyed to function 1 (plain damage) in `gameconfig._SIR_TABLE`, and `_SIR_PLAIN_DAMAGE` no longer
+  allow-lists 38 so nothing can key to it by accident again (`compile.py`). Damage is now two
+  independent numbers: `t5` (charge) `85` via `wire.dmg`, `t37` (tap) `20` (already the captured
+  value). A full charge costs 10 rounds of the cell and +56 heat; a tap costs 1 round and +14 heat;
+  the lockout sits at about heat 103 for about 4.8 s. The new catalogue field `rounds_per_charge: 10`
+  says so explicitly, and every place that used to read `mag`/`reserve` as hit counts (the one-magazine
+  guard, the dominance table's kill-chance axis) now divides by it first. The design point (S43,
+  Tony): nobody lands a second charge in a 1v1, so the intended kill is **one charge plus two taps**
+  (85 + 20 + 20 = 125 ≥ 115), 12 rounds and 84 heat, safely under the lockout. Cell size raised
+  100/200 → **40/80** rounds (4 charges up, 8 back) from the old 12/12 the first pass shipped, cutting
+  the previous single-most-dominant weapon in the arsenal down to a magazine that holds one real kill
+  combo with one charge spare.
+
+  **2026-09-17, second pass: the model now counts the real combo.** `hits_to_kill()` used to publish
+  `ceil(pool/85) = 2`, silently pretending every hit is a full charge; it now counts 1 charge plus
+  however many taps close the rest of the pool — **`htk` = 3, `ttk_ms` = 1000** at the 115 pool. TTK is
+  deliberately RELEASE-to-kill, not charge-to-kill: the charge is pre-built behind cover, so the ~3.5 s
+  (by feel; `t14` itself reads 1250 ms, a separate and still-unreconciled number) it takes to build is
+  SETUP, not combat time — that pre-charge is the weapon's whole identity (S43). The two taps that
+  follow cost `WeaponCatalog.CHARGE_TAP_CADENCE_MS` (500 ms, a documented placeholder for "about 1 s"
+  pending a bench-measured tap cadence) each. `rounds_to_kill()` is the ROUNDS version of the same
+  combo (12: `rounds_per_charge` + 1 round per tap) for anything that must compare against a raw
+  `mag`/`reserve` count — the one-magazine guard and kills-per-clip both use it, never `hits_to_kill()`
+  directly. The SUSTAINED-DPS and one-magazine-kill-chance axes (§2.3) still model the weapon as
+  repeated full charges (a charge is near-certain once released; no per-action accuracy model exists to
+  mix that with a tap's p=0.7 trigger pull), so they keep the simpler `ceil(pool/85) = 2` — a different
+  question ("how hard can this sustain fire") from "what does the one pre-built kill cost".
 - **Sidearms (2026-09-04, rebalanced D2 2026-09-12)** — Glock-18, USP-S, Desert Eagle: slot-2 backups
   built on the Bolt Rifle's captured frame (the one captured semi-automatic: `t20 = 7`, one shot per
   trigger pull, magazine reload). Tony, 2026-09-11: "the sidearms should not kill fast, they should
@@ -246,15 +303,30 @@ Bolt Rifle and Melee — their stock numbers already sat in the band.
   fastest trigger and the weakest hit** (9 dmg / 160 ms / 13 hits), suppressed and flashless
   (`t25 = 2`, `t26 = 50`, the Suppressor's pair); the **Glock-18 sits in the middle** (13 dmg / 240 ms
   / 9 hits); the **Desert Eagle still hits hardest on the slowest cycle** (26 dmg / 480 ms / 5 hits).
+  ⚠ **2026-09-17: USP mag 20 → 19 (glock/deagle unchanged).** Only USP and Deagle are visible today
+  (Glock is `hidden`), and only they are checked against each other (§2.3's `sidearm` family). Retiring
+  "total kills from a kit" as a dominance axis (§2.3) removed the exact lever the paragraph above
+  relied on — with it gone, **USP strictly dominated Deagle** (equal ideal TTK, higher sustained DPS,
+  higher one-magazine kill chance). Tony's ask was mag 20 → 14; at 14 the sustained-DPS and
+  one-magazine-kill-chance axes both fall so far (a small magazine spends proportionally more of its
+  time reloading) that **Deagle ends up dominating USP instead** — a straight reversal, not a fix. 19
+  is the smallest cut off 20 that actually leaves neither pistol beating the other (USP still leads on
+  one-magazine kill chance, 67% vs 65%; Deagle leads on sustained DPS, 32.7 vs 32.6 dmg/s) — a thin
+  margin the next retune should treat as fragile, not settled.
+
   Nothing dominates: with all three tied on ideal TTK, sustained DPS and total-kills rank in the SAME
   order (Glock highest sustain, USP middle, Deagle lowest) while reserve ammo runs the other way
   (Deagle 11 kills a kit, USP 10, Glock 8), so no sidearm beats another on every axis at once — see
-  `docs/reference/ttk-model.md` §Shipped for the full 3×3 table and the accuracy-adjusted numbers.
+  `docs/reference/ttk-model.md` §Shipped for the full 3×3 table and the accuracy-adjusted numbers
+  (historical: this was the ORIGINAL 2026-09-12 reasoning, superseded for USP/Deagle by the paragraph
+  above once the dominance axes changed).
   All three still sit inside the 1.5–3.5 s band and **are deliberately dominated by the primaries**
-  (a sidearm has roughly two-thirds of a primary's sustained output). `test_ttk_band_and_no_strictly_dominant_weapon`
-  exempts a sidearm from *being* dominated by a primary, never from dominating one, and still forbids
-  one sidearm dominating another. In a pistol round (`loadout_policy.primary.kinds = ["sidearm"]`) they
-  only meet each other. Fire sounds `P16` (Glock) / `Q04` (USP) / `X14` (Deagle) and the `D08 D07 D06`
+  (a sidearm has roughly two-thirds of a primary's sustained output) — primaries and sidearms are
+  different families (§2.3) and are never compared for strict dominance either way; this is a design
+  intent, not a mechanically-checked one. `test_ttk_band_and_no_strictly_dominant_weapon`
+  still forbids one sidearm dominating another (`_weapon_family()`'s `sidearm` bucket). In a pistol
+  round (`loadout_policy.primary.kinds = ["sidearm"]`) they only meet each other. Fire sounds `P16`
+  (Glock) / `Q04` (USP) / `X14` (Deagle) and the `D08 D07 D06`
   reload run are on-gun ids no other weapon uses (ear-confirmed 2026-09-11, `docs/reference/sound-catalog.md`),
   so a custom `.LTP` copied over the data port replaces only that pistol's sound.
   Draw time `wire.swap_ms = 500` (tok15; the primaries keep the captured 850) — bench 2026-09-04
@@ -266,18 +338,88 @@ Bolt Rifle and Melee — their stock numbers already sat in the band.
   all **2 + 2 rounds = 4 kills**, differentiated by charge behaviour and a deliberate cycle/reload
   ladder (see §2.4).
 
-### 2.3 Dominance and the band
+### 2.3 Dominance, families, and the lead rule
 
-Checked mechanically in `test_ttk_band_and_no_strictly_dominant_weapon`:
+Checked mechanically in `test_ttk_band_and_no_strictly_dominant_weapon`
+(`mcp/tests/test_mc_compile.py`), rewritten 2026-09-17 after the Assault Rifle's return to its native
+100 ms cycle reintroduced the exact cross-weapon dominance the 2026-08-30 retune existed to avoid — a
+global three-axis check could no longer hold both "AR at native speed" and "nothing strictly beats
+anything" at once, and re-throttling the AR again was explicitly off the table this time.
 
-- Every non-one-shot weapon lands between **1.50 s and 2.50 s** — inside the 1.5–3.5 s band.
-- **No weapon strictly dominates another** on {TTK, sustained DPS, total kills}. The same check on
-  the stock roster returns **43** dominated pairs.
+**1. The band.** Every non-one-shot, non-cell weapon lands between **1.20 s and 3.50 s** ideal TTK —
+the band, not the old 1.50–3.50 s. The floor moved 2026-09-17 to admit the Assault Rifle's native
+1.20 s rather than throttle the weapon again. A CELL weapon (`rounds_per_charge` > 1 with a tap
+magnitude — today, only the Charge Rifle) is exempt the same way a one-shot weapon already is: its
+`ttk_ms` is RELEASE-to-kill (§2.2), and the pre-built charge that makes that number small is exactly
+its identity, not sustained-fire combat time the band is measuring.
 
-**One honest caveat: range is not a differentiator.** `t41` (gun range) reads **75 on all eighteen
-guns** and 20 on melee — Battle Company does not vary it. So the dominance check runs on three axes,
-not four, and the shotgun's 25 %-range drawback from the earlier draft does not exist on the wire.
-This is now the single biggest missing design axis (§5, U2).
+**2. Dominance runs WITHIN A FAMILY, not globally.** Family = the `$WEAP` fire mode (`t20`) plus
+`weapon_class`, except a sidearm, which is its own family regardless of mode or class (`_weapon_family()`
+— a slot-2 backup was never meant to compete with a primary, so the old bespoke "primary beats sidearm"
+exemption falls out of this for free: a primary and a sidearm are never in the same family to begin
+with). This groups the roster into automatics split by ballistic/energy (`{assault_rifle, smg,
+suppressor}`, `{energy_rifle}` alone), bursts (`{burst_rifle}` alone), semi-autos (`{shotgun,
+sniper_rifle, amr}`), the Charge Rifle's own charge-mode family (alone), and the sidearms
+(`{usp, deagle}`). **No weapon strictly dominates another IN ITS OWN FAMILY** on {ideal TTK, kills per
+clip (`mag // rounds_to_kill`, deterministic, felt every reload), one-magazine kill chance at p=0.7
+(binomial, `_one_mag_kill_p`), sustained DPS (one magazine dump plus one reload)}. "Total kills from a
+full kit" is retired as an axis entirely (a respawn refills the kit, so it is not a fact about a single
+life); kills-per-clip takes its place as the deterministic axis, alongside the probabilistic one-
+magazine figure — Tony's call was to keep both, not pick one.
+
+**Why per-family, not global.** An SMG beating a Sniper Rifle on every one of these four axes is
+expected, not a balance failure: neither range nor recoil exists on the wire yet (F231, S42), and a
+Sniper Rifle's whole real identity IS range — the model simply cannot see the axis that would stop the
+SMG winning. Checking dominance only within a family (weapons that already share a fire mode and a
+damage type) keeps the check meaningful without pretending to referee a fight the model has no data
+for. The same check on the STOCK roster, unscoped, returned **43** dominated pairs; scoped to family
+and using the 2026-09-17 numbers, the roster is CLEAN — zero violations.
+
+**3. The lead rule.** Every visible weapon must LEAD its family on at least one axis a player can
+feel — the strict-dominance check alone allows a family where every OTHER member ties or loses to one
+weapon on every axis without that one weapon quite crossing into "dominates" (no single strict edge on
+any one axis). "Leads" means: achieves the family-best value (ties count) on one of the four numeric
+axes above. ⚠️ **It does NOT mean a declared `recoil.floor` or a unique `range_band`** — polish round
+2 (2026-09-17) removed those two paths, because neither reaches a gun, so a lead claimed on either
+would be satisfied by inert data and the rule could never fail. Add them back in the same commit that
+wires the levers. A family of one (Burst Rifle, Energy Rifle, Charge Rifle: each alone in its
+mode/class bucket) trivially leads — there is nothing to be out-led by. Two qualifiers used only for
+this rule, both **declared catalogue data for a lever that does not reach the wire yet**
+(`test_range_and_recoil_are_declared_not_wired` is the guard):
+
+- **`range_band`** (`"close" | "close-mid" | "mid" | "long"`, plus a `range_target_m` human string) —
+  the per-venue metres Q15 will calibrate once `t2` is (F231): Shotgun/sidearms close (8-10 m indoor /
+  15-18 m outdoor), SMG close-mid (12 / 25-30), Assault Rifle/Burst/Charge Rifle mid (18-20 / 40-45),
+  Suppressor/Energy Rifle mid (15 / 30, the deep-mag "LMG" role), Sniper Rifle/AMR long (full reach /
+  60 m+). The power tier is provisionally mid (a power weapon, not a marksman one) pending a real call.
+- **`recoil: {ceiling, floor, per_shot, recover_ms}`** — the planned S42 node-driven profile (a harsh
+  floor is a felt COST that offsets a fast TTK): SMG and Suppressor harshest (100/55, the sustained
+  hoses), Assault Rifle and Energy Rifle medium (100/70), Burst Rifle mild and resetting between bursts
+  (100/85), everything semi-automatic or one-shot none (100/100, no recoil model needed — a Sniper
+  Rifle's future cost is a stance penalty, not recoil, and does not exist yet either). `per_shot` and
+  `recover_ms` reuse the S42 accuracy-walk bench numbers (2026-09-17: ~10 points per 0.15 s) as a
+  starting assumption, not a recoil-specific measurement.
+
+Neither field is read by `resolve()`: `t41`/`t2` (range) still ship whatever the capture carries (F135,
+F231 — this is the single biggest missing design axis, §5, U2), and `t21`/`t22` (accuracy ceiling/
+floor) still ship 100/100 on every weapon (native walk off, F230). Both are declared now specifically
+so the NEXT retune tunes them alongside the numbers above instead of re-deriving this whole argument
+from scratch once the levers exist.
+
+**Two number changes were needed to close the roster clean, both the smallest found:**
+
+- **Suppressor mag 48 → 75.** Same family as the Assault Rifle and SMG; the SMG beat it on ideal TTK
+  and sustained DPS outright, so the two ties left (pk, at 100 % for both) were not enough to earn a
+  lead. Kills-per-clip is the one axis that responds to magazine size alone, and 75 is the SMALLEST
+  integer mag that pushes it to 5 — strictly past the SMG's 4 (48 → 60 only ties it, and a tie is not
+  a lead relative to a specific rival, only relative to the family maximum, which the SMG would already
+  own outright at 4).
+- **USP mag 20 → 19**, not Tony's suggested 14 (§2.2's sidearm paragraph has the full arithmetic): 14
+  flips the dominance the other way (Deagle then beats USP on both sustained-DPS and one-magazine-kill
+  chance), and 19 is the only integer in range that leaves neither pistol beating the other. This is a
+  fragile equilibrium (margins under 0.1 dmg/s and 2 percentage points) and a smaller retune focus than
+  a magazine count would be the more durable fix, but it is the smallest change that satisfies the rule
+  as specified.
 
 ### 2.4 The power tier
 
@@ -302,19 +444,25 @@ Fastest cycle has the slowest reload and vice versa; nothing leads on both.
 | weapon | 45/55 (100) | **45/70 (115)** | 50/100 (150) | 100/100 (200) |
 |---|---|---|---|---|
 | Power tier (115 dmg) | 1 | **1** | **2** | 2 |
-| Charge Rifle | 1 | **2** | 2 | 2 |
+| Charge Rifle | 2 | **3** | 5 | 7 |
 | Sniper Rifle | 2 | **2** | 3 | 4 |
 | Shotgun | 3 | **3** | 4 | 5 |
 | Plasma Sniper | 4 | **5** | 6 | 8 |
 | AMR | 5 | **5** | 7 | 9 |
+| Burst Rifle | 10 | **11** | 14 | 19 |
 | Stinger | 7 | **8** | 10 | 14 |
 | Bolt Rifle | 8 | **9** | 12 | 16 |
 | Force Rifle | 10 | **12** | 15 | 20 |
-| Assault Rifle / Burst Rifle / Energy Rifle | 12 | **13** | 17 | 23 |
+| Assault Rifle / Energy Rifle | 12 | **13** | 17 | 23 |
 | SMG / Suppressor | 13 | **15** | 19 | 25 |
 | Desert Eagle | 4 | **5** | 6 | 8 |
 | USP-S | 12 | **13** | 17 | 23 |
 | Glock-18 | 8 | **9** | 12 | 16 |
+
+**The Charge Rifle's `htk` in this table is trigger ACTIONS (1 charge + N taps), not equal-sized
+hits** (2026-09-17, F225/F226/S43) — at 200 the pool needs 1 charge (85) plus 6 taps (20 each, the
+last one overkilling by 5) to close, not `ceil(200/85) = 3`. Every other row is the plain
+`ceil(pool/dmg)` every non-cell weapon uses.
 
 Two consequences carried over from the first pass and still true:
 
@@ -442,18 +590,63 @@ was never a missing field; we were overwriting the right one with the AR's value
 
 *Status: **PROVEN 2026-08-26** — one-field bench flip (sniper t20 7→0 single→auto; captured Burst Rifle = true 3-round bursts). See §5 U1.*
 
-### 4.2 `t41` — range is not differentiated, and that is a real gap
+### 4.2 `t2` is the range lever, not `t41` (corrected 2026-09-17)
 
-`t41` reads **75 on all eighteen guns** (20 on melee). Battle Company does not vary it, we do not
-write it, and the semantics are unverified. So **range does not currently distinguish any two
-weapons**, which is why a shotgun and a sniper trade only on hits, cadence and ammo.
+**This section used to argue range was an unrecovered gap sitting at `t41`. That was wrong, and the
+correction is recorded here rather than deleted.** The garden range test (2026-09-17,
+`docs/experiment-log/2026-09.md`, evidence in `docs/evidence/2026-09-17-range-t41/`) ran two `$WEAP`
+slots differing only in `t41` (5 vs 75) outdoors: the low slot scored **27 of 27** hits against the
+stock slot's **55 of 57**, at 3 m, 10 m, 20 m, 40 m and about 200 ft. **`t41` is a null outdoors.**
+The same session found the real emitted-power control at **`t2` (APK name `gunRangeOutdoor`)**:
+`t2 = 5` landed **0 hits from 38 shots** at any distance, including muzzle on the dome; `t2 = 100`
+(the value every captured gun ships) reaches about 200 ft. Between them the ladder showed a floor,
+a real transition roughly **13 to 26**, and a flat shelf from about **31 to 100** where every value
+behaved alike at any distance the garden could pace out.
 
-The earlier draft claimed the captured rocket carried `t41 = 30`. **That was wrong** — the 30 sits at
-`t42` (extra-headset range), present on the Rocket, Shotgun and Plasma Sniper. Corrected here.
+**`t41` reads 75 on all eighteen guns (20 on melee) and is deliberately never written any more.**
+`WeaponCatalog.resolve()` leaves it exactly as the capture carries it, because indoor behaviour is
+still unmeasured (F231 open) and a guessed indoor value would be a false promise. `RANGE_ENV_OVERRIDE`
+(`mcp/brx_mcp/mc/compile.py`) was the venue map that used to scale `t41`; it has moved to `t2`
+(F234) and is now `gun_range_outdoor_pct`, fed by each weapon's `wire.range_outdoor_pct`.
 
-Recovering range would be the largest single gain available to weapon design, and it is cheap to
-test (§5, U2). It is deliberately left alone for now: writing an unverified field across the whole
-arsenal on a guess is exactly the mistake the first pass made with `t14`.
+The earlier draft also claimed the captured rocket carried `t41 = 30`. **That was wrong**: the 30
+sits at `t42` (extra-headset range), present on the Rocket, Shotgun and Plasma Sniper. Corrected here.
+
+**Shipped starting values, outdoor, from `weapons.json` `wire.range_outdoor_pct`:**
+
+| Weapon | `t2` outdoor | `range_band` | Note |
+|---|---|---|---|
+| Sniper Rifle | 100 | full | On the shelf; matches the captured value |
+| Marksman (AMR) | 85 | full | On the shelf |
+| Charge Rifle | 85 | full | On the shelf |
+| Assault Rifle | 70 | mid | On the shelf |
+| Burst Rifle | 70 | mid | On the shelf |
+| Suppressor | 55 | mid | On the shelf |
+| Energy Rifle | 55 | mid | On the shelf |
+| SMG | 30 | close | **Real guess**, sits at the shelf edge |
+| Shotgun | 22 | close | **Real guess**, inside the measured 13-26 transition band |
+| Rocket Launcher | 22 | close | **Real guess.** A pickup-only one-shot heavy is meant to be earned at close range, not to out-reach the arsenal it out-damages (Tony, 2026-09-17). Same transition-band caveat as the Shotgun |
+| Rail Gun | 22 | close | Same reasoning and caveat as the Rocket Launcher |
+
+Every value from 55 up sits on the flat shelf the garden test found (roughly 31 to 100): they are
+expected to behave alike until the shelf itself is mapped, so the ranking above the shelf is a design
+intent, not yet a measured difference. **Only the SMG, Shotgun, Rocket Launcher and Rail Gun values
+are real guesses.** They sit at or inside the 13-26 transition band, where the method could not
+separate values cleanly (F232's first-two-shots effect and the 8-shot groups). All four are pending
+**S49**, the portable IR receiver, which lets one person map the transition band properly (several
+fixed receivers at once, full mags, first two shots discarded, dome shaded).
+
+A weapon with no `wire.range_outdoor_pct` (every hidden/cut weapon, the sidearms, melee) keeps its
+captured `t2` unchanged at every venue. **Indoor stays honest**: no venue has an indoor range value.
+Indoor and an unset venue both keep the weapon's captured `t2`, because nobody has run this ladder
+indoors (F231 open). A floor guard refuses to compile any `t2` under **13**: F231 measured `t2 = 5`
+landing on nobody at any distance, and a weapon compiled under the floor is a weapon that silently
+cannot hit anyone.
+
+`range_band` ('close'/'mid'/'full') and `range_target_m` are catalogue-only, human-facing copy for
+the armoury screens (metres, outdoor). They are declared data, never wired: the frame builder never
+reads them, only `wire.range_outdoor_pct` reaches `$WEAP` t2 (see `test_weapon_derivations.py`'s
+declared-not-wired guard).
 
 ### 4.3 Resolved by the re-base
 
@@ -494,7 +687,7 @@ first.
 
 | # | unknown | blocks | how to settle |
 |---|---|---|---|
-| **U2** | **`t41` range — OPEN with one solid positive**: t41=100 killed at max indoor distance; t41=5 zeros CONTAMINATED by rig degradation (2026-08-26). | the range axis | **IR-instrument A/B** (bench-plan Session 1½a): VS1838B at a fixed distance, `ir-range` detect%/decode% at t41 100 vs 5 + a closing 100 control — no victim gun, ~10 min. Supersedes the two-gun A/B. |
+| **U2** | ~~`t41` range~~ **CORRECTED 2026-09-17: `t41` is a null outdoors** (garden test, 27/27 hits at t41=5 vs 55/57 at t41=75, every paced distance). **The real range lever is `t2` (`gunRangeOutdoor`, F231/F234), now §4.2's shipped table.** Still open: whether `t2` can fence a weapon to a chosen distance above its shelf (~31-100), and every indoor value (F231). | the range axis (outdoor, closed; indoor, open) | Indoor: run the same ladder indoors, dome shaded. Above the shelf: **S49**'s portable IR receiver, several fixed receivers at once, full mags, first two shots discarded. |
 | **U1** | ~~`t20` confirmation~~ ✅ **CLOSED 2026-08-26: PROVEN by one-field flip** — sniper t20 7→0 went single-shot→full-auto on the bench; captured Burst Rifle fired true 3-round bursts (exp-log). | — | done |
 | **U4** | **How the 3-part reload chain relates to `reload_ms`.** Six stock frames "overrun" a sequential model, so the model is wrong. | any future reload-sound work | One weapon, one long chain, one stopwatch. Also answers whether `t19` changes it. |
 | **U5** | **Does a held trigger retrigger the fire sample from zero, or ring under the next shot?** Decides whether sample duration constrains anything at all. | custom weapon sound design | Fire the AR (1.76 s sample, 190 ms cycle) and listen. |
@@ -565,6 +758,21 @@ So a weapon is a **`<t5, t3, t4>` triple against a table we author**, not a dama
 with identical `t5` can do entirely different things.
 
 ### 6.2 ⚠ What this supersedes in this document
+
+> **2026-09-17 (arsenal review): the default `crit_modifier` (compiled `$GSET criticalShotModifier`,
+> t7) is now 0, not 50.** BRX has 4 hit sensors on the headset and 1 on the tagger, and play aims at
+> the head, so the headset is already the primary target and needs no bonus multiplier — a headset
+> hit and a gun-body hit now land the same number. The ×1.25/×2 readings below are still a correct,
+> bench-confirmed record of the FORMULA at `t7=50`; they no longer describe the MC-compiled default.
+> `headset_multiplier(36, 0)` and `headset_multiplier(37, 0)` both return 1.0 (`compile.py`,
+> `mcp/tests/test_headset_multiplier.py`, `mcp/tests/test_gameconfig.py`).
+
+> **2026-09-17 (F225): fn 38, named "standard" below, is not.** Bench 2026-09-17, headset front dome
+> with the gun sensor covered, proved fn 38 HALVES every hit (a Charge Rifle charge of magnitude 100
+> landed 50, a tap of 20 landed 10), at `t7` 0 and 50 alike. Every row below that reads "`<8,0>` | 38 |
+> standard | ... | 20 (×1)" is wrong; the shipped `_SIR_TABLE` no longer keys the Charge Rifle to fn 38
+> at all (moved to fn 1, plain damage). Treat the Charge Rifle rows in the two tables just below as
+> historical only — §2.2 carries the current numbers.
 
 Four corrections, in descending order of how much they matter.
 

@@ -401,6 +401,43 @@ scorer reads it.
 has and put back the team and trigger mapping, with no disarmed window. **Never a config or head write**: a
 config to a gun in play clears `spawned` and silences every hit and death handler (F11). No death and no kill is
 booked by any of the three. `stage.py resync()` mirrors `_operatorResync`; the stage's `revive()` is FORCE RESPAWN.
+### 3.16 Node-driven recoil (the accuracy ceiling/floor is ours) — S42, F230
+
+F230 (bench 2026-09-17) found the native `t21`→`t22` accuracy walk works on only one of three guns, so it is not a
+usable balance lever. Every weapon ships `t21 == t22 == 100` (walk off) and the node drives the SAME two tokens
+itself, from the shot stream it already watches — a mag decrement on the active slot in `_onAmmo` — never from a
+timer that guesses whether the trigger is down. `weapons.json` `recoil` `{ceiling, floor, per_shot, recover_ms}` is
+the per-weapon target; `resolve()` never reads it (`test_range_and_recoil_are_declared_not_wired`).
+
+| rule | engine (`app/src/engine.js` `_recoilArm`/`_recoilStep`/`_recoilTick`/`_recoilFlush`/`_recoilWrite`/`_recoilVerify`) |
+|---|---|
+| arm | on spawn, revive and a confirmed weapon swap, to the ACTIVE weapon's declared `recoil`; `value` starts at `ceiling`. Absent `config.recoil` (default) or an explicit `true` arms it; `config.recoil === false` never arms |
+| step down | every shot (`_onAmmo`'s mag decrement on the active slot) drops `value` by `per_shot`, floored at `floor` |
+| step up | once `recover_ms` has passed with **no shot and no pending step**, `value` rises by `per_shot`, ceilinged at `ceiling` — never a "released" flag, so a burst weapon's own gap between rounds is not mistaken for a release |
+| write | pins **both** `t21` and `t22` to `value` on the active slot's compiled `$WEAP` frame (never `ceiling`/`floor` separately) — a fixed accuracy is honoured on a non-walking gun too (bench 2026-09-17), so this sidesteps F230 rather than depending on it. Immediately followed by an `$AMMO` restore of the LIVE mag/reserve (a `$WEAP` re-push resets both to the frame's baked-in values, bench 2026-09-17) |
+| throttle | one writer, latest `value` wins; a minimum gap between writes (`ACC_WRITE_MIN_GAP_MS`, 250 ms); never between a reload-lever pull (`this.reloading`) and the refill; never mid weapon-swap (`this.switching`); never during an overheat lockout — the node DOES track that, `_overheating()` (heat ≥ 99 on the active slot, §3.2), so the old `overheatLocked` seam is gone; never during a resync or a rejoin reconcile |
+| stand down | **merge 2026-09-17.** The accuracy write carries an `$AMMO` restore, and so do a spawn (§3.1), a revive (§3.4), an operator RESYNC GUN (§3.15) and a stun disarm/restore (§3.12). Two `$AMMO` writers in flight at once would fight: the accuracy write would re-arm a stunned gun, or put the previous life's counts back over a spawn. Each of those writes calls `_holdAccuracyWrites(why)`, which stands the writer down for `ACC_HOLD_MS` (800 ms), drops any verify still open (an `$ALCD` answering THAT write proves nothing about ours) and marks the model dirty so the live value is re-asserted once the hold lifts. The hold delays the WRITE only; `_recoilStep` keeps tracking the shots. The rejoin reconcile (§3.10) additionally RE-ARMS the model, because it re-arms the gun with the frame's spawn counts and an accuracy write would put the pre-drop magazine back |
+| verify | the next `$ALCD` naming the active slot (`_recoilObserve`, tok 2) is compared to what was written once the write's grace window closes; a mismatch retries ONCE; a second mismatch writes the ceiling back (both tokens) with the live ammo and disables further writes for the rest of the life, logged |
+| reset | a respawn/revive re-arms at the weapon's ceiling; a confirmed weapon swap re-arms to the NEW weapon's profile at its ceiling (multi-slot native drift while off-slot is not modelled — a bench gap, not a design one) |
+
+**Seams for stance and flinch (also S42, not built here):** a future stance module can widen/narrow `per_shot` from
+the motion sensor before `_recoilStep` applies it; a future flinch module reads `this._recoil.value` (today's live
+accuracy) to decide how hard to jolt. Neither needs to touch the writer, the verify/retry loop, or `config.recoil`.
+
+### 3.17 F68: a miss the node cannot see still wipes the headset's team colour
+
+An accuracy-model miss (§3.16) sends **no `$HIR` and no `$HP`** (bench 2026-09-17) — the gun still plays its native
+near-miss flash on the headset and the flash still goes dark afterwards (F68, bench 2026-09-09), and the node has no
+frame to react to. The existing hit-driven repaint (`_onHp`, `dmg > 0`) cannot see this at all, so `tick()` now
+repaints the team colour (or the active role's colour) on a plain interval, `TEAM_REPAINT_MS` (5 s), whenever the
+player is alive and spawned — cheap on purpose: one `$HLED` write per interval, never a stream, and no different in
+kind from the `hit`/`role` repaints already on this path.
+
+**One owner at a time (merge 2026-09-17).** The strip belongs to whoever painted it deliberately last: a spawn or
+respawn flash, a hit flash, an event burst, a role change, the operator's FORCE RESPAWN. Every one of those goes
+through `_headset`, which now stamps the repaint clock, and a spawn/revive re-stamps it too. So the interval is a
+BACKSTOP, not a second painter: it fires only when nothing else has painted the headset for a whole
+`TEAM_REPAINT_MS`, and the two can never fight on a 5 s beat.
 
 ---
 

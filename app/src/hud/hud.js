@@ -45,15 +45,27 @@ const splitGun = g => { if (!g) return ['—', '']; return [esc(g.basename || g.
  *  bolt rifle 18→36, stinger 18→36 — so the perk never straddles the threshold either way. */
 const AMMO_PIP_MAX = 30;
 /** Bench 2026-09-17: an energy weapon's magazine is a charge, not rounds — a bullet pip or a round count
- *  is a fiction for it either way, so it always gets the percentage bar below, never pips. Identified the
- *  same way the catalogue names them, since there is no formal class flag for it yet: an "energy" or
- *  "charge" token in the weapon id (energy_rifle, charge_rifle, energy_launcher). */
-const isEnergyWeapon = id => /energy|charge/i.test(String(id || ''));
-/** Bench 2026-09-17 (brx-weapons): a full charge on the charge rifle spends 10 of its 40-charge cell
- *  (demo-catalog.js `charge_rifle`), so a cell under 10 fires nothing even though it reads as "ammo left".
- *  There is no catalogue field for this cost yet -- brx-weapons is adding one. Replace this constant with
- *  that field once it lands; until then it is named and commented so the swap is a one-line change. */
+ *  is a fiction for it either way, so it always gets the percentage bar below, never pips. A48 (merge
+ *  2026-09-17) gave the catalogue the formal class flag this asked for: `weapon_class` ("ballistic" |
+ *  "energy" | "melee"), which the node passes through as `st.weaponClass`. The old id regex stays as the
+ *  named fallback for a pre-A48 bundle only. ⚠ The class is WIDER than the old regex: plasma_sniper,
+ *  rail_gun, ion_sniper and laser_cannon are energy too, so they now read as a percentage rather than pips.
+ *  All but rail_gun are hidden, and rail_gun is pickup-only. */
+const isEnergyWeapon = st => {
+  const cls = st && st.weaponClass;
+  if (cls) return cls === 'energy';
+  return /energy|charge/i.test(String((st && st.weaponId) || ''));
+};
+/** Bench 2026-09-17 (brx-weapons): a full charge on the charge rifle spends 10 of its 40-charge cell, so a
+ *  cell under 10 fires nothing even though it reads as "ammo left". A48 (merge 2026-09-17) put that cost in
+ *  the catalogue as `rounds_per_charge`, which the node passes through as `st.roundsPerCharge`, so the cost
+ *  is now read per weapon and the charge-rifle id no longer appears in this rule. The constant stays as the
+ *  named fallback for a pre-A48 bundle, and is used ONLY for the charge rifle, the one weapon it was
+ *  measured on -- never guessed onto another energy weapon. */
 const CHARGE_RIFLE_FULL_CHARGE_COST = 10;
+/** What one full charge costs this weapon's cell, or null when it does not charge. */
+const chargeCost = st => (st && st.roundsPerCharge != null && st.roundsPerCharge > 0) ? st.roundsPerCharge
+  : (st && st.weaponId === 'charge_rifle' ? CHARGE_RIFLE_FULL_CHARGE_COST : null);
 /** pl4 (bench 2026-09-17, Energy Rifle): an energy weapon's reload is a HOLD of the lever. Taps of 0.15-0.23 s
  *  refilled nothing; a hold of 0.7 s or more refilled the whole cell in one step. So the prompt says how, and it
  *  is always steady (never blinking), whether the cell is empty or only below a charge: one calm rule. The
@@ -61,7 +73,7 @@ const CHARGE_RIFLE_FULL_CHARGE_COST = 10;
 const HOLD_TO_RECHARGE = 'HOLD TO RECHARGE';
 /** The digit beside the gauge: a round count for a bullet weapon, a percentage of the magazine for an
  *  energy weapon (there is no "round" to count — see isEnergyWeapon just above). */
-const magText = st => isEnergyWeapon(st.weaponId)
+const magText = st => isEnergyWeapon(st)
   ? `${Math.max(0, Math.min(100, Math.round(100 * st.ammo / (st.mag || Math.max(st.ammo, 1)))))}%`
   : pad2(st.ammo);
 // Polish-loop pass 1 (2026-09-12): the discovered-MC row shows the HOST, never the raw ws://…/ws join URL.
@@ -310,7 +322,7 @@ export class Hud {
     const sig = [st.phase, st.alive, !!st.killedBy, st.night, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.underFire, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
       st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.reserve === 0, (st.mag || 0) > AMMO_PIP_MAX, st.battery != null && st.battery <= 15,
       st.overheating, st.heatEverSeen, st.overheatShown,   // bench 2026-09-17: OVERHEAT prompt/overlay and the heat bar's existence are structural, not patched in place
-      st.weaponId === 'charge_rifle' && st.ammo != null && st.ammo < CHARGE_RIFLE_FULL_CHARGE_COST, st.reserve > 0,   // OUT OF ENERGY / RECHARGE prompt + the NOT ENOUGH ENERGY note are structural too
+      chargeCost(st) != null && st.ammo != null && st.ammo < chargeCost(st), st.reserve > 0,   // OUT OF ENERGY / RECHARGE prompt + the NOT ENOUGH ENERGY note are structural too
       st.kills > 0, st.deaths > 0, st.assists > 0, accShown(st) != null, st.reserve != null, this.scan.length, st.bleUp, st.ended, this.bluetoothOn,
       this.discovered && this.discovered.url,   // Polish-loop pass 1: the discovered-MC row on the pre-join screen (`_joinConfirm` only touches the diag panel, patched directly, not here)
       st.rejoin, !!st.pendingTeardown, this.sync && this.sync.bound, this.sync && this.sync.pending,
@@ -962,12 +974,13 @@ export class Hud {
     // round count for the other slot (only its catalogue max), so this never guesses a "swap" hint; it
     // would need that count added to the node's state before it could say so honestly.
     const outOfAmmo = !!(st.alive && st.ammo === 0 && st.reserve === 0);
-    const energy = isEnergyWeapon(st.weaponId);
-    // Bench 2026-09-17: charge_rifle only (not a tap-only or bullet weapon, and not the other energy
-    // weapons, which have no catalogue cost yet either) -- a live cell too small for one full charge
-    // fires nothing, whether that cell is empty or holds a few rounds. `belowCharge` drives both which
-    // big prompt shows (severity depends on the reserve, not the cell) and the small note below.
-    const belowCharge = !!(st.alive && st.weaponId === 'charge_rifle' && st.ammo != null && st.ammo < CHARGE_RIFLE_FULL_CHARGE_COST);
+    const energy = isEnergyWeapon(st);
+    // Bench 2026-09-17: a charge weapon only (not a tap-only or bullet weapon) -- a live cell too small for
+    // one full charge fires nothing, whether that cell is empty or holds a few rounds. `belowCharge` drives
+    // both which big prompt shows (severity depends on the reserve, not the cell) and the small note below.
+    // A48: the cost comes from the catalogue (`rounds_per_charge`), so a second charge weapon needs no code.
+    const cost = chargeCost(st);
+    const belowCharge = !!(st.alive && cost != null && st.ammo != null && st.ammo < cost);
     // reserve empty too: this is a dead end, same severity as OUT OF AMMO (that case is already
     // handled by `outOfAmmo` above, so this only adds the 1-9-with-no-reserve state it missed).
     const energyOut = belowCharge && !(st.reserve > 0);
@@ -1130,7 +1143,7 @@ export class Hud {
    *  cell (floor(reserve / clip)) plus a dimmer half-filled pill for a part cell (reserve % clip > 0), and
    *  nothing at all once the reserve is empty (the OUT OF ENERGY prompt already says that). */
   _resText(st) {
-    if (!isEnergyWeapon(st.weaponId)) return `/${st.reserve != null ? st.reserve : '—'}`;
+    if (!isEnergyWeapon(st)) return `/${st.reserve != null ? st.reserve : '—'}`;
     const clip = st.mag || Math.max(st.ammo, 1);
     const reserve = st.reserve || 0;
     if (!(reserve > 0)) return '';
@@ -1154,7 +1167,7 @@ export class Hud {
   _pips(st) {
     const mag = st.mag || Math.max(st.ammo, 1);
     const warn = !!(st.alive && st.mag && st.ammo < st.mag && st.ammo / st.mag <= .15);
-    if (isEnergyWeapon(st.weaponId)) {
+    if (isEnergyWeapon(st)) {
       const pct = Math.max(0, Math.min(100, Math.round(100 * st.ammo / mag)));
       return `<div class="bar energy ${warn ? 'warn' : ''}"><i style="width:${pct}%"></i></div>`;
     }

@@ -30,6 +30,8 @@ weapon's `capture` block verbatim (`captured: false`) and moves only named `wire
 Rifle frame, the one captured semi-automatic (`t20 = 7`). Balance, sound ids (`P09` / `Q04` / `P16`, reload
 `D08 D07 D06`, all unused elsewhere so a data-port `.LTP` swap changes one pistol) and the "dominated by
 primaries by design" rule: `docs/weapon-design.md` §2.2. Art: `assets/weapons/<id>.jpg` in both UIs.
+**2026-09-17 (arsenal review): `glock` is `hidden`** (see the catalog-cut paragraph below) — only `usp` and
+`deagle` are pickable sidearms today; the row, frame and `based_on` linkage stay for custom games.
 `WeaponView` (API.md `GET /api/weapons`, and `assign.catalog`) gains `tags: string[]`, `role: string`, **`htk: number`**
 (hits to drop **the host's pool** — `config.health.max_hp + max_armor` plus any per-player override and
 the `body_armor` perk, 115 at the defaults; it moves with the health config, so a UI showing it must show
@@ -37,6 +39,33 @@ the `body_armor` perk, 115 at the defaults; it moves with the health config, so 
 bar: t41 is 75 on every gun),
 `ttk_ms`, and optional **`caution?: string`** — human copy for a weapon with a known live problem (new optional
 `caution` field in `weapons.json`; set on `energy_launcher`). `cls` stays the raw class id.
+
+**`class` / `weapon_class` (2026-09-17, arsenal review).** Every `weapons.json` row now carries `class:
+"ballistic" | "energy" | "melee"` — the rule it encodes: ballistic weapons reload, energy weapons overheat
+or charge. On the wire (`WeaponView`, `GET /api/weapons`, `assign.catalog`) the field is named
+**`weapon_class`**, not `class`: `class` is a reserved word in Python, and the `Weapon`/`WeaponView`
+TypedDicts use class-body syntax, so the wire name differs from the `weapons.json` source key by design —
+this is a deliberate exception to "field names are identical in Python TypedDicts, `API.md`, `types.ts` and
+the phone engine" above, not a drift. `class`/`weapon_class` is unrelated to `cls` (the raw protocol class
+byte, t9).
+
+**Hidden weapons (2026-09-17, arsenal review).** `force_rifle`, `bolt_rifle`, `stinger`, `plasma_sniper`,
+`laser_cannon`, `ion_sniper`, `energy_launcher` and `glock` joined `melee` as `hidden: true` in
+`weapons.json`, cutting overlap in a 22-weapon catalogue. Visible primaries: `assault_rifle`,
+`burst_rifle`, `smg`, `shotgun`, `amr`, `sniper_rifle`, `suppressor`, `energy_rifle`, `charge_rifle`.
+Visible sidearms: `usp`, `deagle`. A hidden row's data (capture frame, `based_on` linkage, `class`, stats)
+is untouched — custom games, and the pistols' `based_on: bolt_rifle` copy, still resolve normally; only
+`WeaponCatalog.all()` (the picker-facing list) drops it.
+
+**`pickup_only` (2026-09-17, arsenal review).** `rocket_launcher`, `rail_gun`, `laser_cannon`, `ion_sniper`
+and `energy_launcher` — the `heavy`-tagged weapons — carry `pickup_only: true`. `rocket_launcher` and
+`rail_gun` stay in the catalogue (`WeaponView`, so MC can show them); the other three are also `hidden`.
+A `pickup_only` weapon is **never in a starting-loadout pool**, whatever the preset: `open`, `no_heavies`,
+`custom`, and a `fixed_id`/`only_ids` naming one is refused exactly like an id that is not in the pool at
+all. This makes `no_heavies` and `open` land on the same pool today, since the only visible `heavy`-tagged
+rows were already excluded by `pickup_only`. **The pickup/station mechanism itself — a player picking up a
+heavy weapon from a physical station mid-match — is future work** (see `hardware/brx-station-spec.md`);
+`pickup_only` only says these weapons are catalogue-visible and never player-selectable at kit-out.
 
 ### 1.2 Perks — NEW `mcp/brx_mcp/mc/perks.json`, `GET /api/perks → PerkView[]`
 ```jsonc
@@ -127,6 +156,16 @@ SlotRule {
 | `custom` | whatever the host set (editing any rule of another preset flips `preset` to `custom`) | | | |
 
 The builtin saved game **Silenced Sniper** (§8) is `primary fixed sniper_rifle`, `secondary off`, `perk fixed extended_mags`.
+
+**2026-09-17 (arsenal review):** `pickup_only` (§1.1 above) now excludes `rocket_launcher`/`rail_gun`
+from every preset's pool BEFORE `exclude_tags:["heavy"]` is even applied — they were the only visible
+`heavy`-tagged rows left once the arsenal cut also hid `laser_cannon`/`ion_sniper`/`energy_launcher`.
+So `open` and `no_heavies` currently land on the **same pool**: `no_heavies`'s `exclude_tags` rule has
+nothing left to exclude that `pickup_only` had not already excluded. This is a real, deliberate
+consequence, not a bug — but a class chip/preset that can never change the pool it names may read as
+broken in the DESIGNER (its HEAVY chip permanently reads PARTIAL, never fully on). Worth a second look
+once the pickup/station mechanism exists: either give `no_heavies` a new distinguishing exclusion, or
+retire it as redundant with `open`.
 
 Mode defaults (`modes.default_config`): `ffa` → `no_heavies`; every other mode → `open`. Selecting a mode card in
 BUILD applies its default preset (same rule as the other defaults — review #15: apply on *change* only).

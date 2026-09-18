@@ -4,6 +4,8 @@ Run: python3 run_tests.py mc_compile
 Asserts the bundle STRUCTURE (head silent + ends $TID + carries $PSET,<1..63>; spawn/revive/end/panic
 shapes), the catalog, validate() {ok,errors,warnings}, tutorial, cues-as-frames, and medals.
 """
+import math
+
 from brx_mcp import poolgauge as pg
 from brx_mcp.mc.compile import Compiler, WeaponCatalog, golden_bundle
 from brx_mcp.mc.types import MAX_PLAYERS
@@ -262,16 +264,21 @@ def test_catalog_excludes_hidden_melee_and_flags_verified():
     cat = WeaponCatalog()
     ids = [w["weapon_id"] for w in cat.all()]
     assert "melee" not in ids, "hidden melee is not in the visible picker"
-    assert len(ids) == 21, f"the §3 roster is 18 weapons + 3 sidearms, got {len(ids)}"
+    # 2026-09-17 (arsenal review): force_rifle/bolt_rifle/stinger/plasma_sniper/laser_cannon/
+    # ion_sniper/energy_launcher/glock joined melee as `hidden` — 9 pickable primaries + 2 pickable
+    # sidearms (usp/deagle) + 2 catalogue-visible-but-pickup_only heavies (rocket_launcher/rail_gun) = 13.
+    assert len(ids) == 13, f"the §3 roster is 9 primaries + 2 sidearms + 2 pickup-only heavies, got {len(ids)}"
     by = {w["weapon_id"]: w for w in cat.all()}
-    # `verified` now means SHIPPED EXACTLY AS CAPTURED — the AR is rebalanced (140ms, not the
-    # captured 100ms), the burst rifle ships stock. Every weapon has its own captured base frame.
+    # `verified` now means SHIPPED EXACTLY AS CAPTURED. 2026-09-17 moved two more weapons off it: the
+    # AR is rebalanced (now at the captured 100 ms rather than the earlier 140 ms throttle), and the
+    # Burst Rifle is rebalanced twice over (dmg 9 -> 11 in the balance pass, and its own outdoor
+    # range value t2 in F234's table), so neither ships byte-for-byte any more.
     assert by["assault_rifle"]["verified"] is False
-    assert by["burst_rifle"]["verified"] is True
+    assert by["burst_rifle"]["verified"] is False
     # every visible weapon carries an armory blurb (weapons.json `desc` -> Weapon.desc)
     blank = [w["weapon_id"] for w in cat.all() if not (w.get("desc") or "").strip()]
     assert not blank, f"weapons missing desc: {blank}"
-    assert "140ms" in by["assault_rifle"]["desc"], by["assault_rifle"]["desc"]
+    assert "100ms" in by["assault_rifle"]["desc"], by["assault_rifle"]["desc"]
     assert by["rail_gun"]["desc"].strip().endswith("."), by["rail_gun"]["desc"]
 
 
@@ -411,7 +418,7 @@ def test_validate_warns_when_a_primary_cannot_kill_on_one_magazine():
     said = [w for w in r["warnings"] if "ONE MAGAZINE" in w]
     assert said, r["warnings"]
     assert "PRIMARY COILGUN CANNOT KILL ON ONE MAGAZINE" in said[0], said
-    assert "mag 1 < 2 hits at 90 dmg vs a 115 pool" in said[0], said
+    assert "mag 1 < 2 rounds for 2 hits at 90 dmg vs a 115 pool" in said[0], said
 
 
 # A synthetic pistol that genuinely CANNOT finish a kill on one magazine at the default 115 pool:
@@ -446,7 +453,7 @@ def test_f146_round2_a_sidearm_that_needs_a_reload_WARNS_in_every_slot_and_never
     said = [w for w in r["warnings"] if "one magazine" in w.lower()]
     assert len(said) == 1, r["warnings"]
     assert "coilgun is your only weapon and cannot kill on one magazine" in said[0], said
-    assert "mag 1 < 2 hits at 90 dmg vs 115 pool" in said[0], said
+    assert "mag 1 < 2 rounds for 2 hits at 90 dmg vs 115 pool" in said[0], said
 
     # (ii) the same pistol as a BACKUP, behind a real primary
     r = side.validate(_cfg(), [_player(weapons=("bigrifle", "coilgun"))])
@@ -546,7 +553,7 @@ def test_mag_invariant_follows_the_per_player_health_override():
     # player, not a perk the player chose, so it still moves the pool the weapon is graded against.
     warns = C.validate(_cfg(), [over])["warnings"]
     assert any("PRIMARY SNIPER RIFLE CANNOT KILL ON ONE MAGAZINE" in w for w in warns), warns
-    assert any("mag 4 < 5 hits at 60 dmg vs a 300 pool" in w for w in warns), warns
+    assert any("mag 4 < 5 rounds for 5 hits at 60 dmg vs a 300 pool" in w for w in warns), warns
 
 
 def test_mag_invariant_reports_each_weapon_once_per_pool():
@@ -575,10 +582,18 @@ def test_sir_effect_guard_is_an_ERROR_for_a_weapon_that_deals_no_damage():
 
 
 def test_sir_guard_flags_multiplier_rows_because_published_htk_is_computed_on_raw_t5():
+    """`_to_gc()` never maps `crit_modifier` off the compiled `config` dict at all -- it is not a
+    per-game configurable field on the wire, only the `gameconfig.py` GameConfig dataclass default
+    (compile.py `_to_gc`), so `C.validate()` always sees THAT default, currently 0 (2026-09-17,
+    arsenal review). At 0 a headset hit on a $SIR 36/37 row lands the SAME as a gun-body hit, and the
+    warning must say so rather than claim a kill needs fewer hits than published (only true above 1x).
+    The bench-confirmed 1.25x/2.0x formula itself (crit_modifier=50) is tested directly against
+    `headset_multiplier()` in test_headset_multiplier.py."""
     r = C.validate(_cfg(), [_player(weapons=("burst_rifle", "sniper_rifle"))])
     warns = " ".join(r["warnings"])
-    assert "burst_rifle" in warns and "2.0x" in warns, r["warnings"]      # $SIR <0,3> -> fn 37
-    assert "sniper_rifle" in warns and "1.25x" in warns, r["warnings"]    # $SIR <0,1> -> fn 36
+    assert "burst_rifle" in warns and "1.0x" in warns and "same as a gun-body hit" in warns, r["warnings"]
+    assert "sniper_rifle" in warns and "1.0x" in warns, r["warnings"]
+    assert "needs fewer hits than published" not in warns, r["warnings"]
 
 
 def test_sir_guard_stays_quiet_for_plain_damage_weapons():
@@ -736,52 +751,225 @@ def test_captured_native_behaviour_survives_resolve():
 def test_fire_interval_is_written_at_tok14_and_850_is_never_touched():
     cat, T = WeaponCatalog(), WeaponCatalog._T
     p = cat.resolve("assault_rifle", 0).split(",")
-    assert p[T["fire"] + 1] == "140", "rebalanced fire interval lands at tok14 (raw idx15)"
+    assert p[T["fire"] + 1] == "100", "rebalanced fire interval lands at tok14 (raw idx15)"
     assert p[T["fire"] + 2] == "850", "the unidentified constant at tok15 is never written"
 
 
 def test_shipped_roster_satisfies_the_mag_invariant_at_the_default_pool():
-    """Regression guard for the whole roster, not just the two weapons that used to break."""
+    """Regression guard for the whole roster, not just the two weapons that used to break.
+
+    Grades against ROUNDS, not trigger actions: a charge weapon spends `rounds_per_charge` rounds on
+    one charge (10 on the Charge Rifle, bench 2026-09-17), so `hits_to_kill` (which counts the charge
+    and the taps that finish the kill) understates what the magazine has to hold. `compile.py`'s own
+    loadout warning grades the same way (F226/S43); a cell weapon with a costlier charge must break
+    this guard rather than ship unable to kill on one magazine."""
     cat = WeaponCatalog()
     bad = [w["weapon_id"] for w in cat.all()
-           if int(cat._row(w["weapon_id"])["mag"]) < cat.hits_to_kill(w["weapon_id"], 115)]
+           if int(cat._row(w["weapon_id"])["mag"]) < cat.rounds_to_kill(w["weapon_id"], 115)]
     assert not bad, f"weapons that cannot kill on one magazine at the 115 pool: {bad}"
 
 
+def test_validate_grades_a_cell_weapon_in_ROUNDS_not_trigger_actions():
+    """Polish round 2 (2026-09-17): the round-versus-actions guard was only asserted as arithmetic, so
+    reverting `validate()` to `rtk = htk` left the whole suite green. This drives `validate()` itself.
+
+    The synthetic cell weapon kills in 2 trigger actions (a charge plus one tap) but spends 11 ROUNDS
+    doing it, and its magazine holds 6: a guard that counts actions sees 6 >= 2 and says nothing, and a
+    guard that counts rounds sees 6 < 11 and warns. Break `compile.py`'s `rtk` back to `htk` and this
+    test goes red, which is the point of it."""
+    real = WeaponCatalog()._row("charge_rifle")       # its captured frame carries the t37 tap (20)
+    cell = dict(real, weapon_id="cellgun", name="Cell Gun", mag=6, reserve=12,
+                rounds_per_charge=10, wire={"dmg": 100}, hidden=False)
+    cat = WeaponCatalog(rows=[cell])
+    assert cat.hits_to_kill("cellgun", 115) == 2, "one charge plus one tap kills at the 115 pool"
+    assert cat.rounds_to_kill("cellgun", 115) == 11, "and that combo costs 11 of the 6 rounds it has"
+
+    r = Compiler(cat).validate(_cfg(), [_player(weapons=("cellgun",))])
+    assert r["ok"], r["errors"]                      # a guideline never blocks (F146)
+    said = [w for w in r["warnings"] if "one magazine" in w.lower()]
+    assert len(said) == 1, r["warnings"]
+    assert "CELLGUN" in said[0] and "mag 6 < 11 rounds" in said[0], said
+
+
+def test_a_charge_costs_more_rounds_than_trigger_actions():
+    """The arithmetic the one-magazine guard rests on: a cell weapon's kill costs more ROUNDS than
+    trigger actions. The guard itself is driven end to end by
+    `test_validate_grades_a_cell_weapon_in_ROUNDS_not_trigger_actions` (polish round 2); this one only
+    pins the numbers the shipped Charge Rifle carries."""
+    cat = WeaponCatalog()
+    row = dict(cat._row("charge_rifle"))
+    assert cat.rounds_to_kill("charge_rifle", 115) > cat.hits_to_kill("charge_rifle", 115), (
+        "the Charge Rifle must cost more ROUNDS than trigger actions, or this guard proves nothing")
+    assert int(row["mag"]) >= cat.rounds_to_kill("charge_rifle", 115), (
+        "shipped Charge Rifle cell must cover one kill in rounds")
+
+
+def _one_mag_kill_p(shots: int, htk: int, p: float = 0.7) -> float:
+    """P(at least `htk` hits in `shots` independent trials at hit chance `p`) -- binomial, exact.
+
+    2026-09-17 arsenal review, Tony's decision: replaces "total kills from a full kit" as a dominance
+    axis (see `docs/reference/ttk-model.md` §Sidearm proposal for the same formula on the three
+    pistols). Reserve is no longer an axis at all -- a respawn refills the kit, so how many kills a
+    whole KIT could theoretically produce says nothing about a single life."""
+    if htk <= 0:
+        return 1.0
+    if shots < htk:
+        return 0.0
+    return sum(math.comb(shots, k) * p ** k * (1 - p) ** (shots - k) for k in range(htk, shots + 1))
+
+
+def _weapon_family(cat: WeaponCatalog, w: dict) -> tuple:
+    """2026-09-17, Tony's decision: the dominance check used to run globally (43 dominated pairs on
+    the stock roster before the first retune); it now runs WITHIN a family, because cross-family
+    dominance (an SMG beating a Sniper Rifle on every 2026-09-17 axis) is expected and correct until
+    range and recoil actually reach the wire (F231, S42) -- a Sniper Rifle's whole identity is range,
+    which the model cannot see yet. Family = fire mode (`t20`) + `weapon_class`, EXCEPT a sidearm,
+    which is its own family regardless of mode/class (a slot-2 backup was never meant to compete with
+    a primary at all -- the old bespoke "primary beats sidearm" exemption falls out of this for free,
+    since a primary and a sidearm are never in the same family to begin with)."""
+    if w.get("role") == "sidearm":
+        return ("sidearm",)
+    return (cat._frame_int(w["weapon_id"], "mode"), w.get("weapon_class"))
+
+
 def test_ttk_band_and_no_strictly_dominant_weapon():
-    """docs/weapon-design.md §2: every picker weapon lands in the 1.5-3.5s band (one-shot power
-    weapons excepted), and no weapon beats another on TTK, sustained DPS and total kills at once."""
+    """docs/weapon-design.md §2.3: every picker weapon lands in the 1.2-3.5s band (one-shot power
+    weapons AND cell weapons excepted -- see below), no weapon strictly beats another weapon IN THE
+    SAME FAMILY on {ideal TTK, kills per clip, one-magazine kill chance at p=0.7, sustained DPS} at
+    once, and every visible weapon LEADS its family on at least one of those four axes or on one of
+    the two declared-but-not-yet-wired qualifiers (`range_band`, `recoil`) (2026-09-17 balance pass).
+
+    **Why four axes, and why per-family.** Tony's call, following the Assault Rifle's native 100ms
+    cycle reintroducing the exact cross-weapon dominance the 2026-08-30 retune existed to avoid:
+    dominance now runs within a FAMILY (`_weapon_family()`) instead of globally, because a fast
+    automatic beating a Sniper Rifle on every axis here is not a bug -- it is the model's blind spot
+    (no range or recoil lever exists on the wire yet, F231/S42), not a balance failure. Reserve/"total
+    kills from a kit" is retired (a respawn refills it); "kills per clip" (`mag // rounds_to_kill`,
+    deterministic -- felt every reload) and sustained DPS (a full-magazine dump plus one reload) take
+    its place alongside ideal TTK and the probabilistic one-magazine kill chance.
+
+    **The lead rule.** A weapon that cannot win, or at least tie, ANY of the four axes against its own
+    family has no felt identity in this model -- ties count as leading (the family's best value), and
+    a weapon may also lead via the mildest `recoil.floor` in its family (S42's planned node-driven
+    profile, not yet on the wire) or a `range_band` no other family member shares (Q15's planned
+    per-venue metres, not yet on the wire -- `t41`/`t2` stay whatever the capture carries). Both are
+    declared DATA for a lever that does not exist yet; `test_range_and_recoil_are_declared_not_wired`
+    below is the guard that keeps them that way until F231/S42 ship for real.
+
+    **Cell weapons and the band.** A cell weapon (`rounds_per_charge` > 1 with a tap magnitude --
+    today, the Charge Rifle) is release-to-kill, not first-shot-to-kill (`time_to_kill()`): the charge
+    is pre-built behind cover, so its `ttk_ms` is deliberately allowed BELOW the 1.2s floor, the same
+    way a one-shot weapon's `htk == 1` already exempts it -- the floor describes sustained-fire combat
+    time, and a pre-charged ambush is not that."""
     cat = WeaponCatalog()
     rows = []
     for w in cat.all():
-        r = cat._row(w["weapon_id"])
-        htk = cat.hits_to_kill(w["weapon_id"], 115)
-        p = w["weap_frame"].split(",")
-        fire = int(p[WeaponCatalog._T["fire"] + 1])
-        burst = p[WeaponCatalog._T["burst"] + 1]
-        per = (2 * fire + int(burst)) / 3 if burst else fire
-        ttk = htk * fire if w["weapon_id"] in ("charge_rifle", "laser_cannon", "rail_gun") \
-            else (htk - 1) * per
-        rows.append({"id": w["weapon_id"], "htk": htk, "ttk": ttk,
-                     "sust": r["mag"] * cat.damage(w["weapon_id"]) / (r["mag"] * per + r["reload_ms"]),
-                     "tk": (r["mag"] + r["reserve"]) // htk})
+        wid = w["weapon_id"]
+        r = cat._row(wid)
+        htk = cat.hits_to_kill(wid, 115)
+        ttk = cat.time_to_kill(wid, 115)
+        mag = r["mag"]
+        rtk = cat.rounds_to_kill(wid, 115)
+        kpc = mag // rtk if rtk else 0
+        per = cat.cycle_ms(wid)
+        rpc = cat.rounds_per_charge(wid)
+        dmg = cat.damage(wid)
+        # A cell weapon's SUSTAINED output and one-magazine-kill CHANCE are modelled on repeated full
+        # charges (the steady-state action if you just keep charging), not on the ambush combo `htk`
+        # counts (§2.2/§2.3): the two questions are different ("how hard can this hit while it keeps
+        # firing" vs "what does the one pre-built kill cost"), and no per-action-type accuracy model
+        # exists to mix a charge's near-certain release with a tap's p=0.7 trigger pull.
+        if rpc > 1 and cat.tap_damage(wid) > 0:
+            charges = cat.charges(wid, mag)
+            sust = charges * dmg / (charges * per / 1000 + r["reload_ms"] / 1000)
+            pk = _one_mag_kill_p(charges, math.ceil(115 / dmg))
+        else:
+            sust = dmg * mag / (mag * per / 1000 + r["reload_ms"] / 1000)
+            pk = _one_mag_kill_p(mag, htk)
+        rows.append({"id": wid, "fam": _weapon_family(cat, w), "htk": htk, "ttk": ttk, "sust": sust,
+                     "pk": pk, "kpc": kpc, "recoil_floor": (r.get("recoil") or {}).get("floor"),
+                     "range_band": r.get("range_band"), "is_cell": rpc > 1 and cat.tap_damage(wid) > 0})
     for r in rows:
-        if r["htk"] > 1:
-            assert 1500 <= r["ttk"] <= 3500, f"{r['id']} TTK {r['ttk']}ms is outside the 1.5-3.5s band"
+        if r["htk"] > 1 and not r["is_cell"]:
+            assert 1200 <= r["ttk"] <= 3500, f"{r['id']} TTK {r['ttk']}ms is outside the 1.2-3.5s band"
+
     pick = [r for r in rows if r["htk"] > 1]
-    sidearm = {w["weapon_id"] for w in cat.all() if w.get("role") == "sidearm"}
-    for a in pick:
-        for b in pick:
-            if a is b:
+    fams: dict[tuple, list] = {}
+    for r in pick:
+        fams.setdefault(r["fam"], []).append(r)
+
+    AXES = ("ttk", "sust", "pk", "kpc")
+    BETTER = {"ttk": "lower", "sust": "higher", "pk": "higher", "kpc": "higher"}
+
+    def not_worse(a, b, axis):
+        return a[axis] <= b[axis] if BETTER[axis] == "lower" else a[axis] >= b[axis]
+
+    def strictly_better(a, b, axis):
+        return a[axis] < b[axis] if BETTER[axis] == "lower" else a[axis] > b[axis]
+
+    for fam, members in fams.items():
+        for a in members:
+            for b in members:
+                if a is b:
+                    continue
+                dominates = all(not_worse(a, b, ax) for ax in AXES) and any(strictly_better(a, b, ax) for ax in AXES)
+                assert not dominates, f"{a['id']} strictly dominates {b['id']} within family {fam}"
+
+    starved = []
+    for fam, members in fams.items():
+        if len(members) == 1:
+            continue                                   # a family of one trivially leads (nothing to compare)
+        best_by_axis = {axis: (min if BETTER[axis] == "lower" else max)(m[axis] for m in members) for axis in AXES}
+        for m in members:
+            # ⚠ The lead must come from an axis that REACHES A PLAYER. `recoil` and `range_band` are
+            # declared-only targets (F231 range, S42 recoil) that no code writes to the wire, so a lead
+            # claimed on either would be satisfied by inert data -- a guard that cannot fail. Add them
+            # here in the same commit that wires them, and not before (polish round 2, 2026-09-17).
+            if not any(m[axis] == best_by_axis[axis] for axis in AXES):
+                starved.append(m["id"])
+    assert not starved, (f"{starved} cannot lead their family on any felt axis (ttk/kpc/pk/sust) -- "
+                          f"docs/weapon-design.md §2.3")
+
+
+def test_the_energy_rifle_ships_its_overheat_tokens_on_the_wire():
+    """F229 (bench 2026-09-17): `t38` = 150 is what switches the Energy Rifle's overheat ON, and `t35`
+    = D11 is the ear-confirmed overheat sound. Both ride as `overrides`, so deleting that block would
+    silently ship a weapon whose `caution` promises an overheat it no longer has. This asserts the
+    COMPILED frame, not the catalogue row (polish round 3, 2026-09-17)."""
+    cat, T = WeaponCatalog(), WeaponCatalog._T
+    p = cat.resolve("energy_rifle", 0).split(",")
+    assert p[T["heat"] + 1] == "6", "captured heat-per-shot is untouched"
+    assert p[38 + 1] == "150", "t38 = 150 switches the overheat on (F229)"
+    assert p[35 + 1] == "D11", "t35 = D11 is the ear-confirmed overheat sound (F229)"
+
+
+def test_range_and_recoil_are_declared_not_wired():
+    """S48/S42/Q15 (2026-09-17): `range_band` and `recoil` are catalogue TARGETS for levers that do not
+    exist yet (F231 range calibration, S42 node-driven recoil). Every visible weapon carries both, but
+    neither may reach a `$WEAP` token: `t41`/`t2` stay whatever the capture carries (F135, F231 -- no
+    code path writes them from `range_band`), and `t21`/`t22` (the accuracy ceiling/floor) still ship
+    100/100 (native walk off, F230) regardless of a weapon's declared `recoil` profile."""
+    cat = WeaponCatalog()
+    for w in cat.all():
+        row = cat._row(w["weapon_id"])
+        assert row.get("range_band") in ("close", "close-mid", "mid", "long"), w["weapon_id"]
+        assert isinstance(row.get("range_target_m"), str) and row["range_target_m"], w["weapon_id"]
+        recoil = row.get("recoil")
+        assert isinstance(recoil, dict) and {"ceiling", "floor", "per_shot", "recover_ms"} <= set(recoil), \
+            w["weapon_id"]
+        frame = cat.resolve(w["weapon_id"], 0).split(",")
+        assert frame[WeaponCatalog._T["acc_ceiling"] + 1] == "100", w["weapon_id"]
+        assert frame[WeaponCatalog._T["acc_floor"] + 1] == "100", w["weapon_id"]
+        # ...and the RANGE half of the same claim, which this test used to assert in prose only
+        # (polish round 2, 2026-09-17): the compiled range token must still be the captured value,
+        # so wiring `range_band` into it fails here and not only in a distant derivations test.
+        captured = row["capture"]["frame"].split(",")
+        for tok in ("range", "range_outdoor"):
+            i = WeaponCatalog._T.get(tok)
+            if i is None:
                 continue
-            # A sidearm is a slot-2 backup and is dominated by the primaries BY DESIGN (weapon-design.md
-            # §2.2, sidearms 2026-09-04). It may never dominate anything, and no sidearm may dominate
-            # another — only "a primary beats a sidearm" is exempt.
-            if b["id"] in sidearm and a["id"] not in sidearm:
-                continue
-            dominates = (a["ttk"] <= b["ttk"] and a["sust"] >= b["sust"] and a["tk"] >= b["tk"]
-                         and (a["ttk"] < b["ttk"] or a["sust"] > b["sust"] or a["tk"] > b["tk"]))
-            assert not dominates, f"{a['id']} strictly dominates {b['id']}"
+            assert frame[i + 1] == captured[i + 1], (
+                f"{w['weapon_id']}: {tok} must stay the captured value until F231 calibrates it")
 
 
 import json
@@ -1225,7 +1413,8 @@ def test_stun_ships_the_emp_row_only_when_the_config_asks():
     from brx_mcp.gameconfig import _SIR_TABLE
     # CONTROL: no stun -> the stock table, in stock order, untouched
     b = C.compile(_cfg(), _player(), _TEAMS)
-    assert _sir_fn(b["sir_pool"][0]) == 38, "stock: the charge rifle's plain damage"
+    # A44 (ours): the spawn write carries the fn-28 twin table; the REAL table is the `sir_pool` take.
+    assert _sir_fn(b["sir_pool"][0]) == 1, "stock: the charge rifle's plain damage (fn 1 since F225, 2026-09-17)"
     assert [f for f in b["sir_pool"][0] if f.startswith("$SIR,")] == list(_SIR_TABLE)
     assert _sir_fn(b["head"]) == 28, "F121: the head's copy of the cell moves no pool"
     # stun on -> fn 24 on the SAME cell, in the SAME position, nothing else moved
@@ -1233,7 +1422,7 @@ def test_stun_ships_the_emp_row_only_when_the_config_asks():
     rows_on = [f for f in on["sir_pool"][0] if f.startswith("$SIR,")]
     assert _sir_fn(on["sir_pool"][0]) == 24
     assert _sir_fn(on["head"]) == 28, "F121: fn 24 is a DELAYED BLAST -- it may never ship pregame"
-    assert rows_on.index(_STUN_SIR_ROW) == list(_SIR_TABLE).index("$SIR,8,0,,38,0,0,1,,*"), "in place, not appended"
+    assert rows_on.index(_STUN_SIR_ROW) == list(_SIR_TABLE).index("$SIR,8,0,,1,0,0,1,,*"), "in place, not appended"
     assert [r for r in rows_on if not r.startswith("$SIR,8,0,")] == [r for r in _SIR_TABLE if not r.startswith("$SIR,8,0,")]
     assert "$SIR,8,0,,24,0,0,1,,*" in rows_on and _STUN_SIR_ROW.split(",")[3] == "", "the sound token stays EMPTY (F43: never invent a sound id)"
     # `{}` is the 10 s default and still ships the row
@@ -1247,9 +1436,9 @@ def test_stun_row_rides_every_sir_pool_take_too():
     assert b["sir_pool"], "class sounds on: the pool exists"
     for take in b["sir_pool"]:
         assert _sir_fn(take) == 24, take
-    # CONTROL: the same pool without stun keeps fn 38 in every take
+    # CONTROL: the same pool without stun keeps fn 1 in every take (F225, 2026-09-17)
     b0 = C.compile(dict(_cfg(), hit_audio_class=True), _player(), _TEAMS)
-    assert all(_sir_fn(take) == 38 for take in b0["sir_pool"])
+    assert all(_sir_fn(take) == 1 for take in b0["sir_pool"])
 
 
 def test_validate_stun_shape_and_names_the_source():

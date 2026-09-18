@@ -68,7 +68,10 @@ def test_the_generator_produces_a_real_catalog():
     for path, text in rendered.items():
         assert "assault_rifle" in text and "rocket_launcher" in text, f"{path.name} lost the arsenal"
         assert '"weapon_id": "melee"' not in text, f"{path.name} publishes the hidden melee row"
-        assert text.count('"weapon_id"') > 15, f"{path.name} has only {text.count(chr(34) + 'weapon_id' + chr(34))} weapons"
+        # 2026-09-17 (arsenal review): 8 more weapons joined melee as `hidden`, so the visible arsenal
+        # is 13 rows now (9 primaries + 2 sidearms + 2 pickup_only-but-catalogue-visible heavies), not
+        # the pre-cut 21+.
+        assert text.count('"weapon_id"') >= 13, f"{path.name} has only {text.count(chr(34) + 'weapon_id' + chr(34))} weapons"
 
 
 def test_the_generated_numbers_are_the_shipped_ones():

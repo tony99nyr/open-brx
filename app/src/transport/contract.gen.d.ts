@@ -280,6 +280,17 @@ export interface Stun {
   duration_s?: number;
 }
 
+/** S42 (2026-09-17): a weapon's TARGET accuracy profile -- `weapons.json` `recoil`, declared-only
+ *  on the wire (compile.py `resolve()` never writes t21/t22 from it). `app/src/engine.js` is the sole
+ *  reader: it pins both tokens to `value` on every accuracy write, stepping `value` down by `per_shot`
+ *  toward `floor` per shot and back up toward `ceiling` at `recover_ms` per step once the player stops. */
+export interface Recoil {
+  ceiling: number;
+  floor: number;
+  per_shot: number;
+  recover_ms: number;
+}
+
 export interface GameConfigBase {
   config_id: string;
   mode: string;
@@ -343,6 +354,13 @@ export interface GameConfigBase {
    *  live and again after each of their respawns. Never stored in a saved
    *  game (a preset names no person). */
   vip_player_id?: string | null;
+  /** S42: node-driven recoil (the accuracy ceiling/floor is OURS, not the
+   *  gun's native walk -- F230). DEFAULT ON: absent or `true` = on, only an
+   *  explicit `false` turns it off. No FrameBundle change needed -- `config`
+   *  already rides every push wholesale, and `app/src/engine.js` reads
+   *  `config.recoil !== false`. Seam for stance/flinch (also S42, not built
+   *  here): a future switch for either can sit right beside this one. */
+  recoil?: boolean;
 }
 
 /** A complete config type whose policy may be omitted for server defaulting. */
@@ -368,6 +386,7 @@ export interface GameConfig {
   coverage?: 'full' | 'partial';
   mode_params?: Record<string, number | boolean | string>;
   vip_player_id?: string | null;
+  recoil?: boolean;
   loadout_policy?: LoadoutPolicy;
 }
 
@@ -397,6 +416,7 @@ export interface ConfigView {
   coverage?: 'full' | 'partial';
   mode_params?: Record<string, number | boolean | string>;
   vip_player_id?: string | null;
+  recoil?: boolean;
   loadout_policy: LoadoutPolicy;
 }
 
@@ -457,6 +477,8 @@ export interface Weapon {
   weapon_id: string;
   name: string;
   cls: string;
+  /** ballistic|energy|melee (weapons.json `class`, A10, 2026-09-17): ballistic reloads, energy overheats/charges; not the same as `cls` above (raw protocol class byte) */
+  weapon_class: string;
   /** house-written armory blurb (weapons.json `desc`); "" if a row lacks one */
   desc?: string;
   stats: Record<string, unknown>;
@@ -468,6 +490,12 @@ export interface Weapon {
   role?: string;
   /** A10: human copy for a known LIVE problem (weapons.json `caution`) */
   caution?: string;
+  /** 2026-09-17: catalogue-visible but never in a player loadout pool (policy.py) */
+  pickup_only?: boolean;
+  /** S42: the declared target accuracy profile (weapons.json `recoil`) */
+  recoil?: Recoil;
+  /** A48: rounds of the cell one FULL charge spends (weapons.json `rounds_per_charge`); absent on a weapon that does not charge */
+  rounds_per_charge?: number;
 }
 
 export interface WeaponBars {
@@ -482,6 +510,8 @@ export interface WeaponView {
   weapon_id: string;
   name: string;
   cls: string;
+  /** ballistic|energy|melee (weapons.json `class`, A10, 2026-09-17): ballistic reloads, energy overheats/charges; not the same as `cls` above (raw protocol class byte) */
+  weapon_class: string;
   desc: string;
   clip: number;
   mags: number;
@@ -503,6 +533,12 @@ export interface WeaponView {
   caution?: string;
   ammo_total?: number;
   bars?: WeaponBars;
+  /** 2026-09-17: catalogue-visible but never in a player loadout pool (policy.py) */
+  pickup_only?: boolean;
+  /** S42: the declared target accuracy profile -- the node's `weaponRow(id).recoil` */
+  recoil?: Recoil;
+  /** A48: rounds of the cell one FULL charge spends -- the HUD's NOT ENOUGH ENERGY line reads this, never a hard-coded cost */
+  rounds_per_charge?: number;
 }
 
 /** A sanitized whole-game preset stored on the Mission Control host. */

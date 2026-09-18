@@ -43,7 +43,7 @@ def test_shipped_stats_are_derived_from_the_shipped_frame():
     for w in ROWS:
         wid = w["weapon_id"]
         want = {"dmg": CAT.damage_bar(wid), "rof": CAT.rate_of_fire(wid),
-                "rng": int(_tok(wid, "range") or 0),
+                "rng": int(_tok(wid, "range_indoor") or 0),
                 "htk": CAT.hits_to_kill(wid, DEFAULT_POOL),
                 "ttk_ms": CAT.time_to_kill(wid, DEFAULT_POOL)}
         for k, v in want.items():
@@ -68,33 +68,112 @@ def test_the_frame_builder_does_not_lose_an_ammo_value():
     assert not bad, "\n  ".join(bad)
 
 
-def test_gun_range_pct_is_a_noop_pending_bench_confirmation():
-    """B6/F135 (2026-09-12 field session, `docs/experiment-log/2026-09.md`): Tony could not hit at
-    30-40 ft outside, point blank worked. `resolve()` writes t41 (range) through `gun_range_pct`, a
-    venue mapping staged for that fix — but whether t41 moves emitted IR range at all is UNTESTED
-    (protocol/brx-protocol.md ~L272), so today it MUST be a no-op: every venue ships the weapon's
-    own captured/catalog range, indoor == outdoor == the `weapons.json` `rng` value (75 stock, 20
-    melee). This pins that invariant and the fact that `RANGE_ENV_OVERRIDE` is the single line to
-    change once F135's bench sweep lands a confirmed value — do not hand-edit `resolve()` or
-    `weapons.json` `rng` to "fix" range before then."""
-    from brx_mcp.mc.compile import RANGE_ENV_OVERRIDE, gun_range_pct
+def test_t41_is_pinned_byte_for_byte_at_every_venue():
+    """F234 (2026-09-17 garden test corrected B6/F135, `docs/experiment-log/2026-09.md`): t41
+    (`gunRangeIndoor`) was proven a null outdoors, so `resolve()` must never write it. This pins
+    the invariant every venue must keep: t41 always reads back exactly what the capture carries,
+    same as `weapons.json` `rng` (which is still a t41 mirror, unchanged by this fix).
 
-    assert RANGE_ENV_OVERRIDE == {"indoor": None, "outdoor": None}, (
-        "RANGE_ENV_OVERRIDE moved off its no-op default — this must only happen once F135 has a "
-        "bench-confirmed value, and the test above should be updated in the same commit")
+    A future lane that "fixes" range by hand-editing t41 again, or by having `resolve()` write it,
+    should watch this go red."""
     for w in ROWS:
         wid = w["weapon_id"]
-        no_venue = _tok(wid, "range")
-        indoor = CAT.resolve(wid, 0, environment="indoor").split(",")[WeaponCatalog._T["range"] + 1]
-        outdoor = CAT.resolve(wid, 0, environment="outdoor").split(",")[WeaponCatalog._T["range"] + 1]
-        assert no_venue == indoor == outdoor == str(w["rng"]), (
-            f"{wid}: t41 differs by venue ({no_venue!r}/{indoor!r}/{outdoor!r}) — B6's fix is not "
-            "supposed to land until F135 closes on the bench")
-    # The mapping function itself, independent of any weapon: every venue is `base_rng` unchanged.
-    for base in (20, 75, 100):
-        assert gun_range_pct(base, None) == base
-        assert gun_range_pct(base, "indoor") == base
-        assert gun_range_pct(base, "outdoor") == base
+        captured = _tok(wid, "range_indoor")
+        no_venue = CAT.resolve(wid, 0).split(",")[WeaponCatalog._T["range_indoor"] + 1]
+        indoor = CAT.resolve(wid, 0, environment="indoor").split(",")[WeaponCatalog._T["range_indoor"] + 1]
+        outdoor = CAT.resolve(wid, 0, environment="outdoor").split(",")[WeaponCatalog._T["range_indoor"] + 1]
+        assert captured == no_venue == indoor == outdoor == str(w["rng"]), (
+            f"{wid}: t41 moved ({captured!r}/{no_venue!r}/{indoor!r}/{outdoor!r}) — t41 must stay "
+            "exactly as captured, indoor is unmeasured (F231 open) and must never be guessed")
+
+
+def test_gun_range_outdoor_pct_ships_the_catalogue_value_outdoors_only():
+    """F234: t2 (`gunRangeOutdoor`) is the confirmed venue lever. Outdoor ships each weapon's
+    catalogue starting value (`weapons.json` `wire.range_outdoor_pct`, docs/weapon-design.md §4.2);
+    indoor and an unset venue both keep the weapon's captured t2, because indoor is unmeasured
+    (F231 open) and must never be invented. A weapon with no catalogue value (every hidden/cut
+    weapon, the sidearms, melee) keeps its captured t2 at every venue, same as before this fix."""
+    shipped = {"sniper_rifle": 100, "amr": 85, "charge_rifle": 85, "assault_rifle": 70,
+               "burst_rifle": 70, "suppressor": 55, "energy_rifle": 55, "smg": 30,
+               "shotgun": 22, "rocket_launcher": 22, "rail_gun": 22}
+    by_id = {w["weapon_id"]: w for w in ROWS}
+    assert set(shipped) <= set(by_id), sorted(set(shipped) - set(by_id))
+    for wid, want in shipped.items():
+        assert (by_id[wid].get("wire") or {}).get("range_outdoor_pct") == want, (
+            f"{wid}: weapons.json wire.range_outdoor_pct does not match the shipped table")
+        outdoor = CAT.resolve(wid, 0, environment="outdoor").split(",")[WeaponCatalog._T["range_outdoor"] + 1]
+        assert outdoor == str(want), f"{wid}: t2 outdoor should be {want}, frame has {outdoor}"
+        captured = _tok(wid, "range_outdoor")
+        for env in (None, "indoor"):
+            got = (CAT.resolve(wid, 0).split(",") if env is None
+                   else CAT.resolve(wid, 0, environment=env).split(","))[WeaponCatalog._T["range_outdoor"] + 1]
+            assert got == captured, f"{wid} @ {env!r}: t2 moved off the captured value ({captured!r} -> {got!r})"
+    # a weapon with no catalogue value keeps its captured t2 at every venue, outdoor included
+    for wid in ("usp", "deagle", "melee"):
+        captured = _tok(wid, "range_outdoor")
+        for env in (None, "indoor", "outdoor"):
+            got = (CAT.resolve(wid, 0).split(",") if env is None
+                   else CAT.resolve(wid, 0, environment=env).split(","))[WeaponCatalog._T["range_outdoor"] + 1]
+            assert got == captured, f"{wid} @ {env!r}: has no catalogue range value, t2 must stay captured"
+
+
+def test_gun_range_outdoor_floor_refuses_a_value_below_13():
+    """F231: t2=5 landed 0 hits from 38 shots at any distance, including muzzle on the dome, so a
+    compiled t2 under the floor is a weapon that cannot hit anyone. Break it and watch it fail:
+    both the raw function and a real weapon compiled with a below-floor catalogue value must raise."""
+    from brx_mcp.mc.compile import RANGE_OUTDOOR_FLOOR, gun_range_outdoor_pct
+
+    assert RANGE_OUTDOOR_FLOOR == 13
+    for bad in (0, 1, 12):
+        try:
+            gun_range_outdoor_pct(100, bad, "outdoor")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"gun_range_outdoor_pct must refuse an outdoor override of {bad}")
+    # the floor also applies to a captured base with no override at all — belt and braces
+    try:
+        gun_range_outdoor_pct(5, None, "indoor")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("gun_range_outdoor_pct must refuse a below-floor CAPTURED value too")
+    # the values actually shipped are all comfortably clear of the floor
+    for value in (13, 22, 30, 55, 70, 85, 100):
+        assert gun_range_outdoor_pct(100, value, "outdoor") == value
+    # and a full weapon compile with a synthetic below-floor catalogue entry must refuse the same way
+    rows = json.loads((ROOT / "mcp" / "brx_mcp" / "mc" / "weapons.json").read_text())["weapons"]
+    hot = next(w for w in rows if w["weapon_id"] == "assault_rifle")
+    hot["wire"] = dict(hot.get("wire") or {}, range_outdoor_pct=5)
+    bad_cat = WeaponCatalog(rows)
+    try:
+        bad_cat.resolve("assault_rifle", 0, environment="outdoor")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("resolve() must refuse to compile a below-floor t2, not just the bare function")
+
+
+def test_range_band_and_range_target_m_are_declared_only_never_wired():
+    """docs/weapon-design.md §4.2: `range_band` and `range_target_m` are human-facing catalogue
+    copy in metres, for the armoury screens. `t2` (via `wire.range_outdoor_pct`) is the only range
+    field the frame builder reads. Deleting the declared fields from a row must not move a single
+    byte of the compiled frame — if it does, something started reading them as wire data."""
+    rows = json.loads((ROOT / "mcp" / "brx_mcp" / "mc" / "weapons.json").read_text())["weapons"]
+    declared = [w for w in rows if "range_band" in w or "range_target_m" in w]
+    assert declared, "no weapon carries range_band/range_target_m — the guard has nothing to check"
+    before = WeaponCatalog(rows)
+    stripped = json.loads(json.dumps(rows))   # deep copy
+    for w in stripped:
+        w.pop("range_band", None)
+        w.pop("range_target_m", None)
+    after = WeaponCatalog(stripped)
+    for w in declared:
+        wid = w["weapon_id"]
+        for env in (None, "indoor", "outdoor"):
+            a = before.resolve(wid, 0) if env is None else before.resolve(wid, 0, environment=env)
+            b = after.resolve(wid, 0) if env is None else after.resolve(wid, 0, environment=env)
+            assert a == b, f"{wid} @ {env!r}: removing range_band/range_target_m changed the wire frame"
 
 
 def test_every_weapon_has_a_derivable_damage_and_cycle():
@@ -153,6 +232,17 @@ def _cell(v: str) -> str:
     return v.replace("**", "").replace("*", "").strip()
 
 
+def _one_mag_kill_p(shots: int, htk: int, p: float = 0.7) -> float:
+    """P(at least `htk` hits in `shots` trials at hit chance `p`) -- binomial, exact. 2026-09-17
+    arsenal review: the dominance axis that replaced "total kills from a full kit"
+    (`test_mc_compile.py::_one_mag_kill_p`, kept the same formula here to avoid a cross-file import)."""
+    if htk <= 0:
+        return 1.0
+    if shots < htk:
+        return 0.0
+    return sum(math.comb(shots, k) * p ** k * (1 - p) ** (shots - k) for k in range(htk, shots + 1))
+
+
 def test_weapon_design_balance_table_matches_the_wire():
     """§2.2 is the balance table a human reads. Every numeric column is recomputed here.
 
@@ -163,7 +253,7 @@ def test_weapon_design_balance_table_matches_the_wire():
     header = [_cell(c).lower() for c in rows[0]]
     ix = {name: header.index(name) for name in
           ("weapon", "dmg", "cycle ms", "htk", "ttk s", "dps", "sust", "mag", "reserve", "reload",
-           "mag/total kills", "heat")}
+           "one-mag kill % (p=0.7)", "heat")}
     by_name, seen, bad = _by_name(), set(), []
     for r in rows[1:]:
         name = _cell(r[ix["weapon"]]).lower()
@@ -173,6 +263,10 @@ def test_weapon_design_balance_table_matches_the_wire():
         row = next(w for w in ROWS if w["weapon_id"] == wid)
         dmg, cycle, htk = CAT.damage(wid), CAT.cycle_ms(wid), CAT.hits_to_kill(wid, DEFAULT_POOL)
         mag, reserve, reload_ms = row["mag"], row["reserve"], row["reload_ms"]
+        # F226/S43 (2026-09-17): a charge weapon's mag counts ROUNDS of the cell, not hits -- sust and
+        # the one-magazine kill chance both need full CHARGES, or the Charge Rifle's 40-round cell
+        # reads as 40 hits instead of the 4 it actually is.
+        mag_charges = CAT.charges(wid, mag)
         # "100 +250" on a burst weapon: the intra-burst interval and the gap after the burst
         gap = int(_tok(wid, "burst") or 0)
         cycle_txt = f"{CAT.fire_ms(wid)} +{gap}" if wid in ("burst_rifle", "force_rifle") else str(CAT.fire_ms(wid))
@@ -183,9 +277,15 @@ def test_weapon_design_balance_table_matches_the_wire():
             "htk": str(htk),
             "ttk s": f"{CAT.time_to_kill(wid, DEFAULT_POOL) / 1000:.2f}",
             "dps": f"{round(dmg / (cycle / 1000), 1)}",
-            "sust": f"{round(dmg * mag / (mag * cycle / 1000 + reload_ms / 1000), 1)}",
+            "sust": f"{round(dmg * mag_charges / (mag_charges * cycle / 1000 + reload_ms / 1000), 1)}",
             "mag": str(mag), "reserve": str(reserve), "reload": str(reload_ms),
-            "mag/total kills": f"{mag // htk} / {(mag + reserve) // htk}" if htk else None,
+            # The probabilistic axis models a CELL weapon as repeated full charges (a charge is
+            # near-certain once released; no per-action-type accuracy model exists to mix that with a
+            # tap's p=0.7 trigger pull), so it uses the SIMPLE ceil(pool/charge_dmg) htk, not the real
+            # charge+tap combo `htk` publishes -- same split as `test_mc_compile.py`'s dominance test.
+            "one-mag kill % (p=0.7)": (
+                f"{round(100 * _one_mag_kill_p(mag_charges, math.ceil(DEFAULT_POOL / dmg)))}%"
+                if dmg else None),
             "heat": str(heat) if heat else "—",
         }
         for col, expect in want.items():
@@ -251,8 +351,12 @@ def test_weapon_views_follow_the_hosts_health_config():
             assert v["pool"] == p, (v["weapon_id"], v["pool"])
             # damage per hit is a property of the WEAPON, not of the pool it is fired at
             assert v["dmg_per_hit"] == at[115][v["weapon_id"]]["dmg_per_hit"]
-            if v["htk"]:
+            # F225/F226/S43 (2026-09-17): a CELL weapon (the Charge Rifle) counts trigger ACTIONS, not
+            # equal-sized hits -- 1 charge plus however many taps close the rest of the pool, never the
+            # plain ceil(pool/dmg) every other weapon uses. See views.weapon_view()'s tap_dmg branch.
+            if v["htk"] and v["weapon_id"] != "charge_rifle":
                 assert v["htk"] == math.ceil(p / v["dmg_per_hit"])
+    assert [at[p]["charge_rifle"]["htk"] for p in (100, 115, 150, 200)] == [2, 3, 5, 7]
     # and TTK moves with it, or the ARSENAL's TIME TO KILL column is decoration
     assert at[200]["assault_rifle"]["ttk_ms"] > at[115]["assault_rifle"]["ttk_ms"]
 
@@ -357,3 +461,22 @@ def test_the_perk_that_moves_the_pool_changes_the_quoted_numbers():
     assert armoured == base + 50, (base, armoured)          # perks.json body_armor max_armor_add
     htk = lambda pool: next(v for v in weapon_views(CAT.all(), pool) if v["weapon_id"] == "assault_rifle")["htk"]
     assert htk(armoured) > htk(base), "body_armor must move HITS TO KILL"
+
+
+def test_recoil_is_declared_not_wired_by_the_compiler():
+    """S42 (2026-09-17): every weapon declares a `recoil` target profile
+    `{ceiling, floor, per_shot, recover_ms}`, and `resolve()` must never write t21/t22 from it. The
+    native accuracy walk is unreliable (F230: one gun of three decayed under sustained fire), so every
+    weapon ships t21 == t22 == 100 whatever its declared profile says. The ONLY thing that drives
+    recoil is `app/src/engine.js`'s accuracy writer at runtime, which pins both tokens to the live
+    value on every write. Wiring `recoil` into `resolve()` to "make it real" is the mistake this test
+    exists to catch: break it and it goes red."""
+    for w in ROWS:
+        wid = w["weapon_id"]
+        recoil = w.get("recoil")
+        assert isinstance(recoil, dict) and {"ceiling", "floor", "per_shot", "recover_ms"} <= set(recoil), wid
+        for env in (None, "indoor", "outdoor"):
+            p = (CAT.resolve(wid, 0).split(",") if env is None
+                 else CAT.resolve(wid, 0, environment=env).split(","))
+            assert p[WeaponCatalog._T["acc_ceiling"] + 1] == "100", f"{wid} @ {env!r}: t21 moved"
+            assert p[WeaponCatalog._T["acc_floor"] + 1] == "100", f"{wid} @ {env!r}: t22 moved"

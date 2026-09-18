@@ -1,26 +1,42 @@
 {
- "_note": "M-MODES WeaponCatalog (docs/spec/modes.md \u00a73). EVERY weapon is now based on ITS OWN captured Callsign $WEAP frame (`capture.frame`, traced to `capture.src` in protocol/captures/raw/; regenerate the decode with `python -m brx_mcp.weapmap protocol/captures/raw/*.btsnoop`; named table in docs/reference/weapons.md). That inherits every native behaviour we cannot synthesise: 3-round burst (t23), bolt/single-shot, charge, overheat (t24/t35), per-weapon reload chains, damage type (t3), reload type (t19), muzzle flash (t25/t26). `reload_type` (F123, 2026-09-11) is an EXPLICIT per-weapon attribute and is deliberately NOT read off `capture.frame` t19: t19 is unconfirmed as reloadType (the Plasma Sniper shell-reloads at t19=0 — protocol/callsign-extract/protocol-classes.md), so the only value set here is the one the wire actually proved. 'chain' = the reload is a HELD per-shell chain, `reload_ms` is the PER-SHELL interval, and a momentary button cannot drive it (the Shotgun: after $BUT,2,1 the $ALCD mag walks 1→6 at 417/423/390/420/420 ms, one reserve decrement per shell). Absent = a normal magazine reload. `wire` lists ONLY the tokens we deliberately overwrite for balance; mag/reserve/reload_ms are written too (t16/t39, t17/t40, t18) keeping the captured invariants t39==t16 and t17==2*t40. Everything else is emitted byte-for-byte as Battle Company sent it. stats: dmg/rof/rng are 0-100 UI bars derived from the real numbers. dmg = share of a 115 pool one hit removes, rof = cycle relative to the fastest weapon, rng = the wire's t41 gunRange (identical on all 18 guns: range is NOT differentiated on the wire today; see weapon-design.md \u00a74.2). 'verified' now means SHIPPED EXACTLY AS CAPTURED (no balance edit); 'captured' is true for all 19. 'melee' is hidden (slot 4). tags: policy vocabulary (docs/spec/loadout.md \u00a71.1). 'heavy' = role power (rocket/rail/laser cannon/energy launcher/ion sniper), 'sniper' = the four long guns incl. AMR, plus the role name; presets exclude by tag so a new weapon only needs the right tags. caution: optional human copy for a weapon with a known LIVE problem. The UIs show it on the tile and hero. based_on (2026-09-04, sidearms): a weapon with NO capture of its own names the captured weapon whose frame it is built on and why; its capture block is a COPY of that frame (same src), `captured: false`, and every deviation is a wire/override token. 'sidearm' = the three pistols (usp/glock/deagle, role sidearm, cls 10): slot-2 backups by design, deliberately dominated by primaries (test_ttk_band exempts them from BEING dominated, never from dominating). Fire sounds P16/Q04/X14 (glock/usp/deagle, ear-confirmed 2026-09-11) are ids no other weapon uses, so a custom .LTP over the data port (community-notes.md) replaces only that pistol.",
+ "_note": "M-MODES WeaponCatalog (docs/spec/modes.md §3). EVERY weapon is now based on ITS OWN captured Callsign $WEAP frame (`capture.frame`, traced to `capture.src` in protocol/captures/raw/; regenerate the decode with `python -m brx_mcp.weapmap protocol/captures/raw/*.btsnoop`; named table in docs/reference/weapons.md). That inherits every native behaviour we cannot synthesise: 3-round burst (t23), bolt/single-shot, charge, overheat (t24/t35), per-weapon reload chains, damage type (t3), reload type (t19), muzzle flash (t25/t26). `reload_type` (F123, 2026-09-11) is an EXPLICIT per-weapon attribute and is deliberately NOT read off `capture.frame` t19: t19 is unconfirmed as reloadType (the Plasma Sniper shell-reloads at t19=0 — protocol/callsign-extract/protocol-classes.md), so the only value set here is the one the wire actually proved. 'chain' = the reload is a HELD per-shell chain, `reload_ms` is the PER-SHELL interval, and a momentary button cannot drive it (the Shotgun: after $BUT,2,1 the $ALCD mag walks 1→6 at 417/423/390/420/420 ms, one reserve decrement per shell). Absent = a normal magazine reload. `wire` lists ONLY the tokens we deliberately overwrite for balance; mag/reserve/reload_ms are written too (t16/t39, t17/t40, t18) keeping the captured invariants t39==t16 and t17==2*t40. Everything else is emitted byte-for-byte as Battle Company sent it. stats: dmg/rof/rng are 0-100 UI bars derived from the real numbers. dmg = share of a 115 pool one hit removes, rof = cycle relative to the fastest weapon, rng = the wire's t41 gunRange (identical on all guns: t41 `gunRangeIndoor` was PROVEN INERT outdoors 2026-09-17, F231/Q15, and stays byte-identical to the capture -- it is deliberately never written by `resolve()`, so `rng` stays a flat 75/20 on purpose; see weapon-design.md §4.2). The venue-scaled range lever is `$WEAP` t2 `gunRangeOutdoor`, fed by `wire.range_outdoor_pct` (F234, 2026-09-17 garden test) and written ONLY when the venue is 'outdoor' and the row has one -- a row with none, or any indoor/unset venue, keeps its captured t2 (100 on every gun captured so far, 90 on melee); `compile.gun_range_outdoor_pct` refuses a value under 13 (F231's measured floor: t2=5 landed 0 hits from 38 shots at any distance). `range_band` ('close'/'mid'/'full') and `range_target_m` are human-facing catalogue copy for the armoury screens, in metres, and are NEVER read by the frame builder -- they describe the same intent as `wire.range_outdoor_pct` without being the wire value, and only the SMG (30) and Shotgun/Rocket Launcher/Rail Gun (22) sit at or inside the measured 13-26 transition band, so those four are real guesses pending S49's portable receiver; everything at 55 and up is expected to behave alike until the shelf (~31-100) is mapped. 'verified' now means SHIPPED EXACTLY AS CAPTURED (no balance edit, `range_outdoor_pct` included); 'captured' is true for all 19. 'melee' is hidden (slot 4). tags: policy vocabulary (docs/spec/loadout.md §1.1). 'heavy' = role power (rocket/rail/laser cannon/energy launcher/ion sniper), 'sniper' = the four long guns incl. AMR, plus the role name; presets exclude by tag so a new weapon only needs the right tags. `class` (2026-09-17, arsenal review): 'ballistic' | 'energy' | 'melee', on every row; ballistic weapons reload, energy weapons overheat or charge. `hidden` (2026-09-17 arsenal cut): force_rifle, bolt_rifle, stinger, plasma_sniper, laser_cannon, ion_sniper, energy_launcher and glock are hidden from the picker alongside melee, cutting overlap in a 22-weapon catalogue; the row and its capture frame stay (custom games, and the pistols' based_on copy of bolt_rifle's frame, still use them). `pickup_only` (2026-09-17): rocket_launcher, rail_gun, laser_cannon, ion_sniper and energy_launcher (the 'heavy' tag) are never in a player's starting loadout pool, whatever the preset; they stay in the catalogue for a future pickup/station mechanism (docs/spec/loadout.md). `rounds_per_charge` (2026-09-17, F226/S43 bench): on the Charge Rifle only, one full charge costs this many rounds of the `mag`/`reserve` cell (10, bench-measured); every place that turns `mag`/`reserve` into a hits-or-kills count for this weapon must divide by it first (`mag // rounds_per_charge` full charges), never read the raw round count as a hit count. Absent = 1 (every other weapon fires one round per hit). recoil (S42, 2026-09-17): a TARGET accuracy profile {ceiling, floor, per_shot, recover_ms} -- declared here, wired nowhere in resolve() (t21==t22==100 stays the shipped baseline, native walk off, F230); app/src/engine.js is the only thing that drives it, pinning both wire tokens to the live value on every write so nothing depends on the native walk. A weapon with no real recoil (the power tier, the bolt guns, the shotgun, melee) ships ceiling==floor and per_shot 0. caution: optional human copy for a weapon with a known LIVE problem. The UIs show it on the tile and hero. based_on (2026-09-04, sidearms): a weapon with NO capture of its own names the captured weapon whose frame it is built on and why; its capture block is a COPY of that frame (same src), `captured: false`, and every deviation is a wire/override token. 'sidearm' = the three pistols (usp/glock/deagle, role sidearm, cls 10): slot-2 backups by design, deliberately dominated by primaries (test_ttk_band exempts them from BEING dominated, never from dominating). Fire sounds P16/Q04/X14 (glock/usp/deagle, ear-confirmed 2026-09-11) are ids no other weapon uses, so a custom .LTP over the data port (community-notes.md) replaces only that pistol.",
  "weapons": [
   {
    "weapon_id": "assault_rifle",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 55,
+    "per_shot": 9,
+    "recover_ms": 150
+   },
    "name": "Assault Rifle",
-   "desc": "The anchor, and the closest thing to the stock M4. 13 hits at 140ms with 32 up and 192 in reserve: 17 kills without resupply and a 1.68s kill. Battle Company cycles it at 100ms; at that speed with this magazine it out-classes ten other weapons outright, so it gives up some depth and a little rate to leave the rest of the arsenal a reason to exist.",
+   "desc": "The anchor, and the real stock M4 cadence. 13 hits at 100ms with 32 up and 192 in reserve: 17 kills without resupply and a 1.20s kill. 2026-09-17 arsenal review: cycle is back to Battle Company's native 100ms (it was throttled to 140ms so a deep reserve could not also out-cycle the field); the dominance test now grades on one-magazine kill chance rather than total kills, so the reserve alone no longer has to carry the whole weight of keeping the AR in check.",
    "cls": 0,
    "role": "assault",
+   "class": "ballistic",
    "mag": 32,
    "reserve": 192,
    "reload_ms": 1400,
    "dmg": 8,
-   "rof": 54,
+   "rof": 75,
    "rng": 75,
+   "range_band": "mid",
+   "range_target_m": "18-20 indoor / 40-45 outdoor (Q15)",
    "htk": 13,
-   "ttk_ms": 1680,
+   "ttk_ms": 1200,
+   "recoil": {
+    "ceiling": 100,
+    "floor": 70,
+    "per_shot": 10,
+    "recover_ms": 150
+   },
    "capture": {
     "src": "2026-08-26-weapons-ar-plus-burstrifle.btsnoop",
     "frame": "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,384,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,192,75,*"
    },
    "wire": {
-    "fire_ms": 140
+    "fire_ms": 100,
+    "range_outdoor_pct": 70
    },
    "verified": false,
    "captured": true,
@@ -30,23 +46,42 @@
   },
   {
    "weapon_id": "burst_rifle",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 60,
+    "per_shot": 10,
+    "recover_ms": 150
+   },
    "name": "Burst Rifle",
-   "desc": "A real three-round burst: one pull, three rounds, and the gun enforces the gap. 13 hits from a 36-round mag with 216 behind it; the most total ammo of the burst pair, and the tighter of the two.",
+   "desc": "A real three-round burst: one pull, three rounds, and the gun enforces the gap. 11 hits from a 36-round mag with 216 behind it; the most total ammo of the burst pair, and the tighter of the two. 2026-09-17 arsenal review: damage raised 9 to 11 so the burst pair separates further from the SMG-class assault weapons on hits-to-kill, not only on cadence.",
    "cls": 0,
    "role": "assault",
+   "class": "ballistic",
    "mag": 36,
    "reserve": 216,
    "reload_ms": 1700,
-   "dmg": 8,
+   "dmg": 10,
    "rof": 100,
    "rng": 75,
-   "htk": 13,
-   "ttk_ms": 1700,
+   "htk": 11,
+   "ttk_ms": 1417,
+   "range_band": "mid",
+   "range_target_m": "18-20 indoor / 40-45 outdoor (Q15)",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 85,
+    "per_shot": 5,
+    "recover_ms": 150
+   },
    "capture": {
     "src": "2026-08-23-gset-respawn05.btsnoop",
     "frame": "$WEAP,0,,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*"
    },
-   "verified": true,
+   "wire": {
+    "dmg": 11,
+    "range_outdoor_pct": 70
+   },
+   "verified": false,
    "captured": true,
    "tags": [
     "assault"
@@ -54,10 +89,17 @@
   },
   {
    "weapon_id": "force_rifle",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 60,
+    "per_shot": 10,
+    "recover_ms": 150
+   },
    "name": "Force Rifle",
    "desc": "The burst rifle's heavier twin: same three-round pull, more per round. 12 hits instead of 13 and a faster kill, paid for with two-thirds the reserve and a slower five-part reload.",
    "cls": 0,
    "role": "assault",
+   "class": "ballistic",
    "mag": 36,
    "reserve": 144,
    "reload_ms": 1700,
@@ -81,16 +123,24 @@
    },
    "verified": false,
    "captured": true,
+   "hidden": true,
    "tags": [
     "assault"
    ]
   },
   {
    "weapon_id": "bolt_rifle",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 150
+   },
    "name": "Bolt Rifle",
    "desc": "Single shot, deliberate cadence. 13 a hit every 225ms with 18 up and 180 back. That is 22 kills from a full kit, for operators who would rather aim than hold.",
    "cls": 0,
    "role": "assault",
+   "class": "ballistic",
    "mag": 18,
    "reserve": 180,
    "reload_ms": 2000,
@@ -105,30 +155,47 @@
    },
    "verified": true,
    "captured": true,
+   "hidden": true,
    "tags": [
     "assault"
    ]
   },
   {
    "weapon_id": "smg",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 45,
+    "per_shot": 8,
+    "recover_ms": 120
+   },
    "name": "SMG",
-   "desc": "A hose that runs hot. 8 a hit every 140ms from a 72-round mag: four kills before you reload, 24 across the kit, and an overheat budget that punishes holding the trigger down forever.",
+   "desc": "A hose that runs hot. 8 a hit every 95ms from a 72-round mag: four kills before you reload, 24 across the kit, and an overheat budget that punishes holding the trigger down forever.",
    "cls": 1,
    "role": "cqb",
+   "class": "ballistic",
    "mag": 72,
    "reserve": 288,
    "reload_ms": 2500,
    "dmg": 7,
-   "rof": 54,
+   "rof": 79,
    "rng": 75,
+   "range_band": "close-mid",
+   "range_target_m": "12 indoor / 25-30 outdoor (Q15)",
    "htk": 15,
-   "ttk_ms": 1960,
+   "ttk_ms": 1330,
+   "recoil": {
+    "ceiling": 100,
+    "floor": 55,
+    "per_shot": 15,
+    "recover_ms": 150
+   },
    "capture": {
     "src": "2026-08-26-weapons-smg-plus-amr.btsnoop",
     "frame": "$WEAP,0,,100,0,0,8,0,,,,,,,,90,850,72,288,2500,0,0,100,100,,5,,,G03,,,,D26,D25,D24,D18,D11,,,,72,144,75,*"
    },
    "wire": {
-    "fire_ms": 140
+    "fire_ms": 95,
+    "range_outdoor_pct": 30
    },
    "verified": false,
    "captured": true,
@@ -138,10 +205,17 @@
   },
   {
    "weapon_id": "shotgun",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 150
+   },
    "name": "Shotgun",
    "desc": "Shell by shell, and the fastest recovery on the board. 45 a hit at 800ms, three hits to drop, six in the tube and a 400ms shell reload. Sustained pressure from the shallowest ammo pool outside the power tier.",
    "cls": 3,
    "role": "cqb",
+   "class": "ballistic",
    "mag": 6,
    "reserve": 24,
    "reload_ms": 400,
@@ -149,14 +223,23 @@
    "dmg": 39,
    "rof": 9,
    "rng": 75,
+   "range_band": "close",
+   "range_target_m": "8-10 indoor / 15-18 outdoor (Q15)",
    "htk": 3,
    "ttk_ms": 1600,
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 0
+   },
    "capture": {
     "src": "2026-08-23-gset-respawn15.btsnoop",
     "frame": "$WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*"
    },
    "wire": {
-    "fire_ms": 800
+    "fire_ms": 800,
+    "range_outdoor_pct": 22
    },
    "verified": false,
    "captured": true,
@@ -166,10 +249,17 @@
   },
   {
    "weapon_id": "stinger",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 45,
+    "per_shot": 8,
+    "recover_ms": 120
+   },
    "name": "Stinger",
    "desc": "Fast, light, relentless. 15 a hit every 250ms with 18 up and 144 in reserve: eight hits to drop, twenty kills to spend, and nothing held back for range.",
    "cls": 6,
    "role": "cqb",
+   "class": "ballistic",
    "mag": 18,
    "reserve": 144,
    "reload_ms": 1700,
@@ -187,31 +277,48 @@
    },
    "verified": false,
    "captured": true,
+   "hidden": true,
    "tags": [
     "cqb"
    ]
   },
   {
    "weapon_id": "sniper_rifle",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 150
+   },
    "name": "Sniper Rifle",
    "desc": "Two hits, one lane, a bolt between them. 60 a hit on a 1.5s cycle with four in the mag and 24 behind it. The fewest hits to a kill outside the power tier, and no margin for a miss.",
    "cls": 2,
    "role": "marksman",
+   "class": "ballistic",
    "mag": 4,
    "reserve": 24,
    "reload_ms": 1700,
    "dmg": 52,
    "rof": 5,
    "rng": 75,
+   "range_band": "long",
+   "range_target_m": "full reach indoor / 60m+ outdoor (Q15)",
    "htk": 2,
    "ttk_ms": 1500,
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 0
+   },
    "capture": {
     "src": "2026-08-26-weapons-sniper.btsnoop",
     "frame": "$WEAP,0,,100,0,1,80,0,,,,,,,,300,850,4,24,1700,0,7,100,100,,0,,,S16,D20,D19,,D04,D03,D21,D18,,,,,4,12,75,*"
    },
    "wire": {
     "dmg": 60,
-    "fire_ms": 1500
+    "fire_ms": 1500,
+    "range_outdoor_pct": 100
    },
    "overrides": {
     "t33": {
@@ -228,10 +335,17 @@
   },
   {
    "weapon_id": "plasma_sniper",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 150
+   },
    "name": "Plasma Sniper",
    "desc": "A marksman rifle that fires like a carbine and pays for it in heat. 25 a hit every 400ms, five to drop, ten up and 80 back. Lean on it and it overheats.",
    "cls": 2,
    "role": "marksman",
+   "class": "energy",
    "mag": 10,
    "reserve": 80,
    "reload_ms": 2000,
@@ -250,6 +364,7 @@
    },
    "verified": false,
    "captured": true,
+   "hidden": true,
    "tags": [
     "marksman",
     "sniper"
@@ -257,25 +372,41 @@
   },
   {
    "weapon_id": "amr",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 150
+   },
    "name": "AMR",
    "desc": "Anti-materiel weight at a rifle's cadence. 24 a hit every 400ms, five hits to a kill, 14 up and only 56 behind. The hardest-hitting automatic, and the shallowest.",
    "cls": 4,
    "role": "support",
+   "class": "ballistic",
    "mag": 14,
    "reserve": 56,
    "reload_ms": 1400,
    "dmg": 21,
    "rof": 19,
    "rng": 75,
+   "range_band": "long",
+   "range_target_m": "full reach indoor / 60m+ outdoor (Q15, tagged sniper)",
    "htk": 5,
    "ttk_ms": 1600,
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 0
+   },
    "capture": {
     "src": "2026-08-26-weapons-smg-plus-amr.btsnoop",
     "frame": "$WEAP,1,,100,0,3,18,0,,,,,,,,360,850,14,56,1400,0,7,100,100,,0,,,S07,D20,D19,,D04,D03,D21,D18,,,,,14,28,75,*"
    },
    "wire": {
     "dmg": 24,
-    "fire_ms": 400
+    "fire_ms": 400,
+    "range_outdoor_pct": 85
    },
    "overrides": {
     "t33": {
@@ -292,24 +423,40 @@
   },
   {
    "weapon_id": "suppressor",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 55,
+    "per_shot": 9,
+    "recover_ms": 150
+   },
    "name": "Suppressor",
-   "desc": "Quiet, not silent, and no muzzle flash. It is the only weapon here that hides where you are. 8 a hit every 160ms with 384 in reserve: 28 kills, the deepest sustained pool, the slowest kill.",
+   "desc": "Quiet, not silent, and no muzzle flash. It is the only weapon here that hides where you are. 8 a hit every 140ms with 75 up and 384 in reserve: 30 kills, the deepest magazine AND the deepest sustained pool, the slowest kill. 2026-09-17: mag 48→75 -- the family-scoped dominance test (§2.3) paired it against the SMG (same fire mode, same weapon_class), which beat it on every other axis; the deeper magazine gives the Suppressor an outright lead on kills-per-clip (5 vs the SMG's 4), which is the smallest change that stops the SMG strictly dominating it.",
    "cls": 1,
    "role": "support",
-   "mag": 48,
+   "class": "ballistic",
+   "mag": 75,
    "reserve": 384,
    "reload_ms": 2000,
    "dmg": 7,
-   "rof": 47,
+   "rof": 54,
    "rng": 75,
+   "range_band": "mid",
+   "range_target_m": "15 indoor / 30 outdoor (Q15, as the LMG-role deep-mag automatic)",
    "htk": 15,
-   "ttk_ms": 2240,
+   "ttk_ms": 1960,
+   "recoil": {
+    "ceiling": 100,
+    "floor": 55,
+    "per_shot": 15,
+    "recover_ms": 150
+   },
    "capture": {
     "src": "2026-08-26-weapons-energyrifle-suppressor.btsnoop",
     "frame": "$WEAP,1,,100,0,0,8,0,,,,,,,,75,850,48,288,2000,0,0,100,100,,0,2,50,Q06,,,,D26,D25,D24,D18,,,,,48,144,75,*"
    },
    "wire": {
-    "fire_ms": 160
+    "fire_ms": 140,
+    "range_outdoor_pct": 55
    },
    "verified": false,
    "captured": true,
@@ -319,24 +466,51 @@
   },
   {
    "weapon_id": "energy_rifle",
+   "caution": "Overheats after about 30 rounds of full auto, and it does not cool on its own: work the reload lever to vent the heat (about three pulls, or one held pull), then keep holding to recharge the cell.",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 55,
+    "per_shot": 9,
+    "recover_ms": 150
+   },
    "name": "Energy Rifle",
-   "desc": "A 300-cell battery that barely stops. 9 a hit every 200ms, 23 kills on one magazine and 69 across the kit. The largest ammo pool in the game, on the smallest per-hit number.",
+   "desc": "A 300-cell battery that barely stops. 9 a hit every 150ms, 23 kills on one magazine and 69 across the kit. The largest ammo pool in the game, on the smallest per-hit number. 2026-09-17 bench (F229): now genuinely overheats — full auto locks it out around heat 99 after about 30 shots, and unlike the Charge Rifle it does not cool on its own; only the reload lever (a hold, not a tap) vents it.",
    "cls": 5,
    "role": "support",
+   "class": "energy",
    "mag": 300,
    "reserve": 600,
    "reload_ms": 2400,
    "dmg": 8,
-   "rof": 38,
+   "rof": 50,
    "rng": 75,
+   "range_band": "mid",
+   "range_target_m": "15 indoor / 30 outdoor (Q15, as the LMG-role deep-mag automatic)",
    "htk": 13,
-   "ttk_ms": 2400,
+   "ttk_ms": 1800,
+   "recoil": {
+    "ceiling": 100,
+    "floor": 70,
+    "per_shot": 10,
+    "recover_ms": 150
+   },
    "capture": {
     "src": "2026-08-26-weapons-energyrifle-suppressor.btsnoop",
     "frame": "$WEAP,0,,100,0,0,9,0,,,,,,,,90,850,300,600,2400,0,0,100,100,,6,,,E12,,,,D17,D16,D15,A73,D122,,,,300,300,75,*"
    },
    "wire": {
-    "fire_ms": 200
+    "fire_ms": 150,
+    "range_outdoor_pct": 55
+   },
+   "overrides": {
+    "t38": {
+     "value": "150",
+     "why": "F229 bench, 2026-09-17: t38 = 150 alone switches the Energy Rifle's overheat on (captured at t38 blank, so it shipped inert). Heat climbs about +3 net per shot, locks at about 99 (roughly 30 shots), and does not fall on its own while locked -- the reload lever is hold-to-recharge, and the SAME hold that refills the cell vents the heat; there is no separate cooldown. A lockout clears only by working the lever, about three taps or one held pull"
+    },
+    "t35": {
+     "value": "D11",
+     "why": "F229 bench, 2026-09-17, ear-confirmed by Tony on a real overheat (\"yeah nice\"): D11 (the SMG's captured overheat sound) is right. The captured D122 \"sounds like it reloaded\", not overheated"
+    }
    },
    "verified": false,
    "captured": true,
@@ -346,21 +520,41 @@
   },
   {
    "weapon_id": "charge_rifle",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 150
+   },
    "name": "Charge Rifle",
-   "desc": "Hold, release, hit hard. A 1.25s charge into 100 damage: two hits to a kill and a heat budget that ends the party if you rush it. An energy cell of 40: a full charge spends about ten.",
+   "desc": "Pre-charge it behind cover, then the kill is one release and two taps: an 85-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus two 20-damage taps drops a 115 pool in about 1s from release -- 3 trigger actions, 12 of the 40 rounds up, 84 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, eighty back -- three combo kills a magazine, ten across the kit.",
    "cls": 5,
    "role": "support",
+   "class": "energy",
    "mag": 40,
    "reserve": 80,
    "reload_ms": 2500,
-   "dmg": 87,
+   "rounds_per_charge": 10,
+   "dmg": 74,
    "rof": 6,
    "rng": 75,
-   "htk": 2,
-   "ttk_ms": 2500,
+   "htk": 3,
+   "ttk_ms": 1000,
+   "range_band": "long",
+   "range_target_m": "full reach indoor / 60m+ outdoor (Q15; it charges behind cover, then reaches)",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 0
+   },
    "capture": {
     "src": "2026-08-26-weapons-chargerifle-boltrifle.btsnoop",
     "frame": "$WEAP,0,,100,8,0,100,0,,,,,,,,1250,850,100,200,2500,0,14,100,100,,14,,,E03,C15,C17,,D30,D29,D37,A73,C19,C04,20,150,100,100,75,*"
+   },
+   "wire": {
+    "dmg": 85,
+    "range_outdoor_pct": 85
    },
    "verified": false,
    "captured": true,
@@ -370,10 +564,17 @@
   },
   {
    "weapon_id": "glock",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 150
+   },
    "name": "Glock-18",
    "desc": "The middle ground. 13 a hit at a measured cadence, 9 hits to drop, 16 in the mag with 64 behind it: 8 kills across the kit. Not the fastest trigger and not the biggest punch, but the safest bet not to be caught reloading.",
    "cls": 10,
    "role": "sidearm",
+   "class": "ballistic",
    "mag": 16,
    "reserve": 64,
    "reload_ms": 2200,
@@ -402,19 +603,20 @@
     },
     "t31": {
      "value": "D08",
-     "why": "pistol reload chain (mag out / mag in / slide) \u2014 the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
+     "why": "pistol reload chain (mag out / mag in / slide) — the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
     },
     "t32": {
      "value": "D07",
-     "why": "pistol reload chain (mag out / mag in / slide) \u2014 the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
+     "why": "pistol reload chain (mag out / mag in / slide) — the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
     },
     "t33": {
      "value": "D06",
-     "why": "pistol reload chain (mag out / mag in / slide) \u2014 the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
+     "why": "pistol reload chain (mag out / mag in / slide) — the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
     }
    },
    "verified": false,
    "captured": false,
+   "hidden": true,
    "tags": [
     "sidearm",
     "pistol"
@@ -422,11 +624,18 @@
   },
   {
    "weapon_id": "usp",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 70,
+    "per_shot": 10,
+    "recover_ms": 150
+   },
    "name": "USP-S",
-   "desc": "The quiet one. Suppressed and flashless: 9 a hit, as fast as you can pull the trigger, 13 hits to drop, 20 in the mag with 120 behind it: 10 kills across the kit. Low damage, but nobody hears where it came from.",
+   "desc": "The quiet one. Suppressed and flashless: 9 a hit, as fast as you can pull the trigger, 13 hits to drop, 19 in the mag with 120 behind it: 10 kills across the kit. Low damage, but nobody hears where it came from. 2026-09-17: mag 20→19 -- Tony's ask was 20→14, but 14 leaves the Deagle strictly dominating the USP (its sustained DPS and one-magazine kill chance both fall too far once the mag is that shallow); 19 is the smallest cut off 20 that actually leaves neither pistol beating the other on every axis (a thin margin: sustained DPS differs by about 0.1 dmg/s, kill chance by 2 points).",
    "cls": 10,
    "role": "sidearm",
-   "mag": 20,
+   "class": "ballistic",
+   "mag": 19,
    "reserve": 120,
    "reload_ms": 2200,
    "dmg": 8,
@@ -434,6 +643,14 @@
    "rng": 75,
    "htk": 13,
    "ttk_ms": 1920,
+   "range_band": "close",
+   "range_target_m": "not set yet: sidearms keep the captured reach until the curve is mapped (S49)",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 0
+   },
    "capture": {
     "src": "2026-08-26-weapons-chargerifle-boltrifle.btsnoop",
     "frame": "$WEAP,1,,100,0,3,13,0,,,,,,,,225,850,18,180,2000,0,7,100,100,,0,,,R12,,,,D04,D03,D02,D18,,,,,18,90,75,*"
@@ -454,19 +671,19 @@
     },
     "t31": {
      "value": "D08",
-     "why": "pistol reload chain (mag out / mag in / slide) \u2014 the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
+     "why": "pistol reload chain (mag out / mag in / slide) — the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
     },
     "t32": {
      "value": "D07",
-     "why": "pistol reload chain (mag out / mag in / slide) \u2014 the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
+     "why": "pistol reload chain (mag out / mag in / slide) — the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
     },
     "t33": {
      "value": "D06",
-     "why": "pistol reload chain (mag out / mag in / slide) \u2014 the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
+     "why": "pistol reload chain (mag out / mag in / slide) — the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
     },
     "t25": {
      "value": "2",
-     "why": "USP-S is suppressed: the Suppressor is the one captured weapon with t25=2 (no muzzle flash) + t26=50 (loudness scale) \u2014 same pair, same meaning (protocol-classes.md t25/t26)"
+     "why": "USP-S is suppressed: the Suppressor is the one captured weapon with t25=2 (no muzzle flash) + t26=50 (loudness scale) — same pair, same meaning (protocol-classes.md t25/t26)"
     },
     "t26": {
      "value": "50",
@@ -482,10 +699,17 @@
   },
   {
    "weapon_id": "deagle",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 150
+   },
    "name": "Desert Eagle",
-   "desc": "The hand cannon. 26 a hit, five hits to drop \u2014 the most damage of any sidearm, if you land them. Seven in the mag, 48 behind it: 11 kills across the kit. A slow cycle that punishes every miss.",
+   "desc": "The hand cannon. 26 a hit, five hits to drop — the most damage of any sidearm, if you land them. Seven in the mag, 48 behind it: 11 kills across the kit. A slow cycle that punishes every miss.",
    "cls": 10,
    "role": "sidearm",
+   "class": "ballistic",
    "mag": 7,
    "reserve": 48,
    "reload_ms": 2200,
@@ -494,6 +718,14 @@
    "rng": 75,
    "htk": 5,
    "ttk_ms": 1920,
+   "range_band": "close",
+   "range_target_m": "not set yet: sidearms keep the captured reach until the curve is mapped (S49)",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 0
+   },
    "capture": {
     "src": "2026-08-26-weapons-chargerifle-boltrifle.btsnoop",
     "frame": "$WEAP,1,,100,0,3,13,0,,,,,,,,225,850,18,180,2000,0,7,100,100,,0,,,R12,,,,D04,D03,D02,D18,,,,,18,90,75,*"
@@ -514,15 +746,15 @@
     },
     "t31": {
      "value": "D08",
-     "why": "pistol reload chain (mag out / mag in / slide) \u2014 the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
+     "why": "pistol reload chain (mag out / mag in / slide) — the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
     },
     "t32": {
      "value": "D07",
-     "why": "pistol reload chain (mag out / mag in / slide) \u2014 the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
+     "why": "pistol reload chain (mag out / mag in / slide) — the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
     },
     "t33": {
      "value": "D06",
-     "why": "pistol reload chain (mag out / mag in / slide) \u2014 the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
+     "why": "pistol reload chain (mag out / mag in / slide) — the unused D06-D08 mechanical run; audit by ear on a try-out, fall back to the Bolt Rifle's D04/D03/D02 if any part chirps"
     }
    },
    "verified": false,
@@ -534,24 +766,43 @@
   },
   {
    "weapon_id": "rocket_launcher",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 150
+   },
    "name": "Rocket Launcher",
    "desc": "Point, pull, erase. 115 a hit (a full-health operator in one) on the fastest power-tier cycle, with the slowest reload behind it. Four rounds, four kills, no second chances.",
    "cls": 9,
    "role": "power",
+   "class": "ballistic",
    "mag": 2,
    "reserve": 2,
    "reload_ms": 2600,
    "dmg": 100,
    "rof": 8,
    "rng": 75,
+   "range_band": "close",
+   "range_target_m": "8-10 indoor / 15-18 outdoor (Tony 2026-09-17: a one-shot kill is earned close, and these are pickup-only)",
    "htk": 1,
    "ttk_ms": 0,
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 0
+   },
    "capture": {
     "src": "2026-08-26-weapons-rocket-lasercannon.btsnoop",
     "frame": "$WEAP,0,2,100,10,0,115,0,,,,,,115,80,1000,850,2,8,1200,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,4,75,30,*"
    },
+   "wire": {
+    "range_outdoor_pct": 22
+   },
    "verified": false,
    "captured": true,
+   "pickup_only": true,
    "tags": [
     "power",
     "heavy"
@@ -559,24 +810,43 @@
   },
   {
    "weapon_id": "rail_gun",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 150
+   },
    "name": "Rail Gun",
    "desc": "Charges and fires itself. A 1.2s wind-up that goes whether you are ready or not, 115 on impact, four rounds total. Everyone within earshot hears the spool.",
    "cls": 7,
    "role": "power",
+   "class": "energy",
    "mag": 2,
    "reserve": 2,
    "reload_ms": 2400,
    "dmg": 100,
    "rof": 6,
    "rng": 75,
+   "range_band": "close",
+   "range_target_m": "8-10 indoor / 15-18 outdoor (Tony 2026-09-17: a one-shot kill is earned close, and these are pickup-only)",
    "htk": 1,
    "ttk_ms": 1200,
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 0
+   },
    "capture": {
     "src": "2026-08-26-weapons-energylauncher-railgun.btsnoop",
     "frame": "$WEAP,1,0,100,6,0,115,0,,,,,,,,1200,850,1,6,2400,0,2,100,100,,0,,,C03,C08,,,D36,D35,D34,A73,,,,,1,3,75,*"
    },
+   "wire": {
+    "range_outdoor_pct": 22
+   },
    "verified": false,
    "captured": true,
+   "pickup_only": true,
    "tags": [
     "power",
     "heavy"
@@ -584,10 +854,17 @@
   },
   {
    "weapon_id": "laser_cannon",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 150
+   },
    "name": "Laser Cannon",
    "desc": "Must be held to charge; a tap fires nothing at all. 1.5s of commitment for a guaranteed kill, and the fastest reload in the power tier for the trouble.",
    "cls": 4,
    "role": "power",
+   "class": "energy",
    "mag": 2,
    "reserve": 2,
    "reload_ms": 1600,
@@ -602,6 +879,8 @@
    },
    "verified": false,
    "captured": true,
+   "hidden": true,
+   "pickup_only": true,
    "tags": [
     "power",
     "heavy"
@@ -609,10 +888,17 @@
   },
   {
    "weapon_id": "energy_launcher",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 150
+   },
    "name": "Energy Launcher",
    "desc": "No charge, no tell, no warning. 115 a hit with the fastest reload on the board and the slowest cycle in its tier. Four kills, spent quietly.",
    "cls": 9,
    "role": "power",
+   "class": "energy",
    "mag": 2,
    "reserve": 2,
    "reload_ms": 1400,
@@ -636,6 +922,8 @@
    },
    "verified": false,
    "captured": true,
+   "hidden": true,
+   "pickup_only": true,
    "tags": [
     "power",
     "heavy"
@@ -644,10 +932,17 @@
   },
   {
    "weapon_id": "ion_sniper",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 150
+   },
    "name": "Ion Sniper",
    "desc": "A one-shot kill in a rifle's body. 115 a hit on a 1.4s cycle with two up and two back. The power tier's only weapon that looks and sounds like a marksman rifle.",
    "cls": 2,
    "role": "power",
+   "class": "energy",
    "mag": 2,
    "reserve": 2,
    "reload_ms": 2000,
@@ -665,6 +960,8 @@
    },
    "verified": false,
    "captured": true,
+   "hidden": true,
+   "pickup_only": true,
    "tags": [
     "power",
     "heavy",
@@ -673,10 +970,17 @@
   },
   {
    "weapon_id": "melee",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 150
+   },
    "name": "Melee",
    "desc": "Last resort: no ammo, no reload, a gyro swing with the butt of the gun. 90 on contact. Hidden from the picker, always bound to slot 4.",
    "cls": 8,
    "role": "melee",
+   "class": "melee",
    "mag": 1,
    "reserve": 0,
    "reload_ms": 0,

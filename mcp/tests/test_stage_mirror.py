@@ -1217,6 +1217,26 @@ KNOWN_UNMIRRORED = {
     "_headsetDeath", "_headsetDelayed", "_headsetFlash", "_headsetRest", "_reassertDeathBlink",
     # roles + stations
     "_carrier", "_setRole", "_respawnStation", "_stationRevivable", "setStations",
+    # S42 (2026-09-17): node-driven recoil. Every one of these reads `weaponRow(id).recoil` off the
+    # CATALOG (`_activeWeaponId` -> `this.catalog`) -- and `weaponRow`/`catalog` are already pinned
+    # above ("kitting / loadout browser -- HUD surface, no stage equivalent"): the bench configures a
+    # weapon's `$WEAP` frame directly, by hand, with no catalog or loadout behind it, so there is no
+    # per-weapon `recoil` profile for a stage-side model to read. A hand-fed profile parameter would let
+    # a bench script exercise the state machine (step/recover/write/verify) in isolation, but that is a
+    # new bench feature, not a straight port, and is left for the bench-parity backlog rather than
+    # guessed at here.
+    "recoilEnabled", "_activeWeaponId", "_recoilArm", "_recoilStep", "_recoilTick", "_recoilFlush",
+    "_recoilVerify", "_recoilWrite", "_recoilObserve",
+    # Merge 2026-09-17: `_holdAccuracyWrites` stands the accuracy writer down while a spawn, revive,
+    # operator resync or stun write owns `$AMMO`. It exists only to gate the writer pinned just above,
+    # so it has nothing to mirror: with no stage-side accuracy model there is nothing to hold.
+    "_holdAccuracyWrites",
+    # F68 (2026-09-17): the periodic team-colour repaint rides the SAME headset-paint machinery already
+    # pinned above ("LED readout internals: the stage models the READOUT, not each paint step" --
+    # `_headsetFlash`/`_headsetRest`) plus the role lookup (`_activeRole`/`_roleSeq`, behind the already-
+    # pinned `_setRole`). The bench has no equivalent "what should the headset be showing right now"
+    # question to answer on an interval.
+    "_teamRepaintTick",
     # ---- accessors (2026-09-12: newly VISIBLE to the scan, not newly unmirrored) ----
     # config values the stage resolves into plain attributes rather than same-named accessors:
     # `stun_s` is the stage's `stunMs` under the unit it works in (seconds). `self.max_hp`/

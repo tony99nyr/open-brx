@@ -69,27 +69,48 @@ def check_volume(value) -> int:
         raise ValueError(f"volume must be an integer 0-100, got {value!r}")
     return value
 
-# venue -> $WEAP t41 (gunRange%, APK `gunRangeIndoor`). B6 (2026-09-12 field session): Tony could
-# not register a hit at 30-40 ft outside; point blank worked. MC ships t41 at the weapon's own
-# captured/catalog value (75 stock, 20 melee) for EVERY venue -- outdoor never raises it.
-# ⚠️ Whether t41 changes emitted IR range AT ALL IS UNTESTED (protocol/brx-protocol.md ~L272).
-# This mapping is the STAGED, NO-OP plumbing for that fix, not the fix: until the bench sweep in
-# FOLLOWUPS F135 lands a confirmed value, "outdoor" maps to `None`, meaning "use the weapon's own
-# range, unchanged" -- identical to "indoor". When F135 closes, change ONLY the "outdoor" value
-# below (and update `test_gun_range_pct_is_a_noop_pending_bench_confirmation` in
-# `mcp/tests/test_weapon_derivations.py` alongside it).
-RANGE_ENV_OVERRIDE: dict[str, int | None] = {"indoor": None, "outdoor": None}
+# ---------------------------------------------------------------------------
+# Venue range (F234, correcting F135/B6) -- see docs/weapon-design.md §4.2 and
+# docs/experiment-log/2026-09.md (2026-09-17 garden range test).
+# ---------------------------------------------------------------------------
+# CORRECTED READING, do not revert: this plumbing used to scale `$WEAP` t41 (`gunRangeIndoor`) by
+# venue. The 2026-09-17 garden test (Q15/F231) proved t41 is a NULL outdoors -- two slots
+# differing only in t41 (5 vs 75) scored 27/27 vs 55/57 at every paced distance, 3 m to ~200 ft --
+# while the SAME session found the real emitted-power control at `$WEAP` t2 (APK name
+# `gunRangeOutdoor`): t2=5 landed 0 hits from 38 shots at any distance, t2=100 (the shipped value
+# on every gun) reaches ~200 ft, with a floor, a transition around 13-26, and a flat shelf from
+# ~31 up. F234 filed the fix: move this plumbing from t41 to t2. t41 stays written EXACTLY as the
+# capture carries it from here on (see `resolve()` -- there is no longer a `put("range_indoor", ...)`
+# call at all) because indoor behaviour is still unmeasured (F231 open) and a guessed indoor value
+# would be a false promise.
+#
+# RANGE_OUTDOOR_FLOOR is not a design choice, it is a hard measured fact: t2=5 landed on nobody at
+# any distance the garden could pace, including muzzle-on-dome. A weapon compiled under the floor
+# is a weapon that silently cannot hit anyone, so `gun_range_outdoor_pct` refuses to compile one.
+RANGE_OUTDOOR_FLOOR = 13
 
 
-def gun_range_pct(base_rng: int, environment: str | None) -> int:
-    """$WEAP t41 (gunRange%) for one weapon at one venue.
+def gun_range_outdoor_pct(base_captured: int, wire_value: int | None, environment: str | None) -> int:
+    """$WEAP t2 (gunRangeOutdoor) for one weapon at one venue (F234).
 
-    NO-OP today (FOLLOWUPS F135): every venue resolves to `base_rng` -- the weapon's own
-    captured/catalog range (weapons.json `rng`) -- so outdoor ships the exact same token 41 as
-    indoor. `RANGE_ENV_OVERRIDE` is the single point to change once the bench confirms both that
-    t41 moves emitted range and what value reaches 30-40 ft outdoors."""
-    override = RANGE_ENV_OVERRIDE.get((environment or "").strip().lower())
-    return base_rng if override is None else override
+    Outdoor ships the weapon's own catalogue starting value (`weapons.json` `wire.range_outdoor_pct`,
+    docs/weapon-design.md §4.2's shipped table) when the weapon has one. A weapon with no catalogue
+    value -- every hidden/cut weapon, the sidearms, melee -- keeps its captured t2 unchanged (100 on
+    every captured gun so far, 90 on melee).
+
+    Indoor is deliberately UNTOUCHED: nobody has run this ladder indoors (F231 open), so an unknown
+    or indoor venue always keeps `base_captured` -- never invent an indoor number.
+    """
+    if (environment or "").strip().lower() == "outdoor" and wire_value is not None:
+        value = int(wire_value)
+    else:
+        value = base_captured
+    if value < RANGE_OUTDOOR_FLOOR:
+        raise ValueError(
+            f"$WEAP t2 (gunRangeOutdoor) {value} is below the measured floor ({RANGE_OUTDOOR_FLOOR}): "
+            "F231 measured t2=5 landing 0 hits from 38 shots at any distance, including muzzle on the "
+            "dome -- a weapon compiled below the floor cannot hit anyone")
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -101,13 +122,15 @@ def gun_range_pct(base_rng: int, environment: str | None) -> int:
 # this toggle; native play reached about 200 ft in both toggle states. Its full behavior is not
 # characterised.
 #
-# `$GSET` t2 is a separate receiver control: t2=1 crippled hit reception at 30 ft, and t2=0 restored
-# it. Shipping heads pin t2 to 0 at every venue. The t3 and `$IRTX` candidates below remain
-# unconfirmed ways to control emitted IR and remain disabled. `DRIVE_IO_MODE` therefore stays "off";
-# a future bench experiment may enable exactly one candidate by editing this line.
+# `$GSET` t2 is a SEPARATE receiver control (not `$WEAP` t2 / `gunRangeOutdoor` above, a different
+# command's token 2): t2=1 crippled hit reception at 30 ft, and t2=0 restored it. Shipping heads
+# pin t2 to 0 at every venue. The t3 and `$IRTX` candidates below remain unconfirmed ways to
+# control emitted IR and remain disabled. `DRIVE_IO_MODE` therefore stays "off"; a future bench
+# experiment may enable exactly one candidate by editing this line.
 #
-# These legacy candidates stay separate from `RANGE_ENV_OVERRIDE` above: t41 is per-weapon and these
-# are per-gun, so a bench run that moves both proves nothing about either.
+# These legacy candidates stay separate from `gun_range_outdoor_pct` above: `$WEAP` t2 is
+# per-weapon and these `$GSET`/`$IRTX` candidates are per-gun, so a bench run that moves both
+# proves nothing about either.
 DRIVE_IO_MODE: Literal["off", "gset_t3", "irtx"] = "off"
 
 # Candidate (b): `$GSET` token 3, `gunLaserRegion` -- "IR transmit power, as a regional legal limit
@@ -268,7 +291,10 @@ _SIR_NO_POOL = frozenset({8, 23, 24, 25, 26, 27, 28, 35, 31, 32, 34})     # regi
 def headset_multiplier(fn: int, crit_modifier: int) -> float:
     """HEADSET-sensor damage multiplier for a $SIR row's function, at the compiled `$GSET`
     criticalShotModifier (t7, 0-100). Bench-confirmed 2026-09-11: fn 36 -> 1 + t7/200 (x1.25 at the
-    MC default t7=50), fn 37 -> 1 + 2*t7/100 (x2.0 at t7=50); every other function is unscaled (1.0).
+    then-MC default t7=50), fn 37 -> 1 + 2*t7/100 (x2.0 at t7=50); every other function is unscaled (1.0).
+    2026-09-17 (arsenal review): the MC default is now t7=0, so both fn 36 and fn 37 return 1.0 at the
+    compiled default -- BRX has 4 headset sensors and 1 tagger sensor and play aims at the head, so the
+    headset needs no bonus multiplier. The formula above is unchanged; only the compiled default moved.
     ⚠ HEADSET ONLY -- the gun-body sensor applies the raw magnitude (x1) for fn 1/36/37 alike, which is
     why `WeaponCatalog.damage()`/`hits_to_kill()`/`time_to_kill()` do NOT call this: they compute the
     body number, the guaranteed kill. `applied = floor(magnitude * headset_multiplier(fn, t7))` on a
@@ -285,7 +311,12 @@ _SIR_GRANT = frozenset(range(9, 23))              # heals/armor/shields: a "dama
 # ALLOW-LIST, deliberately: only these are bench-confirmed plain 1x damage. Anything not listed is
 # warned about, because the failure we are guarding against (a weapon that cannot hurt anyone, or
 # worse, heals what it shoots) lives precisely in the functions we have NOT characterised.
-_SIR_PLAIN_DAMAGE = frozenset({1, 3, 4, 5, 7, 29, 30, 33, 38})   # 3 added 2026-08-29, see above
+# ⚠ fn 38 was REMOVED from this set 2026-09-17 (F225): bench-proven to HALVE every hit (a charge of
+# 100 landed 50, a tap of 20 landed 10), not plain damage. It is not added to any other set either --
+# its true effect is still uncharacterised beyond "halves" -- so a weapon that keys to it now falls
+# through to the final `elif` and is WARNED about, which is the guard this whole allow-list exists
+# to provide: nothing may key to fn 38 by accident and ship silently halved.
+_SIR_PLAIN_DAMAGE = frozenset({1, 3, 4, 5, 7, 29, 30, 33})   # 3 added 2026-08-29, see above; 38 removed 2026-09-17
 
 
 def _sir_index(table) -> dict[tuple[str, str], int]:
@@ -542,7 +573,8 @@ def assert_rearms_every_life(bundle) -> None:
 # (fn 24 = a STATUS function: `$HIR` fires, pools do not move, the gun plays fn 24's own clip) -> the NODE writes
 # `$AMMO,<slot>,0,0,1,*` for its live slots and restores the LIVE counts when `config.stun.duration_s` runs out
 # (`engine.js _stun`). The native stun is not relied on (2/5 singles, lasts until death). The cell is the stock
-# `<8,0>` row -- the CHARGE RIFLE's plain damage (fn 38) -- so with stun ON, a charge rifle IS the EMP source: it
+# `<8,0>` row -- the CHARGE RIFLE's plain damage (fn 1 since F225, 2026-09-17; fn 38 before that
+# HALVED every hit, the bug F225 fixed) -- so with stun ON, a charge rifle IS the EMP source: it
 # stuns and deals no damage (the row's function is the only thing that changes; the sound token is carried over,
 # never rewritten -- F43). The other source is a proto-8 station. Shipped ONLY when `config.stun` is present;
 # a game without it keeps the stock row byte-for-byte.
@@ -693,6 +725,17 @@ def _load_weapons() -> list[dict]:
     return data["weapons"]
 
 
+# 2026-09-17 (Tony, following F225/F226/S43): the ambush identity of a cell weapon (Charge Rifle) is a
+# pre-built charge held behind cover -- the charge time (`t14`, and by feel longer still, see
+# weapon-design.md §2.2) is SETUP, not combat time, so it does not belong in `ttk_ms`. What a target
+# actually experiences is RELEASE (the charge lands the instant the trigger releases, zero delay, same
+# "first shot free" convention as every other weapon) plus however many taps close the rest of the
+# pool. No bench measurement of tap-to-tap cadence exists yet; 500 ms is a documented placeholder
+# (Tony: "about 1 s" for two taps) pending a bench gate. Module-level so `views.py` can redo the same
+# release-to-kill maths `WeaponCatalog.time_to_kill()` does, at whatever pool the host has set.
+CHARGE_TAP_CADENCE_MS = 500
+
+
 class WeaponCatalog:
     """§3 roster. `resolve(id, slot)` → "$WEAP,<slot>,<tail>"; `spawn_ammo(id)` → (mag, reserve)."""
 
@@ -700,32 +743,48 @@ class WeaponCatalog:
         self._rows = rows if rows is not None else _load_weapons()
         self._by_id = {w["weapon_id"]: w for w in self._rows}
 
+    def _to_weapon(self, w: dict) -> Weapon:
+        """One raw `weapons.json` row -> contracts §3 `Weapon` shape, hidden or not. `all()` is this
+        applied to every VISIBLE row; a caller that needs a hidden row's `Weapon` shape too (e.g. a
+        test proving `weapon_view()` still forwards `caution` off a row the picker no longer offers)
+        calls this directly via `catalog._row(weapon_id)`."""
+        row: Weapon = {
+            "weapon_id": w["weapon_id"], "name": w["name"], "cls": str(w["cls"]),
+            "weapon_class": w.get("class", "ballistic"),   # weapons.json `class`: ballistic|energy|melee (A10, 2026-09-17)
+            "desc": w.get("desc", ""),
+            "tags": list(w.get("tags") or []), "role": w.get("role", ""),   # A10 policy vocabulary
+            "stats": {"mag": w["mag"], "reserve": w["reserve"], "reload_ms": w["reload_ms"],
+                      "dmg": w["dmg"], "rof": w["rof"], "rng": w["rng"],
+                      "htk": w.get("htk"), "ttk_ms": w.get("ttk_ms"),   # A10: HITS TO KILL replaces the flat RANGE bar in the UIs
+                      # the pool-INDEPENDENT chain the views re-derive htk/ttk from when the host
+                      # changes `health` (W2, docs/weapon-design.md §2.5). `dmg` above is a share
+                      # of the 115 default and cannot be rescaled; `dmg_hit` is the real magnitude.
+                      "dmg_hit": self.damage(w["weapon_id"]),
+                      "cycle_ms": self.cycle_ms(w["weapon_id"]),
+                      "charged": self._frame_int(w["weapon_id"], "mode") in self._CHARGE_MODES,
+                      # 2026-09-17 (F225/F226/S43): a CELL weapon (rounds_per_charge > 1) with a tap
+                      # magnitude counts trigger ACTIONS, not equal-sized hits -- `views.weapon_view()`
+                      # needs both numbers to redo the same htk/ttk_ms maths at a host-chosen pool the
+                      # way it already redoes the plain ceil(pool/dmg) maths for every other weapon.
+                      "tap_dmg": self.tap_damage(w["weapon_id"]) or None},
+            "weap_frame": self.resolve(w["weapon_id"], 0),
+            "verified": bool(w.get("verified", False)),
+        }
+        if w.get("rounds_per_charge"):   # A48: what one full charge costs the cell -- the HUD reads it, so it must reach the node
+            row["rounds_per_charge"] = int(w["rounds_per_charge"])
+        if w.get("caution"):    # A10: known live problem, human copy
+            row["caution"] = w["caution"]
+        if w.get("pickup_only"):   # 2026-09-17: catalogue-visible, never in a loadout pool (policy.py)
+            row["pickup_only"] = True
+        if w.get("recoil"):     # S42 (2026-09-17): the declared target profile -- weapons.json `_note`
+            row["recoil"] = w["recoil"]
+        return row
+
     def all(self) -> list[Weapon]:
-        """Visible catalog (hidden melee excluded), as contracts §3 Weapon shape."""
-        out: list[Weapon] = []
-        for w in self._rows:
-            if w.get("hidden"):
-                continue
-            row: Weapon = {
-                "weapon_id": w["weapon_id"], "name": w["name"], "cls": str(w["cls"]),
-                "desc": w.get("desc", ""),
-                "tags": list(w.get("tags") or []), "role": w.get("role", ""),   # A10 policy vocabulary
-                "stats": {"mag": w["mag"], "reserve": w["reserve"], "reload_ms": w["reload_ms"],
-                          "dmg": w["dmg"], "rof": w["rof"], "rng": w["rng"],
-                          "htk": w.get("htk"), "ttk_ms": w.get("ttk_ms"),   # A10: HITS TO KILL replaces the flat RANGE bar in the UIs
-                          # the pool-INDEPENDENT chain the views re-derive htk/ttk from when the host
-                          # changes `health` (W2, docs/weapon-design.md §2.5). `dmg` above is a share
-                          # of the 115 default and cannot be rescaled; `dmg_hit` is the real magnitude.
-                          "dmg_hit": self.damage(w["weapon_id"]),
-                          "cycle_ms": self.cycle_ms(w["weapon_id"]),
-                          "charged": self._frame_int(w["weapon_id"], "mode") in self._CHARGE_MODES},
-                "weap_frame": self.resolve(w["weapon_id"], 0),
-                "verified": bool(w.get("verified", False)),
-            }
-            if w.get("caution"):    # A10: known live problem, human copy
-                row["caution"] = w["caution"]
-            out.append(row)
-        return out
+        """Visible catalog (hidden weapons excluded: melee always, plus the 2026-09-17 arsenal cuts --
+        force_rifle/bolt_rifle/stinger/plasma_sniper/laser_cannon/ion_sniper/energy_launcher/glock),
+        as contracts §3 Weapon shape."""
+        return [self._to_weapon(w) for w in self._rows if not w.get("hidden")]
 
     def _row(self, weapon_id: str) -> dict:
         if weapon_id not in self._by_id:
@@ -738,10 +797,18 @@ class WeaponCatalog:
     # bench-proven 2026-09-04 (850 → 1700 doubled the swap, 425 halved it, 100 ran at 100; linear, no floor).
     # The gun applies the LARGER of the two loaded slots' values whichever direction you swap, so a swap
     # perk must scale every slot (docs/archive/bench-weap-tokens-2026-09-04.md).
+    # acc_ceiling/acc_floor (t21/t22, docs/weapon-design.md §4.4): named here so a test can locate them,
+    # but `resolve()` never writes either -- every weapon ships t21==t22==100 (native walk off, F230),
+    # and S42's `recoil` catalogue field only ever reaches the wire through `app/src/engine.js`, which
+    # pins both to the live accuracy value on every write. See `weapons.json` `_note` (S42).
+    # "range_outdoor" (t2, `gunRangeOutdoor`) is the confirmed emitted-power/venue lever (F231/F234,
+    # 2026-09-17 garden test). "range_indoor" (t41, `gunRangeIndoor`) is kept only so a test can pin
+    # it untouched -- do NOT write it from `gun_range_outdoor_pct` or any venue map; see the F234
+    # comment block above `RANGE_OUTDOOR_FLOOR`.
     _T = {"proto": 3, "subtype": 4, "dmg": 5, "fire": 14, "swap": 15, "mag": 16, "reserve": 17, "reload": 18,
-          "mode": 20, "burst": 23, "heat": 24, "snd_fire": 27, "snd_up": 28, "snd_down": 29,
-          "rel1": 31, "rel2": 32, "rel3": 33, "noammo": 34, "clipstart": 39, "reserve_half": 40,
-          "range": 41}
+          "mode": 20, "acc_ceiling": 21, "acc_floor": 22, "burst": 23, "heat": 24, "snd_fire": 27,
+          "snd_up": 28, "snd_down": 29, "rel1": 31, "rel2": 32, "rel3": 33, "noammo": 34, "tap": 37,
+          "clipstart": 39, "reserve_half": 40, "range_indoor": 41, "range_outdoor": 2}
     # The ammo trio + its two mirrors. `resolve()` owns these — they carry the invariants — so an
     # `overrides` entry may not name one (see `_override_index`).
     _AMMO_TOKENS = frozenset({16, 17, 18, 39, 40})
@@ -807,13 +874,15 @@ class WeaponCatalog:
         native behaviour we cannot synthesise from a template: the 3-round burst (tok23), bolt/single
         shot, charge, overheat (tok24/35), the per-weapon reload chain, damage type (tok3), reload type
         (tok19) and muzzle flash (tok25/26). On top of that we write ONLY the balance tokens — damage,
-        fire interval, the ammo/reload trio, and t41 (range, via `gun_range_pct` — a NO-OP today,
-        F135) — preserving the two invariants every captured frame obeys: `tok39 == tok16` (clip
-        start == max clip) and `tok17 == 2 * tok40`.
+        fire interval, the ammo/reload trio, and t2 (range, via `gun_range_outdoor_pct` — F234) —
+        preserving the two invariants every captured frame obeys: `tok39 == tok16` (clip start == max
+        clip) and `tok17 == 2 * tok40`. **t41 is never written here** — it is left exactly as the
+        capture carries it, because indoor range is unmeasured (F231 open) and t41 itself was proven
+        inert outdoors (Q15, 2026-09-17); see the F234 comment above `RANGE_OUTDOOR_FLOOR`.
 
-        `environment` ("indoor"/"outdoor"/None) only reaches `gun_range_pct`; omitting it (every
-        caller that just wants a weapon's stats, not a shipped frame) is identical to "indoor" —
-        both are a no-op today.
+        `environment` ("indoor"/"outdoor"/None) only reaches `gun_range_outdoor_pct`: outdoor scales
+        t2 by the weapon's catalogue starting value, indoor and unset both keep the captured t2
+        unchanged (indoor is untested, F231 open — never invent an indoor number).
 
         A weapon may additionally declare `overrides` — an explicit, per-token escape hatch for bench
         findings that contradict a stock value (see `_override_index`). Each entry must name a
@@ -847,7 +916,11 @@ class WeaponCatalog:
         put("reserve", reserve); put("reserve_half", reserve // 2)   # tok17 == 2 * tok40 (`_ammo` keeps it even)
         put("reload", reload_ms)
         put("swap", self.swap_ms(weapon_id, mods))
-        put("range", gun_range_pct(int(p[T["range"] + 1] or 0), environment))   # F135: no-op today
+        # t2 (F234): the venue-scaled range lever. t41 is deliberately NOT written here (see the
+        # `_T` comment and the F234 block above `RANGE_OUTDOOR_FLOOR`) -- it stays exactly as the
+        # capture carries it, byte for byte.
+        put("range_outdoor", gun_range_outdoor_pct(
+            int(p[T["range_outdoor"] + 1] or 0), wire.get("range_outdoor_pct"), environment))
         for key, ov in (w.get("overrides") or {}).items():
             idx = self._override_index(weapon_id, key, ov)   # validates before we touch the frame
             p[idx + 1] = str(ov["value"])
@@ -914,7 +987,23 @@ class WeaponCatalog:
         superseding the earlier flat x1.25/x2 reading) — so an all-headset kill on the five weapons on
         fn 36/37 needs FEWER hits than this method publishes; `validate()` warns on those rows with the
         actual multiplier. Second, the SHIELD pool, which sits above armor and is granted only by an IR
-        function-11 event. 0 = damage unknown, caller skips."""
+        function-11 event. 0 = damage unknown, caller skips.
+
+        **A cell weapon (`rounds_per_charge` > 1) with a tap magnitude (`t37`) counts TRIGGER ACTIONS,
+        not equal-sized hits** (2026-09-17, Tony, following F225/F226/S43): the Charge Rifle's real kill
+        is one charge (t5, 85) plus as many taps (t37, 20) as it takes to close the remainder, e.g. 1 +
+        2 = 3 actions at the 115 pool -- not `ceil(115/85) = 2`, which silently assumes every hit is a
+        full charge. See `rounds_to_kill()` for the ROUNDS this costs (10 per charge, 1 per tap) and
+        `tap_damage()`."""
+        rpc = self.rounds_per_charge(weapon_id)
+        tap = self.tap_damage(weapon_id)
+        if rpc > 1 and tap > 0:
+            charge_dmg = self.damage(weapon_id)
+            if charge_dmg <= 0 or pool <= 0:
+                return 0
+            if pool <= charge_dmg:
+                return 1
+            return 1 + math.ceil((pool - charge_dmg) / tap)
         dmg = self.damage(weapon_id)
         return math.ceil(pool / dmg) if dmg > 0 and pool > 0 else 0
 
@@ -962,18 +1051,50 @@ class WeaponCatalog:
         """weapons.json `stats.dmg` — the SHARE of `pool` one hit removes, 0-100 (weapons.json `_note`)."""
         return round(100 * self.damage(weapon_id) / pool) if pool > 0 else 0
 
+    CHARGE_TAP_CADENCE_MS = CHARGE_TAP_CADENCE_MS   # class-level alias; see the module constant above
+
+    def tap_damage(self, weapon_id: str) -> int:
+        """The `$WEAP` t37 tap magnitude for a cell weapon (F229/S43): independent of the charge
+        magnitude (`damage()`/t5). 0 for every weapon without a tap (t37 blank on the captured frame)."""
+        return self._frame_int(weapon_id, "tap")
+
+    def rounds_to_kill(self, weapon_id: str, pool: int) -> int:
+        """ROUNDS of the `mag`/`reserve` cell the minimal kill combo costs -- identical to
+        `hits_to_kill()` for every weapon that fires one round per hit, but NOT for a cell weapon
+        (`rounds_per_charge` > 1 with a tap magnitude): a charge costs `rounds_per_charge` rounds and a
+        tap costs 1, so "3 trigger actions" (`hits_to_kill()`) and "12 rounds" are different numbers.
+        This is the one to compare against a raw `mag`/`reserve` count (the one-magazine guard, kills
+        per clip); `hits_to_kill()`/`time_to_kill()` are the ones to show a player."""
+        rpc = self.rounds_per_charge(weapon_id)
+        tap = self.tap_damage(weapon_id)
+        if rpc > 1 and tap > 0:
+            htk = self.hits_to_kill(weapon_id, pool)
+            if not htk:
+                return 0
+            taps = htk - 1                       # hits_to_kill() already counted the one charge
+            return rpc + taps
+        return self.hits_to_kill(weapon_id, pool)
+
     def time_to_kill(self, weapon_id: str, pool: int) -> int:
         """ms from the first shot to the killing hit at `pool`, on the GUN BODY; 0 when the weapon
         one-shots. Built on `hits_to_kill()`, so the same gun-body caveat applies: an all-headset kill
         on an fn 36/37 weapon lands sooner than this.
 
-        (htk - 1) cycles, because the first hit costs no wait — EXCEPT on a charge weapon, where the
-        first shot has to be charged too, so it is htk cycles. That is the whole reason the Rail Gun
-        and the Laser Cannon publish a TTK (1.20 s / 1.50 s) while the Rocket Launcher, equally a
-        one-shot kill, publishes 0.00."""
+        (htk - 1) cycles, because the first hit costs no wait — EXCEPT on a charge/hold weapon with NO
+        tap (Rail Gun, Laser Cannon: `mode` in `_CHARGE_MODES`), where the first shot has to be charged
+        too, so it is htk cycles. That is the whole reason the Rail Gun and the Laser Cannon publish a
+        TTK (1.20 s / 1.50 s) while the Rocket Launcher, equally a one-shot kill, publishes 0.00.
+
+        A CELL weapon with a tap (the Charge Rifle) is neither: it is RELEASE-to-kill, not
+        charge-to-kill (see `CHARGE_TAP_CADENCE_MS`) -- the pre-built charge lands at zero delay and
+        only the taps that follow cost time."""
         htk = self.hits_to_kill(weapon_id, pool)
         if not htk:
             return 0
+        rpc = self.rounds_per_charge(weapon_id)
+        if rpc > 1 and self.tap_damage(weapon_id) > 0:
+            taps = htk - 1
+            return taps * self.CHARGE_TAP_CADENCE_MS
         charged = self._frame_int(weapon_id, "mode") in self._CHARGE_MODES
         return int(round(self.cycle_ms(weapon_id) * (htk if charged else htk - 1)))
 
@@ -981,6 +1102,22 @@ class WeaponCatalog:
         """What the phone's HUD is told the player is carrying — the SAME numbers `resolve()` writes."""
         mag, reserve, _ = self._ammo(weapon_id, mods)
         return mag, reserve
+
+    def rounds_per_charge(self, weapon_id: str) -> int:
+        """weapons.json `rounds_per_charge` (2026-09-17, F226/S43): rounds of the `mag`/`reserve` cell
+        one hit costs. 1 for every weapon except the Charge Rifle (10, bench-measured): its `mag`/
+        `reserve` count ROUNDS of the cell, not hits, so a caller that wants "how many hits can this
+        magazine land" must divide by this first (`charges()`)."""
+        return int(self._row(weapon_id).get("rounds_per_charge") or 1)
+
+    def charges(self, weapon_id: str, rounds: int) -> int:
+        """`rounds` (a mag or reserve count) expressed as full charges/hits for this weapon.
+
+        Identity for every weapon but the Charge Rifle. Floor division: a charge weapon with fewer
+        than `rounds_per_charge` rounds left cannot fire one at all (F226, bench-confirmed: a
+        part-filled cell jams rather than firing a partial charge)."""
+        rpc = self.rounds_per_charge(weapon_id)
+        return rounds // rpc if rpc > 1 else rounds
 
 
 class Compiler:
@@ -1473,7 +1610,7 @@ class Compiler:
         return [
             f"$VOL,{self.tryout_volume()},0,*", "$CLEAR,*", "$START,*",   # $START IS required — bench 2026-08-25: without it the gun
                                                      # spawns but the trigger only reloads, it will not fire IR
-            f"$GSET,0,{GSET_T2_SAFE},1,0,1,0,50,1,*",   # FF off; t2 stays safe at every venue
+            f"$GSET,0,{GSET_T2_SAFE},1,0,1,0,0,1,*",    # FF off; t2 stays safe at every venue; t7 (crit_modifier) matches the GameConfig default of 0 (2026-09-17)
             pset,
             "$SIR,0,0,,1,0,0,1,,*",                # standard-weapon IR interpretation so a try-out shot registers
             "$TID,1,*",                            # a team is needed to spawn-to-live (identity stays 0 → uncredited)
@@ -1801,12 +1938,14 @@ class Compiler:
                 # what the weapon is, for THIS player: "only" (the gun they fight with), "primary"
                 # (a real primary with a backup behind it) or "backup".
                 kind = "backup" if slot > 0 else ("only" if len(ws) == 1 else "primary")
-                mag = self.catalog._ammo(wid, None)[0]       # the weapon's OWN magazine, no perk
+                mag = self.catalog._ammo(wid, None)[0]        # the weapon's OWN magazine, no perk, ROUNDS
                 if (wid, pool, mag, kind) in seen:
                     continue
                 seen.add((wid, pool, mag, kind))
                 htk = self.catalog.hits_to_kill(wid, pool)
-                if not (htk and mag < htk):
+                rtk = self.catalog.rounds_to_kill(wid, pool)  # F226/S43: a cell weapon's kill combo costs
+                                                                # ROUNDS, not hits -- grade against those
+                if not (rtk and mag < rtk):
                     continue
                 if sidearm:
                     # Round-2 fix pass C (2026-09-12): a WARNING in EVERY slot, worded for the shape
@@ -1826,12 +1965,12 @@ class Compiler:
                             else "is your backup" if kind == "backup"
                             else "is the gun you fight with (a sidearm in the PRIMARY slot)")
                     warnings.append(f"{wid} {what} and cannot kill on one magazine at this pool - "
-                                    f"it will need a reload (mag {mag} < {htk} hits at "
+                                    f"it will need a reload (mag {mag} < {rtk} rounds for {htk} hits at "
                                     f"{self.catalog.damage(wid)} dmg vs {pool} pool)")
                 else:
                     warnings.append(f"PRIMARY {wid.upper().replace('_', ' ')} CANNOT KILL ON ONE MAGAZINE: "
-                                    f"mag {mag} < {htk} hits at {self.catalog.damage(wid)} dmg vs a {pool} "
-                                    f"pool — a reload mid-kill (docs/weapon-design.md §2.1)")
+                                    f"mag {mag} < {rtk} rounds for {htk} hits at {self.catalog.damage(wid)} dmg "
+                                    f"vs a {pool} pool — a reload mid-kill (docs/weapon-design.md §2.1)")
 
         # Does each loadout weapon's <t3,t4> key a $SIR row that actually DEALS DAMAGE?
         # The mag>=htk invariant above computes on raw t5 and cannot see this: it passed an Energy
@@ -1904,13 +2043,23 @@ class Compiler:
                     flagged.add(wid)
                     cm = self._to_gc(config, p).crit_modifier
                     mult = headset_multiplier(fn, cm)
-                    warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, a CONFIRMED "
-                                    f"HEADSET-ONLY multiplier row: at this game's compiled crit_modifier "
-                                    f"({cm}) a headset hit lands floor({mult}x its $WEAP t5); a gun-body "
-                                    f"hit lands the raw t5 (x1) (bench 2026-09-11). The published "
-                                    f"htk/ttk_ms are the GUN-BODY (guaranteed-kill) number, so an "
-                                    f"all-headset kill needs fewer hits than published "
-                                    f"(weapon-design.md §6.2)")
+                    # 2026-09-17: the default crit_modifier is now 0, so mult is 1.0 for most games —
+                    # a headset hit and a gun-body hit are equal, and the old "needs fewer hits than
+                    # published" framing would be a wrong claim at that default. Only make it when the
+                    # compiled crit_modifier actually scales the headset (mult != 1.0).
+                    if mult != 1.0:
+                        warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, a CONFIRMED "
+                                        f"HEADSET-ONLY multiplier row: at this game's compiled crit_modifier "
+                                        f"({cm}) a headset hit lands floor({mult}x its $WEAP t5); a gun-body "
+                                        f"hit lands the raw t5 (x1) (bench 2026-09-11). The published "
+                                        f"htk/ttk_ms are the GUN-BODY (guaranteed-kill) number, so an "
+                                        f"all-headset kill needs fewer hits than published "
+                                        f"(weapon-design.md §6.2)")
+                    else:
+                        warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, a "
+                                        f"HEADSET-ONLY multiplier row: at this game's compiled crit_modifier "
+                                        f"({cm}) the multiplier is 1.0x, so a headset hit lands the same as "
+                                        f"a gun-body hit (bench 2026-09-11, weapon-design.md §6.2)")
                 elif fn in _SIR_ARMOR_PIERCING:
                     flagged.add(wid)
                     warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, ARMOR-PIERCING: it "

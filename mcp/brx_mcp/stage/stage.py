@@ -3154,7 +3154,8 @@ class GunStage:
     def ir_registers(self) -> dict:
         """Which IR buttons this game's gun will even REGISTER: a word registers only if the head carries a `$SIR`
         row for its protocol (F11: no row = silently ignored). Walkthrough 2026-09-04: medic and the station words
-        'did not work' -- the table has no proto 1 / 15 rows (F15 / B23). EMP has `$SIR,8,0,,38` = PLAIN damage today."""
+        'did not work' -- the table has no proto 1 / 15 rows (F15 / B23). EMP has `$SIR,8,0,,1` = PLAIN damage today
+        (fn 1, not fn 38 -- F225, 2026-09-17: fn 38 halves every hit)."""
         protos = set()
         for f in self.bundle.get("head", []):
             if f.startswith("$SIR,"):

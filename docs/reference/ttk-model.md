@@ -17,7 +17,7 @@ The first shot is assumed to land the instant the trigger is pulled, so it contr
 only the *gaps between* shots count. This is the convention used across Modern Combat Wiki's and
 the Game Balance Project's TTK writeups and every TTK calculator surveyed (xbitlabs, GameDevCalculators,
 CalculatorsUniverse). BRX's own `ttk_ms` field already follows it exactly: `assault_rifle` htk 13 at
-140 ms/round gives `(13-1)*140 = 1680`, matching the catalog.
+100 ms/round gives `(13-1)*100 = 1200`, matching the catalog (2026-09-17: native cycle, was 140 ms).
 
 **Ideal vs practical/effective TTK.** Every source that goes beyond the raw formula makes the same
 point: the number above assumes every shot lands. Destiny 2's community explicitly separates
@@ -177,6 +177,12 @@ that carries the most rounds has the worst sustained output while it fires.
 `test_ttk_band_and_no_strictly_dominant_weapon` passes across the full 22-weapon roster with this
 table, not only among the three pistols.
 
+> ⚠ **2026-09-17: this claim no longer holds as originally written.** Retiring "kills/kit" as a
+> dominance axis (§Shipped 2026-09-17 below) retired the exact lever this section describes — with
+> reserve out of the picture, **USP strictly dominated Deagle** until a second, smaller fix (USP mag
+> 20 → 19) closed it again. The numbers in this table are historical; the current axes, the sidearm
+> mag change and the full reasoning are in §Shipped 2026-09-17.
+
 **Wire tokens changed** (`mcp/brx_mcp/mc/weapons.json`, `wire` block + top-level `mag`/`reserve`):
 
 | weapon | dmg (t5) | fire_ms (t14) | mag (t16/t39) | reserve (t17/t40) |
@@ -193,6 +199,79 @@ invariants (`tok39 == tok16`, `tok17 == 2*tok40`) hold at every new value shown.
 pick? The numbers say no (equal ideal TTK, inverted sustain/ammo trade-off), but this is exactly the
 kind of claim the arsenal has been burned by before (§3's headset-multiplier and t21/t22 accuracy
 notes) — it needs a body on the bench, not just a spreadsheet, before it ships as verified.
+
+## Shipped 2026-09-17: family-scoped dominance, the lead rule, and the primaries retune
+
+**Axis change (Tony's decision, first pass).** `test_ttk_band_and_no_strictly_dominant_weapon` used
+to check {ideal TTK, sustained DPS, total kills from a full kit (`(mag+reserve)//htk`)} GLOBALLY.
+Reserve ammo is retired as an axis entirely: a respawn refills the whole kit, so how many kills a
+full kit could theoretically produce is not a fact about any single life a player actually fights.
+
+**The retune.** Eight primaries were pulled toward new ideal-TTK targets (dmg/cycle `wire` overrides
+only, mag/reserve/reload untouched except the Charge Rifle's cell and, in the second pass below,
+Suppressor and USP):
+
+| weapon | dmg (t5) | cycle ms | hits | ideal TTK | one-mag kill % @ p=0.7 |
+|---|---|---|---|---|---|
+| Assault Rifle | 9 | 100 | 13 | 1.20 s | 100% |
+| SMG | 8 | 95 | 15 | 1.33 s | 100% |
+| Burst Rifle | 11 | 75 +275 | 11 | 1.42 s | 100% |
+| Shotgun | 45 | 800 | 3 | 1.60 s | 93% |
+| AMR | 24 | 400 | 5 | 1.60 s | 100% |
+| Sniper Rifle | 60 | 1500 | 2 | 1.50 s | 92% |
+| Energy Rifle | 9 | 150 | 13 | 1.80 s | 100% |
+| Suppressor | 8 | 140 | 15 | 1.96 s | 100% |
+| Charge Rifle | 85 charge / 20 tap | 1250 | 3 (release-to-kill, see below) | 1.00 s | 92% |
+
+Full table, every weapon, `docs/weapon-design.md` §2.2.
+
+**⚠ First pass shipped RED, on purpose, with the conflict fully written up: two effects.** (1) The
+Assault Rifle's native 100 ms cycle was already documented BEFORE this pass as failing the global
+dominance check "by design" — the 2026-08-30 retune to 140 ms existed specifically to avoid it, and
+reverting it (Tony's explicit instruction) reintroduced that dominance, with the Burst Rifle and SMG
+picking up similar wins over slower, heavier-hitting weapons for the same reason (a fast, deep-magazine
+automatic's one-magazine kill chance saturates near 100% almost regardless of `htk`). (2) Retiring
+"total kills" also retired the lever §Shipped 2026-09-12 used to keep the sidearm trio non-dominant —
+with it gone, **USP strictly dominated Deagle**.
+
+**Second pass (same day, Tony's follow-up): four changes that closed it clean.**
+
+1. **The dominance check now runs WITHIN A FAMILY**, not globally (`_weapon_family()`:
+   fire mode `t20` + `weapon_class`, sidearms their own family regardless). An SMG beating a Sniper
+   Rifle on every axis here is not a balance failure — neither range nor recoil exists on the wire yet
+   (F231, S42), and a Sniper Rifle's whole identity IS range, which this model cannot see. Scoping to
+   family removes cross-family "violations" that were never meaningful comparisons to begin with; full
+   reasoning and the family list are in `docs/weapon-design.md` §2.3.
+2. **Kills per clip** (`mag // rounds_to_kill`, deterministic) joins the axis set alongside ideal TTK,
+   sustained DPS and the probabilistic one-magazine kill chance — Tony's call was BOTH the
+   deterministic and the probabilistic framing, not one instead of the other.
+3. **The lead rule**: every visible weapon must achieve its family's best value (ties count) on at
+   least one of the four numeric axes. `recoil.floor` and `range_band` were part of this rule for one
+   day and were removed in polish round 2 (2026-09-17): both are declared catalogue DATA for levers
+   that do not reach the wire yet (`test_range_and_recoil_are_declared_not_wired` is the guard), so a
+   lead claimed on either could be satisfied by inert data. The four numeric axes caught the two
+   remaining gaps below on their own; strict dominance alone would have missed them.
+4. **Two number changes, each the smallest found**: **Suppressor mag 48 → 75** (same family as the AR
+   and SMG; the SMG beat it on ideal TTK and sustained DPS, and 75 is the smallest integer mag that
+   gives Suppressor a strict kills-per-clip lead, 5 vs the SMG's 4 — 60 only ties it). **USP mag 20 →
+   19**, not Tony's suggested 14: at 14 the sustained-DPS and one-magazine-kill-chance axes fall so far
+   (a shallow magazine spends proportionally more time reloading) that **Deagle ends up dominating USP
+   instead**, a reversal rather than a fix; 19 is the only integer in range where neither pistol beats
+   the other (a thin margin — sustained DPS differs by about 0.1 dmg/s, kill chance by 2 points).
+
+**The Charge Rifle's `htk`/`ttk_ms` also changed model, separately (F225/F226/S43).** The catalogue
+used to publish `ceil(pool/85) = 2` "hits", silently treating every hit as a full charge. It now
+counts the REAL combo — 1 charge plus however many taps close the rest of the pool (3 actions, 12
+rounds, at the 115 pool) — and `ttk_ms` is RELEASE-to-kill (1.00 s: the two taps' cost,
+`WeaponCatalog.CHARGE_TAP_CADENCE_MS` = 500 ms each, a documented placeholder pending a bench-measured
+tap cadence), not charge-to-kill: the pre-built charge is setup behind cover, not combat time, and is
+exempt from the TTK band for exactly that reason. The sustained-DPS and one-magazine-kill-chance axes
+keep the simpler "repeated full charges" model (a charge is near-certain once released; there is no
+per-action accuracy model to mix that with a tap's p=0.7 pull) — a deliberately different question
+("how hard can this sustain fire") from "what does the one pre-built kill cost".
+
+**Result: zero dominance violations, every visible weapon leads its family on at least one axis.**
+`docs/weapon-design.md` §2.3 has the full family list and the per-weapon lead reasoning.
 
 ## Sources
 
