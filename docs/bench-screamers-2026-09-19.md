@@ -99,7 +99,7 @@ so every bench run uses the same code. Patterns:
 Runs:
 1. `match` for 2 hours. Pass: zero LOCK-UP, zero BAD FRAME.
 2. `match-x10` for 2 hours. Pass: zero LOCK-UP. This shows margin, not just survival.
-3. `recoil-oscillate` for 2 hours. Pass: zero LOCK-UP, zero BAD FRAME. This is the F274 gate: the recoil writer ships
+3. `recoil-oscillate` for 2 hours. **Run the levers sheet §21 first:** if `$TMP` token 4 drives accuracy, the recoil writer moves to that one short frame, and this run must soak the `$TMP` form instead of `$WEAP` plus `$AMMO`. Pass: zero LOCK-UP, zero BAD FRAME. This is the F274 gate: the recoil writer ships
    only inside the budget that this run proves.
 4. `callsign` for 2 hours, as the comparison. If Callsign-like load locks the gun and our pattern does not, we have
    shown the cause and the cure on one gun.

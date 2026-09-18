@@ -6,7 +6,7 @@ v4.32 has drifted from V4_30, and the later sessions shrink.
 
 | session | time | needs | sections |
 |---|---|---|---|
-| 1. Core | 45 min | two guns | §1 (F206, confirms the shipped fix), §2 (melee), §4 step 1, §5 (all of it, one session: each step starts from the one before), §13 step 1 |
+| 1. Core | 55 min | two guns | §1 (F206, confirms the shipped fix), §21 (recoil through `$TMP`), §2 (melee), §4 step 1, §5 (all of it, one session: each step starts from the one before), §13 step 1 |
 | 2. Levers | 75 min | two guns, the IR rig for §9 step 5 | §3, §4 step 2, §6, §7, §8, §9, §10, §12, §15, §18 |
 | 3. Transport | see the screamers sheet | one gun, a laptop | §14 (now `bench-screamers-2026-09-19.md` Phase A) |
 | 4. IR rig | 90 min | two guns, the ESP32 IR rig | §11, §13 steps 2-3, §16, §17, §20 |
@@ -38,6 +38,7 @@ reaches `docs/manual/` only when it is CONFIRMED here.
 | 19 | `$LCD` t3 = shield, t4 = slot; `$QUERY` t2 = team; `$VERSION` t3/t5 meanings (V4_30, BC app) | 18 |
 | 20 | Every other open item the triage of FOLLOWUPS against the new sources found untested | 19 |
 | 21 | Range tokens set the IR carrier frequency: 38000 - 125 x (100 - range) Hz on the gun, 140 Hz steps on the headset; indoor/outdoor sets power (V4_31) | 20 |
+| 22 | `$TMP` token 4 changes live accuracy over BLE with no magazine reset, so recoil can drop `$WEAP` (V4_30; fn 23 writes the same variable) | 21 |
 
 Jay (LaserTagMods) shared his "Everything BRX" Drive on 2026-09-18. It holds the stock gun firmware image
 **V4_30**, the closest image we have to our v4.32. A disassembly of that image shows several commands we
@@ -445,6 +446,30 @@ t41 and t42 replace t2 and t13 only in indoor mode, and only when they are not 0
 
 **Reading.** If step 1 holds, range tuning becomes a frequency table calibrated against the receiver's band-pass, and
 values above the knee are not worth tuning.
+
+## 21. Recoil through `$TMP` token 4 (10 min, run it before any recoil soak)
+
+Today the recoil writer changes accuracy with a full `$WEAP` (about 101 bytes, 6 BLE packets). A `$WEAP` also resets
+the magazine, so an `$AMMO` restore must follow it, and that reset is the root of the F259 family (erased rounds,
+phantom shots, the echo window). The V4_30 disassembly shows `$TMP` token 4 is an accuracy modifier: every `$TMP` token
+is optional, and an empty token leaves its field alone. fn 23 writes -100 to the same variable, and the 2026-09-18
+bench watched fn 23 take live accuracy from 100 to 0 with no pool change. So the lever works; what is untested is
+driving it over BLE. If it works, one recoil state change becomes one short frame, with no magazine reset and no
+`$AMMO` behind it.
+
+Arm A with the bench AR. Fire a few rounds so the magazine is not full, and note the magazine count.
+1. Send `$TMP,,,,-30,,,,,,,,*` (only token 4 set). Read `$ALCD`: did token 2 (accuracy) move? Did the magazine stay
+   the same?
+2. Send `$TMP,,,,-60,,,,,,,,*`. Is the value absolute (accuracy reads 40) or additive (reads 10)?
+3. Wait 5 s without firing. Does accuracy stay, or walk back by itself?
+4. Fire 10 rounds. Does the modifier change the hit rate the way a lower t21/t22 does (the 2026-09-17 bench: 38/40
+   hits at 90, 7/18 at 50-60)?
+5. Send `$TMP,,,,0,,,,,,,,*`. Does accuracy return to its ceiling?
+6. Kill A and respawn it. Does the modifier survive a death?
+
+**Reading.** If steps 1 and 5 work and the magazine never moves, recoil moves from `$WEAP` to `$TMP` token 4, and the
+screamers sheet's `recoil-oscillate` soak must measure the `$TMP` form instead. If `$TMP` does nothing, the `$WEAP`
+writer stays and F274's soak runs as written.
 
 ## Close
 
