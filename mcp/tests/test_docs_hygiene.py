@@ -6,7 +6,10 @@ Added 2026-09-06 with the docs triage. Each check guards a rule that was broken 
 * FOLLOWUPS.md's "Updated" stamp moves when the file does (it sat on 09-01 through 09-05);
 * an id is one H2 in FOLLOWUPS.md, never two (F15/F16 each named two items);
 * HANDOFF.md is one screen, not a stack of banners (it reached 836 lines);
-* a relative link in docs/ points at a file that exists.
+* a relative link in docs/ points at a file that exists;
+* a closed id does not still fly an open marker, in either glyph family and either word order;
+* a closure in the archive that hands work on names an id that still exists;
+* a living page does not send the reader into docs/archive/ for a fact.
 
 No pytest: plain test_* functions, run by run_tests.py under the system python.
 """
@@ -198,13 +201,27 @@ def test_every_package_json_parses():
     literal backslash-n after the closing brace of the root package.json; npm refused to parse it, the deploy
     failed, and the only symptom was a site that never updated. JSON, not JavaScript, at every level."""
     import json
+
+    # 2026-09-17: `mcp/brx_mcp/mc/weapons.json` reached main with TWO `recoil` keys in 13 objects, a
+    # merge of two lanes. That is legal JSON and `json.loads` silently keeps the last one, so a whole
+    # block of tuning never reached the compiler and every test passed. `test_weapon_derivations.py`
+    # now rejects a repeated key across `mc/*.json`; the same hook belongs on every package.json,
+    # where a repeated `"scripts"` would drop half the build commands just as quietly.
+    def refuse_a_repeated_key(pairs, _rel=""):
+        seen: dict = {}
+        for key, value in pairs:
+            assert key not in seen, f"{_rel}: {key!r} appears twice in one object — JSON keeps only the last"
+            seen[key] = value
+        return seen
+
     for rel in ("package.json", "site/package.json", "app/package.json", "webapp/mc/package.json"):
         p = REPO / rel
         if not p.exists():
             continue
         raw = p.read_text(encoding="utf-8")
         assert raw.endswith("}\n") or raw.endswith("}"), f"{rel} does not end at its closing brace: {raw[-12:]!r}"
-        json.loads(raw)  # raises with the position if it is not JSON
+        # raises with the position if it is not JSON, and with the key if one is repeated
+        json.loads(raw, object_pairs_hook=lambda pairs, _rel=rel: refuse_a_repeated_key(pairs, _rel))
 
 
 # ---------------------------------------------------------------------------- #
@@ -280,28 +297,45 @@ def _dated_closed_ids() -> set[str]:
     return {m.group(1) for m in re.finditer(r"^- \d{4}-\d{2}-\d{2} \*\*([A-Z]\d{1,3})\b(?!\.\d)", text, re.M)}
 
 
-_OPEN_GLYPHS = ("🔴", "🟠", "🟡")
-# 2026-09-12 residue: `game-test-2026-09-11.md` still heads two rungs red for ids that closed the next
-# morning. Owned by the game-test lane; remove these once the sheet's status block is refreshed.
-_CLOSED_AS_OPEN_ALLOW = {("game-test-2026-09-11.md", "F124"), ("game-test-2026-09-11.md", "F125")}
+# 2026-09-17 doc-rot review: the set held 🔴🟠🟡 only, and `field-issues.md` — the register every field
+# report lands in — marks its open items 🔍 ("open, evidence named") and 💭 ("open, design"), per its own
+# legend. So F206 and F207 sat there as open for a day after both closed, and this check was green.
+# 🔧 ("fixed, needs a field check") is deliberately NOT here: the work IS done, the row is a reminder.
+_OPEN_GLYPHS = ("🔴", "🟠", "🟡", "🔍", "💭")
+# `field-issues.md` also puts the glyph BEFORE the id (`- 🔍 **F208** ...`), which `_ROW` cannot match at
+# all, so widening `_OPEN_GLYPHS` alone would have changed nothing. Only the FIRST id on such a row is
+# the subject; the rest of the line cites related ids in prose (`**F49** at game scale`).
+_ROW_GLYPH_FIRST = re.compile(r"\s*- (?:" + "|".join(_OPEN_GLYPHS) + r")\s*\*\*([A-Z]\d{1,3})\b")
+# Empty on purpose: the two 2026-09-12 pins were for `game-test-2026-09-11.md`, which moved to
+# `docs/archive/` on 2026-09-17 and is outside every id scan. Add a pin only with the date and the
+# reason, and delete it as soon as the file it names is fixed.
+_CLOSED_AS_OPEN_ALLOW: set[tuple[str, str]] = set()
 
 
 def _closed_ids_cited_as_open() -> list[str]:
-    """Two conservative shapes only, so a sentence like "F69 CLOSED" or a bench rung gated *on* an id
-    can never trip it: a FOLLOWUPS-style definition row (`- **F42 🟡** ...`, glyph right after the id),
-    and a heading whose id appears BEFORE its glyph (`### B1 · F124 · title 🔴`)."""
+    """Three conservative shapes, so a sentence like "F69 CLOSED" or a bench rung gated *on* an id can
+    never trip it: a FOLLOWUPS-style definition row (`- **F42 🟡** ...`, glyph right after the id), the
+    same row with the glyph first (`- 🔍 **F208** ...`, `field-issues.md`'s shape), and a heading that
+    carries a glyph anywhere in it.
+
+    ⚠ The heading arm used to read only the text BEFORE the glyph, which is one of the two orders a
+    heading is written in. `bench-critical-2026-09-11.md` writes the other one — `### BC-A1 — does it
+    change the protocol? (15 min) 🔴 F91` — so three rungs headed red for ids retired on 2026-09-11 and
+    the check reported green. A glyph anywhere in a heading now claims every id in that heading.
+    """
     closed = _dated_closed_ids()
     hits = []
     for f in _living_docs():
         for n, line in enumerate(f.read_text(encoding="utf-8", errors="ignore").split("\n"), 1):
             found = []
             m = _ROW.match(line)
+            mg = _ROW_GLYPH_FIRST.match(line)
             if m and any(g in m.group(2)[:14] for g in _OPEN_GLYPHS):
                 found = [m.group(1)]
-            elif line.startswith("#"):
-                cut = min([line.find(g) for g in _OPEN_GLYPHS if g in line] or [-1])
-                if cut > 0:
-                    found = re.findall(r"\b([A-Z]\d{1,3})\b", line[:cut])
+            elif mg:
+                found = [mg.group(1)]
+            elif line.startswith("#") and any(g in line for g in _OPEN_GLYPHS):
+                found = re.findall(r"\b([A-Z]\d{1,3})\b", line)
             for i in found:
                 if i in closed and (f.name, i) not in _CLOSED_AS_OPEN_ALLOW:
                     hits.append(f"{f.relative_to(REPO)}:{n} {i}")
@@ -324,6 +358,25 @@ def test_the_closed_as_open_check_can_actually_fail():
     probe = f"- **{sorted(closed)[0]} 🔴** pretend this reopened\n"
     m = _ROW.match(probe.rstrip("\n"))
     assert m and any(g in m.group(2)[:14] for g in _OPEN_GLYPHS), "the definition-row shape stopped matching"
+
+
+def test_the_closed_as_open_check_reads_both_open_glyph_families_and_both_orders():
+    """The floor under the 2026-09-17 widening: each of the three shapes must still match its own
+    example, and the two shapes that must NOT match must still not match. Without this the widening can
+    silently revert to 🔴🟠🟡-after-the-id and nothing says so."""
+    assert {"🔍", "💭"} <= set(_OPEN_GLYPHS), "field-issues.md's open glyphs are no longer open"
+    assert "🔧" not in _OPEN_GLYPHS, "🔧 is 'fixed, needs a field check' — the work is done, not open"
+
+    assert _ROW_GLYPH_FIRST.match("- 🔍 **F208** a gun can die with the HUD holding the player alive").group(1) == "F208"
+    assert _ROW_GLYPH_FIRST.match("- 💭 **F209** the respawn delay collapses to 0").group(1) == "F209"
+    # the subject id only: a bolded id cited later in the same row is a reference, not a second subject
+    assert _ROW_GLYPH_FIRST.match("- 🔍 **F206** team modes register nothing; **F49** at game scale").group(1) == "F206"
+    assert _ROW_GLYPH_FIRST.match("- ✅ **F206** closed 2026-09-16") is None, "✅ is not an open glyph"
+    assert _ROW_GLYPH_FIRST.match("- 🔧 **F206** fixed, needs a field check") is None, "🔧 is not an open glyph"
+
+    heading = "### BC-A1 — does `$WEAP` t3 change the transmitted IR protocol? (15 min) 🔴 F91"
+    assert any(g in heading for g in _OPEN_GLYPHS) and "F91" in re.findall(r"\b([A-Z]\d{1,3})\b", heading), (
+        "a glyph AFTER the id in a heading no longer claims the id")
 
 
 # Prefixes FOLLOWUPS actually uses, MINUS H and U: `H43`/`U100` are on-gun sound ids and `U1..U10` is
@@ -406,3 +459,146 @@ def test_the_living_status_files_are_dated():
     head = HANDOFF.read_text(encoding="utf-8")[:1200]
     assert re.search(r"(?:State as of|Updated)[^0-9]{0,20}\d{4}-\d{2}-\d{2}", head), (
         "HANDOFF.md has no dated 'State as of YYYY-MM-DD' banner in its first lines")
+
+
+# ---------------------------------------------------------------------------- #
+# 2026-09-17 doc-rot review: the archive. Two rules it broke, both invisible until a human read it.
+# ---------------------------------------------------------------------------- #
+
+ARCHIVE = DOCS / "archive" / "followups-closed.md"
+_SUB_ID = r"[A-Z]\d{1,3}(?:\.\d{1,2})?"
+_CLOSURE_HEAD = re.compile(r"^- (\d{4}-\d{2}-\d{2}) \*\*(" + _SUB_ID + r")\b")
+# "…it continues as **F247**." A closure that hands work on names the id it hands it to, and that id is
+# the ONLY way a reader gets from the closed item to the live one.
+_FORWARD = re.compile(
+    r"(?:continues as|continued as|carries on as|carried on as|re-?filed as|refiled to|filed as(?: its own job,)?"
+    r"|split into|re-?opened as|tracked as|superseded by|replaced by|renumbered to|moved to)"
+    r"[^.;\n]{0,40}?\*{0,2}(" + _SUB_ID + r")\b")
+
+
+def _archive_entries() -> list[tuple[int, str, str]]:
+    """(line number, subject id, whole entry text) for every dated closure line, continuation lines
+    folded in — `- 2026-09-17 **F218** …` runs to three lines and the pointer is on the third."""
+    out: list[tuple[int, str, list[str]]] = []
+    for n, line in enumerate(ARCHIVE.read_text(encoding="utf-8").split("\n"), 1):
+        m = _CLOSURE_HEAD.match(line)
+        if m:
+            out.append((n, m.group(2), [line]))
+        elif out and line.startswith(("  ", "\t")):
+            out[-1][2].append(line)
+    return [(n, i, " ".join(body)) for n, i, body in out]
+
+
+def _archive_forward_pointers() -> list[tuple[int, str, str]]:
+    return [(n, subject, m.group(1))
+            for n, subject, body in _archive_entries()
+            for m in _FORWARD.finditer(body)
+            if m.group(1) != subject]
+
+
+def _ids_a_forward_pointer_may_land_on() -> set[str]:
+    """A row in FOLLOWUPS.md, or an id that is itself closed. Deliberately NOT "any id the archive
+    mentions": that would make every pointer self-resolving, because the pointer IS an archive mention.
+    Sub-ids count (`F42.14` is a sub-row of F42, not its own bullet)."""
+    known = set(re.findall(r"\*\*(" + _SUB_ID + r")\b", FOLLOWUPS.read_text(encoding="utf-8")))
+    known |= {m.group(2) for m in
+              (_CLOSURE_HEAD.match(line) for line in ARCHIVE.read_text(encoding="utf-8").split("\n"))
+              if m}
+    return known
+
+
+def test_every_archive_forward_pointer_resolves():
+    """`docs/archive/` is skipped by both id scans (it is history: grep it, do not read it), so the one
+    thing in it that a reader still has to follow — "this closed, it continues as F247" — was checked by
+    nothing. The 2026-09-13 branch renumbered F230-F242 to F235-F247 and the archive was not part of the
+    sweep, because no test looked there.
+
+    ⚠ HONEST LIMIT: this catches a pointer that lands on NOTHING. It cannot catch a pointer that lands
+    on the wrong row, which is what that renumber actually left behind — F218's "it continues as F242"
+    still resolved, to "the results overlay". Only a human reading both rows finds that one.
+    """
+    known = _ids_a_forward_pointer_may_land_on()
+    dangling = [f"followups-closed.md:{n} {subject} -> {target}"
+                for n, subject, target in _archive_forward_pointers() if target not in known]
+    assert not dangling, (
+        "a closed item hands its remainder to an id that is in neither FOLLOWUPS.md nor the archive — "
+        "the usual cause is a renumber that did not sweep docs/archive/: " + ", ".join(dangling))
+
+
+def test_the_forward_pointer_scan_is_not_vacuous():
+    """The floor: the scan reads free text, so one rephrasing ("this rolls into F247") makes it see
+    nothing at all and stay green forever. Fails instead, so the phrase list gets the new wording."""
+    pointers = _archive_forward_pointers()
+    assert len(pointers) >= 2, (
+        f"only {len(pointers)} forward pointers parsed out of the archive — add the new wording to "
+        "_FORWARD, or the check is free")
+    entries = _archive_entries()
+    assert len(entries) > 30, f"only {len(entries)} dated closure entries parsed"
+    assert any(len(body) > 200 for _, _, body in entries), "continuation lines are no longer folded in"
+    # it must flag a target that does not exist, and accept one that does
+    fake = "- 2026-09-17 **F218** half of it did not run today; it continues as **F999**."
+    assert _FORWARD.search(fake).group(1) == "F999"
+    assert "F999" not in _ids_a_forward_pointer_may_land_on()
+
+
+# `docs/archive/` is history (CLAUDE.md: grep it, do not read it), so a living page that sends the
+# reader there for a FACT has put its own content out of reach: the archive is not maintained, not id
+# scanned, and not link checked. The fix is always to promote the fact and keep the archive as
+# provenance only. `followups-closed.md` is the one archive file everything may cite — it is the
+# sanctioned record of a closure, named as such in CLAUDE.md.
+_ARCHIVE_INDEX_FILES = ("docs/README.md", "docs/FOLLOWUPS.md", "docs/experiment-log.md")
+_ARCHIVE_REF = re.compile(r"(?<![\w/.-])(?:docs/)?archive/([A-Za-z0-9._][A-Za-z0-9._/-]*)")
+# Baseline measured 2026-09-17, on the day the rule was written: these pages already point into the
+# archive for content. A page NOT on this list that starts doing it fails immediately. The list only
+# ever shrinks — delete an entry when its page stops citing the archive, and never add one to make a
+# red go away: archiving a sheet means promoting what the living pages still need FIRST.
+_ARCHIVE_CITERS_BASELINE = {
+    "app/README.md",                        # design/hud-export/
+    "docs/architecture-topology.md",        # verification-checklist.md
+    "docs/bench-grenade.md",                # bench-grenade-answered.md
+    "docs/bench-queue-2026-09-09.md",       # bench-weap-tokens-discovery-2026-09-04.md, hardware/range-experiment.md
+    "docs/experiment-log/2026-08.md",       # hardware/bench-shopping-list.md
+    "docs/field-issues.md",                 # game-test-2026-09-11.md (archived 2026-09-17)
+    "docs/game-test-2026-09-13.md",         # HANDOFF-gset-t2-2026-09-13.md (archived 2026-09-17): provenance, the sheet that ran that afternoon
+    "docs/site/README.md",                  # site/SIMPLIFY-PLAN.md
+    "docs/spec/contracts.md",               # mode-extensibility.md, spec-armory.md, spec-net.md
+    "docs/spec/design/mission-control.md",  # design/mc-export/
+    "docs/spec/design/phone-hud.md",        # design/hud-export/
+    "docs/spec/loadout.md",                 # spec-loadout-superseded-notes.md
+    "docs/spec/start-sequence.md",          # spec-start-sequence-tasks.md
+    "hardware/esp32-ir-bridge/README.md",   # hardware/bench-shopping-list.md, hardware/ir-prototype-plan.md
+    "hardware/inventory.md",                # hardware/bench-shopping-list.md
+    "webapp/mc/README.md",                  # design/mc-export/
+}
+
+
+def _pages_citing_the_archive() -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    for f in _markdown_with_links():
+        rel = f.relative_to(REPO).as_posix()
+        if rel in _ARCHIVE_INDEX_FILES:
+            continue
+        for m in _ARCHIVE_REF.finditer(f.read_text(encoding="utf-8", errors="ignore")):
+            if m.group(1) != "followups-closed.md":
+                out.setdefault(rel, []).append(m.group(1))
+    return out
+
+
+def test_no_new_page_makes_the_archive_the_home_of_a_fact():
+    new = {k: sorted(set(v)) for k, v in _pages_citing_the_archive().items()
+           if k not in _ARCHIVE_CITERS_BASELINE}
+    assert not new, (
+        "these pages send the reader into docs/archive/, which is unmaintained history — promote the "
+        "fact into the living page and cite the archive only as provenance: " + str(new))
+
+
+def test_the_archive_citation_scan_still_matches():
+    """The floor: the baseline above is a list of KNOWN hits, so if the regex stops matching the test
+    passes for the wrong reason. At least half the baseline must still be measurable."""
+    found = set(_pages_citing_the_archive())
+    still = found & _ARCHIVE_CITERS_BASELINE
+    assert len(still) >= len(_ARCHIVE_CITERS_BASELINE) // 2, (
+        f"only {len(still)} of the {len(_ARCHIVE_CITERS_BASELINE)} baselined pages still parse as citing "
+        "the archive — the reference pattern has stopped matching")
+    assert _ARCHIVE_REF.search("see [`archive/spec-net.md`](archive/spec-net.md)").group(1) == "spec-net.md"
+    assert _ARCHIVE_REF.search("`docs/archive/hardware/range-experiment.md`").group(1) == "hardware/range-experiment.md"
