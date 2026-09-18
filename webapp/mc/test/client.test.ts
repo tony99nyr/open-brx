@@ -116,3 +116,47 @@ describe('the standby route tells a missing route from a missing player', () => 
   });
 });
 
+// "Report a problem" — `/api/report` never legitimately answers 404/405 of its own accord (unlike
+// standby's per-player 404 above), so both statuses are read as version skew unconditionally.
+describe('makeReport posts to /api/report and reads version skew plainly', () => {
+  const withStatus = async (status: number, body = 'Not Found') => {
+    const real = globalThis.fetch;
+    const seen: { url: string; method: string }[] = [];
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      seen.push({ url: String(url), method: (init?.method ?? 'GET').toUpperCase() });
+      return new Response(body, { status, headers: { 'content-type': 'text/plain' } });
+    }) as typeof fetch;
+    try { await createHttpApi().makeReport(); return { msg: '', seen }; }
+    catch (e) { return { msg: (e as Error).message, seen }; }
+    finally { globalThis.fetch = real; }
+  };
+
+  it('POSTs /api/report', async () => {
+    const real = globalThis.fetch;
+    const seen: { url: string; method: string }[] = [];
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      seen.push({ url: String(url), method: (init?.method ?? 'GET').toUpperCase() });
+      return new Response('{"file":"a.zip","download":"/api/report/a.zip","issue_url":"x","summary":{},"removed":{},"too_large":false}',
+        { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+    let r; try { r = await createHttpApi().makeReport(); } finally { globalThis.fetch = real; }
+    expect(seen).toEqual([{ url: '/api/report', method: 'POST' }]);
+    expect(r).toEqual({ file: 'a.zip', download: '/api/report/a.zip', issue_url: 'x', summary: {}, removed: {}, too_large: false });
+  });
+
+  it('a 404 (route missing) shows the old-server message, with the fix', async () => {
+    const { msg } = await withStatus(404);
+    expect(msg).toBe('This Mission Control is too old to make reports: update it with ./start.sh');
+  });
+
+  it('a 405 (route exists for another method — e.g. GET) shows the same message', async () => {
+    const { msg } = await withStatus(405);
+    expect(msg).toBe('This Mission Control is too old to make reports: update it with ./start.sh');
+  });
+
+  it('a 500 with the server\'s own words is never overridden by the skew message', async () => {
+    const { msg } = await withStatus(500, '{"error":"disk full — could not write the report"}');
+    expect(msg).toBe('disk full — could not write the report');
+  });
+});
+

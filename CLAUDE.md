@@ -58,6 +58,11 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   must stay green under system python (tests needing extras skip cleanly).
 - **A newcomer's one-command setup+start is `./start.sh` / `start.cmd`** (`scripts/start.mjs`); it does
   not replace this dev venv, and the dev venv still needs the test extras (pytest, httpx) by hand.
+- **Bug reports:** `./start.sh --report [launch-id]` (or the console's ☰ → Report a problem, `POST /api/report`)
+  runs `python -m brx_mcp.mc.report`: a scrubbed `open-brx-report-<id>.zip` for a PUBLIC GitHub issue
+  (`.github/ISSUE_TEMPLATE/bug_report.yml`). To read one: unzip, then `python -m brx_mcp.mc.diag session.sqlite`.
+  The scrub's rules and its guard live in `report.py`'s docstring; a guard refusal means a scrub gap, never
+  loosen the guard to get a zip out. Tests: `test_mc_report.py`, `test_launcher.py`, `test/e2e/report.mjs`.
 - **Which tests to run.** Run all of them from the repo root with `npm run test:all`. Do not run the suites one by one
   as the final check. The script prints one table and a log path per job; open the log of a failed job.
   - While you iterate: run only the suite you touch (`npm run test:all -- mcp`, `-- mc-vitest`, `-- site`; `-- --list`

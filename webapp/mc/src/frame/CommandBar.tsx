@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { Phase } from '../api/types';
 import { useStore, type View } from '../store';
 import { clearNotice, useNotice } from '../notice';
 import { F, T } from '../tokens';
 import { HazardButton, GhostButton, PrimaryButton } from '../ui';
+import { ReportPanel } from '../ui/ReportPanel';
 
 // LIVE and RECAP are one tab. Tony, 2026-09-02: "one or the other is useful at a time, there is a lot
 // of overlap" — a match is either running or finished, never both, and the two screens shared their
@@ -20,6 +21,8 @@ export function CommandBar() {
   const { state, view, setView, run, api, error, clearError, mock, connected, authRequired, serverOld } = useStore();
   const [panic, setPanic] = useState(false);
   const [panicked, setPanicked] = useState<string | null>(null);
+  const [report, setReport] = useState(false);
+  const menuBtnRef = useRef<HTMLButtonElement | null>(null);
   const offline = !mock && !connected && !authRequired;   // the token prompt owns the copy while auth is pending
   const cur = viewIdx(view);
 
@@ -129,7 +132,7 @@ export function CommandBar() {
           {/* One button instead of a red hazard control and a wall of telemetry (Tony, 2026-09-02):
               "the header should be cleaner and simpler. less intimidating and less confusing." */}
           <div style={{ position: 'relative' }}>
-            <button type="button" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(m => !m)} title="Menu"
+            <button ref={menuBtnRef} type="button" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(m => !m)} title="Menu"
               style={{ background: menu ? T.panelAlt : 'transparent', border: `1px solid ${T.line2}`, color: T.dim,
                        font: F.osw(700, 18), padding: '6px 14px', cursor: 'pointer', minHeight: 44, minWidth: 48 }}>☰</button>
             {menu && (
@@ -138,6 +141,10 @@ export function CommandBar() {
                          background: T.page, border: `1px solid ${T.line2}`, display: 'flex', flexDirection: 'column' }}>
                 <MenuItem onClick={() => { setView('catalog'); setMenu(false); }} label="Arsenal" hint="Every weapon and its real stats" />
                 <MenuItem onClick={() => { setView('debug'); setMenu(false); }} label="Debug" hint="Network, nodes, config, session" />
+                {/* Reachable in every phase, on purpose: a bug can happen mid-match, and this control
+                    lives beside PANIC in the one part of the shell an operator can always reach — even
+                    when the SCREEN under it has crashed (App.tsx's error boundary wraps only <main>). */}
+                <MenuItem onClick={() => { setReport(true); setMenu(false); }} label="Report a problem" hint="Session evidence, ready for a GitHub issue" />
                 <div style={{ borderTop: `1px solid ${T.line}` }} />
                 {panic ? (
                   <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -155,6 +162,7 @@ export function CommandBar() {
           </div>
         </div>
       </div>
+      {report && <ReportPanel onClose={() => { setReport(false); menuBtnRef.current?.focus(); }} />}
     </header>
   );
 }

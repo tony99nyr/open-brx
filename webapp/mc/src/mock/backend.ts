@@ -1,7 +1,7 @@
 // In-browser mock of the MC server (mcp/brx_mcp/mc/API.md). Stateful enough for every UI interaction.
 import type {
   Api, ConfigView, Coverage, FeedEntry, GameConfig, LanPublic, LiveRow, Loadout, LoadoutPolicy, LogView, MatchHistoryRow, ModeInfo, NodeView, PerkView, Phase, Player,
-  ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, SavedGame, ScanRow, ScoreRow, StartView, State, StationAssignment, StationKind, StationSourceId,
+  ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, ReportResult, SavedGame, ScanRow, ScoreRow, StartView, State, StationAssignment, StationKind, StationSourceId,
   StationView, TunnelProvider, TunnelStatus, WeaponView,
 } from '../api/types';
 import { STATION_KINDS, STATION_SOURCE_IDS } from '../api/types';
@@ -1322,6 +1322,32 @@ export class MockBackend implements Api {
     this.restoredFrom = null;   // F142: FRESH SESSION is the acknowledgment — a restored banner never lingers
     if (!keep_roster) this.players = []; else for (const p of this.players) p.ready = false;
     this.emit(); return this.state();
+  }
+  /** "Report a problem" — mirrors `POST /api/report` (mcp/brx_mcp/mc/api.py, Lane A) closely enough
+   *  that `?mock` proves the whole panel: a short delay (the real route zips real evidence and can
+   *  take a few seconds), a `download` the panel can actually fetch (a `data:` URL, same trick as
+   *  `csvOf` above — no server exists under `?mock` to serve a real file from), and a real GitHub
+   *  "new issue" link for the shipped repo. */
+  async makeReport(): Promise<ReportResult> {
+    await new Promise(r => setTimeout(r, 900));
+    const st = this.state();
+    const stamp = new Date(now()).toISOString().replace(/[:.]/g, '-');
+    const file = `mc-report-${stamp}.zip`;
+    const summary = {
+      session_id: this.session_id, phase: this.phase, mode: this.config.mode,
+      players: st.players.length, nodes: st.nodes.length, generated_t: now(),
+    };
+    const removed = { names: st.players.length, tagger_ids: st.nodes.length, ip_addresses: 1, access_code: 1 };
+    // Not a real zip — `?mock` has no server to build one from — but a real file a browser will save.
+    // `encodeURIComponent`, not `btoa`: `csvOf` above already learned this — `btoa` throws on any
+    // codepoint past Latin1, and a real browser enforces that where jsdom's stand-in does not, so a
+    // fixture-driven test cannot catch it (found only by actually clicking DOWNLOAD in Chromium).
+    const download = 'data:application/zip;charset=utf-8,' + encodeURIComponent(`MOCK REPORT (?mock): ${JSON.stringify(summary)}`);
+    const title = encodeURIComponent('Mission Control bug report');
+    const body = encodeURIComponent('Describe what went wrong, and what you expected instead.\n\n'
+      + 'Drag the downloaded report file into this issue — GitHub issues are public, so open it and check it first.');
+    const issue_url = `https://github.com/tony99nyr/open-brx/issues/new?title=${title}&body=${body}`;
+    return { file, download, issue_url, summary, removed, too_large: false };
   }
   dispose() { if (this.timer) window.clearInterval(this.timer); if (this.tunnelTimer) window.clearTimeout(this.tunnelTimer); }
 }

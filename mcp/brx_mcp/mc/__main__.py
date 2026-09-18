@@ -307,6 +307,11 @@ def build(args):
                 "sqlite": str(evidence_path / "session.sqlite"),
             }, indent=2) + "\n", encoding="utf-8")
             (evidence_path / "mc-session.json").chmod(0o600)
+        # The api lifespan closes the store on an orderly shutdown; atexit covers a path that skips
+        # the lifespan (an exception out of uvicorn.run). `Store.close` is idempotent.
+        if session.store is not None:
+            import atexit
+            atexit.register(session.store.close)
     except Exception as e:
         log.warning("store disabled: %s", e)
         if getattr(args, "evidence_dir", None):

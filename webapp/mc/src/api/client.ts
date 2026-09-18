@@ -1,4 +1,4 @@
-import type { Api, FeedEntry, GameConfig, Player, State } from './types';
+import type { Api, FeedEntry, GameConfig, Player, ReportResult, State } from './types';
 
 // ---- operator token (server requires it on mutating /api/* and on /ui-ws) ----
 const TOK_KEY = 'brx_mc_tok';
@@ -60,6 +60,39 @@ export function skewOr404(e: unknown): never {
     throw skew;
   }
   throw e;
+}
+
+/** `POST /api/report` on a server that predates the route: a plain 404 (route missing) or a 405
+ *  (Starlette's answer when a path exists for another method). Unlike `skewOr404`, there is no
+ *  legitimate handler refusal to protect here — this route never rejects with its own 404/405 — so
+ *  both statuses are read the same way, in the operator's own words. */
+function reportSkewOr404(e: unknown): never {
+  const err = e as Error & { status?: number };
+  if (err?.status === 404 || err?.status === 405) {
+    const skew = new Error('This Mission Control is too old to make reports: update it with ./start.sh') as Error & { status?: number };
+    skew.status = err.status;
+    throw skew;
+  }
+  throw e;
+}
+
+/** Download a file the server gates the same way as any other operator call (`Authorization: Bearer`),
+ *  which a plain `<a href>` cannot send. Fetch → blob → object URL → a real, attached `<a download>`
+ *  (Safari/Firefox cancel a download from a detached anchor whose object URL is revoked synchronously). */
+export async function downloadWithAuth(url: string, filename: string): Promise<void> {
+  const headers: Record<string, string> = {};
+  const tok = getToken();
+  if (tok) headers.authorization = `Bearer ${tok}`;
+  const r = await fetch(url, { headers });
+  if (r.status === 401) { notifyAuth(true); throw new AuthError(); }
+  if (!r.ok) throw new Error(`Download failed (${r.status})`);
+  const blob = await r.blob();
+  const obj = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = obj; a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(obj); }, 1000);
 }
 
 export function createHttpApi(): Api {
@@ -146,5 +179,6 @@ export function createHttpApi(): Api {
     recapCsvUrl: () => '/api/recap.csv',
     matchCsvUrl: (match_id: string) => `/api/matches/${encodeURIComponent(match_id)}.csv`,
     newSession: keep_roster => post('/api/session/new', { keep_roster }),
+    makeReport: () => post<ReportResult>('/api/report').catch(reportSkewOr404),
   };
 }
