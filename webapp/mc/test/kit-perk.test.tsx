@@ -43,27 +43,28 @@ describe('KIT · perk slot (A14)', () => {
     m.unmount();
   });
 
-  it('Easy Reload beside a second weapon: first tap warns and sends nothing, second tap sends with the weapon dropped', async () => {
-    const { m, patches, tile } = await kitFor('p1');
+  // S50 (2026-09-17): Easy Reload moved OUT of the perk slot to the per-player accessibility
+  // override (`overrides.easy_reload`, docs/spec/loadout.md §2) — it is accessibility, not balance,
+  // so the perk picker no longer offers it, and the ALT-button-vs-second-weapon warning it used to
+  // trigger from THIS slot is retired with it. A UI control for the override (with its own two-tap
+  // warning) is follow-up work for the webapp/mc lane (tracked in the FOLLOWUPS S50 row), not built
+  // here — this pins the removal so the old picker entry cannot silently come back.
+  it('Easy Reload is not offered in the perk picker', async () => {
+    const { m } = await kitFor('p1');
     await m.click('PERK');
-    await tile('Easy Reload perk');
-    expect(patches, 'the first tap must not PATCH').toEqual([]);
-    expect(m.text()).toContain('DROPS THEIR DESERT EAGLE — TAP AGAIN');
-    await tile('Easy Reload perk');
-    expect(patches).toEqual([{ weapons: [{ weapon_id: 'assault_rifle' }], perk: 'easy_reload' }]);
-    expect(m.text()).not.toContain('TAP AGAIN');
+    expect(m.text()).toContain('ARSENAL // PERK');
+    expect(m.find('[aria-label^="Easy Reload perk"]').length).toBe(0);
     m.unmount();
   });
 
-  it('a second weapon beside Easy Reload: warns, then sends with the perk dropped', async () => {
+  it("a demo player's accessibility override survives untouched by an unrelated weapon pick", async () => {
     const { m, patches, tile, state } = await kitFor('p6');
-    expect(state.players.find(p => p.player_id === 'p6')!.loadout).toEqual({ weapons: [{ weapon_id: 'assault_rifle' }], perk: 'easy_reload' });
+    expect(state.players.find(p => p.player_id === 'p6')!.loadout).toEqual(
+      { weapons: [{ weapon_id: 'assault_rifle' }], perk: null, overrides: { easy_reload: true } });
     await m.click('SECONDARY');
     await tile('SMG,');
-    expect(patches).toEqual([]);
-    expect(m.text()).toContain('DROPS EASY RELOAD — TAP AGAIN');
-    await tile('SMG,');
-    expect(patches).toEqual([{ weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: null }]);
+    expect(patches).toEqual(
+      [{ weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: null, overrides: { easy_reload: true } }]);
     m.unmount();
   });
 
@@ -82,7 +83,7 @@ describe('DESIGNER · perk rule (A14)', () => {
     const d = await demo();
     const m = await mountScreen(<Designer />, { ...d, view: 'designer' });
     expect(m.find('[aria-label="perk slot rules"]').length).toBe(1);
-    expect(m.find('[data-testid="perk-summary"]')[0]?.textContent).toBe('5 OF 5 PERKS');
+    expect(m.find('[data-testid="perk-summary"]')[0]?.textContent).toBe('7 OF 7 PERKS');
     expect(m.find('[data-testid="secondary-summary"]')[0]?.textContent).not.toContain('PERK');
     m.unmount();
   });

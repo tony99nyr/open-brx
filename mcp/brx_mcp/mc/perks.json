@@ -1,54 +1,74 @@
 {
- "_note": "M-LOADOUT PerkCatalog (docs/spec/loadout.md §1.2). A perk is the third slot of a player's kit (A14, 2026-09-04: beside the weapons; an `alt_reload` perk is the one that can't ride with a second weapon). v1 perks are PASSIVE: pure head-frame tweaks the compiler already knows how to write ($PSET armor, $AMMO + $WEAP ammo/reload tokens, $BMAP alt-reload). `mechanism: slot_frame` rows would be a $WEAP in slot 1 whose effect lives in the VICTIM's $SIR table (game-wide, not per-player) — they stay `hidden` until the emit-side bench proves them. `verified` = effect proven on hardware. Copy is player-facing: no protocol jargon.",
+ "_note": "M-LOADOUT PerkCatalog (docs/spec/loadout.md §1.2, docs/perk-design.md). A perk is the third slot of a player's kit (A14, 2026-09-04: beside the weapons; the ALT-button accessibility switch moved OUT of this slot in S50 -- see `easy_reload` below). v1 perks are PASSIVE: pure head-frame tweaks the compiler already knows how to write ($PSET armor/shield, $AMMO + $WEAP ammo/reload tokens, a $SIR key swap) or, for `motion_tracker`/`second_wind`, entirely NODE-LOCAL (the phone's own logic against its own gun; `effects: {}` on purpose -- do not invent a wire lever for either). `mechanism: slot_frame` rows would be a $WEAP in slot 1 whose effect lives in the VICTIM's $SIR table (game-wide, not per-player) — they stay `hidden` until the emit-side bench proves them. `verified` = effect proven on hardware. Copy is player-facing: no protocol jargon. S50 (2026-09-17, perk balance pass, decided in docs/perk-design.md §2): every perk now trades on the SAME lever its opposite buys, so the set is rock/paper/scissors instead of a ladder. `effects.max_armor_add` is a FLAT armour grant/cost, `compile.py`'s `_MAX_ARMOR_ADD` table (keyed by perk_id) is the one place the compiled arithmetic runs -- this field is the wire-visible documentation of the same number, kept a plain integer because `app/src/hud/hud.js` and `webapp/mc/src/screens/Kit.tsx` both render it literally as '+N ARMOR'. body_armor is +25 (was a flat +50, S50's 'straight upgrade' finding -- 'maybe 50 is too much armor and it should be 25', Tony 2026-09-17); quick_switch is -20, floored at 0 and capped at 255 by `compile.armed_armor`/`armed_shield`. In a game whose base armour is 0 (the Shields preset), body_armor's grant compiles into the SHIELD ceiling instead of armour (`compile.is_shields_preset`).",
  "perks": [
   {
    "perk_id": "body_armor",
    "name": "Body Armor",
-   "desc": "Start every life with 50 extra armor. Armor soaks hits before your health does — you survive one or two more shots in every fight.",
+   "desc": "Start every life with 25 extra armor, about a fifth more health pool. Armor soaks hits before your health does. The rig is heavier though: your reload takes a quarter longer.",
    "tags": ["passive", "defense"],
    "mechanism": "passive",
-   "effects": {"max_armor_add": 50},
+   "effects": {"max_armor_add": 25, "reload_mult": 1.25},
    "verified": true,
    "hidden": false
   },
   {
    "perk_id": "extended_mags",
    "name": "Extended Mags",
-   "desc": "Double the magazine and double the reserve on your primary. Fewer reloads, longer fights, more rounds to burn.",
+   "desc": "Double the magazine and double the reserve on your primary. Fewer reloads, longer fights, more rounds to burn -- but the bulkier magazine slows your draw: switching to your other weapon takes 30% longer.",
    "tags": ["passive", "ammo"],
    "mechanism": "passive",
-   "effects": {"ammo_mult": 2},
+   "effects": {"ammo_mult": 2, "switch_mult": 1.3},
    "verified": true,
    "hidden": false
   },
   {
    "perk_id": "quick_hands",
    "name": "Quick Hands",
-   "desc": "Reload in half the time. Your primary is back in the fight before theirs is.",
+   "desc": "Reload in half the time. Your primary is back in the fight before theirs is -- the trade is a lighter magazine, 20% fewer rounds carried.",
    "tags": ["passive", "handling"],
    "mechanism": "passive",
-   "effects": {"reload_mult": 0.5},
+   "effects": {"reload_mult": 0.5, "ammo_mult": 0.8},
    "verified": false,
-   "hidden": false
-  },
-  {
-   "perk_id": "easy_reload",
-   "name": "Easy Reload",
-   "desc": "Press the orange ALT button to reload — no pump needed. For anyone who finds the pull-back reload hard to work.",
-   "tags": ["passive", "handling", "assist"],
-   "mechanism": "passive",
-   "effects": {"alt_reload": true},
-   "verified": true,
    "hidden": false
   },
   {
    "perk_id": "quick_switch",
    "name": "Quick Switch",
-   "desc": "Draw your second weapon in half the time: the gun's swap delay drops from 0.85 s to 0.43 s.",
+   "desc": "Draw your second weapon in half the time: the gun's swap delay drops from 0.85 s to 0.43 s. A lighter rig means less padding though -- 20 less armor.",
    "tags": ["passive", "handling"],
    "mechanism": "passive",
-   "effects": {"switch_mult": 0.5},
+   "effects": {"switch_mult": 0.5, "max_armor_add": -20},
    "verified": true,
+   "hidden": false
+  },
+  {
+   "perk_id": "armor_piercing",
+   "name": "Armor Piercing",
+   "desc": "Your primary ignores armor and shields, straight to health -- but it hits for about 60% less, so it is only the better choice against an armored or shielded target.",
+   "tags": ["passive", "offense"],
+   "mechanism": "passive",
+   "effects": {"armor_piercing": true},
+   "verified": false,
+   "hidden": false
+  },
+  {
+   "perk_id": "motion_tracker",
+   "name": "Motion Tracker",
+   "desc": "Nearby enemies show on your HUD, no direction, refreshed every few seconds. You carry information instead of firepower -- anyone who accepts being seen can still shoot first.",
+   "tags": ["passive", "utility"],
+   "mechanism": "passive",
+   "effects": {},
+   "verified": false,
+   "hidden": false
+  },
+  {
+   "perk_id": "second_wind",
+   "name": "Second Wind",
+   "desc": "Once a life, the hit that would finish you leaves you standing instead. It costs nothing up front, because it only pays when you are already losing -- and a weapon that kills in one hit goes through it anyway.",
+   "tags": ["passive", "defense"],
+   "mechanism": "passive",
+   "effects": {},
+   "verified": false,
    "hidden": false
   },
   {

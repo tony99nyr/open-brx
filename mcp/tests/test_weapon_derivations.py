@@ -458,7 +458,9 @@ def test_the_perk_that_moves_the_pool_changes_the_quoted_numbers():
     base = s.health_pool(s.players[p["player_id"]])
     s.patch_player(p["player_id"], loadout={"weapons": [{"weapon_id": "assault_rifle"}], "perk": "body_armor"})
     armoured = s.health_pool(s.players[p["player_id"]])
-    assert armoured == base + 50, (base, armoured)          # perks.json body_armor max_armor_add
+    # S50 (2026-09-17, docs/perk-design.md §2): body_armor's grant is now +25 flat (Tony: "maybe 50
+    # is too much armor and it should be 25"), not the old flat +50.
+    assert armoured == base + 25, (base, armoured)
     htk = lambda pool: next(v for v in weapon_views(CAT.all(), pool) if v["weapon_id"] == "assault_rifle")["htk"]
     assert htk(armoured) > htk(base), "body_armor must move HITS TO KILL"
 

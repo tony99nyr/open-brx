@@ -80,7 +80,9 @@ def test_weapons_carry_tags_and_perks_catalog_is_visible_only():
     for wid in ("plasma_sniper", "ion_sniper"):
         assert "sniper" in raw[wid], wid          # both hidden now; tags checked on the raw row
     assert "melee" not in ids
-    assert [p["perk_id"] for p in PK] == ["body_armor", "extended_mags", "quick_hands", "easy_reload", "quick_switch"]
+    # S50 (2026-09-17): easy_reload left the perk slot (-> loadout.overrides.easy_reload); armor_piercing,
+    # motion_tracker and second_wind joined (docs/perk-design.md §2 -- the last two are node-local, no compile-time effect).
+    assert [p["perk_id"] for p in PK] == ["body_armor", "extended_mags", "quick_hands", "quick_switch", "armor_piercing", "motion_tracker", "second_wind"]
     assert all(not p["hidden"] for p in PK)
     full = PerkCatalog()
     assert full.has("med_kit") and full.row("med_kit")["hidden"] and full.row("med_kit")["mechanism"] == "slot_frame"
@@ -117,13 +119,13 @@ def test_presets_and_pools():
     assert "energy_launcher" not in P.pool(P.preset_rules("open"), W, PK)["primary"], "a zero-damage weapon is never offered"
     lp = P.pool(P.preset_rules("open"), W, PK)
     assert "rocket_launcher" not in lp["primary"] and "rail_gun" not in lp["primary"], "heavies are pickup_only, never a starting pick"
-    assert len(lp["primary"]) == _OPEN and len(lp["secondary_weapons"]) == _OPEN and len(lp["perks"]) == 5
+    assert len(lp["primary"]) == _OPEN and len(lp["secondary_weapons"]) == _OPEN and len(lp["perks"]) == 7
     lp = P.pool(P.preset_rules("no_heavies"), W, PK)
     # unchanged by UNPLAYABLE_IDS/pickup_only: the visible `heavy`-tagged rows (rocket_launcher/rail_gun)
     # were already excluded from `open` by `pickup_only`, so `no_heavies` (which ALSO excludes `heavy`)
     # lands on the same count as `open`.
     assert len(lp["primary"]) == _OPEN and "rail_gun" not in lp["primary"] and "amr" in lp["primary"]
-    assert "rocket_launcher" not in lp["secondary_weapons"] and len(lp["perks"]) == 5
+    assert "rocket_launcher" not in lp["secondary_weapons"] and len(lp["perks"]) == 7
     lp = P.pool(P.preset_rules("snipers"), W, PK)
     # `reasons` is additive and present only where a slot came out empty (round-2 review 2026-09-12)
     assert lp == {"primary": ["sniper_rifle"], "secondary_weapons": [], "perks": [],
@@ -173,13 +175,17 @@ def test_validate_and_apply_matrix():
     assert P.apply(sn, lps, {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "perk": "body_armor"}, W, PK) == {"weapons": [{"weapon_id": "sniper_rifle"}]}
     out = P.apply(nh, lp, {"weapons": [{"weapon_id": "rail_gun"}, {"weapon_id": "rocket_launcher"}], "overrides": {"max_hp": 60}}, W, PK)
     assert out == {"weapons": [{"weapon_id": "assault_rifle"}], "overrides": {"max_hp": 60}}
-    # a fixed perk is set for everyone; the ALT-button one (Easy Reload) also drops the second weapon, Body Armor keeps it
-    fixed_perk = P.merge(P.preset_rules("open"), {"perk": {"choice": "fixed", "fixed_id": "easy_reload"}})
-    lpf = P.pool(fixed_perk, W, PK)
-    assert lpf["perks"] == ["easy_reload"] and len(lpf["secondary_weapons"]) == _OPEN
-    assert P.apply(fixed_perk, lpf, {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}]}, W, PK) == {"weapons": [{"weapon_id": "smg"}], "perk": "easy_reload"}
+    # a fixed perk is set for everyone
     armor = P.merge(P.preset_rules("open"), {"perk": {"choice": "fixed", "fixed_id": "body_armor"}})
     assert P.apply(armor, P.pool(armor, W, PK), {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}]}, W, PK) == {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "perk": "body_armor"}
+    # S50: Easy Reload is `overrides.easy_reload` now, not a perk -- it also drops the second weapon
+    # (the override wins, the host set it on purpose), and a chain-reload PRIMARY drops the override
+    # instead (a primary is mandatory, so the weapon that just resolved is the one that stands).
+    op = P.preset_rules("open"); lp = P.pool(op, W, PK)
+    held = {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "overrides": {"easy_reload": True}}
+    assert P.apply(op, lp, held, W, PK) == {"weapons": [{"weapon_id": "smg"}], "overrides": {"easy_reload": True}}
+    chain = {"weapons": [{"weapon_id": "shotgun"}], "overrides": {"easy_reload": True}}
+    assert P.apply(op, lp, chain, W, PK) == {"weapons": [{"weapon_id": "shotgun"}]}
 
 
 def test_check_request_matrix():
@@ -214,7 +220,8 @@ def test_check_loadout_matrix():
     assert ok["loadout"] == {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}]}
     ok = s.patch_player(pid, loadout={"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "perk": "body_armor"})   # A14: both
     assert ok["loadout"] == {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "perk": "body_armor"}
-    for bad, hint in (({"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "perk": "easy_reload"}, "ALT button"),   # the one pairing the gun can't do
+    for bad, hint in (({"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}],
+                        "overrides": {"easy_reload": True}}, "ALT button"),   # the one pairing the gun can't do (S50: now a POLICY reject, not a shape error -- see below)
                       ({"weapons": [{"weapon_id": "smg"}], "perk": "laser_eyes"}, "unknown perk"),
                       ({"weapons": [{"weapon_id": "smg"}], "perk": 7}, "perk_id"),
                       ({"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}, {"weapon_id": "amr"}]}, "at most"),
@@ -294,34 +301,147 @@ def _tok(frame: str, doc_tok: int) -> str:
 
 
 def test_compile_perk_effects():
+    """S50 (2026-09-17): every perk now carries the ORIGINAL effect it always had, PLUS a cost on the
+    lever its opposite buys -- this pins both halves reach the compiled frame."""
     base = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}]}), _TEAMS)
     w0 = [f for f in base["head"] if f.startswith("$WEAP,0")][0]
-    # extended_mags: ×2 mag + reserve on $AMMO,0 AND the frame (t16/t39 mag, t17/t40 reserve; t17 == 2×t40)
+    # extended_mags: ×2 mag + reserve on $AMMO,0 AND the frame, PLUS its S50 cost -- ×1.3 swap delay
+    # (t15) on EVERY slot (the gun takes the larger of slots 0/1).
     b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "extended_mags"}), _TEAMS)
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
     assert _tok(f, 16) == _tok(f, 39) == "64" and _tok(f, 17) == "384" and _tok(f, 40) == "192"
     assert "$AMMO,0,64,384,1,*" in b["spawn"] and "$AMMO,0,64,384,1,*" in b["revive"]
     assert _tok(f, 18) == _tok(w0, 18)                                   # reload untouched
-    # quick_hands: reload halved (t18), ammo untouched
+    assert int(_tok(f, 15)) == round(int(_tok(w0, 15)) * 1.3)            # S50 cost
+    # quick_hands: reload halved (t18), PLUS its S50 cost -- ×0.8 mag (t16/t39; keep t39==t16).
     b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "quick_hands"}), _TEAMS)
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
-    assert int(_tok(f, 18)) == int(_tok(w0, 18)) // 2 and _tok(f, 16) == _tok(w0, 16)
-    # body_armor: +50 on $PSET armor (token 4), hp untouched, config armor otherwise the same
+    assert int(_tok(f, 18)) == int(_tok(w0, 18)) // 2
+    assert int(_tok(f, 16)) == max(1, round(int(_tok(w0, 16)) * 0.8)) == int(_tok(f, 39))
+    # body_armor: S50's flat grant on $PSET armor (token 4) -- +25 (docs/perk-design.md §2, Tony
+    # 2026-09-17: "maybe 50 is too much armor and it should be 25", down from a flat +50) -- hp
+    # untouched, PLUS its S50 cost -- ×1.25 reload (t18).
     b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "body_armor"}), _TEAMS)
     pset = [x for x in b["head"] if x.startswith("$PSET")][0].split(",")
-    assert pset[3] == "45" and pset[4] == "120"
+    assert pset[3] == "45" and pset[4] == "95"                           # 70 + 25
     assert [x for x in base["head"] if x.startswith("$PSET")][0].split(",")[4] == "70"
-    # easy_reload: ALT button = reload
-    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "easy_reload"}), _TEAMS)
-    assert "$BMAP,1,97,,,,,*" in b["head"] and "$BMAP,1,100,0,1,99,99,*" not in b["head"]
-    # empty slot 2 without the perk: ALT cycles to slot 0 only (never to the unloaded slot 1 — brx-opus review);
-    # a real secondary keeps the stock 0↔1 cycle
+    f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
+    assert int(_tok(f, 18)) == round(int(_tok(w0, 18)) * 1.25)
+    # quick_switch: half the swap delay (t15) on every slot, PLUS its S50 cost -- a small NEGATIVE
+    # armour grant, -20 flat (docs/perk-design.md §2).
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "quick_switch"}), _TEAMS)
+    f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
+    assert int(_tok(f, 15)) == int(_tok(w0, 15)) // 2
+    pset = [x for x in b["head"] if x.startswith("$PSET")][0].split(",")
+    assert pset[4] == "50"                                              # 70 - 20
+    # armor_piercing (S50, new): the PRIMARY's $SIR key (t3/t4) is re-keyed onto the permanent AP
+    # cell and its damage (t5) cut to ~40%. Secondary/melee untouched (primary only).
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "armor_piercing"}), _TEAMS)
+    f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
+    assert (_tok(f, 3), _tok(f, 4)) == ("4", "0")                        # compile._AP_CELL
+    assert int(_tok(f, 5)) == round(int(_tok(w0, 5)) * 0.4)              # compile._AP_DAMAGE_MULT
+    # empty slot 2 with no easy_reload override: ALT cycles to slot 0 only (never to the unloaded
+    # slot 1 — brx-opus review); a real secondary keeps the stock 0↔1 cycle.
     assert "$BMAP,1,100,0,0,99,99,*" in base["head"] and "$BMAP,1,100,0,1,99,99,*" not in base["head"]
     two = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}]}), _TEAMS)
     assert "$BMAP,1,100,0,1,99,99,*" in two["head"]
+    # S50: Easy Reload is `loadout.overrides.easy_reload` now, not a perk -- ALT button = reload.
+    er = _player({"weapons": [{"weapon_id": "assault_rifle"}], "overrides": {"easy_reload": True}})
+    b = C.compile(_cfg(), er, _TEAMS)
+    assert "$BMAP,1,97,,,,,*" in b["head"] and "$BMAP,1,100,0,1,99,99,*" not in b["head"]
     # a perk never touches a secondary weapon (perk ⇒ no slot 1 anyway) and never the tutorial
     tut = C.tutorial_frames({"weapon_id": "assault_rifle"}, "indoor")
     assert any(f == "$AMMO,0,32,192,1,*" for f in tut)
+
+
+def test_armor_piercing_hits_to_kill_matches_a_normal_rifle_at_the_full_pool_and_beats_it_against_armour():
+    """S50: the ~40% damage cut (`compile._AP_DAMAGE_MULT`) is the whole point of the balance pass --
+    it must land Armour Piercing at ROUGHLY the same hits-to-kill as a normal rifle against a bare
+    target (the full 45+70 pool, since AP only ever has to clear the 45 HP underneath it), and FEWER
+    hits than a normal rifle needs against that same armoured pool. Break the 0.4 constant (raise it)
+    and AP stops being a counter-pick and becomes a strict upgrade -- exactly the S50 "obvious OP"
+    failure this whole rework exists to fix."""
+    pool = 115   # the 45 HP + 70 armour default (compile.DEFAULT_POOL)
+    normal_dmg = C.catalog.damage("assault_rifle")
+    normal_htk = C.catalog.hits_to_kill("assault_rifle", pool)
+    ap_dmg = max(1, round(normal_dmg * 0.4))   # compile._AP_DAMAGE_MULT, mirrored (not imported: the
+    #                                            constant's VALUE is what a bench sign-off pins, not its name)
+    ap_htk = -(-45 // ap_dmg)   # ceil(45 / ap_dmg): AP bypasses the 70 armour entirely, HP is the whole fight
+    assert abs(ap_htk - normal_htk) <= 1, (
+        f"Armour Piercing's htk ({ap_htk}) drifted too far from a normal rifle's ({normal_htk}) at the "
+        "full pool -- the 0.4 cut is supposed to land it close, not strictly better, on a BARE target")
+    assert ap_htk < normal_htk, "Armour Piercing must still beat a normal rifle against an armoured target"
+    # prove it end to end through the compiled frame, not just the arithmetic above
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "armor_piercing"}), _TEAMS)
+    f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
+    assert int(_tok(f, 5)) == ap_dmg
+
+
+def test_armor_piercing_is_refused_on_a_charge_weapon_and_its_sir_row_is_bench_guarded():
+    """S50: 'a weapon whose damage key is already special must be refused' -- the choice made here is
+    REFUSE, not silently apply (compile.py's own docstring says so). The Charge Rifle's htk is
+    release+tap math (`hits_to_kill`), not one flat t5 magnitude, so re-keying it would silently
+    change what the charge and the taps do rather than just skip armour. Break
+    `Compiler._refuse_if_ap_ineligible` and this either stops raising (a charge rifle quietly ships
+    with a half-applied effect) or starts raising on an ordinary magazine weapon (every other perk
+    test in this file would start failing)."""
+    try:
+        C.compile(_cfg(), _player({"weapons": [{"weapon_id": "charge_rifle"}], "perk": "armor_piercing"}), _TEAMS)
+        raise AssertionError("compiled an Armour Piercing Charge Rifle instead of refusing")
+    except ValueError as e:
+        assert "ARMOUR-PIERCING GUARD" in str(e) and "charge_rifle" in str(e)
+    # CONTROL: a plain-damage (fn 1) primary compiles fine with the perk. NOT sniper_rifle/amr/etc --
+    # their stock cells key fn 36/37 (the CONFIRMED headset-multiplier rows, `_SIR_TABLE`), which the
+    # same guard also refuses: a $SIR key swap onto plain fn 2 would silently drop that multiplier
+    # too, another way "the damage key is already special" (S50's own phrase).
+    for wid in ("assault_rifle", "smg", "shotgun", "suppressor", "energy_rifle"):
+        C.compile(_cfg(), _player({"weapons": [{"weapon_id": wid}], "perk": "armor_piercing"}), _TEAMS)   # must not raise
+    for wid in ("sniper_rifle", "amr"):
+        try:
+            C.compile(_cfg(), _player({"weapons": [{"weapon_id": wid}], "perk": "armor_piercing"}), _TEAMS)
+            raise AssertionError(f"{wid} keys a headset-multiplier cell (fn 36/37) and should be refused too")
+        except ValueError as e:
+            assert "ARMOUR-PIERCING GUARD" in str(e)
+
+    # the F11-shaped bench guard: a head whose $SIR table lost the permanent AP row must refuse to
+    # arm an Armour Piercing player, not ship a gun that fires words nobody's table can register.
+    from brx_mcp.mc.compile import assert_armor_piercing_armed, _AP_CELL
+    head_without_ap_row = [f"$SIR,{p},{s},,1,0,0,1,,*" for p, s in
+                           [("0", "0"), ("0", "1"), ("0", "3"), ("8", "0")]]   # no _AP_CELL row
+    try:
+        assert_armor_piercing_armed(head_without_ap_row)
+        raise AssertionError("armed a player onto a $SIR table with no row for the AP cell")
+    except ValueError as e:
+        assert "ARMOUR-PIERCING GUARD" in str(e) and f"{_AP_CELL[0]},{_AP_CELL[1]}" in str(e)
+    assert_armor_piercing_armed(head_without_ap_row + [f"$SIR,{_AP_CELL[0]},{_AP_CELL[1]},,2,0,0,1,,*"])   # does not raise
+
+
+def test_perk_effects_wire_matches_the_compiled_frame_exactly():
+    """S50 build 4: `FrameBundle.perk_effects` must be the compiled frame's OWN numbers, not a second,
+    independently-derived guess -- break `Compiler.perk_effects_resolved()` so it reads the CATALOGUE
+    (perks.json's nominal `max_armor_add: 23`, say) instead of the compiled `$PSET`/`$WEAP`/`$AMMO`
+    tokens, and this goes red the moment a pool other than the 45+70 default is in play."""
+    cfg = dict(_cfg())
+    cfg["health"] = {"max_hp": 100, "max_armor": 40}          # a pool where the default 23 would be WRONG
+    p = _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "body_armor"})
+    b = C.compile(cfg, p, _TEAMS)
+    pset = [x for x in b["head"] if x.startswith("$PSET")][0].split(",")
+    resolved_armor_on_wire = int(pset[4])
+    assert resolved_armor_on_wire != 40 + 23, "this test is pointless unless the pool differs from the default"
+    pe = b["perk_effects"]
+    assert pe["perk_id"] == "body_armor"
+    assert pe["max_armor"] == {"base": 40, "resolved": resolved_armor_on_wire}
+    assert "max_hp" not in pe, "hp is never moved by any perk -- must stay ABSENT, not a base==resolved pair"
+    assert "mag" not in pe and "reserve" not in pe and "swap_ms" not in pe, "body_armor touches none of these"
+    # the SAME numbers, unprompted, off `Compiler.perk_effects_resolved()` directly (what State.snapshot() reads)
+    assert C.perk_effects_resolved(cfg, p) == pe
+    # a player with no perk carries no key at all
+    unperked = _player({"weapons": [{"weapon_id": "assault_rifle"}]})
+    assert "perk_effects" not in C.compile(cfg, unperked, _TEAMS)
+    assert C.perk_effects_resolved(cfg, unperked) is None
+    # armor_piercing: no mag/reserve/reload/swap/pool lever moves, so the ONLY key is perk_id (an icon)
+    ap = _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "armor_piercing"})
+    assert C.perk_effects_resolved(cfg, ap) == {"perk_id": "armor_piercing"}
 
 
 def test_compile_validate_perks():
@@ -329,7 +449,9 @@ def test_compile_validate_perks():
     assert any("unknown perk_id" in e for e in r["errors"])
     r = C.validate(_cfg(), [_player({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}], "perk": "body_armor"})])
     assert r["ok"] and not r["errors"]          # A14: a perk rides beside a secondary weapon; the compiler arms both
-    assert C.validate(_cfg(), [_player({"weapons": [{"weapon_id": "sniper_rifle"}], "perk": "easy_reload"})])["ok"]
+    # S50: easy_reload is a per-player override now, not a perk pick
+    assert C.validate(_cfg(), [_player({"weapons": [{"weapon_id": "sniper_rifle"}],
+                                        "overrides": {"easy_reload": True}})])["ok"]
 
 
 # ------------------------------------------------------------------ F123: easy_reload vs a chain reload
@@ -359,66 +481,64 @@ def test_chain_reload_is_an_explicit_attribute_and_the_shotgun_is_the_only_prove
 
 def test_easy_reload_is_refused_beside_a_chain_reload_weapon():
     """F123 (field 2026-09-11): "easy reload does not work with the shotgun… holding alt fire doesnt work".
-    `easy_reload` is a MOMENTARY `$BMAP,1,97`; the Shotgun wants the handle HELD for six shells. Excluded."""
+    `overrides.easy_reload` is a MOMENTARY `$BMAP,1,97`; the Shotgun wants the handle HELD for six shells.
+    Excluded. S50 moved Easy Reload OUT of the perk slot to `loadout.overrides.easy_reload`, so this is a
+    POLICY reject on the OVERRIDE now (`state._check_loadout`/`patch_player`), not a perk pick."""
     op = P.preset_rules("open"); lp = P.pool(op, W, PK)
-    bad = {"weapons": [{"weapon_id": "shotgun"}], "perk": "easy_reload"}
+    bad = {"weapons": [{"weapon_id": "shotgun"}], "overrides": {"easy_reload": True}}
     ok, why = P.validate_loadout(op, lp, bad, W, PK)
     assert ok is False
     assert why == "Shotgun loads shell by shell — Easy Reload only taps the button once, so it can't reload it"
-    assert P.chain_conflict(bad, W, PK) == {"perk": "easy_reload", "weapon": "shotgun"}
-    # every other perk is fine on the shotgun, and easy_reload is fine on every magazine weapon
-    for pid in ("body_armor", "extended_mags", "quick_hands", "quick_switch"):
+    assert P.chain_conflict(bad, W) == {"weapon": "shotgun"}
+    # every perk is still fine on the shotgun (none of them claim the ALT button any more), and the
+    # override is fine on every magazine weapon
+    for pid in ("body_armor", "extended_mags", "quick_hands", "quick_switch", "armor_piercing"):
         assert P.validate_loadout(op, lp, {"weapons": [{"weapon_id": "shotgun"}], "perk": pid}, W, PK)[0], pid
     for wid in ("assault_rifle", "smg", "sniper_rifle", "amr", "charge_rifle"):
-        assert P.validate_loadout(op, lp, {"weapons": [{"weapon_id": wid}], "perk": "easy_reload"}, W, PK)[0], wid
-    assert P.chain_conflict({"weapons": [{"weapon_id": "shotgun"}], "perk": "quick_hands"}, W, PK) is None
+        assert P.validate_loadout(op, lp, {"weapons": [{"weapon_id": wid}], "overrides": {"easy_reload": True}}, W, PK)[0], wid
+    assert P.chain_conflict({"weapons": [{"weapon_id": "shotgun"}], "perk": "quick_hands"}, W) is None
 
 
-def test_a_chain_reload_pick_drops_the_perk_and_says_so():
-    """The resolution is the OPPOSITE way round to the second-weapon rule, because a primary is mandatory:
-    picking the Shotgun drops Easy Reload, and picking Easy Reload onto a Shotgun is simply refused."""
-    before = {"weapons": [{"weapon_id": "assault_rifle"}], "perk": "easy_reload"}
-    after = P.set_slot(before, "primary", "weapon", "shotgun", PK)
-    assert after == {"weapons": [{"weapon_id": "shotgun"}]}
-    dropped, why = P.dropped_by(before, after, W, PK)
-    assert dropped == {"slot": "perk", "id": "easy_reload", "name": "Easy Reload"}
-    assert why == "Shotgun loads shell by shell — Easy Reload dropped"
-    # The other direction has nothing to drop — a primary is mandatory — so `check_request` refuses it with
-    # the hint, and `set_slot` is the backstop that never STORES the pairing even if a caller skips the check.
+def test_a_chain_reload_pick_drops_the_override_and_the_ALT_conflict_is_host_only_now():
+    """S50: the resolution is the OPPOSITE way round to the second-weapon rule, because a primary is
+    mandatory: a HOST-side auto-fix (`apply`) that resolves a chain-reload primary onto a loadout
+    already carrying `overrides.easy_reload` drops the OVERRIDE, not the weapon. `set_slot`/`check_request`/
+    `dropped_by` no longer have any ALT-conflict branch at all -- `overrides` is host-set only
+    (`state._check_loadout`), never a `loadout_request` pick, so a phone-side set_slot/check_request
+    call cannot create or resolve this pairing (see their docstrings)."""
     op = P.preset_rules("open"); lp = P.pool(op, W, PK)
-    held = {"weapons": [{"weapon_id": "shotgun"}]}
-    ok, why = P.check_request(op, lp, "perk", "perk", "easy_reload", W, PK, held)
-    assert ok is False
-    assert why == "Shotgun loads shell by shell — Easy Reload only taps the button once, so it can't reload it"
-    assert P.check_request(op, lp, "perk", "perk", "quick_hands", W, PK, held)[0] is True, "only the ALT perk is refused"
-    assert P.check_request(op, lp, "perk", "perk", "easy_reload", W, PK,
-                           {"weapons": [{"weapon_id": "assault_rifle"}]})[0] is True, "and only beside a chain weapon"
-    assert P.check_request(op, lp, "perk", "perk", "easy_reload", W, PK)[0] is True, "no loadout given → the rule cannot fire"
-    assert P.set_slot(held, "perk", "perk", "easy_reload", PK) == held, "the pairing is never stored"
-    # a HOST-side auto-fix (a config change, no tap) drops the perk rather than the mandatory primary
-    bad = {"weapons": [{"weapon_id": "shotgun"}], "perk": "easy_reload"}
+    bad = {"weapons": [{"weapon_id": "shotgun"}], "overrides": {"easy_reload": True}}
     assert P.apply(op, lp, bad, W, PK) == {"weapons": [{"weapon_id": "shotgun"}]}
+    # a `loadout_request` pick never touches `overrides` -- `set_slot` carries it through untouched,
+    # and `dropped_by` (which only ever reported the OLD ALT-perk conflict) now always reports nothing.
+    after = P.set_slot({"weapons": [{"weapon_id": "assault_rifle"}], "overrides": {"easy_reload": True}},
+                       "primary", "weapon", "shotgun", PK, W)
+    assert after == {"weapons": [{"weapon_id": "shotgun"}], "overrides": {"easy_reload": True}}
+    assert P.dropped_by({}, {}, W, PK) == (None, None)
 
 
-def test_the_phone_gets_the_hint_when_it_asks_for_easy_reload_on_a_shotgun():
-    """End to end on the fake net: the reject must be DELIVERED as a `loadout_ack`, with the reason the HUD
-    shows verbatim (loadout.md §4.2)."""
+def test_easy_reload_is_refused_beside_a_second_weapon_end_to_end():
+    """End to end through `patch_player` (host PATCH /api/players): S50's host-only accessibility
+    override still can't ride with a second weapon or a chain-reload primary, and the reason is the
+    one the console shows verbatim."""
     s, net, clock, ps = mk(1)
     pid = ps[0]["player_id"]
     online(s, net, clock, ps[0], 0)
-    s.patch_player(pid, loadout={"weapons": [{"weapon_id": "shotgun"}]})
-    _req(net, 0, "perk", "perk", "easy_reload")
-    ack = _last_ack(net, 0)
-    assert ack["ok"] is False
-    assert ack["reason"] == "Shotgun loads shell by shell — Easy Reload only taps the button once, so it can't reload it"
-    assert s.players[pid]["loadout"] == {"weapons": [{"weapon_id": "shotgun"}]}, "the refused pick did not apply"
-    # and the other way: picking the shotgun while holding the perk applies, and the ack says what it cost
-    s.patch_player(pid, loadout={"weapons": [{"weapon_id": "assault_rifle"}], "perk": "easy_reload"})
-    _req(net, 0, "primary", "weapon", "shotgun")
-    ack = _last_ack(net, 0)
-    assert ack["ok"] is True and ack["dropped"] == {"slot": "perk", "id": "easy_reload", "name": "Easy Reload"}
-    assert ack["reason"] == "Shotgun loads shell by shell — Easy Reload dropped"
-    assert s.players[pid]["loadout"] == {"weapons": [{"weapon_id": "shotgun"}]}
+    try:
+        s.patch_player(pid, loadout={"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}],
+                                     "overrides": {"easy_reload": True}})
+        raise AssertionError("stored the ALT button beside a second weapon")
+    except ValueError as e:
+        assert str(e) == "Easy Reload takes the ALT button, so it can't ride with a second weapon"
+    try:
+        s.patch_player(pid, loadout={"weapons": [{"weapon_id": "shotgun"}], "overrides": {"easy_reload": True}})
+        raise AssertionError("stored the ALT button beside a chain-reload primary")
+    except ValueError as e:
+        assert str(e) == "Shotgun loads shell by shell — Easy Reload only taps the button once, so it can't reload it"
+    # legal: one weapon, no chain reload
+    ok = s.patch_player(pid, loadout={"weapons": [{"weapon_id": "assault_rifle"}], "overrides": {"easy_reload": True}})
+    assert ok["loadout"] == {"weapons": [{"weapon_id": "assault_rifle"}], "overrides": {"easy_reload": True}}
+    assert s.players[pid]["loadout"] == ok["loadout"]
 
 
 def test_compile_sniper_fixed_end_to_end_through_session():
@@ -458,7 +578,8 @@ def test_assign_and_welcome_carry_catalog_and_policy():
     s.patch_player(ps[0]["player_id"], display="REAPER")            # any player change → assign
     a = net.pushes("assign", "nodeX")[-1][2]
     assert {w["weapon_id"] for w in a["catalog"]["weapons"]} >= {"smg", "rail_gun"} and all("tags" in w for w in a["catalog"]["weapons"])
-    assert [p["perk_id"] for p in a["catalog"]["perks"]] == ["body_armor", "extended_mags", "quick_hands", "easy_reload", "quick_switch"]
+    # S50: easy_reload left the perk slot; armor_piercing, motion_tracker, second_wind joined.
+    assert [p["perk_id"] for p in a["catalog"]["perks"]] == ["body_armor", "extended_mags", "quick_hands", "quick_switch", "armor_piercing", "motion_tracker", "second_wind"]
     pol = a["policy"]
     assert pol["hud_select"] is True and pol["primary"]["choice"] == "player"
     assert "rail_gun" not in pol["primary"]["allowed_ids"] and "smg" in pol["primary"]["allowed_ids"]
@@ -957,47 +1078,45 @@ def test_swap_delay_token_and_quick_switch():
     assert _tok(f0, 18) == "1400"                                       # reload untouched by a swap perk
 
 
-def test_a_perk_that_cannot_take_moves_nothing_else():
-    """Polish review 2026-09-12: a pick that is REFUSED must leave the whole kit alone.
-
-    With a chain-reload primary AND a second weapon, tapping Easy Reload used to run the ALT rule first
-    (drop the second weapon) and THEN the F123 backstop (revert the perk) — so the player lost their
-    secondary to a pick that never applied, and `dropped_by` (which looks at the perk) reported nothing at
-    all. CONTROL: the same tap on a MAGAZINE primary still drops the second weapon, and still says so."""
-    held = {"weapons": [{"weapon_id": "shotgun"}, {"weapon_id": "smg"}]}
-    after = P.set_slot(held, "perk", "perk", "easy_reload", PK, W)
-    assert after == held, f"a refused perk moved the rest of the kit: {after}"
-    assert P.dropped_by(held, after, W, PK) == (None, None), "nothing was dropped, so nothing may be reported"
-    # CONTROL: on a magazine primary the pick DOES take, and the second weapon goes with a reason
-    ok = {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}]}
-    after = P.set_slot(ok, "perk", "perk", "easy_reload", PK, W)
-    assert after == {"weapons": [{"weapon_id": "assault_rifle"}], "perk": "easy_reload"}
-    dropped, why = P.dropped_by(ok, after, W, PK)
-    assert dropped == {"slot": "secondary", "id": "smg", "name": "SMG"}
-    assert why == "Easy Reload takes the ALT button — SMG dropped"
+def test_a_phone_pick_never_moves_overrides_S50():
+    """S50: a `loadout_request` pick (`set_slot`) can no longer create, resolve or report the
+    ALT-button conflict at all -- `overrides.easy_reload` is host-set only (`state._check_loadout`),
+    so it rides through every `set_slot` call untouched, whatever the pick, and `dropped_by` always
+    reports nothing (there is nothing left for a phone pick to have dropped). Was
+    `test_a_perk_that_cannot_take_moves_nothing_else`, pinned to the old perk-pick ALT rule this
+    replaces."""
+    held = {"weapons": [{"weapon_id": "shotgun"}, {"weapon_id": "smg"}], "overrides": {"max_hp": 60}}
+    after = P.set_slot(held, "perk", "perk", "body_armor", PK, W)
+    assert after == {**held, "perk": "body_armor"}, f"overrides did not ride through untouched: {after}"
+    assert P.dropped_by(held, after, W, PK) == (None, None)
 
 
 def test_the_chain_rule_reads_the_catalog_in_play_not_the_shipped_file():
     """`chain_reload` answers from the row this GAME is running. A synthetic catalog that makes a
-    non-shotgun a chain reload must be obeyed everywhere the rule fires — including `set_slot`, which used
-    to ask a bare `{weapon_id: ...}` and so could only ever be answered by `weapons.json`."""
+    non-shotgun a chain reload must be obeyed everywhere the rule fires -- `chain_conflict`
+    (`validate_loadout`'s host-side check) and `apply` (the auto-fix path), which used to ask a bare
+    `{weapon_id: ...}` and so could only ever be answered by `weapons.json`."""
     cat = [{"weapon_id": "smg", "name": "SMG", "cls": "1", "tags": [], "reload_type": "chain",
             "stats": {"mag": 30, "reserve": 60, "reload_ms": 1400, "dmg": 50, "rof": 50, "rng": 50}},
            {"weapon_id": "shotgun", "name": "Shotgun", "cls": "2", "tags": [],
             "stats": {"mag": 6, "reserve": 24, "reload_ms": 2400, "dmg": 70, "rof": 30, "rng": 50}}]
     op = P.preset_rules("open"); lp = P.pool(op, cat, PK)
-    held = {"weapons": [{"weapon_id": "smg"}]}
-    assert P.chain_conflict({**held, "perk": "easy_reload"}, cat, PK) == {"perk": "easy_reload", "weapon": "smg"}
-    assert P.check_request(op, lp, "perk", "perk", "easy_reload", cat, PK, held)[0] is False
-    assert P.set_slot(held, "perk", "perk", "easy_reload", PK, cat) == held, "set_slot must read the same catalog"
-    # and picking the chain primary drops the ALT perk, again on this catalog's say-so
-    on_ar = {"weapons": [{"weapon_id": "shotgun"}], "perk": "easy_reload"}
-    assert P.set_slot(on_ar, "primary", "weapon", "smg", PK, cat) == {"weapons": [{"weapon_id": "smg"}]}
+    held = {"weapons": [{"weapon_id": "smg"}], "overrides": {"easy_reload": True}}
+    assert P.chain_conflict(held, cat) == {"weapon": "smg"}
+    ok, why = P.validate_loadout(op, lp, held, cat, PK)
+    assert ok is False and "smg loads shell by shell" in why.lower()
+    # apply(): the auto-fix drops the OVERRIDE onto this catalog's chain-reload primary
+    on_smg = {"weapons": [{"weapon_id": "smg"}], "overrides": {"easy_reload": True}}
+    assert P.apply(op, lp, on_smg, cat, PK) == {"weapons": [{"weapon_id": "smg"}]}
     # CONTROL: a row that carries NO `reload_type` still falls back to the shipped file, which is what
     # keeps the F123 rule alive on the compiled catalog (it publishes stats/tags and not the attribute) —
-    # so this catalog's own shotgun row is still a chain reload and still drops the perk.
-    assert P.set_slot({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "easy_reload"},
-                      "primary", "weapon", "shotgun", PK, cat) == {"weapons": [{"weapon_id": "shotgun"}]}
+    # so this catalog's own shotgun row is still a chain reload and still drops the override.
+    on_shotgun = {"weapons": [{"weapon_id": "assault_rifle"}], "overrides": {"easy_reload": True}}
+    # picking the chain-reload shotgun as primary via set_slot carries `overrides` through untouched
+    # (S50: set_slot never resolves this any more) -- `apply` is what drops it, on the RESOLVED primary.
+    picked = P.set_slot(on_shotgun, "primary", "weapon", "shotgun", PK, cat)
+    assert picked == {"weapons": [{"weapon_id": "shotgun"}], "overrides": {"easy_reload": True}}
+    assert P.apply(op, lp, picked, cat, PK) == {"weapons": [{"weapon_id": "shotgun"}]}
 
 
 # --------------------------------------------------- S37: a swap perk needs something to swap to

@@ -68,26 +68,59 @@ heavy weapon from a physical station mid-match — is future work** (see `hardwa
 `pickup_only` only says these weapons are catalogue-visible and never player-selectable at kit-out.
 
 ### 1.2 Perks — NEW `mcp/brx_mcp/mc/perks.json`, `GET /api/perks → PerkView[]`
+
+**S50 (2026-09-17, perk balance pass).** The v1 set was a ladder, not a choice: `body_armor` was a
+flat +50 armour (+43% effective health on the 45+70 default) at zero cost, while every other perk
+bought convenience that was often worth nothing (`docs/FOLLOWUPS.md` S50, the balance analysis it
+cites). Every perk below now costs on the SAME lever its opposite buys, so the set trades instead of
+stacking, and `easy_reload` left the slot entirely (§2) — it is accessibility, not balance.
+
 ```jsonc
 PerkView {
-  perk_id: string,                 // "body_armor" | "extended_mags" | "quick_hands" | "easy_reload" | "quick_switch" | "med_kit" | "concussion"
+  perk_id: string,                 // "body_armor" | "extended_mags" | "quick_hands" | "quick_switch" | "armor_piercing" | "motion_tracker" | "second_wind" | "med_kit" | "concussion"
   name: string, desc: string,      // house-written, human (no protocol jargon)
   tags: string[],                  // "passive" | "utility"
   mechanism: "passive" | "slot_frame",
   effects: {                       // passive knobs the compiler understands (all optional)
-    max_armor_add?: number,        // body_armor: +50 armor on $PSET
-    ammo_mult?: number,            // extended_mags: ×2 mag + reserve on the PRIMARY ($AMMO,0 + t16/t39/t17/t40)
-    reload_mult?: number,          // quick_hands: ×0.5 reload_ms on the PRIMARY (t18)
-    alt_reload?: boolean,          // easy_reload: ALT button = RELOAD ($BMAP,1,97) — for players who can't work the lever
-    switch_mult?: number           // quick_switch (2026-09-04): ×0.5 the gun's weapon-swap delay — $WEAP tok15 on EVERY slot (the gun takes the larger of slots 0/1; bench-proven, linear, no floor). MC puts the resolved value in FrameBundle.swap_ms for the HUD's SWITCHING takeover
+    max_armor_add?: number,        // a FLAT armour grant/cost (docs/perk-design.md §2, decided
+                                    // 2026-09-17): `mc/compile.py` `_MAX_ARMOR_ADD`, keyed by perk_id,
+                                    // is the one table the compiled arithmetic reads; this field is its
+                                    // wire-visible documentation, kept a plain integer because
+                                    // app/src/hud/hud.js and webapp/mc/src/screens/Kit.tsx render it
+                                    // literally as "+N ARMOR". body_armor +25 (was a flat +50), quick_switch
+                                    // -20. Capped at 255, floored at 0. In a game whose BASE
+                                    // health.max_armor is 0 (the Shields preset, `mc/compile.py`
+                                    // `is_shields_preset`), the grant compiles into the SHIELD ceiling
+                                    // instead of armour — adding an armour layer to a preset built with
+                                    // none would defeat its design.
+    ammo_mult?: number,            // extended_mags: ×2 mag + reserve on the PRIMARY ($AMMO,0 + t16/t39/t17/t40); quick_hands: ×0.8 (the cost of a faster reload)
+    reload_mult?: number,          // quick_hands: ×0.5 reload_ms on the PRIMARY (t18); body_armor: ×1.25 (armour is heavier in the hands)
+    alt_reload?: boolean,          // unused by any current row (S50: moved to `overrides.easy_reload`, §2) — kept for a future ALT-button perk
+    switch_mult?: number,          // quick_switch (2026-09-04): ×0.5 the gun's weapon-swap delay — $WEAP tok15 on EVERY slot (the gun takes the larger of slots 0/1; bench-proven, linear, no floor). MC puts the resolved value in FrameBundle.swap_ms for the HUD's SWITCHING takeover. extended_mags: ×1.3 (a bulkier magazine draws slower)
+    armor_piercing?: boolean       // S50 NEW (armor_piercing perk): the PRIMARY's $SIR key is swapped, compile-time, to
+                                    // a fixed cell (mc/compile.py `_AP_CELL`, `(4,0)`) permanently wired in
+                                    // `gameconfig._SIR_TABLE` to fn 2 (bench-proven to bypass armour AND
+                                    // shields, straight to HP). Damage is cut to `_AP_DAMAGE_MULT` (~40%,
+                                    // a 60% reduction) via `dmg_mult`. PRIMARY ONLY, and refused (compile
+                                    // raises) on a weapon whose damage key is already special: a charge
+                                    // weapon (the Charge Rifle), or a stock grant/heal/status cell.
+                                    // ⚠ THE KEY IS GAME-WIDE, FOR THE WHOLE MATCH, NOT PER PLAYER: a
+                                    // $SIR cell's function is the victim's table, compiled the same way
+                                    // for every player (the mechanism `hit_plan`/A17's class layer
+                                    // already relies on) — two players can never give `_AP_CELL` two
+                                    // different meanings in the same match. `assert_armor_piercing_armed`
+                                    // refuses to arm a player carrying the perk if the compiled head has
+                                    // no row for the cell (the F11 shape: a gun with no matching row eats
+                                    // the hit silently while both ends report healthy).
   },
   verified: boolean,               // effect proven on hardware
   hidden: boolean                  // true → never listed to UIs (med_kit, concussion until benched)
 }
 ```
-v1 rows: `body_armor` (verified), `extended_mags` (verified), `quick_hands` (unverified, listed), `easy_reload`
-(verified — existing `alt_reload`), `quick_switch` (verified — A14, 2026-09-04), `med_kit` + `concussion`
-(`hidden: true`, `mechanism: "slot_frame"`).
+v1 rows: `body_armor` (verified), `extended_mags` (verified), `quick_hands` (unverified, listed),
+`quick_switch` (verified — A14, 2026-09-04), `armor_piercing` (unverified, new — S50), `motion_tracker`
++ `second_wind` (unverified, new — S50, node-local: `effects: {}`, no compile-time lever, docs/perk-design.md
+§2), `med_kit` + `concussion` (`hidden: true`, `mechanism: "slot_frame"`).
 
 ## 2. Loadout (contracts §2, A10 + A14) — `weapons[]` stays canonical on the wire
 ```jsonc

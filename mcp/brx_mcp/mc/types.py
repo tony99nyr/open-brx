@@ -149,10 +149,16 @@ class WeaponSel(TypedDict):
 
 
 class LoadoutOverrides(TypedDict, total=False):
-    """Per-player HP/armour handicap (modes §1.1). Both keys are optional and BOTH may be absent:
-    `state.py _check_loadout` drops the whole `overrides` key when neither survives validation."""
+    """Per-player accessibility + HP/armour handicap (modes §1.1). All keys are optional and
+    independent -- `state.py _check_loadout` drops the whole `overrides` key when none survive
+    validation. S50 (2026-09-17): `easy_reload` moved HERE from the perk slot, because it is
+    accessibility (a player who cannot work the reload lever), not balance, so a left-handed player
+    can take it with NO extra health, and a younger player can take it WITH one (Tony, 2026-09-17:
+    "keep the two accessibility switches independent")."""
     max_hp: int          # 1..999 (`state.py _check_loadout`); 0 is a corpse, not a pool
     max_armor: int       # 0..999 -- 0 is legal and means "one shot with a sniper"
+    easy_reload: bool    # ALT button = RELOAD ($BMAP,1,97); still can't ride with a second weapon or
+                         # a chain-reload primary (the hardware facts don't move with the slot)
 
 
 class Loadout(TypedDict):
@@ -285,12 +291,21 @@ class LoadoutPool(TypedDict):
 
 class PerkEffects(TypedDict, total=False):
     """The effect knobs the compiler acts on -- exactly `perks.EFFECT_KEYS`, which `PerkCatalog.__init__`
-    refuses a perks.json row for exceeding. Every key is optional: a row carries only what it changes."""
-    max_armor_add: int      # added to $PSET armour, capped at 255 (`compile.armed_armor`)
+    refuses a perks.json row for exceeding. Every key is optional: a row carries only what it changes.
+
+    S50 (2026-09-17, docs/perk-design.md §2): `max_armor_add` is a FLAT armour grant/cost (body_armor
+    +25, quick_switch -20) -- `compile._MAX_ARMOR_ADD` is the one table the compiled arithmetic reads,
+    keyed by perk_id; this field is its wire-visible documentation, kept an integer because
+    `app/src/hud/hud.js` / `webapp/mc/src/screens/Kit.tsx` render it literally."""
+    max_armor_add: int      # added to $PSET armour (or, base armour 0: $PSET shield) -- capped at 255,
+                            # floored at 0 (`compile.armed_armor`/`armed_shield`)
     ammo_mult: float        # scales the clip/reserve the head writes
     reload_mult: float      # scales the weapon's reload time
-    alt_reload: bool        # A14: claims the ALT button ($BMAP,1,97) -- cannot ride with a second weapon
+    alt_reload: bool        # unused by any current row (S50: easy_reload moved to
+                            # `loadout.overrides.easy_reload`) -- kept for a future ALT-button perk
     switch_mult: float      # scales $WEAP tok15, the gun's swap delay (bench 2026-09-04)
+    armor_piercing: bool    # S50 (new, armor_piercing perk): primary's $SIR key -> the armour-piercing
+                            # cell, damage cut to `compile._AP_DAMAGE_MULT`. PRIMARY ONLY.
 
 
 class PerkView(TypedDict):
@@ -302,6 +317,30 @@ class PerkView(TypedDict):
     effects: PerkEffects
     verified: bool
     hidden: bool
+
+
+class ValuePair(TypedDict):
+    """S50 build 4: a wire number before and after a perk touched it. Integers, always both present
+    together (never just one)."""
+    base: int
+    resolved: int
+
+
+class PerkEffectsResolved(TypedDict, total=False):
+    """S50 build 4 (`docs/spec/loadout.md` §1.2/§2): the RESOLVED, per-player perk effect, exactly as
+    it was compiled into this bundle -- not the catalogue's `PerkEffects` (which is unresolved and
+    pool-independent). A field is present only when the perk actually changed it; `perk_id` is present
+    whenever the player carries a perk, even one with no other field here, so a phone/console can show
+    an icon. Lives on `FrameBundle.perk_effects` (the persisted per-player config, survives an app
+    restart) and, per player, on `State`'s roster/player view for Mission Control's console."""
+    perk_id: str
+    mag: ValuePair
+    reserve: ValuePair
+    reload_ms: ValuePair
+    swap_ms: ValuePair
+    max_hp: ValuePair
+    max_armor: ValuePair
+    max_shield: ValuePair
 
 
 # Modes whose objective IS a control point on the field (F70). Three modules need to agree on this:
@@ -481,6 +520,9 @@ class FrameBundle(TypedDict):
     #                                      path, so the write is safe by construction; the rows are identical apart from their sound tokens.
     hit_audio: NotRequired[dict]         # A17: {rekey: bool, cells{weapon_id: "p,s"}, classes{"p,s": family}, shared[families sharing a cell],
     #                                      material[roles]} -- what the UI/console shows for "what does a hit sound like", and what a bench probe reads.
+    perk_effects: NotRequired[PerkEffectsResolved]   # S50 build 4: this player's compiled perk effect,
+    #                                      absent when they carry no perk. Persisted here (not a
+    #                                      one-shot message) so it survives an app restart.
 
 
 class Weapon(TypedDict):
@@ -1207,6 +1249,12 @@ class State(TypedDict):
     recap: NotRequired[RecapView | None]
     notices: NotRequired[NoticesView]
     end_delivery: NotRequired[EndDeliveryView]
+    perk_effects: NotRequired[dict[str, PerkEffectsResolved]]   # S50 build 4: {player_id: resolved effect},
+    #                                     one entry per player carrying a perk (absent players carry none;
+    #                                     the whole key absent when nobody on the roster has a perk). The
+    #                                     SAME numbers `FrameBundle.perk_effects` carries for that player --
+    #                                     `Compiler.perk_effects_resolved()` is the one arithmetic both read,
+    #                                     so the console and the node can never disagree.
 
 
 # ---- §5 envelope ----

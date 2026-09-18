@@ -1046,7 +1046,8 @@ def test_validate_grades_against_the_pool_the_gun_is_ARMED_with():
         t = next(f for f in head if f.startswith("$PSET")).split(",")
         return int(t[3]) + int(t[4])
 
-    assert armed_pool(None) == 115 and armed_pool("body_armor") == 165
+    # S50 (2026-09-17, docs/perk-design.md §2): body_armor's grant is now a flat +25, not a flat +50.
+    assert armed_pool(None) == 115 and armed_pool("body_armor") == 140
 
     # F146 (field 2026-09-12): the one-magazine GUARD no longer reads the armed pool — see
     # `test_f146_the_guard_grades_the_BASE_pool_so_one_players_perk_cannot_ban_a_weapon` for why one
