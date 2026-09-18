@@ -28,7 +28,9 @@ const DEMO_LOADOUTS: (() => Loadout)[] = [
   () => ({ weapons: [{ weapon_id: 'burst_rifle' }], perk: 'body_armor' }),
   () => ({ weapons: [{ weapon_id: 'smg' }], perk: null }),
   () => ({ weapons: [{ weapon_id: 'sniper_rifle' }, { weapon_id: 'smg' }], perk: null }),
-  () => ({ weapons: [{ weapon_id: 'assault_rifle' }], perk: 'easy_reload' }),
+  // S50 (2026-09-17): Easy Reload moved from the perk slot to the per-player accessibility override
+  // (docs/spec/loadout.md §2) — it is no longer a `perk` id, so the demo kit shows the override shape.
+  () => ({ weapons: [{ weapon_id: 'assault_rifle' }], perk: null, overrides: { easy_reload: true } }),
 ];
 // The server's `SETUP: ` warnings, one per objective source (compile.py validate). The demo carries both
 // so the LOBBY / ARMED strip and the GAMES rail show in `?mock` exactly what a real MC sends — including
