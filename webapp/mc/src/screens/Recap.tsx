@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { MatchHistoryRow, RecapStationRow, RecapView, ScoreRow } from '../api/types';
 import { endDeliveryLine } from '../api/derive';
 import { useStore } from '../store';
-import { CHAMFER, F, T, fmtClock, fmtDuration, teamColor } from '../tokens';
+import { CHAMFER, F, T, fmtDuration, teamColor } from '../tokens';
 import { BTN_RESET, Brackets, Num, SectionRule, PrimaryButton } from '../ui';
 import { OrphanMatch } from '../ui/OrphanMatch';
 import { bestStreak } from './Live';
@@ -178,7 +178,10 @@ export function Recap() {
       )}
       {/* an ARCHIVED match must be described by ITS OWN mode, not the config the host is drafting
           now — the header read "MATCH COMPLETE · TDM · 05:00" over a recap of a 3-minute FFA */}
-      <div style={{ font: F.mono(500, 11), letterSpacing: '.22em', color: T.dim, marginBottom: 8 }}>[ A8 // MATCH COMPLETE · {(past ? past.mode : state.config.mode).toUpperCase()}{past ? '' : ` · ${fmtClock(state.config.time_limit_s ?? 0)}`} ]</div>
+      {/* the match length is a DURATION (a fixed span, over before this screen shows), not a clock still
+          counting down, so it prints unpadded like every other span on this screen (fmtClock would pad
+          it to "10:00" beside unpadded possession spans such as "7:21") */}
+      <div style={{ font: F.mono(500, 11), letterSpacing: '.22em', color: T.dim, marginBottom: 8 }}>[ A8 // MATCH COMPLETE · {(past ? past.mode : state.config.mode).toUpperCase()}{past ? '' : ` · ${fmtDuration(state.config.time_limit_s ?? 0)}`} ]</div>
       <Brackets color="#ffd23f" size={18} style={{ background: `linear-gradient(90deg,rgba(255,210,63,.1),transparent 60%),linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, padding: '22px 26px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '18px 44px', marginBottom: 18 }}>
         <div>
           <div style={{ font: F.osw(700, 46), letterSpacing: '.08em', lineHeight: 1.15 }}>

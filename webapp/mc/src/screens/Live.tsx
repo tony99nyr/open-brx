@@ -3,7 +3,7 @@ import { setNotice } from '../notice';
 import { coverageLine, endDeliveryLine, poolStaleLabel } from '../api/derive';
 import { STALE_AFTER_MS, type LiveRow } from '../api/types';
 import { useStore } from '../store';
-import { F, T, fmtAge, fmtClock, teamColor } from '../tokens';
+import { F, T, fmtAge, fmtClock, fmtDuration, teamColor } from '../tokens';
 import { columnEdges, type Column } from './columns';
 import { Blink, GhostButton, Num, ScrollX, Tag } from '../ui';
 import { OrphanMatch } from '../ui/OrphanMatch';
@@ -206,7 +206,7 @@ export function Live() {
               </>) : (
                 <GhostButton color={T.warn} border={T.warn} hoverClass="hov-warnbg" onClick={() => setRecallConfirm(true)} title="Two-step: revive and hold every node in range">RECALL</GhostButton>
               )}
-              <span style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>EARLY END / RECALL REACH ONLY NODES IN RANGE — THE REST END AT {fmtClock(lv.time_limit_s)}.</span>
+              <span style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>EARLY END / RECALL REACH ONLY NODES IN RANGE — THE REST END AT MATCH TIME {fmtClock(lv.time_limit_s)}.</span>
             </div>
           </div>
           </ScrollX>
@@ -307,9 +307,12 @@ function Row({ r, endUnconfirmed, open, onToggle }: { r: LiveRow; endUnconfirmed
       {/* A42: the END overrides ALIVE/LAST KNOWN here on purpose. Once the match is over, whether this
           player was alive is history; whether their HUD took the end is the only live question about
           them, and it is the one the operator is standing on the field trying to answer. */}
+      {/* The respawn countdown is a duration (unpadded minutes), not a clock — `fmtClock(...).slice(1)`
+          only looked right under ten minutes (it turned "00:05" into "0:05") and broke at ten minutes
+          or more ("10:00" became "0:00"). `fmtDuration` gives the same unpadded reading directly. */}
       <span data-cell="status" data-end-confirm={endUnconfirmed ? 'pending' : undefined}
         title={endUnconfirmed ? 'This HUD has not confirmed the end — that tagger may still be in the match' : undefined}
-        style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: endUnconfirmed ? T.bad : stale ? T.warn : dead ? T.bad : T.ok, ...edge('status') }}>{endUnconfirmed ? 'END NOT CONFIRMED' : stale ? 'LAST KNOWN' : dead ? `RESPAWN ${fmtClock(r.respawn_in_s ?? 0).slice(1)}` : 'ALIVE'}</span>
+        style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: endUnconfirmed ? T.bad : stale ? T.warn : dead ? T.bad : T.ok, ...edge('status') }}>{endUnconfirmed ? 'END NOT CONFIRMED' : stale ? 'LAST KNOWN' : dead ? `RESPAWN ${fmtDuration(r.respawn_in_s ?? 0)}` : 'ALIVE'}</span>
       <span style={{ textAlign: 'right', font: F.mono(500, 11), letterSpacing: '.04em', color: syncWarn ? T.warn : T.faint }}>{fmtAge(r.sync_age_ms)}{stale ? ' AGO' : ''}</span>
     </div>
   );

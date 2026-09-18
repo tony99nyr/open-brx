@@ -498,7 +498,7 @@ class Weapon(TypedDict):
     caution: NotRequired[str]      # A10: human copy for a known LIVE problem (weapons.json `caution`)
     pickup_only: NotRequired[bool]  # 2026-09-17: catalogue-visible but never in a player loadout pool (policy.py)
     recoil: NotRequired[Recoil]     # S42: the declared target accuracy profile (weapons.json `recoil`)
-    rounds_per_charge: NotRequired[int]  # A48: rounds of the cell one FULL charge spends (weapons.json `rounds_per_charge`); absent on a weapon that does not charge
+    rounds_per_charge: NotRequired[int]  # A48: rounds of the cell one FULL charge spends. `WeaponCatalog.rounds_per_charge()` resolves weapons.json's absent-means-1 row to a concrete integer, so a real compiled Weapon always carries this; NotRequired only for a hand-built fixture that skips it
 
 
 class WeaponBars(TypedDict):
@@ -535,7 +535,7 @@ class WeaponView(TypedDict):
     bars: NotRequired[WeaponBars]
     pickup_only: NotRequired[bool]  # 2026-09-17: catalogue-visible but never in a player loadout pool (policy.py)
     recoil: NotRequired[Recoil]     # S42: the declared target accuracy profile -- the node's `weaponRow(id).recoil`
-    rounds_per_charge: NotRequired[int]  # A48: rounds of the cell one FULL charge spends -- the HUD's NOT ENOUGH ENERGY line reads this, never a hard-coded cost
+    rounds_per_charge: NotRequired[int]  # A48: rounds of the cell one FULL charge spends -- the HUD's NOT ENOUGH ENERGY line reads this, never a hard-coded cost. `views.weapon_view()` resolves the catalogue's absent-means-1 row, so a real WeaponView always carries this; NotRequired only for a hand-built fixture that skips it
 
 
 class SavedGame(TypedDict):

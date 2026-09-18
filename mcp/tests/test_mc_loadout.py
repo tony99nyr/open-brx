@@ -654,8 +654,11 @@ def test_weapon_view_htk_ttk_caution():
     # It rides both shapes -- `Weapon` (contracts §3, what `assign.catalog` carries) and `WeaponView`.
     assert views["charge_rifle"]["rounds_per_charge"] == 10, views["charge_rifle"]
     assert C.catalog._to_weapon(C.catalog._row("charge_rifle"))["rounds_per_charge"] == 10
-    # A weapon that does not charge carries no cost at all, so the HUD can tell "no charge" from "free".
-    assert "rounds_per_charge" not in views["assault_rifle"]
+    # Review finding (2026-09-13): the field used to ride on ABSENCE meaning "does not charge", which
+    # made the same "not set" state mean two different things once a cell weapon could legitimately
+    # cost 1 round a charge. `WeaponCatalog.rounds_per_charge()` and `weapon_view()` now always resolve
+    # the catalogue's absent-means-1 row to a concrete integer, so an ordinary weapon reads 1, not absent.
+    assert views["assault_rifle"]["rounds_per_charge"] == 1, views["assault_rifle"]
     # And the class is on every row, so the HUD never has to read an energy weapon out of its id.
     assert views["energy_rifle"]["weapon_class"] == "energy"
     assert views["assault_rifle"]["weapon_class"] == "ballistic"

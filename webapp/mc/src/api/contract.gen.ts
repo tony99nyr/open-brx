@@ -494,7 +494,7 @@ export interface Weapon {
   pickup_only?: boolean;
   /** S42: the declared target accuracy profile (weapons.json `recoil`) */
   recoil?: Recoil;
-  /** A48: rounds of the cell one FULL charge spends (weapons.json `rounds_per_charge`); absent on a weapon that does not charge */
+  /** A48: rounds of the cell one FULL charge spends. `WeaponCatalog.rounds_per_charge()` resolves weapons.json's absent-means-1 row to a concrete integer, so a real compiled Weapon always carries this; NotRequired only for a hand-built fixture that skips it */
   rounds_per_charge?: number;
 }
 
@@ -537,7 +537,7 @@ export interface WeaponView {
   pickup_only?: boolean;
   /** S42: the declared target accuracy profile -- the node's `weaponRow(id).recoil` */
   recoil?: Recoil;
-  /** A48: rounds of the cell one FULL charge spends -- the HUD's NOT ENOUGH ENERGY line reads this, never a hard-coded cost */
+  /** A48: rounds of the cell one FULL charge spends -- the HUD's NOT ENOUGH ENERGY line reads this, never a hard-coded cost. `views.weapon_view()` resolves the catalogue's absent-means-1 row, so a real WeaponView always carries this; NotRequired only for a hand-built fixture that skips it */
   rounds_per_charge?: number;
 }
 

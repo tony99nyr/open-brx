@@ -36,6 +36,7 @@ export const WEAPONS: WeaponView[] = [
     "role": "support",
     "htk": 5,
     "ttk_ms": 1600,
+    "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
       "floor": 100,
@@ -73,6 +74,7 @@ export const WEAPONS: WeaponView[] = [
     "role": "assault",
     "htk": 13,
     "ttk_ms": 1200,
+    "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
       "floor": 70,
@@ -110,6 +112,7 @@ export const WEAPONS: WeaponView[] = [
     "role": "assault",
     "htk": 11,
     "ttk_ms": 1417,
+    "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
       "floor": 85,
@@ -186,6 +189,7 @@ export const WEAPONS: WeaponView[] = [
     "role": "sidearm",
     "htk": 5,
     "ttk_ms": 1920,
+    "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
       "floor": 100,
@@ -223,6 +227,7 @@ export const WEAPONS: WeaponView[] = [
     "role": "support",
     "htk": 13,
     "ttk_ms": 1800,
+    "rounds_per_charge": 1,
     "caution": "Overheats after about 30 rounds of full auto, and it does not cool on its own: work the reload lever to vent the heat (about three pulls, or one held pull), then keep holding to recharge the cell.",
     "recoil": {
       "ceiling": 100,
@@ -262,6 +267,7 @@ export const WEAPONS: WeaponView[] = [
     "role": "power",
     "htk": 1,
     "ttk_ms": 1200,
+    "rounds_per_charge": 1,
     "pickup_only": true,
     "recoil": {
       "ceiling": 100,
@@ -301,6 +307,7 @@ export const WEAPONS: WeaponView[] = [
     "role": "power",
     "htk": 1,
     "ttk_ms": 0,
+    "rounds_per_charge": 1,
     "pickup_only": true,
     "recoil": {
       "ceiling": 100,
@@ -339,6 +346,7 @@ export const WEAPONS: WeaponView[] = [
     "role": "cqb",
     "htk": 3,
     "ttk_ms": 1600,
+    "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
       "floor": 100,
@@ -376,6 +384,7 @@ export const WEAPONS: WeaponView[] = [
     "role": "cqb",
     "htk": 15,
     "ttk_ms": 1330,
+    "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
       "floor": 55,
@@ -414,6 +423,7 @@ export const WEAPONS: WeaponView[] = [
     "role": "marksman",
     "htk": 2,
     "ttk_ms": 1500,
+    "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
       "floor": 100,
@@ -451,6 +461,7 @@ export const WEAPONS: WeaponView[] = [
     "role": "support",
     "htk": 15,
     "ttk_ms": 1960,
+    "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
       "floor": 55,
@@ -489,6 +500,7 @@ export const WEAPONS: WeaponView[] = [
     "role": "sidearm",
     "htk": 13,
     "ttk_ms": 1920,
+    "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
       "floor": 100,

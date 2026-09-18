@@ -53,20 +53,28 @@ const isEnergyWeapon = st => {
   if (cls) return cls === 'energy';
   return /energy|charge/i.test(String((st && st.weaponId) || ''));
 };
-/** Bench 2026-09-17 (brx-weapons): a full charge on the charge rifle spends 10 of its 40-charge cell, so a
+/** Bench 2026-09-17: a full charge on the charge rifle spends 10 of its 40-charge cell, so a
  *  cell under 10 fires nothing even though it reads as "ammo left". A48 (merge 2026-09-17) put that cost in
  *  the catalogue as `rounds_per_charge`, which the node passes through as `st.roundsPerCharge`, so the cost
  *  is now read per weapon and the charge-rifle id no longer appears in this rule. The constant stays as the
  *  named fallback for a pre-A48 bundle, and is used ONLY for the charge rifle, the one weapon it was
  *  measured on -- never guessed onto another energy weapon. */
 const CHARGE_RIFLE_FULL_CHARGE_COST = 10;
-/** What one full charge costs this weapon's cell, or null when it does not charge. */
-const chargeCost = st => (st && st.roundsPerCharge != null && st.roundsPerCharge > 0) ? st.roundsPerCharge
-  : (st && st.weaponId === 'charge_rifle' ? CHARGE_RIFLE_FULL_CHARGE_COST : null);
-/** F248 (2026-09-17, brx-weapons): `weapon_class` decides WORDING (isEnergyWeapon above), never which
+/** What one full charge costs this weapon's cell, or null when it does not charge.
+ *  ⚠ `> 1`, not `> 0` (polish 2026-09-17): a weapon that spends ONE round per shot does not charge, and
+ *  `rounds_per_charge` now always reaches the node as a concrete number (MC resolves the catalogue's
+ *  absent-means-1 row), so a `> 0` test made every bullet weapon look like a charge weapon. A sniper
+ *  rifle with an empty magazine then read NOT ENOUGH ENERGY instead of RELOAD. Same question as
+ *  `usesCellGauge` below, which is why both ask it the same way. A present value of 1 is an answer, so
+ *  it never falls through to the pre-A48 id fallback. */
+const chargeCost = st => {
+  if (st && st.roundsPerCharge != null) return st.roundsPerCharge > 1 ? st.roundsPerCharge : null;
+  return (st && st.weaponId === 'charge_rifle') ? CHARGE_RIFLE_FULL_CHARGE_COST : null;
+};
+/** F248 (2026-09-17): `weapon_class` decides WORDING (isEnergyWeapon above), never which
  *  ammo gauge to draw -- the arsenal merge picked the gauge from `weapon_class === "energy"`, which is
  *  WIDER than the old id match, so the Rail Gun (class "energy", `mag` 2, one round per shot) drew a
- *  percentage instead of its two pips. The rule agreed with brx-weapons: draw the CELL gauge (percentage
+ *  percentage instead of its two pips. The rule agreed then: draw the CELL gauge (percentage
  *  bar / cell-count pills) exactly when a full charge costs MORE than one round (`rounds_per_charge > 1`);
  *  otherwise draw the ordinary per-round pips or big-magazine bar, whatever the class says. A post-A48
  *  bundle always carries `weaponClass`, so a weapon with no explicit `rounds_per_charge` -- the catalogue

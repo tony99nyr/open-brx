@@ -72,7 +72,7 @@ export const fmtClock = (s: number) => {
 // `observed_s` to whole seconds before they ever reach the wire, so no live value is fractional today;
 // this is for the day one is (a mock fixture, or a server field that stops pre-rounding).
 export const fmtDuration = (s: number) => {
-  const v = Math.round(s);
+  const v = Math.max(0, Math.round(s));   // clamp at zero, the way fmtClock does: a negative span must never print "-1:-5"
   return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`;
 };
 // Tiered: a gun powered off overnight rendered as "1093m32s AGO", which nobody can read as 18 hours

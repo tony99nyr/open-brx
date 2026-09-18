@@ -770,8 +770,11 @@ class WeaponCatalog:
             "weap_frame": self.resolve(w["weapon_id"], 0),
             "verified": bool(w.get("verified", False)),
         }
-        if w.get("rounds_per_charge"):   # A48: what one full charge costs the cell -- the HUD reads it, so it must reach the node
-            row["rounds_per_charge"] = int(w["rounds_per_charge"])
+        # A48: what one full charge costs the cell. The node reads it, and after F248 the HUD picks the
+        # ammo gauge from it, so send the RESOLVED number rather than the raw field: `weapons.json` writes
+        # the key only where it is not 1 (`_note`: "Absent = 1"), and the node must never have to know
+        # that rule. `rounds_per_charge()` is the one place the default lives.
+        row["rounds_per_charge"] = self.rounds_per_charge(w["weapon_id"])
         if w.get("caution"):    # A10: known live problem, human copy
             row["caution"] = w["caution"]
         if w.get("pickup_only"):   # 2026-09-17: catalogue-visible, never in a loadout pool (policy.py)
