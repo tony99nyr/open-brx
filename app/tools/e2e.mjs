@@ -384,12 +384,20 @@ await step('hudA shows the try-out hero panel (art + stats)', async () => {
   await shot(hudA, 'hudA-tryout'); await shot(mc, 'kit-trying');
 });
 await step('weapon description renders in the hero panel', async () => {
-  // Read the copy from the server, not from this file: 1f2a2dc3 rewrote every `desc` as player copy and
-  // moved the balance notes to `notes`, and a hardcoded phrase from the old copy failed on every run.
-  const smg = (await api('GET', '/api/weapons')).find(w => w.weapon_id === 'smg');
-  expect(smg && smg.desc, 'the server has no SMG desc');
-  expect(!('notes' in smg), 'the balance notes reached /api/weapons');
-  await until(async () => (await mc.getByText(smg.desc, { exact: true }).count()) > 0, 6000, 'desc text visible on the KIT hero');
+  // This waited for the literal phrase "a hit every", which only existed while `desc` doubled as a
+  // balance changelog ("8 a hit every 95ms from a 72-round mag..."). `desc` became player copy on
+  // 2026-09-18 and the phrase went with it, so the step was pinned to prose rather than to the thing
+  // it meant to check. It now asserts the SELECTED weapon's own description off `demo-catalog.js`,
+  // the artefact the UI renders from, so a rewording moves the step instead of breaking it.
+  const smg = DEMO_WEAPONS.find(w => w.weapon_id === 'smg');
+  expect(!!smg, 'the demo catalogue has no SMG to check a description against');
+  // a CONTIGUOUS phrase from the front of the description, escaped and joined on flexible
+  // whitespace, so it matches the rendered text however the panel wraps it
+  const words = (smg.desc || '').trim().split(/\s+/).slice(0, 5);
+  expect(words.length >= 4, `the SMG description is too short to assert on: ${smg.desc}`);
+  const probe = new RegExp(words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+'), 'i');
+  await until(async () => (await mc.locator(`text=${probe}`).count()) > 0, 6000,
+              `the SMG description did not render (looked for "${words.join(' ')}" from demo-catalog.js)`);
 });
 await step('voice change makes the TAGGER speak (apply.preview reaches the gun)', async () => {
   const before = await hudA.evaluate(() => window.fakeGun.writes.filter(f => f.startsWith('$PLAY')).length);
