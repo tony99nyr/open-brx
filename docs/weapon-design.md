@@ -1215,32 +1215,38 @@ Written 2026-09-18, after the bench turned four `$SIR` functions from guesses in
 brief: "lets be thorough and balance and placement and rock paper scissor". This section is the answer,
 and every number in it comes from a `$HP` delta.
 
-### 7.0 ⚠️ Three weapons may emit a SECOND word we do not model
+### 7.0 ⚠️ Three weapons fire TWO words per trigger pull, and one of them is 70
 
-Named 2026-09-18 from Battle Company's own weapon sheets (via the LaserTagMods material). **`t1` is
-`WeaponIRSource`**, and **2 means the shot leaves the gun laser AND the headset's high-power LED**.
-Exactly three stock weapons set it: the Shotgun, the Rocket Launcher and the Plasma Sniper. For those,
-**`t12` is the extra word's DAMAGE** and `t13`/`t42` are its outdoor/indoor reach.
+Named 2026-09-18 from Battle Company's own weapon sheets, via the LaserTagMods material. **`t1` is
+`WeaponIRSource`**: 0 gun laser, 1 headset only, **2 gun AND headset**, 3 double gun, 4 double gun plus
+headset, 5 dry fire. Exactly three stock weapons set 2, and for those **`t12` is a second word's damage**
+with `t13`/`t42` its outdoor/indoor reach.
 
-| weapon | `t5`, what we model | `t12`, what the headset word carries |
+| weapon | gun laser (`t5`, range `t2`) | headset word (`t12`, range `t13`/`t42`) |
 |---|---|---|
 | Shotgun | 45 | **70** |
 | Rocket Launcher | 115 | **115** |
 | Plasma Sniper | 25 | **80** |
 
-**The Shotgun is the one that matters.** Its ladder position, 3 hits and 1.60 s, is computed from 45.
-If a headset sensor receives 70 instead, it kills in **2 hits**, and **four of the five sensors are on
-the headset**, so that would be the common case rather than the exception. §2.2's Shotgun row, the
-dominance check and the close-range band would all be describing a weapon that does not exist.
+**It is the SHOOTER's headset that emits**, not the victim's that receives a bonus. Three things agree:
+`t1` names an IR *source*; V4_30 builds an `$IRTX` frame and sends it to the gun's own headset to emit;
+and the community scoring readme says a swap-in headset lacking the high-power LED "means no shotguns,
+melee, explosions", which is a statement about the shooter's hardware. `t37`/`t38`
+(`HeadsetDirection`/`HeadsetRepeat`) probably steer that word and set how many times it repeats.
 
-⚠️ **This is a sourced claim, not a measurement**, and it is easy to settle: fire one shotgun shot at a
-covered gun sensor and read the `$HIR` magnitude, then one at an exposed headset and read it again. 45
-both times means `t12` is inert on this firmware and the ladder stands. 70 on the headset means the
-Shotgun has been a two-hit weapon all along and nobody noticed, because at a bench you shoot the gun
-body and in a game you shoot the person.
+**So one Shotgun pull may put two words in the air**, at 45 and at 70, with different ranges. A victim
+can take either, or **both**. And 45 + 70 is **115**, which is exactly the standard pool: if both words
+reach the same person, a single trigger pull kills them outright.
 
-Until it is measured, treat the Shotgun's numbers here as the GUN-BODY case, which is what every bench
-run to date has actually tested.
+Our catalogue models one word of 45 and a ladder position of 3 hits at 1.60 s. Every bench run we have
+done would have missed the second word, because at a bench the operator holds both guns and shoots a
+covered gun sensor at arm's length, and in a game you shoot a person across a field.
+
+⚠️ **Sourced, not measured.** The test is which EMITTER sent which word, so it is run on the shooter:
+fire once with the shooter's headset covered and the gun exposed, then once with the gun covered and the
+headset exposed, reading the victim's `$HIR` magnitude, protocol and sensor each time. The IR rig
+settles it faster still: one pull at the receiver, count the words. Until then, treat the Shotgun's
+numbers here as the GUN-LASER case, which is the only one any bench has tested.
 
 ### 7.1 There are only four ways to take someone down
 

@@ -153,24 +153,27 @@ match, which is a balance decision, not a bug fix.
    then four, and record which holds refill. The 2026-09-17 bench measured a refill 3.5 to 3.9 s after the pull starts,
    with taps of 0.2 s refilling nothing, so the boundary between "too short" and "works" is the thing to pin.
 
-## 8. Does the Shotgun deal 45 or 70? (3 min, and it may move the whole ladder)
+## 8. Does one Shotgun pull fire TWO words? (3 min, and it may move the whole ladder)
 
-Named 2026-09-18 from Battle Company's own weapon sheets: `$WEAP` **t1 = 2** means the shot leaves the
-gun laser AND the headset's high-power LED, and **t12 is that second word's damage**. The Shotgun's t5
-is 45 and its **t12 is 70**. Four of the five sensors are on the headset.
+`$WEAP` **t1 = 2** means the shot leaves the gun laser AND the shooter's headset LED, and **t12 is the
+headset word's damage**. The Shotgun is t5 45 / t12 70. If both words travel, a victim can take either
+or both, and **45 + 70 is 115, exactly the standard pool**: one trigger pull would kill outright.
 
-If a headset hit lands 70, the Shotgun kills in two hits, not the three its ladder position assumes, and
-every bench run to date missed it because at a bench we shoot the covered GUN sensor.
+The emitter is the SHOOTER's, so the test covers the SHOOTER, not the victim. That is the correction
+that matters: an earlier draft of this step had it backwards and would have measured nothing.
 
-1. Arm A with the stock Shotgun, B with 999 HP and a plain `$SIR` row.
-2. **Gun body**: cover the headset, fire one shot at the gun sensor. Read the `$HIR` magnitude and the
-   `$HP` delta.
-3. **Headset**: uncover the headset, cover the gun sensor, fire one shot at the headset. Read both again.
+1. Arm A with the stock Shotgun. B at 999 HP with a plain `$SIR` row, both sensors exposed.
+2. **Gun only**: cover A's HEADSET, leave A's gun emitter clear, fire one shot at B.
+3. **Headset only**: cover A's gun emitter, leave A's headset clear, fire one shot at B.
+4. Read B's `$HIR` each time: magnitude, protocol (token 2) and sensor (token 1).
 
-**Reading.** 45 both times means t12 is inert on this firmware and the catalogue is right. 45 on the gun
-and **70 on the headset** means the Shotgun has always been a two-hit weapon in a real game, and §2.2,
-the dominance check and the close-range band all need redoing for it. Repeat on the Plasma Sniper
-(t5 25, t12 80) if the Shotgun shows a difference, because that one is a bigger gap.
+**Reading.** 45 in step 2 and 70 in step 3 proves two emitters with two damages, and the Shotgun, Rocket
+Launcher and Plasma Sniper all need redoing in §2.2, the dominance check and the close-range band. 45
+both times means t12 is inert on this firmware and the ladder stands. Nothing in step 3 means the
+headset does not emit for this weapon at all, which is equally worth knowing.
+
+**Faster, if the IR rig is up:** point A at the receiver and pull once. Count the words and their
+magnitudes. One pull, one answer, no victim needed.
 
 ## Close
 
