@@ -383,21 +383,57 @@ later pull sends only the tail. The debug panel's SHARE LOG stays as the manual 
 F230 (bench 2026-09-17) found the native `t21`→`t22` accuracy walk works on only one of three guns, so it is not a
 usable balance lever. Every weapon ships `t21 == t22 == 100` (walk off) and the node drives the SAME two tokens
 itself, from the shot stream it already watches — a mag decrement on the active slot in `_onAmmo` — never from a
-timer that guesses whether the trigger is down. `weapons.json` `recoil` `{ceiling, floor, per_shot, recover_ms}` is
-the per-weapon target; `resolve()` never reads it (`test_range_and_recoil_are_declared_not_wired`).
+timer that guesses whether the trigger is down. `resolve()` never reads the `recoil` block
+(`test_range_and_recoil_are_declared_not_wired`).
+
+**F259 (bench 2026-09-18): a short ladder of STATES, not a per-shot walk.** Accuracy is CRISP, then DEGRADED once
+the burst reaches `after_shots` rounds, then HEAVY once it reaches `after_heavy`. The trigger going quiet for
+`settle_ms` puts it back to crisp in one step from wherever it got to, because the player releases once. **The
+property to protect:** the number of `$WEAP` writes follows the number of STATE CHANGES and never the number of
+rounds — at most three a burst (two down, one back), where the old ladder cost about twenty. Every `$WEAP` resets
+the gun's magazine, so every write is a chance to lose a round, which is the whole of F259.
+
+Below are the catalogue owner's numbers. `crisp` and `heavy` are each weapon's ORIGINAL ceiling and floor from the old gradual ladder and `degraded`
+is the midpoint, so two steps cost no weapon its identity: the assault rifle still bottoms out at 70 exactly as
+before, it just arrives there in two visible stages.
+
+| weapon | crisp | degraded | heavy | after_shots | after_heavy | settle_ms |
+|---|---|---|---|---|---|---|
+| assault_rifle | 100 | 85 | 70 | 3 | 6 | 600 |
+| burst_rifle | 100 | 92 | 85 | 3 | 6 | 600 |
+| smg | 100 | 78 | 60 | 3 | 6 | 600 |
+| suppressor | 100 | 78 | 60 | 3 | 6 | 600 |
+| energy_rifle | 100 | 85 | 70 | 3 | 6 | 600 |
+| force_rifle | 100 | 78 | 60 | 4 | 8 | 600 |
+| stinger | 100 | 78 | 60 | 7 | 14 | 600 |
+| toxin_rifle | 100 | 82 | 65 | 4 | 8 | 600 |
+
+**Absent keys derive** (`weapons.json` still ships `{ceiling, floor, per_shot, recover_ms}`): `crisp` ← `ceiling`,
+`heavy` ← `floor`, `degraded` ← the midpoint rounded down, `after_shots` ← the ladder's length
+(`ceil((crisp - heavy) / per_shot)`), `after_heavy` ← twice that, `settle_ms` ← `RECOIL_SETTLE_MIN_MS` or
+`recover_ms`, whichever is longer. A ladder too short to split in two (`degraded` equal to either end) collapses
+back to ONE step, because a second write that sends the value the gun already holds spends a magazine reset for
+nothing.
+
+⚠ **Two judgements in that table, both wanting a bench pass.** Three floors came UP on adoption — the SMG and the
+Suppressor from 55, the Stinger from 45, all to 60 — because the accuracy bench measured only 7 of 18 shots
+landing at 50 to 60, and a weapon that lands 39% of its rounds is removed from the fight rather than penalised.
+And `after_heavy` doubles `after_shots` with **no evidence** behind the ratio, only an honest reading ("you are
+holding the trigger", then "you are still holding it"). One bench run answers both: a magazine of full auto at 60
+and again at 55, against a static target, counting `$HIR`.
 
 | rule | engine (`app/src/engine.js` `_recoilArm`/`_recoilStep`/`_recoilTick`/`_recoilFlush`/`_recoilWrite`/`_recoilVerify`) |
 |---|---|
-| arm | on spawn, revive and a confirmed weapon swap, to the ACTIVE weapon's declared `recoil`; `value` starts at `ceiling`. Absent `config.recoil` (default) or an explicit `true` arms it; `config.recoil === false` never arms |
-| step down | every shot (`_onAmmo`'s mag decrement on the active slot) drops `value` by `per_shot`, floored at `floor` |
-| step up | once `recover_ms` has passed with **no shot and no pending step**, `value` rises by `per_shot`, ceilinged at `ceiling` — never a "released" flag, so a burst weapon's own gap between rounds is not mistaken for a release |
+| arm | on spawn, revive and a confirmed weapon swap, to the ACTIVE weapon's declared `recoil`; `value` starts at `crisp`. Absent `config.recoil` (default) or an explicit `true` arms it; `config.recoil === false` never arms. A weapon that cannot degrade (`floor == ceiling`, most of the catalogue) or carries no `recoil` block arms NOTHING |
+| step down | the BURST decides the state, never the state before it: `after_shots` rounds make it DEGRADED, `after_heavy` rounds make it HEAVY, and one frame reporting several rounds at once (a run of lost `$ALCD`) lands on the rung those rounds earned in ONE write. Both steps land during the burst, with the trigger still down |
+| step up | `settle_ms` of quiet (`RECOIL_SETTLE_MIN_MS` floor: 150 ms is a gap between two rounds, not a player lowering the weapon) puts it straight back to `crisp` from either degraded state, in one write — never a "released" flag |
 | write | pins **both** `t21` and `t22` to `value` on the active slot's compiled `$WEAP` frame (never `ceiling`/`floor` separately) — a fixed accuracy is honoured on a non-walking gun too (bench 2026-09-17), so this sidesteps F230 rather than depending on it. Immediately followed by an `$AMMO` restore of the LIVE mag/reserve (a `$WEAP` re-push resets both to the frame's baked-in values, bench 2026-09-17) |
-| throttle | one writer, latest `value` wins; a minimum gap between writes; never between a reload-lever pull (`this.reloading`) and the refill; never mid weapon-swap (`this.switching`); never during an overheat lockout: `overheated()` reads the heat the gun reports in `$ALCD` token 5 against 99 (F229; the guard read a flag nothing set until 2026-09-17, so it was dead code) |
+| throttle | one writer, latest `value` wins; the minimum gap (`ACC_WRITE_MIN_GAP_MS`) throttles a write that RE-SENDS a value the gun already holds (a retry, a re-assertion after a hold) and never a state change — the state machine is what bounds the write rate now, and a state change deferred to the clock is composed in an inter-round gap and hands that round back; never between a reload-lever pull (`this.reloading`) and the refill; never mid weapon-swap (`this.switching`); never during an overheat lockout: `overheated()` reads the heat the gun reports in `$ALCD` token 5 against 99 (F229; the guard read a flag nothing set until 2026-09-17, so it was dead code) |
 | verify | the next `$ALCD` naming the active slot (`_recoilObserve`, tok 2) is compared to what was written once the write's grace window closes; a mismatch retries ONCE; a second mismatch writes the ceiling back (both tokens) with the live ammo and disables further writes for the rest of the life, logged |
-| reset | a respawn/revive re-arms at the weapon's ceiling; a confirmed weapon swap re-arms to the NEW weapon's profile at its ceiling (multi-slot native drift while off-slot is not modelled — a bench gap, not a design one) |
+| reset | a respawn/revive re-arms at the weapon's CRISP value, with no burst behind it; a confirmed weapon swap re-arms to the NEW weapon's profile at its crisp value (multi-slot native drift while off-slot is not modelled — a bench gap, not a design one) |
 
-**Seams for stance and flinch (also S42, not built here):** a future stance module can widen/narrow `per_shot` from
-the motion sensor before `_recoilStep` applies it; a future flinch module reads `this._recoil.value` (today's live
+**Seams for stance and flinch (also S42, not built here):** a future stance module can move the thresholds
+`_recoilStep` reads from the motion sensor; a future flinch module reads `this._recoil.value` (today's live
 accuracy) to decide how hard to jolt. Neither needs to touch the writer, the verify/retry loop, or `config.recoil`.
 
 ### 3.16 F68: a miss the node cannot see still wipes the headset's team colour

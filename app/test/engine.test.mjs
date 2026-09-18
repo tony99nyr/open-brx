@@ -2546,11 +2546,17 @@ function armRecoil(recoil, { recoilConfig } = {}) {
   h.mag = 36;   // the magazine the FAKE gun below is holding, kept in step with the $ALCD frames the tests feed
   return h;
 }
-// F259: the ladder block the catalogue still ships, and the two-state shape `_recoilProfile` derives from
-// it -- crisp 100, degraded 20, degraded after 2 rounds (100 -> 20 at 40 a round), settle
-// RECOIL_SETTLE_MIN_MS (`recover_ms` 150 is far below that floor).
+// F259: the ladder block the catalogue still ships, and the state shape `_recoilProfile` derives from it
+// -- crisp 100 (the ceiling), heavy 20 (the floor), degraded 60 (halfway), the first rung after 2 rounds
+// (100 -> 20 at 40 a round) and the second after 4, settle RECOIL_SETTLE_MIN_MS (`recover_ms` 150 is far
+// below that floor). A deliberately steep ladder, so a test can cross both rungs in a handful of rounds.
 const RECOIL_PROFILE = { ceiling: 100, floor: 20, per_shot: 40, recover_ms: 150 };
-const DEGRADE_AFTER = 2, SETTLE_MS = RECOIL_SETTLE_MIN_MS;
+const DEGRADE_AFTER = 2, HEAVY_AFTER = 4, SETTLE_MS = RECOIL_SETTLE_MIN_MS;
+// F259 step 2 (Tony, bench 2026-09-18): "normal degraded and very degraded". The SHIPPING assault rifle
+// as the catalogue owner declares it, outright rather than derived -- the same row `_recoilProfile`
+// derives from that weapon's old ladder, so the two paths are checked against each other below.
+const TWO_STEP = { crisp: 100, degraded: 85, heavy: 70, after_shots: 3, after_heavy: 6, settle_ms: RECOIL_SETTLE_MIN_MS };
+const TWO_STEP_AFTER = 3, TWO_STEP_HEAVY_AFTER = 6;
 
 const weaps = h => h.writes.filter(f => f.startsWith('$WEAP,0,'));
 const ammos = h => h.writes.filter(f => f.startsWith('$AMMO,0,'));
@@ -2699,6 +2705,7 @@ test('F259: FIVE PRESSES ON A RESETTING GUN -- one degrade, one recovery, and th
   // The profile is the shipping assault rifle: crisp 100, degraded 70, three rounds.
   const h = armRecoil({ ceiling: 100, floor: 70, per_shot: 10, recover_ms: 150 });
   assert.equal(h.eng._recoil.afterShots, 3, 'pre-condition: the shipping AR degrades after three rounds');
+  assert.equal(h.eng._recoil.heavyAfter, 6, 'and five presses must stay clear of its SECOND rung, or this test is measuring two degrades');
   const CLIP = 32, WRITE_MS = 40;               // the bench measured a write landing in 30-90 ms
   const gun = { mag: 11, reserve: 215 };
   let cursor = h.writes.length;
@@ -2741,7 +2748,7 @@ test('F259: FIVE PRESSES ON A RESETTING GUN -- one degrade, one recovery, and th
     pump(); h.eng.tick(); pump();
   }
   assert.equal(weaps(h).length, 1, `five rounds must cost ONE degrade write: ${weaps(h).join(' | ')}`);
-  assert.equal(weaps(h)[0].split(',')[22], '70');
+  assert.equal(weaps(h)[0].split(',')[22], '85');
   // Now the nine seconds Tony watched it flap in. Nothing is firing.
   step(9000);
   assert.equal(weaps(h).length, 2,
@@ -2783,21 +2790,21 @@ test('F259: the echo is not evidence of anything else either -- no phantom shots
 
 // ---------- F259: one step, not a walk ----------
 
-test('F259: a sustained burst costs TWO $WEAP writes -- one down, one back -- not one per round', () => {
+test('F259: a sustained burst costs THREE $WEAP writes -- two down, one back -- not one per round', () => {
   const h = armRecoil(RECOIL_PROFILE);
   h.writes.length = 0;
   fire(h, 20, { gap: 100 });   // 20 rounds over 2 s, every one of which the old ladder would have stepped
-  assert.equal(weaps(h).length, 1, `a burst must cost ONE write on the way down, not one a round (got ${weaps(h).length})`);
-  assert.equal(weaps(h)[0].split(',')[22], '20', 'the mid-burst write drops accuracy to the DEGRADED value in one step');
-  assert.equal(weaps(h)[0].split(',')[23], '20', 'both tokens, never one -- S42 pins t21 and t22 together');
-  assert.equal(h.eng._recoil.state, 'degraded');
+  assert.deepEqual(weaps(h).map(f => f.split(',')[22]), ['60', '20'],
+    `a burst must cost one write PER RUNG on the way down, not one a round: ${weaps(h).join(' | ')}`);
+  assert.deepEqual(weaps(h).map(f => f.split(',')[23]), ['60', '20'], 'both tokens, never one -- S42 pins t21 and t22 together');
+  assert.equal(h.eng._recoil.state, 'heavy');
   h.adv(SETTLE_MS + 10); h.eng.tick();
-  assert.equal(weaps(h).length, 2, 'the trigger going quiet must cost exactly one more write');
-  assert.equal(weaps(h)[1].split(',')[22], '100', 'and that write puts the weapon back to CRISP');
+  assert.equal(weaps(h).length, 3, 'the trigger going quiet must cost exactly one more write');
+  assert.equal(weaps(h)[2].split(',')[22], '100', 'and that write puts the weapon back to CRISP');
   assert.equal(h.eng._recoil.state, 'crisp');
   ack(h);                       // the gun confirms it, so the verify/retry loop is not what the next line measures
   h.adv(SETTLE_MS * 3); h.eng.tick();
-  assert.equal(weaps(h).length, 2, 'a weapon already crisp and already quiet must never write again');
+  assert.equal(weaps(h).length, 3, 'a weapon already crisp and already quiet must never write again');
 });
 
 test('F259: the step lands DURING the burst -- recoil is not deferred until the trigger goes quiet', () => {
@@ -2808,7 +2815,7 @@ test('F259: the step lands DURING the burst -- recoil is not deferred until the 
   assert.equal(h.eng._recoil.state, 'crisp');
   fire(h, 1);
   assert.equal(weaps(h).length, 1, 'the threshold round must degrade the weapon there and then, with the trigger still down');
-  assert.equal(h.eng._recoil.value, 20);
+  assert.equal(h.eng._recoil.value, 60);
 });
 
 test('F259: a burst that never reaches the threshold is forgotten -- two taps a minute apart are not one burst', () => {
@@ -2819,6 +2826,120 @@ test('F259: a burst that never reaches the threshold is forgotten -- two taps a 
   assert.equal(h.eng._recoil.burst, 0, 'the settle clock must clear a burst that never crossed the threshold');
   fire(h, DEGRADE_AFTER - 1);
   assert.equal(weaps(h).length, 0, 'two short bursts, a settle apart, must not add up to one long one');
+});
+
+// ---------- F259 step 2: crisp, degraded, heavily degraded, and still ONE recovery ----------
+// Tony, at the bench 2026-09-18, after the one-step writer ran on hardware: "maybe we can update it to do
+// 2 steps instead of 1? normal degraded and very degraded."
+
+test('F259 step 2: the writes follow the STATE CHANGES, never the rounds -- a 30-round burst costs exactly three, at any magazine size', () => {
+  // THE property the whole design exists to protect. Every `$WEAP` resets the gun's magazine, so every
+  // write is a chance to lose a round (F259): the old ladder wrote twenty-odd times a burst and that is
+  // what erased the shots. A second rung may cost ONE more write a burst and no more, and the count must
+  // never track the rounds fired or the magazine they came out of.
+  for (const clip of [36, 120]) {
+    const h = armRecoil(TWO_STEP);
+    // The gun comes up to ITS OWN clip before a round is fired, the way a reload leaves it. Without this
+    // the first `$ALCD` of the run is a RISE, so the press behind it is never answered and stays booked
+    // against the account for the whole burst -- which parks the writer behind its `shotInFlight` guard.
+    if (clip !== 36) { h.frame(`$ALCD,${clip},100,0,215,0,*`); h.eng.tick(); }
+    h.writes.length = 0;
+    const gun = sustainedFire(h, { clip, rounds: 30 });
+    assert.equal(gun.fired, 30, `pre-condition: the gun must actually have fired 30 rounds at clip ${clip}`);
+    assert.deepEqual(weaps(h).map(f => f.split(',')[22]), ['85', '70'],
+      `30 rounds must cost TWO writes on the way down at clip ${clip}: ${weaps(h).join(' | ')}`);
+    h.adv(SETTLE_MS + 10); h.eng.tick();
+    assert.deepEqual(weaps(h).map(f => f.split(',')[22]), ['85', '70', '100'],
+      `and exactly one more on the way back at clip ${clip}: ${weaps(h).join(' | ')}`);
+    assert.deepEqual(weaps(h).map(f => f.split(',')[23]), ['85', '70', '100'], 'both tokens on every write, never one');
+  }
+});
+
+test('F259 step 2: the heavy step fires at ITS OWN threshold, not one round before and not again after', () => {
+  const h = armRecoil(TWO_STEP);
+  h.writes.length = 0;
+  fire(h, TWO_STEP_HEAVY_AFTER - 1);
+  assert.equal(h.eng._recoil.state, 'degraded', `${TWO_STEP_HEAVY_AFTER - 1} rounds must leave the weapon on the FIRST rung`);
+  assert.equal(h.eng._recoil.value, 85);
+  assert.equal(weaps(h).length, 1, `only the first threshold may have written: ${weaps(h).join(' | ')}`);
+  fire(h, 1);
+  assert.equal(h.eng._recoil.state, 'heavy', 'the threshold round must degrade it again, there and then, with the trigger still down');
+  assert.equal(h.eng._recoil.value, 70);
+  assert.equal(weaps(h).length, 2);
+  assert.equal(weaps(h)[1].split(',')[22], '70');
+  assert.equal(weaps(h)[1].split(',')[23], '70');
+  fire(h, 15);
+  assert.equal(weaps(h).length, 2, `there is no third rung -- 15 more rounds must cost nothing: ${weaps(h).join(' | ')}`);
+});
+
+test('F259 step 2: the recovery is ONE write from EITHER degraded state -- the player releases once', () => {
+  for (const [rounds, state, value] of [[TWO_STEP_AFTER, 'degraded', 85], [TWO_STEP_HEAVY_AFTER, 'heavy', 70]]) {
+    const h = armRecoil(TWO_STEP);
+    h.writes.length = 0;
+    fire(h, rounds);
+    assert.equal(h.eng._recoil.state, state, `pre-condition: ${rounds} rounds must leave the weapon ${state}`);
+    assert.equal(h.eng._recoil.value, value);
+    const down = weaps(h).length;
+    h.adv(SETTLE_MS + 10); h.eng.tick();
+    assert.equal(weaps(h).length, down + 1, `a release from ${state} must cost exactly one write: ${weaps(h).join(' | ')}`);
+    assert.equal(weaps(h)[down].split(',')[22], '100', `and it must go straight back to CRISP from ${state}, not climb a rung`);
+    assert.equal(h.eng._recoil.state, 'crisp');
+    ack(h);   // the gun confirms it, so the verify/retry loop is not what the next line measures
+    h.adv(SETTLE_MS * 3); h.eng.tick();
+    assert.equal(weaps(h).length, down + 1, 'a weapon already crisp and already quiet must never write again');
+  }
+});
+
+test('F259 step 2: the minimum write gap throttles a RE-SEND, never a state change', () => {
+  // The assault rifle's two rungs are three rounds apart, which is INSIDE ACC_WRITE_MIN_GAP_MS on any
+  // weapon firing faster than about 80 ms a round. Throttling the second rung would defer it to a tick,
+  // and a clock-driven write is composed in an inter-round gap and lands after the next round has left,
+  // so its `$AMMO` hands that round back -- the F259 defect, through the back door. The state machine
+  // already bounds a burst to three writes, so it is what limits the write rate now, not this gap.
+  const h = armRecoil(TWO_STEP);
+  h.writes.length = 0;
+  const at = h.eng.now();
+  fire(h, TWO_STEP_HEAVY_AFTER, { gap: 40 });   // six rounds inside 250 ms
+  assert.ok(h.eng.now() - at < ACC_WRITE_MIN_GAP_MS, 'pre-condition: the whole burst must fit inside one minimum gap');
+  assert.deepEqual(weaps(h).map(f => f.split(',')[22]), ['85', '70'],
+    `both rungs must be written DURING the burst, never deferred to a tick: ${weaps(h).join(' | ')}`);
+  // CONTROL: a write that re-sends the value the gun is already holding DOES wait out the gap. This is the
+  // shape `_holdAccuracyWrites` leaves behind -- same value, re-asserted once the hold lifts.
+  ack(h);
+  const n = weaps(h).length;
+  h.eng._recoil.dirty = true;
+  h.adv(10); h.eng.tick();
+  assert.equal(weaps(h).length, n, 'a re-send inside the minimum gap must wait');
+  h.adv(ACC_WRITE_MIN_GAP_MS); h.eng.tick();
+  assert.equal(weaps(h).length, n + 1, 'and go out once the gap has passed');
+  assert.equal(weaps(h)[n].split(',')[22], '70', 'carrying the state the model holds, which has not moved');
+});
+
+test('F259 step 2: a frame that reports a whole burst at once lands on the rung those rounds earned, in ONE write', () => {
+  // A run of lost `$ALCD` frames reaches `_recoilStep` as a single multi-round decrement. The burst
+  // decides the state, so it must land on the rung it earned rather than walk down one write at a time --
+  // walking is the cost F259 took out, and it would come back here first.
+  const h = armRecoil(TWO_STEP);
+  h.writes.length = 0;
+  h.mag -= TWO_STEP_HEAVY_AFTER;
+  h.frame(`$ALCD,${h.mag},100,0,215,0,*`);
+  assert.equal(h.eng._recoil.state, 'heavy', 'six rounds in one frame are still six rounds');
+  assert.equal(h.eng._recoil.value, 70);
+  assert.equal(weaps(h).length, 1, `one frame, one write -- not one per rung: ${weaps(h).join(' | ')}`);
+  assert.equal(weaps(h)[0].split(',')[22], '70');
+});
+
+test('F259 step 2: the magazine account survives BOTH writes -- two resets in one burst, and the gun still runs dry', () => {
+  // The bug that started all this: a `$WEAP` resets the gun's magazine and the `$AMMO` beside it decides
+  // what the player is left holding, so a stale restore hands back a round that has already left. Two
+  // degrade writes in one burst are two chances to do it.
+  const h = armRecoil(TWO_STEP);
+  const gun = sustainedFire(h);
+  assert.ok(gun.resets >= 2, `pre-condition: both degrade writes must have reset the magazine: ${gun.resets} resets`);
+  assert.equal(gun.mag, 0, 'the magazine did not empty -- a write restored a round that had already left the gun');
+  assert.equal(gun.fired, 36, `the player must get exactly the magazine they were given: ${gun.fired} rounds left the gun`);
+  assert.equal(h.eng._acctLive(0), 0, 'and the node must agree the magazine is spent, or the HUD lies about it');
+  assert.equal(h.eng.shots, gun.fired, `the shot counter must still agree with the gun: ${h.eng.shots} booked, ${gun.fired} fired`);
 });
 
 test('F259: a weapon with NO recoil block at all arms nothing -- absent means "never degrades", not "use a default"', () => {
@@ -2864,17 +2985,46 @@ test('F259: arming ASSERTS the crisp value when the compiled $WEAP does not alre
   assert.equal(h.eng._recoil.state, 'crisp', 'and the weapon is CRISP while it says so -- this is not a degrade');
 });
 
-test('F259: the two-state shape is derived from the ladder block the catalogue still ships', () => {
+test('F259: the state shape is derived from the ladder block the catalogue still ships', () => {
   // `weapons.json` is owned elsewhere, so `_recoilProfile` reads the fields it WANTS and falls back to the
-  // ladder's own ends and length. An assault rifle (100 -> 70 at 10 a round) reads as 3 rounds.
+  // old gradual ladder. The derivation is that ladder read as three rungs instead of twenty: its ceiling is
+  // CRISP, its floor is HEAVY, and DEGRADED is halfway between, so no weapon loses the accuracy it has
+  // always ended a burst on. It reproduces the catalogue owner's own table, row for row.
   const h = armRecoil(RECOIL_PROFILE);
-  const p = h.eng._recoilProfile({ ceiling: 100, floor: 70, per_shot: 10, recover_ms: 150 });
-  assert.deepEqual(p, { crisp: 100, degraded: 70, afterShots: 3, settleMs: RECOIL_SETTLE_MIN_MS });
-  // and the fields the catalogue should carry win outright when they are there
-  assert.deepEqual(h.eng._recoilProfile({ crisp: 90, degraded: 40, after_shots: 5, settle_ms: 900 }),
-    { crisp: 90, degraded: 40, afterShots: 5, settleMs: 900 });
-  assert.equal(h.eng._recoilProfile({ ceiling: 100, floor: 100, per_shot: 0, recover_ms: 0 }), null, 'a flat weapon has no profile');
+  const from = (ceiling, floor, per_shot, recover_ms = 150) => h.eng._recoilProfile({ ceiling, floor, per_shot, recover_ms });
+  const row = (crisp, degraded, heavy, afterShots, heavyAfter) =>
+    ({ crisp, degraded, heavy, afterShots, heavyAfter, settleMs: RECOIL_SETTLE_MIN_MS });
+  assert.deepEqual(from(100, 70, 10), row(100, 85, 70, 3, 6), 'the assault rifle, and the energy rifle with it');
+  assert.deepEqual(from(100, 85, 5), row(100, 92, 85, 3, 6), 'the burst rifle: an odd midpoint rounds DOWN');
+  assert.deepEqual(from(100, 60, 10), row(100, 80, 60, 4, 8), 'the force rifle: a longer ladder is a later pair of thresholds');
+  assert.deepEqual(from(100, 45, 8, 120), row(100, 72, 45, 7, 14), 'and the stinger, the longest of them');
   assert.equal(h.eng._recoilProfile(null), null);
+});
+
+test('F259 step 2: the DECLARED fields win outright, because the catalogue owner sets the real numbers', () => {
+  // Three of the eight shipping floors came UP when the fields were adopted (the SMG and the Suppressor
+  // from 55, the Stinger from 45, all to 60), because the accuracy bench measured only 7 of 18 shots
+  // landing at 50 to 60: a weapon that lands 39% of its rounds is removed from the fight rather than
+  // penalised. That is a judgement the derivation above cannot see, so those weapons DECLARE `heavy` and
+  // the declared numbers must reach the model untouched.
+  const h = armRecoil(RECOIL_PROFILE);
+  assert.deepEqual(h.eng._recoilProfile({ crisp: 100, degraded: 78, heavy: 60, after_shots: 3, after_heavy: 6, settle_ms: 600 }),
+    { crisp: 100, degraded: 78, heavy: 60, afterShots: 3, heavyAfter: 6, settleMs: 600 }, 'the SMG as the catalogue declares it');
+  // A half-adopted row works too: a declared `heavy` IS the ladder's floor, and everything absent derives
+  // from it rather than from the old one.
+  assert.deepEqual(h.eng._recoilProfile({ ceiling: 100, floor: 45, per_shot: 8, recover_ms: 120, heavy: 60 }),
+    { crisp: 100, degraded: 80, heavy: 60, afterShots: 5, heavyAfter: 10, settleMs: RECOIL_SETTLE_MIN_MS });
+});
+
+test('F259: a ladder too short to split in two collapses back to ONE step, rather than writing the same number twice', () => {
+  // A second write that sends the gun the value it is already holding spends a magazine reset for nothing.
+  const h = armRecoil(RECOIL_PROFILE);
+  assert.deepEqual(h.eng._recoilProfile({ ceiling: 100, floor: 99, per_shot: 1, recover_ms: 150 }),
+    { crisp: 100, degraded: 99, heavy: null, afterShots: 1, heavyAfter: 0, settleMs: RECOIL_SETTLE_MIN_MS });
+  assert.deepEqual(h.eng._recoilProfile({ crisp: 100, degraded: 70, heavy: 70, after_shots: 3 }),
+    { crisp: 100, degraded: 70, heavy: null, afterShots: 3, heavyAfter: 0, settleMs: RECOIL_SETTLE_MIN_MS },
+    'two rungs declared at the same accuracy are one rung');
+  assert.equal(h.eng._recoilProfile({ ceiling: 100, floor: 100, per_shot: 0, recover_ms: 0 }), null, 'and a flat weapon has no profile at all');
 });
 
 test('S42: the accuracy write is a TARGETED MUTATION of the compiled $WEAP -- only t21 and t22 move, every other token byte-identical', () => {
@@ -3082,7 +3232,7 @@ test('S42: verify and retry -- a first mismatch retries once; a second gives up,
   h.frame(`$ALCD,${h.mag},100,0,215,0,*`);                    // stale answer, no decrement -- lastSeenAcc stays 100
   h.adv(ACC_VERIFY_GRACE_MS + 10); h.eng.tick();              // grace expires unconfirmed -> retry (re-sends 20)
   assert.equal(weaps(h).length, 2, 'the first mismatch must retry exactly once');
-  assert.equal(weaps(h)[1].split(',')[22], '20', 'the retry re-sends the SAME value, not a fresh one');
+  assert.equal(weaps(h)[1].split(',')[22], '60', 'the retry re-sends the SAME value, not a fresh one');
   h.adv(ACC_VERIFY_GRACE_MS + 10); h.eng.tick();              // the retry also goes unconfirmed
   assert.equal(weaps(h).length, 3, 'a second failure must write once more: the crisp restore');
   const restore = weaps(h)[2].split(',');
@@ -3143,7 +3293,7 @@ test('S42 x A44: the SPAWN write owns $AMMO -- no accuracy write lands inside th
   assert.equal(h.eng._recoil.state, 'degraded', 'the hold must delay the WRITE, never the model');
   h.adv(ACC_HOLD_MS); h.eng.tick();
   assert.equal(weaps(h).length, 1, 'once the hold lifts the held state must go out exactly once');
-  assert.equal(weaps(h)[0].split(',')[22], '20', 'and it must carry the degraded value, not the crisp one');
+  assert.equal(weaps(h)[0].split(',')[22], '60', 'and it must carry the degraded value, not the crisp one');
 });
 
 test('S42 x A47: an operator RESYNC GUN holds the accuracy writer, then the live value is re-asserted', () => {
@@ -3160,7 +3310,7 @@ test('S42 x A47: an operator RESYNC GUN holds the accuracy writer, then the live
     'an accuracy write landed while the resync owned $AMMO -- the two would race on the same counts');
   h.adv(ACC_HOLD_MS); h.eng.tick();
   assert.equal(weaps(h).length, 1, 'the writer must re-assert the live value once the resync hold lifts');
-  assert.equal(weaps(h)[0].split(',')[22], '20', 'and re-assert the state the model holds, not the crisp value');
+  assert.equal(weaps(h)[0].split(',')[22], '60', 'and re-assert the state the model holds, not the crisp value');
 });
 
 test('S42 x F15: a stun disarms the gun, and no accuracy write may re-arm it', () => {

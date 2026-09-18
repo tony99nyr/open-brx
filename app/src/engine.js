@@ -184,8 +184,14 @@ export const OVERHEAT_SHOWN_MS = 6000;
 // gauge after each shot and shines it once when the next round is due. Automatic weapons sit under it and get neither.
 const SHOT_CUE_MIN_MS = 400;
 // S42 (bench 2026-09-17): a $WEAP re-push resets mag/reserve/live-accuracy, and 5 writes 200 ms apart kept the
-// gun armed and firing — 250 ms is comfortably inside "stays armed" with headroom for BLE jitter, and it is
-// the only throttle standing between a full-auto burst and a $WEAP flood.
+// gun armed and firing — 250 ms is comfortably inside "stays armed" with headroom for BLE jitter.
+// ⚠ F259 step 2: it throttles only a write that RE-SENDS a value the gun has already been told (a retry, or a
+// re-assertion after an accuracy hold). It was the only thing standing between the old per-shot ladder and a
+// $WEAP flood; the state machine is now what bounds the write rate, to three a burst, so a write carrying a
+// NEW value goes out at once. That matters: a deferred write is a CLOCK-driven write, composed in an
+// inter-round gap and landing after the next round has left, and its `$AMMO` then hands that round back. The
+// assault rifle's two rungs are three rounds apart, which is inside this gap on any weapon firing faster than
+// about 80 ms a round, so deferring them would have put a lost round into every fast burst.
 export const ACC_WRITE_MIN_GAP_MS = 250;
 // ---- the accuracy writer's two windows move together (maint review 2026-09-17) ---------------------
 // ACC_HOLD_MS > ACC_VERIFY_GRACE_MS, and engine.test.mjs asserts that order. A hold shorter than the
@@ -221,6 +227,16 @@ export const ACC_HOLD_MS = 800;
 // makes the writer flap twice a burst for nothing. Above ACC_VERIFY_GRACE_MS too, so the recovery write
 // is never racing the degrade write's own verify.
 export const RECOIL_SETTLE_MIN_MS = 600;
+// F259 step 2 (Tony, bench 2026-09-18): "maybe we can update it to do 2 steps instead of 1? normal
+// degraded and very degraded." The rungs are the OLD GRADUAL LADDER'S OWN ENDS: `crisp` is the ceiling it
+// started from and `heavy` is the floor it walked down to, with `degraded` halfway between. So the second
+// step costs no weapon its identity -- the assault rifle still bottoms out at 70 exactly as it always
+// did, it just arrives there in two visible stages instead of twenty invisible ones.
+//
+// `after_heavy` is twice `after_shots`: "you are holding the trigger", then "you are still holding it".
+// ⚠ THE DOUBLING HAS NO EVIDENCE BEHIND IT. It is a reading of what the two stages mean, not a
+// measurement, and it wants a bench pass.
+export const RECOIL_HEAVY_BURST_FACTOR = 2;
 // F259 (bench 2026-09-18): how long the node owns a slot's magazine after it writes one, when the gun has
 // not yet echoed the number back. A `$WEAP` + `$AMMO` pair makes the gun send `$ALCD <clip>` then
 // `$ALCD <n>`, and that second frame is a decrement of `clip - n` that is NOT fire. The window normally
@@ -2820,12 +2836,20 @@ export class Engine {
   // (bench 2026-09-17), so every accuracy write carries a same-breath `$AMMO` restore of the LIVE
   // counts -- the same disarm/restore shape as the stun above (§3.12 in node.md, F15).
   //
-  // F259 (Tony, at the bench 2026-09-18): recoil is ONE STEP, not a walk. Accuracy has two states, CRISP
-  // and DEGRADED. Sustained fire crosses `afterShots` rounds and drops it once; the trigger going quiet
-  // for `settleMs` puts it back once. That is two `$WEAP` writes a burst instead of about twenty, and
-  // since every write resets the gun's magazine, each write is a chance to lose a round. The step still
-  // lands DURING the burst, which is the whole point of recoil -- it is not deferred to the trigger
-  // going quiet.
+  // F259 (Tony, at the bench 2026-09-18): recoil is a SHORT LADDER OF STATES, not a per-shot walk.
+  // Accuracy is CRISP, then DEGRADED once the burst reaches `afterShots` rounds, then HEAVY once it
+  // reaches `heavyAfter` -- Tony, after the first version ran on hardware: "maybe we can update it to do
+  // 2 steps instead of 1? normal degraded and very degraded". The trigger going quiet for `settleMs`
+  // puts it back to crisp in ONE step from wherever it got to, because the player releases once.
+  //
+  // ⚠ THE PROPERTY TO PROTECT: the number of writes is proportional to the number of STATE CHANGES and
+  // never to the number of rounds. A burst of any length costs at most three `$WEAP` writes -- two down
+  // and one back -- where the old ladder cost about twenty. Every write resets the gun's magazine, so
+  // every write is a chance to lose a round, which is the whole of F259. A third rung would cost one
+  // more write a burst; a rung per round is the bug.
+  //
+  // Both steps land DURING the burst, which is the point of recoil -- neither is deferred to the
+  // trigger going quiet.
   //
   // Seam for stance/flinch (S42, not built here): a future stance module can move the threshold
   // `_recoilStep` reads from the motion sensor; a future flinch module can read `this._recoil.value`
@@ -2852,30 +2876,58 @@ export class Engine {
     if (!r.disabled) r.dirty = true;
     this.log(`accuracy writes held ${ACC_HOLD_MS} ms — ${why}`, 'li');
   }
-  /** The two-state shape, read from the catalogue's `recoil` block.
+  /** The three-state shape, read from the catalogue's `recoil` block.
    *
-   *  ⚠ The block the catalogue ships TODAY is `{ceiling, floor, per_shot, recover_ms}`, the old ladder's
-   *  shape, and `mcp/brx_mcp/mc/weapons.json` is owned elsewhere. So this reads the fields the two-state
-   *  model wants (`crisp`, `degraded`, `after_shots`, `settle_ms`) and derives each one from the ladder
-   *  when it is absent, which is how the new fields land without a second change here:
-   *    crisp/degraded  the ladder's own ends -- the same two accuracies, minus every rung between them.
-   *    after_shots     the ladder's LENGTH: the rounds it took to walk ceiling -> floor at `per_shot`.
-   *                    An assault rifle (100 -> 70 at 10) reads as 3 rounds, an SMG (100 -> 55 at 15) as 3,
-   *                    a stinger (100 -> 45 at 8) as 7. Those are playable numbers, not placeholders.
-   *    settle_ms       RECOIL_SETTLE_MIN_MS or `recover_ms`, whichever is longer. See that constant: 150 ms
-   *                    of quiet is a gap between two rounds, not a player lowering the weapon.
-   *  A weapon that cannot degrade (floor == ceiling, which is most of the catalogue) arms NOTHING: there is
-   *  no state for it to change, so there is no write for it to make. Returns null for those. PURE. */
+   *  ⚠ The block the catalogue ships TODAY is `{ceiling, floor, per_shot, recover_ms}`, the old gradual
+   *  ladder's shape, and `mcp/brx_mcp/mc/weapons.json` is owned elsewhere. So this reads the fields the
+   *  model wants (`crisp`, `degraded`, `heavy`, `after_shots`, `after_heavy`, `settle_ms`) and derives
+   *  each one when it is absent, which is how the new fields land without a second change here. The
+   *  derivation reproduces the catalogue owner's table exactly, because the table is the old ladder read
+   *  as three rungs rather than twenty:
+   *    crisp       the ladder's CEILING -- where the weapon has always started.
+   *    heavy       the ladder's FLOOR -- where it has always bottomed out. The second step therefore
+   *                costs no weapon its identity: the assault rifle still ends at 70, it just gets there
+   *                in two visible stages.
+   *    degraded    halfway between the two, rounded DOWN (the burst rifle's 100/85 reads as 92).
+   *    after_shots the ladder's LENGTH: the rounds it took to walk ceiling -> floor at `per_shot`. An
+   *                assault rifle (100 -> 70 at 10) reads as 3 rounds, a force rifle (100 -> 60 at 10) as
+   *                4, a stinger (100 -> 45 at 8) as 7. Those are playable numbers, not placeholders.
+   *    after_heavy RECOIL_HEAVY_BURST_FACTOR times `after_shots`. See that constant: the doubling is a
+   *                reading, not a measurement.
+   *    settle_ms   RECOIL_SETTLE_MIN_MS or `recover_ms`, whichever is longer. See that constant: 150 ms
+   *                of quiet is a gap between two rounds, not a player lowering the weapon.
+   *
+   *  ⚠ ONE JUDGEMENT THE DERIVATION CANNOT SEE. The catalogue owner raised three floors when adopting the
+   *  fields -- the SMG and the Suppressor from 55, the Stinger from 45, all to 60 -- because the accuracy
+   *  bench measured only 7 of 18 shots landing at 50 to 60. A weapon that lands 39% of its rounds is
+   *  removed from the fight rather than penalised. Those three weapons therefore DECLARE `heavy`, and
+   *  what this function derives from their old floors is deliberately not what they ship. Both that band
+   *  and the doubling above want the same bench pass: a magazine of full auto at 60 and again at 55,
+   *  against a static target, counting `$HIR`.
+   *
+   *  A weapon that cannot degrade (floor == ceiling, which is most of the catalogue) arms NOTHING: there
+   *  is no state for it to change, so there is no write for it to make. Returns null for those.
+   *
+   *  ⚠ An `after_heavy` at or below `after_shots` is not rejected: the burst that crosses the first
+   *  threshold crosses the second in the same breath, so the weapon drops straight to `heavy` in ONE
+   *  write and `degraded` never appears. That is coherent, it costs no extra write, and it is the
+   *  catalogue's choice to make. PURE. */
   _recoilProfile(r) {
     if (!r) return null;
     const crisp = +(r.crisp != null ? r.crisp : r.ceiling);
-    const degraded = +(r.degraded != null ? r.degraded : r.floor);
+    const bottom = +(r.heavy != null ? r.heavy : r.floor);   // the ladder's floor: `heavy` once the catalogue declares it
     const perShot = Math.max(0, +r.per_shot || 0);
     const after = Math.round(+(r.after_shots != null ? r.after_shots
-      : (perShot > 0 ? Math.ceil((crisp - degraded) / perShot) : 0)));
+      : (perShot > 0 ? Math.ceil((crisp - bottom) / perShot) : 0)));
     const settle = Math.max(RECOIL_SETTLE_MIN_MS, +(r.settle_ms != null ? r.settle_ms : r.recover_ms) || 0);
-    if (!(crisp > 0) || !(degraded < crisp) || !(after > 0)) return null;
-    return { crisp, degraded, afterShots: after, settleMs: settle };
+    if (!(crisp > 0) || !(bottom < crisp) || !(after > 0)) return null;
+    const mid = Math.round(+(r.degraded != null ? r.degraded : Math.floor((crisp + bottom) / 2)));
+    // The two rungs must be DISTINCT VALUES, or the second write spends a magazine reset to send the gun
+    // the number it is already holding. A ladder too short to split in two collapses back to one step.
+    const two = mid > bottom && mid < crisp;
+    return { crisp, degraded: two ? mid : bottom, afterShots: after, settleMs: settle,
+      heavy: two ? bottom : null,
+      heavyAfter: two ? Math.round(+(r.after_heavy != null ? r.after_heavy : after * RECOIL_HEAVY_BURST_FACTOR)) : 0 };
   }
   /** (Re)arm the accuracy model for the ACTIVE weapon: spawn, revive, a confirmed weapon swap and the
    *  reconcile re-arm all call this, because each one is a point where the gun's OWN live accuracy is known
@@ -2889,6 +2941,7 @@ export class Engine {
     const p = this._recoilProfile(row && row.recoil);
     if (!p) return;
     this._recoil = { weaponId: id, crisp: p.crisp, degraded: p.degraded, afterShots: p.afterShots, settleMs: p.settleMs,
+      heavy: p.heavy, heavyAfter: p.heavyAfter,
       value: p.crisp, state: 'crisp', burst: 0, dirty: false,
       lastShotAt: 0, lastWriteAt: 0, lastWriteValue: null, pendingWriteAt: 0,
       lastSeenAcc: null, retried: false, disabled: false, giveUp: false };
@@ -2914,15 +2967,24 @@ export class Engine {
   }
   /** A shot just left the active slot's magazine (`_onAmmo`'s mag decrement, `n` rounds this frame --
    *  almost always 1, but a lost `$ALCD` can report more than one gone at once). Counts it against the
-   *  burst; the `afterShots`-th round of a burst is the one that degrades the weapon, and every round
-   *  after it costs nothing -- the state is already DEGRADED, so nothing is dirty and nothing is written. */
+   *  burst; the `afterShots`-th round degrades the weapon and the `heavyAfter`-th round degrades it again,
+   *  and every other round costs nothing -- the state is already where the burst puts it, so nothing is
+   *  dirty and nothing is written. A burst therefore writes once per STATE CHANGE and never per round,
+   *  which is the property to protect: every write resets the gun's magazine, so every write is a chance
+   *  to lose a round (F259). */
   _recoilStep(n) {
     const r = this._recoil; if (!r || r.disabled || n <= 0) return;
     const now = this.now();
     r.lastShotAt = now;
     r.burst += n;
-    if (r.state !== 'crisp' || r.burst < r.afterShots) return;
-    r.state = 'degraded'; r.value = r.degraded; r.dirty = true;
+    // The BURST decides the state, never the state that came before it. A frame reporting several rounds
+    // gone at once (a lost `$ALCD`) must land on the rung those rounds earned in ONE write, rather than
+    // walk down a write at a time -- the walk is exactly what F259 took out.
+    const want = r.heavy != null && r.burst >= r.heavyAfter ? 'heavy'
+      : r.burst >= r.afterShots ? 'degraded'
+      : 'crisp';
+    if (want === r.state) return;
+    r.state = want; r.value = want === 'heavy' ? r.heavy : want === 'degraded' ? r.degraded : r.crisp; r.dirty = true;
     // Flush from HERE rather than waiting for the next tick. This instant is the freshest the magazine
     // account will ever be -- the `$ALCD` that booked this very round has just landed, so nothing is
     // unaccounted for -- and every millisecond between the account and the `$AMMO` restore is a
@@ -2933,12 +2995,15 @@ export class Engine {
    *  weapon's own gap between rounds is never read as a release) and the one writer/verify flush. Called
    *  every tick whether or not a shot happened, because settling and the verify-grace expiry are both
    *  TIME, not event, driven. A burst that never reached the threshold is forgotten here too, so three
-   *  rounds now and three in a minute are not one six-round burst. */
+   *  rounds now and three in a minute are not one six-round burst.
+   *
+   *  The recovery is ONE step from wherever the burst left the weapon -- degraded or heavy -- straight
+   *  back to crisp. The player releases the trigger once, so the gun is told once. */
   _recoilTick(now) {
     const r = this._recoil; if (!r || !this.alive) return;   // a dead gun has no accuracy worth spending a write on (a write would not revive it either, bench 2026-09-17 -- just wasted BLE traffic)
     if (!r.disabled && now - r.lastShotAt >= r.settleMs) {
       r.burst = 0;
-      if (r.state === 'degraded') { r.state = 'crisp'; r.value = r.crisp; r.dirty = true; }
+      if (r.state !== 'crisp') { r.state = 'crisp'; r.value = r.crisp; r.dirty = true; }
     }
     this._recoilFlush(now);
   }
@@ -2959,7 +3024,10 @@ export class Engine {
       this._recoilVerify(now);
     }
     if (r.disabled || !r.dirty) return;
-    if (now - r.lastWriteAt < ACC_WRITE_MIN_GAP_MS) return;
+    // F259 step 2: the minimum gap throttles a RE-SEND (a retry, a re-assertion after a hold), never a state
+    // change. See ACC_WRITE_MIN_GAP_MS: the state machine bounds a burst to three writes by itself, and a
+    // state change deferred to the clock is the write that costs the player a round.
+    if (r.value === r.lastWriteValue && now - r.lastWriteAt < ACC_WRITE_MIN_GAP_MS) return;
     // The writer's stand-down set (`STAND_DOWN`), unchanged by the 2026-09-17 maint pass:
     //   reconciling / resync  §3.10: the node infers nothing in these windows, and both re-arm the gun themselves.
     //   switching / reloading the gun is mid-takeover; a `$WEAP` re-push lands in the middle of it.
