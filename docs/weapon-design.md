@@ -1208,6 +1208,90 @@ fixed backdrop.
 
 ---
 
+## 7. The triangle, and what belongs in which slot
+
+Written 2026-09-18, after the bench turned four `$SIR` functions from guesses into measurements. Tony's
+brief: "lets be thorough and balance and placement and rock paper scissor". This section is the answer,
+and every number in it comes from a `$HP` delta.
+
+### 7.1 There are only four ways to take someone down
+
+| way | mechanism | what it is good against | what it is bad against |
+|---|---|---|---|
+| **Plain damage** | fn 1: drains shield, then armour, then health | a bare target: nothing is faster | anything wearing a big pool |
+| **Armour piercing** | fn 2 or 6: straight to health, ignores armour | a heavily armoured target | a bare target, because its damage has to be cut |
+| **Stripping** | fn 20: removes every protective layer and CANNOT kill | a big pool, with a teammate to finish | a bare target: it does literally nothing |
+| **Denial** | fn 23: the target's accuracy falls to 0 for about 3 s | anyone who has to aim | anyone who simply walks away |
+
+A fifth, **damage over time**, is node-driven and not built (S16). It is the answer to walking away,
+which is what makes it the natural counter to denial.
+
+### 7.2 The triangle, in seconds
+
+The Assault Rifle chassis at 9 damage and 100 ms, against the three pools we ship. Armour Piercing is
+priced at **`t5` = 3**, one third of base. That number is not "about 60%": it is the integer that works.
+0.4 x 9 is 3.6, and rounding it to 4 gives AP a 1.10 s kill that beats plain damage everywhere, which
+is the exact failure the price exists to prevent.
+
+| target | plain damage | armour piercing (t5 = 3) | winner |
+|---|---|---|---|
+| standard, 45 + 70 | **1.20 s** | 1.40 s | plain |
+| Body Armor, 45 + 95 | 1.50 s | **1.40 s** | AP, narrowly |
+| Shields preset, 30 + 120 | 1.60 s | see §7.3 | see §7.3 |
+
+The first two rows are the whole point: **the armoured player beats the plain rifle, and the plain
+rifle beats the armour-piercing one.** Neither margin is large, which is what keeps the choice a
+preference rather than a solved problem.
+
+### 7.3 ⚠️ One measurement decides the third row
+
+Armour piercing is proven to ignore **armour** (bench 2026-09-18: five hits killed through 70 armour,
+which never moved). Whether it also ignores a **shield** has never been measured. Our protocol notes
+claim it does, but that claim traces to a reading, not to a run. Both branches close the triangle:
+
+- **If a shield absorbs AP**, nothing changes anywhere. AP takes **4.90 s** against the Shields preset,
+  so shields become the answer to armour piercing, and the host's preset and the player's weapon form
+  their own triangle: armour beats plain, AP beats armour, shields beat AP.
+- **If AP bypasses shields**, the Shields preset must move from 30 health to **45**, keeping the pool at
+  150 (45 + 105). AP is then a flat **1.40 s against everything**, which reads as "the gun that does not
+  care what you are wearing", and the defensive choice stops mattering against it.
+
+**Prefer the first.** It needs no number changes and it gives the presets meaning against each other.
+Until it is measured, treat the Shields row as open and do not ship an AP weapon into a Shields game.
+
+### 7.4 Placement: the slot is part of the balance
+
+Three slots, and each one answers a different question.
+
+| slot | the question it answers | what may go in it |
+|---|---|---|
+| **Primary** | how do you kill someone | anything lethal |
+| **Secondary** | what do you do about what they are wearing, or what they are doing | the lethal backups, plus the two weapons that cannot kill |
+| **Perk** | what are you willing to give up | see `perk-design.md` |
+
+**The rule that falls out, and it is a real one: a weapon that cannot kill may never be a primary.**
+A player whose primary cannot finish anyone is not playing a hard game, they are holding a broken
+tagger. The stripper (fn 20) and smoke (fn 23) are both in that class: measured, useful, and unable to
+take a single point of health. They are secondaries, and carrying one costs the player their backup gun,
+which is the price that makes them fair. That rule wants a validator and a test, not a convention.
+
+### 7.5 Where each new thing goes
+
+| piece | slot | why |
+|---|---|---|
+| **Toxin Rifle** (DoT) | primary | it kills, slowly, and it punishes disengaging. Its direct damage is about half its family's, because the tick is the payload |
+| **Armour Piercing** | primary | it kills, and at `t5` = 3 it is the answer to armour and nothing else |
+| **Stripper** (fn 20) | secondary | it cannot kill. It undresses a target through EVERY layer and carries overflow between them, so one player strips and another finishes. A pure team weapon |
+| **Smoke** (fn 23) | secondary | it cannot kill. It buys three seconds in which the target cannot hit anything |
+| **Crit chance** (`t6`) | a weapon TRAIT, never a slot | it is variance, not power: it makes a slow weapon occasionally fast |
+
+**Two hard rules on crit**, both measured. It is a straight percentage the gun rolls, and it multiplies
+whatever the word would have done, **including an armour-piercing hit** (bench 2026-09-18: 13 damage
+straight to health through untouched armour). So **Armour Piercing must never carry a crit chance**: the
+0.4-to-0.33 price assumes every hit lands for the same cut amount. And a crit weapon must never be the
+highest-damage weapon in its family, because variance on top of a big number is how a one-shot weapon
+becomes a no-counterplay weapon.
+
 ## Appendix — token positions
 
 `resolve()` writes exactly these and nothing else. Doc `tokN` == `frame.split(",")[N+1]`.

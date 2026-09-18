@@ -587,6 +587,35 @@ def test_sir_effect_guard_is_an_ERROR_for_a_weapon_that_deals_no_damage():
     assert any("DEALS NO DAMAGE" in e and "assault_rifle" in e for e in r["errors"]), r["errors"]
 
 
+def test_a_weapon_that_cannot_kill_is_refused_in_the_primary_slot_and_allowed_in_the_second():
+    """§7.4 PLACEMENT, decided 2026-09-18 after the bench measured two functions that cannot kill:
+    fn 20 strips every protective layer and never touches health, and fn 23 drops the victim's accuracy
+    to 0 for about three seconds. Both are real, useful weapons, and `lethal: false` in the catalogue is
+    how a row says "this is deliberate, not the Energy Launcher accident all over again".
+
+    The rule: a support weapon may NOT be a primary, because a player whose primary cannot finish anyone
+    is not playing a hard game, they are holding a broken tagger. It belongs in slot 2, where carrying it
+    costs the player their backup gun, and that cost is what makes it fair.
+
+    The fixture marks a real catalogue row `lethal: false` for the duration of the call, so the test
+    exercises the validator rather than a weapon that does not exist yet."""
+    row = C.catalog._by_id["assault_rifle"]
+    row["lethal"] = False
+    try:
+        # PRIMARY: refused, and the message says where it belongs
+        r = C.validate(_cfg(), [_player(weapons=("assault_rifle",))])
+        assert r["ok"] is False, r
+        assert any("cannot kill" in e and "PRIMARY" in e and "assault_rifle" in e for e in r["errors"]), r["errors"]
+        # SECONDARY: allowed, and it raises no error of its own
+        r2 = C.validate(_cfg(), [_player(weapons=("sniper_rifle", "assault_rifle"))])
+        assert r2["ok"] is True, r2
+        assert not any("assault_rifle" in e for e in r2["errors"]), r2["errors"]
+    finally:
+        row.pop("lethal", None)
+    # CONTROL: with the flag gone the same loadout is ordinary and still fine in either slot
+    assert C.validate(_cfg(), [_player(weapons=("assault_rifle",))])["ok"] is True
+
+
 def test_sir_guard_flags_multiplier_rows_because_published_htk_is_computed_on_raw_t5():
     """`_to_gc()` never maps `crit_modifier` off the compiled `config` dict at all -- it is not a
     per-game configurable field on the wire, only the `gameconfig.py` GameConfig dataclass default

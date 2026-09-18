@@ -22,15 +22,16 @@ def test_put_keeps_stun_and_the_compiled_head_carries_the_emp_row():
     guns = [g["gun_id"] for g in s.armory.list()][:1]
     s.add_player("P0", s.config["teams"][0]["team_id"], guns[0], "male")
     p = next(iter(s.players.values()))
-    # F121/A23: the EMP row lives in the LIVE table (spawn/revive), never in the head -- fn 24 is the
-    # delayed-blast family and must not reach a gun that is not yet live.
+    # F121/A23: the EMP row lives in the LIVE table (spawn/revive), never in the head, because nothing
+    # should be able to smoke a player who is not yet live. F253 (bench 2026-09-18): the function is
+    # fn 23, not fn 24. fn 24 does no damage and leaves the victim's gun faking a hit every 5.07 s.
     b = s._compile_rolled(p)
-    assert any(f.startswith("$SIR,8,0,,24,") for f in b["spawn"]), b["spawn"]
-    assert not any(f.startswith("$SIR,8,0,,24,") for f in b["head"]), b["head"]
+    assert any(f.startswith("$SIR,8,0,,23,") for f in b["spawn"]), b["spawn"]
+    assert not any(f.startswith("$SIR,8,0,,23,") for f in b["head"]), b["head"]
     # null clears it, and the row leaves with it
     s.set_config({"stun": None})
     assert "stun" not in s.config
-    assert not any(f.startswith("$SIR,8,0,,24,") for f in s._compile_rolled(p)["spawn"])
+    assert not any(f.startswith("$SIR,8,0,,23,") for f in s._compile_rolled(p)["spawn"])
     # CONTROL: the shape is checked at PUT, in the operator's voice
     try:
         s.set_config({"stun": 10})
@@ -40,4 +41,4 @@ def test_put_keeps_stun_and_the_compiled_head_carries_the_emp_row():
     # CONTROL: a config that never mentions stun ships no EMP row (the default is OFF)
     t = _sess()
     t.add_player("P0", t.config["teams"][0]["team_id"], guns[0], "male")
-    assert not any(f.startswith("$SIR,8,0,,24,") for f in t._compile_rolled(next(iter(t.players.values())))["spawn"])
+    assert not any(f.startswith("$SIR,8,0,,23,") for f in t._compile_rolled(next(iter(t.players.values())))["spawn"])

@@ -2177,9 +2177,22 @@ class Compiler:
         _pi, _si = T["proto"] + 1, T["subtype"] + 1
         flagged: set[str] = set()
         for p in roster:
-            for w in (p.get("loadout", {}) or {}).get("weapons", []):
+            for slot, w in enumerate((p.get("loadout", {}) or {}).get("weapons", [])):
                 wid = w.get("weapon_id")
                 if wid not in self.catalog._by_id or wid in flagged:
+                    continue
+                # §7.4 PLACEMENT: a weapon the catalogue marks `lethal: false` is deliberately unable to
+                # kill (the fn-20 stripper, the fn-23 smoke, both measured 2026-09-18). That is a real
+                # design, and the three errors below must not treat it as the accident they were written
+                # for. What it may NOT be is a PRIMARY: a player whose primary cannot finish anyone is
+                # not playing a hard game, they are holding a broken tagger. Slot 0 is the primary.
+                if self.catalog._by_id[wid].get("lethal") is False:
+                    if slot == 0:
+                        flagged.add(wid)
+                        errors.append(
+                            f"{wid} cannot kill (lethal: false) and is in the PRIMARY slot. A support "
+                            f"weapon belongs in slot 2, where carrying it costs the player their backup "
+                            f"gun (weapon-design.md §7.4)")
                     continue
                 try:
                     frame = self.catalog.resolve(wid, 0).split(",")
