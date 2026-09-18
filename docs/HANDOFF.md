@@ -112,20 +112,24 @@ not in the F11 state, but **re-arm it before real use**.
 
 1. **Merge `origin/main` first.** It carries the perk work, the poison weapon, node.md's renumbering and
    the bench sheet's count step, and this branch's F253 row sends the bench to that step.
-2. **Count the spare rounds (F253, open).** Fire a magazine dry and refill until the gun refuses. Six
+2. **Count the `$SIR` rows (F254, open).** S50's armour-piercing perk made every table **eleven** rows,
+   and ten is the most ever proven on a gun. `$QUERY` the table back after a head write and after a
+   `sir_pool` take, count them, then fire an AP shot: HP should move and armour should not. A capped
+   table drops the eleventh row silently, and the compile-side guard cannot see it.
+3. **Count the spare rounds (F253, open).** Fire a magazine dry and refill until the gun refuses. Six
    full magazines means the gun spends t17 and only Mission Control's reporting is wrong. Three means an
    Open BRX player carries half of every catalogued reserve, and the balance copy is wrong too. Only the
    site and the manual are corrected so far; the shipped weapon is not.
-3. Run the verification bench against the new rows: **F235-F247** (operator menu, match resume, the
+4. Run the verification bench against the new rows: **F235-F247** (operator menu, match resume, the
    Pixel 5 BLE fix, the energy gauge, OVERHEAT, NIGHT OPS, the shot-ready cue, the results overlay,
    HARDWARE READY/backhaul, MARK ALL READY, the charge-rifle overheat sound, the energy-weapon reload
    timeout, and the swap-to-empty-slot no_fire check).
-4. Bench the merged recoil writer against spawn protection and the operator resync: the accuracy writer
+5. Bench the merged recoil writer against spawn protection and the operator resync: the accuracy writer
    stands down for `ACC_HOLD_MS` after any spawn, revive, resync or stun write (**F235**, **F247**).
-5. Re-run main's **F231** range ladder with the dome shaded, full 32-round mags, and the first two shots
+6. Re-run main's **F231** range ladder with the dome shaded, full 32-round mags, and the first two shots
    of every mag discarded (**F232**).
-6. Tony decides: **F220** (publish app 0.3.0 as a GitHub Release) and **F221** (the warning-audit page).
-7. Push the branch and open the PR.
+7. Tony decides: **F220** (publish app 0.3.0 as a GitHub Release) and **F221** (the warning-audit page).
+8. Push the branch and open the PR.
 
 ## Validation
 

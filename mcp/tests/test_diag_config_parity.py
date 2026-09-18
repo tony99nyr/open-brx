@@ -47,7 +47,16 @@ def test_the_diag_config_clears_before_it_arms():
     assert max(clear_at) < min(sir_at), "every $SIR row must come AFTER the last $CLEAR"
 
 
-def test_the_diag_button_map_matches_gameconfig():
-    """$BMAP is mandatory or the trigger gives the 'disabled' chirp — the same copy, the same risk."""
+def test_the_diag_button_map_matches_gameconfig_except_the_one_slot_alt_row():
+    """$BMAP is mandatory or the trigger gives the 'disabled' chirp — the same copy, the same risk.
+
+    The ONE deliberate difference (merge review 2026-09-18): diag loads a single `$WEAP` slot, and with
+    nothing to cycle to, ALT's stock fn 100 falls back to RELOADING on a real gun (bench 2026-09-17,
+    Tony: "the alt button is reloading the charge rifle"). `compile.py` maps that case to fn 98, and diag
+    must too, or the tool that answers "is this gun behaving?" reproduces the bug itself. Every other row
+    stays byte-identical, so a drift anywhere else still fails here."""
     got = [f for f in C.CONFIG if f.startswith("$BMAP,")]
-    assert got == list(G._BMAP), "diag's $BMAP block has drifted from gameconfig._BMAP"
+    want = [("$BMAP,1,98,,,,,*" if row.startswith("$BMAP,1,") else row) for row in G._BMAP]
+    assert got == want, "diag's $BMAP block has drifted from gameconfig._BMAP (beyond the one-slot ALT row)"
+    assert "$BMAP,1,98,,,,,*" in got and not any(f.startswith("$BMAP,1,100") for f in got), (
+        "diag's ALT row must be the inert fn 98, never the stock weapon-cycle row")

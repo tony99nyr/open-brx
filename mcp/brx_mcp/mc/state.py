@@ -674,6 +674,14 @@ class Session:
                     clean["max_hp"] = value
                 if key == "max_armor" and value is not None:
                     clean["max_armor"] = value
+            # S50 (merge 2026-09-18): `easy_reload` lives in the same block and is the OTHER accessibility
+            # switch, so a restore that copied the pool alone dropped it silently: restart MC between
+            # matches and a player who needs ALT to reload loses it with no message anywhere.
+            if overrides.get("easy_reload") is not None:
+                if not isinstance(overrides["easy_reload"], bool):
+                    return None
+                if overrides["easy_reload"]:
+                    clean["easy_reload"] = True
             if clean:
                 loadout["overrides"] = clean
         player: Player = {"player_id": pid, "player_num": num, "display": display,
