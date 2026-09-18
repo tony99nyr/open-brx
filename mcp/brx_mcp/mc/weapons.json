@@ -405,7 +405,7 @@
    "verified": false,
    "captured": true,
    "tags": [
-    "support",
+    "marksman",
     "sniper"
    ],
    "notes": "Anti-materiel weight at a rifle's cadence. 24 a hit every 400ms, five hits to a kill, 14 up and only 56 behind. The hardest-hitting automatic, and the shallowest."
@@ -444,7 +444,7 @@
    "verified": false,
    "captured": true,
    "tags": [
-    "support"
+    "assault"
    ],
    "ap_dmg": 3,
    "ap_fire_ms": 155,
@@ -495,7 +495,7 @@
    "verified": false,
    "captured": true,
    "tags": [
-    "support"
+    "assault"
    ],
    "ap_dmg": 8,
    "ap_fire_ms": 405,
@@ -542,7 +542,8 @@
    "verified": false,
    "captured": true,
    "tags": [
-    "support"
+    "marksman",
+    "sniper"
    ],
    "notes": "Pre-charge it behind cover, then the kill is one release and two taps: an 85-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus two 20-damage taps drops a 115 pool in about 1s from release -- 3 trigger actions, 12 of the 40 rounds up, 84 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, eighty back -- three combo kills a magazine, ten across the kit."
   },

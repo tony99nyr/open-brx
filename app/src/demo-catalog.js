@@ -21,7 +21,7 @@ export const DEMO_WEAPONS = [
     "pool": 115,
     "verified": false,
     "tags": [
-      "support",
+      "marksman",
       "sniper"
     ],
     "role": "marksman",
@@ -133,7 +133,8 @@ export const DEMO_WEAPONS = [
     "pool": 115,
     "verified": false,
     "tags": [
-      "support"
+      "marksman",
+      "sniper"
     ],
     "role": "marksman",
     "htk": 3,
@@ -208,7 +209,7 @@ export const DEMO_WEAPONS = [
     "pool": 115,
     "verified": false,
     "tags": [
-      "support"
+      "assault"
     ],
     "role": "assault",
     "htk": 13,
@@ -513,7 +514,7 @@ export const DEMO_WEAPONS = [
     "pool": 115,
     "verified": false,
     "tags": [
-      "support"
+      "assault"
     ],
     "role": "assault",
     "htk": 15,

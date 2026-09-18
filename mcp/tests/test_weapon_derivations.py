@@ -636,3 +636,41 @@ def test_the_poison_block_is_declared_and_never_reaches_the_wire():
                 f"{wid}: the frame carries {value}, which looks like the declared `dot` reaching the wire:\n  {frame}")
         # the damage type IS on the wire, because the victim's node keys the tick clock off it
         assert frame.split(",")[WeaponCatalog._T["proto"] + 1] == str(w["cls"]), wid
+
+def test_every_weapon_is_tagged_with_the_class_it_is_actually_in():
+    """`role` is what a player SEES; `tags` is what loadout policy FILTERS on. They must agree.
+
+    Found by Tony 2026-09-18, reading the arsenal page: the AMR showed the SNIPER class beside tags
+    of `['support', 'sniper']`. Four weapons (AMR, Suppressor, Energy Rifle, Charge Rifle) moved out
+    of the `support` role that morning, because support had become a dumping ground holding a .50
+    anti-materiel rifle next to a smoke launcher. Their `role` moved and their `tags` did not.
+
+    That is not cosmetic. `policy.py` filters the pickable pool on `exclude_tags` (see the
+    `no_heavies` preset and `_check_loadout`), so a host who excluded support weapons would silently
+    have banned the AMR, the Suppressor, the Energy Rifle and the Charge Rifle as well, while every
+    screen told the player they were snipers and assault rifles.
+
+    The rule: a weapon's tags must contain the tag for the role it is in. Extra tags are allowed and
+    deliberate -- the Ion Sniper is genuinely both a heavy and a sniper -- so this checks presence,
+    never equality, and does NOT strip a tag a designer added on purpose."""
+    role_tag = {"assault": "assault", "cqb": "cqb", "marksman": "sniper", "support": "support",
+                "power": "heavy", "sidearm": "sidearm", "melee": "melee"}
+    wrong = []
+    for w in ROWS:
+        role = w.get("role")
+        assert role in role_tag, f"{w['weapon_id']} has role {role!r}, which has no tag: add it here and to tokens.ts ROLE"
+        if role_tag[role] not in (w.get("tags") or []):
+            wrong.append(f"{w['weapon_id']}: role {role!r} but tags {w.get('tags')} (wants {role_tag[role]!r})")
+    assert not wrong, ("loadout policy filters on `tags`, so a weapon tagged for a class it is not in "
+                       "gets excluded by a rule the player never sees:\n  " + "\n  ".join(wrong))
+    # ⚠ Presence alone is NOT enough, and the first version of this guard proved it: the AMR's real
+    # fault was an EXTRA tag (`['support', 'sniper']`), and since 'sniper' was present the check
+    # passed with the bug planted. A guard that cannot fail is worse than no guard.
+    # So `support` gets its own rule, because it is the one tag that carries a MEANING rather than a
+    # grouping: support is the class that CANNOT KILL (the Breacher strips, the Haze denies). A
+    # lethal weapon wearing it is the dumping-ground bug by definition. Extra tags stay legal
+    # otherwise -- the Ion Sniper is deliberately both a heavy and a sniper.
+    mislabelled = [f"{w['weapon_id']}: tagged 'support' but it kills (lethal is not False)"
+                   for w in ROWS if "support" in (w.get("tags") or []) and w.get("lethal") is not False]
+    assert not mislabelled, ("'support' means the weapon cannot kill; it is not a bucket for weapons "
+                             "nobody has classified:\n  " + "\n  ".join(mislabelled))

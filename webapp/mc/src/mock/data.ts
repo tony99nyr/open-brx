@@ -30,7 +30,7 @@ export const WEAPONS: WeaponView[] = [
     "pool": 115,
     "verified": false,
     "tags": [
-      "support",
+      "marksman",
       "sniper"
     ],
     "role": "marksman",
@@ -142,7 +142,8 @@ export const WEAPONS: WeaponView[] = [
     "pool": 115,
     "verified": false,
     "tags": [
-      "support"
+      "marksman",
+      "sniper"
     ],
     "role": "marksman",
     "htk": 3,
@@ -217,7 +218,7 @@ export const WEAPONS: WeaponView[] = [
     "pool": 115,
     "verified": false,
     "tags": [
-      "support"
+      "assault"
     ],
     "role": "assault",
     "htk": 13,
@@ -522,7 +523,7 @@ export const WEAPONS: WeaponView[] = [
     "pool": 115,
     "verified": false,
     "tags": [
-      "support"
+      "assault"
     ],
     "role": "assault",
     "htk": 15,
