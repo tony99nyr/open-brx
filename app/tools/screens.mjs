@@ -311,18 +311,19 @@ for (const view of VIEWS) {
     // 2026-09-17 (arsenal review): glock is `hidden` now — `fullKit` (app/src/demo.js) picks usp instead.
     must(after.perk === 'body_armor' && after.sec === 'usp', 'a perk pick must not displace the pistol: ' + JSON.stringify(after)); must(/EQUIPPED/.test(after.chip) && !/DROPPED/.test(after.chip), 'ack chip: ' + after.chip);
   });
-  await step(`${view.name} #54 Easy Reload over a loaded SMG: first tap warns (nothing sent), second tap equips and reports the SMG dropped`, async () => {
+  await step(`${view.name} #54 Easy Reload is GONE from the perk picker (S50: it is an accessibility override, not a perk)`, async () => {
+    // It used to sit in this list and take the ALT button, which cost a player their second weapon -- so a child
+    // who needed it paid twice. This step proves the retirement from the screen the player actually sees: the row
+    // is absent, every shipped perk is present, and a two-weapon kit raises no conflict on any of them.
     const pg = await open(view, 'loadout-perk-conflict', '', 2400);
-    const first = await pg.evaluate(() => ({ warn: !!document.querySelector('.lrow.warn[data-arg="perk:easy_reload"]'), chip: (document.querySelector('.ackchip') || {}).textContent || '', sent: (window.brx.log || []).filter(l => /loadout_request perk perk easy_reload/.test(l)).length, sec: window.brx.engine.state().loadout.secondary && window.brx.engine.state().loadout.secondary.weapon_id }));
-    must(first.warn && /TAKES THE ALT BUTTON/.test(first.chip) && /DROPS YOUR SMG/.test(first.chip) && /TAP AGAIN/.test(first.chip), 'first tap should warn: ' + JSON.stringify(first));
-    must(first.sent === 0 && first.sec === 'smg', 'first tap must not send: ' + JSON.stringify(first));
-    await pg.click('.lrow[data-arg="perk:easy_reload"]'); await pg.waitForTimeout(800);
-    const second = await pg.evaluate(() => { const lo = window.brx.engine.state().loadout; return { perk: lo.perk && lo.perk.perk_id, sec: lo.secondary, chip: (document.querySelector('.ackchip') || {}).textContent || '', ack: window.brx.engine.loadoutAck }; });
-    await pg.click('.lotab[data-arg="secondary"]'); await pg.waitForTimeout(300); await pg.click('.lrow[data-arg="weapon:smg"]'); await pg.waitForTimeout(300);
-    const third = await pg.evaluate(() => ({ warn: !!document.querySelector('.lrow.warn[data-arg="weapon:smg"]'), chip: (document.querySelector('.ackchip') || {}).textContent || '' })); await pg.close();
-    must(second.perk === 'easy_reload' && second.sec === null, 'second tap should equip and drop the SMG: ' + JSON.stringify(second)); must(/EQUIPPED/.test(second.chip) && /SMG DROPPED/.test(second.chip), 'ack chip: ' + second.chip);
-    must(second.ack && second.ack.dropped && second.ack.dropped.id === 'smg', 'ack.dropped: ' + JSON.stringify(second.ack));
-    must(third.warn && /NEEDS THE ALT BUTTON/.test(third.chip) && /DROPS EASY RELOAD/.test(third.chip), 'the reverse pick warns too: ' + JSON.stringify(third));
+    const r = await pg.evaluate(() => ({
+      ids: Array.from(document.querySelectorAll('.lrow[data-arg^="perk:"]')).map(e => e.dataset.arg.slice(5)),
+      warned: Array.from(document.querySelectorAll('.lrow.warn[data-arg^="perk:"]')).map(e => e.dataset.arg),
+      sec: window.brx.engine.state().loadout.secondary && window.brx.engine.state().loadout.secondary.weapon_id,
+    })); await pg.close();
+    must(!r.ids.includes('easy_reload'), 'Easy Reload is still in the perk picker: ' + JSON.stringify(r.ids));
+    must(r.ids.length >= 5, 'the perk list is too short to be the shipped catalogue: ' + JSON.stringify(r.ids));
+    must(r.sec === 'smg' && r.warned.length === 0, 'a two-weapon kit must raise no perk conflict now: ' + JSON.stringify(r));
   });
   await step(`${view.name} #45 DOWN in scanner mode: find → approach (closeness bar) → at station`, async () => {
     const pg = await open(view, 'down-find', '', 6200); /* death at ~2.6 s + the 3 s scanner delay (the F34 floor) + margin */ const has = await pg.evaluate(() => typeof window.brx.engine.setStations === 'function');

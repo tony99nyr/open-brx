@@ -53,9 +53,29 @@ const ROLE_NAME = { assault: 'ASSAULT', cqb: 'CLOSE RANGE', marksman: 'SNIPER', 
 /** A secondary rule whose kinds hold `sidearm` but not `weapon` is a pistols-only slot (policy.py, 2026-09-04). */
 const sidearmOnly = rule => !!(rule && rule.kinds && rule.kinds.includes('sidearm') && !rule.kinds.includes('weapon'));
 const roleName = w => ROLE_NAME[w.role] || (w.tags && w.tags[0] ? String(w.tags[0]).toUpperCase() : 'WEAPON');
-const perkEffect = p => { const e = (p && p.effects) || {}; const out = [];
-  if (e.max_armor_add) out.push(`+${e.max_armor_add} ARMOR`); if (e.ammo_mult) out.push(`×${e.ammo_mult} AMMO`); if (e.reload_mult) out.push(`RELOADS ${+(1 / e.reload_mult).toFixed(1)}× FASTER`); if (e.alt_reload) out.push('ALT = RELOAD'); if (e.switch_mult) out.push(`SWAPS ${+(1 / e.switch_mult).toFixed(1)}× FASTER`);
-  return out.join(' · ') || 'PASSIVE'; };
+// S50 (2026-09-17): every perk now carries a GAIN and a COST, so this splits them and says which is which.
+// ⚠ A multiplier ABOVE 1 is a cost. The old line ran every multiplier through `1 / m` and called the result
+// "FASTER", so Body Armor's `reload_mult: 1.25` printed "RELOADS 0.8× FASTER" and a penalty read as a buff.
+// `short` is for the kit plate, which is about 124 px wide: the gain only, with the cost in the browser row
+// and the detail pane where there is room for it. A perk the node runs on its own carries no effects at all,
+// so its line is named here rather than left as "PASSIVE".
+const PERK_LINE = { motion_tracker: 'ENEMIES ON YOUR HUD', second_wind: 'SURVIVE ONE NEAR-KILL' };
+const perkEffect = (p, short) => {
+  const e = (p && p.effects) || {}; const gain = [], cost = [];
+  const rate = m => +(m > 1 ? m : 1 / m).toFixed(1);
+  if (e.max_armor_add > 0) gain.push(`+${e.max_armor_add} ARMOR`);
+  if (e.max_armor_add < 0) cost.push(`${e.max_armor_add} ARMOR`);
+  if (e.ammo_mult > 1) gain.push(`×${e.ammo_mult} AMMO`);
+  if (e.ammo_mult < 1) cost.push(`×${e.ammo_mult} AMMO`);
+  if (e.reload_mult < 1) gain.push(`RELOADS ${rate(e.reload_mult)}× FASTER`);
+  if (e.reload_mult > 1) cost.push(`RELOADS ${rate(e.reload_mult)}× SLOWER`);
+  if (e.switch_mult < 1) gain.push(`SWAPS ${rate(e.switch_mult)}× FASTER`);
+  if (e.switch_mult > 1) cost.push(`SWAPS ${rate(e.switch_mult)}× SLOWER`);
+  if (e.alt_reload) gain.push('ALT = RELOAD');
+  if (e.armor_piercing) gain.push('IGNORES ARMOR');
+  if (!gain.length && PERK_LINE[p && p.perk_id]) gain.push(PERK_LINE[p.perk_id]);
+  if (short) return gain[0] || 'PASSIVE';
+  return [...gain, ...cost].join(' · ') || 'PASSIVE'; };
 const PERK_GLYPH = {
   body_armor: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 4 L34 9 V20 C34 29 28 34 20 37 C12 34 6 29 6 20 V9 Z"/><path d="M20 12 V29 M13 20 H27" opacity=".7"/></svg>',
   extended_mags: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 4 H28 L30 36 H10 Z"/><path d="M15 11 H25 M15 17 H25 M15 23 H25 M15 29 H25" opacity=".7"/></svg>',
@@ -497,7 +517,7 @@ export class Hud {
     const k = slot.toUpperCase();
     const noneSub = slot === 'perk' ? (rule && rule.choice === 'off' ? 'NO PERKS' : 'NO PERK') : (rule && rule.choice === 'off' ? 'NO SECONDARY' : 'NO ALT-FIRE');
     let art = '', h = '', sub = '';
-    if (item && item.kind === 'perk') { art = `<div class="thumb perk">${perkGlyph(item.perk_id)}</div>`; h = esc(item.name); sub = esc(perkEffect(item)); }   // the line is ~150px wide
+    if (item && item.kind === 'perk') { art = `<div class="thumb perk">${perkGlyph(item.perk_id)}</div>`; h = esc(item.name); sub = esc(perkEffect(item, true)); }   // the line is ~150px wide: the GAIN only (S50), the cost is in the browser row
     else if (item) { art = `<div class="thumb" style="background-image:url('assets/weapons/${esc(item.weapon_id)}.jpg')"></div>`; h = esc(item.name); sub = slot === 'primary' ? (ammoLine || '') : `<span class="nw">MAG ${item.clip != null ? item.clip : '—'} · RES ${item.reserve != null ? item.reserve : '—'}</span>`; }
     else { art = '<div class="thumb none"><span>—</span></div>'; h = 'NONE'; sub = noneSub; }
     if (locked) sub = (rule.choice === 'fixed' ? 'FIXED BY THE HOST' : rule.choice === 'off' ? noneSub : 'SET BY THE HOST');
