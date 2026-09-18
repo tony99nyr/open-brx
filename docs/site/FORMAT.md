@@ -20,6 +20,7 @@ If something is not on this page, it is not a feature. Adopted 2026-09-09 (see `
 | `docs/manual/operate.md` | `/manual/operate` | Operating the BRX |
 | `docs/manual/gameplay.md` | `/manual/gameplay` | Gameplay |
 | `docs/manual/sound.md` | `/manual/sound` | Sound, voice and updates |
+| `docs/manual/sounds.md` | `/manual/sounds` | Sound bank |
 | `docs/manual/fix.md` | `/manual/fix` | Fix, mod and accessorise |
 | `docs/manual/dev.md` | `/manual/dev` | Developer reference |
 | `docs/manual/credits.md` | `/credits` | Credits and sources |

@@ -44,7 +44,7 @@ export function buildWeapons(repo) {
 // page marks the unconfirmed ones instead of hiding the distinction.
 export function buildSounds(repo) {
   const catalog = JSON.parse(fs.readFileSync(path.join(repo, 'mcp/brx_mcp/data/sound_catalog.json'), 'utf8'));
-  return catalog.sounds.map(s => {
+  const rows = catalog.sounds.map(s => {
     const quoted = s.kind === 'voice' && s.transcript
       ? `"${s.transcript}"${s.speaker ? ` (${s.speaker})` : ''}` : '';
     const meaning = !s.on_gun ? 'listed by the app, not on the gun' : (s.known_use || quoted);
@@ -57,6 +57,19 @@ export function buildSounds(repo) {
       heard: Boolean(s.known_use || s.verified_by_ear || !s.on_gun),
       on_gun: Boolean(s.on_gun),
       play: s.on_gun ? `$PLAY,${s.id},*` : '',
+      // A community label (the LaserTagMods BRX Audio sheet) is a listener's guess, never our own
+      // evidence: it sits beside `meaning`, never inside it. `community_status` stays exactly the
+      // three words the catalog uses, upper-cased: NEW_LABEL, AGREES or DIFFERS.
+      community_label: s.community_label || '',
+      community_status: s.community_status ? s.community_status.toUpperCase() : '',
+      flag_noise: Boolean(s.community_flag_noise),
     };
   }).sort((a, b) => a.id.localeCompare(b.id));
+  // Meta for the table's note: generated from the JSON, never hand-typed into prose
+  // (docs/site/FORMAT.md, docs/manual/README.md "Data that is generated, never typed").
+  rows.communityMeta = {
+    labelled: catalog.community_labels_count ?? rows.filter(r => r.community_label).length,
+    noise: catalog.community_noise_flagged_count ?? rows.filter(r => r.flag_noise).length,
+  };
+  return rows;
 }

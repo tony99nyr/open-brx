@@ -2,7 +2,7 @@
 
 The Open BRX site is a static generator, `site/`, that renders two doors from one source: the
 platform pages (`docs/platform/*.md`) into the marketing landing at `/`, `/docs/*` and `/download`,
-and the manual pages (`docs/manual/*.md`) into `/manual/*`. 16 pages, one per source file. Nothing is
+and the manual pages (`docs/manual/*.md`) into `/manual/*`. 18 pages, one per source file. Nothing is
 written twice.
 
 | File | What |

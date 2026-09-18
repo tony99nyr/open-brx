@@ -80,7 +80,7 @@
       ['mag', 'Mag'], ['reserve', 'Reserve'], ['reload_ms', 'Reload ms'],
       ['heat', 'Heat/shot'], ['sound', 'Fire sound'],
     ],
-    sounds: [['id', 'Id'], ['family', 'Family'], ['len', 'Seconds'], ['meaning', 'Meaning'], ['play', 'Command']],
+    sounds: [['id', 'Id'], ['family', 'Family'], ['len', 'Seconds'], ['meaning', 'Meaning'], ['community_label', 'Community label'], ['play', 'Command']],
   };
   const PAGE = 200;
 
@@ -96,7 +96,16 @@
     head.innerHTML = `<tr>${cols.map(c => `<th>${c[1]}</th>`).join('')}</tr>`;
 
     const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const STATUS_WORD = { NEW_LABEL: 'new', AGREES: 'agrees', DIFFERS: 'differs' };
     const cell = (v, r, key) => {
+      // a community label is unconfirmed and never stands in for our own meaning: mark it every
+      // time, and say so even for a NOISE-flagged id that carries no label at all
+      if (key === 'community_label') {
+        const bits = [];
+        if (v) bits.push(`community label (${STATUS_WORD[r.community_status] || 'label'}, unconfirmed): ${v}`);
+        if (r.flag_noise) bits.push('reported broken since v4.30, pending an ear check');
+        return bits.length ? `<i class="community">${esc(bits.join(' · '))}</i>` : 'n/a';
+      }
       if (v === null || v === undefined || v === '') return 'n/a';
       // an unconfirmed machine transcription is marked, not passed off as a known meaning
       if (key === 'meaning' && r.heard === false) return `<i class="unheard">${esc(v)}</i>`;
