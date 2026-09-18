@@ -6,10 +6,10 @@ v4.32 has drifted from V4_30, and the later sessions shrink.
 
 | session | time | needs | sections |
 |---|---|---|---|
-| 1. Core | 45 min | two guns | §1 (F206, confirms the shipped fix), §2 (melee), §4 step 1, §5 (all of it, one session: each step starts from the one before), §13 |
+| 1. Core | 45 min | two guns | §1 (F206, confirms the shipped fix), §2 (melee), §4 step 1, §5 (all of it, one session: each step starts from the one before), §13 step 1 |
 | 2. Levers | 75 min | two guns, the IR rig for §9 step 5 | §3, §4 step 2, §6, §7, §8, §9, §10, §12, §15, §18 |
 | 3. Transport | see the screamers sheet | one gun, a laptop | §14 (now `bench-screamers-2026-09-19.md` Phase A) |
-| 4. IR rig | 60 min | two guns, the ESP32 IR rig | §11, §16, §17, §20 |
+| 4. IR rig | 90 min | two guns, the ESP32 IR rig | §11, §13 steps 2-3, §16, §17, §20 |
 | 5. Gap sweep | 90 min | two guns, the IR rig for two steps | §19 |
 
 **Claim checklist.** Tick each claim in the experiment log as CONFIRMED, REFUTED or DIFFERENT (and how). A claim
@@ -30,7 +30,7 @@ reaches `docs/manual/` only when it is CONFIRMED here.
 | 11 | fn 34/35 register on a dead gun; fn 38 halves HP damage; fn 30 back x2; fn 33 silent kill; fn 50-52 colour only (V4_30) | 10 |
 | 12 | `$SIR` p6/p8 make the victim re-emit the hit (splash) (V4_30, sheets) | 11 |
 | 13 | `$STOP` closes and `$START` opens IR reception (V4_30) | 12 |
-| 14 | The gun sends `$DD,<killer>,<team>` when it dies (Jay's code) | 13 |
+| 14 | The gun sends `$DD,<killer>,<team>` when it dies (Jay's code); a kill confirmation is a protocol-15 subtype-0 IR word (BC's UART sheet) | 13 |
 | 15 | Split frames get lost; bursts overflow; `$DPLAY` on a loop sound hangs the gun (V4_31) | 14 (screamers sheet Phase A) |
 | 16 | `$RADSK` every 4 s keeps a headless gun linked (Jay's code, V4_31) | 15 |
 | 17 | `$IRTX` type 14 to a downed ally is a revive beam, read via fn 34 (BC app) | 16 |
@@ -288,11 +288,39 @@ V4_30 drops every IR word while the gun is not `$START`ed ("not start"). Send `$
 send `$START,*` and fire. If the first shot registers nothing and the second registers, MC can close F121 by
 sending `$STOP` until spawn.
 
-## 13. Listen for a kill report (5 min)
+## 13. Kill confirmation: a discovery phase (30 min, needs the IR rig)
 
-Jay's ESP32 code reads a `$DD,<killer>,<team>` frame **from the gun** when its player dies, and builds kill
-confirmation on it. Our docs say the gun never sends `$DD`. Kill B (re-arm B (9, 0, 0), then one shot from A). Log
-every frame B sends for 5 s after the death. If `$DD` arrives, the node gets kill attribution from the gun itself.
+We do not yet know how a stock game confirms a kill, so this section discovers it before anything is built on it.
+
+What the sources say:
+- Battle Company's own UART sheet lists **"Kill confirmation"** and **"Player Respawn Request"** among the protocol-15
+  callouts of its `$SIR,15,0` row ("call out for audio"), next to control point, respawn station, capture the flag
+  and the grenade types. So a kill confirmation is most likely a **protocol-15, subtype-0 IR word**, and the gun that
+  receives it needs a `<15,0>` `$SIR` row. Jay (LaserTagMods) told Tony the same: the kill-confirm IR "has to be `$SIR`
+  setup".
+- The sheet's Callsign death sample shows the app side: the victim's gun reports `$HP,0,0,0`, the app credits the last
+  `$HIR` shooter, and the app tells the killer's gun to play the kill-confirmation voice (`V3A` male, `VBA` female).
+- Jay's ESP32 code reads a `$DD,<killer>,<team>` frame from the gun when its player dies.
+- The V4_31 disassembly found no IR send in the gun's own death routine.
+- Known protocol-15 magnitudes from Jay's JBOX code: 6 respawn, 8 perk or KOTH pulse, 10 proximity, 50 capture. The
+  kill-confirmation magnitude is not in any source we hold.
+
+Steps:
+1. **Listen for `$DD`.** Kill B (the recipe above). Log every frame B sends for 5 s after the death.
+2. **Passive capture at death.** Point the IR rig at B's headset domes, then at A, and kill B again. Record every word
+   (protocol, player, team, magnitude, crit, subtype) in the 5 s after the death. Repeat with B carrying the full stock
+   Callsign `$SIR` table (from the sheet) instead of ours.
+3. **Magnitude sweep.** Give B the row `$SIR,15,0,,28,0,0,1,,*` (registers, no pool change). From the rig, emit
+   protocol-15, subtype-0 words at every magnitude from 0 to 63 except 6, 8, 10 and 50, one per second, with player 1
+   and team 1. For each, log B's `$HIR` and listen for a callout. A kill-confirmation voice (`V3A`/`VBA`) or a named
+   callout marks the magnitude.
+4. **Ask Jay** which magnitude and fields the kill confirmation uses. His answer turns step 3 into one shot.
+
+⚠️ Do not run Callsign on our own guns to capture a reference: it resets an enrolled gun's name. Use a spare gun, or
+rename it afterwards.
+
+**Reading.** Step 1 or 2 shows who produces the confirmation. Step 3 gives the word. Together they tell us whether the
+killer's gun can hear its own kill confirmed with no phone or MC in the loop.
 
 ## 14. How the transport fails (moved to the screamers sheet)
 
