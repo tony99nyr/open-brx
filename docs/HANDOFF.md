@@ -44,7 +44,7 @@ tool is built: `python -m brx_mcp soak <address> <pattern> <minutes>` (`soak-too
    app-e2e steps).
 2. **Screamers first** (top priority): the screamers sheet, Phase C can run unattended on one gun with `soak`. Do not turn
    the block pause on before screamers sheet Phase A gives F255/F256/F258 their numbers.
-3. **Levers bench, session 1** (45 min, two guns): §1 F206, §2 melee, §4 `$STUN`, §5 `$BUMP`, §13 `$DD`. If
+3. **Levers bench, session 1** (45 min, two guns): §1 F206, §2 melee, §4 step 1, §5 step 1, §13 `$DD`. If
    `$STUN,3000` and `$BUMP,-20,1,1,1` behave as V4_30 says, run the rest; if not, v4.32 has drifted.
 4. **After §1 passes:** close F206 (one dated line in the archive) and start F257 (the `$QUERY` team read-back).
 5. **F254** (outdoor space): the headset word's reach. It unlocks the close-range weapon class.

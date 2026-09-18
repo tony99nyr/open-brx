@@ -8,9 +8,9 @@ v4.32 has drifted from V4_30, and the later sessions shrink.
 |---|---|---|---|
 | 1. Core | 45 min | two guns | §1 (F206, confirms the shipped fix), §2 (melee), §4 step 1, §5 step 1, §13 |
 | 2. Levers | 75 min | two guns | §3, §4 step 2, §5 rest, §6, §7, §8, §9, §10, §12, §15, §18 |
-| 5. Gap sweep | 90 min | two guns, the IR rig for two steps | §19 |
 | 3. Transport | see the screamers sheet | one gun, a laptop | §14 (now `bench-screamers-2026-09-19.md` Phase A) |
 | 4. IR rig | 60 min | two guns, the ESP32 IR rig | §11, §16, §17, §20 |
+| 5. Gap sweep | 90 min | two guns, the IR rig for two steps | §19 |
 
 **Claim checklist.** Tick each claim in the experiment log as CONFIRMED, REFUTED or DIFFERENT (and how). A claim
 reaches `docs/manual/` only when it is CONFIRMED here.
@@ -163,7 +163,10 @@ V4_30 reads `$BUMP,<amount>,<hp>,<armour>,<shield>,<sound>,*`. Tokens 2-4 are on
 negative amount drains the shield, then the armour, then the HP, and kills at 0. A positive amount heals the HP, then
 spills into the armour, then the shield. F65 sent all three flags as 0.
 
-Start B at 45 HP and 70 armour. Read the current pools from `$HP` (or `$LCD`) after each step. Do not use `$QUERY`:
+Re-arm B: resend the victim head's `$PSET` row with t3 = 45 (HP maximum) and t4 = 70 (armour maximum), shield
+maximum left at 0, then send `$TID,2,*` (the `$PSET` resend also rewrites the team byte, claim 1). The shipped
+victim head (`bench-perks-2026-09-18.md`) ships `$PSET,2,0,999,0,0,…`, so its armour maximum is 0 and every step
+below needs the wider maxima. Read the current pools from `$HP` (or `$LCD`) after each step. Do not use `$QUERY`:
 V4_30 builds its pool fields from the maxima, not the current pools. Each step starts from the result of the step
 before it.
 1. `$BUMP,-20,1,1,1,,*`. Expect armour 50, HP 45.
@@ -179,6 +182,10 @@ before it.
 - `$LIFE` has a 4th token: 0 adds (what we use), 1 sets the pools to exact values with a clamp, 2 sets them with no
   clamp.
 - `$SPAWN,<n>,*` spawns with **shield n**. K7 is blocked because no BLE command grants a shield (P16, F60).
+
+Before this section, re-arm B with the same explicit re-arm as §5: resend `$PSET` with t3 = 45, t4 = 70 (shield
+maximum stays 0), then `$TID,2,*`. The shipped victim head sets armour maximum to 0, so without this step set
+mode clamps every armour value at 0.
 
 1. On B, send `$LIFE,30,10,0,1,*`. Expect HP 30 and armour 10 exactly, whatever the start values.
 2. Send `$LIFE,500,0,0,2,*`. Does HP go above the maximum?
@@ -247,7 +254,8 @@ Change B's `<0,0>` row for each function. Fire 3 shots per state.
 
 | fn | V4_30 says | how to test |
 |---|---|---|
-| 34 / 35 | Registers (`$HIR` only) **on a dead gun**, and never causes a death | Kill B, then hit it. Does `$HIR` arrive? This would be the base for a revive beam. |
+| 34 | Registers (`$HIR` only) **on a dead gun**, and never causes a death. **Ally-only** (V4_30) | Put A on B's team first (`$TID,2,*` on A, as §16 does), or set `$GSET` t1 = 1. Kill B, then hit it. Does `$HIR` arrive? This would be the base for a revive beam. |
+| 35 | Same, but **enemy-only** (V4_30) | Keep A on team 1 (the default roles). Kill B, then hit it. Does `$HIR` arrive? |
 | 38 | Shield, then armour, then **half** of the rest goes to HP | Start B at 0 armour. 9 should take 4 HP. The 09-17 bench saw plain damage only because armour was 70. |
 | 30 | Double damage from sensor 1 (the back of the headset). A kill from there is silent. | Hit the front, then the back, and compare. |
 | 33 | Normal damage, but a kill is silent (no death alarm) | Start B at 9 HP. Listen for the death alarm. |
@@ -338,9 +346,10 @@ Read these on an armed gun, change one thing, and read again:
 A triage of every open FOLLOWUPS row against the new sources found these untested leads. One step each. Record every
 result, including nulls, against the row id.
 
-1. **fn 38 at real armour (F225).** B at 45 HP, 70 armour. Magnitude 100 on a fn 38 row. V4_30 predicts 70 from
-   armour plus 15 from HP (the HP remainder halved), which is the playtest's unexplained 85.
-2. **fn 3, 4, 5 and 7 (pool order).** Our 70-armour baseline could not tell these apart. B at shield 20 (grant with
+1. **fn 38 at real armour (F225).** Re-arm B with `$PSET` t3 = 45, t4 = 70 (shield maximum 0), then `$TID,2,*` (as
+   §5). Magnitude 100 on a fn 38 row. V4_30 predicts 70 from armour plus 15 from HP (the HP remainder halved),
+   which is the playtest's unexplained 85.
+2. **fn 3, 4, 5 and 7 (pool order).** Our 70-armour baseline (the same re-arm as step 1) could not tell these apart. B at shield 20 (grant with
    `$LIFE,0,0,20,*`), armour 5, HP 45. One hit of 40 per function. Record each pool.
 3. **fn 31 and 32 (U11).** With `$GSET` t1 = 1, hit a live B once on each. Watch the LEDs and `$HIR`.
 4. **`$GSET` t2 on one side only (F162, F198).** Shooter t2 = 1 and victim t2 = 0, then swap. Count hits at 10 m.
@@ -376,7 +385,8 @@ result, including nulls, against the row id.
 The V4_31 trace shows that the range tokens (t2, t41, t13, t42, and `$IRTX` field 8) do not set emitter power. They
 detune the IR carrier (formulas: `protocol/brx-protocol.md` §6, the `2, 41` row). The gun barrel (t2, t41) uses
 125 Hz per step below 100, so range 100 is 38 kHz and range 5 is 26.1 kHz. A word the headset emits (t13, t42 and
-`$IRTX` field 8) uses 140 Hz per step, so t13 = 13 is 25.8 kHz on the headset, not 27.1 kHz. Power changes only with the indoor/outdoor level (duty about 20 % indoors, 38 % outdoors). A receiver
+`$IRTX` field 8) uses 140 Hz per step, so t13 = 13 is 25.8 kHz on the headset, not 27.1 kHz. Gun barrel power changes only with the indoor/outdoor level
+(the headset uses a fixed duty): duty about 20 % indoors, 38 % outdoors. A receiver
 filters around 38 kHz, so a low range value is simply off-frequency. That explains the 2026-09-17 garden ladder: no hits
 at 5 (26.1 kHz), a transition between 13 and 26 (27.1 to 28.75 kHz), and a flat shelf above about 31 (29.4 kHz).
 t41 and t42 replace t2 and t13 only in indoor mode, and only when they are not 0.

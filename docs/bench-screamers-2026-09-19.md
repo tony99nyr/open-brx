@@ -53,7 +53,8 @@ Each step tries one suspected trigger. Arm the gun with the bench victim head (`
 | A5 | long token | send a frame with one 400-character token | LOCK-UP or BAD FRAME |
 | A6 | many tokens | send a frame with 70 tokens | the token index wraps; BAD FRAME |
 | A7 | burst | 100 short frames (`$PLAY,U37,3,10,,,,,*`) with no gap; then the same in blocks of 10 with a 300 ms pause between blocks | count how many apply at each pacing; any LOCK-UP |
-| A8 | burst of long frames | 50 × the bench AR `$WEAP` (101 bytes, 6 packets) with no gap; then 200 × with the phone's pacing (8 ms per packet, 18 ms per frame), reading `$ALCD` after each | count lost frames at each pacing; any LOCK-UP |
+| A8 | burst of long frames | 50 × the bench AR `$WEAP` (101 bytes, 6 packets) with no gap; then 200 × `$WEAP` frames with the phone's pacing (8 ms per packet, 18 ms per frame), reading `$ALCD` after each | count lost frames at each pacing; any LOCK-UP |
+| A8b | trimmed runt `$SIR` rows | arm B twice: once with the compiled `$SIR` rows as shipped, once with their trailing empty tokens dropped so each row fits one 20-byte packet; send each arm 50 times | count BAD FRAME per variant; the gun must still register a hit on each row afterwards, so fire one control shot per variant |
 | A9 | IR load | the IR rig fires valid hit words at the gun at 10 per second for 5 min, while `$PING` runs | does IR load alone slow or hang the gun |
 | A10 | IR plus BLE | A9 and A7 together | the player-count case: many hits and much traffic at once |
 | A11 | headset drop | switch the headset off during A7 | the gun resets its radio link; does it lock |

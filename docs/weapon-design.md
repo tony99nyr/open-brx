@@ -1322,8 +1322,8 @@ See `docs/FOLLOWUPS.md` F71.
 
 **What this means for range.** Callsign never shortens the Shotgun: its frame carries `t2` = 100, the
 same as every Callsign gun. What varies with distance is only the 70-damage headset word, through
-`t13` 80 outdoors and `t42` 30 indoors (35.5 and 29.25 kHz IF §6.5's formula extends to them -- ⚠️ it was
-derived for `t2`/`t41`, the GUN word, and has never been checked against the headset word). So Callsign's Shotgun is
+`t13` 80 outdoors and `t42` 30 indoors (35.2 and 28.2 kHz on the headset's own formula, 38000 − 140 × (100 − r);
+see `protocol/brx-protocol.md` §6). So Callsign's Shotgun is
 "45 at any range, 115 up close", not "short range". That is a better shape than our `t2` = 22, which
 puts the Shotgun's only word on the unstable knee of the receiver curve.
 
