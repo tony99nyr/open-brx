@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { MatchHistoryRow, RecapStationRow, RecapView, ScoreRow } from '../api/types';
 import { endDeliveryLine } from '../api/derive';
 import { useStore } from '../store';
-import { CHAMFER, F, T, fmtClock, teamColor } from '../tokens';
+import { CHAMFER, F, T, fmtClock, fmtDuration, teamColor } from '../tokens';
 import { BTN_RESET, Brackets, Num, SectionRule, PrimaryButton } from '../ui';
 import { OrphanMatch } from '../ui/OrphanMatch';
 import { bestStreak } from './Live';
@@ -470,7 +470,6 @@ function AfterEnd({ a, name }: { a: NonNullable<RecapView['after_end']>; name: (
 function Possession({ p, label }: { p: NonNullable<RecapView['possession']>; label: (id: string) => string }) {
   const held = Object.entries(p.by_team).sort((a, b) => b[1] - a[1]);
   const top = held[0]?.[1] ?? 0;
-  const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
   const thin = p.of_s != null && p.observed_s < p.of_s * 0.75;
   return (
     <div data-testid="possession" style={{ marginBottom: 18, border: `1px solid ${T.line}`, background: T.panelDeep }}>
@@ -485,16 +484,16 @@ function Possession({ p, label }: { p: NonNullable<RecapView['possession']>; lab
                   it became digit cells (2026-09-12). A bar a test can name cannot be confused. */}
               <span data-poss-bar={id} style={{ display: 'block', height: '100%', width: `${top ? Math.round((secs / top) * 100) : 0}%`, background: teamColor(id) }} />
             </span>
-            <span style={{ font: F.osw(700, 20), minWidth: 72, textAlign: 'right' }}><Num value={mmss(secs)} /></span>
+            <span style={{ font: F.osw(700, 20), minWidth: 72, textAlign: 'right' }}><Num value={fmtDuration(secs)} /></span>
           </div>
         ))}
         {p.neutral_s > 0 && (
           <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro }}>
-            NEUTRAL {mmss(p.neutral_s)} — NOBODY HELD THE POINT (A HILL BROADCASTS TEAM 2 WHEN UNOWNED)
+            NEUTRAL {fmtDuration(p.neutral_s)} — NOBODY HELD THE POINT (A HILL BROADCASTS TEAM 2 WHEN UNOWNED)
           </div>
         )}
         <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: thin ? T.warn : T.micro, lineHeight: 1.5 }}>
-          {thin ? '▲ ' : ''}BEST COVERAGE {mmss(p.observed_s)}{p.of_s ? ` OF ${mmss(p.of_s)}` : ''} — A HILL IS ONLY SEEN BY A GUN IN BEACON RANGE, SO THIS IS A FLOOR, NOT A FULL ACCOUNT.
+          {thin ? '▲ ' : ''}BEST COVERAGE {fmtDuration(p.observed_s)}{p.of_s ? ` OF ${fmtDuration(p.of_s)}` : ''} — A HILL IS ONLY SEEN BY A GUN IN BEACON RANGE, SO THIS IS A FLOOR, NOT A FULL ACCOUNT.
         </div>
       </div>
     </div>

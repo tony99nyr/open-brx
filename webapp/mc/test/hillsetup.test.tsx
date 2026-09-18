@@ -125,6 +125,20 @@ describe('a possession game reads as possession', () => {
     m.unmount();
   });
 
+  it('rounds a fractional span without carrying into "60" seconds', async () => {
+    // `fmtDuration` used to round the seconds half alone (`Math.round(s % 60)`), which can carry: 119.7
+    // rounds to a minute plus 59.7 s, and rounding THAT alone gives "1:60". No live value is fractional
+    // today (`scoring.py`'s `possession()` rounds to whole seconds before it ever reaches the wire), but
+    // nothing stops a future field or a mock fixture supplying one, and the type is `number`, not `int`.
+    const m = await recapScreen(RECAP({
+      possession: { by_team: { blue: 119.7, green: 0 }, neutral_s: 59.6, sites: 1, reports: 1, observed_s: 400, of_s: 400 },
+    }));
+    const t = m.find('[data-testid="possession"]')[0].textContent ?? '';
+    expect(t).toMatch(/2:00/);                    // 119.7 rounds to a whole 120 s, not "1:60"
+    expect(t).toMatch(/NEUTRAL 1:00/);            // 59.6 rounds to a whole 60 s, not "0:60"
+    m.unmount();
+  });
+
   it('shows no possession block for a match that reported none', async () => {
     // CONTROL: the block is driven by the fact, not by the mode. A kills game must not grow it, and a
     // hill match nobody observed must not show 0:00 as though it were measured.

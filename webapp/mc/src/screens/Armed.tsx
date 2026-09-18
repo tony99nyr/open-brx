@@ -55,7 +55,7 @@ export function Armed() {
           {cLine && <Tag color={cColor} size={9} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{cLine}</Tag>}
           <GhostButton onClick={() => setView('lobby')}>◂ BACK TO LOBBY</GhostButton>
           {reschedConfirm ? (<>
-            <GhostButton color={T.warn} border={T.warn} onClick={() => { setReschedConfirm(false); run(() => api.reschedule(shownRunway)); }}>CONFIRM — RESTART EVERY COUNTDOWN AT {String(Math.floor(shownRunway / 60)).padStart(2, '0')}:{String(shownRunway % 60).padStart(2, '0')}</GhostButton>
+            <GhostButton color={T.warn} border={T.warn} onClick={() => { setReschedConfirm(false); run(() => api.reschedule(shownRunway)); }}>CONFIRM — RESTART EVERY COUNTDOWN AT {fmtClock(shownRunway)}</GhostButton>
             <GhostButton onClick={() => setReschedConfirm(false)}>CANCEL</GhostButton>
           </>) : (
             <GhostButton color={T.warn} border={T.warn} hoverClass="hov-warnbg" onClick={() => setReschedConfirm(true)} title="Two-step: pushes a fresh go-live time to every node in range">RESCHEDULE</GhostButton>

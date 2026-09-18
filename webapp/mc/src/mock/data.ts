@@ -691,9 +691,9 @@ const MODE_TEXT: Record<string, Omit<ModeInfo, 'params' | 'defaults'>> = {
 export const MODES: ModeInfo[] = [
   { ...MODE_TEXT.tdm, params: [], defaults: base('tdm') },
   { ...MODE_TEXT.ffa, params: [],
-    defaults: base('ffa', { teams: [{ team_id: 'ffa', name: 'FFA', color: 'ffa', tid: 1 }], scoring: { frag_limit: 15, win_by: 'kills' } }) },
+    defaults: base('ffa', { teams: [{ team_id: 'ffa', name: 'FFA', color: 'ffa', tid: 1 }], scoring: { frag_limit: 25, win_by: 'kills' } }) },
   { ...MODE_TEXT.infection, params: [],
-    defaults: base('infection', { scoring: { frag_limit: null, win_by: 'survival' } }) },
+    defaults: base('infection', { respawn: { type: 'auto', delay_s: 10 }, scoring: { frag_limit: null, win_by: 'survival' } }) },
   { ...MODE_TEXT.lms, params: LMS_PARAMS,
     defaults: base('lms', { respawn: { type: 'none', delay_s: 0 }, scoring: { frag_limit: null, win_by: 'survival' }, mode_params: { lives: 3 } }) },
   { ...MODE_TEXT.extraction, params: EXTRACTION_PARAMS,

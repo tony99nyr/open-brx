@@ -3,7 +3,7 @@ import { RUNWAYS, useRunway } from '../runway';
 import { RE_PUSH_HERE, STALE_ACK_FAULT, blocksPush, coverageLine, curedByPush, pushGate, reachLabel, reachOf, reachTooltip, sentenceCase, splitBlocker } from '../api/derive';
 import type { Player } from '../api/types';
 import { useStore } from '../store';
-import { F, T, TAB, teamColor } from '../tokens';
+import { F, T, TAB, fmtClock, teamColor } from '../tokens';
 import { BTN_RESET, GhostButton, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag, useNarrow } from '../ui';
 import { SetupSteps } from '../ui/SetupSteps';
 import { PreArmSummary, armOverrideCopy } from '../ui/PreArmSummary';
@@ -209,7 +209,7 @@ export function Lobby() {
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>Countdown
                 {lobby.pushed && allAcked && <select aria-label="countdown length" value={String(runway)} onChange={e => setRunway(Number(e.target.value))}
                   style={{ background: T.inset, color: T.ink, border: `1px solid ${T.line2}`, font: F.osw(700, 16), padding: '4px 8px', minHeight: 36, cursor: 'pointer' }}>
-                  {RUNWAYS.map(r => <option key={r} value={r}>{`${String(Math.floor(r / 60)).padStart(2, '0')}:${String(r % 60).padStart(2, '0')}`}</option>)}
+                  {RUNWAYS.map(r => <option key={r} value={r}>{fmtClock(r)}</option>)}
                 </select>}
               </span>} />
           </div>
