@@ -35,7 +35,7 @@ Validated against capture `$GSET,0,0,1,0,1,0,50,1,*`:
 | # | field | example | meaning |
 |---|---|---|---|
 | 1 | friendlyFire | 0 | **GUN-ENFORCED both directions** (bench 2026-08-26, brx-ir four-cell IR emitter, 2×+control): FF=0 blocks same-team damage AND enemy heals; FF=1 opens the gate — exactly as labelled. (An intermediate same-day gun-probe read it not-enforced but only reached FF=1 with an unverified victim team.) |
-| 2 | outdoorMode | 0 | indoor(0)/outdoor(1) IR range profile |
+| 2 | outdoorMode | 0 | APK name only. **Not the app's venue switch:** cap30 (2026-09-18) sends 0 with Callsign's venue on OUTDOOR, its default. Measured as a receive gate, see `brx-protocol.md` `$GSET` |
 | 3 | gunLaserRegion | 1 | gun-laser region/zone |
 | 4 | autoAmbientLight | 0 | auto ambient-light compensation |
 | 5 | gyroscope | 1 | gyro enable |
@@ -359,7 +359,7 @@ positional sound set — each slot is a named game-event sound. Note fields are 
 | **IRTX** | iRPower, soundOnHit, rangeOutdoor, rangeIndoor | raw IR transmit |
 | **LIFE** | addedHP, addedArmor, addedShields | grant health/armor/shields |
 | **BHIT** | damage, isCriticalShot, powerLevel | apply a hit to the gun (host-inflicted damage!) |
-| **BUMP** | hP, armor, shields | adjust current pools |
+| **BUMP** | hP, armor, shields | adjust current pools. ⚠️ **Field order is WRONG on the wire**: Callsign sends `$BUMP,12,,1,,,*` to add 12 armour (cap30, 2026-09-18) |
 | **MELEE** | intensity | melee event |
 | **VIB** | isEnableVibration | haptics toggle |
 | **PLAY** | (soundName,) addToQue1, addToQue2, loopingTime, stun, isNeedQueue | richer than we used |

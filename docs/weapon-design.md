@@ -1306,6 +1306,17 @@ headset exposed, reading the victim's `$HIR` magnitude, protocol and sensor each
 settles it faster still: one pull at the receiver, count the words. Until then, treat the Shotgun's
 numbers here as the GUN-LASER case, which is the only one any bench has tested.
 
+✅ **Seen on the wire once, 2026-09-18 (Callsign capture cap30, victim's gun).** One Shotgun pull from a
+single shooter landed `$HIR,4,0,1,0,45,0,0` and then `$HIR,4,0,1,0,70,0,0` **88 ms later**, on the same
+sensor, killing a player with 79 left. The cycle is 900 ms, so it was one pull. What the capture does not
+say: the distance, and which emitter sent which word, so the §8 bench still decides the design.
+
+**What this means for range.** Callsign never shortens the Shotgun: its frame carries `t2` = 100, the
+same as every Callsign gun. What varies with distance is only the 70-damage headset word, through
+`t13` 80 outdoors and `t42` 30 indoors (35.5 and 29.25 kHz by §6.5's formula). So Callsign's Shotgun is
+"45 at any range, 115 up close", not "short range". That is a better shape than our `t2` = 22, which
+puts the Shotgun's only word on the unstable knee of the receiver curve.
+
 ### 7.1 There are only four ways to take someone down
 
 | way | mechanism | what it is good against | what it is bad against |
