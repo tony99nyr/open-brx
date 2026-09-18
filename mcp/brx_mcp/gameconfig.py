@@ -225,6 +225,43 @@ def assert_sir_follows_clear(frames) -> None:
         )
 
 
+def pset_team(frame: str) -> int | None:
+    """The team a `$PSET` frame writes (token 2), or None for any other frame or an empty token."""
+    if not isinstance(frame, str) or not frame.startswith("$PSET,"):
+        return None
+    toks = frame.split(",")
+    try:
+        return int(toks[2]) if len(toks) > 2 and toks[2] != "" else None
+    except ValueError:
+        return None
+
+
+def assert_team_byte_consistent(frames) -> None:
+    """Every `$PSET` in `frames` must carry the team of the LAST `$TID` in `frames`. Raises if not.
+
+    ⚠️ F206 (the 2026-09-13 playtest: a TDM match, 116 shots, ZERO hits, while FFA on the same guns
+    registered normally). The gun keeps ONE team byte. `$TID`, `$TEAM` and `$PSET` token 2 all write
+    it, and the last writer wins (V4_31 disassembly, LaserTagMods drive 2026-09-18). MC's head sent
+    `$PSET` (t2 = 0) then `$TID`, which is fine; but the node writes a fresh `$PSET` before EVERY
+    `$SPAWN`, so every gun went live as team 0, and with `$GSET` t1 = 0 the firmware read every enemy
+    hit as a same-team hit and dropped it. A frame list with no `$TID` at all is not checked (the
+    team then comes from `$PSET` alone, which is what Callsign's own arm does).
+    """
+    frames = [f for f in frames if isinstance(f, str)]
+    tids = [int(f.split(",")[1]) for f in frames if f.startswith("$TID,") and f.split(",")[1].isdigit()]
+    if not tids:
+        return
+    tid = tids[-1]
+    for f in frames:
+        t = pset_team(f)
+        if t is not None and t != tid:
+            raise ValueError(
+                f"F206 GUARD: $PSET token 2 is {t} but $TID is {tid}. The gun keeps ONE team byte and "
+                f"the last writer wins, so a $PSET written before $SPAWN puts the gun on team {t}: "
+                f"with friendly fire off it then drops every enemy hit. Build the $PSET with "
+                f"team={tid}. Frame: {f}")
+
+
 def assert_arm_sequence_complete(frames) -> None:
     """Raise if a frame bundle is a PARTIAL arm — one that leaves the gun looking live while the
     trigger does nothing. Every check here exists because it bit a bench session for real:
@@ -439,22 +476,30 @@ class GameConfig:
         return bmap
 
     def _pset(self, player_id: int = 0, voice: str | None = None, slots: dict | None = None,
-              hits: dict | None = None) -> str:
-        """`$PSET,<playerId>,0,<hp>,<armor>,<shield>,…`
+              hits: dict | None = None, team: int = 0) -> str:
+        """`$PSET,<playerId>,<team>,<hp>,<armor>,<shield>,…`
 
         Token 1 is the PLAYER ID (protocol §7p, confirmed by cap10+cap11): 6 bits,
         **0-based, 0–63** on the wire, while the Callsign UI shows 1–64. Out-of-range
         values are clamped rather than silently wrapped — a wrapped id would collide
-        with another player's and mis-attribute kills."""
+        with another player's and mis-attribute kills.
+
+        Token 2 is the TEAM, and it is the same value the caller sends as `$TID` (F206). The gun
+        keeps ONE team byte: `$TID`, `$TEAM` and `$PSET` t2 all write it and the last writer wins
+        (V4_31 disassembly, LaserTagMods drive 2026-09-18; bench confirmation pending, see
+        `docs/bench-firmware-levers-2026-09-19.md` §1). This token used to be a hard-coded 0, and the
+        node writes one of these frames right before every `$SPAWN` -- so every gun went live as
+        team 0 and, with `$GSET` t1 = 0, dropped every enemy hit (2026-09-13 playtest: 116 shots, 0
+        hits). `assert_team_byte_consistent` keeps the two writers equal."""
         pid = max(0, min(int(player_id), MAX_PLAYER_ID))
-        toks = ["PSET", str(pid), "0",
+        toks = ["PSET", str(pid), str(int(team)),
                 str(self.hp), str(self.armor), str(self.shield)] \
             + _PSET_HEAD + voice_tail(voice or getattr(self, "voice", None), slots) \
             + pset_foot(hits if hits is not None else getattr(self, "hit_sounds", None))
         return "$" + ",".join(toks) + ",*"
 
     def pset_frames(self, player_id: int = 0, voice: str | None = None, slots: dict | None = None,
-                    rng=None) -> list[str]:
+                    rng=None, team: int = 0) -> list[str]:
         """A15.3: one full `$PSET` frame per death-scream take of the family (`voices.roll_pool`), so the node can
         write ONE of them at random right before every `$SPAWN` and the firmware screams a different take each
         life. A pinned `death_scream` (or a family with one take) gives a single frame -- the same as `_pset`.
@@ -471,9 +516,9 @@ class GameConfig:
         def hits():
             return roll_material(rng, pinned) if rng is not None else pinned
         if "death_scream" in fixed:
-            return [self._pset(player_id, voice, slots, hits())]
+            return [self._pset(player_id, voice, slots, hits(), team=team)]
         takes = roll_pool(voice, "death_scream") or [None]
-        return [self._pset(player_id, voice, {**(slots or {}), "death_scream": t} if t else slots, hits())
+        return [self._pset(player_id, voice, {**(slots or {}), "death_scream": t} if t else slots, hits(), team=team)
                 for t in takes]
 
     def _gset(self) -> str:
@@ -527,14 +572,15 @@ class GameConfig:
             return []
         return ["$GLED,,,,5,,,*"]  # blank all three (bench + Callsign capture)
 
-    def setup_frames(self, player_id: int = 0) -> list[str]:
+    def setup_frames(self, player_id: int = 0, team: int = 0) -> list[str]:
         """Ordered config frames for ONE gun. `player_id` is that gun's identity
         (wire 0–63; the platform uses 1–63, reserving 0 — contracts A5.1) and rides in
-        `$PSET` token 1 — see `_pset`. Everything else
+        `$PSET` token 1 — see `_pset`. `team` is the value the caller will send as `$TID`; it rides
+        in `$PSET` token 2 so the two team writers agree (F206). Everything else
         is per-game and identical across guns."""
         cfg = self.apply_presets()
         frames = [f"$VOL,{cfg.volume},0,*", "$CLEAR,*", "$START,*", cfg._gset(),
-                  cfg._pset(player_id), cfg._weap(0, cfg.primary), cfg._weap(1, cfg.secondary),
+                  cfg._pset(player_id, team=team), cfg._weap(0, cfg.primary), cfg._weap(1, cfg.secondary),
                   cfg._weap(4, "melee")]              # the app always loads a melee slot
         frames += list(_SIR_TABLE) + cfg._bmap()
         frames += cfg._led_frames()
@@ -619,7 +665,7 @@ def arm_sequence(team: int, player_id: int, weapon: str = "primary",
     bug here fails loudly at build time instead of silently at the bench.
     """
     cfg = GameConfig(primary=weapon, secondary=secondary, **cfg_kwargs)
-    frames = list(cfg.setup_frames(player_id))
+    frames = list(cfg.setup_frames(player_id, team=int(team)))
     if extra_sir:
         sir_idx = [i for i, f in enumerate(frames) if f.startswith("$SIR,")]
         insert_at = (sir_idx[-1] + 1) if sir_idx else len(frames)
@@ -627,4 +673,5 @@ def arm_sequence(team: int, player_id: int, weapon: str = "primary",
     frames.append(f"$TID,{int(team)},*")
     frames += cfg.spawn_frames()
     assert_arm_sequence_complete(frames)
+    assert_team_byte_consistent(frames)
     return frames

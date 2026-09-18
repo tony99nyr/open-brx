@@ -40,11 +40,20 @@ export class Reassembler {
   }
 }
 
+/** Write pacing (docs/spec/transport-hardening.md §3). The gun reads ONE serial byte per main-loop pass out of a
+ *  1 KB UART buffer (V4_30/V4_31 disassembly, 2026-09-18), so a long burst can outrun it and a lost `*` corrupts
+ *  the next frame. `chunkGapMs`/`frameGapMs` are the pacing the field has run on since 2026-08; the BLOCK pause
+ *  is a lever for bench §14: after every `blockFrames` frames of one write, sleep `blockPauseMs`. It ships OFF
+ *  (blockFrames = 0): the evidence for a value is not measured yet, and a slower arm is a real cost at the line. */
+export const WRITE_PACING = Object.freeze({ chunkGapMs: 8, frameGapMs: 18, blockFrames: 0, blockPauseMs: 0 });
+
 export class BrxLink {
   constructor({ ble = BleClient, log = () => {}, onFrame = () => {}, onDrop = () => {}, onUp = () => {},
-                unbounded = () => false, chunkGapMs = 8, frameGapMs = 18 } = {}) {
+                unbounded = () => false, chunkGapMs = WRITE_PACING.chunkGapMs, frameGapMs = WRITE_PACING.frameGapMs,
+                blockFrames = WRITE_PACING.blockFrames, blockPauseMs = WRITE_PACING.blockPauseMs } = {}) {
     this.ble = ble; this.log = log; this.onFrame = onFrame; this.onDrop = onDrop; this.onUp = onUp;
     this.unbounded = unbounded; this.chunkGapMs = chunkGapMs; this.frameGapMs = frameGapMs;
+    this.blockFrames = blockFrames; this.blockPauseMs = blockPauseMs;
     this.deviceId = null; this.advert = null; this.connected = false; this.retries = 0; this.lastReason = null;
     this._init = null; this._q = Promise.resolve(); this._scanning = false; this._re = new Reassembler();
     this.frames = [];      // last frames in/out (diagnostics)
@@ -166,11 +175,14 @@ export class BrxLink {
   }
   _notify(value) { for (const f of this._re.pump(dataViewToText(value))) { this._note('rx', f); this.onFrame(f); } }
 
-  /** Write frames verbatim, in order, chunked at 20 bytes with pacing; serialized per device. */
+  /** Write frames verbatim, in order, chunked at 20 bytes with pacing; serialized per device. A block pause
+   *  (`blockFrames` > 0) sleeps `blockPauseMs` after every `blockFrames` frames of ONE write, so the gun's
+   *  one-byte-per-loop parser can drain its buffer mid-arm (transport-hardening.md §3; off by default). */
   write(frames) {
     const id = this.deviceId; if (!id) return Promise.resolve(false);
     const list = Array.isArray(frames) ? frames : [frames];
     this._q = this._q.then(async () => {
+      let n = 0;
       for (const frame of list) {
         this._note('tx', frame);
         for (let o = 0; o < frame.length; o += 20) {
@@ -178,6 +190,8 @@ export class BrxLink {
           if (frame.length > 20) await sleep(this.chunkGapMs);
         }
         await sleep(this.frameGapMs);
+        n++;
+        if (this.blockFrames > 0 && this.blockPauseMs > 0 && n % this.blockFrames === 0 && n < list.length) await sleep(this.blockPauseMs);
       }
       return true;
     }).catch(e => { this._log('write err: ' + (e && e.message || e), 'le'); return false; });

@@ -1,59 +1,56 @@
 # Handoff — Open BRX
 
-**State as of 2026-09-17 (night).** The arsenal rework shipped this morning (`08aec5b7`). Tonight fixed
-two defects in it, designed the damage-over-time weapon we never had, and wrote the perk catalogue.
-Tomorrow's first job is a 40-minute bench (`bench-perks-2026-09-18.md`), then the perk build.
+**State as of 2026-09-18 (night).** Branch `integrate-jay-2026-09-18` is main plus four merged branches:
+`cut-live-accuracy` (the S42 live-accuracy writer is gone), `community-audio-labels`, `soak-tool`, and
+`jay-drive-integration` (the LaserTagMods drive: stock firmware images, Jay's ESP32 sources, BC's command sheets
+and BC's 2018 app). Main also gained a Callsign capture (cap30) and a weapons pass the same day. **Every firmware
+fact from the drive is a disassembly reading, not a measurement on v4.32**; the bench that settles them is
+`bench-firmware-levers-2026-09-19.md` (four sessions, a 20-claim checklist).
 
-⚠️ **Two commits from yesterday morning (`61b1074e`, `e20c7136`) recorded the range finding against
-`t41`.** That was the `t2` result written against the wrong token. Q15 and `weapon-design.md` §4.2 carry
-the correction; the per-venue targets in them still stand.
+⚠️ **Top priority (Tony): screamers.** A gun locks up in play, a sound loops, and only a power cycle recovers it. The plan
+to reproduce and prevent them is [`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md). Its Phase C
+tool is built: `python -m brx_mcp soak <address> <pattern> <minutes>` (`soak-tool`).
 
-## Tonight
+## Today
 
-1. **Two defects, both found by READING, not by a test** (`f4e7e263`, `test:all --ui` 17/17). The recoil
-   accuracy writer's overheat guard read `this.overheatLocked`, which nothing ever set, so it could
-   write into a lockout; it now reads the gun's heat from `$ALCD` token 5 (F229). And `weapons.json`
-   carried **two `recoil` blocks in 13 of 22 weapons**, one per merge lane: JSON keeps the last, so the
-   first was dead. Nothing shipping moved, because the surviving values are the documented ones. Both
-   now have a guard that goes red when broken. The playtest session found both.
-2. **Damage over time is designed** (`e934502b`, `weapon-design.md` §6.3b, S16). The node route is
-   certain: `$LIFE` takes negatives and the victim's phone keys off the `$WEAP` t3 damage type echoed in
-   `$HIR` token 2. The native route (fn 24) is written up as UNPROVEN, because its ticks were measured
-   against a repeating beacon. The weapon is a Toxin Rifle: half the direct damage, a small tick,
-   refresh rather than stack, and the first weapon that punishes turtling.
-3. **The perk catalogue** (`6f039f90`, `perk-design.md`). Seven core picks, each buying on the lever its
-   neighbour sells: Body Armor +25 and preset-aware, Armour Piercing at about -60% damage, Quick Hands,
-   Extended Mags, Quick Switch, Motion Tracker, Second Wind. The next wave and every rejected idea are
-   in the same document, with reasons. §6.3c lists the four other archetypes the levers already allow
-   and the catalogue does not have: a medic gun, a flux beam, a jammer and a crit weapon.
-4. **The compile half of S50 is built and merged** (`5f9e2620`, `181fc506`, `test:all --ui` 17/17).
-   `armed_armor()` redirects the grant to SHIELD under the Shields preset and floors at 0; Armour
-   Piercing re-keys the primary to a new permanent fn-2 `$SIR` row and refuses to arm if the compiled
-   head lacks it; `perk_effects` rides the FrameBundle and State from one resolver, pinned equal by a
-   test; Easy Reload now lives in `loadout.overrides`. The HUD's perk line printed every COST as a buff
-   (`reload_mult: 1.25` read as "RELOADS 0.8x FASTER"), which is fixed, and the kit plate takes the gain
-   alone so it stops overflowing.
+1. **F206 has a root cause and a shipped fix** (`d0f4c729`). The gun keeps ONE team byte; `$TID`, `$TEAM` and
+   `$PSET` t2 all write it, and the last writer wins. Our `$PSET` hard-coded t2 = 0, so every gun went live as
+   team 0 and dropped every enemy hit under `$GSET` t1 = 0. Now every `$PSET` carries the `$TID` team, `$TID`
+   follows every `$SPAWN`, and `assert_team_byte_consistent` refuses a bundle where the two disagree.
+   **One bench run confirms it** (levers sheet §1, runs a-f).
+2. **The command rail has three tiers** (`cbd05419`): `KNOWN_COMMANDS` (arity and a bench-proven flag),
+   `DENIED_COMMANDS` (refused even with confirm: factory, DFU, pairing, `$IRT`, `$SITE`, `$RESET`, `$DPLAY` and
+   more), and unknown = confirm. The phone gets the deny list as `NODE_DENIED_COMMANDS`.
+3. **Transport hardening is designed, two parts built** (`spec/transport-hardening.md`). The gun reads one serial
+   byte per loop pass, a lost `*` corrupts the next frame, and six audio waits block the loop with no watchdog:
+   a screamer mechanism. Built: the deny list, and `brxlink.WRITE_PACING` with the block pause OFF. Filed:
+   F255 pacing and the runt `$SIR` rows, F256 write with response, F257 `$QUERY` read-back, F258 the lock-up
+   detector, F259 whether `$PB*` joins the deny list. (Renumbered at the merge from F254-F258; main owns F254.)
+4. **`$BUMP` is live, and the shapes agree.** The firmware shape is
+   `$BUMP,<amount>,<hp 0/1>,<armour 0/1>,<shield 0/1>,<sound>,*`. Callsign's shield recharge (cap30) sends
+   `$BUMP,12,,1,,,*`, which confirms the armour flag on the wire. The hp and shield flags, negatives and the
+   cascade are still to bench (levers sheet §5, F65).
+5. **The second emitter is priced** (`9b7d2ae0`, `afe064c4`). One Shotgun pull lands two words (gun 45, headset
+   70, cap30), which settles F71. t12 is now a declared `wire.headset_dmg`; the Shotgun ships 20 + 20. The drive
+   adds that the range tokens set the IR **carrier frequency**, not the power, which bears on F254 (at what `t13`
+   the headset word stops arriving). `$GSET` t2 = 1 means indoor; Callsign sends 0 on its default OUTDOOR venue.
+6. **The protocol reference is tagged by evidence** (`[disasm]` `[sheet]` `[apk2018]` `[jay]`; no tag = bench).
+   The bench result was kept over the disassembly in three places: `$WEAP` t37/t38, the `$LIFE` token order,
+   and the x1.5 crit at t7 = 0.
 
-## Tomorrow
+## Next
 
-1. **Bench, about 40 minutes** (`bench-perks-2026-09-18.md`): can a gun roll its own crits (F62, `$WEAP`
-   t6); is there a `$SIR` function that hits ARMOUR harder (the counter Body Armor needs); **does one
-   fn-24 shot tick** (this gates the poison weapon, and checks whether the stock Energy Launcher row has
-   been ticking victims all along); the Charge Rifle's real tap cadence; whether a stim-style write
-   survives a reload; and two sound items handed back by the playtest session.
-2. **The perk build, what is left.** The node-local pair, Motion Tracker and Second Wind, is not
-   started, and neither is the Motion Tracker range measurement (`perk-design.md` §5 item 5: the RSSI
-   bubble was tuned for walking up to a station, not for a fight). **S52** is the one that matters for a
-   real player: the HUD never tells someone their host switched Easy Reload on, and the conflict with a
-   second weapon is enforced only on the server, so out of coverage there is no warning at all.
-3. **Range calibration** when the M5Sticks arrive (S49): the close-band guesses (SMG 30, Shotgun and
-   heavies 22) become measurements.
+1. **Push and merge this branch** after `npm run test:all -- --ui` (known red on main: app-screens #53 and some
+   app-e2e steps).
+2. **Screamers first** (top priority): the screamers sheet, Phase C can run unattended on one gun with `soak`. Do not turn
+   the block pause on before levers sheet §14 gives F255/F256/F258 their numbers.
+3. **Levers bench, session 1** (45 min, two guns): §1 F206, §2 melee, §4 `$STUN`, §5 `$BUMP`, §13 `$DD`. If
+   `$STUN,3000` and `$BUMP,-20,1,1,1` behave as V4_30 says, run the rest; if not, v4.32 has drifted.
+4. **After §1 passes:** close F206 (one dated line in the archive) and start F257 (the `$QUERY` team read-back).
+5. **F254** (outdoor space): the headset word's reach. It unlocks the close-range weapon class.
 
 ## Open, not moved
 
-The 2026-09-13 playtest criticals (F206 to F209) are untouched. The playtest branch merged main, has
-renumbered its own rows and has filed every F id below **F253**, so main resumes there. That branch
-replaced `overheated()` with a per-slot `_overheating()` carrying a staleness window, which is the
-better design: a locked gun stops sending `$ALCD`, so a single gun-wide 99 would sit above the line for
-ever. When it lands, heat becomes a game rule and belongs on the stage. Main no longer has
-`overheated()`: its only reader was the S42 accuracy writer, which Tony cut on 2026-09-18.
+F207 (the START echo false positive) and F209 (the respawn burst) from the 2026-09-13 playtest are untouched.
+The playtest branch's `_overheating()` design is still the better one for heat (see the 2026-09-17 handoff in
+`git log -p -- docs/HANDOFF.md`). The perk build's node half (Motion Tracker, Second Wind, S52) is not started.

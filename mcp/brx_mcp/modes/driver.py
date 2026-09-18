@@ -417,7 +417,7 @@ class GameDriver:
         """
         self.arming_failures.pop(pid, None)
         self._warn_if_tid_is_not_a_team(pid)
-        frames = list(self.config.setup_frames(self.player_ids[pid]))
+        frames = list(self.config.setup_frames(self.player_ids[pid], team=int(self.players[pid])))   # F206: $PSET t2 = the $TID team
         for f in frames:
             await self._send(pid, f, critical=True)
         await self._send(pid, f"$TID,{self.players[pid]},*", critical=True)

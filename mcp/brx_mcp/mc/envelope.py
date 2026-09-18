@@ -18,8 +18,15 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .types import MAX_PLAYERS, MC_KINDS, NODE_KINDS, PROTOCOL_V
+from ..protocol import ALL_DENIED_COMMANDS as _DENIED_COMMANDS
 
 MAX_ENVELOPE_BYTES = 64 * 1024        # net.md §8 size cap
+# The command words a NODE must never write to its gun, whatever a bundle or a debug panel says:
+# persistent state, pairing, DFU, the IR word-format switch, factory tests, and `$DPLAY`, which
+# blocks the gun's main loop with the serial port unread (the likely screamer mechanism). One
+# source, `protocol.DENIED_COMMANDS`; the phone reads this copy from the generated contract
+# (docs/spec/transport-hardening.md §4).
+NODE_DENIED_COMMANDS = frozenset(_DENIED_COMMANDS)
 MAX_LOG_CHUNK_BYTES = 48 * 1024       # log_data chunk cap (fits under the envelope cap)
 # ⚠ This is a WHITELIST and an unlisted type is REJECTED at the socket, not ignored downstream --
 # so a fact the phone learns to send reaches nothing until it is named here (the F40/F60 shape:

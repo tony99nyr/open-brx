@@ -20,21 +20,207 @@ NUS_TX_CHAR_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"  # notify from tagger
 # (so an embedded newline can't smuggle a second frame past validation).
 _FRAME_RE = re.compile(r"^\$[A-Z0-9!]+(,[^,*\r\n]*)*,\*\Z")
 
-# Commands documented in brx-protocol.md §3 that are safe to send without an
-# explicit confirm=true. Anything else (unknown/undocumented) requires the
-# caller to opt in — that is the MCP safety rail, not a tagger limitation.
-KNOWN_SAFE_COMMANDS = {
-    "PING", "CLEAR", "START", "SPAWN", "CONNECT", "INIT", "PHONE",
-    "GSET", "PSET", "WEAP", "SIR", "BMAP", "GLED", "PLAY", "AS", "SP",
-    "PBWEAP", "PBTEAM", "PBPERK", "TID",
-    # Verified in the official iOS Callsign captures (protocol §7e/§7f):
-    # every one of these was sent by the app during a normal game.
-    "AMMO", "STOP", "PLAYX", "VOL", "HLED", "NAME", "VERSION", "HLOOP",
-    "BLINK", "LED",   # headset LED requests, shapes found in the APK metadata + proven harmless on GAMMA 2026-09-04 (see brx-protocol.md)
-    "SFLASH",
+# ---------------------------------------------------------------------------------------------
+# The command safety rail: three tiers, one table each.
+#
+#   KNOWN_COMMANDS   understood shape + effect; the instrument sends them without confirm=true.
+#                    `proven` says whether OUR v4.32 guns have shown the effect on the bench. An
+#                    unproven entry comes from the V4_30/V4_31 firmware disassembly, Battle Company's
+#                    own command sheets or the 2018 BC app (all via LaserTagMods' drive, 2026-09-18);
+#                    the instrument sends it but says so in the reply. `tokens` = how many tokens the
+#                    V4_30 handler reads after the command word (extra tokens are ignored, fewer are
+#                    empty), where the disassembly counted them.
+#   DENIED_COMMANDS  never sent, confirm or not: persistent state, pairing/DFU, an IR word-format
+#                    switch, factory tests, or a path that BLOCKS the gun's main loop (the screamer
+#                    mechanism). The reason is the value. The node (phone) refuses these too, via
+#                    `NODE_DENIED_COMMANDS` in mc/envelope.py -> the generated contract.
+#   anything else    unknown: needs confirm=true (the caller opts in, and the write is logged).
+#
+# Evidence tags in the notes: [bench] our guns · [disasm] V4_30/V4_31 firmware image · [sheet] BC's
+# command spreadsheets · [apk2018] BC's 2018 Battle Royale app · [jay] LaserTagMods' ESP32 sources.
+# ---------------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CommandInfo:
+    tokens: int | None      # tokens the handler reads (None = not counted)
+    proven: bool            # effect shown on OUR v4.32 guns
+    note: str
+
+
+def _c(tokens: int | None, proven: bool, note: str) -> CommandInfo:
+    return CommandInfo(tokens, proven, note)
+
+
+KNOWN_COMMANDS: dict[str, CommandInfo] = {
+    # -- lifecycle and configuration (protocol §3.1) -----------------------------------------------
+    "PING": _c(0, True, "[bench] -> $PONG"),
+    "CLEAR": _c(0, True, "[bench] wipes game state AND the $SIR table (F11): re-send $SIR after it"),
+    "START": _c(0, True, "[bench] config mode; [disasm] also ARMS IR reception ($STOP disarms it)"),
+    "STOP": _c(0, True, "[bench] first frame of every connect; [disasm] drops every IR word while set"),
+    "SPAWN": _c(1, True, "[bench] $SPAWN,,* goes live; [disasm] token 1 = starting SHIELD, unproven on v4.32"),
+    "CONNECT": _c(0, True, "[bench] no reply on v4.32"),
+    "INIT": _c(0, True, "[bench] no reply on v4.32"),
+    "PHONE": _c(0, True, "[bench] opens the event tap"),
+    "GSET": _c(8, True, "[bench] 8 tokens"),
+    "PSET": _c(23, True, "[bench] t1 player id, t3-t5 pools; [disasm] t2 = TEAM (F206), t6 = crit damage bonus [sheet]"),
+    "WEAP": _c(43, True, "[bench] slot 0-5; the 2018 app used slots up to 7"),
+    "SIR": _c(8, True, "[bench] the incoming-IR table; fn 0-52 [disasm]"),
+    "BMAP": _c(6, True, "[bench] buttons 0-29, functions 0-130 [disasm]"),
+    "TID": _c(1, True, "[bench] team 0-3; shares ONE byte with $TEAM and $PSET t2 [disasm]"),
+    "AMMO": _c(4, True, "[bench] t4 = 0 add / 1 set / 2 set past max [sheet, apk2018]"),
+    "VOL": _c(2, True, "[bench]"),
+    "NAME": _c(1, True, "[bench] PERSISTENT gun name (the armory writes it on purpose)"),
+    "VERSION": _c(0, True, "[bench]"),
+    "QUERY": _c(0, True, "[bench] status array + $LCD; fields t1 id, t2 team, t3-t5 pool maxima [disasm]"),
+    "VOLTS": _c(0, True, "[bench] battery telemetry"),
+    "PLAY": _c(7, True, "[bench] slot 1 interrupts, slot 4 queues"),
+    "PLAYX": _c(0, True, "[bench] stop playback"),
+    "SFLASH": _c(0, True, "[bench] the kill-confirm sight flash"),
+    "SP": _c(1, True, "[bench] $SP,99 = panic half; [jay] t1 = winner (100 + id, or team id)"),
+    "AS": _c(9, False, "[jay] native hosting: $AS,<1 start|2 perk|3 team|4 lock|5 weapon>,...; silent on v4.32 so far"),
+    "PBWEAP": _c(1, True, "[bench] a 'game starting' sound on v4.32"),
+    "PBTEAM": _c(1, False, "[jay] team for the gun's own hosted game"),
+    "PBPERK": _c(1, False, "[jay] perk 0-6 for the gun's own hosted game"),
+    "UP": _c(3, False, "[jay] $UP,100,<1 lead change|5 2min|6 1min|7 30s|8 10s>,<arg>; unproven on v4.32"),
+    "KK": _c(1, False, "[jay] kill-confirmed count for the killer's own gun; unproven on v4.32"),
+    "IT": _c(9, False, "[jay] $IT,<gunId>,4,0,0,0,0,0,75,0 'set player id and lock'; unproven on v4.32"),
+    "RADSK": _c(0, False, "[jay] the headset keepalive; JEDGE sends it to the gun every 4 s as a fake headset"),
+    # -- in-game effects and pools (protocol §3.2) --------------------------------------------------
+    "LIFE": _c(4, True, "[bench] additive, takes negatives; [disasm] t4 = 0 add / 1 set clamped / 2 set unclamped"),
+    "BUMP": _c(5, False, "[disasm, sheet, apk2018] $BUMP,<amount>,<hp 0/1>,<armour 0/1>,<shield 0/1>,<sound>: a cascade. Our 3-token probe was inert (no flag set); the armour flag is proven on the wire by the 2026-09-18 Callsign capture ($BUMP,12,,1,,,*)"),
+    "STUN": _c(1, False, "[disasm, apk2018] $STUN,<ms>: a timed stun. Our bare $STUN,* was 0 ms"),
+    "PRES": _c(3, False, "[disasm] $PRES,<proto>,<sub>,<pct>: per-cell damage x (100+pct)/100"),
+    "TMP": _c(11, False, "[disasm] pool-max bonuses t1-t3, incoming damage % t8, magazine % t9, default hit sound t11"),
+    "INVU": _c(0, False, "[disasm] incoming damage x0 (sets the $TMP t8 modifier to -100). Power-cycle to be sure it is gone"),
+    "BHIT": _c(7, False, "[disasm, sheet] host-injected hit through the real $SIR path; dropped on a dead gun"),
+    "FIREX": _c(1, False, "[disasm] fire slot 0-11 with no trigger pull; emits the real IR word"),
+    "DIE": _c(0, False, "[disasm] kill self (in app mode: reports instead)"),
+    "TEAM": _c(1, False, "[disasm] same team byte as $TID, no debug print"),
+    "PID": _c(1, False, "[disasm] same player id as $PSET t1"),
+    "IRTX": _c(11, False, "[sheet, apk2018] transmit one IR word; the gun relays it to the headset emitter [disasm]"),
+    "GREN": _c(8, True, "[bench] sent; the emitted bits did not track the arguments"),
+    "QFX": _c(1, False, "[disasm] queued sound effect"),
+    "QPLAY": _c(1, False, "[disasm] queued play"),
+    "QHIT": _c(4, False, "[disasm] queue a two-part hit sound: sound1, vol1 0-9, sound2, vol2 0-9"),
+    # -- lights (headset + gun body) ---------------------------------------------------------------
+    "GLED": _c(6, True, "[bench] gun body LEDs"),
+    "HLED": _c(6, True, "[bench] headset LED"),
+    "HLOOP": _c(2, True, "[bench] headset flash loop"),
+    "LED": _c(2, True, "[bench] headset flash LED, proven harmless 2026-09-04"),
+    "BLINK": _c(5, True, "[bench] headset blink, proven harmless 2026-09-04"),
+    "GLOW": _c(5, False, "[disasm, jay] headset glow effect"),
+    "SOLID": _c(2, False, "[disasm] headset solid colour"),
+    "CHASE": _c(4, False, "[disasm] headset chase effect"),
 }
 
+# Back-compat name: the set of command words the instrument sends without confirm=true.
+KNOWN_SAFE_COMMANDS = frozenset(KNOWN_COMMANDS)
+
+# Refused outright by the instrument (confirm=true does NOT override) and by the node. Names from
+# the V4_30/V4_31 firmware command table and Battle Company's sheets; every one either changes
+# persistent state, re-pairs or re-flashes a radio, switches the IR word format, runs a factory test,
+# or blocks the gun's main loop with the serial port unread.
+DENIED_COMMANDS: dict[str, str] = {
+    "FACTORY": "factory restore of the gun's persistent record [disasm]",
+    "CDFU": "puts the central BT radio into DFU (bootloader) mode [disasm]",
+    "HEADDFU": "puts the headset into DFU (bootloader) mode [disasm]",
+    "DDFU": "the v2.x DFU entry [disasm]",
+    "CLEARDEVICE": "clears the paired-device record (the headset pairing) [disasm]",
+    "RESET": "reset routine of unknown scope; drops the link mid-match at best [disasm]",
+    "IRT": "Arena/Retail IR word-format switch: a gun on the other format hears nobody [disasm]",
+    "DEV": "developer-mode toggle, persistence unknown [disasm]",
+    "DTYPE": "rewrites the device type (gun / gun with gyro) in the factory record [disasm]",
+    "SITE": "field/site id change; also flags a later reset to force team 2 [disasm]",
+    "TSTRNAME": "writes the tester-name field of the factory record [disasm]",
+    "ASKSN": "prints the serial number = the headset PIN, which must not enter a log [disasm]",
+    "FTST": "the factory test series [disasm, jay]",
+    "BURN": "burn-in test [disasm]",
+    "DUTY": "IR / laser duty cycle: a laser continuous-wave test [disasm]",
+    "SOL": "solenoid (recoil) test [disasm]",
+    "MUZ": "muzzle-flash test [disasm]",
+    "VIBTOGGLE": "vibration on/off, persistence unknown [disasm]",
+    "GPAIR": "writes the grenade pairing record [disasm]",
+    "GPAIRX": "clears the grenade pairing record [disasm]",
+    "PAIR": "v2.x Bluetooth pairing [disasm]",
+    "PIN": "v2.x Bluetooth PIN [disasm]",
+    "INQ": "HC-05 radio inquiry [disasm]",
+    "ZOM": "zombie headset mode [sheet]",
+    "ZTOG": "zombie mode toggle [sheet]",
+    "ZON": "zombie mode on [disasm: headset vocabulary]",
+    "ZOFF": "zombie mode off [disasm: headset vocabulary]",
+    "BOOM": "zombie 'boomer' headset command [sheet]",
+    "ZOMBIEKEYACTIVE": "zombie unlock key [sheet]",
+    "SETUP": "the USB console's factory provisioning menu is not a $ command; never send its word over BLE",
+}
+
+# Refused like DENIED_COMMANDS, with one exception: the bench may send one ON PURPOSE to make a
+# lock-up on demand (levers sheet §14.4), with BOTH `confirm=True` and `allow_hang=True` on `send`.
+# The node never sends one; `send_batch` never sends one.
+HANG_PRONE_COMMANDS: dict[str, str] = {
+    "DPLAY": "plays a sound then BLOCKS the main loop until the channel finishes, serial unread: the likely screamer mechanism [disasm]",
+}
+
+# Every command word the NODE refuses: both tables. Mirrored to the phone by mc/envelope.py.
+ALL_DENIED_COMMANDS = frozenset(DENIED_COMMANDS) | frozenset(HANG_PRONE_COMMANDS)
+
+# Frames whose command word starts with one of these go between the gun MCU and its own radio
+# modules (`$!DFP`, `$^RESET`, `$&FWRNAME`, ...). Never ours to send.
+_DENIED_PREFIXES = ("!", "^", "&")
+
 PANIC_SEQUENCE = ["$CLEAR,*", "$SP,99,*"]
+
+
+def _raw_word(command: str) -> str:
+    """The first token as written, `$` stripped, no Gen1 prefix handling."""
+    return command.lstrip("$").split(",", 1)[0]
+
+
+def deny_reason(command: str, allow_hang: bool = False) -> str | None:
+    """Why the instrument and the node refuse this frame outright, or None if it is not denied.
+
+    A denied frame is refused even with confirm=true: it re-pairs, re-flashes, re-formats or
+    factory-writes the gun, or it blocks the gun's main loop (`$DPLAY`). Power-cycling does not
+    undo the persistent ones, which is what makes them different from every other command.
+    `allow_hang=True` lets a HANG_PRONE_COMMANDS frame through (a supervised bench run only)."""
+    word = _raw_word(command)
+    if word.startswith(_DENIED_PREFIXES):
+        return f"'{word}' is a gun<->radio module control frame, never a host command"
+    reason = DENIED_COMMANDS.get(word.upper())
+    if reason:
+        return f"'{word}' is refused: {reason}"
+    hang = HANG_PRONE_COMMANDS.get(word.upper())
+    if hang and not allow_hang:
+        return f"'{word}' is refused: {hang}. A supervised bench run may pass confirm=true AND allow_hang=true"
+    return None
+
+
+def is_denied(command: str) -> bool:
+    return deny_reason(command) is not None
+
+
+def command_info(command: str) -> CommandInfo | None:
+    return KNOWN_COMMANDS.get(command_name(command))
+
+
+def unproven_note(command: str) -> str | None:
+    """A one-line caveat for a known command the bench has not yet shown on v4.32, else None."""
+    info = command_info(command)
+    if info is None or info.proven:
+        return None
+    return f"'{command_name(command)}' is understood but NOT bench-proven on v4.32: {info.note}"
+
+
+def arity_note(command: str) -> str | None:
+    """A caveat when a frame carries more tokens than the V4_30 handler reads (they are ignored)."""
+    info = command_info(command)
+    if info is None or info.tokens is None:
+        return None
+    n = len(tokenize(command)) - 1
+    if n > info.tokens:
+        return (f"'{command_name(command)}' carries {n} tokens; the V4_30 handler reads {info.tokens}, "
+                f"the rest are ignored")
+    return None
 
 
 def validate_frame(command: str) -> str | None:

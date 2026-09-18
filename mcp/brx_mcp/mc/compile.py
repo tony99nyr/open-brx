@@ -16,7 +16,8 @@ from typing import Any, Literal
 
 import random as _random
 
-from ..gameconfig import END_SEQUENCE, GSET_T2_SAFE, WEAPON_TAILS, _SIR_TABLE, GameConfig as _GC
+from ..gameconfig import (END_SEQUENCE, GSET_T2_SAFE, WEAPON_TAILS, _SIR_TABLE, GameConfig as _GC,
+                          assert_team_byte_consistent)
 from .. import hitaudio as _ha
 from ..protocol import PANIC_SEQUENCE
 from .perks import PerkCatalog
@@ -591,6 +592,32 @@ def assert_arms_at_spawn(head: list[str], spawn: list[str]) -> None:
             "F121 GUARD: the spawn frames do not re-arm every cell the head disarmed, so these "
             "weapons would take nothing off this player all match: "
             + ", ".join(f"<{c[0]},{c[1]}>" for c in missing))
+
+
+def _bundle_frames(value) -> list[str]:
+    """Every `$…` string anywhere in a bundle (lists, dicts, nested), for whole-bundle guards."""
+    if isinstance(value, str):
+        return [value] if value.startswith("$") else []
+    if isinstance(value, dict):
+        return [f for v in value.values() for f in _bundle_frames(v)]
+    if isinstance(value, (list, tuple)):
+        return [f for v in value for f in _bundle_frames(v)]
+    return []
+
+
+def assert_no_denied_frames(bundle) -> None:
+    """No frame anywhere in a bundle may carry a command from `protocol.DENIED_COMMANDS`.
+
+    The node refuses these at its write path (`engine._write`, the stage's `write`), so a bundle that
+    carried one would fail SILENTLY on the phone: the frame dropped, the rest of the burst written, and
+    a log line nobody reads mid-match. Refuse it here, at compile time, where an operator sees it.
+    docs/spec/transport-hardening.md §4."""
+    from ..protocol import deny_reason
+    for f in _bundle_frames(bundle):
+        why = deny_reason(f)
+        if why:
+            raise ValueError(f"DENY-LIST GUARD: a compiled bundle carries a frame the node must never write "
+                             f"({why}). Frame: {f}")
 
 
 def assert_rearms_every_life(bundle) -> None:
@@ -1677,7 +1704,7 @@ class Compiler:
                 # F162: EMPTY today (`DRIVE_IO_MODE` is "off") -- the staged venue-mode candidates,
                 # right after $GSET so a bench rung changes one thing next to the frame it copies.
                 *venue_mode_frames(_gset, env),
-                gc._pset(pnum, player.get("voice"), voice_slots),   # the voice pack is per-PLAYER (§PSET); A15 slot picks / A15.1 rolls
+                gc._pset(pnum, player.get("voice"), voice_slots, team=tid),   # the voice pack is per-PLAYER (§PSET); A15 slot picks / A15.1 rolls. F206: t2 = the $TID team
                 self._rekey(self._rekey(self.catalog.resolve(w0, 0, mods, environment=env), plan.cell_for(w0)),
                             _AP_CELL if armor_piercing else None)]
         if w1:
@@ -1747,7 +1774,13 @@ class Compiler:
         # F121/A23: the REAL $SIR table leads the burst, so hit reception is armed by the time `$SPAWN`
         # makes the player live -- and never a moment before. Cells persist, so this is a swap of the
         # head's fn-28 registrars, not an addition (the F11 repair path is the same write).
-        spawn = list(sir_live) + ["$PLAYX,0,*", "$SPAWN,,*"] + ammo + ["$BMAP,0,0,,,,,*"] + play_hled
+        # F206: `$TID` is re-asserted right after every `$SPAWN`. The gun keeps ONE team byte, written by
+        # `$TID`, `$TEAM` and `$PSET` t2 alike (V4_31 disassembly, 2026-09-18), and the node writes a
+        # `pset_pool` `$PSET` in the same burst as `$SPAWN`. That `$PSET` now carries the team too; this
+        # frame is the belt to its braces, and it is what LaserTagMods' own hosted-game path does (a
+        # second `$TID` after the gun's start). A live `$TID` write changes hit resolution at once and
+        # repaints nothing (bench 2026-09-07), so it is safe after `$SPAWN`.
+        spawn = list(sir_live) + ["$PLAYX,0,*", "$SPAWN,,*", f"$TID,{tid},*"] + ammo + ["$BMAP,0,0,,,,,*"] + play_hled
         # revive = $SPAWN + loadout $AMMOs (NO $HLOOP, NO $BMAP — §1.1 replaces RESPAWN_SEQUENCE)
         # F121: the table again, because a revive is not always preceded by a spawn -- `engine.js
         # _resyncNotLive` re-writes the HEAD on a live node and revives from there. Omitted only when
@@ -1755,7 +1788,14 @@ class Compiler:
         # BEFORE `frames.revive`, and a copy here would clobber that take's sounds with a fixed draw.
         # `assert_rearms_every_life` holds the invariant whichever carrier is active.
         revive_sir = [] if _cs else list(sir_live)
-        revive = revive_sir + ["$SPAWN,,*"] + ammo + play_hled
+
+        def _revive_for(team: int) -> list[str]:
+            # One revive burst per TEAM: the plain `revive` is the arming team's; an infection flip
+            # (below) needs the same burst ending on the team the gun has just joined, because the
+            # `pset_pool` `$PSET` the node writes before it still carries the ARMING team.
+            return revive_sir + ["$SPAWN,,*", f"$TID,{team},*"] + ammo + play_hled
+
+        revive = _revive_for(tid)
         assert_arms_at_spawn(head, spawn)    # F121: every disarmed cell comes back live at $SPAWN
 
         bundle: FrameBundle = {
@@ -1815,7 +1855,10 @@ class Compiler:
         # A17: each take also carries its own draw from the MATERIAL pools (hitHp / hitArrmor /
         # hitShield / hitCrit), so the one write that re-rolls the death scream re-rolls what a hit on
         # each pool sounds like. Variety lands BETWEEN hits; nothing is played over BLE during one.
-        bundle["pset_pool"] = gc.pset_frames(pnum, player.get("voice"), picks or None, rng=hits_rng)
+        bundle["pset_pool"] = gc.pset_frames(pnum, player.get("voice"), picks or None, rng=hits_rng, team=tid)   # F206: t2 = the $TID team
+        # F206 GUARD: every $PSET this bundle can write carries the team its $TID frames carry. The node
+        # writes one of `pset_pool` in the same burst as every $SPAWN, so a stray 0 here is the whole bug.
+        assert_team_byte_consistent(head + spawn + revive + bundle["pset_pool"])
         # A17: the class layer, rolled the same way -- one full $SIR table per take. The node writes one
         # before every $SPAWN and again after a lull, so the same weapon does not land the same clip all
         # match. Re-sending $SIR rows is the F11 REPAIR path, so this write is bench-safe by construction.
@@ -1882,7 +1925,9 @@ class Compiler:
             take: dict[str, list[str]] = {}
             for t in teams:
                 if int(t["tid"]) != tid:
-                    flip[str(t["tid"])] = [f"$TID,{t['tid']},*"] + revive
+                    # F206: the burst ends on the NEW team's `$TID` (see `_revive_for`), and the node
+                    # uses this same list for every later revive of a turned player (`engine._revive`).
+                    flip[str(t["tid"])] = [f"$TID,{t['tid']},*"] + _revive_for(int(t["tid"]))
                     # F86: `gun.take` (blank + rest) is compiled for the ARMING team, so after a flip the
                     # node's next take -- 2.5 s after the flip's own $SPAWN, and after every later revive --
                     # painted the OLD team's colour back onto a gun the firmware had just moved. The node
@@ -1902,6 +1947,7 @@ class Compiler:
         pe = self.perk_effects_resolved(config, player)
         if pe:
             bundle["perk_effects"] = pe
+        assert_no_denied_frames(bundle)   # transport-hardening.md §4: MC never even compiles a frame the node refuses
         return bundle
 
     def tutorial_frames(self, weapon: Weapon, environment: str) -> list[str]:
@@ -1910,7 +1956,8 @@ class Compiler:
         wid = weapon["weapon_id"]
         mag, reserve = self.catalog.spawn_ammo(wid)
         # $PSET,0 = "no identity" (A5.1) so a stray try-out hit reports shooter 0, never credited.
-        pset = "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*"
+        # F206: token 2 = 1, the same team as the `$TID,1` below (one team byte, last writer wins).
+        pset = "$PSET,0,1,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*"
         return [
             f"$VOL,{VOL_TRYOUT},0,*", "$CLEAR,*", "$START,*",   # $START IS required — bench 2026-08-25: without it the gun
                                                      # spawns but the trigger only reloads, it will not fire IR

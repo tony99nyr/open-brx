@@ -19,6 +19,12 @@ export const C = {
 };
 export const SFLASH = '$SFLASH,*';
 export const PLAYX = '$PLAYX,0,*';
+/** The command word of a `$…` frame, or '' -- `$DPLAY,A10,4,*` -> 'DPLAY'. A gun<->radio control frame
+ *  (`$!…`, `$^…`, `$&…`) keeps its prefix so it never matches a real command by accident. */
+export function frameCommand(f) { return typeof f === 'string' && f[0] === '$' ? f.slice(1).split(',')[0].toUpperCase() : ''; }
+/** True when the node must never write this frame (transport-hardening.md §4): the word is on the generated
+ *  deny list, or it is a gun<->radio module control frame. */
+export function deniedCommand(f) { const w = frameCommand(f); return !!w && (W.NODE_DENIED_COMMANDS.has(w) || '!^&'.includes(w[0])); }
 export const PROBE_VOLTS = ['$PHONE,*'];
 export const PROBE_FW = ['$STOP,*', '$PHONE,*', '$VERSION,*'];
 
@@ -425,8 +431,20 @@ export class Engine {
     this.phase = phase; this._changed();
   }
   _changed() { this._save(); try { this.onChange(this); } catch (_) { /* ignore */ } }
+  /** Every gun write goes through here, and the deny list is enforced HERE, not in the bundle: a frame whose
+   *  command word is in `NODE_DENIED_COMMANDS` (generated from `protocol.DENIED_COMMANDS`: persistent state,
+   *  pairing, DFU, the IR word-format switch, factory tests, and `$DPLAY`, which blocks the gun's main loop
+   *  with the serial port unread) is dropped and logged, whatever MC, a debug panel or a stale bundle says.
+   *  `docs/spec/transport-hardening.md` §4. */
   _write(frames, why) {
     if (!frames || !frames.length) return;
+    const denied = frames.filter(f => typeof f === 'string' && deniedCommand(f));
+    if (denied.length) {
+      this.refused = (this.refused || 0) + denied.length;
+      this.log(`write ${why}: REFUSED ${denied.length} frame(s) the node must never send: ${denied.map(f => f.split(',')[0]).join(' ')}`, 'le');
+      frames = frames.filter(f => !denied.includes(f));
+      if (!frames.length) return;
+    }
     this.log(`write ${why}: ${frames.length} frame(s)`, 'li');
     try { return this.writer(frames); } catch (e) { this.log(`write ${why} failed: ${e && e.message || e}`, 'le'); }
   }
@@ -1966,7 +1984,12 @@ export class Engine {
     // spawn write is on the critical path and the headset needs its settling gap (F13). Re-sending $SIR rows is the
     // F11 REPAIR path, so this cannot cost us the table; the rows differ only in their sound tokens.
     const sir = this._pickTable('sir_pool');
-    this._write([...(ps.frame ? [ps.frame] : []), ...sir, ...this.frames.revive, ...(sp.frame ? [sp.frame] : [])], 'revive' + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : ''));
+    // F206: the gun keeps ONE team byte, and the `pset_pool` $PSET above carries the ARMING team. A player
+    // an infection flip has TURNED revives with the flip's own burst, which ends on the team they joined;
+    // `frames.revive` would put them back on the arming team.
+    const flipped = this._turned && this.frames.team_flip && this.frames.team_flip[String(this.teamTid)];
+    const revive = flipped || this.frames.revive;
+    this._write([...(ps.frame ? [ps.frame] : []), ...sir, ...revive, ...(sp.frame ? [sp.frame] : [])], 'revive' + (flipped ? ' (turned)' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : ''));
     this.hurtFired = false;
     this._prevAmmo = {}; this._prevReserve = {}; this.activeSlot = 0;   // both maps: a stun before the first shot of a NEW life must snapshot this life's reserve, not the last one's (polish review 2026-09-11)   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
     this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.deadAt = 0; this.killedBy = null;

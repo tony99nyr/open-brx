@@ -92,4 +92,5 @@ def test_resetup_reuses_the_same_id():
     # a real shield hum, not the "geiger tick" an earlier barrage of hits made it sound like).
     # hitCrit is X49 (bench 2026-09-11: ear-confirmed "metal hit"; the earlier H43 placeholder was
     # rejected -- "dropped a gun on the ground").
-    assert first == again == "$PSET,2,0,45,70,70,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H22,X49,U15,W71,A10,*"
+    # F206: token 2 is the TEAM (B is team 2), the same value the driver sends as $TID.
+    assert first == again == "$PSET,2,2,45,70,70,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H22,X49,U15,W71,A10,*"

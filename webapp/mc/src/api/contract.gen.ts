@@ -94,6 +94,13 @@ export type ControlCmd = typeof CONTROL_CMDS[number];
 export const PERSISTED_EVENT_TYPES = ['death', 'hit_taken', 'possession', 'respawn', 'team_change'] as const;
 export type PersistedEventType = typeof PERSISTED_EVENT_TYPES[number];
 export const STATION_KINDS = ['respawn', 'powerup', 'extraction', 'bomb', 'control'] as const;
+/** The command words a NODE must never write to its gun, whatever a bundle or a debug panel says:
+ *  persistent state, pairing, DFU, the IR word-format switch, factory tests, and `$DPLAY`, which
+ *  blocks the gun's main loop with the serial port unread (the likely screamer mechanism). One
+ *  source, `protocol.DENIED_COMMANDS`; the phone reads this copy from the generated contract
+ *  (docs/spec/transport-hardening.md §4). */
+export const NODE_DENIED_COMMANDS = ['ASKSN', 'BOOM', 'BURN', 'CDFU', 'CLEARDEVICE', 'DDFU', 'DEV', 'DPLAY', 'DTYPE', 'DUTY', 'FACTORY', 'FTST', 'GPAIR', 'GPAIRX', 'HEADDFU', 'INQ', 'IRT', 'MUZ', 'PAIR', 'PIN', 'RESET', 'SETUP', 'SITE', 'SOL', 'TSTRNAME', 'VIBTOGGLE', 'ZOFF', 'ZOM', 'ZOMBIEKEYACTIVE', 'ZON', 'ZTOG'] as const;
+export type NodeDeniedCommand = typeof NODE_DENIED_COMMANDS[number];
 export const STATION_SOURCE_IDS = ['grenade', 'ir_station', 'phone'] as const;
 export type StationSourceId = typeof STATION_SOURCE_IDS[number];
 

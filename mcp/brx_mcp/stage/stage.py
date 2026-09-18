@@ -444,6 +444,7 @@ class GunStage:
                                         # `_last_seq` (poll's own fetch cursor) so the instant on_frame
                                         # callback and a later poll() never react to the same frame twice
         self.scream_this_life: str | None = None   # A15.3: the death-scream id last written into a $PSET, or None
+        self.refused = 0                            # frames dropped by the deny list in `write` (mirrors engine.refused)
         self._last_pain_at: float | None = None    # A15.3: the 600 ms pain gate (PAIN_GAP_S)
         self._last_hir_proto: int | None = None    # A15.3: the ir protocol of the last $HIR (melee = 13), read on the next $HP/$LCD
         # F72/F85 + the hill: the phone's proto-15 model, field for field (engine.js `beacon`/`_lastBeacon*`/`hill`…)
@@ -910,6 +911,16 @@ class GunStage:
     # ---- writes -----------------------------------------------------------------------------------
     async def write(self, frames: list[str], why: str, gap_ms: int = 60) -> None:
         frames = [f for f in frames if f]
+        # Mirrors engine.js `_write`: a frame on the deny list (protocol.DENIED_COMMANDS -- persistent state,
+        # pairing, DFU, the IR word-format switch, factory tests, `$DPLAY`'s blocking loop) is dropped and
+        # logged, whatever the bundle or the bench script says (transport-hardening.md §4).
+        from .. import protocol
+        denied = [f for f in frames if protocol.is_denied(f)]
+        if denied:
+            self.refused += len(denied)
+            self._log(f"REFUSED {len(denied)} frame(s) the node must never send: "
+                      + " ".join(f.split(",")[0] for f in denied), "error", why)
+            frames = [f for f in frames if f not in denied]
         if not frames:
             return
         for f in frames:

@@ -111,19 +111,31 @@ def list_connections() -> list[dict[str, Any]]:
 
 @mcp.tool()
 async def send(alias: str, command: str, confirm: bool = False,
-               reply_window_ms: int = 500) -> dict[str, Any]:
+               reply_window_ms: int = 500, allow_hang: bool = False) -> dict[str, Any]:
     """Send one raw framed command (e.g. '$GLED,1,1,1,0,10,,*') and return any
     replies arriving within reply_window_ms. Commands outside the known-safe
-    list from brx-protocol.md require confirm=true."""
+    list from brx-protocol.md require confirm=true. Denied commands (persistent
+    state, pairing, DFU, factory tests) are refused whatever you pass; a
+    hang-prone one ($DPLAY) goes only with confirm=true AND allow_hang=true,
+    for a supervised bench run that wants a lock-up on demand."""
     err = protocol.validate_frame(command)
     if err:
         return {"error": f"malformed frame: {err}", "command": command}
+    denied = protocol.deny_reason(command, allow_hang=bool(confirm and allow_hang))
+    if denied:                       # confirm=true does NOT override: persistent state, pairing, DFU, a hang
+        return {"error": f"refused, confirm or not: {denied}", "command": command}
     if not protocol.is_known_safe(command) and not confirm:
         return {"error": f"'{protocol.command_name(command)}' is not in the "
                          "known-safe command list; retry with confirm=true "
                          "if you intend to send it",
                 "command": command}
-    return await manager.send(alias, command, reply_window_ms)
+    result = await manager.send(alias, command, reply_window_ms)
+    notes = [n for n in (protocol.unproven_note(command), protocol.arity_note(command)) if n]
+    if protocol.command_name(command) in protocol.HANG_PRONE_COMMANDS:
+        notes.append("HANG-PRONE frame sent on allow_hang=true: if the gun stops answering $PING, power-cycle it")
+    if notes:
+        result = {**result, "note": " | ".join(notes)}
+    return result
 
 
 @mcp.tool()
@@ -136,10 +148,17 @@ async def send_batch(alias: str, commands: list[str], gap_ms: int = 100,
         err = protocol.validate_frame(cmd)
         if err:
             return {"error": f"malformed frame: {err}", "command": cmd}
+        denied = protocol.deny_reason(cmd)
+        if denied:                   # the whole batch is refused, confirm or not
+            return {"error": f"refused, confirm or not: {denied}", "command": cmd}
         if not protocol.is_known_safe(cmd) and not confirm:
             return {"error": f"'{protocol.command_name(cmd)}' is not known-safe; "
                              "retry with confirm=true", "command": cmd}
-    return await manager.send_batch(alias, commands, gap_ms)
+    result = await manager.send_batch(alias, commands, gap_ms)
+    notes = [n for cmd in commands for n in (protocol.unproven_note(cmd),) if n]
+    if notes:
+        result = {**result, "note": " | ".join(dict.fromkeys(notes))}
+    return result
 
 
 @mcp.tool()
