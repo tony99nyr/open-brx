@@ -542,7 +542,14 @@ def test_setup_loads_melee_slot_and_full_sir():
     from brx_mcp.gameconfig import GameConfig as GC
     frames = GC().setup_frames()
     assert [f for f in frames if f.startswith("$WEAP,4")]        # melee slot loaded
-    assert len([f for f in frames if f.startswith("$SIR,")]) == 11  # all 11 rows (S50 added the permanent Armour Piercing cell <4,0>)
+    # 11 PERMANENT rows: the stock 10 plus Armour Piercing's <4,0> (S50). This path is a bare
+    # `GameConfig()` with no roster, so it ships the permanent table and nothing else.
+    # The support and poison cells (<5,0>, <7,0>, <11,0>) are deliberately NOT here: a weapon can
+    # declare its own `sir_fn` and its row then ships only in a game that contains it (2026-09-18).
+    # They were briefly permanent, which took the table to `hitaudio.MAX_SIR_ROWS` (14) and left the
+    # class-sound allocator zero budget to separate weapon families. A game with no Breacher in it
+    # should not push the Breacher's row to every gun.
+    assert len([f for f in frames if f.startswith("$SIR,")]) == 11
 
 
 def test_driver_setup_configs_then_spawns_all_guns():

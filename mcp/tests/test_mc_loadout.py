@@ -113,19 +113,26 @@ def test_perk_view_forwards_every_effect_key():
 # `pickup_only` (2026-09-17): rocket_launcher/rail_gun stay catalogue-visible (in `W`) but are never in
 # a starting-loadout pool. Counted rather than hard-coded so a catalog change is the only edit needed.
 _OPEN = len([w for w in W if w["weapon_id"] not in P.UNPLAYABLE_IDS and not w.get("pickup_only")])
+# 2026-09-18 (weapon-design.md §7.4): a `lethal: false` row (the stripper, the smoke) is a legal
+# SECONDARY but never a primary, so the primary pool is `_OPEN` minus the support weapons -- the two
+# pool sizes stop being the same number the day a support weapon ships.
+_SUPPORT = {w["weapon_id"] for w in W if w.get("lethal") is False}
+_OPEN_PRIMARY = _OPEN - len(_SUPPORT)
 
 
 def test_presets_and_pools():
-    assert _OPEN == 11, f"the visible, pickable arsenal moved ({len(W)} weapons in the catalog)"
+    assert _OPEN == 13, f"the visible, pickable arsenal moved ({len(W)} weapons in the catalog)"
+    assert _SUPPORT == {"stripper", "smoke_gun"}, _SUPPORT
     assert "energy_launcher" not in P.pool(P.preset_rules("open"), W, PK)["primary"], "a zero-damage weapon is never offered"
     lp = P.pool(P.preset_rules("open"), W, PK)
     assert "rocket_launcher" not in lp["primary"] and "rail_gun" not in lp["primary"], "heavies are pickup_only, never a starting pick"
-    assert len(lp["primary"]) == _OPEN and len(lp["secondary_weapons"]) == _OPEN and len(lp["perks"]) == 5   # 5 VISIBLE perks: the two node-local ones are hidden until the phone half is built
+    assert not (_SUPPORT & set(lp["primary"])), "a support weapon must never be offered as a primary"
+    assert len(lp["primary"]) == _OPEN_PRIMARY and len(lp["secondary_weapons"]) == _OPEN and len(lp["perks"]) == 5   # 5 VISIBLE perks: the two node-local ones are hidden until the phone half is built
     lp = P.pool(P.preset_rules("no_heavies"), W, PK)
     # unchanged by UNPLAYABLE_IDS/pickup_only: the visible `heavy`-tagged rows (rocket_launcher/rail_gun)
     # were already excluded from `open` by `pickup_only`, so `no_heavies` (which ALSO excludes `heavy`)
     # lands on the same count as `open`.
-    assert len(lp["primary"]) == _OPEN and "rail_gun" not in lp["primary"] and "amr" in lp["primary"]
+    assert len(lp["primary"]) == _OPEN_PRIMARY and "rail_gun" not in lp["primary"] and "amr" in lp["primary"]
     assert "rocket_launcher" not in lp["secondary_weapons"] and len(lp["perks"]) == 5
     lp = P.pool(P.preset_rules("snipers"), W, PK)
     # `reasons` is additive and present only where a slot came out empty (round-2 review 2026-09-12)
@@ -776,7 +783,10 @@ def test_weapon_view_htk_ttk_caution():
     cat = net.pushes("assign", "node0")[-1][2]["catalog"]["weapons"]
     assert all("htk" in w for w in cat)
     cautioned = {w["weapon_id"]: w["caution"] for w in cat if w.get("caution")}
-    assert set(cautioned) == {"energy_rifle"}, cautioned
+    # The Haze joined on 2026-09-18: it takes no health and drops the target's accuracy to 0 for about
+    # three seconds, which reads as a broken tagger until the HUD says otherwise (S53). That is exactly
+    # what a `caution` is for, so the pin grows rather than the field being dropped from the push.
+    assert set(cautioned) == {"energy_rifle", "smoke_gun"}, cautioned
 
 
 # ------------------------------------------------------------------ A10 §8 saved games (presets)

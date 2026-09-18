@@ -26,6 +26,14 @@ from brx_mcp.mc.views import weapon_views
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DESIGN = ROOT / "docs" / "weapon-design.md"
 ROWS = json.loads((ROOT / "mcp" / "brx_mcp" / "mc" / "weapons.json").read_text())["weapons"]
+# 2026-09-18, weapon-design.md §7.4: a row marked `lethal: false` deliberately cannot kill (the fn-20
+# Breacher, the fn-23 Haze). Hits to kill and time to kill are undefined for it, and publishing the
+# numbers the FRAME would imply -- 8 damage, 13 hits -- would lie to the player about a weapon that
+# cannot take a point of health. So those rows carry zeros, they are exempt from the time-to-kill
+# ladder in §2.2 and the health-sensitivity table in §2.5, and §7.6 documents them instead. The
+# exemption is narrow and it is enforced: see `test_a_support_weapon_publishes_zeros_and_is_documented`.
+SUPPORT = {w["weapon_id"] for w in ROWS if w.get("lethal") is False}
+LETHAL_ROWS = [w for w in ROWS if w["weapon_id"] not in SUPPORT]
 CAT = WeaponCatalog()
 
 
@@ -40,7 +48,7 @@ def _tok(weapon_id: str, key: str) -> str:
 def test_shipped_stats_are_derived_from_the_shipped_frame():
     """`dmg`/`rof`/`rng`/`htk`/`ttk_ms` are documentation of the frame. Recompute all five."""
     bad = []
-    for w in ROWS:
+    for w in LETHAL_ROWS:
         wid = w["weapon_id"]
         want = {"dmg": CAT.damage_bar(wid), "rof": CAT.rate_of_fire(wid),
                 "rng": int(_tok(wid, "range_indoor") or 0),
@@ -294,8 +302,8 @@ def test_weapon_design_balance_table_matches_the_wire():
             got = _cell(r[ix[col]])
             if got != expect:
                 bad.append(f"§2.2 {name} · {col}: table says {got!r}, the wire derives {expect!r}")
-    missing = {w["weapon_id"] for w in ROWS} - seen
-    assert not missing, f"§2.2 omits {sorted(missing)} — every weapon must appear in the balance table"
+    missing = {w["weapon_id"] for w in LETHAL_ROWS} - seen
+    assert not missing, f"§2.2 omits {sorted(missing)} — every LETHAL weapon must appear in the balance table"
     assert not bad, "docs/weapon-design.md §2.2 is stale:\n  " + "\n  ".join(bad)
 
 
@@ -329,8 +337,8 @@ def test_weapon_design_health_sensitivity_table_matches_the_wire():
                 if got != want:
                     bad.append(f"§2.5 {label} @ {pool}: table says {want}, {wid} needs {got}")
     # ...and the table must cover the whole arsenal, or deleting a row makes the problem vanish
-    missing = {w["weapon_id"] for w in ROWS if not w.get("hidden")} - covered
-    assert not missing, f"§2.5 omits {sorted(missing)} — every weapon's htk moves with the health config"
+    missing = {w["weapon_id"] for w in LETHAL_ROWS if not w.get("hidden")} - covered
+    assert not missing, f"§2.5 omits {sorted(missing)} — every LETHAL weapon's htk moves with the health config"
     assert not bad, "docs/weapon-design.md §2.5 is stale:\n  " + "\n  ".join(bad)
 
 
@@ -365,8 +373,8 @@ def test_weapon_views_at_the_default_pool_still_publish_the_shipped_numbers():
     """The regression guard for W2: nothing about the default game may have moved."""
     views = {v["weapon_id"]: v for v in weapon_views(CAT.all())}
     for w in ROWS:
-        if w.get("hidden"):
-            continue
+        if w.get("hidden") or w["weapon_id"] in SUPPORT:
+            continue       # a support weapon has no htk/ttk to publish: see the SUPPORT note above
         v = views[w["weapon_id"]]
         assert v["htk"] == w["htk"] and v["ttk_ms"] == w["ttk_ms"], w["weapon_id"]
         assert v["pool"] == DEFAULT_POOL
@@ -506,3 +514,50 @@ def test_no_mc_data_file_ships_a_duplicate_json_key():
 
         json.loads(path.read_text(), object_pairs_hook=flag_repeated_keys)
         assert not dupes, "\n".join(dupes)
+
+
+def test_a_support_weapon_publishes_zeros_and_is_documented():
+    """The exemption above is narrow, and this is what keeps it honest.
+
+    A `lethal: false` row is exempt from the time-to-kill ladder because hits-to-kill is undefined for a
+    weapon that cannot take a point of health. That exemption would be a hole if a row could claim it and
+    then publish the numbers its FRAME implies: the Breacher's frame carries 9 damage, which derives an
+    8 damage bar and 13 hits to kill, and a player reading that would expect it to kill in 13 hits. It
+    cannot kill at all. So a support row must publish ZEROS for the three kill numbers, and it must be
+    documented in §7.6, where the reader is told what it actually does instead."""
+    assert SUPPORT, "no support weapon in the catalogue: delete this guard or the exemption above"
+    design = DESIGN.read_text()
+    for wid in sorted(SUPPORT):
+        w = next(r for r in ROWS if r["weapon_id"] == wid)
+        assert w["dmg"] == 0 and w["htk"] == 0 and w["ttk_ms"] == 0, (
+            f"{wid} is lethal: false but publishes kill numbers {w['dmg']}/{w['htk']}/{w['ttk_ms']}; "
+            f"its frame would derive {CAT.damage_bar(wid)}/{CAT.hits_to_kill(wid, DEFAULT_POOL)} and that "
+            f"would be a lie to the player")
+        assert w["name"] in design, f"{wid} ({w['name']}) is exempt from §2.2 and undocumented in §7.6"
+
+
+def test_the_poison_block_is_declared_and_never_reaches_the_wire():
+    """S16 (2026-09-18): the Toxin Rifle declares a `dot` block, and `resolve()` must never write it.
+
+    Nothing on the WIRE can tick. The bench that day proved the whole fn 24-27 family applies no damage
+    at all and instead leaves the victim's gun faking a hit every 5.07 s, so the native route is dead and
+    the poison can only be a tick clock on the victim's own phone (`spec/node.md` §3.17, not built). The
+    gun's only job is to land the direct hit and to carry protocol 11 in `$HIR` token 2 so the node knows
+    which weapon hit it.
+
+    So the frame a poison weapon pushes must be an ORDINARY weapon frame: the damage type says gas, and
+    no token anywhere encodes the tick. Wiring `dot` into `resolve()` to "make it real" is the mistake
+    this guard exists to catch, and it is the same shape as the recoil and range guards above."""
+    dot_rows = [w for w in ROWS if w.get("dot")]
+    assert dot_rows, "no weapon declares a `dot` block: delete this guard or the field"
+    for w in dot_rows:
+        wid = w["weapon_id"]
+        d = w["dot"]
+        assert {"per_tick", "tick_ms", "duration_ms", "refresh", "stack"} <= set(d), wid
+        assert d["stack"] is False, f"{wid}: poison REFRESHES, it never stacks (§6.3b)"
+        frame = CAT.resolve(wid, 0)
+        for value in (str(d["per_tick"]), str(d["tick_ms"]), str(d["duration_ms"])):
+            assert f",{value}," not in frame.replace(f",{w['wire']['fire_ms']},", ",_,"), (
+                f"{wid}: the frame carries {value}, which looks like the declared `dot` reaching the wire:\n  {frame}")
+        # the damage type IS on the wire, because the victim's node keys the tick clock off it
+        assert frame.split(",")[WeaponCatalog._T["proto"] + 1] == str(w["cls"]), wid

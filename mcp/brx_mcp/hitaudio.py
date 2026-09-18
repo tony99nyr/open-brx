@@ -260,7 +260,17 @@ FREE_CELLS: tuple[tuple[str, str], ...] = (
 # (S50): the Armour Piercing perk's permanent cell (`mc/compile.py` `_AP_CELL`, `gameconfig.py`
 # `_SIR_TABLE`) -- the class-sound allocator must never hand it to an unrelated weapon family, or a
 # player who never picked the perk would fire armour-piercing shots by accident.
-RESERVED_CELLS: frozenset[tuple[str, str]] = frozenset({("1", "0"), ("2", "1"), ("3", "0"), ("15", "0"), ("4", "0")})
+RESERVED_CELLS: frozenset[tuple[str, str]] = frozenset({
+    ("1", "0"), ("2", "1"), ("3", "0"), ("15", "0"), ("4", "0"),
+    # 2026-09-18: the two SUPPORT cells (weapon-design.md §7.5). `(5,0)` carries fn 20, which strips
+    # every protective layer and cannot kill; `(7,0)` carries fn 23, which drops the target's accuracy
+    # to 0 for about three seconds. Handing either to an unrelated weapon family would silently turn a
+    # normal gun into one that cannot take a point of health.
+    ("5", "0"), ("7", "0"),
+    # `(11,0)` is the poison cell: protocol 11 is the stock "gas" type and the victim's node keys its
+    # tick clock off that protocol arriving, so the cell must never be re-pointed at another family.
+    ("11", "0"),
+})
 
 
 @dataclass(frozen=True)

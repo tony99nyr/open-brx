@@ -206,6 +206,7 @@ sounds — and moves the numbers.
 | Stinger | cqb | 15 | 250 | 8 | **1.75** | 60.0 | 43.5 | 18 | 144 | 1700 | 99% | — | cycle 120→250, res 72→144 |
 | Bolt Rifle | assault | 13 | 225 | 9 | **1.80** | 57.8 | 38.7 | 18 | 180 | 2000 | 98% | — | **stock** |
 | SMG | cqb | 8 | 95 | 15 | **1.33** | 84.2 | 61.7 | 72 | 288 | 2500 | 100% | 5 | **2026-09-17**: cycle 140→95 (`wire.fire_ms`) |
+| Toxin Rifle | assault | 8 | 110 | 15 | **1.54** | 72.7 | 49.0 | 30 | 180 | 1600 | 99% | 5 | **2026-09-18, NOT FINISHED (hidden)**: the gun lands the direct hit and the POISON is a node tick clock that is not built (S16). 4 damage a second for 5 s, refreshed on each hit, never stacked: worth 20, so twelve hits make it lethal even if the target breaks contact, which is the same 1.21 s the Assault Rifle needs to finish outright. §7.5 |
 | Suppressor | support | 8 | 140 | 15 | **1.96** | 57.1 | 48.0 | 75 | 384 | 2000 | 100% | — | **2026-09-17**: cycle 160→140 (`wire.fire_ms`); mag 48→75 (§2.3, family-scoped dominance) |
 | Assault Rifle | assault | 9 | 100 | 13 | **1.20** | 90.0 | 62.6 | 32 | 192 | 1400 | 100% | — | **2026-09-17**: cycle 140→100 (`wire.fire_ms`, native Battle Company speed) |
 | Energy Rifle | support | 9 | 150 | 13 | **1.80** | 60.0 | 57.0 | 300 | 600 | 2400 | 100% | 6 | **2026-09-17**: cycle 200→150 (`wire.fire_ms`); overheat switched ON (F229: `t38`=150 override, `t35`=D11) |
@@ -1291,6 +1292,58 @@ straight to health through untouched armour). So **Armour Piercing must never ca
 0.4-to-0.33 price assumes every hit lands for the same cut amount. And a crit weapon must never be the
 highest-damage weapon in its family, because variance on top of a big number is how a one-shot weapon
 becomes a no-counterplay weapon.
+
+### 7.5b The Toxin Rifle, and the number that makes it interesting
+
+Declared 2026-09-18, **hidden until the node tick clock exists** (S16). The gun lands the direct hit
+today; the poison is a clock on the victim's own phone, and nothing on the wire can tick, because the
+same bench proved the whole fn 24-27 family applies no damage at all.
+
+| lever | value | why |
+|---|---|---|
+| direct damage | **8** at 110 ms | slower than the Assault Rifle on purpose: the rounds are not the payload |
+| poison | **4 a second for 5 s**, refreshed on each hit, never stacked | worth 20 damage, which is more than two rifle hits |
+| `$SIR` cell | `<11,0>` fn 1 | protocol 11 is the stock enum's "gas", and the node keys its clock off that protocol arriving in `$HIR` token 2 |
+
+**The number that makes it interesting is 12.** Fired straight it kills in 1.54 s, clearly worse than
+the rifle's 1.20 s. But the poison is worth 20, so **twelve hits are lethal even if the target breaks
+contact**, and twelve hits take 1.21 s. It matches the anchor rifle's speed exactly, and pays for it in
+a way no other weapon does: **you never see the kill land.** They may reach a respawn station, or a
+medic, and you will not know until the scoreboard moves.
+
+That is also what makes it the natural counter to the Haze and to any player who disengages: it is the
+only weapon that keeps working after the shooting stops. Refresh rather than stack is deliberate; two
+poison shooters must not double the clock, or a pair becomes an execution.
+
+⚠️ It stays `hidden` until `spec/node.md` §3.17 is built. Enabled early it is simply a worse SMG, and
+`caution` on the row says so.
+
+### 7.6 The support weapons, and why they publish zeros
+
+Two weapons deliberately cannot kill. They are the only rows carrying `lethal: false`, they are refused
+in the primary slot by `validate()` and kept out of the primary pool by `policy.pool()`, and carrying
+one costs the player their backup gun. That cost is the whole balance.
+
+| weapon | cell | what a hit does | measured |
+|---|---|---|---|
+| **Breacher** | `<5,0>` fn 20 | takes 9 off whatever the target is WEARING, through every layer in order, with the overflow carrying between them. It cannot touch health. Pointed at a teammate it does the opposite and grants armour, because fn 20 is dual-polarity | shield 120 to 0, then armour 70 to 0, health fixed at 999 throughout; eleven further hits on a bare target moved nothing |
+| **Haze** | `<7,0>` fn 23 | the target's live accuracy falls to 0 for about three seconds. They keep firing and keep spending rounds, and every shot misses. It takes no health | accuracy 100 to 0 in the same millisecond as the hit, recovering 0, 2, 4, 7, 12 over about 3 s, nothing left behind |
+
+**They publish `dmg`, `htk` and `ttk_ms` of zero, and that is deliberate.** Their frames carry real
+magnitudes, so the ordinary derivation would advertise the Breacher at an 8 damage bar and 13 hits to
+kill. A player reading that would expect it to kill in 13 hits, and it cannot kill at all. The zeros are
+the honest number, `test_a_support_weapon_publishes_zeros_and_is_documented` enforces them, and the same
+guard requires each weapon to appear in this table so the exemption cannot be used to hide a row.
+
+**What they are for.** The Breacher is a team weapon: one player undresses a target and another finishes,
+and against a bare opponent it does nothing whatsoever. It is the answer to a big pool that is not simply
+more damage, and it is the only answer that works identically against Body Armor and the Shields preset.
+The Haze buys three seconds in which someone cannot shoot back: crossing open ground, breaking a firing
+line, taking a point off a defender. Neither wins a duel, which is exactly why neither may be a primary.
+
+⚠️ **The Haze needs the HUD before it ships to players** (S53). A player whose shots stop landing, with
+no explanation on screen, will report a broken tagger. The tell needs no new wire support: a `$HIR` that
+moves no pool, together with live accuracy at 0.
 
 ## Appendix — token positions
 

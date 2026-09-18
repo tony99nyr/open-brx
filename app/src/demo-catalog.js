@@ -35,10 +35,10 @@ export const DEMO_WEAPONS = [
     },
     "ammo_total": 70,
     "bars": {
-      "power": 50,
-      "rof": 56,
-      "ammo": 49,
-      "ttk": 50
+      "power": 56,
+      "rof": 53,
+      "ammo": 51,
+      "ttk": 52
     }
   },
   {
@@ -72,10 +72,10 @@ export const DEMO_WEAPONS = [
     },
     "ammo_total": 224,
     "bars": {
-      "power": 30,
-      "rof": 85,
-      "ammo": 71,
-      "ttk": 90
+      "power": 38,
+      "rof": 87,
+      "ammo": 75,
+      "ttk": 92
     }
   },
   {
@@ -109,10 +109,10 @@ export const DEMO_WEAPONS = [
     },
     "ammo_total": 252,
     "bars": {
-      "power": 40,
+      "power": 47,
       "rof": 100,
-      "ammo": 78,
-      "ttk": 70
+      "ammo": 82,
+      "ttk": 68
     }
   },
   {
@@ -146,9 +146,9 @@ export const DEMO_WEAPONS = [
     },
     "ammo_total": 120,
     "bars": {
-      "power": 90,
+      "power": 91,
       "rof": 27,
-      "ammo": 56,
+      "ammo": 57,
       "ttk": 100
     }
   },
@@ -184,10 +184,10 @@ export const DEMO_WEAPONS = [
     },
     "ammo_total": 55,
     "bars": {
-      "power": 60,
-      "rof": 49,
-      "ammo": 42,
-      "ttk": 30
+      "power": 64,
+      "rof": 47,
+      "ammo": 45,
+      "ttk": 36
     }
   },
   {
@@ -222,10 +222,10 @@ export const DEMO_WEAPONS = [
     },
     "ammo_total": 900,
     "bars": {
-      "power": 30,
-      "rof": 71,
+      "power": 38,
+      "rof": 67,
       "ammo": 100,
-      "ttk": 40
+      "ttk": 44
     }
   },
   {
@@ -264,7 +264,7 @@ export const DEMO_WEAPONS = [
       "power": 100,
       "rof": 27,
       "ammo": 20,
-      "ttk": 90
+      "ttk": 92
     }
   },
   {
@@ -301,7 +301,7 @@ export const DEMO_WEAPONS = [
     "ammo_total": 4,
     "bars": {
       "power": 100,
-      "rof": 35,
+      "rof": 33,
       "ammo": 20,
       "ttk": null
     }
@@ -337,10 +337,10 @@ export const DEMO_WEAPONS = [
     },
     "ammo_total": 30,
     "bars": {
-      "power": 70,
-      "rof": 42,
-      "ammo": 35,
-      "ttk": 50
+      "power": 73,
+      "rof": 40,
+      "ammo": 32,
+      "ttk": 52
     }
   },
   {
@@ -374,10 +374,49 @@ export const DEMO_WEAPONS = [
     },
     "ammo_total": 360,
     "bars": {
-      "power": 20,
+      "power": 29,
       "rof": 93,
-      "ammo": 85,
-      "ttk": 80
+      "ammo": 88,
+      "ttk": 76
+    }
+  },
+  {
+    "weapon_id": "smoke_gun",
+    "name": "Haze",
+    "cls": "7",
+    "weapon_class": "ballistic",
+    "desc": "A three-second blackout. The target keeps firing and keeps spending rounds, and every shot misses: their own gun goes quiet and the person they are aiming at hears the shots whizz past. It takes no health at all, and it wears off on its own. Use it to break a firing line, cross open ground, or take a point off someone who cannot afford three seconds. Bench 2026-09-18: live accuracy 100 to 0 in the same millisecond as the hit, recovering 0, 2, 4, 7, 12 over about three seconds, with nothing left behind.",
+    "clip": 8,
+    "mags": 3,
+    "reserve": 24,
+    "reload_s": 2.4,
+    "reload_ms": 2400,
+    "dmg": 0,
+    "rpm": 60,
+    "rng": 75,
+    "dmg_per_hit": 6,
+    "pool": 115,
+    "verified": false,
+    "tags": [
+      "support"
+    ],
+    "role": "support",
+    "htk": 20,
+    "ttk_ms": 13300,
+    "caution": "The Haze needs the HUD that tells a flashed player why nothing is landing (S53) before players meet it.",
+    "lethal": false,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 100,
+      "per_shot": 0,
+      "recover_ms": 0
+    },
+    "ammo_total": 32,
+    "bars": {
+      "power": 20,
+      "rof": 80,
+      "ammo": 38,
+      "ttk": 20
     }
   },
   {
@@ -412,10 +451,48 @@ export const DEMO_WEAPONS = [
     },
     "ammo_total": 28,
     "bars": {
-      "power": 80,
+      "power": 82,
       "rof": 20,
-      "ammo": 27,
+      "ammo": 26,
       "ttk": 60
+    }
+  },
+  {
+    "weapon_id": "stripper",
+    "name": "Breacher",
+    "cls": "5",
+    "weapon_class": "ballistic",
+    "desc": "Strips armour and shields and cannot take a single point of health. Nine a hit off whatever they are wearing, through every layer in order, and the overflow carries: a full shield and a full plate come off in one magazine. Point it at a teammate instead and it REPAIRS them, because the same function that strips an enemy grants armour to an ally. You give up your backup gun to carry it, and you need someone else to finish what you start. Bench 2026-09-18: shield 120 to 0 then armour 70 to 0, health fixed at 999 the whole way, and eleven further hits on a bare target moved nothing at all.",
+    "clip": 40,
+    "mags": 3,
+    "reserve": 120,
+    "reload_s": 2.0,
+    "reload_ms": 2000,
+    "dmg": 0,
+    "rpm": 60,
+    "rng": 75,
+    "dmg_per_hit": 9,
+    "pool": 115,
+    "verified": false,
+    "tags": [
+      "support"
+    ],
+    "role": "support",
+    "htk": 13,
+    "ttk_ms": 1320,
+    "lethal": false,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 100,
+      "per_shot": 0,
+      "recover_ms": 0
+    },
+    "ammo_total": 160,
+    "bars": {
+      "power": 20,
+      "rof": 80,
+      "ammo": 69,
+      "ttk": 84
     }
   },
   {
@@ -449,10 +526,10 @@ export const DEMO_WEAPONS = [
     },
     "ammo_total": 459,
     "bars": {
-      "power": 20,
-      "rof": 78,
-      "ammo": 93,
-      "ttk": 20
+      "power": 29,
+      "rof": 73,
+      "ammo": 94,
+      "ttk": 28
     }
   },
   {
@@ -487,10 +564,10 @@ export const DEMO_WEAPONS = [
     },
     "ammo_total": 139,
     "bars": {
-      "power": 30,
-      "rof": 64,
-      "ammo": 64,
-      "ttk": 30
+      "power": 38,
+      "rof": 60,
+      "ammo": 63,
+      "ttk": 36
     }
   }
 ];

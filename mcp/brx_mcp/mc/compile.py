@@ -828,6 +828,11 @@ class WeaponCatalog:
             row["pickup_only"] = True
         if w.get("recoil"):     # S42 (2026-09-17): the declared target profile -- weapons.json `_note`
             row["recoil"] = w["recoil"]
+        if w.get("lethal") is False:   # 2026-09-18, weapon-design.md §7.4: cannot kill (stripper, smoke).
+            # `policy.pool()`'s `_support_ids` reads this off the SAME `Weapon` view it is handed, so
+            # dropping it here would leave the primary-slot exclusion dead: `loadout_pool()` calls
+            # `weapon_catalog()`, which routes through THIS method, not the raw catalogue row.
+            row["lethal"] = False
         return row
 
     def all(self) -> list[Weapon]:
@@ -1334,11 +1339,24 @@ class Compiler:
         # EXISTS, never that its function is right) would have passed. An uncovered cell is now an error
         # at compile time rather than a plausible wrong table on the gun (the F40 "absence reports as
         # health" shape).
-        if cell not in sir:
+        fn = sir.get(cell)
+        if fn is None:
+            # 2026-09-18: a weapon may instead DECLARE its own function with `sir_fn`, and then the row is
+            # conditional: `sir_table()` already appends a row for any plan cell the base table lacks, so
+            # the cell ships only in games that actually contain the weapon. That matters because
+            # `hitaudio.MAX_SIR_ROWS` is 14 and the base table is 11: three permanent rows for three new
+            # weapons took the table to the ceiling and left the class-sound allocator no budget at all.
+            # A game with no Breacher in it should not push the Breacher's row to every gun.
+            # The F53 error below still stands for a weapon that declares NOTHING, which is the case it
+            # was written for: an uncovered cell must never default to function 0 and silently change a
+            # weapon's damage class.
+            fn = row.get("sir_fn")
+        if fn is None:
             raise ValueError(
                 f"F53: weapon {weapon_id!r} fires on IR cell {cell} and the $SIR table has no row for it "
-                f"-- add the cell to compile._SIR_TABLE (with the function it needs, not 0) before it ships")
-        return _ha.Entry(weapon_id, _ha.class_for(row.get("role"), weapon_id), cell, sir[cell])
+                f"-- add the cell to compile._SIR_TABLE, or give the catalogue row a `sir_fn` so the row "
+                f"ships only in games that carry the weapon (with the function it needs, not 0)")
+        return _ha.Entry(weapon_id, _ha.class_for(row.get("role"), weapon_id), cell, fn)
 
     def hit_plan(self, roster, rekey: bool = False) -> "_ha.Plan":
         """The A17 `$SIR` plan for ONE MATCH, from every weapon on the roster.

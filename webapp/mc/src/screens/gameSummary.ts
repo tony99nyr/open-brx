@@ -65,8 +65,12 @@ export function unplayablePick(rule: SlotRule): string | null {
 }
 
 export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: PerkView[]): LoadoutPool {
-  const prim = p.primary.choice === 'fixed' ? weapons.filter(w => w.weapon_id === p.primary.fixed_id && !UNPLAYABLE_IDS.has(w.weapon_id) && !w.pickup_only).map(w => w.weapon_id)
-    : kindRows(p.primary, weapons).filter(w => inPool(p.primary, w.weapon_id, w.tags ?? [])).map(w => w.weapon_id);
+  // 2026-09-18 (weapon-design.md §7.4): a weapon the catalogue marks `lethal: false` deliberately
+  // cannot kill, and it may NEVER be a primary. The server refuses one in slot 0 outright
+  // (`Compiler.validate`) and keeps it out of the primary pool (`policy._support_ids`), so this mirror
+  // must do the same or the console offers an operator a pick that is rejected at arming.
+  const prim = p.primary.choice === 'fixed' ? weapons.filter(w => w.weapon_id === p.primary.fixed_id && !UNPLAYABLE_IDS.has(w.weapon_id) && !w.pickup_only && w.lethal !== false).map(w => w.weapon_id)
+    : kindRows(p.primary, weapons).filter(w => inPool(p.primary, w.weapon_id, w.tags ?? []) && w.lethal !== false).map(w => w.weapon_id);
   const s = p.secondary, k = p.perk;
   let sw: string[] = [], sp: string[] = [];
   if (s.choice === 'fixed') sw = weapons.filter(w => w.weapon_id === s.fixed_id && !UNPLAYABLE_IDS.has(w.weapon_id) && !w.pickup_only).map(w => w.weapon_id);

@@ -531,6 +531,8 @@ export interface Weapon {
   pickup_only?: boolean;
   /** S42: the declared target accuracy profile (weapons.json `recoil`) */
   recoil?: Recoil;
+  /** 2026-09-18, weapon-design.md §7.4: False = cannot kill; absent means true */
+  lethal?: boolean;
 }
 
 export interface WeaponBars {
@@ -570,7 +572,12 @@ export interface WeaponView {
   bars?: WeaponBars;
   /** 2026-09-17: catalogue-visible but never in a player loadout pool (policy.py) */
   pickup_only?: boolean;
-  /** S42: the declared target accuracy profile -- the node's `weaponRow(id).recoil` */
+  /** 2026-09-18 (weapon-design.md §7.4): FALSE on a weapon that deliberately */
+  lethal?: boolean;
+  /** cannot kill (the fn-20 Breacher, the fn-23 Haze). It may never be a PRIMARY:
+   *  the server refuses one in slot 0 and both UIs mirror that, so the field has
+   *  to travel with the row or a console offers a pick that is refused at arming.
+   *  S42: the declared target accuracy profile -- the node's `weaponRow(id).recoil` */
   recoil?: Recoil;
 }
 

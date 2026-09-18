@@ -303,6 +303,15 @@ def _pickup_only_ids(weapons: Sequence[Weapon]) -> frozenset[str]:
     return frozenset(w["weapon_id"] for w in weapons if w.get("pickup_only"))
 
 
+def _support_ids(weapons: Sequence[Weapon]) -> frozenset[str]:
+    """The `weapon_id`s this game's catalog marks `lethal: false` (2026-09-18, weapon-design.md §7.4):
+    weapons that deliberately cannot kill, today the fn-20 stripper and the fn-23 smoke. They are legal
+    SECONDARIES, where carrying one costs the player their backup gun, and never a primary. The
+    compiler refuses one in slot 0 as a hard error; this keeps it out of the primary POOL so a player is
+    never offered a pick that would be refused at arming."""
+    return frozenset(w["weapon_id"] for w in weapons if w.get("lethal") is False)
+
+
 def weapon_kind_rows(rule: SlotRule, weapons: Sequence[Weapon]) -> list[Weapon]:
     """The weapon rows a slot's `kinds` admits BEFORE the tag/id filters: "weapon" = every visible
     weapon (a pistol is a weapon too); "sidearm" alone = only the `sidearm`-tagged rows; neither = none."""
@@ -374,13 +383,15 @@ def pool(policy: LoadoutPolicy, weapons: Sequence[Weapon], perks: Sequence[PerkV
     say WHICH control emptied it instead of guessing at the nearest one."""
     prim, sec, pr = policy["primary"], policy["secondary"], policy["perk"]
     pickup_only_ids = _pickup_only_ids(weapons)
+    support_ids = _support_ids(weapons)
     if prim["choice"] == "fixed":
         prim_fid = prim["fixed_id"]     # `_check_rule` refuses choice "fixed" with no fixed_id
         primary = [prim_fid] if prim_fid and prim_fid not in UNPLAYABLE_IDS \
-            and prim_fid not in pickup_only_ids \
+            and prim_fid not in pickup_only_ids and prim_fid not in support_ids \
             and any(w["weapon_id"] == prim_fid for w in weapons) else []
     else:
-        primary = _filter(prim, weapon_kind_rows(prim, weapons), "weapon_id")
+        primary = [wid for wid in _filter(prim, weapon_kind_rows(prim, weapons), "weapon_id")
+                   if wid not in support_ids]
     if sec["choice"] == "off":
         sw = []
     elif sec["choice"] == "fixed":
