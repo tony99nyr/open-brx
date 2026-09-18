@@ -1264,6 +1264,54 @@ import re as _re
 _REPO = _pathlib.Path(__file__).resolve().parents[2]
 _ENGINE_JS = _REPO / "app" / "src" / "engine.js"
 _STAGE_PY = _REPO / "mcp" / "brx_mcp" / "stage" / "stage.py"
+
+
+def _strip_comments(src: str) -> str:
+    """`src` with `//` and `#` line comments blanked out, so a guard reads CODE and not prose.
+
+    This repo keeps re-learning one fault: a guard that reads text will eventually be satisfied, or
+    defeated, by somebody's DESCRIPTION of the behaviour instead of the behaviour. It has happened here
+    with a heading check, with a screenshot manifest, and with the string-presence assertion in
+    `test_f206_...` that could not see an ordering at all. The order guard below inherited the same fault
+    one rung up: its markers matched inside comments, so the engine lane had to avoid writing a marker
+    verbatim while EXPLAINING it, or a correct code order would have gone red. A guard that people must
+    write around is worse than no guard, because it looks like cover.
+
+    Quote-aware, so a `//` inside a string or a `#` inside one survives: enough for two small function
+    bodies, and deliberately not a parser. It does not track a template literal or a triple-quoted string
+    across a line break; neither body has one, and `_fn_body` fails loudly if either moves."""
+    out = []
+    for line in src.split("\n"):
+        quote = None
+        cut = len(line)
+        i = 0
+        while i < len(line):
+            ch = line[i]
+            if quote:
+                if ch == "\\":
+                    i += 2
+                    continue
+                if ch == quote:
+                    quote = None
+            elif ch in "'\"`":
+                quote = ch
+            elif ch == "#" or (ch == "/" and line[i + 1:i + 2] == "/"):
+                cut = i
+                break
+            i += 1
+        out.append(line[:cut])
+    return "\n".join(out)
+
+
+def _fn_body(src: str, start: str, end: str) -> str:
+    """One function's CODE, from its signature line to `end`, with comments stripped. Raises if it moved.
+
+    Used to assert the ORDER of two steps inside one function. A search over the whole file would happily
+    match the same two markers in two unrelated places and call it an ordering; a search that kept the
+    comments would match a marker in a sentence about the marker (see `_strip_comments`)."""
+    i = src.index(start)
+    j = src.index(end, i + len(start))
+    return _strip_comments(src[i:j])
 _JS_KEYWORDS = {"if", "for", "while", "switch", "catch", "do", "else", "return", "constructor",
                 "function", "try"}
 
@@ -1440,9 +1488,26 @@ def test_f206_every_stage_write_puts_the_team_back_after_a_pset_like_the_phone()
     """F206 (bench 2026-09-16): any `$PSET` clears the gun's team until a `$TID` follows; `$SPAWN` and `$SIR` do not.
     engine.js `_write` -> `_tidAfterPset` restores it in ONE place; the stage's `write` must do the same, or a
     bench run from the stage tests a different gun."""
-    from test_stage import mk
+    from test_stage import mk, tid_follows_pset
     js = _ENGINE_JS.read_text(encoding="utf-8")
-    assert "frames = this._tidAfterPset(frames);" in js, "engine.js `_write` no longer routes through `_tidAfterPset`"
+    # ORDER, not presence. A string-presence assertion cannot see an ordering, and the ordering is the
+    # behaviour: insert the `$TID` first and a denied `$PSET` dropped afterwards leaves the `$TID` behind as
+    # an orphan, because `$TID` is a KNOWN command the deny filter has no reason to take. The gun would read
+    # a team byte for a `$PSET` that never arrived. Both `_write` bodies must therefore DENY FIRST, then
+    # restore the team, and this guard reads both bodies rather than trusting either comment.
+    for label, body, deny, tid in (
+            ("engine.js `_write`", _fn_body(js, "  _write(frames, why) {", "\n  }"),
+             "deniedCommand(f)", "frames = this._tidAfterPset(frames);"),
+            ("stage.py `write`", _fn_body(_STAGE_PY.read_text(encoding="utf-8"),
+                                          "    async def write(self, frames: list[str], why: str", "\n    def "),
+             "protocol.is_denied(f)", "self._tid_after_pset(frames)")):
+        assert deny in body and tid in body, \
+            (f"{label}: the deny filter and the $TID restore are not both in this function's CODE. A "
+             "comment mentioning either one does not count -- `_fn_body` strips comments on purpose.")
+        assert body.index(deny) < body.index(tid), \
+            (f"{label} restores the team BEFORE it drops denied frames. A denied $PSET would then leave an "
+             "orphan $TID on the gun. Deny first, then $TID -- and keep the two sources in the same order, "
+             "or a bench run from the stage predicts a phone that does something else.")
 
     async def run():
         st, mgr = mk(tid=2)
@@ -1459,7 +1524,14 @@ def test_f206_every_stage_write_puts_the_team_back_after_a_pset_like_the_phone()
             new = tx(mgr)[n:]
             psets = [i for i, f in enumerate(new) if f.startswith("$PSET,")]
             assert psets, f"{step.__name__}: the bundle carries a scream pool, so a $PSET rides this write"
-            assert new[psets[-1] + 1] == "$TID,2,*", new
+            # An ORDERING, not an index (`test_stage.tid_follows_pset`). F206 was fixed on two branches at
+            # once and the merge keeps both cures: the compiled burst re-asserts `$TID` after `$SPAWN`, and
+            # `_tid_after_pset` covers a write that carries none. The F209 twin now puts eleven disarmed
+            # `$SIR` rows between the `$PSET` and that `$TID`, so the old next-index assertion was pinning a
+            # frame order rather than the rule. The count pins the other half: the two cures must not both
+            # fire, or the gun reads a redundant team byte in the burst it can least afford one.
+            assert tid_follows_pset(new, 2), new
+            assert new.count("$TID,2,*") == 1, new
         # a write with a $PSET and NO $SPAWN gets the team too
         n = len(tx(mgr))
         await st.write([st.bundle["pset_pool"][0], "$AMMO,0,1,1,1,*"], "lone pset"); await settle(st)

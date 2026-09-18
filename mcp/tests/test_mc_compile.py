@@ -63,7 +63,7 @@ def test_play_volume_follows_the_venue():
 def test_head_carries_player_num_in_pset():
     b = C.compile(_cfg(), _player(num=42), _TEAMS)
     pset = [f for f in b["head"] if f.startswith("$PSET,")][0]
-    assert pset.startswith("$PSET,42,0,45,70,70,"), pset
+    assert pset.startswith("$PSET,42,1,45,70,70,"), pset   # F206: token 2 = the $TID team (blue = 1), not 0
 
 
 def test_tid_resolves_from_team_id():
@@ -99,9 +99,10 @@ def test_revive_is_spawn_plus_ammo_plus_trigger_no_hloop():
     assert rv[:len(sir)] == sir and sir, "the $SIR rows lead the revive write"
     rv = rv[len(sir):]
     assert rv[0] == "$SPAWN,,*"
+    assert rv[1] == "$TID,1,*", "F206: the team is re-asserted right after every $SPAWN"
     # Bench 2026-09-16: the head holds the trigger, so the revive maps it again (a live resync re-writes the head)
     assert rv[-1] == "$BMAP,0,0,,,,,*"
-    assert all(f.startswith("$AMMO,") for f in rv[1:-1])          # A11.6: dark headset in play -> no $HLED tail; A11.7: no $GLED here
+    assert all(f.startswith("$AMMO,") for f in rv[2:-1])          # A11.6: dark headset in play -> no $HLED tail; A11.7: no $GLED here
     assert [f for f in rv if f.startswith("$BMAP")] == ["$BMAP,0,0,,,,,*"], "revive maps only the trigger"
     assert not any("HLOOP" in f for f in rv), "revive drops $HLOOP,0,0 (belongs in end)"
 
@@ -282,8 +283,27 @@ def test_catalog_excludes_hidden_melee_and_flags_verified():
     # every visible weapon carries an armory blurb (weapons.json `desc` -> Weapon.desc)
     blank = [w["weapon_id"] for w in cat.all() if not (w.get("desc") or "").strip()]
     assert not blank, f"weapons missing desc: {blank}"
-    assert "100ms" in by["assault_rifle"]["desc"], by["assault_rifle"]["desc"]
-    assert by["rail_gun"]["desc"].strip().endswith("."), by["rail_gun"]["desc"]
+    # `desc` IS PLAYER COPY AND NOTHING ELSE (2026-09-18). It used to do two jobs: the sentence a
+    # player reads in the picker, and a running balance changelog. Every rebalance appended its
+    # reasoning to the same string, so the Suppressor's armoury card ended up quoting a dated
+    # magazine change and a dominance argument at somebody choosing a gun, and the public arsenal
+    # page rendered it. The rationale now lives in `notes`, which `_to_weapon()` never forwards.
+    # This assertion used to require "100ms" in the AR's desc, which pinned the OLD convention.
+    import re as _re
+    BANNED = {
+        "a date stamp": _re.compile(r"\b20\d\d-\d\d-\d\d\b"),
+        "a raw timing": _re.compile(r"\d+\s?ms\b"),
+        "a section reference": _re.compile(r"§"),
+        "a wire identifier": _re.compile(r"\bt\d{1,2}\b|wire\.\w+|\$[A-Z]{3,}"),
+        "a test name": _re.compile(r"\btest_\w+"),
+        "an arrow rebalance": _re.compile(r"\d\s*(->|→)\s*\d"),
+    }
+    dirty = [f"{w['weapon_id']}: {why} -- {w['desc']}"
+             for w in cat.all() for why, rx in BANNED.items() if rx.search(w.get("desc") or "")]
+    assert not dirty, ("`desc` is what a player reads in the picker and on the public arsenal page; "
+                       "balance reasoning belongs in `notes`:\n  " + "\n  ".join(dirty))
+    for w in cat.all():
+        assert (w["desc"] or "").strip().endswith("."), f"{w['weapon_id']} desc is not a sentence: {w['desc']}"
 
 
 def test_every_weapon_is_based_on_its_own_captured_frame():
@@ -309,9 +329,15 @@ def test_resolve_changes_only_the_balance_tokens_of_the_captured_frame():
     rows = {w["weapon_id"]: w for w in json.loads(
         (pathlib.Path(__file__).resolve().parents[1] / "brx_mcp/mc/weapons.json").read_text())["weapons"]}
     T = WeaponCatalog._T
-    balance = {1, T["dmg"] + 1, T["fire"] + 1, T["mag"] + 1, T["clipstart"] + 1,
+    balance = {1, T["dmg"] + 1, T["headset_dmg"] + 1, T["crit"] + 1, T["headset_range_outdoor"] + 1,
+               T["headset_range_indoor"] + 1, T["fire"] + 1, T["mag"] + 1, T["clipstart"] + 1,
                T["reserve"] + 1, T["reserve_half"] + 1, T["reload"] + 1,
                T["swap"] + 1}                                   # tok15 = draw time: `wire.swap_ms` on the sidearms (bench 2026-09-04)
+    # tok12 (t12, `ExtraHeadsetDamage`) joined the balance set 2026-09-18: it now carries a DECLARED
+    # `wire.headset_dmg`, priced independently of t5 (see `WeaponCatalog.damage_per_pull()`), so it
+    # moves off the capture on every weapon that declares one. tok13/tok42 (`HeadsetRangeOutdoor`/
+    # `HeadsetRangeIndoor`, the second word's own reach) joined the same day for the same reason: a
+    # declared `wire.headset_range_outdoor`/`_indoor` overwrites the captured cell.
     cat = WeaponCatalog()
     for wid, row in rows.items():
         allowed = balance | {int(k.lstrip("tT")) + 1 for k in (row.get("overrides") or {})}
@@ -941,7 +967,11 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
         kpc = mag // rtk if rtk else 0
         per = cat.cycle_ms(wid)
         rpc = cat.rounds_per_charge(wid)
-        dmg = cat.damage(wid)
+        # `damage_per_pull()`, not `damage()`, 2026-09-18: on the three headset weapons (shotgun,
+        # plasma sniper, rocket launcher) `damage()` is the gun word alone (t5), but a pull actually
+        # delivers t5 plus a declared `wire.headset_dmg` too (see that method's docstring): grading
+        # `sust`/`pk` on the gun word alone understated their real sustained output.
+        dmg = cat.damage_per_pull(wid)
         # A cell weapon's SUSTAINED output and one-magazine-kill CHANCE are modelled on repeated full
         # charges (the steady-state action if you just keep charging), not on the ambush combo `htk`
         # counts (§2.2/§2.3): the two questions are different ("how hard can this hit while it keeps
@@ -975,13 +1005,41 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
     def strictly_better(a, b, axis):
         return a[axis] < b[axis] if BETTER[axis] == "lower" else a[axis] > b[axis]
 
+    # ⚠ ONE PAIR IS KNOWINGLY ALLOWED (2026-09-18), and the allowance EXPIRES BY ITSELF -- see below.
+    # The AMR covers the Shotgun within family (7, 'ballistic'): tied on ttk (1600 ms) and kpc (2), AMR
+    # ahead on sust (48.0 vs 46.2) and pk (0.998 vs 0.93). Taking the Shotgun's `t2` off F231's unstable
+    # 13-26 transition band (22→100, weapon-design.md §4.2) was the right fix for its reliability -- it
+    # was dropping about half its shots at 10 m -- but it also erased the only thing distinguishing the
+    # Shotgun from a slow rifle, because that range knee is decorative for most weapons anyway (F231:
+    # everything 55-100 sits on one flat shelf). The Shotgun's real identity has to come from the headset
+    # word's OWN reach (t13/t42, F275), a genuine close-range bonus, not from a magazine buff bought
+    # without believing the number. F275's bench (needs outdoor space, approved, not yet run) decides it.
+    # Do not raise the Shotgun's `mag` and do not touch the AMR to clear this.
+    # ✅ EMPTY, AND THAT IS THE POINT (2026-09-18). It briefly held ("amr", "shotgun"): taking the
+    # Shotgun's t2 off F231's unstable band fixed its reliability and cost it the only thing that
+    # distinguished it from a slow rifle, so the AMR covered it on every axis. Rather than buy a lead
+    # with a magazine buff nobody believed in, the pair was named here alongside a self-expiry
+    # assertion. The AMR then went from 24 damage to 21 to pay for its own 30% crit chance, its
+    # hits-to-kill went 5 to 6, and it stopped dominating. The expiry assertion FAILED, exactly as
+    # built, and forced this entry out. An exemption that outlives its cause is how a guard rots.
+    KNOWN_DOMINANCE: dict[tuple[str, str], str] = {}
+    allowed_seen = set()
     for fam, members in fams.items():
         for a in members:
             for b in members:
                 if a is b:
                     continue
                 dominates = all(not_worse(a, b, ax) for ax in AXES) and any(strictly_better(a, b, ax) for ax in AXES)
+                if dominates and (a["id"], b["id"]) in KNOWN_DOMINANCE:
+                    allowed_seen.add((a["id"], b["id"]))
+                    continue
                 assert not dominates, f"{a['id']} strictly dominates {b['id']} within family {fam}"
+    # The allowance must not outlive its cause. If a listed pair STOPS dominating, this fails and forces
+    # the entry out -- otherwise a stale exemption silently covers a real regression later. That is the
+    # F40 shape: a guard that cannot fail is worse than no guard, because it is believed.
+    stale = set(KNOWN_DOMINANCE) - allowed_seen
+    assert not stale, (f"{sorted(stale)} no longer dominates -- delete the KNOWN_DOMINANCE entry above "
+                       f"rather than leaving an exemption nothing needs")
 
     starved = []
     for fam, members in fams.items():

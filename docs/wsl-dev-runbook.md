@@ -65,3 +65,22 @@ URL rather than a QR/mDNS discovery (for example, a bookmarked address); it take
 
 Mirrored WSL networking (where the Windows host and WSL share one IP) makes the portproxy step a
 no-op, but this box runs NAT mode, so treat the portproxy as required until that changes.
+
+## Soak
+
+`python -m brx_mcp soak <address> <pattern> <minutes>` is the screamers-investigation instrument
+(docs/bench-screamers-2026-09-19.md Phase C, `mcp/brx_mcp/soak/`). It connects to one gun, arms it,
+replays a named traffic pattern, probes liveness throughout, and logs + classifies every LOCK-UP /
+LINK DROP / BAD FRAME. Patterns: `match`, `match-x10`, `callsign`, `burst-short`, `burst-weap` (see
+`brx_mcp/soak/patterns.py` for what each one sends). It touches a gun, so it runs on Windows Python,
+the same as every other `brx-mcp` command:
+
+```
+python.exe -m brx_mcp soak <address> match 120
+```
+
+Pacing flags for Phase B (compare `gap_ms`/`block` values): `--gap-ms N` sleeps `N` ms after every
+frame; `--block N --pause-ms M` sleeps `M` ms every `N` frames. `--log PATH` overrides the default
+log location (`captures/soak-<pattern>-<address>-<timestamp>.jsonl`, the same `~/.brx-mcp/captures/`
+`session_log`/`diag-game` already write under). Ctrl-C ends the run cleanly and still prints the
+summary.

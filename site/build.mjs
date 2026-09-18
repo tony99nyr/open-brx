@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 import { marked } from 'marked';
 import { buildWeapons, buildSounds } from './lib/data.mjs';
 import { ledFacts, ledPalette, drainDirection } from './lib/led-facts.mjs';
-import { modes as readModes, roles as readRoles, release as readRelease } from './lib/facts.mjs';
+import { modes as readModes, roles as readRoles, release as readRelease, arsenal as readArsenal } from './lib/facts.mjs';
 import { renderLanding } from './lib/landing.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -33,6 +33,7 @@ const REPO_PUBLIC = true;
 const PAGES = [
   { file: 'platform/index.md', slug: '/', section: 'root', nav: null, layout: 'landing' },
   { file: 'platform/platform.md', slug: '/platform', section: 'platform', nav: null, layout: 'landing' },
+  { file: 'platform/arsenal.md', slug: '/arsenal', section: 'platform', nav: null, layout: 'landing' },
   { file: 'platform/docs.md', slug: '/docs', section: 'docs', nav: 'Overview', layout: 'doc' },
   { file: 'platform/install.md', slug: '/docs/install', section: 'docs', nav: 'Install', layout: 'doc' },
   { file: 'platform/run.md', slug: '/docs/run-a-game', section: 'docs', nav: 'Run a match', layout: 'doc' },
@@ -44,6 +45,7 @@ const PAGES = [
   { file: 'manual/operate.md', slug: '/manual/operate', section: 'manual', nav: 'Operate', layout: 'doc' },
   { file: 'manual/gameplay.md', slug: '/manual/gameplay', section: 'manual', nav: 'Gameplay', layout: 'doc' },
   { file: 'manual/sound.md', slug: '/manual/sound', section: 'manual', nav: 'Sound', layout: 'doc' },
+  { file: 'manual/sounds.md', slug: '/manual/sounds', section: 'manual', nav: 'Sound bank', layout: 'doc' },
   { file: 'manual/fix.md', slug: '/manual/fix', section: 'manual', nav: 'Fix', layout: 'doc' },
   { file: 'manual/dev.md', slug: '/manual/dev', section: 'manual', nav: 'Developer', layout: 'doc' },
   { file: 'manual/credits.md', slug: '/credits', section: 'manual', nav: null, layout: 'doc' },
@@ -367,6 +369,8 @@ const footer = () => `<footer><p>Open BRX is independent and is not endorsed by 
 // ---- build -----------------------------------------------------------------------------------
 const weapons = buildWeapons(REPO);
 const sounds = buildSounds(REPO);
+// The note is generated from the same JSON the table reads, never hand-typed (docs/site/FORMAT.md).
+DATA_TABLES.sounds.note = `Every sound id on the gun. A meaning shown in italics is machine transcription nobody has confirmed by ear yet, so it can be wrong. A community label is a listener's guess from the LaserTagMods BRX Audio sheet, always marked unconfirmed: ${sounds.communityMeta.labelled} ids carry one, and ${sounds.communityMeta.noise} are flagged as reported broken since firmware v4.30, pending an ear check.`;
 
 const problems = [];
 const built = [];
@@ -477,7 +481,7 @@ let facts;
 try {
   const manual = pages.filter(p => p.section === 'manual' && p.nav).map(p => ({ slug: p.slug, nav: p.nav, blurb: p.blurb }));
   // on-gun sounds only: the catalog also lists ids the app names that the gun does not carry
-  facts = { modes: readModes(REPO), roles: readRoles(REPO), release: readRelease(REPO), sounds: sounds.filter(s => s.on_gun).length, manual };
+  facts = { modes: readModes(REPO), roles: readRoles(REPO), release: readRelease(REPO), arsenal: readArsenal(REPO), sounds: sounds.filter(s => s.on_gun).length, manual };
 } catch (e) { problems.push(e.message); }
 if (problems.length) {
   // Nothing has been written yet, and that is the point: the build used to emit the assets, the

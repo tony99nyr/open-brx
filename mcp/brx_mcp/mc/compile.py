@@ -16,7 +16,8 @@ from typing import Any, Literal
 
 import random as _random
 
-from ..gameconfig import END_SEQUENCE, GSET_T2_SAFE, WEAPON_TAILS, _SIR_TABLE, GameConfig as _GC
+from ..gameconfig import (END_SEQUENCE, GSET_T2_SAFE, WEAPON_TAILS, _SIR_TABLE, GameConfig as _GC,
+                          assert_team_byte_consistent)
 from .. import hitaudio as _ha
 from ..protocol import PANIC_SEQUENCE
 from .perks import PerkCatalog
@@ -657,6 +658,32 @@ def assert_trigger_held_until_spawn(head: list[str], spawn: list[str], revive: l
                              "$SPAWN, so the player goes live and cannot fire")
 
 
+def _bundle_frames(value) -> list[str]:
+    """Every `$…` string anywhere in a bundle (lists, dicts, nested), for whole-bundle guards."""
+    if isinstance(value, str):
+        return [value] if value.startswith("$") else []
+    if isinstance(value, dict):
+        return [f for v in value.values() for f in _bundle_frames(v)]
+    if isinstance(value, (list, tuple)):
+        return [f for v in value for f in _bundle_frames(v)]
+    return []
+
+
+def assert_no_denied_frames(bundle) -> None:
+    """No frame anywhere in a bundle may carry a command from `protocol.DENIED_COMMANDS`.
+
+    The node refuses these at its write path (`engine._write`, the stage's `write`), so a bundle that
+    carried one would fail SILENTLY on the phone: the frame dropped, the rest of the burst written, and
+    a log line nobody reads mid-match. Refuse it here, at compile time, where an operator sees it.
+    docs/spec/transport-hardening.md §4."""
+    from ..protocol import deny_reason
+    for f in _bundle_frames(bundle):
+        why = deny_reason(f)
+        if why:
+            raise ValueError(f"DENY-LIST GUARD: a compiled bundle carries a frame the node must never write "
+                             f"({why}). Frame: {f}")
+
+
 def assert_rearms_every_life(bundle) -> None:
     """F121/F209: a REVIVE must lead to the real table too. Raises if nothing carries it.
 
@@ -870,8 +897,12 @@ class WeaponCatalog:
                       "htk": w.get("htk"), "ttk_ms": w.get("ttk_ms"),   # A10: HITS TO KILL replaces the flat RANGE bar in the UIs
                       # the pool-INDEPENDENT chain the views re-derive htk/ttk from when the host
                       # changes `health` (W2, docs/weapon-design.md §2.5). `dmg` above is a share
-                      # of the 115 default and cannot be rescaled; `dmg_hit` is the real magnitude.
-                      "dmg_hit": self.damage(w["weapon_id"]),
+                      # of the 115 default and cannot be rescaled; `dmg_hit` is the real magnitude:
+                      # `damage_per_pull()` (t5 plus a declared `wire.headset_dmg`), not `damage()`
+                      # (t5 alone), or the client's own htk/ttk re-derivation (`views.weapon_view()`)
+                      # would disagree with the server's (2026-09-18: a Shotgun view derived htk 6
+                      # from a t5-only dmg_hit of 20, against the server's own htk 3 off 40).
+                      "dmg_hit": self.damage_per_pull(w["weapon_id"]),
                       "cycle_ms": self.cycle_ms(w["weapon_id"]),
                       "charged": self._frame_int(w["weapon_id"], "mode") in self._CHARGE_MODES,
                       # 2026-09-17 (F225/F226/S43): a CELL weapon (rounds_per_charge > 1) with a tap
@@ -898,6 +929,8 @@ class WeaponCatalog:
             # dropping it here would leave the primary-slot exclusion dead: `loadout_pool()` calls
             # `weapon_catalog()`, which routes through THIS method, not the raw catalogue row.
             row["lethal"] = False
+        if w.get("crit_pct") is not None:   # F62 (2026-09-18): the declared t6 crit chance, 0-100.
+            row["crit_pct"] = int(w["crit_pct"])
         return row
 
     def all(self) -> list[Weapon]:
@@ -927,10 +960,12 @@ class WeaponCatalog:
     # not shorten the beam. "range_indoor" (t41, `gunRangeIndoor`) is kept only so a test can pin
     # it untouched -- do NOT write it from `gun_range_outdoor_pct` or any venue map; see the F234
     # comment block above `RANGE_OUTDOOR_FLOOR`.
-    _T = {"proto": 3, "subtype": 4, "dmg": 5, "fire": 14, "swap": 15, "mag": 16, "reserve": 17, "reload": 18,
-          "mode": 20, "acc_ceiling": 21, "acc_floor": 22, "burst": 23, "heat": 24, "snd_fire": 27,
-          "snd_up": 28, "snd_down": 29, "rel1": 31, "rel2": 32, "rel3": 33, "noammo": 34, "tap": 37,
-          "clipstart": 39, "reserve_half": 40, "range_indoor": 41, "range_outdoor": 2}
+    _T = {"proto": 3, "subtype": 4, "dmg": 5, "crit": 6, "headset_dmg": 12, "headset_range_outdoor": 13,
+          "fire": 14, "swap": 15, "mag": 16,
+          "reserve": 17, "reload": 18, "mode": 20, "acc_ceiling": 21, "acc_floor": 22, "burst": 23,
+          "heat": 24, "snd_fire": 27, "snd_up": 28, "snd_down": 29, "rel1": 31, "rel2": 32, "rel3": 33,
+          "noammo": 34, "tap": 37, "clipstart": 39, "reserve_half": 40, "range_indoor": 41,
+          "range_outdoor": 2, "headset_range_indoor": 42}
     # The ammo trio + its two mirrors. `resolve()` owns these — they carry the invariants — so an
     # `overrides` entry may not name one (see `_override_index`).
     _AMMO_TOKENS = frozenset({16, 17, 18, 39, 40})
@@ -1000,7 +1035,20 @@ class WeaponCatalog:
         preserving the two invariants every captured frame obeys: `tok39 == tok16` (clip start == max
         clip) and `tok17 == 2 * tok40`. **t41 is never written here** — it is left exactly as the
         capture carries it, because indoor range is unmeasured (F231 open) and t41 itself was proven
-        inert outdoors (Q15, 2026-09-17); see the F234 comment above `RANGE_OUTDOOR_FLOOR`.
+        inert outdoors (Q15, 2026-09-17); see the F234 comment above `RANGE_OUTDOOR_FLOOR`. t12
+        (`ExtraHeadsetDamage`) is MEASURED (2026-09-18, Callsign capture cap30): a second word, fired
+        from the shooter's own headset, that stacks with the gun word. `resolve()` writes it from a
+        declared `wire.headset_dmg` (never a mirror of t5) and REFUSES a weapon whose capture carries
+        a t12 but declares no `wire.headset_dmg` (see the comment above that write). t13/t42
+        (`HeadsetRangeOutdoor`/`HeadsetRangeIndoor`, the second word's own reach) are optional: a
+        declared `wire.headset_range_outdoor`/`_indoor` overwrites the captured cell, an undeclared one
+        leaves it untouched, and neither ever raises: reach is not a damage number.
+
+        t6 (`primaryCritChance`, F62, closed 2026-09-18) is a straight percentage the GUN rolls itself
+        (a crit is the magnitude x1.5 truncated, `$HIR` token 6 reads 1 on it). A declared `crit_pct`
+        writes it; an absent one leaves the captured value untouched (0 on every stock frame) -- unlike
+        `headset_dmg`, an absent `crit_pct` is not a refusal, because a weapon that never crits is not a
+        balance hole (see the comment above the write).
 
         `environment` ("indoor"/"outdoor"/None) only reaches `gun_range_outdoor_pct`: outdoor scales
         t2 by the weapon's catalogue starting value, indoor and unset both keep the captured t2
@@ -1037,15 +1085,79 @@ class WeaponCatalog:
         # 2026-09-18: Armour Piercing now passes an ABSOLUTE damage (`dmg_abs`, the weapon's own
         # `ap_dmg`) rather than a multiplier, because no multiplier prices the perk fairly: 45/115 is
         # 0.39, so anything near the old 0.4 left hits-to-kill unchanged and the perk free. §7.7.
+        # t12 (`ExtraHeadsetDamage`, protocol.md 2026-09-18) is now MEASURED, not unknown: on exactly
+        # three stock weapons (shotgun, plasma sniper, rocket launcher) t1=2 sends a SECOND word out of
+        # the shooter's own headset, ~88 ms behind the gun word, and it STACKS -- Callsign capture cap30
+        # caught one Shotgun pull as `$HIR,4,0,1,0,45,0,0` then `$HIR,4,0,1,0,70,0,0` 88 ms later on the
+        # same victim sensor, 115 in one pull, a kill (900 ms cycle, so it cannot have been two pulls).
+        # LaserTagMods (Jay, 2026-09-18) independently confirms the mechanism -- "it actually is both ...
+        # so there is a dual emitter fire, one from tagger, weaker damage, and one from headset, greater
+        # damage" -- which READS AS the tagger sending the smaller word and the headset the larger one,
+        # though that stays SOURCED and not settled: a capture cannot show which emitter fired, and no
+        # bench has yet covered one emitter at a time (F275's run does it in passing).
+        # `resolve()` therefore no longer MIRRORS t5 onto t12: it writes a DECLARED
+        # `wire.headset_dmg`, priced independently of t5 (see `WeaponCatalog.damage_per_pull()`). A
+        # weapon whose capture carries a t12 but declares no `wire.headset_dmg` is REFUSED, not silently
+        # left at its raw captured word -- an unpriced captured t12 is the exact three-weapon balance
+        # hole this whole change exists to close (the Plasma Sniper priced its t5 down to 25 while its
+        # capture still carried an unpriced 80). Inventing a t12 on a weapon that has never carried one
+        # is still refused too -- the same "emit the capture verbatim" contract that keeps t41 untouched.
+        had_headset_dmg = p[T["headset_dmg"] + 1].strip() != ""
         dmg_abs = (mods or {}).get("dmg_abs")
         if dmg_abs is not None:
-            put("dmg", max(1, int(dmg_abs)))
+            eff_dmg = max(1, int(dmg_abs))
+            put("dmg", eff_dmg)
         elif wire.get("dmg") is not None:
             # An explicit `wire.dmg` literal is written verbatim, 0 included: that is FIELD-4's own
             # fixture (a weapon whose catalog `dmg: 0` must compile to a gun that deals no damage, not a
             # floored 1, or the "0 DAMAGE" validate() guard this exact case exists to catch can never
             # trip again).
-            put("dmg", int(wire["dmg"]))
+            eff_dmg = int(wire["dmg"])
+            put("dmg", eff_dmg)
+        else:
+            eff_dmg = int(p[T["dmg"] + 1] or 0)   # captured value, unmoved -- still the number t5 carries
+        if had_headset_dmg:
+            headset_dmg = wire.get("headset_dmg")
+            if headset_dmg is None:
+                raise ValueError(
+                    f"{weapon_id}: capture carries a t12 (ExtraHeadsetDamage) but weapons.json declares "
+                    f"no wire.headset_dmg: shipping the raw captured second word unpriced would reopen "
+                    f"the balance hole this change exists to close; add a wire.headset_dmg")
+            # ⚠ ARMOUR PIERCING OWNS THE WHOLE PULL, BOTH WORDS (2026-09-18, polish review). `dmg_abs` is
+            # the perk's ABSOLUTE priced damage per trigger pull, and `_rekey` points the WHOLE frame at
+            # the AP cell -- so both words land on fn 2, straight past armour AND shields. Writing the
+            # weapon's normal `headset_dmg` beside a priced t5 delivered `ap_dmg + headset_dmg` to bare
+            # health while the perk was priced at `ap_dmg` alone (an AP Shotgun shipped 15 + 20 = 35 for
+            # the price of 15). That is the identical unpriced-second-word hole this whole change exists
+            # to close, so AP zeroes the second word and the pull is worth exactly what it costs.
+            put("headset_dmg", 0 if dmg_abs is not None else int(headset_dmg))
+        # t6 (`primaryCritChance`, F62, closed 2026-09-18): the GUN rolls its own crit off this straight
+        # percentage, magnitude x1.5 truncated, and `$HIR` token 6 reads 1 on the proc (0 on a normal
+        # hit) so the victim's node can see it. This is NOT the same "declare it or we refuse" contract
+        # as `headset_dmg` above, though the two writes sit side by side and look alike. A captured t12
+        # left unpriced is a live balance hole -- the second word still fires and lands its raw captured
+        # magnitude, so an undeclared `wire.headset_dmg` is refused outright. A captured t6 left at 0 is
+        # not a hole: it is just a weapon that never crits, which every stock frame already is (every
+        # capture carries t6=0). So an ABSENT `crit_pct` is silently left exactly as the capture carries
+        # it, not refused -- only a DECLARED `crit_pct` writes the token, and only the three weapons that
+        # carry one pay for it in ammunition (weapon-design.md; the dominance model prices the buff).
+        crit_pct = w.get("crit_pct")
+        if crit_pct is not None:
+            crit_pct = int(crit_pct)
+            if not 0 <= crit_pct <= 100:
+                raise ValueError(f"{weapon_id}: crit_pct {crit_pct} must be 0-100")
+            put("crit", crit_pct)
+        # t13 (`HeadsetRangeOutdoor`) / t42 (`HeadsetRangeIndoor`): the second word's OWN reach. Unlike
+        # t12, an unwritten reach is not a safety hole -- reach is not a damage number, so a weapon with
+        # a captured cell but no declared override just keeps whatever the capture carries, and this
+        # never raises either way. 2026-09-18 (Tony): both are locked at 100 on the three headset
+        # weapons -- the flat, measured shelf of F231's range curve, not its unstable 13-26 transition
+        # band -- so today the second word lands on every pull at every range this game is played at.
+        # See docs/FOLLOWUPS.md for the open question of where the word WOULD cut out if aimed lower.
+        if p[T["headset_range_outdoor"] + 1].strip() != "" and wire.get("headset_range_outdoor") is not None:
+            put("headset_range_outdoor", int(wire["headset_range_outdoor"]))
+        if p[T["headset_range_indoor"] + 1].strip() != "" and wire.get("headset_range_indoor") is not None:
+            put("headset_range_indoor", int(wire["headset_range_indoor"]))
         fire_abs = (mods or {}).get("fire_abs")
         if fire_abs is not None:
             put("fire", int(fire_abs))         # Armour Piercing's own cycle (§7.7)
@@ -1115,19 +1227,49 @@ class WeaponCatalog:
         except (IndexError, ValueError):
             return 0
 
+    def damage_per_pull(self, weapon_id: str) -> int:
+        """What ONE trigger pull delivers to a target that takes every word it sends: `damage()` (the
+        gun-body t5 magnitude) plus a declared `wire.headset_dmg`, or exactly `damage()` on the vast
+        majority of weapons that declare none.
+
+        This is deliberately a SEPARATE method from `damage()`, not a redefinition of it: `damage()`
+        keeps its exact current meaning and every current caller (the Armour Piercing `dmg_abs` pricing
+        base, and the number `validate()` calls "the x1 number"), untouched by this.
+
+        The fn 36/37 HEADSET MULTIPLIER (see `headset_multiplier()`) stays excluded from every
+        derivation below this method, on purpose: it is conditional on which sensor a shot lands on,
+        and the catalogue cannot know that in advance. `$WEAP` t12 (`ExtraHeadsetDamage`) is a
+        different mechanism entirely: on the three weapons whose t1 (`WeaponIRSource`) is 2 (Shotgun,
+        Plasma Sniper, Rocket Launcher) the gun fires an UNCONDITIONAL second word out of the shooter's
+        own headset, ~88 ms behind the first. Measured on the wire 2026-09-18 (Callsign capture cap30:
+        the shooter's gun emitted 45, the shooter's headset emitted 70, landing 88 ms apart on the same
+        victim sensor) and independently confirmed by LaserTagMods (Jay, 2026-09-18): "it actually is
+        both ... so there is a dual emitter fire, one from tagger, weaker damage, and one from headset,
+        greater damage", which also settles that the tagger sent the smaller word and the headset the
+        larger one. With t13/t42 (the second word's own reach) locked at 100, the flat, measured shelf
+        of F231's range curve (not its unstable 13-26 transition band), both words land on every pull
+        at every range this game is played at, so t5 + t12 is simply what one trigger pull delivers.
+        Excluding it from `hits_to_kill()`/`time_to_kill()`/`damage_bar()` would publish a hits-to-kill
+        that is wrong, which is the bug this whole method exists to close. Credit to LaserTagMods
+        (Jay) for the confirming protocol read, per this repo's hard rule on crediting their work."""
+        wire = self._row(weapon_id).get("wire") or {}
+        headset = wire.get("headset_dmg")
+        return self.damage(weapon_id) + int(headset) if headset is not None else self.damage(weapon_id)
+
     def hits_to_kill(self, weapon_id: str, pool: int) -> int:
-        """Hits to drop a `pool`-point target (hp + armor) on the GUN BODY, computed on raw t5.
+        """Hits to drop a `pool`-point target (hp + armor) on the GUN BODY, computed on
+        `damage_per_pull()` (t5, plus a declared `wire.headset_dmg`: see that method).
 
         Armor absorbs at face value and spills into HP (bench §7r). This is the guaranteed-kill number:
-        raw t5 IS the gun-body applied damage (bench-confirmed 2026-09-11, `damage()`), so this is
-        correct for a body-only kill, not an over-estimate. ⚠ Two things this does not model
-        (docs/weapon-design.md §6). First, a `$SIR` multiplier row lands MORE on a HEADSET hit — **fn 36
-        lands floor(magnitude x headset_multiplier(36, t7)) and fn 37 lands floor(magnitude x
-        headset_multiplier(37, t7))**, t7 = the compiled crit_modifier (bench-confirmed 2026-09-11,
-        superseding the earlier flat x1.25/x2 reading) — so an all-headset kill on the five weapons on
-        fn 36/37 needs FEWER hits than this method publishes; `validate()` warns on those rows with the
-        actual multiplier. Second, the SHIELD pool, which sits above armor and is granted only by an IR
-        function-11 event. 0 = damage unknown, caller skips.
+        `damage_per_pull()` IS the gun-body applied damage per pull, so this is correct for a body-only
+        kill, not an over-estimate. ⚠ Two things this does not model (docs/weapon-design.md §6). First,
+        a `$SIR` multiplier row lands MORE on a HEADSET hit: **fn 36 lands floor(magnitude x
+        headset_multiplier(36, t7)) and fn 37 lands floor(magnitude x headset_multiplier(37, t7))**, t7
+        = the compiled crit_modifier (bench-confirmed 2026-09-11, superseding the earlier flat x1.25/x2
+        reading), so an all-headset kill on the five weapons on fn 36/37 needs FEWER hits than this
+        method publishes; `validate()` warns on those rows with the actual multiplier. Second, the
+        SHIELD pool, which sits above armor and is granted only by an IR function-11 event. 0 = damage
+        unknown, caller skips.
 
         **A cell weapon (`rounds_per_charge` > 1) with a tap magnitude (`t37`) counts TRIGGER ACTIONS,
         not equal-sized hits** (2026-09-17, Tony, following F225/F226/S43): the Charge Rifle's real kill
@@ -1138,13 +1280,13 @@ class WeaponCatalog:
         rpc = self.rounds_per_charge(weapon_id)
         tap = self.tap_damage(weapon_id)
         if rpc > 1 and tap > 0:
-            charge_dmg = self.damage(weapon_id)
+            charge_dmg = self.damage_per_pull(weapon_id)
             if charge_dmg <= 0 or pool <= 0:
                 return 0
             if pool <= charge_dmg:
                 return 1
             return 1 + math.ceil((pool - charge_dmg) / tap)
-        dmg = self.damage(weapon_id)
+        dmg = self.damage_per_pull(weapon_id)
         return math.ceil(pool / dmg) if dmg > 0 and pool > 0 else 0
 
     # ---- derived numbers -------------------------------------------------
@@ -1188,8 +1330,9 @@ class WeaponCatalog:
         return round(7500 / fire) if fire else 0
 
     def damage_bar(self, weapon_id: str, pool: int = DEFAULT_POOL) -> int:
-        """weapons.json `stats.dmg` — the SHARE of `pool` one hit removes, 0-100 (weapons.json `_note`)."""
-        return round(100 * self.damage(weapon_id) / pool) if pool > 0 else 0
+        """weapons.json `stats.dmg`: the SHARE of `pool` one PULL removes, 0-100 (weapons.json
+        `_note`), on `damage_per_pull()` (t5, plus a declared `wire.headset_dmg`: see that method)."""
+        return round(100 * self.damage_per_pull(weapon_id) / pool) if pool > 0 else 0
 
     CHARGE_TAP_CADENCE_MS = CHARGE_TAP_CADENCE_MS   # class-level alias; see the module constant above
 
@@ -1667,7 +1810,7 @@ class Compiler:
                 # F162: EMPTY today (`DRIVE_IO_MODE` is "off") -- the staged venue-mode candidates,
                 # right after $GSET so a bench rung changes one thing next to the frame it copies.
                 *venue_mode_frames(_gset, env),
-                gc._pset(pnum, player.get("voice"), voice_slots),   # the voice pack is per-PLAYER (§PSET); A15 slot picks / A15.1 rolls
+                gc._pset(pnum, player.get("voice"), voice_slots, team=tid),   # the voice pack is per-PLAYER (§PSET); A15 slot picks / A15.1 rolls. F206: t2 = the $TID team
                 self._rekey(self._rekey(self.catalog.resolve(w0, 0, mods, environment=env), plan.cell_for(w0)),
                             _AP_CELL if armor_piercing else None)]
         if w1:
@@ -1739,11 +1882,24 @@ class Compiler:
         # `$AMMO` and `$BMAP,0,0` land, behind `$SPAWN`, so a table armed ahead of `$SPAWN` let a player be
         # hit before they could shoot. The node writes the real table afterwards, as one `sir_pool` take
         # (engine.js `_armLife`). The twin is needed on a revive: the last life's live table is still on the gun.
-        spawn = list(sir_pregame) + ["$PLAYX,0,*", "$SPAWN,,*"] + ammo + [TRIGGER_LIVE] + play_hled
-        # revive = the twin + $SPAWN + loadout $AMMOs + the trigger row (NO $HLOOP; §1.1 replaces RESPAWN_SEQUENCE)
-        # Bench 2026-09-16: the head holds the trigger, and a live resync re-writes the head before it
-        # revives, so the revive maps the trigger again too.
-        revive = list(sir_pregame) + ["$SPAWN,,*"] + ammo + [TRIGGER_LIVE] + play_hled
+        # F206: `$TID` is re-asserted right after every `$SPAWN`. The gun keeps ONE team byte, written by
+        # `$TID`, `$TEAM` and `$PSET` t2 alike (V4_31 disassembly, 2026-09-18), and the node writes a
+        # `pset_pool` `$PSET` in the same burst as `$SPAWN`. That `$PSET` now carries the team too; this
+        # frame is the belt to its braces, and it is what LaserTagMods' own hosted-game path does (a
+        # second `$TID` after the gun's start). A live `$TID` write changes hit resolution at once and
+        # repaints nothing (bench 2026-09-07), so it is safe after `$SPAWN`.
+        spawn = list(sir_pregame) + ["$PLAYX,0,*", "$SPAWN,,*", f"$TID,{tid},*"] + ammo + [TRIGGER_LIVE] + play_hled
+
+        # revive = the twin + $SPAWN + $TID + loadout $AMMOs + the trigger row (NO $HLOOP; §1.1 replaces
+        # RESPAWN_SEQUENCE). Bench 2026-09-16: the head holds the trigger, and a live resync re-writes the
+        # head before it revives, so the revive maps the trigger again too.
+        def _revive_for(team: int) -> list[str]:
+            # One revive burst per TEAM: the plain `revive` is the arming team's; an infection flip
+            # (below) needs the same burst ending on the team the gun has just joined, because the
+            # `pset_pool` `$PSET` the node writes before it still carries the ARMING team.
+            return list(sir_pregame) + ["$SPAWN,,*", f"$TID,{team},*"] + ammo + [TRIGGER_LIVE] + play_hled
+
+        revive = _revive_for(tid)
         assert_trigger_held_until_spawn(head, spawn, revive)
 
         bundle: FrameBundle = {
@@ -1803,7 +1959,10 @@ class Compiler:
         # A17: each take also carries its own draw from the MATERIAL pools (hitHp / hitArrmor /
         # hitShield / hitCrit), so the one write that re-rolls the death scream re-rolls what a hit on
         # each pool sounds like. Variety lands BETWEEN hits; nothing is played over BLE during one.
-        bundle["pset_pool"] = gc.pset_frames(pnum, player.get("voice"), picks or None, rng=hits_rng)
+        bundle["pset_pool"] = gc.pset_frames(pnum, player.get("voice"), picks or None, rng=hits_rng, team=tid)   # F206: t2 = the $TID team
+        # F206 GUARD: every $PSET this bundle can write carries the team its $TID frames carry. The node
+        # writes one of `pset_pool` in the same burst as every $SPAWN, so a stray 0 here is the whole bug.
+        assert_team_byte_consistent(head + spawn + revive + bundle["pset_pool"])
         # A17: the class layer, rolled the same way -- one full $SIR table per take, so the same weapon does
         # not land the same clip all match. Re-sending $SIR rows is the F11 REPAIR path, so this write is
         # bench-safe by construction. F209: the node writes one take after every spawn and revive.
@@ -1871,7 +2030,9 @@ class Compiler:
             take: dict[str, list[str]] = {}
             for t in teams:
                 if int(t["tid"]) != tid:
-                    flip[str(t["tid"])] = [f"$TID,{t['tid']},*"] + revive
+                    # F206: the burst ends on the NEW team's `$TID` (see `_revive_for`), and the node
+                    # uses this same list for every later revive of a turned player (`engine._revive`).
+                    flip[str(t["tid"])] = [f"$TID,{t['tid']},*"] + _revive_for(int(t["tid"]))
                     # F86: `gun.take` (blank + rest) is compiled for the ARMING team, so after a flip the
                     # node's next take -- 2.5 s after the flip's own $SPAWN, and after every later revive --
                     # painted the OLD team's colour back onto a gun the firmware had just moved. The node
@@ -1891,6 +2052,7 @@ class Compiler:
         pe = self.perk_effects_resolved(config, player)
         if pe:
             bundle["perk_effects"] = pe
+        assert_no_denied_frames(bundle)   # transport-hardening.md §4: MC never even compiles a frame the node refuses
         return bundle
 
     def tutorial_frames(self, weapon: Weapon, environment: str) -> list[str]:
@@ -1899,7 +2061,8 @@ class Compiler:
         wid = weapon["weapon_id"]
         mag, reserve = self.catalog.spawn_ammo(wid)
         # $PSET,0 = "no identity" (A5.1) so a stray try-out hit reports shooter 0, never credited.
-        pset = "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*"
+        # F206: token 2 = 1, the same team as the `$TID,1` below (one team byte, last writer wins).
+        pset = "$PSET,0,1,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*"
         return [
             f"$VOL,{self.tryout_volume()},0,*", "$CLEAR,*", "$START,*",   # $START IS required — bench 2026-08-25: without it the gun
                                                      # spawns but the trigger only reloads, it will not fire IR
@@ -2259,10 +2422,10 @@ class Compiler:
                             else "is the gun you fight with (a sidearm in the PRIMARY slot)")
                     warnings.append(f"{wid} {what} and cannot kill on one magazine at this pool - "
                                     f"it will need a reload (mag {mag} < {rtk} rounds for {htk} hits at "
-                                    f"{self.catalog.damage(wid)} dmg vs {pool} pool)")
+                                    f"{self.catalog.damage_per_pull(wid)} dmg vs {pool} pool)")
                 else:
                     warnings.append(f"PRIMARY {wid.upper().replace('_', ' ')} CANNOT KILL ON ONE MAGAZINE: "
-                                    f"mag {mag} < {rtk} rounds for {htk} hits at {self.catalog.damage(wid)} dmg "
+                                    f"mag {mag} < {rtk} rounds for {htk} hits at {self.catalog.damage_per_pull(wid)} dmg "
                                     f"vs a {pool} pool — a reload mid-kill (docs/weapon-design.md §2.1)")
 
         # Does each loadout weapon's <t3,t4> key a $SIR row that actually DEALS DAMAGE?

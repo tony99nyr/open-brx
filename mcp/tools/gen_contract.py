@@ -637,6 +637,8 @@ def _build_model() -> _Model:
         ("CONTROL_CMDS", "ControlCmd", sorted(T.CONTROL_CMDS)),
         ("PERSISTED_EVENT_TYPES", "PersistedEventType", sorted(E.PERSISTED_EVENT_TYPES)),
         ("STATION_KINDS", station_kind_type_name, list(T.STATION_KINDS)),
+        # The gun-command deny list the phone enforces in `engine._write` (transport-hardening.md §4).
+        ("NODE_DENIED_COMMANDS", "NodeDeniedCommand", sorted(E.NODE_DENIED_COMMANDS)),
     ]
     station_source_ids = list(T.STATION_SOURCES)
 
@@ -648,10 +650,15 @@ def _build_model() -> _Model:
     # whole set risks misattaching one item's internal comment as the NEXT set's preface.
     env_nodes = _toplevel_assign_nodes(env_tree)
     _pet_node = env_nodes.get("PERSISTED_EVENT_TYPES")
+    _ndc_node = env_nodes.get("NODE_DENIED_COMMANDS")
     kind_set_docs: dict[str, str | None] = {
         "PERSISTED_EVENT_TYPES": _jsdoc(
             _statement_comment(_pet_node, env_comment_only, env_trailing, env_consumed)
             if _pet_node is not None else None
+        ),
+        "NODE_DENIED_COMMANDS": _jsdoc(
+            _statement_comment(_ndc_node, env_comment_only, env_trailing, env_consumed)
+            if _ndc_node is not None else None
         ),
     }
 

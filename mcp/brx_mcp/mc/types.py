@@ -547,6 +547,7 @@ class Weapon(TypedDict):
     recoil: NotRequired[Recoil]     # S42: the declared target accuracy profile (weapons.json `recoil`)
     rounds_per_charge: NotRequired[int]  # A48: rounds of the cell one FULL charge spends. `WeaponCatalog.rounds_per_charge()` resolves weapons.json's absent-means-1 row to a concrete integer, so a real compiled Weapon always carries this; NotRequired only for a hand-built fixture that skips it
     lethal: NotRequired[bool]       # 2026-09-18, weapon-design.md §7.4: False = cannot kill; absent means true
+    crit_pct: NotRequired[int]      # F62 (2026-09-18): $WEAP t6 primaryCritChance, 0-100; absent = never crits
 
 
 class WeaponBars(TypedDict):
@@ -588,6 +589,7 @@ class WeaponView(TypedDict):
                                     # to travel with the row or a console offers a pick that is refused at arming.
     recoil: NotRequired[Recoil]     # S42: the declared target accuracy profile -- the node's `weaponRow(id).recoil`
     rounds_per_charge: NotRequired[int]  # A48: rounds of the cell one FULL charge spends -- the HUD's NOT ENOUGH ENERGY line reads this, never a hard-coded cost. `views.weapon_view()` resolves the catalogue's absent-means-1 row, so a real WeaponView always carries this; NotRequired only for a hand-built fixture that skips it
+    crit_pct: NotRequired[int]      # F62 (2026-09-18): $WEAP t6 primaryCritChance, 0-100; absent = never crits
 
 
 class SavedGame(TypedDict):

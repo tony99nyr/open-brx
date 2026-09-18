@@ -80,6 +80,37 @@ const DATA = {
   roles(ctx) {
     return `<ul class="chips" data-reveal aria-label="Weapon classes">${ctx.facts.roles.roles.map(r => `<li class="chip" style="--c:${r.color}">${esc(titleCase(r.label))} <b>${r.n}</b></li>`).join('')}</ul>`;
   },
+  // one card per pickable weapon: art, class, a short lift off its own desc, and the two numbers a
+  // reader actually wants (hits to kill, magazine). rocket_launcher and rail_gun carry pickup_only
+  // and say so on the card, the same way a game-mode tile says "In development".
+  // `data-reveal` sits on each CARD, not the list (unlike .tiles/.doors/.cards elsewhere): those
+  // lists top out at 6 items, short enough that "12% of the whole element visible" is easy to reach.
+  // At 15 items, one column at phone width, the list is several viewports tall, and the observer's
+  // 12%-of-target threshold (site.js) can never be satisfied for an element that large -- the cards
+  // never reveal. Revealing per card keeps each target small and gives a nicer staggered entrance besides.
+  arsenal(ctx) {
+    return `<ul class="cards weapons" aria-label="Every weapon in the arsenal">${ctx.facts.arsenal.map(w => {
+      const href = `/photos/weapon-${w.id}.jpg`;
+      const src = ctx.asset(href);
+      const dims = ctx.dims(href);
+      const size = dims ? ` width="${dims.w}" height="${dims.h}"` : '';
+      const cls = titleCase(w.label);
+      const alt = `${w.name}, an Open BRX ${cls}-class weapon`;
+      // lethal === false (Breacher, Haze) cannot kill by design (S16 stripping/denial). Their own
+      // `desc` already opens with "It cannot kill", so the stat slot carries a dash, not a repeat of
+      // the same words, and not a bare 0 either (a 0 reads as missing data, not a design choice). The
+      // word survives for assistive tech in a visually-hidden span, driven off `lethal`, never `htk`.
+      const htk = w.lethal ? w.htk : '<span class="wcant" aria-hidden="true">–</span><span class="vh">Cannot kill</span>';
+      return `<li class="card weapon${w.pickupOnly ? ' pickup' : ''}" style="border-top-color:${w.color}" data-reveal>
+<figure class="wshot"><img src="${esc(src)}" alt="${esc(alt)}"${size} loading="lazy" decoding="async"></figure>
+<span class="chip" style="--c:${w.color}">${esc(cls)}</span>
+<span class="name">${esc(w.name)}</span>
+<p>${esc(w.desc)}</p>
+<dl><dt>Hits</dt><dd>${htk}</dd><dt>Magazine</dt><dd>${w.mag}</dd></dl>
+${w.pickupOnly ? '<span class="badge">Pickup only</span>' : ''}
+</li>`;
+    }).join('')}</ul>`;
+  },
   manual(ctx) {
     return `<ul class="doors" data-reveal>${ctx.facts.manual.map(p => `<li><a class="door" href="${p.slug}/"><span class="t">${esc(p.nav)}</span><span class="s">${esc(p.blurb)}</span></a></li>`).join('')}</ul>`;
   },

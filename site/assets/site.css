@@ -281,6 +281,7 @@ tbody tr:hover { background: var(--panel); }
 .dt-count { color: var(--muted); font-size: 14px; }
 .dt-note { color: var(--muted); font-size: 13px; }
 .unheard { color: var(--muted); }
+.community { color: var(--muted); }
 .dt [data-more] {
   background: var(--bg); border: 1px solid var(--line-strong); color: var(--ink);
   border-radius: 6px; padding: 8px 14px; min-height: 36px; font: inherit; cursor: pointer;
@@ -467,7 +468,7 @@ figure { margin: 0; }
 .tile .abbr { font: 700 44px/1 var(--display); letter-spacing: .02em; }
 .tile .name { font: 600 24px/1.1 var(--display); text-transform: uppercase; color: var(--ink); }
 .tile p { margin: 0; font: 500 15px/1.5 var(--ui); color: var(--muted); }
-.tile .badge { align-self: flex-start; font: 600 11px/1 var(--mono); letter-spacing: .2em; text-transform: uppercase; color: #ffb020; border: 1px solid #ffb020; padding: 6px 8px; }
+.tile .badge, .card.weapon .badge { align-self: flex-start; font: 600 11px/1 var(--mono); letter-spacing: .2em; text-transform: uppercase; color: #ffb020; border: 1px solid #ffb020; padding: 6px 8px; }
 .tile.wip .abbr { opacity: .55; }
 
 /* chips (weapon classes) */
@@ -508,6 +509,16 @@ figure { margin: 0; }
 .card dl { display: grid; grid-template-columns: 90px 1fr; gap: 8px 16px; margin: 0; font: 500 14px/1.4 var(--mono); }
 .card dt { color: var(--micro); letter-spacing: .14em; text-transform: uppercase; } .card dd { margin: 0; color: #c7d3de; }
 .card .btn { align-self: flex-start; min-height: 50px; }
+
+/* arsenal (weapon cards): the .card language plus a bled-edge photo slot */
+.card.weapon { padding: 0 32px 32px; overflow: hidden; }
+.card.weapon .wshot { margin: 0 -32px; aspect-ratio: 16 / 9; background: var(--code-bg); }
+.card.weapon .wshot img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.card.weapon .chip { align-self: flex-start; }
+.card.weapon dl { grid-template-columns: 96px 1fr; }
+/* a weapon that cannot kill by design (lethal: false) carries a dash here, not a bare 0; the
+   card's own desc already says "It cannot kill", so the word itself is for assistive tech only (.vh) */
+.card.weapon .wcant { color: var(--muted); font-weight: 600; }
 
 /* the manual's front door: hero search */
 .hero-find { width: min(760px, 100%); }

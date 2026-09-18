@@ -417,6 +417,38 @@ def test_armour_piercing_is_priced_fairly_on_every_weapon_that_carries_it():
     assert int(_tok(f, 5)) == ar["ap_dmg"] and int(_tok(f, 14)) == ar["ap_fire_ms"], f
 
 
+def test_armour_piercing_zeroes_the_headset_word_so_a_pull_is_worth_its_price():
+    """A weapon carrying BOTH `ap_dmg` and `wire.headset_dmg` must not smuggle the second word through.
+
+    Found by review 2026-09-18, live on the shipped Shotgun. Armour Piercing writes its priced
+    `ap_dmg` into t5 and `_rekey` points the WHOLE frame at the AP cell, so BOTH words land on fn 2,
+    straight past armour and shields. t12 was still written from the weapon's normal
+    `wire.headset_dmg`, so an AP Shotgun delivered 15 + 20 = 35 to bare health for the price of 15.
+
+    That is the identical unpriced-second-word hole the 2026-09-18 t12 work exists to close, reopened
+    on the one headset weapon that kept its AP (the Plasma Sniper's was removed instead). No test
+    covered the combination: the AP tests used the assault rifle, the charge rifle and the rocket
+    launcher, and the rocket launcher declares `headset_dmg` 0, so the stack was never exercised.
+
+    The rule: under Armour Piercing a trigger pull is worth exactly `ap_dmg`, so the second word is
+    zeroed. Without the perk the weapon keeps its declared headset damage."""
+    both = [w for w in ROWS if w.get("ap_dmg") and (w.get("wire") or {}).get("headset_dmg")]
+    assert both, ("no weapon declares BOTH ap_dmg and wire.headset_dmg -- if that is now true by "
+                  "design, delete this guard; while it is false the guard cannot fail")
+    for w in both:
+        wid = w["weapon_id"]
+        plain = C.compile(_cfg(), _player({"weapons": [{"weapon_id": wid}]}), _TEAMS)
+        pf = [x for x in plain["head"] if x.startswith("$WEAP,0")][0]
+        assert int(_tok(pf, 12)) == int(w["wire"]["headset_dmg"]), (
+            f"{wid}: without the perk t12 must still carry its declared headset damage: {pf}")
+        ap = C.compile(_cfg(), _player({"weapons": [{"weapon_id": wid}], "perk": "armor_piercing"}), _TEAMS)
+        af = [x for x in ap["head"] if x.startswith("$WEAP,0")][0]
+        assert int(_tok(af, 5)) == int(w["ap_dmg"]), f"{wid}: AP did not price t5: {af}"
+        assert int(_tok(af, 12)) == 0, (
+            f"{wid}: Armour Piercing left {_tok(af, 12)} in t12, so one pull delivers "
+            f"{int(w['ap_dmg']) + int(_tok(af, 12))} to bare health for the price of {w['ap_dmg']}: {af}")
+
+
 def test_armour_piercing_is_refused_on_a_weapon_with_no_fair_price():
     """The other half of §7.7: a weapon that cannot be priced must not carry the perk at all.
 

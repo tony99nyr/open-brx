@@ -4,7 +4,7 @@
   {
    "weapon_id": "assault_rifle",
    "name": "Assault Rifle",
-   "desc": "The anchor, and the real stock M4 cadence. 13 hits at 100ms with 32 up and 192 in reserve: 17 kills without resupply and a 1.20s kill. 2026-09-17 arsenal review: cycle is back to Battle Company's native 100ms (it was throttled to 140ms so a deep reserve could not also out-cycle the field); the dominance test now grades on one-magazine kill chance rather than total kills, so the reserve alone no longer has to carry the whole weight of keeping the AR in check.",
+   "desc": "The one everything else is measured against. Nothing it does is remarkable, and there is no fight it cannot hold.",
    "cls": 0,
    "role": "assault",
    "class": "ballistic",
@@ -38,23 +38,24 @@
     "assault"
    ],
    "ap_dmg": 7,
-   "ap_fire_ms": 225
+   "ap_fire_ms": 225,
+   "notes": "The anchor, and the real stock M4 cadence. 13 hits at 100ms with 32 up and 192 in reserve: 17 kills without resupply and a 1.20s kill. 2026-09-17 arsenal review: cycle is back to Battle Company's native 100ms (it was throttled to 140ms so a deep reserve could not also out-cycle the field); the dominance test now grades on one-magazine kill chance rather than total kills, so the reserve alone no longer has to carry the whole weight of keeping the AR in check."
   },
   {
    "weapon_id": "burst_rifle",
    "name": "Burst Rifle",
-   "desc": "A real three-round burst: one pull, three rounds, and the gun enforces the gap. 11 hits from a 36-round mag with 216 behind it; the most total ammo of the burst pair, and the tighter of the two. 2026-09-17 arsenal review: damage raised 9 to 11 so the burst pair separates further from the SMG-class assault weapons on hits-to-kill, not only on cadence.",
+   "desc": "Three rounds a pull, and the gun decides the gap rather than your finger. Slower to the kill than the rifle, and far harder to waste.",
    "cls": 0,
    "role": "assault",
    "class": "ballistic",
    "mag": 36,
    "reserve": 216,
    "reload_ms": 1700,
-   "dmg": 10,
+   "dmg": 9,
    "rof": 100,
    "rng": 75,
-   "htk": 11,
-   "ttk_ms": 1417,
+   "htk": 12,
+   "ttk_ms": 1558,
    "range_band": "mid",
    "range_target_m": "18-20 indoor / 40-45 outdoor (Q15)",
    "recoil": {
@@ -68,14 +69,16 @@
     "frame": "$WEAP,0,,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*"
    },
    "wire": {
-    "dmg": 11,
+    "dmg": 10,
     "range_outdoor_pct": 70
    },
+   "crit_pct": 40,
    "verified": false,
    "captured": true,
    "tags": [
     "assault"
-   ]
+   ],
+   "notes": "A real three-round burst: one pull, three rounds, and the gun enforces the gap. 11 hits from a 36-round mag with 216 behind it; the most total ammo of the burst pair, and the tighter of the two. 2026-09-17 arsenal review: damage raised 9 to 11 so the burst pair separates further from the SMG-class assault weapons on hits-to-kill, not only on cadence."
   },
   {
    "weapon_id": "force_rifle",
@@ -86,7 +89,7 @@
     "recover_ms": 150
    },
    "name": "Force Rifle",
-   "desc": "The burst rifle's heavier twin: same three-round pull, more per round. 12 hits instead of 13 and a faster kill, paid for with two-thirds the reserve and a slower five-part reload.",
+   "desc": "A heavier round on the same frame. Fewer hits to land, and you feel every one of them in the recovery.",
    "cls": 0,
    "role": "assault",
    "class": "ballistic",
@@ -116,7 +119,8 @@
    "hidden": true,
    "tags": [
     "assault"
-   ]
+   ],
+   "notes": "The burst rifle's heavier twin: same three-round pull, more per round. 12 hits instead of 13 and a faster kill, paid for with two-thirds the reserve and a slower five-part reload."
   },
   {
    "weapon_id": "bolt_rifle",
@@ -127,7 +131,7 @@
     "recover_ms": 150
    },
    "name": "Bolt Rifle",
-   "desc": "Single shot, deliberate cadence. 13 a hit every 225ms with 18 up and 180 back. That is 22 kills from a full kit, for operators who would rather aim than hold.",
+   "desc": "One round at a time, deliberately. It asks you to aim and pays you back in hits that count.",
    "cls": 0,
    "role": "assault",
    "class": "ballistic",
@@ -148,12 +152,13 @@
    "hidden": true,
    "tags": [
     "assault"
-   ]
+   ],
+   "notes": "Single shot, deliberate cadence. 13 a hit every 225ms with 18 up and 180 back. That is 22 kills from a full kit, for operators who would rather aim than hold."
   },
   {
    "weapon_id": "smg",
    "name": "SMG",
-   "desc": "A hose that runs hot. 8 a hit every 95ms from a 72-round mag: four kills before you reload, 24 across the kit, and an overheat budget that punishes holding the trigger down forever.",
+   "desc": "A hose. The magazine leaves faster than you meant it to, and getting it back means standing still for a long time.",
    "cls": 1,
    "role": "cqb",
    "class": "ballistic",
@@ -187,12 +192,13 @@
     "cqb"
    ],
    "ap_dmg": 5,
-   "ap_fire_ms": 184
+   "ap_fire_ms": 184,
+   "notes": "A hose that runs hot. 8 a hit every 95ms from a 72-round mag: four kills before you reload, 24 across the kit, and an overheat budget that punishes holding the trigger down forever."
   },
   {
    "weapon_id": "shotgun",
    "name": "Shotgun",
-   "desc": "Shell by shell, and the fastest recovery on the board. 45 a hit at 800ms, three hits to drop, six in the tube and a 400ms shell reload. Sustained pressure from the shallowest ammo pool outside the power tier.",
+   "desc": "Three pulls and it is over, if you were close enough to mean it. Shell by shell, and the fastest recovery on the board.",
    "cls": 3,
    "role": "cqb",
    "class": "ballistic",
@@ -200,7 +206,7 @@
    "reserve": 24,
    "reload_ms": 400,
    "reload_type": "chain",
-   "dmg": 39,
+   "dmg": 35,
    "rof": 9,
    "rng": 75,
    "range_band": "close",
@@ -218,8 +224,12 @@
     "frame": "$WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*"
    },
    "wire": {
+    "dmg": 20,
+    "headset_dmg": 20,
+    "headset_range_outdoor": 100,
+    "headset_range_indoor": 100,
     "fire_ms": 800,
-    "range_outdoor_pct": 22
+    "range_outdoor_pct": 100
    },
    "verified": false,
    "captured": true,
@@ -227,7 +237,8 @@
     "cqb"
    ],
    "ap_dmg": 15,
-   "ap_fire_ms": 1000
+   "ap_fire_ms": 1000,
+   "notes": "Shell by shell, and the fastest recovery on the board. One pull sends two words: 20 from the gun and 20 from the shooter's own headset, both landing at any range this game is played at, 40 together. Three hits drop a target, six in the tube and a 400ms shell reload. Sustained pressure from the shallowest ammo pool outside the power tier."
   },
   {
    "weapon_id": "stinger",
@@ -238,7 +249,7 @@
     "recover_ms": 120
    },
    "name": "Stinger",
-   "desc": "Fast, light, relentless. 15 a hit every 250ms with 18 up and 144 in reserve: eight hits to drop, twenty kills to spend, and nothing held back for range.",
+   "desc": "Heavy rounds on a slow cadence. It rewards a steady hand and punishes a panicked one.",
    "cls": 6,
    "role": "cqb",
    "class": "ballistic",
@@ -264,12 +275,13 @@
     "cqb"
    ],
    "ap_dmg": 5,
-   "ap_fire_ms": 250
+   "ap_fire_ms": 250,
+   "notes": "Fast, light, relentless. 15 a hit every 250ms with 18 up and 144 in reserve: eight hits to drop, twenty kills to spend, and nothing held back for range."
   },
   {
    "weapon_id": "sniper_rifle",
    "name": "Sniper Rifle",
-   "desc": "Two hits, one lane, a bolt between them. 60 a hit on a 1.5s cycle with four in the mag and 24 behind it. The fewest hits to a kill outside the power tier, and no margin for a miss.",
+   "desc": "Two hits from anywhere on the field, with a long moment in between to think about the first one.",
    "cls": 2,
    "role": "marksman",
    "class": "ballistic",
@@ -309,7 +321,8 @@
    "tags": [
     "marksman",
     "sniper"
-   ]
+   ],
+   "notes": "Two hits, one lane, a bolt between them. 60 a hit on a 1.5s cycle with four in the mag and 24 behind it. The fewest hits to a kill outside the power tier, and no margin for a miss."
   },
   {
    "weapon_id": "plasma_sniper",
@@ -320,24 +333,27 @@
     "recover_ms": 150
    },
    "name": "Plasma Sniper",
-   "desc": "A marksman rifle that fires like a carbine and pays for it in heat. 25 a hit every 400ms, five to drop, ten up and 80 back. Lean on it and it overheats.",
+   "desc": "A marksman's weapon that refuses to wait. Closer to a rifle's cadence than a scope's.",
    "cls": 2,
    "role": "marksman",
    "class": "energy",
    "mag": 10,
    "reserve": 80,
    "reload_ms": 2000,
-   "dmg": 22,
+   "dmg": 30,
    "rof": 19,
    "rng": 75,
-   "htk": 5,
-   "ttk_ms": 1600,
+   "htk": 4,
+   "ttk_ms": 1200,
    "capture": {
     "src": "2026-08-26-weapons-plasmasniper-forcerifle.btsnoop",
     "frame": "$WEAP,0,2,100,0,0,80,0,,,,,,80,80,225,850,10,80,2000,0,7,100,100,,30,,,E17,,,,D35,D34,D36,A73,D122,,,,10,40,75,40,*"
    },
    "wire": {
     "dmg": 25,
+    "headset_dmg": 10,
+    "headset_range_outdoor": 100,
+    "headset_range_indoor": 100,
     "fire_ms": 400
    },
    "verified": false,
@@ -347,26 +363,25 @@
     "marksman",
     "sniper"
    ],
-   "ap_dmg": 9,
-   "ap_fire_ms": 450
+   "notes": "A marksman rifle that fires like a carbine and pays for it in heat. One pull sends two words, 25 from the gun and 10 from the shooter's own headset, 35 together: four to drop, ten up and 80 back. Lean on it and it overheats."
   },
   {
    "weapon_id": "amr",
    "name": "AMR",
-   "desc": "Anti-materiel weight at a rifle's cadence. 24 a hit every 400ms, five hits to a kill, 14 up and only 56 behind. The hardest-hitting automatic, and the shallowest.",
+   "desc": "Anti-materiel, and it reads like it. Heavy hits at a pace nothing else at that range can match.",
    "cls": 4,
-   "role": "support",
+   "role": "marksman",
    "class": "ballistic",
    "mag": 14,
    "reserve": 56,
    "reload_ms": 1400,
-   "dmg": 21,
+   "dmg": 18,
    "rof": 19,
    "rng": 75,
    "range_band": "long",
    "range_target_m": "full reach indoor / 60m+ outdoor (Q15, tagged sniper)",
-   "htk": 5,
-   "ttk_ms": 1600,
+   "htk": 6,
+   "ttk_ms": 2000,
    "recoil": {
     "ceiling": 100,
     "floor": 100,
@@ -378,10 +393,11 @@
     "frame": "$WEAP,1,,100,0,3,18,0,,,,,,,,360,850,14,56,1400,0,7,100,100,,0,,,S07,D20,D19,,D04,D03,D21,D18,,,,,14,28,75,*"
    },
    "wire": {
-    "dmg": 24,
+    "dmg": 21,
     "fire_ms": 400,
     "range_outdoor_pct": 85
    },
+   "crit_pct": 30,
    "overrides": {
     "t33": {
      "value": "D02",
@@ -391,16 +407,17 @@
    "verified": false,
    "captured": true,
    "tags": [
-    "support",
+    "marksman",
     "sniper"
-   ]
+   ],
+   "notes": "Anti-materiel weight at a rifle's cadence. 24 a hit every 400ms, five hits to a kill, 14 up and only 56 behind. The hardest-hitting automatic, and the shallowest."
   },
   {
    "weapon_id": "suppressor",
    "name": "Suppressor",
-   "desc": "Quiet, not silent, and no muzzle flash. It is the only weapon here that hides where you are. 8 a hit every 140ms with 75 up and 384 in reserve: 30 kills, the deepest magazine AND the deepest sustained pool, the slowest kill. 2026-09-17: mag 48\u219275 -- the family-scoped dominance test (\u00a72.3) paired it against the SMG (same fire mode, same weapon_class), which beat it on every other axis; the deeper magazine gives the Suppressor an outright lead on kills-per-clip (5 vs the SMG's 4), which is the smallest change that stops the SMG strictly dominating it.",
+   "desc": "Quiet, and no muzzle flash. The only weapon that does not tell the field where you are, bought with the slowest kill in the game.",
    "cls": 1,
-   "role": "support",
+   "role": "assault",
    "class": "ballistic",
    "mag": 75,
    "reserve": 384,
@@ -429,18 +446,19 @@
    "verified": false,
    "captured": true,
    "tags": [
-    "support"
+    "assault"
    ],
    "ap_dmg": 3,
-   "ap_fire_ms": 155
+   "ap_fire_ms": 155,
+   "notes": "Quiet, not silent, and no muzzle flash. It is the only weapon here that hides where you are. 8 a hit every 140ms with 75 up and 384 in reserve: 30 kills, the deepest magazine AND the deepest sustained pool, the slowest kill. 2026-09-17: mag 48\u219275 -- the family-scoped dominance test (\u00a72.3) paired it against the SMG (same fire mode, same weapon_class), which beat it on every other axis; the deeper magazine gives the Suppressor an outright lead on kills-per-clip (5 vs the SMG's 4), which is the smallest change that stops the SMG strictly dominating it."
   },
   {
    "weapon_id": "energy_rifle",
    "caution": "Overheats after about 30 rounds of full auto, and it does not cool on its own: work the reload lever to vent the heat (about three pulls, or one held pull), then keep holding to recharge the cell.",
    "name": "Energy Rifle",
-   "desc": "A 300-cell battery that barely stops. 9 a hit every 150ms, 23 kills on one magazine and 69 across the kit. The largest ammo pool in the game, on the smallest per-hit number. 2026-09-17 bench (F229): now genuinely overheats \u2014 full auto locks it out around heat 99 after about 30 shots, and unlike the Charge Rifle it does not cool on its own; only the reload lever (a hold, not a tap) vents it.",
+   "desc": "The cell barely stops. When it finally does, the recharge is long enough to lose the fight you were winning.",
    "cls": 5,
-   "role": "support",
+   "role": "assault",
    "class": "energy",
    "mag": 300,
    "reserve": 600,
@@ -479,17 +497,18 @@
    "verified": false,
    "captured": true,
    "tags": [
-    "support"
+    "assault"
    ],
    "ap_dmg": 8,
-   "ap_fire_ms": 405
+   "ap_fire_ms": 405,
+   "notes": "A 300-cell battery that barely stops. 9 a hit every 150ms, 23 kills on one magazine and 69 across the kit. The largest ammo pool in the game, on the smallest per-hit number. 2026-09-17 bench (F229): now genuinely overheats \u2014 full auto locks it out around heat 99 after about 30 shots, and unlike the Charge Rifle it does not cool on its own; only the reload lever (a hold, not a tap) vents it."
   },
   {
    "weapon_id": "charge_rifle",
    "name": "Charge Rifle",
-   "desc": "Pre-charge it behind cover, then the kill is one release and two taps: an 85-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus two 20-damage taps drops a 115 pool in about 1s from release -- 3 trigger actions, 12 of the 40 rounds up, 84 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, eighty back -- three combo kills a magazine, ten across the kit.",
+   "desc": "Hold it, and it holds. A full charge and two taps ends anyone, which is why it belongs to whoever saw the other person first.",
    "cls": 5,
-   "role": "support",
+   "role": "marksman",
    "class": "energy",
    "mag": 40,
    "reserve": 80,
@@ -525,8 +544,10 @@
    "verified": false,
    "captured": true,
    "tags": [
-    "support"
-   ]
+    "marksman",
+    "sniper"
+   ],
+   "notes": "Pre-charge it behind cover, then the kill is one release and two taps: an 85-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus two 20-damage taps drops a 115 pool in about 1s from release -- 3 trigger actions, 12 of the 40 rounds up, 84 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, eighty back -- three combo kills a magazine, ten across the kit."
   },
   {
    "weapon_id": "glock",
@@ -537,7 +558,7 @@
     "recover_ms": 150
    },
    "name": "Glock-18",
-   "desc": "The middle ground. 13 a hit at a measured cadence, 9 hits to drop, 16 in the mag with 64 behind it: 8 kills across the kit. Not the fastest trigger and not the biggest punch, but the safest bet not to be caught reloading.",
+   "desc": "A machine pistol wearing a sidearm's badge. Empties in a blink and asks no questions.",
    "cls": 10,
    "role": "sidearm",
    "class": "ballistic",
@@ -586,12 +607,13 @@
    "tags": [
     "sidearm",
     "pistol"
-   ]
+   ],
+   "notes": "The middle ground. 13 a hit at a measured cadence, 9 hits to drop, 16 in the mag with 64 behind it: 8 kills across the kit. Not the fastest trigger and not the biggest punch, but the safest bet not to be caught reloading."
   },
   {
    "weapon_id": "usp",
    "name": "USP-S",
-   "desc": "The quiet one. Suppressed and flashless: 9 a hit, as fast as you can pull the trigger, 13 hits to drop, 19 in the mag with 120 behind it: 10 kills across the kit. Low damage, but nobody hears where it came from. 2026-09-17: mag 20\u219219 -- Tony's ask was 20\u219214, but 14 leaves the Deagle strictly dominating the USP (its sustained DPS and one-magazine kill chance both fall too far once the mag is that shallow); 19 is the smallest cut off 20 that actually leaves neither pistol beating the other on every axis (a thin margin: sustained DPS differs by about 0.1 dmg/s, kill chance by 2 points).",
+   "desc": "A steady sidearm. It will not win a fight you started badly, but it will finish one you nearly had.",
    "cls": 10,
    "role": "sidearm",
    "class": "ballistic",
@@ -655,12 +677,13 @@
    "tags": [
     "sidearm",
     "pistol"
-   ]
+   ],
+   "notes": "The quiet one. Suppressed and flashless: 9 a hit, as fast as you can pull the trigger, 13 hits to drop, 19 in the mag with 120 behind it: 10 kills across the kit. Low damage, but nobody hears where it came from. 2026-09-17: mag 20\u219219 -- Tony's ask was 20\u219214, but 14 leaves the Deagle strictly dominating the USP (its sustained DPS and one-magazine kill chance both fall too far once the mag is that shallow); 19 is the smallest cut off 20 that actually leaves neither pistol beating the other on every axis (a thin margin: sustained DPS differs by about 0.1 dmg/s, kill chance by 2 points)."
   },
   {
    "weapon_id": "deagle",
    "name": "Desert Eagle",
-   "desc": "The hand cannon. 26 a hit, five hits to drop \u2014 the most damage of any sidearm, if you land them. Seven in the mag, 48 behind it: 11 kills across the kit. A slow cycle that punishes every miss.",
+   "desc": "Rounds that hit like a rifle, and not many of them. Miss twice and you are reloading in front of someone.",
    "cls": 10,
    "role": "sidearm",
    "class": "ballistic",
@@ -716,12 +739,13 @@
    "tags": [
     "sidearm",
     "pistol"
-   ]
+   ],
+   "notes": "The hand cannon. 26 a hit, five hits to drop \u2014 the most damage of any sidearm, if you land them. Seven in the mag, 48 behind it: 11 kills across the kit. A slow cycle that punishes every miss."
   },
   {
    "weapon_id": "rocket_launcher",
    "name": "Rocket Launcher",
-   "desc": "Point, pull, erase. 115 a hit (a full-health operator in one) on the fastest power-tier cycle, with the slowest reload behind it. Four rounds, four kills, no second chances.",
+   "desc": "One round, one player, no argument. Two in the tube and nothing to reload from.",
    "cls": 9,
    "role": "power",
    "class": "ballistic",
@@ -746,6 +770,9 @@
     "frame": "$WEAP,0,2,100,10,0,115,0,,,,,,115,80,1000,850,2,8,1200,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,4,75,30,*"
    },
    "wire": {
+    "headset_dmg": 0,
+    "headset_range_outdoor": 100,
+    "headset_range_indoor": 100,
     "range_outdoor_pct": 22
    },
    "verified": false,
@@ -754,12 +781,13 @@
    "tags": [
     "power",
     "heavy"
-   ]
+   ],
+   "notes": "Point, pull, erase. 115 a hit (a full-health operator in one) on the fastest power-tier cycle, with the slowest reload behind it. Four rounds, four kills, no second chances."
   },
   {
    "weapon_id": "rail_gun",
    "name": "Rail Gun",
-   "desc": "Charges and fires itself. A 1.2s wind-up that goes whether you are ready or not, 115 on impact, four rounds total. Everyone within earshot hears the spool.",
+   "desc": "A single charged slug that ends whoever it finds. Two shots, and then it is scrap.",
    "cls": 7,
    "role": "power",
    "class": "energy",
@@ -792,7 +820,8 @@
    "tags": [
     "power",
     "heavy"
-   ]
+   ],
+   "notes": "Charges and fires itself. A 1.2s wind-up that goes whether you are ready or not, 115 on impact, four rounds total. Everyone within earshot hears the spool."
   },
   {
    "weapon_id": "laser_cannon",
@@ -803,7 +832,7 @@
     "recover_ms": 150
    },
    "name": "Laser Cannon",
-   "desc": "Must be held to charge; a tap fires nothing at all. 1.5s of commitment for a guaranteed kill, and the fastest reload in the power tier for the trouble.",
+   "desc": "A beam that does not ask about armour. Two shots and it is spent.",
    "cls": 4,
    "role": "power",
    "class": "energy",
@@ -826,7 +855,8 @@
    "tags": [
     "power",
     "heavy"
-   ]
+   ],
+   "notes": "Must be held to charge; a tap fires nothing at all. 1.5s of commitment for a guaranteed kill, and the fastest reload in the power tier for the trouble."
   },
   {
    "weapon_id": "energy_launcher",
@@ -837,7 +867,7 @@
     "recover_ms": 150
    },
    "name": "Energy Launcher",
-   "desc": "No charge, no tell, no warning. 115 a hit with the fastest reload on the board and the slowest cycle in its tier. Four kills, spent quietly.",
+   "desc": "Lobbed plasma. Whatever it lands near stops being your problem.",
    "cls": 9,
    "role": "power",
    "class": "energy",
@@ -870,7 +900,8 @@
     "power",
     "heavy"
    ],
-   "caution": "Known issue: deals no damage in our shipped config (weapon-design.md). Avoid until fixed."
+   "caution": "Known issue: deals no damage in our shipped config (weapon-design.md). Avoid until fixed.",
+   "notes": "No charge, no tell, no warning. 115 a hit with the fastest reload on the board and the slowest cycle in its tier. Four kills, spent quietly."
   },
   {
    "weapon_id": "ion_sniper",
@@ -881,7 +912,7 @@
     "recover_ms": 150
    },
    "name": "Ion Sniper",
-   "desc": "A one-shot kill in a rifle's body. 115 a hit on a 1.4s cycle with two up and two back. The power tier's only weapon that looks and sounds like a marksman rifle.",
+   "desc": "One shot, any distance, nobody left standing. There are two of them and then there are none.",
    "cls": 2,
    "role": "power",
    "class": "energy",
@@ -908,7 +939,8 @@
     "power",
     "heavy",
     "sniper"
-   ]
+   ],
+   "notes": "A one-shot kill in a rifle's body. 115 a hit on a 1.4s cycle with two up and two back. The power tier's only weapon that looks and sounds like a marksman rifle."
   },
   {
    "weapon_id": "melee",
@@ -919,7 +951,7 @@
     "recover_ms": 150
    },
    "name": "Melee",
-   "desc": "Last resort: no ammo, no reload, a gyro swing with the butt of the gun. 90 on contact. Hidden from the picker, always bound to slot 4.",
+   "desc": "Everyone carries it and nobody chooses it. For the range where nothing else helps.",
    "cls": 8,
    "role": "melee",
    "class": "melee",
@@ -940,7 +972,8 @@
    "hidden": true,
    "tags": [
     "melee"
-   ]
+   ],
+   "notes": "Last resort: no ammo, no reload, a gyro swing with the butt of the gun. 90 on contact. Hidden from the picker, always bound to slot 4."
   },
   {
    "weapon_id": "stripper",
@@ -965,7 +998,7 @@
     "per_shot": 0,
     "recover_ms": 0
    },
-   "desc": "Strips armour and shields and cannot take a single point of health. Nine a hit off whatever they are wearing, through every layer in order, and the overflow carries: a full shield and a full plate come off in one magazine. Point it at a teammate instead and it REPAIRS them, because the same function that strips an enemy grants armour to an ally. You give up your backup gun to carry it, and you need someone else to finish what you start. Bench 2026-09-18: shield 120 to 0 then armour 70 to 0, health fixed at 999 the whole way, and eleven further hits on a bare target moved nothing at all.",
+   "desc": "It cannot kill. It takes every layer of armour and shield off whoever you hit, and leaves the finishing to someone else.",
    "capture": {
     "src": "2026-08-26-weapons-energyrifle-suppressor.btsnoop",
     "frame": "$WEAP,1,,100,0,0,8,0,,,,,,,,75,850,48,288,2000,0,0,100,100,,0,2,50,Q06,,,,D26,D25,D24,D18,,,,,48,144,75,*"
@@ -990,7 +1023,8 @@
    "tags": [
     "support"
    ],
-   "sir_fn": 20
+   "sir_fn": 20,
+   "notes": "Strips armour and shields and cannot take a single point of health. Nine a hit off whatever they are wearing, through every layer in order, and the overflow carries: a full shield and a full plate come off in one magazine. Point it at a teammate instead and it REPAIRS them, because the same function that strips an enemy grants armour to an ally. You give up your backup gun to carry it, and you need someone else to finish what you start. Bench 2026-09-18: shield 120 to 0 then armour 70 to 0, health fixed at 999 the whole way, and eleven further hits on a bare target moved nothing at all."
   },
   {
    "weapon_id": "smoke_gun",
@@ -1015,7 +1049,7 @@
     "per_shot": 0,
     "recover_ms": 0
    },
-   "desc": "A three-second blackout. The target keeps firing and keeps spending rounds, and every shot misses: their own gun goes quiet and the person they are aiming at hears the shots whizz past. It takes no health at all, and it wears off on its own. Use it to break a firing line, cross open ground, or take a point off someone who cannot afford three seconds. Bench 2026-09-18: live accuracy 100 to 0 in the same millisecond as the hit, recovering 0, 2, 4, 7, 12 over about three seconds, with nothing left behind.",
+   "desc": "It cannot kill either. What it takes is a player's aim, for a few seconds, which is often worse.",
    "capture": {
     "src": "2026-08-26-weapons-energyrifle-suppressor.btsnoop",
     "frame": "$WEAP,1,,100,0,0,8,0,,,,,,,,75,850,48,288,2000,0,0,100,100,,0,2,50,Q06,,,,D26,D25,D24,D18,,,,,48,144,75,*"
@@ -1041,7 +1075,8 @@
     "support"
    ],
    "caution": "The Haze needs the HUD that tells a flashed player why nothing is landing (S53) before players meet it.",
-   "sir_fn": 23
+   "sir_fn": 23,
+   "notes": "A three-second blackout. The target keeps firing and keeps spending rounds, and every shot misses: their own gun goes quiet and the person they are aiming at hears the shots whizz past. It takes no health at all, and it wears off on its own. Use it to break a firing line, cross open ground, or take a point off someone who cannot afford three seconds. Bench 2026-09-18: live accuracy 100 to 0 in the same millisecond as the hit, recovering 0, 2, 4, 7, 12 over about three seconds, with nothing left behind."
   },
   {
    "weapon_id": "toxin_rifle",
@@ -1066,7 +1101,7 @@
     "per_shot": 10,
     "recover_ms": 150
    },
-   "desc": "Every hit poisons. The rounds themselves are weak and the poison is the payload: bring somebody down to about twenty and break contact, and they die anyway. Fired straight it kills in 1.54 s against the standard pool, slower than an assault rifle, but you only need twelve hits to make the poison lethal, which is the same 1.21 s the rifle takes to finish the job outright. The difference is that you never see it land, and they might reach a station first. It is the one weapon that punishes an enemy for walking away.",
+   "desc": "Hits lightly and keeps hitting. The damage arrives after you have stopped shooting, which is the whole point.",
    "caution": "NOT FINISHED. The gun applies the direct damage today; the poison is a tick clock on the player's own phone (S16, spec/node.md \u00a73.17) and that is not built, so this row is hidden. Enabled early it is simply a worse SMG.",
    "capture": {
     "src": "2026-08-26-weapons-smg-plus-amr.btsnoop",
@@ -1094,12 +1129,14 @@
     "fire_ms": 110,
     "range_outdoor_pct": 70
    },
+   "crit_pct": 15,
    "verified": false,
    "captured": false,
    "tags": [
     "assault"
    ],
-   "sir_fn": 1
+   "sir_fn": 1,
+   "notes": "Every hit poisons. The rounds themselves are weak and the poison is the payload: bring somebody down to about twenty and break contact, and they die anyway. Fired straight it kills in 1.54 s against the standard pool, slower than an assault rifle, but you only need twelve hits to make the poison lethal, which is the same 1.21 s the rifle takes to finish the job outright. The difference is that you never see it land, and they might reach a station first. It is the one weapon that punishes an enemy for walking away."
   }
  ]
 }

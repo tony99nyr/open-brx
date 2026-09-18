@@ -35,6 +35,23 @@ def tx(mgr, alias="stage"):
         return []
 
 
+def tid_follows_pset(frames, tid):
+    """F206: the last `$PSET` of a write must be followed, LATER IN THE SAME WRITE, by `$TID,<tid>,*`.
+
+    Later, not at the next index. F206 got fixed twice, independently, and the merge carries both cures:
+    `compile.py` re-asserts `$TID` inside the spawn and revive bursts, right after `$SPAWN`, and
+    `stage.write` -> `_tid_after_pset` inserts one when a write carries none at all. The burst's own
+    `$TID` now sits behind the eleven disarmed `$SIR` rows the F209 twin puts in front of `$SPAWN`, so the
+    `$PSET` and the `$TID` are no longer neighbours. The rule was always the ordering; the adjacency was a
+    coincidence of the old frame order, and pinning it is what broke. A write with no `$PSET` passes.
+
+    Callers that care about frame COST should also assert the count: exactly one `$TID` per write, because
+    the two cures must never both fire (see `_tid_after_pset`, which declines when a `$TID` already
+    follows the `$PSET`)."""
+    last_pset = max((i for i, f in enumerate(frames) if f.startswith("$PSET,")), default=-1)
+    return last_pset < 0 or f"$TID,{tid},*" in frames[last_pset + 1:]
+
+
 async def settle(st):
     for _ in range(3):
         await asyncio.sleep(0)
@@ -188,8 +205,12 @@ def test_an_ir_hit_on_the_fake_gun_plays_the_victim_overlay_and_a_kill_plays_the
         pool = st.bundle.get("pset_pool") or []
         if pool:
             assert new[off] in pool
-            assert new[off + 1] == f"$TID,{st.profile['tid']},*", "F206: the team goes back on right after the $PSET"
-            off += 2
+            # F206: the team goes back on before the write ends -- see `tid_follows_pset` for why this is an
+            # ordering and not an index. The revive burst carries the `$TID` itself, so `_tid_after_pset`
+            # adds nothing and the gun reads ONE team byte per revive, not two.
+            assert tid_follows_pset(new, st.profile["tid"]), new
+            assert new.count(f"$TID,{st.profile['tid']},*") == 1, new
+            off += 1
         assert new[off:off + len(st.bundle["revive"])] == st.bundle["revive"] and st.alive
         assert all(f in new for f in st.bundle["gun"]["take"]) and st._gun_band == st.bundle["gun"]["rest"]   # the take again after the revive
     asyncio.run(run())
@@ -469,8 +490,13 @@ def test_raw_writes_only_known_safe_frames():
             assert "known-safe" in str(e)
         else:
             raise AssertionError("an unknown command went to the gun")
-        await st.raw(["$CHASE,3,*"], confirm=True)                # explicit confirm: sent and logged as UNKNOWN ($BLINK/$LED are safe-listed since 2026-09-04)
-        assert tx(mgr)[-1] == "$CHASE,3,*" and any(l["text"].startswith("UNKNOWN command") for l in st.log)
+        await st.raw(["$XYZZY,3,*"], confirm=True)                # explicit confirm: sent and logged as UNKNOWN ($BLINK/$LED are safe-listed since 2026-09-04, $CHASE since 2026-09-18)
+        assert tx(mgr)[-1] == "$XYZZY,3,*" and any(l["text"].startswith("UNKNOWN command") for l in st.log)
+        # a denied frame never goes out, confirm or not (transport-hardening.md §4); the stage mirrors engine._write
+        before = len(tx(mgr))
+        await st.raw(["$DPLAY,A10,4,*", "$PING,*"], confirm=True)
+        assert tx(mgr)[-1] == "$PING,*" and len(tx(mgr)) == before + 1 and st.refused == 1
+        assert any(l["text"].startswith("REFUSED 1 frame") for l in st.log)
     asyncio.run(run())
 
 
@@ -789,7 +815,9 @@ def test_spawn_plays_one_take_of_the_spawn_pool_and_the_pset_cry_field_is_empty(
     # A15.3: a fresh death-scream $PSET (one of `pset_pool`) now rides FIRST in the same write, ahead of $PLAYX
     scream_pool = st.bundle.get("pset_pool") or []
     spawn = st.bundle["spawn"]
-    prefix = (2 if scream_pool else 0) + len(spawn)                    # [$PSET $TID]? $PLAYX,0 $SPAWN $AMMO $AMMO $BMAP (F206: $TID after $PSET)
+    # [$PSET]? <$SIR twin> $PLAYX,0 $SPAWN $TID $AMMO $AMMO $BMAP. The `$PSET` is ONE frame, not two: the
+    # spawn burst re-asserts `$TID` itself (F206), so `_tid_after_pset` inserts nothing behind the `$PSET`.
+    prefix = (1 if scream_pool else 0) + len(spawn)
 
     async def run():
         seen = set()
@@ -799,7 +827,11 @@ def test_spawn_plays_one_take_of_the_spawn_pool_and_the_pset_cry_field_is_empty(
             i = len(all_) - 1 - all_[::-1].index("$SFLASH,*")          # the LAST spawn write (the fake's log is a ring)
             new = all_[i - prefix:]                                    # [$PSET?] $PLAYX,0 $SPAWN $AMMO $AMMO $BMAP $SFLASH <take> …
             if scream_pool:
-                assert new[0] in scream_pool and new[1] == f"$TID,{st.profile['tid']},*", new
+                # F206 is an ordering, not an index (`tid_follows_pset`): the spawn burst's own `$TID` sits
+                # behind the F209 twin's eleven `$SIR` rows. One `$TID` per write, never two.
+                assert new[0] in scream_pool, new
+                assert tid_follows_pset(new, st.profile["tid"]), new
+                assert new.count(f"$TID,{st.profile['tid']},*") == 1, new
             assert new[prefix - len(spawn):prefix] == spawn and new[prefix] == "$SFLASH,*", new
             i = prefix
             assert new[i + 1] in pool, new

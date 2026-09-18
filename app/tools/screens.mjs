@@ -8,6 +8,13 @@ import { chromium } from 'playwright';
 import http from 'http'; import fs from 'fs'; import path from 'path'; import os from 'os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { DEMO_PERKS, DEMO_WEAPONS } from '../src/demo-catalog.js';
+// Derived, never typed: `demo-catalog.js` is the artefact the PHONE reads (generated from weapons.json
+// by mcp/tools/gen_ui_catalog.py), and a row is IN it only when it is not `hidden`. `sidearm` is the
+// same predicate DESIGNER counts PISTOLS with (Designer.tsx SlotEditor); a `pickup_only` sidearm is
+// never offered. Unhiding the glock must MOVE this step, not break it -- and whoever unhides it will
+// not open this file. Names are upper-cased because the rack draws them that way.
+const SIDEARM_NAMES = DEMO_WEAPONS.filter(w => (w.tags || []).includes('sidearm') && !w.pickup_only).map(w => w.name.toUpperCase());
 const HERE = path.dirname(fileURLToPath(import.meta.url)), ROOT = path.resolve(HERE, '..'), WWW = path.join(ROOT, 'www');
 const OUT = path.join(ROOT, 'shots', 'screens');
 const ONLY = process.env.ONLY;
@@ -457,10 +464,11 @@ for (const view of VIEWS) {
     must(r.win === 425 && r.up, JSON.stringify(r)); must(!r2.up && r2.lab === 'READY' && r2.slot === 1, JSON.stringify(r2));
   });
   await step(`${view.name} #44 sidearm-only slot 2: SIDEARMS chip, pistol rows, SIDEARM role`, async () => {
-    // 2026-09-17 (arsenal review): glock is `hidden` now, so only usp/deagle remain pickable sidearms.
+    // The pistol rows are derived (SIDEARM_NAMES, top of this file), so an arsenal change moves this step.
     const pg = await open(view, 'loadout-sidearms'); const r = await pg.evaluate(() => ({ chips: Array.from(document.querySelectorAll('.fch')).map(c => c.textContent.trim()), rows: Array.from(document.querySelectorAll('.lrow .nm')).map(e => e.textContent.trim()), roles: Array.from(new Set(Array.from(document.querySelectorAll('.lrow .role')).map(e => e.textContent.trim()))), detail: (document.querySelector('.lodetail .rolechip') || {}).textContent }));
     await pg.close();
-    must(r.chips[0] === 'SIDEARMS · 2' && /^NONE/.test(r.chips[1]) && r.chips.length === 2, 'chips ' + r.chips); must(r.rows.length === 2 && r.rows.includes('USP-S') && r.rows.includes('DESERT EAGLE'), 'rows ' + r.rows); must(r.roles.length === 1 && r.roles[0] === 'SIDEARM' && r.detail === 'SIDEARM', 'role ' + r.roles + ' / ' + r.detail);
+    must(SIDEARM_NAMES.length >= 2, 'the pickable pistols collapsed to ' + SIDEARM_NAMES.length + ': a sidearm-only slot 2 cannot mean anything below 2');
+    must(r.chips[0] === `SIDEARMS · ${SIDEARM_NAMES.length}` && /^NONE/.test(r.chips[1]) && r.chips.length === 2, 'chips ' + r.chips); must(r.rows.slice().sort().join('|') === SIDEARM_NAMES.slice().sort().join('|'), 'rows ' + r.rows + ' want ' + SIDEARM_NAMES); must(r.roles.length === 1 && r.roles[0] === 'SIDEARM' && r.detail === 'SIDEARM', 'role ' + r.roles + ' / ' + r.detail);
   });
   // A14: the perk is its own slot (Tony 2026-09-04: "you should be able to have AR and pistol and quick switch perk")
   await step(`${view.name} #52 three plates on ONE row (PRIMARY / SECONDARY / PERK), HP·ARMOR in the header, nothing clipped`, async () => {
@@ -473,13 +481,19 @@ for (const view of VIEWS) {
     must(r.ps[1].h === 'USP-S' && r.ps[2].h === 'QUICK SWITCH', 'AR + pistol + Quick Switch expected: ' + JSON.stringify(r.ps)); must(/HP 45 · ARMOR 70/.test(r.hpar), 'HP·ARMOR moved to the header: ' + r.hpar);
     must(r.ps.every(p => !p.clipped), 'plate title clipped: ' + JSON.stringify(r.ps));
   });
-  await step(`${view.name} #53 PERK tab: three tabs on one line, 5 perk rows + NONE, tapping a perk keeps the second weapon`, async () => {
+  await step(`${view.name} #53 PERK tab: three tabs on one line, one row per shipped perk + NONE, tapping a perk keeps the second weapon`, async () => {
     const pg = await open(view, 'loadout-perk', '', 2000); const r = await pg.evaluate(() => ({ tabs: Array.from(document.querySelectorAll('.lotab')).map(t => ({ k: t.querySelector('.k').textContent.trim(), top: Math.round(t.getBoundingClientRect().top) })), chips: Array.from(document.querySelectorAll('.fch')).map(c => c.textContent.trim()), rows: document.querySelectorAll('.lrow').length, eq: (document.querySelector('.lrow.eq .nm2 b') || {}).textContent }));
     await pg.click('.lrow[data-arg="perk:body_armor"]'); await pg.waitForTimeout(700);
     const after = await pg.evaluate(() => { const lo = window.brx.engine.state().loadout; return { perk: lo.perk && lo.perk.perk_id, sec: lo.secondary && lo.secondary.weapon_id, chip: (document.querySelector('.ackchip') || {}).textContent || '' }; }); await pg.close();
     must(r.tabs.map(t => t.k).join('|') === 'PRIMARY|SECONDARY|PERK' && new Set(r.tabs.map(t => t.top)).size === 1, 'tabs: ' + JSON.stringify(r.tabs));
-    // S50 (2026-09-17): 5 -> 7 rows (armor_piercing, motion_tracker, second_wind joined; easy_reload left for `loadout.overrides.easy_reload`).
-    must(r.chips[0] === 'PERKS · 5' && /^NONE/.test(r.chips[1]), 'chips ' + r.chips); must(r.rows === 5 && r.eq === 'QUICK SWITCH', 'rows/equipped: ' + r.rows + ' ' + r.eq);
+    // S50 (2026-09-17) took the pool from 5 to 7 on paper, but `motion_tracker` and `second_wind` are
+    // `hidden` until their node halves exist, so the phone ships 5. This step hardcoded 7 and went red
+    // the moment they were hidden; Mission Control's own perk test hit the identical drift the same day.
+    // Derive it from `demo-catalog.js`, the artefact the PHONE actually reads (editing perks.json alone
+    // would not move it), so unhiding a perk moves this step with it instead of breaking it.
+    const wantPerks = DEMO_PERKS.filter(p => !p.hidden).length;
+    must(wantPerks >= 4, 'the perk catalogue collapsed to ' + wantPerks + ': this step cannot mean anything below 4');
+    must(r.chips[0] === 'PERKS · ' + wantPerks && /^NONE/.test(r.chips[1]), 'chips ' + r.chips); must(r.rows === wantPerks && r.eq === 'QUICK SWITCH', 'rows/equipped: ' + r.rows + ' want ' + wantPerks + ' ' + r.eq);
     // 2026-09-17 (arsenal review): glock is `hidden` now — `fullKit` (app/src/demo.js) picks usp instead.
     must(after.perk === 'body_armor' && after.sec === 'usp', 'a perk pick must not displace the pistol: ' + JSON.stringify(after)); must(/EQUIPPED/.test(after.chip) && !/DROPPED/.test(after.chip), 'ack chip: ' + after.chip);
   });
@@ -1602,6 +1616,29 @@ for (const view of VIEWS) {
   await step(`${view.name} #24 night: the kit plates stay visible`, async () => {
     const pg = await open(view, 'kitted', '&night'); const r = await pg.evaluate(() => Array.from(document.querySelectorAll('.plate')).map(p => getComputedStyle(p).backgroundColor)); await pg.close();
     must(r.length >= 3 && r.every(c => c !== 'rgba(0, 0, 0, 0)' && c !== 'transparent'), 'transparent plates: ' + r.join(' '));
+  });
+  await step(`${view.name} #24b night: NO weapon photo is lit anywhere (it is a position giveaway)`, async () => {
+    // Night mode exists so a phone does not tell an opponent where its owner is standing. The night rules
+    // used to say `background-image:none`, which silently stopped working the moment the missing-art
+    // fallback (2026-09-18) made weapon art a real <img>: bright weapon photos then lit the kit plate, the
+    // lobby row, the detail pane and the switching takeover, and nothing failed.
+    // ⚠ An earlier version of this check ran on the LIVE hud, which renders no weapon art at all, so it
+    // passed with the rule deleted -- a guard that could not fail. It runs on the screens that HAVE art,
+    // and it audits the ELEMENT rather than the rule, so the next way someone paints a picture here trips
+    // it too. Break it by deleting the `[data-env="night"] .wpic` rule in app/www/index.html.
+    const lit = [];
+    for (const stage of ['kitted', 'loadout-primary', 'loadout-secondary']) {   // NOT loadout-perk: perks render a glyph, never weapon art
+      const pg = await open(view, stage, '&night', 2000);
+      const seen = await pg.evaluate(() => Array.from(document.querySelectorAll('.wpic, .wpicfb'))
+        .filter(e => { const st = getComputedStyle(e), r = e.getBoundingClientRect();
+                       return st.display !== 'none' && st.visibility !== 'hidden' && +st.opacity > 0.05 && r.width > 2 && r.height > 2; })
+        .map(e => e.className + ' ' + Math.round(e.getBoundingClientRect().width) + 'x' + Math.round(e.getBoundingClientRect().height)));
+      const any = await pg.evaluate(() => document.querySelectorAll('.wpic, .wpicfb').length);
+      await pg.close();
+      if (!any) { lit.push(stage + ': NO art elements at all, this stage cannot prove anything'); continue; }
+      for (const x of seen) lit.push(stage + ' ' + x);
+    }
+    must(lit.length === 0, 'weapon art lit at night: ' + lit.join('; '));
   });
 }
 await step('F110 briefing with a LONG name at 812\u00d7375 (the iPhone the report came from)', async () => {

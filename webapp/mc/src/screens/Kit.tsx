@@ -653,11 +653,13 @@ export function Kit() {
                         onClick={() => { if (!dis) (slot === 'primary' ? pickPrimary : pickSecondary)(w); }} onKeyDown={onKey(() => { if (!dis) (slot === 'primary' ? pickPrimary : pickSecondary)(w); })}
                         style={{ background: on ? 'rgba(57,180,255,.08)' : dis ? T.panelDeep : T.panel, border: `1px solid ${ask ? T.warn : on ? T.acc : T.line}`, padding: 8, cursor: dis ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', gap: 7, minHeight: 44 }}>
                         {ask && <span role="alert" style={{ font: F.chk(700, 10), letterSpacing: '.12em', color: T.warn }}>▲ {ask}</span>}
-                        <StripedSlot height={64} style={{ background: `url(assets/weapons/${w.weapon_id}.jpg) center/contain no-repeat, repeating-linear-gradient(45deg,${T.slot} 0 6px,${T.panel} 6px 12px)`, opacity: dis ? .25 : 1, filter: dis ? 'grayscale(1)' : undefined }}
+                        <StripedSlot height={64} style={{ background: `repeating-linear-gradient(45deg,${T.slot} 0 6px,${T.panel} 6px 12px)`, opacity: dis ? .25 : 1, filter: dis ? 'grayscale(1)' : undefined }}
                           corner={<>
                             <span style={{ position: 'absolute', top: 3, right: 5, font: F.mono(600, 8), letterSpacing: '.14em', color: role.color }}>{role.label}</span>
                             {on && <span style={{ position: 'absolute', top: 3, left: 5, font: F.chk(700, 8), letterSpacing: '.14em', color: T.accInk, background: T.acc, padding: '1px 5px' }}>{slot === 'primary' ? 'PRIMARY' : 'SECONDARY'}</span>}
-                          </>} />
+                          </>}>
+                          <WeaponArt key={w.weapon_id} id={w.weapon_id} size={22} />
+                        </StripedSlot>
                         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 6 }}>
                           {dis && <Lock color={T.micro} size={10} />}
                           <span style={{ font: F.chk(700, 12), letterSpacing: '.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: dis ? T.dim : T.ink, flex: 1 }}>{w.name}</span>
@@ -741,7 +743,7 @@ function SlotCard({ label, slot, active, onClick, rule, item, kind, required, on
         </div>
       ) : item && 'weapon_id' in item ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 48, paddingRight: clearW }}>
-          <span style={{ width: 84, height: 48, flex: 'none', background: `url(assets/weapons/${item.weapon_id}.jpg) center/contain no-repeat, ${T.inset}`, border: `1px solid ${T.line}` }} />
+          <span style={{ width: 84, height: 48, flex: 'none', background: T.inset, border: `1px solid ${T.line}` }}><WeaponArt key={item.weapon_id} id={item.weapon_id} size={20} /></span>
           <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span style={{ font: F.osw(700, 18), letterSpacing: '.06em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name.toUpperCase()}</span>
             <span data-slot-ammo="1" style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: T.micro, lineHeight: 1.35 }}><span style={{ color: roleOf(item.role, item.cls).color }}>{roleOf(item.role, item.cls).label}</span> · MAG {item.clip} · RES {item.reserve}</span>
@@ -810,8 +812,10 @@ function WeaponHero({ w, slot, sp, tryingId, pushed, verdicts, setVerdicts }:
   const role = roleOf(w.role, w.cls);
   return (
     <>
-      <StripedSlot style={{ flex: '1 1 240px', maxWidth: 320, minHeight: 140, background: `url(assets/weapons/${w.weapon_id}.jpg) center/contain no-repeat` }}
-        corner={<span style={{ position: 'absolute', top: 8, left: 10, zIndex: 1, font: F.mono(600, 9), letterSpacing: '.22em', color: T.dim, background: 'rgba(7,9,13,.75)', padding: '2px 6px' }}>{slot.toUpperCase()}</span>} />
+      <StripedSlot style={{ flex: '1 1 240px', maxWidth: 320, minHeight: 140 }}
+        corner={<span style={{ position: 'absolute', top: 8, left: 10, zIndex: 1, font: F.mono(600, 9), letterSpacing: '.22em', color: T.dim, background: 'rgba(7,9,13,.75)', padding: '2px 6px' }}>{slot.toUpperCase()}</span>}>
+        <WeaponArt key={w.weapon_id} id={w.weapon_id} size={56} testId="weapon-hero-art" />
+      </StripedSlot>
       <div style={{ flex: '1 1 300px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap' }}>
           <span style={{ font: F.osw(700, 28), letterSpacing: '.08em', textTransform: 'uppercase' }}>{w.name}</span>
@@ -886,6 +890,23 @@ function PerkHero({ k }: { k: PerkView }) {
 
 export function Lock({ color = T.warn, size = 10 }: { color?: string; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" fill={color} /><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke={color} strokeWidth="2.5" /></svg>;
+}
+
+/** A weapon photo, with a visible fallback. `background: url(...)` has no error event, so a missing
+ *  jpg used to show an empty coloured box with nothing on screen saying why (`stripper`/`smoke_gun`
+ *  have none yet, and it read as a UI bug, not a missing asset — field 2026-09-18). An <img> DOES
+ *  fire `onError`: swap it for a generic weapon glyph, the same precedent `PerkGlyph` sets for a
+ *  perk. `key={weapon_id}` at each call site resets the fallback when the weapon changes. */
+export function WeaponArt({ id, size = 24, style, testId }: { id: string; size?: number; style?: React.CSSProperties; testId?: string }) {
+  const [broken, setBroken] = useState(false);
+  if (broken) return (
+    <span data-testid={testId} data-art="fallback" style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.dim, ...style }}>
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="12" r="8" /><path d="M12 3v4M12 17v4M3 12h4M17 12h4" strokeLinecap="round" /><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
+      </svg>
+    </span>
+  );
+  return <img data-testid={testId} data-art="photo" src={`assets/weapons/${id}.jpg`} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', ...style }} onError={() => setBroken(true)} />;
 }
 
 export function PerkGlyph({ id, size = 24, color = PERK_COLOR }: { id: string; size?: number; color?: string }) {

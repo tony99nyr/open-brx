@@ -92,9 +92,18 @@ export class Reassembler {
   }
 }
 
+/** Write pacing (docs/spec/transport-hardening.md §3). The gun reads ONE serial byte per main-loop pass out of a
+ *  1 KB UART buffer (V4_30/V4_31 disassembly, 2026-09-18), so a long burst can outrun it and a lost `*` corrupts
+ *  the next frame. `chunkGapMs`/`frameGapMs` are the pacing the field has run on since 2026-08; the BLOCK pause
+ *  is a lever for the screamers sheet A7/A8: after every `blockFrames` frames of one write, sleep `blockPauseMs`. It ships OFF
+ *  (blockFrames = 0): the evidence for a value is not measured yet, and a slower arm is a real cost at the line. */
+export const WRITE_PACING = Object.freeze({ chunkGapMs: 8, frameGapMs: 18, blockFrames: 0, blockPauseMs: 0 });
+
 export class BrxLink {
   constructor({ ble = BleClient, log = () => {}, onFrame = () => {}, onDrop = () => {}, onUp = () => {},
-                unbounded = () => false, chunkGapMs = 8, frameGapMs = 18, now = () => Date.now(), flapMs = FLAP_MS,
+                unbounded = () => false, chunkGapMs = WRITE_PACING.chunkGapMs, frameGapMs = WRITE_PACING.frameGapMs,
+                blockFrames = WRITE_PACING.blockFrames, blockPauseMs = WRITE_PACING.blockPauseMs,
+                now = () => Date.now(), flapMs = FLAP_MS,
                 onFlap = () => {}, onRelink = () => {}, relinkConnectMs = RELINK_CONNECT_MS, relinkAttempts = RELINK_ATTEMPTS,
                 relinkGapMs = RELINK_GAP_MS, relinkDisconnectCapMs = RELINK_DISCONNECT_CAP_MS,
                 writeChunk = null, ackCapMs = WRITE_ACK_CAP_MS } = {}) {
@@ -106,6 +115,7 @@ export class BrxLink {
     this.relinkConnectMs = relinkConnectMs; this.relinkAttempts = relinkAttempts; this.relinkGapMs = relinkGapMs; this.relinkDisconnectCapMs = relinkDisconnectCapMs;
     this.ble = ble; this.log = log; this.onFrame = onFrame; this.onDrop = onDrop; this.onUp = onUp; this.onFlap = onFlap;
     this.unbounded = unbounded; this.chunkGapMs = chunkGapMs; this.frameGapMs = frameGapMs;
+    this.blockFrames = blockFrames; this.blockPauseMs = blockPauseMs;
     this.now = now; this.flapMs = flapMs;
     this.deviceId = null; this.advert = null; this.connected = false; this.retries = 0; this.lastReason = null;
     this._init = null; this._q = Promise.resolve(); this._scanning = false; this._re = new Reassembler();
@@ -377,6 +387,10 @@ export class BrxLink {
   /** Write frames verbatim, in order, chunked at 20 bytes with pacing; serialized per device. Each chunk
    *  waits for the plugin's answer for at most `ackCapMs` (see WRITE_ACK_CAP_MS).
    *
+   *  A block pause (`blockFrames` > 0) sleeps `blockPauseMs` after every `blockFrames` frames of ONE write,
+   *  so the gun's one-byte-per-loop parser can drain its buffer mid-arm (transport-hardening.md §3; off by
+   *  default).
+   *
    *  A LATE chunk error (past the cap) belongs to the batch that sent the chunk, never to the link (pl3
    *  review 2026-09-17). The old link-wide flag let a late error from batch N cut batch N+1 partway, which
    *  dropped `$SPAWN`/`$AMMO`/`$BMAP` with no retry while batch N still reported true. Now:
@@ -394,7 +408,7 @@ export class BrxLink {
     const list = Array.isArray(frames) ? frames : [frames];
     const batch = { failed: null, open: true, label, list };   // `failed`: the earliest frame index a late error hit
     this._q = this._q.then(async () => {
-      let late = 0, chunks = 0, resends = 0, lost = false;
+      let late = 0, chunks = 0, resends = 0, lost = false, sentFrames = 0;
       try {
         for (let i = 0; i < list.length;) {
           const frame = list[i];
@@ -413,6 +427,8 @@ export class BrxLink {
               this._log(`write: a chunk of frame ${from + 1} of ${list.length} was lost -- sending again from that frame`, 'le');
             } else lost = true;   // finish the batch, then report the loss
           }
+          sentFrames++;
+          if (this.blockFrames > 0 && this.blockPauseMs > 0 && sentFrames % this.blockFrames === 0 && i < list.length) await sleep(this.blockPauseMs);
         }
       } finally { batch.open = false; }
       if (late) { this.lateAcks += late; this._log(`write answers slow: ${late} of ${chunks} chunk(s) past ${this.ackCapMs} ms, sent on without them`, 'le'); }

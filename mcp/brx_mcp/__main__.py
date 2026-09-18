@@ -39,6 +39,11 @@
   python -m brx_mcp stage [--gun ADDR] [--ir COM7] [--mc URL] [--fake]   # the GUN STAGE: click-to-try page for one gun (docs/gun-stage.md)
       e.g. sounds "kill confirmed" · sounds category:voice:medal · sounds ids:VA7H,VA7E · sounds flag DF:F5:...
       add --audit (with an address) to step through interactively: label, play, your verdict -> ~/.brx-mcp/sound-audit.jsonl
+  python -m brx_mcp soak <address> <pattern> <minutes> [--gap-ms N] [--block N --pause-ms N] [--log PATH]
+      P0 screamers soak (docs/bench-screamers-2026-09-19.md Phase C): connects to one gun, probes
+      liveness ($PING every 2s) throughout, replays a traffic pattern, and logs + classifies every
+      LOCK-UP / LINK DROP / BAD FRAME. Patterns (brx_mcp/soak/patterns.py): match, match-x10,
+      callsign, recoil-oscillate, burst-short, burst-weap. Ctrl-C ends cleanly with the summary.
 """
 
 from __future__ import annotations
@@ -718,6 +723,64 @@ async def _diag(address: str) -> None:
             last_seq = ev["seq"]
     await mgr.disconnect("cli")
     print("Diag complete.", file=sys.stderr)
+
+
+async def _soak(address: str, pattern: str, minutes: float, *, gap_ms: int = 0,
+                block: int | None = None, pause_ms: int = 0, log_path: str | None = None) -> None:
+    """P0 screamers soak (docs/bench-screamers-2026-09-19.md Phase C). See brx_mcp/soak/ for the
+    pattern catalog and the run loop; this is only the CLI glue: pick a log path (the same
+    captures/ location `session_log`/`diag-game` already write under, `storage.capture_path()`),
+    connect with the existing BLE code, run, print the summary."""
+    from pathlib import Path
+
+    from . import storage
+    from .soak.patterns import PATTERNS
+
+    if pattern not in PATTERNS:
+        print(f"unknown pattern {pattern!r}; choose from: {', '.join(sorted(PATTERNS))}",
+              file=sys.stderr)
+        sys.exit(2)
+
+    # deferred past the pattern check: `.ble` needs `bleak`, which is Windows-Python-only in this
+    # repo's split (CLAUDE.md). A bad pattern name should fail on its own, not on a missing import.
+    from .ble import ConnectionManager
+    from .soak.runner import run_soak
+
+    if log_path:
+        path = Path(log_path)
+    else:
+        storage.ensure_dirs()
+        label = f"soak-{pattern}-{address.replace(':', '')}-{int(time.time())}"
+        path = storage.capture_path(label)
+    print(f"# soak: {pattern} @ {address}, {minutes} min, logging to {path}", file=sys.stderr)
+
+    mgr = ConnectionManager()
+    summary = await run_soak(mgr, address, pattern, minutes, gap_ms=gap_ms, block=block,
+                             pause_ms=pause_ms, log_path=path, status=sys.stderr)
+    print("\n" + summary.render())
+
+
+def _dispatch_soak(rest: list[str]) -> None:
+    gap_ms, block, pause_ms, log_path = 0, None, 0, None
+    positional: list[str] = []
+    it = iter(rest)
+    for a in it:
+        if a == "--gap-ms":
+            gap_ms = int(next(it))
+        elif a == "--block":
+            block = int(next(it))
+        elif a == "--pause-ms":
+            pause_ms = int(next(it))
+        elif a == "--log":
+            log_path = next(it)
+        else:
+            positional.append(a)
+    if len(positional) < 3:
+        print(__doc__, file=sys.stderr)
+        sys.exit(2)
+    address, pattern, minutes = positional[0], positional[1], float(positional[2])
+    asyncio.run(_soak(address, pattern, minutes, gap_ms=gap_ms, block=block,
+                      pause_ms=pause_ms, log_path=log_path))
 
 
 def main() -> None:
@@ -1480,6 +1543,8 @@ def _dispatch(cmd: str, args: list[str]) -> None:
     elif cmd == "stage":
         from .stage.server import main as _stage_main
         _stage_main(args[1:])
+    elif cmd == "soak":
+        _dispatch_soak(args[1:])
     elif cmd == "sounds" and len(args) > 1:
         addr = next((a for a in args[2:] if ":" in a and len(a) >= 17), None)
         _sounds(" ".join(a for a in args[1:] if a != addr and not a.startswith("--")), addr)

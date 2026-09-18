@@ -1,13 +1,11 @@
 # BRX sound catalog (derived)
 
-> **Generated file.** Rendered from `mcp/brx_mcp/data/sound_catalog.json` by `mcp/tools/soundbank_classify.py`.
-> Regenerate it; do not edit it by hand.
-
 Every sound on a v4.32 tagger, read off the gun's own `AUDIO` folder on 2026-09-03 and analysed with `mcp/tools/soundbank_analyze.py` (transcripts by Whisper, shapes by librosa), then labelled by `soundbank_classify.py`. **Restated, derived data only: no audio and no Battle Company files live in this repo.** Machine-readable copy: `mcp/brx_mcp/data/sound_catalog.json`.
 
 - **2634 ids**: 2477 on the gun, 157 listed by the app but NOT on the gun (they play the fallback), 468 on the gun but unknown to the app.
 - Format on the gun: headerless raw PCM, signed 16-bit little-endian, mono, 44 100 Hz, one `<ID>.LTP` per id.
 - Transcripts are Whisper's; a word-level slip is possible on a single line (e.g. "Flight captured" for "Flag captured"). Where a family repeats a line three times (kill confirms), the majority reading is right.
+- **Community labels** (credit LaserTagMods' community-run BRX Audio sheet, shared by Jay): 158 new, 622 agree with ours, 224 differ, 20 flagged NOISE since firmware v4.30, 347 sheet ids not on our gun. Unconfirmed by us; see [Community labels](#community-labels) below.
 
 ## Character voices — one 22-slot layout, every character
 
@@ -43,708 +41,708 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 
 | id | s | category | words |
 |---|---|---|---|
-| VB01 | 1.2 | objective_other | base captured. |
-| VB02 | 1.5 | objective_other | BASE DESTROYED |
-| VB03 | 2.5 | game_over | Blue team is closing in on victory. |
-| VB04 | 1.6 | objective_flag | Blue flag captured. |
-| VB05 | 1.7 | objective_flag | Blue flag returned. |
-| VB06 | 1.7 | objective_flag | Blue flag taken. |
-| VB07 | 2.0 | lead | Blue team takes the lead. |
-| VB08 | 2.6 | clock | Blue team has one player remaining. |
-| VB09 | 1.1 | objective_codes | Code's captured! |
-| VB0A | 1.4 | objective_codes | Code's compromised. |
-| VB0B | 1.4 | objective_codes | Codes returned. |
-| VB0C | 1.3 | objective_flag | Flag captured. |
-| VB0D | 1.6 | objective_flag | Flag returned. |
-| VB0E | 1.7 | objective_flag | flag taken |
-| VB0F | 1.4 | objective_other | Fortress Captured. |
-| VB0G | 1.4 | objective_other | Fortress Lost. |
-| VB0H | 2.7 | game_over | Green team is closing in on victory. |
-| VB0I | 1.5 | objective_flag | Green flag captured. |
-| VB0J | 1.8 | objective_flag | Green flag returned. |
-| VB0K | 1.5 | objective_flag | Green flag taken. |
-| VB0L | 2.0 | lead | Green Team takes the lead. |
-| VB0M | 2.8 | clock | Green Team has one player remaining. |
-| VB0N | 1.9 | objective_hill | Hill Captured |
-| VB0O | 2.1 | objective_hill | Hill Contested |
-| VB0P | 3.0 | objective_hill | Hill Lost! |
-| VB0Q | 2.4 | objective_hill | Hill Moved |
-| VB0R | 2.6 | game_over | Pink Team is closing in on victory. |
-| VB0S | 1.5 | objective_flag | Pink flag captured. |
-| VB0T | 1.7 | objective_flag | Pink Flag Returns! |
-| VB0U | 1.5 | objective_flag | Pink Flag Taken. |
-| VB0V | 1.9 | lead | Pink Team takes the lead. |
-| VB0W | 2.5 | clock | Think Team has one player remaining. |
-| VB0X | 2.7 | game_over | Purple team is closing in on victory. |
-| VB0Y | 1.5 | objective_flag | Purple flag captured. |
-| VB0Z | 1.9 | objective_flag | Purple Flag Returns. |
-| VB10 | 1.7 | objective_flag | Purple flag taken. |
-| VB11 | 1.8 | lead | Purple team takes the lead. |
-| VB12 | 2.7 | clock | Purple team has one player remaining. |
-| VB13 | 2.6 | game_over | Red team is closing in on victory. |
-| VB14 | 1.7 | objective_flag | Red flag captured. |
-| VB15 | 1.8 | objective_flag | Red flag returned. |
-| VB16 | 1.5 | objective_flag | Red Flag Ticken |
-| VB17 | 1.9 | lead | Red team takes the lead. |
-| VB18 | 2.8 | clock | Red team has one player remaining. |
-| VB19 | 2.9 | game_over | SCIEN TEAM IS CLOSING IN ON VICTORY! |
-| VB1A | 1.7 | objective_flag | Scion flag captured! |
-| VB1B | 1.9 | objective_flag | Cyan Flag returned. |
-| VB1C | 1.9 | objective_flag | Sion Flag Ticken |
-| VB1D | 2.4 | lead | SCIEN TEAM TAKES THE LEAD |
-| VB1E | 2.8 | clock | Sion Team has one player remaining. |
-| VB1F | 2.6 | game_over | Yellow team is closing in on victory. |
-| VB1G | 1.6 | objective_flag | Yellow flag captured. |
-| VB1H | 2.0 | objective_flag | Yellow flag returned. |
-| VB1I | 1.5 | objective_flag | Yellow flag taken. |
-| VB1J | 2.0 | lead | Yellow team takes the lead. |
-| VB1K | 2.6 | clock | Yellow team has one player remaining. |
-| VB1L | 1.5 | line | you control the battlefield. |
-| VB1M | 1.6 | objective_other | The infection is spread. |
-| VB1N | 1.9 | game_over | Grame Team wins! |
-| VB1O | 1.8 | game_over | Bravo Team wins! |
-| VB1P | 1.9 | game_over | Blue Team wins! |
-| VB1Q | 1.8 | game_over | Alpha Team wins! |
-| VB1R | 2.0 | game_over | Yellow Team wins! |
-| VB1S | 2.3 | game_over | SCIENTEAM WINS! |
-| VB1T | 2.2 | line | The survivors have held their ground. |
-| VB1U | 1.9 | game_over | Red team wins. |
-| VB1V | 2.1 | game_over | Purple Team wins! |
-| VB1W | 1.8 | game_over | Pink Team wins! |
+| VB01 | 1.2 | objective_other | base captured. · community label (agrees, unconfirmed): Base Captured |
+| VB02 | 1.5 | objective_other | BASE DESTROYED · community label (agrees, unconfirmed): Base Destroyed |
+| VB03 | 2.5 | game_over | Blue team is closing in on victory. · community label (agrees, unconfirmed): Blue team is closing in on victory |
+| VB04 | 1.6 | objective_flag | Blue flag captured. · community label (agrees, unconfirmed): Blue flag has been captured; BLUE FLAG CAPTURED |
+| VB05 | 1.7 | objective_flag | Blue flag returned. · community label (agrees, unconfirmed): Blue flag has been returned; BLUE FLAG RETURNED |
+| VB06 | 1.7 | objective_flag | Blue flag taken. · community label (agrees, unconfirmed): Blue flag has been taken; BLUE FLAG TAKEN |
+| VB07 | 2.0 | lead | Blue team takes the lead. · community label (agrees, unconfirmed): Blue team gained the lead; BLUE TEAM TAKES THE LEAD |
+| VB08 | 2.6 | clock | Blue team has one player remaining. · community label (agrees, unconfirmed): Blue team has one player remaining |
+| VB09 | 1.1 | objective_codes | Code's captured! · community label (differs, unconfirmed): Codes Captured |
+| VB0A | 1.4 | objective_codes | Code's compromised. · community label (differs, unconfirmed): Codes compromised |
+| VB0B | 1.4 | objective_codes | Codes returned. · community label (agrees, unconfirmed): Codes returned |
+| VB0C | 1.3 | objective_flag | Flag captured. · community label (agrees, unconfirmed): Flag has been captured |
+| VB0D | 1.6 | objective_flag | Flag returned. · community label (agrees, unconfirmed): The flag has been returned |
+| VB0E | 1.7 | objective_flag | flag taken · community label (agrees, unconfirmed): The flag has been taken |
+| VB0F | 1.4 | objective_other | Fortress Captured. · community label (agrees, unconfirmed): Fortress Captured |
+| VB0G | 1.4 | objective_other | Fortress Lost. · community label (agrees, unconfirmed): Fortress Lost |
+| VB0H | 2.7 | game_over | Green team is closing in on victory. · community label (agrees, unconfirmed): Green team is closing in on victory |
+| VB0I | 1.5 | objective_flag | Green flag captured. · community label (agrees, unconfirmed): Green flag has been captured; GREEN FLAG CAPTURED |
+| VB0J | 1.8 | objective_flag | Green flag returned. · community label (agrees, unconfirmed): Green flag has been returned; GREEN FLAG RETURNED |
+| VB0K | 1.5 | objective_flag | Green flag taken. · community label (agrees, unconfirmed): Green flag has been taken; GREEN FLAG TAKEN |
+| VB0L | 2.0 | lead | Green Team takes the lead. · community label (agrees, unconfirmed): Green team gained the lead; GREEN TEAM TAKES THE LEAD |
+| VB0M | 2.8 | clock | Green Team has one player remaining. · community label (agrees, unconfirmed): Green team has one player remaining |
+| VB0N | 1.9 | objective_hill | Hill Captured · community label (agrees, unconfirmed): Hill Captured |
+| VB0O | 2.1 | objective_hill | Hill Contested · community label (agrees, unconfirmed): Hill Contested |
+| VB0P | 3.0 | objective_hill | Hill Lost! · community label (differs, unconfirmed): Hill Controlled; HILL LOST |
+| VB0Q | 2.4 | objective_hill | Hill Moved · community label (agrees, unconfirmed): Hill Moved |
+| VB0R | 2.6 | game_over | Pink Team is closing in on victory. · community label (agrees, unconfirmed): Pink Team is closing in on victory |
+| VB0S | 1.5 | objective_flag | Pink flag captured. · community label (agrees, unconfirmed): Pink flag has been captured; PINK FLAG CAPTURED |
+| VB0T | 1.7 | objective_flag | Pink Flag Returns! · community label (agrees, unconfirmed): Pink flag has been returned; PINK FLAG RETURNED |
+| VB0U | 1.5 | objective_flag | Pink Flag Taken. · community label (agrees, unconfirmed): Pink flag has been taken; PINK FLAG TAKEN |
+| VB0V | 1.9 | lead | Pink Team takes the lead. · community label (agrees, unconfirmed): Pink team gained the lead; PINK TEAM TAKES THE LEAD |
+| VB0W | 2.5 | clock | Think Team has one player remaining. · community label (agrees, unconfirmed): Pink team has one player remaining |
+| VB0X | 2.7 | game_over | Purple team is closing in on victory. · community label (agrees, unconfirmed): Purple team is closing in on victory |
+| VB0Y | 1.5 | objective_flag | Purple flag captured. · community label (agrees, unconfirmed): Purple flag has been captured; PURPLE FLAG CAPTURED |
+| VB0Z | 1.9 | objective_flag | Purple Flag Returns. · community label (differs, unconfirmed): Purple flag has been returned; PRPLE FLAG RETURNED |
+| VB10 | 1.7 | objective_flag | Purple flag taken. · community label (agrees, unconfirmed): Purple flag has been taken; PURPLE FLAG TAKEN |
+| VB11 | 1.8 | lead | Purple team takes the lead. · community label (agrees, unconfirmed): Purple team gained the lead; PURPLE TEAM TAKES THE LEAD |
+| VB12 | 2.7 | clock | Purple team has one player remaining. · community label (agrees, unconfirmed): Purple team has one player remaining; PURMPLE TEAM HAS ONE PLAYER REMAINING |
+| VB13 | 2.6 | game_over | Red team is closing in on victory. · community label (agrees, unconfirmed): Red team is closing in on victory |
+| VB14 | 1.7 | objective_flag | Red flag captured. · community label (agrees, unconfirmed): Red flag has been captured; RED FLAG CAPTURED |
+| VB15 | 1.8 | objective_flag | Red flag returned. · community label (agrees, unconfirmed): Red flag has been returned; RED FLAG RETURNED |
+| VB16 | 1.5 | objective_flag | Red Flag Ticken · community label (agrees, unconfirmed): Red flag has been taken; RED FLAG TAKEN |
+| VB17 | 1.9 | lead | Red team takes the lead. · community label (agrees, unconfirmed): Red team gained the lead; RED TEAM TAKES THE LEAD |
+| VB18 | 2.8 | clock | Red team has one player remaining. · community label (agrees, unconfirmed): Red team has one player remaining; RED TEAM HAS ONE LAYER REMAINING |
+| VB19 | 2.9 | game_over | SCIEN TEAM IS CLOSING IN ON VICTORY! · community label (agrees, unconfirmed): White team is closing in on victory; CYAN TEAM IS CLOSING IN ON VICTORY |
+| VB1A | 1.7 | objective_flag | Scion flag captured! · community label (agrees, unconfirmed): White flag has been captured; CYAN FLAG CAPTURED |
+| VB1B | 1.9 | objective_flag | Cyan Flag returned. · community label (agrees, unconfirmed): White flag has been returned; CYAN FLAG RETURNED |
+| VB1C | 1.9 | objective_flag | Sion Flag Ticken · community label (differs, unconfirmed): White flag has been taken; CYAN FLAG TAKEN |
+| VB1D | 2.4 | lead | SCIEN TEAM TAKES THE LEAD · community label (agrees, unconfirmed): White team gained the lead; CYAN TEAM TAKES THE LEAD |
+| VB1E | 2.8 | clock | Sion Team has one player remaining. · community label (agrees, unconfirmed): White team has one player remaining; CYAN TEAM HAS ONE PLAYER REMAINING |
+| VB1F | 2.6 | game_over | Yellow team is closing in on victory. · community label (agrees, unconfirmed): Yellow team is closing in on victory |
+| VB1G | 1.6 | objective_flag | Yellow flag captured. · community label (agrees, unconfirmed): Yellow flag has been captured; YELLOW FLAG CAPTURED |
+| VB1H | 2.0 | objective_flag | Yellow flag returned. · community label (agrees, unconfirmed): Yellow flag has been returned; YELLOW FLAG RETURNED |
+| VB1I | 1.5 | objective_flag | Yellow flag taken. · community label (agrees, unconfirmed): Yellow flag has been taken; YELLOW FLAG TAKEN |
+| VB1J | 2.0 | lead | Yellow team takes the lead. · community label (agrees, unconfirmed): Yellow team gained the lead; YELLOW TEAM TAKES THE LEAD |
+| VB1K | 2.6 | clock | Yellow team has one player remaining. · community label (agrees, unconfirmed): Yellow team has one player remaining |
+| VB1L | 1.5 | line | you control the battlefield. · community label (agrees, unconfirmed): You control the battlefield |
+| VB1M | 1.6 | objective_other | The infection is spread. · community label (agrees, unconfirmed): The infection has spread |
+| VB1N | 1.9 | game_over | Grame Team wins! · community label (agrees, unconfirmed): Green team wins |
+| VB1O | 1.8 | game_over | Bravo Team wins! · community label (agrees, unconfirmed): Bravo team wins |
+| VB1P | 1.9 | game_over | Blue Team wins! · community label (agrees, unconfirmed): Blue team wins |
+| VB1Q | 1.8 | game_over | Alpha Team wins! · community label (agrees, unconfirmed): Alpha team wins |
+| VB1R | 2.0 | game_over | Yellow Team wins! · community label (agrees, unconfirmed): Yellow team wins |
+| VB1S | 2.3 | game_over | SCIENTEAM WINS! · community label (differs, unconfirmed): White team wins; CYAN TEAM WINS |
+| VB1T | 2.2 | line | The survivors have held their ground. · community label (agrees, unconfirmed): Survivors have held their ground |
+| VB1U | 1.9 | game_over | Red team wins. · community label (agrees, unconfirmed): Red team wins |
+| VB1V | 2.1 | game_over | Purple Team wins! · community label (agrees, unconfirmed): Purple team wins |
+| VB1W | 1.8 | game_over | Pink Team wins! · community label (agrees, unconfirmed): Pink team wins |
 
 ### Announcer (game callouts) (34)
 
 | id | s | category | words |
 |---|---|---|---|
-| V100 | 1.6 | grunt | AHHHHHHHHH! |
-| V108 | 12.0 | objective_hill | King of the hill. Control the hill to earn points. |
-| V109 | 13.3 | objective_flag | Capture the flag! |
-| V110 | 12.3 | team | Slayer Pro. Eliminate the enemy team. |
-| V111 | 1.5 | game_over | Game over! |
-| V112 | 2.3 | clock | 30 seconds left. |
-| V113 | 2.1 | clock | One minute left. |
-| V114 | 1.1 | clock | 10 seconds! |
-| V115 | 2.9 | game_over | NEXT KILL WINS! |
-| V116 | 1.3 | line | gained the lead |
-| V117 | 1.1 | lead | lost the lead. |
-| V118 | 1.6 | game_over | Victory! |
-| V119 | 2.1 | game_over | Closing in on victory! |
-| V120 | 2.4 | clock | Five minutes remain. |
-| V121 | 1.4 | killstreak | Ordinance ready! |
-| V122 | 1.5 | medal | Double kill! |
-| V123 | 1.3 | medal | Triple kill |
-| V124 | 1.9 | medal | KILL TACULAR! |
-| V125 | 1.5 | medal | Killing spree |
-| V130 | 1.8 | line | Overshield |
-| V131 | 1.9 | objective_flag | Flag Defense! |
-| V132 | 1.7 | objective_flag | Flag champion! |
-| V133 | 1.4 | objective_flag | Flight Captured! |
-| V134 | 2.1 | lead | Enemy team scored. |
-| V135 | 1.5 | objective_flag | Carrying flag |
-| V136 | 1.4 | objective_flag | Carrier kill! |
-| V137 | 1.7 | objective_flag | Your flag taken. |
-| V138 | 2.2 | objective_flag | Protect your flag |
-| V139 | 1.7 | kill_confirm | Kill their carrier! |
-| V140 | 2.2 | objective_flag | flight assassination |
-| V141 | 1.3 | objective_flag | Flight Runner! |
-| V142 | 1.6 | objective_flag | flag reset. |
-| V143 | 1.3 | objective_flag | Flag kill. |
-| V144 | 2.1 | objective_flag | FLAG JOST! |
+| V100 | 1.6 | grunt | AHHHHHHHHH! · community label (differs, unconfirmed): Yell |
+| V108 | 12.0 | objective_hill | King of the hill. Control the hill to earn points. · community label (agrees, unconfirmed): (Halo) King of the hill - Control the hill to earn points |
+| V109 | 13.3 | objective_flag | Capture the flag! · community label (agrees, unconfirmed): (Halo) Capture the flag |
+| V110 | 12.3 | team | Slayer Pro. Eliminate the enemy team. · community label (agrees, unconfirmed): (Halo) Slayer Pro, Eliminate the enemy team |
+| V111 | 1.5 | game_over | Game over! · community label (agrees, unconfirmed): (Halo) Game Over |
+| V112 | 2.3 | clock | 30 seconds left. · community label (agrees, unconfirmed): (Halo) 30 Seconds left |
+| V113 | 2.1 | clock | One minute left. · community label (agrees, unconfirmed): (Halo) 1 minute left |
+| V114 | 1.1 | clock | 10 seconds! · community label (agrees, unconfirmed): (Halo) 10 Seconds |
+| V115 | 2.9 | game_over | NEXT KILL WINS! · community label (agrees, unconfirmed): (Halo) Next kill wins |
+| V116 | 1.3 | line | gained the lead · community label (agrees, unconfirmed): (Halo) Gained the lead |
+| V117 | 1.1 | lead | lost the lead. · community label (agrees, unconfirmed): (Halo) Lost the lead |
+| V118 | 1.6 | game_over | Victory! · community label (agrees, unconfirmed): (Halo) Victory |
+| V119 | 2.1 | game_over | Closing in on victory! · community label (agrees, unconfirmed): (Halo) Closing in on victory |
+| V120 | 2.4 | clock | Five minutes remain. · community label (agrees, unconfirmed): (Halo) 5 minutes remain |
+| V121 | 1.4 | killstreak | Ordinance ready! · community label (agrees, unconfirmed): Ordinance ready |
+| V122 | 1.5 | medal | Double kill! · community label (agrees, unconfirmed): (Halo) Double kill |
+| V123 | 1.3 | medal | Triple kill · community label (agrees, unconfirmed): (Halo) Triple kill |
+| V124 | 1.9 | medal | KILL TACULAR! · community label (agrees, unconfirmed): (Halo) Kill-tacular |
+| V125 | 1.5 | medal | Killing spree · community label (agrees, unconfirmed): (Halo) Killing spree |
+| V130 | 1.8 | line | Overshield · community label (agrees, unconfirmed): (Halo) Overshield |
+| V131 | 1.9 | objective_flag | Flag Defense! · community label (agrees, unconfirmed): (Halo) Flag Defense |
+| V132 | 1.7 | objective_flag | Flag champion! · community label (agrees, unconfirmed): (Halo) Flag Champion |
+| V133 | 1.4 | objective_flag | Flight Captured! · community label (differs, unconfirmed): (Halo) Flag Captured |
+| V134 | 2.1 | lead | Enemy team scored. · community label (agrees, unconfirmed): (Halo) Enemy team scored |
+| V135 | 1.5 | objective_flag | Carrying flag · community label (agrees, unconfirmed): (Halo) Carrying flag |
+| V136 | 1.4 | objective_flag | Carrier kill! · community label (agrees, unconfirmed): (Halo) Carrier Kill |
+| V137 | 1.7 | objective_flag | Your flag taken. · community label (agrees, unconfirmed): (Halo) Your flag taken |
+| V138 | 2.2 | objective_flag | Protect your flag · community label (agrees, unconfirmed): (Halo) Protect your flag |
+| V139 | 1.7 | kill_confirm | Kill their carrier! · community label (agrees, unconfirmed): (Halo)Killed their carrier |
+| V140 | 2.2 | objective_flag | flight assassination · community label (differs, unconfirmed): (Halo) Flag-sasination |
+| V141 | 1.3 | objective_flag | Flight Runner! · community label (differs, unconfirmed): (Halo) Flag Runner |
+| V142 | 1.6 | objective_flag | flag reset. · community label (agrees, unconfirmed): (Halo) Flag reset |
+| V143 | 1.3 | objective_flag | Flag kill. · community label (agrees, unconfirmed): (Halo) Flag kill |
+| V144 | 2.1 | objective_flag | FLAG JOST! · community label (differs, unconfirmed): (Halo) Flag joust |
 
 ### Announcer (lives) (8)
 
 | id | s | category | words |
 |---|---|---|---|
-| VT00 | 1.5 | status_health | for lives remaining. |
-| VT01 | 1.8 | status_health | Three lives remaining. |
-| VT02 | 1.6 | status_health | Two lives remaining. |
-| VT03 | 1.4 | clock | One life remaining. |
-| VT0U | 1.3 | status_battery | Battery low. |
-| VT1Q | 0.5 | menu | deaths. |
-| VT1T | 0.6 | kill_confirm | kills |
-| VT1U | 0.5 | grunt | No. |
+| VT00 | 1.5 | status_health | for lives remaining. · community label (agrees, unconfirmed): 4 LIVES REMAINING |
+| VT01 | 1.8 | status_health | Three lives remaining. · community label (agrees, unconfirmed): 3 LIVES REMAINING |
+| VT02 | 1.6 | status_health | Two lives remaining. · community label (agrees, unconfirmed): 2 LIVES REMAINING |
+| VT03 | 1.4 | clock | One life remaining. · community label (agrees, unconfirmed): ONE LIFE REMAINING |
+| VT0U | 1.3 | status_battery | Battery low. · community label (agrees, unconfirmed): BATTERY LOW |
+| VT1Q | 0.5 | menu | deaths. · community label (agrees, unconfirmed): DEATHS |
+| VT1T | 0.6 | kill_confirm | kills · community label (agrees, unconfirmed): KILLS |
+| VT1U | 0.5 | grunt | No. · community label (agrees, unconfirmed): NO |
 
 ### Announcer (male) (354)
 
 | id | s | category | words |
 |---|---|---|---|
-| VA01 | 0.7 | grunt | one. |
-| VA02 | 0.5 | number | 2. |
-| VA03 | 0.5 | number | 3. |
-| VA04 | 0.7 | number | Four. |
-| VA05 | 0.7 | number | Five. |
-| VA06 | 1.0 | number | Six. |
-| VA07 | 0.8 | number | seven |
-| VA08 | 0.6 | number | 8. |
-| VA09 | 0.7 | grunt | Nine. |
-| VA0A | 0.5 | number | 10 |
-| VA0B | 0.9 | number | 11 |
-| VA0C | 0.8 | number | 12 |
-| VA0D | 0.9 | number | 13 |
-| VA0E | 1.1 | number | 14 |
-| VA0F | 0.8 | number | 15 |
-| VA0G | 1.0 | number | 16. |
-| VA0H | 1.0 | number | Seventeen. |
-| VA0I | 0.7 | number | 18. |
-| VA0J | 0.9 | number | 19. |
-| VA0K | 0.5 | number | 20. |
-| VA0L | 0.9 | number | 21. |
-| VA0M | 0.8 | number | 22. |
-| VA0N | 1.0 | number | 23 |
-| VA0O | 0.9 | number | 24. |
-| VA0P | 1.3 | number | 25 |
-| VA0Q | 1.2 | clock | Seven minutes. |
-| VA0R | 1.1 | clock | 30 seconds. |
-| VA0S | 2.1 | clock | 45 seconds ramp up |
-| VA0T | 1.8 | clock | 45 seconds. |
-| VA0U | 1.4 | line | Ramp 60. |
-| VA0V | 1.3 | clock | 60 seconds. |
-| VA0W | 2.0 | clock | 90 seconds ramp up. |
-| VA0X | 1.5 | clock | 90 seconds. |
-| VA0Y | 1.8 | line | Advanced Communications. |
-| VA0Z | 1.9 | killstreak | Advanced UAV detected. |
-| VA1 | 1.1 | line | Watch this. |
-| VA10 | 1.5 | killstreak | Advanced UAV. |
-| VA11 | 0.9 | killstreak | Air Raid |
-| VA12 | 1.4 | killstreak | Airstrike detected. |
-| VA13 | 1.1 | team | Alpha Team. |
-| VA14 | 1.1 | menu | ammo pouch. |
-| VA15 | 1.6 | weapon_name | Armor Piercing Rounds |
-| VA16 | 0.9 | menu | armor suit. |
-| VA17 | 1.0 | menu | awareness. |
-| VA18 | 0.7 | weapon_name | Baton |
-| VA19 | 1.1 | weapon_name | Battle Axe. |
-| VA1A | 1.9 | greeting | Let the battle begin. |
-| VA1B | 1.9 | game_mode | Welcome to Battle Reality. |
-| VA1C | 1.8 | killstreak | Black Hawk inbound. |
-| VA1D | 1.0 | killstreak | Blackhawk. |
-| VA1E | 1.0 | line | Blind Eye. |
-| VA1F | 1.1 | killstreak | Blockade. |
-| VA1G | 1.2 | menu | Body Armor. |
-| VA1H | 2.4 | objective_other | BOMB DEFUSED |
-| VA1I | 3.0 | objective_other | Bomb Planted |
-| VA1J | 1.2 | weapon_name | Bow staff. |
-| VA1K | 1.2 | line | BOO |
-| VA1L | 1.1 | team | Bravo team! |
-| VA1M | 1.2 | weapon_name | Burst Glock. |
-| VA1N | 1.8 | killstreak | enemy care package detected. |
-| VA1O | 1.8 | killstreak | enemy care package underway. |
-| VA1P | 1.6 | killstreak | Incoming Care Package. |
-| VA1Q | 1.1 | killstreak | Care Package. |
-| VA1R | 1.2 | team | Charlie team. |
-| VA1S | 1.6 | killstreak | enemy chopper detected. |
-| VA1T | 1.9 | killstreak | enemy chopper in your vicinity. |
-| VA1U | 1.3 | killstreak | Incoming Chopper. |
-| VA1V | 1.0 | weapon_name | Claymore. |
-| VA1W | 1.3 | menu | Cluster Grenade. |
-| VA1X | 1.1 | weapon_name | Combat Axe. |
-| VA1Y | 1.2 | game_mode | Commanders! |
-| VA1Z | 1.5 | weapon_name | Concussion Grenades |
-| VA2 | 6.0 | line | Ehehhehehehhehheheheh h! ehehheheheeh ruler ugh |
-| VA20 | 1.3 | system | Connection established. |
-| VA21 | 1.6 | objective_other | Control Point Contested. |
-| VA22 | 1.8 | objective_other | Control Point Lost. |
-| VA23 | 1.6 | objective_other | Control Point Captured. |
-| VA24 | 1.2 | killstreak | Critical Strike. |
-| VA25 | 1.1 | menu | dead eye. |
-| VA26 | 1.0 | game_mode | Deathmatch |
-| VA27 | 1.3 | team | Delta Team. |
-| VA28 | 1.0 | killstreak | Deployment. |
-| VA29 | 1.0 | weapon_name | Desert Eagle. |
-| VA2A | 0.9 | system | device paired. |
-| VA2B | 1.1 | system | device removed. |
-| VA2C | 1.3 | menu | double mags. |
-| VA2D | 1.0 | menu | Double Trigger. |
-| VA2E | 3.0 | grunt | Raw Game! |
-| VA2F | 1.2 | line | Do a wheeled. |
-| VA2G | 0.9 | team | Echo Team. |
-| VA2H | 1.0 | killstreak | EMP |
-| VA2I | 2.5 | line | Enemy flank has been lost. |
-| VA2J | 1.8 | objective_flag | Enemy team has our flag! |
-| VA2K | 2.2 | objective_flag | Enemy flag has been captured. |
-| VA2L | 1.7 | killstreak | enemy sentry detected. |
-| VA2M | 1.5 | weapon_name | Explosive Rounds. |
-| VA2N | 1.6 | menu | Extended Mags |
-| VA2O | 1.1 | menu | Fast track. |
-| VA2P | 1.2 | clock | 15 minutes. |
-| VA2Q | 1.3 | clock | 15 seconds. |
-| VA2R | 1.0 | menu | First Aid. |
-| VA2S | 1.1 | clock | Five minutes. |
-| VA2T | 1.1 | menu | Flak jacket. |
-| VA2U | 1.1 | weapon_name | Flashbang! |
-| VA2V | 1.0 | weapon_name | FMJ. |
-| VA2W | 1.1 | menu | laser sight |
-| VA2X | 0.9 | menu | Accuracy. |
-| VA2Y | 1.4 | team | Foxtrot Team. |
-| VA2Z | 0.8 | weapon_name | FRAG |
-| VA3 | 1.3 | grunt | AHHHHHH |
-| VA30 | 1.4 | game_mode | Free for all. |
-| VA31 | 1.6 | menu | Friendly fire off. |
-| VA32 | 1.4 | menu | Friendly fire on. |
-| VA33 | 1.9 | game_over | Game over. |
-| VA34 | 1.1 | clock | Game time. |
-| VA35 | 0.9 | line | General. |
-| VA36 | 1.2 | game_mode | Generals. |
-| VA37 | 0.7 | line | Ghost. |
-| VA38 | 1.4 | menu | Grenade Launcher |
-| VA39 | 1.0 | menu | Grenade type. |
-| VA3A | 1.6 | killstreak | guided missile detected. |
-| VA3B | 1.8 | killstreak | Goddid missile inbound. |
-| VA3C | 1.2 | killstreak | guided missile. |
-| VA3D | 1.1 | status_battery | Gun battery low. |
-| VA3E | 1.3 | system | Headset connected. |
-| VA3F | 1.6 | system | headset disconnected. |
-| VA3G | 1.0 | menu | Healing Kit. |
-| VA3H | 1.3 | killstreak | Hellstorm missile. |
-| VA3I | 0.6 | grunt | Hi. |
-| VA3J | 1.3 | killstreak | Hijack complete. |
-| VA3K | 1.3 | killstreak | hijack enabled. |
-| VA3L | 2.0 | line | the enemy has hijacked your equipment. |
-| VA3M | 1.0 | killstreak | Hijack. |
-| VA3N | 1.1 | weapon_name | Hallow Point. |
-| VA3O | 1.2 | grunt | Woo-hoo! |
-| VA3P | 1.2 | grunt | Woo! |
-| VA3Q | 1.4 | grunt | Yeah! |
-| VA3R | 1.3 | objective_other | Hostage down. |
-| VA3S | 1.4 | objective_other | Hostage Rescued. |
-| VA3T | 0.9 | grunt | Human |
-| VA3U | 2.3 | killstreak | Incoming air raid, find cover. |
-| VA3V | 1.4 | killstreak | Incoming Air Raid |
-| VA3W | 1.2 | menu | Indoor mode. |
-| VA3X | 0.7 | menu | indoor. |
-| VA3Y | 1.1 | objective_other | Infected. |
-| VA3Z | 1.0 | menu | fairing mode |
-| VA4 | 1.5 | grunt | HUUUUUUUUUUUUUUUUU |
-| VA40 | 1.4 | greeting | Join a faction. |
-| VA41 | 1.5 | greeting | Join the ranks! |
-| VA42 | 0.8 | weapon_name | knife. |
-| VA43 | 1.1 | game_mode | Last Stand. |
-| VA44 | 0.8 | menu | Lethal |
-| VA45 | 0.9 | line | Lights out. |
-| VA46 | 1.5 | status_health | Life's depleted. |
-| VA47 | 1.1 | status_health | lives |
-| VA48 | 1.2 | menu | long barrel. |
-| VA49 | 0.8 | menu | long. |
-| VA4A | 0.9 | menu | Low. |
-| VA4B | 1.1 | weapon_name | M4. |
-| VA4C | 0.8 | line | Mall. |
-| VA4D | 1.0 | menu | Medkit. |
-| VA4E | 0.8 | menu | medium. |
-| VA4F | 1.1 | weapon_name | MG7. |
-| VA4G | 1.2 | grunt | MGR. |
-| VA4H | 1.5 | killstreak | incoming missile strike. |
-| VA4I | 1.8 | killstreak | enemy missile strike detected. |
-| VA4J | 1.0 | killstreak | missile strike. |
-| VA4K | 1.7 | objective_other | missile swarm detected. |
-| VA4L | 1.2 | killstreak | Incoming mortar. |
-| VA4M | 1.1 | killstreak | Mortar round. |
-| VA4N | 1.1 | line | NEXUS |
-| VA4O | 1.2 | weapon_name | 9mm. |
-| VA4P | 1.9 | killstreak | Nuclear launch detected. |
-| VA4Q | 2.1 | killstreak | Enemy nuclear launch detected. |
-| VA4R | 1.7 | killstreak | incoming nuclear missile. |
-| VA4S | 0.7 | killstreak | Nuke. |
-| VA4T | 0.7 | menu | off. |
-| VA4U | 1.1 | line | offhand equipped. |
-| VA4V | 0.6 | grunt | on. |
-| VA4W | 1.1 | menu | Outdoor mode. |
-| VA4X | 0.8 | menu | Outdoor |
-| VA4Y | 0.9 | weapon_name | pepper spray. |
-| VA4Z | 0.9 | killstreak | Phoenix. |
-| VA5 | 1.3 | grunt | HAAA! |
-| VA50 | 0.8 | weapon_name | Pistol |
-| VA51 | 1.1 | menu | Quick hands. |
-| VA52 | 0.8 | line | Recon. |
-| VA53 | 1.0 | grunt | region. |
-| VA54 | 1.4 | menu | Respawn Time. |
-| VA55 | 1.4 | menu | Respawn Type. |
-| VA56 | 1.3 | weapon_name | Rocket Launcher! |
-| VA57 | 0.8 | weapon_name | Saber. |
-| VA58 | 1.0 | menu | Scavenger |
-| VA59 | 1.3 | clock | Second Life. |
-| VA5A | 1.3 | menu | Choose a class. |
-| VA5B | 1.1 | menu | Select fire. |
-| VA5C | 1.4 | menu | Select a game. |
-| VA5D | 1.2 | menu | Select a perk. |
-| VA5E | 1.4 | team | Select a team. |
-| VA5F | 1.5 | menu | Select a weapon. |
-| VA5G | 1.6 | killstreak | Self-Destruct initiated. |
-| VA5H | 1.4 | status_battery | Sensor battery low. |
-| VA5I | 1.6 | killstreak | Century Deployed. |
-| VA5J | 0.8 | killstreak | Century. |
-| VA5K | 1.0 | status_shield | Shield equipped. |
-| VA5L | 0.8 | status_shield | SHIELD |
-| VA5M | 0.7 | menu | Short. |
-| VA5N | 1.0 | game_mode | Siege |
-| VA5O | 0.9 | menu | Silencer. |
-| VA5P | 1.0 | clock | Six minutes. |
-| VA5Q | 1.3 | weapon_name | Slug round. |
-| VA5R | 1.7 | weapon_name | SMG X3. |
-| VA5S | 1.4 | weapon_name | Sniper R50. |
-| VA5T | 1.2 | menu | Speed boost. |
-| VA5U | 0.9 | line | Spy. |
-| VA5V | 1.6 | menu | Squad leader off. |
-| VA5W | 1.5 | menu | Squad Leader on! |
-| VA5X | 0.9 | line | Squad leader. |
-| VA5Y | 1.3 | weapon_name | SR 100. |
-| VA5Z | 1.4 | system | Admin Unlocked. |
-| VA6 | 6.0 | grunt | Ah. Ah. Ah. |
-| VA60 | 1.1 | menu | Night Mode. |
-| VA61 | 1.2 | clock | Sudden death. |
-| VA62 | 1.2 | game_mode | Supremacy! |
-| VA63 | 0.9 | menu | Suppressor |
-| VA64 | 1.1 | game_mode | Survival. |
-| VA65 | 1.1 | objective_other | Survivor |
-| VA66 | 1.0 | menu | Swap Lift. |
-| VA67 | 1.0 | weapon_name | Sword |
-| VA68 | 1.5 | killstreak | System hack initiated. |
-| VA69 | 1.0 | killstreak | System hack. |
-| VA6A | 1.4 | weapon_name | TAC 87. |
-| VA6B | 1.3 | weapon_name | TAR 33. |
-| VA6C | 0.8 | weapon_name | Taser |
-| VA6D | 1.9 | lead | Your team takes the lead. |
-| VA6E | 2.7 | lead | Your team has lost the lead. |
-| VA6F | 1.0 | menu | Tactical. |
-| VA6G | 1.1 | line | Tier Gas |
-| VA6H | 1.1 | clock | 10 minutes. |
-| VA6I | 1.6 | objective_other | The Hive |
-| VA6J | 1.2 | objective_other | The Swarm. |
-| VA6K | 1.0 | menu | thick skin. |
-| VA6L | 3.0 | countdown | Three, two, one. |
-| VA6M | 0.9 | menu | Toughness. |
-| VA6N | 1.2 | menu | Tracker Rounds |
-| VA6O | 0.7 | weapon_name | TRIP MINE! |
-| VA6P | 1.2 | clock | 25 minutes. |
-| VA6Q | 1.0 | clock | 20 minutes. |
-| VA6R | 1.8 | killstreak | enemy UAV detected. |
-| VA6S | 1.5 | killstreak | incoming UAV. |
-| VA6T | 1.1 | killstreak | UAB |
-| VA6U | 1.0 | line | Undercover. |
-| VA6V | 1.0 | menu | Unlimited. |
-| VA6W | 1.1 | menu | Upgrade complete. |
-| VA6X | 2.0 | status_shield | Shields Depleted |
-| VA6Y | 2.0 | status_shield | Shields Online |
-| VA6Z | 1.6 | kill_confirm | Kill! |
-| VA7 | 2.1 | line | Ugh, that's better. |
-| VA70 | 1.0 | menu | Target Mode. |
-| VA71 | 1.4 | line | Vanguard. |
-| VA72 | 2.7 | line | The VIT has been killed! |
-| VA73 | 1.1 | menu | water cooling. |
-| VA74 | 1.5 | killstreak | Weapons Box Delivered. |
-| VA75 | 1.5 | killstreak | weapons box detected. |
-| VA76 | 1.7 | killstreak | Incoming Weapon Box. |
-| VA77 | 1.1 | killstreak | Weapons Box. |
-| VA78 | 2.4 | greeting | Welcome to Battle Company! |
-| VA79 | 1.9 | line | A flank has been returned. |
-| VA7A | 3.3 | objective_flag | Our flag has been captured! |
-| VA7B | 1.8 | objective_flag | Our team has the flag! |
-| VA7C | 2.0 | game_mode | Welcome to Battle 360! |
-| VA7D | 1.7 | menu | Choose your destiny! |
-| VA7E | 1.8 | medal | Double Kill |
-| VA7F | 1.9 | medal | FATALITY |
-| VA7G | 1.0 | line | Finish him! |
-| VA7H | 2.5 | medal | First Blood |
-| VA7I | 1.7 | medal | Flawless victory! |
-| VA7J | 1.9 | kill_confirm | Kill them in Juro! |
-| VA7K | 1.9 | medal | Killing spree |
-| VA7L | 1.9 | kill_confirm | Killian Air |
-| VA7M | 1.9 | medal | GO TACULAR! |
-| VA7N | 1.9 | line | Joltastrophe |
-| VA7O | 1.9 | line | CULTURUSITY |
-| VA7P | 1.5 | line | Test your might. |
-| VA7Q | 1.9 | medal | Triple Kill! |
-| VA8 | 1.0 | kill_confirm | Kill! |
-| VA80 | 3.0 | countdown | Three, two, one. |
-| VA81 | 3.0 | countdown | Three, two, one. |
-| VA82 | 3.0 | countdown | Three, two, one. |
-| VA83 | 10.7 | countdown | 10, 9, 8, 7, 6, 5, 4, 3, 2, 1. |
-| VA84 | 11.1 | countdown | 10, 9, 8, 7, 6, 5, 4, 3, 2, 1. |
-| VA85 | 10.0 | countdown | 10, 9, 8, 7, 6, 5, 4, 3, 2, 1. |
-| VA86 | 2.0 | status_health | Health Critical. |
-| VA87 | 2.9 | status_health | health low. |
-| VA88 | 1.1 | status_armor | Armored depleted. |
-| VA89 | 1.1 | status_armor | Armor critical. |
-| VA8A | 1.1 | status_armor | Armor low. |
-| VA8B | 1.2 | status_shield | Shields depleted. |
-| VA8C | 1.5 | status_shield | SHIELD ONLINE |
-| VA8D | 2.3 | clock | Overtime |
-| VA8E | 2.1 | kill_confirm | Kill confirmed. |
-| VA8F | 1.4 | status_health | Shared lives. |
-| VA8G | 1.0 | line | auto detection. |
-| VA8H | 2.0 | system | Battle Company Systems Online. |
-| VA8I | 1.2 | game_mode | Battle Lines. |
-| VA8J | 1.6 | game_mode | Battle Royale |
-| VA8K | 1.3 | killstreak | battle strike |
-| VA8L | 1.1 | game_mode | battle watch. |
-| VA8M | 1.4 | game_mode | Battle World. |
-| VA8N | 1.5 | game_mode | Borderlands |
-| VA8O | 1.2 | grunt | GUN GAME! |
-| VA8P | 1.6 | objective_flag | Capture the flag. |
-| VA8Q | 1.3 | system | Connection accepted. |
-| VA8R | 1.3 | system | Connection lost. |
-| VA8S | 1.2 | system | Connection rejected. |
-| VA8T | 1.2 | system | Debug Mode. |
-| VA8U | 1.2 | system | demo mode. |
-| VA8V | 1.2 | system | pairing cleared |
-| VA8W | 1.1 | line | enemy detected. |
-| VA8X | 0.8 | system | Fail. |
-| VA8Y | 1.4 | system | Game found. |
-| VA8Z | 1.2 | system | HUD Connected. |
-| VA9 | 1.2 | kill_confirm | Kill. |
-| VA90 | 1.5 | system | How Disconnected. |
-| VA91 | 2.0 | system | incoming HUD connection request. |
-| VA92 | 2.1 | system | incoming phone connection request. |
-| VA93 | 1.2 | objective_hill | King of the hill! |
-| VA94 | 1.4 | system | laser calibration. |
-| VA95 | 0.8 | system | loading. |
-| VA96 | 1.3 | line | motion detected. |
-| VA97 | 1.4 | line | Motion Sensor |
-| VA98 | 0.8 | system | Pass. |
-| VA99 | 1.1 | system | Phone connected. |
-| VA9A | 1.3 | system | Phone disconnected. |
-| VA9B | 1.9 | menu | Please confirm with the select key. |
-| VA9C | 1.6 | system | Primary bootloader. |
-| VA9D | 1.5 | system | primary device. |
-| VA9E | 1.2 | system | Admin locked. |
-| VA9F | 1.4 | killstreak | Proximity Mind. |
-| VA9G | 1.0 | line | Replicant. |
-| VA9H | 1.5 | line | RESPONSE STATION |
-| VA9I | 1.5 | system | Scanning for device. |
-| VA9J | 0.7 | system | Searching. |
-| VA9K | 1.9 | system | Secondary bootloader. |
-| VA9L | 1.7 | system | secondary device. |
-| VA9M | 1.4 | system | Admin full arc. |
-| VA9N | 1.5 | system | Sensors offline |
-| VA9O | 1.3 | line | Silence, they are |
-| VA9P | 1.4 | game_mode | Survival Games. |
-| VA9Q | 1.2 | line | Testing complete. |
-| VA9R | 1.0 | system | Test mode. |
-| VA9S | 0.9 | system | Volume. |
-| VA9T | 1.8 | system | One more weapon ready for duty. |
-| VA9U | 2.4 | greeting | Welcome to Battle Company! |
+| VA01 | 0.7 | grunt | one. · community label (differs, unconfirmed): 1.0 |
+| VA02 | 0.5 | number | 2. · community label (agrees, unconfirmed): 2.0 |
+| VA03 | 0.5 | number | 3. · community label (agrees, unconfirmed): 3.0 |
+| VA04 | 0.7 | number | Four. · community label (differs, unconfirmed): 4.0 |
+| VA05 | 0.7 | number | Five. · community label (differs, unconfirmed): 5.0 |
+| VA06 | 1.0 | number | Six. · community label (differs, unconfirmed): 6.0 |
+| VA07 | 0.8 | number | seven · community label (differs, unconfirmed): 7.0 |
+| VA08 | 0.6 | number | 8. · community label (agrees, unconfirmed): 8.0 |
+| VA09 | 0.7 | grunt | Nine. · community label (differs, unconfirmed): 9.0 |
+| VA0A | 0.5 | number | 10 · community label (agrees, unconfirmed): 10.0 |
+| VA0B | 0.9 | number | 11 · community label (agrees, unconfirmed): 11.0 |
+| VA0C | 0.8 | number | 12 · community label (agrees, unconfirmed): 12.0 |
+| VA0D | 0.9 | number | 13 · community label (agrees, unconfirmed): 13.0 |
+| VA0E | 1.1 | number | 14 · community label (agrees, unconfirmed): 14.0 |
+| VA0F | 0.8 | number | 15 · community label (agrees, unconfirmed): 15.0 |
+| VA0G | 1.0 | number | 16. · community label (agrees, unconfirmed): 16.0 |
+| VA0H | 1.0 | number | Seventeen. · community label (differs, unconfirmed): 17.0 |
+| VA0I | 0.7 | number | 18. · community label (agrees, unconfirmed): 18.0 |
+| VA0J | 0.9 | number | 19. · community label (agrees, unconfirmed): 19.0 |
+| VA0K | 0.5 | number | 20. · community label (agrees, unconfirmed): 20.0 |
+| VA0L | 0.9 | number | 21. · community label (agrees, unconfirmed): 21.0 |
+| VA0M | 0.8 | number | 22. · community label (agrees, unconfirmed): 22.0 |
+| VA0N | 1.0 | number | 23 · community label (agrees, unconfirmed): 23.0 |
+| VA0O | 0.9 | number | 24. · community label (agrees, unconfirmed): 24.0 |
+| VA0P | 1.3 | number | 25 · community label (agrees, unconfirmed): 25.0 |
+| VA0Q | 1.2 | clock | Seven minutes. · community label (differs, unconfirmed): 30 Minutes; 30 min; 7 MINUTES |
+| VA0R | 1.1 | clock | 30 seconds. · community label (agrees, unconfirmed): 30 Seconds |
+| VA0S | 2.1 | clock | 45 seconds ramp up · community label (agrees, unconfirmed): Ramp 45; 45 SECONDS RAMP UP |
+| VA0T | 1.8 | clock | 45 seconds. · community label (agrees, unconfirmed): 45 Seconds |
+| VA0U | 1.4 | line | Ramp 60. · community label (agrees, unconfirmed): Ramp 60 |
+| VA0V | 1.3 | clock | 60 seconds. · community label (agrees, unconfirmed): 60 Seconds |
+| VA0W | 2.0 | clock | 90 seconds ramp up. · community label (agrees, unconfirmed): Ramp 90; 90 SECONDS RAMP UP |
+| VA0X | 1.5 | clock | 90 seconds. · community label (agrees, unconfirmed): 90 Seconds |
+| VA0Y | 1.8 | line | Advanced Communications. · community label (agrees, unconfirmed): Advanced Communications |
+| VA0Z | 1.9 | killstreak | Advanced UAV detected. · community label (agrees, unconfirmed): Advanced UAV Detected |
+| VA1 | 1.1 | line | Watch this. · community label (agrees, unconfirmed): Watch This |
+| VA10 | 1.5 | killstreak | Advanced UAV. · community label (agrees, unconfirmed): Advanced UAV |
+| VA11 | 0.9 | killstreak | Air Raid · community label (agrees, unconfirmed): Air Raid |
+| VA12 | 1.4 | killstreak | Airstrike detected. · community label (differs, unconfirmed): Air Strike Detected |
+| VA13 | 1.1 | team | Alpha Team. · community label (agrees, unconfirmed): Alpha Team; Alpha |
+| VA14 | 1.1 | menu | ammo pouch. · community label (agrees, unconfirmed): Ammo Pouch |
+| VA15 | 1.6 | weapon_name | Armor Piercing Rounds · community label (agrees, unconfirmed): Armor Piercing Rounds |
+| VA16 | 0.9 | menu | armor suit. · community label (agrees, unconfirmed): Armor Suit |
+| VA17 | 1.0 | menu | awareness. · community label (agrees, unconfirmed): Awareness |
+| VA18 | 0.7 | weapon_name | Baton · community label (differs, unconfirmed): Batton |
+| VA19 | 1.1 | weapon_name | Battle Axe. · community label (agrees, unconfirmed): Battle Axe |
+| VA1A | 1.9 | greeting | Let the battle begin. · community label (agrees, unconfirmed): Let the Battle Begin |
+| VA1B | 1.9 | game_mode | Welcome to Battle Reality. · community label (agrees, unconfirmed): Welcome to Battle Reality |
+| VA1C | 1.8 | killstreak | Black Hawk inbound. · community label (differs, unconfirmed): Blackhawk Inbound |
+| VA1D | 1.0 | killstreak | Blackhawk. · community label (agrees, unconfirmed): Blackhawk |
+| VA1E | 1.0 | line | Blind Eye. · community label (differs, unconfirmed): BlindEye |
+| VA1F | 1.1 | killstreak | Blockade. · community label (agrees, unconfirmed): Blockade |
+| VA1G | 1.2 | menu | Body Armor. · community label (agrees, unconfirmed): Body Armor |
+| VA1H | 2.4 | objective_other | BOMB DEFUSED · community label (differs, unconfirmed): The Bomb has been diffused; BOMB DIFUSED |
+| VA1I | 3.0 | objective_other | Bomb Planted · community label (agrees, unconfirmed): Bomb has been planted; BOMB PLANTED |
+| VA1J | 1.2 | weapon_name | Bow staff. · community label (differs, unconfirmed): Bo Staff |
+| VA1K | 1.2 | line | BOO · community label (differs, unconfirmed): Bow |
+| VA1L | 1.1 | team | Bravo team! · community label (agrees, unconfirmed): Bravo Team; Bravo |
+| VA1M | 1.2 | weapon_name | Burst Glock. · community label (agrees, unconfirmed): Burst Glock |
+| VA1N | 1.8 | killstreak | enemy care package detected. · community label (agrees, unconfirmed): Enemy care package detected |
+| VA1O | 1.8 | killstreak | enemy care package underway. · community label (agrees, unconfirmed): Enemy care package underway |
+| VA1P | 1.6 | killstreak | Incoming Care Package. · community label (agrees, unconfirmed): Incoming care package |
+| VA1Q | 1.1 | killstreak | Care Package. · community label (agrees, unconfirmed): Care Package |
+| VA1R | 1.2 | team | Charlie team. · community label (agrees, unconfirmed): Charlie Team; Charlie |
+| VA1S | 1.6 | killstreak | enemy chopper detected. · community label (agrees, unconfirmed): Enemy chopper detected |
+| VA1T | 1.9 | killstreak | enemy chopper in your vicinity. · community label (agrees, unconfirmed): Enemy chopper in your vacinity |
+| VA1U | 1.3 | killstreak | Incoming Chopper. · community label (agrees, unconfirmed): Incoming chopper |
+| VA1V | 1.0 | weapon_name | Claymore. · community label (agrees, unconfirmed): Claymore |
+| VA1W | 1.3 | menu | Cluster Grenade. · community label (agrees, unconfirmed): Cluster grenade |
+| VA1X | 1.1 | weapon_name | Combat Axe. · community label (agrees, unconfirmed): Combat Axe |
+| VA1Y | 1.2 | game_mode | Commanders! · community label (agrees, unconfirmed): Commanders |
+| VA1Z | 1.5 | weapon_name | Concussion Grenades · community label (agrees, unconfirmed): Concussion Grenades |
+| VA2 | 6.0 | line | Ehehhehehehhehheheheh h! ehehheheheeh ruler ugh · community label (differs, unconfirmed): Coughing |
+| VA20 | 1.3 | system | Connection established. · community label (agrees, unconfirmed): Connection Established |
+| VA21 | 1.6 | objective_other | Control Point Contested. · community label (agrees, unconfirmed): Control Point Contested |
+| VA22 | 1.8 | objective_other | Control Point Lost. · community label (agrees, unconfirmed): Control point lost |
+| VA23 | 1.6 | objective_other | Control Point Captured. · community label (agrees, unconfirmed): Control point captured |
+| VA24 | 1.2 | killstreak | Critical Strike. · community label (agrees, unconfirmed): Critical Strike |
+| VA25 | 1.1 | menu | dead eye. · community label (differs, unconfirmed): Deadeye |
+| VA26 | 1.0 | game_mode | Deathmatch · community label (differs, unconfirmed): DeathMatch; DEATH MATCH |
+| VA27 | 1.3 | team | Delta Team. · community label (agrees, unconfirmed): Delta Team; Delta |
+| VA28 | 1.0 | killstreak | Deployment. · community label (agrees, unconfirmed): Deployment |
+| VA29 | 1.0 | weapon_name | Desert Eagle. · community label (agrees, unconfirmed): Desert Eagle |
+| VA2A | 0.9 | system | device paired. · community label (agrees, unconfirmed): Device Paired |
+| VA2B | 1.1 | system | device removed. · community label (agrees, unconfirmed): Device Removed |
+| VA2C | 1.3 | menu | double mags. · community label (agrees, unconfirmed): Double Mags |
+| VA2D | 1.0 | menu | Double Trigger. · community label (agrees, unconfirmed): Double Trigger |
+| VA2E | 3.0 | grunt | Raw Game! · community label (differs, unconfirmed): This games a draw; DRAW GAME |
+| VA2F | 1.2 | line | Do a wheeled. · community label (differs, unconfirmed): Dual Wield |
+| VA2G | 0.9 | team | Echo Team. · community label (agrees, unconfirmed): Echo Team |
+| VA2H | 1.0 | killstreak | EMP · community label (agrees, unconfirmed): EMP |
+| VA2I | 2.5 | line | Enemy flank has been lost. · community label (agrees, unconfirmed): Enemy flag has been lost |
+| VA2J | 1.8 | objective_flag | Enemy team has our flag! · community label (agrees, unconfirmed): Enemy team has our flag |
+| VA2K | 2.2 | objective_flag | Enemy flag has been captured. · community label (agrees, unconfirmed): Ememy flag has been captured |
+| VA2L | 1.7 | killstreak | enemy sentry detected. · community label (agrees, unconfirmed): Enemy sentry detected |
+| VA2M | 1.5 | weapon_name | Explosive Rounds. · community label (agrees, unconfirmed): Explosive rounds |
+| VA2N | 1.6 | menu | Extended Mags · community label (agrees, unconfirmed): Extended Mags |
+| VA2O | 1.1 | menu | Fast track. · community label (agrees, unconfirmed): Fast track |
+| VA2P | 1.2 | clock | 15 minutes. · community label (agrees, unconfirmed): 15 Minutes; 15 min |
+| VA2Q | 1.3 | clock | 15 seconds. · community label (agrees, unconfirmed): 15 Seconds |
+| VA2R | 1.0 | menu | First Aid. · community label (agrees, unconfirmed): First aid |
+| VA2S | 1.1 | clock | Five minutes. · community label (differs, unconfirmed): 5 minutes; 5 min; FIVE MINUTES |
+| VA2T | 1.1 | menu | Flak jacket. · community label (agrees, unconfirmed): Flak Jacket |
+| VA2U | 1.1 | weapon_name | Flashbang! · community label (differs, unconfirmed): Flash Bang |
+| VA2V | 1.0 | weapon_name | FMJ. · community label (agrees, unconfirmed): FMJ |
+| VA2W | 1.1 | menu | laser sight · community label (differs, unconfirmed): Focus; LASER SIGHT |
+| VA2X | 0.9 | menu | Accuracy. · community label (differs, unconfirmed): Fore grip; ACCURACY |
+| VA2Y | 1.4 | team | Foxtrot Team. · community label (agrees, unconfirmed): Foxtrot Team |
+| VA2Z | 0.8 | weapon_name | FRAG · community label (agrees, unconfirmed): Frag |
+| VA3 | 1.3 | grunt | AHHHHHH · community label (differs, unconfirmed): Scream |
+| VA30 | 1.4 | game_mode | Free for all. · community label (agrees, unconfirmed): Free for All |
+| VA31 | 1.6 | menu | Friendly fire off. · community label (agrees, unconfirmed): Friendly Fire Off |
+| VA32 | 1.4 | menu | Friendly fire on. · community label (agrees, unconfirmed): Friendly Fire On |
+| VA33 | 1.9 | game_over | Game over. · community label (agrees, unconfirmed): Game Over (deep/slow); GAME OVER |
+| VA34 | 1.1 | clock | Game time. · community label (agrees, unconfirmed): Game Time |
+| VA35 | 0.9 | line | General. · community label (agrees, unconfirmed): General; GENERALS |
+| VA36 | 1.2 | game_mode | Generals. · community label (agrees, unconfirmed): Generals |
+| VA37 | 0.7 | line | Ghost. · community label (agrees, unconfirmed): Ghost |
+| VA38 | 1.4 | menu | Grenade Launcher · community label (agrees, unconfirmed): Grenade Launcher |
+| VA39 | 1.0 | menu | Grenade type. · community label (agrees, unconfirmed): Grenade Type |
+| VA3A | 1.6 | killstreak | guided missile detected. · community label (agrees, unconfirmed): Guided Missile detected |
+| VA3B | 1.8 | killstreak | Goddid missile inbound. · community label (agrees, unconfirmed): Guided Missile inbound |
+| VA3C | 1.2 | killstreak | guided missile. · community label (agrees, unconfirmed): Guided Missile |
+| VA3D | 1.1 | status_battery | Gun battery low. · community label (agrees, unconfirmed): Gun battery low |
+| VA3E | 1.3 | system | Headset connected. · community label (agrees, unconfirmed): Headset Connected |
+| VA3F | 1.6 | system | headset disconnected. · community label (differs, unconfirmed): Headset Removed; HEADSET DISCONNECTED |
+| VA3G | 1.0 | menu | Healing Kit. · community label (agrees, unconfirmed): Healing Kit |
+| VA3H | 1.3 | killstreak | Hellstorm missile. · community label (agrees, unconfirmed): HellStorm Missile |
+| VA3I | 0.6 | grunt | Hi. · community label (agrees, unconfirmed): High |
+| VA3J | 1.3 | killstreak | Hijack complete. · community label (agrees, unconfirmed): HiJack Complete |
+| VA3K | 1.3 | killstreak | hijack enabled. · community label (agrees, unconfirmed): HiJack Enabled |
+| VA3L | 2.0 | line | the enemy has hijacked your equipment. · community label (agrees, unconfirmed): The enemy has hijacked your equipment |
+| VA3M | 1.0 | killstreak | Hijack. · community label (agrees, unconfirmed): HiJack |
+| VA3N | 1.1 | weapon_name | Hallow Point. · community label (differs, unconfirmed): Hollow Point |
+| VA3O | 1.2 | grunt | Woo-hoo! · community label (differs, unconfirmed): WHUUHOOO |
+| VA3P | 1.2 | grunt | Woo! · community label (differs, unconfirmed): WHUU |
+| VA3Q | 1.4 | grunt | Yeah! · community label (differs, unconfirmed): YEEAAAHH |
+| VA3R | 1.3 | objective_other | Hostage down. · community label (differs, unconfirmed): Hostage Died; HOSTAGE DOWN |
+| VA3S | 1.4 | objective_other | Hostage Rescued. · community label (agrees, unconfirmed): Hostage Rescued |
+| VA3T | 0.9 | grunt | Human · community label (agrees, unconfirmed): Human |
+| VA3U | 2.3 | killstreak | Incoming air raid, find cover. · community label (agrees, unconfirmed): Incoming air raid, find cover |
+| VA3V | 1.4 | killstreak | Incoming Air Raid · community label (agrees, unconfirmed): Incoming air raid |
+| VA3W | 1.2 | menu | Indoor mode. · community label (agrees, unconfirmed): Indoor Mode |
+| VA3X | 0.7 | menu | indoor. · community label (agrees, unconfirmed): Indoor |
+| VA3Y | 1.1 | objective_other | Infected. · community label (agrees, unconfirmed): Infected |
+| VA3Z | 1.0 | menu | fairing mode · community label (differs, unconfirmed): Install Accessory; PAIRING MODE |
+| VA4 | 1.5 | grunt | HUUUUUUUUUUUUUUUUU · community label (differs, unconfirmed): Pain sound |
+| VA40 | 1.4 | greeting | Join a faction. · community label (agrees, unconfirmed): Join a faction |
+| VA41 | 1.5 | greeting | Join the ranks! · community label (agrees, unconfirmed): Join the ranks |
+| VA42 | 0.8 | weapon_name | knife. · community label (agrees, unconfirmed): Knife |
+| VA43 | 1.1 | game_mode | Last Stand. · community label (agrees, unconfirmed): Last Stand |
+| VA44 | 0.8 | menu | Lethal · community label (agrees, unconfirmed): Lethal |
+| VA45 | 0.9 | line | Lights out. · community label (agrees, unconfirmed): Lights out |
+| VA46 | 1.5 | status_health | Life's depleted. · community label (differs, unconfirmed): Lives depleted |
+| VA47 | 1.1 | status_health | lives · community label (agrees, unconfirmed): Lives |
+| VA48 | 1.2 | menu | long barrel. · community label (agrees, unconfirmed): Long barrel |
+| VA49 | 0.8 | menu | long. · community label (agrees, unconfirmed): Long |
+| VA4A | 0.9 | menu | Low. · community label (agrees, unconfirmed): Low |
+| VA4B | 1.1 | weapon_name | M4. · community label (agrees, unconfirmed): M4 |
+| VA4C | 0.8 | line | Mall. · community label (differs, unconfirmed): Maul |
+| VA4D | 1.0 | menu | Medkit. · community label (differs, unconfirmed): Medkit; Med kit |
+| VA4E | 0.8 | menu | medium. · community label (agrees, unconfirmed): Medium |
+| VA4F | 1.1 | weapon_name | MG7. · community label (agrees, unconfirmed): MG7 |
+| VA4G | 1.2 | grunt | MGR. · community label (agrees, unconfirmed): MGR |
+| VA4H | 1.5 | killstreak | incoming missile strike. · community label (agrees, unconfirmed): Incoming Missile Strike |
+| VA4I | 1.8 | killstreak | enemy missile strike detected. · community label (agrees, unconfirmed): Enemy Missile Strike Detected |
+| VA4J | 1.0 | killstreak | missile strike. · community label (agrees, unconfirmed): Missile Strike |
+| VA4K | 1.7 | objective_other | missile swarm detected. · community label (agrees, unconfirmed): Missile Swarm Detected |
+| VA4L | 1.2 | killstreak | Incoming mortar. · community label (agrees, unconfirmed): Incoming Mortar |
+| VA4M | 1.1 | killstreak | Mortar round. · community label (agrees, unconfirmed): Mortar Round |
+| VA4N | 1.1 | line | NEXUS · community label (agrees, unconfirmed): Nexus |
+| VA4O | 1.2 | weapon_name | 9mm. · community label (agrees, unconfirmed): 9MM |
+| VA4P | 1.9 | killstreak | Nuclear launch detected. · community label (agrees, unconfirmed): Nuclear launch detected |
+| VA4Q | 2.1 | killstreak | Enemy nuclear launch detected. · community label (agrees, unconfirmed): Enemy nuclear launch detected |
+| VA4R | 1.7 | killstreak | incoming nuclear missile. · community label (agrees, unconfirmed): Incoming nuclear missile |
+| VA4S | 0.7 | killstreak | Nuke. · community label (agrees, unconfirmed): Nuke |
+| VA4T | 0.7 | menu | off. · community label (agrees, unconfirmed): Off |
+| VA4U | 1.1 | line | offhand equipped. · community label (agrees, unconfirmed): Offhand equipped |
+| VA4V | 0.6 | grunt | on. · community label (agrees, unconfirmed): On |
+| VA4W | 1.1 | menu | Outdoor mode. · community label (agrees, unconfirmed): Outdoor Mode |
+| VA4X | 0.8 | menu | Outdoor · community label (agrees, unconfirmed): Outdoor |
+| VA4Y | 0.9 | weapon_name | pepper spray. · community label (agrees, unconfirmed): Pepper Spray |
+| VA4Z | 0.9 | killstreak | Phoenix. · community label (agrees, unconfirmed): Phoenix |
+| VA5 | 1.3 | grunt | HAAA! · community label (differs, unconfirmed): another yell |
+| VA50 | 0.8 | weapon_name | Pistol · community label (agrees, unconfirmed): Pistol |
+| VA51 | 1.1 | menu | Quick hands. · community label (agrees, unconfirmed): Quick hands |
+| VA52 | 0.8 | line | Recon. · community label (agrees, unconfirmed): Recon |
+| VA53 | 1.0 | grunt | region. · community label (differs, unconfirmed): Regen |
+| VA54 | 1.4 | menu | Respawn Time. · community label (agrees, unconfirmed): Respawn Time |
+| VA55 | 1.4 | menu | Respawn Type. · community label (agrees, unconfirmed): Respawn Type |
+| VA56 | 1.3 | weapon_name | Rocket Launcher! · community label (agrees, unconfirmed): Rocket Launcher |
+| VA57 | 0.8 | weapon_name | Saber. · community label (agrees, unconfirmed): Saber |
+| VA58 | 1.0 | menu | Scavenger · community label (agrees, unconfirmed): Scavenger |
+| VA59 | 1.3 | clock | Second Life. · community label (agrees, unconfirmed): Second Life |
+| VA5A | 1.3 | menu | Choose a class. · community label (agrees, unconfirmed): Choose a Class |
+| VA5B | 1.1 | menu | Select fire. · community label (agrees, unconfirmed): Select Fire |
+| VA5C | 1.4 | menu | Select a game. · community label (agrees, unconfirmed): Select a Game |
+| VA5D | 1.2 | menu | Select a perk. · community label (agrees, unconfirmed): Select a Perk |
+| VA5E | 1.4 | team | Select a team. · community label (agrees, unconfirmed): Select a Team |
+| VA5F | 1.5 | menu | Select a weapon. · community label (agrees, unconfirmed): Select a Weapon |
+| VA5G | 1.6 | killstreak | Self-Destruct initiated. · community label (agrees, unconfirmed): Self destruct initiated |
+| VA5H | 1.4 | status_battery | Sensor battery low. · community label (agrees, unconfirmed): Sensor battery low |
+| VA5I | 1.6 | killstreak | Century Deployed. · community label (differs, unconfirmed): Sentry deployed |
+| VA5J | 0.8 | killstreak | Century. · community label (differs, unconfirmed): Sentry |
+| VA5K | 1.0 | status_shield | Shield equipped. · community label (differs, unconfirmed): Shield equiped |
+| VA5L | 0.8 | status_shield | SHIELD · community label (agrees, unconfirmed): Shield |
+| VA5M | 0.7 | menu | Short. · community label (agrees, unconfirmed): Short |
+| VA5N | 1.0 | game_mode | Siege · community label (differs, unconfirmed): Seige |
+| VA5O | 0.9 | menu | Silencer. · community label (agrees, unconfirmed): Silencer |
+| VA5P | 1.0 | clock | Six minutes. · community label (differs, unconfirmed): 6 Minutes |
+| VA5Q | 1.3 | weapon_name | Slug round. · community label (agrees, unconfirmed): Slug Round |
+| VA5R | 1.7 | weapon_name | SMG X3. · community label (agrees, unconfirmed): SMG X3 |
+| VA5S | 1.4 | weapon_name | Sniper R50. · community label (agrees, unconfirmed): Sniper R50 |
+| VA5T | 1.2 | menu | Speed boost. · community label (agrees, unconfirmed): Speed Boost |
+| VA5U | 0.9 | line | Spy. · community label (agrees, unconfirmed): Spy |
+| VA5V | 1.6 | menu | Squad leader off. · community label (agrees, unconfirmed): Squad Leader Off |
+| VA5W | 1.5 | menu | Squad Leader on! · community label (agrees, unconfirmed): Squad Leader On |
+| VA5X | 0.9 | line | Squad leader. · community label (agrees, unconfirmed): Squad Leader |
+| VA5Y | 1.3 | weapon_name | SR 100. · community label (differs, unconfirmed): SR100; Sr-100 |
+| VA5Z | 1.4 | system | Admin Unlocked. · community label (differs, unconfirmed): Standard; ADMIN UNLOCKED |
+| VA6 | 6.0 | grunt | Ah. Ah. Ah. · community label (differs, unconfirmed): ouch heavy breathing; Breathing |
+| VA60 | 1.1 | menu | Night Mode. · community label (differs, unconfirmed): Stealth; Stealth outdoor; NIGHT MODE |
+| VA61 | 1.2 | clock | Sudden death. · community label (agrees, unconfirmed): Sudden Death |
+| VA62 | 1.2 | game_mode | Supremacy! · community label (differs, unconfirmed): Supremecy; Supremacy |
+| VA63 | 0.9 | menu | Suppressor · community label (differs, unconfirmed): Supressor |
+| VA64 | 1.1 | game_mode | Survival. · community label (agrees, unconfirmed): Survival |
+| VA65 | 1.1 | objective_other | Survivor · community label (agrees, unconfirmed): Survivor |
+| VA66 | 1.0 | menu | Swap Lift. · community label (agrees, unconfirmed): Swap lift |
+| VA67 | 1.0 | weapon_name | Sword · community label (agrees, unconfirmed): Sword |
+| VA68 | 1.5 | killstreak | System hack initiated. · community label (agrees, unconfirmed): System Hack Initiated |
+| VA69 | 1.0 | killstreak | System hack. · community label (agrees, unconfirmed): System Hack |
+| VA6A | 1.4 | weapon_name | TAC 87. · community label (differs, unconfirmed): Tac87; Tac-87 |
+| VA6B | 1.3 | weapon_name | TAR 33. · community label (differs, unconfirmed): Tar33 |
+| VA6C | 0.8 | weapon_name | Taser · community label (agrees, unconfirmed): Taser |
+| VA6D | 1.9 | lead | Your team takes the lead. · community label (agrees, unconfirmed): Your team takes the lead |
+| VA6E | 2.7 | lead | Your team has lost the lead. · community label (agrees, unconfirmed): Your team has lost the lead |
+| VA6F | 1.0 | menu | Tactical. · community label (agrees, unconfirmed): Team Tactical; TACTICAL |
+| VA6G | 1.1 | line | Tier Gas · community label (differs, unconfirmed): Tear Gas |
+| VA6H | 1.1 | clock | 10 minutes. · community label (agrees, unconfirmed): 10 Minutes; 10 min |
+| VA6I | 1.6 | objective_other | The Hive · community label (agrees, unconfirmed): The Hive |
+| VA6J | 1.2 | objective_other | The Swarm. · community label (agrees, unconfirmed): The Swarm |
+| VA6K | 1.0 | menu | thick skin. · community label (agrees, unconfirmed): Thick Skin |
+| VA6L | 3.0 | countdown | Three, two, one. · community label (differs, unconfirmed): Three, Two, One; 36952.0 |
+| VA6M | 0.9 | menu | Toughness. · community label (agrees, unconfirmed): Toughness |
+| VA6N | 1.2 | menu | Tracker Rounds · community label (agrees, unconfirmed): Tracker Rounds |
+| VA6O | 0.7 | weapon_name | TRIP MINE! · community label (agrees, unconfirmed): Trip mine |
+| VA6P | 1.2 | clock | 25 minutes. · community label (agrees, unconfirmed): 25 Minutes |
+| VA6Q | 1.0 | clock | 20 minutes. · community label (agrees, unconfirmed): 20 Minutes; 20 min |
+| VA6R | 1.8 | killstreak | enemy UAV detected. · community label (agrees, unconfirmed): Enemy UAV detected |
+| VA6S | 1.5 | killstreak | incoming UAV. · community label (agrees, unconfirmed): Incoming UAV |
+| VA6T | 1.1 | killstreak | UAB · community label (differs, unconfirmed): UAV |
+| VA6U | 1.0 | line | Undercover. · community label (differs, unconfirmed): Under Cover |
+| VA6V | 1.0 | menu | Unlimited. · community label (agrees, unconfirmed): Unlimited |
+| VA6W | 1.1 | menu | Upgrade complete. · community label (agrees, unconfirmed): Upgrade Complete |
+| VA6X | 2.0 | status_shield | Shields Depleted · community label (agrees, unconfirmed): Shields Depleted |
+| VA6Y | 2.0 | status_shield | Shields Online · community label (agrees, unconfirmed): Shields Online |
+| VA6Z | 1.6 | kill_confirm | Kill! · community label (agrees, unconfirmed): Kill |
+| VA7 | 2.1 | line | Ugh, that's better. · community label (agrees, unconfirmed): ugh thats better |
+| VA70 | 1.0 | menu | Target Mode. · community label (agrees, unconfirmed): Target Mode |
+| VA71 | 1.4 | line | Vanguard. · community label (agrees, unconfirmed): Vanguard |
+| VA72 | 2.7 | line | The VIT has been killed! · community label (agrees, unconfirmed): The VIP has been killed |
+| VA73 | 1.1 | menu | water cooling. · community label (agrees, unconfirmed): Water Cooling |
+| VA74 | 1.5 | killstreak | Weapons Box Delivered. · community label (agrees, unconfirmed): Weapons box delivered |
+| VA75 | 1.5 | killstreak | weapons box detected. · community label (agrees, unconfirmed): Weapons box detected |
+| VA76 | 1.7 | killstreak | Incoming Weapon Box. · community label (agrees, unconfirmed): Incoming weapon box |
+| VA77 | 1.1 | killstreak | Weapons Box. · community label (agrees, unconfirmed): Weapons box |
+| VA78 | 2.4 | greeting | Welcome to Battle Company! · community label (differs, unconfirmed): Welcome to Lasertag Pro |
+| VA79 | 1.9 | line | A flank has been returned. · community label (agrees, unconfirmed): Our flag has been returned |
+| VA7A | 3.3 | objective_flag | Our flag has been captured! · community label (agrees, unconfirmed): Our flag has been captured |
+| VA7B | 1.8 | objective_flag | Our team has the flag! · community label (agrees, unconfirmed): Our team has the flag |
+| VA7C | 2.0 | game_mode | Welcome to Battle 360! · community label (agrees, unconfirmed): Welcome to Battle 360 |
+| VA7D | 1.7 | menu | Choose your destiny! · community label (agrees, unconfirmed): Choose your destiny |
+| VA7E | 1.8 | medal | Double Kill · community label (agrees, unconfirmed): Double Kill |
+| VA7F | 1.9 | medal | FATALITY · community label (agrees, unconfirmed): Fatality |
+| VA7G | 1.0 | line | Finish him! · community label (agrees, unconfirmed): Finish Him |
+| VA7H | 2.5 | medal | First Blood · community label (agrees, unconfirmed): First Blood |
+| VA7I | 1.7 | medal | Flawless victory! · community label (agrees, unconfirmed): Flawless Victory |
+| VA7J | 1.9 | kill_confirm | Kill them in Juro! · community label (differs, unconfirmed): Killamanjaro; KILLAMENJARO |
+| VA7K | 1.9 | medal | Killing spree · community label (agrees, unconfirmed): Killing Spree |
+| VA7L | 1.9 | kill_confirm | Killian Air · community label (differs, unconfirmed): Killionaire |
+| VA7M | 1.9 | medal | GO TACULAR! · community label (differs, unconfirmed): Killtacular; KILL TACULAR |
+| VA7N | 1.9 | line | Joltastrophe · community label (differs, unconfirmed): Killtastrophy; KILL TASTRIFY |
+| VA7O | 1.9 | line | CULTURUSITY · community label (differs, unconfirmed): Killtrosity; KILL TROSITY |
+| VA7P | 1.5 | line | Test your might. · community label (agrees, unconfirmed): Test your might |
+| VA7Q | 1.9 | medal | Triple Kill! · community label (differs, unconfirmed): Triple Kill; TRIPPLE KILL |
+| VA8 | 1.0 | kill_confirm | Kill! · community label (agrees, unconfirmed): Kill |
+| VA80 | 3.0 | countdown | Three, two, one. · community label (agrees, unconfirmed): Three, Two, One |
+| VA81 | 3.0 | countdown | Three, two, one. · community label (differs, unconfirmed): Three, Two, One; 3, 2, 1, WITH MUSIC |
+| VA82 | 3.0 | countdown | Three, two, one. · community label (agrees, unconfirmed): Three, Two, One |
+| VA83 | 10.7 | countdown | 10, 9, 8, 7, 6, 5, 4, 3, 2, 1. · community label (differs, unconfirmed): Countdown from 10; 10, 9, ..., 0 |
+| VA84 | 11.1 | countdown | 10, 9, 8, 7, 6, 5, 4, 3, 2, 1. · community label (differs, unconfirmed): Countdown from 10; 10, 9, ... 0 W MUSIC |
+| VA85 | 10.0 | countdown | 10, 9, 8, 7, 6, 5, 4, 3, 2, 1. · community label (differs, unconfirmed): Countdown from 10; 10, 9, ..., 0 |
+| VA86 | 2.0 | status_health | Health Critical. · community label (agrees, unconfirmed): Health Critical |
+| VA87 | 2.9 | status_health | health low. · community label (agrees, unconfirmed): Health Low |
+| VA88 | 1.1 | status_armor | Armored depleted. · community label (differs, unconfirmed): Armor Depleated |
+| VA89 | 1.1 | status_armor | Armor critical. · community label (agrees, unconfirmed): Armor Critical |
+| VA8A | 1.1 | status_armor | Armor low. · community label (agrees, unconfirmed): Armor Low |
+| VA8B | 1.2 | status_shield | Shields depleted. · community label (agrees, unconfirmed): Shields Depleted |
+| VA8C | 1.5 | status_shield | SHIELD ONLINE · community label (differs, unconfirmed): Shields Online |
+| VA8D | 2.3 | clock | Overtime · community label (agrees, unconfirmed): Overtime |
+| VA8E | 2.1 | kill_confirm | Kill confirmed. · community label (agrees, unconfirmed): Kill Confirmed |
+| VA8F | 1.4 | status_health | Shared lives. · community label (differs, unconfirmed): "Assault"; SHARED LIVES |
+| VA8G | 1.0 | line | auto detection. · community label (agrees, unconfirmed): "Auto detection" |
+| VA8H | 2.0 | system | Battle Company Systems Online. · community label (agrees, unconfirmed): "Battle company systems online" |
+| VA8I | 1.2 | game_mode | Battle Lines. · community label (agrees, unconfirmed): "Battle lines" |
+| VA8J | 1.6 | game_mode | Battle Royale · community label (agrees, unconfirmed): "Battle Royale"; BATTLE ROYALE |
+| VA8K | 1.3 | killstreak | battle strike · community label (agrees, unconfirmed): "Battle Strike" |
+| VA8L | 1.1 | game_mode | battle watch. · community label (agrees, unconfirmed): "Battle Watch" |
+| VA8M | 1.4 | game_mode | Battle World. · community label (agrees, unconfirmed): "Battle World" |
+| VA8N | 1.5 | game_mode | Borderlands · community label (agrees, unconfirmed): "Borderlands" |
+| VA8O | 1.2 | grunt | GUN GAME! · community label (differs, unconfirmed): "Brawl"; GUN GAME |
+| VA8P | 1.6 | objective_flag | Capture the flag. · community label (agrees, unconfirmed): "Capture the Flag"; CAPTURE THE FLAG |
+| VA8Q | 1.3 | system | Connection accepted. · community label (agrees, unconfirmed): "Connection Accepted" |
+| VA8R | 1.3 | system | Connection lost. · community label (agrees, unconfirmed): "Connection Lost" |
+| VA8S | 1.2 | system | Connection rejected. · community label (agrees, unconfirmed): "Connection rejected" |
+| VA8T | 1.2 | system | Debug Mode. · community label (agrees, unconfirmed): "Debug mode"; DEBUG MODE |
+| VA8U | 1.2 | system | demo mode. · community label (agrees, unconfirmed): "Demo mode" |
+| VA8V | 1.2 | system | pairing cleared · community label (differs, unconfirmed): "Devices cleared"; PAIRING CLEARED |
+| VA8W | 1.1 | line | enemy detected. · community label (agrees, unconfirmed): "Enemy detected" |
+| VA8X | 0.8 | system | Fail. · community label (agrees, unconfirmed): "Fail" |
+| VA8Y | 1.4 | system | Game found. · community label (agrees, unconfirmed): "Game Found" |
+| VA8Z | 1.2 | system | HUD Connected. · community label (agrees, unconfirmed): "Hud connected" |
+| VA9 | 1.2 | kill_confirm | Kill. · community label (agrees, unconfirmed): Kill |
+| VA90 | 1.5 | system | How Disconnected. · community label (differs, unconfirmed): "HUD Disconnected" |
+| VA91 | 2.0 | system | incoming HUD connection request. · community label (agrees, unconfirmed): "Incoming HUD Connectino Request" |
+| VA92 | 2.1 | system | incoming phone connection request. · community label (agrees, unconfirmed): "Incoming Phone Connection Request" |
+| VA93 | 1.2 | objective_hill | King of the hill! · community label (agrees, unconfirmed): "King of the Hill"; KING OF THE HILL |
+| VA94 | 1.4 | system | laser calibration. · community label (agrees, unconfirmed): "Laser Calibration" |
+| VA95 | 0.8 | system | loading. · community label (agrees, unconfirmed): "Loading" |
+| VA96 | 1.3 | line | motion detected. · community label (agrees, unconfirmed): "Motion Detected" |
+| VA97 | 1.4 | line | Motion Sensor · community label (agrees, unconfirmed): "Motion Sensor"; MOTION SENSOR |
+| VA98 | 0.8 | system | Pass. · community label (agrees, unconfirmed): "Pass" |
+| VA99 | 1.1 | system | Phone connected. · community label (agrees, unconfirmed): "Phone Connected"; PHONE CONNECTED |
+| VA9A | 1.3 | system | Phone disconnected. · community label (agrees, unconfirmed): "Phone disconnected"; PHONE DISCONNECTED |
+| VA9B | 1.9 | menu | Please confirm with the select key. · community label (agrees, unconfirmed): "Please confirm with the select key" |
+| VA9C | 1.6 | system | Primary bootloader. · community label (differs, unconfirmed): "Primary boot loader"; PRIMARY BOOT LOADER |
+| VA9D | 1.5 | system | primary device. · community label (agrees, unconfirmed): "Primary Device" |
+| VA9E | 1.2 | system | Admin locked. · community label (differs, unconfirmed): "Primary"; ADMIN LOCKED |
+| VA9F | 1.4 | killstreak | Proximity Mind. · community label (differs, unconfirmed): "Proximity mine" |
+| VA9G | 1.0 | line | Replicant. · community label (agrees, unconfirmed): "Replicant" |
+| VA9H | 1.5 | line | RESPONSE STATION · community label (differs, unconfirmed): "Respawn Station"; Respawn Station |
+| VA9I | 1.5 | system | Scanning for device. · community label (agrees, unconfirmed): "Scanning for Device" |
+| VA9J | 0.7 | system | Searching. · community label (agrees, unconfirmed): "Searching" |
+| VA9K | 1.9 | system | Secondary bootloader. · community label (differs, unconfirmed): "Secondary Boot Loader"; SECONDARY BOOT LOADER |
+| VA9L | 1.7 | system | secondary device. · community label (agrees, unconfirmed): "Secondary Device" |
+| VA9M | 1.4 | system | Admin full arc. · community label (differs, unconfirmed): "Secondary"; ADMIN FULL LOCKED |
+| VA9N | 1.5 | system | Sensors offline · community label (agrees, unconfirmed): "Sensors Offline" |
+| VA9O | 1.3 | line | Silence, they are · community label (differs, unconfirmed): "Silenced AR"; Silenced AR |
+| VA9P | 1.4 | game_mode | Survival Games. · community label (agrees, unconfirmed): "Survival Games" |
+| VA9Q | 1.2 | line | Testing complete. · community label (agrees, unconfirmed): "Testing Complete"; TESTING COMPLETE |
+| VA9R | 1.0 | system | Test mode. · community label (differs, unconfirmed): "Testing initiated"; TEST MODE |
+| VA9S | 0.9 | system | Volume. · community label (agrees, unconfirmed): "Volume"; VOLUME |
+| VA9T | 1.8 | system | One more weapon ready for duty. · community label (agrees, unconfirmed): "One more weapon ready for duty" |
+| VA9U | 2.4 | greeting | Welcome to Battle Company! · community label (agrees, unconfirmed): "Welcome to Battle Company"; WELCOME TO BATTLE COMPANY |
 
 ### Announcer (numbers / menu) (133)
 
 | id | s | category | words |
 |---|---|---|---|
-| VX01 | 0.5 | grunt | ONE. |
-| VX02 | 0.4 | number | too. |
-| VX03 | 0.5 | number | 3 |
-| VX04 | 0.6 | number | Four. |
-| VX05 | 0.5 | number | 5 |
-| VX06 | 0.5 | number | 6 |
-| VX07 | 0.5 | number | 7 |
-| VX08 | 0.4 | number | 8. |
-| VX09 | 0.5 | number | 9 |
-| VX0A | 1.2 | menu | dual wheeled |
-| VX0B | 1.1 | system | Field ID. |
-| VX0C | 1.2 | system | Game found. |
-| VX0D | 1.2 | system | Game host. |
-| VX0E | 1.0 | system | Game joined! |
-| VX0F | 1.3 | system | Initiating game. |
-| VX0G | 1.3 | system | No update found. |
-| VX0H | 1.6 | menu | Select Game Rules. |
-| VX0I | 1.0 | system | Update complete. |
-| VX0J | 1.1 | system | Update found. |
-| VX0K | 0.9 | system | Update Mode. |
-| VX0L | 1.0 | system | Update started. |
-| VX0M | 0.7 | system | version. |
-| VX0N | 1.5 | status_health | lives remaining. |
-| VX0O | 1.0 | system | Browse |
-| VX0P | 1.2 | team | Blue Team |
-| VX0Q | 0.9 | killstreak | Airstrike |
-| VX0R | 1.8 | clock | 10 Seconds Remain. |
-| VX0S | 1.0 | menu | Weapon Swap |
-| VX0T | 0.9 | line | depleted |
-| VX0U | 1.2 | game_mode | Domination. |
-| VX0V | 1.6 | killstreak | EMP Pulse |
-| VX0W | 0.8 | grunt | Error! |
-| VX0X | 1.6 | medal | first blood. |
-| VX0Y | 1.3 | objective_flag | Flag codes! |
-| VX0Z | 1.0 | menu | Focus. |
-| VX10 | 0.5 | number | 10. |
-| VX11 | 0.6 | number | 11 |
-| VX12 | 0.5 | number | well. |
-| VX13 | 0.5 | number | 13. |
-| VX14 | 0.6 | number | 14 |
-| VX15 | 0.7 | number | 15 |
-| VX16 | 0.8 | number | 16 |
-| VX17 | 0.8 | number | 17 |
-| VX18 | 0.6 | number | 18 |
-| VX19 | 0.8 | number | 19 |
-| VX1A | 0.8 | menu | For grip. |
-| VX1B | 0.9 | line | button |
-| VX1C | 1.2 | killstreak | Share Package! |
-| VX1D | 0.8 | objective_other | Checkpoint |
-| VX1E | 2.4 | status_health | Deathmatch. Lives pooled. |
-| VX1F | 1.6 | game_mode | Deathmatch timed. |
-| VX1G | 1.0 | menu | Defense. |
-| VX1H | 1.5 | medal | Killstreak Ready! |
-| VX20 | 0.5 | number | 20. |
-| VX21 | 0.7 | number | 21 |
-| VX22 | 0.7 | number | 22. |
-| VX23 | 0.7 | number | 23 |
-| VX24 | 0.8 | number | 24. |
-| VX25 | 0.7 | number | 25 |
-| VX26 | 0.7 | number | 26 |
-| VX27 | 0.7 | number | 27. |
-| VX28 | 0.6 | number | 28 |
-| VX29 | 0.7 | number | 29. |
-| VX30 | 0.6 | number | 30 |
-| VX31 | 0.7 | number | 31 |
-| VX32 | 0.7 | number | 32 |
-| VX33 | 0.7 | number | 33 |
-| VX34 | 0.7 | number | 34 |
-| VX35 | 0.6 | number | 35 |
-| VX36 | 0.7 | number | 36 |
-| VX37 | 0.7 | number | 37. |
-| VX38 | 0.6 | number | 38 |
-| VX39 | 0.7 | number | 39 |
-| VX40 | 0.4 | number | 40. |
-| VX41 | 0.7 | number | 41. |
-| VX42 | 0.6 | number | 42. |
-| VX43 | 0.7 | number | 43 |
-| VX44 | 0.7 | number | 44 |
-| VX45 | 0.6 | number | 45. |
-| VX46 | 0.7 | number | 46 |
-| VX47 | 0.6 | number | 47 |
-| VX48 | 0.6 | number | 48 |
-| VX49 | 0.7 | number | 49 |
-| VX50 | 0.5 | number | 50 |
-| VX51 | 1.3 | system | Standard headset. |
-| VX52 | 1.4 | system | Scoring headset. |
-| VX53 | 0.8 | system | Scanning! |
-| VX54 | 1.8 | menu | Respawn Point Enabled. |
-| VX55 | 2.0 | menu | Respawn Point Disabled. |
-| VX56 | 1.7 | menu | Respawn Station. |
-| VX57 | 0.8 | menu | Assault! |
-| VX58 | 0.8 | weapon_name | FRAG |
-| VX59 | 1.2 | objective_other | Storm Enabled. |
-| VX60 | 1.0 | menu | Ticket Mode |
-| VX61 | 2.2 | line | The survivors have held their ground. |
-| VX62 | 1.6 | objective_other | The infection is spread. |
-| VX63 | 0.5 | menu | Tank! |
-| VX64 | 0.9 | menu | SUPPORT! |
-| VX65 | 1.5 | system | Stress Test Mode. |
-| VX66 | 1.5 | objective_other | Storm Disabled. |
-| VX67 | 1.0 | menu | Stimpak! |
-| VX68 | 1.8 | menu | Sticky Grenade Launcher |
-| VX69 | 1.3 | status_shield | SHIELD PULSE |
-| VX70 | 0.9 | line | SAFE |
-| VX71 | 1.7 | line | Revive at Squad Leader. |
-| VX72 | 1.7 | menu | Revive at Respawn Point. |
-| VX73 | 1.0 | menu | Reload |
-| VX74 | 1.7 | menu | READ GENERATION ROUNDS |
-| VX75 | 1.1 | team | Red Team. |
-| VX76 | 0.9 | menu | random |
-| VX77 | 0.9 | menu | Rally |
-| VX78 | 1.4 | killstreak | Proximity Mine. |
-| VX79 | 1.3 | menu | Poison Grenades |
-| VX80 | 0.9 | menu | Offense. |
-| VX81 | 1.3 | line | Motion detected. |
-| VX82 | 1.0 | killstreak | Mortar Strike. |
-| VX83 | 1.2 | killstreak | Many Rockets! |
-| VX84 | 1.2 | menu | melee attack |
-| VX85 | 1.1 | menu | Medigel. |
-| VX86 | 1.2 | medal | Lucky shot! |
-| VX87 | 0.9 | system | Loading. |
-| VX88 | 1.2 | menu | Lifesteal |
-| VX89 | 1.6 | medal | Killstrike ready! |
-| VX90 | 1.0 | menu | Kids Mode |
-| VX91 | 1.7 | menu | Hold Trigger to Charge. |
-| VX92 | 2.2 | menu | Hold Reload to fully reload. |
-| VX93 | 1.3 | greeting | Hello Kitty! |
-| VX94 | 1.3 | menu | Healing Tracker Dart. |
-| VX95 | 1.6 | system | Grenade Disconnected. |
-| VX96 | 1.3 | system | Grenade connected. |
-| VX97 | 1.4 | team | Green Team. |
-| VX98 | 0.9 | system | Gesture! |
-| VX99 | 1.4 | menu | Frost Grenades. |
+| VX01 | 0.5 | grunt | ONE. · community label (differs, unconfirmed): 1.0 |
+| VX02 | 0.4 | number | too. · community label (differs, unconfirmed): 2.0 |
+| VX03 | 0.5 | number | 3 · community label (agrees, unconfirmed): 3.0 |
+| VX04 | 0.6 | number | Four. · community label (differs, unconfirmed): 4.0 |
+| VX05 | 0.5 | number | 5 · community label (agrees, unconfirmed): 5.0 |
+| VX06 | 0.5 | number | 6 · community label (agrees, unconfirmed): 6.0 |
+| VX07 | 0.5 | number | 7 · community label (agrees, unconfirmed): 7.0 |
+| VX08 | 0.4 | number | 8. · community label (agrees, unconfirmed): 8.0 |
+| VX09 | 0.5 | number | 9 · community label (agrees, unconfirmed): 9.0 |
+| VX0A | 1.2 | menu | dual wheeled · community label (differs, unconfirmed): DUAL WIELD |
+| VX0B | 1.1 | system | Field ID. · community label (agrees, unconfirmed): FIELD ID |
+| VX0C | 1.2 | system | Game found. · community label (agrees, unconfirmed): GAME FOUND |
+| VX0D | 1.2 | system | Game host. · community label (agrees, unconfirmed): GAME HOST |
+| VX0E | 1.0 | system | Game joined! · community label (agrees, unconfirmed): GAME JOINED |
+| VX0F | 1.3 | system | Initiating game. · community label (agrees, unconfirmed): INITIATING GAME |
+| VX0G | 1.3 | system | No update found. · community label (agrees, unconfirmed): NO UPDATE FOUND |
+| VX0H | 1.6 | menu | Select Game Rules. · community label (agrees, unconfirmed): SELECT GAME RULES |
+| VX0I | 1.0 | system | Update complete. · community label (agrees, unconfirmed): UPDATE COMPLETE |
+| VX0J | 1.1 | system | Update found. · community label (agrees, unconfirmed): UPDATE FOUND |
+| VX0K | 0.9 | system | Update Mode. · community label (agrees, unconfirmed): UPDATE MODE |
+| VX0L | 1.0 | system | Update started. · community label (agrees, unconfirmed): UPDATE STARTED |
+| VX0M | 0.7 | system | version. · community label (agrees, unconfirmed): VERSION |
+| VX0N | 1.5 | status_health | lives remaining. · community label (agrees, unconfirmed): LIVES REMAINING |
+| VX0O | 1.0 | system | Browse · community label (differs, unconfirmed): BRAWL |
+| VX0P | 1.2 | team | Blue Team · community label (agrees, unconfirmed): BLUE TEAM |
+| VX0Q | 0.9 | killstreak | Airstrike · community label (differs, unconfirmed): AIR STRIKE |
+| VX0R | 1.8 | clock | 10 Seconds Remain. · community label (agrees, unconfirmed): 10 SECONDS REMAIN |
+| VX0S | 1.0 | menu | Weapon Swap · community label (agrees, unconfirmed): WEAPON SWAP |
+| VX0T | 0.9 | line | depleted · community label (agrees, unconfirmed): DEPLETED |
+| VX0U | 1.2 | game_mode | Domination. · community label (agrees, unconfirmed): DOMINATION |
+| VX0V | 1.6 | killstreak | EMP Pulse · community label (differs, unconfirmed): EMP PULES |
+| VX0W | 0.8 | grunt | Error! · community label (agrees, unconfirmed): ERROR |
+| VX0X | 1.6 | medal | first blood. · community label (agrees, unconfirmed): FIRST BLOOD |
+| VX0Y | 1.3 | objective_flag | Flag codes! · community label (agrees, unconfirmed): FLAG CODES |
+| VX0Z | 1.0 | menu | Focus. · community label (agrees, unconfirmed): FOCUS |
+| VX10 | 0.5 | number | 10. · community label (agrees, unconfirmed): 10.0 |
+| VX11 | 0.6 | number | 11 · community label (agrees, unconfirmed): 11.0 |
+| VX12 | 0.5 | number | well. · community label (differs, unconfirmed): 12.0 |
+| VX13 | 0.5 | number | 13. · community label (agrees, unconfirmed): 13.0 |
+| VX14 | 0.6 | number | 14 · community label (agrees, unconfirmed): 14.0 |
+| VX15 | 0.7 | number | 15 · community label (agrees, unconfirmed): 15.0 |
+| VX16 | 0.8 | number | 16 · community label (agrees, unconfirmed): 16.0 |
+| VX17 | 0.8 | number | 17 · community label (agrees, unconfirmed): 17.0 |
+| VX18 | 0.6 | number | 18 · community label (agrees, unconfirmed): 18.0 |
+| VX19 | 0.8 | number | 19 · community label (agrees, unconfirmed): 19.0 |
+| VX1A | 0.8 | menu | For grip. · community label (differs, unconfirmed): FOREGRIP |
+| VX1B | 0.9 | line | button · community label (agrees, unconfirmed): BUTTON |
+| VX1C | 1.2 | killstreak | Share Package! · community label (differs, unconfirmed): CARE PACKAGE |
+| VX1D | 0.8 | objective_other | Checkpoint · community label (agrees, unconfirmed): CHECKPOINT |
+| VX1E | 2.4 | status_health | Deathmatch. Lives pooled. · community label (agrees, unconfirmed): DEATHMATCH LIVES POOL |
+| VX1F | 1.6 | game_mode | Deathmatch timed. · community label (agrees, unconfirmed): DEATHMATCH TIMED |
+| VX1G | 1.0 | menu | Defense. · community label (agrees, unconfirmed): DEFENSE |
+| VX1H | 1.5 | medal | Killstreak Ready! · community label (differs, unconfirmed): KILL STREAK READY |
+| VX20 | 0.5 | number | 20. · community label (agrees, unconfirmed): 20.0 |
+| VX21 | 0.7 | number | 21 · community label (agrees, unconfirmed): 21.0 |
+| VX22 | 0.7 | number | 22. · community label (agrees, unconfirmed): 22.0 |
+| VX23 | 0.7 | number | 23 · community label (agrees, unconfirmed): 23.0 |
+| VX24 | 0.8 | number | 24. · community label (agrees, unconfirmed): 24.0 |
+| VX25 | 0.7 | number | 25 · community label (agrees, unconfirmed): 25.0 |
+| VX26 | 0.7 | number | 26 · community label (agrees, unconfirmed): 26.0 |
+| VX27 | 0.7 | number | 27. · community label (agrees, unconfirmed): 27.0 |
+| VX28 | 0.6 | number | 28 · community label (agrees, unconfirmed): 28.0 |
+| VX29 | 0.7 | number | 29. · community label (agrees, unconfirmed): 29.0 |
+| VX30 | 0.6 | number | 30 · community label (agrees, unconfirmed): 30.0 |
+| VX31 | 0.7 | number | 31 · community label (agrees, unconfirmed): 31.0 |
+| VX32 | 0.7 | number | 32 · community label (agrees, unconfirmed): 32.0 |
+| VX33 | 0.7 | number | 33 · community label (agrees, unconfirmed): 33.0 |
+| VX34 | 0.7 | number | 34 · community label (agrees, unconfirmed): 34.0 |
+| VX35 | 0.6 | number | 35 · community label (agrees, unconfirmed): 35.0 |
+| VX36 | 0.7 | number | 36 · community label (agrees, unconfirmed): 36.0 |
+| VX37 | 0.7 | number | 37. · community label (agrees, unconfirmed): 37.0 |
+| VX38 | 0.6 | number | 38 · community label (agrees, unconfirmed): 38.0 |
+| VX39 | 0.7 | number | 39 · community label (agrees, unconfirmed): 39.0 |
+| VX40 | 0.4 | number | 40. · community label (agrees, unconfirmed): 40.0 |
+| VX41 | 0.7 | number | 41. · community label (agrees, unconfirmed): 41.0 |
+| VX42 | 0.6 | number | 42. · community label (agrees, unconfirmed): 42.0 |
+| VX43 | 0.7 | number | 43 · community label (agrees, unconfirmed): 43.0 |
+| VX44 | 0.7 | number | 44 · community label (agrees, unconfirmed): 44.0 |
+| VX45 | 0.6 | number | 45. · community label (agrees, unconfirmed): 45.0 |
+| VX46 | 0.7 | number | 46 · community label (agrees, unconfirmed): 46.0 |
+| VX47 | 0.6 | number | 47 · community label (agrees, unconfirmed): 47.0 |
+| VX48 | 0.6 | number | 48 · community label (agrees, unconfirmed): 48.0 |
+| VX49 | 0.7 | number | 49 · community label (agrees, unconfirmed): 49.0 |
+| VX50 | 0.5 | number | 50 · community label (agrees, unconfirmed): 50.0 |
+| VX51 | 1.3 | system | Standard headset. · community label (agrees, unconfirmed): STANDARD HEADSET |
+| VX52 | 1.4 | system | Scoring headset. · community label (agrees, unconfirmed): SCORING HEADSET |
+| VX53 | 0.8 | system | Scanning! · community label (agrees, unconfirmed): SCANNING |
+| VX54 | 1.8 | menu | Respawn Point Enabled. · community label (agrees, unconfirmed): RESPAWN POINT ENABLED |
+| VX55 | 2.0 | menu | Respawn Point Disabled. · community label (agrees, unconfirmed): RESPAWN POINT DISABLED |
+| VX56 | 1.7 | menu | Respawn Station. · community label (agrees, unconfirmed): RESPAWN STATION |
+| VX57 | 0.8 | menu | Assault! · community label (agrees, unconfirmed): ASSAULT |
+| VX58 | 0.8 | weapon_name | FRAG · community label (agrees, unconfirmed): FRAG |
+| VX59 | 1.2 | objective_other | Storm Enabled. · community label (agrees, unconfirmed): STORM ENABLED |
+| VX60 | 1.0 | menu | Ticket Mode · community label (agrees, unconfirmed): TICKET MODE |
+| VX61 | 2.2 | line | The survivors have held their ground. · community label (agrees, unconfirmed): THE SURVIVORS HAVE HELD THEIR GROUND |
+| VX62 | 1.6 | objective_other | The infection is spread. · community label (agrees, unconfirmed): THE INFECTION HAS SPREAD |
+| VX63 | 0.5 | menu | Tank! · community label (agrees, unconfirmed): TANK |
+| VX64 | 0.9 | menu | SUPPORT! · community label (agrees, unconfirmed): SUPPORT |
+| VX65 | 1.5 | system | Stress Test Mode. · community label (agrees, unconfirmed): STRESS TEST MODE |
+| VX66 | 1.5 | objective_other | Storm Disabled. · community label (agrees, unconfirmed): STORM DISABLED |
+| VX67 | 1.0 | menu | Stimpak! · community label (differs, unconfirmed): STEM PACK |
+| VX68 | 1.8 | menu | Sticky Grenade Launcher · community label (agrees, unconfirmed): STICKY GRENADE LAUNCHER |
+| VX69 | 1.3 | status_shield | SHIELD PULSE · community label (agrees, unconfirmed): SHIELD PULSE |
+| VX70 | 0.9 | line | SAFE · community label (agrees, unconfirmed): SAFE |
+| VX71 | 1.7 | line | Revive at Squad Leader. · community label (agrees, unconfirmed): REVIVE AT SQUAD |
+| VX72 | 1.7 | menu | Revive at Respawn Point. · community label (agrees, unconfirmed): REVIVE AT RESPAWN |
+| VX73 | 1.0 | menu | Reload · community label (agrees, unconfirmed): RELOAD |
+| VX74 | 1.7 | menu | READ GENERATION ROUNDS · community label (differs, unconfirmed): REGENERATION ROUNDS |
+| VX75 | 1.1 | team | Red Team. · community label (agrees, unconfirmed): RED TEAM |
+| VX76 | 0.9 | menu | random · community label (agrees, unconfirmed): RANDOM |
+| VX77 | 0.9 | menu | Rally · community label (agrees, unconfirmed): RALLY |
+| VX78 | 1.4 | killstreak | Proximity Mine. · community label (agrees, unconfirmed): PROXIMITY MINE |
+| VX79 | 1.3 | menu | Poison Grenades · community label (agrees, unconfirmed): POISON GRENADES |
+| VX80 | 0.9 | menu | Offense. · community label (agrees, unconfirmed): OFFENSE |
+| VX81 | 1.3 | line | Motion detected. · community label (agrees, unconfirmed): MOTION DETECTED |
+| VX82 | 1.0 | killstreak | Mortar Strike. · community label (agrees, unconfirmed): MORTAR STRIKE |
+| VX83 | 1.2 | killstreak | Many Rockets! · community label (differs, unconfirmed): MINI ROCKETS |
+| VX84 | 1.2 | menu | melee attack · community label (agrees, unconfirmed): MELEE ATTACK |
+| VX85 | 1.1 | menu | Medigel. · community label (agrees, unconfirmed): MEDIGEL |
+| VX86 | 1.2 | medal | Lucky shot! · community label (agrees, unconfirmed): LUCKY SHOT |
+| VX87 | 0.9 | system | Loading. · community label (agrees, unconfirmed): LOADING |
+| VX88 | 1.2 | menu | Lifesteal · community label (differs, unconfirmed): LIFE STEAL |
+| VX89 | 1.6 | medal | Killstrike ready! · community label (differs, unconfirmed): KILL STRIKE READY |
+| VX90 | 1.0 | menu | Kids Mode · community label (agrees, unconfirmed): KIDS MODE |
+| VX91 | 1.7 | menu | Hold Trigger to Charge. · community label (agrees, unconfirmed): HOLD TRIGGER TO CHARGE |
+| VX92 | 2.2 | menu | Hold Reload to fully reload. · community label (agrees, unconfirmed): HOLD RELOAD TO FULLY RELOAD |
+| VX93 | 1.3 | greeting | Hello Kitty! · community label (agrees, unconfirmed): HELLO KITTY |
+| VX94 | 1.3 | menu | Healing Tracker Dart. · community label (agrees, unconfirmed): HEALING TRACKER DART |
+| VX95 | 1.6 | system | Grenade Disconnected. · community label (agrees, unconfirmed): GRENADE DISCONNECTED |
+| VX96 | 1.3 | system | Grenade connected. · community label (agrees, unconfirmed): GRENADE CONNECTED |
+| VX97 | 1.4 | team | Green Team. · community label (agrees, unconfirmed): GREEN TEAM |
+| VX98 | 0.9 | system | Gesture! · community label (agrees, unconfirmed): GESTURE |
+| VX99 | 1.4 | menu | Frost Grenades. · community label (agrees, unconfirmed): FROST GRENADES |
 
 ### Announcer (upgrades) (66)
 
 | id | s | category | words |
 |---|---|---|---|
-| VZ01 | 1.9 | weapon_name | two-shot sniper rifle. |
-| VZ02 | 1.8 | weapon_name | Two Shot Steam Rifle |
-| VZ03 | 1.3 | weapon_name | 8-Bit Rifle |
-| VZ04 | 2.3 | weapon_name | Armor Piercing Sniper Rifle |
-| VZ05 | 1.8 | menu | Automatic Assault Rifle |
-| VZ06 | 1.8 | weapon_name | Automatic Shotgun |
-| VZ07 | 2.6 | weapon_name | BFG 9000 Charge Gun |
-| VZ08 | 1.6 | menu | Burst Assault Rifle. |
-| VZ09 | 2.0 | weapon_name | Burst Submachine Gun |
-| VZ0A | 2.4 | menu | Burst Sticky Grenade Launcher |
-| VZ0B | 1.8 | weapon_name | Charge Pulse Rifle. |
-| VZ0C | 1.5 | menu | Choose and upgrade. |
-| VZ0D | 1.2 | weapon_name | Crossbow! |
-| VZ0E | 0.8 | menu | Damage! |
-| VZ0F | 2.1 | weapon_name | Double Barrel Shotgun. |
-| VZ0G | 1.8 | line | DROID AUTOBLASTER |
-| VZ0H | 1.9 | menu | Energy Assault Rifle |
-| VZ0I | 2.0 | weapon_name | Energy Automatic Rifle |
-| VZ0J | 1.8 | weapon_name | Energy Burst Rifle. |
-| VZ0K | 2.2 | weapon_name | Energy Charge Sniper Rifle. |
-| VZ0L | 1.9 | weapon_name | Energy Guttling Gun. |
-| VZ0M | 1.5 | weapon_name | energy laser. |
-| VZ0N | 1.6 | weapon_name | Energy Shotgun. |
-| VZ0O | 1.8 | weapon_name | Energy Sniper Rifle. |
-| VZ0P | 0.9 | menu | Finesse. |
-| VZ0Q | 1.5 | weapon_name | Flamethrower |
-| VZ0R | 1.7 | menu | Frost Burst Rifle |
-| VZ0S | 1.4 | menu | Frost laser. |
-| VZ0T | 2.4 | menu | Frost Semi-Automatic Rifle |
-| VZ0U | 1.2 | weapon_name | Gatling gun! |
-| VZ0V | 1.5 | weapon_name | Heavy Machine Gun. |
-| VZ0W | 1.6 | weapon_name | Incendiary Rifle |
-| VZ0X | 1.9 | objective_other | Infected spray attack. |
-| VZ0Y | 2.1 | weapon_name | M4 Automatic Rifle |
-| VZ0Z | 2.1 | weapon_name | Magnet Semi-Auto Rifle |
-| VZ10 | 1.7 | weapon_name | Mini Rocket Launcher |
-| VZ11 | 1.6 | weapon_name | Newbie Cannon! |
-| VZ12 | 0.7 | menu | off. |
-| VZ13 | 0.7 | grunt | on. |
-| VZ14 | 1.7 | menu | Poison Burst Rifle |
-| VZ15 | 1.8 | menu | Poison Gas Launcher |
-| VZ16 | 1.8 | menu | Poison submachine gun. |
-| VZ17 | 1.8 | objective_other | Randomize Infection. |
-| VZ18 | 1.1 | menu | RANK 1 |
-| VZ19 | 1.1 | menu | RANK 2 |
-| VZ1A | 1.3 | menu | Rank 3! |
-| VZ1B | 2.1 | weapon_name | Rapid Fire Sniper Rifle |
-| VZ1C | 1.0 | menu | Recovery! |
-| VZ1D | 2.1 | menu | Semi-auto Assault Rifle |
-| VZ1E | 2.1 | weapon_name | Semi Auto Sniper Rifle |
-| VZ1F | 1.2 | weapon_name | Shotgun! |
-| VZ1G | 2.1 | weapon_name | silenced submachine gun. |
-| VZ1H | 1.9 | weapon_name | Silence Sniper Rifle |
-| VZ1I | 1.5 | weapon_name | Submachine gun. |
-| VZ1J | 1.3 | weapon_name | Sniper Rifle |
-| VZ1K | 1.3 | menu | Specialists |
-| VZ1L | 0.9 | menu | speed |
-| VZ1M | 1.0 | menu | Stealth |
-| VZ1N | 2.2 | weapon_name | Steambolt submachine gun. |
-| VZ1O | 1.7 | weapon_name | Stormtrooper Rifle |
-| VZ1P | 2.4 | weapon_name | Sustain Fire Submachine Gun. |
-| VZ1Q | 1.3 | weapon_name | Taser Rifle |
-| VZ1R | 2.0 | weapon_name | Thumper submachine gun. |
-| VZ1S | 0.9 | menu | Toughness |
-| VZ1T | 1.8 | menu | Upgrade available! |
-| VZ1U | 1.0 | menu | Upgrade mode. |
+| VZ01 | 1.9 | weapon_name | two-shot sniper rifle. · community label (agrees, unconfirmed): TWO SHOT SNIPER RIFLE |
+| VZ02 | 1.8 | weapon_name | Two Shot Steam Rifle · community label (agrees, unconfirmed): TWO SHOT STEAM RIFLE |
+| VZ03 | 1.3 | weapon_name | 8-Bit Rifle · community label (agrees, unconfirmed): 8 BIT RIFLE |
+| VZ04 | 2.3 | weapon_name | Armor Piercing Sniper Rifle · community label (agrees, unconfirmed): ARMOR PIERCING SNIPER RIFLE |
+| VZ05 | 1.8 | menu | Automatic Assault Rifle · community label (agrees, unconfirmed): AUTOMATIC ASSAULT RIFLE |
+| VZ06 | 1.8 | weapon_name | Automatic Shotgun · community label (agrees, unconfirmed): AUTOMATIC SHOTGUN |
+| VZ07 | 2.6 | weapon_name | BFG 9000 Charge Gun · community label (agrees, unconfirmed): BFG 9000 CHARGE RIFLE |
+| VZ08 | 1.6 | menu | Burst Assault Rifle. · community label (agrees, unconfirmed): BURST ASSAULT RIFLE |
+| VZ09 | 2.0 | weapon_name | Burst Submachine Gun · community label (agrees, unconfirmed): BURST SUB MACHINE GUN |
+| VZ0A | 2.4 | menu | Burst Sticky Grenade Launcher · community label (agrees, unconfirmed): BURST STICKY GRENADE LAUNCHER |
+| VZ0B | 1.8 | weapon_name | Charge Pulse Rifle. · community label (agrees, unconfirmed): CHARGE PULSE RIFLE |
+| VZ0C | 1.5 | menu | Choose and upgrade. · community label (agrees, unconfirmed): CHOOSE AN UPGRADE |
+| VZ0D | 1.2 | weapon_name | Crossbow! · community label (differs, unconfirmed): CROSS BOW |
+| VZ0E | 0.8 | menu | Damage! · community label (agrees, unconfirmed): DAMAGE |
+| VZ0F | 2.1 | weapon_name | Double Barrel Shotgun. · community label (agrees, unconfirmed): DOUBLE BARREL SHOT GUN |
+| VZ0G | 1.8 | line | DROID AUTOBLASTER · community label (differs, unconfirmed): DROID AUTO BLASTER |
+| VZ0H | 1.9 | menu | Energy Assault Rifle · community label (agrees, unconfirmed): ENERGY ASSAULT RIFLE |
+| VZ0I | 2.0 | weapon_name | Energy Automatic Rifle · community label (agrees, unconfirmed): ENERGY AUTOMATIC RIFLE |
+| VZ0J | 1.8 | weapon_name | Energy Burst Rifle. · community label (agrees, unconfirmed): ENERGY BURST RIFLE |
+| VZ0K | 2.2 | weapon_name | Energy Charge Sniper Rifle. · community label (agrees, unconfirmed): ENERGY CHARGED SNIPER RIFLE |
+| VZ0L | 1.9 | weapon_name | Energy Guttling Gun. · community label (agrees, unconfirmed): ENERGY GATLING GUN |
+| VZ0M | 1.5 | weapon_name | energy laser. · community label (agrees, unconfirmed): ENERGY LASER |
+| VZ0N | 1.6 | weapon_name | Energy Shotgun. · community label (differs, unconfirmed): ENERGY SHOT GUN |
+| VZ0O | 1.8 | weapon_name | Energy Sniper Rifle. · community label (agrees, unconfirmed): ENERGY SNIPER RIFLE |
+| VZ0P | 0.9 | menu | Finesse. · community label (agrees, unconfirmed): FINESS |
+| VZ0Q | 1.5 | weapon_name | Flamethrower · community label (differs, unconfirmed): FLAME THROWER |
+| VZ0R | 1.7 | menu | Frost Burst Rifle · community label (agrees, unconfirmed): FROST BURST RIFLE |
+| VZ0S | 1.4 | menu | Frost laser. · community label (agrees, unconfirmed): FROST LASER |
+| VZ0T | 2.4 | menu | Frost Semi-Automatic Rifle · community label (agrees, unconfirmed): FROST SEMI-AUTOMATIC RIFLE |
+| VZ0U | 1.2 | weapon_name | Gatling gun! · community label (differs, unconfirmed): GATTLING GUN |
+| VZ0V | 1.5 | weapon_name | Heavy Machine Gun. · community label (agrees, unconfirmed): HEAVY MACHINE GUN |
+| VZ0W | 1.6 | weapon_name | Incendiary Rifle · community label (differs, unconfirmed): INCINDIARY RIFLE |
+| VZ0X | 1.9 | objective_other | Infected spray attack. · community label (agrees, unconfirmed): INFECTED SPRAY ATTACK |
+| VZ0Y | 2.1 | weapon_name | M4 Automatic Rifle · community label (agrees, unconfirmed): M4 AUTOMATIC RIFLE |
+| VZ0Z | 2.1 | weapon_name | Magnet Semi-Auto Rifle · community label (agrees, unconfirmed): MAGNET SEMI-AUTO RIFLE |
+| VZ10 | 1.7 | weapon_name | Mini Rocket Launcher · community label (agrees, unconfirmed): MINI ROCKET LAUNCHER |
+| VZ11 | 1.6 | weapon_name | Newbie Cannon! · community label (agrees, unconfirmed): NEWBIE CANNON |
+| VZ12 | 0.7 | menu | off. · community label (agrees, unconfirmed): OFF |
+| VZ13 | 0.7 | grunt | on. · community label (agrees, unconfirmed): ON |
+| VZ14 | 1.7 | menu | Poison Burst Rifle · community label (agrees, unconfirmed): POISON BURST RIFLE |
+| VZ15 | 1.8 | menu | Poison Gas Launcher · community label (agrees, unconfirmed): POISON GAS LAUNCHER |
+| VZ16 | 1.8 | menu | Poison submachine gun. · community label (agrees, unconfirmed): POISON SUB MACHINE GUN |
+| VZ17 | 1.8 | objective_other | Randomize Infection. · community label (agrees, unconfirmed): RANDOMIZE INFECTION |
+| VZ18 | 1.1 | menu | RANK 1 · community label (agrees, unconfirmed): RANK 1 |
+| VZ19 | 1.1 | menu | RANK 2 · community label (agrees, unconfirmed): RANK 2 |
+| VZ1A | 1.3 | menu | Rank 3! · community label (agrees, unconfirmed): RANK 3 |
+| VZ1B | 2.1 | weapon_name | Rapid Fire Sniper Rifle · community label (agrees, unconfirmed): RAPID FIRE SNIPER RIFLE |
+| VZ1C | 1.0 | menu | Recovery! · community label (agrees, unconfirmed): RECOVERY |
+| VZ1D | 2.1 | menu | Semi-auto Assault Rifle · community label (agrees, unconfirmed): SEMI-AUTO ASSAULT RIFLE |
+| VZ1E | 2.1 | weapon_name | Semi Auto Sniper Rifle · community label (agrees, unconfirmed): SEMI-AUTO SNIPER RIFLE |
+| VZ1F | 1.2 | weapon_name | Shotgun! · community label (agrees, unconfirmed): SHOTGUN |
+| VZ1G | 2.1 | weapon_name | silenced submachine gun. · community label (agrees, unconfirmed): SILENCED SUB MACHINE GUN |
+| VZ1H | 1.9 | weapon_name | Silence Sniper Rifle · community label (agrees, unconfirmed): SILENCED SNIPER RIFLE |
+| VZ1I | 1.5 | weapon_name | Submachine gun. · community label (differs, unconfirmed): SUB MACHINE GUN |
+| VZ1J | 1.3 | weapon_name | Sniper Rifle · community label (agrees, unconfirmed): SNIPER RIFLE |
+| VZ1K | 1.3 | menu | Specialists · community label (agrees, unconfirmed): SPECIALIST |
+| VZ1L | 0.9 | menu | speed · community label (agrees, unconfirmed): SPEED |
+| VZ1M | 1.0 | menu | Stealth · community label (agrees, unconfirmed): STEALTH |
+| VZ1N | 2.2 | weapon_name | Steambolt submachine gun. · community label (differs, unconfirmed): STEAM BOLT SUB MACHINE GUN |
+| VZ1O | 1.7 | weapon_name | Stormtrooper Rifle · community label (differs, unconfirmed): STORM TROOPER RIFLE |
+| VZ1P | 2.4 | weapon_name | Sustain Fire Submachine Gun. · community label (differs, unconfirmed): SUSTAINED FIRE SUB MACHINE GUN |
+| VZ1Q | 1.3 | weapon_name | Taser Rifle · community label (differs, unconfirmed): TAISER RIFLE |
+| VZ1R | 2.0 | weapon_name | Thumper submachine gun. · community label (agrees, unconfirmed): THUMPER SUB MACHINE GUN |
+| VZ1S | 0.9 | menu | Toughness · community label (agrees, unconfirmed): TOUGHNESS |
+| VZ1T | 1.8 | menu | Upgrade available! · community label (agrees, unconfirmed): UPGRADE AVAILABLE |
+| VZ1U | 1.0 | menu | Upgrade mode. · community label (agrees, unconfirmed): UPGRADE MODE |
 
 ### Creature (25)
 
 | id | s | category | words |
 |---|---|---|---|
-| V51 | 1.6 | intro | HMMMMMMMMMMMMMMMMMMM |
-| V52 | 6.0 | idle_loop | The End |
-| V53 | 3.5 | death_scream | R-r-r-rrrrrrrr |
-| V54 | 3.0 | death_scream | HELLO! |
-| V55 | 3.3 | death_scream | HELLO! |
-| V56 | 6.2 | line | A bug! A bug! A bug... |
-| V57 | 2.1 | healed | GRR! |
-| V58 | 1.8 | kill_confirm | THANKS FOR WATCHING! |
-| V59 | 1.7 | kill_confirm | THANKS FOR WATCHING!! |
+| V51 | 1.6 | intro | HMMMMMMMMMMMMMMMMMMM · community label (differs, unconfirmed): RWAR? So much audio bad |
+| V52 | 6.0 | idle_loop | The End · community label (differs, unconfirmed): infected struggling; Zombie/Beast noises |
+| V53 | 3.5 | death_scream | R-r-r-rrrrrrrr · community label (differs, unconfirmed): Zombie/Beast noises |
+| V54 | 3.0 | death_scream | HELLO! · community label (differs, unconfirmed): Zombie/Beast noises |
+| V55 | 3.3 | death_scream | HELLO! · community label (differs, unconfirmed): Zombie/Beast noises |
+| V56 | 6.2 | line | A bug! A bug! A bug... · community label (differs, unconfirmed): infected russling around and grunting; Zombie/Beast noises |
+| V57 | 2.1 | healed | GRR! · community label (differs, unconfirmed): Zombie/Beast noises |
+| V58 | 1.8 | kill_confirm | THANKS FOR WATCHING! · community label (differs, unconfirmed): Zombie/Beast noises |
+| V59 | 1.7 | kill_confirm | THANKS FOR WATCHING!! · community label (differs, unconfirmed): Zombie/Beast noises |
 | V5A | 1.8 | kill_confirm | MMMMMMMMMMMMMM |
 | V5B | 3.2 | defeat_taunt | Ha-ha-ha! |
 | V5C | 1.0 | pain | Grrr! |
@@ -767,11 +765,11 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 | id | s | category | words |
 |---|---|---|---|
 | VM1 | 1.1 | intro | Target locked. |
-| VM2 | 6.0 | line | IT'S HOTTEN TO BE THE GUN |
+| VM2 | 6.0 | line | IT'S HOTTEN TO BE THE GUN · community label (differs, unconfirmed): female coughing |
 | VM3 | 1.5 | death_scream | AHHHHHHHHH |
 | VM4 | 1.4 | death_scream | AHHHHHH! |
 | VM5 | 2.0 | death_scream | AHHHHHHHHH |
-| VM6 | 6.0 | hurt_loop |  |
+| VM6 | 6.0 | hurt_loop |  · community label (differs, unconfirmed): guy catching breath |
 | VM7 | 1.4 | healed | Reloaded |
 | VM8 | 1.1 | kill_confirm | Still confirmed. |
 | VM9 | 1.2 | kill_confirm | feel confirmed. |
@@ -793,11 +791,11 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 | id | s | category | words |
 |---|---|---|---|
 | V01 | 1.4 | intro | Fury! |
-| V02 | 6.0 | idle_loop | Ah! Ah! Ah! Ah! Ah! |
+| V02 | 6.0 | idle_loop | Ah! Ah! Ah! Ah! Ah! · community label (differs, unconfirmed): Vanguard gassed |
 | V03 | 1.6 | death_scream | UGH! |
 | V04 | 2.1 | death_scream | AHHHHHHHHH |
 | V05 | 1.8 | death_scream | UGH! |
-| V06 | 6.0 | hurt_loop |  |
+| V06 | 6.0 | hurt_loop |  · community label (differs, unconfirmed): Man recovering |
 | V07 | 1.2 | healed | No pain. |
 | V08 | 1.2 | kill_confirm | FATALITY |
 | V09 | 1.3 | kill_confirm | RETALITY |
@@ -819,39 +817,39 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 
 | id | s | category | words |
 |---|---|---|---|
-| V11 | 1.6 | intro | Power Surge. |
-| V12 | 6.0 | idle_loop |  |
-| V13 | 2.3 | death_scream | AHHHHHHHHHH |
-| V14 | 2.1 | death_scream | AHHHHHHHHH |
-| V15 | 1.9 | death_scream | HELLO! |
-| V16 | 6.1 | hurt_loop |  |
-| V17 | 1.4 | healed | systems repaired. |
+| V11 | 1.6 | intro | Power Surge. · community label (agrees, unconfirmed): Power surge |
+| V12 | 6.0 | idle_loop |  · community label (differs, unconfirmed): Nexus gassed; Vanguard pain? |
+| V13 | 2.3 | death_scream | AHHHHHHHHHH · community label (differs, unconfirmed): more |
+| V14 | 2.1 | death_scream | AHHHHHHHHH · community label (differs, unconfirmed): again |
+| V15 | 1.9 | death_scream | HELLO! · community label (differs, unconfirmed): still pain |
+| V16 | 6.1 | hurt_loop |  · community label (differs, unconfirmed): infected grunting and breathing; again, maybe recovery |
+| V17 | 1.4 | healed | systems repaired. · community label (agrees, unconfirmed): Systems repaired |
 | V18 | 1.0 | kill_confirm | Get ready! |
-| V19 | 1.2 | kill_confirm | terminated |
-| V1A | 0.9 | kill_confirm | Germany did |
-| V1B | 2.2 | defeat_taunt | This cannot be. |
-| V1C | 0.6 | pain | Mm-hmm |
-| V1D | 0.6 | pain | NGH! |
-| V1E | 1.1 | pain | Oh |
-| V1F | 0.8 | pain |  |
-| V1G | 0.4 | pain | Oh |
-| V1H | 0.4 | pain | MWAH! |
-| V1I | 2.5 | boast | Obliteration awaits. |
-| V1J | 6.0 | long_death |  |
-| V1K | 2.1 | taunt | You will break. |
-| V1L | 2.5 | taunt | Their will is broken. |
-| V1M | 1.1 | name | Grenadier |
+| V19 | 1.2 | kill_confirm | terminated · community label (agrees, unconfirmed): Terminated |
+| V1A | 0.9 | kill_confirm | Germany did · community label (differs, unconfirmed): Terminated |
+| V1B | 2.2 | defeat_taunt | This cannot be. · community label (agrees, unconfirmed): This can not be |
+| V1C | 0.6 | pain | Mm-hmm · community label (differs, unconfirmed): Hurt |
+| V1D | 0.6 | pain | NGH! · community label (differs, unconfirmed): hurt again |
+| V1E | 1.1 | pain | Oh · community label (differs, unconfirmed): more hurt |
+| V1F | 0.8 | pain |  · community label (differs, unconfirmed): Again |
+| V1G | 0.4 | pain | Oh · community label (differs, unconfirmed): still hurt |
+| V1H | 0.4 | pain | MWAH! · community label (differs, unconfirmed): more |
+| V1I | 2.5 | boast | Obliteration awaits. · community label (agrees, unconfirmed): Obliteration Awaits |
+| V1J | 6.0 | long_death |  · community label (differs, unconfirmed): vanguard electruction? |
+| V1K | 2.1 | taunt | You will break. · community label (agrees, unconfirmed): You will break |
+| V1L | 2.5 | taunt | Their will is broken. · community label (agrees, unconfirmed): Their will is broken |
+| V1M | 1.1 | name | Grenadier · community label (agrees, unconfirmed): Grenadier |
 
 ### Guardian (22)
 
 | id | s | category | words |
 |---|---|---|---|
-| V21 | 1.6 | intro | Shields over a mile mean. |
-| V22 | 6.1 | idle_loop |  |
+| V21 | 1.6 | intro | Shields over a mile mean. · community label (differs, unconfirmed): Shields Overwhelming |
+| V22 | 6.1 | idle_loop |  · community label (differs, unconfirmed): vanguard coughing |
 | V23 | 2.7 | death_scream | AHHHHHHHHHHHHHHHHH |
 | V24 | 2.5 | death_scream | AHHHHHH!! |
 | V25 | 2.4 | death_scream | AHHHHHHHHH |
-| V26 | 6.1 | hurt_loop | Oh |
+| V26 | 6.1 | hurt_loop | Oh · community label (differs, unconfirmed): more infected breathing |
 | V27 | 1.2 | healed | energized. |
 | V28 | 1.1 | kill_confirm | Sanitized. |
 | V29 | 1.2 | kill_confirm | Sanitized. |
@@ -865,20 +863,20 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 | V2H | 0.7 | pain | Ugh! |
 | V2I | 1.7 | boast | Shields engaged. |
 | V2J | 5.9 | line | OR like I'm talking to you right now? Take a chance now |
-| V2K | 4.0 | taunt | Ha ha ha ha, nexus shield, never fail. |
+| V2K | 4.0 | taunt | Ha ha ha ha, nexus shield, never fail. · community label (agrees, unconfirmed): Nexus Shield never fails |
 | V2L | 3.0 | taunt | My shields are unstoppable. Ha ha ha! |
-| V2M | 0.8 | name | Guardian |
+| V2M | 0.8 | name | Guardian · community label (agrees, unconfirmed): Guardian |
 
 ### Heavy (22)
 
 | id | s | category | words |
 |---|---|---|---|
-| V31 | 1.3 | intro | Charge! |
+| V31 | 1.3 | intro | Charge! · community label (agrees, unconfirmed): Charge |
 | V32 | 6.0 | idle_loop | Oh |
 | V33 | 2.2 | death_scream | AHHHHHHHHH |
 | V34 | 2.4 | death_scream | AHHHHHHHHHH |
 | V35 | 2.7 | death_scream | AHHHHHHHHH! |
-| V36 | 6.0 | hurt_loop | Hmm. Hmm. Hmm. |
+| V36 | 6.0 | hurt_loop | Hmm. Hmm. Hmm. · community label (differs, unconfirmed): Recovery |
 | V37 | 0.9 | healed | patched up |
 | V38 | 1.0 | kill_confirm | All clear! |
 | V39 | 1.2 | kill_confirm | All clear. |
@@ -894,18 +892,18 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 | V3J | 6.0 | long_death | Bwrrrrrrrr!! Zzzzzzzzzzzztttttttttttt!! |
 | V3K | 1.7 | taunt | Ooh, bet that hurt. |
 | V3L | 1.8 | taunt | The battle is ours. |
-| V3M | 0.8 | name | heavy |
+| V3M | 0.8 | name | heavy · community label (agrees, unconfirmed): Heavy |
 
 ### Hive Queen (32)
 
 | id | s | category | words |
 |---|---|---|---|
-| V41 | 1.1 | intro | BLOOD! |
+| V41 | 1.1 | intro | BLOOD! · community label (agrees, unconfirmed): Blood |
 | V42 | 6.0 | idle_loop |  |
 | V43 | 2.2 | death_scream | AHHHHHHHHH |
 | V44 | 1.9 | death_scream | AHHHHHHHHH! |
 | V45 | 2.4 | death_scream | AHHHHHHHHH |
-| V46 | 6.0 | hurt_loop | Uhhh! Uhhhh! Uhhhh! |
+| V46 | 6.0 | hurt_loop | Uhhh! Uhhhh! Uhhhh! · community label (differs, unconfirmed): animal recovering |
 | V47 | 1.7 | healed | I hunger! |
 | V48 | 1.7 | kill_confirm | Come to me! |
 | V49 | 1.5 | kill_confirm | Come to me! |
@@ -921,7 +919,7 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 | V4J | 6.0 | long_death | hahahahahahahahahahahaha |
 | V4K | 1.6 | taunt | fear me |
 | V4L | 2.0 | taunt | Your blood is mine! |
-| V4M | 1.9 | name | The Hive Queen |
+| V4M | 1.9 | name | The Hive Queen · community label (agrees, unconfirmed): Hive Queen |
 | V4N | 2.4 | line | MMMMMMMMMMMMMMMMMMMM |
 | V4O | 4.5 | line | You |
 | V4P | 3.7 | line | Pffftttttttttttttttttttttttttttt |
@@ -937,7 +935,7 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 
 | id | s | category | words |
 |---|---|---|---|
-| V61 | 1.3 | intro | FIRGE! |
+| V61 | 1.3 | intro | FIRGE! · community label (differs, unconfirmed): Surge |
 | V62 | 6.0 | idle_loop | Oh |
 | V63 | 1.7 | death_scream | RRRRRAAAAAAAA |
 | V64 | 2.3 | death_scream | Ha ha ha ha ha ha! |
@@ -955,7 +953,7 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 | V6G | 0.4 | pain | Oh |
 | V6H | 0.6 | pain | MWAH |
 | V6I | 2.2 | boast | Your end has come. |
-| V6J | 6.0 | long_death |  |
+| V6J | 6.0 | long_death |  · community label (differs, unconfirmed): infected getting electricuted |
 | V6K | 2.2 | taunt | Accept your destiny. |
 | V6L | 2.6 | taunt | Victory is my destiny. |
 | V6M | 1.4 | name | Infiltrator |
@@ -982,7 +980,7 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 | VPG | 0.4 | pain | Ugh! |
 | VPH | 0.5 | pain | UGH! |
 | VPI | 1.7 | boast | I return to battle. |
-| VPJ | 6.0 | long_death | Uuughhhhhh! |
+| VPJ | 6.0 | long_death | Uuughhhhhh! · community label (differs, unconfirmed): man being electricuted |
 | VPK | 1.3 | taunt | Watch and learn. |
 | VPL | 1.0 | taunt | Who's next? |
 
@@ -990,38 +988,38 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 
 | id | s | category | words |
 |---|---|---|---|
-| VAA | 0.6 | kill_confirm | Kill. |
-| VAB | 1.5 | defeat_taunt | Everybody dies. |
-| VAC | 0.8 | pain | HAH! |
-| VAD | 0.6 | pain | HOO! |
-| VAE | 1.2 | pain | AHHHHH! |
-| VAF | 1.2 | pain | Aargh! |
-| VAG | 0.6 | pain | Huh! |
-| VAH | 0.4 | pain | HUH! |
-| VAI | 1.8 | boast | There's nowhere for you to hide. |
-| VAJ | 6.0 | long_death | NONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONON... |
-| VAK | 0.7 | taunt | Take that! |
-| VAL | 1.4 | taunt | No mercy. |
-| VAM | 0.7 | name | Reaper |
-| VAN | 0.8 | line | Hoorah! |
-| VAO | 0.8 | line | Good to go. |
-| VAP | 1.2 | objective_other | Let's head back to base. |
-| VAQ | 1.0 | line | Let's move out. |
-| VAR | 1.1 | team | Good job, team. |
+| VAA | 0.6 | kill_confirm | Kill. · community label (agrees, unconfirmed): Kill |
+| VAB | 1.5 | defeat_taunt | Everybody dies. · community label (agrees, unconfirmed): Everybody Dies |
+| VAC | 0.8 | pain | HAH! · community label (differs, unconfirmed): Another yell |
+| VAD | 0.6 | pain | HOO! · community label (agrees, unconfirmed): HOOO |
+| VAE | 1.2 | pain | AHHHHH! · community label (differs, unconfirmed): Cough pain |
+| VAF | 1.2 | pain | Aargh! · community label (differs, unconfirmed): more pain |
+| VAG | 0.6 | pain | Huh! · community label (differs, unconfirmed): more hurt |
+| VAH | 0.4 | pain | HUH! · community label (differs, unconfirmed): another hurt |
+| VAI | 1.8 | boast | There's nowhere for you to hide. · community label (agrees, unconfirmed): Theres nowhere for you to hide |
+| VAJ | 6.0 | long_death | NONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONON... · community label (differs, unconfirmed): Ummmmm electruction? |
+| VAK | 0.7 | taunt | Take that! · community label (agrees, unconfirmed): Take That |
+| VAL | 1.4 | taunt | No mercy. · community label (agrees, unconfirmed): No Mercy |
+| VAM | 0.7 | name | Reaper · community label (agrees, unconfirmed): Reaper |
+| VAN | 0.8 | line | Hoorah! · community label (differs, unconfirmed): HuRah |
+| VAO | 0.8 | line | Good to go. · community label (agrees, unconfirmed): Good to Go |
+| VAP | 1.2 | objective_other | Let's head back to base. · community label (agrees, unconfirmed): Lets head back to base |
+| VAQ | 1.0 | line | Let's move out. · community label (agrees, unconfirmed): Lets move out |
+| VAR | 1.1 | team | Good job, team. · community label (agrees, unconfirmed): Good job team |
 
 ### Marauder (22)
 
 | id | s | category | words |
 |---|---|---|---|
-| V71 | 2.1 | intro | Ultra charged! |
-| V72 | 6.0 | idle_loop | The poor. |
-| V73 | 1.5 | death_scream | Arrrrggggggghhh! |
-| V74 | 2.6 | death_scream | OWWWWWWWW |
-| V75 | 2.3 | death_scream |  |
-| V76 | 6.0 | hurt_loop |  |
-| V77 | 0.9 | healed | Top |
-| V78 | 1.4 | kill_confirm | ROAR! |
-| V79 | 1.2 | kill_confirm | BYE! |
+| V71 | 2.1 | intro | Ultra charged! · community label (agrees, unconfirmed): Ultra Charged? |
+| V72 | 6.0 | idle_loop | The poor. · community label (differs, unconfirmed): Nexus being gassed; Cough |
+| V73 | 1.5 | death_scream | Arrrrggggggghhh! · community label (differs, unconfirmed): pain |
+| V74 | 2.6 | death_scream | OWWWWWWWW · community label (differs, unconfirmed): yell |
+| V75 | 2.3 | death_scream |  · community label (differs, unconfirmed): more yell |
+| V76 | 6.0 | hurt_loop |  · community label (differs, unconfirmed): Infected struggling; recovery |
+| V77 | 0.9 | healed | Top · community label (differs, unconfirmed): Amped up |
+| V78 | 1.4 | kill_confirm | ROAR! · community label (agrees, unconfirmed): Roared? |
+| V79 | 1.2 | kill_confirm | BYE! · community label (differs, unconfirmed): Forward |
 | V7A | 1.3 | kill_confirm | BYE! |
 | V7B | 1.9 | defeat_taunt | Not enough power! |
 | V7C | 1.2 | pain | Yeah! |
@@ -1031,24 +1029,24 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 | V7G | 0.6 | pain | Aargh! |
 | V7H | 0.7 | pain | BOOM! |
 | V7I | 1.9 | boast | We're charged and ready! |
-| V7J | 7.0 | line | NoooooooooOOOOoooooOoOoOooOoOoOд Woooohoooo www. Level 4 W O W |
+| V7J | 7.0 | line | NoooooooooOOOOoooooOoOoOooOoOoOд Woooohoooo www. Level 4 W O W · community label (differs, unconfirmed): ticked of infected |
 | V7K | 2.4 | taunt | I have the power! |
 | V7L | 2.7 | taunt | Now you know my power! |
-| V7M | 1.3 | name | the hotter. |
+| V7M | 1.3 | name | the hotter. · community label (differs, unconfirmed): Maurader |
 
 ### Medic (34)
 
 | id | s | category | words |
 |---|---|---|---|
-| V81 | 0.8 | intro | Med's here. |
-| V82 | 6.0 | idle_loop | Ahem. Ahem. |
-| V83 | 0.9 | death_scream | Ah! |
-| V84 | 1.2 | death_scream | AHHHHH! |
-| V85 | 1.1 | death_scream | AHHHHHH! |
-| V86 | 6.0 | hurt_loop | HMM! HMM! HMM! HMM! |
-| V87 | 1.0 | healed | Bleeding stopped. |
-| V88 | 1.1 | kill_confirm | Sterilized. |
-| V89 | 1.2 | kill_confirm | sterilized. |
+| V81 | 0.8 | intro | Med's here. · community label (differs, unconfirmed): Meds Here |
+| V82 | 6.0 | idle_loop | Ahem. Ahem. · community label (differs, unconfirmed): cough |
+| V83 | 0.9 | death_scream | Ah! · community label (differs, unconfirmed): pain |
+| V84 | 1.2 | death_scream | AHHHHH! · community label (differs, unconfirmed): yell |
+| V85 | 1.1 | death_scream | AHHHHHH! · community label (differs, unconfirmed): more yell |
+| V86 | 6.0 | hurt_loop | HMM! HMM! HMM! HMM! · community label (differs, unconfirmed): Female catching breath; Recovery? |
+| V87 | 1.0 | healed | Bleeding stopped. · community label (agrees, unconfirmed): Bleeding Stopped |
+| V88 | 1.1 | kill_confirm | Sterilized. · community label (differs, unconfirmed): Steralized |
+| V89 | 1.2 | kill_confirm | sterilized. · community label (differs, unconfirmed): Steralized |
 | V8A | 1.1 | kill_confirm | sterilized. |
 | V8B | 1.4 | defeat_taunt | Medavek, on route. |
 | V8C | 0.5 | pain | Huh! |
@@ -1058,10 +1056,10 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 | V8G | 0.5 | pain | Ahem. |
 | V8H | 0.6 | pain | Oh |
 | V8I | 1.1 | boast | The doctor is in. |
-| V8J | 6.1 | line | Mmm, mmm, mmm, mmm握握,丨握握握 grams I'm out! |
+| V8J | 6.1 | line | Mmm, mmm, mmm, mmm握握,丨握握握 grams I'm out! · community label (differs, unconfirmed): being electricuted |
 | V8K | 1.4 | taunt | Need a bandage for that? |
 | V8L | 2.1 | taunt | I love the smell of metagel. |
-| V8M | 0.6 | name | Medic. |
+| V8M | 0.6 | name | Medic. · community label (agrees, unconfirmed): Medic |
 | V8N | 1.0 | line | Target locked. |
 | V8O | 0.7 | line | patched up |
 | V8P | 1.0 | kill_confirm | Kill confirmed. |
@@ -1079,44 +1077,44 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 
 | id | s | category | words |
 |---|---|---|---|
-| VN1 | 0.9 | intro | Target locked. |
-| VN2 | 6.0 | idle_loop | Ah! Ah! Ah! Ah! Ah! Ah! |
-| VN3 | 1.6 | death_scream | UGH! |
-| VN4 | 2.1 | death_scream | DAAAAAAA |
-| VN5 | 1.8 | death_scream | URGH! |
-| VN6 | 6.0 | hurt_loop |  |
-| VN7 | 0.8 | healed | Restocked. |
-| VN8 | 1.0 | kill_confirm | Co-confirmed |
-| VN9 | 1.2 | kill_confirm | Kill confirmed. |
-| VNA | 1.0 | kill_confirm | Kill confirmed. |
-| VNB | 1.4 | defeat_taunt | the target is lost. |
-| VNC | 0.4 | pain | HA! |
-| VND | 0.3 | pain | Ha! |
-| VNE | 0.8 | pain | UGH! |
-| VNF | 1.1 | pain | Oh |
-| VNG | 0.4 | pain | Huh! |
-| VNH | 0.4 | pain | UGH! |
-| VNI | 2.1 | boast | The battle begins. |
-| VNJ | 6.0 | long_death | HUUUUUUUUUUUUUUUUUUUUUUUUUUUUU UGH UGH |
-| VNK | 1.1 | taunt | Bullseye! |
-| VNL | 1.9 | taunt | No one will stand in my way. |
-| VNM | 1.1 | name | Mercenary |
+| VN1 | 0.9 | intro | Target locked. · community label (agrees, unconfirmed): Target Locked |
+| VN2 | 6.0 | idle_loop | Ah! Ah! Ah! Ah! Ah! Ah! · community label (differs, unconfirmed): Ouch and lots of coughing; man gassed |
+| VN3 | 1.6 | death_scream | UGH! · community label (differs, unconfirmed): argh |
+| VN4 | 2.1 | death_scream | DAAAAAAA · community label (differs, unconfirmed): Scream |
+| VN5 | 1.8 | death_scream | URGH! · community label (differs, unconfirmed): hurt |
+| VN6 | 6.0 | hurt_loop |  · community label (differs, unconfirmed): deep breaths; Man recovering |
+| VN7 | 0.8 | healed | Restocked. · community label (agrees, unconfirmed): Restocked |
+| VN8 | 1.0 | kill_confirm | Co-confirmed · community label (differs, unconfirmed): Kill Confirmed |
+| VN9 | 1.2 | kill_confirm | Kill confirmed. · community label (agrees, unconfirmed): Kill Confirmed |
+| VNA | 1.0 | kill_confirm | Kill confirmed. · community label (agrees, unconfirmed): Kill Confirmed |
+| VNB | 1.4 | defeat_taunt | the target is lost. · community label (agrees, unconfirmed): The target is lost |
+| VNC | 0.4 | pain | HA! · community label (agrees, unconfirmed): HA |
+| VND | 0.3 | pain | Ha! · community label (differs, unconfirmed): HU |
+| VNE | 0.8 | pain | UGH! · community label (differs, unconfirmed): AHH |
+| VNF | 1.1 | pain | Oh · community label (differs, unconfirmed): another hurt |
+| VNG | 0.4 | pain | Huh! · community label (differs, unconfirmed): more hurt |
+| VNH | 0.4 | pain | UGH! · community label (differs, unconfirmed): hurt again |
+| VNI | 2.1 | boast | The battle begins. · community label (agrees, unconfirmed): The Battle Begins |
+| VNJ | 6.0 | long_death | HUUUUUUUUUUUUUUUUUUUUUUUUUUUUU UGH UGH · community label (differs, unconfirmed): UMMM long hurt; guy pushing out a poop |
+| VNK | 1.1 | taunt | Bullseye! · community label (agrees, unconfirmed): Bullseye |
+| VNL | 1.9 | taunt | No one will stand in my way. · community label (agrees, unconfirmed): No one will stand in my way |
+| VNM | 1.1 | name | Mercenary · community label (agrees, unconfirmed): Mercenary |
 
 ### Nexus commander (19)
 
 | id | s | category | words |
 |---|---|---|---|
-| VQ1 | 1.4 | line | Commander! |
+| VQ1 | 1.4 | line | Commander! · community label (agrees, unconfirmed): Nexus Commander |
 | VQ2 | 1.3 | unknown |  |
 | VQ3 | 2.2 | objective_codes | And the codes have been captured! |
 | VQ4 | 2.5 | line | and go to the worst. |
 | VQ5 | 2.5 | objective_codes | Everything has our codes. |
 | VQ6 | 2.3 | game_over | Game Over! |
-| VQ7 | 1.0 | line | NEXUS |
+| VQ7 | 1.0 | line | NEXUS · community label (agrees, unconfirmed): NEXUS |
 | VQ8 | 1.8 | game_over | Objective complete! |
 | VQ9 | 1.1 | menu | random |
 | VQA | 2.6 | clock | Sixty seconds remaining. |
-| VQB | 10.9 | countdown | Ten, nine, eight, seven, six, five, four, three, two, one. |
+| VQB | 10.9 | countdown | Ten, nine, eight, seven, six, five, four, three, two, one. · community label (differs, unconfirmed): infected 10 second count down |
 | VQC | 2.1 | clock | 30 seconds remaining. |
 | VQD | 2.3 | clock | Two minutes remain. |
 | VQE | 1.8 | menu | Upgrade available. |
@@ -1130,15 +1128,15 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 
 | id | s | category | words |
 |---|---|---|---|
-| V91 | 1.0 | intro | Turn up the heat! |
-| V92 | 6.1 | idle_loop | Cough. |
-| V93 | 1.4 | death_scream | Agh! |
-| V94 | 1.5 | death_scream | Uggggggggggggggggggggggg |
-| V95 | 1.4 | death_scream | URGH! |
-| V96 | 6.0 | hurt_loop | Ah |
-| V97 | 1.4 | healed | REFUELED! |
-| V98 | 1.1 | kill_confirm | Toasted! |
-| V99 | 1.2 | kill_confirm | Coasted! |
+| V91 | 1.0 | intro | Turn up the heat! · community label (agrees, unconfirmed): Turn up the heat |
+| V92 | 6.1 | idle_loop | Cough. · community label (agrees, unconfirmed): male coughing; cough |
+| V93 | 1.4 | death_scream | Agh! · community label (differs, unconfirmed): pain |
+| V94 | 1.5 | death_scream | Uggggggggggggggggggggggg · community label (differs, unconfirmed): Pain |
+| V95 | 1.4 | death_scream | URGH! · community label (differs, unconfirmed): Pain |
+| V96 | 6.0 | hurt_loop | Ah · community label (differs, unconfirmed): Animal recovering; Recovery? |
+| V97 | 1.4 | healed | REFUELED! · community label (agrees, unconfirmed): Refueled |
+| V98 | 1.1 | kill_confirm | Toasted! · community label (agrees, unconfirmed): Toasted |
+| V99 | 1.2 | kill_confirm | Coasted! · community label (differs, unconfirmed): Toasted |
 | V9A | 1.2 | kill_confirm | Toasted! |
 | V9B | 1.8 | defeat_taunt | Burn it! Burn it all! |
 | V9C | 0.8 | pain | Rrroar! |
@@ -1157,24 +1155,24 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 
 | id | s | category | words |
 |---|---|---|---|
-| VS1 | 1.0 | line | Commander! |
-| VS2 | 1.7 | game_over | DEFEAT! |
-| VS3 | 2.5 | objective_codes | Enemy codes have been lost. |
-| VS4 | 2.2 | objective_codes | Enemy codes have been captured. |
-| VS5 | 1.9 | objective_codes | Enemy team has our codes. |
-| VS6 | 2.4 | game_over | Game over. |
-| VS7 | 1.3 | game_over | Objective Complete! |
-| VS8 | 0.8 | menu | random. |
-| VS9 | 1.2 | line | The resistance. |
-| VSA | 1.8 | clock | 60 seconds remain. |
-| VSB | 10.5 | countdown | 10, 9, 8, 7, 6, 5, 4, 3, 2, 1. |
-| VSC | 1.8 | clock | 30 seconds remain. |
-| VSD | 1.6 | clock | Two minutes remain. |
-| VSE | 1.8 | menu | Upgrade available. |
-| VSF | 1.9 | game_over | Victory! |
-| VSG | 3.3 | objective_codes | Our codes have been captured. |
-| VSH | 1.8 | objective_codes | Our team has the codes. |
-| VSI | 1.9 | objective_codes | Our codes have been returned. |
+| VS1 | 1.0 | line | Commander! · community label (agrees, unconfirmed): Resistance Commander; Commander |
+| VS2 | 1.7 | game_over | DEFEAT! · community label (agrees, unconfirmed): Defeat |
+| VS3 | 2.5 | objective_codes | Enemy codes have been lost. · community label (agrees, unconfirmed): Enemy Codes have been lost |
+| VS4 | 2.2 | objective_codes | Enemy codes have been captured. · community label (agrees, unconfirmed): Enemy Code have been captured |
+| VS5 | 1.9 | objective_codes | Enemy team has our codes. · community label (agrees, unconfirmed): Enemy team has our codes |
+| VS6 | 2.4 | game_over | Game over. · community label (agrees, unconfirmed): Game Over |
+| VS7 | 1.3 | game_over | Objective Complete! · community label (agrees, unconfirmed): Objective Complete |
+| VS8 | 0.8 | menu | random. · community label (agrees, unconfirmed): Random |
+| VS9 | 1.2 | line | The resistance. · community label (agrees, unconfirmed): Resistance; The Resistance |
+| VSA | 1.8 | clock | 60 seconds remain. · community label (agrees, unconfirmed): 60 seconds remaining; 60 SECONDS REMAIN |
+| VSB | 10.5 | countdown | 10, 9, 8, 7, 6, 5, 4, 3, 2, 1. · community label (differs, unconfirmed): ten second count down; Countdown from 10; 10-0 COUNT DOWN W MUSIC |
+| VSC | 1.8 | clock | 30 seconds remain. · community label (agrees, unconfirmed): 30 seconds remaining; 30 SECONDS REMAIN |
+| VSD | 1.6 | clock | Two minutes remain. · community label (differs, unconfirmed): 2 minutes remaining; 2 MINUTES REMAIN |
+| VSE | 1.8 | menu | Upgrade available. · community label (agrees, unconfirmed): Upgrade available |
+| VSF | 1.9 | game_over | Victory! · community label (agrees, unconfirmed): Victory |
+| VSG | 3.3 | objective_codes | Our codes have been captured. · community label (agrees, unconfirmed): Our code have been captured |
+| VSH | 1.8 | objective_codes | Our team has the codes. · community label (agrees, unconfirmed): OUr team has the codes |
+| VSI | 1.9 | objective_codes | Our codes have been returned. · community label (agrees, unconfirmed): Our code have been returned |
 
 ### Russian (clean) (21)
 
@@ -1206,28 +1204,28 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 
 | id | s | category | words |
 |---|---|---|---|
-| VB1 | 1.4 | intro | Go, go, go! |
-| VB2 | 6.0 | idle_loop |  |
-| VB3 | 2.7 | death_scream | Ah! Ah! Ah! |
-| VB4 | 1.7 | death_scream | AHHHHH! |
-| VB5 | 1.7 | death_scream | Uuugh! |
-| VB6 | 6.0 | hurt_loop | Ah |
-| VB7 | 1.0 | healed | All set! |
-| VB8 | 1.0 | kill_confirm | Target down. |
-| VB9 | 1.2 | kill_confirm | Target down. |
-| VBA | 0.9 | kill_confirm | Target down. |
-| VBB | 1.6 | defeat_taunt | Gotta lose some time. |
-| VBC | 0.7 | pain | HUH! |
-| VBD | 0.7 | pain | HUH |
-| VBE | 1.3 | pain | Uwaaah! |
-| VBF | 1.0 | pain | UGH! |
-| VBG | 0.6 | pain | Ugh! |
-| VBH | 0.4 | pain | Uh! |
-| VBI | 1.2 | boast | Let's move! |
-| VBJ | 5.9 | long_death | Wheeeeeelllllllllllllll |
-| VBK | 1.6 | taunt | Dead man walking. |
-| VBL | 1.7 | taunt | too easy |
-| VBM | 1.0 | name | Scout |
+| VB1 | 1.4 | intro | Go, go, go! · community label (agrees, unconfirmed): go go go |
+| VB2 | 6.0 | idle_loop |  · community label (differs, unconfirmed): coughing; Female gassed |
+| VB3 | 2.7 | death_scream | Ah! Ah! Ah! · community label (differs, unconfirmed): hurt |
+| VB4 | 1.7 | death_scream | AHHHHH! · community label (differs, unconfirmed): yell |
+| VB5 | 1.7 | death_scream | Uuugh! · community label (differs, unconfirmed): more hurt |
+| VB6 | 6.0 | hurt_loop | Ah · community label (differs, unconfirmed): heavy breathing; female recovering |
+| VB7 | 1.0 | healed | All set! · community label (agrees, unconfirmed): All Set |
+| VB8 | 1.0 | kill_confirm | Target down. · community label (agrees, unconfirmed): Target Down |
+| VB9 | 1.2 | kill_confirm | Target down. · community label (agrees, unconfirmed): Target Down |
+| VBA | 0.9 | kill_confirm | Target down. · community label (agrees, unconfirmed): Target Down |
+| VBB | 1.6 | defeat_taunt | Gotta lose some time. · community label (agrees, unconfirmed): Gotta lose sometime |
+| VBC | 0.7 | pain | HUH! · community label (differs, unconfirmed): yell |
+| VBD | 0.7 | pain | HUH · community label (differs, unconfirmed): yell |
+| VBE | 1.3 | pain | Uwaaah! · community label (differs, unconfirmed): hurt |
+| VBF | 1.0 | pain | UGH! · community label (differs, unconfirmed): more hurt |
+| VBG | 0.6 | pain | Ugh! · community label (differs, unconfirmed): hurt agin |
+| VBH | 0.4 | pain | Uh! · community label (differs, unconfirmed): ouch |
+| VBI | 1.2 | boast | Let's move! · community label (differs, unconfirmed): Lets Move |
+| VBJ | 5.9 | long_death | Wheeeeeelllllllllllllll · community label (differs, unconfirmed): uh electrocution? |
+| VBK | 1.6 | taunt | Dead man walking. · community label (agrees, unconfirmed): Dead man walking |
+| VBL | 1.7 | taunt | too easy · community label (differs, unconfirmed): Hmf to easy |
+| VBM | 1.0 | name | Scout · community label (differs, unconfirmed): Stout |
 
 ### Sentinel (22)
 
@@ -1254,18 +1252,18 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 | VCJ | 6.0 | long_death | GAAAAH |
 | VCK | 3.4 | taunt | I am... I am the storm. |
 | VCL | 3.6 | taunt | I need a more worthy challenge. |
-| VCM | 1.8 | name | SET NO! |
+| VCM | 1.8 | name | SET NO! · community label (differs, unconfirmed): Sentinel |
 
 ### Sniper (female) (22)
 
 | id | s | category | words |
 |---|---|---|---|
 | VD1 | 1.1 | intro | Target locked. |
-| VD2 | 6.0 | line | Cough, cough, cough, cough, cough, cough, cough, cough, cough, coug... |
+| VD2 | 6.0 | line | Cough, cough, cough, cough, cough, cough, cough, cough, cough, coug... · community label (differs, unconfirmed): female coughing |
 | VD3 | 1.5 | death_scream | AHHHHHHHHH |
 | VD4 | 1.4 | death_scream | AHHHHHHHHH |
 | VD5 | 2.0 | death_scream | AHHHHHHHHH |
-| VD6 | 6.0 | line | Sigh... Sigh... Sigh... |
+| VD6 | 6.0 | line | Sigh... Sigh... Sigh... · community label (differs, unconfirmed): technician catching breath |
 | VD7 | 1.4 | healed | Reloaded |
 | VD8 | 1.1 | kill_confirm | KILP FARBED |
 | VD9 | 1.2 | kill_confirm | Feel Confirmed. |
@@ -1281,14 +1279,14 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 | VDJ | 6.0 | long_death | Aughh! Observatory? |
 | VDK | 2.1 | taunt | Boom! Headshot! |
 | VDL | 2.1 | taunt | My aim is true. |
-| VDM | 1.0 | name | Sniper |
+| VDM | 1.0 | name | Sniper · community label (agrees, unconfirmed): Sniper |
 
 ### Soldier (22)
 
 | id | s | category | words |
 |---|---|---|---|
 | VE1 | 1.0 | intro | Hoorah! |
-| VE2 | 6.0 | idle_loop | Ah. Oh. Ah. Oh. Oh. Oh. Oh. |
+| VE2 | 6.0 | idle_loop | Ah. Oh. Ah. Oh. Oh. Oh. Oh. · community label (differs, unconfirmed): guy being gassed |
 | VE3 | 2.0 | death_scream | AHHHHHHHHH |
 | VE4 | 2.1 | death_scream | AHHHHHHHHH |
 | VE5 | 1.6 | death_scream | AHHHHHHHHH! |
@@ -1308,7 +1306,7 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 | VEJ | 5.9 | line | Aaaaaaahhh, Aaaaahhh. Aaaaaaahhh. W- w- w- w- w- w- w- AAH! Aah. |
 | VEK | 1.4 | taunt | Get back to Bootcamp. |
 | VEL | 1.1 | taunt | Mission complete. |
-| VEM | 0.9 | name | Soldier |
+| VEM | 0.9 | name | Soldier · community label (agrees, unconfirmed): Soldier |
 
 ### Stalker (22)
 
@@ -1332,7 +1330,7 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 | VFG | 0.5 | pain |  |
 | VFH | 0.5 | pain |  |
 | VFI | 2.2 | boast | I have awakened. |
-| VFJ | 6.0 | long_death | BOOM! |
+| VFJ | 6.0 | long_death | BOOM! · community label (differs, unconfirmed): nexus suffering or gassed |
 | VFK | 2.2 | taunt | Embrace your end. |
 | VFL | 2.5 | taunt | We are profession. |
 | VFM | 1.1 | name | Stalker! |
@@ -1359,17 +1357,17 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 | VGG | 0.4 | pain | Oh |
 | VGH | 0.3 | pain | MMM! |
 | VGI | 2.3 | boast | Technician, reporting for duty. |
-| VGJ | 6.0 | line | boop boop boop boop doop boop boop |
-| VGK | 4.1 | taunt | Even I can't fix my name. And I can fix everything. |
-| VGL | 4.1 | taunt | Ooh, I'm glad my meta gel didn't explode in the allies this time! H... |
-| VGM | 0.9 | name | Technician! |
+| VGJ | 6.0 | line | boop boop boop boop doop boop boop · community label (differs, unconfirmed): sniper or technician being electricuted |
+| VGK | 4.1 | taunt | Even I can't fix my name. And I can fix everything. · community label (agrees, unconfirmed): I can fix everything - technician |
+| VGL | 4.1 | taunt | Ooh, I'm glad my meta gel didn't explode in the allies this time! H... · community label (differs, unconfirmed): Good thing the medigel capsules didnt explode in the allies this time |
+| VGM | 0.9 | name | Technician! · community label (agrees, unconfirmed): Technician |
 
 ### Valkyrie (31)
 
 | id | s | category | words |
 |---|---|---|---|
 | VH1 | 1.1 | intro | Load up. |
-| VH2 | 6.0 | idle_loop | Ahem Ahem |
+| VH2 | 6.0 | idle_loop | Ahem Ahem · community label (differs, unconfirmed): Male gassed |
 | VH3 | 2.0 | death_scream | AHHHHHHHHH! |
 | VH4 | 1.7 | death_scream | AHHHHHHHHH! |
 | VH5 | 1.6 | death_scream | UGH! UGH! |
@@ -1386,10 +1384,10 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 | VHG | 0.5 | pain | Ah! |
 | VHH | 0.6 | pain | Huh! |
 | VHI | 1.7 | boast | It's boom time! |
-| VHJ | 6.0 | long_death | HUUUUUUUM |
+| VHJ | 6.0 | long_death | HUUUUUUUM · community label (differs, unconfirmed): guy veing electricuted |
 | VHK | 1.8 | taunt | Watch and learn, noob. |
 | VHL | 1.8 | taunt | Barely broke a sweat. |
-| VHM | 1.1 | name | Valkyrie. |
+| VHM | 1.1 | name | Valkyrie. · community label (agrees, unconfirmed): Valkyrie |
 | VHN | 0.9 | line | Yeah! |
 | VHO | 0.8 | line | Good to go. |
 | VHP | 1.0 | kill_confirm | Kill! |
@@ -1404,7 +1402,7 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 
 | id | s | category | words |
 |---|---|---|---|
-| VR1 | 0.8 | line | Commander |
+| VR1 | 0.8 | line | Commander · community label (agrees, unconfirmed): Vanguard Commander |
 | VR2 | 1.3 | line | You piece of shit! |
 | VR3 | 2.6 | objective_codes | enemy codes captured. |
 | VR4 | 2.5 | line | And it will return. |
@@ -1413,11 +1411,11 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 | VR7 | 1.2 | game_over | Objective complete. |
 | VR8 | 0.7 | menu | Random |
 | VR9 | 1.7 | clock | Sixty seconds remain. |
-| VRA | 10.8 | countdown | 10, 9, 8, 7, 6, 5, 4, 3, 2, 1. |
+| VRA | 10.8 | countdown | 10, 9, 8, 7, 6, 5, 4, 3, 2, 1. · community label (differs, unconfirmed): vanguard ten second countdown |
 | VRB | 1.5 | clock | 30 Second Remaining |
 | VRC | 1.3 | clock | Two minutes remaining. |
 | VRD | 1.5 | menu | Upgrade available. |
-| VRE | 1.0 | line | Vanguard |
+| VRE | 1.0 | line | Vanguard · community label (agrees, unconfirmed): VANGUARD |
 | VRF | 1.9 | game_over | Victory! |
 | VRG | 3.4 | line | You're called Captain. |
 | VRH | 1.9 | line | You're called pretend. |
@@ -1432,7 +1430,7 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 | VJ3 | 2.1 | death_scream | HAAAAAAA |
 | VJ4 | 1.8 | death_scream | No! |
 | VJ5 | 2.0 | death_scream | AHHHHH! |
-| VJ6 | 6.3 | hurt_loop | No... No... No... |
+| VJ6 | 6.3 | hurt_loop | No... No... No... · community label (differs, unconfirmed): man recovering from injury |
 | VJ7 | 2.3 | healed | Ah, feeling good. |
 | VJ8 | 1.1 | kill_confirm | That's a kill. |
 | VJ9 | 1.2 | kill_confirm | That's a kill. |
@@ -1448,13 +1446,13 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 | VJJ | 6.0 | line | RRRGGGHHHHHHHHHH RRRRRGGGHHHHHHHHHHHHHHH RRRRRRRRRGGGHHHHHHHH RRRRR... |
 | VJK | 1.7 | taunt | Ooh! Heh heh heh! |
 | VJL | 2.3 | taunt | Yeah, that's how it's done. |
-| VJM | 1.0 | name | Viper |
+| VJM | 1.0 | name | Viper · community label (agrees, unconfirmed): Viper |
 
 ### Voice (1)
 
 | id | s | category | words |
 |---|---|---|---|
-| VIP | 1.3 | objective_other | VIP |
+| VIP | 1.3 | objective_other | VIP · community label (agrees, unconfirmed): VIP |
 
 ### Wraith (22)
 
@@ -1481,7 +1479,7 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 | VKJ | 5.9 | line | Eey you eyes, yellow eey you eyes |
 | VKK | 1.3 | taunt | Who's next? |
 | VKL | 2.4 | taunt | Drembel and Shadow of Vanguard |
-| VKM | 0.9 | name | Drayf |
+| VKM | 0.9 | name | Drayf · community label (differs, unconfirmed): Wraith |
 
 ## Effects — by family
 
@@ -1502,9 +1500,9 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 | N08 | 0.3 | one-shot, decaying tail, 0.3 s, tonal, bright, rising pitch/brightness |
 | N09 | 0.8 | sustained / loop-like, 0.8 s, mixed, bright, repeating / rattling |
 | N10 | 1.7 | one-shot impact, 1.7 s, mixed, bright |
-| N100 | 3.4 | rising / charge-up, 3.4 s, tonal, mid |
-| N101 | 2.6 | one-shot, decaying tail, 2.6 s, tonal, mid, repeating / rattling, falling pitch/brightness |
-| N102 | 2.1 | rising / charge-up, 2.1 s, tonal, dull/low, repeating / rattling, falling pitch/brightness |
+| N100 | 3.4 | rising / charge-up, 3.4 s, tonal, mid · community label (NEW, unconfirmed): (Halo) Respawn |
+| N101 | 2.6 | one-shot, decaying tail, 2.6 s, tonal, mid, repeating / rattling, falling pitch/brightness · community label (NEW, unconfirmed): (Halo) Shields Down |
+| N102 | 2.1 | rising / charge-up, 2.1 s, tonal, dull/low, repeating / rattling, falling pitch/brightness · community label (NEW, unconfirmed): (Halo) Shields Recharge |
 | N103 | 0.9 | one-shot, decaying tail, 0.9 s, tonal, mid |
 | N104 | 0.8 | one-shot, decaying tail, 0.8 s, tonal, dull/low, rising pitch/brightness |
 | N105 | 1.1 | one-shot impact, 1.1 s, tonal, mid |
@@ -1531,7 +1529,7 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 | N22 | 3.1 | one-shot, decaying tail, 3.1 s, tonal, dull/low, falling pitch/brightness |
 | N23 | 3.1 | one-shot impact, 3.1 s, mixed, mid, falling pitch/brightness |
 | N24 | 1.0 | one-shot, decaying tail, 1.0 s, tonal, mid, repeating / rattling, falling pitch/brightness |
-| N25 | 2.5 | one-shot, decaying tail, 2.5 s, tonal, dull/low, repeating / rattling, rising pitch/brightness |
+| N25 | 2.5 | one-shot, decaying tail, 2.5 s, tonal, dull/low, repeating / rattling, rising pitch/brightness · community label (NEW, unconfirmed): Heart beat |
 | N26 | 0.4 | sustained / loop-like, 0.4 s, mixed, mid |
 | N27 | 0.7 | sustained / loop-like, 0.7 s, mixed, mid |
 | N28 | 2.8 | one-shot impact, 2.8 s, mixed, bright, repeating / rattling |
@@ -1584,7 +1582,7 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 | N75 | 2.9 | varying, 2.9 s, tonal, dull/low, repeating / rattling |
 | N76 | 0.2 | one-shot impact, 0.2 s, mixed, bright, rising pitch/brightness |
 | N77 | 0.8 | one-shot, decaying tail, 0.8 s, mixed, mid |
-| N78 | 1.6 | sustained / loop-like, 1.6 s, tonal, bright, repeating / rattling |
+| N78 | 1.6 | sustained / loop-like, 1.6 s, tonal, bright, repeating / rattling · community label (NEW, unconfirmed): Zelda Secret Passage |
 | N79 | 6.4 | sustained / loop-like, 6.4 s, noisy, bright, repeating / rattling |
 | N80 | 3.5 | one-shot impact, 3.5 s, tonal, mid, repeating / rattling |
 | N81 | 0.9 | one-shot, decaying tail, 0.9 s, mixed, mid |
@@ -1611,16 +1609,16 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 
 | id | s | shape |
 |---|---|---|
-| H01 | 2.1 | one-shot impact, 2.1 s, noisy, bright, repeating / rattling |
-| H02 | 0.4 | one-shot, decaying tail, 0.4 s, mixed, mid, falling pitch/brightness |
-| H03 | 0.4 | one-shot, decaying tail, 0.4 s, mixed, mid, falling pitch/brightness |
-| H04 | 1.5 | sustained / loop-like, 1.5 s, mixed, mid, repeating / rattling |
-| H05 | 2.2 | varying, 2.2 s, tonal, mid, repeating / rattling |
-| H06 | 0.4 | one-shot, decaying tail, 0.4 s, noisy, bright, rising pitch/brightness |
-| H07 | 0.5 | one-shot, decaying tail, 0.5 s, mixed, mid |
-| H08 | 0.5 | one-shot, decaying tail, 0.5 s, noisy, bright |
-| H09 | 0.5 | one-shot, decaying tail, 0.5 s, noisy, bright |
-| H10 | 0.7 | one-shot, decaying tail, 0.7 s, noisy, bright |
+| H01 | 2.1 | one-shot impact, 2.1 s, noisy, bright, repeating / rattling · community label (NEW, unconfirmed): Acid |
+| H02 | 0.4 | one-shot, decaying tail, 0.4 s, mixed, mid, falling pitch/brightness · community label (NEW, unconfirmed): Armor Piercing |
+| H03 | 0.4 | one-shot, decaying tail, 0.4 s, mixed, mid, falling pitch/brightness · community label (NEW, unconfirmed): Armor Piercing |
+| H04 | 1.5 | sustained / loop-like, 1.5 s, mixed, mid, repeating / rattling · community label (NEW, unconfirmed): Male Gassed |
+| H05 | 2.2 | varying, 2.2 s, tonal, mid, repeating / rattling · community label (NEW, unconfirmed): Miss, Ricochet |
+| H06 | 0.4 | one-shot, decaying tail, 0.4 s, noisy, bright, rising pitch/brightness · community label (NEW, unconfirmed): Miss, Ricochet |
+| H07 | 0.5 | one-shot, decaying tail, 0.5 s, mixed, mid · community label (NEW, unconfirmed): Miss, Ricochet |
+| H08 | 0.5 | one-shot, decaying tail, 0.5 s, noisy, bright · community label (NEW, unconfirmed): broom brushing |
+| H09 | 0.5 | one-shot, decaying tail, 0.5 s, noisy, bright · community label (NEW, unconfirmed): broom brushing |
+| H10 | 0.7 | one-shot, decaying tail, 0.7 s, noisy, bright · community label (NEW, unconfirmed): poison |
 | H100 | 1.0 | one-shot, decaying tail, 1.0 s, mixed, bright, repeating / rattling |
 | H101 | 3.1 | one-shot impact, 3.1 s, mixed, bright |
 | H102 | 1.0 | one-shot, decaying tail, 1.0 s, mixed, mid, repeating / rattling |
@@ -1631,7 +1629,7 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 | H107 | 0.9 | one-shot, decaying tail, 0.9 s, tonal, bright, repeating / rattling, rising pitch/brightness |
 | H108 | 0.8 | one-shot, decaying tail, 0.8 s, mixed, mid |
 | H109 | 0.7 | one-shot, decaying tail, 0.7 s, mixed, bright, rising pitch/brightness |
-| H11 | 0.6 | one-shot, decaying tail, 0.6 s, noisy, bright |
+| H11 | 0.6 | one-shot, decaying tail, 0.6 s, noisy, bright · community label (NEW, unconfirmed): Arrow |
 | H110 | 1.2 | one-shot impact, 1.2 s, noisy, bright, repeating / rattling |
 | H111 | 1.1 | one-shot impact, 1.1 s, noisy, bright, repeating / rattling |
 | H112 | 0.6 | one-shot, decaying tail, 0.6 s, mixed, bright, rising pitch/brightness |
@@ -1642,7 +1640,7 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 | H117 | 1.9 | one-shot impact, 1.9 s, mixed, bright |
 | H118 | 0.9 | one-shot impact, 0.9 s, mixed, bright, repeating / rattling |
 | H119 | 0.7 | one-shot impact, 0.7 s, mixed, bright |
-| H12 | 1.9 | one-shot impact, 1.9 s, noisy, bright, rising pitch/brightness |
+| H12 | 1.9 | one-shot impact, 1.9 s, noisy, bright, rising pitch/brightness · community label (NEW, unconfirmed): Bubble Acid |
 | H120 | 1.2 | one-shot, decaying tail, 1.2 s, tonal, mid, repeating / rattling |
 | H121 | 0.9 | one-shot, decaying tail, 0.9 s, tonal, mid |
 | H122 | 0.9 | one-shot, decaying tail, 0.9 s, tonal, bright |
@@ -1653,7 +1651,7 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 | H127 | 0.9 | one-shot impact, 0.9 s, tonal, bright, repeating / rattling |
 | H128 | 1.3 | one-shot impact, 1.3 s, tonal, mid |
 | H129 | 6.0 | varying, 6.0 s, mixed, mid |
-| H13 | 0.8 | one-shot impact, 0.8 s, tonal, mid, falling pitch/brightness |
+| H13 | 0.8 | one-shot impact, 0.8 s, tonal, mid, falling pitch/brightness · community label (NEW, unconfirmed): Pistol hit |
 | H130 | 2.5 | one-shot, decaying tail, 2.5 s, tonal, mid, repeating / rattling, falling pitch/brightness |
 | H131 | 3.8 | one-shot impact, 3.8 s, tonal, dull/low, falling pitch/brightness |
 | H132 | 6.1 | sustained / loop-like, 6.1 s, tonal, dull/low, rising pitch/brightness |
@@ -1664,7 +1662,7 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 | H137 | 0.6 | one-shot, decaying tail, 0.6 s, mixed, mid |
 | H138 | 0.9 | one-shot impact, 0.9 s, mixed, mid, repeating / rattling |
 | H139 | 0.9 | one-shot impact, 0.9 s, mixed, bright, repeating / rattling, rising pitch/brightness |
-| H14 | 0.4 | one-shot, decaying tail, 0.4 s, tonal, mid |
+| H14 | 0.4 | one-shot, decaying tail, 0.4 s, tonal, mid · community label (NEW, unconfirmed): bullet hit |
 | H140 | 0.5 | one-shot impact, 0.5 s, mixed, mid |
 | H141 | 0.5 | one-shot impact, 0.5 s, mixed, mid |
 | H142 | 1.2 | one-shot impact, 1.2 s, noisy, bright, repeating / rattling |
@@ -1675,55 +1673,55 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 | H147 | 0.7 | one-shot impact, 0.7 s, mixed, bright |
 | H148 | 1.1 | one-shot impact, 1.1 s, noisy, bright |
 | H149 | 1.1 | one-shot impact, 1.1 s, noisy, bright, rising pitch/brightness |
-| H15 | 0.5 | one-shot impact, 0.5 s, mixed, mid |
+| H15 | 0.5 | one-shot impact, 0.5 s, mixed, mid · community label (NEW, unconfirmed): Armor Hit |
 | H150 | 2.1 | one-shot, decaying tail, 2.1 s, tonal, mid |
 | H151 | 1.0 | one-shot, decaying tail, 1.0 s, tonal, bright, repeating / rattling |
 | H152 | 1.9 | one-shot, decaying tail, 1.9 s, tonal, mid |
 | H153 | 1.0 | one-shot, decaying tail, 1.0 s, tonal, bright, repeating / rattling |
 | H154 | 0.7 | one-shot, decaying tail, 0.7 s, mixed, bright |
 | H155 | 0.7 | one-shot, decaying tail, 0.7 s, mixed, bright, rising pitch/brightness |
-| H16 | 6.3 | one-shot impact, 6.3 s, mixed, bright, rising pitch/brightness |
-| H17 | 2.2 | one-shot impact, 2.2 s, mixed, mid |
-| H18 | 4.9 | one-shot, decaying tail, 4.9 s, tonal, mid, falling pitch/brightness |
-| H19 | 3.3 | one-shot impact, 3.3 s, noisy, bright, repeating / rattling |
-| H20 | 0.9 | one-shot impact, 0.9 s, mixed, bright, repeating / rattling, rising pitch/brightness |
-| H21 | 0.7 | one-shot impact, 0.7 s, mixed, mid, falling pitch/brightness |
-| H22 | 0.6 | one-shot impact, 0.6 s, mixed, mid, falling pitch/brightness |
-| H23 | 1.4 | one-shot impact, 1.4 s, mixed, mid, repeating / rattling, falling pitch/brightness |
-| H24 | 1.2 | one-shot impact, 1.2 s, noisy, bright, repeating / rattling |
-| H25 | 1.2 | one-shot impact, 1.2 s, noisy, bright, repeating / rattling |
-| H26 | 0.6 | one-shot impact, 0.6 s, noisy, bright |
-| H27 | 1.2 | one-shot impact, 1.2 s, noisy, bright, repeating / rattling |
-| H28 | 1.0 | one-shot impact, 1.0 s, tonal, bright, repeating / rattling |
-| H29 | 1.2 | one-shot, decaying tail, 1.2 s, mixed, bright, repeating / rattling, rising pitch/brightness |
-| H30 | 1.2 | one-shot impact, 1.2 s, mixed, bright, rising pitch/brightness |
-| H31 | 0.6 | one-shot impact, 0.6 s, mixed, mid, rising pitch/brightness |
-| H32 | 0.6 | one-shot impact, 0.6 s, mixed, bright, rising pitch/brightness |
-| H33 | 0.4 | one-shot, decaying tail, 0.4 s, noisy, bright |
-| H34 | 0.9 | one-shot, decaying tail, 0.9 s, mixed, bright, repeating / rattling |
-| H35 | 0.6 | one-shot impact, 0.6 s, mixed, mid, falling pitch/brightness |
-| H36 | 0.5 | one-shot, decaying tail, 0.5 s, mixed, mid, falling pitch/brightness |
-| H37 | 0.7 | one-shot impact, 0.7 s, mixed, mid, falling pitch/brightness |
-| H39 | 1.0 | one-shot, decaying tail, 1.0 s, noisy, bright, rising pitch/brightness |
-| H40 | 1.0 | one-shot, decaying tail, 1.0 s, mixed, mid, repeating / rattling |
-| H41 | 1.6 | one-shot impact, 1.6 s, noisy, bright |
-| H42 | 0.7 | one-shot impact, 0.7 s, noisy, bright |
-| H43 | 0.6 | one-shot impact, 0.6 s, noisy, bright |
-| H44 | 1.4 | one-shot impact, 1.4 s, tonal, mid, repeating / rattling, rising pitch/brightness |
-| H45 | 1.6 | one-shot impact, 1.6 s, mixed, mid, repeating / rattling |
-| H46 | 3.1 | one-shot impact, 3.1 s, mixed, bright |
-| H47 | 1.0 | one-shot, decaying tail, 1.0 s, mixed, bright, repeating / rattling |
+| H16 | 6.3 | one-shot impact, 6.3 s, mixed, bright, rising pitch/brightness · community label (NEW, unconfirmed): squishy cut noise |
+| H17 | 2.2 | one-shot impact, 2.2 s, mixed, mid · community label (NEW, unconfirmed): Energy long hit |
+| H18 | 4.9 | one-shot, decaying tail, 4.9 s, tonal, mid, falling pitch/brightness · community label (NEW, unconfirmed): futuristic fly by with heart beat maybe regen |
+| H19 | 3.3 | one-shot impact, 3.3 s, noisy, bright, repeating / rattling · community label (NEW, unconfirmed): many smal burning hits |
+| H20 | 0.9 | one-shot impact, 0.9 s, mixed, bright, repeating / rattling, rising pitch/brightness · community label (NEW, unconfirmed): Electric shock |
+| H21 | 0.7 | one-shot impact, 0.7 s, mixed, mid, falling pitch/brightness · community label (NEW, unconfirmed): Hit on Shield |
+| H22 | 0.6 | one-shot impact, 0.6 s, mixed, mid, falling pitch/brightness · community label (NEW, unconfirmed): Hit on Shield |
+| H23 | 1.4 | one-shot impact, 1.4 s, mixed, mid, repeating / rattling, falling pitch/brightness · community label (NEW, unconfirmed): poison blaster hit... infected |
+| H24 | 1.2 | one-shot impact, 1.2 s, noisy, bright, repeating / rattling · community label (NEW, unconfirmed): metal and glass shatter hit |
+| H25 | 1.2 | one-shot impact, 1.2 s, noisy, bright, repeating / rattling · community label (NEW, unconfirmed): metal and glass shatter hit |
+| H26 | 0.6 | one-shot impact, 0.6 s, noisy, bright · community label (NEW, unconfirmed): knife swipe |
+| H27 | 1.2 | one-shot impact, 1.2 s, noisy, bright, repeating / rattling · community label (NEW, unconfirmed): bloody knife swipe |
+| H28 | 1.0 | one-shot impact, 1.0 s, tonal, bright, repeating / rattling · community label (NEW, unconfirmed): blades klinging |
+| H29 | 1.2 | one-shot, decaying tail, 1.2 s, mixed, bright, repeating / rattling, rising pitch/brightness · community label (NEW, unconfirmed): Medic capsule healing |
+| H30 | 1.2 | one-shot impact, 1.2 s, mixed, bright, rising pitch/brightness · community label (NEW, unconfirmed): small blast impact |
+| H31 | 0.6 | one-shot impact, 0.6 s, mixed, mid, rising pitch/brightness · community label (NEW, unconfirmed): squishy bubbles |
+| H32 | 0.6 | one-shot impact, 0.6 s, mixed, bright, rising pitch/brightness · community label (NEW, unconfirmed): squishy bubbles |
+| H33 | 0.4 | one-shot, decaying tail, 0.4 s, noisy, bright · community label (NEW, unconfirmed): Ray Gun short |
+| H34 | 0.9 | one-shot, decaying tail, 0.9 s, mixed, bright, repeating / rattling · community label (NEW, unconfirmed): Stab with blood |
+| H35 | 0.6 | one-shot impact, 0.6 s, mixed, mid, falling pitch/brightness · community label (NEW, unconfirmed): hitting armor |
+| H36 | 0.5 | one-shot, decaying tail, 0.5 s, mixed, mid, falling pitch/brightness · community label (NEW, unconfirmed): hitting armor |
+| H37 | 0.7 | one-shot impact, 0.7 s, mixed, mid, falling pitch/brightness · community label (NEW, unconfirmed): hitting armor |
+| H39 | 1.0 | one-shot, decaying tail, 1.0 s, noisy, bright, rising pitch/brightness · community label (NEW, unconfirmed): Metal hit with blood |
+| H40 | 1.0 | one-shot, decaying tail, 1.0 s, mixed, mid, repeating / rattling · community label (NEW, unconfirmed): Sword against shield with squishy |
+| H41 | 1.6 | one-shot impact, 1.6 s, noisy, bright · community label (NEW, unconfirmed): shocking or acid frying |
+| H42 | 0.7 | one-shot impact, 0.7 s, noisy, bright · community label (NEW, unconfirmed): small hit with frying sound |
+| H43 | 0.6 | one-shot impact, 0.6 s, noisy, bright · community label (NEW, unconfirmed): stab with whiping sound |
+| H44 | 1.4 | one-shot impact, 1.4 s, tonal, mid, repeating / rattling, rising pitch/brightness · community label (NEW, unconfirmed): several thuds |
+| H45 | 1.6 | one-shot impact, 1.6 s, mixed, mid, repeating / rattling · community label (NEW, unconfirmed): ??? |
+| H46 | 3.1 | one-shot impact, 3.1 s, mixed, bright · community label (NEW, unconfirmed): Electric Burning long |
+| H47 | 1.0 | one-shot, decaying tail, 1.0 s, mixed, bright, repeating / rattling · community label (NEW, unconfirmed): Gory Squish splatter |
 | H48 | 1.2 | one-shot impact, 1.2 s, noisy, mid, repeating / rattling, falling pitch/brightness |
-| H49 | 1.2 | one-shot impact, 1.2 s, mixed, mid, repeating / rattling |
-| H50 | 1.0 | one-shot impact, 1.0 s, noisy, bright |
-| H51 | 1.0 | one-shot impact, 1.0 s, noisy, bright |
-| H52 | 0.9 | one-shot, decaying tail, 0.9 s, mixed, mid, repeating / rattling |
-| H53 | 1.1 | one-shot, decaying tail, 1.1 s, mixed, mid |
-| H54 | 0.8 | one-shot impact, 0.8 s, mixed, mid, falling pitch/brightness |
-| H55 | 0.4 | one-shot, decaying tail, 0.4 s, tonal, mid, rising pitch/brightness |
-| H56 | 0.5 | one-shot, decaying tail, 0.5 s, mixed, mid, rising pitch/brightness |
-| H57 | 0.8 | one-shot, decaying tail, 0.8 s, mixed, mid, rising pitch/brightness |
-| H58 | 1.1 | one-shot, decaying tail, 1.1 s, tonal, mid, repeating / rattling, falling pitch/brightness |
+| H49 | 1.2 | one-shot impact, 1.2 s, mixed, mid, repeating / rattling · community label (NEW, unconfirmed): Gory Squish splatter |
+| H50 | 1.0 | one-shot impact, 1.0 s, noisy, bright · community label (NEW, unconfirmed): Electric shock |
+| H51 | 1.0 | one-shot impact, 1.0 s, noisy, bright · community label (NEW, unconfirmed): Electric shock |
+| H52 | 0.9 | one-shot, decaying tail, 0.9 s, mixed, mid, repeating / rattling · community label (NEW, unconfirmed): melee hit with a gong |
+| H53 | 1.1 | one-shot, decaying tail, 1.1 s, mixed, mid · community label (NEW, unconfirmed): melee hit with a gong |
+| H54 | 0.8 | one-shot impact, 0.8 s, mixed, mid, falling pitch/brightness · community label (NEW, unconfirmed): loud hit |
+| H55 | 0.4 | one-shot, decaying tail, 0.4 s, tonal, mid, rising pitch/brightness · community label (NEW, unconfirmed): thud-punch |
+| H56 | 0.5 | one-shot, decaying tail, 0.5 s, mixed, mid, rising pitch/brightness · community label (NEW, unconfirmed): thud-punch |
+| H57 | 0.8 | one-shot, decaying tail, 0.8 s, mixed, mid, rising pitch/brightness · community label (NEW, unconfirmed): Melee hit with gun stock |
+| H58 | 1.1 | one-shot, decaying tail, 1.1 s, tonal, mid, repeating / rattling, falling pitch/brightness · community label (NEW, unconfirmed): Melee hit with gun stock |
 
 ### U — beep / boop (110)
 
@@ -1848,25 +1846,25 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 | M02 | 0.5 | one-shot, decaying tail, 0.5 s, mixed, mid |
 | M03 | 0.5 | one-shot, decaying tail, 0.5 s, mixed, mid |
 | M04 | 0.6 | one-shot, decaying tail, 0.6 s, tonal, bright, falling pitch/brightness |
-| M05 | 3.4 | one-shot, decaying tail, 3.4 s, tonal, mid, repeating / rattling |
-| M06 | 1.6 | varying, 1.6 s, tonal, mid, repeating / rattling |
-| M07 | 1.7 | one-shot, decaying tail, 1.7 s, mixed, mid, repeating / rattling |
-| M08 | 1.3 | one-shot, decaying tail, 1.3 s, tonal, mid, repeating / rattling |
-| M09 | 1.4 | one-shot, decaying tail, 1.4 s, mixed, mid, repeating / rattling, falling pitch/brightness |
-| M10 | 1.2 | sustained / loop-like, 1.2 s, mixed, mid, repeating / rattling |
+| M05 | 3.4 | one-shot, decaying tail, 3.4 s, tonal, mid, repeating / rattling · community label (NEW, unconfirmed): Shokahn laugh |
+| M06 | 1.6 | varying, 1.6 s, tonal, mid, repeating / rattling · community label (NEW, unconfirmed): Flawless victory |
+| M07 | 1.7 | one-shot, decaying tail, 1.7 s, mixed, mid, repeating / rattling · community label (NEW, unconfirmed): Flawless victory2 |
+| M08 | 1.3 | one-shot, decaying tail, 1.3 s, tonal, mid, repeating / rattling · community label (NEW, unconfirmed): Fatality |
+| M09 | 1.4 | one-shot, decaying tail, 1.4 s, mixed, mid, repeating / rattling, falling pitch/brightness · community label (NEW, unconfirmed): Fatality |
+| M10 | 1.2 | sustained / loop-like, 1.2 s, mixed, mid, repeating / rattling · community label (NEW, unconfirmed): Fatality |
 | M100 | 1.7 | one-shot, decaying tail, 1.7 s, noisy, bright |
 | M101 | 2.8 | one-shot, decaying tail, 2.8 s, tonal, dull/low, falling pitch/brightness |
-| M11 | 2.0 | one-shot, decaying tail, 2.0 s, tonal, mid, falling pitch/brightness |
-| M12 | 0.3 | one-shot, decaying tail, 0.3 s, tonal, mid |
-| M13 | 0.7 | one-shot, decaying tail, 0.7 s, mixed, mid, rising pitch/brightness |
-| M14 | 0.5 | one-shot, decaying tail, 0.5 s, tonal, mid |
-| M15 | 1.3 | one-shot, decaying tail, 1.3 s, tonal, mid, repeating / rattling, falling pitch/brightness |
-| M16 | 1.6 | one-shot, decaying tail, 1.6 s, mixed, mid, repeating / rattling, falling pitch/brightness |
-| M17 | 0.7 | one-shot, decaying tail, 0.7 s, tonal, dull/low |
-| M18 | 0.7 | one-shot, decaying tail, 0.7 s, tonal, mid |
-| M19 | 1.3 | one-shot, decaying tail, 1.3 s, mixed, mid, repeating / rattling, rising pitch/brightness |
-| M20 | 1.1 | one-shot, decaying tail, 1.1 s, tonal, dull/low, falling pitch/brightness |
-| M21 | 0.6 | one-shot, decaying tail, 0.6 s, tonal, mid |
+| M11 | 2.0 | one-shot, decaying tail, 2.0 s, tonal, mid, falling pitch/brightness · community label (NEW, unconfirmed): Choose ur destiny |
+| M12 | 0.3 | one-shot, decaying tail, 0.3 s, tonal, mid · community label (NEW, unconfirmed): Swipe |
+| M13 | 0.7 | one-shot, decaying tail, 0.7 s, mixed, mid, rising pitch/brightness · community label (NEW, unconfirmed): Hard hit |
+| M14 | 0.5 | one-shot, decaying tail, 0.5 s, tonal, mid · community label (NEW, unconfirmed): Swing |
+| M15 | 1.3 | one-shot, decaying tail, 1.3 s, tonal, mid, repeating / rattling, falling pitch/brightness · community label (NEW, unconfirmed): Hit and smash |
+| M16 | 1.6 | one-shot, decaying tail, 1.6 s, mixed, mid, repeating / rattling, falling pitch/brightness · community label (NEW, unconfirmed): Another hit |
+| M17 | 0.7 | one-shot, decaying tail, 0.7 s, tonal, dull/low · community label (NEW, unconfirmed): Another hit |
+| M18 | 0.7 | one-shot, decaying tail, 0.7 s, tonal, mid · community label (NEW, unconfirmed): Knife slice |
+| M19 | 1.3 | one-shot, decaying tail, 1.3 s, mixed, mid, repeating / rattling, rising pitch/brightness · community label (NEW, unconfirmed): Knife hit |
+| M20 | 1.1 | one-shot, decaying tail, 1.1 s, tonal, dull/low, falling pitch/brightness · community label (NEW, unconfirmed): Another hit |
+| M21 | 0.6 | one-shot, decaying tail, 0.6 s, tonal, mid · community label (NEW, unconfirmed): Another hit |
 | M22 | 1.2 | one-shot, decaying tail, 1.2 s, noisy, mid, repeating / rattling |
 | M23 | 1.9 | one-shot, decaying tail, 1.9 s, mixed, mid, repeating / rattling, falling pitch/brightness |
 | M24 | 1.8 | one-shot, decaying tail, 1.8 s, mixed, bright, falling pitch/brightness |
@@ -1957,7 +1955,7 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 | A100 | 19.2 | one-shot impact, 19.2 s, tonal, dull/low |
 | A101 | 7.2 | one-shot impact, 7.2 s, tonal, mid |
 | A102 | 11.9 | one-shot impact, 11.9 s, tonal, mid |
-| A103 | 24.1 | one-shot impact, 24.1 s, tonal, mid |
+| A103 | 24.1 | one-shot impact, 24.1 s, tonal, mid · community label (NEW, unconfirmed): (Halo) buble shield |
 | A11 | 0.9 | one-shot impact, 0.9 s, mixed, mid |
 | A12 | 0.9 | one-shot impact, 0.9 s, noisy, bright, repeating / rattling |
 | A13 | 0.8 | one-shot, decaying tail, 0.8 s, mixed, bright, repeating / rattling |
@@ -1978,7 +1976,7 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 | A28 | 1.0 | one-shot impact, 1.0 s, tonal, mid, falling pitch/brightness |
 | A29 | 1.3 | one-shot, decaying tail, 1.3 s, mixed, mid, falling pitch/brightness |
 | A30 | 1.5 | one-shot, decaying tail, 1.5 s, mixed, mid, rising pitch/brightness |
-| A31 | 1.7 | sustained / loop-like, 1.7 s, noisy, mid, repeating / rattling |
+| A31 | 1.7 | sustained / loop-like, 1.7 s, noisy, mid, repeating / rattling · community label (NEW, unconfirmed): Medical Tape |
 | A32 | 1.3 | one-shot impact, 1.3 s, tonal, bright |
 | A33 | 1.1 | one-shot impact, 1.1 s, noisy, bright |
 | A34 | 3.5 | rising / charge-up, 3.5 s, mixed, mid, repeating / rattling |
@@ -2204,11 +2202,11 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 | X10 | 1.9 | one-shot impact, 1.9 s, mixed, mid |
 | X11 | 1.5 | one-shot impact, 1.5 s, tonal, mid, falling pitch/brightness |
 | X12 | 2.0 | one-shot impact, 2.0 s, mixed, mid, repeating / rattling |
-| X13 | 1.5 | one-shot impact, 1.5 s, tonal, dull/low, repeating / rattling, falling pitch/brightness |
+| X13 | 1.5 | one-shot impact, 1.5 s, tonal, dull/low, repeating / rattling, falling pitch/brightness · community label (NEW, unconfirmed): small explode |
 | X14 | 1.2 | one-shot impact, 1.2 s, mixed, mid, repeating / rattling, falling pitch/brightness |
 | X15 | 1.2 | one-shot impact, 1.2 s, mixed, mid, repeating / rattling, falling pitch/brightness |
 | X16 | 1.3 | one-shot impact, 1.3 s, mixed, mid |
-| X17 | 7.9 | one-shot impact, 7.9 s, tonal, mid, repeating / rattling |
+| X17 | 7.9 | one-shot impact, 7.9 s, tonal, mid, repeating / rattling · community label (NEW, unconfirmed): concussion grenade |
 | X18 | 1.8 | one-shot impact, 1.8 s, tonal, dull/low, falling pitch/brightness |
 | X19 | 3.6 | one-shot impact, 3.6 s, noisy, bright |
 | X20 | 5.3 | varying, 5.3 s, mixed, mid |
@@ -2219,9 +2217,9 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 | X25 | 1.8 | one-shot impact, 1.8 s, tonal, mid, repeating / rattling, falling pitch/brightness |
 | X26 | 3.2 | one-shot impact, 3.2 s, tonal, mid, repeating / rattling, falling pitch/brightness |
 | X27 | 3.4 | one-shot impact, 3.4 s, mixed, mid, repeating / rattling, falling pitch/brightness |
-| X28 | 6.7 | one-shot impact, 6.7 s, tonal, mid |
+| X28 | 6.7 | one-shot impact, 6.7 s, tonal, mid · community label (NEW, unconfirmed): explode with echo |
 | X29 | 4.0 | one-shot impact, 4.0 s, tonal, mid, falling pitch/brightness |
-| X30 | 8.1 | one-shot impact, 8.1 s, tonal, dull/low, repeating / rattling, falling pitch/brightness |
+| X30 | 8.1 | one-shot impact, 8.1 s, tonal, dull/low, repeating / rattling, falling pitch/brightness · community label (NEW, unconfirmed): bomb |
 | X31 | 4.0 | one-shot impact, 4.0 s, noisy, bright, repeating / rattling |
 | X32 | 2.7 | one-shot impact, 2.7 s, tonal, dull/low, rising pitch/brightness |
 | X33 | 5.3 | varying, 5.3 s, noisy, bright, repeating / rattling, falling pitch/brightness |
@@ -2249,7 +2247,7 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 | id | s | shape |
 |---|---|---|
 | R01 | 1.8 | one-shot impact, 1.8 s, tonal, dull/low, falling pitch/brightness |
-| R02 | 2.2 | one-shot impact, 2.2 s, tonal, mid, repeating / rattling |
+| R02 | 2.2 | one-shot impact, 2.2 s, tonal, mid, repeating / rattling · community label (NEW, unconfirmed): Definitely the m4 |
 | R03 | 2.0 | one-shot impact, 2.0 s, tonal, dull/low, falling pitch/brightness |
 | R04 | 2.4 | one-shot impact, 2.4 s, tonal, mid |
 | R05 | 1.9 | one-shot impact, 1.9 s, tonal, mid, falling pitch/brightness |
@@ -2260,19 +2258,19 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 | R10 | 1.3 | one-shot impact, 1.3 s, tonal, mid, repeating / rattling, falling pitch/brightness |
 | R100 | 1.3 | one-shot impact, 1.3 s, tonal, mid, repeating / rattling, rising pitch/brightness |
 | R101 | 1.0 | one-shot impact, 1.0 s, mixed, mid |
-| R102 | 2.0 | one-shot impact, 2.0 s, mixed, mid, repeating / rattling, falling pitch/brightness |
-| R103 | 1.9 | one-shot impact, 1.9 s, mixed, mid, repeating / rattling, rising pitch/brightness |
+| R102 | 2.0 | one-shot impact, 2.0 s, mixed, mid, repeating / rattling, falling pitch/brightness · community label (NEW, unconfirmed): Halo 4 sniper |
+| R103 | 1.9 | one-shot impact, 1.9 s, mixed, mid, repeating / rattling, rising pitch/brightness · community label (NEW, unconfirmed): Halo 4 shotgun |
 | R104 | 1.0 | one-shot impact, 1.0 s, mixed, mid, repeating / rattling, rising pitch/brightness |
 | R105 | 1.3 | one-shot, decaying tail, 1.3 s, tonal, mid, repeating / rattling, rising pitch/brightness |
 | R106 | 0.8 | one-shot impact, 0.8 s, mixed, mid, repeating / rattling |
 | R107 | 2.4 | one-shot impact, 2.4 s, tonal, dull/low, falling pitch/brightness |
-| R108 | 1.7 | one-shot impact, 1.7 s, tonal, mid, repeating / rattling, falling pitch/brightness |
+| R108 | 1.7 | one-shot impact, 1.7 s, tonal, mid, repeating / rattling, falling pitch/brightness · community label (NEW, unconfirmed): Halo 4 Beam Rifle |
 | R109 | 1.0 | one-shot, decaying tail, 1.0 s, tonal, mid |
 | R11 | 2.0 | one-shot impact, 2.0 s, tonal, dull/low |
-| R110 | 1.0 | one-shot impact, 1.0 s, tonal, mid, falling pitch/brightness |
-| R111 | 1.2 | one-shot impact, 1.2 s, tonal, mid |
-| R112 | 5.0 | sustained / loop-like, 5.0 s, tonal, mid, repeating / rattling |
-| R113 | 1.3 | one-shot impact, 1.3 s, mixed, mid |
+| R110 | 1.0 | one-shot impact, 1.0 s, tonal, mid, falling pitch/brightness · community label (NEW, unconfirmed): Halo 4 Plasma Pistol standard shot |
+| R111 | 1.2 | one-shot impact, 1.2 s, tonal, mid · community label (NEW, unconfirmed): Halo 4 plasma Pistol charge ramp up |
+| R112 | 5.0 | sustained / loop-like, 5.0 s, tonal, mid, repeating / rattling · community label (NEW, unconfirmed): Halo 4 plasma Pistol charge max |
+| R113 | 1.3 | one-shot impact, 1.3 s, mixed, mid · community label (NEW, unconfirmed): Halo 4 plasma Pistol charge shot |
 | R114 | 1.2 | rising / charge-up, 1.2 s, mixed, bright, repeating / rattling |
 | R115 | 3.0 | one-shot impact, 3.0 s, tonal, mid, repeating / rattling |
 | R116 | 2.6 | one-shot impact, 2.6 s, tonal, mid, repeating / rattling |
@@ -2280,8 +2278,8 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 | R118 | 2.0 | one-shot impact, 2.0 s, mixed, mid, repeating / rattling |
 | R119 | 1.9 | one-shot impact, 1.9 s, mixed, mid, falling pitch/brightness |
 | R12 | 1.9 | one-shot impact, 1.9 s, tonal, mid, repeating / rattling, falling pitch/brightness |
-| R120 | 2.5 | rising / charge-up, 2.5 s, mixed, mid |
-| R121 | 3.0 | one-shot impact, 3.0 s, tonal, mid, repeating / rattling |
+| R120 | 2.5 | rising / charge-up, 2.5 s, mixed, mid · community label (NEW, unconfirmed): Halo Spartan Lazer Charge |
+| R121 | 3.0 | one-shot impact, 3.0 s, tonal, mid, repeating / rattling · community label (NEW, unconfirmed): Halo Spartan Lazer Shot |
 | R122 | 0.5 | one-shot, decaying tail, 0.5 s, mixed, mid |
 | R123 | 1.2 | one-shot impact, 1.2 s, tonal, mid, repeating / rattling |
 | R13 | 2.3 | one-shot impact, 2.3 s, tonal, mid |
@@ -2301,7 +2299,7 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 | id | s | shape |
 |---|---|---|
 | J01 | 62.8 | varying, 62.8 s, tonal, dull/low, repeating / rattling |
-| J02 | 1.8 | one-shot impact, 1.8 s, tonal, mid, repeating / rattling |
+| J02 | 1.8 | one-shot impact, 1.8 s, tonal, mid, repeating / rattling · community label (NEW, unconfirmed): offline grenade launcher? |
 | J03 | 1.5 | sustained / loop-like, 1.5 s, tonal, mid |
 | J04 | 1.5 | sustained / loop-like, 1.5 s, mixed, mid, repeating / rattling |
 | J05 | 1.5 | sustained / loop-like, 1.5 s, tonal, mid |
@@ -2350,43 +2348,43 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 
 | id | s | shape |
 |---|---|---|
-| SW00 | 10.1 | one-shot, decaying tail, 10.1 s, tonal, mid, falling pitch/brightness |
-| SW01 | 1.7 | one-shot impact, 1.7 s, mixed, mid, falling pitch/brightness |
-| SW02 | 28.3 | one-shot, decaying tail, 28.3 s, tonal, dull/low, repeating / rattling, steady pitch ~91 Hz |
-| SW03 | 93.1 | varying, 93.1 s, tonal, mid |
-| SW04 | 94.0 | varying, 94.0 s, tonal, mid |
-| SW05 | 1.3 | rising / charge-up, 1.3 s, mixed, mid, rising pitch/brightness |
-| SW06 | 1.0 | one-shot impact, 1.0 s, mixed, mid, repeating / rattling |
-| SW07 | 1.0 | one-shot, decaying tail, 1.0 s, mixed, mid, repeating / rattling, falling pitch/brightness |
-| SW08 | 0.8 | one-shot, decaying tail, 0.8 s, mixed, mid, falling pitch/brightness |
-| SW10 | 0.6 | sustained / loop-like, 0.6 s, tonal, dull/low, steady pitch ~98 Hz |
-| SW11 | 0.5 | one-shot, decaying tail, 0.5 s, tonal, dull/low, steady pitch ~94 Hz |
-| SW13 | 1.4 | one-shot, decaying tail, 1.4 s, tonal, dull/low, repeating / rattling, steady pitch ~93 Hz |
-| SW14 | 1.3 | one-shot, decaying tail, 1.3 s, tonal, dull/low, repeating / rattling, steady pitch ~98 Hz |
-| SW15 | 0.3 | sustained / loop-like, 0.3 s, tonal, dull/low, steady pitch ~97 Hz |
-| SW16 | 0.3 | one-shot, decaying tail, 0.3 s, tonal, dull/low, steady pitch ~94 Hz |
-| SW17 | 0.8 | sustained / loop-like, 0.8 s, tonal, dull/low, repeating / rattling |
-| SW18 | 0.8 | sustained / loop-like, 0.8 s, tonal, dull/low, repeating / rattling |
-| SW19 | 1.2 | sustained / loop-like, 1.2 s, tonal, dull/low, repeating / rattling, steady pitch ~97 Hz, rising pitch/brightness |
-| SW20 | 0.6 | one-shot, decaying tail, 0.6 s, tonal, dull/low |
-| SW21 | 0.7 | one-shot, decaying tail, 0.7 s, tonal, dull/low, steady pitch ~92 Hz |
-| SW23 | 0.9 | one-shot impact, 0.9 s, mixed, mid, repeating / rattling, falling pitch/brightness |
-| SW24 | 0.7 | one-shot impact, 0.7 s, mixed, mid, falling pitch/brightness |
-| SW25 | 0.9 | one-shot impact, 0.9 s, mixed, mid, repeating / rattling, falling pitch/brightness |
-| SW26 | 2.2 | one-shot, decaying tail, 2.2 s, tonal, mid, repeating / rattling |
-| SW28 | 0.6 | one-shot, decaying tail, 0.6 s, tonal, mid, falling pitch/brightness |
-| SW29 | 2.3 | one-shot, decaying tail, 2.3 s, tonal, mid, falling pitch/brightness |
-| SW30 | 1.9 | one-shot impact, 1.9 s, tonal, dull/low, falling pitch/brightness |
-| SW31 | 60.8 | sustained / loop-like, 60.8 s, tonal, mid |
-| SW32 | 1.4 | one-shot, decaying tail, 1.4 s, mixed, mid |
-| SW33 | 1.4 | one-shot, decaying tail, 1.4 s, mixed, bright |
-| SW34 | 1.4 | one-shot impact, 1.4 s, tonal, mid, falling pitch/brightness |
-| SW35 | 1.0 | one-shot impact, 1.0 s, tonal, mid, falling pitch/brightness |
-| SW36 | 0.7 | one-shot impact, 0.7 s, mixed, mid |
-| SW37 | 1.0 | one-shot impact, 1.0 s, mixed, mid, repeating / rattling, falling pitch/brightness |
-| SW38 | 0.9 | one-shot impact, 0.9 s, mixed, mid, falling pitch/brightness |
-| SW39 | 1.5 | one-shot impact, 1.5 s, tonal, dull/low, falling pitch/brightness |
-| SW40 | 0.9 | one-shot impact, 0.9 s, mixed, mid, falling pitch/brightness |
+| SW00 | 10.1 | one-shot, decaying tail, 10.1 s, tonal, mid, falling pitch/brightness · community label (NEW, unconfirmed): Trumpets star wars |
+| SW01 | 1.7 | one-shot impact, 1.7 s, mixed, mid, falling pitch/brightness · community label (NEW, unconfirmed): Light Saber start up |
+| SW02 | 28.3 | one-shot, decaying tail, 28.3 s, tonal, dull/low, repeating / rattling, steady pitch ~91 Hz · community label (NEW, unconfirmed): Light saber on |
+| SW03 | 93.1 | varying, 93.1 s, tonal, mid · community label (NEW, unconfirmed): Star Wars intro theme song |
+| SW04 | 94.0 | varying, 94.0 s, tonal, mid · community label (NEW, unconfirmed): Star Wars theme song |
+| SW05 | 1.3 | rising / charge-up, 1.3 s, mixed, mid, rising pitch/brightness · community label (NEW, unconfirmed): Retracting light sabre |
+| SW06 | 1.0 | one-shot impact, 1.0 s, mixed, mid, repeating / rattling · community label (NEW, unconfirmed): Saber hit |
+| SW07 | 1.0 | one-shot, decaying tail, 1.0 s, mixed, mid, repeating / rattling, falling pitch/brightness · community label (NEW, unconfirmed): Sabers clash |
+| SW08 | 0.8 | one-shot, decaying tail, 0.8 s, mixed, mid, falling pitch/brightness · community label (NEW, unconfirmed): Saber clash |
+| SW10 | 0.6 | sustained / loop-like, 0.6 s, tonal, dull/low, steady pitch ~98 Hz · community label (NEW, unconfirmed): Saber swing |
+| SW11 | 0.5 | one-shot, decaying tail, 0.5 s, tonal, dull/low, steady pitch ~94 Hz · community label (NEW, unconfirmed): Saber swing |
+| SW13 | 1.4 | one-shot, decaying tail, 1.4 s, tonal, dull/low, repeating / rattling, steady pitch ~93 Hz · community label (NEW, unconfirmed): Swinging saber |
+| SW14 | 1.3 | one-shot, decaying tail, 1.3 s, tonal, dull/low, repeating / rattling, steady pitch ~98 Hz · community label (NEW, unconfirmed): Swinging saber |
+| SW15 | 0.3 | sustained / loop-like, 0.3 s, tonal, dull/low, steady pitch ~97 Hz · community label (NEW, unconfirmed): Short saber swing |
+| SW16 | 0.3 | one-shot, decaying tail, 0.3 s, tonal, dull/low, steady pitch ~94 Hz · community label (NEW, unconfirmed): Humming |
+| SW17 | 0.8 | sustained / loop-like, 0.8 s, tonal, dull/low, repeating / rattling · community label (NEW, unconfirmed): Swing saber |
+| SW18 | 0.8 | sustained / loop-like, 0.8 s, tonal, dull/low, repeating / rattling · community label (NEW, unconfirmed): Dual saber |
+| SW19 | 1.2 | sustained / loop-like, 1.2 s, tonal, dull/low, repeating / rattling, steady pitch ~97 Hz, rising pitch/brightness · community label (NEW, unconfirmed): Multiple saber swings |
+| SW20 | 0.6 | one-shot, decaying tail, 0.6 s, tonal, dull/low · community label (NEW, unconfirmed): Saber swing |
+| SW21 | 0.7 | one-shot, decaying tail, 0.7 s, tonal, dull/low, steady pitch ~92 Hz · community label (NEW, unconfirmed): Saber swing |
+| SW23 | 0.9 | one-shot impact, 0.9 s, mixed, mid, repeating / rattling, falling pitch/brightness · community label (NEW, unconfirmed): Blaster saber |
+| SW24 | 0.7 | one-shot impact, 0.7 s, mixed, mid, falling pitch/brightness · community label (NEW, unconfirmed): Saber hit |
+| SW25 | 0.9 | one-shot impact, 0.9 s, mixed, mid, repeating / rattling, falling pitch/brightness · community label (NEW, unconfirmed): Blaster blocked w saber |
+| SW26 | 2.2 | one-shot, decaying tail, 2.2 s, tonal, mid, repeating / rattling · community label (NEW, unconfirmed): Weird blaster with follow up bang |
+| SW28 | 0.6 | one-shot, decaying tail, 0.6 s, tonal, mid, falling pitch/brightness · community label (NEW, unconfirmed): Swish |
+| SW29 | 2.3 | one-shot, decaying tail, 2.3 s, tonal, mid, falling pitch/brightness · community label (NEW, unconfirmed): Explosion |
+| SW30 | 1.9 | one-shot impact, 1.9 s, tonal, dull/low, falling pitch/brightness · community label (NEW, unconfirmed): Big blaster cannon? |
+| SW31 | 60.8 | sustained / loop-like, 60.8 s, tonal, mid · community label (NEW, unconfirmed): Hall choir star wars song |
+| SW32 | 1.4 | one-shot, decaying tail, 1.4 s, mixed, mid · community label (NEW, unconfirmed): Saber burning or slicing something |
+| SW33 | 1.4 | one-shot, decaying tail, 1.4 s, mixed, bright · community label (NEW, unconfirmed): Saber burning or slicing something |
+| SW34 | 1.4 | one-shot impact, 1.4 s, tonal, mid, falling pitch/brightness · community label (NEW, unconfirmed): Blaster shot rifle style |
+| SW35 | 1.0 | one-shot impact, 1.0 s, tonal, mid, falling pitch/brightness · community label (NEW, unconfirmed): Blaster |
+| SW36 | 0.7 | one-shot impact, 0.7 s, mixed, mid · community label (NEW, unconfirmed): Blaster |
+| SW37 | 1.0 | one-shot impact, 1.0 s, mixed, mid, repeating / rattling, falling pitch/brightness · community label (NEW, unconfirmed): Blaster turret |
+| SW38 | 0.9 | one-shot impact, 0.9 s, mixed, mid, falling pitch/brightness · community label (NEW, unconfirmed): Standard blaster |
+| SW39 | 1.5 | one-shot impact, 1.5 s, tonal, dull/low, falling pitch/brightness · community label (NEW, unconfirmed): Rifle blaster |
+| SW40 | 0.9 | one-shot impact, 0.9 s, mixed, mid, falling pitch/brightness · community label (NEW, unconfirmed): Blaster |
 
 ### SH — swipe / swish (34)
 
@@ -2580,14 +2578,14 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 | G09 | 0.8 | one-shot impact, 0.8 s, tonal, mid, repeating / rattling, falling pitch/brightness |
 | G10 | 1.3 | one-shot impact, 1.3 s, tonal, mid |
 | G11 | 1.0 | one-shot impact, 1.0 s, tonal, mid, repeating / rattling, falling pitch/brightness |
-| G12 | 1.6 | one-shot impact, 1.6 s, mixed, mid |
+| G12 | 1.6 | one-shot impact, 1.6 s, mixed, mid · community label (NEW, unconfirmed): possible m4? |
 | G13 | 0.9 | one-shot impact, 0.9 s, mixed, mid, repeating / rattling |
 | G14 | 1.3 | one-shot impact, 1.3 s, mixed, mid, repeating / rattling, falling pitch/brightness |
 | G15 | 1.1 | one-shot impact, 1.1 s, tonal, mid, repeating / rattling |
 | G16 | 1.6 | one-shot impact, 1.6 s, tonal, mid, repeating / rattling, rising pitch/brightness |
 | G17 | 1.4 | one-shot impact, 1.4 s, tonal, dull/low, falling pitch/brightness |
-| G18 | 1.3 | one-shot impact, 1.3 s, tonal, mid, falling pitch/brightness |
-| G19 | 1.9 | one-shot impact, 1.9 s, tonal, mid, falling pitch/brightness |
+| G18 | 1.3 | one-shot impact, 1.3 s, tonal, mid, falling pitch/brightness · community label (NEW, unconfirmed): possible m4 or smg x3? |
+| G19 | 1.9 | one-shot impact, 1.9 s, tonal, mid, falling pitch/brightness · community label (NEW, unconfirmed): possible smg x3? |
 | G20 | 2.0 | one-shot impact, 2.0 s, mixed, mid, falling pitch/brightness |
 | G21 | 0.8 | one-shot impact, 0.8 s, tonal, mid |
 | G22 | 0.9 | one-shot impact, 0.9 s, tonal, mid, repeating / rattling |
@@ -2603,7 +2601,7 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 | S04 | 2.4 | one-shot impact, 2.4 s, mixed, mid, repeating / rattling, rising pitch/brightness |
 | S05 | 3.1 | one-shot impact, 3.1 s, tonal, mid, repeating / rattling |
 | S06 | 2.8 | one-shot impact, 2.8 s, tonal, mid, repeating / rattling |
-| S07 | 1.1 | one-shot impact, 1.1 s, tonal, dull/low, repeating / rattling, falling pitch/brightness |
+| S07 | 1.1 | one-shot impact, 1.1 s, tonal, dull/low, repeating / rattling, falling pitch/brightness · community label (NEW, unconfirmed): Offline Deathmatch Tar 33 ? |
 | S08 | 2.2 | one-shot impact, 2.2 s, mixed, mid, repeating / rattling, rising pitch/brightness |
 | S09 | 2.0 | one-shot impact, 2.0 s, tonal, mid, falling pitch/brightness |
 | S10 | 1.6 | one-shot impact, 1.6 s, tonal, mid, repeating / rattling |
@@ -2651,7 +2649,7 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 | F05 | 1.3 | one-shot, decaying tail, 1.3 s, tonal, mid |
 | F06 | 0.5 | one-shot impact, 0.5 s, tonal, mid, falling pitch/brightness |
 | F07 | 1.4 | rising / charge-up, 1.4 s, tonal, mid, repeating / rattling, rising pitch/brightness |
-| F08 | 3.6 | one-shot, decaying tail, 3.6 s, mixed, mid |
+| F08 | 3.6 | one-shot, decaying tail, 3.6 s, mixed, mid · community label (NEW, unconfirmed): Chainsaw |
 | F09 | 0.9 | one-shot impact, 0.9 s, tonal, mid |
 | F10 | 0.5 | sustained / loop-like, 0.5 s, mixed, mid |
 | F11 | 0.2 | sustained / loop-like, 0.2 s, mixed, bright |
@@ -2678,7 +2676,7 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 | T11 | 1.4 | one-shot impact, 1.4 s, tonal, dull/low, falling pitch/brightness |
 | T12 | 1.8 | one-shot impact, 1.8 s, tonal, dull/low |
 | T13 | 1.5 | one-shot impact, 1.5 s, tonal, mid, falling pitch/brightness |
-| T14 | 0.9 | one-shot impact, 0.9 s, tonal, dull/low, repeating / rattling |
+| T14 | 0.9 | one-shot impact, 0.9 s, tonal, dull/low, repeating / rattling · community label (NEW, unconfirmed): grenade launcher? |
 | T15 | 1.4 | one-shot impact, 1.4 s, tonal, dull/low |
 | T16 | 1.4 | one-shot, decaying tail, 1.4 s, tonal, dull/low, falling pitch/brightness |
 
@@ -2703,17 +2701,17 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 
 | id | s | shape |
 |---|---|---|
-| CC01 | 2.3 | one-shot, decaying tail, 2.3 s, mixed, mid |
-| CC02 | 0.9 | one-shot impact, 0.9 s, tonal, mid, repeating / rattling |
-| CC03 | 1.8 | one-shot impact, 1.8 s, mixed, bright, rising pitch/brightness |
-| CC04 | 1.7 | one-shot impact, 1.7 s, mixed, bright, rising pitch/brightness |
-| CC05 | 0.4 | one-shot, decaying tail, 0.4 s, mixed, bright, rising pitch/brightness |
-| CC06 | 0.6 | one-shot, decaying tail, 0.6 s, tonal, mid |
-| CC07 | 5.2 | sustained / loop-like, 5.2 s, tonal, mid |
-| CC08 | 110.7 | sustained / loop-like, 110.7 s, tonal, mid, repeating / rattling |
-| CC09 | 3.9 | one-shot, decaying tail, 3.9 s, tonal, mid |
-| CC10 | 2.8 | one-shot impact, 2.8 s, tonal, mid |
-| CC11 | 5.8 | varying, 5.8 s, tonal, mid, repeating / rattling |
+| CC01 | 2.3 | one-shot, decaying tail, 2.3 s, mixed, mid · community label (NEW, unconfirmed): DEATH |
+| CC02 | 0.9 | one-shot impact, 0.9 s, tonal, mid, repeating / rattling · community label (NEW, unconfirmed): SPAWN |
+| CC03 | 1.8 | one-shot impact, 1.8 s, mixed, bright, rising pitch/brightness · community label (NEW, unconfirmed): AR |
+| CC04 | 1.7 | one-shot impact, 1.7 s, mixed, bright, rising pitch/brightness · community label (NEW, unconfirmed): SPRAY GUN |
+| CC05 | 0.4 | one-shot, decaying tail, 0.4 s, mixed, bright, rising pitch/brightness · community label (NEW, unconfirmed): TAKE HIT |
+| CC06 | 0.6 | one-shot, decaying tail, 0.6 s, tonal, mid · community label (NEW, unconfirmed): BEEP |
+| CC07 | 5.2 | sustained / loop-like, 5.2 s, tonal, mid · community label (NEW, unconfirmed): sELECT GAME MODE |
+| CC08 | 110.7 | sustained / loop-like, 110.7 s, tonal, mid, repeating / rattling · community label (NEW, unconfirmed): GAME MUSIC |
+| CC09 | 3.9 | one-shot, decaying tail, 3.9 s, tonal, mid · community label (NEW, unconfirmed): gAME OVER |
+| CC10 | 2.8 | one-shot impact, 2.8 s, tonal, mid · community label (NEW, unconfirmed): EXPLODE HIT |
+| CC11 | 5.8 | varying, 5.8 s, tonal, mid, repeating / rattling · community label (NEW, unconfirmed): LIVES DEPLETED |
 
 ### JA — music / sting (10)
 
@@ -2724,11 +2722,11 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 | JA2 | 9.5 | rising / charge-up, 9.5 s, tonal, mid, falling pitch/brightness |
 | JA3 | 21.4 | sustained / loop-like, 21.4 s, tonal, mid, repeating / rattling |
 | JA4 | 20.0 | varying, 20.0 s, tonal, mid, repeating / rattling |
-| JA5 | 21.9 | varying, 21.9 s, tonal, mid |
+| JA5 | 21.9 | varying, 21.9 s, tonal, mid · community label (NEW, unconfirmed): Captured flag song |
 | JA6 | 3.4 | one-shot, decaying tail, 3.4 s, tonal, dull/low, falling pitch/brightness |
 | JA7 | 6.0 | sustained / loop-like, 6.0 s, tonal, mid, repeating / rattling |
 | JA8 | 6.3 | rising / charge-up, 6.3 s, tonal, mid, repeating / rattling |
-| JA9 | 5.7 | sustained / loop-like, 5.7 s, tonal, mid, repeating / rattling, falling pitch/brightness |
+| JA9 | 5.7 | sustained / loop-like, 5.7 s, tonal, mid, repeating / rattling, falling pitch/brightness · community label (NEW, unconfirmed): Battle company start musig |
 
 ### Y — odd sci-fi effect (10)
 
@@ -2749,29 +2747,29 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 
 | id | s | shape |
 |---|---|---|
-| HM10 | 1.9 | one-shot impact, 1.9 s, noisy, mid |
-| HM11 | 2.1 | one-shot impact, 2.1 s, noisy, bright, repeating / rattling |
-| HM12 | 2.0 | one-shot impact, 2.0 s, noisy, bright, repeating / rattling |
-| HM13 | 0.7 | one-shot impact, 0.7 s, mixed, bright |
-| HM14 | 0.9 | one-shot impact, 0.9 s, mixed, bright, repeating / rattling |
-| HM1B | 2.2 | one-shot, decaying tail, 2.2 s, mixed, mid, repeating / rattling |
-| HM1F | 1.1 | one-shot, decaying tail, 1.1 s, tonal, dull/low |
-| HM1O | 2.0 | one-shot impact, 2.0 s, mixed, bright |
-| HM25 | 2.4 | one-shot, decaying tail, 2.4 s, mixed, mid |
+| HM10 | 1.9 | one-shot impact, 1.9 s, noisy, mid (community: reported NOISE since v4.30) |
+| HM11 | 2.1 | one-shot impact, 2.1 s, noisy, bright, repeating / rattling (community: reported NOISE since v4.30) |
+| HM12 | 2.0 | one-shot impact, 2.0 s, noisy, bright, repeating / rattling (community: reported NOISE since v4.30) |
+| HM13 | 0.7 | one-shot impact, 0.7 s, mixed, bright (community: reported NOISE since v4.30) |
+| HM14 | 0.9 | one-shot impact, 0.9 s, mixed, bright, repeating / rattling (community: reported NOISE since v4.30) |
+| HM1B | 2.2 | one-shot, decaying tail, 2.2 s, mixed, mid, repeating / rattling (community: reported NOISE since v4.30) |
+| HM1F | 1.1 | one-shot, decaying tail, 1.1 s, tonal, dull/low (community: reported NOISE since v4.30) |
+| HM1O | 2.0 | one-shot impact, 2.0 s, mixed, bright (community: reported NOISE since v4.30) |
+| HM25 | 2.4 | one-shot, decaying tail, 2.4 s, mixed, mid (community: reported NOISE since v4.30) |
 
 ### TK — misc effect (TK) (9)
 
 | id | s | shape |
 |---|---|---|
-| TK0W | 1.0 | one-shot impact, 1.0 s, mixed, bright, repeating / rattling |
-| TK0Z | 9.5 | varying, 9.5 s, mixed, mid, repeating / rattling |
-| TK14 | 0.8 | one-shot, decaying tail, 0.8 s, noisy, bright, repeating / rattling |
-| TK15 | 0.6 | one-shot, decaying tail, 0.6 s, noisy, bright |
-| TK19 | 4.7 | varying, 4.7 s, mixed, bright, repeating / rattling |
-| TK1R | 10.4 | varying, 10.4 s, mixed, mid |
-| TK2R | 0.1 | one-shot, decaying tail, 0.1 s, mixed, bright, falling pitch/brightness |
-| TK2V | 8.7 | varying, 8.7 s, mixed, mid |
-| TK2W | 2.6 | one-shot impact, 2.6 s, tonal, mid |
+| TK0W | 1.0 | one-shot impact, 1.0 s, mixed, bright, repeating / rattling (community: reported NOISE since v4.30) |
+| TK0Z | 9.5 | varying, 9.5 s, mixed, mid, repeating / rattling (community: reported NOISE since v4.30) |
+| TK14 | 0.8 | one-shot, decaying tail, 0.8 s, noisy, bright, repeating / rattling (community: reported NOISE since v4.30) |
+| TK15 | 0.6 | one-shot, decaying tail, 0.6 s, noisy, bright (community: reported NOISE since v4.30) |
+| TK19 | 4.7 | varying, 4.7 s, mixed, bright, repeating / rattling (community: reported NOISE since v4.30) |
+| TK1R | 10.4 | varying, 10.4 s, mixed, mid (community: reported NOISE since v4.30) |
+| TK2R | 0.1 | one-shot, decaying tail, 0.1 s, mixed, bright, falling pitch/brightness (community: reported NOISE since v4.30) |
+| TK2V | 8.7 | varying, 8.7 s, mixed, mid (community: reported NOISE since v4.30) |
+| TK2W | 2.6 | one-shot impact, 2.6 s, tonal, mid (community: reported NOISE since v4.30) |
 
 ### L — electrical (7)
 
@@ -2816,7 +2814,7 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 | Z05 | 0.9 | one-shot impact, 0.9 s, noisy, bright, repeating / rattling |
 | Z06 | 0.5 | one-shot, decaying tail, 0.5 s, noisy, mid |
 | Z07 | 0.4 | one-shot, decaying tail, 0.4 s, mixed, mid, falling pitch/brightness |
-| Z11 | 1.2 | one-shot impact, 1.2 s, mixed, mid, repeating / rattling, falling pitch/brightness |
+| Z11 | 1.2 | one-shot impact, 1.2 s, mixed, mid, repeating / rattling, falling pitch/brightness · community label (NEW, unconfirmed): infected blaster |
 
 ### JAA — music / sting (1)
 
@@ -2828,7 +2826,7 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 
 | id | s | shape |
 |---|---|---|
-| JAB | 4.2 | one-shot, decaying tail, 4.2 s, tonal, dull/low, falling pitch/brightness |
+| JAB | 4.2 | one-shot, decaying tail, 4.2 s, tonal, dull/low, falling pitch/brightness · community label (NEW, unconfirmed): Starting callsign |
 
 ### JAC — JAC family (1)
 
@@ -2840,7 +2838,7 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 
 | id | s | shape |
 |---|---|---|
-| JAD | 3.5 | one-shot, decaying tail, 3.5 s, tonal, mid, falling pitch/brightness |
+| JAD | 3.5 | one-shot, decaying tail, 3.5 s, tonal, mid, falling pitch/brightness · community label (NEW, unconfirmed): Death music |
 
 ### JAE — JAE family (1)
 
@@ -2900,25 +2898,25 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 
 | id | s | shape |
 |---|---|---|
-| JAN | 60.1 | rising / charge-up, 60.1 s, tonal, mid |
+| JAN | 60.1 | rising / charge-up, 60.1 s, tonal, mid · community label (NEW, unconfirmed): Halo music |
 
 ### JAO — JAO family (1)
 
 | id | s | shape |
 |---|---|---|
-| JAO | 53.7 | rising / charge-up, 53.7 s, tonal, mid, repeating / rattling, rising pitch/brightness |
+| JAO | 53.7 | rising / charge-up, 53.7 s, tonal, mid, repeating / rattling, rising pitch/brightness · community label (NEW, unconfirmed): Halo music |
 
 ### JAP — JAP family (1)
 
 | id | s | shape |
 |---|---|---|
-| JAP | 50.9 | varying, 50.9 s, tonal, mid |
+| JAP | 50.9 | varying, 50.9 s, tonal, mid · community label (NEW, unconfirmed): Halo music |
 
 ### JAQ — JAQ family (1)
 
 | id | s | shape |
 |---|---|---|
-| JAQ | 11.1 | sustained / loop-like, 11.1 s, tonal, mid |
+| JAQ | 11.1 | sustained / loop-like, 11.1 s, tonal, mid · community label (NEW, unconfirmed): Time running out |
 
 ### JAR — JAR family (1)
 
@@ -2972,13 +2970,13 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 
 | id | s | shape |
 |---|---|---|
-| MC2J | 1.6 | one-shot, decaying tail, 1.6 s, noisy, bright, repeating / rattling, rising pitch/brightness |
+| MC2J | 1.6 | one-shot, decaying tail, 1.6 s, noisy, bright, repeating / rattling, rising pitch/brightness (community: reported NOISE since v4.30) |
 
 ### MM — MM family (1)
 
 | id | s | shape |
 |---|---|---|
-| MM0A | 1.5 | one-shot impact, 1.5 s, noisy, bright, repeating / rattling |
+| MM0A | 1.5 | one-shot impact, 1.5 s, noisy, bright, repeating / rattling (community: reported NOISE since v4.30) |
 
 ### NA — NA family (1)
 
@@ -2989,3 +2987,410 @@ Shape words come from the descriptors: impact (hits hard, dies fast) · decaying
 ## App-listed ids that are NOT on the gun
 
 E_J10, E_J11, E_J12, E_J13, E_J14, E_J15, E_J17, E_J18, E_J19, E_J1W, E_J1X, E_J1Y, E_K01, E_K02, E_K03, E_K04, E_K05, E_K06, E_K07, E_K08, E_K09, E_K10, E_K11, E_K12, E_N35, E_N66, E_N67, E_N68, E_N69, E_N70, E_N71, E_N72, E_N73, E_N86, E_VA1H, E_VA1I, E_VA21, E_VA22, E_VA23, E_VA2E, E_VA33, E_VA3R, E_VA3S, E_VA4P, E_VA4R, E_VA61, E_VA6L, E_VA72, E_VA78, E_VA7H, E_VA7I, E_VA80, E_VA81, E_VA82, E_VA83, E_VA84, E_VA85, E_VB01, E_VB02, E_VB03, E_VB04, E_VB05, E_VB06, E_VB07, E_VB08, E_VB0C, E_VB0D, E_VB0E, E_VB0F, E_VB0G, E_VB0H, E_VB0I, E_VB0J, E_VB0K, E_VB0L, E_VB0M, E_VB0N, E_VB0O, E_VB0P, E_VB0Q, E_VB0R, E_VB0S, E_VB0T, E_VB0U, E_VB0V, E_VB0W, E_VB0X, E_VB0Y, E_VB0Z, E_VB10, E_VB11, E_VB12, E_VB13, E_VB14, E_VB15, E_VB16, E_VB17, E_VB18, E_VB19, E_VB1A, E_VB1B, E_VB1C, E_VB1D, E_VB1E, E_VB1F, E_VB1G, E_VB1H, E_VB1I, E_VB1J, E_VB1K, E_VB1M, E_VB1N, E_VB1O, E_VB1P, E_VB1Q, E_VB1R, E_VB1S, E_VB1T, E_VB1U, E_VB1V, E_VB1W, E_VS6, E_VSA, E_VSB, E_VSC, E_VSD, E_X21, E_X22, E_X23, E_X24, E_X25, E_X26, E_X27, E_X28, E_X29, E_X30, V00, V10, V20, V30, V40, V50, V60, V70, V80, V90, VA0, Z01, Z02, Z03, Z08, Z09, Z10, Z12, Z13, Z14, Z15
+
+## Community labels
+
+The LaserTagMods BRX Audio sheet, an open community sheet shared by Jay of LaserTagMods, names sounds by ear. A community label is a guess by a listener, not a transcript or a bench finding: it never replaces our own `description`, `transcript` or `verified_by_ear`, and shows beside them instead.
+
+- **158 ids** had no real label of ours (our `description` was only a machine acoustic-shape guess); the community label is shown first, below, marked **NEW**.
+- **224 ids** have a community label that disagrees with our own description; both are shown.
+- **622 ids** have a community label that agrees with our own description.
+- **347 ids** named in the sheet are not on our gun and are left out of this catalog.
+
+### 158 ids with a new community label (ours was a machine guess)
+
+| id | community label | our description |
+|---|---|---|
+| A103 | **NEW:** (Halo) buble shield | sci-fi effect; one-shot impact, 24.1 s, tonal, mid |
+| A31 | **NEW:** Medical Tape | sci-fi effect; sustained / loop-like, 1.7 s, noisy, mid, repeating / rattling |
+| CC01 | **NEW:** DEATH | Contra-style effect; one-shot, decaying tail, 2.3 s, mixed, mid |
+| CC02 | **NEW:** SPAWN | Contra-style effect; one-shot impact, 0.9 s, tonal, mid, repeating / rattling |
+| CC03 | **NEW:** AR | Contra-style effect; one-shot impact, 1.8 s, mixed, bright, rising pitch/brightness |
+| CC04 | **NEW:** SPRAY GUN | Contra-style effect; one-shot impact, 1.7 s, mixed, bright, rising pitch/brightness |
+| CC05 | **NEW:** TAKE HIT | Contra-style effect; one-shot, decaying tail, 0.4 s, mixed, bright, rising pitch/brightness |
+| CC06 | **NEW:** BEEP | Contra-style effect; one-shot, decaying tail, 0.6 s, tonal, mid |
+| CC07 | **NEW:** sELECT GAME MODE | Contra-style effect; sustained / loop-like, 5.2 s, tonal, mid |
+| CC08 | **NEW:** GAME MUSIC | Contra-style effect; sustained / loop-like, 110.7 s, tonal, mid, repeating / rattling |
+| CC09 | **NEW:** gAME OVER | Contra-style effect; one-shot, decaying tail, 3.9 s, tonal, mid |
+| CC10 | **NEW:** EXPLODE HIT | Contra-style effect; one-shot impact, 2.8 s, tonal, mid |
+| CC11 | **NEW:** LIVES DEPLETED | Contra-style effect; varying, 5.8 s, tonal, mid, repeating / rattling |
+| F08 | **NEW:** Chainsaw | fire / novelty; one-shot, decaying tail, 3.6 s, mixed, mid |
+| G12 | **NEW:** possible m4? | gunshot; one-shot impact, 1.6 s, mixed, mid |
+| G18 | **NEW:** possible m4 or smg x3? | gunshot; one-shot impact, 1.3 s, tonal, mid, falling pitch/brightness |
+| G19 | **NEW:** possible smg x3? | gunshot; one-shot impact, 1.9 s, tonal, mid, falling pitch/brightness |
+| H01 | **NEW:** Acid | hit / impact; one-shot impact, 2.1 s, noisy, bright, repeating / rattling |
+| H02 | **NEW:** Armor Piercing | hit / impact; one-shot, decaying tail, 0.4 s, mixed, mid, falling pitch/brightness |
+| H03 | **NEW:** Armor Piercing | hit / impact; one-shot, decaying tail, 0.4 s, mixed, mid, falling pitch/brightness |
+| H04 | **NEW:** Male Gassed | hit / impact; sustained / loop-like, 1.5 s, mixed, mid, repeating / rattling |
+| H05 | **NEW:** Miss, Ricochet | hit / impact; varying, 2.2 s, tonal, mid, repeating / rattling |
+| H06 | **NEW:** Miss, Ricochet | hit / impact; one-shot, decaying tail, 0.4 s, noisy, bright, rising pitch/brightness |
+| H07 | **NEW:** Miss, Ricochet | hit / impact; one-shot, decaying tail, 0.5 s, mixed, mid |
+| H08 | **NEW:** broom brushing | hit / impact; one-shot, decaying tail, 0.5 s, noisy, bright |
+| H09 | **NEW:** broom brushing | hit / impact; one-shot, decaying tail, 0.5 s, noisy, bright |
+| H10 | **NEW:** poison | hit / impact; one-shot, decaying tail, 0.7 s, noisy, bright |
+| H11 | **NEW:** Arrow | hit / impact; one-shot, decaying tail, 0.6 s, noisy, bright |
+| H12 | **NEW:** Bubble Acid | hit / impact; one-shot impact, 1.9 s, noisy, bright, rising pitch/brightness |
+| H13 | **NEW:** Pistol hit | hit / impact; one-shot impact, 0.8 s, tonal, mid, falling pitch/brightness |
+| H14 | **NEW:** bullet hit | hit / impact; one-shot, decaying tail, 0.4 s, tonal, mid |
+| H15 | **NEW:** Armor Hit | hit / impact; one-shot impact, 0.5 s, mixed, mid |
+| H16 | **NEW:** squishy cut noise | hit / impact; one-shot impact, 6.3 s, mixed, bright, rising pitch/brightness |
+| H17 | **NEW:** Energy long hit | hit / impact; one-shot impact, 2.2 s, mixed, mid |
+| H18 | **NEW:** futuristic fly by with heart beat maybe regen | hit / impact; one-shot, decaying tail, 4.9 s, tonal, mid, falling pitch/brightness |
+| H19 | **NEW:** many smal burning hits | hit / impact; one-shot impact, 3.3 s, noisy, bright, repeating / rattling |
+| H20 | **NEW:** Electric shock | hit / impact; one-shot impact, 0.9 s, mixed, bright, repeating / rattling, rising pitch/brightness |
+| H21 | **NEW:** Hit on Shield | hit / impact; one-shot impact, 0.7 s, mixed, mid, falling pitch/brightness |
+| H22 | **NEW:** Hit on Shield | hit / impact; one-shot impact, 0.6 s, mixed, mid, falling pitch/brightness |
+| H23 | **NEW:** poison blaster hit... infected | hit / impact; one-shot impact, 1.4 s, mixed, mid, repeating / rattling, falling pitch/brightness |
+| H24 | **NEW:** metal and glass shatter hit | hit / impact; one-shot impact, 1.2 s, noisy, bright, repeating / rattling |
+| H25 | **NEW:** metal and glass shatter hit | hit / impact; one-shot impact, 1.2 s, noisy, bright, repeating / rattling |
+| H26 | **NEW:** knife swipe | hit / impact; one-shot impact, 0.6 s, noisy, bright |
+| H27 | **NEW:** bloody knife swipe | hit / impact; one-shot impact, 1.2 s, noisy, bright, repeating / rattling |
+| H28 | **NEW:** blades klinging | hit / impact; one-shot impact, 1.0 s, tonal, bright, repeating / rattling |
+| H29 | **NEW:** Medic capsule healing | hit / impact; one-shot, decaying tail, 1.2 s, mixed, bright, repeating / rattling, rising pitch/brightness |
+| H30 | **NEW:** small blast impact | hit / impact; one-shot impact, 1.2 s, mixed, bright, rising pitch/brightness |
+| H31 | **NEW:** squishy bubbles | hit / impact; one-shot impact, 0.6 s, mixed, mid, rising pitch/brightness |
+| H32 | **NEW:** squishy bubbles | hit / impact; one-shot impact, 0.6 s, mixed, bright, rising pitch/brightness |
+| H33 | **NEW:** Ray Gun short | hit / impact; one-shot, decaying tail, 0.4 s, noisy, bright |
+| H34 | **NEW:** Stab with blood | hit / impact; one-shot, decaying tail, 0.9 s, mixed, bright, repeating / rattling |
+| H35 | **NEW:** hitting armor | hit / impact; one-shot impact, 0.6 s, mixed, mid, falling pitch/brightness |
+| H36 | **NEW:** hitting armor | hit / impact; one-shot, decaying tail, 0.5 s, mixed, mid, falling pitch/brightness |
+| H37 | **NEW:** hitting armor | hit / impact; one-shot impact, 0.7 s, mixed, mid, falling pitch/brightness |
+| H39 | **NEW:** Metal hit with blood | hit / impact; one-shot, decaying tail, 1.0 s, noisy, bright, rising pitch/brightness |
+| H40 | **NEW:** Sword against shield with squishy | hit / impact; one-shot, decaying tail, 1.0 s, mixed, mid, repeating / rattling |
+| H41 | **NEW:** shocking or acid frying | hit / impact; one-shot impact, 1.6 s, noisy, bright |
+| H42 | **NEW:** small hit with frying sound | hit / impact; one-shot impact, 0.7 s, noisy, bright |
+| H43 | **NEW:** stab with whiping sound | hit / impact; one-shot impact, 0.6 s, noisy, bright |
+| H44 | **NEW:** several thuds | hit / impact; one-shot impact, 1.4 s, tonal, mid, repeating / rattling, rising pitch/brightness |
+| H45 | **NEW:** ??? | hit / impact; one-shot impact, 1.6 s, mixed, mid, repeating / rattling |
+| H46 | **NEW:** Electric Burning long | hit / impact; one-shot impact, 3.1 s, mixed, bright |
+| H47 | **NEW:** Gory Squish splatter | hit / impact; one-shot, decaying tail, 1.0 s, mixed, bright, repeating / rattling |
+| H49 | **NEW:** Gory Squish splatter | hit / impact; one-shot impact, 1.2 s, mixed, mid, repeating / rattling |
+| H50 | **NEW:** Electric shock | hit / impact; one-shot impact, 1.0 s, noisy, bright |
+| H51 | **NEW:** Electric shock | hit / impact; one-shot impact, 1.0 s, noisy, bright |
+| H52 | **NEW:** melee hit with a gong | hit / impact; one-shot, decaying tail, 0.9 s, mixed, mid, repeating / rattling |
+| H53 | **NEW:** melee hit with a gong | hit / impact; one-shot, decaying tail, 1.1 s, mixed, mid |
+| H54 | **NEW:** loud hit | hit / impact; one-shot impact, 0.8 s, mixed, mid, falling pitch/brightness |
+| H55 | **NEW:** thud-punch | hit / impact; one-shot, decaying tail, 0.4 s, tonal, mid, rising pitch/brightness |
+| H56 | **NEW:** thud-punch | hit / impact; one-shot, decaying tail, 0.5 s, mixed, mid, rising pitch/brightness |
+| H57 | **NEW:** Melee hit with gun stock | hit / impact; one-shot, decaying tail, 0.8 s, mixed, mid, rising pitch/brightness |
+| H58 | **NEW:** Melee hit with gun stock | hit / impact; one-shot, decaying tail, 1.1 s, tonal, mid, repeating / rattling, falling pitch/brightness |
+| J02 | **NEW:** offline grenade launcher? | music / sting; one-shot impact, 1.8 s, tonal, mid, repeating / rattling |
+| JA5 | **NEW:** Captured flag song | music / sting; varying, 21.9 s, tonal, mid |
+| JA9 | **NEW:** Battle company start musig | music / sting; sustained / loop-like, 5.7 s, tonal, mid, repeating / rattling, falling pitch/brightness |
+| JAB | **NEW:** Starting callsign | effect (JAB family); one-shot, decaying tail, 4.2 s, tonal, dull/low, falling pitch/brightness |
+| JAD | **NEW:** Death music | effect (JAD family); one-shot, decaying tail, 3.5 s, tonal, mid, falling pitch/brightness |
+| JAN | **NEW:** Halo music | effect (JAN family); rising / charge-up, 60.1 s, tonal, mid |
+| JAO | **NEW:** Halo music | effect (JAO family); rising / charge-up, 53.7 s, tonal, mid, repeating / rattling, rising pitch/brightness |
+| JAP | **NEW:** Halo music | effect (JAP family); varying, 50.9 s, tonal, mid |
+| JAQ | **NEW:** Time running out | effect (JAQ family); sustained / loop-like, 11.1 s, tonal, mid |
+| M05 | **NEW:** Shokahn laugh | Mortal-Kombat-style effect; one-shot, decaying tail, 3.4 s, tonal, mid, repeating / rattling |
+| M06 | **NEW:** Flawless victory | Mortal-Kombat-style effect; varying, 1.6 s, tonal, mid, repeating / rattling |
+| M07 | **NEW:** Flawless victory2 | Mortal-Kombat-style effect; one-shot, decaying tail, 1.7 s, mixed, mid, repeating / rattling |
+| M08 | **NEW:** Fatality | Mortal-Kombat-style effect; one-shot, decaying tail, 1.3 s, tonal, mid, repeating / rattling |
+| M09 | **NEW:** Fatality | Mortal-Kombat-style effect; one-shot, decaying tail, 1.4 s, mixed, mid, repeating / rattling, falling pitch/brightness |
+| M10 | **NEW:** Fatality | Mortal-Kombat-style effect; sustained / loop-like, 1.2 s, mixed, mid, repeating / rattling |
+| M11 | **NEW:** Choose ur destiny | Mortal-Kombat-style effect; one-shot, decaying tail, 2.0 s, tonal, mid, falling pitch/brightness |
+| M12 | **NEW:** Swipe | Mortal-Kombat-style effect; one-shot, decaying tail, 0.3 s, tonal, mid |
+| M13 | **NEW:** Hard hit | Mortal-Kombat-style effect; one-shot, decaying tail, 0.7 s, mixed, mid, rising pitch/brightness |
+| M14 | **NEW:** Swing | Mortal-Kombat-style effect; one-shot, decaying tail, 0.5 s, tonal, mid |
+| M15 | **NEW:** Hit and smash | Mortal-Kombat-style effect; one-shot, decaying tail, 1.3 s, tonal, mid, repeating / rattling, falling pitch/brightness |
+| M16 | **NEW:** Another hit | Mortal-Kombat-style effect; one-shot, decaying tail, 1.6 s, mixed, mid, repeating / rattling, falling pitch/brightness |
+| M17 | **NEW:** Another hit | Mortal-Kombat-style effect; one-shot, decaying tail, 0.7 s, tonal, dull/low |
+| M18 | **NEW:** Knife slice | Mortal-Kombat-style effect; one-shot, decaying tail, 0.7 s, tonal, mid |
+| M19 | **NEW:** Knife hit | Mortal-Kombat-style effect; one-shot, decaying tail, 1.3 s, mixed, mid, repeating / rattling, rising pitch/brightness |
+| M20 | **NEW:** Another hit | Mortal-Kombat-style effect; one-shot, decaying tail, 1.1 s, tonal, dull/low, falling pitch/brightness |
+| M21 | **NEW:** Another hit | Mortal-Kombat-style effect; one-shot, decaying tail, 0.6 s, tonal, mid |
+| N100 | **NEW:** (Halo) Respawn | misc effect; rising / charge-up, 3.4 s, tonal, mid |
+| N101 | **NEW:** (Halo) Shields Down | misc effect; one-shot, decaying tail, 2.6 s, tonal, mid, repeating / rattling, falling pitch/brightness |
+| N102 | **NEW:** (Halo) Shields Recharge | misc effect; rising / charge-up, 2.1 s, tonal, dull/low, repeating / rattling, falling pitch/brightness |
+| N25 | **NEW:** Heart beat | misc effect; one-shot, decaying tail, 2.5 s, tonal, dull/low, repeating / rattling, rising pitch/brightness |
+| N78 | **NEW:** Zelda Secret Passage | misc effect; sustained / loop-like, 1.6 s, tonal, bright, repeating / rattling |
+| R02 | **NEW:** Definitely the m4 | gunshot; one-shot impact, 2.2 s, tonal, mid, repeating / rattling |
+| R102 | **NEW:** Halo 4 sniper | gunshot; one-shot impact, 2.0 s, mixed, mid, repeating / rattling, falling pitch/brightness |
+| R103 | **NEW:** Halo 4 shotgun | gunshot; one-shot impact, 1.9 s, mixed, mid, repeating / rattling, rising pitch/brightness |
+| R108 | **NEW:** Halo 4 Beam Rifle | gunshot; one-shot impact, 1.7 s, tonal, mid, repeating / rattling, falling pitch/brightness |
+| R110 | **NEW:** Halo 4 Plasma Pistol standard shot | gunshot; one-shot impact, 1.0 s, tonal, mid, falling pitch/brightness |
+| R111 | **NEW:** Halo 4 plasma Pistol charge ramp up | gunshot; one-shot impact, 1.2 s, tonal, mid |
+| R112 | **NEW:** Halo 4 plasma Pistol charge max | gunshot; sustained / loop-like, 5.0 s, tonal, mid, repeating / rattling |
+| R113 | **NEW:** Halo 4 plasma Pistol charge shot | gunshot; one-shot impact, 1.3 s, mixed, mid |
+| R120 | **NEW:** Halo Spartan Lazer Charge | gunshot; rising / charge-up, 2.5 s, mixed, mid |
+| R121 | **NEW:** Halo Spartan Lazer Shot | gunshot; one-shot impact, 3.0 s, tonal, mid, repeating / rattling |
+| S07 | **NEW:** Offline Deathmatch Tar 33 ? | gunshot; one-shot impact, 1.1 s, tonal, dull/low, repeating / rattling, falling pitch/brightness |
+| SW00 | **NEW:** Trumpets star wars | Star-Wars-style effect; one-shot, decaying tail, 10.1 s, tonal, mid, falling pitch/brightness |
+| SW01 | **NEW:** Light Saber start up | Star-Wars-style effect; one-shot impact, 1.7 s, mixed, mid, falling pitch/brightness |
+| SW02 | **NEW:** Light saber on | Star-Wars-style effect; one-shot, decaying tail, 28.3 s, tonal, dull/low, repeating / rattling, steady pitch ~91 Hz |
+| SW03 | **NEW:** Star Wars intro theme song | Star-Wars-style effect; varying, 93.1 s, tonal, mid |
+| SW04 | **NEW:** Star Wars theme song | Star-Wars-style effect; varying, 94.0 s, tonal, mid |
+| SW05 | **NEW:** Retracting light sabre | Star-Wars-style effect; rising / charge-up, 1.3 s, mixed, mid, rising pitch/brightness |
+| SW06 | **NEW:** Saber hit | Star-Wars-style effect; one-shot impact, 1.0 s, mixed, mid, repeating / rattling |
+| SW07 | **NEW:** Sabers clash | Star-Wars-style effect; one-shot, decaying tail, 1.0 s, mixed, mid, repeating / rattling, falling pitch/brightness |
+| SW08 | **NEW:** Saber clash | Star-Wars-style effect; one-shot, decaying tail, 0.8 s, mixed, mid, falling pitch/brightness |
+| SW10 | **NEW:** Saber swing | Star-Wars-style effect; sustained / loop-like, 0.6 s, tonal, dull/low, steady pitch ~98 Hz |
+| SW11 | **NEW:** Saber swing | Star-Wars-style effect; one-shot, decaying tail, 0.5 s, tonal, dull/low, steady pitch ~94 Hz |
+| SW13 | **NEW:** Swinging saber | Star-Wars-style effect; one-shot, decaying tail, 1.4 s, tonal, dull/low, repeating / rattling, steady pitch ~93 Hz |
+| SW14 | **NEW:** Swinging saber | Star-Wars-style effect; one-shot, decaying tail, 1.3 s, tonal, dull/low, repeating / rattling, steady pitch ~98 Hz |
+| SW15 | **NEW:** Short saber swing | Star-Wars-style effect; sustained / loop-like, 0.3 s, tonal, dull/low, steady pitch ~97 Hz |
+| SW16 | **NEW:** Humming | Star-Wars-style effect; one-shot, decaying tail, 0.3 s, tonal, dull/low, steady pitch ~94 Hz |
+| SW17 | **NEW:** Swing saber | Star-Wars-style effect; sustained / loop-like, 0.8 s, tonal, dull/low, repeating / rattling |
+| SW18 | **NEW:** Dual saber | Star-Wars-style effect; sustained / loop-like, 0.8 s, tonal, dull/low, repeating / rattling |
+| SW19 | **NEW:** Multiple saber swings | Star-Wars-style effect; sustained / loop-like, 1.2 s, tonal, dull/low, repeating / rattling, steady pitch ~97 Hz, rising pitch/brightness |
+| SW20 | **NEW:** Saber swing | Star-Wars-style effect; one-shot, decaying tail, 0.6 s, tonal, dull/low |
+| SW21 | **NEW:** Saber swing | Star-Wars-style effect; one-shot, decaying tail, 0.7 s, tonal, dull/low, steady pitch ~92 Hz |
+| SW23 | **NEW:** Blaster saber | Star-Wars-style effect; one-shot impact, 0.9 s, mixed, mid, repeating / rattling, falling pitch/brightness |
+| SW24 | **NEW:** Saber hit | Star-Wars-style effect; one-shot impact, 0.7 s, mixed, mid, falling pitch/brightness |
+| SW25 | **NEW:** Blaster blocked w saber | Star-Wars-style effect; one-shot impact, 0.9 s, mixed, mid, repeating / rattling, falling pitch/brightness |
+| SW26 | **NEW:** Weird blaster with follow up bang | Star-Wars-style effect; one-shot, decaying tail, 2.2 s, tonal, mid, repeating / rattling |
+| SW28 | **NEW:** Swish | Star-Wars-style effect; one-shot, decaying tail, 0.6 s, tonal, mid, falling pitch/brightness |
+| SW29 | **NEW:** Explosion | Star-Wars-style effect; one-shot, decaying tail, 2.3 s, tonal, mid, falling pitch/brightness |
+| SW30 | **NEW:** Big blaster cannon? | Star-Wars-style effect; one-shot impact, 1.9 s, tonal, dull/low, falling pitch/brightness |
+| SW31 | **NEW:** Hall choir star wars song | Star-Wars-style effect; sustained / loop-like, 60.8 s, tonal, mid |
+| SW32 | **NEW:** Saber burning or slicing something | Star-Wars-style effect; one-shot, decaying tail, 1.4 s, mixed, mid |
+| SW33 | **NEW:** Saber burning or slicing something | Star-Wars-style effect; one-shot, decaying tail, 1.4 s, mixed, bright |
+| SW34 | **NEW:** Blaster shot rifle style | Star-Wars-style effect; one-shot impact, 1.4 s, tonal, mid, falling pitch/brightness |
+| SW35 | **NEW:** Blaster | Star-Wars-style effect; one-shot impact, 1.0 s, tonal, mid, falling pitch/brightness |
+| SW36 | **NEW:** Blaster | Star-Wars-style effect; one-shot impact, 0.7 s, mixed, mid |
+| SW37 | **NEW:** Blaster turret | Star-Wars-style effect; one-shot impact, 1.0 s, mixed, mid, repeating / rattling, falling pitch/brightness |
+| SW38 | **NEW:** Standard blaster | Star-Wars-style effect; one-shot impact, 0.9 s, mixed, mid, falling pitch/brightness |
+| SW39 | **NEW:** Rifle blaster | Star-Wars-style effect; one-shot impact, 1.5 s, tonal, dull/low, falling pitch/brightness |
+| SW40 | **NEW:** Blaster | Star-Wars-style effect; one-shot impact, 0.9 s, mixed, mid, falling pitch/brightness |
+| T14 | **NEW:** grenade launcher? | gunshot; one-shot impact, 0.9 s, tonal, dull/low, repeating / rattling |
+| X13 | **NEW:** small explode | grenade / explosion; one-shot impact, 1.5 s, tonal, dull/low, repeating / rattling, falling pitch/brightness |
+| X17 | **NEW:** concussion grenade | grenade / explosion; one-shot impact, 7.9 s, tonal, mid, repeating / rattling |
+| X28 | **NEW:** explode with echo | grenade / explosion; one-shot impact, 6.7 s, tonal, mid |
+| X30 | **NEW:** bomb | grenade / explosion; one-shot impact, 8.1 s, tonal, dull/low, repeating / rattling, falling pitch/brightness |
+| Z11 | **NEW:** infected blaster | creature splat; one-shot impact, 1.2 s, mixed, mid, repeating / rattling, falling pitch/brightness |
+
+### 224 ids where the community label differs from ours
+
+| id | community label | our description |
+|---|---|---|
+| V02 | Vanguard gassed | Ah! Ah! Ah! Ah! Ah! |
+| V06 | Man recovering | (hurt loop, no words) |
+| V100 | Yell | AHHHHHHHHH! |
+| V12 | Nexus gassed; Vanguard pain? | (idle loop, no words) |
+| V13 | more | AHHHHHHHHHH |
+| V133 | (Halo) Flag Captured | Flight Captured! |
+| V14 | again | AHHHHHHHHH |
+| V140 | (Halo) Flag-sasination | flight assassination |
+| V141 | (Halo) Flag Runner | Flight Runner! |
+| V144 | (Halo) Flag joust | FLAG JOST! |
+| V15 | still pain | HELLO! |
+| V16 | infected grunting and breathing; again, maybe recovery | (hurt loop, no words) |
+| V1A | Terminated | Germany did |
+| V1C | Hurt | Mm-hmm |
+| V1D | hurt again | NGH! |
+| V1E | more hurt | Oh |
+| V1F | Again | (pain, no words) |
+| V1G | still hurt | Oh |
+| V1H | more | MWAH! |
+| V1J | vanguard electruction? | (long death, no words) |
+| V21 | Shields Overwhelming | Shields over a mile mean. |
+| V22 | vanguard coughing | (idle loop, no words) |
+| V26 | more infected breathing | Oh |
+| V36 | Recovery | Hmm. Hmm. Hmm. |
+| V46 | animal recovering | Uhhh! Uhhhh! Uhhhh! |
+| V51 | RWAR? So much audio bad | HMMMMMMMMMMMMMMMMMMM |
+| V52 | infected struggling; Zombie/Beast noises | The End |
+| V53 | Zombie/Beast noises | R-r-r-rrrrrrrr |
+| V54 | Zombie/Beast noises | HELLO! |
+| V55 | Zombie/Beast noises | HELLO! |
+| V56 | infected russling around and grunting; Zombie/Beast noises | A bug! A bug! A bug... |
+| V57 | Zombie/Beast noises | GRR! |
+| V58 | Zombie/Beast noises | THANKS FOR WATCHING! |
+| V59 | Zombie/Beast noises | THANKS FOR WATCHING!! |
+| V61 | Surge | FIRGE! |
+| V6J | infected getting electricuted | (long death, no words) |
+| V72 | Nexus being gassed; Cough | The poor. |
+| V73 | pain | Arrrrggggggghhh! |
+| V74 | yell | OWWWWWWWW |
+| V75 | more yell | (death scream, no words) |
+| V76 | Infected struggling; recovery | (hurt loop, no words) |
+| V77 | Amped up | Top |
+| V79 | Forward | BYE! |
+| V7J | ticked of infected | NoooooooooOOOOoooooOoOoOooOoOoOд Woooohoooo www. Level 4 W O W |
+| V7M | Maurader | the hotter. |
+| V81 | Meds Here | Med's here. |
+| V82 | cough | Ahem. Ahem. |
+| V83 | pain | Ah! |
+| V84 | yell | AHHHHH! |
+| V85 | more yell | AHHHHHH! |
+| V86 | Female catching breath; Recovery? | HMM! HMM! HMM! HMM! |
+| V88 | Steralized | Sterilized. |
+| V89 | Steralized | sterilized. |
+| V8J | being electricuted | Mmm, mmm, mmm, mmm握握,丨握握握 grams I'm out! |
+| V93 | pain | Agh! |
+| V94 | Pain | Uggggggggggggggggggggggg |
+| V95 | Pain | URGH! |
+| V96 | Animal recovering; Recovery? | Ah |
+| V99 | Toasted | Coasted! |
+| VA01 | 1.0 | one. |
+| VA04 | 4.0 | Four. |
+| VA05 | 5.0 | Five. |
+| VA06 | 6.0 | Six. |
+| VA07 | 7.0 | seven |
+| VA09 | 9.0 | Nine. |
+| VA0H | 17.0 | Seventeen. |
+| VA0Q | 30 Minutes; 30 min; 7 MINUTES | Seven minutes. |
+| VA12 | Air Strike Detected | Airstrike detected. |
+| VA18 | Batton | Baton |
+| VA1C | Blackhawk Inbound | Black Hawk inbound. |
+| VA1E | BlindEye | Blind Eye. |
+| VA1H | The Bomb has been diffused; BOMB DIFUSED | BOMB DEFUSED |
+| VA1J | Bo Staff | Bow staff. |
+| VA1K | Bow | BOO |
+| VA2 | Coughing | Ehehhehehehhehheheheh h! ehehheheheeh ruler ugh |
+| VA25 | Deadeye | dead eye. |
+| VA26 | DeathMatch; DEATH MATCH | Deathmatch |
+| VA2E | This games a draw; DRAW GAME | Raw Game! |
+| VA2F | Dual Wield | Do a wheeled. |
+| VA2S | 5 minutes; 5 min; FIVE MINUTES | Five minutes. |
+| VA2U | Flash Bang | Flashbang! |
+| VA2W | Focus; LASER SIGHT | laser sight |
+| VA2X | Fore grip; ACCURACY | Accuracy. |
+| VA3 | Scream | AHHHHHH |
+| VA3F | Headset Removed; HEADSET DISCONNECTED | headset disconnected. |
+| VA3N | Hollow Point | Hallow Point. |
+| VA3O | WHUUHOOO | Woo-hoo! |
+| VA3P | WHUU | Woo! |
+| VA3Q | YEEAAAHH | Yeah! |
+| VA3R | Hostage Died; HOSTAGE DOWN | Hostage down. |
+| VA3Z | Install Accessory; PAIRING MODE | fairing mode |
+| VA4 | Pain sound | HUUUUUUUUUUUUUUUUU |
+| VA46 | Lives depleted | Life's depleted. |
+| VA4C | Maul | Mall. |
+| VA4D | Medkit; Med kit | Medkit. |
+| VA5 | another yell | HAAA! |
+| VA53 | Regen | region. |
+| VA5I | Sentry deployed | Century Deployed. |
+| VA5J | Sentry | Century. |
+| VA5K | Shield equiped | Shield equipped. |
+| VA5N | Seige | Siege |
+| VA5P | 6 Minutes | Six minutes. |
+| VA5Y | SR100; Sr-100 | SR 100. |
+| VA5Z | Standard; ADMIN UNLOCKED | Admin Unlocked. |
+| VA6 | ouch heavy breathing; Breathing | Ah. Ah. Ah. |
+| VA60 | Stealth; Stealth outdoor; NIGHT MODE | Night Mode. |
+| VA62 | Supremecy; Supremacy | Supremacy! |
+| VA63 | Supressor | Suppressor |
+| VA6A | Tac87; Tac-87 | TAC 87. |
+| VA6B | Tar33 | TAR 33. |
+| VA6G | Tear Gas | Tier Gas |
+| VA6L | Three, Two, One; 36952.0 | Three, two, one. |
+| VA6T | UAV | UAB |
+| VA6U | Under Cover | Undercover. |
+| VA78 | Welcome to Lasertag Pro | Welcome to Battle Company! |
+| VA7J | Killamanjaro; KILLAMENJARO | Kill them in Juro! |
+| VA7L | Killionaire | Killian Air |
+| VA7M | Killtacular; KILL TACULAR | GO TACULAR! |
+| VA7N | Killtastrophy; KILL TASTRIFY | Joltastrophe |
+| VA7O | Killtrosity; KILL TROSITY | CULTURUSITY |
+| VA7Q | Triple Kill; TRIPPLE KILL | Triple Kill! |
+| VA81 | Three, Two, One; 3, 2, 1, WITH MUSIC | Three, two, one. |
+| VA83 | Countdown from 10; 10, 9, ..., 0 | 10, 9, 8, 7, 6, 5, 4, 3, 2, 1. |
+| VA84 | Countdown from 10; 10, 9, ... 0 W MUSIC | 10, 9, 8, 7, 6, 5, 4, 3, 2, 1. |
+| VA85 | Countdown from 10; 10, 9, ..., 0 | 10, 9, 8, 7, 6, 5, 4, 3, 2, 1. |
+| VA88 | Armor Depleated | Armored depleted. |
+| VA8C | Shields Online | SHIELD ONLINE |
+| VA8F | "Assault"; SHARED LIVES | Shared lives. |
+| VA8O | "Brawl"; GUN GAME | GUN GAME! |
+| VA8V | "Devices cleared"; PAIRING CLEARED | pairing cleared |
+| VA90 | "HUD Disconnected" | How Disconnected. |
+| VA9C | "Primary boot loader"; PRIMARY BOOT LOADER | Primary bootloader. |
+| VA9E | "Primary"; ADMIN LOCKED | Admin locked. |
+| VA9F | "Proximity mine" | Proximity Mind. |
+| VA9H | "Respawn Station"; Respawn Station | RESPONSE STATION |
+| VA9K | "Secondary Boot Loader"; SECONDARY BOOT LOADER | Secondary bootloader. |
+| VA9M | "Secondary"; ADMIN FULL LOCKED | Admin full arc. |
+| VA9O | "Silenced AR"; Silenced AR | Silence, they are |
+| VA9R | "Testing initiated"; TEST MODE | Test mode. |
+| VAC | Another yell | HAH! |
+| VAE | Cough pain | AHHHHH! |
+| VAF | more pain | Aargh! |
+| VAG | more hurt | Huh! |
+| VAH | another hurt | HUH! |
+| VAJ | Ummmmm electruction? | NONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONONON |
+| VAN | HuRah | Hoorah! |
+| VB09 | Codes Captured | Code's captured! |
+| VB0A | Codes compromised | Code's compromised. |
+| VB0P | Hill Controlled; HILL LOST | Hill Lost! |
+| VB0Z | Purple flag has been returned; PRPLE FLAG RETURNED | Purple Flag Returns. |
+| VB1C | White flag has been taken; CYAN FLAG TAKEN | Sion Flag Ticken |
+| VB1S | White team wins; CYAN TEAM WINS | SCIENTEAM WINS! |
+| VB2 | coughing; Female gassed | (idle loop, no words) |
+| VB3 | hurt | Ah! Ah! Ah! |
+| VB4 | yell | AHHHHH! |
+| VB5 | more hurt | Uuugh! |
+| VB6 | heavy breathing; female recovering | Ah |
+| VBC | yell | HUH! |
+| VBD | yell | HUH |
+| VBE | hurt | Uwaaah! |
+| VBF | more hurt | UGH! |
+| VBG | hurt agin | Ugh! |
+| VBH | ouch | Uh! |
+| VBI | Lets Move | Let's move! |
+| VBJ | uh electrocution? | Wheeeeeelllllllllllllll |
+| VBL | Hmf to easy | too easy |
+| VBM | Stout | Scout |
+| VCM | Sentinel | SET NO! |
+| VD2 | female coughing | Cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, cough, |
+| VD6 | technician catching breath | Sigh... Sigh... Sigh... |
+| VE2 | guy being gassed | Ah. Oh. Ah. Oh. Oh. Oh. Oh. |
+| VFJ | nexus suffering or gassed | BOOM! |
+| VGJ | sniper or technician being electricuted | boop boop boop boop doop boop boop |
+| VGL | Good thing the medigel capsules didnt explode in the allies this time | Ooh, I'm glad my meta gel didn't explode in the allies this time! Haha! |
+| VH2 | Male gassed | Ahem Ahem |
+| VHJ | guy veing electricuted | HUUUUUUUM |
+| VJ6 | man recovering from injury | No... No... No... |
+| VKM | Wraith | Drayf |
+| VM2 | female coughing | IT'S HOTTEN TO BE THE GUN |
+| VM6 | guy catching breath | (hurt loop, no words) |
+| VN2 | Ouch and lots of coughing; man gassed | Ah! Ah! Ah! Ah! Ah! Ah! |
+| VN3 | argh | UGH! |
+| VN4 | Scream | DAAAAAAA |
+| VN5 | hurt | URGH! |
+| VN6 | deep breaths; Man recovering | (hurt loop, no words) |
+| VN8 | Kill Confirmed | Co-confirmed |
+| VND | HU | Ha! |
+| VNE | AHH | UGH! |
+| VNF | another hurt | Oh |
+| VNG | more hurt | Huh! |
+| VNH | hurt again | UGH! |
+| VNJ | UMMM long hurt; guy pushing out a poop | HUUUUUUUUUUUUUUUUUUUUUUUUUUUUU UGH UGH |
+| VPJ | man being electricuted | Uuughhhhhh! |
+| VQB | infected 10 second count down | Ten, nine, eight, seven, six, five, four, three, two, one. |
+| VRA | vanguard ten second countdown | 10, 9, 8, 7, 6, 5, 4, 3, 2, 1. |
+| VSB | ten second count down; Countdown from 10; 10-0 COUNT DOWN W MUSIC | 10, 9, 8, 7, 6, 5, 4, 3, 2, 1. |
+| VSD | 2 minutes remaining; 2 MINUTES REMAIN | Two minutes remain. |
+| VX01 | 1.0 | ONE. |
+| VX02 | 2.0 | too. |
+| VX04 | 4.0 | Four. |
+| VX0A | DUAL WIELD | dual wheeled |
+| VX0O | BRAWL | Browse |
+| VX0Q | AIR STRIKE | Airstrike |
+| VX0V | EMP PULES | EMP Pulse |
+| VX12 | 12.0 | well. |
+| VX1A | FOREGRIP | For grip. |
+| VX1C | CARE PACKAGE | Share Package! |
+| VX1H | KILL STREAK READY | Killstreak Ready! |
+| VX67 | STEM PACK | Stimpak! |
+| VX74 | REGENERATION ROUNDS | READ GENERATION ROUNDS |
+| VX83 | MINI ROCKETS | Many Rockets! |
+| VX88 | LIFE STEAL | Lifesteal |
+| VX89 | KILL STRIKE READY | Killstrike ready! |
+| VZ0D | CROSS BOW | Crossbow! |
+| VZ0G | DROID AUTO BLASTER | DROID AUTOBLASTER |
+| VZ0N | ENERGY SHOT GUN | Energy Shotgun. |
+| VZ0Q | FLAME THROWER | Flamethrower |
+| VZ0U | GATTLING GUN | Gatling gun! |
+| VZ0W | INCINDIARY RIFLE | Incendiary Rifle |
+| VZ1I | SUB MACHINE GUN | Submachine gun. |
+| VZ1N | STEAM BOLT SUB MACHINE GUN | Steambolt submachine gun. |
+| VZ1O | STORM TROOPER RIFLE | Stormtrooper Rifle |
+| VZ1P | SUSTAINED FIRE SUB MACHINE GUN | Sustain Fire Submachine Gun. |
+| VZ1Q | TAISER RIFLE | Taser Rifle |
+
+### 20 ids the community reports as broken since firmware v4.30
+
+Reported NOISE on the sheet's "update audio V4_30" tab. Pending our own ear check (S1, `docs/FOLLOWUPS.md`); not shipped in any game config.
+
+`HM10`, `HM11`, `HM12`, `HM13`, `HM14`, `HM1B`, `HM1F`, `HM1O`, `HM25`, `MC2J`, `MM0A`, `TK0W`, `TK0Z`, `TK14`, `TK15`, `TK19`, `TK1R`, `TK2R`, `TK2V`, `TK2W`

@@ -5,14 +5,24 @@ this pins: (1) the catalog file is well-formed and carries the facts the pickers
 sound id hard-coded anywhere in the server exists ON THE GUN -- the app's own bank (restated as
 `data/sound_ids.json`, from Sounds.json -- see protocol/callsign-extract/RAW_ASSETS_NOTE.md) lists
 157 ids the gun does not have, and `test_sounds.py`'s bank check could not see that.
+
+2026-09-18: folded in community labels from the LaserTagMods BRX Audio sheet (`mcp/tools/
+soundbank_community.py`, `data/community_sound_labels.csv`). `test_community_label_never_overwrites_
+our_own_evidence` pins the one rule that matters: a community label is a guess, and it never
+replaces our own `description` / `transcript` / `verified_by_ear`.
 """
 import json
 import pathlib
 import re
+import sys
 
 from brx_mcp import sounds as snd
 
 ROOT = pathlib.Path(__file__).resolve().parents[1] / "brx_mcp"
+TOOLS = pathlib.Path(__file__).resolve().parents[1] / "tools"
+sys.path.insert(0, str(TOOLS))
+import soundbank_community as sbc  # noqa: E402
+
 CATALOG = json.load(open(snd.catalog_path()))
 BY_ID = {e["id"]: e for e in CATALOG["sounds"]}
 ON_GUN = snd.on_gun_ids()
@@ -79,3 +89,53 @@ def test_semantic_cues_say_what_their_names_claim():
     for sid, words in want.items():
         assert words in BY_ID[sid]["transcript"].lower(), (sid, BY_ID[sid]["transcript"])
     assert not snd.provisional(), "every semantic cue is now transcript-verified"
+
+
+def test_community_fields_are_well_formed_where_present():
+    """`community_label` / `community_status` / `community_flag_noise` are optional, but never
+    malformed when present: every labelled id is on the gun, and status is one of the three we know."""
+    for e in CATALOG["sounds"]:
+        if "community_label" in e:
+            assert e["on_gun"], e["id"]
+            assert e["community_label"], e["id"]
+            assert e.get("community_status") in ("new_label", "agrees", "differs"), e["id"]
+        if e.get("community_flag_noise"):
+            assert e["community_flag_noise"] is True, e["id"]
+    assert CATALOG.get("community_source"), "top-level community_source is missing"
+
+
+def test_noise_flagged_ids_are_not_shipped_anywhere():
+    """The 20 ids the community reports broken since firmware v4.30 (S1, docs/FOLLOWUPS.md) must not
+    be hard-coded into any weapon or voice config until they are ear-checked."""
+    noisy = {e["id"] for e in CATALOG["sounds"] if e.get("community_flag_noise")}
+    assert len(noisy) == 20
+    files = [ROOT / "sounds.py", ROOT / "modes" / "announcer.py", ROOT / "mc" / "compile.py",
+             ROOT / "gameconfig.py", ROOT / "modes" / "cs.py", ROOT / "mc" / "weapons.json"]
+    for f in files:
+        if not f.exists():
+            continue
+        text = f.read_text()
+        hit = {i for i in noisy if i in text}
+        assert not hit, f"{f.name} ships a NOISE-flagged id: {hit}"
+
+
+def test_community_label_never_overwrites_our_own_evidence():
+    """`soundbank_community.merge()` must never touch `description`, `transcript` or
+    `verified_by_ear` -- a community label is an unconfirmed guess, not a bench finding.
+
+    Break it once and watch it fail: change `merge()` to also set
+    `entry["description"] = row["label"]` and this test goes red.
+    """
+    fake_catalog = {"sounds": [{
+        "id": "ZZ99", "on_gun": True, "in_app": True, "kind": "fx", "category": "fx:misc_fx",
+        "description": "our own evidence, must survive", "transcript": "",
+        "verified_by_ear": True,
+    }]}
+    fake_labels = {"ZZ99": {"id": "ZZ99", "label": "a community guess", "status": "differs"}}
+    sbc.merge(fake_catalog, fake_labels)
+    entry = fake_catalog["sounds"][0]
+    assert entry["description"] == "our own evidence, must survive"
+    assert entry["transcript"] == ""
+    assert entry["verified_by_ear"] is True
+    assert entry["community_label"] == "a community guess"
+    assert entry["community_status"] == "differs"

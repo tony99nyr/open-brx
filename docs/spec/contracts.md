@@ -138,8 +138,9 @@ GameConfig {
   stations?:   [ { id: number, kind: "respawn"|"powerup"|"extraction"|"bomb"|"control" } ],          // A13.1: the utility items valid in this game
   scoring:     { frag_limit: number|null, win_by: "kills"|"survival"|"objective" }, // frag_limit / survival ends are LAN-covered-only [A4.8]
   health:      { max_hp: number, max_armor: number },   // mode defaults; Loadout may override
-  // No `max_shield`, deliberately: the shield pool is NOT BLE-writable. It is granted only by an IR
-  // $SIR function-11 event (P16, closed 2026-08-26). Damage drains shields -> armor -> HP.
+  // $PSET t5 sets the shield CAPACITY; the pool itself starts at 0 and fills from an IR fn-11 grant
+  // or, over BLE, from $LIFE,0,0,<n>,* (bench-proven 2026-09-11). Still no `max_shield` field on
+  // purpose: the shield preset and perks set t5 through the compiler.
   teams:       Team[],
   led?:        object,                // indoor/outdoor/night LED customization (modes.md §6)
   loadout_policy: LoadoutPolicy,      // A10.2 — loadout.md §3
@@ -406,7 +407,13 @@ Weapon {
   // status row lands nothing, a missing row drops the hit. Damage is a property of the (weapon, $SIR
   // table) PAIR — see docs/weapon-design.md §6. `Compiler.validate()` warns on all three cases.
   // `dmg_hit`/`cycle_ms`/`charged` are what `weapon_view(w, pool)` re-derives htk and ttk_ms from
-  // when the host changes `health` (weapon-design.md §2.5). dmg_hit is the real t5 magnitude; cycle_ms is the mean ms
+  // when the host changes `health` (weapon-design.md §2.5). dmg_hit is what one TRIGGER PULL delivers
+  // (`WeaponCatalog.damage_per_pull()`): the t5 magnitude, plus a declared `wire.headset_dmg` on the
+  // three weapons whose t1 (`WeaponIRSource`) is 2 and which therefore fire a SECOND word out of the
+  // shooter's own headset ~88 ms behind the first (Shotgun, Plasma Sniper, Rocket Launcher; measured
+  // 2026-09-18, weapon-design.md §7). It was t5 alone until then, which made a client re-deriving htk
+  // from it disagree with the server. Armour Piercing zeroes the second word, so under that perk a pull
+  // is worth its priced `ap_dmg` and no more; cycle_ms is the mean ms
   // between landed hits (burst-aware: (2*t14 + t23)/3 on a 3-round burst); `charged` weapons pay for
   // their FIRST shot, so their ttk is htk cycles, not htk-1. A row WITHOUT them (a synthetic/demo
   // catalog) scales its published `htk` by the pool ratio and withholds `ttk_ms` at any non-default pool.

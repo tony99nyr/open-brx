@@ -17,25 +17,25 @@ export const WEAPONS: WeaponView[] = [
     "name": "AMR",
     "cls": "4",
     "weapon_class": "ballistic",
-    "desc": "Anti-materiel weight at a rifle's cadence. 24 a hit every 400ms, five hits to a kill, 14 up and only 56 behind. The hardest-hitting automatic, and the shallowest.",
+    "desc": "Anti-materiel, and it reads like it. Heavy hits at a pace nothing else at that range can match.",
     "clip": 14,
     "mags": 4,
     "reserve": 56,
     "reload_s": 1.4,
     "reload_ms": 1400,
-    "dmg": 21,
+    "dmg": 18,
     "rpm": 19,
     "rng": 75,
-    "dmg_per_hit": 24,
+    "dmg_per_hit": 21,
     "pool": 115,
     "verified": false,
     "tags": [
-      "support",
+      "marksman",
       "sniper"
     ],
-    "role": "support",
-    "htk": 5,
-    "ttk_ms": 1600,
+    "role": "marksman",
+    "htk": 6,
+    "ttk_ms": 2000,
     "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
@@ -43,12 +43,13 @@ export const WEAPONS: WeaponView[] = [
       "per_shot": 0,
       "recover_ms": 0
     },
+    "crit_pct": 30,
     "ammo_total": 70,
     "bars": {
       "power": 56,
       "rof": 53,
       "ammo": 51,
-      "ttk": 52
+      "ttk": 27
     }
   },
   {
@@ -56,7 +57,7 @@ export const WEAPONS: WeaponView[] = [
     "name": "Assault Rifle",
     "cls": "0",
     "weapon_class": "ballistic",
-    "desc": "The anchor, and the real stock M4 cadence. 13 hits at 100ms with 32 up and 192 in reserve: 17 kills without resupply and a 1.20s kill. 2026-09-17 arsenal review: cycle is back to Battle Company's native 100ms (it was throttled to 140ms so a deep reserve could not also out-cycle the field); the dominance test now grades on one-magazine kill chance rather than total kills, so the reserve alone no longer has to carry the whole weight of keeping the AR in check.",
+    "desc": "The one everything else is measured against. Nothing it does is remarkable, and there is no fight it cannot hold.",
     "clip": 32,
     "mags": 6,
     "reserve": 192,
@@ -86,7 +87,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 38,
       "rof": 87,
       "ammo": 75,
-      "ttk": 92
+      "ttk": 93
     }
   },
   {
@@ -94,24 +95,24 @@ export const WEAPONS: WeaponView[] = [
     "name": "Burst Rifle",
     "cls": "0",
     "weapon_class": "ballistic",
-    "desc": "A real three-round burst: one pull, three rounds, and the gun enforces the gap. 11 hits from a 36-round mag with 216 behind it; the most total ammo of the burst pair, and the tighter of the two. 2026-09-17 arsenal review: damage raised 9 to 11 so the burst pair separates further from the SMG-class assault weapons on hits-to-kill, not only on cadence.",
+    "desc": "Three rounds a pull, and the gun decides the gap rather than your finger. Slower to the kill than the rifle, and far harder to waste.",
     "clip": 36,
     "mags": 6,
     "reserve": 216,
     "reload_s": 1.7,
     "reload_ms": 1700,
-    "dmg": 10,
+    "dmg": 9,
     "rpm": 100,
     "rng": 75,
-    "dmg_per_hit": 11,
+    "dmg_per_hit": 10,
     "pool": 115,
     "verified": false,
     "tags": [
       "assault"
     ],
     "role": "assault",
-    "htk": 11,
-    "ttk_ms": 1417,
+    "htk": 12,
+    "ttk_ms": 1558,
     "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
@@ -119,12 +120,13 @@ export const WEAPONS: WeaponView[] = [
       "per_shot": 5,
       "recover_ms": 150
     },
+    "crit_pct": 40,
     "ammo_total": 252,
     "bars": {
       "power": 47,
       "rof": 100,
       "ammo": 82,
-      "ttk": 68
+      "ttk": 64
     }
   },
   {
@@ -132,7 +134,7 @@ export const WEAPONS: WeaponView[] = [
     "name": "Charge Rifle",
     "cls": "5",
     "weapon_class": "energy",
-    "desc": "Pre-charge it behind cover, then the kill is one release and two taps: an 85-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus two 20-damage taps drops a 115 pool in about 1s from release -- 3 trigger actions, 12 of the 40 rounds up, 84 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, eighty back -- three combo kills a magazine, ten across the kit.",
+    "desc": "Hold it, and it holds. A full charge and two taps ends anyone, which is why it belongs to whoever saw the other person first.",
     "clip": 40,
     "mags": 2,
     "reserve": 80,
@@ -145,9 +147,10 @@ export const WEAPONS: WeaponView[] = [
     "pool": 115,
     "verified": false,
     "tags": [
-      "support"
+      "marksman",
+      "sniper"
     ],
-    "role": "support",
+    "role": "marksman",
     "htk": 3,
     "ttk_ms": 570,
     "rounds_per_charge": 10,
@@ -170,7 +173,7 @@ export const WEAPONS: WeaponView[] = [
     "name": "Desert Eagle",
     "cls": "10",
     "weapon_class": "ballistic",
-    "desc": "The hand cannon. 26 a hit, five hits to drop — the most damage of any sidearm, if you land them. Seven in the mag, 48 behind it: 11 kills across the kit. A slow cycle that punishes every miss.",
+    "desc": "Rounds that hit like a rifle, and not many of them. Miss twice and you are reloading in front of someone.",
     "clip": 7,
     "mags": 6,
     "reserve": 48,
@@ -201,7 +204,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 64,
       "rof": 47,
       "ammo": 45,
-      "ttk": 36
+      "ttk": 42
     }
   },
   {
@@ -209,7 +212,7 @@ export const WEAPONS: WeaponView[] = [
     "name": "Energy Rifle",
     "cls": "5",
     "weapon_class": "energy",
-    "desc": "A 300-cell battery that barely stops. 9 a hit every 150ms, 23 kills on one magazine and 69 across the kit. The largest ammo pool in the game, on the smallest per-hit number. 2026-09-17 bench (F229): now genuinely overheats — full auto locks it out around heat 99 after about 30 shots, and unlike the Charge Rifle it does not cool on its own; only the reload lever (a hold, not a tap) vents it.",
+    "desc": "The cell barely stops. When it finally does, the recharge is long enough to lose the fight you were winning.",
     "clip": 300,
     "mags": 2,
     "reserve": 600,
@@ -222,9 +225,9 @@ export const WEAPONS: WeaponView[] = [
     "pool": 115,
     "verified": false,
     "tags": [
-      "support"
+      "assault"
     ],
-    "role": "support",
+    "role": "assault",
     "htk": 13,
     "ttk_ms": 1800,
     "rounds_per_charge": 1,
@@ -240,7 +243,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 38,
       "rof": 67,
       "ammo": 100,
-      "ttk": 44
+      "ttk": 49
     }
   },
   {
@@ -248,7 +251,7 @@ export const WEAPONS: WeaponView[] = [
     "name": "Rail Gun",
     "cls": "7",
     "weapon_class": "energy",
-    "desc": "Charges and fires itself. A 1.2s wind-up that goes whether you are ready or not, 115 on impact, four rounds total. Everyone within earshot hears the spool.",
+    "desc": "A single charged slug that ends whoever it finds. Two shots, and then it is scrap.",
     "clip": 2,
     "mags": 1,
     "reserve": 2,
@@ -280,7 +283,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 100,
       "rof": 27,
       "ammo": 20,
-      "ttk": 92
+      "ttk": 93
     }
   },
   {
@@ -288,7 +291,7 @@ export const WEAPONS: WeaponView[] = [
     "name": "Rocket Launcher",
     "cls": "9",
     "weapon_class": "ballistic",
-    "desc": "Point, pull, erase. 115 a hit (a full-health operator in one) on the fastest power-tier cycle, with the slowest reload behind it. Four rounds, four kills, no second chances.",
+    "desc": "One round, one player, no argument. Two in the tube and nothing to reload from.",
     "clip": 2,
     "mags": 1,
     "reserve": 2,
@@ -328,16 +331,16 @@ export const WEAPONS: WeaponView[] = [
     "name": "Shotgun",
     "cls": "3",
     "weapon_class": "ballistic",
-    "desc": "Shell by shell, and the fastest recovery on the board. 45 a hit at 800ms, three hits to drop, six in the tube and a 400ms shell reload. Sustained pressure from the shallowest ammo pool outside the power tier.",
+    "desc": "Three pulls and it is over, if you were close enough to mean it. Shell by shell, and the fastest recovery on the board.",
     "clip": 6,
     "mags": 4,
     "reserve": 24,
     "reload_s": 0.4,
     "reload_ms": 400,
-    "dmg": 39,
+    "dmg": 35,
     "rpm": 9,
     "rng": 75,
-    "dmg_per_hit": 45,
+    "dmg_per_hit": 40,
     "pool": 115,
     "verified": false,
     "tags": [
@@ -358,7 +361,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 73,
       "rof": 40,
       "ammo": 32,
-      "ttk": 52
+      "ttk": 56
     }
   },
   {
@@ -366,7 +369,7 @@ export const WEAPONS: WeaponView[] = [
     "name": "SMG",
     "cls": "1",
     "weapon_class": "ballistic",
-    "desc": "A hose that runs hot. 8 a hit every 95ms from a 72-round mag: four kills before you reload, 24 across the kit, and an overheat budget that punishes holding the trigger down forever.",
+    "desc": "A hose. The magazine leaves faster than you meant it to, and getting it back means standing still for a long time.",
     "clip": 72,
     "mags": 4,
     "reserve": 288,
@@ -396,7 +399,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 29,
       "rof": 93,
       "ammo": 88,
-      "ttk": 76
+      "ttk": 78
     }
   },
   {
@@ -404,7 +407,7 @@ export const WEAPONS: WeaponView[] = [
     "name": "Haze",
     "cls": "7",
     "weapon_class": "ballistic",
-    "desc": "A three-second blackout. The target keeps firing and keeps spending rounds, and every shot misses: their own gun goes quiet and the person they are aiming at hears the shots whizz past. It takes no health at all, and it wears off on its own. Use it to break a firing line, cross open ground, or take a point off someone who cannot afford three seconds. Bench 2026-09-18: live accuracy 100 to 0 in the same millisecond as the hit, recovering 0, 2, 4, 7, 12 over about three seconds, with nothing left behind.",
+    "desc": "It cannot kill either. What it takes is a player's aim, for a few seconds, which is often worse.",
     "clip": 8,
     "mags": 3,
     "reserve": 24,
@@ -444,7 +447,7 @@ export const WEAPONS: WeaponView[] = [
     "name": "Sniper Rifle",
     "cls": "2",
     "weapon_class": "ballistic",
-    "desc": "Two hits, one lane, a bolt between them. 60 a hit on a 1.5s cycle with four in the mag and 24 behind it. The fewest hits to a kill outside the power tier, and no margin for a miss.",
+    "desc": "Two hits from anywhere on the field, with a long moment in between to think about the first one.",
     "clip": 4,
     "mags": 6,
     "reserve": 24,
@@ -475,7 +478,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 82,
       "rof": 20,
       "ammo": 26,
-      "ttk": 60
+      "ttk": 71
     }
   },
   {
@@ -483,7 +486,7 @@ export const WEAPONS: WeaponView[] = [
     "name": "Breacher",
     "cls": "5",
     "weapon_class": "ballistic",
-    "desc": "Strips armour and shields and cannot take a single point of health. Nine a hit off whatever they are wearing, through every layer in order, and the overflow carries: a full shield and a full plate come off in one magazine. Point it at a teammate instead and it REPAIRS them, because the same function that strips an enemy grants armour to an ally. You give up your backup gun to carry it, and you need someone else to finish what you start. Bench 2026-09-18: shield 120 to 0 then armour 70 to 0, health fixed at 999 the whole way, and eleven further hits on a bare target moved nothing at all.",
+    "desc": "It cannot kill. It takes every layer of armour and shield off whoever you hit, and leaves the finishing to someone else.",
     "clip": 40,
     "mags": 3,
     "reserve": 120,
@@ -514,7 +517,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 20,
       "rof": 80,
       "ammo": 69,
-      "ttk": 84
+      "ttk": 85
     }
   },
   {
@@ -522,7 +525,7 @@ export const WEAPONS: WeaponView[] = [
     "name": "Suppressor",
     "cls": "1",
     "weapon_class": "ballistic",
-    "desc": "Quiet, not silent, and no muzzle flash. It is the only weapon here that hides where you are. 8 a hit every 140ms with 75 up and 384 in reserve: 30 kills, the deepest magazine AND the deepest sustained pool, the slowest kill. 2026-09-17: mag 48→75 -- the family-scoped dominance test (§2.3) paired it against the SMG (same fire mode, same weapon_class), which beat it on every other axis; the deeper magazine gives the Suppressor an outright lead on kills-per-clip (5 vs the SMG's 4), which is the smallest change that stops the SMG strictly dominating it.",
+    "desc": "Quiet, and no muzzle flash. The only weapon that does not tell the field where you are, bought with the slowest kill in the game.",
     "clip": 75,
     "mags": 5,
     "reserve": 384,
@@ -535,9 +538,9 @@ export const WEAPONS: WeaponView[] = [
     "pool": 115,
     "verified": false,
     "tags": [
-      "support"
+      "assault"
     ],
-    "role": "support",
+    "role": "assault",
     "htk": 15,
     "ttk_ms": 1960,
     "rounds_per_charge": 1,
@@ -552,7 +555,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 29,
       "rof": 73,
       "ammo": 94,
-      "ttk": 28
+      "ttk": 35
     }
   },
   {
@@ -560,7 +563,7 @@ export const WEAPONS: WeaponView[] = [
     "name": "USP-S",
     "cls": "10",
     "weapon_class": "ballistic",
-    "desc": "The quiet one. Suppressed and flashless: 9 a hit, as fast as you can pull the trigger, 13 hits to drop, 19 in the mag with 120 behind it: 10 kills across the kit. Low damage, but nobody hears where it came from. 2026-09-17: mag 20→19 -- Tony's ask was 20→14, but 14 leaves the Deagle strictly dominating the USP (its sustained DPS and one-magazine kill chance both fall too far once the mag is that shallow); 19 is the smallest cut off 20 that actually leaves neither pistol beating the other on every axis (a thin margin: sustained DPS differs by about 0.1 dmg/s, kill chance by 2 points).",
+    "desc": "A steady sidearm. It will not win a fight you started badly, but it will finish one you nearly had.",
     "clip": 19,
     "mags": 6,
     "reserve": 120,
@@ -591,7 +594,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 38,
       "rof": 60,
       "ammo": 63,
-      "ttk": 36
+      "ttk": 42
     }
   }
 ];

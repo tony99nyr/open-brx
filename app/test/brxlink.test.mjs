@@ -558,3 +558,34 @@ test('the real plugin gets the direct writer; the web build is sent the DataView
   assert.equal(seen[1].value, dv);
   assert.equal(typeof new BrxLink({}).writeChunk, 'function');
 });
+
+// transport-hardening.md §3: the write pacing is one frozen table, and the block pause ships OFF. The gun
+// reads one serial byte per main-loop pass from a 1 KB buffer (V4_30/V4_31 disassembly); the block pause is
+// the lever bench §14 measures, and until it is measured the field pacing must not move.
+test('write pacing: the shipped values are the field values and the block pause is off', async ctx => {
+  const { WRITE_PACING } = await import('../src/brxlink.js');
+  assert.deepEqual(WRITE_PACING, { chunkGapMs: 8, frameGapMs: 18, blockFrames: 0, blockPauseMs: 0 });
+  assert.ok(Object.isFrozen(WRITE_PACING));
+  const r = cleanRig(ctx);
+  assert.equal(r.link.chunkGapMs, 8); assert.equal(r.link.frameGapMs, 18);
+  assert.equal(r.link.blockFrames, 0); assert.equal(r.link.blockPauseMs, 0);
+});
+
+test('write pacing: with a block size set, a pause lands after every N frames and never after the last', async ctx => {
+  const settle = useClock(ctx);
+  const writes = [];
+  const ble = {
+    initialize: async () => {}, disconnect: async () => {}, connect: async () => {}, startNotifications: async () => {},
+    writeWithoutResponse: async (_id, _s, _c, dv) => { writes.push({ at: Date.now(), n: dv.byteLength }); },
+  };
+  const link = new BrxLink({ ble, log: () => {}, blockFrames: 2, blockPauseMs: 300 });
+  ctx.after(() => link.disconnect());
+  await link.connect('A', 'GUN-A-1111');
+  const done = link.write(['$PING,*', '$PING,*', '$PING,*', '$PING,*', '$PING,*']);
+  await settle(2000);
+  assert.equal(await done, true);
+  assert.equal(writes.length, 5);
+  const gaps = writes.slice(1).map((w, i) => w.at - writes[i].at);
+  // 18 ms frame gap everywhere; +300 ms after frames 2 and 4 (frame 5 is last: no trailing pause)
+  assert.deepEqual(gaps, [18, 318, 18, 318]);
+});

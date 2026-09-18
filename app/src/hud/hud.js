@@ -163,6 +163,13 @@ const LOCK_SVG = '<svg class="lockg" viewBox="0 0 20 20" fill="none" stroke="cur
 // and rendered as a tofu box on the stage.
 const INFO_SVG = '<svg class="infog" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10" cy="10" r="7.6"/><path d="M10 8.8v5.4" stroke-linecap="round"/><circle cx="10" cy="6.1" r="1" fill="currentColor" stroke="none"/></svg>';
 const perkGlyph = id => PERK_GLYPH[id] || '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 4 L24 15 L36 16 L27 24 L30 36 L20 30 L10 36 L13 24 L4 16 L16 15 Z"/></svg>';
+/** A background-image has no onerror hook, so a missing weapon photo used to show the empty
+ *  `#0a1626` box with nothing on screen saying why (stripper/smoke_gun have none yet, and it read as
+ *  a UI bug, not a missing asset — field 2026-09-18). An <img> DOES fire onerror: swap it for a
+ *  generic weapon glyph, the same precedent as `perkGlyph`'s unmatched-id fallback above. Every
+ *  weapon-art call site shares this one function, so the fix (and any future one) lands once. */
+const WEAPON_GLYPH = '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="20" cy="20" r="13"/><path d="M20 3 V11 M20 29 V37 M3 20 H11 M29 20 H37"/><circle cx="20" cy="20" r="2.6" fill="currentColor" stroke="none"/></svg>';
+const weaponArt = id => `<img class="wpic" src="assets/weapons/${esc(id)}.jpg" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="wpicfb">${WEAPON_GLYPH}</span>`;
 
 
 // Field 2026-08-30: the old DMG/ROF meters read `stats.dmg` straight, but that number is "share of a
@@ -648,7 +655,7 @@ export class Hud {
     const twRes = [twStats.reserve, tw && tw.reserve].find(v => v != null);
     const bar = (label, v) => v == null ? '' : `<div class="tb"><span>${label}</span><i><b style="width:${Math.max(0, Math.min(100, v))}%"></b></i></div>`;
     const tryout = tw ? `<div class="tryout">
-        <div class="art" style="background-image:url('assets/weapons/${esc(tw.weapon_id)}.jpg')"></div>
+        <div class="art">${weaponArt(tw.weapon_id)}</div>
         <div class="meta"><div class="lbl">TRY-OUT · FIRE A FEW ROUNDS</div><div class="nm">${esc((tw.name || tw.weapon_id || '').toUpperCase())}</div>
           <div class="ln">MAG ${twMag != null ? twMag : '—'} · RESERVE ${twRes != null ? twRes : '—'}${tw.role ? ' · ' + esc(roleName(tw)) : ''}</div>
           ${statBlock(tw, { compact: true })}</div>
@@ -776,7 +783,7 @@ export class Hud {
     const noneSub = slot === 'perk' ? (rule && rule.choice === 'off' ? 'NO PERKS' : 'NO PERK') : (rule && rule.choice === 'off' ? 'NO SECONDARY' : 'NO ALT-FIRE');
     let art = '', h = '', sub = '';
     if (item && item.kind === 'perk') { art = `<div class="thumb perk">${perkGlyph(item.perk_id)}</div>`; h = esc(item.name); sub = esc(perkEffect(item, true)); }   // the line is ~150px wide: the GAIN only (S50), the cost is in the browser row
-    else if (item) { art = `<div class="thumb" style="background-image:url('assets/weapons/${esc(item.weapon_id)}.jpg')"></div>`; h = esc(item.name); sub = slot === 'primary' ? (ammoLine || '') : `<span class="nw">MAG ${item.clip != null ? item.clip : '—'} · RES ${item.reserve != null ? item.reserve : '—'}</span>`; }
+    else if (item) { art = `<div class="thumb">${weaponArt(item.weapon_id)}</div>`; h = esc(item.name); sub = slot === 'primary' ? (ammoLine || '') : `<span class="nw">MAG ${item.clip != null ? item.clip : '—'} · RES ${item.reserve != null ? item.reserve : '—'}</span>`; }
     else { art = '<div class="thumb none"><span>—</span></div>'; h = 'NONE'; sub = noneSub; }
     if (locked) sub = (rule.choice === 'fixed' ? 'FIXED BY THE HOST' : rule.choice === 'off' ? noneSub : 'SET BY THE HOST');
     const lock = locked ? `<span class="lock" aria-label="locked">${LOCK_SVG}</span>` : (can ? '<span class="cue">▸</span>' : '');
@@ -835,7 +842,7 @@ export class Hud {
           arming = r.key === eqKey && !pend && !!st.tryoutArming,
           unconf = r.key === eqKey && !pend && !st.tryoutArming && rowUnconf,
           pn = r.key === pend, fo = r.key === focusKey, rj = !!(ack && !ack.ok && ack.key === r.key), wn = !!(cf && cf.key === r.key);
-        const thumb = r.kind === 'perk' ? `<span class="thumb perk">${perkGlyph(r.id)}</span>` : `<span class="thumb" style="background-image:url('assets/weapons/${esc(r.id)}.jpg')"></span>`;
+        const thumb = r.kind === 'perk' ? `<span class="thumb perk">${perkGlyph(r.id)}</span>` : `<span class="thumb">${weaponArt(r.id)}</span>`;
         const body = r.kind === 'perk' ? `<span class="nm2"><b>${esc(name(r)).toUpperCase()}</b><small>${esc(perkEffect(r.row))}</small></span>` : `<span class="nm">${esc(name(r)).toUpperCase()}</span><span class="role">${esc(roleName(r.row))}</span><span class="mag tab">MAG ${r.row.clip != null ? r.row.clip : '—'}</span>`;
         // A26: ✓ = MC acked this pick AND the gun confirmed the write, ⟳ = still arming (the node's debounce
         // window, waiting on MC's ack, or — F147 — MC acked but the gun has not answered the $WEAP write yet),
@@ -868,7 +875,7 @@ export class Hud {
         : (focus.key === eqKey && !pend && unconfHere && st.tryoutUnconfirmed.kind === focus.kind) ? '<span class="eqtag unconf">UNCONFIRMED</span>'
         : (focus.key === eqKey && !pend) ? '<span class="eqtag">EQUIPPED</span>' : '';
       if (focus.kind === 'perk') detail = `<div class="art perk">${perkGlyph(focus.id)}</div><div class="nm">${esc(r.name).toUpperCase()}${heroTag}</div><div class="ln pk">PERK · ${esc(perkEffect(r))}${r.verified === false ? ' · <span style="color:var(--warn)">NOT YET FIELD-TESTED</span>' : ''}</div><div class="desc">${esc(r.desc || '')}</div>`;
-      else detail = `<div class="art" style="background-image:url('assets/weapons/${esc(focus.id)}.jpg')"></div><div class="nm">${esc(r.name).toUpperCase()} <span class="rolechip">${esc(roleName(r))}</span>${heroTag}</div><div class="ln">MAG ${r.clip != null ? r.clip : '—'} · RESERVE ${r.reserve != null ? r.reserve : '—'}${r.reload_s != null ? ' · RELOAD ' + r.reload_s + 'S' : ''}</div>${statBlock(r)}${r.caution ? `<div class="caution">▲ ${esc(r.caution)}</div>` : ''}<div class="desc">${esc(r.desc || '')}</div>`;
+      else detail = `<div class="art">${weaponArt(focus.id)}</div><div class="nm">${esc(r.name).toUpperCase()} <span class="rolechip">${esc(roleName(r))}</span>${heroTag}</div><div class="ln">MAG ${r.clip != null ? r.clip : '—'} · RESERVE ${r.reserve != null ? r.reserve : '—'}${r.reload_s != null ? ' · RELOAD ' + r.reload_s + 'S' : ''}</div>${statBlock(r)}${r.caution ? `<div class="caution">▲ ${esc(r.caution)}</div>` : ''}<div class="desc">${esc(r.desc || '')}</div>`;
     } else if (can) detail = `<div class="small" style="padding-top:30px">${tab === 'secondary' ? (sidearmOnly(rule) ? 'Pick a sidearm — or leave it on NONE.' : 'Pick a second weapon — or leave it on NONE.') : tab === 'perk' ? 'Pick a perk — or leave it on NONE.' : 'Pick your main weapon.'}</div>`;
     // A14: the two-tap confirm outranks everything else in the action bar; an ack that dropped the other slot says so
     // F147: MC's ack alone must not read as EQUIPPED while `st.tryoutArming` says the gun has not answered
@@ -1618,7 +1625,7 @@ export class Hud {
   /** One weapon tile for the SWITCHING takeover and the ACTIVE confirm. */
   _wtile(it, label, cls) {
     if (!it) return `<span class="wt ${cls}"><span class="th none">—</span><span class="wl">${label}</span><span class="wn">NONE</span></span>`;
-    const th = it.kind === 'perk' ? `<span class="th perk">${perkGlyph(it.perk_id)}</span>` : `<span class="th" style="background-image:url('assets/weapons/${esc(it.weapon_id)}.jpg')"></span>`;
+    const th = it.kind === 'perk' ? `<span class="th perk">${perkGlyph(it.perk_id)}</span>` : `<span class="th">${weaponArt(it.weapon_id)}</span>`;
     return `<span class="wt ${cls}">${th}<span class="wl">${label}</span><span class="wn">${esc(it.name).toUpperCase()}</span></span>`;
   }
   /** The swap confirmed (by the next shot's $ALCD) or assumed (window expired): the new weapon, marked ACTIVE. */
@@ -1642,7 +1649,7 @@ export class Hud {
     if (this.frame.dataset.env === 'night') return;
     const el = document.createElement('div'); el.className = 'mo redeploy';
     const lo = st.loadout || {};
-    const ki = (k, it) => !it ? '' : `<span class="ki">${it.kind === 'perk' ? `<span class="th">${perkGlyph(it.perk_id)}</span>` : `<span class="th" style="background-image:url('assets/weapons/${esc(it.weapon_id)}.jpg')"></span>`}<span><span class="kk">${k}</span><br><span class="kn">${esc(it.name).toUpperCase()}</span></span></span>`;
+    const ki = (k, it) => !it ? '' : `<span class="ki">${it.kind === 'perk' ? `<span class="th">${perkGlyph(it.perk_id)}</span>` : `<span class="th">${weaponArt(it.weapon_id)}</span>`}<span><span class="kk">${k}</span><br><span class="kn">${esc(it.name).toUpperCase()}</span></span></span>`;
     el.innerHTML = `<div class="wipe"></div><div class="slash"></div><div class="beam"></div>
       <div class="r"><span class="t">REDEPLOYED</span><span class="h">WEAPONS HOT ▸▸▸</span><span class="s">${st.maxHp} HP · ${st.maxArmor} ARMOR · MAG FULL</span>
         <div class="kit">${ki('PRIMARY', lo.primary)}${ki('SECONDARY', lo.secondary)}${ki('PERK', lo.perk)}</div></div>

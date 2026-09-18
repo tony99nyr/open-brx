@@ -5,7 +5,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Engine, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES } from '../src/engine.js';
+import { Engine, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand } from '../src/engine.js';
+import * as W from '../src/transport/envelope.js';
 import { CONTROL_STATE } from '../src/control.js';   // the phone control point's advert bits (K1)
 import { Presence, encodeUuid } from '../src/beacon.js';   // the REAL advert path, for the clock-mismatch guard
 
@@ -1095,18 +1096,29 @@ test('auto respawn writes revive and emits respawn', () => {
   assert.ok(h.facts.some(f => f.type === 'respawn'));
 });
 
-test('F206: any write carrying a $PSET gets the gun\'s $TID right after the last $PSET (spawn, revive, lone $PSET), and a flip\'s $TID wins', () => {
+test('F206 (node half): a $PSET the COMPILER never saw gets a $TID behind it, and a bundle burst that already carries one gets nothing', () => {
   // bench 2026-09-16: a $PSET clears the gun's team ($HIR t4 = 0) until a $TID follows; $SPAWN and $SIR do not.
-  const tidAfterPset = (w, tid) => { const p = w.map(f => f.startsWith('$PSET,')).lastIndexOf(true); return p >= 0 && w[p + 1] === `$TID,${tid},*`; };
+  // A gun with no team emits its hits as team 0, which put two guns on the same side at the bench.
+  //
+  // F206 is fixed in BOTH halves, and they cover different writes:
+  //  - the COMPILER puts the $TID in the spawn/revive bursts, where it knows the team at build time. That
+  //    half is pinned by 'F206: the spawn burst carries the $PSET from pset_pool BEFORE $SPAWN...' below.
+  //  - `_tidAfterPset` is the node's safety net for every OTHER write carrying a $PSET, which the compiler
+  //    cannot see: a mid-game pool change, an operator action, anything the node composes itself.
+  // So this test asserts the node half ONLY, and its companion assertion is the more valuable one: against
+  // a bundle that already carries a $TID the node adds NOTHING, so the gun is never sent two.
+  const oneTid = (w, tid) => w.filter(f => f.startsWith('$TID,')).join(' ') === `$TID,${tid},*`;
   assert.ok(golden.pset_pool && golden.pset_pool.length, 'the golden bundle carries a scream pool');
   const h = harness().kit();
   h.writes.length = 0; h.config_();
-  assert.equal(h.writes.filter(f => f === '$TID,1,*').length, 1, 'the head already ends on $TID after its $PSET: nothing added');
+  assert.ok(oneTid(h.writes, 1), `the head carries its own $TID: nothing added -- got ${h.writes.filter(f => f.startsWith('$TID,')).join(' ')}`);
   h.echo(); h.writes.length = 0; h.start(0); h.adv(10); h.eng.tick();
-  assert.ok(h.writes.includes('$SPAWN,,*') && tidAfterPset(h.writes, 1), `spawn -- got ${h.writes.join(' ')}`);
+  assert.ok(h.writes.includes('$SPAWN,,*') && oneTid(h.writes, 1), `spawn: exactly one $TID, the bundle's -- got ${h.writes.join(' ')}`);
+  assert.equal(h.writes[h.writes.indexOf('$SPAWN,,*') + 1], '$TID,1,*', 'and it is the compiler\'s, right after $SPAWN');
   h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame('$HP,0,0,0,*');
   h.writes.length = 0; h.adv(8000); h.eng.tick();
-  assert.ok(h.writes.includes('$SPAWN,,*') && tidAfterPset(h.writes, 1), `revive -- got ${h.writes.join(' ')}`);
+  assert.ok(h.writes.includes('$SPAWN,,*') && oneTid(h.writes, 1), `revive: exactly one $TID, the bundle's -- got ${h.writes.join(' ')}`);
+  // Only the node covers this one: a $PSET with no $TID behind it, in a write no bundle burst produced.
   h.writes.length = 0; h.eng._write([golden.pset_pool[0], '$AMMO,0,1,1,1,*'], 'lone pset');
   assert.deepEqual(h.writes, [golden.pset_pool[0], '$TID,1,*', '$AMMO,0,1,1,1,*'], 'a $PSET with no $SPAWN gets the team too');
   h.writes.length = 0; h.eng._write(['$SPAWN,,*', '$AMMO,0,1,1,1,*'], 'no pset');
@@ -1118,8 +1130,18 @@ test('F206: any write carrying a $PSET gets the gun\'s $TID right after the last
   const w0 = []; const fresh = new Engine({ writer: f => w0.push(...f), emit: () => {}, report: () => {}, now: () => 1, synced: () => true, storage: mkStorage(), log: () => {} });
   fresh.frames = golden; fresh._write([golden.pset_pool[0]], 'after restart');
   assert.deepEqual(w0, [golden.pset_pool[0], '$TID,1,*']);
-  // infection: the flip's own $TID wins on the flip and on every later revive
-  const b = { ...golden, player_id: 'p1', team_flip: { '2': ['$TID,2,*', ...golden.revive] } };
+  // infection: the flip's own $TID wins on the flip and on every later revive. The flip burst is built the
+  // way compile.py builds it -- `[$TID,<new>] + _revive_for(<new>)`, so the revive's own $TID is the NEW
+  // team's too; a hand-built burst carrying the ARMING team's $TID would test a bundle MC cannot emit.
+  //
+  // A FIXTURE THAT SPREADS A BUNDLE FIELD IT DOES NOT OWN SILENTLY TRACKS THAT FIELD'S SHAPE. This one
+  // spread `golden.revive`, and it was byte-exact while our compiler built the flip as `[$TID] + revive`
+  // from a revive that carried no $TID at all. The 2026-09-18 merge moved $TID INTO the revive burst and
+  // rebuilt the flip's revive for the new team in the same change, so the spread quietly inherited a team
+  // byte that had grown underneath it and described a bundle MC could not emit. Nothing was wrong before
+  // the merge; the merge is what made it wrong, and no assertion could see that. So MIRROR the compiler's
+  // shape here, never splice its output -- and if you spread a bundle field, own the assertion about it.
+  const b = { ...golden, player_id: 'p1', team_flip: { '2': ['$TID,2,*', ...golden.revive.map(f => f.startsWith('$TID,') ? '$TID,2,*' : f)] } };
   const writes = []; let clock = 1e6;
   const eng = new Engine({ writer: f => writes.push(...f), emit: () => {}, report: () => {}, now: () => clock, synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => fn() });
   const config = { config_id: 'g', mode: 'infection', environment: 'indoor', night: false, time_limit_s: 300, respawn: { type: 'auto', delay_s: 8 }, scoring: { frag_limit: null, win_by: 'survival' }, health: { max_hp: 45, max_armor: 70 }, teams: [{ team_id: 'human', tid: 1, name: 'HUMAN', color: 'blue' }, { team_id: 'inf', tid: 2, name: 'INFECTED', color: 'red' }] };
@@ -1130,7 +1152,7 @@ test('F206: any write carrying a $PSET gets the gun\'s $TID right after the last
   clock += 10; eng.tick();
   eng.feedFrame('$HIR,4,0,19,2,9,0,3,*'); eng.feedFrame('$HP,0,0,0,*');
   writes.length = 0; clock += 8000; eng.tick();
-  assert.ok(writes.includes('$SPAWN,,*') && tidAfterPset(writes, 2), `a revive after the flip keeps the flipped team -- got ${writes.join(' ')}`);
+  assert.ok(writes.includes('$SPAWN,,*') && writes.includes('$TID,2,*'), `a revive after the flip keeps the flipped team -- got ${writes.join(' ')}`);
   assert.ok(!writes.includes('$TID,1,*'), 'never the old team');
 });
 
@@ -6272,4 +6294,54 @@ test('S42 x A44/A47/F15: `state().accHold` says the writer is standing down, and
   assert.ok(h.eng.state().accHold, 'still held just before it lifts');
   h.adv(20);
   assert.equal(h.eng.state().accHold, null, 'and null once the hold has lapsed');
+});
+
+// ---------- transport-hardening.md §4: the node's gun-command deny list ----------
+// The V4_30/V4_31 firmware (LaserTagMods' drive, 2026-09-18) has commands that write persistent state,
+// re-pair or re-flash a radio, switch the IR word format, or BLOCK the main loop with the serial port unread
+// (`$DPLAY`: the likely screamer mechanism). `protocol.DENIED_COMMANDS` reaches the phone as the generated
+// `NODE_DENIED_COMMANDS`, and `_write` is the one choke point every gun write passes through.
+test('deny list: _write drops a denied frame, writes the rest, logs it loudly, and counts it', () => {
+  const h = harness().kit().config_();
+  const logs = []; h.eng.log = m => logs.push(String(m));
+  const before = h.writes.length;
+  h.eng._write(['$PLAY,U37,3,10,,,,,*', '$DPLAY,A10,4,*', '$FACTORY,*', '$!FSFORMAT,*', '$HLED,1,0,,,10,,*'], 'test');
+  const wrote = h.writes.slice(before);
+  assert.deepEqual(wrote, ['$PLAY,U37,3,10,,,,,*', '$HLED,1,0,,,10,,*'], 'only the allowed frames reach the gun');
+  assert.equal(h.eng.refused, 3);
+  assert.ok(logs.some(m => m.includes('REFUSED 3') && m.includes('$DPLAY') && m.includes('$FACTORY') && m.includes('$!FSFORMAT')), logs);
+  // a burst that is ALL denied writes nothing at all
+  h.eng._write(['$CDFU,*'], 'test');
+  assert.equal(h.writes.length, before + 2);
+  assert.equal(h.eng.refused, 4);
+});
+
+test('deny list: the generated set is the source, and the helpers read the command word only', () => {
+  assert.ok(W.NODE_DENIED_COMMANDS.has('DPLAY') && W.NODE_DENIED_COMMANDS.has('FACTORY') && W.NODE_DENIED_COMMANDS.has('CDFU'));
+  assert.equal(frameCommand('$DPLAY,A10,4,*'), 'DPLAY');
+  assert.equal(frameCommand('$dplay,A10,4,*'), 'DPLAY');
+  assert.equal(frameCommand('not a frame'), '');
+  assert.equal(deniedCommand('$PLAY,U37,3,10,,,,,*'), false, 'PLAY is not DPLAY: the match is on the whole word');
+  assert.equal(deniedCommand('$DPLAY,A10,4,*'), true);
+  assert.equal(deniedCommand('$^RESET,*'), true, 'gun<->radio control frames are never ours');
+  assert.equal(deniedCommand(''), false);
+  assert.equal(deniedCommand(null), false);
+});
+
+test('deny list: nothing a real bundle writes is denied (head, spawn, revive, end all go through untouched)', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$HIR,4,0,19,2,45,0,0,*'); h.frame('$HP,0,0,0,*');   // die
+  h.adv(9000); h.eng.tick();                                     // auto respawn
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  assert.equal(h.eng.refused || 0, 0, 'no compiled frame may trip the deny list');
+  assert.ok(h.writes.includes('$SPAWN,,*') && h.writes.includes('$CLEAR,*'));
+});
+
+test('F206: the spawn burst carries the $PSET from pset_pool BEFORE $SPAWN, and $TID right after it', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  const i = h.writes.indexOf('$SPAWN,,*');
+  assert.ok(i > 0, 'spawned');
+  assert.equal(h.writes[i + 1], '$TID,1,*', 'the team is re-asserted after $SPAWN (one team byte, last writer wins)');
+  const pset = h.writes.slice(0, i).filter(f => f.startsWith('$PSET,'));
+  assert.ok(pset.length >= 1 && pset.every(f => f.split(',')[2] === '1'), 'every $PSET written carries the $TID team: ' + pset);
 });

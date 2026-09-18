@@ -29,7 +29,10 @@ LaserTagMods (JEDGE/JBOX) prominently; this project is a fresh, independent impl
 - **BLE = Nordic UART** exactly as we have it: service `6E400001-…`, RX(write) `…0002`, TX(notify)
   `…0003`. Writes chunked to **20-byte** packets (matches our MTU-3 fix). Frames `$…,*`
   comma-delimited; receiver reassembles notification fragments until `*` then splits on commas.
-- **Baud:** 57600 for **Gen1**, 115200 for **Gen2/3** (auto-selected). Confirms our transport table.
+- **Baud:** Jay's JEDGE 6.0 source declares `BaudRate = 57600` (with a comment "115200 for Gen2/3,
+  57600 for Gen1"), but it never opens a UART to the gun with it. The gun link is BLE (Nordic UART
+  central) for Gen2/3, or Bluetooth Classic SPP (master role, PIN `0001`) for Gen1, with an HC-05
+  module at 9600 baud as a third option. So the baud claim is not supported by his own sources.
 - **QUERY / SETUP / PIN:** `QUERY` dumps device settings over the USB serial console; `SETUP`
   changes device ID and sets a **PIN that binds a headset to a gun** — change one PIN digit and
   the pair breaks; re-matching re-pairs. (Corroborates our Teensy/QUERY findings.)

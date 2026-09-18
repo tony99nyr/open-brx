@@ -95,6 +95,79 @@ def test_t41_is_pinned_byte_for_byte_at_every_venue():
             "exactly as captured, indoor is unmeasured (F231 open) and must never be guessed")
 
 
+def test_t12_equals_the_declared_headset_dmg_on_every_weapon_whose_capture_carries_it():
+    """2026-09-18 finding (Callsign capture cap30 + independent LaserTagMods confirmation,
+    docs/weapon-design.md §7): t1 (`WeaponIRSource`) = 2 on exactly three stock weapons (shotgun,
+    plasma sniper, rocket launcher), and on those t12 (`ExtraHeadsetDamage`) is an UNCONDITIONAL
+    second word's damage, fired from the shooter's own headset, that STACKS with t5.
+
+    `resolve()` no longer mirrors t5 onto t12 (that behaviour is gone, replaced 2026-09-18): it
+    writes a DECLARED `wire.headset_dmg`, priced independently of t5 (see
+    `WeaponCatalog.damage_per_pull()`). This test pins that every weapon whose capture already
+    carries a t12 compiles it to exactly its declared `wire.headset_dmg`, not the raw captured
+    word, and not a mirror of t5.
+
+    Break the `wire.get("headset_dmg")` write in `resolve()` and watch this go red."""
+    bad = []
+    for w in ROWS:
+        wid = w["weapon_id"]
+        if not _tok(wid, "headset_dmg").strip():
+            continue
+        declared = (w.get("wire") or {}).get("headset_dmg")
+        compiled_t12 = CAT.resolve(wid, 0).split(",")[WeaponCatalog._T["headset_dmg"] + 1]
+        if compiled_t12 != str(declared):
+            bad.append(f"{wid}: t12 compiled to {compiled_t12!r}, wire.headset_dmg declares {declared!r}")
+    assert not bad, "t12 drifted from the declared wire.headset_dmg:\n  " + "\n  ".join(bad)
+
+
+def test_a_captured_t12_with_no_declared_headset_dmg_is_refused():
+    """The safety rule the old mirror behaviour used to enforce implicitly, now enforced directly:
+    a weapon whose capture carries a t12 but declares no `wire.headset_dmg` must REFUSE to compile,
+    not ship the raw captured second word unpriced: shipping it unpriced is the exact three-weapon
+    balance hole this change exists to close (the Plasma Sniper priced its t5 down to 25 while its
+    capture still carried an unpriced 80 in t12)."""
+    by_id = {w["weapon_id"]: w for w in ROWS}
+    plasma = json.loads(json.dumps(by_id["plasma_sniper"]))   # deep copy, never mutate the shared row
+    assert plasma["wire"]["headset_dmg"] == 10, "fixture drift: plasma_sniper no longer declares headset_dmg 10"
+    del plasma["wire"]["headset_dmg"]
+    cat = WeaponCatalog([plasma])
+    try:
+        cat.resolve("plasma_sniper", 0)
+        raise AssertionError("compiled a captured t12 with no declared wire.headset_dmg")
+    except ValueError as e:
+        assert "plasma_sniper" in str(e) and "headset_dmg" in str(e), str(e)
+
+
+def test_a_weapon_with_no_captured_t12_still_compiles_with_the_cell_empty():
+    """The common case (most shipped weapons carry no t12 at all) must keep compiling exactly as
+    before: the cell stays blank, and no `wire.headset_dmg` is required."""
+    checked = 0
+    for w in ROWS:
+        wid = w["weapon_id"]
+        if _tok(wid, "headset_dmg").strip():
+            continue
+        compiled_t12 = CAT.resolve(wid, 0).split(",")[WeaponCatalog._T["headset_dmg"] + 1]
+        assert compiled_t12 == "", f"{wid}: t12 should stay empty, compiled to {compiled_t12!r}"
+        checked += 1
+    assert checked > 5, "too few no-t12 weapons checked: the capture fixtures moved"
+
+
+def test_damage_per_pull_adds_the_declared_headset_dmg_and_damage_stays_gun_body_only():
+    """`damage()` must keep its exact old meaning (t5 alone, the Armour Piercing `dmg_abs` pricing
+    base and `validate()`'s "x1 number"). `damage_per_pull()` is a SEPARATE, additive derivation,
+    used only by `hits_to_kill()`/`time_to_kill()`/`damage_bar()`. On the three headset weapons the
+    two must differ by exactly the declared `wire.headset_dmg`; everywhere else they must be equal,
+    or a weapon with no headset word would silently gain one."""
+    by_id = {w["weapon_id"]: w for w in ROWS}
+    for wid, want_extra in (("shotgun", 20), ("plasma_sniper", 10), ("rocket_launcher", 0)):
+        assert CAT.damage_per_pull(wid) == CAT.damage(wid) + want_extra, wid
+    for w in ROWS:
+        wid = w["weapon_id"]
+        if (w.get("wire") or {}).get("headset_dmg") is not None:
+            continue
+        assert CAT.damage_per_pull(wid) == CAT.damage(wid), f"{wid}: gained a headset word it never declared"
+
+
 def test_gun_range_outdoor_pct_ships_the_catalogue_value_outdoors_only():
     """F234: t2 (`gunRangeOutdoor`) is the confirmed venue lever. It sets the emitter's carrier
     frequency, not its power (2026-09-18, protocol/brx-protocol.md), so these values are a shipped
@@ -105,7 +178,7 @@ def test_gun_range_outdoor_pct_ships_the_catalogue_value_outdoors_only():
     weapon, the sidearms, melee) keeps its captured t2 at every venue, same as before this fix."""
     shipped = {"sniper_rifle": 100, "amr": 85, "charge_rifle": 85, "assault_rifle": 70,
                "burst_rifle": 70, "suppressor": 55, "energy_rifle": 55, "smg": 30,
-               "shotgun": 22, "rocket_launcher": 22, "rail_gun": 22}
+               "shotgun": 100, "rocket_launcher": 22, "rail_gun": 22}
     by_id = {w["weapon_id"]: w for w in ROWS}
     assert set(shipped) <= set(by_id), sorted(set(shipped) - set(by_id))
     for wid, want in shipped.items():
@@ -226,6 +299,81 @@ def test_burst_and_charge_classification_matches_the_frame():
     # a charge weapon pays for its FIRST shot, so even a one-shot kill has a non-zero TTK
     for wid in charge:
         assert CAT.time_to_kill(wid, DEFAULT_POOL) > 0, wid
+
+
+def test_crit_pct_writes_t6_only_on_the_three_weapons_that_declare_it():
+    """F62 (closed 2026-09-18): t6 (`primaryCritChance`) is a straight percentage the GUN rolls
+    itself. `crit_pct` names three weapons only (burst_rifle, amr, toxin_rifle); every other row
+    must keep whatever t6 its capture carries — which is 0 on every stock frame captured so far.
+
+    Unlike `headset_dmg`, an ABSENT `crit_pct` is not a refusal: a weapon that never crits is not a
+    balance hole, so `resolve()` must leave the token exactly as the capture carries it rather than
+    writing a 0. Break the `crit_pct` write in `resolve()` and watch this go red."""
+    declared = {"burst_rifle": 40, "amr": 30, "toxin_rifle": 15}
+    by_id = {w["weapon_id"]: w for w in ROWS}
+    assert {wid: by_id[wid]["crit_pct"] for wid in declared} == declared, \
+        "fixture drift: the three crit weapons no longer declare the expected crit_pct"
+    for wid, want in declared.items():
+        compiled_t6 = CAT.resolve(wid, 0).split(",")[WeaponCatalog._T["crit"] + 1]
+        assert compiled_t6 == str(want), f"{wid}: t6 compiled to {compiled_t6!r}, crit_pct declares {want!r}"
+    checked = 0
+    for w in ROWS:
+        wid = w["weapon_id"]
+        if wid in declared:
+            continue
+        assert w.get("crit_pct") is None, f"{wid}: unexpectedly declares crit_pct — extend `declared` above"
+        captured_t6 = _tok(wid, "crit")
+        compiled_t6 = CAT.resolve(wid, 0).split(",")[WeaponCatalog._T["crit"] + 1]
+        assert compiled_t6 == captured_t6, \
+            f"{wid}: t6 compiled to {compiled_t6!r} but the capture carries {captured_t6!r} — an " \
+            f"undeclared crit_pct must be left untouched, not written"
+        checked += 1
+    assert checked > 10, "too few undeclared weapons checked: the capture fixtures moved"
+
+
+def test_crit_pct_outside_0_to_100_raises_with_the_weapon_named():
+    """A `crit_pct` the gun cannot represent must refuse to compile, and the error must name the
+    offending weapon so a bad catalogue edit is easy to place."""
+    rows = json.loads((ROOT / "mcp" / "brx_mcp" / "mc" / "weapons.json").read_text())["weapons"]
+    hot = next(w for w in rows if w["weapon_id"] == "amr")
+    for bad in (-1, 101, 1000):
+        hot["crit_pct"] = bad
+        bad_cat = WeaponCatalog(rows)
+        try:
+            bad_cat.resolve("amr", 0)
+            raise AssertionError(f"resolve() must refuse a crit_pct of {bad}")
+        except ValueError as e:
+            assert "amr" in str(e), str(e)
+
+
+def test_htk_and_ttk_derive_from_base_damage_alone_with_no_crit_term():
+    """The design decision the whole crit-chance feature turns on (docs/weapon-design.md, F62): a
+    published hits-to-kill is the GUARANTEED number, and a crit only ever beats it. The BASE damage
+    was cut on the three crit weapons to pay for the chance (burst_rifle 11→10, amr 24→21, both
+    average-preserving at their `crit_pct`), and `htk`/`ttk_ms` were republished from that cut base —
+    they must never be a discount FROM the old number, only a plain re-derivation.
+
+    The guard: `hits_to_kill()` is exactly `ceil(pool / damage_per_pull())` for every ordinary
+    weapon (a cell weapon like the Charge Rifle counts trigger actions, not equal hits, and is
+    already covered by `hits_to_kill()`'s own charge+tap branch — see its docstring), whatever
+    `crit_pct` the row declares. There must be no crit term anywhere in the chain. Break it by
+    folding an expected-value discount into `damage()`, `damage_per_pull()` or `hits_to_kill()` and
+    watch this go red."""
+    for w in LETHAL_ROWS:
+        wid = w["weapon_id"]
+        if CAT.rounds_per_charge(wid) > 1 and CAT.tap_damage(wid) > 0:
+            continue   # cell weapon (Charge Rifle): trigger actions, not equal hits -- hits_to_kill()'s own branch
+        dpp = CAT.damage_per_pull(wid)
+        want_htk = math.ceil(DEFAULT_POOL / dpp) if dpp > 0 else 0
+        assert CAT.hits_to_kill(wid, DEFAULT_POOL) == want_htk, \
+            f"{wid}: hits_to_kill() disagrees with ceil(pool / damage_per_pull()) -- a crit term crept into the chain"
+        assert w["htk"] == want_htk, f"{wid}: catalogue htk is stale against the guaranteed derivation"
+    # the three crit weapons specifically, pinned to the numbers this change shipped (F62, 2026-09-18)
+    for wid, want_htk, want_ttk in (("burst_rifle", 12, 1558), ("amr", 6, 2000), ("toxin_rifle", 15, 1540)):
+        assert CAT.hits_to_kill(wid, DEFAULT_POOL) == want_htk, wid
+        assert CAT.time_to_kill(wid, DEFAULT_POOL) == want_ttk, wid
+        assert CAT.damage_per_pull(wid) == CAT.damage(wid), \
+            f"{wid}: damage_per_pull() must equal the base t5 magnitude, with no crit discount folded in"
 
 
 # ---------------------------------------------------------------- 2. weapon-design.md §2.2
@@ -396,7 +544,9 @@ def test_weapon_views_at_the_default_pool_still_publish_the_shipped_numbers():
         v = views[w["weapon_id"]]
         assert v["htk"] == w["htk"] and v["ttk_ms"] == w["ttk_ms"], w["weapon_id"]
         assert v["pool"] == DEFAULT_POOL
-        assert v["dmg_per_hit"] == CAT.damage(w["weapon_id"])
+        # `dmg_per_hit` is `damage_per_pull()` (t5 plus a declared `wire.headset_dmg`), not `damage()`
+        # (t5 alone), 2026-09-18, so the client's own htk/ttk re-derivation agrees with the server's.
+        assert v["dmg_per_hit"] == CAT.damage_per_pull(w["weapon_id"])
 
 
 def test_a_synthetic_catalog_without_the_chain_still_renders():
@@ -579,3 +729,41 @@ def test_the_poison_block_is_declared_and_never_reaches_the_wire():
                 f"{wid}: the frame carries {value}, which looks like the declared `dot` reaching the wire:\n  {frame}")
         # the damage type IS on the wire, because the victim's node keys the tick clock off it
         assert frame.split(",")[WeaponCatalog._T["proto"] + 1] == str(w["cls"]), wid
+
+def test_every_weapon_is_tagged_with_the_class_it_is_actually_in():
+    """`role` is what a player SEES; `tags` is what loadout policy FILTERS on. They must agree.
+
+    Found by Tony 2026-09-18, reading the arsenal page: the AMR showed the SNIPER class beside tags
+    of `['support', 'sniper']`. Four weapons (AMR, Suppressor, Energy Rifle, Charge Rifle) moved out
+    of the `support` role that morning, because support had become a dumping ground holding a .50
+    anti-materiel rifle next to a smoke launcher. Their `role` moved and their `tags` did not.
+
+    That is not cosmetic. `policy.py` filters the pickable pool on `exclude_tags` (see the
+    `no_heavies` preset and `_check_loadout`), so a host who excluded support weapons would silently
+    have banned the AMR, the Suppressor, the Energy Rifle and the Charge Rifle as well, while every
+    screen told the player they were snipers and assault rifles.
+
+    The rule: a weapon's tags must contain the tag for the role it is in. Extra tags are allowed and
+    deliberate -- the Ion Sniper is genuinely both a heavy and a sniper -- so this checks presence,
+    never equality, and does NOT strip a tag a designer added on purpose."""
+    role_tag = {"assault": "assault", "cqb": "cqb", "marksman": "sniper", "support": "support",
+                "power": "heavy", "sidearm": "sidearm", "melee": "melee"}
+    wrong = []
+    for w in ROWS:
+        role = w.get("role")
+        assert role in role_tag, f"{w['weapon_id']} has role {role!r}, which has no tag: add it here and to tokens.ts ROLE"
+        if role_tag[role] not in (w.get("tags") or []):
+            wrong.append(f"{w['weapon_id']}: role {role!r} but tags {w.get('tags')} (wants {role_tag[role]!r})")
+    assert not wrong, ("loadout policy filters on `tags`, so a weapon tagged for a class it is not in "
+                       "gets excluded by a rule the player never sees:\n  " + "\n  ".join(wrong))
+    # ⚠ Presence alone is NOT enough, and the first version of this guard proved it: the AMR's real
+    # fault was an EXTRA tag (`['support', 'sniper']`), and since 'sniper' was present the check
+    # passed with the bug planted. A guard that cannot fail is worse than no guard.
+    # So `support` gets its own rule, because it is the one tag that carries a MEANING rather than a
+    # grouping: support is the class that CANNOT KILL (the Breacher strips, the Haze denies). A
+    # lethal weapon wearing it is the dumping-ground bug by definition. Extra tags stay legal
+    # otherwise -- the Ion Sniper is deliberately both a heavy and a sniper.
+    mislabelled = [f"{w['weapon_id']}: tagged 'support' but it kills (lethal is not False)"
+                   for w in ROWS if "support" in (w.get("tags") or []) and w.get("lethal") is not False]
+    assert not mislabelled, ("'support' means the weapon cannot kill; it is not a bucket for weapons "
+                             "nobody has classified:\n  " + "\n  ".join(mislabelled))

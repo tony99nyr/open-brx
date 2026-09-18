@@ -196,11 +196,11 @@ it('4a · the arsenal publishes CAPTURED wire values, never the rebalanced UI ba
 });
 
 it('4b · sound durations in the prose match the generated table cell for cell', async ({ request }) => {
-  // sound.md hand-lists ~31 notable ids with durations taken from the APP's Sounds.json, while the
+  // sounds.md hand-lists ~31 notable ids with durations taken from the APP's Sounds.json, while the
   // table below them is built from the real ON-GUN files. Seven disagreed, both visible at once.
   const rows = await (await request.get('/data/sounds.json')).json();
   const len = Object.fromEntries(rows.map(r => [r.id, r.len]));
-  const md = fs.readFileSync(path.resolve(WEB, '../docs/manual/sound.md'), 'utf8');
+  const md = fs.readFileSync(path.resolve(WEB, '../docs/manual/sounds.md'), 'utf8');
   const bad = [];
   let checked = 0;
   for (const line of md.split('\n')) {
@@ -234,7 +234,7 @@ it('4 · the weapons table loads rows and filters', async ({ page }) => {
 
 it('5 · the sound bank loads rows, filters, and pages', async ({ page }) => {
   const errors = watchErrors(page);
-  await page.goto('/manual/sound/');
+  await page.goto('/manual/sounds/');
   const dt = page.locator('.dt[data-table="sounds"]');
   await expect(dt).toBeVisible();
   await expect(dt.locator('[data-count]')).toContainText('rows');
@@ -242,6 +242,42 @@ it('5 · the sound bank loads rows, filters, and pages', async ({ page }) => {
   await dt.locator('[data-more]').click();
   expect(await dt.locator('tbody tr').count()).toBeGreaterThan(first);
   expect(errors).toEqual([]);
+});
+
+it('5b · sound.md links to the sound bank where its table used to be', async ({ page, request }) => {
+  await page.goto('/manual/sound/');
+  const link = page.locator('a[href="/manual/sounds"]');
+  await expect(link).toBeVisible();
+  // the old page no longer carries the full table itself
+  await expect(page.locator('.dt[data-table="sounds"]')).toHaveCount(0);
+  expect((await request.get('/manual/sounds')).ok()).toBe(true);
+});
+
+it('5c · a community label is shown, marked unconfirmed, and searchable', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto('/manual/sounds/');
+  const dt = page.locator('.dt[data-table="sounds"]');
+  await expect(dt).toBeVisible();
+  await expect(dt.locator('[data-count]')).toContainText('rows');
+
+  // A103 carries a NEW_LABEL community label with no meaning of our own: search finds it by the
+  // community label text alone, and the cell marks it as a community label, unconfirmed.
+  await dt.locator('[data-search]').fill('buble shield');
+  const row = dt.locator('tbody tr', { hasText: 'A103' });
+  await expect(row).toBeVisible();
+  await expect(row.locator('i.community')).toContainText('community label');
+  await expect(row.locator('i.community')).toContainText('unconfirmed');
+  await expect(row.locator('i.community')).toContainText('buble shield');
+  expect(errors).toEqual([]);
+});
+
+it('5d · a NOISE-flagged id shows the reported-broken flag', async ({ page }) => {
+  await page.goto('/manual/sounds/');
+  const dt = page.locator('.dt[data-table="sounds"]');
+  await dt.locator('[data-search]').fill('HM10');
+  const row = dt.locator('tbody tr', { hasText: 'HM10' });
+  await expect(row).toBeVisible();
+  await expect(row.locator('i.community')).toContainText('reported broken since v4.30, pending an ear check');
 });
 
 it('6 · a data table that cannot load says so instead of sitting empty', async ({ page }) => {
@@ -433,7 +469,11 @@ it('11 · every old URL really resolves over HTTP, in one hop, with no loop', as
 // motion that reveals rather than hides.
 const facts = () => {
   const modes = (fs.readFileSync(path.join(DOCS, '../mcp/brx_mcp/mc/state.py'), 'utf8').match(/\{"mode":\s*"[a-z_]+",\s*"name"/g) || []).length;
-  const weapons = JSON.parse(fs.readFileSync(path.join(DOCS, '../mcp/brx_mcp/mc/weapons.json'), 'utf8')).weapons.length;
+  // VISIBLE weapons, the same predicate the server publishes its catalogue with (`WeaponCatalog.all()`).
+  // Counting every ROW advertised 25 weapons on the home page when 15 are in the game, and gave the class
+  // pills a MELEE entry nobody can pick and a HEAVY entry of 5 when 3 of those are cut (2026-09-18).
+  const weapons = JSON.parse(fs.readFileSync(path.join(DOCS, '../mcp/brx_mcp/mc/weapons.json'), 'utf8'))
+    .weapons.filter(w => !w.hidden).length;
   const release = JSON.parse(fs.readFileSync(path.join(DOCS, '../webapp/download/build.json'), 'utf8'));
   return { modes, weapons, release };
 };
@@ -792,6 +832,53 @@ it('12g · the site is honest when a photo has not been shot yet', async ({ page
   for (const p of photos) {
     if (p.src.endsWith('.svg')) expect(p.alt.length, `${p.src}: a placeholder needs alt text saying what belongs there`).toBeGreaterThan(8);
   }
+});
+
+it('12k · the arsenal landing shows every pickable weapon once, with art and the pickup-only badge', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto('/arsenal/', { waitUntil: 'networkidle' });
+  await expect(page.locator('h1')).toHaveCount(1);
+  await expect(page.locator('.hero .lede')).toContainText(/hits it takes to kill/i);
+
+  // VISIBLE weapons, the same predicate the server publishes its catalogue with (`WeaponCatalog.all()`);
+  // count derived from the source file, never hardcoded (three separate hardcoded counts drifted here already).
+  const weapons = JSON.parse(fs.readFileSync(path.join(DOCS, '../mcp/brx_mcp/mc/weapons.json'), 'utf8'))
+    .weapons.filter(w => !w.hidden);
+  const pickupIds = weapons.filter(w => w.pickup_only).map(w => w.weapon_id);
+  expect(pickupIds.length, 'no pickup-only weapon to check the badge against').toBeGreaterThan(0);
+
+  const cards = page.locator('.card.weapon');
+  expect(await cards.count(), 'card count does not match the visible weapons in weapons.json').toBe(weapons.length);
+
+  // every card image actually loaded, with real alt text, before checking the badge
+  await page.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += 600) { scrollTo(0, y); await new Promise(r => setTimeout(r, 60)); } scrollTo(0, 0); });
+  await page.waitForLoadState('networkidle');
+  const imgs = await cards.locator('img').evaluateAll(is => is.map(i => ({ src: i.getAttribute('src'), alt: i.alt, ok: i.complete && i.naturalWidth > 0 })));
+  expect(imgs.length).toBe(weapons.length);
+  for (const i of imgs) {
+    expect(i.ok, `${i.src} did not load`).toBe(true);
+    expect(i.alt.trim().length, `${i.src} has no real alt text`).toBeGreaterThan(8);
+    expect(i.alt.trim(), `${i.src}'s alt text is only the weapon name`).not.toMatch(/^[A-Za-z0-9' -]+$/);
+  }
+
+  // exactly the pickup-only weapons carry the badge, no more and no fewer
+  const badged = await page.locator('.card.weapon.pickup .badge').allTextContents();
+  expect(badged.length).toBe(pickupIds.length);
+  for (const b of badged) expect(b.trim().length).toBeGreaterThan(0);
+
+  // a weapon that cannot kill (lethal: false) never shows a bare 0 in the hits-to-kill slot: a
+  // visible dash (its own desc already says "It cannot kill") plus a visually-hidden word for
+  // assistive tech, which does not read the desc paragraph as part of the stat block.
+  const nonLethal = weapons.filter(w => w.lethal === false);
+  expect(nonLethal.length, 'no non-lethal weapon to check the stat slot against').toBeGreaterThan(0);
+  for (const w of nonLethal) {
+    const card = page.locator('.card.weapon', { has: page.locator('.name', { hasText: new RegExp(`^${w.name}$`) }) });
+    const stat = card.locator('dd').first();
+    await expect(stat, `${w.name} is lethal:false and must not show a numeric hits-to-kill`).not.toContainText(/^\d+$/);
+    await expect(stat.locator('.wcant'), `${w.name}'s hits-to-kill slot has no visible mark`).toBeVisible();
+    await expect(stat.locator('.vh'), `${w.name}'s hits-to-kill slot has no accessible label`).toHaveText(/cannot kill/i);
+  }
+  expect(errors).toEqual([]);
 });
 
 // A typo in ONLY= skipped all 30 steps and exited 0, which reads exactly like a green run.

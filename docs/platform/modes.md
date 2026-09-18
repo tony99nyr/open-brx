@@ -101,12 +101,13 @@ it carries one gun. Any future perk that claims a button joins the same rule.
 Open BRX defines weapons on the wire. Each one is a frame the tagger is sent at arming time, so a
 weapon is data, not firmware, and a game can hand out numbers Battle Company never shipped.
 
-The catalogue holds 22 entries: the 19 weapons captured from the Callsign app, melee among them, and
-three pistols we added (Glock-18, USP-S, Desert Eagle). A player picking a loadout sees 11 of them.
-Nine rows are hidden, because a 22-weapon list is mostly duplicates and a player should not have to
-tell four grenade launchers apart. Two more, the Rocket Launcher and the Rail Gun, are in the
-catalogue but never in a starting kit: they are meant to be picked up on the field, and that is not
-built yet. Melee is always loaded and never shown.
+The catalogue holds 25 entries: the 19 weapons captured from the Callsign app, melee among them,
+three pistols we added (Glock-18, USP-S, Desert Eagle), and three of our own that the stock app has
+no equivalent for. Fifteen are in the game. Ten rows are hidden, because the full list is mostly
+duplicates and a player should not have to tell four grenade launchers apart. Of the fifteen, two are
+never in a starting kit: the Rocket Launcher and the Rail Gun are meant to be picked up on the field,
+and that is not built yet. So a player building a loadout chooses from thirteen, counting the two
+pistols on their own tab. Melee is always loaded and never shown.
 
 Every weapon starts from the real frame Battle Company sent. Only the balance numbers are
 overwritten: damage, fire interval, magazine, reserve, reload time, swap delay and outdoor range.

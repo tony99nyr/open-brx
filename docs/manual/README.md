@@ -19,7 +19,8 @@ reference and credits). The platform docs and landing pages live in `../platform
 | `hardware.md` | `/manual/hardware` | anatomy, buttons, ports, IR and sensors, LEDs, headset, battery, generations, accessories |
 | `operate.md` | `/manual/operate` | quick start, charging, the on-gun menu, indoor and outdoor, sighting, headset pairing, the grenade, the Callsign app, a stock game, range, care |
 | `gameplay.md` | `/manual/gameplay` | the arsenal with wire stats, health and damage, how a kill works, native modes, classes and perks, grenade modes |
-| `sound.md` | `/manual/sound` | how audio works, voice packs, the sound bank, custom sounds over USB, firmware, volume |
+| `sound.md` | `/manual/sound` | how audio works, voice packs, custom sounds over USB, firmware, volume |
+| `sounds.md` | `/manual/sounds` | the full sound bank: every id, meaning, community label, and how to play one |
 | `fix.md` | `/manual/fix` | symptom ladders, pairing and BLE, hits, sound, battery, repairs, mods, accessories, community, FAQ |
 | `dev.md` | `/manual/dev` | transport, framing, every command, the arm sequence, `$WEAP`, `$GSET`/`$PSET`, `$SIR`, events, the IR word, the serial console, `brx-mcp` |
 | `credits.md` | `/credits` | credits, sourcing, policy |

@@ -19,6 +19,12 @@ export const C = {
 };
 export const SFLASH = '$SFLASH,*';
 export const PLAYX = '$PLAYX,0,*';
+/** The command word of a `$…` frame, or '' -- `$DPLAY,A10,4,*` -> 'DPLAY'. A gun<->radio control frame
+ *  (`$!…`, `$^…`, `$&…`) keeps its prefix so it never matches a real command by accident. */
+export function frameCommand(f) { return typeof f === 'string' && f[0] === '$' ? f.slice(1).split(',')[0].toUpperCase() : ''; }
+/** True when the node must never write this frame (transport-hardening.md §4): the word is on the generated
+ *  deny list, or it is a gun<->radio module control frame. */
+export function deniedCommand(f) { const w = frameCommand(f); return !!w && (W.NODE_DENIED_COMMANDS.has(w) || '!^&'.includes(w[0])); }
 export const PROBE_VOLTS = ['$PHONE,*'];
 export const PROBE_FW = ['$STOP,*', '$PHONE,*', '$VERSION,*'];
 
@@ -753,9 +759,29 @@ export class Engine {
     for (const [name, test] of STAND_DOWN) if (names.includes(name) && test(this, now)) return name;
     return null;
   }
+  /** Every gun write goes through here, and the deny list is enforced HERE, not in the bundle: a frame whose
+   *  command word is in `NODE_DENIED_COMMANDS` (generated from `protocol.DENIED_COMMANDS`: persistent state,
+   *  pairing, DFU, the IR word-format switch, factory tests, and `$DPLAY`, which blocks the gun's main loop
+   *  with the serial port unread) is dropped and logged, whatever MC, a debug panel or a stale bundle says.
+   *  `docs/spec/transport-hardening.md` §4. */
   _write(frames, why) {
     if (!frames || !frames.length) return;
-    frames = this._tidAfterPset(frames);
+    // DENY FIRST, THEN THE TEAM. Do not swap these two steps for tidiness: the order is the behaviour, and
+    // stage.py `write` does it in exactly this order (`test_stage_mirror` reads both bodies and fails on
+    // whichever one moves). Restore the team first and a denied `$PSET` dropped afterwards leaves its `$TID`
+    // behind as an orphan, because `$TID` is a KNOWN command and the deny filter has no reason to take it.
+    // The gun would then read a team byte for a `$PSET` that never arrived. Filter first and no `$PSET` is
+    // left to insert behind. Nothing on the deny list is a `$PSET` today, so this is latent, not live. It is
+    // written down because the two steps look independent, and the next person to tidy this function will
+    // otherwise reorder them.
+    const denied = frames.filter(f => typeof f === 'string' && deniedCommand(f));
+    if (denied.length) {
+      this.refused = (this.refused || 0) + denied.length;
+      this.log(`write ${why}: REFUSED ${denied.length} frame(s) the node must never send: ${denied.map(f => f.split(',')[0]).join(' ')}`, 'le');
+      frames = frames.filter(f => !denied.includes(f));
+      if (!frames.length) return;
+    }
+    frames = this._tidAfterPset(frames);   // LAST, and after the deny filter above, for the orphan `$TID` reason written there (F206)
     this.log(`write ${why}: ${frames.length} frame(s)`, 'li');
     try { return this.writer(frames, why); } catch (e) { this.log(`write ${why} failed: ${e && e.message || e}`, 'le'); }
   }
@@ -2552,8 +2578,13 @@ export class Engine {
     // F11 REPAIR path, so this cannot cost us the table; the rows differ only in their sound tokens.
     // F209: a protected bundle does NOT write the take here; `_armLife` writes it once the gun can fire.
     const sir = this._protectsSpawn() ? [] : this._pickTable('sir_pool');
+    // F206: the gun keeps ONE team byte, and the `pset_pool` $PSET above carries the ARMING team. A player
+    // an infection flip has TURNED revives with the flip's own burst, which ends on the team they joined;
+    // `frames.revive` would put them back on the arming team.
+    const flipped = this._turned && this.frames.team_flip && this.frames.team_flip[String(this.teamTid)];
+    const revive = flipped || this.frames.revive;
     const life = this._lifeSeq = (this._lifeSeq || 0) + 1;   // pl3: a lost write is only this life's news
-    this._writeLife([...(ps.frame ? [ps.frame] : []), ...sir, ...this.frames.revive, ...(sp.frame ? [sp.frame] : [])], 'revive' + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : ''), life);
+    this._writeLife([...(ps.frame ? [ps.frame] : []), ...sir, ...revive, ...(sp.frame ? [sp.frame] : [])], 'revive' + (flipped ? ' (turned)' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : ''), life);
     this.hurtFired = false;
     // pl3 (2026-09-17): a swap or a heat reading from the last life must not follow the player into this one. An
     // operator respawn of a LIVE player skips `_death`, which is the only other place `switching` was cleared, so a

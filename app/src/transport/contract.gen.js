@@ -122,6 +122,44 @@ export const STATION_KINDS = new Set([
   'bomb',
   'control',
 ]);
+/** The command words a NODE must never write to its gun, whatever a bundle or a debug panel says:
+ *  persistent state, pairing, DFU, the IR word-format switch, factory tests, and `$DPLAY`, which
+ *  blocks the gun's main loop with the serial port unread (the likely screamer mechanism). One
+ *  source, `protocol.DENIED_COMMANDS`; the phone reads this copy from the generated contract
+ *  (docs/spec/transport-hardening.md §4). */
+export const NODE_DENIED_COMMANDS = new Set([
+  'ASKSN',
+  'BOOM',
+  'BURN',
+  'CDFU',
+  'CLEARDEVICE',
+  'DDFU',
+  'DEV',
+  'DPLAY',
+  'DTYPE',
+  'DUTY',
+  'FACTORY',
+  'FTST',
+  'GPAIR',
+  'GPAIRX',
+  'HEADDFU',
+  'INQ',
+  'IRT',
+  'MUZ',
+  'PAIR',
+  'PIN',
+  'RESET',
+  'SETUP',
+  'SITE',
+  'SOL',
+  'TSTRNAME',
+  'VIBTOGGLE',
+  'ZOFF',
+  'ZOM',
+  'ZOMBIEKEYACTIVE',
+  'ZON',
+  'ZTOG',
+]);
 export const STATION_SOURCE_IDS = new Set([
   'grenade',
   'ir_station',

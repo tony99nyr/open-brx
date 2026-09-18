@@ -72,7 +72,7 @@ def test_head_is_byte_identical_to_the_pre_gate_head():
     assert head[:4] == ["$VOL,90,0,*", "$CLEAR,*", "$START,*", "$GSET,0,0,1,0,1,0,0,1,*"], head[:4]
     # $PSET's tail is the per-player voice pack (A15) and belongs to other tests; what this one pins
     # is that NOTHING sits between $GSET and $PSET, and nothing between $PSET and the first $WEAP.
-    assert head[4].startswith("$PSET,7,0,45,70,70,50,,"), head[4]
+    assert head[4].startswith("$PSET,7,1,45,70,70,50,,"), head[4]   # F206: t2 = the $TID team (blue = 1)
     assert head[5].startswith("$WEAP,0,"), head[5]
 
 

@@ -25,7 +25,7 @@ export type {
   TunnelStatus, TunnelProviderValue, ValuePair
 } from './contract.gen';
 export type {
-  ArmState, ControlCmd, ItemKind, LoadoutPreset, McKind, NodeKind, OperatorCmd, PersistedEventType, Phase,
+  ArmState, ControlCmd, ItemKind, LoadoutPreset, McKind, NodeDeniedCommand, NodeKind, OperatorCmd, PersistedEventType, Phase,
   SlotChoice, StationKind, StationSourceId, WinBy,
 } from './contract.gen';
 // values (verbatimModuleSyntax: a value re-export may not ride in a `export type` statement)

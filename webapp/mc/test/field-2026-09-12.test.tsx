@@ -13,18 +13,35 @@ import { Spectate } from '../src/screens/Spectate';
 import { computePool } from '../src/screens/gameSummary';
 import { MockBackend } from '../src/mock/backend';
 import { StoreCtx } from '../src/store';
-import type { Api, ModeInfo, Phase, RecapView, State } from '../src/api/types';
+import type { Api, ModeInfo, Phase, RecapView, State, WeaponView } from '../src/api/types';
 import { demo, fixtureApi, makeStore, mount, mountScreen } from './harness';
+
+/** F141's own fixture, not the live catalogue. The test used to rely on the AMR carrying both
+ *  `support` and `sniper` tags (mock/data.ts) to produce a PARTIAL chip. That dual tag was a bug:
+ *  `support` had become a dumping ground and the AMR plainly kills. 2026-09-18 the AMR moved to
+ *  `marksman`+`sniper`, `support` now means "cannot kill" (guarded by
+ *  `mcp/tests/test_weapon_derivations.py`), and no real weapon will carry `support`+`sniper` again.
+ *  The behaviour this test guards is still real (a field defect from 2026-09-12: a chip left PARTIAL
+ *  by another chip's exclusion used to look "stuck" and could never be switched fully off), so give
+ *  the test one weapon it deliberately puts in two classes, instead of hoping the live arsenal keeps
+ *  doing that by accident.
+ */
+const DUAL_CLASS_WEAPON: WeaponView = {
+  weapon_id: 'fixture_dual_class', name: 'Fixture Dual-Class Rifle', cls: '0', weapon_class: 'ballistic',
+  desc: 'Test fixture only, never rendered outside this file.',
+  clip: 30, mags: 4, reserve: 120, reload_s: 1.4, reload_ms: 1400, dmg: 10, rpm: 60, rng: 60, dmg_per_hit: 10,
+  verified: false, tags: ['support', 'sniper'], role: 'support', htk: 10,
+};
 
 describe('F141 — Designer class chip toggle', () => {
   it('a chip left PARTIAL by another chip\'s exclusion still toggles fully OFF on tap, and back ON on the next', async () => {
     const d = await demo();
-    const m = await mountScreen(<Designer />, d);
+    const m = await mountScreen(<Designer />, { ...d, weapons: [DUAL_CLASS_WEAPON] });
     const chipsSel = '[aria-label="primary slot rules"] button';
     const chip = (label: string) => m.find(chipsSel).find(b =>
       (b.getAttribute('title') ?? '').includes('class') && (b.textContent ?? '').trim().endsWith(label));
 
-    // AMR is tagged support+sniper (mock/data.ts): excluding SUPPORT leaves SNIPER PARTIAL, not OFF —
+    // The fixture weapon is tagged support+sniper: excluding SUPPORT leaves SNIPER PARTIAL, not OFF —
     // exactly the state that used to make the SNIPER chip look "stuck" (field 2026-09-12).
     const support = chip('SUPPORT');
     expect(support, 'the SUPPORT class chip is on screen').toBeTruthy();

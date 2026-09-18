@@ -157,27 +157,42 @@ match, which is a balance decision, not a bug fix.
    then four, and record which holds refill. The 2026-09-17 bench measured a refill 3.5 to 3.9 s after the pull starts,
    with taps of 0.2 s refilling nothing, so the boundary between "too short" and "works" is the thing to pin.
 
-## 8. Does one Shotgun pull fire TWO words? (3 min, and it may move the whole ladder)
+## 8. Does one pull fire TWO words? (3 min, no victim, no BLE)
 
-`$WEAP` **t1 = 2** means the shot leaves the gun laser AND the shooter's headset LED, and **t12 is the
-headset word's damage**. The Shotgun is t5 45 / t12 70. If both words travel, a victim can take either
-or both, and **45 + 70 is 115, exactly the standard pool**: one trigger pull would kill outright.
+`$WEAP` **t1 is `WeaponIRSource`**: 0 = the gun emitter, 1 = the shooter's headset high-power LED,
+2 = BOTH. When t1 is 2, **t12 is the second word's damage** and t13/t42 are its reach. Three shipped
+weapons carry t1 = 2, and our balance pass writes t5 and never t12:
 
-The emitter is the SHOOTER's, so the test covers the SHOOTER, not the victim. That is the correction
-that matters: an earlier draft of this step had it backwards and would have measured nothing.
+| weapon | t5 as we ship it | t12, untouched |
+|---|---|---|
+| Shotgun | 45 | 70 |
+| Plasma Sniper | 25 (cut from the captured 80) | 80 |
+| Rocket Launcher | 115 | 115 |
 
-1. Arm A with the stock Shotgun. B at 999 HP with a plain `$SIR` row, both sensors exposed.
-2. **Gun only**: cover A's HEADSET, leave A's gun emitter clear, fire one shot at B.
-3. **Headset only**: cover A's gun emitter, leave A's headset clear, fire one shot at B.
-4. Read B's `$HIR` each time: magnitude, protocol (token 2) and sensor (token 1).
+The Plasma Sniper is the sharper case. We priced it at 25 on purpose. If the headset word is live, it
+also throws an 80 and the price never applied. For the Shotgun, 45 + 70 is 115, exactly the standard
+pool, so one pull would kill outright.
 
-**Reading.** 45 in step 2 and 70 in step 3 proves two emitters with two damages, and the Shotgun, Rocket
-Launcher and Plasma Sniper all need redoing in §2.2, the dominance check and the close-range band. 45
-both times means t12 is inert on this firmware and the ladder stands. Nothing in step 3 means the
-headset does not emit for this weapon at all, which is equally worth knowing.
+**Run it at the IR receiver, not at a victim.** The emitter is the SHOOTER's, so a victim adds nothing
+and costs a whole arming sequence. One gun, the receiver, one trigger pull:
 
-**Faster, if the IR rig is up:** point A at the receiver and pull once. Count the words and their
-magnitudes. One pull, one answer, no victim needed.
+1. Start `native_capture.py` on the receiver. No gun connection, no BLE.
+2. Arm A with the stock Shotgun, point it at the receiver from about 3 ft, **pull once**.
+3. Read the capture: how many 25-bit words, and the magnitude of each.
+4. Repeat for the Plasma Sniper and the Rocket Launcher.
+
+**Reading.** Two words at 45 and 70 proves the second emitter, and §2.2, the dominance check and the
+close-range band all need redoing. One word at 45 means t12 is inert on this firmware and the ladder
+stands. Watch for a split frame: a burst group can hold several frames and `stitch()` cuts at every
+sync mark (F12), so count words after stitching, never raw fragments.
+
+**Precedent that this is possible:** the Medic's heal pulse is already known to be a PAIR of
+protocol-1 words about 50 ms apart at magnitudes 8 then 14 (2026-09-03). That was an alt-fire, so it
+may be the t7-t11 block rather than t12, but one input producing two magnitudes is proven behaviour.
+
+**If the receiver is not up:** the two-gun fallback is one shot at B with A's HEADSET covered, then one
+with A's GUN emitter covered, reading B's `$HIR` magnitude each time. Cover the SHOOTER, not the
+victim. An earlier draft of this step had that backwards and would have measured nothing.
 
 ## Close
 
