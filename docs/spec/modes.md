@@ -308,7 +308,7 @@ presentation.resolve(config)     -> rows for GET /api/presentation (A11.5)
 
 ## 8. Open questions
 
-- **`t41` range** — reads 75 on every gun; not differentiated; the IR-instrument A/B is `../weapon-design.md` U2.
+- **Range** — `t41` reads 75 on every gun and was PROVEN INERT outdoors (F231, 2026-09-17). The real lever is `t2` `gunRangeOutdoor`, fed by `wire.range_outdoor_pct` and written outdoors only, with a floor of 13. See `../weapon-design.md` §4.2.
 - **`$SIR` table: flatten to fn 1 or retune the five multiplied weapons** — `../weapon-design.md` §6.2, Tony's
   call; the Energy Launcher bug is fixed either way in the same commit.
 - **Voice per-slot map** beyond HEAVY — by ear or the `voice-profiles` endpoint (apk-harvest).

@@ -133,14 +133,23 @@ def test_the_hill_beacon_row_is_untouched_in_both_tables():
 
 
 def test_the_delayed_blast_family_never_reaches_a_pregame_table():
-    """fn 24 registers on arrival and applies the word's magnitude ~4 s LATER (bench 2026-09-11). The
-    stock table ships it on the Energy Launcher cell and A20's stun moves it onto the EMP cell, so both
-    configurations are checked: pregame both are fn 28, live both are fn 24."""
+    """fn 24 must never reach a PREGAME table, which is the rule this guard exists for.
+
+    ⚠ What fn 24 actually does was re-measured on 2026-09-18 and it is not a delayed blast: a single
+    word applies NO damage and leaves the victim's gun manufacturing a fake `$HIR` every 5.07 s until
+    the next `$SPAWN`, with sound, vibration and a headset flash, so the player is told they are being
+    shot by nobody for the rest of the life (P18, closed). 25, 26 and 27 do the same.
+
+    Both cells that used to carry it were fixed the same day: the Energy Launcher's `<9,3>` row went to
+    fn 1 (it is why that weapon dealt zero damage), and A20's stun cell went to fn 23 (F253), which is
+    the real primitive: accuracy to 0, no pool change, automatic recovery, nothing left behind. So the
+    assertion is now the strongest one available: **the phantom family reaches NO shipped table, in any
+    configuration, pregame or live.** If a future feature wants a delayed effect, it does not get one
+    from 24-27, and this guard is what says so."""
     for cfg in (_cfg(), _cfg(stun={"duration_s": 10})):
         b = C.compile(cfg, _player(weapons=("charge_rifle", "shotgun")), _TEAMS)
-        assert not (set(_fns(b["head"])) & {24, 25, 26, 27}), _sir(b["head"])
-        assert 24 in set(_fns(b["sir_pool"][0])), "the live table keeps fn 24 where it belongs"
-        assert not (set(_fns(b["spawn"])) & {24, 25, 26, 27}), "and it never rides the spawn write"
+        for table in ("head", "spawn", "revive"):
+            assert not (set(_fns(b[table])) & {24, 25, 26, 27}), f"{table}: {_sir(b[table])}"
 
 
 # ---- the guards themselves ----------------------------------------------------

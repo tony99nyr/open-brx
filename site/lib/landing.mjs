@@ -96,8 +96,10 @@ const DATA = {
     const r = ctx.facts.release;
     return `<ul class="cards" data-reveal>
 <li class="card c-app"><span class="eyebrow">Android</span><span class="name">BRX Companion</span><p>The HUD. One phone per tagger, mounted on the rail. iOS builds from source.</p><dl><dt>version</dt><dd>${esc(r.version)}</dd><dt>from</dt><dd><a href="${esc(r.releases)}">GitHub Releases</a></dd></dl><a class="btn btn-acc" href="/download/">Get the app <span class="v">v${esc(r.version)}</span></a></li>
-<li class="card c-mc"><span class="eyebrow">Laptop</span><span class="name">Mission Control + brx-mcp</span><p>One Python package. The console, the command line and the MCP server.</p><pre class="term small"><span class="t-l"><span class="t-p">$</span> pip install -e ./mcp</span>
-<span class="t-l"><span class="t-p">$</span> python -m brx_mcp.mc</span></pre><a class="btn btn-line" href="/docs/install/">Read the docs</a></li>
+<li class="card c-mc"><span class="eyebrow">Laptop</span><span class="name">Mission Control + brx-mcp</span><p>Clone the repository and run one command. It sets everything up and starts Mission Control.</p><pre class="term small"><span class="t-l" style="white-space:pre-wrap;word-break:break-all"><span class="t-p">$</span> git clone https://github.com/tony99nyr/open-brx</span>
+<span class="t-l"><span class="t-p">$</span> cd open-brx</span>
+<span class="t-l"><span class="t-p">$</span> ./start.sh</span>
+<span class="t-l"><span class="t-c"># start.cmd on Windows</span></span></pre><a class="btn btn-line" href="/docs/install/">Read the docs</a></li>
 <li class="card c-src"><span class="eyebrow">Source</span><span class="name">GitHub</span><p>The whole platform, the protocol reference and the manual in one repository.</p><dl><dt>license</dt><dd>MIT</dd><dt>repo</dt><dd>tony99nyr/open-brx</dd></dl><a class="btn btn-line" href="${esc(ctx.github)}">Open on GitHub</a></li>
 </ul>`;
   },

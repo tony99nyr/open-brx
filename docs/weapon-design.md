@@ -1,25 +1,41 @@
 # Weapon design & balance
 
-> ## 🔴 LIVE BUG IN SHIPPED CONFIG — the Energy Launcher deals **zero damage**
-> Its `$WEAP` key `<t3,t4> = <9,3>` lands on `$SIR,9,3,,24` in `gameconfig._SIR_TABLE`, which MC pushes
-> into **every** game head. Fired through the real shipped table on that key, it landed **0 damage per
-> hit, 3/3 trials** (experiment-log 2026-08-26) — so the weapon is unusable in every game we run.
-> Fix options in **§6.2**; it is a bug, not a design question.
+## ⚠️ Three arsenals, and only one of them is ours
+
+A weapon number in this repo means nothing until you know which arsenal it came from. Two sessions
+argued past each other for two rounds on 2026-09-17 because one quoted a reserve figure from the
+second list while diagnosing a bug in the third.
+
+| name | what it is | where its numbers live |
+|---|---|---|
+| **gun-menu weapons** | the 5 to 7 presets the tagger's own firmware carries, for play with no phone at all (M-4, SMG-X3, MG-7, SR-100, TAC-87) | Battle Company's printed manual, quoted in `manual/gameplay.md` |
+| **Callsign weapons** | the 19 weapons Battle Company's own app sends. We hold 20 captured `$WEAP` frames. These are MEASURED FACTS about someone else's product and we never change them | `reference/weapons.md`, `manual/gameplay.md`, and §1.2 below |
+| **Open BRX weapons** | what OUR Mission Control compiles and pushes. Every row is BASED ON a captured Callsign frame, then a balance pass overwrites specific tokens. This is what a player on our field actually meets | `mcp/brx_mcp/mc/weapons.json`, and §2 onwards below |
+
+So the same weapon carries two sets of numbers on purpose. The Assault Rifle is 9 damage at 100 ms in
+both, because the rebalance kept those, but its spare ammunition, its range and its accuracy tokens
+differ. **Every table in this document says which arsenal it is**, and every reserve figure names the
+token it came from, because "reserve" alone is ambiguous even inside one arsenal (F255).
+
+
+> ## ✅ FIXED 2026-09-18 — the Energy Launcher's zero damage had a one-line cause
+> Its `$WEAP` key `<t3,t4> = <9,3>` landed on `$SIR,9,3,,24` in `gameconfig._SIR_TABLE`, which MC pushes
+> into **every** game head, and **fn 24 applies no damage at all**. Reproduced and fixed on hardware in
+> one minute, same weapon, same word, one row changed: on **fn 24** a magnitude-115 word moved the victim
+> **999 → 999**; on **fn 1** it moved **999 → 884**. The row now ships as `$SIR,9,3,,1,0,0,1,,*` and the
+> weapon deals its full 115.
 >
-> **Contained, not fixed (round-2 fix pass 2026-09-12):** `Compiler.validate()` now REFUSES a loadout
-> carrying it (§6.2's first two cases are errors), and `policy.UNPLAYABLE_IDS` / `gameSummary.ts`
-> `UNPLAYABLE_IDS` keep it out of every KIT/DESIGNER pool so nobody can be handed a pick that cannot be
-> pushed. It is still in `weapons.json` and still on the CATALOGUE page with its `caution`. **Delete the
-> id from both sets in the commit that fixes the row.**
->
-> **Mechanism:** fn 24 is pool-neutral on protocols 0, 5, 7, 9 and 10 (controlled matrix, `fad28f2`); one
-> listen-only run that reported damage on protocol 7 did not reproduce. History of the flip-flop:
-> `docs/experiment-log.md` 2026-08-26/27.
+> The same bench showed fn 24 is worse than inert: it leaves the victim's gun **manufacturing a phantom
+> `$HIR` every 5.07 s until the next `$SPAWN`**, with sound, vibration and a headset flash, so one hit
+> reads to the player as being shot every five seconds for the rest of the life. 25, 26 and 27 do the
+> same. **Never ship fn 24-27 on a cell a weapon can reach** (P18, closed; `protocol/brx-protocol.md` §5).
 >
 > ✅ **SETTLED (2026-09-11, bench): the ×1.25 / ×2 multipliers are REAL, and HEADSET-ONLY.** **fn 36
 > lands floor(magnitude × (1 + t7/200)), fn 37 lands floor(magnitude × (1 + 2·t7/100))** on the
-> HEADSET sensor (t7 = the compiled `$GSET criticalShotModifier`; ×1.25 / ×2 at t7=50, the MC
-> default) — the GUN BODY lands the raw magnitude (×1) on all three functions, fn 1/36/37 alike. So
+> HEADSET sensor (t7 = the compiled `$GSET criticalShotModifier`; ×1.25 / ×2 at t7=50, which WAS the
+> MC default until the 2026-09-17 arsenal review set it to **0**, because BRX players aim at the
+> headset: 4 of the 5 sensors are on it. At t7=0 every function lands the raw magnitude on both
+> sensors, so the five weapons below no longer gain anything from a headset hit) — the GUN BODY lands the raw magnitude (×1) on all three functions, fn 1/36/37 alike. So
 > five weapons — Burst Rifle, Bolt Rifle, AMR (fn 37), Force Rifle, Sniper Rifle (fn 36) — deal more
 > than their `t5` on a HEADSET hit only; a body hit is exactly `t5`. This reconciles rather than
 > overturns the two earlier readings: 2026-08-27's ×1.0 matrix was rig-pinned to the gun body
@@ -105,7 +121,7 @@ synthesise:
 The old system wrote `t20 = 0` into everything built on the `ar` sample. That single token is why
 the sniper and the shotgun full-autoed on the bench.
 
-### 1.2 The stock arsenal, as captured
+### 1.2 The CALLSIGN arsenal, as captured (not what we ship)
 
 What Battle Company actually ships. `htk`/`TTK` computed against the default 115 pool (they move with
 the host's health config — §2.5).
@@ -176,7 +192,7 @@ sounds — and moves the numbers.
    by charge behaviour rather than by numbers.
 8. **`htk` is the design unit, not DPS** — IR hits are discrete and misses are normal.
 
-### 2.2 The table
+### 2.2 The table: the OPEN BRX arsenal (what Mission Control pushes)
 
 | weapon | role | dmg | cycle ms | htk | **TTK s** | DPS | sust | mag | reserve | reload | one-mag kill % (p=0.7) | heat | changed |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -193,7 +209,7 @@ sounds — and moves the numbers.
 | Suppressor | support | 8 | 140 | 15 | **1.96** | 57.1 | 48.0 | 75 | 384 | 2000 | 100% | — | **2026-09-17**: cycle 160→140 (`wire.fire_ms`); mag 48→75 (§2.3, family-scoped dominance) |
 | Assault Rifle | assault | 9 | 100 | 13 | **1.20** | 90.0 | 62.6 | 32 | 192 | 1400 | 100% | — | **2026-09-17**: cycle 140→100 (`wire.fire_ms`, native Battle Company speed) |
 | Energy Rifle | support | 9 | 150 | 13 | **1.80** | 60.0 | 57.0 | 300 | 600 | 2400 | 100% | 6 | **2026-09-17**: cycle 200→150 (`wire.fire_ms`); overheat switched ON (F229: `t38`=150 override, `t35`=D11) |
-| Charge Rifle | support | 85 | 1250 | 3 | **1.00** | 68.0 | 45.3 | 40 | 80 | 2500 | 92% | 14 | **2026-09-17**: dmg 87→85 (`wire.dmg`, the CHARGE damage; tap damage `t37`=20 unchanged), mag/res 12/12→40/80, `rounds_per_charge`=10 (F225/F226/S43); `htk`/`ttk s` now count 1 charge + 2 taps (release-to-kill), not `ceil(pool/85)` |
+| Charge Rifle | support | 85 | 1250 | 3 | **0.57** | 68.0 | 45.3 | 40 | 80 | 2500 | 92% | 14 | **2026-09-17**: dmg 87→85 (`wire.dmg`, the CHARGE damage; tap damage `t37`=20 unchanged), mag/res 12/12→40/80, `rounds_per_charge`=10 (F225/F226/S43); `htk`/`ttk s` now count 1 charge + 2 taps (release-to-kill), not `ceil(pool/85)`. **2026-09-18 bench**: the tap cadence is **285 ms**, measured, not the 500 ms placeholder, so release-to-kill falls 1.00 s → **0.57 s**. The charge costing exactly 10 rounds, the 85 charge and the 20 tap were all confirmed on the wire in the same run |
 | Rocket Launcher | power | 115 | 1000 | 1 | **0.00** | 115.0 | 50.0 | 2 | 2 | 2600 | 91% | — | res 8→2, reload 1200→2600 |
 | Energy Launcher | power | 115 | 1600 | 1 | **0.00** | 71.9 | 50.0 | 2 | 2 | 1400 | 91% | — | cycle 360→1600, mag 1→2, res 6→2 |
 | Ion Sniper | power | 115 | 1400 | 1 | **0.00** | 82.1 | 47.9 | 2 | 2 | 2000 | 91% | — | cycle 1000→1400, res 12→2 |
@@ -697,7 +713,7 @@ first.
 | **U4** | **How the 3-part reload chain relates to `reload_ms`.** Six stock frames "overrun" a sequential model, so the model is wrong. | any future reload-sound work | One weapon, one long chain, one stopwatch. Also answers whether `t19` changes it. |
 | **U5** | **Does a held trigger retrigger the fire sample from zero, or ring under the next shot?** Decides whether sample duration constrains anything at all. | custom weapon sound design | Fire the AR (1.76 s sample, 190 ms cycle) and listen. |
 | **U6** | ~~victim behaviour per damage type~~ — **CLOSED 2026-08-26, then PARTLY REOPENED by the IR work (§6.2).** The hit-SFX half stands. The conclusion *"presentation only; damage is always t5"* does **not**: `t3`/`t4` are the `$SIR` composite key, and the table MC pushes maps two of the three subtypes in use to **multiplier** functions. Damage is `t5 × the row's multiplier`. The earlier test was sound — every row it exercised happened to be a standard-damage row. | §2's balance table (§6.2) | done — the multiplier values were confirmed 2026-09-02 (U10). |
-| **U10** | ~~REOPENED 2026-08-27 — what switches the fn 36/37 multipliers on?~~ ✅ **CLOSED 2026-09-02, fully explained 2026-09-11 (F23): the multipliers are REAL but HEADSET-only and t7-scaled. fn 36 = floor(magnitude × (1 + t7/200)), fn 37 = floor(magnitude × (1 + 2·t7/100)); at the shipped t7=50 that is ×1.25 / ×2.** 16 trials across magnitudes 20/40/9/7 and 8 `$SIR` row-tail shapes, with an fn 1 control on subtype 0 in every trial. The ×1.25 **truncates** (7 × 1.25 = 8.75 → **8**). Row tails do not gate it. *Reconciled:* the 2026-08-27 matrix that read ×1.0 in all 24 cells was rig-pinned to the GUN BODY (always ×1); the ×1.25/×2 runs measured the HEADSET. Both were correct — different sensors. See §6.2. | §2's balance — the five multiplied weapons are real and §6.2's retune/flatten decision is live | done |
+| **U10** | ~~REOPENED 2026-08-27 — what switches the fn 36/37 multipliers on?~~ ✅ **CLOSED 2026-09-02, fully explained 2026-09-11 (F23): the multipliers are REAL but HEADSET-only and t7-scaled. fn 36 = floor(magnitude × (1 + t7/200)), fn 37 = floor(magnitude × (1 + 2·t7/100)); at t7=50, which was the default until the 2026-09-17 arsenal review set the compiled `crit_modifier` to **0**, so the multipliers are OFF today (§6.2) that is ×1.25 / ×2.** 16 trials across magnitudes 20/40/9/7 and 8 `$SIR` row-tail shapes, with an fn 1 control on subtype 0 in every trial. The ×1.25 **truncates** (7 × 1.25 = 8.75 → **8**). Row tails do not gate it. *Reconciled:* the 2026-08-27 matrix that read ×1.0 in all 24 cells was rig-pinned to the GUN BODY (always ×1); the ×1.25/×2 runs measured the HEADSET. Both were correct — different sensors. See §6.2. | §2's balance — the five multiplied weapons are real and §6.2's retune/flatten decision is live | done |
 | **U11′** | **Which status function, if any, is a real STUN? — OPEN (reopened 2026-08-27).** fn 23 is eliminated as a stun: it **silences the gun AND zeroes its accuracy** — the silence was heard by ear (stands), while the `$ALCD` token 2 drop cited as its proof is live ACCURACY (bench-proven 2026-09-09, §4.4), not the audio level this row said. One number was doing duty for two claims; see F66. Getting hit with fn 23 forces it down and it recovers over ~6–8 s; the gun fires and emits IR normally, ammo and health preserved, `$SPAWN` clears it early. Category 10 remains unbuilt; next lead is capturing the native Sentinel EMP ability. The 2026-08-26 "it is an EMP" reading and its correction: `docs/experiment-log.md` 2026-08-26/27. | stun weapons | capture the Sentinel EMP |
 | **U7** | ~~Damage ceiling in the IR payload~~ ✅ **CLOSED 2026-08-26** — read straight off the wire on our own VS1838B: the field is **8 bits (max 255)** and the rocket's 115 decoded exactly. A 2× powerup is expressible on anything up to 127. | future powerups | **Now directly readable** — the `D8` field on a VS1838B capture (bench-plan Session 1½b). |
 | **U8** | **`t17` vs `t40`.** Every captured frame obeys `t17 == 2 × t40` and we preserve it, but *why* is unknown — is `t40` a per-magazine count and `t17` a total? | nothing today; would matter for a resupply powerup | Set them independently and watch `$ALCD`. |
@@ -1118,7 +1134,10 @@ function needs per-player keys before it can ship beside the others. And a victi
 invisible at the weapon, so a weapon built on one reads as balanced in `weapons.json` and plays as
 something else entirely.
 
-### 6.3d ⚠️ This document's reserve columns are unproven (F253)
+### 6.3d This document's reserve columns are proven (F255, closed 2026-09-18)
+
+**Answered on the bench, 2026-09-18.** `$AMMO,0,32,192` rides `frames.spawn` AND `frames.revive`, so the gun is set to the full catalogue reserve at every spawn and the HUD agrees with it; the halved `t40` is live only in the ~200 ms between the `$WEAP` and the `$SPAWN`. The columns below stand as written. What follows is the
+reasoning that made them look wrong, kept because it is the trap, not the answer.
 
 `resolve()` writes the catalogue's `reserve` to **t17** and `reserve // 2` to **t40**, which keeps
 Battle Company's own captured invariant `t17 == 2 * t40`. F207 (field, 2026-09-13) proved the gun's
@@ -1142,6 +1161,35 @@ Two fixes, and they are not the same game. Writing the catalogue number to t40 *
 player carries** in every match, which is a balance decision. Halving what the HUD and the host are
 told leaves the balance exactly as it is and makes the reported number honest. Do not take either
 before the count.
+
+### 6.3e Smoke: the one status effect that is real, and measured (fn 23)
+
+Bench 2026-09-18. A single fn-23 word does this to the victim, and nothing else:
+
+| what | measured |
+|---|---|
+| damage | **none**, at any pool. Health did not move on any hit |
+| live accuracy | **100 → 0 in the same millisecond** as the `$HIR` |
+| the victim's gun | still fires, still spends rounds, and **every shot misses** |
+| what the shooter hears | near-miss whizz-bys, because the misses are real IR going past them |
+| recovery | automatic and gradual: 0 → 2 → 4 → 7 → 12 over about 3 s |
+| after it | nothing. No phantom, no residue, 12 s later the gun was silent |
+
+**Call it smoke, not a flashbang** (Tony, on seeing it): a flashbang should sting, and this deals zero
+damage. A weapon carries ONE `<t3,t4>` key and therefore lands on ONE function, so "blind them and take
+a little health" cannot come from a single word. A real flashbang needs two words, which means two
+shots or a station firing twice, and that is a design with a cost rather than a swap.
+
+What it buys us, all with no firmware change:
+
+- **A weapon that wins a fight without damage.** The jammer of §6.3c, now measured rather than assumed.
+- **The stun we already ship, fixed.** `config.stun` used fn 24 and inherited its phantom bug; it ships
+  fn 23 since F253, so the wire now does half the work and the node's disarm rides on a real effect.
+- **Area denial**, if a station can emit it: walk through the cloud and you cannot shoot for 3 s.
+
+⚠️ The player must be TOLD. Pulling the trigger, hearing your own gun, and watching nothing land reads
+as a broken tagger. The node can detect it with no new wire support, because the accuracy token is
+already parsed for recoil: a `$HIR` that moves no pool plus live accuracy at 0. That is **S53**.
 
 ### 6.4 What a weapon is now
 

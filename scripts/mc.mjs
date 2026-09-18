@@ -1,12 +1,18 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from 'node:child_process';
-import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync, chmodSync } from 'node:fs';
-import { homedir, platform } from 'node:os';
-import { join, resolve } from 'node:path';
+// Run Mission Control from an environment that is already set up. `start.mjs` (./start.sh, start.cmd)
+// sets it up first and then runs this. Arguments after the script name go to `python -m brx_mcp.mc`.
+import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import net from 'node:net';
 import crypto from 'node:crypto';
+import { isWindows, npm, numericFlag, root, uiStale, venvPython, which } from './lib/launcher.mjs';
 
-const root = resolve(import.meta.dirname, '..');
+const mcArgs = process.argv.slice(2);
+const httpPort = numericFlag(mcArgs, '--port', 8765);
+const wsPort = numericFlag(mcArgs, '--ws-port', 8766);
+const noAuth = mcArgs.includes('--no-auth');
 const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
 const home = process.env.BRX_MCP_HOME || join(homedir(), '.brx-mcp');
 const launchId = `${stamp}-${crypto.randomBytes(3).toString('hex')}`;
@@ -22,9 +28,6 @@ function fail(message) {
   if (child && child.exitCode === null) child.kill('SIGTERM');
   console.error(`Evidence directory: ${evidence}`);
   process.exit(1);
-}
-function commandOk(command, args) {
-  return spawnSync(command, args, { cwd: root, stdio: 'ignore' }).status === 0;
 }
 function portFree(port, host = '127.0.0.1') {
   return new Promise(resolvePort => {
@@ -50,38 +53,29 @@ async function waitFor(url, child, timeoutMs = 15000) {
   }
   fail(`MC did not answer ${url}; see ${logPath}`);
 }
+// Open the URL in the default browser. The URL always prints too, so a failure here costs nothing.
 function openBrowser(url) {
-  if (platform() !== 'darwin') {
-    console.log(`Open this URL in a browser: ${url}`);
-    return;
-  }
-  const result = spawnSync('open', [url], { stdio: 'ignore' });
-  if (result.status !== 0) console.log(`Open this URL in a browser: ${url}`);
+  let result = null;
+  if (process.platform === 'darwin') result = spawnSync('open', [url], { stdio: 'ignore' });
+  // `start` is a cmd built-in; its first quoted argument is a window title, hence the empty "".
+  else if (isWindows) result = spawnSync('cmd', ['/c', 'start', '""', `"${url}"`], { stdio: 'ignore', windowsVerbatimArguments: true });
+  else if (which('xdg-open') && !process.env.WSL_DISTRO_NAME) result = spawnSync('xdg-open', [url], { stdio: 'ignore' });
+  if (!result || result.status !== 0) console.log(`Open this URL in a browser: ${url}`);
 }
 
-if (!existsSync(join(root, '.venv', 'bin', 'python'))) {
-  fail('missing .venv/bin/python. Run the one-time Mac setup from docs/mac-dev-runbook.md.');
+const python = venvPython();
+if (!existsSync(python)) {
+  fail(`missing ${python}. Run the start script first (./start.sh, or start.cmd on Windows).`);
 }
-function newestMtime(directory) {
-  let newest = 0;
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    const path = join(directory, entry.name);
-    newest = Math.max(newest, entry.isDirectory() ? newestMtime(path) : statSync(path).mtimeMs);
-  }
-  return newest;
-}
-const uiIndex = join(root, 'webapp', 'mc', 'dist', 'index.html');
-const uiInputs = ['src', 'public', 'vite.config.ts', 'package.json'].map(name => join(root, 'webapp', 'mc', name));
-const newestInput = Math.max(...uiInputs.filter(path => existsSync(path)).map(path => statSync(path).isDirectory() ? newestMtime(path) : statSync(path).mtimeMs));
-if (!existsSync(uiIndex) || newestInput > statSync(uiIndex).mtimeMs) {
+if (uiStale()) {
   if (!existsSync(join(root, 'webapp', 'mc', 'node_modules'))) {
-    fail('Mission Control UI is not built and webapp/mc/node_modules is missing. Run `cd webapp/mc && npm install && npm run build` once at home.');
+    fail('Mission Control UI is not built and webapp/mc/node_modules is missing. Run the start script first (./start.sh, or start.cmd on Windows).');
   }
-  const build = spawnSync('npm', ['run', 'build'], { cwd: join(root, 'webapp', 'mc'), stdio: 'inherit' });
+  const build = npm(['run', 'build'], join(root, 'webapp', 'mc'));
   if (build.status !== 0) fail('Mission Control UI build failed.');
 }
-for (const [name, port] of [['HTTP', 8765], ['nodes', 8766]]) {
-  if (!(await portFree(port))) fail(`${name} port ${port} is already in use. Close the old MC or pass it a different port while investigating.`);
+for (const [name, port] of [['HTTP', httpPort], ['nodes', wsPort]]) {
+  if (!(await portFree(port))) fail(`${name} port ${port} is already in use. Another Mission Control is probably still running: close it first.`);
 }
 
 writeFileSync(manifestPath, JSON.stringify({
@@ -91,17 +85,18 @@ writeFileSync(manifestPath, JSON.stringify({
 }, null, 2) + '\n');
 chmodSync(manifestPath, 0o600);
 const log = createWriteStream(logPath, { flags: 'a', mode: 0o600 });
-child = spawn(join(root, '.venv', 'bin', 'python'), ['-m', 'brx_mcp.mc', '--evidence-dir', evidence, '-v', ...process.argv.slice(2)], {
-  cwd: root, env: { ...process.env, PYTHONPATH: join(root, 'mcp'), BRX_MC_LAUNCH_ID: launchId }, stdio: ['inherit', 'pipe', 'pipe']
+child = spawn(python, ['-m', 'brx_mcp.mc', '--evidence-dir', evidence, '-v', ...mcArgs], {
+  cwd: root, env: { ...process.env, PYTHONPATH: join(root, 'mcp'), PYTHONIOENCODING: 'utf-8', BRX_MC_LAUNCH_ID: launchId }, stdio: ['inherit', 'pipe', 'pipe']
 });
 let output = '';
-const capture = chunk => { const text = chunk.toString(); output += text; log.write(text.replace(/#tok=[^\s)]+/g, '#tok=[REDACTED]').replace(/operator token:\s+\S+/g, 'operator token: [REDACTED]')); process.stdout.write(text); };
+// Keep only the start-up output: it holds the URL. After that, a long -v match would grow it without limit.
+const capture = chunk => { const text = chunk.toString(); if (output.length < 1_000_000) output += text; log.write(text.replace(/#tok=[^\s)]+/g, '#tok=[REDACTED]').replace(/operator token:\s+\S+/g, 'operator token: [REDACTED]')); process.stdout.write(text); };
 child.stdout.on('data', capture);
 child.stderr.on('data', capture);
 child.on('error', error => fail(error.message));
-await waitFor('http://127.0.0.1:8765/', child);
+await waitFor(`http://127.0.0.1:${httpPort}/`, child);
 const urlMatch = output.match(/Mission Control\s+(http:\/\/[^\s]+)/);
-if (!urlMatch || !/#tok=[^\s#]+/.test(urlMatch[1])) fail(`MC did not print an authenticated URL; see ${logPath}`);
+if (!urlMatch || (!noAuth && !/#tok=[^\s#]+/.test(urlMatch[1]))) fail(`MC did not print an authenticated URL; see ${logPath}`);
 const url = urlMatch[1];
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
 manifest.status = 'running'; manifest.url = url.replace(/#tok=.*$/, ''); manifest.pid = child.pid;

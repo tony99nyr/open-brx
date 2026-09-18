@@ -725,7 +725,10 @@ def test_an_emp_under_config_stun_disarms_every_slot_extends_on_a_second_word_an
         # F121/A23 + F209: the live table is the `sir_pool` take the node writes once the gun can fire -- the
         # head ships the cell disarmed (fn 28), because fn 24 is the delayed-blast family.
         live_rows = [f for f in st.bundle["sir_pool"][0] if f.startswith("$SIR,8,0,")]
-        assert live_rows and live_rows[0].split(",")[4] == "24", f"the <8,0> cell is fn 24 (a status row) when stun is on: {live_rows}"
+        assert live_rows and live_rows[0].split(",")[4] == "23", (
+        # fn 23 since 2026-09-18 (main's F253): fn 24 dealt no damage AND left the victim's gun firing a
+        # phantom `$HIR` every 5.07 s for the rest of the life. fn 23 drops live accuracy to 0 instead.
+        f"the <8,0> cell is fn 23 (accuracy to 0, no pool moves) when stun is on: {live_rows}")
         head = [f for f in st.bundle["head"] if f.startswith("$SIR,8,0,")]
         assert head and head[0].split(",")[4] == "28", f"the head must not arm the EMP cell: {head}"
         spawn = st._spawn_ammo()

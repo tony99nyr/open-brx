@@ -149,7 +149,7 @@ export const WEAPONS: WeaponView[] = [
     ],
     "role": "support",
     "htk": 3,
-    "ttk_ms": 1000,
+    "ttk_ms": 570,
     "rounds_per_charge": 10,
     "recoil": {
       "ceiling": 100,
@@ -599,32 +599,6 @@ export const PERKS: PerkView[] = [
     "effects": {
       "armor_piercing": true
     },
-    "verified": false,
-    "hidden": false
-  },
-  {
-    "perk_id": "motion_tracker",
-    "name": "Motion Tracker",
-    "desc": "Nearby enemies show on your HUD, no direction, refreshed every few seconds. You carry information instead of firepower -- anyone who accepts being seen can still shoot first.",
-    "tags": [
-      "passive",
-      "utility"
-    ],
-    "mechanism": "passive",
-    "effects": {},
-    "verified": false,
-    "hidden": false
-  },
-  {
-    "perk_id": "second_wind",
-    "name": "Second Wind",
-    "desc": "Once a life, the hit that would finish you leaves you standing instead. It costs nothing up front, because it only pays when you are already losing -- and a weapon that kills in one hit goes through it anyway.",
-    "tags": [
-      "passive",
-      "defense"
-    ],
-    "mechanism": "passive",
-    "effects": {},
     "verified": false,
     "hidden": false
   }

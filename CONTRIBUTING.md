@@ -27,6 +27,12 @@ it can't be hit, it needs to be justified explicitly in the PR, not just tested.
 
 ## Running things
 
+**Set up the environment first**, if you have not already: `./start.sh --setup-only` (macOS, Linux) or
+`start.cmd --setup-only` (Windows) from the repo root. It installs Node.js and Python if needed, creates
+the Python `.venv`, and builds the Mission Control console. It stops after setup instead of starting
+Mission Control. See `README.md` → *Quickstart: run Mission Control* for the full one-command path, and
+the per-piece sections below for what each test suite needs beyond that.
+
 The repo has several independently-testable pieces. Run the one you touched before opening a PR.
 
 **Everything at once:** `pnpm run test:all` from the repo root runs the unit gates of all four pieces in parallel

@@ -1,5 +1,5 @@
 # Download
-Last verified: 2026-09-11
+Last verified: 2026-09-18
 
 The BRX Companion is the phone app that rides each tagger. Mission Control and brx-mcp are one Python package for the laptop.
 
@@ -24,8 +24,11 @@ There is no App Store or TestFlight build. iOS runs the same app, built from sou
 ## Laptop
 
 ```
-pip install -e ./mcp
-python -m brx_mcp.mc
+git clone https://github.com/tony99nyr/open-brx
+cd open-brx
+./start.sh
 ```
 
-See [Install](/docs/install/) for the rest.
+On Windows, run `start.cmd` instead. The script sets everything up and starts Mission Control. See
+[Install](/docs/install/) for what it does, and for the manual path if you would rather install
+Python and Node.js yourself.

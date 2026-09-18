@@ -53,7 +53,7 @@ byte, t9).
 `laser_cannon`, `ion_sniper`, `energy_launcher` and `glock` joined `melee` as `hidden: true` in
 `weapons.json`, cutting overlap in a 22-weapon catalogue. Visible primaries: `assault_rifle`,
 `burst_rifle`, `smg`, `shotgun`, `amr`, `sniper_rifle`, `suppressor`, `energy_rifle`, `charge_rifle`.
-Visible sidearms: `usp`, `deagle`. A hidden row's data (capture frame, `based_on` linkage, `class`, stats)
+Visible sidearms: `usp`, `deagle`. **Three counts, and they are all different:** the catalogue holds **22** rows, **13** are not hidden, and **11** can be picked into a starting loadout, because `rocket_launcher` and `rail_gun` are visible but `pickup_only`. Say which one you mean; `test_presets_and_pools` pins the pickable 11. A hidden row's data (capture frame, `based_on` linkage, `class`, stats)
 is untouched — custom games, and the pistols' `based_on: bolt_rifle` copy, still resolve normally; only
 `WeaponCatalog.all()` (the picker-facing list) drops it.
 

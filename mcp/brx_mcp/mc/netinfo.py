@@ -89,8 +89,9 @@ def _run(cmd: list[str]) -> str | None:
     """A probe's stdout, or None. Every failure mode — missing binary, non-zero exit, a hang — is None."""
     try:
         r = subprocess.run(cmd, capture_output=True, timeout=PROBE_TIMEOUT_S, check=False)
-    except Exception:
-        log.debug("probe failed: %s", " ".join(cmd), exc_info=True)
+    except Exception as exc:
+        # One line, no traceback: a missing `nmcli` or `iw` is normal, and `-v` echoes this to the terminal.
+        log.debug("probe failed: %s (%s)", " ".join(cmd), exc)
         return None
     return r.stdout.decode("utf-8", "replace")
 

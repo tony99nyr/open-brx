@@ -58,7 +58,7 @@ player whose host switched Easy Reload on is never told that ALT reloads their g
 
 ⚠ **The fn-2 armour-piercing row is now in every compiled head.** A protected player can take an
 armour-piercing word that goes straight to health, so it meets this branch's spawn protection: check that
-at the bench alongside **F253**.
+at the bench alongside **F254**.
 
 Amendment ids collided again, the same shape as the F ids: main numbered node-driven recoil **A43**, which
 this branch had already used for NEXT MATCH. The recoil amendment keeps this branch's **A48**, and
@@ -69,12 +69,11 @@ this branch had already used for NEXT MATCH. The recoil amendment keeps this bra
 A doc-rot review (four lanes), a maintainability and DRY review (two lanes) and two polish rounds were
 applied and committed. What matters for the bench:
 
-- 🔴 **The site published twice every weapon's spare rounds, and Mission Control still does.** Reserve
-  came from `$WEAP` t17; the player carries t40, which is half of it (F207). The site, its test and the
-  manual are corrected, and they describe the CAPTURED Callsign gun. **The shipped weapon is still
-  wrong and that is open as F253:** `compile.py` writes the catalogue's reserve to t17 and half of it to
-  t40, while `spawn_ammo()` tells the phone the full number, so the HUD opens a life claiming 192 spare
-  rounds on an assault rifle whose gun holds 96.
+- **The site published twice every weapon's spare rounds.** Reserve came from `$WEAP` t17; the player
+  carries t40, which is half of it (F207). The site, its test and the manual are corrected, and they
+  describe the CAPTURED Callsign gun. The shipped weapon looked wrong too, but the bench closed that
+  (**F255**): `$AMMO,0,32,192` rides both the spawn and the revive, so the gun is set to the full
+  catalogue reserve every life and the HUD agrees with it.
 - **One overheat reading, not two.** The merge brought a gun-wide `overheated()`; this branch keeps the
   per-slot `_heatBlocksFire()` with its staleness window, because a locked gun stops sending `$ALCD`.
   The HUD's bar and word now read the same field, so the bar can no longer sit hot for 19 s after the
@@ -114,20 +113,16 @@ not in the F11 state, but **re-arm it before real use**.
    and ten is the most ever proven on a gun. `$QUERY` the table back after a head write and after a
    `sir_pool` take, count them, then fire an AP shot: HP should move and armour should not. A capped
    table drops the eleventh row silently, and the compile-side guard cannot see it.
-2. **Count the spare rounds (F253, open).** Fire a magazine dry and refill until the gun refuses. Six
-   full magazines means the gun spends t17 and only Mission Control's reporting is wrong. Three means an
-   Open BRX player carries half of every catalogued reserve, and the balance copy is wrong too. Only the
-   site and the manual are corrected so far; the shipped weapon is not.
-3. Run the verification bench against the new rows: **F235-F247** (operator menu, match resume, the
+2. Run the verification bench against the new rows: **F235-F247** (operator menu, match resume, the
    Pixel 5 BLE fix, the energy gauge, OVERHEAT, NIGHT OPS, the shot-ready cue, the results overlay,
    HARDWARE READY/backhaul, MARK ALL READY, the charge-rifle overheat sound, the energy-weapon reload
    timeout, and the swap-to-empty-slot no_fire check).
-4. Bench the merged recoil writer against spawn protection and the operator resync: the accuracy writer
+3. Bench the merged recoil writer against spawn protection and the operator resync: the accuracy writer
    stands down for `ACC_HOLD_MS` after any spawn, revive, resync or stun write (**F235**, **F247**).
-5. Re-run main's **F231** range ladder with the dome shaded, full 32-round mags, and the first two shots
+4. Re-run main's **F231** range ladder with the dome shaded, full 32-round mags, and the first two shots
    of every mag discarded (**F232**).
-6. Tony decides: **F220** (publish app 0.3.0 as a GitHub Release) and **F221** (the warning-audit page).
-7. Open the PR (the branch is pushed).
+5. Tony decides: **F220** (publish app 0.3.0 as a GitHub Release) and **F221** (the warning-audit page).
+6. Open the PR (the branch is pushed).
 
 ## Validation
 

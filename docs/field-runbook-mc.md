@@ -21,6 +21,9 @@ Assume something will misbehave and make sure it leaves a trace. Two sides, two 
 pnpm mc
 ```
 
+(First time on this Mac, or after a clone? Run `./start.sh` instead: it sets up the environment, then
+runs the same launcher.)
+
 The launcher opens the authenticated browser URL and prints the evidence directory. It keeps the MC
 stdout/stderr log beside the SQLite event store under `~/.brx-mcp/sessions/<launch-id>/`. After the
 session, `pnpm mc:collect` creates the diagnostic index there. Do not paste the token-bearing `mc.log`
@@ -54,23 +57,30 @@ Two ports:
 
 ## 1. Install (once, at home, with internet)
 
+**Run `./start.sh` from the repo root.** It installs Python and Node.js if needed, creates `.venv`,
+installs the Mission Control package into it, and builds the console (`webapp/mc/dist`). Use
+`./start.sh --setup-only` to stop after setup instead of starting Mission Control straight away.
+
+The manual equivalent, if you want to do it by hand instead:
+
 ```bash
 # Python 3.13 (Homebrew). 3.11+ works; the field Mac used 3.13.
 brew install python@3.13
 cd <repo>
 python3.13 -m venv .venv
 source .venv/bin/activate
-pip install -e ./mcp websockets starlette uvicorn zeroconf
+pip install -e './mcp[mc]'
+cd webapp/mc && npm ci && npm run build
 ```
 
-- `websockets` (node socket), `starlette`+`uvicorn` (HTTP/UI), `zeroconf` (optional mDNS advertise —
-  QR/manual-IP are the mandatory paths, so this is nice-to-have).
+- `mcp[mc]` adds `websockets` (node socket), `starlette`+`uvicorn` (HTTP/UI), `zeroconf` (optional mDNS
+  advertise — QR/manual-IP are the mandatory paths, so this is nice-to-have).
 - `bleak` comes with `mcp` and is needed **only for the bench armory scan** (`POST /api/armory/scan`),
   not for running a game.
 
 **Web UI:** the operator console is `webapp/mc` (built assets). The server serves `webapp/mc/dist` at
-`/` when it exists; if there's no committed `dist`, build it once at home (`cd webapp/mc && npm install
-&& npm run build`) or run the Vite dev server, which proxies `/api` + `/ui-ws` to the Python server.
+`/` when it exists; if there's no committed `dist`, build it once at home (`cd webapp/mc && npm ci &&
+npm run build`) or run the Vite dev server, which proxies `/api` + `/ui-ws` to the Python server.
 
 **Phone app (each player's phone) — install at home, with internet.** The player node is the **BRX
 Combat HUD** in `app/` (Capacitor → Android + iOS, one codebase; HUD v2). Build/sign/sync per

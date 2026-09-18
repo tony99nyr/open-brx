@@ -4,7 +4,16 @@ The match host: roster, armory, mode config, per-player `FrameBundle` compilatio
 server the phone/Companion nodes join, start sequencing, victim-side scoring and the recap. Serves the
 built web UI (`webapp/mc/dist`) on the same port.
 
-## Start it (dev box, no hardware) — verified 2026-09-11 from WSL
+## Start it
+
+**A newcomer on any of the three platforms:** run `./start.sh` (macOS, Linux) or `start.cmd` (Windows)
+from the repo root. It sets up Python, the `.venv` and the console, then starts Mission Control and
+opens it in the browser; `./start.sh --demo` runs the no-hardware demo below with no manual steps at
+all. See the root [`README.md`](../../../README.md) → *Quickstart: run Mission Control*.
+
+The rest of this section is the manual path, for a dev box that already has the environment set up.
+
+### Manual demo (dev box, no hardware) — verified 2026-09-11 from WSL
 
 MC needs **no Bluetooth**: the only route that touches a radio is the armory scan. So on the Windows
 dev box it runs under the **WSL venv** (`.venv/bin/python`), not the Windows Python that gun work

@@ -1,5 +1,5 @@
 # Running a match
-Last verified: 2026-09-12
+Last verified: 2026-09-18
 
 How to get from a bag of taggers to a finished game with a scoreboard. There are two ways to run
 one, and the simpler way needs nothing but a laptop.
@@ -34,8 +34,9 @@ T-0, a recovery after real coverage loss, more than two phones, and a 20 minute 
 
 For the laptop-only way:
 
-- A laptop with a Bluetooth radio (Windows, macOS or Linux) and Python 3.11 or later.
-- The software: `pip install -e ./mcp` from a clone of the repository.
+- A laptop with a Bluetooth radio (Windows, macOS or Linux).
+- The software: clone the repository and run `./start.sh --setup-only` (`start.cmd` on Windows). See
+  [Install](/docs/install/).
 - Your taggers, each with a charged headset **switched on**.
 
 For Mission Control plus phones, all of the above, and:
@@ -45,8 +46,12 @@ For Mission Control plus phones, all of the above, and:
 - One phone per player, with the BRX Companion installed and paired to that player's tagger
   **before** match day. Install it at home, where there is internet.
 - The armory map for your taggers (`~/.brx-mcp/armory.json`) on the machine that will host.
-- Optional, for phones that have a data plan: internet at the laptop and `cloudflared` installed. See
-  *Reaching phones over the internet* below.
+- Optional, for phones that have a data plan: internet at the laptop and `cloudflared` installed (the
+  start script offers to install it for you). See *Reaching phones over the internet* below.
+
+Every `python -m brx_mcp` command on this page runs through the virtual environment the install step
+created: `.venv/bin/python` on macOS and Linux, `.venv\Scripts\python.exe` on Windows, or activate the
+venv first and drop the `.venv/bin/` part.
 
 ## Before the players arrive
 
@@ -70,11 +75,14 @@ match-day machine: a fresh laptop has an empty one and will show no taggers.
 
 **Every match.** Charge everything. Use taggers that have been powered off since the last session,
 because a tagger left powered all day starts refusing links. Put the router up, join the laptop to
-it, and start Mission Control so its output is saved rather than scrolled away:
+it, and start Mission Control:
 
 ```
-python3 -m brx_mcp.mc -v 2>&1 | tee ~/mc-$(date +%Y%m%d-%H%M).log
+./start.sh
 ```
+
+(`start.cmd` on Windows.) Every launch saves its own log under
+`~/.brx-mcp/sessions/<launch-id>/mc.log`, so there is nothing to redirect by hand.
 
 Open the exact link it prints, including the `#tok=` part. That is the operator token, and it is
 new every launch. On each phone: join the game Wi-Fi and set it to auto-join, turn **mobile data
@@ -132,7 +140,8 @@ What it needs and what it does not do: the laptop must have internet; the phone 
 signal, so a park with no cell service plays exactly as it does without it; the time limit is still required.
 If the tunnel dies, a banner says so on every screen and the phones fall back to Wi-Fi on their own. Turning
 it back on gives a new hostname, which only matters for a phone that never comes back into Wi-Fi range: that
-one rescans the QR. You can also start with the tunnel on: `python -m brx_mcp.mc --tunnel`.
+one rescans the QR. You can also start with the tunnel on: `./start.sh -- --tunnel` (anything after
+`--` goes to Mission Control).
 
 Two rules from the first field run: **do not turn the tunnel off during a session** (every phone on it drops and
 must rescan), and **wait for the row to read UP before anyone scans**. A new hostname can take a few minutes to

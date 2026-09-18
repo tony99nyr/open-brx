@@ -14,6 +14,12 @@ Protocol discovery credit: **LaserTagMods** (JEDGE / JBOX).
 
 ## Install
 
+Running Mission Control instead of the bare tagger CLI? The repo root's `./start.sh` (macOS, Linux) or
+`start.cmd` (Windows) sets up Python, the `.venv` and the console in one step: see the root
+[`README.md`](../README.md) → *Quickstart: run Mission Control*.
+
+For the tagger CLI below, install by hand on the machine with the BLE radio:
+
 ```bash
 # on the machine with the BLE radio (Windows PowerShell, macOS terminal, or Linux):
 python -m venv .venv && . .venv/bin/activate     # Windows: .venv\Scripts\activate

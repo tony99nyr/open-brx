@@ -78,8 +78,10 @@ compensating knobs available here are magazine size and fire cadence, not aim as
   going lower without a bench check.
 - **Accuracy model.** BRX has a real one: t21/t22 (`maxAccuracy`/`singleShotAccuracy`) set a
   per-shot hit-probability ceiling/floor, bench-proven 2026-09-09, and a miss shows up on the wire as
-  `$ALCD` magnitude 0. **It ships OFF** (t21=t22=100, ceiling=floor, model disabled), so every weapon
-  currently fires as if `p=1.0` regardless of a player's real aim. §2's accuracy-adjusted math is
+  `$ALCD` magnitude 0. **The COMPILER ships it off** (t21=t22=100, ceiling=floor), because F230 found only one gun of
+  three decays accuracy natively. The phone drives the same two tokens itself instead (S42, node-driven
+  recoil), so a weapon fires at `p=1.0` until the player holds the trigger down, and the model's live
+  value falls from there. §2's accuracy-adjusted math is
   therefore about **human aim**, not the gun's own model, until/unless t21/t22 get tuned deliberately.
 - **Headset multiplier (footnote case).** A hit on the headset sensor multiplies the applied
   magnitude: `floor(magnitude * headset_multiplier(fn, crit_modifier))`, bench-confirmed
@@ -166,7 +168,7 @@ is a strict win on every published axis. Deagle's reserve was raised (36 → 48)
 | **Deagle** (most dmg, slowest) | 26 / 480 / 7 / 48 | 1920 ms | ~2949 ms | ~65% | 32.7 | 11 |
 
 (`expected ttk` and `one-mag kill` as in §5, now binomial-exact for all three since every mag is
-small enough to sum directly. ⚠ **F253:** every `reserve` and `kills/kit` figure here is the catalogue number. `compile.py` writes it to `t17` and writes half of it to `t40`, and F207 proved the gun counts `t40`, so a player may carry half of what this file assumes. The bench counts the refills before any of these columns can be trusted. `sustained dps` and `kills/kit` are the two axes
+small enough to sum directly. **F255 (closed 2026-09-18):** the `reserve` and `kills/kit` figures here are the catalogue number, and the bench confirmed a player really carries it: `$AMMO,0,32,192` rides `frames.spawn` AND `frames.revive`, so the gun is set to the full catalogue reserve at every spawn and the HUD agrees with it; the halved `t40` is live only in the ~200 ms between the `$WEAP` and the `$SPAWN`. `sustained dps` and `kills/kit` are the two axes
 `test_ttk_band_and_no_strictly_dominant_weapon` checks alongside TTK — `mag*dmg/(mag*fire_ms +
 reload_ms)` and `(mag+reserve)//htk`.)
 

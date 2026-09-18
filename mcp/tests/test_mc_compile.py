@@ -568,17 +568,25 @@ def test_mag_invariant_reports_each_weapon_once_per_pool():
 # ---- $SIR effect guard (weapon-design.md §6.2) -----------------------------
 def test_sir_effect_guard_is_an_ERROR_for_a_weapon_that_deals_no_damage():
     """A weapon's damage is a property of the (weapon, `$SIR` table) PAIR — its `<t3,t4>` keys a row
-    whose FUNCTION decides what the IR magnitude does. The Energy Launcher keys `$SIR,9,3,,24`, a
-    status row, and deals ZERO damage in every game we ship — while passing the mag>=htk invariant
-    clean, because that computes on raw t5.
+    whose FUNCTION decides what the IR magnitude does. The Energy Launcher used to key `$SIR,9,3,,24`,
+    a status row, and dealt ZERO damage in every game we shipped, while passing the mag>=htk invariant
+    clean because that invariant computes on raw t5.
 
-    Round-2 fix pass K promoted this from a warning: it is the definition of unkillable, and the
-    magazine rule that WAS the hard error is now the advisory (pass C). The launcher is excluded from
-    every pool (`policy.UNPLAYABLE_IDS`) so the error is unreachable by an operator's pick; when its
-    row is fixed on the bench, that entry goes and this test keeps holding the rule."""
-    r = C.validate(_cfg(), [_player(weapons=("energy_launcher",))])
+    The bench fixed that row on 2026-09-18 (`gameconfig._SIR_TABLE` now carries `$SIR,9,3,,1,...`), so
+    the Energy Launcher deals its full damage and no shipped weapon trips this guard any more. The rule
+    is still correct: a weapon whose `<t3,t4>` key lands on a `_SIR_NO_POOL` function is unkillable, and
+    that stays an ERROR. This test proves the guard by repointing the assault rifle's own `$SIR` cell
+    (key 0,0) at function 28, a bench-confirmed no-pool function, for the duration of the call."""
+    import brx_mcp.mc.compile as CM
+    orig = CM._SIR_TABLE
+    try:
+        CM._SIR_TABLE = tuple(row for row in orig if not row.startswith("$SIR,0,0,")) \
+                         + ("$SIR,0,0,,28,0,0,1,,*",)
+        r = C.validate(_cfg(), [_player(weapons=("assault_rifle",))])
+    finally:
+        CM._SIR_TABLE = orig
     assert r["ok"] is False, r
-    assert any("DEALS NO DAMAGE" in e and "energy_launcher" in e for e in r["errors"]), r["errors"]
+    assert any("DEALS NO DAMAGE" in e and "assault_rifle" in e for e in r["errors"]), r["errors"]
 
 
 def test_sir_guard_flags_multiplier_rows_because_published_htk_is_computed_on_raw_t5():
@@ -643,9 +651,19 @@ def test_sir_guard_flags_the_uncharacterised_and_helpful_functions():
 
 
 def test_sir_guard_reports_each_weapon_once():
-    a, b = _player(num=7, weapons=("energy_launcher",)), _player(num=8, weapons=("energy_launcher",))
-    r = C.validate(_cfg(), [a, b])
-    said = [x for x in r["errors"] + r["warnings"] if "energy_launcher" in x]
+    """Two players carrying the same broken weapon is one error, not two. Uses the same synthesised
+    no-pool cell as `test_sir_effect_guard_is_an_ERROR_for_a_weapon_that_deals_no_damage` -- the real
+    Energy Launcher row was fixed on the bench 2026-09-18 and no longer trips this guard."""
+    import brx_mcp.mc.compile as CM
+    orig = CM._SIR_TABLE
+    try:
+        CM._SIR_TABLE = tuple(row for row in orig if not row.startswith("$SIR,0,0,")) \
+                         + ("$SIR,0,0,,28,0,0,1,,*",)
+        a, b = _player(num=7, weapons=("assault_rifle",)), _player(num=8, weapons=("assault_rifle",))
+        r = C.validate(_cfg(), [a, b])
+    finally:
+        CM._SIR_TABLE = orig
+    said = [x for x in r["errors"] + r["warnings"] if "assault_rifle" in x]
     assert len(said) == 1, said
 
 
@@ -1405,8 +1423,15 @@ def _sir_fn(head, cell=("8", "0")):
 
 
 def test_stun_ships_the_emp_row_only_when_the_config_asks():
-    """`config.stun` present -> the `<8,0>` cell is fn 24 (status: `$HIR`, no pool change); absent -> the stock
-    charge-rifle row, byte-for-byte (the golden bundle must not move).
+    """`config.stun` present -> the `<8,0>` cell is **fn 23**; absent -> the stock charge-rifle row,
+    byte-for-byte (the golden bundle must not move).
+
+    F253 (bench 2026-09-18) moved this cell off fn 24. fn 24 does no damage AND leaves the victim's gun
+    manufacturing a fake `$HIR` every 5.07 s until the next `$SPAWN`, so a stunned player was told they
+    were being shot by nobody for the rest of the life. fn 23 is the real primitive, measured the same
+    session: live accuracy 100 -> 0 in the same millisecond as the `$HIR`, no pool moves, the gun still
+    fires but every shot misses, and it recovers on its own. Tony calls it a flashbang rather than a
+    stun, which is the better name for it.
 
     F121/A23 moved the LIVE table out of the head, and F209 moved it again, into the `sir_pool` take the node
     writes once the gun can fire, so the stun row is asserted where it now lands. The head's copy of the cell is a disarmed fn-28 registrar in both cases -- a
@@ -1419,25 +1444,30 @@ def test_stun_ships_the_emp_row_only_when_the_config_asks():
     assert _sir_fn(b["sir_pool"][0]) == 1, "stock: the charge rifle's plain damage (fn 1 since F225, 2026-09-17)"
     assert [f for f in b["sir_pool"][0] if f.startswith("$SIR,")] == list(_SIR_TABLE)
     assert _sir_fn(b["head"]) == 28, "F121: the head's copy of the cell moves no pool"
-    # stun on -> fn 24 on the SAME cell, in the SAME position, nothing else moved
+    # stun on -> fn 23 on the SAME cell, in the SAME position, nothing else moved
     on = C.compile(dict(_cfg(), stun={"duration_s": 10}), _player(), _TEAMS)
+    # The carrier is A44's `sir_pool` take, not the spawn write: a player inside spawn protection cannot
+    # be flashbanged before their gun can answer, so the spawn write carries the disarmed fn-28 twin.
     rows_on = [f for f in on["sir_pool"][0] if f.startswith("$SIR,")]
-    assert _sir_fn(on["sir_pool"][0]) == 24
-    assert _sir_fn(on["head"]) == 28, "F121: fn 24 is a DELAYED BLAST -- it may never ship pregame"
+    assert _sir_fn(on["sir_pool"][0]) == 23
+    assert _sir_fn(on["head"]) == 28, "F121: a countdown EMP must not flashbang anyone pregame either"
+    assert _sir_fn(on["spawn"]) == 28, "A44: the spawn write is the twin, so protection covers the EMP too"
     assert rows_on.index(_STUN_SIR_ROW) == list(_SIR_TABLE).index("$SIR,8,0,,1,0,0,1,,*"), "in place, not appended"
     assert [r for r in rows_on if not r.startswith("$SIR,8,0,")] == [r for r in _SIR_TABLE if not r.startswith("$SIR,8,0,")]
-    assert "$SIR,8,0,,24,0,0,1,,*" in rows_on and _STUN_SIR_ROW.split(",")[3] == "", "the sound token stays EMPTY (F43: never invent a sound id)"
+    assert "$SIR,8,0,,23,0,0,1,,*" in rows_on and _STUN_SIR_ROW.split(",")[3] == "", "the sound token stays EMPTY (F43: never invent a sound id)"
+    assert not ({int(r.split(",")[4]) for r in rows_on if r.split(",")[4].isdigit()} & {24, 25, 26, 27}), \
+        "F253: the phantom family must not reach ANY shipped table"
     # `{}` is the 10 s default and still ships the row
-    assert _sir_fn(C.compile(dict(_cfg(), stun={}), _player(), _TEAMS)["sir_pool"][0]) == 24
+    assert _sir_fn(C.compile(dict(_cfg(), stun={}), _player(), _TEAMS)["sir_pool"][0]) == 23
 
 
 def test_stun_row_rides_every_sir_pool_take_too():
-    """A17's class layer re-writes a whole `$SIR` table before every revive; if those takes kept the stock fn-38
-    row the first respawn would silently un-stun the game."""
+    """A17's class layer re-writes a whole `$SIR` table before every revive; if those takes kept the stock
+    row the first respawn would silently un-stun the game. The function is fn 23 since F253 (2026-09-18)."""
     b = C.compile(dict(_cfg(), stun={"duration_s": 5}, hit_audio_class=True), _player(), _TEAMS)
     assert b["sir_pool"], "class sounds on: the pool exists"
     for take in b["sir_pool"]:
-        assert _sir_fn(take) == 24, take
+        assert _sir_fn(take) == 23, take
     # CONTROL: the same pool without stun keeps fn 1 in every take (F225, 2026-09-17)
     b0 = C.compile(dict(_cfg(), hit_audio_class=True), _player(), _TEAMS)
     assert all(_sir_fn(take) == 1 for take in b0["sir_pool"])
@@ -1498,17 +1528,29 @@ def test_k_a_weapon_whose_hits_cannot_move_the_pool_is_an_ERROR_not_a_warning():
     a kit that could still win was blocked and a kit that cannot kill AT ALL went through.
 
     `hits_to_kill` returns 0 for zero damage, so the magazine gate skips such a weapon entirely and
-    nothing else was going to catch it. These two conditions are the definition of unkillable."""
-    from brx_mcp.mc.compile import _SIR_NO_POOL, _SIR_TABLE, _sir_index
-    sir = _sir_index(_SIR_TABLE)
+    nothing else was going to catch it. These two conditions are the definition of unkillable.
+
+    The Energy Launcher used to be case (a) below, on a real shipped row. The bench fixed that row
+    2026-09-18 (see test_sir_effect_guard_is_an_ERROR_for_a_weapon_that_deals_no_damage), so case (a)
+    now synthesises the same failure by repointing the assault rifle's own `$SIR` cell at function 28,
+    a bench-confirmed no-pool function."""
+    from brx_mcp.mc.compile import _SIR_NO_POOL, _sir_index
+    import brx_mcp.mc.compile as CM
     real = Compiler()
     T = real.catalog._T
 
-    # (a) the shipped Energy Launcher: a REAL row, on a status function that moves no pool
-    fr = real.catalog.resolve("energy_launcher", 0).split(",")
-    fn = sir[(fr[T["proto"] + 1] or "0", fr[T["subtype"] + 1] or "0")]
-    assert fn in _SIR_NO_POOL, fn
-    r = real.validate(_cfg(), [_player(weapons=("energy_launcher",))])
+    # (a) a synthesised no-pool weapon: the assault rifle's own $SIR cell repointed to function 28,
+    # which registers a $HIR and moves no pool.
+    orig = CM._SIR_TABLE
+    try:
+        CM._SIR_TABLE = tuple(row for row in orig if not row.startswith("$SIR,0,0,")) \
+                         + ("$SIR,0,0,,28,0,0,1,,*",)
+        fr = real.catalog.resolve("assault_rifle", 0).split(",")
+        fn = _sir_index(CM._SIR_TABLE)[(fr[T["proto"] + 1] or "0", fr[T["subtype"] + 1] or "0")]
+        assert fn in _SIR_NO_POOL, fn
+        r = real.validate(_cfg(), [_player(weapons=("assault_rifle",))])
+    finally:
+        CM._SIR_TABLE = orig
     assert not r["ok"], r
     assert any("DEALS NO DAMAGE" in e for e in r["errors"]), r["errors"]
 
@@ -1522,6 +1564,7 @@ def test_k_a_weapon_whose_hits_cannot_move_the_pool_is_an_ERROR_not_a_warning():
     cat = WeaponCatalog(rows=[orphan])
     fr = cat.resolve("ghostgun", 0).split(",")
     key = (fr[T["proto"] + 1] or "0", fr[T["subtype"] + 1] or "0")
+    sir = _sir_index(CM._SIR_TABLE)
     assert sir.get(key) is None, f"the fixture must key an ABSENT $SIR cell (got {key} -> {sir.get(key)})"
     r = Compiler(cat).validate(_cfg(), [_player(weapons=("ghostgun",))])
     assert not r["ok"], r
