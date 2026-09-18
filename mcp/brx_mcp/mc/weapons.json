@@ -224,8 +224,8 @@
     "frame": "$WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*"
    },
    "wire": {
-    "dmg": 20,
-    "headset_dmg": 20,
+    "dmg": 21,
+    "headset_dmg": 19,
     "headset_range_outdoor": 100,
     "headset_range_indoor": 100,
     "fire_ms": 800,

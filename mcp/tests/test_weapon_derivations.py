@@ -159,8 +159,14 @@ def test_damage_per_pull_adds_the_declared_headset_dmg_and_damage_stays_gun_body
     two must differ by exactly the declared `wire.headset_dmg`; everywhere else they must be equal,
     or a weapon with no headset word would silently gain one."""
     by_id = {w["weapon_id"]: w for w in ROWS}
-    for wid, want_extra in (("shotgun", 20), ("plasma_sniper", 10), ("rocket_launcher", 0)):
-        assert CAT.damage_per_pull(wid) == CAT.damage(wid) + want_extra, wid
+    # read the declared extra off the row rather than typing it: the Shotgun's was 20 until F276
+    # moved it to 19 (two identical words may be deduped by the receiving gun), and a hardcoded 20
+    # here would have failed on a change that deliberately holds the per-pull total at 40.
+    for wid in ("shotgun", "plasma_sniper", "rocket_launcher"):
+        want_extra = int((by_id[wid].get("wire") or {})["headset_dmg"])
+        assert CAT.damage_per_pull(wid) == CAT.damage(wid) + want_extra, (
+            f"{wid}: per-pull {CAT.damage_per_pull(wid)} is not gun-body {CAT.damage(wid)} plus the "
+            f"declared headset word {want_extra}")
     for w in ROWS:
         wid = w["weapon_id"]
         if (w.get("wire") or {}).get("headset_dmg") is not None:
@@ -767,3 +773,40 @@ def test_every_weapon_is_tagged_with_the_class_it_is_actually_in():
                    for w in ROWS if "support" in (w.get("tags") or []) and w.get("lethal") is not False]
     assert not mislabelled, ("'support' means the weapon cannot kill; it is not a bucket for weapons "
                              "nobody has classified:\n  " + "\n  ".join(mislabelled))
+
+def test_a_two_word_weapon_never_prices_both_words_the_same():
+    """Identical IR words may be DEDUPED by the receiving gun, so a second word priced equal to the
+    first can silently never land.
+
+    The V4_30/V4_31 receive path drops a word identical to one received within 159 ms (the "beacon
+    block"). cap30 puts a Shotgun's two words about 88 ms apart, well inside that, and the headset
+    word carries the SAME `$SIR` key as the barrel word. So the ONLY things distinguishing the two are
+    the damage and the crit flag.
+
+    On 2026-09-18 the Shotgun was priced t5 20 / t12 20 to hold its average while the crit pass moved
+    the ladder. That made the two words bit-identical. If the block applies, it deals 20 a pull and
+    kills in six while the catalogue publishes 40 and three: a 2x error, live, on a public page.
+
+    Nothing caught it because every measurement we hold is of UNEQUAL words (45/70, 25/80), so the
+    block never had the chance to fire. F276 benches it. Until then the catalogue keeps the two words
+    apart, which costs nothing: 21 + 19 is the same 40 a pull as 20 + 20.
+
+    Also guarded here, for the same reason: a second-word weapon may not carry a crit chance. The crit
+    flag rides on BOTH words but the multiplier applies only to the barrel word, so a crit would make
+    them differ in a way we do not model. None does today."""
+    same, critting = [], []
+    for w in ROWS:
+        wire = w.get("wire") or {}
+        headset = wire.get("headset_dmg")
+        if headset is None or int(headset) == 0:
+            continue                       # one word, or a second word deliberately silenced
+        if wire.get("dmg") is not None and int(wire["dmg"]) == int(headset):
+            same.append(f"{w['weapon_id']}: t5 and t12 are both {headset}")
+        if w.get("crit_pct"):
+            critting.append(f"{w['weapon_id']}: carries a second word AND crit_pct {w['crit_pct']}")
+    assert not same, ("identical words may be deduped by the receiving gun, so the second one can "
+                      "silently never land (F276). Keep them apart; the sum is what the ladder "
+                      "publishes:\n  " + "\n  ".join(same))
+    assert not critting, ("the crit flag rides on both words but the multiplier applies only to the "
+                          "barrel word, so a crit makes them differ in a way nothing models "
+                          "(F276):\n  " + "\n  ".join(critting))

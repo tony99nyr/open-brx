@@ -9,6 +9,33 @@ Ordered by close date. Evidence for every claim is in `docs/experiment-log/`.
 ---
 
 
+# Closed 2026-09-18: the desk pass on FOLLOWUPS after the playtest merge
+
+A keyboard pass over the open rows against merged `main` (38bf662c). Each line names the evidence on `main`.
+
+- 2026-09-18 **F225** The Charge Rifle's `<8,0>` cell moved from fn 38 to fn 1, so a charge lands its full value. `compile._SIR_PLAIN_DAMAGE` keeps fn 38 off the plain-damage list, so no weapon keys to a multiplier row by accident (`gameconfig._SIR_TABLE`, commit f35b38ba). The playtest's unexplained 85 is left to `bench-firmware-levers-2026-09-19.md` §19 step 1.
+- 2026-09-18 **F165** The Energy Launcher's `<9,3>` cell moved from fn 24 to fn 1. Bench, same weapon and same word: fn 24 moved the victim 999 → 999, fn 1 moved it 999 → 884 (`experiment-log/2026-09.md`, 2026-09-18 perks bench §2; `gameconfig._SIR_TABLE`).
+- 2026-09-18 **F74** The self-replay is reproduced and explained. One fn-24 hit makes the victim's gun raise a `$HIR` every 5.07 s with the shooter idle, and only `$SPAWN` clears it (perks bench §1). The loop is the fuse re-injecting a protocol-9 word while `<9,3>` was itself fn 24 (drive entry §5). No shipped table carries fn 24-27 (`test_spawn_protection`).
+- 2026-09-18 **F71** The headset word deals its own damage and the two words stack: one Shotgun pull landed 45 then 70, a kill (cap30). Our compiler now prices t12 as `wire.headset_dmg` (commits 3b321148, 9b7d2ae0, afe064c4). Which emitter sends which word, and at what reach, is tracked as **F275** (and `bench-firmware-levers-2026-09-19.md` §19 step 15).
+- 2026-09-18 **F36** Built APKs have run on hardware: both phones ran 0.2.1 for three matches on 2026-09-13 (`game-test-2026-09-13.md`, Setup).
+- 2026-09-18 **F166** After a `$WEAP` head write the gun emits one `$ALCD` with the magazine and the t40 reserve (`game-test-2026-09-13.md` A2 table, six `ack_config` rows; perks bench §4). The echo check was fixed to compare against t40 (F207).
+- 2026-09-18 **S44** The arsenal cuts are merged (commit 1bb10b67). Its three open calls (`no_heavies` now equals `open`, the Designer HEAVY chip, the unplayable-weapon path) go to Tony only if he still wants them.
+- 2026-09-18 **S17** Superseded by **S42**: the native accuracy walk is not a balance lever (F230), and every accuracy cost is node-written. Recoil shipped as S42 (commit 76ad3764).
+- 2026-09-18 **B16** The disable-secondary toggle exists: the loadout policy's secondary slot takes `off` (`mc/policy.py`, the `snipers` preset and `_check_rule`), and the Designer's slot editor sets it (`webapp/mc/src/screens/Designer.tsx`, `SlotEditor slot="secondary"`).
+- 2026-09-18 **F228** The method note is in `docs/manual/dev.md`, the `$HIR` token 1 row: trust the sensor field only at field distance, and cover the gun sensor at the bench (2 m added in this pass).
+- 2026-09-18 **F58** (a) to (c) closed earlier (sound, stage mirror, gain animation). The cap guess in (d) is refuted for shields: `$LIFE` grants of 10, 20, 25 and 30 all land (bench 2026-09-17 step 7, now in S29). The one HP grant of 25 from low HP continues as **F109**.
+- 2026-09-18 **F208** (a) is built as A45 (`pool_stale` in `mc/types.py` and on the MC board; the bench saw it flag `no_fire`, F264). (b) is closed by A47 RESYNC GUN and FORCE RESPAWN, proven on hardware (F235). The bench gate passed: no false `no_fire` on a charge-rifle hold (F218) or a swap to an empty slot (F247). The HUD rendering and a probe on `no_fire` continue as **F272**; the self-cure question is F264.
+- 2026-09-18 **F49** Folded into F206 (closed 2026-09-16). A lone `$PSET` clears the gun's team, so a head that sent `$PSET` after `$TID` left the gun on team 0. That is the reading that fits this row, not a re-run: a team-0 word was then a same-team shot (dropped with friendly fire off) and a team-1 word an enemy shot (landed), which is the "backwards" polarity this row saw through the stage's arm. The stage now re-sends `$TID` after the last `$PSET` of any write.
+- 2026-09-18 **B27** Folded into F66: both rows ask whether fn 23 cuts the victim's audio. F66 carries the `sound.md` claim and the bench step.
+- 2026-09-18 **K7** Folded into S29. Its blocker is stale: `$LIFE` grants a shield over BLE (2026-09-11), and the Shields preset is designed there.
+- 2026-09-18 **S45** Folded into S29, as the row itself said. Its presets, bench step 7 results, by-ear picks and the cap30 recipe moved into S29 verbatim.
+- 2026-09-18 **F148** Folded into F209: a hit during the REDEPLOYED screen is the spawn-protection case, and A44 is confirmed on hardware (F217).
+- 2026-09-18 **F80** Folded into F271: the arm-time refusal is the `$QUERY` read-back. The recap already counts wire-id-0 hits.
+- 2026-09-18 **B19** Folded into F271: the same `$QUERY` read-back after arming. Its wider diff (voice, per-slot damage and fire sound, the late replies) moved into F271.
+- 2026-09-18 **F163** Folded into F272, which replaces the disabled B4 watchdog reading. Its three open questions moved into F272.
+- 2026-09-18 **F234** Closed 2026-09-17 in its own row, swept out now: `resolve()` writes t2 only, t41 is never written, and a floor guard refuses t2 under 13. Its second item continues as **F249**.
+
+
 # Closed 2026-09-18 — the verification bench, MC + two phones + two guns
 
 - 2026-09-18 **F235** All three operator actions ran against real hardware. **FORCE RESPAWN** is proven twice, including as the probable cure for a live dead-gun desync (F264). **RESYNC GUN** runs end to end and the phone confirms it (`RESYNC DONE` in the feed, from both the console and the API), but ⚠ **it did not cure the desync it was aimed at**, which is recorded in F264 rather than here. RELINK GUN was not needed and is not proven.
