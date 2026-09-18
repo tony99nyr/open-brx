@@ -1,8 +1,17 @@
 # Handoff: Open BRX
 
-**State as of 2026-09-17, evening.** Branch `fix/playtest-2026-09-13`, in the worktree
-`.claude/worktrees/playtest-2026-09-13`, holds the 2026-09-16 and 2026-09-17 work **and now the merge of
-`origin/main` at f4e7e263** (the `brx-weapons` arsenal rework). It is **NOT pushed**.
+**State as of 2026-09-17, night.** Branch `fix/playtest-2026-09-13`, in the worktree
+`.claude/worktrees/playtest-2026-09-13`, holds the 2026-09-16 and 2026-09-17 work, the merge of
+`origin/main` at f4e7e263 (the `brx-weapons` arsenal rework), and tonight's doc-rot apply,
+maintainability and DRY passes. It is **NOT pushed**. Main has moved on since the merge
+(perks, the poison weapon, node.md renumbered): merge it again before the push.
+
+**CI on main is fixed and green.** 15 of the last 19 runs failed on `test_site_shots`, a guard no CI job
+could satisfy: the capture needs a built `app/www`, a built `webapp/mc/dist` and a browser. The new
+`site-shots` job (main `d44f4a29`, `190ec4eb`) builds both UIs, captures with the Playwright build the
+lockfile pins, and pushes the shots back as `github-actions[bot]`. It refuses rather than forces: if a UI
+moved while it ran, it goes red and the queued run fixes the shots. The staleness pair in
+`mcp/tests/test_site_shots.py` skips inside Actions only, and is unchanged locally.
 
 ## What today's bench pass proved
 
@@ -36,18 +45,42 @@ its next bench is crit emission (F62) and the hunt for an anti-armour `$SIR` fun
 (`docs/bench-perks-2026-09-18.md`).
 Main's ids came first, so this branch's thirteen verification rows moved from F230-F242 to **F235-F247**.
 
+## What tonight's desk pass changed
+
+A doc-rot review (four lanes) and a maintainability and DRY review (two lanes) were applied in nine
+commits. What matters for the bench:
+
+- **The site published twice every weapon's spare rounds.** Reserve came from `$WEAP` t17; the player
+  carries t40, which is half of it (F207). `site/lib/data.mjs`, its test and the manual's per-weapon
+  numbers are corrected.
+- **One overheat reading, not two.** The merge brought a gun-wide `overheated()`; this branch keeps the
+  per-slot `_heatBlocksFire()` with its staleness window, because a locked gun stops sending `$ALCD`.
+  The HUD's bar and word now read the same field, so the bar can no longer sit hot for 19 s after the
+  word clears.
+- **The node's stand-down set is one table.** Eight call sites re-typed it and no two agreed. Each site
+  keeps its own subset; equivalence was proven over all 8192 input states, not argued.
+- **Mission Control asks "is this match in play" once**, through `in_play()`, `current_match_id()`,
+  `is_adopted()` and `_promote_phase()`. No behaviour change.
+- **F248 closed**: the ammo gauge follows `rounds_per_charge > 1`, not `weapon_class`, so the Rail Gun
+  shows two pips instead of "50%".
+- Six sheets whose work ran are in `docs/archive/`, the retracted t37/t38, t2/t41 and t7 readings are
+  corrected in `protocol/` and the manual, and six new hygiene guards cover the rot the review found by
+  hand.
+
 ## Machine state right now
 
-MC is **stopped**. Phones need the next build from this branch before the verification bench. Start MC
-from the worktree's `mcp/`:
+MC **is running** on this box (pid 819545, ports 8765 and 8766) from the worktree's `mcp/`. It serves
+the branch's `webapp/mc/dist`, so rebuild that and restart MC **between matches only** before the
+verification bench. The start line is:
 ```
 setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise 192.168.0.55 --bench-volume
 ```
-(detached; the Windows portproxy forwards 8765/8766). **Rebuild `webapp/mc/dist` first.** Restart Mission
-Control only between matches, never mid-match.
+(detached; the Windows portproxy forwards 8765/8766.) The phones still need the next build from this
+branch.
 
-⚠ **Two commits from main's morning (`61b1074e`, `e20c7136`) recorded the range finding against `t41`.** That was
-the `t2` result written against the wrong token; Q15 carries the correction, and the per-venue targets still stand.
+⚠ **Two commits from main's morning (`61b1074e`, `e20c7136`) recorded the range finding against `t41`.**
+That was the `t2` result written against the wrong token. Q15 carries the correction, and the per-venue
+targets in it still stand.
 
 ⚠ **Gun state from main's garden session:** shooter `Tactix-E20D` went out of BLE range before its
 teardown landed and still carries the t2 18/22 test slots. Its `$SIR` table was never cleared, so it is
@@ -68,8 +101,9 @@ not in the F11 state, but **re-arm it before real use**.
 
 ## Validation
 
-`npm run test:all -- --ui` after the merge: 17 jobs, green except the two expected failures (the
-published build still reads 0.2.1; the site shots need a refresh after the HUD and weapon changes).
+`npm run test:all -- --ui`: 16 of 18 jobs green. The two failures are expected on this branch: the
+published APK reads 0.2.1 against the app's 0.3.0 (**F220**, Tony decides), and the site shots go stale
+while the UI tree is dirty. Run the UI gate again after the next commit under `app/src`.
 
 **Machine roles:** WSL runs the Python suites and no-hardware MC; Windows Python is for BLE instruments;
 the MacBook is the field target. Never modify stock firmware.
