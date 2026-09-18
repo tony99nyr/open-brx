@@ -155,7 +155,15 @@ def voice_tail(voice: str | None, slots: dict | None = None) -> list[str]:
 # value. See `compile._SIR_PLAIN_DAMAGE` for the guard that keeps 38 off the allow-list.
 _SIR_TABLE = (
     "$SIR,0,0,,1,0,0,1,,*", "$SIR,0,1,,36,0,0,1,,*", "$SIR,0,3,,37,0,0,1,,*",
-    "$SIR,8,0,,1,0,0,1,,*", "$SIR,9,3,,24,10,0,,,*",
+    "$SIR,8,0,,1,0,0,1,,*",
+    # ⚠ 2026-09-18 BENCH: this cell shipped as `$SIR,9,3,,24,10,0,,,*` and that is why the Energy
+    # Launcher dealt ZERO damage. fn 24 applies no damage at all: the word arrives at full magnitude
+    # ($HIR,4,9,1,1,115,0,3) and the pools do not move, reproduced then fixed on hardware in one
+    # minute (999 -> 999 on fn 24, 999 -> 884 on fn 1, same weapon, same word). Worse, fn 24 also
+    # leaves the victim's gun MANUFACTURING a phantom $HIR every 5.07 s until the next $SPAWN, with
+    # sound, vibration and a headset flash, so a single hit reads to the player as being shot every
+    # five seconds for the rest of the life. Never ship fn 24-27 on a cell any weapon can reach.
+    "$SIR,9,3,,1,0,0,1,,*",
     "$SIR,10,0,X13,1,0,100,2,60,*", "$SIR,6,0,H02,1,0,90,1,40,*",
     "$SIR,13,1,H57,1,0,0,1,,*", "$SIR,13,0,H50,1,0,0,1,,*",
     "$SIR,13,3,H49,1,0,100,0,60,*",

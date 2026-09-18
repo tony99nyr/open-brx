@@ -137,7 +137,7 @@ export const DEMO_WEAPONS = [
     ],
     "role": "support",
     "htk": 3,
-    "ttk_ms": 1000,
+    "ttk_ms": 570,
     "recoil": {
       "ceiling": 100,
       "floor": 100,

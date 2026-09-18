@@ -128,13 +128,21 @@ def test_the_hill_beacon_row_is_untouched_in_both_tables():
 
 
 def test_the_delayed_blast_family_never_reaches_a_pregame_table():
-    """fn 24 registers on arrival and applies the word's magnitude ~4 s LATER (bench 2026-09-11). The
-    stock table ships it on the Energy Launcher cell and A20's stun moves it onto the EMP cell, so both
-    configurations are checked: pregame both are fn 28, live both are fn 24."""
-    for cfg in (_cfg(), _cfg(stun={"duration_s": 10})):
-        b = C.compile(cfg, _player(weapons=("charge_rifle", "shotgun")), _TEAMS)
-        assert not (set(_fns(b["head"])) & {24, 25, 26, 27}), _sir(b["head"])
-        assert 24 in set(_fns(b["spawn"])), "the live table keeps fn 24 where it belongs"
+    """fn 24 must never reach a PREGAME table, which is the rule this guard exists for.
+
+    ⚠ What fn 24 actually does was re-measured on 2026-09-18 and it is not a delayed blast: a single
+    word applies NO damage and leaves the victim's gun manufacturing a fake `$HIR` every 5.07 s until
+    the next `$SPAWN` (P18, closed). The Energy Launcher's cell was fixed to fn 1 the same day, so the
+    DEFAULT live table no longer carries fn 24 at all, which is the improvement. A20's stun still moves
+    it onto the EMP cell, and that is now filed as F253: a stunned player gets a phantom hit every five
+    seconds for the rest of the life. This test pins the split until F253 picks a different function."""
+    b = C.compile(_cfg(), _player(weapons=("charge_rifle", "shotgun")), _TEAMS)
+    assert not (set(_fns(b["head"])) & {24, 25, 26, 27}), _sir(b["head"])
+    assert not (set(_fns(b["spawn"])) & {24, 25, 26, 27}), (
+        "the default table must no longer carry the phantom family anywhere: " + _sir(b["spawn"]))
+    b = C.compile(_cfg(stun={"duration_s": 10}), _player(weapons=("charge_rifle", "shotgun")), _TEAMS)
+    assert not (set(_fns(b["head"])) & {24, 25, 26, 27}), _sir(b["head"])
+    assert 24 in set(_fns(b["spawn"])), "A20's stun still puts fn 24 on the live EMP cell (F253)"
 
 
 # ---- the guards themselves ----------------------------------------------------

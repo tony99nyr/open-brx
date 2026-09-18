@@ -485,7 +485,7 @@
    "rof": 6,
    "rng": 75,
    "htk": 3,
-   "ttk_ms": 1000,
+   "ttk_ms": 570,
    "range_band": "long",
    "range_target_m": "full reach indoor / 60m+ outdoor (Q15; it charges behind cover, then reaches)",
    "recoil": {
@@ -501,6 +501,12 @@
    "wire": {
     "dmg": 85,
     "range_outdoor_pct": 85
+   },
+   "overrides": {
+    "t35": {
+     "value": "D11",
+     "why": "Bench 2026-09-18, ear-confirmed by Tony on a real lockout. The captured C19 is the sound a charge makes when you release it early, not an overheat: \"sounds like a charge cancel not an overheat\". Re-armed with D11, the SMG's captured overheat sound, on the same gun in the same minute: \"that one sounds right, use D11\". The Energy Rifle already ships the same id for the same reason (F229)"
+    }
    },
    "verified": false,
    "captured": true,

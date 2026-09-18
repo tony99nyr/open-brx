@@ -566,17 +566,25 @@ def test_mag_invariant_reports_each_weapon_once_per_pool():
 # ---- $SIR effect guard (weapon-design.md §6.2) -----------------------------
 def test_sir_effect_guard_is_an_ERROR_for_a_weapon_that_deals_no_damage():
     """A weapon's damage is a property of the (weapon, `$SIR` table) PAIR — its `<t3,t4>` keys a row
-    whose FUNCTION decides what the IR magnitude does. The Energy Launcher keys `$SIR,9,3,,24`, a
-    status row, and deals ZERO damage in every game we ship — while passing the mag>=htk invariant
-    clean, because that computes on raw t5.
+    whose FUNCTION decides what the IR magnitude does. The Energy Launcher used to key `$SIR,9,3,,24`,
+    a status row, and dealt ZERO damage in every game we shipped, while passing the mag>=htk invariant
+    clean because that invariant computes on raw t5.
 
-    Round-2 fix pass K promoted this from a warning: it is the definition of unkillable, and the
-    magazine rule that WAS the hard error is now the advisory (pass C). The launcher is excluded from
-    every pool (`policy.UNPLAYABLE_IDS`) so the error is unreachable by an operator's pick; when its
-    row is fixed on the bench, that entry goes and this test keeps holding the rule."""
-    r = C.validate(_cfg(), [_player(weapons=("energy_launcher",))])
+    The bench fixed that row on 2026-09-18 (`gameconfig._SIR_TABLE` now carries `$SIR,9,3,,1,...`), so
+    the Energy Launcher deals its full damage and no shipped weapon trips this guard any more. The rule
+    is still correct: a weapon whose `<t3,t4>` key lands on a `_SIR_NO_POOL` function is unkillable, and
+    that stays an ERROR. This test proves the guard by repointing the assault rifle's own `$SIR` cell
+    (key 0,0) at function 28, a bench-confirmed no-pool function, for the duration of the call."""
+    import brx_mcp.mc.compile as CM
+    orig = CM._SIR_TABLE
+    try:
+        CM._SIR_TABLE = tuple(row for row in orig if not row.startswith("$SIR,0,0,")) \
+                         + ("$SIR,0,0,,28,0,0,1,,*",)
+        r = C.validate(_cfg(), [_player(weapons=("assault_rifle",))])
+    finally:
+        CM._SIR_TABLE = orig
     assert r["ok"] is False, r
-    assert any("DEALS NO DAMAGE" in e and "energy_launcher" in e for e in r["errors"]), r["errors"]
+    assert any("DEALS NO DAMAGE" in e and "assault_rifle" in e for e in r["errors"]), r["errors"]
 
 
 def test_sir_guard_flags_multiplier_rows_because_published_htk_is_computed_on_raw_t5():
@@ -641,9 +649,19 @@ def test_sir_guard_flags_the_uncharacterised_and_helpful_functions():
 
 
 def test_sir_guard_reports_each_weapon_once():
-    a, b = _player(num=7, weapons=("energy_launcher",)), _player(num=8, weapons=("energy_launcher",))
-    r = C.validate(_cfg(), [a, b])
-    said = [x for x in r["errors"] + r["warnings"] if "energy_launcher" in x]
+    """Two players carrying the same broken weapon is one error, not two. Uses the same synthesised
+    no-pool cell as `test_sir_effect_guard_is_an_ERROR_for_a_weapon_that_deals_no_damage` -- the real
+    Energy Launcher row was fixed on the bench 2026-09-18 and no longer trips this guard."""
+    import brx_mcp.mc.compile as CM
+    orig = CM._SIR_TABLE
+    try:
+        CM._SIR_TABLE = tuple(row for row in orig if not row.startswith("$SIR,0,0,")) \
+                         + ("$SIR,0,0,,28,0,0,1,,*",)
+        a, b = _player(num=7, weapons=("assault_rifle",)), _player(num=8, weapons=("assault_rifle",))
+        r = C.validate(_cfg(), [a, b])
+    finally:
+        CM._SIR_TABLE = orig
+    said = [x for x in r["errors"] + r["warnings"] if "assault_rifle" in x]
     assert len(said) == 1, said
 
 
@@ -1495,17 +1513,29 @@ def test_k_a_weapon_whose_hits_cannot_move_the_pool_is_an_ERROR_not_a_warning():
     a kit that could still win was blocked and a kit that cannot kill AT ALL went through.
 
     `hits_to_kill` returns 0 for zero damage, so the magazine gate skips such a weapon entirely and
-    nothing else was going to catch it. These two conditions are the definition of unkillable."""
-    from brx_mcp.mc.compile import _SIR_NO_POOL, _SIR_TABLE, _sir_index
-    sir = _sir_index(_SIR_TABLE)
+    nothing else was going to catch it. These two conditions are the definition of unkillable.
+
+    The Energy Launcher used to be case (a) below, on a real shipped row. The bench fixed that row
+    2026-09-18 (see test_sir_effect_guard_is_an_ERROR_for_a_weapon_that_deals_no_damage), so case (a)
+    now synthesises the same failure by repointing the assault rifle's own `$SIR` cell at function 28,
+    a bench-confirmed no-pool function."""
+    from brx_mcp.mc.compile import _SIR_NO_POOL, _sir_index
+    import brx_mcp.mc.compile as CM
     real = Compiler()
     T = real.catalog._T
 
-    # (a) the shipped Energy Launcher: a REAL row, on a status function that moves no pool
-    fr = real.catalog.resolve("energy_launcher", 0).split(",")
-    fn = sir[(fr[T["proto"] + 1] or "0", fr[T["subtype"] + 1] or "0")]
-    assert fn in _SIR_NO_POOL, fn
-    r = real.validate(_cfg(), [_player(weapons=("energy_launcher",))])
+    # (a) a synthesised no-pool weapon: the assault rifle's own $SIR cell repointed to function 28,
+    # which registers a $HIR and moves no pool.
+    orig = CM._SIR_TABLE
+    try:
+        CM._SIR_TABLE = tuple(row for row in orig if not row.startswith("$SIR,0,0,")) \
+                         + ("$SIR,0,0,,28,0,0,1,,*",)
+        fr = real.catalog.resolve("assault_rifle", 0).split(",")
+        fn = _sir_index(CM._SIR_TABLE)[(fr[T["proto"] + 1] or "0", fr[T["subtype"] + 1] or "0")]
+        assert fn in _SIR_NO_POOL, fn
+        r = real.validate(_cfg(), [_player(weapons=("assault_rifle",))])
+    finally:
+        CM._SIR_TABLE = orig
     assert not r["ok"], r
     assert any("DEALS NO DAMAGE" in e for e in r["errors"]), r["errors"]
 
@@ -1519,6 +1549,7 @@ def test_k_a_weapon_whose_hits_cannot_move_the_pool_is_an_ERROR_not_a_warning():
     cat = WeaponCatalog(rows=[orphan])
     fr = cat.resolve("ghostgun", 0).split(",")
     key = (fr[T["proto"] + 1] or "0", fr[T["subtype"] + 1] or "0")
+    sir = _sir_index(CM._SIR_TABLE)
     assert sir.get(key) is None, f"the fixture must key an ABSENT $SIR cell (got {key} -> {sir.get(key)})"
     r = Compiler(cat).validate(_cfg(), [_player(weapons=("ghostgun",))])
     assert not r["ok"], r

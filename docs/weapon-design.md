@@ -18,21 +18,17 @@ differ. **Every table in this document says which arsenal it is**, and every res
 token it came from, because "reserve" alone is ambiguous even inside one arsenal (F253).
 
 
-> ## 🔴 LIVE BUG IN SHIPPED CONFIG — the Energy Launcher deals **zero damage**
-> Its `$WEAP` key `<t3,t4> = <9,3>` lands on `$SIR,9,3,,24` in `gameconfig._SIR_TABLE`, which MC pushes
-> into **every** game head. Fired through the real shipped table on that key, it landed **0 damage per
-> hit, 3/3 trials** (experiment-log 2026-08-26) — so the weapon is unusable in every game we run.
-> Fix options in **§6.2**; it is a bug, not a design question.
+> ## ✅ FIXED 2026-09-18 — the Energy Launcher's zero damage had a one-line cause
+> Its `$WEAP` key `<t3,t4> = <9,3>` landed on `$SIR,9,3,,24` in `gameconfig._SIR_TABLE`, which MC pushes
+> into **every** game head, and **fn 24 applies no damage at all**. Reproduced and fixed on hardware in
+> one minute, same weapon, same word, one row changed: on **fn 24** a magnitude-115 word moved the victim
+> **999 → 999**; on **fn 1** it moved **999 → 884**. The row now ships as `$SIR,9,3,,1,0,0,1,,*` and the
+> weapon deals its full 115.
 >
-> **Contained, not fixed (round-2 fix pass 2026-09-12):** `Compiler.validate()` now REFUSES a loadout
-> carrying it (§6.2's first two cases are errors), and `policy.UNPLAYABLE_IDS` / `gameSummary.ts`
-> `UNPLAYABLE_IDS` keep it out of every KIT/DESIGNER pool so nobody can be handed a pick that cannot be
-> pushed. It is still in `weapons.json` and still on the CATALOGUE page with its `caution`. **Delete the
-> id from both sets in the commit that fixes the row.**
->
-> **Mechanism:** fn 24 is pool-neutral on protocols 0, 5, 7, 9 and 10 (controlled matrix, `fad28f2`); one
-> listen-only run that reported damage on protocol 7 did not reproduce. History of the flip-flop:
-> `docs/experiment-log.md` 2026-08-26/27.
+> The same bench showed fn 24 is worse than inert: it leaves the victim's gun **manufacturing a phantom
+> `$HIR` every 5.07 s until the next `$SPAWN`**, with sound, vibration and a headset flash, so one hit
+> reads to the player as being shot every five seconds for the rest of the life. 25, 26 and 27 do the
+> same. **Never ship fn 24-27 on a cell a weapon can reach** (P18, closed; `protocol/brx-protocol.md` §5).
 >
 > ✅ **SETTLED (2026-09-11, bench): the ×1.25 / ×2 multipliers are REAL, and HEADSET-ONLY.** **fn 36
 > lands floor(magnitude × (1 + t7/200)), fn 37 lands floor(magnitude × (1 + 2·t7/100))** on the
@@ -213,7 +209,7 @@ sounds — and moves the numbers.
 | Suppressor | support | 8 | 140 | 15 | **1.96** | 57.1 | 48.0 | 75 | 384 | 2000 | 100% | — | **2026-09-17**: cycle 160→140 (`wire.fire_ms`); mag 48→75 (§2.3, family-scoped dominance) |
 | Assault Rifle | assault | 9 | 100 | 13 | **1.20** | 90.0 | 62.6 | 32 | 192 | 1400 | 100% | — | **2026-09-17**: cycle 140→100 (`wire.fire_ms`, native Battle Company speed) |
 | Energy Rifle | support | 9 | 150 | 13 | **1.80** | 60.0 | 57.0 | 300 | 600 | 2400 | 100% | 6 | **2026-09-17**: cycle 200→150 (`wire.fire_ms`); overheat switched ON (F229: `t38`=150 override, `t35`=D11) |
-| Charge Rifle | support | 85 | 1250 | 3 | **1.00** | 68.0 | 45.3 | 40 | 80 | 2500 | 92% | 14 | **2026-09-17**: dmg 87→85 (`wire.dmg`, the CHARGE damage; tap damage `t37`=20 unchanged), mag/res 12/12→40/80, `rounds_per_charge`=10 (F225/F226/S43); `htk`/`ttk s` now count 1 charge + 2 taps (release-to-kill), not `ceil(pool/85)` |
+| Charge Rifle | support | 85 | 1250 | 3 | **0.57** | 68.0 | 45.3 | 40 | 80 | 2500 | 92% | 14 | **2026-09-17**: dmg 87→85 (`wire.dmg`, the CHARGE damage; tap damage `t37`=20 unchanged), mag/res 12/12→40/80, `rounds_per_charge`=10 (F225/F226/S43); `htk`/`ttk s` now count 1 charge + 2 taps (release-to-kill), not `ceil(pool/85)`. **2026-09-18 bench**: the tap cadence is **285 ms**, measured, not the 500 ms placeholder, so release-to-kill falls 1.00 s → **0.57 s**. The charge costing exactly 10 rounds, the 85 charge and the 20 tap were all confirmed on the wire in the same run |
 | Rocket Launcher | power | 115 | 1000 | 1 | **0.00** | 115.0 | 50.0 | 2 | 2 | 2600 | 91% | — | res 8→2, reload 1200→2600 |
 | Energy Launcher | power | 115 | 1600 | 1 | **0.00** | 71.9 | 50.0 | 2 | 2 | 1400 | 91% | — | cycle 360→1600, mag 1→2, res 6→2 |
 | Ion Sniper | power | 115 | 1400 | 1 | **0.00** | 82.1 | 47.9 | 2 | 2 | 2000 | 91% | — | cycle 1000→1400, res 12→2 |

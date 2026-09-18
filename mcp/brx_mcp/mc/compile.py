@@ -769,10 +769,15 @@ def _load_weapons() -> list[dict]:
 # weapon-design.md §2.2) is SETUP, not combat time, so it does not belong in `ttk_ms`. What a target
 # actually experiences is RELEASE (the charge lands the instant the trigger releases, zero delay, same
 # "first shot free" convention as every other weapon) plus however many taps close the rest of the
-# pool. No bench measurement of tap-to-tap cadence exists yet; 500 ms is a documented placeholder
-# (Tony: "about 1 s" for two taps) pending a bench gate. Module-level so `views.py` can redo the same
-# release-to-kill maths `WeaponCatalog.time_to_kill()` does, at whatever pool the host has set.
-CHARGE_TAP_CADENCE_MS = 500
+# pool. MEASURED on hardware 2026-09-18 (was a 500 ms placeholder): a full charge released, then five
+# taps as fast as the operator could pull, gave 285, 270, 300, 285 ms press to press on the shooter
+# and 300, 270, 300, 330 ms on the victim. 285 ms is the shooter-side mean. The same run confirmed the
+# rest of the model: the release costs exactly 10 rounds, each tap costs 1, the charge lands t5 (85)
+# and every tap lands t37 (20). Consequence: against the 115 pool the kill is a charge plus TWO taps,
+# 570 ms from release, not the 1.0 s the 500 ms placeholder implied. Module-level so `views.py` can
+# redo the same release-to-kill maths `WeaponCatalog.time_to_kill()` does, at whatever pool the host
+# has set.
+CHARGE_TAP_CADENCE_MS = 285
 
 
 class WeaponCatalog:
