@@ -608,8 +608,8 @@ def assert_rearms_every_life(bundle) -> None:
             raise ValueError(
                 "F121 GUARD: a revive $SIR take does not re-arm "
                 + ", ".join(f"<{c[0]},{c[1]}>" for c in missing))
-# F15 / A20: the host-driven STUN (EMP). The proven chain: a proto-8 IR word -> the victim's `$SIR,8,0,,24` row
-# (fn 24 = a STATUS function: `$HIR` fires, pools do not move, the gun plays fn 24's own clip) -> the NODE writes
+# F15 / A20: the host-driven STUN (EMP). The proven chain: a proto-8 IR word -> the victim's `$SIR,8,0,,23` row
+# -> the NODE writes
 # `$AMMO,<slot>,0,0,1,*` for its live slots and restores the LIVE counts when `config.stun.duration_s` runs out
 # (`engine.js _stun`). The native stun is not relied on (2/5 singles, lasts until death). The cell is the stock
 # `<8,0>` row -- the CHARGE RIFLE's plain damage (fn 1 since F225, 2026-09-17; fn 38 before that
@@ -617,7 +617,15 @@ def assert_rearms_every_life(bundle) -> None:
 # stuns and deals no damage (the row's function is the only thing that changes; the sound token is carried over,
 # never rewritten -- F43). The other source is a proto-8 station. Shipped ONLY when `config.stun` is present;
 # a game without it keeps the stock row byte-for-byte.
-_STUN_SIR_ROW = "$SIR,8,0,,24,0,0,1,,*"
+# ⚠️ F253, FIXED 2026-09-18 on the bench: this cell shipped fn 24 and that was a real bug. fn 24 does no
+# damage AND leaves the victim's gun manufacturing a fake `$HIR` every 5.07 s until the next `$SPAWN`, with
+# sound, vibration and a headset flash, so every stunned player would have been told they were being shot by
+# nobody for the rest of the life. **fn 23 is the stun primitive**, measured the same session: the victim's
+# live accuracy goes 100 -> 0 in the same millisecond as the `$HIR`, no pool moves, the gun keeps firing but
+# every shot MISSES (the person being shot at hears the near-miss whizz-bys, Tony by ear), and it recovers by
+# itself, 0 -> 2 -> 4 -> 7 -> 12 over a few seconds, leaving nothing behind. So the wire now does half the
+# stun's work on its own and the node's disarm rides on top of a real effect rather than a silent one.
+_STUN_SIR_ROW = "$SIR,8,0,,23,0,0,1,,*"
 _STUN_CELL = ("8", "0")
 _STUN_DEFAULT_S = 10
 _STUN_MAX_S = 60
@@ -1428,7 +1436,7 @@ class Compiler:
                        if self._weapon_cell(w.get("weapon_id")) == _STUN_CELL})
         if srcs:
             warnings.append(f"stun: {', '.join(srcs)} fire on IR cell <8,0>, the EMP cell while stun is on -- "
-                            f"they STUN (fn 24, no damage) instead of dealing damage")
+                            f"they STUN (fn 23: no damage, the victim's accuracy drops to 0 and recovers) instead of dealing damage")
         else:
             warnings.append("stun is on but no rostered weapon fires on cell <8,0> and MC arms no station for "
                             "it: nothing in this game can stun (the source is a $WEAP t3=8 slot or a proto-8 station)")

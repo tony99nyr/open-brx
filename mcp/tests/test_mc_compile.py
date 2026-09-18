@@ -1421,8 +1421,15 @@ def _sir_fn(head, cell=("8", "0")):
 
 
 def test_stun_ships_the_emp_row_only_when_the_config_asks():
-    """`config.stun` present -> the `<8,0>` cell is fn 24 (status: `$HIR`, no pool change); absent -> the stock
-    charge-rifle row, byte-for-byte (the golden bundle must not move).
+    """`config.stun` present -> the `<8,0>` cell is **fn 23**; absent -> the stock charge-rifle row,
+    byte-for-byte (the golden bundle must not move).
+
+    F253 (bench 2026-09-18) moved this cell off fn 24. fn 24 does no damage AND leaves the victim's gun
+    manufacturing a fake `$HIR` every 5.07 s until the next `$SPAWN`, so a stunned player was told they
+    were being shot by nobody for the rest of the life. fn 23 is the real primitive, measured the same
+    session: live accuracy 100 -> 0 in the same millisecond as the `$HIR`, no pool moves, the gun still
+    fires but every shot misses, and it recovers on its own. Tony calls it a flashbang rather than a
+    stun, which is the better name for it.
 
     F121/A23 moved the LIVE table out of the head and into the spawn burst, so the stun row is asserted
     where it now lands. The head's copy of the cell is a disarmed fn-28 registrar in both cases -- a
@@ -1434,25 +1441,27 @@ def test_stun_ships_the_emp_row_only_when_the_config_asks():
     assert _sir_fn(b["spawn"]) == 1, "stock: the charge rifle's plain damage (fn 1 since F225, 2026-09-17)"
     assert [f for f in b["spawn"] if f.startswith("$SIR,")] == list(_SIR_TABLE)
     assert _sir_fn(b["head"]) == 28, "F121: the head's copy of the cell moves no pool"
-    # stun on -> fn 24 on the SAME cell, in the SAME position, nothing else moved
+    # stun on -> fn 23 on the SAME cell, in the SAME position, nothing else moved
     on = C.compile(dict(_cfg(), stun={"duration_s": 10}), _player(), _TEAMS)
     rows_on = [f for f in on["spawn"] if f.startswith("$SIR,")]
-    assert _sir_fn(on["spawn"]) == 24
-    assert _sir_fn(on["head"]) == 28, "F121: fn 24 is a DELAYED BLAST -- it may never ship pregame"
+    assert _sir_fn(on["spawn"]) == 23
+    assert _sir_fn(on["head"]) == 28, "F121: a countdown EMP must not flashbang anyone pregame either"
     assert rows_on.index(_STUN_SIR_ROW) == list(_SIR_TABLE).index("$SIR,8,0,,1,0,0,1,,*"), "in place, not appended"
     assert [r for r in rows_on if not r.startswith("$SIR,8,0,")] == [r for r in _SIR_TABLE if not r.startswith("$SIR,8,0,")]
-    assert "$SIR,8,0,,24,0,0,1,,*" in rows_on and _STUN_SIR_ROW.split(",")[3] == "", "the sound token stays EMPTY (F43: never invent a sound id)"
+    assert "$SIR,8,0,,23,0,0,1,,*" in rows_on and _STUN_SIR_ROW.split(",")[3] == "", "the sound token stays EMPTY (F43: never invent a sound id)"
+    assert not ({int(r.split(",")[4]) for r in rows_on if r.split(",")[4].isdigit()} & {24, 25, 26, 27}), \
+        "F253: the phantom family must not reach ANY shipped table"
     # `{}` is the 10 s default and still ships the row
-    assert _sir_fn(C.compile(dict(_cfg(), stun={}), _player(), _TEAMS)["spawn"]) == 24
+    assert _sir_fn(C.compile(dict(_cfg(), stun={}), _player(), _TEAMS)["spawn"]) == 23
 
 
 def test_stun_row_rides_every_sir_pool_take_too():
-    """A17's class layer re-writes a whole `$SIR` table before every revive; if those takes kept the stock fn-38
-    row the first respawn would silently un-stun the game."""
+    """A17's class layer re-writes a whole `$SIR` table before every revive; if those takes kept the stock
+    row the first respawn would silently un-stun the game. The function is fn 23 since F253 (2026-09-18)."""
     b = C.compile(dict(_cfg(), stun={"duration_s": 5}, hit_audio_class=True), _player(), _TEAMS)
     assert b["sir_pool"], "class sounds on: the pool exists"
     for take in b["sir_pool"]:
-        assert _sir_fn(take) == 24, take
+        assert _sir_fn(take) == 23, take
     # CONTROL: the same pool without stun keeps fn 1 in every take (F225, 2026-09-17)
     b0 = C.compile(dict(_cfg(), hit_audio_class=True), _player(), _TEAMS)
     assert all(_sir_fn(take) == 1 for take in b0["sir_pool"])

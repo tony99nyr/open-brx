@@ -132,17 +132,19 @@ def test_the_delayed_blast_family_never_reaches_a_pregame_table():
 
     ⚠ What fn 24 actually does was re-measured on 2026-09-18 and it is not a delayed blast: a single
     word applies NO damage and leaves the victim's gun manufacturing a fake `$HIR` every 5.07 s until
-    the next `$SPAWN` (P18, closed). The Energy Launcher's cell was fixed to fn 1 the same day, so the
-    DEFAULT live table no longer carries fn 24 at all, which is the improvement. A20's stun still moves
-    it onto the EMP cell, and that is now filed as F253: a stunned player gets a phantom hit every five
-    seconds for the rest of the life. This test pins the split until F253 picks a different function."""
-    b = C.compile(_cfg(), _player(weapons=("charge_rifle", "shotgun")), _TEAMS)
-    assert not (set(_fns(b["head"])) & {24, 25, 26, 27}), _sir(b["head"])
-    assert not (set(_fns(b["spawn"])) & {24, 25, 26, 27}), (
-        "the default table must no longer carry the phantom family anywhere: " + _sir(b["spawn"]))
-    b = C.compile(_cfg(stun={"duration_s": 10}), _player(weapons=("charge_rifle", "shotgun")), _TEAMS)
-    assert not (set(_fns(b["head"])) & {24, 25, 26, 27}), _sir(b["head"])
-    assert 24 in set(_fns(b["spawn"])), "A20's stun still puts fn 24 on the live EMP cell (F253)"
+    the next `$SPAWN`, with sound, vibration and a headset flash, so the player is told they are being
+    shot by nobody for the rest of the life (P18, closed). 25, 26 and 27 do the same.
+
+    Both cells that used to carry it were fixed the same day: the Energy Launcher's `<9,3>` row went to
+    fn 1 (it is why that weapon dealt zero damage), and A20's stun cell went to fn 23 (F253), which is
+    the real primitive: accuracy to 0, no pool change, automatic recovery, nothing left behind. So the
+    assertion is now the strongest one available: **the phantom family reaches NO shipped table, in any
+    configuration, pregame or live.** If a future feature wants a delayed effect, it does not get one
+    from 24-27, and this guard is what says so."""
+    for cfg in (_cfg(), _cfg(stun={"duration_s": 10})):
+        b = C.compile(cfg, _player(weapons=("charge_rifle", "shotgun")), _TEAMS)
+        for table in ("head", "spawn", "revive"):
+            assert not (set(_fns(b[table])) & {24, 25, 26, 27}), f"{table}: {_sir(b[table])}"
 
 
 # ---- the guards themselves ----------------------------------------------------
