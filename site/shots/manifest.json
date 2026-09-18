@@ -1,5 +1,5 @@
 {
-  "taken": "2026-09-18T07:49:40.910Z",
+  "taken": "2026-09-18T08:00:08.418Z",
   "mc_src": "d3a5af61efd9901fd613b3727aacdda70f160c01",
   "hud_src": "5d8a9062a17ad1a8990cc02cafdfd1e81db440d9",
   "files": {
@@ -16,7 +16,7 @@
     "mc-kit.jpg": {
       "w": 1280,
       "h": 800,
-      "bytes": 247363
+      "bytes": 247339
     },
     "mc-lobby.jpg": {
       "w": 1280,

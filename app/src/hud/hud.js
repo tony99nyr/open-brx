@@ -69,6 +69,11 @@ const CHARGE_RIFLE_FULL_CHARGE_COST = 10;
  *  it never falls through to the pre-A48 id fallback. */
 const chargeCost = st => {
   if (st && st.roundsPerCharge != null) return st.roundsPerCharge > 1 ? st.roundsPerCharge : null;
+  // Same short-circuit as `usesCellGauge`, and for the same reason: a post-A48 bundle carries a class,
+  // so a missing `roundsPerCharge` there means the catalogue default of 1, not "ask the weapon id". Only
+  // a bundle with NEITHER field is old enough for the id fallback. Without this line the two disagreed
+  // on a transitional bundle: the charge rifle got the NOT ENOUGH ENERGY note with the big-magazine bar.
+  if (st && st.weaponClass) return null;
   return (st && st.weaponId === 'charge_rifle') ? CHARGE_RIFLE_FULL_CHARGE_COST : null;
 };
 /** F248 (2026-09-17): `weapon_class` decides WORDING (isEnergyWeapon above), never which

@@ -313,6 +313,23 @@ _ROW_GLYPH_FIRST = re.compile(r"\s*- (?:" + "|".join(_OPEN_GLYPHS) + r")\s*\*\*(
 _CLOSED_AS_OPEN_ALLOW: set[tuple[str, str]] = set()
 
 
+def _ids_shown_as_open(line: str) -> list[str]:
+    """The ids ONE line presents as open work, by the three shapes below. Split out so the floor test
+    can drive this function itself: a test that re-implements the regex inline passes even when the
+    real arm goes blind, which is how the heading blind spot survived a green suite in the first place."""
+    m = _ROW.match(line)
+    if m and any(g in m.group(2)[:14] for g in _OPEN_GLYPHS):
+        return [m.group(1)]
+    mg = _ROW_GLYPH_FIRST.match(line)
+    if mg:
+        return [mg.group(1)]
+    if line.startswith("#") and any(g in line for g in _OPEN_GLYPHS):
+        # Not a lookbehind on `\b` alone: `BC-A1` would yield `A1`, and a rung label is not a followup
+        # id. Require the id to start a word that no letter, digit or hyphen precedes.
+        return re.findall(r"(?<![A-Za-z0-9-])([A-Z]\d{1,3})\b", line)
+    return []
+
+
 def _closed_ids_cited_as_open() -> list[str]:
     """Three conservative shapes, so a sentence like "F69 CLOSED" or a bench rung gated *on* an id can
     never trip it: a FOLLOWUPS-style definition row (`- **F42 🟡** ...`, glyph right after the id), the
@@ -328,18 +345,7 @@ def _closed_ids_cited_as_open() -> list[str]:
     hits = []
     for f in _living_docs():
         for n, line in enumerate(f.read_text(encoding="utf-8", errors="ignore").split("\n"), 1):
-            found = []
-            m = _ROW.match(line)
-            mg = _ROW_GLYPH_FIRST.match(line)
-            if m and any(g in m.group(2)[:14] for g in _OPEN_GLYPHS):
-                found = [m.group(1)]
-            elif mg:
-                found = [mg.group(1)]
-            elif line.startswith("#") and any(g in line for g in _OPEN_GLYPHS):
-                # Not a lookbehind on `\b` alone: `BC-A1` would yield `A1`, and a rung label is not a
-                # followup id. Require the id to start a word that no letter, digit or hyphen precedes.
-                found = re.findall(r"(?<![A-Za-z0-9-])([A-Z]\d{1,3})\b", line)
-            for i in found:
+            for i in _ids_shown_as_open(line):
                 if i in closed and (f.name, i) not in _CLOSED_AS_OPEN_ALLOW:
                     hits.append(f"{f.relative_to(REPO)}:{n} {i}")
     return hits
@@ -377,9 +383,14 @@ def test_the_closed_as_open_check_reads_both_open_glyph_families_and_both_orders
     assert _ROW_GLYPH_FIRST.match("- ✅ **F206** closed 2026-09-16") is None, "✅ is not an open glyph"
     assert _ROW_GLYPH_FIRST.match("- 🔧 **F206** fixed, needs a field check") is None, "🔧 is not an open glyph"
 
+    # Drive the REAL arm, never a copy of its regex: the previous version of this assertion built its
+    # own `re.findall` inline and stayed green with the production check reverted to its blind form.
     heading = "### BC-A1 — does `$WEAP` t3 change the transmitted IR protocol? (15 min) 🔴 F91"
-    assert any(g in heading for g in _OPEN_GLYPHS) and "F91" in re.findall(r"\b([A-Z]\d{1,3})\b", heading), (
-        "a glyph AFTER the id in a heading no longer claims the id")
+    claimed = _ids_shown_as_open(heading)
+    assert claimed == ["F91"], f"a glyph AFTER the id in a heading must claim F91 and nothing else, got {claimed}"
+    assert _ids_shown_as_open("### BC-A1 — a rung with no glyph, and no id") == [], "a heading with no open glyph claims nothing"
+    assert _ids_shown_as_open("- 🔍 **F208** a gun can die with the HUD holding the player alive") == ["F208"]
+    assert _ids_shown_as_open("- ✅ **F206** closed 2026-09-16") == [], "✅ is not an open glyph"
 
 
 # Prefixes FOLLOWUPS actually uses, MINUS H and U: `H43`/`U100` are on-gun sound ids and `U1..U10` is
