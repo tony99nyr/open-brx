@@ -368,7 +368,8 @@ life); kills-per-clip takes its place as the deterministic axis, alongside the p
 magazine figure — Tony's call was to keep both, not pick one.
 
 **Why per-family, not global.** An SMG beating a Sniper Rifle on every one of these four axes is
-expected, not a balance failure: neither range nor recoil exists on the wire yet (F231, S42), and a
+expected, not a balance failure: the MODEL sees neither range nor recoil (range now ships on `t2`, and
+recoil is written by the node at runtime, so neither reaches `weapons.json`'s derived columns), and a
 Sniper Rifle's whole real identity IS range — the model simply cannot see the axis that would stop the
 SMG winning. Checking dominance only within a family (weapons that already share a fire mode and a
 damage type) keeps the check meaningful without pretending to referee a fight the model has no data
@@ -384,8 +385,10 @@ axes above. ⚠️ **It does NOT mean a declared `recoil.floor` or a unique `ran
 would be satisfied by inert data and the rule could never fail. Add them back in the same commit that
 wires the levers. A family of one (Burst Rifle, Energy Rifle, Charge Rifle: each alone in its
 mode/class bucket) trivially leads — there is nothing to be out-led by. Two qualifiers used only for
-this rule, both **declared catalogue data for a lever that does not reach the wire yet**
-(`test_range_and_recoil_are_declared_not_wired` is the guard):
+this rule, both **declared catalogue data that the COMPILER never writes**
+(`test_range_and_recoil_are_declared_not_wired` is the guard). Read that precisely: `range_band` and
+`recoil` are human-facing intent, and neither is the wire value. The wire values exist and do reach a
+gun: `wire.range_outdoor_pct` writes `t2` outdoors, and the node writes `t21`/`t22` at runtime:
 
 - **`range_band`** (`"close" | "close-mid" | "mid" | "long"`, plus a `range_target_m` human string) —
   the per-venue metres Q15 will calibrate once `t2` is (F231): Shotgun/sidearms close (8-10 m indoor /

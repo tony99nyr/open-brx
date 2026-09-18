@@ -28,12 +28,15 @@ kill" and "on hit dealt" idea is therefore blocked, or degrades to a best-effort
 player for dying. A perk that recharges every 3 minutes of match time, and keeps its timer across a
 death, rewards staying alive instead.
 
-**Every perk pays for itself.** The S50 analysis measured the old set and found Body Armor was a strict
-upgrade: +570 to +1500 ms of extra survival on every life, for free, while the convenience perks paid
-nothing at all on a life with no reload and no swap. A perk with no cost is not a choice.
+**Every perk pays for itself,** in one of two ways: a cost on another lever, or a condition narrow
+enough that the perk is worth nothing in some fights. The S50 analysis measured the old set and found
+Body Armor was a strict upgrade: +570 to +1500 ms of extra survival on every life, for free, while the
+convenience perks paid nothing at all on a life with no reload and no swap. A perk that is always on
+and never costs anything is not a choice.
 
-Easy Reload is not in this document. It is an accessibility switch in the per-player block, because
-Tony's daughter cannot work the reload lever, and it must never compete with a balance pick.
+Easy Reload is not in this document. It **moves** to the per-player accessibility block, which is a
+decided but unshipped part of S50: today it still sits in the perk slot (`perks.json`). It exists
+because Tony's daughter cannot work the reload lever, so it must never compete with a balance pick.
 
 ## 2. The core set
 
@@ -48,7 +51,7 @@ ladder, and every pick has a named enemy.
 | **Extended Mags** | double magazine and reserve | weapon swap 30% slower | Quick Switch, at close range |
 | **Quick Switch** | draw your second weapon in half the time | 20 less armour | Body Armor, in a straight exchange |
 | **Motion Tracker** | nearby enemies appear on your HUD, no direction, refreshed every 3 s | the slot itself: you carry information instead of power | anyone who accepts being seen and shoots first |
-| **Second Wind** | once a life, the hit that would nearly finish you leaves you standing | nothing, and that is the point: it only pays when you are already losing | a weapon that kills through it in one hit |
+| **Second Wind** | once a life, the hit that would nearly finish you leaves you standing | the condition: it pays nothing in a fight you win, and nothing at all against a weapon that kills through it | a weapon that kills through it in one hit |
 
 **Why Armour Piercing at minus 60% and not minus 20%.** The S50 draft priced it at a 20% damage cut.
 That is wrong: against the standard 45 + 70 pool, ignoring armour cuts the effective pool from 115 to
@@ -147,18 +150,26 @@ coverage after arming. Group B is node-local: the phone writes to its own gun or
 C needs both, but a blackout removes only the extra. Group D is blocked, with the one thing that
 unblocks it. Group E is rejected, with the reason.
 
-⚠️ Two rows below were corrected on review and are marked in place. Read the groups as a working sweep,
-not as a decision: §2 and §3 are the decisions.
+Read the groups as a working sweep, not as a decision: **§2 and §3 are the decisions, and they win wherever
+they differ.** The groups sort by what the hardware allows, so a row can be buildable today and still be
+gated in §3 for a reason that has nothing to do with the hardware.
+
+**About the anchors.** A cell naming a file, a `$WEAP` or `$SIR` token, or a FOLLOWUPS id points at
+something you can open. A cell naming `report-NN` or `S50-perk-balance-report` points at the research
+sweep of 2026-09-17, which ran in a session scratchpad and is **not in the repo**: treat those rows as
+"someone read this and believed it", and anchor a row properly before you build from it.
+
+⚠️ Four rows below were corrected on review and say so in place.
 
 ## A. Buildable today, compile-time only
 
 | Idea | Player-facing line | Mechanism | Cost or trade-off | Evidence anchor |
 |---|---|---|---|---|
-| Body Armor (reworked) | Extra armour, at the cost of a slower reload. | Keeps `max_armor_add: 50`. Adds `reload_mult: 1.25` on the primary. | Reload takes 25% longer. | S50-perk-balance-report §4 |
+| Body Armor (reworked) | Extra armour, at the cost of a slower reload. | CORRECTED: `max_armor_add: 25`, not the 50 this sweep proposed (see §2). Adds `reload_mult: 1.25` on the primary. | Reload takes 25% longer. | S50-perk-balance-report §4 |
 | Extended Mags (reworked) | Bigger magazine and reserve, but a slower draw. | Keeps `ammo_mult: 2` (primary only). Adds `switch_mult: 1.3`. | Weapon swap is 30% slower. | S50-perk-balance-report §4 |
 | Quick Hands (reworked) | Faster reloads, smaller magazine. | Keeps `reload_mult: 0.5`. Adds `ammo_mult: 0.8`. | Magazine and reserve cut by 20%. | S50-perk-balance-report §4 |
 | Quick Switch (reworked) | Faster weapon draw, lighter armour. | Keeps `switch_mult: 0.5` (all slots, gun enforces the larger value). Adds `max_armor_add: -20`. | 20 less armour. Needs `armed_armor()` floored at 0 (one-line compiler fix). | S50-perk-balance-report §4 |
-| Armor Piercing Rounds | Your primary ignores armour and shields. | Rekeys the primary's `$WEAP` t3/t4 to a new, permanently-shipped `$SIR` cell keyed to fn 2 (armour piercing); `dmg_mult` cuts t5. | Roughly 20% less raw damage; direct counter to Body Armor and the Shields preset. | S50-perk-balance-report §5, report-11 (AP mechanism) §1-6 |
+| Armour Piercing Rounds | Your primary ignores armour and shields. | Rekeys the primary's `$WEAP` t3/t4 to a new, permanently shipped `$SIR` cell keyed to fn 2 (armour piercing); `dmg_mult` cuts t5. | CORRECTED: about 60% less raw damage, not the 20% this sweep proposed. Bypassing armour already cuts the pool from 115 to 45 (see §2). direct counter to Body Armor and the Shields preset. | S50-perk-balance-report §5, report-11 (AP mechanism) §1-6 |
 | Heavy Barrel | Hits harder, cycles slower. | `$WEAP` t5 +25%, t14 +20%, baked at arming. | Fewer, bigger hits; worse against fast weapons in close exchanges. | S50-perk-balance-report §5 |
 | Overcharged Rounds | Every hit lands harder, but you carry fewer rounds. | `$WEAP` t5 up (flat damage buff, CoD Stopping Power pattern). `ammo_mult` on t16/t39 cut to compensate. | Smaller magazine; no cycle-time change (distinct from Heavy Barrel). | report-03 (Stopping Power) + report-07 (`ammo_mult`/`dmg` levers) |
 | Ghost | Your gun runs quiet and flashless. | `$WEAP` t25=2, t26=50 (the Suppressor's pair) on the primary. | `reload_mult: 1.15`. Mechanism confidence: only one stock weapon example of t25/t26 exists. | S50-perk-balance-report §5, report-08 §1 (t25/t26) |

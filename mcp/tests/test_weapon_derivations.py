@@ -494,13 +494,13 @@ def test_no_mc_data_file_ships_a_duplicate_json_key():
     for path in sorted((ROOT / "mcp" / "brx_mcp" / "mc").glob("*.json")):
         dupes: list[str] = []
 
-        def keep_the_first_sighting(pairs, _seen=dupes, _path=path):
+        def flag_repeated_keys(pairs, _seen=dupes, _path=path):
             seen: dict = {}
             for key, value in pairs:
                 if key in seen:
                     _seen.append(f"{_path.name}: {key!r} appears twice in one object")
-                seen[key] = value
+                seen[key] = value          # last wins, exactly as a plain json.loads would
             return seen
 
-        json.loads(path.read_text(), object_pairs_hook=keep_the_first_sighting)
+        json.loads(path.read_text(), object_pairs_hook=flag_repeated_keys)
         assert not dupes, "\n".join(dupes)
