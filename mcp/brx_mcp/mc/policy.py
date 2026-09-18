@@ -6,14 +6,18 @@ neither UI carries rule logic. Everything returns plain dicts (contracts shapes)
 
 A14 (2026-09-04, Tony: "you should be able to have AR and pistol and quick switch perk"): a perk is its
 OWN slot, not a thing that displaces the secondary weapon. Three rules — `primary`, `secondary`
-(weapons / sidearms only) and `perk`. The one hardware exception: a perk that takes the ALT button
-(`effects.alt_reload`, Easy Reload) leaves no button to switch weapons with, so it cannot ride with a
-second weapon — the server drops the other one and says so; the UIs warn before the tap.
-F123 (2026-09-11, field): the SAME perk also cannot reload a weapon whose reload is a HELD per-shell chain.
-`easy_reload` compiles to `$BMAP,1,97` — a MOMENTARY alt-fire remap — and one tap emits one reload event, so on
-the Shotgun (`reload_type: "chain"`, six shells at ~420 ms each, driven by holding the physical handle) the
-magazine simply never comes back. Tony's call: exclude the pairing rather than fake it. Same shape as the
-second-weapon rule above, and for the same reason — the gun cannot do it.
+(weapons / sidearms only) and `perk`.
+
+S50 (2026-09-17, perk balance pass): Easy Reload moved OUT of the perk slot to
+`loadout.overrides.easy_reload` (docs/spec/loadout.md §2) — it is accessibility, not balance, so it no
+longer competes with a perk pick and the host sets it once (`state._check_loadout`). The hardware
+exception it carries moved WITH it, not away: the ALT button leaves no button to switch weapons with,
+so `overrides.easy_reload` still cannot ride with a second weapon (`conflict`) or a weapon whose reload
+is a HELD per-shell chain (F123, 2026-09-11 field — `chain_conflict`; on the Shotgun, `reload_type:
+"chain"`, one ALT tap emits one reload event and the magazine never comes back). Both are host-side
+POLICY rejects now (`validate_loadout`), not a phone `loadout_request` pick — no perk carries
+`effects.alt_reload` any more, so `set_slot`/`check_request`/`dropped_by`'s old ALT-conflict branches
+are gone with it.
 No pre-A14 shape is read (FOLLOWUPS S6, Tony: "we dont need to support legacy at all"): a stored policy that
 still says "perk" inside `secondary.kinds` is a validation error and `normalize` falls back to the mode default.
 """
@@ -23,9 +27,9 @@ import copy
 import functools
 import json
 import pathlib
-from typing import Any, Mapping, Sequence, get_args
+from typing import Any, Mapping, Sequence, cast, get_args
 
-from .types import (ItemKind, Loadout, LoadoutPolicy, LoadoutPool, LoadoutPreset, PerkView, PoolEmptyCode, SlotChoice,
+from .types import (ItemKind, Loadout, LoadoutOverrides, LoadoutPolicy, LoadoutPool, LoadoutPreset, PerkView, PoolEmptyCode, SlotChoice,
                     SlotRule, Weapon, WeaponSel)
 
 CHOICES = ("player", "host", "fixed", "off")
@@ -50,29 +54,34 @@ _R_PERK_SLOT = "Perks have their own slot this game"
 _R_ONLY_PERKS = "Only a perk goes in the perk slot"
 _R_SIDEARM_ONLY = "Only sidearms go in the {slot} slot this game"
 _R_UNKNOWN = "Unknown {kind}"
-_R_ALT_BOTH = "{perk} takes the ALT button, so it can't ride with a second weapon"
-_R_ALT_CHAIN = "{weapon} loads shell by shell — {perk} only taps the button once, so it can't reload it"
-# `loadout_ack.reason` when a pick applied but knocked the other thing out (A14 §4.2)
-_R_DROPPED_WEAPON = "{perk} takes the ALT button — {weapon} dropped"
-_R_DROPPED_PERK = "{weapon} needs the ALT button to switch — {perk} dropped"
-_R_DROPPED_PERK_CHAIN = "{weapon} loads shell by shell — {perk} dropped"
+# S50: Easy Reload is a name now, not a perk lookup — it moved to `overrides.easy_reload` and is never
+# picked from a list, so there is no perk row left to format a name out of.
+_R_ALT_BOTH = "Easy Reload takes the ALT button, so it can't ride with a second weapon"
+_R_ALT_CHAIN = "{weapon} loads shell by shell — Easy Reload only taps the button once, so it can't reload it"
 # S37 (field 2026-09-12, Tony): a swap perk with nothing to swap to
 _R_NO_SWITCH = "{perk} switches between two weapons, and there is no second weapon this game"
 
 
-def takes_alt(row: PerkView | None) -> bool:
-    """Does this perk claim the ALT button (`effects.alt_reload`)? Then no second weapon can be switched to."""
-    return bool(((row or {}).get("effects") or {}).get("alt_reload"))
+def easy_reload_on(loadout: Loadout) -> bool:
+    """S50: does this loadout's per-player override claim the ALT button? Replaces the old
+    `takes_alt(perk)` — Easy Reload is `overrides.easy_reload` now, not a perk pick."""
+    return bool((loadout.get("overrides") or {}).get("easy_reload"))
 
 
 def swaps_weapons(row: PerkView | None) -> bool:
-    """Does this perk do NOTHING without a second weapon? (`effects.switch_mult` — Quick Switch, which
-    compiles to the `$WEAP` tok15 swap delay.)
+    """Does this perk do NOTHING without a second weapon? (`effects.switch_mult` < 1 — a perk whose
+    WHOLE value is a faster swap, Quick Switch, which compiles to the `$WEAP` tok15 swap delay.)
 
     S37 (field 2026-09-12, Tony): "if either weapon slot is disabled, the Quick Switch perk must be
     disabled too — with one weapon there is nothing to swap." Asked of the EFFECT rather than of the
-    perk id, the same way `takes_alt` is, so a second swap perk is covered the day it exists."""
-    return bool(((row or {}).get("effects") or {}).get("switch_mult"))
+    perk id, so a second swap-benefit perk is covered the day it exists.
+
+    S50 (2026-09-17): `< 1` is deliberate, not `bool(...)`. Extended Mags now carries `switch_mult:
+    1.3` too — a COST paid on the same lever Quick Switch buys, not a benefit — and that cost simply
+    does nothing with no second weapon to slow the draw to; it must not also prune Extended Mags'
+    real (ammo_mult) value out of the pool the way a genuine swap-benefit perk should be pruned."""
+    sm = ((row or {}).get("effects") or {}).get("switch_mult")
+    return bool(sm) and sm < 1
 
 
 @functools.lru_cache(maxsize=1)
@@ -423,31 +432,28 @@ def _weapon_row(weapons: Sequence[Weapon], wid: str | None) -> Weapon | None:
     return next((w for w in weapons if w.get("weapon_id") == wid), None) if wid else None
 
 
-def conflict(loadout: Loadout, perks: Sequence[PerkView]) -> dict | None:
-    """A14: the perk takes the ALT button AND a second weapon is loaded → `{perk, weapon}` (ids); else None."""
-    lo = loadout
-    ws = lo.get("weapons") or []
+def conflict(loadout: Loadout) -> dict | None:
+    """S50: `overrides.easy_reload` takes the ALT button AND a second weapon is loaded → `{weapon}` (id);
+    else None. Was `{perk, weapon}` keyed off a perk pick before S50 moved Easy Reload to the override."""
+    ws = loadout.get("weapons") or []
     sec_w = ws[1]["weapon_id"] if len(ws) > 1 else None
-    perk = lo.get("perk") or None
-    if sec_w and perk and takes_alt(_perk_row(perks, perk)):
-        return {"perk": perk, "weapon": sec_w}
+    if sec_w and easy_reload_on(loadout):
+        return {"weapon": sec_w}
     return None
 
 
-def chain_conflict(loadout: Loadout, weapons: Sequence[Weapon], perks: Sequence[PerkView]) -> dict | None:
-    """F123: the perk takes the ALT button AND an equipped weapon chain-reloads → `{perk, weapon}`; else None.
+def chain_conflict(loadout: Loadout, weapons: Sequence[Weapon]) -> dict | None:
+    """F123/S50: `overrides.easy_reload` AND an equipped weapon chain-reloads → `{weapon}`; else None.
 
     Checked over EVERY equipped weapon, not just the primary. `conflict` above already rules out a second
-    weapon beside an ALT perk, so in practice this is the primary — but the two rules are independent and a
+    weapon beside Easy Reload, so in practice this is the primary — but the two rules are independent and a
     later change to either must not quietly re-open this pairing."""
-    lo = loadout
-    perk = lo.get("perk") or None
-    if not perk or not takes_alt(_perk_row(perks, perk)):
+    if not easy_reload_on(loadout):
         return None
-    for w in lo.get("weapons") or []:
+    for w in loadout.get("weapons") or []:
         wid = (w or {}).get("weapon_id")
         if chain_reload(_weapon_row(weapons, wid) or {"weapon_id": wid}):
-            return {"perk": perk, "weapon": wid}
+            return {"weapon": wid}
     return None
 
 
@@ -493,21 +499,22 @@ def validate_loadout(policy: LoadoutPolicy, lp: LoadoutPool, loadout: Loadout, w
         if swaps_weapons(_perk_row(perks, perk)) and not lp["secondary_weapons"]:
             return False, _R_NO_SWITCH.format(perk=_name(perks, "perk_id", perk))   # S37
         return False, _why_not(kr, perks, "perk_id", perk, "perk")
-    c = conflict(loadout, perks)
-    if c:
-        return False, _R_ALT_BOTH.format(perk=_name(perks, "perk_id", c["perk"]))
-    cc = chain_conflict(loadout, weapons, perks)
+    if conflict(loadout):
+        return False, _R_ALT_BOTH
+    cc = chain_conflict(loadout, weapons)
     if cc:
-        return False, _R_ALT_CHAIN.format(weapon=_name(weapons, "weapon_id", cc["weapon"]),
-                                          perk=_name(perks, "perk_id", cc["perk"]))
+        return False, _R_ALT_CHAIN.format(weapon=_name(weapons, "weapon_id", cc["weapon"]))
     return True, None
 
 
 def apply(policy: LoadoutPolicy, lp: LoadoutPool, loadout: Loadout, weapons: Sequence[Weapon],
          perks: Sequence[PerkView]) -> Loadout:
     """Auto-fix a loadout to the policy (§3.3): fixed → set; off → cleared; out-of-pool → primary falls to
-    the first allowed weapon (assault_rifle when allowed), secondary / perk cleared. An ALT-button perk
-    beside a second weapon keeps the perk (the host's rule put it there) and drops the weapon. Returns a NEW dict."""
+    the first allowed weapon (assault_rifle when allowed), secondary / perk cleared. S50: `overrides.easy_reload`
+    beside a second weapon keeps the override (it is the host's explicit accessibility setting) and drops the
+    weapon; beside a chain-reload primary it is the override that gives way, since a primary is mandatory and
+    the weapon just resolved is the one that stands (mirrors the old ALT-button-perk resolution, now on the
+    override instead of a perk pick). Returns a NEW dict."""
     out = copy.deepcopy(loadout)
     ws = list(out.get("weapons") or [])
     prim = ws[0]["weapon_id"] if ws else None
@@ -543,12 +550,23 @@ def apply(policy: LoadoutPolicy, lp: LoadoutPool, loadout: Loadout, weapons: Seq
         perk = kr["fixed_id"] if kr["fixed_id"] in lp["perks"] else None
     elif perk and perk not in lp["perks"]:
         perk = None
-    if sec_w and perk and takes_alt(_perk_row(perks, perk)):
-        sec_w = None
-    # F123: an ALT-button perk beside a CHAIN-reload weapon loses the perk, not the weapon — the opposite
-    # resolution to the rule above, and for a plain reason: a primary weapon is mandatory and a perk is not.
-    if perk and takes_alt(_perk_row(perks, perk)) and chain_reload(_weapon_row(weapons, prim) or {"weapon_id": prim}):
-        perk = None
+    # S50: the ALT-button pairing moved from perk+weapon to override+weapon (see the docstring above).
+    # `out` is `dict[str, Any]` (a `copy.deepcopy(loadout)` worked on by runtime key, like `base` in
+    # `merge()` above) so `out.get("overrides")` carries no static shape of its own; `cast` says
+    # "this is a `LoadoutOverrides`, on my authority" the same way `merge()`'s own final return does.
+    ov = cast(LoadoutOverrides, dict(out.get("overrides") or {}))
+    if ov.get("easy_reload"):
+        # F123 first: a primary is mandatory, so if the (already policy-resolved) primary chain-reloads,
+        # the OVERRIDE gives way, not the weapon.
+        if chain_reload(_weapon_row(weapons, prim) or {"weapon_id": prim}):
+            ov.pop("easy_reload", None)
+        elif sec_w:
+            sec_w = None
+    if ov != (out.get("overrides") or {}):
+        if ov:
+            out["overrides"] = ov
+        else:
+            out.pop("overrides", None)
     new_weapons: list[WeaponSel] = [{"weapon_id": prim}]
     if sec_w:
         new_weapons.append({"weapon_id": sec_w})
@@ -565,10 +583,11 @@ def check_request(policy: LoadoutPolicy, lp: LoadoutPool, slot: str, kind: str, 
                   loadout: Loadout | None = None) -> tuple[bool, str | None]:
     """Phone-side check for a `loadout_request` (§4.2).
 
-    `loadout` is the player's CURRENT kit, and is only needed for rules that depend on what is already
-    equipped. There is one: F123's `easy_reload` + chain-reload weapon. Optional, because every other rule
-    here is about the pick alone — omit it and that one rule simply does not fire (`set_slot` still refuses
-    to store the pairing, so a caller that cannot supply it gets a silent no-op rather than a broken gun)."""
+    S50: `overrides.easy_reload` is host-set only (`state._check_loadout`), never a `loadout_request`
+    pick, so the old F123 chain-reload check that lived here (asked whenever the REQUEST was a perk id
+    of `easy_reload`) has nothing to fire on any more — no perk carries `effects.alt_reload`, and the
+    override cannot arrive through this channel. `loadout` stays a parameter for callers that already
+    pass one; it is not read below."""
     if slot not in SLOTS:
         return False, "Unknown slot"
     rule = policy[slot]
@@ -591,13 +610,6 @@ def check_request(policy: LoadoutPolicy, lp: LoadoutPool, slot: str, kind: str, 
             if swaps_weapons(_perk_row(perks, rid)) and not lp["secondary_weapons"]:
                 return False, _R_NO_SWITCH.format(perk=_name(perks, "perk_id", rid))   # S37
             return False, _why_not(rule, perks, "perk_id", rid, "perk")
-        # F123: an ALT-button perk cannot reload a chain-reload weapon the player already has equipped.
-        # Refused rather than resolved: the conflicting weapon is the PRIMARY, and a primary is mandatory,
-        # so there is nothing to drop in its place the way a second weapon can be dropped.
-        cc = chain_conflict({**loadout, "perk": rid}, weapons, perks) if loadout else None
-        if cc:
-            return False, _R_ALT_CHAIN.format(weapon=_name(weapons, "weapon_id", cc["weapon"]),
-                                              perk=_name(perks, "perk_id", rid))
         return True, None
     if kind != "weapon":
         return False, _R_KIND.format(kind="A perk", slot="primary") if slot == "primary" else _R_PERK_SLOT
@@ -614,51 +626,30 @@ def check_request(policy: LoadoutPolicy, lp: LoadoutPool, slot: str, kind: str, 
 
 def set_slot(loadout: Loadout, slot: str, kind: str, rid: str | None, perks: Sequence[PerkView] = (),
              weapons: Sequence[Weapon] = ()) -> Loadout:
-    """Write one slot of a loadout (already validated). The thing just picked wins an ALT-button conflict:
-    Easy Reload over a second weapon drops the weapon; a second weapon over Easy Reload drops the perk
-    (Tony 2026-09-04: "when you pick that it will invalidate your secondary gun selection"). Returns a NEW dict.
+    """Write one slot of a loadout (already validated). Returns a NEW dict.
 
-    `weapons` is the catalog IN PLAY, so the chain-reload question is asked of the row this game is using
-    rather than of the shipped data file (see `chain_reload`). Optional: with no catalog the id lookup
-    still answers for the stock roster."""
+    S50: Easy Reload moved to `overrides.easy_reload`, which this channel never writes (it is host-set
+    only, `state._check_loadout`) — so a `loadout_request` pick can no longer create or resolve the
+    ALT-button conflict; the old per-pick drop logic (perk over weapon / weapon over perk) is gone with
+    it. `overrides` rides through untouched, same as before.
+
+    `weapons` is the catalog IN PLAY (kept for callers that already pass it; no longer read here since
+    the chain-reload question moved to `apply`/`validate_loadout`)."""
     out: dict[str, Any] = dict(copy.deepcopy(loadout))
     ws = list(out.get("weapons") or [])
     prim = ws[0]["weapon_id"] if ws else "assault_rifle"
     sec_w = ws[1]["weapon_id"] if len(ws) > 1 else None
     perk = out.get("perk") or None
-    def chains(wid):
-        return chain_reload(_weapon_row(weapons, wid) or {"weapon_id": wid})
     if slot == "primary":
         prim = rid
         # `check_request` refuses kind="none"/slot="primary" (a primary is mandatory) before a caller
         # ever reaches here, so `rid` is never None on this path -- narrowed for the WeaponSel below,
         # rather than the wire silently getting a weapon_id of None if that contract were ever violated.
         assert prim is not None
-        # F123: picking a chain-reload primary while holding an ALT-button perk drops the PERK. The perk
-        # cannot win here the way it wins over a second weapon — a primary is mandatory — so the pick that
-        # just happened is the one that stands, which is the same rule, applied to the only slot that can move.
-        if perk and chains(prim) and takes_alt(_perk_row(perks, perk)):
-            perk = None
     elif slot == "secondary":
         sec_w = rid if kind == "weapon" else None
-        if sec_w and perk and takes_alt(_perk_row(perks, perk)):
-            perk = None
     else:
         perk = rid if kind == "perk" else None
-        # F123 backstop FIRST: a primary is mandatory, so an ALT-button perk picked onto a chain-reload
-        # primary has nothing it can displace. `check_request` refuses it with a reason when it was given
-        # the current loadout; here, with no way to say why, the pick simply does not take — never a stored
-        # pairing the gun cannot perform.
-        #
-        # ⚠ Order matters, and it used to be the other way round (polish review 2026-09-12): a chain primary
-        # + a second weapon + a pick of Easy Reload dropped the WEAPON on the ALT rule below and then reverted
-        # the perk here, so the player lost their secondary to a pick that never applied and `dropped_by` —
-        # which reads the perk, not the weapon — reported nothing. A pick that cannot take must move NOTHING,
-        # so the two rules are now exclusive rather than sequential.
-        if perk and takes_alt(_perk_row(perks, perk)) and chains(prim):
-            perk = out.get("perk") or None
-        elif perk and sec_w and takes_alt(_perk_row(perks, perk)):
-            sec_w = None
     new_weapons: list[WeaponSel] = [{"weapon_id": prim}]
     if sec_w:
         new_weapons.append({"weapon_id": sec_w})
@@ -680,22 +671,11 @@ def set_slot(loadout: Loadout, slot: str, kind: str, rid: str | None, perks: Seq
 
 def dropped_by(before: Loadout, after: Loadout, weapons: Sequence[Weapon],
                perks: Sequence[PerkView]) -> tuple[dict | None, str | None]:
-    """What a `set_slot` knocked out of the OTHER slot, as `loadout_ack.dropped {slot, id, name}` + the reason line."""
-    b_ws, a_ws = before.get("weapons") or [], after.get("weapons") or []
-    b_sec = b_ws[1]["weapon_id"] if len(b_ws) > 1 else None
-    a_sec = a_ws[1]["weapon_id"] if len(a_ws) > 1 else None
-    b_perk, a_perk = before.get("perk") or None, after.get("perk") or None
-    b_prim = b_ws[0]["weapon_id"] if b_ws else None
-    a_prim = a_ws[0]["weapon_id"] if a_ws else None
-    if b_perk and not a_perk and a_prim and a_prim != b_prim and chain_reload(_weapon_row(weapons, a_prim) or {"weapon_id": a_prim}):
-        pname = _name(perks, "perk_id", b_perk)   # F123: a chain-reload primary knocked the ALT-button perk out
-        return {"slot": "perk", "id": b_perk, "name": pname}, _R_DROPPED_PERK_CHAIN.format(weapon=_name(weapons, "weapon_id", a_prim), perk=pname)
-    if b_sec and not a_sec and a_perk and a_perk != b_perk:
-        wname = _name(weapons, "weapon_id", b_sec)
-        return {"slot": "secondary", "id": b_sec, "name": wname}, _R_DROPPED_WEAPON.format(perk=_name(perks, "perk_id", a_perk), weapon=wname)
-    if b_perk and not a_perk and a_sec and a_sec != b_sec:
-        pname = _name(perks, "perk_id", b_perk)
-        return {"slot": "perk", "id": b_perk, "name": pname}, _R_DROPPED_PERK.format(weapon=_name(weapons, "weapon_id", a_sec), perk=pname)
+    """What a `set_slot` knocked out of the OTHER slot, as `loadout_ack.dropped {slot, id, name}` + the reason line.
+
+    S50: with Easy Reload moved to the host-only `overrides.easy_reload`, `set_slot` (the phone's
+    `loadout_request` writer) can no longer create the ALT-button conflict, so there is nothing left
+    for THIS function to report — a phone pick only ever moves `weapons`/`perk`, never `overrides`."""
     return None, None
 
 

@@ -542,7 +542,7 @@ def test_setup_loads_melee_slot_and_full_sir():
     from brx_mcp.gameconfig import GameConfig as GC
     frames = GC().setup_frames()
     assert [f for f in frames if f.startswith("$WEAP,4")]        # melee slot loaded
-    assert len([f for f in frames if f.startswith("$SIR,")]) == 10  # all 10 rows
+    assert len([f for f in frames if f.startswith("$SIR,")]) == 11  # all 11 rows (S50 added the permanent Armour Piercing cell <4,0>)
 
 
 def test_driver_setup_configs_then_spawns_all_guns():

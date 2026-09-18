@@ -113,7 +113,9 @@ def test_real_and_fake_compiler_catalog_and_perk_shapes_agree():
         rows = adapter.weapon_catalog()
         assert rows and all("dmg" in row["stats"] and "damage" not in row["stats"] for row in rows)
         player = {"loadout": {"weapons": [{"weapon_id": "assault_rifle"}], "perk": "body_armor"}}
-        assert adapter.perk_effects(player)["max_armor_add"] == 50
+        # S50: perks.json's `max_armor_add` is the DOCUMENTATION value at the default 45+70 pool
+        # (+23, was a flat +50) -- the real, pool-scaled number lives in `compile._POOL_GRANT_PCT`.
+        assert adapter.perk_effects(player)["max_armor_add"] == 23
 
 
 def test_a_broken_compiler_catalog_fails_visible_loadout_validation():

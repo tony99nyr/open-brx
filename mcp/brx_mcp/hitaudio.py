@@ -256,8 +256,11 @@ FREE_CELLS: tuple[tuple[str, str], ...] = (
     ("0", "2"), ("8", "1"), ("10", "1"), ("6", "1"),
 )
 # Cells that must keep their stock meaning whatever else moves: grenade-station words and the three
-# support grants. Re-keying one of these breaks a pickup, not a sound.
-RESERVED_CELLS: frozenset[tuple[str, str]] = frozenset({("1", "0"), ("2", "1"), ("3", "0"), ("15", "0")})
+# support grants. Re-keying one of these breaks a pickup, not a sound. `(4,0)` joined 2026-09-17
+# (S50): the Armour Piercing perk's permanent cell (`mc/compile.py` `_AP_CELL`, `gameconfig.py`
+# `_SIR_TABLE`) -- the class-sound allocator must never hand it to an unrelated weapon family, or a
+# player who never picked the perk would fire armour-piercing shots by accident.
+RESERVED_CELLS: frozenset[tuple[str, str]] = frozenset({("1", "0"), ("2", "1"), ("3", "0"), ("15", "0"), ("4", "0")})
 
 
 @dataclass(frozen=True)

@@ -14,7 +14,15 @@ from .types import PerkEffects, PerkView
 _HERE = pathlib.Path(__file__).resolve().parent
 
 # Effect keys the compiler understands. Anything else in `effects` is a data error, not a silent no-op.
-EFFECT_KEYS = frozenset({"max_armor_add", "ammo_mult", "reload_mult", "alt_reload", "switch_mult"})   # switch_mult: scales $WEAP tok15, the gun's swap delay (bench 2026-09-04)
+# `alt_reload` has no current row (S50, 2026-09-17: `easy_reload` moved out of the perk slot to
+# `loadout.overrides.easy_reload`, the per-player accessibility block -- it is accessibility, not
+# balance, so it no longer competes with a perk pick). The key stays in the vocabulary for a future
+# perk that claims the ALT button the same way (`policy.py`'s docstring: "a new perk that claims a
+# button in future joins the rule by setting alt_reload").
+# `armor_piercing` (S50, new): the primary's $SIR key is swapped to the armour-piercing cell and its
+# damage is cut -- see `compile.py` `_POOL_GRANT_PCT`, `_AP_CELL`, `_AP_DAMAGE_MULT`.
+EFFECT_KEYS = frozenset({"max_armor_add", "ammo_mult", "reload_mult", "alt_reload", "switch_mult",
+                        "armor_piercing"})   # switch_mult: scales $WEAP tok15, the gun's swap delay (bench 2026-09-04)
 
 
 def _load_perks() -> list[dict]:
@@ -52,6 +60,8 @@ class PerkCatalog:
             effects["alt_reload"] = raw_effects["alt_reload"]
         if "switch_mult" in raw_effects:
             effects["switch_mult"] = raw_effects["switch_mult"]
+        if "armor_piercing" in raw_effects:
+            effects["armor_piercing"] = raw_effects["armor_piercing"]
         return {"perk_id": r["perk_id"], "name": r["name"], "desc": r.get("desc", ""),
                 "tags": list(r.get("tags") or []), "mechanism": r.get("mechanism", "passive"),
                 "effects": effects, "verified": bool(r.get("verified")),

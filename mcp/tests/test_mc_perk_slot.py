@@ -76,58 +76,64 @@ def test_ar_plus_pistol_plus_quick_switch_is_legal_everywhere():
     assert ack["ok"] and "dropped" not in ack and ack["loadout"] == {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}], "perk": "body_armor"}
 
 
-# ---------------------------------------------------------------- the ALT-button exception
+# ---------------------------------------------------------------- the ALT-button exception (S50: now
+# `loadout.overrides.easy_reload`, a host-only accessibility flag -- not a perk pick. FOLLOWUPS S50.)
 def test_easy_reload_and_a_second_weapon_cannot_both_be_stored_by_the_host():
     op = P.preset_rules("open"); lp = P.pool(op, W, PK)
-    ok, why = P.validate_loadout(op, lp, {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}], "perk": "easy_reload"}, W, PK)
+    ok, why = P.validate_loadout(op, lp, {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}],
+                                          "overrides": {"easy_reload": True}}, W, PK)
     assert not ok and why == "Easy Reload takes the ALT button, so it can't ride with a second weapon"
-    assert P.conflict({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}], "perk": "easy_reload"}, PK) == {"perk": "easy_reload", "weapon": "smg"}
-    assert P.conflict({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}], "perk": "quick_switch"}, PK) is None
-    assert P.conflict({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "easy_reload"}, PK) is None
+    assert P.conflict({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}],
+                       "overrides": {"easy_reload": True}}) == {"weapon": "smg"}
+    assert P.conflict({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}],
+                       "perk": "quick_switch"}) is None
+    assert P.conflict({"weapons": [{"weapon_id": "assault_rifle"}],
+                       "overrides": {"easy_reload": True}}) is None
     s, net, clock, p = _mk()
     try:
-        s.patch_player(p["player_id"], loadout={"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}], "perk": "easy_reload"})
-        raise AssertionError("stored an ALT-button perk beside a second weapon")
+        s.patch_player(p["player_id"], loadout={"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}],
+                                                 "overrides": {"easy_reload": True}})
+        raise AssertionError("stored the ALT button beside a second weapon")
     except ValueError as e:
         assert "ALT button" in str(e)
 
 
-def test_phone_pick_last_one_wins_and_the_ack_says_what_it_dropped():
+def test_phone_perk_picks_never_touch_overrides():
+    """S50: a `loadout_request` perk pick can never create or resolve the ALT-button conflict any
+    more (it lives on `overrides.easy_reload`, host-set only) -- picking perks back to back just
+    picks perks, no drops, no surprises. `easy_reload` itself is not even a valid perk id to request
+    any more (it left the catalog)."""
     s, net, clock, p = _mk()
     pid = p["player_id"]
     _req(net, "secondary", "weapon", "smg")
-    # Easy Reload over a loaded SMG: the perk applies, the SMG is dropped, the ack carries both facts
-    ack = _req(net, "perk", "perk", "easy_reload")
-    assert ack["ok"] is True and ack["dropped"] == {"slot": "secondary", "id": "smg", "name": "SMG"}
-    assert ack["reason"] == "Easy Reload takes the ALT button — SMG dropped"
-    assert s.players[pid]["loadout"] == {"weapons": [{"weapon_id": "assault_rifle"}], "perk": "easy_reload"}
+    ack = _req(net, "perk", "perk", "body_armor")
+    assert ack["ok"] is True and "dropped" not in ack
+    assert s.players[pid]["loadout"] == {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}], "perk": "body_armor"}
     assert ack["loadout"] == s.players[pid]["loadout"]
-    # a second weapon over Easy Reload: the weapon applies, the perk is dropped
-    ack = _req(net, "secondary", "weapon", "shotgun")
-    assert ack["ok"] is True and ack["dropped"] == {"slot": "perk", "id": "easy_reload", "name": "Easy Reload"}
-    assert ack["reason"] == "Shotgun needs the ALT button to switch — Easy Reload dropped"
-    assert s.players[pid]["loadout"] == {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}]}
-    # a perk that does not take the button drops nothing
-    ack = _req(net, "perk", "perk", "quick_switch")
-    assert ack["ok"] and "dropped" not in ack and "reason" not in ack
-    assert s.players[pid]["loadout"] == {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}], "perk": "quick_switch"}
+    # requesting the retired perk id is refused like any other unknown perk
+    ack = _req(net, "perk", "perk", "easy_reload")
+    assert ack["ok"] is False and "Unknown perk" in ack["reason"]
+    assert s.players[pid]["loadout"]["perk"] == "body_armor", "the refused pick left the kit alone"
     # every ack still names its slot, and `assign` carried the new loadout each time
     assert net.pushes("loadout_ack", "node0")[-1][2]["slot"] == "perk"
-    assert net.pushes("assign", "node0")[-1][2]["player"]["loadout"]["perk"] == "quick_switch"
+    assert net.pushes("assign", "node0")[-1][2]["player"]["loadout"]["perk"] == "body_armor"
 
 
-def test_apply_policy_keeps_a_fixed_alt_perk_and_drops_the_second_weapon():
+def test_apply_policy_never_touches_the_easy_reload_override():
+    """S50: `loadout_policy.perk` governs the PERK slot only -- `overrides.easy_reload` is not a
+    policy-governed pool item (it never rides in `LoadoutPool.perks`), so a preset/rule change that
+    resets everyone's perk must leave a stored override alone."""
     s, net, clock, p = _mk()
     pid = p["player_id"]
-    s.patch_player(pid, loadout={"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}], "perk": "quick_switch"})
-    s.set_config({"loadout_policy": {"perk": {"choice": "fixed", "fixed_id": "easy_reload"}}})
-    assert s.players[pid]["loadout"] == {"weapons": [{"weapon_id": "assault_rifle"}], "perk": "easy_reload"}
+    s.patch_player(pid, loadout={"weapons": [{"weapon_id": "assault_rifle"}], "perk": "quick_switch",
+                                 "overrides": {"easy_reload": True}})
+    s.set_config({"loadout_policy": {"perk": {"choice": "fixed", "fixed_id": "body_armor"}}})
+    assert s.players[pid]["loadout"] == {"weapons": [{"weapon_id": "assault_rifle"}], "perk": "body_armor",
+                                         "overrides": {"easy_reload": True}}
     assert s.config["loadout_policy"]["preset"] == "custom"
-    # switching the perk rule off clears the perk and leaves the weapons alone
-    s.set_config({"loadout_policy": {"perk": {"choice": "player"}}})
-    s.patch_player(pid, loadout={"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}], "perk": "body_armor"})
+    # switching the perk rule off clears the perk and leaves the weapons AND the override alone
     s.set_config({"loadout_policy": {"perk": {"choice": "off"}}})
-    assert s.players[pid]["loadout"] == {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}]}
+    assert s.players[pid]["loadout"] == {"weapons": [{"weapon_id": "assault_rifle"}], "overrides": {"easy_reload": True}}
 
 
 def test_pool_preview_route_returns_the_perk_list():

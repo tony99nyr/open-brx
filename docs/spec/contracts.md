@@ -357,6 +357,15 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
                                      //   (token 5) >= `voice.pain_long_min` (40: shotgun, snipers, power weapons) -> pain_long (slots E F);
                                      //   else pain_short (G H D C). At most one pain line per 600 ms; none on the lethal hit. `events.hit_taken`
                                      //   keeps no sound of its own. `voice.pset_pool` lists the scream id per `pset_pool` frame.
+  perk_effects?: { perk_id: string, mag?: ValuePair, reserve?: ValuePair, reload_ms?: ValuePair,
+                    swap_ms?: ValuePair, max_hp?: ValuePair, max_armor?: ValuePair, max_shield?: ValuePair },
+                                     // [S50 build 4] this player's compiled perk effect (loadout.md §1.2/§2), absent when they
+                                     //   carry no perk. ValuePair = { base: int, resolved: int }; a field is present only when
+                                     //   the perk actually moved it, `perk_id` present whenever they carry one (for an icon even
+                                     //   with nothing else to show). `Compiler.perk_effects_resolved()` is the ONE arithmetic
+                                     //   both this bundle (persisted, survives an app restart) and Mission Control's
+                                     //   `State.perk_effects` (per player, the console's copy of the same numbers) read, so the
+                                     //   node and the console can never disagree about what a perk did.
 }
 ```
 - **Volume** is the compiler's: the head carries `$VOL,<compile.play_volume(environment)>` = **80 indoors / 90
