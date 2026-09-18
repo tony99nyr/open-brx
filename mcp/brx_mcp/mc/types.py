@@ -398,17 +398,6 @@ class Stun(TypedDict):
     duration_s: NotRequired[int]   # F15/A20: seconds a hit EMP keeps the gun disarmed (default 10, 1..60)
 
 
-class Recoil(TypedDict):
-    """S42 (2026-09-17): a weapon's TARGET accuracy profile -- `weapons.json` `recoil`, declared-only
-    on the wire (compile.py `resolve()` never writes t21/t22 from it). `app/src/engine.js` is the sole
-    reader: it pins both tokens to `value` on every accuracy write, stepping `value` down by `per_shot`
-    toward `floor` per shot and back up toward `ceiling` at `recover_ms` per step once the player stops."""
-    ceiling: int
-    floor: int
-    per_shot: int
-    recover_ms: int
-
-
 class GameConfigBase(TypedDict):
     config_id: str
     mode: str
@@ -461,12 +450,6 @@ class GameConfigBase(TypedDict):
     #                                              MC pushes them the `vip` headset role (`alert.role`) once the match is
     #                                              live and again after each of their respawns. Never stored in a saved
     #                                              game (a preset names no person).
-    recoil: NotRequired[bool]                    # S42: node-driven recoil (the accuracy ceiling/floor is OURS, not the
-    #                                              gun's native walk -- F230). DEFAULT ON: absent or `true` = on, only an
-    #                                              explicit `false` turns it off. No FrameBundle change needed -- `config`
-    #                                              already rides every push wholesale, and `app/src/engine.js` reads
-    #                                              `config.recoil !== false`. Seam for stance/flinch (also S42, not built
-    #                                              here): a future switch for either can sit right beside this one.
 
 
 class GameConfig(GameConfigBase):
@@ -539,7 +522,6 @@ class Weapon(TypedDict):
     role: NotRequired[str]
     caution: NotRequired[str]      # A10: human copy for a known LIVE problem (weapons.json `caution`)
     pickup_only: NotRequired[bool]  # 2026-09-17: catalogue-visible but never in a player loadout pool (policy.py)
-    recoil: NotRequired[Recoil]     # S42: the declared target accuracy profile (weapons.json `recoil`)
     lethal: NotRequired[bool]       # 2026-09-18, weapon-design.md §7.4: False = cannot kill; absent means true
 
 
@@ -580,7 +562,6 @@ class WeaponView(TypedDict):
                                     # cannot kill (the fn-20 Breacher, the fn-23 Haze). It may never be a PRIMARY:
                                     # the server refuses one in slot 0 and both UIs mirror that, so the field has
                                     # to travel with the row or a console offers a pick that is refused at arming.
-    recoil: NotRequired[Recoil]     # S42: the declared target accuracy profile -- the node's `weaponRow(id).recoil`
 
 
 class SavedGame(TypedDict):

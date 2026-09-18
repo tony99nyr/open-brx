@@ -473,18 +473,15 @@ def test_the_perk_that_moves_the_pool_changes_the_quoted_numbers():
     assert htk(armoured) > htk(base), "body_armor must move HITS TO KILL"
 
 
-def test_recoil_is_declared_not_wired_by_the_compiler():
-    """S42 (2026-09-17): every weapon declares a `recoil` target profile
-    `{ceiling, floor, per_shot, recover_ms}`, and `resolve()` must never write t21/t22 from it. The
-    native accuracy walk is unreliable (F230: one gun of three decayed under sustained fire), so every
-    weapon ships t21 == t22 == 100 whatever its declared profile says. The ONLY thing that drives
-    recoil is `app/src/engine.js`'s accuracy writer at runtime, which pins both tokens to the live
-    value on every write. Wiring `recoil` into `resolve()` to "make it real" is the mistake this test
-    exists to catch: break it and it goes red."""
+def test_every_weapon_ships_accuracy_100_100_and_no_recoil():
+    """Every weapon ships t21 == t22 == 100 (native accuracy walk off). The native walk is unreliable
+    (F230: one gun of three decayed under sustained fire). S42 node-driven recoil used to move both
+    tokens during a life with mid-life `$WEAP` writes; Tony cut it on 2026-09-18 because those writes
+    were the largest BLE load on a gun. So no row may carry a `recoil` block, and the compiled frame
+    must hold 100/100 in every venue."""
     for w in ROWS:
         wid = w["weapon_id"]
-        recoil = w.get("recoil")
-        assert isinstance(recoil, dict) and {"ceiling", "floor", "per_shot", "recover_ms"} <= set(recoil), wid
+        assert "recoil" not in w, f"{wid}: live accuracy was cut 2026-09-18, drop its `recoil` block"
         for env in (None, "indoor", "outdoor"):
             p = (CAT.resolve(wid, 0).split(",") if env is None
                  else CAT.resolve(wid, 0, environment=env).split(","))
@@ -547,7 +544,7 @@ def test_the_poison_block_is_declared_and_never_reaches_the_wire():
 
     So the frame a poison weapon pushes must be an ORDINARY weapon frame: the damage type says gas, and
     no token anywhere encodes the tick. Wiring `dot` into `resolve()` to "make it real" is the mistake
-    this guard exists to catch, and it is the same shape as the recoil and range guards above."""
+    this guard exists to catch, and it is the same shape as the range guards above."""
     dot_rows = [w for w in ROWS if w.get("dot")]
     assert dot_rows, "no weapon declares a `dot` block: delete this guard or the field"
     for w in dot_rows:

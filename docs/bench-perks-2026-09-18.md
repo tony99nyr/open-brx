@@ -110,7 +110,7 @@ updating in `weapons.json` and `docs/weapon-design.md`.
 
 ## 5. Does a stim-style write survive a reload? (5 min, gates the stim pack and Adrenaline)
 
-S42's writer refuses to write during a reload, because the one case the 2026-09-17 bench could not place was a write
+S42's accuracy writer (cut 2026-09-18) refused to write during a reload, because the one case the 2026-09-17 bench could not place was a write
 landing inside one. A stim pack has to revert on a timer, so it will meet that case.
 
 1. Arm A with the bench AR.

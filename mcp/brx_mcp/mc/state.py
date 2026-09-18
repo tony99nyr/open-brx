@@ -293,14 +293,6 @@ def default_config(mode: str = "tdm") -> GameConfig:
     # Only the modes that HAVE an objective emitter carry the key at all, so every other mode's config
     # is byte-identical to what it was before the field existed (a saved game's identity is the whole
     # config -- `gameSummary.ts` `gameSig` -- and a null nobody set would have re-keyed all of them).
-    #
-    # S42's `recoil` follows the SAME rule, learned the hard way (2026-09-17): a first pass stored
-    # "recoil": True here unconditionally, which re-keyed the signature of EVERY config that predates
-    # the field (an old session.json restore, most concretely) against the fresh defaults — the STOCK
-    # MODE rail read every restored game as "TUNED — NOT SAVED" forever, because its config could never
-    # byte-match a fresh `default_config()` again. Absence already means ON (`recoilEnabled` in
-    # engine.js: `!config || config.recoil !== false`), so nothing needs storing here at all; a host
-    # sets `recoil: false` explicitly through `PUT /api/config` when they want it off.
     if src := m.get("station_source"):
         cfg["station_source"] = src
     # A18: the same rule for the mode's own parameters -- present and COMPLETE (every default) only when the
@@ -627,6 +619,9 @@ class Session:
                 self.teams = snap["teams"]
             if snap.get("config"):
                 self.config = snap["config"]
+                # S42 live accuracy was cut on 2026-09-18. A snapshot from before then can still carry
+                # `recoil`; drop it, so the key never rides the wire again.
+                self.config.pop("recoil", None)
             self.active_preset_id = snap.get("active_preset_id")
             # S5(a): a restored station comes back UNARMED -- `armed=None, arm_pending=True` -- because the
             # phone itself remembers nothing about MC across a restart; the existing "re-arm on next hello"
@@ -1756,7 +1751,7 @@ class Session:
 
     _CONFIG_KEYS = {"mode", "environment", "night", "time_limit_s", "respawn", "scoring",
                     "health", "teams", "led", "player_num_base", "loadout_policy", "presentation",
-                    "station_source", "mode_params", "vip_player_id", "stun", "coverage", "recoil"}
+                    "station_source", "mode_params", "vip_player_id", "stun", "coverage"}
 
     def apply_preset(self, preset_id: str, config: GameConfig) -> dict:
         """A10 §8: apply a saved game — same path as PUT /api/config, but the state remembers WHICH game is playing."""
@@ -2022,8 +2017,6 @@ class Session:
                 cfg["environment"] = v
             elif k == "night":
                 cfg["night"] = bool(v)
-            elif k == "recoil":
-                cfg["recoil"] = bool(v)   # S42: default ON is absence, not a stored True -- see GameConfigBase.recoil
             elif k == "coverage":
                 # A31/A4.8: the venue's radio coverage. "full" is an ASSERTION the operator makes about
                 # the site (every phone on the LAN the whole match) and it unlocks a null `time_limit_s`
