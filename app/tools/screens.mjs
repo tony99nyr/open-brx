@@ -8,6 +8,7 @@ import { chromium } from 'playwright';
 import http from 'http'; import fs from 'fs'; import path from 'path'; import os from 'os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { DEMO_PERKS } from '../src/demo-catalog.js';
 const HERE = path.dirname(fileURLToPath(import.meta.url)), ROOT = path.resolve(HERE, '..'), WWW = path.join(ROOT, 'www');
 const OUT = path.join(ROOT, 'shots', 'screens');
 const ONLY = process.env.ONLY;
@@ -301,13 +302,19 @@ for (const view of VIEWS) {
     must(r.ps[1].h === 'USP-S' && r.ps[2].h === 'QUICK SWITCH', 'AR + pistol + Quick Switch expected: ' + JSON.stringify(r.ps)); must(/HP 45 · ARMOR 70/.test(r.hpar), 'HP·ARMOR moved to the header: ' + r.hpar);
     must(r.ps.every(p => !p.clipped), 'plate title clipped: ' + JSON.stringify(r.ps));
   });
-  await step(`${view.name} #53 PERK tab: three tabs on one line, 7 perk rows + NONE, tapping a perk keeps the second weapon`, async () => {
+  await step(`${view.name} #53 PERK tab: three tabs on one line, one row per shipped perk + NONE, tapping a perk keeps the second weapon`, async () => {
     const pg = await open(view, 'loadout-perk', '', 2000); const r = await pg.evaluate(() => ({ tabs: Array.from(document.querySelectorAll('.lotab')).map(t => ({ k: t.querySelector('.k').textContent.trim(), top: Math.round(t.getBoundingClientRect().top) })), chips: Array.from(document.querySelectorAll('.fch')).map(c => c.textContent.trim()), rows: document.querySelectorAll('.lrow').length, eq: (document.querySelector('.lrow.eq .nm2 b') || {}).textContent }));
     await pg.click('.lrow[data-arg="perk:body_armor"]'); await pg.waitForTimeout(700);
     const after = await pg.evaluate(() => { const lo = window.brx.engine.state().loadout; return { perk: lo.perk && lo.perk.perk_id, sec: lo.secondary && lo.secondary.weapon_id, chip: (document.querySelector('.ackchip') || {}).textContent || '' }; }); await pg.close();
     must(r.tabs.map(t => t.k).join('|') === 'PRIMARY|SECONDARY|PERK' && new Set(r.tabs.map(t => t.top)).size === 1, 'tabs: ' + JSON.stringify(r.tabs));
-    // S50 (2026-09-17): 5 -> 7 rows (armor_piercing, motion_tracker, second_wind joined; easy_reload left for `loadout.overrides.easy_reload`).
-    must(r.chips[0] === 'PERKS · 7' && /^NONE/.test(r.chips[1]), 'chips ' + r.chips); must(r.rows === 7 && r.eq === 'QUICK SWITCH', 'rows/equipped: ' + r.rows + ' ' + r.eq);
+    // S50 (2026-09-17) took the pool from 5 to 7 on paper, but `motion_tracker` and `second_wind` are
+    // `hidden` until their node halves exist, so the phone ships 5. This step hardcoded 7 and went red
+    // the moment they were hidden; Mission Control's own perk test hit the identical drift the same day.
+    // Derive it from `demo-catalog.js`, the artefact the PHONE actually reads (editing perks.json alone
+    // would not move it), so unhiding a perk moves this step with it instead of breaking it.
+    const wantPerks = DEMO_PERKS.filter(p => !p.hidden).length;
+    must(wantPerks >= 4, 'the perk catalogue collapsed to ' + wantPerks + ': this step cannot mean anything below 4');
+    must(r.chips[0] === 'PERKS · ' + wantPerks && /^NONE/.test(r.chips[1]), 'chips ' + r.chips); must(r.rows === wantPerks && r.eq === 'QUICK SWITCH', 'rows/equipped: ' + r.rows + ' want ' + wantPerks + ' ' + r.eq);
     // 2026-09-17 (arsenal review): glock is `hidden` now — `fullKit` (app/src/demo.js) picks usp instead.
     must(after.perk === 'body_armor' && after.sec === 'usp', 'a perk pick must not displace the pistol: ' + JSON.stringify(after)); must(/EQUIPPED/.test(after.chip) && !/DROPPED/.test(after.chip), 'ack chip: ' + after.chip);
   });
