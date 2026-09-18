@@ -70,8 +70,7 @@ hardware tag and `build` (S10 is the biggest of those: the LED language is code 
 right** and this index is stale. Do not cite it as evidence that something is or is not open.
 
 **Needs Tony at the bench** (tagged `trigger` · `bench` · `ears` · `eyes` · `space` · `grenade` · `capture` ·
-`hardware` — running order in [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md), next sheet
-[`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md)):
+`hardware` — running order in [`bench-plan.md`](bench-plan.md)):
 - 🔴 **B26** · **K4** · **Q15** · **S10**
 - 🟠 **F13** · **F50** · **F59** · **F162** · **P8** · **Q16** · **S9** · **F269** · **F271** · **F272** · **F274**
 - 🟡 **B28** · **B29** · **D1** · **F3** · **F21** · **F26** · **F27** · **F28** · **F30** · **F63** · **F66** · **F67** · **F68** · **F75** · **F76** · **F82** · **F88** · **G3** · **K1** · **P3** · **P15** · **S1** · **S2** · **S7** · **U11′** · **F267** · **F268**
@@ -740,7 +739,8 @@ nine of these eleven were root-caused without touching a gun.
 
 ## 9. Needs Tony at the bench (merged from bench-tomorrow.md + unknowns.md, 2026-09-06)
 
-**The running order is [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md)** — the same items
+**The running order is [`bench-plan.md`](bench-plan.md)** (2026-09-18). The method of the older rungs is in
+[`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) — the same items
 grouped by SETUP BLOCK with the exact command, reading and control per rung, plus the four traps that
 fake a result (`firemode_probe`'s raw-vs-doc token index; `tutorial_frames` shipping one `$SIR` row and
 `$BMAP,0,0` only; and that it disconnects, so it cannot read `$ALCD`). This section stays the register:

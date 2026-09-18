@@ -1,5 +1,7 @@
 # Bench run sheet — the four readings left that gate the KotH build
 
+> **Superseded 2026-09-18 by [`bench-plan.md`](bench-plan.md).** Its four readings moved to other sheets; the plan says where. Kept as history.
+
 Updated: 2026-09-11. **Read this file and nothing else.** It is self-contained: every command below was
 run against its own source on 2026-09-10 (the generator ones were executed; the hardware ones are
 quoted from tools that exist). Links are for mechanism only — you do not need them to run the session.
