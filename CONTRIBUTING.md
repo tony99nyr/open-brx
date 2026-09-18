@@ -84,6 +84,11 @@ a push to `main` deploys the site, and Cloudflare rebuilds it itself (`wrangler.
 `webapp/download/build.json` are the exception — they're hand-kept, not generated, and stay tracked.
 
 `site/shots/` holds the marketing screenshots, generated from the real UIs by `cd site && npm run shots`.
+⚠ **Never write GitHub's skip keyword in a commit message, not even to explain it.** GitHub scans the
+whole message, so a commit that described the shots job's loop guard and quoted the token ran no CI at
+all: no red build, no queued run, only the Cloudflare check on the commit (2026-09-18). Say "the skip
+keyword" in prose and leave the literal token in the workflow file, where it is inert.
+
 The `site-shots` job in `.github/workflows/ci.yml` regenerates them on every push to `main` that leaves
 them stale, and commits the result back as `github-actions[bot]`, so **a stale shot can no longer keep CI
 red**. The local check is unchanged: `pnpm run test:all` still fails on a UI commit until you capture, and
