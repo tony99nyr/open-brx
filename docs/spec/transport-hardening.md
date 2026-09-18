@@ -1,7 +1,8 @@
 # Transport hardening: what a node may write to a gun, how fast, and how it knows the gun is still there
 
 - **Status:** design, 2026-09-18. Two parts are built (§4 the deny list, §3 the pacing constants). The rest is
-  a design that waits on the measurements in `docs/bench-firmware-levers-2026-09-19.md` §14 ("bench §14" below).
+  a design that waits on the measurements in Phase A of `docs/bench-screamers-2026-09-19.md` ("bench A8" below means its step A8;
+  the levers sheet §14 maps its old step numbers to these).
   Binds to `node.md` §7 (the BLE plumbing), `contracts.md` §8 (the frame contract) and `protocol/brx-protocol.md`
   §1 to §2 (the serial parser).
 - **Owner interface:** the node (`app/src/brxlink.js`, `app/src/engine.js`), the bench stage (`mcp/brx_mcp/stage/`),
@@ -80,20 +81,20 @@ With `blockFrames` > 0 the link sleeps `blockPauseMs` after every `blockFrames` 
 the last frame. The values ship as the field has run since 2026-08. Turning the block pause on is a one-line
 change in `WRITE_PACING`, so a bench session can try a value without touching the write loop.
 
-**Why a pause at all (design, needs bench §14.1 and §14.2).** §1.1 says the gun drains one byte per loop pass.
+**Why a pause at all (design, needs bench A8 and A7).** §1.1 says the gun drains one byte per loop pass.
 The loop pass time is not known; if it is near 1 ms, an arm burst of 1012 bytes at the phone's pacing arrives in
 about 1.2 s and the gun drains it in about 1 s, so the buffer never nears 1 KB. If the pass is slower under audio
-or IR load, the buffer fills and §1.3 happens. Bench §14.1 (200 arms, count the frames that did not apply) and
-§14.2 (40 short frames with and without a 300 ms pause every 10) give the number. Until then the pacing stays
+or IR load, the buffer fills and §1.3 happens. Bench A8 (200 arms at the phone's pacing, count the frames that did not apply) and
+A7 (short frames with and without a 300 ms pause every 10) give the number. Until then the pacing stays
 where it is: a slower arm costs real seconds at the line, and the evidence for it is a reading of code.
 
-**Frames that barely overflow 20 bytes (design, needs bench §14.1).** The 13 or 14 runt packets per arm are the
+**Frames that barely overflow 20 bytes (design, needs bench A8).** The 13 or 14 runt packets per arm are the
 frames most exposed to a lost trailing packet (§1.3: the lost byte is the `*`). Two ways to remove them:
 
 - Trim the trailing empty tokens of the fn-28 registrar rows (`$SIR,0,0,,28,0,0,1,,*` is 21 B; without the last
   empty token it is 20 B). The firmware reads `$SIR` tokens positionally, and an absent token reads as empty, so
   this should be safe. **It is not measured.** A `$SIR` row is the arming of hit reception (F11), so this is not
-  changed on a reading: bench §14.1 first, with the trimmed row on one gun and the full row on the other.
+  changed on a reading: bench A8 first, with the trimmed row on one gun and the full row on the other.
 - Request a larger ATT MTU. The gun's radio negotiated 23 on every bench so far (`protocol` §1), and the 2018 app
   asked for 512 and still wrote 20-byte batches. Not a lever we control.
 
@@ -112,7 +113,7 @@ and it is enforced in three places:
    it at push time rather than the phone dropping it silently mid-match.
 3. The instrument (`server.send`, `send_batch`) refuses it, and `confirm=true` does not override. The one
    exception is the hang-prone class (`protocol.HANG_PRONE_COMMANDS`, today `$DPLAY` alone): `send` lets it
-   through with `confirm=true` AND `allow_hang=true`, so bench §14.4 can make a screamer on demand; `send_batch`
+   through with `confirm=true` AND `allow_hang=true`, so bench A1 can make a screamer on demand; `send_batch`
    and the node never send it.
 
 What is on it, and why: `$DPLAY` (§1.4, the only blocking wait reachable over BLE); factory and provisioning
@@ -125,16 +126,16 @@ claim that every other command is safe, only that these are known to be unsafe.
 
 Not on it, on purpose: the `$PB*` and `$AS` native-hosting family. They start the gun's own game paths, which hold
 four of the six blocking waits, but they are on the known list (bench tools use them) and no compiled bundle
-carries them. If bench §14.4 shows a `$PB*` start can hang a gun, they move.
+carries them. If bench A1-A3 show a `$PB*` start can hang a gun, they move.
 
-## 5. Write with response for multi-packet frames (design, needs bench §14.1)
+## 5. Write with response for multi-packet frames (design, needs bench A8)
 
 Every write today is `writeWithoutResponse` (`brxlink.js`, `ble.py`): no packet is acknowledged at the link layer,
 and a lost packet is invisible. Jay's ESP32 writes every chunk WITH response, and so did the 2018 app; neither
 reports a screamer from that path. The option: write the chunks of a multi-packet frame with response and leave
 single-packet frames as they are. A response write costs one connection interval per packet (about 30 to 50 ms on
 the intervals seen), so a 6-packet `$WEAP` goes from about 48 ms to about 250 ms, and an arm from about 1.2 s to
-about 2.5 s. Worth it only if §14.1 shows frames going missing at the current pacing. If it does, the change is
+about 2.5 s. Worth it only if A8 shows frames going missing at the current pacing. If it does, the change is
 one line in `brxlink.write` (and `ble._write`), and it applies to head and spawn only; a revive is on the critical
 path of a waiting player.
 
@@ -185,20 +186,20 @@ Design, three parts, none built yet:
 shows). The lock-up detector replaces that reading with a question the gun can answer: silence plus no `$PONG`.
 A `$PING` costs 7 bytes and the gun answers it in about 59 ms. This is the one timer-driven write §2 allows.
 
-Open: whether a screamer's radio really keeps the link up (bench §14.4 answers it: if the link drops instead, the
+Open: whether a screamer's radio really keeps the link up (bench A1 answers it: if the link drops instead, the
 detector is simply the existing drop path plus a "power-cycle" hint when the reconnect fails three times).
 
 ## 8. Bench steps that settle this design
 
 | Measure | Status | Settled by |
 |---|---|---|
-| §3 block pause on, a value | design | bench §14.1, §14.2, §19 (the gap sweep) |
-| §3 trim the runt `$SIR` rows | design | bench §14.1 (one gun trimmed, one full) |
-| §4 deny list | built | none needed; §14.4 may ADD `$PB*` |
-| §5 write with response on multi-packet frames | design | bench §14.1 |
+| §3 block pause on, a value | design | bench A8, A7; levers sheet §19 (the gap sweep) |
+| §3 trim the runt `$SIR` rows | design | bench A8 (one gun trimmed, one full) |
+| §4 deny list | built | none needed; A1-A3 may ADD `$PB*` |
+| §5 write with response on multi-packet frames | design | bench A8 |
 | §6 `$QUERY` read-back of id, team, pools | design | bench-firmware-levers claim 19 (§18) |
-| §7 lock-up detector | design | bench §14.3, §14.4 (does the link stay up?), plus the idle `$VOLTS` cadence |
-| §2 the budget rule | design | bench §14.3 (20 minutes at the old S42 rate: how long to a lock-up?) |
+| §7 lock-up detector | design | bench A13, A1 (does the link stay up?), plus the idle `$VOLTS` cadence |
+| §2 the budget rule | design | bench A13 (20 minutes at the old S42 rate: how long to a lock-up?) |
 
 FOLLOWUPS rows: F255 (pacing + runt rows), F256 (write with response), F257 (`$QUERY` read-back), F258 (lock-up
 detector), F259 (the `$PB*` question). F208 and F163 point here.

@@ -1,7 +1,7 @@
 # Bench: verify the firmware findings (2026-09-19)
 
 This sheet verifies, on our v4.32 guns, every claim that the 2026-09-18 analysis of Jay's Drive produced. It runs as
-four sessions. Run them in order. Session 1 decides how much the rest is worth: if `$STUN` and `$BUMP` do nothing,
+five sessions. Run them in order. Session 1 decides how much the rest is worth: if `$STUN` and `$BUMP` do nothing,
 v4.32 has drifted from V4_30, and the later sessions shrink.
 
 | session | time | needs | sections |
@@ -9,7 +9,7 @@ v4.32 has drifted from V4_30, and the later sessions shrink.
 | 1. Core | 45 min | two guns | §1 (F206, confirms the shipped fix), §2 (melee), §4 step 1, §5 step 1, §13 |
 | 2. Levers | 75 min | two guns | §3, §4 step 2, §5 rest, §6, §7, §8, §9, §10, §12, §15, §18 |
 | 5. Gap sweep | 90 min | two guns, the IR rig for two steps | §19 |
-| 3. Transport | 30 min attended, then unattended | one gun, a laptop | §14 |
+| 3. Transport | see the screamers sheet | one gun, a laptop | §14 (now `bench-screamers-2026-09-19.md` Phase A) |
 | 4. IR rig | 60 min | two guns, the ESP32 IR rig | §11, §16, §17, §20 |
 
 **Claim checklist.** Tick each claim in the experiment log as CONFIRMED, REFUTED or DIFFERENT (and how). A claim
@@ -26,12 +26,12 @@ reaches `docs/manual/` only when it is CONFIRMED here.
 | 7 | `$SPAWN,<n>` spawns with shield n (V4_30) | 6 |
 | 8 | `$PRES` scales damage per cell; `$INVU` blocks damage; `$TMP` bonuses (V4_30) | 7 |
 | 9 | fn 24-27 are 5/4/3/2 s fuses; p5 is the cell the fuse fires (V4_30, sheets) | 8 |
-| 10 | The crit bonus is `$PSET` t6 (we ship 50), scaled by `$GSET` t7 (V4_30, sheets) | 9 |
+| 10 | The crit bonus is `$PSET` t6 (we ship 50), scaled by `$GSET` t7 (V4_31, sheets) | 9 |
 | 11 | fn 34/35 register on a dead gun; fn 38 halves HP damage; fn 30 back x2; fn 33 silent kill; fn 50-52 colour only (V4_30) | 10 |
 | 12 | `$SIR` p6/p8 make the victim re-emit the hit (splash) (V4_30, sheets) | 11 |
 | 13 | `$STOP` closes and `$START` opens IR reception (V4_30) | 12 |
 | 14 | The gun sends `$DD,<killer>,<team>` when it dies (Jay's code) | 13 |
-| 15 | Split frames get lost; bursts overflow; `$DPLAY` on a loop sound hangs the gun (V4_31) | 14 |
+| 15 | Split frames get lost; bursts overflow; `$DPLAY` on a loop sound hangs the gun (V4_31) | 14 (screamers sheet Phase A) |
 | 16 | `$RADSK` every 4 s keeps a headless gun linked (Jay's code, V4_31) | 15 |
 | 17 | `$IRTX` type 14 to a downed ally is a revive beam, read via fn 34 (BC app) | 16 |
 | 18 | Protocol-15 station words: magnitude 6 respawn, 8 perk, 10 proximity, 50 capture (Jay's code) | 17 |
@@ -67,30 +67,34 @@ step says **re-arm B**, send the victim head again.
 
 ## 1. F206: the team is overwritten at spawn (15 min, red blocker, confirms the shipped fix)
 
-Team games register no hits while FFA games register normally, and every hit in the F206 store shows
+Team games registered no hits while FFA games registered normally, and every hit in the F206 store shows
 `shooter_team: 0`. The V4_31 disassembly gives a static root cause:
 - The gun keeps **one team byte**. The outgoing IR word reads it, and the friendly-fire check compares against it.
 - `$TID`, `$TEAM` and `$PSET` t2 all write that byte, so the last one sent wins.
-- MC's head sends `$PSET` (t2 = 0), then `$TID`, so the gun is right after arming. But the phone writes a fresh
-  `$PSET` from `pset_pool` before every `$SPAWN` (`app/src/engine.js:1493`, `:1981`), and `gameconfig._pset` hard-codes
-  t2 = 0. **So at go-live every gun becomes team 0.** With `$GSET` t1 = 0, every enemy hit then looks like a
-  same-team hit and is dropped. FFA ships t1 = 1, so hits pass there.
+- Before the fix, MC's head sent `$PSET` (t2 = 0), then `$TID`, so the gun was right after arming. But the phone
+  wrote a fresh `$PSET` from `pset_pool` before every `$SPAWN` (`app/src/engine.js`, `_spawn()` and `_revive()`), and
+  `gameconfig._pset` hard-coded t2 = 0. **So at go-live every gun became team 0.** With `$GSET` t1 = 0, every enemy
+  hit then looked like a same-team hit and was dropped. FFA ships t1 = 1, so hits passed there.
+
+The fix shipped on 2026-09-18 (`d0f4c729`): every `$PSET` carries the `$TID` team, and `$TID` follows every
+`$SPAWN`. MC no longer produces the frame order of run a, so send runs a to e as hand-sent frames from the
+instrument. Run f is the end-to-end check of the fix.
 
 Keep `$GSET` t1 = 0 on both guns. For each run, send the frames in the order shown, then fire 3 shots at B. Record
 whether B registers, `$HIR` token 4 (the shooter's team as B sees it), and `$QUERY` reply token 2 on both guns.
 
 | run | order of team frames on each gun (A team 1, B team 2) | expect |
 |---|---|---|
-| a | `$PSET` t2 = 0, `$TID`, then `$PSET` t2 = 0 again, then `$SPAWN,,*` (what MC and the phone do today) | **no hits** (F206 reproduced) |
+| a | `$PSET` t2 = 0, `$TID`, then `$PSET` t2 = 0 again, then `$SPAWN,,*` (what MC and the phone sent before the fix; hand-sent) | **no hits** (F206 reproduced) |
 | b | as run a, but both `$PSET` frames carry the real team in t2 | hits, `$HIR` token 4 = 1 |
 | c | as run a, then `$TID` again after `$SPAWN,,*` | hits |
 | d | `$PSET` t2 = 0, `$TID`, `$SPAWN,,*` (no second `$PSET`) | hits: the control that shows `$TID` works when nothing overwrites it |
 | e | run b, but both guns on team 1 | no hits: t1 = 0 still blocks a real same-team hit |
 | f | a real TDM match armed by MC and the phones, with the F206 fix built in | hits on both teams: the fix works end to end |
 
-**Reading.** Run a dead and run b alive confirms the root cause. The fix is then one token: `_pset` and `pset_frames`
-put the player's team in t2. Keep `$TID` as well. If `$QUERY` token 2 tracks the team, MC can check every gun's team
-after arming.
+**Reading.** Run a dead and run b alive confirms the root cause. Run f alive confirms the shipped fix (`_pset` and
+`pset_frames` put the player's team in t2, and `$TID` is re-sent after `$SPAWN`). If `$QUERY` token 2 tracks the team,
+MC can check every gun's team after arming.
 
 ## 2. Melee (K4, 10 min)
 
@@ -130,7 +134,10 @@ row with no IR. That covers zone damage, a poison tick with attribution, and a r
 
 Send each frame to B only:
 1. `$BHIT,0,1,1,9,0,0,0,*`. Expect `$HIR` with shooter 1 and team 1, and HP down by 9.
-2. `$BHIT,0,1,1,9,1,0,0,*`. The crit bit is set, so expect 13 (the x1.5 from 09-18).
+2. `$BHIT,0,1,1,9,1,0,0,*`, with B's `$GSET` t7 = 0 (as MC compiles it). The crit bit is set, but a host `$BHIT`
+   gets only the victim's t7 bonus: in V4_31 the x1.5 from 09-18 is the shooter's `$PSET` t6, applied before the
+   word leaves the gun. So expect 9, not 13. A 13 means v4.32 applies a crit bonus on the victim side at t7 = 0,
+   and the V4_31 reading of the crit does not hold for v4.32.
 3. `$BHIT,0,1,2,9,0,0,0,*`. B is team 2 and t1 = 0, so expect a block. This also tests §1 from the host side.
 4. Set B's `<0,0>` row to fn 20 (`$SIR,0,0,,20,0,0,1,,*`), then repeat step 1. Expect armour only.
 
@@ -156,12 +163,14 @@ V4_30 reads `$BUMP,<amount>,<hp>,<armour>,<shield>,<sound>,*`. Tokens 2-4 are on
 negative amount drains the shield, then the armour, then the HP, and kills at 0. A positive amount heals the HP, then
 spills into the armour, then the shield. F65 sent all three flags as 0.
 
-Start B at 45 HP and 70 armour. Read `$QUERY` after each step.
+Start B at 45 HP and 70 armour. Read the current pools from `$HP` (or `$LCD`) after each step. Do not use `$QUERY`:
+V4_30 builds its pool fields from the maxima, not the current pools. Each step starts from the result of the step
+before it.
 1. `$BUMP,-20,1,1,1,,*`. Expect armour 50, HP 45.
-2. `$BUMP,-80,1,1,1,,*`. Expect armour 0 and HP 35 (the cascade).
-3. `$BUMP,-10,1,0,0,,*`. Expect HP 25 and nothing else.
-4. `$BUMP,30,1,1,0,,*`. Expect HP back to the maximum, with the rest going into armour.
-5. `$BUMP,-5,1,1,1,N94,*`. Does N94 (the 2018 app's out-of-bounds sound) play?
+2. `$BUMP,-80,1,1,1,,*`. Armour is 50, so expect armour 0 and HP 15 (the cascade).
+3. `$BUMP,-10,1,0,0,,*`. Expect HP 5 and nothing else.
+4. `$BUMP,50,1,1,0,,*`. Expect HP back to the maximum (45), with the other 10 going into armour (armour 10).
+5. `$BUMP,-5,1,1,1,N94,*`. Expect armour 5, HP 45. Does N94 (the 2018 app's out-of-bounds sound) play?
 
 **Reading.** A cascade gives one-command zone damage that respects armour, which `$LIFE` cannot do.
 
@@ -225,6 +234,9 @@ Arm A with the bench AR at `$WEAP` t6 = 100 (every shot a crit). Fire 3 shots pe
 2. A's `$PSET` t6 = 0. Then repeat on B's `$PSET` instead of A's, in case the victim applies it.
 3. A's `$PSET` t6 = 100. Expect 18.
 4. With t6 = 50, set B's `$GSET` t7 = 100. Does the crit grow again?
+5. **Rig control (needs the IR rig).** Set B's `$GSET` t7 = 0. Emit one rig word with C = 1 and magnitude 20 at B.
+   Expect 20 (x1) if the crit is shooter-side. A 30 means the victim applies x1.5 on the C bit at t7 = 0, which
+   is what our emitter's earlier x1.5 would mean if that victim's t7 was 0 (it was not recorded).
 
 **Reading.** If the damage follows t6, the crit bonus is a per-player number that MC sets, which makes a "Critical
 Strike" perk a single token.
@@ -259,30 +271,14 @@ Jay's ESP32 code reads a `$DD,<killer>,<team>` frame **from the gun** when its p
 confirmation on it. Our docs say the gun never sends `$DD`. With A arming and B at 9 HP, kill B with one shot. Log
 every frame B sends for 5 s after the death. If `$DD` arrives, the node gets kill attribution from the gun itself.
 
-## 14. How the transport fails (F-hardening, 30 min, can run unattended)
+## 14. How the transport fails (moved to the screamers sheet)
 
-Jay reports that guns lock up ("screamers") in long hosted games, more often with more players, and that no BLE
-command recovers them. A locked Teensy keeps looping its last audio buffer, which is the scream. We send every frame
-as 20-byte BLE packets with no confirmation. A lost packet leaves a broken frame. The questions:
+The transport steps now run as Phase A of [`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md), so the
+two sheets do not overlap. The old step numbers map like this: §14.1 lost frames = A8, §14.2 bursts = A7, §14.3
+lock-up under the old S42 writer = A13, §14.4 `$DPLAY` = A1-A3, §14.5 recovery = the recovery rule in that sheet's
+rules.
 
-1. **Lost frames.** Send B the bench AR `$WEAP` (101 bytes, 6 packets) 200 times with the phone's pacing (8 ms per
-   packet, 18 ms per frame). After each one, read `$ALCD` and check the magazine. Count the frames that did not
-   apply. Then repeat with no gap between frames.
-2. **Bursts.** Send 40 short frames (`$PLAY,U37,3,10,,,,,*`) with no gap. Count how many play. Then send them in blocks
-   of 10 with a 300 ms pause between blocks, and count again.
-3. **Lock-up.** Replay the removed S42 live-accuracy writer's pattern (a `$WEAP` plus an `$AMMO` every 250 ms) to B for up to
-   20 minutes, or until B stops answering `$PING`. Record the time and frame count at lock-up, and whether it
-   screams. Power-cycle to recover.
-4. **The cheapest reproduction.** V4_31 has six "wait while this audio channel plays" loops with no timeout, and
-   none of them reads the serial port while it waits. `$DPLAY` is one of them and can be sent over BLE. Send B
-   `$DPLAY,A10,4,*` (a looping sound, the shield loop `A10`, on channel 4; token 3 is untraced) and watch whether B stops answering `$PING`. If it hangs,
-   we have a screamer on demand, and a list of frames the node must never send. The instrument refuses `$DPLAY`
-   by default (it is on the deny list, `protocol.HANG_PRONE_COMMANDS`): send it with `confirm=true` AND
-   `allow_hang=true` on the `send` tool, one frame, never in a batch.
-5. **Recovery.** If B screams, try `$PLAYX,0,*`, then `$HLED,,6,*`, then `$STOP,*` before the power cycle, and note
-   whether any gets through.
-
-**Reading.** Step 3 gives the per-gun traffic budget that the hardening work designs to. If it locks up in minutes,
+**Reading.** A13 gives the per-gun traffic budget that the hardening work designs to. If it locks up in minutes,
 the removed S42 writer's rate was a screamer cause, and no future writer may come near that rate.
 
 ## 15. A headless gun and `$RADSK` (10 min)
@@ -304,8 +300,9 @@ once a second while it is stunned, and the downed gun carries `$SIR,14,0,NULL,34
 type-14 reports and revives after 8 s with `$LIFE,30,0,0,1,*`.
 
 1. Give B the row `$SIR,14,0,NULL,34,,,,,*`. Kill B.
-2. From A (same team as B), send `$IRTX,0,14,1,2,1,0,0,100,1,,1,*` once a second for 10 s, pointed at B.
+2. Put A and B on one team for this run: send `$TID,2,*` to A. Then, from A, send `$IRTX,0,14,1,2,1,0,0,100,1,,1,*` once a second for 10 s, pointed at B.
 3. Log B's `$HIR` frames. Then send B `$LIFE,30,0,0,1,*`.
+4. Send `$TID,1,*` to A to put it back on team 1 before the next section.
 
 **Reading.** Type-14 `$HIR` frames on a dead B mean a teammate revive runs through the taggers themselves. Also note
 whether A's `$IRTX` leaves the gun or the headset.
@@ -347,7 +344,8 @@ result, including nulls, against the row id.
    `$LIFE,0,0,20,*`), armour 5, HP 45. One hit of 40 per function. Record each pool.
 3. **fn 31 and 32 (U11).** With `$GSET` t1 = 1, hit a live B once on each. Watch the LEDs and `$HIR`.
 4. **`$GSET` t2 on one side only (F162, F198).** Shooter t2 = 1 and victim t2 = 0, then swap. Count hits at 10 m.
-5. **t41 in indoor mode (Q15).** With `$GSET` t2 = 1 on both guns, compare `$WEAP` t41 = 5 against 75 indoors.
+5. **t41 in indoor mode (Q15).** With `$GSET` t2 = 1 on the SHOOTER only (as §20 step 2 does; t2 = 1 on the
+   receiving gun made it deaf at 30 ft on the bench), compare `$WEAP` t41 = 5 against 75 indoors.
    V4_30 applies the indoor fields only when t2 is not 0, which would explain why t41 was inert outdoors.
 6. **The ALT cycle list (F233).** Load four slots, send `$BMAP,1,100,0,1,2,3,*`, press ALT four times. V4_31 fills a
    four-entry cycle from tokens 3-6.
@@ -376,8 +374,9 @@ result, including nulls, against the row id.
 ## 20. Range is carrier frequency (20 min, needs the IR rig)
 
 The V4_31 trace shows that the range tokens (t2, t41, t13, t42, and `$IRTX` field 8) do not set emitter power. They
-detune the IR carrier: the gun emits at 38000 - 125 x (100 - range) Hz, so range 100 is 38 kHz and range 5 is
-26.1 kHz. Power changes only with the indoor/outdoor level (duty about 20 % indoors, 38 % outdoors). A receiver
+detune the IR carrier (formulas: `protocol/brx-protocol.md` §6, the `2, 41` row). The gun barrel (t2, t41) uses
+125 Hz per step below 100, so range 100 is 38 kHz and range 5 is 26.1 kHz. A word the headset emits (t13, t42 and
+`$IRTX` field 8) uses 140 Hz per step, so t13 = 13 is 25.8 kHz on the headset, not 27.1 kHz. Power changes only with the indoor/outdoor level (duty about 20 % indoors, 38 % outdoors). A receiver
 filters around 38 kHz, so a low range value is simply off-frequency. That explains the 2026-09-17 garden ladder: no hits
 at 5 (26.1 kHz), a transition between 13 and 26 (27.1 to 28.75 kHz), and a flat shelf above about 31 (29.4 kHz).
 t41 and t42 replace t2 and t13 only in indoor mode, and only when they are not 0.

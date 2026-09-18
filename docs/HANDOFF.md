@@ -5,7 +5,7 @@
 `jay-drive-integration` (the LaserTagMods drive: stock firmware images, Jay's ESP32 sources, BC's command sheets
 and BC's 2018 app). Main also gained a Callsign capture (cap30) and a weapons pass the same day. **Every firmware
 fact from the drive is a disassembly reading, not a measurement on v4.32**; the bench that settles them is
-`bench-firmware-levers-2026-09-19.md` (four sessions, a 20-claim checklist).
+`bench-firmware-levers-2026-09-19.md` (five sessions, a 21-claim checklist).
 
 ⚠️ **Top priority (Tony): screamers.** A gun locks up in play, a sound loops, and only a power cycle recovers it. The plan
 to reproduce and prevent them is [`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md). Its Phase C
@@ -31,7 +31,7 @@ tool is built: `python -m brx_mcp soak <address> <pattern> <minutes>` (`soak-too
    `$BUMP,12,,1,,,*`, which confirms the armour flag on the wire. The hp and shield flags, negatives and the
    cascade are still to bench (levers sheet §5, F65).
 5. **The second emitter is priced** (`9b7d2ae0`, `afe064c4`). One Shotgun pull lands two words (gun 45, headset
-   70, cap30), which settles F71. t12 is now a declared `wire.headset_dmg`; the Shotgun ships 20 + 20. The drive
+   70, cap30), which narrows F71 (still open, see F254). t12 is now a declared `wire.headset_dmg`; the Shotgun ships 20 + 20. The drive
    adds that the range tokens set the IR **carrier frequency**, not the power, which bears on F254 (at what `t13`
    the headset word stops arriving). `$GSET` t2 = 1 means indoor; Callsign sends 0 on its default OUTDOOR venue.
 6. **The protocol reference is tagged by evidence** (`[disasm]` `[sheet]` `[apk2018]` `[jay]`; no tag = bench).
@@ -43,7 +43,7 @@ tool is built: `python -m brx_mcp soak <address> <pattern> <minutes>` (`soak-too
 1. **Push and merge this branch** after `npm run test:all -- --ui` (known red on main: app-screens #53 and some
    app-e2e steps).
 2. **Screamers first** (top priority): the screamers sheet, Phase C can run unattended on one gun with `soak`. Do not turn
-   the block pause on before levers sheet §14 gives F255/F256/F258 their numbers.
+   the block pause on before screamers sheet Phase A gives F255/F256/F258 their numbers.
 3. **Levers bench, session 1** (45 min, two guns): §1 F206, §2 melee, §4 `$STUN`, §5 `$BUMP`, §13 `$DD`. If
    `$STUN,3000` and `$BUMP,-20,1,1,1` behave as V4_30 says, run the rest; if not, v4.32 has drifted.
 4. **After §1 passes:** close F206 (one dated line in the archive) and start F257 (the `$QUERY` team read-back).

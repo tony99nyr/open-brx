@@ -1242,9 +1242,9 @@ and every number in it comes from a `$HP` delta.
 
 ### 6.5 Range is a carrier frequency, so our range ladder is largely fiction
 
-⭐ **2026-09-18, V4_31 disassembly via the LaserTagMods session** (trace, not bench proof). The gun's IR
-carrier is **`38000 − 125 × (100 − range)` Hz**, and exactly 38 kHz at 100 or above. **Emitter power does
-not move with range at all**: the PWM duty is set by the indoor/outdoor level alone, about 20% and 38%.
+⭐ **2026-09-18, V4_31 disassembly via the LaserTagMods session** (trace, not bench proof). The range tokens set the IR
+carrier frequency, not the emitter power. The barrel and headset formulas are in
+[`protocol/brx-protocol.md`](../protocol/brx-protocol.md) §6 (the `2, 41` row); this section uses the barrel one.
 
 So a low `t2` does not shorten the beam. It **detunes the carrier out of the receiver's roughly 38 kHz
 band-pass**, and the "range" we have been tuning is really "how far out of tune is this shot". That

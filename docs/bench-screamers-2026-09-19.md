@@ -7,6 +7,8 @@ to make our system never create the conditions that lock a gun, and to recover f
 
 **Tony, 2026-09-18: this is P0.**
 
+Phase A also carries the transport steps of the levers sheet (`bench-firmware-levers-2026-09-19.md` §14 maps them).
+
 ## What we think causes it
 
 These are leads from the V4_30/V4_31 firmware disassembly. None is proven on v4.32:
@@ -27,7 +29,8 @@ day.
 
 ## Rules for every session
 
-- A screamer is recovered by a power cycle of the gun. Power-cycle the headset too if it stays lit.
+- A screamer is recovered by a power cycle of the gun. Power-cycle the headset too if it stays lit. Before the
+  power cycle, send `$PLAYX,0,*`, then `$HLED,,6,*`, then `$STOP,*`, and note whether any of them gets through.
 - Use `$VOL,65`. Volume is not a factor here.
 - **Definitions.** Record every event as one of these:
   - **LOCK-UP**: no `$PONG` for 10 s after a `$PING`, and the gun does not recover without a power cycle. Note
@@ -43,18 +46,19 @@ Each step tries one suspected trigger. Arm the gun with the bench victim head (`
 
 | step | trigger | how | expect if the lead is right |
 |---|---|---|---|
-| A1 | hang loop | `$DPLAY,A10,4,*` (the shield loop, a looping sound) | LOCK-UP with the loop still playing |
+| A1 | hang loop | `$DPLAY,A10,4,*` (the shield loop, a looping sound; token 3 is untraced). Send it with `confirm=true` AND `allow_hang=true` on the `send` tool, one frame, never in a batch | LOCK-UP with the loop still playing |
 | A2 | control for A1 | `$DPLAY` with a short one-shot sound | the gun answers again after the sound ends |
 | A3 | hang loop, other channel | repeat A1 with token 2 = 1, 2 and 3 | shows which channels hang |
 | A4 | lost `*` | send `$PLAY,U37,3,10,,,,,` (no `*`), then a normal `$QUERY,*` | BAD FRAME: the query is corrupted |
 | A5 | long token | send a frame with one 400-character token | LOCK-UP or BAD FRAME |
 | A6 | many tokens | send a frame with 70 tokens | the token index wraps; BAD FRAME |
-| A7 | burst | 100 short frames with no gap | count how many apply; any LOCK-UP |
-| A8 | burst of long frames | 50 × the bench AR `$WEAP` (101 bytes) with no gap | count lost frames; any LOCK-UP |
+| A7 | burst | 100 short frames (`$PLAY,U37,3,10,,,,,*`) with no gap; then the same in blocks of 10 with a 300 ms pause between blocks | count how many apply at each pacing; any LOCK-UP |
+| A8 | burst of long frames | 50 × the bench AR `$WEAP` (101 bytes, 6 packets) with no gap; then 200 × with the phone's pacing (8 ms per packet, 18 ms per frame), reading `$ALCD` after each | count lost frames at each pacing; any LOCK-UP |
 | A9 | IR load | the IR rig fires valid hit words at the gun at 10 per second for 5 min, while `$PING` runs | does IR load alone slow or hang the gun |
 | A10 | IR plus BLE | A9 and A7 together | the player-count case: many hits and much traffic at once |
 | A11 | headset drop | switch the headset off during A7 | the gun resets its radio link; does it lock |
 | A12 | low battery | repeat A7 on a pack below 20 % | any difference |
+| A13 | our old peak writer | replay the removed S42 live-accuracy writer's pattern (a `$WEAP` plus an `$AMMO` every 250 ms) for up to 20 min | the time and frame count at any LOCK-UP: the per-gun traffic budget |
 
 **Reading.** A1 locking and A2 not locking proves the hang-loop mechanism. From then on, "screamer" means a known
 code path, and prevention is a rule. If nothing in Phase A locks a gun, the lock-up needs time or conditions we have
@@ -67,7 +71,7 @@ For every trigger that Phase A reproduces, write one rule and enforce it in code
 
 | trigger reproduced | rule | where it is enforced |
 |---|---|---|
-| a hang-loop frame | the frame is on the node's never-send list | `app/src/brxlink.js` refuses it; `protocol.py` requires confirm |
+| a hang-loop frame | the frame is on the node's never-send list | the node's one write path, `_write` in `app/src/engine.js`, drops any `NODE_DENIED_COMMANDS` frame; `protocol.py` refuses a `DENIED_COMMANDS` frame even with confirm, and passes `$DPLAY` (`HANG_PRONE_COMMANDS`) only with confirm plus `allow_hang` |
 | lost `*` / parser corruption | every frame is complete and ends with `*`; nothing is sent mid-frame by a second writer | the link's single writer |
 | burst overflow | the node paces writes: a gap between frames and a pause between blocks, at the values Phase A shows are safe | `brxlink.js` pacing constants |
 | long frames lost | multi-packet frames are sent with write-with-response, or split into shorter frames where the firmware allows | the link, after an A/B run |
