@@ -161,6 +161,7 @@ export const NO_FIRE_PULLS = 3;
 export const QUERY_REPLY_MS = 1500;      // how long a probe has to answer before it counts as lost -- TRIGGER_NO_FIRE_MS, the same wire and the same measurement
 export const CURE_ASKS = 2;              // probes before the cure gives up: one lost notification is ordinary, two in a row is not
 export const CURE_COOLDOWN_MS = 30000;   // the floor between cures, ACROSS lives
+export const CURE_MAX_BLIND = 2;         // blind revives (no probe answered at all) before the node stops and leaves it to the operator
 /** F264: the divergence poll. The gun's outbound stream does NOT stop in this fault (`$VOLTS` kept arriving
  *  through both proven stalls), so a "gun has gone quiet" watchdog can never catch it and `no_fire` needs the
  *  player to pull a dead trigger three times. Polling catches the same divergence with nobody pulling anything.
