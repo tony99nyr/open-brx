@@ -5,7 +5,7 @@ import math
 
 from typing import Sequence
 
-from .compile import DEFAULT_POOL
+from .compile import CHARGE_TAP_CADENCE_MS, DEFAULT_POOL
 from .types import Weapon, WeaponView
 
 # The pool one hit is measured against when the caller does not say: 45 HP + 70 armour (GameConfig
@@ -86,14 +86,25 @@ def weapon_view(w: Weapon, pool: int = DEFAULT_POOL) -> WeaponView:
     dmg_hit = real_hit if real_hit is not None else (
         round(DEFAULT_POOL * dmg_num / 100) if dmg_num is not None else None)
     published = _num(st.get("htk"))
-    if real_hit:
+    # F225/F226/S43 (2026-09-17): a CELL weapon (the Charge Rifle) counts TRIGGER ACTIONS, not
+    # equal-sized hits -- one charge (`real_hit`) plus however many taps (`tap_dmg`) close the rest of
+    # `pool`. `WeaponCatalog.hits_to_kill()`/`time_to_kill()` do the same maths server-side at the
+    # default pool; this redoes it here because the view must recompute at whatever pool the HOST set
+    # (W2), and a synthetic/demo row carries no `tap_dmg` at all (falls through to the plain branch).
+    tap_dmg = _num(st.get("tap_dmg"))
+    if real_hit and tap_dmg:
+        htk = 1 if pool <= real_hit else 1 + math.ceil((pool - real_hit) / tap_dmg)
+    elif real_hit:
         htk = math.ceil(pool / real_hit)
     elif published:
         htk = max(1, math.ceil(published * pool / DEFAULT_POOL))
     else:
         htk = published
     cycle = _num(st.get("cycle_ms"))
-    if htk and cycle and "charged" in st:
+    if tap_dmg and htk:
+        # release-to-kill: the pre-built charge lands at zero delay, only the taps that follow cost time
+        ttk_ms = (htk - 1) * CHARGE_TAP_CADENCE_MS
+    elif htk and cycle and "charged" in st:
         ttk_ms = int(round(cycle * (htk if st["charged"] else htk - 1)))
     else:
         # no derivation chain (a synthetic row): the published figure still holds at the pool it was

@@ -157,7 +157,7 @@ Every known command, with args and meaning: host to tagger, tagger to host, and 
 | `$DISCONNECT,*` | n/a | Gun-initiated disconnect notice (e.g. the moment its headset is switched off). |
 | `$VOLTS,<pack_mV>,<cell_mV>,<t3>,<t4>,*` | e.g. `7662,3921,55,70` | Battery telemetry, about every 30 s in app mode. Token 1 = pack millivolts (7.662 V), token 2 = cell millivolts (3.921 V). Tokens 3-4: (unknown). |
 | `$LCD,<hp>,<armor>,<t3>,<t4>,<mag>,<reserve>,*` | e.g. `45,70,0,0,36,216` | **Health/armor HUD echo.** `$START` gives all zeros; `$SPAWN` gives pools plus the current weapon's ammo; death gives `$LCD,0,0,0,1,1,1,*`. Tokens 3-4: (unknown). A zeroed `$LCD` after `$SPAWN` means "no config loaded" (post power-cycle tell). |
-| `$ALCD,<mag>,<t2>,<slot>,<reserve>,<heat>,*` | e.g. `36,100,0,108,0` | **Ammo/weapon HUD stream.** Per-round during fire *and* reload (mag 0, 1, 2 and up as reserve drains). **Token 2 is live accuracy**, one value per round fired: it starts each life at the weapon's `$WEAP` t21 ceiling, walks down toward the t22 floor under sustained fire, and resets to the ceiling on reload. See the `$WEAP` t21/t22 rows above. It also drops to 0 after a `$SIR` fn 23 hit and recovers over about 6-8 s (see the `$SIR` function map). Token 3 = weapon slot. Token 5 = **weapon heat** (0-100+, only on overheat weapons). Only streams on ammo events. Silence is not "no change". |
+| `$ALCD,<mag>,<t2>,<slot>,<reserve>,<heat>,*` | e.g. `36,100,0,108,0` | **Ammo/weapon HUD stream.** Per-round during fire *and* reload (mag 0, 1, 2 and up as reserve drains). **Token 2 is live accuracy**, one value per round fired: it starts each life at the weapon's `$WEAP` t21 ceiling, walks down toward the t22 floor under sustained fire, and resets to the ceiling on reload. ⚠️ **The walk is not the same on every gun (2026-09-17, three guns, one frame):** one gun walked to the floor in 9 to 16 rounds, repeatedly, and it is the gun the 2026-09-09 model was measured on; the other two took one or two steps and then held, through a re-arm, a power cycle, both indoor and outdoor modes, still and moving. The hit roll itself works on all three. Treat the walk as gun-dependent until F230 explains it. See the `$WEAP` t21/t22 rows above. It also drops to 0 after a `$SIR` fn 23 hit and recovers over about 6-8 s (see the `$SIR` function map). Token 3 = weapon slot. Token 5 = **weapon heat** (0-100+, only on overheat weapons). Only streams on ammo events. Silence is not "no change". |
 | `$HIR,<sensor>,<irProto>,<shooterId>,<shooterTeam>,<magnitude>,<crit>,<subtype>,*` | e.g. `4,0,19,2,9,0,3` | **Hit received.** See the events section for the full decode. |
 | `$HP,<hp>,<armor>,<shield>,*` | e.g. `43,0,0` | Pools after a hit; arrives in the same millisecond as its `$HIR`. `$HP,0,0,0` = death. |
 | `$BUT,<id>,<state>,*` | id 0-5, state 1 press / 0 release | Physical button event (ids match `$BMAP`). Streams only in app mode. `$BUT,4,0` is also returned by `$MELEE`. |
@@ -287,8 +287,8 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 | 18 | reloadSpeed (ms) | 1400 | 2500 | Reload time. |
 | 19 | n/a | 0 | 0 | (unknown) |
 | 20 | **fire mode** | 0 | 14 | **Proven by one-field flip**: `0` full-auto, `7` single-shot/bolt, `9` burst (cycle in t23), `2` charge, auto-release (tap = weak shot), `3` hold-to-charge, auto-fire (tap = sound only), `14` tap-fire OR charge-release, `13` melee. |
-| 21 | maxAccuracy | 100 | 100 | **The accuracy ceiling.** `$ALCD` token 2 (live accuracy) starts each life here and never rises above it. Proven by one-field flip: t21=0 read 0 on `$ALCD` token 2 at arm time, before a shot was fired. |
-| 22 | singleShotAccuracy | 100 | 100 | **The accuracy floor.** Under sustained fire `$ALCD` token 2 walks down from the t21 ceiling toward this value and holds there; it does not go lower. Proven by one-field flip: t22=50 walked down and held at exactly 50, t22=0 walked to 0. Stock ships t21 = t22 = 100 on every weapon, which makes the ceiling equal the floor and disables the model. |
+| 21 | maxAccuracy | 100 | 100 | **The accuracy ceiling.** `$ALCD` token 2 (live accuracy) starts each life here and never rises above it. Proven by one-field flip: t21=0 read 0 on `$ALCD` token 2 at arm time, before a shot was fired. The ceiling applies on every gun tested (2026-09-17: a gun armed at 50/50 landed 12 of 32 shots, about 38%). |
+| 22 | singleShotAccuracy | 100 | 100 | **The accuracy floor.** Under sustained fire `$ALCD` token 2 walks down from the t21 ceiling toward this value and holds there; it does not go lower. Proven by one-field flip: t22=50 walked down and held at exactly 50, t22=0 walked to 0. ⚠️ **Measured on one gun.** Two other guns on the same firmware and frame took one or two steps and then held (2026-09-17, F230), so a floor below the ceiling does much less on them. Stock ships t21 = t22 = 100 on every weapon, which makes the ceiling equal the floor and disables the model. |
 | 23 | burstWeaponTime (ms) | n/a | n/a | Burst cycle: 275 Burst Rifle, 250 Force Rifle, empty on everything else. |
 | 24 | overheat (heat per shot) | 0 | 14 | SMG 5, Energy Rifle 6, Charge Rifle 14, Plasma Sniper 30. **Inert unless t37/t38 are set.** |
 | 25 | n/a | n/a | n/a | (unknown) |
@@ -445,7 +445,7 @@ $SIR,1,0,H29,10,0,0,1,,*    respawn + add HP
 $SIR,2,1,VA8C,11,0,0,1,,*   add shields
 $SIR,3,0,VA16,13,0,0,1,,*   add armor
 $SIR,6,0,H02,1,0,90,1,40,*  Rail Gun
-$SIR,8,0,,38,0,0,1,,*       Charge Rifle
+$SIR,8,0,,38,0,0,1,,*       Charge Rifle (fn 38 HALVES the magnitude, F225 -- MC re-keys this cell to fn 1)
 $SIR,9,3,,24,10,0,,,*       Energy Launcher (fn 24, under investigation: see the function map)
 $SIR,10,0,X13,1,0,100,2,60,* Rocket Launcher
 $SIR,11,0,VA2,28,0,0,1,,*   Tear gas
@@ -458,10 +458,11 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 
 | Class | Function ids | Measured behaviour | Polarity |
 |---|---|---|---|
-| Standard damage | 1, **3**, 4, 5, 7, 29, 30, 33, 38 | −20 per hit, drains shields, then armor, then HP | enemy only |
+| Standard damage | 1, **3**, 4, 5, 7, 29, 30, 33 | −20 per hit, drains shields, then armor, then HP | enemy only |
 | **Armor-piercing** | 2, 6 (+17, 21 enemy-side) | HP 45 to 25 to 5 with armor **and shields** untouched | enemy only |
 | **×1.25 damage on the headset, ×1 on the gun body** | 36 | Gun body: always ×1 (magnitude 20 lands as 20). Headset at the shipped t7=50: magnitude 20 lands as **25**, 40 as **50**, 9 as **11**, 7 as **8**. The result is the **floor**: 7 × 1.25 = 8.75 lands as 8, not 9 | enemy only |
 | **×2 damage on the headset, ×1 on the gun body** | 37 | Gun body: always ×1 (magnitude 20 lands as 20). Headset at the shipped t7=50: magnitude 20 lands as **40**, 40 as **80**, 9 as **18**, 7 as **14** | enemy only |
+| **×0.5 damage** | 38 | Bench 2026-09-17 (F225), headset front dome, gun sensor covered: a Charge Rifle charge of magnitude 100 landed **50**, a tap of magnitude 20 landed **10**, at `$GSET` t7 0 and 50 alike. Not one of the 10 protocol-independence-tested functions and not re-checked on the gun-body sensor, so its earlier place in the Standard damage row above was an assumption, not a measurement; MC no longer keys any weapon to it (`_SIR_TABLE`'s `<8,0>` cell moved to fn 1) | enemy only, headset-measured |
 | Add HP, overflow to armor | 9, 12, 16, 19 | 15 to 35 to 45, then +armor | ally only (16/19 also damage enemies) |
 | Add HP, clamp | 10, 17 | 15 to 35 to 45, no overflow | ally only (17 also AP-damages enemies) |
 | Add HP, overflow to shield | 14, 21 | 15 to 35 to 45, then +shield | ally only |

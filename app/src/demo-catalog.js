@@ -29,10 +29,10 @@ export const DEMO_WEAPONS = [
     "ttk_ms": 1600,
     "ammo_total": 70,
     "bars": {
-      "power": 43,
-      "rof": 64,
-      "ammo": 56,
-      "ttk": 82
+      "power": 50,
+      "rof": 56,
+      "ammo": 49,
+      "ttk": 50
     }
   },
   {
@@ -40,14 +40,14 @@ export const DEMO_WEAPONS = [
     "name": "Assault Rifle",
     "cls": "0",
     "weapon_class": "ballistic",
-    "desc": "The anchor, and the closest thing to the stock M4. 13 hits at 140ms with 32 up and 192 in reserve: 17 kills without resupply and a 1.68s kill. Battle Company cycles it at 100ms; at that speed with this magazine it out-classes ten other weapons outright, so it gives up some depth and a little rate to leave the rest of the arsenal a reason to exist.",
+    "desc": "The anchor, and the real stock M4 cadence. 13 hits at 100ms with 32 up and 192 in reserve: 17 kills without resupply and a 1.20s kill. 2026-09-17 arsenal review: cycle is back to Battle Company's native 100ms (it was throttled to 140ms so a deep reserve could not also out-cycle the field); the dominance test now grades on one-magazine kill chance rather than total kills, so the reserve alone no longer has to carry the whole weight of keeping the AR in check.",
     "clip": 32,
     "mags": 6,
     "reserve": 192,
     "reload_s": 1.4,
     "reload_ms": 1400,
     "dmg": 8,
-    "rpm": 54,
+    "rpm": 75,
     "rng": 75,
     "dmg_per_hit": 9,
     "pool": 115,
@@ -57,13 +57,13 @@ export const DEMO_WEAPONS = [
     ],
     "role": "assault",
     "htk": 13,
-    "ttk_ms": 1680,
+    "ttk_ms": 1200,
     "ammo_total": 224,
     "bars": {
-      "power": 31,
-      "rof": 91,
+      "power": 30,
+      "rof": 85,
       "ammo": 71,
-      "ttk": 73
+      "ttk": 90
     }
   },
   {
@@ -71,30 +71,30 @@ export const DEMO_WEAPONS = [
     "name": "Burst Rifle",
     "cls": "0",
     "weapon_class": "ballistic",
-    "desc": "A real three-round burst: one pull, three rounds, and the gun enforces the gap. 13 hits from a 36-round mag with 216 behind it; the most total ammo of the burst pair, and the tighter of the two.",
+    "desc": "A real three-round burst: one pull, three rounds, and the gun enforces the gap. 11 hits from a 36-round mag with 216 behind it; the most total ammo of the burst pair, and the tighter of the two. 2026-09-17 arsenal review: damage raised 9 to 11 so the burst pair separates further from the SMG-class assault weapons on hits-to-kill, not only on cadence.",
     "clip": 36,
     "mags": 6,
     "reserve": 216,
     "reload_s": 1.7,
     "reload_ms": 1700,
-    "dmg": 8,
+    "dmg": 10,
     "rpm": 100,
     "rng": 75,
-    "dmg_per_hit": 9,
+    "dmg_per_hit": 11,
     "pool": 115,
-    "verified": true,
+    "verified": false,
     "tags": [
       "assault"
     ],
     "role": "assault",
-    "htk": 13,
-    "ttk_ms": 1700,
+    "htk": 11,
+    "ttk_ms": 1417,
     "ammo_total": 252,
     "bars": {
-      "power": 31,
+      "power": 40,
       "rof": 100,
       "ammo": 78,
-      "ttk": 64
+      "ttk": 70
     }
   },
   {
@@ -102,30 +102,30 @@ export const DEMO_WEAPONS = [
     "name": "Charge Rifle",
     "cls": "5",
     "weapon_class": "energy",
-    "desc": "Hold, release, hit hard. A 1.25s charge into 100 damage: two hits to a kill and a heat budget that ends the party if you rush it. Twelve up, twelve back.",
-    "clip": 12,
-    "mags": 1,
-    "reserve": 12,
+    "desc": "Pre-charge it behind cover, then the kill is one release and two taps: an 85-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus two 20-damage taps drops a 115 pool in about 1s from release -- 3 trigger actions, 12 of the 40 rounds up, 84 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, eighty back -- three combo kills a magazine, ten across the kit.",
+    "clip": 40,
+    "mags": 2,
+    "reserve": 80,
     "reload_s": 2.5,
     "reload_ms": 2500,
-    "dmg": 87,
+    "dmg": 74,
     "rpm": 6,
     "rng": 75,
-    "dmg_per_hit": 100,
+    "dmg_per_hit": 85,
     "pool": 115,
     "verified": false,
     "tags": [
       "support"
     ],
     "role": "support",
-    "htk": 2,
-    "ttk_ms": 2500,
-    "ammo_total": 24,
+    "htk": 3,
+    "ttk_ms": 1000,
+    "ammo_total": 120,
     "bars": {
-      "power": 89,
-      "rof": 29,
-      "ammo": 27,
-      "ttk": 20
+      "power": 90,
+      "rof": 27,
+      "ammo": 56,
+      "ttk": 100
     }
   },
   {
@@ -154,10 +154,10 @@ export const DEMO_WEAPONS = [
     "ttk_ms": 1920,
     "ammo_total": 55,
     "bars": {
-      "power": 54,
-      "rof": 56,
-      "ammo": 49,
-      "ttk": 56
+      "power": 60,
+      "rof": 49,
+      "ammo": 42,
+      "ttk": 30
     }
   },
   {
@@ -165,14 +165,14 @@ export const DEMO_WEAPONS = [
     "name": "Energy Rifle",
     "cls": "5",
     "weapon_class": "energy",
-    "desc": "A 300-cell battery that barely stops. 9 a hit every 200ms, 23 kills on one magazine and 69 across the kit. The largest ammo pool in the game, on the smallest per-hit number.",
+    "desc": "A 300-cell battery that barely stops. 9 a hit every 150ms, 23 kills on one magazine and 69 across the kit. The largest ammo pool in the game, on the smallest per-hit number. 2026-09-17 bench (F229): now genuinely overheats — full auto locks it out around heat 99 after about 30 shots, and unlike the Charge Rifle it does not cool on its own; only the reload lever (a hold, not a tap) vents it.",
     "clip": 300,
     "mags": 2,
     "reserve": 600,
     "reload_s": 2.4,
     "reload_ms": 2400,
     "dmg": 8,
-    "rpm": 38,
+    "rpm": 50,
     "rng": 75,
     "dmg_per_hit": 9,
     "pool": 115,
@@ -182,13 +182,14 @@ export const DEMO_WEAPONS = [
     ],
     "role": "support",
     "htk": 13,
-    "ttk_ms": 2400,
+    "ttk_ms": 1800,
+    "caution": "Overheats after about 30 rounds of full auto, and it does not cool on its own: work the reload lever to vent the heat (about three pulls, or one held pull), then keep holding to recharge the cell.",
     "ammo_total": 900,
     "bars": {
-      "power": 31,
-      "rof": 73,
+      "power": 30,
+      "rof": 71,
       "ammo": 100,
-      "ttk": 29
+      "ttk": 40
     }
   },
   {
@@ -219,9 +220,9 @@ export const DEMO_WEAPONS = [
     "ammo_total": 4,
     "bars": {
       "power": 100,
-      "rof": 29,
+      "rof": 27,
       "ammo": 20,
-      "ttk": 100
+      "ttk": 90
     }
   },
   {
@@ -252,7 +253,7 @@ export const DEMO_WEAPONS = [
     "ammo_total": 4,
     "bars": {
       "power": 100,
-      "rof": 38,
+      "rof": 35,
       "ammo": 20,
       "ttk": null
     }
@@ -282,10 +283,10 @@ export const DEMO_WEAPONS = [
     "ttk_ms": 1600,
     "ammo_total": 30,
     "bars": {
-      "power": 66,
-      "rof": 47,
-      "ammo": 42,
-      "ttk": 82
+      "power": 70,
+      "rof": 42,
+      "ammo": 35,
+      "ttk": 50
     }
   },
   {
@@ -293,14 +294,14 @@ export const DEMO_WEAPONS = [
     "name": "SMG",
     "cls": "1",
     "weapon_class": "ballistic",
-    "desc": "A hose that runs hot. 8 a hit every 140ms from a 72-round mag: four kills before you reload, 24 across the kit, and an overheat budget that punishes holding the trigger down forever.",
+    "desc": "A hose that runs hot. 8 a hit every 95ms from a 72-round mag: four kills before you reload, 24 across the kit, and an overheat budget that punishes holding the trigger down forever.",
     "clip": 72,
     "mags": 4,
     "reserve": 288,
     "reload_s": 2.5,
     "reload_ms": 2500,
     "dmg": 7,
-    "rpm": 54,
+    "rpm": 79,
     "rng": 75,
     "dmg_per_hit": 8,
     "pool": 115,
@@ -310,13 +311,13 @@ export const DEMO_WEAPONS = [
     ],
     "role": "cqb",
     "htk": 15,
-    "ttk_ms": 1960,
+    "ttk_ms": 1330,
     "ammo_total": 360,
     "bars": {
       "power": 20,
-      "rof": 91,
+      "rof": 93,
       "ammo": 85,
-      "ttk": 47
+      "ttk": 80
     }
   },
   {
@@ -345,10 +346,10 @@ export const DEMO_WEAPONS = [
     "ttk_ms": 1500,
     "ammo_total": 28,
     "bars": {
-      "power": 77,
+      "power": 80,
       "rof": 20,
-      "ammo": 35,
-      "ttk": 91
+      "ammo": 27,
+      "ttk": 60
     }
   },
   {
@@ -356,14 +357,14 @@ export const DEMO_WEAPONS = [
     "name": "Suppressor",
     "cls": "1",
     "weapon_class": "ballistic",
-    "desc": "Quiet, not silent, and no muzzle flash. It is the only weapon here that hides where you are. 8 a hit every 160ms with 384 in reserve: 28 kills, the deepest sustained pool, the slowest kill.",
-    "clip": 48,
-    "mags": 8,
+    "desc": "Quiet, not silent, and no muzzle flash. It is the only weapon here that hides where you are. 8 a hit every 140ms with 75 up and 384 in reserve: 30 kills, the deepest magazine AND the deepest sustained pool, the slowest kill. 2026-09-17: mag 48→75 -- the family-scoped dominance test (§2.3) paired it against the SMG (same fire mode, same weapon_class), which beat it on every other axis; the deeper magazine gives the Suppressor an outright lead on kills-per-clip (5 vs the SMG's 4), which is the smallest change that stops the SMG strictly dominating it.",
+    "clip": 75,
+    "mags": 5,
     "reserve": 384,
     "reload_s": 2.0,
     "reload_ms": 2000,
     "dmg": 7,
-    "rpm": 47,
+    "rpm": 54,
     "rng": 75,
     "dmg_per_hit": 8,
     "pool": 115,
@@ -373,13 +374,13 @@ export const DEMO_WEAPONS = [
     ],
     "role": "support",
     "htk": 15,
-    "ttk_ms": 2240,
-    "ammo_total": 432,
+    "ttk_ms": 1960,
+    "ammo_total": 459,
     "bars": {
       "power": 20,
-      "rof": 82,
+      "rof": 78,
       "ammo": 93,
-      "ttk": 38
+      "ttk": 20
     }
   },
   {
@@ -387,8 +388,8 @@ export const DEMO_WEAPONS = [
     "name": "USP-S",
     "cls": "10",
     "weapon_class": "ballistic",
-    "desc": "The quiet one. Suppressed and flashless: 9 a hit, as fast as you can pull the trigger, 13 hits to drop, 20 in the mag with 120 behind it: 10 kills across the kit. Low damage, but nobody hears where it came from.",
-    "clip": 20,
+    "desc": "The quiet one. Suppressed and flashless: 9 a hit, as fast as you can pull the trigger, 13 hits to drop, 19 in the mag with 120 behind it: 10 kills across the kit. Low damage, but nobody hears where it came from. 2026-09-17: mag 20→19 -- Tony's ask was 20→14, but 14 leaves the Deagle strictly dominating the USP (its sustained DPS and one-magazine kill chance both fall too far once the mag is that shallow); 19 is the smallest cut off 20 that actually leaves neither pistol beating the other on every axis (a thin margin: sustained DPS differs by about 0.1 dmg/s, kill chance by 2 points).",
+    "clip": 19,
     "mags": 6,
     "reserve": 120,
     "reload_s": 2.2,
@@ -406,12 +407,12 @@ export const DEMO_WEAPONS = [
     "role": "sidearm",
     "htk": 13,
     "ttk_ms": 1920,
-    "ammo_total": 140,
+    "ammo_total": 139,
     "bars": {
-      "power": 31,
-      "rof": 82,
+      "power": 30,
+      "rof": 64,
       "ammo": 64,
-      "ttk": 56
+      "ttk": 30
     }
   }
 ];

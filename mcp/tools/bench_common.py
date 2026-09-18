@@ -35,9 +35,11 @@ PSET = "$PSET,{pid},0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H
 # two-sided $SIR function map"). ⚠ Rows 36/37 are the sensor-gated multiplier pair, RESOLVED
 # 2026-09-11 (bench) — see docs/weapon-design.md §6 and compile.py `headset_multiplier()`. They are
 # here because they are what the bench arms with, at PSET's crit_modifier=50 above.
+# ⚠ F225 (bench 2026-09-17): the `<8,0>` cell was function 38, which HALVES every hit (a charge of
+# 100 landed 50). Re-pointed at function 1 (plain damage) — see gameconfig.py `_SIR_TABLE`.
 SIRS = ["$SIR,0,0,,1,0,0,1,,*", "$SIR,0,1,,36,0,0,1,,*", "$SIR,0,3,,37,0,0,1,,*", "$SIR,10,0,X13,1,0,100,2,60,*",
         "$SIR,13,0,H50,1,0,0,1,,*", "$SIR,13,1,H57,1,0,0,1,,*", "$SIR,13,3,H49,1,0,100,0,60,*",
-        "$SIR,6,0,H02,1,0,90,1,40,*", "$SIR,8,0,,38,0,0,1,,*", "$SIR,9,3,,24,10,0,,,*"]
+        "$SIR,6,0,H02,1,0,90,1,40,*", "$SIR,8,0,,1,0,0,1,,*", "$SIR,9,3,,24,10,0,,,*"]
 
 # The plain-damage-only table, for a probe that wants one known function and no multiplier rows.
 SIR_PLAIN = "$SIR,0,0,,1,0,0,1,,*"
