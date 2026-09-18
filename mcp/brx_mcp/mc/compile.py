@@ -76,7 +76,7 @@ def check_volume(value) -> int:
 # CORRECTED READING, do not revert: this plumbing used to scale `$WEAP` t41 (`gunRangeIndoor`) by
 # venue. The 2026-09-17 garden test (Q15/F231) proved t41 is a NULL outdoors -- two slots
 # differing only in t41 (5 vs 75) scored 27/27 vs 55/57 at every paced distance, 3 m to ~200 ft --
-# while the SAME session found the real emitted-power control at `$WEAP` t2 (APK name
+# while the SAME session found the carrier-frequency control (a low value detunes the beam out of the receiver band-pass, it does not shorten it) at `$WEAP` t2 (APK name
 # `gunRangeOutdoor`): t2=5 landed 0 hits from 38 shots at any distance, t2=100 (the shipped value
 # on every gun) reaches ~200 ft, with a floor, a transition around 13-26, and a flat shelf from
 # ~31 up. F234 filed the fix: move this plumbing from t41 to t2. t41 stays written EXACTLY as the
@@ -1049,7 +1049,7 @@ class WeaponCatalog:
         put("reserve", reserve); put("reserve_half", reserve // 2)   # tok17 == 2 * tok40 (`_ammo` keeps it even)
         put("reload", reload_ms)
         put("swap", self.swap_ms(weapon_id, mods))
-        # t2 (F234): the venue-scaled range lever. t41 is deliberately NOT written here (see the
+        # t2 (F234): the venue-scaled carrier-frequency lever. t41 is deliberately NOT written here (see the
         # `_T` comment and the F234 block above `RANGE_OUTDOOR_FLOOR`) -- it stays exactly as the
         # capture carries it, byte for byte.
         put("range_outdoor", gun_range_outdoor_pct(
