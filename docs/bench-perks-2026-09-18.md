@@ -1,6 +1,6 @@
 # Bench: crits, anti-armour, and the perk levers (2026-09-18)
 
-About 40 minutes, two guns at the desk, no rig. It answers the questions the perk rework (S50) rests on. It
+About 45 minutes, two guns at the desk, no rig. It answers the questions the perk rework (S50) rests on. It
 also answers the one that gates a poison weapon (S16). Every
 step follows the method rules learned on 2026-09-17: cover the victim's gun sensor at close range (F228), give the
 victim the `$SIR` row for the shooter's damage key, and expect about 3 s between a tool call and the gun.
@@ -122,7 +122,24 @@ Run it three times. If the reload survives every time, the writer can relax its 
 If it does not, the stim pack must hold its revert until the reload finishes, which is a design constraint worth
 knowing before it is built.
 
-## 6. Two items handed back by the playtest session (5 min, ears)
+## 6. How many spare rounds does a gun ACTUALLY carry? (2 min, F253)
+
+`resolve()` writes the catalogue's `reserve` to **t17** and half of it to **t40**, keeping Battle
+Company's own captured invariant. F207 proved the gun's reported reserve mirrors **t40**. So the
+Assault Rifle's catalogue says 192, the HUD tells the player 192, and the gun reports 96. One of those
+is the number of rounds the player can really fire. Counting settles it, and nothing else will.
+
+1. Arm A with the bench AR: mag 32, catalogue reserve 192.
+2. Fire the magazine dry, pull the lever, repeat until the gun refuses to refill.
+3. Count the FULL magazines the reserve paid for, and read the last `$ALCD` reserve.
+
+**Reading.** Six full refills (192 rounds) means t17 is the real carry and only the reported number is
+wrong. Three refills (96) means the gun spends t40, the player carries half of every published figure,
+and the catalogue's own copy is wrong too (the AR row claims "17 kills without resupply", which assumes
+192). Do not change the wire before this count: doubling t40 would double what every player carries in
+every game, which is a balance decision, not a bug fix.
+
+## 7. Two items handed back by the playtest session (5 min, ears)
 
 1. **The Charge Rifle's overheat sound is wrong.** Its captured `t35` is `C19`, and Tony judged `C19` by ear on
    2026-09-17 as the sound a charge makes when you release it early, not an overheat. The Energy Rifle now uses `D11`

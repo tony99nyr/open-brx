@@ -1118,6 +1118,23 @@ function needs per-player keys before it can ship beside the others. And a victi
 invisible at the weapon, so a weapon built on one reads as balanced in `weapons.json` and plays as
 something else entirely.
 
+### 6.3d ⚠️ The published reserve may be twice what a player carries (F253)
+
+`resolve()` writes the catalogue's `reserve` to **t17** and `reserve // 2` to **t40**, which keeps
+Battle Company's own captured invariant `t17 == 2 * t40`. F207 (field, 2026-09-13) proved the gun's
+reported reserve mirrors **t40**, on three weapons and six acknowledgements.
+
+So every reserve number in this document, in `weapons.json`, in the Mission Control stats panel and on
+the phone HUD at spawn is the t17 figure, and the gun reports half of it. Until the bench counts what a
+gun actually spends (`bench-perks-2026-09-18.md` §6), **read every reserve column here as unproven**,
+and read the sustained and kills-per-kit columns that depend on it the same way. The site already
+publishes the halved figure, because the manual lane corrected it on 2026-09-17.
+
+Two fixes exist and they are not the same game. Writing the catalogue number to t40 **doubles what
+every player carries**, in every match, which is a balance decision. Halving what the HUD and the host
+are told leaves the balance exactly as it is and makes the reported number honest. Do not take either
+before the count.
+
 ### 6.4 What a weapon is now
 
 The design space widened from one number to five independent choices:
