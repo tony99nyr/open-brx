@@ -818,8 +818,12 @@ class WeaponCatalog:
                       "htk": w.get("htk"), "ttk_ms": w.get("ttk_ms"),   # A10: HITS TO KILL replaces the flat RANGE bar in the UIs
                       # the pool-INDEPENDENT chain the views re-derive htk/ttk from when the host
                       # changes `health` (W2, docs/weapon-design.md §2.5). `dmg` above is a share
-                      # of the 115 default and cannot be rescaled; `dmg_hit` is the real magnitude.
-                      "dmg_hit": self.damage(w["weapon_id"]),
+                      # of the 115 default and cannot be rescaled; `dmg_hit` is the real magnitude:
+                      # `damage_per_pull()` (t5 plus a declared `wire.headset_dmg`), not `damage()`
+                      # (t5 alone), or the client's own htk/ttk re-derivation (`views.weapon_view()`)
+                      # would disagree with the server's (2026-09-18: a Shotgun view derived htk 6
+                      # from a t5-only dmg_hit of 20, against the server's own htk 3 off 40).
+                      "dmg_hit": self.damage_per_pull(w["weapon_id"]),
                       "cycle_ms": self.cycle_ms(w["weapon_id"]),
                       "charged": self._frame_int(w["weapon_id"], "mode") in self._CHARGE_MODES,
                       # 2026-09-17 (F225/F226/S43): a CELL weapon (rounds_per_charge > 1) with a tap
@@ -868,11 +872,12 @@ class WeaponCatalog:
     # 2026-09-17 garden test). "range_indoor" (t41, `gunRangeIndoor`) is kept only so a test can pin
     # it untouched -- do NOT write it from `gun_range_outdoor_pct` or any venue map; see the F234
     # comment block above `RANGE_OUTDOOR_FLOOR`.
-    _T = {"proto": 3, "subtype": 4, "dmg": 5, "headset_dmg": 12, "fire": 14, "swap": 15, "mag": 16,
+    _T = {"proto": 3, "subtype": 4, "dmg": 5, "headset_dmg": 12, "headset_range_outdoor": 13,
+          "fire": 14, "swap": 15, "mag": 16,
           "reserve": 17, "reload": 18, "mode": 20, "acc_ceiling": 21, "acc_floor": 22, "burst": 23,
           "heat": 24, "snd_fire": 27, "snd_up": 28, "snd_down": 29, "rel1": 31, "rel2": 32, "rel3": 33,
           "noammo": 34, "tap": 37, "clipstart": 39, "reserve_half": 40, "range_indoor": 41,
-          "range_outdoor": 2}
+          "range_outdoor": 2, "headset_range_indoor": 42}
     # The ammo trio + its two mirrors. `resolve()` owns these — they carry the invariants — so an
     # `overrides` entry may not name one (see `_override_index`).
     _AMMO_TOKENS = frozenset({16, 17, 18, 39, 40})
@@ -943,8 +948,13 @@ class WeaponCatalog:
         clip) and `tok17 == 2 * tok40`. **t41 is never written here** — it is left exactly as the
         capture carries it, because indoor range is unmeasured (F231 open) and t41 itself was proven
         inert outdoors (Q15, 2026-09-17); see the F234 comment above `RANGE_OUTDOOR_FLOOR`. t12
-        (`ExtraHeadsetDamage`) mirrors whatever value t5 ends up with, but ONLY on the three weapons
-        whose own capture already carries a t12 — see the comment above that write.
+        (`ExtraHeadsetDamage`) is MEASURED (2026-09-18, Callsign capture cap30): a second word, fired
+        from the shooter's own headset, that stacks with the gun word. `resolve()` writes it from a
+        declared `wire.headset_dmg` (never a mirror of t5) and REFUSES a weapon whose capture carries
+        a t12 but declares no `wire.headset_dmg` (see the comment above that write). t13/t42
+        (`HeadsetRangeOutdoor`/`HeadsetRangeIndoor`, the second word's own reach) are optional: a
+        declared `wire.headset_range_outdoor`/`_indoor` overwrites the captured cell, an undeclared one
+        leaves it untouched, and neither ever raises: reach is not a damage number.
 
         `environment` ("indoor"/"outdoor"/None) only reaches `gun_range_outdoor_pct`: outdoor scales
         t2 by the weapon's catalogue starting value, indoor and unset both keep the captured t2
@@ -981,17 +991,21 @@ class WeaponCatalog:
         # 2026-09-18: Armour Piercing now passes an ABSOLUTE damage (`dmg_abs`, the weapon's own
         # `ap_dmg`) rather than a multiplier, because no multiplier prices the perk fairly: 45/115 is
         # 0.39, so anything near the old 0.4 left hits-to-kill unchanged and the perk free. §7.7.
-        # t12 (`ExtraHeadsetDamage`, protocol.md 2026-09-18): on exactly three stock weapons (shotgun,
-        # plasma sniper, rocket launcher) t1=2 sends a SECOND word out of the shooter's own headset, and
-        # t12 is that word's magnitude -- captured verbatim, like every other token `resolve()` doesn't
-        # own, so our balance pass reached t5 and left t12 at its captured value even after we cut the
-        # Plasma Sniper's t5 from 80 to 25. Whether this firmware actually honours t12 is UNMEASURED as
-        # of 2026-09-18 (a bench step is planned); writing it costs nothing if it is inert, and if it is
-        # live it closes a three-weapon balance hole (a 25-damage Plasma Sniper also throwing an 80).
-        # Compute the effective damage once, in the SAME precedence t5 already uses, and mirror it onto
-        # t12 -- but only on a weapon whose own capture already carries a t12 value: inventing one on a
-        # weapon we have never seen use the second word would break the same "emit the capture verbatim"
-        # contract that keeps t41 untouched.
+        # t12 (`ExtraHeadsetDamage`, protocol.md 2026-09-18) is now MEASURED, not unknown: on exactly
+        # three stock weapons (shotgun, plasma sniper, rocket launcher) t1=2 sends a SECOND word out of
+        # the shooter's own headset, ~88 ms behind the gun word, and it STACKS -- Callsign capture cap30
+        # caught one Shotgun pull as `$HIR,4,0,1,0,45,0,0` then `$HIR,4,0,1,0,70,0,0` 88 ms later on the
+        # same victim sensor, 115 in one pull, a kill (900 ms cycle, so it cannot have been two pulls).
+        # LaserTagMods (Jay, 2026-09-18) independently confirms the mechanism -- "it actually is both ...
+        # so there is a dual emitter fire, one from tagger, weaker damage, and one from headset, greater
+        # damage" -- which also settles that the tagger sent the smaller word, the headset the larger
+        # one. `resolve()` therefore no longer MIRRORS t5 onto t12: it writes a DECLARED
+        # `wire.headset_dmg`, priced independently of t5 (see `WeaponCatalog.damage_per_pull()`). A
+        # weapon whose capture carries a t12 but declares no `wire.headset_dmg` is REFUSED, not silently
+        # left at its raw captured word -- an unpriced captured t12 is the exact three-weapon balance
+        # hole this whole change exists to close (the Plasma Sniper priced its t5 down to 25 while its
+        # capture still carried an unpriced 80). Inventing a t12 on a weapon that has never carried one
+        # is still refused too -- the same "emit the capture verbatim" contract that keeps t41 untouched.
         had_headset_dmg = p[T["headset_dmg"] + 1].strip() != ""
         dmg_abs = (mods or {}).get("dmg_abs")
         if dmg_abs is not None:
@@ -1007,7 +1021,24 @@ class WeaponCatalog:
         else:
             eff_dmg = int(p[T["dmg"] + 1] or 0)   # captured value, unmoved -- still the number t5 carries
         if had_headset_dmg:
-            put("headset_dmg", eff_dmg)
+            headset_dmg = wire.get("headset_dmg")
+            if headset_dmg is None:
+                raise ValueError(
+                    f"{weapon_id}: capture carries a t12 (ExtraHeadsetDamage) but weapons.json declares "
+                    f"no wire.headset_dmg: shipping the raw captured second word unpriced would reopen "
+                    f"the balance hole this change exists to close; add a wire.headset_dmg")
+            put("headset_dmg", int(headset_dmg))
+        # t13 (`HeadsetRangeOutdoor`) / t42 (`HeadsetRangeIndoor`): the second word's OWN reach. Unlike
+        # t12, an unwritten reach is not a safety hole -- reach is not a damage number, so a weapon with
+        # a captured cell but no declared override just keeps whatever the capture carries, and this
+        # never raises either way. 2026-09-18 (Tony): both are locked at 100 on the three headset
+        # weapons -- the flat, measured shelf of F231's range curve, not its unstable 13-26 transition
+        # band -- so today the second word lands on every pull at every range this game is played at.
+        # See docs/FOLLOWUPS.md for the open question of where the word WOULD cut out if aimed lower.
+        if p[T["headset_range_outdoor"] + 1].strip() != "" and wire.get("headset_range_outdoor") is not None:
+            put("headset_range_outdoor", int(wire["headset_range_outdoor"]))
+        if p[T["headset_range_indoor"] + 1].strip() != "" and wire.get("headset_range_indoor") is not None:
+            put("headset_range_indoor", int(wire["headset_range_indoor"]))
         fire_abs = (mods or {}).get("fire_abs")
         if fire_abs is not None:
             put("fire", int(fire_abs))         # Armour Piercing's own cycle (§7.7)
@@ -1077,19 +1108,49 @@ class WeaponCatalog:
         except (IndexError, ValueError):
             return 0
 
+    def damage_per_pull(self, weapon_id: str) -> int:
+        """What ONE trigger pull delivers to a target that takes every word it sends: `damage()` (the
+        gun-body t5 magnitude) plus a declared `wire.headset_dmg`, or exactly `damage()` on the vast
+        majority of weapons that declare none.
+
+        This is deliberately a SEPARATE method from `damage()`, not a redefinition of it: `damage()`
+        keeps its exact current meaning and every current caller (the Armour Piercing `dmg_abs` pricing
+        base, and the number `validate()` calls "the x1 number"), untouched by this.
+
+        The fn 36/37 HEADSET MULTIPLIER (see `headset_multiplier()`) stays excluded from every
+        derivation below this method, on purpose: it is conditional on which sensor a shot lands on,
+        and the catalogue cannot know that in advance. `$WEAP` t12 (`ExtraHeadsetDamage`) is a
+        different mechanism entirely: on the three weapons whose t1 (`WeaponIRSource`) is 2 (Shotgun,
+        Plasma Sniper, Rocket Launcher) the gun fires an UNCONDITIONAL second word out of the shooter's
+        own headset, ~88 ms behind the first. Measured on the wire 2026-09-18 (Callsign capture cap30:
+        the shooter's gun emitted 45, the shooter's headset emitted 70, landing 88 ms apart on the same
+        victim sensor) and independently confirmed by LaserTagMods (Jay, 2026-09-18): "it actually is
+        both ... so there is a dual emitter fire, one from tagger, weaker damage, and one from headset,
+        greater damage", which also settles that the tagger sent the smaller word and the headset the
+        larger one. With t13/t42 (the second word's own reach) locked at 100, the flat, measured shelf
+        of F231's range curve (not its unstable 13-26 transition band), both words land on every pull
+        at every range this game is played at, so t5 + t12 is simply what one trigger pull delivers.
+        Excluding it from `hits_to_kill()`/`time_to_kill()`/`damage_bar()` would publish a hits-to-kill
+        that is wrong, which is the bug this whole method exists to close. Credit to LaserTagMods
+        (Jay) for the confirming protocol read, per this repo's hard rule on crediting their work."""
+        wire = self._row(weapon_id).get("wire") or {}
+        headset = wire.get("headset_dmg")
+        return self.damage(weapon_id) + int(headset) if headset is not None else self.damage(weapon_id)
+
     def hits_to_kill(self, weapon_id: str, pool: int) -> int:
-        """Hits to drop a `pool`-point target (hp + armor) on the GUN BODY, computed on raw t5.
+        """Hits to drop a `pool`-point target (hp + armor) on the GUN BODY, computed on
+        `damage_per_pull()` (t5, plus a declared `wire.headset_dmg`: see that method).
 
         Armor absorbs at face value and spills into HP (bench §7r). This is the guaranteed-kill number:
-        raw t5 IS the gun-body applied damage (bench-confirmed 2026-09-11, `damage()`), so this is
-        correct for a body-only kill, not an over-estimate. ⚠ Two things this does not model
-        (docs/weapon-design.md §6). First, a `$SIR` multiplier row lands MORE on a HEADSET hit — **fn 36
-        lands floor(magnitude x headset_multiplier(36, t7)) and fn 37 lands floor(magnitude x
-        headset_multiplier(37, t7))**, t7 = the compiled crit_modifier (bench-confirmed 2026-09-11,
-        superseding the earlier flat x1.25/x2 reading) — so an all-headset kill on the five weapons on
-        fn 36/37 needs FEWER hits than this method publishes; `validate()` warns on those rows with the
-        actual multiplier. Second, the SHIELD pool, which sits above armor and is granted only by an IR
-        function-11 event. 0 = damage unknown, caller skips.
+        `damage_per_pull()` IS the gun-body applied damage per pull, so this is correct for a body-only
+        kill, not an over-estimate. ⚠ Two things this does not model (docs/weapon-design.md §6). First,
+        a `$SIR` multiplier row lands MORE on a HEADSET hit: **fn 36 lands floor(magnitude x
+        headset_multiplier(36, t7)) and fn 37 lands floor(magnitude x headset_multiplier(37, t7))**, t7
+        = the compiled crit_modifier (bench-confirmed 2026-09-11, superseding the earlier flat x1.25/x2
+        reading), so an all-headset kill on the five weapons on fn 36/37 needs FEWER hits than this
+        method publishes; `validate()` warns on those rows with the actual multiplier. Second, the
+        SHIELD pool, which sits above armor and is granted only by an IR function-11 event. 0 = damage
+        unknown, caller skips.
 
         **A cell weapon (`rounds_per_charge` > 1) with a tap magnitude (`t37`) counts TRIGGER ACTIONS,
         not equal-sized hits** (2026-09-17, Tony, following F225/F226/S43): the Charge Rifle's real kill
@@ -1100,13 +1161,13 @@ class WeaponCatalog:
         rpc = self.rounds_per_charge(weapon_id)
         tap = self.tap_damage(weapon_id)
         if rpc > 1 and tap > 0:
-            charge_dmg = self.damage(weapon_id)
+            charge_dmg = self.damage_per_pull(weapon_id)
             if charge_dmg <= 0 or pool <= 0:
                 return 0
             if pool <= charge_dmg:
                 return 1
             return 1 + math.ceil((pool - charge_dmg) / tap)
-        dmg = self.damage(weapon_id)
+        dmg = self.damage_per_pull(weapon_id)
         return math.ceil(pool / dmg) if dmg > 0 and pool > 0 else 0
 
     # ---- derived numbers -------------------------------------------------
@@ -1150,8 +1211,9 @@ class WeaponCatalog:
         return round(7500 / fire) if fire else 0
 
     def damage_bar(self, weapon_id: str, pool: int = DEFAULT_POOL) -> int:
-        """weapons.json `stats.dmg` — the SHARE of `pool` one hit removes, 0-100 (weapons.json `_note`)."""
-        return round(100 * self.damage(weapon_id) / pool) if pool > 0 else 0
+        """weapons.json `stats.dmg`: the SHARE of `pool` one PULL removes, 0-100 (weapons.json
+        `_note`), on `damage_per_pull()` (t5, plus a declared `wire.headset_dmg`: see that method)."""
+        return round(100 * self.damage_per_pull(weapon_id) / pool) if pool > 0 else 0
 
     CHARGE_TAP_CADENCE_MS = CHARGE_TAP_CADENCE_MS   # class-level alias; see the module constant above
 

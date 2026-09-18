@@ -6,8 +6,9 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B32 · D6 · E8 · F254 · G11 · H9 ·
-K9 · P19 · Q20 · R4 · S54.** (2026-09-17 night: **S52** taken, the missing Easy Reload hint on the HUD; the fix/playtest-2026-09-13 branch renumbered its own rows and has
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B32 · D6 · E8 · F255 · G11 · H9 ·
+K9 · P19 · Q20 · R4 · S54.** (2026-09-18: **F254** taken: at what `t13` value does the headset word (t12) stop
+arriving; filed alongside the t12/t13/t42 balance change.) (2026-09-17 night: **S52** taken, the missing Easy Reload hint on the HUD; the fix/playtest-2026-09-13 branch renumbered its own rows and has
 filed every F id below F253, so main resumes there.) (2026-09-17 night: **S51** taken, the cooldown perk family; F ids resume after the playtest branch, which renumbered its own rows and took the next block; ask that session before taking an F id until its merge reaches main.) (2026-09-17 evening: **S50** taken, the perk balance pass.) (2026-09-17 evening: **S49** taken, the portable IR receiver.) (2026-09-17 range test, garden/MacBook, step 3 of `bench-weapons-2026-09-17.md`: **F231-F234** and **S48** taken; **F170 closed** → archive; Q15's t41 half answered (null).) (2026-09-17 weapons bench, `bench-weapons-2026-09-17.md`: **F225-F230** and **S42-S47** taken; F217-F224 belong to the fix/playtest-2026-09-13 branch.) (2026-09-16 write-up of the 2026-09-13 evening playtest: **F206-F216** taken, all from
 [`game-test-2026-09-13.md`](game-test-2026-09-13.md); F201 is ANSWERED by F207 and F203 gained a second field sighting.)
 (2026-09-14: H8 taken — the Stick as an MC-armed utility node, `spec/utility.md` §5g.) (2026-09-13 GSET field handoff: F197-F205 filed from HANDOFF-gset-t2-2026-09-13.md §3.)
@@ -1251,8 +1252,29 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   the fn-driven multiplier and untested either way. Both could be true on the same shot; probe both.
   **→ 2026-09-18 capture (cap30): TWO WORDS, MEASURED ONCE.** One Callsign Shotgun pull from shooter id 1 landed
   `$HIR,4,0,1,0,45,0,0` then `$HIR,4,0,1,0,70,0,0` 88 ms later on the same sensor (4): 115 in one pull, a kill
-  (the cycle is 900 ms, so it cannot be two pulls). Distance unrecorded. Still open: the range at which the 70
-  drops out, and whether the gun or the headset emitted each word (`bench-perks-2026-09-18.md` §8).
+  (the cycle is 900 ms, so it cannot be two pulls). Distance unrecorded. Which emitter sent which word is now
+  SETTLED (LaserTagMods/Jay, 2026-09-18): the gun sent the 45, the headset the 70 (`docs/weapon-design.md` §7).
+  Our compiled Shotgun ships `wire.dmg` 20 + `wire.headset_dmg` 20 with `t13`/`t42` locked at 100 (always lands,
+  no range falloff). Still open: the range at which a headset word WOULD drop out, see **F254**.
+- **F254 🔴 AT WHAT `t13` VALUE DOES THE HEADSET WORD (t12) STOP ARRIVING? IT UNLOCKS THE WHOLE CLOSE-RANGE
+  WEAPON CLASS.** 2026-09-18: the Shotgun/Plasma Sniper/Rocket Launcher's second IR word ships with
+  `t13`/`t42` locked at 100, F231's flat measured shelf, so it lands at every range today, not a short one.
+  **Why this is now the highest-value bench item we hold.** An audit of every weapon's `range_outdoor_pct`
+  against F231 shows our range BANDS are decorative: everything set between 55 and 100 sits on the flat shelf
+  and reaches the same distance, so `mid`, `long` and `close` do not differ in play. The only three weapons the
+  token affects are the SMG (30), Rocket Launcher (22) and Rail Gun (22), and it makes them UNRELIABLE, not
+  short-ranged — about half their shots missing at 10 m, the same defect just repaired on the Shotgun (t2 22 →
+  100). So `t2` cannot express a close-range weapon at all, and the headset word's own reach is the only range
+  mechanic the hardware offers. A close-range weapon becomes one that carries most of its damage in that word:
+  a Shotgun that kills in 3 up close and 6 at range, an SMG that mops at contact and tickles at distance, while
+  the AR's 13 hits cost the same everywhere. That also dissolves the AMR-dominates-Shotgun dominance failure at
+  source, by giving the Shotgun back the identity the t2 repair took away, rather than buying it off with a
+  magazine buff. F231's ladder was shot against `t2` (`gunRangeOutdoor`), never `t13`, and its unstable 13-26
+  transition band is unconfirmed for this token. **Run:** a shaded, F231-style re-run of the range ladder
+  against `t13` specifically (same rig, same shading fix, same discard-the-first-two-pulls control, F232): set
+  a Shotgun's `t13` to a few values, fire at a victim at 5 m and at 25 m, and find where the 20 stops arriving.
+  ⚠️ **Needs outdoor space**; Tony 2026-09-18: "i have to go outside for it tho. wont be today". Cross-ref
+  F231, F71. `bench` + `space`.
 - **F66 🟡 `$SIR` fn 23: one mechanism with two symptoms, or two effects?** The 2026-08-27 row called it an audio
   suppressor on the strength of `$ALCD` token 2 dropping 100 → 0. Token 2 is now bench-proven to be **live accuracy**
   (F46), so that number never evidenced the audio claim at all. Both observations stand on their own: the gun **was heard**

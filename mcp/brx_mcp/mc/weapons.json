@@ -192,7 +192,7 @@
   {
    "weapon_id": "shotgun",
    "name": "Shotgun",
-   "desc": "Shell by shell, and the fastest recovery on the board. 45 a hit at 800ms, three hits to drop, six in the tube and a 400ms shell reload. Sustained pressure from the shallowest ammo pool outside the power tier.",
+   "desc": "Shell by shell, and the fastest recovery on the board. One pull sends two words: 20 from the gun and 20 from the shooter's own headset, both landing at any range this game is played at, 40 together. Three hits drop a target, six in the tube and a 400ms shell reload. Sustained pressure from the shallowest ammo pool outside the power tier.",
    "cls": 3,
    "role": "cqb",
    "class": "ballistic",
@@ -200,7 +200,7 @@
    "reserve": 24,
    "reload_ms": 400,
    "reload_type": "chain",
-   "dmg": 39,
+   "dmg": 35,
    "rof": 9,
    "rng": 75,
    "range_band": "close",
@@ -218,8 +218,12 @@
     "frame": "$WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*"
    },
    "wire": {
+    "dmg": 20,
+    "headset_dmg": 20,
+    "headset_range_outdoor": 100,
+    "headset_range_indoor": 100,
     "fire_ms": 800,
-    "range_outdoor_pct": 22
+    "range_outdoor_pct": 100
    },
    "verified": false,
    "captured": true,
@@ -320,24 +324,27 @@
     "recover_ms": 150
    },
    "name": "Plasma Sniper",
-   "desc": "A marksman rifle that fires like a carbine and pays for it in heat. 25 a hit every 400ms, five to drop, ten up and 80 back. Lean on it and it overheats.",
+   "desc": "A marksman rifle that fires like a carbine and pays for it in heat. One pull sends two words, 25 from the gun and 10 from the shooter's own headset, 35 together: four to drop, ten up and 80 back. Lean on it and it overheats.",
    "cls": 2,
    "role": "marksman",
    "class": "energy",
    "mag": 10,
    "reserve": 80,
    "reload_ms": 2000,
-   "dmg": 22,
+   "dmg": 30,
    "rof": 19,
    "rng": 75,
-   "htk": 5,
-   "ttk_ms": 1600,
+   "htk": 4,
+   "ttk_ms": 1200,
    "capture": {
     "src": "2026-08-26-weapons-plasmasniper-forcerifle.btsnoop",
     "frame": "$WEAP,0,2,100,0,0,80,0,,,,,,80,80,225,850,10,80,2000,0,7,100,100,,30,,,E17,,,,D35,D34,D36,A73,D122,,,,10,40,75,40,*"
    },
    "wire": {
     "dmg": 25,
+    "headset_dmg": 10,
+    "headset_range_outdoor": 100,
+    "headset_range_indoor": 100,
     "fire_ms": 400
    },
    "verified": false,
@@ -346,9 +353,7 @@
    "tags": [
     "marksman",
     "sniper"
-   ],
-   "ap_dmg": 9,
-   "ap_fire_ms": 450
+   ]
   },
   {
    "weapon_id": "amr",
@@ -746,6 +751,9 @@
     "frame": "$WEAP,0,2,100,10,0,115,0,,,,,,115,80,1000,850,2,8,1200,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,4,75,30,*"
    },
    "wire": {
+    "headset_dmg": 0,
+    "headset_range_outdoor": 100,
+    "headset_range_indoor": 100,
     "range_outdoor_pct": 22
    },
    "verified": false,

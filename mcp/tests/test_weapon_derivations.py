@@ -95,49 +95,77 @@ def test_t41_is_pinned_byte_for_byte_at_every_venue():
             "exactly as captured, indoor is unmeasured (F231 open) and must never be guessed")
 
 
-def test_t12_mirrors_the_compiled_t5_only_on_a_weapon_whose_capture_carries_it():
-    """2026-09-18 finding (Battle Company's own weapon sheets, via the LaserTagMods material, and
-    `protocol/brx-protocol.md`): t1 (`WeaponIRSource`) = 2 on exactly three stock weapons (shotgun,
-    plasma sniper, rocket launcher), and on those t12 (`ExtraHeadsetDamage`) is a SECOND word's
-    damage, fired from the shooter's own headset. Our balance pass reached t5 and left t12 at its
-    captured value, so a Plasma Sniper priced down to 25 (`wire.dmg`) still shipped an 80 sat in
-    t12 — if the firmware honours it, that is a kill worth more than three times the priced hit.
+def test_t12_equals_the_declared_headset_dmg_on_every_weapon_whose_capture_carries_it():
+    """2026-09-18 finding (Callsign capture cap30 + independent LaserTagMods confirmation,
+    docs/weapon-design.md §7): t1 (`WeaponIRSource`) = 2 on exactly three stock weapons (shotgun,
+    plasma sniper, rocket launcher), and on those t12 (`ExtraHeadsetDamage`) is an UNCONDITIONAL
+    second word's damage, fired from the shooter's own headset, that STACKS with t5.
 
-    Whether the firmware honours t12 is UNMEASURED as of 2026-09-18 (a bench step is planned). This
-    test only pins that the COMPILED frame is internally consistent either way: t12 tracks whatever
-    t5 compiles to, and only on a weapon whose own capture already uses the second word — inventing
-    one on a weapon that has never carried it would break the same "emit the capture verbatim"
-    contract that keeps t41 untouched.
+    `resolve()` no longer mirrors t5 onto t12 (that behaviour is gone, replaced 2026-09-18): it
+    writes a DECLARED `wire.headset_dmg`, priced independently of t5 (see
+    `WeaponCatalog.damage_per_pull()`). This test pins that every weapon whose capture already
+    carries a t12 compiles it to exactly its declared `wire.headset_dmg`, not the raw captured
+    word, and not a mirror of t5.
 
-    Break `Roster.resolve()`'s t12 write and watch this go red."""
+    Break the `wire.get("headset_dmg")` write in `resolve()` and watch this go red."""
     bad = []
     for w in ROWS:
         wid = w["weapon_id"]
-        captured_t12 = _tok(wid, "headset_dmg")
-        compiled = CAT.resolve(wid, 0).split(",")
-        compiled_t5 = compiled[WeaponCatalog._T["dmg"] + 1]
-        compiled_t12 = compiled[WeaponCatalog._T["headset_dmg"] + 1]
-        if captured_t12.strip():
-            if compiled_t12 != compiled_t5:
-                bad.append(f"{wid}: t12 ({compiled_t12!r}) should mirror the compiled t5 ({compiled_t5!r})")
-        elif compiled_t12.strip():
-            bad.append(f"{wid}: t12 was invented ({compiled_t12!r}) on a weapon whose capture never used it")
-    assert not bad, "t12 drifted from t5, or was invented:\n  " + "\n  ".join(bad)
+        if not _tok(wid, "headset_dmg").strip():
+            continue
+        declared = (w.get("wire") or {}).get("headset_dmg")
+        compiled_t12 = CAT.resolve(wid, 0).split(",")[WeaponCatalog._T["headset_dmg"] + 1]
+        if compiled_t12 != str(declared):
+            bad.append(f"{wid}: t12 compiled to {compiled_t12!r}, wire.headset_dmg declares {declared!r}")
+    assert not bad, "t12 drifted from the declared wire.headset_dmg:\n  " + "\n  ".join(bad)
 
 
-def test_plasma_sniper_t12_follows_the_priced_damage_not_the_captured_one():
-    """The case that motivated the change: the Plasma Sniper's OWN capture carries t12=80, but
-    `wire.dmg` re-prices its t5 to 25 (§7.7's `ap_dmg` cut sits on the same precedence). t12 must
-    follow the priced 25, not the raw captured 80, or a headset hit throws more than three times the
-    priced gun-body hit."""
+def test_a_captured_t12_with_no_declared_headset_dmg_is_refused():
+    """The safety rule the old mirror behaviour used to enforce implicitly, now enforced directly:
+    a weapon whose capture carries a t12 but declares no `wire.headset_dmg` must REFUSE to compile,
+    not ship the raw captured second word unpriced: shipping it unpriced is the exact three-weapon
+    balance hole this change exists to close (the Plasma Sniper priced its t5 down to 25 while its
+    capture still carried an unpriced 80 in t12)."""
     by_id = {w["weapon_id"]: w for w in ROWS}
-    raw = by_id["plasma_sniper"]["capture"]["frame"].split(",")
-    assert raw[WeaponCatalog._T["headset_dmg"] + 1] == "80", "capture.frame should still read 80 (sanity)"
-    frame = CAT.resolve("plasma_sniper", 0).split(",")
-    t5 = frame[WeaponCatalog._T["dmg"] + 1]
-    t12 = frame[WeaponCatalog._T["headset_dmg"] + 1]
-    assert t5 == "25", f"plasma_sniper: expected priced t5 25, frame has {t5}"
-    assert t12 == "25", f"plasma_sniper: expected t12 to mirror the priced 25, frame has {t12}"
+    plasma = json.loads(json.dumps(by_id["plasma_sniper"]))   # deep copy, never mutate the shared row
+    assert plasma["wire"]["headset_dmg"] == 10, "fixture drift: plasma_sniper no longer declares headset_dmg 10"
+    del plasma["wire"]["headset_dmg"]
+    cat = WeaponCatalog([plasma])
+    try:
+        cat.resolve("plasma_sniper", 0)
+        raise AssertionError("compiled a captured t12 with no declared wire.headset_dmg")
+    except ValueError as e:
+        assert "plasma_sniper" in str(e) and "headset_dmg" in str(e), str(e)
+
+
+def test_a_weapon_with_no_captured_t12_still_compiles_with_the_cell_empty():
+    """The common case (most shipped weapons carry no t12 at all) must keep compiling exactly as
+    before: the cell stays blank, and no `wire.headset_dmg` is required."""
+    checked = 0
+    for w in ROWS:
+        wid = w["weapon_id"]
+        if _tok(wid, "headset_dmg").strip():
+            continue
+        compiled_t12 = CAT.resolve(wid, 0).split(",")[WeaponCatalog._T["headset_dmg"] + 1]
+        assert compiled_t12 == "", f"{wid}: t12 should stay empty, compiled to {compiled_t12!r}"
+        checked += 1
+    assert checked > 5, "too few no-t12 weapons checked: the capture fixtures moved"
+
+
+def test_damage_per_pull_adds_the_declared_headset_dmg_and_damage_stays_gun_body_only():
+    """`damage()` must keep its exact old meaning (t5 alone, the Armour Piercing `dmg_abs` pricing
+    base and `validate()`'s "x1 number"). `damage_per_pull()` is a SEPARATE, additive derivation,
+    used only by `hits_to_kill()`/`time_to_kill()`/`damage_bar()`. On the three headset weapons the
+    two must differ by exactly the declared `wire.headset_dmg`; everywhere else they must be equal,
+    or a weapon with no headset word would silently gain one."""
+    by_id = {w["weapon_id"]: w for w in ROWS}
+    for wid, want_extra in (("shotgun", 20), ("plasma_sniper", 10), ("rocket_launcher", 0)):
+        assert CAT.damage_per_pull(wid) == CAT.damage(wid) + want_extra, wid
+    for w in ROWS:
+        wid = w["weapon_id"]
+        if (w.get("wire") or {}).get("headset_dmg") is not None:
+            continue
+        assert CAT.damage_per_pull(wid) == CAT.damage(wid), f"{wid}: gained a headset word it never declared"
 
 
 def test_gun_range_outdoor_pct_ships_the_catalogue_value_outdoors_only():
@@ -148,7 +176,7 @@ def test_gun_range_outdoor_pct_ships_the_catalogue_value_outdoors_only():
     weapon, the sidearms, melee) keeps its captured t2 at every venue, same as before this fix."""
     shipped = {"sniper_rifle": 100, "amr": 85, "charge_rifle": 85, "assault_rifle": 70,
                "burst_rifle": 70, "suppressor": 55, "energy_rifle": 55, "smg": 30,
-               "shotgun": 22, "rocket_launcher": 22, "rail_gun": 22}
+               "shotgun": 100, "rocket_launcher": 22, "rail_gun": 22}
     by_id = {w["weapon_id"]: w for w in ROWS}
     assert set(shipped) <= set(by_id), sorted(set(shipped) - set(by_id))
     for wid, want in shipped.items():
@@ -423,7 +451,9 @@ def test_weapon_views_at_the_default_pool_still_publish_the_shipped_numbers():
         v = views[w["weapon_id"]]
         assert v["htk"] == w["htk"] and v["ttk_ms"] == w["ttk_ms"], w["weapon_id"]
         assert v["pool"] == DEFAULT_POOL
-        assert v["dmg_per_hit"] == CAT.damage(w["weapon_id"])
+        # `dmg_per_hit` is `damage_per_pull()` (t5 plus a declared `wire.headset_dmg`), not `damage()`
+        # (t5 alone), 2026-09-18, so the client's own htk/ttk re-derivation agrees with the server's.
+        assert v["dmg_per_hit"] == CAT.damage_per_pull(w["weapon_id"])
 
 
 def test_a_synthetic_catalog_without_the_chain_still_renders():

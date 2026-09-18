@@ -198,8 +198,8 @@ sounds — and moves the numbers.
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | *Melee* | melee | 90 | 1000 | 2 | **1.00** | 90.0 | 90.0 | 1 | 0 | 0 | 0% | — | **stock** |
 | Sniper Rifle | marksman | 60 | 1500 | 2 | **1.50** | 40.0 | 31.2 | 4 | 24 | 1700 | 92% | — | dmg 80→60, cycle 300→1500 |
-| Shotgun | cqb | 45 | 800 | 3 | **1.60** | 56.2 | 51.9 | 6 | 24 | 400 | 93% | — | cycle 900→800 |
-| Plasma Sniper | marksman | 25 | 400 | 5 | **1.60** | 62.5 | 41.7 | 10 | 80 | 2000 | 95% | 30 | dmg 80→25, cycle 225→400 |
+| Shotgun | cqb | 20 | 800 | 3 | **1.60** | 25.0 | 23.1 | 6 | 24 | 400 | 12% | — | **2026-09-18**: dmg 45→20 (`wire.dmg`, the gun word); a measured 20-damage headset word (`wire.headset_dmg`, t12) stacks unconditionally on top, 40 real per pull (htk/TTK unchanged, 2 pulls short, 3 kills either way), but `dmg`/`dps`/`sust`/one-mag % here are the GUN WORD ALONE, not the real per-pull total. Magazine deliberately left at 6/24: `test_ttk_band_and_no_strictly_dominant_weapon` fails (the AMR now dominates it), and that is left RED on purpose pending F254 rather than bought with an unexamined number; §7 |
+| Plasma Sniper | marksman | 25 | 400 | 4 | **1.20** | 62.5 | 41.7 | 10 | 80 | 2000 | 95% | 30 | dmg 80→25, cycle 225→400; **2026-09-18**: htk 5→4, TTK 1.60→1.20s (a measured 10-damage headset word, `wire.headset_dmg`/t12, stacks unconditionally, 35 real per pull); `dmg`/`dps`/`sust`/one-mag % here are the gun word alone, same caveat as the Shotgun; §7 |
 | AMR | support | 24 | 400 | 5 | **1.60** | 60.0 | 48.0 | 14 | 56 | 1400 | 100% | — | dmg 18→24, cycle 360→400 |
 | Force Rifle | assault | 10 | 100 +250 | 12 | **1.65** | 66.7 | 50.7 | 36 | 144 | 1700 | 100% | — | dmg 9→10 |
 | Burst Rifle | assault | 11 | 75 +275 | 11 | **1.42** | 77.6 | 58.2 | 36 | 216 | 1700 | 100% | — | **2026-09-17**: dmg 9→11 (`wire.dmg`) |
@@ -469,7 +469,7 @@ Fastest cycle has the slowest reload and vice versa; nothing leads on both.
 | Charge Rifle | 2 | **3** | 5 | 7 |
 | Sniper Rifle | 2 | **2** | 3 | 4 |
 | Shotgun | 3 | **3** | 4 | 5 |
-| Plasma Sniper | 4 | **5** | 6 | 8 |
+| Plasma Sniper | 3 | **4** | 5 | 6 |
 | AMR | 5 | **5** | 7 | 9 |
 | Burst Rifle | 10 | **11** | 14 | 19 |
 | Stinger | 7 | **8** | 10 | 14 |
@@ -646,17 +646,18 @@ sits at `t42` (extra-headset range), present on the Rocket, Shotgun and Plasma S
 | Suppressor | 55 | mid | On the shelf |
 | Energy Rifle | 55 | mid | On the shelf |
 | SMG | 30 | close | **Real guess**, sits at the shelf edge |
-| Shotgun | 22 | close | **Real guess**, inside the measured 13-26 transition band |
-| Rocket Launcher | 22 | close | **Real guess.** A pickup-only one-shot heavy is meant to be earned at close range, not to out-reach the arsenal it out-damages (Tony, 2026-09-17). Same transition-band caveat as the Shotgun |
+| Shotgun | 100 | close | **Moved onto the flat shelf, 2026-09-18** (Tony): the gun word now reaches full distance, off the unstable 13-26 knee it sat on until this change. See §7's dual-emitter write-up: the Shotgun's real close/far shape now lives in `wire.headset_dmg`'s reach (`t13`/`t42`), not in `t2` |
+| Rocket Launcher | 22 | close | **Real guess.** A pickup-only one-shot heavy is meant to be earned at close range, not to out-reach the arsenal it out-damages (Tony, 2026-09-17). Same transition-band caveat as the Shotgun used to carry |
 | Rail Gun | 22 | close | Same reasoning and caveat as the Rocket Launcher |
 
 Every value from 55 up sits on the flat shelf the garden test found (roughly 31 to 100): they are
 expected to behave alike until the shelf itself is mapped, so the ranking above the shelf is a design
-intent, not yet a measured difference. **Only the SMG, Shotgun, Rocket Launcher and Rail Gun values
-are real guesses.** They sit at or inside the 13-26 transition band, where the method could not
-separate values cleanly (F232's first-two-shots effect and the 8-shot groups). All four are pending
-**S49**, the portable IR receiver, which lets one person map the transition band properly (several
-fixed receivers at once, full mags, first two shots discarded, dome shaded).
+intent, not yet a measured difference. **Only the SMG, Rocket Launcher and Rail Gun values are real
+guesses** sitting at or inside the 13-26 transition band, where the method could not separate values
+cleanly (F232's first-two-shots effect and the 8-shot groups); they are pending **S49**, the portable
+IR receiver, which lets one person map the transition band properly (several fixed receivers at once,
+full mags, first two shots discarded, dome shaded). The Shotgun moved off that band 2026-09-18; its own
+open range question is now `t13`/`t42` (F254), not `t2`.
 
 A weapon with no `wire.range_outdoor_pct` (every hidden/cut weapon, the sidearms, melee) keeps its
 captured `t2` unchanged at every venue. **Indoor stays honest**: no venue has an indoor range value.
@@ -1311,6 +1312,17 @@ single shooter landed `$HIR,4,0,1,0,45,0,0` and then `$HIR,4,0,1,0,70,0,0` **88 
 sensor, killing a player with 79 left. The cycle is 900 ms, so it was one pull. What the capture does not
 say: the distance, and which emitter sent which word, so the §8 bench still decides the design.
 
+✅ **Which emitter sent which word: settled, 2026-09-18 (LaserTagMods, Jay).** Independent confirmation
+of the mechanism, credited per this repo's hard rule on protocol discovery: "it actually is both ... so
+there is a dual emitter fire. one from tagger, weaker damage and one from headset, greater damage." That
+settles the cap30 capture: the gun sent the 45, the headset sent the 70. Our compiled Shotgun does NOT
+mirror Callsign's own 45/70 split: it ships `wire.dmg` 20 and `wire.headset_dmg` 20 (40 together, a
+3-pull kill at the weapon's existing 800 ms cycle, so no other weapon on the ladder moves), and locks
+`t13`/`t42` (the headset word's own reach) at 100, the flat measured shelf of the range curve below, so
+both words land at every range this game is played at. The band where the headset word would instead
+cut out at short range (F231's unstable 13-26 transition) is still unmeasured for `t13` specifically.
+See `docs/FOLLOWUPS.md` F71.
+
 **What this means for range.** Callsign never shortens the Shotgun: its frame carries `t2` = 100, the
 same as every Callsign gun. What varies with distance is only the 70-damage headset word, through
 `t13` 80 outdoors and `t42` 30 indoors (35.5 and 29.25 kHz by §6.5's formula). So Callsign's Shotgun is
@@ -1478,6 +1490,14 @@ walks every priced weapon and checks both ends of the trade plus the cycle direc
 `test_armour_piercing_is_refused_on_a_weapon_with_no_fair_price` proves the refusal. ⚠️ The test they
 replace **asserted the bug**: it required the perk to beat a plain rifle against a BARE target, which is
 the definition of a strict upgrade.
+
+**Plasma Sniper's `ap_dmg`/`ap_fire_ms` were removed 2026-09-18.** The headset word (§7, `wire.headset_dmg`)
+made the plain weapon's combined per-pull damage 35, not 25, so the old 9-damage/450ms pair (priced against
+the 25-alone number) no longer bought anything: against an armoured 140 pool the plain weapon killed in
+1200 ms and Armour Piercing needed 1800 ms, 600 ms SLOWER than not taking the perk. The weapon is hidden,
+so a fresh price for nobody to pick is unfounded guesswork; `_refuse_if_ap_ineligible` now refuses it
+cleanly, the same as any weapon with no pair. Needs a fresh `ap_dmg`/`ap_fire_ms` if the Plasma Sniper is
+ever unhidden.
 
 ### 7.6 The support weapons, and why they publish zeros
 
