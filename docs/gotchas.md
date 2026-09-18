@@ -680,6 +680,30 @@ write, then `start` (2026-09-04, `docs/wsl-cdp-phone-engine` memory + experiment
 ---
 ---
 
+## The check that checks nothing (2026-09-18, three in one evening)
+
+A filter that matches the wrong line gives you the confidence of a passing test and none of the
+information. Three instances in one session, two of them in the tools built to catch the other one.
+
+- **A suite verdict read off the banner.** `npm run test:all | grep "job(s)"` matches the RUNNER'S
+  OWN HEADER, `test-all: 6 job(s), 32 cores...`, which prints before anything runs. The grep printed
+  a line, the line was read as a pass, and a file that did not parse went to `main` twice. Read the
+  table, or match `job(s) passed`, never `job(s)`.
+- **A break-harness that skipped the tests it was proving.** A mutation script matched failing names
+  with `^✖ (F264: ...)` and so silently ignored every test whose name had no colon. Three mutations
+  were reported as UNCAUGHT that were in fact caught, which is the more dangerous direction: it
+  invites you to "fix" a guard that works.
+- **`node --check` is not a check.** It proved a file parsed after a comment terminator was removed.
+  It could not see that the removal had swallowed a real `export` into the comment, so the module
+  stopped exporting something its tests imported. Parsing is not behaviour. The check that would
+  have caught it: strip the comments, then compare every name the file USES against every name it
+  DEFINES.
+
+The general rule, and it is the same one this file already applies to guards: **make the check fail
+on purpose before you trust it.** A filter you have never seen print nothing is not a filter, it is
+a decoration. Two of these three were found by the agent whose own tests were passing for the wrong
+reason, which is the argument for breaking a test rather than reading it.
+
 ## See also
 `docs/FOLLOWUPS.md` (**"Needs Tony at the bench"** is the bench queue; one dated run sheet at a time) ·
 `hardware/esp32-ir-bridge/README.md` (board identities and wiring) · `docs/field-process.md` (muster) ·
