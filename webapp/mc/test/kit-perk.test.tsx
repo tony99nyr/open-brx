@@ -61,10 +61,25 @@ describe('KIT · perk slot (A14)', () => {
     const { m, patches, tile, state } = await kitFor('p6');
     expect(state.players.find(p => p.player_id === 'p6')!.loadout).toEqual(
       { weapons: [{ weapon_id: 'assault_rifle' }], perk: null, overrides: { easy_reload: true } });
+    await tile('SMG,');                                  // a new PRIMARY: nothing to do with the ALT button
+    expect(patches).toEqual(
+      [{ weapons: [{ weapon_id: 'smg' }], perk: null, overrides: { easy_reload: true } }]);
+    m.unmount();
+  });
+
+  it('a SECOND weapon beside Easy Reload is a two-tap that drops the override, not a silent 400', async () => {
+    // The ALT button reloads for this player, and a second weapon needs it to swap. The server refuses
+    // the pair (policy.conflict), so KIT warns first — the same two-tap the ALT-button perk used to get
+    // before S50 moved Easy Reload to `loadout.overrides` and left this path keyed on a dead perk effect.
+    const { m, patches, tile } = await kitFor('p6');
     await m.click('SECONDARY');
     await tile('SMG,');
-    expect(patches).toEqual(
-      [{ weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: null, overrides: { easy_reload: true } }]);
+    expect(patches.length, 'the first tap sends nothing').toBe(0);
+    expect(m.text()).toContain('DROPS EASY RELOAD');
+    await tile('SMG,');
+    expect(patches.length, 'the second tap sends').toBe(1);
+    expect(patches[0].weapons).toEqual([{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }]);
+    expect(patches[0].overrides, 'the switch that owned the button is dropped with it').toBeUndefined();
     m.unmount();
   });
 
