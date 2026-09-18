@@ -186,10 +186,11 @@ in-coverage early-end, provisional until recap).
 
 ### Kit — set each player up (while they gear up)
 Per player: **display name, team, voice**, and three loadout slots — **primary, secondary and perk**
-(`PATCH /api/players/{id}`). The perk is its own slot beside the two weapons; **Easy Reload** is the
-exception that takes the second weapon with it, and the UI asks twice before dropping it. A player can
-also be armed with a **pool** (HP / armour) different from the game's, and their row shows a chip when a
-host set one deliberately.
+(`PATCH /api/players/{id}`). The perk is its own slot beside the two weapons. A player can also be
+armed with a **pool** (HP / armour) different from the game's, and their row shows a chip when a host
+set one deliberately. **Easy Reload** is not a perk: it is the other per-player accessibility switch,
+set the same way as the pool. It still takes the second weapon with it (the ALT button that would
+reload leaves no button to switch weapons), and the console asks twice before dropping it.
 
 What each slot may hold comes from the game's **loadout policy** — `POST /api/loadout/pool` previews it,
 and the KIT screen greys out anything the policy refuses and says which rule did it. Phones may self-serve

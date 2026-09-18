@@ -402,7 +402,7 @@ accuracy) to decide how hard to jolt. Neither needs to touch the writer, the ver
 
 ### 3.16 F68: a miss the node cannot see still wipes the headset's team colour
 
-An accuracy-model miss (§3.13) sends **no `$HIR` and no `$HP`** (bench 2026-09-17) — the gun still plays its native
+An accuracy-model miss (§3.15) sends **no `$HIR` and no `$HP`** (bench 2026-09-17) — the gun still plays its native
 near-miss flash on the headset and the flash still goes dark afterwards (F68, bench 2026-09-09), and the node has no
 frame to react to. The existing hit-driven repaint (`_onHp`, `dmg > 0`) cannot see this at all, so `tick()` now
 repaints the team colour (or the active role's colour) on a plain interval, `TEAM_REPAINT_MS` (5 s), whenever the

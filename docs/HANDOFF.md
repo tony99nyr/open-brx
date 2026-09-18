@@ -1,10 +1,10 @@
 # Handoff: Open BRX
 
-**State as of 2026-09-17, night.** Branch `fix/playtest-2026-09-13`, in the worktree
-`.claude/worktrees/playtest-2026-09-13`, holds the 2026-09-16 and 2026-09-17 work, the merge of
-`origin/main` at f4e7e263 (the `brx-weapons` arsenal rework), and tonight's doc-rot apply,
-maintainability and DRY passes. It is **NOT pushed**. Main has moved on since the merge
-(perks, the poison weapon, node.md renumbered): merge it again before the push.
+**State as of 2026-09-18, morning.** Branch `fix/playtest-2026-09-13`, in the worktree
+`.claude/worktrees/playtest-2026-09-13`, holds the 2026-09-16 and 2026-09-17 work, **both merges of
+`origin/main`** (the arsenal rework, then the perk work at `fae46b5b`), a doc-rot apply, a
+maintainability and DRY pass, and three polish rounds. `npm run test:all -- --ui`: 17 of 18 jobs green,
+the one failure being the published APK version (**F220**, Tony decides).
 
 **CI on main is fixed and green.** 15 of the last 19 runs failed on `test_site_shots`, a guard no CI job
 could satisfy: the capture needs a built `app/www`, a built `webapp/mc/dist` and a browser. The new
@@ -110,26 +110,24 @@ not in the F11 state, but **re-arm it before real use**.
 
 ## Next actions, in order
 
-1. **Merge `origin/main` first.** It carries the perk work, the poison weapon, node.md's renumbering and
-   the bench sheet's count step, and this branch's F253 row sends the bench to that step.
-2. **Count the `$SIR` rows (F254, open).** S50's armour-piercing perk made every table **eleven** rows,
+1. **Count the `$SIR` rows (F254, open).** S50's armour-piercing perk made every table **eleven** rows,
    and ten is the most ever proven on a gun. `$QUERY` the table back after a head write and after a
    `sir_pool` take, count them, then fire an AP shot: HP should move and armour should not. A capped
    table drops the eleventh row silently, and the compile-side guard cannot see it.
-3. **Count the spare rounds (F253, open).** Fire a magazine dry and refill until the gun refuses. Six
+2. **Count the spare rounds (F253, open).** Fire a magazine dry and refill until the gun refuses. Six
    full magazines means the gun spends t17 and only Mission Control's reporting is wrong. Three means an
    Open BRX player carries half of every catalogued reserve, and the balance copy is wrong too. Only the
    site and the manual are corrected so far; the shipped weapon is not.
-4. Run the verification bench against the new rows: **F235-F247** (operator menu, match resume, the
+3. Run the verification bench against the new rows: **F235-F247** (operator menu, match resume, the
    Pixel 5 BLE fix, the energy gauge, OVERHEAT, NIGHT OPS, the shot-ready cue, the results overlay,
    HARDWARE READY/backhaul, MARK ALL READY, the charge-rifle overheat sound, the energy-weapon reload
    timeout, and the swap-to-empty-slot no_fire check).
-5. Bench the merged recoil writer against spawn protection and the operator resync: the accuracy writer
+4. Bench the merged recoil writer against spawn protection and the operator resync: the accuracy writer
    stands down for `ACC_HOLD_MS` after any spawn, revive, resync or stun write (**F235**, **F247**).
-6. Re-run main's **F231** range ladder with the dome shaded, full 32-round mags, and the first two shots
+5. Re-run main's **F231** range ladder with the dome shaded, full 32-round mags, and the first two shots
    of every mag discarded (**F232**).
-7. Tony decides: **F220** (publish app 0.3.0 as a GitHub Release) and **F221** (the warning-audit page).
-8. Push the branch and open the PR.
+6. Tony decides: **F220** (publish app 0.3.0 as a GitHub Release) and **F221** (the warning-audit page).
+7. Open the PR (the branch is pushed).
 
 ## Validation
 

@@ -421,7 +421,7 @@ nine of these eleven were root-caused without touching a gun.
   11 = gas). ⚠️ The NATIVE route stays unproven: fn 24's 1-3 delayed ticks were measured against a REPEATING
   beacon, and the 2026-08-26 single-shot sweep saw no ticks at all, so one word may give one tick.
   `bench-perks-2026-09-18.md` §3 fires single fn-24, 25, 26 and 27 shots and counts them, and checks whether the
-  stock Energy Launcher row (`$SIR,9,3,,24`) has been ticking victims all along (P18). **The spec section is written**: `spec/node.md` §3.15 (recognise, tick, refresh never stack,
+  stock Energy Launcher row (`$SIR,9,3,,24`) has been ticking victims all along (P18). **The spec section is written**: `spec/node.md` §3.17 (recognise, tick, refresh never stack,
   end on death, the unattributed lethal tick, and the HUD's duty). What is left is the decision on kill credit, then
   the code. `build`.
 - **F62 🟡 `$WEAP` t6 `primaryCritChance` — can we emit crits?** The crit bit reads 0 on every stock weapon,

@@ -163,12 +163,13 @@ class LoadoutOverrides(TypedDict, total=False):
 
 class Loadout(TypedDict):
     """weapons[] is canonical: [primary] or [primary, secondary]; `perk` is its OWN slot and rides
-    beside a secondary weapon (AR + pistol + Quick Switch). The one exception: a perk whose
-    effects.alt_reload is true (Easy Reload) takes the ALT button, so the server refuses it beside
-    a second weapon; the UI warns and drops the other one (A9/A14, loadout.md §2).
+    beside a secondary weapon (AR + pistol + Quick Switch). The one exception: S50 (2026-09-17)
+    moved it from a perk to `overrides.easy_reload` (a per-player accessibility switch, host-set
+    only) -- it still takes the ALT button, so the server refuses it beside a second weapon; the
+    host UI warns and drops the other one (A14, loadout.md §2/§2.1).
     """
     weapons: list[WeaponSel]              # [primary] or [primary, secondary]; index == gun slot; NEVER empty (A10)
-    perk: NotRequired[str | None]         # A14: the perk slot — rides beside a secondary weapon (loadout.md §2); an ALT-button perk (easy_reload) is the one that can't
+    perk: NotRequired[str | None]         # A14: the perk slot — rides beside a secondary weapon (loadout.md §2)
     overrides: NotRequired[LoadoutOverrides]
 
 

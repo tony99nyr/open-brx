@@ -30,7 +30,9 @@ base and needs a dark theme, not a true blackout.
 
 **Real content, never lorem.** Handles a host would type: `REAPER`, `VIPER`, `NOMAD`, `GHOST`, `HAVOC`, `SABLE`.
 Gun names `GUN-A`, shown as `GUN-A-3D4F` (`<sticker>-<tail>`; real sticker ids never enter the repo). TDM
-defaults HP `45`, armor `70`, ammo `32 / 192` (the AR). Modes: TDM, FFA, Infection, Last Man Standing,
+defaults HP `45`, armor `70`, ammo `32 / 192` (the AR's captured Callsign numbers; **F253** is open on
+whether the shipped weapon reaches the gun at 192 or 96 spare rounds, so read this as Mission Control's own
+catalogue figure, not a settled in-game count). Modes: TDM, FFA, Infection, Last Man Standing,
 Extraction. Player numbers `#1`–`#63`. Scoreboard columns: Player · Team · K · D · A · K/D · Acc% · Streak ·
 Medals. Recap honors: MVP, Most Kills, Best K/D, Sharpshooter, Survivor, First Blood, Multikill, Assistant.
 Timers and counts are tabular numerals; K/D and Acc% one decimal.
@@ -137,9 +139,11 @@ secondary is weapon | empty, perk is perk | empty; a rule-locked slot shows a pa
 **arsenal** for the selected slot (a gallery, not a dropdown: weapon art, class tag as "CLASS n" with a tooltip
 — never a bare protocol number, HITS TO KILL against the host's pool instead of a range bar, the pool summary
 once in the header "13 OF 18 · NO HEAVIES", out-of-pool tiles dimmed; the PERK slot shows the perk grid with an
-effects block) → hero for the selected item. Picking Easy Reload over a loaded secondary (or the reverse) is a
-two-tap confirm on the tile ("DROPS THEIR SMG — TAP AGAIN"). A rejected host pick is recorded and shown as the
-host's error, never blamed on the phone (round 8). Tablet ≤ 900 px: the roster becomes a horizontal strip.
+effects block) → hero for the selected item. **Easy Reload is not in the perk grid**: it is the other
+accessibility toggle, on the same pool card as HP / armour (S50, 2026-09-17), because it is a per-player
+switch, not a balance pick. Setting it over a loaded secondary (or the reverse) is a two-tap confirm ("DROPS
+THEIR SMG — TAP AGAIN"). A rejected host pick is recorded and shown as the host's error, never blamed on the
+phone (round 8). Tablet ≤ 900 px: the roster becomes a horizontal strip.
 
 ### A4 · Weapon try-out
 Changing a weapon **arms that player's gun privately** so they fire + reload to feel it — no game start,

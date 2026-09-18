@@ -83,10 +83,12 @@ is fine; it's for fixing problems, not for play.
 The one exception to "no self-select on the phone": when the host's rules allow, a player picks their own
 weapons/perk. Tab bar `PRIMARY | SECONDARY | PERK` (A14, 2026-09-04: the perk is its own slot); the **list on the
 left** (rows ≥44 px: thumb, name, class, MAG; the secondary tab carries `WEAPONS · NONE` chips, the perk tab `PERKS ·
-NONE`; Easy Reload over a loaded secondary is a two-tap confirm), **art + stats on the right**, a persistent bottom bar
+NONE`), **art + stats on the right**, a persistent bottom bar
 `TRY IT` (weapons only — MC arms the gun for a few rounds) + `DONE`. **Tap a row = equipped** (MC confirms;
 a rejected pick shows the host's reason in plain words). Only what the rules allow is listed — a player never
-sees a greyed-out weapon they can't have. Must read at 844×390 and a short viewport, in sun and blackout.
+sees a greyed-out weapon they can't have. **S50 (2026-09-17): Easy Reload is not a perk tab row any more.**
+It moved to a host-only override (`loadout.overrides.easy_reload`, loadout.md §2.1); a player cannot pick it
+from this browser. Must read at 844×390 and a short viewport, in sun and blackout.
 
 ### B7 · Setting up → BRIEFING → kit (loadout.md §4.6) — *added 2026-08-27*
 While the host is still picking the game (`kit_open:false`) the KITTED screen is a calm **"MISSION CONTROL IS

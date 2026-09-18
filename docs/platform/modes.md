@@ -63,10 +63,16 @@ Every player carries three slots.
 | Secondary | Any weapon, including the three pistols | Optional. |
 | Perk | One perk | Optional, and it rides beside the secondary. An assault rifle, a pistol and a perk is a legal kit. |
 
-Five perks are offered: Body Armor (50 extra armor), Extended Mags (double the primary's magazine
-and reserve), Quick Hands (half the reload time), Quick Switch (half the weapon-swap delay, 0.85 s
-down to 0.43 s) and Easy Reload (the orange ALT button reloads, for anyone who finds the pump hard
-to work).
+Seven perks are offered: Body Armor (25 extra armor, slower reload), Extended Mags (double the
+primary's magazine and reserve, slower weapon swap), Quick Hands (half the reload time, a lighter
+magazine), Quick Switch (half the weapon-swap delay, 0.85 s down to 0.43 s, less armor), Armor
+Piercing (primary shots skip armour and shields, for less damage), Motion Tracker (nearby enemies
+show on your HUD) and Second Wind (survive the hit that would finish you, once a life). Each perk
+trades on the same lever its opposite buys, so no pick is free.
+
+Easy Reload is not a perk. It maps the orange ALT button to reload, for anyone who finds the pump
+hard to work, such as a young player. The operator sets it per player alongside the health pool
+(above), and it never competes with a perk pick.
 
 Who picks is set per slot, per game:
 
@@ -82,10 +88,9 @@ Free-for-all defaults to No heavies. Every other mode defaults to Open. A slot c
 you tighten the policy after players have already kitted, every loadout is re-fixed to the new rules
 and the affected players are told.
 
-**The one exception.** Easy Reload maps the ALT button to reload, and ALT is also the button that
-switches weapons. So Easy Reload cannot ride with a second weapon. Picking one drops the other, and
-both the operator console and the phone warn you with a two-tap confirm before it happens. Any
-future perk that claims a button joins the same rule.
+**The one exception.** ALT is also the button that switches weapons, so a player with Easy Reload on
+cannot carry a second weapon. Setting Easy Reload on a player who already has one drops it, and the
+operator console warns before it happens.
 
 ## Weapons
 
