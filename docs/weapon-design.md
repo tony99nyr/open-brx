@@ -1068,8 +1068,9 @@ once the source stopped; a separate 2026-08-26 sweep fired each status function 
 for 18 s with no ticks at all. So "one hand-aimed fn-24 shot produces several ticks" is **unproven**,
 and the two results may simply mean one delayed tick per word. Do not build a weapon on it until a
 bench fires single fn-24 shots and counts the ticks. There is a live reason to run that test anyway:
-the stock table ships `$SIR,9,3,,24` on the **Energy Launcher**, so a weapon we already list may be
-ticking victims a few seconds after every hit, and nobody has ever watched for it.
+`$SIR,9,3,,24` is the **Energy Launcher** row, and MC ships it in every game
+(`gameconfig._SIR_TABLE`), so a weapon we already list may be ticking victims a few seconds after every
+hit, and nobody has ever watched for it.
 
 **The weapon it buys: a Toxin Rifle.** Low direct damage, a poison stack on hit, and a real weakness.
 The shape that fits the ladder:

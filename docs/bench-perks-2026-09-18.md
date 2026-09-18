@@ -88,7 +88,8 @@ answer we want: record how many, how large, and the gap between them. Repeat thr
 4. Then repeat the single shot with `$SIR,0,0,,25,...`, `26` and `27`. They share fn 24's clip and are
    presumed the same family, and none has ever been tested for the tick itself.
 
-**Also worth 2 minutes:** the stock table ships `$SIR,9,3,,24,10,0,,,*` on the **Energy Launcher**. Arm
+**Also worth 2 minutes:** `$SIR,9,3,,24,10,0,,,*` is the **Energy Launcher** row, and **MC ships it in every game**
+(`gameconfig._SIR_TABLE`), not just the stock app. Arm
 that weapon as it ships, take one hit, and watch the victim's pools for 10 s. If they move late, a
 weapon in our own catalogue has been ticking victims all along and nobody watched for it (P18).
 
