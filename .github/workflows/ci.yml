@@ -174,7 +174,7 @@ jobs:
               captured=$(python3 -c "import json,sys; print(json.load(open('site/shots/manifest.json')).get(sys.argv[1], ''))" "$key")
               tip=$(git rev-parse "FETCH_HEAD:$dir")
               if [ "$captured" != "$tip" ]; then
-                echo "::error::$dir moved on main while this job ran (captured '$captured', main now has '$tip'). These screenshots show the older UI, so this job refuses to commit them. The push that changed $dir refreshes them itself; if it did not, $HOWTO"
+                echo "::error::$dir moved on main while this job ran (captured '$captured', main now has '$tip'). These screenshots show the older UI, so this job refuses to commit them. The push that changed $dir refreshes them itself, in the run queued behind this one. If it did not: $HOWTO"
                 return 1
               fi
             done

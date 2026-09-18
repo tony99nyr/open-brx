@@ -87,9 +87,11 @@ a push to `main` deploys the site, and Cloudflare rebuilds it itself (`wrangler.
 **A UI change no longer needs a local shots run.** The `site-shots` job in `.github/workflows/ci.yml`
 regenerates them on every push to `main` that leaves them stale, and commits the result back as
 `github-actions[bot]`. Run the script locally only when you want to see the new shots before you push.
-If that job fails, read its log: it refuses to force-push, so the usual cause is a conflict in
-`site/shots/`. Fix it by running `cd app && npm run build && cd ../webapp/mc && npm run build`, then
-`cd site && npm run shots`, and commit `site/shots/` yourself.
+That job never forces anything: if `main` moves under it, it replays its commit on the new tip, and if
+the move touched a UI it abandons the capture and goes red rather than committing shots of the older
+UI. So a red `site-shots` usually means two pushes overlapped, and the run queued behind it fixes the
+shots. If it stays red, read the log, then run `cd app && npm run build && cd ../webapp/mc && npm run
+build`, then `cd site && npm run shots`, and commit `site/shots/` yourself.
 
 ## The evidence culture
 
