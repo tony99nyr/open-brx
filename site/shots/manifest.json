@@ -1,7 +1,7 @@
 {
-  "taken": "2026-09-18T19:19:47.122Z",
-  "mc_src": "fe851791f3e9681c4ad72d0df13b9374ca2314e5",
-  "hud_src": "8bebff8fa9ada45cd6f6c20ac7a1bd01b12526e7",
+  "taken": "2026-09-18T19:30:43.461Z",
+  "mc_src": "da77ca1b772563873e21cfe6ccdb0fc0816872a2",
+  "hud_src": "34f6a9c81ab7bea47625e94bbebc2e0435fbfd27",
   "mc_shell": "bc7c307f10da33e0a19edd3d54cb27dc9d5f566f",
   "hud_shell": "dfc3ecd63dafcd7b2c1b9666617e14252739ebbb",
   "files": {
@@ -53,7 +53,7 @@
     "hud-loadout.jpg": {
       "w": 891,
       "h": 411,
-      "bytes": 135165
+      "bytes": 134856
     }
   }
 }
