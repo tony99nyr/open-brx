@@ -297,7 +297,7 @@ Cross-validated: the 38-member metadata field list aligned against the two known
 | tok | AR | ChargeRifle | field | conf |
 |---|---|---|---|---|
 | 0 | 0 | 1 | **slot** | ✓ |
-| 2 | 100 | 100 | (scale/enable const) | ~ |
+| 2 | 100 | 100 | **`gunRangeOutdoor`** — the field list above names it, and the 2026-09-17 garden bench PROVED it is the range lever (F231/F234): `t2`=5 landed 0 hits from 38 shots at any distance, muzzle to dome included; `t2`=100 reached about 200 ft; the transition sits roughly between 13 and 26 with a flat shelf above about 31. MC writes it from `wire.range_outdoor_pct` OUTDOORS ONLY and floors it at 13. ⚠️ This row used to read "(scale/enable const)" because both captured samples carry 100 and the diff could not discriminate it: the teardown had the NAME right and the meaning unpinned. Still unknown: whether the scale is a percentage or an index, and where the knee is | ✅ bench-proven |
 | 3 | 0 | 8 | primaryPowerType (IRSource enum) | ~ |
 | 4 | 0 | 0 | primaryDamageType (DamageType enum) | ~ |
 | 5 | **24** | **150** | **primaryDamage** | ✓ (M-4=24) |
@@ -325,7 +325,7 @@ Cross-validated: the 38-member metadata field list aligned against the two known
 | 37–38 | — | 20,150 | **overheat enable/params** — populated ONLY on the stock Charge Rifle; t24/t35 are INERT without them (SMG transplant enabled its dead heat gauge — bench 2026-08-26); t37-vs-t38 semantics unmapped | ✅ gate proven |
 | 39 | 32 | 100 | clipStartingAmmo (= maxClip here) | ~ |
 | 40 | 9999999 | 9999999 | ammoReserv (unlimited) | ~ (identical in both frames — not discriminable by the diff) |
-| 41 | 75 | 75 | gunRange % | ~ |
+| 41 | 75 | 75 | `gunRangeIndoor` — ⚠️ **PROVEN INERT OUTDOORS** (F231, 2026-09-17): identical on every gun and changing it moved nothing at any distance, so it is NOT the range lever the name suggests and `resolve()` never writes it. Whether it does anything INDOORS is untested, so the captured value ships unchanged | ✅ inert outdoors |
 
 The always-empty positions (secondary-fire ~7–13 and extra-headset ~42–43) are the **~6 named fields
 left unpinned** by the two samples (44 wire tokens − 38 named members ≈ 6; they occupy a few adjacent
