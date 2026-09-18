@@ -245,7 +245,7 @@ names the bench step that settles it, in [`bench-screamers-2026-09-19.md`](bench
 `$DPLAY`; a `$PB*`/`$AS` hang test needs its own step, not yet in the screamers sheet (it could start a native
 game, so it needs care: see levers §19 step 17's warning). If a future step shows a `$PB*` start can hang a gun,
 they move to `protocol.DENIED_COMMANDS`. `bench` + `decision`.
-- **F276 🔴 OUR SHOTGUN PRICES BOTH WORDS AT 20, AND IDENTICAL WORDS MAY DEDUPE NATIVELY.** Filed 2026-09-18 from
+- **F276 ✅ CLOSED 2026-09-18, SAME DAY: IDENTICAL WORDS BOTH LAND, so the Shotgun was never wrong.** Five single pulls from a 20/20 Shotgun gave **two `$HIR` of 20 every time, 60 to 75 ms apart**, and on one pull both landed on sensor 0 as byte-identical frames and both still registered. The 159 ms beacon block does not apply to this pair. The catalogue is back at 20/20 and the equal-pricing guard is deleted rather than left standing on a disproven reason; the crit half of that guard survives on its own footing (the multiplier reaches only the barrel word, and the combination is still unmeasured). Also closes the idea that a deliberate equal pricing could fix F260's double count for free: it cannot. Original row: **OUR SHOTGUN PRICES BOTH WORDS AT 20, AND IDENTICAL WORDS MAY DEDUPE NATIVELY.** Filed 2026-09-18 from
   the brx-ltm session's V4_30/V4_31 receive-path read: the victim's gun DROPS an IR word identical to one it received
   within **159 ms** (the "beacon block"). cap30 puts the barrel and headset words about **88 ms** apart, well inside
   that window, and the headset word carries the SAME `$SIR` key as the barrel word (t3/t4, trace 0x25D4A). So two
