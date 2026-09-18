@@ -20,8 +20,16 @@
   --fd:'Saira Condensed',sans-serif;--fl:'Chakra Petch',sans-serif;
   --bg:radial-gradient(ellipse 120% 90% at 50% 45%,#0b1220 0%,#05080d 60%,#02040a 100%);
 }
-[data-env="night"]{--num:#b23b3b;--glow:transparent;--mut:#5a1f1f;--plate:transparent;--plate2:transparent;--edge:#1a0a0a;
-  --health:#7a3a3a;--armor:#7a5a1f;--team:#5a2222;--team-ink:#000;--warn:#7a5a1f;--bad:#b23b3b;--ok:#4a6b2f;--bg:#000}
+/* Bench 2026-09-18 (Tony): "the contrast on night mode is a little too extreme, the very thin font is
+   hard to read at all". The answer is WEIGHT, not brightness: night ops is dim red on black on purpose,
+   to keep a player's night vision and to stop the screen giving their position away, so lifting the
+   luminance would undo the mode. The muted tone was the worst of it (#5a1f1f on black is nearly gone),
+   so it comes up to a readable red, the numbers come up a little, and the thin weights get body below. */
+[data-env="night"]{--num:#c9484a;--glow:transparent;--mut:#8c3636;--plate:transparent;--plate2:transparent;--edge:#2a1010;
+  --health:#8f4545;--armor:#8f6b26;--team:#6b2a2a;--team-ink:#000;--warn:#8f6b26;--bad:#c9484a;--ok:#57802f;--bg:#000}
+/* Thin strokes are what actually fails at low contrast, so nothing under 500 survives the night skin. */
+[data-env="night"] .hud,[data-env="night"] .hud *{font-weight:600}
+[data-env="night"] .tab,[data-env="night"] b,[data-env="night"] .hud .num{font-weight:700}
 [data-team="blue"]{--team:var(--team-blue);--team-ink:#04121e}
 [data-team="yellow"]{--team:var(--team-yellow);--team-ink:#1a1400}
 [data-team="red"]{--team:var(--team-red);--team-ink:#1a0404}
@@ -133,8 +141,11 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
    energy weapon's `#res` now holds one pill per FULL spare cell, plus a dimmer half-filled pill for a part
    cell (hud.js `_resText`) — never digits. A bullet weapon is untouched: `#res` stays plain `/reserve` text. */
 .res .cells{display:flex;gap:3px}
-.res .cells .cell{width:10px;height:16px;background:var(--glow);border:1px solid color-mix(in srgb,var(--glow) 60%,transparent);box-shadow:0 0 6px color-mix(in srgb,var(--glow) 45%,transparent)}
-.res .cells .cell.partial{background:linear-gradient(90deg,var(--glow) 0 50%,transparent 50% 100%);box-shadow:none;opacity:.7}
+/* Bench 2026-09-18 (Tony): a spare cell reads as an energy canister, not a bar segment -- amber, rounded
+   ends, and a highlight down one side so it has a body. Amber also separates it from the cyan readout. */
+.res .cells .cell{width:9px;height:17px;border-radius:3px/4px;background:linear-gradient(90deg,color-mix(in srgb,var(--warn) 55%,#000) 0 22%,var(--warn) 22% 62%,color-mix(in srgb,var(--warn) 70%,#fff) 62% 78%,color-mix(in srgb,var(--warn) 45%,#000) 78% 100%);border:1px solid color-mix(in srgb,var(--warn) 70%,transparent);box-shadow:0 0 6px color-mix(in srgb,var(--warn) 40%,transparent)}
+.res .cells .cell::after{content:'';display:block;height:2px;margin:1px 2px 0;background:color-mix(in srgb,var(--warn) 80%,#fff);border-radius:2px}
+.res .cells .cell.partial{background:linear-gradient(90deg,var(--warn) 0 var(--fill,50%),transparent var(--fill,50%) 100%);box-shadow:none;opacity:.7}
 /* Bench 2026-09-17 (match 592e444eff): the build-up bar for a weapon that heats, shown only once heat > 0
    has been seen this life (hud.js `_heatBar`/`heatEverSeen`) — a weapon that never heats never draws one. */
 .heat{height:5px;width:140px;background:var(--plate2);border:1px solid var(--edge);margin-top:2px}
@@ -440,6 +451,15 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .tagrow .inuse{display:inline-block;transform:skewX(6deg);color:var(--warn);font-size:11px;font-weight:700;letter-spacing:.1em}
 .idle .help{font-size:12px;color:var(--mut);line-height:1.5;margin-top:auto}
 .idle .list{display:flex;flex-direction:column;gap:10px;overflow:hidden auto;max-height:230px;padding:0 4px}
+/* F258: the picker's boxes are fixed and patched in place, so `hidden` has to beat the class rules
+   that set an explicit display (a UA `[hidden]{display:none}` loses to `.tagrow .sig` and friends).
+   These rules carry one more attribute selector than the display rules above them, so they win. */
+.idle .list .taggers,.idle .list .others{display:flex;flex-direction:column;gap:10px}
+/* the "other devices" fold: everything the picker could not rank as a tagger, one tap away */
+.othertog{background:none;border:0;color:var(--mut);font-size:11px;letter-spacing:.16em;font-weight:600;
+  text-align:left;padding:10px 4px;min-height:36px;cursor:pointer;transform:skewX(-6deg)}
+.othertog .unskew{display:inline-block;transform:skewX(6deg)}
+.idle .list [hidden],.tagrow [hidden]{display:none}
 .lobby .top{position:absolute;top:30px;left:36px;display:flex;flex-direction:column;gap:4px}
 .lobby .cs{font-family:var(--fd);font-style:italic;font-weight:700;font-size:44px;letter-spacing:.08em;line-height:.9}
 .lobby .row{display:flex;align-items:center;gap:8px}
@@ -651,13 +671,18 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .result .rwait .wl.dim{color:var(--mut);font-size:12px}
 /* --- TEAM view --- */
 .result .rteams{display:grid;gap:10px;height:100%;min-height:0}
-.result .rteam{display:flex;flex-direction:column;gap:5px;min-height:0;border:1px solid var(--edge);background:var(--plate);padding:7px 8px}
+/* Bench 2026-09-18 (Tony): on YOUR team the left border is the team colour and the names sat hard
+   against it. The whole card's contents move in, so the chip, HELD, the PLAYER header and the names
+   all keep their alignment; indenting the list alone left the header hanging off the names. */
+.result .rteam{display:flex;flex-direction:column;gap:5px;min-height:0;border:1px solid var(--edge);background:var(--plate);padding:7px 10px 7px 14px}
 .result .rteam.mine{border-color:var(--team)}
 .result .rteam .tm{display:inline-block;align-self:flex-start;padding:2px 11px;font-family:var(--fd);font-weight:700;font-size:15px;letter-spacing:.14em;transform:skewX(-12deg);max-width:100%;overflow:hidden}
 .result .rteam .tm .unskew{display:inline-block;transform:skewX(12deg);white-space:nowrap}
 .result .rteam .tm b{font-size:21px;margin-left:5px}
 .result .thold{font-size:11px;letter-spacing:.18em;color:var(--mut);font-weight:600;white-space:nowrap}
 .result .thold b{color:var(--num);font-family:var(--fd);font-size:15px}
+/* Bench 2026-09-18 (Tony): on YOUR team's card the left border is the team colour, and the names sat
+   hard against it. Indent the whole column, header included, so the names still line up with PLAYER. */
 .result .tpl{flex:1 1 auto;min-height:0;overflow:hidden auto}
 .result .tph{display:flex;justify-content:space-between;gap:8px;font-size:11px;letter-spacing:.14em;color:var(--mut);font-weight:700;border-bottom:1px solid var(--edge);padding-bottom:3px;margin-bottom:2px;white-space:nowrap}
 .result .tp{display:flex;justify-content:space-between;gap:10px;font-size:13px;letter-spacing:.05em;padding:1px 0}

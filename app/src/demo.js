@@ -3,6 +3,8 @@
 import golden from '../../mcp/brx_mcp/mc/golden_bundle.json';
 
 import { DEMO_WEAPONS, DEMO_PERKS } from './demo-catalog.js';   // a COPY of the server catalog shape (regenerate from weapons.json when it changes)
+import { GunPicker } from './gunpicker.js';   // F258: the stage drives the picker the phone drives
+import { NUS } from './brxlink.js';
 
 // ?demo            scripted match (kit → arm → live → down → redeploy…)
 // ?demo&kit        stops at KITTED so the LOADOUT browser can be explored (fake MC answers picks after ~300 ms)
@@ -128,6 +130,32 @@ export function startDemo({ engine, log }) {
   if (stageName != null) {
     const hud = () => (typeof window !== 'undefined' && window.brx) ? window.brx.hud : null;
     const gunObj = { name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' };
+    // ---- F258 picker stages ----
+    // The bench's room (2026-09-18), in the order the adverts arrived there: the loud household
+    // devices first, the two taggers last and quietest.
+    const NOISY_ROOM = [
+      { deviceId: 'tv1', name: 'Samsung Q80 TV', rssi: -41, uuids: [] },
+      { deviceId: 'tv2', name: '[LG] webOS TV', rssi: -44, uuids: [] },
+      { deviceId: 'hatch', name: 'Hatch Rest', rssi: -48, uuids: [] },
+      { deviceId: 'scu', name: 'WL_SCU', rssi: -52, uuids: [] },
+      { deviceId: 'mac1', name: '4C:11:AE:90:22:01', rssi: -55, uuids: [] },
+      { deviceId: 'gun1', name: 'ALPHA-FE30', rssi: -70, uuids: [NUS] },
+      { deviceId: 'gun2', name: 'BRAVO-9498', rssi: -74, uuids: [NUS] },
+    ];
+    let stagePicker = null;
+    /** Feeds adverts to the stage's picker. `keep` re-uses the picker already on the stage, which is
+     *  what makes "the readings moved, the rows did not" testable. */
+    const scanRoom = (hits, assigned = null, keep = false) => {
+      if (!keep || !stagePicker) stagePicker = new GunPicker();
+      stagePicker.setAssigned(assigned);
+      for (const h of hits) stagePicker.observe(h);
+      return stagePicker.list();
+    };
+    const paintScan = (rows, inUse = {}) => {
+      const h = hud(); if (!h) return;
+      h.setScan(rows.map(r => (inUse[r.deviceId] ? { ...r, inUse: true } : r)));
+      h.render(engine.state());
+    };
     const ev = {
       // link + MC
       linkGun: () => engine.onBleConnected(gunObj), dropGun: () => engine.onBleDropped(), relinkGun: () => engine.onBleConnected(),
@@ -137,7 +165,20 @@ export function startDemo({ engine, log }) {
       battery: pct => engine.feedFrame(`$VOLTS,8101,3789,${pct},48,*`),
       mcBound: () => engine.setWsState('bound'), mcLost: () => engine.setWsState('closed'),
       mcRejected: () => engine.setWsState('rejected', { reason: 'roster_full', code: 4003 }),
-      scan: () => { const h = hud(); if (h) { h.setScan([{ deviceId: 'a', basename: 'GUN-A', tail: '3D4F', rssi: -52 }, { deviceId: 'b', basename: 'GUN-B', tail: '7C21', rssi: -71, inUse: true }, { deviceId: 'c', basename: 'GUN-C', tail: 'B0E9', rssi: -83 }]); h.render(engine.state()); } },
+      // F258: every picker stage runs the adverts through the REAL `GunPicker` the phone uses, so the
+      // stage predicts app.js instead of hand-posing a list that nothing on a phone would produce.
+      scan: () => paintScan(scanRoom([
+        { deviceId: 'a', name: 'GUN-A-3D4F', rssi: -52, uuids: [NUS] },
+        { deviceId: 'b', name: 'GUN-B-7C21', rssi: -71, uuids: [NUS] },
+        { deviceId: 'c', name: 'GUN-C-B0E9', rssi: -83, uuids: [NUS] },
+      ]), { b: true }),
+      // F258 (bench 2026-09-18): the room the picker was measured in — two televisions, a QLED, a
+      // Hatch Rest, a WL_SCU and bare MAC addresses, with the taggers arriving LAST and quietest.
+      scanNoisy: (assigned = null) => paintScan(scanRoom(NOISY_ROOM, assigned)),
+      // The same room a second later: every signal reading has moved, and two of them have swapped
+      // which is louder. Not one row may move, and not one row node may be replaced.
+      scanAgain: () => paintScan(scanRoom(NOISY_ROOM.map((d, i) => ({ ...d, rssi: -20 - ((i * 37) % 70) })), null, true)),
+      scanOther: () => { const h = hud(); if (!h) return; h.setScanOther(!h.scanOther); h.render(engine.state()); },
       // F211: the picker with Bluetooth off (game-test-2026-09-13.md C2). `platform` defaults to 'web'
       // (no enable/settings buttons — iOS has neither); pass 'android' for the button variant.
       bluetoothOff: (platform) => { const h = hud(); if (h) { h.bluetoothOn = false; if (platform) h.platform = platform; h.setScan([]); h.render(engine.state()); } },
@@ -287,6 +328,10 @@ export function startDemo({ engine, log }) {
     const live = [...lobby, [900, () => ev.start(0.4)], [1800, 'spawnEcho']];
     const STAGES = {
       'idle':              [[0, 'scan']],
+      // F258: the bench's room. The taggers are the only rows; the rest waits behind the fold.
+      'idle-noisy':        [[0, () => ev.scanNoisy()]],
+      'idle-noisy-open':   [[0, () => ev.scanNoisy()], [150, 'scanOther']],
+      'idle-assigned':     [[0, () => ev.scanNoisy('BRAVO')]],   // MC told this phone which gun it carries
       'idle-bt-off':         [[0, () => ev.bluetoothOff()]],           // F211: no enable/settings buttons (iOS-like)
       'idle-bt-off-android': [[0, () => ev.bluetoothOff('android')]],  // F211: TURN ON BLUETOOTH + BLUETOOTH SETTINGS
       'connected':         [[0, 'linkGun'], [50, () => ev.battery(82)]],

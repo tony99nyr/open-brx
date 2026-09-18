@@ -36,6 +36,12 @@ const ALERT_FAMILY = { objective_taken: 'objective', objective_scored: 'objectiv
 const OUTCOME_WORD = { win: 'WIN', lose: 'LOSE', draw: 'DRAW', undecided: 'UNDECIDED' };
 const MEDAL_LABEL = { first_blood: 'FIRST BLOOD', double_kill: 'DOUBLE KILL', triple_kill: 'TRIPLE KILL', killtacular: 'KILLTACULAR', killing_spree: 'KILLING SPREE', unstoppable: 'UNSTOPPABLE' };
 const splitGun = g => { if (!g) return ['—', '']; return [esc(g.basename || g.name || ''), esc(g.tail || '')]; };
+
+// F258: one picker row, built once and then written in place. The signal bars light at these dBm
+// thresholds, weakest first; the heights are the design's rising staircase.
+const SIG_THRESHOLDS = [-85, -75, -65, -55];
+const SCAN_ROW = '<span class="nm"></span><span class="inuse" hidden>IN USE</span><span class="sig">'
+  + SIG_THRESHOLDS.map((_, i) => `<i style="height:${6 + i * 4}px"></i>`).join('') + '<b></b></span>';
 /** Bench 2026-09-17: bullet-shaped pips read as one pip per round, so a 12-pip gauge on a 4-round sniper mag
  *  lied by 3 pips a shot. Pips now count exactly the magazine size — one pip per round — up to this many; past
  *  it they stop reading as bullets and the gauge switches to a continuous bar (exact count stays in the digits
@@ -102,7 +108,9 @@ const HOLD_TO_RECHARGE = 'HOLD TO RECHARGE';
  *  Gun), a percentage of the cell for a weapon whose full charge costs more than one round (F248, see
  *  usesCellGauge above). */
 const magText = st => usesCellGauge(st)
-  ? `${Math.max(0, Math.min(100, Math.round(100 * st.ammo / (st.mag || Math.max(st.ammo, 1)))))}%`
+  // Bench 2026-09-18 (Tony): the per-cent sign is noise in a fight -- the number alone reads faster and
+  // the bar beside it already says it is a proportion, not a round count.
+  ? `${Math.max(0, Math.min(100, Math.round(100 * st.ammo / (st.mag || Math.max(st.ammo, 1)))))}`
   : pad2(st.ammo);
 // Polish-loop pass 1 (2026-09-12): the discovered-MC row shows the HOST, never the raw ws://…/ws join URL.
 const mcHost = url => { try { return new URL(url).host; } catch (_) { return String(url || ''); } };
@@ -209,6 +217,7 @@ export class Hud {
     this.skin = root.querySelector('#skin');   // the day/night skin switch (a sibling of #hud, so it needs its own listener)
     if (this.skin) this.skin.addEventListener('click', e => this._click(e));
     this.sig = null; this.scan = []; this.link = {}; this.diagData = {}; this.mcUrl = '';
+    this.scanOther = false;   // F258: the "other devices" fold on the picker, closed to start with
     // F211: adapter-off state, app.js-owned (like `mcUrl`/`discovered` below) — the picker's own concern,
     // never round-tripped through the engine. `platform` gates the Android-only enable/settings buttons.
     this.bluetoothOn = true; this.platform = 'web';
@@ -340,7 +349,13 @@ export class Hud {
     }
     const fn = this.h[act]; if (fn) fn(arg, el);
   }
-  setScan(list) { this.scan = list; this.sig = null; }
+  // F258 (bench 2026-09-18): this used to clear the structural signature, so every scan hit rebuilt
+  // the whole screen and destroyed every row node under the player's finger. A scan hit is not a
+  // screen change: `_patchScan` writes the rows in place on the next render, and the picker's empty
+  // placeholder and its "other devices" fold are patched the same way. Nothing here is structure.
+  setScan(list) { this.scan = list || []; }
+  /** Opens or closes the "other devices" fold (F258). A view, like `board`: it sends nothing. */
+  setScanOther(open) { this.scanOther = !!open; }
   setLink(link) { this.link = link; }
   // Polish-loop pass 1 (2026-09-12): a LAN sweep hit MC is no longer auto-joined (app.js, another lane) — it
   // hands the player the choice instead. `null` clears the row (nothing found, or MC is already bound).
@@ -371,7 +386,10 @@ export class Hud {
       st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.reserve === 0, (st.mag || 0) > AMMO_PIP_MAX, st.battery != null && st.battery <= 15,
       st.heatEverSeen, st.overheatShown,   // bench 2026-09-17: OVERHEAT prompt/overlay and the heat bar's existence are structural, not patched in place. `st.overheating` (the mechanic) is not read here at all: the HUD draws the display window only
       chargeCost(st) != null && st.ammo != null && st.ammo < chargeCost(st), st.reserve > 0,   // OUT OF ENERGY / RECHARGE prompt + the NOT ENOUGH ENERGY note are structural too
-      st.kills > 0, st.deaths > 0, st.assists > 0, accShown(st) != null, st.reserve != null, this.scan.length, st.bleUp, st.ended, this.bluetoothOn,
+      // F258: `this.scan.length` used to sit here, so every scan hit that added a device rebuilt the
+      // whole screen. The picker's rows, its empty placeholder and its fold are all patched in place
+      // by `_patchScan` now, so nothing about the scan is structure any more.
+      st.kills > 0, st.deaths > 0, st.assists > 0, accShown(st) != null, st.reserve != null, st.bleUp, st.ended, this.bluetoothOn,
       this.discovered && this.discovered.url,   // Polish-loop pass 1: the discovered-MC row on the pre-join screen (`_joinConfirm` only touches the diag panel, patched directly, not here)
       st.rejoin, !!st.pendingTeardown, this.sync && this.sync.bound, this.sync && this.sync.pending,
       // F137 (field 2026-09-12, found verifying the fix below): the pre-kit CONNECTED screen swaps a whole
@@ -414,6 +432,7 @@ export class Hud {
       }
     }
     this._patch(st);
+    this._patchScan();   // F258: the picker's rows are written in place, never rebuilt
     this._shotCue(st);
     this._skinSwitch(st);
     this._chips(st);
@@ -532,13 +551,16 @@ export class Hud {
       <div class="help">The list fills in on its own once Bluetooth is back on.</div>`;
   }
 
+  // F258: the picker's list is now a FIXED structure that `_patchScan` writes into — four boxes that
+  // never come and go, so a row node survives every re-render and a tap can land on it.
+  _scanList() {
+    return `<div class="list"><div class="taggers"></div>
+      <div class="small nonefound">no taggers yet…</div>
+      <button class="othertog" data-act="onScanOther" hidden><span class="unskew"></span></button>
+      <div class="others" hidden></div></div>`;
+  }
+
   _idle(st = {}) {
-    const rows = this.scan.map(d => {
-      const [nm, tail] = splitGun(d);
-      const bars = [-85, -75, -65, -55].map((thr, i) => `<i style="height:${6 + i * 4}px" class="${d.rssi != null && d.rssi >= thr ? 'on' : ''}"></i>`).join('');
-      return `<div class="tagrow ${d.inUse ? 'used' : ''}" data-act="onPick" data-arg="${esc(d.deviceId)}"><span class="nm">${nm}<b>-${tail}</b></span>` +
-        (d.inUse ? `<span class="inuse">IN USE</span>` : `<span class="sig">${bars}<b>${d.rssi != null ? d.rssi : ''}</b></span>`) + `</div>`;
-    }).join('');
     return `<div class="idle"><div class="scan"></div>
       <div class="l"><span class="wm">BRX<b>/</b></span><span class="sub">COMBAT HUD</span>
         ${st.rejoin ? '<span class="note" style="color:var(--warn)">MATCH IN PROGRESS — SET YOUR GUN TO REJOIN</span>' : ''}
@@ -546,8 +568,72 @@ export class Hud {
         <button class="bigbtn ghost" data-act="onDemo"><span class="unskew">DESKTOP DEMO</span></button>
         <button class="bigbtn ghost util" data-act="onUtility"><span class="unskew">▣ UTILITY MODE</span></button></div>
       <div class="r">${this.bluetoothOn === false ? this._idleBtOff() :
-        `<div class="sc"><i></i>SCANNING FOR TAGGERS</div><div class="list">${rows || '<div class="small">no taggers yet…</div>'}</div>
+        `<div class="sc"><i></i>SCANNING FOR TAGGERS</div>${this._scanList()}
         <div class="help">Tagger not listed? Power-cycle it — it'll appear within a couple seconds.</div>`}</div></div>`;
+  }
+
+  /** F258 (bench 2026-09-18): a scan hit must never destroy a row. This reconciles the picker's DOM
+   *  against `this.scan` — it writes the signal reading into the row that is already on screen, adds
+   *  the rows that are new, and moves a row only when its order genuinely changed. Rows the picker
+   *  ranked as `other` (neither the assigned gun, nor a Nordic UART advert, nor a tagger-shaped name)
+   *  go behind a fold, so a muster does not put a player's own gun at position 12 behind two
+   *  televisions and a Hatch Rest. */
+  _patchScan() {
+    const list = this.hudEl.querySelector('.idle .list'); if (!list) return;
+    const main = list.querySelector('.taggers'), other = list.querySelector('.others');
+    const tog = list.querySelector('.othertog'), none = list.querySelector('.nonefound');
+    if (!main || !other || !tog || !none) return;
+    const near = this.scan.filter(d => !d.other), far = this.scan.filter(d => d.other);
+    this._patchScanRows(main, near);
+    this._patchScanRows(other, far);
+    const hideNone = near.length > 0;
+    if (none.hidden !== hideNone) none.hidden = hideNone;
+    if (tog.hidden !== (far.length === 0)) tog.hidden = far.length === 0;
+    const lab = `${this.scanOther ? '▾' : '▸'} OTHER DEVICES (${far.length})`;
+    const span = tog.firstElementChild;
+    if (span && span.textContent !== lab) span.textContent = lab;
+    if (other.hidden === this.scanOther) other.hidden = !this.scanOther;
+  }
+
+  /** Reconciles one box's `.tagrow` children against `rows`, keyed on `deviceId`. */
+  _patchScanRows(box, rows) {
+    const have = new Map();
+    for (const el of box.children) if (el.dataset && el.dataset.arg) have.set(el.dataset.arg, el);
+    let prev = null;
+    for (const d of rows) {
+      let el = have.get(d.deviceId);
+      if (el) have.delete(d.deviceId);
+      else {
+        el = this.root.createElement('div');
+        el.className = 'tagrow'; el.dataset.act = 'onPick'; el.dataset.arg = d.deviceId;
+        el.innerHTML = SCAN_ROW;
+      }
+      this._writeScanRow(el, d);
+      const want = prev ? prev.nextElementSibling : box.firstElementChild;
+      if (want !== el) box.insertBefore(el, want);   // only a REAL order change moves a node
+      prev = el;
+    }
+    for (const el of have.values()) el.remove();
+  }
+
+  /** Writes one row's visible facts, touching only what actually changed. */
+  _writeScanRow(el, d) {
+    const [nm, tail] = splitGun(d);
+    const cls = d.inUse ? 'tagrow used' : 'tagrow';
+    if (el.className !== cls) el.className = cls;
+    const name = el.querySelector('.nm'), html = `${nm}<b>-${tail}</b>`;
+    if (name && name.innerHTML !== html) name.innerHTML = html;
+    const inuse = el.querySelector('.inuse'), sig = el.querySelector('.sig');
+    if (inuse && inuse.hidden !== !d.inUse) inuse.hidden = !d.inUse;
+    if (sig && sig.hidden !== !!d.inUse) sig.hidden = !!d.inUse;
+    if (!sig) return;
+    const bars = sig.querySelectorAll('i');
+    SIG_THRESHOLDS.forEach((thr, i) => {
+      const on = d.rssi != null && d.rssi >= thr ? 'on' : '';
+      if (bars[i] && bars[i].className !== on) bars[i].className = on;
+    });
+    const num = sig.querySelector('b'), txt = d.rssi != null ? String(d.rssi) : '';
+    if (num && num.textContent !== txt) num.textContent = txt;
   }
 
   _lobby(st, mode) {
@@ -1197,9 +1283,16 @@ export class Hud {
     const reserve = st.reserve || 0;
     if (!(reserve > 0)) return '';
     const full = Math.floor(reserve / clip);
-    const partial = reserve % clip > 0;
+    const left = reserve % clip;
     let s = ''; for (let i = 0; i < full; i++) s += '<i class="cell"></i>';
-    if (partial) s += '<i class="cell partial"></i>';
+    // Bench 2026-09-18 (Tony): "the little amber shells did not deplete correctly, they appeared to be
+    // half full after a reload". The part cell was painted at a FIXED half, so 5 rounds and 39 rounds
+    // looked identical. Fill it at its real fraction instead, with a floor so a nearly empty cell is
+    // still visible rather than a sliver of nothing.
+    if (left > 0) {
+      const pct = Math.max(12, Math.round(100 * left / clip));
+      s += `<i class="cell partial" style="--fill:${pct}%"></i>`;
+    }
     return `<span class="cells">${s}</span>`;
   }
   /** Bench 2026-09-17: the thin build-up bar for a weapon that heats ($ALCD token 5), shown only once the

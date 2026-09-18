@@ -114,7 +114,7 @@ const notSheared = (r, sels) => {
 
 for (const view of VIEWS) {
   console.log(`\n== ${view.name} ${view.width}×${view.height} ==`);
-  for (const st of ['idle', 'connected', 'mc-rejected', 'setup', 'briefing', 'kitted', 'kitted-ready', 'kitted-headset-off', 'connected-headset-off', 'loadout-primary', 'loadout-secondary', 'loadout-picked', 'loadout-arming', 'loadout-info', 'kitted-perk', 'kitted-full', 'loadout-perk', 'tryout', 'lobby', 'lobby-kit-locked', 'kit-refused', 'armed', 'live', 'live-nogun', 'resync', 'live-kill', 'live-reload', 'down', 'redeploy', 'result', 'over',
+  for (const st of ['idle', 'idle-noisy', 'idle-noisy-open', 'idle-assigned', 'connected', 'mc-rejected', 'setup', 'briefing', 'kitted', 'kitted-ready', 'kitted-headset-off', 'connected-headset-off', 'loadout-primary', 'loadout-secondary', 'loadout-picked', 'loadout-arming', 'loadout-info', 'kitted-perk', 'kitted-full', 'loadout-perk', 'tryout', 'lobby', 'lobby-kit-locked', 'kit-refused', 'armed', 'live', 'live-nogun', 'resync', 'live-kill', 'live-reload', 'down', 'redeploy', 'result', 'over',
     'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
     'down-at-cap-offline', 'armed-with-mc-verify']) {
     await step(`${view.name} ${st}: invariants`, async () => { const pg = await open(view, st); const bad = await invariants(pg); await pg.close(); must(bad.length === 0, bad.join(' ; ')); });
@@ -133,6 +133,85 @@ for (const view of VIEWS) {
   await step(`${view.name} #2 idle list: no horizontal scrollbar`, async () => {
     const pg = await open(view, 'idle'); const r = await pg.evaluate(() => { const l = document.querySelector('.idle .list'); return { ox: getComputedStyle(l).overflowX, sw: l.scrollWidth, cw: l.clientWidth, rows: document.querySelectorAll('.tagrow').length }; }); await pg.close();
     must(r.rows === 3, 'rows ' + r.rows); must(r.ox === 'hidden' && r.sw <= r.cw + 1, JSON.stringify(r));
+  });
+  // ---- F258 (bench 2026-09-18): the gun picker in a room full of Bluetooth ----
+  // What Tony saw: SCANNING FOR TAGGERS, then every device in the room in signal order (two
+  // televisions, a QLED, a Hatch Rest, bare MAC addresses) with the two real taggers at positions 7
+  // and 12 — and no tap or scroll ever landed, because the list was rebuilt on every scan hit.
+  await step(`${view.name} F258 idle-noisy: the taggers are the only rows; the room is behind a fold`, async () => {
+    const pg = await open(view, 'idle-noisy');
+    const r = await pg.evaluate(() => ({
+      shown: Array.from(document.querySelectorAll('.taggers .tagrow .nm')).map(e => e.textContent.trim()),
+      folded: document.querySelectorAll('.others .tagrow').length,
+      foldVisible: getComputedStyle(document.querySelector('.others')).display !== 'none',
+      tog: (document.querySelector('.othertog') || {}).textContent || '',
+      togVisible: !!document.querySelector('.othertog') && getComputedStyle(document.querySelector('.othertog')).display !== 'none',
+    }));
+    await pg.close();
+    must(r.shown.length === 2, 'the picker shows ' + r.shown.length + ' rows, not the two taggers: ' + JSON.stringify(r.shown));
+    must(/ALPHA-FE30/.test(r.shown[0]) && /BRAVO-9498/.test(r.shown[1]), 'the two taggers are not the visible rows: ' + JSON.stringify(r.shown));
+    must(r.folded === 5 && !r.foldVisible, 'the room is not folded away: ' + JSON.stringify(r));
+    must(r.togVisible && /OTHER DEVICES \(5\)/.test(r.tog), 'no way back to the other devices: ' + JSON.stringify(r));
+  });
+  // A real tap on the toggle, through the HUD's own click handler and app.js's `onScanOther` — not the
+  // stage event. The fold is the only way back to a device the ranking got wrong, so it must be tappable.
+  await step(`${view.name} F258 idle-noisy: tapping OTHER DEVICES opens the fold and shows the rest of the room`, async () => {
+    const pg = await open(view, 'idle-noisy');
+    await pg.click('.othertog');
+    await pg.waitForTimeout(200);
+    const r = await pg.evaluate(() => ({
+      folded: Array.from(document.querySelectorAll('.others .tagrow .nm')).map(e => e.textContent.trim()),
+      visible: getComputedStyle(document.querySelector('.others')).display !== 'none',
+      tog: (document.querySelector('.othertog') || {}).textContent || '',
+    }));
+    await pg.close();
+    must(r.visible && r.folded.length === 5, 'the fold did not open on a tap: ' + JSON.stringify(r));
+    must(r.folded.some(t => /Samsung/.test(t)), 'the televisions are not reachable at all: ' + JSON.stringify(r.folded));
+    must(/▾/.test(r.tog), 'the toggle does not say it is open: ' + JSON.stringify(r.tog));
+  });
+  // A finger landing in the middle of a tagger row must hit THAT row, not a neighbour and not the box
+  // behind it. This is the screen-truth half of "no tap ever landed".
+  await step(`${view.name} F258 idle-noisy: a finger in the middle of a tagger row hits that row`, async () => {
+    const pg = await open(view, 'idle-noisy');
+    const r = await pg.evaluate(() => {
+      const sc = parseFloat(getComputedStyle(document.getElementById('frame')).transform.split(',')[3] || 1) || 1;   // the #frame is scaled: tap targets are judged in DESIGN px, as step #23 does
+      return Array.from(document.querySelectorAll('.taggers .tagrow')).map(row => {
+        const b = row.getBoundingClientRect();
+        const el = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+        const hit = el && el.closest('.tagrow');
+        return { want: row.dataset.arg, got: hit ? hit.dataset.arg : null, h: Math.round(b.height / sc) };
+      });
+    });
+    await pg.close();
+    must(r.length === 2 && r.every(x => x.got === x.want), 'a tap in a row does not reach that row: ' + JSON.stringify(r));
+    must(r.every(x => x.h >= 44), 'a tagger row is under the 44px tap target: ' + JSON.stringify(r));
+  });
+  await step(`${view.name} F258 idle-assigned: the gun MC assigned to this player is offered first`, async () => {
+    const pg = await open(view, 'idle-assigned');
+    const first = await pg.evaluate(() => (document.querySelector('.taggers .tagrow .nm') || {}).textContent || '');
+    await pg.close();
+    must(/BRAVO-9498/.test(first), 'the assigned gun is not the first row: ' + JSON.stringify(first));
+  });
+  // The reason no tap landed: four samples a second apart gave 12 rows, 12 rows, 2 rows, then 5 in a
+  // different order. Every row node must survive a repaint, and the signal readings must not move a row.
+  await step(`${view.name} F258 idle-noisy: a repaint keeps every row NODE and its order, and still updates the signal`, async () => {
+    const pg = await open(view, 'idle-noisy');
+    const before = await pg.evaluate(() => {
+      const rows = Array.from(document.querySelectorAll('.idle .list .tagrow'));
+      rows.forEach((e, i) => { e.dataset.mark = 'm' + i; });   // a mark only this node carries
+      return { ids: rows.map(e => e.dataset.arg), rssi: rows.map(e => (e.querySelector('.sig b') || {}).textContent) };
+    });
+    await pg.evaluate(() => window.brxDemo.scanAgain());
+    await pg.waitForTimeout(200);
+    const after = await pg.evaluate(() => {
+      const rows = Array.from(document.querySelectorAll('.idle .list .tagrow'));
+      return { ids: rows.map(e => e.dataset.arg), marks: rows.map(e => e.dataset.mark), rssi: rows.map(e => (e.querySelector('.sig b') || {}).textContent) };
+    });
+    await pg.close();
+    must(before.ids.length === 7, 'the fixture room is not 7 devices: ' + JSON.stringify(before.ids));
+    must(JSON.stringify(after.ids) === JSON.stringify(before.ids), 'the readings moved a row: ' + JSON.stringify([before.ids, after.ids]));
+    must(after.marks.every((m, i) => m === 'm' + i), 'a row node was destroyed and rebuilt: ' + JSON.stringify(after.marks));
+    must(JSON.stringify(after.rssi) !== JSON.stringify(before.rssi), 'the signal readings never updated, so this step proves nothing: ' + JSON.stringify(before.rssi));
   });
   // F211 (game-test-2026-09-13.md C2): the picker used to sit empty with no message when Bluetooth was off.
   await step(`${view.name} F211 idle-bt-off: the Bluetooth-off message replaces the list, no Android-only buttons`, async () => {
@@ -2071,12 +2150,14 @@ await step('ammo prompt se: mag 0 / reserve > 0 keeps RELOAD (a reload still giv
   await pg.screenshot({ path: `${OUT}/se-ammo-reload.png` });
   await pg.close();
 });
-await step('ammo gauge se: an energy weapon (charge rifle) shows the percentage bar, never pips or a round count', async () => {
+await step('ammo gauge se: an energy weapon (charge rifle) shows the cell bar and its proportion, never pips or a round count', async () => {
   const pg = await open(VIEWS[1], 'live');
   await setAmmo(pg, 'charge_rifle', 0, 12, 12, 6); await pg.waitForTimeout(400);
   const r = await gaugeState(pg);
   must(r.bar && r.energyBar && !r.ammoBar && r.pips === 0, `an energy weapon must render the energy bar, never pips: ${JSON.stringify(r)}`);
-  must(r.mag === '50%', `an energy weapon's digit must read a percentage, not a round count: ${JSON.stringify(r)}`);
+  // Bench 2026-09-18 (Tony): the per-cent SIGN is gone, the number is still the proportion of the cell.
+  // `12` would be a round count and `50` is half a cell, so this still catches the gauge reading rounds.
+  must(r.mag === '50', `an energy weapon's digit must read the cell proportion, not a round count: ${JSON.stringify(r)}`);
   await pg.screenshot({ path: `${OUT}/se-ammo-energy-half.png` });
   await pg.close();
 });

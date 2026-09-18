@@ -55,7 +55,10 @@ test('picker guard: a gun row tap cannot start a second connect, and SET MY GUN 
   const pick = src.slice(src.indexOf('onPick: async'), src.indexOf('onUtility:'));
   assert.ok(pick.length > 0, 'onPick is gone from app.js -- FIX this guard, do not delete it');
   assert.match(pick, /if \(!d \|\| picking\) return;\s*picking = true;/, 'onPick must ignore a tap while a pick connects');
-  assert.match(pick, /finally \{ picking = false; \}/, 'onPick must release the guard however the connect ends');
+  // F258 put the radio claim in the same `finally`: `scanning` now stays true across the connect, so
+  // the 1 Hz beacon tick cannot open a scan that contends with it. Both flags clear however it ends.
+  assert.match(pick, /finally \{ picking = false;[^}]*\}/, 'onPick must release the guard however the connect ends');
+  assert.match(pick, /finally \{[^}]*scanning = false;[^}]*\}/, 'onPick must hand the radio back however the connect ends');
   const set = src.slice(src.indexOf('onSetGun: async'), src.indexOf('onEnableBluetooth:'));
   assert.match(set, /^onSetGun: async \(\) => \{\s*if \(picking\) return;/, 'SET MY GUN must do nothing while a pick connects');
   const afterEnabled = set.slice(set.indexOf('await link.isEnabled()'));
