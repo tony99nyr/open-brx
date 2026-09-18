@@ -1312,6 +1312,35 @@ single shooter landed `$HIR,4,0,1,0,45,0,0` and then `$HIR,4,0,1,0,70,0,0` **88 
 sensor, killing a player with 79 left. The cycle is 900 ms, so it was one pull. What the capture does not
 say: the distance, and which emitter sent which word, so the §8 bench still decides the design.
 
+✅✅ **The second word deals `t12`'s OWN magnitude, and the two STACK. Measured on two weapons,
+2026-09-18 (playtest lane, F263, victim at 250 armour so nothing could die).** This is the assumption the
+whole pricing model rests on, and until this run it was an inference from one capture. The victim's pool
+was read between the two words:
+
+| weapon | frame as fired | pool | first word | second word | one pull |
+|---|---|---|---|---|---|
+| Shotgun (stock) | t5 45 / t12 70 | 250 → 205 → 135 | 45 | 70 | **115** |
+| Plasma Sniper (stock) | t5 25 / t12 80 | 126 → 101 → 21 | 25 | 80 | **105** |
+
+⚠️ Those are CALLSIGN's captured values, not ours. We ship the Shotgun at 20 + 20 (40 a pull, three
+pulls) and the Plasma Sniper at 25 + 10. Callsign's own Shotgun is a one-pull kill at exactly the 115
+pool; ours is deliberately not.
+
+Three negatives from the same run, each worth a line so nobody re-tries them:
+
+* **No token separates the two words.** Protocol, shooter id, team and both trailing tokens are
+  identical. `$HIR,0,0,8,2,45,0,0` then `$HIR,4,0,8,2,70,0,0`.
+* **The sensor is geometry, not a signal.** The Shotgun's pair landed on sensors 0 then 4, the Plasma
+  Sniper's on 4 and 4, and cap30's on 4 and 4. It is where the player was standing.
+* **The gap VARIES: 57 ms, 88 ms and 119 ms across three pulls.** So there is no fixed window that
+  separates a second word from a second trigger pull, and the AR's 100 ms cycle sits inside that range.
+  Any collapse keyed on time would delete real hits (F260).
+
+Magnitude differs only because the catalogue prices the two words differently, and ours prices the
+Shotgun's at 20 and 20, which erases even that. We are NOT making "never price two words equally" a rule
+to prop up a statistic: a reporting concern must not dictate balance. The collapse belongs on the node,
+which knows the live slot after a mid-life weapon swap, where Mission Control only knows the kit.
+
 ⚠️ **Which emitter sent which word: SOURCED, not settled, 2026-09-18 (LaserTagMods, Jay).** One expert
 statement, credited per this repo's hard rule on protocol discovery: "it actually is both ... so
 there is a dual emitter fire. one from tagger, weaker damage and one from headset, greater damage." Read onto the cap30
