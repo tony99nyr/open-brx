@@ -7,7 +7,6 @@ import { F, T, TAB, fmtClock, teamColor } from '../tokens';
 import { BTN_RESET, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag, shortCoverageLine, useNarrow } from '../ui';
 import { SetupSteps } from '../ui/SetupSteps';
 import { PreArmSummary, armOverrideCopy } from '../ui/PreArmSummary';
-import { McVerify } from '../ui/McVerify';
 import { StandDownChip, StandbySection } from '../ui/Standby';
 import { GameEditPanel } from '../ui/GameEditPanel';
 import { UnrosteredPhonesBanner } from '../ui/UnrosteredPhones';
@@ -43,7 +42,10 @@ export function Lobby() {
   const { acked, allAcked, noEcho, staleAcked, staleAckLine } = gate;
   // A28.4: derived, never asserted — "grey" the count while the tunnel is off, since it can only be 0.
   const cLine = shortCoverageLine(state.coverage);
-  const cColor = state.lan.public?.status !== 'up' ? T.micro : state.coverage?.level === 'full' ? T.ok : T.warn;
+  // Field feedback 2026-09-19 (Tony): partial coverage is not a fault — every gun still works over
+  // LAN — so it is neutral (T.micro), never amber, whether the tunnel is off or simply not full yet.
+  // Only a genuine blocking fault gets a warning colour.
+  const cColor = state.coverage?.level === 'full' ? T.ok : T.micro;
   const reachOfPlayer = (pid: string): 'lan' | 'backhaul' | undefined => {
     const n = state.nodes.find(x => x.player_id === pid);
     return n ? reachOf(n) : undefined;   // no node connected yet: no tag to show, never invent LAN
@@ -170,10 +172,9 @@ export function Lobby() {
           <span data-no-override-reason style={{ font: F.chk(600, 11), letterSpacing: '.1em', color: T.micro }}>CANNOT BE OVERRIDDEN — FIX THE ROSTER FIRST</span>
         </div>
       )}
-      {/* the field steps (power-cycle the grenade, place it) — see ui/SetupSteps */}
+      {/* Match reminders: the field steps (power-cycle the grenade, place it) plus A31's standing
+          "this win is settled at MC" line, naming the phones with no backhaul — see ui/SetupSteps */}
       <SetupSteps style={{ marginBottom: 12 }} />
-      {/* A31: the standing "this win is settled at MC" line, naming the phones with no backhaul */}
-      <McVerify style={{ marginBottom: 12 }} />
       {/* F-3/A39: a connected phone with nobody in the roster claiming it — last night's "4 guns
           connected, only 2 in lobby" confusion, made visible where the operator is actually looking. */}
       <UnrosteredPhonesBanner style={{ marginBottom: 12 }} />

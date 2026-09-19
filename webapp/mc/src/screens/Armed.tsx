@@ -6,7 +6,6 @@ import { EvictButton } from '../ui/EvictButton';
 import { F, T, fmtAge, fmtClock } from '../tokens';
 import { Brackets, GhostButton, HazardButton, Num, ScreenHeader, Tag, shortCoverageLine } from '../ui';
 import { SetupSteps } from '../ui/SetupSteps';
-import { McVerify } from '../ui/McVerify';
 
 
 export function Armed() {
@@ -27,7 +26,8 @@ export function Armed() {
   if (!state) return null;
   // A28.4: derived, never asserted — grey the count while the tunnel is off, since it can only be 0.
   const cLine = shortCoverageLine(state.coverage);
-  const cColor = state.lan.public?.status !== 'up' ? T.micro : state.coverage?.level === 'full' ? T.ok : T.warn;
+  // Field feedback 2026-09-19 (Tony): partial coverage is not a fault, so it is neutral, never amber.
+  const cColor = state.coverage?.level === 'full' ? T.ok : T.micro;
   const st = state.start;
   if (!st) {
     return (
@@ -87,10 +87,9 @@ export function Armed() {
           <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.faint, marginTop: 4 }}>MATCH {st.match_id.toUpperCase()} · SEQ {st.seq}</div>
         </div>
       </Brackets>
-      {/* still actionable during the runway: the grenade is placed while the players walk */}
+      {/* Match reminders: still actionable during the runway (the grenade is placed while the
+          players walk), plus A31's standing "this win is settled at MC" line */}
       <SetupSteps style={{ marginBottom: 12 }} />
-      {/* A31: the standing "this win is settled at MC" line, naming the phones with no backhaul */}
-      <McVerify style={{ marginBottom: 12 }} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 10 }}>
         {nodes.map(({ p, n, nv }) => {
           const ack = n?.arm_state === 'armed' || n?.arm_state === 'live';

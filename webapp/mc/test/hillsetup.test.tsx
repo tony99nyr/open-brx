@@ -26,7 +26,9 @@ describe('the grenade step follows the operator to the screens where it is actio
     const strip = m.find('[data-testid="setup-steps"]');
     expect(strip.length).toBe(1);
     expect(strip[0].textContent).toMatch(/POWER-CYCLE THE GRENADE/i);
-    expect(strip[0].textContent).toMatch(/F88/);
+    // Field feedback 2026-09-19 (Tony): the operator reads this strip, and an internal tracking id
+    // like "F88" means nothing to them — it must never reach this screen.
+    expect(strip[0].textContent).not.toMatch(/F88/);
     // the strip is for FIELD steps: a $SIR / frag-limit advisory here would train the operator to
     // ignore the one strip that matters on the last screen before the horn
     expect(strip[0].textContent).not.toMatch(/frag_limit/i);
@@ -71,7 +73,7 @@ describe('the grenade step follows the operator to the screens where it is actio
     const m = await mountScreen(<Lobby />, { state, view: 'lobby' });
     const strip = m.find('[data-testid="setup-steps"]');
     expect(strip.length).toBe(1);
-    expect(strip[0].textContent).toMatch(/UNPROVEN/);
+    expect(strip[0].textContent).toMatch(/unproven/i);
     expect(strip[0].textContent).not.toMatch(/POWER-CYCLE THE GRENADE/i);
     m.unmount();
   });
