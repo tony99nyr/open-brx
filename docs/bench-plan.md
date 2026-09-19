@@ -32,6 +32,16 @@ t5, t6, t7, t8, t9), §22 steps 1-6, and §23 (all five steps). Screamers A1 and
 
 ## Sittings, in priority order
 
+### Pre-game check (Saturday 2026-09-19)
+
+Run this before the first sitting below.
+
+1. Tony installs the 0.4.0 APK on every phone (`npm run android:install` per phone, or the `app-v0.4.0` release
+   download).
+2. Levers §1 run f: a real TDM through Mission Control with two guns.
+3. One spawn-protection check in a real MC match: after a respawn, hits register with no damage until the first
+   shot or about 2 s, then damage returns.
+
 ### Sitting 1: screamers Phase A, transport half (about 55 min; 1 gun, a laptop)
 
 Screamers are P0. Screamers A3, A4 (run as levers §25), A5, A6, A7, A8, A11, A12. A7 and A8 give the block-pacing
@@ -128,17 +138,14 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 | **F269** | levers and screamers | switch the block pause on, and decide the runt `$SIR` rows | sittings 1 and 4 (A7, A8, A8b) |
 | screamers Phase B: **F270**, **F273**, plus one new row per trigger that Phase A reproduces | levers and screamers | one rule in code per reproduced trigger (write with response; the `$PB*`/`$AS` deny list) | sittings 1 and 4 |
 | **F285** | levers and screamers | a per-token absolute/additive column for `$TMP` in `protocol/brx-protocol.md` | sitting 2 for t1-t3, t6, t10 |
-| **F265**, **F261** | playtest and node | never print LIVE over a stale board; record an orphan match with no bound node | nothing. Gate sitting 5 |
 | **S55**, then **F274** | playtest and node | one accuracy owner (never write t4 during a smoke, re-send when it ends, re-send after `$SPAWN` but not after a `$LIFE` revive), then move the recoil writer onto one `$TMP` t4 frame | S55 first |
-| **F121** | playtest and node | spawn protection as `$SPAWN,,*` + `$TMP` t8 = -100 + `$TID`, in place of the 28-frame fn-28 twin table. Rule: anything that sends `$STOP` must send `$START` before the next life, because `$STOP` survives `$SPAWN` | design the t8 writer with S55's owner (S50's damage-resist perk also wants t8) |
 | **B31** | playtest and node | the kill confirm: the victim's node sends a protocol-15 `$IRTX` through its own (dead) gun's headset | choose the IR design or the advert design (the row weighs both) |
 | **F277** | playtest and node | a detector for a reload that never completes | sitting 5 step 3 (a repro) |
 | **F279** | playtest and node | use the `$LIFE` probe predicate everywhere a `$LIFE` is counted or matched | nothing |
-| **F257**, **F256** | playtest and node | the charge-weapon HUD; the coverage line | nothing |
+| **F256** | playtest and node | the coverage line | nothing |
 | **F268**, **F280**, then **S54** | weapons and perks | settle the rung basis with Tony (the time-to-kill proposal), then wire the six recoil fields once | a decision (Tony). The floors are settled at 60 |
 | **F281** | weapons and perks | move Quick Hands onto `$TMP` t6 in one piece, or not at all | sitting 2 step 4 (t6 absolute or additive) |
 | **S50** | weapons and perks | Extended Mags on `$TMP` t9 (one write per life, after `$SPAWN`, then an `$AMMO` fill) | sitting 2 step 2 (per slot or not) |
-| **F278** | weapons and perks | a runtime refusal: no crit perk on a weapon with `wire.headset_dmg` | nothing |
 | **S16**, **S53** | weapons and perks | the toxin tick clock in `app/src/engine.js` (all three decisions made), with the HUD poison and smoke tells | nothing; `engine.js` is shared with the playtest lane |
 
 ## Preconditions (build these first)

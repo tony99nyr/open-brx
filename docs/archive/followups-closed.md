@@ -381,3 +381,13 @@ Two guns, Tactix-E20D and Tactix-3D4F, then Tactix-E20D alone with the ESP32 IR 
   empties the shield and then cascades into the other selected pool, and the sound token plays the named id (an
   empty token plays nothing). `$BUMP` is confirmed on every field. Evidence: `docs/experiment-log/2026-09.md`,
   2026-09-18, "firmware levers session 1, third sitting".
+
+# Closed 2026-09-18 (night): overnight cycle 1
+
+- 2026-09-18 **F257** `hud.js`'s `energyOut` now fires only when the cell is truly empty (`ammo === 0`) with no
+  reserve; a charge weapon with taps left shows the small note only, never the big OUT OF ENERGY prompt
+  (commit 180b0c5b).
+- 2026-09-18 **F261** A fresh Mission Control now records an orphan match from any unbound node, not only a
+  bound one, so RESUME MATCH works after a restart (commit 0c98b487).
+- 2026-09-18 **F278** The runtime crit-perk refusal ships beside the existing compile-time guard: a weapon
+  declaring `wire.headset_dmg` refuses a crit perk at runtime (commit 483925ea).

@@ -5,14 +5,17 @@ one section per open lane. **When several sessions close together, each one over
 never another lane's.** (On 2026-09-18 three lanes closed on the same night and rewrote each other's sections.)
 The bench order and the desk-work list live in one place: [`bench-plan.md`](bench-plan.md).
 
-## State of main (2026-09-18, night)
+## State of main (2026-09-18, night, after overnight cycle 1)
 
 `main` carries the LaserTagMods drive integration (stock firmware images, BC's sheets, the `soak` tool), the
-playtest branch's desk work (the F264 cure, the recoil writer rebuild, app **0.3.0** released), the arsenal rework
-with its public `/arsenal` page, and levers bench session 1 (three sittings). **Every firmware fact from the drive
-is a disassembly reading until a bench proves it on v4.32**; the claim checklist is
-[`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md). Facts that session 1 proved, and
-that every lane builds on:
+playtest branch's desk work (the F264 cure, the recoil writer rebuild), the arsenal rework with its public
+`/arsenal` page, levers bench session 1 (three sittings), and overnight cycle 1: the spawn-protection rebuild
+(F121, desk work done, bench check still open), the stale-scoreboard label fix and the fresh-MC orphan record
+(F265's label half and F261, closed), the charge-weapon HUD fix (F257, closed) and the runtime crit-perk refusal
+(F278, closed). App **0.4.0** is released (`app-v0.4.0`, DEBUG-signed) and both Pixels still need the install.
+**Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32**; the claim
+checklist is [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md). Facts that session 1
+proved, and that every lane builds on:
 
 - **`$TMP` works over BLE** for t4 (accuracy, also the REAL hit rate), t5 (full-auto interval only), t6 (reload
   time), t7 (outgoing damage), t8 (incoming damage) and t9 (magazine, raw rounds, ADDS on every re-send). No token
@@ -44,15 +47,21 @@ Screamers Phase A has run A1 and A2 only.
 ## Lane: playtest and the node cure
 
 The F264 cure SHIPPED: on three unanswered pulls the node probes with `$LIFE,*`, acts only on the reply, and puts
-GUN NOT ANSWERING on the operator's board when it cannot help. Open: the CAUSE, and **F277** (a reload that never
-completes, which the cure cannot see). Both Pixels hold 0.3.0 (DEBUG-signed).
+GUN NOT ANSWERING on the operator's board when it cannot help. Overnight cycle 1 (2026-09-18 night) closed
+**F261** (a fresh MC now records an orphan match from any unbound node) and **F257** (the charge-weapon HUD), and
+shipped **F121**'s spawn-protection rebuild: `$SPAWN,,*` then `$TMP` t8 = -100 then `$TID`, in place of the
+28-frame fn-28 twin table; MC refuses START and withholds hot-join, welcome, resend and the start broadcast for
+any bound node not on app 0.4.x. **F289** (filed the same night) flags the gap this leaves: an offline player
+mid-protection-window may stay protected all match. **F265**'s HUD half shipped (LIVE only within 16 s of the
+last MC message); its cause, why the score pushes stopped, is still not found. Also open: **F277** (a reload that
+never completes, which the cure cannot see). App **0.4.0** is released; both Pixels still need the install.
 
-- **Next desk task:** **F265** and **F261**, both small and unblocked: never print LIVE over a stale board, and
-  record an orphan match with no bound node. Then **S55** (one accuracy owner), then **F274** (the recoil writer onto
-  one `$TMP` t4 frame), then **F121** (spawn protection on `$SPAWN` + `$TMP` t8, designed with S55's owner).
-- **Next bench task:** bench-plan sitting 5, match verification: levers §1 run f, F264 live, the F277 repro, and
-  the F265/F261/F257/F256 rows.
-- **Blocked:** sitting 5 on the F265 and F261 fixes; F274 on S55; F277's detector on its repro.
+- **Next desk task:** the F265 cause (why a bound phone stops receiving score pushes). Then **S55** (one accuracy
+  owner), then **F274** (the recoil writer onto one `$TMP` t4 frame).
+- **Next bench task:** the pre-game check in [`bench-plan.md`](bench-plan.md) (install 0.4.0, then levers §1 run f
+  and a spawn-protection check), then sitting 5, match verification: F264 live, the F277 repro, and the F256
+  row.
+- **Blocked:** F274 on S55; F277's detector on its repro.
 
 ## Lane: weapons and perks
 
