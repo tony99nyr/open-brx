@@ -10,6 +10,7 @@ Ordered by close date. Evidence for every claim is in `docs/experiment-log/`.
 
 
 # Closed 2026-09-18: the FOLLOWUPS accuracy audit
+- 2026-09-19 **F220** Tony said yes and it is published: app **0.3.0** is the `app-v0.3.0` GitHub Release, cut from a clean tree at `6161a8f9`, and `webapp/download/build.json` points the site at it, which turns `test_published_build` green for the first time since the version bump. ⚠ It is a DEBUG build, because this project still has no release keystore: it sideloads, but it is signed with the throwaway Android debug key, so the first release-signed build will NOT upgrade over it and every player must uninstall once. That is a decision to take before a public game, not after, and it is not yet a row.
 
 - 2026-09-18 **F194** `--advertise` is in the CLI flags table of `mcp/brx_mcp/mc/README.md` (commit 2d0abd5b, 2026-09-17).
 - 2026-09-18 **F246** The energy-weapon "reload timeout" was a lever TAP: a tap refills nothing on an energy weapon, and a HELD lever vents the heat and refills the cell 1.95 s after release (`experiment-log/2026-09.md`, the 2026-09-18 perks bench entry item 8; F229).
