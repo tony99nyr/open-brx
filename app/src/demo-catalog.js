@@ -605,6 +605,12 @@ export const DEMO_PERKS = [
       "max_armor_add": 25,
       "reload_mult": 1.25
     },
+    "gain": [
+      "+25 ARMOR"
+    ],
+    "cost": [
+      "RELOADS 1.2× SLOWER"
+    ],
     "verified": true,
     "hidden": false
   },
@@ -621,6 +627,12 @@ export const DEMO_PERKS = [
       "ammo_mult": 2,
       "switch_mult": 1.3
     },
+    "gain": [
+      "×2 AMMO"
+    ],
+    "cost": [
+      "SWAPS 1.3× SLOWER"
+    ],
     "verified": true,
     "hidden": false
   },
@@ -637,6 +649,12 @@ export const DEMO_PERKS = [
       "ammo_mult": 0.8,
       "reload_mult": 0.5
     },
+    "gain": [
+      "RELOADS 2× FASTER"
+    ],
+    "cost": [
+      "×0.8 AMMO"
+    ],
     "verified": false,
     "hidden": false
   },
@@ -653,6 +671,12 @@ export const DEMO_PERKS = [
       "max_armor_add": -20,
       "switch_mult": 0.5
     },
+    "gain": [
+      "SWAPS 2× FASTER"
+    ],
+    "cost": [
+      "-20 ARMOR"
+    ],
     "verified": true,
     "hidden": false
   },
@@ -668,6 +692,12 @@ export const DEMO_PERKS = [
     "effects": {
       "armor_piercing": true
     },
+    "gain": [
+      "IGNORES ARMOR & SHIELDS"
+    ],
+    "cost": [
+      "FIXED DAMAGE, SLOWER CYCLE"
+    ],
     "verified": false,
     "hidden": false
   }

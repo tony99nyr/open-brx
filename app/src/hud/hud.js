@@ -149,29 +149,29 @@ const ROLE_NAME = { assault: 'ASSAULT', cqb: 'CLOSE RANGE', marksman: 'SNIPER', 
 /** A secondary rule whose kinds hold `sidearm` but not `weapon` is a pistols-only slot (policy.py, 2026-09-04). */
 const sidearmOnly = rule => !!(rule && rule.kinds && rule.kinds.includes('sidearm') && !rule.kinds.includes('weapon'));
 const roleName = w => ROLE_NAME[w.role] || (w.tags && w.tags[0] ? String(w.tags[0]).toUpperCase() : 'WEAPON');
-// S50 (2026-09-17): every perk now carries a GAIN and a COST, so this splits them and says which is which.
-// ⚠ A multiplier ABOVE 1 is a cost. The old line ran every multiplier through `1 / m` and called the result
-// "FASTER", so Body Armor's `reload_mult: 1.25` printed "RELOADS 0.8× FASTER" and a penalty read as a buff.
-// `short` is for the kit plate, which is about 124 px wide: the gain only, with the cost in the browser row
-// and the detail pane where there is room for it. A perk the node runs on its own carries no effects at all,
-// so its line is named here rather than left as "PASSIVE".
-const PERK_LINE = { motion_tracker: 'ENEMIES ON YOUR HUD', second_wind: 'SURVIVE ONE NEAR-KILL' };
+// S50 (2026-09-19): every perk carries a GAIN and a COST, computed ONCE on the server
+// (`mcp/brx_mcp/mc/perks.py` `gain_cost_lines`) and shipped on the catalogue's `PerkView` as
+// `gain`/`cost` string arrays -- this file used to derive its own from `effects` and, before the fix,
+// ran every multiplier through `1 / m` and called the result "FASTER" regardless of which side of 1 it
+// fell on (Body Armor's `reload_mult: 1.25` printed "RELOADS 0.8× FASTER", a penalty read as a buff).
+// The console (`webapp/mc/src/screens/Kit.tsx`) reads the SAME two arrays, so the two UIs cannot
+// disagree about a perk's trade again. `short` is for the kit plate, which is about 124 px wide: the
+// gain only, with the cost in the browser row and the detail pane where there is room for it. A stale
+// server that has not shipped `gain`/`cost` yet degrades to an empty line, never a crash.
+const perkGain = p => (p && p.gain) || [];
+const perkCost = p => (p && p.cost) || [];
 const perkEffect = (p, short) => {
-  const e = (p && p.effects) || {}; const gain = [], cost = [];
-  const rate = m => +(m > 1 ? m : 1 / m).toFixed(1);
-  if (e.max_armor_add > 0) gain.push(`+${e.max_armor_add} ARMOR`);
-  if (e.max_armor_add < 0) cost.push(`${e.max_armor_add} ARMOR`);
-  if (e.ammo_mult > 1) gain.push(`×${e.ammo_mult} AMMO`);
-  if (e.ammo_mult < 1) cost.push(`×${e.ammo_mult} AMMO`);
-  if (e.reload_mult < 1) gain.push(`RELOADS ${rate(e.reload_mult)}× FASTER`);
-  if (e.reload_mult > 1) cost.push(`RELOADS ${rate(e.reload_mult)}× SLOWER`);
-  if (e.switch_mult < 1) gain.push(`SWAPS ${rate(e.switch_mult)}× FASTER`);
-  if (e.switch_mult > 1) cost.push(`SWAPS ${rate(e.switch_mult)}× SLOWER`);
-  if (e.alt_reload) gain.push('ALT = RELOAD');
-  if (e.armor_piercing) gain.push('IGNORES ARMOR');
-  if (!gain.length && PERK_LINE[p && p.perk_id]) gain.push(PERK_LINE[p.perk_id]);
+  const gain = perkGain(p), cost = perkCost(p);
   if (short) return gain[0] || 'PASSIVE';
   return [...gain, ...cost].join(' · ') || 'PASSIVE'; };
+/** Same line as `perkEffect`, but the cost half tinted in the neutral warning colour (never a team
+ *  colour, never red) so a gain and a cost read as two different kinds of fact, not one flat list. */
+const perkEffectHtml = p => {
+  const gain = perkGain(p), cost = perkCost(p);
+  if (!gain.length && !cost.length) return 'PASSIVE';
+  const g = gain.length ? `<span style="color:var(--perk,#c48bff)">${gain.map(esc).join(' · ')}</span>` : '';
+  const c = cost.length ? `<span style="color:var(--warn)">${cost.map(esc).join(' · ')}</span>` : '';
+  return [g, c].filter(Boolean).join(' · '); };
 const PERK_GLYPH = {
   body_armor: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 4 L34 9 V20 C34 29 28 34 20 37 C12 34 6 29 6 20 V9 Z"/><path d="M20 12 V29 M13 20 H27" opacity=".7"/></svg>',
   extended_mags: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 4 H28 L30 36 H10 Z"/><path d="M15 11 H25 M15 17 H25 M15 23 H25 M15 29 H25" opacity=".7"/></svg>',
@@ -898,7 +898,7 @@ export class Hud {
           unconf = r.key === eqKey && !pend && !st.tryoutArming && rowUnconf,
           pn = r.key === pend, fo = r.key === focusKey, rj = !!(ack && !ack.ok && ack.key === r.key), wn = !!(cf && cf.key === r.key);
         const thumb = r.kind === 'perk' ? `<span class="thumb perk">${perkGlyph(r.id)}</span>` : `<span class="thumb">${weaponArt(r.id)}</span>`;
-        const body = r.kind === 'perk' ? `<span class="nm2"><b>${esc(name(r)).toUpperCase()}</b><small>${esc(perkEffect(r.row))}</small></span>` : `<span class="nm">${esc(name(r)).toUpperCase()}</span><span class="role">${esc(roleName(r.row))}</span><span class="mag tab">MAG ${r.row.clip != null ? r.row.clip : '—'}</span>`;
+        const body = r.kind === 'perk' ? `<span class="nm2"><b>${esc(name(r)).toUpperCase()}</b><small>${perkEffectHtml(r.row)}</small></span>` : `<span class="nm">${esc(name(r)).toUpperCase()}</span><span class="role">${esc(roleName(r.row))}</span><span class="mag tab">MAG ${r.row.clip != null ? r.row.clip : '—'}</span>`;
         // A26: ✓ = MC acked this pick AND the gun confirmed the write, ⟳ = still arming (the node's debounce
         // window, waiting on MC's ack, or — F147 — MC acked but the gun has not answered the $WEAP write yet),
         // ≈ = the arming window ran out with no confirming report (pass 2: honest, not a real ✓).
@@ -929,7 +929,7 @@ export class Hud {
         // inherit a weapon arm's stale timeout.
         : (focus.key === eqKey && !pend && unconfHere && st.tryoutUnconfirmed.kind === focus.kind) ? '<span class="eqtag unconf">UNCONFIRMED</span>'
         : (focus.key === eqKey && !pend) ? '<span class="eqtag">EQUIPPED</span>' : '';
-      if (focus.kind === 'perk') detail = `<div class="art perk">${perkGlyph(focus.id)}</div><div class="nm">${esc(r.name).toUpperCase()}${heroTag}</div><div class="ln pk">PERK · ${esc(perkEffect(r))}${r.verified === false ? ' · <span style="color:var(--warn)">NOT YET FIELD-TESTED</span>' : ''}</div><div class="desc">${esc(r.desc || '')}</div>`;
+      if (focus.kind === 'perk') detail = `<div class="art perk">${perkGlyph(focus.id)}</div><div class="nm">${esc(r.name).toUpperCase()}${heroTag}</div><div class="ln pk">PERK · ${perkEffectHtml(r)}${r.verified === false ? ' · <span style="color:var(--warn)">NOT YET FIELD-TESTED</span>' : ''}</div><div class="desc">${esc(r.desc || '')}</div>`;
       else detail = `<div class="art">${weaponArt(focus.id)}</div><div class="nm">${esc(r.name).toUpperCase()} <span class="rolechip">${esc(roleName(r))}</span>${heroTag}</div><div class="ln">MAG ${r.clip != null ? r.clip : '—'} · RESERVE ${r.reserve != null ? r.reserve : '—'}${r.reload_s != null ? ' · RELOAD ' + r.reload_s + 'S' : ''}</div>${statBlock(r)}${r.caution ? `<div class="caution">▲ ${esc(r.caution)}</div>` : ''}<div class="desc">${esc(r.desc || '')}</div>`;
     } else if (can) detail = `<div class="small" style="padding-top:30px">${tab === 'secondary' ? (sidearmOnly(rule) ? 'Pick a sidearm — or leave it on NONE.' : 'Pick a second weapon — or leave it on NONE.') : tab === 'perk' ? 'Pick a perk — or leave it on NONE.' : 'Pick your main weapon.'}</div>`;
     // A14: the two-tap confirm outranks everything else in the action bar; an ack that dropped the other slot says so
