@@ -78,8 +78,13 @@ late.
 
 ## Still open, unchanged by tonight
 
-1. **F264** a player can be dead on the gun and alive on the HUD; `pool_stale: no_fire` is detected and
-   nothing acts on it. Tonight's `$LIFE,*` poll result is the ingredient the cure needs.
+1. **F264** a player can be dead on the gun and alive on the HUD. **The CURE IS SHIPPED** (2026-09-19): on three
+   unanswered pulls the node probes with `$LIFE,*` and acts only on the answer, never revives on no evidence, and
+   puts GUN NOT ANSWERING on the operator's board when it cannot help. **What is still open is the CAUSE** (why a
+   gun leaves the state our writes assume) and whether the cure works on a real stall: the two-frame `$LIFE` revive
+   was measured on a cleanly killed gun, NOT on a stalled one. Next stall at the bench, try it BEFORE any force
+   respawn, which destroys the evidence. **F277** is the variant the cure cannot see: a reload that never completes
+   leaves an empty magazine, which correctly never reaches `no_fire`.
 2. **F265** a bound phone's scoreboard can freeze while the overlay says LIVE.
 3. **F261** a fresh Mission Control never offers to adopt a running match.
 4. **F257** the HUD says OUT OF ENERGY on a charge weapon that can still fire taps.
@@ -98,15 +103,18 @@ late.
    `bench-plan.md`.
 3. **Levers session 2** (§3, §6-§10, §15, §23 in full) and the IR-rig session (§11, §13, §16, §17, §20,
    §24), both in `bench-plan.md`.
-4. **Fix F264** using the `$LIFE,*` poll now confirmed; it is the one that costs a player their match.
+4. **S55, the single accuracy owner** -- the recoil writer's move onto one `$TMP` t4 frame is accepted and
+   BLOCKED behind it. t4 is shared with the gun's own smoke in both directions, so writing it without the owner's
+   three rules (never during a smoke, re-send when it ends, re-send after a `$SPAWN` but not after a `$LIFE`
+   revive) would ship the bug the bench found. This is the largest write-budget saving available (F274).
 5. **Fix F265 and F261**, both small: never print LIVE over a stale board, and record an orphan match
    whether or not a node is bound.
 6. **Weapons decisions, no bench needed** (all numbers nobody has played): **F268**, **F280** and
    **F281** should settle in one pass. **Toxin** needs three from Tony before its node tick clock can
    be built: who gets kill credit for a lethal tick, whether poison survives a respawn, and what the
    HUD shows while it ticks.
-7. **F254 🔴 needs outdoor space** (Tony: not today). At what `t13` value does the headset word stop
-   arriving. It unlocks the close-range weapon class, which `t2` cannot express: F231 says everything
+7. **F275 🔴 needs outdoor space** (Tony: not today). At what `t13` value does the headset word stop
+   arriving. (It was F254 until 2026-09-19: F254 collided, and the ARCHIVED row keeps the id because a closed id must stay citable, so this open one moved.) It unlocks the close-range weapon class, which `t2` cannot express: F231 says everything
    from 55 to 100 reaches the same distance.
 
 ## Machine state
