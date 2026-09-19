@@ -5,14 +5,21 @@ one section per open lane. **When several sessions close together, each one over
 never another lane's.** (On 2026-09-18 three lanes closed on the same night and rewrote each other's sections.)
 The bench order and the desk-work list live in one place: [`bench-plan.md`](bench-plan.md).
 
-## State of main (2026-09-18, night, after overnight cycle 1)
+## State of main (2026-09-19, after the pre-game office test)
 
-`main` carries the LaserTagMods drive integration (stock firmware images, BC's sheets, the `soak` tool), the
-playtest branch's desk work (the F264 cure, the recoil writer rebuild), the arsenal rework with its public
-`/arsenal` page, levers bench session 1 (three sittings), and overnight cycle 1: the spawn-protection rebuild
-(F121, desk work done, bench check still open), the stale-scoreboard label fix and the fresh-MC orphan record
-(F265's label half and F261, closed), the charge-weapon HUD fix (F257, closed) and the runtime crit-perk refusal
-(F278, closed). App **0.4.0** is released (`app-v0.4.0`, DEBUG-signed) and both Pixels still need the install.
+App **0.4.4 is ready on branch `integrate-2026-09-19`, NOT yet published as a GitHub release and NOT yet
+pushed. Tony publishes and field-tests it after lunch.** It carries 0.4.1-0.4.4 (flap-backoff fixes, picker
+connecting-state and pacing fixes, the respawn-profile rebuild, and today's office-test fixes: connecting-screen
+layout, the Mission Control LAN sweep paused during a gun connect, the low-health debounce, HUD layout, immersive
+fullscreen), an eight-finding review pass, life presets (Standard 45/70/0, Shields 45/0/105, Hardcore 45/0/0),
+and perk gain/cost lines on both UIs. **F206 is PROVEN**: levers §1 run f passed in a real TDM through Mission
+Control (cross-team hits registered). **The respawn-protection mechanism F121/F209 described is gone, replaced
+by 0.4.3's respawn profiles** (timed vs station, a weapon-arming delay independent of the protection window,
+equal go-live at T-3); both rows are closed. Today's two ghost-node incidents are already answered by the
+stale-node fix (`88ead536`), filed before the office test even ran. **The first field test after publish is the
+Shields preset in a real match, plus the new respawn rules on both phones; both phones need wireless debugging
+re-enabled first.** Still open and P0: the BLE link-loop root cause (**F290**) and BLE setup-reliability metrics
+(**F294**); see `bench-plan.md`'s new "0.4.4 field check".
 **Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32**; the claim
 checklist is [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md). Facts that session 1
 proved, and that every lane builds on:
@@ -47,20 +54,25 @@ Screamers Phase A has run A1 and A2 only.
 ## Lane: playtest and the node cure
 
 The F264 cure SHIPPED: on three unanswered pulls the node probes with `$LIFE,*`, acts only on the reply, and puts
-GUN NOT ANSWERING on the operator's board when it cannot help. Overnight cycle 1 (2026-09-18 night) closed
-**F261** (a fresh MC now records an orphan match from any unbound node) and **F257** (the charge-weapon HUD), and
-shipped **F121**'s spawn-protection rebuild: `$SPAWN,,*` then `$TMP` t8 = -100 then `$TID`, in place of the
-28-frame fn-28 twin table; MC refuses START and withholds hot-join, welcome, resend and the start broadcast for
-any bound node not on app 0.4.x. **F289** (filed the same night) flags the gap this leaves: an offline player
+GUN NOT ANSWERING on the operator's board when it cannot help. **F121 and F209 are CLOSED (2026-09-19)**,
+superseded by 0.4.3's respawn-profile rebuild (a separate weapon-arming delay, no default protection on a timed
+respawn, equal go-live at T-3); F223 (order node facts by their own `t`) is the one open thread F209 leaves
+behind. Overnight cycle 1 (2026-09-18 night) closed **F261** (a fresh MC now records an orphan match from any
+unbound node) and **F257** (the charge-weapon HUD). Today's stale-node fix (`88ead536`, no open row) answers both
+ghost-node incidents from the office test. **F289** still flags the gap it leaves: an offline player
 mid-protection-window may stay protected all match. **F265**'s HUD half shipped (LIVE only within 16 s of the
-last MC message); its cause, why the score pushes stopped, is still not found. Also open: **F277** (a reload that
-never completes, which the cure cannot see). App **0.4.0** is released; both Pixels still need the install.
+last MC message); its cause, why the score pushes stopped, is still not found. Also open: **F277** (a reload
+that never completes), **F287** (operator RESYNC still writes before the `$HP` probe answers), **F288** (the HUD
+never renders `poolStale`/`cure`), and the office test's own new rows, **F290-F295** (link-loop root cause,
+the MC LAN sweep, ten pre-existing screens-test failures, the down-pattern LED redesign, BLE setup-reliability
+metrics, and a real Shields-preset match). App **0.4.4** is built on this branch, not yet published; see "State
+of main" above.
 
 - **Next desk task:** the F265 cause (why a bound phone stops receiving score pushes). Then **S55** (one accuracy
   owner), then **F274** (the recoil writer onto one `$TMP` t4 frame).
-- **Next bench task:** the pre-game check in [`bench-plan.md`](bench-plan.md) (install 0.4.0, then levers §1 run f
-  and a spawn-protection check), then sitting 5, match verification: F264 live, the F277 repro, and the F256
-  row.
+- **Next bench task:** the "0.4.4 field check" in [`bench-plan.md`](bench-plan.md) (connect timing on both
+  phones, the new respawn rules, the Shields preset, the down animation, full screen), then sitting 5, match
+  verification: F264 live, the F277 repro, and the F256 row.
 - **Blocked:** F274 on S55; F277's detector on its repro.
 
 ## Lane: weapons and perks

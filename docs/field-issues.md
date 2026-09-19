@@ -27,8 +27,9 @@ root-caused without a gun.
 - ✅ **F208** a gun can die with the HUD holding the player alive, for 105 s, with no operator resync.
   Closed 2026-09-18: A45 flags the stale pool and A47 RESYNC GUN and FORCE RESPAWN recover it (F235). The rest
   is **F272** and **F264**.
-- 🔍 **F209** the respawn delay collapses to 0 in a burst; spawn protection does not hold post-respawn.
-  Narrowed 2026-09-18: spawn protection is confirmed on hardware (F217). What is left is **F223**.
+- ✅ **F209** the respawn delay collapses to 0 in a burst; spawn protection does not hold post-respawn.
+  Narrowed 2026-09-18: spawn protection is confirmed on hardware (F217). Closed 2026-09-19, superseded by
+  the 0.4.3 respawn-profile rebuild. What is left is **F223**.
 - ✅ **Worked:** `$GSET` t2 stayed 0 in all three heads and **outdoor FFA registered at an indoor-comparable
   rate** — the 2026-09-13 afternoon fix held up in a real game. Teams were pushed correctly on both guns.
 - 🔍 **F203 seen again:** a phone opened on a remembered, unreachable MC address and needed a QR rescue.

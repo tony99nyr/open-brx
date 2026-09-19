@@ -393,3 +393,25 @@ Two guns, Tactix-E20D and Tactix-3D4F, then Tactix-E20D alone with the ESP32 IR 
   bound one, so RESUME MATCH works after a restart (commit 0c98b487).
 - 2026-09-18 **F278** The runtime crit-perk refusal ships beside the existing compile-time guard: a weapon
   declaring `wire.headset_dmg` refuses a crit perk at runtime (commit 483925ea).
+
+# Closed 2026-09-19: the pre-game office test and the respawn-profile rebuild
+
+Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 0.4.3's respawn profiles
+(commit 9fe9dcfc, review fixes 9f234a2b). Full findings: `docs/experiment-log/2026-09.md` (2026-09-19 entry).
+
+- 2026-09-19 **F121** superseded by the 0.4.3 respawn-profile rebuild (contracts A49). The single
+  spawn-protection mechanism this row described (`$SPAWN,,*` then `$TMP` t8 = -100, ending at the gun's first
+  shot or a 2.1 s cap) is replaced by two named profiles: a timed respawn (protection 0/1/2 s, a separate
+  weapon-delay hold of 500/1000/3000 ms that never goes live until 0.5 s after protection ends) and a station
+  respawn (protection 2/3 s, trigger live at once, a visible shield blink). Go-live is now equal for every
+  player: the live `$SIR` table lands at T-3 while the head still holds every trigger, closing the countdown
+  half of this row's original bench gate. Office-test observation, recorded and not chased further: on 0.4.2 a
+  hit landed damage 0.73 s after a respawn (09:49:52.4 against a 09:49:51.7 respawn) even though the same
+  window blocked other hits cleanly (green headset flash, no damage) — superseded by 0.4.3's rules before a
+  root cause was needed.
+- 2026-09-19 **F209** superseded by the same rebuild. The asymmetry this row named — hit reception returning
+  before the trigger does — is now a design rule rather than a bug: `weapon_delay_ms` is independent of
+  `protect_s` and the trigger is held (`$BMAP,0,98`) for the whole delay, so the gap cannot reopen the way the
+  single-mechanism design did. The burst-collapse half was already closed 2026-09-16 as an outbox-flush
+  artefact, not the engine. What this row's diagnosis leaves behind is **F223** (order node facts by their own
+  `t`, not arrival time), which stays open on its own.

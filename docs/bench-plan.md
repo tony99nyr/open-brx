@@ -30,17 +30,31 @@ answered by §16), §12 steps 1 and 3 (answered by §23), §13 step 1 and step 3
 t5, t6, t7, t8, t9), §22 steps 1-6, and §23 (all five steps). Screamers A1 and A2. F276 (the Shotgun words). The whole perks sheet
 ([`bench-perks-2026-09-18.md`](bench-perks-2026-09-18.md), §1-§8). F230 closed, so levers §19 step 18 is dropped.
 
+**Pre-game check, run 2026-09-19 (Saturday morning office test).** Tony installed the 0.4.0-0.4.2 APKs across the
+session. Levers §1 run f (a real TDM through Mission Control with two guns) **PASSED**: cross-team hits
+registered on both sides, closing F206's last open gate. The spawn-protection check found a real bug instead of
+confirming the design: on 0.4.2 a hit landed damage 0.73 s after a respawn even though the same window blocked
+other hits cleanly. That result, plus a shooter seeing a protected player flash "hit" with no damage and a
+respawner firing while still protected, drove the 0.4.3 respawn-profile rebuild the same day (F121/F209 closed,
+superseded). See `docs/experiment-log/2026-09.md` (2026-09-19 pre-game entry) for the full write-up.
+
 ## Sittings, in priority order
 
-### Pre-game check (Saturday 2026-09-19)
+### 0.4.4 field check (Saturday afternoon 2026-09-19, after Tony publishes)
 
-Run this before the first sitting below.
+Run this first, once app 0.4.4 is published and both phones have wireless debugging re-enabled.
 
-1. Tony installs the 0.4.0 APK on every phone (`npm run android:install` per phone, or the `app-v0.4.0` release
-   download).
-2. Levers §1 run f: a real TDM through Mission Control with two guns.
-3. One spawn-protection check in a real MC match: after a respawn, hits register with no damage until the first
-   shot or about 2 s, then damage returns.
+1. Install 0.4.4 on both phones (`npm run android:install` per phone, or the `app-v0.4.4` release download).
+2. Connect timing on both phones: time from tap to linked, from cold, at least three tries each. Feeds **F294**.
+3. Watch for the link-loop symptom (a drop every 5-12 s after the first connect); if it recurs, log whether the
+   phone's own Bluetooth was on or off through the pairing. Feeds **F290**.
+4. The new respawn rules in a real match: a timed respawn (no protection by default, weapon live 0.5 s after the
+   countdown ends) and a station respawn (2 s visible protection, trigger live at once, white shield blink).
+5. The Shields preset in a real match through Mission Control: shield recharge cues and pool readout on both
+   HUDs. Feeds **F295**.
+6. The down animation: confirm whether the slowed `$HLOOP,1,2500` rearm reads as "down" rather than as a hit.
+   Feeds **F293**.
+7. Full screen: confirm the Android status bar stays hidden during play on both phones (API 30+ immersive patch).
 
 ### Sitting 1: screamers Phase A, transport half (about 55 min; 1 gun, a laptop)
 
@@ -74,15 +88,16 @@ recoil writer. If the writer has moved to `$TMP` t4 by then, replay the `$TMP` f
 
 ### Sitting 5: match verification (about 60 min; 2 guns, Phones + MC, film)
 
-Run it after the desk fixes for F265 and F261 land.
-1. Levers §1 run f: a real TDM through MC, hits on both teams (F206, closed 2026-09-16; run f proves main's fix).
-2. **F264** in a live match. If a gun stalls, send `$LIFE,<hp>,0,0,1,*` then `$HLED,,6,*` BEFORE any force respawn,
+Run it after the desk fixes for F265 and F261 land. Levers §1 run f (F206's proof) **already ran and passed**,
+2026-09-19; do not re-run it here.
+1. **F264** in a live match. If a gun stalls, send `$LIFE,<hp>,0,0,1,*` then `$HLED,,6,*` BEFORE any force respawn,
    and watch for a trigger answer. The row holds the gate.
-3. Levers §22 step 7: reproduce the timed-out partial reload on the Energy Rifle. **F277**.
-4. **F265** (scoreboard freeze), **F261** (adopt from a fresh MC), **F257** (charge weapon HUD), **F256** (coverage
+2. Levers §22 step 7: reproduce the timed-out partial reload on the Energy Rifle. **F277**.
+3. **F265** (scoreboard freeze), **F261** (adopt from a fresh MC), **F257** (charge weapon HUD), **F256** (coverage
    line), **F237** (a slow Pixel 5 re-pick): each row holds its repro.
-5. The stun cue: hit a player with the EMP and listen for `X17` on the victim's gun (commit `273e949a`; FOLLOWUPS §9, F15 rung 9).
-6. The shield recharge cues on the Shields preset (**S29**: `N101`, `N102`, `VA6Y`, `N74`).
+4. The stun cue: hit a player with the EMP and listen for `X17` on the victim's gun (commit `273e949a`; FOLLOWUPS §9, F15 rung 9).
+5. The shield recharge cues on the Shields preset (**S29**: `N101`, `N102`, `VA6Y`, `N74`). If the "0.4.4 field
+   check" already ran the Shields preset in a match, do not re-run it here; note the result instead.
 
 ### Sitting 6: levers session 2 (two sittings; 2 guns, the rig for §9 step 5)
 
