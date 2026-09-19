@@ -1,21 +1,30 @@
 """Behavioural tests for the soak run loop (brx_mcp/soak/runner.py), no BLE hardware.
 
 `FakeMgr` mimics the one contract `run_soak` actually depends on (`ble.py ConnectionManager`):
-`connect`/`disconnect`/`send`/`get_events`/`is_connected`, plus a `sessions` dict of objects that
-carry a `.seq` (and, if a log path is given, `.log_file`/`.log_label`), the same seam
+`connect`/`disconnect`/`send`/`send_phone_paced`/`get_events`/`is_connected`, plus a `sessions` dict
+of objects that carry a `.seq` (and, if a log path is given, `.log_file`/`.log_label`), the same seam
 `brx_mcp/diag/runner.py`'s own `test_diag_runner.py` already uses for its FakeMgr.
 
 `FakeClock` mimics `runner.Clock` but advances a counter instead of sleeping for real, so a run of
 several *simulated* minutes takes milliseconds of real test time (CLAUDE.md: "a mocked clock, not
 sleeps"; a fixed real sleep would race under `npm run test:all`'s parallel load anyway).
+
+`FakeMgr.send_phone_paced` mirrors `ble.py`'s real method's CHUNKING AND GAP MATH (20-byte chunks,
+`chunk_gap_ms` between chunks of one frame, `frame_gap_ms` once per frame -- see `brx_mcp.soak.
+runner.PHONE_*`, sourced from `app/src/brxlink.js WRITE_PACING`) using the fake clock, and records
+every chunk in `FakeMgr.chunk_log` so a test can pin packet sizes, order and gaps exactly, without a
+real BLE write.
 """
 
 import asyncio
+import math
 
 from _async import run
 
 from brx_mcp.soak.patterns import PATTERNS, ScheduledFrames, SoakPattern
-from brx_mcp.soak.runner import run_soak
+from brx_mcp.soak.runner import (
+    PHONE_CHUNK_GAP_MS, PHONE_CHUNK_SIZE, PHONE_FRAME_GAP_MS, run_soak,
+)
 
 
 class FakeSession:
@@ -72,6 +81,7 @@ class FakeMgr:
         self.raise_after: int | None = None
         self._send_calls = 0
         self.connect_calls = 0
+        self.chunk_log: list[dict] = []   # every chunk send_phone_paced wrote: size, t, frame index
 
     async def connect(self, address, alias):
         self.connect_calls += 1
@@ -97,14 +107,9 @@ class FakeMgr:
         s.seq += 1
         s.buffer.append({"seq": s.seq, "direction": direction, "raw": raw})
 
-    async def send(self, alias, command, reply_window_ms=0):
-        self._send_calls += 1
-        if self.raise_after is not None and self._send_calls == self.raise_after:
-            raise KeyboardInterrupt()
-        self.sent.append(command)
-        if alias not in self.sessions:
-            raise RuntimeError(f"no session {alias}")
-        self._record(alias, "tx", command)
+    def _maybe_reply(self, alias, command):
+        """The gun's own reply to `command`, shared by `send` and `send_phone_paced`: which
+        transport carried a frame must not change what the gun says back to it."""
         if command.startswith("$PING") and self.connected and self.answer_ping:
             self._record(alias, "rx", "$PONG,*")
         elif command.startswith("$AMMO,"):
@@ -119,7 +124,42 @@ class FakeMgr:
             elif key not in self._acked_slots:
                 self._acked_slots.add(key)
                 self._record(alias, "rx", f"$ALCD,{mag},100,{slot},0,0,*")
+
+    async def send(self, alias, command, reply_window_ms=0):
+        self._send_calls += 1
+        if self.raise_after is not None and self._send_calls == self.raise_after:
+            raise KeyboardInterrupt()
+        self.sent.append(command)
+        if alias not in self.sessions:
+            raise RuntimeError(f"no session {alias}")
+        self._record(alias, "tx", command)
+        self._maybe_reply(alias, command)
         return {"sent": command, "replies_within_window": []}
+
+    async def send_phone_paced(self, alias, command, *, chunk_gap_ms, frame_gap_ms, chunk_size=20):
+        """Mirrors `ble.py ConnectionManager.send_phone_paced`'s chunk/gap MATH exactly (see the
+        module docstring), against the fake clock instead of a real BLE write, so a test can pin
+        packet sizes, order and gaps for `--phone-pacing` without touching BLE."""
+        self._send_calls += 1
+        if self.raise_after is not None and self._send_calls == self.raise_after:
+            raise KeyboardInterrupt()
+        self.sent.append(command)
+        if alias not in self.sessions:
+            raise RuntimeError(f"no session {alias}")
+        self._record(alias, "tx", command)
+        payload = command.encode("utf-8")
+        frame_idx = len(self.chunk_log)
+        chunks = 0
+        for i in range(0, len(payload), chunk_size):
+            size = len(payload[i:i + chunk_size])
+            self.chunk_log.append({"frame": command, "frame_idx": frame_idx, "size": size,
+                                   "t": self.clock.now()})
+            chunks += 1
+            if len(payload) > chunk_size:
+                await self.clock.sleep(chunk_gap_ms / 1000)
+        await self.clock.sleep(frame_gap_ms / 1000)
+        self._maybe_reply(alias, command)
+        return {"sent": command, "chunks": chunks}
 
     def get_events(self, alias, since_seq=0, max_events=200):
         if alias not in self.sessions:
@@ -239,6 +279,72 @@ def test_every_bundled_pattern_runs_clean_for_a_short_soak():
         assert summary.pattern == name
         assert summary.frames_sent > 0
         assert summary.lockups == summary.link_drops == summary.bad_frames == []
+
+
+def test_phone_pacing_chunks_a_long_frame_at_20_bytes_with_the_phones_chunk_gap():
+    # Without --phone-pacing the soak never chunks a frame itself (ble.py's `send` does that,
+    # invisibly, with its OWN flat pacing): this is the behaviour F283 exists to add.
+    clock = FakeClock()
+    mgr = FakeMgr(clock)
+    weap = PATTERNS["burst-weap"].repeating[0].frames[0]   # the real captured $WEAP frame, >20 bytes
+    assert len(weap) > PHONE_CHUNK_SIZE, "needs more than one chunk to prove the chunk gap fires"
+    pattern = SoakPattern(name="weap-once", description="d", once=(weap,))
+    run(run_soak(mgr, "AA:BB", pattern, minutes=1 / 60, clock=clock, phone_pacing=True, status=None))
+
+    entries = [e for e in mgr.chunk_log if e["frame"] == weap]
+    expected_chunks = math.ceil(len(weap) / PHONE_CHUNK_SIZE)
+    assert len(entries) == expected_chunks
+    # every chunk but the last is a full 20-byte packet; the last is the remainder
+    assert [e["size"] for e in entries[:-1]] == [PHONE_CHUNK_SIZE] * (expected_chunks - 1)
+    assert entries[-1]["size"] == len(weap) - PHONE_CHUNK_SIZE * (expected_chunks - 1)
+    # chunk order is preserved, and every gap between chunks of the SAME frame is chunk_gap_ms
+    gaps = [b["t"] - a["t"] for a, b in zip(entries, entries[1:])]
+    assert all(abs(g - PHONE_CHUNK_GAP_MS / 1000) < 1e-9 for g in gaps), gaps
+
+
+def test_phone_pacing_gives_a_short_single_chunk_frame_only_the_frame_gap():
+    # brxlink.js only sleeps chunkGapMs BETWEEN chunks of one frame; a frame that fits in one
+    # 20-byte chunk (like $PING,*) never pays it, only the unconditional frameGapMs.
+    clock = FakeClock()
+    mgr = FakeMgr(clock)
+    assert len("$PING,*") <= PHONE_CHUNK_SIZE
+    pattern = SoakPattern(name="two-pings", description="d", once=("$PING,*", "$PING,*"))
+    run(run_soak(mgr, "AA:BB", pattern, minutes=1 / 60, clock=clock, phone_pacing=True, status=None))
+
+    entries = [e for e in mgr.chunk_log if e["frame"] == "$PING,*"]
+    assert len(entries) >= 2
+    assert entries[0]["size"] == len("$PING,*")
+    gap = entries[1]["t"] - entries[0]["t"]
+    assert abs(gap - PHONE_FRAME_GAP_MS / 1000) < 1e-9, gap
+
+
+def test_phone_pacing_still_refuses_a_hang_prone_frame():
+    # HANG_PRONE/DENIED refusal (protocol.py, patterns.assert_pattern_is_safe) runs before either
+    # transport is chosen: --phone-pacing must not open a side door around it.
+    clock = FakeClock()
+    mgr = FakeMgr(clock)
+    pattern = SoakPattern(name="hang", description="d", once=("$DPLAY,A10,4,*",))
+    try:
+        run(run_soak(mgr, "AA:BB", pattern, minutes=1 / 60, clock=clock, phone_pacing=True,
+                     status=None))
+        assert False, "expected the hang-list frame to be refused"
+    except ValueError as e:
+        assert "hang-list" in str(e)
+    assert mgr.chunk_log == []   # refused before a single chunk was ever written
+
+
+def test_phone_pacing_uses_the_real_transport_not_plain_send():
+    # A run with phone_pacing=False must never touch send_phone_paced, and vice versa: the two
+    # pacing models must not silently blend.
+    clock = FakeClock()
+    mgr = FakeMgr(clock)
+    run(run_soak(mgr, "AA:BB", _TINY, minutes=5 / 60, clock=clock, status=None))
+    assert mgr.chunk_log == []
+
+    clock2 = FakeClock()
+    mgr2 = FakeMgr(clock2)
+    run(run_soak(mgr2, "AA:BB", _TINY, minutes=5 / 60, clock=clock2, phone_pacing=True, status=None))
+    assert mgr2.chunk_log != []
 
 
 def test_a_group_offset_delays_its_first_fire():

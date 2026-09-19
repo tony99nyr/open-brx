@@ -40,10 +40,16 @@
       e.g. sounds "kill confirmed" · sounds category:voice:medal · sounds ids:VA7H,VA7E · sounds flag DF:F5:...
       add --audit (with an address) to step through interactively: label, play, your verdict -> ~/.brx-mcp/sound-audit.jsonl
   python -m brx_mcp soak <address> <pattern> <minutes> [--gap-ms N] [--block N --pause-ms N] [--log PATH]
+      [--phone-pacing] [--phone-block-frames N --phone-block-pause-ms N]
       P0 screamers soak (docs/bench-screamers-2026-09-19.md Phase C): connects to one gun, probes
       liveness ($PING every 2s) throughout, replays a traffic pattern, and logs + classifies every
       LOCK-UP / LINK DROP / BAD FRAME. Patterns (brx_mcp/soak/patterns.py): match, match-x10,
       callsign, recoil-oscillate, burst-short, burst-weap. Ctrl-C ends cleanly with the summary.
+      --phone-pacing (F283) sends each frame chunked and paced the way app/src/brxlink.js's
+      WRITE_PACING paces the real phone (20-byte chunks, 8 ms between chunks of one frame, 18 ms
+      after each frame), not this instrument's own flatter 20 ms-per-chunk pacing. A Phase C run
+      counts as a pass only with this flag. --phone-block-frames/--phone-block-pause-ms override
+      WRITE_PACING's block pause (ships off, 0/0, until a bench session finds a value for F269).
 """
 
 from __future__ import annotations
@@ -54,7 +60,7 @@ import json
 import re
 import sys
 import time
-from typing import Sequence
+from typing import Any, Sequence
 
 # Wire tables shared with the MC compiler (verified byte-identical between the two
 # copies before this import replaced one of them — see test_cli_gameconfig_parity.py).
@@ -726,7 +732,9 @@ async def _diag(address: str) -> None:
 
 
 async def _soak(address: str, pattern: str, minutes: float, *, gap_ms: int = 0,
-                block: int | None = None, pause_ms: int = 0, log_path: str | None = None) -> None:
+                block: int | None = None, pause_ms: int = 0, log_path: str | None = None,
+                phone_pacing: bool = False, phone_block_frames: int = 0,
+                phone_block_pause_ms: int = 0) -> None:
     """P0 screamers soak (docs/bench-screamers-2026-09-19.md Phase C). See brx_mcp/soak/ for the
     pattern catalog and the run loop; this is only the CLI glue: pick a log path (the same
     captures/ location `session_log`/`diag-game` already write under, `storage.capture_path()`),
@@ -752,16 +760,26 @@ async def _soak(address: str, pattern: str, minutes: float, *, gap_ms: int = 0,
         storage.ensure_dirs()
         label = f"soak-{pattern}-{address.replace(':', '')}-{int(time.time())}"
         path = storage.capture_path(label)
-    print(f"# soak: {pattern} @ {address}, {minutes} min, logging to {path}", file=sys.stderr)
+    pacing_note = " (phone pacing: F283)" if phone_pacing else ""
+    print(f"# soak: {pattern} @ {address}, {minutes} min{pacing_note}, logging to {path}",
+          file=sys.stderr)
 
     mgr = ConnectionManager()
+    kwargs: dict[str, Any] = {}
+    if phone_pacing:
+        kwargs["phone_pacing"] = True
+        if phone_block_frames:
+            kwargs["phone_block_frames"] = phone_block_frames
+        if phone_block_pause_ms:
+            kwargs["phone_block_pause_ms"] = phone_block_pause_ms
     summary = await run_soak(mgr, address, pattern, minutes, gap_ms=gap_ms, block=block,
-                             pause_ms=pause_ms, log_path=path, status=sys.stderr)
+                             pause_ms=pause_ms, log_path=path, status=sys.stderr, **kwargs)
     print("\n" + summary.render())
 
 
 def _dispatch_soak(rest: list[str]) -> None:
     gap_ms, block, pause_ms, log_path = 0, None, 0, None
+    phone_pacing, phone_block_frames, phone_block_pause_ms = False, 0, 0
     positional: list[str] = []
     it = iter(rest)
     for a in it:
@@ -773,6 +791,12 @@ def _dispatch_soak(rest: list[str]) -> None:
             pause_ms = int(next(it))
         elif a == "--log":
             log_path = next(it)
+        elif a == "--phone-pacing":
+            phone_pacing = True
+        elif a == "--phone-block-frames":
+            phone_block_frames = int(next(it))
+        elif a == "--phone-block-pause-ms":
+            phone_block_pause_ms = int(next(it))
         else:
             positional.append(a)
     if len(positional) < 3:
@@ -780,7 +804,9 @@ def _dispatch_soak(rest: list[str]) -> None:
         sys.exit(2)
     address, pattern, minutes = positional[0], positional[1], float(positional[2])
     asyncio.run(_soak(address, pattern, minutes, gap_ms=gap_ms, block=block,
-                      pause_ms=pause_ms, log_path=log_path))
+                      pause_ms=pause_ms, log_path=log_path, phone_pacing=phone_pacing,
+                      phone_block_frames=phone_block_frames,
+                      phone_block_pause_ms=phone_block_pause_ms))
 
 
 def main() -> None:

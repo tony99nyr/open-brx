@@ -264,6 +264,30 @@ class ConnectionManager:
                    if e.seq > seq_before + 1 and e.direction == "rx"]
         return {"sent": command, "replies_within_window": replies}
 
+    async def send_phone_paced(self, alias: str, command: str, *, chunk_gap_ms: int,
+                               frame_gap_ms: int, chunk_size: int = 20) -> dict[str, Any]:
+        """Write one frame chunked and paced the way `app/src/brxlink.js` `write()` paces it, for
+        `soak --phone-pacing` (docs/FOLLOWUPS.md F283): a bench soak that reproduces the PHONE's
+        transport, not this instrument's own `_write()` (fixed 20 ms after every chunk, no frame
+        gap -- see `_write` above). The phone hardcodes a 20-byte chunk and never asks the OS to
+        negotiate a bigger MTU, so `chunk_size` does not read `client.mtu_size` the way `_write`
+        does. Still the SAME transport (this client, this session's `write_lock`): no second BLE
+        stack, no second connection.
+        """
+        session = self._get(alias)
+        session.record("tx", command)
+        payload = command.encode("utf-8")
+        chunks = 0
+        async with session.write_lock:                      # hold it for the whole frame (see _write)
+            for i in range(0, len(payload), chunk_size):
+                await session.client.write_gatt_char(
+                    NUS_RX_CHAR_UUID, payload[i:i + chunk_size], response=False)
+                chunks += 1
+                if len(payload) > chunk_size:                # brxlink.js: only between chunks of ONE frame
+                    await asyncio.sleep(chunk_gap_ms / 1000)
+        await asyncio.sleep(frame_gap_ms / 1000)              # brxlink.js: always, once per frame
+        return {"sent": command, "chunks": chunks}
+
     async def send_batch(self, alias: str, commands: list[str],
                          gap_ms: int = 100) -> dict[str, Any]:
         session = self._get(alias)
