@@ -10,6 +10,7 @@ recognise nor end it. A crash, a laptop lid or a restart can do this on the fiel
 
 A34's safety rule is unchanged: MC never ends a match it cannot account for on its own.
 """
+import json
 import pathlib
 import sqlite3
 import tempfile
@@ -209,6 +210,48 @@ def test_resume_still_reads_the_old_store_now_that_it_is_opened_read_only():
     s2, net2 = _restart(s, clock)
     assert s2.resume_match() == "live"
     assert _kills(s2, ps[0]["player_id"]) == 1, "the facts were still read back through the read-only open"
+
+
+def test_a_failed_facts_import_raises_a_loud_distinct_alert_not_just_a_log_line():
+    """Polish review: `_import_facts`'s failure used to be log-only, and `resume_match` goes straight
+    on to say RESUMED THE MATCH IN PLAY right after it — which reads as an ordinary resume even though
+    the scorer has nothing from before the restart. The operator needs a loud, separate feed line."""
+    s, net, clock, ps, info = _persisting_live()
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    clock["t"] += 20_000
+    s._persist_last = 0.0
+    s._persist()
+    old_path = pathlib.Path(s.store.path)
+    s.store.close()
+    old_path.write_bytes(b"not a sqlite file")   # the old process's store cannot be read back
+    s2, net2 = _restart_no_repersist(s, clock)
+    assert s2.resume_match() == "live"
+    assert any(f.get("kind") == "alert" and "COULD NOT READ THE OLD SESSION" in f.get("text", "")
+               for f in s2.feed), s2.feed
+    assert _kills(s2, ps[0]["player_id"]) == 0, "with the old facts unreadable, the scorer really starts from zero"
+
+
+def test_restore_snapshot_clears_a_half_set_resume_pending_when_a_later_step_fails():
+    """Polish review: `self._resume_pending` is assigned from `snap['match']` partway through
+    `restore_snapshot`, before the loadout/config repairs that run after it. A snapshot that fails one
+    of THOSE later steps must not leave a half-restored match dict sitting in `_resume_pending` for the
+    very next `resume_match()` call to pick up — 'restore failed — starting clean' has to mean the
+    whole restore, not just the player roster."""
+    s, net, clock, ps, info = _persisting_live()
+    s._persist_last = 0.0
+    s._persist()
+    snap = json.loads(s._persist_path.read_text())
+    assert snap.get("match"), "setup: a live match is in the snapshot"
+    del snap["config"]["mode"]   # breaks the loadout-policy repair, which runs AFTER _resume_pending is set
+    s._persist_path.write_text(json.dumps(snap))
+    net2 = FakeNet()
+    store2 = Store("t2", pathlib.Path(tempfile.mkdtemp()) / "s2.sqlite")
+    s2 = Session(FakeCompiler(), net2, FakeArmory(demo_armory()), store=store2, now_ms=lambda: clock["t"])
+    s2._persist_path = s._persist_path
+    assert s2.restore_snapshot() == 0, "setup: the corrupt config must fail the whole restore"
+    assert s2._resume_pending is None, \
+        "a failed restore must not leave a half-restored match pending for the next resume_match()"
+    assert s2.resume_match() is None
 
 
 # ── 2d. F-2026-09-17e: a resume into ARMED re-queues the VIP role for go-live ───────────────────────

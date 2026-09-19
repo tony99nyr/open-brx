@@ -3100,15 +3100,20 @@ export class Engine {
   }
   /** S42 × A44/A47/F15: stand the accuracy writer down while a write that carries its own `$AMMO` is in
    *  flight (spawn, revive, operator RESYNC GUN, stun disarm, stun restore, reconcile re-arm). Any verify
-   *  still open is dropped -- an `$ALCD` answering THAT write proves nothing about ours -- and the model is
-   *  marked dirty so the live value is re-asserted once the hold lifts, because the other write may have
-   *  moved the gun's ammo (and, after a `$WEAP` re-push, its accuracy) out from under us. */
+   *  still open is DROPPED here -- an `$ALCD` answering THAT write proves nothing about ours -- and ONLY
+   *  THEN is the model re-marked dirty, because dropping the verify is what makes the last write
+   *  unconfirmed again: the gun may or may not have taken it, and none of these other writes carries a
+   *  `$WEAP` (that only rides `frames.head`), so nothing else threatens a value already confirmed sitting
+   *  on the gun. Polish review 2026-09-18: this used to mark dirty unconditionally, including when the
+   *  writer was already idle (no verify open, nothing to lose) -- a redundant re-send of the SAME value
+   *  every hold. */
   _holdAccuracyWrites(why) {
     this._accHoldUntil = this.now() + ACC_HOLD_MS;
     this._accHoldWhy = why;   // published as `state().accHold`: a reader should never have to guess which write took the gun
     const r = this._recoil; if (!r) return;
+    const droppedVerify = r.pendingWriteAt !== 0;
     r.pendingWriteAt = 0; r.retried = false;
-    if (!r.disabled) r.dirty = true;
+    if (!r.disabled && droppedVerify) r.dirty = true;
     this.log(`accuracy writes held ${ACC_HOLD_MS} ms — ${why}`, 'li');
   }
   /** The three-state shape, read from the catalogue's `recoil` block.
@@ -3271,7 +3276,8 @@ export class Engine {
     //                         lockout (`_heatBlocksFire`, heat >= HEAT_LOCKOUT on the active slot), and a locked
     //                         gun cannot fire, so the write is both pointless and badly timed.
     //   stunned / accHold     A44/A47/F15: a spawn, revive, operator resync or stun write owns `$AMMO` in flight.
-    if (this._standDown(['reconciling', 'resync', 'switching', 'reloading', 'stunned', 'heat', 'accHold', 'shotInFlight'], now)) return;
+    //   ble                   polish review: no recoil write to a gun whose link just dropped.
+    if (this._standDown(['reconciling', 'resync', 'switching', 'reloading', 'stunned', 'heat', 'accHold', 'shotInFlight', 'ble'], now)) return;
     this._recoilWrite(now);
     if (r.giveUp) { r.disabled = true; r.giveUp = false; }
   }
@@ -3453,10 +3459,13 @@ export class Engine {
     // The predicate comes from `STAND_DOWN` like every other; only the message is local.
     if (this._standDown(['alive'])) { this.log('operator resync ignored — the player is down (FORCE RESPAWN revives)', 'le'); return 'the player is down'; }
     if (this._standDown(['stunned'])) { this.log('operator resync ignored — stunned (the stun restore re-arms)', 'le'); return 'stunned'; }
-    // F264 (Tony, 2026-09-18): READ BEFORE WRITING. The operator pressing RESYNC is telling us something is
-    // wrong, and writing blind is exactly what failed on 2026-09-18: 14 frames at a gun that had left the state
-    // those frames assume. The probe costs 2 frames and its reply lands through the ordinary handler, so a gun
-    // that had died while we thought it alive books its death here instead of staying invisible.
+    // F264 (Tony, 2026-09-18): ASK, THEN WRITE ANYWAY -- the probe and the writes below are NOT sequenced.
+    // `_askGun` below only sends the $LIFE probe; it does not wait for the $HP reply before this method goes
+    // on to `_writeMust` the $TID/$AMMO/$BMAP burst. The probe still earns its place: its reply lands through
+    // the ordinary handler, so a gun that had died while we thought it alive books its death there instead
+    // of staying invisible -- writing blind at 14 frames is what failed on 2026-09-18. Gating the writes on
+    // the $HP answer would close that gap properly; out of scope before the weekend (FOLLOWUPS: polish
+    // review, added after the merge).
     this._askGun('operator resync: read the gun first');
     const life = this._lifeSeq;
     this._writeLost = null;   // pl4: the operator's cure for a lost spawn/revive write
@@ -4792,8 +4801,11 @@ export class Engine {
       loadMag: this._loadAmmo()[0], loadReserve: this._loadAmmo()[1],
       alive: this.alive, deaths: this.deaths, shots: this.shots, battery: this.battery,
       kills: this.score ? this.score.kills : null, assists: this.score ? this.score.assists : null, accuracy: this.score ? this.score.accuracy : null, scoreAt: this.scoreAt,
-      poolStale: this.poolStale(now),   // F208: null, or {why: 'silent'|'no_fire', ms}; the HUD lane renders it
-      cure: this.cure,                  // F264: null, or {verdict: 'asking'|'dead'|'alive'|'no_answer', at} -- the node's own outcome
+      // F208/F264: null, or {why: 'silent'|'no_fire', ms} / {verdict: 'asking'|'dead'|'alive'|'no_answer', at}.
+      // Published for MC and the bench (`statusBody` carries `pool_stale`/`cure` too); `hud.js` does not read
+      // either field today, so a `no_answer` verdict -- the one case that needs a human, FORCE RESPAWN -- is
+      // invisible on the phone (polish review, added after the merge; F288).
+      poolStale: this.poolStale(now), cure: this.cure,
       respawnType: this.respawnType, killedBy: this.killedBy, underFire: this.alive && this.lastHitAt > 0 && (now - this.lastHitAt) < 2000, respawnIn: (!this.alive && this.deadAt && this.respawnType === 'auto') ? Math.max(0, Math.ceil((r - (now - this.deadAt)) / 1000)) : 0,   // scanner/none modes have no countdown
       // utility.md: the respawn station this player would use, how close it reads, and what the DOWN screen should say
       station: stationView(this._respawnStation()), respawnGate: this.respawnGate, respawnHint: this.respawnHint(now),

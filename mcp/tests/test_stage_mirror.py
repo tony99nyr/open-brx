@@ -904,6 +904,9 @@ def test_an_emp_under_config_stun_disarms_every_slot_extends_on_a_second_word_an
         n = mark(mgr); k = len(st.log)
         await st.ir("emp"); st.poll(); await settle(st)
         assert ammo_writes(mgr, n) == ["$AMMO,0,0,0,1,*", "$AMMO,1,0,0,1,*"], ammo_writes(mgr, n)
+        # Polish review: engine.js's disarm carries STUN_PLAY, the cue on the gun that just went dark
+        # (`$PLAY,X17,4,6,,,,,*`), in the SAME write as the $AMMO frames -- the stage must too.
+        assert "$PLAY,X17,4,6,,,,,*" in since(mgr, n), f"the disarm must carry the stun cue: {since(mgr, n)}"
         assert st.stunned and st.stunned["until"] == clock.t + 10.0 and st.stunned["ammo"] == {0: [25, 80], 1: spawn[1]}
         assert st.hp == 45, "a stun is not damage"
         assert st.state()["model"]["stunned"]["left_s"] == 10.0

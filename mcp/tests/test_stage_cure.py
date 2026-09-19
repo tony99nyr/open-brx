@@ -375,6 +375,50 @@ def test_an_unanswered_magazine_ends_at_alive_not_no_answer_and_writes_only_the_
     asyncio.run(run())
 
 
+def test_the_mag_step_asks_for_the_magazine_exactly_once_never_retried_like_the_life_step():
+    """Polish review: engine.js `_cureTick` checks the 'mag' step BEFORE any retry, so an unanswered
+    `$QUERY` gets exactly one ask, never `CURE_ASKS` of them like the 'life' step. The stage used to
+    retry the mag step too, which left `st.cure['verdict']` sitting at `'asking'` for far longer than
+    the engine ever does."""
+    async def run():
+        st, mgr, clock = _mk()
+        await _live(st, clock)
+        await _stall(st, clock)
+        await _reply_life(st, 45, 70)
+        assert st._cure is not None and st._cure["step"] == "mag"
+        n = len(tx(mgr))
+        await _adv(st, clock, GunStage.QUERY_REPLY_S + 0.3)   # past ONE probe window, not CURE_ASKS of them
+        w = [f for f in tx(mgr)[n:] if f == QUERY]
+        assert len(w) == 0, f"the mag step's one ask already went out before the stall -- none more: {w}"
+        assert st._cure is None, "one unanswered $QUERY step must conclude, not retry"
+        assert st.cure["verdict"] == "alive"
+    asyncio.run(run())
+
+
+def test_a_solicited_hp_that_lands_during_the_mag_step_concludes_alive_not_a_fresh_life_probe():
+    """Polish review: `_cure_answer` used to branch on `kind` before checking `c['step']`, so an `$HP`
+    reply landing while the mag step is already asking for the magazine -- the operator presses RESYNC
+    GUN mid-cure, which sends its own `$LIFE` probe -- reset the mag step back to `asks=1` and asked
+    for the magazine again, instead of concluding like a gun that has just answered ALIVE, as
+    engine.js's `kind === 'HP' && c.step === 'life'` guard does."""
+    async def run():
+        st, mgr, clock = _mk()
+        await _live(st, clock)
+        await _stall(st, clock)
+        await _reply_life(st, 45, 70)
+        assert st._cure is not None and st._cure["step"] == "mag"
+        n = len(tx(mgr))
+        await st.resync(); await settle(st)          # the operator's own $LIFE probe, mid-cure
+        assert PROBE_LIFE in tx(mgr)[n:], "setup: the resync's own probe went out"
+        n2 = len(tx(mgr))
+        st._inject_rx("$HP,45,70,0,*")
+        await settle(st)
+        assert QUERY not in tx(mgr)[n2:], "the answer must not re-ask the magazine from scratch"
+        assert st._cure is None, "it must conclude, not stay in flight"
+        assert st.cure["verdict"] == "alive"
+    asyncio.run(run())
+
+
 def test_companion_when_the_belief_is_correct_and_the_magazine_is_empty_the_cure_never_even_runs():
     """The companion to the false positive above: when the node's account agrees the magazine is empty,
     `_await_shot` dry-fires and never awaits a shot at all, so no pull is ever counted and the cure never

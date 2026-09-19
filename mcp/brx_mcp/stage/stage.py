@@ -173,6 +173,9 @@ QUERY = "$QUERY,*"             # F264 (engine.js QUERY): one 8-byte ask -- see `
 # REVIVE path. Mirror this constant, never a helper that takes arguments -- the first argument anyone
 # passes will be a heal. `test_stage_cure.py` asserts the frame the stage writes is byte-exactly this.
 PROBE_LIFE = "$LIFE,0,0,0,*"
+# F15 (engine.js STUN_PLAY): the cue on the gun that just went dark, in the same write as the disarm.
+# X17 is Battle Company's concussion-grenade clip (catalogue: fx:explosion, 7.9 s).
+STUN_PLAY = "$PLAY,X17,4,6,,,,,*"
 EVENT_MIN_GAP_S = 1.0          # engine.js EVENT_MIN_GAP_MS: never two LED bursts inside a second
 PAIN_GAP_S = 0.6               # engine.js PAIN_GAP_MS (A15.3): at most one pain grunt per 600 ms -- dropped, never queued
 LOW_HEALTH_HP = 15             # engine.js LOW_HEALTH_HP (A17.2): HP below which the once-per-life low-health alert fires
@@ -1568,13 +1571,20 @@ class GunStage:
         # builds from fresh pulls.
         self._shot_due_at = None
         self._no_fire_pulls = 0
-        if kind == "HP":
-            if self.hp == 0:
-                self._cure = None
-                self.cure = {"verdict": "dead", "at": self.now()}
-                self._log("cure: the gun says it is DEAD ($LIFE,0,0,0 answered $HP,0) and the node had "
-                          "missed it -- the death is booked, the respawn revives it (F264)", "warn")
-                return
+        # engine.js `_cureAnswer` order (polish review 2026-09-18: this used to branch on `kind` FIRST, so
+        # an `$HP` reply that lands while `c["step"]` is already 'mag' -- a hit between the two probes --
+        # reset the step back to 'mag'/asks=1 and re-asked for the magazine, instead of concluding like the
+        # gun that just answered ALIVE. Check hp==0 first, for EITHER kind, then only step to 'mag' from
+        # 'life'; anything else concludes alive and re-asserts.
+        mag, reserve = (_tok_int(t, 5), _tok_int(t, 6)) if kind == "LCD" else (None, None)
+        if self.hp == 0:
+            self._cure = None
+            self.cure = {"verdict": "dead", "at": self.now()}
+            reason = "$LIFE,0,0,0 answered $HP,0" if kind == "HP" else "$QUERY answered $LCD health 0"
+            self._log(f"cure: the gun says it is DEAD ({reason}) and the node had missed it -- the death is "
+                      "booked, the respawn revives it (F264)", "warn")
+            return
+        if kind == "HP" and c["step"] == "life":
             # ALIVE, via the dead-gun probe alone: the magazine is still unknown. Step to 'mag' and ask.
             c["step"] = "mag"; c["asks"] = 1; c["asked_at"] = self.now()
             believed = self._acct_live(self.active_slot)
@@ -1582,18 +1592,8 @@ class GunStage:
                       f"magazine (the node believed {believed}) (F264)", "warn")
             self._spawn_task(self._ask_magazine("cure: the gun is alive -- asking for the magazine"))
             return
-        # kind == "LCD", shape ok: the 'mag' step's answer. The gun was ALIVE when asked, but a hit can
-        # land between the two probes -- `_on_pools` (called before this, from `_on_rx`) has already
-        # booked that death, marked desync, if `hp` is now 0. This only avoids re-asserting arming onto a
-        # gun the very same reply just proved is dead.
         self._cure = None
-        if self.hp == 0:
-            self.cure = {"verdict": "dead", "at": self.now()}
-            self._log("cure: the gun died between the two probes -- $QUERY's own $LCD said health 0, the "
-                      "death is booked (F264)", "warn")
-            return
         self.cure = {"verdict": "alive", "at": self.now()}
-        mag, reserve = _tok_int(t, 5), _tok_int(t, 6)
         # THE FALSE POSITIVE THIS EXISTS FOR (Tony, 2026-09-18). `_await_shot` only owes a shot when the
         # node's OWN account says the magazine has rounds, so an ordinary empty gun never reaches `no_fire`
         # at all. It gets here when that BELIEF is wrong: the account says loaded, the gun is empty and
@@ -1641,27 +1641,29 @@ class GunStage:
                 self._cure = None
                 self._log(f"cure abandoned -- {blocked}", "info")
                 return
+            # engine.js `_cureTick` checks the 'mag' step FIRST, before any retry (polish review 2026-09-18:
+            # this used to retry the magazine ask up to CURE_ASKS times like the 'life' step, so an
+            # unanswered $QUERY sat "asking" for longer than the engine ever does). The gun already PROVED
+            # it is alive over $LIFE; only the magazine went unanswered. That is evidence, not silence, so
+            # it never becomes `no_answer`: one ask only, then re-assert what we can.
+            if c["step"] == "mag":
+                self._cure = None
+                self.cure = {"verdict": "alive", "at": now}
+                self._log(f"cure: the gun answered $LIFE alive at hp {self.hp} but never answered $QUERY -- "
+                          "re-asserting the trigger mapping alone; the magazine stays unknown (F264)", "warn")
+                self._cure_reassert(None, None)
+                return
             if c["asks"] < self.CURE_ASKS:
                 c["asks"] += 1
                 c["asked_at"] = now
-                if c["step"] == "life":
-                    self._spawn_task(self._ask_gun(f"cure: probe {c['asks']} of {self.CURE_ASKS}"))
-                else:
-                    self._spawn_task(self._ask_magazine(f"cure: probe {c['asks']} of {self.CURE_ASKS}"))
+                self._spawn_task(self._ask_gun(f"cure: probe {c['asks']} of {self.CURE_ASKS}"))
                 return
             self._cure = None
-            if c["step"] == "life":
-                self.cure = {"verdict": "no_answer", "at": now}
-                self._log(f"*** cure: {self.CURE_ASKS} probes ($LIFE,0,0,0) went unanswered on a gun the "
-                          f"node believes is alive at hp {self.hp} with {self._acct_live(self.active_slot)} "
-                          "in the magazine. The node cannot tell a dead gun from a stuck one, so it is doing "
-                          "NOTHING and asking for a human: FORCE RESPAWN, or RELINK (F264) ***", "error")
-                return
-            # step == 'mag': the gun already proved it is alive over $LIFE; only the magazine is unknown.
-            self.cure = {"verdict": "alive", "at": now}
-            self._log(f"cure: the gun answered $LIFE alive at hp {self.hp} but never answered $QUERY -- "
-                      "re-asserting the trigger mapping alone; the magazine stays unknown (F264)", "warn")
-            self._cure_reassert(None, None)
+            self.cure = {"verdict": "no_answer", "at": now}
+            self._log(f"*** cure: {self.CURE_ASKS} probes ($LIFE,0,0,0) went unanswered on a gun the "
+                      f"node believes is alive at hp {self.hp} with {self._acct_live(self.active_slot)} "
+                      "in the magazine. The node cannot tell a dead gun from a stuck one, so it is doing "
+                      "NOTHING and asking for a human: FORCE RESPAWN, or RELINK (F264) ***", "error")
             return
         stale = self.pool_stale(now)
         if not stale or stale["why"] != "no_fire":
@@ -3271,9 +3273,10 @@ class GunStage:
         return live
 
     def _stun(self) -> None:
-        """A proto-8 `$HIR` under `config.stun`, on a live gun: write `$AMMO,<slot>,0,0,1,*` for every live slot
-        and snapshot the LIVE mag/reserve per slot (the last `$ALCD`, else the spawn frame's) to restore. A second
-        word EXTENDS `until` and writes nothing. Nothing else moves: fn 24 is a status row, no `$HP` follows."""
+        """A proto-8 `$HIR` under `config.stun`, on a live gun: write `$AMMO,<slot>,0,0,1,*` for every live slot,
+        plus `STUN_PLAY` (engine.js `_stun`, polish review: the disarm carried no cue here), and snapshot the
+        LIVE mag/reserve per slot (the last `$ALCD`, else the spawn frame's) to restore. A second word EXTENDS
+        `until` and writes nothing. Nothing else moves: fn 24 is a status row, no `$HP` follows."""
         if not self.stun_enabled or not (self.spawned and self.alive):
             if not self.stun_enabled:
                 self._log("EMP word (proto 8): no stun -- this game has no config.stun (the $SIR row is the stock plain-damage cell)", "info")
@@ -3286,7 +3289,7 @@ class GunStage:
             return
         live = self._live_ammo()
         self.stunned = {"at": now, "until": now + s, "ammo": live}
-        self._spawn_task(self.write([f"$AMMO,{slot},0,0,1,*" for slot in live], f"stun: disarm {s:g} s", gap_ms=60))
+        self._spawn_task(self.write([f"$AMMO,{slot},0,0,1,*" for slot in live] + [STUN_PLAY], f"stun: disarm {s:g} s", gap_ms=60))
         self._moment = ("stunned", now)
         self._event_now("stunned")     # A11 presentation hook: no-op until a profile carries a `stunned` cue/burst
         self._log(f"⚡ stunned {s:g} s -- live counts held for the restore: {live}", "warn")

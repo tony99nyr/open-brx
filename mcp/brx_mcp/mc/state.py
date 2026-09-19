@@ -799,6 +799,11 @@ class Session:
             return len(self.players)
         except Exception:
             import logging; logging.getLogger("brx.mc").exception("session snapshot restore failed — starting clean")
+            # Polish review: a failure AFTER `self._resume_pending` was set above (e.g. `_repair_player_nums`
+            # or `_gun_index` raising on a half-written file) left it holding a half-restored match dict, so
+            # the NEXT `resume_match()` call -- the store attaches moments later -- would try to resume a
+            # match this restore never actually finished loading. "Starting clean" must mean clean.
+            self._resume_pending = None
             return 0
     def _repair_player_nums(self) -> None:
         """Every restored player gets a UNIQUE 1..63 `player_num`, whatever the file said.
@@ -3490,6 +3495,11 @@ class Session:
             import logging
             logging.getLogger("brx.mc").exception("could not read the facts from %s (resume scores from here)",
                                                   store_path)
+            # Polish review: the log line above is easy to miss. `resume_match` still says "RESUMED THE
+            # MATCH IN PLAY" right after this, which reads as an ordinary resume -- the operator needs a
+            # LOUD, separate line saying the old facts are gone and scores are starting from zero.
+            self._on_feed({"t_match_s": 0, "tag": "NOTE", "kind": "alert",
+                           "text": "MC RESTARTED. COULD NOT READ THE OLD SESSION'S FACTS: SCORES START FROM ZERO"})
 
     def resume_match(self) -> str | None:
         """Pick up the match the snapshot says was in play. Call once the store is attached.
@@ -5348,11 +5358,37 @@ class Session:
         return {"match_id": s["match_id"], "go_live_t": s["go_live_t"], "config_id": self.config["config_id"],
                 "seq": s["seq"], "countdown_s": s["countdown_s"]}
 
+    def _refuse_incompatible_app(self) -> None:
+        """F121 compat (polish review, added after the merge): never start a match with a bound node
+        MC knows cannot run it.
+
+        `push_config`'s readiness board already reds a node whose `app_ver` it has SEEN by push time --
+        but a node with no hello yet reads as WAITING FOR THE PHONE, the readiness board's single
+        commonest row, and `push_config` is routinely forced past that (it must be: the whole point of
+        a first push is to reach a phone that has not arrived). A phone that then connects between the
+        push and the whistle, on an app below the tier, was never version-checked at all. An app that
+        old never sends F121's `$TMP` off frame (`spawn_protect_off`), so its player would take no
+        damage for the rest of that life — invisibly, since nothing on the gun says so.
+
+        Deliberately NOT bypassable by `force`, for `_refuse_stale_ack`'s reason: this is a fact the
+        node's own hello carries, not a readiness judgement the operator can see and weigh."""
+        bad = [(self.players[pid].get("display") or pid, nv["app_ver"])
+               for pid, p in self.players.items()
+               if (nid := p.get("node_id")) and (nv := self.nodes.get(nid))
+               and compatible(nv.get("app_ver")) is False]
+        if bad:
+            who = ", ".join(f"{d} (app {v})" for d, v in bad)
+            raise ValueError(
+                f"{len(bad)} gun(s) are running an app MC cannot start a match with: {who}. An app "
+                f"older than {app_tier()} never ends spawn protection (F121) — its player would take "
+                f"no damage all life. UPDATE THE APP before the whistle")
+
     def start(self, runway_s: int | None = None, force: bool = False) -> dict:
         if not self.lobby_pushed:
             raise ValueError("push config first")
         self._refuse_one_team()           # round-2 B: a team can empty out between the push and the whistle
         self._refuse_stale_ack()          # A36: and a gun can answer for LAST game's head at any moment
+        self._refuse_incompatible_app()   # F121: and a gun can arrive on an old app at any moment too
         self._refuse_echo_mismatch(force)  # R2-5: ...or answer THIS head carrying another weapon (F2: forceable)
         # ...or never have answered at all. `all_acked()` below skips a player with no node bound, so
         # ABSENCE was invisible to it; LOAD makes that reachable in a new way (a phone can hold the

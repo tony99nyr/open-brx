@@ -3035,6 +3035,27 @@ test('F259 step 2: the minimum write gap throttles a RE-SEND, never a state chan
   assert.equal(weaps(h)[n].split(',')[22], '70', 'carrying the state the model holds, which has not moved');
 });
 
+test('polish review: a BLE drop stands the recoil writer down -- no write to a gun the link just lost', () => {
+  const h = armRecoil(TWO_STEP);
+  fire(h, TWO_STEP_AFTER);
+  ack(h);   // clears the write-in-flight so the next dirty mark is not caught by the verify window instead
+  const n = weaps(h).length;
+  h.eng._recoil.dirty = true;   // the shape a hold leaves behind: same value, re-asserted once it lifts
+  h.eng.onBleDropped();
+  h.adv(ACC_WRITE_MIN_GAP_MS + SETTLE_MS); h.eng.tick();
+  assert.equal(weaps(h).length, n, 'the drop must suppress the write, not just delay it');
+  assert.equal(h.eng._recoil.dirty, true, 'the mark itself must survive the drop, for the reconcile that follows');
+});
+
+test('polish review: _holdAccuracyWrites does not mark dirty when the live value has not moved', () => {
+  const h = armRecoil(TWO_STEP);
+  fire(h, TWO_STEP_AFTER); ack(h);            // degrade written and acked: value === lastWriteValue
+  assert.equal(h.eng._recoil.dirty, false, 'setup: nothing pending once the write is acked');
+  h.eng._holdAccuracyWrites('operator resync');
+  assert.equal(h.eng._recoil.dirty, false,
+    'the value has not moved -- none of the writes this stands down for carries a $WEAP, so no re-assertion is owed');
+});
+
 test('F259 step 2: a frame that reports a whole burst at once lands on the rung those rounds earned, in ONE write', () => {
   // A run of lost `$ALCD` frames reaches `_recoilStep` as a single multi-round decrement. The burst
   // decides the state, so it must land on the rung it earned rather than walk down one write at a time --

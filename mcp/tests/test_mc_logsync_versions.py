@@ -281,6 +281,39 @@ def test_red_amber_none_across_the_field():
     assert not [a for a in r2["ambers"] if a.startswith("APP ")], r2["ambers"]
 
 
+def test_start_refuses_a_bound_node_below_the_app_tier_even_when_it_arrives_after_a_forced_push():
+    """F121 (polish review, added after the merge): an app below the tier never sends the
+    `spawn_protect_off` frame, so its player takes no damage for the whole life — invisibly.
+    `push_config`'s readiness board can only see a node that has already said hello, and WAITING FOR
+    THE PHONE (a phone that has not arrived yet) is its commonest row, routinely pushed past with
+    `force`. So a late arrival on an old build is never checked there. `start()` is the one gate every
+    match passes through, and — like `_refuse_stale_ack` — it must refuse this even when `force` is
+    set: this is the node's own hello, not a judgement the operator can wave through."""
+    s, net, clock, ps = mk(2)
+    for p in ps:
+        s.set_ready(p["player_id"], True, host_override=True)
+    s.push_config(force=True)                        # neither phone has said hello yet
+    old = f"{APP_MAJOR}.{APP_MINOR - 1}.9"
+    online(s, net, clock, ps[0], 0, app_ver=old)      # node0 arrives late, on an old build
+    online(s, net, clock, ps[1], 1)                   # node1 arrives on a current build
+    for i in range(2):
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
+                                                             "gun_echo": "$LCD"}, clock["t"])
+    try:
+        s.start(runway_s=1, force=True)
+        raise AssertionError("start must refuse a bound node below the app tier, forced or not")
+    except ValueError as e:
+        msg = str(e)
+        assert old in msg and "app" in msg.lower(), msg
+    assert s.phase != "armed", "the refused start must not have armed the match"
+    # CONTROL: once that node is on a current build, the very same match starts clean.
+    online(s, net, clock, ps[0], 0, app_ver=f"{APP_MAJOR}.{APP_MINOR}.1")
+    net.simulate_node_message("node0", "ack_config", {"config_id": s.config["config_id"], "ok": True,
+                                                       "gun_echo": "$LCD"}, clock["t"])
+    info = s.start(runway_s=1)
+    assert info["match_id"]
+
+
 def test_unparsable_version_is_amber_never_red():
     s, net, clock, ps = mk(1)
     online(s, net, clock, ps[0], 0, app_ver="hud-0.2")
