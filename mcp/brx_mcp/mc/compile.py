@@ -22,7 +22,7 @@ from .. import hitaudio as _ha
 from ..protocol import PANIC_SEQUENCE
 from .perks import PerkCatalog
 from .policy import SIDEARM_TAG          # F146: one vocabulary for "this is a backup weapon"
-from .types import (MAX_PLAYERS, OBJECTIVE_MODES, STATION_SOURCES, FrameBundle, GameConfig, PerkEffectsResolved,
+from .types import (MAX_PLAYERS, OBJECTIVE_MODES, STATION_SOURCES, DotSpec, FrameBundle, GameConfig, PerkEffectsResolved,
                     PerkView, Player, Team, ValuePair, VoiceOption, Weapon, parse_win_by)
 from . import presentation as _pres
 from .. import poolgauge as pg
@@ -1652,6 +1652,43 @@ class Compiler:
             return _ha.plan_in_place(entries)
         return _ha.plan(entries, base_cells=_sir_cells(_SIR_TABLE))
 
+    def dot_table(self, plan) -> dict[str, DotSpec]:
+        """S16: the game-wide damage-over-time table the VICTIM's node needs, keyed by IR protocol.
+
+        The victim only knows its own loadout, so it cannot look up the shooter's tick numbers itself. Every
+        weapon in the match plan (the whole roster, and hidden rows too: the catalogue lookup is by id) whose
+        `weapons.json` row declares `dot` contributes one entry, keyed by the protocol its `$WEAP` t3 puts on
+        the wire, which is the `$HIR` token 2 the victim reads. The plan's cell is used, not the catalogue's, so
+        a re-keyed cell stays in step with the frame that actually ships.
+
+        ⚠ The key is the protocol alone, because that is what the victim reads before it knows anything else.
+        So another weapon in the same game on the same protocol would poison with every hit. That is refused at
+        compile time rather than shipped: two weapons with different tick numbers, or a plain weapon, sharing a
+        poison protocol is a table the node cannot read unambiguously."""
+        by_proto: dict[str, list[str]] = {}
+        for wid, cell in plan.cells.items():
+            by_proto.setdefault(str(int(cell[0] or 0)), []).append(wid)
+        out: dict[str, DotSpec] = {}
+        for proto, wids in sorted(by_proto.items()):
+            specs = {w: (self.catalog._by_id.get(w) or {}).get("dot") for w in wids}
+            dotted = {w: d for w, d in specs.items() if d}
+            if not dotted:
+                continue
+            if len(dotted) != len(wids) or len({(int(d["per_tick"]), int(d["tick_ms"]), int(d["duration_ms"])) for d in dotted.values()}) > 1:
+                raise ValueError(
+                    f"S16: IR protocol {proto} carries a damage-over-time weapon ({', '.join(sorted(dotted))}) AND "
+                    f"{', '.join(sorted(set(wids) - set(dotted))) or 'a second tick profile'}. The victim keys the "
+                    f"poison on the protocol alone, so every hit on it would poison. Move one weapon off the cell.")
+            wid = sorted(dotted)[0]
+            d = dotted[wid]
+            spec: DotSpec = {"weapon_id": wid, "per_tick": int(d["per_tick"]), "tick_ms": int(d["tick_ms"]),
+                             "duration_ms": int(d["duration_ms"])}
+            if spec["per_tick"] <= 0 or spec["tick_ms"] <= 0 or spec["duration_ms"] < spec["tick_ms"]:
+                raise ValueError(f"S16: {wid}'s `dot` block is unusable: {d!r} (per_tick and tick_ms must be "
+                                 "positive, and duration_ms at least one tick)")
+            out[proto] = spec
+        return out
+
     def _cell_cycle_ms(self, plan, cell) -> int | None:
         """The TIGHTEST fire interval on a cell -- the row's sound has to fit the fastest weapon that
         keys it, or a burst of hits stutters over itself."""
@@ -2125,6 +2162,12 @@ class Compiler:
         pe = self.perk_effects_resolved(config, player)
         if pe:
             bundle["perk_effects"] = pe
+        # S16: the poison tick numbers for every damage-over-time weapon in THIS game, keyed by IR protocol. It is
+        # game-wide (the victim's node needs the SHOOTER's numbers), so it comes off the match plan, not this
+        # player's loadout. Absent when the game carries no such weapon, so an older bundle reads the same.
+        dot = self.dot_table(plan)
+        if dot:
+            bundle["dot"] = dot
         assert_no_denied_frames(bundle)   # transport-hardening.md §4: MC never even compiles a frame the node refuses
         return bundle
 
