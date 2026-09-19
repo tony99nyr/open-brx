@@ -542,7 +542,7 @@ def test_down_writes_nothing_at_death_one_rearm_insurance_then_stops_before_revi
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st); st.poll(); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         down = st.bundle["headset"]["down"]
-        assert down == {"rearm": "$HLOOP,2,750,*", "stop": "$HLOOP,0,0,*", "rearm_after_ms": 2500}
+        assert down == {"rearm": "$HLOOP,1,2500,*", "stop": "$HLOOP,0,0,*", "rearm_after_ms": 2500}
         n = len(tx(mgr))
         await st.ir("kill"); st.poll(); await settle(st)
         assert not st.alive

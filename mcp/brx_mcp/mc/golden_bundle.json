@@ -617,7 +617,7 @@
     "rest": "$HLED,9,0,,,10,,*",
     "blank": "$HLED,9,0,,,10,,*",
     "down": {
-      "rearm": "$HLOOP,2,750,*",
+      "rearm": "$HLOOP,1,2500,*",
       "stop": "$HLOOP,0,0,*",
       "rearm_after_ms": 2500
     },

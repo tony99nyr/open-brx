@@ -355,7 +355,7 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
 
               // A16: the DOWN indication is the FIRMWARE's own bright flash (~0.75 s on the small LED), which
               // runs in a hosted game on its own. The node writes NOTHING to the headset at death; at
-              // `rearm_after_ms` (2500) it writes `rearm` ONCE ($HLOOP,2,750) as insurance for any life where a
+              // `rearm_after_ms` (2500) it writes `rearm` ONCE ($HLOOP,1,2500) as insurance for any life where a
               // blank slipped through, and `stop` ($HLOOP,0,0) before a revive ($SPAWN also clears the loop).
               // Present even when LEDs are off/blackout: it is the one signal other players must read.
               // This REPLACES A11.8's `death_flash` ($LED pulsed by the node at 750 ms, ≥2× dimmer, ~80 writes/min).

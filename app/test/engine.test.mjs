@@ -4460,7 +4460,7 @@ test('A11.8 small-LED flash: kill feedback fires the top medal\'s lights (flash)
 // nothing to the headset at death any more, and the old node-driven pulse ($LED,9,1,1,1,* every 750 ms,
 // A11.8 death_flash) is deleted. `frames.headset.down = {rearm, stop, rearm_after_ms}` is belt-and-braces
 // only: one $HLOOP rearm after the hands-off window, and a stop before every $SPAWN. ----------
-const DOWN = { rearm: '$HLOOP,2,750,*', stop: '$HLOOP,0,0,*', rearm_after_ms: 2500 };
+const DOWN = { rearm: '$HLOOP,1,2500,*', stop: '$HLOOP,0,0,*', rearm_after_ms: 2500 };
 
 test('§3.2 down: nothing is written to the headset for the hands-off window — the native flash is already running', () => {
   const h = goLive(harness());

@@ -4161,7 +4161,7 @@ export class Engine {
   /** §3.2 (led-language.md, bench 2026-09-07): the firmware runs its OWN bright out-flash on the headset's
    *  small LED for the whole life, for free — UNLESS an `$HLED,,6` blank was sent during it, which disables
    *  the loop. We write NOTHING to the headset at death any more (the old node-driven pulse was ≥2x dimmer
-   *  and cost ~80 writes/min). This is belt-and-braces only: `down.rearm` (`$HLOOP,2,750,*`) restores the
+   *  and cost ~80 writes/min). This is belt-and-braces only: `down.rearm` (`$HLOOP,1,2500,*`) restores the
    *  flash at native drive or better for any life where a blank slipped through (an older node, a teardown
    *  race, a mode that still paints effect 6). One write per death, past the hands-off window, never during
    *  resync — same gate as the deleted `_deathFlash`. */

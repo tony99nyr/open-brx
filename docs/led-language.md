@@ -23,7 +23,7 @@ only light up for events".
    "died: red headset" never lands because the engine marks the player dead before it plays the event.
 3. **The DOWN signal is solved and costs nothing** (bench 2026-09-07): the firmware's own bright out-flash runs in
    hosted games all along, and our `$HLED,,6` blank was disabling it. Swap the blank for colour 9, write nothing at
-   death, and re-arm with one `$HLOOP,2,750` as insurance. The whole `$LED` pulsing scheme is deleted.
+   death, and re-arm with one `$HLOOP,1,2500` as insurance. The whole `$LED` pulsing scheme is deleted.
 4. Night must become an overlay (dim, sparse, slower) over the per-mode block, with the DOWN signal exempt.
 5. The gun body becomes **dark at rest** with a **transient pool readout** — three segments at first, SEVEN
    levels since A16.3 (now viable after the blank)
@@ -171,7 +171,7 @@ left flashing. The native HIT flash is unaffected by any of the above (it fires 
    survives only in the game-over teardown, after the last death that matters.
 2. **Write nothing to the headset at death.** The hands-off window of §3.1 now pays for itself: the firmware's own
    flash is already running and is the brightest thing we have.
-3. **Belt-and-braces:** one `$HLOOP,2,750,*` at the end of the hands-off window (2.5 s after `$HP,0`). Harmless
+3. **Belt-and-braces:** one `$HLOOP,1,2500,*` at the end of the hands-off window (2.5 s after `$HP,0`). Harmless
    when the native loop is already running, and it recovers the flash for any life where a blank slipped through
    (an older node, a teardown race, a mode that paints effect 6). One write per death, not eighty.
 4. **At revive:** `$HLOOP,0,0,*`, then `$SPAWN` after the F13 settling gap. The stop is belt-and-braces too, since
@@ -188,7 +188,7 @@ still available as a deliberate opt-in for a mode that wants a coloured big LED 
 
 | respawn type | after death | while down | before `$SPAWN` | at `$SPAWN` |
 |---|---|---|---|---|
-| auto (timer) | hands-off 2.5 s, then one `$HLOOP,2,750,*` | native flash, no writes | `$HLOOP,0,0,*` | white ×2 at +1.0 s |
+| auto (timer) | hands-off 2.5 s, then one `$HLOOP,1,2500,*` | native flash, no writes | `$HLOOP,0,0,*` | white ×2 at +1.0 s |
 | scanner (walk) | same | native flash, no writes, indefinitely | `$HLOOP,0,0,*`, gap, then `$SPAWN` | white ×2 at +1.0 s |
 | none (eliminated) | same | native flash until game end | — | — |
 
@@ -271,9 +271,9 @@ presentation.lights: {
   },
   headset: { pregame: "team"|"off", start_flash: true, in_play: "dark"|"team", hit: null|colour,
              low_health: "native"|"soft", respawn_flash: true, role: true },       // A11.6, `carrier` → `role`
-  down:    { rearm: true, period_ms: 750,          // one $HLOOP,2,<period> after the hands-off window; the NATIVE flash
+  down:    { rearm: true, period_ms: 2500,         // one $HLOOP,1,<period> after the hands-off window; the NATIVE flash
              quiet_after_death_s: 2.5, quiet_before_spawn_s: 1.0 },   // rearm:false = rely on the firmware alone
-  night:   {                             // overlay, applied when config.night is true; every key optional (down.period_ms stays 750)
+  night:   {                             // overlay, applied when config.night is true; every key optional (down.period_ms stays 2500)
     brightness: "dim",                   // gun: token 5 = 1 on every compiled $GLED paint/burst; headset: $HLED tok5 = 1
                                          // ⚠ NOT apply-gate 5 -- that is an OFF switch, retracted 2026-09-07 (this line said gate 5 until then)
     events: [/* the events that keep their lights at night; others sound only */],
@@ -309,7 +309,7 @@ gun: { rest: "$GLED,,,,5,,,*",       // the BLANK is the rest frame: the one fra
 headset: { rest: "$HLED,9,0,,,10,,*",   // dark BY COLOUR: $HLED,,6 (effect 6) would disable the death flash for the life
            blank: "$HLED,,6,,,,,*",         // TEARDOWN ONLY, never in play
            start, respawn, hit, low_health, role: { carrier: [[…]], infected: [[…]], vip: [[…]], beacon: [[…]], extracted: [[…]] },
-           down: { rearm: "$HLOOP,2,750,*", stop: "$HLOOP,0,0,*",   // the firmware's own loop; identical day, night and blackout
+           down: { rearm: "$HLOOP,1,2500,*", stop: "$HLOOP,0,0,*",   // the firmware's own loop; identical day, night and blackout
                    quiet_after_death_ms, quiet_before_spawn_ms, eliminated_slow_after_ms } }
 ```
 

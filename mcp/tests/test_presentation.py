@@ -255,7 +255,7 @@ def test_night_dims_and_shortens_but_blackout_alone_empties_everything():
     assert night["gun"]["rest"] == f"$GLED,{pg.BLUE},{pg.BLUE},{pg.BLUE},0,{pg.BRIGHT_DIM},,*"
     assert night["gun"]["readout"]["hold_s"] < day["gun"]["readout"]["hold_s"]
     assert night["headset"]["down"] == day["headset"]["down"] == {
-        "rearm": "$HLOOP,2,750,*", "stop": "$HLOOP,0,0,*", "rearm_after_ms": 2500}
+        "rearm": "$HLOOP,1,2500,*", "stop": "$HLOOP,0,0,*", "rearm_after_ms": 2500}
     blackout = _compile(P.merge(None, {"blackout": True}))
     assert blackout["leds"] == {} and "gun" not in blackout    # no `bundle["gun"]` at all -- readout included
     # `gun_readout()` itself is a pure table-builder that does not know about `blackout` (it is gated
@@ -379,7 +379,7 @@ def test_headset_block_defaults_validation_and_frames():
     # 2026-09-07 (led-language.md §3.2): the down signal is the firmware's OWN out-flash, restored by
     # $HLOOP if a blank ever suppressed it -- the node writes nothing extra to the headset at death by
     # default ("native"), and `down` carries the $HLOOP re-arm/stop, present even with LEDs off.
-    assert hs["death"] == [] and hs["down"] == {"rearm": "$HLOOP,2,750,*", "stop": "$HLOOP,0,0,*", "rearm_after_ms": 2500}
+    assert hs["death"] == [] and hs["down"] == {"rearm": "$HLOOP,1,2500,*", "stop": "$HLOOP,0,0,*", "rearm_after_ms": 2500}
     assert hs["respawn"][0][0] == hs["start"][0][0]
     green = P.headset_frames(P.resolve({"presentation": P.merge(None, {"headset": {"death": "green"}})}), 1, True)
     assert green["death"] == [["$HLED,3,2,400,400,10,200,*", 0.0]]

@@ -860,17 +860,21 @@ def headset_frames(profile: dict, tid: int | None, leds_on: bool, team_colours: 
     light budget and it is the one signal other players must read. The node writes NOTHING to the
     headset at death -- the firmware's own bright out-flash is already running by itself and is the
     brightest thing we have (our old `$HLED,,6` blank was the only thing that was ever switching it
-    off). At `rearm_after_ms` after `$HP,0` the node sends `rearm` (`$HLOOP,2,750,*`) once, as
+    off). At `rearm_after_ms` after `$HP,0` the node sends `rearm` (`$HLOOP,1,2500,*`) once, as
     belt-and-braces insurance for any life where a blank slipped through -- harmless when the native
     loop is already running. `stop` (`$HLOOP,0,0,*`) is sent before a revive; `$SPAWN` clears the loop
     by itself too. Everything else in this table is empty when LEDs are off for the game.
+
+    The rearm is mode 1 (plain enable) at a 2500 ms period, not the old `$HLOOP,2,750`: mode 2 is the
+    firmware's "heartbeat", and at 750 ms shooters read it as hit double-flashes (Tony, 2026-09-19).
+    One slow flash per cycle is well outside hit-flash timing, so nobody takes a downed player for a hit.
 
     `role` (§3.3) is the held-state table: `carrier`/`vip`/`beacon`/`extracted` are single [frame, 0.0]
     sequences (0.0 = "and this IS now the resting state", same convention as `rest` -- these are not
     one-shot events, so the hold+rest pattern in `led_table()` does not apply to them); `infected` is
     keyed by tid like the old carrier table because it is the one role whose COLOUR is a team fact.
     `role` is `{}` when `headset.role` is off, gated the same way `carrier` used to be."""
-    down = {"rearm": "$HLOOP,2,750,*", "stop": "$HLOOP,0,0,*", "rearm_after_ms": 2500}
+    down = {"rearm": "$HLOOP,1,2500,*", "stop": "$HLOOP,0,0,*", "rearm_after_ms": 2500}
     if not leds_on:
         return {"down": down}
     h = {**HEADSET_DEFAULT, **_collapse_headset(profile.get("headset"))}
