@@ -120,7 +120,57 @@ def test_the_range_model_can_be_switched_off():
     on, off = _cfg(venue="outdoor"), _cfg(range_model=False)
     assert B.hit_multiplier(shotgun, 2, on) < 1.0
     assert B.hit_multiplier(shotgun, 2, off) == 1.0
-    assert B.hit_multiplier(shotgun, 0, on) == 1.0
+
+
+def test_each_range_band_is_best_at_its_own_distance():
+    """A close weapon must GAIN up close, not only lose far away (the 2026-09-19 review found a model
+    that only penalised, so the Shotgun could never beat the rifle at the distance it is built for)."""
+    home = {"close": 0, "mid": 1, "long": 2}
+    for band, d in home.items():
+        best = max(B.BAND_FIT, key=lambda b: B.BAND_FIT[b][d])
+        assert B.BAND_FIT[band][d] == B.BAND_FIT[best][d], (band, d, best)
+        assert all(B.BAND_FIT[band][d] >= row[d] for row in B.BAND_FIT.values())
+    assert B.BAND_FIT["close"][0] > B.BAND_FIT["mid"][0] > B.BAND_FIT["long"][0]
+    # and it shows in a fight: every contact close, the close weapon does better than with range off
+    B.VENUE_DISTANCE["_test_all_close"] = (1.0, 0.0, 0.0)
+    try:
+        shotgun, ar = B.weapon_model(CAT, "shotgun"), B.weapon_model(CAT, "assault_rifle")
+        close = B.duel(shotgun, ar, _cfg(venue="_test_all_close"), 300, SEED)
+        flat = B.duel(shotgun, ar, _cfg(range_model=False), 300, SEED)
+    finally:
+        B.VENUE_DISTANCE.pop("_test_all_close", None)
+    assert close.win_rate > flat.win_rate + 0.05, (close.win_rate, flat.win_rate)
+
+
+def test_each_weapon_is_judged_against_its_own_slot_kind():
+    usp, deagle = B.weapon_model(CAT, "deagle"), B.weapon_model(CAT, "usp")
+    assert B.anchor_for(usp) == B.anchor_for(deagle) == B.ROLE_ANCHORS["sidearm"]
+    assert B.anchor_for(B.weapon_model(CAT, "smg")) == B.DEFAULT_ANCHOR
+    assert B.anchor_for(usp, "smg") == "smg"   # --anchor overrides the rule
+    assert CAT._row(B.ROLE_ANCHORS["sidearm"])["role"] == "sidearm"
+
+
+def test_a_pickup_only_weapon_is_never_flagged():
+    rocket = B.weapon_model(CAT, "rocket_launcher")
+    assert rocket.pickup_only
+    ar = B.weapon_model(CAT, "assault_rifle")
+    teams = {("rocket_launcher", 2): B.TeamResult("rocket_launcher", "assault_rifle", 2, 1, 900, 10, 1.0, 1.0, 0)}
+    assert teams[("rocket_launcher", 2)].ci()[0] > 1.0     # it would be DOMINATES if flagged
+    ranked = B.rank_weapons([rocket, ar], teams, {}, [2], {"rocket_launcher": "assault_rifle"})
+    assert next(r for r in ranked if r["weapon"] == "rocket_launcher")["flag"] == ""
+
+
+def test_the_summary_prints_no_nan_when_the_duels_did_not_run():
+    out = pathlib.Path(tempfile.mkdtemp(prefix="balance_sim_nan_"))
+    try:
+        B.main(["--scenario", "team", "--weapon", "usp", "--n", "2", "--reps", "2", "--jobs", "1",
+                "--out", str(out / "t.csv")])
+        text = (out / "t_summary.txt").read_text()
+        assert "nan" not in text.lower(), text
+        row = next(line for line in text.splitlines() if line.startswith("usp "))
+        assert row.split()[3] == "usp" and "-" in row.split(), row   # judged against usp; no duel column
+    finally:
+        shutil.rmtree(out, ignore_errors=True)
 
 
 def test_hidden_and_non_lethal_rows_are_filtered():

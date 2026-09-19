@@ -1520,15 +1520,20 @@ python3 mcp/tools/balance_sim.py --weapon amr --sweep dmg=18..24 crit_pct=0,30
 python3 mcp/tools/balance_sim.py --preset toxin       # the §7.5b sweep, about 45 s
 ```
 
-The team number is a kill-rate ratio against the Assault Rifle, with one test weapon on each side of
-2 to 10 players. The summary ranks weapons by their distance from 1.00. It flags a weapon as dominant
-or dominated when the 95% interval stays on one side of 1.00 at every team size.
+The team number is a kill-rate ratio against an anchor of the same slot kind, with one test weapon on
+each side of 2 to 10 players. A sidearm is compared with the USP-S. Every other weapon is compared with
+the Assault Rifle. `--anchor` sets one anchor for all weapons. The summary ranks weapons by their
+distance from 1.00. It flags a weapon as dominant or dominated when the 95% interval stays on one side
+of 1.00 at every team size. A pick-up-only heavy gets its ratio but no flag, because no loadout weapon
+competes with it for a slot.
 
 The answer moves most with these assumptions. All of them are invented, and each has a flag:
 
-- **Range** (`--no-range`, `--venue`). Each fight draws close, mid or long from the venue. A shot
-  beyond a weapon's `range_band` loses half its hit chance per band. With range on, every close
-  weapon falls behind outdoors. With range off, the Rocket Launcher dominates.
+- **Range** (`--no-range`, `--venue`). Each fight draws close, mid or long from the venue. A table
+  (`BAND_FIT`) scales the hit chance by the weapon's `range_band` and that distance. Each band has
+  the best hit chance at its own distance: a close weapon gains 30% up close, and a long gun loses
+  20% there. The first version only penalised a weapon beyond its band, so a close weapon could never
+  gain in the venue built for it.
 - **Tactical reload** (`--no-tactical-reload`). A player below half a magazine reloads between
   fights. A long reload then costs less.
 - **Focus fire and line of sight** (`--contact-mean-s`, `--gap-mean-s`). These are the §7.5b numbers
@@ -1536,10 +1541,21 @@ The answer moves most with these assumptions. All of them are invented, and each
   1.60 and the Sniper Rifle from 0.75 to 0.89. They hurt the Rail Gun, which must charge first.
 - **Hit chance** (`--hit-prob`). One number for every weapon: the sim has no recoil or stance.
 
-Run on 2026-09-19 (outdoor, range on): the Charge Rifle dominates at about 1.4, because it opens every
-fight with a pre-built 85. The sidearms, the Shotgun and the Rail Gun sit at 0.4 to 0.5. The Burst
-Rifle is the only weapon at parity with the anchor. Read the sidearms against their secondary slot,
-not against a primary.
+Run on 2026-09-19 with range on:
+
+| weapon | outdoor | indoor | note |
+|---|---|---|---|
+| Charge Rifle | **1.39** dominates | 1.07 | it opens every fight with a pre-built 85 |
+| Shotgun | 0.50 dominated | 0.66 dominated | the catalogue, not the model: see below |
+| Sniper Rifle | 0.76 dominated | 0.57 dominated | indoors it rarely gets its distance |
+| Suppressor, Energy Rifle | about 0.7 dominated | about 0.7 dominated | |
+| SMG | 0.85 dominated | 0.95 | |
+| Burst Rifle, Desert Eagle | about 1.0 | about 1.0 | at parity with their anchors |
+
+**The Shotgun finding is for the catalogue, not the sim.** Even at 100% accuracy with range off, the
+Shotgun sits at 0.67 to 0.88: three pulls at 800 ms is 1.6 s against the rifle's 1.2 s. When every
+fight is close, it reaches 1.05 at 2v2 but falls to 0.89 at 10v10. One hit chance for every weapon
+costs it most in a duel (53% at 100% accuracy, 29% at 50%), and much less in a team.
 
 ### 7.7 Armour Piercing takes two levers, not one
 
