@@ -36,7 +36,19 @@ def is_pool_probe(frame: str) -> bool:
     if not f.startswith("$LIFE,"):
         return False
     t = f.rstrip("*").rstrip(",").split(",")
-    return all(i >= len(t) or t[i] == "" or t[i] == "0" for i in (1, 2, 3))
+
+    def _is_zero(i: int) -> bool:
+        if i >= len(t) or t[i] == "":
+            return True
+        try:
+            return float(t[i]) == 0
+        except ValueError:
+            return False
+
+    # NUMERIC, not a string match against "0" -- `engine.js`'s twin tests `Number(t[i]) === 0`, so
+    # `$LIFE,00,0,0,*`/`$LIFE,-0,0,0,*` are zero-effect probes there. A string check said otherwise
+    # here, which is exactly the divergence this predicate exists to prevent between the two sides.
+    return all(_is_zero(i) for i in (1, 2, 3))
 
 
 NUS_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
