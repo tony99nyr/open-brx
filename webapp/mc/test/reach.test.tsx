@@ -126,21 +126,25 @@ describe('Lobby coverage line and per-node reach tags', () => {
     m.unmount();
   });
 
-  it('COVERAGE ZONES when some, but not all, bound nodes are on backhaul', async () => {
+  // Field feedback 2026-09-19 (Tony): "COVERAGE ZONES — N OF M ON THE INTERNET PATH" read as needlessly
+  // verbose for a header chip. Shortened to "Internet: N of M phones", same numbers, sentence case, no
+  // em dash. Wording only — F256 (whether a shared Wi-Fi network should count as covered at all) is
+  // untouched.
+  it('shows the short coverage phrase when some, but not all, bound nodes are on backhaul', async () => {
     const d = await demo();
     const state: State = { ...d.state, coverage: { level: 'zones', on_backhaul: 2, bound: 5 },
       lan: { ...d.state.lan, public: { ws_url: 'wss://x.trycloudflare.com/ws', status: 'up', provider: 'cloudflared', available: true } } };
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
-    expect(m.text()).toContain('COVERAGE ZONES — 2 OF 5 ON THE INTERNET PATH');
+    expect(m.text()).toContain('Internet: 2 of 5 phones');
     m.unmount();
   });
 
-  it('FULL COVERAGE when every bound node is on backhaul', async () => {
+  it('shows the same short phrase when every bound node is on backhaul', async () => {
     const d = await demo();
     const state: State = { ...d.state, coverage: { level: 'full', on_backhaul: 5, bound: 5 },
       lan: { ...d.state.lan, public: { ws_url: 'wss://x.trycloudflare.com/ws', status: 'up', provider: 'cloudflared', available: true } } };
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
-    expect(m.text()).toContain('FULL COVERAGE — 5 OF 5 ON THE INTERNET PATH');
+    expect(m.text()).toContain('Internet: 5 of 5 phones');
     m.unmount();
   });
 
@@ -232,7 +236,7 @@ describe('Armed and Live carry the same coverage line as Lobby', () => {
     const state: State = { ...d.state, start: undefined, coverage: { level: 'zones', on_backhaul: 1, bound: 4 },
       lan: { ...d.state.lan, public: { ws_url: 'wss://x.trycloudflare.com/ws', status: 'up', provider: 'cloudflared', available: true } } };
     const m = await mountScreen(<Armed />, { ...d, state, view: 'armed' });
-    expect(m.text()).toContain('COVERAGE ZONES — 1 OF 4 ON THE INTERNET PATH');
+    expect(m.text()).toContain('Internet: 1 of 4 phones');
     m.unmount();
   });
 
@@ -242,7 +246,7 @@ describe('Armed and Live carry the same coverage line as Lobby', () => {
     const state: State = { ...d.state, live, coverage: { level: 'full', on_backhaul: 4, bound: 4 },
       lan: { ...d.state.lan, public: { ws_url: 'wss://x.trycloudflare.com/ws', status: 'up', provider: 'cloudflared', available: true } } };
     const m = await mountScreen(<Live />, { ...d, state, view: 'live' });
-    expect(m.text()).toContain('FULL COVERAGE — 4 OF 4 ON THE INTERNET PATH');
+    expect(m.text()).toContain('Internet: 4 of 4 phones');
     m.unmount();
   });
 

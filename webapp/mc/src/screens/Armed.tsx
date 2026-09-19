@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
 import { STALE_AFTER_MS } from '../api/types';
 import { useRunway } from '../runway';
-import { coverageLine } from '../api/derive';
 import { useStore } from '../store';
 import { EvictButton } from '../ui/EvictButton';
 import { F, T, fmtAge, fmtClock } from '../tokens';
-import { Brackets, GhostButton, HazardButton, Num, ScreenHeader, Tag } from '../ui';
+import { Brackets, GhostButton, HazardButton, Num, ScreenHeader, Tag, shortCoverageLine } from '../ui';
 import { SetupSteps } from '../ui/SetupSteps';
 import { McVerify } from '../ui/McVerify';
 
@@ -27,7 +26,7 @@ export function Armed() {
   useEffect(() => { const id = setInterval(() => tick(x => x + 1), 250); return () => clearInterval(id); }, []);
   if (!state) return null;
   // A28.4: derived, never asserted — grey the count while the tunnel is off, since it can only be 0.
-  const cLine = coverageLine(state);
+  const cLine = shortCoverageLine(state.coverage);
   const cColor = state.lan.public?.status !== 'up' ? T.micro : state.coverage?.level === 'full' ? T.ok : T.warn;
   const st = state.start;
   if (!st) {

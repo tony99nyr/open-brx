@@ -13,8 +13,9 @@ import { F, T } from '../tokens';
  *  for. This is built against `State.notices.mc_verify`; if `mc/API.md` names the field differently
  *  when the server lane lands, this is the one place to change.
  *
- *  A border, not a fill: `SetupSteps` owns the solid amber bar, and it means something different —
- *  a PHYSICAL step the operator must go and do. Two solid amber bars would flatten both.
+ *  A border, not a fill: this is a real actionable warning, unlike `SetupSteps`'s neutral "Match
+ *  reminders" panel (restyled 2026-09-19, field feedback) — a PHYSICAL step the operator must go and
+ *  do, not a fault. Keeping this one amber and that one neutral tells the two apart at a glance.
  */
 export function McVerify({ style }: { style?: React.CSSProperties }) {
   const { state } = useStore();

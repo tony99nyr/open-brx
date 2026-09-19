@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { RUNWAYS, useRunway } from '../runway';
-import { RE_PUSH_HERE, STALE_ACK_FAULT, blocksPush, coverageLine, curedByPush, pushGate, reachLabel, reachOf, reachTooltip, sentenceCase, splitBlocker } from '../api/derive';
+import { RE_PUSH_HERE, STALE_ACK_FAULT, blocksPush, curedByPush, pushGate, reachLabel, reachOf, reachTooltip, sentenceCase, splitBlocker } from '../api/derive';
 import type { Player } from '../api/types';
 import { useStore } from '../store';
 import { F, T, TAB, fmtClock, teamColor } from '../tokens';
-import { BTN_RESET, GhostButton, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag, useNarrow } from '../ui';
+import { BTN_RESET, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag, shortCoverageLine, useNarrow } from '../ui';
 import { SetupSteps } from '../ui/SetupSteps';
 import { PreArmSummary, armOverrideCopy } from '../ui/PreArmSummary';
 import { McVerify } from '../ui/McVerify';
@@ -42,7 +42,7 @@ export function Lobby() {
   // F8a: ONE instruction string, everywhere (`RE_PUSH_HERE` is the label of the button below).
   const { acked, allAcked, noEcho, staleAcked, staleAckLine } = gate;
   // A28.4: derived, never asserted — "grey" the count while the tunnel is off, since it can only be 0.
-  const cLine = coverageLine(state);
+  const cLine = shortCoverageLine(state.coverage);
   const cColor = state.lan.public?.status !== 'up' ? T.micro : state.coverage?.level === 'full' ? T.ok : T.warn;
   const reachOfPlayer = (pid: string): 'lan' | 'backhaul' | undefined => {
     const n = state.nodes.find(x => x.player_id === pid);
@@ -144,6 +144,19 @@ export function Lobby() {
             : <Tag color={balanced ? T.ok : T.warn} size={9} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{counts.join(' V ')} — {balanced ? 'BALANCED' : 'UNBALANCED'}</Tag>}
           {cLine && <Tag color={cColor} size={9} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{cLine}</Tag>}
           <Progress n={nReady} total={players.length} label="READY" color={T.ok} />
+          {/* Field feedback 2026-09-19 (Tony): MARK ALL READY is a common, regular step, and it used to
+              sit as a GhostButton in the lower-left rail — easy to miss while players are still
+              gathering and looking at this header's own ready count. One PrimaryButton, right beside
+              the count it changes; same gate as before (hidden, not merely disabled, once nobody
+              needs it or the roster is empty). */}
+          {!allReady && players.length > 0 && (
+            <span data-mark-all-ready="1">
+              <PrimaryButton onClick={readyAll} disabled={readyAllBusy} pad="9px 18px" size={12}
+                title="Marks every rostered player ready. Never touches the gun config or the acks — arming still checks those exactly as before.">
+                {readyAllBusy ? 'MARKING ALL READY…' : 'MARK ALL READY ▸'}
+              </PrimaryButton>
+            </span>
+          )}
         </>
       } />
       {rosterFault && (
@@ -344,9 +357,6 @@ export function Lobby() {
       )}
       {!allReady && players.length > 0 && (
         <div data-mark-ready="1" style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', font: F.mono(500, 11), letterSpacing: '.14em', color: T.dim }}>
-          <GhostButton onClick={readyAll} disabled={readyAllBusy} title="Marks every rostered player ready. Never touches the gun config or the acks — arming still checks those exactly as before.">
-            {readyAllBusy ? 'MARKING ALL READY…' : 'MARK ALL READY ▸'}
-          </GhostButton>
           <span style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: T.micro, marginRight: 4 }}>MARK READY</span>
           {players.filter(p => !p.ready).map(p => (
             <button key={p.player_id} type="button" className="hov-acc-ink hit44" style={{ ...BTN_RESET, cursor: 'pointer', color: T.dim, minHeight: 28 }} onClick={() => run(() => api.setReady(p.player_id, true))}>{p.display} ▸</button>

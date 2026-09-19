@@ -1,7 +1,11 @@
 // MARK ALL READY (bench 2026-09-17). A config re-push from LOBBY (the inline GameEditPanel, or an
 // operator edit) mints a fresh head and resets every player's READY to false — correct, but with two
-// players already readied up the operator's only fix was tapping HOST OVERRIDE once per player. One
-// button, lower left beside the per-player MARK READY tray, shown only while somebody still needs it.
+// players already readied up the operator's only fix was tapping HOST OVERRIDE once per player.
+//
+// Field feedback 2026-09-19 (Tony): this is a common, regular step, and it used to sit as a
+// GhostButton down in the lower-left tray with the per-player MARK READY buttons — easy to miss
+// while players are still gathering. It now sits as a PrimaryButton in the screen header, beside the
+// READY count it changes, and shown only while somebody still needs it (same gate as before).
 import { describe, expect, it } from 'vitest';
 import type { State } from '../src/api/types';
 import { Lobby } from '../src/screens/Lobby';
@@ -20,14 +24,18 @@ describe('LOBBY: MARK ALL READY', () => {
     m.unmount();
   });
 
-  it('shows while at least one rostered player is not ready, in the same lower-left tray as MARK READY', async () => {
+  it('shows while at least one rostered player is not ready, as a prominent button in the header, beside the READY count', async () => {
     const d = await demo();
     const s = someNotReady(d.state);
     expect(s.players.some(p => !p.ready), 'control: at least one not ready').toBe(true);
     const m = await mountScreen(<Lobby />, { ...d, state: s, view: 'lobby' });
+    const header = m.find('[data-mark-all-ready="1"]')[0];
+    expect(header, 'the header control that hosts MARK ALL READY').toBeTruthy();
+    expect(header.textContent).toContain('MARK ALL READY');
+    // it left the lower-left tray — that one now hosts only the per-player MARK READY buttons
     const tray = m.find('[data-mark-ready="1"]')[0];
-    expect(tray, 'the tray that hosts both MARK ALL READY and the per-player buttons').toBeTruthy();
-    expect(tray.textContent).toContain('MARK ALL READY');
+    expect(tray, 'the per-player MARK READY tray').toBeTruthy();
+    expect(tray.textContent).not.toContain('MARK ALL READY');
     m.unmount();
   });
 
