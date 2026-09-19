@@ -2530,6 +2530,17 @@ class Session:
         if nid not in self.stations and (self.nodes.get(nid) or {}).get("node_type") != "utility":
             raise ValueError(f"{nid!r} is not a utility phone (no utility hello this session); open the app in the "
                              "UTILITY role on that phone and connect it to Mission Control first")
+        # 2026-09-19 (field): a station's node record survives its phone going quiet -- on purpose, so
+        # it can be re-armed the moment it comes back (`_arm_station`'s "bring it back to re-arm"). But
+        # ASSIGNING one while it is stale (no message in STALE_AFTER_MS) just walks the operator into an
+        # arm that fails against a dead socket: this exact node_id went quiet because the same physical
+        # phone re-opened elsewhere under a NEW node_id (a player role, or its storage cleared) and is
+        # never coming back to THIS one. Refuse here, same voice as the rest of this validation, rather
+        # than let the push fail silently downstream.
+        if (self.nodes.get(nid) or {}).get("stale"):
+            raise ValueError(f"{nid!r} has not been heard from recently (its link has gone stale); it cannot be "
+                             "assigned until it reconnects -- if this phone reopened elsewhere, its NEW node_id "
+                             "is the one to assign instead")
         st = self.stations.setdefault(nid, {"node_id": nid, "assigned": None, "report": {}, "armed": None})
         assignment: StationAssignment = {"kind": kind, "team": team, "id": sid, "threshold": thr, "at": self.now_ms()}
         st["assigned"] = assignment
@@ -2692,10 +2703,19 @@ class Session:
                                                 for k, v in hold_ms.items()):
                 decoded_control["hold_ms"] = hold_ms
             report["control"] = decoded_control
+        # 2026-09-19 (field, twice in one day): a station's `online` used to ask `OFFLINE_AFTER_MS`
+        # (10 min) -- the "has this record left the field entirely" line, not "can I reach it right
+        # now". A phone that had re-opened elsewhere under a NEW node_id (a fresh player node, or the
+        # app's storage cleared) left THIS node_id's record sitting `online: True` for minutes with
+        # nothing behind it: still assignable, still "armable", and arming it just failed silently
+        # against a dead socket. `self.nodes[nid]["stale"]` is the fact that already answers this (the
+        # net layer's own STALE_AFTER_MS = 8 s freshness judgement) -- reuse it instead of a second,
+        # much more lenient rule that disagreed with it.
+        node_stale = bool((self.nodes.get(nid) or {}).get("stale"))
         view: StationView = {"node_id": nid, "assigned": a, "armed": armed, "arm_pending": bool(st.get("arm_pending")),
                 "report": report, "app_ver": st.get("app_ver"), "platform": st.get("platform"),   # A29
                 "last_seen_ms": (now - seen) if seen else None,
-                "online": bool(seen) and (now - seen) <= OFFLINE_AFTER_MS,
+                "online": bool(seen) and not node_stale,
                 "attention": attention, "game": self._game_byte()}
         return view
 
@@ -3038,6 +3058,25 @@ class Session:
         nv.setdefault("last_seen_ms", 0)
         return nv
 
+    def _release_stale_gun_claim(self, nid: str, gun_name: str | None, gun_tail: str | None) -> None:
+        """2026-09-19 (field): a phone whose storage was cleared, or that swapped role, rejoins under a
+        NEW node_id -- and the OLD node_id's record is left holding `gun_name`/`gun_tail` that are no
+        longer true of anything (`_bind` already moves the PLAYER off it; nothing moved the gun fields).
+        Left alone, ARMORY shows the same gun on two cards: the live node, and a stale ghost still
+        reading LINKED/KITTED off last session's `preflight`.
+
+        Only a STALE other record's claim is cleared -- a FRESH one is net.py's `_claim_gun`/A8 gun
+        rule to arbitrate (it may legitimately refuse this very hello), and this must never race ahead
+        of that refusal by unclaiming a gun a live, contested holder still has every right to."""
+        if not (gun_name or gun_tail):
+            return
+        for other_nid, other in self.nodes.items():
+            if other_nid == nid or not other.get("stale"):
+                continue
+            if (gun_name and other.get("gun_name") == gun_name) or (gun_tail and other.get("gun_tail") == gun_tail):
+                other.pop("gun_name", None)
+                other.pop("gun_tail", None)
+
     def _on_node(self, n: dict):
         nid = n["node_id"]
         # A25: a hello is a NEW socket. Any `pull_log` we sent the old one never landed, so the ask
@@ -3054,6 +3093,7 @@ class Session:
             nv["last_reach"] = nv["reach"]
         self._note_version(nid, n.get("app_ver"), n.get("platform"))   # A29
         nv["last_seen_ms"] = self.now_ms()
+        self._release_stale_gun_claim(nid, nv.get("gun_name"), nv.get("gun_tail"))
         if n.get("node_type") == "utility":
             # F106(c): the SAME node_id said hello as a player once (a phone switched OUT of the HUD role
             # on the field) -- `node_player`/the player's `node_id` must not keep pointing at a socket that
@@ -6284,6 +6324,11 @@ class Session:
             row.setdefault("arm_state", "idle")
             row.setdefault("synced", False)
             row["last_seen_ms"] = now - nv.get("last_seen_ms", 0)
+            # 2026-09-19: MC's own freshness judgement (the net layer's `stale`, STALE_AFTER_MS = 8 s),
+            # not left for the console to re-derive from `last_seen_ms` with a threshold of its own
+            # invention -- three different ones had grown up in `webapp/mc/src` (8 s, 60 s, and none at
+            # all), and none of them agreed with the one MC already computes.
+            row["stale"] = bool(nv.get("stale"))
             nodes.append(row)
         state: State = {"session_id": self.session_id, "phase": self.phase, "t": now, "lan": self.lan,
                 "coverage": self.coverage(),                    # A28.4: derived, not asserted

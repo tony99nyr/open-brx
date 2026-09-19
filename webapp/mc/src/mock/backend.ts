@@ -4,7 +4,7 @@ import type {
   ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, ReportResult, SavedGame, ScanRow, ScoreRow, StartView, State, StationAssignment, StationKind, StationSourceId,
   StationView, TunnelProvider, TunnelStatus, WeaponView,
 } from '../api/types';
-import { STATION_KINDS, STATION_SOURCE_IDS } from '../api/types';
+import { STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS } from '../api/types';
 import { withPolicy } from '../screens/gameSummary';
 import { GUN_FLAPPING_LINE } from '../api/derive';
 import { GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
@@ -560,6 +560,11 @@ export class MockBackend implements Api {
       return {
         node_id: `node_${b.tail}`, node_type: 'phone', gun_name: `${b.sticker}-${b.tail}`, gun_tail: b.tail,
         player_id: b.player_id, arm_state: this.armStateFor(b.player_id), last_seen_ms: b.last_seen_age_ms ?? 0,
+        // 2026-09-19: the demo mirrors the real server's own STALE_AFTER_MS judgement (`state.py
+        // snapshot()`), the same freshness rule `?mock`'s comments above already describe for
+        // `unrostered_phone_count` -- not a hard-coded `false` that could never show the console's new
+        // OFFLINE card.
+        stale: (b.last_seen_age_ms ?? 0) > STALE_AFTER_MS,
         synced: true, battery: b.battery_pct, fw: b.fw,
         app_ver: b.app_ver, platform: b.platform,      // A29
         log: this.logFor(`node_${b.tail}`),            // A25

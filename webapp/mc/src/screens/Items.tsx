@@ -60,7 +60,14 @@ function StationCard({ s }: { s: StationView }) {
   // `Games.tsx` uses before it moves the roster (`SwitchConfirm`), not just matching CLEAR's look.
   const [confirmRelease, setConfirmRelease] = useState(false);
   const control = kind === 'control';
-  const status = !a ? 'NOT ASSIGNED' : s.arm_pending ? 'ARM PENDING' : s.armed ? `MC-ARMED · GAME ${s.armed.game}` : 'ASSIGNED';
+  // 2026-09-19: `s.online` is now the server's own STALE_AFTER_MS judgement (state.py `_station_view`),
+  // not the old 10-minute "has this record left the field" line -- so a phone that reopened elsewhere
+  // under a new node_id reads OFFLINE within seconds, not minutes, instead of sitting there as an
+  // assignable, seemingly-live "UTILITY PHONE" ghost. An ALREADY-ASSIGNED station that has simply
+  // walked out of Wi-Fi range (utility.md §5c: "a station needs no Wi-Fi once armed") keeps its
+  // ARM PENDING / MC-ARMED wording -- that is a real, expected field state, not the ghost this fix is
+  // about -- and the LINK row below still says OUT OF WI-FI either way.
+  const status = !a ? (s.online ? 'NOT ASSIGNED' : 'OFFLINE') : s.arm_pending ? 'ARM PENDING' : s.armed ? `MC-ARMED · GAME ${s.armed.game}` : 'ASSIGNED';
   const color = !a ? T.micro : s.attention.length || s.arm_pending ? T.warn : T.ok;
   // F104 follow-up: a phone that disagrees with what MC thinks it armed (never heard ARM, advertises a
   // different id, or is still on an older game's config) needs the SAME fix as a pending arm — push the
@@ -141,7 +148,11 @@ function StationCard({ s }: { s: StationView }) {
             action="TAP RELEASE ▸ HUD AGAIN TO SEND IT" />
         )}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button type="button" className={dirty ? 'hov-accbg' : ''} disabled={busy || (!dirty && !needsRearm)} onClick={apply}
+          {/* 2026-09-19: an offline phone (stale link, server-judged) cannot be assigned or armed --
+              the push would just fail against a dead socket, which used to be the operator's first
+              sign anything was wrong. */}
+          <button type="button" className={dirty ? 'hov-accbg' : ''} disabled={busy || !s.online || (!dirty && !needsRearm)} onClick={apply}
+            title={!s.online ? 'this phone has not been heard from recently -- it cannot be assigned or armed until it reconnects' : undefined}
             style={{ font: F.osw(700, 15), letterSpacing: '.18em', padding: '8px 18px', whiteSpace: 'nowrap',
               background: dirty || needsRearm ? T.acc : T.panelAlt, color: dirty || needsRearm ? T.accInk : T.dim,
               border: `1px solid ${dirty || needsRearm ? T.acc : T.line}`, clipPath: CHAMFER.tl14, cursor: busy ? 'wait' : dirty || needsRearm ? 'pointer' : 'default', minHeight: 40 }}>

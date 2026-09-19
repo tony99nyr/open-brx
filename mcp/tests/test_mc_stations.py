@@ -155,6 +155,39 @@ def test_a_station_that_is_offline_is_flagged_and_armed_on_its_next_hello():
     assert not s._station_view("util-1")["arm_pending"]
 
 
+def test_a_stale_station_reads_offline_and_refuses_a_new_assignment():
+    """Field, twice in one day (2026-09-19): a respawn station reopened elsewhere as a PLAYER phone
+    under a NEW node_id, and this old node_id's record just sat there -- `online: True` (it used the
+    10-minute `OFFLINE_AFTER_MS` line, not the net layer's own STALE_AFTER_MS = 8 s freshness flag),
+    still listed in ITEMS, still assignable, still "armable". The operator assigned it, arming failed
+    (there was no socket left to push to), and CLEARING it did not make the confusion go away.
+
+    Break it once: before the fix, `online` stayed True and `set_station` accepted the assignment no
+    matter how stale `self.nodes["util-1"]["stale"]` was -- the assert below is exactly the line that
+    used to read True, and the `set_station` call is exactly the one that used to succeed."""
+    s = _sess()
+    s.net.simulate_utility_hello("util-1")
+    assert s._station_view("util-1")["online"] is True, "a fresh hello is online"
+    s.net.simulate_stale("util-1", 9_000)                 # the net layer's own STALE_AFTER_MS sweep
+    assert s.nodes["util-1"]["stale"] is True
+    v = s._station_view("util-1")
+    assert v["online"] is False, "a stale node_id must not read as online any more"
+    # the record survives (it may come back) -- only NEW claims against it are refused
+    assert "util-1" in s.stations
+    try:
+        s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 3})
+        raise AssertionError("a stale station accepted an assignment")
+    except ValueError as e:
+        assert "stale" in str(e).lower(), e
+    assert s.stations["util-1"]["assigned"] is None, "the refused assignment left nothing behind"
+    # ...and a reconnect (the SAME node_id coming back, not a new one) clears it and re-admits assignment
+    s.net.simulate_return("util-1")
+    assert s.nodes["util-1"]["stale"] is False
+    assert s._station_view("util-1")["online"] is True
+    s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 3})   # no longer refused
+    assert s.stations["util-1"]["assigned"] is not None
+
+
 # --------------------------------------------------------------------------- the game byte
 def test_the_game_byte_changes_on_the_first_push_after_a_match_started_and_reaches_every_station():
     """F104 consequence (c): `applyStationConfig` resets the point only when the ARMED game number
