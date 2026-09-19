@@ -62,7 +62,7 @@ PROTOCOL_V = 1
 # `(major, minor)` while major == 0 and `major` alone from 1.0.0 on. `APP_MINOR` is read ONLY in the 0.x
 # regime; once the app cuts 1.0.0, bump APP_MAJOR and APP_MINOR stops mattering.
 APP_MAJOR = 0
-APP_MINOR = 3
+APP_MINOR = 4
 
 
 def parse_app_ver(app_ver: str | None) -> tuple[int, int, int] | None:
@@ -492,8 +492,9 @@ class FrameBundle(TypedDict):
     config_id: str
     player_id: str
     head: list[str]      # config head, NO $SPAWN, no countdown sound; ends with $TID
-    spawn: list[str]     # A44: fn-28 $SIR table -> $PLAYX,0 -> $SPAWN,, -> $AMMO... -> $BMAP,0,0; the live table is a sir_pool take written once the gun can fire
-    revive: list[str]
+    spawn: list[str]     # $PLAYX,0 -> $SPAWN,, -> $TMP t8=-100 -> $TID -> $AMMO... -> $BMAP,0,0 (F121 rebuild: no $SIR row; the table survives $SPAWN)
+    revive: list[str]    # $SPAWN,, -> $TMP t8=-100 -> $TID -> $AMMO... -> $BMAP,0,0
+    spawn_protect_off: NotRequired[str]   # F121 rebuild: `$TMP` t8=0, written on the first shot or the cap; absent = an older bundle
     end: list[str]
     panic: list[str]
     team_flip: NotRequired[dict[str, list[str]]]
@@ -520,7 +521,7 @@ class FrameBundle(TypedDict):
     #                                      so the firmware's death scream changes per life. One full $PSET per death-scream take; only the
     #                                      deathScream token differs. A pinned `death_scream` (or a one-take family) = one frame = head[4].
     #                                      A17: each take ALSO carries its own hitHp/hitArrmor/hitShield/hitCrit draw (hitaudio.MATERIAL_POOLS).
-    sir_pool: NotRequired[list[list[str]]]   # A17/A44: one full live `$SIR` table per take, the ONLY live carrier -- the node writes one once the gun can fire after every spawn/revive, and again after a
+    sir_pool: NotRequired[list[list[str]]]   # A17/A44: one full live `$SIR` table per take, the ONLY live carrier -- the node writes one in front of `spawn_protect_off` when the gun's table is not live or class sounds are on, and again after a
     #                                      lull, so the same weapon does not land the same clip all match. Re-sending `$SIR` rows is the F11 repair
     #                                      path, so the write is safe by construction; the rows are identical apart from their sound tokens.
     hit_audio: NotRequired[dict]         # A17: {rekey: bool, cells{weapon_id: "p,s"}, classes{"p,s": family}, shared[families sharing a cell],

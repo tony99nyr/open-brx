@@ -59,7 +59,8 @@ test('A47 resync: $TID, the CURRENT ammo, $BMAP,0,0, then the live $SIR take -- 
   // ...and it is `$LIFE` alone. Bench 2026-09-19: a DEAD gun holds its print loop about 2 s on a `$QUERY`, and
   // the gun an operator is resyncing is exactly the one that might be dead.
   assert.deepEqual(w.slice(0, 1), [PROBE_LIFE], 'the probe leads, before anything is written');
-  assert.deepEqual(w.slice(1), ['$TID,1,*', '$AMMO,0,20,150,1,*', '$AMMO,1,6,24,1,*', '$BMAP,0,0,,,,,*', ...TAKE]);
+  // F121 rebuild: the resync re-sends the table whatever the node believes (a rebooted gun has none, F11), then t8 = 0.
+  assert.deepEqual(w.slice(1), ['$TID,1,*', '$AMMO,0,20,150,1,*', '$AMMO,1,6,24,1,*', '$BMAP,0,0,,,,,*', ...TAKE, golden.spawn_protect_off]);
   assert.deepEqual(heads(w), [], 'no $SPAWN, $PSET or head frame');
   assert.equal(h.eng.hp, hp); assert.equal(h.eng.armor, armor); assert.equal(h.eng.deaths, deaths);
   assert.deepEqual(h.facts.slice(nFacts), [{ type: 'operator_result', cmd: 'resync', ok: true, match_id: 'm1', player_id: 'p1' }], 'no death, kill or respawn fact: only the outcome for MC');
@@ -255,7 +256,10 @@ const hasSpawn = fr => fr.includes('$SPAWN,,*');
 const hasBmap = fr => fr.some(f => f.startsWith('$BMAP,0,0'));
 
 // pl4 (2026-09-17): a spawn or revive write is never sent twice. A repeat refilled a life in play and, on a
-// protected bundle, re-sent the fn-28 twin after the live take, leaving the gun unhittable (F11).
+// protected bundle, re-sent the protection after it had ended, leaving the gun unhittable (F11). F121 rebuild:
+// the protection is `$TMP` t8 = -100, so the lost write's cure is t8 = 0 (the table survived the death).
+const OFF = golden.spawn_protect_off;
+const tmpRows = w => w.filter(f => f.startsWith('$TMP'));
 const sirRows = w => w.filter(f => f.startsWith('$SIR,'));
 const isTwin = f => f.split(',')[4] === '28';
 
@@ -267,11 +271,11 @@ test('pl4: a false revive write never re-sends $SPAWN, and the live take is writ
   h.frame('$ALCD,32,100,0,192,0,*').frame('$ALCD,31,100,0,192,0,*');   // first shot arms the take BEFORE the write resolves
   const w1 = h.mark();
   await flush(); await flush();
-  assert.deepEqual(sirRows(h.since(w1)), TAKE.filter(f => f.startsWith('$SIR,')), 'the live table is armed again once the loss is known');
+  assert.deepEqual(tmpRows(h.since(w1)), [OFF], 'protection is ended again once the loss is known');
   assert.equal(h.batches.slice(n).filter(hasSpawn).length, 1, 'the revive went once');
-  const rows = sirRows(h.since(w0));
-  assert.ok(rows.length && !isTwin(rows[rows.length - 1]), 'the last $SIR row on the gun is the live table, not the fn-28 twin');
-  assert.deepEqual(rows.slice(-TAKE.length), TAKE.filter(f => f.startsWith('$SIR,')), 'the live take went after the lost write');
+  const t = tmpRows(h.since(w0));
+  assert.equal(t[t.length - 1], OFF, 'the last $TMP on the gun is t8 = 0, not the protection');
+  assert.ok(sirRows(h.since(w0)).every(f => !isTwin(f)), 'no fn-28 twin reached the live gun');
   assert.ok(h.logs.some(([l, c]) => /\*\*\* write revive.* failed -- not re-sent/.test(l) && c === 'le'));
   assert.equal(h.eng.state().poolStale && h.eng.state().poolStale.why, 'write_lost', 'MC is told');
   h.op('resync');
@@ -287,7 +291,8 @@ test('pl4: a false revive write inside spawn protection keeps the take pending, 
   assert.equal(h.batches.slice(n).filter(hasSpawn).length, 1, 'no retry');
   assert.ok(h.eng._armPending, 'a live take is still pending');
   const w0 = h.mark(); h.adv(CAP);
-  assert.ok(sirRows(h.since(w0)).length && sirRows(h.since(w0)).every(f => !isTwin(f)), 'the cap writes the live table');
+  assert.deepEqual(tmpRows(h.since(w0)), [OFF], 'the cap ends protection');
+  assert.ok(sirRows(h.since(w0)).every(f => !isTwin(f)), 'and writes no fn-28 twin');
 });
 
 test('pl4: a false write for a life that already ended flags nothing', async () => {

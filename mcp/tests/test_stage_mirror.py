@@ -883,7 +883,7 @@ def test_an_emp_under_config_stun_disarms_every_slot_extends_on_a_second_word_an
         st, mgr, clock = mk_stun(stun=10)
         assert st.stun_enabled and st.stun_s == 10.0
         await live(st)
-        # F121/A23 + F209: the live table is the `sir_pool` take the node writes once the gun can fire --
+        # F121/A23 + F209: the live table is the `sir_pool` take the node writes behind spawn protection --
         # the head ships the cell disarmed (fn 28).
         #
         # F253 (bench 2026-09-18): the live function is fn 23, NOT fn 24. fn 24 does no damage AND leaves
@@ -942,7 +942,7 @@ def test_an_emp_under_config_stun_disarms_every_slot_extends_on_a_second_word_an
         c, cm, cclock = mk_stun(stun=None)
         assert not c.stun_enabled and "stun" not in c.config
         await live(c)
-        head = [f for f in c.bundle["spawn"] if f.startswith("$SIR,8,0,")]
+        head = [f for f in c.bundle["sir_pool"][0] if f.startswith("$SIR,8,0,")]   # F121 rebuild: the take carries the table
         assert head and head[0].split(",")[4] != "24", f"stock plain-damage cell without config.stun: {head}"
         n = mark(cm)
         await c.ir("emp"); c.poll(); await settle(c)

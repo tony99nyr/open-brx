@@ -37,7 +37,7 @@ def test_resync_writes_tid_live_ammo_bmap_then_the_take_and_keeps_the_pools():
         # 'mag' step sends it, once `$LIFE` has already proven the gun alive). The probe's own reply, if
         # any, is a SEPARATE rx event this test never injects.
         assert w == ["$LIFE,0,0,0,*", "$TID,1,*", "$AMMO,0,20,150,1,*", "$AMMO,1,6,24,1,*", "$BMAP,0,0,,,,,*",
-                     *st.bundle["sir_pool"][0]], w
+                     *st.bundle["sir_pool"][0], "$TMP,,,,,,,,0,,,,*"], w   # F121 rebuild: the table, then t8 = 0
         assert not [f for f in w if f.startswith(("$SPAWN", "$PSET", "$WEAP", "$CLEAR"))]
         assert (st.hp, st.armor, st.spawned, st.alive) == (hp, armor, True, True)
     asyncio.run(run())

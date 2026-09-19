@@ -18,7 +18,7 @@ Bench confirmation is pending: `docs/bench-firmware-levers-2026-09-19.md` §1.
 Run: python3 run_tests.py f206
 """
 from brx_mcp.gameconfig import GameConfig, arm_sequence, assert_team_byte_consistent, pset_team
-from brx_mcp.mc.compile import Compiler, golden_bundle
+from brx_mcp.mc.compile import SPAWN_PROTECT_ON, Compiler, golden_bundle
 from _session import match_config
 
 C = Compiler()
@@ -66,7 +66,8 @@ def test_tid_is_reasserted_right_after_every_spawn():
     for key in ("spawn", "revive"):
         frames = b[key]
         i = frames.index("$SPAWN,,*")
-        assert frames[i + 1] == "$TID,2,*", (key, frames[i:i + 3])
+        # F121 rebuild: the t8 protection write sits between them (bench order: $SPAWN, $TMP, $TID)
+        assert frames[i + 1:i + 3] == [SPAWN_PROTECT_ON, "$TID,2,*"], (key, frames[i:i + 3])
         assert _tid_of(frames) == [2], (key, frames)
 
 
@@ -80,7 +81,7 @@ def test_an_infection_flip_ends_on_the_team_the_gun_joins():
     assert set(flip) == {"1"}, flip.keys()
     frames = flip["1"]
     assert frames[0] == "$TID,1,*" and "$SPAWN,,*" in frames
-    assert frames[frames.index("$SPAWN,,*") + 1] == "$TID,1,*", frames
+    assert frames[frames.index("$SPAWN,,*") + 2] == "$TID,1,*", frames   # $SPAWN, the t8 write, then $TID (F121)
     assert not _psets(frames), "the flip carries no $PSET of its own"
     # and the ARMING team's own $PSET is still team 0, which is exactly why the flip must end on $TID,1
     assert all(pset_team(f) == 0 for f in b["pset_pool"])

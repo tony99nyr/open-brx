@@ -89,6 +89,10 @@ class FakeTagger:
         self.sir: dict[tuple[int, int], int] = {}
         for row in _boot_sir_table():
             self._sir_row(row)
+        # F121 rebuild (levers §23, bench 2026-09-18): `$TMP` t8 is the incoming-damage percentage modifier,
+        # written ABSOLUTE. -100 = hits register (`$HIR`, `$HP`) and take nothing. `$SPAWN` zeroes it (and every
+        # other `$TMP` token); a `$TMP` sent before the spawn is therefore wiped. The other tokens are not modelled.
+        self.tmp_t8 = 0
         # F46/F62/F68: a magnitude-0 word is a MISS -- the player feels it (haptic + the $PSET missShotHit
         # clip, natively) and the host sees NOTHING. Counted here so a test can assert that shape.
         self.misses = 0
@@ -149,6 +153,10 @@ class FakeTagger:
             self.sir.clear()                        # F11: `$CLEAR` wipes the table; nothing lands until `$SIR` rows do
         elif cmd == "SIR":
             self._sir_row(frame)
+        elif cmd == "TMP":
+            v = _int(t[8]) if len(t) > 8 else None   # an empty t8 leaves the modifier as it is
+            if v is not None:
+                self.tmp_t8 = max(-100, v)
         elif cmd == "VERSION":
             if self._tap:                           # cold $VERSION gets no reply (exp-log 8-24)
                 self._out.append("$VERSION,v4.32,?,4,,devhost.03,*")
@@ -174,6 +182,7 @@ class FakeTagger:
             # dead-chatty gun (a $SIR resync did not): it sets `alive` back to True and the pools off 0,
             # same as an ordinary spawn.
             self.alive = True
+            self.tmp_t8 = 0                         # levers §23 step 5: the spawn zeroes every $TMP token
             # F41 / P16: a REAL gun reports shield 0 on every `$HP` after a spawn no matter what `$PSET`
             # token 5 said -- the shield pool is IR-only (fn 11) and not BLE-writable. The fake used to
             # apply the token here, so the first `$HP` of a life read as a 70-point GAIN that netted out the
@@ -333,9 +342,9 @@ class FakeTagger:
                 return                              # damage from a teammate: rejected, no $HIR
         if fn in _SIR_FN_DAMAGE or fn in _SIR_FN_X125 or fn in _SIR_FN_X2:
             d = m if fn in _SIR_FN_DAMAGE else (m * 5 // 4 if fn in _SIR_FN_X125 else m * 2)
-            self._drain_pools(d)
+            self._drain_pools(d * (100 + self.tmp_t8) // 100)   # F121: t8 = -100 registers the hit, takes nothing
         elif fn in _SIR_FN_AP:
-            self.hp = max(0, self.hp - m)
+            self.hp = max(0, self.hp - m * (100 + self.tmp_t8) // 100)
         elif fn in _SIR_FN_HEAL:
             self.hp = min(self.cfg_hp, self.hp + m)
         elif fn in _SIR_FN_SHIELD:

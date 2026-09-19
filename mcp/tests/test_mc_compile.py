@@ -92,17 +92,15 @@ def test_spawn_shape():
 def test_revive_is_spawn_plus_ammo_plus_trigger_no_hloop():
     b = C.compile(_cfg(), _player(), _TEAMS)
     rv = b["revive"]
-    # F121/A23: the real table leads a revive too -- `engine.js _resyncNotLive` re-writes the (disarmed)
-    # HEAD on a live node and revives from there, so a revive that did not re-arm leaves that player
-    # immortal for the rest of the match.
-    sir = [f for f in rv if f.startswith("$SIR")]
-    assert rv[:len(sir)] == sir and sir, "the $SIR rows lead the revive write"
-    rv = rv[len(sir):]
+    # F121 rebuild (levers §23): no $SIR row -- the table survives $SPAWN and death, and the node re-sends a
+    # take in front of `spawn_protect_off` when a head has been written since (engine.js `_armLife`).
+    assert not [f for f in rv if f.startswith("$SIR")], "the revive carries no $SIR row"
     assert rv[0] == "$SPAWN,,*"
-    assert rv[1] == "$TID,1,*", "F206: the team is re-asserted right after every $SPAWN"
+    assert rv[1] == "$TMP,,,,,,,,-100,,,,*", "F121: t8 protection right after $SPAWN (a $TMP before it is wiped)"
+    assert rv[2] == "$TID,1,*", "F206: the team is re-asserted right after the spawn"
     # Bench 2026-09-16: the head holds the trigger, so the revive maps it again (a live resync re-writes the head)
     assert rv[-1] == "$BMAP,0,0,,,,,*"
-    assert all(f.startswith("$AMMO,") for f in rv[2:-1])          # A11.6: dark headset in play -> no $HLED tail; A11.7: no $GLED here
+    assert all(f.startswith("$AMMO,") for f in rv[3:-1])          # A11.6: dark headset in play -> no $HLED tail; A11.7: no $GLED here
     assert [f for f in rv if f.startswith("$BMAP")] == ["$BMAP,0,0,,,,,*"], "revive maps only the trigger"
     assert not any("HLOOP" in f for f in rv), "revive drops $HLOOP,0,0 (belongs in end)"
 
@@ -1547,18 +1545,18 @@ def test_stun_ships_the_emp_row_only_when_the_config_asks():
     from brx_mcp.gameconfig import _SIR_TABLE
     # CONTROL: no stun -> the stock table, in stock order, untouched
     b = C.compile(_cfg(), _player(), _TEAMS)
-    # A44 (ours): the spawn write carries the fn-28 twin table; the REAL table is the `sir_pool` take.
+    # A44 (ours): the REAL table is the `sir_pool` take; the head carries the fn-28 twin.
     assert _sir_fn(b["sir_pool"][0]) == 1, "stock: the charge rifle's plain damage (fn 1 since F225, 2026-09-17)"
     assert [f for f in b["sir_pool"][0] if f.startswith("$SIR,")] == list(_SIR_TABLE)
     assert _sir_fn(b["head"]) == 28, "F121: the head's copy of the cell moves no pool"
     # stun on -> fn 23 on the SAME cell, in the SAME position, nothing else moved
     on = C.compile(dict(_cfg(), stun={"duration_s": 10}), _player(), _TEAMS)
-    # The carrier is A44's `sir_pool` take, not the spawn write: a player inside spawn protection cannot
-    # be smoked before their gun can answer, so the spawn write carries the disarmed fn-28 twin.
+    # The carrier is A44's `sir_pool` take. Since the F121 rebuild the spawn write carries no $SIR row at all:
+    # t8 protection stops damage, not fn 23's smoke (levers §23 notes), and the table outlives the death.
     rows_on = [f for f in on["sir_pool"][0] if f.startswith("$SIR,")]
     assert _sir_fn(on["sir_pool"][0]) == 23
     assert _sir_fn(on["head"]) == 28, "F121: a countdown EMP must not smoke anyone pregame either"
-    assert _sir_fn(on["spawn"]) == 28, "A44: the spawn write is the twin, so protection covers the EMP too"
+    assert not [f for f in on["spawn"] if f.startswith("$SIR")], "F121 rebuild: the spawn write arms no table"
     assert rows_on.index(_STUN_SIR_ROW) == list(_SIR_TABLE).index("$SIR,8,0,,1,0,0,1,,*"), "in place, not appended"
     assert [r for r in rows_on if not r.startswith("$SIR,8,0,")] == [r for r in _SIR_TABLE if not r.startswith("$SIR,8,0,")]
     assert "$SIR,8,0,,23,0,0,1,,*" in rows_on and _STUN_SIR_ROW.split(",")[3] == "", "the sound token stays EMPTY (F43: never invent a sound id)"

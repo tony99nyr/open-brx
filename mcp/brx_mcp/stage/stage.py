@@ -477,7 +477,11 @@ class GunStage:
                                         # `_last_seq` (poll's own fetch cursor) so the instant on_frame
                                         # callback and a later poll() never react to the same frame twice
         self.scream_this_life: str | None = None   # A15.3: the death-scream id last written into a $PSET, or None
-        self._arm_pending: float | None = None     # F209: now() of the spawn/revive write until `_arm_life` writes the real $SIR table
+        self._arm_pending: float | None = None     # F209: now() of the spawn/revive write until `_arm_life` ends spawn protection
+        # F121 rebuild (engine.js `_sirLive` / `_sirGen`): is the gun's `$SIR` table the live one? Any write with a
+        # `$SIR` row or `$CLEAR` makes it False and bumps the generation; a `sir_pool` take claims it.
+        self._sir_live = False
+        self._sir_gen = 0
         # F208 (engine.js `lastGunFrameAt` / `lastPoolAt` / `_shotDueAt` / `_noFirePulls`): the pool watchdog, see `pool_stale`
         self._last_gun_frame_at: float | None = None
         self._last_pool_at: float | None = None
@@ -1027,7 +1031,7 @@ class GunStage:
             tid = int(head.split(",")[1]) if head else None
         return tid
 
-    async def write(self, frames: list[str], why: str, gap_ms: int = 60, exact: bool = False) -> None:
+    async def write(self, frames: list[str], why: str, gap_ms: int = 60, exact: bool = False, take: bool = False) -> None:
         frames = [f for f in frames if f]
         # DENY FIRST, THEN THE TEAM. Do not swap these two for tidiness -- the order is the behaviour, and
         # engine.js `_write` does it in exactly this order (`test_stage_mirror` fails if either source moves).
@@ -1054,6 +1058,12 @@ class GunStage:
         # `raw` bench hatch only) writes the operator's frames untouched, so a rung can still send a lone
         # `$PSET` on purpose; every game write restores the team (F206).
         frames = frames if exact else self._tid_after_pset(frames)
+        # F121 rebuild (engine.js `_write`): a `$SIR` row or a `$CLEAR` leaves the gun's table something other
+        # than a `sir_pool` take, so the next protection release must write one. Marked at call time. `take`:
+        # this write IS a `sir_pool` take (`_arm_life`), which claims the table, as engine.js `_armLife` does.
+        if any(f.startswith("$SIR,") or f.startswith("$CLEAR") for f in frames):
+            self._sir_gen += 1
+            self._sir_live = take
         for f in frames:
             self._log(f, "tx", why)
         if not self.connected:
@@ -1156,9 +1166,10 @@ class GunStage:
         except RuntimeError:
             self._loop = None
 
-    # ---- F209 spawn protection (engine.js `_protectsSpawn` / `_armAfterSpawn` / `_armLife`) -------------
-    # The spawn and revive writes carry the fn-28 twin; one `sir_pool` take (the real table) follows on the
-    # gun's first shot or SPAWN_PROTECT_MAX_S after the write. Death, end, panic and a head cancel it.
+    # ---- F209 spawn protection (engine.js `_protectMode` / `_armAfterSpawn` / `_armLife`) ---------------
+    # F121 rebuild: the spawn and revive writes turn protection on (`$TMP` t8 = -100 right after `$SPAWN`), and
+    # `spawn_protect_off` turns it off on the gun's first shot or SPAWN_PROTECT_MAX_S after the write, behind a
+    # `sir_pool` take when the gun's table is not the live one. Death, end, panic and a head cancel it.
     SPAWN_PROTECT_MAX_S = 2.1   # engine.js SPAWN_PROTECT_MAX_MS
 
     # ---- F208 pool staleness (engine.js `_awaitShot` / `_noFireTick` / `poolStale`) ---------------------
@@ -1721,10 +1732,18 @@ class GunStage:
         self._last_sir_take = i
         return list(pool[i]) if isinstance(pool[i], list) else []
 
-    def _protects_spawn(self) -> bool:
-        pool = self.bundle.get("sir_pool")
+    def _protect_mode(self) -> str | None:
+        """engine.js `_protectMode`: 'tmp' (the F121 rebuild), 'twin' (A44, an older MC) or None (pre-A44)."""
+        if not self.bundle.get("sir_pool"):
+            return None
+        off = self.bundle.get("spawn_protect_off")
+        if isinstance(off, str) and off.startswith("$TMP,"):
+            return "tmp"
         rows = [f for f in self.bundle.get("revive") or [] if f.startswith("$SIR,")]
-        return bool(pool) and bool(rows) and all(len(_toks(f)) > 4 and _toks(f)[4] == "28" for f in rows)
+        return "twin" if rows and all(len(_toks(f)) > 4 and _toks(f)[4] == "28" for f in rows) else None
+
+    def _protects_spawn(self) -> bool:
+        return self._protect_mode() is not None
 
     def _arm_after_spawn(self) -> None:
         self._arm_pending = self.now() if self._protects_spawn() else None
@@ -1739,7 +1758,13 @@ class GunStage:
         if not (self.spawned and self.alive):
             self._log(f"arm hit reception ({why}) cancelled: not live", "info")
             return
-        self._spawn_task(self.write(self._pick_table("sir_pool"), f"arm hit reception ({why})", gap_ms=60))
+        off = self.bundle.get("spawn_protect_off")
+        tmp = self._protect_mode() == "tmp" and off is not None
+        need_take = not tmp or not self._sir_live or len(self.bundle.get("sir_pool") or []) > 1   # > 1 takes = A17 class sounds
+        take = self._pick_table("sir_pool") if need_take else []
+        frames = take + [off] if tmp and off is not None else take
+        why = (f"end spawn protection ({why})" + (f" + hit table {len(take)}r" if take else "")) if tmp else f"arm hit reception ({why})"
+        self._spawn_task(self.write(frames, why, gap_ms=60, take=bool(take)))
 
     # ---- game -------------------------------------------------------------------------------------
     async def arm(self) -> dict:
@@ -1864,6 +1889,7 @@ class GunStage:
         await self.write(([f"$TID,{tid},*"] if tid is not None else []) + ammo + [bmap], "operator resync")
         if self._protects_spawn():
             if self._arm_pending is None:
+                self._sir_live = False   # engine.js: the resync always re-sends the table (a reboot empties it, F11)
                 self._arm_pending = self.now()
                 self._arm_life("operator resync")
         else:
