@@ -85,6 +85,9 @@ const TRYOUT_ARM_MAX_MS = 3000;     // F147: past this with no confirming $ALCD/
 // almost as soon as it started taking damage. 15 keeps the warning late on every stock pool. If a loadout
 // ever needs its own value this wants plumbing through the bundle the way `voice.pain_long_min` is.
 const LOW_HEALTH_HP = 15;
+// Office test 2026-09-19: how long the low-health write waits before it actually reaches the gun, so a
+// death that lands inside the window can cancel it outright instead of merely interrupting it (see _onHp).
+const HURT_DEBOUNCE_MS = 400;
 // THE RELOAD NAG (Tony, bench 2026-09-18). The magazine is empty, the reserve is not, and the
 // player keeps pulling the trigger: say RELOAD on the 5th pull of that dry spell and on every 3rd after it
 // (5, 8, 11 …). Tony's numbers, verbatim, and they are a taste decision, not a measurement: the first four
@@ -735,6 +738,7 @@ export class Engine {
     this._actSeq = 0;               // pl4: shots and hits seen, so `_writeMust` can tell the life moved on
     this._writeLost = null;         // pl4: the `_lifeSeq` whose spawn/revive write resolved false (pool `write_lost`)
     this.hurtFired = false;         // low-health alert already sent this life
+    this._pendingHurtWrite = false; // ...and whether that alert is still sitting in its debounce window
     this.stunned = null;            // F15: {at, until, ammo:{slot:[mag,reserve]}} while an EMP has the gun disarmed; the ammo is the LIVE count to restore
     this._recoil = null;            // S42: {weaponId, ceiling, floor, perShot, recoverMs, value, ...} for the ACTIVE weapon's live accuracy model, or null (no profile / recoil off)
     this._lastTeamRepaintAt = null; // F68: last periodic team-colour repaint (tick(), TEAM_REPAINT_MS)
@@ -2249,6 +2253,7 @@ export class Engine {
     this._writeLife([...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), SFLASH, ...(sp.frame ? [sp.frame] : [])], 'spawn' + (late.length ? ` + hit table ${late.length}r (late)` : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : ''), life);
     if (late.length) this._sirLive = true;
     this.hurtFired = false;        // the low-health alert is once per LIFE
+    this._pendingHurtWrite = false;
     this._prevAmmo = {}; this._prevReserve = {}; this._shotAcct = {}; this.activeSlot = 0; this.magBySlot = {}; this.heatBySlot = {}; this._heatAt = {}; this._everHeated = {}; this._heatLock = null; this.lastShot = null;   // config echoes carry WEAP clip caps, not spawn mags — never let them set the denominator   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
     this._holdAccuracyWrites('spawn');   // the spawn write owns `$AMMO` until the gun has answered it
     this._lastTeamRepaintAt = this.now();   // F68: the spawn flash IS this life's first paint; the backstop clock runs from it
@@ -2859,6 +2864,7 @@ export class Engine {
     const life = this._lifeSeq = (this._lifeSeq || 0) + 1;   // pl3: a lost write is only this life's news
     this._writeLife([...(ps.frame ? [ps.frame] : []), ...sir, ...revive, ...(sp.frame ? [sp.frame] : [])], 'revive' + (flipped ? ' (turned)' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : ''), life);
     this.hurtFired = false;
+    this._pendingHurtWrite = false;
     // pl3 (2026-09-17): a swap or a heat reading from the last life must not follow the player into this one. An
     // operator respawn of a LIVE player skips `_death`, which is the only other place `switching` was cleared, so a
     // stale swap could flip the slot a second later, and a stale lockout reading kept OVERHEAT up. stage.py `_after_spawn` clears the same.
@@ -4519,7 +4525,19 @@ export class Engine {
       // logged explicitly: after the last field session we could not tell whether the alert had
       // fired at all, because the frame ring only holds 60 frames and had rolled past it.
       this.log(`low-health alert: hp ${this.hp} < ${LOW_HEALTH_HP} — ${fr.length} frame(s)`, 'lk');
-      if (fr.length) { this._hsGen = (this._hsGen || 0) + 1; this._write(fr, 'low health'); }   // cancels a pending hit-flash rest step (polish 2026-09-04)
+      // Office test 2026-09-19 (Pixel 4/5): a killing hit landing within the same second as this alert let the
+      // voice line reach the gun BEFORE `_death`'s $PLAYX (F149, below) could stop it -- the write was already
+      // away over BLE by the time the death frame arrived a few tens of ms later. HURT_DEBOUNCE_MS holds the
+      // write here instead of sending it at once; `_death` cancels it outright (never sent) when it lands
+      // inside the window, and falls back to the existing $PLAYX stop once the debounce has already fired.
+      if (fr.length) {
+        this._pendingHurtWrite = true;
+        this.delay(HURT_DEBOUNCE_MS, () => {
+          if (!this._pendingHurtWrite) return;   // cancelled by a death that landed first
+          this._pendingHurtWrite = false;
+          this._hsGen = (this._hsGen || 0) + 1; this._write(fr, 'low health');   // cancels a pending hit-flash rest step (polish 2026-09-04)
+        });
+      }
     }
     if (this.phase === 'live' && this.spawned && this.alive && this.hp > 0 && dmg > 0 && !this.tutorial) {
       // A registered hit WIPES the headset: the native flash runs, then it goes dark and our team
@@ -4673,7 +4691,8 @@ export class Engine {
     // uses) -- write it once, only when THIS life actually fired the alert, so an ordinary death never sends
     // an extra frame. ⚠ NOT bench-verified: whether this also clips the firmware's own native scream, which
     // fires off the same $HP,0 packet -- needs a real gun (FOLLOWUPS F149).
-    if (this.hurtFired) this._write([PLAYX], 'death: stop the low-health loop (F149)');
+    if (this._pendingHurtWrite) { this._pendingHurtWrite = false; this.log('low-health alert cancelled — a death landed inside the debounce window (2026-09-19)', 'lk'); }
+    else if (this.hurtFired) this._write([PLAYX], 'death: stop the low-health loop (F149)');
     this._stunRestore('died');   // F15: death cancels the stun -- no restore write; the revive's own $AMMO re-arms the next life
     // A16 §5 (AMENDED 2026-09-11 by F113): death clears the readout AND blanks the strip.
     this._readoutFrame = null; this._readoutHoldActive = false; this._readoutLastWriteAt = null; this._readoutLastPool = null;

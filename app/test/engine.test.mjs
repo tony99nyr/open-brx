@@ -20,7 +20,7 @@ const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/
 const TEST_BURST = [['$GLED,0,0,0,0,10,,*', 0.08], ['$GLED,,,,5,,,*', 0.08], ['$GLED,1,1,1,0,10,,*', 0.0]];
 
 function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
-function harness({ mode = 'tdm', respawn = 'auto', timeLimit = 600, synced = true } = {}) {
+function harness({ mode = 'tdm', respawn = 'auto', timeLimit = 600, synced = true, delay = null } = {}) {
   const writes = []; const facts = []; const reports = []; const delays = [];
   let clock = 1_000_000;
   const config = { config_id: golden.config_id, mode, environment: 'outdoor', night: false, time_limit_s: timeLimit,
@@ -29,8 +29,10 @@ function harness({ mode = 'tdm', respawn = 'auto', timeLimit = 600, synced = tru
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
   const team = { team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 };
   const roster = [{ player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue' }, { player_id: 'p2', player_num: 19, display: 'VIPER', team_id: 'yellow' }];
+  // `delay`: a test that needs to hold a scheduled write and fire it later (the F149 low-health debounce)
+  // passes its own; every other test gets the old behaviour, synchronous but recorded in `delays`.
   const eng = new Engine({ writer: fr => writes.push(...fr), emit: f => facts.push(f), report: (k, b) => reports.push({ k, b }),
-    now: () => clock, synced: () => synced, storage: mkStorage(), log: () => {}, delay: (ms, fn) => { delays.push(ms); fn(); } });
+    now: () => clock, synced: () => synced, storage: mkStorage(), log: () => {}, delay: delay || ((ms, fn) => { delays.push(ms); fn(); }) });
   const bundle = { ...golden, player_id: 'p1' };
   const api = {
     eng, writes, facts, reports, delays, bundle, config, player, team, roster,
@@ -2432,6 +2434,33 @@ test('F149: an ordinary death (never under 15 HP) sends no extra stop frame', ()
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,0,0,0,*');        // straight to zero, one hit, alert never armed
   assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 0, 'control: the alert never fired');
   assert.equal(h.writes.filter(f => f === PLAYX).length, 0, 'so death sends nothing extra');
+});
+
+// ── office test 2026-09-19 (Pixel 4/5): the killing hit landed inside the debounce window ─────────
+test('office test 2026-09-19: a death that lands inside HURT_DEBOUNCE_MS cancels the alert outright -- it never reaches the gun', () => {
+  const pending = [];   // {ms, fn}, run by hand instead of firing at once
+  const h = goLive(harness({ delay: (ms, fn) => pending.push({ ms, fn }) }));
+  h.writes.length = 0; pending.length = 0;   // goLive's own spawn/flash steps use `delay` too -- only the alert's matters here
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,12,0,0,*');        // under 15: the alert is scheduled, not sent
+  assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 0, 'still debounced -- nothing on the wire yet');
+  const alert = pending.find(p => p.ms === 400); assert.ok(alert, 'the alert was scheduled at HURT_DEBOUNCE_MS');
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,0,0,0,*');          // the killing hit lands within the window
+  assert.equal(h.writes.filter(f => f === PLAYX).length, 0, 'nothing was ever sent, so there is nothing to stop');
+  alert.fn();   // the debounce timer finally fires, after the death
+  assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 0, 'cancelled -- the queued alert must not play after death');
+});
+
+test('office test 2026-09-19: a death that lands AFTER the debounce has already fired still gets the $PLAYX stop', () => {
+  const pending = [];
+  const h = goLive(harness({ delay: (ms, fn) => pending.push({ ms, fn }) }));
+  h.writes.length = 0; pending.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,12,0,0,*');
+  const alert = pending.find(p => p.ms === 400); assert.ok(alert);
+  alert.fn();   // the debounce elapses first -- the alert really did reach the gun
+  assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 1, 'sanity: it played');
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,0,0,0,*');
+  assert.equal(h.writes.filter(f => f === PLAYX).length, 1, 'past the window, the existing F149 stop still fires');
 });
 
 // ── empty-mag state, replayed at the REAL cadence (capture 2026-08-26-weapons-smg-plus-amr) ──────
@@ -4914,6 +4943,9 @@ test('A16.3 levels: level maths -- round(fraction*6) clamped to 0..6, floored to
 test('A16.3 levels: a drop animates lead(solid) -> blink-gap(all off) -> step down one level per step_ms -> settles', () => {
   const h = levelHarness();
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,23,0,0,*');   // establishes level 3
+  h.eng.hurtFired = true;   // office test 2026-09-19: level 1 is under LOW_HEALTH_HP too -- in a real decline
+                             // the once-per-life alert would already have fired well before this; isolate the
+                             // LED animation under test from that separate, now-debounced write
   h.writes.length = 0; h.delays.length = 0;
   h.adv(1000);                                                 // past the rapid-fire window: this is a SEPARATE hit,
                                                                // so it gets the full lead + all-off blink (a second hit
@@ -4930,6 +4962,7 @@ test('A16.3 levels: a drop animates lead(solid) -> blink-gap(all off) -> step do
 test('A16.3 levels: a change arriving mid-animation cancels it and restarts from the level currently displayed -- never queued, never two at once', () => {
   const h = levelHarness();
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,23,0,0,*');   // level 3
+  h.eng.hurtFired = true;   // office test 2026-09-19: isolate this animation from the separate, now-debounced low-health write (see the test above)
   h.adv(1000);                                                 // separate hit, so the full lead+blink sequence runs
   const pending = [];
   h.eng.delay = (ms, fn) => pending.push(fn);   // manual control from here so we can interrupt mid-sequence

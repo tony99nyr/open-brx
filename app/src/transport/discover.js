@@ -32,7 +32,7 @@
 /** @typedef {{subnets:string[], ports:number[], path:string}} SweepPlan */
 /** @typedef {{localIp?: string|null, joinUrl?: string|null, extra?: string[]}} SweepPlanOptions */
 /** @typedef {{wsFactory?: (url:string) => DiscoverWebSocket, timers?: DiscoverTimers, timeoutMs?: number}} ProbeOptions */
-/** @typedef {{subnets?: string[], ports?: number[], path?: string, wsFactory?: (url:string) => DiscoverWebSocket, timers?: DiscoverTimers, timeoutMs?: number, pool?: number, pacingMs?: number, hosts?: number, shouldStop?: () => boolean, onSubnet?: ((subnet:string) => void)|null}} SweepOptions */
+/** @typedef {{subnets?: string[], ports?: number[], path?: string, wsFactory?: (url:string) => DiscoverWebSocket, timers?: DiscoverTimers, timeoutMs?: number, pool?: number, pacingMs?: number, hosts?: number, shouldStop?: () => boolean, isPaused?: () => boolean, onSubnet?: ((subnet:string) => void)|null}} SweepOptions */
 
 /** The ranges a phone is actually likely to be on: home routers, Google Wifi, and the two phone-hotspot
  *  defaults (iOS 172.20.10.0/24, Android 192.168.43.0/24). */
@@ -149,15 +149,23 @@ export function probeWsOpen(url, { wsFactory, timers = globalThis, timeoutMs = P
 export async function sweepForMc({ subnets = [], ports = [MC_WS_PORT], path = '/ws', wsFactory,
                                    timers = globalThis, timeoutMs = PROBE_TIMEOUT_MS, pool = PROBE_POOL,
                                    pacingMs = PROBE_PACING_MS, hosts = HOSTS_PER_SUBNET,
-                                   shouldStop = () => false, onSubnet = null } = {}) {
+                                   shouldStop = () => false, isPaused = () => false, onSubnet = null } = {}) {
   /** @type {string|null} */ let hit = null;
   /** @returns {Promise<void>} */
   const idle = () => new Promise(resolve => timers.setTimeout(() => resolve(), pacingMs));
+  // Office test 2026-09-19 (Pixel 4/5): the sweep ran ON TOP of a gun connect and was the likely cause of
+  // the 1-2 s freeze before the picker's "Connecting to <gun>…" screen -- both contend for the same radio
+  // stack and the same JS main thread. `isPaused` is polled between batches, same as `shouldStop`, except a
+  // paused sweep waits rather than gives up: the batch that was already in flight is left to finish (their
+  // own PROBE_TIMEOUT_MS bounds that), and the NEXT batch does not start until the connect is done.
+  const waitWhilePaused = async () => { while (isPaused() && !shouldStop()) await idle(); };
   for (const sn of subnets) {
     if (hit || shouldStop()) break;
+    await waitWhilePaused(); if (hit || shouldStop()) break;
     if (onSubnet) { try { onSubnet(sn); } catch (_) { /* ignore */ } }
     for (let start = 1; start <= hosts; start += pool) {
       if (hit || shouldStop()) break;
+      await waitWhilePaused(); if (hit || shouldStop()) break;
       const batch = [];
       for (let i = start; i < start + pool && i <= hosts; i++) batch.push(i);
       await Promise.all(batch.map(async i => {

@@ -128,6 +128,21 @@ test('F139: the sweep is bounded and stops the moment a join lands — it never 
   assert.ok(sockets.length > 0, 'but it did start');
 });
 
+test('office test 2026-09-19: a paused sweep waits rather than gives up, and resumes once unpaused', async () => {
+  // Field/office finding: the sweep ran ON TOP of a gun connect and was the likely cause of a 1-2 s freeze
+  // before the picker's "Connecting to <gun>…" screen. `isPaused` must hold the NEXT batch, not abandon the
+  // sweep the way `shouldStop` does -- so it still finds MC once the connect is done.
+  const mc = 'ws://192.168.0.9:8766/ws';
+  const { sockets, wsFactory } = lan([mc]);
+  let paused = true;
+  const plan = sweepPlan({ localIp: '192.168.0.149' });
+  const p = sweepForMc({ ...plan, wsFactory, timeoutMs: 10, pool: 4, hosts: 20, pacingMs: 1, isPaused: () => paused });
+  await new Promise(r => setTimeout(r, 30));
+  assert.equal(sockets.length, 0, 'paused before the first batch: nothing probed yet');
+  paused = false;
+  assert.equal(await p, mc, 'resumed, and went on to find it');
+});
+
 test('F139: the sweep never has more than `pool` sockets open at a time', async () => {
   let open = 0, peak = 0;
   const wsFactory = url => {
@@ -190,6 +205,13 @@ test('F139 guard: app.js sweeps over ws:// from discover.js, never an http fetch
   assert.doesNotMatch(body, /connectMc\(/, 'the sweep must NEVER dial its own hit');
   assert.match(body, /suggestMc\(found, 'sweep'\)/, 'it OFFERS the hit for the player to tap instead');
   assert.match(src, /import \{ sweepPlan, localIpFrom, sweepForMc as sweepSubnetsForMc \} from '\.\/transport\/discover\.js'/);
+});
+
+test('office test 2026-09-19 guard: the sweep is paused for the whole gun connect (onPick\'s `picking`)', () => {
+  const src = readFileSync(APP_JS, 'utf8');
+  const i = src.indexOf('async function sweepForMc(');
+  const body = src.slice(i, src.indexOf('\n}', i));
+  assert.match(body, /isPaused: \(\) => picking/, 'the sweep must not run on top of a gun connect (the likely cause of the field freeze)');
 });
 
 test('F153c guard: app.js wires a network-change listener to the transport\'s immediate dial', () => {

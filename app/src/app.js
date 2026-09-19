@@ -702,8 +702,11 @@ async function sweepForMc() {
   // the user typing/scanning mid-sweep wins (polish-loop), and a join landing ends it early
   const shouldStop = () => !!(transport && transport.state === 'bound') || settings.mcUrl !== urlAtStart;
   log(`sweeping for Mission Control on ${plan.subnets.map(sn => sn + '.x').join(', ')} :${plan.ports.join('/')}…`, 'li');
+  // Office test 2026-09-19 (Pixel 4/5): the sweep running ON TOP of a gun connect was the likely cause of
+  // the 1-2 s freeze before "Connecting to <gun>…" appeared -- `picking` is true from the tap (onPick,
+  // above) until the connect is up or gives up, so the sweep waits out the connect and resumes after.
   const found = await sweepSubnetsForMc({ ...plan, wsFactory: url => new WebSocket(url), shouldStop,
-    onSubnet: sn => log(`sweep: ${sn}.0/24`, 'li') });
+    isPaused: () => picking, onSubnet: sn => log(`sweep: ${sn}.0/24`, 'li') });
   if (!found) { log('sweep found no Mission Control — QR/manual join', 'li'); return; }
   if (shouldStop()) return;
   // A SUGGESTION, not a join (review pass 1, security): this address was never typed, scanned or

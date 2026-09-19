@@ -129,6 +129,63 @@ else:
 FULLSCREEN
 fi
 
+# --- fullscreen HUD, part 2: hide the system bars at runtime ---------------------------------
+# Office test 2026-09-19 (Android 13/14): `android:windowFullscreen` above is ignored since API 30 --
+# edge-to-edge is the platform default and the status bar drew back over the HUD's top-right corner. The
+# fix on API 30+ is a runtime call, `WindowInsetsControllerCompat`, from the activity -- there is no
+# manifest/theme flag for it. `MainActivity.java` is generated (git-ignored, rebuilt with the platform),
+# so this patches it here rather than by hand, same as the manifest and styles.xml above.
+MAINACT=$(find android/app/src/main/java -name MainActivity.java 2>/dev/null | head -1)
+if [ -n "$MAINACT" ] && ! grep -q 'Open BRX: fullscreen' "$MAINACT"; then
+  echo "==> patching $MAINACT (immersive fullscreen, swipe to reveal)"
+  python3 - "$MAINACT" <<'IMMERSIVE'
+import re, sys
+p = sys.argv[1]
+s = open(p, encoding="utf-8").read()
+
+IMPORTS = (
+    "import android.os.Bundle;\n"
+    "import androidx.core.view.WindowCompat;\n"
+    "import androidx.core.view.WindowInsetsCompat;\n"
+    "import androidx.core.view.WindowInsetsControllerCompat;\n"
+)
+for line in IMPORTS.splitlines(keepends=True):
+    if line.strip() and line not in s:
+        # after the package line, before the first existing import (or the class if there is none)
+        anchor = re.search(r'^package [^\n]+\n', s, re.M)
+        at = anchor.end() if anchor else 0
+        s = s[:at] + "\n" + line + s[at:]
+
+METHOD = '''
+    // Open BRX: fullscreen, part 2 (android-setup.sh) -- android:windowFullscreen (styles.xml) is
+    // ignored on API 30+; edge-to-edge is the platform default there and the status bar drew back over
+    // the HUD's top-right corner (office test 2026-09-19, Android 13/14). Immersive sticky: hidden until
+    // a swipe from the edge reveals it, then it auto-hides again -- never a permanent tap target lost.
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        controller.hide(WindowInsetsCompat.Type.systemBars());
+    }
+'''
+
+if re.search(r'\bonCreate\s*\(', s):
+    # Capacitor's default template has none, but do not risk a duplicate-method compile error if a
+    # later template (or a prior hand edit, now lost to regeneration) ever adds one.
+    print("   MainActivity already defines onCreate - add the immersive lines (see this script) inside it by hand")
+else:
+    m = re.search(r'(public class MainActivity extends BridgeActivity\s*\{)', s)
+    if m:
+        s = s[:m.end()] + METHOD + s[m.end():]
+        open(p, "w", encoding="utf-8").write(s)
+        print("   ok")
+    else:
+        print("   MainActivity's class body not found in the expected shape - add the immersive onCreate by hand")
+IMMERSIVE
+fi
+
 # --- app version: keep the APK in step with app/package.json ---------------------------------
 # `npx cap add android` writes versionName "1.0" / versionCode 1. That is Capacitor's placeholder,
 # not our version, and it is what a downloader sees in Settings > Apps. Stamp the real one, and
