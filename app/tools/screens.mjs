@@ -2348,13 +2348,27 @@ await step('ammo prompt se: a charge rifle cell of 9 (under the 10-cost full cha
   await pg.screenshot({ path: `${OUT}/se-ammo-energy-not-enough.png` });
   await pg.close();
 });
-await step('ammo prompt se: a charge rifle cell of 9 with NO reserve reads OUT OF ENERGY, plus the small note, never NOT ENOUGH ENERGY as the big prompt', async () => {
+// F257 (bench 2026-09-18): Tony's charge rifle sat at 7 of 40, no reserve, and the HUD showed OUT OF
+// ENERGY over a 20% gauge while the gun fired a tap perfectly well. A cell above 0 is not a dead end --
+// only `ammo === 0` with no reserve is (that case is `outOfAmmo` above, already OUT OF ENERGY worded).
+// So a cell below a charge but still above 0 gets the small note ALONE, never the big prompt too.
+await step('ammo prompt se: a charge rifle cell of 9 with NO reserve reads the small NOT ENOUGH ENERGY note alone, never the OUT OF ENERGY big prompt (F257)', async () => {
   const pg = await open(VIEWS[1], 'live');
   await setAmmo(pg, 'charge_rifle', 0, 40, 0, 9); await pg.waitForTimeout(400);
   const r = await gaugeState(pg);
-  must(r.bigPrompts === 1 && r.prompt === 'OUT OF ENERGY', `9 of 40 with no reserve must read OUT OF ENERGY (the player can neither fire nor recharge): ${JSON.stringify(r)}`);
-  must(r.note === 'NOT ENOUGH ENERGY', `the small note must still say why: ${JSON.stringify(r)}`);
+  must(r.bigPrompts === 0 && r.prompt === null, `9 of 40 with no reserve still fires taps -- it must show no big prompt, got ${JSON.stringify(r)}`);
+  must(r.note === 'NOT ENOUGH ENERGY', `the small note must still say why a full charge is out of reach: ${JSON.stringify(r)}`);
   await pg.screenshot({ path: `${OUT}/se-ammo-energy-out-of-energy-no-reserve.png` });
+  await pg.close();
+});
+// The cell truly empty (0), no reserve: taps have nothing left either, so this IS the dead end and
+// reads OUT OF ENERGY -- same big red prompt as mag 0 / reserve 0, and no note (the note is for ammo > 0).
+await step('ammo prompt se: a charge rifle cell of exactly 0 with NO reserve reads OUT OF ENERGY, and no note (F257)', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 0, 0); await pg.waitForTimeout(400);
+  const r = await gaugeState(pg);
+  must(r.bigPrompts === 1 && r.prompt === 'OUT OF ENERGY', `0 of 40 with no reserve is a true dead end: ${JSON.stringify(r)}`);
+  must(r.note === null, `the note is for a cell above 0 only: ${JSON.stringify(r)}`);
   await pg.close();
 });
 await step('ammo prompt se: 0/40 and 5/40 with reserve read the identical RECHARGE prompt -- one consistent style regardless of the cell', async () => {
@@ -2409,13 +2423,15 @@ await step('ammo prompt se: the NOT ENOUGH ENERGY note never shows for a bullet 
   must(r.note === null, `only charge_rifle has a known full-charge cost -- energy_rifle must not show the note: ${JSON.stringify(r)}`);
   await pg.close();
 });
+// F257: the true dead end (ammo 0, no reserve) is the OUT OF ENERGY case, and it never carries the
+// note (the note is for ammo > 0). This checks that big prompt lays out cleanly at both sizes.
 for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
   for (const night of [false, true]) {
-    await step(`${tag} energy severity ${night ? 'night' : 'day'}: OUT OF ENERGY + the small note lays out cleanly at both sizes`, async () => {
+    await step(`${tag} energy severity ${night ? 'night' : 'day'}: OUT OF ENERGY alone lays out cleanly at both sizes (F257)`, async () => {
       const pg = await open(view, 'live', night ? '&night' : '');
-      await setAmmo(pg, 'charge_rifle', 0, 40, 0, 9); await pg.waitForTimeout(400);
+      await setAmmo(pg, 'charge_rifle', 0, 40, 0, 0); await pg.waitForTimeout(400);
       const r = await gaugeState(pg);
-      must(r.bigPrompts === 1 && r.prompt === 'OUT OF ENERGY' && r.note === 'NOT ENOUGH ENERGY', `9 of 40, no reserve, at ${tag}/${night ? 'night' : 'day'}: ${JSON.stringify(r)}`);
+      must(r.bigPrompts === 1 && r.prompt === 'OUT OF ENERGY' && r.note === null, `0 of 40, no reserve, at ${tag}/${night ? 'night' : 'day'}: ${JSON.stringify(r)}`);
       const bad = await invariants(pg); must(bad.length === 0, bad.join(' ; '));
       await pg.screenshot({ path: `${OUT}/${tag}-energy-out-note-${night ? 'night' : 'day'}.png` });
       await pg.close();

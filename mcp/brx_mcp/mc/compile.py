@@ -1786,6 +1786,23 @@ class Compiler:
                 "not just where its damage goes. Armour Piercing is refused on a weapon whose damage "
                 "key is already special; pick a different primary.")
 
+    def _refuse_if_crit_perk_ineligible(self, weapon_id: str, player: Player) -> None:
+        """F278: `test_a_two_word_weapon_never_also_carries_a_crit_chance` refuses a CATALOGUE row that
+        declares both `wire.headset_dmg` and `crit_pct` -- the crit flag rides on both IR words but the
+        multiplier reaches only the barrel word, a split nothing in the catalogue models. That guard
+        reads `weapons.json` at catalogue-lint time only. A perk that grants crit chance (`crit_pct_add`)
+        writes the gun's crit token at RUNTIME (bench-found: `$TMP` t10), so it can reach the identical
+        combination without ever touching the row the lint guard reads. This refuses it here too, one
+        condition, fails safe, filed and fixed before any such perk ships (docs/FOLLOWUPS.md F278)."""
+        name = player.get("display") or player.get("player_id") or "this player"
+        headset = (self.catalog._row(weapon_id).get("wire") or {}).get("headset_dmg")
+        if headset:
+            raise ValueError(
+                f"F278 CRIT-PERK GUARD: refusing to compile {name}'s crit-chance perk with {weapon_id!r} "
+                f"armed — it carries a second IR word (wire.headset_dmg {headset}); the crit flag rides "
+                "on both words but the multiplier reaches only the barrel word, and that combination has "
+                "never been measured. Pick a different weapon, or a different perk.")
+
     def compile(self, config: GameConfig, player: Player, teams: list[Team], roll=None,
                 plan=None) -> FrameBundle:
         """`roll` (A15.1) = a `random.Random`: the `$PSET` voice fields a player did not pick explicitly are
@@ -1831,6 +1848,15 @@ class Compiler:
             # cycle as well makes the trade continuous, and it is what the perk should feel like anyway:
             # heavier rounds, fewer of them, slower.
             mods = {**mods, "dmg_abs": int(ap_row["ap_dmg"]), "fire_abs": int(ap_row["ap_fire_ms"])}
+
+        # F278: a crit-chance perk (`crit_pct_add`) checked against BOTH slots -- the catalogue guard it
+        # mirrors (`test_a_two_word_weapon_never_also_carries_a_crit_chance`) refuses any row, not just
+        # a primary, so a player could still reach the combination by carrying the two-word weapon as
+        # their secondary.
+        if fx.get("crit_pct_add"):
+            self._refuse_if_crit_perk_ineligible(w0, player)
+            if w1:
+                self._refuse_if_crit_perk_ineligible(w1, player)
 
         # A15.1: roll the un-picked $PSET voice fields for THIS push; explicit picks always win
         voice, picks = player.get("voice", "male"), (player.get("voice_slots") or {})
