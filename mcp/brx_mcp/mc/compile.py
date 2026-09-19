@@ -747,17 +747,25 @@ def shield_frame(ms: int, night: bool) -> str:
 
 
 def life_frames(team: int, ammo: list[str], hled: list[str], protect: bool, trigger_live: bool,
-                shield: str = "", lead: list[str] | None = None) -> list[str]:
+                shield: str = "", lead: list[str] | None = None, trigger_lead: bool = False) -> list[str]:
     """One spawn or revive write in the bench-proven order: `$SPAWN`, then t8 (only when protected), then
-    `$TID`, the loadout `$AMMO`, the trigger row, the headset team repaint, and the shield last."""
-    return ([*(lead or []), "$SPAWN,,*"] + ([SPAWN_PROTECT_ON] if protect else []) + [f"$TID,{team},*"] + list(ammo)
-            + [TRIGGER_LIVE if trigger_live else TRIGGER_HELD] + list(hled) + ([shield] if shield else []))
+    `$TID`, the loadout `$AMMO`, the trigger row, the headset team repaint, and the shield last.
+
+    `trigger_lead` (review finding, 2026-09-19): a TIMED revive holds the trigger BEFORE `$SPAWN` instead
+    of after it. Without this the previous life's `trigger_live` mapping (`$BMAP,0,0`) stays live across
+    the gap between `$SPAWN` landing and the trigger row after it, so the respawning player could fire
+    during their own spawn frames. Only ever used with `trigger_live=False` (holding, not mapping)."""
+    trigger = TRIGGER_LIVE if trigger_live else TRIGGER_HELD
+    return ([*(lead or []), *([trigger] if trigger_lead else []), "$SPAWN,,*"]
+            + ([SPAWN_PROTECT_ON] if protect else []) + [f"$TID,{team},*"] + list(ammo)
+            + ([] if trigger_lead else [trigger]) + list(hled) + ([shield] if shield else []))
 
 
 def assert_respawn_profile(rp) -> None:
     """2026-09-19 guard: the T-0 spawn maps the trigger and carries no t8 (everyone is equal at go-live); a timed
-    list holds the trigger and carries t8 only when timed protection is on; a station list maps the trigger and
-    carries t8 only when station protection is on. Every list keeps the
+    list holds the trigger BEFORE $SPAWN (so the previous life's live trigger cannot fire during the spawn
+    frames) and carries t8 only when timed protection is on; a station list maps the trigger and carries t8
+    only when station protection is on. Every list keeps the
     F121 order ($SPAWN, [t8], $TID) and carries no `$SIR` row. Raises ValueError naming the list."""
     timed = [("revive", rp["revive"])] + [(f"team_flip[{k}]", v) for k, v in (rp.get("team_flip") or {}).items()]
     for name, frames, protect, live in ([("spawn", rp["spawn"], False, True)]
@@ -765,7 +773,8 @@ def assert_respawn_profile(rp) -> None:
                                         + [("revive_station", rp["revive_station"], rp["station_protect_ms"] > 0, True)]):
         if frames.count("$SPAWN,,*") != 1:
             raise ValueError(f"RESPAWN GUARD: respawn_profile.{name} must carry exactly one $SPAWN,,*")
-        after = frames[frames.index("$SPAWN,,*") + 1:]
+        idx = frames.index("$SPAWN,,*")
+        before, after = frames[:idx], frames[idx + 1:]
         want = [SPAWN_PROTECT_ON] if protect else []
         if after[:len(want)] != want or not after[len(want):len(want) + 1] or not after[len(want)].startswith("$TID,"):
             raise ValueError(f"RESPAWN GUARD: respawn_profile.{name} must write $SPAWN,,*, then "
@@ -774,9 +783,13 @@ def assert_respawn_profile(rp) -> None:
             raise ValueError(f"RESPAWN GUARD: respawn_profile.{name} carries a $TMP it should not")
         if any(f.startswith("$SIR") for f in frames):
             raise ValueError(f"RESPAWN GUARD: respawn_profile.{name} carries $SIR rows")
-        if (TRIGGER_LIVE if live else TRIGGER_HELD) not in after or (TRIGGER_HELD if live else TRIGGER_LIVE) in frames:
-            raise ValueError(f"RESPAWN GUARD: respawn_profile.{name} must {'map' if live else 'hold'} the trigger "
-                             f"({TRIGGER_LIVE if live else TRIGGER_HELD}) after $SPAWN")
+        if live:
+            if TRIGGER_LIVE not in after or TRIGGER_HELD in frames:
+                raise ValueError(f"RESPAWN GUARD: respawn_profile.{name} must map the trigger "
+                                 f"({TRIGGER_LIVE}) after $SPAWN")
+        elif TRIGGER_HELD not in before or TRIGGER_LIVE in frames:
+            raise ValueError(f"RESPAWN GUARD: respawn_profile.{name} must hold the trigger "
+                             f"({TRIGGER_HELD}) before $SPAWN")
     if rp["trigger_live"] != TRIGGER_LIVE:
         raise ValueError(f"RESPAWN GUARD: respawn_profile.trigger_live must be {TRIGGER_LIVE}")
     if rp["protect_ms"] and rp["trigger_ms"] < rp["protect_ms"] + TRIGGER_AFTER_PROTECT_MS:
@@ -2206,7 +2219,7 @@ class Compiler:
             # the T-0 spawn is neither profile: everyone goes live AND hittable at go-live, trigger mapped, no t8
             # (Tony, field 2026-09-19). The node writes the live table at T-3, while every trigger is still held.
             "spawn": life_frames(tid, ammo, hled_tail, False, True, lead=["$PLAYX,0,*"]),
-            "revive": life_frames(tid, ammo, hled_tail, protect_ms > 0, False),
+            "revive": life_frames(tid, ammo, hled_tail, protect_ms > 0, False, trigger_lead=True),
             "revive_station": life_frames(tid, ammo, hled_tail, station_ms > 0, True, shield_on),
             "trigger_live": TRIGGER_LIVE,
             "shield_on": shield_on,
@@ -2214,7 +2227,7 @@ class Compiler:
             "shield_off": (hled_tail[0] if hled_tail else _pres.HEADSET_DARK) if shield_on else "",
         }
         if config["mode"] == "infection":
-            rp["team_flip"] = {str(t["tid"]): [f"$TID,{t['tid']},*"] + life_frames(int(t["tid"]), ammo, hled_tail, protect_ms > 0, False)
+            rp["team_flip"] = {str(t["tid"]): [f"$TID,{t['tid']},*"] + life_frames(int(t["tid"]), ammo, hled_tail, protect_ms > 0, False, trigger_lead=True)
                                for t in teams if int(t["tid"]) != tid}
         assert_respawn_profile(rp)
         assert_team_byte_consistent(rp["spawn"] + rp["revive"] + rp["revive_station"])

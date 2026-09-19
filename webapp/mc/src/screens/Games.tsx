@@ -237,6 +237,11 @@ export function Games() {
           {[...state.config_warnings!].filter(w => /LOADOUTS? RESET/i.test(w) || /^SETUP:/i.test(w)).map((w, i) => <div key={i} style={{ font: F.chk(700, 12), letterSpacing: '.14em', color: T.accInk, background: T.warn, padding: '6px 10px', alignSelf: 'flex-start' }}>▲ {w.toUpperCase()}</div>)}
         </div>
       )}
+      {/* Review finding, 2026-09-19: a friendly heads-up, never a blocker -- a mixed fleet plays fine,
+          it just keeps the OLD spawn-protection rules until the phone updates. */}
+      {gate.respawnRulesWarning && (
+        <div role="status" style={{ font: F.chk(700, 12), letterSpacing: '.06em', color: T.accInk, background: T.warn, padding: '6px 10px', alignSelf: 'flex-start' }}>▲ {gate.respawnRulesWarning}</div>
+      )}
       {/* A refusal is the one thing here the operator MUST be able to read: these are the server's
           validate() errors (a missing/unknown station_source, F82's yellow roster, F88's second
           control point) and they name the fix. */}

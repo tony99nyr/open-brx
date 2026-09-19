@@ -526,7 +526,8 @@ export class MockBackend implements Api {
     const unrostered_phones = board.filter(b => b.node === 'linked' && !b.player_id && !standbyGuns.has(b.sticker.toUpperCase())
                                                 && !this.staleNodes.has(b.tail.toUpperCase())).length;
     return { t: now(), roster_size: board.length, greens: board.filter(b => b.status === 'green').length, board, unclaimed: [],
-             roster_faults: rf ? [rf] : [], unrostered_phones, go: !board.some(b => b.status === 'red') && !rf };
+             roster_faults: rf ? [rf] : [], unrostered_phones, respawn_rules_warning: null,
+             go: !board.some(b => b.status === 'red') && !rf };
   }
 
   /** A28.1: MC's own view of the tunnel it (may have) started. */

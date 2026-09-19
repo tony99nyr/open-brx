@@ -31,7 +31,7 @@ from ..modes.registry import default_params as _default_params, params_schema_js
     requires_coverage as _requires_coverage                        # A18: the mode's own rules, engine-declared
 from .tunnel import TunnelError
 from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS,
-                    OBJECTIVE_MODES, OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS,
+                    OBJECTIVE_MODES, OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_KINDS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, Event,
                     ConfigView, Coverage, EndDeliveryRow, EndDeliveryView, FrameBundle, GameAnnouncementView, GameConfig,
                     KitView, LanPublic, LanView, LobbyAck, LobbyView, Loadout, LoadoutOverrides, LoadoutPolicy,
@@ -4730,6 +4730,22 @@ class Session:
             ambers.append(f"APP OLDER THAN THE RELEASE ({'.'.join(str(x) for x in mine)} < {self.release_version})")
         return blockers, ambers
 
+    def _respawn_rules_warning(self) -> str | None:
+        """Review finding, 2026-09-19: a mixed fleet is ALLOWED — the 0.4 compatibility gate
+        (`_refuse_incompatible_app`) is unrelated and untouched — but an app below `RESPAWN_PROFILE_MIN_APP`
+        has no `respawn_profile` at all and keeps the OLD spawn-protection rules (protected at go-live,
+        the trigger live at respawn), not today's (protected only when the game sets it, the trigger held
+        until the weapon delay). Names every bound player still on one, in a friendly, never-blocking line
+        for the readiness board. `None` when nobody is behind, or their version cannot be read at all."""
+        behind = [self.players[pid].get("display") or pid
+                  for pid, p in self.players.items()
+                  if (nid := p.get("node_id")) and (nv := self.nodes.get(nid))
+                  and compatible(av := nv.get("app_ver")) and (v := parse_app_ver(av)) and v < RESPAWN_PROFILE_MIN_APP]
+        if not behind:
+            return None
+        return (f"Update to {'.'.join(str(x) for x in RESPAWN_PROFILE_MIN_APP)} for today's respawn rules: "
+                + ", ".join(behind))
+
     # ---------- readiness ----------
     def readiness(self) -> ReadinessSnapshot:
         now = self.now_ms()
@@ -4904,6 +4920,7 @@ class Session:
         roster_faults = [f] if (f := self._one_team_fault()) else []
         return {"t": now, "roster_size": len(board), "greens": greens, "board": board, "unclaimed": unclaimed,
                 "roster_faults": roster_faults, "unrostered_phones": self.unrostered_phone_count(),
+                "respawn_rules_warning": self._respawn_rules_warning(),   # review finding: never in `go`
                 "go": all(r["status"] not in ("red", "waiting") for r in board) and bool(board) and not roster_faults}
 
     async def scan(self, duration_s: int = 6) -> list[ScanRow]:

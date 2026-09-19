@@ -132,7 +132,8 @@ def test_timed_defaults_no_t8_the_trigger_held_and_live_at_half_a_second():
         await _live(st)
         n = await _revive(st, clock)
         new = tx(mgr)[n:]
-        assert new[new.index("$SPAWN,,*"):][:len(rp["revive"])] == rp["revive"], "the revive writes respawn_profile.revive"
+        start = new.index(rp["revive"][0])   # 2026-09-19: TRIGGER_HELD now leads $SPAWN, so anchor on the list's own first frame
+        assert new[start:start + len(rp["revive"])] == rp["revive"], "the revive writes respawn_profile.revive"
         assert not _tmp(new) and HELD in new and LIVE not in new
         assert st._arm_pending is None, "no protection: armed at once"
         assert st.state()["model"]["weapon_arming_s"] == 0.5

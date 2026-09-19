@@ -213,6 +213,12 @@ WEAPON_DELAY_MS_DEFAULT = 500
 STATION_PROTECT_S_DEFAULT = 2
 TRIGGER_AFTER_PROTECT_MS = 500             # timed: the trigger goes live at least this long after protection ends
 SPAWN_KILL_WINDOW_MS = 10000               # a death this soon after a timed respawn raises the down-screen warning
+# Review finding, 2026-09-19: an app below 0.4.3 has no `respawn_profile` path at all -- it keeps the OLD
+# rules (protected at go-live, the trigger live at respawn), not the ones above. `state.py
+# _respawn_rules_warning` names every bound node still on one, so a mixed fleet gets a friendly,
+# NON-BLOCKING readiness warning -- the hard 0.4 compatibility gate (`compatible()`/`app_tier()`) is
+# unaffected and unrelated: an app that old is still ALLOWED to play, just with the old rules.
+RESPAWN_PROFILE_MIN_APP = (0, 4, 3)
 
 
 class Respawn(TypedDict):
@@ -1224,6 +1230,10 @@ class ReadinessSnapshot(TypedDict):
     # and not parked on STANDBY either — never blocks `go`, it is the field's own "4 guns connected,
     # only 2 in lobby" confusion made visible on KIT/LOBBY (`state.py unrostered_phone_count()`).
     unrostered_phones: int
+    # Review finding, 2026-09-19: a friendly, NEVER-blocking heads-up naming every bound node still
+    # below `RESPAWN_PROFILE_MIN_APP` — a mixed fleet plays fine (the 0.4 compat gate is unrelated),
+    # it just keeps the old spawn-protection rules until it updates. `None` when nobody is behind.
+    respawn_rules_warning: str | None
     go: bool
 
 

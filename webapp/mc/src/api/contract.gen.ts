@@ -1291,6 +1291,10 @@ export interface ReadinessSnapshot {
    *  and not parked on STANDBY either — never blocks `go`, it is the field's own "4 guns connected,
    *  only 2 in lobby" confusion made visible on KIT/LOBBY (`state.py unrostered_phone_count()`). */
   unrostered_phones: number;
+  /** Review finding, 2026-09-19: a friendly, NEVER-blocking heads-up naming every bound node still
+   *  below `RESPAWN_PROFILE_MIN_APP` — a mixed fleet plays fine (the 0.4 compat gate is unrelated),
+   *  it just keeps the old spawn-protection rules until it updates. `None` when nobody is behind. */
+  respawn_rules_warning: string | null;
   go: boolean;
 }
 

@@ -281,6 +281,38 @@ def test_red_amber_none_across_the_field():
     assert not [a for a in r2["ambers"] if a.startswith("APP ")], r2["ambers"]
 
 
+def test_respawn_rules_warning_names_bound_nodes_below_0_4_3_and_never_blocks():
+    """Review finding, 2026-09-19: a mixed fleet plays fine (the 0.4 compat gate above is unrelated),
+    but an app below RESPAWN_PROFILE_MIN_APP has no `respawn_profile` at all and keeps the OLD
+    spawn-protection rules. The readiness board carries one friendly, NEVER-blocking line."""
+    from brx_mcp.mc.types import RESPAWN_PROFILE_MIN_APP
+    current = ".".join(str(x) for x in RESPAWN_PROFILE_MIN_APP)
+    old = f"{RESPAWN_PROFILE_MIN_APP[0]}.{RESPAWN_PROFILE_MIN_APP[1]}.{RESPAWN_PROFILE_MIN_APP[2] - 1}"
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0, app_ver=current)
+    online(s, net, clock, ps[1], 1, app_ver=old)
+    r = s.readiness()
+    assert r["respawn_rules_warning"] == f"Update to {current} for today's respawn rules: OP1"
+    row1 = next(row for row in r["board"] if row["player_id"] == ps[1]["player_id"])
+    assert row1["status"] != "red", "the warning never turns the row red"
+    assert not [b for b in row1["blockers"] if "respawn" in b.lower()], row1["blockers"]
+
+
+def test_respawn_rules_warning_absent_when_nobody_is_behind():
+    from brx_mcp.mc.types import RESPAWN_PROFILE_MIN_APP
+    current = ".".join(str(x) for x in RESPAWN_PROFILE_MIN_APP)
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0, app_ver=current)
+    # ps[1] never connects: no node bound, so it has not ARRIVED — it is not "behind"
+    assert s.readiness()["respawn_rules_warning"] is None
+    online(s, net, clock, ps[1], 1, app_ver=current)
+    assert s.readiness()["respawn_rules_warning"] is None
+    # an incompatible build already gets its own hard blocker (start refuses it); it must not double up here
+    s2, net2, clock2, ps2 = mk(1)
+    online(s2, net2, clock2, ps2[0], 0, app_ver=f"{APP_MAJOR}.{APP_MINOR - 1}.9")
+    assert s2.readiness()["respawn_rules_warning"] is None
+
+
 def test_start_refuses_a_bound_node_below_the_app_tier_even_when_it_arrives_after_a_forced_push():
     """F121 (polish review, added after the merge): an app below the tier never sends the
     `spawn_protect_off` frame, so its player takes no damage for the whole life — invisibly.

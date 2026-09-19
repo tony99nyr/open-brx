@@ -194,6 +194,10 @@ export interface PushGate {
   refused: boolean;
   /** why a push is refused, or what `force` would be overriding ('' when the way is clear) */
   pushWhy: string;
+  /** Review finding, 2026-09-19: `readiness.respawn_rules_warning` — a friendly, NEVER-blocking
+   *  heads-up naming any bound node still on an app below 0.4.3 (the old spawn-protection rules).
+   *  Absent on an older server. `null` when nobody is behind. */
+  respawnRulesWarning: string | null;
 }
 
 export function pushGate(state: State): PushGate {
@@ -252,8 +256,10 @@ export function pushGate(state: State): PushGate {
           .join(' · ')
       : '',
   ].filter(Boolean).join('  ·  ');
+  const respawnRulesWarning = readiness.respawn_rules_warning ?? null;
   return { pushed: lobby.pushed, acked, total: players.length, allAcked, rosterFault, staleAcked, noEcho,
-           staleAckLine, redRows, waitRows, curableRows, blockedCount, pushBlockedCount, waitWhy, refused, pushWhy };
+           staleAckLine, redRows, waitRows, curableRows, blockedCount, pushBlockedCount, waitWhy, refused, pushWhy,
+           respawnRulesWarning };
 }
 
 /** Every readiness line the server writes is `STATEMENT — INSTRUCTION` ("ACKED AN OLDER CONFIG

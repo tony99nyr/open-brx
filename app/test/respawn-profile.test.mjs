@@ -214,3 +214,91 @@ test('escalation: a station revive does not start the spawn-kill window', () => 
   h.adv(2000).die();
   assert.equal(h.eng.state().downWarn, 1);
 });
+
+test('escalation: a re-sent start for the SAME match does not reset the level (a bumped seq, a resumed schedule)', () => {
+  const h = liveArmed();
+  h.adv(20000).die();          // the T-0 life ends
+  h.adv(8000);                 // the auto (timed) respawn
+  h.adv(3000).die();
+  assert.equal(h.eng.state().downWarn, 2, 'setup: escalated once');
+  h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: h.now(), config_id: golden.config_id, seq: 2, countdown_s: 0 } });
+  assert.equal(h.eng.state().downWarn, 2, 'a start for the SAME match must not reset the escalation');
+});
+
+// 2026-09-19 review findings: a trigger can stay held the rest of the life when `trigger_live` is lost (a BLE drop
+// in flight, a GATT-false write refused a retry by `_actSeq`, or an app restart during the delay), and the T-0
+// pre-arm write can lose a race with go-live and leave the gun on the head's silent table all life.
+
+test('review: a failed trigger_live write retries even if a shot or hit landed in the same window ($BMAP,0,0 repeats safely)', async () => {
+  const h = liveArmed();
+  const n = revived(h);
+  const realWriter = h.eng.writer;
+  h.eng.writer = () => Promise.resolve(false);   // the 0.5 s trigger_live write "fails" (GATT false)
+  h.adv(500);
+  h.eng._actSeq++;                               // a shot or a hit landed in the same window
+  h.eng.writer = realWriter;
+  await new Promise(r => setImmediate(r));       // let the retry's own write land
+  assert.deepEqual(bmap0(h.since(n)), [HELD, LIVE], 'the retry still lands: a moved _actSeq must not refuse it');
+});
+
+test('review: a relink reconcile re-sends trigger_live when the weapon delay has already passed', async () => {
+  const h = liveArmed();
+  const n = revived(h);
+  h.adv(500);   // the weapon delay is over -- trigger_live already sent once
+  assert.deepEqual(bmap0(h.since(n)), [HELD, LIVE]);
+  assert.equal(h.eng._triggerPending, null, 'setup: nothing pending -- the trigger should already be live');
+  const m = h.mark();
+  h.eng.onBleDropped();
+  h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  assert.ok(h.eng.reconciling, 'setup: relink reconciles');
+  h.adv(3000);   // RECONCILE_MS
+  await new Promise(r => setImmediate(r));
+  assert.equal(h.eng.reconciling, null, 'reconcile over');
+  assert.ok(h.since(m).includes(LIVE), 'the reconcile repairs a trigger_live write that may never have landed');
+});
+
+test('review: a pre-arm write that fails AFTER go-live repairs instead of leaving the gun silent all life', async () => {
+  const h = harness({ leadMs: 10000 });
+  const preArmTake = golden.sir_pool[0];
+  const realWriter = h.eng.writer;
+  let resolvePreArm = null;
+  h.eng.writer = fr => {
+    if (resolvePreArm === null && fr.length === preArmTake.length && fr[0] === preArmTake[0]) {
+      h.writes.push(...fr);
+      return new Promise(r => { resolvePreArm = r; });
+    }
+    h.writes.push(...fr);
+  };
+  const goLive = h.now() + 10000;
+  while (h.now() < goLive + 200) h.adv(250);   // through T-3 (issues the pre-arm write) and past go-live
+  assert.equal(h.eng.phase, 'live');
+  assert.equal(h.eng._sirLive, true, 'optimistic: assumed live before the write settled');
+  assert.equal(h.eng._armPending, null, 'nothing pending at go-live, as usual');
+  assert.ok(resolvePreArm, 'setup: the pre-arm write is still in flight');
+  resolvePreArm(false);   // it fails only now, after the T-0 spawn already ran on the optimistic assumption
+  await new Promise(r => setImmediate(r));
+  h.eng.writer = realWriter;
+  assert.ok(h.eng._armPending, 'repaired: nothing else would ever retry a lost pre-arm write once live');
+  const before = h.writes.length;
+  h.adv(10);
+  assert.ok(h.writes.length > before, 'and the repair actually writes the table again');
+});
+
+test('review: a retried protection-off write pushes the trigger due so it never goes live while t8 is still -100', async () => {
+  const h = liveArmed({ bundle: timedProtect(1000) });   // protect_ms 1000 ms, trigger_ms 1500 ms
+  const n = revived(h);
+  const realWriter = h.eng.writer;
+  h.eng.writer = () => Promise.resolve(false);   // the 1 s cap's off write "fails"
+  h.adv(1000);
+  await new Promise(r => setImmediate(r));
+  h.eng.writer = realWriter;
+  assert.ok(h.eng._armPending, 'setup: the failed off write re-arms for retry (1 s on)');
+  h.adv(490);   // 1.49 s since revive -- past the ORIGINAL 1.5 s due, but protection never really ended
+  assert.deepEqual(bmap0(h.since(n)), [HELD], 'must not go live while t8 is still -100');
+  h.adv(20);    // 1.51 s -- still short of the retry at 2 s
+  assert.deepEqual(bmap0(h.since(n)), [HELD], 'still held past the original 1.5 s due');
+  h.adv(500);   // 2.01 s -- the retry has now run and succeeded
+  assert.deepEqual(tmps(h.since(n)).slice(-1), [OFF], 'the retry landed');
+  h.adv(500);   // 2.51 s -- retry (2 s) + TRIGGER_AFTER_PROTECT_MS (0.5 s)
+  assert.deepEqual(bmap0(h.since(n)), [HELD, LIVE], 'live only once safely past the retried protection-off');
+});

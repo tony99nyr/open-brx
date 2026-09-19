@@ -110,6 +110,29 @@ def test_the_guard_refuses_a_timed_list_that_maps_the_trigger_or_a_trigger_insid
     _raises(lambda: assert_respawn_profile(dict(rp, protect_ms=0)), "back to back")
 
 
+def test_timed_lists_hold_the_trigger_before_spawn_not_after():
+    # Review finding, 2026-09-19: TRIGGER_HELD goes in FRONT of $SPAWN in a timed revive, so the previous
+    # life's live trigger mapping cannot survive into the gap before the new life's own trigger row lands.
+    rp = _bundle()["respawn_profile"]
+    revive = rp["revive"]
+    assert revive.index(TRIGGER_HELD) < revive.index("$SPAWN,,*")
+    assert TRIGGER_HELD not in _after_spawn(revive)
+    infected = _bundle(mode="infection")["respawn_profile"]["team_flip"]
+    for tid, frames in infected.items():
+        assert frames.index(TRIGGER_HELD) < frames.index("$SPAWN,,*"), tid
+        assert TRIGGER_HELD not in _after_spawn(frames), tid
+    # the T-0 spawn and the station revive are untouched: they map the trigger, never hold it
+    sp = rp["spawn"]
+    assert TRIGGER_HELD not in sp
+    assert rp["revive_station"].index("$SPAWN,,*") < rp["revive_station"].index(TRIGGER_LIVE)
+
+
+def test_the_guard_refuses_a_timed_list_that_holds_the_trigger_after_spawn():
+    rp = dict(_bundle(protect_s=1)["respawn_profile"])
+    moved = [f for f in rp["revive"] if f != TRIGGER_HELD] + [TRIGGER_HELD]   # the old (pre-fix) placement
+    _raises(lambda: assert_respawn_profile(dict(rp, revive=moved)), "must hold the trigger")
+
+
 def test_mc_settings_round_trip_into_the_compiled_bundle():
     s = Session(C, FakeNet(), FakeArmory(demo_armory()))
     s.set_config({"respawn": {"type": "auto", "delay_s": 15, "protect_s": 1, "weapon_delay_ms": 3000, "station_protect_s": 3}})

@@ -127,6 +127,10 @@ export const SHIELD_REASSERT_MS = 500;
  *  start everyone is equal: the live `$SIR` table goes on the gun this long before go-live, while the head still
  *  holds every trigger, so every player is hittable AND can fire at the same moment. The T-0 spawn carries no t8. */
 export const PRE_ARM_TABLE_MS = 3000;
+/** compile.py `TRIGGER_AFTER_PROTECT_MS` (types.py): a timed trigger goes live at least this long after
+ *  protection ends. Mirrored here so a retried protection-off write can push `_triggerPending.due` out by
+ *  the same margin -- the trigger must never go live while t8 is still -100 (review finding, 2026-09-19). */
+export const TRIGGER_AFTER_PROTECT_MS = 500;
 export { SPAWN_KILL_WINDOW_MS };
 /** The down-screen warning levels: 1 = the normal line, 2 = larger and pulsing, 3 = maximum (held for the match). */
 export const DOWN_WARN_MAX = 3;
@@ -936,12 +940,14 @@ export class Engine {
    *  its own re-sends did not land. `still()` is asked before the one retry, and a shot or a hit since the first
    *  attempt also refuses it (pl4: the counts are then out of date, a repeat would refill). A second failure is
    *  logged loudly and left to the operator's RESYNC GUN, as `_armLife` leaves its own to the next trigger. */
-  _writeMust(frames, why, still) {
+  _writeMust(frames, why, still, actExempt = false) {
     const act = this._actSeq;   // pl4: a shot or a hit after this point makes a repeat unsafe (it re-sends counts the gun has moved past)
     const r = this._write(frames, why);
     Promise.resolve(r).then(ok => {
       if (ok !== false) return;
-      if (!still() || this._actSeq !== act) { this.log(`write ${why} failed -- the game moved on, not retried`, 'li'); return; }
+      // `actExempt`: 2026-09-19, `$BMAP,0,0` (weapon systems live) is safe to repeat whatever shots or
+      // hits landed in between -- it maps a button, it never re-sends a count the gun has moved past.
+      if (!still() || (this._actSeq !== act && !actExempt)) { this.log(`write ${why} failed -- the game moved on, not retried`, 'li'); return; }
       this.log(`write ${why} failed -- retrying once`, 'le');
       return Promise.resolve(this._write(frames, `${why} (retry)`)).then(again => {
         if (again === false) this.log(`*** write ${why} failed twice -- the gun may be out of step (RESYNC GUN) ***`, 'le');
@@ -1499,9 +1505,11 @@ export class Engine {
     this.start = { match_id: body.match_id, go_live_t: body.go_live_t, config_id: body.config_id, seq: body.seq, countdown_s: body.countdown_s };
     this._prevRem = null;               // fresh schedule: runway cue edges re-arm
     const newMatch = body.match_id !== this.matchId;
-    if (newMatch) { this.score = null; this.scoreAt = null; this.result = null; this.resultAt = 0; this.endedAt = 0; }   // a new match: last match's K/A/board — and last match's RESULT — must not show on the first DOWN
+    // a new match: last match's K/A/board and RESULT must not show on the first DOWN, and its spawn-kill
+    // escalation must not carry into this one (review finding, 2026-09-19: a re-sent start for the SAME
+    // match -- a bumped seq, a resumed schedule -- must never reset a down-warning level already earned)
+    if (newMatch) { this.score = null; this.scoreAt = null; this.result = null; this.resultAt = 0; this.endedAt = 0; this._downWarn = 1; this._timedLifeAt = null; }
     this.matchId = body.match_id; this.cuesFired = new Set(); this.shots = 0; this.deaths = 0; this.ended = false; this._resyncRevive = false;
-    this._downWarn = 1; this._timedLifeAt = null;   // 2026-09-19: the spawn-kill escalation starts again each match
     this._cure = null; this._queryAt = 0; this._cureLife = null; this._cureAt = 0; this._pollAt = 0; this._probedLife = null; this.cure = null;   // F264: a new match owes the last one's gun nothing
     this.kitLocked = false;             // A27: the lock notice is spent the moment the countdown starts — it must never lead the NEXT lobby
     // A NEW match supersedes any in-flight reconnect resync of the OLD one. Without this the resync
@@ -2065,7 +2073,16 @@ export class Engine {
     if (!take.length) return;
     const r = this._write(take, `pre-arm hit table (T-${Math.round(PRE_ARM_TABLE_MS / 1000)})`);
     const gen = this._sirGen; this._sirLive = true;
-    Promise.resolve(r).then(ok => { if (ok === false && gen === this._sirGen) { this._sirLive = false; this.log('pre-arm hit table write failed: the T-0 spawn carries it', 'le'); } });
+    Promise.resolve(r).then(ok => {
+      if (ok !== false || gen !== this._sirGen) return;
+      this._sirLive = false;
+      // 2026-09-19: the T-0 spawn reads `_sirLive` before this promise settles, so a slow failure can land
+      // AFTER `_spawn` already ran on the (wrong) assumption the table was live -- with `rpSpawn` clearing
+      // `_armPending` at go-live, nothing would otherwise retry, and the gun keeps the head's silent fn-28
+      // twin all life. Repair it the same way any other lost protection write is repaired.
+      if (this.phase === 'live' && this.alive && !this._armPending) { this._armPending = this._repairArm(); this.log('pre-arm hit table write failed after go-live -- repairing', 'le'); }
+      else this.log('pre-arm hit table write failed: the T-0 spawn carries it', 'le');
+    });
   }
   /** 2026-09-19: the bundle's respawn profile, or null on an older bundle (the legacy path). */
   _respawnProfile() {
@@ -2087,7 +2104,7 @@ export class Engine {
     if (!p || !rp) return;
     if (this.phase !== 'live' || this.ended || !(this.alive || p.flip)) { this.log(`weapon systems live (${why}) cancelled: not live`, 'li'); return; }
     const life = this._lifeSeq;
-    this._writeMust([rp.trigger_live], `weapon systems live (${why})`, () => this._lifeSeq === life && !this._standDown(p.flip ? ['phase', 'ble'] : ['phase', 'ble', 'alive']));
+    this._writeMust([rp.trigger_live], `weapon systems live (${why})`, () => this._lifeSeq === life && !this._standDown(p.flip ? ['phase', 'ble'] : ['phase', 'ble', 'alive']), true);   // actExempt: $BMAP,0,0 is safe to repeat past a shot/hit
     this._changed();
   }
   /** 2026-09-19: a registered hit clears a painted headset colour, so the station shield is painted again after a
@@ -2135,6 +2152,12 @@ export class Engine {
       if (this._armPending || this.phase !== 'live' || this.ended || !(this.alive || p.flip)) return;
       this.log(`arm hit reception (${why}) write failed -- re-arming to retry`, 'li');
       this._armPending = { ...p, at: this.now(), until: p.shotEnds ? p.until : 1000 };   // keep the original flip (an infection flip's retry must not read as "not live"); a profile life retries 1 s on
+      // 2026-09-19: this retry may be ending real t8 protection (`off.length`), so hold the trigger past
+      // it -- it must never go live while t8 is still -100. Push the due out to at least the retry plus
+      // TRIGGER_AFTER_PROTECT_MS, never pull it earlier (the delay may already be later than that).
+      if (!p.shotEnds && off.length && this._triggerPending) {
+        this._triggerPending.due = Math.max(this._triggerPending.due, this._armPending.at + this._armPending.until + TRIGGER_AFTER_PROTECT_MS);
+      }
     });
   }
   /** A15.3 (Tony 2026-09-06: "The long vs short pain should be used depending on the amount of damage. A big sniper
@@ -4733,6 +4756,19 @@ export class Engine {
       // of silently leaving the gun on fn 28 for the life.
       // F121 rebuild: a drop may hide a reboot, which empties the table (F11), so the take is re-sent here too.
       if (this._protectsSpawn()) { this._sirLive = false; this._armPending = this._repairArm(); this._armLife('reconcile'); }
+      // 2026-09-19: a respawn profile's `trigger_live` write can be lost the same way -- a BLE drop in flight, or
+      // an app restart mid-delay -- and nothing else would ever retry it, holding `$BMAP,0,98` for the rest of
+      // the life. `!this._triggerPending` means the weapon delay is already over (or was never running): the
+      // trigger should already be mapped, so re-send it as a repair. A delay still due is left alone -- `tick()`
+      // fires it when it is due, and forcing it early would let the player fire while still protected.
+      const rp = this._respawnProfile();
+      if (rp && !this._triggerPending) {
+        const r = this._write([rp.trigger_live], 'reconcile: weapon systems live');
+        Promise.resolve(r).then(ok => {
+          if (ok !== false || this.phase !== 'live' || this.ended || !this.alive || this._triggerPending) return;
+          this._triggerPending = { at: this.now(), due: this.now(), flip: false };   // as `_armLife` re-arms its own lost take, not `_writeMust`'s one-shot retry
+        });
+      }
     }
     this.log(`reconcile done — ${this.alive ? 'live' : 'down'} at hp ${this.hp}`, 'lk');
     this._changed();
