@@ -1878,8 +1878,16 @@ class Session:
                 # F121 disarmed head (`_refuse_push_in_play`). The in-flight-ack window stays open on
                 # this path alone, and narrowly: `_took_this_config` has just established that this node
                 # has neither acked this head nor reported itself armed.
-                self._push_config_to(p)
-        if nid and with_start and self.start_info:
+                #
+                # Polish review #2 (2026-09-18): this hot join is exactly the mid-match moment F121
+                # named -- an add/patch on a gun whose own hello carries an app `compatible()` cannot
+                # vouch for. Withhold the config (and, below, the start) rather than arm a gun that
+                # never turns spawn protection off.
+                if self._app_incompatible(nid):
+                    self._alert_app_withheld(p, nid)
+                else:
+                    self._push_config_to(p)
+        if nid and with_start and self.start_info and not self._app_incompatible(nid):
             self.net.push(nid, "start", self._start_body())
 
     def _after_player_change(self, p: Player):
@@ -3011,6 +3019,7 @@ class Session:
             if now - self.nodes[nid].get("last_seen_ms", 0) > 600_000:
                 self.nodes.pop(nid, None)
                 self.stations.pop(nid, None)
+                self._app_blocked_alerted.pop(nid, None)   # F121: a re-hello after this can say WITHHELD again
 
     def _node_view(self, nid: str) -> dict:
         """The ONE place a player `NodeView` is created, so it always has its defaults.
@@ -3121,6 +3130,8 @@ class Session:
         # both are what F121 needs the node to run, and an old build never sends the `$TMP` off frame
         # that ends spawn protection.
         blocked = self._app_incompatible(hello["node_id"])
+        if not blocked:
+            self._app_blocked_alerted.pop(hello["node_id"], None)   # F121: an upgraded app can say WITHHELD again if it ever regresses
         if self.lobby_pushed and blocked:
             self._alert_app_withheld(p, hello["node_id"])
         elif self.lobby_pushed:
@@ -5507,6 +5518,10 @@ class Session:
         parked_nodes = self._standby_node_ids()
         for nid, nv in list(self.nodes.items()):
             if nv.get("node_type") == "utility" or nid in parked_nodes:
+                continue
+            # F121: an incompatible app never took a `config` that can turn spawn protection off, so
+            # a `start` here would arm it invulnerable. `_bind`'s hot join already said WITHHELD.
+            if self._app_incompatible(nid):
                 continue
             self.net.push(nid, "start", start_body)
         self.phase = "armed"

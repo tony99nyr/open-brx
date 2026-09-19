@@ -227,6 +227,53 @@ def test_hot_swap_onto_an_incompatible_app_withholds_frames_and_start():
     assert "0.3.0" in withheld[0]["text"] and ps[0]["display"].upper() in withheld[0]["text"]
 
 
+def test_late_join_and_patch_mid_match_on_an_incompatible_app_withhold_config_and_start():
+    """Item 1, polish review #2 round 2: `_resend` (reached from `add_player`/`patch_player` via
+    `_after_player_change`) had no version check at all -- unlike `_bind`'s own hot join and
+    `_hydrate`'s welcome (both fixed above), a late player added or patched mid-match on an
+    incompatible gun still got `config`/`frames` and `start`, arming it with spawn protection never
+    turned off. Both the add and a later patch now withhold both, with one WITHHELD feed line."""
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    s.push_config()
+    for i in range(2):
+        net.simulate_node_message(f"node{i}", "ack_config",
+                                  {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$LCD"}, clock["t"])
+    s.start(runway_s=5)
+    net.pushed.clear()
+    tail = demo_armory()[2]["ble"]["tail"]
+    net.simulate_hello("node2", f"GUN-C-{tail}", app_ver="0.3.0")   # a third gun, already on the LAN, wrong minor
+    late = s.add_player("LATE", gun_id="GUN-C")
+    assert late["node_id"] == "node2"                          # `_adopt_node_for_gun` bound it on the spot
+    assert not net.pushes("config", node_id="node2")
+    assert not net.pushes("start", node_id="node2")
+    withheld = [e for e in s.feed if e.get("tag") == "WITHHELD"]
+    assert len(withheld) == 1 and "0.3.0" in withheld[0]["text"], withheld
+    net.pushed.clear()
+    s.patch_player(late["player_id"], display="STILL LATE")
+    assert not net.pushes("config", node_id="node2")
+    assert not net.pushes("start", node_id="node2")
+
+
+def test_start_broadcast_skips_an_unbound_node_on_an_incompatible_app():
+    """Item 2, polish review #2 round 2: `start()`'s own `start` broadcast walks every non-utility,
+    non-parked node, bound or not -- so a phone that had said hello on a bad build but never claimed a
+    gun still got `start` at the whistle. `_refuse_incompatible_app` only checks BOUND nodes, so this
+    was reachable even though the match itself starts clean."""
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    tail = demo_armory()[2]["ble"]["tail"]
+    net.simulate_hello("node2", f"GUN-C-{tail}", app_ver="0.3.0")   # unbound: GUN-C has no player
+    s.push_config()
+    for i in range(2):
+        net.simulate_node_message(f"node{i}", "ack_config",
+                                  {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$LCD"}, clock["t"])
+    net.pushed.clear()
+    s.start(runway_s=5)
+    assert net.pushes("start", node_id="node0") and net.pushes("start", node_id="node1")
+    assert not net.pushes("start", node_id="node2")
+
+
 def test_start_refuses_bound_node_on_incompatible_or_unparsable_app():
     """Item 2, polish review #2: `start()`'s gate used to block only `compatible() is False`. An
     UNPARSABLE version reads amber on the readiness board by design (A1: amber never blocks a push),
