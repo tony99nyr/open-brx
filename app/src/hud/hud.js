@@ -677,8 +677,12 @@ export class Hud {
   /** Writes one row's visible facts, touching only what actually changed. */
   _writeScanRow(el, d) {
     const [nm, tail] = splitGun(d);
-    const cls = d.inUse ? 'tagrow used' : 'tagrow';
-    if (el.className !== cls) el.className = cls;
+    // Office test 2026-09-19: the picker repaints every PAINT_MS while a scan runs (gunpicker.js), and a
+    // touch's press class (`tap-press`, set by `_tapDown` on pointerdown) can land inside that same window.
+    // Setting `className` outright used to wipe it before the browser ever painted it -- a tap straddling a
+    // repaint tick showed no press animation at all. `classList.toggle` leaves any class this method does
+    // not own alone.
+    if (el.classList.contains('used') !== !!d.inUse) el.classList.toggle('used', !!d.inUse);
     const name = el.querySelector('.nm'), html = `${nm}<b>-${tail}</b>`;
     if (name && name.innerHTML !== html) name.innerHTML = html;
     const inuse = el.querySelector('.inuse'), sig = el.querySelector('.sig');
@@ -1041,8 +1045,8 @@ export class Hud {
         const h = hold ? hold[t.team_id] != null ? hold[t.team_id] : hold[k] : null;
         return `<div class="rteam ${mine ? 'mine' : ''}">${this._teamChip(t, mine)}
           ${h != null ? `<div class="thold">HELD <b class="tab">${mmssS(h)}</b></div>` : ''}
-          <div class="tpl"><div class="tph"><span>PLAYER</span><span class="tab">K · D · A</span></div>
-          ${ps.length ? ps.map(r => `<div class="tp ${myId && r.player_id === myId ? 'me' : ''}"><span class="pn">${esc(String(r.display || r.player_id || '—').toUpperCase())}</span><span class="pv tab">${num(r.kills) == null ? '—' : r.kills} · ${num(r.deaths) == null ? '—' : r.deaths} · ${num(r.assists) == null ? '—' : r.assists}</span></div>`).join('')
+          <div class="tpl"><div class="tph"><span>PLAYER</span><span class="tab kda"><i>K</i><i>D</i><i>A</i></span></div>
+          ${ps.length ? ps.map(r => `<div class="tp ${myId && r.player_id === myId ? 'me' : ''}"><span class="pn">${esc(String(r.display || r.player_id || '—').toUpperCase())}</span><span class="pv tab kda"><i>${num(r.kills) == null ? '—' : r.kills}</i><i>${num(r.deaths) == null ? '—' : r.deaths}</i><i>${num(r.assists) == null ? '—' : r.assists}</i></span></div>`).join('')
             : '<div class="tp none">NO SCORED PLAYERS</div>'}</div></div>`;
       }).join('')}</div>`;
     } else {
@@ -1795,7 +1799,10 @@ export class Hud {
         ${sec('LAST FRAMES', 'dg-frames', true)}${sec('HISTORY', 'dg-hist')}${sec('LOG', 'dg-log', true)}
       </div>
       <div class="gunhint" id="dg-gunhint" role="status" aria-live="assertive"></div>
-      <div class="btns"><button data-act="onCloseDiag" class="closex">CLOSE</button><button data-act="onReconnectGun" id="dg-relinkgun">RELINK GUN</button><button data-act="onReconnectMc">RELINK MC</button><button data-act="onShareLog">SHARE LOG</button><button data-act="onToggleNight">NIGHT</button></div>`;
+      <div class="btns"><button data-act="onCloseDiag" class="closex">CLOSE</button><button data-act="onReconnectGun" id="dg-relinkgun">RELINK GUN</button><button data-act="onReconnectMc">RELINK MC</button><button data-act="onShareLog">SHARE LOG</button></div>`;
+    // Office test 2026-09-19: the debug NIGHT button was redundant -- the ☾/☀ switch (`#skin`, top right,
+    // every screen) already flips the same `onToggleNight` handler, and NIGHT OPS (config.night) sets the
+    // default from Mission Control's venue on its own. Removed here, not the handler: `#skin` still calls it.
   }
   renderDiag() {
     this._diagShell();
