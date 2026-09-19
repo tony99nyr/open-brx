@@ -206,7 +206,7 @@ sounds — and moves the numbers.
 | Stinger | cqb | 15 | 250 | 8 | **1.75** | 60.0 | 43.5 | 18 | 144 | 1700 | 99% | — | cycle 120→250, res 72→144 |
 | Bolt Rifle | assault | 13 | 225 | 9 | **1.80** | 57.8 | 38.7 | 18 | 180 | 2000 | 98% | — | **stock** |
 | SMG | cqb | 8 | 95 | 15 | **1.33** | 84.2 | 61.7 | 72 | 288 | 2500 | 100% | 5 | **2026-09-17**: cycle 140→95 (`wire.fire_ms`) |
-| Toxin Rifle | assault | 8 | 110 | 15 | **1.54** | 72.7 | 49.0 | 30 | 180 | 1600 | 99% | 5 | **2026-09-18, NOT FINISHED (hidden)**: the gun lands the direct hit and the POISON is a node tick clock that is not built (S16). 4 damage a second for 5 s, refreshed on each hit, never stacked: worth 20, so twelve hits make it lethal even if the target breaks contact, which is the same 1.21 s the Assault Rifle needs to finish outright. §7.5 |
+| Toxin Rifle | assault | 8 | 110 | 15 | **1.54** | 72.7 | 49.0 | 30 | 180 | 1600 | 99% | 5 | **2026-09-18**, in the picker since 2026-09-19: the gun lands the direct hit and the POISON is a tick clock on the victim's node (S16, `spec/node.md` §3.17). 4 damage a second for 5 s, refreshed on each hit, never stacked: worth 20, so twelve hits make it lethal even if the target breaks contact, which is the same 1.21 s the Assault Rifle needs to finish outright. §7.5 |
 | Suppressor | support | 8 | 140 | 15 | **1.96** | 57.1 | 48.0 | 75 | 384 | 2000 | 100% | — | **2026-09-17**: cycle 160→140 (`wire.fire_ms`); mag 48→75 (§2.3, family-scoped dominance) |
 | Assault Rifle | assault | 9 | 100 | 13 | **1.20** | 90.0 | 62.6 | 32 | 192 | 1400 | 100% | — | **2026-09-17**: cycle 140→100 (`wire.fire_ms`, native Battle Company speed) |
 | Energy Rifle | support | 9 | 150 | 13 | **1.80** | 60.0 | 57.0 | 300 | 600 | 2400 | 100% | 6 | **2026-09-17**: cycle 200→150 (`wire.fire_ms`); overheat switched ON (F229: `t38`=150 override, `t35`=D11) |
@@ -477,6 +477,7 @@ Fastest cycle has the slowest reload and vice versa; nothing leads on both.
 | Force Rifle | 10 | **12** | 15 | 20 |
 | Assault Rifle / Energy Rifle | 12 | **13** | 17 | 23 |
 | SMG / Suppressor | 13 | **15** | 19 | 25 |
+| Toxin Rifle | 13 | **15** | 19 | 25 |
 | Desert Eagle | 4 | **5** | 6 | 8 |
 | USP-S | 12 | **13** | 17 | 23 |
 | Glock-18 | 8 | **9** | 12 | 16 |
@@ -485,6 +486,10 @@ Fastest cycle has the slowest reload and vice versa; nothing leads on both.
 hits** (2026-09-17, F225/F226/S43) — at 200 the pool needs 1 charge (85) plus 6 taps (20 each, the
 last one overkilling by 5) to close, not `ceil(200/85) = 3`. Every other row is the plain
 `ceil(pool/dmg)` every non-cell weapon uses.
+
+**The Toxin Rifle's row counts direct hits only**, with the same `ceil(pool/dmg)`. Its poison is worth
+20 when it runs out (§7.5b), so the hits that make a kill certain are `ceil((pool - 20)/8)`: 10, **12**,
+17 and 23.
 
 Two consequences carried over from the first pass and still true:
 
@@ -1388,7 +1393,7 @@ puts the Shotgun's only word on the unstable knee of the receiver curve.
 | **Stripping** | fn 20: removes every protective layer and CANNOT kill | a big pool, with a teammate to finish | a bare target: it does literally nothing |
 | **Denial** | fn 23: the target's accuracy falls to 0 for about 3 s | anyone who has to aim | anyone who simply walks away |
 
-A fifth, **damage over time**, is node-driven and not built (S16). It is the answer to walking away,
+A fifth, **damage over time**, is node-driven (S16, `spec/node.md` §3.17). It is the answer to walking away,
 which is what makes it the natural counter to denial.
 
 ### 7.2 The triangle, in seconds
@@ -1471,8 +1476,8 @@ becomes a no-counterplay weapon.
 
 ### 7.5b The Toxin Rifle, and the number that makes it interesting
 
-Declared 2026-09-18, **hidden until the node tick clock exists** (S16). The gun lands the direct hit
-today; the poison is a clock on the victim's own phone, and nothing on the wire can tick, because the
+Declared 2026-09-18, in the picker since 2026-09-19 (S16). The gun lands the direct hit. The poison is
+a clock on the victim's own phone (`spec/node.md` §3.17). Nothing on the wire can tick, because the
 same bench proved the whole fn 24-27 family applies no damage at all.
 
 | lever | value | why |
@@ -1500,8 +1505,11 @@ reach parity, but only about 8% of their kills come from the poison, so they pla
 numbers the result depends on most are invented, not measured: the focus-fire rate and the length of
 a line-of-sight window (short peeks push the toxin to 1.13, long ones pull it to 0.87).
 
-⚠️ It stays `hidden` until `spec/node.md` §3.17 is built. Enabled early it is simply a worse SMG, and
-`caution` on the row says so.
+**The §2.3 dominance check carves it out.** The check's four axes see only damage that lands during
+contact. With the poison counted at its 20, the Assault Rifle still covers the Toxin Rifle on all four:
+1.20 s against 1.21 s, and a hair on the other three. So a poison weapon is its own family, the same way
+a sidearm is, and this sim is its balance check. The carve-out works in one direction only: a poison
+weapon that beats a weapon of its natural family on every axis, poison counted, still fails the check.
 
 ### 7.5c The balance sim, for every weapon
 

@@ -716,7 +716,7 @@ def test_the_poison_block_is_declared_and_never_reaches_the_wire():
 
     Nothing on the WIRE can tick. The bench that day proved the whole fn 24-27 family applies no damage
     at all and instead leaves the victim's gun faking a hit every 5.07 s, so the native route is dead and
-    the poison can only be a tick clock on the victim's own phone (`spec/node.md` §3.17, not built). The
+    the poison can only be a tick clock on the victim's own phone (`spec/node.md` §3.17). The
     gun's only job is to land the direct hit and to carry protocol 11 in `$HIR` token 2 so the node knows
     which weapon hit it.
 

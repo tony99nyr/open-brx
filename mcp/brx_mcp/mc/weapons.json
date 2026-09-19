@@ -1084,7 +1084,6 @@
    "cls": 11,
    "role": "assault",
    "class": "ballistic",
-   "hidden": true,
    "mag": 30,
    "reserve": 180,
    "reload_ms": 1600,
@@ -1102,7 +1101,6 @@
     "recover_ms": 150
    },
    "desc": "Hits lightly and keeps hitting. The damage arrives after you have stopped shooting, which is the whole point.",
-   "caution": "NOT FINISHED. The gun applies the direct damage today; the poison is a tick clock on the player's own phone (S16, spec/node.md \u00a73.17) and that is not built, so this row is hidden. Enabled early it is simply a worse SMG.",
    "capture": {
     "src": "2026-08-26-weapons-smg-plus-amr.btsnoop",
     "frame": "$WEAP,0,,100,0,0,8,0,,,,,,,,90,850,72,288,2500,0,0,100,100,,5,,,G03,,,,D26,D25,D24,D18,D11,,,,72,144,75,*"

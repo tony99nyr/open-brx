@@ -268,8 +268,9 @@ def test_catalog_excludes_hidden_melee_and_flags_verified():
     # sidearms (usp/deagle) + 2 catalogue-visible-but-pickup_only heavies (rocket_launcher/rail_gun) = 13.
     # 2026-09-18 (weapon-design.md §7.4): the stripper and the smoke joined as `lethal: false`
     # SECONDARIES, visible in the catalogue like everything above, so the roster is now 15.
-    assert len(ids) == 15, (
-        f"the §3 roster is 9 primaries + 2 sidearms + 2 pickup-only heavies + 2 support "
+    # 2026-09-19 (S16): the Toxin Rifle is visible now that the node tick clock is built: 10 primaries.
+    assert len(ids) == 16, (
+        f"the §3 roster is 10 primaries + 2 sidearms + 2 pickup-only heavies + 2 support "
         f"secondaries, got {len(ids)}")
     by = {w["weapon_id"]: w for w in cat.all()}
     # `verified` now means SHIPPED EXACTLY AS CAPTURED. 2026-09-17 moved two more weapons off it: the
@@ -908,9 +909,20 @@ def _weapon_family(cat: WeaponCatalog, w: dict) -> tuple:
     which the model cannot see yet. Family = fire mode (`t20`) + `weapon_class`, EXCEPT a sidearm,
     which is its own family regardless of mode/class (a slot-2 backup was never meant to compete with
     a primary at all -- the old bespoke "primary beats sidearm" exemption falls out of this for free,
-    since a primary and a sidearm are never in the same family to begin with)."""
+    since a primary and a sidearm are never in the same family to begin with).
+
+    A POISON weapon (a `dot` row, S16, 2026-09-19) is its own family too, for the same kind of reason: its
+    identity is damage that lands after contact breaks, and no axis here can see that. See the
+    test below for the reverse check that keeps this from being a blind spot."""
     if w.get("role") == "sidearm":
         return ("sidearm",)
+    if cat._row(w["weapon_id"]).get("dot"):
+        return ("poison",)
+    return _natural_family(cat, w)
+
+
+def _natural_family(cat: WeaponCatalog, w: dict) -> tuple:
+    """Fire mode (`t20`) + `weapon_class`: the family a weapon would join with no carve-out."""
     return (cat._frame_int(w["weapon_id"], "mode"), w.get("weapon_class"))
 
 
@@ -950,7 +962,24 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
     stripper's captured 9), so `hits_to_kill()`/`time_to_kill()` happily derive a TTK for a weapon that
     cannot take a point of health -- the smoke lands at a fictional 13.3s. Neither the TTK band nor the
     dominance/lead axes mean anything for a weapon with no kill at all, so support rows are excluded
-    before either check runs, the same way §2.2/§2.3 exclude them in `test_weapon_derivations.py`."""
+    before either check runs, the same way §2.2/§2.3 exclude them in `test_weapon_derivations.py`.
+
+    **A poison weapon is its own family, and it may not dominate its natural one** (S16, 2026-09-19).
+    The four axes measure damage that lands while the shooter is still shooting. A `dot` row's payload
+    lands after, and the whole point of the Toxin Rifle is a kill that lands after contact breaks
+    (weapon-design.md §7.5b). So the poison is counted at its design value: one fully expired stack,
+    `per_tick` x (`duration_ms` / `tick_ms`) = 20 (stacks refresh and never add, so a target never
+    carries more). `lethal` below is `115 - 20`: the hit that puts the target there is the kill (the
+    §7.5b "twelve hits are lethal" number, 1.21 s). The sustained axis adds the refreshed clock's rate
+    (4 a second) for the part of the dump-plus-reload window it covers.
+    Counted that way, the Assault Rifle STILL covers it: 1.20 s against 1.21 s, 62.6 against 53.0
+    sustained, and a one-magazine kill chance 0.99986 against 0.99984. The four axes cannot score
+    "they die after they walk away", and that is the weapon's only identity. So a `dot` row is carved
+    out like a sidearm (`_weapon_family()`), and the balance check that does model broken contact is
+    the §7.5c sim, which puts the shipped row at parity with the rifle (1.00).
+    The carve-out covers ONE direction only. With the poison counted, a `dot` row must not strictly
+    dominate any member of its NATURAL family, so a poison buff that made it better than the rifle on
+    every axis still fails here."""
     cat = WeaponCatalog()
     rows = []
     for w in cat.all():
@@ -958,10 +987,13 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
         r = cat._row(wid)
         if r.get("lethal") is False:
             continue
-        htk = cat.hits_to_kill(wid, 115)
-        ttk = cat.time_to_kill(wid, 115)
+        dot = r.get("dot") or {}
+        dot_total = int(dot["per_tick"]) * (int(dot["duration_ms"]) // int(dot["tick_ms"])) if dot else 0
+        lethal = 115 - dot_total
+        htk = cat.hits_to_kill(wid, lethal)
+        ttk = cat.time_to_kill(wid, lethal)
         mag = r["mag"]
-        rtk = cat.rounds_to_kill(wid, 115)
+        rtk = cat.rounds_to_kill(wid, lethal)
         kpc = mag // rtk if rtk else 0
         per = cat.cycle_ms(wid)
         rpc = cat.rounds_per_charge(wid)
@@ -980,9 +1012,14 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
             sust = charges * dmg / (charges * per / 1000 + r["reload_ms"] / 1000)
             pk = _one_mag_kill_p(charges, math.ceil(115 / dmg))
         else:
-            sust = dmg * mag / (mag * per / 1000 + r["reload_ms"] / 1000)
+            window_s = mag * per / 1000 + r["reload_ms"] / 1000
+            sust = dmg * mag / window_s
+            if dot:
+                # The clock keeps ticking through the dump and for `duration_ms` after the last hit.
+                ticking_s = min(window_s, mag * per / 1000 + int(dot["duration_ms"]) / 1000)
+                sust += int(dot["per_tick"]) * 1000 / int(dot["tick_ms"]) * ticking_s / window_s
             pk = _one_mag_kill_p(mag, htk)
-        rows.append({"id": wid, "fam": _weapon_family(cat, w), "htk": htk, "ttk": ttk, "sust": sust,
+        rows.append({"id": wid, "fam": _weapon_family(cat, w), "nat_fam": _natural_family(cat, w), "htk": htk, "ttk": ttk, "sust": sust,
                      "pk": pk, "kpc": kpc, "recoil_floor": (r.get("recoil") or {}).get("floor"),
                      "range_band": r.get("range_band"), "is_cell": rpc > 1 and cat.tap_damage(wid) > 0})
     for r in rows:
@@ -1035,6 +1072,13 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
     # The allowance must not outlive its cause. If a listed pair STOPS dominating, this fails and forces
     # the entry out -- otherwise a stale exemption silently covers a real regression later. That is the
     # F40 shape: a guard that cannot fail is worse than no guard, because it is believed.
+    # The poison carve-out's reverse check (see the docstring): counted at its design value, a `dot`
+    # row must not beat any weapon of its natural family on every axis.
+    for a in (r for r in pick if r["fam"] == ("poison",)):
+        for b in (r for r in pick if r["fam"] == a["nat_fam"]):
+            assert not (all(not_worse(a, b, ax) for ax in AXES) and any(strictly_better(a, b, ax) for ax in AXES)), (
+                f"{a['id']} (poison counted at its design value) strictly dominates {b['id']} within its "
+                f"natural family {a['nat_fam']}")
     stale = set(KNOWN_DOMINANCE) - allowed_seen
     assert not stale, (f"{sorted(stale)} no longer dominates -- delete the KNOWN_DOMINANCE entry above "
                        f"rather than leaving an exemption nothing needs")

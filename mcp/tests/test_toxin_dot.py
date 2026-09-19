@@ -3,9 +3,9 @@
 The victim's node runs the tick clock (`app/src/engine.js`, spec/node.md §3.17). MC's part is two things: ship the
 SHOOTER's tick numbers to every victim, keyed by the IR protocol the victim reads off `$HIR`, and credit the kill a
 lethal tick produces to the player who applied the poison.
-"""
-import pytest
 
+No pytest import: `run_tests.py` runs this file under system python, which has no pytest.
+"""
 from brx_mcp.mc.compile import Compiler, default_compiler, golden_bundle
 from brx_mcp.mc.scoring import Scorer
 
@@ -37,15 +37,52 @@ def test_the_victim_gets_the_shooters_tick_numbers_keyed_by_protocol():
     assert c.compile(_CONFIG, shooter, _CONFIG["teams"], plan=plan)["dot"] == b["dot"]
 
 
-def test_the_toxin_rifle_is_hidden_and_still_compiles():
-    """The row ships hidden until the node half lands. A hidden weapon is out of the picker, not out of the
-    catalogue, so a custom game that names it must compile, with its cell and its table."""
+def test_the_toxin_rifle_is_in_the_picker_and_compiles():
+    """The node half landed (spec/node.md §3.17), so the row is visible: it is in the picker, and a game that
+    names it compiles with its cell and its table."""
     c = default_compiler()
-    assert "toxin_rifle" not in {w["weapon_id"] for w in c.catalog.all()}, "setup: the row is hidden"
+    assert "toxin_rifle" in {w["weapon_id"] for w in c.catalog.all()}, "the row is no longer hidden"
     p = _player("tox", 1, "blue", "toxin_rifle")
     b = c.compile(_CONFIG, p, _CONFIG["teams"])
     assert any(f.startswith("$WEAP,0,") and f.split(",")[4] == "11" for f in b["head"]), "t3 = 11 on the wire"
     assert b["dot"]["11"]["per_tick"] == 4
+
+
+def _sir(rows, cell):
+    return [r for r in rows if r.startswith(f"$SIR,{cell[0]},{cell[1]},")]
+
+
+def test_the_poison_cell_ships_a_plain_damage_row_only_in_a_game_that_carries_it():
+    """F11 class. The direct hit is `$SIR <11,0>` fn 1. A gun with no row for the cell drops every hit and
+    reports healthy, so the row must reach every gun in a game with a Toxin Rifle in it, the victim's too.
+    The row is the same as the plain `<0,0>` damage row except for its cell: an empty sound token (so the
+    pool sound plays, F38) and the same tail. A game without the weapon does not spend a row on it
+    (`hitaudio.MAX_SIR_ROWS`). The head carries the cell as the fn-28 pregame registrar (F121)."""
+    c = default_compiler()
+    shooter, victim = _player("tox", 1, "blue", "toxin_rifle"), _player("vic", 2, "yellow", "smg")
+    plan = c.hit_plan([shooter, victim])
+    b = c.compile(_CONFIG, victim, _CONFIG["teams"], plan=plan)
+    plain = _sir(b["sir_pool"][0], ("0", "0"))[0]
+    for take in b["sir_pool"]:
+        assert _sir(take, ("11", "0")) == [plain.replace("$SIR,0,0,", "$SIR,11,0,", 1)], take
+    assert _sir(b["head"], ("11", "0")) == ["$SIR,11,0,,28,0,0,1,,*"]
+    assert c.validate(_CONFIG, [shooter, victim])["ok"]
+
+    plain_game = [_player("a", 1, "blue", "assault_rifle"), _player("b", 2, "yellow", "smg")]
+    b2 = c.compile(_CONFIG, plain_game[1], _CONFIG["teams"], plan=c.hit_plan(plain_game))
+    assert not _sir(b2["sir_pool"][0], ("11", "0")) and not _sir(b2["head"], ("11", "0"))
+
+
+def test_validate_refuses_the_toxin_rifle_when_nothing_ships_its_row():
+    """The guard reads the table the roster ships. Take away the row's only source (the catalogue `sir_fn`)
+    and `validate()` must say NO ROW, not wave the weapon through. Control: the unchanged catalogue passes."""
+    base = default_compiler()
+    rows = [dict(r) for r in base.catalog._rows]
+    roster = [_player("tox", 1, "blue", "toxin_rifle")]
+    assert Compiler(catalog=type(base.catalog)(rows)).validate(_CONFIG, roster)["ok"]
+    next(r for r in rows if r["weapon_id"] == "toxin_rifle").pop("sir_fn")
+    r = Compiler(catalog=type(base.catalog)(rows)).validate(_CONFIG, roster)
+    assert not r["ok"] and any("toxin_rifle keys $SIR 11,0" in e and "NO ROW" in e for e in r["errors"]), r
 
 
 def test_a_game_with_no_poison_weapon_ships_no_table():
@@ -68,8 +105,12 @@ def test_a_plain_weapon_sharing_the_poison_protocol_is_refused():
     clone["weapon_id"] = "plain_eleven"
     clone.pop("dot")
     c = Compiler(catalog=type(base.catalog)(rows + [clone]))
-    with pytest.raises(ValueError, match="S16"):
+    try:
         c.dot_table(c.hit_plan([_player("t", 1, "blue", "toxin_rifle", "plain_eleven")]))
+    except ValueError as e:
+        assert "S16" in str(e), e
+    else:
+        raise AssertionError("a plain weapon on the poison protocol compiled")
 
 
 def test_a_lethal_tick_credits_the_player_who_applied_the_poison():

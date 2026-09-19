@@ -2567,7 +2567,19 @@ class Compiler:
         #
         # The REST stay warnings: a GRANT row heals the target and an armour-piercing one is a
         # balance fact -- both are playable, and both are things the operator may have chosen.
-        sir = _sir_index(_SIR_TABLE)
+        #
+        # S16 (2026-09-19): read the table this ROSTER actually ships, not the permanent base. A weapon
+        # may declare its own `sir_fn`, and `sir_table()` then appends its row only in a game that
+        # carries it (the Toxin Rifle's <11,0>, and the support cells). Reading `_SIR_TABLE` alone
+        # called that row missing and blocked a weapon whose hits the gun registers. The key is the
+        # PLAN's cell for the same reason: with `hit_audio_rekey` on, the frame that ships is re-keyed.
+        # If the plan cannot be built (F53: a weapon on a cell with no row AND no `sir_fn`), fall back
+        # to the base table, so that weapon gets the NO ROW error below instead of a crash here.
+        try:
+            plan = self.hit_plan(roster, rekey=bool(config.get("hit_audio_rekey", False)))
+            sir = _sir_index(self.sir_table(plan, None))
+        except ValueError:
+            plan, sir = _ha.Plan(), _sir_index(_SIR_TABLE)
         T = self.catalog._T
         # KeyError here is a CODE bug, not bad data — raise loudly rather than letting every
         # weapon `continue` and silently turn the whole guard into a no-op.
@@ -2593,7 +2605,7 @@ class Compiler:
                     continue
                 try:
                     frame = self.catalog.resolve(wid, 0).split(",")
-                    key = (frame[_pi] or "0", frame[_si] or "0")
+                    key = plan.cell_for(wid) or (frame[_pi] or "0", frame[_si] or "0")
                 except (IndexError, ValueError):
                     continue   # a malformed catalog row is another check's problem, not a crash here
                 fn = sir.get(key)
