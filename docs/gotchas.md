@@ -701,8 +701,15 @@ information. Three instances in one session, two of them in the tools built to c
 
 The general rule, and it is the same one this file already applies to guards: **make the check fail
 on purpose before you trust it.** A filter you have never seen print nothing is not a filter, it is
-a decoration. Two of these three were found by the agent whose own tests were passing for the wrong
-reason, which is the argument for breaking a test rather than reading it.
+a decoration.
+
+⭐ **The way they were found is the point: mutation testing found all of them and review found
+none.** Thirty-eight deliberate breaks of one change surfaced three defects in the GUARDS rather
+than in the code, including an unreachable branch inside a predicate written that same hour to stop
+unreachable branches. Nobody reading those tests saw anything wrong, because a test that passes for
+the wrong reason looks exactly like a test that passes. So the practice is not "write careful
+tests", it is **break the behaviour and watch the named test fail** -- and when a break comes back
+UNCAUGHT, suspect the harness before the code, because two of the three here were the harness.
 
 ## See also
 `docs/FOLLOWUPS.md` (**"Needs Tony at the bench"** is the bench queue; one dated run sheet at a time) ·
