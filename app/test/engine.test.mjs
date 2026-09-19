@@ -1114,7 +1114,7 @@ test('F206 (node half): a $PSET the COMPILER never saw gets a $TID behind it, an
   assert.ok(oneTid(h.writes, 1), `the head carries its own $TID: nothing added -- got ${h.writes.filter(f => f.startsWith('$TID,')).join(' ')}`);
   h.echo(); h.writes.length = 0; h.start(0); h.adv(10); h.eng.tick();
   assert.ok(h.writes.includes('$SPAWN,,*') && oneTid(h.writes, 1), `spawn: exactly one $TID, the bundle's -- got ${h.writes.join(' ')}`);
-  assert.deepEqual(h.writes.slice(h.writes.indexOf('$SPAWN,,*') + 1, h.writes.indexOf('$SPAWN,,*') + 3), ['$TMP,,,,,,,,-100,,,,*', '$TID,1,*'], 'and it is the compiler\'s, right after $SPAWN and its t8 protection write (F121)');
+  assert.deepEqual(h.writes.slice(h.writes.indexOf('$SPAWN,,*') + 1, h.writes.indexOf('$SPAWN,,*') + 2), ['$TID,1,*'], 'and it is the compiler\'s, right after $SPAWN (2026-09-19: a timed spawn with protection 0 writes no t8)');
   h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame('$HP,0,0,0,*');
   h.writes.length = 0; h.adv(8000); h.eng.tick();
   assert.ok(h.writes.includes('$SPAWN,,*') && oneTid(h.writes, 1), `revive: exactly one $TID, the bundle's -- got ${h.writes.join(' ')}`);
@@ -6414,7 +6414,7 @@ test('F206: the spawn burst carries the $PSET from pset_pool BEFORE $SPAWN, and 
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   const i = h.writes.indexOf('$SPAWN,,*');
   assert.ok(i > 0, 'spawned');
-  assert.deepEqual(h.writes.slice(i + 1, i + 3), ['$TMP,,,,,,,,-100,,,,*', '$TID,1,*'], 'the team is re-asserted after $SPAWN and its t8 write (one team byte, last writer wins; F121: t8 must follow $SPAWN)');
+  assert.deepEqual(h.writes.slice(i + 1, i + 2), ['$TID,1,*'], 'the team is re-asserted right after $SPAWN (one team byte, last writer wins; 2026-09-19: the default timed spawn carries no t8)');
   const pset = h.writes.slice(0, i).filter(f => f.startsWith('$PSET,'));
   assert.ok(pset.length >= 1 && pset.every(f => f.split(',')[2] === '1'), 'every $PSET written carries the $TID team: ' + pset);
 });

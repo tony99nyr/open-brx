@@ -15,7 +15,9 @@ import * as E from '../src/engine.js';
 
 const { Engine } = E;
 const CAP = E.SPAWN_PROTECT_MAX_MS ?? 2100;   // `??` so this file still loads (and fails) against a pre-F209 engine
-const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
+// 2026-09-19: this file pins the LEGACY path, the one a bundle from an MC before the respawn profiles takes (no
+// `respawn_profile`: protection ends on the first shot or the cap). test/respawn-profile.test.mjs pins the profiles.
+const golden = (({ respawn_profile, ...rest }) => rest)(JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url)))));
 const TAKE = golden.sir_pool[0];
 const ON = '$TMP,,,,,,,,-100,,,,*';
 const OFF = '$TMP,,,,,,,,0,,,,*';

@@ -13,15 +13,17 @@ import asyncio
 
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.stage.stage import GunStage
-from test_stage import _Clock, _nosleep, settle, tx
+from test_stage import LegacyCompiler, _Clock, _nosleep, settle, tx
 
 GUN = "FA:KE:00:00:00:01"
 
 
 def _mk():
+    # 2026-09-19: this file is the LEGACY path (a bundle with no `respawn_profile`, an app < 0.4.3), as
+    # app/test/spawn-protect.test.mjs is. test_stage_respawn_profile.py covers the profile path.
     mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1)])
     clock = _Clock()
-    st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
+    st = GunStage(mgr, None, compiler=LegacyCompiler(), sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
     return st, mgr, clock
 
 
@@ -157,12 +159,12 @@ def test_arm_pending_is_stamped_before_the_write_not_after_it_resolves():
         st.write = slow_write
         t0 = clock()
         await st.spawn()
-        assert st._arm_pending == t0, "spawn: the pending-arm time must be stamped BEFORE the write"
+        assert st._arm_pending["at"] == t0, "spawn: the pending-arm time must be stamped BEFORE the write"
         st._inject_rx("$HP,0,0,0,*"); await settle(st)   # a pool-only death: the fn-28 twin still protects IR
         assert not st.alive
         t1 = clock()
         await st.revive()
-        assert st._arm_pending == t1, "revive: the pending-arm time must be stamped BEFORE the write"
+        assert st._arm_pending["at"] == t1, "revive: the pending-arm time must be stamped BEFORE the write"
     asyncio.run(run())
 
 

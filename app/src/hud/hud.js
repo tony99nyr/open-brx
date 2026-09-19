@@ -1293,7 +1293,15 @@ export class Hud {
    *  §4.3, live bench 2026-09-04: "the very first time someone dies… the HUD should make it obvious"):
    *  RUN TO YOUR TEAM'S RESPAWN STATION → GET CLOSER (closeness bar vs the station's threshold) → HOLD… (at the
    *  station, the short delay finishing) → PULL THE TRIGGER TO RESPAWN (green) / RESPAWNING… (presence gate). */
-  _downHintKey(st) { const s = st.station || {}; return [st.respawnHint, st.respawnType, st.respawnIn, s.id, s.present, s.rssi != null ? Math.round(s.rssi) : null].join('|'); }
+  _downHintKey(st) { const s = st.station || {}; return [st.respawnHint, st.respawnType, st.respawnIn, s.id, s.present, s.rssi != null ? Math.round(s.rssi) : null, st.downWarn].join('|'); }
+  /** 2026-09-19 (Tony): a TIMED respawn happens where the player stands, so the DOWN screen tells them to move. The
+   *  engine's `downWarn` climbs when they are killed soon after a timed respawn: 1 = this line, 2 = larger and
+   *  pulsing, 3 = a full-width flashing band that holds for the match. The flash is 1 Hz, well below any flicker band. */
+  _downSafe(st) {
+    if (st.respawnType !== 'auto') return '';
+    const lvl = Math.max(1, Math.min(3, Number(st.downWarn) || 1));
+    return `<div class="safe w${lvl}" id="dnsafe"><span>GET TO SAFE SPACE FOR REDEPLOY</span></div>`;
+  }
   _downHint(st) {
     this._downHintSig = this._downHintKey(st);
     let hint = st.respawnHint || (st.respawnType === 'auto' ? 'timer' : st.respawnType === 'none' ? 'out' : 'find_station');
@@ -1522,11 +1530,15 @@ export class Hud {
         this.overlay.innerHTML = `<div class="mo down"><div class="wash"></div>
           <div class="c"><div class="l2">${st.respawnType === 'scanner' ? '<span class="tt"><span class="t">DOWN</span><span class="t t2">RESPAWN<br>AT STATION</span></span>' : '<span class="t">DOWN</span>'}<span class="kb">KILLED BY <b style="${tk ? `background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}` : 'background:var(--mut);color:var(--bg,#000)'}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span></div>
           <div class="dn" id="dnhint">${this._downHint(st)}</div></div>
+          ${this._downSafe(st)}
           <div class="recap" id="downrecap">${this._downRecap(st)}</div></div>`;
+        this._downSafeSig = this._downSafe(st);
         this._flash();
+        if ((Number(st.downWarn) || 1) >= 3 && st.respawnType === 'auto') this.h.onHaptic && this.h.onHaptic('down');
       } else {
         const el = this.overlay.querySelector('#rd'); if (el) { const h = digits(st.respawnIn); if (el.innerHTML !== h) el.innerHTML = h; }
         const hk = this._downHintKey(st); if (hk !== this._downHintSig) { const h = this.overlay.querySelector('#dnhint'); if (h) h.innerHTML = this._downHint(st); }
+        const sf = this._downSafe(st); if (sf !== this._downSafeSig) { this._downSafeSig = sf; const el = this.overlay.querySelector('#dnsafe'); if (el) el.outerHTML = sf; }
         const rc = this.overlay.querySelector('#downrecap'); if (rc) { const h = this._downRecap(st); if (rc.innerHTML !== h) rc.innerHTML = h; }
       }
       return;
@@ -1588,6 +1600,7 @@ export class Hud {
       } else { const b = this.overlay.querySelector('#swbar'); if (b) b.style.width = pct + '%'; }
     } else if (this._moment === 'switch') { this._moment = null; this.overlay.innerHTML = ''; }
 
+    this._redeployTick(st);   // 2026-09-19: ACTIVATING WEAPON SYSTEMS… turns to WEAPONS HOT when the trigger goes live
     // transient moments
     const m = st.moment;
     if (m && m.at !== this._momentAt) {
@@ -1710,17 +1723,35 @@ export class Hud {
     this.h.onHaptic && this.h.onHaptic('tap');
   }
 
+  /** The REDEPLOYED sub-line (2026-09-19): arming while a timed respawn holds the trigger, the shield on a station
+   *  respawn, else WEAPONS HOT. */
+  _redeployLine(st) {
+    if (st.weaponArming != null) return '<span class="h arming">ACTIVATING WEAPON SYSTEMS…</span>';
+    if (st.shielded) return '<span class="h shield">SHIELD UP · WEAPONS HOT ▸▸▸</span>';
+    return '<span class="h">WEAPONS HOT ▸▸▸</span>';
+  }
+  /** Keeps a live REDEPLOYED overlay's sub-line in step with the engine: the trigger goes live under it. */
+  _redeployTick(st) {
+    const o = this._overlays && this._overlays.redeploy;
+    if (!o || !o.el || !o.el.isConnected) return;
+    const h = o.el.querySelector('.r .h'); if (!h) return;
+    const want = this._redeployLine(st);
+    if (h.outerHTML !== want) h.outerHTML = want;
+  }
   _redeploy(st) {
     if (this.frame.dataset.env === 'night') return;
     const el = document.createElement('div'); el.className = 'mo redeploy';
     const lo = st.loadout || {};
     const ki = (k, it) => !it ? '' : `<span class="ki">${it.kind === 'perk' ? `<span class="th">${perkGlyph(it.perk_id)}</span>` : `<span class="th">${weaponArt(it.weapon_id)}</span>`}<span><span class="kk">${k}</span><br><span class="kn">${esc(it.name).toUpperCase()}</span></span></span>`;
     el.innerHTML = `<div class="wipe"></div><div class="slash"></div><div class="beam"></div>
-      <div class="r"><span class="t">REDEPLOYED</span><span class="h">WEAPONS HOT ▸▸▸</span><span class="s">${st.maxHp} HP · ${st.maxArmor} ARMOR · MAG FULL</span>
+      <div class="r"><span class="t">REDEPLOYED</span>${this._redeployLine(st)}<span class="s">${st.maxHp} HP · ${st.maxArmor} ARMOR · MAG FULL</span>
         <div class="kit">${ki('PRIMARY', lo.primary)}${ki('SECONDARY', lo.secondary)}${ki('PERK', lo.perk)}</div></div>
       <div class="l"><span class="cs">${esc(st.callsign)}</span><span class="sq">${esc(st.teamName)} SQUAD</span></div>`;
     this._flash();
-    const live = this._swap('redeploy', el, 1700, 2100);
+    // 2026-09-19: a timed respawn holds the trigger for the weapon delay (up to 3 s), so the overlay stays until the
+    // weapon is live and a beat after; `_redeployTick` swaps the line to WEAPONS HOT the moment it is.
+    const arming = Number(st.weaponArming) || 0;
+    const live = this._swap('redeploy', el, Math.max(1700, arming + 400), Math.max(2100, arming + 800));
     // fit the headline to its column: font metrics differ per platform and a fixed size ran off the right edge (review #31)
     const t = live.querySelector('.t'); let fs = 56;
     while (t && t.scrollWidth > t.clientWidth + 1 && fs > 28) { fs -= 2; t.style.fontSize = fs + 'px'; }

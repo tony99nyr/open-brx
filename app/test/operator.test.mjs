@@ -13,10 +13,13 @@ const { Engine } = E;
 const CAP = E.SPAWN_PROTECT_MAX_MS ?? 2100;
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 const TAKE = golden.sir_pool[0];
+// 2026-09-19: a bundle from an MC before the respawn profiles (protection ends on the first shot or the cap).
+const legacyBundle = (({ respawn_profile, ...rest }) => rest)(golden);
 
 function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
-function live() {
+function live({ legacy = false } = {}) {
+  const bundle = legacy ? legacyBundle : golden;
   const writes = []; const facts = []; const logs = []; let clock = 1_000_000; let failWrites = 0, failIf = () => true; const batches = [];
   const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
   const config = { config_id: golden.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 600,
@@ -26,7 +29,7 @@ function live() {
     synced: () => true, storage: mkStorage(), log: (l, c) => logs.push([l, c]), delay: (ms, fn) => fn(), rng: () => 0 });
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   eng.onMcMessage({ kind: 'assign', body: { player, team: teams[0], roster: [] } });
-  eng.onMcMessage({ kind: 'config', body: { config, frames: { ...golden, player_id: 'p1' }, roster: [] } });
+  eng.onMcMessage({ kind: 'config', body: { config, frames: { ...bundle, player_id: 'p1' }, roster: [] } });
   eng.feedFrame('$LCD,0,0,0,0,0,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
   const h = {
@@ -67,8 +70,8 @@ test('A47 resync: $TID, the CURRENT ammo, $BMAP,0,0, then the live $SIR take -- 
   assert.equal(h.eng.spawned, true, 'still spawned: not a config push');
 });
 
-test('A47 resync inside spawn protection leaves the pending take to its own trigger (A44)', () => {
-  const h = live();
+test('(legacy bundle) A47 resync inside spawn protection leaves the pending take to its own trigger (A44)', () => {
+  const h = live({ legacy: true });
   h.frame('$HP,0,0,0,*'); h.adv(8010);   // die, auto revive: protection pending again
   assert.equal(h.eng.alive, true); assert.ok(h.eng._armPending, 'setup: protected');
   const n = h.mark();
@@ -86,8 +89,8 @@ test('A47 resync of a down player writes nothing (FORCE RESPAWN is the cure)', (
   assert.deepEqual(h.since(n), []);
 });
 
-test('A47 respawn while DOWN: ends the down state at once with a normal revive, books no death and no kill', () => {
-  const h = live();
+test('(legacy bundle) A47 respawn while DOWN: ends the down state at once with a normal revive, books no death and no kill', () => {
+  const h = live({ legacy: true });
   h.frame('$HP,0,0,0,*');
   assert.equal(h.eng.alive, false); const deaths = h.eng.deaths;
   const nFacts = h.facts.length; const n = h.mark();
@@ -282,8 +285,8 @@ test('pl4: a false revive write never re-sends $SPAWN, and the live take is writ
   assert.equal(h.eng.state().poolStale, null, 'RESYNC GUN clears it');
 });
 
-test('pl4: a false revive write inside spawn protection keeps the take pending, and never re-sends $SPAWN', async () => {
-  const h = live();
+test('(legacy bundle) pl4: a false revive write inside spawn protection keeps the take pending, and never re-sends $SPAWN', async () => {
+  const h = live({ legacy: true });
   h.frame('$HP,0,0,0,*');
   const n = h.batches.length;
   h.failNext(5, hasSpawn).op('respawn');

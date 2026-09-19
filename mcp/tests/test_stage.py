@@ -18,9 +18,21 @@ async def _nosleep(_s):
     return None
 
 
-def mk(**profile):
+class LegacyCompiler(Compiler):
+    """A compiler whose bundle has no `respawn_profile`: the legacy spawn/revive path (an app < 0.4.3).
+    Tests written against the legacy `spawn`/`revive` lists use it, as app/test/spawn-protect.test.mjs does.
+    test_stage_respawn_profile.py covers the profile path."""
+
+    def compile(self, *a, **kw):
+        bundle = super().compile(*a, **kw)
+        bundle.pop("respawn_profile", None)
+        return bundle
+
+
+def mk(legacy=False, **profile):
     mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1)])
-    st = GunStage(mgr, None, sleep=_nosleep, voice_verdict_sink=lambda _r: None)   # never read/write ~/.brx-mcp from a test
+    st = GunStage(mgr, None, compiler=LegacyCompiler() if legacy else None,
+                  sleep=_nosleep, voice_verdict_sink=lambda _r: None)   # never read/write ~/.brx-mcp from a test
     if profile:
         st.set_profile(**profile)
     return st, mgr
@@ -109,7 +121,7 @@ def test_a_full_mc_config_and_a_presentation_patch_reshape_the_stage():
 
 def test_arm_spawn_event_kill_and_headset_write_the_bundles_frames():
     async def run():
-        st, mgr = mk(headset="team")
+        st, mgr = mk(legacy=True, headset="team")
         await st.connect("FA:KE:00:00:00:01")
         await st.arm()
         frames = tx(mgr)
@@ -150,7 +162,7 @@ def test_arm_spawn_event_kill_and_headset_write_the_bundles_frames():
 
 def test_an_ir_hit_on_the_fake_gun_plays_the_victim_overlay_and_a_kill_plays_the_death():
     async def run():
-        st, mgr = mk(gun="health")
+        st, mgr = mk(legacy=True, gun="health")
         st.patch_presentation({"headset": {"hit": "red"}})       # opt-in hit colour so the headset flash is testable
         await st.connect("FA:KE:00:00:00:01")
         await st.arm(); await st.spawn(); await settle(st); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
@@ -703,10 +715,11 @@ def _pset_of(mgr):
     return [f for f in tx(mgr) if f.startswith("$PSET,")][-1]      # the LAST arm's $PSET
 
 
-def _mk_rng(seed, **profile):
+def _mk_rng(seed, legacy=False, **profile):
     import random
     mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1)])
-    st = GunStage(mgr, None, sleep=_nosleep, voice_verdict_sink=lambda _r: None, rng=random.Random(seed))
+    st = GunStage(mgr, None, compiler=LegacyCompiler() if legacy else None,
+                  sleep=_nosleep, voice_verdict_sink=lambda _r: None, rng=random.Random(seed))
     if profile:
         st.set_profile(**profile)
     return st, mgr
@@ -804,7 +817,7 @@ def _voice_plays(frames):
 def test_spawn_plays_one_take_of_the_spawn_pool_and_the_pset_cry_field_is_empty():
     """Male player: VAI / VAN / VAO, one at random right after $SFLASH, in the SAME write; the head's $PSET carries an
     EMPTY battleRespawnCry so the firmware says nothing (depends on the compiler shipping cues/cue_pools["spawn"])."""
-    st, mgr = _mk_rng(2, voice="male")
+    st, mgr = _mk_rng(2, legacy=True, voice="male")
     asyncio.run(_arm(st))
     pset = _pset_of(mgr).split(",")
     assert pset[11] == "", f"battleRespawnCry must be empty, got {pset[11]!r} in {_pset_of(mgr)}"
@@ -857,7 +870,7 @@ def test_spawn_plays_one_take_of_the_spawn_pool_and_the_pset_cry_field_is_empty(
 
 
 def test_revive_writes_exactly_one_spawn_line_in_the_revive_write():
-    st, mgr = _mk_rng(5, voice="male")
+    st, mgr = _mk_rng(5, legacy=True, voice="male")
     asyncio.run(_arm(st))
     pool = st.bundle["cue_pools"].get("respawned") or [st.bundle["cues"]["respawned"]]
 

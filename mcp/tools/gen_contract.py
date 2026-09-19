@@ -187,6 +187,13 @@ class UnmappedType(TypeError):
     pass
 
 
+def _lit(a: Any) -> str:
+    """One Literal member in TS: a string is quoted, an int (2026-09-19: the respawn options) is bare."""
+    if isinstance(a, bool) or not isinstance(a, (str, int)):
+        raise UnmappedType(f"a Literal member must be a string or an int: {a!r}")
+    return f"'{a}'" if isinstance(a, str) else str(a)
+
+
 def _literal_args(tp: Any) -> tuple[Any, ...] | None:
     return get_args(tp) if get_origin(tp) is Literal else None
 
@@ -386,7 +393,7 @@ def _render_literal_aliases(model: "_Model") -> list[str]:
         jd = model.literal_alias_docs.get(name)
         if jd:
             out.append(jd)
-        union = " | ".join("'" + a + "'" for a in args)
+        union = " | ".join(_lit(a) for a in args)
         out.append(f"export type {name} = {union};")
     out.append("")
     return out

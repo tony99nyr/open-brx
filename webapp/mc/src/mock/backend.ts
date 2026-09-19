@@ -4,7 +4,7 @@ import type {
   ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, ReportResult, SavedGame, ScanRow, ScoreRow, StartView, State, StationAssignment, StationKind, StationSourceId,
   StationView, TunnelProvider, TunnelStatus, WeaponView,
 } from '../api/types';
-import { STATION_KINDS, STATION_SOURCE_IDS } from '../api/types';
+import { STATION_KINDS, STATION_SOURCE_IDS, STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
 import { withPolicy } from '../screens/gameSummary';
 import { GUN_FLAPPING_LINE } from '../api/derive';
 import { GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
@@ -50,6 +50,12 @@ const MOCK_SOURCE_DESC: Record<StationSourceId, string> = {
   phone: 'a spare phone in the utility role as a BLE control point, capture by presence (spec/utility.md §5d)',
 };
 const MOCK_STATION_SOURCES = STATION_SOURCE_IDS.map(value => ({ value, desc: MOCK_SOURCE_DESC[value] }));
+// Respawn profiles (2026-09-19, mirrors `compile.TIMED_PROTECT_S_OPTIONS` / `WEAPON_DELAY_MS_OPTIONS` /
+// `STATION_PROTECT_S_OPTIONS`: `TimedProtectS`/`WeaponDelayMs`/`StationProtectS`'s `get_args()` on the
+// server; those are TYPE aliases here, so the option lists are hand-kept in step with them).
+const TIMED_PROTECT_S_OPTIONS = [0, 1, 2] as const;
+const WEAPON_DELAY_MS_OPTIONS = [500, 1000, 3000] as const;
+const STATION_PROTECT_S_OPTIONS = [0, 2, 3] as const;
 const uid = (p: string) => `${p}_${Math.random().toString(36).slice(2, 8)}`;
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 
@@ -989,6 +995,19 @@ export class MockBackend implements Api {
     if ('station_source' in partial && partial.station_source != null && !MOCK_STATION_SOURCES.some(s => s.value === partial.station_source)) {
       throw new Error('station_source must be null or one of: '
         + MOCK_STATION_SOURCES.map(s => `${s.value} (${s.desc})`).join(', '));
+    }
+    // 2026-09-19 respawn profiles: `respawn.protect_s`/`weapon_delay_ms`/`station_protect_s` are each a
+    // closed set of options (`compile.respawn_settings`, same refusal wording); an absent key keeps its
+    // default rather than being refused, exactly like the real server merging onto the current config.
+    if (partial.respawn) {
+      const merged = { ...this.config.respawn, ...partial.respawn };
+      for (const [name, v, ok] of [
+        ['protect_s', merged.protect_s ?? TIMED_PROTECT_S_DEFAULT, TIMED_PROTECT_S_OPTIONS],
+        ['weapon_delay_ms', merged.weapon_delay_ms ?? WEAPON_DELAY_MS_DEFAULT, WEAPON_DELAY_MS_OPTIONS],
+        ['station_protect_s', merged.station_protect_s ?? STATION_PROTECT_S_DEFAULT, STATION_PROTECT_S_OPTIONS],
+      ] as const) {
+        if (!(ok as readonly number[]).includes(v)) throw new Error(`respawn.${name} must be one of ${ok.join(', ')}`);
+      }
     }
     if (Object.keys(partial).some(k => !['environment', 'night', 'config_id'].includes(k))) this.activePreset = null;   // a real edit: no longer that saved game
     // F-10 (2026-09-13): `state.py set_config` rebuilds the WHOLE config from `default_config(mode)`

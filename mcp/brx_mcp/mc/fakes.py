@@ -8,9 +8,9 @@ import time
 from typing import Callable
 
 from ..gameconfig import GSET_T2_SAFE
-from .compile import HEADSET_ALERT_BRIGHTNESS, SPAWN_PROTECT_OFF, SPAWN_PROTECT_ON, TRIGGER_HELD, TRIGGER_LIVE, VOL_TRYOUT, check_volume, play_volume   # one volume policy for the real and the fake paths
+from .compile import HEADSET_ALERT_BRIGHTNESS, SPAWN_PROTECT_OFF, SPAWN_PROTECT_ON, TRIGGER_HELD, TRIGGER_LIVE, VOL_TRYOUT, check_volume, life_frames, play_volume, respawn_settings, shield_frame   # one volume policy for the real and the fake paths
 from . import frames as _frames        # A36: a fake gun answers from the head it was actually sent
-from .types import (ArmoryRecord, FrameBundle, GameConfig, PerkView, Player, ScanRow, Team, VoiceOption, Weapon, WeaponView,
+from .types import (ArmoryRecord, FrameBundle, RespawnProfile, GameConfig, PerkView, Player, ScanRow, Team, VoiceOption, Weapon, WeaponView,
                     MAX_PLAYERS)
 
 _WEAPONS = [  # (weapon_id, name, cls, clip, mags, reload_s, dmg, rpm, rng)
@@ -97,7 +97,17 @@ class FakeCompiler:
         head += [*sir_protected, TRIGGER_HELD, f"$TID,{tid},*"]
         sir_live = ["$SIR,0,0,,1,0,0,1,,*"]
         ammo = [f"$AMMO,{i},36,108,1,*" for i in range(len(weapons[:2]))]
+        # 2026-09-19 respawn profiles, built by the real compiler's helpers (no headset team repaint here).
+        protect_ms, trigger_ms, station_ms = respawn_settings(config.get("respawn"))
+        shield_on = shield_frame(station_ms, bool(config.get("night"))) if station_ms else ""
+        respawn_profile: RespawnProfile = {"protect_ms": protect_ms, "trigger_ms": trigger_ms, "station_protect_ms": station_ms,
+                           "spawn": life_frames(tid, ammo, [], protect_ms > 0, False, lead=["$PLAYX,0,*"]),
+                           "revive": life_frames(tid, ammo, [], protect_ms > 0, False),
+                           "revive_station": life_frames(tid, ammo, [], station_ms > 0, True, shield_on),
+                           "trigger_live": TRIGGER_LIVE, "shield_on": shield_on,
+                           "shield_off": "$HLED,9,0,,,10,,*" if shield_on else ""}
         return {"config_id": config["config_id"], "player_id": player["player_id"], "head": head,
+                "respawn_profile": respawn_profile,
                 "spawn": ["$PLAYX,0,*", "$SPAWN,,*", SPAWN_PROTECT_ON, f"$TID,{tid},*", *ammo, TRIGGER_LIVE],
                 "revive": ["$SPAWN,,*", SPAWN_PROTECT_ON, f"$TID,{tid},*", *ammo, TRIGGER_LIVE],
                 "spawn_protect_off": SPAWN_PROTECT_OFF,

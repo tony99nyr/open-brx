@@ -46,6 +46,13 @@ export const POOL_CHECK_SETTLE_MS = 2000;
 export const RESYNC_PROBE_S = 10;
 export const DEFAULT_RUNWAY_S = 120;
 export const PROTOCOL_V = 1;
+export const TIMED_PROTECT_S_DEFAULT = 0;
+export const WEAPON_DELAY_MS_DEFAULT = 500;
+export const STATION_PROTECT_S_DEFAULT = 2;
+/** timed: the trigger goes live at least this long after protection ends */
+export const TRIGGER_AFTER_PROTECT_MS = 500;
+/** a death this soon after a timed respawn raises the down-screen warning */
+export const SPAWN_KILL_WINDOW_MS = 10000;
 /** advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral */
 export const STATION_TEAM_ANY = 255;
 /** net.md §8 size cap */

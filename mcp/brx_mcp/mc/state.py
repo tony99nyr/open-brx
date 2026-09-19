@@ -2255,7 +2255,17 @@ class Session:
                     if d in (1, 2):
                         raise ValueError("respawn.delay_s of 1-2s wedges the headset in the relay's "
                                          "out-blink (F13); use 0 (no respawn) or >= 3")
-                    cfg["respawn"] = {"type": merged["type"], "delay_s": d}
+                    # 2026-09-19 respawn profiles: the timed and station protection and the weapon delay.
+                    # `respawn_settings` refuses a value outside the options; an absent key keeps its default.
+                    _compile.respawn_settings(merged)
+                    respawn: Respawn = {"type": merged["type"], "delay_s": d}
+                    if "protect_s" in merged:
+                        respawn["protect_s"] = merged["protect_s"]
+                    if "weapon_delay_ms" in merged:
+                        respawn["weapon_delay_ms"] = merged["weapon_delay_ms"]
+                    if "station_protect_s" in merged:
+                        respawn["station_protect_s"] = merged["station_protect_s"]
+                    cfg["respawn"] = respawn
                 if k == "scoring":
                     fl = merged.get("frag_limit")
                     if fl is not None and not (isinstance(fl, int) and not isinstance(fl, bool) and fl > 0):

@@ -2,7 +2,8 @@
 // with a sticky summary rail that reads like the card will and holds SAVE / SAVE AS NEW / PLAY THIS NOW.
 // Edits a DRAFT: nothing touches the live config until PLAY. Pool preview comes from the server's rule engine.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LoadoutPreset, PerkView, SavedGame, SlotChoice, SlotRule, WeaponView } from '../api/types';
+import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LoadoutPreset, PerkView, SavedGame, SlotChoice, SlotRule, StationProtectS, TimedProtectS, WeaponDelayMs, WeaponView } from '../api/types';
+import { STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
 import { useStore } from '../store';
 import { F, PERK_COLOR, ROLE, T, TAB, roleOf } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, StripedSlot, Toggle, ValueBox } from '../ui';
@@ -170,6 +171,32 @@ export function Designer() {
                   control skips that band instead of letting the operator step into an error: up from 0 lands on 3,
                   down from 3 lands on 0 (no respawn). */}
               <Row label={<>RESPAWN DELAY <Hint>0 = none · min 3</Hint></>}><ValueBox value={cfg.respawn.delay_s} unit="S" label="respawn delay seconds" min={0} max={300} onChange={v => put({ respawn: { ...cfg.respawn, delay_s: (v > 0 && v < 3) ? (v > (cfg.respawn.delay_s ?? 0) ? 3 : 0) : v } })} /></Row>
+              {/* 2026-09-19 respawn profiles (contracts.md §3): a TIMED respawn (AUTO) holds the trigger for
+                  WEAPON DELAY after the revive; with protection on, the trigger goes live no sooner than
+                  0.5 s after protection ends. A STATION respawn (SCANNER) is protected instead, with the
+                  trigger live at once and a shield shown on the headset. NONE has neither. The T-0 spawn uses
+                  neither: at go-live every player is hittable and can fire. */}
+              {cfg.respawn.type === 'auto' && (
+                <>
+                  <Row label={<>RESPAWN PROTECTION <Hint>Seconds immune after a timed respawn</Hint></>}>
+                    <Seg value={String(cfg.respawn.protect_s ?? TIMED_PROTECT_S_DEFAULT)} label="respawn protection seconds" pad="5px 11px"
+                      options={[{ value: '0', label: '0 S' }, { value: '1', label: '1 S' }, { value: '2', label: '2 S' }]}
+                      onChange={v => put({ respawn: { ...cfg.respawn, protect_s: Number(v) as TimedProtectS } })} />
+                  </Row>
+                  <Row label={<>WEAPON DELAY <Hint>The trigger goes live this long after spawn</Hint></>}>
+                    <Seg value={String(cfg.respawn.weapon_delay_ms ?? WEAPON_DELAY_MS_DEFAULT)} label="respawn weapon delay" pad="5px 11px"
+                      options={[{ value: '500', label: '0.5 S' }, { value: '1000', label: '1 S' }, { value: '3000', label: '3 S' }]}
+                      onChange={v => put({ respawn: { ...cfg.respawn, weapon_delay_ms: Number(v) as WeaponDelayMs } })} />
+                  </Row>
+                </>
+              )}
+              {cfg.respawn.type === 'scanner' && (
+                <Row label={<>STATION PROTECTION <Hint>Seconds immune after a station respawn, shield shown on the headset</Hint></>}>
+                  <Seg value={String(cfg.respawn.station_protect_s ?? STATION_PROTECT_S_DEFAULT)} label="station respawn protection seconds" pad="5px 11px"
+                    options={[{ value: '0', label: '0 S' }, { value: '2', label: '2 S' }, { value: '3', label: '3 S' }]}
+                    onChange={v => put({ respawn: { ...cfg.respawn, station_protect_s: Number(v) as StationProtectS } })} />
+                </Row>
+              )}
               <Row label="HEALTH"><ValueBox value={cfg.health.max_hp} unit="HP" min={1} max={999} label="health" onChange={v => put({ health: { ...cfg.health, max_hp: v } })} /></Row>
               <Row label={<>ARMOR <Hint>0 means one-shot with a sniper</Hint></>}><ValueBox value={cfg.health.max_armor} unit="AR" min={0} max={999} label="armor" onChange={v => put({ health: { ...cfg.health, max_armor: v } })} /></Row>
               {/* F70: the modes with an objective need something ON THE FIELD emitting it, and until now

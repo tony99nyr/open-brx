@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import math
 import pathlib
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 import random as _random
 
@@ -22,8 +22,10 @@ from .. import hitaudio as _ha
 from ..protocol import PANIC_SEQUENCE
 from .perks import PerkCatalog
 from .policy import SIDEARM_TAG          # F146: one vocabulary for "this is a backup weapon"
-from .types import (MAX_PLAYERS, OBJECTIVE_MODES, STATION_SOURCES, FrameBundle, GameConfig, PerkEffectsResolved,
-                    PerkView, Player, Team, ValuePair, VoiceOption, Weapon, parse_win_by)
+from .types import (MAX_PLAYERS, OBJECTIVE_MODES, STATION_PROTECT_S_DEFAULT, STATION_SOURCES, TIMED_PROTECT_S_DEFAULT,
+                    TRIGGER_AFTER_PROTECT_MS, WEAPON_DELAY_MS_DEFAULT, FrameBundle, GameConfig, PerkEffectsResolved,
+                    PerkView, Player, RespawnProfile, StationProtectS, Team, TimedProtectS, ValuePair, VoiceOption,
+                    WeaponDelayMs, Weapon, parse_win_by)
 from . import presentation as _pres
 from .. import poolgauge as pg
 from .. import voices as _voices
@@ -701,6 +703,84 @@ def assert_trigger_held_until_spawn(head: list[str], spawn: list[str], revive: l
         if "$SPAWN,,*" not in frames or TRIGGER_LIVE not in frames[frames.index("$SPAWN,,*") + 1:]:
             raise ValueError(f"TRIGGER GUARD: {name} does not map the trigger ({TRIGGER_LIVE}) after "
                              "$SPAWN, so the player goes live and cannot fire")
+
+
+# Respawn profiles (Tony, 2026-09-19; docs/spec/contracts.md §3). Field problem: a protected player's headset
+# flashed "hit" and took no damage, so shooters thought the game was broken, and the respawner could fire while
+# protected. So a TIMED respawn (in place: `respawn.type` "auto", an operator respawn) now writes
+# NO `$TMP` by default and holds the trigger (`TRIGGER_HELD`) until the node writes `trigger_live`. A STATION
+# respawn keeps protection (default 2 s), maps the trigger at once, and lights a shield on the headset so the
+# shooters can see why their hits do nothing. Neither profile ends protection on the first shot. The T-0 spawn is
+# neither (Tony, field 2026-09-19: at match start everyone is equal): no t8 and the trigger live at go-live, with
+# the live table already on the gun (the node writes it at T-3, while the head still holds every trigger).
+# These lists live in `respawn_profile`; the legacy `spawn`/`revive` lists stay as they were for an app < 0.4.3.
+TIMED_PROTECT_S_OPTIONS = get_args(TimedProtectS)
+WEAPON_DELAY_MS_OPTIONS = get_args(WeaponDelayMs)
+STATION_PROTECT_S_OPTIONS = get_args(StationProtectS)
+_SHIELD_COLOUR = 6        # white: the native hit flash is the SMALL green LED, so a white big-LED blink reads apart
+_SHIELD_BLINK_MS = 150    # on and off; the blink form `$HLED,<c>,2,<on>,<off>,<b>,<count>` is bench-proven in game
+
+
+def respawn_settings(respawn) -> tuple[int, int, int]:
+    """`config.respawn` -> (timed protect ms, timed trigger ms, station protect ms). Absent keys take the
+    defaults. Raises ValueError on a value outside the options. The timed trigger never goes live while the
+    player is protected: with protection on, it waits TRIGGER_AFTER_PROTECT_MS past the end of it."""
+    r = respawn or {}
+    protect_s = r.get("protect_s", TIMED_PROTECT_S_DEFAULT)
+    delay_ms = r.get("weapon_delay_ms", WEAPON_DELAY_MS_DEFAULT)
+    station_s = r.get("station_protect_s", STATION_PROTECT_S_DEFAULT)
+    for name, v, ok in (("protect_s", protect_s, TIMED_PROTECT_S_OPTIONS),
+                        ("weapon_delay_ms", delay_ms, WEAPON_DELAY_MS_OPTIONS),
+                        ("station_protect_s", station_s, STATION_PROTECT_S_OPTIONS)):
+        if isinstance(v, bool) or v not in ok:
+            raise ValueError(f"respawn.{name} must be one of {', '.join(str(o) for o in ok)}")
+    protect_ms = int(protect_s) * 1000
+    trigger_ms = max(int(delay_ms), protect_ms + TRIGGER_AFTER_PROTECT_MS if protect_ms else 0)
+    return protect_ms, trigger_ms, int(station_s) * 1000
+
+
+def shield_frame(ms: int, night: bool) -> str:
+    """The station-respawn shield: a white blink on the headset for `ms`. The count covers the window; the node
+    writes `shield_off` when protection ends, because a count-limited blink ending dark is not verified."""
+    count = max(1, math.ceil(ms / (2 * _SHIELD_BLINK_MS)))
+    return f"$HLED,{_SHIELD_COLOUR},2,{_SHIELD_BLINK_MS},{_SHIELD_BLINK_MS},{pg.BRIGHT_DIM if night else pg.BRIGHT_FULL},{count},*"
+
+
+def life_frames(team: int, ammo: list[str], hled: list[str], protect: bool, trigger_live: bool,
+                shield: str = "", lead: list[str] | None = None) -> list[str]:
+    """One spawn or revive write in the bench-proven order: `$SPAWN`, then t8 (only when protected), then
+    `$TID`, the loadout `$AMMO`, the trigger row, the headset team repaint, and the shield last."""
+    return ([*(lead or []), "$SPAWN,,*"] + ([SPAWN_PROTECT_ON] if protect else []) + [f"$TID,{team},*"] + list(ammo)
+            + [TRIGGER_LIVE if trigger_live else TRIGGER_HELD] + list(hled) + ([shield] if shield else []))
+
+
+def assert_respawn_profile(rp) -> None:
+    """2026-09-19 guard: the T-0 spawn maps the trigger and carries no t8 (everyone is equal at go-live); a timed
+    list holds the trigger and carries t8 only when timed protection is on; a station list maps the trigger and
+    carries t8 only when station protection is on. Every list keeps the
+    F121 order ($SPAWN, [t8], $TID) and carries no `$SIR` row. Raises ValueError naming the list."""
+    timed = [("revive", rp["revive"])] + [(f"team_flip[{k}]", v) for k, v in (rp.get("team_flip") or {}).items()]
+    for name, frames, protect, live in ([("spawn", rp["spawn"], False, True)]
+                                        + [(n, f, rp["protect_ms"] > 0, False) for n, f in timed]
+                                        + [("revive_station", rp["revive_station"], rp["station_protect_ms"] > 0, True)]):
+        if frames.count("$SPAWN,,*") != 1:
+            raise ValueError(f"RESPAWN GUARD: respawn_profile.{name} must carry exactly one $SPAWN,,*")
+        after = frames[frames.index("$SPAWN,,*") + 1:]
+        want = [SPAWN_PROTECT_ON] if protect else []
+        if after[:len(want)] != want or not after[len(want):len(want) + 1] or not after[len(want)].startswith("$TID,"):
+            raise ValueError(f"RESPAWN GUARD: respawn_profile.{name} must write $SPAWN,,*, then "
+                             f"{'the t8 write, then ' if protect else ''}$TID, back to back: {after[:3]}")
+        if frames.count(SPAWN_PROTECT_ON) != len(want) or any(f.startswith("$TMP") and f != SPAWN_PROTECT_ON for f in frames):
+            raise ValueError(f"RESPAWN GUARD: respawn_profile.{name} carries a $TMP it should not")
+        if any(f.startswith("$SIR") for f in frames):
+            raise ValueError(f"RESPAWN GUARD: respawn_profile.{name} carries $SIR rows")
+        if (TRIGGER_LIVE if live else TRIGGER_HELD) not in after or (TRIGGER_HELD if live else TRIGGER_LIVE) in frames:
+            raise ValueError(f"RESPAWN GUARD: respawn_profile.{name} must {'map' if live else 'hold'} the trigger "
+                             f"({TRIGGER_LIVE if live else TRIGGER_HELD}) after $SPAWN")
+    if rp["trigger_live"] != TRIGGER_LIVE:
+        raise ValueError(f"RESPAWN GUARD: respawn_profile.trigger_live must be {TRIGGER_LIVE}")
+    if rp["protect_ms"] and rp["trigger_ms"] < rp["protect_ms"] + TRIGGER_AFTER_PROTECT_MS:
+        raise ValueError("RESPAWN GUARD: a timed respawn would map the trigger while the player is still protected")
 
 
 def _bundle_frames(value) -> list[str]:
@@ -2117,6 +2197,28 @@ class Compiler:
             bundle["team_flip"] = flip
             if take:
                 bundle["team_flip_take"] = take
+        # 2026-09-19: the respawn profiles. Built from the same ammo and team repaint as the legacy lists above.
+        hled_tail = play_hled if prof.get("headset_team", True) else []
+        protect_ms, trigger_ms, station_ms = respawn_settings(config.get("respawn"))
+        shield_on = shield_frame(station_ms, night) if station_ms and gc.leds else ""
+        rp: RespawnProfile = {
+            "protect_ms": protect_ms, "trigger_ms": trigger_ms, "station_protect_ms": station_ms,
+            # the T-0 spawn is neither profile: everyone goes live AND hittable at go-live, trigger mapped, no t8
+            # (Tony, field 2026-09-19). The node writes the live table at T-3, while every trigger is still held.
+            "spawn": life_frames(tid, ammo, hled_tail, False, True, lead=["$PLAYX,0,*"]),
+            "revive": life_frames(tid, ammo, hled_tail, protect_ms > 0, False),
+            "revive_station": life_frames(tid, ammo, hled_tail, station_ms > 0, True, shield_on),
+            "trigger_live": TRIGGER_LIVE,
+            "shield_on": shield_on,
+            # the headset's in-play rest: the team repaint when the game paints one, else dark by colour
+            "shield_off": (hled_tail[0] if hled_tail else _pres.HEADSET_DARK) if shield_on else "",
+        }
+        if config["mode"] == "infection":
+            rp["team_flip"] = {str(t["tid"]): [f"$TID,{t['tid']},*"] + life_frames(int(t["tid"]), ammo, hled_tail, protect_ms > 0, False)
+                               for t in teams if int(t["tid"]) != tid}
+        assert_respawn_profile(rp)
+        assert_team_byte_consistent(rp["spawn"] + rp["revive"] + rp["revive_station"])
+        bundle["respawn_profile"] = rp
         assert_rearms_every_life(bundle)   # F121: whichever carrier is active, every life gets the real table back
         # S50 build 4: {perk_id, mag/reserve/reload_ms/swap_ms/max_armor/max_shield: {base,resolved}},
         # absent when this player carries no perk — persisted on the bundle (not a one-shot message)
@@ -2345,6 +2447,10 @@ class Compiler:
         # lms ⇔ no auto-respawn (none / finite lives)
         if mode == "lms" and config.get("respawn", {}).get("type") == "auto":
             errors.append("lms cannot use respawn.type=='auto'")
+        try:
+            respawn_settings(config.get("respawn"))   # 2026-09-19: the protection and weapon-delay options
+        except ValueError as e:
+            errors.append(str(e))
 
         # station-gated objective modes need a Tier-1 station/objective source (modes §7).
         # `extraction` is deliberately NOT gated: its objective logic runs MC-side on gun events

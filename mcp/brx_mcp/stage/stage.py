@@ -28,7 +28,7 @@ from ..mc import frames as _mc_frames
 from ..mc import presentation as _pres
 from ..mc.compile import Compiler
 from ..mc.state import default_config
-from ..mc.types import FrameBundle, GameConfig, Player, STATION_SOURCES
+from ..mc.types import FrameBundle, GameConfig, Player, RespawnProfile, SPAWN_KILL_WINDOW_MS, STATION_SOURCES
 
 
 class Advert(TypedDict):
@@ -70,6 +70,17 @@ class StunnedState(TypedDict):
     at: float
     until: float
     ammo: dict[int, list[int | None]]
+
+
+class ArmPending(TypedDict):
+    """engine.js `_armPending`, in seconds. `until`: protection ends this long after `at`. `shot_ends`: the
+    gun's first shot ends it too (the legacy path only). `off`: write `spawn_protect_off` at the end.
+    `shield`: a station life shows the headset shield, so `shield_off` goes out at the end."""
+    at: float
+    until: float
+    shot_ends: bool
+    off: bool
+    shield: bool
 
 
 class Profile(TypedDict):
@@ -480,7 +491,15 @@ class GunStage:
                                         # `_last_seq` (poll's own fetch cursor) so the instant on_frame
                                         # callback and a later poll() never react to the same frame twice
         self.scream_this_life: str | None = None   # A15.3: the death-scream id last written into a $PSET, or None
-        self._arm_pending: float | None = None     # F209: now() of the spawn/revive write until `_arm_life` ends spawn protection
+        # F209: {at, until, shot_ends, off, shield} from a spawn/revive write until `_arm_life` ends spawn protection
+        # (engine.js `_armPending`; `at` and `until` are in seconds here)
+        self._arm_pending: ArmPending | None = None
+        # 2026-09-19 respawn profiles (engine.js `_triggerPending` / `_downWarn` / `_timedLifeAt` / `_shieldAt`)
+        self._trigger_pending: dict | None = None  # {at, due} while a timed spawn/revive holds the trigger
+        self._down_warn = 1                        # the down-screen warning level, 1..DOWN_WARN_MAX
+        self._timed_life_at: float | None = None   # now() of the last timed revive, for the spawn-kill window
+        self._shield_at = float("-inf")            # the last shield re-assert after a hit
+        self._pre_armed = False                    # engine.js `_preArmed`: the T-3 table take is written once per match
         # F121 rebuild (engine.js `_sirLive` / `_sirGen`): is the gun's `$SIR` table the live one? Any write with a
         # `$SIR` row or `$CLEAR` makes it False and bumps the generation; a `sir_pool` take claims it.
         self._sir_live = False
@@ -1174,6 +1193,17 @@ class GunStage:
     # `spawn_protect_off` turns it off on the gun's first shot or SPAWN_PROTECT_MAX_S after the write, behind a
     # `sir_pool` take when the gun's table is not the live one. Death, end, panic and a head cancel it.
     SPAWN_PROTECT_MAX_S = 2.1   # engine.js SPAWN_PROTECT_MAX_MS
+    # 2026-09-19 respawn profiles (engine.js `_armAfterSpawn` / `_triggerLive` / `_shieldReassert`). A bundle
+    # with `respawn_profile` never ends protection on a shot. A TIMED spawn or revive holds the trigger until
+    # `trigger_ms` and protects only when the game sets `protect_ms`. A STATION revive maps the trigger at once
+    # and shows a shield on the headset until `station_protect_ms`. A bundle without the profile keeps the
+    # legacy path above.
+    SHIELD_REASSERT_S = 0.5     # engine.js SHIELD_REASSERT_MS
+    SPAWN_KILL_WINDOW_S = SPAWN_KILL_WINDOW_MS / 1000   # engine.js SPAWN_KILL_WINDOW_MS (types.py)
+    DOWN_WARN_MAX = 3           # engine.js DOWN_WARN_MAX
+    # engine.js PRE_ARM_TABLE_MS: the live table goes on the gun this long before go-live. The stage's T-3 is
+    # the countdown cue, COUNTDOWN_LEAD_S before the spawn, so the two must stay the same number.
+    PRE_ARM_TABLE_S = 3.0
 
     # ---- F208 pool staleness (engine.js `_awaitShot` / `_noFireTick` / `poolStale`) ---------------------
     # 'silent': no frame of any kind for GUN_QUIET_STALE_S (an idle gun sends a $VOLTS every ~60 s, one can go
@@ -1241,6 +1271,9 @@ class GunStage:
         ("reloading", lambda s: bool(s.reloading)),
         ("stunned", lambda s: bool(s.stunned)),
         ("heat", lambda s: s._heat_blocks_fire()),
+        # 2026-09-19: a timed respawn holds the trigger for the weapon delay. A pull then fires nothing by
+        # design, so it must not count towards F208's "the gun does not fire".
+        ("weaponHold", lambda s: s._trigger_pending is not None),
     )
     #: The names `_stand_down` answers to. test_stage_mirror.py reads every `_stand_down((...))` call site
     #: out of stage.py and asserts each name is in here, so a typo cannot silently drop a guard.
@@ -1433,7 +1466,7 @@ class GunStage:
 
     def _await_shot(self) -> None:
         """engine.js `_awaitShot`: a trigger press the gun should answer with a shot. A press while one is due keeps the first."""
-        if self._stand_down(("spawned", "ble", "alive", "switching", "reloading", "stunned", "heat")):
+        if self._stand_down(("spawned", "ble", "alive", "switching", "reloading", "stunned", "heat", "weaponHold")):
             return
         # F259: the ACCOUNT, not the last `$ALCD` -- a press whose round is still in flight has already
         # spent that round, and the gun's slower number would book a press an empty gun cannot answer.
@@ -1747,8 +1780,78 @@ class GunStage:
     def _protects_spawn(self) -> bool:
         return self._protect_mode() is not None
 
-    def _arm_after_spawn(self) -> None:
-        self._arm_pending = self.now() if self._protects_spawn() else None
+    def _arm_after_spawn(self, kind: str = "timed") -> None:
+        """engine.js `_armAfterSpawn(flip, kind)`. `kind` is 'timed' (a revive in place) or 'station'. With a
+        profile the T-0 spawn does not come here (`spawn` clears both pendings). This only stamps the
+        pendings: `revive` arms an unprotected life (`until` 0) itself once its write is queued. The stage
+        has no infection flip, so `flip` is not mirrored."""
+        rp = self._respawn_profile()
+        now = self.now()
+        if rp is None:
+            self._arm_pending = ({"at": now, "until": self.SPAWN_PROTECT_MAX_S, "shot_ends": True,
+                                  "off": self._protect_mode() == "tmp", "shield": False}
+                                 if self._protects_spawn() else None)
+            return
+        # The profile decides. Protection ends on the clock alone, never on a shot. With no protection the
+        # pending entry still exists (until 0), so `_arm_life` writes the table take, if one is owed, at once.
+        station = kind == "station"
+        until = (rp["station_protect_ms"] if station else rp["protect_ms"]) / 1000
+        self._arm_pending = ({"at": now, "until": until, "shot_ends": False, "off": until > 0,
+                              "shield": station and until > 0 and bool(rp.get("shield_on"))}
+                             if self._protects_spawn() or until > 0 else None)
+        self._trigger_pending = None if station else {"at": now, "due": now + (rp.get("trigger_ms") or 0) / 1000}
+
+    async def _pre_arm_table(self) -> None:
+        """engine.js `_preArmTable`: on a profile bundle, write the live `$SIR` table PRE_ARM_TABLE_MS before
+        go-live, once per match. The head left the silent fn-28 twin on the gun for the countdown and every
+        trigger is still held, so arming the table now costs nothing and every player is hittable the moment
+        the T-0 spawn maps the triggers. Skipped with the link down, as engine.js's tick gates it on `bleUp`."""
+        if self._pre_armed or self._respawn_profile() is None or not self.connected:
+            return
+        self._pre_armed = True
+        if self._sir_live:
+            return
+        take = self._pick_table("sir_pool")
+        if take:
+            await self.write(take, f"pre-arm hit table (T-{self.PRE_ARM_TABLE_S:g})", gap_ms=60, take=True)
+
+    def _respawn_profile(self) -> RespawnProfile | None:
+        """engine.js `_respawnProfile`: the bundle's respawn profile, or None on an older bundle (the legacy path)."""
+        rp = self.bundle.get("respawn_profile")
+        if (isinstance(rp, dict) and isinstance(rp.get("spawn"), list) and isinstance(rp.get("revive"), list)
+                and isinstance(rp.get("revive_station"), list) and isinstance(rp.get("trigger_live"), str)):
+            return rp
+        return None
+
+    def _repair_arm(self) -> ArmPending:
+        """engine.js `_repairArm`: the pending entry a repair path arms with. It arms at once and always writes
+        `spawn_protect_off` on a 'tmp' bundle, so a repair always ends protection. A station shield still
+        showing goes off with it. The stage's only repair path is the operator resync."""
+        p = self._arm_pending
+        return {"at": self.now(), "until": 0.0, "shot_ends": False, "off": self._protect_mode() == "tmp",
+                "shield": bool(p and p["shield"])}
+
+    def _trigger_live(self, why: str) -> None:
+        """engine.js `_triggerLive`: a timed respawn's weapon delay has run out, so map the trigger
+        (`respawn_profile.trigger_live`). Deliberate partial parity: engine.js writes it with `_writeMust` and
+        retries a failed write once in the same life; the stage writes it once."""
+        p, self._trigger_pending = self._trigger_pending, None
+        rp = self._respawn_profile()
+        if p is None or rp is None:
+            return
+        if not (self.spawned and self.alive):
+            self._log(f"weapon systems live ({why}) cancelled: not live", "info")
+            return
+        self._spawn_task(self.write([rp["trigger_live"]], f"weapon systems live ({why})", gap_ms=0))
+
+    def _shield_reassert(self) -> None:
+        """engine.js `_shieldReassert`: a registered hit clears a painted headset colour, so the station shield
+        is painted again after a hit that lands while it shows, at most once per SHIELD_REASSERT_S."""
+        p, rp, now = self._arm_pending, self._respawn_profile(), self.now()
+        if not p or not p["shield"] or not rp or not rp.get("shield_on") or now - self._shield_at < self.SHIELD_REASSERT_S:
+            return
+        self._shield_at = now
+        self._spawn_task(self.write([rp["shield_on"]], "shield after hit", gap_ms=0))
 
     def _arm_life(self, why: str) -> None:
         # Deliberate partial parity with engine.js: the stage has no reconcile-on-drop re-arm, no infection
@@ -1762,10 +1865,19 @@ class GunStage:
             return
         off = self.bundle.get("spawn_protect_off")
         tmp = self._protect_mode() == "tmp" and off is not None
-        need_take = not tmp or not self._sir_live or len(self.bundle.get("sir_pool") or []) > 1   # > 1 takes = A17 class sounds
+        pool = self.bundle.get("sir_pool") or []
+        need_take = bool(pool) and (not tmp or not self._sir_live or len(pool) > 1)   # > 1 takes = A17 class sounds
         take = self._pick_table("sir_pool") if need_take else []
-        frames = take + [off] if tmp and off is not None else take
-        why = (f"end spawn protection ({why})" + (f" + hit table {len(take)}r" if take else "")) if tmp else f"arm hit reception ({why})"
+        # 2026-09-19: `off` says whether this life was protected (a timed life with protection 0 writes no `$TMP`
+        # at all). A shielded station life ends with the headset back on its rest frame.
+        rp = self._respawn_profile()
+        offs = [off] if pending["off"] and tmp and off is not None else []
+        shield_off = [rp["shield_off"]] if pending["shield"] and rp and rp.get("shield_off") else []
+        frames = take + offs + shield_off
+        if not frames:
+            return
+        why = ((f"end spawn protection ({why})" + (f" + hit table {len(take)}r" if take else "")
+                + (" + shield off" if shield_off else "")) if offs else f"arm hit reception ({why})")
         self._spawn_task(self.write(frames, why, gap_ms=60, take=bool(take)))
 
     # ---- game -------------------------------------------------------------------------------------
@@ -1774,7 +1886,9 @@ class GunStage:
         if self.rolled:
             self._log("rolled: " + self.roll_text(), "info")
         await self.write(self.bundle["head"], "arm (head)")
-        self._arm_pending = None                                 # F209: a head is fn 28 throughout
+        self._arm_pending = None; self._trigger_pending = None   # F209: a head is fn 28 throughout (and holds the trigger)
+        self._down_warn = 1; self._timed_life_at = None          # 2026-09-19: the spawn-kill escalation starts again each match
+        self._pre_armed = False                                  # 2026-09-19: engine.js `_preArmed`, once per match
         self.spawned = False; self.alive = False; self.scream_this_life = None   # a fresh head: no scream written yet
         self._reset_hill()                                       # engine.js `_resetHill` on a new match: game 2 must not inherit game 1's point or its once-per-game warnings
         self._cure = None; self._query_at = 0.0; self._cure_life = None; self._cure_at = 0.0; self._poll_at = 0.0   # F264: a new match owes the last one's gun nothing
@@ -1809,6 +1923,7 @@ class GunStage:
         cues = self.bundle.get("cues", {})
         countdown = cues.get("countdown", "")
         await self.write([countdown], "countdown cue")
+        await self._pre_arm_table()   # 2026-09-19: T-3, the same tick engine.js fires the countdown in (PRE_ARM_TABLE_MS)
         if countdown:
             await self.sleep(self.COUNTDOWN_LEAD_S)   # self.sleep, not asyncio.sleep -- tests inject a no-op here
         # A15.2 (Tony 2026-09-06, bench-verified on the bench gun): the $PSET cry field is EMPTY, so the firmware says nothing at
@@ -1827,9 +1942,20 @@ class GunStage:
         # with nothing left to re-arm it -- the gun stayed on fn 28 (no live $SIR table) for the rest of the
         # life. `_after_spawn` still runs its other resets once the write returns.
         self.spawned = True; self.alive = True
-        self._arm_after_spawn()                                  # hits stay silent until the gun fires or the cap
-        await self.write(([ps] if ps else []) + list(self.bundle["spawn"]) + [SFLASH] + ([fr] if fr else []),
-                          "spawn" + ps_why + self._line_tag(fr, tag))
+        # 2026-09-19: with a respawn profile the T-0 spawn is neither profile: no t8, the trigger live, and the
+        # live table already on the gun (`_pre_arm_table` at T-3). A late start that missed T-3 carries the
+        # table IN FRONT of `$SPAWN`. Nothing is pending, so nothing ends at go-live.
+        rp = self._respawn_profile()
+        late = self._pick_table("sir_pool") if rp and not self._sir_live else []
+        if rp and not late and not self._sir_live:
+            self._log("T-0 spawn: no live hit table to write (no sir_pool)", "error")
+        if rp:
+            self._arm_pending = None; self._trigger_pending = None
+        else:
+            self._arm_after_spawn()                              # F209 (an older bundle): hits stay silent until the gun fires or the cap
+        await self.write(late + ([ps] if ps else []) + list(rp["spawn"] if rp else self.bundle["spawn"]) + [SFLASH] + ([fr] if fr else []),
+                          "spawn" + (f" + hit table {len(late)}r (late)" if late else "") + ps_why + self._line_tag(fr, tag),
+                          take=bool(late))
         self._after_spawn()
         hs = self.bundle.get("headset") or {}
         if hs.get("start"):
@@ -1837,7 +1963,12 @@ class GunStage:
         await self.write([cues.get("klaxon", "")], "klaxon cue")
         return self.state()
 
-    async def revive(self) -> dict:
+    async def revive(self, station: int | None = None) -> dict:
+        """engine.js `_revive`. `station`: the id of the respawn station this revive happened at, or None for a
+        revive in place (timed, operator, resync). With a respawn profile a station revive protects, maps the
+        trigger at once and shows the shield; every other revive is a timed life that holds the trigger.
+        Deliberate partial parity: the stage has no infection flip, so a turned player's `team_flip` revive is
+        not mirrored."""
         hs = self.bundle.get("headset") or {}
         down = hs.get("down")
         if down and down.get("stop"):
@@ -1846,16 +1977,24 @@ class GunStage:
             await self.write([down["stop"]], "down stop", gap_ms=0)
         fr, tag = self._pick_cue("respawned")                  # A15.2: the spawn line rides in the revive write (one line, never two)
         ps, ps_why = self._scream_take()                       # A15.3: a fresh death scream for this life, written before $SPAWN
+        rp = self._respawn_profile()
+        kind = "station" if rp and station is not None else "timed"
+        revive = (rp["revive_station"] if kind == "station" else rp["revive"]) if rp else self.bundle["revive"]
         self.spawned = True; self.alive = True                   # mirrors engine.js: the life is live before the
-        self._arm_after_spawn()                                  # await, same reasoning as `spawn()` above (F209)
-        await self.write(([ps] if ps else []) + list(self.bundle["revive"]) + ([fr] if fr else []),
+        self._arm_after_spawn(kind)                              # await, same reasoning as `spawn()` above (F209)
+        self._timed_life_at = self.now() if kind == "timed" else None   # 2026-09-19: the spawn-kill window runs from a timed respawn
+        await self.write(([ps] if ps else []) + list(revive) + ([fr] if fr else []),
                           "revive" + ps_why + self._line_tag(fr, tag))
         self._after_spawn()
+        # engine.js `_armAfterSpawn`: an unprotected life arms at once while the phase is live. Here that is
+        # after the revive write returns, so the take still follows the revive frames, as on the phone.
+        if self._arm_pending is not None and self._arm_pending["until"] <= 0 and self.connected:
+            self._arm_life("no protection")
         self._moment = ("redeploy", self.now())                       # engine.js `_revive`: the HUD's rarer moment (gates a pool rise for RARE_GUARD_S)
         self._event_now("respawned", sound=False)                     # the lights; the sound went out with the revive write
         self.carrying = None; self._active_role = None
-        if hs.get("respawn"):
-            self._headset(hs["respawn"], "headset respawn")
+        if hs.get("respawn") and not (self._arm_pending and self._arm_pending["shield"]):
+            self._headset(hs["respawn"], "headset respawn")   # 2026-09-19: skipped while the shield shows (the shield IS the respawn light)
         return self.state()
 
     async def resync(self) -> dict:
@@ -1892,7 +2031,7 @@ class GunStage:
         if self._protects_spawn():
             if self._arm_pending is None:
                 self._sir_live = False   # engine.js: the resync always re-sends the table (a reboot empties it, F11)
-                self._arm_pending = self.now()
+                self._arm_pending = self._repair_arm()
                 self._arm_life("operator resync")
         else:
             await self.write(self._pick_table("sir_pool"), "operator resync: hit audio")
@@ -1975,7 +2114,7 @@ class GunStage:
 
     async def end(self) -> dict:
         await self.write(self.bundle["end"], "end")
-        self._arm_pending = None                   # F209: never arm an ended gun
+        self._arm_pending = None; self._trigger_pending = None   # F209: never arm an ended gun
         self.spawned = False; self.alive = False; self.stunned = None   # F15: the end frames own the gun now
         self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None   # engine.js `_endLocal`: the whole takeover goes with the match
         self._moment = ("match_over", self.now())  # engine.js `_endLocal`
@@ -1984,7 +2123,7 @@ class GunStage:
 
     async def panic(self) -> dict:
         await self.write(self.bundle["panic"], "PANIC")
-        self._arm_pending = None                   # F209
+        self._arm_pending = None; self._trigger_pending = None   # F209
         self.spawned = False; self.alive = False; self.stunned = None
         self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None
         self._level_gen += 1                       # Node rules: cancel everything on panic
@@ -2258,8 +2397,10 @@ class GunStage:
         # The two paths above it return EARLIER than this, and neither can leave a hill unexpired: with no
         # link no beacon can have arrived, and a drop clears the state outright (`_hill_reset`).
         now = self.now()
-        if self._arm_pending is not None and now - self._arm_pending >= self.SPAWN_PROTECT_MAX_S:
-            self._arm_life("cap")                # F209 (engine.js tick()): only reached with the link up
+        if self._arm_pending is not None and now - self._arm_pending["at"] >= self._arm_pending["until"]:
+            self._arm_life("cap" if self._arm_pending["shot_ends"] else "protection over")   # F209 (engine.js tick()): only reached with the link up
+        if self._trigger_pending is not None and now >= self._trigger_pending["due"]:
+            self._trigger_live("weapon delay over")   # 2026-09-19 (engine.js tick())
         self._no_fire_tick(now)                  # F208 (engine.js tick())
         self._cure_tick(now)                     # F264: and once no_fire is concluded, ASK the gun, then act on the answer
         self._poll_tick(now)                     # F264: ...and ask it every QUERY_POLL_S anyway, so nobody has to pull a dead trigger first
@@ -2438,6 +2579,8 @@ class GunStage:
                     return
                 # $HIR,<sensor>,<irProto>,<shooterId>,<shooterTeam>,<magnitude>,<crit>,<subtype>,* -- proto 13 = melee
                 self._last_hir_proto = int(t[2]) if len(t) > 2 and t[2] != "" else None
+                if _tok_int(t, 4) is not None:
+                    self._shield_reassert()      # 2026-09-19 (engine.js: a registered hit, shooter team parsed)
                 if len(t) > 2 and t[2] == "8":
                     self._stun()             # F15: an EMP word (proto 8) -- a no-op unless config.stun is on; a status row, so no $HP follows
             elif cmd == "ALCD" and len(t) > 4:
@@ -2884,7 +3027,14 @@ class GunStage:
             self._event_now("shield_down")
         if hp == 0 and self.alive:
             self.alive = False
-            self._arm_pending = None               # F209 (engine.js `_death`): never arm a dead gun
+            self._arm_pending = None; self._trigger_pending = None   # F209 (engine.js `_death`): never arm a dead gun
+            # 2026-09-19: killed this soon after a timed respawn = spawn-killed; the down-screen warning gets
+            # louder, never quieter.
+            if (self._timed_life_at is not None and self.now() - self._timed_life_at <= self.SPAWN_KILL_WINDOW_S
+                    and self._down_warn < self.DOWN_WARN_MAX):
+                self._down_warn += 1
+                self._log(f"killed {self.now() - self._timed_life_at:.1f}s after a timed respawn: down warning level {self._down_warn}", "info")
+            self._timed_life_at = None
             self._shield_regen = None; self._shield_down = False   # S29: a dead gun is not refilled, and the heartbeat stops with the life
             self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None   # engine.js `_death`: the gun stops the reload when you drop; so does the HUD
             self._stun_restore("died")             # F15: death cancels the stun -- no restore write; the revive's own $AMMO re-arms the next life
@@ -3107,8 +3257,8 @@ class GunStage:
             return
         prev = seen
         # F209 (engine.js `_onAmmo`): a round leaving slot 0 or 1 proves the gun can fire, so hit reception arms now
-        if self._arm_pending is not None and slot in (0, 1) and prev is not None and mag < prev:
-            self._arm_life("first shot")
+        if self._arm_pending is not None and self._arm_pending["shot_ends"] and slot in (0, 1) and prev is not None and mag < prev:
+            self._arm_life("first shot")   # 2026-09-19: a profile life never ends on a shot
         # F123 (engine.js `_onAmmo`): the takeover is reconciled against the REAL magazine, one $ALCD at a time.
         # A rise feeds it and pushes the deadline out (which is what lets a shell-by-shell chain run to the end
         # instead of clearing on shell #1); reaching the spawn cap finishes it; a round LEAVING the mag ends it,
@@ -4050,7 +4200,14 @@ class GunStage:
                       # F15: the stun in flight (what the HUD's STUNNED takeover reads) and whether this game can stun at all
                       "stunned": ({"until": self.stunned["until"], "left_s": round(max(0.0, self.stunned["until"] - self.now()), 2),
                                    "ammo": {str(k): v for k, v in self.stunned["ammo"].items()}} if self.stunned else None),
-                      "stun_enabled": self.stun_enabled, "stun_s": self.stun_s if self.stun_enabled else None},
+                      "stun_enabled": self.stun_enabled, "stun_s": self.stun_s if self.stun_enabled else None,
+                      # 2026-09-19 respawn profiles (engine.js `state()` weaponArming/shielded/downWarn, in seconds
+                      # here): the time until a timed life's trigger goes live (None once it has), whether a
+                      # station life's shield shows, and the down-screen warning level 1..3.
+                      "weapon_arming_s": (round(max(0.0, self._trigger_pending["due"] - self.now()), 2)
+                                          if self._trigger_pending and self.alive else None),
+                      "shielded": bool(self._arm_pending and self._arm_pending["shield"] and self.alive),
+                      "down_warn": self._down_warn},
             # F102: the objective source in force (the F70 gate) and the injected station adverts on the air
             "station_source": self.config.get("station_source"),
             "station_sources": sorted(STATION_SOURCES),

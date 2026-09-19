@@ -203,9 +203,40 @@ class RosterEntry(TypedDict):
 
 
 # ---- §3 config + frames ----
+# Respawn profiles (Tony, 2026-09-19). A TIMED respawn (in place, `type` "auto") and a
+# STATION respawn (a revive at a respawn station) protect and arm differently. docs/spec/contracts.md §3.
+TimedProtectS = Literal[0, 1, 2]           # timed: seconds of `$TMP` t8 = -100 after `$SPAWN`; 0 = no `$TMP` at all
+WeaponDelayMs = Literal[500, 1000, 3000]   # timed: the trigger stays held (`$BMAP,0,98`) this long after `$SPAWN`
+StationProtectS = Literal[0, 2, 3]         # station: seconds of t8 = -100; the trigger is live at once
+TIMED_PROTECT_S_DEFAULT = 0
+WEAPON_DELAY_MS_DEFAULT = 500
+STATION_PROTECT_S_DEFAULT = 2
+TRIGGER_AFTER_PROTECT_MS = 500             # timed: the trigger goes live at least this long after protection ends
+SPAWN_KILL_WINDOW_MS = 10000               # a death this soon after a timed respawn raises the down-screen warning
+
+
 class Respawn(TypedDict):
     type: Literal["auto", "scanner", "none"]
     delay_s: int
+    protect_s: NotRequired[TimedProtectS]            # absent = TIMED_PROTECT_S_DEFAULT
+    weapon_delay_ms: NotRequired[WeaponDelayMs]      # absent = WEAPON_DELAY_MS_DEFAULT
+    station_protect_s: NotRequired[StationProtectS]  # absent = STATION_PROTECT_S_DEFAULT
+
+
+class RespawnProfile(TypedDict):
+    """The node's respawn frames (2026-09-19). Absent on an older bundle: the node keeps the legacy path
+    (`spawn`/`revive`, protection ended by the first shot or SPAWN_PROTECT_MAX_MS). An app older than 0.4.3
+    ignores this block and plays the legacy lists, so the legacy lists stay byte for byte as they were."""
+    protect_ms: int          # timed: t8 window after `$SPAWN`; 0 = the timed lists carry no `$TMP`
+    trigger_ms: int          # timed: when the node writes `trigger_live`, after the `$SPAWN` write
+    station_protect_ms: int  # station: t8 window; the trigger is live in the write itself
+    spawn: list[str]         # the T-0 spawn: $PLAYX,0 -> $SPAWN -> $TID -> $AMMO -> $BMAP,0,0 (no t8: everyone is live and hittable at go-live)
+    revive: list[str]        # a timed revive: $SPAWN -> [t8 -100] -> $TID -> $AMMO -> $BMAP,0,98
+    revive_station: list[str]   # a station revive: $SPAWN -> [t8 -100] -> $TID -> $AMMO -> $BMAP,0,0 -> [shield_on]
+    team_flip: NotRequired[dict[str, list[str]]]   # infection: the flip bursts, timed profile
+    trigger_live: str        # `$BMAP,0,0,,,,,*`
+    shield_on: str           # a headset blink, distinct from the native hit flash; "" = no shield light
+    shield_off: str          # the headset's in-play rest frame, written when station protection ends
 
 
 WinBy = Literal["kills", "survival", "objective"]
@@ -497,6 +528,7 @@ class FrameBundle(TypedDict):
     head: list[str]      # config head, NO $SPAWN, no countdown sound; ends with $TID
     spawn: list[str]     # $PLAYX,0 -> $SPAWN,, -> $TMP t8=-100 -> $TID -> $AMMO... -> $BMAP,0,0 (F121 rebuild: no $SIR row; the table survives $SPAWN)
     revive: list[str]    # $SPAWN,, -> $TMP t8=-100 -> $TID -> $AMMO... -> $BMAP,0,0
+    respawn_profile: NotRequired[RespawnProfile]   # 2026-09-19: timed vs station respawn frames; an app >= 0.4.3 plays these
     spawn_protect_off: NotRequired[str]   # F121 rebuild: `$TMP` t8=0, written on the first shot or the cap; absent = an older bundle
     end: list[str]
     panic: list[str]

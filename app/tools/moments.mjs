@@ -273,6 +273,44 @@ await step('reduced motion stops the HUD blinkers, not just the overlays', async
   await p3.close();
 });
 
+// A49 (2026-09-19): the respawn profiles. A timed revive holds the trigger for the weapon delay, and the player
+// must SEE why the gun does not fire yet; a DOWN player in a timed game is told to move, louder after spawn kills.
+await step('A49 a timed revive: REDEPLOYED reads ACTIVATING WEAPON SYSTEMS, then WEAPONS HOT when the trigger is live', async () => {
+  await mustBeAlive(page);
+  await page.evaluate(() => { const e = window.brx.engine; e.feedFrame('$HIR,4,0,19,2,9,0,3,*'); e.feedFrame('$HP,0,0,0,*'); });
+  await page.waitForFunction(() => !window.brx.engine.alive, null, { timeout: 3000 });
+  await page.evaluate(() => window.brx.engine._revive(false));
+  const line = page.locator('.mo.redeploy .r .h').first();
+  await line.waitFor({ state: 'visible', timeout: 3000 });
+  const first = (await line.textContent() || '').trim();
+  must(/ACTIVATING WEAPON SYSTEMS/.test(first), `the redeploy line read ${JSON.stringify(first)} while the trigger was held`);
+  await page.waitForTimeout(350); await shot('redeploy-arming');   // past the entrance sweep, still inside the 0.5 s hold
+  await page.waitForFunction(() => window.brx.engine.state().weaponArming == null, null, { timeout: 4000 });
+  await page.waitForFunction(() => /WEAPONS HOT/.test((document.querySelector('.mo.redeploy .r .h') || {}).textContent || ''), null, { timeout: 1500 });
+});
+
+await step('A49 DOWN in a timed game says GET TO SAFE SPACE FOR REDEPLOY; level 3 is a full-width band', async () => {
+  await mustBeAlive(page);
+  await page.evaluate(() => { window.brx.engine._downWarn = 1; window.brx.engine._timedLifeAt = null; });   // the step above ended in a revive, and this death is inside its spawn-kill window
+  await page.evaluate(() => { const e = window.brx.engine; e.feedFrame('$HIR,4,0,19,2,9,0,3,*'); e.feedFrame('$HP,0,0,0,*'); });
+  const safe = page.locator('.mo.down .safe').first();
+  await safe.waitFor({ state: 'visible', timeout: 3000 });
+  must(/GET TO SAFE SPACE FOR REDEPLOY/.test(await safe.textContent() || ''), 'the safe-space line is missing');
+  const w1 = await page.evaluate(() => { const r = document.querySelector('.mo.down .safe span').getBoundingClientRect(); return { cls: document.querySelector('.mo.down .safe').className, h: r.height }; });
+  must(/\bw1\b/.test(w1.cls), `level 1 expected, got ${w1.cls}`);
+  await page.waitForTimeout(900); await shot('down-safe-level1');
+  await page.evaluate(() => { const e = window.brx.engine; e._downWarn = 3; e._changed(); });
+  await page.waitForFunction(() => /\bw3\b/.test((document.querySelector('.mo.down .safe') || {}).className || ''), null, { timeout: 2000 });
+  const w3 = await page.evaluate(() => { const b = document.querySelector('.mo.down .safe').getBoundingClientRect(), s = document.querySelector('.mo.down .safe span').getBoundingClientRect();
+    return { bw: b.width, vw: window.innerWidth, h: s.height, bg: getComputedStyle(document.querySelector('.mo.down .safe')).backgroundColor, n: document.querySelectorAll('.mo.down .safe').length }; });
+  must(w3.n === 1, `${w3.n} safe-space lines`);
+  must(w3.bw >= w3.vw * 0.95, `the level-3 band is ${Math.round(w3.bw)} px wide on a ${w3.vw} px screen`);
+  must(w3.h > w1.h, 'the level-3 line is not larger than level 1');
+  must(w3.bg !== 'rgba(0, 0, 0, 0)', 'the level-3 band has no background');
+  await page.waitForTimeout(900); await shot('down-safe-level3');
+  await page.evaluate(() => { const e = window.brx.engine; e._downWarn = 1; e._revive(false); });
+});
+
 await step('no page errors were thrown during any of it', async () => {
   must(pageErrors.length === 0, `page errors: ${pageErrors.slice(0, 3).join(' | ')}`);
 });

@@ -46,6 +46,13 @@ export const POOL_CHECK_SETTLE_MS = 2000;
 export const RESYNC_PROBE_S = 10;
 export const DEFAULT_RUNWAY_S = 120;
 export const PROTOCOL_V = 1;
+export const TIMED_PROTECT_S_DEFAULT = 0;
+export const WEAPON_DELAY_MS_DEFAULT = 500;
+export const STATION_PROTECT_S_DEFAULT = 2;
+/** timed: the trigger goes live at least this long after protection ends */
+export const TRIGGER_AFTER_PROTECT_MS = 500;
+/** a death this soon after a timed respawn raises the down-screen warning */
+export const SPAWN_KILL_WINDOW_MS = 10000;
 /** advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral */
 export const STATION_TEAM_ANY = 255;
 /** net.md §8 size cap */
@@ -65,6 +72,14 @@ export type ArmState = 'idle' | 'connected' | 'kitted' | 'lobby' | 'armed' | 'li
  *  tuple every phase guard tests against, and the console's `Phase` is generated from this alias, so a new
  *  phase cannot reach one side without the other. */
 export type Phase = 'muster' | 'build' | 'kit' | 'lobby' | 'armed' | 'live' | 'recap';
+/** Respawn profiles (Tony, 2026-09-19). A TIMED respawn (in place, `type` "auto") and a
+ *  STATION respawn (a revive at a respawn station) protect and arm differently. docs/spec/contracts.md §3.
+ *  timed: seconds of `$TMP` t8 = -100 after `$SPAWN`; 0 = no `$TMP` at all */
+export type TimedProtectS = 0 | 1 | 2;
+/** timed: the trigger stays held (`$BMAP,0,98`) this long after `$SPAWN` */
+export type WeaponDelayMs = 500 | 1000 | 3000;
+/** station: seconds of t8 = -100; the trigger is live at once */
+export type StationProtectS = 0 | 2 | 3;
 export type WinBy = 'kills' | 'survival' | 'objective';
 /** `policy.CHOICES` -- who fills a slot. `policy._check_rule` refuses anything else (and refuses "off"
  *  for the primary: a player with no primary weapon has nothing to play with). */
@@ -203,6 +218,38 @@ export interface RosterEntry {
 export interface Respawn {
   type: 'auto' | 'scanner' | 'none';
   delay_s: number;
+  /** absent = TIMED_PROTECT_S_DEFAULT */
+  protect_s?: TimedProtectS;
+  /** absent = WEAPON_DELAY_MS_DEFAULT */
+  weapon_delay_ms?: WeaponDelayMs;
+  /** absent = STATION_PROTECT_S_DEFAULT */
+  station_protect_s?: StationProtectS;
+}
+
+/** The node's respawn frames (2026-09-19). Absent on an older bundle: the node keeps the legacy path
+ *  (`spawn`/`revive`, protection ended by the first shot or SPAWN_PROTECT_MAX_MS). An app older than 0.4.3
+ *  ignores this block and plays the legacy lists, so the legacy lists stay byte for byte as they were. */
+export interface RespawnProfile {
+  /** timed: t8 window after `$SPAWN`; 0 = the timed lists carry no `$TMP` */
+  protect_ms: number;
+  /** timed: when the node writes `trigger_live`, after the `$SPAWN` write */
+  trigger_ms: number;
+  /** station: t8 window; the trigger is live in the write itself */
+  station_protect_ms: number;
+  /** the T-0 spawn: $PLAYX,0 -> $SPAWN -> $TID -> $AMMO -> $BMAP,0,0 (no t8: everyone is live and hittable at go-live) */
+  spawn: string[];
+  /** a timed revive: $SPAWN -> [t8 -100] -> $TID -> $AMMO -> $BMAP,0,98 */
+  revive: string[];
+  /** a station revive: $SPAWN -> [t8 -100] -> $TID -> $AMMO -> $BMAP,0,0 -> [shield_on] */
+  revive_station: string[];
+  /** infection: the flip bursts, timed profile */
+  team_flip?: Record<string, string[]>;
+  /** `$BMAP,0,0,,,,,*` */
+  trigger_live: string;
+  /** a headset blink, distinct from the native hit flash; "" = no shield light */
+  shield_on: string;
+  /** the headset's in-play rest frame, written when station protection ends */
+  shield_off: string;
 }
 
 export interface Scoring {
@@ -483,6 +530,8 @@ export interface FrameBundle {
   spawn: string[];
   /** $SPAWN,, -> $TMP t8=-100 -> $TID -> $AMMO... -> $BMAP,0,0 */
   revive: string[];
+  /** 2026-09-19: timed vs station respawn frames; an app >= 0.4.3 plays these */
+  respawn_profile?: RespawnProfile;
   /** F121 rebuild: `$TMP` t8=0, written on the first shot or the cap; absent = an older bundle */
   spawn_protect_off?: string;
   end: string[];

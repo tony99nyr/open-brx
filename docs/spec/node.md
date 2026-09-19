@@ -169,6 +169,10 @@ resets `prev`. `shots` resets to 0 at `startAt()` and rides `status`; MC diffs i
   `type=="scanner"`: revive only when the player's team **respawn station** is present (utility.md §4.1) and the
   gate (`trigger` = a pull on the dead gun's `$BUT,0,1`; `presence` = dwell) is met; the DOWN screen walks the
   player through it (§4.5). `type=="none"`: stay down (LMS). Respawn math uses **synced time**.
+  **A49 (2026-09-19):** with `respawn_profile` in the bundle the node writes `respawn_profile.revive` for a timed
+  revive (trigger held, `trigger_live` at `trigger_ms`, `spawn_protect_off` at `protect_ms` when that is above 0) and
+  `respawn_profile.revive_station` for a station revive (contracts §4). The T-0 spawn writes `respawn_profile.spawn`
+  (no protection, trigger live) after one live `sir_pool` take at T-3. A shot never ends protection on this path.
 
 ### 3.5 Shooter identity from `$HIR`
 
@@ -518,9 +522,9 @@ holds (the chip bar hides under them); **moments** are transient and stack above
 | RELOADING | takeover | `$BUT,2,1` (reload handle) or ALT on a one-weapon gun (`easy_reload`) | weapon name, a progress track sized to the catalog `reload_s` × the equipped perk's `reload_mult` (MC applies the same to `$WEAP` t18) | the mag comes back (`$ALCD` up), or `reload_s` + 600 ms; never while dead, in resync/reconcile, or with a dry reserve |
 | SWITCHING | takeover | ALT with two weapons | STOWING → DRAWING tiles (art + names), a track over the gun's swap delay = `FrameBundle.swap_ms` (`$WEAP` t15, bench 2026-09-04: the larger of the two slots; `quick_switch` halves it) | the next shot on the new slot → an ACTIVE ✓ confirm ("CONFIRMED BY YOUR GUN"), or the window expires → "READY" (assumed; the next `$ALCD` corrects `activeSlot`) |
 | RECONCILING | takeover | a BLE rejoin while LIVE (S7.1) | GUN RELINKED · SYNCING WITH YOUR GUN · 3 s fill · WEAPON DISARMED FOR A MOMENT | `state().reconciling` clears |
-| DOWN | takeover | death | auto mode: the countdown; scanner mode: the **lesson** — RUN TO YOUR TEAM'S RESPAWN STATION (then pull the trigger there / and stand there, per `respawnGate`) → GET CLOSER + a closeness bar (RSSI vs the station's threshold) → HOLD… → PULL THE TRIGGER TO RESPAWN / RESPAWNING…; a recap row: TIME LEFT · the race to the cap (team chips + FIRST TO n, **only while MC is linked**, from `score.board`) · YOU (deaths, shots; kills only when linked) | revive |
+| DOWN | takeover | death | auto mode: the countdown and GET TO SAFE SPACE FOR REDEPLOY (A49: larger and pulsing at warning level 2, a full-width 1 Hz band at level 3 after spawn kills); scanner mode: the **lesson** — RUN TO YOUR TEAM'S RESPAWN STATION (then pull the trigger there / and stand there, per `respawnGate`) → GET CLOSER + a closeness bar (RSSI vs the station's threshold) → HOLD… → PULL THE TRIGGER TO RESPAWN / RESPAWNING…; a recap row: TIME LEFT · the race to the cap (team chips + FIRST TO n, **only while MC is linked**, from `score.board`) · YOU (deaths, shots; kills only when linked) | revive |
 | KILL CONFIRMED | moment (takeover-styled) | MC `feedback{kill}` | dims the HUD, KILL / CONFIRMED, the victim chip; **medal badges** land 2 s apart with the announcer lines (A11.4) | 1.8 s + 2 s per extra medal |
-| REDEPLOYED | moment | revive | the kit you go back in with (primary, secondary, perk — A14), a light sweep | 1.7 s |
+| REDEPLOYED | moment | revive | the kit you go back in with (primary, secondary, perk — A14), a light sweep. A49: while a timed revive holds the trigger the line reads ACTIVATING WEAPON SYSTEMS… and turns to WEAPONS HOT when it goes live; a station revive reads SHIELD UP | 1.7 s, or the weapon delay + 0.4 s |
 | HIT / GAIN | moment | `$HP` down / up | the damage number + the shooter's team chip / +n POOL; one fade in, one fade out, never a repeating flash | 0.7 s / 1 s |
 | ALERT | moment | MC `alert` or a node clock callout (A11.4) | a full-width band: OBJECTIVE (team colour) · CLOCK (amber) · ALERT (red) · MATCH (glow) + the text MC chose | 2.2 s |
 

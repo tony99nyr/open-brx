@@ -11,6 +11,7 @@
 // carries those cue keys).
 
 import * as W from './transport/envelope.js';   // single source for the contracts §9 constants
+import { SPAWN_KILL_WINDOW_MS } from './transport/contract.gen.js';   // 2026-09-19: the spawn-kill escalation window
 import { stationView, TEAM_ANY } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
 import { CONTROL_STATE, claimable } from './control.js';   // the phone control point's advert bits + who may own a point (utility.md §5 `control`, K1)
 export const C = {
@@ -117,6 +118,18 @@ const SHIELD_LOOP_MS = 1940;
  *  ~1.5 s after the write started, so the cap never arms before the trigger is mapped; the real table's ~10
  *  frames then land over ~0.6 s more. */
 export const SPAWN_PROTECT_MAX_MS = 2100;
+/** 2026-09-19 respawn profiles (Tony; contracts.md §3). A bundle with `respawn_profile` never ends protection on a
+ *  shot: a TIMED spawn or revive (in place) holds the trigger until `trigger_ms` and carries protection only when the
+ *  game sets it; a STATION revive maps the trigger at once and shows a shield on the headset until
+ *  `station_protect_ms`. An older bundle keeps the path above. The shield re-assert after a hit is gated to one per this. */
+export const SHIELD_REASSERT_MS = 500;
+/** 2026-09-19 (Tony, field: at go-live he held full auto on the other team and they were still protected). At match
+ *  start everyone is equal: the live `$SIR` table goes on the gun this long before go-live, while the head still
+ *  holds every trigger, so every player is hittable AND can fire at the same moment. The T-0 spawn carries no t8. */
+export const PRE_ARM_TABLE_MS = 3000;
+export { SPAWN_KILL_WINDOW_MS };
+/** The down-screen warning levels: 1 = the normal line, 2 = larger and pulsing, 3 = maximum (held for the match). */
+export const DOWN_WARN_MAX = 3;
 /** F208: how long a live gun may say nothing at all before its pool is called stale. An idle gun in app mode
  *  sends only `$VOLTS`, and the captures put that at ~60 s, not 30 s (2026-08-23 two-tagger combat: 60.1, 60.2,
  *  60.2 s apart, one gap of 120.3 s where a sample went missing at close range; 2026-09-13 field ring: 60.2 s).
@@ -498,6 +511,9 @@ const STAND_DOWN = [
   ['stunned',     e => !!e.stunned],
   ['heat',        (e, now) => e._heatBlocksFire(now)],
   ['accHold',     (e, now) => now < e._accHoldUntil],
+  // 2026-09-19: a timed respawn holds the trigger (`$BMAP,0,98`) for the weapon delay. A pull then fires nothing
+  // by design, so it must not count towards F208's "the gun does not fire".
+  ['weaponHold',  e => !!e._triggerPending],
   // F259 (bench 2026-09-18): a round the trigger has asked for that the gun has not reported yet. A write
   // does not land instantly -- the bench measured 30-90 ms -- so one sent NOW would reach the gun after that
   // round had left, and its `$AMMO` would put the round back. The degrade write is never blocked by this: it
@@ -572,7 +588,11 @@ export class Engine {
     this._lastHeadsetFlashAt = null; // led-language.md §2 (safety: bursts ≥ 1 s apart) / §5: node-initiated headset FLASH sequences (hit flash, role re-assert) share the gun burst's 1 s minimum — never the down rearm or the low-health alert
     this.latch = null;              // {shooter_num, shooter_team, at, ir_proto}
     this._spawnAt = null;            // B5: this.now() of the last _spawn/_revive WRITE — the settle window below is measured from here
-    this._armPending = null;         // F209: {at, flip} from a spawn/revive write until `_armLife` ends spawn protection
+    this._armPending = null;         // F209: {at, flip, until, shotEnds, off, shield} from a spawn/revive write until `_armLife` ends spawn protection
+    this._triggerPending = null;     // 2026-09-19: {at, due} while a timed spawn/revive holds the trigger (`$BMAP,0,98`)
+    this._downWarn = 1;              // 2026-09-19: the down-screen warning level, 1..DOWN_WARN_MAX; reset at match start
+    this._timedLifeAt = null;        // 2026-09-19: now() of the last timed respawn, for the spawn-kill window
+    this._shieldAt = 0;              // 2026-09-19: the last shield re-assert after a hit
     // F121 rebuild: is the `$SIR` table on the gun the LIVE one? False until a `sir_pool` take lands; any write that
     // carries a `$SIR` row or `$CLEAR` (a head, above all) makes it false again, and bumps `_sirGen` so a take whose
     // write was overtaken by such a write never claims the table. Not persisted: an app restart re-sends the take.
@@ -944,7 +964,7 @@ export class Engine {
       this._writeLost = life;
       if (this._protectsSpawn()) {
         if (this._armPending) return;   // the take still follows the first shot or the cap
-        this._armPending = { at: this.now(), flip: false };
+        this._armPending = this._repairArm();
         if (this.bleUp && !this.reconciling) this._armLife(`${why} lost`);   // else the cap or the reconcile end arms it
       } else {
         const sir = frames.filter(f => typeof f === 'string' && f.startsWith('$SIR,'));
@@ -1481,6 +1501,7 @@ export class Engine {
     const newMatch = body.match_id !== this.matchId;
     if (newMatch) { this.score = null; this.scoreAt = null; this.result = null; this.resultAt = 0; this.endedAt = 0; }   // a new match: last match's K/A/board — and last match's RESULT — must not show on the first DOWN
     this.matchId = body.match_id; this.cuesFired = new Set(); this.shots = 0; this.deaths = 0; this.ended = false; this._resyncRevive = false;
+    this._downWarn = 1; this._timedLifeAt = null;   // 2026-09-19: the spawn-kill escalation starts again each match
     this._cure = null; this._queryAt = 0; this._cureLife = null; this._cureAt = 0; this._pollAt = 0; this._probedLife = null; this.cure = null;   // F264: a new match owes the last one's gun nothing
     this.kitLocked = false;             // A27: the lock notice is spent the moment the countdown starts — it must never lead the NEXT lobby
     // A NEW match supersedes any in-flight reconnect resync of the OLD one. Without this the resync
@@ -2019,7 +2040,64 @@ export class Engine {
   _protectsSpawn() { return this._protectMode() !== null; }
   /** F209: a spawn/revive write just made the gun live with hit reception still silent. `flip`: an infection flip
    *  respawns the gun while the engine counts the player down. */
-  _armAfterSpawn(flip = false) { this._armPending = this._protectsSpawn() ? { at: this.now(), flip } : null; }
+  _armAfterSpawn(flip = false, kind = 'timed') {
+    const rp = this._respawnProfile();
+    if (!rp) { this._armPending = this._protectsSpawn() ? { at: this.now(), flip, until: SPAWN_PROTECT_MAX_MS, shotEnds: true, off: this._protectMode() === 'tmp', shield: false } : null; return; }
+    // 2026-09-19: the profile decides. Protection ends on the clock alone, never on a shot. With no protection the
+    // pending entry still exists (until 0) so `_armLife` writes the table take, if one is owed, straight away.
+    const station = kind === 'station';
+    const until = station ? rp.station_protect_ms : rp.protect_ms;
+    this._armPending = this._protectsSpawn() || until > 0
+      ? { at: this.now(), flip, until, shotEnds: false, off: until > 0, shield: station && until > 0 && !!rp.shield_on } : null;
+    this._triggerPending = station ? null : { at: this.now(), due: this.now() + (rp.trigger_ms || 0), flip };
+    // Only once the phase is live: the T-0 spawn runs this before `_set('live')`, and `_armLife` cancels a not-live arm,
+    // which would leave the head's silent table on the gun for the life. The next tick arms that one instead.
+    if (this._armPending && until <= 0 && this.phase === 'live' && this.bleUp && !this.reconciling) this._armLife('no protection');
+  }
+  /** 2026-09-19: write the live `$SIR` table before go-live (PRE_ARM_TABLE_MS), once per match, on a profile bundle.
+   *  The head left the silent fn-28 twin on the gun for the countdown; every trigger is still held, so arming the
+   *  table now costs nothing and makes every player hittable the moment the T-0 spawn maps the triggers. */
+  _preArmTable() {
+    if (this._preArmed === this.matchId || !this._respawnProfile() || !this.frames) return;
+    this._preArmed = this.matchId;
+    if (this._sirLive) return;
+    const take = this._pickTable('sir_pool');
+    if (!take.length) return;
+    const r = this._write(take, `pre-arm hit table (T-${Math.round(PRE_ARM_TABLE_MS / 1000)})`);
+    const gen = this._sirGen; this._sirLive = true;
+    Promise.resolve(r).then(ok => { if (ok === false && gen === this._sirGen) { this._sirLive = false; this.log('pre-arm hit table write failed: the T-0 spawn carries it', 'le'); } });
+  }
+  /** 2026-09-19: the bundle's respawn profile, or null on an older bundle (the legacy path). */
+  _respawnProfile() {
+    const rp = this.frames && this.frames.respawn_profile;
+    return rp && Array.isArray(rp.spawn) && Array.isArray(rp.revive) && Array.isArray(rp.revive_station) && typeof rp.trigger_live === 'string' ? rp : null;
+  }
+  /** The pending entry a repair path (a lost write, the reconcile end, the operator resync) arms with: at once, and
+   *  it always writes `spawn_protect_off` on a 'tmp' bundle, so a repair always ends protection. A station shield
+   *  still showing goes off with it. */
+  _repairArm() {
+    const p = this._armPending;
+    return { at: this.now(), flip: false, until: 0, shotEnds: false, off: this._protectMode() === 'tmp', shield: !!(p && p.shield) };
+  }
+  /** 2026-09-19: a timed respawn's weapon delay has run out. Map the trigger (`respawn_profile.trigger_live`). The
+   *  write is repeatable, so a failed one is retried once while the life is still the same one. */
+  _triggerLive(why) {
+    const p = this._triggerPending; this._triggerPending = null;
+    const rp = this._respawnProfile();
+    if (!p || !rp) return;
+    if (this.phase !== 'live' || this.ended || !(this.alive || p.flip)) { this.log(`weapon systems live (${why}) cancelled: not live`, 'li'); return; }
+    const life = this._lifeSeq;
+    this._writeMust([rp.trigger_live], `weapon systems live (${why})`, () => this._lifeSeq === life && !this._standDown(p.flip ? ['phase', 'ble'] : ['phase', 'ble', 'alive']));
+    this._changed();
+  }
+  /** 2026-09-19: a registered hit clears a painted headset colour, so the station shield is painted again after a
+   *  hit that lands while it shows, at most once per SHIELD_REASSERT_MS. */
+  _shieldReassert() {
+    const p = this._armPending, rp = this._respawnProfile(), now = this.now();
+    if (!p || !p.shield || !rp || !rp.shield_on || now - this._shieldAt < SHIELD_REASSERT_MS) return;
+    this._shieldAt = now;
+    this._write([rp.shield_on], 'shield after hit');
+  }
   /** F209: end spawn protection. Called on the gun's first shot (`_onAmmo`) or at SPAWN_PROTECT_MAX_MS (`tick`), and
    *  by the reconcile end and the operator resync. Never arms a gun that died, ended or is no longer live.
    *  'tmp' bundle: one write of [a `sir_pool` take, if the gun's table is not the live one or class sounds are on]
@@ -2030,16 +2108,23 @@ export class Engine {
     if (!p) return;
     if (this.phase !== 'live' || this.ended || !(this.alive || p.flip)) { this.log(`arm hit reception (${why}) cancelled: not live`, 'li'); return; }
     const tmp = this._protectMode() === 'tmp';
-    const needTake = !tmp || !this._sirLive || this.frames.sir_pool.length > 1;   // > 1 takes = A17 class sounds: a fresh draw per life
+    const pool = Array.isArray(this.frames.sir_pool) ? this.frames.sir_pool : [];
+    const needTake = pool.length > 0 && (!tmp || !this._sirLive || pool.length > 1);   // > 1 takes = A17 class sounds: a fresh draw per life
     const take = needTake ? this._pickTable('sir_pool') : [];
-    const frames = tmp ? [...take, this.frames.spawn_protect_off] : take;
+    const rp = this._respawnProfile();
+    // 2026-09-19: `off` says whether this life was protected (a timed life with protection 0 writes no `$TMP` at all);
+    // a shielded station life ends with the headset back on its rest frame.
+    const off = p.off !== false && tmp ? [this.frames.spawn_protect_off] : [];
+    const shieldOff = p.shield && rp && rp.shield_off ? [rp.shield_off] : [];
+    const frames = [...take, ...off, ...shieldOff];
+    if (!frames.length) { this._changed(); return; }
     // F11 fix (playtest review 2026-09-13): `link.write` resolves `false` on a GATT error instead of
     // rejecting, so a failed write here used to leave the gun on fn 28 (no real $SIR table) for the
     // whole life -- immortal. Re-arm the pending take on a `false` resolve so the next tick's cap
     // (or the next shot) retries. Gated the same way the write itself was gated, so a life that ended
     // or moved on while the write was in flight is never re-armed; the retry itself only fires once the
     // link is back up (`tick()` gates the cap path on `bleUp`), so this cannot spin on a dead link.
-    const r = this._write(frames, tmp ? `end spawn protection (${why})${take.length ? ` + hit table ${take.length}r` : ''}` : `arm hit reception (${why})`);
+    const r = this._write(frames, off.length ? `end spawn protection (${why})${take.length ? ` + hit table ${take.length}r` : ''}${shieldOff.length ? ' + shield off' : ''}` : `arm hit reception (${why})`);
     // Claimed at CALL time, as `_write` marks the opposite: the writes go out in call order, so a later head or
     // `$CLEAR` clears this again. A failed write takes the claim back, unless such a write already has.
     const gen = this._sirGen;   // read AFTER the call: the take's own rows bumped it
@@ -2049,7 +2134,7 @@ export class Engine {
       if (take.length && gen === this._sirGen) this._sirLive = false;
       if (this._armPending || this.phase !== 'live' || this.ended || !(this.alive || p.flip)) return;
       this.log(`arm hit reception (${why}) write failed -- re-arming to retry`, 'li');
-      this._armPending = { at: this.now(), flip: p.flip };   // keep the original flip: an infection flip's retry must not read as "not live"
+      this._armPending = { ...p, at: this.now(), until: p.shotEnds ? p.until : 1000 };   // keep the original flip (an infection flip's retry must not read as "not live"); a profile life retries 1 s on
     });
   }
   /** A15.3 (Tony 2026-09-06: "The long vs short pain should be used depending on the amount of damage. A big sniper
@@ -2133,7 +2218,13 @@ export class Engine {
     // does not heal, the gun fires). No pset_pool (pre-A15.3): nothing prepended, the head's $PSET stands.
     const ps = this._pickFrame('pset_pool');
     const life = this._lifeSeq = (this._lifeSeq || 0) + 1;   // pl3: a lost write is only this life's news
-    this._writeLife([...(ps.frame ? [ps.frame] : []), ...this.frames.spawn, SFLASH, ...(sp.frame ? [sp.frame] : [])], 'spawn' + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : ''), life);
+    // 2026-09-19: with a respawn profile the T-0 spawn is neither profile: no t8, the trigger live, and the live table
+    // already on the gun (`_preArmTable` at T-3). A late start that missed T-3 carries the table IN FRONT of `$SPAWN`.
+    const rpSpawn = this._respawnProfile();
+    const late = rpSpawn && !this._sirLive ? this._pickTable('sir_pool') : [];
+    if (rpSpawn && !late.length && !this._sirLive) this.log('*** T-0 spawn: no live hit table to write (no sir_pool) ***', 'le');
+    this._writeLife([...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), SFLASH, ...(sp.frame ? [sp.frame] : [])], 'spawn' + (late.length ? ` + hit table ${late.length}r (late)` : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : ''), life);
+    if (late.length) this._sirLive = true;
     this.hurtFired = false;        // the low-health alert is once per LIFE
     this._prevAmmo = {}; this._prevReserve = {}; this._shotAcct = {}; this.activeSlot = 0; this.magBySlot = {}; this.heatBySlot = {}; this._heatAt = {}; this._everHeated = {}; this._heatLock = null; this.lastShot = null;   // config echoes carry WEAP clip caps, not spawn mags — never let them set the denominator   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
     this._holdAccuracyWrites('spawn');   // the spawn write owns `$AMMO` until the gun has answered it
@@ -2151,7 +2242,8 @@ export class Engine {
     // refill in flight; the recharge delay runs from here, which is why a life's first fill lands
     // SHIELD_REGEN_DELAY_MS in and never inside the spawn write.
     this._shieldRegen = null; this._shieldDown = false; this._shieldLoopAt = 0; this._shieldGaveUp = false; this._shieldQuietAt = this.now();
-    this._armAfterSpawn();   // F209: hits stay silent until the gun fires or the cap runs out
+    if (rpSpawn) { this._armPending = null; this._triggerPending = null; }   // 2026-09-19: nothing to end at go-live
+    else this._armAfterSpawn();   // F209 (an older bundle): hits stay silent until the gun fires or the cap runs out
     this._gunTake();   // A11.7
     if (this.frames.headset) this._headsetDelayed(this.frames.headset.start, 'start');   // led-language.md §3.1/§5: scheduled +1.0 s after $SPAWN, not inline (A11.6: white flash marks the start, then dark/team)
     this.moment = { kind: 'go', at: this.now() };
@@ -2646,6 +2738,7 @@ export class Engine {
       if (edge(10000)) this._cue('runway_10');
       if (rem <= 9000 && rem > 3000) { const s = Math.ceil(rem / 1000); const k = `tick${s}`; if (!this.cuesFired.has(k) && this.frames && this.frames.cues && this.frames.cues.tick) { this.cuesFired.add(k); this._write([this.frames.cues.tick], 'tick'); } }
       if (rem <= 3000) this._cue('countdown');
+      if (rem <= PRE_ARM_TABLE_MS && this.bleUp && !this.resync) this._preArmTable();   // 2026-09-19: hittable at go-live, not after it
       // Hold-across-disperse is bench-UNVERIFIED (start-sequence §3 / checklist NEXT #1): if the gun drops its
       // config while parked unspawned, enable rewriteHeadAtT10 to re-write frames.head at T-10 s.
       if (this.rewriteHeadAtT10 && rem <= 10000 && !this._headRewritten && this.frames && this.bleUp) { this._headRewritten = true; this._writeHead('T-10 head re-write'); }
@@ -2659,7 +2752,8 @@ export class Engine {
       // (timer, scanner hint, revive gate) all bail, so a recovered player is stuck with no way back
       // (bench 2026-09-04: "it isn't sensing the respawn station"). Stamp it: they are down as of now.
       if (this.reconciling && now - this.reconciling.since >= RECONCILE_MS) this._endReconcile();
-      if (this._armPending && this.bleUp && !this.reconciling && now - this._armPending.at >= SPAWN_PROTECT_MAX_MS) this._armLife('cap');   // F209
+      if (this._armPending && this.bleUp && !this.reconciling && now - this._armPending.at >= (this._armPending.until != null ? this._armPending.until : SPAWN_PROTECT_MAX_MS)) this._armLife(this._armPending.shotEnds === false ? 'protection over' : 'cap');   // F209; 2026-09-19 profiles
+      if (this._triggerPending && this.bleUp && !this.reconciling && now >= this._triggerPending.due) this._triggerLive('weapon delay over');   // 2026-09-19
       this._noFireTick(now);   // F208
       this._cureTick(now);     // F264: and once `no_fire` is concluded, ASK the gun, then act on the answer
       this._pollTick(now);     // F264: ...and ask it every QUERY_POLL_MS anyway, so nobody has to pull a dead trigger first
@@ -2732,8 +2826,13 @@ export class Engine {
     // F206: the gun keeps ONE team byte, and the `pset_pool` $PSET above carries the ARMING team. A player
     // an infection flip has TURNED revives with the flip's own burst, which ends on the team they joined;
     // `frames.revive` would put them back on the arming team.
-    const flipped = this._turned && this.frames.team_flip && this.frames.team_flip[String(this.teamTid)];
-    const revive = flipped || this.frames.revive;
+    // 2026-09-19: the respawn profile. A station revive protects, maps the trigger at once and shows the shield; every
+    // other revive (timed, operator, resync, a turned player) is a timed life that holds the trigger for the weapon delay.
+    const rp = this._respawnProfile();
+    const tf = (rp && rp.team_flip) || this.frames.team_flip;
+    const flipped = this._turned && tf && tf[String(this.teamTid)];
+    const kind = rp && stationId != null && !flipped ? 'station' : 'timed';
+    const revive = flipped || (rp ? (kind === 'station' ? rp.revive_station : rp.revive) : this.frames.revive);
     const life = this._lifeSeq = (this._lifeSeq || 0) + 1;   // pl3: a lost write is only this life's news
     this._writeLife([...(ps.frame ? [ps.frame] : []), ...sir, ...revive, ...(sp.frame ? [sp.frame] : [])], 'revive' + (flipped ? ' (turned)' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : ''), life);
     this.hurtFired = false;
@@ -2754,13 +2853,14 @@ export class Engine {
     // refill in flight; the recharge delay runs from here, which is why a life's first fill lands
     // SHIELD_REGEN_DELAY_MS in and never inside the spawn write.
     this._shieldRegen = null; this._shieldDown = false; this._shieldLoopAt = 0; this._shieldGaveUp = false; this._shieldQuietAt = this.now();
-    this._armAfterSpawn();   // F209
+    this._armAfterSpawn(false, kind);   // F209; 2026-09-19: the profile this revive used
+    this._timedLifeAt = kind === 'timed' && stationId == null ? this.now() : null;   // a legacy bundle's station revive is not a timed one   // 2026-09-19: the spawn-kill window runs from a timed respawn
     this._gunTake();   // A11.7
     this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}), ...(stationId != null ? { station: stationId } : {}), ...(operator ? { operator: true } : {}) });   // A47: `operator` = MC's FORCE RESPAWN (scoring keeps the streak)
     this.moment = { kind: 'redeploy', at: this.now() };
     this.log(operator ? 'respawned by the operator' : resync ? 'resync respawn' : stationId != null ? `respawned at station ${stationId}` : 'respawned', 'lk');
     this._eventLeds('respawned');   // A11 lights only (after the revive frames, so the burst ends on the fresh team colour); the sound went out with the revive write above
-    if (this.frames.headset) { this.carrying = null; this._activeRole = null; this._headsetDelayed(this.frames.headset.respawn, 'respawn'); }   // led-language.md §3.1/§5: +1.0 s after $SPAWN; A11.6: white flash then dark/team
+    if (this.frames.headset) { this.carrying = null; this._activeRole = null; if (!(this._armPending && this._armPending.shield)) this._headsetDelayed(this.frames.headset.respawn, 'respawn'); }   // 2026-09-19: the shield IS the respawn light   // led-language.md §3.1/§5: +1.0 s after $SPAWN; A11.6: white flash then dark/team
     this._changed();
   }
 
@@ -2794,7 +2894,7 @@ export class Engine {
 
   _endLocal(why) {
     if (this.ended) return;
-    this.ended = true; this._panicked = null; this.endAck = false; this._armPending = null;   // F209: never arm an ended gun
+    this.ended = true; this._panicked = null; this.endAck = false; this._armPending = null; this._triggerPending = null;   // F209: never arm an ended gun
     this.endedAt = this.now();   // the results screen's settle window runs from HERE, not from the result's arrival
     this._lightGen = (this._lightGen || 0) + 1;   // no delayed $GLED/$HLED/cue step from before teardown may land after it
     try { if (this.onEnd) this.onEnd(this.historyEntry()); } catch (_) { /* history is best-effort */ }
@@ -3367,7 +3467,7 @@ export class Engine {
   ackEnd() { if (this.ended) { this.endAck = true; this._changed(); } }
 
   _writeTeardown(kind, why) {
-    this._armPending = null;   // F209
+    this._armPending = null; this._triggerPending = null;   // F209
     if (kind === 'panic') { if (this.frames && this.frames.panic) this._write(this.frames.panic, `panic (${why})`); else this._write(['$CLEAR,*', '$SP,99,*'], `panic (${why})`); return; }
     if (this.frames) {
       this._write(this.frames.end, `end (${why})`);
@@ -3488,7 +3588,7 @@ export class Engine {
       if (this._armPending) this.log('operator resync: hit reception is still spawn-protected — the take follows the first shot or the cap', 'li');
       // F121 rebuild: the table is re-sent whatever `_sirLive` says. The operator is here because the gun is not
       // behaving, and a gun that rebooted has lost its table without any write of ours to say so (F11).
-      else { this._sirLive = false; this._armPending = { at: this.now(), flip: false }; this._armLife('operator resync'); }
+      else { this._sirLive = false; this._armPending = this._repairArm(); this._armLife('operator resync'); }
     } else {
       this._write(this._pickTable('sir_pool'), 'operator resync: hit audio');   // a pre-A44 bundle: the take, when it has one
     }
@@ -3660,7 +3760,7 @@ export class Engine {
         // $HIR,<sensor>,<irProto>,<shooterId>,<shooterTeam>,<damage>,,<subtype> — with t[0] the command
         // word, sensor is t[1] and irProto is t[2]. `ir_proto` read t[1], so it had been reporting
         // the SENSOR all along; every hit_taken fact ever recorded carries that mix-up.
-        if (!Number.isNaN(team)) { this.latch = { shooter_num: Number.isNaN(num) ? 0 : num, shooter_team: team, at: this.now(), ir_proto: parseInt(t[2], 10), sensor: parseInt(t[1], 10) }; this.lastHitAt = this.now(); }
+        if (!Number.isNaN(team)) { this.latch = { shooter_num: Number.isNaN(num) ? 0 : num, shooter_team: team, at: this.now(), ir_proto: parseInt(t[2], 10), sensor: parseInt(t[1], 10) }; this.lastHitAt = this.now(); this._shieldReassert(); }
         if (t[2] === '8') this._stun();   // F15: an EMP word (proto 8) -- a no-op unless config.stun is on; no $HP follows a status row, so nothing below sees it
         break;
       }
@@ -3778,7 +3878,7 @@ export class Engine {
    *  loaded, and not swapping, reloading, stunned, resyncing, reconciling or overheat-locked. A press while
    *  one is due keeps the first. */
   _awaitShot() {
-    if (this._standDown(['phase', 'spawned', 'ble', 'alive', 'reconciling', 'resync', 'tutorial', 'switching', 'reloading', 'stunned', 'heat'])) return;
+    if (this._standDown(['phase', 'spawned', 'ble', 'alive', 'reconciling', 'resync', 'tutorial', 'switching', 'reloading', 'stunned', 'heat', 'weaponHold'])) return;
     // The slot's live count once the gun has reported it this life, else the spawn magazine. An empty mag
     // dry-fires. F259: the ACCOUNT, not the last `$ALCD` -- a press whose round is still in flight has
     // already spent that round, and reading the gun's slower number would book a press an empty gun cannot
@@ -4285,7 +4385,7 @@ export class Engine {
     // F209/S7.1: a reconcile disarms with its own `$AMMO` write (`_beginReconcile`), and the gun's echo
     // of that looks exactly like "a round left the mag" -- skip the first-shot arm while reconciling so
     // that echo cannot arm hit reception early; `_endReconcile` re-arms explicitly once it is done.
-    if (this._armPending && (slot === 0 || slot === 1) && prev != null && mag < prev && !this.reconciling) this._armLife('first shot');
+    if (this._armPending && this._armPending.shotEnds !== false && (slot === 0 || slot === 1) && prev != null && mag < prev && !this.reconciling) this._armLife('first shot');   // 2026-09-19: a profile life never ends on a shot
     if (prev != null && mag < prev) this._actSeq++;   // pl4: `_writeMust` never repeats counts past a shot
     if (prev != null && mag < prev && this.phase === 'live') this.shots += (prev - mag);
     // Bench 2026-09-17: the shot-ready cue times from THIS frame, the gun's own report of the round, so the
@@ -4526,7 +4626,10 @@ export class Engine {
     // F209: one death per life. Every caller checks `alive` too; this makes it hold for any future caller, so a
     // burst of lethal frames can never book a second death fact, a second deaths++ or a new respawn clock.
     if (!this.alive) return;
-    this._armPending = null;   // F209: never arm a dead gun; the revive protects and arms again
+    this._armPending = null; this._triggerPending = null;   // F209: never arm a dead gun; the revive protects and arms again
+    // 2026-09-19: killed this soon after a timed respawn = spawn-killed; the down-screen warning gets louder (never quieter).
+    if (this._timedLifeAt != null && this.now() - this._timedLifeAt <= SPAWN_KILL_WINDOW_MS && this._downWarn < DOWN_WARN_MAX) { this._downWarn++; this.log(`killed ${Math.round((this.now() - this._timedLifeAt) / 100) / 10}s after a timed respawn: down warning level ${this._downWarn}`, 'li'); }
+    this._timedLifeAt = null;
     this._shieldRegen = null; this._shieldDown = false;   // S29: a dead gun is not refilled, and the heartbeat stops with the life
     this.reloading = null; this.switching = null; this._reloadOutcome = null; this.held = {};   // the gun stops the reload/swap when you drop; so does the HUD
     const fresh = this.latch && this.now() - this.latch.at <= C.DEATH_LATCH_MS;
@@ -4561,11 +4664,12 @@ export class Engine {
       ? { num: 0, team: null, name: null, teamName: null, teamKey: null, unknown: true }
       : { num: shooter_num, team: shooter_team, name: this.nameOf(shooter_num), teamName: TEAM_NAME[shooter_team] || `TEAM ${shooter_team}`, teamKey: TEAM_KEY[shooter_team] || 'red' };
     this.emitFact({ type: 'death', match_id: this.matchId, shooter_num, shooter_team, ...(desync ? { desync: true } : {}) });
-    if (this.config && this.config.mode === 'infection' && this.frames && this.frames.team_flip) {
-      const tids = Object.keys(this.frames.team_flip).filter(k => Number(k) !== this.teamTid);
+    const flipTable = (this._respawnProfile() && this._respawnProfile().team_flip) || (this.frames && this.frames.team_flip);   // 2026-09-19: the timed-profile bursts
+    if (this.config && this.config.mode === 'infection' && flipTable) {
+      const tids = Object.keys(flipTable).filter(k => Number(k) !== this.teamTid);
       // Whether a mid-match $TID write changes the gun's own friendly-fire resolution is UNTESTED (modes §9); MC scores via team_change regardless.
       if (tids.length) {
-        const tid = Number(tids[0]); this._write(this.frames.team_flip[tids[0]], 'team_flip'); this._armAfterSpawn(true); this.emitFact({ type: 'team_change', match_id: this.matchId, tid });
+        const tid = Number(tids[0]); this._write(flipTable[tids[0]], 'team_flip'); this._armAfterSpawn(true); this.emitFact({ type: 'team_change', match_id: this.matchId, tid });
         this._turned = true;
         this._event('infected');   // A11.4: HUD-driven -- this gun just turned; MC's broadcast only tells the OTHERS
         // A16 §3.3/finding #4: infection is not a real death (the player "re-takes the body" immediately),
@@ -4628,7 +4732,7 @@ export class Engine {
       // `_armLife` (not a bare `_write`) so a `false` resolve on a link that stays up re-arms for retry instead
       // of silently leaving the gun on fn 28 for the life.
       // F121 rebuild: a drop may hide a reboot, which empties the table (F11), so the take is re-sent here too.
-      if (this._protectsSpawn()) { this._sirLive = false; this._armPending = { at: this.now(), flip: false }; this._armLife('reconcile'); }
+      if (this._protectsSpawn()) { this._sirLive = false; this._armPending = this._repairArm(); this._armLife('reconcile'); }
     }
     this.log(`reconcile done — ${this.alive ? 'live' : 'down'} at hp ${this.hp}`, 'lk');
     this._changed();
@@ -4700,7 +4804,7 @@ export class Engine {
    *  reset (prev=0 per slot), never as a magazine dump into `shots`. */
   /** Every head write starts with $CLEAR → the gun is back on weapon slot 0 (so $LCD, which carries no slot, books to slot 0). */
   _writeHead(label) {
-    this._armPending = null;   // F209: a head is fn 28 throughout; only a spawn/revive starts a new arm
+    this._armPending = null; this._triggerPending = null;   // F209: a head is fn 28 throughout (and holds the trigger); only a spawn/revive starts a new arm
     this._prevAmmo = {}; this._prevReserve = {}; this._shotAcct = {}; this.activeSlot = 0;
     this._recoil = null;   // S42: a fresh head is a fresh weapon table -- `_spawn`/`_revive` re-arm it for the life that actually follows
     // B1 guard: the gun's COMBAT team is whatever `$TID` this head carries, and only a config re-push
@@ -4819,6 +4923,10 @@ export class Engine {
       respawnType: this.respawnType, killedBy: this.killedBy, underFire: this.alive && this.lastHitAt > 0 && (now - this.lastHitAt) < 2000, respawnIn: (!this.alive && this.deadAt && this.respawnType === 'auto') ? Math.max(0, Math.ceil((r - (now - this.deadAt)) / 1000)) : 0,   // scanner/none modes have no countdown
       // utility.md: the respawn station this player would use, how close it reads, and what the DOWN screen should say
       station: stationView(this._respawnStation()), respawnGate: this.respawnGate, respawnHint: this.respawnHint(now),
+      // 2026-09-19 respawn profiles: `weaponArming` = ms until a timed life's trigger goes live (null once it has);
+      // `shielded` = a station life's protection is showing; `downWarn` = the down-screen warning level 1..3.
+      weaponArming: this._triggerPending && this.alive ? Math.max(0, this._triggerPending.due - now) : null,
+      shielded: !!(this._armPending && this._armPending.shield && this.alive), downWarn: this._downWarn,
       // F72: the most recent grenade/station beacon (proto-15 $HIR) — owner team + magnitude (8 hill, 6 respawn),
       // null once nobody has reported one this life. Not `station` above: that is BLE advert presence, this is IR.
       beacon: this.beacon || null,

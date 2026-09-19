@@ -129,6 +129,11 @@ and the gate:
 On revive the node writes `frames.revive` exactly as an auto respawn does, and the `respawn` fact carries
 **`station: <id>`** (A13.2). Auto and none modes ignore stations entirely.
 
+**Station profile (A49, 2026-09-19).** A bundle with `respawn_profile` revives at a station with
+`respawn_profile.revive_station` instead: protected for `respawn.station_protect_s` (0 / 2 / 3 s, default 2), the
+trigger live at once so the spawner can clear campers, and a white shield blink on the headset for the window. A shot
+does not end the protection. At the end of the window the node writes `spawn_protect_off`, then `shield_off`.
+
 ### 4.2 Engine surface (`engine.js`)
 `setStations(entries)` from the app every 250 ms · `state().station` = `{id, kind, team, state, value, rssi,
 threshold, present}` of the station this player would use (present first, else strongest) · `state().respawnGate`
