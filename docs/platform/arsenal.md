@@ -1,6 +1,6 @@
 # The whole arsenal. Three slots.
 
-Fifteen weapons, six classes, and one rule underneath all of them: a weapon is defined by how many hits it takes to kill, not by a damage number. You choose the health pool, and Mission Control works out the damage that lands on it.
+Sixteen weapons, six classes, and one rule underneath all of them: a weapon is defined by how many hits it takes to kill, not by a damage number. You choose the health pool, and Mission Control works out the damage that lands on it.
 
 - [Run a match](/docs/run-a-game)
 - [The platform](/platform)

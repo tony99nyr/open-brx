@@ -1,5 +1,5 @@
 # Modes and game setup
-Last verified: 2026-09-12
+Last verified: 2026-09-19
 
 This page covers the modes Open BRX itself runs, and the pieces you choose when you build a game.
 The stock on-tagger and Callsign modes are a separate thing and live on the [gameplay page](/manual/gameplay).
@@ -103,10 +103,10 @@ weapon is data, not firmware, and a game can hand out numbers Battle Company nev
 
 The catalogue holds 25 entries: the 19 weapons captured from the Callsign app, melee among them,
 three pistols we added (Glock-18, USP-S, Desert Eagle), and three of our own that the stock app has
-no equivalent for. Fifteen are in the game. Ten rows are hidden, because the full list is mostly
-duplicates and a player should not have to tell four grenade launchers apart. Of the fifteen, two are
+no equivalent for. Sixteen are in the game. Nine rows are hidden, because the full list is mostly
+duplicates and a player should not have to tell four grenade launchers apart. Of the sixteen, two are
 never in a starting kit: the Rocket Launcher and the Rail Gun are meant to be picked up on the field,
-and that is not built yet. So a player building a loadout chooses from thirteen, counting the two
+and that is not built yet. So a player building a loadout chooses from fourteen, counting the two
 pistols on their own tab. Melee is always loaded and never shown.
 
 Every weapon starts from the real frame Battle Company sent. Only the balance numbers are

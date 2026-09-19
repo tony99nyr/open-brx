@@ -143,7 +143,6 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 | **F268**, **F280**, then **S54** | weapons and perks | settle the rung basis with Tony (the time-to-kill proposal), then wire the six recoil fields once | a decision (Tony). The floors are settled at 60 |
 | **F281** | weapons and perks | move Quick Hands onto `$TMP` t6 in one piece, or not at all | sitting 2 step 4 (t6 absolute or additive) |
 | **S50** | weapons and perks | Extended Mags on `$TMP` t9 (one write per life, after `$SPAWN`, then an `$AMMO` fill) | sitting 2 step 2 (per slot or not) |
-| **S16**, **S53** | weapons and perks | the toxin tick clock in `app/src/engine.js` (all three decisions made), with the HUD poison and smoke tells | nothing; `engine.js` is shared with the playtest lane |
 
 ## Preconditions (build these first)
 

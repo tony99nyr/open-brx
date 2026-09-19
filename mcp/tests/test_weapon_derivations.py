@@ -307,18 +307,19 @@ def test_burst_and_charge_classification_matches_the_frame():
         assert CAT.time_to_kill(wid, DEFAULT_POOL) > 0, wid
 
 
-def test_crit_pct_writes_t6_only_on_the_three_weapons_that_declare_it():
+def test_crit_pct_writes_t6_only_on_the_weapons_that_declare_it():
     """F62 (closed 2026-09-18): t6 (`primaryCritChance`) is a straight percentage the GUN rolls
-    itself. `crit_pct` names three weapons only (burst_rifle, amr, toxin_rifle); every other row
+    itself. `crit_pct` names two weapons only (burst_rifle, amr); every other row
     must keep whatever t6 its capture carries — which is 0 on every stock frame captured so far.
 
     Unlike `headset_dmg`, an ABSENT `crit_pct` is not a refusal: a weapon that never crits is not a
     balance hole, so `resolve()` must leave the token exactly as the capture carries it rather than
     writing a 0. Break the `crit_pct` write in `resolve()` and watch this go red."""
-    declared = {"burst_rifle": 40, "amr": 30, "toxin_rifle": 15}
+    declared = {"burst_rifle": 40, "amr": 30}
+    # The Toxin Rifle carried 15 until 2026-09-19: every hit poisons now (S16), so no crit roll.
     by_id = {w["weapon_id"]: w for w in ROWS}
     assert {wid: by_id[wid]["crit_pct"] for wid in declared} == declared, \
-        "fixture drift: the three crit weapons no longer declare the expected crit_pct"
+        "fixture drift: the crit weapons no longer declare the expected crit_pct"
     for wid, want in declared.items():
         compiled_t6 = CAT.resolve(wid, 0).split(",")[WeaponCatalog._T["crit"] + 1]
         assert compiled_t6 == str(want), f"{wid}: t6 compiled to {compiled_t6!r}, crit_pct declares {want!r}"
@@ -374,7 +375,7 @@ def test_htk_and_ttk_derive_from_base_damage_alone_with_no_crit_term():
         assert CAT.hits_to_kill(wid, DEFAULT_POOL) == want_htk, \
             f"{wid}: hits_to_kill() disagrees with ceil(pool / damage_per_pull()) -- a crit term crept into the chain"
         assert w["htk"] == want_htk, f"{wid}: catalogue htk is stale against the guaranteed derivation"
-    # the three crit weapons specifically, pinned to the numbers this change shipped (F62, 2026-09-18)
+    # the crit weapons, and the Toxin Rifle that dropped its crit, pinned to the numbers this change shipped (F62, 2026-09-18)
     for wid, want_htk, want_ttk in (("burst_rifle", 12, 1558), ("amr", 6, 2000), ("toxin_rifle", 15, 1540)):
         assert CAT.hits_to_kill(wid, DEFAULT_POOL) == want_htk, wid
         assert CAT.time_to_kill(wid, DEFAULT_POOL) == want_ttk, wid
@@ -715,7 +716,7 @@ def test_the_poison_block_is_declared_and_never_reaches_the_wire():
 
     Nothing on the WIRE can tick. The bench that day proved the whole fn 24-27 family applies no damage
     at all and instead leaves the victim's gun faking a hit every 5.07 s, so the native route is dead and
-    the poison can only be a tick clock on the victim's own phone (`spec/node.md` §3.17, not built). The
+    the poison can only be a tick clock on the victim's own phone (`spec/node.md` §3.17). The
     gun's only job is to land the direct hit and to carry protocol 11 in `$HIR` token 2 so the node knows
     which weapon hit it.
 

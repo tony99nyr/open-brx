@@ -662,3 +662,48 @@ def test_round3_merge2_an_unbound_recompile_drops_the_stale_ack():
         raise AssertionError("start() accepted a roster holding a stale ack")
     except ValueError as e:
         assert "acked" in str(e), e
+
+
+def test_a_hot_joiner_whose_weapon_the_pinned_plan_never_saw_is_withheld():
+    """S16 review 2026-09-19: a player who joins a running match is compiled against the PINNED hit plan. A
+    weapon with a conditional `$SIR` row (catalogue `sir_fn`: the Toxin Rifle's <11,0>) that the plan never
+    saw is in no gun's table, and a `dot` weapon is missing from every `dot` table, so its hits vanish in
+    silence. The hot join is withheld with one WITHHELD feed line; a stock-cell joiner still joins."""
+    from brx_mcp.mc.compile import Compiler
+    clock = {"t": T0}
+    net = FakeNet()
+    s = Session(Compiler(), net, FakeArmory(demo_armory()), now_ms=lambda: clock["t"])
+    s.set_config({"mode": "tdm", "time_limit_s": 60})
+    ps = [s.add_player(f"OP{i}", gun_id=f"GUN-{chr(65 + i)}") for i in range(2)]
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    s.push_config(force=True)
+    for i in range(2):
+        net.simulate_node_message(f"node{i}", "ack_config",
+                                  {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$LCD"}, clock["t"])
+    s.start(force=True)
+    assert s.in_play()
+    assert "toxin_rifle" not in s._pinned_hit_plan.cells, "fixture: the match must start with no Toxin Rifle"
+    net.pushed.clear()
+    tail = demo_armory()[2]["ble"]["tail"]
+    net.simulate_hello("node2", f"GUN-C-{tail}")
+    late = s.add_player("LATE", gun_id="GUN-C", loadout={"weapons": [{"weapon_id": "toxin_rifle"}]})
+    assert [w["weapon_id"] for w in late["loadout"]["weapons"]][:1] == ["toxin_rifle"], late["loadout"]
+    assert late["node_id"] == "node2"
+    assert not net.pushes("config", node_id="node2"), "no frames: its hits would register on no gun"
+    assert not net.pushes("start", node_id="node2")
+    assert late["player_id"] not in s.bundles
+    withheld = [e for e in s.feed if e.get("tag") == "WITHHELD"]
+    assert len(withheld) == 1, withheld
+    assert "TOXIN RIFLE" in withheld[0]["text"] and "LATE" in withheld[0]["text"], withheld[0]["text"]
+    # the welcome path (a re-hello) withholds too, and says it once
+    node = net.simulate_hello("node2", f"GUN-C-{tail}")
+    assert node and "frames" not in node and "start" not in node
+    assert len([e for e in s.feed if e.get("tag") == "WITHHELD"]) == 1
+
+    # a joiner on a stock cell still hot joins
+    net.pushed.clear()
+    tail3 = demo_armory()[3]["ble"]["tail"]
+    net.simulate_hello("node3", f"GUN-D-{tail3}")
+    ok = s.add_player("STOCK", gun_id="GUN-D", loadout={"weapons": [{"weapon_id": "assault_rifle"}]})
+    assert ok["node_id"] == "node3"
+    assert net.pushes("config", node_id="node3") and net.pushes("start", node_id="node3")

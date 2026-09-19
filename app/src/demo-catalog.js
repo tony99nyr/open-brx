@@ -38,8 +38,8 @@ export const DEMO_WEAPONS = [
     "ammo_total": 70,
     "bars": {
       "power": 56,
-      "rof": 53,
-      "ammo": 51,
+      "rof": 51,
+      "ammo": 49,
       "ttk": 27
     }
   },
@@ -76,8 +76,8 @@ export const DEMO_WEAPONS = [
     "ammo_total": 224,
     "bars": {
       "power": 38,
-      "rof": 87,
-      "ammo": 75,
+      "rof": 88,
+      "ammo": 77,
       "ttk": 93
     }
   },
@@ -116,8 +116,8 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 47,
       "rof": 100,
-      "ammo": 82,
-      "ttk": 64
+      "ammo": 83,
+      "ttk": 60
     }
   },
   {
@@ -154,8 +154,8 @@ export const DEMO_WEAPONS = [
     "ammo_total": 120,
     "bars": {
       "power": 91,
-      "rof": 27,
-      "ammo": 57,
+      "rof": 26,
+      "ammo": 54,
       "ttk": 100
     }
   },
@@ -193,9 +193,9 @@ export const DEMO_WEAPONS = [
     "ammo_total": 55,
     "bars": {
       "power": 64,
-      "rof": 47,
-      "ammo": 45,
-      "ttk": 42
+      "rof": 45,
+      "ammo": 43,
+      "ttk": 40
     }
   },
   {
@@ -232,9 +232,9 @@ export const DEMO_WEAPONS = [
     "ammo_total": 900,
     "bars": {
       "power": 38,
-      "rof": 67,
+      "rof": 63,
       "ammo": 100,
-      "ttk": 49
+      "ttk": 47
     }
   },
   {
@@ -272,7 +272,7 @@ export const DEMO_WEAPONS = [
     "ammo_total": 4,
     "bars": {
       "power": 100,
-      "rof": 27,
+      "rof": 26,
       "ammo": 20,
       "ttk": 93
     }
@@ -312,7 +312,7 @@ export const DEMO_WEAPONS = [
     "ammo_total": 4,
     "bars": {
       "power": 100,
-      "rof": 33,
+      "rof": 32,
       "ammo": 20,
       "ttk": null
     }
@@ -350,9 +350,9 @@ export const DEMO_WEAPONS = [
     "ammo_total": 30,
     "bars": {
       "power": 73,
-      "rof": 40,
-      "ammo": 32,
-      "ttk": 56
+      "rof": 38,
+      "ammo": 31,
+      "ttk": 53
     }
   },
   {
@@ -388,9 +388,9 @@ export const DEMO_WEAPONS = [
     "ammo_total": 360,
     "bars": {
       "power": 29,
-      "rof": 93,
-      "ammo": 88,
-      "ttk": 78
+      "rof": 94,
+      "ammo": 89,
+      "ttk": 80
     }
   },
   {
@@ -428,8 +428,8 @@ export const DEMO_WEAPONS = [
     "ammo_total": 32,
     "bars": {
       "power": 20,
-      "rof": 80,
-      "ammo": 38,
+      "rof": 75,
+      "ammo": 37,
       "ttk": 20
     }
   },
@@ -469,7 +469,7 @@ export const DEMO_WEAPONS = [
       "power": 82,
       "rof": 20,
       "ammo": 26,
-      "ttk": 71
+      "ttk": 73
     }
   },
   {
@@ -506,9 +506,9 @@ export const DEMO_WEAPONS = [
     "ammo_total": 160,
     "bars": {
       "power": 20,
-      "rof": 80,
-      "ammo": 69,
-      "ttk": 85
+      "rof": 75,
+      "ammo": 66,
+      "ttk": 87
     }
   },
   {
@@ -544,9 +544,47 @@ export const DEMO_WEAPONS = [
     "ammo_total": 459,
     "bars": {
       "power": 29,
-      "rof": 73,
+      "rof": 69,
       "ammo": 94,
-      "ttk": 35
+      "ttk": 33
+    }
+  },
+  {
+    "weapon_id": "toxin_rifle",
+    "name": "Toxin Rifle",
+    "cls": "11",
+    "weapon_class": "ballistic",
+    "desc": "Hits lightly and keeps hitting. The damage arrives after you have stopped shooting, which is the whole point.",
+    "clip": 30,
+    "mags": 6,
+    "reserve": 180,
+    "reload_s": 1.6,
+    "reload_ms": 1600,
+    "dmg": 7,
+    "rpm": 68,
+    "rng": 75,
+    "dmg_per_hit": 8,
+    "pool": 115,
+    "verified": false,
+    "tags": [
+      "assault"
+    ],
+    "role": "assault",
+    "htk": 15,
+    "ttk_ms": 1540,
+    "rounds_per_charge": 1,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 65,
+      "per_shot": 10,
+      "recover_ms": 150
+    },
+    "ammo_total": 210,
+    "bars": {
+      "power": 29,
+      "rof": 82,
+      "ammo": 71,
+      "ttk": 67
     }
   },
   {
@@ -583,9 +621,9 @@ export const DEMO_WEAPONS = [
     "ammo_total": 139,
     "bars": {
       "power": 38,
-      "rof": 60,
-      "ammo": 63,
-      "ttk": 42
+      "rof": 57,
+      "ammo": 60,
+      "ttk": 40
     }
   }
 ];

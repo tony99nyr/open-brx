@@ -32,7 +32,7 @@ then the shooter's `$WEAP`, the seven `$BMAP` rows, `$SPAWN,,*`, `$AMMO,0,32,384
 **YES, and t6 is a straight percentage the GUN rolls.** t6 = 20 gave 9 crits in 64 hits (14.1%); t6 = 50 gave 54
 in 119 (45.4%). A crit is the magnitude **x1.5 truncated** and **`$HIR` token 6 reads 1** on it, so a proc is
 visible to the victim's node. Shipped the same day on three weapons (Burst Rifle 40%, AMR 30%, Toxin Rifle 15%,
-the last as the poison proc). Do not re-run. Original steps below, kept for method.
+the last as the poison proc; removed 2026-09-19, when every Toxin Rifle hit became a poison hit). Do not re-run. Original steps below, kept for method.
 
 The crit bit in the IR word is proven: our own emitter sets it and the victim takes **x1.5** (magnitude 20 landed 30).
 What is unknown is whether `$WEAP` **t6** (`primaryCritChance`, the app's name) makes a TAGGER roll it. It reads 0 on

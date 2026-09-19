@@ -22,7 +22,7 @@ export type {
   LiveView, StartNodeView, StartView, State, GameConfigBase, LanView, KitView, LobbyAck,
   LobbyView, GameAnnouncementView, SyncAckState, SyncRow, SyncTotals, SyncView, SessionOptions, VersionsView,
   NoticesView, RestoredFromView, SnapshotFeedRow, OrphanMatchView, OperatorActionResult, OperatorStatus,
-  TunnelStatus, TunnelProviderValue, ValuePair
+  TunnelStatus, TunnelProviderValue, ValuePair, DotSpec
 } from './contract.gen';
 export type {
   ArmState, ControlCmd, ItemKind, LoadoutPreset, McKind, NodeDeniedCommand, NodeKind, OperatorCmd, PersistedEventType, Phase,

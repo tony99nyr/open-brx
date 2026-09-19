@@ -66,19 +66,20 @@ never completes, which the cure cannot see). App **0.4.0** is released; both Pix
 ## Lane: weapons and perks
 
 Shipped: the `$WEAP` t12 headset word as a declared `wire.headset_dmg` (a captured t12 with no price is a refusal),
-crits on three weapons (`crit_pct`; hits-to-kill stays the GUARANTEED number), the counts derived from the shipped
+crits on two weapons (`crit_pct`; hits-to-kill stays the GUARANTEED number), the counts derived from the shipped
 artefact, and the `/arsenal` page. **PROPOSED, NOT SHIPPED: every recoil number** (`spec/node.md` §3.15).
-Tony's decisions on 2026-09-18: the toxin design is settled (credit to the applier, cleared on respawn, the HUD
-shows it; S16), and the F268 floors stay at 60. The "fraction of the magazine" rung approval is WITHDRAWN; do not
-act on it.
+The Toxin Rifle SHIPPED 2026-09-19 (S16 closed): every hit poisons, the node tick clock, credited `death`
+with `dot: true`, the HUD poison and smoke tells, unhidden. `mcp/tools/balance_sim.py` balances any weapon
+(weapon-design.md §7.5c). The F268 floors stay at 60. The "fraction of the magazine" rung approval is
+WITHDRAWN; do not act on it.
 
-- **Next desk task:** settle the rung basis with Tony (**F268** second judgement and **F280**, the time-to-kill
-  proposal), then wire it once (**S54**). In parallel: **F278** (a runtime refusal) and the **S16** tick clock with
-  the **S53** HUD tells.
-- **Next bench task:** bench-plan sitting 2 steps 1-4 (`$TMP` t10, t9 per slot, t1-t3, the t6 re-send), then
+- **Next desk task:** settle the rung basis with Tony (**F268** second judgement and **F280**), then wire it
+  once (**S54**). **F291** (Charge Rifle dominates, Shotgun trails) needs Tony's decision. **F290**: `main` is
+  red in two browser gates.
+- **Next bench task:** **F292** (the Toxin Rifle on a real gun), then bench-plan sitting 2 steps 1-4, then
   sitting 3 (§26 groups A and B).
 - **Blocked:** S54 and sitting 8 on the rung decision; Extended Mags on `$TMP` (S50) and F281 on sitting 2;
-  **F275** (where the headset word stops, the close-range class) on outdoor space (sitting 10).
+  **F275** on outdoor space (sitting 10).
 
 ## Start here
 

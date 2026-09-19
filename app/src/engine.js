@@ -218,6 +218,29 @@ export function isPoolProbe(frame) {
 /** F264: how long after a spawn/revive the read-back probe waits. The burst is 17 frames and the bench measured
  *  30-90 ms a frame, so ~1.5 s to land; 2500 ms leaves the echo room to come back before we ask again. */
 const SPAWN_PROBE_MS = 2500;
+/** S16 (spec/node.md §3.17): the poison tick clock the node runs. A tick is one `$LIFE` write the node makes itself, and
+ *  the gun answers a non-lethal one with `$HP` (bench 2026-09-09). That `$HP` is the TICK, not a hit: it must never
+ *  become a `hit_taken` fact (MC would count a hit nobody fired) or a hit flash. This is how long after a tick write
+ *  an `$HP` that moves the tick's pool by exactly the tick (`dotEchoMatches`) is read as the tick's own echo. */
+export const DOT_ECHO_MS = 1000;
+/** S16: a death this soon after our own tick write, with no newer `$HIR` latched, is the tick's kill, and the kill
+ *  goes to the player who last applied the poison (Tony, 2026-09-18). A lethal negative answers `$LCD` at once. */
+export const DOT_KILL_MS = 1500;
+/** S16: is this pool change exactly the echo of the tick `echo` ({pool, n})? The tick's pool moved by
+ *  `min(n, before)` (a negative floors at 0) and the other two pools did not move. PURE. */
+export function dotEchoMatches(echo, before, after) {
+  for (const k of ['health', 'armor', 'shield']) {
+    const moved = before[k] - after[k];
+    if (k === echo.pool ? moved !== Math.min(echo.n, before[k]) || moved <= 0 : moved !== 0) return false;
+  }
+  return true;
+}
+/** S53 (bench 2026-09-18, the controlled redo): a fn-23 smoke holds the victim's live accuracy at 0 for about 6 s,
+ *  then the gun restores it in one step (the V4_31 6000 ms timer). */
+export const SMOKE_MS = 6000;
+/** S53: the victim's `$ALCD` accuracy drops to 0 "in the same millisecond" as the smoke's `$HIR` (bench 2026-09-18).
+ *  A drop to 0 and a `$HIR` this close together, in either order, is a smoke landing. */
+export const SMOKE_PAIR_MS = 400;
 const STUN_DEFAULT_S = 10;          // F15: how long an EMP (proto-8 $HIR under config.stun) disarms the gun when the config names no duration
 /** F15 (Tony, 2026-09-18): the stun had no audible cue on the victim's own gun -- `_event('stunned')` is a
  *  no-op until a profile carries one, and the shooter-side row that carries fn 23 never reaches the victim.
@@ -711,6 +734,12 @@ export class Engine {
     this._actSeq = 0;               // pl4: shots and hits seen, so `_writeMust` can tell the life moved on
     this._writeLost = null;         // pl4: the `_lifeSeq` whose spawn/revive write resolved false (pool `write_lost`)
     this.hurtFired = false;         // low-health alert already sent this life
+    this.poison = null;             // S16: {proto, per, tickMs, at, until, nextAt, by:{num,team}, ticks} while a poison stack ticks (spec/node.md §3.17)
+    this._dotEcho = null;           // S16: {at, pool, n} of the last tick write, until its `$HP` echo is consumed (DOT_ECHO_MS)
+    this._dotKill = null;           // S16: {at, num, team} of the last HEALTH tick write, read by `_death` (DOT_KILL_MS)
+    this.smoke = null;              // S53: {at, until} while a fn-23 smoke holds the gun's accuracy at 0
+    this.gunAcc = null;             // S53: the live accuracy the gun last reported on `$ALCD` token 2 (active slot), null until one this life
+    this._accZeroAt = null; this._smokeHirAt = null;   // S53: the two halves of a smoke landing, paired in `_smokeCheck`
     this.stunned = null;            // F15: {at, until, ammo:{slot:[mag,reserve]}} while an EMP has the gun disarmed; the ammo is the LIVE count to restore
     this._recoil = null;            // S42: {weaponId, ceiling, floor, perShot, recoverMs, value, ...} for the ACTIVE weapon's live accuracy model, or null (no profile / recoil off)
     this._lastTeamRepaintAt = null; // F68: last periodic team-colour repaint (tick(), TEAM_REPAINT_MS)
@@ -2139,6 +2168,7 @@ export class Engine {
     this._holdAccuracyWrites('spawn');   // the spawn write owns `$AMMO` until the gun has answered it
     this._lastTeamRepaintAt = this.now();   // F68: the spawn flash IS this life's first paint; the backstop clock runs from it
     this._recoilArm('spawn');   // S42: a fresh life starts at the weapon's ceiling
+    this._poisonClear('spawn'); this._smokeClear('spawn'); this.gunAcc = null; this._accZeroAt = null; this._smokeHirAt = null; this._dotEcho = null; this._dotKill = null;   // S16/S53: a new life carries neither
     this._cue('klaxon');
     // Spawn shield is ALWAYS 0 on hardware -- $PSET t5 is a capacity filled by an fn-11
     // grant, never a starting pool (bench 2026-08-27).
@@ -2692,6 +2722,8 @@ export class Engine {
         const st = this._stationRevivable(now); if (st) { this._resyncRevive = false; this._revive(false, st.id); }
       }
       if (this.stunned && now >= this.stunned.until) this._stunRestore('expired');   // F15: the stun timer -- restore the LIVE counts
+      this._poisonTick(now);           // S16: the poison tick clock (spec/node.md §3.17)
+      if (this.smoke && now >= this.smoke.until) this._smokeClear('expired');   // S53: the gun's own ~6 s timer has given accuracy back
       this._reassertDeathBlink(now);   // A11.6: keep the headset out-blink lit through a long DOWN (colour opt-in only)
       this._teamRepaintTick(now);      // F68: a periodic repaint that survives a miss the wire never reports (S42)
       this._recoilTick(now);           // S42: recoil recovery + the one accuracy writer/verify loop
@@ -2745,6 +2777,7 @@ export class Engine {
     this._lastTeamRepaintAt = this.now();   // F68: as at spawn — the respawn flash is this life's first paint
     this._prevAmmo = {}; this._prevReserve = {}; this._shotAcct = {}; this.activeSlot = 0;   // both maps: a stun before the first shot of a NEW life must snapshot this life's reserve, not the last one's (polish review 2026-09-11)   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
     this._recoilArm('revive');   // S42: a respawn resets to the weapon's ceiling
+    this._poisonClear('respawn'); this._smokeClear('respawn'); this.gunAcc = null; this._accZeroAt = null; this._smokeHirAt = null; this._dotEcho = null; this._dotKill = null;   // S16/S53: a new life carries neither
     this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.deadAt = 0; this.killedBy = null;
     this.poolSrc = 'model';        // R2-3: a fresh life, and again from config.health until the gun speaks
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
@@ -2805,6 +2838,7 @@ export class Engine {
     if (this.bleUp) this._writeTeardown('end', why); else { this.pendingTeardown = 'end'; this.log(`end (${why}) owed to the gun — link down`, 'le'); }
     this.spawned = false; this.alive = false; this.resync = null; this.reconciling = null; this.start = null; this._resyncRevive = false; this.reloading = null; this._reloadOutcome = null; this.held = {};
     this.stunned = null;   // F15: the end frames own the gun now
+    this._poisonClear('match end'); this._smokeClear('match end');   // S16/S53: no life left to tick or to tell about
     this._recoil = null;   // S42: no more life to drive accuracy for
     this.ready = false;
     this.moment = { kind: 'match_over', at: this.now() };
@@ -2858,6 +2892,117 @@ export class Engine {
     }
     this.log(`stun over (${why})`, 'li');
     this._changed();
+  }
+  // ---------- S16: damage over time, on the node (spec/node.md §3.17) ----------
+  /** The tick numbers for an IR protocol, from the bundle's game-wide `dot` table (MC keys it by the protocol the
+   *  SHOOTER's `$WEAP` t3 puts on the wire; JSON keys are strings). Null for any other protocol, and for a bundle
+   *  that predates S16. PURE. */
+  _dotSpec(proto) {
+    const tbl = this.frames && this.frames.dot;
+    const d = tbl && !Number.isNaN(proto) ? tbl[String(proto)] : null;
+    if (!d) return null;
+    const per = Number(d.per_tick), tickMs = Number(d.tick_ms), durMs = Number(d.duration_ms);
+    return per > 0 && tickMs > 0 && durMs >= tickMs ? { per, tickMs, durMs } : null;
+  }
+  /** A `$HIR` on a poison protocol (Tony 2026-09-18/19: every hit poisons). The FIRST hit starts the stack and plays
+   *  `poisoned`; any later hit, from the same shooter or another, REFRESHES it to full duration and names the new
+   *  applier (kill credit goes to the most recent one). Stacks never add, and a refresh keeps the tick cadence: under
+   *  sustained fire a reset cadence would push the next tick out on every round and the poison would never tick. */
+  _poisonHit(proto) {
+    const spec = this._dotSpec(proto); if (!spec) return;
+    if (this._standDown(['phase', 'spawned', 'bundle', 'alive', 'tutorial'])) return;
+    const now = this.now();
+    const by = { num: this.latch ? this.latch.shooter_num : 0, team: this.latch ? this.latch.shooter_team : 0 };
+    const p = this.poison;
+    if (p) {
+      p.until = now + spec.durMs; p.by = by; p.proto = proto; p.per = spec.per; p.tickMs = spec.tickMs; p.durMs = spec.durMs;
+      this.log(`☣ poison refreshed by #${by.num}: ${spec.durMs} ms from now`, 'li');
+      this._changed(); return;
+    }
+    this.poison = { proto, per: spec.per, tickMs: spec.tickMs, durMs: spec.durMs, at: now, until: now + spec.durMs, nextAt: now + spec.tickMs, by, ticks: 0 };
+    this._event('poisoned');   // A11: the gun plays nothing for the `$LIFE` ticks, so the node speaks for the poison
+    this.log(`☣ poisoned by #${by.num}: ${spec.per} every ${spec.tickMs} ms for ${spec.durMs} ms`, 'le');
+    this._changed();
+  }
+  /** The clock, from `tick()` while LIVE. One tick per call at most: a webview that stalled drops the ticks it
+   *  missed rather than firing them in a burst. The stack ends straight after its last tick. */
+  _poisonTick(now) {
+    const p = this.poison; if (!p || now < p.nextAt) return;
+    if (p.nextAt <= p.until && (now <= p.until || now - p.nextAt < p.tickMs)) this._poisonStrike(p, now);   // a clock that stalled past `until` fires nothing; the last tick is due exactly AT `until`, so a `tick()` up to one interval late still fires it
+    if (this.poison !== p) return;   // the strike ended it (nothing does today; a guard for the next change)
+    p.nextAt += p.tickMs;
+    if (p.nextAt <= now) p.nextAt = now + p.tickMs;
+    if (p.nextAt > p.until) this._poisonClear('expired');
+  }
+  /** ONE tick: a negative `$LIFE` on the OUTERMOST non-empty pool, shield, then armour, then health. A negative is
+   *  per pool with no spill and floors at 0 (bench 2026-09-09), so the node walks the pools itself, and a tick that
+   *  empties a pool loses its remainder. Mode 0 only, never a mode 1/2 set: those revive a dead gun (levers §16).
+   *  The cue rides every tick except a lethal one, where the firmware's own death scream owns the speaker. */
+  _poisonStrike(p, now) {
+    if (this._standDown(['phase', 'spawned', 'bundle', 'ble', 'alive', 'reconciling', 'resync', 'tutorial'])) {
+      this.log(`☣ poison tick skipped (${this._standDown(['phase', 'spawned', 'bundle', 'ble', 'alive', 'reconciling', 'resync', 'tutorial'])})`, 'li');
+      return;
+    }
+    const n = p.per;
+    const pool = this.shield > 0 ? 'shield' : this.armor > 0 ? 'armor' : 'health';
+    const frame = pool === 'shield' ? `$LIFE,0,0,-${n},*` : pool === 'armor' ? `$LIFE,0,-${n},0,*` : `$LIFE,-${n},0,0,*`;
+    const lethal = pool === 'health' && this.hp <= n;
+    // The echo is matched on WHAT moved, not on timing alone: under sustained fire a `$HIR` lands between a tick
+    // write and its `$HP`, or just before the write, so "no newer `$HIR`" misread both ways (review 2026-09-19).
+    this._dotEcho = { at: now, pool, n };
+    // Only a HEALTH tick can kill. An armour or shield tick must not claim a death that lands in the next 1.5 s.
+    if (pool === 'health') this._dotKill = { at: now, num: p.by.num, team: p.by.team };
+    p.ticks++;
+    this._write([frame], `poison tick ${p.ticks}: -${n} ${pool}${lethal ? ' (lethal)' : ''}`);
+    if (!lethal) this._event('poison_tick');
+    this._changed();
+  }
+  /** The stack ends: expiry, death, respawn, match end. A stack never survives a life (Tony, 2026-09-18). */
+  _poisonClear(why) {
+    if (!this.poison) return;
+    this.poison = null;
+    this.log(`☣ poison over (${why})`, 'li');
+    this._changed();
+  }
+
+  // ---------- S53: the smoke tell (fn 23) ----------
+  /** Every `$ALCD` that names the active slot feeds this. A DROP to 0 (from anything else, or from nothing yet this
+   *  life) is half of a smoke landing. A report above 0 once a smoke is on means the gun has given accuracy back, so
+   *  the tell ends with it. The recoil writer never writes 0, so a drop to 0 is never the node's own write. */
+  _smokeObserve(acc, slot) {
+    if (Number.isNaN(acc) || slot !== this.activeSlot) return;
+    const prev = this.gunAcc; this.gunAcc = acc;
+    const now = this.now();
+    if (acc === 0 && prev !== 0) { this._accZeroAt = now; this._smokeCheck(); }
+    else if (acc > 0 && this.smoke && now - this.smoke.at > SMOKE_PAIR_MS) this._smokeClear(`the gun reports accuracy ${acc}`);
+  }
+  /** A `$HIR` and an accuracy drop to 0 within SMOKE_PAIR_MS of each other, in either order, is a smoke. The
+   *  EMP (proto 8 under `config.stun`) is fn 23 too, but it has its own STUNNED takeover, so it is not a smoke. */
+  _smokeCheck() {
+    const a = this._accZeroAt, h = this._smokeHirAt;
+    if (a == null || h == null || Math.abs(a - h) > SMOKE_PAIR_MS) return;
+    this._accZeroAt = null; this._smokeHirAt = null;   // one pair, one smoke
+    if (this._standDown(['phase', 'spawned', 'alive', 'tutorial', 'stunned'])) return;
+    if (this.latch && this.latch.ir_proto === 8 && this.stunEnabled) return;
+    const now = this.now();
+    if (this.smoke) { this.smoke.until = now + SMOKE_MS; this._changed(); return; }
+    this.smoke = { at: now, until: now + SMOKE_MS };
+    this._event('smoked');   // A11 presentation hook: no-op until a profile carries a `smoked` cue
+    this.log(`🌫 smoked: accuracy 0 for about ${SMOKE_MS / 1000} s`, 'le');
+    this._changed();
+  }
+  _smokeClear(why) {
+    if (!this.smoke) return;
+    this.smoke = null;
+    this.log(`smoke over (${why})`, 'li');
+    this._changed();
+  }
+  /** S53/S55: the input to the HUD's ONE accuracy pill -- why the player cannot hit, and how long for. Smoke is the
+   *  only reason built; S55 adds recoil, flinch and stance to the same shape, so the HUD renders a reason it is
+   *  handed and never guesses one. Null when nothing is holding accuracy down. */
+  _aimView(now) {
+    if (!this.smoke) return null;
+    return { reason: 'smoke', acc: this.gunAcc != null ? this.gunAcc : 0, leftMs: Math.max(0, this.smoke.until - now), totalMs: SMOKE_MS };
   }
   /** Bench 2026-09-17: a slot's time between rounds, `$WEAP` token 14 (split index 15) from the head the gun
    *  was given. Null for a stub frame with no tokens, or no frame for that slot. PURE. */
@@ -3619,6 +3764,7 @@ export class Engine {
         // F229 (bench 2026-09-17): token 5 is HEAT. Firing stops at 99, the gun does not cool on its
         // own, and only the reload lever vents it (about 35 a pull). `_onAmmo` below records it per slot,
         // and `_heatBlocksFire()` is the one reading of it (the accuracy writer's guard included).
+        this._smokeObserve(t[2] !== undefined && t[2] !== '' ? +t[2] : NaN, t[3] !== undefined && t[3] !== '' ? +t[3] : 0);   // S53: before the recoil reader, which ignores why accuracy moved
         this._recoilObserve(t[2] !== undefined && t[2] !== '' ? +t[2] : NaN, t[3] !== undefined && t[3] !== '' ? +t[3] : 0);
         this._onAmmo(+t[1] || 0, t[4] !== undefined ? +t[4] : null, t[3] !== undefined && t[3] !== '' ? +t[3] : 0, t[5] !== undefined && t[5] !== '' ? +t[5] : null);
         break;
@@ -3662,6 +3808,8 @@ export class Engine {
         // the SENSOR all along; every hit_taken fact ever recorded carries that mix-up.
         if (!Number.isNaN(team)) { this.latch = { shooter_num: Number.isNaN(num) ? 0 : num, shooter_team: team, at: this.now(), ir_proto: parseInt(t[2], 10), sensor: parseInt(t[1], 10) }; this.lastHitAt = this.now(); }
         if (t[2] === '8') this._stun();   // F15: an EMP word (proto 8) -- a no-op unless config.stun is on; no $HP follows a status row, so nothing below sees it
+        if (!Number.isNaN(team)) this._poisonHit(parseInt(t[2], 10));   // S16: a protocol in `frames.dot` starts or refreshes the stack
+        this._smokeHirAt = this.now(); this._smokeCheck();               // S53: half of a smoke landing (the other half is the $ALCD drop to 0)
         break;
       }
       case 'VOLTS': { const b = parseInt(t[3], 10); if (!Number.isNaN(b)) this.battery = b; this.lastVoltsAt = this.now(); break; }
@@ -4345,6 +4493,7 @@ export class Engine {
     // dropped entirely -- no hit_taken fact, no HUD feedback, no score. See FOLLOWUPS Q12.
     if (shield === undefined) shield = this.shield;
     const before = this.hp + this.armor + this.shield;
+    const pools0 = { health: this.hp, armor: this.armor, shield: this.shield };   // S16: what `dmg` measures from, read by the echo match
     if (this._prevHp === undefined) { this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield; }
     // A16 §3.1/§5: which pool actually moved -- health, then armour, then shield (mirrors poolgauge.changed_pool:
     // BRX depletes shield -> armour -> health, so when a hit spills across two pools the INNER one is the
@@ -4353,6 +4502,14 @@ export class Engine {
     this.hp = hp; this.armor = armor; this.shield = shield;
     const dmg = Math.max(0, before - (hp + armor + shield));
     if (dmg > 0) this._actSeq++;   // pl4: nor past a hit
+    // S16: the `$HP` that answers our own poison tick is the TICK, not a hit -- no `hit_taken` fact (MC would score a
+    // hit nobody fired), no pain grunt, no hit flash. It is the tick's echo when it lands inside DOT_ECHO_MS of the
+    // write AND the tick's pool is the only pool that moved, by exactly the tick. A negative floors at 0, so the tick
+    // moves the pool by `min(n, what the pool held before this frame)`. A real hit moves a different amount or a
+    // different pool, so it reads as a hit whichever order its `$HIR` and `$HP` take around the tick.
+    const dotEcho = !!(dmg > 0 && this._dotEcho && this.now() - this._dotEcho.at <= DOT_ECHO_MS
+      && dotEchoMatches(this._dotEcho, pools0, { health: hp, armor, shield }));
+    if (dotEcho) this._dotEcho = null;
     // S29: damage RESTARTS the recharge clock and abandons a refill already running -- Callsign does the same
     // (`DetectRecoverShieldCommand._lastHitTime`), and it is the whole mechanic: the shield comes back only
     // when you break contact. Stamped on the pools moving, not on the `$HIR`, so a hit whose `$HIR` was lost
@@ -4398,7 +4555,7 @@ export class Engine {
       this.log(`low-health alert: hp ${this.hp} < ${LOW_HEALTH_HP} — ${fr.length} frame(s)`, 'lk');
       if (fr.length) { this._hsGen = (this._hsGen || 0) + 1; this._write(fr, 'low health'); }   // cancels a pending hit-flash rest step (polish 2026-09-04)
     }
-    if (this.phase === 'live' && this.spawned && this.alive && this.hp > 0 && dmg > 0 && !this.tutorial) {
+    if (this.phase === 'live' && this.spawned && this.alive && this.hp > 0 && dmg > 0 && !this.tutorial && !dotEcho) {
       // A registered hit WIPES the headset: the native flash runs, then it goes dark and our team
       // colour never comes back (bench 2026-09-03, hled_spawned.py). Re-send it so other players
       // keep seeing the team for the rest of the life. Skipped on the hit that fired the low-health
@@ -4418,7 +4575,7 @@ export class Engine {
         if (tl && !hurtNow) this._write([tl], 'team led');
       }
     }
-    if (this.phase === 'live' && this.spawned && this.latch && this.now() - this.latch.at <= 1000 && dmg > 0 && !this.tutorial) {
+    if (this.phase === 'live' && this.spawned && this.latch && this.now() - this.latch.at <= 1000 && dmg > 0 && !this.tutorial && !dotEcho) {
       // `sensor` is $HIR tok1: 0-3 are ALL HEADSET sensors (it has four; 0 = front and 1 = back are
       // bench-mapped, 2 and 3 are not), 4 = gun body. It was parsed
       // and dropped, so MC could not see WHICH sensor caught a hit — answering that took the phone's
@@ -4453,6 +4610,7 @@ export class Engine {
       const busy = m && ['kill', 'redeploy', 'down', 'match_over'].includes(m.kind)
         && (this.now() - m.at) < RARE_GUARD_MS;
       if (busy) { /* let the rarer moment survive long enough to be rendered */ }
+      else if (dotEcho) { /* S16: a poison tick is not a hit; the HUD's poison pill carries it */ }
       else if (dmg > 0 && hp > 0) {
         // A death sets its own 'down' moment; a hit that kills must not flash "hit" first.
         this.moment = { kind: 'hit', at: this.now(),
@@ -4529,9 +4687,15 @@ export class Engine {
     this._armPending = null;   // F209: never arm a dead gun; the revive protects and arms again
     this._shieldRegen = null; this._shieldDown = false;   // S29: a dead gun is not refilled, and the heartbeat stops with the life
     this.reloading = null; this.switching = null; this._reloadOutcome = null; this.held = {};   // the gun stops the reload/swap when you drop; so does the HUD
-    const fresh = this.latch && this.now() - this.latch.at <= C.DEATH_LATCH_MS;
-    const shooter_num = fresh ? this.latch.shooter_num : 0;
-    const shooter_team = fresh ? this.latch.shooter_team : (this.latch ? this.latch.shooter_team : 0);
+    // S16: a death straight after our own poison tick, with no newer `$HIR` behind it, is the TICK's kill, and the
+    // kill goes to the player who last applied the poison (Tony, 2026-09-18). A newer latch means a real hit landed
+    // after the tick, and that hit is the kill.
+    const dk = this._dotKill && this.now() - this._dotKill.at <= DOT_KILL_MS && (!this.latch || this.latch.at < this._dotKill.at) ? this._dotKill : null;
+    this._dotKill = null; this._dotEcho = null;
+    this._poisonClear('died'); this._smokeClear('died');   // S16/S53: neither survives a life
+    const fresh = dk ? true : this.latch && this.now() - this.latch.at <= C.DEATH_LATCH_MS;
+    const shooter_num = dk ? dk.num : fresh ? this.latch.shooter_num : 0;
+    const shooter_team = dk ? dk.team : fresh ? this.latch.shooter_team : (this.latch ? this.latch.shooter_team : 0);
     // F81: wire id 0 is "no identity" (A5.1) -- a grenade hill's ambient damage word (F69) or a gun whose `$PSET`
     // never landed (F80). Its team field is the hill's OWNER, so naming that team as the killer told the player a
     // specific lie ("KILLED BY GREEN" when nobody shot them). MC already refuses to credit wire 0; the phone now
@@ -4560,7 +4724,8 @@ export class Engine {
     this.killedBy = unknown
       ? { num: 0, team: null, name: null, teamName: null, teamKey: null, unknown: true }
       : { num: shooter_num, team: shooter_team, name: this.nameOf(shooter_num), teamName: TEAM_NAME[shooter_team] || `TEAM ${shooter_team}`, teamKey: TEAM_KEY[shooter_team] || 'red' };
-    this.emitFact({ type: 'death', match_id: this.matchId, shooter_num, shooter_team, ...(desync ? { desync: true } : {}) });
+    if (dk) this.killedBy.dot = true;   // S16: the DOWN screen says POISONED BY
+    this.emitFact({ type: 'death', match_id: this.matchId, shooter_num, shooter_team, ...(desync ? { desync: true } : {}), ...(dk ? { dot: true } : {}) });
     if (this.config && this.config.mode === 'infection' && this.frames && this.frames.team_flip) {
       const tids = Object.keys(this.frames.team_flip).filter(k => Number(k) !== this.teamTid);
       // Whether a mid-match $TID write changes the gun's own friendly-fire resolution is UNTESTED (modes §9); MC scores via team_change regardless.
@@ -4851,7 +5016,11 @@ export class Engine {
       }))(this.weaponRow(this._activeWeaponId())),
       resync: this.resync ? { step: this.resync.step, prompt: this.resync.prompt } : null,
       reconciling: !!this.reconciling,
-      stunned: this.stunned ? { until: this.stunned.until, leftMs: Math.max(0, this.stunned.until - now) } : null,   // F15: the HUD's STUNNED takeover reads this
+      stunned: this.stunned ? { until: this.stunned.until, leftMs: Math.max(0, this.stunned.until - now) } : null,
+      // S16: the poison pill's input. `by` names the applier, who gets the kill if a tick finishes the player.
+      poison: this.poison ? { leftMs: Math.max(0, this.poison.until - now), durMs: this.poison.durMs, perTick: this.poison.per, tickMs: this.poison.tickMs, ticks: this.poison.ticks,
+        by: { num: this.poison.by.num, team: this.poison.by.team, name: this.nameOf(this.poison.by.num), teamKey: TEAM_KEY[this.poison.by.team] || null } } : null,
+      aim: this._aimView(now),   // S53/S55: why accuracy is held down ({reason, acc, leftMs}), or null   // F15: the HUD's STUNNED takeover reads this
       // read ONCE: two calls could straddle the expiry and disagree (switching:true, switchingMs:null)
       ...(ms => ({ switching: ms != null, switchingMs: ms }))(this.switchingMs()),
       switchWindowMs: this.switchWindowMs(), lastSwitchMs: this.lastSwitchMs, activeSlot: this.activeSlot,
