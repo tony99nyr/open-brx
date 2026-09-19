@@ -476,9 +476,12 @@ export interface FrameBundle {
   player_id: string;
   /** config head, NO $SPAWN, no countdown sound; ends with $TID */
   head: string[];
-  /** A44: fn-28 $SIR table -> $PLAYX,0 -> $SPAWN,, -> $AMMO... -> $BMAP,0,0; the live table is a sir_pool take written once the gun can fire */
+  /** $PLAYX,0 -> $SPAWN,, -> $TMP t8=-100 -> $TID -> $AMMO... -> $BMAP,0,0 (F121 rebuild: no $SIR row; the table survives $SPAWN) */
   spawn: string[];
+  /** $SPAWN,, -> $TMP t8=-100 -> $TID -> $AMMO... -> $BMAP,0,0 */
   revive: string[];
+  /** F121 rebuild: `$TMP` t8=0, written on the first shot or the cap; absent = an older bundle */
+  spawn_protect_off?: string;
   end: string[];
   panic: string[];
   team_flip?: Record<string, string[]>;
@@ -515,7 +518,7 @@ export interface FrameBundle {
    *  deathScream token differs. A pinned `death_scream` (or a one-take family) = one frame = head[4].
    *  A17: each take ALSO carries its own hitHp/hitArrmor/hitShield/hitCrit draw (hitaudio.MATERIAL_POOLS). */
   pset_pool?: string[];
-  /** A17/A44: one full live `$SIR` table per take, the ONLY live carrier -- the node writes one once the gun can fire after every spawn/revive, and again after a
+  /** A17/A44: one full live `$SIR` table per take, the ONLY live carrier -- the node writes one in front of `spawn_protect_off` when the gun's table is not live or class sounds are on, and again after a
    *  lull, so the same weapon does not land the same clip all match. Re-sending `$SIR` rows is the F11 repair
    *  path, so the write is safe by construction; the rows are identical apart from their sound tokens. */
   sir_pool?: string[][];

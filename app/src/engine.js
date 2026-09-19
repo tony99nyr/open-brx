@@ -111,7 +111,7 @@ const SHIELD_REGEN_MAX_GRANTS_SLACK = 3;
 // The shield-down heartbeat replays as the clip ENDS, so it can never stack with itself. N74 runs 1.94 s
 // (sound catalog); a bundle may override per game through `cue_ms.shield_loop`, the same lever the hill cues use.
 const SHIELD_LOOP_MS = 1940;
-/** F209: the longest a spawn or revive stays hit-protected (the fn-28 twin) when the gun has not fired sooner. Its
+/** F209: the longest a spawn or revive stays hit-protected (`$TMP` t8 = -100, F121 rebuild) when the gun has not fired sooner. Its
  *  first shot proves the weapon is live and arms at once. 2100 ms is hud.js `_redeploy`, the REDEPLOYED overlay
  *  (gone at 2100 ms): the window in which Tony was hit. On the wire (rings 2026-09-16) `$BMAP,0,0` left at most
  *  ~1.5 s after the write started, so the cap never arms before the trigger is mapped; the real table's ~10
@@ -572,7 +572,11 @@ export class Engine {
     this._lastHeadsetFlashAt = null; // led-language.md §2 (safety: bursts ≥ 1 s apart) / §5: node-initiated headset FLASH sequences (hit flash, role re-assert) share the gun burst's 1 s minimum — never the down rearm or the low-health alert
     this.latch = null;              // {shooter_num, shooter_team, at, ir_proto}
     this._spawnAt = null;            // B5: this.now() of the last _spawn/_revive WRITE — the settle window below is measured from here
-    this._armPending = null;         // F209: {at, flip} from a spawn/revive write until `_armLife` writes the real $SIR table
+    this._armPending = null;         // F209: {at, flip} from a spawn/revive write until `_armLife` ends spawn protection
+    // F121 rebuild: is the `$SIR` table on the gun the LIVE one? False until a `sir_pool` take lands; any write that
+    // carries a `$SIR` row or `$CLEAR` (a head, above all) makes it false again, and bumps `_sirGen` so a take whose
+    // write was overtaken by such a write never claims the table. Not persisted: an app restart re-sends the take.
+    this._sirLive = false; this._sirGen = 0;
     this._armedThisLife = false;     // B5: true once the gun has reported hp>0 on the wire since that write — clears the settle gate early
     this.beacon = null;             // F72: {owner_team, magnitude, sensor, at} — last grenade/station beacon (proto-15 $HIR)
     this._lastBeaconKey = null;     // F85: `${owner_team}:${magnitude}` of the last beacon ACCEPTED (not merely seen), for dedupe below
@@ -893,6 +897,9 @@ export class Engine {
       if (!frames.length) return;
     }
     frames = this._tidAfterPset(frames);   // LAST, and after the deny filter above, for the orphan `$TID` reason written there (F206)
+    // F121 rebuild: a `$SIR` row or a `$CLEAR` leaves the gun's table something other than a `sir_pool` take, so the
+    // next protection release must write one. Marked at CALL time, like the write order itself. stage.py `write` mirrors it.
+    if (frames.some(f => typeof f === 'string' && (f.startsWith('$SIR,') || f.startsWith('$CLEAR')))) { this._sirGen++; this._sirLive = false; }
     this.log(`write ${why}: ${frames.length} frame(s)`, 'li');
     try { return this.writer(frames, why); } catch (e) { this.log(`write ${why} failed: ${e && e.message || e}`, 'le'); }
   }
@@ -916,8 +923,9 @@ export class Engine {
     return r;
   }
   /** pl4 (2026-09-17): a spawn or revive write is NEVER sent twice. A repeat re-sends `$SPAWN` and the loadout
-   *  `$AMMO` into a life in play (a refill and a second spawn line), and on a protected bundle (A44) it re-sends
-   *  the fn-28 twin, which can land after `_armLife` wrote the live table and leave the gun unhittable (F11).
+   *  `$AMMO` into a life in play (a refill and a second spawn line), and on a protected bundle it re-sends the
+   *  protection (`$TMP` t8 = -100, or an older bundle's fn-28 twin), which can land after `_armLife` ended it and
+   *  leave the gun unhittable for the life (F11).
    *  On a false resolve for THIS life: log loudly, make sure a live take is pending or written, and flag the
    *  pool `write_lost` so MC shows it and the operator's RESYNC GUN is the cure. */
   _writeLife(frames, why, life) {
@@ -1986,32 +1994,50 @@ export class Engine {
     this._lastSirTake = i;
     return Array.isArray(pool[i]) ? pool[i] : [];
   }
-  /** F209: true for a bundle whose spawn/revive carry only the fn-28 twin, with the real table in `sir_pool`.
-   *  An older bundle arms inside the revive write itself and keeps its old path. */
-  _protectsSpawn() {
+  /** How this bundle protects a fresh life. 'tmp' (F121 rebuild, levers §23): spawn/revive write `$TMP` t8 = -100
+   *  right after `$SPAWN`, and `_armLife` writes `spawn_protect_off` (plus a `sir_pool` take when needed). 'twin'
+   *  (A44, an older MC): spawn/revive carry the fn-28 twin and `_armLife` writes the take. null: a pre-A44 bundle
+   *  that arms inside the revive write itself. A 'twin' bundle must keep its own path: the twin in its revive
+   *  overwrites the live table every life, so skipping the take would leave the player immortal. */
+  _protectMode() {
     const f = this.frames;
-    if (!f || !Array.isArray(f.sir_pool) || !f.sir_pool.length) return false;
+    if (!f || !Array.isArray(f.sir_pool) || !f.sir_pool.length) return null;
+    if (typeof f.spawn_protect_off === 'string' && f.spawn_protect_off.startsWith('$TMP,')) return 'tmp';
     const rows = (f.revive || []).filter(x => typeof x === 'string' && x.startsWith('$SIR,'));
-    return rows.length > 0 && rows.every(x => x.split(',')[4] === '28');
+    return rows.length > 0 && rows.every(x => x.split(',')[4] === '28') ? 'twin' : null;
   }
+  /** F209: true when spawn/revive leave the gun protected and `_armLife` must end it. */
+  _protectsSpawn() { return this._protectMode() !== null; }
   /** F209: a spawn/revive write just made the gun live with hit reception still silent. `flip`: an infection flip
    *  respawns the gun while the engine counts the player down. */
   _armAfterSpawn(flip = false) { this._armPending = this._protectsSpawn() ? { at: this.now(), flip } : null; }
-  /** F209: end spawn protection -- write one `sir_pool` take, the real table. Called on the gun's first shot
-   *  (`_onAmmo`) or at SPAWN_PROTECT_MAX_MS (`tick`). Never arms a gun that died, ended or is no longer live. */
+  /** F209: end spawn protection. Called on the gun's first shot (`_onAmmo`) or at SPAWN_PROTECT_MAX_MS (`tick`), and
+   *  by the reconcile end and the operator resync. Never arms a gun that died, ended or is no longer live.
+   *  'tmp' bundle: one write of [a `sir_pool` take, if the gun's table is not the live one or class sounds are on]
+   *  then `spawn_protect_off`. The take goes FIRST so its rows land while t8 still holds hits at 0 damage.
+   *  'twin' bundle: the take alone, as A44 shipped it. */
   _armLife(why) {
     const p = this._armPending; this._armPending = null;
     if (!p) return;
     if (this.phase !== 'live' || this.ended || !(this.alive || p.flip)) { this.log(`arm hit reception (${why}) cancelled: not live`, 'li'); return; }
-    const take = this._pickTable('sir_pool');
+    const tmp = this._protectMode() === 'tmp';
+    const needTake = !tmp || !this._sirLive || this.frames.sir_pool.length > 1;   // > 1 takes = A17 class sounds: a fresh draw per life
+    const take = needTake ? this._pickTable('sir_pool') : [];
+    const frames = tmp ? [...take, this.frames.spawn_protect_off] : take;
     // F11 fix (playtest review 2026-09-13): `link.write` resolves `false` on a GATT error instead of
     // rejecting, so a failed write here used to leave the gun on fn 28 (no real $SIR table) for the
     // whole life -- immortal. Re-arm the pending take on a `false` resolve so the next tick's cap
     // (or the next shot) retries. Gated the same way the write itself was gated, so a life that ended
     // or moved on while the write was in flight is never re-armed; the retry itself only fires once the
     // link is back up (`tick()` gates the cap path on `bleUp`), so this cannot spin on a dead link.
-    Promise.resolve(this._write(take, `arm hit reception (${why})`)).then(ok => {
+    const r = this._write(frames, tmp ? `end spawn protection (${why})${take.length ? ` + hit table ${take.length}r` : ''}` : `arm hit reception (${why})`);
+    // Claimed at CALL time, as `_write` marks the opposite: the writes go out in call order, so a later head or
+    // `$CLEAR` clears this again. A failed write takes the claim back, unless such a write already has.
+    const gen = this._sirGen;   // read AFTER the call: the take's own rows bumped it
+    if (take.length) this._sirLive = true;
+    Promise.resolve(r).then(ok => {
       if (ok !== false) return;
+      if (take.length && gen === this._sirGen) this._sirLive = false;
       if (this._armPending || this.phase !== 'live' || this.ended || !(this.alive || p.flip)) return;
       this.log(`arm hit reception (${why}) write failed -- re-arming to retry`, 'li');
       this._armPending = { at: this.now(), flip: p.flip };   // keep the original flip: an infection flip's retry must not read as "not live"
@@ -3417,7 +3443,8 @@ export class Engine {
   }
   /** A47 RESYNC GUN: re-send what a live gun needs to play, and nothing that heals, kills or re-heads it:
    *  `$TID`, the current `$AMMO` per slot (the stun snapshot's counts, never a refill), the trigger mapping
-   *  `$BMAP,0,0`, then one `sir_pool` take through `_armLife` (retried on a failed write). The rejoin reconcile
+   *  `$BMAP,0,0`, then one `sir_pool` take through `_armLife` (retried on a failed write; on a 'tmp' bundle it also
+   *  writes `spawn_protect_off`, so a resync always ends spawn protection). The rejoin reconcile
    *  is not reused: it disarms for RECONCILE_MS, re-arms with the SPAWN counts and writes no `$TID`/`$BMAP`.
    *  Never `$SPAWN`, `$PSET` or a head: a config to a gun in play clears `spawned`. A take already pending
    *  (spawn protection, A44) is left to its own trigger. A down player is refused: FORCE RESPAWN is the cure. */
@@ -3441,7 +3468,9 @@ export class Engine {
     this._holdAccuracyWrites('operator resync');   // A47: the resync's own `$AMMO` (and its one retry) owns the counts
     if (this._protectsSpawn()) {
       if (this._armPending) this.log('operator resync: hit reception is still spawn-protected — the take follows the first shot or the cap', 'li');
-      else { this._armPending = { at: this.now(), flip: false }; this._armLife('operator resync'); }
+      // F121 rebuild: the table is re-sent whatever `_sirLive` says. The operator is here because the gun is not
+      // behaving, and a gun that rebooted has lost its table without any write of ours to say so (F11).
+      else { this._sirLive = false; this._armPending = { at: this.now(), flip: false }; this._armLife('operator resync'); }
     } else {
       this._write(this._pickTable('sir_pool'), 'operator resync: hit audio');   // a pre-A44 bundle: the take, when it has one
     }
@@ -4580,7 +4609,8 @@ export class Engine {
       // the real table is the F11 repair path, so a rejoin always ends with hit reception armed. Routed through
       // `_armLife` (not a bare `_write`) so a `false` resolve on a link that stays up re-arms for retry instead
       // of silently leaving the gun on fn 28 for the life.
-      if (this._protectsSpawn()) { this._armPending = { at: this.now(), flip: false }; this._armLife('reconcile'); }
+      // F121 rebuild: a drop may hide a reboot, which empties the table (F11), so the take is re-sent here too.
+      if (this._protectsSpawn()) { this._sirLive = false; this._armPending = { at: this.now(), flip: false }; this._armLife('reconcile'); }
     }
     this.log(`reconcile done — ${this.alive ? 'live' : 'down'} at hp ${this.hp}`, 'lk');
     this._changed();

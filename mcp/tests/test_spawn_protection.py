@@ -11,16 +11,21 @@ match said nothing happened.
 
 The fix is a two-table head: the same CELLS pregame with every function replaced by fn 28 (registers a
 `$HIR` with no sound, no flash, no vibration and no pool movement — the one no-pool function
-bench-swept for player feedback, 2026-09-10), and the REAL table written in the spawn and revive
-bursts. Cells persist across writes — only `$CLEAR` wipes the table — so this is a swap, not an
+bench-swept for player feedback, 2026-09-10), and the REAL table written by the node as a `sir_pool`
+take. Cells persist across writes — only `$CLEAR` wipes the table — so this is a swap, not an
 addition, and it is the same write the F11 repair path and A17's per-life `sir_pool` take already make.
+
+F121 rebuild (bench 2026-09-18, levers §23): each LIFE is protected by `$TMP` t8 = -100, written right
+after `$SPAWN` and before `$TID`, and ended by `spawn_protect_off` (t8 = 0). No `$SIR` row rides the
+spawn or revive: the table survives `$SPAWN` and death.
 
 Run: python3 run_tests.py spawn_protection
 """
 from brx_mcp.gameconfig import _SIR_TABLE
-from brx_mcp.mc.compile import (Compiler, _OBJECTIVE_SIR_ROW, _SPAWN_PROTECT_FN, _sir_cells,
-                                _sir_index, assert_arms_after_spawn, assert_rearms_every_life,
-                                assert_spawn_protected, golden_bundle, sir_spawn_protected)
+from brx_mcp.mc.compile import (SPAWN_PROTECT_OFF, SPAWN_PROTECT_ON, Compiler, _OBJECTIVE_SIR_ROW,
+                                _SPAWN_PROTECT_FN, _sir_cells, _sir_index, assert_arms_after_spawn,
+                                assert_rearms_every_life, assert_spawn_protected, assert_spawn_shielded,
+                                assert_tmp_frames_whole, golden_bundle, sir_spawn_protected)
 from _session import match_config
 
 C = Compiler()
@@ -75,28 +80,51 @@ def test_a_pregame_row_is_silent_as_well_as_harmless():
 
 
 def test_the_pregame_table_keeps_every_cell_the_live_one_has():
-    """Same cells, same order — the spawn table can only re-arm a cell the head already carries, and
+    """Same cells, same order — the take can only re-arm a cell the head already carries, and
     `assert_sir_covers_weapons` / `assert_sir_covers_objective` both run on the head."""
     b = C.compile(_cfg(), _player(), _TEAMS)
-    assert _sir_cells(_sir(b["head"])) == _sir_cells(_sir(b["spawn"]))
+    assert _sir_cells(_sir(b["head"])) == _sir_cells(_sir(b["sir_pool"][0]))
 
 
-# ---- (b) F209: the spawn burst stays silent, the sir_pool take arms ------------
-# Field 2026-09-13 and bench 2026-09-16: "you can actually get hit during respawn before you can shoot".
-# The real table used to lead the spawn and revive writes, so hit reception came back with `$SPAWN` while
-# `$AMMO` and `$BMAP,0,0` came after it. Now both writes carry the fn-28 twin and the node writes one
-# `sir_pool` take once the gun fires or the cap runs out (engine.js `_armLife`).
-def test_the_spawn_and_revive_writes_arm_nothing_themselves():
+# ---- (b) F121 rebuild: t8 protects each life, in the bench-proven order -----------
+# Bench 2026-09-18 (levers §23): `$SPAWN,,*`, `$TMP,,,,,,,,-100,,,,*`, `$TID` registers hits with 0 damage;
+# `$TMP,,,,,,,,0,,,,*` restores damage; a `$TMP` before `$SPAWN` is wiped by the spawn (step 5, the control).
+def test_every_spawn_revive_and_flip_writes_spawn_then_t8_then_tid_and_no_table():
     for mode in ("tdm", "ffa", "koth", "infection"):
         for cfg in (_cfg(mode), _cfg(mode, hit_audio_class=True)):
             b = C.compile(cfg, _player(), _TEAMS)
-            for k in ("spawn", "revive"):
-                fns = _fns(b[k])
-                assert fns and all(f == _SPAWN_PROTECT_FN for f in fns), f"{mode} {k} arms before the gun can fire: {_sir(b[k])}"
-                assert b[k][0].startswith("$SIR"), f"{mode} {k}: the twin leads, so the last life's live table is gone before $SPAWN"
-                assert _sir_cells(_sir(b[k])) == _sir_cells(_sir(b["head"])), f"{mode} {k}: the same cells as the head"
-            for tid, frames in (b.get("team_flip") or {}).items():
-                assert all(f == _SPAWN_PROTECT_FN for f in _fns(frames)), f"{mode} flip to {tid} arms at once"
+            lists = {"spawn": b["spawn"], "revive": b["revive"], **{f"flip {t}": f for t, f in (b.get("team_flip") or {}).items()}}
+            for k, frames in lists.items():
+                i = frames.index("$SPAWN,,*")
+                assert frames[i + 1] == SPAWN_PROTECT_ON, f"{mode} {k}: t8 must follow $SPAWN at once: {frames}"
+                assert frames[i + 2].startswith("$TID,"), f"{mode} {k}: $TID follows t8: {frames}"
+                assert not _sir(frames), f"{mode} {k}: no $SIR row, the table survives $SPAWN: {_sir(frames)}"
+                assert [f for f in frames if f.startswith("$TMP")] == [SPAWN_PROTECT_ON], f"{mode} {k}"
+            assert b["spawn_protect_off"] == SPAWN_PROTECT_OFF, mode
+
+
+def test_the_protection_frames_are_the_bench_frames_byte_for_byte():
+    assert SPAWN_PROTECT_ON == "$TMP,,,,,,,,-100,,,,*" and SPAWN_PROTECT_OFF == "$TMP,,,,,,,,0,,,,*"
+    for f in (SPAWN_PROTECT_ON, SPAWN_PROTECT_OFF):
+        assert f.count(",") == 12, f"{f}: a $TMP frame always carries all twelve commas"
+        assert f.split(",")[8] in ("-100", "0"), f"{f}: the value sits on t8"
+
+
+def test_assert_spawn_shielded_raises_when_the_order_is_reversed():
+    """Levers §23 step 5: t8 BEFORE `$SPAWN` is wiped, so the player goes live unprotected."""
+    good = ["$SPAWN,,*", SPAWN_PROTECT_ON, "$TID,1,*", "$AMMO,0,32,192,1,*", "$BMAP,0,0,,,,,*"]
+    assert_spawn_shielded(good, "revive")
+    for bad, why in (([SPAWN_PROTECT_ON, "$SPAWN,,*", "$TID,1,*"], "t8 before $SPAWN"),
+                     (["$SPAWN,,*", "$TID,1,*", SPAWN_PROTECT_ON], "t8 after $TID"),
+                     (["$SPAWN,,*", "$TID,1,*"], "no t8 at all"),
+                     (["$SPAWN,,*", "$TMP,,,,,,,,-100,,,*", "$TID,1,*"], "a short $TMP"),
+                     (["$SIR,0,0,,28,0,0,1,,*", "$SPAWN,,*", SPAWN_PROTECT_ON, "$TID,1,*"], "the old fn-28 twin"),
+                     (["$SIR,0,0,,1,0,0,1,,*", "$SPAWN,,*", SPAWN_PROTECT_ON, "$TID,1,*"], "a live row")):
+        try:
+            assert_spawn_shielded(bad, "revive")
+            raise AssertionError(f"expected the guard to raise on {why}")
+        except ValueError as e:
+            assert "F121" in str(e) and "revive" in str(e), (why, e)
 
 
 def test_the_sir_pool_take_is_the_one_carrier_of_the_real_table():
@@ -124,8 +152,6 @@ def test_the_hill_beacon_row_is_untouched_in_both_tables():
     for mode in ("koth", "domination"):
         b = C.compile(_cfg(mode), _player(), _TEAMS)
         assert _OBJECTIVE_SIR_ROW in b["head"], f"{mode} head cannot hear its own beacon"
-        assert _OBJECTIVE_SIR_ROW in b["spawn"], f"{mode} spawn burst cannot hear its own beacon"
-        assert _OBJECTIVE_SIR_ROW in b["revive"], f"{mode} revive cannot hear its own beacon"
         assert _OBJECTIVE_SIR_ROW in b["sir_pool"][0], f"{mode} arm take cannot hear its own beacon"
     # CONTROL: a non-objective mode ships no proto-15 cell in either table
     b = C.compile(_cfg("tdm"), _player(), _TEAMS)
@@ -173,6 +199,12 @@ def test_assert_arms_after_spawn_raises_on_the_F209_bundle_and_on_a_cell_left_di
         raise AssertionError("expected the guard to raise on a revive that arms before the gun can fire")
     except ValueError as e:
         assert "revive" in str(e) and "F121" in str(e), e
+    # no off frame: every protected life would stay at 0 damage until the next $SPAWN, i.e. forever
+    try:
+        assert_arms_after_spawn(b["head"], {k: v for k, v in b.items() if k != "spawn_protect_off"})
+        raise AssertionError("expected the guard to raise on a bundle with no spawn_protect_off")
+    except ValueError as e:
+        assert "spawn_protect_off" in str(e), e
     # a take that never re-arms melee: that cell would take nothing off the player all life
     short = dict(b, sir_pool=[[r for r in _SIR_TABLE if not r.startswith("$SIR,13,")]])
     try:
@@ -200,6 +232,11 @@ def test_assert_rearms_every_life_raises_when_neither_carrier_has_the_table():
         raise AssertionError("expected the guard to raise on an infection flip that arms at once")
     except ValueError as e:
         assert "team_flip" in str(e), e
+    try:
+        assert_tmp_frames_whole(["$TMP,,,,,,,,-100,*"], "revive")
+        raise AssertionError("expected the guard to raise on a $TMP frame without its twelve commas")
+    except ValueError as e:
+        assert "TMP GUARD" in str(e), e
 
 
 def test_sir_spawn_protected_leaves_non_sir_frames_alone():
@@ -212,8 +249,10 @@ def test_the_golden_bundle_is_spawn_protected_too():
     """`app/src/demo.js` and the node's own tests import this file — a stale one ships the old head to
     every demo and every engine test."""
     b = golden_bundle()
-    for k in ("head", "spawn", "revive"):
-        assert all(f == _SPAWN_PROTECT_FN for f in _fns(b[k])), k
+    assert all(f == _SPAWN_PROTECT_FN for f in _fns(b["head"]))
+    for k in ("spawn", "revive"):
+        assert_spawn_shielded(b[k], k)
+    assert b["spawn_protect_off"] == SPAWN_PROTECT_OFF
     assert b["sir_pool"] == [list(_SIR_TABLE)]
 
 
