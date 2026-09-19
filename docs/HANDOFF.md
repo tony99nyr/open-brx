@@ -32,7 +32,8 @@ that every lane builds on:
 
 ## Lane: levers and screamers
 
-Screamers are Tony's P0. Session 1 of the levers bench is done; screamers Phase A has run A1 and A2 only.
+Screamers are Tony's P0. Levers session 1 ran in three sittings; its remainder is bench-plan sitting 2.
+Screamers Phase A has run A1 and A2 only.
 
 - **Next desk task:** **F283**, `soak --phone-pacing`. Nothing blocks it, and every Phase C soak run waits on it.
   Then **F272** (the lock-up detector) and **F271** (the `$QUERY` read-back).

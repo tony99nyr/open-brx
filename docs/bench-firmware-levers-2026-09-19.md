@@ -218,7 +218,8 @@ maximum of 50 or more.
 3. Send `$SPAWN,50,*`, then `$TID,2,*`. Read `$LCD`: is token 3 (shield) 50, with HP 45 and armour 70? Then fire
    three hits. Does the shield absorb them first (shield 23)?
 4. Kill B. Then, on the **dead** B, send `$LIFE,30,0,0,1,*`, which is the 2018 app's revive. Does B come back to life?
-   The kill left an HP maximum of 9, and set mode clamps, so a revive shows HP 9.
+   The kill left an HP maximum of 9, and set mode clamps, so a revive shows HP 9. **Answered 2026-09-18 by §16 step 3
+   (claim 6): yes.** Skip this step.
 
 **Reading.** If step 3 works, K7 (shields as a game option) is unblocked. If step 4 works, a revive can happen with
 no respawn.
@@ -303,7 +304,8 @@ trigger (inferred). V4_31 also shows that `$START` and `$STOP` clear the app-mod
 
 1. Send `$STOP,*` to armed B and fire at B. Expect no `$HIR`. **Answered 2026-09-18 by §23 step 2: DIFFERENT.** `$HIR` still arrives, with no damage. Skip this step.
 2. With B still stopped, pull B's trigger 3 times. Does `$ALCD` move? Does IR leave the barrel?
-3. Send `$START,*` to B, then re-send B's `$GSET`. Fire at B. Expect a normal hit.
+3. Send `$START,*` to B, then re-send B's `$GSET`. Fire at B. Expect a normal hit. **Answered 2026-09-18 by §23 step 3's
+   first attempt:** `$START,*` plus a `$GSET` and `$TID` re-send restored full damage. Skip this step.
 
 If step 1 registers nothing and step 3 registers, MC can close F121 by sending `$STOP` until spawn (§23 builds on
 this). **Re-send `$GSET` after any mid-match `$START`**, because the `$START` cleared its app-mode flags.
@@ -448,6 +450,8 @@ result, including nulls, against the row id.
 13. **A bare `$LIFE,*` (F208, F163).** Moved to §22 step 4 (session 1), the dead-gun probe.
 14. **fn 23 by ear (B27, F66).** V4_30 says fn 23 only changes accuracy. Take one hit and listen: is any audio cut?
 15. **Two-emitter weapons (F71).** Fire the Shotgun (t1 = 2, gun and headset) at the IR rig. Count words per pull.
+    **Answered 2026-09-18 (F71, F263 closed): two words a pull, each with its own magnitude.** Skip this step. Which
+    emitter sends which word, and at what reach, is F275.
 16. **Melee extras (K4).** Log every frame A sends during a swing. Confirm B's `<13,1>` row is a damage function.
 17. **`$AS` lock (P4), with care.** Send `$AS,4,0,0,0,0,0,75,*` only (Jay's "lock between games"). Does the menu lock?
     **Do not send `$AS,1`**, which starts a native game.
@@ -618,7 +622,10 @@ Run §18 (reply decodes, claim 19) in the same session first: the `$QUERY` token
 7. **The second F264 stall: an empty magazine after a timed-out partial reload** (found 2026-09-18 on the playtest
    branch; no detector yet). Arm B with the Energy Rifle. Fire it dry, then pull the reload lever for 1 s only, so the
    reload times out (`bench-perks-2026-09-18.md` §7 item 2). If the magazine stays at 0, repeat steps 2-4 on this
-   live, empty gun. Expect the "alive, stuck another way" row: the node must not revive it.
+   live, empty gun. Expect the "alive, stuck another way" row: the node must not revive it. ⚠ The perks bench
+   (2026-09-18, log item 8) found that a short pull on an energy weapon does nothing, and a held pull refills 3.8 s
+   after it starts. So a 1 s pull may not reproduce the field's `reload partial: 0 -> 12 of 32 (timeout)`. Record what
+   the pull does before you read the probes.
 
 Read the result against this table:
 

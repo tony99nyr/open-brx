@@ -24,9 +24,10 @@ Short names: **levers** = [`bench-firmware-levers-2026-09-19.md`](bench-firmware
 ## Done: do not re-run
 
 Levers session 1 ran in three sittings on 2026-09-18 (the log's three "firmware levers session 1" entries):
-§1 runs a-e, §4 step 1, §5 (all, including the shield flag and the sound token), §13 step 1 and step 3 (magnitudes
-1-39), §16 steps 1-3 and 6.1-6.2, §18, §21 steps 1-10 and 15-18 (t4, t5, t6, t7, t8, t9), §22 steps 1-6, and §23
-(all five steps). Screamers A1 and A2. F276 (the Shotgun words). The whole perks sheet
+§1 runs a-e, §4 step 1, §5 (all, including the shield flag and the sound token), §6 step 4 and §10 fn 34 (both
+answered by §16), §12 steps 1 and 3 (answered by §23), §13 step 1 and step 3 (magnitudes 1-39), §16 steps 1-3 and
+6.1-6.2, §18, §19 step 15 (answered by F71 and F263: one Shotgun pull sends two words), §21 steps 1-10 and 15-18 (t4,
+t5, t6, t7, t8, t9), §22 steps 1-6, and §23 (all five steps). Screamers A1 and A2. F276 (the Shotgun words). The whole perks sheet
 ([`bench-perks-2026-09-18.md`](bench-perks-2026-09-18.md), §1-§8). F230 closed, so levers §19 step 18 is dropped.
 
 ## Sittings, in priority order
@@ -91,8 +92,9 @@ Levers §26 groups C, D, E and F, on the phone's node, after Tony settles the ru
 ### Sitting 9: levers gap sweep (two sittings; 2 guns, the rig for two steps)
 
 - 9a (about 45 min): §19 steps 1-9.
-- 9b (about 40 min): §19 steps 10, 11, 14-17. Step 17 (`$AS,4`) runs only after sittings 1 and 4. Steps 12 and 13
-  moved to §21 and §22; step 18 is dropped.
+- 9b (about 40 min): §19 steps 10, 11, 14, 16 and 17. Step 17 (`$AS,4`) runs only after sittings 1 and 4. Steps 12
+  and 13 moved to §21 and §22; step 15 is answered (F71, F263; the emitter and its reach are F275, sitting 10); step
+  18 is dropped.
 
 ### Sitting 10: outdoor (about 60 min; 2 guns, outdoor, the rig or the S49 receiver)
 
@@ -124,7 +126,7 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 | **F272** | levers and screamers | the lock-up detector on the phone and in MC (poll with the bare `$LIFE,*`) | nothing. Gates Phase E |
 | **F271** | levers and screamers | the `$QUERY` read-back after arming (team, player id, pools) | nothing |
 | **F269** | levers and screamers | switch the block pause on, and decide the runt `$SIR` rows | sittings 1 and 4 (A7, A8, A8b) |
-| screamers Phase B | levers and screamers | one rule in code per trigger that Phase A reproduced | sittings 1 and 4 |
+| screamers Phase B: **F270**, **F273**, plus one new row per trigger that Phase A reproduces | levers and screamers | one rule in code per reproduced trigger (write with response; the `$PB*`/`$AS` deny list) | sittings 1 and 4 |
 | **F285** | levers and screamers | a per-token absolute/additive column for `$TMP` in `protocol/brx-protocol.md` | sitting 2 for t1-t3, t6, t10 |
 | **F265**, **F261** | playtest and node | never print LIVE over a stale board; record an orphan match with no bound node | nothing. Gate sitting 5 |
 | **S55**, then **F274** | playtest and node | one accuracy owner (never write t4 during a smoke, re-send when it ends, re-send after `$SPAWN` but not after a `$LIFE` revive), then move the recoil writer onto one `$TMP` t4 frame | S55 first |
