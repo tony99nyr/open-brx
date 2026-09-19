@@ -66,7 +66,7 @@ never completes, which the cure cannot see). App **0.4.0** is released; both Pix
 ## Lane: weapons and perks
 
 Shipped: the `$WEAP` t12 headset word as a declared `wire.headset_dmg` (a captured t12 with no price is a refusal),
-crits on three weapons (`crit_pct`; hits-to-kill stays the GUARANTEED number), the counts derived from the shipped
+crits on two weapons (`crit_pct`; hits-to-kill stays the GUARANTEED number), the counts derived from the shipped
 artefact, and the `/arsenal` page. **PROPOSED, NOT SHIPPED: every recoil number** (`spec/node.md` §3.15).
 Tony's decisions on 2026-09-18: the toxin design is settled (credit to the applier, cleared on respawn, the HUD
 shows it; S16), and the F268 floors stay at 60. The "fraction of the magazine" rung approval is WITHDRAWN; do not

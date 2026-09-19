@@ -1,6 +1,6 @@
 # Followups — open work only
 
-Updated: 2026-09-18. **Everything in this file is open.** Closed items are in
+Updated: 2026-09-19. **Everything in this file is open.** Closed items are in
 [`archive/followups-closed.md`](archive/followups-closed.md), verbatim and ordered by close date; the evidence
 behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date). Session close = strike or
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
@@ -421,6 +421,8 @@ nine of these eleven were root-caused without touching a gun.
   **(3) The HUD SHOWS poison status** ("yes show poison status") while it ticks, or a player watches their
   health fall with no explanation and reports a bug. ⚠️ Build it with **S53**, the smoke tell: a player whose
   accuracy is forced to 0 by fn 23 is told nothing today either, and it is the same missing-feedback gap.
+  **(4) Every hit poisons** (Tony 2026-09-19: a proc "feels bad"), so `crit_pct` is off the row. The balance sweep
+  (`mcp/tools/toxin_balance_sim.py`) puts the shipped 8 / 4 per s / 5 s at kill-rate parity with the Assault Rifle.
   Remaining: the tick clock in `app/src/engine.js` (waits on the playtest branch), then unhide the weapon.
   `build`.
 - **F63 🟡 `$WEAP` t7-t11, the secondary-fire block — a per-shot damage type?** `secondaryFireChance`,
