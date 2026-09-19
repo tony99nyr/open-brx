@@ -16,7 +16,7 @@ Scenarios:
   duel    every weapon against every weapon, 1v1, win rate (more kills at the whistle wins, a tie
           counts half).
   team    per weapon under test and team size N = 2..10: each team fields ONE test weapon and N-1
-          anchor weapons (default ``assault_rifle``). The number is the kill-rate ratio, test carriers'
+          anchor weapons of its own slot kind (assumption 7). The number is the kill-rate ratio, test carriers'
           kills per minute over anchor carriers' kills per minute, with a 95% interval.
   sweep   one weapon, a grid over any numeric catalogue fields (``--sweep dmg=5..9
           dot.per_tick=2..6``), each grid point run as a team table plus a duel against the anchor.
@@ -58,10 +58,19 @@ INVENTED ASSUMPTIONS (the numbers that move the answer most)
 4. Range (switch off with ``--no-range``). Each engagement draws a distance class from the venue:
      indoor  close 0.55, mid 0.40, long 0.05
      outdoor close 0.25, mid 0.45, long 0.30
-   A weapon's reach is its ``range_band``: close 0, close-mid 0.5, mid 1, long or full 2. The hit
-   chance is multiplied by 0.5 ** max(0, distance - reach). Nothing is lost at a SHORTER distance
-   than the reach. A row with no ``range_band`` (only hidden rows) counts as mid. The venue
-   defaults to the game default (``state.default_config()['environment']``, outdoor).
+   The hit chance is multiplied by ``BAND_FIT[range_band][distance]`` (capped at 1.0):
+                close  mid   long
+     close      1.30  0.50  0.25
+     close-mid  1.15  0.80  0.40
+     mid        1.00  1.00  0.50
+     long/full  0.80  0.90  1.20
+   Each band has the best multiplier at its own distance. A close weapon gains up close and a long
+   gun loses there. ``mid`` (the anchor's band) is the reference. A row with no ``range_band``
+   (only hidden rows) counts as mid. The venue defaults to the game default
+   (``state.default_config()['environment']``, outdoor).
+7. Anchors by slot kind (``anchor_for()``): a sidearm is compared with ``usp``, every other weapon
+   with ``assault_rifle``. ``--anchor`` overrides both. A pick-up-only weapon gets a ratio but no
+   DOMINATES / DOMINATED flag: no loadout weapon competes with it for a slot.
 5. Tactical reload (switch off with ``--no-tactical-reload``): when a contact ends with less than
    half a magazine, the player reloads before the next contact.
 6. Match length 150 s. Kills per minute is a rate, so a short match widens the variance but does
@@ -113,9 +122,19 @@ VENUE_DISTANCE = {
     "indoor": (0.55, 0.40, 0.05),
     "outdoor": (0.25, 0.45, 0.30),
 }
-BAND_REACH = {"close": 0.0, "close-mid": 0.5, "mid": 1.0, "long": 2.0, "full": 2.0}
+# Hit-chance multiplier by range band (row) and distance class (close, mid, long). Invented. Each band has
+# the highest multiplier at its own distance, so a close weapon GAINS up close and a long gun loses there.
+# `mid` (the anchor's band) is the reference: 1.0 wherever it is at home.
+BAND_FIT = {
+    "close": (1.30, 0.50, 0.25),
+    "close-mid": (1.15, 0.80, 0.40),
+    "mid": (1.00, 1.00, 0.50),
+    "long": (0.80, 0.90, 1.20),
+}
+BAND_FIT["full"] = BAND_FIT["long"]
 DEFAULT_BAND = "mid"
-RANGE_FALLOFF = 0.5          # hit-chance multiplier per distance class beyond the reach
+# Slot-kind anchors: a weapon is compared with an anchor of its own kind (`anchor_for()`).
+ROLE_ANCHORS = {"sidearm": "usp"}
 CRIT_MULT = 1.5
 INITIAL_JITTER_MS = 500.0    # avoids lock-step artefacts at match start
 DEFAULT_ANCHOR = "assault_rifle"
@@ -214,7 +233,7 @@ def weapon_model(cat: WeaponCatalog, weapon_id: str) -> WeaponModel:
     return WeaponModel(
         weapon_id=weapon_id, name=row.get("name", weapon_id), role=row.get("role", ""),
         weapon_class=row.get("class", "ballistic"),
-        range_band=band if band in BAND_REACH else DEFAULT_BAND, band_declared=band in BAND_REACH,
+        range_band=band if band in BAND_FIT else DEFAULT_BAND, band_declared=band in BAND_FIT,
         hidden=bool(row.get("hidden")), lethal=row.get("lethal") is not False,
         pickup_only=bool(row.get("pickup_only")),
         gun_dmg=cat.damage(weapon_id),
@@ -241,11 +260,15 @@ def catalogue_ids(cat: WeaponCatalog, include_hidden: bool = False) -> tuple[lis
     return sim, skipped
 
 
+def anchor_for(m: WeaponModel, override: str | None = None) -> str:
+    """The anchor this weapon is judged against: `override` when given, else one of its own slot kind."""
+    return override or ROLE_ANCHORS.get(m.role, DEFAULT_ANCHOR)
+
+
 def hit_multiplier(m: WeaponModel, dist_idx: int, cfg: SimConfig) -> float:
     if not cfg.range_model:
         return 1.0
-    short = dist_idx - BAND_REACH[m.range_band]
-    return RANGE_FALLOFF ** short if short > 0 else 1.0
+    return BAND_FIT[m.range_band][dist_idx]
 
 
 # --------------------------------------------------------------------------- #
@@ -326,7 +349,7 @@ class Match:
         p.hit_p = self.base_p
         if self.cfg.range_model:
             d = self.rng.choices((0, 1, 2), weights=self.dist_w)[0]
-            p.hit_p *= hit_multiplier(p.w, d, self.cfg)
+            p.hit_p = min(1.0, p.hit_p * hit_multiplier(p.w, d, self.cfg))
         p.burst_i = 0
         first = max(t, p.next_ready)
         if p.w.charged and not p.w.charge_and_tap:
@@ -667,10 +690,12 @@ def duel_matrix(models: list[WeaponModel], cfg: SimConfig, reps: int, seed: int,
     return out
 
 
-def team_table(models: list[WeaponModel], anchor: WeaponModel, ns, cfg: SimConfig, reps: int, seed: int,
+def team_table(models: list[WeaponModel], anchor, ns, cfg: SimConfig, reps: int, seed: int,
                n_jobs: int = 1, key: str = "") -> dict:
-    """{(weapon, n): TeamResult}."""
-    jobs = [("team", m, anchor, n, cfg, reps, seed, key) for m in models for n in ns]
+    """{(weapon, n): TeamResult}. `anchor` is one WeaponModel for every weapon, or a dict
+    {weapon_id: WeaponModel} (see `anchor_for()`)."""
+    pick = anchor.get if isinstance(anchor, dict) else (lambda _wid: anchor)
+    jobs = [("team", m, pick(m.weapon_id), n, cfg, reps, seed, key) for m in models for n in ns]
     return {(r.test, r.n): r for r in run_jobs(jobs, n_jobs)}
 
 
@@ -683,8 +708,12 @@ def geo_mean(xs) -> float:
     return math.exp(sum(math.log(x) for x in xs) / len(xs)) if xs else float("nan")
 
 
-def rank_weapons(models: list[WeaponModel], teams: dict, duels: dict, ns) -> list[dict]:
-    """One line per weapon, furthest from parity first."""
+def rank_weapons(models: list[WeaponModel], teams: dict, duels: dict, ns,
+                 anchors: dict | None = None) -> list[dict]:
+    """One line per weapon, furthest from parity first. `duel_field` is the mean 1v1 win rate against the
+    weapons that share its anchor (its own slot kind), NaN when no duel ran. A pick-up-only weapon gets
+    no flag."""
+    anchors = anchors or {}
     rows = []
     for m in models:
         cells = [teams[(m.weapon_id, n)] for n in ns if (m.weapon_id, n) in teams]
@@ -692,10 +721,15 @@ def rank_weapons(models: list[WeaponModel], teams: dict, duels: dict, ns) -> lis
         cis = [c.ci() for c in cells]
         dominates = bool(cis) and all(lo > 1.0 for lo, _ in cis)
         dominated = bool(cis) and all(hi < 1.0 for _, hi in cis)
+        if m.pickup_only:
+            dominates = dominated = False
+        group = anchors.get(m.weapon_id)
         others = [duels[(m.weapon_id, o.weapon_id)].win_rate for o in models
-                  if o is not m and (m.weapon_id, o.weapon_id) in duels]
+                  if o is not m and (m.weapon_id, o.weapon_id) in duels
+                  and anchors.get(o.weapon_id) == group]
         rows.append({
             "weapon": m.weapon_id, "role": m.role, "band": m.range_band + ("" if m.band_declared else "?"),
+            "anchor": cells[0].anchor if cells else (group or ""),
             "team_gm": gm, "team_n2": cells[0].ratio if cells else float("nan"),
             "team_nmax": cells[-1].ratio if cells else float("nan"),
             "duel_field": sum(others) / len(others) if others else float("nan"),
@@ -708,23 +742,28 @@ def rank_weapons(models: list[WeaponModel], teams: dict, duels: dict, ns) -> lis
 
 
 def summary_text(ranked: list[dict], cfg: SimConfig, anchor: str, ns, skipped: list[str], header: str) -> str:
+    """`anchor` describes the anchor rule in one phrase; each row names its own anchor too."""
     lines = [header,
              f"pool {cfg.pool.health} health / {cfg.pool.armour} armour / {cfg.pool.shield} shield, "
              f"respawn {cfg.pool.respawn_ms / 1000:g} s; venue {cfg.venue}; range model "
              f"{'on' if cfg.range_model else 'off'}; tactical reload {'on' if cfg.tactical_reload else 'off'}; "
              f"hit chance {','.join(f'{h:g}' for h in cfg.hit_probs)}; contact {cfg.contact_mean_s:g} s, "
              f"gap {cfg.gap_mean_s:g} s; match {cfg.match_ms / 1000:g} s",
-             f"team ratio = test carriers' kills/min over {anchor} carriers' kills/min, one test carrier a side, "
-             f"N = {ns[0]}..{ns[-1]}",
+             f"team ratio = test carriers' kills/min over anchor carriers' kills/min ({anchor}), "
+             f"one test carrier a side, N = {ns[0]}..{ns[-1]}",
              "",
-             f"{'weapon':<17}{'role':<10}{'band':<11}{'team gm':>8}{'N=' + str(ns[0]):>7}{'N=' + str(ns[-1]):>7}"
-             f"{'duel/field':>11}  flag"]
+             f"{'weapon':<17}{'role':<10}{'band':<11}{'anchor':<15}{'team gm':>8}{'N=' + str(ns[0]):>7}"
+             f"{'N=' + str(ns[-1]):>7}{'duel/field':>11}  flag"]
+    num = lambda x, fmt: format(x, fmt) if isinstance(x, float) and math.isfinite(x) else "-"  # noqa: E731
     for r in ranked:
         note = " ".join(x for x in (r["flag"], "pickup-only" if r["pickup_only"] else "",
                                     "hidden" if r["hidden"] else "") if x)
-        lines.append(f"{r['weapon']:<17}{r['role']:<10}{r['band']:<11}{r['team_gm']:>8.2f}{r['team_n2']:>7.2f}"
-                     f"{r['team_nmax']:>7.2f}{r['duel_field']:>10.0%}  {note}")
+        lines.append(f"{r['weapon']:<17}{r['role']:<10}{r['band']:<11}{r['anchor']:<15}"
+                     f"{num(r['team_gm'], '.2f'):>8}{num(r['team_n2'], '.2f'):>7}{num(r['team_nmax'], '.2f'):>7}"
+                     f"{num(r['duel_field'], '.0%'):>11}  {note}")
     lines += ["", "DOMINATES / DOMINATED: the 95% interval of the team ratio sits above / below 1.00 at every N.",
+              "A pick-up-only weapon gets no flag. duel/field: mean 1v1 win rate against the weapons with the same "
+              "anchor; '-' when that did not run.",
               "band ending in '?': no range_band on the row, counted as mid."]
     if skipped:
         lines.append("not simulated (lethal: false, cannot score a kill): " + ", ".join(skipped))
@@ -795,7 +834,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="all = duel matrix + team table (default); --sweep implies sweep")
     ap.add_argument("--preset", choices=sorted(PRESETS), help="a saved sweep (toxin = weapon-design.md §7.5b)")
     ap.add_argument("--weapon", help="the weapon under test for a sweep, or to limit the team table to one")
-    ap.add_argument("--anchor", default=DEFAULT_ANCHOR, help="the team-mode anchor weapon (default assault_rifle)")
+    ap.add_argument("--anchor", default=None,
+                    help="one anchor for every weapon (default: by slot kind, usp for sidearms, else assault_rifle)")
     ap.add_argument("--sweep", nargs="+", default=[], metavar="FIELD=VALUES",
                     help="e.g. dmg=5..9 dot.per_tick=2..6 dot.duration_ms=3000,5000,7000 fire_ms=90..130:10")
     ap.add_argument("--include-hidden", action="store_true", help="simulate hidden rows too")
@@ -852,7 +892,6 @@ def main(argv=None) -> int:
                     gap_mean_s=args.gap_mean_s)
     ns = [int(n) for n in parse_values(args.n)]
     cat = WeaponCatalog()
-    anchor = weapon_model(cat, args.anchor)
     summary_path = args.summary or (os.path.splitext(args.out)[0] + "_summary.txt")
     t0 = walltime.time()
     rows: list[dict] = []
@@ -860,6 +899,8 @@ def main(argv=None) -> int:
     if args.scenario == "sweep":
         if not args.weapon or not args.sweep:
             ap.error("a sweep needs --weapon and --sweep")
+        anchor_id = anchor_for(weapon_model(cat, args.weapon), args.anchor)
+        anchor = weapon_model(cat, anchor_id)
         axes = parse_sweep(args.sweep)
         results = []
         combos = list(itertools.product(*[vals for _, vals in axes]))
@@ -886,7 +927,7 @@ def main(argv=None) -> int:
             gm = geo_mean(r.ratio for r in d["team"])
             results.append((abs(math.log(gm)) if gm > 0 else float("inf"), params, gm, d))
         results.sort()
-        lines = [f"SWEEP {args.weapon} against {args.anchor}: {len(combos)} grid points, closest to parity first",
+        lines = [f"SWEEP {args.weapon} against {anchor_id}: {len(combos)} grid points, closest to parity first",
                  f"pool {pool.health}/{pool.armour}/{pool.shield}, respawn {pool.respawn_ms / 1000:g} s, venue "
                  f"{cfg.venue}, range {'on' if cfg.range_model else 'off'}, tactical reload "
                  f"{'on' if cfg.tactical_reload else 'off'}, N {ns[0]}..{ns[-1]}", "",
@@ -903,16 +944,20 @@ def main(argv=None) -> int:
         if args.weapon:
             ids = [args.weapon]
         models = [weapon_model(cat, i) for i in ids]
+        anchor_ids = {m.weapon_id: anchor_for(m, args.anchor) for m in models}
+        anchor_models = {a: weapon_model(cat, a) for a in set(anchor_ids.values())}
+        anchors = {wid: anchor_models[a] for wid, a in anchor_ids.items()}
         duels: dict = {}
         teams: dict = {}
         if args.scenario in ("all", "duel"):
             duels = duel_matrix(models, cfg, args.duel_reps, args.seed, args.jobs)
             rows += [duel_row(duels[(a.weapon_id, b.weapon_id)], cfg) for a in models for b in models]
         if args.scenario in ("all", "team"):
-            teams = team_table(models, anchor, ns, cfg, args.reps, args.seed, args.jobs)
+            teams = team_table(models, anchors, ns, cfg, args.reps, args.seed, args.jobs)
             rows += [team_row(teams[(m.weapon_id, n)], cfg) for m in models for n in ns]
-        ranked = rank_weapons(models, teams, duels, ns)
-        text = summary_text(ranked, cfg, args.anchor, ns, skipped,
+        ranked = rank_weapons(models, teams, duels, ns, anchor_ids)
+        rule = args.anchor or ", ".join(f"{k}s vs {v}" for k, v in ROLE_ANCHORS.items()) + f", else {DEFAULT_ANCHOR}"
+        text = summary_text(ranked, cfg, rule, ns, skipped,
                             f"BALANCE: {len(models)} weapons"
                             f"{' (hidden included)' if args.include_hidden else ''}, furthest from parity first")
 
