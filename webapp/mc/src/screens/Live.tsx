@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { setNotice } from '../notice';
-import { coverageLine, cureLabel, endDeliveryLine, poolStaleLabel } from '../api/derive';
+import { cureLabel, endDeliveryLine, poolStaleLabel } from '../api/derive';
 import { STALE_AFTER_MS, type LiveRow } from '../api/types';
 import { useStore } from '../store';
 import { F, T, fmtAge, fmtClock, fmtDuration, teamColor } from '../tokens';
 import { columnEdges, type Column } from './columns';
-import { Blink, GhostButton, Num, ScrollX, Tag } from '../ui';
+import { Blink, GhostButton, Num, ScrollX, Tag, shortCoverageLine } from '../ui';
 import { OrphanMatch } from '../ui/OrphanMatch';
 import { OperatorMenu, operatorMenuId } from './OperatorMenu';
 
@@ -99,8 +99,9 @@ export function Live() {
   // A28.4: derived, never asserted — grey the count while the tunnel is off, since it can only be 0.
   // Same readout as LOBBY/ARMED: a tunnel that dies mid-match must not go silent just because the
   // operator moved on to MATCH.
-  const cLine = coverageLine(state);
-  const cColor = state.lan.public?.status !== 'up' ? T.micro : state.coverage?.level === 'full' ? T.ok : T.warn;
+  const cLine = shortCoverageLine(state.coverage);
+  // Field feedback 2026-09-19 (Tony): partial coverage is not a fault, so it is neutral, never amber.
+  const cColor = state.coverage?.level === 'full' ? T.ok : T.micro;
   // A42 (field 2026-09-12, twice: a tagger played on after the operator ended the match). The retry is
   // the server's half; this is the half that matters on the field — the operator finds out WHILE they are
   // still standing next to the player whose gun is still live. A DELIVERY fact about a phone: it is kept

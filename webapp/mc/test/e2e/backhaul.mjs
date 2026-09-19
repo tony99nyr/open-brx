@@ -178,10 +178,12 @@ step('lobby-coverage-and-reach-tags', async ({ browser, base }) => {
   await pg.locator('button', { hasText: 'TURN ON' }).click();
   await until(() => pg.locator('text=trycloudflare.com').count().then(n => n > 0), 6000, 'the tunnel to come up before checking LOBBY');
   await go(pg, 'lobby');
-  const coverage = pg.locator('main', { hasText: /COVERAGE/ });
+  // Field feedback 2026-09-19 (Tony): "COVERAGE ZONES — N OF M ON THE INTERNET PATH" shortened to
+  // "Internet: N of M phones" — same numbers, sentence case, no em dash.
+  const coverage = pg.locator('main', { hasText: /Internet: \d+ of \d+ phones/i });
   await until(() => coverage.count().then(n => n > 0), 8000, 'a coverage line to render');
   const covTxt = await coverage.first().textContent();
-  expect(/(FULL COVERAGE|COVERAGE ZONES) — \d+ OF \d+ ON THE INTERNET PATH/.test(covTxt ?? ''), `the coverage line has the expected shape (saw ${JSON.stringify(covTxt)})`);
+  expect(/Internet: \d+ of \d+ phones/i.test(covTxt ?? ''), `the coverage line has the expected shape (saw ${JSON.stringify(covTxt)})`);
   // S40 (field 2026-09-12): the tag reads INTERNET now, not BACKHAUL — the old word read as "on
   // cellular" to an operator, when it is a fact about the PATH to MC.
   const internetTags = pg.locator('span', { hasText: /^INTERNET$/ });

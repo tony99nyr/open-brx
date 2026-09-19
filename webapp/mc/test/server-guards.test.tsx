@@ -8,7 +8,8 @@
 //  A29  A phone reports its real build (`app_ver` + `platform`). MC holds the semver rule and words
 //       the flags; the console shows the version, tallies the field, and derives NO rule of its own.
 //  A31  The compiler writes the "verify at MC" line ONCE so MC and the phones cannot disagree. LOBBY
-//       and ARMED render it verbatim.
+//       and ARMED fold it into the neutral "Match reminders" panel, reworded short and sentence-case
+//       (field feedback 2026-09-19) — never the server's raw shouted copy.
 //
 // Every new field is OPTIONAL on purpose: the server lane lands them later, and a session persisted
 // before the change has none of them. The absent case is asserted in each block.
@@ -207,11 +208,15 @@ describe('A29 · what build each phone is running', () => {
 describe('A31 · the verify-at-MC host line', () => {
   const notice = 'WIN IS CONFIRMED AT MC · 2 PHONES OFF-GRID · TELL PLAYERS TO RETURN AFTER THE WHISTLE (SABLE, DRIFT)';
 
-  it('LOBBY shows it', async () => {
+  it('LOBBY shows it, reworded short and sentence-case, never the server\'s raw shouted copy', async () => {
     const d = await demo();
     const state: State = { ...d.state, phase: 'lobby', notices: { mc_verify: notice } };
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
-    expect(m.find('[data-testid="mc-verify"]')[0]?.textContent).toContain('2 PHONES OFF-GRID');
+    const line = m.find('[data-testid="mc-verify"]')[0]?.textContent;
+    expect(line).toContain('2 phones are off-grid (SABLE, DRIFT)');
+    expect(line).toContain('Wins are confirmed at MC');
+    // Field feedback 2026-09-19 (Tony): sentence case, not the server's ALL CAPS.
+    expect(line).not.toContain('WIN IS CONFIRMED');
     m.unmount();
   });
 
@@ -220,7 +225,7 @@ describe('A31 · the verify-at-MC host line', () => {
     const base = await (async () => { const api = d.api; await api.pushLobby(true); await api.start(120); return api.getState(); })();
     const state: State = { ...base, notices: { mc_verify: notice } };
     const m = await mountScreen(<Armed />, { ...d, state, view: 'armed' });
-    expect(m.find('[data-testid="mc-verify"]')[0]?.textContent).toContain('RETURN AFTER THE WHISTLE');
+    expect(m.find('[data-testid="mc-verify"]')[0]?.textContent).toContain('come back after the whistle');
     m.unmount();
   });
 

@@ -1,5 +1,6 @@
 // Primitives that encode the "military armory" design language (see design README).
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import type { Coverage } from '../api/contract.gen';
 import { CHAMFER, F, HAZARD, SEG_OVERLAY, STRIPES, T, TAB } from '../tokens';
 
 export { Num, Digits, DIGIT_W } from './Num';
@@ -366,4 +367,15 @@ export function Shelf({ children, style, className }: { children: ReactNode; sty
     return () => { ro.disconnect(); el.removeEventListener('scroll', check); };
   }, []);
   return <div ref={ref} className={`${className ?? ''} ${over ? 'shelf-x' : ''}`.trim()} style={merge({ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 6, alignItems: 'stretch' }, style)}>{children}</div>;
+}
+
+/** F256 follow-up (field 2026-09-19, Tony): the coverage chip on LOBBY/ARMED/LIVE used to read
+ *  "COVERAGE ZONES — N OF M ON THE INTERNET PATH" (or "FULL COVERAGE — …") — needlessly verbose for a
+ *  header chip. Same numbers, same absent-when-nothing-bound rule as `api/derive.coverageLine` (kept
+ *  there for whatever else still reads it), just the shorter words this chip actually shows. This is
+ *  wording only: F256 itself (whether "on the internet path" should count a shared Wi-Fi network as
+ *  covered at all) is untouched — see docs/FOLLOWUPS.md. */
+export function shortCoverageLine(coverage: Coverage | null | undefined): string | null {
+  if (!coverage || coverage.bound === 0) return null;
+  return `Internet: ${coverage.on_backhaul} of ${coverage.bound} phones`;
 }
