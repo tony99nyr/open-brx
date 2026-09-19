@@ -1122,9 +1122,11 @@ export class Hud {
     // A48: the cost comes from the catalogue (`rounds_per_charge`), so a second charge weapon needs no code.
     const cost = chargeCost(st);
     const belowCharge = !!(st.alive && cost != null && st.ammo != null && st.ammo < cost);
-    // reserve empty too: this is a dead end, same severity as OUT OF AMMO (that case is already
-    // handled by `outOfAmmo` above, so this only adds the 1-9-with-no-reserve state it missed).
-    const energyOut = belowCharge && !(st.reserve > 0);
+    // F257 (bench 2026-09-18): a cell above 0 but below a charge still fires taps (`t37`), so it is
+    // not a dead end -- only a truly empty cell (`ammo === 0`) with no reserve is. `outOfAmmo` above
+    // already covers exactly that state and picks the ENERGY wording via `energy`, so this only needs
+    // to stop claiming a dead end while ammo is still > 0: the note below says why taps are all it has.
+    const energyOut = belowCharge && st.ammo === 0 && !(st.reserve > 0);
     // reserve has something to draw on: one calm prompt, whether the cell reads 0 or a partial charge.
     const energyLow = belowCharge && st.reserve > 0;
     // Bench 2026-09-17: the full-screen OVERHEAT takeover was keyed to `st.overheating`, the MECHANIC's
