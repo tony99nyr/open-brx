@@ -1652,6 +1652,35 @@ class Compiler:
             return _ha.plan_in_place(entries)
         return _ha.plan(entries, base_cells=_sir_cells(_SIR_TABLE))
 
+    def plan_gaps(self, plan, player) -> list[str]:
+        """The weapons in `player`'s loadout that `plan` cannot carry for them: a hot joiner is compiled against
+        the match's PINNED plan (`state._hit_plan`), and every other gun already holds the table built from it.
+
+        A weapon the plan never saw is safe only when its cell is a STOCK row, which every gun's table keeps
+        (`sir_table` never removes one). A weapon whose row is conditional (a catalogue `sir_fn` on a cell the
+        base `_SIR_TABLE` lacks: the Toxin Rifle's <11,0>, the Breacher, the Haze) is in no gun's table, and a
+        weapon that declares `dot` is missing from `dot_table`. So its hits vanish in silence on every gun. A
+        conditional cell that another weapon in the plan already keys (`plan.groups`) has its row, and is safe.
+        Those weapon ids come back here, in loadout order. An uncovered cell (the F53 error) comes back too."""
+        known = set(plan.cells) if plan is not None else set()
+        base = _sir_index(_SIR_TABLE)
+        out: list[str] = []
+        for w in ((player.get("loadout") or {}).get("weapons") or []):
+            wid = w.get("weapon_id")
+            if not wid or wid in known or wid in out or wid not in self.catalog._by_id:
+                continue
+            try:
+                e = self._hit_entry(wid, base)
+            except ValueError:
+                out.append(wid)
+                continue
+            if e is None:
+                continue
+            rows = plan.groups if plan is not None else {}
+            if (e.cell not in base and e.cell not in rows) or (self.catalog._by_id.get(wid) or {}).get("dot"):
+                out.append(wid)
+        return out
+
     def dot_table(self, plan) -> dict[str, DotSpec]:
         """S16: the game-wide damage-over-time table the VICTIM's node needs, keyed by IR protocol.
 
