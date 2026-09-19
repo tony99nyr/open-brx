@@ -183,7 +183,7 @@ test('the station player watch drops only to balanced and steps back after the h
 test('app.js: the beacon watch gets the game config, and the player advert needs stations too', async () => {
   const { readFile } = await import('node:fs/promises');
   const src = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
-  assert.match(src, /beaconWatch\.tick\(st, \{ pickerOpen: scanning, config: engine\.config \}\)/,
+  assert.match(src, /beaconWatch\.tick\(st, \{ pickerOpen: scanning \|\| link\.connecting, config: engine\.config \}\)/,
     'without the config the watch cannot tell a station game from a plain TDM');
   const fn = src.slice(src.indexOf('async function syncPlayerAdvert'), src.indexOf('async function syncPlayerAdvert') + 900);
   assert.match(fn, /const want = \([^;]*stationsInPlay\(engine\.config\)/, 'a player advert is carried by every other phone scan: only a station game sends one');

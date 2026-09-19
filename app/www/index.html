@@ -472,6 +472,18 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
   text-align:left;padding:10px 4px;min-height:36px;cursor:pointer;transform:skewX(-6deg)}
 .othertog .unskew{display:inline-block;transform:skewX(6deg)}
 .idle .list [hidden],.tagrow [hidden]{display:none}
+/* app 0.4.2: the picker's "Connecting to <gun>" block, shown from the tap until the link is up or fails */
+.idle .list .connecting{display:flex;flex-direction:column;gap:8px;background:var(--plate);border:1px solid var(--glow);padding:14px 16px;transform:skewX(-6deg)}
+.idle .list .connecting > *{transform:skewX(6deg)}
+.idle .list .connecting .cn{font-family:ui-monospace,monospace;font-size:16px;font-weight:700;color:var(--glow)}
+.idle .list .connecting .cst{font-size:12px;color:var(--mut);letter-spacing:.06em}
+.idle .list .connecting .cbar{position:relative;height:4px;background:var(--edge);overflow:hidden}
+.idle .list .connecting .cbar i{position:absolute;top:0;bottom:0;width:30%;background:var(--glow);animation:connsweep 1.1s ease-in-out infinite}
+@keyframes connsweep{from{left:-30%}to{left:100%}}
+.idle .list .connecting.bad{border-color:var(--bad)}
+.idle .list .connecting.bad .cn{color:var(--bad)}
+.idle .list .connecting.bad .cbar{display:none}
+.idle .list .connecting[hidden]{display:none}
 .lobby .top{position:absolute;top:30px;left:36px;display:flex;flex-direction:column;gap:4px}
 .lobby .cs{font-family:var(--fd);font-style:italic;font-weight:700;font-size:44px;letter-spacing:.08em;line-height:.9}
 .lobby .row{display:flex;align-items:center;gap:8px}

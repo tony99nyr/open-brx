@@ -59,8 +59,10 @@ test('picker guard: a gun row tap cannot start a second connect, and SET MY GUN 
   // the 1 Hz beacon tick cannot open a scan that contends with it. Both flags clear however it ends.
   assert.match(pick, /finally \{ picking = false;[^}]*\}/, 'onPick must release the guard however the connect ends');
   assert.match(pick, /finally \{[^}]*scanning = false;[^}]*\}/, 'onPick must hand the radio back however the connect ends');
-  const set = src.slice(src.indexOf('onSetGun: async'), src.indexOf('onEnableBluetooth:'));
-  assert.match(set, /^onSetGun: async \(\) => \{\s*if \(picking\) return;/, 'SET MY GUN must do nothing while a pick connects');
+  // App 0.4.2: SET MY GUN's body moved into `openPicker` (the automatic opens share it, paced).
+  assert.match(src, /onSetGun: \(\) => openPicker\(\),/, 'SET MY GUN must go through openPicker');
+  const set = src.slice(src.indexOf('async function openPicker'), src.indexOf('onEnableBluetooth:'));
+  assert.match(set, /^async function openPicker\(\{ auto = false \} = \{\}\) \{\s*if \(picking\) return;/, 'SET MY GUN must do nothing while a pick connects');
   const afterEnabled = set.slice(set.indexOf('await link.isEnabled()'));
   assert.match(afterEnabled, /^[^\n]*\n\s*if \(picking \|\| link\.connected\) return;/,
     'onSetGun must re-check after isEnabled(): that call waits in the plugin queue behind a connect');

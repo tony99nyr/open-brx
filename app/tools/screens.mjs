@@ -214,6 +214,35 @@ for (const view of VIEWS) {
     const busy = await read(); await pg.close();
     must(busy.none === 'Scanning…' && busy.sc && busy.btn, 'scanning state: ' + JSON.stringify(busy));
   });
+  // App 0.4.2 (field 2026-09-19, Pixel 5): after a tap on a gun the list emptied and nothing showed for
+  // about 4 s while two connects failed. From the tap to the link, the picker names the gun it connects to.
+  await step(`${view.name} picker-connecting: a gun tap shows the gun name and progress, then retries, then a plain failure`, async () => {
+    const pg = await open(view, 'idle-noisy');
+    const read = () => pg.evaluate(() => {
+      const vis = el => !!el && getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().height > 0;
+      const c = document.querySelector('.idle .list .connecting');
+      return { box: vis(c), head: (c && c.querySelector('.cn') || {}).textContent || '', line: (c && c.querySelector('.cst') || {}).textContent || '',
+        bar: vis(c && c.querySelector('.cbar')), rows: Array.from(document.querySelectorAll('.idle .list .tagrow')).filter(vis).length,
+        none: vis(document.querySelector('.idle .nonefound')), rescan: vis(document.querySelector('.idle .list .rescan')), sc: vis(document.querySelector('.idle .sc')) };
+    });
+    await pg.evaluate(() => window.brxDemo.pickerConnecting(1)); await pg.waitForTimeout(200);
+    const first = await read();
+    await pg.screenshot({ path: `${OUT}/${view.name}-picker-connecting.png` });
+    must(first.box && first.head === 'Connecting to GUN-A-3D4F…' && first.bar, 'no connecting block from the tap: ' + JSON.stringify(first));
+    must(first.rows === 0 && !first.none && !first.rescan && !first.sc, 'the list or the scan line still shows during a connect: ' + JSON.stringify(first));
+    let bad = await invariants(pg); must(bad.length === 0, bad.join(';'));
+    await pg.evaluate(() => window.brxDemo.pickerConnecting(2)); await pg.waitForTimeout(200);
+    const retry = await read();
+    must(retry.box && retry.line === 'Retrying (2 of 5)…' && retry.bar, 'no retry count: ' + JSON.stringify(retry));
+    await pg.evaluate(() => window.brxDemo.pickerConnecting(5, true)); await pg.waitForTimeout(200);
+    const fail = await read();
+    await pg.screenshot({ path: `${OUT}/${view.name}-picker-connect-failed.png` });
+    must(fail.box && fail.head === 'Could not connect to GUN-A-3D4F' && !fail.bar && fail.rescan && fail.rows === 0, 'the failure state: ' + JSON.stringify(fail));
+    bad = await invariants(pg); must(bad.length === 0, bad.join(';'));
+    await pg.evaluate(() => window.brxDemo.pickerConnectDone()); await pg.waitForTimeout(200);
+    const done = await read(); await pg.close();
+    must(!done.box && done.none, 'the picker did not return to its list after the connect state cleared: ' + JSON.stringify(done));
+  });
   await step(`${view.name} F258 idle-assigned: the gun MC assigned to this player is offered first`, async () => {
     const pg = await open(view, 'idle-assigned');
     const first = await pg.evaluate(() => (document.querySelector('.taggers .tagrow .nm') || {}).textContent || '');

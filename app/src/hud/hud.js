@@ -35,6 +35,13 @@ const ALERT_FAMILY = { objective_taken: 'objective', objective_scored: 'objectiv
  *  pushed a `result`. There is deliberately no mapping for "no message arrived" — see `_result`. */
 const OUTCOME_WORD = { win: 'WIN', lose: 'LOSE', draw: 'DRAW', undecided: 'UNDECIDED' };
 const MEDAL_LABEL = { first_blood: 'FIRST BLOOD', double_kill: 'DOUBLE KILL', triple_kill: 'TRIPLE KILL', killtacular: 'KILLTACULAR', killing_spree: 'KILLING SPREE', unstoppable: 'UNSTOPPABLE' };
+/** App 0.4.2: the words of the picker's "Connecting to <gun>" block, from `hud.connecting`. */
+export function connectingText(conn) {
+  const nm = String((conn && conn.name) || 'your gun');
+  if (conn && conn.failed) return { head: `Could not connect to ${nm}`, line: 'Turn the gun off and on, then tap Scan again.' };
+  const line = conn && conn.attempt > 1 ? `Retrying (${conn.attempt} of ${conn.of})…` : 'Keep the gun close and switched on.';
+  return { head: `Connecting to ${nm}…`, line };
+}
 const splitGun = g => { if (!g) return ['—', '']; return [esc(g.basename || g.name || ''), esc(g.tail || '')]; };
 
 // F258: one picker row, built once and then written in place. The signal bars light at these dBm
@@ -239,6 +246,10 @@ export class Hud {
     this.sig = null; this.scan = []; this.link = {}; this.diagData = {}; this.mcUrl = '';
     this.scanActive = true;   // game day 2026-09-19: app.js sets whether a picker scan really runs
     this.scanOther = false;   // F258: the "other devices" fold on the picker, closed to start with
+    // App 0.4.2 (field 2026-09-19, Pixel 5): after a tap on a gun the list emptied and the screen showed
+    // nothing for about 4 s while two connects failed and a third linked. `connecting` is
+    // `{name, attempt, of, failed}` from the tap until the link is up or the connect gives up, else null.
+    this.connecting = null;
     // F211: adapter-off state, app.js-owned (like `mcUrl`/`discovered` below) — the picker's own concern,
     // never round-tripped through the engine. `platform` gates the Android-only enable/settings buttons.
     this.bluetoothOn = true; this.platform = 'web';
@@ -377,6 +388,8 @@ export class Hud {
   setScan(list) { this.scan = list || []; }
   /** Opens or closes the "other devices" fold (F258). A view, like `board`: it sends nothing. */
   setScanOther(open) { this.scanOther = !!open; }
+  /** Sets the "Connecting to <gun>" state of the picker (null clears it). */
+  setConnecting(c) { this.connecting = c || null; }
   setLink(link) { this.link = link; }
   // Polish-loop pass 1 (2026-09-12): a LAN sweep hit MC is no longer auto-joined (app.js, another lane) — it
   // hands the player the choice instead. `null` clears the row (nothing found, or MC is already bound).
@@ -576,6 +589,7 @@ export class Hud {
   // never come and go, so a row node survives every re-render and a tap can land on it.
   _scanList() {
     return `<div class="list"><div class="taggers"></div>
+      <div class="connecting" hidden><div class="cn"></div><div class="cbar"><i></i></div><div class="cst"></div></div>
       <div class="small nonefound">Scanning…</div>
       <button class="bigbtn ghost rescan" data-act="onScanAgain" hidden><span class="unskew">SCAN AGAIN</span></button>
       <button class="othertog" data-act="onScanOther" hidden><span class="unskew"></span></button>
@@ -605,19 +619,33 @@ export class Hud {
     const main = list.querySelector('.taggers'), other = list.querySelector('.others');
     const tog = list.querySelector('.othertog'), none = list.querySelector('.nonefound');
     if (!main || !other || !tog || !none) return;
-    const near = this.scan.filter(d => !d.other), far = this.scan.filter(d => d.other);
+    // App 0.4.2: while a picked gun connects, the rows give way to one "Connecting to <gun>" block.
+    const conn = this.connecting, cbox = list.querySelector('.connecting');
+    const near = conn ? [] : this.scan.filter(d => !d.other), far = conn ? [] : this.scan.filter(d => d.other);
     this._patchScanRows(main, near);
     this._patchScanRows(other, far);
-    const hideNone = near.length > 0;
+    if (cbox) {
+      if (cbox.hidden !== !conn) cbox.hidden = !conn;
+      if (conn) {
+        const cn = cbox.querySelector('.cn'), cst = cbox.querySelector('.cst');
+        const { head, line } = connectingText(conn);
+        if (cn.textContent !== head) cn.textContent = head;
+        if (cst.textContent !== line) cst.textContent = line;
+        const cls = conn.failed ? 'connecting bad' : 'connecting';
+        if (cbox.className !== cls) cbox.className = cls;
+      }
+    }
+    const hideNone = near.length > 0 || !!conn;
     if (none.hidden !== hideNone) none.hidden = hideNone;
     // Game day 2026-09-19: the list showed empty with no scan running, and nothing said so. Now an empty
     // list says whether a scan runs, and always offers SCAN AGAIN.
     const noneTxt = this.scanActive ? 'Scanning…' : 'No guns found. Turn the gun on, then tap Scan again.';
     if (none.textContent !== noneTxt) none.textContent = noneTxt;
     const rescan = list.querySelector('.rescan');
-    if (rescan && rescan.hidden !== hideNone) rescan.hidden = hideNone;
-    const sc = this.hudEl.querySelector('.idle .sc');
-    if (sc && sc.hidden === this.scanActive) sc.hidden = !this.scanActive;
+    const hideRescan = conn ? !conn.failed : hideNone;   // a failed connect offers SCAN AGAIN; a running one does not
+    if (rescan && rescan.hidden !== hideRescan) rescan.hidden = hideRescan;
+    const sc = this.hudEl.querySelector('.idle .sc'), scOn = this.scanActive && !conn;
+    if (sc && sc.hidden === scOn) sc.hidden = !scOn;
     if (tog.hidden !== (far.length === 0)) tog.hidden = far.length === 0;
     const lab = `${this.scanOther ? '▾' : '▸'} OTHER DEVICES (${far.length})`;
     const span = tog.firstElementChild;

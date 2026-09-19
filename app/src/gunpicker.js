@@ -32,6 +32,39 @@ export const COALESCE_MS = 500;
 /** How long one SET MY GUN scan runs when nothing is picked. The list then says so and offers SCAN AGAIN. */
 export const PICKER_SCAN_MS = 15000;
 
+/** App 0.4.2 (fleet scale: 10 guns and 10 phones in one room share the radio space). The picker's scan
+ *  starts go through a `ScanPacer`:
+ *  - a start less than PICKER_MIN_GAP_MS after the last one, while that scan still runs, is dropped (a
+ *    double tap on SET MY GUN, or an automatic open on top of a tap, does not stop and restart the scan);
+ *  - an AUTOMATIC start (Bluetooth back on, the rejoin fallback) waits an exponential back-off with
+ *    jitter, from AUTO_SCAN_BASE_MS up to AUTO_SCAN_CAP_MS. A user tap resets the back-off. */
+export const PICKER_MIN_GAP_MS = 2000;
+export const AUTO_SCAN_BASE_MS = 2000;
+export const AUTO_SCAN_CAP_MS = 60000;
+export class ScanPacer {
+  constructor({ now = () => Date.now(), random = Math.random, minGapMs = PICKER_MIN_GAP_MS,
+                baseMs = AUTO_SCAN_BASE_MS, capMs = AUTO_SCAN_CAP_MS } = {}) {
+    this.now = now; this.random = random; this.minGapMs = minGapMs; this.baseMs = baseMs; this.capMs = capMs;
+    this.lastStart = null; this.autoStreak = 0; this.nextAutoAt = 0;
+  }
+  /** True when a scan may start now. `auto`: nobody tapped for it. `open`: a picker scan runs now. */
+  allow({ auto = false, open = false } = {}) {
+    const now = this.now();
+    const recent = this.lastStart != null && now - this.lastStart < this.minGapMs;
+    if (recent && (open || auto)) return false;
+    if (auto) return now >= this.nextAutoAt;
+    this.autoStreak = 0; this.nextAutoAt = 0;   // a user action resets the back-off
+    return true;
+  }
+  /** Records a start. An automatic start pushes the next automatic one out by the back-off. */
+  started({ auto = false } = {}) {
+    const now = this.now(); this.lastStart = now;
+    if (!auto) return;
+    const d = Math.min(this.capMs, this.baseMs * 2 ** Math.min(this.autoStreak, 16)) * (0.8 + 0.4 * this.random());
+    this.autoStreak++; this.nextAutoAt = now + d;
+  }
+}
+
 /** The BRX IR headset advertises as `BC-HEADSET…`. A phone that connects to it can take it from the
  *  gun, so the picker never lists it and the phone never connects to it (game day 2026-09-19). */
 export function isHeadset(name) { return /^bc-headset/i.test(String(name || '')); }

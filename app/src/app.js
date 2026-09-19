@@ -7,7 +7,7 @@ import jsQR from 'jsqr';
 // Transport (M-NET wire) + Hud (Phone HUD v2). Runs in a desktop browser with `?demo`.
 import { Engine, C } from './engine.js';
 import { BrxLink } from './brxlink.js';
-import { GunPicker, PAINT_MS, COALESCE_MS, PICKER_SCAN_MS, isHeadset } from './gunpicker.js';   // F258: the gun picker's ranked, stable, coalesced list
+import { GunPicker, ScanPacer, PAINT_MS, COALESCE_MS, PICKER_SCAN_MS, isHeadset } from './gunpicker.js';   // F258: the gun picker's ranked, stable, coalesced list
 import { Transport } from './transport/transport.js';
 import { Hud } from './hud/hud.js';
 import { parseMcJoin } from './mcurl.js';
@@ -179,7 +179,7 @@ const beaconWatch = new BeaconWatch({ link, log, native: isNative, onHit: hit =>
 setInterval(() => {
   const st = engine.state();
   presence.game = st.config ? gameByte(st.config.config_id) : 0;   // scope presence to this game (best-effort; §utility)
-  beaconWatch.tick(st, { pickerOpen: scanning, config: engine.config });   // no stations in this game: no scan (bench 2026-09-17 flood)
+  beaconWatch.tick(st, { pickerOpen: scanning || link.connecting, config: engine.config });   // no stations: no scan (bench 2026-09-17 flood); app 0.4.2: none while a connect is in flight
 }, 1000);
 async function stopAnyScan() {   // the picker owns the radio from here: `scanning` is already set, so the watch will not reopen
   await beaconWatch.release();
@@ -326,6 +326,7 @@ function connectMc(url, remember = true, join = {}) {
 let scanning = false, picking = false, pickerScanSeq = 0;
 // F258 (bench 2026-09-18): the picker's list lives in `gunpicker.js` — ranking, first-seen order and
 // the "has anything visible changed" flag. Nothing in this file sorts or paints from a scan hit.
+const pacer = new ScanPacer();   // app 0.4.2: picker scan starts are debounced; automatic ones back off
 const picker = new GunPicker({ coalesceMs: COALESCE_MS });   // game day 2026-09-19: a flood of repeat hits is coalesced
 let paintTimer = null;
 /** Paints the picker at PAINT_MS, and only when something a player would see actually changed. A scan
@@ -345,9 +346,12 @@ function stopPickerPaint() { if (paintTimer) clearInterval(paintTimer); paintTim
 function assignedGun() {
   return (engine.player && engine.player.gun_id) || (engine.gun && engine.gun.name) || null;
 }
-Object.assign(hud.h, {
-  onSetGun: async () => {
+/** Opens the gun picker's scan. `auto`: nothing on screen was tapped (boot, Bluetooth back on, the
+ *  rejoin fallback), so the start is paced by `pacer`'s back-off. A tap resets that back-off. */
+async function openPicker({ auto = false } = {}) {
     if (picking) return;
+    if (!pacer.allow({ auto, open: scanning && link.scanning })) { log(auto ? 'gun scan: automatic reopen held back (back-off)' : 'gun scan already running', 'li'); return; }
+    if (hud.connecting) { hud.setConnecting(null); scheduleRender(); }   // SCAN AGAIN after a failed connect
     // F211: check the adapter BEFORE opening the radio — starting a scan with Bluetooth off just sits
     // there silently (game-test-2026-09-13.md C2). `watchEnabled` (boot, below) re-runs this the moment
     // Bluetooth comes back on, so the operator never has to tap SET MY GUN a second time.
@@ -357,6 +361,7 @@ Object.assign(hud.h, {
     try {
       await stopAnyScan();   // tap = (re)start a fresh scan, never leave the picker idle (bench 2026-08-25); the beacon watch yields to the picker
       if (picking || link.connected) { scanning = false; return; }
+      pacer.started({ auto });
       picker.clear(); picker.setAssigned(assignedGun());
       hud.setScan([]); hud.setScanOther(false); scheduleRender();
       startPickerPaint();
@@ -374,7 +379,9 @@ Object.assign(hud.h, {
         log('gun scan stopped after ' + PICKER_SCAN_MS / 1000 + ' s; tap SCAN AGAIN to look again', 'li');
       }, PICKER_SCAN_MS);
     } catch (e) { scanning = false; stopPickerPaint(); log('scan: ' + (e && e.message || e), 'le'); }
-  },
+}
+Object.assign(hud.h, {
+  onSetGun: () => openPicker(),
   onScanAgain: () => hud.h.onSetGun(),   // game day 2026-09-19: SCAN AGAIN on an empty gun list
   // F258: the fold over everything the picker could not rank as a tagger.
   onScanOther: () => { hud.setScanOther(!hud.scanOther); scheduleRender(); },
@@ -389,16 +396,23 @@ Object.assign(hud.h, {
   // (scanwatch.js) cannot open its own scan underneath it; the `finally` hands the radio back.
   onPick: async deviceId => {
     const d = picker.get(deviceId); if (!d || picking) return;
-    picking = true; hud.setScan([]); scheduleRender();   // the rows go now, not after the connect
+    picking = true; const name = d.name || deviceId;
+    // App 0.4.2 (field 2026-09-19): the rows go now, and a "Connecting to <gun>" block takes their place
+    // until the link is up or the connect gives up. The screen is never an empty list during a connect.
+    hud.setScan([]); hud.setConnecting({ name, attempt: 1, of: 5, failed: false }); scheduleRender();
     stopPickerPaint();
-    log(`connecting to ${d.name || deviceId}…`);
+    log(`connecting to ${name}…`);
+    let failed = false;
     try {
       await link.stopScan();
-      await link.connect(deviceId, d.name);
-      if (settings.mcUrl && !transport) connectMc(settings.mcUrl);
+      // `connect` waits for the stop to complete plus SCAN_SETTLE_MS before its first attempt (brxlink.js)
+      const up = await link.connect(deviceId, d.name, { onAttempt: (i, of) => { hud.setConnecting({ name, attempt: i, of, failed: false }); scheduleRender(); } });
+      if (up !== false && settings.mcUrl && !transport) connectMc(settings.mcUrl);
     }
-    catch (e) { log('connect failed: ' + (e && e.message || e), 'le'); }
+    catch (e) { failed = true; log('connect failed: ' + (e && e.message || e), 'le'); }
     finally { picking = false; scanning = false; }
+    // a failed connect keeps the gun's name on screen with a plain message and SCAN AGAIN (onScanAgain)
+    hud.setConnecting(failed ? { name, attempt: 5, of: 5, failed: true } : null);
     scheduleRender();
   },
   onUtility: () => switchRole('utility'),   // the HUD's way into utility mode (brx-hud adds the control; 7 taps on the stage also work)
@@ -531,7 +545,7 @@ async function rejoinGun() {
   }).catch(e => { scanning = false; throw e; });
   // If the remembered gun never appears, don't leave this scan running forever (battery + it blocks the
   // beacon watch): fall back to the normal picker, which restarts a fresh scan the operator can choose from.
-  setTimeout(() => { if (!done && !link.connected) { done = true; log('remembered gun not seen — opening the picker', 'li'); hud.h.onSetGun().catch(() => {}); } }, 12000);
+  setTimeout(() => { if (!done && !link.connected) { done = true; log('remembered gun not seen — opening the picker', 'li'); openPicker({ auto: true }).catch(() => {}); } }, 12000);
 }
 
 // ---------- render loop ----------
@@ -766,7 +780,7 @@ async function sweepForMc() {
       // own forever-reconnect loop. Opening the picker on top of it steals the radio, and `scanning`
       // then stays true after the loop reconnects (nothing here clears it), which keeps the beacon
       // scan closed for the rest of the match. Only open the picker when there is NO remembered gun.
-      if (on) { if (!link.connected && !link.deviceId && !scanning) hud.h.onSetGun().catch(() => {}); }
+      if (on) { if (!link.connected && !link.deviceId && !scanning) openPicker({ auto: true }).catch(() => {}); }
       else if (scanning) { scanning = false; stopPickerPaint(); hud.setScan([]); link.stopScan().catch(() => {}); }
     }).catch(e => log('bluetooth watch: ' + (e && e.message || e), 'li'));
     // IDLE screen says SCANNING FOR TAGGERS — so scan (the button toggles it off/on). Bench 2026-08-25.

@@ -67,6 +67,12 @@ export function flapDelay(streak, backoffMs = FLAP_BACKOFF_MS, quietMs = QUIET_M
 // took under a second. A relink now waits at most RELINK_DISCONNECT_CAP_MS for the disconnect, gives each
 // connect RELINK_CONNECT_MS (a connect to a gun that is there took about 1 s on the bench), and waits only
 // RELINK_GAP_MS between attempts. After RELINK_ATTEMPTS it ends, and the normal reconnect loop takes over.
+// App 0.4.2, field 2026-09-19 (Pixel 5): the picker stopped its scan and connected at
+// once. The phone log: "connecting to <gun>…" at 13:41:25, then "connect 1/5 failed after 345 ms
+// (GATT_ERROR 133)", "connect 2/5 failed after 364 ms (133)", and the link at 13:41:29. Android often
+// returns status 133 for a connect that starts right after a scan stops. The first connect after a
+// scan stop now waits for the stop to complete, then this long. Reconnects do not wait.
+export const SCAN_SETTLE_MS = 400;
 const RELINK_DISCONNECT_CAP_MS = 2000;
 const RELINK_CONNECT_MS = 5000;
 const RELINK_GAP_MS = 250;
@@ -116,7 +122,10 @@ export class BrxLink {
                 flapBackoffMs = FLAP_BACKOFF_MS, quietMs = QUIET_MS,
                 onFlap = () => {}, onRelink = () => {}, relinkConnectMs = RELINK_CONNECT_MS, relinkAttempts = RELINK_ATTEMPTS,
                 relinkGapMs = RELINK_GAP_MS, relinkDisconnectCapMs = RELINK_DISCONNECT_CAP_MS,
-                writeChunk = null, ackCapMs = WRITE_ACK_CAP_MS } = {}) {
+                writeChunk = null, ackCapMs = WRITE_ACK_CAP_MS, scanSettleMs = SCAN_SETTLE_MS } = {}) {
+    this.scanSettleMs = scanSettleMs;
+    this._scanStoppedAt = 0;   // when a scan stop last completed; the next connect() settles after it, once
+    this._connecting = 0;      // native connect attempts in flight (no scan may start meanwhile)
     // The real plugin gets the direct path; an injected test double keeps its own writeWithoutResponse.
     this.writeChunk = writeChunk || (ble === BleClient ? directWriter() : (id, dv) => ble.writeWithoutResponse(id, NUS, RX, dv));
     this.ackCapMs = ackCapMs;
@@ -182,6 +191,19 @@ export class BrxLink {
   }
   ensureInit() { return (this._init ||= this.ble.initialize({ androidNeverForLocation: true })); }
 
+  /* Every scan the app runs (app 0.4.2 review, fleet scale: 10 guns and 10 phones in one room):
+   *
+   *  | Scan                        | Trigger                                   | Mode       | Duration                          | Interval / back-off                                        |
+   *  |-----------------------------|-------------------------------------------|------------|-----------------------------------|------------------------------------------------------------|
+   *  | Gun picker (app.js)         | SET MY GUN / SCAN AGAIN tap; boot with no | 2 (low     | PICKER_SCAN_MS (15 s), or until   | PICKER_MIN_GAP_MS (2 s) debounce; an automatic open backs  |
+   *  |                             | gun; Bluetooth back on; rejoin fallback   | latency)   | a gun is picked                   | off 2 s, 4 s, ... 60 s with jitter, reset by a tap         |
+   *  | Rejoin (app.js rejoinGun)   | boot mid-match with a remembered gun      | 2          | 12 s, then the picker (once)      | one shot                                                   |
+   *  | Beacon watch (scanwatch.js) | armed/live AND stations in play; never    | 2, flood   | open while the match needs it     | restart 90 s (7 s while down in scanner respawn); a failed |
+   *  |                             | while the picker or a connect owns radio  | guard 1, 0 |                                   | start retries every 7 s; flood guard pauses 5 s            |
+   *  | Station (utility.js)        | utility role, always                      | 2, guard 1 | open while the station runs       | restart every 8 s (Android scan-stall guard)               |
+   *
+   *  No scan starts while a gun connect attempt is in flight: `scan()` refuses, and the beacon watch is
+   *  held closed by app.js. The first connect after a scan stop waits SCAN_SETTLE_MS. */
   /** Continuous scan; calls onHit({deviceId, name, rssi, uuids}) for every advert until stop().
    *  scanMode 2 = low latency (the gun picker and the match-time beacon watch, scanwatch.js), 1 = balanced.
    *  Nameless adverts pass only when they carry a service UUID: utility items advertise no name on Android
@@ -190,6 +212,7 @@ export class BrxLink {
    *  native-to-JS bridge that gun notifications share, so a flood guard must count them all (scanwatch.js). */
   async scan(onHit, { scanMode = 2, onRaw = null } = {}) {
     if (this._scanning) throw new Error('a scan is already open');
+    if (this._connecting) throw new Error('a gun connect is in flight');   // app 0.4.2: never scan across a connect attempt
     this._scanning = true; const tok = ++this._scanTok;   // claim the radio before the first await
     return this._scanSerial(async () => {
       try {
@@ -210,9 +233,11 @@ export class BrxLink {
    *  is the latest intent, set synchronously, and the native calls run strictly in call order. */
   stopScan() {
     this._scanning = false; this._scanTok++;
-    return this._scanSerial(async () => { try { await this.ble.stopLEScan(); } catch (_) { /* ignore */ } });
+    return this._scanSerial(async () => { try { await this.ble.stopLEScan(); } catch (_) { /* ignore */ } this._scanStoppedAt = this.now(); });
   }
   get scanning() { return this._scanning; }
+  /** True while a native connect attempt runs. */
+  get connecting() { return this._connecting > 0; }
   _scanSerial(fn) { const p = this._scanOp.then(fn, fn); this._scanOp = p.catch(() => {}); return p; }
 
   // F211: adapter-off detection. `@capacitor-community/bluetooth-le` reports `true` on web, so the demo
@@ -242,14 +267,16 @@ export class BrxLink {
   _log(m, cls) { this.log(m, cls); }
   _note(dir, f) { this.frames.push({ t: Date.now(), dir, f }); if (this.frames.length > 60) this.frames.shift(); }
 
-  async connect(deviceId, advertName) {
+  /** `onAttempt(i, of)` runs before each native connect attempt (the picker shows "Retrying (2 of 5)…"). */
+  async connect(deviceId, advertName, { onAttempt = null } = {}) {
     await this.ensureInit();
+    await this._settleAfterScan();
     this._gen++;                       // retires any loop still chasing the previous gun
     this._setFlap(0);                  // a manual connect ends any flap wait or quiet period at once
     if (this._wake) this._wake();      // ...and WAKE it, or it sleeps out its backoff still holding
                                        // `_reconnecting`, which blocks the new gun's reconnect entirely
     this.advert = splitAdvert(advertName, deviceId);
-    if (!await this._connectWithRetry(deviceId, 5, false, this._gen)) return false;   // a newer connect won (bench 2026-09-17): claiming the link here ran onUp with the gun down
+    if (!await this._connectWithRetry(deviceId, 5, false, this._gen, false, onAttempt)) return false;   // a newer connect won (bench 2026-09-17): claiming the link here ran onUp with the gun down
     this.deviceId = deviceId; this.connected = true; this.retries = 0;
     this._upAt = this.now(); this._setFlap(0);   // F210: a freshly picked gun starts with a clean flap count
     this._armStable();
@@ -257,7 +284,15 @@ export class BrxLink {
   }
   /** `relink` (a user RELINK): a bounded plugin connect timeout, a short fixed gap instead of the growing
    *  backoff, and `attempts` is a hard limit even when `unbounded()` (armed/live) would retry forever. */
-  async _connectWithRetry(id, attempts, forever = false, gen = this._gen, relink = false) {
+  /** SCAN_SETTLE_MS: waits for any scan stop in flight, then the rest of the settle gap after it. The
+   *  stamp is used once, so only the first connect after a scan waits, and an old stop costs nothing. */
+  async _settleAfterScan() {
+    await this._scanOp;
+    const at = this._scanStoppedAt; this._scanStoppedAt = 0;
+    const wait = at ? at + this.scanSettleMs - this.now() : 0;
+    if (wait > 0) { this._log(`scan stopped: waiting ${wait} ms before the connect`, 'li'); await new Promise(r => setTimeout(r, wait)); }
+  }
+  async _connectWithRetry(id, attempts, forever = false, gen = this._gen, relink = false, onAttempt = null) {
     let last;
     for (let i = 1; ; i++) {
       // Game day 2026-09-19: a flap wait now holds THIS loop. It used to run beside the loop, so a loop
@@ -267,16 +302,20 @@ export class BrxLink {
         if (this._flapNextAt && gen === this._gen) this._setFlap(this._flapStreak);   // the wait is over: no retry time to show
       }
       if (gen !== this._gen) { this._log('reconnect abandoned — a different gun was selected', 'li'); return false; }
+      if (onAttempt) { try { onAttempt(i, attempts); } catch (_) { /* a listener must not break the link */ } }
       const t0 = this.now();
       try {
         const seq = ++this._linkSeq;
         let droppedEarly = false;
         // Only a link that was up runs the drop path. A failed connect also fires this callback, and it
         // used to log a second "gun disconnected" and tell the engine about a drop that never happened.
-        await this.ble.connect(id, () => {
-          if (seq !== this._linkSeq) return;
-          if (this.connected) this._dropped(); else droppedEarly = true;
-        }, relink ? { timeout: this.relinkConnectMs } : undefined);
+        this._connecting++;
+        try {
+          await this.ble.connect(id, () => {
+            if (seq !== this._linkSeq) return;
+            if (this.connected) this._dropped(); else droppedEarly = true;
+          }, relink ? { timeout: this.relinkConnectMs } : undefined);
+        } finally { this._connecting--; }
         if (gen !== this._gen) {                       // the gun came back AFTER we moved on: let it go,
           try { await this.ble.disconnect(id); } catch (_) { /* ignore */ }   // or two devices feed the engine
           return false;
