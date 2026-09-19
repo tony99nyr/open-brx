@@ -39,6 +39,10 @@ const splitGun = g => { if (!g) return ['—', '']; return [esc(g.basename || g.
 
 // F258: one picker row, built once and then written in place. The signal bars light at these dBm
 // thresholds, weakest first; the heights are the design's rising staircase.
+/** F265, bench 2026-09-18: a bound phone can stop receiving score pushes while `wsState` still reads
+ *  `bound`, so the socket state is not proof the scoreboard is current. LIVE is honest only for a
+ *  snapshot this fresh; older than this, the overlay shows the age instead, bound or not. */
+const BOARD_LIVE_MAX_AGE_MS = 5000;
 const SIG_THRESHOLDS = [-85, -75, -65, -55];
 const SCAN_ROW = '<span class="nm"></span><span class="inuse" hidden>IN USE</span><span class="sig">'
   + SIG_THRESHOLDS.map((_, i) => `<i style="height:${6 + i * 4}px"></i>`).join('') + '<b></b></span>';
@@ -1163,10 +1167,14 @@ export class Hud {
       <div class="nightlab">NIGHT OPS</div>${kb}${this.board ? this._board(st) : ''}</div>`;
   }
   /** Bench 2026-09-17: how old the scores on the overlay are. MC pushes every change to a bound phone, so the
-   *  numbers are current while the link is up; off the link they are the last push, and the label gives its age. */
+   *  numbers are current while the link is up; off the link they are the last push, and the label gives its age.
+   *  Bench 2026-09-18 (F265): a bound phone can stop receiving pushes and still read `wsState === 'bound'`, so
+   *  the socket state alone is not proof the board is current. LIVE is only honest for a few seconds: past
+   *  `BOARD_LIVE_MAX_AGE_MS`, show the age even while bound, same as an unbound phone would. */
+  _boardStale(st) { return !!st.scoreAt && (st.wsState !== 'bound' || Date.now() - st.scoreAt > BOARD_LIVE_MAX_AGE_MS); }
   _boardAge(st) {
     if (!st.scoreAt) return 'NO SCORES YET';
-    if (st.wsState === 'bound') return 'LIVE';
+    if (!this._boardStale(st)) return 'LIVE';
     const s = Math.max(0, Math.round((Date.now() - st.scoreAt) / 1000));
     return `AS OF ${s < 60 ? s + ' S' : Math.floor(s / 60) + ' MIN'} AGO`;
   }
@@ -1182,7 +1190,7 @@ export class Hud {
     const v = x => num(x) == null ? '—' : x;
     const acc = r => num(r.accuracy) == null ? '—' : Math.round(r.accuracy) + '%';
     const name = r => esc(String(r.display || r.player_id || '—').toUpperCase());
-    const stale = !!st.scoreAt && st.wsState !== 'bound';
+    const stale = this._boardStale(st);
     let body;
     if (tab === 'player' || ffa) {
       const list = rows.length ? rows : [{ player_id: myId, display: st.callsign, kills: st.kills, deaths: st.deaths, assists: st.assists, accuracy: accShown(st) }];
@@ -1387,7 +1395,7 @@ export class Hud {
       set('st-K', st.kills == null ? '—' : st.kills); set('st-D', st.deaths); set('st-A', st.assists == null ? '—' : st.assists); if (accShown(st) != null) set('st-ACC', accShown(st) + '%');
       const dot = q('linkdot'); if (dot) { const cls = 'dot ' + (st.bleUp ? '' : 'off'); if (dot.className !== cls) dot.className = cls; }
       set('linklab', st.bleUp ? 'GUN' : 'NO GUN');
-      if (this.board) { set('bdage', this._boardAge(st)); const ag = q('bdage'); if (ag) ag.classList.toggle('stale', !!st.scoreAt && st.wsState !== 'bound'); }
+      if (this.board) { set('bdage', this._boardAge(st)); const ag = q('bdage'); if (ag) ag.classList.toggle('stale', this._boardStale(st)); }
       const md = q('mcdot'); if (md) { const cls = 'dot ' + (st.wsState === 'bound' ? '' : 'ws'); if (md.className !== cls) md.className = cls; }
     }
   }
