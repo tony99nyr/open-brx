@@ -354,6 +354,15 @@ test('S53: death clears the smoke tell', () => {
   assert.equal(h.eng.state().aim, null);
 });
 
+test('S16: a hit OFF the 250 ms tick() grid still gets all five ticks (the last is due exactly at the end)', () => {
+  const h = harness();
+  h.toxin(3, 2, 0);
+  h.adv(130);                                        // shift every later tick() 130 ms off the hit's own grid, as a
+  h.adv(5870);                                       // real hit at a random millisecond does: the last tick is then late
+  assert.equal(h.ticks().length, 5, 'five ticks: 20 poison damage, as the balance numbers assume');
+  assert.equal(h.eng.state().poison, null);
+});
+
 test('S16: a webview that stalled drops the ticks it missed rather than firing them in a burst', () => {
   const h = harness();
   h.toxin(3, 2);

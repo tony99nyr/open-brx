@@ -182,6 +182,19 @@ def test_each_tick_takes_the_outermost_non_empty_pool_shield_then_armour_then_he
     asyncio.run(go())
 
 
+def test_a_hit_off_the_poll_grid_still_gets_all_five_ticks():
+    """engine.js mirror: the last tick is due exactly AT `until`, so a poll up to one interval late must fire it.
+    A guard on the poll time alone dropped it, and a stack did 16 damage, not 20."""
+    async def go():
+        b = await Bench().start()
+        await b.toxin(3, 2, 0)
+        await b.adv(0.13)                        # every later poll lands 130 ms off the hit's own grid
+        await b.adv(5.87)
+        assert len(b.ticks()) == 5, "five ticks: 20 poison damage, as the balance numbers assume"
+        assert b.st.poison is None
+    asyncio.run(go())
+
+
 def test_a_second_hit_refreshes_to_full_duration_keeps_cadence_and_names_the_new_applier():
     async def go():
         b = await Bench().start()

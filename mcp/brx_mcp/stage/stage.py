@@ -3477,7 +3477,7 @@ class GunStage:
         p = self.poison
         if not p or now < p["next_at"]:
             return
-        if p["next_at"] <= p["until"] and now <= p["until"]:   # a clock that stalled past `until` fires nothing
+        if p["next_at"] <= p["until"] and (now <= p["until"] or now - p["next_at"] < p["tick_s"]):   # as engine.js: a stall past `until` fires nothing, but the last tick (due AT `until`) fires on a late poll
             self._poison_strike(p, now)
         if self.poison is not p:
             return   # the strike ended it (nothing does today; a guard for the next change)

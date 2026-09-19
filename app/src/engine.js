@@ -2928,7 +2928,7 @@ export class Engine {
    *  missed rather than firing them in a burst. The stack ends straight after its last tick. */
   _poisonTick(now) {
     const p = this.poison; if (!p || now < p.nextAt) return;
-    if (p.nextAt <= p.until && now <= p.until) this._poisonStrike(p, now);   // a clock that stalled past `until` fires nothing
+    if (p.nextAt <= p.until && (now <= p.until || now - p.nextAt < p.tickMs)) this._poisonStrike(p, now);   // a clock that stalled past `until` fires nothing; the last tick is due exactly AT `until`, so a `tick()` up to one interval late still fires it
     if (this.poison !== p) return;   // the strike ended it (nothing does today; a guard for the next change)
     p.nextAt += p.tickMs;
     if (p.nextAt <= now) p.nextAt = now + p.tickMs;
