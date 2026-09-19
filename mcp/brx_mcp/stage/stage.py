@@ -198,6 +198,8 @@ STUN_PLAY = "$PLAY,X17,4,6,,,,,*"
 EVENT_MIN_GAP_S = 1.0          # engine.js EVENT_MIN_GAP_MS: never two LED bursts inside a second
 PAIN_GAP_S = 0.6               # engine.js PAIN_GAP_MS (A15.3): at most one pain grunt per 600 ms -- dropped, never queued
 LOW_HEALTH_HP = 15             # engine.js LOW_HEALTH_HP (A17.2): HP below which the once-per-life low-health alert fires
+HURT_DEBOUNCE_S = 0.4          # engine.js HURT_DEBOUNCE_MS: hold the low-health write here so a killing hit (or a match
+                                # end/panic/BLE drop) landing in the same window can cancel it before it reaches the gun
 RELOAD_NAG_FIRST, RELOAD_NAG_EVERY = 5, 3   # engine.js RELOAD_NAG_FIRST / RELOAD_NAG_EVERY (the RELOAD nag): say RELOAD on the 5th dry pull, then every 3rd
 # S29 the shield recharge (engine.js SHIELD_REGEN_*): quiet since the last damage, the `$LIFE` grant and its
 # cadence, the grant cap, and the period the shield-down heartbeat replays on. SECONDS here, ms on the phone.
@@ -497,6 +499,7 @@ class GunStage:
         self._level_last_start: float | None = None   # review 2026-09-07: the rapid-retrigger guard's clock
         self._last_event_led: float | None = None
         self._hurt_fired = False
+        self._pending_hurt_write = False   # review 2026-09-19: the low-health alert is sitting in its HURT_DEBOUNCE_S hold
         self._last_seq = 0
         self._reacted_seq = 0          # highest rx seq already turned into a reaction -- distinct from
                                         # `_last_seq` (poll's own fetch cursor) so the instant on_frame
@@ -2002,7 +2005,10 @@ class GunStage:
         revive = (rp["revive_station"] if kind == "station" else rp["revive"]) if rp else self.bundle["revive"]
         self.spawned = True; self.alive = True                   # mirrors engine.js: the life is live before the
         self._arm_after_spawn(kind)                              # await, same reasoning as `spawn()` above (F209)
-        self._timed_life_at = self.now() if kind == "timed" else None   # 2026-09-19: the spawn-kill window runs from a timed respawn
+        # engine.js `_revive`: a legacy bundle (no respawn_profile) always computes `kind == "timed"`, station
+        # or not, so the window must also require `station is None` -- otherwise a legacy station revive would
+        # wrongly start the spawn-kill escalation.
+        self._timed_life_at = self.now() if kind == "timed" and station is None else None   # 2026-09-19: the spawn-kill window runs from a timed respawn
         await self.write(([ps] if ps else []) + list(revive) + ([fr] if fr else []),
                           "revive" + ps_why + self._line_tag(fr, tag))
         self._after_spawn()
@@ -2064,6 +2070,7 @@ class GunStage:
         # few lines down, and a second increment here would count two per life instead of one.
         self.hp = self.max_hp; self.armor = self.max_armor; self.shield = 0   # engine.js `_afterSpawn`/`_revive`: shield always starts at 0, not a max
         self._hurt_fired = False
+        self._pending_hurt_write = False   # engine.js `_armLife`/`_writeLife`: a new life owes no alert from the last one
         self._shot_due_at = None; self._no_fire_pulls = 0; self._dry_pulls = 0   # F208: a fresh life owes no shots; the RELOAD nag: and it starts loaded, so no dry spell is running
         self._spawn_at = self.now()   # F264 (engine.js `_spawnAt`, set in `_spawn`/`_revive`): starts `_spawn_probe_tick`'s clock
         # S29 (engine.js): a fresh life starts at shield 0 without the shield having BROKEN, so no heartbeat
@@ -2139,6 +2146,7 @@ class GunStage:
         self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None   # engine.js `_endLocal`: the whole takeover goes with the match
         self._moment = ("match_over", self.now())  # engine.js `_endLocal`
         self._level_gen += 1                       # Node rules: cancel everything on end
+        self._pending_hurt_write = False            # review 2026-09-19: a queued low-health alert must not survive match end
         return self.state()
 
     async def panic(self) -> dict:
@@ -2147,6 +2155,7 @@ class GunStage:
         self.spawned = False; self.alive = False; self.stunned = None
         self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None
         self._level_gen += 1                       # Node rules: cancel everything on panic
+        self._pending_hurt_write = False            # review 2026-09-19: a queued low-health alert must not survive panic teardown
         self._log("⚠ the gun now has NO $SIR table: re-ARM before it can be hit (F11)", "warn")
         return self.state()
 
@@ -3048,6 +3057,7 @@ class GunStage:
         if hp == 0 and self.alive:
             self.alive = False
             self._arm_pending = None; self._trigger_pending = None   # F209 (engine.js `_death`): never arm a dead gun
+            self._pending_hurt_write = False   # HURT_DEBOUNCE_S (mirrors engine.js `_death`): a death inside the hold cancels the queued alert outright
             # 2026-09-19: killed this soon after a timed respawn = spawn-killed; the down-screen warning gets
             # louder, never quieter.
             if (self._timed_life_at is not None and self.now() - self._timed_life_at <= self.SPAWN_KILL_WINDOW_S
@@ -3081,9 +3091,13 @@ class GunStage:
             # "your armour failed" -- audible at 44/45 HP. Mirrors engine.js.
             if hp > 0 and hp < LOW_HEALTH_HP and not self._hurt_fired:
                 self._hurt_fired = True; hurt_now = True
-                fr = [cues.get("hurt", ""), cues.get("hurt_led", "")]
-                self._hs_gen += 1
-                self._spawn_task(self.write(fr, "low health", gap_ms=0))
+                fr = [f for f in (cues.get("hurt"), cues.get("hurt_led")) if f]
+                # HURT_DEBOUNCE_S (review 2026-09-19, mirrors engine.js): hold the write instead of sending it
+                # at once, so a killing hit (or a match end/panic/BLE drop) landing in the same window can
+                # cancel it before it reaches the gun.
+                if fr:
+                    self._pending_hurt_write = True
+                    self._spawn_task(self._hurt_debounced(fr, self._level_gen))
             self._event_now("hit_taken")
             if hurt_now:
                 # F57 (engine.js `_onHp`): the hit that ARMS low_health plays the alert ONLY -- no grunt under it --
@@ -3862,6 +3876,21 @@ class GunStage:
         if rest and self._readout_frame != rest:
             self._readout_frame = rest
             await self.write([rest], "readout rest", gap_ms=0)
+
+    async def _hurt_debounced(self, frames: list[str], gen: int) -> None:
+        """HURT_DEBOUNCE_S (review 2026-09-19, mirrors engine.js's HURT_DEBOUNCE_MS): the write sits here
+        for the hold, not on the wire. A death lands first -> `_pending_hurt_write` is already False and
+        this is a no-op (office test 2026-09-19). A match end/panic/BLE drop lands first -> `_level_gen`
+        (this file's `_lightGen`) has moved on, or the gun is no longer `alive`, so the write is dropped
+        even though `_pending_hurt_write` was never explicitly cleared for those paths."""
+        await self.sleep(HURT_DEBOUNCE_S)
+        if not self._pending_hurt_write:
+            return                                    # cancelled by a death that landed first
+        self._pending_hurt_write = False
+        if self._level_gen != gen or not self.alive:
+            return
+        self._hs_gen += 1
+        await self.write(frames, "low health", gap_ms=0)
 
     async def _down_rearm(self, life: int, down: dict) -> None:
         """§3.2 (2026-09-07 bench, led-language.md): the firmware runs its OWN bright out-flash on the

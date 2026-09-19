@@ -72,3 +72,13 @@ test('app.js: the automatic picker opens are paced, and the beacon watch yields 
   assert.equal((src.match(/openPicker\(\{ auto: true \}\)/g) || []).length, 2, 'Bluetooth-back-on and the rejoin fallback are automatic opens');
   assert.match(src, /beaconWatch\.tick\(st, \{ pickerOpen: scanning \|\| link\.connecting/);
 });
+
+test('app.js: SET MY GUN ends a background reconnect before it scans, so the picker never shows "No guns found" for a scan that never ran', () => {
+  const src = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+  const start = src.indexOf('async function openPicker');
+  const end = src.indexOf('await link.scan(d => picker.observe(d));', start);
+  assert.ok(start >= 0 && end > start, 'openPicker must still call link.scan(...) with the picker.observe callback');
+  const body = src.slice(start, end);
+  assert.match(body, /if \(link\.connecting\)/, 'openPicker must check for a background reconnect holding the radio');
+  assert.match(body, /await link\.disconnect\(\)/, 'openPicker must end it before scanning (brxlink.test.mjs pins the BrxLink half)');
+});

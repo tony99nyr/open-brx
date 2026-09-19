@@ -147,6 +147,19 @@ test('timed weapon delay 3 s: pulls on the held trigger owe no shot (F208 does n
   h.adv(600); assert.deepEqual(bmap0(h.since(n)), [HELD, LIVE], 'live at 3 s');
 });
 
+test('review 2026-09-19: operator RESYNC must not release a weapon delay hold ($BMAP,0,0 while _triggerPending is set)', () => {
+  const h = liveArmed({ bundle: { ...golden, respawn_profile: { ...RP, trigger_ms: 3000 } } });
+  const n = revived(h);
+  assert.deepEqual(bmap0(h.since(n)), [HELD], 'setup: the revive holds the trigger');
+  assert.ok(h.eng._triggerPending, 'setup: the weapon delay is still running');
+  const m = h.mark();
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'resync', player_id: 'p1', match_id: 'm1' } });
+  assert.deepEqual(bmap0(h.since(m)), [], 'RESYNC must not write $BMAP,0,0 while the weapon delay holds the trigger');
+  assert.ok(h.eng._triggerPending, 'the hold itself must survive the resync');
+  h.adv(3000);   // the delay elapses on its own clock, unaffected by the resync
+  assert.deepEqual(bmap0(h.since(m)), [LIVE], 'the delay timer still goes live once it is over');
+});
+
 test('timed protection 1 s: t8 -100 after $SPAWN, t8 0 at 1 s (a shot does not end it), trigger live at 1.5 s', () => {
   const h = liveArmed({ bundle: timedProtect(1000) });
   const n = revived(h);

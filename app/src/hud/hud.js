@@ -39,7 +39,12 @@ const MEDAL_LABEL = { first_blood: 'FIRST BLOOD', double_kill: 'DOUBLE KILL', tr
 export function connectingText(conn) {
   const nm = String((conn && conn.name) || 'your gun');
   if (conn && conn.failed) return { head: `Could not connect to ${nm}`, line: 'Turn the gun off and on, then tap Scan again.' };
-  const line = conn && conn.attempt > 1 ? `Retrying (${conn.attempt} of ${conn.of})…` : 'Keep the gun close and switched on.';
+  // Review 2026-09-19: armed/live makes the loop retry FOREVER (BrxLink.unbounded()), past the `of` it
+  // started with -- app.js sends `of: null` for that case, so the count is never printed once `attempt`
+  // could run past it ("Retrying (7 of 5)…"). `Math.min` clamps it too, belt and braces, in case a caller
+  // ever hands the two mismatched.
+  const line = !conn || conn.attempt <= 1 ? 'Keep the gun close and switched on.'
+    : conn.of ? `Retrying (${Math.min(conn.attempt, conn.of)} of ${conn.of})…` : 'Retrying…';
   return { head: `Connecting to ${nm}…`, line };
 }
 const splitGun = g => { if (!g) return ['—', '']; return [esc(g.basename || g.name || ''), esc(g.tail || '')]; };

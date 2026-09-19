@@ -857,6 +857,29 @@ def test_the_low_health_crossing_plays_no_grunt_and_silences_the_next_600ms():
     asyncio.run(go())
 
 
+# ── review 2026-09-19: the low-health write is HELD (HURT_DEBOUNCE_S), mirroring engine.js HURT_DEBOUNCE_MS,
+# and a death landing before the hold elapses cancels it outright, exactly as engine.js's office test does ──
+def test_a_death_inside_the_debounce_hold_cancels_the_queued_low_health_write():
+    """`_on_rx` is synchronous; the debounced write only runs once the event loop gets a turn, at `settle()`.
+    So queuing the killing hit BEFORE `settle()` reproduces "the death landed inside the window" without
+    needing a real clock -- CONTROL: `_pending_hurt_write` is true the instant the crossing is queued."""
+    async def go():
+        st, mgr, clock = mk_gain()
+        await live(st)
+        clock.advance(1.0)
+        st._on_rx("$HP,45,0,0,*"); await settle(st)                  # armour gone, health full: sync
+        clock.advance(1.0)
+        n = mark(mgr)
+        st._on_rx("$HP,12,0,0,*")                                    # crosses under 15: QUEUED, not yet on the wire
+        assert st._pending_hurt_write, "CONTROL: the alert is sitting in its debounce hold"
+        assert st.bundle["cues"]["hurt"] not in since(mgr, n), "still held -- nothing on the wire yet"
+        st._on_rx("$HP,0,0,0,*")                                     # the killing hit lands inside the hold
+        await settle(st)
+        assert not st._pending_hurt_write, "death clears the pending flag"
+        assert st.bundle["cues"]["hurt"] not in since(mgr, n), "a stray low-health write must not reach a dead gun"
+    asyncio.run(go())
+
+
 # ======================================================================================================
 # F15 -- the host-driven stun (EMP), mirrored from engine.js `_stun` / `_stunRestore` / `_onAmmo`
 # ======================================================================================================

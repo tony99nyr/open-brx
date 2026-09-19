@@ -297,7 +297,7 @@ def is_shields_preset(config: GameConfig) -> bool:
 
 # Tony 2026-09-19 (FOLLOWUPS S45, weapon-design.md §7.3): the three named starting-pool presets a host
 # picks in Mission Control's game setup, replacing the old free-form "custom health"/"armour" fields
-# with no shield at all. (max_hp, max_armor, max_shield) -- keep in that order, `_check_health_pools`
+# with no shield at all. (max_hp, max_armor, max_shield) -- keep in that order, `state.py _merge_config`
 # and `resolve_health_preset` both zip against it positionally.
 HEALTH_PRESETS: dict[str, tuple[int, int, int]] = {
     "standard": (45, 70, 0),     # the old GameConfig default (S45: "Standard" ships no shield now,

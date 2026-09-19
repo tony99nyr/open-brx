@@ -174,7 +174,12 @@ METHOD = '''
 if re.search(r'\bonCreate\s*\(', s):
     # Capacitor's default template has none, but do not risk a duplicate-method compile error if a
     # later template (or a prior hand edit, now lost to regeneration) ever adds one.
-    print("   MainActivity already defines onCreate - add the immersive lines (see this script) inside it by hand")
+    # Review 2026-09-19: this used to just print and carry on, so a build could ship with no immersive
+    # fullscreen patch and nothing said so -- exit non-zero instead, so `set -e` stops the script here
+    # rather than reporting "done" over a half-applied setup.
+    print("   MainActivity already defines onCreate - the immersive patch cannot apply automatically", file=sys.stderr)
+    print("   add the immersive lines (see android-setup.sh's IMMERSIVE block) inside it by hand, then re-run", file=sys.stderr)
+    sys.exit(1)
 else:
     m = re.search(r'(public class MainActivity extends BridgeActivity\s*\{)', s)
     if m:

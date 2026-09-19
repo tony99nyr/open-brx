@@ -357,6 +357,10 @@ async function openPicker({ auto = false } = {}) {
     // Bluetooth comes back on, so the operator never has to tap SET MY GUN a second time.
     if (!setBluetoothOn(await link.isEnabled())) { hud.setScan([]); scheduleRender(); return; }
     if (picking || link.connected) return;   // re-check: isEnabled() waited in the plugin queue behind a connect
+    // Review 2026-09-19: a background reconnect loop (a remembered gun that is off) also holds the radio --
+    // `link.scan()` throws "a gun connect is in flight" and the picker showed "No guns found" with no scan
+    // ever having run. End that loop first, the smallest safe option: SET MY GUN is meant to override it.
+    if (link.connecting) { log('gun scan: ending the background reconnect so the picker can use the radio', 'li'); await link.disconnect(); }
     scanning = true;       // claim the radio first, so no beacon tick reopens its scan while this one stops it
     try {
       await stopAnyScan();   // tap = (re)start a fresh scan, never leave the picker idle (bench 2026-08-25); the beacon watch yields to the picker
@@ -406,7 +410,8 @@ Object.assign(hud.h, {
     try {
       await link.stopScan();
       // `connect` waits for the stop to complete plus SCAN_SETTLE_MS before its first attempt (brxlink.js)
-      const up = await link.connect(deviceId, d.name, { onAttempt: (i, of) => { hud.setConnecting({ name, attempt: i, of, failed: false }); scheduleRender(); } });
+      // `of: null` once unbounded() -- never a stale "Retrying (7 of 5)…" (review 2026-09-19)
+      const up = await link.connect(deviceId, d.name, { onAttempt: (i, of) => { hud.setConnecting({ name, attempt: i, of: link.unbounded() ? null : of, failed: false }); scheduleRender(); } });
       if (up !== false && settings.mcUrl && !transport) connectMc(settings.mcUrl);
     }
     catch (e) { failed = true; log('connect failed: ' + (e && e.message || e), 'le'); }

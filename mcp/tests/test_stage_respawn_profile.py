@@ -15,7 +15,7 @@ import asyncio
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.mc.compile import Compiler
 from brx_mcp.stage.stage import GunStage
-from test_stage import _Clock, _nosleep, settle, tx
+from test_stage import LegacyCompiler, _Clock, _nosleep, settle, tx
 
 GUN = "FA:KE:00:00:00:01"
 ON, OFF = "$TMP,,,,,,,,-100,,,,*", "$TMP,,,,,,,,0,,,,*"
@@ -233,6 +233,24 @@ def test_the_down_warning_climbs_on_spawn_kills_holds_at_3_and_resets_on_a_new_m
         await st.revive(); await settle(st)
         clock.advance(10.01); await _die(st)
         assert st._down_warn == 1, "outside the window"
+    asyncio.run(run())
+
+
+def test_a_legacy_bundle_station_revive_does_not_start_the_spawn_kill_window():
+    """Review 2026-09-19 (mirrors engine.js `_revive` line ~2888): with NO `respawn_profile` at all (an
+    app < 0.4.3), `kind` always computes to "timed", station or not -- `_timed_life_at` must ALSO require
+    `station is None`, or a legacy station revive would wrongly start the spawn-kill escalation."""
+    async def run():
+        mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1)])
+        clock = _Clock()
+        st = GunStage(mgr, None, compiler=LegacyCompiler(), sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
+        assert st._respawn_profile() is None, "setup: the legacy bundle carries no respawn_profile"
+        await _live(st)
+        await _die(st)
+        await st.revive(station=3); await settle(st)
+        assert st._timed_life_at is None, "a legacy station revive must not start the spawn-kill window"
+        clock.advance(1); await _die(st)
+        assert st._down_warn == 1, "no escalation from a legacy station revive"
     asyncio.run(run())
 
 

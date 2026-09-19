@@ -42,6 +42,17 @@ test('connectingText: the gun name from the tap, the attempt count on a retry, a
   assert.match(f.line, /Scan again/);
 });
 
+// Review 2026-09-19: armed/live retries forever (BrxLink.unbounded()), so `attempt` can run past the `of`
+// the connect started with. The picker must never print a stale bound like "Retrying (7 of 5)…".
+test('connectingText: an unbounded retry (of: null) reads "Retrying…", never a stale count', () => {
+  assert.equal(connectingText({ name: 'GUN-A-3D4F', attempt: 7, of: null }).line, 'Retrying…');
+  assert.equal(connectingText({ name: 'GUN-A-3D4F', attempt: 2, of: null }).line, 'Retrying…');
+});
+
+test('connectingText: a bounded attempt past its own `of` still clamps, belt and braces', () => {
+  assert.equal(connectingText({ name: 'GUN-A-3D4F', attempt: 7, of: 5 }).line, 'Retrying (5 of 5)…');
+});
+
 test('connect() reports every attempt, so the picker can show "Retrying (2 of 5)…"', async ctx => {
   const settle = useClock(ctx);
   const g = gun({ fails: 2 });
@@ -97,7 +108,8 @@ test('app.js onPick: the connecting state runs from the tap, per attempt, and to
   const firstAwait = pick.indexOf('await ');
   const shown = pick.indexOf('hud.setConnecting({ name, attempt: 1');
   assert.ok(shown > 0 && shown < firstAwait, 'the connecting state must show before the first await (the tap)');
-  assert.match(pick, /onAttempt: \(i, of\) => \{ hud\.setConnecting\(\{ name, attempt: i, of, failed: false \}\)/, 'each attempt must update the attempt count');
+  assert.match(pick, /onAttempt: \(i, of\) => \{ hud\.setConnecting\(\{ name, attempt: i, of: link\.unbounded\(\) \? null : of, failed: false \}\)/,
+    'each attempt must update the attempt count, and clear `of` once the loop is unbounded (review 2026-09-19: "Retrying (7 of 5)…")');
   assert.match(pick, /hud\.setConnecting\(failed \? \{[^}]*failed: true \} : null\)/, 'a failure keeps a failed state on screen; a link clears it');
   const setGun = src.slice(src.indexOf('async function openPicker'), src.indexOf('onScanAgain:'));
   assert.match(setGun, /hud\.setConnecting\(null\)/, 'SCAN AGAIN must clear the failed state');

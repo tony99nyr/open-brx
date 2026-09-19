@@ -2463,6 +2463,31 @@ test('office test 2026-09-19: a death that lands AFTER the debounce has already 
   assert.equal(h.writes.filter(f => f === PLAYX).length, 1, 'past the window, the existing F149 stop still fires');
 });
 
+// ── review 2026-09-19: a queued low-health alert must not survive match end/teardown/panic ────────
+test('a match end inside the debounce window cancels the queued low-health alert', () => {
+  const pending = [];
+  const h = goLive(harness({ delay: (ms, fn) => pending.push({ ms, fn }) }));
+  h.writes.length = 0; pending.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,12,0,0,*');        // under 15: the alert is scheduled, not sent
+  const alert = pending.find(p => p.ms === 400); assert.ok(alert, 'the alert was scheduled at HURT_DEBOUNCE_MS');
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });     // the match ends while the alert is still queued
+  h.writes.length = 0;                                              // ignore the end/teardown writes themselves
+  alert.fn();                                                       // the debounce timer finally fires, after the end
+  assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 0, 'a stray low-health write must not land on an ended match');
+});
+
+test('a panic inside the debounce window cancels the queued low-health alert', () => {
+  const pending = [];
+  const h = goLive(harness({ delay: (ms, fn) => pending.push({ ms, fn }) }));
+  h.writes.length = 0; pending.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,12,0,0,*');
+  const alert = pending.find(p => p.ms === 400); assert.ok(alert, 'the alert was scheduled at HURT_DEBOUNCE_MS');
+  h.eng.control({ cmd: 'panic' });                                  // the operator panics while the alert is still queued
+  h.writes.length = 0;
+  alert.fn();
+  assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 0, 'a stray low-health write must not land after panic teardown');
+});
+
 // ── empty-mag state, replayed at the REAL cadence (capture 2026-08-26-weapons-smg-plus-amr) ──────
 test('emptying a mag leaves ammo 0 and the low-mag prompt armed', () => {
   // The gun sends one $ALCD per shot all the way down to 0 and then nothing on a dry trigger — proven

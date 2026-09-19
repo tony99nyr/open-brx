@@ -649,3 +649,32 @@ test('write pacing: with a block size set, a pause lands after every N frames an
   // 18 ms frame gap everywhere; +300 ms after frames 2 and 4 (frame 5 is last: no trailing pause)
   assert.deepEqual(gaps, [18, 318, 18, 318]);
 });
+
+// Review 2026-09-19: a SET MY GUN tap during a background reconnect to a gun that is off used to fail
+// silently -- `scan()` throws "a gun connect is in flight" while the loop holds the radio, and the picker
+// showed "No guns found" with no scan ever having run. app.js's `openPicker` now ends that loop first
+// (`link.disconnect()`, the smallest safe option) before it scans; this pins the BrxLink half of that fix.
+test('ending a background reconnect frees the radio, so the picker can scan instead of "No guns found"', async ctx => {
+  const settle = useClock(ctx);
+  // Models a gun that is off: the native connect() hangs (a real GATT connect can sit for many seconds)
+  // until a disconnect() call on the same id aborts it -- the assumption behind the fix.
+  let pendingReject = null;
+  const ble = {
+    initialize: async () => {}, requestLEScan: async () => {}, stopLEScan: async () => {},
+    connect: () => new Promise((_res, rej) => { pendingReject = rej; }),
+    startNotifications: async () => {},
+    disconnect: async () => { if (pendingReject) { const rej = pendingReject; pendingReject = null; rej(new Error('disconnected while connecting')); } },
+  };
+  const link = new BrxLink({ ble, log: () => {} });
+  link.deviceId = 'A';                 // a remembered gun the app is retrying in the background
+  link._reconnect();                   // the forever-loop starts trying it
+  for (let i = 0; i < 5 && !link.connecting; i++) await new Promise(r => setImmediate(r));
+  assert.equal(link.connecting, true, 'CONTROL: the background loop holds the radio');
+  await assert.rejects(link.scan(() => {}), /connect is in flight/, 'CONTROL: a scan still refuses on its own');
+  if (link.connecting) await link.disconnect();   // exactly what openPicker now does before it scans
+  await settle(50);
+  assert.equal(link.connecting, false, 'the disconnect ended the in-flight connect');
+  await link.scan(() => {});
+  assert.equal(link.scanning, true, 'the picker can now open its scan');
+  await link.stopScan();
+});

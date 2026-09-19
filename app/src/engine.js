@@ -2928,6 +2928,7 @@ export class Engine {
     this.ended = true; this._panicked = null; this.endAck = false; this._armPending = null; this._triggerPending = null;   // F209: never arm an ended gun
     this.endedAt = this.now();   // the results screen's settle window runs from HERE, not from the result's arrival
     this._lightGen = (this._lightGen || 0) + 1;   // no delayed $GLED/$HLED/cue step from before teardown may land after it
+    this._pendingHurtWrite = false;   // review 2026-09-19: a queued low-health alert must not survive match end
     try { if (this.onEnd) this.onEnd(this.historyEntry()); } catch (_) { /* history is best-effort */ }
     // The tally that decides the match is the one sent AT the whistle: it is exempt from the A6.1 end freeze
     // and clamped on MC's side instead (`mc/API.md`), so send it before the phase leaves `live`.
@@ -3499,6 +3500,7 @@ export class Engine {
 
   _writeTeardown(kind, why) {
     this._armPending = null; this._triggerPending = null;   // F209
+    this._pendingHurtWrite = false;   // review 2026-09-19: panic/end teardown must cancel a queued low-health alert too
     if (kind === 'panic') { if (this.frames && this.frames.panic) this._write(this.frames.panic, `panic (${why})`); else this._write(['$CLEAR,*', '$SP,99,*'], `panic (${why})`); return; }
     if (this.frames) {
       this._write(this.frames.end, `end (${why})`);
@@ -3612,7 +3614,11 @@ export class Engine {
     const tid = this._liveTid();
     const ammo = Object.entries(this._liveAmmo()).map(([slot, [mag, res]]) => `$AMMO,${slot},${mag},${res},1,*`);
     const bmap = ((this.frames && this.frames.revive) || []).find(f => typeof f === 'string' && f.startsWith('$BMAP,0,0')) || '$BMAP,0,0,,,,,*';
-    this._writeMust([...(tid != null ? [`$TID,${tid},*`] : []), ...ammo, bmap], 'operator resync',
+    // Review 2026-09-19: a timed respawn's weapon delay holds the trigger with `$BMAP,0,98` (`_triggerPending`).
+    // RESYNC must not overwrite that with `$BMAP,0,0` (weapon systems live) mid-hold -- `_triggerLive` writes
+    // the real one once the delay is over. `$TID`/`$AMMO` are independent of the hold and still go out.
+    if (this._triggerPending) this.log('operator resync: weapon delay still holds the trigger -- $BMAP,0,0 held back', 'li');
+    this._writeMust([...(tid != null ? [`$TID,${tid},*`] : []), ...ammo, ...(this._triggerPending ? [] : [bmap])], 'operator resync',
       () => this._lifeSeq === life && !this._standDown(['phase', 'ble', 'alive', 'reconciling', 'resync', 'stunned']));
     this._holdAccuracyWrites('operator resync');   // A47: the resync's own `$AMMO` (and its one retry) owns the counts
     if (this._protectsSpawn()) {
@@ -4534,9 +4540,11 @@ export class Engine {
       // inside the window, and falls back to the existing $PLAYX stop once the debounce has already fired.
       if (fr.length) {
         this._pendingHurtWrite = true;
+        const lg = (this._lightGen = this._lightGen || 0);   // teardown snapshot: match end/panic/BLE drop must not let this land late
         this.delay(HURT_DEBOUNCE_MS, () => {
           if (!this._pendingHurtWrite) return;   // cancelled by a death that landed first
           this._pendingHurtWrite = false;
+          if (this._lightGen !== lg || !this.alive || this.ended) return;   // match ended/panicked/relinked during the debounce window (review 2026-09-19)
           this._hsGen = (this._hsGen || 0) + 1; this._write(fr, 'low health');   // cancels a pending hit-flash rest step (polish 2026-09-04)
         });
       }
