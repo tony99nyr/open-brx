@@ -64,8 +64,14 @@ contracts §3 `FrameBundle` fields like this:
   2026-08-25: inert). Token 1 = `0` is written **only** by `tutorialFrames` (§4): "no identity", which MC never
   credits (A5.1).
 - HP/armor come from `health` (+ `player.loadout.overrides` + the `body_armor` perk); the voice tail from
-  `player.voice` (§5). ⚠ The `$PSET` **shield** token is written but **inert** — the pool is granted only by an
-  IR `$SIR` function-11 event (P16). Keep writing it for frame fidelity; do not treat it as a setting.
+  `player.voice` (§5). **A50 (2026-09-19, S45): the `$PSET` shield token is `health.max_shield`, a real
+  host setting now** — it used to be a fixed constant (70) armed on every game whether the host wanted
+  shields or not, with the token's own comment warning "do not treat it as a setting". The CEILING alone
+  still does nothing by itself: the pool starts at 0 every spawn and is granted by the node's own
+  `$LIFE,0,0,<n>,*` writes (contracts §3, S29's shield recharge, `app/src/engine.js shieldRegenOn`), which
+  only runs when the game's `health.max_armor` is 0 too — see `compile.is_shields_preset`/
+  `HEALTH_PRESETS`. An IR `$SIR` function-11/grant row can also raise the pool; nothing in this compiler
+  ever ships one.
 - **Volume** = `compile.play_volume(environment)`: **80 indoors / 90 outdoors** (2026-08-30: 69 was inaudible
   outdoors); try-outs `VOL_TRYOUT = 69`; the diagnostic `30` never reaches a game head.
 - Nothing in `compile` reads a clock or the network — the dispersed-start timing (M-START) wraps `spawn`.

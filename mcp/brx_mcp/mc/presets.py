@@ -35,7 +35,11 @@ def _builtin_configs(default_config: Callable[[str], GameConfig],
                      merge_policy: Callable[[LoadoutPolicy | None, Mapping[str, Any]], LoadoutPolicy]) -> list[SavedGame]:
     """The shipped examples. Built from the live defaults so a policy/mode change never leaves a stale copy."""
     cfg = default_config("ffa")
-    cfg["health"] = {**cfg["health"], "max_armor": 0}             # one shot kills: 52 × 1.25 vs 45 HP
+    # one shot kills: 52 x 1.25 vs 45 HP. Explicit "custom" (not a table lookup): a bespoke sniper
+    # build, not a claim about the Hardcore preset even though the numbers happen to coincide
+    # (45/0/0) -- `sanitize()` re-derives it anyway (S45), this just avoids leaving the stale
+    # "standard" label `default_config()` seeded before the override below.
+    cfg["health"] = {**cfg["health"], "max_armor": 0, "max_shield": 0, "preset": "custom"}
     cfg["loadout_policy"] = merge_policy(cfg.get("loadout_policy"), {
         "hud_select": False,
         "primary": {"choice": "fixed", "fixed_id": "sniper_rifle"},

@@ -21,22 +21,27 @@ const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/
 const NAG = golden.cues.reload_nag;             // $PLAY,,4,6,VX73,* -- "Reload"
 const ONLINE = golden.cues.shield_online;       // $PLAY,,4,6,VA6Y,* -- "Shields Online"
 const UP = golden.cues.shield_up;               // $PLAY,,4,6,VA8C,* -- "SHIELD ONLINE", the per-grant line
-const MAX_SHIELD = 70;                          // the golden head's $PSET t5
+const MAX_SHIELD = 70;                          // `harness()`'s own default shield ceiling (S45: a real
+                                                 // `health.max_shield` field now; the golden bundle's OWN
+                                                 // default is 0, Standard's shape -- see `shieldCeiling`)
 
 function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
-function harness({ shields = false } = {}) {
+function harness({ shields = false, shieldCeiling = MAX_SHIELD } = {}) {
   let clock = 1_000_000;
   const writes = [];
   const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }];
-  // `shields` is S45's preset as far as it is expressible today: armour 0, which is what `is_shields_preset`
-  // and `shieldRegenOn` both key on. The 70 ceiling is the compiled head's; nothing can move it yet.
-  const health = shields ? { max_hp: 30, max_armor: 0 } : { max_hp: 45, max_armor: 70 };
+  // `shields` is S45's preset shape: armour 0, which is what `is_shields_preset`/`shieldRegenOn` key the
+  // recharge on. `shieldCeiling` (S45: `health.max_shield` is a real host field now) defaults to MAX_SHIELD
+  // so every existing call site keeps the ceiling it always implicitly had -- the golden bundle's OWN
+  // `$PSET` used to arm a free, fixed 70 regardless of what the config asked for; now Standard (the golden
+  // bundle's default) ships 0, so a harness that wants a ceiling has to say so.
+  const health = shields ? { max_hp: 30, max_armor: 0, max_shield: shieldCeiling } : { max_hp: 45, max_armor: 70, max_shield: shieldCeiling };
   // The node reads its pool CEILINGS off the compiled `$PSET`, not off `config.health` (`_headPool`), so a
   // harness that moved only the config would arm a 45/70 gun and read every shields frame as damage.
   const frames = { ...golden, player_id: 'p1' };
-  if (shields) frames.head = frames.head.map(f => (f.startsWith('$PSET,')
-    ? f.split(',').map((tok, i) => (i === 3 ? '30' : i === 4 ? '0' : tok)).join(',') : f));
+  frames.head = frames.head.map(f => (f.startsWith('$PSET,')
+    ? f.split(',').map((tok, i) => (i === 3 ? String(health.max_hp) : i === 4 ? String(health.max_armor) : i === 5 ? String(shieldCeiling) : tok)).join(',') : f));
   const config = { config_id: golden.config_id, mode: 'ffa', environment: 'outdoor', night: false, time_limit_s: 1800,
     respawn: { type: 'auto', delay_s: 15 }, scoring: { frag_limit: 25, win_by: 'kills' }, health, teams };
   const player = { player_id: 'p1', player_num: 7, display: 'ROCCO', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
@@ -251,8 +256,8 @@ test('S29: a hit MID-refill abandons it, and the next one announces itself again
 });
 
 test('S29: an ordinary game never grants -- the preset is the opt-in, not the ceiling', () => {
-  const h = harness();                            // 45 HP + 70 armour: not a shields game
-  assert.equal(h.eng.maxShield, MAX_SHIELD, 'the head arms a ceiling anyway (compile._GC_SHIELD_DEFAULT)');
+  const h = harness();                            // 45 HP + 70 armour + a shield ceiling: still not a shields game
+  assert.equal(h.eng.maxShield, MAX_SHIELD, 'setup: a non-zero shield beside armour does not opt in on its own');
   assert.equal(h.eng.shieldRegenOn, false);
   h.f('$HP,45,70,0,*');
   h.run(DELAY * 3, { echo: false, hp: 45, armor: 70 });

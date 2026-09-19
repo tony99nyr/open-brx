@@ -1,5 +1,5 @@
 // Shared game-summary helpers (GAMES cards, the DESIGNER rail, the KIT rules chip) — one generator everywhere.
-import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LoadoutPoolReasons, PerkView, PoolEmptyCode, SlotRule, StationSourceId, WeaponView } from '../api/types';
+import type { ConfigView, GameConfig, Health, HealthPreset, LoadoutPolicy, LoadoutPool, LoadoutPoolReasons, PerkView, PoolEmptyCode, SlotRule, StationSourceId, WeaponView } from '../api/types';
 import { STATION_SOURCE_IDS } from '../api/types';
 
 /** The rule engine, mirrored from mcp/brx_mcp/mc/policy.py `pool()`. The DESIGNER computes the pool from the rules
@@ -164,6 +164,37 @@ export const withPolicy = (c: GameConfig): ConfigView => {
 
 const PRESET_LABEL: Record<string, string> = { open: 'OPEN', no_heavies: 'NO HEAVIES', snipers: 'SNIPERS ONLY', custom: 'CUSTOM RULES' };
 
+/** Tony 2026-09-19 (FOLLOWUPS S45, weapon-design.md §7.3) — the three named starting-pool presets, mirrored
+ *  from `mcp/brx_mcp/mc/compile.py HEALTH_PRESETS`. Keep the two tables in step by hand (no codegen for a
+ *  plain constant table): a mismatch means a preset button writes numbers the server's OWN `resolve_health_
+ *  preset()` reads back as CUSTOM the instant it is saved. */
+export const HEALTH_PRESETS: Record<Exclude<HealthPreset, 'custom'>, { max_hp: number; max_armor: number; max_shield: number }> = {
+  standard: { max_hp: 45, max_armor: 70, max_shield: 0 },
+  shields: { max_hp: 45, max_armor: 0, max_shield: 105 },
+  hardcore: { max_hp: 45, max_armor: 0, max_shield: 0 },
+};
+export const HEALTH_PRESET_COPY: { value: Exclude<HealthPreset, 'custom'>; label: string; hint: string }[] = [
+  { value: 'standard', label: 'STANDARD', hint: '45 HP, 70 armour, no shield' },
+  { value: 'shields', label: 'SHIELDS', hint: '45 HP, no armour, 105 shield that recharges after a few seconds clear of damage' },
+  { value: 'hardcore', label: 'HARDCORE', hint: '45 HP, no armour, no shield — nothing regenerates' },
+];
+/** Which preset these three numbers ARE, or "custom" — a label RE-DERIVED every time (mirrors `presetOf`
+ *  above), never trusted from a stored `preset` field on its own. */
+export function healthPresetOf(h: { max_hp: number; max_armor: number; max_shield: number }): HealthPreset {
+  for (const k of Object.keys(HEALTH_PRESETS) as (keyof typeof HEALTH_PRESETS)[]) {
+    const p = HEALTH_PRESETS[k];
+    if (p.max_hp === h.max_hp && p.max_armor === h.max_armor && p.max_shield === h.max_shield) return k;
+  }
+  return 'custom';
+}
+/** A saved/loaded `Health` may predate `max_shield`/`preset` (S45: an older saved game, or a server that
+ *  answers before this field existed) — fill the gap the same way `state.py`'s migration does (0 shield,
+ *  CUSTOM), so the console never reads `undefined` off an old config. */
+export function withHealthPreset(h: Partial<Health> | undefined | null): Health {
+  const max_hp = h?.max_hp ?? 45, max_armor = h?.max_armor ?? 70, max_shield = h?.max_shield ?? 0;
+  return { max_hp, max_armor, max_shield, preset: h?.preset ?? healthPresetOf({ max_hp, max_armor, max_shield }) };
+}
+
 // F70 — the objective-source vocabulary. The IDS are NOT mirrored here: they come from the generated
 // `STATION_SOURCE_IDS` (mcp/brx_mcp/mc/types.py `STATION_SOURCES`), and this map is keyed by
 // `StationSourceId`, so a source added on the server fails this file's compile instead of quietly
@@ -188,8 +219,17 @@ export const objectiveLine = (cfg: GameConfig): string | null => {
   return (STATION_SOURCES.find(s => s.value === src)?.label ?? src.toUpperCase());
 };
 
-/** identity of a game = everything but the per-apply id and the VENUE (environment / night are about where you play) */
-export const gameSig = (c: GameConfig) => { const { config_id: _c, environment: _e, night: _n, ...rest } = c; void _c; void _e; void _n; return JSON.stringify(rest); };
+/** identity of a game = everything but the per-apply id and the VENUE (environment / night are about where you play).
+ *  S45: `health.preset` is DERIVED (`healthPresetOf`), never authoritative — two configs whose three health
+ *  numbers agree are the SAME game whatever their preset LABEL says, so it is stripped here the same way a
+ *  saved game's own `preset_id` never rides in a signature. Without this, a pre-S45 saved game (loads as
+ *  CUSTOM even at Standard's own 45/70/0, S45's own migration rule) reads as "TUNED" against a fresh
+ *  Standard-labelled default it is numerically identical to. */
+export const gameSig = (c: GameConfig) => {
+  const { config_id: _c, environment: _e, night: _n, ...rest } = c; void _c; void _e; void _n;
+  const health = rest.health ? { ...rest.health, preset: undefined } : rest.health;
+  return JSON.stringify({ ...rest, health });
+};
 
 /** one human line for a saved game / the live config — the same generator everywhere (cards, summary, HUD-like) */
 export function rulesLine(cfg: GameConfig, weapons: { weapon_id: string; name: string }[], perks: { perk_id: string; name: string }[]) {

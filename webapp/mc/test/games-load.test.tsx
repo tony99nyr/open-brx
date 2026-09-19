@@ -225,7 +225,8 @@ describe('GAMES · EDIT is a draft, SAVE AND LOAD is the only thing that sends',
     const g = await games({ load: true });
     await openEdit(g);
     await tap(nightToggle(g));
-    const hp = g.m.el.querySelector('[data-testid="game-edit-panel"] input[aria-label="default health"]') as HTMLInputElement;
+    await tap(g.m.el.querySelector('[data-testid="game-edit-panel"] [data-testid="health-advanced-toggle"]') as HTMLElement);
+    const hp = g.m.el.querySelector('[data-testid="game-edit-panel"] input[aria-label="health"]') as HTMLInputElement;
     await act(async () => {
       hp.focus();
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(hp, '60');
@@ -233,9 +234,10 @@ describe('GAMES · EDIT is a draft, SAVE AND LOAD is the only thing that sends',
       hp.blur();
     });
     expect(g.calls.putConfig, 'two edits, NOTHING on the wire').toEqual([]);
+    const before = g.state().config.health;
     await tap(save(g));
     expect(g.calls.putConfig.length, 'ONE request carries the whole patch').toBe(1);
-    expect(g.calls.putConfig[0]).toEqual({ night: true, health: { max_hp: 60, max_armor: g.state().config.health.max_armor } });
+    expect(g.calls.putConfig[0]).toEqual({ night: true, health: { max_hp: 60, max_armor: before.max_armor, max_shield: before.max_shield, preset: 'custom' } });
     g.m.unmount();
   });
 

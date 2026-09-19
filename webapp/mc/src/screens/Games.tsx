@@ -34,7 +34,7 @@ import { setNotice } from '../notice';
 import { useStore } from '../store';
 import { F, PERK_COLOR, T } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, Shelf, StripedSlot, SwitchConfirm, Tag, Toggle, onKey } from '../ui';
-import { emptyRequiredSlots, gameSig, poolEmptyMessage, rulesLine, splitLine } from './gameSummary';
+import { HEALTH_PRESET_COPY, emptyRequiredSlots, gameSig, healthPresetOf, poolEmptyMessage, rulesLine, splitLine } from './gameSummary';
 import { MODE_ART } from '../modeArt';
 import { VenueModeManualLink } from '../ui/VenueModeReminder';
 import { GameEditPanel } from '../ui/GameEditPanel';
@@ -267,7 +267,11 @@ export function Games() {
                   </>} />
                 <div style={{ font: F.osw(600, 17), letterSpacing: '.06em', lineHeight: 1.1, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{g.name.toUpperCase()}</div>
                 <div style={{ font: F.mono(500, 10.5), letterSpacing: '.1em', color: T.acc, lineHeight: 1.5 }}>{rulesLine(g.config, weapons, perks)}</div>
-                <div style={{ font: F.chk(500, 12), color: T.dim, lineHeight: 1.45, flex: 1, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{g.desc || `${gm?.name ?? g.config.mode} · ${Math.round((g.config.time_limit_s ?? 0) / 60)} MIN · HP ${g.config.health.max_hp} / ARMOR ${g.config.health.max_armor}`}</div>
+                <div style={{ font: F.chk(500, 12), color: T.dim, lineHeight: 1.45, flex: 1, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{g.desc || `${gm?.name ?? g.config.mode} · ${Math.round((g.config.time_limit_s ?? 0) / 60)} MIN · ${
+                  healthPresetOf(g.config.health) === 'custom'
+                    ? `HP ${g.config.health.max_hp} / ARMOR ${g.config.health.max_armor}${g.config.health.max_shield ? ` / SHIELD ${g.config.health.max_shield}` : ''}`
+                    : HEALTH_PRESET_COPY.find(p => p.value === healthPresetOf(g.config.health))!.label
+                }`}</div>
                 {confirmSwitch === g.preset_id && (
                   <SwitchConfirm dropsDraft={custom} split={splitFor(g.config.teams)} action="TAP AGAIN TO PLAY THIS" />
                 )}

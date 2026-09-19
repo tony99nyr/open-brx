@@ -150,6 +150,38 @@ def test_weapon_stats_follow_the_hosts_health_config():
     assert hard["ttk_ms"] > base["ttk_ms"]
 
 
+def test_put_config_health_names_a_preset_or_falls_back_to_custom():
+    """S45: `PUT /api/config {"health": {...}}` accepts a preset NAME (rewrites the pool from
+    `compile.HEALTH_PRESETS`, ignoring any numbers riding in the same patch -- mirrors
+    `loadout_policy`'s own preset-rewrite rule), a hand-tuned pool (re-derives its own preset label,
+    CUSTOM here since 55/40/0 matches none of the three), and refuses an unknown preset name."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net = _client()
+    assert c.get("/api/state").json()["config"]["health"] == {"max_hp": 45, "max_armor": 70, "max_shield": 0, "preset": "standard"}
+
+    r = c.put("/api/config", json={"health": {"preset": "shields", "max_hp": 1}})   # max_hp ignored: the name wins
+    assert r.json()["ok"], r.json()
+    assert c.get("/api/state").json()["config"]["health"] == {"max_hp": 45, "max_armor": 0, "max_shield": 105, "preset": "shields"}
+
+    assert c.put("/api/config", json={"health": {"max_hp": 55, "max_armor": 40, "max_shield": 0}}).json()["ok"]
+    assert c.get("/api/state").json()["config"]["health"] == {"max_hp": 55, "max_armor": 40, "max_shield": 0, "preset": "custom"}
+
+    bad = c.put("/api/config", json={"health": {"preset": "elite"}})
+    assert bad.status_code == 400 and "health.preset" in bad.json()["error"]
+
+
+def test_put_config_health_migrates_an_old_two_key_patch_to_custom():
+    """S45: a caller that still sends the pre-existing `{max_hp, max_armor}` shape (an old saved game
+    imported by hand, a scripted client that predates this field) must not silently land on STANDARD
+    just because 45/70 happens to match it -- the shield intent was never expressed, so it is CUSTOM.
+    `max_shield` absent from the PATCH is the signal, not the merged/current value (already 0)."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net = _client()
+    r = c.put("/api/config", json={"health": {"max_hp": 45, "max_armor": 70}})
+    assert r.json()["ok"], r.json()
+    assert c.get("/api/state").json()["config"]["health"] == {"max_hp": 45, "max_armor": 70, "max_shield": 0, "preset": "custom"}
+
+
 def test_station_routes_refuse_in_the_operators_voice_while_armed_or_live():
     """Polish 2026-09-11: `clear_station` raises while the match is armed/live (a re-push would re-arm every
     live gun). The DELETE route called it outside its try, so the refusal was a 500 with no message where PUT

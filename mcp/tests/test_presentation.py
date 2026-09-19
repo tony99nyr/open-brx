@@ -500,12 +500,12 @@ def test_gun_block_default_native_sends_nothing_and_the_opt_ins_blank_then_paint
 def test_gun_readout_ships_static_per_band_segment_frames_outermost_pool_first():
     """led-language.md §3.1/§5 (2026-09-07 build): shield/armor/health, outermost first, 3/2/1 lit
     segments per band, `max` shipped so the node never parses a frame."""
-    b = golden_bundle()   # hp 45, armor 70, shield defaults to gc.shield (70)
+    b = golden_bundle()   # hp 45, armor 70, shield 0 (S45: the Standard preset's own default)
     ro = b["gun"]["readout"]
     assert ro["hold_s"] == 4 and ro["reload_glance_s"] == 2
     assert [p["pool"] for p in ro["pools"]] == ["shield", "armor", "health"]
     shield, armor, health = ro["pools"]
-    assert shield["max"] == 70 and armor["max"] == 70 and health["max"] == 45
+    assert shield["max"] == 0 and armor["max"] == 70 and health["max"] == 45
     assert shield["bands"] == [[thr, f] for thr, f in pg.readout_bands("shield")]
     assert armor["bands"] == [[thr, f] for thr, f in pg.readout_bands("armor")]
     assert health["bands"] == [[thr, f] for thr, f in pg.readout_bands("health")]

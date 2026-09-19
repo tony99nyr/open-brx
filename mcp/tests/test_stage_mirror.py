@@ -1794,7 +1794,7 @@ def test_the_grant_that_fills_the_shield_says_shields_online_once():
     per-grant `shield_up` line on that frame, because the gun plays one clip at a time (F57's rule).
     CONTROL: the grants on the way up still fire `shield_up`, and a spawn (shield always 0) fires neither."""
     async def go():
-        st, mgr, clock = mk_gain()
+        st, mgr, clock = mk_gain(max_shield=70)      # S45: a shield ceiling is a host field now, not a free constant
         await live(st)
         online, up = st.bundle["cues"]["shield_online"], st.bundle["cues"]["shield_up"]
         assert st.max_shield == 70, "setup: the compiled head arms a shield ceiling"
@@ -1934,7 +1934,10 @@ def test_break_heartbeat_refill_online_is_the_whole_cycle():
         assert st.shield == st.max_shield, "the pool came back"
         assert stream.count(c["shield_online"]) == 1, "and says so, once"
         assert c["shield_up"] not in stream, "never the per-grant line"
-        assert grants(mgr, n) == st.max_shield // SHIELD_STEP, "exactly the grants a full pool needs"
+        # CEILING, not floor division (S45: the Shields preset's 105 is not a multiple of the 10-point
+        # step) -- the last grant overshoots and the firmware clamps at the $PSET ceiling, so a pool
+        # that does not divide evenly still needs one more grant than a floor would count.
+        assert grants(mgr, n) == math.ceil(st.max_shield / SHIELD_STEP), "exactly the grants a full pool needs"
         n2 = mark(mgr)
         await shield_run(st, mgr, clock, 4.0)
         assert grants(mgr, n2) == 0 and c["shield_online"] not in since(mgr, n2), "and it stops once the gun says full"
@@ -2035,17 +2038,25 @@ def test_the_heartbeat_follows_the_pool_and_stops_when_the_refill_gives_up():
 
 
 def test_an_ordinary_game_never_grants_and_a_dead_gun_is_not_refilled():
-    """The PRESET is the opt-in, not the ceiling: every compiled head arms a `$PSET` t5 of 70 whether the game
-    wants shields or not, so a mechanic keyed on the ceiling would refill every match ever played."""
+    """The ARMOUR is the opt-in, not the ceiling (S45): `health.max_shield` is a real host field now,
+    so a host can arm a non-zero shield BESIDE ordinary armour (Advanced) -- and that alone must not
+    start the mechanic. Only an armour-0 game (`shield_regen_on`) does. Used to be provable only by a
+    constant every compiled head armed whether the game wanted shields or not (`$PSET` t5 = 70,
+    unconditionally, before this field existed); that "for free" ceiling is gone -- Standard now ships
+    0 -- so this rehearses the harder case, a real ceiling that still does not opt in."""
     async def go():
-        st, mgr, clock = mk_gain()                                   # 45 HP + 70 armour: not a shields game
+        st, mgr, clock = mk_gain(max_shield=70)      # 45 HP + 70 armour + a shield ceiling: still not a shields game
         await live(st)
-        assert st.max_shield == 70 and not st.shield_regen_on
+        assert st.max_shield == 70 and not st.shield_regen_on, "a non-zero shield beside armour does not opt in"
         n = mark(mgr)
         clock.advance(1.0)
         st._on_rx("$HP,45,70,0,*"); await settle(st)
         await shield_run(st, mgr, clock, S.SHIELD_REGEN_DELAY_S * 2)
-        assert grants(mgr, n) == 0, "no $LIFE in a game that never asked for shields"
+        assert grants(mgr, n) == 0, "no $LIFE beside armour, ceiling or not"
+        # ...and the actual default (Standard: 45/70/0, no shield at all) is silent for the trivial reason too
+        st0, mgr0, clock0 = mk_gain()
+        await live(st0)
+        assert st0.max_shield == 0 and not st0.shield_regen_on, "Standard ships no shield ceiling at all"
         # ...and in a shields game, a DEAD gun is not refilled either
         st2, mgr2, clock2 = mk_shields()
         await shielded(st2, mgr2, clock2)

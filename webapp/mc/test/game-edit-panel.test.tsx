@@ -64,21 +64,31 @@ describe('GameEditPanel — collapsed by default, opens to the loaded game', () 
     const { m, d } = await gameScreen('kit');
     const toggle = m.find('[data-testid="game-edit-toggle"]')[0];
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    expect(toggle.textContent).toContain(`HP ${d.state.config.health.max_hp}/${d.state.config.health.max_armor}`);
+    // S45: the demo game is the Standard preset (45/70/0) -- the collapsed chip names the preset, not
+    // the raw numbers, once the pool matches one.
+    expect(d.state.config.health).toEqual({ max_hp: 45, max_armor: 70, max_shield: 0, preset: 'standard' });
+    expect(toggle.textContent).toContain('STANDARD');
     expect(m.find('[data-testid="game-edit-locked"]').length, 'no lock warning pre-arm').toBe(0);
     m.unmount();
   });
 
-  it('opening it shows MODE, NIGHT OPS, DEFAULT HEALTH and WEAPONS AVAILABLE, seeded from the loaded game', async () => {
+  it('opening it shows MODE, NIGHT OPS, LIFE PRESET and WEAPONS AVAILABLE, seeded from the loaded game', async () => {
     const { m, d, open } = await gameScreen('kit');
     await open();
     const txt = m.text();
     expect(txt).toContain('MODE');
     expect(txt).toContain('NIGHT OPS');
-    expect(txt).toContain('DEFAULT HEALTH');
+    expect(txt).toContain('LIFE PRESET');
     expect(txt).toContain('WEAPONS AVAILABLE');
-    expect((m.find('input[aria-label="default health"]')[0] as HTMLInputElement).value).toBe(String(d.state.config.health.max_hp));
-    expect((m.find('input[aria-label="default armor"]')[0] as HTMLInputElement).value).toBe(String(d.state.config.health.max_armor));
+    // the loaded game is Standard, so that preset button reads pressed and no CUSTOM chip shows
+    expect(m.find('[data-testid="health-preset-standard"]')[0].getAttribute('aria-pressed')).toBe('true');
+    expect(m.find('[data-testid="health-preset-shields"]')[0].getAttribute('aria-pressed')).toBe('false');
+    expect(m.find('[data-testid="health-preset-custom"]').length, 'no CUSTOM chip on a named preset').toBe(0);
+    // ADVANCED starts collapsed on a named preset (nothing to hand-tune yet), open it to check the numbers
+    await click(m.find('[data-testid="health-advanced-toggle"]')[0]);
+    expect((m.find('input[aria-label="health"]')[0] as HTMLInputElement).value).toBe(String(d.state.config.health.max_hp));
+    expect((m.find('input[aria-label="armor"]')[0] as HTMLInputElement).value).toBe(String(d.state.config.health.max_armor));
+    expect((m.find('input[aria-label="shield"]')[0] as HTMLInputElement).value).toBe(String(d.state.config.health.max_shield));
     expect(m.find('[role="switch"]')[0].getAttribute('aria-checked')).toBe(String(d.state.config.night));
     m.unmount();
   });
@@ -98,7 +108,8 @@ describe('GameEditPanel — a DRAFT: nothing leaves the panel until SAVE', () =>
     const other = modes.find(mm => mm.mode !== d.state.config.mode)!;
     await m.click(other.abbr);
     await click(night());
-    const hp = inPanel('input[aria-label="default health"]') as HTMLInputElement;
+    await click(inPanel('[data-testid="health-advanced-toggle"]'));
+    const hp = inPanel('input[aria-label="health"]') as HTMLInputElement;
     await act(async () => {
       hp.focus();
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(hp, '60');
@@ -151,23 +162,27 @@ describe('GameEditPanel — a DRAFT: nothing leaves the panel until SAVE', () =>
     m.unmount();
   });
 
-  it('editing HP sends the whole health block, keeping armor, and the box shows the applied value', async () => {
+  it('editing HP sends the whole health block, keeping armor and shield, and the box shows the applied value', async () => {
     const { m, d, calls, open, inPanel, save, resync } = await gameScreen('kit');
     await open();
-    const hp = inPanel('input[aria-label="default health"]') as HTMLInputElement;
+    await click(inPanel('[data-testid="health-advanced-toggle"]'));
+    const hp = inPanel('input[aria-label="health"]') as HTMLInputElement;
     await act(async () => {
       hp.focus();
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(hp, '60');
       hp.dispatchEvent(new Event('input', { bubbles: true }));
       hp.blur();
     });
+    // a hand-edited number is CUSTOM at once -- shown right there in the draft, before SAVE
+    expect(inPanel('[data-testid="health-preset-custom"]'), 'editing a number leaves the preset').toBeTruthy();
     await click(save());
-    expect(calls).toEqual([{ health: { max_hp: 60, max_armor: d.state.config.health.max_armor } }]);
+    expect(calls).toEqual([{ health: { max_hp: 60, max_armor: d.state.config.health.max_armor, max_shield: d.state.config.health.max_shield, preset: 'custom' } }]);
     // F.6 (2026-09-13): proving the request is not proving the round trip -- reopen (SAVE closed the
-    // draft) and read the box back off the server's own applied config.
+    // draft) and read the box back off the server's own applied config. CUSTOM re-derives server-side
+    // too (`state.py`), so ADVANCED starts open again with no extra click.
     await resync();
     await open();
-    expect((inPanel('input[aria-label="default health"]') as HTMLInputElement).value,
+    expect((inPanel('input[aria-label="health"]') as HTMLInputElement).value,
       'the round trip reaches the control, not only the outgoing request').toBe('60');
     m.unmount();
   });
@@ -233,7 +248,8 @@ describe('GameEditPanel — a DRAFT: nothing leaves the panel until SAVE', () =>
     // outright for an unrelated reason). `edit()` used to clear only `confirmSave`, leaving
     // `confirmCancel` primed: the NEXT tap of CANCEL would discard this fresh work immediately, on
     // what reads to the operator as its own first ask.
-    const hp = inPanel('input[aria-label="default health"]') as HTMLInputElement;
+    await click(inPanel('[data-testid="health-advanced-toggle"]'));
+    const hp = inPanel('input[aria-label="health"]') as HTMLInputElement;
     await act(async () => {
       hp.focus();
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(hp, '77');

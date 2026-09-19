@@ -63,12 +63,62 @@ def test_play_volume_follows_the_venue():
 def test_head_carries_player_num_in_pset():
     b = C.compile(_cfg(), _player(num=42), _TEAMS)
     pset = [f for f in b["head"] if f.startswith("$PSET,")][0]
-    assert pset.startswith("$PSET,42,1,45,70,70,"), pset   # F206: token 2 = the $TID team (blue = 1), not 0
+    assert pset.startswith("$PSET,42,1,45,70,0,"), pset   # F206: token 2 = the $TID team (blue = 1), not 0; S45: Standard ships 0 shield
 
 
 def test_tid_resolves_from_team_id():
     b = C.compile(_cfg(), _player(team="yellow"), _TEAMS)
     assert b["head"][-1] == "$TID,2,*"
+
+
+def test_each_health_preset_compiles_to_its_own_pset_maxima():
+    """S45 (FOLLOWUPS, weapon-design.md §7.3): the three named presets, each arming the exact `$PSET`
+    hp/armor/shield triple the design doc names -- STANDARD ships no shield at all (that used to be a
+    silent 70 arming on EVERY game, preset or not: `compile._GC_SHIELD_DEFAULT`, now gone), SHIELDS
+    carries 45/0/105 (45 HP so Armour Piercing does not hard-counter the preset, §7.3), HARDCORE
+    45/0/0. Break `compile.HEALTH_PRESETS` or the `_to_gc`/`armed_shield` wiring and this goes red."""
+    from brx_mcp.mc.compile import HEALTH_PRESETS
+    for name, (hp, armor, shield) in HEALTH_PRESETS.items():
+        cfg = dict(_cfg())
+        cfg["health"] = {"max_hp": hp, "max_armor": armor, "max_shield": shield, "preset": name}
+        b = C.compile(cfg, _player(), _TEAMS)
+        pset = next(f for f in b["head"] if f.startswith("$PSET,")).split(",")
+        assert (int(pset[3]), int(pset[4]), int(pset[5])) == (hp, armor, shield), (name, pset)
+
+
+def test_a_custom_pool_round_trips_through_the_compiler_untouched():
+    """A hand-tuned pool that matches none of the three named presets still compiles exactly as typed
+    -- CUSTOM is not a fourth preset with its own table, it is "whatever the host set"."""
+    cfg = dict(_cfg())
+    cfg["health"] = {"max_hp": 60, "max_armor": 35, "max_shield": 40, "preset": "custom"}
+    b = C.compile(cfg, _player(), _TEAMS)
+    pset = next(f for f in b["head"] if f.startswith("$PSET,")).split(",")
+    assert (int(pset[3]), int(pset[4]), int(pset[5])) == (60, 35, 40), pset
+
+
+def test_shield_recharge_needs_armour_zero_and_a_non_zero_shield_ceiling_both():
+    """S45: `shield_regen_on` (engine.js, mirrored `stage.py`) is gated on the GAME's `health.max_armor
+    == 0` AND a compiled shield ceiling > 0 -- neither alone is enough. A host can now set a non-zero
+    shield BESIDE ordinary armour (Advanced), and that must not silently start the S29 mechanic; and
+    an armour-0 game with shield left at 0 (Hardcore) must not either."""
+    from brx_mcp.mc.compile import is_shields_preset
+
+    def base_shield(hp, armor, shield):
+        cfg = dict(_cfg())
+        cfg["health"] = {"max_hp": hp, "max_armor": armor, "max_shield": shield, "preset": "custom"}
+        b = C.compile(cfg, _player(), _TEAMS)
+        pset = next(f for f in b["head"] if f.startswith("$PSET,")).split(",")
+        return int(pset[5])
+
+    # armour 0, shield > 0 (Shields): the ceiling is armed AND is_shields_preset() is true -- the
+    # engine.js/stage.py rule (health.max_armor == 0 and maxShield > 0) reads this game as recharging.
+    assert base_shield(45, 0, 105) == 105 and is_shields_preset({"health": {"max_armor": 0}})
+    # armour 0, shield 0 (Hardcore): the preset is still "shields-shaped" (armour is 0), but the
+    # ceiling itself is 0, so the engine.js rule's OTHER half (maxShield > 0) is false -- no recharge.
+    assert base_shield(45, 0, 0) == 0
+    # armour > 0, shield > 0 (a hand-tuned Advanced pool): the ceiling reaches the gun, but
+    # is_shields_preset() is false, so the engine.js rule's FIRST half is false -- still no recharge.
+    assert base_shield(45, 70, 70) == 70 and not is_shields_preset({"health": {"max_armor": 70}})
 
 
 # ---- spawn / revive / end / panic ----------------------------------------
