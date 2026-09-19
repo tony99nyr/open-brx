@@ -415,6 +415,12 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
                                      //   both this bundle (persisted, survives an app restart) and Mission Control's
                                      //   `State.perk_effects` (per player, the console's copy of the same numbers) read, so the
                                      //   node and the console can never disagree about what a perk did.
+  dot?: { [ir_proto: string]: { weapon_id: string, per_tick: int, tick_ms: int, duration_ms: int } },
+                                     // [S16] the damage-over-time table for THIS GAME, keyed by the IR protocol the shooter's
+                                     //   `$WEAP` t3 puts on the wire (`$HIR` token 2). Game-wide, not per loadout: the victim
+                                     //   needs the SHOOTER's numbers. `Compiler.dot_table()` builds it off the match plan and
+                                     //   refuses a plan where another weapon shares a poison protocol. Absent = no such weapon.
+                                     //   The rules the node runs with it are `node.md` §3.17.
 }
 ```
 - **Volume** is the compiler's: the head carries `$VOL,<compile.play_volume(environment)>` = **80 indoors / 90
@@ -486,7 +492,7 @@ Event =
  |   // exists (now buildable). Decision pending — node.md §10-Q12. NB `dmg` is deliberately NOT $HIR
  |   // token 5: tok5 is the RAW magnitude and ignores the $SIR multiplier, so the delta is the correct
  |   // source and happens to be multiplier-safe already.
- | { type:"death",       t, match_id, node_id, player_id, shooter_num, shooter_team, desync? }         // $HP→0; shooter = last $HIR if fresher than DEATH_LATCH_MS, else 0
+ | { type:"death",       t, match_id, node_id, player_id, shooter_num, shooter_team, desync?, dot? }   // $HP→0; shooter = last $HIR if fresher than DEATH_LATCH_MS, else 0. [S16] dot:true = the node's own poison tick killed; shooter = the last applier
  | { type:"respawn",     t, match_id, node_id, player_id, resync?, station? }                          // resync?: LEGACY (A6.8 retired it for the live path; still set by a lobby/armed resync revive). station?: A13.2 — the station id that revived the player (absent for a timer revive)
  | { type:"team_change", t, match_id, node_id, player_id, tid }                                        // infection: this gun moved to `tid` [A5.8]
  | { type:"operator_result", t, match_id, node_id, player_id, cmd:"resync"|"respawn"|"relink", ok, why? } // A47: what the phone did with an operator action; `why` on a refusal. Never scored

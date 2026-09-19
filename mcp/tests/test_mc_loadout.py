@@ -126,7 +126,7 @@ _OPEN_PRIMARY = _OPEN - len(_SUPPORT)
 
 
 def test_presets_and_pools():
-    assert _OPEN == 13, f"the visible, pickable arsenal moved ({len(W)} weapons in the catalog)"
+    assert _OPEN == 14, f"the visible, pickable arsenal moved ({len(W)} weapons in the catalog)"
     assert _SUPPORT == {"stripper", "smoke_gun"}, _SUPPORT
     assert "energy_launcher" not in P.pool(P.preset_rules("open"), W, PK)["primary"], "a zero-damage weapon is never offered"
     lp = P.pool(P.preset_rules("open"), W, PK)

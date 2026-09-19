@@ -18,8 +18,8 @@ by 0.4.3's respawn profiles** (timed vs station, a weapon-arming delay independe
 equal go-live at T-3); both rows are closed. Today's two ghost-node incidents are already answered by the
 stale-node fix (`88ead536`), filed before the office test even ran. **The first field test after publish is the
 Shields preset in a real match, plus the new respawn rules on both phones; both phones need wireless debugging
-re-enabled first.** Still open and P0: the BLE link-loop root cause (**F290**) and BLE setup-reliability metrics
-(**F294**); see `bench-plan.md`'s new "0.4.4 field check".
+re-enabled first.** Still open and P0: the BLE link-loop root cause (**F293**) and BLE setup-reliability metrics
+(**F297**); see `bench-plan.md`'s new "0.4.4 field check".
 **Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32**; the claim
 checklist is [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md). Facts that session 1
 proved, and that every lane builds on:
@@ -63,7 +63,7 @@ ghost-node incidents from the office test. **F289** still flags the gap it leave
 mid-protection-window may stay protected all match. **F265**'s HUD half shipped (LIVE only within 16 s of the
 last MC message); its cause, why the score pushes stopped, is still not found. Also open: **F277** (a reload
 that never completes), **F287** (operator RESYNC still writes before the `$HP` probe answers), **F288** (the HUD
-never renders `poolStale`/`cure`), and the office test's own new rows, **F290-F295** (link-loop root cause,
+never renders `poolStale`/`cure`), and the office test's own new rows, **F293-F298** (link-loop root cause,
 the MC LAN sweep, ten pre-existing screens-test failures, the down-pattern LED redesign, BLE setup-reliability
 metrics, and a real Shields-preset match). App **0.4.4** is built on this branch, not yet published; see "State
 of main" above.
@@ -78,19 +78,20 @@ of main" above.
 ## Lane: weapons and perks
 
 Shipped: the `$WEAP` t12 headset word as a declared `wire.headset_dmg` (a captured t12 with no price is a refusal),
-crits on three weapons (`crit_pct`; hits-to-kill stays the GUARANTEED number), the counts derived from the shipped
+crits on two weapons (`crit_pct`; hits-to-kill stays the GUARANTEED number), the counts derived from the shipped
 artefact, and the `/arsenal` page. **PROPOSED, NOT SHIPPED: every recoil number** (`spec/node.md` §3.15).
-Tony's decisions on 2026-09-18: the toxin design is settled (credit to the applier, cleared on respawn, the HUD
-shows it; S16), and the F268 floors stay at 60. The "fraction of the magazine" rung approval is WITHDRAWN; do not
-act on it.
+The Toxin Rifle SHIPPED 2026-09-19 (S16 closed): every hit poisons, the node tick clock, credited `death`
+with `dot: true`, the HUD poison and smoke tells, unhidden. `mcp/tools/balance_sim.py` balances any weapon
+(weapon-design.md §7.5c). The F268 floors stay at 60. The "fraction of the magazine" rung approval is
+WITHDRAWN; do not act on it.
 
-- **Next desk task:** settle the rung basis with Tony (**F268** second judgement and **F280**, the time-to-kill
-  proposal), then wire it once (**S54**). In parallel: **F278** (a runtime refusal) and the **S16** tick clock with
-  the **S53** HUD tells.
-- **Next bench task:** bench-plan sitting 2 steps 1-4 (`$TMP` t10, t9 per slot, t1-t3, the t6 re-send), then
+- **Next desk task:** settle the rung basis with Tony (**F268** second judgement and **F280**), then wire it
+  once (**S54**). **F291** (Charge Rifle dominates, Shotgun trails) needs Tony's decision. **F290**: `main` is
+  red in two browser gates.
+- **Next bench task:** **F292** (the Toxin Rifle on a real gun), then bench-plan sitting 2 steps 1-4, then
   sitting 3 (§26 groups A and B).
 - **Blocked:** S54 and sitting 8 on the rung decision; Extended Mags on `$TMP` (S50) and F281 on sitting 2;
-  **F275** (where the headset word stops, the close-range class) on outdoor space (sitting 10).
+  **F275** on outdoor space (sitting 10).
 
 ## Start here
 

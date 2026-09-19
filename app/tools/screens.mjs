@@ -62,7 +62,7 @@ const b = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });  
 const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 667, height: 375 }];
 const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted',
   'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
-  'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked', 'live-scores', 'live-scores-ffa']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
+  'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked', 'live-scores', 'live-scores-ffa', 'live-poison', 'live-smoke', 'down-poisoned']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
 let stepIdx = 0;   // counts every step this run selects; identical control flow in every shard, so `% count` partitions them
 const step = async (name, fn) => { if (ONLY && !name.includes(ONLY)) return; if (SHARD && stepIdx++ % SHARD[1] !== SHARD[0]) return; try { await fn(); console.log(`  ok   ${name}`); pass++; } catch (e) { console.log(`  FAIL ${name}: ${String(e.message || e).slice(0, 300)}`); fail++; errs.push(name); } };
 const open = async (view, stage, extra = '', ms) => {
@@ -2971,6 +2971,100 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
     });
   }
 }
+
+// ---------- S16 poison pill + S53 smoke tell (2026-09-19). Both are driven through the REAL engine by the stage:
+// the demo gun answers the node's own `$LIFE` ticks the way the bench measured, so the countdown, the pools and the
+// DOWN screen below are what the phone would show, not a painted fixture. ----------
+const tells = pg => pg.evaluate(() => {
+  const vis = el => { if (!el) return false; const cs = getComputedStyle(el); const r = el.getBoundingClientRect(); return cs.display !== 'none' && cs.visibility !== 'hidden' && r.width > 0 && r.height > 0; };
+  const rect = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
+  const px = el => el ? getComputedStyle(el) : null;
+  const poison = document.querySelector('#fxbar .fx.poison'), aim = document.querySelector('.aimfx');
+  const secs = el => { const t = el && el.querySelector('.t'); return t ? parseInt(t.textContent, 10) : null; };
+  return { poison: vis(poison), poisonText: poison ? poison.innerText.replace(/\s+/g, ' ') : '', poisonSecs: secs(poison),
+    poisonRect: rect(poison), hpRect: rect(document.querySelector('.vitals .hp')), identRect: rect(document.querySelector('.ident')),
+    aim: vis(aim), aimText: aim ? aim.innerText.replace(/\s+/g, ' ') : '', aimSecs: secs(aim), aimRect: rect(aim),
+    reticle: vis(document.querySelector('.reticle')),
+    anim: [poison, aim].filter(Boolean).map(e => px(e).animationName).filter(n => n && n !== 'none'),
+    bg: [poison, aim].filter(Boolean).map(e => px(e).backgroundColor),
+    ink: [poison, aim].filter(Boolean).map(e => px(e.querySelector('.k')).color),
+    pills: Array.from(document.querySelectorAll('.chipbar .pill')).map(rect),
+    hp: window.brx.engine.state().hp, armor: window.brx.engine.state().armor };
+});
+/** a background is "bright" when its sRGB luminance (alpha-weighted over black) passes a dim night fill */
+const bright = (css, max = 60) => { const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(css || ''); if (!m) return false; const a = m[4] == null ? 1 : +m[4]; return a * (0.2126 * m[1] + 0.7152 * m[2] + 0.0722 * m[3]) > max; };
+// the night palette's brightest ink is `--num` (#c9484a, luminance ~100); the day tells use near-white (~240)
+await step('S16/S53 control: a plain live screen shows neither tell, and the reticle', async () => {
+  const pg = await open(VIEWS[1], 'live'); const r = await tells(pg); await pg.close();
+  must(!r.poison && !r.aim && r.reticle, `no poison, no smoke, reticle up: ${JSON.stringify(r)}`);
+});
+for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
+  for (const night of [false, true]) {
+    const env = night ? 'night' : 'day';
+    await step(`${tag} S16 poison ${env}: POISONED counts down above the health it drains, names the applier, no pulse`, async () => {
+      const pg = await open(view, 'live-poison', night ? '&night' : '');
+      const a = await tells(pg); await pg.waitForTimeout(1300); const b2 = await tells(pg);
+      await pg.screenshot({ path: `${OUT}/${tag}-poison-${env}.png` });
+      const bad = await invariants(pg); await pg.close();
+      must(a.poison && /POISONED/.test(a.poisonText) && /VIPER/.test(a.poisonText), `the pill names the effect and the applier: ${JSON.stringify(a)}`);
+      must(a.poisonSecs != null && b2.poisonSecs != null && b2.poisonSecs < a.poisonSecs, `the countdown moves: ${a.poisonSecs} then ${b2.poisonSecs}`);
+      must(b2.armor < a.armor || b2.hp < a.hp, `a tick landed on the pools while it counted: ${JSON.stringify([a.armor, b2.armor])}`);
+      must(apart(a.poisonRect, a.hpRect) && apart(a.poisonRect, a.identRect), `the pill sits clear of the HP digits and the callsign: ${JSON.stringify(a)}`);
+      must(a.anim.length === 0, `no animation on the tell: ${a.anim}`);
+      if (night) must(!a.bg.some(c => bright(c)) && !a.ink.some(c => bright(c, 150)), `no bright fill or ink at night: ${a.bg} / ${a.ink}`);
+      must(bad.length === 0, bad.join(' ; '));
+    });
+    await step(`${tag} S53 smoke ${env}: SMOKED takes the reticle's place, says why, counts down, then clears`, async () => {
+      const pg = await open(view, 'live-smoke', night ? '&night' : '');
+      const a = await tells(pg); await pg.waitForTimeout(1300); const b2 = await tells(pg);
+      await pg.screenshot({ path: `${OUT}/${tag}-smoke-${env}.png` });
+      const bad = await invariants(pg);
+      await pg.waitForTimeout(5200); const c = await tells(pg); await pg.close();
+      must(a.aim && /SMOKED/.test(a.aimText) && /MISS/.test(a.aimText), `the tell names the effect and what it does: ${JSON.stringify(a)}`);
+      must(!a.reticle, 'the reticle gives way to the tell');   // (night hides the reticle anyway; the day run is the one that proves the swap)
+      must(a.aimSecs != null && b2.aimSecs != null && b2.aimSecs < a.aimSecs, `the countdown moves: ${a.aimSecs} then ${b2.aimSecs}`);
+      must(a.pills.every(p => !p || apart(p, a.aimRect)), `no chip-bar pill covers the tell: ${JSON.stringify(a.pills)}`);
+      must(a.anim.length === 0, `no animation on the tell: ${a.anim}`);
+      if (night) must(!a.bg.some(c => bright(c)) && !a.ink.some(c => bright(c, 150)), `no bright fill or ink at night: ${a.bg} / ${a.ink}`);
+      must(bad.length === 0, bad.join(' ; '));
+      must(!c.aim && (night || c.reticle), `about 6 s after the hit the gun gives accuracy back and the tell is gone${night ? '' : ', reticle back'}: ${JSON.stringify(c)}`);
+    });
+  }
+}
+// ---------- review finding 2026-09-19: OVERHEAT and the smoke tell share the centre-screen slot in the
+// player's eyeline, and at 891x411 they overlapped by about 25px when a player was overheating and smoked at
+// the same time. `.heatword` moved from top:63% to top:74%, and `.aimfx` gets a `.tight` modifier (drops its
+// sub-line) exactly in this combo -- see the comments beside both rules in app/www/index.html and the
+// `tight` class hud.js adds in `_live()`. Order matters: `window.brxDemo.smoke()` overwrites the active
+// slot's `$ALCD` (heat resets to 0), so the smoke fires FIRST and the forced heat lands after it. ----------
+for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
+  for (const night of [false, true]) {
+    await step(`${tag} OVERHEAT+SMOKED ${night ? 'night' : 'day'}: the word and the smoke tell do not overlap`, async () => {
+      const pg = await open(view, 'live', night ? '&night' : '');
+      await pg.evaluate(() => window.brxDemo.smoke());
+      await pg.waitForTimeout(300);
+      await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108);
+      await pg.waitForTimeout(300);
+      const r = await pg.evaluate(() => {
+        const rect = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
+        const word = document.querySelector('.heatword'), aim = document.querySelector('.aimfx');
+        return { word: rect(word), aim: rect(aim), wordText: word ? word.textContent : '', aimText: aim ? aim.innerText.replace(/\s+/g, ' ') : '' };
+      });
+      await pg.screenshot({ path: `${OUT}/${tag}-overheat-smoked-${night ? 'night' : 'day'}.png` });
+      const bad = await invariants(pg); await pg.close();
+      must(r.word && r.aim, `both must be on screen for the check to mean anything: ${JSON.stringify(r)}`);
+      must(/OVERHEAT/.test(r.wordText) && /SMOKED/.test(r.aimText), `both tells must still say what they mean: ${JSON.stringify(r)}`);
+      must(apart(r.word, r.aim), `OVERHEAT and the smoke tell overlap: ${JSON.stringify(r)}`);
+      must(bad.length === 0, bad.join(' ; '));
+    });
+  }
+}
+await step('S16 lethal tick: DOWN says POISONED BY and names the applier', async () => {
+  const pg = await open(VIEWS[1], 'down-poisoned', '', 5200);
+  const r = await pg.evaluate(() => ({ kb: (document.querySelector('.mo.down .kb') || {}).innerText || '', alive: window.brx.engine.state().alive }));
+  await pg.screenshot({ path: `${OUT}/se-down-poisoned.png` }); await pg.close();
+  must(!r.alive && /^POISONED BY/.test(r.kb.trim()) && /VIPER/.test(r.kb), `the down screen tells the player the poison did it: ${JSON.stringify(r)}`);
+});
 
 await b.close(); srv.close();
 console.log(`\n${pass} passed, ${fail} failed${fail ? ': ' + errs.join(', ') : ''}`);

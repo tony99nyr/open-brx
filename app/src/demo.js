@@ -119,9 +119,25 @@ export function startDemo({ engine, log }) {
   ];
 
   let hp = 45, armor = 70, mag = 32, reserve = 384;
+  let acc = 100;   // S53: the gun's live accuracy ($ALCD token 2). A smoke holds it at 0 for SMOKE_MS, like the bench gun
   const lcd = () => engine.feedFrame(`$LCD,${hp},${armor},0,0,${mag},${reserve},*`);
-  const fire = n => { for (let i = 0; i < n && mag > 0; i++) { mag--; engine.feedFrame('$BUT,0,1,*'); engine.feedFrame(`$ALCD,${mag},100,0,${reserve},0,*`); engine.feedFrame('$BUT,0,0,*'); } };
-  const reload = () => { const need = 32 - mag; const take = Math.min(need, reserve); reserve -= take; mag += take; engine.feedFrame(`$ALCD,${mag},100,0,${reserve},0,*`); };
+  const fire = n => { for (let i = 0; i < n && mag > 0; i++) { mag--; engine.feedFrame('$BUT,0,1,*'); engine.feedFrame(`$ALCD,${mag},${acc},0,${reserve},0,*`); engine.feedFrame('$BUT,0,0,*'); } };
+  const reload = () => { const need = 32 - mag; const take = Math.min(need, reserve); reserve -= take; mag += take; engine.feedFrame(`$ALCD,${mag},${acc},0,${reserve},0,*`); };
+  // S16: the demo gun answers the node's own poison ticks the way the bench measured (2026-09-09): a negative `$LIFE`
+  // is per pool with no spill and floors at 0, a non-lethal one self-emits `$HP`, and a lethal one answers `$LCD`
+  // and never `$HP`. Without this the stage would show a poison stack whose ticks change nothing.
+  const DEMO_DOT = { 11: { weapon_id: 'toxin_rifle', per_tick: 4, tick_ms: 1000, duration_ms: 5000 } };
+  const gunWriter = engine.writer;
+  engine.writer = fr => {
+    gunWriter(fr);
+    for (const f of fr) {
+      const m = /^\$LIFE,(-?\d+),(-?\d+),(-?\d+),\*$/.exec(f);
+      if (!m || !f.includes('-')) continue;
+      const [dh, da] = m.slice(1).map(Number);
+      hp = Math.max(0, hp + dh); armor = Math.max(0, armor + da);   // the demo gun carries no shield
+      setTimeout(() => engine.feedFrame(hp === 0 ? `$LCD,0,0,0,0,${mag},${reserve},*` : `$HP,${hp},${armor},0,*`), 40);
+    }
+  };
   const hit = (dmg = 9) => { if (armor > 0) armor = Math.max(0, armor - dmg); else hp = Math.max(0, hp - dmg); engine.feedFrame(`$HIR,4,0,19,${foe.tid},9,0,3,*`); engine.feedFrame(`$HP,${hp},${armor},0,*`); };
 
 
@@ -313,6 +329,12 @@ export function startDemo({ engine, log }) {
       heal: (n = 15) => { hp = Math.min(engine.maxHp, hp + n); engine.feedFrame(`$HP,${hp},${armor},0,*`); },
       armorUp: (n = 30) => { armor = Math.min(engine.maxArmor, armor + n); engine.feedFrame(`$HP,${hp},${armor},0,*`); },
       lowHp: () => { armor = 0; hp = 8; engine.feedFrame(`$HIR,4,0,19,${foe.tid},9,0,3,*`); engine.feedFrame(`$HP,${hp},${armor},0,*`); },
+      // S16: a Toxin Rifle hit (protocol 11) as the gun reports it, with the game's poison table on the bundle.
+      poison: (shooter = 19) => { bundle.dot = DEMO_DOT; if (engine.frames && !engine.frames.dot) engine.frames.dot = DEMO_DOT; if (armor > 0) armor = Math.max(0, armor - 8); else hp = Math.max(0, hp - 8); engine.feedFrame(`$HIR,0,11,${shooter},${foe.tid},8,0,0,*`); engine.feedFrame(hp === 0 ? `$LCD,0,0,0,0,${mag},${reserve},*` : `$HP,${hp},${armor},0,*`); },
+      // S16: a poisoned player with 4 HP and no armour, so the first tick kills (DOWN says POISONED BY)
+      poisonLethal: (shooter = 19) => { armor = 0; hp = 12; engine.feedFrame(`$HP,${hp},${armor},0,*`); ev.poison(shooter); },
+      // S53: a Haze word (fn 23 on <7,0>): no pool moves, and the gun's accuracy drops to 0 in the same millisecond
+      smoke: () => { acc = 0; engine.feedFrame(`$HIR,0,7,19,${foe.tid},6,0,0,*`); engine.feedFrame(`$ALCD,${mag},0,0,${reserve},0,*`); setTimeout(() => { acc = 100; }, 6000); },
       lowAmmo: () => { mag = 3; reserve = 0; engine.feedFrame(`$ALCD,${mag},100,0,${reserve},0,*`); },
       emptyMag: () => { mag = 0; engine.feedFrame(`$ALCD,0,100,0,${reserve},0,*`); },
       station: (rssi = -78, present = false, threshold = -74) => { if (typeof engine.setStations !== 'function') { log('demo: this engine has no stations', 'le'); return; }
@@ -382,6 +404,9 @@ export function startDemo({ engine, log }) {
       'live-fired':        [...live, [2300, () => ev.fire(7)]],
       'live-hit':          [...live, [2300, () => { ev.hit(); ev.hit(); ev.hit(); }]],
       'live-lowhp':        [...live, [2300, 'lowHp']],
+      'live-poison':       [[0, () => { bundle.dot = DEMO_DOT; }], ...live, [2300, () => ev.poison()]],          // S16: POISONED, counting down, health draining
+      'live-smoke':        [...live, [2300, 'smoke']],                     // S53: SMOKED, where the reticle was
+      'down-poisoned':     [[0, () => { bundle.dot = DEMO_DOT; }], ...live, [2300, () => ev.poisonLethal()]],    // S16: the tick kills, DOWN says POISONED BY
       'live-lowammo':      [...live, [2300, () => ev.fire(29)]],
       // Bench 2026-09-17 (brx-weapons item 6): a charge_rifle cell too small for one full charge (10) shows
       // NOT ENOUGH ENERGY, not the plain low-ammo warning; at exactly the cost it does not.

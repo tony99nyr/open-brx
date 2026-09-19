@@ -129,6 +129,11 @@ const usesCellGauge = st => {
  *  is always steady (never blinking), whether the cell is empty or only below a charge: one calm rule. The
  *  empty-cell digit already warns, and NOT ENOUGH ENERGY shows only while the cell still reads above 0. */
 const HOLD_TO_RECHARGE = 'HOLD TO RECHARGE';
+/** S53/S55: the ONE accuracy pill says WHY the player cannot hit. The engine hands the reason (`st.aim.reason`);
+ *  the HUD never guesses one. Smoke is the only reason built; S55 adds recoil, flinch and stance rows here. */
+const AIM_REASON = { smoke: { word: 'SMOKED', sub: 'YOUR SHOTS WILL MISS' } };
+const secsLeft = ms => Math.max(0, Math.ceil((Number(ms) || 0) / 1000));
+const pctLeft = (left, total) => Math.max(0, Math.min(100, Math.round(100 * (Number(left) || 0) / (Number(total) || 1))));
 /** The digit beside the gauge: a round count for a bullet weapon or a low-cost energy weapon (the Rail
  *  Gun), a percentage of the cell for a weapon whose full charge costs more than one round (F248, see
  *  usesCellGauge above). */
@@ -423,7 +428,7 @@ export class Hud {
     if (this.board) this.frame.dataset.board = this.board; else delete this.frame.dataset.board;
     const sig = [st.phase, st.alive, !!st.killedBy, st.night, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.underFire, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
       st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.reserve === 0, (st.mag || 0) > AMMO_PIP_MAX, st.battery != null && st.battery <= 15,
-      st.heatEverSeen, st.overheatShown,   // bench 2026-09-17: OVERHEAT prompt/overlay and the heat bar's existence are structural, not patched in place. `st.overheating` (the mechanic) is not read here at all: the HUD draws the display window only
+      st.heatEverSeen, st.overheatShown, !!(st.aim && AIM_REASON[st.aim.reason]),   // S53: the smoke tell takes the centre slot from the reticle / TAKING FIRE   // bench 2026-09-17: OVERHEAT prompt/overlay and the heat bar's existence are structural, not patched in place. `st.overheating` (the mechanic) is not read here at all: the HUD draws the display window only
       chargeCost(st) != null && st.ammo != null && st.ammo < chargeCost(st), st.reserve > 0,   // OUT OF ENERGY / RECHARGE prompt + the NOT ENOUGH ENERGY note are structural too
       // F258: `this.scan.length` used to sit here, so every scan hit that added a device rebuilt the
       // whole screen. The picker's rows, its empty placeholder and its fold are all patched in place
@@ -1207,7 +1212,9 @@ export class Hud {
         <span class="batt tab"><span class="shell"><span class="fill" id="battfill" style="right:${100 - (st.battery || 0)}%"></span></span><span id="batt">${st.battery != null ? st.battery + '%' : '—'}</span></span></div>
       ${st.battery != null && st.battery <= 15 ? `<div class="battwarn">GUN BATT ${st.battery}% — CHARGE SOON</div>` : ''}
       <div class="stats tab">${st.kills > 0 ? stat('K', st.kills) : ''}${st.deaths > 0 ? stat('D', st.deaths) : ''}${st.assists > 0 ? stat('A', st.assists) : ''}${accShown(st) != null ? stat('ACC', accShown(st) + '%') : ''}</div>
-      ${st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>'}
+      ${st.aim && AIM_REASON[st.aim.reason] ? `<div class="aimfx ${esc(st.aim.reason)}${overheating ? ' tight' : ''}" id="aimfx">${this._aimFx(st)}</div>`
+        : st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>'}
+      <div class="fxbar" id="fxbar">${this._fx(st)}</div>
       <div class="vitals"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span><span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span></div>
         <div class="bar ${low ? 'low' : ''}"><i id="hpbar" style="width:${Math.round(100 * st.hp / st.maxHp)}%"></i></div>
         <div class="bar armor"><i id="shbar" style="width:${Math.round(100 * st.armor / st.maxArmor)}%"></i></div></div>
@@ -1223,6 +1230,25 @@ export class Hud {
         ${this._heatBar(st)}
         <span class="wn"><span class="slot">${st.activeSlot ? 'SECONDARY' : 'PRIMARY'}</span>${esc(st.weapon)}</span></div>
       <div class="nightlab">NIGHT OPS</div>${kb}${this.board ? this._board(st) : ''}</div>`;
+  }
+  /** S16: the poison pill, just above the health it is draining. It counts the stack down and names the applier,
+   *  because a player watching health fall with no hit on screen otherwise reports a bug (Tony, 2026-09-18). Patched
+   *  in place every render, so the countdown moves without a rebuild. Empty when nothing ticks. */
+  _fx(st) {
+    const p = st.alive && st.poison;
+    if (!p) return '';
+    const by = p.by && (p.by.name || (p.by.num ? '#' + p.by.num : ''));
+    return `<div class="fx poison" data-fx="poison"><span class="g" aria-hidden="true">☣</span><span class="k">POISONED</span>`
+      + `<span class="t tab" id="fxpoison">${secsLeft(p.leftMs)}<small>SEC</small></span><span class="s">-${esc(p.perTick)} EVERY ${esc(secsLeft(p.tickMs))} S${by ? ' · ' + esc(String(by).toUpperCase()) : ''}</span>`
+      + `<i class="drain"><b style="width:${pctLeft(p.leftMs, p.durMs)}%"></b></i></div>`;
+  }
+  /** S53: the accuracy pill's body -- the reason, what it means, and the count to it clearing (the gun holds a
+   *  smoke's accuracy at 0 for about 6 s, then gives it back in one step). */
+  _aimFx(st) {
+    const a = st.aim; const r = a && AIM_REASON[a.reason];
+    if (!r) return '';
+    return `<span class="k">${r.word}</span><span class="s">${r.sub}</span><span class="t tab" id="aimleft">${secsLeft(a.leftMs)}<small>SEC</small></span>`
+      + `<i class="clr"><b style="width:${pctLeft(a.leftMs, a.totalMs)}%"></b></i>`;
   }
   /** Bench 2026-09-17: how old the scores on the overlay are. MC pushes every change to a bound phone, so the
    *  numbers are current while the link is up; off the link they are the last push, and the label gives its age.
@@ -1454,6 +1480,8 @@ export class Hud {
     if (st.phase === 'live') {
       set('clock', mmss(st.clockMs)); set('hp', st.hp); set('sh', st.armor); set('mag', magText(st)); setHtml('res', this._resText(st));
       set('batt', st.battery != null ? st.battery + '%' : '—');
+      setHtml('fxbar', this._fx(st));                   // S16: the poison countdown
+      setHtml('aimfx', this._aimFx(st));                // S53: the smoke countdown (the slot itself is structural)
       const hb = q('hpbar'); if (hb) hb.style.width = `${Math.round(100 * st.hp / st.maxHp)}%`;
       const sb = q('shbar'); if (sb) sb.style.width = `${Math.round(100 * st.armor / st.maxArmor)}%`;
       const bf = q('battfill'); if (bf) bf.style.right = `${100 - (st.battery || 0)}%`;
@@ -1537,7 +1565,7 @@ export class Hud {
       if (this._moment !== 'down') {
         this._moment = 'down';
         this.overlay.innerHTML = `<div class="mo down"><div class="wash"></div>
-          <div class="c"><div class="l2">${st.respawnType === 'scanner' ? '<span class="tt"><span class="t">DOWN</span><span class="t t2">RESPAWN<br>AT STATION</span></span>' : '<span class="t">DOWN</span>'}<span class="kb">KILLED BY <b style="${tk ? `background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}` : 'background:var(--mut);color:var(--bg,#000)'}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span></div>
+          <div class="c"><div class="l2">${st.respawnType === 'scanner' ? '<span class="tt"><span class="t">DOWN</span><span class="t t2">RESPAWN<br>AT STATION</span></span>' : '<span class="t">DOWN</span>'}<span class="kb">${kb.dot ? 'POISONED BY' : 'KILLED BY'} <b style="${tk ? `background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}` : 'background:var(--mut);color:var(--bg,#000)'}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span></div>
           <div class="dn" id="dnhint">${this._downHint(st)}</div></div>
           ${this._downSafe(st)}
           <div class="recap" id="downrecap">${this._downRecap(st)}</div></div>`;

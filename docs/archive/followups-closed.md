@@ -394,6 +394,12 @@ Two guns, Tactix-E20D and Tactix-3D4F, then Tactix-E20D alone with the ESP32 IR 
 - 2026-09-18 **F278** The runtime crit-perk refusal ships beside the existing compile-time guard: a weapon
   declaring `wire.headset_dmg` refuses a crit perk at runtime (commit 483925ea).
 
+# Closed 2026-09-19: the toxin lane
+
+- 2026-09-19 **S16** Damage over time ships as the Toxin Rifle: every hit poisons, the node tick clock (`spec/node.md` §3.17),
+  kill credit to the applier (`death` with `dot: true`), cleared on death and respawn, HUD countdown. Unhidden; balance in
+  weapon-design.md §7.5b (branch `feat/toxin-s16`).
+
 # Closed 2026-09-19: the pre-game office test and the respawn-profile rebuild
 
 Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 0.4.3's respawn profiles

@@ -83,6 +83,44 @@ class ArmPending(TypedDict):
     shield: bool
 
 
+class DotTickSpec(TypedDict):
+    """engine.js `_dotSpec`'s return: one poison protocol's tick numbers, in the units the stage works in
+    (SECONDS, not the bundle's milliseconds)."""
+    per: int
+    tick_s: float
+    dur_s: float
+
+
+class PoisonState(TypedDict):
+    """S16 (spec/node.md §3.17): the poison stack in flight, engine.js `poison`. `by` is the applier who
+    started or last refreshed the stack -- the one a lethal tick credits."""
+    proto: int
+    per: int
+    tick_s: float
+    dur_s: float
+    at: float
+    until: float
+    next_at: float
+    by: dict[str, int]
+    ticks: int
+
+
+class DotEchoState(TypedDict):
+    """engine.js `_dotEcho`: {at, pool, n} of the last poison tick write. `pool` is 'health'/'armor'/'shield'
+    and `n` is the tick's size before the floor at 0."""
+    at: float
+    pool: str
+    n: int
+
+
+class DotKillState(TypedDict):
+    """engine.js `_dotKill`: {at, num, team} of the last poison tick write, read by the death path within
+    DOT_KILL_S -- the credit for a death the tick itself caused."""
+    at: float
+    num: int
+    team: int
+
+
 class Profile(TypedDict):
     mode: str
     preset: str | None
@@ -244,6 +282,26 @@ HILL_TICK_LOSING_S = 0.5       # engine.js HILL_TICK_LOSING_MS: OUR point draini
 RARE_GUARD_S = 0.25            # engine.js RARE_GUARD_MS: a pool RISE inside this of a kill/redeploy/down/match_over moment is dropped
 STUN_DEFAULT_S = 10.0          # engine.js STUN_DEFAULT_S (already seconds): an EMP's disarm when config.stun names no duration (F15)
 RARE_MOMENTS = ("kill", "redeploy", "down", "match_over")
+# S16 (engine.js DOT_ECHO_MS/DOT_KILL_MS, already ms there): a tick is one `$LIFE` write the node makes itself,
+# and the gun answers a non-lethal one with `$HP` (bench 2026-09-09). DOT_ECHO_S is how long after that write
+# an `$HP` that moves the tick's pool by exactly the tick (`dot_echo_matches`) reads as the tick's own echo,
+# never a hit. DOT_KILL_S is the same window for a death: this soon after our own HEALTH tick, with nothing
+# newer latched, the kill is the tick's.
+DOT_ECHO_S = 1.0
+DOT_KILL_S = 1.5
+
+
+def dot_echo_matches(echo: "DotEchoState", before: dict[str, int], after: dict[str, int]) -> bool:
+    """engine.js `dotEchoMatches`: is this pool change exactly the echo of the tick `echo`? The tick's pool
+    moved by `min(n, before)` (a negative floors at 0) and the other two pools did not move. PURE."""
+    for k in ("health", "armor", "shield"):
+        moved = before[k] - after[k]
+        if k == echo["pool"]:
+            if moved <= 0 or moved != min(echo["n"], before[k]):
+                return False
+        elif moved != 0:
+            return False
+    return True
 # app/src/control.js `CONTROL_STATE`: advert byte 10 is FLAGS (independent bits), not a packed phase field --
 # so `rising` and `falling` CAN both be set, and that reads as direction UNKNOWN (§5d.3), never as either.
 CONTROL_STATE = {"held": 1, "contested": 2, "rising": 4, "falling": 8}
@@ -602,6 +660,16 @@ class GunStage:
         self._heat_at: dict[int, float] = {}       # per slot, `self.now()` of the last heat token (engine.js `_heatAt`)
         # F15: {at, until, ammo: {slot: [mag, reserve]}} while an EMP has the gun disarmed; the ammo is the LIVE count to restore
         self.stunned: StunnedState | None = None
+        # S16: the poison tick clock in flight (engine.js `poison`), and the two windows it hands to `_on_pools`/
+        # the death path: `_dot_echo` is {at, pool, n} of the last tick write until DOT_ECHO_S has passed (an
+        # $HP inside it that moves that pool by exactly the tick is the tick's own echo); `_dot_kill` is
+        # {at, num, team} of the last HEALTH tick write, read within DOT_KILL_S to credit a death the tick
+        # itself caused. `_last_hir_at` is a real $HIR's own clock, so a genuine hit landing after the tick is
+        # the kill, never the tick.
+        self.poison: PoisonState | None = None
+        self._dot_echo: DotEchoState | None = None
+        self._dot_kill: DotKillState | None = None
+        self._last_hir_at: float | None = None
         self._pending: list[asyncio.Task] = []
         self._loop: asyncio.AbstractEventLoop | None = None   # reactions run here; see _spawn_task (2026-09-07)
         # 2026-09-07 (bench): `state()` measured 527-658 ms on real hardware -- almost entirely
@@ -2084,6 +2152,8 @@ class GunStage:
         # left behind, and any button still down. Clearing only `reloading` left the previous life's
         # `reload_outcome` on the page to be read as this life's (polish review 2026-09-12).
         self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None
+        self._poison_clear("new life")          # S16: a stack never survives a life (engine.js `_spawn`/`_revive`)
+        self._dot_kill = None; self._dot_echo = None
         self._gun_band = None; self._gun_taken = False
         # A16 §3.1/§5: a fresh life starts with no readout -- any hold from the last life is dead the
         # moment `_gun_taken` drops False (mirrors engine.js `_gunTake`'s reset).
@@ -2142,7 +2212,7 @@ class GunStage:
     async def end(self) -> dict:
         await self.write(self.bundle["end"], "end")
         self._arm_pending = None; self._trigger_pending = None   # F209: never arm an ended gun
-        self.spawned = False; self.alive = False; self.stunned = None   # F15: the end frames own the gun now
+        self.spawned = False; self.alive = False; self.stunned = None; self.poison = None   # F15/S16: the end frames own the gun now
         self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None   # engine.js `_endLocal`: the whole takeover goes with the match
         self._moment = ("match_over", self.now())  # engine.js `_endLocal`
         self._level_gen += 1                       # Node rules: cancel everything on end
@@ -2152,7 +2222,7 @@ class GunStage:
     async def panic(self) -> dict:
         await self.write(self.bundle["panic"], "PANIC")
         self._arm_pending = None; self._trigger_pending = None   # F209
-        self.spawned = False; self.alive = False; self.stunned = None
+        self.spawned = False; self.alive = False; self.stunned = None; self.poison = None   # S16: no life left to tick
         self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None
         self._level_gen += 1                       # Node rules: cancel everything on panic
         self._pending_hurt_write = False            # review 2026-09-19: a queued low-health alert must not survive panic teardown
@@ -2436,6 +2506,7 @@ class GunStage:
         self._spawn_probe_tick(now)              # F264: ...and once a life, read back the biggest write of that life
         if self.stunned and now >= self.stunned["until"]:
             self._stun_restore("expired")        # F15: the stun timer -- restore the LIVE counts (engine.js tick())
+        self._poison_tick(now)                   # S16: the poison tick clock (engine.js tick())
         self._shield_tick(now)                   # S29 (engine.js tick()): the recharge, and the heartbeat while the shield is gone
         self._stations_tick(now)                 # K1: the scanner's callback (an advertising station is heard again)
         self._hill_tick(now)
@@ -2612,6 +2683,12 @@ class GunStage:
                     self._shield_reassert()      # 2026-09-19 (engine.js: a registered hit, shooter team parsed)
                 if len(t) > 2 and t[2] == "8":
                     self._stun()             # F15: an EMP word (proto 8) -- a no-op unless config.stun is on; a status row, so no $HP follows
+                # S16 (engine.js `feedFrame` HIR): a readable team is a real hit word -- stamp the clock the
+                # poison echo/kill windows both read, and let `_dot_spec` decide whether this protocol poisons.
+                team = _tok_int(t, 4)
+                if team is not None:
+                    self._last_hir_at = now
+                    self._poison_hit(self._last_hir_proto, _tok_int(t, 3) or 0, team)
             elif cmd == "ALCD" and len(t) > 4:
                 self.tele["mag"], self.tele["reserve"] = int(t[1] or 0), int(t[4] or 0)
                 # engine.js `feedFrame` ALCD: `_onAmmo(+t[1] || 0, t[4] !== undefined ? +t[4] : null, t[3] || 0, heat)`
@@ -2631,7 +2708,10 @@ class GunStage:
                 # reported", not "zero"; `_on_pools` then keeps whatever shield it already had.
                 shield = int(t[3] or 0) if cmd == "HP" and len(t) > 3 and t[3] != "" else None
                 self.tele.update(hp=hp, armor=armor, **({"shield": shield} if shield is not None else {}))
-                self._on_pools(hp, armor, shield, desync=solicited)
+                if cmd == "LCD":
+                    self._on_lcd(hp, armor, desync=solicited)
+                else:
+                    self._on_pools(hp, armor, shield, desync=solicited)
                 if solicited:
                     self._cure_answer(cmd, t)
         except ValueError:
@@ -3021,6 +3101,17 @@ class GunStage:
         if self.stations:
             self._on_control_advert(now)
 
+    def _on_lcd(self, hp: int, armor: int, desync: bool = False) -> None:
+        """engine.js `feedFrame`'s LCD case: an `$LCD` sets the pools and books a death on a zero, and it does
+        nothing else. It never reaches `_onHp` there, so it books no hit, plays no pool-rise line and, S16, never
+        takes the poison tick's echo: a non-lethal `$LCD` between a tick write and its `$HP` leaves `_dot_echo`
+        for that `$HP` (review 2026-09-19). A zero goes through `_on_pools`, whose death branch is the one
+        death path."""
+        if hp == 0 and self.alive and self.auto_react and self.spawned:
+            self._on_pools(hp, armor, None, desync=desync)
+            return
+        self.hp, self.armor = hp, armor
+
     def _on_pools(self, hp: int, armor: int, shield: int | None = None, desync: bool = False) -> None:
         if shield is None:
             shield = self.shield          # not reported on this frame (an $LCD): keep the last known value
@@ -3035,6 +3126,17 @@ class GunStage:
         # all the way through to HP, health -- the innermost pool -- is the one worth showing).
         moved = "health" if hp != prev_hp else "armor" if armor != prev_armor else "shield" if shield != prev_shield else None
         self.hp, self.armor, self.shield = hp, armor, shield
+        # S16 (engine.js `_onHp` `dotEcho`): the $HP that answers our OWN poison tick's write is the tick, not a
+        # hit -- no hit_taken event, no pain grunt, no headset re-flash, even though it is a real pool delta. It
+        # reads as the tick's echo when it lands inside DOT_ECHO_S of the write AND the tick's pool is the only
+        # pool that moved, by exactly the tick, so a real hit reads as a hit whichever order its frames take.
+        # An $LCD never gets here (see `_on_lcd`), exactly as engine.js's LCD case never reaches `_onHp`.
+        echo = self._dot_echo
+        dot_echo = bool(dmg > 0 and echo is not None and self.now() - echo["at"] <= DOT_ECHO_S
+                        and dot_echo_matches(echo, {"health": prev_hp, "armor": prev_armor, "shield": prev_shield},
+                                             {"health": hp, "armor": armor, "shield": shield}))
+        if dot_echo:
+            self._dot_echo = None
         cues = self.bundle.get("cues", {})
         hs = self.bundle.get("headset") or {}
         # S29 (engine.js `_onHp`): damage RESTARTS the recharge clock and abandons a refill already running --
@@ -3068,6 +3170,16 @@ class GunStage:
             self._shield_regen = None; self._shield_down = False   # S29: a dead gun is not refilled, and the heartbeat stops with the life
             self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None   # engine.js `_death`: the gun stops the reload when you drop; so does the HUD
             self._stun_restore("died")             # F15: death cancels the stun -- no restore write; the revive's own $AMMO re-arms the next life
+            # S16 (engine.js `_death`): a death straight after our own poison tick, with no newer `$HIR` behind
+            # it, is the TICK's kill, credited to whoever last applied the poison. The stage keeps no MC facts
+            # layer to book a `death` fact against (that credit line, and its `dot: true` flag, is MC's own
+            # bookkeeping to make from the fact it receives) -- so this is a log line naming the applier, not a
+            # fabricated facts mechanism.
+            dk = self._dot_kill
+            if dk and self.now() - dk["at"] <= DOT_KILL_S and (self._last_hir_at is None or self._last_hir_at < dk["at"]):
+                self._log(f"☠ poison kill credited to #{dk['num']} (team {dk['team']})", "info")
+            self._dot_kill = None; self._dot_echo = None
+            self._poison_clear("died")             # S16: a stack never survives a life (Tony, 2026-09-18)
             self._moment = ("down", self.now())    # engine.js `_death`: the rarer moment (gates a pool rise for RARE_GUARD_S)
             self._level_gen += 1                   # Node rules: cancel everything on death
             self._gun_blank_on_death()             # F113: ...and the strip goes OFF, instead of freezing mid-animation
@@ -3098,15 +3210,19 @@ class GunStage:
                 if fr:
                     self._pending_hurt_write = True
                     self._spawn_task(self._hurt_debounced(fr, self._level_gen))
-            self._event_now("hit_taken")
+            # S16: the tick's own echo books no hit at all -- no event, no pain, no headset re-flash (engine.js
+            # `_onHp`'s `!dotEcho` gate). The low-health alert just above is NOT gated: a DoT tick crossing the
+            # threshold is still news, exactly as engine.js's `hurtNow` block is unguarded by `dotEcho`.
+            if not dot_echo:
+                self._event_now("hit_taken")
             if hurt_now:
                 # F57 (engine.js `_onHp`): the hit that ARMS low_health plays the alert ONLY -- no grunt under it --
                 # and stamps the pain gate, so a hit inside PAIN_GAP_S of the warning is silent too.
                 self._last_pain_at = self.now()
                 self._log("pain: not played -- this hit armed the low-health alert (F57); the gap starts now", "info")
-            else:
+            elif not dot_echo:
                 self._pain(dmg, self._last_hir_proto, moved)   # A15.3: pain by damage; A17: only when it reached HEALTH -- never on a death (that returned above)
-            if hs and not hurt_now:
+            if hs and not hurt_now and not dot_echo:
                 # A16 §3.3: whatever role is held (carrier/infected/vip/beacon/extracted) survives the
                 # hit -- the native flash wipes the headset on every registered hit, so re-assert it.
                 name, tid = self._active_role or (None, None)
@@ -3491,6 +3607,100 @@ class GunStage:
             self._moment = ("stun_over", self.now())
             self._event_now("stun_over")
         self._log(f"stun over ({why})", "info")
+
+    # ---------- S16: damage over time, on the stage (spec/node.md §3.17) ----------
+    def _dot_spec(self, proto: int | None) -> DotTickSpec | None:
+        """engine.js `_dotSpec`: the tick numbers for an IR protocol, off the bundle's game-wide `dot` table
+        (MC keys it by the protocol the SHOOTER's `$WEAP` t3 puts on the wire; JSON keys are strings). None
+        for any other protocol, and for a bundle that predates S16. PURE."""
+        tbl = self.bundle.get("dot")
+        if not tbl or proto is None:
+            return None
+        d = tbl.get(str(proto))
+        if not d:
+            return None
+        try:
+            per = int(d.get("per_tick") or 0)
+            tick_s = float(d.get("tick_ms") or 0) / 1000.0
+            dur_s = float(d.get("duration_ms") or 0) / 1000.0
+        except (TypeError, ValueError):
+            return None
+        if per > 0 and tick_s > 0 and dur_s >= tick_s:
+            return {"per": per, "tick_s": tick_s, "dur_s": dur_s}
+        return None
+
+    def _poison_hit(self, proto: int | None, shooter_num: int = 0, shooter_team: int = 0) -> None:
+        """engine.js `_poisonHit`: a `$HIR` on a poison protocol (Tony 2026-09-18/19: every hit poisons). The
+        FIRST hit starts the stack and plays `poisoned`; any later hit, from the same shooter or another,
+        REFRESHES it to full duration and names the new applier (kill credit goes to the most recent one).
+        Stacks never add, and a refresh keeps the tick cadence: under sustained fire a reset cadence would
+        push the next tick out on every round and the poison would never tick."""
+        spec = self._dot_spec(proto)
+        if not spec:
+            return
+        if self._stand_down(("spawned", "alive")):
+            return
+        now = self.now()
+        by = {"num": shooter_num, "team": shooter_team}
+        p = self.poison
+        if p:
+            p["until"] = now + spec["dur_s"]; p["by"] = by; p["proto"] = proto if proto is not None else p["proto"]
+            p["per"] = spec["per"]; p["tick_s"] = spec["tick_s"]; p["dur_s"] = spec["dur_s"]
+            self._log(f"☣ poison refreshed by #{by['num']}: {spec['dur_s']:g} s from now", "info")
+            return
+        self.poison = {"proto": proto if proto is not None else 0, "per": spec["per"], "tick_s": spec["tick_s"],
+                        "dur_s": spec["dur_s"], "at": now, "until": now + spec["dur_s"],
+                        "next_at": now + spec["tick_s"], "by": by, "ticks": 0}
+        self._event_now("poisoned")   # A11: the gun plays nothing for the $LIFE ticks, so the stage speaks for the poison
+        self._log(f"☣ poisoned by #{by['num']}: {spec['per']} every {spec['tick_s']:g} s for {spec['dur_s']:g} s", "warn")
+
+    def _poison_tick(self, now: float) -> None:
+        """engine.js `_poisonTick`: the clock, from `poll()` while LIVE. One tick per call at most -- a poll
+        that stalled drops the ticks it missed rather than firing them in a burst. The stack ends straight
+        after its last tick."""
+        p = self.poison
+        if not p or now < p["next_at"]:
+            return
+        if p["next_at"] <= p["until"] and (now <= p["until"] or now - p["next_at"] < p["tick_s"]):   # as engine.js: a stall past `until` fires nothing, but the last tick (due AT `until`) fires on a late poll
+            self._poison_strike(p, now)
+        if self.poison is not p:
+            return   # the strike ended it (nothing does today; a guard for the next change)
+        p["next_at"] += p["tick_s"]
+        if p["next_at"] <= now:
+            p["next_at"] = now + p["tick_s"]
+        if p["next_at"] > p["until"]:
+            self._poison_clear("expired")
+
+    def _poison_strike(self, p: PoisonState, now: float) -> None:
+        """engine.js `_poisonStrike`: ONE tick -- a negative `$LIFE` on the OUTERMOST non-empty pool, shield,
+        then armour, then health. A negative is per pool with no spill and floors at 0 (bench 2026-09-09), so
+        the stage walks the pools itself, and a tick that empties a pool loses its remainder. The cue rides
+        every tick except a lethal one, where the firmware's own death scream owns the speaker."""
+        blocked = self._stand_down(("spawned", "ble", "alive"))
+        if blocked:
+            self._log(f"☣ poison tick skipped ({blocked})", "info")
+            return
+        n = p["per"]
+        pool = "shield" if self.shield > 0 else "armor" if self.armor > 0 else "health"
+        frame = (f"$LIFE,0,0,-{n},*" if pool == "shield" else
+                 f"$LIFE,0,-{n},0,*" if pool == "armor" else f"$LIFE,-{n},0,0,*")
+        lethal = pool == "health" and self.hp <= n
+        # Matched on WHAT moved, not on timing alone (engine.js `_poisonStrike`, review 2026-09-19).
+        self._dot_echo = {"at": now, "pool": pool, "n": n}
+        if pool == "health":   # only a HEALTH tick can kill; an armour or shield tick never claims a death
+            self._dot_kill = {"at": now, "num": p["by"]["num"], "team": p["by"]["team"]}
+        p["ticks"] += 1
+        self._spawn_task(self.write([frame], f"poison tick {p['ticks']}: -{n} {pool}" + (" (lethal)" if lethal else "")))
+        if not lethal:
+            self._event_now("poison_tick")
+
+    def _poison_clear(self, why: str) -> None:
+        """engine.js `_poisonClear`: the stack ends -- expiry, death, respawn, match end. A stack never
+        survives a life (Tony, 2026-09-18)."""
+        if not self.poison:
+            return
+        self.poison = None
+        self._log(f"☣ poison over ({why})", "info")
 
     def _reload_pulled(self) -> None:
         """The reload handle ($BUT,2,1): the gun refuses fire for the weapon's reload time, and A16 §3.1 gives
@@ -4256,7 +4466,13 @@ class GunStage:
                       "weapon_arming_s": (round(max(0.0, self._trigger_pending["due"] - self.now()), 2)
                                           if self._trigger_pending and self.alive else None),
                       "shielded": bool(self._arm_pending and self._arm_pending["shield"] and self.alive),
-                      "down_warn": self._down_warn},
+                      "down_warn": self._down_warn,
+                      # S16: the poison stack in flight (what the HUD's poison pill reads), null once it has
+                      # expired, died with the player, or the match has ended.
+                      "poison": ({"proto": self.poison["proto"], "per_tick": self.poison["per"],
+                                  "left_s": round(max(0.0, self.poison["until"] - self.now()), 2),
+                                  "by": dict(self.poison["by"]), "ticks": self.poison["ticks"]}
+                                 if self.poison else None)},
             # F102: the objective source in force (the F70 gate) and the injected station adverts on the air
             "station_source": self.config.get("station_source"),
             "station_sources": sorted(STATION_SOURCES),

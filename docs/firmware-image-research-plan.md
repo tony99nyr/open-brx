@@ -1,0 +1,129 @@
+# Plan: research with the stock firmware images (R4)
+
+Status: plan only, 2026-09-19. Nothing here is built yet. Follow-up id: **R4** in `FOLLOWUPS.md`.
+
+## What we have
+
+A member of the BRX Facebook group posted a Google Drive folder called `Firmware`. Tony downloaded it on
+2026-09-19. The folder holds seven stock firmware images and one audio pack:
+
+| file | date | what it is | sha256 (first 16) |
+|---|---|---|---|
+| `BCgunV4_32.bin` | 2024-06-25 | tagger, v4.32 (the version on our guns) | `cf92f690325d4bc3` |
+| `BCgunV2_08b.bin` | 2020-01-07 | tagger, v2.08b | `9a68848a1f77aae7` |
+| `BCgunV2_02e.bin` | 2019-02-16 | tagger, v2.02e | `d95962f121762a0c` |
+| `BCgunV2_02c.bin` | 2019-02-16 | tagger, v2.02c | `8772ccdb5cebe86d` |
+| `BCgunV2_01U.bin` | 2019-02-16 | tagger, v2.01U | `c5ba9df7b93f3e5c` |
+| `Headset/LTPV2headV1_34.bin` | 2020-01-07 | headset, v1.34 | `3818d52a3c06593e` |
+| `Headset/LTPV2headV1_27.bin` | 2019-02-16 | headset, v1.27 | `9cd08de7257ae97b` |
+| `BRX audio update v5 to v6.zip` | 2023-12-15 | 213 `.LTP` sound files | not hashed yet |
+
+The first quick pass (strings only, no disassembly) found:
+
+- The images are ARM Cortex-M code. An 8-byte header comes before a normal vector table. The v4.32 strings name
+  the radio as "NRF52 v1 retail" and "NRF52 v2 retail", so the chip is almost certainly a Nordic nRF52.
+- The v4.32 tagger image holds 103 distinct `$` command names. Three of them are in neither
+  `protocol/brx-protocol.md` nor `mcp/brx_mcp/protocol.py`: `$CLEARDE`, `$FREE` and `$YIYH`.
+- The v1.34 headset image holds its own command set, which includes `$ZOM`, `$ZON`, `$ZOFF`, `$ZTOG`, `$BOOM`,
+  `$SGREN`, `$HLOOP` and `$VERSION`. We have never mapped the headset's own command set.
+
+The Drive documents from 2026-09-18 (the V4_30 and V4_31 notes) were descriptions of the firmware. These files are
+the first actual code we hold. That changes what we can answer at the desk: a claim in the levers sheet can now be
+read in the code before it goes to the bench.
+
+## Rules for the images
+
+1. **Do not commit, host or pass on any image or any sound file.** Battle Company owns them. We do not know that the
+   poster had the right to share them, and "someone posted it" is not a licence. This also covers disassembly
+   listings, decompiled code and long verbatim string dumps.
+2. **Keep the images out of the repo.** The extracted copy is in `~/brx-firmware-private/` (WSL). Keep the Ghidra
+   project there too. The repo records only the sha256 of each image, so a reader can check that they hold the same
+   file.
+3. **What goes into the repo is facts, in our own words.** A command name, an argument meaning, a table size, or a
+   timing is a fact. The same rule applies as for the restricted Drive documents: a fact reaches `docs/manual/`
+   only after our own bench confirms it. The code tells us what to test. The bench tells us what is true.
+4. **Never flash a modified image.** This is the hard rule in `CLAUDE.md`. Do not flash a stock image either until
+   Tony decides that we need a recovery path and the DFU (device firmware update) procedure is understood.
+5. **Credit.** Credit LaserTagMods for protocol discovery as usual. Credit the source of the images as "a community
+   member's post", with no name.
+6. **Ask Battle Company.** The outreach thread with Battle Company is open (2026-09-18). Add one question to it: may
+   we publish facts derived from the stock images, and may we host the images for recovery? Until they answer, the
+   answer is no to hosting.
+
+## Research tracks, in priority order
+
+Each track names its output and the model size for the agent that does it.
+
+### T1. The command inventory (desk, 1 hour, small model)
+
+Write `mcp/tools/fw_commands.py`. The script takes an image path in `argv`, never a repo path, and prints the
+`$` command names it finds. Run it on all seven images. Then build one table in
+`docs/reference/firmware-commands.md` with these columns:
+
+- the command name
+- the versions that contain it (2.01U to 4.32, and the headset versions)
+- the documented state: in `brx-protocol.md` or not, on the known-safe list or not
+- the bench state: proven, claimed, or never sent
+
+Output: the table, plus a FOLLOWUPS row for each command that nobody has documented yet. `$CLEARDE`, `$FREE`,
+`$YIYH` and the headset's `$Z*` group come first. Do not send any new command to a gun from this track. A new
+command goes through the confirm path in `protocol.py`.
+
+### T2. Read the open bench claims in the code (desk, 1-2 sessions, strongest model)
+
+Load `BCgunV4_32.bin` into Ghidra as ARM Cortex-M (nRF52 memory map, image base after the 8-byte header). Find the
+serial command dispatcher first: the 103 names are its table. Then answer these questions from the code, in this
+order:
+
+1. **Screamers (P0).** Why does `$DPLAY` on a loop sound hang the gun? How big is the serial receive buffer? What
+   does the parser do with a split frame and with `$*`? This feeds `bench-screamers-2026-09-19.md` directly.
+2. **The untested levers claims** in `bench-firmware-levers-2026-09-19.md`: rows 2, 3, 7, 8, 9, 12, 16 and 18
+   (melee, `$BHIT`, `$SPAWN` shield, `$PRES`/`$INVU`, the fuse functions, splash, `$RADSK`, the protocol-15 station
+   words).
+3. **The `$SIR` function table.** List every function number that the hit handler knows. We have probed them one at
+   a time on the bench so far.
+4. **`$TMP` token semantics** for each token: absolute, additive or one-shot (F285). S55 depends on this.
+5. **The F264 stall**: the state where the gun is dead but the HUD shows the player alive.
+
+Output: an experiment-log entry per question, marked **CODE-READ, NOT BENCH-PROVEN**, plus a precise bench step for
+each one. A code read that contradicts a bench result means one of the two is wrong: log it, and do not pick one.
+
+### T3. Version diff (desk, 1 session, mid model)
+
+Compare the command sets and the version strings across 2.01U, 2.02c, 2.02e, 2.08b and 4.32, and across headset
+1.27 and 1.34. The goal is narrow: tell a field operator which features need v4.x, and which command is safe to send
+to an older gun. Output: a "needs firmware" column in the T1 table.
+
+### T4. The audio pack (desk, 30 minutes, small model)
+
+Hash each of the 213 `.LTP` files and compare the hashes with our off-gun bank in `~/brx-audio-bank`. Report the ids
+that are new, changed or the same. If the pack fills gaps in `docs/reference/sound-catalog.md`, update
+`sound_catalog.json` with the ids and descriptors only. Do not copy any audio into the repo.
+
+### T5. A recovery path (decision first, then research)
+
+A gun that stops responding (a screamer) needs a power cycle today. If a gun ever stops booting, we have no path back.
+The stock image and a known DFU procedure would give us one. The firmware contains `$CDFU`, which is probably the
+command that enters DFU mode. Do not send it. Research only: read what `$CDFU` does in the code, and what Battle
+Company's own update tool expects. Tony decides whether we ever flash, and only a stock image, byte for byte.
+
+## How the work gets into the repo
+
+| goes in | stays out |
+|---|---|
+| this plan, and the sha256 of each image | the images, the audio pack |
+| `mcp/tools/fw_commands.py` (reads a path from `argv`) | the Ghidra project, disassembly, decompiled code |
+| `docs/reference/firmware-commands.md` (our table) | verbatim string dumps longer than a command name |
+| experiment-log entries marked CODE-READ | any claim in `docs/manual/` before the bench confirms it |
+| new FOLLOWUPS rows and bench steps | the name of the person who posted the files |
+
+Add one guard with T1: a line in `.gitignore` for `*.bin` and `*.LTP` at the repo root, and a check in
+`mcp/tests/test_docs_hygiene.py` that no tracked file has one of the sha256 values in the table above. Break the
+check once and watch it fail.
+
+## Decisions for Tony
+
+- Hosting: the default is no. Change it only if Battle Company says yes in writing.
+- Flashing: the default is never. T5 asks for a decision before any research goes past reading the code.
+- Priority: T1 and the screamers part of T2 first, because the screamers are P0. The rest waits behind the
+  weekend game.

@@ -397,6 +397,20 @@ export interface Stun {
   duration_s?: number;
 }
 
+/** S16: one damage-over-time weapon's tick numbers, as the VICTIM's node needs them. The victim knows only
+ *  its own loadout, so MC ships a game-wide table in `FrameBundle.dot`, keyed by the IR protocol the shooter's
+ *  `$WEAP` t3 carries (the `$HIR` token 2 the victim reads). Built by `Compiler.dot_table()` from every weapon in
+ *  the game whose `weapons.json` row declares `dot`. `spec/node.md` §3.17 holds the rules the node runs. */
+export interface DotSpec {
+  weapon_id: string;
+  /** damage one tick takes from the outermost non-empty pool */
+  per_tick: number;
+  /** the interval between ticks */
+  tick_ms: number;
+  /** how long one hit keeps the stack alive; a second hit REFRESHES it, never stacks */
+  duration_ms: number;
+}
+
 /** S42 (2026-09-17): a weapon's TARGET accuracy profile -- `weapons.json` `recoil`, declared-only
  *  on the wire (compile.py `resolve()` never writes t21/t22 from it). `app/src/engine.js` is the sole
  *  reader. **F259 (2026-09-18): a STATE MACHINE, not a per-shot walk** -- `_recoilProfile` derives
@@ -597,6 +611,9 @@ export interface FrameBundle {
   /** A17: {rekey: bool, cells{weapon_id: "p,s"}, classes{"p,s": family}, shared[families sharing a cell],
    *  material[roles]} -- what the UI/console shows for "what does a hit sound like", and what a bench probe reads. */
   hit_audio?: Record<string, unknown>;
+  /** S16: IR protocol (a string key: JSON has no integer keys) -> tick numbers,
+   *  for every damage-over-time weapon in THIS GAME. Absent = no such weapon. */
+  dot?: Record<string, DotSpec>;
   /** S50 build 4: this player's compiled perk effect,
    *  absent when they carry no perk. Persisted here (not a
    *  one-shot message) so it survives an app restart. */
@@ -770,6 +787,9 @@ export interface Event {
    *  "the headset domes never register" report could only be checked against a frame ring. */
   sensor?: number;
   desync?: boolean;
+  /** S16: the death came from the node's own poison tick (a `$LIFE` write), not from a hit. `shooter_num` and
+   *  `shooter_team` then name the player who last applied the poison, which is who gets the kill. */
+  dot?: boolean;
   /** respawn */
   resync?: boolean;
   /** A47: the operator's FORCE RESPAWN, not a respawn after a death (scoring keeps the streak) */

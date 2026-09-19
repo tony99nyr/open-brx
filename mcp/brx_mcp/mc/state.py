@@ -493,6 +493,9 @@ class Session:
         # WITHHELD line twice per hello, and again on every later heartbeat-driven `_bind` while the
         # phone stays on the same build. Cleared on `evict_node` so a genuine re-bind can say it again.
         self._app_blocked_alerted: dict[str, str] = {}
+        # S16 review 2026-09-19: node_id -> the weapon ids last told to the feed by `_alert_plan_withheld`,
+        # deduped for the same reason as the line above. Cleared beside it.
+        self._plan_blocked_alerted: dict[str, tuple[str, ...]] = {}
         # A24/M2: the roster AS PLAYED. `_replay` must not build its Scorer from the LIVE roster --
         # the operator can re-team a player during recap, and a late flush would then replay the
         # finished match on the new teams. Frozen at `_schedule` and again at the whistle.
@@ -1888,11 +1891,9 @@ class Session:
                 # named -- an add/patch on a gun whose own hello carries an app `compatible()` cannot
                 # vouch for. Withhold the config (and, below, the start) rather than arm a gun that
                 # never turns spawn protection off.
-                if self._app_incompatible(nid):
-                    self._alert_app_withheld(p, nid)
-                else:
+                if not self._hot_join_withheld(p, nid):
                     self._push_config_to(p)
-        if nid and with_start and self.start_info and not self._app_incompatible(nid):
+        if nid and with_start and self.start_info and not self._app_incompatible(nid) and not self._plan_gaps(p):
             self.net.push(nid, "start", self._start_body())
 
     def _after_player_change(self, p: Player):
@@ -2992,6 +2993,45 @@ class Session:
                        "text": f"{str(who).upper()}'S GAME WAS WITHHELD — APP {shown} CANNOT RUN F121 "
                                f"SPAWN PROTECTION (NEEDS {app_tier()})"})
 
+    def _plan_gaps(self, p: Player) -> list[str]:
+        """S16 review 2026-09-19: the weapons in `p`'s loadout that the match's PINNED hit plan cannot carry
+        (`Compiler.plan_gaps`). Only a hot join into an ARMED or LIVE match compiles against a pin that
+        predates the player: before the whistle, an add or a loadout change re-pushes the whole roster.
+
+        Such a weapon keys a conditional `$SIR` row (a catalogue `sir_fn`: the Toxin Rifle, the Breacher, the
+        Haze) that no gun in the match holds, and a `dot` weapon is missing from every gun's `dot` table. Every
+        hit it lands would vanish with both ends reporting healthy, and the guns in play cannot take a new
+        table (F121). So the hot join is withheld, and the operator is told why."""
+        if not self.in_play() or self._pinned_hit_plan is None:
+            return []
+        fn = getattr(self.compiler, "plan_gaps", None)     # a test double need not carry the whole compiler
+        return list(fn(self._pinned_hit_plan, p)) if fn is not None else []
+
+    def _hot_join_withheld(self, p: Player, nid: str) -> bool:
+        """The one gate a hot join passes before it gets frames: True (and one WITHHELD feed line) when the
+        node's app cannot run F121, or when the player's weapons are not in the match's hit plan."""
+        if self._app_incompatible(nid):
+            self._alert_app_withheld(p, nid)
+            return True
+        gaps = self._plan_gaps(p)
+        if gaps:
+            self._alert_plan_withheld(p, nid, gaps)
+            return True
+        return False
+
+    def _alert_plan_withheld(self, p: Player, nid: str, gaps: list[str]) -> None:
+        """The operator feed line for `_plan_gaps`, deduped per node like `_alert_app_withheld`."""
+        key = tuple(gaps)
+        if self._plan_blocked_alerted.get(nid) == key:
+            return
+        self._plan_blocked_alerted[nid] = key
+        rows = getattr(getattr(self.compiler, "catalog", None), "_by_id", {}) or {}
+        names = ", ".join(str((rows.get(w) or {}).get("name") or w).upper() for w in gaps)
+        who = p.get("display") or p["player_id"]
+        self._on_feed({"t_match_s": self._operator_t_match(self.now_ms()), "tag": "WITHHELD", "kind": "alert",
+                       "text": f"{str(who).upper()}'S GAME WAS WITHHELD: {names} WAS NOT IN THIS MATCH AT THE "
+                               f"START, SO NO GUN WOULD REGISTER ITS HITS. THEY JOIN THE NEXT MATCH"})
+
     def _bind(self, nid: str, p: Player):
         # Whoever loses this socket loses the record of what it was told along with it: the phone
         # speaks for somebody else now, so "their phone has the game" is no longer a fact about them.
@@ -3029,9 +3069,7 @@ class Session:
             # that connects mid-lobby-push or mid-match on an app `compatible()` cannot vouch for. Send
             # it nothing playable and say so on the feed, rather than arm a gun that never turns spawn
             # protection off.
-            if self._app_incompatible(nid):
-                self._alert_app_withheld(p, nid)
-            else:
+            if not self._hot_join_withheld(p, nid):
                 self._push_config_to(p)
                 if self.start_info:
                     self.net.push(nid, "start", self._start_body())
@@ -3053,6 +3091,7 @@ class Session:
         self.nodes.pop(nid, None)
         self.synced_at_lobby.pop(nid, None)
         self._app_blocked_alerted.pop(nid, None)   # F121: a re-bind after this can say WITHHELD again
+        self._plan_blocked_alerted.pop(nid, None)
         # A42: and the end-delivery watch over it. This was the one watch-ending path that did not clear
         # the ledger (`_schedule`, `new_session` and `_arm_end_delivery`'s own match filter are the
         # others), so evicting a node during RECAP left an entry re-pushing `control{end}` at a socket MC
@@ -3081,6 +3120,7 @@ class Session:
                 self.nodes.pop(nid, None)
                 self.stations.pop(nid, None)
                 self._app_blocked_alerted.pop(nid, None)   # F121: a re-hello after this can say WITHHELD again
+                self._plan_blocked_alerted.pop(nid, None)
 
     def _node_view(self, nid: str) -> dict:
         """The ONE place a player `NodeView` is created, so it always has its defaults.
@@ -3213,8 +3253,13 @@ class Session:
         blocked = self._app_incompatible(hello["node_id"])
         if not blocked:
             self._app_blocked_alerted.pop(hello["node_id"], None)   # F121: an upgraded app can say WITHHELD again if it ever regresses
+        gaps = self._plan_gaps(p) if p["player_id"] not in self.bundles else []
         if self.lobby_pushed and blocked:
             self._alert_app_withheld(p, hello["node_id"])
+        elif gaps:
+            # S16 review 2026-09-19: a hot joiner carrying a weapon the pinned plan never saw. See `_plan_gaps`.
+            self._alert_plan_withheld(p, hello["node_id"], gaps)
+            blocked = True
         elif self.lobby_pushed:
             if p["player_id"] not in self.bundles:          # A5.6 late joiner hydrated on first hello
                 self.bundles[p["player_id"]] = self._compile_rolled(p)
@@ -5101,12 +5146,16 @@ class Session:
 
         `push_config()` clears the pin, so a deliberate full re-push re-derives; nothing else does.
 
-        A LATE JOINER whose weapons the pinned plan never saw degrades SAFELY rather than dangerously:
-        `Plan.cell_for()` returns None, `Compiler._rekey` returns the frame unchanged, and that weapon
-        stays on its STOCK cell -- which every gun's table always carries, because `sir_table` never
-        removes a stock row. So their hits still register on everyone and everyone's on them. That rests
-        on two behaviours that look incidental (a None cell being a no-op; stock rows never dropped), so
-        it is pinned by `test_a_player_whose_weapons_the_pinned_plan_never_saw_falls_back_to_STOCK_cells`."""
+        A LATE JOINER whose weapons the pinned plan never saw is safe only when those weapons sit on a
+        STOCK cell: `Plan.cell_for()` returns None, `Compiler._rekey` returns the frame unchanged, and the
+        weapon stays on its stock cell, which every gun's table carries because `sir_table` never removes
+        a stock row. That is pinned by
+        `test_a_player_whose_weapons_the_pinned_plan_never_saw_falls_back_to_STOCK_cells`.
+
+        It is NOT safe for a weapon whose row is conditional (a catalogue `sir_fn` on a cell the base table
+        lacks: the Toxin Rifle, the Breacher, the Haze) or that declares `dot`. No gun in the match carries
+        that row or that `dot` entry, so its hits vanish in silence. `_plan_gaps` finds such a weapon and the
+        hot join is WITHHELD (`_hot_join_withheld`, S16 review 2026-09-19)."""
         fn = getattr(self.compiler, "hit_plan", None)      # a test double need not carry the whole compiler
         if fn is None:
             return None

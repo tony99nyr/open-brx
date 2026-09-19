@@ -459,22 +459,40 @@ kind from the `hit`/`role` repaints already on this path.
 
 ---
 
-### 3.17 Damage over time: the node holds the tick clock (S16, not built)
+### 3.17 Damage over time: the node holds the tick clock (S16)
 
 The gun has no damage-over-time function we can rely on (`weapon-design.md` §6.3b: fn 24's delayed ticks were
 measured only against a REPEATING source). The node builds it instead, because `$LIFE` takes negatives and a node
-may write its own gun freely mid-match.
+may write its own gun freely mid-match. Built 2026-09-19 in `engine.js` (`_poisonHit`, `_poisonTick`,
+`_poisonStrike`), mirrored in `stage.py`; Tony's decisions of 2026-09-18/19 are the rules below.
 
 | rule | what the node does |
 |---|---|
-| recognise | a `$HIR` whose protocol key (token 2) is the poison damage type starts or REFRESHES a stack. The shooter's weapon carries that key in `$WEAP` t3; the stock enum already has 11 = gas |
-| tick | one `$LIFE` write per tick interval, taking the tick amount from the OUTERMOST non-empty pool. A negative is per-pool with NO spill and floors at 0 (bench 2026-09-09), so the node walks shield, then armour, then health itself |
-| refresh, never stack | a second poison hit restarts the timer at full duration; two shooters do not stack two clocks. Refresh rewards staying on target and keeps the worst case bounded |
-| end | the stack ends on expiry, on death, and on respawn. A stack never survives a life |
-| death | a LETHAL tick emits `$LCD` and no `$HP` (F64), so the node books the death through the `$LCD` path. There is no `hit_taken` fact and **no attribution**: who is credited with the kill is an open decision, not an implementation detail |
-| show it | the HUD shows the stack and counts it down, and the node plays the cue, because the gun plays nothing at all for a `$LIFE` write. The HUD half belongs to the `brx-hud` session |
+| the table | MC ships `FrameBundle.dot` (contracts §3): `{"<ir_proto>": {weapon_id, per_tick, tick_ms, duration_ms}}` for every weapon in the GAME that declares `dot`, built off the match plan (`Compiler.dot_table`). The victim needs the shooter's numbers, not its own. A plan where another weapon shares a poison protocol does not compile. Today: the Toxin Rifle, protocol 11, 4 every 1000 ms for 5000 ms |
+| recognise | EVERY `$HIR` whose token 2 is a key in the table starts the stack (there is no proc chance) and plays `poisoned`. Only LIVE, spawned and alive |
+| refresh, never stack | a later hit, from the same shooter or another, resets the stack to full duration and becomes the applier. Two shooters never run two clocks. The tick cadence is kept, so sustained fire cannot push the next tick out |
+| tick | one `$LIFE` per interval on the OUTERMOST non-empty pool (shield, then armour, then health), mode 0 only (a mode 1/2 write revives a dead gun). A negative has no spill and floors at 0, so a tick that empties a pool loses its remainder. Each non-lethal tick plays `poison_tick`. A tick due while the link is down or a reconcile or resync runs is skipped, and a stalled clock drops the ticks it missed, including a late tick once the stack has run out |
+| not a hit | the `$HP` that answers a tick books no `hit_taken`, no pain line and no hit flash. The node matches the echo on what moved, not on timing alone: inside 1000 ms of the write, the tick's pool is the only pool that moved, by exactly `min(per_tick, what that pool held)`. A `$HIR` can land between a tick write and its `$HP` under sustained fire, so a newer `$HIR` does not disqualify an echo. An `$LCD` never takes the echo (review 2026-09-19) |
+| end | expiry after the last tick, death, spawn, respawn (operator respawn too) and match end. A stack never survives a life |
+| death | a lethal tick emits `$LCD` and no `$HP` (F64), and the `$LCD` path books it. A death inside 1500 ms of a HEALTH tick, with no newer `$HIR` latched, is the tick's (a shield or armour tick claims no death): the `death` fact names the MOST RECENT applier in `shooter_num`/`shooter_team` and carries `dot: true`, and the scorer credits that player like any kill (friendly rule included). No tick cue on a lethal tick: the death scream owns the speaker. The DOWN screen reads POISONED BY |
+| show it | `state().poison = {leftMs, durMs, perTick, tickMs, ticks, by}`; the HUD draws a POISONED pill above the health with a countdown, a drain bar and the applier's name, dim red at night with no pulse |
 
 Out of Mission Control coverage this behaves identically: everything after the first hit is local to one phone.
+The cue ids (`poisoned` H23, `poison_tick` V4G) were picked by descriptor from the sound catalogue and still need an
+ear check at the bench.
+
+### 3.18 The smoke tell: why a player cannot hit anything (S53)
+
+A fn-23 hit (the Haze, `<7,0>`) moves no pool and holds the victim's live accuracy at 0 for about 6 s, then the gun
+gives it back in one step (bench 2026-09-18). Without a tell the player hears their own gun, sees nothing land, and
+concludes the gun is broken. The node reads it from two frames it already parses: a `$HIR`, and an `$ALCD` whose
+accuracy token DROPS to 0 within 400 ms of it, in either order. The EMP under `config.stun` is fn 23 too but has its
+own STUNNED takeover, so it is not a smoke. The tell ends when `SMOKE_MS` (6000) has run, when the gun reports
+accuracy above 0, or on death, spawn, respawn and match end. `state().aim = {reason: 'smoke', acc, leftMs, totalMs}`
+is the input to S55's ONE accuracy pill: the HUD renders the reason it is handed, so recoil, flinch and stance join
+the same shape later. The HUD puts SMOKED, YOUR SHOTS WILL MISS and a countdown where the reticle was. Not built:
+S55's rule that the accuracy writer must not write t4 during a smoke, and a smoke cue (`_event('smoked')` is a hook
+with no presentation row yet).
 
 ## 4. The HUD — requirements and state mapping
 

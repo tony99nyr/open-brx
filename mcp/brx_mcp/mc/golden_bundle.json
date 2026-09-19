@@ -90,6 +90,8 @@
     "shield_online": "$PLAY,,4,6,VA6Y,,,,*",
     "shield_loop": "$PLAY,,4,6,N74,,,,*",
     "reload_nag": "$PLAY,,4,6,VX73,,,,*",
+    "poisoned": "$PLAY,H23,4,6,,,,,*",
+    "poison_tick": "$PLAY,,4,6,V4G,,,,*",
     "first_blood": "$PLAY,,4,6,VA7H,,,,*",
     "double_kill": "$PLAY,,4,6,VA7E,,,,*",
     "triple_kill": "$PLAY,,4,6,VA7Q,,,,*",

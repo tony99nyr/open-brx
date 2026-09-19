@@ -45,15 +45,15 @@ superseded). See `docs/experiment-log/2026-09.md` (2026-09-19 pre-game entry) fo
 Run this first, once app 0.4.4 is published and both phones have wireless debugging re-enabled.
 
 1. Install 0.4.4 on both phones (`npm run android:install` per phone, or the `app-v0.4.4` release download).
-2. Connect timing on both phones: time from tap to linked, from cold, at least three tries each. Feeds **F294**.
+2. Connect timing on both phones: time from tap to linked, from cold, at least three tries each. Feeds **F297**.
 3. Watch for the link-loop symptom (a drop every 5-12 s after the first connect); if it recurs, log whether the
-   phone's own Bluetooth was on or off through the pairing. Feeds **F290**.
+   phone's own Bluetooth was on or off through the pairing. Feeds **F293**.
 4. The new respawn rules in a real match: a timed respawn (no protection by default, weapon live 0.5 s after the
    countdown ends) and a station respawn (2 s visible protection, trigger live at once, white shield blink).
 5. The Shields preset in a real match through Mission Control: shield recharge cues and pool readout on both
-   HUDs. Feeds **F295**.
+   HUDs. Feeds **F298**.
 6. The down animation: confirm whether the slowed `$HLOOP,1,2500` rearm reads as "down" rather than as a hit.
-   Feeds **F293**.
+   Feeds **F296**.
 7. Full screen: confirm the Android status bar stays hidden during play on both phones (API 30+ immersive patch).
 
 ### Sitting 1: screamers Phase A, transport half (about 55 min; 1 gun, a laptop)
@@ -158,7 +158,6 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 | **F268**, **F280**, then **S54** | weapons and perks | settle the rung basis with Tony (the time-to-kill proposal), then wire the six recoil fields once | a decision (Tony). The floors are settled at 60 |
 | **F281** | weapons and perks | move Quick Hands onto `$TMP` t6 in one piece, or not at all | sitting 2 step 4 (t6 absolute or additive) |
 | **S50** | weapons and perks | Extended Mags on `$TMP` t9 (one write per life, after `$SPAWN`, then an `$AMMO` fill) | sitting 2 step 2 (per slot or not) |
-| **S16**, **S53** | weapons and perks | the toxin tick clock in `app/src/engine.js` (all three decisions made), with the HUD poison and smoke tells | nothing; `engine.js` is shared with the playtest lane |
 
 ## Preconditions (build these first)
 

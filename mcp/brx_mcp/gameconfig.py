@@ -181,9 +181,10 @@ _SIR_TABLE = (
     # leaving the class-sound allocator ZERO budget: it stopped separating weapon families and four
     # hit-audio tests went red. That ceiling is a COMMUNITY figure and has never been measured (F39), so
     # raising it would be inventing headroom rather than finding it.
-    # The right fix is a CONDITIONAL table: a game with no Breacher in it should not push the Breacher's
-    # row to every gun. That needs the roster threaded into `sir_table()` and is filed as its own job.
-    # Until then the three weapons are `hidden` in weapons.json and their rows are not shipped.
+    # The fix is a CONDITIONAL table: a game with no Breacher in it does not push the Breacher's row to
+    # every gun. Each of the three weapons declares `sir_fn` in weapons.json, and `mc/compile.py`
+    # `sir_table()` appends the row only for a cell the match plan keys. `validate()` reads that same
+    # per-roster table (S16, 2026-09-19).
 )
 # $BMAP button map — mandatory or the trigger gives the "disabled" chirp.
 _BMAP = (

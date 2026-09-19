@@ -431,10 +431,14 @@ describe('the designer seeds a late snapshot without stomping edits', () => {
     );
     const m = await mount(render(null));
     await m.update(render({ ...d.state }));           // the first snapshot arrives
-    // 2026-09-17 (arsenal review): 8 weapons joined melee as `hidden` and rocket_launcher/rail_gun
-    // became `pickup_only` (never in a starting pool), so OPEN's playable count is 13 total, 11
-    // pickable, not the pre-cut 21/16.
-    expect(m.text(), 'the draft must be seeded, not left blank forever').toContain('OF 15');
+    // The counts come from the demo catalogue, not typed here: a weapon that joins or leaves the
+    // visible arsenal (the Toxin Rifle, 2026-09-19) must not break a test about draft seeding.
+    // PRIMARY counts every visible weapon except the `pickup_only` heavies (rocket_launcher/rail_gun)
+    // and the `lethal: false` support weapons (Breacher, Haze), which can never be a primary
+    // (weapon-design.md §7.4).
+    const weapons = await d.api.getWeapons();
+    const primary = `${weapons.filter((w) => !w.pickup_only && w.lethal !== false).length} OF ${weapons.length}`;
+    expect(m.text(), 'the draft must be seeded, not left blank forever').toContain(`OF ${weapons.length}`);
 
     // Now make a REAL edit and prove it survives five more snapshots. Asserting that the text is
     // merely UNCHANGED would pass against a broken guard: re-seeding restores the same defaults, so
@@ -442,11 +446,9 @@ describe('the designer seeds a late snapshot without stomping edits', () => {
     // NO HEAVIES now lands on the SAME count as OPEN: the only visible `heavy`-tagged weapons
     // (rocket_launcher/rail_gun) were already excluded from OPEN by `pickup_only`.
     await m.click('NO HEAVIES');
-    expect(m.text()).toContain('11 OF 15');
+    expect(m.text()).toContain(primary);
     for (let i = 0; i < 5; i++) await m.update(render({ ...d.state, t: Date.now() + i }));
-    // 11 OF 15: the catalogue is 15 visible weapons since 2026-09-18, and the PRIMARY pool is still 11,
-    // because the two support weapons (Breacher, Haze) can never be a primary (weapon-design.md §7.4).
-    expect(m.text(), 'a snapshot must not reset the draft being edited').toContain('11 OF 15');
+    expect(m.text(), 'a snapshot must not reset the draft being edited').toContain(primary);
     m.unmount();
   });
 });
