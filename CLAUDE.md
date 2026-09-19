@@ -16,7 +16,7 @@ per-sentence `src:` line: confidence lives in `docs/experiment-log/` and `docs/F
 work also read `docs/HANDOFF.md` (one screen of current state), `docs/FOLLOWUPS.md` (every open item,
 incl. **Needs Tony at the bench**), and the current month under `docs/experiment-log/` (lab notebook).
 **Session close is three writes:** one log entry, one FOLLOWUPS diff (strike or add rows, no prose), one
-HANDOFF replacement (overwrite, never stack). A closed item becomes one dated line in
+HANDOFF update (overwrite your own lane section, never another lane's, never stack). A closed item becomes one dated line in
 `docs/archive/followups-closed.md`; ids are never renumbered or reused. `docs/archive/` is history:
 grep it, do not read it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, and length rules. Ground truth:
 `protocol/brx-protocol.md` + `protocol/callsign-extract/` (APK teardown: command/field maps, WEAP
