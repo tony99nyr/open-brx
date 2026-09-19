@@ -525,7 +525,7 @@ export const WEAPONS: WeaponView[] = [
     "name": "Suppressor",
     "cls": "1",
     "weapon_class": "ballistic",
-    "desc": "Quiet, and no muzzle flash. The only weapon that does not tell the field where you are, bought with the slowest kill in the game.",
+    "desc": "Its own fire sound, and the slowest kill in the game. It is the quiet option for a player who would rather not announce the fight.",
     "clip": 75,
     "mags": 5,
     "reserve": 384,

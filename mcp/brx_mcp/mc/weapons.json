@@ -415,7 +415,7 @@
   {
    "weapon_id": "suppressor",
    "name": "Suppressor",
-   "desc": "Quiet, and no muzzle flash. The only weapon that does not tell the field where you are, bought with the slowest kill in the game.",
+   "desc": "Its own fire sound, and the slowest kill in the game. It is the quiet option for a player who would rather not announce the fight.",
    "cls": 1,
    "role": "assault",
    "class": "ballistic",
@@ -450,7 +450,7 @@
    ],
    "ap_dmg": 3,
    "ap_fire_ms": 155,
-   "notes": "Quiet, not silent, and no muzzle flash. It is the only weapon here that hides where you are. 8 a hit every 140ms with 75 up and 384 in reserve: 30 kills, the deepest magazine AND the deepest sustained pool, the slowest kill. 2026-09-17: mag 48\u219275 -- the family-scoped dominance test (\u00a72.3) paired it against the SMG (same fire mode, same weapon_class), which beat it on every other axis; the deeper magazine gives the Suppressor an outright lead on kills-per-clip (5 vs the SMG's 4), which is the smallest change that stops the SMG strictly dominating it."
+   "notes": "Quiet, not silent, and no muzzle flash. It is the only weapon here that hides where you are. 8 a hit every 140ms with 75 up and 384 in reserve: 30 kills, the deepest magazine AND the deepest sustained pool, the slowest kill. 2026-09-17: mag 48\u219275 -- the family-scoped dominance test (\u00a72.3) paired it against the SMG (same fire mode, same weapon_class), which beat it on every other axis; the deeper magazine gives the Suppressor an outright lead on kills-per-clip (5 vs the SMG's 4), which is the smallest change that stops the SMG strictly dominating it.\n\n2026-09-18: the description used to claim \"no muzzle flash\". WITHDRAWN as unproven (F282): $WEAP t25/t26 are not in the APK field table, which jumps 24 to 27, and the only thing naming them muzzle flash is an unsourced comment in compile.py. We never write them; they are inherited from the capture, where the Suppressor carries 2/50 and the AR carries none. Set-versus-empty does not say which way. The quiet half is grounded: t27 is Q06 against the AR's R01, so it genuinely plays a different sound, but nobody has judged it by ear on our compiled weapons."
   },
   {
    "weapon_id": "energy_rifle",
