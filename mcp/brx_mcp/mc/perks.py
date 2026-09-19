@@ -21,8 +21,12 @@ _HERE = pathlib.Path(__file__).resolve().parent
 # button in future joins the rule by setting alt_reload").
 # `armor_piercing` (S50, new): the primary's $SIR key is swapped to the armour-piercing cell and its
 # damage is cut -- see `compile.py` `_MAX_ARMOR_ADD`, `_AP_CELL`, `_AP_DAMAGE_MULT`.
+# `crit_pct_add` (F278, 2026-09-18): no row declares it yet -- the guard is filed and fixed before the
+# perk exists. `compile.py`'s `_refuse_if_crit_perk_ineligible` refuses it at RUNTIME on a weapon
+# declaring `wire.headset_dmg`, the same combination the catalogue-time guard
+# `test_a_two_word_weapon_never_also_carries_a_crit_chance` already refuses on the row itself.
 EFFECT_KEYS = frozenset({"max_armor_add", "ammo_mult", "reload_mult", "alt_reload", "switch_mult",
-                        "armor_piercing"})   # switch_mult: scales $WEAP tok15, the gun's swap delay (bench 2026-09-04)
+                        "armor_piercing", "crit_pct_add"})   # switch_mult: scales $WEAP tok15, the gun's swap delay (bench 2026-09-04)
 
 
 def _load_perks() -> list[dict]:
@@ -62,6 +66,8 @@ class PerkCatalog:
             effects["switch_mult"] = raw_effects["switch_mult"]
         if "armor_piercing" in raw_effects:
             effects["armor_piercing"] = raw_effects["armor_piercing"]
+        if "crit_pct_add" in raw_effects:
+            effects["crit_pct_add"] = raw_effects["crit_pct_add"]
         return {"perk_id": r["perk_id"], "name": r["name"], "desc": r.get("desc", ""),
                 "tags": list(r.get("tags") or []), "mechanism": r.get("mechanism", "passive"),
                 "effects": effects, "verified": bool(r.get("verified")),

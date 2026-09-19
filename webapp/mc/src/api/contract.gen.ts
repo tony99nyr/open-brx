@@ -278,6 +278,9 @@ export interface PerkEffects {
   switch_mult?: number;
   /** S50 (new, armor_piercing perk): primary's $SIR key -> the armour-piercing */
   armor_piercing?: boolean;
+  /** cell, damage cut to `compile._AP_DAMAGE_MULT`. PRIMARY ONLY.
+   *  F278 (2026-09-18): no row declares this yet -- filed and refused before it */
+  crit_pct_add?: number;
 }
 
 export interface PerkView {

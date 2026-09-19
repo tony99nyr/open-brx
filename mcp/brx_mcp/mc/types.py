@@ -307,6 +307,9 @@ class PerkEffects(TypedDict, total=False):
     switch_mult: float      # scales $WEAP tok15, the gun's swap delay (bench 2026-09-04)
     armor_piercing: bool    # S50 (new, armor_piercing perk): primary's $SIR key -> the armour-piercing
                             # cell, damage cut to `compile._AP_DAMAGE_MULT`. PRIMARY ONLY.
+    crit_pct_add: int       # F278 (2026-09-18): no row declares this yet -- filed and refused before it
+                            # ships. `compile._refuse_if_crit_perk_ineligible` refuses it at runtime on
+                            # any equipped weapon declaring `wire.headset_dmg`.
 
 
 class PerkView(TypedDict):

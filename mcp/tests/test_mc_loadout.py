@@ -516,6 +516,34 @@ def test_armor_piercing_is_refused_on_a_charge_weapon_and_its_sir_row_is_bench_g
     assert_armor_piercing_armed(head_without_ap_row + [f"$SIR,{_AP_CELL[0]},{_AP_CELL[1]},,2,0,0,1,,*"])   # does not raise
 
 
+def test_f278_a_crit_perk_is_refused_at_runtime_on_a_weapon_with_a_second_ir_word():
+    """F278 (filed 2026-09-18, before any crit perk ships): `test_a_two_word_weapon_never_also_carries_a_crit_chance`
+    (test_weapon_derivations.py) already refuses a CATALOGUE row that declares both `wire.headset_dmg`
+    and `crit_pct` -- the crit flag rides on both IR words but the multiplier reaches only the barrel
+    word. That guard reads weapons.json only, and the bench has since found `$TMP` t10 writes crit
+    chance at RUNTIME, past it entirely. A perk carrying `crit_pct_add` must be refused the same way at
+    compile time, on either slot. No such perk exists yet, so a test-only row stands in for it.
+
+    Break the guard call in `compile()` (the `fx.get("crit_pct_add")` block) and this goes red."""
+    crit_perks = PerkCatalog([{"perk_id": "test_crit", "name": "Test Crit", "effects": {"crit_pct_add": 20}}])
+    c = Compiler(perks=crit_perks)
+    two_word = next(w["weapon_id"] for w in ROWS if (w.get("wire") or {}).get("headset_dmg"))
+    one_word = next(w["weapon_id"] for w in ROWS if not (w.get("wire") or {}).get("headset_dmg"))
+    try:
+        c.compile(_cfg(), _player({"weapons": [{"weapon_id": two_word}], "perk": "test_crit"}), _TEAMS)
+        raise AssertionError(f"compiled a crit-chance perk onto {two_word}, which carries a second IR word")
+    except ValueError as e:
+        assert "F278" in str(e) and two_word in str(e), str(e)
+    # secondary slot too -- the catalogue guard it mirrors refuses ANY row, not just a primary
+    try:
+        c.compile(_cfg(), _player({"weapons": [{"weapon_id": one_word}, {"weapon_id": two_word}], "perk": "test_crit"}), _TEAMS)
+        raise AssertionError(f"compiled a crit-chance perk with {two_word} armed as a secondary")
+    except ValueError as e:
+        assert "F278" in str(e) and two_word in str(e), str(e)
+    # CONTROL: a weapon with no second word carries the perk fine.
+    c.compile(_cfg(), _player({"weapons": [{"weapon_id": one_word}], "perk": "test_crit"}), _TEAMS)   # must not raise
+
+
 def test_perk_effects_wire_matches_the_compiled_frame_exactly():
     """S50 build 4: `FrameBundle.perk_effects` must be the compiled frame's OWN numbers, not a second,
     independently-derived guess -- break `Compiler.perk_effects_resolved()` so it reads the CATALOGUE
