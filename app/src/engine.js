@@ -221,11 +221,20 @@ const SPAWN_PROBE_MS = 2500;
 /** S16 (spec/node.md §3.17): the poison tick clock the node runs. A tick is one `$LIFE` write the node makes itself, and
  *  the gun answers a non-lethal one with `$HP` (bench 2026-09-09). That `$HP` is the TICK, not a hit: it must never
  *  become a `hit_taken` fact (MC would count a hit nobody fired) or a hit flash. This is how long after a tick write
- *  an `$HP` with no newer `$HIR` behind it is read as the tick's own echo. */
+ *  an `$HP` that moves the tick's pool by exactly the tick (`dotEchoMatches`) is read as the tick's own echo. */
 export const DOT_ECHO_MS = 1000;
 /** S16: a death this soon after our own tick write, with no newer `$HIR` latched, is the tick's kill, and the kill
  *  goes to the player who last applied the poison (Tony, 2026-09-18). A lethal negative answers `$LCD` at once. */
 export const DOT_KILL_MS = 1500;
+/** S16: is this pool change exactly the echo of the tick `echo` ({pool, n})? The tick's pool moved by
+ *  `min(n, before)` (a negative floors at 0) and the other two pools did not move. PURE. */
+export function dotEchoMatches(echo, before, after) {
+  for (const k of ['health', 'armor', 'shield']) {
+    const moved = before[k] - after[k];
+    if (k === echo.pool ? moved !== Math.min(echo.n, before[k]) || moved <= 0 : moved !== 0) return false;
+  }
+  return true;
+}
 /** S53 (bench 2026-09-18, the controlled redo): a fn-23 smoke holds the victim's live accuracy at 0 for about 6 s,
  *  then the gun restores it in one step (the V4_31 6000 ms timer). */
 export const SMOKE_MS = 6000;
@@ -726,8 +735,8 @@ export class Engine {
     this._writeLost = null;         // pl4: the `_lifeSeq` whose spawn/revive write resolved false (pool `write_lost`)
     this.hurtFired = false;         // low-health alert already sent this life
     this.poison = null;             // S16: {proto, per, tickMs, at, until, nextAt, by:{num,team}, ticks} while a poison stack ticks (spec/node.md §3.17)
-    this._dotEcho = null;           // S16: {at} of the last tick write, until its `$HP` echo is consumed (DOT_ECHO_MS)
-    this._dotKill = null;           // S16: {at, num, team} of the last tick write, read by `_death` (DOT_KILL_MS)
+    this._dotEcho = null;           // S16: {at, pool, n} of the last tick write, until its `$HP` echo is consumed (DOT_ECHO_MS)
+    this._dotKill = null;           // S16: {at, num, team} of the last HEALTH tick write, read by `_death` (DOT_KILL_MS)
     this.smoke = null;              // S53: {at, until} while a fn-23 smoke holds the gun's accuracy at 0
     this.gunAcc = null;             // S53: the live accuracy the gun last reported on `$ALCD` token 2 (active slot), null until one this life
     this._accZeroAt = null; this._smokeHirAt = null;   // S53: the two halves of a smoke landing, paired in `_smokeCheck`
@@ -2919,7 +2928,7 @@ export class Engine {
    *  missed rather than firing them in a burst. The stack ends straight after its last tick. */
   _poisonTick(now) {
     const p = this.poison; if (!p || now < p.nextAt) return;
-    if (p.nextAt <= p.until) this._poisonStrike(p, now);
+    if (p.nextAt <= p.until && now <= p.until) this._poisonStrike(p, now);   // a clock that stalled past `until` fires nothing
     if (this.poison !== p) return;   // the strike ended it (nothing does today; a guard for the next change)
     p.nextAt += p.tickMs;
     if (p.nextAt <= now) p.nextAt = now + p.tickMs;
@@ -2938,8 +2947,11 @@ export class Engine {
     const pool = this.shield > 0 ? 'shield' : this.armor > 0 ? 'armor' : 'health';
     const frame = pool === 'shield' ? `$LIFE,0,0,-${n},*` : pool === 'armor' ? `$LIFE,0,-${n},0,*` : `$LIFE,-${n},0,0,*`;
     const lethal = pool === 'health' && this.hp <= n;
-    this._dotEcho = { at: now };
-    this._dotKill = { at: now, num: p.by.num, team: p.by.team };
+    // The echo is matched on WHAT moved, not on timing alone: under sustained fire a `$HIR` lands between a tick
+    // write and its `$HP`, or just before the write, so "no newer `$HIR`" misread both ways (review 2026-09-19).
+    this._dotEcho = { at: now, pool, n };
+    // Only a HEALTH tick can kill. An armour or shield tick must not claim a death that lands in the next 1.5 s.
+    if (pool === 'health') this._dotKill = { at: now, num: p.by.num, team: p.by.team };
     p.ticks++;
     this._write([frame], `poison tick ${p.ticks}: -${n} ${pool}${lethal ? ' (lethal)' : ''}`);
     if (!lethal) this._event('poison_tick');
@@ -4481,6 +4493,7 @@ export class Engine {
     // dropped entirely -- no hit_taken fact, no HUD feedback, no score. See FOLLOWUPS Q12.
     if (shield === undefined) shield = this.shield;
     const before = this.hp + this.armor + this.shield;
+    const pools0 = { health: this.hp, armor: this.armor, shield: this.shield };   // S16: what `dmg` measures from, read by the echo match
     if (this._prevHp === undefined) { this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield; }
     // A16 §3.1/§5: which pool actually moved -- health, then armour, then shield (mirrors poolgauge.changed_pool:
     // BRX depletes shield -> armour -> health, so when a hit spills across two pools the INNER one is the
@@ -4491,9 +4504,11 @@ export class Engine {
     if (dmg > 0) this._actSeq++;   // pl4: nor past a hit
     // S16: the `$HP` that answers our own poison tick is the TICK, not a hit -- no `hit_taken` fact (MC would score a
     // hit nobody fired), no pain grunt, no hit flash. It is the tick's echo when it lands inside DOT_ECHO_MS of the
-    // write and no `$HIR` has arrived since, so a real hit landing in the same second still reads as a hit.
+    // write AND the tick's pool is the only pool that moved, by exactly the tick. A negative floors at 0, so the tick
+    // moves the pool by `min(n, what the pool held before this frame)`. A real hit moves a different amount or a
+    // different pool, so it reads as a hit whichever order its `$HIR` and `$HP` take around the tick.
     const dotEcho = !!(dmg > 0 && this._dotEcho && this.now() - this._dotEcho.at <= DOT_ECHO_MS
-      && (!this.latch || this.latch.at < this._dotEcho.at));
+      && dotEchoMatches(this._dotEcho, pools0, { health: hp, armor, shield }));
     if (dotEcho) this._dotEcho = null;
     // S29: damage RESTARTS the recharge clock and abandons a refill already running -- Callsign does the same
     // (`DetectRecoverShieldCommand._lastHitTime`), and it is the whole mechanic: the shield comes back only

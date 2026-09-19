@@ -48,6 +48,19 @@ class Bench:
             self.events.append(kind)
             orig_event_now(kind, sound)
         self.st._event_now = _tap   # type: ignore[method-assign]
+        # `hold` keeps the gun's pool answers ($HP/$LCD) out of the stage until `release()`, so a test can put
+        # other frames between a tick write and its answer (engine.js's harness has the same `gun.hold`).
+        self.hold = False
+        self.held: list[str] = []
+        orig_drain = self.tagger.drain
+
+        def _drain() -> list[str]:
+            out = orig_drain()
+            if not self.hold:
+                return out
+            self.held += [f for f in out if f.startswith(("$HP,", "$LCD,"))]
+            return [f for f in out if not f.startswith(("$HP,", "$LCD,"))]
+        self.tagger.drain = _drain   # type: ignore[method-assign]
 
     async def start(self) -> "Bench":
         st = self.st
@@ -101,6 +114,20 @@ class Bench:
         self.tagger.hp, self.tagger.armor, self.tagger.shield = hp, armor, shield
         self.st._inject_rx(f"$HP,{hp},{armor},{shield},*")
         await self._settle()
+        return self
+
+    async def release(self) -> "Bench":
+        """Hand the stage the held answers now, in order, and stop holding."""
+        self.hold = False
+        held, self.held = self.held, []
+        for f in held:
+            self.st._inject_rx(f)
+        await settle(self.st)
+        return self
+
+    async def rx(self, frame: str) -> "Bench":
+        self.st._inject_rx(frame)
+        await settle(self.st)
         return self
 
     def ticks(self) -> list[str]:
@@ -245,4 +272,92 @@ def test_no_ticks_after_end_or_panic():
         n2 = len(c.ticks())
         await c.adv(6.0)
         assert len(c.ticks()) == n2, "no ticks after panic"
+    asyncio.run(go())
+
+
+# ---- review 2026-09-19: the echo is matched on WHAT moved, not on timing alone -------------------------
+
+
+def test_the_ticks_hp_queued_behind_a_real_hir_is_still_the_tick():
+    """engine.js: 'the tick's $HP queued BEHIND a real $HIR is still the tick'."""
+    async def go():
+        b = await Bench().start()
+        await b.set_pools(45, 70, 0)
+        await b.toxin(3, 2, 0)
+        b.events.clear()
+        b.hold = True
+        await b.adv(1.0)
+        assert b.ticks() == ["$LIFE,0,-4,0,*"]
+        assert b.held == ["$HP,45,66,0,*"], "the tick's answer is still in flight"
+        await b.rx("$HIR,0,0,5,2,9,0,0,*")      # a real hit lands between the tick write and its $HP
+        await b.release()
+        assert b.events.count("hit_taken") == 0, "the tick's $HP moved armour by exactly 4: the tick, not a hit"
+        b.tagger.armor = 57
+        await b.rx("$HP,45,57,0,*")
+        assert b.events.count("hit_taken") == 1, "the real hit books exactly one hit"
+    asyncio.run(go())
+
+
+def test_a_real_hit_whose_hir_came_just_before_the_tick_is_not_swallowed_as_the_echo():
+    """engine.js: 'a real hit whose $HIR came just BEFORE the tick write is not swallowed'."""
+    async def go():
+        b = await Bench().start()
+        await b.set_pools(45, 70, 0)
+        await b.toxin(3, 2, 0)
+        await b.adv(0.75)
+        b.events.clear()
+        await b.rx("$HIR,0,0,5,2,9,0,0,*")      # the real hit, 250 ms before the tick
+        b.hold = True
+        await b.adv(0.25)
+        assert b.ticks() == ["$LIFE,0,-4,0,*"]
+        b.hold, b.held = False, []              # the gun took the hit first: 70 -> 61 (hit) -> 57 (tick)
+        b.tagger.armor = 57
+        await b.rx("$HP,45,61,0,*")
+        assert b.events.count("hit_taken") == 1, "the real hit's $HP moved armour by 9, not 4: a hit"
+        await b.rx("$HP,45,57,0,*")
+        assert b.events.count("hit_taken") == 1, "the tick's own $HP after it is the echo"
+    asyncio.run(go())
+
+
+def test_an_lcd_between_a_tick_write_and_its_hp_does_not_use_up_the_echo():
+    """engine.js's LCD case never reaches `_onHp`, so the phone keeps `_dotEcho` over an $LCD. So must the
+    stage, and the $LCD books no hit either (engine.js: 'an $LCD between a tick write and its $HP')."""
+    async def go():
+        b = await Bench().start()
+        await b.set_pools(45, 70, 0)
+        await b.toxin(3, 2, 0)
+        b.events.clear()
+        b.hold = True
+        await b.adv(1.0)
+        await b.rx("$LCD,45,66,0,0,30,90,*")    # a poll answer that already carries the tick
+        echo = b.st._dot_echo
+        assert echo is not None, "the echo is still waiting for the tick's $HP"
+        assert (echo["pool"], echo["n"]) == ("armor", 4)
+        assert b.events.count("hit_taken") == 0, "an $LCD books no hit, exactly as on the phone"
+        assert (b.st.hp, b.st.armor) == (45, 66), "but it does set the pools"
+    asyncio.run(go())
+
+
+def test_a_clock_that_stalled_past_the_end_of_the_stack_fires_no_late_tick():
+    async def go():
+        b = await Bench().start()
+        await b.toxin(3, 2, 8)
+        await b.adv(6.0, step=6.0)              # one poll, after `until`
+        assert b.ticks() == [], "the stack ran out while the poll slept"
+        assert b.st.poison is None
+    asyncio.run(go())
+
+
+def test_an_armour_tick_does_not_claim_an_unrelated_death():
+    async def go():
+        b = await Bench().start()
+        await b.set_pools(45, 70, 0)
+        await b.toxin(3, 2, 0)
+        await b.adv(1.0)
+        assert b.ticks() == ["$LIFE,0,-4,0,*"], "the tick hit armour"
+        b.tagger.hp, b.tagger.armor = 0, 0
+        await b.rx("$HP,0,0,0,*")               # a death with no newer $HIR (a lost word, an ambient hill)
+        assert not b.st.alive
+        assert not any("poison kill credited" in e["text"] for e in b.st.log), \
+            "only a health tick can kill, so this is not a poison kill"
     asyncio.run(go())

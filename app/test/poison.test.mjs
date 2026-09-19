@@ -15,10 +15,12 @@ const DELAY = 5000;
 function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 /** A live match with a fake gun that answers our `$LIFE` ticks the way the bench measured: per pool, no spill, floor
- *  at 0, `$HP` for a non-lethal write and `$LCD` (never `$HP`) for a lethal one. */
+ *  at 0, `$HP` for a non-lethal write and `$LCD` (never `$HP`) for a lethal one. With `gun.hold` set, the gun's
+ *  answers wait in `held` until `release()`, so a test can put other frames between a tick write and its `$HP`. */
 function harness({ dot = DOT, stun } = {}) {
   const writes = []; const facts = []; let clock = 1_000_000;
-  const gun = { hp: 45, armor: 70, shield: 0, auto: true };
+  const gun = { hp: 45, armor: 70, shield: 0, auto: true, hold: false };
+  const held = [];
   const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
   const config = { config_id: golden.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 600,
     respawn: { type: 'auto', delay_s: DELAY / 1000 }, scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams,
@@ -35,7 +37,7 @@ function harness({ dot = DOT, stun } = {}) {
     }
   };
   const pending = [];
-  const queueFrame = f => pending.push(f);
+  const queueFrame = f => (gun.hold ? held : pending).push(f);
   eng = new Engine({ writer: fr => { writes.push(...fr); answer(fr); }, emit: f => facts.push({ ...f, at: clock }), report: () => {}, now: () => clock,
     synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
@@ -45,7 +47,9 @@ function harness({ dot = DOT, stun } = {}) {
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
   const flush = () => { while (pending.length) eng.feedFrame(pending.shift()); };
   const h = {
-    eng, facts, writes, gun,
+    eng, facts, writes, gun, held,
+    /** feed the held answers now, in order, and stop holding */
+    release() { gun.hold = false; while (held.length) eng.feedFrame(held.shift()); return h; },
     adv(ms, step = 250) { const end = clock + ms; while (clock < end) { clock = Math.min(end, clock + step); eng.tick(); flush(); } return h; },
     kind(k) { return facts.filter(f => f.type === k); },
     /** a Toxin Rifle hit as the gun reports it: `$HIR` on protocol 11, then the direct damage off the outer pool */
@@ -113,6 +117,87 @@ test('S16: the tick\'s own $HP is not a hit: no hit_taken fact, no hit moment', 
   assert.notEqual(h.eng.state().moment && h.eng.state().moment.kind === 'hit' && h.eng.state().moment.at === h.clock, true);
   h.eng.feedFrame('$HIR,0,0,5,2,9,0,0,*'); h.eng.feedFrame('$HP,45,53,0,*');
   assert.equal(h.kind('hit_taken').length, 2, 'a real hit inside the same second still counts');
+});
+
+test('S16: the tick\'s $HP queued BEHIND a real $HIR is still the tick; the real hit\'s own $HP is the hit', () => {
+  const h = harness();
+  h.setPools(45, 70, 0);
+  h.toxin(3, 2, 0);
+  const n0 = h.kind('hit_taken').length;
+  h.gun.hold = true;
+  h.adv(1000);
+  assert.deepEqual(h.ticks(), ['$LIFE,0,-4,0,*']);
+  assert.deepEqual(h.held, ['$HP,45,66,0,*'], 'the tick\'s answer is still in flight');
+  h.eng.feedFrame('$HIR,0,0,5,2,9,0,0,*');           // a real hit lands between the tick write and its $HP
+  h.release();
+  assert.equal(h.kind('hit_taken').length, n0, 'the tick\'s $HP moved armour by exactly 4: the tick, not a hit');
+  h.gun.armor = 57; h.eng.feedFrame('$HP,45,57,0,*');
+  const hits = h.kind('hit_taken');
+  assert.equal(hits.length, n0 + 1, 'the real hit books exactly one hit');
+  assert.equal(hits[hits.length - 1].dmg, 9);
+  assert.equal(hits[hits.length - 1].shooter_num, 5);
+});
+
+test('S16: a real hit whose $HIR came just BEFORE the tick write is not swallowed as the tick\'s echo', () => {
+  const h = harness();
+  h.setPools(45, 70, 0);
+  h.toxin(3, 2, 0);
+  const n0 = h.kind('hit_taken').length;
+  h.adv(750);
+  h.eng.feedFrame('$HIR,0,0,5,2,9,0,0,*');           // the real hit, 250 ms before the tick
+  h.gun.hold = true;
+  h.adv(250);
+  assert.deepEqual(h.ticks(), ['$LIFE,0,-4,0,*']);
+  h.held.length = 0; h.gun.hold = false;              // the gun took the hit first: 70 -> 61 (hit) -> 57 (tick)
+  h.gun.armor = 57;
+  h.eng.feedFrame('$HP,45,61,0,*');
+  let hits = h.kind('hit_taken');
+  assert.equal(hits.length, n0 + 1, 'the real hit\'s $HP moved armour by 9, not 4: a hit');
+  assert.equal(hits[hits.length - 1].dmg, 9);
+  h.eng.feedFrame('$HP,45,57,0,*');
+  hits = h.kind('hit_taken');
+  assert.equal(hits.length, n0 + 1, 'the tick\'s own $HP after it is the echo');
+});
+
+test('S16: an $LCD between a tick write and its $HP does not use up the echo', () => {
+  const h = harness();
+  h.setPools(45, 70, 0);
+  h.toxin(3, 2, 0);
+  h.gun.hold = true;
+  h.adv(1000);
+  h.eng.feedFrame('$LCD,45,66,0,0,30,90,*');          // a poll answer that already carries the tick
+  assert.ok(h.eng._dotEcho, 'the $LCD path never reaches _onHp, so the echo is still waiting');
+  assert.deepEqual(h.eng._dotEcho && [h.eng._dotEcho.pool, h.eng._dotEcho.n], ['armor', 4]);
+});
+
+test('S16: the echo match is exact, and a tick that empties a pool moves it by what the pool held', async () => {
+  const { dotEchoMatches } = await import('../src/engine.js');
+  const e = { pool: 'armor', n: 4 };
+  assert.equal(dotEchoMatches(e, { health: 45, armor: 70, shield: 0 }, { health: 45, armor: 66, shield: 0 }), true);
+  assert.equal(dotEchoMatches(e, { health: 45, armor: 2, shield: 0 }, { health: 45, armor: 0, shield: 0 }), true, 'floor at 0: 2, not 4');
+  assert.equal(dotEchoMatches(e, { health: 45, armor: 70, shield: 0 }, { health: 45, armor: 61, shield: 0 }), false, 'a 9 is a hit');
+  assert.equal(dotEchoMatches(e, { health: 45, armor: 70, shield: 0 }, { health: 41, armor: 70, shield: 0 }), false, 'the wrong pool');
+  assert.equal(dotEchoMatches(e, { health: 45, armor: 70, shield: 0 }, { health: 40, armor: 66, shield: 0 }), false, 'a second pool moved too');
+});
+
+test('S16: a clock that stalled past the end of the stack fires no late tick', () => {
+  const h = harness();
+  h.toxin(3, 2);
+  h.adv(6000, 6000);                                  // one tick() call, after `until`
+  assert.equal(h.ticks().length, 0, 'the stack ran out while the webview slept');
+  assert.equal(h.eng.state().poison, null);
+});
+
+test('S16: an ARMOUR tick does not claim an unrelated death inside 1.5 s', () => {
+  const h = harness();
+  h.setPools(45, 70, 0);
+  h.toxin(3, 2, 0);
+  h.adv(1000);
+  assert.deepEqual(h.ticks(), ['$LIFE,0,-4,0,*'], 'the tick hit armour');
+  h.eng.feedFrame('$HP,0,0,0,*');                     // a death with no newer $HIR (a lost word, an ambient hill)
+  const d = h.kind('death');
+  assert.equal(d.length, 1);
+  assert.equal(d[0].dot, undefined, 'only a health tick can kill, so this is not a poison kill');
 });
 
 test('S16: a second hit REFRESHES to full duration, keeps the cadence, never stacks, and names the new applier', () => {
