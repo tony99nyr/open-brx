@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import QRCode from 'qrcode';
 import { armoryGate, backhaulOffer, cureLabel, GUN_FLAPPING_LINE, poolStaleLabel, isRoutableLanIp, reachLabel, reachTooltip, registrySig, sentenceCase, splitBlocker, staleReachReason } from '../api/derive';
-import { STALE_AFTER_MS, type LogView, type ReadinessRow, type TunnelStatus } from '../api/types';
+import { type LogView, type ReadinessRow, type TunnelStatus } from '../api/types';
 import { setNotice } from '../notice';
 import { useStore } from '../store';
 import { CHAMFER, F, T, TAB, fmtAge } from '../tokens';
@@ -519,7 +519,7 @@ function AppVerRow({ app_ver, platform }: { app_ver?: string | null; platform?: 
  *  whole console down with it for the first ~300 ms of every session — the e2e walk had been
  *  sleeping past it rather than seeing it (review 2026-09-12). The skill's rule: write down what
  *  the UI does when a field is absent, because an older server or an earlier snapshot is normal. */
-function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { tail?: string } }[]; n: { node_id?: string | null; gun_tail?: string | null; gun_name?: string | null; arm_state?: string | null; last_seen_ms?: number | null; player_id?: string | null; battery?: number | null; fw?: string | null; app_ver?: string | null; platform?: string | null; log?: LogView | null; preflight?: { phone_batt?: number | null } | null } }) {
+function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { tail?: string } }[]; n: { node_id?: string | null; gun_tail?: string | null; gun_name?: string | null; arm_state?: string | null; last_seen_ms?: number | null; player_id?: string | null; battery?: number | null; fw?: string | null; app_ver?: string | null; platform?: string | null; log?: LogView | null; preflight?: { phone_batt?: number | null } | null; stale?: boolean | null } }) {
   const { state, run, api } = useStore();
   const [name, setName] = useState('');
   const hasGun = !!n.gun_name;
@@ -554,20 +554,27 @@ function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { t
       if (ok) setName('');
     } finally { setClaiming(false); }
   };
-  const accent = hasGun ? T.acc : T.warn;
+  // 2026-09-19: `n.stale` is the server's own STALE_AFTER_MS judgement (state.py `snapshot()`), not a
+  // threshold re-derived here from `last_seen_ms` -- this card used to have NONE (a phone whose storage
+  // was cleared and rejoined under a new node_id kept reading LINKED/KITTED here, green, for as long as
+  // the old node_id's record survived). A stale card is OFFLINE: `arm_state`, battery and firmware are
+  // last-known facts, not current ones, and the claim form is withdrawn — there is nobody to push a
+  // claim to.
+  const stale = !!n.stale;
+  const accent = stale ? T.micro : hasGun ? T.acc : T.warn;
   const age = n.last_seen_ms ?? 0;
   return (
-    <div data-node-card={n.node_id ?? '?'} style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${accent}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 11, clipPath: CHAMFER.tr12 }}>
+    <div data-node-card={n.node_id ?? '?'} data-node-stale={stale ? '1' : '0'} style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${accent}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 11, clipPath: CHAMFER.tr12, opacity: stale ? 0.7 : 1 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
         <span style={{ font: F.osw(700, 18), letterSpacing: '.08em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{hasGun ? n.gun_name : 'NO GUN SET'}</span>
-        <Tag color={accent}>{(n.arm_state ?? 'unknown').toUpperCase()}</Tag>
+        <Tag color={accent}>{stale ? 'OFFLINE' : (n.arm_state ?? 'unknown').toUpperCase()}</Tag>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '82px 1fr', gap: '6px 10px', alignItems: 'center' }}>
         <Micro>PHONE</Micro><Val color={T.dim}>{(n.node_id ?? '—').slice(0, 12)}</Val>
-        <Micro>LINK</Micro><Val color={age > STALE_AFTER_MS ? T.warn : T.dim}>{fmtAge(age)} AGO</Val>
-        {n.preflight?.phone_batt != null && (<><Micro>PH BATT</Micro><Val color={n.preflight.phone_batt < 20 ? T.bad : T.dim}>{n.preflight.phone_batt}%</Val></>)}
-        {n.battery != null && (<><Micro>GUN BATT</Micro><Val color={T.dim}>{n.battery}%</Val></>)}
-        {n.fw && (<><Micro>FIRMWARE</Micro><Val color={T.dim}>{n.fw}</Val></>)}
+        <Micro>LINK</Micro><Val color={stale ? T.warn : T.dim}>{fmtAge(age)} AGO{stale && ' — OFFLINE'}</Val>
+        {!stale && n.preflight?.phone_batt != null && (<><Micro>PH BATT</Micro><Val color={n.preflight.phone_batt < 20 ? T.bad : T.dim}>{n.preflight.phone_batt}%</Val></>)}
+        {!stale && n.battery != null && (<><Micro>GUN BATT</Micro><Val color={T.dim}>{n.battery}%</Val></>)}
+        {!stale && n.fw && (<><Micro>FIRMWARE</Micro><Val color={T.dim}>{n.fw}</Val></>)}
         {/* A29: always rendered, even when the phone has not said — "UNKNOWN" is the answer the
             operator needs (an app that predates A29 reports nothing at all), and a row that simply
             vanishes reads as "fine". The chip itself, sha/`-dirty`/platform and all, is `AppVerRow` —
@@ -577,8 +584,12 @@ function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { t
       </div>
       {/* A25: always asks, whatever `log_sync` is set to — `reason: "manual"` is never gated. */}
       <PullLogButton node_id={n.node_id ?? ''} />
-      {!hasGun && <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.warn }}>▲ WAITING FOR ITS GUN — SET IT ON THE PHONE</div>}
-      {hasGun && !n.player_id && parkedHolder && (
+      {!stale && !hasGun && <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.warn }}>▲ WAITING FOR ITS GUN — SET IT ON THE PHONE</div>}
+      {/* 2026-09-19: no claim, no standby offer, nothing to act on -- there is no live socket to push a
+          claim to, and a claim made now would sit unacknowledged exactly like the assign this same fix
+          refuses on a stale station. */}
+      {stale && <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro }}>NOT HEARD FROM RECENTLY — WAITING TO RECONNECT</div>}
+      {!stale && hasGun && !n.player_id && parkedHolder && (
         <div data-standby-holder={parkedHolder.player_id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', borderTop: `1px solid ${T.line2}`, paddingTop: 10 }}>
           <span style={{ flex: 1, minWidth: 0, font: F.chk(700, 11), letterSpacing: '.16em', color: T.micro }}>ON STANDBY · {parkedHolder.display}</span>
           {standDownLocked(state?.phase)
@@ -586,7 +597,7 @@ function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { t
             : <PlayButton p={parkedHolder} />}
         </div>
       )}
-      {hasGun && !n.player_id && !gunClaimed && !parkedHolder && (
+      {!stale && hasGun && !n.player_id && !gunClaimed && !parkedHolder && (
         <form onSubmit={e => { e.preventDefault(); claim(); }} style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: `1px solid ${T.line2}`, paddingTop: 10 }}>
           <div style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.acc }}>▸ WHO CARRIES THIS?</div>
           <input value={name} onChange={e => { setName(e.target.value); setClaimErr(null); }} placeholder="GAMERTAG" maxLength={24} aria-label={`gamertag for ${n.gun_name}`}

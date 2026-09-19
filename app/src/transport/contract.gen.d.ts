@@ -715,6 +715,13 @@ export interface NodeView {
   arm_state: ArmState;
   last_seen_ms: number;
   synced: boolean;
+  /** 2026-09-19 (two field bugs, a station and a rejoined phone kept "online"): the net layer's own
+   *  freshness flag (STALE_AFTER_MS = 8 s of silence,
+   *  `net.py`'s `_stale_loop`/`on_stale`/`on_return`), projected here so a client reads MC's judgement
+   *  instead of re-deriving one from `last_seen_ms` with its own, disagreeing threshold. A stale node's
+   *  `gun_linked`/`preflight`/`arm_state` are last-known facts, not current ones — the console must show
+   *  OFFLINE and treat them as unknown, never green/connected. */
+  stale: boolean;
   gun_name?: string;
   gun_tail?: string;
   player_id?: string;
