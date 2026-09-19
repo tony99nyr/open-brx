@@ -1491,7 +1491,7 @@ That is also what makes it the natural counter to the Haze and to any player who
 only weapon that keeps working after the shooting stops. Refresh rather than stack is deliberate; two
 poison shooters must not double the clock, or a pair becomes an execution.
 
-**Simulated 2026-09-19** (`mcp/tools/toxin_balance_sim.py`, two teams of 2 to 10, one toxin carrier a
+**Simulated 2026-09-19** (`mcp/tools/balance_sim.py --preset toxin`, two teams of 2 to 10, one toxin carrier a
 side, every hit poisons). The shipped row sits at kill-rate parity with the Assault Rifle: 1.00 averaged
 over team sizes and accuracies, and 48% in a 1v1. About 17% of its kills land after contact broke. It
 drifts from 1.09 in 2v2 to 0.94 in 10v10: bigger teams focus fire, the poison refreshes instead of
@@ -1502,6 +1502,44 @@ a line-of-sight window (short peeks push the toxin to 1.13, long ones pull it to
 
 ⚠️ It stays `hidden` until `spec/node.md` §3.17 is built. Enabled early it is simply a worse SMG, and
 `caution` on the row says so.
+
+### 7.5c The balance sim, for every weapon
+
+`mcp/tools/balance_sim.py` runs the same fight model as the toxin study for every weapon in the
+catalogue. It reads each weapon's numbers from `WeaponCatalog`, and the pool and respawn delay from the
+game default. Nothing is typed into the tool. It is a library too, so a test or a later MC feature can
+call it.
+
+Run it from any folder. The CSV and a short summary go to the current directory.
+
+```
+python3 mcp/tools/balance_sim.py                      # duel matrix + team table, visible weapons
+python3 mcp/tools/balance_sim.py --include-hidden     # the hidden rows too
+python3 mcp/tools/balance_sim.py --venue indoor --no-range
+python3 mcp/tools/balance_sim.py --weapon amr --sweep dmg=18..24 crit_pct=0,30
+python3 mcp/tools/balance_sim.py --preset toxin       # the §7.5b sweep, about 45 s
+```
+
+The team number is a kill-rate ratio against the Assault Rifle, with one test weapon on each side of
+2 to 10 players. The summary ranks weapons by their distance from 1.00. It flags a weapon as dominant
+or dominated when the 95% interval stays on one side of 1.00 at every team size.
+
+The answer moves most with these assumptions. All of them are invented, and each has a flag:
+
+- **Range** (`--no-range`, `--venue`). Each fight draws close, mid or long from the venue. A shot
+  beyond a weapon's `range_band` loses half its hit chance per band. With range on, every close
+  weapon falls behind outdoors. With range off, the Rocket Launcher dominates.
+- **Tactical reload** (`--no-tactical-reload`). A player below half a magazine reloads between
+  fights. A long reload then costs less.
+- **Focus fire and line of sight** (`--contact-mean-s`, `--gap-mean-s`). These are the §7.5b numbers
+  again. Short peeks (1 s) lift the weapons with a big first hit: the Charge Rifle goes from 1.37 to
+  1.60 and the Sniper Rifle from 0.75 to 0.89. They hurt the Rail Gun, which must charge first.
+- **Hit chance** (`--hit-prob`). One number for every weapon: the sim has no recoil or stance.
+
+Run on 2026-09-19 (outdoor, range on): the Charge Rifle dominates at about 1.4, because it opens every
+fight with a pre-built 85. The sidearms, the Shotgun and the Rail Gun sit at 0.4 to 0.5. The Burst
+Rifle is the only weapon at parity with the anchor. Read the sidearms against their secondary slot,
+not against a primary.
 
 ### 7.7 Armour Piercing takes two levers, not one
 
