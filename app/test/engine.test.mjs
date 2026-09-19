@@ -5698,6 +5698,9 @@ test('flapping: BrxLink\'s flap state reaches the HUD state and the status body 
   assert.equal(h.eng.statusBody().preflight.gun_flapping, true);
   h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   assert.equal(h.eng.statusBody().preflight.gun_flapping, true, 'a momentary link does not clear it: only BrxLink does');
+  h.eng.setGunFlapping({ count: 3, next_retry_at: 12345, quiet: true });   // game day 2026-09-19: the quiet period
+  assert.equal(h.eng.state().gunFlapping.quiet, true, 'the HUD hears the quiet period');
+  assert.equal(h.eng.statusBody().preflight.gun_flapping, true, 'MC keeps gun_flapping during the quiet period');
   h.eng.setGunFlapping(null);
   assert.equal(h.eng.statusBody().preflight.gun_flapping, false);
 });

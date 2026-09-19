@@ -160,7 +160,7 @@ export function startDemo({ engine, log }) {
       // link + MC
       linkGun: () => engine.onBleConnected(gunObj), dropGun: () => engine.onBleDropped(), relinkGun: () => engine.onBleConnected(),
       // bench 2026-09-17: the headset is off, so the gun keeps dropping the link (BrxLink.flapping)
-      flapGun: (count = 3) => { engine.onBleDropped(); engine.setGunFlapping({ count, next_retry_at: Date.now() + 30000 }); },
+      flapGun: (count = 3, quiet = false) => { engine.onBleDropped(); engine.setGunFlapping({ count, next_retry_at: Date.now() + 30000, quiet }); },
       resyncProbe: () => engine._beginResync('demo'),   // the trigger-first resync prompt (a lobby/armed reconnect, or a resume) — a live rejoin RECONCILES instead (S7.1)
       battery: pct => engine.feedFrame(`$VOLTS,8101,3789,${pct},48,*`),
       mcBound: () => engine.setWsState('bound'), mcLost: () => engine.setWsState('closed'),
@@ -178,6 +178,8 @@ export function startDemo({ engine, log }) {
       // The same room a second later: every signal reading has moved, and two of them have swapped
       // which is louder. Not one row may move, and not one row node may be replaced.
       scanAgain: () => paintScan(scanRoom(NOISY_ROOM.map((d, i) => ({ ...d, rssi: -20 - ((i * 37) % 70) })), null, true)),
+      // game day 2026-09-19: the picker with an empty list and no scan running (SCAN AGAIN)
+      pickerIdle: (active = false) => { const h = hud(); if (!h) return; h.scanActive = active; h.setScan([]); h.render(engine.state()); },
       scanOther: () => { const h = hud(); if (!h) return; h.setScanOther(!h.scanOther); h.render(engine.state()); },
       // F211: the picker with Bluetooth off (game-test-2026-09-13.md C2). `platform` defaults to 'web'
       // (no enable/settings buttons — iOS has neither); pass 'android' for the button variant.

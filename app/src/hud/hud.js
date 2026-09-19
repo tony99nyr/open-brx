@@ -237,6 +237,7 @@ export class Hud {
     this.skin = root.querySelector('#skin');   // the day/night skin switch (a sibling of #hud, so it needs its own listener)
     if (this.skin) this.skin.addEventListener('click', e => this._click(e));
     this.sig = null; this.scan = []; this.link = {}; this.diagData = {}; this.mcUrl = '';
+    this.scanActive = true;   // game day 2026-09-19: app.js sets whether a picker scan really runs
     this.scanOther = false;   // F258: the "other devices" fold on the picker, closed to start with
     // F211: adapter-off state, app.js-owned (like `mcUrl`/`discovered` below) — the picker's own concern,
     // never round-tripped through the engine. `platform` gates the Android-only enable/settings buttons.
@@ -575,7 +576,8 @@ export class Hud {
   // never come and go, so a row node survives every re-render and a tap can land on it.
   _scanList() {
     return `<div class="list"><div class="taggers"></div>
-      <div class="small nonefound">no taggers yet…</div>
+      <div class="small nonefound">Scanning…</div>
+      <button class="bigbtn ghost rescan" data-act="onScanAgain" hidden><span class="unskew">SCAN AGAIN</span></button>
       <button class="othertog" data-act="onScanOther" hidden><span class="unskew"></span></button>
       <div class="others" hidden></div></div>`;
   }
@@ -608,6 +610,14 @@ export class Hud {
     this._patchScanRows(other, far);
     const hideNone = near.length > 0;
     if (none.hidden !== hideNone) none.hidden = hideNone;
+    // Game day 2026-09-19: the list showed empty with no scan running, and nothing said so. Now an empty
+    // list says whether a scan runs, and always offers SCAN AGAIN.
+    const noneTxt = this.scanActive ? 'Scanning…' : 'No guns found. Turn the gun on, then tap Scan again.';
+    if (none.textContent !== noneTxt) none.textContent = noneTxt;
+    const rescan = list.querySelector('.rescan');
+    if (rescan && rescan.hidden !== hideNone) rescan.hidden = hideNone;
+    const sc = this.hudEl.querySelector('.idle .sc');
+    if (sc && sc.hidden === this.scanActive) sc.hidden = !this.scanActive;
     if (tog.hidden !== (far.length === 0)) tog.hidden = far.length === 0;
     const lab = `${this.scanOther ? '▾' : '▸'} OTHER DEVICES (${far.length})`;
     const span = tog.firstElementChild;
@@ -1431,7 +1441,10 @@ export class Hud {
     // Bench 2026-09-17: a gun with its headset off accepts the link and drops it within seconds, over and
     // over. The GUN LINK LOST pill then blinked on and off with every cycle. While the phone counts 2+
     // quick drops in a row, one steady line says the likely cause, whether the link is up this second or not.
-    if (st.phase !== 'idle' && st.gunFlapping) pills.push(`<span class="pill warn" data-flap="${st.gunFlapping.count}"><span class="unskew">HEADSET OFF? TURN THE HEADSET ON.</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
+    // Game day 2026-09-19: after 3 flaps in a row the phone stops reconnecting for 30 s (BrxLink's quiet
+    // period). The line says what fixes it; RECONNECT NOW ends the quiet period at once. It shows in every phase.
+    if (st.gunFlapping && st.gunFlapping.quiet) pills.push(`<span class="pill bad" data-flap="${st.gunFlapping.count}" data-quiet="1"><span class="unskew">GUN KEEPS DROPPING. POWER-CYCLE THE HEADSET, THEN THE GUN RECONNECTS.</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
+    else if (st.phase !== 'idle' && st.gunFlapping) pills.push(`<span class="pill warn" data-flap="${st.gunFlapping.count}"><span class="unskew">HEADSET OFF? TURN THE HEADSET ON.</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
     else if (st.phase !== 'idle' && !st.bleUp) pills.push(`<button class="pill bad" data-act="onReconnectGun"><span class="unskew">GUN LINK LOST — TAP TO RECONNECT</span></button>`);
     if (st.moment && st.moment.kind === 'go' && st.phase === 'live' && st.bleUp) pills.push(`<span class="pill ok"><span class="unskew">WEAPONS HOT</span></span>`);   // never 'hot' while the gun link is down
     const prompt = st.resync ? `<div class="prompt"><span class="unskew"><span class="pl">GUN RELINKED</span><span class="pi">${esc(st.resync.prompt).toUpperCase()}</span></span></div>` : '';

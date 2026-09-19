@@ -42,14 +42,23 @@ export function directWriter(plugin = BluetoothLe, platform = () => Capacitor.ge
 // a connect that SUCCEEDS and then drops seconds later never fails, so a single flap reconnects at
 // once (as any ordinary drop should), but a REPEATING flap now backs off instead of spinning as fast
 // as the hardware allows.
-const FLAP_MS = 5000;
-// Bench 2026-09-17: a flat 5 s wait still reconnected every 5-6 s forever, and the tagger says "phone
-// connected" on every connect. Each further quick drop now waits longer: 5 s, 15 s, 30 s, then 60 s.
-// The steps are multiples of `flapMs`, so a test can shrink the whole schedule with one option.
-const FLAP_STEPS = [1, 3, 6, 12];
-/** How long to wait after the `streak`th quick drop in a row (streak 2 is the first wait). */
-export function flapDelay(streak, flapMs = FLAP_MS) {
-  return flapMs * FLAP_STEPS[Math.min(Math.max(streak - 2, 0), FLAP_STEPS.length - 1)];
+// Game day 2026-09-19 (p4/p5 phone logs): a gun whose headset link is bad resets its own radio about
+// every 6 s ($RADSK), so the link held 4-8 s each time. With a 5 s window most of those drops did not
+// count as quick, and the count was cleared 5 s after each connect, so the back-off never grew.
+//  - FLAP_WINDOW_MS: a drop this soon after the connect is a flap.
+//  - FLAP_HOLD_MS: the flap count clears only after the link has held this long.
+//  - FLAP_BACKOFF_MS: the wait after the 2nd flap in a row.
+//  - From the QUIET_AFTER-th flap in a row, the phone does not reconnect for QUIET_MS (the quiet
+//    period). The HUD tells the player to power-cycle the headset. A manual connect ends it at once.
+export const FLAP_WINDOW_MS = 20000;
+export const FLAP_HOLD_MS = 30000;
+export const FLAP_BACKOFF_MS = 5000;
+export const QUIET_AFTER = 3;
+export const QUIET_MS = 30000;
+/** How long to wait after the `streak`th flap in a row (0 below streak 2). */
+export function flapDelay(streak, backoffMs = FLAP_BACKOFF_MS, quietMs = QUIET_MS) {
+  if (streak < 2) return 0;
+  return streak >= QUIET_AFTER ? quietMs : backoffMs;
 }
 
 // Bench 2026-09-17 (match e6cbe0ae09): RELINK GUN in a LIVE match took the phone off the gun for 34 s. The
@@ -103,7 +112,8 @@ export class BrxLink {
   constructor({ ble = BleClient, log = () => {}, onFrame = () => {}, onDrop = () => {}, onUp = () => {},
                 unbounded = () => false, chunkGapMs = WRITE_PACING.chunkGapMs, frameGapMs = WRITE_PACING.frameGapMs,
                 blockFrames = WRITE_PACING.blockFrames, blockPauseMs = WRITE_PACING.blockPauseMs,
-                now = () => Date.now(), flapMs = FLAP_MS,
+                now = () => Date.now(), flapWindowMs = FLAP_WINDOW_MS, flapHoldMs = FLAP_HOLD_MS,
+                flapBackoffMs = FLAP_BACKOFF_MS, quietMs = QUIET_MS,
                 onFlap = () => {}, onRelink = () => {}, relinkConnectMs = RELINK_CONNECT_MS, relinkAttempts = RELINK_ATTEMPTS,
                 relinkGapMs = RELINK_GAP_MS, relinkDisconnectCapMs = RELINK_DISCONNECT_CAP_MS,
                 writeChunk = null, ackCapMs = WRITE_ACK_CAP_MS } = {}) {
@@ -116,7 +126,8 @@ export class BrxLink {
     this.ble = ble; this.log = log; this.onFrame = onFrame; this.onDrop = onDrop; this.onUp = onUp; this.onFlap = onFlap;
     this.unbounded = unbounded; this.chunkGapMs = chunkGapMs; this.frameGapMs = frameGapMs;
     this.blockFrames = blockFrames; this.blockPauseMs = blockPauseMs;
-    this.now = now; this.flapMs = flapMs;
+    this.now = now; this.flapWindowMs = flapWindowMs; this.flapHoldMs = flapHoldMs;
+    this.flapBackoffMs = flapBackoffMs; this.quietMs = quietMs;
     this.deviceId = null; this.advert = null; this.connected = false; this.retries = 0; this.lastReason = null;
     this._init = null; this._q = Promise.resolve(); this._scanning = false; this._re = new Reassembler();
     this.lateLost = 0;     // late chunk errors that landed after their batch had resolved (diagnostics)
@@ -133,14 +144,19 @@ export class BrxLink {
     this._upAt = 0;        // F210: when this device last connected successfully
     this._flapStreak = 0;  // F210: consecutive connect-then-quick-drop cycles for THIS device
     this._flapNextAt = 0;  // when the current flap wait ends (0 when no wait is running)
-    this._stableTimer = null;   // clears the flap count once a link has stayed up for `flapMs`
+    this._stableTimer = null;   // clears the flap count once a link has stayed up for `flapHoldMs`
   }
   /** `{count, next_retry_at}` while the gun keeps dropping the link (2+ quick drops in a row), else null.
-   *  `next_retry_at` is this device's clock (`now()`), or null when no wait is running. */
+   *  `next_retry_at` is this device's clock (`now()`), or null when no wait is running. `quiet: true`
+   *  while the quiet period runs (no reconnect until `next_retry_at`). */
   get flapping() {
     if (this._flapStreak < 2) return null;
-    return { count: this._flapStreak, next_retry_at: this._flapNextAt || null };
+    const f = { count: this._flapStreak, next_retry_at: this._flapNextAt || null };
+    if (this._flapNextAt && this._flapStreak >= QUIET_AFTER) f.quiet = true;
+    return f;
   }
+  /** True while the quiet period runs. */
+  get quiet() { return !!(this.flapping && this.flapping.quiet); }
   _setFlap(streak, nextAt = 0) {
     const was = JSON.stringify(this.flapping);
     this._flapStreak = streak; this._flapNextAt = nextAt;
@@ -161,7 +177,7 @@ export class BrxLink {
     const t = this._stableTimer = setTimeout(() => {
       this._stableTimer = null;
       if (this.connected && seq === this._linkSeq && this._flapStreak) { this._log('gun link held: flap count cleared', 'li'); this._setFlap(0); }
-    }, this.flapMs);
+    }, this.flapHoldMs);
     if (t && typeof t.unref === 'function') t.unref();   // node tests: a held link must not keep the process open
   }
   ensureInit() { return (this._init ||= this.ble.initialize({ androidNeverForLocation: true })); }
@@ -229,6 +245,7 @@ export class BrxLink {
   async connect(deviceId, advertName) {
     await this.ensureInit();
     this._gen++;                       // retires any loop still chasing the previous gun
+    this._setFlap(0);                  // a manual connect ends any flap wait or quiet period at once
     if (this._wake) this._wake();      // ...and WAKE it, or it sleeps out its backoff still holding
                                        // `_reconnecting`, which blocks the new gun's reconnect entirely
     this.advert = splitAdvert(advertName, deviceId);
@@ -243,16 +260,29 @@ export class BrxLink {
   async _connectWithRetry(id, attempts, forever = false, gen = this._gen, relink = false) {
     let last;
     for (let i = 1; ; i++) {
+      // Game day 2026-09-19: a flap wait now holds THIS loop. It used to run beside the loop, so a loop
+      // already running reconnected in the middle of the wait. A manual action clears `_flapNextAt` and wakes us.
+      if (!relink) {
+        while (gen === this._gen && this._flapNextAt && this._flapNextAt > this.now()) await this._waitOrWake(this._flapNextAt - this.now());
+        if (this._flapNextAt && gen === this._gen) this._setFlap(this._flapStreak);   // the wait is over: no retry time to show
+      }
       if (gen !== this._gen) { this._log('reconnect abandoned — a different gun was selected', 'li'); return false; }
       const t0 = this.now();
       try {
         const seq = ++this._linkSeq;
-        await this.ble.connect(id, () => { if (seq === this._linkSeq) this._dropped(); }, relink ? { timeout: this.relinkConnectMs } : undefined);
+        let droppedEarly = false;
+        // Only a link that was up runs the drop path. A failed connect also fires this callback, and it
+        // used to log a second "gun disconnected" and tell the engine about a drop that never happened.
+        await this.ble.connect(id, () => {
+          if (seq !== this._linkSeq) return;
+          if (this.connected) this._dropped(); else droppedEarly = true;
+        }, relink ? { timeout: this.relinkConnectMs } : undefined);
         if (gen !== this._gen) {                       // the gun came back AFTER we moved on: let it go,
           try { await this.ble.disconnect(id); } catch (_) { /* ignore */ }   // or two devices feed the engine
           return false;
         }
         await this.ble.startNotifications(id, NUS, TX, v => this._notify(v));
+        if (droppedEarly) throw new Error('the gun dropped the link while it was connecting');
         return true;
       } catch (e) {
         last = e; this.retries = i;
@@ -331,17 +361,17 @@ export class BrxLink {
     // answers a $PING, then drops itself within seconds — forever) now backs off instead of reconnecting
     // as fast as the hardware allows, which used to spin the radio and re-run onUp()'s relink side effects
     // every cycle with no way out short of linking the headset.
-    const flapped = this._upAt && (this.now() - this._upAt) < this.flapMs;
-    const streak = flapped ? this._flapStreak + 1 : 0;
-    if (streak >= 2) {
-      const gen = this._gen, wait = flapDelay(streak, this.flapMs);
+    // A drop inside FLAP_WINDOW_MS is a flap. A drop between the window and FLAP_HOLD_MS keeps the count
+    // as it is; only a link held FLAP_HOLD_MS clears it (the hold timer).
+    const held = this._upAt ? this.now() - this._upAt : Infinity;
+    const streak = held < this.flapWindowMs ? this._flapStreak + 1 : held >= this.flapHoldMs ? 0 : this._flapStreak;
+    const wait = held < this.flapWindowMs ? flapDelay(streak, this.flapBackoffMs, this.quietMs) : 0;
+    if (wait) {
       this._setFlap(streak, this.now() + wait);
-      this._log(`gun keeps dropping seconds after connecting (${streak} in a row). Is the headset on? Backing off ${wait} ms`, 'li');
-      this._waitOrWake(wait).then(() => {
-        if (this._flapStreak) this._setFlap(this._flapStreak);   // the wait is over (or cut short): no retry time to show
-        if (this.deviceId && gen === this._gen) this._reconnect();
-      });
-    } else { this._setFlap(streak); this._reconnect(); }
+      if (streak >= QUIET_AFTER) this._log(`gun keeps dropping (${streak} in a row). Quiet period: no reconnect for ${wait} ms. Power-cycle the headset`, 'le');
+      else this._log(`gun keeps dropping seconds after connecting (${streak} in a row). Is the headset on? Backing off ${wait} ms`, 'li');
+    } else this._setFlap(streak);
+    this._reconnect();   // the one retry loop waits out the flap wait itself
   }
   /** B4: the engine's link watchdog calls this when the gun has gone silent for too long while we still
    *  read as `connected` — the native disconnect callback this whole file otherwise depends on may never

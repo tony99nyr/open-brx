@@ -1075,7 +1075,7 @@ export class Engine {
   }
   /** BrxLink's flap state: the gun connects, then drops within seconds, again and again (headset off). */
   setGunFlapping(f) {
-    const next = f && f.count >= 2 ? { count: f.count, next_retry_at: f.next_retry_at ?? null } : null;
+    const next = f && f.count >= 2 ? { count: f.count, next_retry_at: f.next_retry_at ?? null, ...(f.quiet ? { quiet: true } : {}) } : null;
     if (JSON.stringify(next) === JSON.stringify(this.gunFlapping)) return;
     this.gunFlapping = next; this._changed();
   }

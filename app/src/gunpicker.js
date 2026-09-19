@@ -25,6 +25,17 @@ export const RANK_ASSIGNED = 0, RANK_TAGGER = 1, RANK_NAMED = 2, RANK_OTHER = 3;
  *  still rows, which is longer than the 100-200 ms a touchstart-to-touchend takes. */
 export const PAINT_MS = 500;
 
+/** Game day 2026-09-19 (Pixel 5 froze about 10 s in SET MY GUN): a hit from a device already listed,
+ *  that brings no new name or service UUID, is dropped when it lands within COALESCE_MS of the last one
+ *  kept. Only the signal reading waits; a name or a UUID is never held back. */
+export const COALESCE_MS = 500;
+/** How long one SET MY GUN scan runs when nothing is picked. The list then says so and offers SCAN AGAIN. */
+export const PICKER_SCAN_MS = 15000;
+
+/** The BRX IR headset advertises as `BC-HEADSET…`. A phone that connects to it can take it from the
+ *  gun, so the picker never lists it and the phone never connects to it (game day 2026-09-19). */
+export function isHeadset(name) { return /^bc-headset/i.test(String(name || '')); }
+
 // A tagger advertises `<sticker>-XXXX` (the shape `splitAdvert` parses) or the stock name `Tactix2`.
 // This is a NAME heuristic and nothing more: it ranks a likely tagger above a television when the
 // advert carried no service UUID. The service UUID (RANK_TAGGER) is the fact; this is the guess.
@@ -37,7 +48,10 @@ function hasNus(uuids) {
 
 export class GunPicker {
   /** `assigned`: the gun this phone is meant to carry, by advertised name. */
-  constructor({ assigned = null } = {}) {
+  /** `coalesceMs`: see COALESCE_MS. The phone passes it; 0 records every hit. */
+  constructor({ assigned = null, now = () => Date.now(), coalesceMs = 0 } = {}) {
+    this.now = now; this.coalesceMs = coalesceMs;
+    this.kept = 0;            // hits that were recorded, not coalesced away (tests, diagnostics)
     this._rows = new Map();   // deviceId → row, held in first-seen order
     this._seq = 0;
     this._assigned = null;
@@ -70,15 +84,21 @@ export class GunPicker {
     if (!id) return;
     const name = hit.name || '';
     let row = this._rows.get(id);
+    if (isHeadset(name)) { if (row) { this._rows.delete(id); this.dirty = true; } return; }
+    const t = this.now();
+    const news = row && ((name && name !== row.name) || (hasNus(hit.uuids) && !hasNus(row.uuids)));
+    if (row && !news && t - row.at < this.coalesceMs) return;   // only a signal reading: coalesced
+    if (row) { row.at = t; this.kept++; }
     if (!row) {
       // A nameless advert is a utility beacon, not a tagger: its whole identity is one service UUID
       // (beacon.js), and 25 of them were in the room on the bench. It earns a row only when it
       // carries the Nordic UART service, because on Android a tagger's name and its UUID ride in
       // different packets and the UUID can arrive first.
       if (!name && !hasNus(hit.uuids)) return;
+      this.kept++;
       const s = splitAdvert(name, id);
       row = { deviceId: id, name, basename: s.basename, tail: s.tail, rssi: hit.rssi != null ? hit.rssi : null,
-              uuids: hit.uuids || [], seq: this._seq++, rank: RANK_OTHER };
+              uuids: hit.uuids || [], seq: this._seq++, rank: RANK_OTHER, at: t };
       this._rows.set(id, row);
       this._rank(row);
       this.dirty = true;

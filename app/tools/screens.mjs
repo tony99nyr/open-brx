@@ -193,6 +193,27 @@ for (const view of VIEWS) {
     must(r.length === 2 && r.every(x => x.got === x.want), 'a tap in a row does not reach that row: ' + JSON.stringify(r));
     must(r.every(x => x.h >= 44), 'a tagger row is under the 44px tap target: ' + JSON.stringify(r));
   });
+  // Game day 2026-09-19: the gun list showed empty with no scan running, and nothing on screen said so.
+  await step(`${view.name} picker-idle: an empty list says whether a scan runs and offers SCAN AGAIN`, async () => {
+    const pg = await open(view, 'idle');
+    const read = () => pg.evaluate(() => {
+      const vis = el => !!el && getComputedStyle(el).display !== 'none';
+      const b = document.querySelector('.idle .list .rescan'); const br = b && b.getBoundingClientRect();
+      return { none: (document.querySelector('.idle .nonefound') || {}).textContent || '', noneVis: vis(document.querySelector('.idle .nonefound')),
+        sc: vis(document.querySelector('.idle .sc')), btn: vis(b), act: b && b.dataset.act,
+        h: br ? br.height / (parseFloat(getComputedStyle(document.getElementById('frame')).transform.split(',')[3] || 1) || 1) : 0 };   // design px, as F258's row check
+    });
+    await pg.evaluate(() => window.brxDemo.pickerIdle(false)); await pg.waitForTimeout(200);
+    const idle = await read();
+    await pg.screenshot({ path: `${OUT}/${view.name}-picker-idle.png` });
+    must(idle.noneVis && idle.none === 'No guns found. Turn the gun on, then tap Scan again.', 'idle text: ' + JSON.stringify(idle));
+    must(idle.btn && idle.act === 'onScanAgain' && idle.h >= 36, 'no SCAN AGAIN button: ' + JSON.stringify(idle));
+    must(!idle.sc, 'SCANNING FOR TAGGERS shows while no scan runs: ' + JSON.stringify(idle));
+    const bad = await invariants(pg); must(bad.length === 0, bad.join(';'));
+    await pg.evaluate(() => window.brxDemo.pickerIdle(true)); await pg.waitForTimeout(200);
+    const busy = await read(); await pg.close();
+    must(busy.none === 'Scanning…' && busy.sc && busy.btn, 'scanning state: ' + JSON.stringify(busy));
+  });
   await step(`${view.name} F258 idle-assigned: the gun MC assigned to this player is offered first`, async () => {
     const pg = await open(view, 'idle-assigned');
     const first = await pg.evaluate(() => (document.querySelector('.taggers .tagrow .nm') || {}).textContent || '');
@@ -314,6 +335,20 @@ for (const view of VIEWS) {
     const pg = await open(view, 'connected-headset-off'); const pills = await pg.evaluate(() => Array.from(document.querySelectorAll('.chipbar .pill')).map(p => p.textContent.trim()));
     await pg.screenshot({ path: `${OUT}/${view.name}-headset-off-connected.png` }); await pg.close();
     must(pills.includes('HEADSET OFF? TURN THE HEADSET ON.') && pills.includes('RECONNECT NOW') && !pills.some(t => /GUN LINK LOST/.test(t)), JSON.stringify(pills));
+  });
+  // Game day 2026-09-19: after 3 flaps BrxLink stops reconnecting for 30 s. One line says what fixes it.
+  await step(`${view.name} flap-3 quiet period: the power-cycle line and RECONNECT NOW, and the tap ends it`, async () => {
+    const pg = await open(view, 'kitted-headset-off');
+    await pg.evaluate(() => window.brxDemo.flapGun(3, true)); await pg.waitForTimeout(300);
+    const read = () => pg.evaluate(() => Array.from(document.querySelectorAll('.chipbar .pill')).map(p => p.textContent.trim()));
+    const pills = await read();
+    await pg.screenshot({ path: `${OUT}/${view.name}-gun-quiet.png` });
+    must(pills.includes('GUN KEEPS DROPPING. POWER-CYCLE THE HEADSET, THEN THE GUN RECONNECTS.') && pills.includes('RECONNECT NOW'), JSON.stringify(pills));
+    must(!pills.includes('HEADSET OFF? TURN THE HEADSET ON.') && !pills.some(t => /GUN LINK LOST/.test(t)), 'one line only: ' + JSON.stringify(pills));
+    const bad = await invariants(pg); must(bad.length === 0, bad.join(';'));
+    await pg.click('.chipbar [data-act="onReconnectNow"]'); await pg.waitForTimeout(400);
+    const after = await read(); await pg.close();
+    must(!after.some(t => /GUN KEEPS DROPPING/.test(t)), 'RECONNECT NOW left the quiet line up: ' + JSON.stringify(after));
   });
   await step(`${view.name} #32 live off MC range: amber dot, no pill; tapping MC shows the detail`, async () => {
     const pg = await open(view, 'live-mclost'); const read = () => pg.evaluate(() => ({ dot: document.querySelector('#mcdot').className, pills: Array.from(document.querySelectorAll('.chipbar .pill')).map(p => p.textContent.trim()) }));

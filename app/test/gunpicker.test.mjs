@@ -5,7 +5,7 @@
 // These are the rules the fix depends on. The room below is the bench's own room.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { GunPicker, RANK_ASSIGNED, RANK_TAGGER, RANK_NAMED, RANK_OTHER } from '../src/gunpicker.js';
+import { GunPicker, RANK_ASSIGNED, RANK_TAGGER, RANK_NAMED, RANK_OTHER, COALESCE_MS, PAINT_MS, isHeadset } from '../src/gunpicker.js';
 import { NUS } from '../src/brxlink.js';
 
 const tagger = (name, id, rssi) => ({ deviceId: id, name, rssi, uuids: [NUS] });
@@ -129,4 +129,48 @@ test('names and tails come from the advert, split the way BrxLink splits them', 
   const [row] = p.list();
   assert.equal(row.basename, 'ALPHA');
   assert.equal(row.tail, 'FE30');
+});
+
+// Game day 2026-09-19: the BRX IR headset advertises as BC-HEADSET. A phone that connects to it can take
+// it from the gun, so the picker must never list it.
+test('the IR headset (BC-HEADSET...) is never listed, in any case', () => {
+  const p = room(new GunPicker());
+  p.observe(tagger('BC-HEADSET', 'hs1', -40));
+  p.observe(thing('bc-headset-7A21', 'hs2', -40));
+  p.observe({ deviceId: 'hs3', name: 'Bc-Headset', rssi: -40, uuids: [] });
+  assert.equal(p.get('hs1'), null); assert.equal(p.get('hs2'), null); assert.equal(p.get('hs3'), null);
+  assert.ok(!ids(p).some(id => id.startsWith('hs')));
+  assert.ok(isHeadset('bc-HEADSET') && !isHeadset('ALPHA-FE30'));
+  p.observe({ deviceId: 'hs4', name: '', rssi: -40, uuids: [NUS] });   // nameless first, the name arrives later
+  p.observe({ deviceId: 'hs4', name: 'BC-HEADSET', rssi: -40, uuids: [] });
+  assert.equal(p.get('hs4'), null, 'a row that turns out to be the headset is removed');
+});
+
+// Game day 2026-09-19 (the Pixel 5 froze in SET MY GUN): a busy room floods the scan callback. With
+// coalescing on, a device already listed costs one recorded hit per COALESCE_MS, and a paint every PAINT_MS.
+test('a flood of 2000 hits in 1 s from 50 devices records a bounded number and paints at most 2 times', () => {
+  let t = 1000;
+  const p = new GunPicker({ now: () => t, coalesceMs: COALESCE_MS });
+  let paints = 0, lastPaint = t;
+  for (let i = 0; i < 2000; i++) {
+    t = 1000 + Math.floor(i / 2);                     // 2000 results across 1000 ms
+    const d = i % 50;
+    p.observe(d % 2 ? tagger(`GUN${d}-${String(1000 + d).slice(-4)}`, 'd' + d, -50 - (i % 30)) : thing('TV ' + d, 'd' + d, -40 - (i % 30)));
+    if (t - lastPaint >= PAINT_MS && p.dirty) { p.list(); paints++; lastPaint = t; }   // app.js's paint timer
+  }
+  assert.equal(p.size, 50);
+  assert.ok(p.kept <= 50 * 3, `recorded ${p.kept} of 2000 hits`);
+  assert.ok(paints <= 2, `painted ${paints} times in 1 s`);
+});
+
+test('coalescing never holds back a name or a service UUID', () => {
+  let t = 0;
+  const p = new GunPicker({ now: () => t, coalesceMs: 500 });
+  p.observe({ deviceId: 'g', name: 'ALPHA-FE30', rssi: -60, uuids: [] });
+  t = 10; p.observe({ deviceId: 'g', name: '', rssi: -60, uuids: [NUS] });   // the scan response, 10 ms later
+  assert.equal(p.get('g').rank, RANK_TAGGER);
+  t = 20; p.observe({ deviceId: 'g', name: 'ALPHA-FE30', rssi: -90, uuids: [] });
+  assert.equal(p.get('g').rssi, -60, 'a bare signal reading inside the window is coalesced');
+  t = 600; p.observe({ deviceId: 'g', name: 'ALPHA-FE30', rssi: -90, uuids: [] });
+  assert.equal(p.get('g').rssi, -90, 'and recorded once the window has passed');
 });

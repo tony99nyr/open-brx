@@ -184,90 +184,150 @@ test('RELINK GUN with no gun picked does nothing', async () => {
 // answers a $PING, then drops itself within seconds, forever. `_connectWithRetry`'s own backoff only
 // grows on a FAILED connect; a connect that SUCCEEDS and then drops seconds later never fails, so the
 // old code reconnected the instant it dropped and spun as fast as the hardware allowed.
-function flapRig(flapMs = 150) {
-  const attempts = { A: 0 }; const cb = {};
+// Game day 2026-09-19 (p4/p5 phone logs): the gun reset its radio about every 6 s, so the link held 4-8 s.
+// A 5 s window missed those drops, the count cleared 5 s after each connect, and a flap wait ran beside
+// the retry loop instead of holding it. The rig takes the real constants unless a test scales them.
+function flapRig(opts = {}) {
+  const attempts = { A: 0 }; const cb = {}; const log = [];
+  const r = { attempts, cb, log, flaps: [], drops: 0, ups: 0, fail: false, failCallback: true };
   const ble = {
     initialize: async () => {}, disconnect: async () => {},
-    connect: async (id, c) => { attempts.A++; cb.A = c; },   // always "succeeds" — the gun always accepts the BLE connection
+    connect: async (id, c) => {
+      attempts.A++; cb.A = c;
+      // Android: a failed connect ALSO fires the disconnect callback (p4 log 12:45:04), then rejects
+      if (r.fail) { if (r.failCallback) c(); throw new Error('Not connected to device.'); }
+    },
     startNotifications: async () => {},
   };
-  const flaps = [];
-  const link = new BrxLink({ ble, log: () => {}, flapMs, onFlap: f => flaps.push(f) });
-  return { link, attempts, cb, flaps };
+  r.link = new BrxLink({ ble, log: m => log.push(m), onFlap: f => r.flaps.push(f), onDrop: () => r.drops++, onUp: () => r.ups++, ...opts });
+  return r;
 }
+const SCALED = { flapWindowMs: 200, flapHoldMs: 300, flapBackoffMs: 50, quietMs: 400 };
 
-test('F210: a single quick drop right after connecting still retries at once', async () => {
-  const r = flapRig();
-  await r.link.connect('A', 'GUN-A-1111');
-  r.cb.A();                                       // one quick drop (a manual relink, a genuine blip)
-  await new Promise(res => setTimeout(res, 20));
-  assert.equal(r.attempts.A, 2, 'the very first flap must not be held back');
-  await r.link.disconnect();
-});
-
-test('F210: a REPEATING quick drop (headset not linked) backs off instead of spinning forever', async () => {
-  const r = flapRig();
-  await r.link.connect('A', 'GUN-A-1111');
-  r.cb.A();                                       // 1st quick drop — retries at once
-  await new Promise(res => setTimeout(res, 20));
-  assert.equal(r.attempts.A, 2);
-  r.cb.A();                                       // 2nd consecutive quick drop: now the pattern repeats
-  await new Promise(res => setTimeout(res, 20));
-  assert.equal(r.attempts.A, 2, 'a repeating flap must not reconnect instantly a second time');
-  await new Promise(res => setTimeout(res, 200));
-  assert.ok(r.attempts.A >= 3, 'but it does retry once the backoff has elapsed');
-  await r.link.disconnect();
-});
-
-// Bench 2026-09-17: the flat 5 s wait still reconnected every 5-6 s forever, and the tagger said
-// "phone connected" on every connect. The wait now grows: 5 s, 15 s, 30 s, then 60 s.
-test('flap backoff: the schedule is 5 s, 15 s, 30 s, then a 60 s cap', () => {
-  assert.deepEqual([2, 3, 4, 5, 9].map(n => flapDelay(n)), [5000, 15000, 30000, 60000, 60000]);
+test('flap back-off: a 2nd flap waits FLAP_BACKOFF_MS, a 3rd starts the 30 s quiet period', () => {
+  assert.deepEqual([1, 2, 3, 4, 9].map(n => flapDelay(n)), [0, 5000, 30000, 30000, 30000]);
 });
 
 /** One quick drop on the mocked clock: the link is up, the gun drops it at once. */
 async function flapOnce(r, settle) { r.cb.A(); await settle(1); }
 /** Steps the clock until the attempt count moves, and returns how many ms that took. */
-async function msUntilAttempt(r, settle, cap = 3000) {
+async function msUntilAttempt(r, settle, cap = 3000, step = 1) {
   const before = r.attempts.A;
-  for (let ms = 1; ms <= cap; ms++) { await settle(1); if (r.attempts.A > before) return ms; }
+  for (let ms = step; ms <= cap; ms += step) { await settle(step); if (r.attempts.A > before) return ms; }
   return -1;
 }
 
-test('flap backoff: each further quick drop waits longer, up to the cap', async ctx => {
+test('F210: a single quick drop right after connecting still retries at once', async ctx => {
   const settle = useClock(ctx);
-  const r = flapRig(150);                         // the schedule scales with flapMs: 150, 450, 900, 1800
-  ctx.after(() => r.link.disconnect());
+  const r = flapRig(SCALED); ctx.after(() => r.link.disconnect());
   await r.link.connect('A', 'GUN-A-1111');
-  await flapOnce(r, settle);                      // 1st quick drop: a genuine blip, retried at once
-  assert.equal(r.attempts.A, 2, 'the first reconnect stays immediate');
+  await flapOnce(r, settle);
+  assert.equal(r.attempts.A, 2, 'the very first flap must not be held back');
   assert.equal(r.link.flapping, null, 'one quick drop is not flapping');
-  const waits = [];
-  for (let i = 0; i < 5; i++) {
-    r.cb.A();
-    const f = r.link.flapping;
-    assert.equal(f.count, i + 2);
-    assert.equal(f.next_retry_at - Date.now(), [150, 450, 900, 1800, 1800][i], 'next_retry_at says when the wait ends');
-    waits.push(await msUntilAttempt(r, settle));
-  }
-  assert.deepEqual(waits, [150, 450, 900, 1800, 1800]);
-  assert.ok(r.flaps.some(f => f && f.count === 6), 'the app hears every change of the flap state');
 });
 
-test('flap backoff: a link that stays up clears the flap count', async ctx => {
+test('game day: drops 5-8 s after each connect (the p4 log) are flaps, and the 3rd starts the quiet period', async ctx => {
   const settle = useClock(ctx);
-  const r = flapRig(150);
-  ctx.after(() => r.link.disconnect());
+  const r = flapRig(); ctx.after(() => r.link.disconnect());   // the real constants
+  const step = async ms => { for (let i = 0; i < ms; i += 50) { ctx.mock.timers.tick(50); await new Promise(res => setImmediate(res)); } };
   await r.link.connect('A', 'GUN-A-1111');
-  await flapOnce(r, settle); r.cb.A();            // 2 quick drops: flapping, 150 ms wait
+  await step(6000); await flapOnce(r, settle);                 // held 6 s: flap 1, reconnect at once
+  assert.equal(r.attempts.A, 2);
+  await step(7000); r.cb.A();                                  // held 7 s: flap 2, 5 s back-off
+  assert.equal(r.link.flapping.count, 2);
+  assert.ok(!r.link.quiet);
+  assert.equal(await msUntilAttempt(r, step, 20000, 50), 5000, 'the retry loop waits out the 5 s back-off');
+  await step(5000); r.cb.A();                                  // held 5 s: flap 3, the quiet period
+  assert.equal(r.link.flapping.count, 3);
+  assert.equal(r.link.quiet, true);
+  assert.equal(r.flaps.at(-1).quiet, true, 'the app hears the quiet period');
+  assert.ok(r.log.some(m => /Quiet period/.test(m)));
+  assert.ok(!r.log.some(m => /flap count cleared/.test(m)), 'a link that held 5-7 s never clears the count');
+  const before = r.attempts.A;
+  await step(29900);
+  assert.equal(r.attempts.A, before, 'no reconnect attempt during the quiet period');
+  assert.equal(await msUntilAttempt(r, step, 1000, 50), 100, 'it resumes when the quiet period ends');
+  assert.ok(!r.link.quiet, 'the quiet state ends with the wait');
+  assert.equal(r.link.flapping.count, 3, 'the gun still counts as flapping (MC gun_flapping stays true)');
+});
+
+test('quiet period: a failed connect in the retry loop does not reconnect inside the quiet period', async ctx => {
+  const settle = useClock(ctx);
+  const r = flapRig(SCALED); ctx.after(() => r.link.disconnect());
+  await r.link.connect('A', 'GUN-A-1111');
+  await flapOnce(r, settle);
+  r.cb.A(); await msUntilAttempt(r, settle);                  // flap 2: the 50 ms back-off
+  r.fail = true; r.cb.A();                                     // flap 3: quiet 400 ms; the gun is also not connectable
+  assert.equal(r.link.quiet, true);
+  const before = r.attempts.A;
+  await settle(395);
+  assert.equal(r.attempts.A, before, 'no attempt inside the quiet period');
+  await settle(10);
+  assert.equal(r.attempts.A, before + 1);
+});
+
+test('flap back-off: a drop during a wait does not start a second retry loop', async ctx => {
+  const settle = useClock(ctx);
+  const r = flapRig(SCALED); ctx.after(() => r.link.disconnect());
+  await r.link.connect('A', 'GUN-A-1111');
+  await flapOnce(r, settle);
+  r.cb.A();                                                    // flap 2: the loop waits 50 ms
+  r.link._reconnect(); r.link._reconnect();                    // extra callers must join the one loop
+  await settle(49);
+  assert.equal(r.attempts.A, 2, 'nothing reconnects inside the back-off');
+  await settle(5);
+  assert.equal(r.attempts.A, 3, 'exactly one loop reconnects when the wait ends');
+});
+
+test('flap back-off: a link held FLAP_HOLD_MS clears the count; a drop between window and hold keeps it', async ctx => {
+  const settle = useClock(ctx);
+  const r = flapRig(SCALED); ctx.after(() => r.link.disconnect());
+  await r.link.connect('A', 'GUN-A-1111');
+  await flapOnce(r, settle); r.cb.A();                         // 2 quick drops: flapping
   assert.equal(r.link.flapping.count, 2);
   assert.ok(await msUntilAttempt(r, settle) > 0);
-  await settle(160);                              // the headset went on: the link holds past flapMs
+  await settle(250); r.cb.A();                                 // held 250 ms: past the window, short of the hold
+  await settle(1);
+  assert.equal(r.link.flapping.count, 2, 'a drop before the hold time does not clear the count');
+  assert.equal(r.attempts.A, 4, 'and it is not a flap, so it reconnects at once');
+  await settle(299);
+  assert.equal(r.link.flapping.count, 2, 'the count holds until the link has held FLAP_HOLD_MS');
+  await settle(2);
   assert.equal(r.link.flapping, null);
   assert.equal(r.flaps.at(-1), null, 'the app hears that the flapping stopped');
   const before = r.attempts.A;
-  await flapOnce(r, settle);                      // a later drop counts from the start again
+  await flapOnce(r, settle);                                   // a later drop counts from the start again
   assert.equal(r.attempts.A, before + 1, 'a drop after a held link reconnects at once');
+});
+
+test('a failed connect runs no drop path: one "gun disconnected", one onDrop', async ctx => {
+  const settle = useClock(ctx);
+  const r = flapRig(SCALED); ctx.after(() => r.link.disconnect());
+  await r.link.connect('A', 'GUN-A-1111');
+  r.fail = true;
+  r.cb.A();                                                    // the link drops once
+  await settle(1);
+  assert.ok(r.attempts.A >= 2, 'the retry loop tried again');
+  await settle(3000);                                          // several failed connects, each firing the callback
+  assert.ok(r.attempts.A >= 3);
+  assert.equal(r.drops, 1, 'the engine hears the drop once');
+  assert.equal(r.log.filter(m => /gun disconnected/.test(m)).length, 1, 'one "gun disconnected" line');
+  r.fail = false;
+  await settle(10000);
+  assert.equal(r.link.connected, true);
+});
+
+test('a connect whose link drops before the notifications start is retried, not claimed as up', async ctx => {
+  const settle = useClock(ctx);
+  const r = flapRig(SCALED); ctx.after(() => r.link.disconnect());
+  await r.link.connect('A', 'GUN-A-1111');
+  let once = true;
+  r.link.ble.startNotifications = async () => { if (once) { once = false; r.cb.A(); } };
+  r.cb.A();                                                    // drop; the reconnect's link dies mid-setup
+  await settle(3000);
+  assert.equal(r.link.connected, true);
+  assert.ok(r.attempts.A >= 3, 'the half-made link was retried');
+  assert.equal(r.drops, 1);
 });
 
 for (const [name, act] of [
@@ -275,21 +335,21 @@ for (const [name, act] of [
   ['RELINK', l => l.relink()],
   ['picking a gun', l => l.connect('A', 'GUN-A-1111')],
 ]) {
-  test(`flap backoff: ${name} resets the backoff and reconnects at once`, async ctx => {
+  test(`quiet period: ${name} cancels it and connects at once`, async ctx => {
     const settle = useClock(ctx);
-    const r = flapRig(150);
-    ctx.after(() => r.link.disconnect());
+    const r = flapRig(SCALED); ctx.after(() => r.link.disconnect());
     await r.link.connect('A', 'GUN-A-1111');
     await flapOnce(r, settle);
-    for (let i = 0; i < 2; i++) { r.cb.A(); await msUntilAttempt(r, settle); }
-    r.cb.A();                                     // 4 quick drops in a row: now in the 450 ms wait
-    assert.equal(r.link.flapping.count, 4);
+    r.cb.A(); await msUntilAttempt(r, settle);
+    r.cb.A();                                                  // 3 quick drops in a row: the quiet period
+    assert.equal(r.link.quiet, true);
     const before = r.attempts.A;
     act(r.link);
     await settle(5);
-    assert.ok(r.attempts.A > before, 'the user action does not wait out the backoff');
+    assert.equal(r.attempts.A, before + 1, 'the user action does not wait out the quiet period');
     assert.equal(r.link.flapping, null, 'the flap count starts again');
-    await flapOnce(r, settle);                    // the next quick drop is a first one again
+    assert.equal(r.link.connected, true);
+    await flapOnce(r, settle);                                 // the next quick drop is a first one again
     assert.equal(r.link.flapping, null);
   });
 }

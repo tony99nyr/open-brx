@@ -448,6 +448,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .idle .sc{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--glow);font-weight:600;letter-spacing:.14em}
 .idle .sc i{width:8px;height:8px;background:var(--glow);border-radius:50%;animation:blink 1.2s infinite}
 .idle .sc.bad{color:var(--bad)}
+.idle .sc[hidden]{display:none}   /* game day 2026-09-19: no SCANNING line while no picker scan runs */
 .idle .sc.bad i{background:var(--bad);animation:blink .9s infinite}
 .idle .small.bad{color:var(--bad)}
 .idle .r .bigbtn.ghost{width:auto;align-self:flex-start;padding:0 18px}

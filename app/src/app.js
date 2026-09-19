@@ -7,7 +7,7 @@ import jsQR from 'jsqr';
 // Transport (M-NET wire) + Hud (Phone HUD v2). Runs in a desktop browser with `?demo`.
 import { Engine, C } from './engine.js';
 import { BrxLink } from './brxlink.js';
-import { GunPicker, PAINT_MS } from './gunpicker.js';   // F258: the gun picker's ranked, stable, coalesced list
+import { GunPicker, PAINT_MS, COALESCE_MS, PICKER_SCAN_MS, isHeadset } from './gunpicker.js';   // F258: the gun picker's ranked, stable, coalesced list
 import { Transport } from './transport/transport.js';
 import { Hud } from './hud/hud.js';
 import { parseMcJoin } from './mcurl.js';
@@ -323,10 +323,10 @@ function connectMc(url, remember = true, join = {}) {
 // used to stay on screen for all of it. A second row tap then ran a second connect beside the first (a
 // false drop, then onUp from the connect that lost), and SET MY GUN opened a scan AFTER onUp had already
 // closed the picker, so it stayed open in the lobby. Both taps are now ignored while a pick connects.
-let scanning = false, picking = false;
+let scanning = false, picking = false, pickerScanSeq = 0;
 // F258 (bench 2026-09-18): the picker's list lives in `gunpicker.js` — ranking, first-seen order and
 // the "has anything visible changed" flag. Nothing in this file sorts or paints from a scan hit.
-const picker = new GunPicker();
+const picker = new GunPicker({ coalesceMs: COALESCE_MS });   // game day 2026-09-19: a flood of repeat hits is coalesced
 let paintTimer = null;
 /** Paints the picker at PAINT_MS, and only when something a player would see actually changed. A scan
  *  hit itself never paints: on the bench the list churned so fast that no tap and no scroll landed. */
@@ -364,8 +364,18 @@ Object.assign(hud.h, {
       // Nameless adverts are kept: on Android a tagger's name and its service UUID ride in different
       // packets, so a nameless hit that carries the Nordic UART service is still a gun.
       await link.scan(d => picker.observe(d));
+      // Game day 2026-09-19: the scan is bounded. With nothing picked it stops after PICKER_SCAN_MS; the
+      // list keeps its rows, says no scan is running, and SCAN AGAIN (this same handler) starts a new one.
+      const seq = ++pickerScanSeq;
+      setTimeout(() => {
+        if (seq !== pickerScanSeq || !scanning || picking || link.connected) return;
+        scanning = false; stopPickerPaint(); hud.setScan(picker.list()); scheduleRender();
+        link.stopScan().catch(() => {});
+        log('gun scan stopped after ' + PICKER_SCAN_MS / 1000 + ' s; tap SCAN AGAIN to look again', 'li');
+      }, PICKER_SCAN_MS);
     } catch (e) { scanning = false; stopPickerPaint(); log('scan: ' + (e && e.message || e), 'le'); }
   },
+  onScanAgain: () => hud.h.onSetGun(),   // game day 2026-09-19: SCAN AGAIN on an empty gun list
   // F258: the fold over everything the picker could not rank as a tagger.
   onScanOther: () => { hud.setScanOther(!hud.scanOther); scheduleRender(); },
   // F211: Android only (the plugin has no iOS equivalent — Apple gives apps no Bluetooth toggle).
@@ -506,7 +516,7 @@ async function rejoinGun() {
   scanning = true;   // claim the radio before the first await (the beacon watch yields to it)
   await stopAnyScan();
   await link.scan(async d => {
-    if (done || !d.name || d.name !== want) return;   // the remembered gun, by its advertised name
+    if (done || !d.name || d.name !== want || isHeadset(d.name)) return;   // the remembered gun, by its advertised name; never the IR headset
     done = true;
     // F258: the same order the picker keeps — stop the scan, THEN connect, and hold the radio claim
     // (`scanning`) until the connect settles, so the beacon watch cannot open a scan across it.
@@ -526,9 +536,11 @@ async function rejoinGun() {
 
 // ---------- render loop ----------
 let renderQueued = false;
+const DEMO = new URLSearchParams(location.search).has('demo');
 function scheduleRender() { if (renderQueued) return; renderQueued = true; requestAnimationFrame(() => { renderQueued = false; renderNow(); }); }
 function renderNow() {
   const st = engine.state();
+  if (!DEMO) hud.scanActive = scanning && !picking;   // game day 2026-09-19: the picker says whether a scan really runs (the stage sets its own)
   hud.render(st);
   hud.setDiag({
     preflight, link: { app: APP_VER, platform: platformName(), log: logsync.state(), deviceId: link.deviceId, connected: link.connected, relinking: link.relinking, retries: link.retries, mc: transport ? transport.state : 'none', mc_url: settings.mcUrl, node_id: transport ? transport.nodeId : '—', reach: transport ? transport.reach : null, pub: transport ? transport.pub : null },
