@@ -5,9 +5,10 @@
 // Outputs: frames to write (writer(frames[])), persisted facts (emit(fact)), non-fact reports
 //          (report(kind, body)), and a render-able snapshot (state()) with a change callback.
 //
-// Every write to the gun goes through `writer`; the engine never composes a frame except the two
-// literal templates (`$SFLASH,*`, `$PLAYX,0,*`), the pre-config probe set (contracts §3/§8), and the
-// `HILL_CUES` literals below (which the bundle overrides the moment it carries those cue keys).
+// Every write to the gun goes through `writer`; the engine never composes a frame except the
+// literal templates (`$SFLASH,*`, `$PLAYX,0,*`, the stun cue `STUN_PLAY`), the pre-config probe set
+// (contracts §3/§8), and the `HILL_CUES` literals below (which the bundle overrides the moment it
+// carries those cue keys).
 
 import * as W from './transport/envelope.js';   // single source for the contracts §9 constants
 import { stationView, TEAM_ANY } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
@@ -218,6 +219,13 @@ export function isPoolProbe(frame) {
  *  30-90 ms a frame, so ~1.5 s to land; 2500 ms leaves the echo room to come back before we ask again. */
 const SPAWN_PROBE_MS = 2500;
 const STUN_DEFAULT_S = 10;          // F15: how long an EMP (proto-8 $HIR under config.stun) disarms the gun when the config names no duration
+/** F15 (Tony, 2026-09-18): the stun had no audible cue on the victim's own gun -- `_event('stunned')` is a
+ *  no-op until a profile carries one, and the shooter-side row that carries fn 23 never reaches the victim.
+ *  `X17` is Battle Company's concussion-grenade clip (catalogue: fx:explosion, 7.9 s, community label
+ *  "concussion grenade"). Token 1 (interrupt), matching the protocol's rule for hit-path/urgent sounds
+ *  (`brx-protocol.md` $PLAY row) -- the stun should cut off whatever was playing, the same as a hit. Sent
+ *  once, in the SAME write as the disarm, never on an extend (F274: one write per hit, not per tick). */
+const STUN_PLAY = '$PLAY,X17,4,6,,,,,*';
 /** F13: a `$SPAWN` within ~2 s of death wedges the headset in its green out-blink (threshold 2.0-2.5 s; use >= 3). Same
  *  value as `gameconfig.MIN_RESPAWN_S` on the CLI path. */
 const MIN_RESPAWN_S = 3;
@@ -2791,7 +2799,9 @@ export class Engine {
     }
     const live = this._liveAmmo();
     this.stunned = { at: now, until: now + ms, ammo: live };
-    this._write(Object.keys(live).map(slot => `$AMMO,${slot},0,0,1,*`), `stun: disarm ${ms} ms`);
+    // F15 (Tony, 2026-09-18): one cue on the gun that just went dark, in the same write as the disarm --
+    // never repeated on an extend above, and never per tick (F274).
+    this._write([...Object.keys(live).map(slot => `$AMMO,${slot},0,0,1,*`), STUN_PLAY], `stun: disarm ${ms} ms`);
     this._holdAccuracyWrites('stun disarm');   // a `$WEAP` + `$AMMO` restore would re-arm the gun mid-stun
     this.moment = { kind: 'stunned', at: now, data: { ms } };
     this._event('stunned');   // A11 presentation hook: no-op until a profile carries a `stunned` cue/burst
