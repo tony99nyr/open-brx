@@ -487,6 +487,12 @@ class Session:
         # (observed 44x, field session 2026-09-12). This set gates ONLY the log_offer handler's own
         # re-ask, never `pull_log` itself, so a manual re-press still always goes out.
         self._log_inflight: set[str] = set()
+        # F121 polish review #2: node_id -> the `app_ver` string last told to the operator feed by
+        # `_alert_app_withheld`. A single hello reaches `_bind` TWICE (net.py answers `_hydrate` first,
+        # then fires the same hello through `_on_node`), so without this the operator would see the
+        # WITHHELD line twice per hello, and again on every later heartbeat-driven `_bind` while the
+        # phone stays on the same build. Cleared on `evict_node` so a genuine re-bind can say it again.
+        self._app_blocked_alerted: dict[str, str] = {}
         # A24/M2: the roster AS PLAYED. `_replay` must not build its Scorer from the LIVE roster --
         # the operator can re-team a player during recap, and a late flush would then replay the
         # finished match on the new teams. Frozen at `_schedule` and again at the whistle.
@@ -2891,6 +2897,32 @@ class Session:
             if q is not None and q["player_id"] == p["player_id"]:
                 self._bind(nid, p)
 
+    def _app_incompatible(self, nid: str) -> bool:
+        """F121 compat, the hot-join/welcome twin of `_refuse_incompatible_app`: true when the node's
+        own hello carries an app `compatible()` cannot vouch for -- refused outright, or unparsable.
+
+        `start()`'s gate only runs at the whistle; a node can connect or reconnect at any OTHER moment
+        the lobby is already pushed (`_bind`'s hot join, `_hydrate`'s welcome), and each of those is a
+        chance to hand a phone `frames` it will run without ever sending F121's `$TMP` off frame."""
+        return compatible((self.nodes.get(nid) or {}).get("app_ver")) is not True
+
+    def _alert_app_withheld(self, p: Player, nid: str) -> None:
+        """The operator feed line for `_app_incompatible`: names the node and its reported version, so
+        an invulnerable player mid-match is a fact the operator can see, not a silent gap.
+
+        Deduped by `_app_blocked_alerted` (nid -> last version told): the same hello reaches this via
+        BOTH `_bind` call sites in one breath (`_hydrate`'s own `_bind`, then `_on_node`'s), and every
+        later heartbeat-driven `_bind` on an unchanged build would otherwise say it again."""
+        av = (self.nodes.get(nid) or {}).get("app_ver")
+        shown = av if isinstance(av, str) and av else "unknown"
+        if self._app_blocked_alerted.get(nid) == shown:
+            return
+        self._app_blocked_alerted[nid] = shown
+        who = p.get("display") or p["player_id"]
+        self._on_feed({"t_match_s": self._operator_t_match(self.now_ms()), "tag": "WITHHELD", "kind": "alert",
+                       "text": f"{str(who).upper()}'S GAME WAS WITHHELD — APP {shown} CANNOT RUN F121 "
+                               f"SPAWN PROTECTION (NEEDS {app_tier()})"})
+
     def _bind(self, nid: str, p: Player):
         # Whoever loses this socket loses the record of what it was told along with it: the phone
         # speaks for somebody else now, so "their phone has the game" is no longer a fact about them.
@@ -2924,9 +2956,16 @@ class Session:
         # scorer rebased), so an exception escaping from HERE leaves a half-bound node, and the route is
         # real: a bundle-less player added mid-match adopting a phone that is already playing.
         if self.lobby_pushed and p["player_id"] not in self.bundles and not self._took_this_config(p):
-            self._push_config_to(p)
-            if self.start_info:
-                self.net.push(nid, "start", self._start_body())
+            # Polish review #2 (2026-09-18): this hot join is exactly the moment F121 named -- a node
+            # that connects mid-lobby-push or mid-match on an app `compatible()` cannot vouch for. Send
+            # it nothing playable and say so on the feed, rather than arm a gun that never turns spawn
+            # protection off.
+            if self._app_incompatible(nid):
+                self._alert_app_withheld(p, nid)
+            else:
+                self._push_config_to(p)
+                if self.start_info:
+                    self.net.push(nid, "start", self._start_body())
 
     def evict_node(self, nid: str) -> bool:
         """Operator recovery: kick a node (e.g. a stranger that hello'd with a live gun name before its owner's phone).
@@ -2944,6 +2983,7 @@ class Session:
                 self.game_sent.pop(p["player_id"], None)   # the phone is gone: what it was told is not a fact about them
         self.nodes.pop(nid, None)
         self.synced_at_lobby.pop(nid, None)
+        self._app_blocked_alerted.pop(nid, None)   # F121: a re-bind after this can say WITHHELD again
         # A42: and the end-delivery watch over it. This was the one watch-ending path that did not clear
         # the ledger (`_schedule`, `new_session` and `_arm_end_delivery`'s own match filter are the
         # others), so evicting a node during RECAP left an entry re-pushing `control{end}` at a socket MC
@@ -3076,14 +3116,21 @@ class Session:
         # afterwards, so for most phones the game arrives HERE and on no other route.
         if self.game_loaded and self.game_cfg:
             self.game_sent[p["player_id"]] = self.game_cfg
-        if self.lobby_pushed:
+        # Polish review #2 (2026-09-18): the welcome twin of `_bind`'s hot join. A phone that hellos mid-
+        # lobby-push or mid-match on an app `compatible()` cannot vouch for gets no frames and no start --
+        # both are what F121 needs the node to run, and an old build never sends the `$TMP` off frame
+        # that ends spawn protection.
+        blocked = self._app_incompatible(hello["node_id"])
+        if self.lobby_pushed and blocked:
+            self._alert_app_withheld(p, hello["node_id"])
+        elif self.lobby_pushed:
             if p["player_id"] not in self.bundles:          # A5.6 late joiner hydrated on first hello
                 self.bundles[p["player_id"]] = self._compile_rolled(p)
                 self._head_sent_t[p["player_id"]] = self.now_ms()
                 self.acks.pop(p["player_id"], None)
             node["config"] = self._wire_config()
             node["frames"] = self.bundles[p["player_id"]]
-        if self.start_info and not self.is_adopted():
+        if self.start_info and not self.is_adopted() and not blocked:
             # A RESUMED match re-sends the same match and seq, which a phone in play takes as a no-op. An
             # ADOPTED one has a seq and config this MC made up, and must never reach a phone as a start.
             node["start"] = self._start_body()
@@ -5370,18 +5417,24 @@ class Session:
         old never sends F121's `$TMP` off frame (`spawn_protect_off`), so its player would take no
         damage for the rest of that life — invisibly, since nothing on the gun says so.
 
+        An UNPARSABLE version is amber on the readiness board (A1: amber never blocks a push), but it
+        is not a version `compatible()` can vouch for either, so a bound node that has said hello with
+        one blocks the START GATE here even though it leaves the board amber (polish review #2,
+        2026-09-18): the board's amber wording is for the operator weighing a push; the whistle needs a
+        yes/no.
+
         Deliberately NOT bypassable by `force`, for `_refuse_stale_ack`'s reason: this is a fact the
         node's own hello carries, not a readiness judgement the operator can see and weigh."""
-        bad = [(self.players[pid].get("display") or pid, nv["app_ver"])
+        bad = [(self.players[pid].get("display") or pid, nv.get("app_ver"))
                for pid, p in self.players.items()
                if (nid := p.get("node_id")) and (nv := self.nodes.get(nid))
-               and compatible(nv.get("app_ver")) is False]
+               and compatible(nv.get("app_ver")) is not True]
         if bad:
-            who = ", ".join(f"{d} (app {v})" for d, v in bad)
+            who = ", ".join(f"{d} (app {v})" if v else f"{d} (app version unknown)" for d, v in bad)
             raise ValueError(
-                f"{len(bad)} gun(s) are running an app MC cannot start a match with: {who}. An app "
-                f"older than {app_tier()} never ends spawn protection (F121) — its player would take "
-                f"no damage all life. UPDATE THE APP before the whistle")
+                f"{len(bad)} gun(s) are running an app MC cannot start a match with: {who}. An app not "
+                f"on {app_tier()} never ends spawn protection (F121) — its player would take no damage "
+                f"all life. UPDATE THE APP before the whistle")
 
     def start(self, runway_s: int | None = None, force: bool = False) -> dict:
         if not self.lobby_pushed:

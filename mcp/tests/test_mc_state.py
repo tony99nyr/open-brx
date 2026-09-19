@@ -204,6 +204,54 @@ def test_hydrate_by_gun_then_node_and_hot_swap_baseline():
     assert s._hydrate({"node_id": "nobody", "gun": {"name": "Tactix2-FFFF", "tail": "FFFF"}}) is None
 
 
+def test_hot_swap_onto_an_incompatible_app_withholds_frames_and_start():
+    """F121 polish review #2 (2026-09-18): the hot-swap of the test above, but the new phone is on a
+    build `compatible()` refuses. Before this fix the welcome (`_hydrate`) and the hot-join push inside
+    `_bind` both sent `frames` + `start` with no version check, so a player behind that phone would run
+    the whole match with F121's `$TMP` off frame never written -- invulnerable, invisibly. Now both are
+    withheld and the operator feed says why."""
+    s, net, clock, ps = mk(1)
+    online(s, net, clock, ps[0], 0)
+    s.push_config()
+    net.simulate_node_message("node0", "ack_config", {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$LCD"}, clock["t"])
+    s.start(runway_s=5)
+    tail = demo_armory()[0]["ble"]["tail"]
+    node = net.simulate_hello("brand-new-phone", f"GUN-A-{tail}", app_ver="0.3.0")   # wrong minor
+    assert node and node["player"]["player_id"] == ps[0]["player_id"]
+    assert "frames" not in node and "start" not in node and "config" not in node
+    assert not net.pushes("config", node_id="brand-new-phone")
+    assert not net.pushes("start", node_id="brand-new-phone")
+    withheld = [e for e in s.feed if e.get("tag") == "WITHHELD"]
+    # exactly one line, though the same hello reaches `_bind` twice (`_hydrate`'s own call, then `_on_node`'s)
+    assert len(withheld) == 1, withheld
+    assert "0.3.0" in withheld[0]["text"] and ps[0]["display"].upper() in withheld[0]["text"]
+
+
+def test_start_refuses_bound_node_on_incompatible_or_unparsable_app():
+    """Item 2, polish review #2: `start()`'s gate used to block only `compatible() is False`. An
+    UNPARSABLE version reads amber on the readiness board by design (A1: amber never blocks a push),
+    but that is a push-time judgement, not a licence to run a match with a node MC cannot vouch for --
+    so the START GATE now blocks both, while the board keeps its amber wording for the unparsable case
+    (pinned below)."""
+    for bad_ver, board_red in (("0.3.0", True), ("hud-0.2", False)):
+        s, net, clock, ps = mk(2)
+        online(s, net, clock, ps[0], 0)
+        online(s, net, clock, ps[1], 1)
+        tail = demo_armory()[1]["ble"]["tail"]
+        net.simulate_hello("node1", f"GUN-B-{tail}", app_ver=bad_ver)   # same node, now on a bad build
+        assert s.push_config(force=True)["ok"]   # an incompatible minor reds the board; force past it to reach start
+        for i in range(2):
+            net.simulate_node_message(f"node{i}", "ack_config",
+                                      {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$LCD"}, clock["t"])
+        row = {r["player_id"]: r for r in s.readiness()["board"]}[ps[1]["player_id"]]
+        assert (row["status"] == "red") == board_red, (bad_ver, row)
+        try:
+            s.start()
+            raise AssertionError(f"expected start() to refuse a bound node on app {bad_ver}")
+        except ValueError as e:
+            assert "not on" in str(e) and bad_ver in str(e), e
+
+
 def test_controls_land_in_kitted_and_rematch_needs_push():
     s, net, clock, ps = mk(1)
     online(s, net, clock, ps[0], 0)

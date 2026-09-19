@@ -1,5 +1,5 @@
 """Polish-loop iteration 1 regressions (security + validation + scoring edge cases)."""
-from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
+from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory, fake_app_ver
 from brx_mcp.mc.state import Session
 from brx_mcp.mc.scoring import Scorer
 
@@ -163,6 +163,7 @@ def test_patch_team_mid_match_is_refused_and_display_is_still_capped():
     for p in (a, b):
         s._bind(f"n-{p['player_id']}", p)
         s.nodes[f"n-{p['player_id']}"]["synced"] = True
+        s.nodes[f"n-{p['player_id']}"]["app_ver"] = fake_app_ver()   # F121: start() now needs a real version
     s.patch_player(a["player_id"], ready=True); s.patch_player(b["player_id"], ready=True)
     s.push_config()
     for pid in (a["player_id"], b["player_id"]):
@@ -195,6 +196,7 @@ def test_patch_team_id_null_mid_match_is_a_no_op_not_a_409():
     for p in (a, b):
         s._bind(f"n-{p['player_id']}", p)
         s.nodes[f"n-{p['player_id']}"]["synced"] = True
+        s.nodes[f"n-{p['player_id']}"]["app_ver"] = fake_app_ver()   # F121: start() now needs a real version
     s.patch_player(a["player_id"], ready=True); s.patch_player(b["player_id"], ready=True)
     s.push_config()
     for pid in (a["player_id"], b["player_id"]):
@@ -219,6 +221,7 @@ def test_ingest_batch_records_seq_for_dedup():
     s.set_config({"time_limit_s": 60})
     for p in (a, b):
         s._bind(f"n-{p['player_id']}", p); s.nodes[f"n-{p['player_id']}"]["synced"] = True
+        s.nodes[f"n-{p['player_id']}"]["app_ver"] = fake_app_ver()   # F121: start() now needs a real version
         s.patch_player(p["player_id"], ready=True)
     s.push_config()
     for pid in (a["player_id"], b["player_id"]):

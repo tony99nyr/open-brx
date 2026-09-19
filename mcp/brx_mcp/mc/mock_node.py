@@ -25,15 +25,23 @@ from typing import Any
 
 from . import envelope as E
 from . import frames as _frames      # A36: answer a head write the way a tagger does
-from .types import STATUS_HEARTBEAT_MS
+from .types import APP_MAJOR, APP_MINOR, STATUS_HEARTBEAT_MS
 
 log = logging.getLogger("brx.mc.mock_node")
+
+# F121 polish review #2 (2026-09-18): a real, PARSABLE, current version -- computed from
+# APP_MAJOR/APP_MINOR so it never goes stale the way a hardcoded literal would (same reasoning as
+# `fakes.fake_app_ver`). The old literal `"mock-0.1"` was UNPARSABLE, which `_bind`/`_hydrate` now
+# withhold `frames`/`start` for on a bound node (the F121 hot-join/welcome gate), so every MockNode in
+# the suite silently stopped receiving a match the day that gate landed. A caller that specifically
+# wants to script an incompatible/unparsable node still passes `app_ver=` itself.
+_DEFAULT_MOCK_APP_VER = f"{APP_MAJOR}.{APP_MINOR}.0"
 
 
 class MockNode:
     def __init__(self, url: str, *, node_id: str | None = None, gun_name: str = "GUN-A",
                  gun_tail: str = "3D4F", gun_fw: str = "v4.32", node_type: str = "phone",
-                 app_ver: str = "mock-0.1", gun_echo: str | None = "$LCD,0,0,0,0,0,0,*",
+                 app_ver: str = _DEFAULT_MOCK_APP_VER, gun_echo: str | None = "$LCD,0,0,0,0,0,0,*",
                  heartbeat_ms: int = STATUS_HEARTBEAT_MS, max_hp: int = 45, max_armor: int = 70,
                  backoff_cap_s: float = 10.0):
         self.url = url

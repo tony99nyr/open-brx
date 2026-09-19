@@ -41,8 +41,17 @@ const splitGun = g => { if (!g) return ['—', '']; return [esc(g.basename || g.
 // thresholds, weakest first; the heights are the design's rising staircase.
 /** F265, bench 2026-09-18: a bound phone can stop receiving score pushes while `wsState` still reads
  *  `bound`, so the socket state is not proof the scoreboard is current. LIVE is honest only for a
- *  snapshot this fresh; older than this, the overlay shows the age instead, bound or not. */
-const BOARD_LIVE_MAX_AGE_MS = 5000;
+ *  snapshot this fresh; older than this, the overlay shows the age instead, bound or not.
+ *
+ *  Polish review #2 (2026-09-18): this used to measure the age of `scoreAt` (the last SCORE push).
+ *  MC pushes a score only on change (a kill, a cap), so a normal quiet 5 s with nobody dying flipped
+ *  a perfectly live board to stale. It now measures `lastMcMsgAt` (engine.js) -- the phone's own clock
+ *  time of the last message MC sent over the bound socket, ANY kind. The one message kind guaranteed
+ *  periodic whether or not the match is eventful is `time_res`, which answers the transport's own
+ *  `time_req` every `syncIntervalMs` (5 s, `transport.js`) -- so this threshold must sit clearly above
+ *  that period or one skipped/delayed beat would false-positive as stale; 3x the period plus a second
+ *  of margin gives one full missed cycle of slack. */
+const BOARD_LIVE_MAX_AGE_MS = 16000;
 const SIG_THRESHOLDS = [-85, -75, -65, -55];
 const SCAN_ROW = '<span class="nm"></span><span class="inuse" hidden>IN USE</span><span class="sig">'
   + SIG_THRESHOLDS.map((_, i) => `<i style="height:${6 + i * 4}px"></i>`).join('') + '<b></b></span>';
@@ -1172,8 +1181,13 @@ export class Hud {
    *  numbers are current while the link is up; off the link they are the last push, and the label gives its age.
    *  Bench 2026-09-18 (F265): a bound phone can stop receiving pushes and still read `wsState === 'bound'`, so
    *  the socket state alone is not proof the board is current. LIVE is only honest for a few seconds: past
-   *  `BOARD_LIVE_MAX_AGE_MS`, show the age even while bound, same as an unbound phone would. */
-  _boardStale(st) { return !!st.scoreAt && (st.wsState !== 'bound' || Date.now() - st.scoreAt > BOARD_LIVE_MAX_AGE_MS); }
+   *  `BOARD_LIVE_MAX_AGE_MS`, show the age even while bound, same as an unbound phone would.
+   *
+   *  Polish review #2: the freshness clock is `st.lastMcMsgAt` (any message heard from MC), not
+   *  `st.scoreAt` (the last score CHANGE) -- MC only pushes a new score when one changes, so a quiet
+   *  5 s of no kills is normal play, not a dead socket, and must not read as stale. `!!st.scoreAt`
+   *  still gates it: no score has ever arrived, there is nothing to call LIVE. */
+  _boardStale(st) { return !!st.scoreAt && (st.wsState !== 'bound' || Date.now() - st.lastMcMsgAt > BOARD_LIVE_MAX_AGE_MS); }
   _boardAge(st) {
     if (!st.scoreAt) return 'NO SCORES YET';
     if (!this._boardStale(st)) return 'LIVE';

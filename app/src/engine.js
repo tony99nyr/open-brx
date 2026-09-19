@@ -624,6 +624,13 @@ export class Engine {
     this._lightGen = 0;             // bumped on teardown (end/panic/BLE drop) so a stray delayed $GLED/$HLED/cue write can't land after it
     this.score = null;              // ScoreRow from MC (kills/assists/accuracy) — null until synced
     this.scoreAt = 0;
+    // F265 fix (polish review #2, 2026-09-18): LOCAL phone clock time of the last message received
+    // from MC over the bound socket -- any kind, `time_res` included, which arrives every
+    // `syncIntervalMs` (5 s) whether or not a score changed. `scoreAt` only moves on a NEW score push,
+    // and MC pushes a score only on change, so a quiet 5 s of no kills used to flip a perfectly live
+    // board to STALE. This is `Date.now()`, not the synced clock `this.now()` returns, because
+    // `hud.js _boardStale` compares it against its own `Date.now()` -- see that file for the reason.
+    this.lastMcMsgAt = 0;
     // A24: the MATCH RESULT, computed per recipient by MC and pushed to every node, losers included. Null until it
     // arrives. NOTHING on the node may write win or lose from the ABSENCE of this — a `victory` cue that never came
     // means "lost" and "out of coverage" identically (game test 2026-09-11 D3).
@@ -1086,6 +1093,7 @@ export class Engine {
   // ---------- MC context ----------
   hydrate(node) {
     if (!node) return;
+    this.lastMcMsgAt = Date.now();   // F265: a welcome is a message from MC too
     // A40 (T2 review S1/S4): the welcome STATES the bench fact, and this is where a returning phone
     // learns it. `standby` is persisted locally (`_save`), and until now NOTHING in a welcome could
     // clear it -- only an `assign` with a falsy `standby` could, and that push needs a bound node, which
@@ -1117,6 +1125,7 @@ export class Engine {
   }
 
   onMcMessage({ kind, body, t }) {
+    this.lastMcMsgAt = Date.now();   // F265: every DELIVERED kind proves the socket is alive, `time_res` included
     switch (kind) {
       case 'assign': return this._assign(body);
       case 'config': return this._applyConfig(body, 'config');
@@ -4801,6 +4810,7 @@ export class Engine {
       loadMag: this._loadAmmo()[0], loadReserve: this._loadAmmo()[1],
       alive: this.alive, deaths: this.deaths, shots: this.shots, battery: this.battery,
       kills: this.score ? this.score.kills : null, assists: this.score ? this.score.assists : null, accuracy: this.score ? this.score.accuracy : null, scoreAt: this.scoreAt,
+      lastMcMsgAt: this.lastMcMsgAt,   // F265: `hud.js _boardStale` freshness signal — see the field's own comment above
       // F208/F264: null, or {why: 'silent'|'no_fire', ms} / {verdict: 'asking'|'dead'|'alive'|'no_answer', at}.
       // Published for MC and the bench (`statusBody` carries `pool_stale`/`cure` too); `hud.js` does not read
       // either field today, so a `no_answer` verdict -- the one case that needs a human, FORCE RESPAWN -- is
