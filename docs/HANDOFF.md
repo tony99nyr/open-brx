@@ -47,6 +47,35 @@ Two guns (Tactix-E20D, Tactix-3D4F), then Tactix-E20D alone with the ESP32 IR ri
   `$WEAP`-based reading, so the recoil writer can move fully onto one `$TMP` frame with no `$AMMO` restore.
   This was the last test of tonight's sitting.
 
+## Weapons: what changed today, and what is decided vs proposed
+
+`$WEAP` **t1 = 2 means the shot leaves the gun AND the shooter's headset**, and **t12 is the second
+word's damage**. Measured twice (cap30: 45 then 70, 88 ms apart, a kill; then a victim at 250 armour
+read BETWEEN the words: Shotgun 250 → 205 → 135, Plasma Sniper 126 → 101 → 21). Three weapons do it.
+We had been pricing t5 and shipping Battle Company's t12 untouched. **t12 is now a declared
+`wire.headset_dmg`, and a captured t12 with no declared price is a REFUSAL.** Armour Piercing zeroes
+it, because the perk rekeys the whole frame to the armour-bypassing cell and was delivering 35 to bare
+health for the price of 15.
+
+**Crits ship on three weapons** (`crit_pct`): Burst Rifle 40%, AMR 30%, Toxin Rifle 15% where the crit
+is the poison PROC. Paid for in damage, so averages hold. ⚠️ **Hits-to-kill stays the GUARANTEED
+number**: a test pins `htk == ceil(pool / damage_per_pull())` so nobody folds an expected value in.
+
+**Four counting faults fixed, one cause: counting rows in a file, not weapons in a game.** The site
+said 25 weapons (15), the phone demanded 7 perks (5), the pools said 11 OF 13 (primary 11 of 15,
+secondary 13 of 15, genuinely different), and the home page said 22. All four now derive from the
+shipped artefact. `support` also stopped being a dumping ground and now MEANS "cannot kill".
+
+**Shipped:** the public `/arsenal` page, generated from the catalogue, linked from the home page, art
+for every weapon. All 25 descriptions rewritten as player copy, balance notes moved to `notes`.
+
+⚠️ **PROPOSED, NOT SHIPPED: every recoil number.** The two-step table lives in `spec/node.md` as a
+proposal; `weapons.json` carries none of it. **F268** (two judgements in it), **F280** (the rungs do
+not scale with the magazine, and their derivation is wrong underneath), **F281** (Quick Hands must
+move in one piece or not at all) and **S54** (wiring the fields) all bear on it. S54 is deliberately
+unbuilt until the other three settle: wiring six fields three times is worse than wiring them once
+late.
+
 ## Still open, unchanged by tonight
 
 1. **F264** a player can be dead on the gun and alive on the HUD; `pool_stale: no_fire` is detected and
@@ -72,7 +101,13 @@ Two guns (Tactix-E20D, Tactix-3D4F), then Tactix-E20D alone with the ESP32 IR ri
 4. **Fix F264** using the `$LIFE,*` poll now confirmed; it is the one that costs a player their match.
 5. **Fix F265 and F261**, both small: never print LIVE over a stale board, and record an orphan match
    whether or not a node is bound.
-6. Tony decides **F220** (publish app 0.3.0 as a GitHub Release).
+6. **Weapons decisions, no bench needed** (all numbers nobody has played): **F268**, **F280** and
+   **F281** should settle in one pass. **Toxin** needs three from Tony before its node tick clock can
+   be built: who gets kill credit for a lethal tick, whether poison survives a respawn, and what the
+   HUD shows while it ticks.
+7. **F254 🔴 needs outdoor space** (Tony: not today). At what `t13` value does the headset word stop
+   arriving. It unlocks the close-range weapon class, which `t2` cannot express: F231 says everything
+   from 55 to 100 reaches the same distance.
 
 ## Machine state
 

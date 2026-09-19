@@ -5197,6 +5197,24 @@ test('F15: a proto-8 $HIR under config.stun disarms every live slot, extends on 
   assert.equal(h.eng.shots, shots + 1, 'one shot after the restore, counted from the restored magazine');
 });
 
+test('F15 (Tony, 2026-09-18): a stun plays the concussion cue once, in the same write as the disarm, and an extend plays nothing again', () => {
+  const h = stunHarness();
+  h.writes.length = 0;
+  h.frame('$HIR,4,8,19,2,15,0,0,*');   // the EMP word starts the stun
+  const plays = h.writes.filter(f => f.startsWith('$PLAY'));
+  assert.deepEqual(plays, ['$PLAY,X17,4,6,,,,,*'], 'one $PLAY,X17 cue, beside the $AMMO disarm');
+
+  // EXTEND: a second EMP inside the window must not repeat the cue (F274: one write per hit, not per tick)
+  h.adv(2000); h.writes.length = 0;
+  h.frame('$HIR,4,8,19,2,15,0,0,*');
+  assert.equal(h.writes.filter(f => f.startsWith('$PLAY')).length, 0, 'no second cue on an extend');
+
+  // expiry: the restore is a plain $AMMO write, no cue on the way out
+  h.writes.length = 0; h.adv(10100); h.eng.tick();
+  assert.equal(h.eng.stunned, null, 'restored');
+  assert.equal(h.writes.filter(f => f.startsWith('$PLAY')).length, 0, 'no cue on restore');
+});
+
 test('F15: death cancels the stun -- no restore write; the revive\'s own $AMMO re-arms the next life', () => {
   const h = stunHarness();
   h.frame('$HIR,4,8,19,2,15,0,0,*');
