@@ -373,3 +373,11 @@ Two guns, Tactix-E20D and Tactix-3D4F, then Tactix-E20D alone with the ESP32 IR 
   walking gun holds a flat frame (100/100 for 32 rounds, 50/50 from the first shot), so no shipped game
   sees the walk. Recoil is node-written with `$TMP` t4. The per-gun cause is still unknown; the USB
   device records of both guns match apart from factory QC fields.
+
+# Closed 2026-09-18 (night): the three-lane session close
+
+- 2026-09-18 **F65** addendum to the closure above: the third sitting confirmed the two fields that line called
+  untested. The shield flag gates the shield pool on its own (`$BUMP,-10,0,0,1,,*` took shield 40 to 30), a drain
+  empties the shield and then cascades into the other selected pool, and the sound token plays the named id (an
+  empty token plays nothing). `$BUMP` is confirmed on every field. Evidence: `docs/experiment-log/2026-09.md`,
+  2026-09-18, "firmware levers session 1, third sitting".

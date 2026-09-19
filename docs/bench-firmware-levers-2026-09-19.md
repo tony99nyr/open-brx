@@ -12,6 +12,8 @@ v4.32 has drifted from V4_30, and the later sessions shrink.
 | 4. IR rig | 100 min | two guns, the ESP32 IR rig | §16 step 6 first if session 1 had no rig, then §11, §13 steps 2-3, §16, §17, §20, §24 |
 | 5. Gap sweep | 90 min | two guns, the IR rig for two steps | §19 |
 
+**Status, 2026-09-18 night.** Session 1 ran in three sittings. What is left of it, and every later session, is in one running order in [`bench-plan.md`](bench-plan.md). Do not plan from the session table above.
+
 **Claim checklist.** Tick each claim in the experiment log as CONFIRMED, REFUTED or DIFFERENT (and how). A claim
 reaches `docs/manual/` only when it is CONFIRMED here.
 
@@ -29,11 +31,11 @@ reaches `docs/manual/` only when it is CONFIRMED here.
 | 10 | The crit bonus is `$PSET` t6 (we ship 50), scaled by `$GSET` t7 (V4_31, sheets) | 9 | |
 | 11 | fn 34/35 register on a dead gun; fn 38 halves HP damage; fn 30 back x2; fn 33 silent kill; fn 50-52 colour only (V4_30) | 10 | **CONFIRMED for fn 34 (2026-09-18, §16).** A `$SIR,14,0,NULL,34,,,,,*` row on a gun killed over BLE (`$HP,0,0,0`) still registered `$HIR` from an `$IRTX` type-14 revive beam. fn 35, 38, 30 and 33 untested this session. |
 | 12 | `$SIR` p6/p8 make the victim re-emit the hit (splash) (V4_30, sheets) | 11 | |
-| 13 | `$STOP` closes and `$START` opens IR reception; the same flag gates the trigger (inferred); both clear `$GSET`'s app-mode flags (V4_30, V4_31) | 12 | |
+| 13 | `$STOP` closes and `$START` opens IR reception; the same flag gates the trigger (inferred); both clear `$GSET`'s app-mode flags (V4_30, V4_31) | 12 | **DIFFERENT (2026-09-18, §23 step 2).** `$STOP` blocks a hit's damage but not the `$HIR`, and it survives `$SPAWN`; `$START,*` plus a `$GSET`/`$TID` re-send reopens it. §12 step 2 (does `$STOP` gate the trigger?) is open. |
 | 14 | The gun sends `$DD,<killer>,<team>` when it dies (Jay's code); a kill confirmation is a protocol-15 subtype-0 IR word (BC's UART sheet) | 13 | **REFUTED, both halves, for this gun.** A gun killed by one hit gave `$HP,0,0,0` then `$LCD,0,0,0,0,6,24`, with NO `$DD`. §13 step 3's sweep of protocol-15 magnitudes 1-39 found no native audible callout on any of them, though every one registered silently (fn 28 on `<15,0>`, team-gated). So the gun does not announce a kill on its own in app mode; Callsign's kill voice is an app-side `$PLAY`. The node must not build on `$DD`. **A DEAD gun still forwards a host `$IRTX` frame out through its headset and emits the exact word**, confirmed with a control (a dying gun itself emits no IR on death). So a protocol-15 word sent via `$IRTX` through the dead gun's headset IS a usable, silent, firmware-free carrier for a host-defined kill-confirm signal. |
 | 15 | Split frames get lost; bursts overflow; `$DPLAY` on a loop sound hangs the gun (V4_31) | 14 (screamers sheet Phase A) | **PARTLY CONFIRMED.** A1: `$DPLAY,A10,4,*` got no `$PONG`, no reply and no audio, and the link dropped about 15 s later; it recovered on reconnect with no power cycle needed, so this is a partial screamer rather than a proven full lock. A2 control (`$DPLAY,U37,4,*`, one-shot) answered `$PING` at once. `$DPLAY` stays on the never-send list either way. |
 | 16 | `$RADSK` every 4 s keeps a headless gun linked (Jay's code, V4_31) | 15 | |
-| 17 | `$IRTX` type 14 to a downed ally is a revive beam, read via fn 34 (BC app) | 16 | **Mechanism partly confirmed (2026-09-18, §13 step 3 addendum):** a live gun forwards a host `$IRTX` frame out through its headset and the headset emits the exact word, and this still works when the gun is DEAD (killed over BLE first, the `$IRTX` still reached the headset). The revive beam itself (type 14, read via fn 34) is untested; only the general "host `$IRTX` reaches the headset" mechanism it depends on is confirmed. |
+| 17 | `$IRTX` type 14 to a downed ally is a revive beam, read via fn 34 (BC app) | 16 | **CONFIRMED (2026-09-18, §16 steps 1-3).** A dead gun with `$SIR,14,0,NULL,34,,,,,*` registered `$HIR,4,14,1,2,1,0,0` from a live gun's `$IRTX,100,14,1,2,1,0,0,100,1,,0,*` (field 4 = the dead gun's own team), and `$LIFE,30,0,0,1,*` then revived it. A live or dead gun forwards a host `$IRTX` through its headset. Still open: step 4 (field 4 = 1) and step 6.3 (does `$CLEAR` stop a headset loop). |
 | 18 | Protocol-15 station words: magnitude 6 respawn, 8 perk, 10 proximity, 50 capture (Jay's code) | 17 | |
 | 19 | `$LCD` t3 = shield, t4 = slot; `$QUERY` t2 = team; `$VERSION` t3/t5 meanings (V4_30, BC app) | 18 | **CONFIRMED**, with a timing note: `$QUERY` on a dead gun returns `$LCD` at once, then the rest of the body about 2 s later with no trailing `*`, so `$QUERY` holds the gun's print loop busy for that long. |
 | 20 | Every other open item the triage of FOLLOWUPS against the new sources found untested | 19 | |
@@ -299,7 +301,7 @@ V4_30 drops every IR word while the gun is not `$START`ed ("not start"). `$START
 "started" flag. About 30 reads of that flag in the button and trigger paths suggest that `$STOP` also gates the
 trigger (inferred). V4_31 also shows that `$START` and `$STOP` clear the app-mode flags that `$GSET` sets.
 
-1. Send `$STOP,*` to armed B and fire at B. Expect no `$HIR`.
+1. Send `$STOP,*` to armed B and fire at B. Expect no `$HIR`. **Answered 2026-09-18 by §23 step 2: DIFFERENT.** `$HIR` still arrives, with no damage. Skip this step.
 2. With B still stopped, pull B's trigger 3 times. Does `$ALCD` move? Does IR leave the barrel?
 3. Send `$START,*` to B, then re-send B's `$GSET`. Fire at B. Expect a normal hit.
 
@@ -859,6 +861,8 @@ Write the answers into the log verbatim, after the runs and before anyone reads 
 - Should the second rung come later, bite harder, or go?
 
 ### If §21 moves the mechanism
+
+**§21 answered 2026-09-18:** t4 is absolute, it does not decay by itself (it held 60 s), and a `$WEAP` push does not clear it. So only the first bullet below applies: pin groups A and B with `$TMP` t4. Groups C, D and E run on the phone's node. Run them after Tony settles the rung basis (F268, F280), so that they measure the numbers that will ship.
 
 - Groups A and B pin accuracy with one `$TMP` t4 write instead of a `$WEAP` push, so there is no magazine reset and no
   `$AMMO` restore. The numbers themselves do not change: they are about the VALUE, not about the writer.

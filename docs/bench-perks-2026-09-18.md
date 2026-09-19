@@ -1,5 +1,7 @@
 # Bench: crits, anti-armour, and the perk levers (2026-09-18)
 
+**Status, 2026-09-18 night: every section is answered.** Do not run this sheet again. The evidence is the 2026-09-18 perks bench entry in `experiment-log/2026-09.md` (items 1-8) and F276. The follow-on steps are in [`bench-plan.md`](bench-plan.md).
+
 About 50 minutes, two guns at the desk, no rig. It answers the questions the perk rework (S50) rests on. It
 also answers the one that gates a poison weapon (S16). Every
 step follows the method rules learned on 2026-09-17: cover the victim's gun sensor at close range (F228), give the

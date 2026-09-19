@@ -35,7 +35,7 @@ Around them: **[`gotchas.md`](gotchas.md)** (field lore by symptom, plus the ben
 | **[`bench-plan.md`](bench-plan.md)** | **open this first.** Every bench test in one order, as sittings of 60 min or less, with the equipment, the preconditions, and which sheet owns what |
 | [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md) | live: verifies the firmware findings on v4.32 (claims 1-27) |
 | [`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md) | live, P0: reproduce and prevent the screamer lock-up (Phases A-E) |
-| [`bench-perks-2026-09-18.md`](bench-perks-2026-09-18.md) | live: §2, §4, §5 and §7 are still open |
+| [`bench-perks-2026-09-18.md`](bench-perks-2026-09-18.md) | history: every section answered on 2026-09-18 (the log's perks bench entry, items 5-8) |
 | [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md) | superseded by the plan; history |
 | [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) | superseded as the running order; keeps the method of its unrun rungs. FOLLOWUPS §9 is the register (ids) |
 | [`bench-grenade.md`](bench-grenade.md) | the grenade/hill rungs. Read its *What is answered* table first, then *Still to run* |
@@ -46,7 +46,8 @@ Around them: **[`gotchas.md`](gotchas.md)** (field lore by symptom, plus the ben
 1. One entry in the current month's experiment log (the evidence).
 2. One FOLLOWUPS diff: strike or add rows, no prose. A closed item becomes one dated line in
    [`archive/followups-closed.md`](archive/followups-closed.md) with a link to the log anchor.
-3. One HANDOFF replacement.
+3. One HANDOFF replacement. When several sessions close together, each one overwrites only its own lane section
+   of `HANDOFF.md`, never another lane's.
 
 A new **fact** goes to `protocol/` or `manual/` in the same commit, or gets a FOLLOWUPS row that says
 "promote X". A **retraction** is fixed at the source (`protocol/brx-protocol.md` row, `manual/` page,
