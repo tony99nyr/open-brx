@@ -3,7 +3,7 @@
 **State as of 2026-09-18 (night).** `main` carries the LaserTagMods drive integration (stock firmware
 images, Jay's ESP32 sources, BC's command sheets, BC's 2018 app, a Callsign capture, the `soak` tool),
 the fix/playtest-2026-09-13 desk work (F264-F268, S54-S55, the recoil writer rebuild, the cure test
-suite), and tonight's firmware levers bench, session 1 (both halves). **Every firmware fact from the
+suite), and tonight's firmware levers bench, session 1 (all three sittings). **Every firmware fact from the
 drive is a disassembly reading until this bench proves it on v4.32.** The full plan, all five sessions
 in one running order: [`bench-plan.md`](bench-plan.md). **Open that file first at the bench.** The
 claim-by-claim checklist is [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md).
@@ -17,16 +17,24 @@ Two guns (Tactix-E20D, Tactix-3D4F), then Tactix-E20D alone with the ESP32 IR ri
   only part still open.
 - **`$STUN,<ms>` is a real, native, SILENT stun**, about 6 s. The node must play its own cue (`X17`,
   matching Battle Company's concussion-grenade sheet entry) since the gun plays nothing.
-- **`$BUMP` is fully confirmed**: `<amount>,<hp 0/1>,<armour 0/1>,<shield 0/1>,<sound>`. Closes F65.
-- **`$TMP` t4 (accuracy), t8 (incoming damage) and t9 (magazine) are all confirmed over BLE**, none of
-  them reset the magazine or reserve on their own, and this unblocks three things at once: the recoil
-  writer can move off `$WEAP`+`$AMMO` onto one 20-byte `$TMP` frame (F274), spawn protection can drop
-  from a 28-frame fn-28 twin table to `$SPAWN,,*` + one `$TMP` t8 write (levers §23, F121/F269), and
-  Extended Mags gets a wire-only alternative to today's compile-time x2 (S50). ⚠️ **`$TMP` t4 is
-  last-writer-wins against the gun's own fn 23 smoke, and the smoke's own ~6 s timer resets t4 to 0
-  regardless of the last write.** Any accuracy writer needs the single-owner design S55 already
-  proposes, plus one more rule: never write t4 while a smoke is active, and re-send the owner's value
-  once it ends.
+- **`$BUMP` is confirmed in full, including the shield flag and the sound token** (third sitting,
+  2026-09-18): `<amount>,<hp 0/1>,<armour 0/1>,<shield 0/1>,<sound>`. Closes F65.
+- **`$TMP` t4 (accuracy), t5 (fire interval), t6 (reload time), t7 (outgoing damage), t8 (incoming
+  damage) and t9 (magazine) are all confirmed over BLE**, none of them reset the magazine or reserve on
+  their own, and this unblocks three things at once: the recoil writer can move off `$WEAP`+`$AMMO`
+  onto one 20-byte `$TMP` frame (F274), spawn protection can drop from a 28-frame fn-28 twin table to
+  `$SPAWN,,*` + one `$TMP` t8 write (levers §23, F121/F269), and Extended Mags and Quick Hands each get
+  a wire-only alternative to today's compile-time multipliers (S50). ⚠️ **`$TMP` t4 is last-writer-wins
+  against the gun's own fn 23 smoke, and the smoke's own ~6 s timer resets t4 to 0 regardless of the
+  last write.** Any accuracy writer needs the single-owner design S55 already proposes, plus one more
+  rule: never write t4 while a smoke is active, and re-send the owner's value once it ends.
+- **Spawn protection's 7-frame `$SPAWN` + `$TMP` design is confirmed step by step** (§23, third
+  sitting), with one design rule it surfaced: **`$STOP` blocks a hit's damage but not the hit itself**
+  (`$HIR` still arrives, no `$HP`), **and `$STOP` survives `$SPAWN`** — only `$START,*` (plus a
+  `$GSET`/`$TID` re-send) reopens it. Anything that sends `$STOP` must send `$START` before the next
+  life.
+- **Desk (built, not bench-tested tonight, and now landed as F15):** the node plays
+  `$PLAY,X17,4,6,,,,,*` once at stun start.
 - **A dead gun answers the bare `$LIFE,*` with `$HP,0,0,0` at once; poll with that, not `$QUERY`**
   (`$QUERY`'s reply holds a dead gun's print loop busy for about 2 s). Confirms F264/F272's probe.
 - **`$DD` REFUTED for this gun**: a one-hit kill gave no `$DD` at all. Do not build any cure on it.
@@ -41,11 +49,6 @@ Two guns (Tactix-E20D, Tactix-3D4F), then Tactix-E20D alone with the ESP32 IR ri
   mode fully revives a dead gun (fires, takes hits, keeps its magazine and any `$TMP` write), though the
   headset death flash needs a separate `$HLED,,6,*` clear. **Untested against the F264 stall state
   specifically**: reproduce that stall before trusting this as the cure.
-- **`$TMP` t5 (fire interval) CONFIRMED on a full-auto weapon** (scales the cycle by `(100+t5)/100`, exact
-  match to V4_31), but showed no effect on the Shotgun's shell-fed reload. **t7 (outgoing damage) and t4's
-  effect on the REAL hit rate are both CONFIRMED**: t4 at 50 landed 41% of rounds, matching the earlier
-  `$WEAP`-based reading, so the recoil writer can move fully onto one `$TMP` frame with no `$AMMO` restore.
-  This was the last test of tonight's sitting.
 
 ## Weapons: what changed today, and what is decided vs proposed
 
@@ -99,10 +102,10 @@ late.
 
 1. **Screamers Phase A, the rest of it**, then Phase C (`python -m brx_mcp soak <address> <pattern>
    <minutes>`) once A gives F269/F270/F272 their numbers. Do not turn the block pause on before that.
-2. **Levers session 1, the rest of it**: §21 steps 4-19 (sitting 3), §2/§4/§5/§12/§16 (sitting 4), per
+2. **Levers session 1, the rest of it**: §21 remaining steps (9-14, 19: t9 sub-behaviour, t1-t3 pool
+   maxima), §2, §12, §16, per `bench-plan.md`. §5 (`$BUMP`) and §23 (spawn protection) are now done.
+3. **Levers session 2** (§3, §6-§10, §15) and the IR-rig session (§11, §13, §16, §17, §20, §24), both in
    `bench-plan.md`.
-3. **Levers session 2** (§3, §6-§10, §15, §23 in full) and the IR-rig session (§11, §13, §16, §17, §20,
-   §24), both in `bench-plan.md`.
 4. **S55, the single accuracy owner** -- the recoil writer's move onto one `$TMP` t4 frame is accepted and
    BLOCKED behind it. t4 is shared with the gun's own smoke in both directions, so writing it without the owner's
    three rules (never during a smoke, re-send when it ends, re-send after a `$SPAWN` but not after a `$LIFE`
