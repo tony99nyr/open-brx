@@ -3596,11 +3596,15 @@ class Session:
         return self.phase
 
     def _note_orphan(self, nid: str, body: dict, t_recv: int) -> None:
-        """Track a BOUND phone that reports ARMED/LIVE in a match this MC did not start and never retired.
+        """Track a phone that reports ARMED/LIVE in a match this MC did not start and never retired.
 
-        Every heartbeat restates the claim, so anything else clears it."""
+        F261, bench 2026-09-18: a FRESH MC (restarted with no roster, the field case of MC coming up on a
+        different laptop) has no `node_player` binding for anyone, so requiring one here dropped the orphan
+        on every heartbeat -- exactly the scenario the feature exists for. The node need not be bound;
+        `adopt_orphan` creates the binding when the operator resumes. Every heartbeat restates the claim,
+        so anything else clears it."""
         arm, mid = body.get("arm_state"), body.get("match_id")
-        if (nid in self.node_player and arm in ("armed", "live") and isinstance(mid, str) and mid
+        if (arm in ("armed", "live") and isinstance(mid, str) and mid
                 and mid not in self._scheduled_ids and mid not in self._ended
                 and mid != (self.start_info or {}).get("match_id")):
             t_minus = body.get("t_minus_ms")
@@ -3610,9 +3614,12 @@ class Session:
             self._orphans.pop(nid, None)
 
     def _fresh_orphans(self, match_id: str | None = None) -> dict[str, dict]:
+        # F261: no `nid in self.node_player` gate here either -- an unbound node's orphan claim is the one
+        # a fresh MC most needs to see. `orphan_match_view` already falls back to the node id when it has
+        # no player display name.
         now = self.now_ms()
         return {nid: o for nid, o in self._orphans.items()
-                if nid in self.node_player and now - o["t"] <= STALE_AFTER_MS
+                if now - o["t"] <= STALE_AFTER_MS
                 and not (self.nodes.get(nid) or {}).get("stale")
                 and (match_id is None or o["match_id"] == match_id)}
 

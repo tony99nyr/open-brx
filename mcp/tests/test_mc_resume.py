@@ -279,11 +279,33 @@ def test_the_notice_goes_away_when_the_phones_stop_reporting_that_match():
     assert "orphan_match" not in s.snapshot()
 
 
-def test_an_unbound_phone_in_an_unknown_match_raises_nothing():
+def test_an_unbound_phone_in_an_unknown_match_raises_the_notice_too():
+    """F261, bench 2026-09-18: a phone MC has never bound to a player still gets to claim an orphan
+    match. Before the fix this stranger raised nothing, the same gap that hid the exact case the
+    feature exists for -- a freshly restarted MC with no roster typed in yet (below)."""
     s, net, clock, ps = mk(1, "ffa")
     net.simulate_hello("stranger", "GUN-Z-0000")
     net.simulate_status("stranger", {"arm_state": "live", "match_id": "m-old"}, clock["t"])
-    assert "orphan_match" not in s.snapshot()
+    assert "stranger" not in s.node_player, "setup: the hello never matched a player"
+    orphan = s.snapshot()["orphan_match"]
+    assert orphan == {"match_id": "m-old", "phones": 1, "players": ["stranger"], "arm_state": "live",
+                      "can_resume": True}
+
+
+def test_f261_a_freshly_restarted_mc_with_no_roster_yet_still_sees_the_orphan():
+    """F261, bench 2026-09-18 bench finding: MC restarted with its session file moved aside comes up
+    with NO roster and NO node bindings at all -- the field case of MC coming up on a different
+    laptop. The phones carry on LIVE regardless, and their heartbeats must be enough on their own:
+    `orphan_match` must not stay absent just because nothing is bound yet."""
+    s, net, clock, ps = mk(0, "ffa")
+    for i in range(2):
+        net.simulate_hello(f"node{i}", f"GUN-{chr(65 + i)}-0000")
+        _status(net, clock, i, "live", "m-old")
+    assert not s.node_player, "setup: a fresh MC has bound nobody"
+    orphan = s.snapshot()["orphan_match"]
+    assert orphan["match_id"] == "m-old" and orphan["phones"] == 2
+    assert sorted(orphan["players"]) == ["node0", "node1"], "no display name yet, so the node id stands in"
+    assert orphan["can_resume"] is True
 
 
 def test_no_notice_in_a_normal_muster_kit_lobby_live_and_recap():

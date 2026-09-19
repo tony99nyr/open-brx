@@ -1285,10 +1285,12 @@ class NoticesView(TypedDict):
 
 
 class OrphanMatchView(TypedDict):
-    """Bench 2026-09-17: bound phones report ARMED/LIVE in a match this MC did not start.
+    """Bench 2026-09-17: phones report ARMED/LIVE in a match this MC did not start. A phone need not be
+    BOUND to a player for its claim to count here (F261, bench 2026-09-18: a fresh MC has no roster yet).
 
-    Absent from `State` unless at least one such phone is heard now. `players` are display names.
-    `can_resume` is false while MC runs or recaps a match of its own (END THEIR MATCH still works)."""
+    Absent from `State` unless at least one such phone is heard now. `players` are display names, or the
+    node id for a phone MC has not bound to a player yet. `can_resume` is false while MC runs or recaps
+    a match of its own (END THEIR MATCH still works)."""
     match_id: str
     phones: int
     players: list[str]
