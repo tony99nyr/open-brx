@@ -37,6 +37,23 @@ LOCKUP_AFTER_S = 10.0        # bench-screamers-2026-09-19.md definitions: LOCK-U
 RECONNECT_ANSWER_WINDOW_S = 5.0
 TICK_S = 0.25
 
+# `--phone-pacing` (docs/FOLLOWUPS.md F283, docs/bench-screamers-2026-09-19.md Phase C): the phone
+# app's own write pacing, read from `app/src/brxlink.js` `WRITE_PACING` (2026-09-18), not guessed.
+# The MCP instrument's own `ble.py _write()` sleeps a flat 20 ms after every 20-byte chunk and adds
+# no frame gap, so it under-stresses a long frame by about 1.8x against the phone (F283's own maths:
+# a 101-byte $WEAP frame is ~120 ms on `ble.py`, ~66 ms -- 6 chunks * 8 ms + one 18 ms frame gap --
+# on the phone). PHONE_CHUNK_SIZE is the phone's hardcoded chunk (brxlink.js `write()`: `for (let o
+# = 0; o < frame.length; o += 20)`; it never negotiates a bigger MTU the way `ble.py` does).
+# PHONE_BLOCK_FRAMES/PHONE_BLOCK_PAUSE_MS mirror `WRITE_PACING.blockFrames`/`blockPauseMs`, which
+# ship OFF (0/0) but are documented as "a bench session can try a value"
+# (docs/spec/transport-hardening.md §8) -- so they are flags here too, not a hardcoded 0, ready for
+# whatever value F269 turns them on with.
+PHONE_CHUNK_SIZE = 20
+PHONE_CHUNK_GAP_MS = 8
+PHONE_FRAME_GAP_MS = 18
+PHONE_BLOCK_FRAMES = 0
+PHONE_BLOCK_PAUSE_MS = 0
+
 
 class Clock:
     """Real time. `sleep(0)` still yields to the event loop, never blocks."""
@@ -173,13 +190,26 @@ def _print_status(stream: TextIO | None, t_s: float, summary: SoakSummary) -> No
 async def run_soak(mgr: Any, address: str, pattern: str | SoakPattern, minutes: float, *,
                    alias: str = "soak", gap_ms: int = 0, block: int | None = None,
                    pause_ms: int = 0, clock: Clock | None = None, log_path: Path | None = None,
-                   status: TextIO | None = sys.stderr) -> SoakSummary:
+                   status: TextIO | None = sys.stderr, phone_pacing: bool = False,
+                   phone_chunk_gap_ms: int = PHONE_CHUNK_GAP_MS,
+                   phone_frame_gap_ms: int = PHONE_FRAME_GAP_MS,
+                   phone_block_frames: int = PHONE_BLOCK_FRAMES,
+                   phone_block_pause_ms: int = PHONE_BLOCK_PAUSE_MS) -> SoakSummary:
     """Run one soak: connect, arm, replay `pattern` while probing liveness, for `minutes`.
 
     `gap_ms`/`block`+`pause_ms` are the Phase B pacing levers: `gap_ms` sleeps after every frame
     (on top of `ble.py`'s own 20 ms inter-chunk pacing); `block`+`pause_ms` sleeps once every `block`
     frames. Both default to 0/None: today's traffic shape, unpaced, so the tool's own default run
     reproduces current behaviour rather than a guess at a safer one.
+
+    `phone_pacing` (F283) switches the transport itself, not just an extra sleep on top of it: each
+    frame is chunked and paced through `mgr.send_phone_paced()` (`ble.py`), which copies the phone's
+    own `write()` (`app/src/brxlink.js` `WRITE_PACING`) instead of `ble.py _write()`'s flat 20 ms per
+    chunk. `phone_chunk_gap_ms`/`phone_frame_gap_ms`/`phone_block_frames`/`phone_block_pause_ms`
+    default to the phone's own values (see the `PHONE_*` module constants) so a bare `--phone-pacing`
+    reproduces today's phone traffic; passing one overrides only that lever, for whatever value a
+    later bench session finds (F269 may turn the block pause on with a non-zero pair). Ignored
+    (`gap_ms`/`block`/`pause_ms` still apply on top, unchanged) when `phone_pacing` is False.
 
     Ctrl-C (KeyboardInterrupt) ends the loop early but still runs the full teardown and returns a
     summary: "ends cleanly with the summary" (bench-screamers-2026-09-19.md). Teardown always sends
@@ -189,7 +219,7 @@ async def run_soak(mgr: Any, address: str, pattern: str | SoakPattern, minutes: 
     listening, whatever sequence we ask the transport to write.
     """
     p = PATTERNS[pattern] if isinstance(pattern, str) else pattern
-    assert_pattern_is_safe(p)
+    assert_pattern_is_safe(p)   # DENIED/HANG_PRONE frames are refused here regardless of phone_pacing
     clock = clock or Clock()
     summary = SoakSummary(pattern=p.name, address=address, minutes_requested=minutes)
     expected_ammo: dict[str, tuple[int, int]] = {}
@@ -203,13 +233,21 @@ async def run_soak(mgr: Any, address: str, pattern: str | SoakPattern, minutes: 
 
     async def send(cmd: str) -> None:
         _track_ammo_sent(cmd, expected_ammo)
-        await mgr.send(alias, cmd, reply_window_ms=0)
+        if phone_pacing:
+            await mgr.send_phone_paced(alias, cmd, chunk_gap_ms=phone_chunk_gap_ms,
+                                       frame_gap_ms=phone_frame_gap_ms,
+                                       chunk_size=PHONE_CHUNK_SIZE)
+        else:
+            await mgr.send(alias, cmd, reply_window_ms=0)
         summary.frames_sent += 1
         summary.packets_sent += _packets_for(cmd)
         if gap_ms:
             await clock.sleep(gap_ms / 1000)
         if block and summary.frames_sent % block == 0:
             await clock.sleep((pause_ms or 0) / 1000)
+        if (phone_pacing and phone_block_frames and phone_block_pause_ms
+                and summary.frames_sent % phone_block_frames == 0):
+            await clock.sleep(phone_block_pause_ms / 1000)
 
     t0 = clock.now()
     # captured BEFORE the arm sequence, not after: the gun's own $ALCD echo to an armed $AMMO frame
