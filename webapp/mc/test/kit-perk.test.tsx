@@ -91,6 +91,33 @@ describe('KIT · perk slot (A14)', () => {
     expect(m.text()).not.toContain('TAP AGAIN');
     m.unmount();
   });
+
+  // S50 (2026-09-19): the console used to derive its own gain/cost text from `effects` and got the
+  // sign wrong on every multiplier over 1 (body_armor's 1.25 `reload_mult`, a cost, printed as a
+  // "FASTER" gain). Both lists now come straight off the server's `PerkView` (`perks.py
+  // gain_cost_lines`) — pin that the equipped slot card and the picker's own row show BOTH halves,
+  // worded exactly as the server sent them, not a re-derivation that could disagree again.
+  it('the equipped perk card shows the GAIN and the COST, not just one number with the wrong word', async () => {
+    const { m } = await kitFor('p1');   // demo kit: Quick Switch (switch_mult 0.5, max_armor_add -20)
+    const cards = m.find('[data-slot-ammo="1"]').map(el => el.textContent ?? '');
+    const card = cards.find(t => t.includes('ARMOR'));
+    expect(card, `no slot card mentions ARMOR — cards were ${JSON.stringify(cards)}`).toBeDefined();
+    expect(card).toContain('SWAPS 2× FASTER');
+    expect(card).toContain('-20 ARMOR');
+    m.unmount();
+  });
+
+  it('every perk row in the picker carries both a gain and a cost line where the perk trades one', async () => {
+    const { m } = await kitFor('p1');
+    await m.click('PERK');
+    const t = m.text();
+    // extended_mags: ×2 AMMO gain, SWAPS 1.3× SLOWER cost; armor_piercing: IGNORES ARMOR & SHIELDS gain,
+    // FIXED DAMAGE, SLOWER CYCLE cost (the rate-of-fire term the phone's old line never carried)
+    for (const line of ['×2 AMMO', 'SWAPS 1.3× SLOWER', 'IGNORES ARMOR & SHIELDS', 'FIXED DAMAGE, SLOWER CYCLE']) {
+      expect(t, `picker is missing "${line}"`).toContain(line);
+    }
+    m.unmount();
+  });
 });
 
 describe('DESIGNER · perk rule (A14)', () => {

@@ -5,7 +5,7 @@ the one hardware exception (an ALT-button perk cannot ride with a second weapon:
 last wins and the ack says what it dropped), and the phone/host copy. `docs/spec/loadout.md` §2–§4.
 """
 from brx_mcp.mc import policy as P
-from brx_mcp.mc.perks import default_perks
+from brx_mcp.mc.perks import EFFECT_KEYS, PerkCatalog, default_perks, gain_cost_lines
 from brx_mcp.mc.compile import WeaponCatalog
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.state import Session
@@ -166,3 +166,72 @@ def test_node_view_and_brief_carry_the_perk_rule():
     s.set_config({"loadout_policy": {"perk": {"choice": "off"}}})
     assert "no perks" in s.game_brief()["loadout_line"]
     assert net.pushes("assign", "node0")[-1][2]["policy"]["perk"]["choice"] == "off"
+
+
+# ---------------------------------------------------------------- gain/cost lines (S50, 2026-09-19)
+# The phone HUD and the console each used to derive their own "gain · cost" text from `effects` and
+# disagreed (the console's copy read every `reload_mult` as FASTER, even body_armor's 1.25, a COST;
+# neither carried a line for Armour Piercing's slower cycle). `gain_cost_lines` is now the one place
+# either UI reads this from, and `PerkCatalog.view()` ships the result on every `PerkView`.
+
+def test_every_effect_key_is_handled_by_gain_cost_lines():
+    """A new key in `EFFECT_KEYS` with no matching branch in `gain_cost_lines` must fail here, not ship
+    a perk whose gain/cost line is silently blank."""
+    sample = {"max_armor_add": 25, "ammo_mult": 2.0, "reload_mult": 0.5, "alt_reload": True,
+              "switch_mult": 0.5, "armor_piercing": True, "crit_pct_add": 10}
+    assert set(sample) == EFFECT_KEYS, "this test's sample has drifted from perks.EFFECT_KEYS"
+    gain, cost = gain_cost_lines("test", sample)
+    # every key above is on the gain side EXCEPT armor_piercing, which always carries its own
+    # fire-rate/damage cost alongside the gain (§7.7 — the pair is inseparable, never one without
+    # the other)
+    assert gain and cost == ["FIXED DAMAGE, SLOWER CYCLE"]
+
+    unknown_key = {"not_a_real_effect": 1}
+    try:
+        gain_cost_lines("test", unknown_key)  # type: ignore[arg-type]
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("gain_cost_lines accepted an unmapped effect key")
+
+
+def test_gain_cost_lines_reads_the_sign_not_just_the_key():
+    """The bug this replaces: a multiplier over 1 always printed as a gain ('faster'), because the old
+    code never checked which side of 1 it fell on. body_armor's `reload_mult: 1.25` (heavier rig, slower
+    reload) must land in `cost`, and quick_hands' `reload_mult: 0.5` in `gain`."""
+    gain, cost = gain_cost_lines("body_armor", {"max_armor_add": 25, "reload_mult": 1.25})
+    assert gain == ["+25 ARMOR"]
+    assert cost == ["RELOADS 1.2× SLOWER"]
+
+    gain, cost = gain_cost_lines("quick_hands", {"reload_mult": 0.5, "ammo_mult": 0.8})
+    assert gain == ["RELOADS 2× FASTER"]
+    assert cost == ["×0.8 AMMO"]
+
+
+def test_armor_piercing_carries_a_fire_rate_cost():
+    """F-desc (2026-09-19): the perk's own copy says "the gun cycles slower" -- the generated line must
+    say so too. The exact number lives on the WEAPON (weapons.json ap_fire_ms), not the perk, so the
+    cost line is worded, not a figure that would be right for one weapon and wrong for the other twelve."""
+    gain, cost = gain_cost_lines("armor_piercing", {"armor_piercing": True})
+    assert gain == ["IGNORES ARMOR & SHIELDS"]
+    assert cost and "SLOWER" in cost[0]
+
+
+def test_every_passive_perk_row_yields_gain_and_cost_where_it_trades():
+    """Every S50 passive perk (visible or hidden) gets a non-empty GAIN line; one that actually trades
+    a lever away (a non-empty `effects`) gets a non-empty COST line too. `slot_frame` rows (med_kit,
+    concussion) are catalogued stubs with no compiled effect yet and sit outside this rule."""
+    for row in PerkCatalog()._rows:  # noqa: SLF001 — intentionally reads hidden rows too
+        if row.get("mechanism") != "passive":
+            continue
+        view = PerkCatalog.view(row)
+        assert view["gain"], f"{row['perk_id']}: no gain line"
+        if row.get("effects"):
+            assert view["cost"], f"{row['perk_id']}: trades a lever but has no cost line"
+
+
+def test_perk_view_ships_gain_and_cost_on_the_catalog():
+    pk = default_perks().all()
+    quick_switch = next(k for k in pk if k["perk_id"] == "quick_switch")
+    assert quick_switch["gain"] == ["SWAPS 2× FASTER"]
+    assert quick_switch["cost"] == ["-20 ARMOR"]

@@ -373,6 +373,9 @@ class PerkView(TypedDict):
     tags: list[str]
     mechanism: Literal["passive", "slot_frame"]
     effects: PerkEffects
+    gain: list[str]     # S50 (2026-09-19): player-facing GAIN lines, e.g. "+25 ARMOR" -- `perks.gain_cost_lines`
+                        # is the one place either UI reads this from (app/src/hud/hud.js, webapp/mc/src/screens/Kit.tsx)
+    cost: list[str]     # the same perk's COST lines, e.g. "RELOADS 1.3× SLOWER" -- empty when the perk carries none
     verified: bool
     hidden: bool
 

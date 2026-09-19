@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { registrySig } from '../api/derive';
 import type { Loadout, LoadoutOverrides, PerkView, PhaseRefusal, Player, WeaponSel, WeaponView } from '../api/types';
 import { useStore } from '../store';
@@ -691,7 +691,7 @@ export function Kit() {
                             <span style={{ font: F.chk(700, 13), letterSpacing: '.05em' }}>{k.name}</span>
                             {!k.verified && <span title="Effect not yet proven on hardware" style={{ font: F.mono(500, 8), letterSpacing: '.14em', color: T.warn }}>UNPROVEN</span>}
                           </span>
-                          <span style={{ font: F.mono(600, 10), letterSpacing: '.1em', color: PERK_COLOR }}>{effectLine(k)}</span>
+                          <PerkTrade k={k} style={{ font: F.mono(600, 10), letterSpacing: '.1em' }} />
                         </span>
                       </div>
                     );
@@ -754,7 +754,7 @@ function SlotCard({ label, slot, active, onClick, rule, item, kind, required, on
           <span style={{ width: 48, height: 48, flex: 'none', display: 'grid', placeItems: 'center', background: T.inset, border: `1px solid ${PERK_COLOR}` }}><PerkGlyph id={item.perk_id} size={28} color={PERK_COLOR} /></span>
           <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span style={{ font: F.osw(700, 18), letterSpacing: '.06em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name.toUpperCase()}</span>
-            <span data-slot-ammo="1" style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: PERK_COLOR, lineHeight: 1.35 }}>PERK · {effectLine(item)}</span>
+            <span data-slot-ammo="1" style={{ font: F.mono(500, 10), letterSpacing: '.1em', lineHeight: 1.35 }}><span style={{ color: PERK_COLOR }}>PERK</span> · <PerkTrade k={item} /></span>
           </span>
         </div>
       )}
@@ -863,6 +863,7 @@ function WeaponHero({ w, slot, sp, tryingId, pushed, verdicts, setVerdicts }:
 
 function PerkHero({ k }: { k: PerkView }) {
   const fx = k.effects ?? {};
+  const gain = k.gain ?? [], cost = k.cost ?? [];
   return (
     <>
       <div style={{ flex: '0 0 auto', width: 150, minHeight: 140, display: 'grid', placeItems: 'center', background: T.inset, border: `1px solid ${PERK_COLOR}` }}>
@@ -874,13 +875,19 @@ function PerkHero({ k }: { k: PerkView }) {
           <Tag color={PERK_COLOR} style={{ letterSpacing: '.22em', padding: '3px 10px' }}>PERK</Tag>
           {!k.verified && <span title="Effect not yet proven on hardware" style={{ font: F.mono(500, 9), letterSpacing: '.16em', color: T.warn }}>UNPROVEN ON HARDWARE</span>}
         </div>
+        {/* S50 (2026-09-19): GAIN and COST, read straight off the server's `PerkView.gain`/`.cost` —
+            this used to rebuild the same numbers from `effects` and got the sign wrong on every
+            multiplier over 1 (body_armor's `reload_mult: 1.25`, a cost, printed as a gain). Two rows,
+            two colours: gain in the perk colour, cost in the neutral warning tone, never red and never
+            a team colour, so a host reads which is which without parsing the words. */}
         <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-          {fx.max_armor_add != null && <NumberCell label="ARMOR" value={`+${fx.max_armor_add}`} color={PERK_COLOR} size={20} pad="6px 14px" />}
-          {fx.ammo_mult != null && <NumberCell label="MAG & RESERVE" value={`×${fx.ammo_mult}`} color={PERK_COLOR} size={20} pad="6px 14px" />}
-          {fx.reload_mult != null && <NumberCell label="RELOADS" value={`${+(1 / fx.reload_mult).toFixed(1)}× FASTER`} color={PERK_COLOR} size={20} pad="6px 14px" />}
-          {fx.alt_reload && <NumberCell label="ALT BUTTON" value="RELOAD" color={PERK_COLOR} size={20} pad="6px 14px" />}
-          {fx.switch_mult != null && <NumberCell label="WEAPON SWAP" value={`${+(1 / fx.switch_mult).toFixed(1)}× FASTER`} color={PERK_COLOR} size={20} pad="6px 14px" />}
+          {gain.map((g, i) => <Tag key={`g${i}`} color={PERK_COLOR} size={12} style={{ letterSpacing: '.1em', padding: '6px 12px' }}>{g}</Tag>)}
         </div>
+        {cost.length > 0 && (
+          <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            {cost.map((c, i) => <Tag key={`c${i}`} color={T.warn} ink={T.ink} size={12} style={{ letterSpacing: '.1em', padding: '6px 12px' }}>{c}</Tag>)}
+          </div>
+        )}
         <div style={{ font: F.chk(500, 13), lineHeight: 1.5, color: T.body, maxWidth: '54ch' }}>{k.desc}</div>
         <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.micro }}>PASSIVE — APPLIED TO THE GUN WHEN THE GAME IS PUSHED · NOTHING TO TRY OUT{fx.alt_reload ? ' · TAKES THE ALT BUTTON: NO SECOND WEAPON WITH THIS ONE' : ' · RIDES BESIDE BOTH WEAPONS'}</div>
       </div>
@@ -922,15 +929,26 @@ export function PerkGlyph({ id, size = 24, color = PERK_COLOR }: { id: string; s
   }
 }
 
-const effectLine = (k: PerkView) => {
-  const fx = k.effects ?? {}; const out: string[] = [];
-  if (fx.max_armor_add != null) out.push(`+${fx.max_armor_add} ARMOR`);
-  if (fx.ammo_mult != null) out.push(`×${fx.ammo_mult} AMMO`);
-  if (fx.reload_mult != null) out.push(`RELOADS ${+(1 / fx.reload_mult).toFixed(1)}× FASTER`);
-  if (fx.alt_reload) out.push('ALT BUTTON RELOADS');
-  if (fx.switch_mult != null) out.push(`SWAPS ${+(1 / fx.switch_mult).toFixed(1)}× FASTER`);
-  return out.join(' · ') || 'PASSIVE';
-};
+// S50 (2026-09-19): a perk's GAIN and COST used to be derived here from `effects`, and disagreed with
+// the phone's own copy of the same arithmetic — every `reload_mult` printed "FASTER" regardless of
+// which side of 1 it fell on (body_armor's 1.25 is a COST), and Armour Piercing's slower cycle had no
+// line at all. Both now come from the server (`mcp/brx_mcp/mc/perks.py` `gain_cost_lines`, on every
+// `PerkView` as `gain`/`cost`) — this file only renders the two lists, never derives them.
+/** `k.gain`/`k.cost` as one inline run of text: gain in the perk colour, cost in the neutral warning
+ *  tone (never a team colour, never red — S50 desc F) so the two kinds of fact read as different at a
+ *  glance, not just by word order. Renders 'PASSIVE' plain when a perk (a node-local one with nothing
+ *  compiled, or a stale server that has not shipped the two lists yet) carries neither. */
+function PerkTrade({ k, style }: { k: PerkView; style?: CSSProperties }) {
+  const gain = k.gain ?? [], cost = k.cost ?? [];
+  if (!gain.length && !cost.length) return <span style={style}>PASSIVE</span>;
+  return (
+    <span style={style}>
+      {gain.length > 0 && <span style={{ color: PERK_COLOR }}>{gain.join(' · ')}</span>}
+      {gain.length > 0 && cost.length > 0 && ' · '}
+      {cost.length > 0 && <span style={{ color: T.warn }}>{cost.join(' · ')}</span>}
+    </span>
+  );
+}
 const shortName = (n: string) => n.replace(/ Rifle$/i, '').replace(/ Launcher$/i, ' LNCHR').toUpperCase();
 
 /** Player number 1–63, draft-then-commit (see ValueBox). */

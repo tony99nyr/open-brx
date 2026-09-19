@@ -85,9 +85,10 @@ PerkView {
     max_armor_add?: number,        // a FLAT armour grant/cost (docs/perk-design.md §2, decided
                                     // 2026-09-17): `mc/compile.py` `_MAX_ARMOR_ADD`, keyed by perk_id,
                                     // is the one table the compiled arithmetic reads; this field is its
-                                    // wire-visible documentation, kept a plain integer because
-                                    // app/src/hud/hud.js and webapp/mc/src/screens/Kit.tsx render it
-                                    // literally as "+N ARMOR". body_armor +25 (was a flat +50), quick_switch
+                                    // wire-visible documentation, kept a plain integer. `gain`/`cost`
+                                    // below (S50, 2026-09-19) turn it into the "+N ARMOR" line either UI
+                                    // renders — neither reads this field directly any more. body_armor
+                                    // +25 (was a flat +50), quick_switch
                                     // -20. Capped at 255, floored at 0. In a game whose BASE
                                     // health.max_armor is 0 (the Shields preset, `mc/compile.py`
                                     // `is_shields_preset`), the grant compiles into the SHIELD ceiling
@@ -113,6 +114,19 @@ PerkView {
                                     // no row for the cell (the F11 shape: a gun with no matching row eats
                                     // the hit silently while both ends report healthy).
   },
+  gain: string[],                  // S50 (2026-09-19): player-facing GAIN lines, e.g. "+25 ARMOR",
+                                    // "IGNORES ARMOR & SHIELDS" — `mc/perks.py` `gain_cost_lines` is the
+                                    // ONE place either UI reads a perk's trade from; app/src/hud/hud.js
+                                    // and webapp/mc/src/screens/Kit.tsx render these two lists rather
+                                    // than deriving their own from `effects` (the earlier bug: a
+                                    // `reload_mult` over 1 printed "FASTER" regardless of sign). A
+                                    // node-local perk (motion_tracker, second_wind: `effects: {}`) still
+                                    // carries a named gain line here.
+  cost: string[],                  // the same perk's COST lines, e.g. "RELOADS 1.2× SLOWER" — empty
+                                    // when the perk carries none. armor_piercing's cost is WORDED, not a
+                                    // figure ("FIXED DAMAGE, SLOWER CYCLE"): the actual numbers
+                                    // (`ap_dmg`/`ap_fire_ms`) live on the WEAPON (`weapons.json` §7.7),
+                                    // not the perk, and vary per primary.
   verified: boolean,               // effect proven on hardware
   hidden: boolean                  // true → never listed to UIs (med_kit, concussion until benched)
 }
