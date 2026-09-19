@@ -245,6 +245,9 @@ async def run_soak(mgr: Any, address: str, pattern: str | SoakPattern, minutes: 
             await clock.sleep(gap_ms / 1000)
         if block and summary.frames_sent % block == 0:
             await clock.sleep((pause_ms or 0) / 1000)
+        # Differs from the phone: brxlink.js counts `blockFrames` inside ONE multi-frame write() call,
+        # while the soak sends one frame per call and counts across the run. Same while both ship 0/0;
+        # revisit when F269 sets real block values.
         if (phone_pacing and phone_block_frames and phone_block_pause_ms
                 and summary.frames_sent % phone_block_frames == 0):
             await clock.sleep(phone_block_pause_ms / 1000)

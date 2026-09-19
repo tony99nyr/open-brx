@@ -265,7 +265,8 @@ class ConnectionManager:
         return {"sent": command, "replies_within_window": replies}
 
     async def send_phone_paced(self, alias: str, command: str, *, chunk_gap_ms: int,
-                               frame_gap_ms: int, chunk_size: int = 20) -> dict[str, Any]:
+                               frame_gap_ms: int, chunk_size: int = 20,
+                               ack_cap_ms: int = 50) -> dict[str, Any]:
         """Write one frame chunked and paced the way `app/src/brxlink.js` `write()` paces it, for
         `soak --phone-pacing` (docs/FOLLOWUPS.md F283): a bench soak that reproduces the PHONE's
         transport, not this instrument's own `_write()` (fixed 20 ms after every chunk, no frame
@@ -277,16 +278,21 @@ class ConnectionManager:
         session = self._get(alias)
         session.record("tx", command)
         payload = command.encode("utf-8")
-        chunks = 0
+        chunks = late_acks = 0
         async with session.write_lock:                      # hold it for the whole frame (see _write)
             for i in range(0, len(payload), chunk_size):
-                await session.client.write_gatt_char(
-                    NUS_RX_CHAR_UUID, payload[i:i + chunk_size], response=False)
+                # brxlink.js `_sendChunk`: wait at most `ackCapMs` for the native write, then move on
+                # and count it as late. The write itself is not cancelled; it finishes in the background.
+                task = asyncio.ensure_future(session.client.write_gatt_char(
+                    NUS_RX_CHAR_UUID, payload[i:i + chunk_size], response=False))
+                done, _ = await asyncio.wait({task}, timeout=ack_cap_ms / 1000)
+                if not done:
+                    late_acks += 1
                 chunks += 1
                 if len(payload) > chunk_size:                # brxlink.js: only between chunks of ONE frame
                     await asyncio.sleep(chunk_gap_ms / 1000)
-        await asyncio.sleep(frame_gap_ms / 1000)              # brxlink.js: always, once per frame
-        return {"sent": command, "chunks": chunks}
+            await asyncio.sleep(frame_gap_ms / 1000)          # brxlink.js: always, once per frame, inside the queue
+        return {"sent": command, "chunks": chunks, "late_acks": late_acks}
 
     async def send_batch(self, alias: str, commands: list[str],
                          gap_ms: int = 100) -> dict[str, Any]:
