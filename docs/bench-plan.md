@@ -114,8 +114,7 @@ headset-word row was F254 before its renumber and is F275 now.
 
 ### Unattended and long runs (no sitting)
 
-- **Screamers Phase C** runs 1-4, 2 h each, one gun and a laptop. A run counts only with `soak --phone-pacing`
-  (**F283**, not built). Run 3 soaks the `$TMP` form of the recoil writer once it exists.
+- **Screamers Phase C** runs 1-4, 2 h each, one gun and a laptop (now unblocked with `soak --phone-pacing` built). Run 3 soaks the `$TMP` form of the recoil writer once it exists.
 - **Screamers Phase D** (3 h, all guns, Phones + MC, the rig), after the Phase B rules are built.
 - **Screamers Phase E** (20 min), after the lock-up detector (**F272**) is built.
 
@@ -132,7 +131,6 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 
 | row | lane | the work | blocked by |
 |---|---|---|---|
-| **F283** | levers and screamers | `soak --phone-pacing` in `mcp/brx_mcp/soak/runner.py` | nothing. Gates screamers Phase C |
 | **F272** | levers and screamers | the lock-up detector on the phone and in MC (poll with the bare `$LIFE,*`) | nothing. Gates Phase E |
 | **F271** | levers and screamers | the `$QUERY` read-back after arming (team, player id, pools) | nothing |
 | **F269** | levers and screamers | switch the block pause on, and decide the runt `$SIR` rows | sittings 1 and 4 (A7, A8, A8b) |
@@ -141,7 +139,6 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 | **S55**, then **F274** | playtest and node | one accuracy owner (never write t4 during a smoke, re-send when it ends, re-send after `$SPAWN` but not after a `$LIFE` revive), then move the recoil writer onto one `$TMP` t4 frame | S55 first |
 | **B31** | playtest and node | the kill confirm: the victim's node sends a protocol-15 `$IRTX` through its own (dead) gun's headset | choose the IR design or the advert design (the row weighs both) |
 | **F277** | playtest and node | a detector for a reload that never completes | sitting 5 step 3 (a repro) |
-| **F279** | playtest and node | use the `$LIFE` probe predicate everywhere a `$LIFE` is counted or matched | nothing |
 | **F256** | playtest and node | the coverage line | nothing |
 | **F268**, **F280**, then **S54** | weapons and perks | settle the rung basis with Tony (the time-to-kill proposal), then wire the six recoil fields once | a decision (Tony). The floors are settled at 60 |
 | **F281** | weapons and perks | move Quick Hands onto `$TMP` t6 in one piece, or not at all | sitting 2 step 4 (t6 absolute or additive) |
@@ -152,7 +149,6 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 
 | tool or change | blocks | row |
 |---|---|---|
-| `soak --phone-pacing` | every screamers Phase C run | F283 |
 | The desk fixes for F265 and F261 | sitting 5 | F265, F261 |
 | Tony's rung basis for the recoil ladder | sitting 8 | F268, F280 |
 | Screamers Phase B rules in code | Phase D | after sittings 1 and 4 |

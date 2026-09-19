@@ -14,6 +14,8 @@ Ordered by close date. Evidence for every claim is in `docs/experiment-log/`.
 
 - 2026-09-18 **F194** `--advertise` is in the CLI flags table of `mcp/brx_mcp/mc/README.md` (commit 2d0abd5b, 2026-09-17).
 - 2026-09-18 **F246** The energy-weapon "reload timeout" was a lever TAP: a tap refills nothing on an energy weapon, and a HELD lever vents the heat and refills the cell 1.95 s after release (`experiment-log/2026-09.md`, the 2026-09-18 perks bench entry item 8; F229).
+- 2026-09-18 **F279** The Python `is_pool_probe` predicate and every call site unified under one semantic check: no divergence between string and numeric comparisons. `source_scan_pool_probes()` in `engine.test.mjs` fails on any new `$LIFE` string not routed through the predicate (commit cf2d34dd). → archive.
+- 2026-09-18 **F283** `soak --phone-pacing` built in `mcp/brx_mcp/soak/runner.py` with `WRITE_PACING` pacing (20-byte chunks, 8 ms chunk gap, 18 ms frame gap held in the write lock, 50 ms ack cap, block pause flags); screamers Phase C now counts only with this flag (commits fd3b3dd2, 455465f3). → archive.
 
 # Closed 2026-09-18: the desk pass on FOLLOWUPS after the playtest merge
 
