@@ -6,10 +6,12 @@ same run gives the same numbers. The toxin test holds the published result in do
 §7.5b: 1.09 at N=2, 0.94 at N=10 and 48% in a 1v1, against the Assault Rifle.
 """
 import copy
+import heapq
 import pathlib
 import shutil
 import sys
 import tempfile
+from contextlib import contextmanager
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1] / "tools"
 sys.path.insert(0, str(TOOLS))
@@ -19,6 +21,16 @@ from brx_mcp.mc.compile import WeaponCatalog  # noqa: E402
 
 SEED = 7
 CAT = WeaponCatalog()
+
+
+@contextmanager
+def raises(exc):
+    """The system Python here has no pytest (run_tests.py): a small `pytest.raises` stand-in."""
+    try:
+        yield
+    except exc:
+        return
+    raise AssertionError(f"{exc.__name__} not raised")
 
 
 def _cfg(**kw) -> B.SimConfig:
@@ -60,18 +72,18 @@ def test_strictly_more_damage_wins():
 
 
 def test_the_toxin_preset_reproduces_its_published_parity():
-    """weapon-design.md §7.5b: 1.09 at N=2, 0.94 at N=10, 48% 1v1, under the old sim's conditions."""
+    """weapon-design.md §7.5b: 1.06 at N=2, 0.95 at N=10, 51% 1v1, under the shipped row's own conditions."""
     cfg = B.toxin_preset_config()
     toxin = B.weapon_model(CAT, "toxin_rifle")
     ar = B.weapon_model(CAT, "assault_rifle")
-    for n, published, reps in ((2, 1.09, 150), (10, 0.94, 45)):
+    for n, published, reps in ((2, 1.06, 150), (10, 0.95, 45)):
         r = B.team(toxin, ar, n, cfg, reps, SEED)
         lo, hi = r.ci()
         assert lo <= published <= hi, (n, r.ratio, lo, hi)
         assert r.dot_kills_test > 0, "no poison kills: the DoT is not being applied"
     d = B.duel(toxin, ar, cfg, 600, SEED)
     lo, hi = d.ci()
-    assert lo <= 0.48 <= hi, (d.win_rate, lo, hi)
+    assert lo <= 0.51 <= hi, (d.win_rate, lo, hi)
 
 
 def test_every_number_is_read_from_the_catalogue():
@@ -106,6 +118,77 @@ def test_the_mechanics_follow_the_catalogue():
     assert (2 * burst.fire_ms + burst.burst_gap_ms) / 3 == CAT.cycle_ms("burst_rifle")
     assert B.weapon_model(CAT, "shotgun").chain_reload == (CAT._row("shotgun").get("reload_type") == "chain")
     assert B.weapon_model(CAT, "shotgun").headset_dmg == CAT.damage_per_pull("shotgun") - CAT.damage("shotgun")
+
+
+def _kill_trace(m: "B.WeaponModel", cfg: "B.SimConfig", seed: int):
+    """One uninterrupted engagement: `m` against a harmless (0-effective-damage) dummy, at the 100% hit
+    chance `cfg`'s `Match` is built with. Drives the real `_seek()`/`_shot()` path -- so `cfg.range_model`
+    genuinely applies -- then pins the engagement window open (`contact_end`) so nothing cuts the shot
+    sequence off before the kill: `_shot()` itself stops scheduling once its next shot would land past
+    `contact_end` (see the `nxt <= p.contact_end` guard), so a short window silently truncates a fight
+    otherwise. Returns (hit count, ms of the killing hit) -- what `WeaponCatalog.hits_to_kill()` and
+    `time_to_kill()` publish."""
+    dummy = B.weapon_model(B.catalogue_with(CAT, "assault_rifle", {"wire.dmg": 0}), "assault_rifle")
+    players = [B.Player(0, 0, m, cfg.pool), B.Player(1, 1, dummy, cfg.pool)]
+    rng = B.cell_rng(seed, "ttk", m.weapon_id)
+    match = B.Match(players, rng, cfg, 1.0, 1)
+    hits: list[float] = []
+    orig_hit = match._hit
+    def traced(src, tgt, dmg, t):
+        orig_hit(src, tgt, dmg, t)
+        if src is players[0]:
+            hits.append(t)
+    match._hit = traced
+    match._seek(players[0], 0.0)
+    players[0].contact_end = 1e9
+    while match.heap:
+        t, _s, kind, pid, gen = heapq.heappop(match.heap)
+        if kind != match.SHOT:
+            continue   # the engagement never legitimately ends here -- CEND/TICK/RESPAWN are not pushed for pid 0
+        if t > cfg.match_ms:
+            break
+        match._shot(players[pid], t, gen)
+        if players[1].health <= 0:
+            break
+    return len(hits), (hits[-1] if hits else None)
+
+
+def test_shot_mechanics_reproduce_hits_and_time_to_kill():
+    """At a 100% hit chance with the range model off, `_shot()`'s own landed-hit count and elapsed time
+    must match `WeaponCatalog.hits_to_kill()`/`time_to_kill()` exactly -- these are the numbers a player
+    is shown, and both come from the shot mechanic alone, never the engagement/contact-window noise
+    around it. Covers a plain weapon, a burst-free two-word pull (Shotgun), a charge-without-tap weapon
+    (Rail Gun, Laser Cannon) and a charge-with-tap weapon (Charge Rifle); the Toxin Rifle runs with its
+    DoT zeroed, because `hits_to_kill()`/`time_to_kill()` are gun-body numbers and do not model a tick.
+    Breaking `_shot()`'s own interval (e.g. `interval = w.fire_ms + 1`) must fail this."""
+    cfg = B.SimConfig(pool=B.default_pool(), range_model=False, tactical_reload=False, hit_probs=(1.0,),
+                      match_ms=20_000.0)
+    pool_pts = cfg.pool.health + cfg.pool.armour
+    for weapon_id, cat in (
+        ("assault_rifle", CAT), ("smg", CAT), ("shotgun", CAT), ("sniper_rifle", CAT),
+        ("rail_gun", CAT), ("laser_cannon", CAT), ("charge_rifle", CAT),
+        ("toxin_rifle", _edited("toxin_rifle", dot__per_tick=0)),
+    ):
+        m = B.weapon_model(cat, weapon_id)
+        htk = CAT.hits_to_kill(weapon_id, pool_pts)
+        ttk = CAT.time_to_kill(weapon_id, pool_pts)
+        n_hits, kill_ms = _kill_trace(m, cfg, SEED)
+        assert n_hits == htk, (weapon_id, n_hits, htk)
+        assert kill_ms is not None and round(kill_ms) == ttk, (weapon_id, kill_ms, ttk)
+
+
+def test_a_non_refreshing_dot_is_refused_like_a_stacking_one():
+    """`_hit()` (~line 447) always resets the DoT clock on a hit -- that models `refresh: true` only,
+    the one value the catalogue carries today. A row that turned refresh off, or stacking on, must be
+    refused at `weapon_model()`, not silently modelled wrong (mirrors the existing `stack: true` guard
+    a few lines above it)."""
+    with raises(ValueError):
+        B.weapon_model(_edited("toxin_rifle", dot__refresh=False), "toxin_rifle")
+    with raises(ValueError):
+        B.weapon_model(_edited("toxin_rifle", dot__stack=True), "toxin_rifle")
+    # refresh: true (today's real value) and no `stack` key must both still build fine.
+    B.weapon_model(_edited("toxin_rifle", dot__refresh=True), "toxin_rifle")
+    B.weapon_model(CAT, "toxin_rifle")
 
 
 def test_crits_raise_the_win_rate():

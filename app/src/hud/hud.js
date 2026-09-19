@@ -1165,7 +1165,7 @@ export class Hud {
         <span class="batt tab"><span class="shell"><span class="fill" id="battfill" style="right:${100 - (st.battery || 0)}%"></span></span><span id="batt">${st.battery != null ? st.battery + '%' : '—'}</span></span></div>
       ${st.battery != null && st.battery <= 15 ? `<div class="battwarn">GUN BATT ${st.battery}% — CHARGE SOON</div>` : ''}
       <div class="stats tab">${st.kills > 0 ? stat('K', st.kills) : ''}${st.deaths > 0 ? stat('D', st.deaths) : ''}${st.assists > 0 ? stat('A', st.assists) : ''}${accShown(st) != null ? stat('ACC', accShown(st) + '%') : ''}</div>
-      ${st.aim && AIM_REASON[st.aim.reason] ? `<div class="aimfx ${esc(st.aim.reason)}" id="aimfx">${this._aimFx(st)}</div>`
+      ${st.aim && AIM_REASON[st.aim.reason] ? `<div class="aimfx ${esc(st.aim.reason)}${overheating ? ' tight' : ''}" id="aimfx">${this._aimFx(st)}</div>`
         : st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>'}
       <div class="fxbar" id="fxbar">${this._fx(st)}</div>
       <div class="vitals"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span><span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span></div>

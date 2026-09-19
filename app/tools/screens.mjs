@@ -2967,6 +2967,34 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
     });
   }
 }
+// ---------- review finding 2026-09-19: OVERHEAT and the smoke tell share the centre-screen slot in the
+// player's eyeline, and at 891x411 they overlapped by about 25px when a player was overheating and smoked at
+// the same time. `.heatword` moved from top:63% to top:74%, and `.aimfx` gets a `.tight` modifier (drops its
+// sub-line) exactly in this combo -- see the comments beside both rules in app/www/index.html and the
+// `tight` class hud.js adds in `_live()`. Order matters: `window.brxDemo.smoke()` overwrites the active
+// slot's `$ALCD` (heat resets to 0), so the smoke fires FIRST and the forced heat lands after it. ----------
+for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
+  for (const night of [false, true]) {
+    await step(`${tag} OVERHEAT+SMOKED ${night ? 'night' : 'day'}: the word and the smoke tell do not overlap`, async () => {
+      const pg = await open(view, 'live', night ? '&night' : '');
+      await pg.evaluate(() => window.brxDemo.smoke());
+      await pg.waitForTimeout(300);
+      await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108);
+      await pg.waitForTimeout(300);
+      const r = await pg.evaluate(() => {
+        const rect = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
+        const word = document.querySelector('.heatword'), aim = document.querySelector('.aimfx');
+        return { word: rect(word), aim: rect(aim), wordText: word ? word.textContent : '', aimText: aim ? aim.innerText.replace(/\s+/g, ' ') : '' };
+      });
+      await pg.screenshot({ path: `${OUT}/${tag}-overheat-smoked-${night ? 'night' : 'day'}.png` });
+      const bad = await invariants(pg); await pg.close();
+      must(r.word && r.aim, `both must be on screen for the check to mean anything: ${JSON.stringify(r)}`);
+      must(/OVERHEAT/.test(r.wordText) && /SMOKED/.test(r.aimText), `both tells must still say what they mean: ${JSON.stringify(r)}`);
+      must(apart(r.word, r.aim), `OVERHEAT and the smoke tell overlap: ${JSON.stringify(r)}`);
+      must(bad.length === 0, bad.join(' ; '));
+    });
+  }
+}
 await step('S16 lethal tick: DOWN says POISONED BY and names the applier', async () => {
   const pg = await open(VIEWS[1], 'down-poisoned', '', 5200);
   const r = await pg.evaluate(() => ({ kb: (document.querySelector('.mo.down .kb') || {}).innerText || '', alive: window.brx.engine.state().alive }));

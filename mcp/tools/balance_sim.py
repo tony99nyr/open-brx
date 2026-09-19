@@ -16,7 +16,7 @@ Scenarios:
   duel    every weapon against every weapon, 1v1, win rate (more kills at the whistle wins, a tie
           counts half).
   team    per weapon under test and team size N = 2..10: each team fields ONE test weapon and N-1
-          anchor weapons of its own slot kind (assumption 7). The number is the kill-rate ratio, test carriers'
+          anchor weapons of its own slot kind (assumption 5). The number is the kill-rate ratio, test carriers'
           kills per minute over anchor carriers' kills per minute, with a 95% interval.
   sweep   one weapon, a grid over any numeric catalogue fields (``--sweep dmg=5..9
           dot.per_tick=2..6``), each grid point run as a team table plus a duel against the anchor.
@@ -46,7 +46,8 @@ MECHANICS MODELLED
 - ``reload_type: chain`` (Shotgun): ``reload_ms`` is per shell.
 - The DoT block: ``per_tick`` every ``tick_ms`` for ``duration_ms``, refreshed on each hit, never
   stacked. A tick takes damage from the outermost non-empty layer only, with no spill
-  (spec/node.md §3.17). A stacking DoT is refused: no row carries one.
+  (spec/node.md §3.17). A stacking DoT (``stack: true``) or a non-refreshing one (``refresh: false``)
+  is refused: no row carries either.
 
 INVENTED ASSUMPTIONS (the numbers that move the answer most)
 ------------------------------------------------------------
@@ -68,12 +69,12 @@ INVENTED ASSUMPTIONS (the numbers that move the answer most)
    gun loses there. ``mid`` (the anchor's band) is the reference. A row with no ``range_band``
    (only hidden rows) counts as mid. The venue defaults to the game default
    (``state.default_config()['environment']``, outdoor).
-7. Anchors by slot kind (``anchor_for()``): a sidearm is compared with ``usp``, every other weapon
+5. Anchors by slot kind (``anchor_for()``): a sidearm is compared with ``usp``, every other weapon
    with ``assault_rifle``. ``--anchor`` overrides both. A pick-up-only weapon gets a ratio but no
    DOMINATES / DOMINATED flag: no loadout weapon competes with it for a slot.
-5. Tactical reload (switch off with ``--no-tactical-reload``): when a contact ends with less than
+6. Tactical reload (switch off with ``--no-tactical-reload``): when a contact ends with less than
    half a magazine, the player reloads before the next contact.
-6. Match length 150 s. Kills per minute is a rate, so a short match widens the variance but does
+7. Match length 150 s. Kills per minute is a rate, so a short match widens the variance but does
    not bias the ratio.
 
 SIMPLIFICATIONS (things the model leaves out)
@@ -226,6 +227,11 @@ def weapon_model(cat: WeaponCatalog, weapon_id: str) -> WeaponModel:
     dot = row.get("dot") or {}
     if dot and dot.get("stack"):
         raise ValueError(f"{weapon_id}: a stacking DoT is not modelled (no catalogue row carries one)")
+    if dot and dot.get("refresh") is False:
+        # `_hit()` always resets `poison_left`/`poison_dmg`/`poison_tick_ms` to a fresh clock on every hit --
+        # that models `refresh: true` only. A row that declares `refresh: false` would need a hit to leave an
+        # existing clock alone, which nothing here does, so it is refused the same way a stacking DoT is above.
+        raise ValueError(f"{weapon_id}: a non-refreshing DoT is not modelled (no catalogue row carries refresh: false)")
     mag, reserve, reload_ms = cat._ammo(weapon_id, None)
     burst = cat._frame_int(weapon_id, "burst") if cat._frame_int(weapon_id, "mode") == cat._BURST_MODE else 0
     band = row.get("range_band")
@@ -372,7 +378,7 @@ class Match:
             self._release(p, t)
 
     def _tactical_reload(self, p: Player, t: float) -> None:
-        """Between contacts, a player below half a magazine reloads (assumption 5)."""
+        """Between contacts, a player below half a magazine reloads (assumption 6)."""
         if p.ammo * 2 < p.w.mag and p.reserve > 0 and p.reload_until < t:
             self._start_reload(p, t)
 

@@ -1497,9 +1497,11 @@ only weapon that keeps working after the shooting stops. Refresh rather than sta
 poison shooters must not double the clock, or a pair becomes an execution.
 
 **Simulated 2026-09-19** (`mcp/tools/balance_sim.py --preset toxin`, two teams of 2 to 10, one toxin carrier a
-side, every hit poisons). The shipped row sits at kill-rate parity with the Assault Rifle: 1.00 averaged
-over team sizes and accuracies, and 48% in a 1v1. About 17% of its kills land after contact broke. It
-drifts from 1.09 in 2v2 to 0.94 in 10v10: bigger teams focus fire, the poison refreshes instead of
+side, every hit poisons; the numbers below are the shipped row's own line of that sweep, `dmg=8
+dot.per_tick=4 dot.duration_ms=5000`, so this one command reproduces this page). The shipped row sits at
+kill-rate near-parity with the Assault Rifle: 0.99 averaged over team sizes and accuracies, and 51% in a
+1v1 (95% CI 48-54%). About 20% of its kills land after contact broke. It drifts from 1.06 in 2v2 (95% CI
+1.00-1.13) to 0.95 in 10v10 (95% CI 0.91-1.00): bigger teams focus fire, the poison refreshes instead of
 adding up, and a teammate's bullet finishes most poisoned targets first. Rows with 9 direct damage also
 reach parity, but only about 8% of their kills come from the poison, so they play as a rifle. The two
 numbers the result depends on most are invented, not measured: the focus-fire rate and the length of
