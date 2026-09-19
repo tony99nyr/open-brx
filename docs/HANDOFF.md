@@ -38,11 +38,11 @@ proved, and that every lane builds on:
 Screamers are Tony's P0. Levers session 1 ran in three sittings; its remainder is bench-plan sitting 2.
 Screamers Phase A has run A1 and A2 only.
 
-- **Next desk task:** **F283**, `soak --phone-pacing`. Nothing blocks it, and every Phase C soak run waits on it.
+- **Next desk task:** **F272**, the lock-up detector on the phone and in MC. F283 (`soak --phone-pacing`) is built.
   Then **F272** (the lock-up detector) and **F271** (the `$QUERY` read-back).
 - **Next bench task:** bench-plan sitting 1, screamers Phase A transport half (one gun, a laptop, about 55 min).
   Nothing blocks it. Its A7/A8 numbers unblock **F269** (turn the block pause on) and the Phase B rules.
-- **Blocked:** Phase C on F283 and on the A7/A8 numbers; Phase E on F272; Phase D on the Phase B rules.
+- **Blocked:** Phase C on the A7/A8 numbers; Phase E on F272; Phase D on the Phase B rules.
 
 ## Lane: playtest and the node cure
 
@@ -83,7 +83,7 @@ act on it.
 ## Start here
 
 Read [`bench-plan.md`](bench-plan.md). If Tony is at the bench, load the `bench-session` skill and run sitting 1.
-Otherwise take the first desk task, **F283**, then **F265** and **F261**.
+Otherwise take the first desk task, **F272**, then **F271**. F265's root cause (why score pushes stopped) is still open.
 
 ## Machine state
 
