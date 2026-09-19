@@ -3,8 +3,9 @@ import { pushGate } from '../api/derive';
 import type { GameConfig, LoadoutPolicy, SlotRule, WeaponView } from '../api/types';
 import { useStore } from '../store';
 import { F, T, roleOf } from '../tokens';
-import { DEFAULT_POLICY, computePool, kindRows, splitLine } from '../screens/gameSummary';
-import { GhostButton, PrimaryButton, Seg, SwitchConfirm, Toggle, ValueBox } from './index';
+import { DEFAULT_POLICY, HEALTH_PRESET_COPY, computePool, healthPresetOf, kindRows, splitLine } from '../screens/gameSummary';
+import { HealthPresetEditor } from '../screens/HealthPresetEditor';
+import { GhostButton, PrimaryButton, Seg, SwitchConfirm, Toggle } from './index';
 import { LoadStatus } from './LoadedGame';
 
 type Slot = 'primary' | 'secondary';
@@ -171,7 +172,11 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
           {/* G (round-2, 2026-09-12): 11px, not 10.5 — the host reads this chip at arm's length on the
               collapsed row. */}
           <span style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>
-            {(modes.find(m => m.mode === cfg.mode)?.abbr ?? cfg.mode.toUpperCase())} · {cfg.night ? 'NIGHT' : 'DAY'} · HP {cfg.health.max_hp}/{cfg.health.max_armor}
+            {(modes.find(m => m.mode === cfg.mode)?.abbr ?? cfg.mode.toUpperCase())} · {cfg.night ? 'NIGHT' : 'DAY'} · {
+              healthPresetOf(cfg.health) === 'custom'
+                ? `HP ${cfg.health.max_hp}/${cfg.health.max_armor}${cfg.health.max_shield ? `/${cfg.health.max_shield}` : ''}`
+                : HEALTH_PRESET_COPY.find(p => p.value === healthPresetOf(cfg.health))!.label
+            }
           </span>
           <span style={{ flex: 1 }} />
           {/* The count lives on the COLLAPSED row too, because that is where the operator is standing
@@ -212,12 +217,8 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
                 <span style={{ font: F.chk(600, 12), color: shown.night ? T.ink : T.dim }}>{shown.night ? 'NIGHT' : 'DAY'}</span>
               </span>
             </Row>
-            <Row label="DEFAULT HEALTH">
-              <span style={{ display: 'inline-flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                <ValueBox value={shown.health.max_hp} unit="HP" min={1} max={999} label="default health" onChange={v => edit(d => ({ ...d, health: { ...d.health, max_hp: v } }))} />
-                <ValueBox value={shown.health.max_armor} unit="AR" min={0} max={999} label="default armor" onChange={v => edit(d => ({ ...d, health: { ...d.health, max_armor: v } }))} />
-                <span style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: T.micro }}>a player's own POOL override (on KIT) still wins over this</span>
-              </span>
+            <Row label="LIFE PRESET">
+              <HealthPresetEditor health={shown.health} onChange={h => edit(d => ({ ...d, health: h }))} />
             </Row>
             <Row label="WEAPONS AVAILABLE">
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%' }}>

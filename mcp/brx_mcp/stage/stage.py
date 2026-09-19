@@ -26,7 +26,7 @@ from ..gameconfig import VOICE_PACKS
 from ..irbridge import encode_word
 from ..mc import frames as _mc_frames
 from ..mc import presentation as _pres
-from ..mc.compile import Compiler
+from ..mc.compile import HEALTH_PRESETS, Compiler, resolve_health_preset
 from ..mc.state import default_config
 from ..mc.types import FrameBundle, GameConfig, Player, RespawnProfile, SPAWN_KILL_WINDOW_MS, STATION_SOURCES
 
@@ -96,6 +96,7 @@ class Profile(TypedDict):
     station_source: str | None
     stun: int | None
     shields: bool
+    max_shield: int | None
 
 
 class WalkStep(TypedDict):
@@ -159,6 +160,13 @@ def _set_profile_field(profile: Profile, key: str, value: object) -> None:
         profile["night"] = bool(value)
     elif key == "shields":
         profile["shields"] = bool(value)          # S29: the shields preset, so the bench can rehearse a recharge
+    elif key == "max_shield":
+        # S45: a bare numeric shield override, independent of `shields` -- rehearses a non-zero
+        # `$PSET` t5 ceiling ON TOP of an ordinary armoured game, which `shields=True` alone cannot
+        # express (it also zeroes armour). Applied after `shields` in `recompile()`.
+        if value is not None and not isinstance(value, int):
+            raise ValueError("max_shield must be an integer or null")
+        profile["max_shield"] = value
     elif key == "tid":
         profile["tid"] = _int_value(value)
     elif key == "voice_slots":
@@ -437,11 +445,14 @@ class GunStage:
                                         # F15: None = no stun in this game (the config's own `stun` stands if it has one);
                                         # 0 = `{}` (the 10 s default); 1..60 = `{duration_s}`
                                  "stun": None,
-                                        # S29: the SHIELDS shape (`compile.is_shields_preset`: the game's armour
-                                        # is 0, so the shield is the buffer and the node recharges it). Off by
-                                        # default; on, the bench can rehearse a break -> heartbeat -> refill cycle,
-                                        # which is otherwise unreachable because nothing else ever grants shield.
-                                 "shields": False}
+                                        # S29/S45: the Shields preset (`compile.HEALTH_PRESETS["shields"]`:
+                                        # 45 HP, 0 armour, 105 shield -- armour 0 is what `is_shields_preset`/
+                                        # `shield_regen_on` key the recharge on). Off by default; on, the
+                                        # bench rehearses a break -> heartbeat -> refill cycle at the real numbers.
+                                 "shields": False,
+                                        # S45: None = whatever `shields`/the mode default gives the shield
+                                        # ceiling; a number overrides JUST the shield, atop ordinary armour.
+                                 "max_shield": None}
         # 2026-09-07: `gun`/`headset` are DISPLAY-ONLY until the operator explicitly picks one via
         # set_profile(); an untouched selector tracks whatever the preset/config's own gun.in_play /
         # headset.in_play resolves to (recompile() syncs it there) instead of always re-patching this
@@ -838,11 +849,20 @@ class GunStage:
             base = getattr(self, "_local_pres", None) if not p["preset"] else None
             cfg["presentation"] = _pres.merge(base or cfg.get("presentation"), patch)
         if p["shields"]:
-            # S45's shape, as far as it is expressible today: armour 0 (which is what `is_shields_preset` and
-            # `shield_regen_on` both key on) over Tony's small-HP pool. The 120 shield he chose is NOT
-            # reachable yet -- `compile._to_gc` writes a fixed `$PSET` t5 of 70 and no config field moves it --
-            # so the bench rehearses the CYCLE at 70, not the balance.
-            cfg["health"] = {"max_hp": 30, "max_armor": 0}
+            # S45 (weapon-design.md §7.3): the Shields preset itself, now that `health.max_shield` is a
+            # real config field -- used to be armour-0 over a made-up 30 HP with the shield pinned at
+            # a fixed 70 no config field could move (`compile._to_gc` armed a constant then). The bench
+            # now rehearses the actual balance, not just the recharge cycle.
+            hp, armor, shield = HEALTH_PRESETS["shields"]
+            cfg["health"] = {"max_hp": hp, "max_armor": armor, "max_shield": shield, "preset": "shields"}
+        if p["max_shield"] is not None:
+            # S45: a bare numeric override -- rehearses a shield ceiling beside ORDINARY armour
+            # (`shields=True` above always zeroes it), for cases like "does the ceiling-crossing cue
+            # fire" that do not care whether armour is the shields-preset's own 0.
+            h = cfg["health"]
+            hp2, armor2, shield2 = h["max_hp"], h["max_armor"], int(p["max_shield"])
+            cfg["health"] = {"max_hp": hp2, "max_armor": armor2, "max_shield": shield2,
+                             "preset": resolve_health_preset(hp2, armor2, shield2)}
         station_source = p["station_source"]
         if station_source:
             cfg["station_source"] = station_source      # F102: the operator's override of the objective source

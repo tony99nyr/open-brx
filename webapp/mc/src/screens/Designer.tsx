@@ -9,7 +9,8 @@ import { F, PERK_COLOR, ROLE, T, TAB, roleOf } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, StripedSlot, Toggle, ValueBox } from '../ui';
 import { PerkGlyph } from './Kit';
 import { AdvancedPresentation } from './AdvancedPresentation';
-import { STATION_SOURCES, TEMPLATE_RULES, UNPLAYABLE_IDS, admitsWeapons, computePool, emptyRequiredSlots, gameSig, objectiveLine, poolEmptyMessage, presetOf, rulesLine, unplayablePick, withPolicy } from './gameSummary';
+import { HealthPresetEditor } from './HealthPresetEditor';
+import { HEALTH_PRESET_COPY, STATION_SOURCES, TEMPLATE_RULES, UNPLAYABLE_IDS, admitsWeapons, computePool, emptyRequiredSlots, gameSig, healthPresetOf, objectiveLine, poolEmptyMessage, presetOf, rulesLine, unplayablePick, withPolicy } from './gameSummary';
 import { MODE_ART } from '../modeArt';
 import { CONFIG_EDITABLE_PHASES, MODE_PICK_PHASES, lockedReason } from './Games';
 
@@ -197,8 +198,9 @@ export function Designer() {
                     onChange={v => put({ respawn: { ...cfg.respawn, station_protect_s: Number(v) as StationProtectS } })} />
                 </Row>
               )}
-              <Row label="HEALTH"><ValueBox value={cfg.health.max_hp} unit="HP" min={1} max={999} label="health" onChange={v => put({ health: { ...cfg.health, max_hp: v } })} /></Row>
-              <Row label={<>ARMOR <Hint>0 means one-shot with a sniper</Hint></>}><ValueBox value={cfg.health.max_armor} unit="AR" min={0} max={999} label="armor" onChange={v => put({ health: { ...cfg.health, max_armor: v } })} /></Row>
+              <Row label={<>LIFE PRESET <Hint>0 armour means one-shot with a sniper</Hint></>} full>
+                <HealthPresetEditor health={cfg.health} onChange={h => put({ health: h })} />
+              </Row>
               {/* F70: the modes with an objective need something ON THE FIELD emitting it, and until now
                   nothing in the console could set that — the operator got a push refused by a server
                   naming a config key no screen owned. `station_source` is a closed vocabulary
@@ -266,7 +268,10 @@ export function Designer() {
             <div style={{ font: F.mono(500, 10.5), letterSpacing: '.1em', color: T.acc, lineHeight: 1.6 }}>{rulesLine(cfg, weapons, perks)}</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 4 }}>
               {[['BASE', mode?.name ?? cfg.mode], ['TIME', `${Math.round((cfg.time_limit_s ?? 0) / 60)} MIN`], ['WIN', cfg.scoring.frag_limit ? `${cfg.scoring.frag_limit} SCORE / TIME` : 'TIME'],
-                ['RESPAWN', cfg.respawn.type === 'none' ? 'OFF' : `${cfg.respawn.type.toUpperCase()} · ${cfg.respawn.delay_s} S`], ['HEALTH', `HP ${cfg.health.max_hp} · ARMOR ${cfg.health.max_armor}`],
+                ['RESPAWN', cfg.respawn.type === 'none' ? 'OFF' : `${cfg.respawn.type.toUpperCase()} · ${cfg.respawn.delay_s} S`],
+                ['LIFE', healthPresetOf(cfg.health) === 'custom'
+                  ? `HP ${cfg.health.max_hp} · AR ${cfg.health.max_armor}${cfg.health.max_shield ? ` · SH ${cfg.health.max_shield}` : ''}`
+                  : HEALTH_PRESET_COPY.find(p => p.value === healthPresetOf(cfg.health))!.label],
                 ['PRIMARY', pool ? (pol.primary.choice === 'fixed' ? 'FIXED' : `${pool.primary.length} OF ${weapons.length}`) : '…'],
                 ['SLOT 2', pol.secondary.choice === 'off' ? 'OFF' : pol.secondary.choice === 'fixed' ? 'FIXED' : pool ? `${pool.secondary_weapons.length} ${!pol.secondary.kinds.includes('weapon') && pol.secondary.kinds.includes('sidearm') ? 'SIDEARMS' : 'WEAPONS'}` : '…'],
                 ['PERK', pol.perk.choice === 'off' ? 'OFF' : pol.perk.choice === 'fixed' ? 'FIXED' : pool ? `${pool.perks.length} PERKS` : '…'],
@@ -487,14 +492,16 @@ function Chip({ on, partial, color, onClick, children }: { on: boolean; partial?
 // `space-between` inside auto-fit cells of differing widths put every control at its own cell edge,
 // and an inline hint wrapped the label and shoved the control further — Tony, 2026-09-02: "these
 // controls dont align with the labels that great, its confusing". A fixed label column fixes both.
-function Row({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
+function Row({ label, children, full }: { label: React.ReactNode; children: React.ReactNode; full?: boolean }) {
   // Label ABOVE its control. Side by side, the control was right-aligned in a fixed-width cell while
   // the label was left-aligned, so the gap between them was whatever the label's length left over —
   // "TIME LIMIT" sat a mile from its box and "RESPAWN DELAY" nearly touched its own. Tony, twice:
   // "these controls dont align with the labels", then "labels arent next to inputs". Stacked, every
   // label sits directly on its control and every control starts on the same line.
+  // `full` (S45, the LIFE PRESET row): spans every column of the auto-fit RULES grid — a preset row
+  // plus its ADVANCED numbers is wider than the 180px cell every other control fits in.
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '10px 0' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '10px 0', gridColumn: full ? '1 / -1' : undefined }}>
       <span style={{ font: F.chk(600, 12.5), letterSpacing: '.06em', display: 'flex', flexDirection: 'column', gap: 1 }}>{label}</span>
       <span style={{ display: 'inline-flex' }}>{children}</span>
     </div>

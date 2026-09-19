@@ -25,8 +25,8 @@ from _session import match_config
 _TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1}]
 
 
-def _cfg(max_hp, max_armor):
-    return match_config(max_hp=max_hp, max_armor=max_armor, teams=_TEAMS)
+def _cfg(max_hp, max_armor, max_shield=0):
+    return match_config(max_hp=max_hp, max_armor=max_armor, max_shield=max_shield, teams=_TEAMS)
 
 
 def _player(weapon_id, perk=None):
@@ -120,7 +120,7 @@ def test_health_pool_and_to_gc_and_validate_agree_across_hp_armor_perk_spread():
 
 
 def test_body_armor_grants_shield_not_armour_when_base_armour_is_zero():
-    """S50: a game whose `health.max_armor` is 0 (the Shields preset, e.g. 30 HP + 120 shield) must
+    """S50: a game whose `health.max_armor` is 0 (the Shields preset -- 45 HP + 105 shield, §7.3) must
     not have body_armor reintroduce an armour LAYER the preset was designed without -- the grant
     compiles into the $PSET SHIELD ceiling instead (`compile.is_shields_preset`/`armed_shield`).
 
@@ -128,7 +128,7 @@ def test_body_armor_grants_shield_not_armour_when_base_armour_is_zero():
     itself) and this goes red: armour would move off 0 for a body_armor pick, or shield would stop
     moving, or both would move at once."""
     C = Compiler()
-    cfg = dict(_cfg(30, 0))    # base armour 0 -- the shields-preset signal
+    cfg = dict(_cfg(30, 0, max_shield=120))    # base armour 0 -- the shields-preset signal
     unperked = _player("assault_rifle")
     armoured = _player("assault_rifle", perk="body_armor")
 
@@ -136,14 +136,15 @@ def test_body_armor_grants_shield_not_armour_when_base_armour_is_zero():
     assert _pset_pool(C, cfg, unperked) == 30 + 0
     assert _pset_pool(C, cfg, armoured) == 30 + 0
 
-    # shield: unperked keeps the compiler's own default (70, `Compiler._GC_SHIELD_DEFAULT`); the
-    # perk's flat +25 grant lands there instead.
+    # shield: unperked keeps the game's OWN `health.max_shield` (S45 -- a host field now, not a fixed
+    # compiler constant); the perk's flat +25 grant lands on top of that.
     base_shield = _pset_shield(C, cfg, unperked)
-    assert base_shield == 70
+    assert base_shield == 120
     assert _pset_shield(C, cfg, armoured) == base_shield + 25
 
-    # ...and a NORMAL game (base armour > 0) is the control: the grant lands on armour, shield never moves.
-    normal = dict(_cfg(45, 70))
+    # ...and a NORMAL game (base armour > 0) is the control: the grant lands on armour, shield never
+    # moves off whatever the host set it to (70 here, exercising a non-zero shield beside armour too).
+    normal = dict(_cfg(45, 70, max_shield=70))
     assert _pset_shield(C, normal, unperked) == _pset_shield(C, normal, armoured) == 70
     assert _pset_pool(C, normal, armoured) == 45 + 70 + 25
 
@@ -159,9 +160,9 @@ def test_a_negative_grant_floors_at_zero_not_underflow():
     small = dict(_cfg(45, 5))
     assert _pset_pool(C, small, quick_switch) == 45 + 0
 
-    # base armour 0 in a shields game: the grant redirects to shield instead (70 default - 20 = 50,
+    # base armour 0 in a shields game: the grant redirects to shield instead (70 host value - 20 = 50,
     # still comfortably above the floor, but exercised here so the shield branch is covered by the
     # same cost perk that exercises the armour floor above).
-    shields_cfg = dict(_cfg(45, 0))
+    shields_cfg = dict(_cfg(45, 0, max_shield=70))
     assert _pset_shield(C, shields_cfg, quick_switch) == 70 - 20
     assert _pset_shield(C, shields_cfg, _player("assault_rifle")) == 70

@@ -14,7 +14,7 @@ const now = () => Date.now();
 // loadout.md §8 — the shipped example so the SAVED GAMES shelf is never empty on first use
 const BUILTIN_SNIPER = (): SavedGame => {
   const ffa: ConfigView = withPolicy(clone(MODES.find(m => m.mode === 'ffa')!.defaults));
-  ffa.health = { ...ffa.health, max_armor: 0 };
+  ffa.health = { ...ffa.health, max_armor: 0, max_shield: 0, preset: 'custom' };   // mirrors presets.py's Silenced Sniper
   ffa.loadout_policy = { preset: 'custom', hud_select: false,
     primary: { choice: 'fixed', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'sniper_rifle' },
     secondary: { choice: 'off', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: null },

@@ -1037,9 +1037,10 @@ export class Engine {
   /** F47: `??`, not `||` -- MC may ship `max_armor: 0` ("one-shot with a sniper"); `||` turned that explicit 0
    *  into 70. Only the config-fallback path needs this: a `$PSET`-sourced 0 already survives `Number.isFinite`. */
   get maxArmor() { const p = this._headPool(); if (p) return p.armor; const v = this.config && this.config.health && this.config.health.max_armor; return (v === 0 || v > 0) ? v : 70; }
-  /** S45: the shield ceiling the compiled `$PSET` armed. There is no `config.health.max_shield` to fall back on
-   *  (§2 Health has hp and armour only), so a head we cannot read means 0: no ceiling, and nothing can reach it. */
-  get maxShield() { const p = this._headPool(); return p ? p.shield : 0; }
+  /** S45: the shield ceiling the compiled `$PSET` armed, `$PSET`-sourced first, same as `maxHp`/`maxArmor` --
+   *  `config.health.max_shield` is the host's OWN field now (a preset pick, or Advanced), not a value the gun
+   *  reported, so it is only the fallback for a stub bundle (before the first real head lands). */
+  get maxShield() { const p = this._headPool(); if (p) return p.shield; const v = this.config && this.config.health && this.config.health.max_shield; return (v === 0 || v > 0) ? v : 0; }
   /** F34/F13: floored at MIN_RESPAWN_S on the node too. MC refuses 1-2 s at PUT, but a config that arrives another
    *  way (a stored preset, the demo, the stage) spawned at exactly that, inside the headset relay's out-blink wedge. */
   get respawnDelayMs() { const s = this.config && this.config.respawn && this.config.respawn.delay_s; return Math.max(MIN_RESPAWN_S, s > 0 ? s : 10) * 1000; }
@@ -2636,9 +2637,10 @@ export class Engine {
    *  `this.maxArmor`: an individually handicapped player (armoured down to 0 for that one player) must not
    *  flip the branch for themselves or for anyone else. The preset is a fact about the game's design.
    *
-   *  It is the opt-in on purpose. Every compiled head today arms a `$PSET` t5 of 70 whether the game wants
-   *  shields or not (`compile._GC_SHIELD_DEFAULT`), so a mechanic keyed on the ceiling alone would quietly
-   *  start refilling shields in every ordinary match. */
+   *  It is the opt-in on purpose, kept even now that `health.max_shield` is a real host field
+   *  (`compile.HEALTH_PRESETS`): Standard ships shield 0, so `this.maxShield > 0` alone is already false
+   *  there, but a host could still set a non-zero shield on an armoured game (Advanced), and armour ==0
+   *  is the fact that says the shield is meant to be the buffer, not merely present on the wire. */
   get shieldRegenOn() {
     const h = this.config && this.config.health;
     return !!h && Number(h.max_armor) === 0 && this.maxShield > 0;

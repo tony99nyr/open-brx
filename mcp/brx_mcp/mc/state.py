@@ -291,7 +291,7 @@ def default_config(mode: str = "tdm") -> GameConfig:
     cfg: GameConfig = {"config_id": uuid.uuid4().hex[:8], "mode": mode, "environment": "outdoor", "night": False,
                        "time_limit_s": 600, "respawn": m["respawn"].copy(),
                        "scoring": {"frag_limit": m["frag_limit"], "win_by": parse_win_by(m["win_by"], "kills")},
-                       "health": {"max_hp": 45, "max_armor": 70},
+                       "health": _compile.default_health(),      # S45: the Standard preset (45/70/0)
                        "teams": [TEAM_DEFS[t].copy() for t in m["teams"]],
                        "loadout_policy": _policy.default_policy(mode),      # A10: ffa → no_heavies, else open
                        "presentation": _pres.profile_from_preset(m.get("preset", "standard"))}   # A11 / G3: the mode row's own preset
@@ -776,6 +776,11 @@ class Session:
                 # not the nested match dict, so it is carried across here under its own key.
                 self._resume_pending = {**snap["match"], "_saved_ms": snap.get("saved_ms")}
             self._repair_player_nums()
+            # S45: a snapshot persisted before `health.max_shield`/`preset` existed restores a 2-key
+            # health blob -- normalize it to CUSTOM (the shield intent is unknown) rather than leaving
+            # `.get("max_shield")` calls downstream to each guess 0 on their own. Idempotent on an
+            # already-modern config, same "complete-or-absent" rule as `loadout_policy`/`mode_params` below.
+            self.config["health"] = _compile.normalize_health(self.config.get("health"))
             self.config["loadout_policy"] = _policy.normalize(self.config.get("loadout_policy"), self.config["mode"])
             # A18: a snapshot persisted before mode_params existed restores a koth/lms/extraction config with
             # none, and `_validate` skips an ABSENT set, so the wire pushed without it (polish review 2026-09-11).
@@ -2278,16 +2283,42 @@ class Session:
                                       "win_by": parse_win_by(merged.get("win_by"),
                                                              default_config(mode)["scoring"]["win_by"])}
                 if k == "health":
+                    # S45 (FOLLOWUPS, weapon-design.md §7.3): a saved config from before this field
+                    # existed carries no `max_shield` at all -- that is the one honest signal that it
+                    # predates the presets, so it loads as CUSTOM rather than guessing which preset (if
+                    # any) it meant. GameEditPanel/Designer always PUT the whole health object they
+                    # hold (never a bare `{max_hp}`), so a genuine partial edit is rare enough that
+                    # reading it as legacy too is the safe default. A patch NAMING a preset is exempt --
+                    # `{"preset": "shields"}` alone is the whole point (mirrors `loadout_policy`'s own
+                    # `{"preset": "no_heavies"}`), not a legacy caller that forgot the numbers.
+                    pname = v.get("preset")
+                    if pname is not None and pname not in _compile.HEALTH_PRESET_NAMES:
+                        raise ValueError(f"health.preset must be one of {_compile.HEALTH_PRESET_NAMES}")
+                    legacy = pname is None and "max_shield" not in v
+                    if pname and pname != "custom":
+                        # A preset NAME rewrites the pool from its own table (mirrors `policy.merge()`'s
+                        # "a preset name REWRITES the rules"): any max_hp/max_armor/max_shield riding in
+                        # the same patch is ignored, so PICKING Shields always means (45, 0, 105).
+                        hp_v, armor_v, shield_v = _compile.HEALTH_PRESETS[pname]
+                        merged = {**merged, "max_hp": hp_v, "max_armor": armor_v, "max_shield": shield_v}
                     pools: dict[str, int] = {}
-                    for hk in ("max_hp", "max_armor"):
+                    for hk, lo in (("max_hp", 1), ("max_armor", 0), ("max_shield", 0)):
                         hv = merged.get(hk, 0)
-                        lo = 1 if hk == "max_hp" else 0
                         if not (isinstance(hv, int) and not isinstance(hv, bool) and lo <= hv <= 255):
                             # 255 is a POLICY ceiling, not a hardware one -- $PSET pools are
                             # wider than 8 bits (bench 2026-08-27, see FOLLOWUPS/experiment-log).
                             raise ValueError(f"health.{hk} must be {lo}..255")
                         pools[hk] = hv
-                    cfg["health"] = {"max_hp": pools["max_hp"], "max_armor": pools["max_armor"]}
+                    if legacy:
+                        preset = "custom"
+                    elif pname and pname != "custom":
+                        preset = pname
+                    elif pname == "custom":
+                        preset = "custom"
+                    else:
+                        preset = _compile.resolve_health_preset(pools["max_hp"], pools["max_armor"], pools["max_shield"])
+                    cfg["health"] = {"max_hp": pools["max_hp"], "max_armor": pools["max_armor"],
+                                     "max_shield": pools["max_shield"], "preset": preset}
             elif k == "teams":
                 if not (isinstance(v, list) and all(isinstance(t, dict) and "team_id" in t
                                                    and isinstance(t.get("tid"), int) and not isinstance(t.get("tid"), bool) for t in v)):
@@ -3592,6 +3623,7 @@ class Session:
         if self.phase not in ("muster", "build", "kit", "lobby") or self.start_info:
             return None
         self.config = cast(GameConfig, cfg)
+        self.config["health"] = _compile.normalize_health(self.config.get("health"))   # S45: same legacy fill as restore_snapshot()
         raw_players = m.get("players")
         players: dict = raw_players if isinstance(raw_players, dict) else {}
         node_player = {n: p for n, p in (m.get("node_player") or {}).items()

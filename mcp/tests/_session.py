@@ -30,13 +30,16 @@ def mc_session(mode="koth", n=2, **cfg):
     return s
 
 
-def match_config(mode="tdm", *, teams=None, max_hp=45, max_armor=70, frag=0,
+def match_config(mode="tdm", *, teams=None, max_hp=45, max_armor=70, max_shield=0, frag=0,
                  time_limit_s=600, night=False, led=None, **extra):
-    """The canonical compile-input config: indoor, auto respawn at 15 s, win by kills."""
+    """The canonical compile-input config: indoor, auto respawn at 15 s, win by kills. `max_shield`
+    defaults to 0 (S45: the Standard preset's own default -- there is no shield unless a caller asks
+    for one), matching `compile.HEALTH_PRESETS["standard"]`."""
     c = {"config_id": "c1", "mode": mode, "environment": "indoor", "night": night,
          "time_limit_s": time_limit_s, "respawn": {"type": "auto", "delay_s": 15},
          "scoring": {"frag_limit": frag, "win_by": "kills"},
-         "health": {"max_hp": max_hp, "max_armor": max_armor},
+         "health": {"max_hp": max_hp, "max_armor": max_armor, "max_shield": max_shield,
+                    "preset": "standard" if (max_hp, max_armor, max_shield) == (45, 70, 0) else "custom"},
          "teams": TEAMS if teams is None else teams}
     if led is not None:
         c["led"] = led

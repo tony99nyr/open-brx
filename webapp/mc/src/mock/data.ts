@@ -695,7 +695,7 @@ const base = (mode: string, over: Partial<GameConfig> = {}): ConfigView => ({
   time_limit_s: 600,
   respawn: { type: 'auto', delay_s: 15 },
   scoring: { frag_limit: 25, win_by: 'kills' },
-  health: { max_hp: 45, max_armor: 70 },
+  health: { max_hp: 45, max_armor: 70, max_shield: 0, preset: 'standard' },   // S45: the Standard preset
   teams: [TEAMS[0], TEAMS[1]],
   loadout_policy: defaultPolicy(mode),
   ...over,

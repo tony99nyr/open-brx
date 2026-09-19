@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import math
 import pathlib
-from typing import Any, Literal, get_args
+from typing import Any, Literal, cast, get_args
 
 import random as _random
 
@@ -23,9 +23,9 @@ from ..protocol import PANIC_SEQUENCE
 from .perks import PerkCatalog
 from .policy import SIDEARM_TAG          # F146: one vocabulary for "this is a backup weapon"
 from .types import (MAX_PLAYERS, OBJECTIVE_MODES, STATION_PROTECT_S_DEFAULT, STATION_SOURCES, TIMED_PROTECT_S_DEFAULT,
-                    TRIGGER_AFTER_PROTECT_MS, WEAPON_DELAY_MS_DEFAULT, FrameBundle, GameConfig, PerkEffectsResolved,
-                    PerkView, Player, RespawnProfile, StationProtectS, Team, TimedProtectS, ValuePair, VoiceOption,
-                    WeaponDelayMs, Weapon, parse_win_by)
+                    TRIGGER_AFTER_PROTECT_MS, WEAPON_DELAY_MS_DEFAULT, FrameBundle, GameConfig, Health, HealthPreset,
+                    PerkEffectsResolved, PerkView, Player, RespawnProfile, StationProtectS, Team, TimedProtectS,
+                    ValuePair, VoiceOption, WeaponDelayMs, Weapon, parse_win_by)
 from . import presentation as _pres
 from .. import poolgauge as pg
 from .. import voices as _voices
@@ -279,12 +279,66 @@ _SHIELDS_MIN_HP = 45
 
 def is_shields_preset(config: GameConfig) -> bool:
     """S50 (docs/perk-design.md §2): true when this game's BASE health config carries zero armour,
-    so a shield pool is the player's only non-HP buffer (the Shields preset -- 30 HP + 120 shield +
-    no armour). Reads the GAME's `health.max_armor`, never a per-player `overrides.max_armor` -- an
-    individually handicapped player (armoured down to 0 for that one player) must not flip this
-    branch for everyone else, or for themselves: the preset is a fact about the game's design, not
-    about one player's pool."""
+    so a shield pool is the player's only non-HP buffer (the Shields preset -- 45 HP + 105 shield +
+    no armour, weapon-design.md §7.3). Reads the GAME's `health.max_armor`, never a per-player
+    `overrides.max_armor` -- an individually handicapped player (armoured down to 0 for that one
+    player) must not flip this branch for everyone else, or for themselves: the preset is a fact
+    about the game's design, not about one player's pool.
+
+    ⚠️ Hardcore (45 HP, 0 armour, 0 shield -- `HEALTH_PRESETS`) also carries zero armour, so this is
+    also true for Hardcore. That is intentional and pre-existing (this function has never read
+    `max_shield`): the branch it gates is "does an armour-0 game route perk armour grants into
+    shield instead", which is a fact about armour alone. A Body Armor perk in Hardcore still redirects
+    into shield (`armed_shield`), which can start the S29 recharge for that one player even though the
+    game's own `max_shield` is 0 -- a pre-existing interaction with S50, not something this feature
+    changes."""
     return int((config.get("health") or {}).get("max_armor") or 0) == 0
+
+
+# Tony 2026-09-19 (FOLLOWUPS S45, weapon-design.md §7.3): the three named starting-pool presets a host
+# picks in Mission Control's game setup, replacing the old free-form "custom health"/"armour" fields
+# with no shield at all. (max_hp, max_armor, max_shield) -- keep in that order, `_check_health_pools`
+# and `resolve_health_preset` both zip against it positionally.
+HEALTH_PRESETS: dict[str, tuple[int, int, int]] = {
+    "standard": (45, 70, 0),     # the old GameConfig default (S45: "Standard" ships no shield now,
+                                  # where it used to arm a $PSET t5 of 70 nobody could see or turn off)
+    "shields":  (45, 0, 105),    # §7.3: 45 HP so Armour Piercing does not hard-counter the preset
+    "hardcore": (45, 0, 0),
+}
+HEALTH_PRESET_NAMES: tuple[str, ...] = (*HEALTH_PRESETS, "custom")
+
+
+def default_health() -> Health:
+    """The Standard preset, as a full `Health` -- `state.py default_config()`'s own `health` value."""
+    hp, armor, shield = HEALTH_PRESETS["standard"]
+    return {"max_hp": hp, "max_armor": armor, "max_shield": shield, "preset": "standard"}
+
+
+def normalize_health(h: object) -> Health:
+    """A `health` blob from anywhere untyped -- a persisted `session.json` snapshot from before this
+    field existed, most concretely (`state.py restore_snapshot`) -- coerced to a complete `Health`.
+    Missing `max_shield` is the LEGACY SIGNAL (S45): the pool predates the field, so its shield intent
+    is unknown and the preset reads CUSTOM rather than guessing one. A complete blob with no `preset`
+    (or an unrecognised one) gets one re-derived from its own numbers, same as `resolve_health_preset`
+    everywhere else. Idempotent: normalizing an already-normal `Health` returns it unchanged."""
+    d = h if isinstance(h, dict) else {}
+    legacy = "max_shield" not in d
+    hp, armor, shield = int(d.get("max_hp") or 45), int(d.get("max_armor") or 0), int(d.get("max_shield") or 0)
+    preset = d.get("preset")
+    if legacy or preset not in HEALTH_PRESET_NAMES:
+        preset = "custom" if legacy else resolve_health_preset(hp, armor, shield)
+    return {"max_hp": hp, "max_armor": armor, "max_shield": shield, "preset": cast(HealthPreset, preset)}
+
+
+def resolve_health_preset(max_hp: int, max_armor: int, max_shield: int) -> HealthPreset:
+    """Which named preset these three numbers ARE, or "custom" -- a label RE-DERIVED from the pool
+    every time (mirrors `policy._matches_preset`/`merge()`'s "preset" handling for `loadout_policy`):
+    never trusted as a client's own claim, so a hand-edited number always shows CUSTOM and a preset
+    pick always shows its own name."""
+    for name, ref in HEALTH_PRESETS.items():
+        if (max_hp, max_armor, max_shield) == ref:
+            return cast(HealthPreset, name)
+    return "custom"
 
 
 def armed_armor(armor: int, perk_id: str | None = None, shields: bool = False) -> int:
@@ -1568,21 +1622,21 @@ class Compiler:
     def _perk_id(player: Player | None) -> str | None:
         return ((player or {}).get("loadout") or {}).get("perk")
 
-    # S50: $PSET's shield token has no host-facing wire field (Health carries only max_hp/max_armor
-    # today; the Shields preset is a future config shape) -- this is the ONE default, read off
-    # gameconfig.GameConfig's own dataclass field so it can never drift from what an un-perked gun
-    # already ships (`shield: int = 70`).
-    _GC_SHIELD_DEFAULT: int = _GC.__dataclass_fields__["shield"].default
-
     @staticmethod
-    def _base_health(config: GameConfig, player: Player | None) -> tuple[int, int]:
-        """(hp, armor) BEFORE any perk grant -- the game's `health` config with the per-player
-        `overrides` handicap applied (modes §1.1). Shared by `_to_gc()` and `perk_effects_resolved()`
-        so the compiled frame and the wire `perk_effects` report can never disagree about what
-        "before" means (the same drift `armed_armor()`'s own docstring warns about)."""
+    def _base_health(config: GameConfig, player: Player | None) -> tuple[int, int, int]:
+        """(hp, armor, shield) BEFORE any perk grant -- the game's `health` config with the per-player
+        `overrides` handicap applied (modes §1.1). There is no per-player shield override (S45: shield
+        is a fact about the GAME's preset, not a handicap a player carries), so `shield` is read
+        straight off `config["health"]`, defensively (`.get`, not `[]`) -- a config built before S45
+        (a saved game, `golden_bundle()`, a hand-built test fixture) carries no `max_shield` at all,
+        and that must read as 0 (no shield), never crash. Shared by `_to_gc()` and
+        `perk_effects_resolved()` so the compiled frame and the wire `perk_effects` report can never
+        disagree about what "before" means (the same drift `armed_armor()`'s own docstring warns
+        about)."""
         ov = ((player or {}).get("loadout", {}) or {}).get("overrides") or {}
         h = config["health"]
-        return int(ov.get("max_hp", h["max_hp"])), int(ov.get("max_armor", h["max_armor"]))
+        return (int(ov.get("max_hp", h["max_hp"])), int(ov.get("max_armor", h["max_armor"])),
+                int(h.get("max_shield", 0)))
 
     # -- helpers -----------------------------------------------------------
     def _to_gc(self, config: GameConfig, player: Player | None = None, blackout: bool = False) -> _GC:
@@ -1600,7 +1654,7 @@ class Compiler:
         ov = ((player or {}).get("loadout", {}) or {}).get("overrides") or {}   # per-player HP/armor/easy_reload (modes §1.1, S50)
         pid = self._perk_id(player)
         shields = is_shields_preset(config)
-        hp, armor_base = self._base_health(config, player)
+        hp, armor_base, shield_base = self._base_health(config, player)
         return _GC(
             mode=config["mode"],
             game_time_s=config["time_limit_s"] or 0,
@@ -1620,7 +1674,10 @@ class Compiler:
             # it. In a base-armour-0 game (`shields`) the grant compiles into SHIELD instead — see
             # `armed_armor()`/`armed_shield()`.
             armor=armed_armor(armor_base, pid, shields),
-            shield=armed_shield(self._GC_SHIELD_DEFAULT, pid, shields),
+            # S45: `shield_base` is now the HOST'S OWN `health.max_shield` (was a fixed constant every
+            # game armed regardless of what the host asked for) -- `armed_shield()` still redirects a
+            # `max_armor_add` perk's grant here in a shields-preset game (S50), on top of that number.
+            shield=armed_shield(shield_base, pid, shields),
             alt_reload=bool(ov.get("easy_reload")),          # S50: moved from the perk slot to the per-player override; $BMAP,1,97
         )
 
@@ -1653,7 +1710,7 @@ class Compiler:
             return None
         fx = self.perk_effects(player)
         w0, w1 = self._weapon_ids(player)
-        _hp, armor_base = self._base_health(config, player)
+        _hp, armor_base, shield_base = self._base_health(config, player)
         shields = is_shields_preset(config)
         base_mag, base_reserve, base_reload = self.catalog._ammo(w0, None)
         res_mag, res_reserve, res_reload = self.catalog._ammo(w0, fx)   # ammo/reload knobs act on the PRIMARY only
@@ -1679,7 +1736,7 @@ class Compiler:
         # per the wire contract, not an oversight.
         if (v := pair(armor_base, armed_armor(armor_base, pid, shields))) is not None:
             pe["max_armor"] = v
-        if (v := pair(self._GC_SHIELD_DEFAULT, armed_shield(self._GC_SHIELD_DEFAULT, pid, shields))) is not None:
+        if (v := pair(shield_base, armed_shield(shield_base, pid, shields))) is not None:
             pe["max_shield"] = v
         return pe
 
@@ -2778,7 +2835,7 @@ def golden_bundle() -> FrameBundle:
         "config_id": "golden-tdm", "mode": "tdm", "environment": "indoor", "night": False,
         "time_limit_s": 600, "respawn": {"type": "auto", "delay_s": 15},
         "scoring": {"frag_limit": 0, "win_by": "kills"},
-        "health": {"max_hp": 45, "max_armor": 70},
+        "health": default_health(),
         "teams": [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
                   {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2}],
     }

@@ -170,6 +170,14 @@ async function auditRail(pg, where) {
 }
 const panel = pg => pg.locator('[data-testid="game-edit-panel"]');
 const openPanel = async pg => { await panel(pg).locator('[data-testid="game-edit-toggle"]').click(); await panel(pg).waitFor({ state: 'visible' }); };
+// S45: LIFE PRESET's ADVANCED section starts OPEN already when the loaded game is CUSTOM (so a hand-tuned
+// pool never hides its own numbers) -- a blind `.click()` on the toggle would then CLOSE it. Check
+// `aria-expanded` first, so this is idempotent whichever state the panel opened in.
+const openAdvanced = async pg => {
+  const toggle = panel(pg).locator('[data-testid="health-advanced-toggle"]');
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  await panel(pg).locator('input[aria-label="health"]').waitFor({ state: 'visible' });
+};
 const repushText = async pg => (await panel(pg).locator('[data-testid="game-edit-repush"]').innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
 
 // ---------------------------------------------------------------------------- mock
@@ -284,9 +292,13 @@ async function runMock(browser, viteBase) {
   const nightBefore = await night.getAttribute('aria-checked');
   await night.click();
   await until(async () => (await night.getAttribute('aria-checked')) !== nightBefore, 5000, 'NIGHT OPS to flip in the draft');
-  const hp = panel(pg).locator('input[aria-label="default health"]');
+  // S45: HP/armour/shield now live inside a LIFE PRESET's ADVANCED section — open it before the box exists.
+  await openAdvanced(pg);
+  const hp = panel(pg).locator('input[aria-label="health"]');
   await hp.fill('180'); await hp.press('Enter');
   await until(async () => (await hp.inputValue()) === '180', 5000, 'the HP box to hold the drafted value');
+  await until(async () => (await panel(pg).locator('[data-testid="health-preset-custom"]').count()) === 1,
+    5000, 'the preset row to show CUSTOM once a number has been hand-edited');
   await pg.waitForTimeout(300);
   expect(await puts() === putsBefore, `neither edit has been sent yet (saw ${(await puts()) - putsBefore} write/s)`);
   expect((await panel(pg).locator('[data-testid="game-edit-dirty"]').innerText()).includes('UNSAVED'),
@@ -295,7 +307,7 @@ async function runMock(browser, viteBase) {
   await panel(pg).locator('[data-testid="game-edit-save"] button').click();
   await pg.waitForTimeout(400);
   expect(await puts() === putsBefore + 1, `ONE write carried both edits (saw ${(await puts()) - putsBefore})`);
-  ok('DEFAULT HEALTH -> 180 and NIGHT applied in a single SAVE');
+  ok('LIFE PRESET (CUSTOM) HP -> 180 and NIGHT applied in a single SAVE');
 
   // --- push the lobby (through the console's own control, not a fetch) so the RE-push has something
   //     to re-push TO --- then move to LOBBY and edit again.
@@ -395,12 +407,15 @@ async function runReal(browser, viteBase, mcBase, vp = { width: 1280, height: 80
   // holds leaves SAVE correctly disabled, which is the product working and the suite asking wrong.
   const hpNow = (await (await fetch(`${mcBase}/api/state`)).json()).config.health.max_hp;
   const hpWant = hpNow === 55 ? 50 : 55;
-  const hp = panel(pg).locator('input[aria-label="default health"]');
+  // S45: the number lives behind LIFE PRESET's ADVANCED toggle now -- already open on the PHONE pass
+  // (this run reuses the SAME real server as the desk pass, which already left the game CUSTOM).
+  await openAdvanced(pg);
+  const hp = panel(pg).locator('input[aria-label="health"]');
   await hp.fill(String(hpWant)); await hp.press('Enter');
   await panel(pg).locator('[data-testid="game-edit-save"] button').click();
   await until(async () => (await (await fetch(`${mcBase}/api/state`)).json()).config.health.max_hp === hpWant,
     5000, `the real server to hold the new health value (${hpNow} -> ${hpWant})`);
-  ok(`DEFAULT HEALTH ${hpNow} -> ${hpWant} applied against the real server`);
+  ok(`LIFE PRESET (CUSTOM) HEALTH ${hpNow} -> ${hpWant} applied against the real server`);
 
   // push, then edit again — the real-server half of the re-push proof (mock already proved the
   // console-side indicator; this proves the SERVER really does re-push rather than un-push).

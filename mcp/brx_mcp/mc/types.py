@@ -266,9 +266,26 @@ class Scoring(TypedDict):
     win_by: WinBy
 
 
+# Tony 2026-09-19 (FOLLOWUPS S45, weapon-design.md §7.3): the three named starting-pool presets, plus
+# "custom" for a hand-edited pool. Mirrors `LoadoutPreset` -- a label RE-DERIVED from the numbers
+# (`compile.resolve_health_preset`), never trusted on its own; see that function's docstring.
+HealthPreset = Literal["standard", "shields", "hardcore", "custom"]
+
+
 class Health(TypedDict):
     max_hp: int
     max_armor: int
+    # Tony 2026-09-19 (S45/§7.3): the `$PSET` t5 shield CEILING -- a host-facing field where there used
+    # to be none (`compile._GC_SHIELD_DEFAULT` armed a fixed 70 on every game, shields preset or not).
+    # 0 = no shield at all. The Shields preset recharge (`app/src/engine.js shieldRegenOn`) turns on
+    # only when `max_armor == 0` AND this is `> 0` -- the same rule the node already keyed the S29
+    # mechanic on, now driven by a real number instead of a silent constant.
+    max_shield: int
+    # Which named preset these three numbers ARE, or "custom" -- computed server-side
+    # (`compile.resolve_health_preset`) on every `PUT /api/config`, never hand-set by a client's own
+    # guess. A saved game from before this field existed (no `max_shield` at all) loads as "custom"
+    # (`state.py _merge_config`'s `health` branch), because its shield intent is unknown.
+    preset: HealthPreset
 
 
 class Siphon(TypedDict):

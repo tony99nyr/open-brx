@@ -23,6 +23,29 @@ def test_snapshot_round_trip():
     assert q["node_id"] is None and q["ready"] is False
 
 
+def test_a_snapshot_from_before_max_shield_existed_loads_as_custom():
+    """S45 (weapon-design.md §7.3): a `session.json` written before `health.max_shield`/`preset`
+    existed carries a bare `{max_hp, max_armor}` -- `restore_snapshot()` must fill the gap
+    (`compile.normalize_health`) rather than leave a 2-key dict for every later `.get("max_shield")`
+    caller to guess at separately. The shield intent of an old pool is unknown, so it loads CUSTOM,
+    never a preset name nobody chose. Break `normalize_health`'s `legacy` check and this goes red with
+    a `KeyError`-free but WRONG preset ("standard", matching 45/70 by coincidence) instead of "custom"."""
+    r = mk(); s = r[0] if isinstance(r, tuple) else r
+    tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_path = tmp
+    s._persist_last = 0.0
+    s._persist()
+    snap = json.loads(tmp.read_text())
+    assert snap["config"]["health"]["max_hp"] == 45 and snap["config"]["health"]["max_armor"] == 70
+    snap["config"]["health"] = {"max_hp": 45, "max_armor": 70}   # the pre-S45 shape: no max_shield, no preset
+    tmp.write_text(json.dumps(snap))
+
+    r2 = mk(); s2 = r2[0] if isinstance(r2, tuple) else r2
+    s2._persist_path = tmp
+    s2.restore_snapshot()
+    assert s2.config["health"] == {"max_hp": 45, "max_armor": 70, "max_shield": 0, "preset": "custom"}
+
+
 def test_fresh_session_clears_snapshot():
     r = mk(); s = r[0] if isinstance(r, tuple) else r
     tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
