@@ -2906,11 +2906,11 @@ export class Engine {
     const by = { num: this.latch ? this.latch.shooter_num : 0, team: this.latch ? this.latch.shooter_team : 0 };
     const p = this.poison;
     if (p) {
-      p.until = now + spec.durMs; p.by = by; p.proto = proto; p.per = spec.per; p.tickMs = spec.tickMs;
+      p.until = now + spec.durMs; p.by = by; p.proto = proto; p.per = spec.per; p.tickMs = spec.tickMs; p.durMs = spec.durMs;
       this.log(`☣ poison refreshed by #${by.num}: ${spec.durMs} ms from now`, 'li');
       this._changed(); return;
     }
-    this.poison = { proto, per: spec.per, tickMs: spec.tickMs, at: now, until: now + spec.durMs, nextAt: now + spec.tickMs, by, ticks: 0 };
+    this.poison = { proto, per: spec.per, tickMs: spec.tickMs, durMs: spec.durMs, at: now, until: now + spec.durMs, nextAt: now + spec.tickMs, by, ticks: 0 };
     this._event('poisoned');   // A11: the gun plays nothing for the `$LIFE` ticks, so the node speaks for the poison
     this.log(`☣ poisoned by #${by.num}: ${spec.per} every ${spec.tickMs} ms for ${spec.durMs} ms`, 'le');
     this._changed();
@@ -2990,7 +2990,7 @@ export class Engine {
    *  handed and never guesses one. Null when nothing is holding accuracy down. */
   _aimView(now) {
     if (!this.smoke) return null;
-    return { reason: 'smoke', acc: this.gunAcc != null ? this.gunAcc : 0, leftMs: Math.max(0, this.smoke.until - now) };
+    return { reason: 'smoke', acc: this.gunAcc != null ? this.gunAcc : 0, leftMs: Math.max(0, this.smoke.until - now), totalMs: SMOKE_MS };
   }
   /** Bench 2026-09-17: a slot's time between rounds, `$WEAP` token 14 (split index 15) from the head the gun
    *  was given. Null for a stub frame with no tokens, or no frame for that slot. PURE. */
@@ -5003,7 +5003,7 @@ export class Engine {
       reconciling: !!this.reconciling,
       stunned: this.stunned ? { until: this.stunned.until, leftMs: Math.max(0, this.stunned.until - now) } : null,
       // S16: the poison pill's input. `by` names the applier, who gets the kill if a tick finishes the player.
-      poison: this.poison ? { leftMs: Math.max(0, this.poison.until - now), perTick: this.poison.per, tickMs: this.poison.tickMs, ticks: this.poison.ticks,
+      poison: this.poison ? { leftMs: Math.max(0, this.poison.until - now), durMs: this.poison.durMs, perTick: this.poison.per, tickMs: this.poison.tickMs, ticks: this.poison.ticks,
         by: { num: this.poison.by.num, team: this.poison.by.team, name: this.nameOf(this.poison.by.num), teamKey: TEAM_KEY[this.poison.by.team] || null } } : null,
       aim: this._aimView(now),   // S53/S55: why accuracy is held down ({reason, acc, leftMs}), or null   // F15: the HUD's STUNNED takeover reads this
       // read ONCE: two calls could straddle the expiry and disagree (switching:true, switchingMs:null)

@@ -185,6 +185,25 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .takingfire .r{width:6px;height:6px;border:1px solid var(--bad);border-radius:50%}
 .takingfire .t{font-family:var(--fd);font-style:italic;font-weight:700;font-size:22px;letter-spacing:.3em;color:var(--bad);text-indent:.3em;animation:blink .5s infinite}
 .battwarn{position:absolute;top:96px;right:48px;font-size:10px;letter-spacing:.16em;color:var(--warn);font-weight:700}
+/* S16: the poison pill sits just above the health it drains. Chartreuse, not the health green, and it names itself in
+   words with a glyph, so colour is never the only signal. A plain fade-free fill: no pulse, no flash. */
+.fxbar{position:absolute;left:36px;bottom:150px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;pointer-events:none}
+.fx.poison{display:grid;grid-template-columns:auto auto auto;grid-template-rows:auto auto auto;column-gap:8px;row-gap:2px;align-items:baseline;padding:6px 12px 7px;background:rgba(20,28,4,.82);border:1px solid #c8f03a;color:#e4ff7a;min-width:190px}
+.fx.poison .g{font-size:20px;line-height:1;grid-row:1}
+.fx.poison .k{font-family:var(--fd);font-style:italic;font-weight:700;font-size:20px;letter-spacing:.14em}
+.fx.poison .t{font-family:var(--fd);font-weight:700;font-size:22px;justify-self:end}
+.fx.poison .s{grid-column:1 / -1;font-size:11px;letter-spacing:.14em;font-weight:700;color:#c8f03a}
+.fx.poison .drain{grid-column:1 / -1;display:block;height:4px;background:rgba(200,240,58,.2)}
+.fx.poison .drain b{display:block;height:100%;background:#c8f03a}
+/* S53: the smoke tell takes the reticle's place, because the reticle is exactly what the smoke has made useless.
+   A grey haze plate, never a bright flash: the S53 row names it SMOKE, not a flashbang. */
+.aimfx{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 18px 9px;background:rgba(150,160,170,.28);border:1px solid rgba(220,228,236,.55);pointer-events:none;white-space:nowrap}
+.aimfx .k{font-family:var(--fd);font-style:italic;font-weight:700;font-size:30px;letter-spacing:.3em;text-indent:.3em;color:#eef3f7;line-height:1}
+.aimfx .s{font-size:12px;letter-spacing:.2em;font-weight:700;color:#d6dde3}
+.aimfx .t{font-family:var(--fd);font-weight:700;font-size:20px;color:#eef3f7}
+.fx.poison .t small,.aimfx .t small{font-size:11px;letter-spacing:.14em;margin-left:4px;font-weight:700}
+.aimfx .clr{display:block;width:160px;height:4px;background:rgba(238,243,247,.2)}
+.aimfx .clr b{display:block;height:100%;background:#eef3f7}
 /* (S21, 2026-09-12: the camera look-through is gone — the #cam layer, the `cam-on`/`#frame.cam` rules and
    the scrims that only existed under it went with the chip. The QR join scanner is unrelated and stays.) */
 /* ============ night ============ */
@@ -225,6 +244,16 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 /* Bench 2026-09-17: the word sat at top 26%, right across the chip bar (top 100 px), so WEAPONS HOT covered its
    centre. At 63% it sits under the reticle and TAKING FIRE, above the vitals and between them and the ammo column. */
 [data-env="night"] .heatword{color:var(--num);text-shadow:none;font-size:22px;animation:none}
+/* S16/S53 at night: both tells stay (a player must still know why they are dying or missing) but in the dim red
+   palette on a near-black fill, no glow, no pulse, like the OVERHEAT word above. */
+[data-env="night"] .fx.poison{background:#120505;border-color:var(--edge);color:var(--num)}
+[data-env="night"] .fx.poison .s{color:var(--mut)}
+[data-env="night"] .fx.poison .drain,[data-env="night"] .aimfx .clr{background:#2a1010}
+[data-env="night"] .fx.poison .drain b,[data-env="night"] .aimfx .clr b{background:var(--num)}
+[data-env="night"] .aimfx{background:#120505;border-color:var(--edge)}
+[data-env="night"] .aimfx .k{font-size:22px;color:var(--num)}
+[data-env="night"] .aimfx .s{color:var(--mut)}
+[data-env="night"] .aimfx .t{color:var(--num)}
 /* night ops strips the chrome, but which gun you are holding is not chrome — keep it, unlit */
 [data-env="night"] .ammo .wn{font-size:17px;color:var(--num);text-shadow:none}
 [data-env="night"] .ammo .wn .slot{display:none}
