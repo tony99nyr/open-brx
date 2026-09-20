@@ -75,6 +75,7 @@ FX_FAMILY = {  # David Knox legend, restated
 # Roles established outside the transcripts: captures, the shipped tables, the firmware's own use,
 # and Tony's ear (2026-09-04 audit). Carried into the catalog as `known_use`.
 KNOWN_USES = {
+    "VA20": "connection established; CONNECT",
     "N41": "native respawn countdown ping: beeps 3-5 times before a respawn, Halo-style (Tony, by ear 2026-09-04); RESPAWN_PING",
     "NA0": "death loud-beep (community); DEATH_BEEP",
     "H29": "respawn / add-HP cue in the shipped table; ADD_HP",
@@ -82,11 +83,89 @@ KNOWN_USES = {
     "VA81": "3-2-1 spawn countdown sent by Callsign at game start (capture)",
     "VA8B": "Callsign's low-health alert voice, sent once per life at armour 0 with the pink $HLED blink",
     "VA33": "game over (Callsign end-of-game tail, confirmed by ear)",
+    "VA85": "countdown to game over, no music; GAME_OVER_QUIET",
+    "VA46": "Life's depleted; LIVES_DEPLETED (not a multi-kill cue)",
     "VSF": "victory sting, winners only (Callsign, confirmed by ear)",
     "VA2": "tear-gas victim voice: coughing then dying (shipped $SIR,11 row; Tony, by ear 2026-09-03)",
     "V3A": "Heavy kill-confirm slot; the per-kill line Callsign sends in the announcer slot",
     "VB17": "lead-change line Callsign sends -- names the RED team; VA6D/VA6E are team-neutral",
     "U16": "tick used for the pre-game runway (provisional)",
+    "VA1G": "Body Armor; ADD_ARMOR (VA16 is the Armor Suit menu line)",
+    "VA8C": "Shields online; ADD_SHIELD",
+    "VB0E": "flag taken; OBJECTIVE_TAKEN",
+    "VB0C": "Flag captured; OBJECTIVE_SCORED",
+    "VA23": "HEARD 2026-09-10, transcript accurate. Male Control Point set; superseded by VB0N/O/P for hill modes; POINT_CAPTURED",
+    "VB0N": "HEARD 2026-09-10. Hill Captured; female objectives announcer with a music bed; preferred hosted KotH set; HILL_CAPTURED",
+    "VB0O": "HEARD 2026-09-10. Hill Contested; preferred hosted KotH set; HILL_CONTESTED",
+    "VB0P": "HEARD 2026-09-10. Hill Lost; preferred hosted KotH set; HILL_LOST",
+    "VB0Q": "HEARD 2026-09-10. Hill Moved; only for a rotating hill mode, not a single-hill mode",
+    "VA1I": "Bomb Planted; BOMB_PLANTED",
+    "VB0D": "Flag returned; FLAG_RETURNED",
+    "VA1H": "Bomb Defused; BOMB_DEFUSED",
+    "VA1C": "Black Hawk inbound; EXTRACTION_CALLED",
+    "VA1U": "Incoming Chopper; EXTRACTION_OPEN",
+    "VA1S": "Enemy chopper detected; EXTRACTION_ALERT",
+    "VS7": "Objective Complete (Resistance commander); EXTRACTED",
+    "VA8X": "Fail; EXTRACTION_FAILED",
+    "VA1Q": "Care Package; LOOT_PICKED",
+    "VA3U": "Incoming air raid, find cover; RAID_ENDING",
+    "X20": "artillery bombardment (Tony, by ear 2026-09-04); BOMBARDMENT",
+    "JAS": "cool extraction / intro-hype music; Open BRX extraction tick (Tony, by ear 2026-09-11)",
+    "JAQ": "extraction-style music with ticking in the background; window-open candidate (Tony, by ear 2026-09-11)",
+    "U15": "disabled-trigger sound; emptyUnboundButtonSound (Tony, by ear 2026-09-11)",
+    "W71": "military gear-adjusting sound; ammoOrGearPickUp (Tony, by ear 2026-09-11)",
+    "H43": "sounds like a gun dropped on the ground; rejected critical-hit cue (Tony, by ear 2026-09-11)",
+    "X49": "metal hit; Open BRX critical-hit cue (Tony, by ear 2026-09-11)",
+    "O06": "rocket launch; Open BRX Energy Launcher fire (Tony, by ear 2026-09-11)",
+    "O04": "missile launch; Energy Launcher runner-up (Tony, by ear 2026-09-11)",
+    "O01": "blast, not a launch (Tony, by ear 2026-09-11)",
+    "O02": "blast, not a launch (Tony, by ear 2026-09-11)",
+    "O05": "blast, not a launch (Tony, by ear 2026-09-11)",
+    "O03": "rifle shot, not a launcher (Tony, by ear 2026-09-11)",
+    "N74": "heartbeat; Open BRX low-health cue (Tony, by ear 2026-09-11)",
+    "N75": "second heartbeat take; pool candidate (Tony, by ear 2026-09-11)",
+    "N25": "faster heartbeat; tier candidate (Tony, by ear 2026-09-11)",
+    "H18": "heartbeat with creepy Halloween texture; infection candidate (Tony, by ear 2026-09-11)",
+    "JAW": "neutral game-ending music climax, not a defeat sting (Tony, by ear 2026-09-11)",
+    "JAX": "neutral game-ending music climax, not a defeat sting (Tony, by ear 2026-09-11)",
+    "P09": "pronounced pistol shot; Deagle candidate (Tony, by ear 2026-09-11)",
+    "P16": "pistol shot; Open BRX Glock fire (Tony, by ear 2026-09-11)",
+    "Q04": "silenced pistol shot; Open BRX USP-S fire (Tony, by ear 2026-09-11)",
+    "X14": "heavy rifle shot; Open BRX Deagle fire (Tony, by ear 2026-09-11)",
+    "D08": "first sound in the working D08-D07-D06 reload chain (Tony, by ear 2026-09-11)",
+    "D07": "second sound in the working D08-D07-D06 reload chain (Tony, by ear 2026-09-11)",
+    "D06": "third sound in the working D08-D07-D06 reload chain (Tony, by ear 2026-09-11)",
+    "D11": "overheat / vent sound; chosen for Open BRX Energy Rifle (Tony, by ear 2026-09-17)",
+    "D122": "reload-like sound; captured Energy Rifle overheat slot but rejected by ear (Tony, 2026-09-17)",
+    "C19": "Charge Rifle early-release sound, not an overheat sound (Tony, by ear 2026-09-17)",
+    "A34": "smooth shield-recharge rise; play twice during refill (Tony, by ear 2026-09-17)",
+    "VA6Y": "Shields Online; shield-recharge completion (Tony, by ear 2026-09-17)",
+    "VX73": "reload nag (Tony, by ear 2026-09-18)",
+    "N101": "shield-depleted cue (Tony, by ear 2026-09-18)",
+    "N102": "shield-recharge-start cue (Tony, by ear 2026-09-18)",
+    "U100": "HEARD 2026-09-10. Clock-like single tick at a 1 s cadence; shield-loop trial after extraction moved to JAS",
+    "U104": "HEARD 2026-09-10. Tick, viable but less clock-like than U100",
+    "V8Q": "HEARD 2026-09-10. Says Kill Confirmed, not Hill Confirmed; corrected out of the hill category",
+    "VA21": "HEARD 2026-09-10, transcript accurate. Male Control Point set",
+    "VA22": "HEARD 2026-09-10, transcript accurate. Male Control Point set",
+    "VA93": "HEARD 2026-09-10, transcript accurate. Usable as a KotH mode intro",
+}
+
+# These meanings came from a person listening at the bench, rather than only a capture, field table
+# or machine transcript. Keep the confidence separate so the public page can mark the distinction.
+VERIFIED_BY_EAR = {
+    "VA33", "VSF", "VA2", "VA1G", "VA8C", "VB0N", "VB0O", "VB0P", "VS7", "X20",
+    "JAS", "JAQ", "U15", "W71", "H43", "X49", "O06", "O04", "O01", "O02", "O05", "O03",
+    "N74", "N75", "N25", "H18", "JAW", "JAX", "P09", "P16", "Q04", "X14", "D08", "D07",
+    "D06", "D11", "D122", "C19", "A34", "VA6Y", "VX73", "N101", "N102", "U100", "U104",
+    "V8Q", "V116", "VA21", "VA22", "VA23", "VA93", "VB0Q",
+}
+
+# A row can be reviewed without its machine transcript being checked (VA2 was identified as a gas-
+# death cough, but nobody endorsed Whisper's gibberish syllables). Keep transcript confidence apart.
+TRANSCRIPT_VERIFIED_BY_EAR = {
+    "V8Q", "V116", "VA21", "VA22", "VA23", "VA33", "VA93", "VA1G", "VA6Y", "VA8C",
+    "VB0N", "VB0O", "VB0P", "VB0Q", "VS7", "VSF", "VX73",
 }
 
 # --------------------------------------------------------------------------- #
@@ -105,7 +184,19 @@ KNOWN_USES = {
 BY_EAR_CORRECTIONS = {
     # id: (heard transcript, corrected category)
     "V8Q": ("Kill Confirmed", "voice:kill_confirm"),
+    "V116": ("gained the lead", "voice:line"),
 }
+
+
+def app_durations(data: dict) -> dict[str, float]:
+    """Read either raw Sounds.json or the repo's restated derivative.
+
+    The latter may be the 2,634-row union catalog, so only rows explicitly in the app belong here.
+    `sound_ids.json` predates `in_app`; all of its rows are app rows by definition.
+    """
+    if "SoundsLengthMap" in data:
+        return {k.upper(): v for k, v in data["SoundsLengthMap"].items()}
+    return {r["id"].upper(): r["duration_s"] for r in data["sounds"] if r.get("in_app", True)}
 
 # --- announcer intents, first match wins ----------------------------------------- #
 INTENTS = [
@@ -239,7 +330,10 @@ def main():
                     pass
 
     rows = [json.loads(l) for l in open(f"{a.analysis_dir}/catalog.jsonl")]
-    app = {k.upper(): v for k, v in json.load(open(a.sounds_json))["SoundsLengthMap"].items()}
+    app_data = json.load(open(a.sounds_json))
+    # The repo's restated derivative is enough to regenerate the catalog without retaining the raw
+    # APK asset. `app_durations` also accepts Sounds.json when that private input is available.
+    app = app_durations(app_data)
     out = []
     for r in sorted(rows, key=lambda r: r["id"]):
         entry = {"id": r["id"], "family": r["family"], "duration_s": r.get("duration_s"),
@@ -265,6 +359,10 @@ def main():
             entry["speech_untrusted"] = f"Whisper heard: {(r.get('speech') or {}).get('text', '')}"
         if r["id"] in KNOWN_USES:
             entry["known_use"] = KNOWN_USES[r["id"]]
+        if r["id"] in VERIFIED_BY_EAR:
+            entry["verified_by_ear"] = True
+        if r["id"] in TRANSCRIPT_VERIFIED_BY_EAR:
+            entry["transcript_verified_by_ear"] = True
         v = audit.get(r["id"])
         if v:
             entry["verified_by_ear"] = True

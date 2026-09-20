@@ -1,5 +1,5 @@
 # Sound bank
-Last verified: 2026-09-18
+Last verified: 2026-09-20
 
 Every sound id stored on the BRX gun, in one searchable table, with its meaning where we know it and a community label where the community has one.
 
@@ -8,7 +8,7 @@ Every sound id stored on the BRX gun, in one searchable table, with its meaning 
 The first letters are a family prefix (what kind of sound), and the rest is an index. `R02` is the second entry in the R (rifle-shot) family, and `V3A` is line A of the Heavy (V3) voice. An `E_` prefix marks an alternate take of the base id, so `E_VB17` is a variant of `VB17`. The `E_` set covers the VB, VA, J, K, N, X and VS families. Ids are the app's own names, and the protocol has no friendlier label.
 
 - **2,477** sound files on the gun (2,166 in the app's list; 157 app ids missing from the gun; 468 gun files the app does not know)
-- **~4,800 s** (80 min) of audio across the app's 2,166-id list
+- **~5,577 s** (92.9 min) across the 2,477 on-gun files; **~4,813 s** (80.2 min) across the app's 2,166-id list
 - **136** `E_`-prefixed alternate takes of existing ids in the app's list
 - **Longest:** `J100` at 250 s (a music bed). **Shortest:** `N1A` at 0.04 s
 
@@ -16,7 +16,7 @@ We read every file off a v4.32 tagger's `AUDIO` folder on 2026-09-03. The offici
 
 ## Play a sound, and what the labels mean
 
-Play any sound id on the gun with `$PLAY,<id>,*`.
+Play any sound id on the gun with `$PLAY,<id>,4,6,,,,,*`. Volume and priority are required; the shorter `$PLAY,<id>,*` form is silent. This form uses the interrupt slot. To queue a sound behind current playback instead, use `$PLAY,,4,6,<id>,,,,*`.
 
 The table below marks a meaning three ways, by how sure we are of it:
 
@@ -24,17 +24,17 @@ The table below marks a meaning three ways, by how sure we are of it:
 - **Meaning, in italics.** A machine transcribed this voice line, and nobody has checked it by ear yet. Treat it as a label to check, not a quote.
 - **Community label.** A community label is a listener's guess from the community BRX Audio sheet, shared by Jay of LaserTagMods. It is never a bench finding. The table always marks it unconfirmed, and it never replaces our own meaning. Where a sound has no meaning of ours, the community label is the only description the table shows, still marked. Where the sound also carries a voice transcript, the label is marked "agrees" or "differs" against it, so you can read both readings. A few ids carry no label at all: the sheet flags them as reported broken since firmware v4.30, and nobody has given them an ear check yet.
 
-## Every family
+## Families in the app list
 
-Prefix meanings are restated from David Knox's audio map; counts are computed from the app's sound list. The on-gun catalog adds the `VX` and `VZ` voice families, `H102` to `H155` and more.
+Prefix meanings are restated from David Knox's audio map; counts in this summary are computed from the app's 2,166-id list. It is not the complete gun inventory. The on-gun catalog also has the `VX`, `VZ`, `SH`, `ST`, `HM`, `TK` and `VT` families, expands several families in this list, and includes hundreds of single-file voice and music prefixes. The generated table below is the complete 2,634-id union and its **AI category** column is the more useful way to explore all families.
 
 | Family | What it holds | Ids | Typical length |
 |---|---|---|---|
 | `VA` + `E_VA` | Male voice: announcer, system lines, weapon callouts, countdowns | 321 + 23 | 0.5-3 s (countdowns up to 11 s) |
 | `VB` + `E_VB` | Scout / female-clean voice: score & lead lines | 90 + 64 | 1-2 s |
-| `V0`-`V9` | Character voice packs (Fury, Grenadier, Guardian, Heavy, Hive Queen, V5 not named, Infiltrator, Marauder, Medic, Raider) | 23 each except V4 (33), V5 (26) and V8 (35); 255 total | 0.4-6 s |
+| `V0`-`V9` | Character voice packs (Fury, Grenadier, Guardian, Heavy, Hive Queen, Creature, Infiltrator, Marauder, Medic, Raider) | 23 each except V4 (33), V5 (26) and V8 (35); 255 total | 0.4-6 s |
 | `V100`-`V144` | CTF / Slayer / King-of-the-Hill callouts | 34 | 1-2.4 s; three at 12-13 s |
-| `VC`...`VS` (15 families) | Sentinel, Female sniper, Clean male, Creature, Female creature, Valkyrie, Viper, Wraith, Russian clean, Clean female, Mercenary, Clean male (alt), Nexus & Vanguard commanders, Clean commander | 9 base + 9-22 extra lines each (329 total, incl. 5 `E_VS` takes) | 1-6 s |
+| `VC`...`VS` (15 families) | Sentinel, Female sniper, Soldier, Stalker, Technician, Valkyrie, Viper, Wraith, Russian clean, Clean female, Mercenary, Clean male, Nexus, Vanguard and Resistance commanders | 9 base + 9-22 extra lines each (329 total, incl. 5 `E_VS` takes) | 1-6 s |
 | `N` + `E_N` | Miscellaneous cues: the "kerchung", swish, revive ping, ultra-short ticks | 108 + 10 | 0.04-6.7 s |
 | `NA` | Death beep (`NA0`) | 1 | 4 s |
 | `M` | Mortal-Kombat-style SFX | 95 | 0.1-3.4 s (`M57` 25 s) |
@@ -77,8 +77,8 @@ Sums to 2,166, the app's list; the gun holds 2,477 files.
 | `VSB` | VS | Countdown to game over + music | 10.46 s |
 | `VS6` | VS | Game-end line (solo game close) | 2.42 s |
 | `VSF` + `JAY` | VS / JA | Victory sting + "Victory": the winner's end-of-game pair | 1.86 s + 5.69 s |
-| `VA46` | VA | Lives depleted / multi-kill | 1.47 s |
-| `V3A` | V3 | "Kill": the app's per-kill announcer line | 0.79 s |
+| `VA46` | VA | "Life's depleted" (not a multi-kill cue) | 1.47 s |
+| `V3A` | V3 | "All clear": the Heavy per-kill line | 0.79 s |
 | `VB17` | VB | Score / lead-change line | 1.94 s |
 | `N41` | N | Revive-countdown ping | 0.73 s |
 | `NA0` | NA | Death beep (also the file swapped to change the death cue) | 4.00 s |
@@ -87,7 +87,8 @@ Sums to 2,166, the app's list; the gun holds 2,477 files.
 | `JA9` | JA | Startup music | 5.75 s |
 | `JAD` | JA | Death music (the musicMixOnDeath slot) | 3.50 s |
 | `H29` | H | Respawn / add-HP: a quiet, sustained "stim-pack" medical sound | 1.20 s |
-| `VA16` | VA | "Armor suit": add armor | 0.94 s |
+| `VA1G` | VA | "Body Armor": add armor | 1.20 s |
+| `VA16` | VA | "Armor suit": menu line | 0.94 s |
 | `VA8C` | VA | "Shields online": add shields (SFX over the first word) | 1.50 s |
 | `VA2` | VA | Tear gas effect | 5.98 s |
 | `H02` | H | Rail gun impact | 0.39 s |
@@ -105,7 +106,9 @@ Sums to 2,166, the app's list; the gun holds 2,477 files.
 
 ## The full sound bank
 
-The table below lists every sound on the gun: id, family, meaning where known, community label where one exists, duration, and the command that plays it. Search matches an id, a family, a meaning or a community label.
+The table below lists every known sound id: the 2,477 files on the gun and the 157 extra ids in the app whose files are missing. It includes the AI category and acoustic description, exact file measurements, machine transcript and speaker for voice lines, confirmed uses, our by-ear review notes, the community label where one exists, availability, duration, and the command that plays it. Search matches every field.
+
+AI categories and descriptions are useful for finding a sound by shape, but they are not an ear check. A row marked **Checked by ear** has been reviewed on a gun. An unchecked machine transcript is shown as an unchecked transcript, not as a confirmed quote. Community labels remain separate and unconfirmed.
 
 ```data
 sounds

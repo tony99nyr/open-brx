@@ -218,6 +218,43 @@ it('4b · sound durations in the prose match the generated table cell for cell',
   expect(bad, 'prose durations that disagree with the generated table').toEqual([]);
 });
 
+it('4c · the public sound data preserves the complete catalog, not only labels', async ({ request }) => {
+  const published = await (await request.get('/data/sounds.json')).json();
+  const source = JSON.parse(fs.readFileSync(path.resolve(DOCS, '../mcp/brx_mcp/data/sound_catalog.json'), 'utf8'));
+  expect(published).toHaveLength(source.sounds.length);
+  expect(published.filter(r => r.on_gun)).toHaveLength(source.count_on_gun);
+  expect(published.filter(r => !r.on_gun)).toHaveLength(source.count_app_only);
+  expect(published.filter(r => r.on_gun && !r.in_app)).toHaveLength(468);
+
+  const byId = new Map(published.map(r => [r.id, r]));
+  for (const sound of source.sounds) {
+    const row = byId.get(sound.id);
+    expect(row, `${sound.id} was dropped from the public data`).toBeTruthy();
+    for (const field of ['duration_s', 'on_gun', 'in_app', 'kind', 'category', 'speaker', 'description', 'shape', 'transcript_verified_by_ear']) {
+      expect(row, `${sound.id} public row has no ${field}`).toHaveProperty(field);
+    }
+    expect(row.category, `${sound.id} has no public category`).toBe(sound.category);
+    expect(row.description, `${sound.id} has no public description`).toBe(sound.description);
+    expect(row.shape, `${sound.id} lost its acoustic measurements`).toEqual(sound.shape || null);
+  }
+
+  expect(byId.get('VA46')).toMatchObject({
+    known_use: expect.stringContaining("Life's depleted"),
+    transcript: "Life's depleted.",
+    category: 'voice:status_health',
+  });
+  expect(byId.get('E_J10')).toMatchObject({
+    availability: expect.stringContaining('App list only'), play: '', on_gun: false, in_app: true,
+  });
+  expect(byId.get('V116')).toMatchObject({
+    transcript: 'gained the lead', transcript_verified_by_ear: true,
+  });
+  expect(published.every(r => !JSON.stringify(r).includes('Tony')), 'private bench name reached public data').toBe(true);
+  expect(byId.get('A01').play).toBe('$PLAY,A01,4,6,,,,,*');
+  expect(published.filter(r => r.on_gun).every(r => /^\$PLAY,[A-Z0-9_]+,4,6,,,,,\*$/.test(r.play)),
+    'an on-gun row has a silent or malformed play command').toBe(true);
+});
+
 it('4 · the weapons table loads rows and filters', async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto('/manual/gameplay/');
@@ -275,9 +312,68 @@ it('5d · a NOISE-flagged id shows the reported-broken flag', async ({ page }) =
   await page.goto('/manual/sounds/');
   const dt = page.locator('.dt[data-table="sounds"]');
   await dt.locator('[data-search]').fill('HM10');
-  const row = dt.locator('tbody tr', { hasText: 'HM10' });
+  const row = dt.locator('tbody tr').filter({ has: page.getByText('HM10', { exact: true }) });
   await expect(row).toBeVisible();
   await expect(row.locator('i.community')).toContainText('reported broken since v4.30, pending an ear check');
+});
+
+it('5e · categories, acoustic analysis and by-ear notes are visible and searchable', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto('/manual/sounds/');
+  const dt = page.locator('.dt[data-table="sounds"]');
+  await expect(dt.locator('th', { hasText: 'AI category' })).toBeVisible();
+
+  // This phrase exists only in the bench listener note. Finding it proves search covers the full
+  // record, and the rendered row proves category, review confidence and measurements survived.
+  await dt.locator('[data-search]').fill('heavy electrical weapon or power source humming');
+  const row = dt.locator('tbody tr', { hasText: 'L02' });
+  await expect(row).toBeVisible();
+  await expect(row).toContainText('fx:electrical');
+  await expect(row).toContainText('Checked by ear');
+  await expect(row).toContainText('Listening note');
+  await expect(row).toContainText('Audio measurements');
+
+  // Known use and transcript coexist; the old projection hid the transcript whenever known_use won.
+  await dt.locator('[data-search]').fill('VA46');
+  const voice = dt.locator('tbody tr', { hasText: 'VA46' });
+  await expect(voice).toContainText('Known use');
+  await expect(voice).toContainText('Machine transcript');
+  await expect(voice).toContainText("Life's depleted");
+
+  // A row-level listening review does not imply that Whisper's words were checked.
+  await dt.locator('[data-search]').fill('VA2');
+  const unchecked = dt.locator('tbody tr').filter({ has: page.getByText('VA2', { exact: true }) });
+  await expect(unchecked).toContainText('Checked by ear');
+  await expect(unchecked).toContainText('Speaker: Announcer (male)');
+  await expect(unchecked).toContainText('Machine transcript (unchecked)');
+  await expect(unchecked).not.toContainText('Transcript (checked by ear)');
+
+  await dt.locator('[data-search]').fill('V116');
+  const checked = dt.locator('tbody tr').filter({ has: page.getByText('V116', { exact: true }) });
+  await expect(checked).toContainText('Transcript (checked by ear)');
+  await expect(checked).toContainText('gained the lead');
+
+  // Search indexes values, not implementation property names or boolean values.
+  await dt.locator('[data-search]').fill('transcript_verified_by_ear');
+  await expect(dt.locator('[data-count]')).toContainText('0 of');
+  expect(errors).toEqual([]);
+});
+
+it('5f · each sound remains a self-contained card at phone width', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/manual/sounds/');
+  const dt = page.locator('.dt[data-table="sounds"]');
+  await dt.locator('[data-search]').fill('VA2');
+  const row = dt.locator('tbody tr').filter({ has: page.getByText('VA2', { exact: true }) });
+  await expect(row).toContainText('VA2');
+  await expect(row).toContainText('Machine transcript (unchecked)');
+  const geometry = await row.evaluate(el => ({
+    rowWidth: el.getBoundingClientRect().width,
+    viewportWidth: document.documentElement.clientWidth,
+    overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  }));
+  expect(geometry.rowWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+  expect(geometry.overflow).toBeLessThanOrEqual(1);
 });
 
 it('6 · a data table that cannot load says so instead of sitting empty', async ({ page }) => {

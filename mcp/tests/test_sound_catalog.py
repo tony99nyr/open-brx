@@ -22,6 +22,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1] / "brx_mcp"
 TOOLS = pathlib.Path(__file__).resolve().parents[1] / "tools"
 sys.path.insert(0, str(TOOLS))
 import soundbank_community as sbc  # noqa: E402
+import soundbank_classify as sbclass  # noqa: E402
 
 CATALOG = json.load(open(snd.catalog_path()))
 BY_ID = {e["id"]: e for e in CATALOG["sounds"]}
@@ -41,6 +42,17 @@ def test_catalog_shape_and_counts():
             assert not e["on_gun"] and e["in_app"]
 
 
+def test_app_derivative_round_trip_keeps_the_468_gun_only_ids():
+    """Regenerating from the union catalog must not mistake every on-gun row for an app row."""
+    app_ids = sbclass.app_durations(CATALOG)
+    restated = json.load(open(ROOT / "data" / "sound_ids.json"))
+    # The analysis catalog carries measured file durations while sound_ids.json restates the app's
+    # values; a few round differently. This contract is membership, not measurement equality.
+    assert set(app_ids) == set(sbclass.app_durations(restated))
+    assert len(app_ids) == 2166
+    assert sum(1 for e in CATALOG["sounds"] if e["on_gun"] and e["id"] not in app_ids) == 468
+
+
 def test_character_slot_layout_holds_for_every_character():
     """Slot M is the character's name; slots 3-5 are screams; slot 7 is the healed line."""
     for fam in ("V0", "V3", "V8", "VD", "VE", "VH", "VJ"):
@@ -56,6 +68,14 @@ def test_known_by_ear_ids_match_their_transcripts():
     assert "depleted" in BY_ID["VA8B"]["transcript"].lower()          # "Shields depleted."
     assert "lead" in BY_ID["VB17"]["transcript"].lower()              # "Red team takes the lead."
     assert BY_ID["V3I"]["transcript"].lower().startswith("get some")
+    assert BY_ID["V116"]["transcript"] == "gained the lead"
+    assert BY_ID["V116"]["transcript_verified_by_ear"] is True
+
+
+def test_row_review_does_not_overstate_transcript_confidence():
+    """VA2 was identified as the gas-victim cough, not transcribed syllable by syllable."""
+    assert BY_ID["VA2"]["verified_by_ear"] is True
+    assert not BY_ID["VA2"].get("transcript_verified_by_ear")
 
 
 def _ids_in(path: pathlib.Path) -> set[str]:
@@ -89,6 +109,13 @@ def test_semantic_cues_say_what_their_names_claim():
     for sid, words in want.items():
         assert words in BY_ID[sid]["transcript"].lower(), (sid, BY_ID[sid]["transcript"])
     assert not snd.provisional(), "every semantic cue is now transcript-verified"
+
+
+def test_every_confirmed_runtime_cue_is_described_in_the_public_catalog_source():
+    """The site is generated from sound_catalog.json. A cue known to the runtime but absent here
+    used to leave the public table blank or machine-only even though the repo knew its meaning."""
+    missing = [c.sid for c in snd.CATALOG if c.confidence == snd.CONFIRMED and not BY_ID[c.sid].get("known_use")]
+    assert missing == [], f"confirmed runtime cues missing known_use in sound_catalog.json: {missing}"
 
 
 def test_community_fields_are_well_formed_where_present():

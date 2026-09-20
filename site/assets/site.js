@@ -80,7 +80,11 @@
       ['mag', 'Mag'], ['reserve', 'Reserve'], ['reload_ms', 'Reload ms'],
       ['heat', 'Heat/shot'], ['sound', 'Fire sound'],
     ],
-    sounds: [['id', 'Id'], ['family', 'Family'], ['len', 'Seconds'], ['meaning', 'Meaning'], ['community_label', 'Community label'], ['play', 'Command']],
+    sounds: [
+      ['id', 'Id'], ['availability', 'Availability'], ['family', 'Family'],
+      ['category', 'AI category'], ['len', 'Seconds'], ['play', 'Command'],
+      ['sound_details', 'What we know'],
+    ],
   };
   const PAGE = 200;
 
@@ -97,7 +101,30 @@
 
     const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const STATUS_WORD = { NEW_LABEL: 'new', AGREES: 'agrees', DIFFERS: 'differs' };
+    const labelled = (label, value, klass = '') => value
+      ? `<div${klass ? ` class="${klass}"` : ''}><b>${esc(label)}:</b> ${esc(value)}</div>` : '';
     const cell = (v, r, key) => {
+      if (key === 'sound_details') {
+        const transcriptLabel = r.transcript_verified_by_ear ? 'Transcript (checked by ear)' : 'Machine transcript (unchecked)';
+        const community = [];
+        if (r.community_label) community.push(`community label (${STATUS_WORD[r.community_status] || 'label'}, unconfirmed): ${r.community_label}`);
+        if (r.flag_noise) community.push('reported broken since v4.30, pending an ear check');
+        // Voice descriptions are normally the same machine transcript. Do not print the same words
+        // twice, but retain both fields in /data/sounds.json.
+        const description = r.description && r.description !== r.transcript ? r.description : '';
+        const review = r.verified_by_ear ? '<span class="sound-reviewed">Checked by ear</span>' : '';
+        const details = [
+          review,
+          labelled('Known use', r.known_use),
+          labelled('Speaker', r.speaker),
+          labelled(transcriptLabel, r.transcript, r.transcript_verified_by_ear ? '' : 'unheard'),
+          labelled('Listening note', r.listener_note),
+          labelled('Catalog description', description),
+          community.length ? `<div><i class="community"><b>Community:</b> ${esc(community.join(' · '))}</i></div>` : '',
+          labelled('Audio measurements', r.analysis, 'sound-analysis'),
+        ].filter(Boolean).join('');
+        return details ? `<div class="sound-details">${details}</div>` : 'n/a';
+      }
       // a community label is unconfirmed and never stands in for our own meaning: mark it every
       // time, and say so even for a NOISE-flagged id that carries no label at all
       if (key === 'community_label') {
@@ -113,14 +140,23 @@
     };
     const render = () => {
       const q = search.value.trim().toLowerCase();
-      const hits = q ? rows.filter(r => cols.some(c => String(r[c[0]] ?? '').toLowerCase().includes(q))) : rows;
+      // Search the complete public row, including listening notes and acoustic measurements that
+      // are grouped into the details cell rather than given a dozen separate columns. Search data
+      // values only: JSON field names and boolean plumbing are not useful things for readers to find.
+      const values = value => {
+        if (typeof value === 'string' || typeof value === 'number') return [String(value)];
+        if (Array.isArray(value)) return value.flatMap(values);
+        if (value && typeof value === 'object') return Object.values(value).flatMap(values);
+        return [];
+      };
+      const hits = q ? rows.filter(r => values(r).join(' ').toLowerCase().includes(q)) : rows;
       if (!hits.length) {
         body.innerHTML = `<tr><td colspan="${cols.length}">Nothing matches ${esc(JSON.stringify(q))}.</td></tr>`;
         count.textContent = `0 of ${rows.length} rows`;
         return;
       }
       body.innerHTML = hits.slice(0, shown)
-        .map(r => `<tr>${cols.map(c => `<td>${cell(r[c[0]], r, c[0])}</td>`).join('')}</tr>`).join('');
+        .map(r => `<tr>${cols.map(c => `<td data-label="${esc(c[1])}">${cell(r[c[0]], r, c[0])}</td>`).join('')}</tr>`).join('');
       if (hits.length > shown) {
         body.insertAdjacentHTML('beforeend',
           `<tr><td colspan="${cols.length}"><button type="button" data-more>Show ${Math.min(PAGE, hits.length - shown)} more</button></td></tr>`);

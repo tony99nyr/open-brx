@@ -1,5 +1,5 @@
 # Sound, voice and updates
-Last verified: 2026-09-18
+Last verified: 2026-09-20
 
 How BRX plays sound: what the gun does on its own, what a host has to trigger, and how to change what you hear over USB or through a firmware update.
 
@@ -59,7 +59,7 @@ Mostly no. Your gun sees the grenade's IR signal and plays those sounds from its
 
 A voice pack is the run of sound ids at the tail of `$PSET`, one per game event: death alarm, pain, respawn cry, kill line. The BRX does not ship "a male voice" and "a female voice" as one big pack. The characters you pick in the app are just pre-filled sets of those ids.
 
-**How many slots there are is an open question.** The app's own metadata declares **seventeen** voice-pack field names, listed below in declaration order. A captured `$PSET` carries **sixteen** ids on the wire (`...,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*`). So at least one declared name has no wire slot of its own, and which name that is, and therefore where the run shifts by one, has not been established. Treat the table as the app's list of events, not as a proven token-by-token map.
+The voice pack has **seventeen wire slots**, `$PSET` tokens 7 through 23, in the order below. The alignment is confirmed from Battle Company's field table and the v4.30 firmware image, and the pool-sound positions were checked on hardware.
 
 | Declared field | Event it fires on |
 |---|---|
@@ -136,7 +136,7 @@ The pattern repeats across every `V<n>`/`V<letter>` family.
 
 ## The sound bank
 
-See [the sound bank](/manual/sounds) for every id on the gun: the full searchable table, the family map, notable ids, and how community labels from the LaserTagMods BRX Audio sheet compare with our own.
+See [the sound bank](/manual/sounds) for all 2,634 known ids: 2,477 files on the gun plus 157 app-listed ids whose files are missing. The searchable table includes AI categories and acoustic analysis, transcripts, confirmed uses, by-ear review notes, availability, and community labels from the LaserTagMods BRX Audio sheet.
 
 ## Custom sounds over USB
 
@@ -159,6 +159,7 @@ The `AUDIO` folder. Hold SELECT while you power on with a USB cable attached, an
 | Item | Value |
 |---|---|
 | Naming | `<ID>.LTP`, one file per bank id. Known community swaps: `NA0.ltp` death loud-beep, `VA3.ltp` scream, `VA5.ltp` yell (copy or rename one over another to change the death cue). |
+| Audio encoding | Headerless raw PCM, signed 16-bit little-endian, mono, 44,100 Hz. An `.LTP` file has no WAV header. |
 | Which files are which weapon | The Callsign-app gun sounds use different file names from the default (on-gun menu) weapon files. Replacing one set won't change the other. Default guns to target for the menu game: SR-100, TAC-87, SMG-x3, MG7. |
 | Firmware v4.30+ | Needs a complete new audio-file set in `AUDIO`. After that update, old packs don't line up. |
 

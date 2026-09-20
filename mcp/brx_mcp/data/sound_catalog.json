@@ -743,7 +743,9 @@
         "pitch_hz": 87,
         "rms_db": -21.3,
         "attack_s": 1.76
-      }
+      },
+      "known_use": "smooth shield-recharge rise; play twice during refill (Tony, by ear 2026-09-17)",
+      "verified_by_ear": true
     },
     {
       "id": "A35",
@@ -2697,7 +2699,9 @@
         "pitch_hz": 804,
         "rms_db": -29.3,
         "attack_s": 0.16
-      }
+      },
+      "known_use": "Charge Rifle early-release sound, not an overheat sound (Tony, by ear 2026-09-17)",
+      "verified_by_ear": true
     },
     {
       "id": "C20",
@@ -3124,7 +3128,9 @@
         "pitch_hz": 669,
         "rms_db": -26.9,
         "attack_s": 0.032
-      }
+      },
+      "known_use": "third sound in the working D08-D07-D06 reload chain (Tony, by ear 2026-09-11)",
+      "verified_by_ear": true
     },
     {
       "id": "D07",
@@ -3143,7 +3149,9 @@
         "pitch_hz": 411,
         "rms_db": -23.3,
         "attack_s": 0.032
-      }
+      },
+      "known_use": "second sound in the working D08-D07-D06 reload chain (Tony, by ear 2026-09-11)",
+      "verified_by_ear": true
     },
     {
       "id": "D08",
@@ -3162,7 +3170,9 @@
         "pitch_hz": 733,
         "rms_db": -21.2,
         "attack_s": 0.096
-      }
+      },
+      "known_use": "first sound in the working D08-D07-D06 reload chain (Tony, by ear 2026-09-11)",
+      "verified_by_ear": true
     },
     {
       "id": "D09",
@@ -3410,7 +3420,9 @@
         "pitch_hz": 164,
         "rms_db": -22.8,
         "attack_s": 0.128
-      }
+      },
+      "known_use": "overheat / vent sound; chosen for Open BRX Energy Rifle (Tony, by ear 2026-09-17)",
+      "verified_by_ear": true
     },
     {
       "id": "D110",
@@ -3678,7 +3690,9 @@
         "pitch_hz": 446,
         "rms_db": -29.2,
         "attack_s": 0.032
-      }
+      },
+      "known_use": "reload-like sound; captured Energy Rifle overheat slot but rejected by ear (Tony, 2026-09-17)",
+      "verified_by_ear": true
     },
     {
       "id": "D123",
@@ -5758,6 +5772,8 @@
         "rms_db": -28.5,
         "attack_s": 0.0
       },
+      "verified_by_ear": true,
+      "context": "light bright burst then a tree cracking open",
       "community_label": "Acid",
       "community_status": "new_label"
     },
@@ -5823,6 +5839,8 @@
         "rms_db": -25.0,
         "attack_s": 0.608
       },
+      "verified_by_ear": true,
+      "context": "male voice coughing",
       "community_label": "Male Gassed",
       "community_status": "new_label"
     },
@@ -5845,6 +5863,8 @@
         "rms_db": -24.8,
         "attack_s": 1.12
       },
+      "verified_by_ear": true,
+      "context": "male voice choking then coughing",
       "community_label": "Miss, Ricochet",
       "community_status": "new_label"
     },
@@ -5909,6 +5929,8 @@
         "rms_db": -24.2,
         "attack_s": 0.128
       },
+      "verified_by_ear": true,
+      "context": "whizzing, bright, like something burning whizzed by",
       "community_label": "broom brushing",
       "community_status": "new_label"
     },
@@ -5951,6 +5973,8 @@
         "rms_db": -29.3,
         "attack_s": 0.16
       },
+      "verified_by_ear": true,
+      "context": "footstep breaking a branch",
       "community_label": "poison",
       "community_status": "new_label"
     },
@@ -5972,7 +5996,9 @@
         "pitch_hz": 1004,
         "rms_db": -16.0,
         "attack_s": 0.16
-      }
+      },
+      "verified_by_ear": true,
+      "context": "gross squishing, like stepping on and smushing/breaking something"
     },
     {
       "id": "H101",
@@ -5991,7 +6017,9 @@
         "pitch_hz": 92,
         "rms_db": -23.3,
         "attack_s": 0.192
-      }
+      },
+      "verified_by_ear": true,
+      "context": "hot ball of energy landing in a small pool of water"
     },
     {
       "id": "H102",
@@ -6010,7 +6038,9 @@
         "pitch_hz": 90,
         "rms_db": -20.9,
         "attack_s": 0.16
-      }
+      },
+      "verified_by_ear": true,
+      "context": "hitting with a large melee weapon"
     },
     {
       "id": "H103",
@@ -6029,7 +6059,9 @@
         "pitch_hz": 84,
         "rms_db": -19.7,
         "attack_s": 0.128
-      }
+      },
+      "verified_by_ear": true,
+      "context": "energy release of some kind"
     },
     {
       "id": "H104",
@@ -6048,7 +6080,9 @@
         "pitch_hz": 104,
         "rms_db": -23.3,
         "attack_s": 0.16
-      }
+      },
+      "verified_by_ear": true,
+      "context": "male voice going 'hmph' and jumping"
     },
     {
       "id": "H105",
@@ -6067,7 +6101,9 @@
         "pitch_hz": 153,
         "rms_db": -22.9,
         "attack_s": 0.128
-      }
+      },
+      "verified_by_ear": true,
+      "context": "same 'hmph' and jump, probably female"
     },
     {
       "id": "H106",
@@ -6087,7 +6123,9 @@
         "pitch_hz": 1252,
         "rms_db": -25.7,
         "attack_s": 0.096
-      }
+      },
+      "verified_by_ear": true,
+      "context": "laser projectile whizzing by"
     },
     {
       "id": "H107",
@@ -6106,7 +6144,9 @@
         "pitch_hz": 803,
         "rms_db": -27.7,
         "attack_s": 0.16
-      }
+      },
+      "verified_by_ear": true,
+      "context": "some kind of grenade or energy projectile whizzing"
     },
     {
       "id": "H108",
@@ -6126,7 +6166,9 @@
         "pitch_hz": 420,
         "rms_db": -28.6,
         "attack_s": 0.16
-      }
+      },
+      "verified_by_ear": true,
+      "context": "movie effect of a throwing knife hitting a target"
     },
     {
       "id": "H109",
@@ -6145,7 +6187,9 @@
         "pitch_hz": 515,
         "rms_db": -29.2,
         "attack_s": 0.128
-      }
+      },
+      "verified_by_ear": true,
+      "context": "punching a punching bag"
     },
     {
       "id": "H11",
@@ -6165,6 +6209,8 @@
         "rms_db": -26.5,
         "attack_s": 0.128
       },
+      "verified_by_ear": true,
+      "context": "archery hit sound maybe",
       "community_label": "Arrow",
       "community_status": "new_label"
     },
@@ -6185,7 +6231,9 @@
         "pitch_hz": 333,
         "rms_db": -33.7,
         "attack_s": 0.096
-      }
+      },
+      "verified_by_ear": true,
+      "context": "reloading an energy crossbow?"
     },
     {
       "id": "H111",
@@ -6204,7 +6252,9 @@
         "pitch_hz": 845,
         "rms_db": -31.2,
         "attack_s": 0.128
-      }
+      },
+      "verified_by_ear": true,
+      "context": "shooting a gun that emits plasma or something wet"
     },
     {
       "id": "H112",
@@ -6223,7 +6273,9 @@
         "pitch_hz": 723,
         "rms_db": -28.5,
         "attack_s": 0.032
-      }
+      },
+      "verified_by_ear": true,
+      "context": "archery hit"
     },
     {
       "id": "H113",
@@ -6242,7 +6294,9 @@
         "pitch_hz": 157,
         "rms_db": -28.6,
         "attack_s": 0.064
-      }
+      },
+      "verified_by_ear": true,
+      "context": "metal arrow hit"
     },
     {
       "id": "H114",
@@ -6261,7 +6315,9 @@
         "pitch_hz": 446,
         "rms_db": -26.2,
         "attack_s": 0.128
-      }
+      },
+      "verified_by_ear": true,
+      "context": "hit and a fleshy alien squishy sound"
     },
     {
       "id": "H115",
@@ -6280,7 +6336,9 @@
         "pitch_hz": 549,
         "rms_db": -24.7,
         "attack_s": 0.224
-      }
+      },
+      "verified_by_ear": true,
+      "context": "knife stab into gooey flesh"
     },
     {
       "id": "H116",
@@ -6300,7 +6358,9 @@
         "pitch_hz": 141,
         "rms_db": -25.9,
         "attack_s": 0.096
-      }
+      },
+      "verified_by_ear": true,
+      "context": "creature growl"
     },
     {
       "id": "H117",
@@ -6319,7 +6379,9 @@
         "pitch_hz": 107,
         "rms_db": -28.5,
         "attack_s": 0.128
-      }
+      },
+      "verified_by_ear": true,
+      "context": "creature stomp"
     },
     {
       "id": "H118",
@@ -6338,7 +6400,9 @@
         "pitch_hz": 374,
         "rms_db": -26.4,
         "attack_s": 0.0
-      }
+      },
+      "verified_by_ear": true,
+      "context": "wine glass break"
     },
     {
       "id": "H119",
@@ -6357,7 +6421,9 @@
         "pitch_hz": 391,
         "rms_db": -25.8,
         "attack_s": 0.032
-      }
+      },
+      "verified_by_ear": true,
+      "context": "glass break"
     },
     {
       "id": "H12",
@@ -6377,6 +6443,8 @@
         "rms_db": -29.1,
         "attack_s": 0.064
       },
+      "verified_by_ear": true,
+      "context": "very wet hit, squishy bubble",
       "community_label": "Bubble Acid",
       "community_status": "new_label"
     },
@@ -6398,7 +6466,9 @@
         "pitch_hz": 319,
         "rms_db": -30.3,
         "attack_s": 0.416
-      }
+      },
+      "verified_by_ear": true,
+      "context": "energy sword armed?"
     },
     {
       "id": "H121",
@@ -6418,7 +6488,9 @@
         "pitch_hz": 1256,
         "rms_db": -20.5,
         "attack_s": 0.128
-      }
+      },
+      "verified_by_ear": true,
+      "context": "sword swing or sword clink"
     },
     {
       "id": "H122",
@@ -6438,7 +6510,9 @@
         "pitch_hz": 1475,
         "rms_db": -20.4,
         "attack_s": 0.128
-      }
+      },
+      "verified_by_ear": true,
+      "context": "another sword sound effect"
     },
     {
       "id": "H123",
@@ -6457,7 +6531,9 @@
         "pitch_hz": 389,
         "rms_db": -25.1,
         "attack_s": 0.192
-      }
+      },
+      "verified_by_ear": true,
+      "context": "an alien echo sound?"
     },
     {
       "id": "H124",
@@ -6477,7 +6553,9 @@
         "pitch_hz": 534,
         "rms_db": -22.1,
         "attack_s": 0.768
-      }
+      },
+      "verified_by_ear": true,
+      "context": "creepy alien spooky sound"
     },
     {
       "id": "H125",
@@ -6497,7 +6575,9 @@
         "pitch_hz": 537,
         "rms_db": -24.7,
         "attack_s": 0.576
-      }
+      },
+      "verified_by_ear": true,
+      "context": "creepy alien spooky sound (second)"
     },
     {
       "id": "H126",
@@ -6516,7 +6596,9 @@
         "pitch_hz": 228,
         "rms_db": -23.0,
         "attack_s": 0.0
-      }
+      },
+      "verified_by_ear": true,
+      "context": "ceramic breaking"
     },
     {
       "id": "H127",
@@ -6535,7 +6617,9 @@
         "pitch_hz": 726,
         "rms_db": -23.4,
         "attack_s": 0.128
-      }
+      },
+      "verified_by_ear": true,
+      "context": "very bright sword-like sound"
     },
     {
       "id": "H128",
@@ -6554,7 +6638,9 @@
         "pitch_hz": 752,
         "rms_db": -32.7,
         "attack_s": 0.064
-      }
+      },
+      "verified_by_ear": true,
+      "context": "echoey shimmer, kinda sword-like, kinda an acquire sound"
     },
     {
       "id": "H129",
@@ -6573,7 +6659,9 @@
         "pitch_hz": 1314,
         "rms_db": -26.1,
         "attack_s": 0.832
-      }
+      },
+      "verified_by_ear": true,
+      "context": "3 spooky climaxing eerie sounds"
     },
     {
       "id": "H13",
@@ -6614,7 +6702,9 @@
         "pitch_hz": 114,
         "rms_db": -21.8,
         "attack_s": 0.8
-      }
+      },
+      "verified_by_ear": true,
+      "context": "intense focus then hitting a giant cymbal, very odd"
     },
     {
       "id": "H131",
@@ -6633,7 +6723,9 @@
         "pitch_hz": 120,
         "rms_db": -17.7,
         "attack_s": 0.352
-      }
+      },
+      "verified_by_ear": true,
+      "context": "intense focus then an alien-prowess feeling"
     },
     {
       "id": "H132",
@@ -6652,7 +6744,9 @@
         "pitch_hz": 155,
         "rms_db": -14.8,
         "attack_s": 3.072
-      }
+      },
+      "verified_by_ear": true,
+      "context": "alien spaceship or alien scream"
     },
     {
       "id": "H133",
@@ -6671,7 +6765,9 @@
         "pitch_hz": 133,
         "rms_db": -17.7,
         "attack_s": 2.496
-      }
+      },
+      "verified_by_ear": true,
+      "context": "alien spaceship or alien scream (same as H132)"
     },
     {
       "id": "H134",
@@ -6691,7 +6787,9 @@
         "pitch_hz": 78,
         "rms_db": -19.9,
         "attack_s": 0.064
-      }
+      },
+      "verified_by_ear": true,
+      "context": "a semi-normal hit sound"
     },
     {
       "id": "H135",
@@ -6710,7 +6808,9 @@
         "pitch_hz": 1019,
         "rms_db": -23.3,
         "attack_s": 0.032
-      }
+      },
+      "verified_by_ear": true,
+      "context": "typical hit"
     },
     {
       "id": "H136",
@@ -6730,7 +6830,9 @@
         "pitch_hz": 82,
         "rms_db": -16.7,
         "attack_s": 0.064
-      }
+      },
+      "verified_by_ear": true,
+      "context": "typical hit"
     },
     {
       "id": "H137",
@@ -6750,7 +6852,9 @@
         "pitch_hz": 68,
         "rms_db": -18.2,
         "attack_s": 0.096
-      }
+      },
+      "verified_by_ear": true,
+      "context": "hitting something with a bat"
     },
     {
       "id": "H138",
@@ -6770,7 +6874,9 @@
         "pitch_hz": 1341,
         "rms_db": -17.6,
         "attack_s": 0.032
-      }
+      },
+      "verified_by_ear": true,
+      "context": "hitting something with a bat, or dropping something"
     },
     {
       "id": "H139",
@@ -6790,7 +6896,9 @@
         "pitch_hz": 1119,
         "rms_db": -19.0,
         "attack_s": 0.064
-      }
+      },
+      "verified_by_ear": true,
+      "context": "bat hit or dropping something, small metal ting"
     },
     {
       "id": "H14",
@@ -6851,7 +6959,9 @@
         "pitch_hz": 293,
         "rms_db": -21.3,
         "attack_s": 0.064
-      }
+      },
+      "verified_by_ear": true,
+      "context": "bat hit or dropping something, squishy"
     },
     {
       "id": "H142",
@@ -6870,7 +6980,9 @@
         "pitch_hz": 234,
         "rms_db": -30.4,
         "attack_s": 0.064
-      }
+      },
+      "verified_by_ear": true,
+      "context": "bat hit or dropping something, water"
     },
     {
       "id": "H143",
@@ -6890,7 +7002,9 @@
         "pitch_hz": 128,
         "rms_db": -21.8,
         "attack_s": 0.064
-      }
+      },
+      "verified_by_ear": true,
+      "context": "bat hit or dropping something, squishy"
     },
     {
       "id": "H144",
@@ -6909,7 +7023,9 @@
         "pitch_hz": 261,
         "rms_db": -24.3,
         "attack_s": 0.064
-      }
+      },
+      "verified_by_ear": true,
+      "context": "bat hit or dropping something, squishy"
     },
     {
       "id": "H145",
@@ -6928,7 +7044,9 @@
         "pitch_hz": 393,
         "rms_db": -25.4,
         "attack_s": 0.096
-      }
+      },
+      "verified_by_ear": true,
+      "context": "bat hit or dropping something, squishy"
     },
     {
       "id": "H146",
@@ -6947,7 +7065,9 @@
         "pitch_hz": 85,
         "rms_db": -25.8,
         "attack_s": 0.064
-      }
+      },
+      "verified_by_ear": true,
+      "context": "bat hit or dropping something"
     },
     {
       "id": "H147",
@@ -6967,7 +7087,9 @@
         "pitch_hz": 617,
         "rms_db": -24.2,
         "attack_s": 0.064
-      }
+      },
+      "verified_by_ear": true,
+      "context": "hitting something with a bat"
     },
     {
       "id": "H148",
@@ -6986,7 +7108,9 @@
         "pitch_hz": 95,
         "rms_db": -27.1,
         "attack_s": 0.128
-      }
+      },
+      "verified_by_ear": true,
+      "context": "hitting something with a bat, kinda metallic"
     },
     {
       "id": "H149",
@@ -7005,7 +7129,9 @@
         "pitch_hz": 147,
         "rms_db": -25.4,
         "attack_s": 0.128
-      }
+      },
+      "verified_by_ear": true,
+      "context": "hitting something with a bat, kinda squishy"
     },
     {
       "id": "H15",
@@ -7047,7 +7173,9 @@
         "pitch_hz": 1636,
         "rms_db": -28.4,
         "attack_s": 0.928
-      }
+      },
+      "verified_by_ear": true,
+      "context": "firework flying by your ear"
     },
     {
       "id": "H151",
@@ -7066,7 +7194,9 @@
         "pitch_hz": 1622,
         "rms_db": -24.8,
         "attack_s": 0.448
-      }
+      },
+      "verified_by_ear": true,
+      "context": "firework flying by your ear"
     },
     {
       "id": "H152",
@@ -7086,7 +7216,9 @@
         "pitch_hz": 1069,
         "rms_db": -27.8,
         "attack_s": 0.768
-      }
+      },
+      "verified_by_ear": true,
+      "context": "firework flying by your ear"
     },
     {
       "id": "H153",
@@ -7105,7 +7237,9 @@
         "pitch_hz": 1248,
         "rms_db": -26.8,
         "attack_s": 0.352
-      }
+      },
+      "verified_by_ear": true,
+      "context": "firework flying by your ear"
     },
     {
       "id": "H154",
@@ -7124,7 +7258,9 @@
         "pitch_hz": 728,
         "rms_db": -25.0,
         "attack_s": 0.256
-      }
+      },
+      "verified_by_ear": true,
+      "context": "starts like a firework, then hits solid wood"
     },
     {
       "id": "H155",
@@ -7143,7 +7279,9 @@
         "pitch_hz": 767,
         "rms_db": -24.9,
         "attack_s": 0.192
-      }
+      },
+      "verified_by_ear": true,
+      "context": "starts like a firework, then hits solid wood"
     },
     {
       "id": "H16",
@@ -7163,6 +7301,8 @@
         "rms_db": -33.0,
         "attack_s": 0.032
       },
+      "verified_by_ear": true,
+      "context": "big water splash",
       "community_label": "squishy cut noise",
       "community_status": "new_label"
     },
@@ -7185,6 +7325,8 @@
         "rms_db": -28.3,
         "attack_s": 0.064
       },
+      "verified_by_ear": true,
+      "context": "big gun shot",
       "community_label": "Energy long hit",
       "community_status": "new_label"
     },
@@ -7207,6 +7349,9 @@
         "rms_db": -21.1,
         "attack_s": 1.728
       },
+      "known_use": "heartbeat with creepy Halloween texture; infection candidate (Tony, by ear 2026-09-11)",
+      "verified_by_ear": true,
+      "context": "heartbeat and creepy halloween spooky sounds",
       "community_label": "futuristic fly by with heart beat maybe regen",
       "community_status": "new_label"
     },
@@ -7229,6 +7374,8 @@
         "rms_db": -27.0,
         "attack_s": 0.128
       },
+      "verified_by_ear": true,
+      "context": "firework fly-by hits, then breaks into small laser-like explosions",
       "community_label": "many smal burning hits",
       "community_status": "new_label"
     },
@@ -7251,6 +7398,8 @@
         "rms_db": -19.7,
         "attack_s": 0.032
       },
+      "verified_by_ear": true,
+      "context": "hit then an electrical pulse, could be an EMP disable",
       "community_label": "Electric shock",
       "community_status": "new_label"
     },
@@ -7273,6 +7422,8 @@
         "rms_db": -25.4,
         "attack_s": 0.0
       },
+      "verified_by_ear": true,
+      "context": "hit then an electrical pulse, could be an EMP disable (same as H20)",
       "community_label": "Hit on Shield",
       "community_status": "new_label"
     },
@@ -7315,6 +7466,8 @@
         "rms_db": -23.0,
         "attack_s": 0.032
       },
+      "verified_by_ear": true,
+      "context": "hit then a geiger counter",
       "community_label": "poison blaster hit... infected",
       "community_status": "new_label"
     },
@@ -7336,6 +7489,8 @@
         "rms_db": -22.8,
         "attack_s": 0.032
       },
+      "verified_by_ear": true,
+      "context": "hitting a metal bucket, then it breaks into pieces",
       "community_label": "metal and glass shatter hit",
       "community_status": "new_label"
     },
@@ -7357,6 +7512,8 @@
         "rms_db": -24.5,
         "attack_s": 0.032
       },
+      "verified_by_ear": true,
+      "context": "throwing a plate against the wall, it breaks",
       "community_label": "metal and glass shatter hit",
       "community_status": "new_label"
     },
@@ -7378,6 +7535,8 @@
         "rms_db": -21.1,
         "attack_s": 0.032
       },
+      "verified_by_ear": true,
+      "context": "picking up, swiping something up",
       "community_label": "knife swipe",
       "community_status": "new_label"
     },
@@ -7399,6 +7558,8 @@
         "rms_db": -27.1,
         "attack_s": 0.032
       },
+      "verified_by_ear": true,
+      "context": "hitting something with a bat",
       "community_label": "bloody knife swipe",
       "community_status": "new_label"
     },
@@ -7420,6 +7581,8 @@
         "rms_db": -28.8,
         "attack_s": 0.0
       },
+      "verified_by_ear": true,
+      "context": "clanking swords",
       "community_label": "blades klinging",
       "community_status": "new_label"
     },
@@ -7465,6 +7628,8 @@
         "rms_db": -23.8,
         "attack_s": 0.064
       },
+      "verified_by_ear": true,
+      "context": "shooting, launching, kinda squishy",
       "community_label": "small blast impact",
       "community_status": "new_label"
     },
@@ -7487,6 +7652,8 @@
         "rms_db": -25.2,
         "attack_s": 0.0
       },
+      "verified_by_ear": true,
+      "context": "shooting, launching, kinda squishy (same as H30)",
       "community_label": "squishy bubbles",
       "community_status": "new_label"
     },
@@ -7509,6 +7676,8 @@
         "rms_db": -22.2,
         "attack_s": 0.032
       },
+      "verified_by_ear": true,
+      "context": "shooting, launching, kinda squishy (same as H30/H31)",
       "community_label": "squishy bubbles",
       "community_status": "new_label"
     },
@@ -7552,6 +7721,8 @@
         "rms_db": -19.6,
         "attack_s": 0.128
       },
+      "verified_by_ear": true,
+      "context": "sword cutting something squishy",
       "community_label": "Stab with blood",
       "community_status": "new_label"
     },
@@ -7574,6 +7745,8 @@
         "rms_db": -24.9,
         "attack_s": 0.032
       },
+      "verified_by_ear": true,
+      "context": "hammer hitting metal",
       "community_label": "hitting armor",
       "community_status": "new_label"
     },
@@ -7640,6 +7813,8 @@
         "rms_db": -18.7,
         "attack_s": 0.128
       },
+      "verified_by_ear": true,
+      "context": "hammer hitting metal, more whack",
       "community_label": "Metal hit with blood",
       "community_status": "new_label"
     },
@@ -7662,6 +7837,8 @@
         "rms_db": -19.5,
         "attack_s": 0.096
       },
+      "verified_by_ear": true,
+      "context": "hammer hitting metal",
       "community_label": "Sword against shield with squishy",
       "community_status": "new_label"
     },
@@ -7683,6 +7860,8 @@
         "rms_db": -24.4,
         "attack_s": 0.064
       },
+      "verified_by_ear": true,
+      "context": "something breaking open, then lots of little pieces scattering on the ground",
       "community_label": "shocking or acid frying",
       "community_status": "new_label"
     },
@@ -7705,6 +7884,8 @@
         "rms_db": -27.4,
         "attack_s": 0.032
       },
+      "verified_by_ear": true,
+      "context": "wooden clap",
       "community_label": "small hit with frying sound",
       "community_status": "new_label"
     },
@@ -7726,6 +7907,8 @@
         "rms_db": -20.7,
         "attack_s": 0.032
       },
+      "known_use": "sounds like a gun dropped on the ground; rejected critical-hit cue (Tony, by ear 2026-09-11)",
+      "verified_by_ear": true,
       "community_label": "stab with whiping sound",
       "community_status": "new_label"
     },
@@ -7748,6 +7931,8 @@
         "rms_db": -21.8,
         "attack_s": 0.064
       },
+      "verified_by_ear": true,
+      "context": "falling down, hitting the ground",
       "community_label": "several thuds",
       "community_status": "new_label"
     },
@@ -7769,6 +7954,8 @@
         "rms_db": -20.5,
         "attack_s": 0.064
       },
+      "verified_by_ear": true,
+      "context": "metal hit kinda, maybe a metal chair falling over",
       "community_label": "???",
       "community_status": "new_label"
     },
@@ -7790,6 +7977,8 @@
         "rms_db": -23.3,
         "attack_s": 0.192
       },
+      "verified_by_ear": true,
+      "context": "big water splash",
       "community_label": "Electric Burning long",
       "community_status": "new_label"
     },
@@ -7812,6 +8001,8 @@
         "rms_db": -16.0,
         "attack_s": 0.16
       },
+      "verified_by_ear": true,
+      "context": "wooden hit and then squish",
       "community_label": "Gory Squish splatter",
       "community_status": "new_label"
     },
@@ -7833,7 +8024,9 @@
         "pitch_hz": 1254,
         "rms_db": -25.4,
         "attack_s": 0.128
-      }
+      },
+      "verified_by_ear": true,
+      "context": "sword cut and squish"
     },
     {
       "id": "H49",
@@ -7896,6 +8089,8 @@
         "rms_db": -18.7,
         "attack_s": 0.064
       },
+      "verified_by_ear": true,
+      "context": "laser shoot",
       "community_label": "Electric shock",
       "community_status": "new_label"
     },
@@ -7917,6 +8112,8 @@
         "rms_db": -21.8,
         "attack_s": 0.224
       },
+      "verified_by_ear": true,
+      "context": "whack a metal bucket",
       "community_label": "melee hit with a gong",
       "community_status": "new_label"
     },
@@ -7939,6 +8136,8 @@
         "rms_db": -22.1,
         "attack_s": 0.192
       },
+      "verified_by_ear": true,
+      "context": "hit a metal bucket",
       "community_label": "melee hit with a gong",
       "community_status": "new_label"
     },
@@ -7960,6 +8159,8 @@
         "rms_db": -19.4,
         "attack_s": 0.064
       },
+      "verified_by_ear": true,
+      "context": "hammer on metal",
       "community_label": "loud hit",
       "community_status": "new_label"
     },
@@ -7981,6 +8182,8 @@
         "rms_db": -19.1,
         "attack_s": 0.0
       },
+      "verified_by_ear": true,
+      "context": "dart landing on a dart board",
       "community_label": "thud-punch",
       "community_status": "new_label"
     },
@@ -8003,6 +8206,8 @@
         "rms_db": -19.2,
         "attack_s": 0.064
       },
+      "verified_by_ear": true,
+      "context": "dart landing on a dart board (same as H55)",
       "community_label": "thud-punch",
       "community_status": "new_label"
     },
@@ -8047,6 +8252,8 @@
         "rms_db": -20.2,
         "attack_s": 0.192
       },
+      "verified_by_ear": true,
+      "context": "hitting a metal bucket",
       "community_label": "Melee hit with gun stock",
       "community_status": "new_label"
     },
@@ -8068,6 +8275,8 @@
         "rms_db": -23.1,
         "attack_s": 0.16
       },
+      "verified_by_ear": true,
+      "context": "small explosion in sand, particles and pieces then falling to the ground",
       "community_flag_noise": true
     },
     {
@@ -8088,6 +8297,8 @@
         "rms_db": -25.1,
         "attack_s": 0.032
       },
+      "verified_by_ear": true,
+      "context": "small explosion in sand, particles and pieces then falling to the ground (same as HM10)",
       "community_flag_noise": true
     },
     {
@@ -8108,6 +8319,8 @@
         "rms_db": -27.7,
         "attack_s": 0.032
       },
+      "verified_by_ear": true,
+      "context": "small explosion in sand, particles and pieces then falling to the ground (same as HM10)",
       "community_flag_noise": true
     },
     {
@@ -8128,6 +8341,8 @@
         "rms_db": -25.8,
         "attack_s": 0.032
       },
+      "verified_by_ear": true,
+      "context": "small glass break",
       "community_flag_noise": true
     },
     {
@@ -8148,6 +8363,8 @@
         "rms_db": -26.4,
         "attack_s": 0.0
       },
+      "verified_by_ear": true,
+      "context": "small glass break (same as HM13)",
       "community_flag_noise": true
     },
     {
@@ -8168,6 +8385,8 @@
         "rms_db": -19.4,
         "attack_s": 0.128
       },
+      "verified_by_ear": true,
+      "context": "a loud cartoonish boing, then a rapidly increasing clock tick",
       "community_flag_noise": true
     },
     {
@@ -8189,6 +8408,8 @@
         "rms_db": -21.6,
         "attack_s": 0.192
       },
+      "verified_by_ear": true,
+      "context": "equipping a big heavy weapon, or moving cooking pots around",
       "community_flag_noise": true
     },
     {
@@ -8210,6 +8431,8 @@
         "rms_db": -25.6,
         "attack_s": 0.064
       },
+      "verified_by_ear": true,
+      "context": "launcher shot or mild explosion",
       "community_flag_noise": true
     },
     {
@@ -8231,6 +8454,8 @@
         "rms_db": -20.8,
         "attack_s": 0.16
       },
+      "verified_by_ear": true,
+      "context": "rocket launcher or missile shot",
       "community_flag_noise": true
     },
     {
@@ -9663,6 +9888,8 @@
         "rms_db": -15.2,
         "attack_s": 9.664
       },
+      "known_use": "extraction-style music with ticking in the background; window-open candidate (Tony, by ear 2026-09-11)",
+      "verified_by_ear": true,
       "community_label": "Time running out",
       "community_status": "new_label"
     },
@@ -9704,7 +9931,9 @@
         "pitch_hz": 73,
         "rms_db": -14.0,
         "attack_s": 0.544
-      }
+      },
+      "known_use": "cool extraction / intro-hype music; Open BRX extraction tick (Tony, by ear 2026-09-11)",
+      "verified_by_ear": true
     },
     {
       "id": "JAT",
@@ -9783,7 +10012,9 @@
         "pitch_hz": 86,
         "rms_db": -14.4,
         "attack_s": 0.48
-      }
+      },
+      "known_use": "neutral game-ending music climax, not a defeat sting (Tony, by ear 2026-09-11)",
+      "verified_by_ear": true
     },
     {
       "id": "JAX",
@@ -9803,7 +10034,9 @@
         "pitch_hz": 88,
         "rms_db": -14.2,
         "attack_s": 1.152
-      }
+      },
+      "known_use": "neutral game-ending music climax, not a defeat sting (Tony, by ear 2026-09-11)",
+      "verified_by_ear": true
     },
     {
       "id": "JAY",
@@ -12359,6 +12592,8 @@
         "rms_db": -14.7,
         "attack_s": 0.16
       },
+      "known_use": "shield-depleted cue (Tony, by ear 2026-09-18)",
+      "verified_by_ear": true,
       "community_label": "(Halo) Shields Down",
       "community_status": "new_label"
     },
@@ -12380,6 +12615,8 @@
         "rms_db": -14.1,
         "attack_s": 1.664
       },
+      "known_use": "shield-recharge-start cue (Tony, by ear 2026-09-18)",
+      "verified_by_ear": true,
       "community_label": "(Halo) Shields Recharge",
       "community_status": "new_label"
     },
@@ -12905,6 +13142,8 @@
         "rms_db": -19.9,
         "attack_s": 0.512
       },
+      "known_use": "faster heartbeat; tier candidate (Tony, by ear 2026-09-11)",
+      "verified_by_ear": true,
       "community_label": "Heart beat",
       "community_status": "new_label"
     },
@@ -13853,7 +14092,9 @@
         "pitch_hz": 141,
         "rms_db": -18.5,
         "attack_s": 0.032
-      }
+      },
+      "known_use": "heartbeat; Open BRX low-health cue (Tony, by ear 2026-09-11)",
+      "verified_by_ear": true
     },
     {
       "id": "N75",
@@ -13872,7 +14113,9 @@
         "pitch_hz": 154,
         "rms_db": -20.9,
         "attack_s": 0.288
-      }
+      },
+      "known_use": "second heartbeat take; pool candidate (Tony, by ear 2026-09-11)",
+      "verified_by_ear": true
     },
     {
       "id": "N76",
@@ -14373,7 +14616,9 @@
         "pitch_hz": 93,
         "rms_db": -17.0,
         "attack_s": 0.096
-      }
+      },
+      "known_use": "blast, not a launch (Tony, by ear 2026-09-11)",
+      "verified_by_ear": true
     },
     {
       "id": "O02",
@@ -14392,7 +14637,9 @@
         "pitch_hz": 102,
         "rms_db": -20.2,
         "attack_s": 0.192
-      }
+      },
+      "known_use": "blast, not a launch (Tony, by ear 2026-09-11)",
+      "verified_by_ear": true
     },
     {
       "id": "O03",
@@ -14412,7 +14659,9 @@
         "pitch_hz": 78,
         "rms_db": -21.6,
         "attack_s": 0.096
-      }
+      },
+      "known_use": "rifle shot, not a launcher (Tony, by ear 2026-09-11)",
+      "verified_by_ear": true
     },
     {
       "id": "O04",
@@ -14431,7 +14680,9 @@
         "pitch_hz": 117,
         "rms_db": -18.1,
         "attack_s": 0.128
-      }
+      },
+      "known_use": "missile launch; Energy Launcher runner-up (Tony, by ear 2026-09-11)",
+      "verified_by_ear": true
     },
     {
       "id": "O05",
@@ -14451,7 +14702,9 @@
         "pitch_hz": 68,
         "rms_db": -20.4,
         "attack_s": 0.096
-      }
+      },
+      "known_use": "blast, not a launch (Tony, by ear 2026-09-11)",
+      "verified_by_ear": true
     },
     {
       "id": "O06",
@@ -14471,7 +14724,9 @@
         "pitch_hz": 71,
         "rms_db": -16.7,
         "attack_s": 0.064
-      }
+      },
+      "known_use": "rocket launch; Open BRX Energy Launcher fire (Tony, by ear 2026-09-11)",
+      "verified_by_ear": true
     },
     {
       "id": "P01",
@@ -14646,7 +14901,9 @@
         "pitch_hz": 84,
         "rms_db": -20.9,
         "attack_s": 0.032
-      }
+      },
+      "known_use": "pronounced pistol shot; Deagle candidate (Tony, by ear 2026-09-11)",
+      "verified_by_ear": true
     },
     {
       "id": "P10",
@@ -14783,7 +15040,9 @@
         "pitch_hz": 83,
         "rms_db": -21.5,
         "attack_s": 0.032
-      }
+      },
+      "known_use": "pistol shot; Open BRX Glock fire (Tony, by ear 2026-09-11)",
+      "verified_by_ear": true
     },
     {
       "id": "P17",
@@ -14899,7 +15158,9 @@
         "pitch_hz": 81,
         "rms_db": -17.7,
         "attack_s": 0.032
-      }
+      },
+      "known_use": "silenced pistol shot; Open BRX USP-S fire (Tony, by ear 2026-09-11)",
+      "verified_by_ear": true
     },
     {
       "id": "Q05",
@@ -19090,9 +19351,9 @@
         "rms_db": -25.1,
         "attack_s": 0.0
       },
+      "known_use": "HEARD 2026-09-10. Clock-like single tick at a 1 s cadence; shield-loop trial after extraction moved to JAS",
       "verified_by_ear": true,
-      "context": "single tick sound",
-      "known_use": "HEARD 2026-09-10 (rung S). CHOSEN as the hosted 'you hold the point' tick -- clock-like at a 1 s node-driven cadence."
+      "context": "single tick sound"
     },
     {
       "id": "U101",
@@ -19177,9 +19438,9 @@
         "rms_db": -27.4,
         "attack_s": 0.0
       },
+      "known_use": "HEARD 2026-09-10. Tick, viable but less clock-like than U100",
       "verified_by_ear": true,
-      "context": "tiny dink",
-      "known_use": "HEARD 2026-09-10 (rung S). Tick, viable but less clock-like than U100."
+      "context": "tiny dink"
     },
     {
       "id": "U105",
@@ -19412,6 +19673,7 @@
         "rms_db": -24.4,
         "attack_s": 0.064
       },
+      "known_use": "disabled-trigger sound; emptyUnboundButtonSound (Tony, by ear 2026-09-11)",
       "verified_by_ear": true,
       "context": "disabled trigger sound"
     },
@@ -21811,7 +22073,10 @@
         "rms_db": -23.3,
         "attack_s": 0.544
       },
+      "heard": "gained the lead",
       "verified_by_ear": true,
+      "speech_untrusted": "Whisper heard: Can't believe!",
+      "transcript_verified_by_ear": true,
       "community_label": "(Halo) Gained the lead",
       "community_status": "agrees"
     },
@@ -26530,8 +26795,11 @@
         "rms_db": -19.8,
         "attack_s": 0.16
       },
+      "heard": "Kill Confirmed",
       "verified_by_ear": true,
-      "known_use": "HEARD 2026-09-10: says 'KILL Confirmed', not 'Hill Confirmed'. The catalogued transcript was one letter wrong and put a kill-feed line in voice:objective_hill, where a hill mode selecting by category would have picked it up (rung S)."
+      "speech_untrusted": "Whisper heard: Hill Confirmed",
+      "known_use": "HEARD 2026-09-10. Says Kill Confirmed, not Hill Confirmed; corrected out of the hill category",
+      "transcript_verified_by_ear": true
     },
     {
       "id": "V8R",
@@ -28307,6 +28575,7 @@
         "rms_db": -22.4,
         "attack_s": 0.224
       },
+      "known_use": "Black Hawk inbound; EXTRACTION_CALLED",
       "community_label": "Blackhawk Inbound",
       "community_status": "differs"
     },
@@ -28399,6 +28668,9 @@
         "rms_db": -18.5,
         "attack_s": 0.224
       },
+      "known_use": "Body Armor; ADD_ARMOR (VA16 is the Armor Suit menu line)",
+      "verified_by_ear": true,
+      "transcript_verified_by_ear": true,
       "community_label": "Body Armor",
       "community_status": "agrees"
     },
@@ -28422,6 +28694,7 @@
         "rms_db": -20.2,
         "attack_s": 0.256
       },
+      "known_use": "Bomb Defused; BOMB_DEFUSED",
       "verified_by_ear": true,
       "community_label": "The Bomb has been diffused; BOMB DIFUSED",
       "community_status": "differs"
@@ -28446,6 +28719,7 @@
         "rms_db": -21.5,
         "attack_s": 0.128
       },
+      "known_use": "Bomb Planted; BOMB_PLANTED",
       "verified_by_ear": true,
       "community_label": "Bomb has been planted; BOMB PLANTED",
       "community_status": "agrees"
@@ -28631,6 +28905,7 @@
         "rms_db": -22.0,
         "attack_s": 0.096
       },
+      "known_use": "Care Package; LOOT_PICKED",
       "community_label": "Care Package",
       "community_status": "agrees"
     },
@@ -28677,6 +28952,7 @@
         "rms_db": -19.2,
         "attack_s": 0.096
       },
+      "known_use": "Enemy chopper detected; EXTRACTION_ALERT",
       "community_label": "Enemy chopper detected",
       "community_status": "agrees"
     },
@@ -28723,6 +28999,7 @@
         "rms_db": -18.1,
         "attack_s": 0.096
       },
+      "known_use": "Incoming Chopper; EXTRACTION_OPEN",
       "community_label": "Incoming chopper",
       "community_status": "agrees"
     },
@@ -28862,6 +29139,7 @@
         "attack_s": 2.944
       },
       "known_use": "tear-gas victim voice: coughing then dying (shipped $SIR,11 row; Tony, by ear 2026-09-03)",
+      "verified_by_ear": true,
       "community_label": "Coughing",
       "community_status": "differs"
     },
@@ -28885,6 +29163,7 @@
         "rms_db": -22.2,
         "attack_s": 0.16
       },
+      "known_use": "connection established; CONNECT",
       "community_label": "Connection Established",
       "community_status": "agrees"
     },
@@ -28908,8 +29187,9 @@
         "rms_db": -20.7,
         "attack_s": 0.32
       },
+      "known_use": "HEARD 2026-09-10, transcript accurate. Male Control Point set",
       "verified_by_ear": true,
-      "known_use": "HEARD 2026-09-10 (rung S), transcript accurate. Male 'Control Point' set.",
+      "transcript_verified_by_ear": true,
       "community_label": "Control Point Contested",
       "community_status": "agrees"
     },
@@ -28933,8 +29213,9 @@
         "rms_db": -18.6,
         "attack_s": 0.32
       },
+      "known_use": "HEARD 2026-09-10, transcript accurate. Male Control Point set",
       "verified_by_ear": true,
-      "known_use": "HEARD 2026-09-10 (rung S), transcript accurate. Male 'Control Point' set.",
+      "transcript_verified_by_ear": true,
       "community_label": "Control point lost",
       "community_status": "agrees"
     },
@@ -28958,8 +29239,9 @@
         "rms_db": -17.6,
         "attack_s": 0.384
       },
+      "known_use": "HEARD 2026-09-10, transcript accurate. Male Control Point set; superseded by VB0N/O/P for hill modes; POINT_CAPTURED",
       "verified_by_ear": true,
-      "known_use": "HEARD 2026-09-10 (rung S), transcript accurate. Male 'Control Point' set; superseded by VB0N/O/P for hill modes.",
+      "transcript_verified_by_ear": true,
       "community_label": "Control point captured",
       "community_status": "agrees"
     },
@@ -29812,6 +30094,8 @@
         "attack_s": 0.128
       },
       "known_use": "game over (Callsign end-of-game tail, confirmed by ear)",
+      "verified_by_ear": true,
+      "transcript_verified_by_ear": true,
       "community_label": "Game Over (deep/slow); GAME OVER",
       "community_status": "agrees"
     },
@@ -30433,6 +30717,7 @@
         "rms_db": -21.0,
         "attack_s": 1.696
       },
+      "known_use": "Incoming air raid, find cover; RAID_ENDING",
       "community_label": "Incoming air raid, find cover",
       "community_status": "agrees"
     },
@@ -30732,6 +31017,7 @@
         "rms_db": -24.5,
         "attack_s": 0.192
       },
+      "known_use": "Life's depleted; LIVES_DEPLETED (not a multi-kill cue)",
       "community_label": "Lives depleted",
       "community_status": "differs"
     },
@@ -33080,6 +33366,9 @@
         "rms_db": -16.6,
         "attack_s": 0.16
       },
+      "known_use": "Shields Online; shield-recharge completion (Tony, by ear 2026-09-17)",
+      "verified_by_ear": true,
+      "transcript_verified_by_ear": true,
       "community_label": "Shields Online",
       "community_status": "agrees"
     },
@@ -33912,6 +34201,7 @@
         "rms_db": -23.1,
         "attack_s": 1.184
       },
+      "known_use": "countdown to game over, no music; GAME_OVER_QUIET",
       "community_label": "Countdown from 10; 10, 9, ..., 0",
       "community_status": "differs"
     },
@@ -34076,7 +34366,9 @@
         "rms_db": -18.1,
         "attack_s": 0.16
       },
+      "known_use": "Shields online; ADD_SHIELD",
       "verified_by_ear": true,
+      "transcript_verified_by_ear": true,
       "community_label": "Shields Online",
       "community_status": "differs"
     },
@@ -34560,6 +34852,7 @@
         "rms_db": -22.7,
         "attack_s": 0.288
       },
+      "known_use": "Fail; EXTRACTION_FAILED",
       "community_label": "\"Fail\"",
       "community_status": "agrees"
     },
@@ -34721,8 +35014,9 @@
         "rms_db": -16.1,
         "attack_s": 0.544
       },
+      "known_use": "HEARD 2026-09-10, transcript accurate. Usable as a KotH mode intro",
       "verified_by_ear": true,
-      "known_use": "HEARD 2026-09-10 (rung S), transcript accurate. Usable as a KotH mode intro.",
+      "transcript_verified_by_ear": true,
       "community_label": "\"King of the Hill\"; KING OF THE HILL",
       "community_status": "agrees"
     },
@@ -36035,6 +36329,7 @@
         "rms_db": -19.2,
         "attack_s": 0.192
       },
+      "known_use": "Flag captured; OBJECTIVE_SCORED",
       "verified_by_ear": true,
       "community_label": "Flag has been captured",
       "community_status": "agrees"
@@ -36059,6 +36354,7 @@
         "rms_db": -19.6,
         "attack_s": 0.288
       },
+      "known_use": "Flag returned; FLAG_RETURNED",
       "community_label": "The flag has been returned",
       "community_status": "agrees"
     },
@@ -36082,6 +36378,7 @@
         "rms_db": -22.3,
         "attack_s": 0.352
       },
+      "known_use": "flag taken; OBJECTIVE_TAKEN",
       "verified_by_ear": true,
       "community_label": "The flag has been taken",
       "community_status": "agrees"
@@ -36290,8 +36587,9 @@
         "rms_db": -20.2,
         "attack_s": 0.192
       },
+      "known_use": "HEARD 2026-09-10. Hill Captured; female objectives announcer with a music bed; preferred hosted KotH set; HILL_CAPTURED",
       "verified_by_ear": true,
-      "known_use": "HEARD 2026-09-10 (rung S). Hill state set, female objectives announcer with a music bed. PREFERRED for hosted KotH: one voice covers all four states.",
+      "transcript_verified_by_ear": true,
       "community_label": "Hill Captured",
       "community_status": "agrees"
     },
@@ -36315,8 +36613,9 @@
         "rms_db": -20.0,
         "attack_s": 0.224
       },
+      "known_use": "HEARD 2026-09-10. Hill Contested; preferred hosted KotH set; HILL_CONTESTED",
       "verified_by_ear": true,
-      "known_use": "HEARD 2026-09-10 (rung S). Hill state set, preferred for hosted KotH.",
+      "transcript_verified_by_ear": true,
       "community_label": "Hill Contested",
       "community_status": "agrees"
     },
@@ -36340,8 +36639,9 @@
         "rms_db": -20.4,
         "attack_s": 0.288
       },
+      "known_use": "HEARD 2026-09-10. Hill Lost; preferred hosted KotH set; HILL_LOST",
       "verified_by_ear": true,
-      "known_use": "HEARD 2026-09-10 (rung S). Hill state set, preferred for hosted KotH.",
+      "transcript_verified_by_ear": true,
       "community_label": "Hill Controlled; HILL LOST",
       "community_status": "differs"
     },
@@ -36365,8 +36665,9 @@
         "rms_db": -19.8,
         "attack_s": 0.256
       },
+      "known_use": "HEARD 2026-09-10. Hill Moved; only for a rotating hill mode, not a single-hill mode",
       "verified_by_ear": true,
-      "known_use": "HEARD 2026-09-10 (rung S). 'Hill Moved' -- only meaningful in a ROTATING hill mode (several grenades, node picks which is live). Not used by a single-hill mode.",
+      "transcript_verified_by_ear": true,
       "community_label": "Hill Moved",
       "community_status": "agrees"
     },
@@ -44568,6 +44869,9 @@
         "rms_db": -18.6,
         "attack_s": 0.064
       },
+      "known_use": "Objective Complete (Resistance commander); EXTRACTED",
+      "verified_by_ear": true,
+      "transcript_verified_by_ear": true,
       "community_label": "Objective Complete",
       "community_status": "agrees"
     },
@@ -44753,6 +45057,8 @@
         "attack_s": 0.288
       },
       "known_use": "victory sting, winners only (Callsign, confirmed by ear)",
+      "verified_by_ear": true,
+      "transcript_verified_by_ear": true,
       "community_label": "Victory",
       "community_status": "agrees"
     },
@@ -47470,6 +47776,9 @@
         "rms_db": -16.3,
         "attack_s": 0.384
       },
+      "known_use": "reload nag (Tony, by ear 2026-09-18)",
+      "verified_by_ear": true,
+      "transcript_verified_by_ear": true,
       "community_label": "RELOAD",
       "community_status": "agrees"
     },
@@ -50952,7 +51261,9 @@
         "pitch_hz": 655,
         "rms_db": -21.9,
         "attack_s": 0.288
-      }
+      },
+      "known_use": "military gear-adjusting sound; ammoOrGearPickUp (Tony, by ear 2026-09-11)",
+      "verified_by_ear": true
     },
     {
       "id": "W72",
@@ -51306,6 +51617,7 @@
         "rms_db": -23.8,
         "attack_s": 0.064
       },
+      "known_use": "heavy rifle shot; Open BRX Deagle fire (Tony, by ear 2026-09-11)",
       "verified_by_ear": true,
       "context": "heavy rifle shot"
     },
@@ -51438,6 +51750,7 @@
         "rms_db": -18.7,
         "attack_s": 3.392
       },
+      "known_use": "artillery bombardment (Tony, by ear 2026-09-04); BOMBARDMENT",
       "verified_by_ear": true,
       "context": "4 explosions varying maybe like artillery fire"
     },
@@ -52058,6 +52371,7 @@
         "rms_db": -18.2,
         "attack_s": 0.032
       },
+      "known_use": "metal hit; Open BRX critical-hit cue (Tony, by ear 2026-09-11)",
       "verified_by_ear": true,
       "context": "metal hitting sound"
     },

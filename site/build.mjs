@@ -170,7 +170,7 @@ function readPage(p) {
 // ---- render (doc layout) ------------------------------------------------------------------------
 const DATA_TABLES = {
   weapons: { title: 'Weapons', note: 'Every weapon on the wire, from mcp/brx_mcp/mc/weapons.json.' },
-  sounds: { title: 'Sound bank', note: 'Every sound id on the gun. A meaning in italics is machine transcription that nobody has confirmed by ear yet, so it can be wrong.' },
+  sounds: { title: 'Sound bank', note: 'Every known sound id, including files found only on the gun and app ids whose file is missing.' },
 };
 
 const renderer = new marked.Renderer();
@@ -370,7 +370,7 @@ const footer = () => `<footer><p>Open BRX is independent and is not endorsed by 
 const weapons = buildWeapons(REPO);
 const sounds = buildSounds(REPO);
 // The note is generated from the same JSON the table reads, never hand-typed (docs/site/FORMAT.md).
-DATA_TABLES.sounds.note = `Every sound id on the gun. A meaning shown in italics is machine transcription nobody has confirmed by ear yet, so it can be wrong. A community label is a listener's guess from the LaserTagMods BRX Audio sheet, always marked unconfirmed: ${sounds.communityMeta.labelled} ids carry one, and ${sounds.communityMeta.noise} are flagged as reported broken since firmware v4.30, pending an ear check.`;
+DATA_TABLES.sounds.note = `Every known sound id: on-gun files plus ids listed by the app whose file is missing. AI categories, descriptions and measurements come from analysis of the files. An unchecked transcript is marked as such. A community label is a listener's guess from the LaserTagMods BRX Audio sheet, always marked unconfirmed: ${sounds.communityMeta.labelled} ids carry one, and ${sounds.communityMeta.noise} are flagged as reported broken since firmware v4.30, pending an ear check.`;
 
 const problems = [];
 const built = [];

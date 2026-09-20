@@ -45,15 +45,15 @@ comment, read off the on-gun catalog's transcripts, says VE = Soldier and VP = M
 VA5R=SMG-x3 · VA6B=Tar-33 · VA90=silenced AR.
 
 **Game cues:** `JA9`=startup music · `JAD`=death music · `N41`=revive-countdown ping · `VSB`=countdown
-to game-over+music · `VA85`=countdown no music · `VA33`=game over+music · `VA46`=lives depleted/multi-
-kill · `N03`=kerchung · `N04`=swish · `NA0`=death beep.
+to game-over+music · `VA85`=countdown no music · `VA33`=game over+music · `VA46`="Life's depleted" (not a
+multi-kill cue) · `N03`=kerchung · `N04`=swish · `NA0`=death beep.
 
 **Voice-pack structure = the `$PSET` voice profile (answers followup P3's shape).** Each voice profile
 provides a consistent slot set: a "move" line, ~4 gasps (E/F/G/H), ~3 death screams, and a kill line.
 Examples — Heavy (V3): `V3I` "Get Some" (the respawn line the Mac heard), `V3G/V3H/V3E/V3F` gasps,
 `V35/V34/V33` death screams, `V3A` kill. Medic (V8): `V8W` "one shot one kill", `V85/83/84` death,
 `V8S` kill. Male (VA): `VAQ` "let's move out", `VA3/4/5` death, `VAA` kill. Scout (VB): `VBI` "let's
-move", `VB3/4/5` death, `VBA` kill. Valkyrie (VH): `VHT` "weapons hot", `VHR` kill. Clean male (VE):
+move", `VB3/4/5` death, `VBA` kill. Valkyrie (VH): `VHT` "weapons hot", `VHR` kill. Soldier (VE):
 `VEI` "locked and loaded", `VEA` kill. So a `$PSET` audio-set token that names a `V3*`/`V8*`/… family
 selects that character's voice pack — which is exactly what the server `voice-profiles` endpoint
 configures.
@@ -66,7 +66,8 @@ configures.
 | `U16` | connect-related (0.43s) |
 | `H29` | respawn/add-HP ($SIR) (1.20s) — **heard 2026-08-26: a quiet sustained "stim pack"-style medical sound**, not a voice line. Fits the add-HP role; good as-is for a medic gun. |
 | `VA8C` | add shields ($SIR) (1.50s) — **heard 2026-08-26: says "shields online"** (confirmed). A loud sound effect plays over the word "shields", so only "online" is clear at low volume — if a mode needs it intelligible, layer a `$PLAY` voice line instead of relying on this cue alone. |
-| `VA16` | add armor ($SIR) (0.94s) — **heard 2026-08-26: says "armor suit"** (confirmed twice by ear at the bench) |
+| `VA1G` | add armor / "Body Armor" (1.20s), confirmed by ear |
+| `VA16` | "Armor suit" menu line (0.94s), not the add-armor cue |
 | `V3M` | (played in diag) (0.79s) |
 | `VA81` | countdown/spawn (arena) (2.97s) |
 | `VA2` | tear gas ($SIR) (5.98s) |

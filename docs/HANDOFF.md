@@ -93,6 +93,18 @@ WITHDRAWN; do not act on it.
 - **Blocked:** S54 and sitting 8 on the rung decision; Extended Mags on `$TMP` (S50) and F281 on sitting 2;
   **F275** on outdoor space (sitting 10).
 
+## Lane: sound catalog and public manual
+
+The public sound bank now exposes the complete 2,634-id union: AI category and description, raw acoustic
+measurements, on-gun/app availability, transcript and speaker, confirmed use, 291 by-ear checks (214 listener
+notes), 1,004 LaserTagMods community labels, and the 20 community noise flags. Copyable `$PLAY` frames now include
+the required volume and priority. The remaining S1 work is listening, not publishing: audit every FX category and
+build the category-driven Mission Control picker.
+
+- **Next desk task:** none; the source-to-site fidelity gate prevents fields being dropped again.
+- **Next bench task:** continue S1 with any FX category except the completed `fx:hit` family.
+- **Blocked:** nothing.
+
 ## Start here
 
 Read [`bench-plan.md`](bench-plan.md). If Tony is at the bench, load the `bench-session` skill and run sitting 1.

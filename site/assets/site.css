@@ -282,6 +282,13 @@ tbody tr:hover { background: var(--panel); }
 .dt-note { color: var(--muted); font-size: 13px; }
 .unheard { color: var(--muted); }
 .community { color: var(--muted); }
+.dt[data-table="sounds"] td:nth-child(7) { min-width: 24rem; }
+.sound-details > div { margin-bottom: 5px; }
+.sound-reviewed {
+  display: inline-block; margin-bottom: 5px; padding: 2px 6px; border: 1px solid var(--line-strong);
+  border-radius: 999px; color: var(--muted); font-size: 12px; font-weight: 600;
+}
+.sound-analysis { color: var(--muted); font-size: 13px; }
 .dt [data-more] {
   background: var(--bg); border: 1px solid var(--line-strong); color: var(--ink);
   border-radius: 6px; padding: 8px 14px; min-height: 36px; font: inherit; cursor: pointer;
@@ -308,6 +315,20 @@ tbody tr:hover { background: var(--panel); }
   main { padding: 16px 14px 48px; }
   h1 { font-size: 1.8rem; }
   .toc ul { columns: 1; }
+  /* The sound catalog carries long evidence, commands and measurements. On a phone each sound is
+     a self-contained card so its id stays attached to those details instead of living 600px away. */
+  .dt[data-table="sounds"] .table-wrap { overflow-x: visible; background: none; }
+  .dt[data-table="sounds"] .table-wrap.tall { overflow-y: auto; max-height: 80vh; }
+  .dt[data-table="sounds"] table,
+  .dt[data-table="sounds"] tbody { display: block; width: 100%; }
+  .dt[data-table="sounds"] thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .dt[data-table="sounds"] tbody tr { display: block; width: 100%; padding: 8px 10px; border: 1px solid var(--line); margin-bottom: 12px; background: var(--panel); }
+  .dt[data-table="sounds"] tbody td { display: grid; grid-template-columns: minmax(7.5rem, 34%) minmax(0, 1fr); gap: 10px; width: 100%; min-width: 0; padding: 7px 0; overflow-wrap: anywhere; }
+  .dt[data-table="sounds"] tbody td:nth-child(7) { min-width: 0; }
+  .dt[data-table="sounds"] .sound-details { min-width: 0; }
+  .dt[data-table="sounds"] tbody td::before { content: attr(data-label); color: var(--muted); font-weight: 600; }
+  .dt[data-table="sounds"] tbody td[colspan] { display: block; }
+  .dt[data-table="sounds"] tbody td[colspan]::before { display: none; }
   /* Nine nav links wrapped to three rows and made the header 184px, a quarter of a phone screen,
      on every page. They collapse behind the burger now and the header is one row. */
   .top { padding: 8px 12px; gap: 8px 10px; }
