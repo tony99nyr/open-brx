@@ -218,32 +218,32 @@ _MC_TEXT_NO_SUBJECT = {"lead_taken": "THE LEAD CHANGED", "lead_lost": "THE LEAD 
 # phone is told in its own words, the host in the operator's.
 KIT_LOCKED = "THE MATCH HAS STARTED — YOUR KIT IS LOCKED UNTIL THE NEXT ONE"
 
-# A36's three proofs, each as ONE opening phrase, written once and matched once.
+# A36/F271's four push-curable proof prefixes, written once and matched once.
 #
-# They share a frame of reference on purpose (polish-loop 2026-09-13): all three answer "is this gun
-# running the config we pushed?", so all three read `<WHAT> ≠ CONFIG`, and an operator who learns one
-# of them has learned the shape of the other two.
+# They share a frame of reference: each answers "is this gun running the config we pushed?".
 #
 # They are also the exact set of blockers whose CURE IS THE PUSH ITSELF: a re-push replaces the head,
 # clears the ack, the echo derived from it and the pool judgement made against it. `push_config`
 # therefore does not count them as reds standing in its own way (A37) -- a blocker that says RE-PUSH
 # while refusing the push is only clearable with `force`, which is the opposite of what it is for.
 #
-# START refuses TWO of the three, and they are refused DIFFERENTLY (F2, iteration 3):
+# START treats them differently: stale ack and query read-back are force-proof, echo is forceable,
+# and the pool fault is earned only after the whistle.
 # `_refuse_stale_ack` is force-PROOF -- the gun is on record naming another game's head, which is a
 # fact, not a judgement -- while `_refuse_echo_mismatch` is FORCEABLE, because it rests on an
 # inference nobody has benched (what a v4.32 gun emits in the 1.5 s after a `$WEAP` write; see that
 # method). R2-5, polish loop iteration 2: this comment used to claim "START still refuses on every
 # one of them" and START refused on exactly one -- an echo mismatch leaves the ack CURRENT, so
 # `all_acked()` was true and the whistle blew on a gun that had just said it is carrying something
-# else. The pool fault is the third, and it is deliberately not a START gate: it can only be earned
+# else. The pool fault is deliberately not a START gate: it can only be earned
 # in LIVE, by which time this game's whistle has already gone.
 _STALE_ACK_FAULT = "ACKED AN OLDER CONFIG"
 # Bench 2026-09-17: the readiness amber while the phone reports `preflight.gun_flapping` (headset off).
 GUN_FLAPPING_LINE = "HEADSET OFF (GUN KEEPS DROPPING THE LINK)"
 _ECHO_FAULT = "GUN ECHO ≠ CONFIG"
 _POOL_FAULT = "GUN POOL ≠ CONFIG"
-PUSH_CURES = (_STALE_ACK_FAULT, _ECHO_FAULT, _POOL_FAULT)
+_GUN_CONFIG_FAULT = "GUN CONFIG ≠ PUSHED HEAD"
+PUSH_CURES = (_STALE_ACK_FAULT, _ECHO_FAULT, _POOL_FAULT, _GUN_CONFIG_FAULT)
 
 # R2-4/R2-6: the same question asked where the pool can only SUGGEST an answer. Both are AMBER --
 # they ride in `ReadinessRow.ambers`, they gate nothing, and their instruction is the same one the
@@ -253,7 +253,7 @@ _POOL_ARMOR_ADVISORY = "GUN ARMOR ABOVE CONFIG"
 
 
 def cured_by_push(blocker: str) -> bool:
-    """Is this readiness blocker one of A36's three proofs, i.e. one a re-push replaces?"""
+    """Is this readiness blocker one of the four proof prefixes a re-push replaces?"""
     return blocker.startswith(PUSH_CURES)
 
 
@@ -390,7 +390,7 @@ class Session:
         # LOAD called the real config push, which compiles a weapon head per player -- and before
         # anyone has kitted that head carries policy DEFAULTS, so it wrote default loadouts to every
         # gun and re-pushed on every kit pick. `lobby_pushed` must stay FALSE through a LOAD, because
-        # every guarantee hanging off it (the one-team refusal, A36's three proofs, the stale-ack
+        # every guarantee hanging off it (the one-team refusal, config proofs, the stale-ack
         # gate, `kit_open`) belongs to the push that actually writes guns.
         self.game_loaded = False
         self.game_cfg: str | None = None          # the config_id the last announcement carried
@@ -4614,8 +4614,15 @@ class Session:
             # A36: `config_id` is KEPT. It has always been on the wire (`envelope.REQUIRED`) and was
             # dropped here, so an ack for a PREVIOUS head satisfied `all_acked()` on truthiness alone
             # and the whistle blew on a roster still running last game's frames (field 2026-09-12).
-            self.acks[pid] = {"ok": bool(body.get("ok")), "gun_echo": body.get("gun_echo"),
-                              "err": body.get("err"), "config_id": body.get("config_id")}
+            ack = {"ok": bool(body.get("ok")), "gun_echo": body.get("gun_echo"),
+                   "err": body.get("err"), "config_id": body.get("config_id")}
+            readback = body.get("gun_config")
+            fields = ("player_id", "team", "hp", "armor", "shield")
+            if (isinstance(readback, dict)
+                    and all(isinstance(readback.get(k), int) and not isinstance(readback.get(k), bool)
+                            and readback[k] >= 0 for k in fields)):
+                ack["gun_config"] = {k: readback[k] for k in fields}
+            self.acks[pid] = ack
             if body.get("ok") and body.get("gun_echo"):
                 self.nodes[nid]["headset"] = "proven"
         elif kind == "event_batch":
@@ -4975,6 +4982,8 @@ class Session:
                 blockers.append(f"{_STALE_ACK_FAULT} ({older}) — RE-PUSH")
             if self.lobby_pushed and (echo := self._echo_fault(p["player_id"])):
                 blockers.append(echo)
+            if self.lobby_pushed and (readback := self._gun_config_fault(p["player_id"])):
+                blockers.append(readback)
             if (pool := self._pool_faults.get(p["player_id"])) is not None:
                 blockers.append(pool)
             # R2-4/R2-6: the same check where it can only suggest. Amber, so it never gates.
@@ -5300,7 +5309,7 @@ class Session:
     def _refuse_echo_mismatch(self, force: bool = False) -> None:
         """R2-5: nor while a gun has answered THIS head with another weapon's magazine.
 
-        The second of A36's three proofs was red on the board and silent at the whistle. An echo
+        A36's echo proof was red on the board and silent at the whistle. An echo
         mismatch leaves the ack CURRENT (it is this config's ack; it is the ECHO inside it that
         disagrees), so `all_acked()` was true and `start()` had nothing to refuse on -- while the
         board was telling the operator the gun is carrying last game's loadout.
@@ -5386,7 +5395,7 @@ class Session:
         # override on `go` printed "readiness has reds — clear them before pushing" with an EMPTY list
         # for a one-team roster, and `force` then walked straight past the safety gate's own message.
         #
-        # A37: …minus A36's three proofs. Each of them SAYS "RE-PUSH" and each of them is cured by
+        # A37/F271: …minus the four proof prefixes that SAY "RE-PUSH" and are cured by
         # this very call (a fresh head clears the ack, the echo derived from it and the pool
         # judgement made against it), so counting them as reds in the push's own way left the
         # operator with `force` as the only exit from a state the board had just told them to leave.
@@ -5549,6 +5558,30 @@ class Session:
             return "not_echoed"
         return "proven" if got == want else "mismatch"
 
+    def _gun_config_fault(self, pid: str) -> str | None:
+        """F271: compare `$QUERY` read-back with the actual effective `$PSET`/`$TID` push."""
+        if not self._ack_is_current(pid):
+            return None
+        got = (self.acks.get(pid) or {}).get("gun_config")
+        if not isinstance(got, dict):
+            return None
+        want = _frames.head_gun_config((self.bundles.get(pid) or {}).get("head"))
+        if want is None:
+            return None
+        differences = [f"{key.upper()} {got.get(key)} read-back vs {want[key]} pushed"
+                       for key in ("player_id", "team", "hp", "armor", "shield")
+                       if got.get(key) != want[key]]
+        if not differences:
+            return None
+        return f"{_GUN_CONFIG_FAULT} ({'; '.join(differences)}) — RE-PUSH"
+
+    def _refuse_gun_config_mismatch(self) -> None:
+        bad = [(self.players[pid].get("display") or pid, fault)
+               for pid in self.players if (fault := self._gun_config_fault(pid))]
+        if bad:
+            who = "; ".join(f"{display}: {fault}" for display, fault in bad)
+            raise ValueError(f"Gun config read-back does not match the pushed head: {who}")
+
     def all_acked(self) -> bool:
         return bool(self.players) and all(
             self._ack_is_current(p["player_id"])
@@ -5601,6 +5634,7 @@ class Session:
         self._refuse_one_team()           # round-2 B: a team can empty out between the push and the whistle
         self._refuse_stale_ack()          # A36: and a gun can answer for LAST game's head at any moment
         self._refuse_incompatible_app()   # F121: and a gun can arrive on an old app at any moment too
+        self._refuse_gun_config_mismatch() # F271: direct gun read-back is force-proof like a stale ack
         self._refuse_echo_mismatch(force)  # R2-5: ...or answer THIS head carrying another weapon (F2: forceable)
         # ...or never have answered at all. `all_acked()` below skips a player with no node bound, so
         # ABSENCE was invisible to it; LOAD makes that reachable in a new way (a phone can hold the

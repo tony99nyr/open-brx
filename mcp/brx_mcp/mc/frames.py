@@ -91,6 +91,36 @@ def head_pool(head: list[str] | None) -> tuple[int, int] | None:
     return None if hp is None or armor is None else (hp, armor)
 
 
+def head_gun_config(head: list[str] | None) -> dict[str, int] | None:
+    """The five `$QUERY` fields expected from the head exactly as it was pushed.
+
+    `$PSET` writes all five values and a later `$TID` can overwrite the gun's team byte.  Walk in
+    frame order so the result describes the effective gun state, not merely the first template.
+    Return no evidence when the effective `$PSET` is incomplete.
+    """
+    config: dict[str, int] | None = None
+    for frame in head or []:
+        if not isinstance(frame, str):
+            continue
+        parts = frame.split(",")
+        if frame.startswith("$PSET,"):
+            player_id = _int(parts, 1)
+            team = _int(parts, 2)
+            hp = _int(parts, _PSET_HP)
+            armor = _int(parts, _PSET_ARMOR)
+            shield = _int(parts, _PSET_SHIELD)
+            if player_id is None or team is None or hp is None or armor is None or shield is None:
+                config = None
+                continue
+            config = {"player_id": player_id, "team": team, "hp": hp,
+                      "armor": armor, "shield": shield}
+        elif frame.startswith("$TID,") and config is not None:
+            team = _int(parts, 1)
+            if team is not None:
+                config["team"] = team
+    return config
+
+
 def head_shield(head: list[str] | None) -> int:
     """The shield CEILING the head's `$PSET` arms (token 5), or 0.
 

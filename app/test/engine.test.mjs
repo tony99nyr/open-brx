@@ -40,6 +40,7 @@ function harness({ mode = 'tdm', respawn = 'auto', timeLimit = 600, synced = tru
     kit() { eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); eng.onMcMessage({ kind: 'assign', body: { player, team, roster } }); return api; },
     config_() { eng.onMcMessage({ kind: 'config', body: { config, frames: bundle, roster } }); return api; },
     echo() { eng.feedFrame('$LCD,0,0,0,0,0,0,*'); return api; },
+    queryConfig() { eng.feedFrame('$QUERY,7,1,45,70,0,,1,0,,0,*'); return api; },
     start(runwayMs = 0) { eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock + runwayMs, config_id: golden.config_id, seq: 1, countdown_s: Math.round(runwayMs / 1000) } }); return api; },
     frame(f) { eng.feedFrame(f); return api; },
   };
@@ -52,7 +53,7 @@ test('arm: config writes head (no $SPAWN), echo → ack_config ok', () => {
   assert.ok(h.writes.includes('$START,*'), 'head has $START');
   assert.ok(h.writes.some(f => f.startsWith('$PSET,7,')), 'head has $PSET with player_num 7');
   assert.ok(!h.writes.includes('$SPAWN,,*'), 'head has NO $SPAWN');
-  h.adv(1600); h.echo(); h.eng.tick();
+  h.adv(1600); h.echo(); h.eng.tick(); h.queryConfig();
   const ack = h.reports.find(r => r.k === 'ack_config');
   assert.ok(ack && ack.b.ok === true && ack.b.gun_echo, 'ack_config ok with gun_echo');
 });
@@ -1547,7 +1548,7 @@ test('config that arrives while the gun is unlinked is written on relink and ack
   h.eng.onBleConnected();
   assert.ok(h.writes.includes('$START,*'), 'head written on relink');
   assert.equal(h.eng.phase, 'lobby');
-  h.adv(1600); h.echo(); h.eng.tick();
+  h.adv(1600); h.echo(); h.eng.tick(); h.queryConfig();
   assert.ok(h.reports.some(r => r.k === 'ack_config' && r.b.ok), 'ack_config after the relink write');
 });
 
@@ -1629,7 +1630,7 @@ test('B1: a LOBBY config re-push rewrites the head and the new $TID reaches the 
   assert.ok(h.writes.includes('$TID,2,*'), 'the NEW team $TID reached the gun');
   assert.equal(h.eng.phase, 'lobby', 'still in lobby after the re-push');
   // and the node will re-ack the new head, so MC can see the re-push land
-  h.adv(1600); h.echo(); h.eng.tick();
+  h.adv(1600); h.echo(); h.eng.tick(); h.queryConfig();
   const ack = h.reports.filter(r => r.k === 'ack_config').pop();
   assert.ok(ack && ack.b.ok === true && ack.b.config_id === 'cfg2', 'fresh ack for the re-pushed config');
 });
@@ -1671,7 +1672,7 @@ test('MC-first hydrate (welcome before the gun links) lands in LOBBY with the he
   h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   assert.equal(h.eng.phase, 'lobby');
   assert.ok(h.writes.includes('$START,*'), 'head written on link');
-  h.adv(1600); h.echo(); h.eng.tick();
+  h.adv(1600); h.echo(); h.eng.tick(); h.queryConfig();
   const ack = h.reports.find(r => r.k === 'ack_config');
   assert.ok(ack && ack.b.ok === true, 'acked');
 });
@@ -5980,7 +5981,7 @@ test('B4: a marginal link that gaps two or three $VOLTS cadences is NOT force-dr
 // --------------------------------------------------------------------------------------------
 // A36 — MC has to be able to PROVE that the head it pushed is the head this gun is running.
 // Field night 2026-09-12: guns ran a previous push in nearly every match and every signal MC had
-// still read "ok". Two of the three proofs are written from here.
+// still read "ok". The node-side echo and query proofs are written from here.
 // --------------------------------------------------------------------------------------------
 test('A36: the ack carries the SLOT-0 $ALCD echo, not just the $START $LCD that arrives first', () => {
   // A real tagger answers the head with `$START`'s `$LCD,0,0,0,0,0,0,*` FIRST and the $WEAP echoes
@@ -5990,7 +5991,7 @@ test('A36: the ack carries the SLOT-0 $ALCD echo, not just the $START $LCD that 
   h.frame('$LCD,0,0,0,0,0,0,*');            // $START's answer, first, exactly as the gun sends it
   h.frame('$ALCD,32,100,0,192,0,*');        // the primary's echo: mag 32 / reserve 192
   h.frame('$ALCD,24,100,1,12,0,*');         // the secondary's -- a different slot, must NOT be taken
-  h.adv(1600); h.eng.tick();
+  h.adv(1600); h.eng.tick(); h.queryConfig();
   const ack = h.reports.find(r => r.k === 'ack_config');
   assert.equal(ack.b.gun_echo, '$ALCD,32,100,0,192,0,*', 'the slot-0 ammo echo is what MC gets');
   assert.equal(ack.b.config_id, h.config.config_id);
@@ -6000,10 +6001,67 @@ test('A36: the ack carries the SLOT-0 $ALCD echo, not just the $START $LCD that 
 
 test('A36: a gun that only answers $LCD still acks -- with the $LCD (no evidence is not a fault)', () => {
   const h = harness().kit().config_().echo();
-  h.adv(1600); h.eng.tick();
+  h.adv(1600); h.eng.tick(); h.queryConfig();
   const ack = h.reports.find(r => r.k === 'ack_config');
   assert.equal(ack.b.ok, true);
   assert.equal(ack.b.gun_echo, '$LCD,0,0,0,0,0,0,*');
+});
+
+test('F271: a head echo starts $QUERY readback and defers ack_config', () => {
+  const h = harness().kit().config_().echo();
+  h.adv(1600); h.eng.tick();
+  assert.equal(h.writes.at(-1), '$QUERY,*', 'the echo window is followed by an authoritative gun-status query');
+  assert.equal(h.reports.find(r => r.k === 'ack_config'), undefined, 'success is not reported before the query reply');
+});
+
+test('F271: a valid $QUERY body reports player, team, and pool maxima in ack_config.gun_config', () => {
+  const h = harness().kit().config_().echo();
+  h.adv(1600); h.eng.tick();
+  h.frame('$QUERY,7,1,45,70,0,,1,0,,0,*');
+  h.eng.tick();
+  const ack = h.reports.find(r => r.k === 'ack_config');
+  assert.deepEqual(ack && ack.b.gun_config, { player_id: 7, team: 1, hp: 45, armor: 70, shield: 0 });
+  assert.equal(ack.b.ok, true);
+  assert.equal(ack.b.gun_echo, '$LCD,0,0,0,0,0,0,*', 'the existing echo proof remains in the ack');
+});
+
+test('F271: malformed or missing $QUERY bodies time out to the backward-compatible ack shape', () => {
+  for (const malformed of [true, false]) {
+    const h = harness().kit().config_().echo();
+    h.adv(1600); h.eng.tick();
+    if (malformed) h.frame('$QUERY,7,1,45,70,0,,1,0,,0,'); // missing terminator: the known dead-gun signature
+    assert.equal(h.reports.find(r => r.k === 'ack_config'), undefined, 'the query window remains open');
+    h.adv(2601); h.eng.tick();
+    const ack = h.reports.find(r => r.k === 'ack_config');
+    assert.equal(ack && ack.b.ok, true, 'query readback is optional when the gun does not provide it');
+    assert.equal(ack.b.gun_echo, '$LCD,0,0,0,0,0,0,*');
+    assert.equal(Object.hasOwn(ack.b, 'gun_config'), false, 'older/malformed replies do not invent readback data');
+  }
+});
+
+test('F271: the reply window starts when the asynchronous $QUERY write settles, not when queued', async () => {
+  const h = harness().kit().config_().echo();
+  let finish;
+  h.eng.writer = frames => { h.writes.push(...frames); return new Promise(resolve => { finish = resolve; }); };
+  h.adv(1600); h.eng.tick();
+  h.adv(3000); h.eng.tick();
+  assert.equal(h.reports.find(r => r.k === 'ack_config'), undefined, 'a queued BLE write cannot consume its own reply window');
+  finish(true); await new Promise(resolve => setImmediate(resolve));
+  h.queryConfig();
+  assert.deepEqual(h.reports.find(r => r.k === 'ack_config')?.b.gun_config,
+    { player_id: 7, team: 1, hp: 45, armor: 70, shield: 0 });
+});
+
+test('F271: a BLE drop during readback re-runs the head proof on relink', () => {
+  const h = harness().kit().config_().echo();
+  h.adv(1600); h.eng.tick();
+  const heads = h.writes.filter(f => f === '$CLEAR,*').length;
+  h.eng.onBleDropped();
+  h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  assert.ok(h.writes.filter(f => f === '$CLEAR,*').length > heads, 'relink rewrites the head whose readback was interrupted');
+  h.echo(); h.adv(1600); h.eng.tick(); h.queryConfig();
+  assert.deepEqual(h.reports.find(r => r.k === 'ack_config')?.b.gun_config,
+    { player_id: 7, team: 1, hp: 45, armor: 70, shield: 0 });
 });
 
 test('A36: a NEW head clears the previous ammo echo before the new one is collected', () => {
@@ -6025,7 +6083,7 @@ test('A37: an $ALCD that follows a TRIGGER inside the echo window is not the con
   h.frame('$LCD,0,0,0,0,0,0,*');            // $START's answer: the gun DID answer
   h.frame('$BUT,0,1,*');                    // trigger pressed inside the window
   h.frame('$ALCD,31,100,0,192,0,*');        // ...so this is a shot, not the head's echo
-  h.adv(1600); h.eng.tick();
+  h.adv(1600); h.eng.tick(); h.queryConfig();
   const ack = h.reports.find(r => r.k === 'ack_config');
   assert.equal(ack.b.ok, true, 'the gun answered, so the ack is still ok');
   assert.equal(ack.b.gun_echo, '$LCD,0,0,0,0,0,0,*', 'MC gets NO weapon claim rather than a wrong one');
@@ -6038,7 +6096,7 @@ test('A37: an $ALCD BEFORE any button is still the config echo', () => {
   h.frame('$ALCD,32,100,0,192,0,*');
   h.frame('$BUT,0,1,*');                    // the player pulls the trigger AFTER the echo landed
   h.frame('$ALCD,31,100,0,192,0,*');
-  h.adv(1600); h.eng.tick();
+  h.adv(1600); h.eng.tick(); h.queryConfig();
   const ack = h.reports.find(r => r.k === 'ack_config');
   assert.equal(ack.b.gun_echo, '$ALCD,32,100,0,192,0,*', 'the full magazine the head wrote');
 });
@@ -6053,7 +6111,7 @@ test('echo window: opens when the LAST head frame is written, not when the head 
   assert.equal(h.reports.find(r => r.k === 'ack_config'), undefined, 'no verdict while the head is still being written');
   finish(true); await new Promise(r => setImmediate(r));
   h.adv(500); h.frame('$ALCD,32,100,0,192,0,*');     // the gun answers half a second after the last frame
-  h.adv(1100); h.eng.tick();
+  h.adv(1100); h.eng.tick(); h.queryConfig();
   const ack = h.reports.find(r => r.k === 'ack_config');
   assert.equal(ack && ack.b.ok, true, 'the late echo is inside the window');
   assert.equal(ack.b.gun_echo, '$ALCD,32,100,0,192,0,*');
@@ -6077,7 +6135,7 @@ test('echo window: an $ALCD for slot 4 (melee) is never taken as the primary ech
   assert.equal(h.eng.ammoEcho, null, 'only a slot-0 $ALCD is the primary echo');
   h.config_();
   h.frame('$ALCD,1,100,4,0,0,*'); h.frame('$ALCD,32,100,0,192,0,*');
-  h.adv(1600); h.eng.tick();
+  h.adv(1600); h.eng.tick(); h.queryConfig();
   assert.equal(h.reports.filter(r => r.k === 'ack_config').pop().b.gun_echo, '$ALCD,32,100,0,192,0,*');
 });
 
@@ -6087,7 +6145,7 @@ test('A37: a NEW head re-opens the echo window that a button had closed', () => 
   h.adv(1600); h.eng.tick();
   h.config_();                              // re-push: this head has had no button yet
   h.frame('$ALCD,32,100,0,192,0,*');
-  h.adv(1600); h.eng.tick();
+  h.adv(1600); h.eng.tick(); h.queryConfig();
   const ack = h.reports.filter(r => r.k === 'ack_config').pop();
   assert.equal(ack.b.gun_echo, '$ALCD,32,100,0,192,0,*');
 });

@@ -145,7 +145,7 @@ about 2.5 s. Worth it only if A8 shows frames going missing at the current pacin
 one line in `brxlink.write` (and `ble._write`), and it applies to head and spawn only; a revive is on the critical
 path of a waiting player.
 
-## 6. Read-back after arming: what `$QUERY` can prove (design, needs bench-firmware-levers claim 19, §18)
+## 6. Read-back after arming: what `$QUERY` proves (built; claim 19 confirmed 2026-09-19)
 
 Today MC proves a push by the gun's `$ALCD` echo (slot 0 magazine and reserve) and the status heartbeat's
 HP/armour against the pushed `$WEAP,0` and `$PSET` (`state._echo_state`, `frames.head_spawn_ammo`, `head_pool`).
@@ -158,11 +158,12 @@ prove `$PSET` t1, the team byte (F206: this is the one number that would have ca
 every gun) and the pool maxima. It cannot prove the `$SIR` table: nothing reads it back, which is why F11's repair
 path resends it on every life.
 
-Design: after the head is written and echoed, the node sends `$QUERY,*`, parses tokens 1 to 5, and reports them in
-`ack_config` beside `gun_echo`. MC compares the team against the pushed `$TID` and refuses `start` on a mismatch
-the same way it refuses an ammo mismatch today. Cost: one 8-byte frame per arm and one reply. Needs the
-`$QUERY` token map confirmed on v4.32 first (bench-firmware-levers claim 19, §18); the reply captured on 2026-08 was
-`$QUERY,0,0,0,0,0,,1,0,,0,…` on an unconfigured gun, which fits the map but proves only the shape.
+Built for F271: after the head is written and echoed, the node sends `$QUERY,*`, parses tokens 1 to 5, and reports
+them in optional `ack_config.gun_config` beside `gun_echo`. MC compares player id, team and all three pool maxima
+with the effective `$PSET`/`$TID` in the head it actually pushed. Any difference is the red
+`GUN CONFIG ≠ PUSHED HEAD`; `start` refuses it even with `force`. A missing, late or malformed reply makes no
+claim, preserving older-node compatibility. Cost: one 8-byte frame per arm and one reply. Claim 19 confirmed the
+token map on v4.32 on 2026-09-19. The sound, gyro and per-slot loop remain undecoded and are tracked separately.
 
 ## 7. The lock-up detector on the node (design; F208, F163)
 
@@ -203,10 +204,10 @@ detector is simply the existing drop path plus a "power-cycle" hint when the rec
 | §3 trim the runt `$SIR` rows | design | bench A8b (one gun, trimmed and full arms alternated) |
 | §4 deny list | built | none needed; a future `$PB*`/`$AS` step may ADD `$PB*` |
 | §5 write with response on multi-packet frames | design | bench A8 |
-| §6 `$QUERY` read-back of id, team, pools | design | bench-firmware-levers claim 19 (§18) |
+| §6 `$QUERY` read-back of id, team, pools | built | claim 19 confirmed 2026-09-19; F271 closed 2026-09-21 |
 | §7 lock-up detector | design | bench A13, A1 (does the link stay up?), plus the idle `$VOLTS` cadence |
 | §2 the budget rule | design | bench A13 (20 minutes at today's recoil writer rate: how long to a lock-up?) |
 | §2 the recoil writer inside the budget | design | screamers Phase C runs 1 to 3 (`match`, `match-x10`, `recoil-oscillate`) |
 
-FOLLOWUPS rows: F269 (pacing + runt rows), F270 (write with response), F271 (`$QUERY` read-back), F272 (lock-up
+FOLLOWUPS rows: F269 (pacing + runt rows), F270 (write with response), F300 (remaining `$QUERY` decode), F272 (lock-up
 detector), F273 (the `$PB*` question), F274 (the recoil writer inside the budget). F208 and F163 point here.

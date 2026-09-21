@@ -275,6 +275,7 @@ const MIN_RESPAWN_S = 3;
 const MEDAL_GAP_MS = 2000;       // A11.4: medal lines are 1.5-2.5 s; play them back to back, not on top of each other   // A11: no two LED bursts inside a second (three flashes per second is the ceiling)
 const ECHO_WINDOW_MS = 1500;     // how long after the last head frame is written the node waits for the gun's echo
 const HEAD_WRITE_CAP_MS = 20000; // a head write that has not settled by now acks `no_echo` anyway
+const CONFIG_QUERY_MS = 2600;    // v4.32 can trail the `$QUERY` status body by about 2 s
 const RELOAD_GRACE_MS = 600;     // a reload the gun never echoed still clears the takeover this long after reload_s
 // F27 (HANDOFF): handle-pull -> mag-refill on HARDWARE runs consistently LONGER than the catalog
 // `reload_ms` — AR 1701 vs 1400, burst 2160 vs 1700, charge 3220 vs 2500, i.e. ~1.22-1.29x. A flat
@@ -687,6 +688,7 @@ export class Engine {
     this.result = null;             // the `result` body for THIS match (contracts §5 `result`)
     this.resultAt = 0;
     this.headEcho = null; this.headWrittenAt = 0; this.awaitingEcho = false; this.headWriteDone = false;
+    this.configQuery = null;
     // A36: the SLOT-0 $ALCD the gun answers a head write with. `headEcho` is whatever frame came
     // back FIRST, and on a real tagger that is always $START's `$LCD,0,0,0,0,0,0,*` (protocol §3) --
     // proof the gun answered, and no evidence at all about which weapon it was just written. The
@@ -1139,7 +1141,7 @@ export class Engine {
     if (JSON.stringify(next) === JSON.stringify(this.gunFlapping)) return;
     this.gunFlapping = next; this._changed();
   }
-  onBleDropped() { this.bleUp = false; this.lastGunFrameAt = 0; this._cure = null; this._queryAt = 0;   // F264: no link, no answer -- an ask in flight can never resolve, and it must not time out into a blind revive on the relink
+  onBleDropped() { this.bleUp = false; this.lastGunFrameAt = 0; this._cure = null; this._queryAt = 0; this.configQuery = null;   // F264: no link, no answer -- an ask in flight can never resolve, and it must not time out into a blind revive on the relink
     this._endReload('dropped'); this.switching = null; this.held = {}; this.lastButton = null; this._lightGen = (this._lightGen || 0) + 1; this.log('gun link lost', 'le'); this._changed(); }   // no link, no reload echo: the takeover would be fiction (pass-2 UX review 2026-09-03); the gen bump means a stray delayed write can't reach a gun that relinks mid-flight either. `held` goes with it: `_onButton` keeps the FIRST edge, so a press whose release never arrived before the drop would read as held forever — and `lastButton` with it, for the same reason: the last thing the gun said would otherwise sit on the diag panel as a live edge the link can no longer complete (review 2026-09-12). `lastGunFrameAt` resets too (B4): a dead watchdog clock must not immediately re-fire the instant the next relink's first frame is still pending
   setWsState(s, info) { this.wsState = s; this.wsReason = s === 'rejected' && info ? `${info.reason || 'refused'} (${info.code})` : null; this._changed(); }
 
@@ -1303,7 +1305,7 @@ export class Engine {
     if (!this.frames || !this.frames.head) { this.log('config without frames — ignored', 'le'); return; }
     if (!this.bleUp) { this.configPending = true; this.log('config stored; gun not linked yet — head will be written on relink', 'li'); this._changed(); return; }
     this.configPending = false; this._panicked = null;
-    this.headEcho = null; this.ammoEcho = null; this.awaitingEcho = true; this.headWrittenAt = this.now();
+    this.headEcho = null; this.ammoEcho = null; this.awaitingEcho = true; this.headWrittenAt = this.now(); this.configQuery = null;
     this.butSinceHead = false;         // A37/F-3: a fresh head, so the next ammo frame can be its echo again
     // Playtest 2026-09-13: the head is about 51 chunked BLE writes, and the window used to run from the QUEUE
     // time, so the gun's $ALCD landed about 3 s after the node had acked `no_echo`. The window now opens when
@@ -1317,20 +1319,32 @@ export class Engine {
     if (this.phase !== 'armed' && this.phase !== 'live') this._set('lobby');
     this._changed();
   }
-  /** Called by tick(): 1.5 s after the LAST head frame is written, report the echo (or its absence). */
+  /** Called by tick(): collect the head echo, then its optional `$QUERY` configuration read-back. */
   _checkEcho() {
-    if (!this.awaitingEcho) return;
-    // Still writing: wait, but not for ever. A write that never settles (a hung bridge) acks `no_echo`.
-    if (!this.headWriteDone) { if (this.now() - this.headWrittenAt < HEAD_WRITE_CAP_MS) return; }
-    else if (this.now() - this.headWrittenAt < ECHO_WINDOW_MS) return;
-    this.awaitingEcho = false;
-    const cid = this.config && this.config.config_id;
-    // The MOST INFORMATIVE echo of the window, not the first one: the $ALCD carries the magazine the
-    // head just wrote, so MC can check it against the `$WEAP,0` it compiled. `headEcho` stays the
-    // headset proof (`preflight.headset_ok`) either way — a gun that answered with only the $START
-    // $LCD still answered.
-    if (this.headEcho) this.report('ack_config', { config_id: cid, ok: true, gun_echo: this.ammoEcho || this.headEcho });
-    else this.report('ack_config', { config_id: cid, ok: false, err: 'no_echo' });
+    if (this.awaitingEcho) {
+      // Still writing: wait, but not for ever. A write that never settles (a hung bridge) acks `no_echo`.
+      if (!this.headWriteDone) { if (this.now() - this.headWrittenAt < HEAD_WRITE_CAP_MS) return; }
+      else if (this.now() - this.headWrittenAt < ECHO_WINDOW_MS) return;
+      this.awaitingEcho = false;
+      const cid = this.config && this.config.config_id;
+      if (!this.headEcho) { this.report('ack_config', { config_id: cid, ok: false, err: 'no_echo' }); return; }
+      // Keep this independent of F264's `_queryAt`: that query classifies the following `$LCD` as a
+      // cure response. This one only reads the status body and must not alter live pool/no-fire state.
+      const q = this.configQuery = { queued_at: this.now(), reply_at: null,
+        config_id: cid, gun_echo: this.ammoEcho || this.headEcho };
+      const settled = () => {
+        if (this.configQuery === q && q.reply_at === null) q.reply_at = this.now();
+      };
+      const write = this._write(['$QUERY,*'], 'config read-back');
+      if (write && typeof write.then === 'function') write.then(settled, settled); else settled();
+      return;
+    }
+    if (this.configQuery
+        && ((this.configQuery.reply_at !== null && this.now() - this.configQuery.reply_at > CONFIG_QUERY_MS)
+          || (this.configQuery.reply_at === null && this.now() - this.configQuery.queued_at > HEAD_WRITE_CAP_MS))) {
+      const q = this.configQuery; this.configQuery = null;
+      this.report('ack_config', { config_id: q.config_id, ok: true, gun_echo: q.gun_echo });
+    }
   }
 
   _tutorial({ frames, weapon, end }) {
@@ -3962,6 +3976,17 @@ export class Engine {
       // not positive evidence, and the node books deaths only from positive evidence (§3.3). The `$LCD` that
       // arrived first already carried the number and has already decided.
       case 'QUERY': {
+        const queryOpen = this.configQuery && (this.configQuery.reply_at === null
+          ? this.now() - this.configQuery.queued_at <= HEAD_WRITE_CAP_MS
+          : this.now() - this.configQuery.reply_at <= CONFIG_QUERY_MS);
+        if (queryOpen && String(f).trim().endsWith('*')) {
+          const values = t.slice(1, 6).map(v => /^\d+$/.test(v) ? Number(v) : NaN);
+          if (values.length === 5 && values.every(Number.isSafeInteger)) {
+            const q = this.configQuery; this.configQuery = null;
+            this.report('ack_config', { config_id: q.config_id, ok: true, gun_echo: q.gun_echo,
+              gun_config: { player_id: values[0], team: values[1], hp: values[2], armor: values[3], shield: values[4] } });
+          }
+        }
         // ⚠ NOT gated on `this._cure`. The body arrives about 2 s late, which is AFTER QUERY_REPLY_MS has already
         // closed the cure's own window, so gating it on a live cure would make this hint permanently unreachable.
         if (!this._queryAt || this.now() - this._queryAt > QUERY_BODY_MS) break;

@@ -72,6 +72,7 @@ function harness({ respawn = 'auto' } = {}) {
   h.adv(10);
   h.f('$LCD,45,70,0,0,30,90,*').adv(3000).shot(29);   // live, the gun has spoken, one shot fired
   h.adv(4000);                                        // ...and past the once-a-life spawn read-back, so it is never the probe under test
+  magAt.length = 0;                                   // F271's one lobby read-back is not a live cure probe
   assert.equal(eng.phase, 'live'); assert.equal(eng.alive, true);
   return h;
 }

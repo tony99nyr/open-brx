@@ -1302,9 +1302,18 @@ class KitView(TypedDict):
     browsing: dict[str, int]
 
 
+class GunConfigReadback(TypedDict):
+    player_id: int
+    team: int
+    hp: int
+    armor: int
+    shield: int
+
+
 class LobbyAck(TypedDict):
     ok: bool
     gun_echo: NotRequired[str]
+    gun_config: NotRequired[GunConfigReadback]
     err: NotRequired[str]
     config_id: NotRequired[str]
 

@@ -20,6 +20,7 @@ import { demo, mountScreen } from './harness';
 const STALE = 'ACKED AN OLDER CONFIG (9f2a1c04) — RE-PUSH';
 const ECHO = 'GUN ECHO ≠ CONFIG (WEAPON 31/192 echoed vs 32/192 expected, mag/reserve) — RE-PUSH';
 const POOL = 'GUN POOL ≠ CONFIG (REPORTS 45/115, THIS CONFIG GRANTS 45/70, hp/armor) — LIKELY ON AN OLDER HEAD; RE-PUSH';
+const READBACK = 'GUN CONFIG ≠ PUSHED HEAD (TEAM 0 read-back vs 1 pushed) — RE-PUSH';
 const HOLDING = 'HOLDING OLDER CONFIG (9f2a1c04) — RE-PUSH TO BE SURE';
 
 /** The demo board with EVERY row forced green, then row 0 replaced — for the gate tests, where any
@@ -41,7 +42,8 @@ async function boardWith(row: Partial<ReadinessRow>) {
 }
 
 describe('ARMORY · the three A36 proofs appear on the gun card', () => {
-  for (const [name, blocker] of [['a stale ack', STALE], ['a bad gun echo', ECHO], ['a wrong pool', POOL]] as const) {
+  for (const [name, blocker] of [['a stale ack', STALE], ['a bad gun echo', ECHO], ['a wrong pool', POOL],
+    ['a wrong query read-back', READBACK]] as const) {
     it(`${name} renders as a red fault, verbatim`, async () => {
       const { d, state } = await boardWith({ status: 'red', blockers: [blocker], ambers: [] });
       const m = await mountScreen(<Armory />, { state, view: 'muster', weapons: d.weapons, perks: d.perks });
@@ -248,12 +250,13 @@ describe('?mock&faults=1 · all four config-proof states, without a field', () =
     } finally { window.history.replaceState({}, '', was); }
   }
 
-  it('one stale ack, one echo mismatch, one pool fault, one not-echoed — and the rest proven', async () => {
+  it('one stale ack, echo mismatch, pool fault, query mismatch, one not-echoed — and the rest proven', async () => {
     const { state } = await faultyMock();
     const lines = state.readiness.board.flatMap(r => r.blockers ?? []);
     expect(lines.some(b => b.startsWith('ACKED AN OLDER CONFIG')), `saw ${JSON.stringify(lines)}`).toBe(true);
     expect(lines.some(b => b.startsWith('GUN ECHO ≠ CONFIG'))).toBe(true);
     expect(lines.some(b => b.startsWith('GUN POOL ≠ CONFIG'))).toBe(true);
+    expect(lines.some(b => b.startsWith('GUN CONFIG ≠ PUSHED HEAD'))).toBe(true);
     expect(state.readiness.board.filter(r => r.echo === 'not_echoed').length).toBe(1);
     expect(state.readiness.board.filter(r => r.echo === 'mismatch').length).toBe(1);
     expect(state.readiness.board.some(r => r.echo === 'proven')).toBe(true);
@@ -315,12 +318,12 @@ describe('R2-2 · the console refuses only what the server refuses', () => {
     const { resolve } = await import('node:path');
     const py = readFileSync(resolve(process.cwd(), '../../mcp/brx_mcp/mc/state.py'), 'utf8');
     const { PUSH_CURES } = await import('../src/api/derive');
-    for (const name of ['_STALE_ACK_FAULT', '_ECHO_FAULT', '_POOL_FAULT']) {
+    for (const name of ['_STALE_ACK_FAULT', '_ECHO_FAULT', '_POOL_FAULT', '_GUN_CONFIG_FAULT']) {
       const m = py.match(new RegExp(`^${name} = "(.+)"$`, 'm'));
       expect(m, `state.py must still define ${name}`).toBeTruthy();
       expect(PUSH_CURES as readonly string[], `${name} = ${JSON.stringify(m![1])}`).toContain(m![1]);
     }
-    expect(PUSH_CURES.length).toBe(3);
+    expect(PUSH_CURES.length).toBe(4);
   });
 
   it('a pool red left over from a RECALL does not disable the PUSH the server would accept', async () => {
@@ -446,6 +449,48 @@ describe('R2-8 · the rail states the count once', () => {
 // so the control it names disappeared exactly when the operator was told to press it.
 
 describe('F1 · the RE-PUSH is offered whenever a re-push would change something', () => {
+  it('a force-proof query mismatch offers RE-PUSH but never a HOST OVERRIDE that the server rejects', async () => {
+    const { d, state } = await lobbyWith({ 0: { status: 'red', blockers: [READBACK] } });
+    const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
+    expect(btn(m, 'RE-PUSH CONFIG')).toBeTruthy();
+    expect(m.find('[data-override="1"]').length).toBe(0);
+    expect(m.find('[data-no-override-reason]').some(x => (x.textContent ?? '').includes('RE-PUSH CONFIG'))).toBe(true);
+    const arm = btn(m, 'ARM COUNTDOWN')!;
+    expect(arm.title).toContain('needs config re-pushed');
+    expect(arm.title).not.toContain('older config');
+    m.unmount();
+  });
+
+  it('a missing ack while $QUERY is in flight says verification is pending, not that an echo failed', async () => {
+    const { d, state: base } = await lobbyWith({}, { all_acked: false });
+    const [pending] = base.players;
+    const acks = { ...base.lobby.acks };
+    delete acks[pending.player_id];
+    const state = { ...base, lobby: { ...base.lobby, acks, all_acked: false } } as State;
+    const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
+    expect(m.text()).toContain(`Waiting for config verification from ${pending.display}`);
+    expect(m.text()).not.toContain('No config echo from  —');
+    expect(btn(m, 'ARM COUNTDOWN')!.title).toContain('verification');
+    m.unmount();
+  });
+
+  it('mixed failed and pending acknowledgements name both guns and keep their conditions distinct', async () => {
+    const { d, state: base } = await lobbyWith(
+      { 0: { status: 'red', blockers: ['GUN DID NOT ANSWER CONFIG — HEADSET OFF? BLOCKS START'] } },
+      { all_acked: false });
+    const [failed, pending] = base.players;
+    const acks = { ...base.lobby.acks, [failed.player_id]: { ok: false, err: 'no_echo', config_id: base.config.config_id } };
+    delete acks[pending.player_id];
+    const state = { ...base, lobby: { ...base.lobby, acks, all_acked: false } } as State;
+    const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
+    expect(m.text()).toContain(`No config echo from ${failed.display}`);
+    expect(m.text()).toContain(`Waiting for config verification from ${pending.display}`);
+    const title = btn(m, 'ARM COUNTDOWN')!.title;
+    expect(title).toContain(failed.display);
+    expect(title).toContain(pending.display);
+    m.unmount();
+  });
+
   it('a row with a curable red BESIDE an uncurable one still offers RE-PUSH', async () => {
     // The `every(curedByPush)` filter dropped this row: an echo mismatch leaves the ack CURRENT, so
     // `all_acked` is true as well, and the button vanished on the one board that names it three times.

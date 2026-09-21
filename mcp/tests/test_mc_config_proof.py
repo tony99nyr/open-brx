@@ -567,10 +567,10 @@ def test_the_engine_comment_agrees_with_the_protocol_about_weap_echoes():
     assert "every one of them echoes" not in src, "engine.js still claims a $WEAP echo the protocol denies"
 
 
-def test_the_three_proofs_share_one_frame_of_reference():
-    """Vocabulary. An operator who learns one of these has learned the shape of the other two."""
+def test_the_push_curable_proofs_share_one_frame_of_reference():
+    """Vocabulary. Every proof names either the old config or the pushed head/config."""
     from brx_mcp.mc.state import PUSH_CURES
-    assert all(p.endswith("≠ CONFIG") or "OLDER CONFIG" in p for p in PUSH_CURES), PUSH_CURES
+    assert all(p.endswith("≠ CONFIG") or "OLDER CONFIG" in p or "PUSHED HEAD" in p for p in PUSH_CURES), PUSH_CURES
     s, net, clock, ps = mk(2, compiler=Compiler())
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     s.push_config()

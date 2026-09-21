@@ -182,7 +182,7 @@ export function Games() {
 
   // ---- LOAD's gate ----------------------------------------------------------------------------
   // An announcement is NOT a push, so the push's refusals do not apply to it: the one-team fault,
-  // A36's three proofs and "a phone has not arrived" are every one of them about a HEAD being
+  // The config proofs and "a phone has not arrived" are every one of them about a HEAD being
   // written, and LOAD writes none. What does apply is the phase — `load_game` refuses in armed/live —
   // and an empty required pool, which is a game nobody can be kitted for and is worth stopping at the
   // door rather than at the whistle.

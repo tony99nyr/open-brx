@@ -76,7 +76,7 @@ export function staleReachReason(n: Pick<NodeView, 'reach' | 'last_reach' | 'las
   return tunnelStatus === 'error' ? `${base} — TUNNEL DOWN` : base;
 }
 
-/** A37 — the three A36 blockers whose CURE IS THE PUSH ITSELF. Mirrors `state.py`'s
+/** A37/F271 — the four blockers whose CURE IS THE PUSH ITSELF. Mirrors `state.py`'s
  *  `_STALE_ACK_FAULT` / `_ECHO_FAULT` / `_POOL_FAULT`, and `config-proof.test.tsx` reads those three
  *  constants out of `state.py` and pins them to this array — a paraphrase here would quietly re-open
  *  the gate this closes.
@@ -109,10 +109,12 @@ export function endDeliveryLine(ed: EndDeliveryView | null | undefined): { ok: b
 /** The readiness amber `state.py readiness()` writes while the phone reports `preflight.gun_flapping`
  *  (`GUN_FLAPPING_LINE` there). The Armory card shows it in the GUN row, so it drops the list copy. */
 export const GUN_FLAPPING_LINE = 'HEADSET OFF (GUN KEEPS DROPPING THE LINK)';
-export const PUSH_CURES = ['ACKED AN OLDER CONFIG', 'GUN ECHO ≠ CONFIG', 'GUN POOL ≠ CONFIG'] as const;
+export const PUSH_CURES = ['ACKED AN OLDER CONFIG', 'GUN ECHO ≠ CONFIG', 'GUN POOL ≠ CONFIG',
+  'GUN CONFIG ≠ PUSHED HEAD'] as const;
 
 /** The stale ack alone — the one blocker the rail's own sentence already accounts for by name. */
 export const STALE_ACK_FAULT = PUSH_CURES[0];
+export const GUN_CONFIG_FAULT = PUSH_CURES[3];
 
 /** Is this one blocker cured by a re-push? (`state.py cured_by_push`.) */
 export const curedByPush = (blocker: string): boolean => PUSH_CURES.some(p => blocker.startsWith(p));
@@ -146,7 +148,7 @@ export function blocksPush(row: { status?: string; blockers?: string[] | null },
   return row.status === 'red' && (row.blockers ?? []).some(b => !curedByPush(b));
 }
 
-/** The name of the control that cures A36's three proofs, spelled ONCE (F8a). Every server blocker
+/** The name of the control that cures the four push-curable proof prefixes, spelled ONCE (F8a). Every server blocker
  *  line, every disabled title and the LOBBY rail's stale-ack sentence point at the same words, and
  *  those words are the button's. GAMES carries an identically-labelled RE-PUSH CONFIG since the LOAD
  *  work (2026-09-13), so the instruction names a control on whichever screen the operator is on. */
@@ -178,6 +180,8 @@ export interface PushGate {
   staleAcked: string[];
   /** displays of the guns that have not echoed at all */
   noEcho: string[];
+  /** displays with no ack yet (the normal `$QUERY` verification interval is one cause) */
+  pendingAck: string[];
   /** the stale-ack sentence, naming the guns and the control that cures them ('' when there are none) */
   staleAckLine: string;
   redRows: State['readiness']['board'];
@@ -222,6 +226,7 @@ export function pushGate(state: State): PushGate {
   const acked = Object.values(lobby.acks).filter(ackIsCurrent).length;
   const nameOf = (id: string) => players.find(p => p.player_id === id)?.display ?? id;
   const noEcho = Object.entries(lobby.acks).filter(([, a]) => !a.ok).map(([id]) => nameOf(id));
+  const pendingAck = players.filter(p => !Object.hasOwn(lobby.acks, p.player_id)).map(p => p.display);
   const staleAcked = Object.entries(lobby.acks).filter(([, a]) => a.ok && !ackIsCurrent(a)).map(([id]) => nameOf(id));
   const staleAckLine = staleAcked.length ? `${staleAcked.join(', ')} still answering for an older config — ${RE_PUSH_HERE}` : '';
   // A36/C-5: the SERVER's own answer wins wherever it is present — `all_acked` walks the roster the
@@ -257,7 +262,7 @@ export function pushGate(state: State): PushGate {
       : '',
   ].filter(Boolean).join('  ·  ');
   const respawnRulesWarning = readiness.respawn_rules_warning ?? null;
-  return { pushed: lobby.pushed, acked, total: players.length, allAcked, rosterFault, staleAcked, noEcho,
+  return { pushed: lobby.pushed, acked, total: players.length, allAcked, rosterFault, staleAcked, noEcho, pendingAck,
            staleAckLine, redRows, waitRows, curableRows, blockedCount, pushBlockedCount, waitWhy, refused, pushWhy,
            respawnRulesWarning };
 }
@@ -337,7 +342,7 @@ export function armoryGate(board: { status?: string; blockers?: string[] | null;
     return { label: 'NO PLAYERS YET ▸', disabled: false, ready: false, why: 'Power the guns and open the app on each phone' };
   }
   return { label: 'HARDWARE READY ▸', disabled: false, ready: true,
-    why: nCurable ? `${nCurable} gun${nCurable === 1 ? '' : 's'} answered for an older config: ${RE_PUSH_HERE}` : '' };
+    why: nCurable ? `${nCurable} gun${nCurable === 1 ? '' : 's'} need config re-pushed: ${RE_PUSH_HERE}` : '' };
 }
 
 /** Where ARMORY's ENABLE BACKHAUL button stands (bench 2026-09-17).

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { RUNWAYS, useRunway } from '../runway';
-import { RE_PUSH_HERE, STALE_ACK_FAULT, blocksPush, curedByPush, pushGate, reachLabel, reachOf, reachTooltip, sentenceCase, splitBlocker } from '../api/derive';
+import { GUN_CONFIG_FAULT, RE_PUSH_HERE, STALE_ACK_FAULT, blocksPush, curedByPush, pushGate, reachLabel, reachOf, reachTooltip, sentenceCase, splitBlocker } from '../api/derive';
 import type { Player } from '../api/types';
 import { useStore } from '../store';
 import { F, T, TAB, fmtClock, teamColor } from '../tokens';
@@ -39,7 +39,7 @@ export function Lobby() {
   // U-1: the stale-ack sentence is computed from the ACKS, independently of the board — a stale ack
   // is always ALSO a red row, so anything that asked "are there faults?" first could never reach it.
   // F8a: ONE instruction string, everywhere (`RE_PUSH_HERE` is the label of the button below).
-  const { acked, allAcked, noEcho, staleAcked, staleAckLine } = gate;
+  const { acked, allAcked, noEcho, pendingAck, staleAcked, staleAckLine } = gate;
   // A28.4: derived, never asserted — "grey" the count while the tunnel is off, since it can only be 0.
   const cLine = shortCoverageLine(state.coverage);
   // Field feedback 2026-09-19 (Tony): partial coverage is not a fault — every gun still works over
@@ -62,6 +62,8 @@ export function Lobby() {
   // SERVER's own (`state.py push_config._blocks_push`) and differs on both counts — A37's three
   // proofs are cured BY the push, and a phone that has not arrived refuses the FIRST push only.
   const { redRows, waitRows, blockedCount, pushBlockedCount, curableRows, waitWhy } = gate;
+  const forceProofRows = redRows.filter(r => (r.blockers ?? []).some(b =>
+    b.startsWith(STALE_ACK_FAULT) || b.startsWith(GUN_CONFIG_FAULT)));
   const reds = redRows.map(b => b.sticker);
   // F8b: R2-8's suppression compared red ROWS with stale ACKS, so one row carrying a stale ack AND a
   // second red made "N guns cannot start" vanish for every other red on the board. The question is
@@ -106,7 +108,14 @@ export function Lobby() {
   // never merely erroring, when the server would refuse it whatever the operator does.
   const showRePush = lobby.pushed && (curableRows.length > 0 || !allAcked);
   const rePushDisabled = busy || !balancedForTeams;
-  const staleish = staleAcked.length || curableRows.length;
+  const curableNonStale = curableRows.filter(r => (r.blockers ?? []).some(b =>
+    curedByPush(b) && !b.startsWith(STALE_ACK_FAULT)));
+  const staleCount = Math.max(staleAcked.length,
+    curableRows.filter(r => (r.blockers ?? []).some(b => b.startsWith(STALE_ACK_FAULT))).length);
+  const verificationLines = [
+    noEcho.length ? `No config echo from ${noEcho.join(', ')} — headset off, or gun asleep?` : '',
+    pendingAck.length ? `Waiting for config verification from ${pendingAck.join(', ')}` : '',
+  ].filter(Boolean);
   const armGating = readiness.board.filter(r => blocksPush(r, { repush: false }));
   const armDisabled = (lobby.pushed ? blockedCount > 0 : pushBlockedCount > 0) || !balancedForTeams
                       || players.length === 0 || (lobby.pushed && !allAcked);
@@ -117,8 +126,10 @@ export function Lobby() {
   const armWhy = [
     !balancedForTeams ? rosterFault ?? 'This roster cannot play' : '',
     players.length === 0 ? 'Add someone to the roster first' : '',
-    staleish ? `${staleish} gun${staleish === 1 ? '' : 's'} answered for an older config — ${RE_PUSH_HERE}` : '',
-    !staleish && lobby.pushed && !allAcked ? `Waiting for every gun to echo the config — or ${RE_PUSH_HERE}` : '',
+    staleCount ? `${staleCount} gun${staleCount === 1 ? '' : 's'} answered for an older config — ${RE_PUSH_HERE}` : '',
+    curableNonStale.length ? `${curableNonStale.length} gun${curableNonStale.length === 1 ? ' needs' : 's need'} config re-pushed — ${RE_PUSH_HERE}` : '',
+    !staleCount && !curableNonStale.length && lobby.pushed && !allAcked
+      ? `${verificationLines.join(' · ') || 'Waiting for every gun to verify the config'} — or ${RE_PUSH_HERE}` : '',
     armGating.length
       ? `${armGating.length} row${armGating.length === 1 ? '' : 's'} no push can clear: ${armGating
           .map(r => `${r.sticker} ${(r.blockers ?? []).filter(b => !curedByPush(b)).map(b => splitBlocker(b).head).join(', ') || 'phone not arrived'}`)
@@ -288,7 +299,7 @@ export function Lobby() {
                 // so it fell out of the filter and the sentence rendered as "No config echo from  —
                 // headset off, or gun asleep?" with an empty list, about guns that had answered.
                 || (lobby.pushed && !allAcked
-                    ? `No config echo from ${noEcho.join(', ')} — headset off, or gun asleep?`
+                    ? verificationLines.join(' · ') || 'Waiting for every gun to verify the config'
                     : 'All nodes ready and in range. Push, then walk.'))}
           {/* R2-8: …and only when there is a fault the sentence above did NOT already account for.
               With two stale acks and nothing else, every red IS the stale ack, and "2 guns cannot
@@ -296,6 +307,9 @@ export function Lobby() {
               guns twice — which reads as four problems. */}
           {staleAckLine && notOnlyStale.length > 0 && (
             <span style={{ color: T.micro }}>{`  ·  ${notOnlyStale.length} gun${notOnlyStale.length === 1 ? '' : 's'} cannot start`}</span>
+          )}
+          {verificationLines.length > 0 && (faults.length > 0 || !!staleAckLine) && (
+            <div style={{ marginTop: 4, color: T.micro }}>{verificationLines.join(' · ')}</div>
           )}
         </div>
 
@@ -307,7 +321,7 @@ export function Lobby() {
                 {/* U-2 (2026-09-13): this kept only the text before the first " — ", which is the
                     STATEMENT half. Every server line is `STATEMENT — INSTRUCTION`, so "ACKED AN
                     OLDER CONFIG (id) — RE-PUSH" rendered on the START screen as a fault with no fix,
-                    and all three A36 lines lost the only word that says what to do. Same split the
+                    and every config-proof line lost the only word that says what to do. Same split the
                     Armory card uses (`derive.splitBlocker`), one implementation. */}
                 <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                   {f.why.map(w => {
@@ -328,7 +342,8 @@ export function Lobby() {
 
       {/* `force` is the operator's override of a READINESS judgement. It does not open the one-team
           gate (state.py `one_team_fault`), so the tray must not be on screen claiming otherwise. */}
-      {(lobby.pushed ? blockedCount > 0 : pushBlockedCount > 0) && balancedForTeams && (
+      {(lobby.pushed ? blockedCount > 0 : pushBlockedCount > 0) && balancedForTeams
+          && (!lobby.pushed || forceProofRows.length === 0) && (
         <div data-override="1" style={{ marginTop: 10, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           {/* The risk goes ABOVE the button and ON THE SCREEN, in the console's fault shape (shouted
               statement, quiet cure). It was a tooltip, and this runs on a tablet where there is no
@@ -354,6 +369,11 @@ export function Lobby() {
             onClick={() => pushAndArm(true)}>
             {lobby.pushed ? override.label : `Push anyway, over ${[reds.length && `${reds.length} fault${reds.length === 1 ? '' : 's'}`, waitRows.length && `${waitRows.length} missing phone${waitRows.length === 1 ? '' : 's'}`].filter(Boolean).join(' and ')}`} ▸
           </button>
+        </div>
+      )}
+      {lobby.pushed && forceProofRows.length > 0 && balancedForTeams && (
+        <div data-no-override-reason style={{ marginTop: 10, font: F.chk(600, 11), letterSpacing: '.1em', color: T.micro }}>
+          CANNOT BE OVERRIDDEN — RE-PUSH CONFIG BEFORE THE COUNTDOWN
         </div>
       )}
       {!allReady && players.length > 0 && (

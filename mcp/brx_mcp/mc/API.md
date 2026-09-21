@@ -112,7 +112,7 @@ State {
                                                // never amber and never as a proof; the console's copy for it is the fixed sentence
                                                // `GUN DID NOT ECHO ITS WEAPON — UNPROVEN ON THIS FIRMWARE`. `null` = no check to report
                                                // (nothing pushed, no ack yet, an ack for another head, or a head with no readable `$WEAP,0`).
-                                               // `?mock&faults=1` demos all four config-proof states (webapp/mc/README.md).
+                                               // `?mock&faults=1` demos all five config-proof states (webapp/mc/README.md).
                                                // proven. A link that drops sends the row back to `unknown` and the clock restarts. While a
                                                // link is counting up the row carries the amber `HEADSET · CONFIRMING (LINK <n> s)`, which
                                                // clears itself at 10 s — the UI renders it through the normal amber path and does NO timing of
@@ -362,7 +362,7 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
   unreachable; amber (shown, not gating) = the headset still confirming (A32), battery unsampled, low phone battery,
   screen off, fw unknown. After the push an empty `ack_config.gun_echo` is red and blocks `start`. Fields are aged/decayed, never
   shown stale as current.
-- **A36 (2026-09-13) — the three proofs that the guns are running the config MC pushed.** Field night
+- **A36/F271 — four checks that the guns are running the config MC pushed.** Field night
   2026-09-12: guns ran a PREVIOUS push in nearly every match and nothing on screen said so. Each of
   these is compared against the head MC actually pushed that player, so there is no second
   arithmetic to drift, and each is SILENT when it has no evidence (an older app, a stub compiler)
@@ -376,10 +376,15 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
     CURRENT ack (A37): an ack that answered a previous head carries a previous head's magazine, and
     saying so twice describes one cause twice. No claim when the echo is not an `$ALCD` (`$START`
     answers `$LCD,0,0,0,0,0,0,*`, which proves only that the gun answered). **R2-5: `POST /api/start`
-    refuses this one too, `force` included** (`_refuse_echo_mismatch`) — a mismatch leaves the ack
+    refuses this one too, but `force` opens it** (`_refuse_echo_mismatch`) — a mismatch leaves the ack
     CURRENT, so `all_acked` was true and the whistle blew on a gun that had just named another
     loadout. `not_echoed` never refuses: it is the ordinary v4.32 answer, and an absent proof is not
     a fault.
+  - `GUN CONFIG ≠ PUSHED HEAD (… read-back vs … pushed) — RE-PUSH` (red, F271). The optional
+    `$QUERY` read-back's player id, team or HP/armour/shield maximum differs from the effective
+    `$PSET`/`$TID` in the head MC actually sent. `POST /api/start` refuses this direct gun fact even
+    with `force`. A node that omits `gun_config`, or a gun that does not return a well-formed body,
+    makes no claim and remains compatible.
   - `GUN POOL ≠ CONFIG (REPORTS h/a, THIS CONFIG GRANTS h/a, hp/armor) — LIKELY ON AN OLDER HEAD;
     RE-PUSH BEFORE THE NEXT GAME` (red) + a `CONFIG` feed alert. The first `status` at least
     `POOL_CHECK_SETTLE_MS` (2 s) into a life reported MORE **hp** than the `$PSET` MC pushed.
@@ -456,10 +461,11 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
   is `proven | mismatch | not_echoed | null`, and **only `mismatch` is a fault**: `not_echoed` is the ordinary
   answer on our v4.32 units (A37) and `null` means the check did not run at all.
 - **Push and start are separate:** `POST /api/lobby/push` compiles every bundle and refuses on reds (names them)
-  unless `force` — **except A36's three proofs (A37)**, which the push CURES rather than trips over: a stale ack,
-  an echo mismatch and a pool fault all name the head, and a fresh head replaces it, so `POST /api/lobby/push`
-  goes through unforced over those three and re-acks. They keep blocking the whistle (`POST /api/start` refuses a
-  stale ack **even with `force`**), and every other red and every `waiting` row still refuses the push.
+  unless `force` — **except the four push-curable proof prefixes**, which the push CURES rather than trips over:
+  a stale ack, echo mismatch, pool fault and query read-back mismatch all name the head, and a fresh head replaces
+  it, so `POST /api/lobby/push` goes through unforced and re-acks. Stale ack and query mismatch are force-proof at
+  the whistle; echo mismatch is forceable; the pool fault arises only in play. Every other red and every `waiting`
+  row still refuses the push.
   `POST /api/start` mints `match_id`, stamps a monotonic `seq`, `go_live_t = now + runway_s`
   (default `DEFAULT_RUNWAY_S` 120; presets 60/120/180). A same-schedule re-push keeps `seq` + `match_id`; a
   reschedule mints both anew; abort reaches only nodes in range (`reached`/`unreachable`).

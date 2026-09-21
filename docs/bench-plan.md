@@ -147,7 +147,7 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 | row | lane | the work | blocked by |
 |---|---|---|---|
 | **F272** | levers and screamers | the lock-up detector on the phone and in MC (poll with the bare `$LIFE,*`) | nothing. Gates Phase E |
-| **F271** | levers and screamers | the `$QUERY` read-back after arming (team, player id, pools) | nothing |
+| **F300** | levers and screamers | decode the remaining `$QUERY` sound/gyro/per-slot loop before extending arming read-back | stock-image/capture decode |
 | **F269** | levers and screamers | switch the block pause on, and decide the runt `$SIR` rows | sittings 1 and 4 (A7, A8, A8b) |
 | screamers Phase B: **F270**, **F273**, plus one new row per trigger that Phase A reproduces | levers and screamers | one rule in code per reproduced trigger (write with response; the `$PB*`/`$AS` deny list) | sittings 1 and 4 |
 | **F285** | levers and screamers | a per-token absolute/additive column for `$TMP` in `protocol/brx-protocol.md` | sitting 2 for t1-t3, t6, t10 |

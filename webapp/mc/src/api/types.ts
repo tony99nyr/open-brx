@@ -19,7 +19,7 @@ export type {
   LanPublic, PresentationRow, PresentationView, PresentationSummary, HeadsetSummary, GunSummary,
   McConfidence, RecapView, WinnerView, PossessionView, AfterEndPlayer, AfterEndView,
   MatchHistoryRow, ModeInfo, NodeView, StationControl, StationReport, StationArmed, StationView,
-  LiveView, StartNodeView, StartView, State, GameConfigBase, LanView, KitView, LobbyAck,
+  LiveView, StartNodeView, StartView, State, GameConfigBase, LanView, KitView, GunConfigReadback, LobbyAck,
   LobbyView, GameAnnouncementView, SyncAckState, SyncRow, SyncTotals, SyncView, SessionOptions, VersionsView,
   NoticesView, RestoredFromView, SnapshotFeedRow, OrphanMatchView, OperatorActionResult, OperatorStatus,
   TunnelStatus, TunnelProviderValue, ValuePair, RespawnProfile, DotSpec

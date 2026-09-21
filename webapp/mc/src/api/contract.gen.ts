@@ -1366,9 +1366,18 @@ export interface KitView {
   browsing: Record<string, number>;
 }
 
+export interface GunConfigReadback {
+  player_id: number;
+  team: number;
+  hp: number;
+  armor: number;
+  shield: number;
+}
+
 export interface LobbyAck {
   ok: boolean;
   gun_echo?: string;
+  gun_config?: GunConfigReadback;
   err?: string;
   config_id?: string;
 }

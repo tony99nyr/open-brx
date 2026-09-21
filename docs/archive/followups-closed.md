@@ -430,3 +430,10 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
 - 2026-09-21 **F295** closed with F290: the ten recorded overlay failures no longer reproduce. The surviving
   hold-to-exit race now covers pointer cancellation, deployment, keyboard and assistive activation at both target
   phone sizes.
+
+# Closed 2026-09-21: arming read-back
+
+- 2026-09-21 **F271** the phone now sends `$QUERY,*` after a successful head echo and reports the confirmed
+  player id, team and HP/armour/shield maxima in optional `ack_config.gun_config`. MC compares all five with the
+  actual pushed `$PSET`/`$TID`, renders a red re-push cure and refuses a mismatch even with force. The undecoded
+  sound/gyro/per-slot remainder was split to F300.

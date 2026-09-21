@@ -633,7 +633,7 @@ async function runVenueStale(browser, viteBase) {
   await pg.unrouteAll({ behavior: 'ignoreErrors' }); await pg.context().close();
 }
 
-/** A36/A37 (U-3) — the four config-proof states, on screen, in a real browser.
+/** A36/A37/F271 (U-3) — the five config-proof states, on screen, in a real browser.
  *
  *  `?mock` always acked with the config it had just pushed, so a stale ack, an echo mismatch, a pool
  *  fault and a gun that simply does not echo could be demoed exactly NEVER — and the console's
@@ -641,7 +641,7 @@ async function runVenueStale(browser, viteBase) {
  *  otherwise-green guns (webapp/mc/README.md → `?mock` demo switches). */
 async function runFaults(browser, viteBase) {
   step = 'faults'; stepFailedAt = failures.length;
-  console.log('\n[faults] ?mock&faults=1 — the four config-proof states on the muster board');
+  console.log('\n[faults] ?mock&faults=1 — the five config-proof states on the muster board');
   const pg = await newPage(browser, viteBase);
   await pg.goto(`${viteBase}/?mock&faults=1#muster`, { waitUntil: 'domcontentloaded' });
   await until(() => isMuster(pg), 15000, "the muster board");
@@ -658,6 +658,7 @@ async function runFaults(browser, viteBase) {
     ['the stale ack', /ACKED AN OLDER CONFIG/],
     ['the echo mismatch', /GUN ECHO ≠ CONFIG/],
     ['the pool fault', /GUN POOL ≠ CONFIG/],
+    ['the query read-back mismatch', /GUN CONFIG ≠ PUSHED HEAD/],
     ['the gun that did not echo', /GUN DID NOT ECHO ITS WEAPON/],
   ]) expect(re.test(txt), `${what} is on the board (saw ${JSON.stringify(txt.slice(0, 200))})`);
   // NOT ECHOED is neutral: it is on a row that is not red, and it is not one of the blocker lines.
@@ -665,7 +666,7 @@ async function runFaults(browser, viteBase) {
   expect(neutral === 1, `exactly one row reads NOT ECHOED (saw ${neutral})`);
   const proven = await pg.locator('[data-echo="proven"]').count();
   expect(proven > 0, `and at least one reads PROVEN, so the two are distinguishable (saw ${proven})`);
-  ok(`all four states visible, NOT ECHOED neutral beside ${proven} proven   ${await shot(pg, '50-faults-board')}`);
+  ok(`all five states visible, NOT ECHOED neutral beside ${proven} proven   ${await shot(pg, '50-faults-board')}`);
   // The unproven row is the one a human has to be able to READ as unproven, so put it on screen.
   await pg.locator('[data-echo="not_echoed"]').first().scrollIntoViewIfNeeded();
   const unprovenRow = await pg.locator('[data-echo="not_echoed"]').first().innerText();
@@ -684,6 +685,9 @@ async function runFaults(browser, viteBase) {
   const title = await arm.getAttribute('title');
   expect(/older config/i.test(title ?? ''), `the disabled ARM says WHY (saw ${JSON.stringify(title)})`);
   expect(/RE-PUSH CONFIG on LOBBY/.test(title ?? ''), `...and names the button that fixes it (saw ${JSON.stringify(title)})`);
+  expect(await pg.locator('[data-override="1"]').count() === 0,
+    'a force-proof query mismatch never offers HOST OVERRIDE');
+  expect(/CANNOT BE OVERRIDDEN — RE-PUSH CONFIG/.test(rail), 'the rail says why override is absent and names the cure');
   ok(`LOBBY names the stale guns and keeps every instruction   ${await shot(pg, '53-faults-lobby')}`);
   // R2-1 — the button the three fault lines name. Every one of them says RE-PUSH and until now
   // `api.pushLobby` was reachable only while the lobby was UNPUSHED, so the word named nothing.
@@ -700,7 +704,7 @@ async function runFaults(browser, viteBase) {
   await repush.click();
   await until(async () => {
     const s = (await pg.locator('main').innerText()).replace(/\s+/g, ' ');
-    return !/ACKED AN OLDER CONFIG|GUN ECHO ≠ CONFIG|GUN POOL ≠ CONFIG/.test(s);
+    return !/ACKED AN OLDER CONFIG|GUN ECHO ≠ CONFIG|GUN POOL ≠ CONFIG|GUN CONFIG ≠ PUSHED HEAD/.test(s);
   }, 8000, 'the three curable reds to clear after the re-push');
   const cured = (await pg.locator('main').innerText()).replace(/\s+/g, ' ');
   expect(!/still answering for an older config/.test(cured), 'the rail sentence goes with them');
@@ -712,7 +716,7 @@ async function runFaults(browser, viteBase) {
   expect((armTitle ?? '').trim().length > 0, 'a disabled ARM is never silent about why');
   expect(/no push can clear/i.test(armTitle ?? ''), `...and names what is left (saw ${JSON.stringify(armTitle)})`);
   expect(/Waiting for 1 phone/.test(cured), 'the one row left is the phone nobody brought');
-  ok(`the re-push cured all three   ${await shot(pg, '55-faults-cured')}`);
+  ok(`the re-push cured all four reds   ${await shot(pg, '55-faults-cured')}`);
   // …and NOT ECHOED survives it: that row is the v4.32 firmware, not a stale head.
   await onMuster(pg);
   const stillUnproven = await pg.locator('[data-echo="not_echoed"]').count();
@@ -725,10 +729,30 @@ async function runFaults(browser, viteBase) {
   await clean.evaluate(async () => { await window.__MC_MOCK__.pushLobby(true); });
   await onMuster(clean);
   const cleanTxt = (await clean.locator('main').innerText()).replace(/\s+/g, ' ');
-  expect(!/ACKED AN OLDER CONFIG|GUN ECHO ≠ CONFIG|GUN POOL ≠ CONFIG|DID NOT ECHO/.test(cleanTxt),
+  expect(!/ACKED AN OLDER CONFIG|GUN ECHO ≠ CONFIG|GUN POOL ≠ CONFIG|GUN CONFIG ≠ PUSHED HEAD|DID NOT ECHO/.test(cleanTxt),
     'a plain ?mock demos none of the four');
   ok(`plain ?mock stays clean   ${await shot(clean, '51-faults-clean')}`);
   await clean.context().close();
+
+  // F271 isolated control: a stale ack is also force-proof, so the combined scene cannot prove the
+  // query mismatch itself suppresses HOST OVERRIDE. This page carries only the read-back red.
+  const query = await newPage(browser, viteBase);
+  await query.goto(`${viteBase}/?mock&faults=readback#muster`, { waitUntil: 'domcontentloaded' });
+  await until(() => isMuster(query), 15000, 'the isolated query-readback board');
+  await query.evaluate(async () => { await window.__MC_MOCK__.pushLobby(true); });
+  await query.locator('header nav button:has-text("LOBBY")').first().click();
+  await until(() => onLobby(query), 5000, 'the isolated query-readback lobby');
+  let queryText = (await query.locator('main').innerText()).replace(/\s+/g, ' ');
+  expect(/GUN CONFIG ≠ PUSHED HEAD/.test(queryText), 'the isolated scene carries the F271 blocker');
+  expect(!/ACKED AN OLDER CONFIG/.test(queryText), 'the isolated scene has no stale-ack reason suppressing override');
+  expect(await query.locator('[data-override="1"]').count() === 0, 'F271 alone suppresses HOST OVERRIDE');
+  expect(await query.locator('[data-no-override-reason]').count() === 1, 'F271 alone explains the missing override');
+  await query.locator('button[data-repush="1"]').first().click();
+  await until(async () => !/GUN CONFIG ≠ PUSHED HEAD/.test((await query.locator('main').innerText()).replace(/\s+/g, ' ')),
+    8000, 'the isolated F271 blocker to clear');
+  queryText = (await query.locator('main').innerText()).replace(/\s+/g, ' ');
+  expect(!/CANNOT BE OVERRIDDEN — RE-PUSH CONFIG/.test(queryText), 'the no-override reason clears with its fault');
+  await query.context().close();
   await pg.context().close();
 }
 
@@ -749,13 +773,13 @@ async function runFaultsPhone(browser, viteBase) {
   await pg.locator('header nav button:has-text("LOBBY")').first().click();
   await until(() => onLobby(pg), 5000, 'the LOBBY to open from the nav');
 
-  // (a) the page itself never scrolls sideways, and each of the three controls is inside the viewport
+  // (a) the page itself never scrolls sideways, and each actionable control is inside the viewport.
+  // F271's direct gun read-back is force-proof, so HOST OVERRIDE is deliberately replaced by a reason.
   const sideways = await pg.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(sideways <= 1, `the page scrolls ${sideways}px sideways at 393px`);
   for (const [what, sel] of [
     ['RE-PUSH CONFIG', 'button[data-repush="1"]'],
     ['ARM COUNTDOWN', 'main button:has-text("ARM COUNTDOWN")'],
-    ['the host override', '[data-override="1"] button'],
   ]) {
     const el = pg.locator(sel).first();
     expect(await el.count() > 0, `${what} is on the phone-width rail at all`);
@@ -763,6 +787,8 @@ async function runFaultsPhone(browser, viteBase) {
     expect(box && box.x >= -1 && box.x + box.width <= 393 + 1,
       `${what} is inside the viewport (saw ${JSON.stringify(box)})`);
   }
+  expect(await pg.locator('[data-override="1"]').count() === 0, 'the force-proof mismatch has no host override');
+  expect(await pg.locator('[data-no-override-reason]').count() === 1, 'the missing override is explained on screen');
   // ...and nothing on this screen paints outside its own box. The roster row's callsign span was
   // `flex: 1; minWidth: 0`, which at 393 px collapsed to 26 px — narrower than one callsign — so the
   // name overflowed and was drawn ON TOP of the LAN tag next to it (measured here, 2026-09-13).
@@ -786,8 +812,9 @@ async function runFaultsPhone(browser, viteBase) {
   await repush.click();
   await until(async () => {
     const t = (await pg.locator('main').innerText()).replace(/\s+/g, ' ');
-    return !/ACKED AN OLDER CONFIG|GUN ECHO ≠ CONFIG|GUN POOL ≠ CONFIG/.test(t);
-  }, 8000, 'the three curable reds to clear after the phone-width re-push');
+    return !/ACKED AN OLDER CONFIG|GUN ECHO ≠ CONFIG|GUN POOL ≠ CONFIG|GUN CONFIG ≠ PUSHED HEAD/.test(t);
+  }, 8000, 'the four curable reds to clear after the phone-width re-push');
+  expect(await pg.locator('[data-no-override-reason]').count() === 0, 'the no-override reason clears with the read-back fault');
   await noCrash(pg);
   const after = await auditRail(pg, 'phone/cured');
   await pg.locator('[data-rail="lobby"]').first().scrollIntoViewIfNeeded();

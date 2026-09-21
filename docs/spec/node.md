@@ -76,8 +76,12 @@ Kit-out (`assign{player, team, roster, catalog, policy, game}`, contracts §5) s
    = the gun did not answer**: with the headset OFF the head write echoes nothing and the gun drops the link
    (`$DISCONNECT`; bench 2026-08-25 §7r), so link + echo IS the headset proof and an empty echo is **red after
    the push** (contracts §4 Readiness). Before the push, headset is amber, never red (A5.4);
-4. replies `ack_config{config_id, ok, err?, gun_echo}` — `gun_echo` is the first `$LCD`/`$ALCD` line
-   verbatim; no echo → `ok:false, err:"no_echo"`; a BLE write failure → `ok:false` + the error.
+4. after a successful echo window, sends `$QUERY,*` and waits up to 2.6 s after that write settles for its status
+   body. A well-formed reply contributes tokens 1–5 as `gun_config{player_id, team, hp, armor, shield}`; a missing,
+   late or malformed body simply omits this optional proof;
+5. replies `ack_config{config_id, ok, err?, gun_echo, gun_config?}` — `gun_echo` is the most informative echo in
+   the window (a slot-0 `$ALCD` when present, otherwise the first `$LCD`/`$ALCD`) verbatim; no head echo →
+   `ok:false, err:"no_echo"`; a BLE write failure → `ok:false` + the error.
 
 **Pre-config probe set (contracts §3, A5.4).** Before any bundle exists — in **CONNECTED/KITTED only,
 never after a head is written** — the node sends `$PHONE,*` once (starts the ~30 s `$VOLTS` telemetry so
