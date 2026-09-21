@@ -656,9 +656,13 @@ for (const view of VIEWS) {
   await step(`${view.name} #67 A41: HOLD TO EXIT (unarmed) resets brx.role to hud and leaves utility.html for the HUD`, async () => {
     const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
     await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.setItem('brx.role', 'utility'); localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await pg.waitForTimeout(1500);
+    await pg.clock.install();
+    // The old implementation fired the action FROM requestAnimationFrame. Freeze visual frames so this
+    // step proves the semantic hold deadline is independent of rendering load; old code times out here.
+    await pg.evaluate(() => { window.requestAnimationFrame = () => 0; });
     const box = await pg.evaluate(() => { const r = document.getElementById('exitHud').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
     await pg.mouse.move(box.x, box.y); await pg.mouse.down();
-    await Promise.all([pg.waitForURL(/index\.html\?hud/, { timeout: 5000 }), pg.waitForTimeout(1400).then(() => pg.mouse.up())]);
+    await Promise.all([pg.waitForURL(/index\.html\?hud/, { timeout: 5000 }), pg.clock.runFor(1400)]); await pg.mouse.up();
     const role = await pg.evaluate(() => { try { return localStorage.getItem('brx.role'); } catch (_) { return null; } });
     const url = pg.url();
     await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); localStorage.removeItem('brx.role'); } catch {} }).catch(() => {});
@@ -666,6 +670,52 @@ for (const view of VIEWS) {
     must(perr.length === 0, perr.join('|'));
     must(role === 'hud', 'brx.role after HOLD TO EXIT: ' + role);
     must(/index\.html/.test(url) && /hud/.test(url), 'left utility.html for the HUD: ' + url);
+  });
+  await step(`${view.name} #67a A41: HOLD TO EXIT cancels on release, drag-away and deployment; keyboard hold works`, async () => {
+    const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
+    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.setItem('brx.role', 'utility'); localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await pg.waitForTimeout(1500);
+    await pg.clock.install();
+    const box = await pg.evaluate(() => { const r = document.getElementById('exitHud').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+    await pg.mouse.move(box.x, box.y); await pg.mouse.down(); await pg.clock.runFor(250);
+    const partialFill = await pg.$eval('#exitFill', el => parseFloat(el.style.width || '0'));
+    await pg.mouse.up();
+    const resetFill = await pg.$eval('#exitFill', el => el.style.width);
+    await pg.clock.runFor(1100);
+    must(/utility\.html/.test(pg.url()), 'an early release must cancel the exit: ' + pg.url());
+    must(partialFill > 0 && partialFill < 100, 'a partial hold must show visible progress: ' + partialFill);
+    must(resetFill === '0%', 'cancelling a hold must clear visible progress: ' + resetFill);
+    await pg.dispatchEvent('#exitHud', 'pointerdown', { pointerId: 7, pointerType: 'touch', clientX: box.x, clientY: box.y });
+    await pg.dispatchEvent('#exitHud', 'pointermove', { pointerId: 7, pointerType: 'touch', clientX: 1, clientY: 1 });
+    await pg.clock.runFor(1300);
+    must(/utility\.html/.test(pg.url()), 'dragging a touch away must cancel the exit: ' + pg.url());
+    await pg.mouse.move(box.x, box.y); await pg.mouse.down(); await pg.clock.runFor(250);
+    // MC assignment is authoritative before an awaited native advertise call lets render() update `hidden`.
+    // Pin that real skew: state says deployed while the DOM still says the quick exit is visible.
+    await pg.evaluate(() => { window.brxUtility.settings.mcArmed = { game: 3 }; }); await pg.clock.runFor(1100);
+    must(/utility\.html/.test(pg.url()), 'authoritative MC-armed state must cancel before the DOM hide catches up: ' + pg.url());
+    await pg.mouse.up(); await pg.evaluate(() => { window.brxUtility.settings.mcArmed = null; window.brxUtility.render(); });
+    await pg.mouse.move(box.x, box.y); await pg.mouse.down(); await pg.clock.runFor(250);
+    await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 'blue', id: 2 })); await pg.clock.runFor(1100);
+    must(/utility\.html/.test(pg.url()), 'a hold begun before MC arms the station must not exit after deployment: ' + pg.url());
+    await pg.mouse.up();
+    await pg.evaluate(async () => { await window.brxUtility.stopAdvert(); window.brxUtility.settings.mcArmed = null; window.brxUtility.render(); });
+    await pg.focus('#exitHud'); await pg.keyboard.down('Space');
+    await Promise.all([pg.waitForURL(/index\.html\?hud/, { timeout: 5000 }), pg.clock.runFor(1400)]); await pg.keyboard.up('Space');
+    const role = await pg.evaluate(() => { try { return localStorage.getItem('brx.role'); } catch (_) { return null; } });
+    await pg.close();
+    must(perr.length === 0, perr.join('|'));
+    must(role === 'hud', 'keyboard HOLD TO EXIT sets brx.role to hud: ' + role);
+  });
+  await step(`${view.name} #67b A41: assistive button activation exits without weakening a physical click`, async () => {
+    const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
+    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.setItem('brx.role', 'utility'); localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await pg.waitForTimeout(1500);
+    await pg.click('#exitHud'); await pg.waitForTimeout(100);
+    must(/utility\.html/.test(pg.url()), 'a physical click must not bypass the hold: ' + pg.url());
+    await Promise.all([pg.waitForURL(/index\.html\?hud/, { timeout: 5000 }), pg.dispatchEvent('#exitHud', 'click', { detail: 0 })]);
+    const role = await pg.evaluate(() => { try { return localStorage.getItem('brx.role'); } catch (_) { return null; } });
+    await pg.close();
+    must(perr.length === 0, perr.join('|'));
+    must(role === 'hud', 'assistive activation sets brx.role to hud: ' + role);
   });
   await step(`${view.name} #68 A41: an MC release (control{cmd:release_utility}) does what BACK TO HUD does, even on a DEPLOYED station`, async () => {
     const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));

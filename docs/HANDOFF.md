@@ -64,7 +64,7 @@ mid-protection-window may stay protected all match. **F265**'s HUD half shipped 
 last MC message); its cause, why the score pushes stopped, is still not found. Also open: **F277** (a reload
 that never completes), **F287** (operator RESYNC still writes before the `$HP` probe answers), **F288** (the HUD
 never renders `poolStale`/`cure`), and the office test's own new rows, **F293-F298** (link-loop root cause,
-the MC LAN sweep, ten pre-existing screens-test failures, the down-pattern LED redesign, BLE setup-reliability
+  the MC LAN sweep, the down-pattern LED redesign, BLE setup-reliability
 metrics, and a real Shields-preset match). App **0.4.4** is built on this branch, not yet published; see "State
 of main" above.
 
@@ -86,8 +86,7 @@ with `dot: true`, the HUD poison and smoke tells, unhidden. `mcp/tools/balance_s
 WITHDRAWN; do not act on it.
 
 - **Next desk task:** settle the rung basis with Tony (**F268** second judgement and **F280**), then wire it
-  once (**S54**). **F291** (Charge Rifle dominates, Shotgun trails) needs Tony's decision. **F290**: `main` is
-  red in two browser gates.
+  once (**S54**). **F291** (Charge Rifle dominates, Shotgun trails) needs Tony's decision.
 - **Next bench task:** **F292** (the Toxin Rifle on a real gun), then bench-plan sitting 2 steps 1-4, then
   sitting 3 (§26 groups A and B).
 - **Blocked:** S54 and sitting 8 on the rung decision; Extended Mags on `$TMP` (S50) and F281 on sitting 2;

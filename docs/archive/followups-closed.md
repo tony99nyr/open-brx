@@ -421,3 +421,12 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
   single-mechanism design did. The burst-collapse half was already closed 2026-09-16 as an outbox-flush
   artefact, not the engine. What this row's diagnosis leaves behind is **F223** (order node facts by their own
   `t`, not arrival time), which stays open on its own.
+
+# Closed 2026-09-21: browser-gate baseline
+
+- 2026-09-21 **F290** current `main` passes the complete 19-job UI tier. The historical `mc-koth` stale-server
+  cascade no longer reproduces; the one live `app-screens` failure was the utility phone's rAF-driven hold-to-exit
+  deadline, closed with an independent timer and deterministic browser coverage.
+- 2026-09-21 **F295** closed with F290: the ten recorded overlay failures no longer reproduce. The surviving
+  hold-to-exit race now covers pointer cancellation, deployment, keyboard and assistive activation at both target
+  phone sizes.

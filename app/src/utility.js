@@ -62,7 +62,7 @@ async function readBattery() {
 let lastBattery = null;
 
 // ---------- the station ----------
-let advertising = false, _advertRetryAt = 0, support = { advertising: false, txPowerControl: false, platform: 'web' };
+let advertising = false, advertisingPending = 0, _advertRetryAt = 0, support = { advertising: false, txPowerControl: false, platform: 'web' };
 // The control point (kind 5). §5d.6 gives it its OWN localStorage key, separate from the operator's settings:
 // it is match state, not configuration, and it is restored BEFORE the first advert goes out so a phone that
 // was rebooted or force-closed mid-match comes back holding what it held. The station is self-authoritative
@@ -106,6 +106,10 @@ async function startAdvert(quiet = false) {
   advert.published(advertFields(), Date.now());
   if (DEMO) { advertising = true; settings.live = true; save(); if (!quiet) log('stage: pretending to advertise', 'lk'); render(); return; }   // the harness has no radio (the plugin's web stub answers "no")
   if (!plugins.beacon) { log('no beacon plugin: this build cannot advertise (desktop?)', 'le'); render(); return; }
+  // START is a deployment boundary before the native promise settles. Hide/cancel the recovery exit now,
+  // not after iOS/Android finishes powering the advertiser on.
+  advertisingPending++;
+  render();
   try {
     const uuid = stationUuid();
     const name = `BRX-${settings.kind.toUpperCase()}-${settings.id}`;
@@ -113,7 +117,8 @@ async function startAdvert(quiet = false) {
     advertising = !!(r && r.advertising);
     settings.live = advertising; save();   // a reload mid-game comes back advertising (the settings stay behind the ⓘ gate)
     if (!quiet) log(`advertising ${name} as ${TEAM_NAMES[settings.team]} · tx ${r && r.txPowerControl ? settings.tx : 'platform default'} · threshold ${settings.threshold} dBm · ${uuid}`, 'lk');
-  } catch (e) { advertising = false; log('advertise failed: ' + (e && e.message || e), 'le'); }
+  } catch (e) { advertising = false; settings.live = false; save(); log('advertise failed: ' + (e && e.message || e), 'le'); }
+  finally { advertisingPending = Math.max(0, advertisingPending - 1); }
   render();
 }
 // ---------- Mission Control: hello as a utility node, take `station_config` (A13.5) ----------
@@ -370,7 +375,7 @@ function render() {
   // a genuinely live station stays: the seven-tap gate -> drawer -> BACK TO HUD (`btnHud`, unconditional
   // once you're behind the gate) for the operator standing at the phone, and MC's
   // `control{cmd:"release_utility"}` (`exitToHud` via `onMessage`, above) for one that isn't reachable.
-  if ($('exitHud')) $('exitHud').hidden = !!armed || advertising;
+  if ($('exitHud')) $('exitHud').hidden = !!armed || settings.live || advertising || advertisingPending > 0;
   // S5(d): the allow-list this phone was armed with -- the operator's own confirmation that MC's ITEMS
   // panel and this phone's advert agree on which ids are live in this game.
   const idsEl = $('ids');
@@ -492,18 +497,73 @@ const EXIT_HOLD_MS = 1200;
 function wireExit() {
   const btn = $('exitHud'), fill = $('exitFill');
   if (!btn) return;
-  let t0 = 0, raf = 0, firing = false;
-  const stop = () => { if (raf) cancelAnimationFrame(raf); raf = 0; t0 = 0; if (fill) fill.style.width = '0%'; };
+  let t0 = 0, raf = 0, deadline = 0, activePointer = null, activeKey = '', firing = false;
+  // State is authoritative; `hidden` can lag while native advertising starts after an MC assignment.
+  const deployed = () => !!settings.mcArmed || settings.live || advertising || advertisingPending > 0 || btn.hidden;
+  const stop = () => {
+    if (raf) cancelAnimationFrame(raf);
+    if (deadline) clearTimeout(deadline);
+    raf = 0; deadline = 0; t0 = 0; activePointer = null; activeKey = '';
+    if (fill) fill.style.width = '0%';
+  };
+  const fire = () => {
+    if (!t0 || firing) return;
+    // `render()` hides this control as soon as the station becomes deployed. A hold begun while the
+    // phone was idle must not cross that field-safety boundary and pull a newly live station away.
+    if (deployed()) { stop(); return; }
+    firing = true;
+    stop();
+    exitToHud();
+  };
   const tick = () => {
     if (!t0) return;
     const p = Math.min(1, (Date.now() - t0) / EXIT_HOLD_MS);
     if (fill) fill.style.width = `${Math.round(p * 100)}%`;
-    if (p >= 1) { firing = true; stop(); exitToHud(); return; }
+    if (p >= 1) { fire(); return; }
     raf = requestAnimationFrame(tick);
   };
-  const start = e => { if (firing || btn.hidden) return; e.preventDefault(); t0 = Date.now(); tick(); };
-  btn.addEventListener('pointerdown', start);
-  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) btn.addEventListener(ev, stop);
+  const start = () => {
+    // One physical hold owns the deadline. Ignore a second finger / repeated keydown instead of
+    // orphaning the first timer and allowing a later hold to inherit an early exit.
+    if (firing || deployed() || t0) return false;
+    t0 = Date.now();
+    deadline = setTimeout(fire, EXIT_HOLD_MS);
+    tick();
+    return true;
+  };
+  btn.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    if (start()) activePointer = e.pointerId;
+  });
+  btn.addEventListener('pointermove', e => {
+    if (activePointer !== e.pointerId) return;
+    const r = btn.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) stop();
+  });
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel', 'lostpointercapture']) {
+    btn.addEventListener(ev, e => { if (activePointer === e.pointerId) stop(); });
+  }
+  btn.addEventListener('keydown', e => {
+    if ((e.key !== ' ' && e.key !== 'Enter') || e.repeat) return;
+    e.preventDefault();
+    if (start()) activeKey = e.key;
+  });
+  btn.addEventListener('keyup', e => {
+    if (e.key !== activeKey) return;
+    e.preventDefault();
+    stop();
+  });
+  btn.addEventListener('blur', stop);
+  // Assistive technologies activate a native button with a synthesized click (`detail === 0`) and
+  // cannot express a pointer/key hold. That activation is already deliberate confirmation; pointer
+  // clicks keep the physical hold requirement and therefore do nothing here.
+  btn.addEventListener('click', e => {
+    if (e.detail !== 0 || deployed() || firing) return;
+    e.preventDefault();
+    firing = true;
+    stop();
+    exitToHud();
+  });
 }
 
 (async () => {

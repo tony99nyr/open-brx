@@ -93,6 +93,17 @@ test('an MC-armed station keeps hiding it too (unchanged from before this fix)',
   api.render();
 });
 
+test('persisted live intent hides the quick exit before native advertising finishes restoring', async () => {
+  await api.stopAdvert();
+  api.settings.mcArmed = null;
+  api.settings.live = true;
+  api.render();
+  assert.equal(elFor('exitHud').hidden, true,
+    'a reloaded hand-armed station must stay guarded while its native advertiser is still starting');
+  api.settings.live = false;
+  api.render();
+});
+
 test('MC-armed AND advertising (the normal deployed case) hides it -- and not through mcArmed alone', async () => {
   api.settings.mcArmed = { game: 0, at: Date.now(), valid_ids: null };
   await api.startAdvert();
