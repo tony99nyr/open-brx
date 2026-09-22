@@ -311,8 +311,8 @@ test('F11 fix: a failed reconcile-end write (link stays up, write resolves false
   h.eng.writer = realWriter;
   const n = h.mark();
   h.adv(CAP);                          // the re-armed pending's own cap elapses, now against a working writer
-  assert.deepEqual(release(h.since(n)), [...TAKE, OFF],
-    'the retry succeeds and still carries the table; t4 ownership is repaired by the unified accuracy path');
+  assert.deepEqual(release(h.since(n)), [...TAKE, OFF, '$TMP,,,,0,,,,,,,,*'],
+    'the retry succeeds, still carries the table, and reconcile repairs the durable t4 owner');
 });
 
 test('F11 fix: an infection flip retains its flip flag through a failed-write retry (not read as "not live")', async () => {

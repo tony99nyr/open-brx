@@ -88,34 +88,6 @@ test('hit_taken + death credit the fresh $HIR shooter', () => {
   assert.equal(death.shooter_num, 19); assert.equal(h.eng.alive, false); assert.equal(h.eng.deaths, 1);
 });
 
-test('dual-emitter words share a shot group while same-size rapid shots do not', () => {
-  const h = harness(); h.bundle.dual_emitters = [{ proto: 0, subtype: 0, body: 8, headset: 1, cycle_ms: 100 }];
-  h.kit().config_().echo().start(0); h.adv(10); h.eng.tick();
-  h.frame('$HIR,4,0,19,2,8,0,0,*').frame('$HP,45,62,0,*');
-  h.frame('$HIR,0,0,19,2,1,0,0,*').frame('$HP,45,61,0,*');
-  const hits = h.facts.filter(f => f.type === 'hit_taken');
-  assert.equal(hits.length, 2);
-  assert.equal(hits[0].ir_subtype, 0);
-  assert.equal(hits[0].shot_group, hits[1].shot_group);
-  h.frame('$HIR,4,0,19,2,8,0,0,*').frame('$HP,45,53,0,*');
-  assert.notEqual(h.facts.filter(f => f.type === 'hit_taken')[2].shot_group, hits[1].shot_group);
-});
-
-test('equal shotgun emitter words share a group, while a rapid crit and normal shot do not', () => {
-  const shotgun = harness(); shotgun.bundle.dual_emitters = [{ proto: 0, subtype: 0, body: 20, headset: 20, cycle_ms: 800 }];
-  shotgun.kit().config_().echo().start(0); shotgun.adv(10); shotgun.eng.tick();
-  shotgun.frame('$HIR,4,0,19,2,20,0,0,*').frame('$HP,45,50,0,*');
-  shotgun.frame('$HIR,0,0,19,2,20,0,0,*').frame('$HP,45,30,0,*');
-  const pair = shotgun.facts.filter(f => f.type === 'hit_taken');
-  assert.equal(pair[0].shot_group, pair[1].shot_group);
-
-  const burst = harness(); burst.kit().config_().echo().start(0); burst.adv(10); burst.eng.tick();
-  burst.frame('$HIR,4,0,19,2,15,1,0,*').frame('$HP,45,55,0,*');
-  burst.frame('$HIR,4,0,19,2,10,0,0,*').frame('$HP,45,45,0,*');
-  const shots = burst.facts.filter(f => f.type === 'hit_taken');
-  assert.notEqual(shots[0].shot_group, shots[1].shot_group);
-});
-
 test('F72: a proto-15 beacon does not hit-latch, does not emit hit_taken, does not touch pools, and surfaces owner+magnitude', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();  // live, alive
   const hpBefore = h.eng.hp, armorBefore = h.eng.armor;
@@ -3948,14 +3920,6 @@ test('score push exposes hits and the board; lives derive from config.respawn.li
   const s = h.eng.state();
   assert.equal(s.hits, 8); assert.equal(s.board.cap, 25); assert.equal(s.board.teams[1].score, 21);
   assert.equal(s.fragLimit, 25); assert.equal(s.lives, null, 'no lives cap in this config');
-  h.eng.config.scoring = { frag_limit: 10, win_by: 'objective' };
-  const objective = h.eng.state();
-  assert.equal(objective.fragLimit, null, 'an ignored legacy cap is not exposed to the HUD');
-  assert.equal(objective.board.cap, null, 'an old server cannot make the HUD advertise that ignored cap');
-  h.eng.config.scoring = { frag_limit: 10 };
-  const legacy = h.eng.state();
-  assert.equal(legacy.fragLimit, 10, 'an older MC omitted win_by from a kill game; its cap stays visible');
-  assert.equal(legacy.board.cap, 25, 'the older MC score board cap stays authoritative for a kill game');
   h.eng.config.respawn.lives = 3; h.eng.deaths = 2;
   assert.equal(h.eng.state().lives, 1);
 });
@@ -4017,41 +3981,6 @@ test('a swap the gun never confirms is assumed done at the window; a link drop c
   let s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1); assert.equal(s.moment.data.assumed, true);
   h.frame('$BUT,1,1,*'); assert.equal(h.eng.state().switching, true);
   h.eng.onBleDropped(); assert.equal(h.eng.state().switching, false);
-});
-test('playtest 2026-09-20: spawn and respawn publish the active slot ammo before any trigger or ammo report', () => {
-  const h = harness();
-  h.player.loadout = { weapons: [{ weapon_id: 'shotgun' }, { weapon_id: 'charge_rifle' }] };
-  h.bundle.spawn = [
-    ...h.bundle.spawn.filter(f => !f.startsWith('$AMMO,')),
-    '$AMMO,0,6,24,1,*', '$AMMO,1,40,80,1,*',
-  ];
-  h.kit().config_().echo();
-  h.eng.ammo = 99; h.eng.reserve = 199; h.eng.mag = 99;   // stale values from the prior match/life
-  h.start(0); h.eng.tick();
-  assert.deepEqual([h.eng.state().ammo, h.eng.state().reserve, h.eng.state().mag], [6, 24, 6],
-    'T-0 must show the fresh primary without waiting for a trigger or $ALCD');
-
-  h.eng.ammo = 3; h.eng.reserve = 7; h.eng.mag = 40;      // the secondary was active when this life ended
-  h.eng._death(false);
-  h.adv(h.eng.respawnDelayMs); h.eng.tick();
-  assert.deepEqual([h.eng.state().ammo, h.eng.state().reserve, h.eng.state().mag], [6, 24, 6],
-    'respawn must immediately restore the fresh primary display without inheriting the prior slot');
-});
-test('playtest 2026-09-20: an unconfirmed swap publishes the destination slot counts, not the old weapon ammo', () => {
-  const h = harness();
-  h.player.loadout = { weapons: [{ weapon_id: 'shotgun' }, { weapon_id: 'charge_rifle' }] };
-  h.bundle.spawn = [
-    ...h.bundle.spawn.filter(f => !f.startsWith('$AMMO,')),
-    '$AMMO,0,6,24,1,*', '$AMMO,1,40,80,1,*',
-  ];
-  h.kit().config_().echo().start(0); h.eng.tick();
-  h.frame('$ALCD,6,100,0,24,0,*');
-  h.frame('$BUT,1,1,*');
-  h.adv(h.eng.switchWindowMs() + 1); h.eng.tick();
-  const st = h.eng.state();
-  assert.equal(st.activeSlot, 1, 'pre-condition: the silent swap is assumed complete');
-  assert.deepEqual([st.ammo, st.reserve, st.mag], [40, 80, 40],
-    'the Charge Rifle must open full; retaining the Shotgun 6/24 produces the false recharge warning seen in the playtest');
 });
 
 // ── A16 (led-language.md §3.1): a hit paints the readout, not a burst; death/revive gun bursts are ──
@@ -4241,24 +4170,14 @@ test('the bundle\'s swap_ms is the SWITCHING window; without it the node assumes
 
 // ---------- utility items: scanner respawn at a station (docs/spec/utility.md §4) ----------
 function stationEntry(o = {}) { return { role: 'station', id: 5, kind: 'respawn', team: 1, state: 1, value: 0, seq: 0, game: 0, threshold: -60, rssi: -50, raw: -50, present: true, ...o }; }
-function scannerHarness(gate, autoTeams = []) {
+function scannerHarness(gate) {
   const h = harness({ respawn: 'scanner' });
   if (gate) h.config.respawn.gate = gate;
-  h.config.respawn_auto_teams = autoTeams;
   h.kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame('$HP,0,0,0,*');
   assert.equal(h.eng.alive, false, 'precondition: dead');
   return h;
 }
-
-test('scanner: a team without an assigned station uses the configured timed fallback', () => {
-  const h = scannerHarness(null, [1]);
-  assert.equal(h.eng.respawnHint(1000), 'timer');
-  assert.ok(h.eng.state().respawnIn > 0, 'fallback exposes the timer countdown');
-  h.adv(8000); h.eng.tick();
-  assert.equal(h.eng.alive, true, 'the uncovered team must not stay down forever');
-  assert.ok(h.facts.some(f => f.type === 'respawn'), 'the fallback is a normal respawn fact');
-});
 
 test('scanner + trigger gate: dead past the delay, at own-team station, trigger pull → revive with the station id', () => {
   const h = scannerHarness();
