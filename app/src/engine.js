@@ -1083,6 +1083,7 @@ export class Engine {
   get respawnDelayMs() { const s = this.config && this.config.respawn && this.config.respawn.delay_s; return Math.max(MIN_RESPAWN_S, s > 0 ? s : 10) * 1000; }
   get respawnType() { return (this.config && this.config.respawn && this.config.respawn.type) || 'auto'; }
   get respawnAutoTeams() { return Array.isArray(this.config && this.config.respawn_auto_teams) ? this.config.respawn_auto_teams : []; }
+  get timedRespawn() { return this.respawnType === 'auto' || (this.respawnType === 'scanner' && this.team && this.respawnAutoTeams.includes(this.team.tid)); }
   /** F15: the host-driven stun is ON when the config carries a `stun` object (`{duration_s}`); a proto-8 `$HIR` is
    *  otherwise an ordinary hit (the stock `<8,0>` row is the charge rifle's plain damage) and must disarm nothing. */
   get stunEnabled() { return !!(this.config && this.config.stun && typeof this.config.stun === 'object'); }
@@ -4362,7 +4363,7 @@ export class Engine {
   /** What the DOWN screen should tell a scanner-mode player (utility.md §4.3). */
   respawnHint(now) {
     if (this.alive || !this.deadAt || this.phase !== 'live') return null;
-    if (this.respawnType === 'auto') return 'timer';
+    if (this.timedRespawn) return 'timer';
     if (this.respawnType === 'none') return 'out';
     // Scanner: guide to a station from the instant of death (Tony 2026-09-04: a blank STAND BY for the
     // whole respawn delay leaves a first-timer with no idea what to do). The delay only gates the actual
@@ -5193,7 +5194,7 @@ export class Engine {
       // either field today, so a `no_answer` verdict -- the one case that needs a human, FORCE RESPAWN -- is
       // invisible on the phone (polish review, added after the merge; F288).
       poolStale: this.poolStale(now), cure: this.cure,
-      respawnType: this.respawnType, killedBy: this.killedBy, underFire: this.alive && this.lastHitAt > 0 && (now - this.lastHitAt) < 2000, respawnIn: (!this.alive && this.deadAt && this.respawnType === 'auto') ? Math.max(0, Math.ceil((r - (now - this.deadAt)) / 1000)) : 0,   // scanner/none modes have no countdown
+      respawnType: this.respawnType, respawnAuto: this.timedRespawn, killedBy: this.killedBy, underFire: this.alive && this.lastHitAt > 0 && (now - this.lastHitAt) < 2000, respawnIn: (!this.alive && this.deadAt && this.timedRespawn) ? Math.max(0, Math.ceil((r - (now - this.deadAt)) / 1000)) : 0,
       // utility.md: the respawn station this player would use, how close it reads, and what the DOWN screen should say
       station: stationView(this._respawnStation()), respawnGate: this.respawnGate, respawnHint: this.respawnHint(now),
       // 2026-09-19 respawn profiles: `weaponArming` = ms until a timed life's trigger goes live (null once it has);

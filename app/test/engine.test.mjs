@@ -4253,6 +4253,8 @@ function scannerHarness(gate, autoTeams = []) {
 
 test('scanner: a team without an assigned station uses the configured timed fallback', () => {
   const h = scannerHarness(null, [1]);
+  assert.equal(h.eng.respawnHint(1000), 'timer');
+  assert.ok(h.eng.state().respawnIn > 0, 'fallback exposes the timer countdown');
   h.adv(8000); h.eng.tick();
   assert.equal(h.eng.alive, true, 'the uncovered team must not stay down forever');
   assert.ok(h.facts.some(f => f.type === 'respawn'), 'the fallback is a normal respawn fact');
