@@ -88,6 +88,18 @@ test('hit_taken + death credit the fresh $HIR shooter', () => {
   assert.equal(death.shooter_num, 19); assert.equal(h.eng.alive, false); assert.equal(h.eng.deaths, 1);
 });
 
+test('dual-emitter words share one physical-shot group', () => {
+  const h = harness(); h.bundle.dual_emitters = [{ proto: 0, subtype: 0, body: 8, headset: 1, cycle_ms: 100 }];
+  h.kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$HIR,4,0,19,2,8,0,0,*').frame('$HP,45,62,0,*');
+  h.frame('$HIR,0,0,19,2,1,0,0,*').frame('$HP,45,61,0,*');
+  const hits = h.facts.filter(f => f.type === 'hit_taken');
+  assert.equal(hits.length, 2);
+  assert.equal(hits[0].shot_group, hits[1].shot_group);
+  h.frame('$HIR,4,0,19,2,8,0,0,*').frame('$HP,45,53,0,*');
+  assert.notEqual(h.facts.filter(f => f.type === 'hit_taken')[2].shot_group, hits[1].shot_group);
+});
+
 test('F72: a proto-15 beacon does not hit-latch, does not emit hit_taken, does not touch pools, and surfaces owner+magnitude', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();  // live, alive
   const hpBefore = h.eng.hp, armorBefore = h.eng.armor;
@@ -3920,6 +3932,11 @@ test('score push exposes hits and the board; lives derive from config.respawn.li
   const s = h.eng.state();
   assert.equal(s.hits, 8); assert.equal(s.board.cap, 25); assert.equal(s.board.teams[1].score, 21);
   assert.equal(s.fragLimit, 25); assert.equal(s.lives, null, 'no lives cap in this config');
+  h.eng.config.scoring = { frag_limit: 10, win_by: 'objective' };
+  assert.equal(h.eng.state().fragLimit, null);
+  assert.equal(h.eng.state().board.cap, null, 'objective scoring hides an ignored legacy kill cap');
+  h.eng.config.scoring = { frag_limit: 10 };
+  assert.equal(h.eng.state().fragLimit, 10, 'legacy kill configs without win_by retain their cap');
   h.eng.config.respawn.lives = 3; h.eng.deaths = 2;
   assert.equal(h.eng.state().lives, 1);
 });
@@ -4170,14 +4187,24 @@ test('the bundle\'s swap_ms is the SWITCHING window; without it the node assumes
 
 // ---------- utility items: scanner respawn at a station (docs/spec/utility.md §4) ----------
 function stationEntry(o = {}) { return { role: 'station', id: 5, kind: 'respawn', team: 1, state: 1, value: 0, seq: 0, game: 0, threshold: -60, rssi: -50, raw: -50, present: true, ...o }; }
-function scannerHarness(gate) {
+function scannerHarness(gate, autoTeams = []) {
   const h = harness({ respawn: 'scanner' });
   if (gate) h.config.respawn.gate = gate;
+  h.config.respawn_auto_teams = autoTeams;
   h.kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame('$HP,0,0,0,*');
   assert.equal(h.eng.alive, false, 'precondition: dead');
   return h;
 }
+
+test('scanner: a team without a station uses timed respawn state and behavior', () => {
+  const h = scannerHarness(null, [1]);
+  assert.equal(h.eng.state().respawnAuto, true);
+  assert.equal(h.eng.state().respawnHint, 'timer');
+  assert.ok(h.eng.state().respawnIn > 0);
+  h.adv(8000); h.eng.tick();
+  assert.equal(h.eng.alive, true);
+});
 
 test('scanner + trigger gate: dead past the delay, at own-team station, trigger pull → revive with the station id', () => {
   const h = scannerHarness();
