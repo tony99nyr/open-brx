@@ -2320,14 +2320,14 @@ class Compiler:
             headset = (row.get("wire") or {}).get("headset_dmg")
             if headset is None:
                 continue
-            frame = self.resolve(wid, 0).split(",")
-            cell = self._weapon_cell(wid)
+            frame = self.catalog.resolve(wid, 0).split(",")
+            cell = plan.cell_for(wid) or self._weapon_cell(wid)
             if cell is None:
                 continue
             dual_emitters.append({"proto": int(cell[0] or 0), "subtype": int(cell[1] or 0),
                                   "body": int(frame[self.catalog._T["dmg"] + 1] or 0),
                                   "headset": int(frame[self.catalog._T["headset_dmg"] + 1] or 0),
-                                  "cycle_ms": int(self.cycle_ms(wid) or 0)})
+                                  "cycle_ms": int(self.catalog.cycle_ms(wid) or 0)})
         if dual_emitters:
             bundle["dual_emitters"] = dual_emitters
         # A15.3: the pains are OURS -- the three $PSET pain fields ship empty and the node plays one of these on each

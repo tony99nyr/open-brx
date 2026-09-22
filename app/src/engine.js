@@ -4752,16 +4752,18 @@ export class Engine {
       // and dropped, so MC could not see WHICH sensor caught a hit — answering that took the phone's
       // raw frame ring (field 2026-09-01). One field, and the question becomes readable live.
       const now = this.now(), prior = this._lastHitFact;
-      const spec = this._dualEmitters.find(s => Number(s.proto) === this.latch.ir_proto && Number(s.subtype) === this.latch.ir_subtype);
+      const candidates = this._dualEmitters.filter(s => Number(s.proto) === this.latch.ir_proto && Number(s.subtype) === this.latch.ir_subtype);
       // The measured order is barrel word first, headset word second. Keeping that
       // direction matters for rapid SMG fire: the next pull's barrel word (8) may
-      // arrive soon after the previous pull's headset word (1).
-      const valuesMatch = spec && dmg === Number(spec.headset) && prior && prior.dmg === Number(spec.body);
-      const equalDual = spec && Number(spec.body) === Number(spec.headset) && prior && prior.dmg === dmg
-        && prior.sensor !== this.latch.sensor && now - prior.at <= 150 && Number(spec.cycle_ms) > 150;
+      // arrive soon after the previous pull's headset word (1). Match magnitudes too,
+      // because several weapons share the stock <0,0> cell.
+      const spec = candidates.find(s => prior && Number(s.body) === prior.dmg && Number(s.headset) === dmg);
+      const valuesMatch = !!spec;
+      const equalDual = candidates.find(s => Number(s.body) === Number(s.headset) && prior && prior.dmg === dmg
+        && now - prior.at <= 150 && Number(s.cycle_ms) > 150);
       const paired = prior && now - prior.at <= 150 && prior.shooter_num === this.latch.shooter_num
         && prior.ir_proto === this.latch.ir_proto && prior.ir_subtype === this.latch.ir_subtype
-        && prior.crit === this.latch.crit && (valuesMatch || equalDual);
+        && prior.crit === this.latch.crit && (valuesMatch || !!equalDual);
       const shot_group = paired ? prior.shot_group : `${this._hitGroupEpoch}:${++this._hitGroupSeq}`;
       this.emitFact({ type: 'hit_taken', match_id: this.matchId, shooter_num: this.latch.shooter_num,
         shooter_team: this.latch.shooter_team, dmg, ir_proto: this.latch.ir_proto,
