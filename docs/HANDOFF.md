@@ -9,9 +9,12 @@ The bench order and the desk-work list live in one place: [`bench-plan.md`](benc
 
 The 2026-09-20 playtest fixes are committed on `main`: score caps are opt-in, fresh Charge Rifle ammo is
 published, Breacher/Toxin and SMG headset damage are supported, dual-emitter hits are grouped and version-gated,
-LOAD announcements retry after reconnects, shields render as a separate HUD pool, and scanner games with one
-team-scoped station warn the operator while uncovered teams use timed AUTO respawn. Focused app and MC suites are
-green; remaining low polish is stale LOAD copy and shield-zero text styling during recharge.
+LOAD announcements retry after reconnects, shields render as a separate HUD pool, scanner games with one
+team-scoped station warn the operator while uncovered teams use timed AUTO respawn, and utility mode now auto-joins
+an advertised Mission Control service on native phones. Focused app and MC suites are green. The playtest station
+deaths occurred 2.7–4.2 seconds after station respawn, beyond the configured 2-second protection window; the wire
+profile and regression tests show protection was active. Remaining low polish is stale LOAD copy and shield-zero
+text styling during recharge.
 
 App **0.4.4 is ready on branch `integrate-2026-09-19`, NOT yet published as a GitHub release and NOT yet
 pushed. Tony publishes and field-tests it after lunch.** It carries 0.4.1-0.4.4 (flap-backoff fixes, picker
