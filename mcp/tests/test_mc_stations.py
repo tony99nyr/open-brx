@@ -394,6 +394,17 @@ def test_a_station_gated_game_with_nothing_assigned_says_so_in_config_warnings()
     assert not any("PHONE IS ASSIGNED" in w or "RESPAWN STATION" in w for w in u.config_warnings)
 
 
+def test_scanner_respawn_warns_when_one_team_has_no_station():
+    s = _sess(respawn={"type": "scanner", "delay_s": 15})
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 3})
+    partial = [w for w in s.config_warnings if "SCANNER RESPAWN HAS NO STATION FOR" in w]
+    assert partial and "YELLOW" in partial[0], s.config_warnings
+    s.net.simulate_utility_hello("util-2")
+    s.set_station("util-2", {"kind": "respawn", "team": "yellow", "id": 4})
+    assert not [w for w in s.config_warnings if "SCANNER RESPAWN HAS NO STATION FOR" in w]
+
+
 def test_clearing_an_assignment_shrinks_the_allow_list_the_others_echo():
     s = _sess()
     s.net.simulate_utility_hello("util-1"); s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 3})
