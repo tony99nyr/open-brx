@@ -112,6 +112,13 @@ def test_put_config_refuses_bad_params_and_stores_the_complete_set():
     assert s.config["mode_params"] == {r["name"]: r["default"] for r in params_schema_json("extraction")}
 
 
+def test_kill_modes_default_to_time_only_until_operator_sets_a_score_cap():
+    """Playtest 2026-09-20: a score cap is optional; the clock is the reliable default."""
+    for mode in ("tdm", "ffa"):
+        scoring = default_config(mode)["scoring"]
+        assert scoring == {"frag_limit": None, "win_by": "kills"}
+
+
 def test_the_compiler_refuses_bad_params_too_and_the_config_still_pushes_when_they_are_good():
     """Belt and braces: a config that never went through PUT (a fixture, the CLI) is still refused by
     `validate()`. And the honest CONTROL: a good set passes validate, compiles, and rides the pushed

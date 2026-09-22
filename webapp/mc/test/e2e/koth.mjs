@@ -488,15 +488,15 @@ step('setup-warning', async ({ browser, base }) => {
 // The step is only useful where it is ACTIONABLE. The operator reads "place the grenade" on GAMES,
 // then walks out to place it from LOBBY (and during the runway, from ARMED) — and until 10437d6 it was
 // gone from both. `SetupSteps` is deliberately narrowed to /^SETUP:/, so this also asserts the
-// NEGATIVE: the $SIR multiplier rows and the frag-limit advisory the same server sends must NOT be on
+// NEGATIVE: the $SIR multiplier rows and other technical advisories must NOT be on
 // the last screen before the horn, or the operator learns to ignore the strip that matters.
 step('setup-steps-prematch', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
   await pickKoth(pg, { ms: 6000, what: 'KotH playing' });
   // CONTROL: the server really is sending advisories alongside the SETUP step, or "they are not on
-  // screen" would pass on an empty list. A frag limit on a venue with no coverage model adds a second
-  // kind (compile.py) — set it so the negative covers more than the $SIR rows.
+  // screen" would pass on an empty list. A stale frag limit on an objective game is deliberately
+  // ignored by the scorer and must not invent a coverage warning either.
   const put = await fetch(`${base}/api/config`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ scoring: { frag_limit: 10, win_by: 'objective' } }) });
   expect(put.ok, `PUT a frag_limit onto the koth config (${put.status})`);
   const warns = (await (await fetch(`${base}/api/state`)).json()).config_warnings ?? [];
@@ -504,7 +504,7 @@ step('setup-steps-prematch', async ({ browser, base }) => {
   const advisories = warns.filter(w => !/^SETUP:/i.test(w));
   expect(setup.length >= 1, `the server sends a SETUP step (saw ${JSON.stringify(warns.slice(0, 2))})`);
   expect(advisories.some(w => /\$SIR/.test(w)), 'CONTROL: the server also sends $SIR advisories');
-  expect(advisories.some(w => /frag_limit/i.test(w)), 'CONTROL: the server also sends the frag-limit advisory');
+  expect(!advisories.some(w => /frag_limit/i.test(w)), 'an ignored objective cap sends no frag-limit advisory');
 
   await armMatch(base);                       // ARMED renders nothing without a schedule
   for (const view of ['lobby', 'armed']) {

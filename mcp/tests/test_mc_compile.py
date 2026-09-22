@@ -20,6 +20,13 @@ def test_validate_rejects_an_untyped_win_by_typo():
     result = C.validate(cfg, [])
     assert any("scoring.win_by" in error for error in result["errors"]), result
 
+
+def test_only_kill_scoring_compiles_a_frag_limit_into_the_gun_game():
+    cfg = _cfg(frag=10)
+    assert C._to_gc(cfg).frag_limit == 10
+    cfg["scoring"] = {"frag_limit": 10, "win_by": "objective"}
+    assert C._to_gc(cfg).frag_limit == 0
+
 _TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
           {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2}]
 
@@ -284,6 +291,10 @@ def test_validate_frag_limit_without_coverage_warns_not_errors():
     r = C.validate(_cfg(frag=25), [_player(num=1)])
     assert r["ok"], "frag_limit must not be a hard error"
     assert any("frag_limit" in w for w in r["warnings"]), "it should WARN (A6)"
+    cfg = _cfg(frag=10)
+    cfg["scoring"] = {"frag_limit": 10, "win_by": "objective"}
+    r = C.validate(cfg, [])
+    assert not any("frag_limit" in w for w in r["warnings"]), "an ignored objective cap is not an early end"
 
 
 def test_validate_unknown_weapon():

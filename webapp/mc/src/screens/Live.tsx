@@ -8,6 +8,7 @@ import { columnEdges, type Column } from './columns';
 import { Blink, GhostButton, Num, ScrollX, Tag, shortCoverageLine } from '../ui';
 import { OrphanMatch } from '../ui/OrphanMatch';
 import { OperatorMenu, operatorMenuId } from './OperatorMenu';
+import { isKillScored } from './gameSummary';
 
 // S24 (game test 2026-09-11, D4): the board was `minmax(130px,1.5fr) 40px 40px 40px 52px 56px 48px …`
 // at `gap:'0 10px'` with 9 px headers over 14-16 px values, and K/D/A were three identical right-aligned
@@ -95,7 +96,7 @@ export function Live() {
   const remaining = Math.max(0, lv.ends_t - serverNow()) / 1000;
   const teamIds = state.config.mode === 'ffa' ? [] : state.config.teams.map(t => t.team_id);
   const rows = [...lv.rows].sort((a, b) => b.kills - a.kills);
-  const cap = state.config.scoring.frag_limit;
+  const cap = isKillScored(state.config) ? state.config.scoring.frag_limit : null;
   // A28.4: derived, never asserted — grey the count while the tunnel is off, since it can only be 0.
   // Same readout as LOBBY/ARMED: a tunnel that dies mid-match must not go silent just because the
   // operator moved on to MATCH.

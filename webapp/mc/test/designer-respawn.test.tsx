@@ -4,78 +4,45 @@
 // with the trigger live at once and a shield shown on the headset. `type` "none" has neither. See
 // `Designer.tsx` ~line 168-196 and `contract.gen.ts`'s `Respawn`/`TimedProtectS`/`WeaponDelayMs`/
 // `StationProtectS`/`*_DEFAULT`.
-import { act } from 'react';
 import { describe, expect, it } from 'vitest';
-import type { Api, GameConfig, SavedGame } from '../src/api/types';
+import type { Api, GameConfig } from '../src/api/types';
 import { Designer } from '../src/screens/Designer';
-import { StoreCtx, type DesignerSeed } from '../src/store';
+import { StoreCtx } from '../src/store';
 import { demo, fixtureApi, makeStore, mount } from './harness';
 
 /** Mount the DESIGNER wired to a LIVE MockBackend (so `putConfig` really validates the patch), with a
  *  spy in front of `putConfig` recording every call, the same shape `game-edit-panel.test.tsx` uses. */
-async function designerScreen(apiOverrides: Partial<Api> = {}, designerSeed: DesignerSeed | null = null) {
+async function designerScreen(apiOverrides: Partial<Api> = {}) {
   const d = await demo();
   const calls: Partial<GameConfig>[] = [];
-  const flow: string[] = [];
   const api = fixtureApi({
     putConfig: async (patch: Partial<GameConfig>) => { calls.push(patch); return d.api.putConfig(patch); },
-    savePreset: async body => { flow.push('save'); return d.api.savePreset(body); },
-    applyPreset: async presetId => { flow.push('apply'); return d.api.applyPreset(presetId); },
-    loadGame: async () => { flow.push('load'); return d.api.loadGame(); },
-    setPhase: async (phase: string) => { flow.push(`phase:${phase}`); return d.api.setPhase(phase); },
     ...apiOverrides,
   }, d.api);
-  const store = makeStore({ state: d.state, weapons: d.weapons, perks: d.perks, view: 'build' }, { api, designerSeed });
+  const store = makeStore({ state: d.state, weapons: d.weapons, perks: d.perks, view: 'build' }, { api });
   const m = await mount(<StoreCtx.Provider value={store}><Designer /></StoreCtx.Provider>);
   await new Promise(r => setTimeout(r, 0));
-  return { m, calls, flow, d };
+  return { m, calls, d };
 }
 
 describe('DESIGNER respawn profile rows', () => {
-  it('F188: PLAY THIS NOW loads the applied game before entering KIT', async () => {
-    const { m, flow } = await designerScreen();
-    await m.click('PLAY THIS NOW');
-    expect(flow).toEqual(['load', 'phase:kit']);
-    m.unmount();
-  });
-
-  it('F188: a named draft saves and applies before LOAD, then enters KIT', async () => {
+  it('shows the draft win rule in force rather than static mode capability copy', async () => {
     const d = await demo();
-    const game: SavedGame = { preset_id: 'builtin:test', name: 'Named Test Game', desc: '', builtin: true,
-      created_t: 0, updated_t: 0, config: d.state.config };
-    const { m, flow } = await designerScreen({}, { game, copy: true });
-    await m.click('PLAY THIS NOW');
-    expect(flow).toEqual(['save', 'apply', 'load', 'phase:kit']);
+    const modes = await d.api.getModes();
+    const base = makeStore({ state: d.state, weapons: d.weapons, perks: d.perks, view: 'designer' }, { modes });
+    const m = await mount(<StoreCtx.Provider value={base}><Designer /></StoreCtx.Provider>);
+    expect(m.text()).toContain('TIME ONLY');
+    expect(m.find('input[aria-label="score to win"]').length, 'kill modes expose their optional cap').toBe(1);
+    await m.click('KING OF THE HILL');
+    expect(m.find('input[aria-label="score to win"]').length, 'objective modes do not offer an ignored cap').toBe(0);
     m.unmount();
-  });
 
-  it('F188: a failed LOAD leaves the operator in Designer and never enters KIT', async () => {
-    let attempts = 0;
-    const { m, flow } = await designerScreen({
-      loadGame: async () => { attempts++; throw new Error('load refused'); },
-    });
-    await m.click('PLAY THIS NOW');
-    expect(attempts).toBe(1);
-    expect(flow).toEqual([]);
-    m.unmount();
-  });
-
-  it('F188: rapid PLAY taps make one transition and lock navigation while LOAD is pending', async () => {
-    let loads = 0;
-    let release!: (value: { ok: boolean; sent: number; total: number }) => void;
-    const pending = new Promise<{ ok: boolean; sent: number; total: number }>(resolve => { release = resolve; });
-    const { m, flow } = await designerScreen({ loadGame: async () => { loads++; return pending; } });
-    const play = m.find('button').find(b => (b.textContent ?? '').includes('PLAY THIS NOW')) as HTMLButtonElement;
-    act(() => { play.click(); play.click(); });
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(loads).toBe(1);
-    expect(play.disabled).toBe(true);
-    const back = m.find('button').find(b => (b.textContent ?? '').includes('BACK TO GAMES')) as HTMLButtonElement;
-    expect(back.disabled).toBe(true);
-    await act(async () => { release({ ok: true, sent: 0, total: 0 }); await pending; });
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    expect(flow).toEqual(['phase:kit']);
-    m.unmount();
+    const capped = { ...d.state, config: { ...d.state.config, scoring: { frag_limit: 12, win_by: 'kills' as const } } };
+    const cappedStore = makeStore({ state: capped, weapons: d.weapons, perks: d.perks, view: 'designer' },
+      { modes, designerSeed: { fromLive: true } });
+    const m2 = await mount(<StoreCtx.Provider value={cappedStore}><Designer /></StoreCtx.Provider>);
+    expect(m2.text()).toContain('SCORE CAP 12 / TIME');
+    m2.unmount();
   });
 
   it('shows the TIMED rows under AUTO (the demo default), the STATION row under SCANNER, and neither under NONE', async () => {

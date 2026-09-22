@@ -204,7 +204,7 @@ def _mock_mode_defaults() -> dict[str, dict]:
     assert base_respawn and base_scoring, "base()'s own respawn/scoring shape changed — update this parser"
     base_defaults = {
         "respawn": {"type": base_respawn.group(1), "delay_s": float(base_respawn.group(2))},
-        "frag_limit": int(base_scoring.group(1)),
+        "frag_limit": None if base_scoring.group(1) == "null" else int(base_scoring.group(1)),
         "win_by": base_scoring.group(2),
     }
 

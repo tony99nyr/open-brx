@@ -152,7 +152,8 @@ class FakeCompiler:
         covered = asserted or opts.get("coverage") == "full"
         if not config.get("time_limit_s") and not asserted:
             errors.append("time_limit_s is required on the phone path")
-        if config.get("scoring", {}).get("frag_limit") and not covered:
+        scoring = config.get("scoring", {})
+        if (scoring.get("frag_limit") and scoring.get("win_by") in (None, "", "kills") and not covered):
             warnings.append("frag_limit only ends the match for nodes in coverage; everyone stops at time_limit_s")
         nums = [p["player_num"] for p in roster]
         if len(set(nums)) != len(nums):

@@ -25,7 +25,7 @@ from .policy import SIDEARM_TAG          # F146: one vocabulary for "this is a b
 from .types import (MAX_PLAYERS, OBJECTIVE_MODES, STATION_PROTECT_S_DEFAULT, STATION_SOURCES, TIMED_PROTECT_S_DEFAULT,
                     TRIGGER_AFTER_PROTECT_MS, WEAPON_DELAY_MS_DEFAULT, DotSpec, FrameBundle, GameConfig, Health,
                     HealthPreset, PerkEffectsResolved, PerkView, Player, RespawnProfile, StationProtectS, Team,
-                    TimedProtectS, ValuePair, VoiceOption, WeaponDelayMs, Weapon, parse_win_by)
+                    TimedProtectS, ValuePair, VoiceOption, WeaponDelayMs, Weapon, parse_app_ver, parse_win_by)
 from . import presentation as _pres
 from .. import poolgauge as pg
 from .. import voices as _voices
@@ -1660,7 +1660,8 @@ class Compiler:
             game_time_s=config["time_limit_s"] or 0,
             respawn_s=config["respawn"]["delay_s"],
             respawns=0 if config["respawn"]["type"] == "none" else None,
-            frag_limit=config["scoring"].get("frag_limit") or 0,
+            frag_limit=((config["scoring"].get("frag_limit") or 0)
+                        if config["scoring"].get("win_by") in (None, "", "kills") else 0),
             volume=self.play_volume(config["environment"]),
             outdoor=config["environment"] == "outdoor",
             leds=(led.get("mode", "team") != "off") and not blackout,
@@ -2874,7 +2875,9 @@ class Compiler:
                                     f"on the victim is uncharacterised (weapon-design.md §6.2)")
 
         # frag-limit on a non-covered venue is a coverage-zone early end, not a guaranteed win (C1/M7)
-        if (config.get("scoring", {}).get("frag_limit") or 0) > 0 and not covered:
+        scoring = config.get("scoring", {})
+        if ((scoring.get("frag_limit") or 0) > 0
+                and scoring.get("win_by") in (None, "", "kills") and not covered):
             warnings.append("frag_limit on a non-full-coverage venue is an in-coverage early end only; "
                             "the guaranteed end is time_limit_s (A4.8) — winner is provisional until recap")
 

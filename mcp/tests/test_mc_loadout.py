@@ -1103,6 +1103,17 @@ def test_kit_open_gates_phone_picks_and_assign_carries_game_brief():
     assert _last_ack(net, 0)["ok"] is True
 
 
+def test_game_brief_reports_the_configured_kill_rule():
+    """The phone must show the rule in force, not the mode's menu capability copy."""
+    s, _net, _clock, _ps = mk()
+    assert s.game_brief()["win_text"] == "TIME ONLY"
+    s.set_config({"scoring": {"frag_limit": 12, "win_by": "kills"}})
+    assert s.game_brief()["win_text"] == "SCORE CAP 12 / TIME"
+    s.set_config({"mode": "ffa"})
+    s.set_config({"scoring": {"frag_limit": 7, "win_by": "kills"}})
+    assert s.game_brief()["win_text"] == "FRAG LIMIT 7 / TIME"
+
+
 def test_apply_preset_marks_the_playing_game_and_edits_clear_it():
     """A10 §8 (review #0): the state remembers WHICH saved game was applied — a duplicate is content-identical to its
     source, so the UI cannot tell them apart by config. Venue-only PUTs keep it; any real edit clears it."""

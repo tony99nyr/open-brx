@@ -148,14 +148,14 @@ class ModeRow(TypedDict):
 
 MODES: list[ModeRow] = [
     {"mode": "tdm", "name": "TEAM DEATHMATCH", "abbr": "TDM", "desc": "Teams score per elimination",
-     "brief": "Squads score a point per elimination. Downed players respawn after the delay and rejoin. First team to the score cap — or the highest score at the time limit — takes the match.",
-     "teams_text": "2–4 TEAMS", "win_text": "SCORE CAP / TIME", "respawn_text": "ON · TIMED",
-     "teams": ["blue", "yellow"], "win_by": "kills", "frag_limit": 25, "respawn": {"type": "auto", "delay_s": 15},
+     "brief": "Squads score a point per elimination. Downed players respawn after the delay and rejoin. The highest score at the time limit takes the match; the operator can also set an optional score cap.",
+     "teams_text": "2–4 TEAMS", "win_text": "TIME · OPTIONAL SCORE CAP", "respawn_text": "ON · TIMED",
+     "teams": ["blue", "yellow"], "win_by": "kills", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
      "preset": "standard", "proven": True},
     {"mode": "ffa", "name": "FREE-FOR-ALL", "abbr": "FFA", "desc": "Every operator for themselves",
-     "brief": "No teams — everyone is a target. Each elimination scores a point. First to the frag limit, or the top score when time expires, wins.",
-     "teams_text": "NONE · ALL VS ALL", "win_text": "FRAG LIMIT / TIME", "respawn_text": "ON · TIMED",
-     "teams": ["ffa"], "win_by": "kills", "frag_limit": 25, "respawn": {"type": "auto", "delay_s": 15},
+     "brief": "No teams — everyone is a target. Each elimination scores a point. The top score when time expires wins; the operator can also set an optional frag limit.",
+     "teams_text": "NONE · ALL VS ALL", "win_text": "TIME · OPTIONAL FRAG LIMIT", "respawn_text": "ON · TIMED",
+     "teams": ["ffa"], "win_by": "kills", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
      "preset": "standard", "proven": True},
     {"mode": "infection", "name": "INFECTION", "abbr": "INF", "desc": "One infected; survive the spread",
      "brief": "One operator starts infected. Survivors who go down switch sides and hunt their old squad. Survivors win by outlasting the clock; the infected win by converting everyone.",
@@ -826,6 +826,14 @@ class Session:
             # `.get("max_shield")` calls downstream to each guess 0 on their own. Idempotent on an
             # already-modern config, same "complete-or-absent" rule as `loadout_policy`/`mode_params` below.
             self.config["health"] = _compile.normalize_health(self.config.get("health"))
+            # Pre-win_by snapshots carried only the cap. Restore the mode's rule explicitly so the scorer,
+            # compiler and every screen cannot disagree about whether that cap is live.
+            old_scoring = self.config.get("scoring") if isinstance(self.config.get("scoring"), dict) else {}
+            mode_scoring = default_config(self.config["mode"])["scoring"]
+            self.config["scoring"] = {
+                "frag_limit": old_scoring.get("frag_limit", mode_scoring["frag_limit"]),
+                "win_by": parse_win_by(old_scoring.get("win_by"), mode_scoring["win_by"]),
+            }
             self.config["loadout_policy"] = _policy.normalize(self.config.get("loadout_policy"), self.config["mode"])
             # A18: a snapshot persisted before mode_params existed restores a koth/lms/extraction config with
             # none, and `_validate` skips an ABSENT set, so the wire pushed without it (polish review 2026-09-11).
@@ -1299,11 +1307,18 @@ class Session:
                 saved = next((r for r in self.presets.list() if {k: v for k, v in r["config"].items() if k != "config_id"} == sig), None)
         except Exception:
             saved = None
+        scoring = cfg.get("scoring") or {}
+        if scoring.get("win_by") in (None, "", "kills"):
+            cap = scoring.get("frag_limit")
+            win_text = (f"{'FRAG LIMIT' if cfg.get('mode') == 'ffa' else 'SCORE CAP'} {cap} / TIME"
+                        if cap is not None else "TIME ONLY")
+        else:
+            win_text = mode.get("win_text")
         return {
             "name": (saved or {}).get("name") or mode.get("name") or str(cfg.get("mode", "")).upper(),
             "desc": (saved or {}).get("desc") or mode.get("brief") or mode.get("desc") or "",
             "mode": cfg.get("mode"), "mode_name": mode.get("name"), "abbr": mode.get("abbr"),
-            "teams_text": mode.get("teams_text"), "win_text": mode.get("win_text"), "respawn_text": mode.get("respawn_text"),
+            "teams_text": mode.get("teams_text"), "win_text": win_text, "respawn_text": mode.get("respawn_text"),
             "time_limit_s": cfg.get("time_limit_s"), "respawn": cfg.get("respawn"), "health": cfg.get("health"),
             "environment": cfg.get("environment"), "night": bool(cfg.get("night")),
             "loadout_line": ", ".join(parts) + ".", "ruleset": preset_lbl, "hud_select": bool(pol.get("hud_select")),
@@ -4709,7 +4724,8 @@ class Session:
         The scorer is PASSED for the same reason `_scorer_recap` takes one: both callers are already
         inside an `if self.scorer` and there is no board without one. Spelled `scorer`, not `sc`: the
         team comprehension below already binds `sc` to a SCORE."""
-        cap = (self.config.get("scoring") or {}).get("frag_limit")
+        scoring = self.config.get("scoring") or {}
+        cap = scoring.get("frag_limit") if scoring.get("win_by") in (None, "", "kills") else None
         if self.config.get("mode") == "ffa":
             top = sorted(scorer.rows(), key=lambda r: -r["kills"])[:3]
             return {"teams": [{"team_id": "ffa", "name": r["display"], "score": r["kills"]} for r in top], "cap": cap}

@@ -3920,6 +3920,14 @@ test('score push exposes hits and the board; lives derive from config.respawn.li
   const s = h.eng.state();
   assert.equal(s.hits, 8); assert.equal(s.board.cap, 25); assert.equal(s.board.teams[1].score, 21);
   assert.equal(s.fragLimit, 25); assert.equal(s.lives, null, 'no lives cap in this config');
+  h.eng.config.scoring = { frag_limit: 10, win_by: 'objective' };
+  const objective = h.eng.state();
+  assert.equal(objective.fragLimit, null, 'an ignored legacy cap is not exposed to the HUD');
+  assert.equal(objective.board.cap, null, 'an old server cannot make the HUD advertise that ignored cap');
+  h.eng.config.scoring = { frag_limit: 10 };
+  const legacy = h.eng.state();
+  assert.equal(legacy.fragLimit, 10, 'an older MC omitted win_by from a kill game; its cap stays visible');
+  assert.equal(legacy.board.cap, 25, 'the older MC score board cap stays authoritative for a kill game');
   h.eng.config.respawn.lives = 3; h.eng.deaths = 2;
   assert.equal(h.eng.state().lives, 1);
 });

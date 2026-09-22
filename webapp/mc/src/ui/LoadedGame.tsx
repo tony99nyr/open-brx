@@ -13,7 +13,7 @@
 // `LABEL / value` markup — because `test/e2e/koth.mjs` reads those rows by label and a relabelled row
 // is an invisible break.
 import type { GameConfig, ModeInfo, PerkView, Player, WeaponView } from '../api/types';
-import { objectiveLine, rulesLine } from '../screens/gameSummary';
+import { isKillScored, objectiveLine, rulesLine, winLine } from '../screens/gameSummary';
 import { F, T, TAB } from '../tokens';
 import { Blink } from './index';
 
@@ -33,7 +33,7 @@ export function gameSettingRows(
 ): SettingRow[] {
   const rows: SettingRow[] = [
     ['TEAMS', mode?.teams_text ?? cfg.teams.map(t => t.team_id.toUpperCase()).join(' V ') ?? '—'],
-    ['WIN', mode?.win_text ?? '—'],
+    ['WIN', winLine(cfg, mode)],
     ['RESPAWN', cfg.respawn.type === 'none' ? 'OFF · LIVES' : `${cfg.respawn.type.toUpperCase()} · ${cfg.respawn.delay_s} S`],
     ['TIME', cfg.time_limit_s ? `${Math.round(cfg.time_limit_s / 60)} MIN` : '—'],
     ['HEALTH', `HP ${cfg.health.max_hp} · ARMOR ${cfg.health.max_armor}`],
@@ -50,7 +50,7 @@ export function gameSettingRows(
   const preset = (cfg.presentation as { preset?: unknown } | undefined)?.preset;
   rows.push(
     ['MODE', (mode?.name ?? cfg.mode).toUpperCase()],
-    ['SCORING', [cfg.scoring.frag_limit != null ? `FRAG LIMIT ${cfg.scoring.frag_limit}` : '', `WIN BY ${String(cfg.scoring.win_by).toUpperCase()}`].filter(Boolean).join(' · ')],
+    ['SCORING', [isKillScored(cfg) && cfg.scoring.frag_limit != null ? `FRAG LIMIT ${cfg.scoring.frag_limit}` : '', `WIN BY ${String(cfg.scoring.win_by ?? 'kills').toUpperCase()}`].filter(Boolean).join(' · ')],
     ['PHONE PICKS', yn(cfg.loadout_policy?.hud_select)],
     ['MODE RULES', Object.keys(mp).length ? Object.entries(mp).map(([k, v]) => `${k.toUpperCase()} ${String(v).toUpperCase()}`).join(' · ') : '— (THIS MODE DECLARES NONE)'],
     ['OBJECTIVE SOURCE', cfg.station_source ? cfg.station_source.toUpperCase() : '—'],

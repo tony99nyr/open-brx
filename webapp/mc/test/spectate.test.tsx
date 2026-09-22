@@ -10,6 +10,7 @@
 import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Spectate } from '../src/screens/Spectate';
+import { Live } from '../src/screens/Live';
 import type { LiveRow, LiveView, State } from '../src/api/types';
 import { demo, makeStore, mount } from './harness';
 import { StoreCtx, type Store } from '../src/store';
@@ -54,6 +55,24 @@ const fontOf = (el: HTMLElement) => parseFloat(getComputedStyle(el).fontSize);
 afterEach(async () => { await resizeTo(JSDOM_VP.w, JSDOM_VP.h); });
 
 describe('S25 · the spectator board', () => {
+  it('does not advertise an ignored legacy score cap on live or projector boards', async () => {
+    const d = await demo();
+    const live: LiveView = {
+      match_id: 'm1', go_live_t: Date.now() - 60_000, time_limit_s: 600,
+      ends_t: Date.now() + 540_000, score: { blue: 9, green: 4 }, rows: [row()],
+    };
+    const state: State = {
+      ...d.state, phase: 'live', live,
+      config: { ...d.state.config, mode: 'koth', scoring: { frag_limit: 10, win_by: 'objective' } },
+    };
+    for (const screen of [<Live key="live" />, <Spectate key="spectate" />]) {
+      const store = makeStore({ ...d, state, view: 'live' }, { feed: [] });
+      const m = await mount(<StoreCtx.Provider value={store}>{screen}</StoreCtx.Provider>);
+      expect(m.text()).not.toContain('FIRST TO 10');
+      m.unmount();
+    }
+  });
+
   it('shows the two team scores, the clock and the leaderboard', async () => {
     const m = await spectate();
     const t = m.text();

@@ -36,6 +36,7 @@ import { useStore } from '../store';
 import { F, T, fmtClock, teamColor } from '../tokens';
 import { Num, ScrollX } from '../ui';
 import { bestStreak } from './Live';
+import { isKillScored } from './gameSummary';
 
 /** Type sizes, in px, computed from the viewport the same way `clamp(min, Npx-per-vh, max)` would.
  *  Everything here is deliberately above the console's own scale — this screen is not operated, it is
@@ -107,7 +108,7 @@ export function Spectate() {
   const ffa = state.config.mode === 'ffa';
   const teamIds = ffa ? [] : (state.config.teams ?? []).map(t => t.team_id);
   const rows: LiveRow[] = [...lv.rows].sort((a, b) => b.kills - a.kills || a.deaths - b.deaths);
-  const cap = state.config.scoring.frag_limit;
+  const cap = isKillScored(state.config) ? state.config.scoring.frag_limit : null;
   const teamName = (id: string) => (state.teams.find(t => t.team_id === id)?.name ?? id).toUpperCase();
 
   return (

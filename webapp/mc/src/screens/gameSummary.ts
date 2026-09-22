@@ -1,5 +1,5 @@
 // Shared game-summary helpers (GAMES cards, the DESIGNER rail, the KIT rules chip) — one generator everywhere.
-import type { ConfigView, GameConfig, Health, HealthPreset, LoadoutPolicy, LoadoutPool, LoadoutPoolReasons, PerkView, PoolEmptyCode, SlotRule, StationSourceId, WeaponView } from '../api/types';
+import type { ConfigView, GameConfig, Health, HealthPreset, LoadoutPolicy, LoadoutPool, LoadoutPoolReasons, ModeInfo, PerkView, PoolEmptyCode, SlotRule, StationSourceId, WeaponView } from '../api/types';
 import { STATION_SOURCE_IDS } from '../api/types';
 
 /** The rule engine, mirrored from mcp/brx_mcp/mc/policy.py `pool()`. The DESIGNER computes the pool from the rules
@@ -13,6 +13,18 @@ import { STATION_SOURCE_IDS } from '../api/types';
  *  carried its `caution` since 2026-08-26; the CATALOGUE page still lists it, KIT and the DESIGNER do
  *  not. Delete the id here AND in policy.py the day its row is fixed on the bench. */
 export const UNPLAYABLE_IDS = new Set(['energy_launcher']);
+
+/** Missing win_by is the pre-contract kill-game shape. Preserve its cap until the current server normalizes it. */
+export const isKillScored = (cfg: Pick<GameConfig, 'scoring'>): boolean =>
+  cfg.scoring.win_by == null || cfg.scoring.win_by === 'kills';
+
+/** The win rule in force for this config. ModeInfo describes capability; this describes tonight's game. */
+export function winLine(cfg: Pick<GameConfig, 'mode' | 'scoring'>, mode?: Pick<ModeInfo, 'win_text'>): string {
+  if (!isKillScored(cfg)) return mode?.win_text ?? String(cfg.scoring.win_by).toUpperCase();
+  const cap = cfg.scoring.frag_limit;
+  if (cap == null) return 'TIME ONLY';
+  return `${cfg.mode === 'ffa' ? 'FRAG LIMIT' : 'SCORE CAP'} ${cap} / TIME`;
+}
 const inPool = (r: SlotRule, id: string, tags: string[]) =>
   !UNPLAYABLE_IDS.has(id)
   && (r.only_ids.length === 0 || r.only_ids.includes(id)) && !r.exclude_ids.includes(id) && !tags.some(t => r.exclude_tags.includes(t));

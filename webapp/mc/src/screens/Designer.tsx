@@ -10,7 +10,7 @@ import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, StripedSlot, T
 import { PerkGlyph } from './Kit';
 import { AdvancedPresentation } from './AdvancedPresentation';
 import { HealthPresetEditor } from './HealthPresetEditor';
-import { HEALTH_PRESET_COPY, STATION_SOURCES, TEMPLATE_RULES, UNPLAYABLE_IDS, admitsWeapons, computePool, emptyRequiredSlots, gameSig, healthPresetOf, objectiveLine, poolEmptyMessage, presetOf, rulesLine, unplayablePick, withPolicy } from './gameSummary';
+import { HEALTH_PRESET_COPY, STATION_SOURCES, TEMPLATE_RULES, UNPLAYABLE_IDS, admitsWeapons, computePool, emptyRequiredSlots, gameSig, healthPresetOf, isKillScored, objectiveLine, poolEmptyMessage, presetOf, rulesLine, unplayablePick, winLine, withPolicy } from './gameSummary';
 import { MODE_ART } from '../modeArt';
 import { CONFIG_EDITABLE_PHASES, MODE_PICK_PHASES, lockedReason } from './Games';
 
@@ -193,10 +193,12 @@ export function Designer() {
 
           {/* 2 RULES */}
           <section>
-            <SectionRule label="2 // RULES" hint={mode ? `${mode.teams_text} · ${mode.win_text}` : undefined} style={{ marginBottom: 12 }} />
+            <SectionRule label="2 // RULES" hint={mode ? `${mode.teams_text} · ${winLine(cfg, mode)}` : undefined} style={{ marginBottom: 12 }} />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '4px 28px', background: T.panel, border: `1px solid ${T.line}`, padding: '8px 18px' }}>
               <Row label={<>TIME LIMIT <Hint>Required</Hint></>}><ValueBox value={Math.round((cfg.time_limit_s ?? 0) / 60)} unit="MIN" label="time limit minutes" min={1} max={120} onChange={v => put({ time_limit_s: v * 60 })} /></Row>
-              <Row label={<>SCORE TO WIN <Hint>0 means time only</Hint></>}><ValueBox value={cfg.scoring.frag_limit ?? 0} label="score to win" min={0} max={999} onChange={v => put({ scoring: { ...cfg.scoring, frag_limit: v || null } })} /></Row>
+              {isKillScored(cfg) && (
+                <Row label={<>SCORE TO WIN <Hint>0 means time only</Hint></>}><ValueBox value={cfg.scoring.frag_limit ?? 0} label="score to win" min={0} max={999} onChange={v => put({ scoring: { ...cfg.scoring, frag_limit: v || null } })} /></Row>
+              )}
               <Row label="RESPAWN"><Seg value={cfg.respawn.type} options={[{ value: 'scanner', label: 'SCANNER' }, { value: 'auto', label: 'AUTO' }, { value: 'none', label: 'NONE' }]} onChange={v => put({ respawn: { ...cfg.respawn, type: v } })} pad="5px 11px" /></Row>
               {/* F34/F13: 1-2 s wedges the headset relay in its out-blink, and the server refuses it with a 400. The
                   control skips that band instead of letting the operator step into an error: up from 0 lands on 3,
@@ -297,7 +299,7 @@ export function Designer() {
           <div style={{ padding: '12px 18px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ font: F.mono(500, 10.5), letterSpacing: '.1em', color: T.acc, lineHeight: 1.6 }}>{rulesLine(cfg, weapons, perks)}</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 4 }}>
-              {[['BASE', mode?.name ?? cfg.mode], ['TIME', `${Math.round((cfg.time_limit_s ?? 0) / 60)} MIN`], ['WIN', cfg.scoring.frag_limit ? `${cfg.scoring.frag_limit} SCORE / TIME` : 'TIME'],
+              {[['BASE', mode?.name ?? cfg.mode], ['TIME', `${Math.round((cfg.time_limit_s ?? 0) / 60)} MIN`], ['WIN', winLine(cfg, mode)],
                 ['RESPAWN', cfg.respawn.type === 'none' ? 'OFF' : `${cfg.respawn.type.toUpperCase()} · ${cfg.respawn.delay_s} S`],
                 ['LIFE', healthPresetOf(cfg.health) === 'custom'
                   ? `HP ${cfg.health.max_hp} · AR ${cfg.health.max_armor}${cfg.health.max_shield ? ` · SH ${cfg.health.max_shield}` : ''}`

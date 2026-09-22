@@ -10,6 +10,7 @@ import { MockBackend } from '../src/mock/backend';
 import { StoreCtx } from '../src/store';
 import { makeStore, mount } from './harness';
 import type { ModeInfo, State } from '../src/api/types';
+import { GameSettings, gameSettingRows } from '../src/ui/LoadedGame';
 
 /** GAMES with a live mock backend behind it, its `modes` list loaded the way `store.tsx` loads it. */
 async function games() {
@@ -28,6 +29,18 @@ async function games() {
 }
 
 describe('KING OF THE HILL — GAMES', () => {
+  it('does not present a legacy score cap as active in an objective game', async () => {
+    const api = new MockBackend();
+    await api.putConfig({ mode: 'koth' });
+    await api.putConfig({ scoring: { frag_limit: 10, win_by: 'objective' } });
+    const [state, modes, weapons, perks] = await Promise.all([api.getState(), api.getModes(), api.getWeapons(), api.getPerks()]);
+    const mode = modes.find(x => x.mode === 'koth');
+    const m = await mount(<GameSettings rows={gameSettingRows(state.config, mode, weapons, perks, { full: true })} />);
+    expect(m.text()).toContain('SCORINGWIN BY OBJECTIVE');
+    expect(m.text()).not.toContain('FRAG LIMIT 10');
+    m.unmount();
+  });
+
   it('is in the stock shelf, and picking it shows the objective source and the grenade setup step', async () => {
     const g = await games();
     expect(g.modes.map(x => x.mode)).toContain('koth');
@@ -110,7 +123,17 @@ describe('KING OF THE HILL — GAMES', () => {
     const t = g.m.text();
     expect(t).not.toMatch(/POWER-CYCLE THE GRENADE/i);
     expect(t).not.toMatch(/GRENADE HILL/);
-    expect(t).toContain('SCORE CAP / TIME');
+    expect(t).toContain('TIME ONLY');
+    expect(t).not.toContain('SCORE CAP / TIME');
+    g.m.unmount();
+  });
+
+  it('shows the configured kill win rule rather than the mode capability copy', async () => {
+    const g = await games();
+    expect(g.m.text()).toContain('TIME ONLY');
+    await g.api.putConfig({ scoring: { frag_limit: 12, win_by: 'kills' } });
+    await g.settle();
+    expect(g.m.text()).toContain('SCORE CAP 12 / TIME');
     g.m.unmount();
   });
 });

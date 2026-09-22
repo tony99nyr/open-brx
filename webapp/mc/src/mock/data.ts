@@ -762,7 +762,7 @@ const base = (mode: string, over: Partial<GameConfig> = {}): ConfigView => ({
   night: false,
   time_limit_s: 600,
   respawn: { type: 'auto', delay_s: 15 },
-  scoring: { frag_limit: 25, win_by: 'kills' },
+  scoring: { frag_limit: null, win_by: 'kills' },
   health: { max_hp: 45, max_armor: 70, max_shield: 0, preset: 'standard' },   // S45: the Standard preset
   teams: [TEAMS[0], TEAMS[1]],
   loadout_policy: defaultPolicy(mode),
@@ -795,9 +795,9 @@ const MODE_TEXT: Record<string, Omit<ModeInfo, 'params' | 'defaults'>> = {
     "name": "TEAM DEATHMATCH",
     "abbr": "TDM",
     "desc": "Teams score per elimination",
-    "brief": "Squads score a point per elimination. Downed players respawn after the delay and rejoin. First team to the score cap — or the highest score at the time limit — takes the match.",
+    "brief": "Squads score a point per elimination. Downed players respawn after the delay and rejoin. The highest score at the time limit takes the match; the operator can also set an optional score cap.",
     "teams_text": "2–4 TEAMS",
-    "win_text": "SCORE CAP / TIME",
+    "win_text": "TIME · OPTIONAL SCORE CAP",
     "respawn_text": "ON · TIMED"
   },
   "ffa": {
@@ -805,9 +805,9 @@ const MODE_TEXT: Record<string, Omit<ModeInfo, 'params' | 'defaults'>> = {
     "name": "FREE-FOR-ALL",
     "abbr": "FFA",
     "desc": "Every operator for themselves",
-    "brief": "No teams — everyone is a target. Each elimination scores a point. First to the frag limit, or the top score when time expires, wins.",
+    "brief": "No teams — everyone is a target. Each elimination scores a point. The top score when time expires wins; the operator can also set an optional frag limit.",
     "teams_text": "NONE · ALL VS ALL",
-    "win_text": "FRAG LIMIT / TIME",
+    "win_text": "TIME · OPTIONAL FRAG LIMIT",
     "respawn_text": "ON · TIMED"
   },
   "infection": {
@@ -856,7 +856,7 @@ const MODE_TEXT: Record<string, Omit<ModeInfo, 'params' | 'defaults'>> = {
 export const MODES: ModeInfo[] = [
   { ...MODE_TEXT.tdm, params: [], defaults: base('tdm') },
   { ...MODE_TEXT.ffa, params: [],
-    defaults: base('ffa', { teams: [{ team_id: 'ffa', name: 'FFA', color: 'ffa', tid: 1 }], scoring: { frag_limit: 25, win_by: 'kills' } }) },
+    defaults: base('ffa', { teams: [{ team_id: 'ffa', name: 'FFA', color: 'ffa', tid: 1 }] }) },
   { ...MODE_TEXT.infection, params: [],
     defaults: base('infection', { respawn: { type: 'auto', delay_s: 10 }, scoring: { frag_limit: null, win_by: 'survival' } }) },
   { ...MODE_TEXT.lms, params: LMS_PARAMS,

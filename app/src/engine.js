@@ -5389,6 +5389,10 @@ export class Engine {
       // this life (a non-heat weapon never sends a non-zero one).
       heat: this.heatBySlot[this.activeSlot] != null ? this.heatBySlot[this.activeSlot] : null,
       // THE MECHANIC (`_heatBlocksFire`): can this gun shoot right now? Trusted for HEAT_STALE_MS. Nothing on
+    const killScored = !!(this.config && this.config.scoring
+      && (this.config.scoring.win_by == null || this.config.scoring.win_by === '' || this.config.scoring.win_by === 'kills'));
+    const board = this.score ? this.score.board : null;
+    const hudBoard = !killScored && board && typeof board === 'object' ? { ...board, cap: null } : board;
       // the HUD reads it -- it is published for the bench (MC only ever sees `statusBody`), and pinned by engine.test.mjs.
       overheating: this._heatBlocksFire(),
       // THE DISPLAY (`_overheatOnHud`): the OVERHEAT word, the overlay AND the hot heat bar, all from this one
@@ -5475,8 +5479,8 @@ export class Engine {
                    reloadGained: ms != null ? Math.max(0, this.reloading.mag - this.reloading.from) : null }))(this.reloadingMs()),
       reloadOutcome: this._reloadOutcome,
       held: this.heldMs(), lastButton: this.lastButton,
-      hits: this.score ? this.score.hits : null, board: this.score ? this.score.board : null,
-      fragLimit: this.config && this.config.scoring ? this.config.scoring.frag_limit : null,
+      hits: this.score ? this.score.hits : null, board: hudBoard,
+      fragLimit: killScored ? this.config.scoring.frag_limit : null,
       lives: (this.config && this.config.respawn && this.config.respawn.lives != null) ? Math.max(0, this.config.respawn.lives - this.deaths) : null,
       // A24: the pushed result and WHERE WE ARE IN WAITING FOR IT. `resultWait` is 'in' | 'pending' | 'unreached';
       // none of the three is an outcome, and there is deliberately no fourth value the HUD could read as "lost".

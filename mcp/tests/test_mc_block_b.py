@@ -151,6 +151,7 @@ def test_the_cap_never_ends_a_match_that_is_not_won_on_kills():
     s, net, clock, ps, info = go_live(2, "ffa", {"scoring": {"frag_limit": 1, "win_by": "objective"}})
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     assert s.phase == "live"
+    assert s._score_board(s.scorer)["cap"] is None, "the phone HUD must not advertise the ignored cap"
     assert not [p for p in net.pushes("control") if p[2].get("cmd") == "end"]
 
 

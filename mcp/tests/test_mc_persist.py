@@ -230,6 +230,26 @@ def test_a_snapshot_from_before_the_presentation_profile_restores_with_the_mode_
         assert s2.config[k] == fresh[k], k                    # identical to the stock mode's defaults
 
 
+def test_a_snapshot_from_before_win_by_keeps_its_kill_cap():
+    """A legacy TDM cap must not become a hidden early end after restart."""
+    r = mk(); s = r[0] if isinstance(r, tuple) else r
+    s.set_config({"scoring": {"frag_limit": 12, "win_by": "kills"}})
+    tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_path = tmp
+    s._persist_last = 0.0
+    s._persist()
+    snap = json.loads(tmp.read_text())
+    snap["config"]["scoring"].pop("win_by")
+    tmp.write_text(json.dumps(snap))
+    r2 = mk(); s2 = r2[0] if isinstance(r2, tuple) else r2
+    s2._persist_path = tmp
+    assert s2.restore_snapshot() >= 2
+    assert s2.config["scoring"] == {"frag_limit": 12, "win_by": "kills"}
+    assert s2.game_brief()["win_text"] == "SCORE CAP 12 / TIME"
+    from brx_mcp.mc.compile import Compiler
+    assert Compiler()._to_gc(s2.config).frag_limit == 12
+
+
 # --------------------------------------------------------------------------- S5(a) — station assignments (2026-09-11)
 def test_station_assignment_and_game_no_persist_across_a_restart():
     """S5(a): assignments used to live for the SESSION only, so an MC restart at the field forgot every
