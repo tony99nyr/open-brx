@@ -2588,6 +2588,19 @@ class Session:
         if (self.config.get("respawn") or {}).get("type") == "scanner" and "respawn" not in kinds:
             out.append("SETUP: NO RESPAWN STATION IS ASSIGNED — respawn is SCANNER, so a downed player can only come "
                        "back at a station; assign a utility phone as RESPAWN in ITEMS and arm it")
+        if (self.config.get("respawn") or {}).get("type") == "scanner" and "respawn" in kinds:
+            teams = self.config.get("teams") or []
+            covered = {int(a.get("team")) for st in self.stations.values()
+                       if (a := st.get("assigned")) and a.get("kind") == "respawn"
+                       and isinstance(a.get("team"), int) and a.get("team") != STATION_TEAM_ANY}
+            if not any(a.get("team") == STATION_TEAM_ANY for st in self.stations.values()
+                       if (a := st.get("assigned")) and a.get("kind") == "respawn"):
+                missing = [str(t.get("name") or t.get("team_id") or t.get("tid"))
+                           for t in teams if isinstance(t.get("tid"), int) and t["tid"] not in covered]
+                if missing:
+                    out.append("SETUP: SCANNER RESPAWN HAS NO STATION FOR " + ", ".join(missing).upper()
+                               + " — assign another RESPAWN station or change respawn to AUTO; those players "
+                               "will otherwise stay down")
         return out
 
     def set_station(self, nid: str, a: dict) -> StationView:
@@ -2928,6 +2941,13 @@ class Session:
             self._changed()                  # a phone MC cannot hear makes no claim about a match
         nv = self.nodes.get(nid)
         if nv is not None:
+            # `NetServer.push` queues an async send and can return before the socket disappears.  If
+            # that queued send loses the race, the LOAD ledger must not keep claiming delivery; the
+            # next heartbeat/reconnect will send the announcement again.
+            pid = self.node_player.get(nid)
+            if pid:
+                self.game_sent.pop(pid, None)
+                self._game_retry_t.pop(pid, None)
             gone = nv.pop("reach", None)
             if gone is not None:
                 nv["last_reach"] = gone      # F155: the PATH it was last heard over outlives the socket
