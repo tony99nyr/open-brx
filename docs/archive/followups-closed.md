@@ -513,3 +513,9 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
 - 2026-09-22 **F184** the first HUD hello after BACK TO HUD proves its distinct prior utility identity with that
   identity's takeover key. MC then removes the retained ITEMS/node row, shrinks active allow-lists, and preserves
   any self-authoritative station counters for the live match's recap.
+
+# Closed 2026-09-22: real-browser end-delivery truth
+
+- 2026-09-22 **F185** real Chromium now ends a LIVE match through the guarded console controls against a real MC,
+  proves the automatic MATCH-to-RECAP transition, then renders the explicit LIVE diagnostic view against that same
+  post-whistle snapshot. Desktop and phone checks cover the delivery notice, every pending STATUS cell and overflow.

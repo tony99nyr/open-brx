@@ -93,9 +93,9 @@ of main" above.
   silently assigned to the last binding, and cumulative shot deltas do not inflate the match total.
 - **F174 is closed:** an explicitly named previous match remains diagnosable on the next runway; current/full scans
   still fail closed in ARMED and every diagnostic remains blocked in LIVE.
-- **F179-F184 are closed:** UI guards are behavioral, standby truth gates `npm test`, M2 accuracy is deterministic, and an authenticated utility→HUD handoff removes the old ITEMS row without losing recap counts.
-- **Next desk task:** **F185**, prove the after-whistle RECAP in a real browser. **F178 remains decision first.**
-  F285 remains split: its table can be written at the desk, but its t6 repeat measurement needs the bench.
+- **F179-F185 are closed:** UI guards are behavioral, standby truth gates `npm test`, M2 accuracy is deterministic,
+  utility→HUD handoff removes stale ITEMS safely, and real Chromium proves both post-whistle RECAP and LIVE delivery truth.
+- **Next desk task:** **F285's `$TMP` write-semantics table**; its t6 repeat still needs the bench. **F178 remains decision first.**
 - **Next bench task:** the "0.4.4 field check" in [`bench-plan.md`](bench-plan.md) (connect timing on both
   phones, the new respawn rules, the Shields preset, the down animation, full screen), then sitting 5, match
   verification: F264 live, the F277 repro, and the F256 row.

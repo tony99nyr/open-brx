@@ -85,8 +85,8 @@ async function startVite() {
   console.error(`vite did not start:\n${log}`); proc.kill('SIGKILL'); process.exit(3);
 }
 
-/** Walk a fresh demo session to a LIVE match and press END over the API — the operator's own action. */
-async function endAMatch(base) {
+/** Walk a fresh demo session to LIVE. Chromium presses the operator's own END controls below. */
+async function startAMatch(base) {
   const get = async p => (await fetch(`${base}${p}`)).json();
   const post = async (p, body) => {
     const r = await fetch(`${base}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body ?? {}) });
@@ -115,8 +115,6 @@ async function endAMatch(base) {
   // NEXT run then refuses to start over, by its own rule.
   if (st.status >= 400) throw new Error(`start refused: ${JSON.stringify(st.body)}`);
   for (let i = 0; i < 60; i++) { if ((await get('/api/state')).phase === 'live') break; await sleep(250); }
-  const end = await post('/api/control', { cmd: 'end' });
-  console.log(`  END: ${JSON.stringify(end.body)}`);
   return get('/api/state');
 }
 
@@ -155,10 +153,30 @@ let browser = null;
 // EVERYTHING that can throw lives inside this try: the two servers above were started by this run, and
 // the `finally` is the only thing that stops them.
 try {
-  const state = await endAMatch(mc.base);
+  const liveState = await startAMatch(mc.base);
+  expect(liveState.phase === 'live', 'the real MC is LIVE before the browser ends the match');
+  browser = await chromium.launch();
+
+  step = 'browser-end';
+  const operator = await newPage(browser, { width: 1280, height: 800 });
+  await operator.goto(`http://localhost:${VITE_PORT}/#live`, { waitUntil: 'domcontentloaded' });
+  const endButton = operator.getByRole('button', { name: 'END MATCH EARLY' });
+  await endButton.waitFor({ state: 'visible', timeout: 10000 });
+  expect(await endButton.count() === 1,
+    'the real LIVE board exposes the guarded END control');
+  await endButton.click();
+  await operator.getByRole('button', { name: 'CONFIRM END' }).click();
+  await operator.locator('[data-testid="end-delivery-recap"]').waitFor({ state: 'visible', timeout: 10000 });
+  expect(new URL(operator.url()).hash === '#recap', 'the server whistle advances the open LIVE board to #recap');
+  expect(await operator.getByText('■ MATCH OVER', { exact: true }).count() === 1,
+    'the command bar says MATCH OVER after the browser-driven END');
+  expect(await operator.locator('[data-testid="end-delivery"]').count() === 0,
+    'normal post-whistle MATCH renders RECAP, not the LIVE delivery block');
+  await operator.context().close();
+
+  const state = await (await fetch(`${mc.base}/api/state`)).json();
   const ed = state.end_delivery;
   console.log(`  end_delivery: ${JSON.stringify(ed)}`);
-  browser = await chromium.launch();
   step = 'server';
   expect(!!ed, 'the server puts end_delivery on the snapshot once a match has ended');
   expect(ed && ed.total > 0, `it covers the bound HUDs (total ${ed && ed.total})`);
@@ -168,7 +186,7 @@ try {
     console.log(`\n[${step}] the console against a REAL MC, ${vp.width}x${vp.height}`);
     const pg = await newPage(browser, { width: vp.width, height: vp.height });
     await pg.goto(`http://localhost:${VITE_PORT}/`, { waitUntil: 'domcontentloaded' });
-    await pg.waitForTimeout(1200);
+    await pg.locator('nav').waitFor({ state: 'visible', timeout: 10000 });
 
     // The console has FIVE tabs — 01 ARMORY … 05 MATCH — and NO recap tab: MATCH is where the live board
     // and the recap both live, chosen by `state.phase` (measured here, 2026-09-13). The nav button's text
@@ -176,6 +194,7 @@ try {
     // match ends, so the matcher has to be the whole normalised label rather than a loose /MATCH/.
     await goTo(pg, /^\d+ MATCH$/);
     const rec = pg.locator('[data-testid="end-delivery-recap"]');
+    await rec.waitFor({ state: 'visible', timeout: 10000 });
     if (expect(await rec.count() === 1, 'the MATCH tab shows the recap, carrying the end-delivery block')) {
       const t = (await rec.innerText()).replace(/\s+/g, ' ').toUpperCase();
       console.log(`      "${t.slice(0, 160)}"`);
@@ -184,12 +203,28 @@ try {
     }
     await shot(pg, `a41-recap-${vp.tag}`);
 
-    // The LIVE board carries the SAME sentence above the END buttons, but after the whistle this tab
-    // renders the recap, so the live variant is pinned in jsdom (`test/end-delivery.test.tsx`) instead of
-    // being raced for here.
+    const recapOverflow = await pg.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+    expect(!recapOverflow, 'the recap has no sideways scroll at this width');
+
+    // Normal MATCH navigation must keep landing on RECAP after the whistle (proved above). F185 still
+    // needs the LIVE component itself in a real browser: an explicit #live URL is the operator/debug path
+    // that mounts it without fabricating state, while the page keeps polling this same real post-END MC.
+    await pg.goto(`http://localhost:${VITE_PORT}/#live`, { waitUntil: 'domcontentloaded' });
+    const liveNotice = pg.locator('[data-testid="end-delivery"]');
+    await liveNotice.waitFor({ state: 'visible', timeout: 10000 });
+    if (expect(await liveNotice.count() === 1, 'the explicit real LIVE board carries the end-delivery notice too')) {
+      const text = (await liveNotice.innerText()).replace(/\s+/g, ' ').toUpperCase();
+      expect(/HUDS? (HAS|HAVE) NOT CONFIRMED THE END/.test(text), 'the LIVE notice says confirmation is missing');
+      expect(/RE-DELIVERING/.test(text), 'the LIVE notice says MC is still re-delivering');
+    }
+    expect(await pg.locator('[data-end-confirm="pending"]').count() === ed.unconfirmed.length,
+      'each unconfirmed HUD is marked in the LIVE status column');
+    await liveNotice.scrollIntoViewIfNeeded();
+    await shot(pg, `f185-live-delivery-${vp.tag}`);
+
     // The board must still fit: a notice that pushes the screen sideways on a phone is a new defect.
     const overflow = await pg.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
-    expect(!overflow, 'no sideways scroll at this width');
+    expect(!overflow, 'the LIVE board has no sideways scroll at this width');
     await pg.context().close();
   }
 
