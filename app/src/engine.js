@@ -4998,7 +4998,8 @@ export class Engine {
       const prior = this._lastHitFact, now = this.now();
       const candidates = this._dualEmitters.filter(s => Number(s.proto) === this.latch.ir_proto && Number(s.subtype) === this.latch.ir_subtype);
       const valuesMatch = !!candidates.find(s => Number(s.body) === prior?.dmg && Number(s.headset) === dmg);
-      const equalDual = candidates.find(s => Number(s.body) === Number(s.headset) && prior && prior.dmg === dmg && now - prior.at <= 150 && Number(s.cycle_ms) > 150);
+      const equalDual = candidates.find(s => Number(s.body) === Number(s.headset) && Number(s.body) === dmg
+        && prior && prior.dmg === dmg && now - prior.at <= 150 && Number(s.cycle_ms) > 150);
       const paired = prior && now - prior.at <= 150 && prior.shooter_num === this.latch.shooter_num
         && prior.ir_proto === this.latch.ir_proto && prior.ir_subtype === this.latch.ir_subtype
         && prior.crit === this.latch.crit && (valuesMatch || !!equalDual);
