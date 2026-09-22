@@ -1361,14 +1361,14 @@ export class Hud {
    *  engine's `downWarn` climbs when they are killed soon after a timed respawn: 1 = this line, 2 = larger and
    *  pulsing, 3 = a full-width flashing band that holds for the match. The flash is 1 Hz, well below any flicker band. */
   _downSafe(st) {
-    if (st.respawnType !== 'auto') return '';
+    if (!st.respawnAuto && st.respawnType !== 'auto') return '';
     const lvl = Math.max(1, Math.min(3, Number(st.downWarn) || 1));
     return `<div class="safe w${lvl}" id="dnsafe"><span>GET TO SAFE SPACE FOR REDEPLOY</span></div>`;
   }
   _downHint(st) {
     this._downHintSig = this._downHintKey(st);
     let hint = st.respawnHint || (st.respawnType === 'auto' ? 'timer' : st.respawnType === 'none' ? 'out' : 'find_station');
-    if (st.respawnType === 'scanner' && (hint === 'timer' || hint === 'wait')) hint = 'find_station';   // an older engine: teach from the first second, never a 00
+    if (st.respawnType === 'scanner' && !st.respawnAuto && (hint === 'timer' || hint === 'wait')) hint = 'find_station';   // older engine fallback
     if (hint === 'timer') return `<span class="n tab" id="rd">${digits(st.respawnIn)}</span><span class="lab">${st.respawnIn ? 'REDEPLOY IN' : 'AWAITING REDEPLOY'}</span>`;
     if (hint === 'out') return `<span class="n nn">✕</span><span class="lab">NO RESPAWNS THIS MODE</span>`;
     const s = st.station || {}; const thr = s.threshold != null && s.threshold !== 0 ? s.threshold : -74; const rssi = s.rssi != null ? Math.round(s.rssi) : null;   // -74 = the bench-tuned station default (≈10 ft at high TX)
