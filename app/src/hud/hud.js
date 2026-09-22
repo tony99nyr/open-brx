@@ -744,7 +744,7 @@ export class Hud {
     const plates = st.player && mode !== 'setup' ? `${tryout}<div class="plates" ${tw ? 'style="display:none"' : ''}>
         ${this._slotPlate(st, 'primary', mode, ammoLine)}${this._slotPlate(st, 'secondary', mode)}${this._slotPlate(st, 'perk', mode)}
         ${mode === 'kitted' && !tw && (st.canPickPrimary || st.canPickSecondary || st.canPickPerk) ? '<div class="platehint">TAP A SLOT TO CHANGE YOUR LOADOUT</div>' : ''}</div>` : '';
-    const hpar = st.player && mode !== 'setup' ? `<span class="hpar tab"><span style="color:var(--health)">HP ${st.maxHp}</span> · <span style="color:var(--armor)">ARMOR ${st.maxArmor}</span>${st.playerNum ? ` · #${st.playerNum}` : ''}</span>` : '';
+    const hpar = st.player && mode !== 'setup' ? `<span class="hpar tab"><span style="color:var(--health)">HP ${st.maxHp}</span> · <span style="color:var(--armor)">ARMOR ${st.maxArmor}</span>${st.maxShield > 0 ? ` · <span style="color:var(--shield)">SHIELD ${st.maxShield}</span>` : ''}${st.playerNum ? ` · #${st.playerNum}` : ''}</span>` : '';
     // A27/A30 (loadout.md §4.4): a host advance that lands mid-kit is never a silent screen swap, and a refusal
     // from MC is MC's own copy — shown VERBATIM on whichever screen the player is standing on when it arrives.
     const refusal = st.loadoutAck && !st.loadoutAck.ok && st.loadoutAck.reason ? String(st.loadoutAck.reason) : null;
@@ -828,7 +828,7 @@ export class Hud {
     const name = g.name || g.mode_name || String(mode).toUpperCase();
     const mins = g.time_limit_s ? Math.round(g.time_limit_s / 60) : null;
     const rs = g.respawn ? (g.respawn.type === 'none' ? 'NONE · LIVES' : `${g.respawn.type === 'scanner' ? 'AT A SCANNER' : 'AUTO'} · ${g.respawn.delay_s}s`) : (g.respawn_text || '—');
-    const hp = g.health ? `${g.health.max_hp} HP · ${g.health.max_armor} ARMOR` : '—';
+    const hp = g.health ? `${g.health.max_hp} HP · ${g.health.max_armor} ARMOR${g.health.max_shield > 0 ? ` · ${g.health.max_shield} SHIELD` : ''}` : '—';
     const venue = [g.environment ? String(g.environment).toUpperCase() : null, g.night ? 'NIGHT OPS' : null].filter(Boolean).join(' · ') || '—';
     const rows = [['TEAMS', g.teams_text || '—'], ['WIN', g.win_text || '—'], ['RESPAWN', rs], ['TIME', mins ? `${mins} MIN` : '—'], ['LIFE', hp], ['VENUE', venue]];
     const locked = !st.canPickPrimary && !st.canPickSecondary && !st.canPickPerk;

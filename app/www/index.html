@@ -292,9 +292,13 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 [data-env="night"] .swapping .sub,[data-env="night"] .swapping .track{display:none}
 [data-env="night"] .vitals .hp{font-style:normal;font-size:76px;text-shadow:none;animation:none;color:var(--num)}
 [data-env="night"] .vitals .sh{display:none}
+[data-env="night"] .vitals .armorlabel{display:none}
+[data-env="night"] .vitals .shield{display:inline;color:var(--num);font-size:76px;text-shadow:none;animation:none}
+[data-env="night"] .vitals .shieldlabel{display:inline}
 [data-env="night"] .bar{height:5px;transform:none;border:0;padding:0;background:#120505}
 [data-env="night"] .bar > i{background:var(--health);box-shadow:none}
 [data-env="night"] .bar.armor{height:4px;width:70%}[data-env="night"] .bar.armor > i{background:var(--armor)}
+[data-env="night"] .bar.shield{height:4px;width:70%}[data-env="night"] .bar.shield > i{background:var(--shield)}
 [data-env="night"] .ammo .mag{font-style:normal;font-size:76px;text-shadow:none;color:var(--num)}
 [data-env="night"] .ammo .res{font-size:20px}
 [data-env="night"] .stats{display:flex;top:30px;left:36px;right:auto;bottom:auto;font-size:11px;letter-spacing:.24em}   /* was stacked on .ammo's corner (brx-opus night audit 2026-08-26) */
