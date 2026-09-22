@@ -536,3 +536,8 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
 
 - 2026-09-22 **F196** the amendment citation resolver now scans `mcp/tests` as well as production code, so
   amendment rows can cite their regression tests without silently skipping them. The focused citation suite passes 4/4.
+
+# Closed 2026-09-22: mock WSL warning parity
+
+- 2026-09-22 **F193** the Mission Control mock imports one shared warning constant, and the rendered MC test
+  compares it exactly with the server's `WSL_UNREACHABLE_WARNING`. The MC reach suite (22/22) and netinfo suite (17/17) pass.

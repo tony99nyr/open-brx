@@ -1,4 +1,4 @@
-# Handoff: Open BRX — F196 closed; amendment citations include `mcp/tests` (focused suite 4/4).
+# Handoff: Open BRX — F196 and F193 closed; citation and WSL-warning parity suites are green.
 **State as of 2026-09-22 (playtest follow-up).** **Rules for this file.** One screen. It says what is true now; history is `git log -p -- docs/HANDOFF.md`. It has
 one section per open lane. **When several sessions close together, each one overwrites only its own lane section,
 never another lane's.** (On 2026-09-18 three lanes closed on the same night and rewrote each other's sections.)

@@ -9,6 +9,7 @@ import { withPolicy } from '../screens/gameSummary';
 import { GUN_FLAPPING_LINE, curedByPush } from '../api/derive';
 import { GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
 import { PRESETS, apply as applyPolicy, conflict, defaultPolicy, pool as poolOf, presetOf, reject } from './policy';
+import { WSL_UNREACHABLE_WARNING } from './wslWarning';
 
 const now = () => Date.now();
 // loadout.md §8 — the shipped example so the SAVED GAMES shelf is never empty on first use
@@ -605,15 +606,7 @@ export class MockBackend implements Api {
         mode: 'lan', ssid: this.demoNoSsid ? null : 'BRX-FIELD', ip: '192.168.8.10', port: 8765, ws_url: 'ws://192.168.8.10:8765/ws',
         qr: this.joinQr(), join_secret: this.joinSecret, public: this.publicView(),
         // T3-A: `?mock&lanwarn=1` — see `demoLanWarning` above.
-        warning: this.demoLanWarning
-          ? 'PHONES CANNOT REACH THIS ADDRESS — this looks like WSL2\'s own private network, not the '
-            + 'Windows host\'s LAN. Pass --advertise <windows-lan-ip> (find it with `ipconfig` on '
-            + 'Windows) to put the real address in the QR and mDNS without moving where MC binds, and '
-            + 'forward the ports with a netsh portproxy (`netsh interface portproxy add v4tov4 '
-            + 'listenaddress=<windows-lan-ip> listenport=8766 connectaddress=<this WSL IP> '
-            + 'connectport=8766`, and again for 8765) — the WSL IP changes on every restart, so redo '
-            + 'the portproxy each time.'
-          : null,
+        warning: this.demoLanWarning ? WSL_UNREACHABLE_WARNING : null,
       },
       ...(this.restoredFrom ? { restored_from: this.restoredFrom } : {}),
       coverage: this.coverage(nodes),

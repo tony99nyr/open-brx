@@ -208,6 +208,28 @@ describe('CommandBar: the tunnel-down banner rides on every screen, not just Arm
 });
 
 describe('CommandBar: the WSL LAN-reachability warning (T3-A)', () => {
+  it("?mock's WSL warning stays verbatim with the server's canonical wording", async () => {
+    // Keep this cross-language fixture honest: the Python server is authoritative, and the mock
+    // must not quietly teach operators a different portproxy command.  This follows the existing
+    // server-source pins in config-proof.test.tsx rather than maintaining a third expected string.
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const py = readFileSync(resolve(process.cwd(), '../../mcp/brx_mcp/mc/netinfo.py'), 'utf8');
+    const block = py.match(/WSL_UNREACHABLE_WARNING = \(\n([\s\S]*?)\n\)/);
+    expect(block, 'netinfo.py must still define WSL_UNREACHABLE_WARNING').toBeTruthy();
+    const serverWarning = [...block![1].matchAll(/"(?:[^"\\]|\\.)*"/g)]
+      .map(match => JSON.parse(match[0]) as string).join('');
+
+    const priorUrl = window.location.href;
+    window.history.replaceState({}, '', '/?mock&lanwarn=1');
+    try {
+      const d = await demo();
+      expect((await d.api.getState()).lan.warning).toBe(serverWarning);
+    } finally {
+      window.history.replaceState({}, '', priorUrl);
+    }
+  });
+
   it('lan.warning renders as a persistent, non-colour-only banner naming the fix', async () => {
     const d = await demo();
     const state: State = { ...d.state, lan: { ...d.state.lan, warning: 'PHONES CANNOT REACH THIS ADDRESS — pass --advertise <windows-lan-ip>.' } };
