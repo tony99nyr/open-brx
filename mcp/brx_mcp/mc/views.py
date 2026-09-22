@@ -121,6 +121,7 @@ def weapon_view(w: Weapon, pool: int = DEFAULT_POOL) -> WeaponView:
             "rng": rng,
             # real, human-facing numbers (the bars above are only for ranking)
             "dmg_per_hit": dmg_hit,
+            "dual_emitter": bool(w.get("dual_emitter")),
             "pool": pool,
             "verified": bool(w.get("verified")),
             "tags": list(w.get("tags") or []), "role": w.get("role", ""),

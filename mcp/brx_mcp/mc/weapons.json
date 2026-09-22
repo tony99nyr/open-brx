@@ -158,20 +158,20 @@
   {
    "weapon_id": "smg",
    "name": "SMG",
-   "desc": "A hose. The magazine leaves faster than you meant it to, and getting it back means standing still for a long time.",
+   "desc": "A close-combat hose. The barrel hits for 8 and the headset adds 1, so a target reached by both emitters takes 9; the magazine leaves faster than you meant it to.",
    "cls": 1,
    "role": "cqb",
    "class": "ballistic",
-   "mag": 72,
-   "reserve": 288,
+   "mag": 54,
+   "reserve": 216,
    "reload_ms": 2500,
-   "dmg": 7,
-   "rof": 79,
+   "dmg": 8,
+   "rof": 75,
    "rng": 75,
    "range_band": "close-mid",
    "range_target_m": "12 indoor / 25-30 outdoor (Q15)",
-   "htk": 15,
-   "ttk_ms": 1330,
+   "htk": 13,
+   "ttk_ms": 1200,
    "recoil": {
     "ceiling": 100,
     "floor": 55,
@@ -183,17 +183,39 @@
     "frame": "$WEAP,0,,100,0,0,8,0,,,,,,,,90,850,72,288,2500,0,0,100,100,,5,,,G03,,,,D26,D25,D24,D18,D11,,,,72,144,75,*"
    },
    "wire": {
-    "fire_ms": 95,
+    "fire_ms": 100,
+    "headset_dmg": 1,
+    "headset_range_outdoor": 100,
+    "headset_range_indoor": 100,
     "range_outdoor_pct": 30
    },
+   "overrides": {
+    "t1": {
+     "value": 2,
+     "why": "Playtest 2026-09-20 requires the SMG headset to emit damage. The captured source is empty (gun only); Battle Company uses 2 for gun plus headset on every captured dual-emitter weapon."
+    },
+    "t12": {
+     "value": 1,
+     "why": "Playtest 2026-09-20 covered the gun emitter: the SMG produced no hit while the Shotgun headset control did. Tony expected the SMG to deal more damage when its headset emitter also reaches the target, so Open BRX deliberately adds the smallest observable priced second word: 1 damage."
+    },
+    "t13": {
+     "value": 100,
+     "why": "The new headset word needs a known-good outdoor carrier. The Shotgun control emitted reliably at 100; the SMG's old 30 is an uncalibrated receiver-band edge, not a distance control."
+    },
+    "t42": {
+     "value": 100,
+     "why": "The new headset word needs a known-good indoor carrier. Existing dual-emitter weapons use 100, while no lower indoor value has been measured on the field hardware."
+    }
+   },
    "verified": false,
+   "min_app": "0.4.5",
    "captured": true,
    "tags": [
     "cqb"
    ],
    "ap_dmg": 5,
    "ap_fire_ms": 184,
-   "notes": "A hose that runs hot. 8 a hit every 95ms from a 72-round mag: four kills before you reload, 24 across the kit, and an overheat budget that punishes holding the trigger down forever."
+   "notes": "A close-combat hose. The gun word deals 8 and the deliberately added headset word deals 1, for 9 per pull when both emissions land: thirteen pulls and 1200ms against the standard pool. The magazine moves from 72 to 54, preserving four standard kills per reload so the Suppressor keeps its larger-magazine advantage. Covering the gun emitter in the 2026-09-20 playtest proved the old frame sent no headset damage at all; a Shotgun control did. The cycle moves from 95 to 100ms so the bonus stays inside the arsenal's 1.2-3.5s balance band."
   },
   {
    "weapon_id": "shotgun",

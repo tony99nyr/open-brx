@@ -833,17 +833,18 @@ function WeaponHero({ w, slot, sp, tryingId, pushed, verdicts, setVerdicts }:
             .map(([l, v]) => <StatRow key={l} label={l} pct={v as number} />)}
         </div>
         <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-          {w.dmg_per_hit != null && <NumberCell label="DAMAGE / HIT" value={w.dmg_per_hit} size={20} pad="6px 14px" />}
+          {w.dmg_per_hit != null && <NumberCell label={w.dual_emitter ? 'DAMAGE / PULL*' : 'DAMAGE / HIT'} value={w.dmg_per_hit} size={20} pad="6px 14px" />}
           <NumberCell label="MAGAZINE" value={w.clip} size={20} pad="6px 14px" />
           <NumberCell label="RESERVE" value={w.reserve} size={20} pad="6px 14px" />
           {/* null means "no reload time", not zero — a bare unit with no number reads as a broken
               cell. CATALOG already showed `—`; this one did not (merge review 2026-09-01). */}
           <NumberCell label="RELOAD" value={w.reload_s ?? '—'} unit={w.reload_s == null ? undefined : 's'} size={20} pad="6px 14px" />
           {/* both follow the host's health config now, not a hardcoded 115 (W2) — say which pool */}
-          {w.htk != null && <NumberCell label={w.pool ? `HITS TO KILL · ${w.pool}` : 'HITS TO KILL'} value={w.htk} size={20} pad="6px 14px" color={w.htk <= 2 ? T.warn : T.ink} />}
+          {w.htk != null && <NumberCell label={w.dual_emitter ? `PULLS TO KILL · ${w.pool ?? ''}*` : (w.pool ? `HITS TO KILL · ${w.pool}` : 'HITS TO KILL')} value={w.htk} size={20} pad="6px 14px" color={w.htk <= 2 ? T.warn : T.ink} />}
           {w.ttk_ms != null && <NumberCell label="TIME TO KILL" value={+(w.ttk_ms / 1000).toFixed(2)} unit="s" size={20} pad="6px 14px" />}
         </div>
         {w.desc && <div style={{ font: F.chk(500, 12), lineHeight: 1.5, color: T.dim, maxWidth: '54ch' }}>{w.desc}</div>}
+        {w.dual_emitter && <div style={{ font: F.mono(500, 9), letterSpacing: '.1em', color: T.micro, maxWidth: '54ch' }}>* ONE TRIGGER MAY EMIT SEPARATE GUN AND HEADSET WORDS; THE TOTAL ASSUMES BOTH LAND.</div>}
         {tryingId && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', font: F.mono(500, 10), letterSpacing: '.12em', color: T.warn }}>
             ▲ TRYING OUT ON {sp.display}'S GUN — HAVE THEM FIRE A FEW ROUNDS · POINT AWAY FROM OTHERS

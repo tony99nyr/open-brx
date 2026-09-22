@@ -208,7 +208,7 @@ sounds — and moves the numbers.
 | Burst Rifle | assault | 10 | 75 +275 | 12 | **1.56** | 70.6 | 52.9 | 36 | 216 | 1700 | 100% | — | **2026-09-17**: dmg 9→11 (`wire.dmg`); **2026-09-18** (F62): dmg 11→10, htk 11→12, TTK 1.42→1.56s — 40% `crit_pct` (a crit is x1.5 truncated, so 10→15) pays for itself: average damage per hit holds at 11.25, but the published number is now the guaranteed 4-pull kill; a 3-pull kill lands about 27% of the time. Mag/reserve untouched |
 | Stinger | cqb | 15 | 250 | 8 | **1.75** | 60.0 | 43.5 | 18 | 144 | 1700 | 99% | — | cycle 120→250, res 72→144 |
 | Bolt Rifle | assault | 13 | 225 | 9 | **1.80** | 57.8 | 38.7 | 18 | 180 | 2000 | 98% | — | **stock** |
-| SMG | cqb | 8 | 95 | 15 | **1.33** | 84.2 | 61.7 | 72 | 288 | 2500 | 100% | 5 | **2026-09-17**: cycle 140→95 (`wire.fire_ms`) |
+| SMG | cqb | 8 | 100 | 13 | **1.20** | 80.0 | 54.7 | 54 | 216 | 2500 | 100% | 5 | **2026-09-20 playtest**: a covered gun emitter produced no headset hit because captured t12 was empty. Open BRX now deliberately adds a 1-damage headset word at the known-good carrier 100; cycle 95→100 and mag/reserve 72/288→54/216 keep the added word priced and preserve the Suppressor's magazine lead |
 | Toxin Rifle | assault | 8 | 110 | 15 | **1.54** | 72.7 | 49.0 | 30 | 180 | 1600 | 99% | 5 | **2026-09-18**, in the picker since 2026-09-19: the gun lands the direct hit and the POISON is a tick clock on the victim's node (S16, `spec/node.md` §3.17). 4 damage a second for 5 s, refreshed on each hit, never stacked: worth 20, so twelve hits make it lethal even if the target breaks contact, which is the same 1.21 s the Assault Rifle needs to finish outright. §7.5 |
 | Suppressor | support | 8 | 140 | 15 | **1.96** | 57.1 | 48.0 | 75 | 384 | 2000 | 100% | — | **2026-09-17**: cycle 160→140 (`wire.fire_ms`); mag 48→75 (§2.3, family-scoped dominance) |
 | Assault Rifle | assault | 9 | 100 | 13 | **1.20** | 90.0 | 62.6 | 32 | 192 | 1400 | 100% | — | **2026-09-17**: cycle 140→100 (`wire.fire_ms`, native Battle Company speed) |
@@ -255,9 +255,12 @@ Bolt Rifle and Melee — their stock numbers already sat in the band.
   lighter AND slower of the burst pair (12 hits and 1.65 s against 11 hits and 1.42 s), with half the
   reserve and a slower five-part reload. It is kept for custom games, not retuned.
 - **Bolt Rifle** — stock. Single shot, 9 hits, 22 kills.
-- **SMG** — **2026-09-17: cycle 140 → 95 ms** (`wire.fire_ms`), four kills a magazine, 24 across the
-  kit, and a heat value (`t24 = 5`) — **inert as shipped: overheat requires t37/t38, which only the
-  Charge Rifle carries (bench 2026-08-26)**.
+- **SMG** — **2026-09-20 playtest: the headset now emits a priced 1-damage second word.** Covering
+  the gun emitter produced no hit because the captured SMG frame had an empty t12; the Shotgun control
+  did produce one. The second word uses carrier 100, which is known to pass the receiver, while the gun
+  keeps its outdoor 30 carrier. To keep the combined 9-damage pull inside the balance band and preserve
+  the Suppressor's magazine lead, cycle 95 → 100 ms and mag/reserve 72/288 → 54/216. Its heat value
+  (`t24 = 5`) remains inert: overheat requires t37/t38, which only the Charge Rifle carries.
 - **Shotgun** — three hits, six shells, a **400 ms Shells-type reload** — the highest sustained
   output in the arsenal from its shallowest ammo pool. Unchanged in the 2026-09-17 pass; its numbers
   already matched Tony's target.
@@ -479,7 +482,8 @@ Fastest cycle has the slowest reload and vice versa; nothing leads on both.
 | Bolt Rifle | 8 | **9** | 12 | 16 |
 | Force Rifle | 10 | **12** | 15 | 20 |
 | Assault Rifle / Energy Rifle | 12 | **13** | 17 | 23 |
-| SMG / Suppressor | 13 | **15** | 19 | 25 |
+| SMG | 12 | **13** | 17 | 23 |
+| Suppressor | 13 | **15** | 19 | 25 |
 | Toxin Rifle | 13 | **15** | 19 | 25 |
 | Desert Eagle | 4 | **5** | 6 | 8 |
 | USP-S | 12 | **13** | 17 | 23 |
@@ -660,7 +664,7 @@ sits at `t42` (extra-headset range), present on the Rocket, Shotgun and Plasma S
 | Burst Rifle | 70 | mid | On the shelf |
 | Suppressor | 55 | mid | On the shelf |
 | Energy Rifle | 55 | mid | On the shelf |
-| SMG | 30 | close | **Real guess**, sits at the shelf edge |
+| SMG | 30 | close | **Real guess**, sits at the shelf edge. This is the gun word's carrier; the new 1-damage headset word uses the known-good 100 carrier so it actually emits reliably |
 | Shotgun | 100 | close | **Moved onto the flat shelf, 2026-09-18** (Tony): the gun word now reaches full distance, off the unstable 13-26 knee it sat on until this change. See §7's dual-emitter write-up: the Shotgun's real close/far shape now lives in `wire.headset_dmg`'s reach (`t13`/`t42`), not in `t2` |
 | Rocket Launcher | 22 | close | **Real guess.** A pickup-only one-shot heavy is meant to be earned at close range, not to out-reach the arsenal it out-damages (Tony, 2026-09-17). Same transition-band caveat as the Shotgun used to carry |
 | Rail Gun | 22 | close | Same reasoning and caveat as the Rocket Launcher |
@@ -1300,18 +1304,21 @@ The right experiment is now to measure the **receiver's response curve in kHz**,
 weapon's value from that curve. Values above the knee barely move, so the whole design question is which
 weapons sit below it and by how much.
 
-### 7.0 ⚠️ Three weapons fire TWO words per trigger pull, and one of them is 70
+### 7.0 ⚠️ Three stock weapons and the Open BRX SMG fire TWO words per trigger pull
 
 Named 2026-09-18 from Battle Company's own weapon sheets, via the LaserTagMods material. **`t1` is
 `WeaponIRSource`**: 0 gun laser, 1 headset only, **2 gun AND headset**, 3 double gun, 4 double gun plus
 headset, 5 dry fire. Exactly three stock weapons set 2, and for those **`t12` is a second word's damage**
-with `t13`/`t42` its outdoor/indoor reach.
+with `t13`/`t42` its outdoor/indoor reach. After the 2026-09-20 playtest, Open BRX deliberately gives
+the SMG the same dual-emitter source with a priced 1-damage word; both t1 and t12 are explicit overrides
+because neither exists in its captured frame.
 
 | weapon | gun laser (`t5`, range `t2`) | headset word (`t12`, range `t13`/`t42`) |
 |---|---|---|
 | Shotgun | 45 | **70** |
 | Rocket Launcher | 115 | **115** |
 | Plasma Sniper | 25 | **80** |
+| SMG (Open BRX deviation) | 8 | **1** |
 
 **It is the SHOOTER's headset that emits**, not the victim's that receives a bonus. Three things agree:
 `t1` names an IR *source*; V4_30 builds an `$IRTX` frame and sends it to the gun's own headset to emit;
@@ -1596,7 +1603,7 @@ what your gun IS rather than just weakening it.
 | weapon | plain | with Armour Piercing | against a bare target |
 |---|---|---|---|
 | Assault Rifle | 9 at 100 ms | 7 at 225 ms | 0.15 s slower |
-| SMG | 8 at 95 ms | 5 at 184 ms | 0.14 s slower |
+| SMG | 8+1 at 100 ms | 5 at 184 ms | 0.27 s slower |
 | Shotgun | 45 at 800 ms | 15 at 1000 ms | 0.40 s slower |
 | Suppressor | 8 at 140 ms | 3 at 155 ms | 0.21 s slower |
 | Energy Rifle | 9 at 150 ms | 8 at 405 ms | 0.23 s slower |

@@ -24,6 +24,29 @@ def _hit(sc, t, shooter_num, dmg=20):
                      "shooter_num": shooter_num, "shooter_team": 1, "dmg": dmg}, t)
 
 
+def test_dual_emitter_words_share_one_accuracy_attempt_but_both_damage_events_remain_logged():
+    sc = _scorer()
+    base = 1_010_000
+    common = {"type": "hit_taken", "match_id": "m1", "node_id": "n2", "player_id": "p2",
+              "shooter_num": 1, "shooter_team": 1}
+    sc.ingest("n2", {**common, "t": base, "dmg": 8, "shot_group": 1}, base)
+    sc.ingest("n2", {**common, "t": base + 90, "dmg": 1, "shot_group": 1}, base + 90)
+    row = next(row for row in sc.recap()["rows"] if row["player_id"] == "p1")
+    assert row["hits"] == 1
+    assert len(sc.hits_log) == 2
+
+
+def test_distinct_trigger_groups_still_count_as_distinct_hits():
+    sc = _scorer()
+    base = 1_010_000
+    for i, group in enumerate((1, 2)):
+        sc.ingest("n2", {"type": "hit_taken", "t": base + i * 100, "match_id": "m1", "node_id": "n2",
+                          "player_id": "p2", "shooter_num": 1, "shooter_team": 1, "dmg": 8,
+                          "shot_group": group}, base + i * 100)
+    row = next(row for row in sc.recap()["rows"] if row["player_id"] == "p1")
+    assert row["hits"] == 2
+
+
 def test_a_steady_five_second_run_of_identical_hits_is_named_in_the_recap_and_still_scored():
     sc = _scorer()
     for i in range(6):

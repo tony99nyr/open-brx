@@ -296,6 +296,8 @@ FeedEntry { t_match_s: number, text: string, tag?: "DOUBLE KILL"|"TRIPLE KILL"|"
 ```
 
 ## REST
+
+WeaponView dual-emitter note: `dual_emitter: true` marks a trigger that can produce separate gun and headset words. `dmg_per_hit` and `htk` are then conditional per-pull totals when both words land; the UI labels these values with `*` and explains the condition.
 | method path | body → response | phase |
 |---|---|---|
 | `GET /api/state` | → `State` (same as the WS snapshot) | any |

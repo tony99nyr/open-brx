@@ -786,6 +786,9 @@ export interface Event {
   shooter_team?: number;
   dmg?: number;
   ir_proto?: number;
+  ir_subtype?: number;
+  /** Node-assigned physical trigger group; dual-emitter words share one group for accuracy. */
+  shot_group?: number;
   /** $HIR tok1 — WHICH sensor caught the shot. 0-3 are ALL HEADSET sensors (the headset carries
    *  FOUR, operator-confirmed 2026-09-01; only 0 = front and 1 = back are bench-mapped), 4 = gun
    *  body. Forwarded 2026-09-01: it was parsed on the phone and dropped, so a

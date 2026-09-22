@@ -88,6 +88,34 @@ test('hit_taken + death credit the fresh $HIR shooter', () => {
   assert.equal(death.shooter_num, 19); assert.equal(h.eng.alive, false); assert.equal(h.eng.deaths, 1);
 });
 
+test('dual-emitter words share a shot group while same-size rapid shots do not', () => {
+  const h = harness(); h.bundle.dual_emitters = [{ proto: 0, subtype: 0, body: 8, headset: 1, cycle_ms: 100 }];
+  h.kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$HIR,4,0,19,2,8,0,0,*').frame('$HP,45,62,0,*');
+  h.frame('$HIR,0,0,19,2,1,0,0,*').frame('$HP,45,61,0,*');
+  const hits = h.facts.filter(f => f.type === 'hit_taken');
+  assert.equal(hits.length, 2);
+  assert.equal(hits[0].ir_subtype, 0);
+  assert.equal(hits[0].shot_group, hits[1].shot_group);
+  h.frame('$HIR,4,0,19,2,8,0,0,*').frame('$HP,45,53,0,*');
+  assert.notEqual(h.facts.filter(f => f.type === 'hit_taken')[2].shot_group, hits[1].shot_group);
+});
+
+test('equal shotgun emitter words share a group, while a rapid crit and normal shot do not', () => {
+  const shotgun = harness(); shotgun.bundle.dual_emitters = [{ proto: 0, subtype: 0, body: 20, headset: 20, cycle_ms: 800 }];
+  shotgun.kit().config_().echo().start(0); shotgun.adv(10); shotgun.eng.tick();
+  shotgun.frame('$HIR,4,0,19,2,20,0,0,*').frame('$HP,45,50,0,*');
+  shotgun.frame('$HIR,0,0,19,2,20,0,0,*').frame('$HP,45,30,0,*');
+  const pair = shotgun.facts.filter(f => f.type === 'hit_taken');
+  assert.equal(pair[0].shot_group, pair[1].shot_group);
+
+  const burst = harness(); burst.kit().config_().echo().start(0); burst.adv(10); burst.eng.tick();
+  burst.frame('$HIR,4,0,19,2,15,1,0,*').frame('$HP,45,55,0,*');
+  burst.frame('$HIR,4,0,19,2,10,0,0,*').frame('$HP,45,45,0,*');
+  const shots = burst.facts.filter(f => f.type === 'hit_taken');
+  assert.notEqual(shots[0].shot_group, shots[1].shot_group);
+});
+
 test('F72: a proto-15 beacon does not hit-latch, does not emit hit_taken, does not touch pools, and surfaces owner+magnitude', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();  // live, alive
   const hpBefore = h.eng.hp, armorBefore = h.eng.armor;

@@ -675,6 +675,8 @@ export interface WeaponView {
   rpm: number | null;
   rng: number | null;
   dmg_per_hit: number | null;
+  /** One trigger may emit separate gun and headset words; the displayed total assumes both land. */
+  dual_emitter?: boolean;
   /** older MC rows predate host-pool ranking; the current producer always fills it */
   pool?: number;
   verified: boolean;

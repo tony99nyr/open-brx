@@ -18,6 +18,7 @@ export const DEMO_WEAPONS = [
     "rpm": 19,
     "rng": 75,
     "dmg_per_hit": 21,
+    "dual_emitter": false,
     "pool": 115,
     "verified": false,
     "tags": [
@@ -38,7 +39,7 @@ export const DEMO_WEAPONS = [
     "ammo_total": 70,
     "bars": {
       "power": 56,
-      "rof": 51,
+      "rof": 53,
       "ammo": 49,
       "ttk": 27
     }
@@ -58,6 +59,7 @@ export const DEMO_WEAPONS = [
     "rpm": 75,
     "rng": 75,
     "dmg_per_hit": 9,
+    "dual_emitter": false,
     "pool": 115,
     "verified": false,
     "tags": [
@@ -76,7 +78,7 @@ export const DEMO_WEAPONS = [
     "ammo_total": 224,
     "bars": {
       "power": 38,
-      "rof": 88,
+      "rof": 93,
       "ammo": 77,
       "ttk": 93
     }
@@ -96,6 +98,7 @@ export const DEMO_WEAPONS = [
     "rpm": 100,
     "rng": 75,
     "dmg_per_hit": 10,
+    "dual_emitter": false,
     "pool": 115,
     "verified": false,
     "tags": [
@@ -117,7 +120,7 @@ export const DEMO_WEAPONS = [
       "power": 47,
       "rof": 100,
       "ammo": 83,
-      "ttk": 60
+      "ttk": 64
     }
   },
   {
@@ -135,6 +138,7 @@ export const DEMO_WEAPONS = [
     "rpm": 6,
     "rng": 75,
     "dmg_per_hit": 85,
+    "dual_emitter": false,
     "pool": 115,
     "verified": false,
     "tags": [
@@ -154,7 +158,7 @@ export const DEMO_WEAPONS = [
     "ammo_total": 120,
     "bars": {
       "power": 91,
-      "rof": 26,
+      "rof": 27,
       "ammo": 54,
       "ttk": 100
     }
@@ -174,6 +178,7 @@ export const DEMO_WEAPONS = [
     "rpm": 16,
     "rng": 75,
     "dmg_per_hit": 26,
+    "dual_emitter": false,
     "pool": 115,
     "verified": false,
     "tags": [
@@ -193,9 +198,9 @@ export const DEMO_WEAPONS = [
     "ammo_total": 55,
     "bars": {
       "power": 64,
-      "rof": 45,
+      "rof": 47,
       "ammo": 43,
-      "ttk": 40
+      "ttk": 42
     }
   },
   {
@@ -213,6 +218,7 @@ export const DEMO_WEAPONS = [
     "rpm": 50,
     "rng": 75,
     "dmg_per_hit": 9,
+    "dual_emitter": false,
     "pool": 115,
     "verified": false,
     "tags": [
@@ -232,9 +238,9 @@ export const DEMO_WEAPONS = [
     "ammo_total": 900,
     "bars": {
       "power": 38,
-      "rof": 63,
+      "rof": 67,
       "ammo": 100,
-      "ttk": 47
+      "ttk": 49
     }
   },
   {
@@ -252,6 +258,7 @@ export const DEMO_WEAPONS = [
     "rpm": 6,
     "rng": 75,
     "dmg_per_hit": 115,
+    "dual_emitter": false,
     "pool": 115,
     "verified": false,
     "tags": [
@@ -272,7 +279,7 @@ export const DEMO_WEAPONS = [
     "ammo_total": 4,
     "bars": {
       "power": 100,
-      "rof": 26,
+      "rof": 27,
       "ammo": 20,
       "ttk": 93
     }
@@ -292,6 +299,7 @@ export const DEMO_WEAPONS = [
     "rpm": 8,
     "rng": 75,
     "dmg_per_hit": 115,
+    "dual_emitter": false,
     "pool": 115,
     "verified": false,
     "tags": [
@@ -312,7 +320,7 @@ export const DEMO_WEAPONS = [
     "ammo_total": 4,
     "bars": {
       "power": 100,
-      "rof": 32,
+      "rof": 33,
       "ammo": 20,
       "ttk": null
     }
@@ -332,6 +340,7 @@ export const DEMO_WEAPONS = [
     "rpm": 9,
     "rng": 75,
     "dmg_per_hit": 40,
+    "dual_emitter": true,
     "pool": 115,
     "verified": false,
     "tags": [
@@ -350,9 +359,9 @@ export const DEMO_WEAPONS = [
     "ammo_total": 30,
     "bars": {
       "power": 73,
-      "rof": 38,
+      "rof": 40,
       "ammo": 31,
-      "ttk": 53
+      "ttk": 56
     }
   },
   {
@@ -360,24 +369,25 @@ export const DEMO_WEAPONS = [
     "name": "SMG",
     "cls": "1",
     "weapon_class": "ballistic",
-    "desc": "A hose. The magazine leaves faster than you meant it to, and getting it back means standing still for a long time.",
-    "clip": 72,
+    "desc": "A close-combat hose. The barrel hits for 8 and the headset adds 1, so a target reached by both emitters takes 9; the magazine leaves faster than you meant it to.",
+    "clip": 54,
     "mags": 4,
-    "reserve": 288,
+    "reserve": 216,
     "reload_s": 2.5,
     "reload_ms": 2500,
-    "dmg": 7,
-    "rpm": 79,
+    "dmg": 8,
+    "rpm": 75,
     "rng": 75,
-    "dmg_per_hit": 8,
+    "dmg_per_hit": 9,
+    "dual_emitter": true,
     "pool": 115,
     "verified": false,
     "tags": [
       "cqb"
     ],
     "role": "cqb",
-    "htk": 15,
-    "ttk_ms": 1330,
+    "htk": 13,
+    "ttk_ms": 1200,
     "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
@@ -385,12 +395,12 @@ export const DEMO_WEAPONS = [
       "per_shot": 15,
       "recover_ms": 150
     },
-    "ammo_total": 360,
+    "ammo_total": 270,
     "bars": {
-      "power": 29,
-      "rof": 94,
+      "power": 38,
+      "rof": 93,
       "ammo": 89,
-      "ttk": 80
+      "ttk": 93
     }
   },
   {
@@ -408,6 +418,7 @@ export const DEMO_WEAPONS = [
     "rpm": 60,
     "rng": 75,
     "dmg_per_hit": 6,
+    "dual_emitter": false,
     "pool": 115,
     "verified": false,
     "tags": [
@@ -428,7 +439,7 @@ export const DEMO_WEAPONS = [
     "ammo_total": 32,
     "bars": {
       "power": 20,
-      "rof": 75,
+      "rof": 80,
       "ammo": 37,
       "ttk": 20
     }
@@ -448,6 +459,7 @@ export const DEMO_WEAPONS = [
     "rpm": 5,
     "rng": 75,
     "dmg_per_hit": 60,
+    "dual_emitter": false,
     "pool": 115,
     "verified": false,
     "tags": [
@@ -469,7 +481,7 @@ export const DEMO_WEAPONS = [
       "power": 82,
       "rof": 20,
       "ammo": 26,
-      "ttk": 73
+      "ttk": 78
     }
   },
   {
@@ -487,6 +499,7 @@ export const DEMO_WEAPONS = [
     "rpm": 60,
     "rng": 75,
     "dmg_per_hit": 9,
+    "dual_emitter": false,
     "pool": 115,
     "verified": false,
     "tags": [
@@ -506,9 +519,9 @@ export const DEMO_WEAPONS = [
     "ammo_total": 160,
     "bars": {
       "power": 20,
-      "rof": 75,
+      "rof": 80,
       "ammo": 66,
-      "ttk": 87
+      "ttk": 85
     }
   },
   {
@@ -526,6 +539,7 @@ export const DEMO_WEAPONS = [
     "rpm": 54,
     "rng": 75,
     "dmg_per_hit": 8,
+    "dual_emitter": false,
     "pool": 115,
     "verified": false,
     "tags": [
@@ -544,9 +558,9 @@ export const DEMO_WEAPONS = [
     "ammo_total": 459,
     "bars": {
       "power": 29,
-      "rof": 69,
+      "rof": 73,
       "ammo": 94,
-      "ttk": 33
+      "ttk": 35
     }
   },
   {
@@ -564,6 +578,7 @@ export const DEMO_WEAPONS = [
     "rpm": 68,
     "rng": 75,
     "dmg_per_hit": 8,
+    "dual_emitter": false,
     "pool": 115,
     "verified": false,
     "tags": [
@@ -582,9 +597,9 @@ export const DEMO_WEAPONS = [
     "ammo_total": 210,
     "bars": {
       "power": 29,
-      "rof": 82,
+      "rof": 87,
       "ammo": 71,
-      "ttk": 67
+      "ttk": 71
     }
   },
   {
@@ -602,6 +617,7 @@ export const DEMO_WEAPONS = [
     "rpm": 47,
     "rng": 75,
     "dmg_per_hit": 9,
+    "dual_emitter": false,
     "pool": 115,
     "verified": false,
     "tags": [
@@ -621,9 +637,9 @@ export const DEMO_WEAPONS = [
     "ammo_total": 139,
     "bars": {
       "power": 38,
-      "rof": 57,
+      "rof": 60,
       "ammo": 60,
-      "ttk": 40
+      "ttk": 42
     }
   }
 ];

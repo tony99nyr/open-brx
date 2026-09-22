@@ -616,7 +616,15 @@ export class Engine {
     this.carrying = null;   // A11.6: flag team whose colour the headset is blinking while this player carries it (kept for back-compat reads; the source of truth is `_activeRole` once `headset.role` exists)
     this._activeRole = null;        // A16 §3.3: {name, tid} — the ONE headset role currently held (carrier|infected|vip|beacon|extracted), re-asserted after every hit, cleared on death
     this._lastHeadsetFlashAt = null; // led-language.md §2 (safety: bursts ≥ 1 s apart) / §5: node-initiated headset FLASH sequences (hit flash, role re-assert) share the gun burst's 1 s minimum — never the down rearm or the low-health alert
-    this.latch = null;              // {shooter_num, shooter_team, at, ir_proto}
+    this.latch = null;              // {shooter_num, shooter_team, at, ir_proto, ir_subtype, magnitude}
+    // A dual-emitter pull (gun + headset) reaches a victim as two HIR/HP pairs. Keep a
+    // small node-side identity so MC can count that physical pull once without collapsing
+    // ordinary rapid fire. The second word is identified by its same shooter/cell, nearby
+    // arrival, and smaller magnitude (the headset word follows the body word on the wire).
+    this._hitGroupSeq = 0;
+    this._hitGroupEpoch = Math.random().toString(36).slice(2);
+    this._dualEmitters = [];
+    this._lastHitFact = null;
     this._spawnAt = null;            // B5: this.now() of the last _spawn/_revive WRITE — the settle window below is measured from here
     this._armPending = null;         // F209: {at, flip, until, shotEnds, off, shield} from a spawn/revive write until `_armLife` ends spawn protection
     this._triggerPending = null;     // 2026-09-19: {at, due} while a timed spawn/revive holds the trigger (`$BMAP,0,98`)
@@ -1298,6 +1306,7 @@ export class Engine {
     this.config = config || this.config;
     this.browse(false);   // the LOADOUT browser is a KITTED-phase screen; a config push ends kit-out
     this.frames = frames || this.frames; if (roster) this.roster = roster;
+    this._dualEmitters = Array.isArray(this.frames && this.frames.dual_emitters) ? this.frames.dual_emitters : [];
     this.tutorial = false; this.tutorialWeapon = null; this.tryoutArming = null; this.tryoutUnconfirmed = null;
     this._gunRestFrame = null;   // F86: a new bundle's rest is `gun.rest` until this match's first take says otherwise
     if (!this.frames || !this.frames.head) { this.log('config without frames — ignored', 'le'); return; }
@@ -3954,7 +3963,7 @@ export class Engine {
         // $HIR,<sensor>,<irProto>,<shooterId>,<shooterTeam>,<damage>,,<subtype> — with t[0] the command
         // word, sensor is t[1] and irProto is t[2]. `ir_proto` read t[1], so it had been reporting
         // the SENSOR all along; every hit_taken fact ever recorded carries that mix-up.
-        if (!Number.isNaN(team)) { this.latch = { shooter_num: Number.isNaN(num) ? 0 : num, shooter_team: team, at: this.now(), ir_proto: parseInt(t[2], 10), sensor: parseInt(t[1], 10) }; this.lastHitAt = this.now(); this._shieldReassert(); }
+        if (!Number.isNaN(team)) { this.latch = { shooter_num: Number.isNaN(num) ? 0 : num, shooter_team: team, at: this.now(), ir_proto: parseInt(t[2], 10), ir_subtype: parseInt(t[7], 10), magnitude: parseInt(t[5], 10), crit: parseInt(t[6], 10), sensor: parseInt(t[1], 10) }; this.lastHitAt = this.now(); this._shieldReassert(); }
         if (t[2] === '8') this._stun();   // F15: an EMP word (proto 8) -- a no-op unless config.stun is on; no $HP follows a status row, so nothing below sees it
         if (!Number.isNaN(team)) this._poisonHit(parseInt(t[2], 10));   // S16: a protocol in `frames.dot` starts or refreshes the stack
         this._smokeHirAt = this.now(); this._smokeCheck();               // S53: half of a smoke landing (the other half is the $ALCD drop to 0)
@@ -4742,8 +4751,23 @@ export class Engine {
       // bench-mapped, 2 and 3 are not), 4 = gun body. It was parsed
       // and dropped, so MC could not see WHICH sensor caught a hit — answering that took the phone's
       // raw frame ring (field 2026-09-01). One field, and the question becomes readable live.
+      const now = this.now(), prior = this._lastHitFact;
+      const spec = this._dualEmitters.find(s => Number(s.proto) === this.latch.ir_proto && Number(s.subtype) === this.latch.ir_subtype);
+      // The measured order is barrel word first, headset word second. Keeping that
+      // direction matters for rapid SMG fire: the next pull's barrel word (8) may
+      // arrive soon after the previous pull's headset word (1).
+      const valuesMatch = spec && dmg === Number(spec.headset) && prior && prior.dmg === Number(spec.body);
+      const equalDual = spec && Number(spec.body) === Number(spec.headset) && prior && prior.dmg === dmg
+        && prior.sensor !== this.latch.sensor && now - prior.at <= 150 && Number(spec.cycle_ms) > 150;
+      const paired = prior && now - prior.at <= 150 && prior.shooter_num === this.latch.shooter_num
+        && prior.ir_proto === this.latch.ir_proto && prior.ir_subtype === this.latch.ir_subtype
+        && prior.crit === this.latch.crit && (valuesMatch || equalDual);
+      const shot_group = paired ? prior.shot_group : `${this._hitGroupEpoch}:${++this._hitGroupSeq}`;
       this.emitFact({ type: 'hit_taken', match_id: this.matchId, shooter_num: this.latch.shooter_num,
-        shooter_team: this.latch.shooter_team, dmg, ir_proto: this.latch.ir_proto, sensor: this.latch.sensor });
+        shooter_team: this.latch.shooter_team, dmg, ir_proto: this.latch.ir_proto,
+        ir_subtype: this.latch.ir_subtype, sensor: this.latch.sensor, shot_group });
+      this._lastHitFact = { at: now, shooter_num: this.latch.shooter_num, ir_proto: this.latch.ir_proto,
+        ir_subtype: this.latch.ir_subtype, crit: this.latch.crit, dmg, shot_group };
       this.lastHitAt = this.now();
       // F57 (bench 2026-09-09, "the critical sounds are a bit bugged when it was at 1 red"): the hit that CROSSES the
       // low-health threshold used to fire `low_health` AND the pain grunt in the same millisecond, and the gun plays

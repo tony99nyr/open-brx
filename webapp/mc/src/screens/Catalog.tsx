@@ -16,11 +16,11 @@ const NUMERIC: SortKey[] = ['dmg_per_hit', 'htk', 'ttk_ms', 'clip', 'reserve', '
 
 // `pool` comes from the server and follows the host's health config — hits-to-kill is only true of
 // the game that is actually set up (W2; docs/weapon-design.md §2.5). Never hardcode 115 here again.
-const cols = (pool: number | null): { key: SortKey; label: string; hint?: string }[] => [
+const cols = (pool: number | null, hasDual: boolean): { key: SortKey; label: string; hint?: string }[] => [
   { key: 'name', label: 'WEAPON' },
   { key: 'role', label: 'ROLE' },
-  { key: 'dmg_per_hit', label: 'DMG / HIT', hint: pool ? `Damage one hit removes from this game's ${pool} pool` : 'Damage one hit removes from a full-health player' },
-  { key: 'htk', label: 'HITS TO KILL', hint: pool ? `Hits to drop a full-health player at this game's ${pool} pool` : undefined },
+  { key: 'dmg_per_hit', label: hasDual ? 'DMG / HIT*' : 'DMG / HIT', hint: pool ? `Damage one hit removes from this game's ${pool} pool` : 'Damage one hit removes from a full-health player' },
+  { key: 'htk', label: 'HITS / PULLS TO KILL', hint: pool ? `Hits, or dual-emitter pulls, to drop a full-health player at this game's ${pool} pool` : undefined },
   { key: 'ttk_ms', label: 'TIME TO KILL', hint: 'Seconds of sustained hits to drop a full-health player' },
   { key: 'clip', label: 'MAG' },
   { key: 'reserve', label: 'RESERVE' },
@@ -58,7 +58,7 @@ export function Catalog() {
   const click = (k: SortKey) => { if (k === sort) setDesc(d => !d); else { setSort(k); setDesc(false); } };
   const focus = sel ? weapons.find(w => w.weapon_id === sel) ?? null : null;
   const pool = weapons.find(w => w.pool != null)?.pool ?? null;
-  const COLS = cols(pool);
+  const COLS = cols(pool, weapons.some(w => w.dual_emitter));
 
   if (!weapons.length) {
     return <div className="screen"><ScreenHeader kicker="[ ARSENAL // REFERENCE ]" title="Arsenal"
@@ -74,6 +74,7 @@ export function Catalog() {
         {weapons.length} WEAPONS · NOTHING HERE CHANGES A LOADOUT — BROWSE FREELY.
         {' '}METERS RANK EACH WEAPON AGAINST THE WHOLE ARSENAL; THE NUMBERS BESIDE THEM ARE REAL.
         {pool != null && <> {' · '}HITS AND TIME TO KILL ARE AT THIS GAME'S {pool} POOL (HP + ARMOUR).</>}
+        {weapons.some(w => w.dual_emitter) && <> {' · '}* DUAL EMITTER TOTAL PER TRIGGER WHEN BOTH WORDS LAND.</>}
       </div>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
@@ -126,8 +127,8 @@ export function Catalog() {
                     )}
                   </td>
                   <td style={{ padding: '9px 10px' }}><Tag color={r.color} size={9} style={{ letterSpacing: '.18em', padding: '2px 8px' }}>{r.label || '—'}</Tag></td>
-                  {num(w.dmg_per_hit)}
-                  {num(w.htk)}
+                  {num(w.dmg_per_hit, '', w.dual_emitter ? '*' : '')}
+                  {num(w.htk, '', w.dual_emitter ? '*' : '')}
                   {num(w.ttk_ms == null ? null : +(w.ttk_ms / 1000).toFixed(2), 's')}
                   {num(w.clip)}
                   {num(w.reserve)}
@@ -168,10 +169,10 @@ export function Catalog() {
   );
 }
 
-function num(v: number | null | undefined, unit = '') {
+function num(v: number | null | undefined, unit = '', marker = '') {
   return (
     <td style={{ padding: '9px 10px', textAlign: 'right', font: F.osw(600, 14), ...TAB, color: v == null ? T.micro : T.ink, whiteSpace: 'nowrap' }}>
-      {v == null ? '—' : `${v}${unit}`}
+      {v == null ? '—' : `${v}${unit}${marker}`}
     </td>
   );
 }

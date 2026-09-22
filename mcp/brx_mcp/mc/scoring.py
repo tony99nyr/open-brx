@@ -131,6 +131,10 @@ class Scorer:
         self.stats: dict[str, _P] = {pid: _P(p.get("team_id")) for pid, p in players.items()}
         self.num_to_pid = {p["player_num"]: pid for pid, p in players.items()}
         self.hits_log: list[tuple[int, str, str, int]] = []   # (t, shooter_pid, victim_pid, dmg)
+        # A dual-emitter trigger pull can arrive as two hit_taken facts. The node assigns
+        # both facts the same shot_group; accuracy counts the physical pull once while the
+        # damage log still retains both landed words for assists and replay diagnostics.
+        self._counted_hit_groups: set[tuple[str, str]] = set()
         # F80: facts whose shooter is wire id 0 -- a grenade hill's damage word (F69) or a gun whose $PSET
         # never landed. They score for nobody by design (A5.1); the recap says how many there were so a
         # mis-armed gun is at least visible AFTER the match (the arm-time fix is B19).
@@ -355,7 +359,12 @@ class Scorer:
             if shooter and shooter != pid:
                 self.hits_log.append((t, shooter, pid, int(ev.get("dmg", 0) or 0)))
                 if not self._friendly(shooter, pid):
-                    self.stats[shooter].hits += 1
+                    group = ev.get("shot_group")
+                    group_key = (pid, str(group)) if isinstance(group, (int, str)) and not isinstance(group, bool) else None
+                    if group_key is None or group_key not in self._counted_hit_groups:
+                        self.stats[shooter].hits += 1
+                        if group_key is not None:
+                            self._counted_hit_groups.add(group_key)
                     ss = self.stats[shooter]
                     ss.last_hit_t = t if ss.last_hit_t is None else max(ss.last_hit_t, t)
             return "scored"

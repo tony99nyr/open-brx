@@ -146,10 +146,41 @@ def test_a_weapon_with_no_captured_t12_still_compiles_with_the_cell_empty():
         wid = w["weapon_id"]
         if _tok(wid, "headset_dmg").strip():
             continue
+        if (w.get("overrides") or {}).get("t12"):
+            continue  # an explicit evidence-carrying deviation may deliberately populate the empty capture
         compiled_t12 = CAT.resolve(wid, 0).split(",")[WeaponCatalog._T["headset_dmg"] + 1]
         assert compiled_t12 == "", f"{wid}: t12 should stay empty, compiled to {compiled_t12!r}"
         checked += 1
     assert checked > 5, "too few no-t12 weapons checked: the capture fixtures moved"
+
+
+def test_smg_deliberately_adds_a_small_headset_word_that_the_headset_can_emit():
+    """Playtest 2026-09-20: covering the SMG barrel produced no hit while the Shotgun control did.
+    The pushed SMG had an empty t12, so its headset had no damage word to send. This is an explicit
+    Open BRX deviation from the captured frame, priced as 8 barrel + 1 headset with reliable carriers."""
+    frame = CAT.resolve("smg", 0, environment="outdoor").split(",")
+    T = WeaponCatalog._T
+    assert frame[2] == "2", "t1 must select gun + headset or the new t12 word is never emitted"
+    assert frame[T["dmg"] + 1] == "8"
+    assert frame[T["headset_dmg"] + 1] == "1"
+    assert frame[T["headset_range_outdoor"] + 1] == "100"
+    assert frame[T["headset_range_indoor"] + 1] == "100"
+    assert CAT.damage_per_pull("smg") == 9
+
+
+def test_an_invented_headset_word_requires_the_source_and_two_reliable_carriers():
+    """An added t12 alone recreates the playtest bug: no headset source means no emission, while an
+    empty or detuned range cell can make the new word inaudible. Refuse every incomplete shape."""
+    smg = json.loads(json.dumps(next(w for w in ROWS if w["weapon_id"] == "smg")))
+    cases = (("t1", "source"), ("t13", "range"), ("t42", "range"))
+    for missing, hint in cases:
+        broken = json.loads(json.dumps(smg))
+        del broken["overrides"][missing]
+        try:
+            WeaponCatalog([broken]).resolve("smg", 0)
+            raise AssertionError(f"invented headset word compiled without {missing}")
+        except ValueError as e:
+            assert hint in str(e).lower() or missing in str(e), str(e)
 
 
 def test_damage_per_pull_adds_the_declared_headset_dmg_and_damage_stays_gun_body_only():

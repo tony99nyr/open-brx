@@ -1104,6 +1104,7 @@ class WeaponCatalog:
                       "tap_dmg": self.tap_damage(w["weapon_id"]) or None},
             "weap_frame": self.resolve(w["weapon_id"], 0),
             "verified": bool(w.get("verified", False)),
+            "dual_emitter": bool((w.get("wire") or {}).get("headset_dmg")),
         }
         # A48: what one full charge costs the cell. The node reads it, and after F248 the HUD picks the
         # ammo gauge from it, so send the RESOLVED number rather than the raw field: `weapons.json` writes
@@ -1167,7 +1168,7 @@ class WeaponCatalog:
     _AMMO_TOKENS = frozenset({16, 17, 18, 39, 40})
     # Doc-token positions that protocol-classes.md gives a NAME to. `overrides` may only name one of
     # these — the hard rule is "never write a token we cannot name", and an override is still a write.
-    _NAMED = frozenset({0, 2, 3, 4, 5, 6, 12, 13, 14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
+    _NAMED = frozenset({0, 1, 2, 3, 4, 5, 6, 12, 13, 14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
                         27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42})
 
     # Legacy 4-sample tails, kept only for rows with no `capture` block (synthetic catalogs in tests).
@@ -1290,14 +1291,16 @@ class WeaponCatalog:
         # so there is a dual emitter fire, one from tagger, weaker damage, and one from headset, greater
         # damage" -- which READS AS the tagger sending the smaller word and the headset the larger one,
         # though that stays SOURCED and not settled: a capture cannot show which emitter fired, and no
-        # bench has yet covered one emitter at a time (F275's run does it in passing).
+        # bench has yet covered one emitter at a time (F275's run does it in passing). Open BRX also
+        # adds a deliberately tiny second word to the SMG after the 2026-09-20 covered-emitter test;
+        # because that is not present in the capture, it requires evidence-carrying t1/t12 overrides.
         # `resolve()` therefore no longer MIRRORS t5 onto t12: it writes a DECLARED
         # `wire.headset_dmg`, priced independently of t5 (see `WeaponCatalog.damage_per_pull()`). A
         # weapon whose capture carries a t12 but declares no `wire.headset_dmg` is REFUSED, not silently
         # left at its raw captured word -- an unpriced captured t12 is the exact three-weapon balance
         # hole this whole change exists to close (the Plasma Sniper priced its t5 down to 25 while its
-        # capture still carried an unpriced 80). Inventing a t12 on a weapon that has never carried one
-        # is still refused too -- the same "emit the capture verbatim" contract that keeps t41 untouched.
+        # capture still carried an unpriced 80). Inventing a t12 on another weapon is still refused --
+        # the same "emit the capture verbatim" contract that keeps t41 untouched.
         had_headset_dmg = p[T["headset_dmg"] + 1].strip() != ""
         dmg_abs = (mods or {}).get("dmg_abs")
         if dmg_abs is not None:
@@ -1312,8 +1315,8 @@ class WeaponCatalog:
             put("dmg", eff_dmg)
         else:
             eff_dmg = int(p[T["dmg"] + 1] or 0)   # captured value, unmoved -- still the number t5 carries
+        headset_dmg = wire.get("headset_dmg")
         if had_headset_dmg:
-            headset_dmg = wire.get("headset_dmg")
             if headset_dmg is None:
                 raise ValueError(
                     f"{weapon_id}: capture carries a t12 (ExtraHeadsetDamage) but weapons.json declares "
@@ -1326,6 +1329,31 @@ class WeaponCatalog:
             # health while the perk was priced at `ap_dmg` alone (an AP Shotgun shipped 15 + 20 = 35 for
             # the price of 15). That is the identical unpriced-second-word hole this whole change exists
             # to close, so AP zeroes the second word and the pull is worth exactly what it costs.
+            put("headset_dmg", 0 if dmg_abs is not None else int(headset_dmg))
+        elif headset_dmg is not None:
+            # The captured SMG has no second word. Open BRX deliberately adds a small close-combat
+            # headset word after the 2026-09-20 covered-barrel control proved the absence. Inventing a
+            # word remains awkward: the row must both price it in `wire` (so balance sees it) and carry
+            # an explicit, sourced t12 override (so a casual balance edit cannot create an emitter).
+            overrides = w.get("overrides") or {}
+            ov = overrides.get("t12")
+            if not isinstance(ov, dict) or int(ov.get("value", -1)) != int(headset_dmg):
+                raise ValueError(f"{weapon_id}: wire.headset_dmg on a capture with empty t12 needs a matching "
+                                 "overrides.t12 entry with the evidence for inventing the headset word")
+            self._override_index(weapon_id, "t12", ov)
+            source = overrides.get("t1")
+            if not isinstance(source, dict) or int(source.get("value", -1)) != 2:
+                raise ValueError(f"{weapon_id}: an invented headset word needs overrides.t1=2 "
+                                 "(gun and headset), or t12 will never be emitted")
+            self._override_index(weapon_id, "t1", source)
+            for key, wire_key in (("t13", "headset_range_outdoor"),
+                                  ("t42", "headset_range_indoor")):
+                reach = overrides.get(key)
+                if (int(wire.get(wire_key, -1)) != 100 or not isinstance(reach, dict)
+                        or int(reach.get("value", -1)) != 100):
+                    raise ValueError(f"{weapon_id}: an invented headset word needs wire.{wire_key}=100 "
+                                     f"and overrides.{key}=100 so the receiver can hear it reliably")
+                self._override_index(weapon_id, key, reach)
             put("headset_dmg", 0 if dmg_abs is not None else int(headset_dmg))
         # t6 (`primaryCritChance`, F62, closed 2026-09-18): the GUN rolls its own crit off this straight
         # percentage, magnitude x1.5 truncated, and `$HIR` token 6 reads 1 on the proc (0 on a normal
@@ -1346,8 +1374,8 @@ class WeaponCatalog:
         # t13 (`HeadsetRangeOutdoor`) / t42 (`HeadsetRangeIndoor`): the second word's OWN reach. Unlike
         # t12, an unwritten reach is not a safety hole -- reach is not a damage number, so a weapon with
         # a captured cell but no declared override just keeps whatever the capture carries, and this
-        # never raises either way. 2026-09-18 (Tony): both are locked at 100 on the three headset
-        # weapons -- the flat, measured shelf of F231's range curve, not its unstable 13-26 transition
+        # never raises either way. 2026-09-18 (Tony): both are locked at 100 on all configured headset
+        # words -- the flat, measured shelf of F231's range curve, not its unstable 13-26 transition
         # band -- so today the second word lands on every pull at every range this game is played at.
         # See docs/FOLLOWUPS.md for the open question of where the word WOULD cut out if aimed lower.
         if p[T["headset_range_outdoor"] + 1].strip() != "" and wire.get("headset_range_outdoor") is not None:
@@ -1370,6 +1398,10 @@ class WeaponCatalog:
         put("range_outdoor", gun_range_outdoor_pct(
             int(p[T["range_outdoor"] + 1] or 0), wire.get("range_outdoor_pct"), environment))
         for key, ov in (w.get("overrides") or {}).items():
+            # t12 has already been validated and written above. Applying the evidence record again
+            # here would undo Armour Piercing's required zeroing of the second damage word.
+            if key == "t12" and headset_dmg is not None:
+                continue
             idx = self._override_index(weapon_id, key, ov)   # validates before we touch the frame
             p[idx + 1] = str(ov["value"])
         return ",".join(p)
@@ -1435,8 +1467,9 @@ class WeaponCatalog:
         The fn 36/37 HEADSET MULTIPLIER (see `headset_multiplier()`) stays excluded from every
         derivation below this method, on purpose: it is conditional on which sensor a shot lands on,
         and the catalogue cannot know that in advance. `$WEAP` t12 (`ExtraHeadsetDamage`) is a
-        different mechanism entirely: on the three weapons whose t1 (`WeaponIRSource`) is 2 (Shotgun,
-        Plasma Sniper, Rocket Launcher) the gun fires an UNCONDITIONAL second word out of the shooter's
+        different mechanism entirely: on the three stock weapons whose t1 (`WeaponIRSource`) is 2
+        (Shotgun, Plasma Sniper, Rocket Launcher), plus Open BRX's explicit SMG deviation, the gun fires
+        an UNCONDITIONAL second word out of the shooter's
         own headset, ~88 ms behind the first. Measured on the wire 2026-09-18 (Callsign capture cap30:
         the shooter's gun emitted 45, the shooter's headset emitted 70, landing 88 ms apart on the same
         victim sensor) and independently confirmed by LaserTagMods (Jay, 2026-09-18): "it actually is
@@ -2278,6 +2311,25 @@ class Compiler:
                                "classes": {f"{c[0]},{c[1]}": k for c, (k, _fn) in plan.groups.items()},
                                "shared": list(plan.shared),
                                "material": list(_ha.MATERIAL_ROLES)}
+        # The victim node needs the match's dual-emitter shapes to collapse the two words of
+        # one trigger for accuracy. Keep the wire cell and magnitudes together; a shared cell
+        # is still safe because the magnitude pair distinguishes the dual weapon.
+        dual_emitters = []
+        for wid in plan.cells:
+            row = self.catalog._row(wid)
+            headset = (row.get("wire") or {}).get("headset_dmg")
+            if headset is None:
+                continue
+            frame = self.resolve(wid, 0).split(",")
+            cell = self._weapon_cell(wid)
+            if cell is None:
+                continue
+            dual_emitters.append({"proto": int(cell[0] or 0), "subtype": int(cell[1] or 0),
+                                  "body": int(frame[self.catalog._T["dmg"] + 1] or 0),
+                                  "headset": int(frame[self.catalog._T["headset_dmg"] + 1] or 0),
+                                  "cycle_ms": int(self.cycle_ms(wid) or 0)})
+        if dual_emitters:
+            bundle["dual_emitters"] = dual_emitters
         # A15.3: the pains are OURS -- the three $PSET pain fields ship empty and the node plays one of these on each
         # $HIR, the pool chosen by damage (proto 13 -> pain_melee; >= pain_long_min -> pain_long; else pain_short).
         if voice_switch != "off":

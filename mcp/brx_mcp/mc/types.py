@@ -597,6 +597,7 @@ class FrameBundle(TypedDict):
     #                                      path, so the write is safe by construction; the rows are identical apart from their sound tokens.
     hit_audio: NotRequired[dict]         # A17: {rekey: bool, cells{weapon_id: "p,s"}, classes{"p,s": family}, shared[families sharing a cell],
     #                                      material[roles]} -- what the UI/console shows for "what does a hit sound like", and what a bench probe reads.
+    dual_emitters: NotRequired[list[dict]] # physical gun/headset word pairs for node-side accuracy grouping
     dot: NotRequired[dict[str, "DotSpec"]]   # S16: IR protocol (a string key: JSON has no integer keys) -> tick numbers,
     #                                      for every damage-over-time weapon in THIS GAME. Absent = no such weapon.
     perk_effects: NotRequired[PerkEffectsResolved]   # S50 build 4: this player's compiled perk effect,
@@ -623,6 +624,7 @@ class Weapon(TypedDict):
     lethal: NotRequired[bool]       # 2026-09-18, weapon-design.md §7.4: False = cannot kill; absent means true
     crit_pct: NotRequired[int]      # F62 (2026-09-18): $WEAP t6 primaryCritChance, 0-100; absent = never crits
     min_app: NotRequired[str]       # victim-side runtime floor, declared beside the mechanic that needs it
+    dual_emitter: NotRequired[bool] # one trigger emits separate gun and headset words
 
 
 class WeaponBars(TypedDict):
@@ -648,6 +650,7 @@ class WeaponView(TypedDict):
     rpm: float | None
     rng: float | None
     dmg_per_hit: float | None
+    dual_emitter: NotRequired[bool]  # one trigger can emit separate gun and headset words
     pool: NotRequired[int]   # older MC rows predate host-pool ranking; the current producer always fills it
     verified: bool
     tags: list[str]
@@ -754,6 +757,8 @@ class Event(TypedDict, total=False):
     shooter_team: int
     dmg: int
     ir_proto: int
+    ir_subtype: int
+    shot_group: int | str
     # $HIR tok1 — WHICH sensor caught the shot. 0-3 are ALL HEADSET sensors (the headset carries
     # FOUR, operator-confirmed 2026-09-01; only 0 = front and 1 = back are bench-mapped), 4 = gun
     # body. Forwarded 2026-09-01: it was parsed on the phone and dropped, so a
