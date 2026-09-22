@@ -5265,9 +5265,8 @@ export class Engine {
       kills: this.score ? this.score.kills : null, assists: this.score ? this.score.assists : null, accuracy: this.score ? this.score.accuracy : null, scoreAt: this.scoreAt,
       lastMcMsgAt: this.lastMcMsgAt,   // F265: `hud.js _boardStale` freshness signal — see the field's own comment above
       // F208/F264: null, or {why: 'silent'|'no_fire', ms} / {verdict: 'asking'|'dead'|'alive'|'no_answer', at}.
-      // Published for MC and the bench (`statusBody` carries `pool_stale`/`cure` too); `hud.js` does not read
-      // either field today, so a `no_answer` verdict -- the one case that needs a human, FORCE RESPAWN -- is
-      // invisible on the phone (polish review, added after the merge; F288).
+      // Published for MC and the bench (`statusBody` carries `pool_stale`/`cure` too); F288 also renders
+      // `no_fire` / `no_answer` on the live phone HUD so the player can bring the host the proven failure.
       poolStale: this.poolStale(now), cure: this.cure,
       respawnType: this.respawnType, killedBy: this.killedBy, underFire: this.alive && this.lastHitAt > 0 && (now - this.lastHitAt) < 2000, respawnIn: (!this.alive && this.deadAt && this.respawnType === 'auto') ? Math.max(0, Math.ceil((r - (now - this.deadAt)) / 1000)) : 0,   // scanner/none modes have no countdown
       // utility.md: the respawn station this player would use, how close it reads, and what the DOWN screen should say

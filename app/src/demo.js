@@ -337,6 +337,13 @@ export function startDemo({ engine, log }) {
       smoke: () => { acc = 0; engine.feedFrame(`$HIR,0,7,19,${foe.tid},6,0,0,*`); engine.feedFrame(`$ALCD,${mag},0,0,${reserve},0,*`); setTimeout(() => { acc = 100; }, 6000); },
       lowAmmo: () => { mag = 3; reserve = 0; engine.feedFrame(`$ALCD,${mag},100,0,${reserve},0,*`); },
       emptyMag: () => { mag = 0; engine.feedFrame(`$ALCD,0,100,0,${reserve},0,*`); },
+      // F288: deterministic screen truth for the gun-health lane. Use the engine's real state() and
+      // poolStale() paths; only the measured facts are injected, as hardware would have established them.
+      gunNoAnswer: () => { engine._noFirePulls = 3; engine._cureLife = engine._lifeSeq; engine._cureAt = Date.now(); engine.cure = { verdict: 'no_answer', at: Date.now() }; engine._changed(); },
+      gunNoFire: () => { engine._noFirePulls = 3; engine._cureLife = engine._lifeSeq; engine._cureAt = Date.now(); engine.cure = { verdict: 'asking', at: Date.now() }; engine._changed(); },
+      gunHealthy: () => { engine._noFirePulls = 0; engine.cure = null; engine._changed(); },
+      gunSmokeOverlap: () => { const now = Date.now(); engine.smoke = { at: now, until: now + 6000 }; engine.gunAcc = 0; ev.gunNoAnswer(); },
+      gunHitOverlap: () => { engine.smoke = null; engine.lastHitAt = Date.now(); ev.gunNoAnswer(); },
       station: (rssi = -78, present = false, threshold = -74) => { if (typeof engine.setStations !== 'function') { log('demo: this engine has no stations', 'le'); return; }
         const list = rssi == null ? [] : [{ role: 'station', kind: 'respawn', id: 3, team: 255, state: 1, value: 0, rssi, raw: rssi, threshold, present: !!present, seenAt: Date.now() }];
         const pr = (typeof window !== 'undefined' && window.brx) ? window.brx.presence : null;
@@ -401,6 +408,7 @@ export function startDemo({ engine, log }) {
       'armed':             [...lobby, [900, () => ev.start(+q.get('tminus') || 30)]],
       'aborted':           [...lobby, [900, () => ev.start(30)], [1600, 'abort']],
       'live':              live,
+      'live-gun-no-answer': [...live, [2300, 'gunNoAnswer']],             // F288: phone-visible, actionable health verdict
       'live-fired':        [...live, [2300, () => ev.fire(7)]],
       'live-hit':          [...live, [2300, () => { ev.hit(); ev.hit(); ev.hit(); }]],
       'live-lowhp':        [...live, [2300, 'lowHp']],

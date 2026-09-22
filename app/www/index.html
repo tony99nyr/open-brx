@@ -191,6 +191,18 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .takingfire .r{width:6px;height:6px;border:1px solid var(--bad);border-radius:50%}
 .takingfire .t{font-family:var(--fd);font-style:italic;font-weight:700;font-size:22px;letter-spacing:.3em;color:var(--bad);text-indent:.3em;animation:blink .5s infinite}
 .battwarn{position:absolute;top:96px;right:48px;font-size:10px;letter-spacing:.16em;color:var(--warn);font-weight:700}
+/* F288: the engine's gun-health verdict used to stop at MC. Keep the player warning in the quiet lane below
+   the header, above the reticle, and use words as well as colour. It never takes taps from the match HUD. */
+.gunwarn{position:absolute;z-index:5;left:50%;top:100px;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;gap:14px;min-width:260px;max-width:calc(100% - 110px);padding:6px 16px 7px;border:1px solid currentColor;background:rgba(12,10,8,.9);pointer-events:none;text-align:center;white-space:nowrap}
+.gunwarn b{font-family:var(--fd);font-style:italic;font-size:18px;letter-spacing:.18em;line-height:1}
+.gunwarn span{font-size:14px;font-weight:700;letter-spacing:.1em;line-height:1.2}
+.gunwarn.warn{color:var(--warn);box-shadow:0 0 18px rgba(255,176,32,.18)}
+.gunwarn.danger{color:var(--bad);box-shadow:0 0 20px rgba(255,60,60,.25)}
+/* This is a fault, not ambient HUD chrome: night mode still has to meet text contrast. The normal night
+   tokens are intentionally dim enough for peripheral labels, but too dim for this corrective action. */
+[data-env="night"] .gunwarn.warn{color:#e0a143;background:rgba(8,3,3,.96)}
+[data-env="night"] .gunwarn.danger{color:#ef6868;background:rgba(8,3,3,.96)}
+#frame[data-gun-health] #chips{display:none}   /* this fault replaces WEAPONS HOT / link pills in their lane */
 /* S16: the poison pill sits just above the health it drains. Chartreuse, not the health green, and it names itself in
    words with a glyph, so colour is never the only signal. A plain fade-free fill: no pulse, no flash. */
 .fxbar{position:absolute;left:36px;bottom:150px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;pointer-events:none}

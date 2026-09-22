@@ -425,11 +425,18 @@ export class Hud {
     if (this.board && !(st.phase === 'live' && st.alive)) this.board = null;   // the scores overlay belongs to the live screen only
     this.frame.dataset.team = st.teamKey || 'blue';
     this.frame.dataset.env = st.night ? 'night' : '';
+    // F288: gun health owns the top alert lane. Lower-priority chips are hidden by CSS while this flag is
+    // present, rather than stacking over the fault or pushing it into the smoke / hit-effect lane.
+    if (this._gunHealthActive(st)) this.frame.dataset.gunHealth = '';
+    else delete this.frame.dataset.gunHealth;
     if (this.board) this.frame.dataset.board = this.board; else delete this.frame.dataset.board;
     const sig = [st.phase, st.alive, !!st.killedBy, st.night, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.underFire, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
       st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.reserve === 0, (st.mag || 0) > AMMO_PIP_MAX, st.battery != null && st.battery <= 15,
       st.heatEverSeen, st.overheatShown, !!(st.aim && AIM_REASON[st.aim.reason]),   // S53: the smoke tell takes the centre slot from the reticle / TAKING FIRE   // bench 2026-09-17: OVERHEAT prompt/overlay and the heat bar's existence are structural, not patched in place. `st.overheating` (the mechanic) is not read here at all: the HUD draws the display window only
       chargeCost(st) != null && st.ammo != null && st.ammo < chargeCost(st), st.reserve > 0,   // OUT OF ENERGY / RECHARGE prompt + the NOT ENOUGH ENERGY note are structural too
+      // F288: both gun-health facts change live markup. Flatten the objects: joining the objects themselves
+      // would turn every non-null value into the same "[object Object]" and miss no_fire → no_answer.
+      st.poolStale && st.poolStale.why, st.cure && st.cure.verdict, !!st.gunFlapping, !!st.reconciling,
       // F258: `this.scan.length` used to sit here, so every scan hit that added a device rebuilt the
       // whole screen. The picker's rows, its empty placeholder and its fold are all patched in place
       // by `_patchScan` now, so nothing about the scan is structure any more.
@@ -1211,6 +1218,7 @@ export class Hud {
       <div class="topright"><span class="link"><span id="linkdot" class="dot ${st.bleUp ? '' : 'off'}"></span><span id="linklab">${st.bleUp ? 'GUN' : 'NO GUN'}</span></span><button class="link mclink" data-act="onToggleMcPill" aria-label="Mission Control link"><span id="mcdot" class="dot ${st.wsState === 'bound' ? '' : 'ws'}"></span>MC</button>
         <span class="batt tab"><span class="shell"><span class="fill" id="battfill" style="right:${100 - (st.battery || 0)}%"></span></span><span id="batt">${st.battery != null ? st.battery + '%' : '—'}</span></span></div>
       ${st.battery != null && st.battery <= 15 ? `<div class="battwarn">GUN BATT ${st.battery}% — CHARGE SOON</div>` : ''}
+      ${this._gunHealthWarning(st)}
       <div class="stats tab">${st.kills > 0 ? stat('K', st.kills) : ''}${st.deaths > 0 ? stat('D', st.deaths) : ''}${st.assists > 0 ? stat('A', st.assists) : ''}${accShown(st) != null ? stat('ACC', accShown(st) + '%') : ''}</div>
       ${st.aim && AIM_REASON[st.aim.reason] ? `<div class="aimfx ${esc(st.aim.reason)}${overheating ? ' tight' : ''}" id="aimfx">${this._aimFx(st)}</div>`
         : st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>'}
@@ -1230,6 +1238,23 @@ export class Hud {
         ${this._heatBar(st)}
         <span class="wn"><span class="slot">${st.activeSlot ? 'SECONDARY' : 'PRIMARY'}</span>${esc(st.weapon)}</span></div>
       <div class="nightlab">NIGHT OPS</div>${kb}${this.board ? this._board(st) : ''}</div>`;
+  }
+  /** F288: a trigger-path failure needs to reach the player, not live only in MC diagnostics. `no_answer`
+   *  is conclusive and names the host-side cure. `no_fire` is the earlier, recoverable observation; silence
+   *  alone is intentionally omitted because the existing GUN LINK state owns connectivity. */
+  _gunHealthActive(st) {
+    if (!st.alive || !st.bleUp || st.gunFlapping || st.resync || st.reconciling) return false;
+    return !!((st.cure && st.cure.verdict === 'no_answer') || (st.poolStale && st.poolStale.why === 'no_fire'));
+  }
+  _gunHealthWarning(st) {
+    if (!this._gunHealthActive(st)) return '';
+    if (st.cure && st.cure.verdict === 'no_answer') {
+      return '<div class="gunwarn danger" role="alert"><b>GUN NOT ANSWERING</b> <span>HOST: FORCE RESPAWN OR RELINK</span></div>';
+    }
+    if (st.poolStale && st.poolStale.why === 'no_fire') {
+      return '<div class="gunwarn warn" role="status" aria-live="polite"><b>GUN NOT REPORTING SHOTS</b> <span>PULL TRIGGER AGAIN · THEN TELL HOST</span></div>';
+    }
+    return '';
   }
   /** S16: the poison pill, just above the health it is draining. It counts the stack down and names the applier,
    *  because a player watching health fall with no hit on screen otherwise reports a bug (Tony, 2026-09-18). Patched

@@ -62,7 +62,7 @@ const b = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });  
 const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 667, height: 375 }];
 const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted',
   'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
-  'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked', 'live-scores', 'live-scores-ffa', 'live-poison', 'live-smoke', 'down-poisoned']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
+  'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked', 'live-scores', 'live-scores-ffa', 'live-poison', 'live-smoke', 'down-poisoned', 'live-gun-no-answer']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
 let stepIdx = 0;   // counts every step this run selects; identical control flow in every shard, so `% count` partitions them
 const step = async (name, fn) => { if (ONLY && !name.includes(ONLY)) return; if (SHARD && stepIdx++ % SHARD[1] !== SHARD[0]) return; try { await fn(); console.log(`  ok   ${name}`); pass++; } catch (e) { console.log(`  FAIL ${name}: ${String(e.message || e).slice(0, 300)}`); fail++; errs.push(name); } };
 const open = async (view, stage, extra = '', ms) => {
@@ -128,6 +128,66 @@ for (const view of VIEWS) {
   }
   await step(`${view.name} frame keeps its design size (#6/#7/#13/#18/#22 root cause)`, async () => {
     const pg = await open(view, 'kitted'); const w = await pg.evaluate(() => getComputedStyle(document.getElementById('frame')).width); await pg.close(); must(w === '844px', 'frame width ' + w);
+  });
+  await step(`${view.name} F288 gun-health warning is visible, actionable, and clears`, async () => {
+    const pg = await open(view, 'live-gun-no-answer');
+    const read = () => pg.evaluate(() => {
+      const e = document.querySelector('.gunwarn'); if (!e) return null;
+      const r = e.getBoundingClientRect(), cs = getComputedStyle(e), hit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+      const font = parseFloat(getComputedStyle(e.querySelector('span')).fontSize), frame = document.getElementById('frame');
+      const frameScale = frame.getBoundingClientRect().width / frame.offsetWidth;
+      return { text: e.textContent.replace(/\s+/g, ' ').trim(), danger: e.classList.contains('danger'), role: e.getAttribute('role'), font, visualFont: font * frameScale,
+        inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight, overflow: e.scrollWidth > e.clientWidth + 1,
+        headerHit: hit(r, document.querySelector('.clockplate').getBoundingClientRect()), reticleHit: hit(r, document.querySelector('.reticle').getBoundingClientRect()),
+        chipHit: Array.from(document.querySelectorAll('.chipbar .pill')).some(p => { const s = getComputedStyle(p); return s.display !== 'none' && s.visibility !== 'hidden' && Number(s.opacity) > 0 && hit(r, p.getBoundingClientRect()); }),
+        chipsDisplay: getComputedStyle(document.getElementById('chips')).display, css: { display: cs.display, opacity: cs.opacity } };
+    });
+    const unanswered = await read();
+    await pg.evaluate(() => window.brxDemo.gunNoFire());
+    await pg.waitForFunction(() => document.querySelector('.gunwarn.status, .gunwarn.warn')?.textContent.includes('NOT REPORTING SHOTS')); const noFire = await read();
+    await pg.evaluate(() => window.brxDemo.gunHealthy());
+    await pg.waitForFunction(() => !document.querySelector('.gunwarn') && !document.getElementById('frame').hasAttribute('data-gun-health'));
+    const cleared = await pg.evaluate(() => ({ warning: !!document.querySelector('.gunwarn'), flagged: document.getElementById('frame').hasAttribute('data-gun-health'), chips: getComputedStyle(document.getElementById('chips')).display, weaponsHot: document.getElementById('chips').textContent.includes('WEAPONS HOT') }));
+    await pg.close();
+    must(unanswered && unanswered.danger && unanswered.role === 'alert', JSON.stringify(unanswered));
+    must(unanswered.text === 'GUN NOT ANSWERING HOST: FORCE RESPAWN OR RELINK', unanswered.text);
+    must(unanswered.inside && !unanswered.overflow && !unanswered.headerHit && !unanswered.reticleHit && !unanswered.chipHit && unanswered.chipsDisplay === 'none' && unanswered.visualFont >= 11, JSON.stringify(unanswered));
+    must(noFire, 'no no-fire warning');
+    must(noFire.danger === false, 'no-fire warning used danger styling: ' + JSON.stringify(noFire));
+    must(noFire.role === 'status', 'no-fire warning role: ' + JSON.stringify(noFire));
+    must(/GUN NOT REPORTING SHOTS/.test(noFire.text) && /PULL TRIGGER AGAIN/.test(noFire.text) && /THEN TELL HOST/.test(noFire.text), 'no-fire copy: ' + JSON.stringify(noFire));
+    must(noFire.inside && !noFire.overflow && !noFire.headerHit && !noFire.reticleHit && !noFire.chipHit && noFire.chipsDisplay === 'none' && noFire.visualFont >= 11, JSON.stringify(noFire));
+    must(!cleared.warning && !cleared.flagged && cleared.chips !== 'none' && cleared.weaponsHot, 'healthy state did not restore chips: ' + JSON.stringify(cleared));
+  });
+  await step(`${view.name} F288 gun health does not cover live smoke or hit effects`, async () => {
+    const pg = await open(view, 'live-gun-no-answer');
+    const overlap = sel => pg.evaluate(sel => { const w = document.querySelector('.gunwarn'), e = document.querySelector(sel); if (!w || !e) return null; const a = w.getBoundingClientRect(), b = e.getBoundingClientRect(); return { hit: a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top, warning: [a.top, a.bottom], effect: [b.top, b.bottom] }; }, sel);
+    await pg.evaluate(() => window.brxDemo.gunSmokeOverlap());
+    await pg.waitForFunction(() => document.querySelector('.gunwarn.danger') && document.querySelector('.aimfx')); const smoke = await overlap('.aimfx');
+    await pg.evaluate(() => window.brxDemo.gunHitOverlap());
+    await pg.waitForFunction(() => document.querySelector('.gunwarn.danger') && document.querySelector('.takingfire')); const hit = await overlap('.takingfire');
+    await pg.close();
+    must(smoke && !smoke.hit, 'warning covers smoke: ' + JSON.stringify(smoke));
+    must(hit && !hit.hit, 'warning covers taking-fire: ' + JSON.stringify(hit));
+  });
+  await step(`${view.name} F288 link loss supersedes a persisted no-answer verdict`, async () => {
+    const pg = await open(view, 'live-gun-no-answer');
+    await pg.evaluate(() => window.brxDemo.dropGun());
+    await pg.waitForFunction(() => !document.querySelector('.gunwarn') && document.querySelector('[data-act="onReconnectGun"]'));
+    const r = await pg.evaluate(() => { const b = document.querySelector('[data-act="onReconnectGun"]'), chips = document.getElementById('chips'), br = b.getBoundingClientRect(), top = document.elementFromPoint(br.left + br.width / 2, br.top + br.height / 2); return {
+      text: b.textContent.replace(/\s+/g, ' ').trim(), chips: getComputedStyle(chips).display, visible: br.width > 0 && br.height > 0, onTop: top === b || b.contains(top), pointer: getComputedStyle(b).pointerEvents,
+    }; });
+    await pg.close();
+    must(r.text === 'GUN LINK LOST — TAP TO RECONNECT' && r.chips !== 'none' && r.visible && r.onTop && r.pointer !== 'none', JSON.stringify(r));
+  });
+  await step(`${view.name} F288 gun-health action stays readable at night`, async () => {
+    const pg = await open(view, 'live-gun-no-answer', '&night');
+    const r = await pg.evaluate(() => { const e = document.querySelector('.gunwarn.danger'), s = e && e.querySelector('span'), f = document.getElementById('frame'); return e && s ? {
+      color: getComputedStyle(e).color, background: getComputedStyle(e).backgroundColor,
+      visualFont: parseFloat(getComputedStyle(s).fontSize) * f.getBoundingClientRect().width / f.offsetWidth,
+    } : null; });
+    await pg.close();
+    must(r && r.color === 'rgb(239, 104, 104)' && r.background === 'rgba(8, 3, 3, 0.96)' && r.visualFont >= 11, JSON.stringify(r));
   });
   await step(`${view.name} demo ignores a real session persisted on the same origin (correctness review)`, async () => {
     const pg = await b.newPage({ viewport: { width: view.width, height: view.height } });
