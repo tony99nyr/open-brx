@@ -3501,6 +3501,7 @@ test('S42 x A47: an operator RESYNC GUN holds the accuracy writer, then the live
   fire(h);                                               // degraded: written and pending
   h.writes.length = 0;
   h.eng.onMcMessage({ kind: 'control', body: { cmd: 'resync', player_id: 'p1', match_id: 'm1' } });
+  h.frame(`$HP,${h.eng.hp},${h.eng.armor},${h.eng.shield},*`);
   assert.ok(h.facts.some(f => f.type === 'operator_result' && f.cmd === 'resync' && f.ok === true),
     'pre-condition: the operator resync must be accepted');
   assert.ok(h.writes.some(f => f.startsWith('$AMMO,0,34,')), 'pre-condition: the resync re-sends the accounted counts');

@@ -591,6 +591,8 @@ class GunStage:
         # `_probed_life` is the once-per-life spawn read-back's. See `_cure_tick`.
         self._query_at: float = 0.0
         self._probe_seen: dict[str, bool] = {}
+        self._probe_seq = 0
+        self._operator_resync_pending: dict | None = None   # F287: `$LIFE` sent; burst waits for its `$HP`
         self._life = 0                             # engine.js `_lifeSeq`: bumped by `_after_spawn`, read by the once-per-life cure bound
         self._cure: dict | None = None
         self._cure_life: int | None = None
@@ -1114,6 +1116,7 @@ class GunStage:
             except Exception as e:   # the link may already be gone
                 self._log(f"disconnect: {e}", "warn")
         self.connected = False
+        self._operator_resync_pending = None
         self._log("disconnected", "info")
         return self.state()
 
@@ -1144,7 +1147,8 @@ class GunStage:
             tid = int(head.split(",")[1]) if head else None
         return tid
 
-    async def write(self, frames: list[str], why: str, gap_ms: int = 60, exact: bool = False, take: bool = False) -> None:
+    async def write(self, frames: list[str], why: str, gap_ms: int = 60, exact: bool = False, take: bool = False,
+                    on_start: Callable[[], None] | None = None) -> None:
         frames = [f for f in frames if f]
         # DENY FIRST, THEN THE TEAM. Do not swap these two for tidiness -- the order is the behaviour, and
         # engine.js `_write` does it in exactly this order (`test_stage_mirror` fails if either source moves).
@@ -1182,20 +1186,22 @@ class GunStage:
         if not self.connected:
             return
         try:
-            await self._send(frames, gap_ms)
+            await self._send(frames, gap_ms, on_start=on_start)
         except Exception as e:
             # 2026-09-04 walkthrough: the link dropped under the stage ("arm failed: Not connected" while the
             # page said LINKED). Mark it, reconnect once, retry once; only then surface the failure.
             self._log(f"link lost while writing ({e}) -- reconnecting", "warn")
             self.connected = False
             await self._reconnect()
-            await self._send(frames, gap_ms)
+            await self._send(frames, gap_ms, on_start=on_start)
 
-    async def _send(self, frames: list[str], gap_ms: int) -> None:
+    async def _send(self, frames: list[str], gap_ms: int, on_start: Callable[[], None] | None = None) -> None:
         if hasattr(self.mgr, "send_batch"):
-            await self.mgr.send_batch(self.alias, frames, gap_ms=gap_ms)
+            await self.mgr.send_batch(self.alias, frames, gap_ms=gap_ms, on_start=on_start)
         else:                                       # the fake manager: one send per frame
-            for f in frames:
+            for i, f in enumerate(frames):
+                if i == 0 and on_start is not None:
+                    on_start()
                 await self.mgr.send(self.alias, f, reply_window_ms=0)
 
     async def _reconnect(self) -> None:
@@ -1311,6 +1317,7 @@ class GunStage:
     # revive -- Tony's call, 2026-09-18, after the first draft's blind fallback would have handed a free
     # life to a gun that was merely empty with a stale belief behind it.
     QUERY_REPLY_S = 1.5         # engine.js QUERY_REPLY_MS -- the same wire and the same measurement as TRIGGER_NO_FIRE_S
+    OPERATOR_PROBE_WRITE_S = 5.0  # engine.js OPERATOR_PROBE_WRITE_MS -- bound the serialized write queue
     CURE_ASKS = 2               # engine.js CURE_ASKS -- probes before the node gives up and does nothing
     CURE_COOLDOWN_S = 30.0      # engine.js CURE_COOLDOWN_MS -- the floor between cures, ACROSS lives
     QUERY_POLL_S = 20.0         # engine.js QUERY_POLL_MS -- the divergence poll's own cadence, live match only
@@ -1616,7 +1623,7 @@ class GunStage:
     # exactly the kind of stuck print loop `$DPLAY` already causes elsewhere. `$LIFE,0,0,0,*` is safe to
     # ask ANY gun: the bench measured it answered immediately, dead or alive, with `$HP`.
 
-    async def _ask_gun(self, why: str) -> None:
+    async def _ask_gun(self, why: str, owner: str = "background") -> int:
         """engine.js `_askGun`: send the dead-gun probe alone -- `PROBE_LIFE`, `$LIFE,0,0,0,*`. Safe to
         send whether the gun is alive or dead: the bench (2026-09-19) measured BOTH answer immediately
         with `$HP` (dead: `$HP,0,0,0`; alive: its unchanged pools). Every routine probe site (the 20 s
@@ -1627,9 +1634,21 @@ class GunStage:
         wire before that method's own writes, not race them). The tick methods call from a SYNC context
         and cannot await, so they hand the coroutine to `_spawn_task` instead -- `self._spawn_task(self._ask_gun(...))`,
         never `self._ask_gun(...)` bare, or the probe is never actually awaited and nothing is scheduled."""
+        # A tick may have queued this coroutine before an operator RESYNC claimed the probe window. Check
+        # ownership when the coroutine actually runs, not only when it was scheduled (F287 polish pass 1).
+        if owner != "operator" and self._operator_resync_pending is not None:
+            return self._probe_seq
         self._query_at = self.now()
         self._probe_seen = {}
-        await self.write([PROBE_LIFE], why, gap_ms=0)
+        self._probe_seq += 1
+        def started() -> None:
+            pending = self._operator_resync_pending
+            if owner == "operator" and pending is not None and pending["probe"] == self._probe_seq:
+                pending["started_at"] = self.now()
+                self._query_at = pending["started_at"]
+                self._probe_seen = {}
+        await self.write([PROBE_LIFE], why, gap_ms=0, on_start=started if owner == "operator" else None)
+        return self._probe_seq
 
     async def _ask_magazine(self, why: str) -> None:
         """engine.js `_askMagazine`: send `$QUERY` alone. THE ONLY CALLER is the cure's 'mag' step, once
@@ -1756,6 +1775,8 @@ class GunStage:
         Bounded: once per life (`_cure_life`) and a CURE_COOLDOWN_S floor between cures across lives.
         Write cost: 1 frame per probe, at most CURE_ASKS probes per step, then at most 2 more for the
         re-assert."""
+        if self._operator_resync_pending is not None:
+            return
         c = self._cure
         if c is not None:
             if now - c["asked_at"] < self.QUERY_REPLY_S:
@@ -1810,7 +1831,7 @@ class GunStage:
         pulling a dead trigger three times. Live gun only: spawned, link up, alive. A cure already in
         flight IS the poll for now. `$LIFE` alone (v3: never `$QUERY` -- see the section comment): 3
         frames a minute."""
-        if self._cure is not None:
+        if self._cure is not None or self._operator_resync_pending is not None:
             return
         if self._stand_down(("spawned", "ble", "alive")):
             return
@@ -1825,7 +1846,7 @@ class GunStage:
         burst has had time to land and echo proves the gun actually took it, instead of the node assuming
         so for the rest of the life. Once per life, 1 frame (`$LIFE`, v3 -- never `$QUERY`) -- and it
         stamps `_poll_at` too, so the heartbeat does not also fire in the same breath."""
-        if self._cure is not None or not self._spawn_at or self._probed_life == self._life:
+        if self._cure is not None or self._operator_resync_pending is not None or not self._spawn_at or self._probed_life == self._life:
             return
         if now - self._spawn_at < self.SPAWN_PROBE_S:
             return
@@ -2101,6 +2122,10 @@ class GunStage:
         refill), `$BMAP,0,0`, then one `sir_pool` take -- unless spawn protection still holds it (A44). Never
         `$SPAWN`, `$PSET` or a head, so pools and `spawned` stay as they are. A down or stunned gun gets nothing.
         FORCE RESPAWN is `revive()`: the stage books no facts, so it is the same write the phone makes."""
+        # The real phone receives notifications immediately; the stage's fake/HTTP path may still have a
+        # prior probe's `$HP` in its event buffer. Drain that truth before opening a new indistinguishable
+        # `$LIFE` reply window, or the old answer can falsely release this RESYNC burst.
+        self.poll()
         # pl3 (2026-09-17): the same refusals as engine.js `_operatorAct`/`_operatorResync`, in the same order, where
         # the stage has the concept. The stage's phase is `spawned` (arm and end clear it) and its link is
         # `connected`. It has no rejoin reconcile, no restart evidence protocol and no try-out lock, so those are absent.
@@ -2112,16 +2137,39 @@ class GunStage:
         if why:
             self._log(f"operator resync ignored -- {why}", "warn")
             return
-        # F264 (Tony, 2026-09-18): READ BEFORE WRITING. The operator pressing RESYNC is telling us
-        # something is wrong, and writing blind is exactly what failed on 2026-09-18: many frames at a gun
-        # that had left the state those frames assume. The probe costs 2 frames and its reply lands
-        # through the ordinary handler, so a gun that had died while the stage thought it alive books its
-        # death here instead of staying invisible.
-        await self._ask_gun("operator resync: read the gun first")
+        if self._operator_resync_pending is not None:
+            self._log("operator resync ignored -- already waiting for the gun", "info")
+            return
+        # F287: the operator is here because the gun is suspect. Probe it with `$LIFE` alone, then leave
+        # the whole re-arm burst pending until this probe's `$HP` says the gun is alive. No answer and
+        # `$HP,0` both mean no blind write.
+        expected_probe = self._probe_seq + 1
+        pending = self._operator_resync_pending = {"probe": expected_probe, "queued_at": self.now(),
+                                                   "started_at": None, "asked_at": None, "answer": None,
+                                                   "life": self._life}
+        self._cure = None; self.cure = None   # the operator's explicit read owns this probe/reply window
+        self._poll_at = self.now()
+        self._probed_life = self._life    # this is also this life's read-back; do not ask again on timeout
+        await self._ask_gun("operator resync: read the gun first", owner="operator")
+        if self._operator_resync_pending is not pending:
+            return
+        pending["asked_at"] = self.now()       # answer clock starts after the serialized write completes
+        self._query_at = pending["asked_at"]
+        self._probe_seen = {}
+        if pending["answer"] is not None:
+            self._operator_resync_answer("HP", pending["answer"], solicited=True)
+
+    async def _operator_resync_write(self, pending: dict) -> None:
+        if pending["life"] != self._life or self._stand_down(("spawned", "ble", "alive", "stunned")):
+            self._log("operator resync stopped -- the game moved on before the gun answer could be used", "info")
+            return
         tid = self._live_tid()
         ammo = [f"$AMMO,{slot},{mag},{res},1,*" for slot, (mag, res) in self._live_ammo().items()]
         bmap = next((f for f in self.bundle.get("revive") or [] if f.startswith("$BMAP,0,0")), "$BMAP,0,0,,,,,*")
-        await self.write(([f"$TID,{tid},*"] if tid is not None else []) + ammo + [bmap], "operator resync")
+        # Mirror engine.js: a timed respawn's weapon delay owns the trigger until `_trigger_live` fires.
+        # Re-sending the live map here would let the player shoot early.
+        trigger = [] if self._trigger_pending is not None else [bmap]
+        await self.write(([f"$TID,{tid},*"] if tid is not None else []) + ammo + trigger, "operator resync")
         if self._protects_spawn():
             if self._arm_pending is None:
                 self._sir_live = False   # engine.js: the resync always re-sends the table (a reboot empties it, F11)
@@ -2129,6 +2177,39 @@ class GunStage:
                 self._arm_life("operator resync")
         else:
             await self.write(self._pick_table("sir_pool"), "operator resync: hit audio")
+
+    def _operator_resync_answer(self, kind: str, tokens: list[str] | None = None, solicited: bool = False) -> None:
+        pending = self._operator_resync_pending
+        if pending is None or kind != "HP" or pending["probe"] != self._probe_seq:
+            return
+        if pending["asked_at"] is None:
+            if pending["started_at"] is not None:
+                pending["answer"] = tokens
+            return
+        if self.now() - pending["asked_at"] > self.QUERY_REPLY_S:
+            self._operator_resync_tick(self.now())
+            return
+        self._operator_resync_pending = None
+        answer_hp = (_tok_int(tokens, 1) if tokens is not None else self.hp) or 0
+        if not self.alive or answer_hp <= 0:
+            self._log("operator resync stopped -- the gun answered dead; no re-arm burst sent", "warn")
+            return
+        self._spawn_task(self._operator_resync_write(pending))
+
+    def _operator_resync_tick(self, now: float) -> None:
+        pending = self._operator_resync_pending
+        if pending is None:
+            return
+        if pending["asked_at"] is None:
+            if now - pending["queued_at"] <= self.OPERATOR_PROBE_WRITE_S:
+                return
+            self._operator_resync_pending = None
+            self._log("operator resync stopped -- probe write did not finish; no re-arm burst sent", "warn")
+            return
+        if now - pending["asked_at"] <= self.QUERY_REPLY_S:
+            return
+        self._operator_resync_pending = None
+        self._log("operator resync stopped -- no answer from the gun; no re-arm burst sent", "warn")
 
     def _after_spawn(self) -> None:
         self.spawned = True; self.alive = True
@@ -2453,7 +2534,7 @@ class GunStage:
             self._end_reload("dropped")            # engine.js `onBleDropped`: no link, no ammo echo -- the takeover would be fiction
             self.switching = None; self.held = {}   # `_on_button` keeps the FIRST edge, so a press whose release never arrived would read as held forever
             self._hill_reset()                     # …and the hill with it: this path RETURNS, so no expiry would run
-            self._cure = None; self._query_at = 0.0   # F264 (engine.js `onBleDropped`): no link, no answer -- an ask in flight can never resolve
+            self._cure = None; self._query_at = 0.0; self._operator_resync_pending = None   # F264/F287: no link, no answer -- an ask in flight can never resolve
             self._log("the gun dropped the BLE link -- press CONNECT (or any write reconnects)", "warn")
             return []
         try:
@@ -2463,7 +2544,7 @@ class GunStage:
             self._end_reload("dropped")            # same drop, discovered a different way: same takeover verdict
             self.switching = None; self.held = {}
             self._hill_reset()
-            self._cure = None; self._query_at = 0.0   # F264: same drop, discovered a different way
+            self._cure = None; self._query_at = 0.0; self._operator_resync_pending = None   # F264/F287: same drop, discovered a different way
             return []
         events = ev.get("events", [])
         # advance past everything we were handed; the fake manager has no last_seq, so take it from the events
@@ -2501,6 +2582,7 @@ class GunStage:
         if self._trigger_pending is not None and now >= self._trigger_pending["due"]:
             self._trigger_live("weapon delay over")   # 2026-09-19 (engine.js tick())
         self._no_fire_tick(now)                  # F208 (engine.js tick())
+        self._operator_resync_tick(now)          # F287: timeout means no blind burst
         self._cure_tick(now)                     # F264: and once no_fire is concluded, ASK the gun, then act on the answer
         self._poll_tick(now)                     # F264: ...and ask it every QUERY_POLL_S anyway, so nobody has to pull a dead trigger first
         self._spawn_probe_tick(now)              # F264: ...and once a life, read back the biggest write of that life
@@ -2712,6 +2794,8 @@ class GunStage:
                     self._on_lcd(hp, armor, desync=solicited)
                 else:
                     self._on_pools(hp, armor, shield, desync=solicited)
+                if solicited or self._operator_resync_pending is not None:
+                    self._operator_resync_answer(cmd, t, solicited=solicited)
                 if solicited:
                     self._cure_answer(cmd, t)
         except ValueError:

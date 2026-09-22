@@ -437,3 +437,9 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
   player id, team and HP/armour/shield maxima in optional `ack_config.gun_config`. MC compares all five with the
   actual pushed `$PSET`/`$TID`, renders a red re-push cure and refuses a mismatch even with force. The undecoded
   sound/gyro/per-slot remainder was split to F300.
+
+# Closed 2026-09-21: evidence-gated operator resync
+
+- 2026-09-21 **F287** RESYNC now sends only `$LIFE,0,0,0,*`, waits for that write to enter and clear the
+  serialized BLE queue, and releases its re-arm burst only for the probe's positive `$HP` inside 1.5 s. Dead,
+  silent, expired, pre-send and cancelled paths write no burst and report a truthful refusal to Mission Control.

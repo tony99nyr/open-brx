@@ -187,6 +187,7 @@ export const NO_FIRE_PULLS = 3;
  *  implies the hit table is verified. The `$QUERY` token map is confirmed by SHAPE only, on an unconfigured gun
  *  (levers claim 19), so `_probeShapeOk` checks the shape and refuses a reply that does not fit. */
 export const QUERY_REPLY_MS = 1500;      // how long a probe has to answer before it counts as lost. Measured: `$LIFE`'s `$HP` and `$QUERY`'s `$LCD` are both IMMEDIATE, so this is slack, not a deadline
+export const OPERATOR_PROBE_WRITE_MS = 5000; // bounded wait for the serialized BLE queue before F287's answer clock starts
 /** The `$QUERY` status-array BODY, measured at about 2 s behind on a dead gun. It is deliberately NOT inside
  *  `QUERY_REPLY_MS`: the `$LCD` has already decided by then, and the body is only ever a corroborating HINT. */
 const QUERY_BODY_MS = 2600;
@@ -753,7 +754,8 @@ export class Engine {
     // {askedAt, asks} while a probe is outstanding; `_cureLife` and `_cureAt` are the two bounds, one per life
     // and a floor between them. `_pollAt` and `_probedLife` are the heartbeat poll's and the spawn read-back's
     // own clocks. See `_cureTick`.
-    this._queryAt = 0; this._probeSeen = {};
+    this._queryAt = 0; this._probeSeen = {}; this._probeSeq = 0;
+    this._operatorResyncPending = null;   // F287: accepted RESYNC, waiting for its own `$LIFE` -> `$HP` proof
     this._cure = null; this._cureLife = null; this._cureAt = 0; this._pollAt = 0; this._probedLife = null;
     this.cure = null;               // the cure's own VERDICT, {verdict: 'asking'|'dead'|'alive'|'no_answer', at}. Rides `statusBody` so the operator's board can tell 'the node tried and got nothing' from a bare stale claim -- a phone log reached nobody on 2026-09-18
     // S29: the shield recharge. `_shieldQuietAt` is the clock the delay runs from (a spawn, or the last
@@ -945,7 +947,7 @@ export class Engine {
    *  pairing, DFU, the IR word-format switch, factory tests, and `$DPLAY`, which blocks the gun's main loop
    *  with the serial port unread) is dropped and logged, whatever MC, a debug panel or a stale bundle says.
    *  `docs/spec/transport-hardening.md` §4. */
-  _write(frames, why) {
+  _write(frames, why, options = undefined) {
     if (!frames || !frames.length) return;
     // DENY FIRST, THEN THE TEAM. Do not swap these two steps for tidiness: the order is the behaviour, and
     // stage.py `write` does it in exactly this order (`test_stage_mirror` reads both bodies and fails on
@@ -967,7 +969,7 @@ export class Engine {
     // next protection release must write one. Marked at CALL time, like the write order itself. stage.py `write` mirrors it.
     if (frames.some(f => typeof f === 'string' && (f.startsWith('$SIR,') || f.startsWith('$CLEAR')))) { this._sirGen++; this._sirLive = false; }
     this.log(`write ${why}: ${frames.length} frame(s)`, 'li');
-    try { return this.writer(frames, why); } catch (e) { this.log(`write ${why} failed: ${e && e.message || e}`, 'le'); }
+    try { return this.writer(frames, why, options); } catch (e) { this.log(`write ${why} failed: ${e && e.message || e}`, 'le'); return false; }
   }
   /** pl3 (2026-09-17): a write the gun must not miss AND that is harmless to repeat -- the stun restore and the
    *  operator resync (both re-send the live counts, `$TID` and `$BMAP`; nothing heals or re-heads). Spawn and
@@ -1141,8 +1143,12 @@ export class Engine {
     if (JSON.stringify(next) === JSON.stringify(this.gunFlapping)) return;
     this.gunFlapping = next; this._changed();
   }
-  onBleDropped() { this.bleUp = false; this.lastGunFrameAt = 0; this._cure = null; this._queryAt = 0; this.configQuery = null;   // F264: no link, no answer -- an ask in flight can never resolve, and it must not time out into a blind revive on the relink
-    this._endReload('dropped'); this.switching = null; this.held = {}; this.lastButton = null; this._lightGen = (this._lightGen || 0) + 1; this.log('gun link lost', 'le'); this._changed(); }   // no link, no reload echo: the takeover would be fiction (pass-2 UX review 2026-09-03); the gen bump means a stray delayed write can't reach a gun that relinks mid-flight either. `held` goes with it: `_onButton` keeps the FIRST edge, so a press whose release never arrived before the drop would read as held forever — and `lastButton` with it, for the same reason: the last thing the gun said would otherwise sit on the diag panel as a live edge the link can no longer complete (review 2026-09-12). `lastGunFrameAt` resets too (B4): a dead watchdog clock must not immediately re-fire the instant the next relink's first frame is still pending
+  onBleDropped() {
+    const pendingResync = this._operatorResyncPending;
+    this.bleUp = false; this.lastGunFrameAt = 0; this._cure = null; this._queryAt = 0; this._operatorResyncPending = null; this.configQuery = null;   // F264/F287: no link, no answer -- an ask in flight can never resolve, and it must not act on the relink
+    if (pendingResync) this._operatorResult('resync', 'gun link down (RELINK first)', pendingResync);
+    this._endReload('dropped'); this.switching = null; this.held = {}; this.lastButton = null; this._lightGen = (this._lightGen || 0) + 1; this.log('gun link lost', 'le'); this._changed();
+  }   // no link, no reload echo: the takeover would be fiction (pass-2 UX review 2026-09-03); the gen bump means a stray delayed write can't reach a gun that relinks mid-flight either. `held` goes with it: `_onButton` keeps the FIRST edge, so a press whose release never arrived before the drop would read as held forever — and `lastButton` with it, for the same reason: the last thing the gun said would otherwise sit on the diag panel as a live edge the link can no longer complete (review 2026-09-12). `lastGunFrameAt` resets too (B4): a dead watchdog clock must not immediately re-fire the instant the next relink's first frame is still pending
   setWsState(s, info) { this.wsState = s; this.wsReason = s === 'rejected' && info ? `${info.reason || 'refused'} (${info.code})` : null; this._changed(); }
 
   /** Pre-config probe set: only in CONNECTED/KITTED, never after a head is written (contracts §3). */
@@ -2784,6 +2790,7 @@ export class Engine {
       if (this.onGunStale) this.onGunStale(); else this.onBleDropped();
     }
     this._checkEcho();
+    this._operatorResyncTick(now);   // F287: also cancels outside LIVE, so a phase change cannot strand it
     if (this.loadoutAck && now - this.loadoutAck.t > 4000) { this.loadoutAck = null; this._changed(); }
     if (this._pickDue && now - this._pickDue.at >= PICK_DEBOUNCE_MS) this._flushPick('debounce');   // A26: the last row tapped in the window goes now
     if (this.pendingPick && now - this.pendingPick.at > 6000) { this.pendingPick = null; this._changed(); }   // MC never answered — drop the optimistic row
@@ -3717,10 +3724,17 @@ export class Engine {
    *  - `relink`: `onRelink` -- the HUD's RELINK GUN (app.js wires it to `link.relink()`). */
   _operator(cmd) {
     const why = this._operatorAct(cmd);
+    // F287: RESYNC is not successful merely because its `$LIFE` probe reached the wire. Its result is
+    // emitted when that probe answers and the burst starts, or false on dead/no-answer/cancellation.
+    if (cmd === 'resync' && !why) return;   // its continuation (including a synchronous write failure) owns the result
+    this._operatorResult(cmd, why);
+  }
+  _operatorResult(cmd, why, context = null) {
     // pl3 (2026-09-17): MC learns the outcome through the persisted fact path, so an operator press that did
     // nothing is visible on the board and not only in the phone's log. `why` is the refusal the log shows.
-    this.emitFact({ type: 'operator_result', cmd, ok: !why, ...(why ? { why } : {}), match_id: this.matchId,
-      player_id: this.player && this.player.player_id != null ? this.player.player_id : null });
+    this.emitFact({ type: 'operator_result', cmd, ok: !why, ...(why ? { why } : {}),
+      match_id: context ? context.matchId : this.matchId,
+      player_id: context ? context.playerId : (this.player && this.player.player_id != null ? this.player.player_id : null) });
   }
   /** Runs one operator command. Returns null when it acted (for relink: when the relink started), else the short
    *  refusal reason it logged. */
@@ -3760,16 +3774,53 @@ export class Engine {
     // The predicate comes from `STAND_DOWN` like every other; only the message is local.
     if (this._standDown(['alive'])) { this.log('operator resync ignored — the player is down (FORCE RESPAWN revives)', 'le'); return 'the player is down'; }
     if (this._standDown(['stunned'])) { this.log('operator resync ignored — stunned (the stun restore re-arms)', 'le'); return 'stunned'; }
-    // F264 (Tony, 2026-09-18): ASK, THEN WRITE ANYWAY -- the probe and the writes below are NOT sequenced.
-    // `_askGun` below only sends the $LIFE probe; it does not wait for the $HP reply before this method goes
-    // on to `_writeMust` the $TID/$AMMO/$BMAP burst. The probe still earns its place: its reply lands through
-    // the ordinary handler, so a gun that had died while we thought it alive books its death there instead
-    // of staying invisible -- writing blind at 14 frames is what failed on 2026-09-18. Gating the writes on
-    // the $HP answer would close that gap properly; out of scope before the weekend (FOLLOWUPS: polish
-    // review, added after the merge).
-    this._askGun('operator resync: read the gun first');
-    const life = this._lifeSeq;
-    this._writeLost = null;   // pl4: the operator's cure for a lost spawn/revive write
+    if (this._operatorResyncPending) { this.log('operator resync ignored — already waiting for the gun', 'li'); return 'already waiting for the gun'; }
+    // F287: the operator is here because the gun is suspect. Send the safe dead-gun probe ALONE and keep
+    // the entire re-arm burst behind the `$HP` answer. No answer means no write; a `$HP,0` takes the normal
+    // death path and likewise receives nothing.
+    const probe = (this._probeSeq || 0) + 1;
+    const pending = this._operatorResyncPending = { probe, queuedAt: this.now(), startedAt: null, sentAt: null, answer: null,
+      life: this._lifeSeq, matchId: this.matchId,
+      playerId: this.player && this.player.player_id != null ? this.player.player_id : null };
+    this._cure = null; this.cure = null;   // the operator's explicit read owns this one probe/reply window
+    this._pollAt = this.now();       // this read is also this cadence's divergence poll
+    this._probedLife = this._lifeSeq || 0;   // and it is this life's read-back; do not ask again on the timeout tick
+    const written = this._askGun('operator resync: read the gun first',
+      { deferClock: true, onStart: () => this._operatorResyncProbeStarted(pending) });
+    const settled = ok => this._operatorResyncProbeSent(pending, ok);
+    if (written && typeof written.then === 'function') Promise.resolve(written).then(settled)
+      .catch(e => this._operatorResyncProbeSent(pending, false, e));
+    else { this._operatorResyncProbeStarted(pending); settled(written); }
+    return null;
+  }
+  _operatorResyncProbeStarted(p) {
+    if (this._operatorResyncPending !== p || p.startedAt != null) return;
+    p.startedAt = this.now();
+    this._queryAt = p.startedAt; this._probeSeen = {};
+  }
+  _operatorResyncProbeSent(p, ok, error = null) {
+    if (this._operatorResyncPending !== p) return;
+    if (ok === false) {
+      this._operatorResyncPending = null;
+      const why = error ? `probe write failed: ${error && error.message || error}` : 'probe write failed';
+      this.log(`operator resync stopped — ${why}; no re-arm burst sent`, 'le');
+      this._operatorResult('resync', why, p); this._changed();
+      return;
+    }
+    this._operatorResyncProbeStarted(p); p.sentAt = this.now();
+    if (!p.answer) { this._queryAt = p.sentAt; this._probeSeen = {}; }
+    // BrxLink can deliver the immediate `$HP` before its write Promise settles. Keep that proof, then
+    // consume it now that the serialized batch is known to have completed.
+    if (p.answer) this._operatorResyncAnswer('HP', p.answer, true);
+  }
+  _operatorResyncWrite(p) {
+    if (!p || this._lifeSeq !== p.life || this._standDown(['phase', 'ble', 'alive', 'reconciling', 'resync', 'stunned'])) {
+      this.log('operator resync stopped — the game moved on before the gun answer could be used', 'li');
+      if (p) this._operatorResult('resync', 'the game moved on before the gun answered', p);
+      return;
+    }
+    const life = p.life;
+    this._writeLost = null;   // the live reply is the evidence that retires a lost spawn/revive write
     const tid = this._liveTid();
     const ammo = Object.entries(this._liveAmmo()).map(([slot, [mag, res]]) => `$AMMO,${slot},${mag},${res},1,*`);
     const bmap = ((this.frames && this.frames.revive) || []).find(f => typeof f === 'string' && f.startsWith('$BMAP,0,0')) || '$BMAP,0,0,,,,,*';
@@ -3789,8 +3840,49 @@ export class Engine {
       this._write(this._pickTable('sir_pool'), 'operator resync: hit audio');   // a pre-A44 bundle: the take, when it has one
     }
     this.log(`operator resync done — hp ${this.hp}, tid ${tid != null ? tid : '?'}`, 'lk');
+    this._operatorResult('resync', null, p);
     this._changed();
-    return null;
+  }
+  _operatorResyncAnswer(kind, t = null, solicited = false) {
+    const p = this._operatorResyncPending;
+    if (!p || kind !== 'HP' || p.probe !== this._probeSeq) return;
+    if (p.sentAt == null) {
+      if (p.startedAt != null) p.answer = t;   // during THIS probe's send; pre-start HP belongs to older traffic
+      return;
+    }
+    if (this.now() - p.sentAt > QUERY_REPLY_MS) { this._operatorResyncTick(this.now()); return; }
+    this._operatorResyncPending = null;
+    const answerHp = t && t[1] !== undefined ? (+t[1] || 0) : this.hp;
+    if (!this.alive || answerHp <= 0) {
+      this.log('operator resync stopped — the gun answered dead; no re-arm burst sent', 'le');
+      this._operatorResult('resync', 'the gun answered dead', p);
+      this._changed();
+      return;
+    }
+    this._operatorResyncWrite(p);
+  }
+  _operatorResyncTick(now) {
+    const p = this._operatorResyncPending;
+    if (!p) return;
+    if (this._lifeSeq !== p.life || this._standDown(['phase', 'ble', 'alive', 'reconciling', 'resync', 'stunned'])) {
+      this._operatorResyncPending = null;
+      this.log('operator resync stopped — the game moved on before the gun answered', 'li');
+      this._operatorResult('resync', 'the game moved on before the gun answered', p);
+      this._changed();
+      return;
+    }
+    if (p.sentAt == null) {
+      if (now - p.queuedAt <= OPERATOR_PROBE_WRITE_MS) return;
+      this._operatorResyncPending = null;
+      this.log('operator resync stopped — probe write did not finish; no re-arm burst sent', 'le');
+      this._operatorResult('resync', 'probe write did not finish', p); this._changed();
+      return;
+    }
+    if (now - p.sentAt <= QUERY_REPLY_MS) return;
+    this._operatorResyncPending = null;
+    this.log('operator resync stopped — no answer from the gun; no re-arm burst sent', 'le');
+    this._operatorResult('resync', 'the gun did not answer', p);
+    this._changed();
   }
 
   // ---------- feedback (§3.6) ----------
@@ -3871,7 +3963,7 @@ export class Engine {
       if (this.cure) { this.log(`cure verdict '${this.cure.verdict}' cleared — the gun is reporting again`, 'li'); this.cure = null; }
     }
     switch (cmd) {
-      case 'HP': this._onHp(+t[1] || 0, +t[2] || 0, t[3] !== undefined && t[3] !== '' ? (+t[3] || 0) : this.shield, solicited); if (solicited) this._cureAnswer('HP', t); break;
+      case 'HP': this._onHp(+t[1] || 0, +t[2] || 0, t[3] !== undefined && t[3] !== '' ? (+t[3] || 0) : this.shield, solicited); if (solicited || this._operatorResyncPending) this._operatorResyncAnswer('HP', t, solicited); if (solicited) this._cureAnswer('HP', t); break;
       case 'LCD': {
         this.hp = +t[1] || 0; this.armor = +t[2] || 0;
         this.poolSrc = 'gun';            // R2-3: the pool in the next heartbeat is the GUN's, not our model's
@@ -4139,9 +4231,10 @@ export class Engine {
    *  because the node must not GUESS there (§3.10). A probe is the opposite of a guess: it is how the node stops
    *  guessing. So the probe sites deliberately run inside those windows, and only the ACTING stands down. If you
    *  are about to "fix" a probe that fires during a reconcile, read this first. */
-  _askGun(why) {   // NOT `_probe`: that name is taken by the first-connect BLE ritual above (line ~1023), and a second `_probe` on this class silently overrode it
-    this._queryAt = this.now(); this._probeSeen = {};
-    this._write([PROBE_LIFE], why);
+  _askGun(why, options = undefined) {   // NOT `_probe`: that name is taken by the first-connect BLE ritual above (line ~1023), and a second `_probe` on this class silently overrode it
+    if (!(options && options.deferClock)) { this._queryAt = this.now(); this._probeSeen = {}; }
+    this._probeSeq = (this._probeSeq || 0) + 1;
+    return this._write([PROBE_LIFE], why, options);
   }
   /** F264: ask for the MAGAZINE, which only a `$QUERY` reply's `$LCD` carries. ⚠ Sent from exactly one place, the
    *  cure's alive branch, and only after `$LIFE` has already answered `$HP` with health above 0. Bench 2026-09-19:
@@ -4248,6 +4341,7 @@ export class Engine {
    *  Bounded: once per life (`_cureLife`) and a CURE_COOLDOWN_MS floor between cures across lives. Write cost: 2
    *  frames per probe, at most CURE_ASKS probes, then at most 2 more for the re-assert. */
   _cureTick(now) {
+    if (this._operatorResyncPending) return;
     const c = this._cure;
     if (c) {
       if (now - c.askedAt < QUERY_REPLY_MS) return;                      // the probe is still in its window
@@ -4288,7 +4382,7 @@ export class Engine {
    *  three have their own one-off probes, which is a better use of the frames than a heartbeat on top of them.
    *  A cure already in flight IS the poll for now. `$LIFE` alone: 3 frames a minute, 39 bytes. */
   _pollTick(now) {
-    if (this._cure) return;
+    if (this._cure || this._operatorResyncPending) return;
     if (this._standDown(['phase', 'spawned', 'bundle', 'ble', 'alive', 'reconciling', 'resync', 'tutorial'], now)) return;
     if (this._pollAt && now - this._pollAt < QUERY_POLL_MS) return;
     this._pollAt = now;
@@ -4298,7 +4392,7 @@ export class Engine {
    *  first proven stall began 4.6 s after one. A probe once the burst has had time to land and echo proves the gun
    *  actually took it, instead of the node assuming so for the rest of the life. Once per life, 1 frame. */
   _spawnProbeTick(now) {
-    if (this._cure || !this._spawnAt || this._probedLife === (this._lifeSeq || 0)) return;
+    if (this._cure || this._operatorResyncPending || !this._spawnAt || this._probedLife === (this._lifeSeq || 0)) return;
     if (now - this._spawnAt < SPAWN_PROBE_MS) return;
     if (this._standDown(['phase', 'spawned', 'bundle', 'ble', 'alive', 'tutorial'], now)) return;   // reading is allowed inside a reconcile/resync; see `_askGun`
     this._probedLife = this._lifeSeq || 0;

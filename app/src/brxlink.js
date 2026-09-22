@@ -472,11 +472,12 @@ export class BrxLink {
    *    (pl4: a lost trigger row must be visible in the phone log), counted (`lateLost`) and kept as
    *    `lastLateLost`. It cannot touch any other batch.
    *  `label`: what the batch is, for that log line (the engine passes its `why`). */
-  write(frames, label = '') {
+  write(frames, label = '', options = undefined) {
     const id = this.deviceId; if (!id) return Promise.resolve(false);
     const list = Array.isArray(frames) ? frames : [frames];
     const batch = { failed: null, open: true, label, list };   // `failed`: the earliest frame index a late error hit
     this._q = this._q.then(async () => {
+      if (options && typeof options.onStart === 'function') options.onStart();
       let late = 0, chunks = 0, resends = 0, lost = false, sentFrames = 0;
       try {
         for (let i = 0; i < list.length;) {

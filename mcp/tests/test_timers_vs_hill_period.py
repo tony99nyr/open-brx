@@ -63,6 +63,8 @@ JUDGED = {
                     "heat token from a shot/report; a hill beacon is proto 15, never an $ALCD, so it cannot extend it",
     "OPERATOR_NO_ANSWER_MS": "pl4: how long MC waits for a phone's `operator_result` before it shows NO ANSWER; ended "
                              "only by that fact over the MC socket, and nothing on the IR wire reaches it",
+    "OPERATOR_PROBE_WRITE_S": "F287: a bound on the stage's serialized BLE write queue before RESYNC gives up; "
+                              "started and ended by host-side write progress, never by an incoming IR frame",
     "LOCKUP_AFTER_S": "bench-screamers-2026-09-19.md Phase C: the soak tool's own LOCK-UP threshold (no $PONG for "
                       "10s). Not a game timer at all -- the soak instrument runs no objective/mode and never sees "
                       "a hill beacon",

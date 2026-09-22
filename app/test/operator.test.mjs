@@ -20,12 +20,16 @@ function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m
 
 function live({ legacy = false } = {}) {
   const bundle = legacy ? legacyBundle : golden;
-  const writes = []; const facts = []; const logs = []; let clock = 1_000_000; let failWrites = 0, failIf = () => true; const batches = [];
+  const writes = []; const facts = []; const logs = []; let clock = 1_000_000; let failWrites = 0, failIf = () => true;
+  let deferProbe = false, startProbe = null, settleProbe = null, failProbeSync = false; const batches = [];
   const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
   const config = { config_id: golden.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 600,
     respawn: { type: 'auto', delay_s: 8 }, scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams };
   const player = { player_id: 'p1', player_num: 7, display: 'VIPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
-  const eng = new Engine({ writer: fr => { writes.push(...fr); batches.push([...fr]); if (failWrites > 0 && failIf(fr)) { failWrites--; return Promise.resolve(false); } return true; }, emit: f => facts.push(f), report: () => {}, now: () => clock,
+  const eng = new Engine({ writer: (fr, _why, options) => { writes.push(...fr); batches.push([...fr]); if (failWrites > 0 && failIf(fr)) { failWrites--; return Promise.resolve(false); }
+    if (failProbeSync && fr.length === 1 && fr[0] === PROBE_LIFE) { failProbeSync = false; return false; }
+    if (deferProbe && fr.length === 1 && fr[0] === PROBE_LIFE) { deferProbe = false; startProbe = options && options.onStart; return new Promise(resolve => { settleProbe = resolve; }); }
+    return true; }, emit: f => facts.push(f), report: () => {}, now: () => clock,
     synced: () => true, storage: mkStorage(), log: (l, c) => logs.push([l, c]), delay: (ms, fn) => fn(), rng: () => 0 });
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   eng.onMcMessage({ kind: 'assign', body: { player, team: teams[0], roster: [] } });
@@ -39,6 +43,11 @@ function live({ legacy = false } = {}) {
     mark() { return writes.length; },
     since(n) { return writes.slice(n); },
     batches,
+    deferNextProbe() { deferProbe = true; return h; },
+    beginProbe() { const start = startProbe; startProbe = null; if (start) start(); return h; },
+    releaseProbe(ok = true) { const resolve = settleProbe; settleProbe = null; if (resolve) resolve(ok); return h; },
+    failNextProbeSync() { failProbeSync = true; return h; },
+    jump(ms) { clock += ms; return h; },
     failNext(n, pred) { failWrites = n; failIf = pred; return h; },
     op(cmd, extra = {}) { eng.onMcMessage({ kind: 'control', body: { cmd, player_id: 'p1', match_id: 'm1', ...extra } }); return h; },
   };
@@ -48,20 +57,16 @@ function live({ legacy = false } = {}) {
 }
 const heads = w => w.filter(f => /^\$(SPAWN|PSET|CLEAR|START|GSET|WEAP|VOL)/.test(f));
 
-test('A47 resync: $TID, the CURRENT ammo, $BMAP,0,0, then the live $SIR take -- and nothing that heals or re-heads', () => {
+test('A47 resync: waits for a live $HP answer, then writes current state without healing or re-heading', () => {
   const h = live();
   h.frame('$ALCD,20,100,0,150,0,*');   // slot 0 has fired: 20 in the mag, 150 in reserve
   h.frame('$HP,30,10,0,*');            // took a hit: hp 30, armour 10
   const hp = h.eng.hp, armor = h.eng.armor, deaths = h.eng.deaths, nFacts = h.facts.length;
   const n = h.mark();
   h.op('resync');
+  assert.deepEqual(h.since(n), [PROBE_LIFE], 'the probe is the only write until the gun answers');
+  h.frame('$HP,30,10,0,*');
   const w = h.since(n);
-  // F264 (Tony, 2026-09-18): RESYNC now READS BEFORE IT WRITES, and the two probe frames come FIRST. The
-  // operator pressing RESYNC is telling us something is wrong, and 2026-09-18's resync wrote 14 frames at a gun
-  // that had left the state those frames assume. A gun that died unnoticed books its death off this probe.
-  // ...and it is `$LIFE` alone. Bench 2026-09-19: a DEAD gun holds its print loop about 2 s on a `$QUERY`, and
-  // the gun an operator is resyncing is exactly the one that might be dead.
-  assert.deepEqual(w.slice(0, 1), [PROBE_LIFE], 'the probe leads, before anything is written');
   // F121 rebuild: the resync re-sends the table whatever the node believes (a rebooted gun has none, F11), then t8 = 0.
   assert.deepEqual(w.slice(1), ['$TID,1,*', '$AMMO,0,20,150,1,*', '$AMMO,1,6,24,1,*', '$BMAP,0,0,,,,,*', ...TAKE, golden.spawn_protect_off]);
   assert.deepEqual(heads(w), [], 'no $SPAWN, $PSET or head frame');
@@ -70,12 +75,52 @@ test('A47 resync: $TID, the CURRENT ammo, $BMAP,0,0, then the live $SIR take -- 
   assert.equal(h.eng.spawned, true, 'still spawned: not a config push');
 });
 
+test('F287 resync: a dead $HP answer books the death and never sends the re-arm burst', () => {
+  const h = live();
+  const n = h.mark(), nf = h.facts.length;
+  h.op('resync');
+  assert.deepEqual(results(h, nf), [], 'the probe being sent is not yet a successful resync');
+  assert.deepEqual(h.since(n), [PROBE_LIFE]);
+  h.frame('$HP,0,0,0,*');
+  assert.equal(h.eng.alive, false);
+  assert.deepEqual(h.since(n).filter(f => /^\$(TID|AMMO|BMAP|SIR)/.test(f)), [], 'a gun that answered dead receives no re-arm burst');
+  assert.deepEqual(results(h, nf).map(f => [f.ok, f.why]), [[false, 'the gun answered dead']]);
+});
+
+test('F287 resync: an unanswered probe times out without sending the re-arm burst', () => {
+  const h = live();
+  const n = h.mark(), nf = h.facts.length;
+  h.op('resync');
+  h.adv(E.QUERY_REPLY_MS + 1);
+  assert.deepEqual(h.since(n), [PROBE_LIFE]);
+  assert.ok(h.logs.some(([line]) => /operator resync.*no answer/i.test(line)), 'the operator can diagnose the refusal');
+  assert.deepEqual(results(h, nf).map(f => [f.ok, f.why]), [[false, 'the gun did not answer']]);
+  h.frame('$HP,45,70,0,*');
+  assert.deepEqual(h.since(n), [PROBE_LIFE], 'a late answer cannot release the expired burst');
+});
+
+test('F287 resync: its probe owns the reply window and a phase change cancels it', () => {
+  const h = live();
+  const n = h.mark(), nf = h.facts.length;
+  h.op('resync');
+  h.eng._noFirePulls = E.NO_FIRE_PULLS;
+  h.adv(100);
+  assert.deepEqual(h.since(n), [PROBE_LIFE], 'cure/poll/read-back probes cannot steal the operator reply');
+  h.eng.phase = 'kitted';
+  h.adv(1);
+  assert.deepEqual(results(h, nf).map(f => [f.ok, f.why]), [[false, 'the game moved on before the gun answered']]);
+  h.frame('$HP,45,70,0,*');
+  assert.deepEqual(h.since(n), [PROBE_LIFE], 'the old reply cannot write into the new phase');
+});
+
 test('(legacy bundle) A47 resync inside spawn protection leaves the pending take to its own trigger (A44)', () => {
   const h = live({ legacy: true });
   h.frame('$HP,0,0,0,*'); h.adv(8010);   // die, auto revive: protection pending again
   assert.equal(h.eng.alive, true); assert.ok(h.eng._armPending, 'setup: protected');
   const n = h.mark();
   h.op('resync');
+  h.frame(`$HP,${h.eng.hp},${h.eng.armor},${h.eng.shield},*`);
+  assert.ok(h.since(n).some(f => f.startsWith('$TID,')), 'the confirmed resync burst did run');
   assert.equal(h.since(n).filter(f => f.startsWith('$SIR,')).length, 0, 'no table while protected');
   assert.ok(h.eng._armPending, 'still pending');
 });
@@ -152,10 +197,44 @@ test('A47 respawn and resync are refused while the gun link is down, and logged'
 const flush = () => new Promise(r => setImmediate(r));
 const results = (h, n) => h.facts.slice(n).filter(f => f.type === 'operator_result');
 
+test('F287: the reply clock starts after the serialized probe write, and an in-write reply is preserved', async () => {
+  const h = live().deferNextProbe();
+  const n = h.mark(), nf = h.facts.length;
+  h.op('resync');
+  h.adv(E.QUERY_REPLY_MS + 100);
+  assert.deepEqual(results(h, nf), [], 'time queued behind BLE is not answer time');
+  h.beginProbe();
+  h.frame(`$HP,${h.eng.hp},${h.eng.armor},${h.eng.shield},*`);
+  assert.deepEqual(h.since(n), [PROBE_LIFE], 'the answer is held until the probe batch settles');
+  h.releaseProbe(); await flush(); await flush();
+  assert.ok(h.since(n).some(f => f.startsWith('$TID,')), 'the buffered healthy answer releases one burst');
+  assert.deepEqual(results(h, nf).map(f => f.ok), [true]);
+});
+
+test('F287: pre-start HP is not proof, expired HP is refused, and a synchronous write failure reports once', async () => {
+  const queued = live().deferNextProbe();
+  let n = queued.mark(), nf = queued.facts.length;
+  queued.op('resync').frame(`$HP,${queued.eng.hp},${queued.eng.armor},${queued.eng.shield},*`);
+  queued.beginProbe().releaseProbe();
+  await flush();
+  assert.deepEqual(queued.since(n), [PROBE_LIFE], 'an older HP before this write starts cannot release it');
+  queued.jump(E.QUERY_REPLY_MS + 1).frame(`$HP,${queued.eng.hp},${queued.eng.armor},${queued.eng.shield},*`);
+  assert.deepEqual(results(queued, nf).map(f => [f.ok, f.why]), [[false, 'the gun did not answer']]);
+  const failed = live().failNextProbeSync();
+  nf = failed.facts.length; failed.op('resync');
+  assert.deepEqual(results(failed, nf).map(f => [f.ok, f.why]), [[false, 'probe write failed']], 'exactly one terminal result');
+  const thrown = live();
+  thrown.eng.writer = () => { throw new Error('radio exploded'); };
+  nf = thrown.facts.length; thrown.op('resync');
+  assert.deepEqual(results(thrown, nf).map(f => [f.ok, f.why]), [[false, 'probe write failed']], 'a synchronous throw is failure too');
+});
+
 test('pl3: every operator command tells MC its outcome -- ok when it acted, ok false with the logged reason when refused', () => {
   const h = live();
   let n = h.facts.length;
   h.op('resync');
+  assert.deepEqual(results(h, n), [], 'pending until the gun answers');
+  h.frame(`$HP,${h.eng.hp},${h.eng.armor},${h.eng.shield},*`);
   assert.deepEqual(results(h, n), [{ type: 'operator_result', cmd: 'resync', ok: true, match_id: 'm1', player_id: 'p1' }]);
   h.frame('$HP,0,0,0,*');
   n = h.facts.length; h.op('resync');
@@ -282,6 +361,7 @@ test('pl4: a false revive write never re-sends $SPAWN, and the live take is writ
   assert.ok(h.logs.some(([l, c]) => /\*\*\* write revive.* failed -- not re-sent/.test(l) && c === 'le'));
   assert.equal(h.eng.state().poolStale && h.eng.state().poolStale.why, 'write_lost', 'MC is told');
   h.op('resync');
+  h.frame(`$HP,${h.eng.hp},${h.eng.armor},${h.eng.shield},*`);
   assert.equal(h.eng.state().poolStale, null, 'RESYNC GUN clears it');
 });
 
@@ -312,11 +392,13 @@ test('pl4: a stun restore or resync is not repeated once the player fired or too
   const h = live();
   let n = h.batches.length;
   h.failNext(1, hasBmap).op('resync');
+  h.frame(`$HP,${h.eng.hp},${h.eng.armor},${h.eng.shield},*`);
   h.frame('$ALCD,31,100,0,192,0,*').frame('$ALCD,30,100,0,192,0,*');   // fired before the write resolved
   await flush(); await flush();
   assert.equal(h.batches.slice(n).filter(hasBmap).length, 1, 'a repeat would refill the rounds just fired');
   n = h.batches.length;
   h.failNext(1, hasBmap).op('resync');
+  h.frame(`$HP,${h.eng.hp},${h.eng.armor},${h.eng.shield},*`);
   h.frame('$HP,40,70,0,*');   // took a hit
   await flush(); await flush();
   assert.equal(h.batches.slice(n).filter(hasBmap).length, 1, 'nor after a hit');
@@ -326,10 +408,12 @@ test('pl3: a failed operator resync write is retried, but not once the game move
   const h = live();
   let n = h.batches.length;
   h.failNext(1, hasBmap).op('resync');
+  h.frame(`$HP,${h.eng.hp},${h.eng.armor},${h.eng.shield},*`);
   await flush(); await flush();
   assert.equal(h.batches.slice(n).filter(hasBmap).length, 2, 'retried while the life goes on');
   n = h.batches.length;
   h.failNext(1, hasBmap).op('resync');
+  h.frame(`$HP,${h.eng.hp},${h.eng.armor},${h.eng.shield},*`);
   h.frame('$HP,0,0,0,*');   // died before the write resolved
   await flush(); await flush();
   assert.equal(h.batches.slice(n).filter(hasBmap).length, 1, 'no retry into a dead life');

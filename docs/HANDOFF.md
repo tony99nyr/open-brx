@@ -61,15 +61,16 @@ behind. Overnight cycle 1 (2026-09-18 night) closed **F261** (a fresh MC now rec
 unbound node) and **F257** (the charge-weapon HUD). Today's stale-node fix (`88ead536`, no open row) answers both
 ghost-node incidents from the office test. **F289** still flags the gap it leaves: an offline player
 mid-protection-window may stay protected all match. **F265**'s HUD half shipped (LIVE only within 16 s of the
-last MC message); its cause, why the score pushes stopped, is still not found. Also open: **F277** (a reload
-that never completes), **F287** (operator RESYNC still writes before the `$HP` probe answers), **F288** (the HUD
-never renders `poolStale`/`cure`), and the office test's own new rows, **F293-F298** (link-loop root cause,
+last MC message); its cause, why the score pushes stopped, is still not found. **F287 is closed:** operator
+RESYNC now proves the gun alive before any re-arm burst. Also open: **F277** (a reload that never completes),
+**F288** (the HUD never renders `poolStale`/`cure`), and the office test's own new rows, **F293-F298** (link-loop root cause,
   the MC LAN sweep, the down-pattern LED redesign, BLE setup-reliability
 metrics, and a real Shields-preset match). App **0.4.4** is built on this branch, not yet published; see "State
 of main" above.
 
-- **Next desk task:** the F265 cause (why a bound phone stops receiving score pushes). Then **S55** (one accuracy
-  owner), then **F274** (the recoil writer onto one `$TMP` t4 frame).
+- **Next desk task:** **F288**, the phone-visible `no_answer` / `no_fire` warning. Then the F265 cause (why a
+  bound phone stops receiving score pushes), **S55** (one accuracy owner), and **F274** (the recoil writer onto
+  one `$TMP` t4 frame).
 - **Next bench task:** the "0.4.4 field check" in [`bench-plan.md`](bench-plan.md) (connect timing on both
   phones, the new respawn rules, the Shields preset, the down animation, full screen), then sitting 5, match
   verification: F264 live, the F277 repro, and the F256 row.

@@ -1413,7 +1413,7 @@ KNOWN_UNMIRRORED = {
     "_operator",
     # pl3 (2026-09-17): `_operatorAct` is `_operator`'s body split out so every outcome reaches MC as an `operator_result`
     # fact. The stage has no MC and no facts; its refusals are mirrored inline in `_operator_resync`.
-    "_operatorAct",
+    "_operatorAct", "_operatorResult", "_operatorResyncProbeStarted", "_operatorResyncProbeSent",
     # pl3 (2026-09-17): retries a BrxLink batch that resolved false. The stage's `write` has its own retry (it
     # reconnects and sends again on an exception), and its fake and real managers never resolve a batch false.
     "_writeMust",
@@ -1529,7 +1529,7 @@ def test_f206_every_stage_write_puts_the_team_back_after_a_pset_like_the_phone()
     # a team byte for a `$PSET` that never arrived. Both `_write` bodies must therefore DENY FIRST, then
     # restore the team, and this guard reads both bodies rather than trusting either comment.
     for label, body, deny, tid in (
-            ("engine.js `_write`", _fn_body(js, "  _write(frames, why) {", "\n  }"),
+            ("engine.js `_write`", _fn_body(js, "  _write(frames, why, options = undefined) {", "\n  }"),
              "deniedCommand(f)", "frames = this._tidAfterPset(frames);"),
             ("stage.py `write`", _fn_body(_STAGE_PY.read_text(encoding="utf-8"),
                                           "    async def write(self, frames: list[str], why: str", "\n    def "),
@@ -2177,4 +2177,3 @@ def test_no_heartbeat_is_written_in_the_same_tick_the_recharge_starts():
         st2._shield_tick(now2); await settle(st2)
         assert c["shield_loop"] in since(mgr2, n2), "control: a heartbeat alone is written"
     asyncio.run(go())
-

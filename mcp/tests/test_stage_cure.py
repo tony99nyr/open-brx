@@ -395,12 +395,9 @@ def test_the_mag_step_asks_for_the_magazine_exactly_once_never_retried_like_the_
     asyncio.run(run())
 
 
-def test_a_solicited_hp_that_lands_during_the_mag_step_concludes_alive_not_a_fresh_life_probe():
-    """Polish review: `_cure_answer` used to branch on `kind` before checking `c['step']`, so an `$HP`
-    reply landing while the mag step is already asking for the magazine -- the operator presses RESYNC
-    GUN mid-cure, which sends its own `$LIFE` probe -- reset the mag step back to `asks=1` and asked
-    for the magazine again, instead of concluding like a gun that has just answered ALIVE, as
-    engine.js's `kind === 'HP' && c.step === 'life'` guard does."""
+def test_operator_resync_supersedes_a_cure_mag_step_and_owns_its_hp_reply():
+    """F287: the explicit operator action owns one probe/reply window. If an automatic cure was already
+    waiting for a magazine, RESYNC replaces it instead of letting both paths re-arm the gun."""
     async def run():
         st, mgr, clock = _mk()
         await _live(st, clock)
@@ -414,8 +411,8 @@ def test_a_solicited_hp_that_lands_during_the_mag_step_concludes_alive_not_a_fre
         st._inject_rx("$HP,45,70,0,*")
         await settle(st)
         assert QUERY not in tx(mgr)[n2:], "the answer must not re-ask the magazine from scratch"
-        assert st._cure is None, "it must conclude, not stay in flight"
-        assert st.cure["verdict"] == "alive"
+        assert st._cure is None and st.cure is None, "the explicit resync supersedes the automatic cure"
+        assert any(f.startswith("$TID,") for f in tx(mgr)[n2:]), "the positive answer releases RESYNC's burst"
     asyncio.run(run())
 
 
@@ -749,8 +746,10 @@ def test_operator_resync_probes_the_gun_with_life_alone_before_its_own_writes():
         await _live(st, clock)
         n = len(tx(mgr))
         await st.resync(); await settle(st)
+        assert tx(mgr)[n:] == ["$LIFE,0,0,0,*"], "RESYNC GUN must wait for the reply"
+        st._inject_rx("$HP,45,70,0,*"); await settle(st)
         w = tx(mgr)[n:]
-        assert "$LIFE,0,0,0,*" in w, f"RESYNC GUN reads before it writes: {w}"
+        assert "$LIFE,0,0,0,*" in w, f"RESYNC GUN proves before it writes: {w}"
         assert QUERY not in w, f"and never asks $QUERY from here (v3): {w}"
         life_i = w.index("$LIFE,0,0,0,*")
         ammo_i = next(i for i, f in enumerate(w) if f.startswith("$AMMO,") or f.startswith("$TID,") or f.startswith("$BMAP,"))

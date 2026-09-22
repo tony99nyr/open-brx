@@ -234,7 +234,8 @@ class ConnectionManager:
     # -- I/O ---------------------------------------------------------------
 
     @staticmethod
-    async def _write(client: BleakClient, payload: bytes, lock: asyncio.Lock | None = None) -> None:
+    async def _write(client: BleakClient, payload: bytes, lock: asyncio.Lock | None = None,
+                     on_start: Callable[[], None] | None = None) -> None:
         # ATT write-without-response caps at MTU-3 (20 bytes at the default
         # MTU of 23, which the tagger sticks to). NUS is a byte stream, so
         # long frames are chunked; the tagger reassembles on ',*'.
@@ -248,9 +249,13 @@ class ConnectionManager:
                     NUS_RX_CHAR_UUID, payload[i:i + chunk], response=False)
                 await asyncio.sleep(0.02)
         if lock is None:                      # no session (a bare client): unchanged behaviour
+            if on_start is not None:
+                on_start()
             await _chunks()
         else:
             async with lock:                  # hold it for the WHOLE frame, not per chunk
+                if on_start is not None:
+                    on_start()
                 await _chunks()
 
     async def send(self, alias: str, command: str,
@@ -295,12 +300,13 @@ class ConnectionManager:
         return {"sent": command, "chunks": chunks, "late_acks": late_acks}
 
     async def send_batch(self, alias: str, commands: list[str],
-                         gap_ms: int = 100) -> dict[str, Any]:
+                         gap_ms: int = 100, on_start: Callable[[], None] | None = None) -> dict[str, Any]:
         session = self._get(alias)
         seq_before = session.seq
-        for cmd in commands:
+        for i, cmd in enumerate(commands):
             session.record("tx", cmd)
-            await self._write(session.client, cmd.encode("utf-8"), session.write_lock)
+            await self._write(session.client, cmd.encode("utf-8"), session.write_lock,
+                              on_start=on_start if i == 0 else None)
             await asyncio.sleep(gap_ms / 1000)
         replies = [e.to_dict() for e in list(session.buffer)
                    if e.seq > seq_before and e.direction == "rx"]

@@ -104,7 +104,7 @@ const link = new BrxLink({
   onRelink: () => scheduleRender(),   // RELINK GUN reads RELINKING… and is disabled while a relink runs (bench 2026-09-17)
 });
 const engine = new Engine({
-  writer: (frames, why) => link.write(frames, why),
+  writer: (frames, why, options) => link.write(frames, why, options),
   emit: fact => transport && transport.send(fact),
   report: (kind, body) => transport && transport.report(kind, body),
   now: () => transport ? transport.syncedNow() : Date.now(),
