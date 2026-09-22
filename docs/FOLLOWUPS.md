@@ -1111,10 +1111,6 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
 - **F192 🟡** PRE-EXISTING, reproduced on unmodified main: the session reads its net join info at construction, before
   the net starts, so any `--fake-net` run leaves the advertised URL and QR stale for the whole run. `build`.
 - **F193 🟡** the mock's WSL warning string is a hand-kept copy with no test pinning it to the server's. `build`.
-- **F196 🟠** `test_amendment_citations` cannot see SCREAMING_CASE or CamelCase symbols, and its searched directories
-  exclude `mcp/tests`, so those citations are silently skipped. Worse, it only checks that cited symbols EXIST, never
-  that an amendment's citations name THAT amendment, so it could not have caught the 2026-09-13 A41→A42 renumbering in
-  either direction. Add the shapes AND a renumbering check, each proven by a deliberately broken case. `build`.
 - **F198 🔴 Needs Tony at the bench** the reflection theory behind `$GSET` t2 is untested and may INVERT the
   current fix. Reading: low sensitivity (t2=1) may be deliberate for INDOOR play, rejecting bounced/reflected
   shots off walls and ceilings, in which case the right end state is `indoor -> t2=1, outdoor -> t2=0` — the

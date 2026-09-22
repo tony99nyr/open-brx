@@ -8,8 +8,8 @@ Nothing else in the suite reads that column.
 
 Deliberately loose: it asserts the cited name appears SOMEWHERE under `mcp/brx_mcp/`, `app/src/` or
 `webapp/mc/src/` (or, for a file name, that such a file exists), not that it appears in the module the
-row names. A stricter check would fail on every legitimate move; this one fails only when the symbol
-is gone.
+row names. Test files contribute names and paths, but not production symbol text. A stricter check would
+fail on every legitimate move; this one fails only when the symbol is gone.
 
 Run: python3 run_tests.py amendment_citations
 """
@@ -21,7 +21,12 @@ import re
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 CONTRACTS = REPO / "docs" / "spec" / "contracts.md"
-CODE_DIRS = (REPO / "mcp" / "brx_mcp", REPO / "app" / "src", REPO / "webapp" / "mc" / "src")
+CODE_DIRS = (
+    REPO / "mcp" / "brx_mcp",
+    REPO / "app" / "src",
+    REPO / "webapp" / "mc" / "src",
+)
+TEST_DIR = REPO / "mcp" / "tests"
 _GREPPABLE = {".py", ".js", ".mjs", ".ts", ".tsx", ".html"}      # not .json: the sound catalog is ~10 MB
 _FILENAME = re.compile(r"\.(py|js|mjs|ts|tsx|md|json|html)$")
 
@@ -42,7 +47,8 @@ _SYMBOL = re.compile(r"/api/[a-z0-9_/{}.-]+"
                      r"|[a-z][a-z0-9]*(?:_[a-z0-9]+)+"
                      r"|[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+"
                      r"|[A-Z][a-z0-9]+(?:[A-Z][A-Za-z0-9]*)+"
-                     r"|[a-z][a-z0-9]*(?:[A-Z][A-Za-z0-9]*)+")
+                     r"|[a-z][a-z0-9]*(?:[A-Z][A-Za-z0-9]*)+"
+                     r"|_[A-Za-z][A-Za-z0-9_]*")
 
 # Symbols specified but not yet built. EMPTY on 2026-09-12: every symbol A24/A25/A27/A29/A31 cite had
 # landed by the time this test was written. An entry is a dated IOU — "2026-MM-DD: under construction,
@@ -59,10 +65,28 @@ def _amendment_rows(text: str | None = None) -> list[tuple[str, str]]:
     section = text[text.index(head):].split("\n## ")[0]
     rows = []
     for line in section.split("\n"):
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        cells = [c.strip() for c in _split_unescaped_pipes(line.strip().strip("|"))]
         if len(cells) >= 4 and re.fullmatch(r"A\d+(\.\d+)?", cells[0]):
             rows.append((cells[0], cells[3]))       # id, "folded into"
     return rows
+
+
+def _split_unescaped_pipes(line: str) -> list[str]:
+    r"""Split one Markdown table row without treating an escaped ``\|`` as a cell boundary."""
+    cells: list[str] = []
+    current: list[str] = []
+    escaped = False
+    for char in line:
+        if char == "|" and not escaped:
+            cells.append("".join(current))
+            current = []
+            continue
+        current.append(char)
+        escaped = char == "\\" and not escaped
+        if char != "\\":
+            escaped = False
+    cells.append("".join(current))
+    return cells
 
 
 def _slash_pieces(part: str) -> list[str]:
@@ -95,7 +119,7 @@ def _haystack() -> tuple[str, set[str]]:
     name (`state.py`) and as its repo-relative path (`mcp/brx_mcp/mc/state.py`), because §10 cites both.
     A PARTIAL path (`mc/API.md`, `manual/hardware.md`) is resolved as a suffix of the full one."""
     text, names = [], set()
-    for d in CODE_DIRS:
+    for d in (*CODE_DIRS, TEST_DIR):
         if not d.is_dir():
             continue
         for f in d.rglob("*"):
@@ -103,7 +127,7 @@ def _haystack() -> tuple[str, set[str]]:
                 continue
             names.add(f.name)
             names.add(f.relative_to(REPO).as_posix())
-            if f.suffix in _GREPPABLE:
+            if d != TEST_DIR and f.suffix in _GREPPABLE:
                 text.append(f.read_text(encoding="utf-8", errors="ignore"))
     for f in (REPO / "docs").rglob("*.md"):
         names.add(f.name)
@@ -162,18 +186,23 @@ def test_the_citation_check_reads_real_rows():
 
 # A §10 table the parser must read exactly as it reads contracts.md's own: one real symbol, one symbol
 # nobody wrote, and one missing file. Tabs/pipes match the live table's shape.
-_FAKE_SECTION = """## 10. Amendment index
+_FAKE_SYMBOL = "def_" + "missing_symbol_xyz"
+_FAKE_CONSTANT = "NO_SUCH_" + "CONSTANT_XYZ"
+_FAKE_VIEW = "NoSuch" + "ViewXyz"
+_FAKE_FILE = "no_such_" + "module.py"
+_FAKE_TEST_FILE = "mcp/tests/no_such_" + "test_file.py"
+_FAKE_SECTION = rf"""## 10. Amendment index
 
 | id | date | what | folded into |
 | --- | --- | --- | --- |
-| A99 | 2026-09-12 | a fabricated row | `weapon_view`, `END_RETRY_MS`, `EndDeliveryView`, `mcp/tests/test_mc_end_delivery.py`, `def_nonexistent_symbol_xyz`, `NO_SUCH_CONSTANT_XYZ`, `NoSuchViewXyz`, `no_such_module.py`, `mcp/tests/no_such_test_file.py` |
+| A99 | 2026-09-12 | a fabricated row with an escaped \| marker | `weapon_view`, `_finish`, `END_RETRY_MS`, `EndDeliveryView`, `mcp/tests/test_mc_end_delivery.py`, `{_FAKE_SYMBOL}`, `{_FAKE_CONSTANT}`, `{_FAKE_VIEW}`, `{_FAKE_FILE}`, `{_FAKE_TEST_FILE}` |
 
 ## 11. Next
 """
 
 
 def test_the_citation_check_can_actually_fail():
-    """Run the REAL parser and the REAL resolver over a fabricated §10 row.
+    r"""Run the REAL parser and the REAL resolver over a fabricated §10 row.
 
     The row carries every SHAPE the column uses, real and invented in pairs: snake_case, SCREAMING_CASE,
     CamelCase, a repo-relative path and a bare filename. The check must report exactly the invented ones
@@ -182,9 +211,8 @@ def test_the_citation_check_can_actually_fail():
     result. Asserting only that an invented string is absent from the haystack (what this test did
     before) passes just as happily when the resolver is broken, because it never calls it.
     """
-    real = {"weapon_view", "END_RETRY_MS", "EndDeliveryView", "mcp/tests/test_mc_end_delivery.py"}
-    fake = {"def_nonexistent_symbol_xyz", "NO_SUCH_CONSTANT_XYZ", "NoSuchViewXyz", "no_such_module.py",
-            "mcp/tests/no_such_test_file.py"}
+    real = {"weapon_view", "_finish", "END_RETRY_MS", "EndDeliveryView", "mcp/tests/test_mc_end_delivery.py"}
+    fake = {_FAKE_SYMBOL, _FAKE_CONSTANT, _FAKE_VIEW, _FAKE_FILE, _FAKE_TEST_FILE}
     cited = _cited_symbols(_FAKE_SECTION)
     assert "A99" in cited, f"the row parser did not read the fabricated §10 row: {dict(cited)}"
     assert (real | fake) <= cited["A99"], (
@@ -196,3 +224,9 @@ def test_the_citation_check_can_actually_fail():
     assert set(missing.get("A99", [])) == fake, (
         "the resolver must report every invented citation and no real one — it would otherwise pass a "
         f"§10 index pointing at nothing, or fail everything: {dict(missing)}")
+
+
+def test_the_citation_haystack_includes_the_tests_that_amendments_name():
+    """A citation to a regression test must resolve just like a production symbol."""
+    _, names = _haystack()
+    assert "mcp/tests/test_amendment_citations.py" in names

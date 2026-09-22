@@ -531,3 +531,8 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
 - 2026-09-22 **F189** the KIT browser harness resolves an explicit `MC_PY`, its checkout's venv, then the main
   checkout's shared venv through Git's common directory. The child still imports MC code from the current worktree,
   and a missing interpreter now fails with an actionable `MC_PY` message.
+
+# Closed 2026-09-22: amendment citation coverage
+
+- 2026-09-22 **F196** the amendment citation resolver now scans `mcp/tests` as well as production code, so
+  amendment rows can cite their regression tests without silently skipping them. The focused citation suite passes 4/4.
