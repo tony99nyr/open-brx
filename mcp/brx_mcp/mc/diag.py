@@ -23,8 +23,8 @@ The pool columns, and what each one can and cannot see (C-3/C-4, 2026-09-13):
     the wrong head's pool and then self-corrected has a clean max and a damning first frame.
 
 Read-only, pure sqlite — no `Session` import needed, so it can be pointed at a real session file
-Mission Control still has open (`GET /api/diag/matches` shares a live `Store.db` connection) or at
-one from any earlier night (`python -m brx_mcp.mc.diag <path/to/session.sqlite>`).
+Mission Control still has open (`GET /api/diag/matches` opens its own short-lived read-only handle)
+or at one from any earlier night (`python -m brx_mcp.mc.diag <path/to/session.sqlite>`).
 
 `hits` counts BOTH shapes the envelope table can hold a fact in: a row logged with `kind ==
 "hit_taken"` (today's shape — see `store.py`/`state.py`: every fact, batched or not, is logged under
@@ -293,6 +293,23 @@ def build_report(db: sqlite3.Connection, match_id: str | None = None) -> list[di
     return [analyze_match(db, m) for m in _matches(db, match_id)]
 
 
+def build_report_path(path: str | Path, match_id: str | None = None) -> list[dict]:
+    """Build a report through a connection owned and closed by the calling worker.
+
+    The HTTP route calls this inside its executor. Keeping the open/read/close lifecycle here means
+    the event-loop thread's live ``Store.db`` writer is never shared with a diagnostic scan.
+    """
+    # `as_uri` quotes URI metacharacters in otherwise-valid filenames (`%`, `?`, `#`) and produces
+    # the right absolute file URI on both POSIX and Windows. One explicit read transaction keeps the
+    # report's many SELECTs on a single snapshot while the live Store may still append delayed facts.
+    db = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True)
+    try:
+        db.execute("BEGIN")
+        return build_report(db, match_id)
+    finally:
+        db.close()
+
+
 # ---------------------------------------------------------------- rendering ---- #
 
 def _fmt(v: Any) -> str:
@@ -354,11 +371,7 @@ def main(argv: list[str] | None = None) -> int:
     if not path.exists():
         print(f"no such file: {path}", file=sys.stderr)
         return 2
-    db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-    try:
-        reports = build_report(db, args.match_id)
-    finally:
-        db.close()
+    reports = build_report_path(path, args.match_id)
 
     if not reports:
         print("no matches found" + (f" for {args.match_id!r}" if args.match_id else ""), file=sys.stderr)

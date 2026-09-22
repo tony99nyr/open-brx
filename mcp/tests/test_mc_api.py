@@ -306,6 +306,30 @@ def test_diag_matches_does_not_scan_sqlite_on_the_event_loop():
     assert "run_in_executor" in body, "a full-session sqlite scan must not run on the event loop"
 
 
+def test_diag_matches_does_not_share_the_store_writer_connection():
+    """F173. The executor owns a short-lived read-only handle, never the event loop's writer."""
+    needs(HAVE, "starlette + httpx")
+    from brx_mcp.mc import diag
+
+    c, s, _net = _client_with_history()
+    writer = s.store.db
+    seen = []
+
+    def inspect_connection(db, match_id=None):
+        seen.append((db, match_id))
+        return []
+
+    original = diag.build_report
+    diag.build_report = inspect_connection
+    try:
+        r = c.get("/api/diag/matches", params={"match": "m1"})
+    finally:
+        diag.build_report = original
+    assert r.status_code == 200 and r.json() == []
+    assert len(seen) == 1 and seen[0][1] == "m1"
+    assert seen[0][0] is not writer, "the diagnostic worker must not borrow Store.db"
+
+
 def test_standby_routes():
     """STANDBY (2026-09-12): POST parks, DELETE reinstates, both answer with the Player; 404s name the id's side."""
     needs(HAVE, "starlette + httpx")

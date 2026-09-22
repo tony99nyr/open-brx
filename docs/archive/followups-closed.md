@@ -471,3 +471,9 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
 
 - 2026-09-22 **F172** `?mock` now refuses a real team change in ARMED/LIVE with the same 409 and operator
   guidance as the server, while same-team and null no-ops remain legal and editable phases remain editable.
+
+# Closed 2026-09-22: isolated diagnostic reader
+
+- 2026-09-22 **F173** the diagnostic HTTP worker now owns a short-lived read-only SQLite connection instead of
+  sharing the live store writer. Its multi-query report runs in one snapshot, and encoded absolute file URIs
+  preserve valid store paths containing URI metacharacters.

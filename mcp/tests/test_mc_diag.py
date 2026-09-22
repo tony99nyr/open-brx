@@ -29,6 +29,60 @@ def _tmp_db() -> pathlib.Path:
     return pathlib.Path(tempfile.mkdtemp()) / "session.sqlite"
 
 
+def test_build_report_path_owns_and_closes_its_read_only_connection():
+    class FakeConnection:
+        closed = False
+
+        def execute(self, sql):
+            events.append(("execute", sql))
+
+        def close(self):
+            self.closed = True
+            events.append(("close",))
+
+    connection = FakeConnection()
+    events = []
+    path = _tmp_db()
+    original_connect, original_build = diag.sqlite3.connect, diag.build_report
+    diag.sqlite3.connect = lambda target, **kwargs: events.append(("open", target, kwargs)) or connection
+    diag.build_report = lambda db, match: events.append(("build", db, match)) or [{"db": db, "match": match}]
+    try:
+        result = diag.build_report_path(path, "m1")
+        assert result == [{"db": connection, "match": "m1"}]
+        assert events == [
+            ("open", path.resolve().as_uri() + "?mode=ro", {"uri": True}),
+            ("execute", "BEGIN"),
+            ("build", connection, "m1"),
+            ("close",),
+        ]
+
+        connection.closed = False
+        diag.build_report = lambda _db, _match: (_ for _ in ()).throw(RuntimeError("broken report"))
+        try:
+            diag.build_report_path(path, "m2")
+        except RuntimeError as exc:
+            assert str(exc) == "broken report"
+        else:
+            raise AssertionError("build_report_path must preserve analysis failures")
+        assert connection.closed is True
+    finally:
+        diag.sqlite3.connect, diag.build_report = original_connect, original_build
+
+
+def test_build_report_path_quotes_uri_metacharacters_in_real_store_paths():
+    root = pathlib.Path(tempfile.mkdtemp()) / "evidence%23night"
+    root.mkdir()
+    path = root / "session.sqlite"
+    st = Store("quoted-path", path)
+    st.match_started("m1", {"mode": "tdm"}, 1000)
+    st.match_ended("m1", {"winner": {}, "rows": []})
+    st.close()
+
+    reports = diag.build_report_path(path, "m1")
+
+    assert len(reports) == 1 and reports[0]["match_id"] == "m1"
+
+
 # ---------------------------------------------------------------- hand-built fixture ---- #
 
 def _hand_built_db() -> pathlib.Path:

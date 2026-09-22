@@ -519,8 +519,8 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         go_live/ended/duration, mode/config_id/environment/cfg health, shots/hits/hit%/deaths, per-node
         arm_state + alive + gun_linked distributions, the hp/armor comparison (vs the config AND vs the
         head actually pushed), the first settled pool of each node's first life, and each node's
-        `ack_config` vs the match it was pushed for. Read-only, sharing the store's own connection
-        rather than a second handle on the file. `?match=<id>` narrows to one match.
+        `ack_config` vs the match it was pushed for. Read-only, using a short-lived connection owned
+        by the diagnostic worker rather than the store's writer. `?match=<id>` narrows to one match.
 
         F-5 (polish loop, 2026-09-13) — three guards this route did not have. It is a FULL-SESSION
         sqlite scan (every `status` row and every event of every match played tonight):
@@ -529,7 +529,8 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             way for anyone on the field LAN to make MC unresponsive. It is in `_TOKEN_GETS`.
           * **off the event loop.** `run_in_executor`: a night's store is tens of thousands of rows,
             and every hit, every heartbeat and the whole UI feed queue behind a blocking scan.
-            `Store` opens its connection with `check_same_thread=False`, so a worker may read it.
+            The worker opens and closes its own read-only connection, so it never races the event
+            loop through the store's writer handle.
           * **not mid-match.** 409 while `armed`/`live`. Nobody reads a post-match diagnostic during
             the match, and that is exactly when the two costs above are least affordable.
         """
@@ -539,10 +540,10 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         if not s.store:
             return JSONResponse([])
         from . import diag
-        db, match = s.store.db, req.query_params.get("match")
+        path, match = s.store.path, req.query_params.get("match")
         try:
             loop = asyncio.get_running_loop()
-            return JSONResponse(await loop.run_in_executor(None, lambda: diag.build_report(db, match)))
+            return JSONResponse(await loop.run_in_executor(None, lambda: diag.build_report_path(path, match)))
         except Exception:
             import logging
             logging.getLogger("brx.mc").exception("diag unavailable")
