@@ -703,7 +703,7 @@ def test_a_hot_joiner_whose_weapon_the_pinned_plan_never_saw_is_withheld():
     # a joiner on a stock cell still hot joins
     net.pushed.clear()
     tail3 = demo_armory()[3]["ble"]["tail"]
-    net.simulate_hello("node3", f"GUN-D-{tail3}")
+    net.simulate_hello("node3", f"GUN-D-{tail3}", app_ver="0.4.5")
     ok = s.add_player("STOCK", gun_id="GUN-D", loadout={"weapons": [{"weapon_id": "assault_rifle"}]})
     assert ok["node_id"] == "node3"
     assert net.pushes("config", node_id="node3") and net.pushes("start", node_id="node3")

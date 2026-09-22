@@ -647,6 +647,8 @@ export interface Weapon {
   lethal?: boolean;
   /** F62 (2026-09-18): $WEAP t6 primaryCritChance, 0-100; absent = never crits */
   crit_pct?: number;
+  /** victim-side runtime floor, declared beside the mechanic that needs it */
+  min_app?: string;
 }
 
 export interface WeaponBars {

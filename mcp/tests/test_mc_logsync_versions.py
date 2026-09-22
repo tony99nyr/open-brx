@@ -6,6 +6,9 @@ ask, what it shows the operator about each node's log, and what it does with the
 """
 from _skip import needs
 
+import json
+from pathlib import Path
+
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory, fake_app_ver
 from brx_mcp.mc.state import NotReadyError, Session
 from brx_mcp.mc.types import APP_MAJOR, APP_MINOR, app_tier, compatible, parse_app_ver
@@ -20,10 +23,21 @@ except Exception:
 T0 = 5_000_000
 
 
-def mk(n_players=2):
+def test_repo_app_version_covers_every_weapon_runtime_minimum():
+    from brx_mcp.mc.compile import default_compiler
+    raw = json.loads((Path(__file__).parents[2] / "app" / "package.json").read_text())["version"]
+    current = parse_app_ver(raw)
+    assert current is not None
+    requirements = [(w["weapon_id"], parse_app_ver(w.get("min_app")))
+                    for w in default_compiler().weapon_catalog() if w.get("min_app")]
+    assert requirements and all(minimum is not None and current >= minimum for _wid, minimum in requirements), \
+        f"app {raw} cannot satisfy weapon minimums {requirements}"
+
+
+def mk(n_players=2, compiler=None):
     clock = {"t": T0}
     net = FakeNet()
-    s = Session(FakeCompiler(), net, FakeArmory(demo_armory()), now_ms=lambda: clock["t"])
+    s = Session(compiler or FakeCompiler(), net, FakeArmory(demo_armory()), now_ms=lambda: clock["t"])
     s.set_config({"mode": "tdm", "time_limit_s": 60})
     ps = [s.add_player(f"OP{i}", gun_id=f"GUN-{chr(65 + i)}") for i in range(n_players)]
     return s, net, clock, ps
@@ -311,6 +325,103 @@ def test_respawn_rules_warning_absent_when_nobody_is_behind():
     s2, net2, clock2, ps2 = mk(1)
     online(s2, net2, clock2, ps2[0], 0, app_ver=f"{APP_MAJOR}.{APP_MINOR - 1}.9")
     assert s2.readiness()["respawn_rules_warning"] is None
+
+
+def test_toxin_roster_blocks_a_phone_that_predates_the_poison_engine():
+    """2026-09-20 playtest: MC offered Toxin to app 0.4.4 even though its victim-side poison engine
+    landed after that APK. Direct damage still worked, which made the partial implementation easy to
+    mistake for a supported weapon. Every victim node, not just the Toxin shooter, must have the engine."""
+    from brx_mcp.mc.compile import default_compiler
+    s, net, clock, ps = mk(2, default_compiler())
+    s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "toxin_rifle"},
+                                                              {"weapon_id": "stripper"}]})
+    online(s, net, clock, ps[0], 0, app_ver="0.4.4+field")
+    online(s, net, clock, ps[1], 1, app_ver="0.4.5+fixed")
+    rows = {r["player_id"]: r for r in s.readiness()["board"]}
+    assert rows[ps[0]["player_id"]]["status"] == "red"
+    assert any("TOXIN RIFLE" in b and "0.4.5" in b for b in rows[ps[0]["player_id"]]["blockers"])
+    assert not any("TOXIN RIFLE" in b for b in rows[ps[1]["player_id"]]["blockers"])
+
+
+def test_start_rechecks_toxin_minimum_for_a_phone_that_arrives_after_force_push():
+    from brx_mcp.mc.compile import default_compiler
+    s, net, clock, ps = mk(2, default_compiler())
+    s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "toxin_rifle"},
+                                                              {"weapon_id": "stripper"}]})
+    for p in ps:
+        s.set_ready(p["player_id"], True, host_override=True)
+    s.push_config(force=True)
+    online(s, net, clock, ps[0], 0, app_ver="0.4.5+fixed")
+    online(s, net, clock, ps[1], 1, app_ver="0.4.4+field")
+    for i in range(2):
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
+                                                               "gun_echo": "$LCD"}, clock["t"])
+    try:
+        s.start(runway_s=1, force=True)
+        raise AssertionError("an old victim node must not start a partial Toxin match")
+    except ValueError as e:
+        assert "TOXIN RIFLE" in str(e) and "0.4.5" in str(e), e
+
+
+def test_old_victim_arriving_after_toxin_start_is_withheld_from_the_match():
+    """Critical review: START's gate has already run when a late victim says hello. Hydration must use
+    the same weapon floor before handing that phone the poison bundle and live schedule."""
+    from brx_mcp.mc.compile import default_compiler
+    s, net, clock, ps = mk(2, default_compiler())
+    s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "toxin_rifle"},
+                                                              {"weapon_id": "stripper"}]})
+    for p in ps:
+        s.set_ready(p["player_id"], True, host_override=True)
+    online(s, net, clock, ps[0], 0, app_ver="0.4.5+fixed")
+    s.push_config(force=True)
+    net.simulate_node_message("node0", "ack_config", {"config_id": s.config["config_id"], "ok": True,
+                                                        "gun_echo": "$LCD"}, clock["t"])
+    s.start(runway_s=1, force=True)
+    late = net.simulate_hello("node1", f"GUN-B-{demo_armory()[1]['ble']['tail']}", app_ver="0.4.4+field")
+    assert late and late["player"]["player_id"] == ps[1]["player_id"]
+    assert "config" not in late and "frames" not in late and "start" not in late
+    assert not net.pushes("config", node_id="node1") and not net.pushes("start", node_id="node1")
+    withheld = [e for e in s.feed if e.get("tag") == "WITHHELD"]
+    assert len(withheld) == 1 and "TOXIN RIFLE" in withheld[0]["text"] and "0.4.5" in withheld[0]["text"]
+    net.pushed.clear()
+    s.reschedule(runway_s=2)
+    assert not net.pushes("start", node_id="node1"), "reschedule must use the same app floor as hydration"
+    assert len([e for e in s.feed if e.get("tag") == "WITHHELD"]) == 1, "repeat checks stay deduped"
+
+
+def test_toxin_start_never_reaches_the_old_unbound_phone_after_a_hot_swap():
+    """Final critical review: the replacement can satisfy the app floor while the displaced socket
+    remains connected with the already-pushed Toxin frames. START is roster-addressed, so that stale
+    holder must receive neither the first schedule nor a reschedule."""
+    from brx_mcp.mc.compile import default_compiler
+    s, net, clock, ps = mk(2, default_compiler())
+    s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "toxin_rifle"},
+                                                              {"weapon_id": "stripper"}]})
+    for p in ps:
+        s.set_ready(p["player_id"], True, host_override=True)
+    online(s, net, clock, ps[0], 0, app_ver="0.4.5+fixed")
+    online(s, net, clock, ps[1], 1, app_ver="0.4.4+field")
+    s.push_config(force=True)  # old node1 now holds the frames, but cannot pass START
+    replacement = net.simulate_hello("replacement", f"GUN-B-{demo_armory()[1]['ble']['tail']}",
+                                     app_ver="0.4.5+fixed")
+    assert replacement and s.players[ps[1]["player_id"]]["node_id"] == "replacement"
+    assert "node1" not in s.node_player and "node1" in s.nodes, "the displaced socket remains connected"
+    net.pushed.clear()
+    s.start(runway_s=1, force=True)
+    assert not net.pushes("start", node_id="node1")
+    assert net.pushes("start", node_id="node0") and net.pushes("start", node_id="replacement")
+    net.pushed.clear()
+    s.reschedule(runway_s=2)
+    assert not net.pushes("start", node_id="node1")
+    # The stale holder then reclaims the gun and reports that it is still live in a retired match.
+    # Reconciliation may end that old match, but its E5 leg must not bypass the same app floor.
+    net.simulate_hello("node1", f"GUN-B-{demo_armory()[1]['ble']['tail']}", app_ver="0.4.4+field")
+    assert s.players[ps[1]["player_id"]]["node_id"] == "node1"
+    net.pushed.clear()
+    s._ended["retired"] = {"recap": None, "players": None}
+    s._reconcile_stale_live("node1", "retired")
+    assert net.pushes("control", node_id="node1"), "the retired match is still ended"
+    assert not net.pushes("start", node_id="node1"), "reconcile must not bypass the Toxin app floor"
 
 
 def test_start_refuses_a_bound_node_below_the_app_tier_even_when_it_arrives_after_a_forced_push():

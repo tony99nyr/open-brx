@@ -492,7 +492,7 @@ class Session:
         # then fires the same hello through `_on_node`), so without this the operator would see the
         # WITHHELD line twice per hello, and again on every later heartbeat-driven `_bind` while the
         # phone stays on the same build. Cleared on `evict_node` so a genuine re-bind can say it again.
-        self._app_blocked_alerted: dict[str, str] = {}
+        self._app_blocked_alerted: dict[str, tuple[str, ...]] = {}
         # S16 review 2026-09-19: node_id -> the weapon ids last told to the feed by `_alert_plan_withheld`,
         # deduped for the same reason as the line above. Cleared beside it.
         self._plan_blocked_alerted: dict[str, tuple[str, ...]] = {}
@@ -1950,7 +1950,7 @@ class Session:
                 # never turns spawn protection off.
                 if not self._hot_join_withheld(p, nid):
                     self._push_config_to(p)
-        if nid and with_start and self.start_info and not self._app_incompatible(nid) and not self._plan_gaps(p):
+        if nid and with_start and self.start_info and not self._hot_join_withheld(p, nid):
             self.net.push(nid, "start", self._start_body())
 
     def _after_player_change(self, p: Player):
@@ -3052,7 +3052,7 @@ class Session:
         chance to hand a phone `frames` it will run without ever sending F121's `$TMP` off frame."""
         return compatible((self.nodes.get(nid) or {}).get("app_ver")) is not True
 
-    def _alert_app_withheld(self, p: Player, nid: str) -> None:
+    def _alert_app_withheld(self, p: Player, nid: str, reasons: list[str] | None = None) -> None:
         """The operator feed line for `_app_incompatible`: names the node and its reported version, so
         an invulnerable player mid-match is a fact the operator can see, not a silent gap.
 
@@ -3061,13 +3061,14 @@ class Session:
         later heartbeat-driven `_bind` on an unchanged build would otherwise say it again."""
         av = (self.nodes.get(nid) or {}).get("app_ver")
         shown = av if isinstance(av, str) and av else "unknown"
-        if self._app_blocked_alerted.get(nid) == shown:
+        reasons = reasons or [f"APP {shown} CANNOT RUN F121 SPAWN PROTECTION (NEEDS {app_tier()})"]
+        key = tuple(reasons)
+        if self._app_blocked_alerted.get(nid) == key:
             return
-        self._app_blocked_alerted[nid] = shown
+        self._app_blocked_alerted[nid] = key
         who = p.get("display") or p["player_id"]
         self._on_feed({"t_match_s": self._operator_t_match(self.now_ms()), "tag": "WITHHELD", "kind": "alert",
-                       "text": f"{str(who).upper()}'S GAME WAS WITHHELD — APP {shown} CANNOT RUN F121 "
-                               f"SPAWN PROTECTION (NEEDS {app_tier()})"})
+                       "text": f"{str(who).upper()}'S GAME WAS WITHHELD — " + " · ".join(reasons)})
 
     def _plan_gaps(self, p: Player) -> list[str]:
         """S16 review 2026-09-19: the weapons in `p`'s loadout that the match's PINNED hit plan cannot carry
@@ -3086,8 +3087,16 @@ class Session:
     def _hot_join_withheld(self, p: Player, nid: str) -> bool:
         """The one gate a hot join passes before it gets frames: True (and one WITHHELD feed line) when the
         node's app cannot run F121, or when the player's weapons are not in the match's hit plan."""
+        if not self.lobby_pushed:
+            return False
+        reasons = []
         if self._app_incompatible(nid):
-            self._alert_app_withheld(p, nid)
+            av = (self.nodes.get(nid) or {}).get("app_ver")
+            shown = av if isinstance(av, str) and av else "unknown"
+            reasons.append(f"APP {shown} CANNOT RUN F121 SPAWN PROTECTION (NEEDS {app_tier()})")
+        reasons.extend(self._weapon_app_blockers(self.nodes.get(nid) or {}))
+        if reasons:
+            self._alert_app_withheld(p, nid, reasons)
             return True
         gaps = self._plan_gaps(p)
         if gaps:
@@ -3355,17 +3364,10 @@ class Session:
         # lobby-push or mid-match on an app `compatible()` cannot vouch for gets no frames and no start --
         # both are what F121 needs the node to run, and an old build never sends the `$TMP` off frame
         # that ends spawn protection.
-        blocked = self._app_incompatible(hello["node_id"])
+        blocked = self._hot_join_withheld(p, hello["node_id"])
         if not blocked:
             self._app_blocked_alerted.pop(hello["node_id"], None)   # F121: an upgraded app can say WITHHELD again if it ever regresses
-        gaps = self._plan_gaps(p) if p["player_id"] not in self.bundles else []
-        if self.lobby_pushed and blocked:
-            self._alert_app_withheld(p, hello["node_id"])
-        elif gaps:
-            # S16 review 2026-09-19: a hot joiner carrying a weapon the pinned plan never saw. See `_plan_gaps`.
-            self._alert_plan_withheld(p, hello["node_id"], gaps)
-            blocked = True
-        elif self.lobby_pushed:
+        if self.lobby_pushed and not blocked:
             if p["player_id"] not in self.bundles:          # A5.6 late joiner hydrated on first hello
                 self.bundles[p["player_id"]] = self._compile_rolled(p)
                 self._head_sent_t[p["player_id"]] = self.now_ms()
@@ -3739,7 +3741,8 @@ class Session:
         # `start` anyway. Gated on `p` for a second reason: an UNBOUND node has no roster row and no
         # scorer entry, so handing it a start would spawn it into the match under a stale `player_num`
         # that `_next_num` may since have given to somebody else (round-1 polish review 2026-09-12).
-        if p and not told_result and self.start_info and not self.is_adopted() and self.in_play():
+        if (p and not told_result and self.start_info and not self.is_adopted() and self.in_play()
+                and not self._hot_join_withheld(p, nid)):
             self.net.push(nid, "start", self._start_body())
         who = (p or {}).get("display") or nid
         self._on_feed({"t_match_s": 0, "tag": "RECONCILED", "kind": "alert",
@@ -5005,6 +5008,29 @@ class Session:
         return (f"Update to {'.'.join(str(x) for x in RESPAWN_PROFILE_MIN_APP)} for today's respawn rules: "
                 + ", ".join(behind))
 
+    def _weapon_app_blockers(self, nv: dict) -> list[str]:
+        """Required victim-side engines for weapons anywhere on this roster.
+
+        The victim cannot infer the shooter's catalog row. Node-driven effects therefore arrive in the
+        game-wide bundle and every phone must know how to execute them. Keep this generic so the next
+        weapon feature gets an explicit release boundary instead of another partial field deployment.
+        """
+        present = {w.get("weapon_id")
+                   for p in self.players.values()
+                   for w in ((p.get("loadout") or {}).get("weapons") or [])}
+        requirements = {w["weapon_id"]: (parse_app_ver(w.get("min_app")), w.get("name") or w["weapon_id"])
+                        for w in self.compiler.weapon_catalog() if w.get("min_app")}
+        have = parse_app_ver(nv.get("app_ver"))
+        if have is None:
+            return []  # the existing version-unknown path is amber here and a hard refusal at START
+        out = []
+        for wid in sorted(present):
+            requirement = requirements.get(wid or "")
+            if requirement and requirement[0] is not None and have < requirement[0]:
+                minimum, label = requirement
+                out.append(f"APP CANNOT RUN {str(label).upper()} (NEEDS {'.'.join(str(x) for x in minimum)}) — UPDATE THE APP")
+        return out
+
     # ---------- readiness ----------
     def readiness(self) -> ReadinessSnapshot:
         now = self.now_ms()
@@ -5084,6 +5110,7 @@ class Session:
                 vb, va = self._version_flags(nv)          # A29: the app build this phone is actually running
                 blockers.extend(vb)
                 ambers.extend(va)
+                blockers.extend(self._weapon_app_blockers(nv))
             if identity in ("reverted", "unknown") and g:
                 blockers.append("IDENTITY REVERTED — RE-STAMP $NAME")
             ack = self.acks.get(p["player_id"])
@@ -5308,7 +5335,11 @@ class Session:
         if fn is None:
             return None
         if self._pinned_hit_plan is None:
-            self._pinned_hit_plan = fn(self.roster(), rekey=bool(self.config.get("hit_audio_rekey", False)))
+            # `roster()` is the public identity-only wire view. It deliberately omits loadouts, so using
+            # it here produced an empty plan: conditional Breacher/Toxin rows never reached any head and
+            # A17 stopped the push. The compiler needs the authoritative Player records.
+            self._pinned_hit_plan = fn(list(self.players.values()),
+                                       rekey=bool(self.config.get("hit_audio_rekey", False)))
         return self._pinned_hit_plan
 
     def _compile_rolled(self, p: Player):
@@ -5766,6 +5797,13 @@ class Session:
                 f"{len(bad)} gun(s) are running an app MC cannot start a match with: {who}. An app not "
                 f"on {app_tier()} never ends spawn protection (F121) — its player would take no damage "
                 f"all life. UPDATE THE APP before the whistle")
+        feature_bad = [(self.players[pid].get("display") or pid, blockers)
+                       for pid, p in self.players.items()
+                       if (nid := p.get("node_id")) and (nv := self.nodes.get(nid))
+                       and (blockers := self._weapon_app_blockers(nv))]
+        if feature_bad:
+            who = "; ".join(f"{display}: {', '.join(blockers)}" for display, blockers in feature_bad)
+            raise ValueError(f"phone app update required before this weapon can play: {who}")
 
     def start(self, runway_s: int | None = None, force: bool = False) -> dict:
         if not self.lobby_pushed:
@@ -5817,6 +5855,10 @@ class Session:
         self._result_pushed = {}               # A24: nor to the last one's result
         self.end_reason = None
         self.feed = []
+        # The delivery loop below must restate any WITHHELD phone after this feed reset. Keeping the
+        # old dedupe keys erased the only operator-visible explanation on a reschedule.
+        self._app_blocked_alerted.clear()
+        self._plan_blocked_alerted.clear()
         self.last_recap = None
         if self.store:
             try:
@@ -5843,7 +5885,12 @@ class Session:
                 continue
             # F121: an incompatible app never took a `config` that can turn spawn protection off, so
             # a `start` here would arm it invulnerable. `_bind`'s hot join already said WITHHELD.
-            if self._app_incompatible(nid):
+            pid = self.node_player.get(nid)
+            player = self.players.get(pid or "")
+            # Address only the phone currently bound to a roster slot. A hot-swap leaves the old
+            # socket connected and it may still hold this config; starting that stale holder creates
+            # an unscored duplicate player and can bypass a replacement phone's app-version gate.
+            if player is None or self._hot_join_withheld(player, nid):
                 continue
             self.net.push(nid, "start", start_body)
         self.phase = "armed"

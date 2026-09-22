@@ -17,7 +17,7 @@ from typing import Any, Literal, cast, get_args
 import random as _random
 
 from ..gameconfig import (END_SEQUENCE, GSET_T2_SAFE, WEAPON_TAILS, _SIR_TABLE, GameConfig as _GC,
-                          assert_team_byte_consistent)
+                          assert_sir_follows_clear, assert_team_byte_consistent)
 from .. import hitaudio as _ha
 from ..protocol import PANIC_SEQUENCE
 from .perks import PerkCatalog
@@ -1123,6 +1123,10 @@ class WeaponCatalog:
             row["lethal"] = False
         if w.get("crit_pct") is not None:   # F62 (2026-09-18): the declared t6 crit chance, 0-100.
             row["crit_pct"] = int(w["crit_pct"])
+        if w.get("min_app"):
+            # A victim-side mechanic is a field compatibility requirement, so it travels with the
+            # catalog row that declares the mechanic rather than in a second hand-maintained map.
+            row["min_app"] = str(w["min_app"])
         return row
 
     def all(self) -> list[Weapon]:
@@ -1854,6 +1858,15 @@ class Compiler:
             dotted = {w: d for w, d in specs.items() if d}
             if not dotted:
                 continue
+            missing_floor = [w for w in dotted if not (self.catalog._by_id.get(w) or {}).get("min_app")]
+            if missing_floor:
+                raise ValueError("S16: victim-side damage-over-time needs a catalog min_app so MC can refuse "
+                                 "partial old-phone behavior: " + ", ".join(sorted(missing_floor)))
+            malformed_floor = [w for w in dotted
+                               if parse_app_ver(str((self.catalog._by_id.get(w) or {}).get("min_app"))) is None]
+            if malformed_floor:
+                raise ValueError("S16: catalog min_app must be MAJOR.MINOR.PATCH: "
+                                 + ", ".join(sorted(malformed_floor)))
             if len(dotted) != len(wids) or len({(int(d["per_tick"]), int(d["tick_ms"]), int(d["duration_ms"])) for d in dotted.values()}) > 1:
                 raise ValueError(
                     f"S16: IR protocol {proto} carries a damage-over-time weapon ({', '.join(sorted(dotted))}) AND "
@@ -2375,24 +2388,34 @@ class Compiler:
 
     def tutorial_frames(self, weapon: Weapon, environment: str) -> list[str]:
         """§4 private try-out: one weapon, identity 0 (uncredited), audible (VOL_TRYOUT). Needs $START + a $TID to
-        actually fire (bench 2026-08-25); identity 0 keeps any stray hit off the scoreboard."""
+        actually fire (bench 2026-08-25); identity 0 keeps any stray hit off the scoreboard.
+
+        The try-out is a real armed head after its `$CLEAR`, so it uses the same catalogue-driven hit plan
+        and conditional rows as a match. A single hard-coded `<0,0>` row left Burst, Breacher, Toxin and
+        every other non-`<0,0>` weapon in the A17/F11 silent-drop state during the one path intended to
+        prove a new weapon works."""
         wid = weapon["weapon_id"]
         mag, reserve = self.catalog.spawn_ammo(wid)
+        plan = self.hit_plan([{"loadout": {"weapons": [{"weapon_id": wid}]}}], rekey=False)
+        sir = self.sir_table(plan, None)
         # $PSET,0 = "no identity" (A5.1) so a stray try-out hit reports shooter 0, never credited.
         # F206: token 2 = 1, the same team as the `$TID,1` below (one team byte, last writer wins).
         pset = "$PSET,0,1,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*"
-        return [
+        frames = [
             f"$VOL,{self.tryout_volume()},0,*", "$CLEAR,*", "$START,*",   # $START IS required — bench 2026-08-25: without it the gun
                                                      # spawns but the trigger only reloads, it will not fire IR
             f"$GSET,0,{GSET_T2_SAFE},1,0,1,0,0,1,*",    # FF off; t2 stays safe at every venue; t7 (crit_modifier) matches the GameConfig default of 0 (2026-09-17)
             pset,
-            "$SIR,0,0,,1,0,0,1,,*",                # standard-weapon IR interpretation so a try-out shot registers
+            *sir,                                    # every stock row + this weapon's conditional row (Breacher/Toxin/Haze)
             "$TID,1,*",                            # a team is needed to spawn-to-live (identity stays 0 → uncredited)
             self.catalog.resolve(wid, 0, environment=environment),   # the one weapon, slot 0
             "$SPAWN,,*", "$PLAYX,0,*",              # live, then silence the spawn chirp
             f"$AMMO,0,{mag},{reserve},1,*",
             "$BMAP,0,0,,,,,*",
         ]
+        assert_sir_follows_clear(frames)
+        assert_sir_covers_weapons(frames)
+        return frames
 
     def voice_options(self) -> list[VoiceOption]:
         """The selectable personas (`Session._voice_ids` picks this up to validate a PATCH).

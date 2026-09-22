@@ -220,7 +220,6 @@ SPAWN_KILL_WINDOW_MS = 10000               # a death this soon after a timed res
 # unaffected and unrelated: an app that old is still ALLOWED to play, just with the old rules.
 RESPAWN_PROFILE_MIN_APP = (0, 4, 3)
 
-
 class Respawn(TypedDict):
     type: Literal["auto", "scanner", "none"]
     delay_s: int
@@ -623,6 +622,7 @@ class Weapon(TypedDict):
     rounds_per_charge: NotRequired[int]  # A48: rounds of the cell one FULL charge spends. `WeaponCatalog.rounds_per_charge()` resolves weapons.json's absent-means-1 row to a concrete integer, so a real compiled Weapon always carries this; NotRequired only for a hand-built fixture that skips it
     lethal: NotRequired[bool]       # 2026-09-18, weapon-design.md §7.4: False = cannot kill; absent means true
     crit_pct: NotRequired[int]      # F62 (2026-09-18): $WEAP t6 primaryCritChance, 0-100; absent = never crits
+    min_app: NotRequired[str]       # victim-side runtime floor, declared beside the mechanic that needs it
 
 
 class WeaponBars(TypedDict):

@@ -6,8 +6,11 @@ lethal tick produces to the player who applied the poison.
 
 No pytest import: `run_tests.py` runs this file under system python, which has no pytest.
 """
+from copy import deepcopy
 from brx_mcp.mc.compile import Compiler, default_compiler, golden_bundle
+from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
 from brx_mcp.mc.scoring import Scorer
+from brx_mcp.mc.state import Session
 
 from test_mc_scoring import T0, death, mk
 
@@ -46,6 +49,63 @@ def test_the_toxin_rifle_is_in_the_picker_and_compiles():
     b = c.compile(_CONFIG, p, _CONFIG["teams"])
     assert any(f.startswith("$WEAP,0,") and f.split(",")[4] == "11" for f in b["head"]), "t3 = 11 on the wire"
     assert b["dot"]["11"]["per_tick"] == 4
+
+
+def test_breacher_and_toxin_share_one_match_without_tripping_the_a17_guard():
+    """Playtest 2026-09-20: this exact new-weapon pair was blamed when the A17 guard stopped the arm.
+    Pin the whole contract: Breacher is the legal secondary, Toxin the primary, every victim receives
+    both conditional SIR rows, and the poison table reaches both phones."""
+    c = default_compiler()
+    specialist = _player("specialist", 1, "blue", "toxin_rifle", "stripper")
+    victim = _player("victim", 2, "yellow", "smg")
+    roster = [specialist, victim]
+    result = c.validate(_CONFIG, roster)
+    assert result["ok"], result
+    plan = c.hit_plan(roster)
+    for player in roster:
+        bundle = c.compile(_CONFIG, player, _CONFIG["teams"], plan=plan)
+        live = bundle["sir_pool"][0]
+        assert _sir(live, ("5", "0")) and _sir(live, ("11", "0")), live
+        assert bundle["dot"]["11"]["weapon_id"] == "toxin_rifle"
+
+
+def test_session_push_builds_breacher_and_toxin_plan_from_real_player_records():
+    """The 2026-09-20 failure lived above Compiler: Session passed its public identity-only roster to
+    hit_plan(), dropping every loadout. This real push pins the production seam that direct compilation
+    cannot cover."""
+    s = Session(default_compiler(), FakeNet(), FakeArmory(demo_armory()))
+    cfg = deepcopy(_CONFIG)
+    cfg["scoring"]["frag_limit"] = None
+    s.set_config(cfg)
+    s.add_player("SPECIALIST", "blue", "GUN-A",
+                 loadout={"weapons": [{"weapon_id": "toxin_rifle"}, {"weapon_id": "stripper"}]})
+    s.add_player("VICTIM", "yellow", "GUN-B", loadout={"weapons": [{"weapon_id": "smg"}]})
+    result = s.push_config(force=True)
+    assert result["ok"] and set(s._pinned_hit_plan.cells) >= {"toxin_rifle", "stripper"}
+    for bundle in s.bundles.values():
+        live = bundle["sir_pool"][0]
+        assert _sir(live, ("5", "0")) and _sir(live, ("11", "0")), live
+        assert bundle["dot"]["11"]["weapon_id"] == "toxin_rifle"
+
+
+def test_node_driven_dot_weapon_cannot_omit_its_app_floor():
+    base = default_compiler()
+    c = Compiler(catalog=type(base.catalog)(deepcopy(base.catalog._rows)))
+    c.catalog._by_id["toxin_rifle"].pop("min_app")
+    p = _player("tox", 1, "blue", "toxin_rifle")
+    try:
+        c.compile(_CONFIG, p, _CONFIG["teams"])
+        raise AssertionError("a victim-side effect without an app floor compiled")
+    except ValueError as e:
+        assert "min_app" in str(e) and "toxin_rifle" in str(e), e
+
+    c = Compiler(catalog=type(base.catalog)(deepcopy(base.catalog._rows)))
+    c.catalog._by_id["toxin_rifle"]["min_app"] = "next"
+    try:
+        c.compile(_CONFIG, p, _CONFIG["teams"])
+        raise AssertionError("a malformed app floor compiled")
+    except ValueError as e:
+        assert "MAJOR.MINOR.PATCH" in str(e) and "toxin_rifle" in str(e), e
 
 
 def _sir(rows, cell):

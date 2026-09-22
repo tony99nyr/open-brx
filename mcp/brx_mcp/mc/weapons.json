@@ -1122,6 +1122,7 @@
     "refresh": true,
     "stack": false
    },
+   "min_app": "0.4.5",
    "wire": {
     "dmg": 8,
     "fire_ms": 110,

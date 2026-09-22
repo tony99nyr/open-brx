@@ -10,7 +10,7 @@ specified. Then **[`manual/`](manual/)**, the confirmed-facts manual the public 
 | **Running a match today** | [`field-runbook-mc.md`](field-runbook-mc.md) · [`field-process.md`](field-process.md) · [`field-issues.md`](field-issues.md) |
 | **Starting Mission Control on the dev box** (no hardware, no phones) | [`../mcp/brx_mcp/mc/README.md`](../mcp/brx_mcp/mc/README.md) → *Start it*: the one command, what it prints, the busy-port trap, served vs dev UI |
 | **Trying LEDs, sounds and events on ONE gun at the bench** | [`gun-stage.md`](gun-stage.md) (`python -m brx_mcp stage`) |
-| **Changing the code** | [`spec/README.md`](spec/README.md) → [`spec/contracts.md`](spec/contracts.md) · [`adr/`](adr/) · [`archive/HANDOFF-dry-2026-09-13.md`](archive/HANDOFF-dry-2026-09-13.md), the completed contract-DRY execution record; remaining F42 cleanup is tracked in [`FOLLOWUPS.md`](FOLLOWUPS.md) |
+| **Changing the code** | [`spec/README.md`](spec/README.md) → [`spec/contracts.md`](spec/contracts.md) · [`adding-weapons.md`](adding-weapons.md) for the end-to-end weapon workflow · [`adr/`](adr/) · [`archive/HANDOFF-dry-2026-09-13.md`](archive/HANDOFF-dry-2026-09-13.md), the completed contract-DRY execution record; remaining F42 cleanup is tracked in [`FOLLOWUPS.md`](FOLLOWUPS.md) |
 | **An AI agent working on this repo** | `../CLAUDE.md` for hard rules + environment, then [`HANDOFF.md`](HANDOFF.md) |
 
 ## Status — three living files, one job each

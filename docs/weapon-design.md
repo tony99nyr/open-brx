@@ -51,6 +51,9 @@ Where the earlier analysis was wrong, it is marked *retracted* rather than quiet
 
 - **Roster:** `mcp/brx_mcp/mc/weapons.json` — each row carries `capture.frame` (the real frame Battle
   Company sent) plus a `wire` block listing only the tokens we deliberately overwrite.
+- **Adding one:** `docs/adding-weapons.md` is the implementation and field-proof checklist. A catalog row
+  alone is not support; the victim SIR table, phone runtime, HUD, compatibility gate, and release APK are
+  part of the same change when the behavior needs them.
 - **Raw traces:** `protocol/captures/raw/` · decode with
   `python -m brx_mcp.weapmap protocol/captures/raw/*.btsnoop` · named table in
   `docs/reference/weapons.md`.

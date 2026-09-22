@@ -1830,6 +1830,21 @@ def test_k_no_stock_weapon_and_no_shipped_pool_is_blocked_by_the_new_errors():
                 assert r["ok"], f"preset {name} offers {wid} in {slot}, which validate() blocks: {r['errors']}"
 
 
+def test_every_visible_weapon_tryout_restores_the_sir_cell_it_fires_on():
+    """Playtest 2026-09-20: Breacher and Toxin picks reached MC, but their private try-out heads
+    cleared the hit table and restored only stock <0,0>. Both weapons then fired on cells with no row
+    (<5,0> and <11,0>), the exact F11/A17 silent-drop shape. A newly visible weapon must be playable
+    through the try-out path as well as through a match compile."""
+    from brx_mcp.mc.compile import assert_sir_covers_weapons
+
+    for weapon in C.weapon_catalog():
+        frames = C.tutorial_frames(weapon, "outdoor")
+        try:
+            assert_sir_covers_weapons(frames)
+        except ValueError as e:
+            raise AssertionError(f"{weapon['weapon_id']} try-out is not fully armed: {e}") from e
+
+
 def test_round3_field4_zero_damage_on_a_DAMAGE_row_is_an_error_and_a_grant_row_is_not():
     """FIELD-4 (round-3 fix pass, 2026-09-13) — completes pass K.
 
