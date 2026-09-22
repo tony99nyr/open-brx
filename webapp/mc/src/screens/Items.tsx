@@ -162,7 +162,8 @@ function StationCard({ s }: { s: StationView }) {
           {/* A41: the cure for a phone stuck in utility mode -- a player's own exit is the same seven-tap
               gesture that opens this card's settings, undiscoverable on the phone and with no feedback on
               a single tap. This works in ANY phase, armed/live included, and on ANY utility phone here,
-              assigned or not (the stuck case usually is not). It does not un-assign or re-arm anything.
+              assigned or not (the stuck case usually is not). An accepted send clears its assignment and
+              allow-list entry; the card remains only until the reloaded HUD proves the old utility identity.
               Unlike CLEAR (recoverable here — the phone just keeps advertising) this is NOT: it moves the
               phone off the page holding its socket, so the console loses it the moment it lands. That
               blast-radius mismatch is why it needs its own tap-again confirm rather than CLEAR's look —

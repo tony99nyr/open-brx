@@ -264,7 +264,8 @@ class FakeNet:
 
     # simulation helpers (what a node would cause)
     def simulate_hello(self, node_id: str, gun_name: str, node_type: str = "phone", fw: str | None = "v4.32",
-                       app_ver: str | None = None, platform: str = "android", via: str | None = None) -> dict | None:
+                       app_ver: str | None = None, platform: str = "android", via: str | None = None,
+                       prior_utility_node_id: str | None = None) -> dict | None:
         # A29: the fake reports a REAL semver, because MC now reads one (the old literal `"fake"` parsed as nothing
         # and every fake node carried an "APP VERSION UNKNOWN" amber). `fake_app_ver()` tracks APP_MAJOR/APP_MINOR.
         # A28.3: `via` is MC's own stamp off the socket in the real server; the fake mirrors it as `reach`.
@@ -275,12 +276,17 @@ class FakeNet:
         self._seen.add(node_id)                 # a hello is a live socket: `broadcast` counts it
         if via:
             hello["via"] = via
+        if prior_utility_node_id:
+            hello["prior_utility_node_id"] = prior_utility_node_id
         node = self._hydrate(hello) if self._hydrate else None
         info = {"node_id": node_id, "node_type": node_type, "gun_name": gun_name, "gun_tail": tail, "fw": fw}
         if via:
             # A28.3: in the real server this is MC's own stamp off the socket, never the hello's claim.
             # A FakeNet that does not mirror the real one is how F106(b) hid for a month.
             info["reach"] = via
+        if prior_utility_node_id:
+            # The real NetServer adds this only after proving the old utility node's takeover key.
+            info["prior_utility_node_id"] = prior_utility_node_id
         for cb in self._cb["node"]:
             info["app_ver"] = av       # `net.py _fire_node` carries app_ver (F106(b)) but not platform
             cb(info)

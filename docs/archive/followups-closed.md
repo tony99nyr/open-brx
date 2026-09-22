@@ -507,3 +507,9 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
 - 2026-09-22 **F181** the M2 browser walk disables only the mock's random background kills, drives exactly one
   six-shot kill, and reads the resulting `~50%` provisional accuracy from the rendered board. An adversarial
   zero-random control makes deleting the fixture fail deterministically instead of reviving the timing race.
+
+# Closed 2026-09-22: utility-to-HUD station cleanup
+
+- 2026-09-22 **F184** the first HUD hello after BACK TO HUD proves its distinct prior utility identity with that
+  identity's takeover key. MC then removes the retained ITEMS/node row, shrinks active allow-lists, and preserves
+  any self-authoritative station counters for the live match's recap.

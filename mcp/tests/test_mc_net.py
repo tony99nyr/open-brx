@@ -21,7 +21,7 @@ except ImportError:  # system python
 
 if HAVE_WS:
     from brx_mcp.mc.mock_node import MockNode
-    from brx_mcp.mc.net import NetServer
+    from brx_mcp.mc.net import NetServer, NodeRecord
 
 
 # --------------------------------------------------------------------------- envelope (pure)
@@ -411,6 +411,81 @@ def test_takeover_by_node_id_and_by_gun():
             assert await _until(lambda: h.net.nodes["n2"].gun_name == "GUN-A" and h.net.nodes["n2"].connected, 3)
             for n in (a, b, c):
                 await n.close()
+    _run(go())
+
+
+def test_hud_hello_consumes_only_a_proven_prior_utility_identity():
+    """F184: brxu/brx are distinct ids; the old takeover key is the authenticated physical bridge."""
+    if not HAVE_WS:
+        return _skip("prior utility identity")
+
+    async def go():
+        async with _Harness() as h:
+            util = MockNode(h.url, node_id="brxu-old", node_type="utility", gun_name="", gun_tail="")
+            await util.start(); await util.wait_connected()
+            assert util.node_key
+
+            rogue = MockNode(h.url, node_id="brx-rogue", gun_name="GUN-R", gun_tail="0001",
+                             prior_utility={"node_id": "brxu-old", "node_key": "wrong"})
+            await rogue.start(); await rogue.wait_connected()
+            assert "brxu-old" in h.net.nodes and not rogue.prior_utility_consumed
+            assert not any(n.get("prior_utility_node_id") for n in h.nodes if n["node_id"] == "brx-rogue")
+            await rogue.close()
+
+            wrong_role = MockNode(h.url, node_id="brxu-other", node_type="utility", gun_name="", gun_tail="",
+                                  prior_utility={"node_id": "brxu-old", "node_key": util.node_key})
+            await wrong_role.start(); await wrong_role.wait_connected()
+            assert ("brxu-old" in h.net.nodes and not wrong_role.prior_utility_consumed), \
+                "only a HUD hello can consume the old utility identity"
+            await wrong_role.close()
+
+            hud = MockNode(h.url, node_id="brx-new", gun_name="GUN-H", gun_tail="0002",
+                           prior_utility={"node_id": "brxu-old", "node_key": util.node_key})
+            await hud.start(); await hud.wait_connected()
+            assert hud.prior_utility_consumed
+            assert "brxu-old" not in h.net.nodes
+            assert await _until(lambda: any(n.get("prior_utility_node_id") == "brxu-old"
+                                            for n in h.nodes if n["node_id"] == "brx-new"))
+            await hud.close(); await util.close()
+    _run(go())
+
+
+def test_a_failed_handoff_welcome_leaves_the_old_proof_retryable():
+    """F184 polish: consumption is committed only after its acknowledgement reaches the new HUD."""
+    if not HAVE_WS:
+        return _skip("prior utility retry")
+
+    class BrokenWs:
+        async def send(self, _raw): raise OSError("link died before welcome")
+        async def close(self, *_args): pass
+
+    class GoodWs:
+        def __init__(self): self.sent = []
+        async def send(self, raw): self.sent.append(E.decode(raw, direction="mc"))
+        async def close(self, *_args): pass
+
+    async def go():
+        net = NetServer()
+        old = NodeRecord(node_id="brxu-old", node_type="utility", node_key="old-proof", hello_ok=True)
+        net.nodes[old.node_id] = old
+        claim = {"node_id": "brxu-old", "node_key": "old-proof"}
+        first = NodeRecord(node_id="brx-first", node_key="first-key")
+        net.nodes[first.node_id] = first
+        body = {"node_id": first.node_id, "node_type": "phone", "app_ver": "x", "seq_next": 1,
+                "prior_utility": claim}
+        try:
+            await net._hello_gate(BrokenWs(), body, first, "")
+            assert False, "the broken welcome unexpectedly landed"
+        except OSError:
+            pass
+        assert net.nodes.get("brxu-old") is old and not net._utility_handoffs
+
+        retry = NodeRecord(node_id="brx-retry", node_key="retry-key")
+        net.nodes[retry.node_id] = retry
+        ws = GoodWs()
+        await net._hello_gate(ws, {**body, "node_id": retry.node_id}, retry, "")
+        assert ws.sent[0]["body"]["prior_utility_consumed"] is True
+        assert "brxu-old" not in net.nodes
     _run(go())
 
 

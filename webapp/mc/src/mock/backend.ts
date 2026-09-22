@@ -188,13 +188,17 @@ export class MockBackend implements Api {
     st.assigned = null; st.armed = null; st.arm_pending = false; this.emit();
   }
   async armStations() { for (const n of Object.keys(this.stations)) this.armStation(n); this.emit(); return { ok: true, armed: this.stationIds().length, pending: [] }; }
-  /** A41: mirrors `state.py release_station` — best-effort, `ok` only says a socket took the push
-   *  (`st.offline` is the mock's stand-in for "no live socket"), and nothing else about the station
-   *  changes (no un-assign, no re-arm). */
+  /** A41/F184: accepted RELEASE clears deployment truth but retains the card until a proven HUD hello. */
   async releaseStation(node_id: string): Promise<{ ok: boolean }> {
     const st = this.stations[node_id]; if (!st) throw Object.assign(new Error('no such station'), { status: 404 });
-    return { ok: !st.offline };
+    if (st.offline) return { ok: false };
+    st.assigned = null; st.armed = null; st.arm_pending = false;
+    for (const n of Object.keys(this.stations)) this.armStation(n);
+    this.emit();
+    return { ok: true };
   }
+  /** Test/demo stand-in for NetServer's authenticated `prior_utility` handoff on the first HUD hello. */
+  confirmStationHud(node_id: string) { delete this.stations[node_id]; this.emit(); }
   private pushed = false;
   // LOAD (2026-09-13): the GAME has been announced to the phones. Deliberately SEPARATE from
   // `pushed`, which means "the guns have a head" -- Tony: "weapons have to go with the arm". The

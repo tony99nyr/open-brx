@@ -7,7 +7,7 @@ import path from 'node:path';
 import * as E from '../src/transport/envelope.js';
 import { Ring, memoryStorage } from '../src/transport/ring.js';
 import { Clock } from '../src/transport/clock.js';
-import { Transport, DELIVERED } from '../src/transport/transport.js';
+import { Transport, DELIVERED, clearConsumedPriorUtilityHandoff } from '../src/transport/transport.js';
 import { APP_VER } from '../src/build.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -148,6 +148,40 @@ test('transport: node_key from welcome is persisted and re-sent on every hello (
   ctx.after(() => t2.close());
   assert.equal(t2.nodeKey, 'k-123', 'persisted across app restarts'); t.close(); t2.close();
   assert.equal(t.syncIntervalMs <= E.SYNC_FRESH_MS / 2, true, 'periodic sync keeps synced() fresh');
+});
+
+test('F184: a trusted HUD hello carries the prior utility identity proof and records server consumption', async ctx => {
+  const sockets = []; const handoffStore = memoryStorage();
+  handoffStore.setItem('brx.prior_utility', JSON.stringify({ node_id: 'brxu-old', node_key: 'utility-key' }));
+  const t = new Transport({ storage: memoryStorage(), wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; },
+    priorUtility: { node_id: 'brxu-old', node_key: 'utility-key' } });
+  ctx.after(() => t.close());
+  const p = t.connect({ url: 'ws://x/ws' }); sockets[0].open();
+  assert.deepEqual(sockets[0].sent[0].body.prior_utility, { node_id: 'brxu-old', node_key: 'utility-key' });
+  sockets[0].recv(E.makeEnvelope('welcome', { session_id: 's', server_t: Date.now(), seq_hi: 0,
+    prior_utility_consumed: true }));
+  await p;
+  assert.equal(t.priorUtilityConsumed, true);
+  assert.equal(t.priorUtility, null, 'the consumed takeover key is one-shot in Transport memory');
+  clearConsumedPriorUtilityHandoff(t, handoffStore);
+  assert.equal(handoffStore.getItem('brx.prior_utility'), null, 'the bound app erases the acknowledged persisted proof');
+});
+
+test('F184: an unconsumed welcome keeps the persisted utility proof retryable', () => {
+  const handoffStore = memoryStorage();
+  const proof = JSON.stringify({ node_id: 'brxu-old', node_key: 'utility-key' });
+  handoffStore.setItem('brx.prior_utility', proof);
+  clearConsumedPriorUtilityHandoff({ priorUtilityConsumed: false }, handoffStore);
+  assert.equal(handoffStore.getItem('brx.prior_utility'), proof);
+});
+
+test('F184 security: an untrusted discovery peer never receives the prior utility takeover key', async ctx => {
+  const sockets = [];
+  const t = new Transport({ storage: memoryStorage(), wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; },
+    priorUtility: { node_id: 'brxu-old', node_key: 'utility-key' } });
+  ctx.after(() => t.close());
+  t.connect({ url: 'ws://unproved/ws', trusted: false }).catch(() => {}); sockets[0].open();
+  assert.equal('prior_utility' in sockets[0].sent[0].body, false);
 });
 
 test('transport: connect() rejects when no welcome arrives (loop keeps reconnecting)', async ctx => {

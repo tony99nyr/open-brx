@@ -268,7 +268,9 @@ test('security guard: a SUGGESTED address persists only once it binds us; a USER
 
   // 3. the second write is the bind — which is what finally remembers a suggestion that was right
   const bound = src.indexOf("if (s === 'bound')");
-  assert.ok(bound > 0 && writes[1].index > bound && writes[1].index < bound + 900, 'the second write is in the bound branch');
+  const boundEnd = src.indexOf('else if (!assistTimer)', bound);
+  assert.ok(bound > 0 && boundEnd > bound && writes[1].index > bound && writes[1].index < boundEnd,
+    'the second write is in the bound branch');
   assert.match(src.slice(writes[1].index, writes[1].index + 60), /settings\.mcUrl = transport\.url/,
     'and it remembers the url that actually bound us, not whatever was dialled');
 

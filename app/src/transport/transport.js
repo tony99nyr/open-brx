@@ -29,12 +29,13 @@ import { APP_VER, platformName } from '../build.js';
 /** @typedef {{onopen: WebSocket['onopen'], onmessage: WebSocket['onmessage'], onerror: WebSocket['onerror'], onclose: WebSocket['onclose'], send(data:string): void, close(code?:number, reason?:string): void, bufferedAmount?: number}} TransportSocket */
 /** @typedef {{setTimeout(callback: (...args:any[]) => void, ms:number): unknown, clearTimeout(id:unknown): void}} TransportTimers */
 /** @typedef {{node_id?:string, node_type?:string, app_ver?:string, platform?:string}} TransportNode */
+/** @typedef {{node_id:string, node_key:string}} PriorUtility */
 /** @typedef {{name:string, tail:string, fw?:string}} TransportGun */
 /** @typedef {{baseMs:number, capMs:number, jitter:number}} BackoffOptions */
 /** @typedef {Record<string, unknown>} TransportBody */
 /** @typedef {{v:number, kind:string, id:string, t:number, body:TransportBody, seq?:number}} TransportEnvelope */
 /** @typedef {{url?:string, mdns?:string, qr?:string, pub?:string|null, secret?:string|null, trusted?:boolean}} ConnectOptions */
-/** @typedef {{storage?:TransportStorage, wsFactory?:(url:string) => TransportSocket, node?:TransportNode, gun?:TransportGun|null, heartbeatMs?:number, now?:() => number, timers?:TransportTimers, random?:() => number, backoff?:BackoffOptions, helloTimeoutMs?:number, welcomeTimeoutMs?:number, keyPrefix?:string, backhaulGiveupMs?:number, pubRetryMs?:number, lanGiveupMs?:number, reclaimRetryMs?:number}} TransportOptions */
+/** @typedef {{storage?:TransportStorage, wsFactory?:(url:string) => TransportSocket, node?:TransportNode, gun?:TransportGun|null, priorUtility?:PriorUtility|null, heartbeatMs?:number, now?:() => number, timers?:TransportTimers, random?:() => number, backoff?:BackoffOptions, helloTimeoutMs?:number, welcomeTimeoutMs?:number, keyPrefix?:string, backhaulGiveupMs?:number, pubRetryMs?:number, lanGiveupMs?:number, reclaimRetryMs?:number}} TransportOptions */
 /** @typedef {{type?:string, t?:number, match_id?:string|null, node_id?:string, player_id?:string|null} & Record<string, unknown>} TransportFact */
 /** @typedef {Record<string, unknown> & {pending?:number, dropped?:number, preflight?:Record<string, unknown>}} StatusBody */
 /** @typedef {'offline'|'connecting'|'open'|'bound'|'rejected'} TransportState */
@@ -82,6 +83,18 @@ export const PUB_RETRY_MS = 30000;        // A28.3: while riding the LAN with a 
  *  the match. With this the ladder is pub -> lan -> pub -> lan ..., with the ordinary backoff (cap 10 s)
  *  between full passes, so a data blip costs seconds. */
 export const LAN_GIVEUP_MS = 8000;
+export const PRIOR_UTILITY_KEY = 'brx.prior_utility';
+
+/** The app calls this only after `bound`; an unacknowledged proof remains available for a retry.
+ * @param {{priorUtilityConsumed?:boolean}|null} transport
+ * @param {TransportStorage} storage
+ * @returns {boolean}
+ */
+export function clearConsumedPriorUtilityHandoff(transport, storage = defaultStorage()) {
+  if (!transport || transport.priorUtilityConsumed !== true) return false;
+  try { storage.removeItem(PRIOR_UTILITY_KEY); return true; } catch (_) { return false; }
+}
+
 /** Review pass 2: an UNTRUSTED dial (a JOIN-row address, so we withheld our node_key) can be refused
  *  `4003 in_use` for one reason that is not an attack and not a mistake: OUR OWN previous socket at that
  *  MC has not gone stale yet. A8.2 is explicit that a stale holder is displaced WITHOUT a key, so the fix
@@ -93,7 +106,7 @@ export class Transport {
   /**
    * @param {TransportOptions} [o] options
    */
-  constructor({ storage = defaultStorage(), wsFactory = url => new WebSocket(url), node = {}, gun = null,
+  constructor({ storage = defaultStorage(), wsFactory = url => new WebSocket(url), node = {}, gun = null, priorUtility = null,
                 heartbeatMs = E.STATUS_HEARTBEAT_MS, now = () => Date.now(), timers = globalThis,
                 random = Math.random, backoff = { baseMs: 500, capMs: 10000, jitter: 0.2 }, helloTimeoutMs = 5000,
                 welcomeTimeoutMs = 10000, keyPrefix = 'brx', backhaulGiveupMs = BACKHAUL_GIVEUP_MS,
@@ -118,6 +131,9 @@ export class Transport {
     this.appVer = node.app_ver || APP_VER;
     this.platform = node.platform || null;   // null = ask Capacitor per frame (the bridge appears late)
     this.gun = gun; this.playerId = null; this.playerNum = 0; this.matchId = null; this.sessionId = null;
+    this.priorUtility = priorUtility && priorUtility.node_id && priorUtility.node_key ? priorUtility : null;
+    this.priorUtilityConsumed = false;
+    this._priorUtilityOffered = false;
     /** @type {TransportBody} */ this.context = {}; // last welcome.node / assign / config / start
     this.ring = new Ring({ storage, key: `${keyPrefix}.outbox`, now });
     this.clock = new Clock({ storage, key: `${keyPrefix}.clock`, now });
@@ -369,6 +385,7 @@ export class Transport {
       ...(this.secret && this.trusted ? { secret: this.secret } : {}),
       gun: this.gun ? { name: this.gun.name, tail: this.gun.tail, ...(this.gun.fw ? { fw: this.gun.fw } : {}) } : undefined,
       seq_next: this.ring.seqNext, ...(this.nodeKey && this.trusted ? { node_key: this.nodeKey } : {}),
+      ...(this.priorUtility && this.trusted ? { prior_utility: this.priorUtility } : {}),
     };
   }
   _open() {
@@ -412,7 +429,9 @@ export class Transport {
     ws.onopen = () => {
       if (ws !== this._ws) return;
       this.attempt = 0;
-      this._sendRaw(E.makeEnvelope('hello', this._helloBody(via)), ws);
+      const hello = this._helloBody(via);
+      this._priorUtilityOffered = !!hello.prior_utility;
+      this._sendRaw(E.makeEnvelope('hello', hello), ws);
       // 'backhaul': the giveup timer armed above already covers "no welcome in time" -- nothing to re-arm.
       // 'lan': the socket is open, so the pre-open giveup has done its job -- clear it (leaving it armed
       // would close a perfectly good socket mid-hydration) and swap in the shorter welcome timeout.
@@ -573,6 +592,8 @@ export class Transport {
     this.trusted = true; this._reclaimTried = false;
     if (sessionId) { this._persistedSessionId = sessionId; this._store(this._sessionKey, sessionId); }
     this.sessionId = sessionId;
+    this.priorUtilityConsumed = this._priorUtilityOffered && body.prior_utility_consumed === true;
+    if (this.priorUtilityConsumed) this.priorUtility = null;   // one-shot proof: never replay it on a later reconnect
     if (typeof body.node_key === 'string' && body.node_key) { this.nodeKey = body.node_key; this._store(this._keyKey, body.node_key); }
     this.ring.adoptSeqHi(Number(body.seq_hi));
     this.clock.newBurst(); this.clock.seed(Number(body.server_t), this.now());

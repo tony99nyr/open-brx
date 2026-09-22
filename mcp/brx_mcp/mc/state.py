@@ -502,6 +502,9 @@ class Session:
         self._match_players: dict[str, Player] | None = None
         # F206: the station rows frozen at `_finish` for the match that just ended (see `_scorer_recap`).
         self._match_stations: list[RecapStationRow] | None = None
+        # F184: a station may become a HUD before the whistle. It leaves ITEMS/allow-lists immediately,
+        # but its last self-authoritative report still belongs on this match's recap.
+        self._departed_match_stations: dict[str, RecapStationRow] = {}
         # A25 background log sync. `options` is the session option table (`PUT /api/options`);
         # `_log_match` is the match_id of the LAST match that ended, and `_log_done` the match whose log
         # each node has finished delivering -- the pair is the whole "did this node's log ever arrive?"
@@ -627,6 +630,10 @@ class Session:
                 # must attribute them before any phone has said hello to the new process.
                 "node_player": {nid: pid for nid, pid in self.node_player.items() if pid in players},
                 "synced_at_lobby": dict(self.synced_at_lobby),
+                # An accepted LIVE release removes the active row, but its frozen tally still belongs
+                # to this match and must survive an MC restart before the whistle.
+                "departed_stations": [dict(row) for row in sorted(
+                    self._departed_match_stations.values(), key=lambda row: row["node_id"])],
                 "bundles": self.bundles, "acks": self.acks,
                 "store_path": str(self.store.path) if self.store is not None and getattr(self.store, "path", None) else None}
 
@@ -703,6 +710,41 @@ class Session:
                 return None
             player["voice_slots"] = slots
         return player
+
+    @staticmethod
+    def _snapshot_departed_station(row: object) -> RecapStationRow | None:
+        """Read one frozen station tally from an untrusted JSON session snapshot."""
+        if not isinstance(row, dict):
+            return None
+        nid, kind = row.get("node_id"), row.get("kind")
+        sid, team, heard = row.get("id"), row.get("team"), row.get("heard")
+        if not (isinstance(nid, str) and nid and is_station_kind(kind)
+                and isinstance(sid, int) and not isinstance(sid, bool) and 1 <= sid <= 65535
+                and isinstance(team, int) and not isinstance(team, bool)
+                and (team in (0, 1, 2, 3) or team == STATION_TEAM_ANY)
+                and isinstance(heard, bool)):
+            return None
+        out: RecapStationRow = {"node_id": nid, "kind": kind, "id": sid, "team": team, "heard": heard}
+        if kind == "respawn":
+            revives = row.get("revives")
+            if revives is not None and (not isinstance(revives, int) or isinstance(revives, bool) or revives < 0):
+                return None
+            out["revives"] = revives
+        elif kind == "control":
+            hold_ms, owner = row.get("hold_ms"), row.get("owner")
+            if hold_ms is not None and (not isinstance(hold_ms, dict)
+                                        or not all(isinstance(k, str) and isinstance(v, int)
+                                                   and not isinstance(v, bool) and v >= 0
+                                                   for k, v in hold_ms.items())):
+                return None
+            if owner is not None and (not isinstance(owner, int) or isinstance(owner, bool)
+                                      or owner not in (0, 1, 2, 3, STATION_TEAM_ANY)):
+                return None
+            if "hold_ms" in row:
+                out["hold_ms"] = None if hold_ms is None else dict(hold_ms)
+            if "owner" in row:
+                out["owner"] = owner
+        return out
 
     def restore_snapshot(self) -> int:
         """Load a prior session.json (if any). Returns the number of players restored.
@@ -2616,7 +2658,8 @@ class Session:
         gesture over chat). `control{cmd:"release_utility"}` to ONE utility node -- `utility.js` takes it
         exactly the way its own BACK TO HUD button does (`brx.role` back to `'hud'`, reload into the
         HUD). Deliberately NOT phase-gated (unlike `set_station`/`clear_station`): a stranded phone needs
-        releasing in every phase, armed/live included, and this never re-arms or re-pushes anything else.
+        releasing in every phase, armed/live included. An accepted release re-arms surviving stations and
+        re-pushes lobby HUDs only; `_repush_stations_to_players` protects armed/live guns on its own.
         Best-effort like `_arm_station`: a phone with no socket has nothing to retry against, and its own
         seven-tap gate is still there under this if the push never lands.
 
@@ -2636,6 +2679,10 @@ class Session:
         ok = self.net.push(nid, "control", {"cmd": "release_utility"}) is not False
         st = self.stations.get(nid)
         if ok and st is not None and (st.get("assigned") or st.get("armed")):
+            if self.scorer and self.phase in ("armed", "live"):
+                rec = self._station_recap_row(self._station_view(nid))
+                if rec is not None:
+                    self._departed_match_stations[nid] = rec
             st["assigned"], st["armed"], st["arm_pending"] = None, None, False
             self.arm_stations()                    # the survivors' valid_ids shrink
             self._repush_stations_to_players()
@@ -2788,23 +2835,41 @@ class Session:
         looked identical to a reporting one). `revives` for a respawn point, `hold_ms`/`owner` from
         `report.control` for a control point; a station never heard from reports what it can -- `None`,
         not a fabricated zero, so the recap can tell "zero revives" from "never heard"."""
-        out: list[RecapStationRow] = []
-        for row in self.stations_view():
-            a = row.get("assigned")
-            if not a:
-                continue
-            rep = row.get("report") or {}
-            rec: RecapStationRow = {"node_id": row["node_id"], "kind": a["kind"], "id": a["id"], "team": a["team"],
-                   "heard": bool(rep)}
-            if a["kind"] == "respawn":
-                rec["revives"] = rep.get("revives")
-            elif a["kind"] == "control":
-                control = rep.get("control")
-                if control is not None:
-                    rec["hold_ms"] = control.get("hold_ms")
-                    rec["owner"] = control.get("owner")
-            out.append(rec)
+        out = [rec for row in self.stations_view() if (rec := self._station_recap_row(row)) is not None]
+        live_ids = {row["node_id"] for row in out}
+        out.extend(row.copy() for nid, row in self._departed_match_stations.items() if nid not in live_ids)
         return out
+
+    @staticmethod
+    def _station_recap_row(row: StationView) -> RecapStationRow | None:
+        """Freeze one current station view without requiring it to remain in the active ITEMS roster."""
+        a = row.get("assigned")
+        if not a:
+            return None
+        rep = row.get("report") or {}
+        rec: RecapStationRow = {"node_id": row["node_id"], "kind": a["kind"], "id": a["id"], "team": a["team"],
+                                "heard": bool(rep)}
+        if a["kind"] == "respawn":
+            rec["revives"] = None
+        Session._merge_station_recap_report(rec, rep)
+        return rec
+
+    @staticmethod
+    def _merge_station_recap_report(row: RecapStationRow, report: StationReport) -> None:
+        """Advance a frozen tally only with complete, sanitized counters named by this heartbeat."""
+        row["heard"] = row["heard"] or bool(report)
+        revives = report.get("revives")
+        if row["kind"] == "respawn" and isinstance(revives, int) and not isinstance(revives, bool) and revives >= 0:
+            row["revives"] = revives
+        control = report.get("control")
+        if row["kind"] == "control" and isinstance(control, dict):
+            hold_ms = control.get("hold_ms")
+            if isinstance(hold_ms, dict) and all(isinstance(v, int) and not isinstance(v, bool) and v >= 0
+                                                 for v in hold_ms.values()):
+                row["hold_ms"] = dict(hold_ms)
+            owner = control.get("owner")
+            if isinstance(owner, int) and not isinstance(owner, bool) and owner in (0, 1, 2, 3, STATION_TEAM_ANY):
+                row["owner"] = owner
 
     def _late_station_report(self, nid: str) -> None:
         """utility.md §5c/§5d.6: a station is self-authoritative and "reports ... to MC when it is next
@@ -2824,17 +2889,13 @@ class Session:
             return
         live = self.stations.get(nid) or {}
         a = live.get("assigned")
-        if not a or a.get("kind") != frozen["kind"] or a.get("id") != frozen["id"]:
+        departed = self._departed_match_stations.get(nid)
+        same_live = bool(a and a.get("kind") == frozen["kind"] and a.get("id") == frozen["id"])
+        same_departed = bool(departed and departed["kind"] == frozen["kind"] and departed["id"] == frozen["id"])
+        if not (same_live or same_departed):
             return   # the assignment moved on -- this heartbeat belongs to the NEXT match's setup
-        rep = live.get("report") or {}
-        frozen["heard"] = bool(rep)
-        if frozen["kind"] == "respawn":
-            frozen["revives"] = rep.get("revives")
-        elif frozen["kind"] == "control":
-            control = rep.get("control")
-            if control is not None:
-                frozen["hold_ms"] = control.get("hold_ms")
-                frozen["owner"] = control.get("owner")
+        rep = self._station_view(nid)["report"]
+        self._merge_station_recap_report(frozen, rep)
         self._restore_recap()
 
     # ---------- nodes ----------
@@ -3197,12 +3258,41 @@ class Session:
                 self._arm_station(nid)
             self._changed()
             return None
+        # F184 (field 2026-09-22): RELEASE can only ask a utility phone to reload as a HUD; until this
+        # plain hello arrives MC deliberately keeps the station row because the push alone cannot prove
+        # the role changed. The hello is that proof. Remove the station now so ITEMS does not leave the
+        # same physical phone behind as OUT OF WI-FI until CLEAR. Also handle a phone that used its own
+        # BACK TO HUD control while still assigned: its id must leave every station/HUD allow-list.
+        prior_nid = str(n.get("prior_utility_node_id") or nid)
+        prior_station = self.stations.get(prior_nid)
+        if prior_station and self.scorer and self.phase in ("armed", "live"):
+            rec = self._station_recap_row(self._station_view(prior_nid))
+            if rec is not None:
+                self._departed_match_stations[prior_nid] = rec
+        if prior_station:
+            self.stations.pop(prior_nid, None)
+            if prior_nid != nid:
+                # NetServer consumed the old authenticated identity too. Do not leave its utility node
+                # ghost on ARMORY or in per-node bookkeeping after ITEMS has accepted the role handoff.
+                self.nodes.pop(prior_nid, None)
+                self.synced_at_lobby.pop(prior_nid, None)
+                self._app_blocked_alerted.pop(prior_nid, None)
+                self._plan_blocked_alerted.pop(prior_nid, None)
+                self._end_delivery.pop(prior_nid, None)
+        station_allowlist_changed = bool(prior_station and (prior_station.get("assigned") or prior_station.get("armed")))
+        if station_allowlist_changed:
+            self.arm_stations()
         # The gun the node reports NOW wins over a hydrate-era player_id (a re-bind to another gun moves the node).
         p = self._find_player_for_gun(n.get("gun_name"), n.get("gun_tail")) if (n.get("gun_name") or n.get("gun_tail")) else None
         if p is None and n.get("player_id") in self.players:
             p = self.players[n["player_id"]]
         if p:
             self._bind(nid, p)
+        if station_allowlist_changed:
+            # Bind first: the welcome was hydrated before this callback and still held the old allow-list.
+            # In lobby this corrected config must reach the returning HUD identity too, not only its old holder.
+            self._repush_stations_to_players()
+            self._validate()
         # A25 `reconnect`: this node's log for the LAST match never arrived. A phone that was out of
         # coverage at the whistle (or whose upload was cut off mid-stream) comes back minutes later and
         # this hello is the only moment we know it is reachable again -- so ask once, here.
@@ -3354,6 +3444,12 @@ class Session:
             if body.get("platform"):
                 st["platform"] = body["platform"]
             nv["node_type"] = "utility"
+            # RELEASE freezes a fallback row before asking the phone to reload, but the old utility
+            # socket may have one final, newer self-authoritative tally already in flight. Preserve the
+            # released assignment metadata and advance only counters that this heartbeat actually names.
+            if self.phase in ("armed", "live") and (departed := self._departed_match_stations.get(nid)):
+                report = self._station_view(nid)["report"]
+                self._merge_station_recap_report(departed, report)
             self._late_station_report(nid)   # F206 addendum: a station back in range during RECAP
         # A8: the server's binding is authoritative — a status body's player_id never rebinds a node.
         if self.phase in ("kit", "lobby", "armed") and body.get("synced"):
@@ -3726,6 +3822,23 @@ class Session:
             self.bundles = m["bundles"]
         if isinstance(m.get("acks"), dict):
             self.acks = m["acks"]
+        self._departed_match_stations = {}
+        invalid_departed = 0
+        raw_departed = m.get("departed_stations")
+        if isinstance(raw_departed, list):
+            for raw in raw_departed:
+                row = self._snapshot_departed_station(raw)
+                if row is None or row["node_id"] in self._departed_match_stations:
+                    invalid_departed += 1
+                    continue
+                self._departed_match_stations[row["node_id"]] = row
+        elif raw_departed is not None:
+            invalid_departed = 1
+        if invalid_departed:
+            import logging
+            logging.getLogger("brx.mc").warning(
+                "session snapshot has %d invalid or duplicate departed station row(s) -- ignored",
+                invalid_departed)
         self._import_facts(mid, m.get("store_path"))
         self.start_seq = max(self.start_seq, seq)
         cd = m.get("countdown_s")
@@ -5661,6 +5774,7 @@ class Session:
         # A42: whether the LAST match's end reached every HUD is not a fact about THIS one. The operator
         # has moved on, and a straggler line left standing over a live board would be read as this match's.
         self._end_delivery, self._end_delivery_told = {}, None
+        self._departed_match_stations = {}
         self.start_info = {"match_id": uuid.uuid4().hex[:10], "go_live_t": now + runway_s * 1000,
                            "seq": self.start_seq, "countdown_s": runway_s}
         self._scheduled_ids.add(self.start_info["match_id"])
@@ -6313,6 +6427,7 @@ class Session:
         self.end_reason = None
         self._score_pushed = {}
         self._result_pushed = {}
+        self._departed_match_stations = {}
         self.feed = []
         self.lobby_pushed = False
         self.game_loaded = False          # ...and the announced game goes with it

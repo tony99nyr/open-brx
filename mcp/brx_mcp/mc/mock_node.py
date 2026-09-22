@@ -43,11 +43,13 @@ class MockNode:
                  gun_tail: str = "3D4F", gun_fw: str = "v4.32", node_type: str = "phone",
                  app_ver: str = _DEFAULT_MOCK_APP_VER, gun_echo: str | None = "$LCD,0,0,0,0,0,0,*",
                  heartbeat_ms: int = STATUS_HEARTBEAT_MS, max_hp: int = 45, max_armor: int = 70,
-                 backoff_cap_s: float = 10.0):
+                 backoff_cap_s: float = 10.0, prior_utility: dict[str, str] | None = None):
         self.url = url
         self.node_id = node_id or f"mock-{uuid.uuid4().hex[:6]}"
         self.gun_name, self.gun_tail, self.gun_fw = gun_name, gun_tail, gun_fw
         self.node_type, self.app_ver = node_type, app_ver
+        self.prior_utility = prior_utility
+        self.prior_utility_consumed = False
         self.gun_echo = gun_echo
         self.config_id: str | None = None       # A36: the head this node is holding
         self.spawn_ammo: tuple[int, int] | None = None
@@ -271,11 +273,14 @@ class MockNode:
                  "seq_next": self.seq_next}
         if self.node_key:
             hello["node_key"] = self.node_key
+        if self.prior_utility:
+            hello["prior_utility"] = self.prior_utility
         await ws.send(E.encode(E.make_envelope("hello", hello)))
         raw = await asyncio.wait_for(ws.recv(), 5)
         env = E.decode(raw, direction="mc")
         if env["kind"] != "welcome":
             raise RuntimeError(f"expected welcome, got {env['kind']}")
+        self.prior_utility_consumed = env["body"].get("prior_utility_consumed") is True
         self._apply_welcome(env["body"])
         await ws.send(E.encode(E.make_envelope("bind", {
             "node_id": self.node_id, "player_id": self.player_id,

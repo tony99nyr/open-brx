@@ -97,6 +97,42 @@ def test_a_restart_mid_live_resumes_the_match_and_the_whistle_recaps_facts_from_
     assert ends and all(b == {"cmd": "end", "match_id": info["match_id"]} for b in ends)
 
 
+def test_a_released_live_station_recap_survives_an_mc_restart():
+    """F184 polish: RELEASE removes the only live row, so its frozen tally belongs in the snapshot."""
+    s, net, clock, ps = mk(2, "tdm", {"respawn": {"type": "scanner", "delay_s": 15}})
+    net.simulate_utility_hello("brxu-live")
+    s.set_station("brxu-live", {"kind": "respawn", "team": "blue", "id": 3})
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.push_config()
+    for i in range(2):
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
+                                                               "gun_echo": "$LCD"}, clock["t"])
+    info = s.start(runway_s=3)
+    clock["t"] = info["go_live_t"] + 1
+    s.tick()
+    net.simulate_status("brxu-live", {"node_id": "brxu-live", "arm_state": "connected", "synced": False,
+                                        "role": "utility", "kind": "respawn", "station_id": 3, "armed": True,
+                                        "revives": 4}, clock["t"])
+    assert s.release_station("brxu-live")
+    net.simulate_status("brxu-live", {"node_id": "brxu-live", "arm_state": "connected", "synced": False,
+                                        "role": "utility", "kind": "respawn", "station_id": 3, "armed": True,
+                                        "revives": 5}, clock["t"])
+    net.simulate_status("brxu-live", {"node_id": "brxu-live", "arm_state": "connected", "synced": False,
+                                        "role": "utility", "kind": "respawn", "station_id": 3, "armed": True,
+                                        "revives": "six"}, clock["t"])
+
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_last = 0.0
+    s._persist()
+    s2, _net2 = _restart_no_repersist(s, clock)
+    assert s2.resume_match() == "live"
+    s2.control("end")
+
+    assert s2.last_recap["stations"] == [{"node_id": "brxu-live", "kind": "respawn", "id": 3,
+                                            "team": 1, "heard": True, "revives": 5}]
+
+
 def test_the_snapshot_stops_naming_the_match_once_it_ended():
     s, net, clock, ps, info = _persisting_live()
     s._persist_last = 0.0

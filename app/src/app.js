@@ -8,7 +8,7 @@ import jsQR from 'jsqr';
 import { Engine, C } from './engine.js';
 import { BrxLink } from './brxlink.js';
 import { GunPicker, ScanPacer, PAINT_MS, COALESCE_MS, PICKER_SCAN_MS, isHeadset } from './gunpicker.js';   // F258: the gun picker's ranked, stable, coalesced list
-import { Transport } from './transport/transport.js';
+import { Transport, PRIOR_UTILITY_KEY, clearConsumedPriorUtilityHandoff } from './transport/transport.js';
 import { Hud } from './hud/hud.js';
 import { parseMcJoin } from './mcurl.js';
 import { sweepPlan, localIpFrom, sweepForMc as sweepSubnetsForMc } from './transport/discover.js';   // F139
@@ -80,6 +80,12 @@ const settings = {
   get role() { try { return localStorage.getItem('brx.role') || 'hud'; } catch (_) { return 'hud'; } },
   set role(v) { try { localStorage.setItem('brx.role', v); } catch (_) { /* ignore */ } },
 };
+function priorUtilityHandoff() {
+  try {
+    const v = JSON.parse(localStorage.getItem(PRIOR_UTILITY_KEY) || 'null');
+    return v && typeof v.node_id === 'string' && v.node_id && typeof v.node_key === 'string' && v.node_key ? v : null;
+  } catch (_) { return null; }
+}
 function switchRole(role) { settings.role = role; location.replace(role === 'utility' ? 'utility.html' : 'index.html'); }
 
 // ---------- wiring ----------
@@ -282,7 +288,7 @@ function connectMc(url, remember = true, join = {}) {
   lastMcUrl = url;
   if (transport) { try { transport.close(); } catch (_) { /* ignore */ } }
   const gun = engine.gun ? { name: engine.gun.name, tail: engine.gun.tail, fw: engine.fw || undefined } : null;
-  transport = new Transport({ node: { app_ver: APP_VER }, gun });
+  transport = new Transport({ node: { app_ver: APP_VER }, gun, priorUtility: priorUtilityHandoff() });
   // `log` is this node's own view of the sync (A25: MC shows none|offered|pulling|held per node);
   // app_ver/platform are added by the transport itself so every node type reports them (A29).
   transport.setStatusProvider(() => ({ ...engine.statusBody(preflight), log: logsync.state() }));
@@ -297,6 +303,9 @@ function connectMc(url, remember = true, join = {}) {
   transport.onState(s => {
     // Bound to an MC: no suggestion row, no sweep.
     if (s === 'bound') { if (assistTimer) { clearTimeout(assistTimer); assistTimer = null; } logsync.onBound();
+      // The server validates the old utility takeover key and explicitly confirms consumption in welcome.
+      // Keep the handoff across failed/untrusted dials; clear it only after that acknowledgement.
+      clearConsumedPriorUtilityHandoff(transport);
       if (transport && transport.reach === 'lan') noteJoinUrl(transport.url);
       // A SUGGESTED address (sweep hit, mDNS advert) is remembered only now, having welcomed us, issued
       // a node_key and bound this node. A user-provided one was written at the dial. So everything in

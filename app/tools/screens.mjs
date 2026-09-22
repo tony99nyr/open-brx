@@ -878,7 +878,7 @@ for (const view of VIEWS) {
     await Promise.all([pg.waitForURL(/index\.html\?hud/, { timeout: 5000 }), pg.clock.runFor(1400)]); await pg.mouse.up();
     const role = await pg.evaluate(() => { try { return localStorage.getItem('brx.role'); } catch (_) { return null; } });
     const url = pg.url();
-    await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); localStorage.removeItem('brx.role'); } catch {} }).catch(() => {});
+    await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); localStorage.removeItem('brx.role'); localStorage.removeItem('brx.prior_utility'); } catch {} }).catch(() => {});
     await pg.close();
     must(perr.length === 0, perr.join('|'));
     must(role === 'hud', 'brx.role after HOLD TO EXIT: ' + role);
@@ -939,11 +939,13 @@ for (const view of VIEWS) {
     const armedFirst = await pg.evaluate(() => document.getElementById('exitHud').hidden);
     await Promise.all([pg.waitForURL(/index\.html\?hud/, { timeout: 5000 }), pg.evaluate(() => window.brxUtility.mcMessage('control', { cmd: 'release_utility' }))]);
     const role = await pg.evaluate(() => { try { return localStorage.getItem('brx.role'); } catch (_) { return null; } });
-    await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); localStorage.removeItem('brx.role'); } catch {} }).catch(() => {});
+    const handoff = await pg.evaluate(() => { try { return JSON.parse(localStorage.getItem('brx.prior_utility') || 'null'); } catch (_) { return null; } });
+    await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); localStorage.removeItem('brx.role'); localStorage.removeItem('brx.prior_utility'); } catch {} }).catch(() => {});
     await pg.close();
     must(perr.length === 0, perr.join('|'));
     must(armedFirst, 'sanity: this station is MC-armed (HOLD TO EXIT hidden) before the release is tested');
     must(role === 'hud', 'brx.role after the MC release: ' + role);
+    must(handoff && handoff.node_id && handoff.node_key === 'stage-utility-key', 'the released phone handed its proven utility identity to the HUD');
   });
   // ---- K1: the control point, on the real screen. Every assertion below is what a PERSON SEES (rendered
   // text, a painted bar width) driven through the REAL presence path — the stage's fake player phones, whose

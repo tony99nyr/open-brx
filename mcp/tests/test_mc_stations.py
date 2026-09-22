@@ -96,6 +96,115 @@ def test_an_assigned_station_survives_the_unbound_node_prune():
     assert "util-2" not in s.stations and "util-2" not in s.nodes, "CONTROL: an unassigned one still goes"
 
 
+def test_a_station_that_rehellos_as_a_hud_leaves_the_items_roster_and_allow_list():
+    """F184: BACK TO HUD changes the next hello's node_type; that role transition owns station cleanup."""
+    s = _joined(_sess())
+    player = next(iter(s.players.values()))
+    s.net.simulate_utility_hello("brxu-role-swap")
+    s.set_station("brxu-role-swap", {"kind": "respawn", "team": "blue", "id": 3})
+    s.push_config(force=True)
+    assert s._station_ids() == [{"id": 3, "kind": "respawn"}]
+    s.net.pushed.clear()
+
+    s.net.simulate_hello("brx-player", player["gun_id"], prior_utility_node_id="brxu-role-swap")
+
+    assert "brxu-role-swap" not in s.stations, "a plain HUD must not leave its old utility identity in ITEMS"
+    assert s.node_player["brx-player"] == player["player_id"], "the new HUD identity still binds normally"
+    cfgs = _pushed(s, "config")
+    assert cfgs and all("stations" not in c["config"] for c in cfgs), "the removed id left every HUD allow-list"
+    assert _pushed(s, "config", "brx-player"), "the corrected allow-list reached the newly bound HUD identity"
+
+
+def test_a_released_station_leaves_the_items_roster_on_its_plain_hud_hello():
+    """F184 field path: RELEASE retains the card only until the reloaded phone confirms its new role."""
+    s = _sess()
+    player = next(iter(s.players.values()))
+    s.net.simulate_utility_hello("brxu-released")
+    s.set_station("brxu-released", {"kind": "respawn", "team": "blue", "id": 3})
+
+    assert s.release_station("brxu-released")
+    assert "brxu-released" in s.stations, "RELEASE alone cannot claim that a phone changed roles"
+    assert s.stations["brxu-released"]["assigned"] is None
+
+    s.net.simulate_hello("brx-returned", player["gun_id"], prior_utility_node_id="brxu-released")
+
+    assert "brxu-released" not in s.stations, "the confirmed HUD must disappear from ITEMS without CLEAR"
+    assert all(v["node_id"] != "brxu-released" for v in s.snapshot()["stations"]), "the UI snapshot lost the card"
+    assert "brxu-released" not in s.nodes, "the consumed utility identity must not survive as an ARMORY ghost"
+    assert s.node_player["brx-returned"] == player["player_id"]
+
+
+def test_a_live_station_that_returns_to_hud_keeps_its_self_authoritative_recap_count():
+    """F184 polish: leaving ITEMS must not erase the station's already-reported match contribution."""
+    s = _joined(_sess(respawn={"type": "scanner", "delay_s": 15}))
+    player = next(iter(s.players.values()))
+    s.net.simulate_utility_hello("brxu-live")
+    s.set_station("brxu-live", {"kind": "respawn", "team": "blue", "id": 3})
+    s.push_config(force=True)
+    s.start(runway_s=3, force=True)
+    s.phase = "live"
+    s.net.simulate_status("brxu-live", {"node_id": "brxu-live", "arm_state": "connected", "synced": False,
+                                         "role": "utility", "kind": "respawn", "station_id": 3, "armed": True,
+                                         "revives": 4}, s.now_ms())
+
+    assert s.release_station("brxu-live"), "the operator's accepted RELEASE is the primary field path"
+    s.net.simulate_hello("brx-live", player["gun_id"], prior_utility_node_id="brxu-live")
+    s.control("end")
+
+    assert s.last_recap["stations"] == [{"node_id": "brxu-live", "kind": "respawn", "id": 3,
+                                          "team": 1, "heard": True, "revives": 4}]
+
+
+def test_an_accepted_live_release_keeps_recap_counts_even_if_the_hud_has_not_returned_yet():
+    s = _joined(_sess(respawn={"type": "scanner", "delay_s": 15}))
+    s.net.simulate_utility_hello("brxu-live")
+    s.set_station("brxu-live", {"kind": "respawn", "team": "blue", "id": 3})
+    s.push_config(force=True); s.start(runway_s=3, force=True); s.phase = "live"
+    s.net.simulate_status("brxu-live", {"node_id": "brxu-live", "arm_state": "connected", "synced": False,
+                                         "role": "utility", "kind": "respawn", "station_id": 3, "armed": True,
+                                         "revives": 4}, s.now_ms())
+    assert s.release_station("brxu-live")
+    s.control("end")
+    assert s.last_recap["stations"][0]["revives"] == 4
+    s.net.simulate_status("brxu-live", {"node_id": "brxu-live", "arm_state": "connected", "synced": False,
+                                         "role": "utility", "kind": "respawn", "station_id": 3, "armed": True,
+                                         "revives": 5}, s.now_ms())
+    assert s.last_recap["stations"][0]["revives"] == 5, "a final heartbeat after END still corrects recap"
+
+
+def test_a_failed_live_release_keeps_the_active_assignment_and_recap_count():
+    s = _joined(_sess(respawn={"type": "scanner", "delay_s": 15}))
+    s.net.simulate_utility_hello("brxu-live")
+    s.set_station("brxu-live", {"kind": "respawn", "team": "blue", "id": 3})
+    s.push_config(force=True); s.start(runway_s=3, force=True); s.phase = "live"
+    s.net.simulate_status("brxu-live", {"node_id": "brxu-live", "arm_state": "connected", "synced": False,
+                                         "role": "utility", "kind": "respawn", "station_id": 3, "armed": True,
+                                         "revives": 4}, s.now_ms())
+    real_push = s.net.push
+    s.net.push = lambda nid, kind, body: False
+    assert not s.release_station("brxu-live")
+    s.net.push = real_push
+    assert s.stations["brxu-live"]["assigned"]["id"] == 3
+    s.control("end")
+    assert s.last_recap["stations"][0]["revives"] == 4
+
+
+def test_a_partial_final_control_heartbeat_preserves_the_last_complete_recap_tally():
+    s = _joined(_sess(mode="koth", station_source="phone"))
+    s.net.simulate_utility_hello("brxu-live")
+    s.set_station("brxu-live", {"kind": "control", "team": "any", "id": 3})
+    s.push_config(force=True); s.start(runway_s=3, force=True); s.phase = "live"
+    common = {"node_id": "brxu-live", "arm_state": "connected", "synced": False,
+              "role": "utility", "kind": "control", "station_id": 3, "armed": True}
+    s.net.simulate_status("brxu-live", {**common, "control": {"hold_ms": {"1": 12_000}, "owner": 1}}, s.now_ms())
+    assert s.release_station("brxu-live")
+    s.net.simulate_status("brxu-live", {**common, "control": {"progress": 50}}, s.now_ms())
+    s.control("end")
+    assert s.last_recap["stations"] == [{"node_id": "brxu-live", "kind": "control", "id": 3,
+                                          "team": 255, "heard": True,
+                                          "hold_ms": {"1": 12_000}, "owner": 1}]
+
+
 # --------------------------------------------------------------------------- arming
 def test_assigning_a_station_pushes_station_config_with_game_and_the_allow_list():
     s = _sess()

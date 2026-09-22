@@ -184,6 +184,9 @@ class NetServer:
         self.hello_timeout_s = hello_timeout_s
         self.ping_interval_s = ping_interval_s
         self.nodes: dict[str, NodeRecord] = {}
+        # prior utility id -> HUD id while an authenticated F184 welcome is in flight. This keeps the
+        # old proof retryable until the acknowledgement is actually delivered.
+        self._utility_handoffs: dict[str, str] = {}
         self._hydrate: Callable[[dict], dict | None] | None = None
         self._resolve_gun: Callable[[str, str], str | None] | None = None   # (gun_name, gun_tail) -> player_id (A8 by gun)
         self._on_node: list[Callable[[dict], None]] = []
@@ -653,6 +656,11 @@ class NetServer:
             with contextlib.suppress(Exception):
                 await ws.close(_CLOSE_NO_SECRET, "no_secret")
             raise _Rejected()
+        if node_id in self._utility_handoffs:
+            # A utility identity cannot reconnect/change underneath the HUD welcome that is consuming it.
+            self.stats["rejected"] += 1
+            await ws.close(_CLOSE_INUSE, "utility role handoff in progress")
+            raise _Rejected()
         if rec.ws is None and rec.hello_ok and presented_key != rec.node_key:
             if self._fresh(rec):
                 # A8: a known node_id that dropped a beat ago is still its owner's — a keyless hello must not
@@ -710,10 +718,29 @@ class NetServer:
             log.warning("node %s storage reset: seq_next=%d < seq_hi=%d", node_id, seq_next, rec.seq_hi)
         self._touch(rec)
 
+        # F184: the utility app and HUD deliberately use different persisted identities (`brxu` and
+        # `brx`). The first HUD hello may prove ownership of the old utility identity with that node's
+        # takeover key. Consume the old net record exactly once, so a copied node id cannot dismiss an
+        # ITEMS card and a captured/replayed handoff cannot dismiss a future deployment of the phone.
+        prior_utility_node_id = None
+        prior = body.get("prior_utility")
+        if isinstance(prior, dict) and rec.node_type == "phone":
+            prior_id, prior_key = str(prior.get("node_id") or ""), str(prior.get("node_key") or "")
+            old = self.nodes.get(prior_id)
+            if (prior_id and prior_id != node_id and old is not None and old.node_type == "utility"
+                    and prior_id not in self._utility_handoffs
+                    and prior_key and secrets.compare_digest(prior_key, old.node_key)):
+                prior_utility_node_id = prior_id
+                self._utility_handoffs[prior_id] = node_id
+
         node_ctx = None
         if self._hydrate is not None:
             try:
-                node_ctx = self._hydrate(dict(body))
+                clean_body = dict(body)
+                clean_body.pop("prior_utility", None)       # the takeover key never reaches session code
+                if prior_utility_node_id:
+                    clean_body["prior_utility_node_id"] = prior_utility_node_id
+                node_ctx = self._hydrate(clean_body)
             except Exception:
                 log.exception("hydrate callback failed for %s", node_id)
         if isinstance(node_ctx, dict):
@@ -725,19 +752,39 @@ class NetServer:
                    # A28.2: every welcome hands over both, so a phone that joined over the LAN before the
                    # tunnel existed — or typed the address — learns them without rescanning the QR.
                    "join": self.join_body()}
+        if prior_utility_node_id:
+            welcome["prior_utility_consumed"] = True
         if node_ctx:
             welcome["node"] = node_ctx
-        await ws.send(E.encode(E.make_envelope("welcome", welcome)))
-        self._fire_node(rec)
+        try:
+            await ws.send(E.encode(E.make_envelope("welcome", welcome)))
+        except BaseException:
+            if prior_utility_node_id and self._utility_handoffs.get(prior_utility_node_id) == node_id:
+                self._utility_handoffs.pop(prior_utility_node_id, None)
+            raise
+        if prior_utility_node_id:
+            old = self.nodes.get(prior_utility_node_id)
+            old_ws = self._drop_socket(old) if old is not None and old.ws is not None else None
+            if old is not None:
+                self.nodes.pop(prior_utility_node_id, None)
+            self._utility_handoffs.pop(prior_utility_node_id, None)
+            self._fire_node(rec, prior_utility_node_id)
+            if old_ws is not None and old_ws is not ws:
+                with contextlib.suppress(Exception):
+                    await old_ws.close(_CLOSE_TAKEOVER, "changed role")
+        else:
+            self._fire_node(rec)
         return rec
 
-    def _fire_node(self, rec: NodeRecord) -> None:
+    def _fire_node(self, rec: NodeRecord, prior_utility_node_id: str | None = None) -> None:
         # F106(b): `rec.app_ver` has been captured from every hello since A13.5, but this dict never
         # carried it -- so `state.py _on_node`'s utility branch (`st["app_ver"] = n.get("app_ver") or ...`)
         # was reading a key that never arrived off a REAL socket, and `station.app_ver` stayed None
         # forever except on `FakeNet`, whose hand-rolled `simulate_*_hello` info dicts included it and
         # so never caught this.
         info = {"node_id": rec.node_id, "node_type": rec.node_type, "app_ver": rec.app_ver}
+        if prior_utility_node_id:
+            info["prior_utility_node_id"] = prior_utility_node_id
         if rec.via:
             info["reach"] = rec.via        # A28.3: MC's stamp — the only `reach` the NodeView ever gets
         if rec.via_claimed:

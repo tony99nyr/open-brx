@@ -112,3 +112,27 @@ test('MC-armed AND advertising (the normal deployed case) hides it -- and not th
   api.settings.mcArmed = null;
   api.render();
 });
+
+test('F184: BACK TO HUD sends the final live station tally before navigation', async () => {
+  await api.startAdvert();
+  const order = []; let finalBody = null;
+  const realStatus = api.transport.status.bind(api.transport);
+  const realReplace = global.location.replace;
+  api.transport.status = body => { order.push('status'); finalBody = body; return true; };
+  global.location.replace = () => { order.push('navigate'); };
+  try { await api.exitToHud(); } finally {
+    api.transport.status = realStatus;
+    global.location.replace = realReplace;
+  }
+  assert.deepEqual(order, ['status', 'navigate']);
+  assert.equal(finalBody.role, 'utility');
+  assert.equal(finalBody.live, true, 'the final status is built before stopAdvert changes live intent');
+});
+
+test('F184: BACK TO HUD persists the utility identity proof for the new HUD transport', async () => {
+  api.transport.nodeKey = 'utility-proof';
+  await api.exitToHud();
+  assert.deepEqual(JSON.parse(store.get('brx.prior_utility')), {
+    node_id: api.transport.nodeId, node_key: 'utility-proof',
+  });
+});

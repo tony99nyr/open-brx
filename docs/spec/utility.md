@@ -212,14 +212,21 @@ and the roaming-hill variant is `utility-roadmap.md` §8 5e.)
 ### 5c.1 `control{cmd:"release_utility"}` (M-NET, MC → utility phone) — the release message (A41)
 
 `{ cmd: "release_utility" }`, on the ordinary `control` kind (contracts.md §5, `CONTROL_CMDS`) — MC → ONE
-utility node, any phase. Unlike `station_config` this carries no station fields and touches nothing about
-the assignment or the advert: `utility.js` takes it exactly as its own BACK TO HUD button (`brx.role` →
-`'hud'`, reload into the HUD). It is the field cure for a phone stuck in utility mode (§1): an operator
+utility node, any phase. Unlike `station_config` this carries no station fields: `utility.js` takes it exactly
+as its own BACK TO HUD button (`brx.role` → `'hud'`, reload into the HUD). It is the field cure for a phone
+stuck in utility mode (§1): an operator
 presses RELEASE ▸ HUD on the ITEMS card (`state.py release_station`, `POST /api/stations/{nid}/release`).
 Best-effort like `station_config` — no ack kind exists for `control`, so the API's `ok` means only that a
 socket took the push, never that the phone actually reloaded; a phone with no socket has only its own
 seven-tap ⓘ gesture left. Deliberately NOT `_refuse_station_change_in_play`-gated: a stranded phone needs
-releasing in every phase, armed/live most of all.
+releasing in every phase, armed/live most of all. A failed send changes nothing. An accepted send clears the
+assignment and active allow-lists, but retains the ITEMS card because delivery alone cannot prove the reload.
+The first HUD `hello` carries the prior utility id and its takeover key; MC validates and consumes that proof,
+then removes the old card. Utility and HUD ids are deliberately distinct (`brxu` / `brx`). If this happens
+mid-match, the station's last self-authoritative report remains frozen for that match's recap. A pre-F184 HUD
+cannot send the proof: release still works safely, but the unassigned old card remains until the stale-row prune,
+an operator evicts the old node, or the updated phone makes a fresh utility→HUD round trip; it never counts as a
+deployed station in the meantime.
 
 ## 5d. kind 5 `control` — the phone control point (K1 base)
 

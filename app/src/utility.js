@@ -15,6 +15,7 @@ import { APP_VER } from './build.js';   // A29: the REAL build, baked by scripts
 // node sends, so MC's muster rollup can compare a station phone with the field. It was 'utility-0.2', a
 // label MC could not parse as a version (roadmap A3/A5 had already replaced the bare string 'utility').
 const UTIL_VER = APP_VER;
+const PRIOR_UTILITY_KEY = 'brx.prior_utility';
 
 const $ = id => document.getElementById(id);
 const TEAM_NAMES = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN', [TEAM_ANY]: 'ANY TEAM' };
@@ -145,19 +146,22 @@ async function applyStationConfig(body) {
   if (window.brxUtilityGate) window.brxUtilityGate.close();   // the operator armed it: the drawer has no business being open
   await startAdvert();
 }
+function utilityStatusBody() {
+  return { role: 'utility', kind: settings.kind, team: settings.team, station_id: settings.id, threshold: settings.threshold, live: advertising, revives, armed: !!settings.mcArmed,
+    app_ver: UTIL_VER, ...(lastBattery != null ? { battery: lastBattery } : {}),   // roadmap A3: the heartbeat, not just the hello, so MC's ITEMS panel stays current without a reconnect
+    // §5c: the station is self-authoritative and reports at recap. For a control point that report is the
+    // owner, the conversion progress and who held it for how long — MC is not live mid-match and cannot
+    // have watched any of it (F92).
+    ...(settings.kind === 'control' ? { control: { owner: point.owner, progress: Math.round(point.progress), contested: point.contested,
+      hold_ms: point.holdMs, capture_log: point.log.slice(-32), capture_s: settings.captureS, net_cap: settings.netCap } } : {}) };
+}
 function connectMc(url, { wsFactory } = {}) {
   if (!url) return;
   settings.mc = url; save();
   if (transport) { try { transport.close(); } catch (_) { /* ignore */ } }
   transport = new Transport({ node: { node_type: 'utility', app_ver: UTIL_VER }, gun: null, keyPrefix: 'brxu', ...(wsFactory ? { wsFactory } : {}) });   // its own node id: never the HUD's
   transport.armedOrLive = true;                            // keep dialling — at muster the operator is waiting on this
-  transport.setStatusProvider(() => ({ role: 'utility', kind: settings.kind, team: settings.team, station_id: settings.id, threshold: settings.threshold, live: advertising, revives, armed: !!settings.mcArmed,
-    app_ver: UTIL_VER, ...(lastBattery != null ? { battery: lastBattery } : {}),   // roadmap A3: the heartbeat, not just the hello, so MC's ITEMS panel stays current without a reconnect
-    // §5c: the station is self-authoritative and reports at recap. For a control point that report is the
-    // owner, the conversion progress and who held it for how long — MC is not live mid-match and cannot
-    // have watched any of it (F92).
-    ...(settings.kind === 'control' ? { control: { owner: point.owner, progress: Math.round(point.progress), contested: point.contested,
-      hold_ms: point.holdMs, capture_log: point.log.slice(-32), capture_s: settings.captureS, net_cap: settings.netCap } } : {}) }));
+  transport.setStatusProvider(utilityStatusBody);
   // A41: the operator's MC-side release for a phone stuck in utility mode -- makes the ⓘ gesture's own
   // BACK TO HUD a real, reachable fix instead of folklore ("something pushed from MC"). Any phase, any
   // arm state: this is the one message that gets a phone unstuck, so it is never conditioned on anything.
@@ -180,7 +184,7 @@ function stageWsFactory() {
   const ws = { close() {} };
   ws.send = raw => {
     let env; try { env = JSON.parse(raw); } catch (_) { return; }
-    if (env.kind === 'hello') setTimeout(() => { if (ws.onmessage) ws.onmessage({ data: encode(makeEnvelope('welcome', { session_id: 'stage', server_t: Date.now(), seq_hi: 0 })) }); }, 0);
+    if (env.kind === 'hello') setTimeout(() => { if (ws.onmessage) ws.onmessage({ data: encode(makeEnvelope('welcome', { session_id: 'stage', server_t: Date.now(), seq_hi: 0, node_key: 'stage-utility-key' })) }); }, 0);
   };
   _stageWs = ws;
   setTimeout(() => { if (ws.onopen) ws.onopen(); }, 0);
@@ -206,8 +210,19 @@ async function restartIfLive() { if (advertising) await startAdvert(); else rend
  *  (visible only while this phone is NOT MC-armed -- `render()`), and an operator's MC release
  *  (`control{cmd:"release_utility"}`, A41, `state.py release_station`). */
 async function exitToHud() {
+  // Flush the latest self-authoritative tally while the old utility socket is still bound and before
+  // stopAdvert() changes `live`. The periodic heartbeat can otherwise be almost two seconds old.
+  if (transport) transport.status(utilityStatusBody());
   await stopAdvert();
-  try { localStorage.setItem('brx.role', 'hud'); } catch (_) { /* ignore */ }
+  try {
+    // F184: utility and HUD deliberately own different node ids (`brxu` / `brx`). Hand the old id and
+    // its takeover key to the HUD so MC can authenticate the physical role transition, consume the old
+    // ITEMS row, then acknowledge that consumption. A node that was never welcomed has no proof to hand on.
+    if (transport && transport.nodeId && transport.nodeKey) {
+      localStorage.setItem(PRIOR_UTILITY_KEY, JSON.stringify({ node_id: transport.nodeId, node_key: transport.nodeKey }));
+    }
+    localStorage.setItem('brx.role', 'hud');
+  } catch (_) { /* ignore */ }
   location.replace('index.html?hud');
 }
 

@@ -284,6 +284,21 @@ describe('ITEMS — the ASSIGN + ARM / CLEAR buttons a person actually presses',
     m.unmount();
   });
 
+  it('F184: accepted RELEASE clears deployment, then the confirmed HUD snapshot removes the ITEMS card', async () => {
+    const { m, api, settle, state } = await muster();
+    await api.putStation('util-a1b2c3', { kind: 'respawn', team: 'blue', id: 3 });
+    await api.releaseStation('util-a1b2c3');
+    await settle();
+    expect(state().stations?.find(s => s.node_id === 'util-a1b2c3')?.assigned).toBeNull();
+    expect(m.find('[data-testid="items-panel"]')[0].textContent).toMatch(/ITEMS \/\/ 2 UTILITY PHONES/);
+
+    api.confirmStationHud('util-a1b2c3');
+    await settle();
+    expect(state().stations?.some(s => s.node_id === 'util-a1b2c3')).toBe(false);
+    expect(m.find('[data-testid="items-panel"]')[0].textContent).toMatch(/ITEMS \/\/ 1 UTILITY PHONE/);
+    m.unmount();
+  });
+
   it('CANCEL backs out of the RELEASE confirm without ever calling the api', async () => {
     const { m, api } = await muster();
     const sent: string[] = [];
