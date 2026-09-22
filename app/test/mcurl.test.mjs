@@ -5,6 +5,7 @@
 // looked identical to reading nothing at all — the operator kept aiming at a Wi-Fi QR wondering why.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { parseMcQr, parseMcJoin } from '../src/mcurl.js';
 
 test('a bare websocket URL is the code', () => {
@@ -78,4 +79,12 @@ test('parseMcQr is unchanged: it is parseMcJoin(text)?.url, still null (not unde
   const pub = 'wss://x.trycloudflare.com/ws';
   assert.equal(parseMcQr(`ws://mc/ws?s=abc&pub=${encodeURIComponent(pub)}`), 'ws://mc/ws');
   assert.equal(parseMcQr('not an mc code'), null);
+});
+
+test('utility QR connection keeps the complete MC join contract', () => {
+  const src = readFileSync(new URL('../src/utility.js', import.meta.url), 'utf8');
+  assert.match(src, /connectMc\(join\.url, \{ trusted: true, pub: join\.pub, secret: join\.secret \}\)/,
+    'a utility QR must retain the public fallback and join secret, not reduce the code to its LAN URL');
+  assert.match(src, /transport\.connect\(\{ url, trusted, pub, secret \}\)/,
+    'the utility connector must pass the complete join contract to Transport');
 });

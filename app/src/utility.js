@@ -161,7 +161,7 @@ function utilityStatusBody() {
     ...(settings.kind === 'control' ? { control: { owner: point.owner, progress: Math.round(point.progress), contested: point.contested,
       hold_ms: point.holdMs, capture_log: point.log.slice(-32), capture_s: settings.captureS, net_cap: settings.netCap } } : {}) };
 }
-function connectMc(url, { wsFactory, trusted = true } = {}) {
+function connectMc(url, { wsFactory, trusted = true, pub = null, secret = null } = {}) {
   if (!url) return;
   if (trusted) { settings.mc = url; settings.mc_auto = false; save(); }
   if (transport) { try { transport.close(); } catch (_) { /* ignore */ } }
@@ -177,7 +177,7 @@ function connectMc(url, { wsFactory, trusted = true } = {}) {
     else if (m.kind === 'control' && m.body && m.body.cmd === 'release_utility') { log('Mission Control released this phone back to HUD', 'lk'); exitToHud(); }
   });
   transport.onState(s => { mcState = s; log(`MC ${s}${transport.rejected ? ' — ' + transport.rejected.reason : ''}`, s === 'bound' ? 'lk' : 'li'); render(); });
-  transport.connect({ url, trusted }).then(() => {
+  transport.connect({ url, trusted, pub, secret }).then(() => {
     // An automatically discovered endpoint becomes the remembered fallback only after MC proves itself
     // with a welcome. Until then another mDNS result may replace a stale or non-MC websocket.
     if (!trusted && transport && transport.state === 'bound') { settings.mc = url; settings.mc_auto = true; save(); }
@@ -215,7 +215,7 @@ async function scanUtilityQr() {
   catch (e) { stop(); log('QR camera unavailable: ' + e.message, 'le'); return; }
   const tick = () => {
     if (done) return;
-    if (video.videoWidth) { canvas.width = video.videoWidth; canvas.height = video.videoHeight; ctx.drawImage(video, 0, 0); const img = ctx.getImageData(0, 0, canvas.width, canvas.height); const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' }); const join = code && parseMcJoin(code.data); if (join) { stop(); connectMc(join.url, { trusted: true }); return; } }
+    if (video.videoWidth) { canvas.width = video.videoWidth; canvas.height = video.videoHeight; ctx.drawImage(video, 0, 0); const img = ctx.getImageData(0, 0, canvas.width, canvas.height); const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' }); const join = code && parseMcJoin(code.data); if (join) { stop(); connectMc(join.url, { trusted: true, pub: join.pub, secret: join.secret }); return; } }
     requestAnimationFrame(tick);
   };
   tick();
