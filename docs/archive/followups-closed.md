@@ -477,3 +477,9 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
 - 2026-09-22 **F173** the diagnostic HTTP worker now owns a short-lived read-only SQLite connection instead of
   sharing the live store writer. Its multi-query report runs in one snapshot, and encoded absolute file URIs
   preserve valid store paths containing URI metacharacters.
+
+# Closed 2026-09-22: diagnostic binding attribution
+
+- 2026-09-22 **F175** a node that reports multiple player bindings in one match now keeps an ambiguous physical
+  summary and explicit per-player/null attribution rows instead of assigning every status fact to the last player.
+  Cumulative shot-counter deltas preserve the match total across rebinds and resets.

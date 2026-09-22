@@ -132,14 +132,15 @@ def _hand_built_db() -> pathlib.Path:
     return path
 
 
-def test_hand_built_totals_and_shots_max_per_node():
+def test_hand_built_totals_and_cumulative_shot_deltas_per_node():
     r = diag.build_report(sqlite3.connect(f"file:{_hand_built_db()}?mode=ro", uri=True))
     assert len(r) == 1
     m = r[0]
     assert m["match_id"] == "m1" and m["mode"] == "tdm" and m["config_id"] == "cfg-A" and m["environment"] == "outdoor"
     assert m["cfg_health"] == {"max_hp": 70, "max_armor": 60}
     assert m["duration_s"] == 100.0
-    # shots = max(shots) PER NODE, summed: nodeA 55, nodeB 30, nodeC 10
+    # Each counter begins at zero for the match, so its attributed deltas total the final value:
+    # nodeA 55, nodeB 30, nodeC 10.
     assert m["shots"] == 95, m
 
 
@@ -244,6 +245,70 @@ def test_first_settled_pool_of_the_first_life_is_reported():
     n2 = diag.build_report(sqlite3.connect(f"file:{_hand_built_db()}?mode=ro", uri=True))[0]["nodes"]
     assert n2["nodeA"]["first_live_pool"] == {"hp": 70, "armor": 60}
     assert diag.render_markdown(r).count("first_live") >= 1
+
+
+def test_rebound_node_status_is_attributed_to_each_player_without_double_counting_shots():
+    path = _tmp_db()
+    st = Store("rebound", path)
+    cfg = {
+        "config_id": "cfg-R",
+        "mode": "ffa",
+        "health": {"max_hp": 70, "max_armor": 60},
+        "_heads": {
+            "pA": ["$PSET,1,0,100,60,0,*"],
+            "pB": ["$PSET,2,0,70,80,0,*"],
+        },
+    }
+    st.match_started("mR", cfg, 1000)
+
+    def status(player_id, shots, hp, armor, t):
+        st.log("nodeR", "status", None, None, t, "mR", False, {
+            "player_id": player_id,
+            "shots": shots,
+            "hp": hp,
+            "armor": armor,
+            "arm_state": "live",
+            "alive": True,
+            "preflight": {"gun_linked": True},
+        })
+
+    status("pA", 4, 100, 60, 1100)
+    status("pA", 10, 80, 40, 1200)
+    status(None, 12, 70, 60, 1300)
+    status("pB", 13, 70, 80, 1400)
+    status("pB", 15, 60, 50, 1500)
+    st.match_ended("mR", {"winner": {}, "rows": []})
+    st.close()
+
+    match = diag.build_report_path(path, "mR")[0]
+    node = match["nodes"]["nodeR"]
+    assert match["shots"] == 15 and node["shots"] == 15
+    assert node["player_id"] is None
+    assert node["player_ids"] == ["pA", "pB"]
+    attrs = {row["player_id"]: row for row in node["attributions"]}
+    assert attrs["pA"]["shots"] == 10 and attrs[None]["shots"] == 2 and attrs["pB"]["shots"] == 3
+    assert attrs["pA"]["first_live_pool"] == {"hp": 100, "armor": 60}
+    assert attrs["pB"]["first_live_pool"] == {"hp": 70, "armor": 80}
+    assert attrs["pA"]["pushed_pool"] == {"hp": 100, "armor": 60}
+    assert attrs["pB"]["pushed_pool"] == {"hp": 70, "armor": 80}
+    markdown = diag.render_markdown([match])
+    assert markdown.count("nodeR") == 3 and "pA" in markdown and "pB" in markdown
+
+
+def test_shot_delta_attribution_handles_resets_and_ignores_invalid_samples():
+    huge = 10 ** 1000
+    bodies = [
+        {"shots": 10},
+        {"shots": True},
+        {"shots": float("nan")},
+        {"shots": -1},
+        {"shots": 0},
+        {"shots": 4},
+        {"shots": huge, "hp": huge, "armor": huge},
+    ]
+    assert diag._shot_deltas(bodies) == [10, 0, 0, 0, 0, 4, huge - 4]
+    summary = diag._status_summary(bodies, diag._shot_deltas(bodies), {"health": {}}, None)
+    assert summary["shots"] == huge + 10 and summary["max_hp"] == huge and summary["max_armor"] == huge
 
 
 def test_arm_state_alive_and_gun_linked_distributions_per_node():
@@ -353,6 +418,6 @@ def test_diag_against_a_real_session_played_through_fakenet():
     m = r[0]
     assert m["match_id"] == mid and m["mode"] == "ffa" and m["config_id"] == cfg_id
     assert m["hits"] == 1 and m["deaths"] == 1
-    assert m["shots"] >= 6                                  # node0's later, higher status.shots sample won
+    assert m["shots"] >= 6                        # node0's cumulative counter deltas reach the later sample
     assert m["nodes"]["node0"]["ack_config_id"] == cfg_id
     assert m["nodes"]["node0"]["ack_matches_config"] is True

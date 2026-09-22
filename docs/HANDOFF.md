@@ -89,7 +89,9 @@ of main" above.
   desk half is complete:** its soak catalog matches the short t4 writer; the row remains open for hardware soaks.
 - **F173 is closed:** the diagnostic route now scans through its own read-only SQLite connection and one stable
   snapshot; the live store writer never crosses into the executor.
-- **Next desk task:** **F175**, preserve per-event player attribution when a node is rebound mid-match.
+- **F175 is closed:** rebound nodes retain physical totals plus per-player/null status attribution; no fact is
+  silently assigned to the last binding, and cumulative shot deltas do not inflate the match total.
+- **Next desk task:** **F174**, allow a previous-match diagnostic while the next match is armed.
   F285 remains split: its table can be written at the desk, but its t6 repeat measurement needs the bench.
 - **Next bench task:** the "0.4.4 field check" in [`bench-plan.md`](bench-plan.md) (connect timing on both
   phones, the new respawn rules, the Shields preset, the down animation, full screen), then sitting 5, match

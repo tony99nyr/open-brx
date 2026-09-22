@@ -4,6 +4,11 @@ duration, mode/config_id/environment/cfg health, total shots, hits, hit%, deaths
 alive distributions, per-node `preflight.gun_linked` counts, the per-node POOL columns below,
 `shooter_team` values seen, and each node's `ack_config` config_id vs the match it was pushed for.
 
+F175: a node can carry more than one player binding during one match. The node summary keeps its
+physical-node totals but has no single `player_id` in that case; `attributions` partitions every status-derived
+fact by that heartbeat's explicit player id (and an honest null bucket when it named none). Cumulative shots are
+attributed by counter deltas, including resets, so a 10 → 15 rebind remains 15 shots rather than becoming 25.
+
 The pool columns, and what each one can and cannot see (C-3/C-4, 2026-09-13):
 
   * `cfg_health` -- `config.health` for the match. This is the NARROW question: a per-player
@@ -17,10 +22,11 @@ The pool columns, and what each one can and cannot see (C-3/C-4, 2026-09-13):
     the perk are already in it, so `hp_mismatch_vs_pushed` / `armor_mismatch_vs_pushed` are exact and
     are the flags that mean "this gun was on another head". `None` when the store predates `_heads`,
     when the node's status bodies never named a player, or when the head carries no readable `$PSET`.
-  * `first_live_pool` -- the (hp, armor) on the FIRST `status` with `arm_state: live` and
-    `alive: true`, i.e. the first frame of that node's first life. This is the exact signature the
-    A36 pool check exists for and the one `max_hp`/`max_armor` cannot see: a gun that spawned into
-    the wrong head's pool and then self-corrected has a clean max and a damning first frame.
+  * `first_live_pool` -- on the physical-node summary, the (hp, armor) on its FIRST `status` with
+    `arm_state: live` and `alive: true`; on an attribution row (and therefore a CLI table row), the
+    first such status explicitly naming that player/null bucket. This is the exact signature the A36
+    pool check exists for and the one `max_hp`/`max_armor` cannot see: a gun that spawned into the
+    wrong head's pool and then self-corrected has a clean max and a damning first frame.
 
 Read-only, pure sqlite — no `Session` import needed, so it can be pointed at a real session file
 Mission Control still has open (`GET /api/diag/matches` opens its own short-lived read-only handle)
@@ -36,10 +42,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sqlite3
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 
 from . import frames as _frames      # the one reader for a `$PSET`/`$WEAP` frame MC actually sent
 
@@ -160,6 +167,86 @@ def _pushed_pool(cfg: dict, player_id: str | None) -> dict[str, int] | None:
     return None if pool is None else {"hp": pool[0], "armor": pool[1]}
 
 
+def _status_player(body: dict) -> str | None:
+    player_id = body.get("player_id")
+    return player_id if isinstance(player_id, str) and player_id else None
+
+
+def _finite_number(value: object) -> TypeGuard[int | float]:
+    """JSON number safe to compare; avoid coercing arbitrary-size Python ints through float."""
+    return ((isinstance(value, int) and not isinstance(value, bool))
+            or (isinstance(value, float) and math.isfinite(value)))
+
+
+def _shot_deltas(bodies: list[dict]) -> list[int]:
+    """Attribute a cumulative counter without double-counting across bindings or resets."""
+    previous: int | None = None
+    deltas: list[int] = []
+    for body in bodies:
+        raw = body.get("shots")
+        delta = 0
+        if _finite_number(raw) and raw >= 0:
+            current = int(raw)
+            delta = current if previous is None or current < previous else current - previous
+            previous = current
+        deltas.append(delta)
+    return deltas
+
+
+def _status_summary(bodies: list[dict], shot_deltas: list[int], cfg: dict,
+                    player_id: str | None) -> dict:
+    """Status-derived facts for one node or one explicit node/player attribution."""
+    health = cfg.get("health") or {}
+    cfg_hp, cfg_armor = health.get("max_hp"), health.get("max_armor")
+    arm_state: dict[str, int] = {}
+    alive: dict[str, int] = {"true": 0, "false": 0}
+    linked: dict[str, int] = {"true": 0, "false": 0, "none": 0}
+    max_shots = max_hp = max_armor = 0
+    first_live: dict[str, int] | None = None
+    for body in bodies:
+        if first_live is None and body.get("arm_state") == "live" and body.get("alive") is True:
+            hp0, ar0 = body.get("hp"), body.get("armor")
+            if (isinstance(hp0, int) and not isinstance(hp0, bool)
+                    and isinstance(ar0, int) and not isinstance(ar0, bool)):
+                first_live = {"hp": hp0, "armor": ar0}
+        state = body.get("arm_state")
+        if state is not None:
+            arm_state[str(state)] = arm_state.get(str(state), 0) + 1
+        is_alive = body.get("alive")
+        if is_alive is True:
+            alive["true"] += 1
+        elif is_alive is False:
+            alive["false"] += 1
+        gun_linked = (body.get("preflight") or {}).get("gun_linked")
+        linked["true" if gun_linked is True else "false" if gun_linked is False else "none"] += 1
+        shots, hp, armor = body.get("shots"), body.get("hp"), body.get("armor")
+        if _finite_number(shots):
+            max_shots = max(max_shots, int(shots))
+        if _finite_number(hp):
+            max_hp = max(max_hp, int(hp))
+        if _finite_number(armor):
+            max_armor = max(max_armor, int(armor))
+
+    pushed = _pushed_pool(cfg, player_id)
+    return {
+        "player_id": player_id,
+        "arm_state_counts": arm_state,
+        "alive_counts": alive,
+        "gun_linked_counts": linked,
+        "shots": sum(shot_deltas),
+        "max_shots": max_shots,
+        "max_hp": max_hp,
+        "max_armor": max_armor,
+        "first_live_pool": first_live,
+        "cfg_health": {"max_hp": cfg_hp, "max_armor": cfg_armor},
+        "pushed_pool": pushed,
+        "hp_mismatch_vs_cfg": bool(bodies) and cfg_hp is not None and max_hp != cfg_hp,
+        "armor_mismatch_vs_cfg": bool(bodies) and cfg_armor is not None and max_armor < cfg_armor,
+        "hp_mismatch_vs_pushed": (max_hp != pushed["hp"]) if pushed else None,
+        "armor_mismatch_vs_pushed": (max_armor != pushed["armor"]) if pushed else None,
+    }
+
+
 # ---------------------------------------------------------------- analysis ---- #
 
 def analyze_match(db: sqlite3.Connection, match: dict) -> dict:
@@ -175,90 +262,34 @@ def analyze_match(db: sqlite3.Connection, match: dict) -> dict:
 
     nodes: dict[str, dict] = {}
     for nid, bodies in sorted(by_node.items()):
-        arm_state: dict[str, int] = {}
-        alive: dict[str, int] = {"true": 0, "false": 0}
-        linked: dict[str, int] = {"true": 0, "false": 0, "none": 0}
-        max_shots = max_hp = max_armor = 0
-        first_live: dict[str, int] | None = None      # C-4, below
-        # Which player this node reported for -- the key into the persisted heads (C-3). The status
-        # body carries it on every heartbeat; the LAST one wins, because a node re-bound mid-session
-        # is playing as whoever it says it is now.
-        player_id: str | None = next((b["player_id"] for b in reversed(bodies)
-                                      if isinstance(b.get("player_id"), str) and b["player_id"]), None)
-        for b in bodies:
-            # C-4: the pool on the FIRST frame of this node's first life. `max` cannot see the exact
-            # signature the A36 pool check exists for -- a gun that spawned into the WRONG head's
-            # pool and then self-corrected has a clean `max` and a damning first frame -- and that is
-            # the frame a field report is looking for. First life is enough for a table.
-            if first_live is None and b.get("arm_state") == "live" and b.get("alive") is True:
-                hp0, ar0 = b.get("hp"), b.get("armor")
-                if isinstance(hp0, int) and not isinstance(hp0, bool) and isinstance(ar0, int) and not isinstance(ar0, bool):
-                    first_live = {"hp": hp0, "armor": ar0}
-            st = b.get("arm_state")
-            if st is not None:
-                arm_state[str(st)] = arm_state.get(str(st), 0) + 1
-            a = b.get("alive")
-            if a is True:
-                alive["true"] += 1
-            elif a is False:
-                alive["false"] += 1
-            gl = (b.get("preflight") or {}).get("gun_linked")
-            linked["true" if gl is True else "false" if gl is False else "none"] += 1
-            if isinstance(b.get("shots"), (int, float)):
-                max_shots = max(max_shots, int(b["shots"]))
-            if isinstance(b.get("hp"), (int, float)):
-                max_hp = max(max_hp, int(b["hp"]))
-            if isinstance(b.get("armor"), (int, float)):
-                max_armor = max(max_armor, int(b["armor"]))
+        deltas = _shot_deltas(bodies)
+        explicit_players = list(dict.fromkeys(pid for b in bodies if (pid := _status_player(b)) is not None))
+        player_id = (explicit_players[0] if len(explicit_players) == 1
+                     and all(_status_player(body) == explicit_players[0] for body in bodies) else None)
+        summary = _status_summary(bodies, deltas, cfg, player_id)
 
-        # Perk-aware mismatch rule VS `config.health` (evidence 2026-09-12): a `body_armor` perk only
-        # ever ADDS to the armed armor pool, so a reported armor ABOVE the config is expected (the
-        # perk, not a stale push) and is never flagged; a reported armor BELOW the config cannot come
-        # from that perk and is a genuine mismatch. HP has no perk that raises it, so any HP
-        # difference is flagged.
-        #
-        # C-3: the column names say `_vs_cfg` because that is the only question they answer, and it
-        # is the NARROWER one. `LoadoutOverrides.max_hp/max_armor` are baked into the pushed `$PSET`
-        # and never into `config.health`, so under the old name any game using one reported that node
-        # mismatched in every single match. The PAIR is reported beside the flag, and where the
-        # snapshot carries the head MC actually pushed that player, so is the comparison that
-        # actually matters.
-        hp_mismatch_vs_cfg = bool(bodies) and cfg_hp is not None and max_hp != cfg_hp
-        armor_mismatch_vs_cfg = bool(bodies) and cfg_armor is not None and max_armor < cfg_armor
+        groups: dict[str | None, tuple[list[dict], list[int]]] = {}
+        for body, delta in zip(bodies, deltas):
+            group_bodies, group_deltas = groups.setdefault(_status_player(body), ([], []))
+            group_bodies.append(body)
+            group_deltas.append(delta)
+        attributions = [_status_summary(group_bodies, group_deltas, cfg, attributed_player)
+                        for attributed_player, (group_bodies, group_deltas) in groups.items()]
 
-        # C-3: the per-node truth. `state.py _schedule` persists the compiled head of every player
-        # beside the config (`config["_heads"][player_id]`), and its `$PSET` already has the
-        # per-player overrides and the `body_armor` perk baked in -- so this needs no perk model of
-        # its own and cannot drift from one. None when the snapshot has no head for this node (a
-        # pre-A36 store, or a node whose status bodies never named a player).
-        pushed = _pushed_pool(cfg, player_id)
         ack = _latest_ack_before(db, nid, go_live_t)
         ack_config_id = ack.get("config_id") if ack else None
         nodes[nid] = {
-            "player_id": player_id,
-            "arm_state_counts": arm_state,
-            "alive_counts": alive,
-            "gun_linked_counts": linked,
-            "max_shots": max_shots,
-            "max_hp": max_hp,
-            "max_armor": max_armor,
-            # C-4: the first settled pool of the first life, beside the max-seen pair.
-            "first_live_pool": first_live,
-            # C-3: both halves of the pair, per node, so the table never asks the reader to remember
-            # which number the flag was compared against.
-            "cfg_health": {"max_hp": cfg_hp, "max_armor": cfg_armor},
-            "pushed_pool": pushed,
-            "hp_mismatch_vs_cfg": hp_mismatch_vs_cfg,
-            "armor_mismatch_vs_cfg": armor_mismatch_vs_cfg,
-            # Exact, not perk-aware: the head IS this node's pool, overrides and perk included, so
-            # there is nothing left for a difference to mean except a gun on another head.
-            "hp_mismatch_vs_pushed": (max_hp != pushed["hp"]) if pushed else None,
-            "armor_mismatch_vs_pushed": (max_armor != pushed["armor"]) if pushed else None,
+            **summary,
+            # F175: a physical node can report more than one binding inside a match. Never put its
+            # combined pools beside the LAST player's head; retain every explicit id in arrival order
+            # and expose status-derived facts per id (with a separate null bucket for unknown rows).
+            "player_ids": explicit_players,
+            "attributions": attributions,
             "ack_config_id": ack_config_id,
             "ack_matches_config": (ack_config_id == cfg.get("config_id")) if ack_config_id is not None else None,
         }
 
-    total_shots = sum(n["max_shots"] for n in nodes.values())
+    total_shots = sum(n["shots"] for n in nodes.values())
     hits = _hit_events(db, mid)
     hit_count = len(hits)
     teams_seen: set[int] = set()
@@ -340,20 +371,25 @@ def render_markdown(reports: list[dict]) -> str:
                   # were compared against. `vs cfg` is the narrow question (`config.health`, which
                   # never carries a per-player override); `vs pushed` is the `$PSET` this node's
                   # player was actually sent, overrides and perk included.
-                  "| node_id | player | arm_state | alive T/F | linked T/F/none | max_shots | "
+                  "| node_id | player | arm_state | alive T/F | linked T/F/none | shots | "
                   "first_live hp/armor | max hp/armor | cfg hp/armor | pushed hp/armor | "
                   "hp≠cfg | armor≠cfg | hp≠pushed | armor≠pushed | ack_config_id | ack==cfg |",
                   "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
         for nid, n in sorted(r["nodes"].items()):
-            lines.append("| " + " | ".join(_fmt(x) for x in (
-                nid, n["player_id"], n["arm_state_counts"], f"{n['alive_counts']['true']}/{n['alive_counts']['false']}",
-                f"{n['gun_linked_counts']['true']}/{n['gun_linked_counts']['false']}/{n['gun_linked_counts']['none']}",
-                n["max_shots"], _pair(n["first_live_pool"], "hp", "armor"),
-                f"{n['max_hp']}/{n['max_armor']}",
-                _pair(n["cfg_health"], "max_hp", "max_armor"), _pair(n["pushed_pool"], "hp", "armor"),
-                n["hp_mismatch_vs_cfg"], n["armor_mismatch_vs_cfg"],
-                n["hp_mismatch_vs_pushed"], n["armor_mismatch_vs_pushed"],
-                n["ack_config_id"], n["ack_matches_config"])) + " |")
+            rows = n.get("attributions") or [n]
+            for attributed in rows:
+                lines.append("| " + " | ".join(_fmt(x) for x in (
+                    nid, attributed["player_id"], attributed["arm_state_counts"],
+                    f"{attributed['alive_counts']['true']}/{attributed['alive_counts']['false']}",
+                    f"{attributed['gun_linked_counts']['true']}/{attributed['gun_linked_counts']['false']}/"
+                    f"{attributed['gun_linked_counts']['none']}",
+                    attributed["shots"], _pair(attributed["first_live_pool"], "hp", "armor"),
+                    f"{attributed['max_hp']}/{attributed['max_armor']}",
+                    _pair(attributed["cfg_health"], "max_hp", "max_armor"),
+                    _pair(attributed["pushed_pool"], "hp", "armor"),
+                    attributed["hp_mismatch_vs_cfg"], attributed["armor_mismatch_vs_cfg"],
+                    attributed["hp_mismatch_vs_pushed"], attributed["armor_mismatch_vs_pushed"],
+                    n["ack_config_id"], n["ack_matches_config"])) + " |")
     return "\n".join(lines) + "\n"
 
 

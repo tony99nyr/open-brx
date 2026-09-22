@@ -129,9 +129,16 @@ naming which of the first two it was compared against:
   player (persisted as `config["_heads"][player_id]`), which already has the overrides and the perk
   in it. These are exact, and they are the ones that mean "this gun was on another head". `-` when
   the store predates `_heads`, when no status body named a player, or when the head has no `$PSET`.
-- **`first_live hp/armor`** is the first `status` with `arm_state: live` and `alive: true` — the
-  first frame of that node's first life. It is the signature A36's pool check exists for and the one
-  `max` cannot see: a gun that spawned into the wrong pool and self-corrected has a clean max. Markdown tables by default, `--json` for the raw report. Pure sqlite, no
+- **`first_live hp/armor`** is the first `status` with `arm_state: live` and `alive: true` for that
+  table row's player (or unknown) attribution. The JSON physical-node summary separately retains the
+  node's first such frame. This is the signature A36's pool check exists for and the one `max` cannot
+  see: a gun that spawned into the wrong pool and self-corrected has a clean max.
+- **A node re-bound during a match prints one row per player**, plus an unknown row for heartbeats that named
+  none. Shot counts are cumulative-counter deltas, so each shot belongs to the binding that reported its change
+  without inflating the match total. The JSON keeps the physical-node summary and adds `player_ids` plus
+  `attributions`; its singular `player_id` is null when the summary is not unambiguous.
+
+Markdown tables by default, `--json` for the raw report. Pure sqlite, no
 `Session` import, read-only (`?mode=ro`) — safe to point at a session MC still has open, or at any
 past night's file under `~/.brx-mcp/mc/`. The same report is served live for the CURRENT session at
 `GET /api/diag/matches` (`API.md`).
