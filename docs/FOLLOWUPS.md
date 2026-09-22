@@ -80,7 +80,7 @@ right** and this index is stale. Do not cite it as evidence that something is or
 **Keyboard only** (tagged `build` or `decision` — no gun, no rig, no dim room):
 - 🔴 **B23** · **E5** · **F43** · **F231** · **F264** · **S10**
 - 🟠 **B4** · **B21** · **B31** · **E2** · **F12** · **F40** · **F70** · **F164** · **F182** · **F196** · **F203** · **F256** · **F260** · **F269** · **F272** · **F277** · **F280** · **F300** · **P8** · **S3** · **S14** · **S33** · **S50** · **S52** · **S53**
-- 🟡 **B1** · **B8** · **B14** · **B17** · **B18b** · **D1** · **D3** · **E3** · **E4** · **E6** · **F5** · **F16** · **F20** · **F24** · **F25** · **F42** · **F60** · **F68** · **F88** · **F95** · **F108** · **F109** · **F112** · **F113** · **F123** · **F126** · **F128** · **F130** · **F132** · **F133** · **F161** · **F176** · **F177** · **F178** · **F179** · **F180** · **F181** · **F184** · **F185** · **F186** · **F187** · **F188** · **F189** · **F190** · **F191** · **F192** · **F193** · **F202** · **F221** · **F223** · **F229** · **F233** · **F249** · **F251** · **F266** · **F267** · **F268** · **F270** · **F281** · **F284** · **F285** · **F289** · **H1** · **H2** · **H6** · **H8** · **K2** · **Q12′** · **Q13** · **R3** · **S1** · **S2** · **S6** · **S7** · **S-A12** · **S13** · **S25** · **S27** · **S28** · **S29** · **S30** · **S31** · **S32** · **S34** · **S35** · **S36** · **S42** · **S43** · **S46** · **S47** · **S48** · **S49** · **S51** · **S54**
+- 🟡 **B1** · **B8** · **B14** · **B17** · **B18b** · **D1** · **D3** · **E3** · **E4** · **E6** · **F5** · **F16** · **F20** · **F24** · **F25** · **F42** · **F60** · **F68** · **F88** · **F95** · **F108** · **F109** · **F112** · **F113** · **F123** · **F126** · **F128** · **F130** · **F132** · **F133** · **F161** · **F176** · **F177** · **F178** · **F180** · **F181** · **F184** · **F185** · **F186** · **F187** · **F188** · **F189** · **F190** · **F191** · **F192** · **F193** · **F202** · **F221** · **F223** · **F229** · **F233** · **F249** · **F251** · **F266** · **F267** · **F268** · **F270** · **F281** · **F284** · **F285** · **F289** · **H1** · **H2** · **H6** · **H8** · **K2** · **Q12′** · **Q13** · **R3** · **S1** · **S2** · **S6** · **S7** · **S-A12** · **S13** · **S25** · **S27** · **S28** · **S29** · **S30** · **S31** · **S32** · **S34** · **S35** · **S36** · **S42** · **S43** · **S46** · **S47** · **S48** · **S49** · **S51** · **S54**
 - 🟢 **B11** · **B22** · ⬜ **D5** · **E7** · **F14** · **F17** · **F18** · **F19** · **F32** · **F52** · **F83** · **F87** · **F89** · **F93** · **F98** · **F99** · **F100** · **F107** · **F204** · **F224** · **F250** · **F252** · **F273** · ⬜ **H3** · ⬜ **H4** · ⬜ **H5** · ⬜ **K6** · ⬜ **K8** · **P14** · **R2** · **S19**
 
 ## 1. Before going public
@@ -1092,8 +1092,11 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   repeat mismatch should decay to an advisory. `decision`.
 - **F177 🟡** a mode switch re-teams by INDEX and rebalances only when a side would be EMPTY, so an uneven roster can
   land 7/1. Decide whether it should balance evenly; the confirm now shows the split either way. `decision`.
-- **F178 🟡** the READY count can include a phone holding an older head; START still refuses via the stale-ack gate. `build`.
-- **F179 🟡** two guards assert behaviour by grepping source text (`lobby-standby.test.tsx`, `tapgate.test.mjs`). `build`.
+- **F178 🟡** the READY count can include a phone holding an older head; START still refuses via the stale-ack gate.
+  **Decision first:** the newer contract deliberately defines READY as player intent and preserves it across a
+  head re-push. Excluding stale-head players from the displayed total would also make MARK ALL READY unable to
+  affect its own count. Settle whether this row wants a second "current head" count or different wording before
+  changing behavior. `decision`.
 - **F180 🟡** the HUD screen-truth standby steps run only under `ui:screens`, never under `npm test`. `build`.
 - **F181 🟡** `m2-ui` has a timing-dependent live-accuracy-settling assertion that flaked once. `build`.
 - **F182 🟠** validation wall-clock is too long to iterate against (Tony, 2026-09-13). Wants a fast inner loop with the

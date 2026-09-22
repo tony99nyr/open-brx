@@ -93,7 +93,8 @@ of main" above.
   silently assigned to the last binding, and cumulative shot deltas do not inflate the match total.
 - **F174 is closed:** an explicitly named previous match remains diagnosable on the next runway; current/full scans
   still fail closed in ARMED and every diagnostic remains blocked in LIVE.
-- **Next desk task:** **F178**, make READY exclude a phone that still holds an older head.
+- **F179 is closed:** standby and hidden-door guards now drive behavior; the door resets obsolete taps, catches outside-frame releases and rechecks the gun link at fire time.
+- **Next desk task:** **F180**, replace remaining screen-truth source checks with behavior. **F178 is decision first:** READY is player intent and survives a head re-push, so excluding stale heads conflicts with MARK ALL READY.
   F285 remains split: its table can be written at the desk, but its t6 repeat measurement needs the bench.
 - **Next bench task:** the "0.4.4 field check" in [`bench-plan.md`](bench-plan.md) (connect timing on both
   phones, the new respawn rules, the Shields preset, the down animation, full screen), then sitting 5, match

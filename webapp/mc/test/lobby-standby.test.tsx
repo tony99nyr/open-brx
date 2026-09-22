@@ -30,6 +30,9 @@ const withStandby = (s: State): State => {
 };
 /** a server that predates the field: no `standby` key at all */
 const olderServer = (s: State): State => { const { standby: _drop, ...rest } = s; return rest as State; };
+// GUN-B in the mock registry is tail 91C2 (mock/data.ts GUNS).
+const WORN = { node_id: 'node_91C2', node_type: 'companion', gun_name: 'GUN-B-91C2', gun_tail: '91C2',
+  arm_state: 'kitted', last_seen_ms: 300, synced: true } as unknown as State['nodes'][number];
 
 describe('LOBBY standby', () => {
   it('every roster row carries a STAND DOWN chip that parks THAT player', async () => {
@@ -132,19 +135,19 @@ describe('KIT standby', () => {
 });
 
 describe('STANDBY once the match is armed/live', () => {
-  it('LOBBY offers no STAND DOWN and no PLAY, and says why', async () => {
+  it.each(['armed', 'live'] as const)('LOBBY offers no STAND DOWN and no PLAY in %s, and says why', async phase => {
     const d = await demo();
-    const s = { ...withStandby(d.state), phase: 'live' as const };
+    const s = { ...withStandby(d.state), phase };
     const m = await mountScreen(<Lobby />, { ...d, state: s, view: 'lobby' });
-    expect(m.find('[data-standby]').length, 'no STAND DOWN chip on a live match').toBe(0);
-    expect(m.find('[data-reinstate]').length, 'no PLAY on a live match').toBe(0);
+    expect(m.find('[data-standby]').length, `no STAND DOWN chip in ${phase}`).toBe(0);
+    expect(m.find('[data-reinstate]').length, `no PLAY in ${phase}`).toBe(0);
     expect(m.find('[data-standby-locked]').length).toBe(1);
     expect(m.find('[data-standby-section]')[0].textContent).toContain('MATCH LIVE');
     m.unmount();
   });
-  it('KIT offers no STAND DOWN', async () => {
+  it.each(['armed', 'live'] as const)('KIT offers no STAND DOWN in %s', async phase => {
     const d = await demo();
-    const s = { ...withStandby(d.state), phase: 'armed' as const };
+    const s = { ...withStandby(d.state), phase };
     const m = await mountScreen(<Kit />, { ...d, state: s, view: 'kit', selPlayer: s.players[0].player_id });
     expect(m.find('[data-stand-down]').length).toBe(0);
     expect(m.find('[data-reinstate]').length).toBe(0);
@@ -153,12 +156,10 @@ describe('STANDBY once the match is armed/live', () => {
 });
 
 describe('ARMORY and a parked player\'s gun', () => {
-  // GUN-B in the mock registry is tail 91C2 (mock/data.ts GUNS)
-  const worn = { node_id: 'node_91C2', node_type: 'companion', gun_name: 'GUN-B-91C2', gun_tail: '91C2', arm_state: 'kitted', last_seen_ms: 300, synced: true } as unknown as State['nodes'][number];
   it('is not a stray: ON STANDBY + PLAY instead of the claim form', async () => {
     const d = await demo();
     const parked = { ...d.state.players.find(p => p.gun_id === 'GUN-B')!, node_id: null, ready: false };
-    const s: State = { ...d.state, players: d.state.players.filter(p => p.gun_id !== 'GUN-B'), standby: [parked], nodes: [worn] };
+    const s: State = { ...d.state, players: d.state.players.filter(p => p.gun_id !== 'GUN-B'), standby: [parked], nodes: [WORN] };
     const calls: string[] = [];
     const m = await mountScreen(<Armory />, { ...d, state: s, view: 'muster', api: { reinstatePlayer: async (id: string) => { calls.push(id); return parked; } } });
     const card = m.find('[data-node-card="node_91C2"]');
@@ -175,7 +176,7 @@ describe('ARMORY and a parked player\'s gun', () => {
   });
   it('the same gun with nobody parked still gets the claim form', async () => {
     const d = await demo();
-    const s: State = { ...d.state, players: d.state.players.filter(p => p.gun_id !== 'GUN-B'), standby: [], nodes: [worn] };
+    const s: State = { ...d.state, players: d.state.players.filter(p => p.gun_id !== 'GUN-B'), standby: [], nodes: [WORN] };
     const m = await mountScreen(<Armory />, { ...d, state: s, view: 'muster' });
     const card = m.find('[data-node-card="node_91C2"]')[0];
     expect(card.textContent).toContain('WHO CARRIES THIS?');
@@ -185,25 +186,23 @@ describe('ARMORY and a parked player\'s gun', () => {
 });
 
 describe('one predicate for "is stand-down/PLAY offered" (2026-09-13)', () => {
-  it('Standby.tsx exports it, and Armory.tsx + Kit.tsx both read that export rather than re-typing the phase check', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { resolve } = await import('node:path');
-    const standby = readFileSync(resolve(process.cwd(), 'src/ui/Standby.tsx'), 'utf8');
-    const armory = readFileSync(resolve(process.cwd(), 'src/screens/Armory.tsx'), 'utf8');
-    const kit = readFileSync(resolve(process.cwd(), 'src/screens/Kit.tsx'), 'utf8');
-    expect(standby).toMatch(/export const standDownLocked/);
-    // neither screen re-types the phase check — both import and call the shared predicate
-    expect(armory).toMatch(/standDownLocked/);
-    expect(armory).not.toMatch(/phase\s*===\s*'armed'\s*\|\|.*phase\s*===\s*'live'/);
-    expect(kit).toMatch(/standDownLocked/);
-    expect(kit).not.toMatch(/phase\s*!==\s*'armed'\s*&&.*phase\s*!==\s*'live'/);
-  });
-
   it('the predicate itself: locked only in armed/live, whatever else the phase is', async () => {
     const { standDownLocked } = await import('../src/ui/Standby');
     for (const phase of ['setup', 'lobby', 'recap', undefined]) expect(standDownLocked(phase as never)).toBe(false);
     expect(standDownLocked('armed')).toBe(true);
     expect(standDownLocked('live')).toBe(true);
+  });
+
+  it.each(['armed', 'live'] as const)('ARMORY applies the shared lock in %s instead of offering PLAY', async phase => {
+    const d = await demo();
+    const parked = { ...d.state.players.find(p => p.gun_id === 'GUN-B')!, node_id: null, ready: false };
+    const s: State = { ...d.state, phase, players: d.state.players.filter(p => p.gun_id !== 'GUN-B'),
+      standby: [parked], nodes: [WORN] };
+    const m = await mountScreen(<Armory />, { ...d, state: s, view: 'muster' });
+    const card = m.find('[data-node-card="node_91C2"]')[0];
+    expect(card.querySelector('[data-reinstate]')).toBeNull();
+    expect(card.textContent).toContain('MATCH LIVE');
+    m.unmount();
   });
 });
 
@@ -232,4 +231,3 @@ describe('MockBackend standby', () => {
     b.dispose();
   });
 });
-

@@ -1,9 +1,7 @@
 // T2-B item 3: the hidden utility-mode door must not open from a burst of accidental taps alone.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { createTapHoldGate } from '../src/tapgate.js';
-const APP_JS = new URL('../src/app.js', import.meta.url);
+import { createTapHoldGate, installTapHoldDoor } from '../src/tapgate.js';
 
 /** Fire N quick taps (down+up close together), returning the gate. */
 function quickTaps(gate, n, start = 0, gapMs = 50) {
@@ -65,15 +63,71 @@ test('tapgate: after a successful trigger, the history resets -- immediate re-en
   assert.equal(gate.held(t + 1600 + 1500), false, 'must not fire on a single lingering touch after a reset');
 });
 
-// ---------------- the guard: app.js must actually WIRE the hold gate, not the old bare tap-count ----------------
-test('T2-B guard: app.js uses createTapHoldGate for the utility-mode door, not a bare 7-tap count', () => {
-  const src = readFileSync(APP_JS, 'utf8');
-  assert.match(src, /import \{ createTapHoldGate \} from '\.\/tapgate\.js'/, 'app.js must import the extracted gate');
-  const i = src.indexOf("pointerdown'", src.indexOf('utility mode'));
-  assert.ok(i > 0, 'the tap-gesture listener block is gone from app.js -- FIX this guard, do not delete it');
-  const block = src.slice(Math.max(0, i - 400), i + 600);
-  assert.match(block, /createTapHoldGate\(\)/, 'the listener must be backed by the pure gate, not inline tap counting');
-  assert.match(block, /gate\.held\(/, 'entry must be gated on held(), not just a tap count reaching 7');
-  assert.match(block, /setTimeout\([\s\S]*?,\s*1500\)/, 'the hold duration is 1.5s per the brief');
-  assert.doesNotMatch(block, /taps\.length >= 7[^)]*switchRole/, 'the old immediate-fire-on-7-taps path must be gone');
+// ---------------- behavioral wiring: the same installer app.js puts on the idle stage ----------------
+test('T2-B wiring: the installed door requires 6 taps plus a held 7th, and rechecks eligibility', () => {
+  const stageListeners = new Map(), releaseListeners = new Map();
+  const stage = { addEventListener: (kind, fn) => stageListeners.set(kind, fn) };
+  const releaseTarget = { addEventListener: (kind, fn) => releaseListeners.set(kind, fn) };
+  let t = 0, timer = null, timerMs = null, entered = 0, eligible = true;
+  installTapHoldDoor({
+    stage, releaseTarget,
+    eligible: () => eligible,
+    activate: () => { entered++; },
+    now: () => t,
+    setTimer: (fn, ms) => { timer = fn; timerMs = ms; return 1; },
+    clearTimer: () => { timer = null; },
+  });
+  const down = () => stageListeners.get('pointerdown')?.();
+  const release = kind => releaseListeners.get(kind)?.();
+
+  for (let i = 0; i < 7; i++) { down(); release('pointerup'); t += 50; }
+  assert.equal(entered, 0, 'seven quick contacts never enter utility mode');
+
+  for (let i = 0; i < 6; i++) { down(); release('pointerup'); t += 50; }
+  down();
+  assert.ok(timer, 'the held contact schedules the 1.5 s decision');
+  assert.equal(timerMs, 1500);
+  t += 1500;
+  timer();
+  assert.equal(entered, 1, 'the deliberate held seventh contact enters once');
+
+  for (let i = 0; i < 6; i++) { down(); release('pointerup'); t += 50; }
+  down();
+  eligible = false;
+  t += 1500;
+  timer();
+  assert.equal(entered, 1, 'a link/phase change during the hold cancels entry at fire time');
+
+  eligible = true;
+  down();
+  t += 1500;
+  timer();
+  assert.equal(entered, 1, 'eligibility loss resets old taps; one later hold cannot enter');
+});
+
+test('T2-B wiring: release outside the stage cancels the pending hold and its stale callback', () => {
+  const stageListeners = new Map(), releaseListeners = new Map();
+  const stage = { addEventListener: (kind, fn) => stageListeners.set(kind, fn) };
+  const releaseTarget = { addEventListener: (kind, fn) => releaseListeners.set(kind, fn) };
+  let t = 0, timer = null, entered = 0;
+  installTapHoldDoor({
+    stage, releaseTarget,
+    eligible: () => true,
+    activate: () => { entered++; },
+    now: () => t,
+    setTimer: fn => { timer = fn; return 1; },
+    clearTimer: () => { timer = null; },
+  });
+  for (let i = 0; i < 6; i++) {
+    stageListeners.get('pointerdown')();
+    releaseListeners.get('pointerup')();
+    t += 50;
+  }
+  stageListeners.get('pointerdown')();
+  const staleTimer = timer;
+  releaseListeners.get('pointerup')();
+  assert.equal(timer, null, 'window-level release clears the live timer');
+  t += 1500;
+  staleTimer();
+  assert.equal(entered, 0, 'even an already-queued callback cannot activate after release');
 });

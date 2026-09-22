@@ -488,3 +488,10 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
 
 - 2026-09-22 **F174** ARMED now permits a token-gated, explicitly named previous-match diagnostic while retaining
   409s for the current match, a full-session scan, missing current-match state, and every LIVE request.
+
+# Closed 2026-09-22: behavioral UI guards
+
+- 2026-09-22 **F179** replaced the standby and hidden utility-door source-text greps with rendered/component and
+  built-app behavior. Lobby, Kit and Armory are locked in both ARMED and LIVE. The utility door requires six taps
+  plus a held seventh, cancels on an outside-frame release or eligibility loss, and refuses a gun link that comes
+  up during the hold.

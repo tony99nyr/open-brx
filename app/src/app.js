@@ -18,7 +18,7 @@ import { LogSync, chunkByBytes, DEFAULT_CHUNK_BYTES } from './logsync.js';   // 
 import { APP_VER, platformName } from './build.js';                  // the REAL build id (contracts A29)
 import { applyResult, HISTORY_MAX } from './history.js';             // per-match history + the A24 result patch
 import { LogRing } from './logring.js';                              // T1-B: a match's own lines must survive to the recap pull
-import { createTapHoldGate } from './tapgate.js';                    // T2-B: taps AND a hold on the last, for the hidden utility-mode door
+import { installTapHoldDoor } from './tapgate.js';                   // T2-B: taps AND a hold on the last, for the hidden utility-mode door
 
 const $ = id => document.getElementById(id);
 // T1-B (field 2026-09-12): a flat 400-line ring rolled a whole failing match's early lines out
@@ -729,24 +729,13 @@ async function sweepForMc() {
   // jostle (phone face-down in a bag/pocket can deliver several brief contacts); requiring a deliberate
   // hold on the final contact — see tapgate.js — means an accidental burst can no longer cross by itself.
   try {
-    const gate = createTapHoldGate();
-    let holdTimer = null;
-    const clearHoldTimer = () => { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; } };
     const stage = document.getElementById('frame') || document.body;
-    stage.addEventListener('pointerdown', () => {
-      clearHoldTimer();
-      if (!(engine.phase === 'idle' && !link.connected)) { gate.cancel(); return; }
-      const now = Date.now();
-      gate.down(now);
-      // T2 review S6: re-test the precondition AT FIRE TIME, not only on pointerdown. A BLE link that
-      // completed during the 1.5 s hold still crossed into utility mode, tearing down a HUD that had
-      // just found its gun.
-      holdTimer = setTimeout(() => {
-        if (engine.phase === 'idle' && !link.connected && gate.held(Date.now())) switchRole('utility');
-      }, 1500);
-    }, { passive: true });
-    stage.addEventListener('pointerup', () => { clearHoldTimer(); gate.up(); }, { passive: true });
-    stage.addEventListener('pointercancel', () => { clearHoldTimer(); gate.cancel(); }, { passive: true });
+    installTapHoldDoor({ stage,
+      // T2 review S6: re-test this at FIRE TIME too. A BLE link that completes during the hold must
+      // not be torn down by entering utility mode; the installer calls `eligible` at both edges.
+      eligible: () => engine.phase === 'idle' && !link.connected,
+      activate: () => switchRole('utility'),
+    });
   } catch (_) { /* ignore */ }
   await loadPlugins();
   await lockLandscape(); await keepAwake(true);

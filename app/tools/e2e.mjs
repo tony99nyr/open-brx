@@ -240,6 +240,39 @@ let guns = [], pA, pB;
 const watchdog = setTimeout(() => { console.log('WATCHDOG: 7 min — aborting'); try { fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify({ aborted: true, results, findings, jsErrors }, null, 1)); } catch {} process.exit(2); }, 420000);
 watchdog.unref && watchdog.unref();
 
+// ═══ F0 · production-wired hidden door ═══
+// This deliberately drives the built app, not tapgate.js in isolation. It prevents the production installer
+// call from disappearing while its unit tests remain green (the source-text grep that used to guard this did
+// not prove any behavior at all).
+flow('F0 utility-door');
+await step('built HUD: quick taps and a mid-hold gun link stay put; a held 7th enters utility mode', async () => {
+  const pg = await mkPage('utilityDoor', { width: 891, height: 411 });
+  try {
+    const openHud = async () => {
+      await pg.goto(HUD + '/', { waitUntil: 'domcontentloaded' });
+      await until(async () => (await pg.locator('#frame').count()) === 1, 6000, 'HUD frame');
+    };
+    const down = () => pg.locator('#frame').dispatchEvent('pointerdown', { pointerId: 1, pointerType: 'touch', isPrimary: true });
+    const up = () => pg.locator('#frame').dispatchEvent('pointerup', { pointerId: 1, pointerType: 'touch', isPrimary: true });
+    await openHud();
+    for (let i = 0; i < 7; i++) { await down(); await up(); await sleep(40); }
+    await sleep(1600);
+    expect(!pg.url().endsWith('/utility.html'), 'seven quick contacts entered utility mode');
+
+    await openHud();
+    for (let i = 0; i < 6; i++) { await down(); await up(); await sleep(40); }
+    await down();
+    await pg.evaluate(() => { window.brx.link.connected = true; });
+    await sleep(1600);
+    expect(!pg.url().endsWith('/utility.html'), 'a gun link completed during the hold but utility mode still opened');
+
+    await openHud();
+    for (let i = 0; i < 6; i++) { await down(); await up(); await sleep(40); }
+    await down();
+    await until(() => pg.url().endsWith('/utility.html'), 3000, 'held seventh contact to enter utility mode');
+  } finally { await pg.context().close(); }
+});
+
 // ═══ F1 · MC setup: armory scan, mode select, config guards ═══
 flow('F1 mc-setup');
 await step('MC loads at ARMORY (muster)', async () => {

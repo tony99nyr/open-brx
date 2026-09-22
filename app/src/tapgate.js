@@ -20,6 +20,9 @@ export function createTapHoldGate({ taps = 7, windowMs = 3000, holdMs = 1500 } =
     /** The current contact lifted or was cancelled before the hold completed — it does not count as the trigger. */
     up() { downAt = null; },
     cancel() { downAt = null; },
+    /** Forget the current contact and every prior tap. Use when the surrounding app becomes ineligible:
+     *  a later gesture must start from zero rather than inheriting taps from an obsolete state. */
+    reset() { downAt = null; history = []; },
     /** Ask "has the current contact now been held long enough?" at time `now`. True at most once per
      *  contact (and clears the whole tap history on a true, so re-entry needs a fresh run of taps). */
     held(now) {
@@ -29,4 +32,40 @@ export function createTapHoldGate({ taps = 7, windowMs = 3000, holdMs = 1500 } =
     /** Test/diagnostic hook: how many taps (including the one currently down, if any) are in the window. */
     get tapCount() { return history.length; },
   };
+}
+
+/** Wire the pure gate to the hidden-door surface. Dependencies are explicit so the complete gesture,
+ * including cancellation and the fire-time eligibility check, is behavior-testable without booting app.js. */
+export function installTapHoldDoor({
+  stage,
+  eligible,
+  activate,
+  now = () => Date.now(),
+  setTimer = (fn, ms) => setTimeout(fn, ms),
+  clearTimer = id => clearTimeout(id),
+  holdMs = 1500,
+  releaseTarget = globalThis.window || stage,
+} = {}) {
+  const gate = createTapHoldGate({ holdMs });
+  let holdTimer = null;
+  const clearHoldTimer = () => {
+    if (holdTimer === null) return;
+    clearTimer(holdTimer);
+    holdTimer = null;
+  };
+  stage.addEventListener('pointerdown', () => {
+    clearHoldTimer();
+    if (!eligible()) { gate.reset(); return; }
+    gate.down(now());
+    holdTimer = setTimer(() => {
+      holdTimer = null;
+      if (!eligible()) { gate.reset(); return; }
+      if (gate.held(now())) activate();
+    }, holdMs);
+  }, { passive: true });
+  // A contact can leave the frame before release. Listen at the window boundary so that release still
+  // cancels the pending hold instead of letting a stale timer enter utility mode.
+  releaseTarget.addEventListener('pointerup', () => { clearHoldTimer(); gate.up(); }, { passive: true });
+  releaseTarget.addEventListener('pointercancel', () => { clearHoldTimer(); gate.cancel(); }, { passive: true });
+  releaseTarget.addEventListener('blur', () => { clearHoldTimer(); gate.reset(); }, { passive: true });
 }
