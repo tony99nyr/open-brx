@@ -1,4 +1,4 @@
-# Handoff: Open BRX — F196, F193, F192 and B22 closed; F190 confirmed stale and archived.
+# Handoff: Open BRX — F203, F196, F193, F192 and B22 closed; F190 confirmed stale and archived.
 **State as of 2026-09-22 (playtest follow-up).** **Rules for this file.** One screen. It says what is true now; history is `git log -p -- docs/HANDOFF.md`. It has
 one section per open lane. **When several sessions close together, each one overwrites only its own lane section,
 never another lane's.** (On 2026-09-18 three lanes closed on the same night and rewrote each other's sections.)
@@ -138,7 +138,7 @@ build the category-driven Mission Control picker.
 ## Start here
 
 Read [`bench-plan.md`](bench-plan.md). If Tony is at the bench, load the `bench-session` skill and run sitting 1.
-Otherwise take the first desk task, **F190's load-status ack predicate**.
+Otherwise take the next clear desk task, **S54 catalogue recoil fields** or **F202 tagger ownership picker**.
 
 ## Machine state
 

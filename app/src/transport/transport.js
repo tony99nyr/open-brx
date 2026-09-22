@@ -335,6 +335,12 @@ export class Transport {
   }
   /** @param {string|null|undefined} secret */
   _setSecret(secret) { this.secret = secret || null; if (this.secret) this._store(this._secretKey, this.secret); else this._remove(this._secretKey); }
+  /** Forget a failed MC target. The LAN target is owned by app.js; this clears the transport's
+   * persisted backhaul pair and its URL scope so a stale pub_url cannot resurrect on the next boot. */
+  clearJoinTarget() {
+    this._setPub(null); this._setSecret(null);
+    this._pubUrl = null; this._remove(this._pubUrlKey);
+  }
   /** A28.3: MC handed us a (possibly changed, possibly null) pub. `null` = the tunnel went down. A
    *  newly (or differently) learned pub is probed on the very next chance (`_kickPubRetry`), not left
    *  to wait out a stale PUB_RETRY_MS countdown — "prefer backhaul when offered" means offered NOW.

@@ -289,6 +289,7 @@ function connectMc(url, remember = true, join = {}) {
   if (transport) { try { transport.close(); } catch (_) { /* ignore */ } }
   const gun = engine.gun ? { name: engine.gun.name, tail: engine.gun.tail, fw: engine.fw || undefined } : null;
   transport = new Transport({ node: { app_ver: APP_VER }, gun, priorUtility: priorUtilityHandoff() });
+  const candidate = transport;
   // `log` is this node's own view of the sync (A25: MC shows none|offered|pulling|held per node);
   // app_ver/platform are added by the transport itself so every node type reports them (A29).
   transport.setStatusProvider(() => ({ ...engine.statusBody(preflight), log: logsync.state() }));
@@ -323,7 +324,18 @@ function connectMc(url, remember = true, join = {}) {
   // `trusted:false` (a LAN-sweep address — nobody typed or scanned it) keeps this node's takeover key
   // and the join secret off the hello until that peer proves it is MC by welcoming us.
   transport.connect({ url, pub: join.pub, secret: join.secret, trusted: join.trusted !== false })
-    .then(() => log('MC hydrated', 'lk')).catch(e => log('MC connect: ' + (e && e.message || e), 'le'));
+    .then(() => log('MC hydrated', 'lk')).catch(e => {
+      const message = e && e.message || e;
+      log('MC connect: ' + message, 'le');
+      // F203: an unreachable remembered MC must not pin the phone to two stale keys forever.
+      // Only clear a target that never welcomed, and only if this is still the active attempt;
+      // a refusal or a newer QR/discovery connect remains actionable.
+      if (transport === candidate && settings.mcUrl === url && /no welcome within/.test(String(message))) {
+        settings.mcUrl = ''; hud.mcUrl = '';
+        candidate.clearJoinTarget(); candidate.close();
+        if (!assistTimer) sweepForMc().catch(() => {});
+      }
+    });
 }
 
 // ---------- HUD handlers ----------

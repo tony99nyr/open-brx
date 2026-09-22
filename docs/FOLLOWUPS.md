@@ -79,7 +79,7 @@ right** and this index is stale. Do not cite it as evidence that something is or
 
 **Keyboard only** (tagged `build` or `decision` — no gun, no rig, no dim room):
 - 🔴 **B23** · **E5** · **F43** · **F231** · **F264** · **S10**
-- 🟠 **B4** · **B21** · **B31** · **E2** · **F12** · **F40** · **F70** · **F164** · **F182** · **F196** · **F203** · **F256** · **F260** · **F269** · **F272** · **F277** · **F280** · **F300** · **P8** · **S3** · **S14** · **S33** · **S50** · **S52** · **S53**
+- 🟠 **B4** · **B21** · **B31** · **E2** · **F12** · **F40** · **F70** · **F164** · **F182** · **F256** · **F260** · **F269** · **F272** · **F277** · **F280** · **F300** · **P8** · **S3** · **S14** · **S33** · **S50** · **S52** · **S53**
 - 🟡 **B1** · **B8** · **B14** · **B17** · **B18b** · **D1** · **D3** · **E3** · **E4** · **E6** · **F5** · **F16** · **F20** · **F24** · **F25** · **F42** · **F60** · **F68** · **F88** · **F95** · **F108** · **F109** · **F112** · **F113** · **F123** · **F126** · **F128** · **F130** · **F132** · **F133** · **F161** · **F176** · **F177** · **F178** · **F186** · **F187** · **F190** · **F191** · **F192** · **F193** · **F202** · **F221** · **F223** · **F229** · **F233** · **F249** · **F251** · **F266** · **F267** · **F268** · **F270** · **F281** · **F284** · **F289** · **H1** · **H2** · **H6** · **H8** · **K2** · **Q12′** · **Q13** · **R3** · **S1** · **S2** · **S6** · **S7** · **S-A12** · **S13** · **S25** · **S27** · **S28** · **S29** · **S30** · **S31** · **S32** · **S34** · **S35** · **S36** · **S42** · **S43** · **S46** · **S47** · **S48** · **S49** · **S51** · **S54**
 - 🟢 **B11** · **B22** · ⬜ **D5** · **E7** · **F14** · **F17** · **F18** · **F19** · **F32** · **F52** · **F83** · **F87** · **F89** · **F93** · **F98** · **F99** · **F100** · **F107** · **F204** · **F224** · **F250** · **F252** · **F273** · ⬜ **H3** · ⬜ **H4** · ⬜ **H5** · ⬜ **K6** · ⬜ **K8** · **P14** · **R2** · **S19**
 
@@ -1115,11 +1115,6 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   and both just reconnect the gun the phone already has (`brx.engine` -> `gun` in the saved blob); nothing in the
   UI clears it. Workaround: power the old tagger off so it stops advertising, forcing a fresh pick. (filed
   2026-09-13 from archive/HANDOFF-gset-t2-2026-09-13.md §3) `build`.
-- **F203 🟠** a phone keeps its Mission Control address in TWO keys (`brx.mc_url`, `brx.pub_url`), and an
-  unreachable one survives an app upgrade. Both phones in the field 2026-09-13 held a stale WSL NAT address
-  neither could reach, and had silently fallen back to sweeping whole subnets. The boot warning shipped the same
-  day tells the OPERATOR the server is advertising something unreachable, but it cannot clear a bad address a
-  PHONE has already saved. (filed 2026-09-13 from archive/HANDOFF-gset-t2-2026-09-13.md §3) `build`. **→ SECOND FIELD SIGHTING 2026-09-13 evening:** a phone opened the session on a remembered `ws://192.168.0.55:8766/ws`, failed five reconnects and a `no welcome within 10000 ms` over 14 s, and was rescued only by a QR scan to `…0.171`. `game-test-2026-09-13.md` C3.
 - **F204 🟢** nothing on the wire reports headset battery level or link quality. Checked 2026-09-13: no protocol
   field carries it, and the phone exposes no headset health of any kind. A weak or dying headset can only be
   observed by a player, never measured or surfaced by MC. (filed 2026-09-13 from archive/HANDOFF-gset-t2-2026-09-13.md §3)

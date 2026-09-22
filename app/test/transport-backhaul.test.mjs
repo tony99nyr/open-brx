@@ -331,6 +331,22 @@ test('A28.2: pub/secret are session-scoped -- a session change (new session_id) 
   t2.close();
 });
 
+test('F203: clearing a failed MC target removes the persisted pub URL scope too', () => {
+  const store = memoryStorage();
+  store.setItem('brx.pub', 'wss://stale.example/ws');
+  store.setItem('brx.secret', 'stale-secret');
+  store.setItem('brx.pub_url', 'ws://192.168.0.55:8766/ws');
+  const t = new Transport({ storage: store, wsFactory: () => { throw new Error('unused'); } });
+  assert.equal(t.pub, 'wss://stale.example/ws');
+  t.clearJoinTarget();
+  assert.equal(t.pub, null);
+  assert.equal(t.secret, null);
+  assert.equal(store.getItem('brx.pub_url'), null);
+  assert.equal(store.getItem('brx.pub'), null);
+  assert.equal(store.getItem('brx.secret'), null);
+  t.close();
+});
+
 test('A28.3: a hard refusal (4003 in use / 4001 version) over the backhaul dial is terminal, not a LAN fallback', async ctx => {
   const advance = useClock(ctx);
   const { sockets, wsFactory } = factory();

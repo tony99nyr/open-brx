@@ -251,8 +251,8 @@ test('F153c guard: ONE coalesced entry point for the network-came-back signal', 
 
 test('security guard: a SUGGESTED address persists only once it binds us; a USER-PROVIDED one persists at the dial', () => {
   const src = readFileSync(APP_JS, 'utf8');
-  const writes = [...src.matchAll(/settings\.mcUrl\s*=/g)];
-  assert.equal(writes.length, 2, 'two write sites and no more: the user-provided dial, and the bind');
+  const writes = [...src.matchAll(/settings\.mcUrl\s*=\s*[^=]/g)];
+  assert.equal(writes.length, 3, 'user dial, successful bind, and failed-target clearing');
 
   // 1. the dial-time write is gated on `remember`, which only a user-provided address gets
   const connect = src.indexOf('function connectMc(');
@@ -273,6 +273,8 @@ test('security guard: a SUGGESTED address persists only once it binds us; a USER
     'the second write is in the bound branch');
   assert.match(src.slice(writes[1].index, writes[1].index + 60), /settings\.mcUrl = transport\.url/,
     'and it remembers the url that actually bound us, not whatever was dialled');
+  assert.match(src.slice(writes[2].index - 260, writes[2].index + 220), /no welcome within/,
+    'an unreachable remembered target is cleared only after the initial welcome timeout');
 
   // 4. the user-provided callers really do ask to be remembered
   const qr = src.slice(src.indexOf('QR scanned — connecting'), src.indexOf('QR scanned — connecting') + 240);
