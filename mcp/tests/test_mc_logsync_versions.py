@@ -34,6 +34,15 @@ def test_repo_app_version_covers_every_weapon_runtime_minimum():
         f"app {raw} cannot satisfy weapon minimums {requirements}"
 
 
+def test_hidden_dual_emitter_still_gates_old_victim():
+    """Hidden/custom roster rows still carry victim-side feature floors."""
+    from brx_mcp.mc.compile import default_compiler
+    s, _net, _clock, ps = mk(1, compiler=default_compiler())
+    s.players[ps[0]["player_id"]]["loadout"] = {"weapons": [{"weapon_id": "plasma_sniper"}]}
+    blockers = s._weapon_app_blockers({"app_ver": "0.4.4"})
+    assert any("PLASMA SNIPER" in b for b in blockers)
+
+
 def mk(n_players=2, compiler=None):
     clock = {"t": T0}
     net = FakeNet()

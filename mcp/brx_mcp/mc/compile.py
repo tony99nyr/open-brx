@@ -1136,6 +1136,10 @@ class WeaponCatalog:
         as contracts §3 Weapon shape."""
         return [self._to_weapon(w) for w in self._rows if not w.get("hidden")]
 
+    def app_requirements(self) -> list[dict]:
+        """Raw feature floors, including hidden weapons kept in saved/custom rosters."""
+        return [w for w in self._rows if w.get("min_app")]
+
     def _row(self, weapon_id: str) -> dict:
         if weapon_id not in self._by_id:
             raise KeyError(f"unknown weapon_id {weapon_id!r}")
