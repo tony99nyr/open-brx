@@ -611,6 +611,8 @@ export interface FrameBundle {
   /** A17: {rekey: bool, cells{weapon_id: "p,s"}, classes{"p,s": family}, shared[families sharing a cell],
    *  material[roles]} -- what the UI/console shows for "what does a hit sound like", and what a bench probe reads. */
   hit_audio?: Record<string, unknown>;
+  /** physical gun/headset word pairs for node-side accuracy grouping */
+  dual_emitters?: Record<string, unknown>[];
   /** S16: IR protocol (a string key: JSON has no integer keys) -> tick numbers,
    *  for every damage-over-time weapon in THIS GAME. Absent = no such weapon. */
   dot?: Record<string, DotSpec>;
@@ -649,6 +651,8 @@ export interface Weapon {
   crit_pct?: number;
   /** victim-side runtime floor, declared beside the mechanic that needs it */
   min_app?: string;
+  /** one trigger emits separate gun and headset words */
+  dual_emitter?: boolean;
 }
 
 export interface WeaponBars {
@@ -675,6 +679,8 @@ export interface WeaponView {
   rpm: number | null;
   rng: number | null;
   dmg_per_hit: number | null;
+  /** one trigger can emit separate gun and headset words */
+  dual_emitter?: boolean;
   /** older MC rows predate host-pool ranking; the current producer always fills it */
   pool?: number;
   verified: boolean;
@@ -787,8 +793,7 @@ export interface Event {
   dmg?: number;
   ir_proto?: number;
   ir_subtype?: number;
-  /** Node-assigned physical trigger group; dual-emitter words share one group for accuracy. */
-  shot_group?: number;
+  shot_group?: number | string;
   /** $HIR tok1 — WHICH sensor caught the shot. 0-3 are ALL HEADSET sensors (the headset carries
    *  FOUR, operator-confirmed 2026-09-01; only 0 = front and 1 = back are bench-mapped), 4 = gun
    *  body. Forwarded 2026-09-01: it was parsed on the phone and dropped, so a
