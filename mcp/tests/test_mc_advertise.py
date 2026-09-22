@@ -7,6 +7,7 @@ No pytest fixtures here: `run_tests.py` (the system-Python gate, F42) calls each
 arguments, so every patch below is manual save/restore in a try/finally, same convention as
 `test_mc_netinfo.py`."""
 import argparse
+import asyncio
 import io
 import os
 import contextlib
@@ -15,6 +16,7 @@ import tempfile
 
 from brx_mcp.mc import __main__ as M
 from brx_mcp.mc import netinfo as N
+from brx_mcp.mc import net as net_module
 
 
 def test_check_advertise_rejects_urls_and_paths():
@@ -62,10 +64,8 @@ class _Env:
 def test_build_advertises_the_override_ip_without_touching_bind():
     """The whole point: `session.lan['ip']` and what the net layer actually hands out (`join_info` --
     the thing `advertise_mdns`/the QR read) follow `--advertise`, and nothing about `--host` (what the
-    real bind would use) is read from it. (`session.lan['ws_url']` itself is NOT asserted here: with
-    `--fake-net`, `Session._attach_net` snapshots `net.join_info()` at construction time -- before
-    `build()` ever calls `net.start()` -- so it is stale at "ws://0.0.0.0:0/ws" for EVERY `--fake-net`
-    run regardless of `--advertise`, a pre-existing gap unrelated to T3-A; see the report.)"""
+    real bind would use) is read from it. The synchronous fake transport refreshes the session URL after
+    `start()`, while the real transport refreshes it from its bound `join_info()` in the startup task."""
     real_is_wsl = N.is_wsl
     try:
         N.is_wsl = lambda: True   # would warn if NOT overridden
@@ -77,6 +77,55 @@ def test_build_advertises_the_override_ip_without_touching_bind():
     assert net.join_info()["url"].startswith("ws://203.0.113.9:")
     assert net.host == "203.0.113.9", "the fake net's own host, set by build()'s net.start(ip, ...)"
     assert session.lan["warning"] is None, "an explicit --advertise means nothing left to warn about"
+
+
+def test_build_refreshes_session_join_url_after_fake_net_starts():
+    """The session is constructed before the in-memory transport starts, so its join URL must be
+    refreshed after ``FakeNet.start`` or the console's QR keeps the pre-start 0.0.0.0:0 address."""
+    with _Env():
+        session, net, extra = M.build(_args(host="127.0.0.1", ws_port=8766))
+
+    expected = "ws://127.0.0.1:8766/ws"
+    assert net.join_info()["url"] == expected
+    assert session.lan["ws_url"] == expected
+    assert session.lan["qr"].startswith(expected + "?s=")
+
+
+def test_real_net_start_refreshes_join_url_inside_startup_coroutine():
+    """The async transport path must refresh the QR from its post-bind join info too."""
+    class StubNet(net_module.NetServer):
+        def __init__(self):
+            super().__init__()
+            self._port = 0
+            self._url = "ws://0.0.0.0:0/ws"
+
+        @property
+        def port(self):
+            return self._port
+
+        async def start(self, bind, port, path, *, advertise_host=None):
+            self._port = 9876
+            self._url = f"ws://{advertise_host or bind}:9876{path}"
+
+        def join_info(self):
+            return {"url": self._url}
+
+        def advertise_mdns(self):
+            return False
+
+        def abort_mdns(self):
+            pass
+
+    original = net_module.NetServer
+    net_module.NetServer = StubNet
+    try:
+        with _Env():
+            session, net, extra = M.build(_args(fake_net=False, host="127.0.0.1", ws_port=8766))
+            asyncio.run(extra[0]())
+    finally:
+        net_module.NetServer = original
+    assert session.lan["ws_url"] == "ws://127.0.0.1:9876/ws"
+    assert session.lan["qr"].startswith("ws://127.0.0.1:9876/ws?s=")
 
 
 def test_build_prints_the_loud_warning_on_wsl_with_no_override():

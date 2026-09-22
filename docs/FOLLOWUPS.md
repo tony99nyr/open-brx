@@ -1108,8 +1108,6 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
 - **F190 🟡** `LoadStatus` counts acks by `ok` while `pushGate` uses the stricter config-id-current test; unify. `build`.
 - **F191 🟡** should a standing WSL banner displace other alerts in the shared header? Fixed in the e2e boots, not in
   `CommandBar`. A product decision; low field risk. `decision`.
-- **F192 🟡** PRE-EXISTING, reproduced on unmodified main: the session reads its net join info at construction, before
-  the net starts, so any `--fake-net` run leaves the advertised URL and QR stale for the whole run. `build`.
 - **F198 🔴 Needs Tony at the bench** the reflection theory behind `$GSET` t2 is untested and may INVERT the
   current fix. Reading: low sensitivity (t2=1) may be deliberate for INDOOR play, rejecting bounced/reflected
   shots off walls and ceilings, in which case the right end state is `indoor -> t2=1, outdoor -> t2=0` — the

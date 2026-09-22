@@ -278,6 +278,14 @@ def build(args):
         extra.append(_start_net)
     else:
         net.start(ip, args.ws_port, "/ws")
+        # Session construction attaches the net before a synchronous transport has started, so its
+        # initial join_info() still contains the pre-bind host/port (notably 0.0.0.0:0 on FakeNet).
+        # Refresh the bare URL now that the transport owns its real advertised endpoint; set_ws_url
+        # also re-derives the QR and keeps the join secret in sync.
+        try:
+            session.set_ws_url(net.join_info().get("url") or ws_url)
+        except Exception as e:  # pragma: no cover - defensive for third-party net implementations
+            log.warning("join_info after sync net start: %s", e)
         if getattr(args, "tunnel", False):
             # --fake-net has no socket to expose, so --tunnel has nothing to do. SAY so: a flag that is
             # silently ignored is the shape of half the bugs in this repo's history.

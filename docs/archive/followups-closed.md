@@ -541,3 +541,8 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
 
 - 2026-09-22 **F193** the Mission Control mock imports one shared warning constant, and the rendered MC test
   compares it exactly with the server's `WSL_UNREACHABLE_WARNING`. The MC reach suite (22/22) and netinfo suite (17/17) pass.
+
+# Closed 2026-09-22: fake-net join refresh
+
+- 2026-09-22 **F192** synchronous `FakeNet.start()` and the real async startup now refresh the session's URL
+  and QR from post-bind `join_info`, eliminating the stale `0.0.0.0:0` join address. The focused advertise suite passes 10/10.
