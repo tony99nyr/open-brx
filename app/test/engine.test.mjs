@@ -3990,6 +3990,41 @@ test('a swap the gun never confirms is assumed done at the window; a link drop c
   h.frame('$BUT,1,1,*'); assert.equal(h.eng.state().switching, true);
   h.eng.onBleDropped(); assert.equal(h.eng.state().switching, false);
 });
+test('playtest 2026-09-20: spawn and respawn publish the active slot ammo before any trigger or ammo report', () => {
+  const h = harness();
+  h.player.loadout = { weapons: [{ weapon_id: 'shotgun' }, { weapon_id: 'charge_rifle' }] };
+  h.bundle.spawn = [
+    ...h.bundle.spawn.filter(f => !f.startsWith('$AMMO,')),
+    '$AMMO,0,6,24,1,*', '$AMMO,1,40,80,1,*',
+  ];
+  h.kit().config_().echo();
+  h.eng.ammo = 99; h.eng.reserve = 199; h.eng.mag = 99;   // stale values from the prior match/life
+  h.start(0); h.eng.tick();
+  assert.deepEqual([h.eng.state().ammo, h.eng.state().reserve, h.eng.state().mag], [6, 24, 6],
+    'T-0 must show the fresh primary without waiting for a trigger or $ALCD');
+
+  h.eng.ammo = 3; h.eng.reserve = 7; h.eng.mag = 40;      // the secondary was active when this life ended
+  h.eng._death(false);
+  h.adv(h.eng.respawnDelayMs); h.eng.tick();
+  assert.deepEqual([h.eng.state().ammo, h.eng.state().reserve, h.eng.state().mag], [6, 24, 6],
+    'respawn must immediately restore the fresh primary display without inheriting the prior slot');
+});
+test('playtest 2026-09-20: an unconfirmed swap publishes the destination slot counts, not the old weapon ammo', () => {
+  const h = harness();
+  h.player.loadout = { weapons: [{ weapon_id: 'shotgun' }, { weapon_id: 'charge_rifle' }] };
+  h.bundle.spawn = [
+    ...h.bundle.spawn.filter(f => !f.startsWith('$AMMO,')),
+    '$AMMO,0,6,24,1,*', '$AMMO,1,40,80,1,*',
+  ];
+  h.kit().config_().echo().start(0); h.eng.tick();
+  h.frame('$ALCD,6,100,0,24,0,*');
+  h.frame('$BUT,1,1,*');
+  h.adv(h.eng.switchWindowMs() + 1); h.eng.tick();
+  const st = h.eng.state();
+  assert.equal(st.activeSlot, 1, 'pre-condition: the silent swap is assumed complete');
+  assert.deepEqual([st.ammo, st.reserve, st.mag], [40, 80, 40],
+    'the Charge Rifle must open full; retaining the Shotgun 6/24 produces the false recharge warning seen in the playtest');
+});
 
 // ── A16 (led-language.md §3.1): a hit paints the readout, not a burst; death/revive gun bursts are ──
 // gone by design (the killing hit's native flash + the hands-off window own death; the readout paint IS
