@@ -4241,14 +4241,22 @@ test('the bundle\'s swap_ms is the SWITCHING window; without it the node assumes
 
 // ---------- utility items: scanner respawn at a station (docs/spec/utility.md §4) ----------
 function stationEntry(o = {}) { return { role: 'station', id: 5, kind: 'respawn', team: 1, state: 1, value: 0, seq: 0, game: 0, threshold: -60, rssi: -50, raw: -50, present: true, ...o }; }
-function scannerHarness(gate) {
+function scannerHarness(gate, autoTeams = []) {
   const h = harness({ respawn: 'scanner' });
   if (gate) h.config.respawn.gate = gate;
+  h.config.respawn_auto_teams = autoTeams;
   h.kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame('$HP,0,0,0,*');
   assert.equal(h.eng.alive, false, 'precondition: dead');
   return h;
 }
+
+test('scanner: a team without an assigned station uses the configured timed fallback', () => {
+  const h = scannerHarness(null, [1]);
+  h.adv(8000); h.eng.tick();
+  assert.equal(h.eng.alive, true, 'the uncovered team must not stay down forever');
+  assert.ok(h.facts.some(f => f.type === 'respawn'), 'the fallback is a normal respawn fact');
+});
 
 test('scanner + trigger gate: dead past the delay, at own-team station, trigger pull → revive with the station id', () => {
   const h = scannerHarness();

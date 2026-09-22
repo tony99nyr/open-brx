@@ -1082,6 +1082,7 @@ export class Engine {
    *  way (a stored preset, the demo, the stage) spawned at exactly that, inside the headset relay's out-blink wedge. */
   get respawnDelayMs() { const s = this.config && this.config.respawn && this.config.respawn.delay_s; return Math.max(MIN_RESPAWN_S, s > 0 ? s : 10) * 1000; }
   get respawnType() { return (this.config && this.config.respawn && this.config.respawn.type) || 'auto'; }
+  get respawnAutoTeams() { return Array.isArray(this.config && this.config.respawn_auto_teams) ? this.config.respawn_auto_teams : []; }
   /** F15: the host-driven stun is ON when the config carries a `stun` object (`{duration_s}`); a proto-8 `$HIR` is
    *  otherwise an ordinary hit (the stock `<8,0>` row is the charge rifle's plain damage) and must disarm nothing. */
   get stunEnabled() { return !!(this.config && this.config.stun && typeof this.config.stun === 'object'); }
@@ -2848,7 +2849,8 @@ export class Engine {
           if (prev > ms && left <= ms && !this.cuesFired.has(k)) { this.cuesFired.add(k); this._event(k); this.moment = { kind: 'alert', at: now, data: { kind: k, text: k === 'time_60' ? 'ONE MINUTE LEFT' : k === 'time_30' ? '30 SECONDS' : '10 SECONDS' } }; }
         }
       }
-      if (!this.alive && this.deadAt && this.respawnType === 'auto' && now - this.deadAt >= this.respawnDelayMs && this.bleUp && !this.resync && !this.reconciling) {
+      const scannerAuto = this.respawnType === 'scanner' && this.team && this.respawnAutoTeams.includes(this.team.tid);
+      if (!this.alive && this.deadAt && (this.respawnType === 'auto' || scannerAuto) && now - this.deadAt >= this.respawnDelayMs && this.bleUp && !this.resync && !this.reconciling) {
         const rs = !!this._resyncRevive; this._resyncRevive = false; this._revive(rs);   // §3.10: a resync re-arm is flagged respawn{resync:true}
       }
       // utility.md §4: a scanner respawn with the presence gate revives the moment the player has dwelt at

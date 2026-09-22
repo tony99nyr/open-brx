@@ -2572,9 +2572,17 @@ class Session:
         armed for this game (contracts A13.1). Never written into `self.config` -- it is derived, and the
         operator does not edit it."""
         ids = self._station_ids()
-        if not ids:
+        cfg = self.config
+        if (cfg.get("respawn") or {}).get("type") == "scanner":
+            assigned = [a for st in self.stations.values() if (a := st.get("assigned")) and a.get("kind") == "respawn"]
+            if assigned and not any(a.get("team") == STATION_TEAM_ANY for a in assigned):
+                covered = {a.get("team") for a in assigned}
+                auto = [int(t["tid"]) for t in (cfg.get("teams") or []) if isinstance(t.get("tid"), int) and t["tid"] not in covered]
+                if auto:
+                    cfg = {**cfg, "respawn_auto_teams": auto}
+        if not ids and cfg is self.config:
             return self.config
-        return {**self.config, "stations": ids}
+        return {**cfg, **({"stations": ids} if ids else {})}
 
     def _station_warnings(self) -> list[str]:
         """What the objective / respawn rules need on the FIELD that the ITEMS panel has not assigned.
@@ -2599,8 +2607,8 @@ class Session:
                            for t in teams if isinstance(t.get("tid"), int) and t["tid"] not in covered]
                 if missing:
                     out.append("SETUP: SCANNER RESPAWN HAS NO STATION FOR " + ", ".join(missing).upper()
-                               + " — assign another RESPAWN station or change respawn to AUTO; those players "
-                               "will otherwise stay down")
+                               + " — those players use timed AUTO respawn; assign another RESPAWN station if you "
+                               "want station respawn for both teams")
         return out
 
     def set_station(self, nid: str, a: dict) -> StationView:
@@ -5053,8 +5061,10 @@ class Session:
         present = {w.get("weapon_id")
                    for p in self.players.values()
                    for w in ((p.get("loadout") or {}).get("weapons") or [])}
+        catalog = getattr(self.compiler, "catalog", None)
+        raw_requirements = catalog.app_requirements() if catalog is not None else self.compiler.weapon_catalog()
         requirements = {w["weapon_id"]: (parse_app_ver(w.get("min_app")), w.get("name") or w["weapon_id"])
-                        for w in self.compiler.weapon_catalog() if w.get("min_app")}
+                        for w in raw_requirements if w.get("min_app")}
         have = parse_app_ver(nv.get("app_ver"))
         if have is None:
             return []  # the existing version-unknown path is amber here and a hard refusal at START

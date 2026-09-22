@@ -21,7 +21,7 @@ const KNOWN_SETUP_LINES: Array<{ test: RegExp; line: string }> = [
   { test: /CONTROL POINT IS A PHONE/i, line: 'The control point is a phone. Open the app in the utility role as CONTROL, confirm it shows MC-armed for this game, leave its screen awake, and check its battery. Do not power-cycle it once armed.' },
   { test: /NO CONTROL-POINT PHONE/i, line: "No control-point phone is assigned. This game's objective is a phone, so assign a utility phone as CONTROL in ITEMS and arm it, or nothing on the field is the hill." },
   { test: /NO RESPAWN STATION/i, line: 'No respawn station is assigned. Respawn is set to scanner, so a downed player can only come back at a station. Assign a utility phone as RESPAWN in ITEMS and arm it.' },
-  { test: /SCANNER RESPAWN HAS NO STATION FOR/i, line: 'Scanner respawn has no station for this team. Assign another RESPAWN station or change respawn to AUTO; players on that team will otherwise stay down.' },
+  { test: /SCANNER RESPAWN HAS NO STATION FOR\s+(.+?)\s+—/i, line: 'Scanner respawn has no station for $1. Those players use timed AUTO respawn; assign another RESPAWN station if you want station respawn for both teams.' },
 ];
 
 /** `SETUP: ...` -> a short, sentence-case, id-free line. Exported for the unit test that proves the
@@ -29,7 +29,10 @@ const KNOWN_SETUP_LINES: Array<{ test: RegExp; line: string }> = [
 export function friendlySetupLine(raw: string): string {
   const body = raw.replace(/^SETUP:\s*/i, '');
   const known = KNOWN_SETUP_LINES.find(e => e.test.test(body));
-  if (known) return known.line;
+  if (known) {
+    const m = body.match(known.test);
+    return known.line.replace('$1', m?.[1] ?? 'this team');
+  }
   // Fallback for a `SETUP:` body not yet on the list above: drop a trailing internal id like
   // "(F88: ...)", stop shouting, and turn the em dash into a full stop rather than showing it raw.
   const stripped = body.replace(/\s*\([A-Z]\d+:[^)]*\)\s*$/, '').replace(/\s*—\s*/g, '. ');

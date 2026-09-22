@@ -447,6 +447,8 @@ export interface GameConfigBase {
    *  operator; a player phone honours only these ids (`engine.js _stationAllowed`) --
    *  and when the list is ABSENT (nothing assigned) it honours ANY station (the hand-armed fallback). */
   stations?: StationRef[];
+  /** Derived scanner fallback: teams without a station use timed AUTO respawn. */
+  respawn_auto_teams?: number[];
   /** F70: what is emitting this game's objective -- `STATION_SOURCES` above
    *  ("grenade" = a BRX Smart Grenade in hill mode, "ir_station" = a
    *  $CAPTURE-speaking station). Present only for the modes that need one
@@ -513,6 +515,7 @@ export interface GameConfig {
   player_num_base?: number;
   siphon?: Siphon;
   stations?: StationRef[];
+  respawn_auto_teams?: number[];
   station_source?: string;
   presentation?: Record<string, unknown>;
   hit_audio_class?: boolean;
@@ -543,6 +546,7 @@ export interface ConfigView {
   player_num_base?: number;
   siphon?: Siphon;
   stations?: StationRef[];
+  respawn_auto_teams?: number[];
   station_source?: string;
   presentation?: Record<string, unknown>;
   hit_audio_class?: boolean;
