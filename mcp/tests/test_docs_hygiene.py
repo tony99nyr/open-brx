@@ -16,6 +16,7 @@ No pytest: plain test_* functions, run by run_tests.py under the system python.
 from __future__ import annotations
 
 import datetime as _dt
+import hashlib
 import pathlib
 import re
 import subprocess
@@ -31,6 +32,19 @@ HANDOFF = DOCS / "HANDOFF.md"
 # pattern itself is not a hit.
 _STICKER = re.compile("R" + "0B" + r"[A-Z0-9]{2}\b")
 _TEXT_SUFFIXES = {".md", ".py", ".ts", ".tsx", ".js", ".mjs", ".json", ".txt", ".toml", ".yml", ".yaml", ".html", ".css", ".svg"}
+
+# R4: exact stock-image identities. Facts only; the binaries stay outside the repository.
+_STOCK_IMAGE_HASHES = {
+    "c5ba9df7b93f3e5cec262269157483f0dc5a53b572c3c3d802606d541d49c889": "tagger 2.01U",
+    "8772ccdb5cebe86d14a6eaf85e9933f0b17dc18e7286e5cb9a10f9e154b40f37": "tagger 2.02c",
+    "d95962f121762a0c61b383edb8fb243df5504407c86b1c3ba46ab79e6eeaf110": "tagger 2.02e",
+    "9a68848a1f77aae7a9d5ecd97e57cd10dc074793f4a8684b171bd708fa421d77": "tagger 2.08b",
+    "cf92f690325d4bc320e0137a2b153e653cab4648bb5038511f61820c57c050e1": "tagger 4.32",
+    "9cd08de7257ae97b45f4eac1e8d304bbfebbc0730bc147024ba9507a610903ef": "headset 1.27",
+    "3818d52a3c06593e809e2727dd01bfb394fbe9e5061bbddd0bb6f7c7390adf6a": "headset 1.34",
+    "9d3ea47f33bfb0c9707fa41d6ecf8719bd57bd5d29a62e0af4edb4df1b6391b1": "BRX audio update v5 to v6",
+}
+_STOCK_IMAGE_SIZES = {193824, 190960, 191024, 170284, 190372, 65392, 56884, 21642062}
 
 
 def _git(*args: str) -> str | None:
@@ -55,6 +69,42 @@ def _tracked_files() -> list[pathlib.Path]:
     if listing is None:
         raise Skipped("git")
     return [REPO / p for p in dict.fromkeys(listing.split("\n")) if p]
+
+
+def _forbidden_hash_hits(files: list[pathlib.Path], forbidden: dict[str, str], sizes: set[int] | None = None) -> list[str]:
+    hits = []
+    for path in files:
+        if not path.is_file():
+            continue
+        try:
+            if sizes is not None and path.stat().st_size not in sizes:
+                continue
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError:
+            continue
+        if digest in forbidden:
+            hits.append(f"{path}: {forbidden[digest]}")
+    return hits
+
+
+def test_no_stock_firmware_or_ltp_file_is_waiting_to_be_committed():
+    # Cached + untracked/non-ignored: a renamed `firmware.dat` must fail BEFORE it is staged. Ignored
+    # .bin/.LTP files disappear from the untracked half but reappear here if somebody force-adds one.
+    files = _tracked_files()
+    extensions = [str(path.relative_to(REPO)) for path in files if path.suffix.lower() in {".bin", ".ltp"}]
+    hashes = _forbidden_hash_hits(files, _STOCK_IMAGE_HASHES, _STOCK_IMAGE_SIZES)
+    assert not extensions, "firmware/audio files belong outside the repo: " + ", ".join(extensions[:20])
+    assert not hashes, "stock firmware image content belongs outside the repo: " + ", ".join(hashes[:20])
+
+
+def test_the_stock_image_hash_guard_can_detect_renamed_content():
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        disguised = pathlib.Path(td) / "harmless.dat"
+        disguised.write_bytes(b"stock-image-guard-control")
+        digest = hashlib.sha256(disguised.read_bytes()).hexdigest()
+        hits = _forbidden_hash_hits([disguised], {digest: "control image"})
+    assert hits and hits[0].endswith(": control image"), "hash guard missed renamed forbidden content"
 
 
 def test_no_headset_sticker_id_in_tracked_files():

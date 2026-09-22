@@ -45,8 +45,10 @@ proved, and that every lane builds on:
 Screamers are Tony's P0. Levers session 1 ran in three sittings; its remainder is bench-plan sitting 2.
 Screamers Phase A has run A1 and A2 only.
 
-- **Next desk task:** **F272**, the lock-up detector on the phone and in MC. F271's confirmed `$QUERY`
-  player/team/pool read-back is built; F300 holds the still-undecoded sound/gyro/per-slot remainder.
+- **Next desk task:** **R4/T2 screamers**, the P0 code-read of `$DPLAY`, the serial receive buffer, split frames
+  and `$*` in the stock v4.32 image. T1 is complete: 128 names across seven versions, six protocol gaps routed to
+  F301-F306, and no firmware content in the repo. Then **F272**, the phone/MC lock-up detector; F300 holds the
+  still-undecoded `$QUERY` sound/gyro/per-slot remainder.
 - **Next bench task:** bench-plan sitting 1, screamers Phase A transport half (one gun, a laptop, about 55 min).
   Nothing blocks it. Its A7/A8 numbers unblock **F269** (turn the block pause on) and the Phase B rules.
 - **Blocked:** Phase C on the A7/A8 numbers; Phase E on F272; Phase D on the Phase B rules.

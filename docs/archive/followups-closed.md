@@ -444,9 +444,9 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
   serialized BLE queue, and releases its re-arm burst only for the probe's positive `$HP` inside 1.5 s. Dead,
   silent, expired, pre-send and cancelled paths write no burst and report a truthful refusal to Mission Control.
 
-# Closed 2026-09-22: phone-visible gun-health verdict
+# Closed 2026-09-21: phone-visible gun-health verdict
 
-- 2026-09-22 **F288** the live phone HUD now renders `poolStale.why === 'no_fire'` and the conclusive
+- 2026-09-21 **F288** the live phone HUD now renders `poolStale.why === 'no_fire'` and the conclusive
   `cure.verdict === 'no_answer'`, with the latter naming FORCE RESPAWN or relink. The compact alert owns its lane
   over lower-priority chips, remains readable at the smallest phone size and at night, and yields to gun-link,
   flap and relink controls. Recovery removes the warning and restores the ordinary chip lane.

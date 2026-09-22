@@ -53,3 +53,7 @@ node_modules
 .venv
 .test-all.lock*
 .pytest_cache/
+# Stock firmware and sound-bank files are private inputs, never repository content (R4).
+*.bin
+*.LTP
+*.ltp

@@ -99,6 +99,7 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 | Fact | Canonical home |
 |---|---|
 | Serial command reference (framing, tables, `$SIR`, `$WEAP`, safe testing) | [`../protocol/brx-protocol.md`](../protocol/brx-protocol.md) |
+| Stock firmware `$` vocabulary by tagger/headset version (code-derived, not bench proof) | [`reference/firmware-commands.md`](reference/firmware-commands.md) |
 | Dated session findings + retracted readings (2026-08) | [`../protocol/session-findings-2026-08.md`](../protocol/session-findings-2026-08.md) |
 | IR shot protocol + station words | [`../protocol/brx-ir-protocol.md`](../protocol/brx-ir-protocol.md) |
 | `$GSET`/`$WEAP`/`$PSET` field maps, modes, grenade (APK teardown) | [`../protocol/callsign-extract/`](../protocol/callsign-extract/) |

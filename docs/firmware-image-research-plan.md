@@ -1,6 +1,6 @@
 # Plan: research with the stock firmware images (R4)
 
-Status: plan only, 2026-09-19. Nothing here is built yet. Follow-up id: **R4** in `FOLLOWUPS.md`.
+Status: T1 complete 2026-09-21; T2 (screamers) is next. Follow-up id: **R4** in `FOLLOWUPS.md`.
 
 ## What we have
 
@@ -16,14 +16,17 @@ A member of the BRX Facebook group posted a Google Drive folder called `Firmware
 | `BCgunV2_01U.bin` | 2019-02-16 | tagger, v2.01U | `c5ba9df7b93f3e5c` |
 | `Headset/LTPV2headV1_34.bin` | 2020-01-07 | headset, v1.34 | `3818d52a3c06593e` |
 | `Headset/LTPV2headV1_27.bin` | 2019-02-16 | headset, v1.27 | `9cd08de7257ae97b` |
-| `BRX audio update v5 to v6.zip` | 2023-12-15 | 213 `.LTP` sound files | not hashed yet |
+| `BRX audio update v5 to v6.zip` | 2023-12-15 | 213 `.LTP` sound files | `9d3ea47f33bfb0c9` |
 
 The first quick pass (strings only, no disassembly) found:
 
 - The images are ARM Cortex-M code. An 8-byte header comes before a normal vector table. The v4.32 strings name
   the radio as "NRF52 v1 retail" and "NRF52 v2 retail", so the chip is almost certainly a Nordic nRF52.
-- The v4.32 tagger image holds 103 distinct `$` command names. Three of them are in neither
-  `protocol/brx-protocol.md` nor `mcp/brx_mcp/protocol.py`: `$CLEARDE`, `$FREE` and `$YIYH`.
+- The first `strings` pass reported 103 distinct `$` command names, but that tool's four-character floor silently
+  omitted short real names such as `$AS` and `$SP`. T1's byte-level bounded scan finds 111 command-shaped names
+  in v4.32. Treat this as firmware vocabulary, not proof that every name is an inbound dispatcher entry.
+- The image spells the earlier quick-pass `$CLEARDE` finding as `$CLEARDEVICE`; `$FREE` is also present. `$YIYH`
+  does not survive the bounded scan and was a false positive from an unbounded surrounding string.
 - The v1.34 headset image holds its own command set, which includes `$ZOM`, `$ZON`, `$ZOFF`, `$ZTOG`, `$BOOM`,
   `$SGREN`, `$HLOOP` and `$VERSION`. We have never mapped the headset's own command set.
 
@@ -55,6 +58,10 @@ read in the code before it goes to the bench.
 Each track names its output and the model size for the agent that does it.
 
 ### T1. The command inventory (desk, 1 hour, small model)
+
+**Complete 2026-09-21.** The extractor is `mcp/tools/fw_commands.py`; the 128-name, seven-version table is
+[`reference/firmware-commands.md`](reference/firmware-commands.md). Six protocol gaps are F301-F306. No command
+was sent. The scan also corrected the quick-pass 103 count and its `$CLEARDE`/`$YIYH` false readings above.
 
 Write `mcp/tools/fw_commands.py`. The script takes an image path in `argv`, never a repo path, and prints the
 `$` command names it finds. Run it on all seven images. Then build one table in
