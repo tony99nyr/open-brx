@@ -45,13 +45,15 @@ proved, and that every lane builds on:
 Screamers are Tony's P0. Levers session 1 ran in three sittings; its remainder is bench-plan sitting 2.
 Screamers Phase A has run A1 and A2 only.
 
-- **Next desk task:** **R4/T2 screamers**, the P0 code-read of `$DPLAY`, the serial receive buffer, split frames
-  and `$*` in the stock v4.32 image. T1 is complete: 128 names across seven versions, six protocol gaps routed to
-  F301-F306, and no firmware content in the repo. Then **F272**, the phone/MC lock-up detector; F300 holds the
-  still-undecoded `$QUERY` sound/gyro/per-slot remainder.
-- **Next bench task:** bench-plan sitting 1, screamers Phase A transport half (one gun, a laptop, about 55 min).
-  Nothing blocks it. Its A7/A8 numbers unblock **F269** (turn the block pause on) and the Phase B rules.
-- **Blocked:** Phase C on the A7/A8 numbers; Phase E on F272; Phase D on the Phase B rules.
+- **Next desk task:** **F272**, the lock-up detector on the phone and in MC. R4/T2 screamers is code-read complete:
+  v4.32 pins the blocking wait, 1,023-byte usable UART rings, persistent split frames and `$*` cleanup. R4's
+  untested-levers pass remains after the P0 detector. F269 owns the raw-byte helper required to bench A4/A7/A7b/A7c/A8;
+  F300 holds the `$QUERY` sound/gyro/per-slot remainder.
+- **Next bench task:** run the still-executable screamers Phase A controls (A1c, A3-A6, and the phone-paced halves
+  of A7/A8) with one gun and a laptop. A7/A7b/A7c/A8 zero-gap cases require a raw-byte helper that preserves
+  controlled ATT chunks without the instrument's normal sleeps; do not record a normal `send` run as that result.
+- **Blocked:** F269 and Phase C on complete A7/A8 numbers; A7b/A7c on the raw-byte helper; Phase E on F272;
+  Phase D on the Phase B rules.
 
 ## Lane: playtest and the node cure
 

@@ -107,6 +107,26 @@ def test_the_stock_image_hash_guard_can_detect_renamed_content():
     assert hits and hits[0].endswith(": control image"), "hash guard missed renamed forbidden content"
 
 
+def test_r4_t2_screamer_code_read_keeps_evidence_and_bench_boundaries_visible():
+    """R4/T2 must not silently turn private code readings into confirmed field facts."""
+    plan = (DOCS / "firmware-image-research-plan.md").read_text(encoding="utf-8")
+    log = (DOCS / "experiment-log" / "2026-09.md").read_text(encoding="utf-8")
+    screamers = (DOCS / "bench-screamers-2026-09-19.md").read_text(encoding="utf-8")
+
+    assert "T2 screamers complete 2026-09-21" in plan
+    assert "R4/T2 v4.32 screamer code-read" in log
+    r4_t2 = log.split("## 2026-09-21 (desk, private input, no gun): R4/T2 v4.32 screamer code-read", 1)[1]
+    assert r4_t2.count("**CODE-READ, NOT BENCH-PROVEN**") == 4
+    r4_t2_lower = r4_t2.lower()
+    for fact in ("1,023 usable bytes", "split frame", "`$*`", "10 ms"):
+        assert fact.lower() in r4_t2_lower, f"R4/T2 log omitted {fact}"
+    for step in ("A1c", "A4", "A7b", "A7c"):
+        assert f"| {step} |" in screamers, f"R4/T2 omitted precise bench step {step}"
+    assert 146 * len("$PING,*".encode()) == 1_022
+    assert 147 * len("$PING,*".encode()) == 1_029
+    assert "Existing `send`, `send_batch`, and stage `raw` inject delay" in screamers
+
+
 def test_no_headset_sticker_id_in_tracked_files():
     hits = []
     for f in _tracked_files():

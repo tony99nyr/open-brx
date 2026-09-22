@@ -7,26 +7,30 @@
   §1 to §2 (the serial parser).
 - **Owner interface:** the node (`app/src/brxlink.js`, `app/src/engine.js`), the bench stage (`mcp/brx_mcp/stage/`),
   the instrument (`mcp/brx_mcp/ble.py`, `protocol.py`) and the compiler's guards (`mcp/brx_mcp/mc/compile.py`).
-- **Sources.** The gun-side facts come from the V4_30 and V4_31 firmware disassembly and from LaserTagMods' (Jay's)
-  ESP32 sources, both shared on 2026-09-18. They are read, not measured. Every measure below that depends on one of
-  them says so, and names the bench step that turns the reading into a number. Credit: LaserTagMods.
+- **Sources.** The original gun-side facts came from the V4_30/V4_31 firmware analysis and LaserTagMods' (Jay's)
+  ESP32 sources, shared on 2026-09-18. R4/T2 traced four narrower claims in the private stock v4.32 image on
+  2026-09-21: one reachable audio wait, UART-ring size, split-frame persistence and `$*` cleanup now have v4.32 code evidence.
+  They are still read, not measured; the named bench step turns each reading into a field result. Credit: LaserTagMods.
 
 ## 1. What the gun does with our bytes
 
-These are the facts the design is built on. Evidence level: **V4_30/V4_31 disassembly, not yet bench-verified on
-v4.32** unless marked `[bench]`.
+These are the facts the design is built on. Evidence level: **firmware code-read, not bench proof** unless marked
+`[bench]`. The v4.32 markers below identify only the subclaims re-read on 2026-09-21; the remaining details retain
+their V4_30/V4_31 code-read status.
 
-1. **One byte per main-loop pass.** The serial parser runs once per pass of the main loop and consumes one byte
-   from the UART behind the radio. The UART receive buffer is 1 KB (the v4.25 changelog says so too). A burst that
-   arrives faster than the loop drains it fills the buffer, and the bytes past 1 KB are lost.
-2. **The parser has no length limit and no timeout.** A frame is up to 60 tokens; token 61 wraps to token 1 and the
+1. `[v4.32 code]` **One byte per parser invocation.** Each radio parser consumes one byte from its UART ring when called. Both
+   v4.32 UART paths use 1,024 slots and reserve one slot to distinguish full from empty, so usable capacity is
+   1,023 bytes; a full ring drops the arriving byte. A burst that arrives faster than the main loop drains it loses
+   bytes.
+2. **The parser has no length limit and no timeout.** `[v4.32 code: no inter-byte timeout and 60-token wrap]` A frame is up to 60 tokens; token 61 wraps to token 1 and the
    gun prints "overflow". A token without commas grows without limit. A frame that never ends waits for ever.
-3. **A lost `*` corrupts the NEXT frame.** A new `$` resets only token 0 and the index. Tokens 1 to 59 keep their
+3. `[v4.32 code]` **A lost `*` corrupts the NEXT frame.** A new `$` resets only token 0 and the index. Tokens 1 to 59 keep their
    old text until a handler finishes and clears them. So when the `*` of frame A is lost, frame B's `$` starts a
    new frame whose tokens 1..n are frame A's tokens with frame B's text appended. Both frames are wrong, and
    nothing tells the sender.
-4. **Six audio waits block the loop.** Six places wait for an audio channel to finish with `delay(10)` and no
-   timeout, and none of them reads the serial port while it waits. `$DPLAY` is one and can be sent over BLE.
+4. **Six audio waits block the loop.** `[v4.32 code: the reachable $DPLAY wait only]` Six places were identified in
+   V4_30/V4_31; the v4.32 trace confirms that `$DPLAY` waits for an audio channel to finish with `delay(10)`, no
+   timeout and no serial read, and can be sent over BLE.
    The other five sit in the standalone game paths (the mode announcement, game-over audio, two channel-4
    waits). A looping clip, or a "playing" flag that never clears, on a channel one of these waits on leaves the
    gun playing its last audio buffer with the serial port unread: that is a screamer, and no BLE command can
@@ -37,8 +41,9 @@ v4.32** unless marked `[bench]`.
 6. **`$START` arms IR reception, `$STOP` disarms it.** A gun that is not started drops every IR word ("not start").
    Relevant to spawn protection (F121), not to transport; listed because a read-back of the started state is
    part of §6.
-7. `[bench]` **A split frame reassembles.** Parser state persists across serial reads, so a frame split over 20-byte
-   BLE packets works. This is how every arm since 2026-08 has gone in.
+7. `[bench + v4.32 code]` **A split frame reassembles.** Parser state persists across serial reads with no inter-byte
+   timeout, so a frame split over 20-byte BLE packets works. This is how every arm since 2026-08 has gone in; A7b
+   adds a deliberate 60 ms/2 s split that the BLE stack cannot silently coalesce into one write.
 8. `[bench]` **Notifications can arrive merged.** `$ALCD,…$BUT,0,1,*` in one notification. The node's reassembler
    splits on `$` as well as `*` (`brxlink.Reassembler`).
 

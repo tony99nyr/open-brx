@@ -9,9 +9,34 @@ to make our system never create the conditions that lock a gun, and to recover f
 
 Phase A also carries the transport steps of the levers sheet (`bench-firmware-levers-2026-09-19.md` §14 maps them; A4 runs as levers §25).
 
-## What we think causes it
+## What the v4.32 code says (2026-09-21)
 
-These are leads from the V4_30/V4_31 firmware disassembly. None is proven on v4.32:
+Evidence level for every bullet here is **CODE-READ, NOT BENCH-PROVEN**. The private stock image stays outside the
+repository; these are restated facts, not disassembly.
+
+- **The reachable audio wait has no exit for a loop.** The sound command selects one of five audio channels,
+  starts playback, then polls that channel's playing flag every 10 ms. It does not call either serial parser in the
+  wait, has no timeout, and leaves only when the flag clears. A looping clip can therefore hold the main loop and
+  its serial reader forever. A1/A2 partly agree, but A1 dropped and recovered on reconnect rather than producing a
+  permanent screaming lock; A1c and A3 keep that contradiction visible.
+- **Both radio-facing UART paths use 1,024-slot receive rings with 1,023 usable bytes.** Each producer advances a
+  0..1023 index and refuses the arriving byte when the next index equals the consumer index. The application parser
+  consumes one received byte per invocation, so a busy main loop can still let the ring fill.
+- **Ordinary split frames reassemble.** Parser state is global across invocations and there is no inter-byte timeout.
+  A comma advances the token index (wrapping token 60 to token 1); a new `$` clears token 0 and resets the index but
+  deliberately leaves tokens 1..59 alone. A7b measures a deliberate 60 ms and 2 s split rather than relying on BLE's
+  normal 20-byte packetization.
+- **`$*` reaches the common cleanup path.** `$` opens a frame and clears token 0/index. `*` snapshots the 60-token
+  working set, dispatches the unmatched empty command, and the common return path clears every working token.
+  That makes `$*` a code-supported parser reset; A4 remains the bench proof before the node sends it automatically.
+
+The earlier V4_30/V4_31 leads below remain useful context. The v4.32 reading supersedes their processor and parser
+uncertainties, but it does not turn a code result into a field result.
+
+## Earlier leads
+
+These are leads from the V4_30/V4_31 firmware disassembly. None is bench-proven on v4.32; the first three have the
+narrower v4.32 code confirmation described above:
 
 - **Hang loops.** Six places wait for an audio channel to finish playing, with no timeout, and none of them reads the
   serial port while it waits. If the channel holds a looping sound, the wait never ends: the audio keeps playing and
@@ -41,7 +66,10 @@ to keep it, so it must fit the per-gun write budget (F274): Phase C soaks it.
     whether it screams (a stuck sound) or is silent.
   - **LINK DROP**: the BLE link drops but the gun reconnects and answers.
   - **BAD FRAME**: the gun answers, but a frame we sent did not apply (read back with `$QUERY` or `$ALCD`).
-- Probe liveness with `$PING,*` every 2 s throughout, and log every frame both ways with a timestamp.
+- Probe liveness with `$PING,*` every 2 s throughout, and log every frame both ways with a timestamp. **A4/A7b
+  exception:** from the first incomplete fragment until `$*` or the final fragment has completed, pause the probe
+  and every other writer on that connection; record the intentional quiet interval and resume immediately after.
+  A complete frame injected inside either window would change the parser state and invalidate the result.
 - One variable per run. Every run that locks a gun is repeated three times before it counts.
 
 ## Phase A: make a screamer on demand (one gun, about 60 min)
@@ -52,19 +80,15 @@ Each step tries one suspected trigger. Arm the gun with the bench victim head (`
 |---|---|---|---|
 | A1 | hang loop | `$DPLAY,A10,4,*` (the shield loop, a looping sound; token 3 is untraced). Send it with `confirm=true` AND `allow_hang=true` on the `send` tool, one frame, never in a batch | LOCK-UP with the loop still playing |
 | A2 | control for A1 | `$DPLAY` with a short one-shot sound, sent as A1 is: `confirm=true` AND `allow_hang=true` on the `send` tool, one frame, never in a batch | the gun answers again after the sound ends |
-
-**→ 2026-09-18, run.** A1: no `$PONG` to two pings 8 s apart, no reply to a follow-up `$PLAYX,0`, and no audio played
-at all; the gun spoke only "connected" and "phone disconnected" over the session, and the BLE link dropped about
-15 s in. A reconnect answered `$PING` at once, with no power cycle needed. A2 (`$DPLAY,U37,4,*`, one-shot): answered
-`$PING` immediately, no hang. Reading: the hang-loop mechanism is real (A1 blocked the gun and A2 did not), but this
-run recovered on a reconnect rather than needing a power cycle, so call it a partial screamer here. `$DPLAY` stays
-on the never-send list either way.
+| A1c | nonblocking loop control | send `$PLAY,A10,4,6,,,,,*`, keep `$PING,*` running for 10 s, then stop it with `$PLAYX,0,*`; repeat three times | the loop plays but every ping answers. This separates a healthy looping decoder from `$DPLAY`'s blocking wait |
 | A3 | hang loop, other channel | repeat A1 with token 2 = 1, 2 and 3 | shows which channels hang |
-| A4 | lost `*` (stale tokens) | send `$AMMO,0,17,50,1` (no `*`), then `$AMMO,0,23,50,1,*`, then read the `$ALCD` magazine. Run it with and without a `$*` sent before the second frame. The steps and the control are in levers §25 | without `$*`: BAD FRAME, the magazine is not 23; with `$*`: 23. (The old `$QUERY` form could not show this: `$QUERY` ignores its tokens) |
+| A4 | lost `*` (stale tokens) | **blocked on F269's raw-byte helper:** use its post-write chunk log for the incomplete `$AMMO,0,17,50,1` bytes and for `$*`. Then send `$AMMO,0,23,50,1,*` and read `$ALCD`. Run with and without `$*` before the complete frame. Full sequence: levers §25 | without `$*`: BAD FRAME, the magazine is not 23; with `$*`: 23. (The old `$QUERY` form could not show this: `$QUERY` ignores its tokens) |
 | A5 | long token | send a `$PLAY` frame with one 400-character token. Use `$PLAY` only: never a frame that writes stored settings (`$NAME`, `$PIN`, `$PAIR`) | LOCK-UP or BAD FRAME |
 | A6 | many tokens | send a `$PLAY` frame with 70 tokens. The A5 rule applies: no `$NAME`, `$PIN` or `$PAIR` frame | the token index wraps; BAD FRAME |
-| A7 | burst | 100 short frames with no gap; then the same in blocks of 10 with a 300 ms pause between blocks. Nine of every 10 frames are `$PLAY,U37,3,10,,,,,*`; every 10th frame is `$QUERY,*`, so each run carries 10 queries | count the `$QUERY` replies at each pacing (10 expected; each missing reply is a lost frame); any LOCK-UP |
-| A8 | burst of long frames | 50 × the bench AR `$WEAP` (102 bytes with t6 empty, 6 packets) with no gap; then 200 × `$WEAP` frames with the phone's pacing (8 ms per packet, 18 ms per frame). In both runs, alternate the magazine size (t16 and t39) between 32 and 30 on each frame (a `$WEAP` push resets the magazine to the frame's value). In the paced run, read `$ALCD` after each frame; after the no-gap run, read it once | a paced frame counts as lost when the `$ALCD` magazine does not change to that frame's value; the no-gap run must end on the last frame's value; count lost frames; any LOCK-UP |
+| A7 | burst | **zero-gap half blocked on the raw-byte helper named in A7b/A7c.** Send 100 short frames as one zero-application-gap byte stream; then the same frames in blocks of 10 with a 300 ms pause between blocks. Nine of every 10 are `$PLAY,U37,3,10,,,,,*`; every 10th is `$QUERY,*`, so each run carries 10 queries | count the `$QUERY` replies at each pacing (10 expected; each missing reply is a lost frame); any LOCK-UP. Existing transports can run the paced control but not the zero-gap comparison |
+| A7b | deliberate split frame | **blocked until the named raw-byte helper is built:** it must preserve each supplied GATT write, accept an explicit inter-write delay, and log actual writes. On a fresh arm set magazine 10, then write `$AMMO,0,2`, wait 60 ms, and write `3,50,1,*`; repeat with a 2 s gap, three times each, and read `$ALCD` | magazine 23 in all six runs. This tests parser persistence, not ordinary BLE chunking that the stack may coalesce |
+| A7c | receive-ring boundary | **blocked on that helper's zero-gap stream mode:** it must split one supplied byte stream only at 20-byte ATT boundaries, with no application sleep, and log chunk times. Alternate three streams of 146 `$PING,*` frames (1,022 B) and 147 frames (1,029 B), count `$PONG`s, then repeat with phone pacing | the exact code size is already 1,024 slots/1,023 usable; this measures the practical boundary while the parser is draining and must not be presented as an allocation measurement. Existing `send`, `send_batch`, and stage `raw` inject delay and cannot run the zero-gap case |
+| A8 | burst of long frames | **zero-gap half blocked on the same raw-byte helper.** Send 50 × the bench AR `$WEAP` (102 bytes with t6 empty, 6 packets) as one zero-application-gap byte stream; then 200 × `$WEAP` frames with the phone's pacing (8 ms per packet, 18 ms per frame). In both runs, alternate the magazine size (t16 and t39) between 32 and 30 on each frame. In the paced run, read `$ALCD` after each frame; after the zero-gap run, read it once | a paced frame counts as lost when the `$ALCD` magazine does not change to that frame's value; the zero-gap run must end on the last frame's value; count lost frames; any LOCK-UP. Existing transports can run the phone-paced control but not the zero-gap comparison |
 | A8b | trimmed runt `$SIR` rows | one gun, armed alternately with two variants, 50 arms each: the compiled `$SIR` rows as shipped, and the same rows with their trailing empty tokens dropped so each row fits one 20-byte packet | count BAD FRAME per variant. After the last arm of each variant, the IR rig (`ir-emit`) fires one control shot per `$SIR` row; every row must register a hit |
 | A9 | IR load | set the gun's `<0,0>` row to fn 28 (`$SIR,0,0,,28,0,0,1,,*`: registers, no pool change), then the IR rig fires enemy-team `<0,0>` words at the gun at 10 per second for 5 min, while `$PING` runs. The fn 28 row means 3,000 words cannot kill the gun | does IR load alone slow or hang the gun |
 | A10 | IR plus BLE | A9 and A7 together | the player-count case: many hits and much traffic at once |
@@ -72,10 +96,19 @@ on the never-send list either way.
 | A12 | low battery | repeat A7 on a pack below 20 % | any difference |
 | A13 | our peak writer | replay the live S42 recoil writer at today's throttle (a `$WEAP` plus an `$AMMO` every 250 ms) for up to 20 min | the time and frame count at any LOCK-UP: the per-gun traffic budget |
 
-**Reading.** A1 locking and A2 not locking proves the hang-loop mechanism. From then on, "screamer" means a known
-code path, and prevention is a rule. If nothing in Phase A locks a gun, the lock-up needs time or conditions we have
-not reproduced. Then Phase C and D carry the whole weight, and we ask Jay for the frames Callsign was sending when his
-guns screamed.
+**→ 2026-09-18, A1/A2 run.** A1: no `$PONG` to two pings 8 s apart, no reply to a follow-up `$PLAYX,0`, and no
+audio played at all; the gun spoke only "connected" and "phone disconnected" over the session, and the BLE link
+dropped about 15 s in. A reconnect answered `$PING` at once, with no power cycle needed. A2
+(`$DPLAY,U37,4,*`, one-shot): answered `$PING` immediately, no hang. Reading: A1 blocked the gun and A2 did not,
+but A1 recovered on a reconnect rather than needing a power cycle, so call it a partial screamer. `$DPLAY` stays
+on the never-send list either way.
+
+**Reading.** A1 blocking and A2 not blocking support the blocking-audio-path hypothesis, but A1 was silent and
+recovered after reconnect, so they do not prove the permanent screamer mechanism. A1c must pass as the responsive
+looping-audio control, while A3 (or another `$DPLAY` condition) must reproduce the defined **LOCK-UP** three times
+before this becomes a bench-proven prevention rule. If nothing in Phase A locks a gun, the lock-up needs time or
+conditions we have not reproduced. Then Phase C and D carry the whole weight, and we ask Jay for the frames Callsign
+was sending when his guns screamed.
 
 ## Phase B: turn each trigger into a rule (desk, after Phase A)
 

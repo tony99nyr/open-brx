@@ -1,6 +1,6 @@
 # Plan: research with the stock firmware images (R4)
 
-Status: T1 complete 2026-09-21; T2 (screamers) is next. Follow-up id: **R4** in `FOLLOWUPS.md`.
+Status: T1 and T2 screamers complete 2026-09-21; T2's untested-levers pass is next. Follow-up id: **R4** in `FOLLOWUPS.md`.
 
 ## What we have
 
@@ -20,8 +20,9 @@ A member of the BRX Facebook group posted a Google Drive folder called `Firmware
 
 The first quick pass (strings only, no disassembly) found:
 
-- The images are ARM Cortex-M code. An 8-byte header comes before a normal vector table. The v4.32 strings name
-  the radio as "NRF52 v1 retail" and "NRF52 v2 retail", so the chip is almost certainly a Nordic nRF52.
+- The images are ARM Cortex-M code. An 8-byte updater header comes before the vector table. T2 corrected the first
+  import guess: the payload maps at `0x8008`, not `0x8000`. The v4.32 main processor is a Kinetis/Teensy-class MCU;
+  the "NRF52 v1 retail" and "NRF52 v2 retail" strings describe the separate radio module, not the main processor.
 - The first `strings` pass reported 103 distinct `$` command names, but that tool's four-character floor silently
   omitted short real names such as `$AS` and `$SP`. T1's byte-level bounded scan finds 111 command-shaped names
   in v4.32. Treat this as firmware vocabulary, not proof that every name is an inbound dispatcher entry.
@@ -78,8 +79,14 @@ command goes through the confirm path in `protocol.py`.
 
 ### T2. Read the open bench claims in the code (desk, 1-2 sessions, strongest model)
 
-Load `BCgunV4_32.bin` into Ghidra as ARM Cortex-M (nRF52 memory map, image base after the 8-byte header). Find the
-serial command dispatcher first: the 103 names are its table. Then answer these questions from the code, in this
+**Screamers pass complete 2026-09-21.** The v4.32 code-read confirms the blocking audio wait, two 1,024-slot
+UART rings (1,023 usable bytes), split-frame persistence with no parser timeout, and `$*`'s all-token cleanup.
+The evidence and precise bench checks are in the 2026-09 experiment log and the screamers sheet. The remaining
+untested-levers, `$SIR`, `$TMP` and F264 questions below are still open.
+
+Load `BCgunV4_32.bin` into Ghidra as ARM Cortex-M (Kinetis/Teensy-class memory map; skip the 8-byte updater header
+and map the payload at `0x8008`). Find the serial command dispatcher first. T1 found 111 command-shaped names in
+v4.32, but vocabulary presence is not proof that a name is an inbound dispatcher entry. Then answer these questions from the code, in this
 order:
 
 1. **Screamers (P0).** Why does `$DPLAY` on a loop sound hang the gun? How big is the serial receive buffer? What
