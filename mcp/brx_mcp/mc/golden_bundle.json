@@ -232,6 +232,15 @@
       "hit_crit"
     ]
   },
+  "dual_emitters": [
+    {
+      "proto": 0,
+      "subtype": 0,
+      "body": 20,
+      "headset": 20,
+      "cycle_ms": 800
+    }
+  ],
   "leds": {
     "kill": [
       [
