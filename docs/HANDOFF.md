@@ -85,17 +85,21 @@ reload that never completes), and the office test's own new rows, **F293-F298** 
 metrics, and a real Shields-preset match). App **0.4.4** is built on this branch, not yet published; see "State
 of main" above.
 
-- **Next desk task:** **S55** (one accuracy owner), then **F274** (the recoil writer onto one `$TMP` t4 frame).
+- **S55 is closed:** recoil now has one t4-only owner, native fn-23 priority and a phone HUD reason. **F274's
+  desk half is complete:** its soak catalog matches the short t4 writer; the row remains open for hardware soaks.
+- **Next desk task:** **F285**, the per-token `$TMP` write-semantics table. It is well specified and can close its
+  documentation half without a gun; leave its t6 repeat measurement explicitly bench-open.
 - **Next bench task:** the "0.4.4 field check" in [`bench-plan.md`](bench-plan.md) (connect timing on both
   phones, the new respawn rules, the Shields preset, the down animation, full screen), then sitting 5, match
   verification: F264 live, the F277 repro, and the F256 row.
-- **Blocked:** F274 on S55; F277's detector on its repro.
+- **Blocked:** F274 on its three two-hour hardware soaks; F277's detector on its repro.
 
 ## Lane: weapons and perks
 
 Shipped: the `$WEAP` t12 headset word as a declared `wire.headset_dmg` (a captured t12 with no price is a refusal),
 crits on two weapons (`crit_pct`; hits-to-kill stays the GUARANTEED number), the counts derived from the shipped
-artefact, and the `/arsenal` page. **PROPOSED, NOT SHIPPED: every recoil number** (`spec/node.md` §3.15).
+artefact, and the `/arsenal` page. The recoil values in `spec/node.md` §3.15 ship today as a derivation from the
+catalogue's old four fields; the F268 rebalance and S54's explicit per-weapon six-field declarations are proposed.
 The Toxin Rifle SHIPPED 2026-09-19 (S16 closed): every hit poisons, the node tick clock, credited `death`
 with `dot: true`, the HUD poison and smoke tells, unhidden. `mcp/tools/balance_sim.py` balances any weapon
 (weapon-design.md §7.5c). The F268 floors stay at 60. The "fraction of the magazine" rung approval is
@@ -123,7 +127,7 @@ build the category-driven Mission Control picker.
 ## Start here
 
 Read [`bench-plan.md`](bench-plan.md). If Tony is at the bench, load the `bench-session` skill and run sitting 1.
-Otherwise take the first desk task, **S55's one accuracy owner**.
+Otherwise take the first desk task, **F285's `$TMP` write-semantics table**.
 
 ## Machine state
 

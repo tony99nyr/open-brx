@@ -131,6 +131,23 @@ export function startDemo({ engine, log }) {
   engine.writer = fr => {
     gunWriter(fr);
     for (const f of fr) {
+      // S55: the stage gun applies the same absolute t4 accuracy modifier as hardware. This keeps
+      // recoil screenshots on the real engine/writer path instead of painting a HUD-only fixture.
+      const tmp = /^\$TMP,(?:[^,]*,){3}(-?\d+),/.exec(f);
+      if (tmp) {
+        acc = Math.max(0, Math.min(100, 100 + Number(tmp[1])));
+        // Bench-proven write acknowledgement: t4 self-emits the resulting live accuracy on `$ALCD`
+        // after the BLE round trip. Without this, the real verifier retries and eventually disables
+        // recoil behind an apparently-correct screenshot.
+        const slot = engine.activeSlot || 0;
+        setTimeout(() => {
+          // Read at delivery time: a stage fixture may legitimately change weapon/magazine during
+          // the simulated BLE round trip, just as the real gun's eventual `$ALCD` reports live state.
+          const live = engine.state();
+          engine.feedFrame(`$ALCD,${live.ammo ?? mag},${acc},${engine.activeSlot || slot},${live.reserve ?? reserve},0,*`);
+        }, 40);
+      }
+      if (f.startsWith('$SPAWN,')) acc = 100;   // hardware clears every `$TMP` token on spawn
       const m = /^\$LIFE,(-?\d+),(-?\d+),(-?\d+),\*$/.exec(f);
       if (!m || !f.includes('-')) continue;
       const [dh, da] = m.slice(1).map(Number);

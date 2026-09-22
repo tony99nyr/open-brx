@@ -79,6 +79,7 @@ class FakeTagger:
         # slot nobody has armed yet as empty, which is the honest answer, not a guess.
         self.mag: dict[int, int] = {}
         self.reserve: dict[int, int] = {}
+        self.active_slot = 0
         # `clock` lets a test drive time deterministically (no real sleep, so nothing races
         # under load); a live caller (the stage, `run_live`) takes the real wall clock.
         self._clock: Callable[[], float] = clock or time.monotonic
@@ -89,9 +90,10 @@ class FakeTagger:
         self.sir: dict[tuple[int, int], int] = {}
         for row in _boot_sir_table():
             self._sir_row(row)
-        # F121 rebuild (levers §23, bench 2026-09-18): `$TMP` t8 is the incoming-damage percentage modifier,
-        # written ABSOLUTE. -100 = hits register (`$HIR`, `$HP`) and take nothing. `$SPAWN` zeroes it (and every
-        # other `$TMP` token); a `$TMP` sent before the spawn is therefore wiped. The other tokens are not modelled.
+        # F121/S55 (levers §23, bench 2026-09-18/22): `$TMP` values are written ABSOLUTE.
+        # t4 modifies reported accuracy and t8 modifies incoming damage. `$SPAWN` zeroes every
+        # `$TMP` token, so a modifier sent before the spawn is wiped.
+        self.tmp_t4 = 0
         self.tmp_t8 = 0
         # F46/F62/F68: a magnitude-0 word is a MISS -- the player feels it (haptic + the $PSET missShotHit
         # clip, natively) and the host sees NOTHING. Counted here so a test can assert that shape.
@@ -151,9 +153,14 @@ class FakeTagger:
         cmd = t[0] if t else ""
         if cmd == "CLEAR":
             self.sir.clear()                        # F11: `$CLEAR` wipes the table; nothing lands until `$SIR` rows do
+            self.tmp_t4 = self.tmp_t8 = 0           # hardware clears every temporary modifier too
         elif cmd == "SIR":
             self._sir_row(frame)
         elif cmd == "TMP":
+            v = _int(t[4]) if len(t) > 4 else None   # an empty t4 leaves the modifier as it is
+            if v is not None:
+                self.tmp_t4 = max(-100, v)
+                self._queue_alcd(self.active_slot)    # bench: t4 answers after the ordinary write latency
             v = _int(t[8]) if len(t) > 8 else None   # an empty t8 leaves the modifier as it is
             if v is not None:
                 self.tmp_t8 = max(-100, v)
@@ -182,6 +189,7 @@ class FakeTagger:
             # dead-chatty gun (a $SIR resync did not): it sets `alive` back to True and the pools off 0,
             # same as an ordinary spawn.
             self.alive = True
+            self.tmp_t4 = 0
             self.tmp_t8 = 0                         # levers §23 step 5: the spawn zeroes every $TMP token
             # F41 / P16: a REAL gun reports shield 0 on every `$HP` after a spawn no matter what `$PSET`
             # token 5 said -- the shield pool is IR-only (fn 11) and not BLE-writable. The fake used to
@@ -366,13 +374,14 @@ class FakeTagger:
     def _alcd_frame(self, slot: int) -> str:
         """`$ALCD,<mag>,<accuracy>,<slot>,<reserve>,<heat>,*` for `slot`'s CURRENT counts.
 
-        Accuracy and heat are not modelled here (nothing downstream of `frames.alcd_ammo` reads
-        them), so they are pinned at 100/0 -- a stand-in, not a measurement.
+        Heat is not modelled here and remains pinned at 0. Accuracy starts at 100 and applies the
+        absolute `$TMP` t4 modifier, matching the bench-proven S55 ownership contract.
         """
-        return f"$ALCD,{self.mag.get(slot, 0)},100,{slot},{self.reserve.get(slot, 0)},0,*"
+        accuracy = max(0, min(100, 100 + self.tmp_t4))
+        return f"$ALCD,{self.mag.get(slot, 0)},{accuracy},{slot},{self.reserve.get(slot, 0)},0,*"
 
     def _queue_alcd(self, slot: int) -> None:
-        """Queue `slot`'s `$ALCD` echo `_ALCD_WRITE_DELAY_S` from now -- a `$WEAP`/`$AMMO` write is
+        """Queue `slot`'s `$ALCD` echo `_ALCD_WRITE_DELAY_S` from now -- a `$WEAP`/`$AMMO`/t4 write is
         a BLE round trip, not an instant local call, so `drain()` must not hand it back early."""
         self._pending.append((self._clock() + _ALCD_WRITE_DELAY_S, self._alcd_frame(slot)))
 
@@ -387,6 +396,7 @@ class FakeTagger:
         protocol/brx-protocol.md's `$BUT` row). `$BUT` itself is not modelled here (always test-injected),
         so this is the one place a dead-but-chatty gun (`go_dead_chatty`) visibly refuses to fire.
         """
+        self.active_slot = slot
         if not self.alive:
             return
         mag = self.mag.get(slot, 0)

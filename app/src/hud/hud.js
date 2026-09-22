@@ -131,7 +131,10 @@ const usesCellGauge = st => {
 const HOLD_TO_RECHARGE = 'HOLD TO RECHARGE';
 /** S53/S55: the ONE accuracy pill says WHY the player cannot hit. The engine hands the reason (`st.aim.reason`);
  *  the HUD never guesses one. Smoke is the only reason built; S55 adds recoil, flinch and stance rows here. */
-const AIM_REASON = { smoke: { word: 'SMOKED', sub: 'YOUR SHOTS WILL MISS' } };
+const AIM_REASON = {
+  smoke: { word: 'SMOKED', sub: 'YOUR SHOTS WILL MISS' },
+  recoil: { word: 'RECOIL', sub: 'RELEASE TO STEADY' },
+};
 const secsLeft = ms => Math.max(0, Math.ceil((Number(ms) || 0) / 1000));
 const pctLeft = (left, total) => Math.max(0, Math.min(100, Math.round(100 * (Number(left) || 0) / (Number(total) || 1))));
 /** The digit beside the gauge: a round count for a bullet weapon or a low-cost energy weapon (the Rail

@@ -67,6 +67,43 @@ def test_faketagger_spawn_revives_and_config_sets_health():
     assert any(o.startswith("$LCD,60,80") for o in t.drain())
 
 
+def test_faketagger_tmp_t4_is_absolute_survives_weap_and_spawn_clears_it():
+    """S55: `$TMP` t4 is the one accuracy owner; weapon writes do not disturb it and spawn does."""
+    # Keep the delayed write echoes frozen. Fire frames remain immediate, so each assertion below
+    # deterministically selects the gun action rather than racing a 30-90 ms `$TMP`/`$AMMO` echo.
+    now = [0.0]
+    t = FakeTagger("AA:1", clock=lambda: now[0])
+    t.write("$AMMO,0,3,9,1,*")
+    t.write("$TMP,,,,-30,,,,,,,,*")
+    t.fire()
+    assert t.drain()[-1] == "$ALCD,2,70,0,9,0,*"
+
+    # Absolute, not additive, and independent of the weapon/magazine state.
+    t.write("$TMP,,,,-15,,,,,,,,*")
+    t.write("$WEAP,0,*")
+    t.fire()
+    assert t.drain()[-1] == "$ALCD,1,85,0,9,0,*"
+
+    t.write("$SPAWN,,*")
+    t.fire()
+    assert t.drain()[-1] == "$ALCD,0,100,0,9,0,*"
+
+    t.write("$TMP,,,,-30,,,,-100,,,,*")
+    t.write("$CLEAR,*")
+    assert t.tmp_t4 == 0 and t.tmp_t8 == 0
+
+
+def test_faketagger_tmp_t4_echo_is_delayed_and_names_the_active_slot():
+    now = [0.0]
+    t = FakeTagger("AA:1", clock=lambda: now[0])
+    t.mag[1], t.reserve[1] = 7, 21
+    t.active_slot = 1
+    t.write("$TMP,,,,-30,,,,,,,,*")
+    assert t.drain() == [], "a t4 write is a BLE round trip, not an instant callback"
+    now[0] += 0.04
+    assert t.drain() == ["$ALCD,7,70,1,21,0,*"]
+
+
 def test_faketagger_models_a_magazine_weap_resets_ammo_sets_fire_decrements():
     """F259/S42 (bench 2026-09-17): a real gun RESETS its magazine on every `$WEAP` write and
     ANSWERS with `$ALCD` -- 30-90 ms later, never instantly. The old fake accepted `$WEAP`/`$AMMO`

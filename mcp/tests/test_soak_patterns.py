@@ -120,21 +120,19 @@ def _recoil_groups(p: SoakPattern) -> list[ScheduledFrames]:
     return [g for g in p.repeating if g.name.startswith("recoil-")]
 
 
-def test_every_recoil_write_is_the_writers_weap_plus_ammo_pair():
-    # engine.js `_recoilWrite`: the active slot's compiled $WEAP with ONLY t21/t22 changed, then an
-    # $AMMO restore. Anything else would soak a frame the node never sends.
-    from brx_mcp.soak.patterns import _WEAP_FRAME
-    base = _WEAP_FRAME.split(",")
+def test_every_recoil_write_is_one_t4_only_tmp_frame():
+    # engine.js `_recoilWrite`: one absolute `$TMP` t4 frame. No weapon or ammunition frame may
+    # enter this soak: that would model the magazine-resetting writer S55 removed.
+    expected = {"recoil-degraded": "-15", "recoil-heavy": "-30", "recoil-crisp": "0"}
     for name in ("match", "recoil-oscillate"):
         groups = _recoil_groups(PATTERNS[name])
         assert groups, f"{name}: no recoil writes"
         for g in groups:
-            weap, ammo = g.frames
-            p = weap.split(",")
-            assert len(p) == len(base)
-            assert [i for i, (a, b) in enumerate(zip(base, p)) if a != b] in ([], [22, 23], [22], [23])
-            assert p[22] == p[23]
-            assert ammo.startswith("$AMMO,0,")
+            assert len(g.frames) == 1
+            p = g.frames[0].split(",")
+            assert p[0] == "$TMP" and p[-1] == "*"
+            assert p[4] == expected[g.name]
+            assert all(not token for i, token in enumerate(p[1:-1], start=1) if i != 4), p
 
 
 def test_match_carries_three_recoil_writes_per_burst():

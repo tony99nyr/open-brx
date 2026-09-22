@@ -389,17 +389,17 @@ later pull sends only the tail. The debug panel's SHARE LOG stays as the manual 
 ### 3.15 Node-driven recoil (the accuracy ceiling/floor is ours) — S42, F230
 
 F230 (bench 2026-09-17) found the native `t21`→`t22` accuracy walk works on only one of three guns, so it is not a
-usable balance lever. Every weapon ships `t21 == t22 == 100` (walk off) and the node drives the SAME two tokens
-itself, from the shot stream it already watches — a mag decrement on the active slot in `_onAmmo` — never from a
-timer that guesses whether the trigger is down. `resolve()` never reads the `recoil` block
+usable balance lever. Every weapon ships `t21 == t22 == 100` (walk off) and the node drives the absolute `$TMP`
+t4 modifier instead, from the shot stream it already watches — a mag decrement on the active slot in `_onAmmo` —
+never from a timer that guesses whether the trigger is down. `resolve()` never reads the `recoil` block
 (`test_range_and_recoil_are_declared_not_wired`).
 
 **F259 (bench 2026-09-18): a short ladder of STATES, not a per-shot walk.** Accuracy is CRISP, then DEGRADED once
 the burst reaches `after_shots` rounds, then HEAVY once it reaches `after_heavy`. The trigger going quiet for
 `settle_ms` puts it back to crisp in one step from wherever it got to, because the player releases once. **The
-property to protect:** the number of `$WEAP` writes follows the number of STATE CHANGES and never the number of
-rounds — at most three a burst (two down, one back), where the old ladder cost about twenty. Every `$WEAP` resets
-the gun's magazine, so every write is a chance to lose a round, which is the whole of F259.
+property to protect:** the number of t4 writes follows the number of STATE CHANGES and never the number of rounds —
+at most three a burst (two down, one back), where the old ladder cost about twenty. A t4 write does not reset the
+magazine or reserve and survives `$WEAP`; `$SPAWN` clears it (bench 2026-09-18).
 
 Below is what the node actually SHIPS today. `crisp` and `heavy` are each weapon's ceiling and floor from the old
 gradual ladder and `degraded` is the midpoint rounded down, so two steps cost no weapon its identity: the assault
@@ -426,8 +426,7 @@ lying about the wire. The proposal is F268 and the raise happens, if it happens,
 `heavy` ← `floor`, `degraded` ← the midpoint rounded down, `after_shots` ← the ladder's length
 (`ceil((crisp - heavy) / per_shot)`), `after_heavy` ← twice that, `settle_ms` ← `RECOIL_SETTLE_MIN_MS` or
 `recover_ms`, whichever is longer. A ladder too short to split in two (`degraded` equal to either end) collapses
-back to ONE step, because a second write that sends the value the gun already holds spends a magazine reset for
-nothing.
+back to ONE step, because a second write that sends the value the gun already holds wastes BLE traffic.
 
 ⚠ **Two judgements here, both wanting a bench pass, and neither is shipped as stated.** The first is that three
 floors should come UP: the SMG and the Suppressor from 55, the Stinger from 45, all to 60, because the accuracy
@@ -443,10 +442,11 @@ counting `$HIR`.
 | arm | on spawn, revive and a confirmed weapon swap, to the ACTIVE weapon's declared `recoil`; `value` starts at `crisp`. Absent `config.recoil` (default) or an explicit `true` arms it; `config.recoil === false` never arms. A weapon that cannot degrade (`floor == ceiling`, most of the catalogue) or carries no `recoil` block arms NOTHING |
 | step down | the BURST decides the state, never the state before it: `after_shots` rounds make it DEGRADED, `after_heavy` rounds make it HEAVY, and one frame reporting several rounds at once (a run of lost `$ALCD`) lands on the rung those rounds earned in ONE write. Both steps land during the burst, with the trigger still down |
 | step up | `settle_ms` of quiet (`RECOIL_SETTLE_MIN_MS` floor: 600 ms, so a gap between two rounds can never read as the player lowering the weapon) puts it straight back to `crisp` from either degraded state, in one write — never a "released" flag |
-| write | pins **both** `t21` and `t22` to `value` on the active slot's compiled `$WEAP` frame (never `ceiling`/`floor` separately) — a fixed accuracy is honoured on a non-walking gun too (bench 2026-09-17), so this sidesteps F230 rather than depending on it. Immediately followed by an `$AMMO` restore of the LIVE mag/reserve (a `$WEAP` re-push resets both to the frame's baked-in values, bench 2026-09-17) |
-| throttle | one writer, latest `value` wins; the minimum gap (`ACC_WRITE_MIN_GAP_MS`) throttles a write that RE-SENDS a value the gun already holds (a retry, a re-assertion after a hold) and never a state change — the state machine is what bounds the write rate now, and a state change deferred to the clock is composed in an inter-round gap and hands that round back; never between a reload-lever pull (`this.reloading`) and the refill; never mid weapon-swap (`this.switching`); never during an overheat lockout: `overheated()` reads the heat the gun reports in `$ALCD` token 5 against 99 (F229; the guard read a flag nothing set until 2026-09-17, so it was dead code) |
-| verify | the next `$ALCD` naming the active slot (`_recoilObserve`, tok 2) is compared to what was written once the write's grace window closes; a mismatch retries ONCE; a second mismatch writes the ceiling back (both tokens) with the live ammo and disables further writes for the rest of the life, logged |
-| reset | a respawn/revive re-arms at the weapon's CRISP value, with no burst behind it; a confirmed weapon swap re-arms to the NEW weapon's profile at its crisp value (multi-slot native drift while off-slot is not modelled — a bench gap, not a design one) |
+| write | writes exactly `$TMP,,,,<value-base>,,,,,,,,*`: t4 only, absolute against the active weapon's compiled base. It never sends `$WEAP` or `$AMMO`, so recoil cannot reset or repair a magazine. The fake gun and F274 soak catalog implement the same contract |
+| native owner | fn-23 smoke/EMP owns t4 for `SMOKE_MS` (6000 ms). The node cancels verification, sends nothing during that window, extends it on repeated Haze hits even when accuracy is already 0, and reasserts its latest target after native recovery. An accuracy-0 `$ALCD` arriving before its Haze `$HIR` opens a 400 ms pairing hold so frame order cannot cancel smoke |
+| throttle | one writer, latest `value` wins; the minimum gap (`ACC_WRITE_MIN_GAP_MS`) throttles only a re-send. Existing reload, swap, overheat, reconcile, resync, stun, spawn-write, in-flight-shot and BLE-down guards remain conservative ordering barriers |
+| verify | the next `$ALCD` naming the active slot (`_recoilObserve`, tok 2) is compared to the absolute target once the write's grace window closes; a mismatch retries ONCE; a second mismatch writes crisp t4, disables further writes for the rest of the life, and logs it |
+| reset | `$SPAWN` clears t4, so spawn/revive reset the owner's offset knowledge and re-arm at CRISP with no old burst. A confirmed weapon swap re-arms to the new profile; moving to a flat/no-profile weapon writes t4 = 0 when needed because `$WEAP` did not clear the prior modifier |
 
 **Seams for stance and flinch (also S42, not built here):** a future stance module can move the thresholds
 `_recoilStep` reads from the motion sensor; a future flinch module reads `this._recoil.value` (today's live
@@ -491,12 +491,12 @@ A fn-23 hit (the Haze, `<7,0>`) moves no pool and holds the victim's live accura
 gives it back in one step (bench 2026-09-18). Without a tell the player hears their own gun, sees nothing land, and
 concludes the gun is broken. The node reads it from two frames it already parses: a `$HIR`, and an `$ALCD` whose
 accuracy token DROPS to 0 within 400 ms of it, in either order. The EMP under `config.stun` is fn 23 too but has its
-own STUNNED takeover, so it is not a smoke. The tell ends when `SMOKE_MS` (6000) has run, when the gun reports
+own STUNNED takeover, so it is not presented as smoke; it still owns t4 for the same native 6 s window. The tell ends when `SMOKE_MS` (6000) has run, when the gun reports
 accuracy above 0, or on death, spawn, respawn and match end. `state().aim = {reason: 'smoke', acc, leftMs, totalMs}`
-is the input to S55's ONE accuracy pill: the HUD renders the reason it is handed, so recoil, flinch and stance join
-the same shape later. The HUD puts SMOKED, YOUR SHOTS WILL MISS and a countdown where the reticle was. Not built:
-S55's rule that the accuracy writer must not write t4 during a smoke, and a smoke cue (`_event('smoked')` is a hook
-with no presentation row yet).
+is the input to S55's ONE accuracy pill. Recoil now uses the same shape with reason `recoil`; the HUD puts RECOIL,
+RELEASE TO STEADY and the recovery countdown where the reticle was. Smoke has display priority. Flinch and stance
+remain unbuilt until their mechanics are specified. The writer/native arbitration is in §3.15. A smoke cue
+(`_event('smoked')`) remains a hook with no presentation row.
 
 ## 4. The HUD — requirements and state mapping
 

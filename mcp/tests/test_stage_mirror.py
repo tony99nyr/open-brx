@@ -1475,11 +1475,13 @@ KNOWN_UNMIRRORED = {
     # guessed at here.
     # F259 (2026-09-18) folded the ladder into two states and added `_recoilProfile`, which reads that shape
     # off the SAME catalog row -- so it is unmirrored for the same reason as the rest of this group.
+    # S55's `_nativeAccuracyHold` arbitrates the phone's t4 writer against native fn-23 smoke/EMP. The
+    # stage has neither that writer nor a recoil HUD, so there is no competing accuracy owner to arbitrate.
     # ⚠ Its neighbour, the magazine account (`_acctLive` / `_acctWriting` / `_acctPress` / `_acctAmmo`), is
     # NOT recoil and IS mirrored: the stage's own stun restore carries a magazine count and had the same
     # staleness in it.
     "recoilEnabled", "_activeWeaponId", "_recoilProfile", "_recoilArm", "_recoilStep", "_recoilTick",
-    "_recoilFlush", "_recoilVerify", "_recoilWrite", "_recoilObserve",
+    "_recoilFlush", "_recoilVerify", "_recoilWrite", "_recoilObserve", "_nativeAccuracyHold",
     # `_headAccuracy` reads t21 off the compiled `$WEAP` so `_recoilArm` can tell whether the gun is already
     # holding the weapon's crisp value. Only the accuracy writer asks that question, and the stage has none.
     "_headAccuracy",

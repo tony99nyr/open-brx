@@ -459,3 +459,10 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
   phone's miss-only burst lowers its rendered accuracy on the other phone's PLAYERS board, keeps the board LIVE,
   and remains visible inside a 740×340 viewport. The earlier 16-second MC-message freshness label remains the
   disconnect guard; the missing status-to-score push was the cause of the continuously bound freeze.
+
+# Closed 2026-09-22: one accuracy owner
+
+- 2026-09-22 **S55** recoil now writes only absolute `$TMP` t4, never `$WEAP` or `$AMMO`. Native fn-23
+  smoke/EMP owns t4 for its measured six-second window; repeated Haze extends it and the node reasserts its
+  latest target afterward. The shared HUD pill renders RECOIL / RELEASE TO STEADY and retains smoke priority.
+  Flinch and stance remain separate unbuilt mechanics.

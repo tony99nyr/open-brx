@@ -3220,7 +3220,7 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
   }
 }
 
-// ---------- S16 poison pill + S53 smoke tell (2026-09-19). Both are driven through the REAL engine by the stage:
+// ---------- S16 poison pill + S53 smoke / S55 recoil tells. All are driven through the REAL engine by the stage:
 // the demo gun answers the node's own `$LIFE` ticks the way the bench measured, so the countdown, the pools and the
 // DOWN screen below are what the phone would show, not a painted fixture. ----------
 const tells = pg => pg.evaluate(() => {
@@ -3276,6 +3276,29 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
       if (night) must(!a.bg.some(c => bright(c)) && !a.ink.some(c => bright(c, 150)), `no bright fill or ink at night: ${a.bg} / ${a.ink}`);
       must(bad.length === 0, bad.join(' ; '));
       must(!c.aim && (night || c.reticle), `about 6 s after the hit the gun gives accuracy back and the tell is gone${night ? '' : ', reticle back'}: ${JSON.stringify(c)}`);
+    });
+    await step(`${tag} S55 recoil ${env}: RECOIL takes the reticle's place and clears after release`, async () => {
+      const pg = await open(view, 'live', night ? '&night' : '');
+      await pg.evaluate(() => window.brxDemo.fire(3));
+      await pg.waitForFunction(() => /RECOIL/.test((document.querySelector('.aimfx') || {}).innerText || ''));
+      const a = await tells(pg);
+      await pg.screenshot({ path: `${OUT}/${tag}-recoil-${env}.png` });
+      const bad = await invariants(pg);
+      await pg.waitForFunction(() => !document.querySelector('.aimfx'));
+      const c = await tells(pg);
+      const healthy = await pg.evaluate(() => !window.brx.engine._recoil.disabled);
+      await pg.evaluate(() => window.brxDemo.fire(3));
+      await pg.waitForFunction(() => /RECOIL/.test((document.querySelector('.aimfx') || {}).innerText || ''));
+      const again = await tells(pg); await pg.close();
+      must(a.aim && /RECOIL/.test(a.aimText) && /RELEASE TO STEADY/.test(a.aimText), `the tell names the cause and remedy: ${JSON.stringify(a)}`);
+      must(!a.reticle, 'the reticle gives way to the recoil tell');
+      must(a.pills.every(p => !p || apart(p, a.aimRect)), `no chip-bar pill covers the tell: ${JSON.stringify(a.pills)}`);
+      must(a.anim.length === 0, `no animation on the tell: ${a.anim}`);
+      if (night) must(!a.bg.some(c2 => bright(c2)) && !a.ink.some(c2 => bright(c2, 150)), `no bright fill or ink at night: ${a.bg} / ${a.ink}`);
+      must(bad.length === 0, bad.join(' ; '));
+      must(!c.aim && (night || c.reticle), `after release the recoil tell clears${night ? '' : ' and the reticle returns'}: ${JSON.stringify(c)}`);
+      must(healthy, 'the simulated gun acknowledged t4; the verifier must not disable recoil');
+      must(again.aim && /RECOIL/.test(again.aimText), `a second burst still drives the real writer path: ${JSON.stringify(again)}`);
     });
   }
 }

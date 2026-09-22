@@ -122,32 +122,18 @@ _HIT_INTERVAL_S = 10.0
 _LED_INTERVAL_S = 4.0   # GUN_READOUT_DEFAULT hold_s (gameconfig.py): the readout's own refresh hold
 
 
-# The live recoil writer (S42, `app/src/engine.js` `_recoilWrite`, ~L2243-2263): it re-sends the active
-# slot's compiled `$WEAP` frame with t21 and t22 both pinned to the live accuracy value
-# (`ACC_CEILING_IDX`/`ACC_FLOOR_IDX` = split indices 22/23, engine.js ~L110), then at once an `$AMMO`
-# restore of the live mag/reserve (`$AMMO,<slot>,<mag>,<reserve>,1,*`). One recoil write is that PAIR:
-# about 105 + 20 bytes. The frames below are the captured `$WEAP` frame with t21/t22 at 85 (degraded),
-# 70 (heavy, the Assault Rifle's floor) and 100 (crisp), each followed by `SPAWN_SEQUENCE`'s slot-0 `$AMMO`.
+# The live recoil writer (S55, `app/src/engine.js` `_recoilWrite`) owns only `$TMP` t4. The modifier is
+# absolute relative to the compiled weapon's base accuracy: -15 degraded, -30 heavy, 0 crisp. Every
+# other token is blank. One recoil write is therefore one short frame and cannot reset ammunition.
 #
 # Cadence. Today's writer (engine.js `_recoilFlush`, ~L2211-2224) can write once per
-# `ACC_WRITE_MIN_GAP_MS` = 250 ms (~L101) under sustained fire. The rebuilt writer (the
-# `brx-latest-playtest` session, 2026-09-18, not yet on main) writes only on a state change, at most
+# `ACC_WRITE_MIN_GAP_MS` = 250 ms under sustained fire. The writer changes state at most
 # three per burst: crisp -> degraded, degraded -> heavy, and back to crisp `settle_ms` = 600 ms after the
 # trigger is released. `match` soaks that shape; `recoil-oscillate` soaks its worst case. Correct both
-# when the rebuilt writer lands, and keep them in step with it (FOLLOWUPS F274).
-_ACC_T21, _ACC_T22 = 22, 23   # engine.js ACC_CEILING_IDX / ACC_FLOOR_IDX
-
-
-def _weap_with_accuracy(value: int) -> str:
-    p = _WEAP_FRAME.split(",")
-    p[_ACC_T21] = p[_ACC_T22] = str(value)
-    return ",".join(p)
-
-
-_AMMO_RESTORE = next(f for f in _SPAWN_SEQUENCE if f.startswith("$AMMO,0,"))
-_RECOIL_DEGRADED: tuple[str, ...] = (_weap_with_accuracy(85), _AMMO_RESTORE)
-_RECOIL_HEAVY: tuple[str, ...] = (_weap_with_accuracy(70), _AMMO_RESTORE)
-_RECOIL_CRISP: tuple[str, ...] = (_weap_with_accuracy(100), _AMMO_RESTORE)
+# when the model changes, and keep these in step with it (FOLLOWUPS F274).
+_RECOIL_DEGRADED: tuple[str, ...] = ("$TMP,,,,-15,,,,,,,,*",)
+_RECOIL_HEAVY: tuple[str, ...] = ("$TMP,,,,-30,,,,,,,,*",)
+_RECOIL_CRISP: tuple[str, ...] = ("$TMP,,,,0,,,,,,,,*",)
 
 # ASSUMPTION: one sustained burst every 10 s of a life (the same firefight cadence as `_HIT_INTERVAL_S`),
 # about 1 s long. Inside the burst: degraded after the first rounds (0.2 s), heavy at 0.6 s, the trigger
@@ -161,7 +147,7 @@ _BURST_WRITES: tuple[tuple[str, float, tuple[str, ...]], ...] = (
 )
 
 # The worst case for the rebuilt writer: fire three rounds (~0.2 s), release for `settle_ms`, repeat.
-# Two writes per ~0.8 s cycle, degraded then crisp: about 150 `$WEAP` + `$AMMO` pairs a minute.
+# Two writes per ~0.8 s cycle, degraded then crisp: about 150 `$TMP` frames a minute.
 _OSCILLATE_CYCLE_S = 0.2 + _SETTLE_S
 
 
@@ -192,7 +178,7 @@ _CALLSIGN_PLAYERS = 20
 PATTERNS: dict[str, SoakPattern] = {
     "match": _match_pattern(
         "match", "our real per-gun match traffic: arm, then per-hit cues, an LED readout, "
-        "a $SIR-table revive every 3 minutes, and the recoil writer's three $WEAP + $AMMO "
+        "a $SIR-table revive every 3 minutes, and the recoil writer's three $TMP t4 "
         "writes per burst", rate=1.0),
     "match-x10": _match_pattern(
         "match-x10", "match, at ten times the rate: the margin test", rate=10.0),
@@ -210,7 +196,7 @@ PATTERNS: dict[str, SoakPattern] = {
     "recoil-oscillate": SoakPattern(
         name="recoil-oscillate",
         description="the recoil writer's worst case: three rounds, a 600 ms release, repeat; "
-                    "two $WEAP + $AMMO writes per ~0.8 s cycle, about 150 a minute (F274)",
+                    "two $TMP t4 writes per ~0.8 s cycle, about 150 a minute (F274)",
         once=_ARM_SEQUENCE,
         repeating=(
             ScheduledFrames("recoil-degraded", _OSCILLATE_CYCLE_S, _RECOIL_DEGRADED, offset_s=0.2),
