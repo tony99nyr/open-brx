@@ -329,6 +329,21 @@ def test_handoff_is_one_screen():
     assert n <= 150, f"HANDOFF.md is {n} lines; it is one screen (<=150), history goes to `git log -p -- docs/HANDOFF.md`"
 
 
+def test_tmp_write_semantics_are_explicit_for_every_token():
+    """F285: effect evidence must never be mistaken for absolute/additive write evidence."""
+    text = (REPO / "protocol/brx-protocol.md").read_text(encoding="utf-8")
+    marker = "### `$TMP` per-token write semantics"
+    assert marker in text, "F285 requires one authoritative `$TMP` write-semantics table"
+    block = text.split(marker, 1)[1].split("\n### ", 1)[0]
+    found = [(int(n), semantics) for n, semantics in re.findall(
+        r"^\| `t(\d+)` \|[^\n]*?\| \*\*(ABSOLUTE|ADDITIVE, ONE-SHOT|UNMEASURED)\*\* \|", block, re.M)]
+    expected = [(n, "UNMEASURED") for n in range(1, 12)]
+    expected[3] = (4, "ABSOLUTE")
+    expected[7] = (8, "ABSOLUTE")
+    expected[8] = (9, "ADDITIVE, ONE-SHOT")
+    assert found == expected, f"`$TMP` write-semantics rows differ: {found}"
+
+
 # The markdown OUTSIDE docs/ that a reader actually navigates from. 2026-09-12 review: the link check
 # only ever read docs/, so a dead path in the root README or in a package README could not be caught by
 # anything, and those are the first files a newcomer opens.

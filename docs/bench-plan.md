@@ -62,18 +62,20 @@ Screamers are P0. Screamers A3, A4 (run as levers §25), A5, A6, A7, A8, A11, A1
 numbers (**F269**, **F270**); a lock-up feeds **F272**. Keep the block pause off until A7 and A8 give a number.
 A3 repeats A1 on other channels and can lock the gun: power-cycle and re-arm before the next step.
 
-### Sitting 2: the rest of levers session 1 (about 85 min; 2 guns, ears, the rig for steps 7 and 8)
+### Sitting 2: the rest of levers session 1 (about 100 min; 2 guns, ears, the rig for steps 8 and 9)
 
-1. Levers §21 step 19, `$TMP` t10 crit chance (10 min). **S50**, **F278**.
+1. Levers §21 step 19, `$TMP` t10 crit chance, including the same-value re-send control (10 min). **S50**, **F278**, **F285**.
 2. Levers §21 step 11, and one run that asks whether t9 applies per slot or once for every slot (10 min). Extended
    Mags on `$TMP` waits on this. **S50**.
-3. Levers §21 steps 12-14, t1-t3 pool maxima (15 min). **S50**, **F285**.
+3. Levers §21 steps 12-14, t1-t3 pool maxima, repeating each same non-zero write before the second read (15 min). **S50**, **F285**.
 4. `$TMP` t6 re-send: send t6 = 50 twice, then time one reload (5 min; method in the row). **F285**, **F281**.
-5. Levers §12 step 2 (does `$STOP` gate the trigger?), then §4 step 2 (a `$SIR` p5 stun on hit) (10 min). **F121**, **U11′**.
-6. **F262**: the shield-hit sound by sensor, ten shots at the headset and ten at the gun body (10 min, ears).
-7. Levers §2, melee (15 min; `$BMAP,8,7` and `$BMAP,8,4`; step 4 needs the rig). **K4**.
-8. Levers §16 step 6.3: does `$CLEAR` stop a headset `$IRTX` loop? (5 min, the rig). **B31**, **B23**.
-9. **F282**: the compiled Suppressor against the compiled AR in a dark room: does either flash, and which is quieter?
+5. Complete the F285 table: repeat same non-zero t5 and t7 writes and compare fire timing/damage; for t11 first
+   prove the missing-row default sound, then write two distinct ids and identify which one plays (15 min). **F285**.
+6. Levers §12 step 2 (does `$STOP` gate the trigger?), then §4 step 2 (a `$SIR` p5 stun on hit) (10 min). **F121**, **U11′**.
+7. **F262**: the shield-hit sound by sensor, ten shots at the headset and ten at the gun body (10 min, ears).
+8. Levers §2, melee (15 min; `$BMAP,8,7` and `$BMAP,8,4`; step 4 needs the rig). **K4**.
+9. Levers §16 step 6.3: does `$CLEAR` stop a headset `$IRTX` loop? (5 min, the rig). **B31**, **B23**.
+10. **F282**: the compiled Suppressor against the compiled AR in a dark room: does either flash, and which is quieter?
    Then `$WEAP` t25/t26 at 0 and at a large value on one weapon (10 min; eyes, ears; method in the row).
 
 ### Sitting 3: the recoil numbers, groups A and B (about 30 min; 2 guns on a fixed mount)
@@ -150,7 +152,7 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 | **F300** | levers and screamers | decode the remaining `$QUERY` sound/gyro/per-slot loop before extending arming read-back | stock-image/capture decode |
 | **F269** | levers and screamers | switch the block pause on, and decide the runt `$SIR` rows | sittings 1 and 4 (A7, A8, A8b) |
 | screamers Phase B: **F270**, **F273**, plus one new row per trigger that Phase A reproduces | levers and screamers | one rule in code per reproduced trigger (write with response; the `$PB*`/`$AS` deny list) | sittings 1 and 4 |
-| **F285** | levers and screamers | a per-token absolute/additive column for `$TMP` in `protocol/brx-protocol.md` | sitting 2 for t1-t3, t6, t10 |
+| **F285** | levers and screamers | desk table is done; replace its UNMEASURED cells only from recorded bench results | sitting 2 steps 1, 3-5 |
 | **S55**, then **F274** | playtest and node | one accuracy owner (never write t4 during a smoke, re-send when it ends, re-send after `$SPAWN` but not after a `$LIFE` revive), then move the recoil writer onto one `$TMP` t4 frame | S55 first |
 | **B31** | playtest and node | the kill confirm: the victim's node sends a protocol-15 `$IRTX` through its own (dead) gun's headset | choose the IR design or the advert design (the row weighs both) |
 | **F277** | playtest and node | a detector for a reload that never completes | sitting 5 step 3 (a repro) |
