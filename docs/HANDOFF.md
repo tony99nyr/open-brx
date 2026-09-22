@@ -1,11 +1,17 @@
 # Handoff: Open BRX
 
-**State as of 2026-09-18 (night).** **Rules for this file.** One screen. It says what is true now; history is `git log -p -- docs/HANDOFF.md`. It has
+**State as of 2026-09-22 (playtest follow-up).** **Rules for this file.** One screen. It says what is true now; history is `git log -p -- docs/HANDOFF.md`. It has
 one section per open lane. **When several sessions close together, each one overwrites only its own lane section,
 never another lane's.** (On 2026-09-18 three lanes closed on the same night and rewrote each other's sections.)
 The bench order and the desk-work list live in one place: [`bench-plan.md`](bench-plan.md).
 
 ## State of main (2026-09-19, after the pre-game office test)
+
+The 2026-09-20 playtest fixes are committed on `main`: score caps are opt-in, fresh Charge Rifle ammo is
+published, Breacher/Toxin and SMG headset damage are supported, dual-emitter hits are grouped and version-gated,
+LOAD announcements retry after reconnects, shields render as a separate HUD pool, and scanner games with one
+team-scoped station warn the operator while uncovered teams use timed AUTO respawn. Focused app and MC suites are
+green; remaining low polish is stale LOAD copy and shield-zero text styling during recharge.
 
 App **0.4.4 is ready on branch `integrate-2026-09-19`, NOT yet published as a GitHub release and NOT yet
 pushed. Tony publishes and field-tests it after lunch.** It carries 0.4.1-0.4.4 (flap-backoff fixes, picker
