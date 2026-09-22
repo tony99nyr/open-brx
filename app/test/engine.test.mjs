@@ -88,6 +88,38 @@ test('hit_taken + death credit the fresh $HIR shooter', () => {
   assert.equal(death.shooter_num, 19); assert.equal(h.eng.alive, false); assert.equal(h.eng.deaths, 1);
 });
 
+test('dual-emitter words share a shot group while the next rapid pull does not', () => {
+  const h = harness(); h.bundle.dual_emitters = [{ proto: 0, subtype: 0, body: 8, headset: 1, cycle_ms: 100 }];
+  h.kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$HIR,4,0,19,2,8,0,0,*').frame('$HP,45,62,0,*');
+  h.adv(90);
+  h.frame('$HIR,0,0,19,2,1,0,0,*').frame('$HP,45,61,0,*');
+  const pair = h.facts.filter(f => f.type === 'hit_taken');
+  assert.equal(pair.length, 2);
+  assert.equal(pair[0].shot_group, pair[1].shot_group, 'one physical trigger pull counts once');
+  h.adv(10);
+  h.frame('$HIR,4,0,19,2,8,0,0,*').frame('$HP,45,53,0,*');
+  assert.notEqual(h.facts.filter(f => f.type === 'hit_taken')[2].shot_group, pair[1].shot_group,
+    'the next 100 ms SMG pull must start a new group');
+});
+
+test('equal dual-emitter words group, while rapid ordinary equal hits do not', () => {
+  const shotgun = harness(); shotgun.bundle.dual_emitters = [{ proto: 0, subtype: 0, body: 20, headset: 20, cycle_ms: 800 }];
+  shotgun.kit().config_().echo().start(0); shotgun.adv(10); shotgun.eng.tick();
+  shotgun.frame('$HIR,4,0,19,2,20,0,0,*').frame('$HP,45,50,0,*');
+  shotgun.adv(40);
+  shotgun.frame('$HIR,0,0,19,2,20,0,0,*').frame('$HP,45,30,0,*');
+  const pair = shotgun.facts.filter(f => f.type === 'hit_taken');
+  assert.equal(pair[0].shot_group, pair[1].shot_group);
+
+  const ordinary = harness(); ordinary.kit().config_().echo().start(0); ordinary.adv(10); ordinary.eng.tick();
+  ordinary.frame('$HIR,4,0,19,2,9,0,0,*').frame('$HP,45,61,0,*');
+  ordinary.adv(40);
+  ordinary.frame('$HIR,0,0,19,2,9,0,0,*').frame('$HP,45,52,0,*');
+  const hits = ordinary.facts.filter(f => f.type === 'hit_taken');
+  assert.notEqual(hits[0].shot_group, hits[1].shot_group);
+});
+
 test('dual-emitter words share one physical-shot group', () => {
   const h = harness(); h.bundle.dual_emitters = [{ proto: 0, subtype: 0, body: 8, headset: 1, cycle_ms: 100 }];
   h.kit().config_().echo().start(0); h.adv(10); h.eng.tick();
