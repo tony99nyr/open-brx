@@ -1403,6 +1403,8 @@ def _unmirrored() -> set[str]:
 # Pinned from the tree of 2026-09-12 (107 names, re-pinned once the accessor scan above started seeing
 # getters). Shrinking it is progress; GROWING it needs a reason.
 KNOWN_UNMIRRORED = {
+    # asymmetric scanner fallback is a phone-side policy accessor; GunStage models one configured respawn path
+    "respawnAutoTeams", "timedRespawn",
     # transport / MC session: the stage talks to a gun, never to Mission Control
     "onMcMessage", "onBleConnected", "onBleDropped", "setWsState", "hydrate", "statusBody", "resume",
     "resumeSchedule", "_event", "_probe", "_checkEcho", "ackEnd", "onResultPush", "resultWait",

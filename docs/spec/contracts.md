@@ -244,6 +244,7 @@ or invent frames [A4.2].** The one frame authority is `compile.py` (over `gameco
 ```jsonc
 FrameBundle {                       // per (config_id, player_id); pushed in `config`, re-pushed on assign change
   config_id, player_id,
+  dual_emitters?: object[],          // paired body/headset emitter cells used to group one physical pull
   head:    string[],   // config head: $VOL → $CLEAR → $START → $GSET → $PSET,<player_num>,… → $WEAP×n → $SIR×n → $BMAP×n (trigger row HELD as $BMAP,0,98 until T-0, bench 2026-09-16) → LED frames → $TID,<tid> (last).
                        //   NO $SPAWN, NO countdown/start sound — written at lobby, the gun then sits unspawned (M-START).
                        //   The head write is SILENT on the gun (bench 2026-08-25, protocol §7r): the voice + cock belong to $SPAWN.

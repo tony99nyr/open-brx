@@ -1,12 +1,9 @@
 # Handoff: Open BRX
-
 **State as of 2026-09-22 (playtest follow-up).** **Rules for this file.** One screen. It says what is true now; history is `git log -p -- docs/HANDOFF.md`. It has
 one section per open lane. **When several sessions close together, each one overwrites only its own lane section,
 never another lane's.** (On 2026-09-18 three lanes closed on the same night and rewrote each other's sections.)
 The bench order and the desk-work list live in one place: [`bench-plan.md`](bench-plan.md).
-
 ## State of main (2026-09-19, after the pre-game office test)
-
 The 2026-09-20 playtest fixes are committed on `main`: score caps are opt-in, fresh Charge Rifle ammo is
 published, Breacher/Toxin and SMG headset damage are supported, dual-emitter hits are grouped and version-gated,
 LOAD announcements retry after reconnects, shields render as a separate HUD pool, scanner games with one
@@ -15,7 +12,6 @@ an advertised Mission Control service on native phones. Focused app and MC suite
 deaths occurred 2.7–4.2 seconds after station respawn, beyond the configured 2-second protection window; the wire
 profile and regression tests show protection was active. Remaining low polish is stale LOAD copy and shield-zero
 text styling during recharge.
-
 App **0.4.4 is ready on branch `integrate-2026-09-19`, NOT yet published as a GitHub release and NOT yet
 pushed. Tony publishes and field-tests it after lunch.** It carries 0.4.1-0.4.4 (flap-backoff fixes, picker
 connecting-state and pacing fixes, the respawn-profile rebuild, and today's office-test fixes: connecting-screen
@@ -32,7 +28,6 @@ re-enabled first.** Still open and P0: the BLE link-loop root cause (**F293**) a
 **Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32**; the claim
 checklist is [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md). Facts that session 1
 proved, and that every lane builds on:
-
 - **`$TMP` works over BLE** for t4 (accuracy, also the REAL hit rate), t5 (full-auto interval only), t6 (reload
   time), t7 (outgoing damage), t8 (incoming damage) and t9 (magazine, raw rounds, ADDS on every re-send). No token
   resets the magazine. `$SPAWN` zeroes `$TMP`; a `$LIFE` revive keeps it. ⚠️ t4 is last-writer-wins against the
@@ -48,12 +43,9 @@ proved, and that every lane builds on:
   forwards a host `$IRTX` through its headset, so a kill confirm can ride IR (B31).
 - **`$LIFE,<hp>,0,0,1,*` then `$HLED,,6,*` revives a gun killed over BLE.** Untested on a real F264 stall.
 - **`$DPLAY` on a looping sound blocked the gun and dropped the link** (screamers A1). It stays on the never-send list.
-
 ## Lane: levers and screamers
-
 Screamers are Tony's P0. Levers session 1 ran in three sittings; its remainder is bench-plan sitting 2.
 Screamers Phase A has run A1 and A2 only.
-
 - **Next desk task:** reprioritize outside R4; R4/T5 is decision first and remains blocked on Tony's explicit
   recovery-research decision. **T4 is complete:** the verified update ZIP contains 211 audio payloads, not 213;
   193 match the off-gun bank, 18 differ and none add an id. The streaming comparator copied no audio and the
@@ -74,7 +66,6 @@ Screamers Phase A has run A1 and A2 only.
   controlled ATT chunks without the instrument's normal sleeps; do not record a normal `send` run as that result.
 - **Blocked:** R4/T2's full `$SIR` table on the unresolved gun-to-controller effect owner; F269 and Phase C on
   complete A7/A8 numbers; A7b/A7c on the raw-byte helper; Phase E on F272; Phase D on the Phase B rules.
-
 ## Lane: playtest and the node cure
 
 The F264 cure SHIPPED: on three unanswered pulls the node probes with `$LIFE,*`, acts only on the reply, and puts
