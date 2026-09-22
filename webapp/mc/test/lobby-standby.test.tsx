@@ -7,6 +7,7 @@
 // the READY total counts the roster only; and a snapshot from a server that predates the field
 // (no `standby` key) renders no section, no chip, no STAND DOWN — and no crash.
 // `test/e2e/standby.mjs` is the same behaviour in a real browser, fresh and stale.
+import { act } from 'react';
 import { describe, expect, it } from 'vitest';
 import type { Player, State } from '../src/api/types';
 import { Kit } from '../src/screens/Kit';
@@ -169,8 +170,7 @@ describe('ARMORY and a parked player\'s gun', () => {
     expect(card[0].querySelectorAll('input').length, 'no gamertag field').toBe(0);
     const play = card[0].querySelector(`[data-reinstate="${parked.player_id}"]`) as HTMLElement;
     expect(play).toBeTruthy();
-    play.click();
-    await new Promise(r => setTimeout(r, 0));
+    await act(async () => { play.click(); });
     expect(calls).toEqual([parked.player_id]);
     m.unmount();
   });

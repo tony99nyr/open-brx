@@ -2582,7 +2582,7 @@ class Session:
                     cfg = {**cfg, "respawn_auto_teams": auto}
         if not ids and cfg is self.config:
             return self.config
-        return {**cfg, **({"stations": ids} if ids else {})}
+        return cast(GameConfig, {**cfg, **({"stations": ids} if ids else {})})
 
     def _station_warnings(self) -> list[str]:
         """What the objective / respawn rules need on the FIELD that the ITEMS panel has not assigned.
@@ -5071,8 +5071,8 @@ class Session:
         out = []
         for wid in sorted(present):
             requirement = requirements.get(wid or "")
-            if requirement and requirement[0] is not None and have < requirement[0]:
-                minimum, label = requirement
+            if requirement and (minimum := requirement[0]) is not None and have < minimum:
+                _, label = requirement
                 out.append(f"APP CANNOT RUN {str(label).upper()} (NEEDS {'.'.join(str(x) for x in minimum)}) — UPDATE THE APP")
         return out
 
