@@ -1507,6 +1507,7 @@ export class Hud {
     }
     if (st.phase === 'live') {
       set('clock', mmss(st.clockMs)); set('hp', st.hp); set('sh', st.armor); set('shield', st.shield); set('mag', magText(st)); setHtml('res', this._resText(st));
+      const shield = q('shield'); if (shield) shield.classList.toggle('zero', st.shield === 0);
       set('batt', st.battery != null ? st.battery + '%' : '—');
       setHtml('fxbar', this._fx(st));                   // S16: the poison countdown
       setHtml('aimfx', this._aimFx(st));                // S53: the smoke countdown (the slot itself is structural)

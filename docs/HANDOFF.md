@@ -10,10 +10,10 @@ LOAD announcements retry after reconnects, shields render as a separate HUD pool
 team-scoped station warn the operator while uncovered teams use timed AUTO respawn, and utility mode now auto-joins
 an advertised Mission Control service on native phones. Focused app and MC suites are green. The playtest station
 deaths occurred 2.7–4.2 seconds after station respawn, beyond the configured 2-second protection window; the wire
-profile and regression tests show protection was active. Remaining low polish is stale LOAD copy and shield-zero
-text styling during recharge.
-App **0.4.4 is ready on branch `integrate-2026-09-19`, NOT yet published as a GitHub release and NOT yet
-pushed. Tony publishes and field-tests it after lunch.** It carries 0.4.1-0.4.4 (flap-backoff fixes, picker
+profile and regression tests show protection was active. The LOAD retry copy and shield recharge styling are now
+consistent with those live behaviors.
+App **0.4.5 is published as the `app-v0.4.5` GitHub release and pushed on `main`.** It includes the prior
+0.4.1-0.4.4 fixes plus the Android release build. Tony field-tests it after lunch. The release includes flap-backoff fixes, picker
 connecting-state and pacing fixes, the respawn-profile rebuild, and today's office-test fixes: connecting-screen
 layout, the Mission Control LAN sweep paused during a gun connect, the low-health debounce, HUD layout, immersive
 fullscreen), an eight-finding review pass, life presets (Standard 45/70/0, Shields 45/0/105, Hardcore 45/0/0),
