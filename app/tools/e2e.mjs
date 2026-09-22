@@ -830,6 +830,34 @@ await step('BRAVO fires; ALPHA takes hits → TAKING FIRE state', async () => {
   expect(sawFire, 'TAKING FIRE state never appeared after a hit');
   await shot(hudA, 'hudA-taking-fire');
 });
+await step('F265: BRAVO miss-only shots refresh ALPHA’s visible PLAYERS board accuracy and keep it LIVE', async () => {
+  // The hit above establishes BRAVO's first credited shots.  These next shots deliberately produce no
+  // hit/death event: the server must publish the status-derived shots/accuracy change to every bound HUD.
+  await hudA.click('[aria-label="Player scores"]');
+  await until(async () => (await hudA.locator('.bdpanel').count()) === 1, 6000, 'ALPHA scores board');
+  const bravoRow = hudA.locator('.bdpanel .bdr').filter({ hasText: 'BRAVO' });
+  const bravoAccuracy = async () => {
+    const m = (await bravoRow.innerText()).match(/(\d+)%/);
+    return m ? Number(m[1]) : null;
+  };
+  await until(async () => (await bravoAccuracy()) > 0, 6000, 'credited BRAVO accuracy on ALPHA board');
+  const before = await bravoAccuracy();
+  expect(before > 0, 'the credited hit must establish a non-zero BRAVO accuracy: ' + before + '%');
+  await hudB.evaluate(() => window.fakeGun.fire(4));
+  await until(async () => {
+    const after = await bravoAccuracy();
+    return after !== null && after < before;
+  }, 8000, 'BRAVO miss-only accuracy refresh on ALPHA board');
+  expect((await hudA.locator('#bdage').innerText()).trim() === 'LIVE', 'fresh score push must keep the board LIVE');
+  await hudA.setViewportSize({ width: 740, height: 340 });
+  await until(async () => {
+    const box = await bravoRow.boundingBox();
+    return !!box && box.x >= 0 && box.x + box.width <= 740 && box.y >= 0 && box.y + box.height <= 340;
+  }, 3000, 'BRAVO row inside short phone viewport');
+  await shot(hudA, 'hudA-f265-miss-only-score');
+  await hudA.setViewportSize({ width: 891, height: 411 });
+  await hudA.click('[aria-label="Close scores"]');
+});
 await step('NIGHT OPS live layout: stats must not stack on the ammo corner (regression)', async () => {
   await hudA.evaluate(() => { window.brx.engine.night = true; window.brx.engine._changed(); });
   await hudA.waitForTimeout(400);

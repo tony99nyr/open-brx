@@ -3361,6 +3361,7 @@ class Session:
         self._log(nid, "status", body, t_recv)
         if self.scorer:
             self.scorer.ingest_status(nid, body, t_recv)
+            self._push_scores()       # F265: misses change shots/accuracy only through this heartbeat
         if nv.get("node_type") != "utility" and body.get("arm_state") in ("armed", "live"):
             self._check_stale_live(nid, body.get("match_id"), t_recv)   # A34
         if nv.get("node_type") != "utility":

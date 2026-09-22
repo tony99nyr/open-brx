@@ -139,6 +139,35 @@ def test_score_pushes_carry_every_row_in_every_mode():
     assert body["board"]["teams"], "the DOWN-screen race is untouched"
 
 
+def test_status_only_shot_change_pushes_the_new_score_to_every_phone_once():
+    """F265: misses have no event; the status heartbeat is their only route to MC.
+
+    The scorer used to ingest the higher shot count without pushing a score frame, leaving every
+    phone's leaderboard frozen while Mission Control showed the new total.  An identical heartbeat
+    must still be quiet: `_push_scores` owns the full-body de-duplication.
+    """
+    s, net, clock, ps, _info = go_live(2, "tdm")
+    net.pushed.clear()
+
+    clock["t"] += 2_000
+    net.simulate_status("node0", {"player_id": ps[0]["player_id"], "shots": 25, "alive": True,
+                                  "synced": True, "pending": 0}, clock["t"])
+
+    assert s.scorer.shots_total(ps[0]["player_id"]) == 25, "MC ingested the miss-only heartbeat"
+    pushed = net.pushes("score")
+    assert {nid for nid, _kind, _body in pushed} == {"node0", "node1"}, \
+        "every bound phone gets the shared leaderboard change"
+    for _nid, _kind, body in pushed:
+        row = next(r for r in body["rows"] if r["player_id"] == ps[0]["player_id"])
+        assert row["shots_total"] == 25 and row["accuracy"] == 0.0
+
+    net.pushed.clear()
+    clock["t"] += 2_000
+    net.simulate_status("node0", {"player_id": ps[0]["player_id"], "shots": 25, "alive": True,
+                                  "synced": True, "pending": 0}, clock["t"])
+    assert net.pushes("score") == [], "an unchanged heartbeat does not spam the field"
+
+
 # ---------------------------------------------------------------------------------------------
 # A24/M2 — the replay: a late fact can move the END ITSELF
 # ---------------------------------------------------------------------------------------------

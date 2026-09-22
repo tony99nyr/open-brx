@@ -450,3 +450,12 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
   `cure.verdict === 'no_answer'`, with the latter naming FORCE RESPAWN or relink. The compact alert owns its lane
   over lower-priority chips, remains readable at the smallest phone size and at night, and yields to gun-link,
   flap and relink controls. Recovery removes the warning and restores the ordinary chip lane.
+
+# Closed 2026-09-22: live phone scoreboard
+
+- 2026-09-22 **F265** Mission Control now pushes score snapshots after status-heartbeat ingestion, not only after
+  hit/death events. Miss-only firing therefore updates shots and accuracy on every bound phone, while the existing
+  full-body de-duplication keeps unchanged heartbeats quiet. A real two-phone browser regression proves that one
+  phone's miss-only burst lowers its rendered accuracy on the other phone's PLAYERS board, keeps the board LIVE,
+  and remains visible inside a 740×340 viewport. The earlier 16-second MC-message freshness label remains the
+  disconnect guard; the missing status-to-score push was the cause of the continuously bound freeze.

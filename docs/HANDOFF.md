@@ -75,8 +75,9 @@ respawn, equal go-live at T-3); F223 (order node facts by their own `t`) is the 
 behind. Overnight cycle 1 (2026-09-18 night) closed **F261** (a fresh MC now records an orphan match from any
 unbound node) and **F257** (the charge-weapon HUD). Today's stale-node fix (`88ead536`, no open row) answers both
 ghost-node incidents from the office test. **F289** still flags the gap it leaves: an offline player
-mid-protection-window may stay protected all match. **F265**'s HUD half shipped (LIVE only within 16 s of the
-last MC message); its cause, why the score pushes stopped, is still not found. **F287 is closed:** operator
+mid-protection-window may stay protected all match. **F265 is closed:** status heartbeats now push a changed
+score snapshot, so miss-only shot/accuracy changes reach every bound phone; unchanged heartbeats de-duplicate.
+**F287 is closed:** operator
 RESYNC now proves the gun alive before any re-arm burst. **F288 is closed:** the phone renders `no_fire` and
 `no_answer`, names the host cure, and yields its alert lane to link/reconnect controls. Also open: **F277** (a
 reload that never completes), and the office test's own new rows, **F293-F298** (link-loop root cause,
@@ -84,8 +85,7 @@ reload that never completes), and the office test's own new rows, **F293-F298** 
 metrics, and a real Shields-preset match). App **0.4.4** is built on this branch, not yet published; see "State
 of main" above.
 
-- **Next desk task:** the F265 cause (why a bound phone stops receiving score pushes), then **S55** (one accuracy
-  owner) and **F274** (the recoil writer onto one `$TMP` t4 frame).
+- **Next desk task:** **S55** (one accuracy owner), then **F274** (the recoil writer onto one `$TMP` t4 frame).
 - **Next bench task:** the "0.4.4 field check" in [`bench-plan.md`](bench-plan.md) (connect timing on both
   phones, the new respawn rules, the Shields preset, the down animation, full screen), then sitting 5, match
   verification: F264 live, the F277 repro, and the F256 row.
@@ -123,7 +123,7 @@ build the category-driven Mission Control picker.
 ## Start here
 
 Read [`bench-plan.md`](bench-plan.md). If Tony is at the bench, load the `bench-session` skill and run sitting 1.
-Otherwise take the first desk task, **F265's root cause: why a bound phone stops receiving score pushes**.
+Otherwise take the first desk task, **S55's one accuracy owner**.
 
 ## Machine state
 
