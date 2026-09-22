@@ -10,6 +10,8 @@ import { ControlPoint, ControlAdvertiser, CONTROL_STATE, NEUTRAL as CONTROL_NEUT
 import { Transport } from './transport/transport.js';   // utility.md §5b/§5c: the phone joins MC at muster to be ARMED (contracts A13.5)
 import { makeEnvelope, encode } from './transport/envelope.js';   // stage harness only: a real station_config ENVELOPE, not a bare function call (review 2026-09-11 lane-4)
 import { APP_VER } from './build.js';   // A29: the REAL build, baked by scripts/build.mjs
+import jsQR from 'jsqr';
+import { parseMcJoin } from './mcurl.js';
 
 // A29 (2026-09-12): "utility phones report the same way" -- the same "<version>+<sha>[-dirty]" a player
 // node sends, so MC's muster rollup can compare a station phone with the field. It was 'utility-0.2', a
@@ -35,7 +37,7 @@ function log(msg, cls = 'li') {
 // mcArmed: {game, at, valid_ids} once MC pushed station_config. -74 threshold + 0.8 s dwell = arm's length,
 // brief pause, green (bench-tuned 2026-09-04). captureS/netCap belong to kind 5 (§5d.1): seconds ONE net
 // player needs for ONE phase, and the clamp on how much a rush can stack.
-const DEFAULTS = { kind: 'respawn', team: 1, id: 1, tx: 'high', threshold: -74, dwell: 800, game: 0, mcArmed: null, mc: '',
+const DEFAULTS = { kind: 'respawn', team: 1, id: 1, tx: 'high', threshold: -74, dwell: 800, game: 0, mcArmed: null, mc: '', mc_auto: false,
   captureS: DEFAULT_CAPTURE_S, netCap: DEFAULT_NET_CAP };
 const DEMO = /[?&](stage|demo)\b/.test(typeof location !== 'undefined' ? location.search : '');   // the stage harness: no radio, fake players
 const settings = (() => { try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem('brx.utility') || '{}') }; } catch (_) { return { ...DEFAULTS }; } })();
@@ -161,7 +163,7 @@ function utilityStatusBody() {
 }
 function connectMc(url, { wsFactory, trusted = true } = {}) {
   if (!url) return;
-  if (trusted) { settings.mc = url; save(); }
+  if (trusted) { settings.mc = url; settings.mc_auto = false; save(); }
   if (transport) { try { transport.close(); } catch (_) { /* ignore */ } }
   transport = new Transport({ node: { node_type: 'utility', app_ver: UTIL_VER }, gun: null, keyPrefix: 'brxu', ...(wsFactory ? { wsFactory } : {}) });   // its own node id: never the HUD's
   transport.armedOrLive = true;                            // keep dialling — at muster the operator is waiting on this
@@ -178,14 +180,14 @@ function connectMc(url, { wsFactory, trusted = true } = {}) {
   transport.connect({ url, trusted }).then(() => {
     // An automatically discovered endpoint becomes the remembered fallback only after MC proves itself
     // with a welcome. Until then another mDNS result may replace a stale or non-MC websocket.
-    if (!trusted && transport && transport.state === 'bound') { settings.mc = url; save(); }
+    if (!trusted && transport && transport.state === 'bound') { settings.mc = url; settings.mc_auto = true; save(); }
   }).catch(e => log('MC connect: ' + (e && e.message || e), 'le'));
 }
 // Utility mode is an explicit operator choice, so it may auto-join the MC service on this LAN. A utility
 // phone has no player takeover key and cannot silently change a player's binding; discovery therefore skips
 // the player's tap-to-join rule. A typed `?mc=`/remembered URL still wins and remains the offline fallback.
 function startUtilityDiscovery() {
-  if (!plugins.zeroconf || !isNative() || mcUrl()) return;
+  if (!plugins.zeroconf || !isNative() || (mcUrl() && !settings.mc_auto)) return;
   try {
     plugins.zeroconf.watch({ type: '_openbrx._tcp.', domain: 'local.' }, res => {
       if (mcState === 'bound' || !res || (res.action !== 'resolved' && res.action !== 'added')) return;
@@ -198,6 +200,25 @@ function startUtilityDiscovery() {
       if (!transport || transport.url !== url) connectMc(url, { trusted: false });
     }).catch(e => log('MC discovery: ' + (e && e.message || e)));
   } catch (e) { log('MC discovery: ' + (e && e.message || e)); }
+}
+async function scanUtilityQr() {
+  if (!navigator.mediaDevices?.getUserMedia) { log('QR scan unavailable — enter the MC address below', 'le'); return; }
+  const panel = $('qrPanel');
+  const video = $('qrVideo') || document.createElement('video'); video.setAttribute('playsinline', ''); video.muted = true;
+  if (!video.parentNode && panel) panel.prepend(video);
+  const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const cancel = $('btnQrCancel'); if (panel) panel.hidden = false;
+  let stream = null, done = false;
+  const stop = () => { done = true; if (stream) stream.getTracks().forEach(t => t.stop()); if (panel) panel.hidden = true; };
+  if (cancel) cancel.onclick = stop;
+  try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); video.srcObject = stream; await video.play(); }
+  catch (e) { stop(); log('QR camera unavailable: ' + e.message, 'le'); return; }
+  const tick = () => {
+    if (done) return;
+    if (video.videoWidth) { canvas.width = video.videoWidth; canvas.height = video.videoHeight; ctx.drawImage(video, 0, 0); const img = ctx.getImageData(0, 0, canvas.width, canvas.height); const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' }); const join = code && parseMcJoin(code.data); if (join) { stop(); connectMc(join.url, { trusted: true }); return; } }
+    requestAnimationFrame(tick);
+  };
+  tick();
 }
 // ---------- stage harness: a station_config through the REAL wire, not a bare function call ----------
 // screens.mjs #49 used to call `applyStationConfig()` directly, which never touched the Transport at all --
@@ -502,6 +523,7 @@ function wire() {
   $('btnStart').onclick = () => (advertising ? stopAdvert() : startAdvert());
   $('btnMc').onclick = () => connectMc($('mcUrl').value.trim());
   if ($('btnMcMain')) $('btnMcMain').onclick = () => connectMc($('mcUrlMain').value.trim());
+  if ($('btnQrMain')) $('btnQrMain').onclick = () => scanUtilityQr();
   $('btnHud').onclick = exitToHud;
   for (const b of document.querySelectorAll('[data-kind]')) b.onclick = () => { settings.kind = b.dataset.kind; save(); restartIfLive(); };
   for (const b of document.querySelectorAll('[data-team]')) b.onclick = () => { settings.team = +b.dataset.team; save(); restartIfLive(); };
@@ -626,7 +648,7 @@ function wireExit() {
   // wire (`stageMcMessage`, above), not a bare `applyStationConfig()` call -- so the harness gets a fake but
   // otherwise real transport instead of none at all.
   if (DEMO) connectMc(url || 'stage://mc', { wsFactory: stageWsFactory });
-  else if (url) connectMc(url);   // setup needs WiFi (A13.5); once armed, play does not
+  else if (url) { connectMc(url, { trusted: !settings.mc_auto }); if (settings.mc_auto) startUtilityDiscovery(); }   // setup needs WiFi (A13.5); once armed, play does not
   else startUtilityDiscovery();   // utility mode is an explicit choice: auto-join MC when it advertises on this LAN
   if (!plugins.beacon || !support.advertising) log('this phone cannot advertise; check Bluetooth is on', 'le');
   await startScan();
