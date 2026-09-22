@@ -159,9 +159,9 @@ function utilityStatusBody() {
     ...(settings.kind === 'control' ? { control: { owner: point.owner, progress: Math.round(point.progress), contested: point.contested,
       hold_ms: point.holdMs, capture_log: point.log.slice(-32), capture_s: settings.captureS, net_cap: settings.netCap } } : {}) };
 }
-function connectMc(url, { wsFactory } = {}) {
+function connectMc(url, { wsFactory, trusted = true } = {}) {
   if (!url) return;
-  settings.mc = url; save();
+  if (trusted) { settings.mc = url; save(); }
   if (transport) { try { transport.close(); } catch (_) { /* ignore */ } }
   transport = new Transport({ node: { node_type: 'utility', app_ver: UTIL_VER }, gun: null, keyPrefix: 'brxu', ...(wsFactory ? { wsFactory } : {}) });   // its own node id: never the HUD's
   transport.armedOrLive = true;                            // keep dialling — at muster the operator is waiting on this
@@ -175,7 +175,11 @@ function connectMc(url, { wsFactory } = {}) {
     else if (m.kind === 'control' && m.body && m.body.cmd === 'release_utility') { log('Mission Control released this phone back to HUD', 'lk'); exitToHud(); }
   });
   transport.onState(s => { mcState = s; log(`MC ${s}${transport.rejected ? ' — ' + transport.rejected.reason : ''}`, s === 'bound' ? 'lk' : 'li'); render(); });
-  transport.connect({ url }).catch(e => log('MC connect: ' + (e && e.message || e), 'le'));
+  transport.connect({ url, trusted }).then(() => {
+    // An automatically discovered endpoint becomes the remembered fallback only after MC proves itself
+    // with a welcome. Until then another mDNS result may replace a stale or non-MC websocket.
+    if (!trusted && transport && transport.state === 'bound') { settings.mc = url; save(); }
+  }).catch(e => log('MC connect: ' + (e && e.message || e), 'le'));
 }
 // Utility mode is an explicit operator choice, so it may auto-join the MC service on this LAN. A utility
 // phone has no player takeover key and cannot silently change a player's binding; discovery therefore skips
@@ -184,14 +188,14 @@ function startUtilityDiscovery() {
   if (!plugins.zeroconf || !isNative() || mcUrl()) return;
   try {
     plugins.zeroconf.watch({ type: '_openbrx._tcp.', domain: 'local.' }, res => {
-      if (transport || !res || (res.action !== 'resolved' && res.action !== 'added')) return;
+      if (mcState === 'bound' || !res || (res.action !== 'resolved' && res.action !== 'added')) return;
       const svc = res.service || {};
       const ip = svc.ipv4Addresses && svc.ipv4Addresses[0];
       if (!ip || !svc.port) return;
       const path = svc.txtRecord && svc.txtRecord.ws_path || '/ws';
       const url = `ws://${ip}:${svc.port}${path}`;
       log(`MISSION CONTROL FOUND — CONNECTING ${url}`, 'lk');
-      connectMc(url);
+      if (!transport || transport.url !== url) connectMc(url, { trusted: false });
     }).catch(e => log('MC discovery: ' + (e && e.message || e)));
   } catch (e) { log('MC discovery: ' + (e && e.message || e)); }
 }
@@ -417,7 +421,10 @@ function render() {
   // panel and this phone's advert agree on which ids are live in this game.
   const idsEl = $('ids');
   if (idsEl) idsEl.textContent = (armed && Array.isArray(armed.valid_ids) && armed.valid_ids.length) ? `VALID IDS: ${armed.valid_ids.join(', ')}` : '';
-  $('mcstate').textContent = mcState === 'bound' ? 'MISSION CONTROL ✓ LINKED' : mcState === 'offline' ? (settings.mc ? 'MISSION CONTROL · OFFLINE' : 'MISSION CONTROL · NO ADDRESS') : `MISSION CONTROL · ${mcState.toUpperCase()}…`;
+  const mcText = mcState === 'bound' ? 'MISSION CONTROL ✓ LINKED' : mcState === 'offline' ? (settings.mc ? 'MISSION CONTROL · OFFLINE' : 'MISSION CONTROL · SEARCHING THIS WI-FI') : `MISSION CONTROL · ${mcState.toUpperCase()}…`;
+  $('mcstate').textContent = mcText;
+  const mainState = $('mcstateMain'); if (mainState) mainState.textContent = mcText;
+  const mainInput = $('mcUrlMain'); if (mainInput && document.activeElement !== mainInput) mainInput.value = settings.mc || mcUrl() || '';
   if (document.activeElement !== $('mcUrl')) $('mcUrl').value = settings.mc || mcUrl() || '';
   const rows = presence.players().map(p => {
     const alive = !!(p.state & PLAYER_STATE.alive);
@@ -494,6 +501,7 @@ function renderControl(isControl, v, heldBy) {
 function wire() {
   $('btnStart').onclick = () => (advertising ? stopAdvert() : startAdvert());
   $('btnMc').onclick = () => connectMc($('mcUrl').value.trim());
+  if ($('btnMcMain')) $('btnMcMain').onclick = () => connectMc($('mcUrlMain').value.trim());
   $('btnHud').onclick = exitToHud;
   for (const b of document.querySelectorAll('[data-kind]')) b.onclick = () => { settings.kind = b.dataset.kind; save(); restartIfLive(); };
   for (const b of document.querySelectorAll('[data-team]')) b.onclick = () => { settings.team = +b.dataset.team; save(); restartIfLive(); };

@@ -185,6 +185,13 @@ input[type=range]{width:100%;height:44px;accent-color:var(--team);margin:0}   /*
     <div id="players"></div>
   </section>
 
+  <section class="panel mcjoin" id="mcjoin">
+    <h3>MISSION CONTROL CONNECTION</h3>
+    <div class="hint" id="mcstateMain">AUTO-CONNECTING ON THIS WI-FI…</div>
+    <div class="rowc"><input id="mcUrlMain" placeholder="ws://mission-control-ip:8766/ws" inputmode="url" aria-label="Mission Control address"><button class="btn" id="btnMcMain"><span class="unskew">CONNECT</span></button></div>
+    <div class="hint">If automatic discovery cannot find MC, enter its address here. Station setup remains available from ⓘ.</div>
+  </section>
+
   <!-- A41 / field 2026-09-12, tightened field-safety fix 2026-09-13: leaving utility mode is NOT the
        anti-cheat concern the ⓘ gate protects (that stays on kind/team/id/threshold, behind the
        seven-tap gesture, unchanged) -- this is only for a phone nobody has claimed as a field item yet.
