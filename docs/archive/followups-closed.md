@@ -552,3 +552,8 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
 - 2026-09-22 **F190** was already implemented in the current tree: `pushGate` owns the config-id-current
   predicate and both LOBBY and GAMES `LoadStatus` callers consume its `acked` count. The focused browser
   regression explicitly rejects an older-config ack; the row was stale bookkeeping, not a remaining code gap.
+
+# Closed 2026-09-22: APK SDK provenance
+
+- 2026-09-22 **B22** `build.json` now records Android `minSdk` 24 and `targetSdk` 36, and the rendered
+  download card shows both values. The sidecar guard and real browser download-page check pass.

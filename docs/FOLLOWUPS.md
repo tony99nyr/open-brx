@@ -156,9 +156,6 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   MC wiring, not the detection. `build`.
 - **B21 🟠** release-sign + distribute the Android app (debug key today, `debuggable=true`; keystore out of repo, **→ 2026-09-19, this is no longer hypothetical: app 0.3.0 IS PUBLISHED and it is DEBUG-signed** (`app-v0.3.0`, F220 closed). It sideloads and it is what both phones run, but it carries the throwaway Android debug key, so the FIRST release-signed build will not upgrade over it and every player must uninstall once. That is a one-time cost that gets worse with every player who installs 0.3.x, and it is cheapest to pay before a public game rather than on a match day. ⚠ **WAITING ON TONY:** which signing key, and before which game. Every player who installs a debug-signed 0.3.x pays the uninstall once, so the cost only grows. `decision`.
   `assembleRelease`, version bump per build; iOS = TestFlight or source build). `build`.
-- **B22 🟢** APK pipeline leftovers: minSdk/targetSdk can drift silently (record in `build.json`, assert on the page).
-  The two site items are gone with the old generator: the link check is now a real browser crawl, and per-section
-  stamps no longer exist. `build`.
 - **B23 🔴** respawn station for HOSTED games = a node-defined "downed" state. A dead hosted gun hears no IR and native
   station words do nothing in a host-driven game (2026-09-04). ⭐ **WHY they do nothing is now known (2026-09-10): our
   compiled `$SIR` table ships no protocol-15 row, so the firmware discards every station word in silence. One row

@@ -222,7 +222,7 @@ function downloadCard() {
   return `<div class="dl">
 <div class="dl-head"><span class="dl-name">BRX Companion for Android</span><span class="dl-ver">v${esc(r.version)}</span></div>
 <a class="dl-btn" href="${esc(r.url)}" download>Download APK <span>${mb} MB</span></a>
-<dl class="dl-meta"><dt>Built</dt><dd><time datetime="${esc(r.built)}">${day}</time></dd><dt>From</dt><dd><a href="https://github.com/tony99nyr/open-brx/releases/tag/${esc(r.release)}">${esc(r.release)}</a></dd><dt>SHA-256</dt><dd><code>${esc(r.sha256)}</code></dd></dl>
+<dl class="dl-meta"><dt>Built</dt><dd><time datetime="${esc(r.built)}">${day}</time></dd><dt>Android</dt><dd>minSdk ${esc(r.minSdk)} · targetSdk ${esc(r.targetSdk)}</dd><dt>From</dt><dd><a href="https://github.com/tony99nyr/open-brx/releases/tag/${esc(r.release)}">${esc(r.release)}</a></dd><dt>SHA-256</dt><dd><code>${esc(r.sha256)}</code></dd></dl>
 </div>\n`;
 }
 

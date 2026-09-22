@@ -92,8 +92,14 @@ find "$OUT" -maxdepth 1 -iname '*.apk' ! -samefile "$OUT/$NAME" -print -delete
 # mtime, the zip entries are normalised), and the site refuses the sidecar if it stops matching.
 node -e '
 const fs = require("fs"), crypto = require("crypto");
-const [file, dir] = [process.argv[1], process.argv[2]];
+const [file, dir, gradlePath] = [process.argv[1], process.argv[2], process.argv[6]];
 const buf = fs.readFileSync(dir + "/" + file);
+const gradle = fs.readFileSync(gradlePath, "utf8");
+const sdk = (name) => {
+const m = gradle.match(new RegExp(name + "Version\\s*[=:]\\s*(?:rootProject\\.ext\\.[^:]+\\s*[=:]\\s*)?(\\d+)"));
+  if (!m) throw new Error("android-apk: could not read " + name + " from " + gradlePath);
+  return Number(m[1]);
+};
 const sha256 = crypto.createHash("sha256").update(buf).digest("hex");
 // "built" describes the BYTES, not this run: a rebuild that produces an identical apk (gradle was
 // up to date) keeps the original date rather than aging the download page forward for nothing.
@@ -103,10 +109,10 @@ try {
   if (prev.sha256 === sha256 && prev.built) built = prev.built;
 } catch {}
 fs.writeFileSync(dir + "/build.json", JSON.stringify({
-  file, version: process.argv[3], variant: "debug", built, bytes: buf.length, sha256,
+  file, version: process.argv[3], variant: "debug", minSdk: sdk("minSdk"), targetSdk: sdk("targetSdk"), built, bytes: buf.length, sha256,
   git: process.argv[4], dirty: process.argv[5] === "1",
 }, null, 1) + "\n");
-' "$NAME" "$OUT" "$VERSION" "$GIT_SHA" "$([ -n "$DIRTY" ] && echo 1 || echo 0)"
+' "$NAME" "$OUT" "$VERSION" "$GIT_SHA" "$([ -n "$DIRTY" ] && echo 1 || echo 0)" "$REPO/app/android/variables.gradle"
 
 # Publish the build as a GitHub Release asset and record its URL in the sidecar. The release, not the
 # repo, is where a build is meant to live: a committed apk adds ~5 MB to git history that no purge

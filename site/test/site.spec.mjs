@@ -696,6 +696,7 @@ it('12c · every landing button goes where it says', async ({ page, request }) =
   await expect(page.locator('.dl .dl-btn')).toContainText(/APK/);
   expect(await page.locator('.dl .dl-btn').getAttribute('href')).toMatch(/^https:\/\/github\.com\/.*\.apk$/);
   await expect(page.locator('.dl-meta')).toContainText(/[0-9a-f]{64}/);
+  await expect(page.locator('.dl-meta')).toContainText('minSdk 24 · targetSdk 36');
   await expect(page.locator('h2', { hasText: /iOS/ })).toBeVisible();
 });
 

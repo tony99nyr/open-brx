@@ -98,6 +98,20 @@ def test_published_build_is_reachable():
     )
 
 
+def test_published_build_records_android_sdk_bounds():
+    """The download page must expose the SDK floor/target that produced this APK."""
+    meta = _sidecar()
+    assert meta.get("minSdk") == 24, "build.json must record the Android minSdk used by the APK"
+    assert meta.get("targetSdk") == 36, "build.json must record the Android targetSdk used by the APK"
+
+
+def test_apk_writer_preserves_android_sdk_bounds():
+    writer = (REPO / "app/scripts/android-apk.sh").read_text(encoding="utf-8")
+    assert 'minSdk: sdk("minSdk")' in writer
+    assert 'targetSdk: sdk("targetSdk")' in writer
+    assert '"$REPO/app/android/variables.gradle"' in writer
+
+
 def test_published_build_was_not_cut_from_a_dirty_tree():
     meta = _sidecar()
     assert meta.get("dirty") is False, (
