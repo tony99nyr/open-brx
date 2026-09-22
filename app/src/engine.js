@@ -1096,6 +1096,8 @@ export class Engine {
    *  way (a stored preset, the demo, the stage) spawned at exactly that, inside the headset relay's out-blink wedge. */
   get respawnDelayMs() { const s = this.config && this.config.respawn && this.config.respawn.delay_s; return Math.max(MIN_RESPAWN_S, s > 0 ? s : 10) * 1000; }
   get respawnType() { return (this.config && this.config.respawn && this.config.respawn.type) || 'auto'; }
+  get respawnAutoTeams() { return Array.isArray(this.config && this.config.respawn_auto_teams) ? this.config.respawn_auto_teams : []; }
+  get timedRespawn() { return this.respawnType === 'auto' || (this.respawnType === 'scanner' && this.team && this.respawnAutoTeams.includes(this.team.tid)); }
   /** F15: the host-driven stun is ON when the config carries a `stun` object (`{duration_s}`); a proto-8 `$HIR` is
    *  otherwise an ordinary hit (the stock `<8,0>` row is the charge rifle's plain damage) and must disarm nothing. */
   get stunEnabled() { return !!(this.config && this.config.stun && typeof this.config.stun === 'object'); }
@@ -2987,7 +2989,7 @@ export class Engine {
           if (prev > ms && left <= ms && !this.cuesFired.has(k)) { this.cuesFired.add(k); this._event(k); this.moment = { kind: 'alert', at: now, data: { kind: k, text: k === 'time_60' ? 'ONE MINUTE LEFT' : k === 'time_30' ? '30 SECONDS' : '10 SECONDS' } }; }
         }
       }
-      if (!this.alive && this.deadAt && this.respawnType === 'auto' && now - this.deadAt >= this.respawnDelayMs && this.bleUp && !this.resync && !this.reconciling) {
+      if (!this.alive && this.deadAt && this.timedRespawn && now - this.deadAt >= this.respawnDelayMs && this.bleUp && !this.resync && !this.reconciling) {
         const rs = !!this._resyncRevive; this._resyncRevive = false; this._revive(rs);   // §3.10: a resync re-arm is flagged respawn{resync:true}
       }
       // utility.md §4: a scanner respawn with the presence gate revives the moment the player has dwelt at
@@ -4602,7 +4604,7 @@ export class Engine {
   /** What the DOWN screen should tell a scanner-mode player (utility.md §4.3). */
   respawnHint(now) {
     if (this.alive || !this.deadAt || this.phase !== 'live') return null;
-    if (this.respawnType === 'auto') return 'timer';
+    if (this.timedRespawn) return 'timer';
     if (this.respawnType === 'none') return 'out';
     // Scanner: guide to a station from the instant of death (Tony 2026-09-04: a blank STAND BY for the
     // whole respawn delay leaves a first-timer with no idea what to do). The delay only gates the actual
@@ -5400,7 +5402,7 @@ export class Engine {
       player: this.player, team: this.team, teamKey: this.teamKey, teamName: this.team ? (this.team.name || TEAM_NAME[this.team.tid] || '').toUpperCase() : '',
       callsign: this.player ? this.player.display : '', playerNum: this.player ? this.player.player_num : null,
       mode: this.config ? String(this.config.mode || '').toUpperCase() : '', weapon: this.weaponName,
-      hp: this.hp, armor: this.armor, shield: this.shield, maxHp: this.maxHp, maxArmor: this.maxArmor, ammo: this.ammo, reserve: this.reserve, mag: (this._ammoBySlot()[this.activeSlot] ?? this.mag),
+      hp: this.hp, armor: this.armor, shield: this.shield, maxHp: this.maxHp, maxArmor: this.maxArmor, maxShield: this.maxShield, ammo: this.ammo, reserve: this.reserve, mag: (this._ammoBySlot()[this.activeSlot] ?? this.mag),
       // Bench 2026-09-17: `heat` is the active slot's last $ALCD heat token, null until one has been seen
       // this life (a non-heat weapon never sends a non-zero one).
       heat: this.heatBySlot[this.activeSlot] != null ? this.heatBySlot[this.activeSlot] : null,
@@ -5426,7 +5428,7 @@ export class Engine {
       // `no_fire` / `no_answer` on the live phone HUD so the player can bring the host the proven failure.
       poolStale: this.poolStale(now), cure: this.cure, gunLocked: !!this.gunLocked,
       gunRecovery: this._gunRecovery ? (this._gunRecovery.nextAt == null && !this._gunRecovery.writing ? 'retry_exhausted' : 'rearming') : null,
-      respawnType: this.respawnType, killedBy: this.killedBy, downReason: this.downReason, underFire: this.alive && this.lastHitAt > 0 && (now - this.lastHitAt) < 2000, respawnIn: (!this.alive && this.deadAt && this.respawnType === 'auto') ? Math.max(0, Math.ceil((r - (now - this.deadAt)) / 1000)) : 0,   // scanner/none modes have no countdown
+      respawnType: this.respawnType, respawnAuto: this.timedRespawn, killedBy: this.killedBy, downReason: this.downReason, underFire: this.alive && this.lastHitAt > 0 && (now - this.lastHitAt) < 2000, respawnIn: (!this.alive && this.deadAt && this.timedRespawn) ? Math.max(0, Math.ceil((r - (now - this.deadAt)) / 1000)) : 0,
       // utility.md: the respawn station this player would use, how close it reads, and what the DOWN screen should say
       station: stationView(this._respawnStation()), respawnGate: this.respawnGate, respawnHint: this.respawnHint(now),
       // 2026-09-19 respawn profiles: `weaponArming` = ms until a timed life's trigger goes live (null once it has);

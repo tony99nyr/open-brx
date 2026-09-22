@@ -161,7 +161,7 @@ function utilityStatusBody() {
     ...(settings.kind === 'control' ? { control: { owner: point.owner, progress: Math.round(point.progress), contested: point.contested,
       hold_ms: point.holdMs, capture_log: point.log.slice(-32), capture_s: settings.captureS, net_cap: settings.netCap } } : {}) };
 }
-function connectMc(url, { wsFactory, trusted = true, pub = null, secret = null } = {}) {
+function connectMc(url, { wsFactory, trusted = true, pub, secret } = {}) {
   if (!url) return;
   if (trusted) { settings.mc = url; settings.mc_auto = false; save(); }
   if (transport) { try { transport.close(); } catch (_) { /* ignore */ } }
