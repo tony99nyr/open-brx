@@ -91,7 +91,9 @@ const JOBS = [
   { name: 'mc-tsc', cwd: 'webapp/mc', cmd: ['npx', 'tsc', '-b'], mb: 450, secs: 10 },
   { name: 'mc-vitest', cwd: 'webapp/mc', cmd: ['npx', 'vitest', 'run', `--maxWorkers=${VITEST_W}`], mb: 300 + 300 * VITEST_W, secs: 15 },
   { name: 'app-tsc', cwd: 'app', cmd: ['npx', 'tsc', '--noEmit'], mb: 350, secs: 3 },
-  { name: 'app-test', cwd: 'app', cmd: ['npm', 'test'], www: true, mb: 300, secs: 10 },
+  // The root already built shared app/www. The prebuilt form avoids rewriting it under parallel readers, and a
+  // private shots dir keeps this focused A38 browser pass isolated from the full app-screens job.
+  { name: 'app-test', cwd: 'app', cmd: ['npm', 'run', 'test:prebuilt'], env: { SCREENS_OUT: path.join(LOGS, 'app-test-screens') }, www: true, mb: 550, secs: 18 },
   { name: 'site', cwd: 'site', cmd: ['npx', 'playwright', 'test', `--workers=${SITE_W}`], www: true, mb: 300 + 300 * SITE_W, secs: 30 },
   // the long pole, and mostly idle: it waits out page timelines, so it gets more shards than the CPU share
   { name: 'app-screens', cwd: 'app', cmd: ['node', 'tools/screens.mjs'], env: { SCREENS_SHARDS: String(SCREENS_S) }, www: true, ui: true, mb: 100 + 240 * SCREENS_S, secs: 1500 / SCREENS_S },

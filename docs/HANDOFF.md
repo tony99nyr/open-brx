@@ -93,8 +93,8 @@ of main" above.
   silently assigned to the last binding, and cumulative shot deltas do not inflate the match total.
 - **F174 is closed:** an explicitly named previous match remains diagnosable on the next runway; current/full scans
   still fail closed in ARMED and every diagnostic remains blocked in LIVE.
-- **F179 is closed:** standby and hidden-door guards now drive behavior; the door resets obsolete taps, catches outside-frame releases and rechecks the gun link at fire time.
-- **Next desk task:** **F180**, replace remaining screen-truth source checks with behavior. **F178 is decision first:** READY is player intent and survives a head re-push, so excluding stale heads conflicts with MARK ALL READY.
+- **F179/F180 are closed:** UI guards drive behavior, and ordinary app `npm test` includes the six A38 standby screen checks in Chromium.
+- **Next desk task:** **F181**, remove the timing-dependent live-accuracy assertion. **F178 remains decision first.**
   F285 remains split: its table can be written at the desk, but its t6 repeat measurement needs the bench.
 - **Next bench task:** the "0.4.4 field check" in [`bench-plan.md`](bench-plan.md) (connect timing on both
   phones, the new respawn rules, the Shields preset, the down animation, full screen), then sitting 5, match

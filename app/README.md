@@ -44,6 +44,8 @@ screen. The MC screen also shows a QR of the same URL. The Python reference node
 ## Tests
 
 ```bash
+npx playwright install chromium           # once; npm test includes focused screen truth
+npm test                                  # all unit tests + A38 standby UI at both phone sizes
 node --test test/engine.test.mjs        # engine (node.md §3, A6)
 node --test test/transport.test.mjs     # the wire (needs ../.venv for the integration test)
 node --test test/beacon.test.mjs        # the utility-item advert codec + presence

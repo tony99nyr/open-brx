@@ -5,7 +5,11 @@
   "description": "BRX native BLE app (Capacitor) \u2014 Android + iOS from one codebase",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node --test --test-timeout=120000 \"test/*.test.mjs\"",
+    "test": "npm run test:unit && npm run test:standby-screen",
+    "test:prebuilt": "npm run test:unit && npm run test:standby-screen:prebuilt",
+    "test:unit": "node --test --test-timeout=120000 \"test/*.test.mjs\"",
+    "test:standby-screen": "npm run build && npm run test:standby-screen:prebuilt",
+    "test:standby-screen:prebuilt": "node tools/screens.mjs --only A38 --shards 1 --expect-steps 6",
     "typecheck": "tsc --noEmit",
     "sync": "npm run build && npx cap sync",
     "ios:setup": "npm run build && ./scripts/ios-setup.sh",

@@ -495,3 +495,9 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
   built-app behavior. Lobby, Kit and Armory are locked in both ARMED and LIVE. The utility door requires six taps
   plus a held seventh, cancels on an outside-frame release or eligibility loss, and refuses a gun link that comes
   up during the hold.
+
+# Closed 2026-09-22: standby screen truth in the standard gate
+
+- 2026-09-22 **F180** ordinary app `npm test` now runs all six existing A38 standby browser checks: both standby
+  entry paths and the handler-level READY refusal at 891×411 and 667×375. The root parallel runner reuses its
+  up-front build and writes focused captures privately; CI installs Chromium before the gate.

@@ -16,8 +16,17 @@ import { DEMO_PERKS, DEMO_WEAPONS } from '../src/demo-catalog.js';
 // not open this file. Names are upper-cased because the rack draws them that way.
 const SIDEARM_NAMES = DEMO_WEAPONS.filter(w => (w.tags || []).includes('sidearm') && !w.pickup_only).map(w => w.name.toUpperCase());
 const HERE = path.dirname(fileURLToPath(import.meta.url)), ROOT = path.resolve(HERE, '..'), WWW = path.join(ROOT, 'www');
-const OUT = path.join(ROOT, 'shots', 'screens');
-const ONLY = process.env.ONLY;
+// The root parallel runner supplies a private output: its focused standard-test pass may overlap the full
+// app-screens job, and neither is allowed to erase or overwrite the other's forensic captures.
+const OUT = process.env.SCREENS_OUT ? path.resolve(process.env.SCREENS_OUT) : path.join(ROOT, 'shots', 'screens');
+const cliValue = name => { const i = process.argv.indexOf(name); return i < 0 ? undefined : process.argv[i + 1]; };
+const ONLY = cliValue('--only') ?? process.env.ONLY;
+const EXPECT_RAW = cliValue('--expect-steps') ?? process.env.SCREENS_EXPECT_STEPS;
+const EXPECT_STEPS = EXPECT_RAW === undefined ? null : Number(EXPECT_RAW);
+if (EXPECT_STEPS !== null && (!Number.isInteger(EXPECT_STEPS) || EXPECT_STEPS < 1)) {
+  console.error(`--expect-steps / SCREENS_EXPECT_STEPS must be a positive integer, got ${EXPECT_RAW}`);
+  process.exit(2);
+}
 // Sharding (2026-09-16). Serial, this suite took ~22 min: ~330 steps, each opening its own page and waiting out the
 // stage timeline (1.6-4.2 s). Every step already runs in its own browser context (`b.newPage()` = a fresh context,
 // so no localStorage or cookie crosses steps), so the steps are independent and a shard is just "every n-th step".
@@ -27,7 +36,7 @@ const SHARD = process.env.SCREENS_SHARD ? process.env.SCREENS_SHARD.split('/').m
 // Default shard count: half the cores, at most 16, and never more than a quarter of the free memory (a shard is its own
 // browser, ~240 MB: 16 shards are ~3.8 GB). SCREENS_SHARDS overrides.
 const availableMb = () => { try { return Number(/MemAvailable:\s+(\d+)/.exec(fs.readFileSync('/proc/meminfo', 'utf8'))[1]) / 1024; } catch { return os.totalmem() / 1048576 / 2; } };
-const SHARDS = SHARD ? SHARD[1] : Math.max(1, Number(process.env.SCREENS_SHARDS || Math.min(16, Math.floor(os.cpus().length / 2), Math.floor(availableMb() * 0.25 / 240))));
+const SHARDS = SHARD ? SHARD[1] : Math.max(1, Number(cliValue('--shards') ?? process.env.SCREENS_SHARDS ?? Math.min(16, Math.floor(os.cpus().length / 2), Math.floor(availableMb() * 0.25 / 240))));
 if (!SHARD) {
   const srcNewest = fs.readdirSync(path.join(ROOT, 'src'), { recursive: true }).map(f => path.join(ROOT, 'src', f)).filter(f => { try { return fs.statSync(f).isFile(); } catch { return false; } }).reduce((a, f) => Math.max(a, fs.statSync(f).mtimeMs), 0);
   if (srcNewest > fs.statSync(path.join(WWW, 'app.js')).mtimeMs) { console.error('STALE BUNDLE: run `npm run build` first.'); process.exit(2); }
@@ -35,8 +44,11 @@ if (!SHARD) {
 }
 if (!SHARD && SHARDS > 1) {
   const t0 = Date.now();
+  // Selection belongs to every child, but the expected count belongs to the aggregate. Passing the latter through
+  // would make each shard demand all selected steps; dropping the former would make a focused run execute everything.
+  const { SCREENS_EXPECT_STEPS: _aggregateOnly, ...childEnv } = process.env;
   const runs = Array.from({ length: SHARDS }, (_, i) => new Promise(resolve => {
-    const child = spawn(process.execPath, [fileURLToPath(import.meta.url)], { env: { ...process.env, SCREENS_SHARD: `${i}/${SHARDS}`, SCREENS_PORT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url)], { env: { ...childEnv, ONLY: ONLY ?? '', SCREENS_SHARD: `${i}/${SHARDS}`, SCREENS_PORT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = ''; child.stdout.on('data', d => { out += d; }); child.stderr.on('data', d => { out += d; });
     child.on('close', code => resolve({ i, code, out }));
   }));
@@ -48,6 +60,9 @@ if (!SHARD && SHARDS > 1) {
     if (!m) { fail++; errs.push(`shard ${i + 1} crashed (exit ${code})`); continue; }
     pass += +m[1]; fail += +m[2]; if (m[3]) errs.push(m[3]);
     if (code !== 0 && +m[2] === 0) { fail++; errs.push(`shard ${i + 1} exited ${code}`); }
+  }
+  if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
+    errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;
   }
   console.log(`\n${pass} passed, ${fail} failed${fail ? ': ' + errs.join(', ') : ''}  (${SHARDS} shards, ${Math.round((Date.now() - t0) / 1000)}s)`);
   process.exit(fail ? 1 : 0);
@@ -3337,6 +3352,9 @@ await step('S16 lethal tick: DOWN says POISONED BY and names the applier', async
   must(!r.alive && /^POISONED BY/.test(r.kb.trim()) && /VIPER/.test(r.kb), `the down screen tells the player the poison did it: ${JSON.stringify(r)}`);
 });
 
+if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
+  errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;
+}
 await b.close(); srv.close();
 console.log(`\n${pass} passed, ${fail} failed${fail ? ': ' + errs.join(', ') : ''}`);
 process.exit(fail ? 1 : 0);

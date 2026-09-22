@@ -62,10 +62,11 @@ installed (the bench box's system python), and CI installs pyright for its secon
 ```bash
 cd app && npm test
 ```
-This runs `node --test` over `test/*.test.mjs`, several files at once. `test/transport.test.mjs` starts
-its own MC on a free port, and rebuilds `app/www/app.js` if the bundle is stale: build first when another
-suite reads `app/www` at the same time. See `app/README.md` for build/signing/APK details; that file is the authority on
-anything platform-specific.
+This runs `node --test` over `test/*.test.mjs`, then builds the HUD and runs the focused A38 standby screen-truth
+gate in Chromium at both phone sizes. Install that browser once with `npx playwright install chromium` (CI uses
+`--with-deps`). The root parallel runner uses the prebuilt/private-output form so no job rewrites another job's
+bundle or captures. `test/transport.test.mjs` starts its own MC on a free port. See `app/README.md` for
+build/signing/APK details; that file is the authority on anything platform-specific.
 
 **Mission Control web UI (`webapp/mc/`)**, Vite/React/TS:
 ```bash
