@@ -16,7 +16,7 @@
   --team:var(--team-blue);--team-ink:#04121e;
   --num:#eef9ff;--glow:#5fd6ff;--mut:#7fa0b8;
   --plate:rgba(12,28,44,.85);--plate2:rgba(4,12,20,.9);--edge:#2a4e6e;
-  --health:#39e07c;--armor:#7fd4ff;--warn:#ffb020;--bad:#ff5252;--ok:#39e07c;
+  --health:#39e07c;--armor:#7fd4ff;--shield:#24d9c4;--warn:#ffb020;--bad:#ff5252;--ok:#39e07c;
   --fd:'Saira Condensed',sans-serif;--fl:'Chakra Petch',sans-serif;
   --bg:radial-gradient(ellipse 120% 90% at 50% 45%,#0b1220 0%,#05080d 60%,#02040a 100%);
 }
@@ -102,13 +102,17 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .vitals .hp{font-family:var(--fd);font-style:italic;font-weight:700;font-size:84px;line-height:.8;text-shadow:0 0 24px color-mix(in srgb,var(--health) 50%,transparent)}
 .vitals .hp.low{color:var(--bad);text-shadow:0 0 28px rgba(255,60,60,.7);animation:blink 1s infinite}
 .vitals .sh{font-family:var(--fd);font-weight:700;font-size:24px;color:var(--armor)}
+.vitals .shield{font-family:var(--fd);font-weight:700;font-size:24px;color:var(--shield)}
 .vitals .sh.zero{color:var(--mut)}
+.vitals .shield.zero{color:var(--mut)}
 .bar{height:14px;transform:skewX(-18deg);background:var(--plate2);border:1px solid var(--edge);padding:2px}
 .bar.low{border-color:var(--bad)}
 .bar > i{display:block;height:100%;background:repeating-linear-gradient(90deg,var(--health) 0 22px,transparent 22px 26px);box-shadow:0 0 12px color-mix(in srgb,var(--health) 60%,transparent);transition:width .15s}
 .bar.low > i{background:repeating-linear-gradient(90deg,var(--bad) 0 22px,transparent 22px 26px);box-shadow:0 0 12px rgba(255,60,60,.7)}
 .bar.armor{height:9px;width:78%}
 .bar.armor > i{background:repeating-linear-gradient(90deg,var(--armor) 0 34px,transparent 34px 38px);box-shadow:none}
+.bar.shield{height:7px;width:78%}
+.bar.shield > i{background:repeating-linear-gradient(90deg,var(--shield) 0 34px,transparent 34px 38px);box-shadow:none}
 .ammo{position:absolute;right:36px;bottom:32px;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
 .ammo .nums{display:flex;align-items:baseline;gap:8px}
 .ammo .mag{font-family:var(--fd);font-style:italic;font-weight:700;font-size:84px;line-height:.8;text-shadow:0 0 24px color-mix(in srgb,var(--glow) 50%,transparent)}

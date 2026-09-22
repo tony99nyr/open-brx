@@ -1226,9 +1226,9 @@ export class Hud {
       ${st.aim && AIM_REASON[st.aim.reason] ? `<div class="aimfx ${esc(st.aim.reason)}${overheating ? ' tight' : ''}" id="aimfx">${this._aimFx(st)}</div>`
         : st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>'}
       <div class="fxbar" id="fxbar">${this._fx(st)}</div>
-      <div class="vitals"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span><span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span></div>
+      <div class="vitals"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span><span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>${st.maxShield > 0 ? `<span class="shield tab ${st.shield === 0 ? 'zero' : ''}" id="shield">${st.shield}</span><span class="hplab shieldlabel">SHIELD</span>` : ''}</div>
         <div class="bar ${low ? 'low' : ''}"><i id="hpbar" style="width:${Math.round(100 * st.hp / st.maxHp)}%"></i></div>
-        <div class="bar armor"><i id="shbar" style="width:${Math.round(100 * st.armor / st.maxArmor)}%"></i></div></div>
+        <div class="bar armor"><i id="shbar" style="width:${Math.round(100 * st.armor / st.maxArmor)}%"></i></div>${st.maxShield > 0 ? `<div class="bar shield"><i id="shieldbar" style="width:${Math.round(100 * st.shield / st.maxShield)}%"></i></div>` : ''}</div>
       <div class="ammo">${outOfAmmo ? `<span class="reload out solid"><span class="unskew">${energy ? 'OUT OF ENERGY' : 'OUT OF AMMO'}</span></span>`
           : overheating ? `<span class="reload hot solid"><span class="unskew">OVERHEAT</span></span>`
           : energyOut ? `<span class="reload out solid"><span class="unskew">OUT OF ENERGY</span></span>`
@@ -1506,12 +1506,13 @@ export class Hud {
       if (mode === 'kitted' || mode === 'over' || (mode === 'lobby' && !st.kitOpen && !st.ready)) setHtml('readynote', this._readyNote(st, mode));
     }
     if (st.phase === 'live') {
-      set('clock', mmss(st.clockMs)); set('hp', st.hp); set('sh', st.armor); set('mag', magText(st)); setHtml('res', this._resText(st));
+      set('clock', mmss(st.clockMs)); set('hp', st.hp); set('sh', st.armor); set('shield', st.shield); set('mag', magText(st)); setHtml('res', this._resText(st));
       set('batt', st.battery != null ? st.battery + '%' : '—');
       setHtml('fxbar', this._fx(st));                   // S16: the poison countdown
       setHtml('aimfx', this._aimFx(st));                // S53: the smoke countdown (the slot itself is structural)
       const hb = q('hpbar'); if (hb) hb.style.width = `${Math.round(100 * st.hp / st.maxHp)}%`;
       const sb = q('shbar'); if (sb) sb.style.width = `${Math.round(100 * st.armor / st.maxArmor)}%`;
+      const shieldb = q('shieldbar'); if (shieldb) shieldb.style.width = `${Math.round(100 * st.shield / st.maxShield)}%`;
       const bf = q('battfill'); if (bf) bf.style.right = `${100 - (st.battery || 0)}%`;
       const pips = q('pips'); if (pips) { const html = this._pips(st); if (pips.innerHTML !== html) pips.innerHTML = html; }
       const heat = q('heat'); if (heat) {
