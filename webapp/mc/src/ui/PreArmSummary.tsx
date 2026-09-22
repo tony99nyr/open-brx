@@ -189,7 +189,7 @@ export function PreArmSummary({ style }: { style?: React.CSSProperties }) {
   const { state } = useStore();
   const [showAll, setShowAll] = useState(false);
   // F-7's watched viewport. Four fixed 92 px columns leave almost nothing for the instruction at
-  // 393 px, and "Phone was not reachable at LOAD: LOAD again from GAMES" wrapped to seven lines of
+  // 393 px, and the old "Phone was not reachable at LOAD: LOAD again from GAMES" wrapped to seven lines of
   // one or two words (int-n1, from the phone-width screenshots): the single line the operator needs
   // fastest, rendered slowest to read. Under 480 px it gets a full-width row of its own.
   const narrow = useNarrow();
@@ -279,7 +279,7 @@ export function PreArmSummary({ style }: { style?: React.CSSProperties }) {
             // ONE instruction per row, the first thing that is actually wrong — an operator reading
             // four cures at once does none of them. A row that is only WAITING says so, neutrally.
             const todo = m.phone === 'fail' && !r.bound ? 'No phone bound: switch it on and bind it, or STAND DOWN'
-              : m.phone === 'fail' ? 'Phone was not reachable at LOAD: LOAD again from GAMES'
+              : m.phone === 'fail' ? 'Phone missed LOAD; MC is retrying automatically — wait for PHONE ✓'
               : m.push === 'fail' ? 'Gun has no head yet: PUSH CONFIG below'
               : m.ack === 'fail' ? 'Gun has not confirmed this config: RE-PUSH CONFIG below'
               : m.echo === 'fail' ? 'Gun answered with another weapon: RE-PUSH CONFIG below'

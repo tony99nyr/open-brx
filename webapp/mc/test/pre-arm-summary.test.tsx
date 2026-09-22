@@ -83,6 +83,16 @@ describe('PRE-ARM CHECK — nothing checked is never something satisfied', () =>
     v.m.unmount();
   });
 
+  it('a bound phone that missed LOAD tells the operator MC is retrying automatically', async () => {
+    const missed = row({ player_id: 'p2', display: 'VIPER', bound: true, phone_game: false,
+                         gun_sent: false, gun_acked: false, gun_echo: 'not_echoed' });
+    const v = await lobby(syncOf([row(), missed]));
+    const line = v.all('[data-testid="pre-arm-row"]').find(r => (r.textContent ?? '').includes('VIPER'));
+    expect(line!.textContent).toMatch(/retrying automatically/i);
+    expect(line!.textContent).not.toMatch(/LOAD again/i);
+    v.m.unmount();
+  });
+
   it('a gun that was sent a head but has NOT acked is named differently from an absent one', async () => {
     const silent = row({ player_id: 'p2', display: 'VIPER', bound: true, phone_game: true, gun_sent: true, gun_acked: false, gun_echo: 'not_echoed' });
     const v = await lobby(syncOf([row(), silent]), { lobby: { ready: 2, total: 2, pushed: true, acks: {} } } as Partial<State>);
