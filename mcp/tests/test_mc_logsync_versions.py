@@ -343,6 +343,17 @@ def test_toxin_roster_blocks_a_phone_that_predates_the_poison_engine():
     assert not any("TOXIN RIFLE" in b for b in rows[ps[1]["player_id"]]["blockers"])
 
 
+def test_shotgun_roster_blocks_a_phone_that_predates_dual_emitter_grouping():
+    from brx_mcp.mc.compile import default_compiler
+    s, net, clock, ps = mk(2, default_compiler())
+    s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "shotgun"}]})
+    online(s, net, clock, ps[0], 0, app_ver="0.4.4+field")
+    online(s, net, clock, ps[1], 1, app_ver="0.4.5+fixed")
+    rows = {r["player_id"]: r for r in s.readiness()["board"]}
+    assert rows[ps[0]["player_id"]]["status"] == "red"
+    assert any("SHOTGUN" in b and "0.4.5" in b for b in rows[ps[0]["player_id"]]["blockers"])
+
+
 def test_start_rechecks_toxin_minimum_for_a_phone_that_arrives_after_force_push():
     from brx_mcp.mc.compile import default_compiler
     s, net, clock, ps = mk(2, default_compiler())

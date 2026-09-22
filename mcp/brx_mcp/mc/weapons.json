@@ -253,6 +253,7 @@
     "fire_ms": 800,
     "range_outdoor_pct": 100
    },
+   "min_app": "0.4.5",
    "verified": false,
    "captured": true,
    "tags": [
@@ -378,6 +379,7 @@
     "headset_range_indoor": 100,
     "fire_ms": 400
    },
+   "min_app": "0.4.5",
    "verified": false,
    "captured": true,
    "hidden": true,
