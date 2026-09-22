@@ -1,12 +1,12 @@
 {
- "file": "brx-companion-0.4.4-android-debug.apk",
- "version": "0.4.4",
+ "file": "brx-companion-0.4.5-android-debug.apk",
+ "version": "0.4.5",
  "variant": "debug",
- "built": "2026-09-19T23:27:38.131Z",
- "bytes": 5866191,
- "sha256": "f9b204e4087e20e40b394c6123ffe818b6eebf20916281a49d672313981d65b0",
- "git": "4840a534",
+ "built": "2026-09-22T19:23:02.104Z",
+ "bytes": 5643672,
+ "sha256": "86b12e72b547cea660fe1c18f108ddfe92b2bc86b664f2b64e02b91c18e550ba",
+ "git": "1e990410",
  "dirty": false,
- "url": "https://github.com/tony99nyr/open-brx/releases/download/app-v0.4.4/brx-companion-0.4.4-android-debug.apk",
- "release": "app-v0.4.4"
+ "url": "https://github.com/tony99nyr/open-brx/releases/download/app-v0.4.5/brx-companion-0.4.5-android-debug.apk",
+ "release": "app-v0.4.5"
 }
