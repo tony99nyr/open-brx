@@ -738,6 +738,9 @@ class NodeView(TypedDict):
     # `alive` = it answered above 0 and the node re-asserted the arming, never a revive; `no_answer` =
     # nothing came back and the node deliberately did NOTHING. `no_answer` is the one that needs a human.
     cure: NotRequired[Literal["asking", "dead", "alive", "no_answer"]]
+    # F272: the node positively proved that the linked gun stopped answering. Optional and true-only:
+    # absence is an older/healthy node, never evidence of a lock-up.
+    gun_locked: NotRequired[bool]
 
 
 class Event(TypedDict, total=False):
@@ -818,6 +821,8 @@ class Event(TypedDict, total=False):
     # `alive` = it answered above 0 and the node re-asserted the arming, never a revive; `no_answer` =
     # nothing came back and the node deliberately did NOTHING. `no_answer` is the one that needs a human.
     cure: Literal["asking", "dead", "alive", "no_answer"]
+    # F272: positive lock-up verdict. False/absent is deliberately no claim.
+    gun_locked: bool
 
 
 class ScoreRow(TypedDict):
@@ -873,6 +878,8 @@ class LiveRow(ScoreRow):
     # `alive` = it answered above 0 and the node re-asserted the arming, never a revive; `no_answer` =
     # nothing came back and the node deliberately did NOTHING. `no_answer` is the one that needs a human.
     cure: NotRequired[Literal["asking", "dead", "alive", "no_answer"]]
+    # F272: the bound node's current positive lock-up verdict. Absent = no claim or an older app.
+    gun_locked: NotRequired[bool]
     # A47: the latest operator action for this player in THIS match. Absent = none sent.
     operator: NotRequired[OperatorStatus]
 
@@ -1237,6 +1244,7 @@ class ReadinessRow(TypedDict):
     pool_stale: Literal["silent", "no_fire", "write_lost"] | None   # F208: `status.pool_stale`; None = not stale or not reported
     pool_stale_ms: int | None                        # F208: `status.pool_stale_ms`; None = not reported
     cure: Literal["asking", "dead", "alive", "no_answer"] | None    # F264: the node's own outcome; None = it has not acted
+    gun_locked: NotRequired[bool]                        # F272: positive verdict only; absent = no claim or older app
     fw: str | None
     phone_batt: int | None
     ssid_ok: bool | None

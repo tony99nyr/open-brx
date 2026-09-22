@@ -70,7 +70,7 @@ describe('A47 · LIVE operator menu', () => {
     await tap(rowEl(m, 'p1'));
     const el = menu(m, 'p1');
     expect(el, 'the menu opens under the row').toBeTruthy();
-    expect(rowEl(m, 'p1').getAttribute('aria-expanded')).toBe('true');
+    expect(rowEl(m, 'p1').querySelector('[data-live-row-toggle]')?.getAttribute('aria-expanded')).toBe('true');
     const t = el.textContent ?? '';
     for (const label of ['RESYNC GUN', 'FORCE RESPAWN', 'RELINK GUN']) expect(t).toContain(label);
     await tap(rowEl(m, 'p1'));
@@ -115,10 +115,11 @@ describe('A47 · LIVE operator menu', () => {
   it('the row reads as a control: a mark in the name cell, and a label and target for assistive tech', async () => {
     const m = await board();
     const el = rowEl(m, 'p1');
+    const toggle = el.querySelector('[data-live-row-toggle="p1"]')!;
     expect(el.querySelector('[data-row-affordance]')?.textContent).toBe('▸');
-    expect(el.getAttribute('aria-label')).toBe('VIPER operator actions');
+    expect(toggle.getAttribute('aria-label')).toBe('VIPER operator actions');
     await tap(el);
-    expect(el.getAttribute('aria-controls')).toBe(menu(m, 'p1').id);
+    expect(toggle.getAttribute('aria-controls')).toBe(menu(m, 'p1').id);
     m.unmount();
   });
 

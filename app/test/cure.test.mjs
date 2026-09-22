@@ -42,6 +42,9 @@ function harness({ respawn = 'auto' } = {}) {
   const h = {
     eng, writes, facts, logs,
     adv(ms, step = 250) { const end = clock + ms; while (clock < end) { clock = Math.min(end, clock + step); eng.tick(); } return h; },
+    /** F264's proven divergence keeps emitting `$VOLTS`; keep that MCU traffic present so these poll tests
+     *  exercise the 20 s pool poll rather than F272's separate total-silence lock detector. */
+    advTalking(ms, step = 250) { const end = clock + ms; let voltsAt = clock + 4000; while (clock < end) { clock = Math.min(end, clock + step); if (clock >= voltsAt) { eng.feedFrame(VOLTS); voltsAt += 4000; } eng.tick(); } return h; },
     /** Advance while HOLDING a state the ordinary tick would clear on its own -- a reload deadline expires, a stun
      *  timer runs out, a heat reading goes stale after HEAT_STALE_MS. Re-applied before every step, so the guard
      *  under test is still true at the moment the cure would have run. */
@@ -60,7 +63,8 @@ function harness({ respawn = 'auto' } = {}) {
      *  inside QUERY_REPLY_MS as a real gun's would be. */
     awaitAsk(maxMs = QUERY_POLL_MS * 2) {
       const n = lifeAt.length, end = clock + maxMs;
-      while (clock < end && lifeAt.length === n) { clock = Math.min(end, clock + 250); eng.tick(); }
+      let voltsAt = clock + 4000;
+      while (clock < end && lifeAt.length === n) { clock = Math.min(end, clock + 250); if (clock >= voltsAt) { eng.feedFrame(VOLTS); voltsAt += 4000; } eng.tick(); }
       assert.ok(lifeAt.length > n, 'no probe went out');
       return h;
     },
@@ -326,7 +330,7 @@ test('F264: a new life reopens the cure, but the cooldown still holds the floor 
   h.stall();
   assert.ok(h.eng.now() - curedAt < CURE_COOLDOWN_MS, `setup: and still inside the cooldown (${h.eng.now() - curedAt} ms in)`);
   assert.equal(h.eng._cureAt, afterFirst, 'the cooldown holds across the life boundary: no new cure started');
-  h.adv(CURE_COOLDOWN_MS);
+  h.advTalking(CURE_COOLDOWN_MS);
   h.f('$ALCD,29,100,0,192,0,*');
   h.stall();
   assert.ok(h.eng._cureAt > afterFirst, 'and past the cooldown, in a new life, it may try again');
@@ -426,7 +430,7 @@ test('F264: the once-a-life spawn read-back proves the gun took the burst', () =
 test('F264: the divergence poll runs only in a live match, at QUERY_POLL_MS, one frame at a time', () => {
   const h = harness();
   const n = h.lifeAsks();
-  h.adv(QUERY_POLL_MS * 3 + 500);
+  h.advTalking(QUERY_POLL_MS * 3 + 500);
   assert.equal(h.lifeAsks() - n, 3, `3 asks in 3 cadences, no more: ${h.lifeAsks() - n}`);
   assert.equal(h.magAsks(), 0, 'and never a $QUERY on a timer: a dead gun holds its print loop 2 s on one');
   const gaps = h.gaps().slice(n - 1);   // from the marker on: the harness's own setup asks are not the cadence
@@ -487,9 +491,9 @@ test('F264: a poll that finds the gun dead books the death without anyone pullin
 test('F264: the write budget is 3 $LIFE frames a minute, and a whole unanswered cure costs 2 more', () => {
   const h = harness();
   const n = h.writes.length;
-  h.adv(60000);
+  h.advTalking(60000);
   const w = h.since(n);
-  assert.deepEqual(w.filter(f => f === PROBE_LIFE), [PROBE_LIFE, PROBE_LIFE, PROBE_LIFE], `${w.length} frames in a quiet minute`);
+  assert.deepEqual(w.filter(f => f === PROBE_LIFE), [PROBE_LIFE, PROBE_LIFE, PROBE_LIFE], `${w.length} frames in a VOLTS-only minute`);
   assert.deepEqual(w.filter(f => f === QUERY), [], 'and not one $QUERY: it is never on a timer (bench 2026-09-19)');
   assert.equal(PROBE_LIFE.length, 13); assert.equal(QUERY.length, 8);   // the gun reads one serial byte per main-loop pass
   const h2 = harness();

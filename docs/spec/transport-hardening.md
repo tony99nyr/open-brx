@@ -170,21 +170,22 @@ with the effective `$PSET`/`$TID` in the head it actually pushed. Any difference
 claim, preserving older-node compatibility. Cost: one 8-byte frame per arm and one reply. Claim 19 confirmed the
 token map on v4.32 on 2026-09-19. The sound, gyro and per-slot loop remain undecoded and are tracked separately.
 
-## 7. The lock-up detector on the node (design; F208, F163)
+## 7. The lock-up detector on the node (built; bench threshold provisional; F208, F163)
 
 A screamer (§1.4) answers nothing: no `$PONG`, no `$ALCD` on a trigger pull, no `$VOLTS`. The BLE link may stay
 up, because the radio module is a separate chip that keeps the connection while the MCU spins. So "connected"
 tells the node nothing, and today nothing on the node distinguishes a healthy idle gun from a locked one: F208's
 gun sat byte-identical for 105 s with the HUD holding the player alive.
 
-Design, three parts, none built yet:
+Built in F272, in three parts:
 
 1. **A silence clock.** The engine already stamps the last frame from the gun (`B4`, `noteStale`). While LIVE and
-   alive, after `GUN_SILENT_MS` (design value 8 s: a firing gun streams `$ALCD` on every round, an idle one sends
-   `$VOLTS` about every 30 s in app mode, so 8 s of silence is normal and 30 s is not; the value needs the idle
-   `$VOLTS` cadence confirmed) the node sends one `$PING,*`.
-2. **The verdict.** `$PONG` within 1 s: the gun is alive and idle, restart the clock. No `$PONG` after two pings
-   3 s apart while the link reads connected: the gun is locked. The node raises a `gun_locked` moment, the HUD
+   alive, after `GUN_SILENT_MS` (provisional value 8 s; the final value still needs the idle `$VOLTS` cadence
+   confirmed) the node sends the bench-proven all-zero `$LIFE,0,0,0,*` read. Unlike `$QUERY`, it answers
+   immediately from both live and dead guns and does not hold the print loop.
+2. **The verdict.** Any gun frame within 1 s proves the MCU is alive and restarts the clock. With no answer, send
+   the same read again 3 s after the first; no answer in the second 1 s window while the link reads connected
+   means the gun is locked. The node raises a durable `gun_locked` state, the HUD
    shows a full-screen takeover ("YOUR GUN HAS STOPPED. HOLD POWER 3 s, THEN POWER ON. Your phone will re-arm
    it."), and the node reports `status.gun_locked = true` so the MC board shows it too. This is the missing half
    of F208: the pool-staleness watchdog it asks for is this clock, and the "way back" is the power-cycle plus the
@@ -194,12 +195,12 @@ Design, three parts, none built yet:
    What is new is that a reconcile after a `gun_locked` verdict must NOT keep the stale pools: a power-cycled gun
    is at full HP with no config, so the node marks the player down and revives them on the normal respawn timer.
 
-`LINK_WATCHDOG_ENABLED` ships false (F163: the B4 watchdog fires on an 8 s silence that a healthy idle gun also
-shows). The lock-up detector replaces that reading with a question the gun can answer: silence plus no `$PONG`.
-A `$PING` costs 7 bytes and the gun answers it in about 59 ms. This is the one timer-driven write §2 allows.
+`LINK_WATCHDOG_ENABLED` ships false (F163: the B4 watchdog acts on silence alone). The lock-up detector replaces
+that reading with a question the gun can answer: silence plus two unanswered, side-effect-free reads. This is the
+one timer-driven write §2 allows, shared with F264's existing divergence poll.
 
-Open: whether a screamer's radio really keeps the link up (bench A1 answers it: if the link drops instead, the
-detector is simply the existing drop path plus a "power-cycle" hint when the reconnect fails three times).
+Bench A1 dropped the link and recovered after reconnect, so it did not reproduce the stable-radio lock this
+detector targets. A1c/A3 remain the bench gate for that mechanism and for the provisional silence value.
 
 ## 8. Bench steps that settle this design
 
@@ -210,7 +211,7 @@ detector is simply the existing drop path plus a "power-cycle" hint when the rec
 | §4 deny list | built | none needed; a future `$PB*`/`$AS` step may ADD `$PB*` |
 | §5 write with response on multi-packet frames | design | bench A8 |
 | §6 `$QUERY` read-back of id, team, pools | built | claim 19 confirmed 2026-09-19; F271 closed 2026-09-21 |
-| §7 lock-up detector | design | bench A13, A1 (does the link stay up?), plus the idle `$VOLTS` cadence |
+| §7 lock-up detector | built; bench threshold provisional | bench A13/A1c (stable-radio hang), plus the idle `$VOLTS` cadence |
 | §2 the budget rule | design | bench A13 (20 minutes at today's recoil writer rate: how long to a lock-up?) |
 | §2 the recoil writer inside the budget | design | screamers Phase C runs 1 to 3 (`match`, `match-x10`, `recoil-oscillate`) |
 

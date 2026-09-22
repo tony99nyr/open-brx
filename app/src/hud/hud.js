@@ -436,7 +436,7 @@ export class Hud {
       chargeCost(st) != null && st.ammo != null && st.ammo < chargeCost(st), st.reserve > 0,   // OUT OF ENERGY / RECHARGE prompt + the NOT ENOUGH ENERGY note are structural too
       // F288: both gun-health facts change live markup. Flatten the objects: joining the objects themselves
       // would turn every non-null value into the same "[object Object]" and miss no_fire → no_answer.
-      st.poolStale && st.poolStale.why, st.cure && st.cure.verdict, !!st.gunFlapping, !!st.reconciling,
+      st.poolStale && st.poolStale.why, st.cure && st.cure.verdict, !!st.gunFlapping, !!st.reconciling, !!st.gunLocked, st.gunRecovery, st.downReason,
       // F258: `this.scan.length` used to sit here, so every scan hit that added a device rebuilt the
       // whole screen. The picker's rows, its empty placeholder and its fold are all patched in place
       // by `_patchScan` now, so nothing about the scan is structure any more.
@@ -1554,11 +1554,41 @@ export class Hud {
   _moments(st) {
     // The reload takeover owns the chip bar. Tracked here, before ANY branch returns: dying mid-reload once left the
     // flag set for the whole DOWN screen and hid GUN LINK LOST exactly when it mattered (pass-2 review 2026-09-03).
+    // The phase intentionally restores as IDLE until BLE relinks after an app restart. The verdict itself is
+    // match-scoped and durable, so it remains the screen truth during that pre-relink gap too.
+    const lockedUp = !!st.gunLocked;
+    // A full-screen instruction must also be the only interactive/accessibility surface. `inert` blocks
+    // keyboard, pointer and assistive-tech traversal; aria-hidden covers older embedded WebViews.
+    for (const el of [this.hudEl, this.chips, this.info, this.skin, this.diag]) {
+      if (!el) continue;
+      el.inert = lockedUp;
+      if (lockedUp) { el.setAttribute('inert', ''); el.setAttribute('aria-hidden', 'true'); }
+      else { el.removeAttribute('inert'); el.removeAttribute('aria-hidden'); }
+    }
     const reloadUp = !!(st.phase === 'live' && st.alive && st.bleUp && st.reloading);
     const switchUp = !!(st.phase === 'live' && st.alive && st.bleUp && st.switching && !reloadUp);
     const reconcileUp = !!(st.phase === 'live' && st.reconciling);
-    const tk = reloadUp ? 'reload' : switchUp ? 'switch' : reconcileUp ? 'reconcile' : '';
+    const tk = lockedUp ? 'gun_locked' : reloadUp ? 'reload' : switchUp ? 'switch' : reconcileUp ? 'reconcile' : '';
     if ((this.frame.dataset.takeover || '') !== tk) { if (tk) this.frame.dataset.takeover = tk; else delete this.frame.dataset.takeover; }
+    // F272: affirmative MCU lock-up. Durable through the expected power-cycle link drop; only the locked
+    // relink recovery clears it and moves this player onto the ordinary DOWN/respawn screen.
+    if (lockedUp) {
+      const phase = st.gunRecovery || 'power_cycle';
+      const key = `gun_locked_${phase}`;
+      if (this._moment !== key) {
+        this._moment = key;
+        const copy = phase === 'rearming'
+          ? '<span class="k">YOUR GUN IS RESTARTING</span><span class="t">KEEP POWER ON</span><span class="s">RE-ARMING…</span>'
+          : phase === 'retry_exhausted'
+            ? '<span class="k">RE-ARMING DID NOT FINISH</span><span class="t">POWER-CYCLE AGAIN</span><span class="s">HOLD POWER 3 s, THEN POWER ON</span>'
+            : '<span class="k">YOUR GUN HAS STOPPED</span><span class="t">HOLD POWER <b>3 s</b>, THEN POWER ON</span><span class="s">YOUR PHONE WILL RE-ARM IT.</span>';
+        this.overlay.innerHTML = `<div class="mo gunlocked" data-gun-locked data-gun-recovery="${phase}" role="alert" aria-live="assertive"><div class="wash"></div>
+          <div class="c">${copy}</div></div>`;
+      }
+      return;
+    }
+    if (this._moment && this._moment.startsWith('gun_locked_')) { this._moment = null; this.overlay.innerHTML = ''; }
+
     // T-MINUS while armed
     if (st.phase === 'armed' && st.tMinusMs != null) {
       const secs = Math.ceil(st.tMinusMs / 1000);
@@ -1587,10 +1617,15 @@ export class Hud {
     // DOWN (persistent while dead)
     if (st.phase === 'live' && !st.alive) {
       const kb = st.killedBy || {}; const tk = kb.teamKey;   // F81: null = no identity on the wire, so no team chip
-      if (this._moment !== 'down') {
-        this._moment = 'down';
+      const recoveryDown = st.downReason === 'gun_recovery';
+      const downKey = recoveryDown ? 'down_recovery' : 'down';
+      if (this._moment !== downKey) {
+        this._moment = downKey;
+        const title = recoveryDown
+          ? '<span class="tt"><span class="t">GUN RESTARTED</span><span class="t t2">REDEPLOYING</span></span><span class="kb">REDEPLOYING</span>'
+          : `${st.respawnType === 'scanner' ? '<span class="tt"><span class="t">DOWN</span><span class="t t2">RESPAWN<br>AT STATION</span></span>' : '<span class="t">DOWN</span>'}<span class="kb">${kb.dot ? 'POISONED BY' : 'KILLED BY'} <b style="${tk ? `background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}` : 'background:var(--mut);color:var(--bg,#000)'}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span>`;
         this.overlay.innerHTML = `<div class="mo down"><div class="wash"></div>
-          <div class="c"><div class="l2">${st.respawnType === 'scanner' ? '<span class="tt"><span class="t">DOWN</span><span class="t t2">RESPAWN<br>AT STATION</span></span>' : '<span class="t">DOWN</span>'}<span class="kb">${kb.dot ? 'POISONED BY' : 'KILLED BY'} <b style="${tk ? `background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}` : 'background:var(--mut);color:var(--bg,#000)'}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span></div>
+          <div class="c"><div class="l2">${title}</div>
           <div class="dn" id="dnhint">${this._downHint(st)}</div></div>
           ${this._downSafe(st)}
           <div class="recap" id="downrecap">${this._downRecap(st)}</div></div>`;
@@ -1605,7 +1640,7 @@ export class Hud {
       }
       return;
     }
-    if (this._moment === 'down' && (st.alive || st.phase !== 'live')) { this._moment = null; this.overlay.innerHTML = ''; }
+    if ((this._moment === 'down' || this._moment === 'down_recovery') && (st.alive || st.phase !== 'live')) { this._moment = null; this.overlay.innerHTML = ''; }
 
     // RECONCILING (S7.1): a BLE rejoin mid-match holds the gun disarmed for 3 s while the engine reconciles its
     // real pools — it never infers a death and never heals. Tell the player to wait, not to panic or pull anything.

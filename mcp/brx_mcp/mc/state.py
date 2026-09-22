@@ -3304,6 +3304,11 @@ class Session:
         nv.pop("cure", None)
         if cure in ("asking", "dead", "alive", "no_answer"):
             nv["cure"] = cure
+        # F272: this is a positive verdict, never a truthy flag. Every heartbeat restates it, so
+        # false, absence, junk and an older app all clear the previous claim.
+        nv.pop("gun_locked", None)
+        if body.get("gun_locked") is True:
+            nv["gun_locked"] = True
         # A28.3: `reach` is NOT taken from the status body. It feeds `coverage()` (which can gate a whole
         # mode) and the readiness amber (which un-blocks a start), so a client-asserted value would let a
         # phone claim its way past both. MC stamps it from the socket in `net._hello_gate`; the node's
@@ -5037,6 +5042,10 @@ class Session:
                 # the start, neither is a fault, and both must read as inactive rather than red.
                 "status": ("waiting" if len(blockers) == 1 and (not nid or blockers[0].startswith("OFFLINE"))
                            else "red") if blockers else ("amber" if ambers else "green")}
+            # F272 is additive and positive-only: omit it rather than serializing false/null, so an
+            # older console and an older persisted snapshot both keep their existing meaning.
+            if nid and nv.get("gun_locked") is True:
+                row["gun_locked"] = True
             board.append(row)
         unclaimed = [s for s in self.scan_rows if s.get("basename", "").lower() not in claimed]
         greens = sum(1 for r in board if r["status"] == "green")
@@ -6385,7 +6394,8 @@ class Session:
 
     def _with_pool_stale(self, rows: list[LiveRow]) -> list[LiveRow]:
         """F208: stamp each LIVE row with its node's `pool_stale` claim, only while the node makes one.
-        F264: also stamps `cure`, the node's own outcome, the same way."""
+        F264: also stamps `cure`, the node's own outcome, the same way.
+        F272: stamps the positive `gun_locked` verdict; absence remains absent for older clients."""
         pid_node = {pid: nid for nid, pid in self.node_player.items()}
         for row in rows:
             nv = self.nodes.get(pid_node.get(row["player_id"], ""), {})
@@ -6395,6 +6405,8 @@ class Session:
                     row["pool_stale_ms"] = nv["pool_stale_ms"]
             if nv.get("cure"):                            # F264: same gate, `_on_status` keeps only a valid claim
                 row["cure"] = nv["cure"]
+            if nv.get("gun_locked") is True:               # F272: strict true-only gate from `_on_status`
+                row["gun_locked"] = True
         return rows
 
     def _start_view(self, now: int) -> StartView | None:
@@ -6459,7 +6471,8 @@ class Session:
                 key: nv[key] for key in (
                     "node_id", "node_type", "arm_state", "synced", "gun_name", "gun_tail", "player_id",
                     "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "pending", "app_ver",
-                    "platform", "log", "reach", "last_reach", "pool_stale", "pool_stale_ms", "cure") if key in nv
+                    "platform", "log", "reach", "last_reach", "pool_stale", "pool_stale_ms", "cure",
+                    "gun_locked") if key in nv
             })
             row.setdefault("node_id", "")
             row.setdefault("node_type", "phone")

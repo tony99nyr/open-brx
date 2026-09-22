@@ -45,10 +45,12 @@ proved, and that every lane builds on:
 Screamers are Tony's P0. Levers session 1 ran in three sittings; its remainder is bench-plan sitting 2.
 Screamers Phase A has run A1 and A2 only.
 
-- **Next desk task:** **F272**, the lock-up detector on the phone and in MC. R4/T2 screamers is code-read complete:
-  v4.32 pins the blocking wait, 1,023-byte usable UART rings, persistent split frames and `$*` cleanup. R4's
-  untested-levers pass remains after the P0 detector. F269 owns the raw-byte helper required to bench A4/A7/A7b/A7c/A8;
-  F300 holds the `$QUERY` sound/gyro/per-slot remainder.
+- **Next desk task:** R4/T2's untested-levers pass. **F272's build is complete:** the phone and MC now expose a
+  durable, older-node-safe lock verdict after two unanswered all-zero `$LIFE` reads, and recovery restores the
+  full head before the configured down/respawn path begins. Its 8 s threshold and stable-radio screamer remain
+  bench-provisional. R4/T2's code-read already pinned the blocking wait, 1,023-byte usable UART rings, persistent
+  split frames and `$*` cleanup. F269 owns the raw-byte helper required to bench A4/A7/A7b/A7c/A8; F300 holds the
+  `$QUERY` sound/gyro/per-slot remainder.
 - **Next bench task:** run the still-executable screamers Phase A controls (A1c, A3-A6, and the phone-paced halves
   of A7/A8) with one gun and a laptop. A7/A7b/A7c/A8 zero-gap cases require a raw-byte helper that preserves
   controlled ATT chunks without the instrument's normal sleeps; do not record a normal `send` run as that result.
@@ -112,7 +114,8 @@ build the category-driven Mission Control picker.
 ## Start here
 
 Read [`bench-plan.md`](bench-plan.md). If Tony is at the bench, load the `bench-session` skill and run sitting 1.
-Otherwise take the first desk task, **F272**. F265's root cause (why score pushes stopped) is still open.
+Otherwise take the first desk task, **R4/T2's untested-levers pass**. F265's root cause (why score pushes stopped)
+is still open.
 
 ## Machine state
 

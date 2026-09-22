@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import QRCode from 'qrcode';
-import { armoryGate, backhaulOffer, cureLabel, GUN_FLAPPING_LINE, poolStaleLabel, isRoutableLanIp, reachLabel, reachTooltip, registrySig, sentenceCase, splitBlocker, staleReachReason } from '../api/derive';
-import { type LogView, type ReadinessRow, type TunnelStatus } from '../api/types';
+import { armoryGate, backhaulOffer, cureLabel, gunLockedLabel, GUN_FLAPPING_LINE, poolStaleLabel, isRoutableLanIp, reachLabel, reachTooltip, registrySig, sentenceCase, splitBlocker, staleReachReason } from '../api/derive';
+import { STALE_AFTER_MS, type LogView, type ReadinessRow, type TunnelStatus } from '../api/types';
 import { setNotice } from '../notice';
 import { useStore } from '../store';
 import { CHAMFER, F, T, TAB, fmtAge } from '../tokens';
@@ -324,6 +324,7 @@ function GunCard({ g }: { g: ReadinessRow }) {
   const battColor = batt == null ? T.micro : batt < 30 ? T.bad : batt < 60 ? T.warn : T.ok;
   const age = g.last_seen_age_ms ?? g.battery_age_ms ?? null;                 // real link age from the server
   const stale = age != null && age > 60_000;                                   // >1 min old = show nothing as live truth
+  const current = g.node === 'linked' && g.reach != null && age != null && age <= STALE_AFTER_MS;
   const linkText = g.node === 'none' ? 'NO PHONE' : age == null ? '—' : `${fmtAge(age)} AGO`;
   // S38 (field 2026-09-12, ISSUE 13): the gamertag lived only in the connected-nodes strip at the top —
   // the card that carries everything ELSE about this player's gear said nothing about who was holding it.
@@ -397,6 +398,8 @@ function GunCard({ g }: { g: ReadinessRow }) {
         <Micro>GUN</Micro><span data-gun-flapping={!stale && g.gun_flapping ? 'true' : undefined}>{!stale && g.gun_flapping
           ? <Val color={T.warn}>{GUN_FLAPPING_LINE}</Val>
           : <Val color={stale ? T.warn : g.gun_linked ? T.ink : g.gun_linked === false ? T.bad : T.micro}>{stale ? `UNKNOWN: LAST DATA ${fmtAge(age ?? 0)} AGO` : g.gun_linked ? 'LINKED' : g.gun_linked === false ? 'LINK LOST' : '—'}</Val>}
+          {current && gunLockedLabel(g.gun_locked) && <span data-gun-locked={g.player_id} role="alert" title="The player's phone proved that the gun stopped answering."
+            style={{ display: 'block', marginTop: 4, font: F.mono(700, 11), letterSpacing: '.08em', color: T.bad }}>{gunLockedLabel(g.gun_locked)}</span>}
           {/* F208: grey information beside the link state, never a warning and never on a stale card */}
           {!stale && poolStaleLabel(g.pool_stale, g.pool_stale_ms) && <span data-gun-silent={g.player_id} title="The phone says this gun's health and ammo readout may be out of date."
             style={{ marginLeft: 8, font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>{poolStaleLabel(g.pool_stale, g.pool_stale_ms)}</span>}

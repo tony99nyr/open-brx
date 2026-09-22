@@ -342,6 +342,10 @@ export function startDemo({ engine, log }) {
       gunNoAnswer: () => { engine._noFirePulls = 3; engine._cureLife = engine._lifeSeq; engine._cureAt = Date.now(); engine.cure = { verdict: 'no_answer', at: Date.now() }; engine._changed(); },
       gunNoFire: () => { engine._noFirePulls = 3; engine._cureLife = engine._lifeSeq; engine._cureAt = Date.now(); engine.cure = { verdict: 'asking', at: Date.now() }; engine._changed(); },
       gunHealthy: () => { engine._noFirePulls = 0; engine.cure = null; engine._changed(); },
+      // F272 screen fixture: the detector itself is covered with a fake clock in the engine suite. The
+      // browser needs the durable verdict that detector publishes, so it can prove the player's takeover
+      // at both supported landscape sizes and then drive the real drop/relink recovery methods below.
+      gunLocked: () => { engine.gunLocked = { at: Date.now(), match_id: engine.matchId }; engine._changed(); },
       gunSmokeOverlap: () => { const now = Date.now(); engine.smoke = { at: now, until: now + 6000 }; engine.gunAcc = 0; ev.gunNoAnswer(); },
       gunHitOverlap: () => { engine.smoke = null; engine.lastHitAt = Date.now(); ev.gunNoAnswer(); },
       station: (rssi = -78, present = false, threshold = -74) => { if (typeof engine.setStations !== 'function') { log('demo: this engine has no stations', 'le'); return; }
@@ -409,6 +413,7 @@ export function startDemo({ engine, log }) {
       'aborted':           [...lobby, [900, () => ev.start(30)], [1600, 'abort']],
       'live':              live,
       'live-gun-no-answer': [...live, [2300, 'gunNoAnswer']],             // F288: phone-visible, actionable health verdict
+      'live-gun-locked':   [...live, [2300, 'gunLocked']],               // F272: power-cycle takeover + real drop/relink recovery
       'live-fired':        [...live, [2300, () => ev.fire(7)]],
       'live-hit':          [...live, [2300, () => { ev.hit(); ev.hit(); ev.hit(); }]],
       'live-lowhp':        [...live, [2300, 'lowHp']],

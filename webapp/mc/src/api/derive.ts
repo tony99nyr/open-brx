@@ -316,6 +316,13 @@ export function cureLabel(cure: 'asking' | 'dead' | 'alive' | 'no_answer' | null
   return null;
 }
 
+/** F272: a positive lock-up verdict from the player node. Only literal true is evidence; false,
+ *  absence and older-server data render nothing. Callers additionally suppress last-known data when
+ *  the phone itself is stale/offline. */
+export function gunLockedLabel(locked: boolean | null | undefined): string | null {
+  return locked === true ? 'GUN STOPPED - PLAYER MUST POWER-CYCLE' : null;
+}
+
 /** ARMORY's primary button (bench 2026-09-17, Tony): the button IS the status. It names what it waits
  *  for, and reads HARDWARE READY ▸ when the board allows.
  *

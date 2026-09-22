@@ -134,3 +134,41 @@ def test_junk_cure_is_dropped_not_rendered():
     for junk in ("cured", True, 1, None):
         _status(net, clock, 0, ps[0], cure=junk)
         assert "cure" not in _node(s, 0), junk
+
+
+# F272: a positive lock-up verdict is an additive status claim. It follows the same three public
+# projections as the older pool/cure facts, but only literal true is evidence: false, absence and
+# junk all clear the last verdict so an old phone or a recovered gun cannot leave the board stuck.
+def test_gun_locked_true_reaches_node_readiness_and_live_rows():
+    s, net, clock, ps = _session()
+    s.push_config(force=True)
+    for i in range(2):
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
+                                                           "gun_echo": "x"}, clock["t"])
+    s.start(force=True)
+    clock["t"] = s.start_info["go_live_t"] + 10
+    s.tick()
+    _status(net, clock, 0, ps[0], gun_locked=True, arm_state="live")
+    _status(net, clock, 1, ps[1], arm_state="live")
+
+    assert _node(s, 0)["gun_locked"] is True
+    assert _ready_row(s, ps[0])["gun_locked"] is True
+    rows = {r["player_id"]: r for r in s.snapshot()["live"]["rows"]}
+    assert rows[ps[0]["player_id"]]["gun_locked"] is True
+    assert "gun_locked" not in rows[ps[1]["player_id"]]
+
+
+def test_gun_locked_absence_false_and_junk_clear_the_last_claim():
+    s, net, clock, ps = _session(1)
+    _status(net, clock, 0, ps[0], gun_locked=True)
+    assert _node(s, 0)["gun_locked"] is True
+
+    for value in (False, "true", 1, None):
+        _status(net, clock, 0, ps[0], gun_locked=value)
+        assert "gun_locked" not in _node(s, 0), value
+        assert "gun_locked" not in _ready_row(s, ps[0])
+        _status(net, clock, 0, ps[0], gun_locked=True)
+
+    _status(net, clock, 0, ps[0])
+    assert "gun_locked" not in _node(s, 0)
+    assert "gun_locked" not in _ready_row(s, ps[0])

@@ -960,6 +960,60 @@ step('mode-card-host-call', async ({ browser, base }) => {
   ok('the koth card says the winner is the HOST CALL until a phone sends a possession fact');
 });
 
+// F272: a gun whose MCU has stopped can keep the BLE radio and the phone heartbeat alive. The phone's
+// durable `gun_locked` verdict therefore has to reach the LIVE board, but only while that node itself is
+// current. A last-known snapshot must not keep shouting POWER-CYCLE after the phone has gone offline, and
+// an older node that omits the optional field must remain an ordinary row. Patch BOTH snapshot transports:
+// a REST-only fixture is overwritten by the first WebSocket push and proves nothing.
+step('f272-gun-lock-board', async ({ browser, base }) => {
+  await resetTdm(base);
+  for (const [name, viewport] of [['desk', { width: 1280, height: 800 }], ['phone', { width: 393, height: 830 }]]) {
+    const pg = await newPage(browser, base, viewport);
+    const seen = await patchSnapshots(pg, st => {
+      const players = (st.players || []).slice(0, 3);
+      while (players.length < 3) players.push({ player_id: `f272-${players.length}`, display: `PLAYER ${players.length + 1}`, team_id: players.length % 2 ? 'yellow' : 'blue' });
+      const row = (p, i) => ({ player_id: p.player_id, display: p.display, team_id: p.team_id,
+        kills: 0, deaths: 0, assists: 0, shots: 0, hits: 0, accuracy: 0, kd: 0, streak: 0, medals: [],
+        status: i === 1 ? 'stale' : 'alive', sync_age_ms: i === 1 ? 18_000 : 900, respawn_in_s: null,
+        ...(i < 2 ? { gun_locked: true } : {}) });
+      const rows = players.map(row), now = Number(st.t) || Date.now();
+      st.phase = 'live';
+      st.live = { match_id: 'f272-browser', go_live_t: now - 60_000, time_limit_s: 600,
+        ends_t: now + 540_000, score: { blue: 0, yellow: 0 }, rows };
+    });
+    await go(pg, 'live');
+    await until(() => pg.locator('[data-gun-locked]').count().then(n => n === 1), 8000, 'one current gun-lock warning');
+    const warning = pg.locator('[data-gun-locked]').first();
+    const copy = (await warning.textContent()).replace(/\s+/g, ' ').trim();
+    expect(/GUN STOPPED/i.test(copy) && /POWER-CYCLE/i.test(copy), `the current row names the failure and cure (saw ${JSON.stringify(copy)})`);
+    expect(await warning.getAttribute('role') === 'alert', 'the current lock warning is exposed as an urgent alert');
+    expect(await warning.evaluate(el => el.closest('button, [role="button"]') === null), 'the urgent alert is not flattened inside button semantics');
+    const ids = await pg.locator('[data-gun-locked]').evaluateAll(els => els.map(e => e.getAttribute('data-gun-locked')));
+    const firstId = await pg.locator('[data-live-row]').nth(0).getAttribute('data-live-row');
+    expect(ids[0] === firstId, `the warning belongs to the current row (saw warning ${JSON.stringify(ids[0])}, row ${JSON.stringify(firstId)})`);
+    expect(await pg.getByRole('button', { name: `${(await pg.locator('[data-live-row]').nth(0).locator('[data-live-row-toggle]').textContent()).replace(/^▸/, '').trim()} operator actions` }).count() === 1,
+      'the row action keeps an accessible name beside the separate alert');
+    const stale = pg.locator('[data-live-row]').nth(1);
+    expect(/LAST KNOWN/.test(await stale.textContent()), 'the stale control row says LAST KNOWN');
+    expect(await stale.locator('[data-gun-locked]').count() === 0, 'a stale/offline row suppresses its last gun-lock verdict');
+    const old = pg.locator('[data-live-row]').nth(2);
+    expect(await old.locator('[data-gun-locked]').count() === 0, 'a node with the optional field missing gets no invented warning');
+    expect(await pg.locator('text=▲ CONSOLE ERROR').count() === 0, 'missing gun_locked does not crash the LIVE board');
+    await warning.scrollIntoViewIfNeeded();
+    const fit = await warning.evaluate(e => { const r = e.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: innerWidth, height: innerHeight, doc: document.documentElement.scrollWidth }; });
+    expect(fit.left >= -1 && fit.right <= fit.width + 1 && fit.top >= -1 && fit.bottom <= fit.height + 1 && fit.doc <= fit.width + 1,
+      `${name}: the warning and LIVE board fit the ${fit.width}x${fit.height} viewport (${JSON.stringify(fit)})`);
+    // This console normally receives its first state over the socket, so REST may legitimately stay at zero.
+    // The route is still installed for a fallback fetch; the non-zero WS count proves the rendered state was
+    // actually patched rather than merely leaving an unused interceptor behind.
+    expect(seen.ws > 0, `${name}: a WebSocket snapshot was actually patched (${JSON.stringify(seen)})`);
+    const evidence = path.join(SHOTS, `f272-gun-lock-${name}.png`);
+    await pg.screenshot({ path: evidence, fullPage: false });
+    ok(`${name}: current lock warns; stale and old-node rows stay quiet  ${evidence}`);
+    await closePage(pg);
+  }
+});
+
 // A stale server: the new fields are gone from REST *and* from the pushed snapshots, and the A10
 // routes 404. Every page must still render and the skew must be explained on screen.
 step('stale-server', async ({ browser, base }) => {
@@ -968,6 +1022,7 @@ step('stale-server', async ({ browser, base }) => {
   const strip = o => {
     if (o && typeof o === 'object') {
       delete o.station_source;
+      delete o.gun_locked;                 // F272: an older node/server omits the optional verdict
       if (Array.isArray(o.config_warnings)) o.config_warnings = o.config_warnings.filter(w => !/^SETUP:/i.test(String(w)));
       for (const k of Object.keys(o)) strip(o[k]);
     }

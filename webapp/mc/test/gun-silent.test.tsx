@@ -7,7 +7,7 @@
 // (`cure`: `asking` / `dead` / `alive` / `no_answer`), beside the same cue. `no_answer` is the one case
 // that needs a human, so it alone renders in the warning colour.
 import { describe, expect, it } from 'vitest';
-import { cureLabel, poolStaleLabel } from '../src/api/derive';
+import { cureLabel, gunLockedLabel, poolStaleLabel } from '../src/api/derive';
 import type { LiveRow, LiveView, ReadinessRow, State } from '../src/api/types';
 import { Armory } from '../src/screens/Armory';
 import { Live } from '../src/screens/Live';
@@ -110,6 +110,50 @@ describe('F264 · the node cure cue', () => {
     expect(cues.map(c => c.getAttribute('data-gun-cure'))).toEqual([first.player_id]);
     expect(cues[0].textContent).toBe('GUN NOT ANSWERING - FORCE RESPAWN');
     expect(cues[0].style.color).toBe(rgb(T.warn));
+    m.unmount();
+  });
+});
+
+describe('F272 · the positive gun lock-up verdict', () => {
+  it('renders only literal true and gives the operator the power-cycle action', () => {
+    expect(gunLockedLabel(true)).toBe('GUN STOPPED - PLAYER MUST POWER-CYCLE');
+    expect(gunLockedLabel(false)).toBeNull();
+    expect(gunLockedLabel(null)).toBeNull();
+    expect(gunLockedLabel(undefined)).toBeNull();
+  });
+
+  it('LIVE shows a current verdict prominently and suppresses a stale row', async () => {
+    const d = await demo();
+    const rows = [row({ player_id: 'p1', display: 'VIPER', gun_locked: true } as Partial<LiveRow>),
+                  row({ player_id: 'p2', display: 'GHOST', status: 'stale', sync_age_ms: 20_000, gun_locked: true } as Partial<LiveRow>)];
+    const state: State = { ...d.state, phase: 'live', live: liveView(rows) };
+    const m = await mount(<StoreCtx.Provider value={makeStore({ ...d, state, view: 'live' })}><Live /></StoreCtx.Provider>);
+    const cues = m.find('[data-gun-locked]');
+    expect(cues.map(c => c.getAttribute('data-gun-locked'))).toEqual(['p1']);
+    expect(cues[0].textContent).toBe('GUN STOPPED - PLAYER MUST POWER-CYCLE');
+    expect(cues[0].style.color).toBe(rgb(T.bad));
+    expect(cues[0].getAttribute('role')).toBe('alert');
+    expect(cues[0].closest('button, [role="button"]'), 'the urgent alert stays exposed in the accessibility tree').toBeNull();
+    expect(m.find('[data-live-row-toggle="p1"]')[0].getAttribute('aria-label')).toBe('VIPER operator actions');
+    m.unmount();
+  });
+
+  it('ARMORY shows a current verdict and suppresses stale and disconnected cards', async () => {
+    const d = await demo();
+    const [current, stale, offline, ...rest] = d.state.readiness.board;
+    const board = [
+      { ...current, node: 'linked', present: true, reach: 'lan', status: 'green', last_seen_age_ms: 2_000, gun_locked: true },
+      { ...stale, node: 'linked', present: true, reach: 'lan', status: 'amber', last_seen_age_ms: 9_000,
+        ambers: ['STALE LINK (9 s) - DOES NOT BLOCK'], gun_locked: true },
+      { ...offline, node: 'linked', present: true, reach: null, status: 'green', last_seen_age_ms: 2_000, gun_locked: true },
+      ...rest,
+    ] as ReadinessRow[];
+    const state: State = { ...d.state, readiness: { ...d.state.readiness, board } };
+    const m = await mountScreen(<Armory />, { state, view: 'muster', weapons: d.weapons, perks: d.perks });
+    const cues = m.find('[data-gun-locked]');
+    expect(cues.map(c => c.getAttribute('data-gun-locked'))).toEqual([current.player_id]);
+    expect(cues[0].textContent).toBe('GUN STOPPED - PLAYER MUST POWER-CYCLE');
+    expect(cues[0].style.color).toBe(rgb(T.bad));
     m.unmount();
   });
 });

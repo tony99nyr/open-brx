@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { setNotice } from '../notice';
-import { cureLabel, endDeliveryLine, poolStaleLabel } from '../api/derive';
+import { cureLabel, endDeliveryLine, gunLockedLabel, poolStaleLabel } from '../api/derive';
 import { STALE_AFTER_MS, type LiveRow } from '../api/types';
 import { useStore } from '../store';
 import { F, T, fmtAge, fmtClock, fmtDuration, teamColor } from '../tokens';
@@ -285,18 +285,23 @@ function Row({ r, endUnconfirmed, open, onToggle }: { r: LiveRow; endUnconfirmed
   const stk = bestStreak(r);
   const silent = poolStaleLabel(r.pool_stale, r.pool_stale_ms);      // F208: grey, beside the name, never a status
   const cure = cureLabel(r.cure);                                    // F264: the node's own outcome; no_answer needs a human
+  const locked = !syncWarn ? gunLockedLabel(r.gun_locked) : null;     // F272: never render a last-known verdict as current
   // longhand sides, not `border` + `borderLeft`: React warns when the shorthand changes on a rerender (A47 opens the row)
   const rim = `1px solid ${endUnconfirmed ? T.bad : open ? T.acc : T.row}`;
   return (
     <div data-end-unconfirmed={endUnconfirmed ? r.player_id : undefined} data-live-row={r.player_id}
-      role="button" tabIndex={0} aria-expanded={!!open} aria-controls={operatorMenuId(r.player_id)}
-      aria-label={`${r.display} operator actions`} title="Operator actions: resync, respawn or relink this player's gun"
-      onClick={onToggle} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle?.(); } }}
+      onClick={onToggle}
       style={{ cursor: 'pointer', display: 'grid', gridTemplateColumns: COLS, gap: GAP, alignItems: 'center', padding: '10px 14px', background: dead ? 'rgba(255,82,82,.05)' : T.panel, borderTop: rim, borderRight: rim, borderBottom: rim, borderLeft: `3px solid ${teamColor(r.team_id)}` }}>
       <span style={{ font: F.chk(700, 14), letterSpacing: '.1em', minWidth: 0 }}>
         {/* A47 review: the row is a control, so it has to look like one */}
-        <span data-row-affordance="1" aria-hidden="true" style={{ color: open ? T.acc : T.dim, marginRight: 6, display: 'inline-block',
-          transform: open ? 'rotate(90deg)' : undefined }}>▸</span>{r.display}
+        <button type="button" data-live-row-toggle={r.player_id} aria-expanded={!!open} aria-controls={operatorMenuId(r.player_id)}
+          aria-label={`${r.display} operator actions`} title="Operator actions: resync, respawn or relink this player's gun"
+          style={{ appearance: 'none', background: 'transparent', border: 0, color: 'inherit', cursor: 'pointer', font: 'inherit', letterSpacing: 'inherit', padding: 0, textAlign: 'left' }}>
+          <span data-row-affordance="1" aria-hidden="true" style={{ color: open ? T.acc : T.dim, marginRight: 6, display: 'inline-block',
+            transform: open ? 'rotate(90deg)' : undefined }}>▸</span>{r.display}
+        </button>
+        {locked && <span data-gun-locked={r.player_id} role="alert" title="The player's phone proved that the gun stopped answering."
+          style={{ display: 'block', font: F.mono(700, 11), letterSpacing: '.08em', color: T.bad }}>{locked}</span>}
         {silent && <span data-gun-silent={r.player_id} title="The phone says this gun's health and ammo readout may be out of date."
           style={{ display: 'block', font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>{silent}</span>}
         {cure && <span data-gun-cure={r.player_id} title="The node's own outcome after it probed the gun."

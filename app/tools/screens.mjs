@@ -62,7 +62,7 @@ const b = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });  
 const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 667, height: 375 }];
 const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted',
   'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
-  'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked', 'live-scores', 'live-scores-ffa', 'live-poison', 'live-smoke', 'down-poisoned', 'live-gun-no-answer']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
+  'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked', 'live-scores', 'live-scores-ffa', 'live-poison', 'live-smoke', 'down-poisoned', 'live-gun-no-answer', 'live-gun-locked']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
 let stepIdx = 0;   // counts every step this run selects; identical control flow in every shard, so `% count` partitions them
 const step = async (name, fn) => { if (ONLY && !name.includes(ONLY)) return; if (SHARD && stepIdx++ % SHARD[1] !== SHARD[0]) return; try { await fn(); console.log(`  ok   ${name}`); pass++; } catch (e) { console.log(`  FAIL ${name}: ${String(e.message || e).slice(0, 300)}`); fail++; errs.push(name); } };
 const open = async (view, stage, extra = '', ms) => {
@@ -179,6 +179,144 @@ for (const view of VIEWS) {
     }; });
     await pg.close();
     must(r.text === 'GUN LINK LOST — TAP TO RECONNECT' && r.chips !== 'none' && r.visible && r.onTop && r.pointer !== 'none', JSON.stringify(r));
+  });
+  await step(`${view.name} F272 locked gun: takeover, link-down, and power-cycle recovery are screen truth`, async () => {
+    const pg = await open(view, 'live-gun-locked');
+    const locked = await pg.evaluate(() => {
+      const e = document.querySelector('[data-gun-locked]'), frame = document.getElementById('frame');
+      if (!e || !frame) return null;
+      const r = e.getBoundingClientRect(), fr = frame.getBoundingClientRect(), cs = getComputedStyle(e);
+      return { text: e.textContent.replace(/\s+/g, ' ').trim(), role: e.getAttribute('role'),
+        inside: r.left >= fr.left - 1 && r.right <= fr.right + 1 && r.top >= fr.top - 1 && r.bottom <= fr.bottom + 1,
+        visible: r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && Number(cs.opacity) > 0,
+        chipsHidden: getComputedStyle(document.getElementById('chips')).display === 'none',
+        overflow: e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1 };
+    });
+    must(locked && locked.visible && locked.inside && !locked.overflow && locked.chipsHidden, JSON.stringify(locked));
+    must(locked.role === 'alert', `takeover role ${JSON.stringify(locked && locked.role)}`);
+    must(/YOUR GUN HAS STOPPED/i.test(locked.text) && /HOLD POWER 3 S/i.test(locked.text) && /POWER ON/i.test(locked.text) && /PHONE WILL RE-ARM IT/i.test(locked.text), `takeover copy: ${JSON.stringify(locked.text)}`);
+    const blocked = await pg.evaluate(() => {
+      const e = document.querySelector('[data-gun-locked]'), box = e.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      const hidden = ['hud', 'chips', 'info', 'skin', 'diag'].map(id => {
+        const node = document.getElementById(id); return { id, inert: node?.hasAttribute('inert'), aria: node?.getAttribute('aria-hidden') };
+      });
+      return { takeoverHit: !!hit?.closest('[data-gun-locked]'), hidden };
+    });
+    must(blocked.takeoverHit && blocked.hidden.every(x => x.inert && x.aria === 'true'),
+      `takeover did not exclusively own pointer/accessibility input: ${JSON.stringify(blocked)}`);
+
+    // A cold app restore deliberately remains IDLE until BLE reconnects. The durable, match-scoped verdict
+    // still owns the screen in that gap; otherwise restarting the phone erases the only recovery instruction.
+    const restoredIdle = await pg.evaluate(() => {
+      window.brx.engine.phase = 'idle'; window.brx.engine._changed();
+      return !!document.querySelector('[data-gun-locked]');
+    });
+    must(restoredIdle, 'persisted lock takeover disappeared in the idle-before-relink restore gap');
+    await pg.evaluate(() => { window.brx.engine.phase = 'live'; window.brx.engine._changed(); });
+
+    await pg.evaluate(() => window.brxDemo.dropGun());
+    // Wait for the mutation we are trying to prove. Waiting on the takeover itself was tautological:
+    // it was already present before dropGun(), so a broken/no-op drop would still pass this step.
+    await pg.waitForFunction(() => window.brx.engine.state().bleUp === false);
+    const dropped = await pg.evaluate(() => {
+      const link = document.querySelector('[data-act="onReconnectGun"]'), lr = link && link.getBoundingClientRect();
+      return { bleUp: window.brx.engine.state().bleUp,
+        locked: (document.querySelector('[data-gun-locked]') || {}).textContent?.replace(/\s+/g, ' ').trim() || '',
+        link: link?.textContent || '', linkVisible: !!(link && lr.width > 0 && lr.height > 0 && getComputedStyle(link).visibility !== 'hidden'),
+        chipsHidden: getComputedStyle(document.getElementById('chips')).display === 'none' };
+    });
+    must(dropped.bleUp === false && !dropped.linkVisible && /YOUR GUN HAS STOPPED/i.test(dropped.locked) && dropped.chipsHidden,
+      `the power-cycle instruction stays authoritative while the radio is down: ${JSON.stringify(dropped)}`);
+
+    await pg.evaluate(() => {
+      const eng = window.brx.engine, ordinary = eng.writer;
+      eng.writer = (frames, why, options) => frames.includes('$CLEAR,*')
+        ? new Promise(resolve => { window.__f272Head = resolve; })
+        : ordinary(frames, why, options);
+      window.brxDemo.relinkGun();
+    });
+    await pg.waitForFunction(() => window.brx.engine.state().gunRecovery === 'rearming'
+      && /KEEP POWER ON/i.test((document.querySelector('[data-gun-locked]') || {}).textContent || ''));
+    const rearming = await pg.evaluate(() => (document.querySelector('[data-gun-locked]') || {}).textContent?.replace(/\s+/g, ' ').trim() || '');
+    must(/KEEP POWER ON/i.test(rearming) && /RE-ARMING/i.test(rearming) && !/HOLD POWER 3 S/i.test(rearming),
+      `recovery still tells the player to switch off: ${JSON.stringify(rearming)}`);
+    await pg.evaluate(() => window.__f272Head(true));
+    await pg.waitForFunction(() => !!document.querySelector('.mo.down'));
+    await pg.waitForFunction(() => !document.querySelector('.whiteout'));
+    const recovered = await pg.evaluate(() => ({ locked: !!document.querySelector('[data-gun-locked]'),
+      down: (document.querySelector('.mo.down') || {}).textContent?.replace(/\s+/g, ' ').trim() || '',
+      alive: window.brx.engine.state().alive }));
+    await pg.screenshot({ path: `${OUT}/${view.name}-f272-recovered-down.png` });
+    await pg.close();
+    must(!recovered.locked && recovered.alive === false && /GUN RESTARTED/i.test(recovered.down) && /REDEPLOYING/i.test(recovered.down)
+      && !/KILLED BY|UNKNOWN/i.test(recovered.down), `power-cycled gun returns through an honest recovery DOWN state: ${JSON.stringify(recovered)}`);
+
+    const failed = await open(view, 'live-gun-locked');
+    await failed.evaluate(() => {
+      const eng = window.brx.engine, ordinary = eng.writer;
+      window.brxDemo.dropGun();
+      eng.writer = (frames, why, options) => frames.includes('$CLEAR,*') ? false : ordinary(frames, why, options);
+      window.brxDemo.relinkGun();
+    });
+    await failed.waitForFunction(() => window.brx.engine.state().gunRecovery === 'retry_exhausted', null, { timeout: 7000 });
+    const exhausted = await failed.evaluate(() => (document.querySelector('[data-gun-locked]') || {}).textContent?.replace(/\s+/g, ' ').trim() || '');
+    await failed.close();
+    must(/RE-ARMING DID NOT FINISH/i.test(exhausted) && /POWER-CYCLE AGAIN/i.test(exhausted),
+      `spent recovery budget has no actionable screen truth: ${JSON.stringify(exhausted)}`);
+  });
+  await step(`${view.name} F272 locked-gun takeover stays readable at night`, async () => {
+    const pg = await open(view, 'live-gun-locked', '&night');
+    const r = await pg.evaluate(() => {
+      const e = document.querySelector('[data-gun-locked]'), frame = document.getElementById('frame');
+      if (!e || !frame) return null;
+      const box = e.getBoundingClientRect(), fb = frame.getBoundingClientRect();
+      const rgb = value => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+      const lum = value => {
+        const [red, green, blue] = rgb(value).map(v => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; });
+        return .2126 * red + .7152 * green + .0722 * blue;
+      };
+      const bg = getComputedStyle(e).backgroundColor;
+      const ratio = node => { const a = lum(getComputedStyle(node).color), b = lum(bg); return (Math.max(a, b) + .05) / (Math.min(a, b) + .05); };
+      return {
+        text: e.textContent.replace(/\s+/g, ' ').trim(), env: document.querySelector('[data-env]')?.dataset.env,
+        inside: box.left >= fb.left - 1 && box.right <= fb.right + 1 && box.top >= fb.top - 1 && box.bottom <= fb.bottom + 1,
+        visible: box.width > 0 && box.height > 0 && getComputedStyle(e).visibility !== 'hidden' && Number(getComputedStyle(e).opacity) > 0,
+        overflow: e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1,
+        contrast: { heading: ratio(e.querySelector('.k')), action: ratio(e.querySelector('.t')), reassurance: ratio(e.querySelector('.s')) },
+      };
+    });
+    must(r && r.env === 'night' && r.visible && r.inside && !r.overflow, JSON.stringify(r));
+    must(/YOUR GUN HAS STOPPED/i.test(r.text) && /HOLD POWER 3 S/i.test(r.text) && /POWER ON/i.test(r.text) && /PHONE WILL RE-ARM IT/i.test(r.text),
+      `night takeover copy: ${JSON.stringify(r.text)}`);
+    // Heading/action are bold large text (3:1 AA); the 12 px reassurance remains normal text (4.5:1 AA).
+    must(r.contrast.heading >= 3 && r.contrast.action >= 3 && r.contrast.reassurance >= 4.5,
+      `night takeover contrast below AA: ${JSON.stringify(r.contrast)}`);
+    await pg.evaluate(() => {
+      const eng = window.brx.engine, ordinary = eng.writer;
+      window.brxDemo.dropGun();
+      eng.writer = (frames, why, options) => frames.includes('$CLEAR,*')
+        ? new Promise(resolve => { window.__f272NightHead = resolve; })
+        : ordinary(frames, why, options);
+      window.brxDemo.relinkGun();
+    });
+    await pg.waitForFunction(() => window.brx.engine.state().gunRecovery === 'rearming'
+      && /KEEP POWER ON/i.test((document.querySelector('[data-gun-locked]') || {}).textContent || ''));
+    const nightRearming = await pg.evaluate(() => (document.querySelector('[data-gun-locked]') || {}).textContent?.replace(/\s+/g, ' ').trim() || '');
+    must(/KEEP POWER ON/i.test(nightRearming) && /RE-ARMING/i.test(nightRearming), `night rearming copy: ${JSON.stringify(nightRearming)}`);
+    await pg.evaluate(() => {
+      const eng = window.brx.engine;
+      eng.writer = frames => frames.includes('$CLEAR,*') ? false : true;
+      window.__f272NightHead(false);
+    });
+    await pg.waitForFunction(() => window.brx.engine.state().gunRecovery === 'retry_exhausted', null, { timeout: 7000 });
+    const nightExhausted = await pg.evaluate(() => {
+      const e = document.querySelector('[data-gun-locked]');
+      return { text: e?.textContent?.replace(/\s+/g, ' ').trim() || '', bg: e && getComputedStyle(e).backgroundColor };
+    });
+    await pg.close();
+    must(/POWER-CYCLE AGAIN/i.test(nightExhausted.text) && nightExhausted.bg === 'rgb(5, 0, 0)',
+      `night exhausted recovery truth: ${JSON.stringify(nightExhausted)}`);
   });
   await step(`${view.name} F288 gun-health action stays readable at night`, async () => {
     const pg = await open(view, 'live-gun-no-answer', '&night');

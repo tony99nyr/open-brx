@@ -1408,6 +1408,9 @@ KNOWN_UNMIRRORED = {
     "resumeSchedule", "_event", "_probe", "_checkEcho", "ackEnd", "onResultPush", "resultWait",
     # bench 2026-09-17: BrxLink's flap count, passed through to the HUD and MC; no game rule reads it
     "setGunFlapping",
+    # F272: node/BrxLink liveness and locked-head recovery. The stage is itself the deterministic gun driver,
+    # has no phone BLE connection to diagnose, and never models a batch resolving false after a radio-only link.
+    "_sendGunProbe", "_gunLockTick", "_beginGunRecovery", "_gunRecoveryWrite", "_gunRecoveryTick",
     # A47 (bench 2026-09-17): dispatches MC's operator `control` (match/player checks, relink hook). The stage has no
     # MC and no BrxLink; its RESYNC GUN and RESPAWN buttons call `_operator_resync` and `revive` directly
     "_operator",

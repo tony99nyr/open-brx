@@ -768,6 +768,9 @@ export interface NodeView {
    *  `alive` = it answered above 0 and the node re-asserted the arming, never a revive; `no_answer` =
    *  nothing came back and the node deliberately did NOTHING. `no_answer` is the one that needs a human. */
   cure?: 'asking' | 'dead' | 'alive' | 'no_answer';
+  /** F272: the node positively proved that the linked gun stopped answering. Optional and true-only:
+   *  absence is an older/healthy node, never evidence of a lock-up. */
+  gun_locked?: boolean;
 }
 
 export interface Event {
@@ -850,6 +853,8 @@ export interface Event {
    *  `alive` = it answered above 0 and the node re-asserted the arming, never a revive; `no_answer` =
    *  nothing came back and the node deliberately did NOTHING. `no_answer` is the one that needs a human. */
   cure?: 'asking' | 'dead' | 'alive' | 'no_answer';
+  /** F272: positive lock-up verdict. False/absent is deliberately no claim. */
+  gun_locked?: boolean;
 }
 
 export interface ScoreRow {
@@ -930,6 +935,8 @@ export interface LiveRow {
    *  `alive` = it answered above 0 and the node re-asserted the arming, never a revive; `no_answer` =
    *  nothing came back and the node deliberately did NOTHING. `no_answer` is the one that needs a human. */
   cure?: 'asking' | 'dead' | 'alive' | 'no_answer';
+  /** F272: the bound node's current positive lock-up verdict. Absent = no claim or an older app. */
+  gun_locked?: boolean;
   /** A47: the latest operator action for this player in THIS match. Absent = none sent. */
   operator?: OperatorStatus;
 }
@@ -1298,6 +1305,8 @@ export interface ReadinessRow {
   pool_stale_ms: number | null;
   /** F264: the node's own outcome; None = it has not acted */
   cure: 'asking' | 'dead' | 'alive' | 'no_answer' | null;
+  /** F272: positive verdict only; absent = no claim or older app */
+  gun_locked?: boolean;
   fw: string | null;
   phone_batt: number | null;
   ssid_ok: boolean | null;

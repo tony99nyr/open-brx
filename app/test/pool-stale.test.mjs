@@ -24,6 +24,10 @@ function harness() {
   const player = { player_id: 'p1', player_num: 7, display: 'ROCCO', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
   const eng = new Engine({ writer: () => {}, emit: () => {}, report: () => {}, now: () => clock,
     synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
+  // This file isolates F208's pool-staleness state machine. It has no simulated gun reply to the independent
+  // F272 `$LIFE` liveness reads; letting that detector run would correctly lock this deliberately mute fake
+  // before the historical no-fire replay reaches its third pull. F272's own suite covers that interaction.
+  eng._gunLockTick = () => {};
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   eng.onMcMessage({ kind: 'assign', body: { player, team: teams[0], roster: [] } });
   eng.onMcMessage({ kind: 'config', body: { config, frames: { ...golden, player_id: 'p1' }, roster: [] } });

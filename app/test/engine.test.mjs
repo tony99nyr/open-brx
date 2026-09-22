@@ -31,7 +31,10 @@ function harness({ mode = 'tdm', respawn = 'auto', timeLimit = 600, synced = tru
   const roster = [{ player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue' }, { player_id: 'p2', player_num: 19, display: 'VIPER', team_id: 'yellow' }];
   // `delay`: a test that needs to hold a scheduled write and fire it later (the F149 low-health debounce)
   // passes its own; every other test gets the old behaviour, synchronous but recorded in `delays`.
-  const eng = new Engine({ writer: fr => writes.push(...fr), emit: f => facts.push(f), report: (k, b) => reports.push({ k, b }),
+  // This broad harness has no simulated reply path for F272's independent liveness read. Report that one
+  // transport write as not delivered so long-running game-rule tests cannot manufacture a locked gun from a
+  // fake that is incapable of answering; gun-lock.test.mjs owns the detector and recovery behavior.
+  const eng = new Engine({ writer: (fr, why) => { const n = writes.push(...fr); return String(why).startsWith('gun liveness probe') ? false : n; }, emit: f => facts.push(f), report: (k, b) => reports.push({ k, b }),
     now: () => clock, synced: () => synced, storage: mkStorage(), log: () => {}, delay: delay || ((ms, fn) => { delays.push(ms); fn(); }) });
   const bundle = { ...golden, player_id: 'p1' };
   const api = {
