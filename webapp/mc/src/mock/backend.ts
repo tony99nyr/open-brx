@@ -1120,6 +1120,18 @@ export class MockBackend implements Api {
   }
   async patchPlayer(id: string, patch: Partial<Player>): Promise<Player> {
     const p = this.players.find(x => x.player_id === id); if (!p) throw new Error('no such player');
+    if (this.phase === 'armed' || this.phase === 'live') {
+      // F172/B1: team is not display-only. The real server refuses a mid-match change because the
+      // roster/scorer would move while the gun kept the old `$TID`; `?mock` must not demonstrate a
+      // flow the field rejects. As on `state.py patch_player`, null means "no instruction" in play,
+      // and writing the team already held is a legal no-op.
+      if (patch.team_id == null) {
+        const { team_id: _ignored, ...rest } = patch; void _ignored; patch = rest;
+      } else if (patch.team_id !== p.team_id) {
+        const msg = `the match is ${this.phase.toUpperCase()}: changing a player's TEAM now moves the beacon, LEDs and scoring but NOT the gun's $TID -- combat would still resolve on the old team and same-team shots would do no damage. RECALL to return the field to KIT, change teams there, and re-push`;
+        throw Object.assign(new Error(msg), { status: 409, body: { error: msg } });
+      }
+    }
     if (patch.player_num != null) {
       if (patch.player_num < 1 || patch.player_num > 63) throw new Error('player_num must be 1–63');
       if (this.players.some(x => x !== p && x.player_num === patch.player_num)) throw new Error('player_num in use');

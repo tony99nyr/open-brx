@@ -124,6 +124,42 @@ describe('UX-2 — a slot FIXED to an unplayable weapon', () => {
 });
 
 describe('MERGE-0 / FIELD-1 — the mock mirrors the server', () => {
+  describe('F172 · team edits obey the real server phase lock', () => {
+    for (const phase of ['armed', 'live'] as const) {
+      it(`refuses a real team change in ${phase.toUpperCase()}, but keeps same-team/null no-ops legal`, async () => {
+        const b = new MockBackend();
+        try {
+          const before = await b.getState();
+          const p = before.players[0];
+          const other = before.config.teams.find(t => t.team_id !== p.team_id)!.team_id;
+          await b.setPhase(phase);
+
+          await expect(b.patchPlayer(p.player_id, { team_id: other })).rejects.toMatchObject({
+            status: 409,
+            message: expect.stringMatching(/match is .*changing a player's TEAM.*gun's \$TID.*RECALL/is),
+          });
+          expect((await b.getState()).players.find(x => x.player_id === p.player_id)!.team_id,
+            'a refusal must not partially mutate the mock roster').toBe(p.team_id);
+          await expect(b.patchPlayer(p.player_id, { team_id: p.team_id })).resolves.toMatchObject({ team_id: p.team_id });
+          await expect(b.patchPlayer(p.player_id, { team_id: null })).resolves.toMatchObject({ team_id: p.team_id });
+        } finally { b.dispose(); }
+      });
+    }
+
+    for (const phase of ['muster', 'kit', 'lobby', 'recap'] as const) {
+      it(`still permits a team change in ${phase.toUpperCase()}`, async () => {
+        const b = new MockBackend();
+        try {
+          const before = await b.getState();
+          const p = before.players[0];
+          const other = before.config.teams.find(t => t.team_id !== p.team_id)!.team_id;
+          await b.setPhase(phase);
+          await expect(b.patchPlayer(p.player_id, { team_id: other })).resolves.toMatchObject({ team_id: other });
+        } finally { b.dispose(); }
+      });
+    }
+  });
+
   it('a 2/2/0 across three declared teams is not a fault', async () => {
     const b = new MockBackend();
     await b.putConfig({ mode: 'tdm', teams: [

@@ -466,3 +466,8 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
   smoke/EMP owns t4 for its measured six-second window; repeated Haze extends it and the node reasserts its
   latest target afterward. The shared HUD pill renders RECOIL / RELEASE TO STEADY and retains smoke priority.
   Flinch and stance remain separate unbuilt mechanics.
+
+# Closed 2026-09-22: mock team lock
+
+- 2026-09-22 **F172** `?mock` now refuses a real team change in ARMED/LIVE with the same 409 and operator
+  guidance as the server, while same-team and null no-ops remain legal and editable phases remain editable.
