@@ -397,6 +397,10 @@ class Session:
         # player_id -> the ANNOUNCED `config_id` (`game_cfg`) a SOCKET accepted. Delivery, not receipt,
         # and written in ONE place (`_send_assign`) so every route that ships the same body counts.
         self.game_sent: dict[str, str] = {}
+        # A LOAD can race the phone's websocket becoming writable.  Keep the retry cadence bounded;
+        # a live heartbeat is the proof that the socket is available, so one later assign can cure
+        # that transient without making the operator press LOAD again.
+        self._game_retry_t: dict[str, int] = {}
         self._pinned_hit_plan = None      # A17: one hit-audio plan per MATCH -- see `_hit_plan`
         # Raised while a `set_config` edit is on its way to `_repush_lobby_config()`, so `_resend`'s
         # config leg stands down and ONE edit costs exactly ONE compile + push per gun.
@@ -1356,6 +1360,7 @@ class Session:
         # A fresh announcement retires every earlier delivery, so the record is cleared here and
         # re-stamped by `_send_assign` -- the one place a delivery is written (see its docstring).
         self.game_sent = {}
+        self._game_retry_t = {}
         for p in self.players.values():
             self._send_assign(p)
         if self.phase == "muster":
@@ -3424,6 +3429,16 @@ class Session:
             nv["reach_claimed"] = body.get("reach")
         nv["last_seen_ms"] = t_recv
         nv["stale"] = False
+        # LOAD is an announcement, and its delivery can race a phone that has just opened its socket.
+        # The heartbeat arrives only after that socket is live; retry once per cadence until the
+        # delivery ledger is stamped, so a transient miss does not leave a false red PHONE cell.
+        pid = self.node_player.get(nid)
+        if self.game_loaded and self.game_cfg and pid and self.game_sent.get(pid) != self.game_cfg:
+            last = self._game_retry_t.get(pid, 0)
+            if t_recv - last >= 5_000:
+                self._game_retry_t[pid] = t_recv
+                if (p := self.players.get(pid)) is not None:
+                    self._send_assign(p)
         # A32: when this node's BLE link to the gun was last (re)established, as the heartbeats tell it.
         # A gun with no headset holds a link for only ~6 s, so the DURATION of the link is the proof --
         # `readiness()` reads this, not the instantaneous flag. A false or missing `gun_linked` resets it,
@@ -6308,6 +6323,7 @@ class Session:
         self.game_loaded = False
         self.game_cfg = None
         self.game_sent = {}
+        self._game_retry_t = {}
         self.acks = {}
         # A32: `acks` is what turns the echo into a red "GUN DID NOT ANSWER CONFIG" for the NEXT lobby,
         # so the proof it set resets with it -- otherwise a gun whose headset died in the debrief reads
@@ -6496,6 +6512,7 @@ class Session:
         self.game_loaded = False          # ...and the announced game goes with it
         self.game_cfg = None
         self.game_sent = {}
+        self._game_retry_t = {}
         self.acks = {}
         self.bundles = {}
         self._head_sent_t = {}

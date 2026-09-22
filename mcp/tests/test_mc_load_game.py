@@ -72,6 +72,38 @@ def test_load_game_counts_delivery_and_never_invents_it():
     assert s.game_sent_n() == 0
 
 
+def test_live_heartbeat_retries_a_load_that_raced_socket_readiness():
+    """A healthy phone seen on the next heartbeat must not leave a false red PHONE cell.
+
+    LOAD can run in the small interval between a node record being bound and its websocket becoming
+    writable.  The first delivery is therefore allowed to fail; the heartbeat is the proof that a
+    retry can now succeed, without asking the operator to LOAD the game a second time.
+    """
+    s, net, clock, ps = mk(1)
+    online(s, net, clock, ps[0], 0)
+    original = net.push
+    first_assign = True
+
+    def race_once(node_id, kind, body):
+        nonlocal first_assign
+        if kind == "assign" and first_assign:
+            first_assign = False
+            net.pushed.append((node_id, kind, body))
+            return False
+        return original(node_id, kind, body)
+
+    net.push = race_once
+    loaded = s.load_game()
+    assert loaded["sent"] == 0
+    assert s.sync_summary()["rows"][0]["phone_game"] is False
+
+    clock["t"] += 6_000
+    net.simulate_status("node0", {"player_id": ps[0]["player_id"], "synced": True,
+                                   "preflight": {"mc_reachable": True}}, clock["t"])
+    assert s.sync_summary()["rows"][0]["phone_game"] is True
+    assert s.game_sent_n() == 1
+
+
 # ---------------------------------------------------------------- SAVE AND LOAD, both paths
 def test_save_and_load_re_announces_the_game_to_the_phones():
     s, net, clock, ps = mk(2)
