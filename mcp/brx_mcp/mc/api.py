@@ -531,16 +531,21 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             and every hit, every heartbeat and the whole UI feed queue behind a blocking scan.
             The worker opens and closes its own read-only connection, so it never races the event
             loop through the store's writer handle.
-          * **not mid-match.** 409 while `armed`/`live`. Nobody reads a post-match diagnostic during
-            the match, and that is exactly when the two costs above are least affordable.
+          * **not mid-match.** LIVE always 409s. During ARMED, an explicitly named previous match is
+            allowed (F174), while the current match and a full-session scan still 409. That keeps the
+            night's evidence reachable on the runway without scanning the game being started.
         """
-        if s.phase in ("armed", "live"):
+        match = req.query_params.get("match")
+        current_match = (s.start_info or {}).get("match_id")
+        blocked_armed = s.phase == "armed" and (not match or not current_match or match == current_match)
+        if s.phase == "live" or blocked_armed:
             return _err(f"the match is {s.phase.upper()} — the diagnostic scans the whole session store "
-                        f"and is not run while a game is on; ask again at the recap", 409)
+                        f"and is not run on the current game; during ARMED, request a previous match id, "
+                        f"or ask again at the recap", 409)
         if not s.store:
             return JSONResponse([])
         from . import diag
-        path, match = s.store.path, req.query_params.get("match")
+        path = s.store.path
         try:
             loop = asyncio.get_running_loop()
             return JSONResponse(await loop.run_in_executor(None, lambda: diag.build_report_path(path, match)))

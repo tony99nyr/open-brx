@@ -91,7 +91,9 @@ of main" above.
   snapshot; the live store writer never crosses into the executor.
 - **F175 is closed:** rebound nodes retain physical totals plus per-player/null status attribution; no fact is
   silently assigned to the last binding, and cumulative shot deltas do not inflate the match total.
-- **Next desk task:** **F174**, allow a previous-match diagnostic while the next match is armed.
+- **F174 is closed:** an explicitly named previous match remains diagnosable on the next runway; current/full scans
+  still fail closed in ARMED and every diagnostic remains blocked in LIVE.
+- **Next desk task:** **F178**, make READY exclude a phone that still holds an older head.
   F285 remains split: its table can be written at the desk, but its t6 repeat measurement needs the bench.
 - **Next bench task:** the "0.4.4 field check" in [`bench-plan.md`](bench-plan.md) (connect timing on both
   phones, the new respawn rules, the Shields preset, the down animation, full screen), then sitting 5, match

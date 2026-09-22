@@ -483,3 +483,8 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
 - 2026-09-22 **F175** a node that reports multiple player bindings in one match now keeps an ambiguous physical
   summary and explicit per-player/null attribution rows instead of assigning every status fact to the last player.
   Cumulative shot-counter deltas preserve the match total across rebinds and resets.
+
+# Closed 2026-09-22: previous-match diagnostic on the runway
+
+- 2026-09-22 **F174** ARMED now permits a token-gated, explicitly named previous-match diagnostic while retaining
+  409s for the current match, a full-session scan, missing current-match state, and every LIVE request.

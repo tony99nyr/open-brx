@@ -270,8 +270,8 @@ def test_diag_matches_needs_the_operator_token_and_refuses_mid_match():
         scan, so it is also the cheapest way to make MC unresponsive from a phone.
       * it ran ON THE EVENT LOOP. A night's store is tens of thousands of rows; every hit, every
         heartbeat and the whole UI feed wait behind it.
-      * it was reachable in ARMED and LIVE, which is exactly when neither of the above is tolerable
-        and when nobody is reading a post-match diagnostic anyway.
+      * it was reachable without a phase guard. LIVE remains fully blocked; F174 later opened only
+        an explicitly named previous match during ARMED, while current/full-session scans stay blocked.
     """
     needs(HAVE, "starlette + httpx")
     from brx_mcp.mc.api import create_app
@@ -293,6 +293,28 @@ def test_diag_matches_needs_the_operator_token_and_refuses_mid_match():
         assert "match" in r.json().get("error", "").lower(), r.json()
     s.phase = "recap"
     assert gated.get("/api/diag/matches", params={"tok": tok}).status_code == 200
+
+
+def test_diag_matches_allows_an_explicit_previous_match_while_next_match_is_armed():
+    """F174. The runway blocks the current/full scan, not a narrow read of a finished match."""
+    needs(HAVE, "starlette + httpx")
+    c, s, _net = _client_with_history()
+    s.store.match_started("m3", {"mode": "tdm"}, 3000)
+    s.start_info = {"match_id": "m3", "go_live_t": 9000, "seq": 3}
+    s.phase = "armed"
+
+    r = c.get("/api/diag/matches", params={"match": "m1"})
+    assert r.status_code == 200 and [row["match_id"] for row in r.json()] == ["m1"]
+    assert c.get("/api/diag/matches").status_code == 409
+    assert c.get("/api/diag/matches", params={"match": "m3"}).status_code == 409
+
+    s.phase = "live"
+    live = c.get("/api/diag/matches", params={"match": "m1"})
+    assert live.status_code == 409 and "recap" in live.json()["error"].lower()
+
+    s.phase = "armed"
+    s.start_info = None
+    assert c.get("/api/diag/matches", params={"match": "m1"}).status_code == 409
 
 
 def test_diag_matches_does_not_scan_sqlite_on_the_event_loop():
