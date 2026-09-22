@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import hashlib
+import json
 import pathlib
 import re
 import subprocess
@@ -174,6 +175,54 @@ def test_r4_t2_untested_levers_keep_eight_code_reads_and_bench_boundaries_visibl
             f"levers section {section} omitted its v4.32 bench discriminator"
         )
         assert discriminator in body, f"levers section {section} omitted {discriminator}"
+
+
+def test_r4_t4_audio_pack_reports_hash_facts_without_claiming_audio_meaning():
+    plan = (DOCS / "firmware-image-research-plan.md").read_text(encoding="utf-8")
+    log = (DOCS / "experiment-log" / "2026-09.md").read_text(encoding="utf-8")
+    followups = (DOCS / "FOLLOWUPS.md").read_text(encoding="utf-8")
+    handoff = (DOCS / "HANDOFF.md").read_text(encoding="utf-8")
+    report = json.loads((DOCS / "reference" / "firmware-audio-pack-v5-v6.json").read_text(encoding="utf-8"))
+    catalog = json.loads((REPO / "mcp" / "brx_mcp" / "data" / "sound_catalog.json").read_text(encoding="utf-8"))
+    marker = "## 2026-09-22 (desk, private inputs, no gun): R4/T4 audio-pack hash comparison"
+
+    assert "T4 audio-pack comparison complete 2026-09-22" in plan
+    section = log.split(marker, 1)[1].split("\n## ", 1)[0]
+    partitions = [report["same"], report["changed"], report["new"]]
+    assert report["archive_sha256"] == "9d3ea47f33bfb0c9707fa41d6ecf8719bd57bd5d29a62e0af4edb4df1b6391b1"
+    assert report["bank_ltp_count"] == 2477
+    assert report["bank_manifest_sha256"] == "d2e6f9313e894baf519eb6171ba039ee4f278078feae7354b5ee3f68ff834f67"
+    assert [len(part) for part in partitions] == [
+        report["same_count"], report["changed_count"], report["new_count"],
+    ]
+    assert sum(map(len, partitions)) == report["pack_ltp_count"] == 211
+    assert all(part == sorted(set(part)) for part in partitions)
+    assert not (set(partitions[0]) & set(partitions[1]))
+    assert not (set(partitions[0]) & set(partitions[2]))
+    assert not (set(partitions[1]) & set(partitions[2]))
+    catalog_by_id = {row["id"]: row for row in catalog["sounds"]}
+    assert set().union(*map(set, partitions)) <= set(catalog_by_id)
+    for sound_id in set(report["same"]) | set(report["changed"]):
+        assert catalog_by_id[sound_id]["on_gun"] is True
+        assert catalog_by_id[sound_id]["kind"] != "missing"
+    assert report["changed"] == (
+        "VA8F VA8J VA8O VA8P VA8T VA8V VA93 VA97 VA99 VA9A VA9C VA9E VA9K VA9M VA9Q VA9R VA9S VA9U".split()
+    )
+    for fact in (
+        "**HASH-COMPARISON, NOT AN AUDIO INTERPRETATION**",
+        "213 ZIP entries",
+        "211 `.LTP` files",
+        "193 byte-identical",
+        "18 changed",
+        "0 new",
+        "VA8F VA8J VA8O VA8P VA8T VA8V VA93 VA97 VA99 VA9A VA9C VA9E VA9K VA9M VA9Q VA9R VA9S VA9U",
+        "No audio was copied into the repo",
+        "firmware-audio-pack-v5-v6.json",
+        "bank-manifest fingerprint",
+    ):
+        assert fact in section, f"R4/T4 log omitted {fact}"
+    assert "T4 complete 2026-09-22" in followups
+    assert "R4/T5" in handoff and "decision first" in handoff
 
 
 def test_no_headset_sticker_id_in_tracked_files():

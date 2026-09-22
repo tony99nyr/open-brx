@@ -1,8 +1,8 @@
 # Plan: research with the stock firmware images (R4)
 
 Status: T1 and T2 screamers complete 2026-09-21; T2 untested-levers pass complete 2026-09-21; T3 complete
-2026-09-22. The T2 full `$SIR` table is blocked at an unresolved gun-to-controller forwarding boundary; T4 is the
-next clear desk task. Follow-up id: **R4** in `FOLLOWUPS.md`.
+2026-09-22; T4 audio-pack comparison complete 2026-09-22. The T2 full `$SIR` table is blocked at an unresolved
+gun-to-controller forwarding boundary, and T5 is decision first. Follow-up id: **R4** in `FOLLOWUPS.md`.
 
 ## What we have
 
@@ -18,7 +18,7 @@ A member of the BRX Facebook group posted a Google Drive folder called `Firmware
 | `BCgunV2_01U.bin` | 2019-02-16 | tagger, v2.01U | `c5ba9df7b93f3e5c` |
 | `Headset/LTPV2headV1_34.bin` | 2020-01-07 | headset, v1.34 | `3818d52a3c06593e` |
 | `Headset/LTPV2headV1_27.bin` | 2019-02-16 | headset, v1.27 | `9cd08de7257ae97b` |
-| `BRX audio update v5 to v6.zip` | 2023-12-15 | 213 `.LTP` sound files | `9d3ea47f33bfb0c9` |
+| `BRX audio update v5 to v6.zip` | 2023-12-15 | 213 ZIP entries: 211 `.LTP` files and 2 directories | `9d3ea47f33bfb0c9` |
 
 The first quick pass (strings only, no disassembly) found:
 
@@ -122,9 +122,26 @@ cannot prove older-firmware handler behavior; only an older-hardware bench or ha
 
 ### T4. The audio pack (desk, 30 minutes, small model)
 
-Hash each of the 213 `.LTP` files and compare the hashes with our off-gun bank in `~/brx-audio-bank`. Report the ids
-that are new, changed or the same. If the pack fills gaps in `docs/reference/sound-catalog.md`, update
-`sound_catalog.json` with the ids and descriptors only. Do not copy any audio into the repo.
+**Complete 2026-09-22.** `mcp/tools/fw_audio_compare.py` streams the caller-supplied ZIP without extraction,
+checks its known archive hash and expected payload count, and emits normalized ids, aggregate counts, the public
+archive SHA-256 and one aggregate bank-manifest fingerprint. It emits no paths, per-file hashes, metadata or bytes.
+The original “213 files” description was two high: the archive has 213 entries, of which 211 are `.LTP` files
+and two are directories. Against the 2,477-file off-gun bank, 193 payloads are byte-identical, 18 are changed and
+none are new. Every id already exists in `sound_catalog.json`, so the pack fills no catalog id gap and the catalog
+was not changed. The exact facts-only partition is
+[`reference/firmware-audio-pack-v5-v6.json`](reference/firmware-audio-pack-v5-v6.json). Hash inequality does not
+identify speech or justify changing a descriptor. No audio was copied.
+
+Reproduce it without extracting the pack (the placeholders must stay off-repo):
+
+```sh
+python mcp/tools/fw_audio_compare.py <private-pack.zip> <off-repo-AUDIO-dir> \
+  --expect-archive-sha256 9d3ea47f33bfb0c9707fa41d6ecf8719bd57bd5d29a62e0af4edb4df1b6391b1 \
+  --expect-ltp-count 211
+```
+
+The report's aggregate bank-manifest fingerprint binds the result to the exact 2,477 bank payloads without
+publishing their individual hashes or paths.
 
 ### T5. A recovery path (decision first, then research)
 

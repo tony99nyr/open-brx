@@ -50,6 +50,7 @@ PATH, so no personal machine path is hardcoded.
 | Tool | Purpose |
 |---|---|
 | `fw_commands.py` | Lists bounded `$` command names from one caller-supplied private firmware image. Prints names only; never copies or searches for images. |
+| `fw_audio_compare.py` | Streams a caller-supplied private audio-update ZIP and an off-repo bank, then prints sorted same/changed/new IDs, counts, the public archive hash and one aggregate bank-manifest hash. Never extracts audio or prints private paths or per-file hashes. |
 | `ltp_convert.py` | Converts any audio file into a `.LTP` on-gun sound (headerless raw PCM, s16le, mono, 44.1 kHz). |
 | `soundbank_analyze.py` | Turns a folder of BRX sound files into a machine-readable catalogue: transcripts, acoustic descriptors, spectrograms. |
 | `soundbank_classify.py` | Assigns each on-gun sound a category and plain-English description, from `soundbank_analyze.py`'s output. |

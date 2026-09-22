@@ -45,7 +45,10 @@ proved, and that every lane builds on:
 Screamers are Tony's P0. Levers session 1 ran in three sittings; its remainder is bench-plan sitting 2.
 Screamers Phase A has run A1 and A2 only.
 
-- **Next desk task:** R4/T4's audio-pack hash comparison. **T3 is complete:** all 128 command rows now have a
+- **Next desk task:** reprioritize outside R4; R4/T5 is decision first and remains blocked on Tony's explicit
+  recovery-research decision. **T4 is complete:** the verified update ZIP contains 211 audio payloads, not 213;
+  193 match the off-gun bank, 18 differ and none add an id. The streaming comparator copied no audio and the
+  catalog stayed unchanged. **T3 is complete:** all 128 command rows now have a
   sampled-version vocabulary gate; core Open BRX names occur in every sampled tagger, `$CONNECT` joins at 2.08b,
   and the five known-safe candidates `$AS`, `$IT`, `$KK`, `$SP` and `$UP` occur only in 4.32. `$VERSION` then `$PING` is the conservative older-gun
   probe, but the existing safety tier still decides every send. **The untested-levers pass is complete:** corrected
@@ -120,8 +123,7 @@ build the category-driven Mission Control picker.
 ## Start here
 
 Read [`bench-plan.md`](bench-plan.md). If Tony is at the bench, load the `bench-session` skill and run sitting 1.
-Otherwise take the first desk task, **R4/T4's audio-pack hash comparison**. F265's root cause (why score pushes stopped)
-is still open.
+Otherwise take the first desk task, **F265's root cause: why a bound phone stops receiving score pushes**.
 
 ## Machine state
 

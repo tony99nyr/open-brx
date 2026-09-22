@@ -28,7 +28,8 @@ The embedded identifiers agree with the filenames: taggers report `v2.01U`, `v2.
 therefore exposes no command-vocabulary gate between either pair.
 
 The separate v5-to-v6 audio ZIP hashes to
-`9d3ea47f33bfb0c9707fa41d6ecf8719bd57bd5d29a62e0af4edb4df1b6391b1`; T4 inventories its contents later.
+`9d3ea47f33bfb0c9707fa41d6ecf8719bd57bd5d29a62e0af4edb4df1b6391b1`. T4 found 211 `.LTP` payloads among
+213 ZIP entries: 193 match the off-gun bank byte-for-byte, 18 differ and none introduce a new id.
 
 ## How to read the table
 
