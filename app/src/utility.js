@@ -46,11 +46,15 @@ const plugins = {};
 const isNative = () => !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 async function loadPlugins() {
   const tryImport = async (name, fn) => { try { plugins[name] = (await fn()).v; } catch (e) { log(`plugin ${name} unavailable: ${e && e.message || e}`); } };
-  await Promise.all([
+  const jobs = [
     tryImport('beacon', () => import('brx-beacon').then(m => ({ v: m.BrxBeacon }))),
     tryImport('keepAwake', () => import('@capacitor-community/keep-awake').then(m => ({ v: m.KeepAwake }))),
     tryImport('device', () => import('@capacitor/device').then(m => ({ v: m.Device }))),   // roadmap A3: battery in the heartbeat, same plugin app.js already uses
-  ]);
+  ];
+  // capacitor-zeroconf rejects at module evaluation on the desktop/stage harness; only load it on a native
+  // utility phone, where the explicit utility-mode auto-join needs it.
+  if (isNative()) jobs.push(tryImport('zeroconf', () => import('capacitor-zeroconf').then(m => ({ v: m.ZeroConf }))));
+  await Promise.all(jobs);
 }
 /** Roadmap A3: best-effort battery percent for the ITEMS panel. Capacitor's Device plugin first (app.js's own
  *  path); the web `navigator.getBattery()` on a browser build that has one; otherwise omit the field entirely
@@ -172,6 +176,24 @@ function connectMc(url, { wsFactory } = {}) {
   });
   transport.onState(s => { mcState = s; log(`MC ${s}${transport.rejected ? ' — ' + transport.rejected.reason : ''}`, s === 'bound' ? 'lk' : 'li'); render(); });
   transport.connect({ url }).catch(e => log('MC connect: ' + (e && e.message || e), 'le'));
+}
+// Utility mode is an explicit operator choice, so it may auto-join the MC service on this LAN. A utility
+// phone has no player takeover key and cannot silently change a player's binding; discovery therefore skips
+// the player's tap-to-join rule. A typed `?mc=`/remembered URL still wins and remains the offline fallback.
+function startUtilityDiscovery() {
+  if (!plugins.zeroconf || !isNative() || mcUrl()) return;
+  try {
+    plugins.zeroconf.watch({ type: '_openbrx._tcp.', domain: 'local.' }, res => {
+      if (transport || !res || (res.action !== 'resolved' && res.action !== 'added')) return;
+      const svc = res.service || {};
+      const ip = svc.ipv4Addresses && svc.ipv4Addresses[0];
+      if (!ip || !svc.port) return;
+      const path = svc.txtRecord && svc.txtRecord.ws_path || '/ws';
+      const url = `ws://${ip}:${svc.port}${path}`;
+      log(`MISSION CONTROL FOUND — CONNECTING ${url}`, 'lk');
+      connectMc(url);
+    }).catch(e => log('MC discovery: ' + (e && e.message || e)));
+  } catch (e) { log('MC discovery: ' + (e && e.message || e)); }
 }
 // ---------- stage harness: a station_config through the REAL wire, not a bare function call ----------
 // screens.mjs #49 used to call `applyStationConfig()` directly, which never touched the Transport at all --
@@ -597,6 +619,7 @@ function wireExit() {
   // otherwise real transport instead of none at all.
   if (DEMO) connectMc(url || 'stage://mc', { wsFactory: stageWsFactory });
   else if (url) connectMc(url);   // setup needs WiFi (A13.5); once armed, play does not
+  else startUtilityDiscovery();   // utility mode is an explicit choice: auto-join MC when it advertises on this LAN
   if (!plugins.beacon || !support.advertising) log('this phone cannot advertise; check Bluetooth is on', 'le');
   await startScan();
   setInterval(tick, 250);
