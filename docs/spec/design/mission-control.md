@@ -122,7 +122,8 @@ SIDEARMS` (A12), the PERK column has its own grid; OPEN / NO HEAVIES / SNIPERS a
 PRESENTATION (preset + the announcer / gun flash / headset / gun-body switches, per-event sound + colours; the
 ADVANCED read-only rows from `GET /api/presentation`) → 5 NAME & NOTES — with a sticky rail that reads like the
 card will and holds `PLAY THIS NOW ▸` / `SAVE` / `SAVE AS NEW`. Edits a DRAFT; nothing touches the live game
-until PLAY (an unnamed draft plays without being saved, and says so). The pool is computed ON THE CLIENT from the
+until PLAY, which applies the draft, LOADs its frameless phone announcement, then enters KIT (an unnamed draft
+plays without being saved, and says so). The pool is computed ON THE CLIENT from the
 rules being edited (`POST /api/loadout/pool` only re-confirms the preset name). Discard guards on BACK TO GAMES.
 Mode-card click applies defaults on *change* only (round 4 #15). Phones show "setting up the game" until the
 host continues to KIT, then the BRIEFING (`phone-hud.md` B7), then their kit.

@@ -701,6 +701,53 @@ step('f88-multipoint-refused', async ({ browser, base }) => {
   await closePage(pg);
 });
 
+// F188 — PLAY THIS NOW owns the whole draft-to-field transition. Applying the config and jumping to
+// KIT without LOAD left the next screen truthfully saying NOT LOADED YET. Exercise the real server
+// contract here: apply, frameless phone announcement, then KIT; no gun head is written.
+step('designer-play-loads', async ({ browser, base }) => {
+  const fresh = await fetch(`${base}/api/session/new`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"keep_roster":true}' });
+  if (!fresh.ok) throw new Error(`designer-play-loads: POST /api/session/new ${fresh.status} ${(await fresh.text()).slice(0, 160)}`);
+  await resetTdm(base);
+  const pg = await go(await newPage(browser, base), 'build');
+  await pg.locator('button[aria-label="customize KING OF THE HILL"]').click();
+  await until(() => pg.locator('main', { hasText: '[ A2b // GAME DESIGNER ]' }).count().then(n => n > 0), 8000, 'the designer');
+  await pg.locator('main button:has-text("PLAY THIS NOW")').click();
+  await until(async () => {
+    const s = await (await fetch(`${base}/api/state`)).json();
+    return s.phase === 'kit' && s.game?.loaded === true;
+  }, 10000, 'PLAY THIS NOW to load the game and enter KIT');
+  await until(() => pg.locator('main', { hasText: '[ A3 // KIT-OUT ]' }).count().then(n => n > 0), 8000, 'the KIT screen');
+  const st = await (await fetch(`${base}/api/state`)).json();
+  expect(st.game?.loaded === true, 'the server says the applied Designer game is loaded');
+  expect(st.lobby?.pushed === false, 'Designer PLAY writes no gun head before the LOBBY push');
+  expect(new URL(pg.url()).hash === '#kit', `PLAY THIS NOW moved the URL to #kit (saw ${JSON.stringify(new URL(pg.url()).hash)})`);
+  expect(await pg.locator('text=NOT LOADED YET').count() === 0, 'KIT never lands on the stale NOT LOADED YET state');
+  expect(await pg.locator('text=▲ CONSOLE ERROR').count() === 0, 'the transition renders without a console error');
+  ok(`DESIGNER → PLAY THIS NOW → loaded KIT  ${await shot(pg, '09b-designer-play')}`);
+  await closePage(pg);
+});
+
+step('designer-play-stale-server', async ({ browser, base }) => {
+  const fresh = await fetch(`${base}/api/session/new`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"keep_roster":true}' });
+  if (!fresh.ok) throw new Error(`designer-play-stale-server: POST /api/session/new ${fresh.status} ${(await fresh.text()).slice(0, 160)}`);
+  await resetTdm(base);
+  const pg = await go(await newPage(browser, base), 'build');
+  await pg.locator('button[aria-label="customize KING OF THE HILL"]').click();
+  await until(() => pg.locator('main', { hasText: '[ A2b // GAME DESIGNER ]' }).count().then(n => n > 0), 8000, 'the designer');
+  await pg.route('**/api/games/load', r => r.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'THIS MC SERVER CANNOT LOAD A GAME — RESTART IT' }) }));
+  await pg.locator('main button:has-text("PLAY THIS NOW")').click();
+  const strip = errorStrip(pg);
+  await until(() => strip.count().then(n => n > 0), 8000, 'the stale-server refusal');
+  const st = await (await fetch(`${base}/api/state`)).json();
+  expect(st.phase === 'build', `a failed LOAD leaves the server in BUILD (saw ${st.phase})`);
+  expect(st.game?.loaded === false, 'a failed LOAD never claims the game is loaded');
+  expect(new URL(pg.url()).hash === '#designer', `the operator stays in Designer (saw ${JSON.stringify(new URL(pg.url()).hash)})`);
+  expect((await strip.textContent()).includes('RESTART IT'), 'the refusal names the stale server remedy');
+  expect(await pg.locator('main', { hasText: '[ A2b // GAME DESIGNER ]' }).count() === 1, 'the draft remains on screen');
+  ok(`stale server: PLAY stays in Designer and names the refusal  ${await shot(pg, '09c-designer-stale')}`);
+  await closePage(pg);
+});
+
 // The operator's own walk, 2026-09-13: LOAD (which announces the game to the PHONES and writes no
 // gun), the LOADED GAME state it lands in, an EDIT that sends nothing until SAVE AND LOAD,
 // the LOBBY push that actually configures the guns, and only then CONTINUE TO KIT.

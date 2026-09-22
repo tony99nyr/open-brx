@@ -519,3 +519,9 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
 - 2026-09-22 **F185** real Chromium now ends a LIVE match through the guarded console controls against a real MC,
   proves the automatic MATCH-to-RECAP transition, then renders the explicit LIVE diagnostic view against that same
   post-whistle snapshot. Desktop and phone checks cover the delivery notice, every pending STATUS cell and overflow.
+
+# Closed 2026-09-22: Designer PLAY loads before KIT
+
+- 2026-09-22 **F188** `PLAY THIS NOW` now applies the draft, announces it to phones through the frameless LOAD
+  contract, and only then enters KIT. Failed or stale-server LOADs stay in Designer with a visible error; an
+  in-flight PLAY locks duplicate actions and navigation. KIT distinguishes a loaded game from guns not yet configured.

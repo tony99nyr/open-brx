@@ -52,6 +52,8 @@ export function Designer() {
   const [saved, setSaved] = useState<string | null>(null);
   const [previewOff, setPreviewOff] = useState(false);   // the server has no pool preview (older MC) — counts are "all allowed"
   const [confirmLeave, setConfirmLeave] = useState(false);   // BACK with unsaved edits asks once (review #16)
+  const [working, setWorking] = useState<'play' | 'save' | 'apply' | null>(null);
+  const actionPending = useRef(false);   // synchronous guard: two taps can land before `working` re-renders
 
   // The pool is computed HERE from the rules being edited — every chip/tile/who-picks change shows instantly and needs
   // no server. (Tony, round 8: a server-only preview with an "all allowed" fallback made HEAVY-off and tile taps do
@@ -117,15 +119,43 @@ export function Designer() {
     if (r) { setSaved(`SAVED "${r.name.toUpperCase()}"`); setEditing(r); }
     return r;
   };
+  const beginAction = (kind: 'play' | 'save' | 'apply') => {
+    if (actionPending.current) return false;
+    actionPending.current = true;
+    setWorking(kind);
+    return true;
+  };
+  const endAction = () => { actionPending.current = false; setWorking(null); };
+  const saveOnly = async (asNew = false) => {
+    if (!beginAction('save')) return;
+    try { await save(asNew); } finally { endAction(); }
+  };
+  const applyTonight = async () => {
+    if (playBlocked || !editing || !beginAction('apply')) return;
+    try {
+      const r = await run(() => api.applyPreset(editing.preset_id));
+      if (r) await run(() => api.putConfig({ environment: state.config.environment, night: state.config.night }));
+    } finally { endAction(); }
+  };
   const play = async () => {
-    // saved if it has a name, then applied — the venue stays tonight's
-    const nm = name.trim();
-    if (nm) { const r = await save(); if (!r) return; await run(() => api.applyPreset(r.preset_id)); }
-    else { await run(() => api.putConfig({ ...cfg, config_id: state.config.config_id })); }
-    await run(() => api.putConfig({ environment: state.config.environment, night: state.config.night }));
-    // Opened from the LOADED game (GameEditPanel): applying must not silently drop LOBBY back to KIT.
-    if (seed?.fromLive) { setView(state.phase === 'lobby' ? 'lobby' : 'kit'); return; }
-    await run(() => api.setPhase('kit')); setView('kit');
+    if (!beginAction('play')) return;
+    try {
+      // saved if it has a name, then applied — the venue stays tonight's
+      const nm = name.trim();
+      if (nm) {
+        const r = await save();
+        if (!r || await run(() => api.applyPreset(r.preset_id)) === undefined) return;
+      } else if (await run(() => api.putConfig({ ...cfg, config_id: state.config.config_id })) === undefined) return;
+      if (await run(() => api.putConfig({ environment: state.config.environment, night: state.config.night })) === undefined) return;
+      // Opened from the LOADED game (GameEditPanel): applying must not silently drop LOBBY back to KIT.
+      if (seed?.fromLive) { setView(state.phase === 'lobby' ? 'lobby' : 'kit'); return; }
+      // F188: PLAY means LOAD, not merely navigate. LOAD announces the applied game to every connected
+      // phone without writing a gun; the later LOBBY push remains the first head write.
+      if (await run(() => api.loadGame()) === undefined) return;
+      if (await run(() => api.setPhase('kit')) !== undefined) setView('kit');
+    } finally {
+      endAction();
+    }
   };
 
   return (
@@ -137,7 +167,7 @@ export function Designer() {
         </div>
         <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12 }}>
           {confirmLeave && <span role="status" style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: T.warn }}>▲ UNSAVED CHANGES — TAP AGAIN TO LEAVE WITHOUT SAVING</span>}
-          <GhostButton onClick={() => { if (dirty && !confirmLeave) { setConfirmLeave(true); return; } setView('build'); }}>◂ BACK TO GAMES</GhostButton>
+          <GhostButton disabled={working !== null} onClick={() => { if (actionPending.current) return; if (dirty && !confirmLeave) { setConfirmLeave(true); return; } setView('build'); }}>◂ BACK TO GAMES</GhostButton>
         </div>
       </div>
 
@@ -284,19 +314,19 @@ export function Designer() {
             <div style={{ font: F.chk(500, 12), color: T.dim, lineHeight: 1.45, minHeight: 18 }}>{desc.trim() || (mode?.brief ?? '')}</div>
             <div style={{ height: 1, background: T.line }} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <PrimaryButton onClick={play} disabled={playBlocked} title={playBlocked ? playBlockedReason : name.trim() ? 'Save, apply, and go to KIT' : 'Apply without saving and go to KIT'}>PLAY THIS NOW ▸</PrimaryButton>
+              <PrimaryButton onClick={play} disabled={playBlocked || working !== null} title={playBlocked ? playBlockedReason : working === 'play' ? 'Loading this game' : name.trim() ? 'Save, apply, load, and go to KIT' : 'Apply, load, and go to KIT'}>{working === 'play' ? 'LOADING…' : 'PLAY THIS NOW ▸'}</PrimaryButton>
               {blocked && <div role="alert" style={{ font: F.mono(600, 10.5), letterSpacing: '.1em', color: T.bad, lineHeight: 1.5 }}>▲ {blockedReason}</div>}
               {!blocked && !name.trim() && <div style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro }}>PLAYS TONIGHT WITHOUT SAVING — NAME IT ABOVE TO KEEP IT ON THE SHELF</div>}
               <div style={{ display: 'flex', gap: 6 }}>
-                <GhostButton size={11} pad="9px 12px" color={dirty ? T.ink : T.micro} border={dirty ? T.acc : T.line} disabled={blocked} onClick={() => save(false)} title={blocked ? blockedReason : editing ? `Update "${editing.name}"` : 'Save under the name above'}>{editing ? 'SAVE' : 'SAVE GAME'}</GhostButton>
-                {editing && <GhostButton size={11} pad="9px 12px" disabled={blocked} onClick={() => save(true)} title={blocked ? blockedReason : 'Keep the original, save this as a new game'}>SAVE AS NEW</GhostButton>}
+                <GhostButton size={11} pad="9px 12px" color={dirty ? T.ink : T.micro} border={dirty ? T.acc : T.line} disabled={blocked || working !== null} onClick={() => saveOnly(false)} title={blocked ? blockedReason : editing ? `Update "${editing.name}"` : 'Save under the name above'}>{working === 'save' ? 'SAVING…' : editing ? 'SAVE' : 'SAVE GAME'}</GhostButton>
+                {editing && <GhostButton size={11} pad="9px 12px" disabled={blocked || working !== null} onClick={() => saveOnly(true)} title={blocked ? blockedReason : 'Keep the original, save this as a new game'}>SAVE AS NEW</GhostButton>}
               </div>
               {saved && <div role="status" style={{ font: F.mono(600, 10.5), letterSpacing: '.14em', color: saved.startsWith('NAME') ? T.warn : T.ok }}>{saved}</div>}
               {saved && !saved.startsWith('NAME') && editing && state.active_preset_id === editing.preset_id && gameSig(editing.config) !== gameSig(state.config) && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{ font: F.mono(600, 10.5), letterSpacing: '.12em', color: T.warn }}>▲ TONIGHT'S GAME STILL RUNS THE OLD VERSION</div>
-                  <GhostButton size={11} pad="9px 12px" color={T.ink} border={T.warn} disabled={playBlocked} title={playBlocked ? playBlockedReason : undefined}
-                    onClick={async () => { if (playBlocked) return; const r = await run(() => api.applyPreset(editing.preset_id)); if (r) await run(() => api.putConfig({ environment: state.config.environment, night: state.config.night })); }}>APPLY TO TONIGHT'S GAME ▸</GhostButton>
+                  <GhostButton size={11} pad="9px 12px" color={T.ink} border={T.warn} disabled={playBlocked || working !== null} title={playBlocked ? playBlockedReason : undefined}
+                    onClick={applyTonight}>{working === 'apply' ? 'APPLYING…' : "APPLY TO TONIGHT'S GAME ▸"}</GhostButton>
                 </div>
               )}
             </div>

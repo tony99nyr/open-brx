@@ -93,9 +93,9 @@ of main" above.
   silently assigned to the last binding, and cumulative shot deltas do not inflate the match total.
 - **F174 is closed:** an explicitly named previous match remains diagnosable on the next runway; current/full scans
   still fail closed in ARMED and every diagnostic remains blocked in LIVE.
-- **F179-F185 are closed:** UI guards are behavioral, standby truth gates `npm test`, M2 accuracy is deterministic,
-  utility→HUD handoff removes stale ITEMS safely, and real Chromium proves both post-whistle RECAP and LIVE delivery truth.
-- **F285 desk work is complete:** the guarded `$TMP` table marks only t4/t8 absolute and t9 additive; bench fills the unmeasured cells. **Next desk task:** **F187**, the end-delivery eviction boundary. **F178 remains decision first.**
+- **F179-F185 and F188 are closed:** UI guards are behavioral, standby truth gates `npm test`, M2 accuracy is deterministic,
+  utility→HUD handoff is safe, end-delivery truth is browser-proven, and Designer PLAY now loads before KIT.
+- **F285 desk work is complete:** the guarded `$TMP` table marks only t4/t8 absolute and t9 additive; bench fills the unmeasured cells. **Next desk task:** **F189**. **F178 and F187 remain decision first.**
 - **Next bench task:** the "0.4.4 field check" in [`bench-plan.md`](bench-plan.md) (connect timing on both
   phones, the new respawn rules, the Shields preset, the down animation, full screen), then sitting 5, match
   verification: F264 live, the F277 repro, and the F256 row.
@@ -134,7 +134,7 @@ build the category-driven Mission Control picker.
 ## Start here
 
 Read [`bench-plan.md`](bench-plan.md). If Tony is at the bench, load the `bench-session` skill and run sitting 1.
-Otherwise take the first desk task, **F187's end-delivery eviction boundary**.
+Otherwise take the first desk task, **F189's worktree Python override**.
 
 ## Machine state
 

@@ -392,10 +392,10 @@ describe('GameEditPanel — a SAVE while the lobby is already pushed RE-PUSHES (
     m.unmount();
   });
 
-  it('before any push, the panel says there is nothing on the guns to update', async () => {
+  it('before any push, the panel distinguishes loaded phones from unconfigured guns', async () => {
     const { m, open, panel } = await gameScreen('kit');
     await open();
-    expect(panel().querySelector('[data-testid="game-edit-repush"]')!.textContent).toMatch(/NOT LOADED YET/);
+    expect(panel().querySelector('[data-testid="game-edit-repush"]')!.textContent).toMatch(/GUNS NOT CONFIGURED YET/);
     m.unmount();
   });
 });

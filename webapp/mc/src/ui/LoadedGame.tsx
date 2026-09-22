@@ -120,7 +120,7 @@ export function GameSentStatus({ sent, total, recent, testid = 'game-sent-status
  *  is: how many guns are actually caught up. */
 export function LoadStatus({ pushed, acked, total, recent, testid = 'game-edit-repush' }:
   { pushed: boolean; acked: number; total: number; recent: boolean; testid?: string }) {
-  if (!pushed) return <span data-testid={testid} style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>NOT LOADED YET — nothing on the guns to update</span>;
+  if (!pushed) return <span data-testid={testid} style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>GUNS NOT CONFIGURED YET — push config in LOBBY after kitting</span>;
   // A CLAIM MUST NEVER OUTRUN THE NUMBER BESIDE IT. This used to be handed the server's `all_acked`,
   // which walks the roster the way `start()` does and SKIPS every player with no node bound -- so with
   // nobody's phone up yet it is vacuously true, and this line read "ALL GUNS ON THIS CONFIG (0/8)"
