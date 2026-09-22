@@ -1105,7 +1105,6 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   (`_ENDED_KEEP = 16`; the restart snapshot keeps four). A blind SQLite fallback would violate the rule that MC
   never ends a match it cannot prove it retired, because the store is not scoped to the current session generation.
   Decide whether the bound is accepted or add durable match ownership before changing it. `decision`.
-- **F190 🟡** `LoadStatus` counts acks by `ok` while `pushGate` uses the stricter config-id-current test; unify. `build`.
 - **F191 🟡** should a standing WSL banner displace other alerts in the shared header? Fixed in the e2e boots, not in
   `CommandBar`. A product decision; low field risk. `decision`.
 - **F198 🔴 Needs Tony at the bench** the reflection theory behind `$GSET` t2 is untested and may INVERT the

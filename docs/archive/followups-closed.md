@@ -546,3 +546,9 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
 
 - 2026-09-22 **F192** synchronous `FakeNet.start()` and the real async startup now refresh the session's URL
   and QR from post-bind `join_info`, eliminating the stale `0.0.0.0:0` join address. The focused advertise suite passes 10/10.
+
+# Closed 2026-09-22: current-config load status
+
+- 2026-09-22 **F190** was already implemented in the current tree: `pushGate` owns the config-id-current
+  predicate and both LOBBY and GAMES `LoadStatus` callers consume its `acked` count. The focused browser
+  regression explicitly rejects an older-config ack; the row was stale bookkeeping, not a remaining code gap.
