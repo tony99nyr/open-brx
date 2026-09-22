@@ -19,6 +19,7 @@ import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findPython } from './python-path.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));      // webapp/mc/test/e2e
 const MC_DIR = path.resolve(HERE, '../..');                     // webapp/mc
@@ -54,7 +55,7 @@ const killGroup = proc => new Promise(done => {
 });
 
 async function startMC() {
-  const py = process.env.MC_PY || path.join(REPO, '.venv/bin/python');
+  const py = findPython(REPO);
   try {
     const r = await fetch(`http://127.0.0.1:${MC_PORT}/api/state`, { signal: AbortSignal.timeout(1200) });
     if (r.ok) { console.error(`SOMETHING ALREADY SERVES :${MC_PORT} — refusing to drive a server this run did not start.`); process.exit(3); }
@@ -67,7 +68,10 @@ async function startMC() {
     // Playwright strict mode threw, and the `.catch(() => '')` turned the server's 400 reason
     // into an empty string. `--advertise` is T3-A's own "this address is already right" override,
     // which for a 127.0.0.1 e2e it is.
-    '--advertise', '127.0.0.1'], { cwd: path.join(REPO, 'mcp'), stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    '--advertise', '127.0.0.1'], {
+      cwd: path.join(REPO, 'mcp'), stdio: ['ignore', 'pipe', 'pipe'], detached: true,
+      env: { ...process.env, PYTHONPATH: path.join(REPO, 'mcp') },
+    });
   let log = ''; proc.stdout.on('data', d => { log += d; }); proc.stderr.on('data', d => { log += d; });
   const base = `http://127.0.0.1:${MC_PORT}`;
   for (let i = 0; i < 200; i++) {

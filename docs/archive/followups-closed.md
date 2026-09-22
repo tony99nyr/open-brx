@@ -525,3 +525,9 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
 - 2026-09-22 **F188** `PLAY THIS NOW` now applies the draft, announces it to phones through the frameless LOAD
   contract, and only then enters KIT. Failed or stale-server LOADs stay in Designer with a visible error; an
   in-flight PLAY locks duplicate actions and navigation. KIT distinguishes a loaded game from guns not yet configured.
+
+# Closed 2026-09-22: worktree-safe KIT browser harness
+
+- 2026-09-22 **F189** the KIT browser harness resolves an explicit `MC_PY`, its checkout's venv, then the main
+  checkout's shared venv through Git's common directory. The child still imports MC code from the current worktree,
+  and a missing interpreter now fails with an actionable `MC_PY` message.

@@ -28,6 +28,7 @@ NOT_GATES = {
     "app/tools/scenarios.mjs": "drives scenarios against a live MC you started by hand; screenshots, not a gate",
     "webapp/mc/test/e2e/vite.m2.config.mjs": "a vite config that m2-ui.mjs loads",
     "webapp/mc/test/e2e/vite.proxy.config.mjs": "a vite config that the e2e scripts load",
+    "webapp/mc/test/e2e/python-path.mjs": "the shared Python resolver imported by kit-continue.mjs; its behavior has a focused Vitest gate",
 }
 
 # A literal port in a place that binds or dials it: `.listen(4187`, `127.0.0.1:4187`, `localhost:4187`.
