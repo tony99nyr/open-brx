@@ -464,6 +464,7 @@ export class Hud {
       st.kitOpen, st.briefSeen, st.kitLocked, st.standby, st.game && st.game.name, st.game && st.game.loadout_line,
       st.loadoutAck && st.loadoutAck.t, st.pendingPick && st.pendingPick.id, st.pendingPick && st.pendingPick.kind,
       st.loadout && st.loadout.primary && st.loadout.primary.weapon_id, st.loadout && st.loadout.secondary && st.loadout.secondary.weapon_id, st.loadout && st.loadout.perk && st.loadout.perk.perk_id,
+      !!(st.loadout && st.loadout.overrides && st.loadout.overrides.easy_reload),
       !!(st.catalog && st.catalog.weapons && st.catalog.weapons.length),
       // A24 FINAL RESULTS: the headline changes when the result lands and again when the settle window expires,
       // and the toggle/history are structure. `resultWait` is in here because "MC NOT REACHED" appears with NO
@@ -1532,6 +1533,12 @@ export class Hud {
   // ---------- chips (WS / BLE / resync / tutorial) ----------
   _chips(st) {
     const pills = [];
+    // S52: this is an accessibility control, not a perk, so keep the instruction
+    // visible wherever the player can forget what ALT does. The picker warning
+    // handles the conflicting second-weapon choice; this handles actual play.
+    if (st.phase !== 'idle' && st.loadout && st.loadout.overrides && st.loadout.overrides.easy_reload) {
+      pills.push('<span class="pill ok easyreload"><span class="unskew">ALT = RELOAD</span></span>');
+    }
     if (st.wsState === 'bound') this.mcPill = false;   // the opt-in range pill is per outage, not forever
     if (st.wsState === 'rejected') pills.push(`<span class="pill bad"><span class="unskew">ASK THE HOST — COULDN'T JOIN${st.wsReason ? ' (' + esc(String(st.wsReason)).toUpperCase() + ')' : ''}</span></span>`);
     // Playing out of MC range is the NORMAL case mid-match (Tony, review 2026-09-03 #32): live shows it as the amber MC

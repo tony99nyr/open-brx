@@ -1451,6 +1451,11 @@ export class Engine {
     const alt = row => !!(row && row.effects && row.effects.alt_reload);
     if (slot === 'perk' && kind === 'perk' && lo.secondary && alt(this.perkRow(id))) return { slot: 'secondary', id: lo.secondary.weapon_id, name: lo.secondary.name };
     if (slot === 'secondary' && kind === 'weapon' && lo.perk && alt(lo.perk)) return { slot: 'perk', id: lo.perk.perk_id, name: lo.perk.name };
+    // S52: Easy Reload moved out of the perk slot into the per-player accessibility
+    // override. A second weapon still owns ALT, so warn before the request goes out.
+    if (slot === 'secondary' && kind === 'weapon' && lo.overrides && lo.overrides.easy_reload) {
+      return { slot: 'accessibility', id: 'easy_reload', name: 'Easy Reload' };
+    }
     return null;
   }
   /** A26 (S20, loadout.md §4.5): tap a row = EQUIP IT AND ARM IT for test-firing. There is no separate TRY IT
@@ -1507,7 +1512,16 @@ export class Engine {
     this._changed();
   }
   _loadoutAck({ slot, ok, reason, dropped, loadout }) {
-    if (loadout && this.player) this.player.loadout = loadout;   // MC's echo is the truth (applies on ok AND on a reject → reverts the optimistic row)
+    if (loadout && this.player) {
+      // Older MCs omit accessibility overrides from slot-scoped echoes. Keep the
+      // current override unless the echo explicitly supplies a replacement.
+      const prior = this.player.loadout || {};
+      this.player.loadout = {
+        ...prior,
+        ...loadout,
+        overrides: loadout.overrides === undefined ? prior.overrides : loadout.overrides,
+      };
+    }   // MC's echo is the truth (applies on ok AND on a reject → reverts the optimistic row)
     // The ack names its SLOT, and only a pending pick for THAT slot is the one it answers. Clearing blind
     // let a perk ack retire a queued weapon's ⟳ (two slots can be in flight at once since the slot-switch
     // flush above), and stamped the ack's `key` from the wrong row — so a later refusal marked nothing and
@@ -1540,7 +1554,7 @@ export class Engine {
     const secondary = ws[1] ? wrow(ws[1].weapon_id) : null;
     // A14: the perk is its own slot beside the weapons
     const perk = lo.perk ? { kind: 'perk', ...(this.perkRow(lo.perk) || { perk_id: lo.perk, name: String(lo.perk).replace(/_/g, ' '), effects: {} }) } : null;
-    return { primary, secondary, perk };
+    return { primary, secondary, perk, overrides: lo.overrides ? { ...lo.overrides } : undefined };
   }
 
   // F-4 (2026-09-13): a config push moves this player to 'lobby' whether or not they had readied up

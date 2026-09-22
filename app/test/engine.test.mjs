@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Engine, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, SMOKE_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand, isPoolProbe, PROBE_LIFE } from '../src/engine.js';
+import { Hud } from '../src/hud/hud.js';
 import * as W from '../src/transport/envelope.js';
 import { CONTROL_STATE } from '../src/control.js';   // the phone control point's advert bits (K1)
 import { Presence, encodeUuid } from '../src/beacon.js';   // the REAL advert path, for the clock-mismatch guard
@@ -2262,6 +2263,30 @@ test('A14: conflictFor names what an ALT-button pick would drop; the ack\'s `dro
   assert.deepEqual(h.eng.conflictFor('secondary', 'weapon', 'smg'), { slot: 'perk', id: 'easy_reload', name: 'Easy Reload' }, 'a second weapon over Easy Reload drops the perk');
   assert.equal(h.eng.conflictFor('primary', 'weapon', 'smg'), null);
   assert.equal(h.eng.conflictFor('perk', 'none', null), null);
+});
+
+test('S52: Easy Reload override reaches the HUD view and warns before a secondary pick', () => {
+  const h = kitA10();
+  h.player.loadout.overrides = { easy_reload: true };
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, catalog: CAT, policy: POL } });
+  const st = h.eng.state();
+  assert.equal(st.loadout.overrides.easy_reload, true, 'screen state carries the accessibility override');
+  assert.deepEqual(h.eng.conflictFor('secondary', 'weapon', 'smg'),
+    { slot: 'accessibility', id: 'easy_reload', name: 'Easy Reload' },
+    'picker identifies the ALT conflict before sending the request');
+});
+
+test('S52: slot-scoped loadout ack preserves an omitted Easy Reload override', () => {
+  const h = kitA10();
+  h.player.loadout.overrides = { easy_reload: true };
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }] } } });
+  assert.equal(h.eng.state().loadout.overrides.easy_reload, true);
+});
+
+test('S52: HUD renders the Easy Reload instruction during a non-idle phase', () => {
+  const fake = { chips: { innerHTML: '' }, mcPill: false };
+  Hud.prototype._chips.call(fake, { phase: 'kitted', loadout: { overrides: { easy_reload: true } }, wsState: 'bound' });
+  assert.match(fake.chips.innerHTML, /ALT = RELOAD/);
 });
 
 test('A10: a secondary WEAPON shows in slot 2; weaponName never breaks with one weapon; unanswered pick expires', () => {

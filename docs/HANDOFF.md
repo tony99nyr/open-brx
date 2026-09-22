@@ -103,6 +103,10 @@ of main" above.
 
 ## Lane: weapons and perks
 
+**S52 is closed (2026-09-22):** the phone HUD now carries `loadout.overrides.easy_reload`, shows the visible
+`ALT = RELOAD` chip, and the picker warns before a secondary request that would conflict with ALT. App unit and
+standby screen gates passed; no hardware proof was needed for this presentation-only change.
+
 Shipped: the `$WEAP` t12 headset word as a declared `wire.headset_dmg` (a captured t12 with no price is a refusal),
 crits on two weapons (`crit_pct`; hits-to-kill stays the GUARANTEED number), the counts derived from the shipped
 artefact, and the `/arsenal` page. The recoil values in `spec/node.md` §3.15 ship today as a derivation from the

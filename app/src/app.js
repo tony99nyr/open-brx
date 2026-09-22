@@ -444,10 +444,21 @@ Object.assign(hud.h, {
   // A14: a pick that would knock the other slot out (Easy Reload vs a second weapon) needs a second tap on the same row
   onPickItem: key => { const i = String(key || '').indexOf(':'); if (i < 0) return; const kind = key.slice(0, i), id = key.slice(i + 1); hud.lo.focus = key;
     const drop = engine.conflictFor(hud.lo.tab, kind, id);
-    if (drop && !(hud.lo.confirm && hud.lo.confirm.key === key && hud.lo.confirm.tab === hud.lo.tab)) {
-      const row = kind === 'perk' ? engine.perkRow(id) : engine.weaponRow(id); const nm = (row && row.name) || id;
-      hud.lo.confirm = { tab: hud.lo.tab, key, drop, text: kind === 'perk' ? `${nm} takes the ALT button — drops your ${drop.name}` : `${nm} needs the ALT button to switch — drops ${drop.name}` };
-      hud.sig = null; scheduleRender(); haptic('tap'); return;
+    if (drop) {
+      const hostOnly = drop.slot === 'accessibility';
+      const confirmed = hud.lo.confirm && hud.lo.confirm.key === key && hud.lo.confirm.tab === hud.lo.tab;
+      if (confirmed && hostOnly) {
+        // Easy Reload is a host-set override; sending the same request again is
+        // guaranteed to be rejected until the host changes the kit.
+        scheduleRender(); haptic('tap'); return;
+      }
+      if (!confirmed) {
+        const row = kind === 'perk' ? engine.perkRow(id) : engine.weaponRow(id); const nm = (row && row.name) || id;
+        hud.lo.confirm = { tab: hud.lo.tab, key, drop, text: hostOnly
+          ? `${nm} needs the ALT button — ask the host to remove ${drop.name} first`
+          : kind === 'perk' ? `${nm} takes the ALT button — drops your ${drop.name}` : `${nm} needs the ALT button to switch — drops ${drop.name}` };
+        hud.sig = null; scheduleRender(); haptic('tap'); return;
+      }
     }
     hud.lo.confirm = null;
     if (engine.requestLoadout(hud.lo.tab, kind, id, false)) haptic('tap'); else scheduleRender(); },
