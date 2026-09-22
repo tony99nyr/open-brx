@@ -44,7 +44,7 @@ The separate v5-to-v6 audio ZIP hashes to
 | `$ASKDLC` | 4.32 | yes | confirm-required | never sent |
 | `$ASKSN` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | denied | never sent |
 | `$BAT` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32, H1.27, H1.34 | yes | confirm-required | never sent |
-| `$BHIT` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | known-safe | claimed |
+| `$BHIT` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | confirm-required | claimed |
 | `$BLINK` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32, H1.27, H1.34 | yes | known-safe | proven |
 | `$BMAP` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | known-safe | proven |
 | `$BOOM` | H1.27, H1.34 | yes | denied | never sent |
@@ -67,7 +67,7 @@ The separate v5-to-v6 audio ZIP hashes to
 | `$DTYPE` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | denied | never sent |
 | `$DUTY` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | denied | never sent |
 | `$FACTORY` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | denied | never sent |
-| `$FIREX` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | known-safe | claimed |
+| `$FIREX` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | confirm-required | claimed |
 | `$FL` | 4.32 | yes | confirm-required | never sent |
 | `$FLED` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | confirm-required | never sent |
 | `$FREE` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | **no** | confirm-required | never sent |
@@ -91,7 +91,7 @@ The separate v5-to-v6 audio ZIP hashes to
 | `$INDOOR` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32, H1.27, H1.34 | yes | confirm-required | never sent |
 | `$INIT` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32, H1.27, H1.34 | yes | known-safe | proven |
 | `$INQ` | 4.32 | yes | denied | never sent |
-| `$INVU` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | known-safe | claimed |
+| `$INVU` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | confirm-required | claimed |
 | `$IRG` | 2.01U | yes | confirm-required | never sent |
 | `$IRH` | 2.01U | **no** | confirm-required | never sent |
 | `$IRL` | 2.01U | **no** | confirm-required | never sent |
@@ -127,7 +127,7 @@ The separate v5-to-v6 audio ZIP hashes to
 | `$PING` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | known-safe | proven |
 | `$PLAY` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | known-safe | proven |
 | `$PLAYX` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | known-safe | proven |
-| `$PRES` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | known-safe | claimed |
+| `$PRES` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | confirm-required | claimed |
 | `$PSET` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | known-safe | proven |
 | `$QFX` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | known-safe | claimed |
 | `$QHIT` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | known-safe | claimed |

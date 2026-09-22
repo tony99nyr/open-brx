@@ -64,11 +64,11 @@ _FRAME_RE = re.compile(r"^\$[A-Z0-9!]+(,[^,*\r\n]*)*,\*\Z")
 #
 #   KNOWN_COMMANDS   understood shape + effect; the instrument sends them without confirm=true.
 #                    `proven` says whether OUR v4.32 guns have shown the effect on the bench. An
-#                    unproven entry comes from the V4_30/V4_31 firmware disassembly, Battle Company's
-#                    own command sheets or the 2018 BC app (all via LaserTagMods' drive, 2026-09-18);
-#                    the instrument sends it but says so in the reply. `tokens` = how many tokens the
-#                    V4_30 handler reads after the command word (extra tokens are ignored, fewer are
-#                    empty), where the disassembly counted them.
+#                    unproven entry comes from firmware disassembly, Battle Company's own command
+#                    sheets or the 2018 BC app (all via LaserTagMods' drive, 2026-09-18); the
+#                    instrument sends it but says so in the reply. `tokens` = how many tokens the
+#                    handler reads after the command word where the available versions agree. None
+#                    marks a version conflict that bench has not settled.
 #   DENIED_COMMANDS  never sent, confirm or not: persistent state, pairing/DFU, an IR word-format
 #                    switch, factory tests, or a path that BLOCKS the gun's main loop (the screamer
 #                    mechanism). The reason is the value. The node (phone) refuses these too, via
@@ -97,7 +97,7 @@ KNOWN_COMMANDS: dict[str, CommandInfo] = {
     "CLEAR": _c(0, True, "[bench] wipes game state AND the $SIR table (F11): re-send $SIR after it"),
     "START": _c(0, True, "[bench] config mode; [disasm] also ARMS IR reception ($STOP disarms it)"),
     "STOP": _c(0, True, "[bench] first frame of every connect; [disasm] drops every IR word while set"),
-    "SPAWN": _c(1, True, "[bench] $SPAWN,,* goes live; [disasm] token 1 = starting SHIELD, unproven on v4.32"),
+    "SPAWN": _c(None, True, "[bench] $SPAWN,,* goes live; [disasm] v4.30 reads starting shield but corrected v4.32 consumes no argument; A/B unproven"),
     "CONNECT": _c(0, True, "[bench] no reply on v4.32"),
     "INIT": _c(0, True, "[bench] no reply on v4.32"),
     "PHONE": _c(0, True, "[bench] opens the event tap"),
@@ -129,11 +129,7 @@ KNOWN_COMMANDS: dict[str, CommandInfo] = {
     "LIFE": _c(4, True, "[bench] additive, takes negatives (S29/F109: hp and armour 2026-09-09, shields 2026-09-17); [disasm] t4 = 0 add / 1 set clamped / 2 set unclamped"),
     "BUMP": _c(5, False, "[disasm, sheet, apk2018] $BUMP,<amount>,<hp 0/1>,<armour 0/1>,<shield 0/1>,<sound>: a cascade. Our 3-token probe was inert (no flag set); the armour flag is proven on the wire by the 2026-09-18 Callsign capture ($BUMP,12,,1,,,*)"),
     "STUN": _c(1, False, "[disasm, apk2018] $STUN,<ms>: a timed stun. Our bare $STUN,* was 0 ms"),
-    "PRES": _c(3, False, "[disasm] $PRES,<proto>,<sub>,<pct>: per-cell damage x (100+pct)/100"),
     "TMP": _c(11, False, "[disasm] pool-max bonuses t1-t3, incoming damage % t8, magazine % t9, default hit sound t11"),
-    "INVU": _c(0, False, "[disasm] incoming damage x0 (sets the $TMP t8 modifier to -100). Power-cycle to be sure it is gone"),
-    "BHIT": _c(7, False, "[disasm, sheet] host-injected hit through the real $SIR path; dropped on a dead gun"),
-    "FIREX": _c(1, False, "[disasm] fire slot 0-11 with no trigger pull; emits the real IR word"),
     "DIE": _c(0, False, "[disasm] kill self (in app mode: reports instead)"),
     "TEAM": _c(1, False, "[disasm] same team byte as $TID, no debug print"),
     "PID": _c(1, False, "[disasm] same player id as $PSET t1"),
@@ -155,6 +151,15 @@ KNOWN_COMMANDS: dict[str, CommandInfo] = {
 
 # Back-compat name: the set of command words the instrument sends without confirm=true.
 KNOWN_SAFE_COMMANDS = frozenset(KNOWN_COMMANDS)
+
+# Known names whose corrected v4.32 shape/effect conflicts with older evidence. They use the same
+# explicit-confirm path as an unknown command until the discriminating bench step settles the version.
+CONFIRM_REQUIRED_COMMANDS: dict[str, CommandInfo] = {
+    "PRES": _c(None, False, "v4.30 says per-cell damage modifier; corrected v4.32 handler unresolved"),
+    "INVU": _c(None, False, "v4.30 says invulnerability/$TMP t8; corrected v4.32 handler unresolved"),
+    "BHIT": _c(None, False, "v4.30/sheet say seven-field injected hit; corrected v4.32 consumes one event byte"),
+    "FIREX": _c(None, False, "v4.30 says one slot; corrected v4.32 consumes five fields and forwards them"),
+}
 
 # Refused outright by the instrument (confirm=true does NOT override) and by the node. Names from
 # the V4_30/V4_31 firmware command table and Battle Company's sheets; every one either changes
@@ -239,25 +244,26 @@ def is_denied(command: str) -> bool:
 
 
 def command_info(command: str) -> CommandInfo | None:
-    return KNOWN_COMMANDS.get(command_name(command))
+    name = command_name(command)
+    return KNOWN_COMMANDS.get(name) or CONFIRM_REQUIRED_COMMANDS.get(name)
 
 
 def unproven_note(command: str) -> str | None:
-    """A one-line caveat for a known command the bench has not yet shown on v4.32, else None."""
+    """A one-line caveat for a recognized command not yet shown on v4.32, else None."""
     info = command_info(command)
     if info is None or info.proven:
         return None
-    return f"'{command_name(command)}' is understood but NOT bench-proven on v4.32: {info.note}"
+    return f"'{command_name(command)}' is provisional and NOT bench-proven on v4.32: {info.note}"
 
 
 def arity_note(command: str) -> str | None:
-    """A caveat when a frame carries more tokens than the V4_30 handler reads (they are ignored)."""
+    """A caveat when a frame carries more tokens than the recorded handler reads."""
     info = command_info(command)
     if info is None or info.tokens is None:
         return None
     n = len(tokenize(command)) - 1
     if n > info.tokens:
-        return (f"'{command_name(command)}' carries {n} tokens; the V4_30 handler reads {info.tokens}, "
+        return (f"'{command_name(command)}' carries {n} tokens; the recorded handler reads {info.tokens}, "
                 f"the rest are ignored")
     return None
 

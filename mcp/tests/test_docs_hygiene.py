@@ -116,6 +116,7 @@ def test_r4_t2_screamer_code_read_keeps_evidence_and_bench_boundaries_visible():
     assert "T2 screamers complete 2026-09-21" in plan
     assert "R4/T2 v4.32 screamer code-read" in log
     r4_t2 = log.split("## 2026-09-21 (desk, private input, no gun): R4/T2 v4.32 screamer code-read", 1)[1]
+    r4_t2 = r4_t2.split("\n## ", 1)[0]
     assert r4_t2.count("**CODE-READ, NOT BENCH-PROVEN**") == 4
     r4_t2_lower = r4_t2.lower()
     for fact in ("1,023 usable bytes", "split frame", "`$*`", "10 ms"):
@@ -125,6 +126,54 @@ def test_r4_t2_screamer_code_read_keeps_evidence_and_bench_boundaries_visible():
     assert 146 * len("$PING,*".encode()) == 1_022
     assert 147 * len("$PING,*".encode()) == 1_029
     assert "Existing `send`, `send_batch`, and stage `raw` inject delay" in screamers
+
+
+def test_r4_t2_untested_levers_keep_eight_code_reads_and_bench_boundaries_visible():
+    """Each private code read stays provisional and names a falsifiable bench check."""
+    plan = (DOCS / "firmware-image-research-plan.md").read_text(encoding="utf-8")
+    log = (DOCS / "experiment-log" / "2026-09.md").read_text(encoding="utf-8")
+    levers = (DOCS / "bench-firmware-levers-2026-09-19.md").read_text(encoding="utf-8")
+
+    assert "T2 untested-levers pass complete 2026-09-21" in plan
+    marker = "## 2026-09-21 (desk, private input, no gun): R4/T2 v4.32 untested-levers code-read"
+    assert marker in log
+    r4_t2 = log.split(marker, 1)[1].split("\n## ", 1)[0]
+    headings = (
+        "### Melee",
+        "### `$BHIT`",
+        "### `$SPAWN` shield",
+        "### `$PRES` and `$INVU`",
+        "### Fuse functions 24-27",
+        "### Splash re-emit",
+        "### `$RADSK`",
+        "### Protocol-15 station words",
+    )
+    assert r4_t2.count("**CODE-READ, NOT BENCH-PROVEN**") == len(headings)
+    for index, heading in enumerate(headings):
+        assert heading in r4_t2, f"R4/T2 log omitted {heading}"
+        subsection = r4_t2.split(heading, 1)[1]
+        if index + 1 < len(headings):
+            subsection = subsection.split(headings[index + 1], 1)[0]
+        assert "**CODE-READ, NOT BENCH-PROVEN**" in subsection, (
+            f"R4/T2 log did not label {heading} provisional"
+        )
+
+    discriminators = {
+        2: "`$BHIT,8,*`",
+        3: "`$BHIT,8,1,2,255,1,3,100,*`",
+        6: "`$SPAWN,50,*`",
+        7: "`$TMP,,,,,,,,0,,,,*`",
+        8: "`<10,0>`",
+        11: "p8 = 0/1/50/100",
+        15: "Stop the writes",
+        17: "magnitude-56 pre-game arm",
+    }
+    for section, discriminator in discriminators.items():
+        body = levers.split(f"## {section}.", 1)[1].split("\n## ", 1)[0]
+        assert "**Code-read target (v4.32, 2026-09-21).**" in body, (
+            f"levers section {section} omitted its v4.32 bench discriminator"
+        )
+        assert discriminator in body, f"levers section {section} omitted {discriminator}"
 
 
 def test_no_headset_sticker_id_in_tracked_files():

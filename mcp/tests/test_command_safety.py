@@ -5,9 +5,9 @@
 re-pair or re-flash a radio, switch the IR word format, or block the gun's main loop with the serial
 port unread (`$DPLAY`: the likely screamer mechanism). Those go on `DENIED_COMMANDS`, which
 `confirm=true` does NOT override, and the same list reaches the phone as `NODE_DENIED_COMMANDS`
-through the generated contract. The useful new commands (`$STUN,<ms>`, `$BUMP` in its 5-field shape,
-`$PRES`, `$TMP`, ...) are KNOWN with their arity, but flagged `proven=False` until the bench shows them
-on v4.32; the instrument sends them and says so.
+through the generated contract. Useful commands whose versions agree (`$STUN,<ms>`, `$BUMP` in its
+5-field shape, `$TMP`, ...) are KNOWN with their arity, but flagged `proven=False` until the bench shows
+them on v4.32. Version-conflicted `$PRES`, `$INVU`, `$BHIT` and `$FIREX` require explicit confirmation.
 
 Run: python3 run_tests.py command_safety
 """
@@ -32,6 +32,8 @@ GEN_TS = REPO / "webapp" / "mc" / "src" / "api" / "contract.gen.ts"
 def test_the_tiers_do_not_overlap_and_every_denied_entry_says_why():
     denied = set(protocol.DENIED_COMMANDS) | set(protocol.HANG_PRONE_COMMANDS)
     assert not denied & set(protocol.KNOWN_COMMANDS), "a command cannot be both"
+    assert not set(protocol.CONFIRM_REQUIRED_COMMANDS) & set(protocol.KNOWN_COMMANDS)
+    assert not set(protocol.CONFIRM_REQUIRED_COMMANDS) & denied
     assert not set(protocol.DENIED_COMMANDS) & set(protocol.HANG_PRONE_COMMANDS)
     for name, reason in {**protocol.DENIED_COMMANDS, **protocol.HANG_PRONE_COMMANDS}.items():
         assert name == name.upper() and reason.strip(), name
@@ -67,13 +69,15 @@ def test_a_hang_prone_frame_needs_both_flags_on_send_and_never_goes_in_a_batch()
 
 
 def test_the_newly_understood_commands_are_known_with_arity_and_marked_unproven():
-    expect = {"STUN": 1, "BUMP": 5, "LIFE": 4, "PRES": 3, "TMP": 11, "INVU": 0, "BHIT": 7,
-              "FIREX": 1, "DIE": 0, "TEAM": 1, "PID": 1, "IRTX": 11, "RADSK": 0, "UP": 3, "KK": 1}
+    expect = {"STUN": 1, "BUMP": 5, "LIFE": 4, "TMP": 11,
+              "DIE": 0, "TEAM": 1, "PID": 1, "IRTX": 11, "RADSK": 0, "UP": 3, "KK": 1}
     for name, tokens in expect.items():
         info = protocol.KNOWN_COMMANDS[name]
         assert info.tokens == tokens, (name, info)
     unproven = {n for n, i in protocol.KNOWN_COMMANDS.items() if not i.proven}
-    assert {"STUN", "BUMP", "PRES", "TMP", "INVU", "BHIT", "FIREX", "DIE", "TEAM", "PID", "IRTX", "RADSK"} <= unproven
+    assert {"STUN", "BUMP", "TMP", "DIE", "TEAM", "PID", "IRTX", "RADSK"} <= unproven
+    assert set(protocol.CONFIRM_REQUIRED_COMMANDS) == {"PRES", "INVU", "BHIT", "FIREX"}
+    assert protocol.KNOWN_COMMANDS["SPAWN"].tokens is None  # v4.30 shield arg vs corrected v4.32 no-arg path
     # the bench-proven core is still marked proven (a regression here would nag every bench call)
     for name in ("PING", "CLEAR", "START", "SPAWN", "GSET", "PSET", "WEAP", "SIR", "BMAP", "TID", "AMMO", "LIFE", "SFLASH"):
         assert protocol.KNOWN_COMMANDS[name].proven, name
@@ -113,6 +117,17 @@ def test_send_refuses_a_denied_command_even_with_confirm_true():
             assert "error" in result and result["error"].startswith("refused, confirm or not:"), result
             assert result["command"] == cmd
         assert len(mgr.sessions["t1"].buffer) == 0, "nothing reached the tagger"
+
+
+def test_version_conflicted_commands_require_explicit_confirm():
+    with _fake_manager([FakeTagger("AA:1")]) as mgr:
+        run(mgr.connect("AA:1", "t1"))
+        frames = ("$PRES,0,0,-50,*", "$INVU,*", "$BHIT,8,*", "$FIREX,1,2,3,4,5,*")
+        for frame in frames:
+            refused = run(server.send("t1", frame))
+            assert "known-safe" in refused["error"], (frame, refused)
+            sent = run(server.send("t1", frame, confirm=True))
+            assert sent["sent"] == frame and "provisional" in sent["note"], (frame, sent)
 
 
 def test_send_batch_refuses_the_whole_batch_on_one_denied_command_even_with_confirm():

@@ -1,6 +1,6 @@
 # Plan: research with the stock firmware images (R4)
 
-Status: T1 and T2 screamers complete 2026-09-21; T2's untested-levers pass is next. Follow-up id: **R4** in `FOLLOWUPS.md`.
+Status: T1 and T2 screamers complete 2026-09-21; T2 untested-levers pass complete 2026-09-21; T2's full `$SIR` table is next. Follow-up id: **R4** in `FOLLOWUPS.md`.
 
 ## What we have
 
@@ -79,10 +79,12 @@ command goes through the confirm path in `protocol.py`.
 
 ### T2. Read the open bench claims in the code (desk, 1-2 sessions, strongest model)
 
-**Screamers pass complete 2026-09-21.** The v4.32 code-read confirms the blocking audio wait, two 1,024-slot
+**Screamers and untested-levers passes complete 2026-09-21.** The v4.32 code-read confirms the blocking audio wait, two 1,024-slot
 UART rings (1,023 usable bytes), split-frame persistence with no parser timeout, and `$*`'s all-token cleanup.
-The evidence and precise bench checks are in the 2026-09 experiment log and the screamers sheet. The remaining
-untested-levers, `$SIR`, `$TMP` and F264 questions below are still open.
+The second pass found two direct contradictions (`$BHIT` is a one-byte event path, and `$SPAWN` does not read a
+shield argument) and several boundaries where the gun image only forwards state to another controller. The evidence
+and precise bench checks are in the 2026-09 experiment log and the two bench sheets. The full `$SIR`, `$TMP` and
+F264 questions below are still open.
 
 Load `BCgunV4_32.bin` into Ghidra as ARM Cortex-M (Kinetis/Teensy-class memory map; skip the 8-byte updater header
 and map the payload at `0x8008`). Find the serial command dispatcher first. T1 found 111 command-shaped names in

@@ -20,23 +20,23 @@ reaches `docs/manual/` only when it is CONFIRMED here.
 | # | claim (source) | § | status (2026-09-18 session 1) |
 |---|---|---|---|
 | 1 | One team byte; `$PSET` t2 overwrites `$TID`; our re-sent `$PSET` caused F206 (V4_31) | 1 | **CONFIRMED at the wire level** (runs a-e: run a reproduces F206 with 0 hits, run b fixes it with 6 hits and `$HIR` token 4 = 2). Run f, a real TDM through Mission Control, is still open. |
-| 2 | Melee (t1 = 1) is emitted by the headset through `$IRTX`, at range t2; `$FIREX` fires a slot (sheets, V4_31) | 2 | |
-| 3 | `$BHIT` injects a hit through the full `$SIR` path (V4_30, sheets) | 3 | |
+| 2 | Melee (t1 = 1) is emitted by the headset through `$IRTX`, at range t2; `$FIREX` fires a slot (sheets, V4_31) | 2 | **CODE-READ ONLY (v4.32, 2026-09-21): DIFFERENT/UNRESOLVED.** No `$MELEE` command name; `$BHIT` consumes one event byte; `$FIREX` consumes five fields, not one slot. The gyro-map-fire chain and emitter remain bench questions. |
+| 3 | `$BHIT` injects a hit through the full `$SIR` path (V4_30, sheets) | 3 | **CODE-READ ONLY (v4.32, 2026-09-21): CONTRADICTED.** The corrected dispatcher consumes only token 1 as an event byte, not seven hit fields. Bench still decides runtime behaviour. |
 | 4 | `$STUN,<ms>` stuns; `$SIR` p5 of 64 or more stuns on hit (V4_30) | 4 | **CONFIRMED.** A controlled redo (control 5/5 fired; `$STUN,6000,*` blocked the next two pulls, fired again at +6.08 s) shows a native timed stun of about 6 s. It is SILENT on the gun; the node must play the cue itself (`X17`, Tony's pick, matches BC's concussion-grenade entry). |
 | 5 | `$BUMP,<amount>,<hp>,<armour>,<shield>,<sound>` cascades across pools (V4_30, sheets) | 5 | **CONFIRMED IN FULL (2026-09-18).** A negative amount takes armour first and overflows into HP; a positive amount heals HP first and overflows into armour; each of the hp/armour flags gates its own pool independently, and with both flags 0 the gun does nothing and sends no `$HP` reply at all (explains F65). **The shield flag and the sound token are now confirmed too**: the shield flag gates the shield pool the same independent way, a negative amount drains it first and cascades into whichever other selected pool is open, and the sound token plays the named id (silent when empty). |
 | 6 | `$LIFE` token 4: 0 add, 1 set, 2 set past max; set revives a dead gun (V4_30, sheets, BC app) | 6 | **CONFIRMED for the revive half (2026-09-18, §16).** `$LIFE,30,0,0,1,*` (set mode) on a dead gun gave `$HP,30,0,0` twice, and a follow-up `$LIFE,*` read back 30: the gun is alive again, takes hits normally, AND fires (`$ALCD` moved on a trigger pull). The magazine survives the death (unchanged across it) and `$TMP` survives death plus this revive (unlike `$SPAWN`, which clears `$TMP`). The headset death flash does NOT stop on its own: send `$HLED,,6,*` after the revive. Tested only on a gun killed over BLE, not on a gun in the F264 stall state (dead on the gun, alive on the HUD); do not assume this recipe cures F264 without a separate bench run. |
-| 7 | `$SPAWN,<n>` spawns with shield n (V4_30) | 6 | |
-| 8 | `$PRES` scales damage per cell; `$INVU` blocks damage (V4_30) | 7 | |
-| 9 | fn 24-27 are 5/4/3/2 s fuses; p5 is the cell the fuse fires (V4_30, sheets) | 8 | |
+| 7 | `$SPAWN,<n>` spawns with shield n (V4_30) | 6 | **CODE-READ ONLY (v4.32, 2026-09-21): CONTRADICTED.** The v4.32 branch consumes no argument; existing v4.32 bench/product evidence also starts shield at zero. The A/B bench check remains. |
+| 8 | `$PRES` scales damage per cell; `$INVU` blocks damage (V4_30) | 7 | **CODE-READ ONLY (v4.32, 2026-09-21): UNRESOLVED.** Optimized adjacent-string references do not establish either handler; bench must separate zero-damage, filtering and no-op outcomes. |
+| 9 | fn 24-27 are 5/4/3/2 s fuses; p5 is the cell the fuse fires (V4_30, sheets) | 8 | **BENCH DIFFERENT for fn 24; CODE-READ UNRESOLVED for the sequence.** On 2026-09-11 fn 24 generated persistent fake `$HIR` ticks about every 5.07 s until `$SPAWN`, with no pool damage. The v4.32 gun image only exposes `$SIR` forwarding, not the timer/effect owner. |
 | 10 | The crit bonus is `$PSET` t6 (we ship 50), scaled by `$GSET` t7 (V4_31, sheets) | 9 | |
 | 11 | fn 34/35 register on a dead gun; fn 38 halves HP damage; fn 30 back x2; fn 33 silent kill; fn 50-52 colour only (V4_30) | 10 | **CONFIRMED for fn 34 (2026-09-18, §16).** A `$SIR,14,0,NULL,34,,,,,*` row on a gun killed over BLE (`$HP,0,0,0`) still registered `$HIR` from an `$IRTX` type-14 revive beam. fn 35, 38, 30 and 33 untested this session. |
-| 12 | `$SIR` p6/p8 make the victim re-emit the hit (splash) (V4_30, sheets) | 11 | |
+| 12 | `$SIR` p6/p8 make the victim re-emit the hit (splash) (V4_30, sheets) | 11 | **CODE-READ ONLY (v4.32, 2026-09-21): UNRESOLVED.** The gun-side `$SIR` path forwards values but contains no re-emit branch; the effect may live downstream. |
 | 13 | `$STOP` closes and `$START` opens IR reception; the same flag gates the trigger (inferred); both clear `$GSET`'s app-mode flags (V4_30, V4_31) | 12 | **DIFFERENT (2026-09-18, §23 step 2).** `$STOP` blocks a hit's damage but not the `$HIR`, and it survives `$SPAWN`; `$START,*` plus a `$GSET`/`$TID` re-send reopens it. §12 step 2 (does `$STOP` gate the trigger?) is open. |
 | 14 | The gun sends `$DD,<killer>,<team>` when it dies (Jay's code); a kill confirmation is a protocol-15 subtype-0 IR word (BC's UART sheet) | 13 | **REFUTED, both halves, for this gun.** A gun killed by one hit gave `$HP,0,0,0` then `$LCD,0,0,0,0,6,24`, with NO `$DD`. §13 step 3's sweep of protocol-15 magnitudes 1-39 found no native audible callout on any of them, though every one registered silently (fn 28 on `<15,0>`, team-gated). So the gun does not announce a kill on its own in app mode; Callsign's kill voice is an app-side `$PLAY`. The node must not build on `$DD`. **A DEAD gun still forwards a host `$IRTX` frame out through its headset and emits the exact word**, confirmed with a control (a dying gun itself emits no IR on death). So a protocol-15 word sent via `$IRTX` through the dead gun's headset IS a usable, silent, firmware-free carrier for a host-defined kill-confirm signal. |
 | 15 | Split frames get lost; bursts overflow; `$DPLAY` on a loop sound hangs the gun (V4_31) | 14 (screamers sheet Phase A) | **PARTLY CONFIRMED.** A1: `$DPLAY,A10,4,*` got no `$PONG`, no reply and no audio, and the link dropped about 15 s later; it recovered on reconnect with no power cycle needed, so this is a partial screamer rather than a proven full lock. A2 control (`$DPLAY,U37,4,*`, one-shot) answered `$PING` at once. `$DPLAY` stays on the never-send list either way. |
-| 16 | `$RADSK` every 4 s keeps a headless gun linked (Jay's code, V4_31) | 15 | |
+| 16 | `$RADSK` every 4 s keeps a headless gun linked (Jay's code, V4_31) | 15 | **CODE-READ ONLY (v4.32, 2026-09-21): UNRESOLVED.** The name occurs in headset/native message machinery, but no clean inbound timer refresh was established. |
 | 17 | `$IRTX` type 14 to a downed ally is a revive beam, read via fn 34 (BC app) | 16 | **CONFIRMED (2026-09-18, §16 steps 1-3).** A dead gun with `$SIR,14,0,NULL,34,,,,,*` registered `$HIR,4,14,1,2,1,0,0` from a live gun's `$IRTX,100,14,1,2,1,0,0,100,1,,0,*` (field 4 = the dead gun's own team), and `$LIFE,30,0,0,1,*` then revived it. A live or dead gun forwards a host `$IRTX` through its headset. Still open: step 4 (field 4 = 1) and step 6.3 (does `$CLEAR` stop a headset loop). |
-| 18 | Protocol-15 station words: magnitude 6 respawn, 8 perk, 10 proximity, 50 capture (Jay's code) | 17 | |
+| 18 | Protocol-15 station words: magnitude 6 respawn, 8 perk, 10 proximity, 50 capture (Jay's code) | 17 | **PARTLY BENCH-PROVEN; CODE-READ UNRESOLVED AS A SET.** Native magnitude 6 already revives a station-armed, same-team gun on one pulse (4/4); real hill traffic establishes magnitude 8 as its beacon and 50 as its capture event. The broader “perk,” proximity-10 and generic station meanings are not established. No v4.32 gun-side switch on 6/8/10/50 was found. |
 | 19 | `$LCD` t3 = shield, t4 = slot; `$QUERY` t2 = team; `$VERSION` t3/t5 meanings (V4_30, BC app) | 18 | **CONFIRMED**, with a timing note: `$QUERY` on a dead gun returns `$LCD` at once, then the rest of the body about 2 s later with no trailing `*`, so `$QUERY` holds the gun's print loop busy for that long. |
 | 20 | Every other open item the triage of FOLLOWUPS against the new sources found untested | 19 | |
 | 21 | Range tokens set the IR carrier frequency: 38000 - 125 x (100 - range) Hz on the gun, 140 Hz steps on the headset; indoor/outdoor sets power (V4_31) | 20 | |
@@ -129,6 +129,12 @@ It sends its own headset an `$IRTX` frame, and the **headset** emits the swing. 
 (t41 indoors), not from the extra-headset pair t13/t42, which only a t1 = 2 or 3 weapon reads. Our melee ships t2 = 90.
 So melee depends on the gun-to-headset link, and a swing can only land from the headset's domes.
 
+**Code-read target (v4.32, 2026-09-21).** The corrected gun image has no `$MELEE` name. Its `$BHIT` branch reads
+one event byte, while `$FIREX` reads five fields; the old `$FIREX,<slot>` shortcut is not supported by this read.
+After the physical-swing runs, inject `$BHIT,8,*` with button 8 mapped to the melee slot, unbound/99 and slot 0.
+Only mapping-dependent emitted words prove this event reaches the button map. Then repeat the working path with
+otherwise identical `$WEAP` rows at t1 = 0 and t1 = 1 while independent sensors watch the barrel and headset.
+
 Steps:
 1. **Control.** Send `$MELEE,255,*`, then `$XYZZY,255,*`. Does each one give `$BUT,4,0`? If the unknown command
    also answers, `$MELEE` proves nothing.
@@ -137,8 +143,15 @@ Steps:
 3. Repeat with slot 4 and `$BMAP,8,4` (today's frames), so the two runs compare directly.
 4. Watch the headset during a swing. Does it flash or emit? Point the IR rig at the headset domes, not the barrel,
    and count words per swing. No word from the headset means the `$IRTX` hand-off to the headset fails.
-5. **Control with no gyro:** send `$FIREX,4,*`. V4_30 has this command. If the headset emits and B registers, the
-   IR path works and any fault is in the swing detection.
+5. **Event-path control:** inject `$BHIT,8,*` with button 8 mapped in turn to the melee slot, unbound/99 and slot 0.
+   Before each mapping, restore the same ammo and cooldown state; record `$BUT`, IR and `$HIR`. Do not infer damage
+   semantics from the command name.
+6. **Emitter-source A/B:** from identical re-arms, alternate otherwise identical melee `$WEAP` rows with t1 = 0 and
+   t1 = 1. Trigger the proven path while independent sensors watch the barrel and headset domes; repeat three times
+   per value. Mapping-dependent words are not emitter proof without this physical observation.
+7. **`$FIREX` arity control (blocked until a real frame is captured):** record any complete `$FIREX` frame seen
+   during steps 2-5 and preserve its five fields. Do not improvise the field order or interpret `$FIREX,4,*` as a
+   slot-fire proof. Once a complete frame exists, replay it against the short form from identical armed states.
 
 
 **Reading.** A headset word on the rig with no `$HIR` on B points at aim or range (the swing leaves the head, not the
@@ -151,6 +164,13 @@ emitter (the headset LED or its range), not the binding.
 V4_30 parses `$BHIT,<proto>,<shooterId>,<team>,<damage>,<crit>,<subtype>,<sensor>,*` and runs it through the same
 hit handler as a real IR word. A dead gun drops it. If v4.32 does the same, MC or the phone can apply any `$SIR`
 row with no IR. That covers zone damage, a poison tick with attribution, and a recovery after a desync (F208).
+
+**Code-read target (v4.32, 2026-09-21).** Corrected v4.32 consumes only token 1 as an event byte and does not parse
+the alleged seven-field hit tail. Before each discriminator trial, restore the same pools, button maps, slot, ammo
+and cooldown state. Compare `$BHIT,8,*` with
+`$BHIT,8,1,2,255,1,3,100,*`, then change only token 1 to 0. Equal behaviour for the equal-first-token pair and a
+change only with token 1 supports the event reading; damage controlled by the tail supports the older hit reading.
+For 2 seconds after each frame, record `$BUT`, emitted IR, `$HIR`, `$HP`, ammo and sound.
 
 Send each frame to B only:
 1. `$BHIT,0,1,1,9,0,0,0,*`. Expect `$HIR` with shooter 1 and team 1, and HP down by 9.
@@ -210,13 +230,19 @@ confirmed in full on every field.
   clamp.
 - `$SPAWN,<n>,*` spawns with **shield n**. K7 is blocked because no BLE command grants a shield (P16, F60).
 
+**Code-read target (v4.32, 2026-09-21).** The `$SPAWN` branch consumes no token before the common spawn routine,
+so v4.32 predicts that its shield argument is ignored. Run step 3 as two complete, independently re-armed trials,
+one with `$SPAWN,0,*` and one with `$SPAWN,50,*`; alternate the order on a repeat. Argument-dependent `$LCD`
+shield values disprove the read.
+
 Before this section, re-arm B (45, 70, 60). Set mode needs an armour maximum above 0, and step 3 needs a shield
 maximum of 50 or more.
 
 1. On B, send `$LIFE,30,10,0,1,*`. Expect HP 30 and armour 10 exactly, whatever the start values.
 2. Send `$LIFE,500,0,0,2,*`. Does HP go above the maximum?
-3. Send `$SPAWN,50,*`, then `$TID,2,*`. Read `$LCD`: is token 3 (shield) 50, with HP 45 and armour 70? Then fire
-   three hits. Does the shield absorb them first (shield 23)?
+3. From a fresh (45, 70, 60) re-arm, send `$SPAWN,0,*`, then `$TID,2,*`, and read `$LCD`. Restore the identical
+   re-arm, send `$SPAWN,50,*`, then `$TID,2,*`, and read again. Repeat in the opposite order. If token 3 is 50 only
+   after the nonzero frame, fire three 9-damage hits and require shield 23 before calling the argument live.
 4. Kill B. Then, on the **dead** B, send `$LIFE,30,0,0,1,*`, which is the 2018 app's revive. Does B come back to life?
    The kill left an HP maximum of 9, and set mode clamps, so a revive shows HP 9. **Answered 2026-09-18 by §16 step 3
    (claim 6): yes.** Skip this step.
@@ -228,6 +254,17 @@ no respawn.
 
 - `$PRES,<proto>,<sub>,<pct>,*` multiplies damage for one cell by (100 + pct)/100.
 - `$INVU,*` sets incoming damage to x0 (it writes `$TMP` token 8 to -100; §21 covers `$TMP`).
+
+**Code-read target (v4.32, 2026-09-21).** The corrected image does not safely bind either name to the claimed
+local effect: the apparent `$INVU` reference belongs to an adjacent command, and a nearby formatter is not a
+damage multiplier. In step 3 classify `$HIR` with zero loss, no `$HIR`, or normal loss separately. Then clear
+`$TMP` t8 and repeat; restored damage would support shared t8 state. Also compare same-team and enemy hits across a
+reset/spawn before and after `$INVU`, then power-cycle, to isolate the claimed persistent team side effect.
+
+Isolated team sequence for step 3: re-arm B on team 2; record one enemy-team and one same-team control hit; restore
+the pools; send `$INVU,*`; repeat the enemy hit; send `$TMP,,,,,,,,0,,,,*`; restore the pools and repeat it; then
+`$SPAWN,,*`, `$TID,2,*`, `$QUERY,*` and repeat both enemy/same-team hits. Power-cycle B and repeat the two-hit
+baseline before returning it to service. Never mix this sequence into a live team game.
 
 B arrives from §6 step 4 with a 9 HP maximum. Before step 1, re-arm B (999, 0, 0), so the hits below
 cannot kill it.
@@ -246,11 +283,18 @@ V4_30 gives fn 24, 25, 26 and 27 fuses of 5.0, 4.0, 3.0 and 2.0 s. On 09-18, fn 
 The code explains the loop: in app mode an expired fuse injects a **protocol-9** word, and `<9,3>` was fn 24 at the
 time. Also, `$SIR` p5 on these rows is a cell key (low nibble = protocol, high nibble = subtype).
 
-1. On B, send `$SIR,0,0,,24,0,0,1,,*` and `$SIR,9,3,,1,0,0,1,,*` (as MC ships `<9,3>` today). Fire **one** shot. Log
-   every `$HIR` and `$HP` for 20 s, with times.
-2. Repeat with fn 25, fn 26 and fn 27. Time the gap from the real hit to the delayed one.
-3. On B, send `$SIR,0,0,,24,10,0,1,,*` (p5 = 10, which points at cell `<10,0>`) and `$SIR,10,0,,1,0,0,1,,*`. Fire
-   once. Does the delayed hit land as protocol 10?
+**Code-read target (v4.32, 2026-09-21).** The gun-side `$SIR` routine formats and forwards five values but has no
+function switch, timer or cell decode, so it cannot confirm the old timing sequence. Use a distinct target cell
+(`<10,0>` = fn 1) for the timed runs and reserve a self-referential source/target run for the recursion control.
+Three runs per function must produce one delayed event near 5/4/3/2 s before the claim advances.
+
+1. For each N in 24, 25, 26 and 27, freshly re-arm B with `$SIR,0,0,,N,10,0,1,,*` and
+   `$SIR,10,0,,1,0,0,1,,*`, fire **one** shot, and log every `$HIR`/`$HP` for 8 s. Run three independent re-arms
+   per N. A single delayed protocol-10 hit distinguishes the target from the source; time its gap from the real hit.
+2. **Recursion control:** set `<0,0>` to fn 24 with p5 = 0, so its target is itself. Repetition here but not with
+   the distinct `<10,0>` target proves table recursion rather than a periodic fuse.
+3. **Packing control:** set p5 = 58 (`0x3a`), `<10,3>` to fn 1 and `<10,0>` to fn 28. The delayed `$HIR` subtype
+   distinguishes low-nibble protocol/high-nibble subtype packing from a decimal protocol-only interpretation.
 
 **Reading.**
 - If a delayed hit lands once and then stops, we have a native delayed hit (a sticky bomb) and P18's loop is
@@ -295,6 +339,13 @@ row's `$SIR`, unless the row says otherwise.
 A `$SIR` row with p6 above 0 makes the **victim** send the hit on to everyone around it. The stock Rocket row uses
 p6 = 100. On B, send `$SIR,0,0,,1,0,100,1,,*` and put the receiver rig beside B. Hit B once. Does the rig decode a
 second word, 0 to 250 ms after the hit, with A's id and crit = 1?
+
+**Code-read target (v4.32, 2026-09-21).** The gun-side `$SIR` forwarding path has no visible p6/p8 re-emit branch;
+the headset may own it. First prove the rig can receive a known B-emitted word in the same geometry. Shield the rig
+from A's direct beam, re-arm B to a nonlethal baseline before every trial, and counterbalance p6 = 0/1/50/100 at
+0.25 m and 2 m, five trials per cell. Repeat indoors with p6 = 0 while varying p8 = 0/1/50/100. Require a
+treatment-only second air word after B's `$HIR`, and record its crit rather than assuming 1. Repeat one working
+cell with B at incoming-damage -100: re-emission without pool loss separates scheduling from damage.
 
 ## 12. Reception gate (F121, 10 min, session 1)
 
@@ -360,11 +411,19 @@ Our docs say a gun with no headset answers `$PING` and then drops the phone link
 sends `$RADSK,*` every 4 s as a stand-in headset, and the V4_31 gun sends `$RADSK` to its own headset every 3 s as a
 link check.
 
-1. Power B with its headset switched off. Connect and time how long the link holds. Do it twice.
-2. Reconnect, and send `$RADSK,*` to B every 4 s. Does the link now hold for 2 minutes?
+**Code-read target (v4.32, 2026-09-21).** The name participates in headset/native message machinery, but no clean
+inbound timer refresh was found. Measure at least three no-injection drop times, then inject every 4 s for 2 minutes
+and stop without changing anything else. Survival only during injection plus a repeatable post-stop drop proves an
+inbound lease. A simultaneous real-headset sniff separately establishes the outbound direction.
 
-**Reading.** If it holds, a Companion or the bench can drive a gun with no headset, and the node has a cheap
-keepalive.
+1. Power B with its headset switched off. Connect and time how long the link holds. Do it at least three times.
+2. Reconnect, and send `$RADSK,*` to B every 4 s for 2 minutes. Stop the writes without another state change and
+   time the disconnect for `max(3 × the longest baseline, 30 s)`; record “no drop by cap” if it stays connected.
+   Power-cycle/reconnect, then repeat the whole inject→stop treatment once.
+
+**Reading.** Survival during injection plus a repeatable, baseline-like timeout after the writes stop proves an
+inbound lease refresh. Survival alone may instead be a one-shot mode transition. A real-headset sniff proving the
+gun sends periodic `$RADSK` establishes the outbound direction separately.
 
 ## 16. The revive beam (15 min, needs the IR rig or a second gun as emitter)
 
@@ -397,6 +456,17 @@ frame stops it, and the revive beam needs no host write every second.
 Jay's JBOX code sends protocol-15 words whose magnitude selects the station function. Emit each one with `ir-emit`
 at an armed B that carries our current station rows, and record B's `$HIR`, pools and sounds:
 
+**Code-read target (v4.32, 2026-09-21).** No inspected gun-side path switches on magnitudes 6, 8, 10 or 50. The
+hosted/app discriminator is executable: arm `<15,0>` with fn 28, emit each exact row below from the rig, and require
+one `$HIR` carrying the sent magnitude with no pool, ammo, LED or start-state change. That proves generic table
+receipt, not a native station effect. For the native control, use the proven setup in `reference/grenade.md`: start
+a stock native TDM after the magnitude-56 pre-game arm, kill same-team B, and emit one magnitude-6 beacon. Immediate
+revival, with a wrong-team pulse as the negative control, reconfirms the one known native effect. The phrases
+“perk” for 8 and “proximity” for 10 name no observable state and are **blocked as bench claims** until their source
+defines the expected gun change. A generic injected magnitude-50 native-callout test is also blocked until the
+source names the exact stock objective mode, starting ownership and arming transition; the real grenade capture
+already proves that word, but a vague “native objective game” would make any synthetic null uninterpretable.
+
 | word (protocol, player, team, magnitude, crit, subtype) | Jay's meaning |
 |---|---|
 | 15, 63, B's team, 6, 1, 0 | respawn |
@@ -404,8 +474,8 @@ at an armed B that carries our current station rows, and record B's `$HIR`, pool
 | 15, 63, B's team, 8, 0, 0 | perk or KOTH pulse |
 | 15, 63, B's team, 10, 0, 0 | proximity |
 
-Also test Jay's changelog rule for respawn stations: a dead gun needs **two** respawn pulses within 9 s. Send one
-pulse, wait 10 s, send one more; then send two pulses 3 s apart.
+The older two-pulses-within-9-seconds changelog rule is already contradicted by the native station bench: one
+same-team magnitude-6 beacon revived 4/4. Do not spend another session treating it as the expected v4.32 behavior.
 
 **Reading.** Each word that does what Jay's code says becomes a station function MC can arm with no new hardware.
 

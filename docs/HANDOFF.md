@@ -45,7 +45,10 @@ proved, and that every lane builds on:
 Screamers are Tony's P0. Levers session 1 ran in three sittings; its remainder is bench-plan sitting 2.
 Screamers Phase A has run A1 and A2 only.
 
-- **Next desk task:** R4/T2's untested-levers pass. **F272's build is complete:** the phone and MC now expose a
+- **Next desk task:** R4/T2's full `$SIR` function-table pass. **The untested-levers pass is complete:** corrected
+  v4.32 contradicts the seven-field `$BHIT` and `$SPAWN`-shield claims, while fuse/splash/station semantics cross
+  an unresolved gun-to-controller forwarding boundary; the levers sheet now gives a controlled next step for each
+  and marks the undefined protocol-15 “perk/proximity” meanings blocked on source clarification. **F272's build is complete:** the phone and MC now expose a
   durable, older-node-safe lock verdict after two unanswered all-zero `$LIFE` reads, and recovery restores the
   full head before the configured down/respawn path begins. Its 8 s threshold and stable-radio screamer remain
   bench-provisional. R4/T2's code-read already pinned the blocking wait, 1,023-byte usable UART rings, persistent
@@ -114,7 +117,7 @@ build the category-driven Mission Control picker.
 ## Start here
 
 Read [`bench-plan.md`](bench-plan.md). If Tony is at the bench, load the `bench-session` skill and run sitting 1.
-Otherwise take the first desk task, **R4/T2's untested-levers pass**. F265's root cause (why score pushes stopped)
+Otherwise take the first desk task, **R4/T2's full `$SIR` function-table pass**. F265's root cause (why score pushes stopped)
 is still open.
 
 ## Machine state
