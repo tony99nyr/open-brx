@@ -231,6 +231,9 @@ export class MockBackend implements Api {
   // and ENABLE BACKHAUL (bench 2026-09-17) can be seen in a browser. The default demo keeps a red gun.
   private demoAllGreen = typeof location !== 'undefined' && new URLSearchParams(location.search).get('allgreen') === '1';
   private tunnelFailNext = typeof location !== 'undefined' && new URLSearchParams(location.search).get('tunnelfail') === '1';
+  // F181 browser fixture: keep the ordinary live clock/status tick, but let a walk own every score transition.
+  // This is query-gated mock behavior only; the default interactive demo retains its random background kills.
+  private demoNoRandomKills = typeof location !== 'undefined' && new URLSearchParams(location.search).has('norandom');
   // the server's validate() errors ride on every snapshot (config_errors); the demo used to hardcode []
   // so a refusal shown in the PUT response vanished from the rail on the very next tick
   private cfgErrors: string[] = [];
@@ -743,7 +746,7 @@ export class MockBackend implements Api {
         r.sync_age_ms = r.status === 'stale' ? r.sync_age_ms + 1000 : Math.floor(Math.random() * 4000);
         if (r.pool_stale_ms != null) r.pool_stale_ms += 1000;
       }
-      if (Math.random() < 0.12) this.simKill();
+      if (!this.demoNoRandomKills && Math.random() < 0.12) this.simKill();
       this.emit();
     }
   }

@@ -501,3 +501,9 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
 - 2026-09-22 **F180** ordinary app `npm test` now runs all six existing A38 standby browser checks: both standby
   entry paths and the handler-level READY refusal at 891×411 and 667×375. The root parallel runner reuses its
   up-front build and writes focused captures privately; CI installs Chromium before the gate.
+
+# Closed 2026-09-22: deterministic live-accuracy browser fixture
+
+- 2026-09-22 **F181** the M2 browser walk disables only the mock's random background kills, drives exactly one
+  six-shot kill, and reads the resulting `~50%` provisional accuracy from the rendered board. An adversarial
+  zero-random control makes deleting the fixture fail deterministically instead of reviving the timing race.

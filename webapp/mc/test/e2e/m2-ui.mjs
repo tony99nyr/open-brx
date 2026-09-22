@@ -281,9 +281,19 @@ async function runMock(browser, viteBase, vp, tag) {
   step = `mock/${tag}`; stepFailedAt = failures.length;
   console.log(`\n[${step}] the in-browser demo backend, ${vp.width}x${vp.height}`);
   const pg = await newPage(browser, vp);
-  await boot(pg, `${viteBase}/?mock#live`);
-  await mockGoLive(pg);
-  await until(() => pg.locator('[data-col-head]').count().then(n => n >= 9), 15000, 'the live board');
+  await boot(pg, `${viteBase}/?mock&norandom=1#live`);
+  // Adversarial control for F181: if the mock ignores `norandom`, every one-second tick gives the same
+  // killer another six shots and settles its ACC before this walk can inspect the provisional state.
+  await pg.evaluate(() => { window.__f181Random = Math.random; Math.random = () => 0; });
+  let drive, rows;
+  try {
+    await mockGoLive(pg);
+    await until(() => pg.locator('[data-col-head]').count().then(n => n >= 9), 15000, 'the live board');
+    drive = await mockUntilScored(pg);
+    rows = await boardRows(pg);
+  } finally {
+    await pg.evaluate(() => { Math.random = window.__f181Random; delete window.__f181Random; }).catch(() => {});
+  }
 
   // S24 (a) headers
   const heads = await pg.locator('[data-col-head]').evaluateAll(els =>
@@ -299,8 +309,6 @@ async function runMock(browser, viteBase, vp, tag) {
   ok(`group rules before ${ruled.join(', ')}`);
 
   // S24 (c) STK is the BEST streak — asserted on rows that have SCORED, never on a board of zeros
-  const drive = await mockUntilScored(pg);
-  const rows = await boardRows(pg);
   const scored = rows.filter(r => r.k > 0);
   expect(drive.got && scored.length > 0, `somebody has scored, so there is something to check (${rows.map(r => r.k).join(',')})`);
   expect(scored.length > 0 && scored.every(r => /^\d+$/.test(r.stk) && Number(r.stk) >= 1),
@@ -309,21 +317,9 @@ async function runMock(browser, viteBase, vp, tag) {
 
   // S24 (d) ACC settling: at least one row must actually BE settling, or the mark is unasserted.
   // A kill adds 6 shots, and ACC settles at 10. So a row with exactly one kill is a settling number.
-  // Random kills can give every kill to one row (seen under CPU load: "50%/0 —/1 —/1 ..."). The walk
-  // does not wait for luck. It names a killer with no shots, then reads the board. A random tick can
-  // still land a second kill on that row first, so it tries a bounded number of times.
-  let accRows = rows;
-  for (let i = 0; i < 6; i++) {
-    accRows = await boardRows(pg);
-    if (accRows.some(r => r.prov === '1' && /\d/.test(r.acc))) break;
-    await pg.evaluate(async () => {
-      const a = window.__MC_MOCK__;
-      const s = await a.getState();
-      const fresh = (s.live?.rows || []).find(r => r.status === 'alive' && !(r.shots_total ?? r.shots));
-      a.simKill(fresh?.player_id); a.emit();
-    });
-    await pg.waitForTimeout(300);
-  }
+  // `mockUntilScored` drives exactly one kill in this no-random fixture: six shots, below the ten-shot
+  // settling threshold. Read that snapshot directly; no retries and no timing window.
+  const accRows = rows;
   expect(accRows.every(r => r.prov === '0' || r.prov === '1'), 'every ACC cell declares whether it has settled');
   const numericProv = accRows.filter(r => r.prov === '1' && /\d/.test(r.acc));
   expect(numericProv.length > 0, `at least one ACC number is still settling, so the mark is on screen (${accRows.map(r => `${r.acc}/${r.prov}`).join(' ')})`);
