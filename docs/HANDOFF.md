@@ -45,7 +45,10 @@ proved, and that every lane builds on:
 Screamers are Tony's P0. Levers session 1 ran in three sittings; its remainder is bench-plan sitting 2.
 Screamers Phase A has run A1 and A2 only.
 
-- **Next desk task:** R4/T2's full `$SIR` function-table pass. **The untested-levers pass is complete:** corrected
+- **Next desk task:** R4/T4's audio-pack hash comparison. **T3 is complete:** all 128 command rows now have a
+  sampled-version vocabulary gate; core Open BRX names occur in every sampled tagger, `$CONNECT` joins at 2.08b,
+  and the five known-safe candidates `$AS`, `$IT`, `$KK`, `$SP` and `$UP` occur only in 4.32. `$VERSION` then `$PING` is the conservative older-gun
+  probe, but the existing safety tier still decides every send. **The untested-levers pass is complete:** corrected
   v4.32 contradicts the seven-field `$BHIT` and `$SPAWN`-shield claims, while fuse/splash/station semantics cross
   an unresolved gun-to-controller forwarding boundary; the levers sheet now gives a controlled next step for each
   and marks the undefined protocol-15 “perk/proximity” meanings blocked on source clarification. **F272's build is complete:** the phone and MC now expose a
@@ -57,8 +60,8 @@ Screamers Phase A has run A1 and A2 only.
 - **Next bench task:** run the still-executable screamers Phase A controls (A1c, A3-A6, and the phone-paced halves
   of A7/A8) with one gun and a laptop. A7/A7b/A7c/A8 zero-gap cases require a raw-byte helper that preserves
   controlled ATT chunks without the instrument's normal sleeps; do not record a normal `send` run as that result.
-- **Blocked:** F269 and Phase C on complete A7/A8 numbers; A7b/A7c on the raw-byte helper; Phase E on F272;
-  Phase D on the Phase B rules.
+- **Blocked:** R4/T2's full `$SIR` table on the unresolved gun-to-controller effect owner; F269 and Phase C on
+  complete A7/A8 numbers; A7b/A7c on the raw-byte helper; Phase E on F272; Phase D on the Phase B rules.
 
 ## Lane: playtest and the node cure
 
@@ -117,7 +120,7 @@ build the category-driven Mission Control picker.
 ## Start here
 
 Read [`bench-plan.md`](bench-plan.md). If Tony is at the bench, load the `bench-session` skill and run sitting 1.
-Otherwise take the first desk task, **R4/T2's full `$SIR` function-table pass**. F265's root cause (why score pushes stopped)
+Otherwise take the first desk task, **R4/T4's audio-pack hash comparison**. F265's root cause (why score pushes stopped)
 is still open.
 
 ## Machine state

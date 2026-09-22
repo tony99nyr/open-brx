@@ -455,8 +455,9 @@ the gun send `$DISCONNECT,*` and drop the link; a power-cycled gun needs its hea
 row sent once at arm still registers hits after a `$SPAWN,,*` with no re-send. `$SPAWN` DOES zero every `$TMP`
 token, so a per-life `$TMP` write (spawn protection, live accuracy, …) must land AFTER `$SPAWN`, never before it.
 
-**Still open on v4.32:** `$AS` / `$UP` / `$SP` semantics and the `$RV`/`$RP`/`$KK`… family; the `$PB*` enum
-tables; `$BHIT` / `$HFIRE` / `$IRTX` in their real 11- and 7-field shapes; `$LCD` and
+**Still open on v4.32:** `$AS` / `$UP` / `$SP` winner and end-game semantics (the `$SP,99,*` panic effect is
+proven) and the `$RV`/`$RP`/`$KK`… family; the `$PB*` enum tables; `$BHIT`'s v4.32 shape and effect; `$HFIRE`'s
+11-field behavior; `$LCD` and
 `$VOLTS` tokens 3–4; `$SIR` p5–p8 and the "registers, no pool change" functions; the gun↔headset link protocol
 and the nRF radio (`NRFhost 1` / `NRFslave 1` in the USB record); Gen1 command differences.
 

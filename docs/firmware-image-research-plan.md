@@ -1,6 +1,8 @@
 # Plan: research with the stock firmware images (R4)
 
-Status: T1 and T2 screamers complete 2026-09-21; T2 untested-levers pass complete 2026-09-21; T2's full `$SIR` table is next. Follow-up id: **R4** in `FOLLOWUPS.md`.
+Status: T1 and T2 screamers complete 2026-09-21; T2 untested-levers pass complete 2026-09-21; T3 complete
+2026-09-22. The T2 full `$SIR` table is blocked at an unresolved gun-to-controller forwarding boundary; T4 is the
+next clear desk task. Follow-up id: **R4** in `FOLLOWUPS.md`.
 
 ## What we have
 
@@ -106,9 +108,17 @@ each one. A code read that contradicts a bench result means one of the two is wr
 
 ### T3. Version diff (desk, 1 session, mid model)
 
+**Complete 2026-09-22.** The T1 table now has a deterministic “needs firmware” vocabulary gate for all 128 names,
+records the embedded identifiers and gives the older-tagger field rule. Core Open BRX vocabulary appears in every
+sampled tagger; the five known-safe candidates `$AS`, `$IT`, `$KK`, `$SP` and `$UP`, including the `$SP,99,*`
+panic tail, are v4.32-only vocabulary. Presence does not
+prove a handler or make a command safe, so `$VERSION,*` then `$PING,*` is the first compatibility probe and the
+existing safety tier still decides whether a send is automatic, confirmed or refused.
+
 Compare the command sets and the version strings across 2.01U, 2.02c, 2.02e, 2.08b and 4.32, and across headset
-1.27 and 1.34. The goal is narrow: tell a field operator which features need v4.x, and which command is safe to send
-to an older gun. Output: a "needs firmware" column in the T1 table.
+1.27 and 1.34. The goal is narrow: tell a field operator which features have vocabulary only in v4.x, and which
+commands are candidates on an older gun. Output: a "needs firmware" column in the T1 table. A string comparison
+cannot prove older-firmware handler behavior; only an older-hardware bench or handler trace can promote support.
 
 ### T4. The audio pack (desk, 30 minutes, small model)
 
