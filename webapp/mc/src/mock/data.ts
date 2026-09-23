@@ -124,7 +124,7 @@ export const WEAPONS: WeaponView[] = [
     ],
     "role": "assault",
     "htk": 12,
-    "ttk_ms": 2053,
+    "ttk_ms": 2567,
     "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,

@@ -409,8 +409,10 @@ def test_htk_and_ttk_derive_from_base_damage_alone_with_no_crit_term():
         assert w["htk"] == want_htk, f"{wid}: catalogue htk is stale against the guaranteed derivation"
     # the crit weapons, and the Toxin Rifle that dropped its crit, pinned to the numbers this change shipped
     # (F62, 2026-09-18); burst_rifle's ttk moved 1558->2053 on 2026-09-23 (R6, F308) when its burst gap
-    # (t23) widened 275ms->410ms -- htk is unchanged, only cycle_ms moved, see the Balance rules table
-    for wid, want_htk, want_ttk in (("burst_rifle", 12, 2053), ("amr", 6, 2000), ("toxin_rifle", 15, 1540)):
+    # (t23) widened 275ms->410ms, then 2053->2567 the same day (polish round 1, F308) when the gap
+    # widened again, 410ms->550ms, once modelling the crit reopened R6 -- htk is unchanged throughout,
+    # only cycle_ms moved, see the Balance rules table
+    for wid, want_htk, want_ttk in (("burst_rifle", 12, 2567), ("amr", 6, 2000), ("toxin_rifle", 15, 1540)):
         assert CAT.hits_to_kill(wid, DEFAULT_POOL) == want_htk, wid
         assert CAT.time_to_kill(wid, DEFAULT_POOL) == want_ttk, wid
         assert CAT.damage_per_pull(wid) == CAT.damage(wid), \

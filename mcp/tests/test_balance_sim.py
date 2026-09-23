@@ -503,37 +503,21 @@ def test_range_duel_rules_clear_the_65_percent_bar():
     split moved 8+1 to 7+2; R7 (Burst Rifle beats a full-auto AR) shared R6's only lever and lost
     margin to it until the Assault Rifle's own `after_heavy` tightened 8 to 7.
 
-    ⚠ TWO CELLS ARE A KNOWN, UNRESOLVED GAP (2026-09-23, polish round 1, F308): crits were not
-    modelled in this engine until this pass (`compile.py`'s `t6`, magnitude x `CRIT_MULT` truncated
-    -- see `test_a_crit_lands_1_5x_truncated_same_as_the_gun` below). Modelling the Burst Rifle's own
-    40% (its damage_per_pull-only average rises about 20%) revealed that R4's SMG pairing and R6 were
-    never clearing 65% with real margin: R4b now reads ~48.8%, R6 ~21.7%. Tony has NOT chosen a lever
-    yet -- candidates (the Burst Rifle's own `crit_pct`, its `overrides.t23` gap, or its `wire.dmg`)
-    are swept and reported in FOLLOWUPS F308, none applied. `KNOWN_CRIT_GAPS` below is a self-expiring
-    exemption, same convention as `test_mc_compile.py`'s `KNOWN_DOMINANCE`: each cell is asserted
-    inside ITS OWN measured band, so a further regression still fails loudly, and a value outside the
-    band (including "it now clears 65%") fails too, rather than the exemption silently outliving its
-    cause."""
+    Modelling crits (polish round 1, same day, F308 -- see `test_a_crit_lands_1_5x_truncated_same_as_
+    the_gun` below) reopened R4b and R6: the Burst Rifle's own 40% `crit_pct` raises its average round
+    damage about 20%, and its `overrides.t23` gap (410ms) no longer held R6 or R4's SMG pairing above
+    65% once that was modelled (R4b ~48.8%, R6 ~21.7%). Tony kept the 40% crit and moved the gap again
+    instead (410 -> 550ms, the smallest single-token value of the three swept -- dmg, crit_pct, gap --
+    that clears R4b, R4d, R6 and R7 together; docs/weapon-design.md Sec7.5d has the full sweep, kept
+    as history). All ten cells clear 65% again with the crit modelled and the 550ms gap shipped."""
     m = _recoil_model()
     reps = 10_000
     results = {r.label.replace("range_", "", 1): r
               for r in B.range_duel_report(m, reps, SEED, tuple(sorted(B.RANGE_RULES)))}
 
-    # key -> (low, high): the measured win rate must stay in this band -- below 0.65 (still broken)
-    # and above a floor that would mean a further, unexplained regression.
-    KNOWN_CRIT_GAPS = {"4b": (0.35, 0.65), "6": (0.10, 0.65)}
-
     for key in sorted(B.RANGE_RULES):
         r = results[key]
         desc = B.RANGE_RULES[key][0]
-        if key in KNOWN_CRIT_GAPS:
-            lo, hi = KNOWN_CRIT_GAPS[key]
-            assert lo <= r.win_rate < hi, (
-                f"{desc}: the KNOWN CRIT GAP (F308) moved to {r.win_rate:.1%}, outside the tracked "
-                f"[{lo:.0%}, {hi:.0%}) band -- if it is now >= {hi:.0%}, delete this cell from "
-                "KNOWN_CRIT_GAPS (the gap closed); otherwise update the band and tell Tony."
-            )
-            continue
         assert r.win_rate >= 0.65, (
             f"{desc} broke: won only {r.win_rate:.1%} of {reps} duels (needs >= 65%). See "
             "docs/weapon-design.md's Balance rules table (F308)."

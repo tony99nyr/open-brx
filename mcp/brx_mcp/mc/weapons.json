@@ -58,7 +58,7 @@
    "rof": 100,
    "rng": 75,
    "htk": 12,
-   "ttk_ms": 2053,
+   "ttk_ms": 2567,
    "range_band": "mid",
    "range_target_m": "18-20 indoor / 40-45 outdoor (Q15)",
    "recoil": {
@@ -77,8 +77,8 @@
    },
    "overrides": {
     "t23": {
-     "value": 410,
-     "why": "R6 (docs/weapon-design.md Balance rules table, Tony 2026-09-23): a bursting AR should beat the Burst Rifle most of the time, and the Burst Rifle should still beat a full-auto AR (R7). The recoil-duel sim (`--scenario range-duel`) showed the captured 275ms gap makes the Burst Rifle's sustained DPS beat even a disciplined, always-crisp AR burst -- a real balance hole, not a modelling artefact. Widening the gun-enforced gap between bursts (never the per-round dmg, which would move htk and unravel the crit_pct average-preserving cut from F62) is the smallest single-token lever that clears R6 with a safe margin; R7 does not clear 65% at any gap that also clears R6 (the two rules pull the same lever in opposite directions -- see weapon-design.md's Balance rules table note and F308)."
+     "value": 550,
+     "why": "R6 (docs/weapon-design.md Balance rules table, Tony 2026-09-23): a bursting AR should beat the Burst Rifle most of the time, and the Burst Rifle should still beat a full-auto AR (R7). The recoil-duel sim (`--scenario range-duel`) showed the captured 275ms gap makes the Burst Rifle's sustained DPS beat even a disciplined, always-crisp AR burst -- a real balance hole, not a modelling artefact. Widening the gun-enforced gap between bursts (never the per-round dmg, which would move htk and unravel the crit_pct average-preserving cut from F62) is the smallest single-token lever that clears R6. First shipped at 410ms without crits modelled. **2026-09-23, polish round 1 (F308):** modelling the Burst Rifle's own 40% `crit_pct` (previously not simulated at all) reopened R6 and R4b at 410ms -- the crit raises its average round damage about 20%, closing the margin the 410ms gap depended on. Tony kept the 40% crit and moved the gap again instead: 410 -> 550ms is the smallest single-token value (of dmg, crit_pct and this gap, all three swept) that clears R4b, R4d, R6 AND R7 together at the full 65% bar -- see docs/weapon-design.md Sec7.5d for the full sweep table."
     }
    },
    "crit_pct": 40,
@@ -87,7 +87,7 @@
    "tags": [
     "assault"
    ],
-   "notes": "A real three-round burst: one pull, three rounds, and the gun enforces the gap. 11 hits from a 36-round mag with 216 behind it; the most total ammo of the burst pair, and the tighter of the two. 2026-09-17 arsenal review: damage raised 9 to 11 so the burst pair separates further from the SMG-class assault weapons on hits-to-kill, not only on cadence. 2026-09-23 (R6/R7, F291/F308): the gap between bursts (t23) widened 275ms to 410ms so a disciplined AR burst beats it most of the time (R6); this is a real trade against R7 (Burst Rifle vs a full-auto AR), which no longer clears 65% -- see the Balance rules table."
+   "notes": "A real three-round burst: one pull, three rounds, and the gun enforces the gap. 11 hits from a 36-round mag with 216 behind it; the most total ammo of the burst pair, and the tighter of the two. 2026-09-17 arsenal review: damage raised 9 to 11 so the burst pair separates further from the SMG-class assault weapons on hits-to-kill, not only on cadence. 2026-09-23 (R6/R7, F291/F308): the gap between bursts (t23) widened 275ms to 410ms so a disciplined AR burst beats it most of the time (R6), against a real trade with R7. 2026-09-23, polish round 1 (F308): modelling the Burst Rifle's own 40% crit reopened R6 (and R4's SMG pairing) at 410ms, so t23 moved again, 410 to 550ms -- the smallest single-token value that clears R4b, R4d, R6 and R7 together with the crit kept. See the Balance rules table."
   },
   {
    "weapon_id": "force_rifle",

@@ -18,7 +18,7 @@ says the rule is judgement only.
 | 8 | The headset is the primary target: 4 of the tagger's 5 hit sensors sit there, so it carries no bonus multiplier. `criticalShotModifier` (`t7`) compiles to 0, and a headset hit lands the same as a gun-body hit. | Tony, 2026-09-17 (arsenal review) | — | `mcp/tests/test_gameconfig.py::test_crit_modifier_defaults_to_zero_and_headset_multiplier_is_1x` |
 | 9 | Easy Reload is accessibility, not balance: it is never tuned or cut on balance grounds, and it lives beside the per-player pool handicap, independent of the perk slot. | Tony, 2026-09-17 ("my daughter cant reload the brx normally") | S50 | `mcp/tests/test_mc_loadout.py::test_easy_reload_is_refused_beside_a_chain_reload_weapon`, `::test_easy_reload_is_refused_beside_a_second_weapon_end_to_end` |
 | 10 | The rebalance changes numbers, not feel: every weapon keeps Battle Company's captured fire mode, burst pattern, heat/overheat mechanic and sound; only the declared balance tokens move. | design principle, ongoing | weapon-design.md §2.1 principles 1-3 | judgement, not tested |
-| 11 | R4-R9: six close/mid-range duel rules (close = gun + headset word, mid = gun word alone), each **≥ 65%**. ⚠ R4b and R6 stopped clearing it once crits were modelled (F308) — open, see §7.5d. | Tony, 2026-09-23 | F308 | §7.5d; `mcp/tests/test_balance_sim.py::test_range_duel_rules_clear_the_65_percent_bar` |
+| 11 | R4-R9: six close/mid-range duel rules (close = gun + headset word, mid = gun word alone), each **≥ 65%**. Modelling the Burst Rifle's 40% crit reopened R4b and R6; Tony kept the crit and moved the burst gap again, 410 → 550 ms, the smallest single-token value that clears all four affected cells — see §7.5d. | Tony, 2026-09-23 | F308 | §7.5d; `mcp/tests/test_balance_sim.py::test_range_duel_rules_clear_the_65_percent_bar` |
 | 12 | R10: sidearms finish a kill, they do not compete with rifles — real-world Desert Eagle cadence and USP magazine levers, plus the Suppressor's own recoil exception. All fourteen checks clear their bars. See §7.5e. | Tony, 2026-09-23 | F308 | §7.5e; `mcp/tests/test_balance_sim.py::test_r10_sidearms_finish_a_kill_under_a_second`, `::test_r10_primaries_beat_sidearms_at_65_percent` |
 
 ## ⚠️ Three arsenals, and only one of them is ours
@@ -133,7 +133,7 @@ synthesise:
 | behaviour | token | who has it |
 |---|---|---|
 | **fire mode** | `t20` | see §4.1 — this is the big one |
-| 3-round burst timing | `t23` | Burst Rifle (captured 275, ships 410 since 2026-09-23 — R6, row 11), Force Rifle (250) — nobody else |
+| 3-round burst timing | `t23` | Burst Rifle (captured 275, ships 550 since 2026-09-23 — R6, row 11, §7.5d), Force Rifle (250) — nobody else |
 | overheat + overheat sound | `t24`/`t35` | SMG (5), Energy Rifle (6), Charge Rifle (14), Plasma Sniper (30) |
 | damage type | `t3` | Rocket 10 lethal-explosive, Rail 6 armor-piercing, Melee 13, Charge Rifle 8 |
 | reload type | `t19` | Shotgun **2 = Shells**, Melee 10 — everything else 0 |
@@ -226,7 +226,7 @@ sounds — and moves the numbers.
 | Plasma Sniper | marksman | 25 | 400 | 4 | **1.20** | 62.5 | 41.7 | 10 | 80 | 2000 | 95% | 30 | dmg 80→25, cycle 225→400; **2026-09-18**: htk 5→4, TTK 1.60→1.20s (our chosen 10-damage headset word, `wire.headset_dmg`/t12, stacks unconditionally, 35 real per pull; ⚠️ this weapon has NEVER been captured -- cap30 fired only a Shotgun -- so its second word rests on a sourced t12=80 and nothing else); `dmg`/`dps`/`sust`/one-mag % here are the gun word alone, same caveat as the Shotgun; §7 |
 | AMR | support | 21 | 400 | 6 | **2.00** | 52.5 | 42.0 | 14 | 56 | 1400 | 99% | — | dmg 18→24, cycle 360→400; **2026-09-18** (F62): dmg 24→21, htk 5→6, TTK 1.60→2.00s — 30% `crit_pct` (a crit is x1.5 truncated, so 21→31) pays for itself: average damage per hit holds at 24.15, but the published number is now the GUARANTEED five-hit-plus kill, six hits when unlucky. Mag/reserve untouched |
 | Force Rifle | assault | 10 | 100 +250 | 12 | **1.65** | 66.7 | 50.7 | 36 | 144 | 1700 | 100% | — | dmg 9→10 |
-| Burst Rifle | assault | 10 | 75 +410 | 12 | **2.05** | 53.6 | 42.8 | 36 | 216 | 1700 | 100% | — | **2026-09-17**: dmg 9→11 (`wire.dmg`); **2026-09-18** (F62): dmg 11→10, htk 11→12, TTK 1.42→1.56s — 40% `crit_pct` (a crit is x1.5 truncated, so 10→15) pays for itself: average damage per hit holds at 11.25, but the published number is now the guaranteed 4-pull kill; a 3-pull kill lands about 27% of the time. **2026-09-23** (R6, F308): burst gap (t23, `overrides.t23`) widened 275→410ms so a disciplined AR burst beats it most of the time — see the Balance rules table; htk unchanged, only cycle/TTK moved. Mag/reserve untouched |
+| Burst Rifle | assault | 10 | 75 +550 | 12 | **2.57** | 42.9 | 35.6 | 36 | 216 | 1700 | 100% | — | **2026-09-17**: dmg 9→11 (`wire.dmg`); **2026-09-18** (F62): dmg 11→10, htk 11→12, TTK 1.42→1.56s — 40% `crit_pct` (a crit is x1.5 truncated, so 10→15) pays for itself: average damage per hit holds at 11.25, but the published number is now the guaranteed 4-pull kill; a 3-pull kill lands about 27% of the time. **2026-09-23** (R6, F308): burst gap (t23, `overrides.t23`) widened 275→410ms so a disciplined AR burst beats it most of the time. **2026-09-23, polish round 1** (F308): modelling the crit reopened R6 at 410ms, so the gap widened again, 410→550ms — see the Balance rules table §7.5d; htk unchanged, only cycle/TTK moved. Mag/reserve untouched |
 | Stinger | cqb | 15 | 250 | 8 | **1.75** | 60.0 | 43.5 | 18 | 144 | 1700 | 99% | — | cycle 120→250, res 72→144 |
 | Bolt Rifle | assault | 13 | 225 | 9 | **1.80** | 57.8 | 38.7 | 18 | 180 | 2000 | 98% | — | **stock** |
 | SMG | cqb | 7 | 100 | 13 | **1.20** | 70.0 | 47.8 | 54 | 216 | 2500 | 100% | 5 | **2026-09-20 playtest**: a covered gun emitter produced no headset hit because captured t12 was empty. Open BRX now deliberately adds a headset word at the known-good carrier 100; cycle 95→100 and mag/reserve 72/288→54/216 keep the added word priced and preserve the Suppressor's magazine lead. **2026-09-23** (R5, F308): the split moved 8+1→7+2 (close range still 9); `dmg`/`dps`/`sust`/one-mag % here are the GUN WORD ALONE (7), same caveat as the Shotgun |
@@ -270,8 +270,8 @@ Bolt Rifle and Melee — their stock numbers already sat in the band.
   owed and unpaid.
 - **Burst Rifle** — **2026-09-17: damage 9 → 11** (`wire.dmg`), 13 hits → 11, so the real three-round
   burst separates further from the SMG-class assault weapons on hits-to-kill, not only on cadence
-  (75 ms intra-burst then a gap between bursts — the gap moved 275 → 410 ms on 2026-09-23, R6, row 11
-  below). No longer ships byte-for-byte (`verified: false`).
+  (75 ms intra-burst then a gap between bursts — the gap moved 275 → 410 → 550 ms on 2026-09-23, R6,
+  row 11 below, §7.5d). No longer ships byte-for-byte (`verified: false`).
 - **Force Rifle** — hidden since the 2026-09-17 cuts, and its old "heavier twin" identity is gone:
   the Burst Rifle went to 11 damage that day while the Force Rifle stayed at 10, so it is now the
   lighter AND slower of the burst pair (12 hits and 1.65 s against 11 hits and 1.42 s), with half the
@@ -1679,24 +1679,26 @@ Assault Rifle's own `after_heavy` tightening 8 → 7 (row 3) gave R7 a lever tha
 controlled-burst AR (it never reaches round 7). **(R8)** close range: the Shotgun beats the SMG on full
 auto (row 6's 700 ms). **(R9)** past headset range: the SMG beats the Shotgun.
 
-**⚠ Crits reopened R4b and R6 (2026-09-23, polish round 1, F308).** Crits were not modelled in this
-engine until this pass; the Burst Rifle's own 40% (`crit_pct`, `int(magnitude x 1.5)` truncated, same
-formula as `compile.py`'s `t6`) raises its average round damage about 20%. That closes enough of R4's
-SMG-vs-Burst-Rifle margin and R6's margin that neither clears 65% any more: **R4b ~48.8%, R6 ~21.7%** at
-10,000 reps (the shipped 700 ms Shotgun-vs-Burst-Rifle pairing, R4d, and R7 both stay clear at 68.8% and
-87.8%). Tony has not chosen a lever yet. Three candidates, each swept holding the other two at their
-shipped values (10,000 reps a cell):
+**Crits reopened R4b and R6, then Tony closed them (2026-09-23, polish round 1, F308).** Crits were not
+modelled in this engine until this pass; the Burst Rifle's own 40% (`crit_pct`, `int(magnitude x 1.5)`
+truncated, same formula as `compile.py`'s `t6`) raises its average round damage about 20%. That closed
+enough of R4's SMG-vs-Burst-Rifle margin and R6's margin that neither cleared 65% any more: **R4b ~48.8%,
+R6 ~21.7%** at 10,000 reps (the shipped 700 ms Shotgun-vs-Burst-Rifle pairing, R4d, and R7 both stayed
+clear at 68.8% and 87.8%). Three candidates were swept, each holding the other two at their shipped
+values (10,000 reps a cell) — kept here as history, not a live table:
 
 | lever | sweep | R4b | R4d | R6 | R7 | note |
 |---|---|---|---|---|---|---|
 | `crit_pct` | 40 → 0 | 48.8% → 81.2% | 68.8% → 87.9% | 21.7% → 68.3% | 87.8% → 67.0% | no partial value clears R4b AND R6; only removing the crit entirely does |
-| `overrides.t23` (gap) | 410 → 700 ms | 48.8% → 93.3% | 68.8% → 93.1% | 21.7% → 89.9% | 87.8% → 41.6% | **550 ms clears all four** (79%/87%/69%/66%) — the one candidate that works alone |
+| `overrides.t23` (gap) | 410 → 700 ms | 48.8% → 93.3% | 68.8% → 93.1% | 21.7% → 89.9% | 87.8% → 41.6% | **chosen: 550** — the only candidate that clears all four alone (79%/87%/69%/66%) |
 | `wire.dmg` | 10 → 7 | 48.8% → 96.2% | 68.8% → 96.5% | 21.7% → 95.2% | 87.8% → 37.6% | dmg 8 clears R4b/R4d/R6 but drops R7 to 61%; no integer value clears all four |
 
-Full tables: `python3 mcp/tools/balance_sim.py --scenario range-duel` (current); the sweep itself is not
-a saved preset — rerun with `RecoilDuelModel.from_catalog` and `dataclasses.replace` per FOLLOWUPS F308.
-`mcp/tests/test_balance_sim.py::test_range_duel_rules_clear_the_65_percent_bar`'s `KNOWN_CRIT_GAPS`
-tracks the two open cells so the suite stays green and the gap stays visible until Tony picks a lever.
+**Tony's decision: keep the 40% crit, move the gap again** (`overrides.t23`, 410 → 550 ms — the
+smallest single-token value of the three swept above that clears R4b, R4d, R6 and R7 together with the
+crit modelled). Shipped 2026-09-23. All ten R4-R9 cells clear 65% again:
+`python3 mcp/tools/balance_sim.py --scenario range-duel`; gated in CI by
+`mcp/tests/test_balance_sim.py::test_range_duel_rules_clear_the_65_percent_bar`. Bench item:
+`docs/FOLLOWUPS.md` F308.
 
 ### 7.5e R10: sidearms finish a kill, they do not compete with rifles (row 12)
 
