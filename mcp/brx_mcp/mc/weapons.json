@@ -788,7 +788,7 @@
    "mag": 2,
    "reserve": 2,
    "reload_ms": 2600,
-   "dmg": 100,
+   "dmg": 130,
    "rof": 8,
    "rng": 75,
    "range_band": "close",
@@ -806,7 +806,7 @@
     "frame": "$WEAP,0,2,100,10,0,115,0,,,,,,115,80,1000,850,2,8,1200,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,4,75,30,*"
    },
    "wire": {
-    "headset_dmg": 0,
+    "headset_dmg": 35,
     "headset_range_outdoor": 100,
     "headset_range_indoor": 100,
     "range_outdoor_pct": 22
@@ -818,7 +818,7 @@
     "power",
     "heavy"
    ],
-   "notes": "Point, pull, erase. 115 a hit (a full-health operator in one) on the fastest power-tier cycle, with the slowest reload behind it. Four rounds, four kills, no second chances."
+   "notes": "Point, pull, erase. 115 a hit, a full Standard pool in one; up close the headset word adds 35, so it also clears a full Shields pool (150). The fastest power-tier cycle, with the slowest reload behind it. Four rounds, no second chances."
   },
   {
    "weapon_id": "rail_gun",
@@ -830,7 +830,7 @@
    "mag": 2,
    "reserve": 2,
    "reload_ms": 2400,
-   "dmg": 100,
+   "dmg": 130,
    "rof": 6,
    "rng": 75,
    "range_band": "close",
@@ -848,7 +848,8 @@
     "frame": "$WEAP,1,0,100,6,0,115,0,,,,,,,,1200,850,1,6,2400,0,2,100,100,,0,,,C03,C08,,,D36,D35,D34,A73,,,,,1,3,75,*"
    },
    "wire": {
-    "range_outdoor_pct": 22
+    "range_outdoor_pct": 22,
+    "dmg": 149
    },
    "verified": false,
    "captured": true,
@@ -857,7 +858,7 @@
     "power",
     "heavy"
    ],
-   "notes": "Charges and fires itself. A 1.2s wind-up that goes whether you are ready or not, 115 on impact, four rounds total. Everyone within earshot hears the spool."
+   "notes": "Charges and fires itself. A 1.2s wind-up that goes whether you are ready or not, 149 on impact: a kill on Standard and Hardcore, and a full Shields player left on 1 HP. Four rounds total. Everyone within earshot hears the spool."
   },
   {
    "weapon_id": "laser_cannon",

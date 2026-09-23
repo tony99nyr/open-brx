@@ -525,10 +525,13 @@ def test_weapon_design_health_sensitivity_table_matches_the_wire():
         pools.append(int(m.group(1)))
     assert pools == [100, DEFAULT_POOL, 150, 200], pools
     by_name, bad, covered = _by_name(), [], set()
+    # A heavy with its own row (the Rocket Launcher and Rail Gun, Tony 2026-09-23) leaves the power-tier row.
+    own_rows = {by_name[_cell(r[0]).lower()] for r in rows[1:] if _cell(r[0]).lower() in by_name}
     for r in rows[1:]:
         label = _cell(r[0])
         if label.lower().startswith("power tier"):
-            ids = [w["weapon_id"] for w in ROWS if CAT.damage(w["weapon_id"]) >= DEFAULT_POOL]
+            ids = [w["weapon_id"] for w in ROWS
+                   if CAT.damage(w["weapon_id"]) >= DEFAULT_POOL and w["weapon_id"] not in own_rows]
         else:
             names = [n.strip() for n in label.split("/")]
             # EVERY name must resolve. The old version filtered unresolvable ones out and kept going,

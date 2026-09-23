@@ -276,10 +276,10 @@ export const DEMO_WEAPONS = [
     "reserve": 2,
     "reload_s": 2.4,
     "reload_ms": 2400,
-    "dmg": 100,
+    "dmg": 130,
     "rpm": 6,
     "rng": 75,
-    "dmg_per_hit": 115,
+    "dmg_per_hit": 149,
     "dual_emitter": false,
     "pool": 115,
     "verified": false,
@@ -299,7 +299,7 @@ export const DEMO_WEAPONS = [
       "recover_ms": 0
     },
     "hir": [
-      115
+      149
     ],
     "ammo_total": 4,
     "bars": {
@@ -320,11 +320,11 @@ export const DEMO_WEAPONS = [
     "reserve": 2,
     "reload_s": 2.6,
     "reload_ms": 2600,
-    "dmg": 100,
+    "dmg": 130,
     "rpm": 8,
     "rng": 75,
-    "dmg_per_hit": 115,
-    "dual_emitter": false,
+    "dmg_per_hit": 150,
+    "dual_emitter": true,
     "pool": 115,
     "verified": false,
     "tags": [
@@ -343,6 +343,7 @@ export const DEMO_WEAPONS = [
       "recover_ms": 0
     },
     "hir": [
+      35,
       115
     ],
     "ammo_total": 4,

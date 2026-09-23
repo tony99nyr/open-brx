@@ -86,7 +86,8 @@ def test_health_pool_and_to_gc_and_validate_agree_across_hp_armor_perk_spread():
     # Armor (+50) re-graded every weapon for the whole field, and as a hard error it blocked two
     # pushes at a real match. The 255 ceiling still applies, and so does a per-player health override.
 
-    # rocket_launcher resolves at 115 dmg / mag 2 -> threshold 230. The perk must NOT swing this.
+    # rocket_launcher resolves at 150 a pull (115 + its 35 headset word) / mag 2 -> threshold 300. The perk
+    # must NOT swing this.
     ok = C.validate(_cfg(45, 150), [_player("rocket_launcher")])
     assert not any("ONE MAGAZINE" in w for w in ok["warnings"]), ok["warnings"]     # pool 195, legal
     tipped = C.validate(_cfg(45, 150), [_player("rocket_launcher", perk="body_armor")])
@@ -94,11 +95,11 @@ def test_health_pool_and_to_gc_and_validate_agree_across_hp_armor_perk_spread():
         "body_armor re-graded the weapon: the guard reads the BASE pool (195), not the armed pool: "
         f"{tipped['warnings']}"
     )
-    # ...and the base pool itself still moves it: 45 + 200 = 245 > 230 is over the line
-    over = C.validate(_cfg(45, 200), [_player("rocket_launcher")])
+    # ...and the base pool itself still moves it: 60 + 250 = 310 > 300 is over the line (armour caps at 255)
+    over = C.validate(_cfg(60, 250), [_player("rocket_launcher")])
     said = [w for w in over["warnings"] if "ONE MAGAZINE" in w]
-    assert said and "245 pool" in said[0], over["warnings"]
-    assert C.validate(_cfg(45, 200), [_player("rocket_launcher")])["ok"], "a guideline never blocks"
+    assert said and "310 pool" in said[0], over["warnings"]
+    assert C.validate(_cfg(60, 250), [_player("rocket_launcher")])["ok"], "a guideline never blocks"
 
     # The 255 ceiling is clamped inside the guard's OWN pool: max_armor=300 must grade as 45+255=300,
     # never as 45+300=345.
