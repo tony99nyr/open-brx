@@ -83,8 +83,9 @@ export const WEAPONS: WeaponView[] = [
       "floor": 70,
       "per_shot": 10,
       "recover_ms": 150,
-      "degraded": 80,
-      "heavy": 60
+      "degraded": 70,
+      "heavy": 40,
+      "after_heavy": 8
     },
     "ammo_total": 224,
     "bars": {
@@ -158,7 +159,7 @@ export const WEAPONS: WeaponView[] = [
     ],
     "role": "marksman",
     "htk": 4,
-    "ttk_ms": 855,
+    "ttk_ms": 1050,
     "rounds_per_charge": 10,
     "recoil": {
       "ceiling": 100,

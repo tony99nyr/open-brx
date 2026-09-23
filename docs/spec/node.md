@@ -426,15 +426,27 @@ full auto, and that it arrives in order against the `$ALCD` stream it races.
 `settle_ms` from `{ceiling, floor, recover_ms}` and `after_shots`/`after_heavy` from rounds-per-pull as above
 (`per_shot` no longer sizes anything). Both S54 judgements are now settled: the SMG, the Suppressor and the
 Stinger floors are UP at 60 (Tony, 2026-09-18, kept 2026-09-23), and the doubling that had no evidence behind it
-is replaced outright by the rounds-and-calibre derivation (F280). The Assault Rifle now declares its depths
-explicitly too (`degraded: 80, heavy: 60`), pulling its floor down from the legacy 70 to 60 alongside the other
-reference-calibre weapons. The Burst Rifle carries NO recoil at all: it is a one-press burst trigger and cannot
-be held in full auto, so it ships flat (`ceiling == floor == 100`, `per_shot 0`), the same as every other weapon
-that cannot degrade.
+is replaced outright by the rounds-and-calibre derivation (F280). The Burst Rifle carries NO recoil at all: it
+is a one-press burst trigger and cannot be held in full auto, so it ships flat (`ceiling == floor == 100`,
+`per_shot 0`), the same as every other weapon that cannot degrade.
+
+**The Assault Rifle is its own explicit exception (Tony, 2026-09-23, F291), deeper still than the other
+reference-calibre weapons.** `mcp/tools/balance_sim.py --scenario recoil-duel` checked three duel rules the
+same day (a charged Charge Rifle beats an AR, an AR that catches an uncharged CR beats it, and an AR firing
+controlled 3-5 round bursts beats one held in full auto) and found the third failing at the shared 100/80/60
+ladder: a burst short enough to stay crisp never earned back what its own dead time between bursts cost it
+against a full-auto AR that only reached `heavy` after round 9. The AR now declares `degraded: 70, heavy: 40`
+and an explicit `after_heavy: 8` (not derived): `after_shots` still derives to 6 from the reference damage, so
+a controlled burst (at most 5 rounds) still never degrades at all, but full auto now goes heavy one round
+sooner, on round 8 rather than 9 -- the floor "only punishes a player who holds past 7 rounds" (Tony). This is
+a deliberate divergence from the SMG/Suppressor/Stinger 60 floor, not an oversight: those weapons carry a mild
+penalty, the anchor rifle now carries a real one. `test_ttk_band_and_no_strictly_dominant_weapon`
+(`mcp/tests/test_mc_compile.py`) still passes unchanged -- the AR still leads its family on every felt axis
+(ttk/kpc/pk/sust), so no exemption was needed there.
 
 | weapon | crisp | degraded | heavy | after_shots | after_heavy | settle_ms |
 |---|---|---|---|---|---|---|
-| assault_rifle | 100 | 80 | 60 | 6 | 9 | 600 |
+| assault_rifle | 100 | 70 | 40 | 6 | 8 | 600 |
 | burst_rifle | 100 | 100 | 100 | n/a | n/a | n/a (no recoil model: flat) |
 | smg | 100 | 80 | 60 | 6 | 9 | 600 |
 | suppressor | 100 | 80 | 60 | 7 | 10 | 600 |

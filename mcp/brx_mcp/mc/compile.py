@@ -1058,13 +1058,18 @@ def _load_weapons() -> list[dict]:
 # "first shot free" convention as every other weapon) plus however many taps close the rest of the
 # pool. MEASURED on hardware 2026-09-18 (was a 500 ms placeholder): a full charge released, then five
 # taps as fast as the operator could pull, gave 285, 270, 300, 285 ms press to press on the shooter
-# and 300, 270, 300, 330 ms on the victim. 285 ms is the shooter-side mean. The same run confirmed the
-# rest of the model: the release costs exactly 10 rounds, each tap costs 1, the charge lands t5 (85)
-# and every tap lands t37 (20). Consequence: against the 115 pool the kill is a charge plus TWO taps,
-# 570 ms from release, not the 1.0 s the 500 ms placeholder implied. Module-level so `views.py` can
-# redo the same release-to-kill maths `WeaponCatalog.time_to_kill()` does, at whatever pool the host
-# has set.
-CHARGE_TAP_CADENCE_MS = 285
+# and 300, 270, 300, 330 ms on the victim. 285 ms was the shooter-side mean of that bench run. The
+# same run confirmed the rest of the model: the release costs exactly 10 rounds, each tap costs 1,
+# the charge lands t5 (85 then) and every tap lands t37 (20). Module-level so `views.py` can redo the
+# same release-to-kill maths `WeaponCatalog.time_to_kill()` does, at whatever pool the host has set.
+#
+# 2026-09-23 (Tony, F291): raised 285 -> 350 as a BALANCE decision off the recoil duel sim
+# (`mcp/tools/balance_sim.py --scenario recoil-duel`), not a new bench measurement -- 285 remains the
+# only hardware-measured trigger-pull rate this constant has ever had. This is the one number in this
+# module the wire does not carry at all (no `$WEAP` token encodes a human's own tap rate), so there is
+# nothing for a bench session to re-measure against; flagged for the F308 bench row regardless, in
+# case a future session wants to check whether 350 is still comfortable at the trigger.
+CHARGE_TAP_CADENCE_MS = 350
 
 
 class WeaponCatalog:

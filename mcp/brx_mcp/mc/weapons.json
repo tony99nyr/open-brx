@@ -23,8 +23,9 @@
     "floor": 70,
     "per_shot": 10,
     "recover_ms": 150,
-    "degraded": 80,
-    "heavy": 60
+    "degraded": 70,
+    "heavy": 40,
+    "after_heavy": 8
    },
    "capture": {
     "src": "2026-08-26-weapons-ar-plus-burstrifle.btsnoop",
@@ -41,7 +42,7 @@
    ],
    "ap_dmg": 7,
    "ap_fire_ms": 225,
-   "notes": "The anchor, and the real stock M4 cadence. 13 hits at 100ms with 32 up and 192 in reserve: 17 kills without resupply and a 1.20s kill. 2026-09-17 arsenal review: cycle is back to Battle Company's native 100ms (it was throttled to 140ms so a deep reserve could not also out-cycle the field); the dominance test now grades on one-magazine kill chance rather than total kills, so the reserve alone no longer has to carry the whole weight of keeping the AR in check."
+   "notes": "The anchor, and the real stock M4 cadence. 13 hits at 100ms with 32 up and 192 in reserve: 17 kills without resupply and a 1.20s kill. 2026-09-17 arsenal review: cycle is back to Battle Company's native 100ms (it was throttled to 140ms so a deep reserve could not also out-cycle the field); the dominance test now grades on one-magazine kill chance rather than total kills, so the reserve alone no longer has to carry the whole weight of keeping the AR in check. 2026-09-23 (F291, the recoil duel sim): Tony deepened the ladder from degraded 80/heavy 60 to degraded 70/heavy 40, with `after_heavy` declared at 8 so heavy only starts once a burst holds past 7 rounds -- `after_shots` still derives to 6 from the reference dmg (unchanged). This is an explicit, deliberate exception to the SMG/Suppressor/Stinger 60 floor: those weapons stop at a mild penalty, the anchor rifle earns a real one for holding the trigger down, which is what makes short controlled bursts beat full auto in the duel sim."
   },
   {
    "weapon_id": "burst_rifle",
@@ -544,7 +545,7 @@
    "rof": 6,
    "rng": 75,
    "htk": 4,
-   "ttk_ms": 855,
+   "ttk_ms": 1050,
    "range_band": "long",
    "range_target_m": "full reach indoor / 60m+ outdoor (Q15; it charges behind cover, then reaches)",
    "recoil": {
@@ -573,7 +574,7 @@
     "marksman",
     "sniper"
    ],
-   "notes": "2026-09-23 (F280): charge damage 85 -> 70 (`wire.dmg`), which raises the kill from one charge plus two taps to one charge plus THREE. Pre-charge it behind cover, then the kill is one release and three taps: a 70-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus three 20-damage taps drops a 115 pool in 0.855s from release (4 trigger actions at the bench-measured 285ms tap cadence, S43 -- the cadence itself is a measured fact and is UNCHANGED here) -- 13 of the 40 rounds up, about 98 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, eighty back -- three combo kills a magazine, ten across the kit."
+   "notes": "2026-09-23 (F280): charge damage 85 -> 70 (`wire.dmg`), which raises the kill from one charge plus two taps to one charge plus THREE. Pre-charge it behind cover, then the kill is one release and three taps: a 70-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus three 20-damage taps drops a 115 pool in 1.05s from release (4 trigger actions at the CHARGE_TAP_CADENCE_MS tap cadence) -- 13 of the 40 rounds up, about 98 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, eighty back -- three combo kills a magazine, ten across the kit. 2026-09-23 (F291, later the same day): the tap cadence itself moved 285 -> 350ms, off the recoil duel sim, not a re-bench -- see CHARGE_TAP_CADENCE_MS in compile.py. htk/ttk_ms above are the RECOMPUTED numbers (1.05s, was 0.855s)."
   },
   {
    "weapon_id": "glock",

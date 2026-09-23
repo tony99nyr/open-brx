@@ -307,12 +307,14 @@ def test_main_writes_a_csv_and_a_summary_where_it_is_told():
 
 def test_recoil_profile_pins_the_shipped_ar_against_the_engine_test():
     """`app/test/engine.test.mjs` ('S54: the round counts are derived from the row's dmg...') pins the
-    shipped Assault Rifle row's `_recoilProfile()` output at crisp 100, degraded 80, heavy 60, after 6
-    rounds, heavy after 9, settled at the 600 ms floor. This is the SAME row (`weapons.json`
-    `assault_rifle`), read through the Python mirror -- if the two ever disagree, one of the two files
-    drifted from `app/src/engine.js` and this test is what catches it."""
+    shipped Assault Rifle row's `_recoilProfile()` output at crisp 100, degraded 70, heavy 40, after 6
+    rounds, heavy after 8, settled at the 600 ms floor -- Tony's 2026-09-23 deepening (F291): `heavy`
+    only starts once a burst holds past 7 rounds, an explicit `after_heavy: 8` declared alongside the
+    deeper floor. This is the SAME row (`weapons.json` `assault_rifle`), read through the Python
+    mirror -- if the two ever disagree, one of the two files drifted from `app/src/engine.js` and this
+    test is what catches it."""
     p = B.recoil_profile(CAT._row("assault_rifle"))
-    assert p == B.RecoilProfile(crisp=100.0, degraded=80, heavy=60.0, after_shots=6, heavy_after=9,
+    assert p == B.RecoilProfile(crisp=100.0, degraded=70, heavy=40.0, after_shots=6, heavy_after=8,
                                 settle_ms=600.0), p
 
 
@@ -364,25 +366,29 @@ def test_recoil_duel_seeded_runs_land_in_band():
                              float(B.CHARGE_TAP_CADENCE_MS))
     r3 = B.recoil_duel_batch(B.run_recoil_duel_rule3, "burst", 2000, SEED, "rule3_test", m)
     assert 0.88 < r1.win_rate < 0.98, r1.win_rate    # rule 1: a charged CR clearly beats an AR
-    assert 0.20 < r2.win_rate < 0.40, r2.win_rate     # rule 2: the AR is burst-disciplined too (Tony's
-                                                       # 2026-09-23 correction), so its own 150-300 ms
-                                                       # dead time costs it against a caught, tapping CR
-    assert 0.20 < r3.win_rate < 0.40, r3.win_rate     # rule 3: at the default 150-300 ms pause, the burst
-                                                       # player's own dead time outweighs full auto's degrade
+    assert 0.60 < r2.win_rate < 0.80, r2.win_rate     # rule 2: the AR is burst-disciplined too (Tony's
+                                                       # 2026-09-23 correction) and the tap cadence moved
+                                                       # 285->350ms the same day, both of which favour it
+    assert 0.60 < r3.win_rate < 0.85, r3.win_rate     # rule 3: the deepened AR ladder (degraded 70,
+                                                       # heavy 40 from round 8, Tony 2026-09-23) now clears
+                                                       # rule 3 at the DEFAULT 150-300 ms pause -- shipped
     # same seed, same cell key -> the same answer, regardless of what else ran first (parallel-safe).
     again = B.recoil_duel_batch(B.run_recoil_duel_rule1, "cr", 2000, SEED, "rule1_test", m,
                                 float(B.CHARGE_TAP_CADENCE_MS))
     assert (again.wins, again.reps) == (r1.wins, r1.reps)
 
 
-def test_recoil_duel_rule3_flips_with_a_shorter_burst_pause():
+def test_recoil_duel_rule3_wins_more_with_a_shorter_burst_pause():
     """The burst player is ALWAYS crisp in this model (burst_max 5 < the AR's derived after_shots 6:
     see `test_recoil_profile_pins_the_shipped_ar_against_the_engine_test`), so the 150-300 ms pause
-    buys it no recoil recovery it did not already have on release -- it is pure dead time. Shrinking it
-    is the one lever that flips rule 3 back over 60%, which is the finding the report leads with."""
+    buys it no recoil recovery it did not already have on release -- it is pure dead time. Before
+    Tony's 2026-09-23 AR ladder deepening (degraded 70, heavy 40 from round 8), shrinking the pause was
+    the ONLY lever that got rule 3 over 60%; the deepened ladder now clears it at the shipped 150-300 ms
+    pause too (see `test_recoil_duel_seeded_runs_land_in_band`), so a shorter pause only widens the
+    margin further -- this pins that it still does, not that it is still load-bearing."""
     m = _recoil_model(burst_pause_min_ms=0.0, burst_pause_max_ms=50.0)
     r = B.recoil_duel_batch(B.run_recoil_duel_rule3, "burst", 4000, SEED, "rule3_shortpause", m)
-    assert r.win_rate > 0.75, r.win_rate
+    assert r.win_rate > 0.9, r.win_rate
 
 
 def test_recoil_duel_cli_runs_end_to_end():
