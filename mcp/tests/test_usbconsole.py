@@ -1,6 +1,6 @@
 """Tests for the USB device-record parser (pure — no serial/hardware)."""
 
-from brx_mcp.usbconsole import parse_query
+from brx_mcp.usbconsole import parse_usb_query
 
 SAMPLE = """Gun Info
 Gun Version: v4.32
@@ -27,7 +27,7 @@ BT central V: devhost.03
 
 
 def test_parses_core_identity_fields():
-    r = parse_query(SAMPLE)
+    r = parse_usb_query(SAMPLE)
     assert r["gun_version"] == "v4.32"
     assert r["serial_head_pin"] == "SNTEST01"       # the headset sticker id
     assert r["gun_name"] == "Tactix2"
@@ -36,7 +36,7 @@ def test_parses_core_identity_fields():
 
 
 def test_parses_numeric_fields():
-    r = parse_query(SAMPLE)
+    r = parse_usb_query(SAMPLE)
     assert r["gun_volts"] == 7.671 and r["head_volts"] == 3.837
     assert r["player_id"] == 0 and r["field_id"] == 1
     assert r["nrf_host"] == 1 and r["nrf_slave"] == 1 and r["dev_host"] == 1
@@ -46,11 +46,11 @@ def test_parses_numeric_fields():
 
 
 def test_headset_linked_flag():
-    assert parse_query(SAMPLE)["headset_linked"] is True
+    assert parse_usb_query(SAMPLE)["headset_linked"] is True
     # a fresh power-cycle reads Headset Version '?' until re-handshake → not linked
     unlinked = SAMPLE.replace("Headset Version: hds.59", "Headset Version: ?") \
                      .replace("Serial Number/Head PIN: SNTEST01", "Serial Number/Head PIN:")
-    assert parse_query(unlinked)["headset_linked"] is False
+    assert parse_usb_query(unlinked)["headset_linked"] is False
 
 
 def test_real_world_quirks_nul_padding_and_untested_laser():
@@ -59,7 +59,7 @@ def test_real_world_quirks_nul_padding_and_untested_laser():
            "Grenade Pin: 7052\r\r\n"
            "Laser: UNTESTED\r\r\n"
            "Gun BURN in test:  None\r\r\n")
-    r = parse_query(raw)
+    r = parse_usb_query(raw)
     assert r["gun_name"] == "Tactix"          # NUL padding stripped
     assert r["grenade_pin"] == 7052           # a real non-zero pin
     assert r["laser"] == "UNTESTED" and r["laser_mw"] is None
@@ -67,20 +67,20 @@ def test_real_world_quirks_nul_padding_and_untested_laser():
 
 
 def test_numeric_laser_still_parses():
-    r = parse_query("Laser: 16.9 mW\r\n")
+    r = parse_usb_query("Laser: 16.9 mW\r\n")
     assert r["laser_mw"] == 16.9 and r["laser"] == "16.9 mW"
 
 
 def test_empty_and_garbage_dont_crash():
-    assert parse_query("")["gun_version"] is None
-    assert parse_query("random noise\nno fields here")["serial_head_pin"] is None
-    assert parse_query("")["headset_linked"] is False
+    assert parse_usb_query("")["gun_version"] is None
+    assert parse_usb_query("random noise\nno fields here")["serial_head_pin"] is None
+    assert parse_usb_query("")["headset_linked"] is False
 
 
 def test_gun_name_does_not_bleed_across_interleaved_read():
     # a stale/interleaved read: "Gun Name: Tac" then a re-echoed "QUERY\rGun Info"
     raw = "Gun Name: Tac\x00\x00QUERY\rGun Info\r\n"
-    assert parse_query(raw)["gun_name"] == "Tac"   # bounded at NUL, no bleed
+    assert parse_usb_query(raw)["gun_name"] == "Tac"   # bounded at NUL, no bleed
 
 
 # ---- armory inventory accumulator (temp BASE_DIR, no hardware) ------------- #
@@ -101,13 +101,13 @@ def _with_tmp_base(fn):
 def test_inventory_add_and_merge_keyed_by_pin():
     def body():
         assert _uc.load_inventory() == {}
-        _uc.add_to_inventory(parse_query(SAMPLE) | {"serial_head_pin": "SNTEST01"})
+        _uc.add_to_inventory(parse_usb_query(SAMPLE) | {"serial_head_pin": "SNTEST01"})
         inv = _uc.load_inventory()
         assert "SNTEST01" in inv and inv["SNTEST01"]["headset_linked"] is True
-        _uc.add_to_inventory(parse_query(SAMPLE) | {"serial_head_pin": "SNTEST01", "player_id": 5})
+        _uc.add_to_inventory(parse_usb_query(SAMPLE) | {"serial_head_pin": "SNTEST01", "player_id": 5})
         inv = _uc.load_inventory()
         assert len(inv) == 1 and inv["SNTEST01"]["player_id"] == 5
-        _uc.add_to_inventory(parse_query(SAMPLE) | {"serial_head_pin": "Z9XYZ"})
+        _uc.add_to_inventory(parse_usb_query(SAMPLE) | {"serial_head_pin": "Z9XYZ"})
         assert set(_uc.load_inventory()) == {"SNTEST01", "Z9XYZ"}
     _with_tmp_base(body)
 
@@ -164,7 +164,7 @@ def test_usb_requery_preserves_ble_binding():
         # (which carries no ble fields) must NOT wipe the binding or confirmation.
         _uc.add_to_inventory({"serial_head_pin": "S1", "gun_name": "Tactix2",
                               "ble_address": "AA:98", "name_confirmed": True})
-        _uc.add_to_inventory(parse_query(SAMPLE) | {"serial_head_pin": "S1"})
+        _uc.add_to_inventory(parse_usb_query(SAMPLE) | {"serial_head_pin": "S1"})
         r = _uc.load_inventory()["S1"]
         assert r["ble_address"] == "AA:98" and r["name_confirmed"] is True
     _with_tmp_base(body)

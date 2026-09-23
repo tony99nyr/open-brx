@@ -7,7 +7,7 @@ CR-terminated. `QUERY` is read-only and dumps the whole device record — includ
 version + voltage, PlayerID, nRF flags, PCB rev, and laser power — none of which BLE
 exposes (verified 2026-08-24).
 
-Pure `parse_query()` is testable without hardware. `UsbConsole` needs pyserial + a
+Pure `parse_usb_query()` is testable without hardware. `UsbConsole` needs pyserial + a
 cabled tagger (runs on the machine with the USB port; here, the Windows tower).
 
 Credit: the QUERY/SETUP command set is from LaserTagMods' "Pairing Headset and Tagger".
@@ -47,7 +47,7 @@ def _num(s: Optional[str]):
             return s or None
 
 
-def parse_query(text: str) -> dict:
+def parse_usb_query(text: str) -> dict:
     """Parse a `QUERY` device-record dump into a normalized dict (pure)."""
     def grab(pattern: str):
         m = re.search(pattern, text, re.IGNORECASE)
@@ -138,10 +138,10 @@ class UsbConsole:
             self._flush_stale()
             self._ser.write(b"QUERY\r")
             text = self._read_record()
-            rec = parse_query(text)
+            rec = parse_usb_query(text)
             if rec.get("serial_head_pin") and rec.get("bt_central_v"):
                 return {"port": self.port, "raw": text, **rec}
-        return {"port": self.port, "raw": text, **parse_query(text)}
+        return {"port": self.port, "raw": text, **parse_usb_query(text)}
 
 
 # identity fields from USB QUERY + the BLE-side binding (ble_address / name_confirmed)

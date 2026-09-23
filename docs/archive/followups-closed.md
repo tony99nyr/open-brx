@@ -601,3 +601,8 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
   `brx.mc_url` and Transport's persisted `brx.pub_url`/backhaul secret together, closes the dead attempt,
   and resumes LAN discovery. A refusal or a newer join attempt is left untouched. Focused app transport and
   discovery regressions pass.
+# Closed 2026-09-22: distinct USB query parser naming
+
+- 2026-09-22 **F252** renamed the USB-console parser to `parse_usb_query`; the protocol parser remains
+  `protocol.parse_query` with its distinct normalized wire-diagnostic shape. USB callers and focused tests now
+  name the parser they actually consume.
