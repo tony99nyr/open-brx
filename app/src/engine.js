@@ -512,9 +512,9 @@ const HILL_AUDIO_EXCLUDED_MODES = new Set(['domination']);
 // else uses (1-39, clear of 2/6/8/10 — the doc's "bench facts"). One word carries one player id, so it names
 // the KILLER for `DOWN_BY` and the VICTIM for a bare `DOWN` (killer unknown, or the victim's own doing); the
 // magnitude is always `base + the VICTIM's team id (0-3)`, so a receiver decodes the team by arithmetic, never
-// a lookup. `FLAG_TAKEN`/`FLAG_CAPTURED` are reserved for CTF, which no station or phone produces yet (docs/ir-callouts.md);
-// a hill needs no code here: the grenade (and a Stick hill) send the native capture word, magnitude 50 (Tony, 2026-09-23):
-// the player would be the capturer, but v1 never sends or handles them — a receiver must still recognise their
+// a lookup. A hill needs no code here: the grenade (and a Stick hill) send the native capture word, magnitude 50.
+// `FLAG_TAKEN`/`FLAG_CAPTURED` are reserved for CTF, which no station or phone produces yet (docs/ir-callouts.md,
+// Tony 2026-09-23): their player would be the carrier, but nothing sends or handles them yet. A receiver must still recognise their
 // magnitudes (29-36) and ignore them outright, never mistaking them for a hill beacon (`_onHillBeacon` only
 // ever sees magnitude 6/8/50/53, well clear of this range).
 export const IR_CALLOUT = {
