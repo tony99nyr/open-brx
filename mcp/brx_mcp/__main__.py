@@ -63,9 +63,10 @@
       several concatenated, e.g. ten A7 frames or two alternating A8 $WEAP frames) N times and splits
       the result at --chunk-byte ATT boundaries with NO application sleep by default (A7/A7c/A8's
       zero-gap stream); --delay-ms paces it evenly instead, and --phone-pacing paces it the way the
-      phone does (each frame chunked alone, 8 ms per chunk, 18 ms per frame: A7/A8's paced halves),
-      with an optional block pause after every N frames (A7: --block-frames 10 --block-pause-ms 300). --delays-ms takes one delay per gap between
-      segments (zero allowed). --read-ms listens after the plan, then prints reply counts and the
+      phone does (each frame chunked alone at 20 B, 8 ms per chunk, 18 ms per frame: A7/A8's paced
+      halves), with an optional block pause after every N frames (A7: --block-frames 10
+      --block-pause-ms 300); it refuses --segment, --delay-ms, --delays-ms and --chunk. --delays-ms
+      takes one delay per gap between segments (zero allowed). --read-ms listens after the plan, then prints reply counts and the
       last $ALCD/$HP frame (A4/A7b/A8 read the magazine there). A $PING,* then checks liveness: no
       $PONG within 10 s is reported (--no-ping-after skips it). --with-response is the F270
       comparison. Every frame the concatenated payload decodes to is checked against the command
@@ -857,8 +858,16 @@ async def _raw_bytes(address: str, *, segments: list[str], stream: str | None, r
     from .rawbytes import (RawPlan, RawWrite, plan_from_segments, plan_from_stream, plan_phone_paced,
                            repeat_stream, validate_plan)
 
+    if phone_pacing and (stream is None or segments or delay_ms or delays_ms is not None or chunk != 20):
+        # It claims to reproduce the phone, so nothing may silently change what the phone would do.
+        print("raw-bytes: --phone-pacing needs --stream, the phone's fixed 20-byte chunk, and no "
+              "--segment, --delay-ms or --delays-ms", file=sys.stderr)
+        sys.exit(2)
+    if (block_frames or block_pause_ms) and not phone_pacing:
+        print("raw-bytes: --block-frames/--block-pause-ms only apply with --phone-pacing", file=sys.stderr)
+        sys.exit(2)
     if stream is not None and phone_pacing:
-        plan = plan_phone_paced(repeat_stream(stream, repeat or 0), chunk_size=chunk,
+        plan = plan_phone_paced(repeat_stream(stream, repeat or 0),
                                 block_frames=block_frames, block_pause_ms=block_pause_ms)
     elif stream is not None:
         payload = repeat_stream(stream, repeat or 0)
@@ -899,7 +908,10 @@ async def _raw_bytes(address: str, *, segments: list[str], stream: str | None, r
     try:
         result = await write_raw(mgr, "rawbytes", plan, response=response, read_ms=read_ms,
                                  max_chunk=chunk, allow_incomplete=allow_incomplete, confirm=confirm,
-                                 ping_after_s=ping_after_s)
+                                 ping_after_s=ping_after_s,
+                                 on_read_open=lambda: print(
+                                     f"# plan written: read window open for {read_ms} ms -- FIRE NOW if the step says so",
+                                     file=sys.stderr, flush=True))
     except BaseException:
         print("# stopped mid-plan: the gun's parser may hold a partial frame. Send '$*' before the "
               "next real frame; the session log has every write that completed.", file=sys.stderr)
@@ -911,9 +923,11 @@ async def _raw_bytes(address: str, *, segments: list[str], stream: str | None, r
         print(f"  [{w.t_start_ms:9.1f}..{w.t_done_ms:9.1f} ms] #{w.index:<3} {w.n_bytes:2d}B  {w.text}")
     counts = ", ".join(f"{k}={v}" for k, v in sorted(result.reply_counts.items())) or "(none)"
     print(f"\nreply counts: {counts}")
+    after = ", ".join(f"{k}={v}" for k, v in sorted(result.after_counts.items())) or "(none)"
+    print(f"after the last write: {after}")
     for name in ("ALCD", "HP"):
         if name in result.last_frames:
-            print(f"last {name}: {result.last_frames[name]}")
+            print(f"last {name} after the last write: {result.last_frames[name]}")
     if result.pong_after is not None:
         print("liveness: $PONG after the plan" if result.pong_after else
               f"liveness: NO $PONG within {ping_after_s:.0f} s of a $PING -- a LOCK-UP if a power "

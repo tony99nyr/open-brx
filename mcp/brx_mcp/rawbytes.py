@@ -28,7 +28,7 @@ still gets the same bounds and safety checks -- nothing that reaches `write_raw`
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 from . import protocol
 from .protocol import NUS_RX_CHAR_UUID
@@ -242,8 +242,12 @@ class RawResult:
     writes: list[RawWriteLog] = field(default_factory=list)
     reply_counts: dict[str, int] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
-    # The last rx frame per command word: A4/A7b/A8 are judged on the magazine in the last `$ALCD`.
+    # The last rx frame per command word, counted only from frames that arrived AFTER the last write, so
+    # a shot fired while the plan was still writing cannot be read as its result (A4/A7b/A8).
     last_frames: dict[str, str] = field(default_factory=dict)
+    # How many of each rx command arrived after the last write: the expected magazine is the value the
+    # plan set minus `after_counts["ALCD"]` (a full-auto press can fire two rounds).
+    after_counts: dict[str, int] = field(default_factory=dict)
     # After the plan: did a `$PING,*` get a `$PONG` inside `ping_after_s`? None when not asked.
     pong_after: bool | None = None
 
@@ -253,6 +257,7 @@ class RawResult:
             "reply_counts": self.reply_counts,
             "warnings": self.warnings,
             "last_frames": self.last_frames,
+            "after_counts": self.after_counts,
             "pong_after": self.pong_after,
         }
 
@@ -260,7 +265,8 @@ class RawResult:
 async def write_raw(mgr: Any, alias: str, plan: RawPlan, *, clock: Clock | None = None,
                     response: bool = False, read_ms: int = 0, max_chunk: int = MAX_CHUNK_BYTES,
                     allow_incomplete: bool = False, confirm: bool = False,
-                    ping_after_s: float = 0.0) -> RawResult:
+                    ping_after_s: float = 0.0,
+                    on_read_open: Callable[[], None] | None = None) -> RawResult:
     """Execute `plan` on `alias`'s session, exactly as written: no re-chunking, no extra pacing, no
     application sleep the plan did not ask for.
 
@@ -302,9 +308,13 @@ async def write_raw(mgr: Any, alias: str, plan: RawPlan, *, clock: Clock | None 
             if w.delay_after_ms > 0:
                 await clock.sleep(w.delay_after_ms / 1000)
 
+    seq_after_writes = session.seq
     reply_counts: dict[str, int] = {}
     last_frames: dict[str, str] = {}
+    after_counts: dict[str, int] = {}
     if read_ms > 0:
+        if on_read_open is not None:
+            on_read_open()               # the CLI tells Tony to fire now: the plan is fully written
         await clock.sleep(read_ms / 1000)
         out = mgr.get_events(alias, since_seq=seq_before, max_events=100_000)
         for ev in out["events"]:
@@ -312,7 +322,9 @@ async def write_raw(mgr: Any, alias: str, plan: RawPlan, *, clock: Clock | None 
                 continue
             name = protocol.command_name(ev["raw"])
             reply_counts[name] = reply_counts.get(name, 0) + 1
-            last_frames[name] = ev["raw"]
+            if ev["seq"] > seq_after_writes:
+                last_frames[name] = ev["raw"]
+                after_counts[name] = after_counts.get(name, 0) + 1
 
     pong_after: bool | None = None
     ends_incomplete = bool(plan.writes) and b"*" not in b"".join(w.data for w in plan.writes).rsplit(b"$", 1)[-1]
@@ -349,4 +361,4 @@ async def write_raw(mgr: Any, alias: str, plan: RawPlan, *, clock: Clock | None 
                     break
 
     return RawResult(writes=logs, reply_counts=reply_counts, warnings=warnings,
-                     last_frames=last_frames, pong_after=pong_after)
+                     last_frames=last_frames, after_counts=after_counts, pong_after=pong_after)

@@ -430,7 +430,20 @@ def test_a_denied_command_in_an_incomplete_fragment_is_refused():
                       allow_incomplete=True)
 
 
-def test_last_alcd_is_returned_and_a_pong_after_the_plan_is_seen():
+def test_last_alcd_counts_only_frames_after_the_last_write():
+    # A shot fired while the plan is still writing must not be read as its result (A4/A7b/A8).
+    class ShotInReadWindow(FakeClock):
+        def __init__(self, session):
+            super().__init__()
+            self.session = session
+            self.fired = False
+
+        async def sleep(self, seconds: float) -> None:
+            await super().sleep(seconds)
+            if not self.fired and seconds >= 0.1:
+                self.fired = True
+                self.session.record("rx", "$ALCD,0,22,50,*")
+
     mgr = FakeMgr()
     session = mgr.add("g")
 
@@ -438,12 +451,17 @@ def test_last_alcd_is_returned_and_a_pong_after_the_plan_is_seen():
         if data == b"$PING,*":
             session.record("rx", "$PONG,*")
         else:
-            session.record("rx", "$ALCD,0,23,50,*")
+            session.record("rx", "$ALCD,0,31,50,*")        # a shot during the writes
 
     session.client.write_impl = reply
-    result = run(write_raw(mgr, "g", plan_from_segments(["$AMMO,0,23,50,1,*"]), clock=FakeClock(),
-                           read_ms=100, ping_after_s=10))
-    assert result.last_frames["ALCD"] == "$ALCD,0,23,50,*"
+    opened: list[bool] = []
+    result = run(write_raw(mgr, "g", plan_from_segments(["$AMMO,0,23,50,1,*"]),
+                           clock=ShotInReadWindow(session), read_ms=100, ping_after_s=10,
+                           on_read_open=lambda: opened.append(True)))
+    assert opened == [True], "the fire cue is given once, after the plan is written"
+    assert result.last_frames["ALCD"] == "$ALCD,0,22,50,*"
+    assert result.after_counts["ALCD"] == 1
+    assert result.reply_counts["ALCD"] == 2, "the reply count still covers the whole run"
     assert result.pong_after is True
 
 
