@@ -14,7 +14,7 @@ says the rule is judgement only.
 | 4 | Three duel rules, each "most of the time" meaning **≥ 65%** in a stochastic 1v1 at full Standard health: (R1) a Charge Rifle with its charge already built beats an Assault Rifle; (R2) a skilled Assault Rifle (controlled 3-5 round bursts) that catches an uncharged Charge Rifle beats it; (R3) an Assault Rifle firing controlled bursts beats one held in full auto. | Tony, 2026-09-23 | F291 | `python3 mcp/tools/balance_sim.py --scenario recoil-duel`; gated in CI by `mcp/tests/test_balance_sim.py::test_recoil_duel_rules_clear_the_65_percent_bar` |
 | 5 | Charge Rifle: charge damage 70 (`t5`), tap damage 16 (`t37`); a charged kill on Standard health is one charge plus three taps. The 285 ms tap cadence is the player's own trigger-pull speed, not a gun setting — no `$WEAP` field carries it. | Tony, 2026-09-23 | F280; F291 (`3759cd68`) | `weapons.json` `wire.dmg`/`wire.tap_dmg`, pinned by the row-4 CI gate; `CHARGE_TAP_CADENCE_MS`'s comment in `compile.py` |
 | 6 | Shotgun: 3 pulls to kill on Standard health, still no recoil model — it has none. Its gap from the rifles was the 800 ms cadence until row 11's R8 tightened it to 700 ms. | Tony, 2026-09-18; retuned 2026-09-23 (R8) | F291; F308 | 3-pull kill is judgement; the 700 ms cadence is gated by row 11's test |
-| 7 | One-shot heavies (Rocket Launcher, Rail Gun, Laser Cannon, Energy Launcher, Ion Sniper) are a pickup-only tier: 2-round magazine, 4 kills total, earned at close range rather than out-reaching the rest of the arsenal. | Tony, 2026-09-17 | weapon-design.md §2.1 principle 7 | judgement, not tested |
+| 7 | One-shot heavies (Rocket Launcher, Rail Gun, Laser Cannon, Energy Launcher, Ion Sniper) are a pickup-only tier: 2-round magazine, 4 kills total, earned at close range rather than out-reaching the rest of the arsenal. On the Shields preset (150): the Rocket Launcher's headset word adds 35 (`wire.headset_dmg`), so a close hit still kills; the Rail Gun does 149 (`wire.dmg`), a kill on Standard and Hardcore that leaves a full Shields player on 1 HP. | Tony, 2026-09-17; Shields 2026-09-23 (F310) | weapon-design.md §2.1 principle 7; §7.5f | `mcp/tests/test_weapon_derivations.py` §2.5 rows; the bench check in `bench-2026-09-24.md` 4.9 |
 | 8 | The headset is the primary target: 4 of the tagger's 5 hit sensors sit there, so it carries no bonus multiplier. `criticalShotModifier` (`t7`) compiles to 0, and a headset hit lands the same as a gun-body hit. | Tony, 2026-09-17 (arsenal review) | — | `mcp/tests/test_gameconfig.py::test_crit_modifier_defaults_to_zero_and_headset_multiplier_is_1x` |
 | 9 | Easy Reload is accessibility, not balance: it is never tuned or cut on balance grounds, and it lives beside the per-player pool handicap, independent of the perk slot. | Tony, 2026-09-17 ("my daughter cant reload the brx normally") | S50 | `mcp/tests/test_mc_loadout.py::test_easy_reload_is_refused_beside_a_chain_reload_weapon`, `::test_easy_reload_is_refused_beside_a_second_weapon_end_to_end` |
 | 10 | The rebalance changes numbers, not feel: every weapon keeps Battle Company's captured fire mode, burst pattern, heat/overheat mechanic and sound; only the declared balance tokens move. | design principle, ongoing | weapon-design.md §2.1 principles 1-3 | judgement, not tested |
@@ -238,7 +238,7 @@ sounds — and moves the numbers.
 | Rocket Launcher | power | 115 | 1000 | 1 | **0.00** | 115.0 | 50.0 | 2 | 2 | 2600 | 91% | — | res 8→2, reload 1200→2600 |
 | Energy Launcher | power | 115 | 1600 | 1 | **0.00** | 71.9 | 50.0 | 2 | 2 | 1400 | 91% | — | cycle 360→1600, mag 1→2, res 6→2 |
 | Ion Sniper | power | 115 | 1400 | 1 | **0.00** | 82.1 | 47.9 | 2 | 2 | 2000 | 91% | — | cycle 1000→1400, res 12→2 |
-| Rail Gun | power | 115 | 1200 | 1 | **1.20** | 95.8 | 47.9 | 2 | 2 | 2400 | 91% | — | mag 1→2, res 6→2 |
+| Rail Gun | power | 149 | 1200 | 1 | **1.20** | 124.2 | 62.1 | 2 | 2 | 2400 | 91% | — | mag 1→2, res 6→2 |
 | Laser Cannon | power | 115 | 1500 | 1 | **1.50** | 76.7 | 50.0 | 2 | 2 | 1600 | 91% | — | mag 4→2, res 8→2, reload 2000→1600 |
 | Desert Eagle | sidearm | 26 | 700 | 5 | **2.80** | 37.1 | 25.6 | 7 | 48 | 2200 | 65% | — | **D2 2026-09-12** (Bolt Rifle frame). **2026-09-23** (R10, F308): cadence 480→700ms, the real-world lever (.50 AE recoil) Tony chose over touching the magazine — a finishing weapon, not a rifle-competitive one; see the Balance rules table row 10 |
 | USP-S | sidearm | 9 | 160 | 13 | **1.92** | 56.2 | 26.2 | 12 | 120 | 2200 | 0% | — | **D2 2026-09-12** (Bolt Rifle frame, suppressed); **2026-09-17**: mag 20→19 (§2.3, family-scoped dominance). **2026-09-23** (R10, F308): mag 19→12, the real-world lever (a USP .45 holds 12) — its own 13-hit kill no longer fits one magazine on purpose, `test_shipped_roster_satisfies_the_mag_invariant_at_the_default_pool`'s narrow, named exemption; see the Balance rules table row 10 |
@@ -517,6 +517,8 @@ Fastest cycle has the slowest reload and vice versa; nothing leads on both.
 | weapon | 45/55 (100) | **45/70 (115)** | 50/100 (150) | 100/100 (200) |
 |---|---|---|---|---|
 | Power tier (115 dmg) | 1 | **1** | **2** | 2 |
+| Rocket Launcher | 1 | **1** | 1 | 2 |
+| Rail Gun | 1 | **1** | 2 | 2 |
 | Charge Rifle | 3 | **4** | 6 | 10 |
 | Sniper Rifle | 2 | **2** | 3 | 4 |
 | Shotgun | 3 | **3** | 4 | 5 |
@@ -533,6 +535,9 @@ Fastest cycle has the slowest reload and vice versa; nothing leads on both.
 | Desert Eagle | 4 | **5** | 6 | 8 |
 | USP-S | 12 | **13** | 17 | 23 |
 | Glock-18 | 8 | **9** | 12 | 16 |
+
+The Rocket Launcher's 1 at 150 counts its headset word (35), which lands only at close range; at range it
+needs 2 like the rest of the tier.
 
 **The Charge Rifle's `htk` in this table is trigger ACTIONS (1 charge + N taps), not equal-sized
 hits** (2026-09-17, F225/F226/S43): at 200 the pool needs 1 charge (70, F280) plus 9 taps (16 each,
@@ -1760,11 +1765,10 @@ test_shields_preset_recoil_rules_r1_to_r3`, `::test_shields_preset_range_rules_r
 
 **Decisions for Tony (F310).**
 1. **The Shields bar.** 60% as proposed, or another value.
-2. **The heavies on Shields.** Every one-shot heavy (Rocket Launcher, Rail Gun; hidden: Laser Cannon, Energy
-   Launcher, Ion Sniper) does exactly 115 a pull, the Standard pool. It kills in one pull on Standard and
-   Hardcore but needs two on Shields (150), so its 2-round magazine kills one player, not two, and row 7's "4
-   kills total" becomes 2. Options: (a) keep it, Shields makes heavies weaker; (b) compile heavy damage from
-   the match's own pool, so a heavy one-shots on every preset; (c) a Shields-only heavy value.
+2. **The heavies on Shields: decided (Tony, 2026-09-23).** The Rocket Launcher's headset word adds 35, so a close
+   hit makes 150 and kills a full Shields player; at range only the 115 gun word lands. The Rail Gun does 149: a
+   kill on Standard and Hardcore, and a full Shields player left on 1 HP. The hidden heavies stay at 115. See the
+   Balance rules table, row 7.
 
 ### 7.7 Armour Piercing takes two levers, not one
 
