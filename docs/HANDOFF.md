@@ -93,7 +93,8 @@ runbook needs a build from `main`: S56 and F309 are newer than 0.4.5.
 65% on Standard (R7 is the tightest, 65.5%). The sim now models range bands (headset word close only) and crits.
 Recoil counts rounds per trigger pull by calibre (S54, `aa7b08b9`). F291 is closed. `balance_sim.py` balances any weapon.
 
-- **Next desk task:** **F310**, the balance rules on the Shields preset.
+- **Next desk task:** **F310** is built; it waits on Tony's two decisions (the Shields bar, the heavies on
+  Shields), `weapon-design.md` §7.5f.
 - **Next bench task:** **F308** and **F292** in [`bench-2026-09-24.md`](bench-2026-09-24.md), then sitting 2 steps 1-4,
   then sitting 3 (§26 groups A and B).
 - **Blocked:** Extended Mags on `$TMP` (S50) and F281 on sitting 2; **F275** on outdoor space (runbook Block 5).

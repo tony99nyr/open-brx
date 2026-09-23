@@ -1733,6 +1733,38 @@ weakest primary by design.
 `python3 mcp/tools/balance_sim.py --scenario r10-duel`; gated in CI by `mcp/tests/test_balance_sim.py::test_r10_sidearms_finish_a_kill_under_a_second`
 and `::test_r10_primaries_beat_sidearms_at_65_percent`; `test_mc_sidearms.py::test_pistol_identities_keep_tonys_ordering`.
 
+### 7.5f F310: the rules on the Shields and Hardcore presets
+
+Tony: the rules should hold on Shields "looser but generally yes". Every duel above runs from one pool number,
+now set by `--health-preset` (Standard 45 + 70 armour = 115, Shields 45 + 105 shield = 150, Hardcore 45). The
+shield's recharge is slower than any of these duels, so the pool is treated as one number. 10,000 reps, seed 7:
+
+| rule | Standard | Shields | Hardcore |
+|---|---|---|---|
+| R1 charged Charge Rifle beats an AR | 93.8% | 97.6% | 90.0% |
+| R2 AR beats an uncharged Charge Rifle | 91.7% | 84.8% | 90.7% |
+| R3 bursting AR beats full-auto AR | 76.7% | 88.6% | 20.2% |
+| R4a SMG beats a bursting AR, close | 71.0% | 65.0% | 81.1% |
+| R6 bursting AR beats the Burst Rifle | 69.3% | 69.8% | 66.7% |
+| R7 Burst Rifle beats a full-auto AR | 65.5% | 83.2% | 9.8% |
+| R8 Shotgun beats the SMG, close | 69.0% | **63.0%** | 4.7% |
+| R10b Suppressor beats the Desert Eagle | 78.3% | 68.9% | 43.4% |
+
+Every other R4-R9 and R10b cell reads 74% or more on Shields. On Hardcore a few rounds kill, so the rules
+built on sustained fire (R3, R7, R8, most of R10b) collapse, which is that preset's point; it is reported, not
+gated. **Proposed Shields bar: 60%** (the lowest cell, R8, clears it by 3 points; the 95% interval at 10,000
+reps is about ±1 point). `SHIELDS_BAR` in `balance_sim.py`; gated by `mcp/tests/test_balance_sim.py::
+test_shields_preset_recoil_rules_r1_to_r3`, `::test_shields_preset_range_rules_r4_to_r9` and
+`::test_shields_preset_primaries_beat_sidearms_r10b`.
+
+**Decisions for Tony (F310).**
+1. **The Shields bar.** 60% as proposed, or another value.
+2. **The heavies on Shields.** Every one-shot heavy (Rocket Launcher, Rail Gun; hidden: Laser Cannon, Energy
+   Launcher, Ion Sniper) does exactly 115 a pull, the Standard pool. It kills in one pull on Standard and
+   Hardcore but needs two on Shields (150), so its 2-round magazine kills one player, not two, and row 7's "4
+   kills total" becomes 2. Options: (a) keep it, Shields makes heavies weaker; (b) compile heavy damage from
+   the match's own pool, so a heavy one-shots on every preset; (c) a Shields-only heavy value.
+
 ### 7.7 Armour Piercing takes two levers, not one
 
 The perk shipped at `_AP_DAMAGE_MULT = 0.4`, described as a 60% cut. Worked across the catalogue on
