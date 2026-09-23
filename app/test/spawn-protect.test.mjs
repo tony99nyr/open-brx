@@ -210,7 +210,10 @@ test('F121 class sounds: one fresh take per life, written in front of t8 = 0, ne
   const rel = release(h.since(n));
   assert.equal(rel[rel.length - 1], OFF, 't8 = 0 goes last');
   const rows = realRows(rel);
-  assert.equal(rows.length, TAKE.length, 'one whole take, not two');
+  // S57 (2026-09-23): the golden bundle's take now also carries the silent `<15,0>` fn-28 row the IR callout
+  // bus rides on (docs/ir-callouts.md "What MC must ship") -- `realRows` already exists to exclude exactly
+  // that kind of silent row, so compare like for like rather than against `TAKE`'s raw length.
+  assert.equal(rows.length, realRows(TAKE).length, 'one whole take, not two');
   assert.ok(takes.some(t => JSON.stringify(realRows(t)) === JSON.stringify(rows)), 'and it is a pool take');
 });
 

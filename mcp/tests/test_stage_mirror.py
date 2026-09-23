@@ -1438,6 +1438,10 @@ KNOWN_UNMIRRORED = {
     "forgetGun",
     # field 2026-09-17: the kill banner's victim name, resolved from MC's `feedback`; the stage has no MC and no banner
     "victimName",
+    # S57 (2026-09-23, docs/ir-callouts.md): the IR callout bus's receiver -- presentation only, no game rule.
+    # It never books a death/kill/score (MC's own facts already did that), only a HUD chip and a locally-picked
+    # cue; the stage has no HUD and no cue picker to mirror either half against.
+    "_onIrCallout", "_irKillConfirmed",
     # bench 2026-09-17: the phone's day/night HUD skin and its per-MC-session pick; HUD chrome, no LED or game rule
     "setNight", "ownNightChoice", "_autoNight", "_loadNight", "_storeNight",
     # bench 2026-09-17: the ammo gauge's shot-ready cue ($WEAP token 14 timed from $ALCD); HUD display only, no game rule

@@ -506,6 +506,27 @@ export const HILL_CUES = {
 // seconds and announce continuously. Excluded until K1 supplies a discriminator, rather than shipped noisy.
 const HILL_AUDIO_EXCLUDED_MODES = new Set(['domination']);
 
+// ---------- S57 IR callout bus (docs/ir-callouts.md) ----------
+// Presentation only (never scores, never books a death/kill, never touched by `mcp/brx_mcp/stage/stage.py`):
+// a dying gun tells every gun in range, once, over a bench-silent protocol-15 `$IRTX`/`$HIR` magnitude nobody
+// else uses (1-39, clear of 2/6/8/10 — the doc's "bench facts"). One word carries one player id, so it names
+// the KILLER for `DOWN_BY` and the VICTIM for a bare `DOWN` (killer unknown, or the victim's own doing); the
+// magnitude is always `base + the VICTIM's team id (0-3)`, so a receiver decodes the team by arithmetic, never
+// a lookup. `HILL_CAPTURED`/`FLAG_CAPTURED` are reserved for a later event on the same bus (Tony, 2026-09-23):
+// the player would be the capturer, but v1 never sends or handles them — a receiver must still recognise their
+// magnitudes (29-36) and ignore them outright, never mistaking them for a hill beacon (`_onHillBeacon` only
+// ever sees magnitude 6/8/50/53, well clear of this range).
+export const IR_CALLOUT = {
+  PROTO: 15, SUBTYPE: 0, DIRECTION: 100,
+  DOWN_BY: 21,        // 21-24: the named player KILLED a member of the magnitude's team
+  DOWN: 25,           // 25-28: the named player IS the victim; the killer is unknown (or was the victim)
+  HILL_CAPTURED: 29,  // 29-32: RESERVED — not sent or handled in v1 (S57 scope, Tony)
+  FLAG_CAPTURED: 33,  // 33-36: RESERVED — not sent or handled in v1 (S57 scope, Tony)
+  ENEMY_DOWN_CUE: 'VB8',   // "Target down." (sound_catalog.json: 1.014 s)
+};
+const CALLOUT_DEDUPE_MS = 600;   // one physical word lands on several sensors ~14 ms apart (F85); short enough that a real double kill still counts twice a second or so later
+const CALLOUT_WINDOW_MS = 3000;  // kill-confirm first-to-arrive (Tony), and how long `state().callout` stays lit
+
 /** A16.5: which pool the readout should actually SHOW, given that `pool` is the one that just moved and
  *  settled at level 0. Mirrors `poolgauge.handover_pool` exactly -- see its docstring for the full
  *  reasoning: a shot that took armour 35 -> 0 while health sat untouched at 45/45 left the gun body dark
@@ -662,6 +683,13 @@ export class Engine {
     this.beacon = null;             // F72: {owner_team, magnitude, sensor, at} — last grenade/station beacon (proto-15 $HIR)
     this._lastBeaconKey = null;     // F85: `${owner_team}:${magnitude}` of the last beacon ACCEPTED (not merely seen), for dedupe below
     this._lastBeaconAt = 0;         // F85: this.now() of that acceptance
+    this.callout = null;            // S57: {kind, name, team, at} — the latest IR callout (docs/ir-callouts.md), kept CALLOUT_WINDOW_MS then cleared in tick()
+    this._calloutSeen = null;       // S57: Map `${magnitude}:${player}` -> this.now() of the last ACCEPTED word, CALLOUT_DEDUPE_MS dedupe (F85: one word, several sensors)
+    // S57 kill confirm, first to arrive, once (Tony): each channel stamps ONLY its own timestamp and reads
+    // ONLY the other's, so two of the SAME channel's kills close together (a real double kill) never
+    // self-suppress -- only a genuinely DIFFERENT channel confirming the same kill does.
+    this._irKillCueAt = 0;           // S57: this.now() of the last IR DOWN_BY naming me that played its own cue
+    this._mcKillCueAt = 0;           // S57: this.now() of the last MC feedback{kill}, whether it played a cue or not
     this.hill = null;               // {owner, at, from_neutral} — the control point's OWNER and when its last beacon landed. State from the wire; the cadence below is ours
     this._hillBusyUntil = 0;        // the announcer is occupied by a hill callout until this (now + the clip's real length) — the tick waits, it never overlaps
     this._hillTickAt = 0;           // when the possession tick last played (0 = not ticking)
@@ -1687,7 +1715,7 @@ export class Engine {
     // this reset, startAt skipped re-arming from `live` and resumeSchedule returned `live` early — the
     // T-0 spawn never ran and the gun sat alive-with-0-hp (bench 2026-09-04, S7, on hardware). Drop the
     // stale live/down state so the new match re-arms → spawns.
-    if (newMatch) { this.spawned = false; this.alive = false; this.deadAt = 0; this.killedBy = null; this.downReason = null; this._resetHill(); }   // game 2 must not inherit game 1's owner, tally or warnings
+    if (newMatch) { this.spawned = false; this.alive = false; this.deadAt = 0; this.killedBy = null; this.downReason = null; this._resetHill(); this.callout = null; this._irKillCueAt = 0; this._mcKillCueAt = 0; }   // game 2 must not inherit game 1's owner, tally, warnings or kill-confirm race
     this._turned = false;               // last match's infection flip must not score this one as "turned" (polish 2026-09-04)
     if (this.phase === 'lobby' || this.phase === 'kitted' || this.phase === 'armed' || (newMatch && this.phase === 'live')) this._set('armed');
     this._save();
@@ -2601,6 +2629,57 @@ export class Engine {
     }
     this._changed();
   }
+  /** S57 (docs/ir-callouts.md): a proto-15 `$HIR` whose magnitude is 21-36 — the IR callout bus, dispatched by
+   *  the `case 'HIR'` parser BEFORE it ever reaches the beacon code above, and it never touches `this.beacon`
+   *  or `_onHillBeacon`. `player` is the word's raw t[3] (the KILLER for `DOWN_BY`, the VICTIM for a bare
+   *  `DOWN`); `magnitude` decodes which, plus the victim's team, by plain arithmetic (base + team id 0-3) — the
+   *  word's own team field (t[4], not read here) is a transmit-side friendly-fire lever (contracts.md/the doc's
+   *  "bench facts"), not information for this phone. Presentation only: never books a death/kill, never moves
+   *  the score. Dedupe is `magnitude:player` (never the sensor — F85: one physical word lands on more than one
+   *  ~14 ms apart), inside CALLOUT_DEDUPE_MS; short enough that a real double kill (the same key again a
+   *  second or so later) still counts twice. */
+  _onIrCallout(player, magnitude, now) {
+    if (magnitude >= IR_CALLOUT.HILL_CAPTURED) return;   // 29-36: HILL_CAPTURED/FLAG_CAPTURED reserved — ignored outright, v1 sends and handles neither (Tony, 2026-09-23)
+    if (!this.alive || this.phase !== 'live') return;    // a dead gun would not report it anyway (the doc), and callouts are a live-match thing only
+    if (Number.isNaN(player) || Number.isNaN(magnitude)) return;
+    const key = `${magnitude}:${player}`;
+    if (this._calloutSeen && this._calloutSeen.has(key) && now - this._calloutSeen.get(key) < CALLOUT_DEDUPE_MS) return;
+    (this._calloutSeen || (this._calloutSeen = new Map())).set(key, now);
+    const isDownBy = magnitude < IR_CALLOUT.DOWN;
+    const victimTeam = magnitude - (isDownBy ? IR_CALLOUT.DOWN_BY : IR_CALLOUT.DOWN);
+    const myNum = this.player && this.player.player_num;
+    if (isDownBy && player === myNum) { this._irKillConfirmed(victimTeam, now); return; }   // row 1: I made this kill
+    if (!isDownBy && player === myNum) return;   // row 4: my own DOWN — my own phone already knows
+    // FFA: `$TID` equality never means friendly (A5.2/contracts.md), so a bare team match is always ENEMY DOWN there.
+    const teammate = this.config && this.config.mode !== 'ffa' && this.teamTid != null && victimTeam === this.teamTid;
+    this.callout = { kind: teammate ? 'teammate_down' : 'enemy_down', name: isDownBy ? null : this.nameOf(player), team: TEAM_KEY[victimTeam] || null, at: now };
+    if (!teammate) this._write([`$PLAY,,4,6,${IR_CALLOUT.ENEMY_DOWN_CUE},,,,*`], 'S57 ENEMY DOWN');   // row 3: a teammate gets the HUD chip only, no sound
+    this._changed();
+  }
+  /** S57 kill confirm, first to arrive, once (Tony): an IR `DOWN_BY` naming me and MC's `feedback{kind:'kill'}`
+   *  both confirm the SAME kill. Each channel stamps only ITS OWN timestamp (`_irKillCueAt` here,
+   *  `_mcKillCueAt` in `feedback()`) and reads only the OTHER's -- so two of the same channel's kills close
+   *  together (a real double kill) never suppress each other, only a genuinely different channel racing the
+   *  same kill does. Whichever lands first plays the cue; `feedback()` reads `_irKillCueAt` back to skip its
+   *  own plain kill line within CALLOUT_WINDOW_MS (medal cues still play — they carry information this word
+   *  does not). The IR word never touches the score: only MC's feedback does that. No victim name is ever
+   *  known here — read `victimName`'s comment: the `kill` moment's HUD banner is hard-wired "CONFIRMED BY
+   *  MISSION CONTROL" (hud.js `_kill`), which would be a lie for a pure IR confirm, so this uses
+   *  `state().callout` instead of that moment. */
+  _irKillConfirmed(victimTeam, now) {
+    this.callout = { kind: 'kill_confirmed', name: null, team: TEAM_KEY[victimTeam] || null, at: now };
+    const mcAlreadyConfirmed = this._mcKillCueAt != null && now - this._mcKillCueAt <= CALLOUT_WINDOW_MS;
+    if (!mcAlreadyConfirmed) {
+      this._irKillCueAt = now;
+      const pick = this._pickCue('kill');
+      const lg = (this._lightGen = this._lightGen || 0);
+      this._write([SFLASH], 'S57 IR kill confirmed');
+      if (pick.frame) this.delay(120, () => { if (this._lightGen === lg) this._write([pick.frame], `S57 IR kill confirmed cue${pick.tag}`); });
+    } else {
+      this.log('S57: IR kill confirmed, but MC already played the kill cue for it within the window — sound skipped', 'li');
+    }
+    this._changed();
+  }
   /** K1 — the SAME hill state and the SAME four cues, sourced from a phone CONTROL POINT's BLE advert
    *  instead of a grenade's IR word (utility.md §5 row `control`). Called from `setStations` at ~4 Hz.
    *
@@ -3104,6 +3183,7 @@ export class Engine {
       this._hillTick(now);             // the possession tick on OUR ~1 s clock, and the >= 2-missed-beacon presence expiry
       this._reportPossession(now);     // and the possession CLOCK, which is what the mode is scored on
       if (this.moment && now - this.moment.at > 4000) { this.moment = null; }
+      if (this.callout && now - this.callout.at > CALLOUT_WINDOW_MS) { this.callout = null; }   // S57: the HUD chip's own lifetime, independent of `moment`'s
       // A swap the gun never confirmed with a shot: past the assumed window we TAKE the swap as done (the real
       // duration has never been timed — FOLLOWUPS F4; the next $ALCD corrects activeSlot if the gun disagrees).
       if (this.switching && now - this.switching.at > this.switchWindowMs()) {
@@ -4236,15 +4316,26 @@ export class Engine {
     const medalCues = (Array.isArray(body.medals) ? body.medals : [])
       .map(m => ({ m, f: this.frames && this.frames.cues && this.frames.cues[m] })).filter(x => x.f);
     const lg = (this._lightGen = this._lightGen || 0);   // teardown snapshot: neither a medal line nor the feedback cue may land after the match ended
+    // S57 (docs/ir-callouts.md): kill confirm, first to arrive, once. An IR DOWN_BY naming us plays the kill
+    // cue over `_irKillConfirmed`, which stamps `_irKillCueAt`, and it usually beats MC here (IR is local,
+    // this is a BLE round trip). When it already has, this plain kill line is redundant and is skipped; medal
+    // cues still play regardless, because they carry information the IR word does not, and the score/moment
+    // below move exactly as they always did -- only MC's feedback ever touches them. `_mcKillCueAt` (below)
+    // is its OWN separate timestamp, read back only by `_irKillConfirmed`: two of MC's OWN kills close
+    // together (a real double kill, or `cue pools` test's back-to-back feedback calls) must never
+    // self-suppress, only a genuinely different channel racing the same kill may.
+    const irAlreadyConfirmed = body.kind === 'kill' && this._irKillCueAt != null && this.now() - this._irKillCueAt <= CALLOUT_WINDOW_MS;
     if (medalCues.length) {
       medalCues.forEach((x, i) => this.delay(120 + i * MEDAL_GAP_MS, () => { if (this._lightGen === lg) this._write([x.f], `medal ${x.m}`); }));
       this.medals = body.medals.slice();
-    } else if (cue) this.delay(120, () => { if (this._lightGen === lg) this._write([cue], `feedback cue ${body.kind}${pick.tag}`); });   // hardware-proven gap (seed): flash, then the line
+    } else if (cue && !irAlreadyConfirmed) this.delay(120, () => { if (this._lightGen === lg) this._write([cue], `feedback cue ${body.kind}${pick.tag}`); });   // hardware-proven gap (seed): flash, then the line
+    else if (cue) this.log('feedback: kill cue skipped — an IR callout already confirmed this kill (S57)', 'li');
     this._eventLeds(medalCues.length ? medalCues[0].m : body.kind);   // A11.8: the headset's small LED flash (+ any burst) for the top medal
     if (body.kind === 'kill') {
       if (this.score) this.score = { ...this.score, kills: (this.score.kills || 0) + 1 };
       else this.score = { kills: 1 };
       this.scoreAt = this.now();
+      this._mcKillCueAt = this.now();   // always stamp MC's own arrival, whether or not IR beat us to the cue
       this.moment = { kind: 'kill', at: this.now(), data: { victim_team: body.victim_team, victim: this.victimName(body), medals: Array.isArray(body.medals) ? body.medals.slice() : [] } };
     }
     this._changed();
@@ -4357,6 +4448,14 @@ export class Engine {
       }
       case 'HIR': {
         if (t[2] === '15') {
+          // S57 (docs/ir-callouts.md): magnitudes 21-36 are the IR callout bus, not a beacon — checked BEFORE
+          // any of the beacon handling below, so a callout word never reaches `_onHillBeacon` and never writes
+          // `this.beacon`. Everything else on protocol 15 (6/8/50/53 today) falls through unchanged.
+          const calloutMag = parseInt(t[5], 10);
+          if (calloutMag >= IR_CALLOUT.DOWN_BY && calloutMag <= IR_CALLOUT.FLAG_CAPTURED + 3) {
+            this._onIrCallout(parseInt(t[3], 10), calloutMag, this.now());
+            break;
+          }
           // A grenade/station BEACON (F70/F72), not a shot: $HIR,<sensor>,15,<ownerId=0>,<ownerTeam>,<magnitude>,0,<sub>.
           // It rides the same $HIR command as a hit, but registers through the silent $SIR fn-28 row
           // (F73) specifically so the player feels nothing — no latch, no hit_taken, no pool change.
@@ -5397,10 +5496,12 @@ export class Engine {
     if (dk) this.killedBy.dot = true;   // S16: the DOWN screen says POISONED BY
     this.emitFact({ type: 'death', match_id: this.matchId, shooter_num, shooter_team, ...(desync ? { desync: true } : {}), ...(dk ? { dot: true } : {}) });
     const flipTable = (this._respawnProfile() && this._respawnProfile().team_flip) || (this.frames && this.frames.team_flip);   // 2026-09-19: the timed-profile bursts
+    let irFlip = false;   // S57: true once this death turns out to BE an infection flip, not a real death (see below)
     if (this.config && this.config.mode === 'infection' && flipTable) {
       const tids = Object.keys(flipTable).filter(k => Number(k) !== this.teamTid);
       // Whether a mid-match $TID write changes the gun's own friendly-fire resolution is UNTESTED (modes §9); MC scores via team_change regardless.
       if (tids.length) {
+        irFlip = true;
         const tid = Number(tids[0]); this._write(flipTable[tids[0]], 'team_flip'); this._armAfterSpawn(true); const protectMs = this._protectOwedMs(); this.emitFact({ type: 'team_change', match_id: this.matchId, tid, ...(protectMs ? { protect_ms: protectMs } : {}) });   // F289: a flip respawns the gun protected too
         this._turned = true;
         this._event('infected');   // A11.4: HUD-driven -- this gun just turned; MC's broadcast only tells the OTHERS
@@ -5410,6 +5511,25 @@ export class Engine {
         this._setRole('infected', true, tid);
         const tm = ((this.config && this.config.teams) || []).find(x => Number(x.tid) === tid);
         this.team = tm ? { ...tm } : { ...(this.team || {}), tid, team_id: `tid-${tid}`, name: TEAM_NAME[tid] || `TEAM ${tid}` };
+      }
+    }
+    // S57 (docs/ir-callouts.md): tell every gun in range, once, over IR -- presentation only, one write, never
+    // retried. Skipped on an infection flip (`irFlip` above): that is not a real death for this player, so
+    // there is nothing to call out. `player` is the killer for DOWN_BY, or our own num for a bare DOWN (killer
+    // unknown, or we killed ourselves — S16 DOT deaths DO have a killer, the poisoner, and get DOWN_BY too,
+    // since `killedBy` already carries the applier there); the magnitude always carries OUR OWN team, because
+    // the sender is always the victim. `frames.callout_team` (MC's pick, an id nobody plays) rides in the
+    // word's team field so friendly-fire-off still delivers it to enemies; falling back to our own tid keeps
+    // an OFF gun immune to its own team's word instead, so teammates stay silent (the doc's "all four team ids
+    // in use" case) -- see `_onIrCallout`'s comment for why that field is otherwise unread on receipt.
+    if (!irFlip && this.phase === 'live' && this.bleUp) {
+      const myNum = this.player && this.player.player_num, myTid = this.teamTid;
+      if (myNum != null && myTid != null) {
+        const selfOrUnknown = this.killedBy.unknown || this.killedBy.num === myNum;
+        const player = selfOrUnknown ? myNum : this.killedBy.num;
+        const magnitude = (selfOrUnknown ? IR_CALLOUT.DOWN : IR_CALLOUT.DOWN_BY) + myTid;
+        const calloutTeam = typeof (this.frames && this.frames.callout_team) === 'number' ? this.frames.callout_team : myTid;
+        this._write([`$IRTX,${IR_CALLOUT.DIRECTION},${IR_CALLOUT.PROTO},${player},${calloutTeam},${magnitude},0,${IR_CALLOUT.SUBTYPE},100,1,,0,*`], 'S57 IR callout');
       }
     }
     this.switching = null;          // a swap indicator must not outlive the player
@@ -5680,6 +5800,7 @@ export class Engine {
       // F72: the most recent grenade/station beacon (proto-15 $HIR) — owner team + magnitude (8 hill, 6 respawn),
       // null once nobody has reported one this life. Not `station` above: that is BLE advert presence, this is IR.
       beacon: this.beacon || null,
+      callout: this.callout || null,   // S57: {kind: 'kill_confirmed'|'enemy_down'|'teammate_down', name, team, at} — cleared in tick() above
       // The control point as the hill logic reads it: {owner (2 = neutral), at, from_neutral}, null once
       // presence has expired (>= 2 missed beacons). Two sources write it, never both in one game: a
       // grenade's IR beacon (derived from `beacon` above), or a phone CONTROL POINT's BLE advert, which adds

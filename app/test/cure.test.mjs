@@ -164,8 +164,10 @@ test('F264: the answer itself writes nothing -- the respawn timer owns the reviv
   const n = h.writes.length;
   lifeReply(h, 0, 0);
   const w = h.since(n);
-  assert.deepEqual(w.filter(f => !f.startsWith('$GLED') && !f.startsWith('$HLED')), [],
-    `nothing but the death's own LED work follows the answer: ${JSON.stringify(w)}`);
+  // S57 (2026-09-23): a real death also sends its own one-shot IR callout word (docs/ir-callouts.md) -- not
+  // LED work, but just as much "the death's own", so it is excluded here alongside $GLED/$HLED.
+  assert.deepEqual(w.filter(f => !f.startsWith('$GLED') && !f.startsWith('$HLED') && !f.startsWith('$IRTX')), [],
+    `nothing but the death's own LED/IR-callout work follows the answer: ${JSON.stringify(w)}`);
   assert.deepEqual(w.filter(f => f.startsWith('$SPAWN') || f.startsWith('$AMMO')), [], 'and certainly no revive and no ammo');
 });
 
