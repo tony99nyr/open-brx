@@ -79,7 +79,7 @@ right** and this index is stale. Do not cite it as evidence that something is or
 
 **Keyboard only** (tagged `build` or `decision` — no gun, no rig, no dim room):
 - 🔴 **B23** · **E5** · **F43** · **F231** · **F264** · **S10**
-- 🟠 **B4** · **B21** · **B31** · **E2** · **F12** · **F40** · **F70** · **F164** · **F256** · **F260** · **F269** · **F272** · **F277** · **F280** · **F300** · **P8** · **S3** · **S14** · **S33** · **S50** · **S53**
+- 🟠 **B4** · **B21** · **B31** · **E2** · **F12** · **F40** · **F70** · **F164** · **F256** · **F269** · **F272** · **F277** · **F280** · **F300** · **P8** · **S3** · **S14** · **S33** · **S50** · **S53**
 - 🟡 **B1** · **B8** · **B14** · **B17** · **D1** · **D3** · **E3** · **E4** · **E6** · **F5** · **F16** · **F20** · **F24** · **F25** · **F42** · **F60** · **F68** · **F88** · **F95** · **F108** · **F109** · **F112** · **F113** · **F123** · **F126** · **F128** · **F130** · **F132** · **F133** · **F161** · **F176** · **F177** · **F178** · **F186** · **F187** · **F191** · **F221** · **F229** · **F233** · **F251** · **F266** · **F267** · **F268** · **F270** · **F281** · **F284** · **F289** · **H1** · **H2** · **H6** · **H8** · **K2** · **Q12′** · **Q13** · **R3** · **S1** · **S2** · **S6** · **S7** · **S-A12** · **S13** · **S25** · **S27** · **S28** · **S29** · **S30** · **S31** · **S32** · **S34** · **S36** · **S42** · **S43** · **S46** · **S47** · **S48** · **S49** · **S51** · **S54**
 - 🟢 **B11** · **B22** · ⬜ **D5** · **E7** · **F14** · **F17** · **F19** · **F32** · **F52** · **F83** · **F87** · **F89** · **F93** · **F98** · **F99** · **F100** · **F107** · **F204** · **F250** · ⬜ **H3** · ⬜ **H4** · ⬜ **H5** · ⬜ **K6** · ⬜ **K8** · **P14** · **R2** · **S19**
 
@@ -1177,21 +1177,6 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   F231, F71. ⚠ **2026-09-18:** `t13` also sets a carrier frequency, not a power: 140 Hz per step on the headset
   (`protocol/brx-protocol.md` §6), so `t13` = 13 is 25.8 kHz. Read this run as a frequency ladder; see
   `bench-firmware-levers-2026-09-19.md` §20. `bench` + `space`.
-- **F260 🟠 THE THREE TWO-WORD WEAPONS REPORT ROUGHLY DOUBLE ACCURACY IN THE RECAP.** Found by review 2026-09-18.
-  The Shotgun, Plasma Sniper and Rocket Launcher carry `$WEAP` t1 = 2, so ONE trigger pull sends two IR words about
-  88 ms apart (measured, cap30). The victim's gun emits an `$HIR` for each, the node turns each into a `hit_taken`
-  fact, and `scoring.py` does `st.hits += 1` per fact. The denominator, `st.shots`, is the gun's OWN trigger-pull
-  count off the status heartbeat, which increments once. So a Shotgun landing every pull on one target publishes
-  **200% accuracy**. Damage is NOT affected: two real words, two real deductions, the health maths is right. This is
-  the shots-landed statistic alone, surfaced in the recap and in `Recap.tsx`. **The fix is not obvious and that is
-  why this is a row rather than a patch.** Deduping by (shooter, victim) inside a time window does not work on its
-  own: the window would have to exceed 88 ms, and the AR (100 ms), SMG (95 ms) and Burst Rifle (75 ms) can all land
-  two legitimate hits faster than that, so a blanket window would silently DELETE real hits from the weapons most
-  players carry. The sensor does not separate them either (both words landed on sensor 4 in cap30), and neither does
-  the magnitude once a weapon prices both words equally, as our Shotgun did at 20 and 20 until F276 moved it to 21 and 19. The workable shape:
-  Mission Control compiled the loadout, so it knows which players carry a weapon declaring `wire.headset_dmg`, and
-  can collapse a PAIR into one landed shot for those players only. Failing safe matters more than being clever here:
-  over-reporting accuracy is ugly, deleting a real hit from an assault rifle is a wrong match result. ⚠️ **Every candidate fix has the same trap (playtest lane, 2026-09-18): it must NOT run on a SPAWN-PROTECTED player.** A protected player emits `$HIR` and moves no pool, so anything collapsing on hit COUNT rather than on damage would quietly change the number in the one case where nothing landed at all. **→ 2026-09-18 (F263, playtest lane): the frames were read and the answer is NO.** Protocol, shooter id, team and both trailing tokens are identical in both words; the SENSOR is geometry (the Shotgun's pair split 0 then 4, the Plasma Sniper's were 4 and 4); and the GAP VARIES (57, 88 and 119 ms across three pulls), which sits either side of the AR's 100 ms cycle and kills any fixed-window collapse outright. Magnitude differs only because the catalogue prices the two words differently, and ours priced the Shotgun's at 20 and 20, so even that was gone (since F276 it prices 21 and 19, and a catalogue guard refuses two equal words). **Decided: the NODE owns the collapse**, because a mid-life weapon swap is invisible to MC and obvious to the node. Collapse the shots-landed STATISTIC only: both words really land and really deduct, so the health maths must keep counting two. Original plan, now superseded: If any token separates the second word from the first (subtype, crit bit, anything), the victim's node collapses the pair alone and no loadout inference is needed. The playtest lane has both guns on BLE and is running it: one pull from a `t1 = 2` head, both `$HIR` verbatim, plus a `t1 = 0` control. Try the Plasma Sniper too: it ships 25 and 10, so its words differ in magnitude where the Shotgun's are both 20 -- if magnitude is the ONLY separator, never pricing two words equally becomes a catalogue constraint. If the frames are identical, the collapse must survive a mid-match weapon SWITCH, which MC's compiled loadout cannot see and the node can. `build`.
 - **F66 🟡 `$SIR` fn 23: one mechanism with two symptoms, or two effects?** The 2026-08-27 row called it an audio
   suppressor on the strength of `$ALCD` token 2 dropping 100 → 0. Token 2 is now bench-proven to be **live accuracy**
   (F46), so that number never evidenced the audio claim at all. Both observations stand on their own: the gun **was heard**

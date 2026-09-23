@@ -107,7 +107,7 @@ above; the remaining field check validates that release.
 Shipped: the `$WEAP` t12 headset word as a declared `wire.headset_dmg` (a captured t12 with no price is a refusal),
 crits on two weapons (`crit_pct`; hits-to-kill stays the GUARANTEED number), the counts derived from the shipped
 artefact, and the `/arsenal` page. The recoil values in `spec/node.md` §3.15 ship today as a derivation from the
-catalogue's old four fields; the F268 rebalance and S54's explicit per-weapon six-field declarations are proposed.
+catalogue's old four fields; the F268 rebalance and S54's explicit per-weapon six-field declarations are proposed. F260 is closed: dual-emitter words share a `shot_group`, so MC counts one physical pull for accuracy while retaining both damage facts.
 The Toxin Rifle SHIPPED 2026-09-19 (S16 closed): every hit poisons, the node tick clock, credited `death`
 with `dot: true`, the HUD poison and smoke tells, unhidden. `mcp/tools/balance_sim.py` balances any weapon
 (weapon-design.md §7.5c). The F268 floors stay at 60. The "fraction of the magazine" rung approval is

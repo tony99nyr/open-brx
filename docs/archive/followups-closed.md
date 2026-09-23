@@ -1,5 +1,9 @@
 # Closed followups (archive)
 
+# Closed 2026-09-23: dual-emitter accuracy accounting
+
+- 2026-09-23 **F260** the node assigns both words from one physical dual-emitter pull the same `shot_group`; MC counts each group once for the accuracy numerator while retaining both landed words in the damage log. Node regressions cover grouped dual words versus rapid ordinary hits, and `mcp/tests/test_mc_scoring_warnings.py` covers grouped versus distinct accuracy counts.
+
 # Closed 2026-09-23: native playbook command safety decision
 
 - 2026-09-23 **F273** remains on the known command list: `$PB*` and `$AS` are used by bench tools, no compiled
