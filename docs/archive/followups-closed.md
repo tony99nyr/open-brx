@@ -624,3 +624,5 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
 - 2026-09-22 **F252** renamed the USB-console parser to `parse_usb_query`; the protocol parser remains
   `protocol.parse_query` with its distinct normalized wire-diagnostic shape. USB callers and focused tests now
   name the parser they actually consume.
+- 2026-09-23 **F187** closed by decision: Tony accepts the 16-retired-match bound (`_ENDED_KEEP`); a phone away
+  that long rejoins the lobby and gets no end delivery. No durable match ownership.

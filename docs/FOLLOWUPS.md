@@ -80,7 +80,7 @@ right** and this index is stale. Do not cite it as evidence that something is or
 **Keyboard only** (tagged `build` or `decision` — no gun, no rig, no dim room):
 - 🔴 **B23** · **E5** · **F43** · **F231** · **F264** · **S10**
 - 🟠 **B4** · **B21** · **B31** · **E2** · **F12** · **F40** · **F70** · **F164** · **F256** · **F269** · **F272** · **F277** · **F280** · **F300** · **P8** · **S3** · **S14** · **S33** · **S50** · **S53**
-- 🟡 **B1** · **B8** · **B14** · **B17** · **D1** · **D3** · **E3** · **E4** · **E6** · **F5** · **F16** · **F20** · **F24** · **F25** · **F42** · **F60** · **F68** · **F88** · **F95** · **F108** · **F109** · **F112** · **F113** · **F123** · **F126** · **F128** · **F130** · **F132** · **F133** · **F161** · **F176** · **F177** · **F178** · **F186** · **F187** · **F191** · **F221** · **F229** · **F233** · **F251** · **F266** · **F267** · **F268** · **F270** · **F281** · **F284** · **F289** · **H1** · **H2** · **H6** · **H8** · **K2** · **Q12′** · **Q13** · **R3** · **S1** · **S2** · **S6** · **S7** · **S-A12** · **S13** · **S25** · **S27** · **S28** · **S29** · **S30** · **S31** · **S32** · **S36** · **S42** · **S43** · **S46** · **S47** · **S48** · **S49** · **S51** · **S54**
+- 🟡 **B1** · **B8** · **B14** · **B17** · **D1** · **D3** · **E3** · **E4** · **E6** · **F5** · **F16** · **F20** · **F24** · **F25** · **F42** · **F60** · **F68** · **F88** · **F95** · **F108** · **F109** · **F112** · **F113** · **F123** · **F126** · **F128** · **F130** · **F132** · **F133** · **F161** · **F176** · **F177** · **F178** · **F186** · **F191** · **F221** · **F229** · **F233** · **F251** · **F266** · **F267** · **F268** · **F270** · **F281** · **F284** · **F289** · **H1** · **H2** · **H6** · **H8** · **K2** · **Q12′** · **Q13** · **R3** · **S1** · **S2** · **S6** · **S7** · **S-A12** · **S13** · **S25** · **S27** · **S28** · **S29** · **S30** · **S31** · **S32** · **S36** · **S42** · **S43** · **S46** · **S47** · **S48** · **S49** · **S51** · **S54**
 - 🟢 **B11** · **B22** · ⬜ **D5** · **E7** · **F14** · **F17** · **F19** · **F32** · **F52** · **F83** · **F87** · **F89** · **F93** · **F98** · **F99** · **F100** · **F107** · **F204** · **F250** · ⬜ **H3** · ⬜ **H4** · ⬜ **H5** · ⬜ **K6** · ⬜ **K8** · **P14** · **R2** · **S19**
 
 ## 1. Before going public
@@ -152,7 +152,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   map is now derivable without P3. `build`.
 - **B17 🟡** tutorial mode (`TutorialEngine`, audio-guided, event-gated). `build`.
 - **B21 🟠** release-sign + distribute the Android app (debug key today, `debuggable=true`; keystore out of repo, **→ 2026-09-19, this is no longer hypothetical: app 0.3.0 IS PUBLISHED and it is DEBUG-signed** (`app-v0.3.0`, F220 closed). It sideloads and it is what both phones run, but it carries the throwaway Android debug key, so the FIRST release-signed build will not upgrade over it and every player must uninstall once. That is a one-time cost that gets worse with every player who installs 0.3.x, and it is cheapest to pay before a public game rather than on a match day. ⚠ **WAITING ON TONY:** which signing key, and before which game. Every player who installs a debug-signed 0.3.x pays the uninstall once, so the cost only grows. `decision`.
-  `assembleRelease`, version bump per build; iOS = TestFlight or source build). `build`.
+  `assembleRelease`, version bump per build; iOS = TestFlight or source build). `build`. **→ Tony 2026-09-23:** release-sign at the NEXT APK cut, and cut only after the open desk fixes land. Testers uninstall once at that cut. `build`.
 - **B23 🔴** respawn station for HOSTED games = a node-defined "downed" state. A dead hosted gun hears no IR and native
   station words do nothing in a host-driven game (2026-09-04). ⭐ **WHY they do nothing is now known (2026-09-10): our
   compiled `$SIR` table ships no protocol-15 row, so the firmware discards every station word in silence. One row
@@ -340,7 +340,7 @@ nine of these eleven were root-caused without touching a gun.
 - **F291 🟡 BALANCE: THE CHARGE RIFLE DOMINATES AND THE SHOTGUN TRAILS.** `mcp/tools/balance_sim.py` (weapon-design.md §7.5c):
   the Charge Rifle scores about 1.4 against the Assault Rifle outdoors. The Shotgun scores 0.89 to 1.05 even with every fight at close
   range, because the catalogue gives it a 1.6 s kill against the rifle's 1.2 s. Both rest on invented inputs (focus fire, contact
-  length). Tony decides whether to retune, and a playtest checks it. `decision`.
+  length). Tony decides whether to retune, and a playtest checks it. `decision`. **→ Tony 2026-09-23:** nerf the Charge Rifle so a Standard pool needs the charge plus THREE taps, not two: charge 85 → 70 (Standard 70+60, Shields 70+80, Hardcore still one charge). Keep the Shotgun (3 pulls on Standard; its gap is the 800 ms cadence, not the hit count). `build` once S54 lands in `weapons.json`.
 - **F292 🟡 BENCH: THE TOXIN RIFLE ON A REAL GUN.** Check by ear the two cues (H23 on poison, V4G "Cough!" per tick). Check that a
   tick's `$HP` echo moves exactly one pool by the tick amount, so the echo rule in `spec/node.md` §3.17 holds on the wire. Check
   one lethal tick books a credited `death` with `dot: true`. `bench`.
@@ -1081,15 +1081,10 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   **Decision first:** the newer contract deliberately defines READY as player intent and preserves it across a
   head re-push. Excluding stale-head players from the displayed total would also make MARK ALL READY unable to
   affect its own count. Settle whether this row wants a second "current head" count or different wording before
-  changing behavior. `decision`.
+  changing behavior. `decision`. **→ Tony 2026-09-23:** keep READY as player intent and flag the stale phones in the count, e.g. `6 ready · 1 updating`, so the host sees why START refuses. `build`.
 - **F186 🟡** `recall`/`panic` are deliberately unwatched by end-delivery; decide if a recall should be confirmed. `decision`.
-- **F187 🟡** the end-delivery ladder is ~137 s, then the A34 reconcile is the long tail; a phone returning after the
-  match is evicted gets nothing. **2026-09-22 desk read:** the boundary is the seventeenth retired match
-  (`_ENDED_KEEP = 16`; the restart snapshot keeps four). A blind SQLite fallback would violate the rule that MC
-  never ends a match it cannot prove it retired, because the store is not scoped to the current session generation.
-  Decide whether the bound is accepted or add durable match ownership before changing it. `decision`.
 - **F191 🟡** should a standing WSL banner displace other alerts in the shared header? Fixed in the e2e boots, not in
-  `CommandBar`. A product decision; low field risk. `decision`.
+  `CommandBar`. A product decision; low field risk. `decision`. **→ Tony 2026-09-23 (default taken):** the standing WSL banner never displaces another alert; a real alert wins. Check `CommandBar` does this, then close. `build`.
 - **F198 🔴 Needs Tony at the bench** the reflection theory behind `$GSET` t2 is untested and may INVERT the
   current fix. Reading: low sensitivity (t2=1) may be deliberate for INDOOR play, rejecting bounced/reflected
   shots off walls and ceilings, in which case the right end state is `indoor -> t2=1, outdoor -> t2=0` — the
