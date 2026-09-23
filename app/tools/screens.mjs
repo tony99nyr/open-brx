@@ -2175,7 +2175,8 @@ for (const view of VIEWS) for (const [stage, want] of [['live-callout-kill', /^K
   await step(`${view.name} S57 ${stage}: the callout chip reads right and fits`, async () => {
     const pg = await open(view, stage, '', 2800);
     const r = await pg.evaluate(() => { const e = document.querySelector('.chipbar .callout'); if (!e) return null; const b = e.getBoundingClientRect();
-      return { t: e.textContent, fits: b.left >= 0 && b.right <= innerWidth && e.scrollWidth <= e.clientWidth + 1, beacon: window.brx.engine ? window.brx.engine.state().beacon : undefined }; });
+      const bar = document.querySelector('.chipbar');
+      return { t: e.textContent, fits: b.left >= 0 && b.right <= innerWidth && e.scrollWidth <= e.clientWidth + 1 && bar.scrollWidth <= bar.clientWidth + 1, beacon: window.brx.engine ? window.brx.engine.state().beacon : undefined }; });
     await pg.close();
     must(r && want.test(r.t) && r.fits, 'callout chip: ' + JSON.stringify(r));
     must(!r.beacon, 'a callout word must not become a beacon: ' + JSON.stringify(r.beacon));

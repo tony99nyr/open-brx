@@ -33,7 +33,8 @@ An IR word carries one player id, so ONE word names the killer and its magnitude
 | `DOWN` | 25 + victim's team id (25 to 28) | the victim | a player of that team went down; the killer is unknown (or it was the victim's own doing) |
 
 All magnitudes sit in the bench-silent range 1 to 39, clear of 2, 6, 8 and 10. The word is protocol 15, subtype 0,
-direction 100 (all domes), fired once (`$IRTX` field 9 = 1), from the victim's phone right after its death is booked.
+direction 100 (all domes), fired once (`$IRTX` field 9 = 1), from the victim's phone right after its death is booked. A gun-recovery DOWN (the player power-cycled a locked gun)
+is not a kill, so it sends nothing; neither does an infection flip.
 
 The word's team field is `frames.callout_team`: a team id that no player in this match holds, compiled by MC. With
 friendly fire on the gate does not apply and any value works. When all four team ids are in use (and friendly fire
@@ -52,7 +53,9 @@ not.
 The first matching row wins, so the killer hears KILL CONFIRMED and not ENEMY DOWN as well.
 
 **Kill confirm, first to arrive, once (Tony).** An IR `DOWN_BY` naming me and MC's `feedback{kind:"kill"}` both mean the same
-thing. Whichever arrives first plays the kill cue. The other is suppressed within `CALLOUT_WINDOW_MS` (3 s). MC's
+thing. Whichever arrives first plays the kill cue, and the other is suppressed. The two channels pair ONE-TO-ONE
+within `CALLOUT_WINDOW_MS` (3 s), matched on the victim's team when both know it: in a double kill where only one IR
+word lands, MC's confirm of the second kill still plays. MC's
 medal cues still play, because they carry information the IR word does not. The IR word never moves the score:
 only MC's feedback does.
 
@@ -68,7 +71,7 @@ names who did it, and the magnitude names the event and the team it concerns. A 
 its capture word (magnitude 50) is its single broadcast. A phone-run hill or a flag capture follows the same shape:
 the capturing player's gun sends one word naming the capturer, with the capturing team in the magnitude.
 
-Reserved codes (not built in v1, all in the bench-silent range): `HILL_CAPTURED` 29 + team (29 to 32), player = the
+Reserved codes (not built in v1, all in the bench-silent range; 37 to 39 are unassigned and ignored the same way): `HILL_CAPTURED` 29 + team (29 to 32), player = the
 capturer; `FLAG_CAPTURED` 33 + team (33 to 36), player = the capturer. Adding one is a row in `IR_CALLOUT` and a
 receiver case.
 

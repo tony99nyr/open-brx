@@ -220,3 +220,31 @@ test('S57 kill confirm: MC\'s medal cues play even when IR already confirmed the
   h.feedback({ kind: 'kill', victim_team: 'yellow', medals: ['killtacular'] });
   assert.equal(h.cues('V124').length, 1, 'the medal line (killtacular = V124 in the golden bundle) is never suppressed');
 });
+
+// ---------- polish round 1 (2026-09-23) ----------
+
+test('S57 kill confirm: a double kill where only ONE IR word lands still plays MC\'s cue for the second kill', () => {
+  const h = harness(); h.live();
+  h.irWord(7, IR_CALLOUT.DOWN_BY + 2);                     // kill 1, heard over IR
+  h.feedback({ kind: 'kill', victim_team: 'yellow' });     // MC confirms kill 1: pairs with the IR confirm, no second line
+  h.adv(700);
+  h.feedback({ kind: 'kill', victim_team: 'yellow' });     // MC confirms kill 2, whose IR word never arrived
+  assert.equal(h.cues('VAA').length, 2, 'one line per kill: IR for the first, MC for the second');
+});
+test('S57 kill confirm: confirms pair by victim team, so another team\'s MC kill is not swallowed', () => {
+  const h = harness(); h.live();
+  h.irWord(7, IR_CALLOUT.DOWN_BY + 2);                     // IR: I killed someone on team 2 (yellow)
+  h.feedback({ kind: 'kill', victim_team: 'red' });        // MC: a different kill, a red victim
+  assert.equal(h.cues('VAA').length, 2, 'different victims, two lines');
+});
+test('S57 sender: a gun-recovery DOWN (a power-cycle, not a kill) sends no callout', () => {
+  const h = harness(); h.live();
+  h.eng._death(true, 'gun_recovery');
+  assert.deepEqual(h.irtx(), []);
+});
+test('S57 receiver: unassigned magnitudes 37-39 stay on the bus, ignored, never a beacon', () => {
+  const h = harness(); h.live();
+  h.irWord(5, 37); h.irWord(5, 39);
+  assert.equal(h.eng.state().beacon, null);
+  assert.equal(h.eng.state().callout, null);
+});

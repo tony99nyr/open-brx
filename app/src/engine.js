@@ -522,6 +522,7 @@ export const IR_CALLOUT = {
   DOWN: 25,           // 25-28: the named player IS the victim; the killer is unknown (or was the victim)
   HILL_CAPTURED: 29,  // 29-32: RESERVED — not sent or handled in v1 (S57 scope, Tony)
   FLAG_CAPTURED: 33,  // 33-36: RESERVED — not sent or handled in v1 (S57 scope, Tony)
+  LAST: 39,           // 37-39: unassigned, still the bus (bench-silent range): ignored, never read as a beacon
   ENEMY_DOWN_CUE: 'VB8',   // "Target down." (sound_catalog.json: 1.014 s)
 };
 const CALLOUT_DEDUPE_MS = 600;   // one physical word lands on several sensors ~14 ms apart (F85); short enough that a real double kill still counts twice a second or so later
@@ -688,8 +689,8 @@ export class Engine {
     // S57 kill confirm, first to arrive, once (Tony): each channel stamps ONLY its own timestamp and reads
     // ONLY the other's, so two of the SAME channel's kills close together (a real double kill) never
     // self-suppress -- only a genuinely DIFFERENT channel confirming the same kill does.
-    this._irKillCueAt = 0;           // S57: this.now() of the last IR DOWN_BY naming me that played its own cue
-    this._mcKillCueAt = 0;           // S57: this.now() of the last MC feedback{kill}, whether it played a cue or not
+    this._irKillOpen = [];           // S57: IR kill confirms that played a cue and no MC feedback{kill} has matched yet, [{at, team}]
+    this._mcKillOpen = [];           // S57: MC feedback{kill}s no IR confirm has matched yet, [{at, team}] (see `_takeKillMatch`)
     this.hill = null;               // {owner, at, from_neutral} — the control point's OWNER and when its last beacon landed. State from the wire; the cadence below is ours
     this._hillBusyUntil = 0;        // the announcer is occupied by a hill callout until this (now + the clip's real length) — the tick waits, it never overlaps
     this._hillTickAt = 0;           // when the possession tick last played (0 = not ticking)
@@ -1715,7 +1716,7 @@ export class Engine {
     // this reset, startAt skipped re-arming from `live` and resumeSchedule returned `live` early — the
     // T-0 spawn never ran and the gun sat alive-with-0-hp (bench 2026-09-04, S7, on hardware). Drop the
     // stale live/down state so the new match re-arms → spawns.
-    if (newMatch) { this.spawned = false; this.alive = false; this.deadAt = 0; this.killedBy = null; this.downReason = null; this._resetHill(); this.callout = null; this._irKillCueAt = 0; this._mcKillCueAt = 0; }   // game 2 must not inherit game 1's owner, tally, warnings or kill-confirm race
+    if (newMatch) { this.spawned = false; this.alive = false; this.deadAt = 0; this.killedBy = null; this.downReason = null; this._resetHill(); this.callout = null; this._irKillOpen = []; this._mcKillOpen = []; }   // game 2 must not inherit game 1's owner, tally, warnings or kill-confirm race
     this._turned = false;               // last match's infection flip must not score this one as "turned" (polish 2026-09-04)
     if (this.phase === 'lobby' || this.phase === 'kitted' || this.phase === 'armed' || (newMatch && this.phase === 'live')) this._set('armed');
     this._save();
@@ -2639,7 +2640,7 @@ export class Engine {
    *  ~14 ms apart), inside CALLOUT_DEDUPE_MS; short enough that a real double kill (the same key again a
    *  second or so later) still counts twice. */
   _onIrCallout(player, magnitude, now) {
-    if (magnitude >= IR_CALLOUT.HILL_CAPTURED) return;   // 29-36: HILL_CAPTURED/FLAG_CAPTURED reserved — ignored outright, v1 sends and handles neither (Tony, 2026-09-23)
+    if (magnitude >= IR_CALLOUT.HILL_CAPTURED) return;   // 29-39: HILL_CAPTURED/FLAG_CAPTURED reserved — ignored outright, v1 sends and handles neither (Tony, 2026-09-23)
     if (!this.alive || this.phase !== 'live') return;    // a dead gun would not report it anyway (the doc), and callouts are a live-match thing only
     if (Number.isNaN(player) || Number.isNaN(magnitude)) return;
     const key = `${magnitude}:${player}`;
@@ -2666,11 +2667,22 @@ export class Engine {
    *  known here — read `victimName`'s comment: the `kill` moment's HUD banner is hard-wired "CONFIRMED BY
    *  MISSION CONTROL" (hud.js `_kill`), which would be a lie for a pure IR confirm, so this uses
    *  `state().callout` instead of that moment. */
+  /** S57 polish: pair the two kill-confirm channels ONE-TO-ONE, never by a bare timestamp. `open` is the other channel's
+   *  list of unmatched confirms; the oldest one inside CALLOUT_WINDOW_MS whose victim team agrees (or is unknown on
+   *  either side) is consumed and the caller skips its plain cue. A double kill where only one IR word lands still
+   *  plays MC's cue for the second kill: the one IR confirm pairs with one MC confirm, not with both. */
+  _takeKillMatch(open, team, now) {
+    for (let i = open.length - 1; i >= 0; i--) if (now - open[i].at > CALLOUT_WINDOW_MS) open.splice(i, 1);
+    const i = open.findIndex(x => !x.team || !team || x.team === team);
+    if (i < 0) return false;
+    open.splice(i, 1); return true;
+  }
   _irKillConfirmed(victimTeam, now) {
     this.callout = { kind: 'kill_confirmed', name: null, team: TEAM_KEY[victimTeam] || null, at: now };
-    const mcAlreadyConfirmed = this._mcKillCueAt != null && now - this._mcKillCueAt <= CALLOUT_WINDOW_MS;
+    const team = TEAM_KEY[victimTeam] || null;
+    const mcAlreadyConfirmed = this._takeKillMatch(this._mcKillOpen, team, now);
     if (!mcAlreadyConfirmed) {
-      this._irKillCueAt = now;
+      this._irKillOpen.push({ at: now, team });
       const pick = this._pickCue('kill');
       const lg = (this._lightGen = this._lightGen || 0);
       this._write([SFLASH], 'S57 IR kill confirmed');
@@ -4324,7 +4336,8 @@ export class Engine {
     // is its OWN separate timestamp, read back only by `_irKillConfirmed`: two of MC's OWN kills close
     // together (a real double kill, or `cue pools` test's back-to-back feedback calls) must never
     // self-suppress, only a genuinely different channel racing the same kill may.
-    const irAlreadyConfirmed = body.kind === 'kill' && this._irKillCueAt != null && this.now() - this._irKillCueAt <= CALLOUT_WINDOW_MS;
+    const vt = body.victim_team != null ? String(body.victim_team).toLowerCase() : null;
+    const irAlreadyConfirmed = body.kind === 'kill' && this._takeKillMatch(this._irKillOpen, vt, this.now());
     if (medalCues.length) {
       medalCues.forEach((x, i) => this.delay(120 + i * MEDAL_GAP_MS, () => { if (this._lightGen === lg) this._write([x.f], `medal ${x.m}`); }));
       this.medals = body.medals.slice();
@@ -4335,7 +4348,7 @@ export class Engine {
       if (this.score) this.score = { ...this.score, kills: (this.score.kills || 0) + 1 };
       else this.score = { kills: 1 };
       this.scoreAt = this.now();
-      this._mcKillCueAt = this.now();   // always stamp MC's own arrival, whether or not IR beat us to the cue
+      if (!irAlreadyConfirmed) this._mcKillOpen.push({ at: this.now(), team: vt });   // an unmatched MC confirm waits for its IR twin
       this.moment = { kind: 'kill', at: this.now(), data: { victim_team: body.victim_team, victim: this.victimName(body), medals: Array.isArray(body.medals) ? body.medals.slice() : [] } };
     }
     this._changed();
@@ -4452,7 +4465,7 @@ export class Engine {
           // any of the beacon handling below, so a callout word never reaches `_onHillBeacon` and never writes
           // `this.beacon`. Everything else on protocol 15 (6/8/50/53 today) falls through unchanged.
           const calloutMag = parseInt(t[5], 10);
-          if (calloutMag >= IR_CALLOUT.DOWN_BY && calloutMag <= IR_CALLOUT.FLAG_CAPTURED + 3) {
+          if (calloutMag >= IR_CALLOUT.DOWN_BY && calloutMag <= IR_CALLOUT.LAST) {
             this._onIrCallout(parseInt(t[3], 10), calloutMag, this.now());
             break;
           }
@@ -5522,7 +5535,7 @@ export class Engine {
     // word's team field so friendly-fire-off still delivers it to enemies; falling back to our own tid keeps
     // an OFF gun immune to its own team's word instead, so teammates stay silent (the doc's "all four team ids
     // in use" case) -- see `_onIrCallout`'s comment for why that field is otherwise unread on receipt.
-    if (!irFlip && this.phase === 'live' && this.bleUp) {
+    if (!irFlip && reason !== 'gun_recovery' && this.phase === 'live' && this.bleUp) {   // a gun-recovery DOWN is a power-cycle, not a kill: announcing it would tell every gun someone was shot
       const myNum = this.player && this.player.player_num, myTid = this.teamTid;
       if (myNum != null && myTid != null) {
         const selfOrUnknown = this.killedBy.unknown || this.killedBy.num === myNum;
