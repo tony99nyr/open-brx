@@ -77,7 +77,7 @@ measured recoil numbers behind the shipped rungs. Groups C, D, E and F go into s
 ### Sitting 4: screamers Phase A, IR half (about 50 min; 1 gun, the rig)
 
 Screamers A8b, A9, A10, A13. A13 gives the per-gun traffic budget (**F274**). A13 replays the shipped recoil writer,
-which writes `$TMP` t4 only (S55).
+which writes `$TMP` t4 only (S55, shipped).
 
 ### Sitting 5: match verification (about 60 min; 2 guns, Phones + MC, film)
 
@@ -121,7 +121,7 @@ headset-word row was F254 before its renumber and is F275 now.
 
 ### Unattended and long runs (no sitting)
 
-- **Screamers Phase C** runs 1-4, 2 h each, one gun and a laptop (now unblocked with `soak --phone-pacing` built). Run 3 soaks the `$TMP` t4 recoil writer (S55).
+- **Screamers Phase C** runs 1-4, 2 h each, one gun and a laptop (now unblocked with `soak --phone-pacing` built). Run 3 soaks the `$TMP` t4 recoil writer (S55, shipped).
 - **Screamers Phase D** (3 h, all guns, Phones + MC, the rig), after the Phase B rules are built.
 - **Screamers Phase E** (20 min), after the lock-up detector (**F272**) passes its bench validation.
 
