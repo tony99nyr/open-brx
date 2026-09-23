@@ -74,7 +74,7 @@ player field names who did it, and the magnitude names the event and the team it
 | Event | Where it happens | The one broadcast | Phone side | Status |
 |---|---|---|---|---|
 | Grenade hill captured / lost | the grenade | its native capture word, protocol 15 magnitude 50, new owner in the team bits | `_onHillBeacon` plays HILL CAPTURED (VB0N) to the new owner, HILL LOST (VB0P) to the old | built; F312 |
-| Stick hill captured / lost | the M5Stick station | the same magnitude-50 word, sent once on a HILL-mode flip (`capture_word()`) | as a grenade, no new phone code | built, host-tested; the Stick is unproven on hardware |
+| Stick hill captured / lost | the M5Stick station | the same magnitude-50 word, sent once on a HILL-mode flip (`capture_word()`) | as a grenade, no new phone code, when the game's `station_source` is `grenade` (the phone drops beacon words under `ir_station`; which value a Stick carries is open under H8) | built, host-tested; the Stick is unproven on hardware |
 | Phone control point captured / lost / contested | the utility phone, which has no gun | its BLE advert (kind 5), republished on every change | `_onControlAdvert` plays VB0N / VB0P / VB0O | built; no IR word needed |
 | Hill contested | nowhere on a grenade | none: the grenade sends no such signal (F75) | not wired | no sender exists |
 | Hill moved | Mission Control, not a device | none on IR: no gun is where it happened | VB0Q has no caller | not an IR event |

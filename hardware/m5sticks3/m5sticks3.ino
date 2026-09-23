@@ -178,7 +178,9 @@ static void pollRx() {
     if (point.on_word(r.word, millis())) {
       Serial.printf("OWNER team=%d captures=%lu\n", point.owner == TEAM_ANY ? -1 : point.owner,
                     (unsigned long)point.captures);
-      // S57: a HILL flip happened HERE, so this Stick sends the one capture word, once (never in BRIDGE)
+      // S57: a HILL flip happened HERE, so this Stick sends the one capture word, once (never in BRIDGE). sendFrame()
+      // calls pollRx() once before it transmits; that nesting is bounded because the receiver was re-armed above, and
+      // the word it sends is protocol 15, which hill() never counts as a shot, so it cannot flip the point again.
       if (point.mode == Mode::HILL) sendFrame(String(encode(point.capture_word()).c_str()));
     }
     displayDirty = true;
