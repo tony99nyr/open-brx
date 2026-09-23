@@ -419,3 +419,45 @@ test('A28.2: a cosmetically different but equivalent url (case, a trailing slash
   await p2;
   t.close();
 });
+
+test('F309: status carries the phone\'s own connection once the app sets it, and never guesses one', async ctx => {
+  useClock(ctx);
+  const { sockets, wsFactory } = factory();
+  const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'GUN-A', tail: '3D4F' }, backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  ctx.after(() => t.close());
+  const p = t.connect({ url: 'ws://lan/ws' });
+  sockets[0].open();
+  sockets[0].recv(welcome());
+  await p;
+  const last = () => sockets[0].sent.filter(e => e.kind === 'status').pop().body;
+  t.status({ arm_state: 'kitted' });
+  assert.equal('transport' in last(), false, 'never told -> no claim (web, older plugin)');
+  t.setConnectionType('cellular');
+  t.status({ arm_state: 'kitted' });
+  assert.equal(last().transport, 'cellular');
+  t.setConnectionType('wifi');
+  t.status({ arm_state: 'kitted' });
+  assert.equal(last().transport, 'wifi', 'a switch is restated on the next beat');
+  t.setConnectionType('5g-ultra');
+  t.status({ arm_state: 'kitted' });
+  assert.equal(last().transport, 'unknown', 'an unrecognised value is unknown, never cellular');
+  t.close();
+});
+
+test('F309: a socket keeps the network it opened on, so a later switch to cellular is not claimed', async ctx => {
+  useClock(ctx);
+  const { sockets, wsFactory } = factory();
+  const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'GUN-A', tail: '3D4F' }, backoff: { baseMs: 1, capMs: 2, jitter: 0 },
+    node: { connection_type: 'wifi' } });
+  ctx.after(() => t.close());
+  const p = t.connect({ url: 'ws://lan/ws' });
+  sockets[0].open();
+  sockets[0].recv(welcome());
+  await p;
+  const last = () => sockets[0].sent.filter(e => e.kind === 'status').pop().body;
+  t.status({});
+  assert.equal(last().transport, 'wifi', 'the seeded value is claimed from the first beat');
+  t.setConnectionType('cellular');          // Android "switch to mobile data": the default moved, the socket did not
+  t.status({});
+  assert.equal(last().transport, 'wifi', 'the socket opened on Wi-Fi is still on Wi-Fi');
+});

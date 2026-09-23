@@ -120,7 +120,7 @@ describe('Armory REACH panel', () => {
 describe('Lobby coverage line and per-node reach tags', () => {
   it('renders no coverage tag when no player node has ever bound (bound === 0)', async () => {
     const d = await demo();
-    const state: State = { ...d.state, coverage: { level: 'zones', on_backhaul: 0, bound: 0 } };
+    const state: State = { ...d.state, coverage: { level: 'zones', on_backhaul: 0, on_cellular: 0, bound: 0 } };
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
     expect(m.text()).not.toContain('COVERAGE');
     m.unmount();
@@ -132,7 +132,7 @@ describe('Lobby coverage line and per-node reach tags', () => {
   // untouched.
   it('shows the short coverage phrase when some, but not all, bound nodes are on backhaul', async () => {
     const d = await demo();
-    const state: State = { ...d.state, coverage: { level: 'zones', on_backhaul: 2, bound: 5 },
+    const state: State = { ...d.state, coverage: { level: 'zones', on_backhaul: 2, on_cellular: 0, bound: 5 },
       lan: { ...d.state.lan, public: { ws_url: 'wss://x.trycloudflare.com/ws', status: 'up', provider: 'cloudflared', available: true } } };
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
     expect(m.text()).toContain('Internet: 2 of 5 phones');
@@ -141,7 +141,7 @@ describe('Lobby coverage line and per-node reach tags', () => {
 
   it('shows the same short phrase when every bound node is on backhaul', async () => {
     const d = await demo();
-    const state: State = { ...d.state, coverage: { level: 'full', on_backhaul: 5, bound: 5 },
+    const state: State = { ...d.state, coverage: { level: 'full', on_backhaul: 5, on_cellular: 5, bound: 5 },
       lan: { ...d.state.lan, public: { ws_url: 'wss://x.trycloudflare.com/ws', status: 'up', provider: 'cloudflared', available: true } } };
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
     expect(m.text()).toContain('Internet: 5 of 5 phones');
@@ -255,7 +255,7 @@ describe('CommandBar: the WSL LAN-reachability warning (T3-A)', () => {
 describe('Armed and Live carry the same coverage line as Lobby', () => {
   it('Armed (no schedule yet) shows the coverage line in its header', async () => {
     const d = await demo();
-    const state: State = { ...d.state, start: undefined, coverage: { level: 'zones', on_backhaul: 1, bound: 4 },
+    const state: State = { ...d.state, start: undefined, coverage: { level: 'zones', on_backhaul: 1, on_cellular: 0, bound: 4 },
       lan: { ...d.state.lan, public: { ws_url: 'wss://x.trycloudflare.com/ws', status: 'up', provider: 'cloudflared', available: true } } };
     const m = await mountScreen(<Armed />, { ...d, state, view: 'armed' });
     expect(m.text()).toContain('Internet: 1 of 4 phones');
@@ -265,17 +265,35 @@ describe('Armed and Live carry the same coverage line as Lobby', () => {
   it('Live shows the coverage line while a match is running', async () => {
     const d = await demo();
     const live = { match_id: 'm1', go_live_t: Date.now() - 1000, time_limit_s: 600, ends_t: Date.now() + 599000, score: {}, rows: [] };
-    const state: State = { ...d.state, live, coverage: { level: 'full', on_backhaul: 4, bound: 4 },
+    const state: State = { ...d.state, live, coverage: { level: 'full', on_backhaul: 4, on_cellular: 4, bound: 4 },
       lan: { ...d.state.lan, public: { ws_url: 'wss://x.trycloudflare.com/ws', status: 'up', provider: 'cloudflared', available: true } } };
     const m = await mountScreen(<Live />, { ...d, state, view: 'live' });
     expect(m.text()).toContain('Internet: 4 of 4 phones');
     m.unmount();
   });
 
+  // F309: the chip names how many tunnel phones ride cellular, and turns green only at derived FULL.
+  it('Live names the cellular count and is green only at full coverage', async () => {
+    const d = await demo();
+    const live = { match_id: 'm1', go_live_t: Date.now() - 1000, time_limit_s: 600, ends_t: Date.now() + 599000, score: {}, rows: [] };
+    const chip = async (coverage: State['coverage']) => {
+      const m = await mountScreen(<Live />, { ...d, state: { ...d.state, live, coverage }, view: 'live' });
+      const el = m.find('[data-coverage="1"]')[0];
+      const out = { text: el?.textContent ?? '', color: el ? getComputedStyle(el).backgroundColor : '' };   // a Tag's colour is its fill
+      m.unmount();
+      return out;
+    };
+    const part = await chip({ level: 'zones', on_backhaul: 2, on_cellular: 1, bound: 2 });
+    const full = await chip({ level: 'full', on_backhaul: 2, on_cellular: 2, bound: 2 });
+    expect(part.text).toBe('Internet: 2 of 2 phones · 1 on cellular');
+    expect(full.text).toBe('Internet: 2 of 2 phones · 2 on cellular');
+    expect(full.color, 'FULL is the one state that earns green').not.toBe(part.color);
+  });
+
   it('Live shows nothing extra when nobody is bound yet (bound === 0)', async () => {
     const d = await demo();
     const live = { match_id: 'm1', go_live_t: Date.now() - 1000, time_limit_s: 600, ends_t: Date.now() + 599000, score: {}, rows: [] };
-    const state: State = { ...d.state, live, coverage: { level: 'zones', on_backhaul: 0, bound: 0 } };
+    const state: State = { ...d.state, live, coverage: { level: 'zones', on_backhaul: 0, on_cellular: 0, bound: 0 } };
     const m = await mountScreen(<Live />, { ...d, state, view: 'live' });
     expect(m.text()).not.toContain('COVERAGE');
     m.unmount();

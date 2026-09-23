@@ -71,11 +71,16 @@ def test_inv_updating():
     assert lobby(s)["updating"] == 0 and lobby(s)["ready"] == len(ps)
 
 
-def test_inv_coverage_zones():
-    s, _, _, ps = to_lobby(2)
+def test_inv_coverage_needs_cellular():
+    s, net, clock, ps = to_lobby(2)
     for i in range(len(ps)):
         s.net.simulate_hello(f"node{i}", f"GUN-{chr(65 + i)}", via="backhaul")
-    assert s.coverage() == {"level": "zones", "on_backhaul": 2, "bound": 2}, "every phone on the tunnel is still zones"
+    assert s.coverage() == {"level": "zones", "on_backhaul": 2, "on_cellular": 0, "bound": 2}, "the tunnel alone is zones"
+    net.simulate_status("node0", {"transport": "cellular"}, clock["t"])
+    net.simulate_status("node1", {"transport": "wifi"}, clock["t"])
+    assert s.coverage()["level"] == "zones", "one phone on the field Wi-Fi"
+    net.simulate_status("node1", {"transport": "cellular"}, clock["t"])
+    assert s.coverage() == {"level": "full", "on_backhaul": 2, "on_cellular": 2, "bound": 2}
 
 
 def test_inv_stale_start():

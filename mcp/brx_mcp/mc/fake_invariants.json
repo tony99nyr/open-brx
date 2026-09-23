@@ -4,7 +4,7 @@
   {"id": "current_ack", "rule": "Only a successful acknowledgement with a gun echo and the current config_id counts as current."},
   {"id": "fresh_repush", "rule": "A lobby re-push issues a new config_id and retires acknowledgements for the previous head."},
   {"id": "updating", "rule": "Updating counts READY bound players without a current acknowledgement, except players whose gun refused the head."},
-  {"id": "coverage_zones", "rule": "Derived coverage reports the level zones."},
+  {"id": "coverage_needs_cellular", "rule": "Coverage is full only when every bound, connected phone joined through the tunnel and reports cellular."},
   {"id": "stale_start", "rule": "START refuses a successful acknowledgement for an older config_id even with host override."},
   {"id": "protected_stale_only", "rule": "A LIVE row carries possibly_protected only while its phone is stale."}
 ]

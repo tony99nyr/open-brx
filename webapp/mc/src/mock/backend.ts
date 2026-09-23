@@ -565,13 +565,18 @@ export class MockBackend implements Api {
     return this.tunnelStatus === 'up' && this.tunnelWsUrl ? `${base}&pub=${encodeURIComponent(this.tunnelWsUrl)}` : base;
   }
   /** A28.4: derived from the nodes' own reach, never asserted. A node with no player_id is not
-   *  "bound" — an unclaimed phone joining over backhaul does not move the needle. F256: `level` is
-   *  always 'zones', as `state.py coverage()`: `reach` names the URL, never an independent path. */
-  private coverage(nodes: Pick<NodeView, 'player_id' | 'reach'>[]): Coverage {
+   *  "bound" — an unclaimed phone joining over backhaul does not move the needle. F309, as `state.py
+   *  _independent_path()`: only a connected phone on the tunnel that reports cellular is covered. */
+  private coverage(nodes: Pick<NodeView, 'player_id' | 'reach' | 'stale' | 'transport'>[]): Coverage {
     const bound = nodes.filter(n => n.player_id).length;
-    const on_backhaul = nodes.filter(n => n.player_id && n.reach === 'backhaul').length;
-    return { level: 'zones', on_backhaul, bound };
+    const on_backhaul = nodes.filter(n => n.player_id && n.reach === 'backhaul' && !n.stale).length;
+    const on_cellular = nodes.filter(n => n.player_id && n.reach === 'backhaul' && !n.stale && n.transport === 'cellular').length;
+    return { level: bound > 0 && on_cellular === bound ? 'full' : 'zones', on_backhaul, on_cellular, bound };
   }
+  /** `?mock&fullcoverage=1` — F309: once the tunnel is up every phone joins through it on cellular and
+   *  none is stale (the demo's 52 s link included), so the console's FULL coverage chip can be seen.
+   *  Otherwise half the tunnel phones are on Wi-Fi. */
+  private demoFullCoverage = typeof location !== 'undefined' && new URLSearchParams(location.search).get('fullcoverage') === '1';
 
   private state(): State {
     const t = now();
@@ -580,7 +585,9 @@ export class MockBackend implements Api {
     // a node cannot be on a path that does not exist), so `?mock` can show a mixed LAN/BACKHAUL board.
     const linked = readiness.board.filter(b => b.node === 'linked' && !this.evicted.has(`node_${b.tail}`));
     const nodes: NodeView[] = linked.map((b, i) => {
-      const reach = (this.tunnelStatus === 'up' && i % 2 === 0 ? 'backhaul' : 'lan') as 'lan' | 'backhaul';
+      const reach = (this.tunnelStatus === 'up' && (this.demoFullCoverage || i % 2 === 0) ? 'backhaul' : 'lan') as 'lan' | 'backhaul';
+      // F309: the phone's own connection. Half the tunnel phones ride cellular, the rest the field Wi-Fi.
+      const transport = (reach === 'backhaul' && (this.demoFullCoverage || i % 4 === 0) ? 'cellular' : 'wifi') as 'cellular' | 'wifi';
       // F155 (field 2026-09-12): `last_reach` survives past whatever CLEARS `reach` on a real server
       // (a disconnect) — the demo tracks it the same way, keyed by tail, so a card that goes stale
       // still knows which path it lost.
@@ -592,11 +599,11 @@ export class MockBackend implements Api {
         // snapshot()`), the same freshness rule `?mock`'s comments above already describe for
         // `unrostered_phone_count` -- not a hard-coded `false` that could never show the console's new
         // OFFLINE card.
-        stale: (b.last_seen_age_ms ?? 0) > STALE_AFTER_MS,
+        stale: !this.demoFullCoverage && (b.last_seen_age_ms ?? 0) > STALE_AFTER_MS,   // F309: the FULL demo has no stale phone
         synced: true, battery: b.battery_pct, fw: b.fw,
         app_ver: b.app_ver, platform: b.platform,      // A29
         log: this.logFor(`node_${b.tail}`),            // A25
-        reach, last_reach: this.lastReach[b.tail],
+        reach, last_reach: this.lastReach[b.tail], transport,
       };
     });
     // F155 pass 1 (2026-09-12): the earlier version of this demo bolted a SECOND, disconnected NodeView

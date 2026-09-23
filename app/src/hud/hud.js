@@ -1606,7 +1606,7 @@ export class Hud {
       if (this._moment !== 'tminus') {
         this._moment = 'tminus';
         // A31: the compiler emits this line ONCE (`assign.game.mc_verify`) so MC and every phone say the same
-        // thing. Rendered only when it is there — full coverage, or every phone on backhaul, and it is absent.
+        // thing. Rendered only when it is there — full coverage, or every phone on cellular through the tunnel (F309), and it is absent.
         const mcv = (st.game && st.game.mc_verify) ? `<div class="mcv"><span>${esc(String(st.game.mc_verify).toUpperCase())}</span></div>` : '';
         this.overlay.innerHTML = `<div class="mo tminus"><div class="hz t"></div><div class="hz b"></div><div class="glow"></div>${mcv}
           <div class="c"><div class="lab"><span class="h">T-MINUS</span><span class="s">WEAPONS ARMING</span><span class="s">STAND BY</span></div>

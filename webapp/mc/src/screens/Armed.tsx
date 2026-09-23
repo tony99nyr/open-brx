@@ -4,7 +4,7 @@ import { useRunway } from '../runway';
 import { useStore } from '../store';
 import { EvictButton } from '../ui/EvictButton';
 import { F, T, fmtAge, fmtClock } from '../tokens';
-import { Brackets, GhostButton, HazardButton, Num, ScreenHeader, Tag, shortCoverageLine } from '../ui';
+import { Brackets, GhostButton, HazardButton, Num, ScreenHeader, Tag, shortCoverageLine, coverageColor } from '../ui';
 import { SetupSteps } from '../ui/SetupSteps';
 
 
@@ -27,7 +27,7 @@ export function Armed() {
   // A28.4: derived, never asserted — grey the count while the tunnel is off, since it can only be 0.
   const cLine = shortCoverageLine(state.coverage);
   // Field feedback 2026-09-19 (Tony): partial coverage is not a fault, so it is neutral, never amber.
-  const cColor = T.micro;   // F256: a tunnel count is a fact, never a coverage claim, so never green
+  const cColor = coverageColor(state.coverage);   // F309: green only at derived FULL coverage
   const st = state.start;
   if (!st) {
     return (

@@ -109,7 +109,7 @@ to the LAN**; a phone without one never notices. Nothing is configured on any ph
 
 - a phone with data keeps receiving kill confirms, score, the result and log pulls from wherever it has signal;
 - Mission Control **sees which phones are on backhaul** (`NodeView.reach`) and derives **coverage** from it
-  instead of asking the operator to assert it: every bound phone on backhaul = full coverage, which makes the
+  instead of asking the operator to assert it: every bound phone on backhaul AND reporting cellular (F309) = full coverage, which makes the
   frag-limit and survival ends authoritative across the whole park (the time limit stays required: a cell
   signal is not a venue assertion);
 - a mode may declare that it needs full coverage; none does yet.

@@ -61,11 +61,14 @@ const cases: Record<string, Case> = {
     internals(b).acks[ids[0]] = { ok: true, gun_echo: '$ALCD', config_id: s.config.config_id };
     expect((await b.getState()).lobby.updating).toBe(0);
   },
-  coverage_zones: async b => {
-    expect((await b.getState()).coverage?.level).toBe('zones');
-    const cov = (b as unknown as { coverage: (n: { player_id: string; reach: 'backhaul' }[]) => { level: string } })
-      .coverage([{ player_id: 'p1', reach: 'backhaul' }, { player_id: 'p2', reach: 'backhaul' }]);
-    expect(cov, 'every bound phone on the tunnel is still zones').toEqual({ level: 'zones', on_backhaul: 2, bound: 2 });
+  coverage_needs_cellular: async b => {
+    type N = { player_id: string; reach: 'backhaul'; stale: boolean; transport?: 'wifi' | 'cellular' };
+    const cov = (nodes: N[]) => (b as unknown as { coverage: (n: N[]) => unknown }).coverage(nodes);
+    const on = (transport?: 'wifi' | 'cellular', stale = false): N => ({ player_id: 'p', reach: 'backhaul', stale, transport });
+    expect(cov([on(), on()]), 'the tunnel alone is zones').toEqual({ level: 'zones', on_backhaul: 2, on_cellular: 0, bound: 2 });
+    expect(cov([on('cellular'), on('wifi')])).toMatchObject({ level: 'zones', on_cellular: 1 });
+    expect(cov([on('cellular'), on('cellular', true)]), 'stale is not connected').toMatchObject({ level: 'zones', on_cellular: 1 });
+    expect(cov([on('cellular'), on('cellular')])).toEqual({ level: 'full', on_backhaul: 2, on_cellular: 2, bound: 2 });
   },
   stale_start: async b => {
     await b.pushLobby(true);

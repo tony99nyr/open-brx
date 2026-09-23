@@ -1059,16 +1059,23 @@ class Session:
             await t.stop()
         return self._public().copy()
 
+    @staticmethod
+    def _independent_path(nv: dict) -> bool:
+        """F309: can this phone reach MC WITHOUT the field Wi-Fi? Connected (not stale), through the
+        tunnel (`reach`, MC's own stamp from the socket), and riding cellular by its own report
+        (`transport`, the one fact only the phone has). F256: `reach` alone named only the URL, so
+        two phones on one Wi-Fi behind one tunnel read as covered and were one point of failure."""
+        return (nv.get("reach") == "backhaul" and not nv.get("stale")
+                and nv.get("transport") == "cellular")
+
     def coverage(self) -> Coverage:
         """A28.4: coverage is DERIVED, not asserted. `on_backhaul` counts the bound player nodes that are
-        connected (not stale) with `reach == "backhaul"`.
+        connected (not stale) with `reach == "backhaul"`; `on_cellular` counts those with an
+        independent path (`_independent_path`). `level` is `"full"` iff every bound node has one.
 
-        F256 (bench 2026-09-18): `level` is always `"zones"`. `reach` says only WHICH URL the phone
-        joined through, never what the phone is riding: two phones on one Wi-Fi, both leaving through
-        the same tunnel, read "2 of 2 on backhaul" and are one point of failure. MC may claim
-        `"full"` only once a node reports an INDEPENDENT transport of its own, and no node does yet.
-        Until then a "full" here would clear the A6.1 frag-limit warning on a fact MC cannot prove."""
-        bound = on = 0
+        A node that drops off the tunnel, goes stale, or reports Wi-Fi falls out of `on_cellular` at
+        once, so coverage falls back to `"zones"` within `STALE_AFTER_MS` or one heartbeat."""
+        bound = on = cell = 0
         for nid, pid in self.node_player.items():
             if pid not in self.players:
                 continue
@@ -1076,7 +1083,10 @@ class Session:
             nv = self.nodes.get(nid) or {}
             if nv.get("reach") == "backhaul" and not nv.get("stale"):
                 on += 1
-        return {"level": "zones", "on_backhaul": on, "bound": bound}
+            if self._independent_path(nv):
+                cell += 1
+        return {"level": "full" if bound and cell == bound else "zones",
+                "on_backhaul": on, "on_cellular": cell, "bound": bound}
 
     # ---------- A10 loadout policy / catalog ----------
     def _catalog_rows(self) -> tuple[list[Weapon], list[PerkView]]:
@@ -1241,16 +1251,16 @@ class Session:
         played — so an MC-decided end (a frag cap, an objective, a survival win) never reaches it and the
         player has to come back to find out how it ended.
 
-        ⚠ TODO (A28): `backhaul` is the per-node boolean the A28 work adds to `status`/`NodeView`; nothing
-        reports it yet. Until it does, a node that does not claim backhaul is treated as not having it,
-        which is the safe direction (the warning appears; it never hides a phone that will miss the
-        result). A player with no bound node at all is off-grid for the stronger reason: there is no
-        phone to push anything to.
+        F309: "has backhaul" is `_independent_path`, the same test `coverage()` uses: a phone on the
+        tunnel that is riding the field Wi-Fi loses MC exactly when the field Wi-Fi does. This used to
+        read a `backhaul` key nothing ever set, so every phone was off-grid (the safe direction). A
+        player with no bound node at all is off-grid for the stronger reason: there is no phone to push
+        anything to.
         """
         out: list[str] = []
         for p in self.players.values():
             nv = self.nodes.get(p.get("node_id") or "", {})
-            if not p.get("node_id") or not nv.get("backhaul"):
+            if not p.get("node_id") or not self._independent_path(nv):
                 out.append(str(p.get("display") or p["player_id"]))
         return out
 
@@ -3500,6 +3510,10 @@ class Session:
         nv.pop("protect_owed", None)
         if body.get("protected") is True:
             nv["protect_owed"] = True
+        # F309: the phone's own connection, restated on every heartbeat; absence or junk clears it.
+        nv.pop("transport", None)
+        if body.get("transport") in ("wifi", "cellular", "none", "unknown"):
+            nv["transport"] = body["transport"]
         # A28.3: `reach` is NOT taken from the status body. It feeds `coverage()` (which can gate a whole
         # mode) and the readiness amber (which un-blocks a start), so a client-asserted value would let a
         # phone claim its way past both. MC stamps it from the socket in `net._hello_gate`; the node's
@@ -5687,9 +5701,8 @@ class Session:
             cov = self.coverage()
             if cov["level"] != "full":
                 raise CoverageRequired(
-                    f"{self.config.get('mode')} needs FULL coverage (every player's phone on its own "
-                    f"internet path, which no phone can report yet); {cov['on_backhaul']} of "
-                    f"{cov['bound']} bound phone(s) joined through the tunnel, which is not proof of an independent path", cov)
+                    f"{self.config.get('mode')} needs FULL coverage (every player's phone on cellular "
+                    f"through the tunnel); {cov['on_cellular']} of {cov['bound']} bound phone(s) are", cov)
         # Round-2 B: read the BOARD, not `go` — `go` is now also false for a `roster_faults` entry,
         # which is a different refusal with its own (unforceable) wording further down. Gating the
         # override on `go` printed "readiness has reds — clear them before pushing" with an EMPTY list
@@ -6852,7 +6865,7 @@ class Session:
                 key: nv[key] for key in (
                     "node_id", "node_type", "arm_state", "synced", "gun_name", "gun_tail", "player_id",
                     "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "pending", "app_ver",
-                    "platform", "log", "reach", "last_reach", "pool_stale", "pool_stale_ms", "cure",
+                    "platform", "transport", "log", "reach", "last_reach", "pool_stale", "pool_stale_ms", "cure",
                     "gun_locked") if key in nv
             })
             row.setdefault("node_id", "")

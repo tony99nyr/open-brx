@@ -233,7 +233,13 @@ async function refreshPreflight() {
   // Report ssid_ok truthfully (contracts A28.3: MC itself downgrades this to a warning, not a red, for
   // a node reporting reach:"backhaul" — forcing it true here made that server-side downgrade dead code
   // and showed the board a phone that IS on the field Wi-Fi when it is not).
-  try { if (plugins.network) { const s = await plugins.network.getStatus(); preflight.ssid_ok = s.connectionType === 'wifi'; } } catch (_) { /* ignore */ }
+  try {
+    if (plugins.network) {
+      const s = await plugins.network.getStatus();
+      preflight.ssid_ok = s.connectionType === 'wifi';
+      if (transport) transport.setConnectionType(s.connectionType);   // F309: what MC counts as coverage
+    }
+  } catch (_) { /* ignore */ }
   preflight.mc_reachable = !!(transport && transport.state === 'bound');
   preflight.gun_linked = engine.bleUp; preflight.headset_ok = !!engine.headEcho;
   preflight.foreground = document.visibilityState !== 'hidden'; preflight.screen_on = preflight.foreground;
@@ -288,7 +294,8 @@ function connectMc(url, remember = true, join = {}) {
   lastMcUrl = url;
   if (transport) { try { transport.close(); } catch (_) { /* ignore */ } }
   const gun = engine.gun ? { name: engine.gun.name, tail: engine.gun.tail, fw: engine.fw || undefined } : null;
-  transport = new Transport({ node: { app_ver: APP_VER }, gun, priorUtility: priorUtilityHandoff() });
+  // F309: carry the last known connection into the new Transport, so a redial is not a 5 s gap in the claim.
+  transport = new Transport({ node: { app_ver: APP_VER, connection_type: transport ? transport.connectionType : null }, gun, priorUtility: priorUtilityHandoff() });
   const candidate = transport;
   // `log` is this node's own view of the sync (A25: MC shows none|offered|pulling|held per node);
   // app_ver/platform are added by the transport itself so every node type reports them (A29).
@@ -799,6 +806,7 @@ async function sweepForMc() {
       plugins.network.addListener('networkStatusChange', st => {
         const up = !!(st && st.connected);
         log(`network ${up ? 'up' : 'down'} (${(st && st.connectionType) || '—'})`, 'li');
+        if (transport) transport.setConnectionType(st && st.connectionType);   // F309: a switch is news at once
         if (!up) return;
         kickDial((st && st.connectionType) || 'network');
         refreshPreflight().catch(() => { /* ignore */ });

@@ -307,7 +307,11 @@ def _armed(cfg=None, backhaul=False, coverage=None):
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
     for nv in s.nodes.values():
-        nv["backhaul"] = backhaul
+        # F309: "has backhaul" is the tunnel (MC's `reach` stamp) plus the phone's own cellular claim.
+        # `backhaul` may also name ONLY the tunnel ("wifi"), which is still off-grid.
+        if backhaul:
+            nv["reach"] = "backhaul"
+            nv["transport"] = "wifi" if backhaul == "wifi" else "cellular"
     return s, net, ps
 
 
@@ -328,6 +332,9 @@ def test_mc_verify_is_absent_under_full_coverage_or_with_backhaul_or_on_a_timed_
     assert "mc_verify" not in covered.game_brief() and covered.snapshot()["notices"] == {}
     wired, _n, _p = _armed({"scoring": {"frag_limit": 7, "win_by": "kills"}}, backhaul=True)
     assert "mc_verify" not in wired.game_brief(), "every phone can be reached; there is nothing to warn about"
+    tunnel_wifi, _n, _p = _armed({"scoring": {"frag_limit": 7, "win_by": "kills"}}, backhaul="wifi")
+    assert tunnel_wifi.game_brief()["mc_verify"] == C.MC_VERIFY_PLAYER, \
+        "F309: a phone on the tunnel over the field Wi-Fi loses MC when the Wi-Fi goes"
     timed, _n, _p = _armed({"scoring": {"frag_limit": None, "win_by": "kills"}})
     assert "mc_verify" not in timed.game_brief(), "a timed kills match ends on every phone's own clock"
 

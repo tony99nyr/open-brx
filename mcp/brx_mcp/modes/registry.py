@@ -90,7 +90,7 @@ def requires_coverage(mode: str) -> bool:
 
     A mode declares it as the flag `requires_coverage: True` in its `PARAMS` (`params.schema_of`
     filters flags out of the tunables). MC's lobby push answers `409 {error, coverage}` while
-    `Session.coverage()` is not `"full"`; since F256 it never is (F309 holds the real derivation). No catalog mode declares it — the hook is reserved for modes
+    `Session.coverage()` is not `"full"` (every bound phone on the tunnel AND on cellular, F309). No catalog mode declares it — the hook is reserved for modes
     where MC knows something no gun can (bounties, VIP swaps, park-wide zone control), and it exists
     now so the first such mode is one attribute rather than a new gate."""
     try:

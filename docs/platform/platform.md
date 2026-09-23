@@ -64,7 +64,7 @@ Each phone holds a Bluetooth link to one tagger. Taggers hit each other by infra
 - **Wi-Fi is allowed to drop.** Kills, deaths and objective time queue on the phone and flush the next time it reaches Mission Control. Results are never wrong, only late.
 - **No signal at go.** The start is a clock time agreed in advance. Every phone counts itself down, so the first second of the match needs no network at all.
 - **Backhaul for phones with data.** Turn the tunnel on in Mission Control and any phone with a data plan reaches it from wherever it has signal. Nothing to install or set up on the phone: the join code carries both addresses.
-- **Coverage is counted, not assumed.** Mission Control shows how many phones joined through the tunnel. A phone that joined that way can still be on the field Wi-Fi, so a score-cap or last-one-standing end reaches only the phones Mission Control can hear, and the time limit stays the backstop.
+- **Coverage is counted, not assumed.** Mission Control counts a phone as covered only when it joined through the tunnel and says it is on mobile data. When every phone is, the score cap and last-one-standing ends reach every phone that keeps its signal. Either way, a phone Mission Control cannot hear finishes on the time limit.
 
 What the shape costs, stated plainly:
 

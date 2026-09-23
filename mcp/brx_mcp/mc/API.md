@@ -74,10 +74,11 @@ State {
          // `status` does NOT reach `"up"` (and `qr` carries no `&pub=`, and no `join` is pushed) until
          // the name resolves: cloudflared printing the URL is not the moment the world can reach it, and
          // a phone that dialled a second too early had the miss negative-cached for ~250 s.
-  coverage: { level: "full"|"zones", on_backhaul: number, bound: number },   // A28.4: on_backhaul = bound player nodes connected with reach == "backhaul".
-                                              // F256 (2026-09-23): level is always "zones". reach names the URL a phone
-                                              // joined through, not an independent path, so MC claims "full" only once a
-                                              // node reports its own transport, and none does yet
+  coverage: { level: "full"|"zones", on_backhaul: number, on_cellular: number, bound: number },
+                                              // A28.4: on_backhaul = bound player nodes connected with reach == "backhaul".
+                                              // F309 (2026-09-23): on_cellular = those that also report status.transport ==
+                                              // "cellular" (and are not stale), an independent path. level is "full" iff every bound node is
+                                              // on_cellular. reach alone names only the URL a phone joined through (F256)
   nodes: NodeView[],                          // every node that ever said hello this session
   stations: StationView[], game_no: number,   // A13.5: the ITEMS panel (see GET /api/stations); game_no = the advert `game` byte stations are armed with THIS match (bumps on the first push after a match started)
   readiness: ReadinessSnapshot,               // Each ReadinessRow also carries `reach` and `last_reach` (same values as NodeView),
@@ -207,9 +208,9 @@ State {
                                               // PLAYERS TO RETURN AFTER THE WHISTLE`. Render it verbatim on LOBBY and
                                               // ARMED. `{}` (no keys) = nothing to say. The PLAYER's half of the same
                                               // decision rides `assign.game.mc_verify` (contracts §3), one line, no
-                                              // names. ⚠ `backhaul` is not reported by any node yet: until A28 lands
-                                              // every phone counts as off-grid, so the notice appears on every
-                                              // MC-decided game at a venue that has not been marked full coverage.
+                                              // names. F309: a phone is off-grid unless it joined through the tunnel AND
+                                              // reports `transport: "cellular"` (`state.py _independent_path`, the
+                                              // same test as `coverage`); an older app is always off-grid.
 }
 NodeView { node_id, node_type, gun_name?, gun_tail?, player_id?, arm_state, last_seen_ms, synced, preflight?, battery?, fw?, hp?, armor?, ammo?, alive?,
            // --- additive 2026-09-12 (A25/A29); an older UI ignores them, an older server omits them ---
@@ -230,7 +231,8 @@ NodeView { node_id, node_type, gun_name?, gun_tail?, player_id?, arm_state, last
 NodeView { node_id, node_type, gun_name?, gun_tail?, player_id?, arm_state, last_seen_ms, synced, preflight?, battery?, fw?, hp?, armor?, ammo?, alive?, reach?: "lan"|"backhaul" /* A28.3: stamped by MC from the socket's arrival path (loopback / Cf-Connecting-Ip / public peer = backhaul), never from the phone's claim; cleared on disconnect */,
            last_reach?: "lan"|"backhaul" /* F155 (field 2026-09-12): the path this node was last HEARD over. `reach` goes away with the socket; this outlives it, and it is what makes an unreachable row's reason honest */,
            pool_stale?: "silent"|"no_fire"|"write_lost", pool_stale_ms?: number /* F208/A46: the node's current `status.pool_stale` claim (no gun frame for 185 s / three trigger presses with no shot / this life's spawn or revive write lost, pl4) and ms since the gun last reported a pool. Absent = not stale, or an older app; each heartbeat restates it */,
-           gun_locked?: true /* F272: current positive lock-up verdict; absence, false or junk clears it */ }
+           gun_locked?: true /* F272: current positive lock-up verdict; absence, false or junk clears it */,
+           transport?: "wifi"|"cellular"|"none"|"unknown" /* F309: the phone's own last `status.transport` claim; absent = never reported */ }
 LiveView { match_id, go_live_t, time_limit_s, ends_t, score: { [team_id]: number }, rows: LiveRow[],
             phones_ended?: true /* A47: an ADOPTED match every claiming phone has ended; the console asks for END */ }
 LiveRow  = ScoreRow + { status: "alive"|"down"|"stale", respawn_in_s: number|null, sync_age_ms: number, pool_stale?: "silent"|"no_fire"|"write_lost", pool_stale_ms?: number /* F208/A46, as NodeView */,

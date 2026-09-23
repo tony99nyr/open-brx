@@ -759,6 +759,8 @@ class NodeView(TypedDict):
     app_ver: NotRequired[str | None]
     platform: NotRequired[str | None]
     log: NotRequired[LogView | None]
+    # F309: the phone's own last `status.transport` claim; absent = never reported (older app).
+    transport: NotRequired[Literal["wifi", "cellular", "none", "unknown"]]
     reach: NotRequired[Literal["lan", "backhaul"]]
     last_reach: NotRequired[Literal["lan", "backhaul"]]
     # F208: the node's last `status.pool_stale` / `pool_stale_ms`. Absent = not stale, or an older app.
@@ -863,6 +865,10 @@ class Event(TypedDict, total=False):
     gun_locked: bool
     # F289: true-only while the phone still owes the write that ends spawn protection. Absent = no claim.
     protected: bool
+    # F309: the phone's own connection (Capacitor Network `connectionType`), restated on every heartbeat.
+    # A CLAIM, unlike `reach` (which MC stamps from the socket): only the phone knows whether it is
+    # riding the field Wi-Fi. Absent = an older app or no answer; MC reads anything unknown as not cellular.
+    transport: Literal["wifi", "cellular", "none", "unknown"]
 
 
 class ScoreRow(TypedDict):
@@ -1068,9 +1074,12 @@ class EndDeliveryView(TypedDict):
 
 
 class Coverage(TypedDict):
-    """Derived socket coverage. F256: `level` stays "zones" until a node reports an independent transport."""
+    """Derived socket coverage (A28.4, F256, F309). `on_backhaul`: bound nodes connected through the tunnel.
+    `on_cellular`: those that also report `transport == "cellular"`, an independent path. `level` is
+    "full" iff every bound node is on_cellular."""
     level: Literal["full", "zones"]
     on_backhaul: int
+    on_cellular: int
     bound: int
 
 

@@ -132,9 +132,9 @@ the phones. This is optional, and a match never depends on it.
 3. The join QR now carries both addresses. New phones scan it as always. Phones that already joined over
    Wi-Fi pick the internet address up by themselves; nobody rescans.
 4. In the **Lobby**, each row shows LAN or BACKHAUL, and the header says how many phones are on backhaul. A
-   phone on backhaul keeps getting kill confirms, score and the result anywhere it has signal. When every
-   phone on the board is on backhaul, the score-cap and last-one-standing ends become live across the whole
-   park.
+   phone on backhaul keeps getting kill confirms, score and the result anywhere it has signal. The chip
+   also says how many of those are on mobile data. Only a phone on backhaul AND on mobile data counts as
+   covered; when every phone is, the score-cap and last-one-standing ends reach every phone that keeps its signal.
 
 What it needs and what it does not do: the laptop must have internet; the phone must have a data plan and a
 signal, so a park with no cell service plays exactly as it does without it; the time limit is still required.

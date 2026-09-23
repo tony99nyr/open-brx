@@ -28,7 +28,7 @@ import { APP_VER, platformName } from '../build.js';
 /** @typedef {{getItem(key:string): string|null, setItem(key:string, value:string): void, removeItem(key:string): void}} TransportStorage */
 /** @typedef {{onopen: WebSocket['onopen'], onmessage: WebSocket['onmessage'], onerror: WebSocket['onerror'], onclose: WebSocket['onclose'], send(data:string): void, close(code?:number, reason?:string): void, bufferedAmount?: number}} TransportSocket */
 /** @typedef {{setTimeout(callback: (...args:any[]) => void, ms:number): unknown, clearTimeout(id:unknown): void}} TransportTimers */
-/** @typedef {{node_id?:string, node_type?:string, app_ver?:string, platform?:string}} TransportNode */
+/** @typedef {{node_id?:string, node_type?:string, app_ver?:string, platform?:string, connection_type?:'wifi'|'cellular'|'none'|'unknown'|null}} TransportNode */
 /** @typedef {{node_id:string, node_key:string}} PriorUtility */
 /** @typedef {{name:string, tail:string, fw?:string}} TransportGun */
 /** @typedef {{baseMs:number, capMs:number, jitter:number}} BackoffOptions */
@@ -125,6 +125,10 @@ export class Transport {
     this._persistedSessionId = this._persisted(this._sessionKey) || null;
     this._pubUrl = this._persisted(this._pubUrlKey) || null;        // A28.2: the LAN url this pub/secret pair belongs to
     this.reach = null;                       // A28.3: 'lan' | 'backhaul' | null (not yet welcomed)
+    /** @type {'wifi'|'cellular'|'none'|'unknown'|null} */
+    this.connectionType = node.connection_type || null;   // F309: the phone's own connection; null = never told (web, tests)
+    /** @type {'wifi'|'cellular'|'none'|'unknown'|null} */
+    this._boundConnType = null;             // F309: the connection when THIS socket bound (the one it rides)
     this.nodeType = node.node_type || 'phone';
     // A29: the REAL build, baked by scripts/build.mjs — "<package version>+<sha>[-dirty]". A caller may
     // still name itself (utility.js does); nothing may fall back to a hand-written literal.
@@ -239,9 +243,29 @@ export class Transport {
     /** @type {StatusBody} */ const full = { node_id: this.nodeId, player_id: this.playerId, match_id: this.matchId, synced: this.synced(),
                    app_ver: this.appVer, platform: this.platformName(),
                    arm_state: 'connected', ...body, reach: this.reach,   // A28.3: the live socket's path, always ours to say
+                   ...(this._claimedTransport() ? { transport: this._claimedTransport() } : {}),   // F309: restated every beat
                    preflight: { ...this.preflight, ...(body.preflight || {}) } };
     const dropped = this.ring.takeDropped(); if (dropped) full.dropped = (full.dropped || 0) + dropped;
     return this._sendKind('status', full);
+  }
+  /** F309: the phone's own connection (Capacitor Network `connectionType`). MC counts a phone as covered
+   *  only when it reached MC through the tunnel AND reports `cellular`; anything unrecognised is 'unknown'.
+   *  @param {unknown} t */
+  setConnectionType(t) {
+    this.connectionType = t === 'wifi' || t === 'cellular' || t === 'none' ? t : 'unknown';
+    // First word after a bind with no value: nothing has changed since the socket opened, so it names it.
+    if (this.state === 'bound' && this._boundConnType === null) this._boundConnType = this.connectionType;
+  }
+  /** F309: what this node may claim. The plugin reports the phone's CURRENT default network, but a bound
+   *  socket keeps riding the network it opened on (Android's "switch to mobile data" moves the default and
+   *  leaves the socket on the field Wi-Fi). So `cellular` only while the bind-time value AND the current
+   *  one both say so; otherwise the bind-time value, which is the socket's.
+   *  @returns {'wifi'|'cellular'|'none'|'unknown'|null} */
+  _claimedTransport() {
+    const now = this.connectionType, bound = this._boundConnType;
+    if (!now) return null;
+    if (now === 'cellular') return bound === 'cellular' ? 'cellular' : (bound || 'unknown');
+    return now;
   }
   /** Non-fact uplink: ready | ack_config | log_offer | log_data | loadout_request | loadout_browse. Sent iff bound. */
   /** @param {string} kind @param {TransportBody} [body] @returns {boolean} */
@@ -613,6 +637,7 @@ export class Transport {
     if (node) this._absorb(node);
     this._setState('open');
     this.bind();
+    this._boundConnType = this.connectionType;   // F309: a socket stays on the network it was opened on
     this._setState('bound');
     for (let i = 0; i < 5; i++) this._sendKind('time_req', { t_node: this.now() });
     this._flush();

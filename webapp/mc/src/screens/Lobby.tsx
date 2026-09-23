@@ -4,7 +4,7 @@ import { GUN_CONFIG_FAULT, RE_PUSH_HERE, STALE_ACK_FAULT, blocksPush, curedByPus
 import type { Player } from '../api/types';
 import { useStore } from '../store';
 import { F, T, TAB, fmtClock, teamColor } from '../tokens';
-import { BTN_RESET, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag, shortCoverageLine, useNarrow } from '../ui';
+import { BTN_RESET, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag, shortCoverageLine, coverageColor, useNarrow } from '../ui';
 import { SetupSteps } from '../ui/SetupSteps';
 import { PreArmSummary, armOverrideCopy } from '../ui/PreArmSummary';
 import { StandDownChip, StandbySection } from '../ui/Standby';
@@ -52,7 +52,7 @@ export function Lobby() {
   // Field feedback 2026-09-19 (Tony): partial coverage is not a fault — every gun still works over
   // LAN — so it is neutral (T.micro), never amber, whether the tunnel is off or simply not full yet.
   // Only a genuine blocking fault gets a warning colour.
-  const cColor = T.micro;   // F256: a tunnel count is a fact, never a coverage claim, so never green
+  const cColor = coverageColor(state.coverage);   // F309: green only at derived FULL coverage
   const reachOfPlayer = (pid: string): 'lan' | 'backhaul' | undefined => {
     const n = state.nodes.find(x => x.player_id === pid);
     return n ? reachOf(n) : undefined;   // no node connected yet: no tag to show, never invent LAN
