@@ -528,9 +528,10 @@ for (const view of VIEWS) {
   await step(`${view.name} #8/#9/#11 detail pane: title + ammo line on one line, description whole and reachable`, async () => {
     const pg = await open(view, 'loadout-primary'); const r = await pg.evaluate(() => { const d = document.querySelector('.lodetail'); const desc = d.querySelector('.desc'); const cs = getComputedStyle(desc);
       d.scrollTop = 1e6; const dr = desc.getBoundingClientRect(), pr = d.getBoundingClientRect(), bar = document.querySelector('.lobar').getBoundingClientRect();
-      return { clamp: cs.webkitLineClamp, scrolls: getComputedStyle(d).overflowY, descBottom: dr.bottom, paneBottom: pr.bottom, barTop: bar.top, descH: dr.height, nm: document.querySelector('.lodetail .nm').textContent }; }); await pg.close();
+      return { clamp: cs.webkitLineClamp, scrolls: getComputedStyle(d).overflowY, descBottom: dr.bottom, paneBottom: pr.bottom, barTop: bar.top, descH: desc.offsetHeight, descFull: desc.scrollHeight, lh: parseFloat(cs.lineHeight), nm: document.querySelector('.lodetail .nm').textContent }; }); await pg.close();
     must(r.clamp === 'none', 'desc clamped: ' + r.clamp); must(r.scrolls === 'auto', 'pane overflow ' + r.scrolls);
-    must(r.descBottom <= r.paneBottom + 1 && r.paneBottom <= r.barTop + 1, `desc ${r.descBottom} pane ${r.paneBottom} bar ${r.barTop}`); must(r.descH > 30, 'desc height ' + r.descH);
+    must(r.descBottom <= r.paneBottom + 1 && r.paneBottom <= r.barTop + 1, `desc ${r.descBottom} pane ${r.paneBottom} bar ${r.barTop}`); // Layout px, not screen px: the SE view scales the HUD by ~0.75, so a two-line desc measured 26.5 on screen (2026-09-23).
+    must(r.descH >= r.lh && r.descFull <= r.descH + 1, `desc collapsed or clipped: ${r.descH} tall, ${r.descFull} of text, line ${r.lh}`);
   });
   await step(`${view.name} #12 try-out panel clear of the footer and the status line`, async () => {
     const pg = await open(view, 'tryout'); const r = await pg.evaluate(() => { const t = document.querySelector('.tryout').getBoundingClientRect(), f = document.querySelector('.lobby .foot').getBoundingClientRect(), tr = document.querySelector('.lobby .tr').getBoundingClientRect(); return { t: [t.top, t.bottom], f: f.top, tr: tr.bottom }; }); await pg.close();
@@ -2119,6 +2120,18 @@ const fakeGunPlugin = pg => pg.evaluate(() => {
 const relinkView = pg => pg.evaluate(() => { const b = document.querySelector('#diag [data-act="onReconnectGun"]'), h = document.getElementById('dg-gunhint'), d = document.getElementById('diag');
   return { label: b.textContent, disabled: b.disabled, hint: h ? h.textContent : '', hintFits: !h || h.scrollWidth <= h.clientWidth + 1, hintInPanel: !h || !h.textContent || h.getBoundingClientRect().right <= d.getBoundingClientRect().right + 1,
     live: h ? h.getAttribute('aria-live') : null, ...window.__ble }; });
+// 2026-09-23: the in-match CHANGE TAGGER label ("TAGGER LOCKED DURING MATCH") overran its button in the one-row
+// bar and lay over RELINK GUN, so a tap on RELINK GUN landed on the disabled button and did nothing.
+for (const view of VIEWS) for (const stage of ['diag-live', 'idle-diag']) {
+  await step(`${view.name} ${stage}: every diag bar button holds its own label and no button covers another`, async () => {
+    const pg = await open(view, stage, '', stage === 'diag-live' ? 5200 : undefined);
+    const r = await pg.evaluate(() => [...document.querySelectorAll('#diag .btns button')].map(e => { const b = e.getBoundingClientRect();
+      return { t: e.textContent, over: e.scrollWidth > e.clientWidth + 1, top: document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2) === e }; }));
+    await pg.close();
+    const bad = r.filter(x => x.over || !x.top);
+    must(r.length >= 5 && bad.length === 0, 'diag bar buttons clipped or covered: ' + JSON.stringify(bad));
+  });
+}
 for (const view of VIEWS) {
   await step(`${view.name} relink diag-live: RELINK GUN mid-match needs a confirm tap, then reads RELINKING… and ignores presses`, async () => {
     const pg = await open(view, 'diag-live', '', 5200);

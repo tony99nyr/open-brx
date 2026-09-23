@@ -424,7 +424,10 @@ await step('select ALPHA, tap the SMG card → TRYING chip pulses', async () => 
 await step('hudA shows the try-out hero panel (art + stats)', async () => {
   await until(async () => (await hudA.locator('.tryout').count()) > 0, 6000, 'hero panel');
   expect((await hudA.locator('.tryout .nm').textContent()).includes('SMG'), 'panel is not the SMG');
-  expect((await hudA.locator('.tryout .ln').textContent()).includes('MAG 72'), 'panel missing MAG 72');
+  // The magazine comes from the catalogue the MC ships, not a literal: the SMG went 72 -> 54 and the literal went stale.
+  const smgMag = JSON.parse(fs.readFileSync(path.join(REPO, 'mcp/brx_mcp/mc/weapons.json'), 'utf8')).weapons.find(w => w.weapon_id === 'smg').mag;
+  const ln = await hudA.locator('.tryout .ln').textContent();
+  expect(ln.includes(`MAG ${smgMag} `), `panel missing MAG ${smgMag}: ${ln}`);
   // A26/defect-2 (2026-09-18): weapon art moved from a CSS background-image (no onerror hook) to an
   // <img>, so a missing jpg can show a fallback glyph instead of the empty box — see the .wpic step below.
   const src = await hudA.evaluate(() => document.querySelector('.tryout .art .wpic')?.getAttribute('src') || '');
@@ -1296,7 +1299,7 @@ await step('compat-older-server: new UI renders GAMES / DESIGNER / KIT against a
 
 // ═══ F8c · compat: a session persisted BEFORE A10 restores and every page renders (review #12) ═══
 flow('F8c compat-old-session');
-await step('compat-old-session: MC booted from a pre-A10 session.json → GAMES STOCK MODE // PLAYING, KIT shows the restored players, GAME RULES = OPEN, no crash', async () => {
+await step('compat-old-session: MC booted from a pre-A10 session.json → GAMES rail PLAYING the restored mode, KIT shows the restored players, GAME RULES = OPEN, no crash', async () => {
   const MC2 = `http://127.0.0.1:${OLD_MC_PORT}`;
   if (await fetch(MC2 + '/api/state').then(r => r.ok).catch(() => false)) throw new Error(`something already listens on ${OLD_MC_PORT}`);
   const tmp = fs.mkdtempSync(path.join(OUT, 'session-'));
@@ -1319,7 +1322,12 @@ await step('compat-old-session: MC booted from a pre-A10 session.json → GAMES 
     const nav2 = async i => { await pg.locator('nav button').nth(i).click(); await pg.waitForTimeout(400); };
     const noCrash = async where => expect((await pg.locator('text=CONSOLE ERROR').count()) === 0, `crash banner on ${where}: ${errs.join(' | ')}`);
     await nav2(1); await noCrash('GAMES');
-    await until(async () => (await pg.locator('text=STOCK MODE // PLAYING').count()) > 0, 6000, 'GAMES rail STOCK MODE // PLAYING');
+    // The rail's STOCK/TUNED label compares against TODAY's mode defaults, and those move (680a5b36 made the
+    // fixture's frag_limit 25 a non-default, so it now reads TUNED). What an old session owes is a rail that
+    // renders the restored mode as the one playing.
+    await until(async () => (await pg.locator('text=/\\/\\/ PLAYING/').count()) > 0, 6000, 'GAMES rail // PLAYING');
+    const rail2 = await pg.locator('text=/\\/\\/ PLAYING/').first().locator('xpath=..').textContent();
+    expect(/TEAM DEATHMATCH/.test(rail2), 'old-session rail is not the restored TEAM DEATHMATCH: ' + rail2.slice(0, 80));
     await nav2(2); await noCrash('KIT');
     await until(async () => (await pg.locator('div[role="button"]:has-text("RESTORED-A")').count()) > 0, 6000, 'restored roster row on KIT');
     expect((await pg.locator('div[role="button"]:has-text("RESTORED-A")').first().textContent()).includes('GUN-A'), 'restored row lost its gun');
