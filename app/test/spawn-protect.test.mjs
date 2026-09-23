@@ -332,3 +332,23 @@ test('F11 fix: an infection flip retains its flip flag through a failed-write re
   h.adv(CAP);
   assert.deepEqual(release(h.since(n)), [OFF], 'the retry succeeds and is not cancelled as "not live"');
 });
+
+// F289: only the phone ends protection, so the node tells MC the window it owes (`protect_ms` on the fact that
+// starts the life, status `protected` while it lasts). The legacy path ends on the first shot or at the cap.
+test('F289 legacy revive: the respawn fact carries the cap, and the claim ends with the first shot', () => {
+  const h = liveArmed();
+  revived(h);
+  assert.equal(h.facts.filter(f => f.type === 'respawn').pop().protect_ms, CAP);
+  assert.equal(h.eng.statusBody().protected, true);
+  h.frame('$ALCD,32,100,0,192,0,*'); h.adv(300); h.frame('$BUT,0,1,*'); h.frame('$ALCD,31,100,0,192,0,*');
+  assert.equal(h.eng.statusBody().protected, undefined, 'the first shot ended it');
+});
+test('F289 infection flip: the team_change that turns the gun carries the protection window', () => {
+  const flip = { '2': ['$TID,2,*', ...golden.revive.map(f => (f === '$TID,1,*' ? '$TID,2,*' : f))] };
+  const h = liveArmed({ mode: 'infection', teamFlip: flip });
+  h.die();
+  assert.equal(h.facts.filter(f => f.type === 'team_change').pop().protect_ms, CAP);
+  assert.equal(h.eng.statusBody().protected, true, 'the flipped gun is protected');
+  h.adv(CAP);
+  assert.equal(h.eng.statusBody().protected, undefined, 'the cap ended it');
+});

@@ -5230,7 +5230,7 @@ export class Engine {
       const tids = Object.keys(flipTable).filter(k => Number(k) !== this.teamTid);
       // Whether a mid-match $TID write changes the gun's own friendly-fire resolution is UNTESTED (modes §9); MC scores via team_change regardless.
       if (tids.length) {
-        const tid = Number(tids[0]); this._write(flipTable[tids[0]], 'team_flip'); this._armAfterSpawn(true); this.emitFact({ type: 'team_change', match_id: this.matchId, tid });
+        const tid = Number(tids[0]); this._write(flipTable[tids[0]], 'team_flip'); this._armAfterSpawn(true); const protectMs = this._protectOwedMs(); this.emitFact({ type: 'team_change', match_id: this.matchId, tid, ...(protectMs ? { protect_ms: protectMs } : {}) });   // F289: a flip respawns the gun protected too
         this._turned = true;
         this._event('infected');   // A11.4: HUD-driven -- this gun just turned; MC's broadcast only tells the OTHERS
         // A16 §3.3/finding #4: infection is not a real death (the player "re-takes the body" immediately),
