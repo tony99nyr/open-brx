@@ -2175,8 +2175,11 @@ for (const view of VIEWS) for (const [stage, want] of [['live-callout-kill', /^K
   await step(`${view.name} S57 ${stage}: the callout chip reads right and fits`, async () => {
     const pg = await open(view, stage, '', 2800);
     const r = await pg.evaluate(() => { const e = document.querySelector('.chipbar .callout'); if (!e) return null; const b = e.getBoundingClientRect();
-      const bar = document.querySelector('.chipbar');
-      return { t: e.textContent, fits: b.left >= 0 && b.right <= innerWidth && e.scrollWidth <= e.clientWidth + 1 && bar.scrollWidth <= bar.clientWidth + 1, beacon: window.brx.engine ? window.brx.engine.state().beacon : undefined }; });
+      // every pill in the bar on screen and none over another (the bar shrink-wraps its skewed pills, so its own
+      // scrollWidth says nothing)
+      const rs = [...document.querySelectorAll('.chipbar > *')].map(x => x.getBoundingClientRect());
+      const clear = rs.every((a, i) => a.left >= 0 && a.right <= innerWidth && rs.every((c, j) => j <= i || a.right <= c.left + 1 || c.right <= a.left + 1 || a.bottom <= c.top + 1 || c.bottom <= a.top + 1));
+      return { t: e.textContent, fits: b.left >= 0 && b.right <= innerWidth && e.scrollWidth <= e.clientWidth + 1 && clear, beacon: window.brx.engine ? window.brx.engine.state().beacon : undefined }; });
     await pg.close();
     must(r && want.test(r.t) && r.fits, 'callout chip: ' + JSON.stringify(r));
     must(!r.beacon, 'a callout word must not become a beacon: ' + JSON.stringify(r.beacon));
