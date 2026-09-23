@@ -66,6 +66,19 @@ class ControlPoint {
     return w;
   }
 
+  // S57 (Tony: one word per event, sent once, from the device where it happened): a HILL-mode flip sends the
+  // grenade's own capture word once, magnitude 50 with the NEW owner in the team bits, exactly what a stock grenade
+  // sends ~50 ms after the capturing shot. Phones already announce HILL CAPTURED / LOST from that word, so a Stick
+  // hill needs no new code on the phone. BRIDGE never sends it: the grenade it follows already did.
+  Word capture_word() const {
+    Word w;
+    w.proto = PROTO_BEACON;
+    w.player = 0;
+    w.team = owner == TEAM_ANY ? GRENADE_NEUTRAL_TEAM : owner;
+    w.mag = BEACON_CAPTURED;
+    return w;
+  }
+
   // What to advertise. A BRIDGE whose grenade has gone quiet advertises NOTHING (active=false):
   // a stale owner would be indistinguishable from a live neutral point on every HUD.
   AdvertView view(uint32_t now) const {

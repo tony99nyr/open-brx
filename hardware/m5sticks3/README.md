@@ -99,6 +99,9 @@ lives in one function in `control_point.h` so it can change without touching any
 emits the grenade's own beacon word every 5 s (`proto 15, team = owner or 2, mag 8`) so stock guns
 react through `$SIR,15,0,,28`. A hill held by team 2 therefore beacons as neutral on IR, exactly as a
 stock grenade would (F82: never field a team on tid 2 in a hill game); the BLE advert still says team 2.
+On a flip it also sends the grenade's capture word once (protocol 15, magnitude 50, the new owner in the team
+bits), so every phone in IR range announces HILL CAPTURED or HILL LOST exactly as it does for a grenade (S57,
+`docs/ir-callouts.md`: one word per event, from the device where it happened).
 The advert's value byte is the holder's share of all charge, 0 to 100.
 
 Both modes advertise `role 1, kind 5 (control), id, team (255 = neutral), state bits (held 1,

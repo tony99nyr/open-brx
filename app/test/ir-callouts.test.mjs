@@ -178,11 +178,11 @@ test('S57 receiver: a callout word never touches state().beacon', () => {
   assert.deepEqual(h.eng.state().beacon, beaconBefore);
 });
 
-test('S57 receiver: reserved HILL_CAPTURED/FLAG_CAPTURED magnitudes (29-36) are ignored outright, never a beacon', () => {
+test('S57 receiver: reserved FLAG_TAKEN/FLAG_CAPTURED magnitudes (29-36) are ignored outright, never a beacon', () => {
   const h = harness(); h.live();
   h.frame('$HIR,4,15,0,2,8,0,0,*');   // a real hill beacon, so there is something to prove is untouched
   const beaconBefore = h.eng.state().beacon;
-  h.irWord(5, IR_CALLOUT.HILL_CAPTURED);        // 29: reserved, lowest edge
+  h.irWord(5, IR_CALLOUT.FLAG_TAKEN);           // 29: reserved, lowest edge
   h.irWord(5, IR_CALLOUT.FLAG_CAPTURED + 3);    // 36: reserved, highest edge
   assert.deepEqual(h.eng.state().beacon, beaconBefore, 'not read as a beacon');
   assert.equal(h.eng.state().callout, null, 'not read as a callout either');

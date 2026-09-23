@@ -358,6 +358,21 @@ static void test_bridge_goes_stale_after_two_missed_beacons() {
   CHECK_EQ(wrap.view(0x00001000u).state & CONTROL_RISING, 0);
 }
 
+// S57: a HILL flip's one capture word is the grenade's own shape: protocol 15, magnitude 50, the NEW owner in the team
+// bits, player 0. Phones already turn that word into HILL CAPTURED / LOST.
+static void test_hill_capture_word_matches_the_grenade() {
+  ControlPoint cp;
+  cp.mode = Mode::HILL;
+  CHECK(cp.on_word(shot(1, 22), 100));
+  const Word w = cp.capture_word();
+  CHECK_EQ(w.proto, PROTO_BEACON);
+  CHECK_EQ(w.mag, BEACON_CAPTURED);
+  CHECK_EQ(w.team, 1);
+  CHECK_EQ(w.player, 0);
+  CHECK(cp.on_word(shot(3, 30), 200));
+  CHECK_EQ(cp.capture_word().team, 3);
+}
+
 static void test_hill_attacker_wins_ties() {
   ControlPoint cp;
   cp.mode = Mode::HILL;
@@ -421,6 +436,7 @@ int main() {
   test_bridge_mirrors_the_grenade();
   test_bridge_goes_stale_after_two_missed_beacons();
   test_hill_attacker_wins_ties();
+  test_hill_capture_word_matches_the_grenade();
   if (failures) {
     std::printf("%d check(s) failed\n", failures);
     return 1;

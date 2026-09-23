@@ -512,7 +512,8 @@ const HILL_AUDIO_EXCLUDED_MODES = new Set(['domination']);
 // else uses (1-39, clear of 2/6/8/10 — the doc's "bench facts"). One word carries one player id, so it names
 // the KILLER for `DOWN_BY` and the VICTIM for a bare `DOWN` (killer unknown, or the victim's own doing); the
 // magnitude is always `base + the VICTIM's team id (0-3)`, so a receiver decodes the team by arithmetic, never
-// a lookup. `HILL_CAPTURED`/`FLAG_CAPTURED` are reserved for a later event on the same bus (Tony, 2026-09-23):
+// a lookup. `FLAG_TAKEN`/`FLAG_CAPTURED` are reserved for CTF, which no station or phone produces yet (docs/ir-callouts.md);
+// a hill needs no code here: the grenade (and a Stick hill) send the native capture word, magnitude 50 (Tony, 2026-09-23):
 // the player would be the capturer, but v1 never sends or handles them — a receiver must still recognise their
 // magnitudes (29-36) and ignore them outright, never mistaking them for a hill beacon (`_onHillBeacon` only
 // ever sees magnitude 6/8/50/53, well clear of this range).
@@ -520,8 +521,8 @@ export const IR_CALLOUT = {
   PROTO: 15, SUBTYPE: 0, DIRECTION: 100,
   DOWN_BY: 21,        // 21-24: the named player KILLED a member of the magnitude's team
   DOWN: 25,           // 25-28: the named player IS the victim; the killer is unknown (or was the victim)
-  HILL_CAPTURED: 29,  // 29-32: RESERVED — not sent or handled in v1 (S57 scope, Tony)
-  FLAG_CAPTURED: 33,  // 33-36: RESERVED — not sent or handled in v1 (S57 scope, Tony)
+  FLAG_TAKEN: 29,     // 29-32: RESERVED (CTF, not built): player = the carrier, + the flag's team
+  FLAG_CAPTURED: 33,  // 33-36: RESERVED (CTF, not built): player = the carrier, + the captured flag's team
   LAST: 39,           // 37-39: unassigned, still the bus (bench-silent range): ignored, never read as a beacon
   ENEMY_DOWN_CUE: 'VB8',   // "Target down." (sound_catalog.json: 1.014 s)
 };
@@ -2640,7 +2641,7 @@ export class Engine {
    *  ~14 ms apart), inside CALLOUT_DEDUPE_MS; short enough that a real double kill (the same key again a
    *  second or so later) still counts twice. */
   _onIrCallout(player, magnitude, now) {
-    if (magnitude >= IR_CALLOUT.HILL_CAPTURED) return;   // 29-39: HILL_CAPTURED/FLAG_CAPTURED reserved — ignored outright, v1 sends and handles neither (Tony, 2026-09-23)
+    if (magnitude >= IR_CALLOUT.FLAG_TAKEN) return;   // 29-39: FLAG_TAKEN/FLAG_CAPTURED reserved — ignored outright, v1 sends and handles neither (Tony, 2026-09-23)
     if (!this.alive || this.phase !== 'live') return;    // a dead gun would not report it anyway (the doc), and callouts are a live-match thing only
     if (Number.isNaN(player) || Number.isNaN(magnitude)) return;
     const key = `${magnitude}:${player}`;

@@ -178,6 +178,8 @@ static void pollRx() {
     if (point.on_word(r.word, millis())) {
       Serial.printf("OWNER team=%d captures=%lu\n", point.owner == TEAM_ANY ? -1 : point.owner,
                     (unsigned long)point.captures);
+      // S57: a HILL flip happened HERE, so this Stick sends the one capture word, once (never in BRIDGE)
+      if (point.mode == Mode::HILL) sendFrame(String(encode(point.capture_word()).c_str()));
     }
     displayDirty = true;
   }
