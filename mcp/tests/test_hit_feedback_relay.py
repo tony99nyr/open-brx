@@ -92,7 +92,9 @@ def test_a_single_fact_over_the_event_path_relays_too():
     shooter, victim = ps[0], ps[1]
     clock["t"] += 1000
     ev = {"type": "hit_taken", "t": clock["t"], "match_id": info["match_id"], "player_id": victim["player_id"],
-          "shooter_num": shooter["player_num"], "dmg": 20, "weapon_id": "shotgun", "seq": 9}
+          "shooter_num": shooter["player_num"], "dmg": 20, "weapon_id": "shotgun", "shot_group": 4, "seq": 9}
     s._on_event("node1", ev, clock["t"])
     body = _hits(net)[0]
     assert body["dmg"] == 20 and body["weapon_id"] == "shotgun" and body["player_id"] == shooter["player_id"]
+    # a two-word shot is two facts: the shooter's phone counts it once by the victim's shot_group
+    assert body["shot_group"] == 4

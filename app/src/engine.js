@@ -261,6 +261,7 @@ export const DOT_KILL_MS = 1500;
  *  lands, so the total is not yet final; past this window it is read as complete (unless the MC link was ever
  *  unbound during that life, which keeps it partial regardless). HUD information only, never a game rule. */
 const DEALT_GRACE_MS = 2000;
+const DUAL_RELAY_MS = 150;   // S56: two relays of one two-word shot (the victim pairs its words inside the same window)
 /** S16: is this pool change exactly the echo of the tick `echo` ({pool, n})? The tick's pool moved by
  *  `min(n, before)` (a negative floors at 0) and the other two pools did not move. PURE. */
 export function dotEchoMatches(echo, before, after) {
@@ -3418,7 +3419,15 @@ export class Engine {
     const name = (typeof body.victim_display === 'string' && body.victim_display) ? body.victim_display
       : (body.victim_num != null ? this.nameOf(body.victim_num) : null);
     if (name) entry.name = name;   // a later, better name replaces a null from an earlier num-only relay
-    entry.dmg += dmg; entry.hits += 1;
+    // A two-word weapon's shot reaches MC as TWO hit_taken facts (body word + headset word), so it is relayed twice.
+    // Count it once: by the victim's `shot_group` when the relay carries it, else (a batched relay has none) by a
+    // second relay for the same victim inside DUAL_RELAY_MS while this gun's active weapon is a two-word one.
+    const sg = body.shot_group != null ? body.shot_group : null;
+    const own = this.weaponRow(this._activeWeaponId());
+    const sameShot = sg != null ? entry.lastGroup === sg
+      : (t != null && entry.lastT != null && Math.abs(t - entry.lastT) <= DUAL_RELAY_MS && !!(own && own.dual_emitter));
+    entry.dmg += dmg; if (!sameShot) entry.hits += 1;
+    entry.lastGroup = sg; entry.lastT = t;
     let weapon = entry.weapons.find(w => w.weapon_id === weaponId);
     if (!weapon) { weapon = { weapon_id: weaponId, name: weaponName, ambiguous: false, dmg: 0 }; entry.weapons.push(weapon); }
     weapon.dmg += dmg;
@@ -4211,11 +4220,13 @@ export class Engine {
   // ---------- feedback (§3.6) ----------
   feedback(body, envT) {
     const t = body.t != null ? body.t : envT;
-    if (t != null && this.now() - t > C.FEEDBACK_MAX_AGE_MS) { this.log('feedback too old — ignored', 'li'); return; }
     // S56 "what hit me": MC's relay of a hit WE landed is a stats-only message -- no cue, no LED, no moment.
     // The victim's OWN phone already played the hit/kill feedback for it; this is purely the ledger `state()`
-    // publishes, so it returns here rather than falling into the generic cue/SFLASH write below.
+    // publishes, so it returns here rather than falling into the generic cue/SFLASH write below. It runs BEFORE
+    // the age gate: that gate stops a stale kill SOUND, and a victim that flushes its facts late still landed the hit
+    // (`_lifeForFact` decides which life it belongs to).
     if (body.kind === 'hit') { this._bookDealtHit(body, t); this._changed(); return; }
+    if (t != null && this.now() - t > C.FEEDBACK_MAX_AGE_MS) { this.log('feedback too old — ignored', 'li'); return; }
     const pick = body.cue ? { frame: body.cue, tag: '' } : this._pickCue(body.kind);   // A15: a random take from the pool (kill confirms + taunts)
     const cue = pick.frame;
     this._write([SFLASH], `feedback ${body.kind}`);

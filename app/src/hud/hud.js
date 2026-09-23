@@ -1773,40 +1773,35 @@ export class Hud {
     this._swap('kill', el, hold, hold + 400);   // three confirms 300ms apart used to stack three banners
     this.h.onHaptic && this.h.onHaptic('kill');
   }
-  // TAKING A HIT. Deliberately a single fade, never a repeating flicker: this feedback moved off the
-  // gun's LEDs precisely because winning that surface needed ~30 Hz repaints that strobe, and
-  // flicker in the 10-25 Hz band is the photosensitive-epilepsy trigger range. One transition only.
-  // Renders at night too (dimmer, no whiteout) -- knowing you are being shot is not optional.
-  /** S56: the weapon line under the HIT chip. An ambiguous resolution names every candidate with OR (never a guess);
-   *  no line at all when the phone has no claim (an older MC sends no roster weapons). */
-  /** S56: one short line under KILLED BY: the killer's weapon (only when resolved without doubt), what this life
-   *  took, and what it dealt. Dealt comes from the victims' phones through Mission Control, best-effort, so it reads
-   *  PARTIAL whenever a hit may not have reached this phone. Empty when the phone has nothing to say. */
+  /** S56: one short line under KILLED BY: the killer's weapon, what this life took (and from how many sources), and
+   *  what it dealt. The weapon is the killer's top weapon by damage: its name when resolved, WEAPON UNCLEAR when the
+   *  phone could not choose, nothing when it has no claim. Dealt comes from the victims' phones through Mission Control,
+   *  best-effort: PARTIAL when a hit may not have reached this phone, and ? rather than a confident 0 when nothing did. */
   _lifeLine(st, kb) {
     const life = st.lastLife; if (!life) return '';
     const r = kb.num != null && !kb.dot ? (life.taken || []).find(x => x.num === kb.num) : null;
-    const w = r && (r.weapons || []).filter(x => x.name && !x.ambiguous).sort((a, b) => b.dmg - a.dmg)[0];
+    const w = r && (r.weapons || []).slice().sort((a, b) => b.dmg - a.dmg)[0];
     const parts = [];
-    if (w) parts.push(esc(String(w.name).toUpperCase()));
-    if (life.takenTotal) parts.push(`TOOK <b>${life.takenTotal}</b>`);
-    if (life.dealtTotal || life.dealtPartial) parts.push(`DEALT <b>${life.dealtTotal}</b>${life.dealtPartial ? ' PARTIAL' : ''}`);
+    if (w && w.ambiguous) parts.push('WEAPON UNCLEAR');
+    else if (w && w.name) parts.push(esc(String(w.name).toUpperCase()));
+    const src = (life.taken || []).length;
+    if (life.takenTotal) parts.push(`TOOK <b>${life.takenTotal}</b>${src > 1 ? ` FROM ${src}` : ''}`);
+    if (life.dealtTotal) parts.push(`DEALT <b>${life.dealtTotal}</b>${life.dealtPartial ? ' PARTIAL' : ''}`);
+    else if (life.dealtPartial) parts.push('DEALT <b>?</b>');
     return parts.length ? `<span class="lf">${parts.join(' · ')}</span>` : '';
   }
   /** S56: the weapon line under the HIT chip. An ambiguous resolution names every candidate with OR (never a guess);
    *  no line at all when the phone has no claim (an older MC sends no roster weapons). */
-  /** S56: the weapon of the killing source on the KILLED BY line, only when the phone resolved it without doubt. */
-  _killWeapon(st, kb) {
-    if (kb.dot || kb.num == null || !st.lastLife) return '';
-    const r = (st.lastLife.taken || []).find(x => x.num === kb.num);
-    const w = r && (r.weapons || []).filter(x => x.name && !x.ambiguous).sort((a, b) => b.dmg - a.dmg)[0];
-    return w ? ` <span class="kw">${esc(String(w.name).toUpperCase())}</span>` : '';
-  }
   _hitWeapon(w) {
     if (!w) return '';
     const names = w.ambiguous ? (w.names || []) : [w.name || w.id];
     if (!names.length || names.length > 2) return w.ambiguous ? '<span class="hw">WEAPON UNCLEAR</span>' : '';
     return `<span class="hw">${names.map(x => esc(String(x).toUpperCase())).join(' OR ')}</span>`;
   }
+  // TAKING A HIT. Deliberately a single fade, never a repeating flicker: this feedback moved off the
+  // gun's LEDs precisely because winning that surface needed ~30 Hz repaints that strobe, and
+  // flicker in the 10-25 Hz band is the photosensitive-epilepsy trigger range. One transition only.
+  // Renders at night too (dimmer, no whiteout) -- knowing you are being shot is not optional.
   _hit(st, m) {
     const d = (m.data) || {};
     const tk = d.shooter_key || 'red';

@@ -205,3 +205,34 @@ test('dealtPartial: true for the rest of the life (and its snapshot) once the MC
   h.adv(2100);   // well past the grace
   assert.equal(h.eng.state().lastLife.dealtPartial, true, 'the drop, not the grace, is why this stays partial');
 });
+
+// Polish round 1 (2026-09-23): a victim that flushes its facts late still landed the hit, so the relay books whatever
+// its age (the FEEDBACK_MAX_AGE_MS gate is for kill sounds), and a two-word shot relayed as two facts counts once.
+test('dealt booking: a relay older than FEEDBACK_MAX_AGE_MS still books into its life', () => {
+  const h = harness(); h.live();
+  const t = h.now(); h.adv(10_000);
+  h.feedback({ kind: 'hit', t, victim: 'p9', victim_num: 21, dmg: 7 });
+  assert.equal(h.eng.state().life.dealtTotal, 7);
+});
+test('dealt booking: two relays with the same shot_group are one hit, a new shot_group is another', () => {
+  const h = harness(); h.live();
+  const t = h.now();
+  h.feedback({ kind: 'hit', t, victim: 'p9', victim_num: 21, dmg: 8, shot_group: 'g1' });
+  h.feedback({ kind: 'hit', t: t + 20, victim: 'p9', victim_num: 21, dmg: 1, shot_group: 'g1' });
+  h.feedback({ kind: 'hit', t: t + 400, victim: 'p9', victim_num: 21, dmg: 8, shot_group: 'g2' });
+  const d = h.eng.state().life.dealt[0];
+  assert.equal(d.dmg, 17); assert.equal(d.hits, 2);
+});
+test('dealt booking: without a shot_group, relays inside 150 ms are separate hits unless this gun fires a two-word weapon', () => {
+  const h = harness(); h.live();
+  const t = h.now();
+  h.feedback({ kind: 'hit', t, victim: 'p9', victim_num: 21, dmg: 8 });
+  h.feedback({ kind: 'hit', t: t + 20, victim: 'p9', victim_num: 21, dmg: 8 });
+  assert.equal(h.eng.state().life.dealt[0].hits, 2, 'a single-word weapon: two hits');
+  const h2 = harness(); h2.live();
+  const own = h2.eng.weaponRow(h2.eng._activeWeaponId()); h2.eng.weaponRow = () => ({ ...(own || {}), dual_emitter: true });
+  const t2 = h2.now();
+  h2.feedback({ kind: 'hit', t: t2, victim: 'p9', victim_num: 21, dmg: 8 });
+  h2.feedback({ kind: 'hit', t: t2 + 20, victim: 'p9', victim_num: 21, dmg: 1 });
+  assert.equal(h2.eng.state().life.dealt[0].hits, 1, 'a two-word weapon: one hit');
+});

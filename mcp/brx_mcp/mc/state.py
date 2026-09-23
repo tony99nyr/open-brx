@@ -4482,7 +4482,7 @@ class Session:
             # new" signal, with no need to touch `scoring.py`'s own dedup.
             if ev.get("type") == "hit_taken" and len(self.scorer.hits_log) > before:
                 t, shooter, victim, dmg = self.scorer.hits_log[-1]
-                self._relay_hit_feedback(shooter, victim, dmg, t, ev.get("weapon_id"))
+                self._relay_hit_feedback(shooter, victim, dmg, t, ev.get("weapon_id"), ev.get("shot_group"))
             self._flush_pending_limit()   # a cap deferred by a batch never waits on the NEXT batch
             self._reconcile_end(nid, [ev], t_recv)   # A24/M2: a late fact can move the END itself
             self._restore_recap()
@@ -6220,7 +6220,7 @@ class Session:
             self.net.push(p["node_id"], "feedback", body)
 
     def _relay_hit_feedback(self, shooter_pid: str | None, victim_pid: str, dmg: int, t: int,
-                             weapon_id: str | None = None) -> None:
+                             weapon_id: str | None = None, shot_group: int | str | None = None) -> None:
         """S56 ("what hit me"): best-effort feedback to the SHOOTER's own node naming what it just
         hit, so that phone can attribute a `$HIR` its own headset heard without waiting on the
         victim's node to say anything (which may be slow, or offline). The same best-effort contract
@@ -6240,6 +6240,8 @@ class Session:
                       "victim_display": vp.get("display"), "dmg": dmg}
         if weapon_id:
             body["weapon_id"] = weapon_id
+        if shot_group is not None:
+            body["shot_group"] = shot_group   # a two-word shot is two facts; the shooter counts it once by this
         self._feedback(shooter_pid, body)
 
     def _relay_batch_hits(self, new_hits: list[tuple[int, str, str, int]]) -> None:

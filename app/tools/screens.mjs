@@ -2146,6 +2146,26 @@ for (const view of VIEWS) {
     must(new Set(r.tiles.map(x => Math.round(x.b))).size === 1, 'the recap wrapped: ' + JSON.stringify(r.tiles));
   });
 }
+// S56 polish: the down line's hard cases, from a crafted life on the real down screen. A long weapon name with three-digit
+// numbers still fits and clears the countdown; an ambiguous killer weapon says WEAPON UNCLEAR; nothing dealt while the
+// link was down says DEALT ?, never a confident 0.
+for (const view of VIEWS) {
+  await step(`${view.name} S56 down line: long name fits, ambiguity says WEAPON UNCLEAR, an unknown dealt says ?`, async () => {
+    const pg = await open(view, 'down-recap');
+    const draw = life => pg.evaluate(l => { const h = window.brx.hud; h._moment = null; h._moments({ ...h._lastSt, lastLife: l });
+      const lf = document.querySelector('.down .lf'), rd = document.getElementById('rd'), b = lf && lf.getBoundingClientRect(), r = rd.getBoundingClientRect();
+      const hitsTile = !!b && [...document.querySelectorAll('#downrecap .rc')].some(e => { const t = e.getBoundingClientRect(); return b.left < t.right - 1 && b.right > t.left + 1 && b.top < t.bottom - 1 && b.bottom > t.top + 1; });
+      return { hitsTile, txt: lf ? lf.textContent : null, fits: !!b && b.left >= 0 && b.right <= innerWidth, clear: !!b && (b.right <= r.left + 1 || b.bottom <= r.top + 1 || b.top >= r.bottom - 1),
+        rdLines: rd.offsetHeight / parseFloat(getComputedStyle(rd).lineHeight) }; }, life);
+    const row = (w, dmg) => ({ num: 19, name: 'VIPER', dmg, hits: 3, weapons: [w] });
+    const long = await draw({ taken: [row({ weapon_id: 'rocket_launcher', name: 'Rocket Launcher', ambiguous: false, dmg: 120 }, 120), { num: 21, name: 'GHOST', dmg: 15, hits: 1, weapons: [] }], dealt: [{ victim: 'p9', name: 'GHOST', dmg: 140, hits: 5, weapons: [] }], takenTotal: 135, dealtTotal: 140, dealtPartial: true });
+    await pg.waitForTimeout(900); await pg.screenshot({ path: `${OUT}/${view.name}-down-line-long.png` });   // past the entry flash
+    const amb = await draw({ taken: [row({ weapon_id: null, name: null, ambiguous: true, dmg: 45 }, 45)], dealt: [], takenTotal: 45, dealtTotal: 0, dealtPartial: true });
+    await pg.close();
+    must(/^ROCKET LAUNCHER · TOOK 135 FROM 2 · DEALT 140 PARTIAL$/.test(long.txt || '') && long.fits && long.clear && !long.hitsTile && long.rdLines < 1.5, 'long line: ' + JSON.stringify(long));
+    must(/^WEAPON UNCLEAR · TOOK 45 · DEALT \?$/.test(amb.txt || '') && amb.fits, 'ambiguous line: ' + JSON.stringify(amb));
+  });
+}
 // 2026-09-23: the in-match CHANGE TAGGER label ("TAGGER LOCKED DURING MATCH") overran its button in the one-row
 // bar and lay over RELINK GUN, so a tap on RELINK GUN landed on the disabled button and did nothing.
 for (const view of VIEWS) for (const stage of ['diag-live', 'idle-diag']) {
