@@ -120,8 +120,8 @@ On `main` 2026-09-23: the desk half of F297, F269 and F270. All three stay open 
 ## Lane: Mission Control console honesty
 F178, F256, F251 and F289 (MC flag) closed 2026-09-23. **Next:** F309, the phone-reported transport.
 
-## Lane: phone screen gate and F289 (brx4)
-2026-09-23: `test:all -- --ui` green (19/19); causes in the log. **F289** node half on main; brx3 owns the MC flag.
+## Lane: phone gate, F289, S56 (brx4)
+2026-09-23: screen gate green; F289 closed (both halves). **S56 built** (A52, minimal HUD); open: brx-hud's full recap, a field check.
 
 ## Start here
 
