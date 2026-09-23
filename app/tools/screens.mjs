@@ -2132,6 +2132,9 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} S56 down-recap: a line under KILLED BY names the weapon, what this life took and dealt, and overlaps nothing`, async () => {
     const pg = await open(view, 'down-recap');
+    await pg.waitForTimeout(2600);   // past the 2 s death grace: the link never dropped, so PARTIAL must clear on screen
+    const settled = await pg.evaluate(() => (document.querySelector('.down .lf') || {}).textContent);
+    must(/DEALT 27$/.test(settled || ''), 'the down line kept PARTIAL after the grace: ' + settled);
     const r = await pg.evaluate(() => { const box = e => { if (!e) return null; const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
       const lf = document.querySelector('.down .lf');
       const rdEl = document.getElementById('rd');
@@ -2139,7 +2142,7 @@ for (const view of VIEWS) {
         tiles: [...document.querySelectorAll('#downrecap .rc')].map(box), w: innerWidth }; });
     await pg.close();
     const hit = (a, b) => a && b && a.l < b.r - 1 && a.r > b.l + 1 && a.t < b.b - 1 && a.b > b.t + 1;
-    must(/ASSAULT RIFLE · TOOK 115 · DEALT 27 PARTIAL/.test(r.txt || ''), 'this-life line: ' + r.txt);
+    must(/ASSAULT RIFLE · TOOK 115 · DEALT 27$/.test(r.txt || ''), 'this-life line: ' + r.txt);
     must(r.rdLines != null && r.rdLines < 1.5, 'the countdown wrapped onto two lines: ' + r.rdLines);
     must(r.lf.l >= 0 && r.lf.r <= r.w, 'the line leaves the screen: ' + JSON.stringify(r.lf));
     must(![r.rd, r.lab, ...r.tiles].some(x => hit(r.lf, x)), 'the line overlaps the countdown or the recap: ' + JSON.stringify(r));

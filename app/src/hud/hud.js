@@ -1633,7 +1633,7 @@ export class Hud {
         this._moment = downKey;
         const title = recoveryDown
           ? '<span class="tt"><span class="t">GUN RESTARTED</span><span class="t t2">REDEPLOYING</span></span><span class="kb">REDEPLOYING</span>'
-          : `${st.respawnType === 'scanner' ? '<span class="tt"><span class="t">DOWN</span><span class="t t2">RESPAWN<br>AT STATION</span></span>' : '<span class="t">DOWN</span>'}<span class="kb">${kb.dot ? 'POISONED BY' : 'KILLED BY'} <b style="${tk ? `background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}` : 'background:var(--mut);color:var(--bg,#000)'}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span>${this._lifeLine(st, kb)}`;
+          : `${st.respawnType === 'scanner' ? '<span class="tt"><span class="t">DOWN</span><span class="t t2">RESPAWN<br>AT STATION</span></span>' : '<span class="t">DOWN</span>'}<span class="kb">${kb.dot ? 'POISONED BY' : 'KILLED BY'} <b style="${tk ? `background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}` : 'background:var(--mut);color:var(--bg,#000)'}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span><span id="dnlife">${this._lifeLine(st, kb)}</span>`;
         this.overlay.innerHTML = `<div class="mo down"><div class="wash"></div>
           <div class="c"><div class="l2">${title}</div>
           <div class="dn" id="dnhint">${this._downHint(st)}</div></div>
@@ -1647,6 +1647,8 @@ export class Hud {
         const hk = this._downHintKey(st); if (hk !== this._downHintSig) { const h = this.overlay.querySelector('#dnhint'); if (h) h.innerHTML = this._downHint(st); }
         const sf = this._downSafe(st); if (sf !== this._downSafeSig) { this._downSafeSig = sf; const el = this.overlay.querySelector('#dnsafe'); if (el) el.outerHTML = sf; }
         const rc = this.overlay.querySelector('#downrecap'); if (rc) { const h = this._downRecap(st); if (rc.innerHTML !== h) rc.innerHTML = h; }
+        // S56: PARTIAL clears once the death grace is over and a straggling relay can still move DEALT, so re-read it
+        const dl = this.overlay.querySelector('#dnlife'); if (dl) { const h = this._lifeLine(st, st.killedBy || {}); if (dl.innerHTML !== h) dl.innerHTML = h; }
       }
       return;
     }
