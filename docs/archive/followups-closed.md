@@ -1,5 +1,10 @@
 # Closed followups (archive)
 
+# Closed 2026-09-23: kill confirm, superseded by the IR callout bus
+
+- 2026-09-23 **B31** the kill confirm over the BLE advert or a relayed `$IRTX` is superseded by **S57**: one IR word
+  per death, sent once from the victim's own gun, nothing relayed (Tony). The design lives in the S57 row.
+
 # Closed 2026-09-23: dual-emitter accuracy accounting
 
 - 2026-09-23 **F260** the node assigns both words from one physical dual-emitter pull the same `shot_group`; MC counts each group once for the accuracy numerator while retaining both landed words in the damage log. Node regressions cover grouped dual words versus rapid ordinary hits, and `mcp/tests/test_mc_scoring_warnings.py` covers grouped versus distinct accuracy counts.

@@ -88,7 +88,7 @@ Each step tries one suspected trigger. Arm the gun with the bench victim head (`
 | A7 | burst | **Zero-gap half: F269's raw-byte helper (command lines below).** Send 100 short frames as one zero-application-gap byte stream; then the same frames in blocks of 10 with a 300 ms pause between blocks. Nine of every 10 are `$PLAY,U37,3,10,,,,,*`; every 10th is `$QUERY,*`, so each run carries 10 queries | count the `$QUERY` replies at each pacing (10 expected; each missing reply is a lost frame); any LOCK-UP. Existing transports can run the paced control but not the zero-gap comparison |
 | A7b | deliberate split frame | **F269's raw-byte helper (command lines below):** it must preserve each supplied GATT write, accept an explicit inter-write delay, and log actual writes. On a fresh arm set magazine 10, then write `$AMMO,0,2`, wait 60 ms, and write `3,50,1,*`; repeat with a 2 s gap, three times each, and read `$ALCD` | magazine 23 in all six runs. This tests parser persistence, not ordinary BLE chunking that the stack may coalesce |
 | A7c | receive-ring boundary | **F269's raw-byte helper, zero-gap stream mode (command lines below):** it must split one supplied byte stream only at 20-byte ATT boundaries, with no application sleep, and log chunk times. Alternate three streams of 146 `$PING,*` frames (1,022 B) and 147 frames (1,029 B), count `$PONG`s, then repeat with phone pacing | the exact code size is already 1,024 slots/1,023 usable; this measures the practical boundary while the parser is draining and must not be presented as an allocation measurement. Existing `send`, `send_batch`, and stage `raw` inject delay and cannot run the zero-gap case |
-| A8 | burst of long frames | **Zero-gap half: F269's raw-byte helper (command lines below).** Send 50 × the bench AR `$WEAP` (102 bytes with t6 empty, 6 packets) as one zero-application-gap byte stream; then 200 × `$WEAP` frames with the phone's pacing (8 ms per packet, 18 ms per frame). In both runs, alternate the magazine size (t16 and t39) between 32 and 30 on each frame. In the paced run, read `$ALCD` after each frame; after the zero-gap run, read it once | a paced frame counts as lost when the `$ALCD` magazine does not change to that frame's value; the zero-gap run must end on the last frame's value; count lost frames; any LOCK-UP. Existing transports can run the phone-paced control but not the zero-gap comparison |
+| A8 | burst of long frames | **Zero-gap half: F269's raw-byte helper (command lines below).** Send 50 × the stock AR `$WEAP,0` (111 bytes, 6 packets) as one zero-application-gap byte stream; then the same 50 frames with the phone's pacing (8 ms per packet, 18 ms per frame). In both runs, alternate the magazine size (t16 and t39) between 32 and 30 on each frame, and read `$ALCD` once after the run (the table below) | each run must end on the last frame's magazine (30, less the shots); count failed runs; any LOCK-UP |
 | A8b | trimmed runt `$SIR` rows | one gun, armed alternately with two variants, 50 arms each: the compiled `$SIR` rows as shipped, and the same rows with their trailing empty tokens dropped so each row fits one 20-byte packet | count BAD FRAME per variant. After the last arm of each variant, the IR rig (`ir-emit`) fires one control shot per `$SIR` row; every row must register a hit |
 | A9 | IR load | set the gun's `<0,0>` row to fn 28 (`$SIR,0,0,,28,0,0,1,,*`: registers, no pool change), then the IR rig fires enemy-team `<0,0>` words at the gun at 10 per second for 5 min, while `$PING` runs. The fn 28 row means 3,000 words cannot kill the gun | does IR load alone slow or hang the gun |
 | A10 | IR plus BLE | A9 and A7 together | the player-count case: many hits and much traffic at once |
@@ -96,22 +96,40 @@ Each step tries one suspected trigger. Arm the gun with the bench victim head (`
 | A12 | low battery | repeat A7 on a pack below 20 % | any difference |
 | A13 | our peak writer | replay the live S42 recoil writer at today's throttle (a `$WEAP` plus an `$AMMO` every 250 ms) for up to 20 min | the time and frame count at any LOCK-UP: the per-gun traffic budget |
 
-**Running the split and zero-gap steps (F269, built 2026-09-23).** Use `python -m brx_mcp raw-bytes <address> …`; the next sitting's order is [`bench-2026-09-24.md`](bench-2026-09-24.md).
-Single-quote every frame: in double quotes the shell turns `$AMMO` into nothing, and the tool then refuses the payload.
-The gun sends `$ALCD` only on a shot or a reload, so the A4, A7b and A8 lines hold the link open for 10 s: fire one round
-inside that window and read the printed last `$ALCD` (the magazine reads one lower than the value set). A run that
-ends on a complete frame then sends one `$PING,*` and reports a missing `$PONG` within 10 s.
+**Running the split and zero-gap steps (F269, built 2026-09-23).** This table is the canonical argument list; the
+dated runbook ([`bench-2026-09-24.md`](bench-2026-09-24.md)) holds the order and the log lines. Every line is
+`python -m brx_mcp raw-bytes <address> <arguments>`. Single-quote every frame: in double quotes the shell turns
+`$AMMO` into nothing, and the tool then refuses the payload. `A7` below is nine `$PLAY,U37,3,10,,,,,*` then one
+`$QUERY,*`, concatenated; `WEAP32` and `WEAP30` are the stock AR `$WEAP,0` at magazine 32 and at magazine 30
+(`armgen.py 1 5 ar`, then with `t16=30 t39=30`; 111 B each).
 
-| step | arguments |
-|---|---|
-| A4 (no reset) | `--segment '$AMMO,0,10,50,1,*' --segment '$AMMO,0,17,50,1' --segment '$AMMO,0,23,50,1,*' --allow-incomplete --read-ms 10000` |
-| A4 (reset) | as above, with `--segment '$*'` before the last segment |
-| A7 zero-gap | `--stream` of nine `$PLAY,U37,3,10,,,,,*` then one `$QUERY,*`, concatenated, `--repeat 10`; read `QUERY=` in the reply counts |
-| A7 paced | the same, plus `--phone-pacing --block-frames 10 --block-pause-ms 300` |
-| A7b | `--segment '$AMMO,0,10,50,1,*' --segment '$AMMO,0,2' --segment '3,50,1,*' --delays-ms 0,60 --read-ms 10000`, then `--delays-ms 0,2000` |
-| A7c | `--stream '$PING,*' --repeat 146 --read-ms 5000`, then `--repeat 147`; read `PONG=` |
-| A8 zero-gap | `--stream` of the stock AR `$WEAP,0` at magazine 32 then at magazine 30 (`armgen.py 1 5 ar`, then with `t16=30 t39=30`; 111 B each), concatenated, `--repeat 25 --read-ms 10000` (50 frames) |
-| A8 paced | the same, plus `--phone-pacing`; add `--with-response` for the F270 comparison |
+**Reading a magazine.** The gun sends `$ALCD` only on a shot or a reload. A run with `--read-ms` prints "FIRE NOW"
+once every write is done; wait about 2 s, then fire one round. The tool counts only the `$ALCD` frames that arrive
+after the last write, so the expected magazine is the value the plan set minus that count. A run that ends on a
+complete frame then sends one `$PING,*` and reports a missing `$PONG` within 10 s.
+
+Run each control first, then three runs of each variant.
+
+| step | arm | arguments | pass |
+|---|---|---|---|
+| A7c | control | `--stream '$PING,*' --repeat 146 --phone-pacing --read-ms 5000`, then `--repeat 147` | every `$PING` answered |
+| A7c | zero gap | the same without `--phone-pacing` | the number of `PONG=` at 147 is the result |
+| A7 | control, as shipped | `--stream "$A7" --repeat 10 --phone-pacing --read-ms 5000` | `QUERY=10` in all three runs |
+| A7 | zero gap | the same without `--phone-pacing` | as the control |
+| A7 | block pause | the control plus `--block-frames 10 --block-pause-ms 300` | as the control |
+| A8 | control, as shipped | `--stream "$WEAP32$WEAP30" --repeat 25 --phone-pacing --read-ms 10000` | last `$ALCD` = 30 minus the count |
+| A8 | zero gap | the same without `--phone-pacing` | as the control |
+| A8 | with response (F270) | the control plus `--with-response` | as the control |
+| A4 | control | `--segment '$AMMO,0,17,50,1,*' --segment '$AMMO,0,23,50,1,*' --read-ms 10000` | 23 minus the count |
+| A4 | no reset | `--segment '$AMMO,0,10,50,1,*' --segment '$AMMO,0,17,50,1' --segment '$AMMO,0,23,50,1,*' --allow-incomplete --read-ms 10000` | predicted BAD FRAME |
+| A4 | reset | the no-reset line with `--segment '$*'` before the last segment | 23 minus the count |
+| A7b | 60 ms | `--segment '$AMMO,0,10,50,1,*' --segment '$AMMO,0,2' --segment '3,50,1,*' --delays-ms 0,60 --read-ms 10000` | 23 minus the count |
+| A7b | 2 s | the same with `--delays-ms 0,2000` | as the 60 ms arm |
+
+A7 turns on `WRITE_PACING.blockFrames = 10`, `blockPauseMs = 300` (F269) only if the shipped pacing loses frames and
+the block pause does not. An A8 run reads only its LAST frame: a lost middle frame shows only if it corrupts the
+next one, so count failed runs, not lost frames. If the shipped pacing fails and `--with-response` passes, F270
+goes on.
 
 **→ 2026-09-18, A1/A2 run.** A1: no `$PONG` to two pings 8 s apart, no reply to a follow-up `$PLAYX,0`, and no
 audio played at all; the gun spoke only "connected" and "phone disconnected" over the session, and the BLE link

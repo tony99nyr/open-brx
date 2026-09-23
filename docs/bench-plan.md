@@ -43,24 +43,13 @@ superseded). See `docs/experiment-log/2026-09.md` (2026-09-19 pre-game entry) fo
 ### Next sitting: [`bench-2026-09-24.md`](bench-2026-09-24.md) (about 3 hours indoor, plus 60 min outdoor)
 
 One ordered runbook for the next sitting: F297/F293 connect reliability, the screamers transport steps A4, A7,
-A7b, A7c and A8 with `raw-bytes` (F269/F270), F308, S56, F291, F292, F298, F296, F309 when it lands, F275
-outdoors, S48's super-indoor grid in Tony's house, and S57's IR callout bus. It covers steps 2-7 of the 0.4.5 field check below.
+A7b, A7c and A8 with `raw-bytes` (F269/F270), F308, S56, F291, F292, F298, F296, F309, F275
+outdoors, S48's super-indoor grid in Tony's house, and S57's IR callout bus. It includes the 0.4.5 field check.
 
-### 0.4.5 field check (after Tony publishes)
+### 0.4.5 field check
 
-Run this first with the published app 0.4.5 and both phones' wireless debugging re-enabled.
-
-1. Install 0.4.5 on both phones (`npm run android:install` per phone, or the `app-v0.4.5` release download).
-2. Connect timing on both phones: time from tap to linked, from cold, at least three tries each. Feeds **F297**.
-3. Watch for the link-loop symptom (a drop every 5-12 s after the first connect); if it recurs, log whether the
-   phone's own Bluetooth was on or off through the pairing. Feeds **F293**.
-4. The new respawn rules in a real match: a timed respawn (no protection by default, weapon live 0.5 s after the
-   countdown ends) and a station respawn (2 s visible protection, trigger live at once, white shield blink).
-5. The Shields preset in a real match through Mission Control: shield recharge cues and pool readout on both
-   HUDs. Feeds **F298**.
-6. The down animation: confirm whether the slowed `$HLOOP,1,2500` rearm reads as "down" rather than as a hit.
-   Feeds **F296**.
-7. Full screen: confirm the Android status bar stays hidden during play on both phones (API 30+ immersive patch).
+Folded into the runbook above: connect timing (Block 1), the respawn rules, the Shields preset, the down animation
+and full screen (Block 4). The phones need a build from `main`, because S56 and F309 are newer than 0.4.5.
 
 ### Sitting 1: screamers Phase A, transport half (about 55 min; 1 gun, a laptop)
 
@@ -70,7 +59,7 @@ A3 repeats A1 on other channels and can lock the gun: power-cycle and re-arm bef
 
 ### Sitting 2: the rest of levers session 1 (about 100 min; 2 guns, ears, the rig for steps 8 and 9)
 
-1. Levers §21 step 19, `$TMP` t10 crit chance, including the same-value re-send control (10 min). **S50**, **F278**, **F285**.
+1. Levers §21 step 19, `$TMP` t10 crit chance, including the same-value re-send control (10 min). **S50**, **F285**.
 2. Levers §21 step 11, and one run that asks whether t9 applies per slot or once for every slot (10 min). Extended
    Mags on `$TMP` waits on this. **S50**.
 3. Levers §21 steps 12-14, t1-t3 pool maxima, repeating each same non-zero write before the second read (15 min). **S50**, **F285**.
@@ -80,14 +69,14 @@ A3 repeats A1 on other channels and can lock the gun: power-cycle and re-arm bef
 6. Levers §12 step 2 (does `$STOP` gate the trigger?), then §4 step 2 (a `$SIR` p5 stun on hit) (10 min). **U11′**.
 7. **F262**: the shield-hit sound by sensor, ten shots at the headset and ten at the gun body (10 min, ears).
 8. Levers §2, melee (15 min; `$BMAP,8,7` and `$BMAP,8,4`; step 4 needs the rig). **K4**.
-9. Levers §16 step 6.3: does `$CLEAR` stop a headset `$IRTX` loop? (5 min, the rig). **B31**, **B23**.
+9. Levers §16 step 6.3: does `$CLEAR` stop a headset `$IRTX` loop? (5 min, the rig). **S57**, **B23**.
 10. **F282**: the compiled Suppressor against the compiled AR in a dark room: does either flash, and which is quieter?
    Then `$WEAP` t25/t26 at 0 and at a large value on one weapon (10 min; eyes, ears; method in the row).
 
 ### Sitting 3: the recoil numbers, groups A and B (about 30 min; 2 guns on a fixed mount)
 
-Levers §26 groups A and B, pinned with `$TMP` t4 (§21 answered how; see "If §21 moves the mechanism"). **F268**,
-**F280**. Groups C, D, E and F wait until Tony settles the rung basis; they go into sitting 8.
+Levers §26 groups A and B, pinned with `$TMP` t4 (§21 answered how; see "If §21 moves the mechanism"). **F308**.
+Groups C, D, E and F go into sitting 8.
 
 ### Sitting 4: screamers Phase A, IR half (about 50 min; 1 gun, the rig)
 
@@ -96,16 +85,14 @@ recoil writer. If the writer has moved to `$TMP` t4 by then, replay the `$TMP` f
 
 ### Sitting 5: match verification (about 60 min; 2 guns, Phones + MC, film)
 
-Run it after the desk fixes for F265 and F261 land. Levers §1 run f (F206's proof) **already ran and passed**,
-2026-09-19; do not re-run it here.
+Levers §1 run f (F206's proof) **already ran and passed**, 2026-09-19; do not re-run it here.
 1. **F264** in a live match. If a gun stalls, send `$LIFE,<hp>,0,0,1,*` then `$HLED,,6,*` BEFORE any force respawn,
    and watch for a trigger answer. The row holds the gate.
 2. Levers §22 step 7: reproduce the timed-out partial reload on the Energy Rifle. **F277**.
-3. **F265** (scoreboard freeze), **F261** (adopt from a fresh MC), **F257** (charge weapon HUD), **F256** (coverage
-   line), **F237** (a slow Pixel 5 re-pick): each row holds its repro.
-4. The stun cue: hit a player with the EMP and listen for `X17` on the victim's gun (commit `273e949a`; FOLLOWUPS §9, F15 rung 9).
-5. The shield recharge cues on the Shields preset (**S29**: `N101`, `N102`, `VA6Y`, `N74`). If the "0.4.5 field
-   check" already ran the Shields preset in a match, do not re-run it here; note the result instead.
+3. **F237** (a slow Pixel 5 re-pick): the row holds its repro.
+4. The stun cue: hit a player with the EMP and listen for `X17` on the victim's gun (commit `273e949a`; FOLLOWUPS §9).
+5. The shield recharge cues on the Shields preset (**S29**: `N101`, `N102`, `VA6Y`, `N74`). If the runbook's Block 4.6
+   already ran the Shields preset in a match, do not re-run it here; note the result instead.
 
 ### Sitting 6: levers session 2 (two sittings; 2 guns, the rig for §9 step 5)
 
@@ -116,11 +103,12 @@ Run it after the desk fixes for F265 and F261 land. Levers §1 run f (F206's pro
 
 - 7a (about 50 min): §11 splash, §16 step 4 (field 4 = 1) (**B23**), §17 station words (**B23**).
 - 7b (about 45 min): §20 indoor half (**S48**, **Q15**), §24 the proc block (**F63**). §13 steps 2 and 3
-  (magnitudes 40-63) are optional now (**B31**).
+  (magnitudes 40-63) are optional now (**S57**).
 
 ### Sitting 8: the recoil numbers, groups C to F (about 35 min; 2 guns, Phones + MC)
 
-Levers §26 groups C, D, E and F, on the phone's node, after Tony settles the rung basis (**F268**, **F280**).
+Levers §26 groups C, D, E and F, on the phone's node. The rung basis is settled (S54, `aa7b08b9`); the rungs to
+expect are the recoil table in `spec/node.md` §3.15.
 
 ### Sitting 9: levers gap sweep (two sittings; 2 guns, the rig for two steps)
 
@@ -139,7 +127,7 @@ headset-word row was F254 before its renumber and is F275 now.
 
 - **Screamers Phase C** runs 1-4, 2 h each, one gun and a laptop (now unblocked with `soak --phone-pacing` built). Run 3 soaks the `$TMP` form of the recoil writer once it exists.
 - **Screamers Phase D** (3 h, all guns, Phones + MC, the rig), after the Phase B rules are built.
-- **Screamers Phase E** (20 min), after the lock-up detector (**F272**) is built.
+- **Screamers Phase E** (20 min), after the lock-up detector (**F272**) passes its bench validation.
 
 ### Backlog (no fixed order; pick by setup)
 
@@ -157,12 +145,10 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 | **F272** | levers and screamers | bench-validate the lock-up detector on the phone and in MC (poll with the bare `$LIFE,*`) | idle `$VOLTS`, stable-radio screamer, and mobile recovery evidence; gates Phase E |
 | **F300** | levers and screamers | decode the remaining `$QUERY` sound/gyro/per-slot loop before extending arming read-back | stock-image/capture decode |
 | **F269** | levers and screamers | switch the block pause on, and decide the runt `$SIR` rows | sittings 1 and 4 (A7, A8, A8b) |
-| screamers Phase B: **F270**, plus one new row per trigger that Phase A reproduces | levers and screamers | one rule in code per reproduced trigger (write with response; the `$PB*`/`$AS` deny list) | sittings 1 and 4; F273 is closed |
+| screamers Phase B: **F270**, plus one new row per trigger that Phase A reproduces | levers and screamers | one rule in code per reproduced trigger (write with response; the `$PB*`/`$AS` deny list) | sittings 1 and 4 |
 | **F285** | levers and screamers | desk table is done; replace its UNMEASURED cells only from recorded bench results | sitting 2 steps 1, 3-5 |
 | **F274** | playtest and node | measure the recoil writer's BLE write budget and complete the hardware soaks | A13 and the three two-hour hardware runs; S55 is shipped |
-| **B31** | playtest and node | the kill confirm: the victim's node sends a protocol-15 `$IRTX` through its own (dead) gun's headset | choose the IR design or the advert design (the row weighs both) |
 | **F277** | playtest and node | a detector for a reload that never completes | sitting 5 step 3 (a repro) |
-| **F268**, **F280**, then **S54** | weapons and perks | settle the rung basis with Tony (the time-to-kill proposal), then wire the six recoil fields once | a decision (Tony). The floors are settled at 60 |
 | **F281** | weapons and perks | move Quick Hands onto `$TMP` t6 in one piece, or not at all | sitting 2 step 4 (t6 absolute or additive) |
 | **S50** | weapons and perks | Extended Mags on `$TMP` t9 (one write per life, after `$SPAWN`, then an `$AMMO` fill) | sitting 2 step 2 (per slot or not) |
 
@@ -170,10 +156,8 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 
 | tool or change | blocks | row |
 |---|---|---|
-| The desk fixes for F265 and F261 | sitting 5 | F265, F261 |
-| Tony's rung basis for the recoil ladder | sitting 8 | F268, F280 |
 | Screamers Phase B rules in code | Phase D | after sittings 1 and 4 |
-| The lock-up detector on the phone and in MC | Phase E | F272 |
+| The lock-up detector's bench validation (built) | Phase E | F272 |
 | Block pacing switched on, at the A7/A8 values | Phase C and D results that count | F269 |
 
 ## Which sheet owns what
@@ -186,7 +170,7 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 | [`bench-grenade.md`](bench-grenade.md) | open, backlog | the grenade and hill rungs |
 | [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) | superseded as the order | the method of its unrun rungs. Moved: BQ-C2 answered (perks §1); BQ-C3 is levers §24; BQ-D2 is levers §2; BQ-D6 is levers §10; BQ-C8 is levers §19 step 11 |
 | [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md) | superseded | BC-A2 is levers §21 step 16 (done) plus grenade Z1; BC-B3 is grenade X; BC-C1 is levers §6; BC-C2 is answered (perks §2) |
-| [`bench-super-indoor-2026-09-07.md`](bench-super-indoor-2026-09-07.md) | parked | Q15. The range lever is a carrier frequency (levers §20), so the sheet waits for Tony's S48 decision |
+| [`bench-super-indoor-2026-09-07.md`](bench-super-indoor-2026-09-07.md) | superseded | Q15. Tony defined S48 on 2026-09-23; its sweep is Block 6 of the runbook |
 | [`bench-flash-control-2026-09-05.md`](bench-flash-control-2026-09-05.md) | history | L1-L9 answered. BQ-D8 cites its rungs 9-10 |
 | [`capture-runbook.md`](capture-runbook.md) | method | how to take a capture; no status |
 | the 2026-09-13 runbook and the 2026-09-17 weapons sheet | history | already archived: grep only, open no step from them |
@@ -196,6 +180,4 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 
 | decision | what it blocks |
 |---|---|
-| **F268**, **F280**: the recoil rung basis (the time-to-kill proposal). The floors are settled at 60 | S54, sitting 8 |
-| **S48**: does "super indoor" mean less power, or a detuned carrier (levers §20)? | the super-indoor sheet (Q15) |
 | The ALT indoor/outdoor wording in `manual/fix.md` "IR isn't registering hits" step 4. The page says the field test found no emitted-range change, but V4_31 shows the mode sets emitter power (F171) | no sitting; a manual edit |

@@ -73,15 +73,15 @@ right** and this index is stale. Do not cite it as evidence that something is or
 **Needs Tony at the bench** (tagged `trigger` · `bench` · `ears` · `eyes` · `space` · `grenade` · `capture` ·
 `hardware` — running order in [`bench-plan.md`](bench-plan.md)):
 - 🔴 **B26** · **F198** · **F231** · **F232** · **F264** · **F275** · **F293** · **F297** · **K4** · **Q15** · **S10**
-- 🟠 **B31** · **F50** · **F59** · **F152** · **F158** · **F162** · **F171** · **F183** · **F219** · **F226** · **F237** · **F269** · **F272** · **F274** · **F277** · **F294** · **F300** · **G9** · **P8** · **Q16** · **S9** · **S33**
-- 🟡 **B28** · **B29** · **B30** · **D1** · **D4** · **F3** · **F13** · **F21** · **F26** · **F27** · **F28** · **F30** · **F39** · **F63** · **F66** · **F67** · **F68** · **F75** · **F76** · **F82** · **F88** · **F128** · **F131** · **F167** · **F168** · **F169** · **F195** · **F214** · **F216** · **F227** · **F229** · **F233** · **F262** · **F267** · **F270** · **F282** · **F285** · **F296** · **F298** · **F309** · **G3** · **G10** · **H7** · **H8** · **K1** · **P3** · **P15** · **S1** · **S2** · **S7** · **S-A12** · **S36** · **S49** · **U11′**
-- 🟢 **B20** · **F29** · **F87** · **F99** · **F111** · **F114** · **F120** · **F250** · **F273** · **G4** · **P4** · **P12** · **S8** (F270 filed 🟡 on 2026-09-18; F65 closed the same day)
+- 🟠 **F50** · **F59** · **F152** · **F158** · **F162** · **F171** · **F183** · **F219** · **F226** · **F237** · **F269** · **F272** · **F274** · **F277** · **F300** · **G9** · **P8** · **Q16** · **S9** · **S33**
+- 🟡 **B28** · **B29** · **B30** · **D1** · **D4** · **F3** · **F13** · **F21** · **F26** · **F27** · **F28** · **F30** · **F39** · **F63** · **F66** · **F67** · **F68** · **F75** · **F76** · **F82** · **F88** · **F128** · **F131** · **F167** · **F168** · **F169** · **F195** · **F214** · **F216** · **F227** · **F229** · **F233** · **F262** · **F267** · **F270** · **F282** · **F285** · **F294** · **F296** · **F298** · **F309** · **G3** · **G10** · **H7** · **H8** · **K1** · **P3** · **P15** · **S1** · **S2** · **S7** · **S-A12** · **S36** · **S49** · **U11′**
+- 🟢 **B20** · **F29** · **F87** · **F99** · **F111** · **F114** · **F120** · **F250** · **G4** · **P4** · **P12** · **S8** (F270 filed 🟡 on 2026-09-18; F65 closed the same day)
 
 **Keyboard only** (tagged `build` or `decision` — no gun, no rig, no dim room):
 - 🔴 **B23** · **E5** · **F43** · **F231** · **F264** · **S10**
-- 🟠 **B4** · **B21** · **B31** · **E2** · **F12** · **F40** · **F70** · **F164** · **F269** · **F272** · **F277** · **F300** · **P8** · **S3** · **S14** · **S33** · **S50** · **S53**
+- 🟠 **B4** · **B21** · **E2** · **F12** · **F40** · **F70** · **F164** · **F269** · **F272** · **F277** · **F300** · **P8** · **S3** · **S14** · **S33** · **S50** · **S53**
 - 🟡 **B1** · **B8** · **B14** · **B17** · **D1** · **D3** · **E3** · **E4** · **E6** · **F5** · **F16** · **F20** · **F24** · **F25** · **F42** · **F60** · **F68** · **F88** · **F95** · **F108** · **F109** · **F112** · **F113** · **F123** · **F126** · **F128** · **F130** · **F132** · **F133** · **F161** · **F176** · **F177** · **F186** · **F221** · **F229** · **F233** · **F266** · **F267** · **F270** · **F281** · **H1** · **H2** · **H6** · **H8** · **K2** · **Q12′** · **Q13** · **R3** · **S1** · **S2** · **S6** · **S7** · **S-A12** · **S13** · **S25** · **S27** · **S28** · **S29** · **S30** · **S31** · **S32** · **S36** · **S42** · **S43** · **S46** · **S47** · **S48** · **S49** · **S51**
-- 🟢 **B11** · **B22** · ⬜ **D5** · **E7** · **F14** · **F17** · **F19** · **F32** · **F52** · **F83** · **F87** · **F89** · **F93** · **F98** · **F99** · **F100** · **F107** · **F204** · **F250** · ⬜ **H3** · ⬜ **H4** · ⬜ **H5** · ⬜ **K6** · ⬜ **K8** · **P14** · **R2** · **S19**
+- 🟢 **B11** · ⬜ **D5** · **E7** · **F14** · **F17** · **F19** · **F32** · **F52** · **F83** · **F87** · **F89** · **F93** · **F98** · **F99** · **F100** · **F107** · **F204** · **F250** · ⬜ **H3** · ⬜ **H4** · ⬜ **H5** · ⬜ **K6** · ⬜ **K8** · **P14** · **R2** · **S19**
 
 ## 1. Before going public
 
@@ -175,30 +175,6 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   Needed one fix first (F136, bind loopback). Left: the manual `--public-url` / named-tunnel path (Tony, later); the field
   findings are their own rows (F140 F142 F144 F146 F153 F155 F156 F157, S40, D5 — all but D5 closed by PR #4 and
   the 2026-09-12 integration, see `archive/followups-closed.md`). `capture`.
-- **B31 🟠** KILL CONFIRM OVER THE BLE ADVERT (Tony 2026-09-12): the victim's player advert (utility.md §2) already
-  carries alive + seq and has three spare bytes (11 value, 14 threshold, 15 reserved); the victim's node already
-  latches the shooter's player_num from its last `$HIR`. Put `killed_by` in the value byte while the alive bit is
-  off (it stays up for the whole respawn delay), have player phones read player adverts (only utility phones do
-  today), and a dead player in my game whose value byte is my number, deduped per (victim, seq), fires KILL
-  CONFIRMED locally (A11.4 HUD-driven event, class "peer-witnessed") with no LAN, backhaul or MC. Range = BLE
-  advert range (~10-30 m outdoors at medium TX). **Presentation only:** adverts are unauthenticated (utility.md
-  §2 posture), so the confirm never scores; the kill still enters the board from the victim's own report and the
-  recap stays victim-authoritative. Phase 2 (optional): a backhaul phone relays the death advert to MC as a
-  PROVISIONAL kill, reconciled against the victim's event on flush. Cost: one byte definition in utility.md §2,
-  a player-advert consumer + dedupe set in `app.js`/`engine.js`, one engine event reusing the KILL CONFIRMED
-  moment, one line in contracts A11.4. Hardware caveats: iOS advertises the service UUID cleanly only in the
-  foreground (play already requires it); Android scan starvation (the 7 s restart already fights it). Complements
-  B30, not part of it. **→ 2026-09-18:** first find how a stock game confirms a kill: `bench-firmware-levers-2026-09-19.md` §13
-  (the discovery phase, commit 707da59b; step 1 listens for `$DD`). **→ 2026-09-18, §13 step 3 answered it: no `$DD`
-  from the gun, and no native audible callout on any protocol-15 magnitude either (1-39 swept, none heard).** But
-  every protocol-15 word DOES register silently (fn 28 on `<15,0>`, team-gated), so there is a cheaper IR-only
-  alternative to this row's BLE-advert design: the victim's node sends a protocol-15 word carrying the killer's
-  id, the killer's gun registers it with no pool change, and the killer's node plays the confirm voice. Worth
-  weighing against the advert design above before building either. **→ 2026-09-18, confirmed the IR-only design
-  works even on the victim's own death: a DEAD gun still forwards a host `$IRTX` frame out through its headset,
-  and the headset emits it (control: a dying gun emits no IR of its own). So the victim's node can send the
-  kill-confirm `$IRTX` through the gun it just lost, no separate "before death" timing window needed.**
-  `build` · `capture`. **→ 2026-09-23: superseded by S57, the IR callout bus.**
 
 ## 4. Hardware, prints, research (H, R)
 
