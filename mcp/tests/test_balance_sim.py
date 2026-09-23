@@ -364,7 +364,9 @@ def test_recoil_duel_seeded_runs_land_in_band():
                              float(B.CHARGE_TAP_CADENCE_MS))
     r3 = B.recoil_duel_batch(B.run_recoil_duel_rule3, "burst", 2000, SEED, "rule3_test", m)
     assert 0.88 < r1.win_rate < 0.98, r1.win_rate    # rule 1: a charged CR clearly beats an AR
-    assert 0.45 < r2.win_rate < 0.65, r2.win_rate     # rule 2: an AR that catches an uncharged CR, closer
+    assert 0.20 < r2.win_rate < 0.40, r2.win_rate     # rule 2: the AR is burst-disciplined too (Tony's
+                                                       # 2026-09-23 correction), so its own 150-300 ms
+                                                       # dead time costs it against a caught, tapping CR
     assert 0.20 < r3.win_rate < 0.40, r3.win_rate     # rule 3: at the default 150-300 ms pause, the burst
                                                        # player's own dead time outweighs full auto's degrade
     # same seed, same cell key -> the same answer, regardless of what else ran first (parallel-safe).

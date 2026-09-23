@@ -1081,14 +1081,16 @@ def run_recoil_duel_rule1(rng: random.Random, m: RecoilDuelModel, tap_ms: float)
 
 def run_recoil_duel_rule2(rng: random.Random, m: RecoilDuelModel, tap_ms: float) -> str | None:
     """Rule 2: the Assault Rifle catches an uncharged Charge Rifle and gets the first shot; the CR's own
-    reaction is added ON TOP of the AR's (it reacts to being caught, not to a shared start). The CR
-    fights back with taps only, for the whole duel: it cannot build a fresh charge in time (about 3.5 s,
-    `CHARGE_BUILD_MS`), which is also this duel's time cap — past it the CR is no longer "uncharged" by
-    the rule's own premise. `"ar"`/`"cr"`/`None` (a draw)."""
+    reaction is added ON TOP of the AR's (it reacts to being caught, not to a shared start). The AR
+    player is the skilled one here (Tony, 2026-09-23 correction): the same controlled-burst discipline
+    as rule 3, not full auto. The CR fights back with taps only, for the whole duel: it cannot build a
+    fresh charge in time (about 3.5 s, `CHARGE_BUILD_MS`), which is also this duel's time cap — past it
+    the CR is no longer "uncharged" by the rule's own premise. `"ar"`/`"cr"`/`None` (a draw)."""
     t_ar = m._reaction(rng)
     t_cr = t_ar + m._reaction(rng)
     gen_ar = _ar_shots(t_ar, m.ar_dmg, m.ar_fire_ms, m.ar_mag, m.ar_reserve, m.ar_reload_ms, m.ar_profile,
-                       m.aim_factor)
+                       m.aim_factor, burst_min=m.burst_min, burst_max=m.burst_max,
+                       pause_min_ms=m.burst_pause_min_ms, pause_max_ms=m.burst_pause_max_ms, rng=rng)
     gen_cr = _cr_shots(t_cr, m.cr_charge_dmg, m.cr_tap_dmg, m.cr_rounds_per_charge, tap_ms, m.cr_mag,
                        m.cr_reserve, m.cr_reload_ms, m.aim_factor, start_charged=False)
     return {"a": "ar", "b": "cr", None: None}[_race(rng, gen_ar, gen_cr, m.pool_hp, m.pool_hp, CHARGE_BUILD_MS)]
