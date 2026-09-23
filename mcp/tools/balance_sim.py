@@ -1173,8 +1173,9 @@ class RecoilDuelModel:
                      reaction_sd_ms: float = 80.0, burst_min: int = 3, burst_max: int = 5,
                      burst_pause_min_ms: float = 150.0, burst_pause_max_ms: float = 300.0,
                      time_cap_ms: float = 10_000.0, health_preset: str = "standard") -> "RecoilDuelModel":
-        # The duel treats the whole pool as one number: armour and shield both absorb before health, and a
-        # shield's recharge (Shields only) is slower than any duel here lasts, so it is left out.
+        # The duel treats the whole pool as one number: damage drains shield, then armour, then health, with
+        # overflow cascading (docs/manual/dev.md). The shield refills only after 6.5 s with no damage
+        # (engine.js SHIELD_REGEN_DELAY_MS), which no duel here allows, so the refill is left out.
         hp, armour, shield = HEALTH_PRESETS[health_preset]
         ar_mag, ar_reserve, ar_reload_ms = cat._ammo("assault_rifle", None)
         cr_mag, cr_reserve, cr_reload_ms = cat._ammo("charge_rifle", None)
@@ -1342,9 +1343,9 @@ def recoil_duel_summary_text(results: list[RecoilDuelResult], m: RecoilDuelModel
         if "_tap_" in r.label:
             tap = r.label.rsplit("_tap_", 1)[1]
         lo, hi = r.ci()
-        flag = "UNDER 60%" if r.win_rate < 0.6 else ""
+        flag = bar_flag(r.win_rate, preset_bar(m, 0.60))
         lines.append(f"{desc:<45}{tap:<10}{r.win_rate:>9.1%}{f'[{lo:.1%}, {hi:.1%}]':>16}  {flag}")
-    lines += ["", "\"most of the time\" = clearly above 50%; a rule under 60% is flagged."]
+    lines += ["", "\"most of the time\" = clearly above 50%. " + bar_note(m, preset_bar(m, 0.60))]
     return "\n".join(lines) + "\n"
 
 
@@ -1470,6 +1471,22 @@ R10_FINISH_BAR_MS = 1000.0
 SHIELDS_BAR = 0.60
 
 
+def preset_bar(m: "RecoilDuelModel", standard_bar: float) -> float | None:
+    """The bar a summary flags against on `m`'s preset: the scenario's own on Standard, `SHIELDS_BAR` on
+    Shields, none on Hardcore (reported only, F310)."""
+    return {"standard": standard_bar, "shields": SHIELDS_BAR}.get(m.health_preset)
+
+
+def bar_flag(win_rate: float, bar: float | None) -> str:
+    return f"UNDER {bar:.0%}" if bar is not None and win_rate < bar else ""
+
+
+def bar_note(m: "RecoilDuelModel", bar: float | None) -> str:
+    if bar is None:
+        return f"{m.health_preset.capitalize()} preset: reported only, no bar (F310)."
+    return f"{m.health_preset.capitalize()} preset: a rule under {bar:.0%} is flagged."
+
+
 def run_range_duel(rng: random.Random, m: RecoilDuelModel, a_kind: str, b_kind: str, band: str) -> str | None:
     """One duel between two `RANGE_COMBATANTS` at a range band. Returns the WINNING KIND (not "a"/"b"),
     or `None` for a draw."""
@@ -1516,7 +1533,7 @@ def range_duel_report(m: RecoilDuelModel, reps: int, seed: int, keys=tuple(RANGE
 def range_duel_summary_text(results: list[RecoilDuelResult], m: RecoilDuelModel) -> str:
     lines = [
         "RANGE DUEL: Tony's 2026-09-23 close/mid-range balance rules R4-R9 (F308), stochastic 1v1",
-        f"pool {m.pool_hp} ({m.health_preset}); aim factor {m.aim_factor:g}; reaction N({m.reaction_mean_ms:.0f}, "
+        f"pool {m.pool_hp} ({m.health_preset.capitalize()}); aim factor {m.aim_factor:g}; reaction N({m.reaction_mean_ms:.0f}, "
         f"{m.reaction_sd_ms:.0f}) ms/player; bursting AR: {m.burst_min}-{m.burst_max} rounds, "
         f"{m.burst_pause_min_ms:.0f}-{m.burst_pause_max_ms:.0f} ms pause; close = gun word + declared "
         "headset word, mid = gun word only (past the headset word's own reach, unmeasured -- F275)", "",
@@ -1526,9 +1543,10 @@ def range_duel_summary_text(results: list[RecoilDuelResult], m: RecoilDuelModel)
         key = r.label.replace("range_", "", 1)
         desc = RANGE_RULES[key][0]
         lo, hi = r.ci()
-        flag = "UNDER 65%" if r.win_rate < 0.65 else ""
+        flag = bar_flag(r.win_rate, preset_bar(m, 0.65))
         lines.append(f"{desc:<62}{r.win_rate:>9.1%}{f'[{lo:.1%}, {hi:.1%}]':>16}  {flag}")
-    lines += ["", "\"most of the time\" = at least 65% (docs/weapon-design.md's Balance rules table)."]
+    lines += ["", "\"most of the time\" = at least 65% on Standard (docs/weapon-design.md's Balance rules table). "
+              + bar_note(m, preset_bar(m, 0.65))]
     return "\n".join(lines) + "\n"
 
 
@@ -1604,13 +1622,14 @@ def r10_summary_text(finish: dict, duels: dict, m: RecoilDuelModel) -> str:
         r = finish[s]
         flag = "UNDER BAR" if r.median_ms >= R10_FINISH_BAR_MS else ""
         lines.append(f"{R10_SIDEARM_NAMES[s]:<14}{r.median_ms:>11.0f}  {flag}")
-    lines += ["", "(b) each primary beats each live sidearm from full Standard health, needs >= 65%", "",
+    lines += ["", f"(b) each primary beats each live sidearm from full {m.health_preset.capitalize()} health "
+              f"(pool {m.pool_hp}). " + bar_note(m, preset_bar(m, 0.65)), "",
              f"{'primary':<16}{'sidearm':<12}{'win rate':>9}{'95% CI':>16}  flag"]
     for p in R10_PRIMARIES:
         for s in R10_SIDEARMS:
             r = duels[(p, s)]
             lo, hi = r.ci()
-            flag = "UNDER 65%" if r.win_rate < 0.65 else ""
+            flag = bar_flag(r.win_rate, preset_bar(m, 0.65))
             lines.append(f"{R10_PRIMARY_NAMES[p]:<16}{R10_SIDEARM_NAMES[s]:<12}{r.win_rate:>9.1%}"
                          f"{f'[{lo:.1%}, {hi:.1%}]':>16}  {flag}")
     lines += ["", "Not modelled here (named, not silently dropped): the Toxin Rifle (DoT, no tick "

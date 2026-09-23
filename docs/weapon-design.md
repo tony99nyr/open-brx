@@ -1736,8 +1736,9 @@ and `::test_r10_primaries_beat_sidearms_at_65_percent`; `test_mc_sidearms.py::te
 ### 7.5f F310: the rules on the Shields and Hardcore presets
 
 Tony: the rules should hold on Shields "looser but generally yes". Every duel above runs from one pool number,
-now set by `--health-preset` (Standard 45 + 70 armour = 115, Shields 45 + 105 shield = 150, Hardcore 45). The
-shield's recharge is slower than any of these duels, so the pool is treated as one number. 10,000 reps, seed 7:
+now set by `--health-preset` (Standard 45 + 70 armour = 115, Shields 45 + 105 shield = 150, Hardcore 45). Damage
+drains shield, then armour, then health, and the shield refills only after 6.5 s with no damage, which no duel
+allows, so the pool is treated as one number. 10,000 reps, seed 7:
 
 | rule | Standard | Shields | Hardcore |
 |---|---|---|---|
