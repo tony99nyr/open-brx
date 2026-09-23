@@ -1,5 +1,24 @@
 # Weapon design & balance
 
+## Balance rules
+
+The single place Tony's balance decisions live. Every other page links here instead of restating a
+rule; only this table changes when a decision changes. "Enforced by" names a test, a bench id, or
+says the rule is judgement only.
+
+| # | rule | decided | id | enforced by |
+|---|---|---|---|---|
+| 1 | Recoil rungs count ROUNDS PER TRIGGER PULL, scaled by calibre: a reference 8-damage weapon fires 5 clean rounds then degrades, 3 more then goes heavy, both counts scaled by `8 / dmg`. A trigger release resets the count while the weapon is still crisp; recovery from degraded or heavy needs 600 ms of quiet. | Tony, 2026-09-23 | S54/F268/F280 (`aa7b08b9`) | `app/test/engine.test.mjs` "S54: the round counts are derived from the row's dmg…"; `mcp/tests/test_balance_sim.py::test_recoil_profile_pins_the_shipped_ar_against_the_engine_test`. The release-reset half is bench-provisional (F308) |
+| 2 | A one-press burst or single-shot trigger does not recoil at all — the Burst Rifle and the Charge Rifle both ship flat (`ceiling == floor == 100`). | Tony, 2026-09-23 | S54/F280 | `mcp/tests/test_balance_sim.py::test_recoil_profile_pins_the_engine_tests_synthetic_rows_too`, `::test_the_charge_rifle_carries_no_recoil_profile` |
+| 3 | Recoil floors are 60 for the SMG, Suppressor and Stinger. The Assault Rifle is the deliberate exception, deeper still at 100/70/40, degraded from round 6 and heavy from round 8 — only a player who holds past round 7 is punished. | Tony, 2026-09-18 (floor raise); the AR exception 2026-09-23 | F268; F291 (`1884c90e`) | same two tests as row 1; the per-weapon table in `docs/spec/node.md` §3.15 |
+| 4 | Three duel rules, each "most of the time" meaning **≥ 65%** in a stochastic 1v1 at full Standard health: (R1) a Charge Rifle with its charge already built beats an Assault Rifle; (R2) a skilled Assault Rifle (controlled 3-5 round bursts) that catches an uncharged Charge Rifle beats it; (R3) an Assault Rifle firing controlled bursts beats one held in full auto. | Tony, 2026-09-23 | F291 | `python3 mcp/tools/balance_sim.py --scenario recoil-duel`; gated in CI by `mcp/tests/test_balance_sim.py::test_recoil_duel_rules_clear_the_65_percent_bar` |
+| 5 | Charge Rifle: charge damage 70 (`t5`), tap damage 16 (`t37`); a charged kill on Standard health is one charge plus three taps. The 285 ms tap cadence is the player's own trigger-pull speed, not a gun setting — no `$WEAP` field carries it. | Tony, 2026-09-23 | F280; F291 (`3759cd68`) | `weapons.json` `wire.dmg`/`wire.tap_dmg`, pinned by the row-4 CI gate; `CHARGE_TAP_CADENCE_MS`'s comment in `compile.py` |
+| 6 | Shotgun unchanged: 3 pulls to kill on Standard health. Its gap from the rifles is the 800 ms cadence, not a recoil model — it has none. | Tony, 2026-09-23 | F291 | judgement, not tested |
+| 7 | One-shot heavies (Rocket Launcher, Rail Gun, Laser Cannon, Energy Launcher, Ion Sniper) are a pickup-only tier: 2-round magazine, 4 kills total, earned at close range rather than out-reaching the rest of the arsenal. | Tony, 2026-09-17 | weapon-design.md §2.1 principle 7 | judgement, not tested |
+| 8 | The headset is the primary target: 4 of the tagger's 5 hit sensors sit there, so it carries no bonus multiplier. `criticalShotModifier` (`t7`) compiles to 0, and a headset hit lands the same as a gun-body hit. | Tony, 2026-09-17 (arsenal review) | — | `mcp/tests/test_gameconfig.py::test_crit_modifier_defaults_to_zero_and_headset_multiplier_is_1x` |
+| 9 | Easy Reload is accessibility, not balance: it is never tuned or cut on balance grounds, and it lives beside the per-player pool handicap, independent of the perk slot. | Tony, 2026-09-17 ("my daughter cant reload the brx normally") | S50 | `mcp/tests/test_mc_loadout.py::test_easy_reload_is_refused_beside_a_chain_reload_weapon`, `::test_easy_reload_is_refused_beside_a_second_weapon_end_to_end` |
+| 10 | The rebalance changes numbers, not feel: every weapon keeps Battle Company's captured fire mode, burst pattern, heat/overheat mechanic and sound; only the declared balance tokens move. | design principle, ongoing | weapon-design.md §2.1 principles 1-3 | judgement, not tested |
+
 ## ⚠️ Three arsenals, and only one of them is ours
 
 A weapon number in this repo means nothing until you know which arsenal it came from. Two sessions
@@ -1616,6 +1635,11 @@ changes plus the deeper AR ladder (`degraded: 70, heavy: 40`, `after_heavy: 8` �
 round sooner than the shared 9), all three rules clear 65% at 10,000 reps: rule 1 about 94%, rule 2 about
 91%, rule 3 about 72%. The AR's `after_shots` (6) is unchanged, so a controlled burst still never
 degrades at all — only full auto pays the deeper floor.
+
+**The three rules are now a CI gate, not only a CLI report.** `mcp/tests/test_balance_sim.py::test_recoil_duel_rules_clear_the_65_percent_bar`
+runs 10,000 reps a rule and fails with the rule's name and a pointer to the Balance rules table (top of
+this document, row 4) if any of them drops below 65% — a catalogue edit that breaks a duel rule now
+fails in CI, not only on the bench.
 
 ### 7.7 Armour Piercing takes two levers, not one
 

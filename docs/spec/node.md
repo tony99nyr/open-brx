@@ -422,15 +422,12 @@ at most three a burst (two down, one back), where the old ladder cost about twen
 magazine or reserve and survives `$WEAP`; `$SPAWN` clears it (bench 2026-09-18).
 
 **S54/F268/F280 (Tony, 2026-09-23): the rungs are keyed off ROUNDS PER TRIGGER PULL, scaled by calibre, not off
-the ladder's own depth or the magazine size.** The old derivation (`after_shots` ← `ceil((crisp - heavy) / per_shot)`,
-the ladder's DEPTH) had no relationship to how long a player had held the trigger, and the bench measurement that
-forced this rewrite found `after_heavy` landing 6 rounds into every degrading weapon regardless of its floor, so
-`heavy` owned 84-98% of a magazine instead of being the second of two stages. A weapon dealing the engine's
-reference damage (8, the Assault Rifle, SMG and Energy Rifle) now fires 5 clean rounds and degrades on the 6th,
-then 3 more clean rounds and goes heavy on the 9th; a weapon with a different `dmg` scales both counts by
-`8 / dmg`, so bigger rounds kick in sooner. `crisp` and `heavy` are still each weapon's ceiling and floor and
-`degraded` is still the midpoint rounded down, so a weapon's ceiling and floor keep their old identity even
-though the rungs between them no longer do.
+the ladder's own depth or the magazine size** — the rule and why it changed are `docs/weapon-design.md`'s Balance
+rules table, row 1. A weapon dealing the engine's reference damage (8, the Assault Rifle, SMG and Energy Rifle)
+fires 5 clean rounds and degrades on the 6th, then 3 more clean rounds and goes heavy on the 9th; a weapon with a
+different `dmg` scales both counts by `8 / dmg`, so bigger rounds kick in sooner. `crisp` and `heavy` are still
+each weapon's ceiling and floor and `degraded` is still the midpoint rounded down, so a weapon's ceiling and
+floor keep their old identity even though the rungs between them no longer do.
 
 **Reset on trigger release, while still CRISP (bench-provisional).** The gun streams a `$BUT,0,0` release edge
 every time the trigger comes up in app mode. While the weapon is still crisp that is direct evidence the burst
@@ -451,18 +448,12 @@ is a one-press burst trigger and cannot be held in full auto, so it ships flat (
 `per_shot 0`), the same as every other weapon that cannot degrade.
 
 **The Assault Rifle is its own explicit exception (Tony, 2026-09-23, F291), deeper still than the other
-reference-calibre weapons.** `mcp/tools/balance_sim.py --scenario recoil-duel` checked three duel rules the
-same day (a charged Charge Rifle beats an AR, an AR that catches an uncharged CR beats it, and an AR firing
-controlled 3-5 round bursts beats one held in full auto) and found the third failing at the shared 100/80/60
-ladder: a burst short enough to stay crisp never earned back what its own dead time between bursts cost it
-against a full-auto AR that only reached `heavy` after round 9. The AR now declares `degraded: 70, heavy: 40`
-and an explicit `after_heavy: 8` (not derived): `after_shots` still derives to 6 from the reference damage, so
-a controlled burst (at most 5 rounds) still never degrades at all, but full auto now goes heavy one round
-sooner, on round 8 rather than 9 -- the floor "only punishes a player who holds past 7 rounds" (Tony). This is
-a deliberate divergence from the SMG/Suppressor/Stinger 60 floor, not an oversight: those weapons carry a mild
-penalty, the anchor rifle now carries a real one. `test_ttk_band_and_no_strictly_dominant_weapon`
-(`mcp/tests/test_mc_compile.py`) still passes unchanged -- the AR still leads its family on every felt axis
-(ttk/kpc/pk/sust), so no exemption was needed there.
+reference-calibre weapons** — `docs/weapon-design.md`'s Balance rules table, row 3, has the rule and the duel
+that forced it. It declares `degraded: 70, heavy: 40` and an explicit `after_heavy: 8` (not derived):
+`after_shots` still derives to 6 from the reference damage, so a controlled burst (at most 5 rounds) still
+never degrades at all, but full auto now goes heavy one round sooner, on round 8 rather than 9.
+`test_ttk_band_and_no_strictly_dominant_weapon` (`mcp/tests/test_mc_compile.py`) still passes unchanged -- the
+AR still leads its family on every felt axis (ttk/kpc/pk/sust), so no exemption was needed there.
 
 | weapon | crisp | degraded | heavy | after_shots | after_heavy | settle_ms |
 |---|---|---|---|---|---|---|

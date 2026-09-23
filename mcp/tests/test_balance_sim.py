@@ -393,6 +393,39 @@ def test_recoil_duel_rule3_wins_more_with_a_shorter_burst_pause():
     assert r.win_rate > 0.9, r.win_rate
 
 
+def test_recoil_duel_rules_clear_the_65_percent_bar():
+    """The CI gate for `docs/weapon-design.md`'s Balance rules table, row 4 (Tony, 2026-09-23, F291):
+    three duel rules, each meaning the named side wins AT LEAST 65% of a stochastic 1v1 at full
+    Standard health. 10,000 reps a rule keeps the win rate stable (it lands near the 94/91/72% the
+    `--scenario recoil-duel` module docstring reports at the same rep count) while this file still
+    runs in a couple of seconds. Every number comes from `WeaponCatalog` (`weapons.json`), read through
+    `RecoilDuelModel.from_catalog`, so a catalogue edit that weakens a rule fails HERE, not on the
+    bench. Break it once (e.g. set the Charge Rifle's `wire.tap_dmg` back to 20) and watch rule 2 go
+    red, then restore it."""
+    m = _recoil_model()
+    reps = 10_000
+    r1 = B.recoil_duel_batch(B.run_recoil_duel_rule1, "cr", reps, SEED, "gate_rule1", m,
+                             float(B.CHARGE_TAP_CADENCE_MS))
+    r2 = B.recoil_duel_batch(B.run_recoil_duel_rule2, "ar", reps, SEED, "gate_rule2", m,
+                             float(B.CHARGE_TAP_CADENCE_MS))
+    r3 = B.recoil_duel_batch(B.run_recoil_duel_rule3, "burst", reps, SEED, "gate_rule3", m)
+    assert r1.win_rate >= 0.65, (
+        f"Rule 1 broke: a Charge Rifle with its charge already built should beat an Assault Rifle "
+        f"most of the time, but it won only {r1.win_rate:.1%} of {reps} duels (needs >= 65%). See "
+        "docs/weapon-design.md's Balance rules table, row 4 (F291)."
+    )
+    assert r2.win_rate >= 0.65, (
+        f"Rule 2 broke: a skilled Assault Rifle (controlled bursts) that catches an uncharged Charge "
+        f"Rifle should beat it most of the time, but it won only {r2.win_rate:.1%} of {reps} duels "
+        "(needs >= 65%). See docs/weapon-design.md's Balance rules table, row 4 (F291)."
+    )
+    assert r3.win_rate >= 0.65, (
+        f"Rule 3 broke: an Assault Rifle firing controlled 3-5 round bursts should beat one held in "
+        f"full auto most of the time, but it won only {r3.win_rate:.1%} of {reps} duels (needs >= "
+        "65%). See docs/weapon-design.md's Balance rules table, row 4 (F291)."
+    )
+
+
 def test_recoil_duel_cli_runs_end_to_end():
     out = pathlib.Path(tempfile.mkdtemp(prefix="balance_sim_recoil_"))
     try:

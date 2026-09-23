@@ -813,6 +813,12 @@ Run steps 2 and 3 three times each (the screamers sheet's rule for a result that
 
 ## 26. The recoil NUMBERS: is the shipped ladder good to play with? (65 min, run §21 FIRST)
 
+⚠ **SUPERSEDED 2026-09-23.** This section's table and its "twice `after_shots`" derivation predate S54/F268/F280:
+the ladder now keys off ROUNDS PER TRIGGER PULL, scaled by calibre, not off the ladder's depth, and the Assault
+Rifle carries its own deeper exception (F291). Current numbers and tests are `docs/weapon-design.md`'s Balance
+rules table (rows 1 and 3) and `docs/spec/node.md` §3.15's table. The bench QUESTION below (does the shipped
+ladder feel right) is still open; only the numbers it was written against are stale.
+
 ⚠ **Run §21 before this section.** §21 asks what writes accuracy. If `$TMP` t4 is the lever, and if it self-decays the
 way fn 23's accuracy penalty does, the recovery write leaves the ladder and `settle_ms` stops being a number we
 choose. Every step below still runs, but four of them change. "If §21 moves the mechanism", at the end of this
