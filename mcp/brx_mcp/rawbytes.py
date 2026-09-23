@@ -147,18 +147,37 @@ def validate_plan(plan: RawPlan, *, max_chunk: int = MAX_CHUNK_BYTES,
 
     payload = b"".join(w.data for w in plan.writes)
     text = payload.decode("utf-8", errors="replace")
-    frames, remainder = protocol.extract_frames(text)
+    first = text.find("$")
+    if first < 0:
+        raise ValueError("payload holds no '$' frame at all (a shell may have expanded '$AMMO' "
+                         "inside double quotes: single-quote every frame)")
+    if text[:first].strip():
+        # The gun's parser may still hold a fragment from an earlier run; leading bytes would complete
+        # it (an earlier '$FACT' plus 'ORY,*' is a denied $FACTORY). Nothing in A4-A8 needs this.
+        raise ValueError(f"refused: bytes before the first '$' ({text[:first]!r}) could complete a "
+                         "frame the gun already holds")
     warnings: list[str] = []
-    if remainder:
-        if not allow_incomplete:
-            raise ValueError(
-                f"payload ends with an incomplete frame ({remainder!r}); refused unless "
-                "allow_incomplete=True (the A4 lost-'*' case)")
-        warnings.append(
-            f"payload ends with an incomplete frame ({remainder!r}); send '$*' next to reset the "
-            "gun's parser before the next real frame")
-
-    for frame in frames:
+    pieces = ["$" + p for p in text[first + 1:].split("$")]
+    for n, piece in enumerate(pieces):
+        star = piece.find("*")
+        if star < 0:
+            last = n == len(pieces) - 1
+            where = "ends with" if last else "holds"
+            if not allow_incomplete:
+                raise ValueError(
+                    f"payload {where} an incomplete frame ({piece!r}); refused unless "
+                    "allow_incomplete=True (the A4 lost-'*' case)")
+            warnings.append(
+                f"payload {where} an incomplete frame ({piece!r})"
+                + ("; send '$*' next to reset the gun's parser before the next real frame" if last
+                   else "; the next '$' starts a new frame over its stale tokens"))
+            frame = piece
+        else:
+            frame, tail = piece[:star + 1], piece[star + 1:]
+            if tail.strip():
+                raise ValueError(f"refused: bytes after a frame's '*' ({tail!r}) sit outside any frame")
+            if frame == "$*":
+                continue                        # the bare parser reset (screamers A4): always allowed
         reason = protocol.deny_reason(frame)   # allow_hang defaults False: no override, ever, here
         if reason:
             raise ValueError(f"refused, confirm or not: {reason}")
@@ -192,18 +211,25 @@ class RawResult:
     writes: list[RawWriteLog] = field(default_factory=list)
     reply_counts: dict[str, int] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    # The last rx frame per command word: A4/A7b/A8 are judged on the magazine in the last `$ALCD`.
+    last_frames: dict[str, str] = field(default_factory=dict)
+    # After the plan: did a `$PING,*` get a `$PONG` inside `ping_after_s`? None when not asked.
+    pong_after: bool | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "writes": [w.to_dict() for w in self.writes],
             "reply_counts": self.reply_counts,
             "warnings": self.warnings,
+            "last_frames": self.last_frames,
+            "pong_after": self.pong_after,
         }
 
 
 async def write_raw(mgr: Any, alias: str, plan: RawPlan, *, clock: Clock | None = None,
                     response: bool = False, read_ms: int = 0, max_chunk: int = MAX_CHUNK_BYTES,
-                    allow_incomplete: bool = False, confirm: bool = False) -> RawResult:
+                    allow_incomplete: bool = False, confirm: bool = False,
+                    ping_after_s: float = 0.0) -> RawResult:
     """Execute `plan` on `alias`'s session, exactly as written: no re-chunking, no extra pacing, no
     application sleep the plan did not ask for.
 
@@ -246,6 +272,7 @@ async def write_raw(mgr: Any, alias: str, plan: RawPlan, *, clock: Clock | None 
                 await clock.sleep(w.delay_after_ms / 1000)
 
     reply_counts: dict[str, int] = {}
+    last_frames: dict[str, str] = {}
     if read_ms > 0:
         await clock.sleep(read_ms / 1000)
         out = mgr.get_events(alias, since_seq=seq_before, max_events=100_000)
@@ -254,5 +281,26 @@ async def write_raw(mgr: Any, alias: str, plan: RawPlan, *, clock: Clock | None 
                 continue
             name = protocol.command_name(ev["raw"])
             reply_counts[name] = reply_counts.get(name, 0) + 1
+            last_frames[name] = ev["raw"]
 
-    return RawResult(writes=logs, reply_counts=reply_counts, warnings=warnings)
+    pong_after: bool | None = None
+    if ping_after_s > 0:
+        # The screamers LOCK-UP definition: no `$PONG` within 10 s of a `$PING`. One complete, safe
+        # frame, written only after the plan (and its lock) is done.
+        mark = session.seq
+        async with session.write_lock:
+            await session.client.write_gatt_char(NUS_RX_CHAR_UUID, b"$PING,*", response=False)
+            session.record("tx", "$PING,*")
+        pong_after = False
+        waited = 0.0
+        while waited < ping_after_s:
+            await clock.sleep(0.25)
+            waited += 0.25
+            out = mgr.get_events(alias, since_seq=mark, max_events=100_000)
+            if any(e["direction"] == "rx" and protocol.command_name(e["raw"]) == "PONG"
+                   for e in out["events"]):
+                pong_after = True
+                break
+
+    return RawResult(writes=logs, reply_counts=reply_counts, warnings=warnings,
+                     last_frames=last_frames, pong_after=pong_after)

@@ -108,14 +108,15 @@ WITHDRAWN; do not act on it.
 - **Blocked:** S54 and sitting 8 on the rung decision; Extended Mags on `$TMP` (S50) and F281 on sitting 2;
   **F275** on outdoor space (sitting 10).
 ## Lane: BLE reliability (desk half)
-Branch `feat/ble-reliability` (2026-09-23) builds the desk half of F297, F269 and F270. All three rows stay open for the bench.
+Branch `feat/ble-reliability` (2026-09-23): the desk half of F297, F269 and F270. All three stay open for the bench.
 - **F297:** `python -m brx_mcp connect-metrics <address> --runs 10` prompts for a gun and headset power cycle, then
   logs link time, first-attempt success and any headset or BLE drop within 30 s. The laptop connects, not the
   phone: a clean laptop run beside a looping phone points F293 at the phone.
-- **F269:** `python -m brx_mcp raw-bytes` writes exact segments or a zero-gap stream under one writer lock and logs
-  each write after it completes. It unblocks the zero-gap halves of screamers A4, A7, A7b, A7c and A8.
+- **F269:** `python -m brx_mcp raw-bytes` writes exact segments or a zero-gap stream under one lock, logs each write
+  after it completes, then checks liveness. It runs screamers A4 and A7b (split frames) and the
+  zero-gap halves of A7, A7c and A8 (command lines: screamers sheet).
 - **F270:** `WRITE_PACING.responseForMultiPacket` and `ble.RESPONSE_FOR_MULTI_PACKET` ship false;
-  `raw-bytes --with-response` gives the A8 comparison. Head/spawn-only scoping needs an engine.js call-site change.
+  `raw-bytes --with-response` gives the F270 comparison. Head/spawn-only scoping needs an engine.js call-site change.
 - **Next bench task:** `connect-metrics --runs 10` on one gun, then screamers A7c and A8 with `raw-bytes`.
 - **Blocked:** turning F270 on waits for A8 evidence.
 

@@ -326,11 +326,17 @@ class ConnectionManager:
             for i in range(0, len(payload), chunk_size):
                 # brxlink.js `_sendChunk`: wait at most `ackCapMs` for the native write, then move on
                 # and count it as late. The write itself is not cancelled; it finishes in the background.
-                task = asyncio.ensure_future(session.client.write_gatt_char(
-                    NUS_RX_CHAR_UUID, payload[i:i + chunk_size], response=use_response))
-                done, _ = await asyncio.wait({task}, timeout=ack_cap_ms / 1000)
-                if not done:
-                    late_acks += 1
+                if use_response:
+                    # F270: a response write waits for its answer, no cap (see brxlink.js `_sendChunk`):
+                    # moving on early overlaps the next GATT write, and an error must raise, not vanish.
+                    await session.client.write_gatt_char(
+                        NUS_RX_CHAR_UUID, payload[i:i + chunk_size], response=True)
+                else:
+                    task = asyncio.ensure_future(session.client.write_gatt_char(
+                        NUS_RX_CHAR_UUID, payload[i:i + chunk_size], response=False))
+                    done, _ = await asyncio.wait({task}, timeout=ack_cap_ms / 1000)
+                    if not done:
+                        late_acks += 1
                 chunks += 1
                 if len(payload) > chunk_size:                # brxlink.js: only between chunks of ONE frame
                     await asyncio.sleep(chunk_gap_ms / 1000)

@@ -113,3 +113,40 @@ def test_write_gatt_char_response_for_multi_packet_matches_the_module_flag():
         await ConnectionManager._write(c_single, b"$PING,*", response_for_multi_packet=True)
         assert c_single.responses == [False], "a single-packet frame is never sent with response"
     run(go())
+
+
+def test_a_slow_response_write_is_awaited_not_overlapped():
+    # F270: a response chunk waits for its answer past the cap, so two GATT writes never overlap.
+    async def go():
+        c = _Client(delay_s=0.1)
+        open_ = [0]
+        orig = c.write_gatt_char
+
+        async def guarded(uuid, data, response=False):
+            assert open_[0] == 0, "a write started while another was still unanswered"
+            open_[0] += 1
+            try:
+                await orig(uuid, data, response)
+            finally:
+                open_[0] -= 1
+        c.write_gatt_char = guarded  # type: ignore[method-assign]
+        out = await _mgr(c).send_phone_paced("g", "$" + "A" * 50 + ",*", chunk_gap_ms=1,
+                                             frame_gap_ms=1, ack_cap_ms=20,
+                                             response_for_multi_packet=True)
+        assert out["chunks"] == 3 and out["late_acks"] == 0
+        assert c.responses == [True, True, True]
+    run(go())
+
+
+def test_a_failed_response_write_raises():
+    async def go():
+        class _Failing(_Client):
+            async def write_gatt_char(self, _uuid, data, response=False):
+                raise RuntimeError("GATT write failed")
+        try:
+            await _mgr(_Failing()).send_phone_paced("g", "$" + "A" * 50 + ",*", chunk_gap_ms=1,
+                                                   frame_gap_ms=1, response_for_multi_packet=True)
+        except RuntimeError:
+            return
+        raise AssertionError("a failed response write was swallowed")
+    run(go())

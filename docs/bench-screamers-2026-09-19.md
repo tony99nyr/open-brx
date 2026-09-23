@@ -96,6 +96,19 @@ Each step tries one suspected trigger. Arm the gun with the bench victim head (`
 | A12 | low battery | repeat A7 on a pack below 20 % | any difference |
 | A13 | our peak writer | replay the live S42 recoil writer at today's throttle (a `$WEAP` plus an `$AMMO` every 250 ms) for up to 20 min | the time and frame count at any LOCK-UP: the per-gun traffic budget |
 
+**Running the split and zero-gap steps (F269, built 2026-09-23).** Use `python -m brx_mcp raw-bytes <address> …`.
+Single-quote every frame: in double quotes the shell turns `$AMMO` into nothing, and the tool then refuses the payload.
+Every run ends with one `$PING,*`; the tool reports a missing `$PONG` within 10 s. It prints the last `$ALCD`.
+
+| step | arguments |
+|---|---|
+| A4 (no reset) | `--segment '$AMMO,0,17,50,1' --segment '$AMMO,0,23,50,1,*' --allow-incomplete` |
+| A4 (reset) | `--segment '$AMMO,0,17,50,1' --segment '$*' --segment '$AMMO,0,23,50,1,*' --allow-incomplete` |
+| A7 zero-gap | `--stream` of nine `$PLAY,U37,3,10,,,,,*` then one `$QUERY,*`, concatenated, `--repeat 10`; read `QUERY=` in the reply counts |
+| A7b | `--segment '$AMMO,0,2' --segment '3,50,1,*' --delays-ms 60`, then `--delays-ms 2000` |
+| A7c | `--stream '$PING,*' --repeat 146 --read-ms 5000`, then `--repeat 147`; read `PONG=` |
+| A8 zero-gap | `--stream` of the magazine-32 `$WEAP` then the magazine-30 `$WEAP`, concatenated, `--repeat 25` (50 frames) |
+
 **→ 2026-09-18, A1/A2 run.** A1: no `$PONG` to two pings 8 s apart, no reply to a follow-up `$PLAYX,0`, and no
 audio played at all; the gun spoke only "connected" and "phone disconnected" over the session, and the BLE link
 dropped about 15 s in. A reconnect answered `$PING` at once, with no power cycle needed. A2

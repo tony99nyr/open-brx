@@ -674,6 +674,51 @@ test('F270: responseForMultiPacket on -- a multi-packet frame\'s chunks use the 
   assert.deepEqual(calls.map(c => c.value), chunksOf(SPAWN), 'the chunk bytes are unchanged either way');
 });
 
+test('F270: with the lever on, a response chunk that answers after the cap holds the next chunk back', async ctx => {
+  // The plugin keeps one write callback per device, so a second write issued before the first answers
+  // fails as busy (Android) or overwrites the pending callback (iOS). A response chunk must wait, cap or not.
+  const settle = useClock(ctx);
+  const events = [];
+  let open = 0;
+  const plugin = {
+    writeWithoutResponse: () => { events.push('noresp'); return Promise.resolve(); },
+    write: () => {
+      assert.equal(open, 0, 'a response write started while another was still unanswered');
+      open++; events.push('resp');
+      return new Promise(r => setTimeout(() => { open--; r(); }, 80));   // past the 50 ms cap
+    },
+  };
+  const ble = { initialize: async () => {}, disconnect: async () => {}, startNotifications: async () => {}, connect: async () => {} };
+  const link = new BrxLink({ ble, log: () => {}, responseForMultiPacket: true,
+    writeChunk: directWriter(plugin, () => 'android'),
+    writeChunkResponse: directWriter(plugin, () => 'android', { response: true }) });
+  ctx.after(() => link.disconnect());
+  await link.connect('A', 'GUN-A-1111');
+  const long = '$' + 'A'.repeat(50) + ',*';
+  const done = link.write([long]);
+  await settle(1000);
+  assert.equal(await done, true);
+  assert.deepEqual(events, ['resp', 'resp', 'resp']);
+  assert.equal(link.lateAcks, 0, 'a response chunk is never counted late');
+});
+
+test('F270: with the lever on, a response chunk that fails after the cap still fails the write', async ctx => {
+  const settle = useClock(ctx);
+  const plugin = {
+    writeWithoutResponse: () => Promise.resolve(),
+    write: () => new Promise((_, rej) => setTimeout(() => rej(new Error('GATT 133')), 80)),
+  };
+  const ble = { initialize: async () => {}, disconnect: async () => {}, startNotifications: async () => {}, connect: async () => {} };
+  const link = new BrxLink({ ble, log: () => {}, responseForMultiPacket: true,
+    writeChunk: directWriter(plugin, () => 'android'),
+    writeChunkResponse: directWriter(plugin, () => 'android', { response: true }) });
+  ctx.after(() => link.disconnect());
+  await link.connect('A', 'GUN-A-1111');
+  const done = link.write(['$' + 'A'.repeat(50) + ',*']);
+  await settle(2000);
+  assert.equal(await done, false, 'a lost response write is reported, not swallowed');
+});
+
 test('write pacing: with a block size set, a pause lands after every N frames and never after the last', async ctx => {
   const settle = useClock(ctx);
   const writes = [];

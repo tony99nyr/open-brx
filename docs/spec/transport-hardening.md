@@ -154,6 +154,8 @@ path of a waiting player.
 `RESPONSE_FOR_MULTI_PACKET` both ship `false`; nothing changes on the wire until A8 shows frames going missing
 at the current pacing and someone turns the flag on. A bench run can also pass `response_for_multi_packet`
 straight into `ble.py`'s `_write`/`send_phone_paced` to try it for one call without moving the default.
+A response chunk waits for its answer with no 50 ms cap: the plugin keeps one write callback per device, so
+moving on early fails the next chunk as busy on Android and drops the first chunk's error on iOS.
 Head-and-spawn-only scoping is not built: `write()`'s callers in `engine.js` never pass an option that tells
 the link a burst is head/spawn versus revive (`_write(frames, why)` carries no `options` on either path), so
 today the flag, when on, covers every multi-packet frame. Narrowing it to head and spawn needs an engine.js

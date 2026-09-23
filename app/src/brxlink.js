@@ -536,17 +536,15 @@ export class BrxLink {
    *  false when the cap ran out first. An error inside the cap rejects (the batch stops, as before). A LATER
    *  error marks only `batch` (see `write`).
    *
-   *  `useResponse` picks `writeChunkResponse` over `writeChunk` (F270). The cap and the late-resend logic are
-   *  UNCHANGED for a response chunk: a with-response write legitimately takes about one connection interval
-   *  (30-50 ms) to answer, close to `ackCapMs` (50 ms) by design, so `lateAcks`/the "write answers slow" log
-   *  will read higher with the lever on -- that is the expected cost of asking for an acknowledgement, not a
-   *  sign of the bridge congestion the cap was built to catch (see the note above `WRITE_ACK_CAP_MS`). The
-   *  resend-from-frame-start path only fires on an actual rejection (`batch.failed`), which a slow-but-eventually
-   *  -successful response write never sets, so a healthy response write is never retried just for being close
-   *  to the cap. */
+   *  `useResponse` picks `writeChunkResponse` over `writeChunk` (F270) and waits for the answer with NO cap.
+   *  A with-response write answers in one or two connection intervals (30-100 ms), past `ackCapMs`, and the
+   *  plugin keeps ONE write callback per device: moving on early fails the next chunk as busy on Android and
+   *  lets it overwrite the pending callback on iOS, which drops the first chunk's error. Waiting is the point
+   *  of the lever: an error rejects, and the batch stops as it does for an error inside the cap. */
   _sendChunk(id, dv, batch = null, frameIdx = 0, useResponse = false) {
     let sent;
     try { sent = Promise.resolve((useResponse ? this.writeChunkResponse : this.writeChunk)(id, dv)); } catch (e) { return Promise.reject(e); }
+    if (useResponse) return sent.then(() => true);
     return new Promise((resolve, reject) => {
       let done = false;
       const t = setTimeout(() => { done = true; resolve(false); }, this.ackCapMs);

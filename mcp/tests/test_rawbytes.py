@@ -390,3 +390,67 @@ def test_read_ms_counts_a_reply_that_arrives_during_the_stream():
     plan = plan_from_stream(repeat_stream("$PING,*", 3))
     result = run(write_raw(mgr, "g", plan, clock=FakeClock(), read_ms=100))
     assert result.reply_counts == {"PONG": 3}
+
+
+# -- polish loop 1: bytes outside a frame, the parser reset, mid-payload fragments, read-back --------
+
+def test_bytes_before_the_first_dollar_are_refused_even_with_confirm():
+    # An earlier run may leave '$FACT' in the gun's parser; 'ORY,*' would complete a denied $FACTORY.
+    for segs in (["ORY,*$PING,*"], ["FACTORY,*", "$PING,*"], ["ORY,*", "$PING,*"]):
+        with raises(ValueError, match="before the first '$'"):
+            validate_plan(plan_from_segments(segs), confirm=True, allow_incomplete=True)
+
+
+def test_a_payload_with_no_frame_at_all_is_refused():
+    # "$AMMO,0,2" in double quotes reaches us as ",0,2": no '$' at all.
+    with raises(ValueError, match="no '$' frame"):
+        validate_plan(plan_from_segments(["   "]), confirm=True, allow_incomplete=True)
+
+
+def test_bytes_after_a_frames_star_are_refused():
+    with raises(ValueError, match="outside any frame"):
+        validate_plan(plan_from_segments(["$PING,*junk"]), confirm=True)
+
+
+def test_the_bare_parser_reset_needs_no_confirm():
+    assert validate_plan(plan_from_segments(["$PING,*", "$*", "$PING,*"])) == []
+
+
+def test_a_mid_payload_fragment_needs_allow_incomplete():
+    segs = ["$AMMO,0,10,50,1,*", "$AMMO,0,17,50,1", "$AMMO,0,23,50,1,*"]
+    with raises(ValueError, match="incomplete frame"):
+        validate_plan(plan_from_segments(segs))
+    warnings = validate_plan(plan_from_segments(segs), allow_incomplete=True)
+    assert len(warnings) == 1 and "stale tokens" in warnings[0]
+
+
+def test_a_denied_command_in_an_incomplete_fragment_is_refused():
+    with raises(ValueError, match="refused, confirm or not"):
+        validate_plan(plan_from_segments(["$PING,*", "$DPLAY,A10,4"]), confirm=True,
+                      allow_incomplete=True)
+
+
+def test_last_alcd_is_returned_and_a_pong_after_the_plan_is_seen():
+    mgr = FakeMgr()
+    session = mgr.add("g")
+
+    async def reply(char, data, response):
+        if data == b"$PING,*":
+            session.record("rx", "$PONG,*")
+        else:
+            session.record("rx", "$ALCD,0,23,50,*")
+
+    session.client.write_impl = reply
+    result = run(write_raw(mgr, "g", plan_from_segments(["$AMMO,0,23,50,1,*"]), clock=FakeClock(),
+                           read_ms=100, ping_after_s=10))
+    assert result.last_frames["ALCD"] == "$ALCD,0,23,50,*"
+    assert result.pong_after is True
+
+
+def test_no_pong_after_the_plan_is_reported():
+    mgr = FakeMgr()
+    mgr.add("g")
+    clock = FakeClock()
+    result = run(write_raw(mgr, "g", plan_from_segments(["$PING,*"]), clock=clock, ping_after_s=10))
+    assert result.pong_after is False
+    assert abs(sum(clock.sleep_calls) - 10) < 0.01, "waited the full 10 s LOCK-UP window"

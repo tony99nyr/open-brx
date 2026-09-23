@@ -46,15 +46,20 @@ class FakeMgr:
     """A minimal stand-in for `ConnectionManager`. Scriptable knobs:
 
     `always_advertises`: False makes `scan()` never report the address (drives an advert timeout).
+    `advertise_at`: virtual time at which `scan()` starts reporting the address (only matters when
+                    `always_advertises` is True); `None` means "from t=0", i.e. immediately.
     `fail_attempts`: the next N `connect()` calls (across the whole run, consumed one per call)
                      raise instead of succeeding.
     `ping_ok`: False makes every `$PING,*` go unanswered.
     `version_ok`: False makes every `$VERSION,*` go unanswered (drives "no_reply" at link).
+    `reply_latency_s`: virtual seconds `send()` takes to record its reply, simulating a slow gun.
     `headset_schedule`: list of (clock time, "linked"|"not_linked") controlling what a `$VERSION`
                         reply's headset token says from that time on -- the LATEST entry whose time
                         has passed wins, so `[(0.0, "linked"), (12.0, "not_linked")]` answers
                         "linked" until t=12 and "not_linked" from then on.
-    `drop_ble_at`: virtual time at which `is_connected()` starts returning False, once.
+    `drop_ble_at`: virtual time at which `is_connected()` starts returning False, once. From then on
+                   `send()` raises too (a real dropped link cannot carry a command), the same way
+                   `is_connected()` lazily flips on first check past that time.
     """
 
     def __init__(self, clock: FakeClock):
@@ -62,9 +67,11 @@ class FakeMgr:
         self.sessions: dict[str, FakeSession] = {}
         self.sent: list[str] = []
         self.always_advertises = True
+        self.advertise_at: float | None = None
         self.fail_attempts = 0
         self.ping_ok = True
         self.version_ok = True
+        self.reply_latency_s = 0.0
         self.headset_schedule: list[tuple[float, str]] = [(0.0, "linked")]
         self.drop_ble_at: float | None = None
         self.connected = False
@@ -75,7 +82,11 @@ class FakeMgr:
 
     async def scan(self, duration_s=1):
         self.scan_calls += 1
-        return [{"address": "AA:BB:CC:DD:EE:FF", "rssi": -50}] if self.always_advertises else []
+        if not self.always_advertises:
+            return []
+        if self.advertise_at is not None and self.clock.now() < self.advertise_at:
+            return []
+        return [{"address": "AA:BB:CC:DD:EE:FF", "rssi": -50}]
 
     async def connect(self, address, alias, attempts=1):
         self.connect_calls += 1
@@ -114,8 +125,10 @@ class FakeMgr:
 
     async def send(self, alias, command, reply_window_ms=0):
         self.sent.append(command)
-        if alias not in self.sessions:
-            raise RuntimeError(f"no session {alias}")
+        if not self.is_connected(alias):
+            raise RuntimeError(f"link dropped: no session {alias}")
+        if self.reply_latency_s:
+            await self.clock.sleep(self.reply_latency_s)
         self._record(alias, "tx", command)
         if command.startswith("$PING") and self.ping_ok:
             self._record(alias, "rx", "$PONG,*")
@@ -189,6 +202,21 @@ def test_advert_timeout_marks_the_run_failed_without_attempting_connect():
     assert mgr.connect_calls == 0
 
 
+def test_advert_wait_uses_its_own_short_interval_not_the_batch_poll_s():
+    """F297 fix #3: the advert wait must not borrow the hold-window `poll_s` (3 s here), or
+    `t_advert_s` is inflated up to a whole `poll_s` beyond the true advert time."""
+    clock = FakeClock()
+    mgr = FakeMgr(clock)
+    mgr.advertise_at = 2.0
+    summary = run(run_connect_metrics(mgr, "AA:BB:CC:DD:EE:FF", 1, cold="warm", warm_off_s=0,
+                                      hold_s=0, poll_s=3, advert_timeout_s=10, clock=clock, out=None))
+    r = summary.runs[0]
+    assert r.t_advert_s is not None
+    # a poll_s=3 wait would land the first successful scan at t=3 (or later); the short interval
+    # (ADVERT_POLL_S=0.25) must land within one such interval of the true 2.0 s
+    assert abs(r.t_advert_s - 2.0) < 0.5
+
+
 def test_headset_at_link_is_linked_when_version_reports_hds():
     clock = FakeClock()
     mgr = FakeMgr(clock)
@@ -253,6 +281,91 @@ def test_ble_drop_after_hold_window_not_counted():
     r = summary.runs[0]
     assert r.ble_drop_s is None
     assert r.headset_drop_30s is False
+
+
+def test_send_raising_after_the_link_was_up_is_counted_as_ble_drop_not_error():
+    """F297 fix #1: a BLE drop during a $PING/$VERSION send used to make the real send raise, and
+    the run was recorded as `error` -- excluded from `summarize()`'s drop count and rate, undercounting
+    the P0 metric. It must instead be recorded as `ble_drop_s`, and the run stays `ok`."""
+    clock = FakeClock()
+    mgr = FakeMgr(clock)
+    mgr.drop_ble_at = 0.0   # dropped by the time the very first post-link send goes out
+    summary = run(run_connect_metrics(mgr, "AA:BB:CC:DD:EE:FF", 1, cold="warm", warm_off_s=0,
+                                      hold_s=30, poll_s=3, clock=clock, out=None))
+    r = summary.runs[0]
+    assert r.error is None
+    assert r.ok is True
+    assert r.ble_drop_s is not None
+    assert r.ble_drop_s <= 30
+    assert r.headset_drop_30s is True
+    stats = summarize(summary.runs)
+    assert stats["runs_with_errors"] == 0
+    assert stats["headset_drop_count"] == 1
+    assert stats["headset_drop_rate"] == 1.0
+
+
+def test_send_raising_while_still_connected_is_a_genuine_error():
+    """The counterpart of the fix above: a send that raises while `is_connected()` still reports the
+    link as up is a real bug, not a drop, and must still surface as `run.error`."""
+    clock = FakeClock()
+    mgr = FakeMgr(clock)
+
+    async def broken_send(alias, command, reply_window_ms=0):
+        raise RuntimeError("simulated non-link bug")
+
+    mgr.send = broken_send
+    summary = run(run_connect_metrics(mgr, "AA:BB:CC:DD:EE:FF", 1, cold="warm", warm_off_s=0,
+                                      hold_s=0, clock=clock, out=None))
+    r = summary.runs[0]
+    assert r.error is not None
+    assert r.ble_drop_s is None
+
+
+def test_drop_detected_just_after_hold_window_with_slow_replies_is_not_counted():
+    """F297 fix #2: a poll near the edge of the hold window, combined with a slow reply, can push
+    the moment we actually SEE the drop past `hold_s` even though the poll that triggered it was
+    scheduled inside the window. That must not count towards `headset_drop_30s` -- the metric is
+    "dropped within hold_s", not "detected before this run finished asking"."""
+    clock = FakeClock()
+    mgr = FakeMgr(clock)
+    mgr.headset_schedule = [(0.0, "linked"), (31.0, "not_linked")]
+    mgr.reply_latency_s = 1.5
+    summary = run(run_connect_metrics(mgr, "AA:BB:CC:DD:EE:FF", 1, cold="warm", warm_off_s=0,
+                                      hold_s=30, poll_s=3, clock=clock, out=None))
+    r = summary.runs[0]
+    assert r.headset_lost_s is not None
+    assert r.headset_lost_s > 30
+    assert r.headset_drop_30s is False
+
+
+def test_never_linked_headset_is_reported_separately_from_not_linked_at_link():
+    """F297 fix #4: a headset that never links at all is a different failure from one that just
+    had not linked yet the instant we asked."""
+    clock = FakeClock()
+    mgr = FakeMgr(clock)
+    mgr.headset_schedule = [(0.0, "not_linked")]
+    summary = run(run_connect_metrics(mgr, "AA:BB:CC:DD:EE:FF", 1, cold="warm", warm_off_s=0,
+                                      hold_s=9, poll_s=3, clock=clock, out=None))
+    r = summary.runs[0]
+    assert r.headset_at_link == "not_linked"
+    assert r.headset_ever_linked is False
+    stats = summarize(summary.runs)
+    assert stats["headset_not_linked_at_link_count"] == 1
+    assert stats["headset_never_linked_count"] == 1
+
+
+def test_slow_to_link_headset_counts_as_not_linked_at_link_but_not_never_linked():
+    clock = FakeClock()
+    mgr = FakeMgr(clock)
+    mgr.headset_schedule = [(0.0, "not_linked"), (5.0, "linked")]
+    summary = run(run_connect_metrics(mgr, "AA:BB:CC:DD:EE:FF", 1, cold="warm", warm_off_s=0,
+                                      hold_s=9, poll_s=3, clock=clock, out=None))
+    r = summary.runs[0]
+    assert r.headset_at_link == "not_linked"
+    assert r.headset_ever_linked is True
+    stats = summarize(summary.runs)
+    assert stats["headset_not_linked_at_link_count"] == 1
+    assert stats["headset_never_linked_count"] == 0
 
 
 def test_no_drop_when_the_link_stays_healthy_throughout():

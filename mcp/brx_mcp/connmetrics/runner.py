@@ -45,6 +45,9 @@ ATTEMPT_GAP_S = 1.5              # ble.py ConnectionManager.connect's own retry 
 REPLY_TIMEOUT_S = 5.0
 REPLY_POLL_S = 0.1
 SCAN_DURATION_S = 1
+ADVERT_POLL_S = 0.25              # short and independent of the batch's hold-window poll_s, so
+                                  # t_advert_s/t_link_from_t0_s aren't inflated by it (up to ~4 s on
+                                  # real hardware, where a scan actually takes SCAN_DURATION_S)
 
 
 # -- per-run records ---------------------------------------------------------
@@ -72,8 +75,13 @@ class ConnectRun:
     t_pong_ms: float | None = None
     headset_at_link: str = "n/a"           # "linked" / "not_linked" / "no_reply" / "n/a"
     ble_drop_s: float | None = None        # relative to link, first time is_connected() went False
+                                            # (or a send raised after the link was up)
     headset_lost_s: float | None = None    # relative to link, first "?" reading after a "linked" one
-    headset_drop_30s: bool = False
+    headset_ever_linked: bool = False      # headset was seen "linked" at any point in the run, even
+                                            # if it took a few hold-window polls to get there
+    headset_drop_30s: bool = False         # ble_drop_s or headset_lost_s, and it happened AT OR
+                                            # BEFORE hold_s -- a drop timed past the window is real but
+                                            # out of scope for this run's P0 metric
     error: str | None = None               # an unexpected exception during this run
 
     def to_dict(self) -> dict[str, Any]:
@@ -125,10 +133,14 @@ def summarize(runs: list[ConnectRun]) -> dict[str, Any]:
     completed = [r for r in runs if r.error is None]
     attempted = [r for r in completed if r.attempts]
     first_ok = [r for r in attempted if r.first_attempt_ok]
-    ok_runs = [r for r in completed if r.ok]
+    ok_runs = [r for r in completed if r.ok]  # the BLE link came up at all
     link_times = [r.t_link_s for r in ok_runs if r.t_link_s is not None]
     failed = [r for r in completed if not r.ok]
-    headset_not_linked = [r for r in ok_runs if r.headset_at_link != "linked"]
+    # "not linked at the moment we asked" (may still catch up during the hold window) vs "never
+    # linked in the whole run" -- a slow-to-link headset and a dead one look the same at the link
+    # instant, and only the second is the real failure.
+    headset_not_linked_at_link = [r for r in ok_runs if r.headset_at_link != "linked"]
+    headset_never_linked = [r for r in ok_runs if not r.headset_ever_linked]
     drops = [r for r in ok_runs if r.headset_drop_30s]
     return {
         "runs": n,
@@ -138,9 +150,12 @@ def summarize(runs: list[ConnectRun]) -> dict[str, Any]:
         "link_time_median_s": _median(link_times),
         "link_time_p90_s": _p90(link_times),
         "link_time_max_s": max(link_times) if link_times else None,
+        # count and rate share one denominator, `ok_runs`: a run that never linked at all did not
+        # "drop" a link it never had, but it DID link over BLE, so it still belongs in the base.
         "headset_drop_count": len(drops),
         "headset_drop_rate": (len(drops) / len(ok_runs)) if ok_runs else None,
-        "headset_not_linked_at_link_count": len(headset_not_linked),
+        "headset_not_linked_at_link_count": len(headset_not_linked_at_link),
+        "headset_never_linked_count": len(headset_never_linked),
         "failed_runs": len(failed),
     }
 
@@ -149,6 +164,8 @@ def summarize(runs: list[ConnectRun]) -> dict[str, Any]:
 class ConnectMetricsSummary:
     address: str
     runs_requested: int
+    poll_s: float = 3.0  # the hold-window poll interval runs were taken with -- also the drop-time
+                         # resolution: see `to_dict`/`render`
     runs: list[ConnectRun] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -157,6 +174,9 @@ class ConnectMetricsSummary:
             "runs_requested": self.runs_requested,
             "runs": [r.to_dict() for r in self.runs],
             "stats": summarize(self.runs),
+            "drop_time_resolution_s": self.poll_s,
+            "drop_time_note": ("ble_drop_s and headset_lost_s are read at hold-window polls, so "
+                               "their resolution is this poll interval, not the wall clock"),
         }
 
     def render(self) -> str:
@@ -181,7 +201,9 @@ class ConnectMetricsSummary:
             f"headset drop {stats['headset_drop_count']}/{len(self.runs)} "
             f"({fmt(drop_rate * 100 if drop_rate is not None else None, '%')})  "
             f"not-linked-at-link={stats['headset_not_linked_at_link_count']}  "
-            f"failed={stats['failed_runs']}  errors={stats['runs_with_errors']}")
+            f"never-linked={stats['headset_never_linked_count']}  "
+            f"failed={stats['failed_runs']}  errors={stats['runs_with_errors']}  "
+            f"(drop time resolution = poll interval, {fmt(self.poll_s, 's')})")
         return "\n".join(lines)
 
 
@@ -269,6 +291,26 @@ async def _time_reply(mgr: Any, alias: str, cmd: str, prefix: str, clock: Clock,
         await clock.sleep(poll_s)
 
 
+async def _time_reply_or_drop(mgr: Any, alias: str, cmd: str, prefix: str, clock: Clock,
+                              link_time: float, *, timeout_s: float = REPLY_TIMEOUT_S,
+                              poll_s: float = REPLY_POLL_S
+                              ) -> tuple[float | None, dict[str, Any] | None, float | None]:
+    """Like `_time_reply`, but a send that raises once the link was already up is the BLE drop
+    itself, not a bug in this tool -- `ble.py`'s send raises when the peripheral has gone away
+    mid-command. Returns `(elapsed, event, ble_drop_s)`. `ble_drop_s` (relative to `link_time`) is
+    set only when the send raised AND the link really is down now (`mgr.is_connected(alias)` is
+    False); a raise while the manager still reports the link as up is a genuine error and is
+    re-raised unchanged, same as `_time_reply` would have done."""
+    try:
+        elapsed, ev = await _time_reply(mgr, alias, cmd, prefix, clock, timeout_s=timeout_s,
+                                        poll_s=poll_s)
+        return elapsed, ev, None
+    except Exception:
+        if mgr.is_connected(alias):
+            raise
+        return None, None, clock.now() - link_time
+
+
 async def _cold_prep(mgr: Any, alias: str, k: int, n: int, cold: str, warm_off_s: float,
                      clock: Clock, prompt: Callable[[str], Any]) -> float:
     with contextlib.suppress(Exception):
@@ -296,7 +338,7 @@ async def _run_one(mgr: Any, address: str, alias: str, k: int, n: int, *, cold: 
     try:
         t0 = await _cold_prep(mgr, alias, k, n, cold, warm_off_s, clock, prompt)
 
-        t_advert = await _wait_for_advert(mgr, address, t0, advert_timeout_s, poll_s, clock)
+        t_advert = await _wait_for_advert(mgr, address, t0, advert_timeout_s, ADVERT_POLL_S, clock)
         run.t_advert_s = t_advert
         if t_advert is None:
             run.advert_timeout = True
@@ -318,34 +360,62 @@ async def _run_one(mgr: Any, address: str, alias: str, k: int, n: int, *, cold: 
                         session.log_file = log_path
                         session.log_label = f"connect-metrics-run{k}"
 
-                elapsed, _ = await _time_reply(mgr, alias, "$PING,*", "$PONG", clock)
+                # A send below can raise because the link just dropped -- `_time_reply_or_drop`
+                # turns that into `ble_drop_s` (a real P0 drop) rather than letting it fall through
+                # to the `except Exception` below and be recorded, wrongly, as a tool error.
+                elapsed, _, drop_s = await _time_reply_or_drop(mgr, alias, "$PING,*", "$PONG", clock,
+                                                               link_time)
                 run.t_pong_ms = elapsed * 1000 if elapsed is not None else None
+                if drop_s is not None:
+                    run.ble_drop_s = drop_s
 
-                _, version_ev = await _time_reply(mgr, alias, "$VERSION,*", "$VERSION", clock)
-                run.headset_at_link = _headset_state(version_ev["raw"]) if version_ev else "no_reply"
-                seen_linked = run.headset_at_link == "linked"
+                seen_linked = False
+                if run.ble_drop_s is None:
+                    _, version_ev, drop_s = await _time_reply_or_drop(mgr, alias, "$VERSION,*",
+                                                                       "$VERSION", clock, link_time)
+                    if drop_s is not None:
+                        run.ble_drop_s = drop_s
+                        run.headset_at_link = "no_reply"
+                    else:
+                        run.headset_at_link = (_headset_state(version_ev["raw"]) if version_ev
+                                               else "no_reply")
+                        seen_linked = run.headset_at_link == "linked"
+                else:
+                    run.headset_at_link = "no_reply"  # the link was already gone by the time we asked
 
-                hold_deadline = link_time + hold_s
-                next_poll = link_time + poll_s
-                while next_poll <= hold_deadline:
-                    delta = next_poll - clock.now()
-                    if delta > 0:
-                        await clock.sleep(delta)
-                    if not mgr.is_connected(alias):
-                        if run.ble_drop_s is None:
+                if run.ble_drop_s is None:
+                    hold_deadline = link_time + hold_s
+                    next_poll = link_time + poll_s
+                    while next_poll <= hold_deadline:
+                        delta = next_poll - clock.now()
+                        if delta > 0:
+                            await clock.sleep(delta)
+                        if not mgr.is_connected(alias):
                             run.ble_drop_s = clock.now() - link_time
-                        break
-                    _, v_ev = await _time_reply(mgr, alias, "$VERSION,*", "$VERSION", clock,
-                                                timeout_s=min(poll_s, 2.0))
-                    if v_ev is not None:
-                        state = _headset_state(v_ev["raw"])
-                        if state == "linked":
-                            seen_linked = True
-                        elif state == "not_linked" and seen_linked and run.headset_lost_s is None:
-                            run.headset_lost_s = clock.now() - link_time
-                    next_poll += poll_s
+                            break
+                        _, v_ev, drop_s = await _time_reply_or_drop(mgr, alias, "$VERSION,*",
+                                                                     "$VERSION", clock, link_time,
+                                                                     timeout_s=min(poll_s, 2.0))
+                        if drop_s is not None:
+                            run.ble_drop_s = drop_s
+                            break
+                        if v_ev is not None:
+                            state = _headset_state(v_ev["raw"])
+                            if state == "linked":
+                                seen_linked = True
+                            elif state == "not_linked" and seen_linked and run.headset_lost_s is None:
+                                run.headset_lost_s = clock.now() - link_time
+                        next_poll += poll_s
 
-                run.headset_drop_30s = run.ble_drop_s is not None or run.headset_lost_s is not None
+                run.headset_ever_linked = seen_linked
+                # ble_drop_s/headset_lost_s are read at hold-window polls, so their resolution is
+                # `poll_s`, not the wall clock: a drop recorded past `hold_s` -- a late poll, or a
+                # reply slow enough to push detection past the window -- is real but happened
+                # outside the window this run measures, and must not count towards the P0 metric.
+                run.headset_drop_30s = (
+                    (run.ble_drop_s is not None and run.ble_drop_s <= hold_s)
+                    or (run.headset_lost_s is not None and run.headset_lost_s <= hold_s)
+                )
     except Exception as e:  # noqa: BLE001 -- one run's bug must not stop the rest of the bench run
         run.error = f"{type(e).__name__}: {e}"
     finally:
@@ -376,7 +446,7 @@ async def run_connect_metrics(mgr: Any, address: str, runs: int, *, cold: str = 
     goes.
     """
     alias = "connmetrics"
-    summary = ConnectMetricsSummary(address=address, runs_requested=runs)
+    summary = ConnectMetricsSummary(address=address, runs_requested=runs, poll_s=poll_s)
     for k in range(1, runs + 1):
         run = await _run_one(mgr, address, alias, k, runs, cold=cold, warm_off_s=warm_off_s,
                              hold_s=hold_s, poll_s=poll_s, max_attempts=max_attempts,
