@@ -108,7 +108,7 @@ import random
 import sys
 import time as walltime
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]))
 from brx_mcp.mc import state as _state  # noqa: E402
@@ -1102,6 +1102,40 @@ class RecoilDuelModel:
     br_mag: int
     br_reserve: int
     br_reload_ms: float
+    # R10 (F308): the two live sidearms and the rifles they are duelled against. usp/deagle carry
+    # no recoil profile (both ship floor == ceiling == 100) and no headset word.
+    usp_dmg: int
+    usp_fire_ms: float
+    usp_mag: int
+    usp_reserve: int
+    usp_reload_ms: float
+    deagle_dmg: int
+    deagle_fire_ms: float
+    deagle_mag: int
+    deagle_reserve: int
+    deagle_reload_ms: float
+    er_dmg: int
+    er_fire_ms: float
+    er_mag: int
+    er_reserve: int
+    er_reload_ms: float
+    er_profile: RecoilProfile | None
+    sup_dmg: int
+    sup_fire_ms: float
+    sup_mag: int
+    sup_reserve: int
+    sup_reload_ms: float
+    sup_profile: RecoilProfile | None
+    amr_dmg: int
+    amr_fire_ms: float
+    amr_mag: int
+    amr_reserve: int
+    amr_reload_ms: float
+    bolt_dmg: int
+    bolt_fire_ms: float
+    bolt_mag: int
+    bolt_reserve: int
+    bolt_reload_ms: float
     aim_factor: float
     reaction_mean_ms: float
     reaction_sd_ms: float
@@ -1122,6 +1156,12 @@ class RecoilDuelModel:
         smg_mag, smg_reserve, smg_reload_ms = cat._ammo("smg", None)
         sg_mag, sg_reserve, sg_reload_ms = cat._ammo("shotgun", None)
         br_mag, br_reserve, br_reload_ms = cat._ammo("burst_rifle", None)
+        usp_mag, usp_reserve, usp_reload_ms = cat._ammo("usp", None)
+        deagle_mag, deagle_reserve, deagle_reload_ms = cat._ammo("deagle", None)
+        er_mag, er_reserve, er_reload_ms = cat._ammo("energy_rifle", None)
+        sup_mag, sup_reserve, sup_reload_ms = cat._ammo("suppressor", None)
+        amr_mag, amr_reserve, amr_reload_ms = cat._ammo("amr", None)
+        bolt_mag, bolt_reserve, bolt_reload_ms = cat._ammo("bolt_rifle", None)
         return cls(pool_hp=hp + armour, ar_dmg=cat.damage_per_pull("assault_rifle"),
                    ar_fire_ms=float(cat.fire_ms("assault_rifle")), ar_mag=ar_mag, ar_reserve=ar_reserve,
                    ar_reload_ms=float(ar_reload_ms), ar_profile=recoil_profile(cat._row("assault_rifle")),
@@ -1138,6 +1178,21 @@ class RecoilDuelModel:
                    br_dmg=cat.damage_per_pull("burst_rifle"), br_fire_ms=float(cat.fire_ms("burst_rifle")),
                    br_gap_ms=float(cat._frame_int("burst_rifle", "burst")), br_mag=br_mag,
                    br_reserve=br_reserve, br_reload_ms=float(br_reload_ms),
+                   usp_dmg=cat.damage_per_pull("usp"), usp_fire_ms=float(cat.fire_ms("usp")),
+                   usp_mag=usp_mag, usp_reserve=usp_reserve, usp_reload_ms=float(usp_reload_ms),
+                   deagle_dmg=cat.damage_per_pull("deagle"), deagle_fire_ms=float(cat.fire_ms("deagle")),
+                   deagle_mag=deagle_mag, deagle_reserve=deagle_reserve,
+                   deagle_reload_ms=float(deagle_reload_ms),
+                   er_dmg=cat.damage_per_pull("energy_rifle"), er_fire_ms=float(cat.fire_ms("energy_rifle")),
+                   er_mag=er_mag, er_reserve=er_reserve, er_reload_ms=float(er_reload_ms),
+                   er_profile=recoil_profile(cat._row("energy_rifle")),
+                   sup_dmg=cat.damage_per_pull("suppressor"), sup_fire_ms=float(cat.fire_ms("suppressor")),
+                   sup_mag=sup_mag, sup_reserve=sup_reserve, sup_reload_ms=float(sup_reload_ms),
+                   sup_profile=recoil_profile(cat._row("suppressor")),
+                   amr_dmg=cat.damage_per_pull("amr"), amr_fire_ms=float(cat.fire_ms("amr")),
+                   amr_mag=amr_mag, amr_reserve=amr_reserve, amr_reload_ms=float(amr_reload_ms),
+                   bolt_dmg=cat.damage_per_pull("bolt_rifle"), bolt_fire_ms=float(cat.fire_ms("bolt_rifle")),
+                   bolt_mag=bolt_mag, bolt_reserve=bolt_reserve, bolt_reload_ms=float(bolt_reload_ms),
                    aim_factor=aim_factor,
                    reaction_mean_ms=reaction_mean_ms, reaction_sd_ms=reaction_sd_ms, burst_min=burst_min,
                    burst_max=burst_max, burst_pause_min_ms=burst_pause_min_ms,
@@ -1316,10 +1371,70 @@ def _ar_full_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Rand
                      m.aim_factor)
 
 
+# R10 (F308): the two live sidearms (`band` is unused -- neither carries a headset word) and the
+# primary rifles they are checked against. `_ar_shots` already covers every shape here: flat accuracy
+# (`profile=None`, the sidearms/AMR/Bolt Rifle all ship `floor == ceiling`) or a real recoil ladder
+# (Energy Rifle, Suppressor) held down full auto, no controlled-burst discipline either way -- a
+# sidearm is semi-automatic (one round a pull) and none of these rifles are the AR, so there is no
+# "bursting" reading to give them. crit_pct (AMR 30%) and overheat (Energy Rifle/Suppressor, t24) are
+# NOT modelled, same simplification as the Burst Rifle's crit_pct in R4-R9 and as `Match`'s own
+# documented overheat exclusion above -- this is not a new gap, it is the existing one restated.
+
+def _usp_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
+    return _ar_shots(t, m.usp_dmg, m.usp_fire_ms, m.usp_mag, m.usp_reserve, m.usp_reload_ms, None,
+                     m.aim_factor)
+
+
+def _deagle_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
+    return _ar_shots(t, m.deagle_dmg, m.deagle_fire_ms, m.deagle_mag, m.deagle_reserve,
+                     m.deagle_reload_ms, None, m.aim_factor)
+
+
+def _energy_rifle_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
+    return _ar_shots(t, m.er_dmg, m.er_fire_ms, m.er_mag, m.er_reserve, m.er_reload_ms, m.er_profile,
+                     m.aim_factor)
+
+
+def _suppressor_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
+    return _ar_shots(t, m.sup_dmg, m.sup_fire_ms, m.sup_mag, m.sup_reserve, m.sup_reload_ms,
+                     m.sup_profile, m.aim_factor)
+
+
+def _amr_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
+    return _ar_shots(t, m.amr_dmg, m.amr_fire_ms, m.amr_mag, m.amr_reserve, m.amr_reload_ms, None,
+                     m.aim_factor)
+
+
+def _bolt_rifle_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
+    return _ar_shots(t, m.bolt_dmg, m.bolt_fire_ms, m.bolt_mag, m.bolt_reserve, m.bolt_reload_ms, None,
+                     m.aim_factor)
+
+
 RANGE_COMBATANTS = {
     "smg": _smg_combatant, "shotgun": _shotgun_combatant, "burst_rifle": _burst_rifle_combatant,
     "ar_burst": _ar_burst_combatant, "ar_full": _ar_full_combatant,
+    "usp": _usp_combatant, "deagle": _deagle_combatant, "energy_rifle": _energy_rifle_combatant,
+    "suppressor": _suppressor_combatant, "amr": _amr_combatant, "bolt_rifle": _bolt_rifle_combatant,
 }
+
+# R10's primary side, keyed the same as RANGE_COMBATANTS: the roster Tony named (AR, Burst Rifle,
+# Force Rifle, Energy Rifle, Toxin Rifle, Suppressor, AMR, Bolt Rifle) minus two this engine cannot
+# model faithfully -- named, not silently dropped:
+#   - Toxin Rifle: its identity is the poison DoT (weapon-design.md Sec7.5), and this race engine has
+#     no tick mechanism at all (only `Match` does, via `_tick`/`poison_left`). Modelling it as a plain
+#     8-damage rifle with no DoT would understate it, not approximate it.
+#   - Force Rifle: the one row that combines a gun-ENFORCED 3-round burst (t20=9) with a REAL recoil
+#     ladder (`floor: 60`, unlike the Burst Rifle's flat `floor == ceiling`) -- no existing combatant
+#     tracks recoil state across an enforced burst, so `_burst3_shots` would ship it at a flat 100%
+#     accuracy it does not have in the real engine (round-by-round `_onAmmo` tracking arms recoil on
+#     ANY weapon with a real ladder, burst-mode included).
+R10_PRIMARIES = ("ar_burst", "burst_rifle", "energy_rifle", "suppressor", "amr", "bolt_rifle")
+R10_PRIMARY_NAMES = {"ar_burst": "Assault Rifle", "burst_rifle": "Burst Rifle", "energy_rifle": "Energy Rifle",
+                     "suppressor": "Suppressor", "amr": "AMR", "bolt_rifle": "Bolt Rifle"}
+R10_SIDEARMS = ("usp", "deagle")
+R10_SIDEARM_NAMES = {"usp": "USP", "deagle": "Desert Eagle"}
+R10_FINISH_POOL_HP = 35        # "finishes a player on 35 HP" -- health only, no armour: a closing shot
+R10_FINISH_BAR_MS = 1000.0
 
 
 def run_range_duel(rng: random.Random, m: RecoilDuelModel, a_kind: str, b_kind: str, band: str) -> str | None:
@@ -1385,6 +1500,93 @@ def range_duel_summary_text(results: list[RecoilDuelResult], m: RecoilDuelModel)
 
 
 # --------------------------------------------------------------------------- #
+# R10 (F308): sidearms are finish-a-kill weapons, not rifle-competitive
+# --------------------------------------------------------------------------- #
+#
+# Two halves, both gated at reps=10,000 in CI:
+#   (a) each live sidearm (USP, Desert Eagle -- the Glock is `hidden`, out of scope) finishes an
+#       undefended 35-HP target (health only, no armour: a closing shot, not an opener) in under
+#       1.0s median, reaction delay included ("the sim's aim and reaction model").
+#   (b) every primary this engine can model beats each live sidearm from FULL Standard health (115)
+#       at least 65% of the time -- reusing `run_range_duel`/`RANGE_COMBATANTS` exactly as R4-R9 do.
+
+def run_finish_time(rng: random.Random, m: RecoilDuelModel, kind: str, pool_hp: int) -> float:
+    """ms from the reaction delay to the killing hit, ONE combatant firing at an undefended
+    `pool_hp` target with no return fire. `math.inf` if it runs dry first (no R10 sidearm should,
+    at 35 HP)."""
+    t0 = m._reaction(rng)
+    hp = pool_hp
+    for t, hit_p, dmg in RANGE_COMBATANTS[kind](t0, m, "mid", rng):
+        if rng.random() < hit_p:
+            hp -= dmg
+            if hp <= 0:
+                return t
+    return math.inf
+
+
+@dataclass
+class FinishTimeResult:
+    kind: str
+    reps: int
+    times_ms: list = field(default_factory=list)
+
+    @property
+    def median_ms(self) -> float:
+        s = sorted(self.times_ms)
+        n = len(s)
+        return float("inf") if not n else (s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2)
+
+
+def finish_time_batch(m: RecoilDuelModel, kind: str, reps: int, seed: int, pool_hp: int = R10_FINISH_POOL_HP) -> FinishTimeResult:
+    rng = cell_rng(seed, "finish_time", kind, pool_hp)
+    return FinishTimeResult(kind, reps, [run_finish_time(rng, m, kind, pool_hp) for _ in range(reps)])
+
+
+def r10_duel_batch(m: RecoilDuelModel, primary: str, sidearm: str, reps: int, seed: int) -> RecoilDuelResult:
+    """`primary` beats `sidearm` from full Standard health -- the same mechanics as `range_duel_batch`,
+    band "mid" (unused: neither weapon carries a headset word)."""
+    rng = cell_rng(seed, "r10_duel", primary, sidearm)
+    wins = 0.0
+    for _ in range(reps):
+        winner = run_range_duel(rng, m, primary, sidearm, "mid")
+        wins += 1.0 if winner == primary else (0.5 if winner is None else 0.0)
+    return RecoilDuelResult(f"r10_{primary}_v_{sidearm}", primary, reps, wins)
+
+
+def r10_report(m: RecoilDuelModel, reps: int, seed: int) -> tuple[dict, dict]:
+    """({sidearm: FinishTimeResult}, {(primary, sidearm): RecoilDuelResult})."""
+    finish = {s: finish_time_batch(m, s, reps, seed) for s in R10_SIDEARMS}
+    duels = {(p, s): r10_duel_batch(m, p, s, reps, seed) for p in R10_PRIMARIES for s in R10_SIDEARMS}
+    return finish, duels
+
+
+def r10_summary_text(finish: dict, duels: dict, m: RecoilDuelModel) -> str:
+    lines = [
+        "R10 (F308): sidearms finish a kill, they do not compete with rifles",
+        f"(a) time to finish an undefended {R10_FINISH_POOL_HP} HP target, reaction delay included, "
+        f"needs a median under {R10_FINISH_BAR_MS / 1000:g}s", "",
+        f"{'sidearm':<14}{'median ms':>11}  flag",
+    ]
+    for s in R10_SIDEARMS:
+        r = finish[s]
+        flag = "UNDER BAR" if r.median_ms >= R10_FINISH_BAR_MS else ""
+        lines.append(f"{R10_SIDEARM_NAMES[s]:<14}{r.median_ms:>11.0f}  {flag}")
+    lines += ["", "(b) each primary beats each live sidearm from full Standard health, needs >= 65%", "",
+             f"{'primary':<16}{'sidearm':<12}{'win rate':>9}{'95% CI':>16}  flag"]
+    for p in R10_PRIMARIES:
+        for s in R10_SIDEARMS:
+            r = duels[(p, s)]
+            lo, hi = r.ci()
+            flag = "UNDER 65%" if r.win_rate < 0.65 else ""
+            lines.append(f"{R10_PRIMARY_NAMES[p]:<16}{R10_SIDEARM_NAMES[s]:<12}{r.win_rate:>9.1%}"
+                         f"{f'[{lo:.1%}, {hi:.1%}]':>16}  {flag}")
+    lines += ["", "Not modelled here (named, not silently dropped): the Toxin Rifle (DoT, no tick "
+             "mechanism in this engine) and the Force Rifle (burst mode + a real recoil ladder, a "
+             "combination no combatant here tracks)."]
+    return "\n".join(lines) + "\n"
+
+
+# --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
 
@@ -1392,11 +1594,12 @@ def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="balance_sim.py", description=__doc__.split("\n\n")[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter,
                                  epilog="Assumptions and simplifications: see the module docstring.")
-    ap.add_argument("--scenario", choices=("all", "duel", "team", "sweep", "recoil-duel", "range-duel"),
-                    default="all",
+    ap.add_argument("--scenario", choices=("all", "duel", "team", "sweep", "recoil-duel", "range-duel",
+                                          "r10-duel"), default="all",
                     help="all = duel matrix + team table (default); --sweep implies sweep; recoil-duel = "
                          "F291's stochastic AR/CR 1v1 (rules 1-3); range-duel = F308's stochastic "
-                         "close/mid-range 1v1 (rules R4-R9), see the module docstring")
+                         "close/mid-range 1v1 (rules R4-R9); r10-duel = F308's sidearm finish-time + "
+                         "primary-vs-sidearm 1v1 (rule R10), see the module docstring")
     ap.add_argument("--preset", choices=sorted(PRESETS), help="a saved sweep (toxin = weapon-design.md §7.5b)")
     ap.add_argument("--weapon", help="the weapon under test for a sweep, or to limit the team table to one")
     ap.add_argument("--anchor", default=None,
@@ -1500,6 +1703,25 @@ def _run_range_duel(args) -> int:
     return 0
 
 
+def _run_r10_duel(args) -> int:
+    cat = WeaponCatalog()
+    m = RecoilDuelModel.from_catalog(cat, aim_factor=args.aim_factor, reaction_mean_ms=args.reaction_mean_ms,
+                                     reaction_sd_ms=args.reaction_sd_ms, burst_min=args.burst_min,
+                                     burst_max=args.burst_max, burst_pause_min_ms=args.burst_pause_min_ms,
+                                     burst_pause_max_ms=args.burst_pause_max_ms)
+    seed = args.recoil_seed if args.recoil_seed is not None else args.seed
+    t0 = walltime.time()
+    finish, duels = r10_report(m, args.recoil_reps, seed)
+    text = r10_summary_text(finish, duels, m)
+    summary_path = args.summary or (os.path.splitext(args.out)[0] + "_summary.txt")
+    with open(summary_path, "w") as f:
+        f.write(text)
+    sys.stdout.write(text)
+    cells = len(finish) + len(duels)
+    print(f"\n{cells} cells in {walltime.time() - t0:.1f} s -> {summary_path}", file=sys.stderr)
+    return 0
+
+
 def main(argv=None) -> int:
     ap = build_parser()
     args = ap.parse_args(argv)
@@ -1512,6 +1734,8 @@ def main(argv=None) -> int:
         return _run_recoil_duel(args)
     if args.scenario == "range-duel":
         return _run_range_duel(args)
+    if args.scenario == "r10-duel":
+        return _run_r10_duel(args)
 
     base = default_pool()
     pool = replace(base,

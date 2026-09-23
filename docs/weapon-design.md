@@ -19,6 +19,7 @@ says the rule is judgement only.
 | 9 | Easy Reload is accessibility, not balance: it is never tuned or cut on balance grounds, and it lives beside the per-player pool handicap, independent of the perk slot. | Tony, 2026-09-17 ("my daughter cant reload the brx normally") | S50 | `mcp/tests/test_mc_loadout.py::test_easy_reload_is_refused_beside_a_chain_reload_weapon`, `::test_easy_reload_is_refused_beside_a_second_weapon_end_to_end` |
 | 10 | The rebalance changes numbers, not feel: every weapon keeps Battle Company's captured fire mode, burst pattern, heat/overheat mechanic and sound; only the declared balance tokens move. | design principle, ongoing | weapon-design.md §2.1 principles 1-3 | judgement, not tested |
 | 11 | R4-R9: six close/mid-range duel rules, each "most of the time" meaning **≥ 65%**. Close range lands the gun word plus a declared headset word; mid range (past the headset word's own reach, unmeasured — F275) lands the gun word alone. **(R4)** close range: the SMG (7+2=9/round, full auto) and the Shotgun (20+20=40/pull) each beat a bursting AR and the Burst Rifle. **(R5)** past headset range: a bursting AR beats the Shotgun, and the SMG — the SMG's own split moved 8+1 to 7+2 (close-range total unchanged at 9) so the gun word alone drops to 7, which first read only ~62% at 8. **(R6)** a bursting AR beats the Burst Rifle. **(R7)** the Burst Rifle beats a full-auto AR — R6 and R7 first shared the Burst Rifle's own numbers as their only lever, pulled in OPPOSITE directions (no single Burst Rifle token cleared both); the Assault Rifle's own `after_heavy` tightening 8 → 7 (heavy one round sooner on full auto, row 3) gave R7 a lever that never touches R6's controlled-burst AR (it never reaches round 7) at all. **(R8)** close range: the Shotgun beats the SMG on full auto (row 6's 700 ms). **(R9)** past headset range: the SMG beats the Shotgun. | Tony, 2026-09-23 | F308 | `python3 mcp/tools/balance_sim.py --scenario range-duel`; gated in CI by `mcp/tests/test_balance_sim.py::test_range_duel_rules_clear_the_65_percent_bar` |
+| 12 | R10: "the sidearms should be finish a kill weapons not competitive against rifles." Only the two LIVE sidearms (USP, Desert Eagle; the Glock is `hidden`, untouched). Both levers are real-world, not invented magazine cuts ("no pistol clip is that small"): Desert Eagle cadence 480 → 700 ms (`wire.fire_ms`, `.50 AE` recoil, magazine unchanged at 7); USP magazine 19 → 12 (a real USP .45's own capacity), so its own 13-hit kill no longer fits one magazine. Two halves, each "most of the time" meaning **≥ 65%** for (b): **(a)** each live sidearm finishes an undefended 35 HP target (health only) in under 1.0 s median, reaction delay included — USP ~779 ms, Deagle ~974 ms, both clear. **(b)** every primary this engine can model (Assault Rifle, Burst Rifle, Energy Rifle, Suppressor, AMR, Bolt Rifle) beats each live sidearm from full Standard health at least 65% of the time — 11 of 12 pairs clear it; the Suppressor vs the Desert Eagle reads ~62%, reported and NOT gated at 65% (no lever left to sweep without reopening either the Suppressor's own numbers or R10's two fixed levers). The Toxin Rifle (DoT) and the Force Rifle (burst mode + a real recoil ladder) are named, not modelled — neither mechanic exists in this engine. | Tony, 2026-09-23 | F308 | `python3 mcp/tools/balance_sim.py --scenario r10-duel`; gated in CI by `mcp/tests/test_balance_sim.py::test_r10_sidearms_finish_a_kill_under_a_second` and `::test_r10_primaries_beat_sidearms_at_65_percent` (the Suppressor/Deagle cell asserted at a lower bound — see that test's own docstring); `test_shipped_roster_satisfies_the_mag_invariant_at_the_default_pool`'s named USP exemption; `test_mc_sidearms.py::test_pistol_identities_keep_tonys_ordering` |
 
 ## ⚠️ Three arsenals, and only one of them is ours
 
@@ -239,8 +240,8 @@ sounds — and moves the numbers.
 | Ion Sniper | power | 115 | 1400 | 1 | **0.00** | 82.1 | 47.9 | 2 | 2 | 2000 | 91% | — | cycle 1000→1400, res 12→2 |
 | Rail Gun | power | 115 | 1200 | 1 | **1.20** | 95.8 | 47.9 | 2 | 2 | 2400 | 91% | — | mag 1→2, res 6→2 |
 | Laser Cannon | power | 115 | 1500 | 1 | **1.50** | 76.7 | 50.0 | 2 | 2 | 1600 | 91% | — | mag 4→2, res 8→2, reload 2000→1600 |
-| Desert Eagle | sidearm | 26 | 480 | 5 | **1.92** | 54.2 | 32.7 | 7 | 48 | 2200 | 65% | — | **D2 2026-09-12** (Bolt Rifle frame) |
-| USP-S | sidearm | 9 | 160 | 13 | **1.92** | 56.2 | 32.6 | 19 | 120 | 2200 | 67% | — | **D2 2026-09-12** (Bolt Rifle frame, suppressed); **2026-09-17**: mag 20→19 (§2.3, family-scoped dominance) |
+| Desert Eagle | sidearm | 26 | 700 | 5 | **2.80** | 37.1 | 25.6 | 7 | 48 | 2200 | 65% | — | **D2 2026-09-12** (Bolt Rifle frame). **2026-09-23** (R10, F308): cadence 480→700ms, the real-world lever (.50 AE recoil) Tony chose over touching the magazine — a finishing weapon, not a rifle-competitive one; see the Balance rules table row 10 |
+| USP-S | sidearm | 9 | 160 | 13 | **1.92** | 56.2 | 26.2 | 12 | 120 | 2200 | 0% | — | **D2 2026-09-12** (Bolt Rifle frame, suppressed); **2026-09-17**: mag 20→19 (§2.3, family-scoped dominance). **2026-09-23** (R10, F308): mag 19→12, the real-world lever (a USP .45 holds 12) — its own 13-hit kill no longer fits one magazine on purpose, `test_shipped_roster_satisfies_the_mag_invariant_at_the_default_pool`'s narrow, named exemption; see the Balance rules table row 10 |
 | Glock-18 | sidearm | 13 | 240 | 9 | **1.92** | 54.2 | 34.4 | 16 | 64 | 2200 | 93% | — | **D2 2026-09-12** (Bolt Rifle frame) |
 
 **"One-mag kill %"** (2026-09-17, replaces the old "mag/total kills" column) is `P(at least htk hits in
@@ -356,6 +357,19 @@ Bolt Rifle and Melee — their stock numbers already sat in the band.
   is the smallest cut off 20 that actually leaves neither pistol beating the other (USP still leads on
   one-magazine kill chance, 67% vs 65%; Deagle leads on sustained DPS, 32.7 vs 32.6 dmg/s) — a thin
   margin the next retune should treat as fragile, not settled.
+
+  ⚠ **2026-09-23 (R10, F308): the next retune, and it moved both pistols, not just the fragile margin
+  above.** Tony: "the sidearms should be finish-a-kill weapons, not competitive against rifles" — and
+  rejected an unrealistic magazine cut ("no pistol clip is that small") for real-world levers instead.
+  **USP mag 19 → 12** (a USP .45 holds 12): its 13-hit kill no longer fits one magazine at all, on
+  purpose (a named, self-expiring exemption in `test_shipped_roster_satisfies_the_mag_invariant_at_
+  the_default_pool`), so the fragile one-mag-kill-chance lead above is gone — 0% now, not 67%. **Deagle
+  cadence 480 → 700ms** (`.50 AE` recoil, magazine left at 7): sustained DPS falls from 32.7 to 25.6,
+  ideal TTK from 1.92s to 2.80s. Both still clear neither dominates the other
+  (`test_ttk_band_and_no_strictly_dominant_weapon` stays green with no new sidearm-family exemption),
+  because both weapons got weaker together. See the Balance rules table row 10 for the two new duel
+  checks this adds: each pistol still finishes a 35-HP target in under a second, and every modelled
+  primary rifle now beats each pistol from full health at least 65% of the time.
 
   Nothing dominates: with all three tied on ideal TTK, sustained DPS and total-kills rank in the SAME
   order (Glock highest sustain, USP middle, Deagle lowest) while reserve ammo runs the other way
@@ -475,7 +489,9 @@ from scratch once the levers exist.
   chance), and 19 is the only integer in range that leaves neither pistol beating the other. This is a
   fragile equilibrium (margins under 0.1 dmg/s and 2 percentage points) and a smaller retune focus than
   a magazine count would be the more durable fix, but it is the smallest change that satisfies the rule
-  as specified.
+  as specified. **2026-09-23 (R10, F308): the more durable fix landed** — USP mag 19 → 12 (a real
+  USP .45's own capacity) and Deagle cadence 480 → 700ms moved together, so the fragile one-mag-kill
+  equilibrium above no longer needs to hold: see §2.2's sidearm paragraph.
 
 ### 2.4 The power tier
 

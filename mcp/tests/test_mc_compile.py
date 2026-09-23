@@ -976,13 +976,26 @@ def test_shipped_roster_satisfies_the_mag_invariant_at_the_default_pool():
     2026-09-18, weapon-design.md §7.4/§7.6: a `lethal: false` row (the stripper, the smoke) can never
     satisfy "kills on one magazine" -- it cannot kill at all, on any number of magazines -- so the
     invariant does not apply to it. The exemption is narrow: it is keyed on the catalogue's own
-    `lethal` flag, not on the weapon id, so a future LETHAL weapon still has to earn this guard."""
+    `lethal` flag, not on the weapon id, so a future LETHAL weapon still has to earn this guard.
+
+    ⚠ ONE MORE ROW IS DELIBERATELY EXEMPT (2026-09-23, R10, docs/weapon-design.md's Balance rules
+    table, F308): the USP's own kill (13 hits) no longer fits its magazine (12) -- Tony's explicit
+    ask ("the sidearms should be finish-a-kill weapons, not competitive against rifles"), on a
+    REAL-WORLD lever he chose over an unrealistic one ("no pistol clip is that small"): a USP .45
+    holds 12 rounds. A full-health kill now forces a mid-fight reload, on purpose. `MAG_INVARIANT_
+    EXEMPT` is narrow and self-expiring below -- if the USP's magazine ever again reaches 13, the
+    exemption goes stale and this test says so, rather than leaving a guard standing that nothing
+    needs."""
     cat = WeaponCatalog()
     support = {w["weapon_id"] for w in cat.all() if cat._row(w["weapon_id"]).get("lethal") is False}
+    MAG_INVARIANT_EXEMPT = {"usp"}
     bad = [w["weapon_id"] for w in cat.all()
-           if w["weapon_id"] not in support
+           if w["weapon_id"] not in support and w["weapon_id"] not in MAG_INVARIANT_EXEMPT
            and int(cat._row(w["weapon_id"])["mag"]) < cat.rounds_to_kill(w["weapon_id"], 115)]
     assert not bad, f"weapons that cannot kill on one magazine at the 115 pool: {bad}"
+    stale = {wid for wid in MAG_INVARIANT_EXEMPT
+             if int(cat._row(wid)["mag"]) >= cat.rounds_to_kill(wid, 115)}
+    assert not stale, f"{sorted(stale)} no longer need the mag-invariant exemption -- delete it above"
 
 
 def test_validate_grades_a_cell_weapon_in_ROUNDS_not_trigger_actions():

@@ -652,7 +652,7 @@
    "cls": 10,
    "role": "sidearm",
    "class": "ballistic",
-   "mag": 19,
+   "mag": 12,
    "reserve": 120,
    "reload_ms": 2200,
    "dmg": 8,
@@ -713,12 +713,12 @@
     "sidearm",
     "pistol"
    ],
-   "notes": "The quiet one. Suppressed and flashless: 9 a hit, as fast as you can pull the trigger, 13 hits to drop, 19 in the mag with 120 behind it: 10 kills across the kit. Low damage, but nobody hears where it came from. 2026-09-17: mag 20\u219219 -- Tony's ask was 20\u219214, but 14 leaves the Deagle strictly dominating the USP (its sustained DPS and one-magazine kill chance both fall too far once the mag is that shallow); 19 is the smallest cut off 20 that actually leaves neither pistol beating the other on every axis (a thin margin: sustained DPS differs by about 0.1 dmg/s, kill chance by 2 points)."
+   "notes": "The quiet one. Suppressed and flashless: 9 a hit, as fast as you can pull the trigger, 13 hits to drop, 12 in the mag with 120 behind it: 10 kills across the kit. Low damage, but nobody hears where it came from. 2026-09-17: mag 20\u219219 -- Tony's ask was 20\u219214, but 14 left the Deagle strictly dominating the USP; 19 was the smallest cut off 20 that left neither pistol beating the other on every axis. 2026-09-23 (R10, F308): Tony rejected an unrealistic magazine (\"no pistol clip is that small\") and asked for the real-world one instead -- a USP .45 holds 12, so that is what ships, even though 12 is smaller than the 14 the 2026-09-17 pass rejected for dominance reasons. 13 hits still drop a Standard target, so a full-health kill now forces a mid-fight reload: see the Balance rules table row 10 (\"the sidearms should be finish-a-kill weapons, not competitive against rifles\") and `test_ttk_band_and_no_strictly_dominant_weapon`'s sidearm-family check, re-verified against the new mag."
   },
   {
    "weapon_id": "deagle",
    "name": "Desert Eagle",
-   "desc": "Rounds that hit like a rifle, and not many of them. Miss twice and you are reloading in front of someone.",
+   "desc": "Rounds heavy enough to end a fight your rifle already started, not many of them and slow between pulls. Miss twice and you are reloading in front of someone.",
    "cls": 10,
    "role": "sidearm",
    "class": "ballistic",
@@ -726,10 +726,10 @@
    "reserve": 48,
    "reload_ms": 2200,
    "dmg": 23,
-   "rof": 16,
+   "rof": 11,
    "rng": 75,
    "htk": 5,
-   "ttk_ms": 1920,
+   "ttk_ms": 2800,
    "range_band": "close",
    "range_target_m": "not set yet: sidearms keep the captured reach until the curve is mapped (S49)",
    "recoil": {
@@ -748,7 +748,7 @@
    },
    "wire": {
     "dmg": 26,
-    "fire_ms": 480,
+    "fire_ms": 700,
     "swap_ms": 500
    },
    "overrides": {
@@ -775,7 +775,7 @@
     "sidearm",
     "pistol"
    ],
-   "notes": "The hand cannon. 26 a hit, five hits to drop \u2014 the most damage of any sidearm, if you land them. Seven in the mag, 48 behind it: 11 kills across the kit. A slow cycle that punishes every miss."
+   "notes": "The hand cannon. 26 a hit, five hits to drop \u2014 the most damage of any sidearm, if you land them. Seven in the mag, 48 behind it: 11 kills across the kit. 2026-09-23 (R10, F308): cadence (`wire.fire_ms`, the real-world lever Tony chose -- .50 AE recoil, magazine left at 7) slowed 480\u2192700ms so the Deagle finishes a kill rather than competing with a rifle on sustained output; ttk moved 1.92\u21922.80s. A slow cycle that punishes every miss, more than ever now."
   },
   {
    "weapon_id": "rocket_launcher",

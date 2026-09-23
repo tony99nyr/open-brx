@@ -51,9 +51,9 @@ export const WEAPONS: WeaponView[] = [
     "ammo_total": 70,
     "bars": {
       "power": 56,
-      "rof": 53,
+      "rof": 49,
       "ammo": 49,
-      "ttk": 35
+      "ttk": 40
     }
   },
   {
@@ -141,7 +141,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 47,
       "rof": 100,
       "ammo": 83,
-      "ttk": 27
+      "ttk": 33
     }
   },
   {
@@ -193,14 +193,14 @@ export const WEAPONS: WeaponView[] = [
     "name": "Desert Eagle",
     "cls": "10",
     "weapon_class": "ballistic",
-    "desc": "Rounds that hit like a rifle, and not many of them. Miss twice and you are reloading in front of someone.",
+    "desc": "Rounds heavy enough to end a fight your rifle already started, not many of them and slow between pulls. Miss twice and you are reloading in front of someone.",
     "clip": 7,
     "mags": 6,
     "reserve": 48,
     "reload_s": 2.2,
     "reload_ms": 2200,
     "dmg": 23,
-    "rpm": 16,
+    "rpm": 11,
     "rng": 75,
     "dmg_per_hit": 26,
     "dual_emitter": false,
@@ -212,7 +212,7 @@ export const WEAPONS: WeaponView[] = [
     ],
     "role": "sidearm",
     "htk": 5,
-    "ttk_ms": 1920,
+    "ttk_ms": 2800,
     "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
@@ -226,9 +226,9 @@ export const WEAPONS: WeaponView[] = [
     "ammo_total": 55,
     "bars": {
       "power": 64,
-      "rof": 47,
+      "rof": 42,
       "ammo": 43,
-      "ttk": 49
+      "ttk": 27
     }
   },
   {
@@ -269,9 +269,9 @@ export const WEAPONS: WeaponView[] = [
     "ammo_total": 900,
     "bars": {
       "power": 38,
-      "rof": 67,
+      "rof": 64,
       "ammo": 100,
-      "ttk": 56
+      "ttk": 60
     }
   },
   {
@@ -357,7 +357,7 @@ export const WEAPONS: WeaponView[] = [
     "ammo_total": 4,
     "bars": {
       "power": 100,
-      "rof": 33,
+      "rof": 35,
       "ammo": 20,
       "ttk": null
     }
@@ -399,9 +399,9 @@ export const WEAPONS: WeaponView[] = [
     "ammo_total": 30,
     "bars": {
       "power": 73,
-      "rof": 40,
+      "rof": 42,
       "ammo": 31,
-      "ttk": 78
+      "ttk": 80
     }
   },
   {
@@ -486,7 +486,7 @@ export const WEAPONS: WeaponView[] = [
     "ammo_total": 32,
     "bars": {
       "power": 20,
-      "rof": 80,
+      "rof": 78,
       "ammo": 37,
       "ttk": 20
     }
@@ -531,7 +531,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 82,
       "rof": 20,
       "ammo": 26,
-      "ttk": 71
+      "ttk": 73
     }
   },
   {
@@ -572,9 +572,9 @@ export const WEAPONS: WeaponView[] = [
     "ammo_total": 160,
     "bars": {
       "power": 20,
-      "rof": 80,
+      "rof": 78,
       "ammo": 66,
-      "ttk": 85
+      "ttk": 87
     }
   },
   {
@@ -614,9 +614,9 @@ export const WEAPONS: WeaponView[] = [
     "ammo_total": 459,
     "bars": {
       "power": 29,
-      "rof": 73,
+      "rof": 71,
       "ammo": 94,
-      "ttk": 42
+      "ttk": 47
     }
   },
   {
@@ -656,9 +656,9 @@ export const WEAPONS: WeaponView[] = [
     "ammo_total": 210,
     "bars": {
       "power": 29,
-      "rof": 87,
+      "rof": 85,
       "ammo": 71,
-      "ttk": 64
+      "ttk": 67
     }
   },
   {
@@ -667,8 +667,8 @@ export const WEAPONS: WeaponView[] = [
     "cls": "10",
     "weapon_class": "ballistic",
     "desc": "A steady sidearm. It will not win a fight you started badly, but it will finish one you nearly had.",
-    "clip": 19,
-    "mags": 6,
+    "clip": 12,
+    "mags": 10,
     "reserve": 120,
     "reload_s": 2.2,
     "reload_ms": 2200,
@@ -696,12 +696,12 @@ export const WEAPONS: WeaponView[] = [
     "hir": [
       9
     ],
-    "ammo_total": 139,
+    "ammo_total": 132,
     "bars": {
       "power": 38,
-      "rof": 60,
+      "rof": 56,
       "ammo": 60,
-      "ttk": 49
+      "ttk": 53
     }
   }
 ];

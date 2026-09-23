@@ -69,15 +69,20 @@ def test_pistol_identities_keep_tonys_ordering():
     assert dmg["usp"] < dmg["glock"] < dmg["deagle"]
     assert fire["usp"] < fire["glock"] < fire["deagle"]
     mags = {w: CAT.spawn_ammo(w)[0] for w in ALL_PISTOLS}
-    assert mags["deagle"] < mags["glock"] < mags["usp"]
+    # 2026-09-23 (R10, F308): the USP's magazine moved 19 -> 12 (a real USP .45's own capacity,
+    # Tony's ask over an unrealistic cut), which reorders this axis -- the USP no longer carries the
+    # deepest magazine of the three, only the Glock (hidden, untouched by R10) does now.
+    assert mags["deagle"] < mags["usp"] < mags["glock"]
     # every pistol lands in the 1.5-3.5 s band the arsenal is balanced to, and (D2) strictly slower
-    # than every rifle (force/assault/burst/bolt span 1650-1800 ms) — all three sidearms ship at the
-    # same 1920 ms ideal TTK and differentiate only in how they degrade under real aim
+    # than every rifle (force/assault/burst/bolt span 1650-1800 ms). The Glock and USP still ship at
+    # the shared 1920 ms ideal TTK D2 set; the Deagle moved off it (R10, F308, 2026-09-23): its
+    # cadence slowed 480 -> 700ms (a real-world lever, .50 AE recoil) so it finishes a kill rather
+    # than competing with a rifle, which also moved its ideal TTK 1920 -> 2800ms.
     for w in ALL_PISTOLS:
         ttk = CAT.time_to_kill(w, DEFAULT_POOL)
         assert 1500 <= ttk <= 3500, w
         assert ttk > 1800, f"{w} must kill strictly slower than the slowest rifle (1800 ms)"
-        assert ttk == 1920, w
+        assert ttk == (2800 if w == "deagle" else 1920), w
 
 
 def test_pistol_sounds_are_unique_on_gun_ids():
