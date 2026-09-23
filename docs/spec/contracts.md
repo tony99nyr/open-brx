@@ -777,7 +777,10 @@ assertion, and a phone that loses data mid-match must still hold an end it can r
 stays a venue assertion, which nothing sets today. A mode may declare `requires_coverage: true` in its `PARAMS`
 (A18); the lobby push refuses it (`409 {error, coverage}`) unless coverage is full at push time. No catalog mode
 does yet; the hook is reserved for modes where MC knows something no gun can (bounties, VIP swaps, park-wide
-zone control).
+zone control). **F256 (2026-09-23):** `reach` names only the URL a phone joined through, never the path it rides:
+two phones on one Wi-Fi behind one tunnel read 2 of 2 on backhaul and are a single point of failure. `level` is therefore
+always `"zones"` until a node reports an independent transport of its own; `on_backhaul` stays the count of phones that
+joined through the tunnel, and the console shows it as that fact, never as coverage.
 
 **A28.5 Unchanged.** Kill confirm needs the victim's report and the shooter's feedback, each over whatever path
 that phone has; `FEEDBACK_MAX_AGE_MS` still drops a late one. Autonomy (node.md §3.7) is untouched: a phone that

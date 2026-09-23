@@ -1060,13 +1060,14 @@ class Session:
         return self._public().copy()
 
     def coverage(self) -> Coverage:
-        """A28.4: coverage is DERIVED, not asserted — `"full"` iff every bound player node is connected
-        with `reach == "backhaul"`.
+        """A28.4: coverage is DERIVED, not asserted. `on_backhaul` counts the bound player nodes that are
+        connected (not stale) with `reach == "backhaul"`.
 
-        "Connected" is read as "not stale": that is the same freshness MC uses everywhere else, and it is
-        what the operator is looking at on the board. A node that drops off the tunnel goes stale and
-        coverage falls back to `"zones"` within `STALE_AFTER_MS` — one reconnect, exactly as A28.3
-        describes."""
+        F256 (bench 2026-09-18): `level` is always `"zones"`. `reach` says only WHICH URL the phone
+        joined through, never what the phone is riding: two phones on one Wi-Fi, both leaving through
+        the same tunnel, read "2 of 2 on backhaul" and are one point of failure. MC may claim
+        `"full"` only once a node reports an INDEPENDENT transport of its own, and no node does yet.
+        Until then a "full" here would clear the A6.1 frag-limit warning on a fact MC cannot prove."""
         bound = on = 0
         for nid, pid in self.node_player.items():
             if pid not in self.players:
@@ -1075,7 +1076,7 @@ class Session:
             nv = self.nodes.get(nid) or {}
             if nv.get("reach") == "backhaul" and not nv.get("stale"):
                 on += 1
-        return {"level": "full" if bound and on == bound else "zones", "on_backhaul": on, "bound": bound}
+        return {"level": "zones", "on_backhaul": on, "bound": bound}
 
     # ---------- A10 loadout policy / catalog ----------
     def _catalog_rows(self) -> tuple[list[Weapon], list[PerkView]]:
@@ -5603,7 +5604,8 @@ class Session:
             cov = self.coverage()
             if cov["level"] != "full":
                 raise CoverageRequired(
-                    f"{self.config.get('mode')} needs FULL coverage (every player's phone on backhaul); "
+                    f"{self.config.get('mode')} needs FULL coverage (every player's phone on its own "
+                    f"internet path, which no phone can report yet); "
                     f"{cov['on_backhaul']} of {cov['bound']} bound node(s) are", cov)
         # Round-2 B: read the BOARD, not `go` — `go` is now also false for a `roster_faults` entry,
         # which is a different refusal with its own (unforceable) wording further down. Gating the
@@ -6663,8 +6665,20 @@ class Session:
         return {"kitted": kitted, "total": len(self.players), "trying": dict(self.trying),
                 "browsing": dict(self.browsing)}
 
+    def _updating(self) -> int:
+        """F178 (Tony, 2026-09-23): READY stays the player's intent, and this is the part of it START
+        will still refuse on. A READY player with a phone bound whose gun has not answered the head
+        MC pushed: no ack yet, or an ack for an older `config_id` (`_refuse_stale_ack`). A refused
+        `{ok: false}` ack is a red on the board, not an update in flight, so it is not counted."""
+        if not self.lobby_pushed:
+            return 0
+        return sum(1 for pid, p in self.players.items()
+                   if p.get("ready") and p.get("node_id")
+                   and (pid not in self.acks or self._stale_ack_id(pid)))
+
     def _snapshot_lobby(self) -> LobbyView:
         return {"ready": sum(1 for p in self.players.values() if p["ready"]),
+                "updating": self._updating(),
                 "total": len(self.players), "pushed": self.lobby_pushed,
                 "acks": cast(dict[str, LobbyAck], self.acks), "all_acked": self.all_acked()}
 

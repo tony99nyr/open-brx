@@ -36,6 +36,12 @@ export function Lobby() {
   const nReady = players.filter(p => p.ready).length;
   const notReady = players.filter(p => !p.ready).map(p => p.display);
   const allReady = nReady === players.length && players.length > 0;
+  // F178 (Tony, 2026-09-23): READY stays the player's intent. `lobby.updating` is the part of it whose
+  // gun has not answered the pushed head yet, so START still refuses; the count names them apart
+  // ("6/7 READY · 1 UPDATING") instead of reading all-green over a refusal. Absent from an older server.
+  const nUpdating = Math.min(lobby.updating ?? 0, nReady);
+  const nReadyNow = nReady - nUpdating;
+  const updatingTitle = 'Ready, but the phone has not taken the pushed config yet. ARM waits for it.';
   // U-1: the stale-ack sentence is computed from the ACKS, independently of the board — a stale ack
   // is always ALSO a red row, so anything that asked "are there faults?" first could never reach it.
   // F8a: ONE instruction string, everywhere (`RE_PUSH_HERE` is the label of the button below).
@@ -45,7 +51,7 @@ export function Lobby() {
   // Field feedback 2026-09-19 (Tony): partial coverage is not a fault — every gun still works over
   // LAN — so it is neutral (T.micro), never amber, whether the tunnel is off or simply not full yet.
   // Only a genuine blocking fault gets a warning colour.
-  const cColor = state.coverage?.level === 'full' ? T.ok : T.micro;
+  const cColor = T.micro;   // F256: a tunnel count is a fact, never a coverage claim, so never green
   const reachOfPlayer = (pid: string): 'lan' | 'backhaul' | undefined => {
     const n = state.nodes.find(x => x.player_id === pid);
     return n ? reachOf(n) : undefined;   // no node connected yet: no tag to show, never invent LAN
@@ -156,7 +162,12 @@ export function Lobby() {
             ? <Tag color={T.bad} size={9} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{counts.join(' V ')} — CANNOT PLAY</Tag>
             : <Tag color={balanced ? T.ok : T.warn} size={9} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{counts.join(' V ')} — {balanced ? 'BALANCED' : 'UNBALANCED'}</Tag>}
           {cLine && <Tag color={cColor} size={9} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{cLine}</Tag>}
-          <Progress n={nReady} total={players.length} label="READY" color={T.ok} />
+          <Progress n={nReadyNow} total={players.length} label="READY" color={T.ok} />
+          {nUpdating > 0 && (
+            <span data-updating="1" title={updatingTitle} style={{ font: F.osw(700, 20), color: T.warn }}>
+              · {nUpdating} UPDATING
+            </span>
+          )}
           {/* Field feedback 2026-09-19 (Tony): MARK ALL READY is a common, regular step, and it used to
               sit as a GhostButton in the lower-left rail — easy to miss while players are still
               gathering and looking at this header's own ready count. One PrimaryButton, right beside
@@ -226,7 +237,7 @@ export function Lobby() {
       <div data-rail="lobby" style={{ marginTop: 16, background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}` }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '16px 28px', padding: '16px 20px' }}>
           <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
-            <Step n={1} done={allReady} label={<>Ready <b style={{ font: F.osw(700, 16), color: allReady ? T.ok : T.warn }}>{nReady}/{players.length}</b></>} />
+            <Step n={1} done={allReady && !nUpdating} label={<>Ready <b style={{ font: F.osw(700, 16), color: allReady && !nUpdating ? T.ok : T.warn }}>{nReadyNow}/{players.length}</b>{nUpdating > 0 && <span title={updatingTitle} style={{ color: T.warn }}> · {nUpdating} updating</span>}</>} />
             <Step n={2} done={allAcked} label={<>Config pushed {lobby.pushed && <b style={{ font: F.osw(700, 16), color: allAcked ? T.ok : T.warn }}>{acked}/{players.length}</b>}</>} />
             {/* Bench 2026-09-17 (Tony): the countdown length is chosen only when ARM COUNTDOWN is the next
                 action: the lobby is pushed and every gun has acked (in sync). Before that it is plain text. */}

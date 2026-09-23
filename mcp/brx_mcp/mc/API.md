@@ -74,7 +74,10 @@ State {
          // `status` does NOT reach `"up"` (and `qr` carries no `&pub=`, and no `join` is pushed) until
          // the name resolves: cloudflared printing the URL is not the moment the world can reach it, and
          // a phone that dialled a second too early had the miss negative-cached for ~250 s.
-  coverage: { level: "full"|"zones", on_backhaul: number, bound: number },   // A28.4: full iff every bound player node is connected with reach == "backhaul"
+  coverage: { level: "full"|"zones", on_backhaul: number, bound: number },   // A28.4: on_backhaul = bound player nodes connected with reach == "backhaul".
+                                              // F256 (2026-09-23): level is always "zones". reach names the URL a phone
+                                              // joined through, not an independent path, so MC claims "full" only once a
+                                              // node reports its own transport, and none does yet
   nodes: NodeView[],                          // every node that ever said hello this session
   stations: StationView[], game_no: number,   // A13.5: the ITEMS panel (see GET /api/stations); game_no = the advert `game` byte stations are armed with THIS match (bumps on the first push after a match started)
   readiness: ReadinessSnapshot,               // Each ReadinessRow also carries `reach` and `last_reach` (same values as NodeView),
@@ -150,8 +153,12 @@ State {
                                                // control disappears by itself; a phone that picks it anyway is answered
                                                // `loadout_ack {ok:false, reason:"Quick Switch switches between two weapons,
                                                // and there is no second weapon this game"}`
-  lobby: { ready: number, total: number, pushed: boolean, all_acked: boolean,
+  lobby: { ready: number, updating?: number, total: number, pushed: boolean, all_acked: boolean,
            acks: { [player_id]: { ok: boolean, gun_echo?: string, err?: string, config_id?: string } } },
+                                              // F178 (2026-09-23): `ready` is the players' intent. `updating` is the part of
+                                              // it whose gun has not answered the pushed head: a bound READY player with no ack
+                                              // yet, or an ok ack naming an older config_id. 0 before the push; a refused ack
+                                              // is a red, not counted. The console shows "6/7 READY · 1 UPDATING"; absent = 0.
                                               // A36 (2026-09-13): `config_id` is WHICH config that gun answered for.
                                               // An ack naming a previous one is NOT an ack for the game about to
                                               // start -- `all_acked` reads false, the row carries the blocker

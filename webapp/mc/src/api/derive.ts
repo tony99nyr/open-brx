@@ -50,17 +50,6 @@ export const reachLabel = (reach: 'lan' | 'backhaul'): 'LAN' | 'INTERNET' => (re
 export const reachTooltip = (reach: 'lan' | 'backhaul'): string =>
   reach === 'backhaul' ? 'Reached Mission Control through the internet tunnel.' : 'Reached Mission Control over the field Wi-Fi.';
 
-/** A28.4 — the one-line coverage readout, or null when there is nothing to say yet (no bound player
- *  node this session). `bound` is the true denominator even while the tunnel is off — the count is
- *  what should read as unearned, not the sentence. */
-export function coverageLine(state: State | null): string | null {
-  const c = state?.coverage;
-  if (!c || c.bound === 0) return null;
-  return c.level === 'full'
-    ? `FULL COVERAGE — ${c.on_backhaul} OF ${c.bound} ON THE INTERNET PATH`
-    : `COVERAGE ZONES — ${c.on_backhaul} OF ${c.bound} ON THE INTERNET PATH`;
-}
-
 /** F155 (field 2026-09-12, ISSUE 30) — a node whose last known path was the internet tunnel reads
  *  "WRONG WI-FI" today when that tunnel drops, which sends the operator chasing the phone's Wi-Fi
  *  settings for a fault that is entirely MC's tunnel. `NodeView.last_reach` survives the disconnect

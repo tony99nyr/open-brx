@@ -27,7 +27,7 @@ export function Armed() {
   // A28.4: derived, never asserted — grey the count while the tunnel is off, since it can only be 0.
   const cLine = shortCoverageLine(state.coverage);
   // Field feedback 2026-09-19 (Tony): partial coverage is not a fault, so it is neutral, never amber.
-  const cColor = state.coverage?.level === 'full' ? T.ok : T.micro;
+  const cColor = T.micro;   // F256: a tunnel count is a fact, never a coverage claim, so never green
   const st = state.start;
   if (!st) {
     return (

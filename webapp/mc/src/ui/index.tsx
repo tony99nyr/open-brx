@@ -371,10 +371,10 @@ export function Shelf({ children, style, className }: { children: ReactNode; sty
 
 /** F256 follow-up (field 2026-09-19, Tony): the coverage chip on LOBBY/ARMED/LIVE used to read
  *  "COVERAGE ZONES — N OF M ON THE INTERNET PATH" (or "FULL COVERAGE — …") — needlessly verbose for a
- *  header chip. Same numbers, same absent-when-nothing-bound rule as `api/derive.coverageLine` (kept
- *  there for whatever else still reads it), just the shorter words this chip actually shows. This is
- *  wording only: F256 itself (whether "on the internet path" should count a shared Wi-Fi network as
- *  covered at all) is untouched — see docs/FOLLOWUPS.md. */
+ *  header chip. F256 (2026-09-23): the chip states the one fact MC has, how many phones joined through
+ *  the tunnel, and never calls it coverage: two phones on one Wi-Fi behind one tunnel are one point
+ *  of failure, and `state.py coverage()` no longer derives "full" from `reach`. Absent while nothing
+ *  is bound. */
 export function shortCoverageLine(coverage: Coverage | null | undefined): string | null {
   if (!coverage || coverage.bound === 0) return null;
   return `Internet: ${coverage.on_backhaul} of ${coverage.bound} phones`;

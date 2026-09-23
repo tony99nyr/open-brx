@@ -1110,7 +1110,7 @@ export interface EndDeliveryView {
   retrying: boolean;
 }
 
-/** Derived socket coverage; full iff every bound player is on backhaul. */
+/** Derived socket coverage. F256: `level` stays "zones" until a node reports an independent transport. */
 export interface Coverage {
   level: 'full' | 'zones';
   on_backhaul: number;
@@ -1422,6 +1422,9 @@ export interface LobbyAck {
 
 export interface LobbyView {
   ready: number;
+  /** F178: the READY players whose gun has not answered the pushed head yet (a subset of `ready`).
+   *  NotRequired: an older server never sends it, and the console reads its absence as 0. */
+  updating?: number;
   total: number;
   pushed: boolean;
   acks: Record<string, LobbyAck>;

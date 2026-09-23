@@ -1046,7 +1046,7 @@ class EndDeliveryView(TypedDict):
 
 
 class Coverage(TypedDict):
-    """Derived socket coverage; full iff every bound player is on backhaul."""
+    """Derived socket coverage. F256: `level` stays "zones" until a node reports an independent transport."""
     level: Literal["full", "zones"]
     on_backhaul: int
     bound: int
@@ -1349,6 +1349,9 @@ class LobbyAck(TypedDict):
 
 class LobbyView(TypedDict):
     ready: int
+    # F178: the READY players whose gun has not answered the pushed head yet (a subset of `ready`).
+    # NotRequired: an older server never sends it, and the console reads its absence as 0.
+    updating: NotRequired[int]
     total: int
     pushed: bool
     acks: dict[str, LobbyAck]

@@ -156,6 +156,15 @@ export class MockBackend implements Api {
       return !!a && a.ok && a.config_id === this.config.config_id;
     });
   }
+  /** `state.py _updating()` (F178): READY players with a node bound whose gun has not answered the
+   *  pushed head (no ack yet, or an ok ack for an older config). A refused ack is a red, not counted. */
+  private updating() {
+    if (!this.pushed) return 0;
+    return this.players.filter(p => p.ready && p.node_id).filter(p => {
+      const a = this.acks[p.player_id];
+      return !a || (a.ok && !!a.gun_echo && a.config_id !== this.config.config_id);
+    }).length;
+  }
   private stationIds() { return Object.values(this.stations).flatMap(s => s.assigned ? [s.assigned.id] : []).sort((a, b) => a - b); }
   private armStation(node_id: string) {
     const st = this.stations[node_id]; if (!st?.assigned) return;
@@ -556,11 +565,12 @@ export class MockBackend implements Api {
     return this.tunnelStatus === 'up' && this.tunnelWsUrl ? `${base}&pub=${encodeURIComponent(this.tunnelWsUrl)}` : base;
   }
   /** A28.4: derived from the nodes' own reach, never asserted. A node with no player_id is not
-   *  "bound" — an unclaimed phone joining over backhaul does not move the needle. */
+   *  "bound" — an unclaimed phone joining over backhaul does not move the needle. F256: `level` is
+   *  always 'zones', as `state.py coverage()`: `reach` names the URL, never an independent path. */
   private coverage(nodes: Pick<NodeView, 'player_id' | 'reach'>[]): Coverage {
     const bound = nodes.filter(n => n.player_id).length;
     const on_backhaul = nodes.filter(n => n.player_id && n.reach === 'backhaul').length;
-    return { level: bound > 0 && on_backhaul === bound ? 'full' : 'zones', on_backhaul, bound };
+    return { level: 'zones', on_backhaul, bound };
   }
 
   private state(): State {
@@ -634,7 +644,7 @@ export class MockBackend implements Api {
       // A36/C-5: `all_acked` is the SERVER's own answer to "has every gun answered for THIS config",
       // and the console prefers it over its own count. The mock exists to predict the server, so it
       // sends it too — without it `?mock` exercised only the fallback path.
-      lobby: { ready: this.players.filter(p => p.ready).length, total: this.players.length, pushed: this.pushed,
+      lobby: { ready: this.players.filter(p => p.ready).length, updating: this.updating(), total: this.players.length, pushed: this.pushed,
                acks: clone(this.acks), all_acked: this.allAcked() },
       // LOAD: the game the phones were told about (no frames, no head) — what the GAMES tab keys its
       // ACTIVE GAME CONFIG state on, and a different fact from `lobby.pushed` above.

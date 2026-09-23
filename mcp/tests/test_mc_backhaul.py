@@ -425,7 +425,7 @@ def test_a_dropped_socket_clears_reach_on_the_view_the_snapshot_is_built_from():
     s = _sess()
     s.add_player("reaper", gun_id="GUN-A")
     s.net.simulate_hello("n1", "GUN-A", via="backhaul")
-    assert s.coverage()["level"] == "full"
+    assert s.coverage()["on_backhaul"] == 1
     s.net.simulate_disconnect("n1")
     assert "reach" not in s.nodes["n1"]
     assert s.coverage() == {"level": "zones", "on_backhaul": 0, "bound": 1}
@@ -446,29 +446,32 @@ def _redial(s: Session, reach_a: str | None, reach_b: str | None):
     s.net.simulate_hello("n-b", "GUN-B", via=reach_b)
 
 
-def test_coverage_is_full_only_when_every_bound_node_is_on_backhaul():
+def test_coverage_counts_the_tunnel_but_never_claims_full():
+    """F256 (bench 2026-09-18): two phones on one Wi-Fi, both through the cloudflared URL, read FULL
+    COVERAGE. `reach` names the URL, not an independent path, so every phone on the tunnel is counted
+    and the level stays "zones"."""
     s = _sess()
     assert s.coverage() == {"level": "zones", "on_backhaul": 0, "bound": 0}, "nobody bound is not coverage"
     _two_players_on(s, "backhaul", "lan")
     assert s.coverage() == {"level": "zones", "on_backhaul": 1, "bound": 2}
     s.net.simulate_hello("n-b", "GUN-B", via="backhaul")        # it re-dialled and got the tunnel
-    assert s.coverage() == {"level": "full", "on_backhaul": 2, "bound": 2}
-    assert s.snapshot()["coverage"]["level"] == "full"
+    assert s.coverage() == {"level": "zones", "on_backhaul": 2, "bound": 2}
+    assert s.snapshot()["coverage"]["level"] == "zones"
     # a node that goes stale is not "connected" any more, whatever path it last used
     s.net.simulate_stale("n-a", 20_000)
     assert s.coverage() == {"level": "zones", "on_backhaul": 1, "bound": 2}
 
 
-def test_full_coverage_clears_the_frag_warning_but_never_the_time_limit():
+def test_every_phone_on_the_tunnel_keeps_the_frag_warning():
+    """F256: a tunnel count proves no independent path, so it must not clear the A6.1 warning."""
     s = _sess()
     s.set_config({"mode": "tdm", "time_limit_s": 600, "scoring": {"frag_limit": 25, "win_by": "kills"}})
     _two_players_on(s, "lan", "lan")
     assert any("frag_limit" in w for w in s.config_warnings), s.config_warnings
     _redial(s, "backhaul", "backhaul")
     s._validate()
-    assert not any("frag_limit" in w for w in s.config_warnings), s.config_warnings
-    # …and A4.8's floor is untouched: a null time limit is still an error under FULL backhaul coverage
-    s.config["time_limit_s"] = None
+    assert any("frag_limit" in w for w in s.config_warnings), s.config_warnings
+    s.config["time_limit_s"] = None                  # A4.8's floor is untouched as well
     res = s._validate()
     assert not res["ok"] and any("time_limit_s" in e for e in res["errors"]), res
 
@@ -503,11 +506,16 @@ def test_a_mode_that_requires_coverage_refuses_the_lobby_push_until_it_has_it():
             assert "coveragetest" in str(e)
         assert not s.lobby_pushed, "a refused push must not leave the session in LOBBY"
 
+        # F256: every phone on the tunnel is still not coverage MC can prove, so the refusal holds.
         _redial(s, "backhaul", "backhaul")
         for nid in ("n-a", "n-b"):
             s.net.simulate_status(nid, {"node_id": nid, "arm_state": "kitted", "synced": True}, s.now_ms())
-        s.push_config(force=True)
-        assert s.lobby_pushed and s.phase == "lobby"
+        try:
+            s.push_config(force=True)
+            raise AssertionError("pushed a requires_coverage mode on a tunnel count alone")
+        except CoverageRequired as e:
+            assert e.coverage == {"level": "zones", "on_backhaul": 2, "bound": 2}
+        assert not s.lobby_pushed
     finally:
         R._EXTRA.pop("coveragetest", None)
 
