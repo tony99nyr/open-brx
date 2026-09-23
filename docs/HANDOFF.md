@@ -93,7 +93,7 @@ above; the remaining field check validates that release.
   silently assigned to the last binding, and cumulative shot deltas do not inflate the match total.
 - **F174 is closed:** an explicitly named previous match remains diagnosable on the next runway; current/full scans
   still fail closed in ARMED and every diagnostic remains blocked in LIVE.
-- **F179-F185, F188 and F189 are closed:** UI guards are behavioral, standby truth gates `npm test`, M2 accuracy is
+- **F179-F185, F188, F189 and S35 are closed:** UI guards are behavioral, standby truth gates `npm test`, M2 accuracy is
   deterministic, Designer PLAY loads before KIT, and the KIT e2e finds the main-checkout venv from a worktree.
 - **F285 desk work is complete:** the guarded `$TMP` table marks only t4/t8 absolute and t9 additive; bench fills the unmeasured cells. **F178 and F187 remain decision first.**
 - **Next bench task:** the "0.4.5 field check" in [`bench-plan.md`](bench-plan.md) (connect timing on both

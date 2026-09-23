@@ -1,5 +1,10 @@
 # Closed followups (archive)
 
+# Closed 2026-09-23: app lifecycle and utility contract coverage
+
+- 2026-09-23 **S35** added focused source-contract tests for app log-sync wiring and utility lifecycle identity,
+  persistence, and release handoff. The app lifecycle test file passes 4/4; no production behavior changed.
+
 # Closed 2026-09-23: evidence event-time ordering
 
 - 2026-09-23 **F223** the evidence extractor now emits both event time `t` and receive time `t_recv`,
