@@ -66,19 +66,30 @@ stays the hill and station beacon.
 
 ## The rule for every event (Tony)
 
-One event, one word, sent once by the gun where it happened. No phone or gun ever relays a word. The player field
-names who did it, and the magnitude names the event and the team it concerns. A grenade hill already works this way:
-its capture word (magnitude 50) is its single broadcast. A phone-run hill or a flag capture follows the same shape:
-the capturing player's gun sends one word naming the capturer, with the capturing team in the magnitude.
+One event, one word, sent once by the device where it happened. No phone, gun or station ever relays a word. The
+player field names who did it, and the magnitude names the event and the team it concerns.
 
-Reserved codes (not built in v1, all in the bench-silent range; 37 to 39 are unassigned and ignored the same way): `HILL_CAPTURED` 29 + team (29 to 32), player = the
-capturer; `FLAG_CAPTURED` 33 + team (33 to 36), player = the capturer. Adding one is a row in `IR_CALLOUT` and a
-receiver case.
+## Objective events (2026-09-23)
+
+| Event | Where it happens | The one broadcast | Phone side | Status |
+|---|---|---|---|---|
+| Grenade hill captured / lost | the grenade | its native capture word, protocol 15 magnitude 50, new owner in the team bits | `_onHillBeacon` plays HILL CAPTURED (VB0N) to the new owner, HILL LOST (VB0P) to the old | built; F312 |
+| Stick hill captured / lost | the M5Stick station | the same magnitude-50 word, sent once on a HILL-mode flip (`capture_word()`) | as a grenade, no new phone code | built, host-tested; the Stick is unproven on hardware |
+| Phone control point captured / lost / contested | the utility phone, which has no gun | its BLE advert (kind 5), republished on every change | `_onControlAdvert` plays VB0N / VB0P / VB0O | built; no IR word needed |
+| Hill contested | nowhere on a grenade | none: the grenade sends no such signal (F75) | not wired | no sender exists |
+| Hill moved | Mission Control, not a device | none on IR: no gun is where it happened | VB0Q has no caller | not an IR event |
+| Flag taken / captured (CTF) | the carrier's gun | `FLAG_TAKEN` 29 + the flag's team, `FLAG_CAPTURED` 33 + that team, player = the carrier | reserved | not built: the host engine has grab, capture and drop, but no station or phone produces them yet |
+| Flag dropped / returned | the carrier's gun | needs four more codes, beyond 39 (bench step 9 checks 40-43) | reserved | not built |
+
+**F312: the capturing team may be deaf to its own capture.** MC compiles friendly fire off for every mode but FFA, and
+a fn-28 row drops a word whose team equals the receiver's own. The capture word carries the NEW owner's team, so the
+winners' guns may drop it while the losers hear HILL LOST. That is a code reading; bench step 8 settles it. The fix
+cannot be a relay (the rule above); it is a `<15,0>` row whose function registers regardless of team, if one exists.
 
 ## Scope (Tony, v1)
 
-Deaths and kills only. Hill captures keep their native path: the grenade's own capture word already reaches nearby
-guns, and the phones already play HILL CAPTURED from it. The code table reserves room for more events later.
+Deaths and kills are the only new words. Hill captures keep their native path (the table above), and the reserved
+codes 29-36 hold room for CTF.
 
 ## What MC must ship
 

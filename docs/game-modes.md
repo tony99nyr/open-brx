@@ -166,9 +166,10 @@ working pools.
 
 The Smart Grenade's five native objective modes (Frag / Assault / Hill / Respawn / CTF), what beacons over BLE,
 and its limits are documented once in `reference/grenade.md` and published in `manual/gameplay.md`
-(Grenade modes). In **native** games it is a $0 single-point Hill / Respawn / Assault / CTF / bomb site; in
-**hosted** (MC) games the gun ignores its station words entirely (bench 2026-09-04), so the phone station
-supersedes it, and the B23 bridge (`utility-roadmap.md` §7) is how it could come back as a readable IR station.
+(Grenade modes). In **native** games it is a $0 single-point Hill / Respawn / Assault / CTF / bomb site. In
+**hosted** (MC) games every gun now carries the silent `<15,0>` row (S57), so it reports the grenade's hill words, and
+the phones announce captures from them (`ir-callouts.md`, which also records F312: with friendly fire off, the
+capturing team may not hear its own capture).
 
 ## What each needs, in one line
 
