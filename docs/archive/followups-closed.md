@@ -626,3 +626,6 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
   name the parser they actually consume.
 - 2026-09-23 **F187** closed by decision: Tony accepts the 16-retired-match bound (`_ENDED_KEEP`); a phone away
   that long rejoins the lobby and gets no end delivery. No durable match ownership.
+- 2026-09-23 **S54**, **F268**, **F280** closed by `aa7b08b9`: Tony chose recoil rungs by ROUNDS PER TRIGGER PULL scaled by
+  calibre (5 clean at 8 damage, 3 more to heavy), a release reset while crisp, the Burst Rifle flat, floors at 60,
+  the Assault Rifle at 80/60. The catalogue now carries the S54 fields. The bench half is F308.
