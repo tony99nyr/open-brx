@@ -3447,7 +3447,8 @@ export class Engine {
    *  second one, `wsEverDown` (read by `dealtPartial`) and `startedAt`/`deathAt` (read by `_lifeForFact`,
    *  stamped on the same synced clock as every fact). */
   _freshLedger() {
-    return { taken: new Map(), dealt: new Map(), shotGroups: new Map(), wsEverDown: this.wsState !== 'bound', startedAt: this.now(), deathAt: null };
+    return { taken: new Map(), dealt: new Map(), shotGroups: new Map(), wsEverDown: this.wsState !== 'bound', startedAt: this.now(), deathAt: null,
+      shots: 0, kills: 0, finalHit: null };   // death screen: rounds fired, kills MC confirmed, and the last hit booked
   }
   /** Reset at every new life: `_spawn` (go-live), `_revive` (timed/station/resync/operator), an infection
    *  flip (inside `_death`, right after the snapshot below), and `_endLocal` (match end). */
@@ -3458,21 +3459,29 @@ export class Engine {
    *  accumulates onto that same entry instead of opening a new one. `resolved` is `_resolveHitWeapon`'s
    *  return; an ambiguous or null resolution books under `weapon_id: null` (an "unclaimed" row), same as an
    *  unknown magnitude -- there is nothing more specific to say in either case. */
-  _lifeBookHit(num, team, dmg, shotGroup, resolved) {
+  _lifeBookHit(num, team, dmg, shotGroup, resolved, hit = {}) {
     if (!this._life) return;
     const wid = resolved && !resolved.ambiguous && resolved.weapon_id != null ? resolved.weapon_id : null;
     const wname = wid != null ? resolved.name : null;
     const ambiguous = !!(resolved && resolved.ambiguous);
+    // Death screen: a catalogue match is a PICKUP (not the shooter's own kit), and an ambiguous row keeps its
+    // candidates' names, keyed by the candidate SET so two different ambiguities from one source stay apart.
+    const pickup = !!(resolved && resolved.source === 'catalog' && wid != null);
+    const cands = ambiguous ? (resolved.candidates || []).slice().sort() : [];
+    const candKey = cands.join('|');
+    const names = cands.map(id => { const row = this.weaponRow(id); return (row && row.name) || id; });
     const groups = this._life.shotGroups;
     const prior = groups.get(shotGroup);
-    if (prior) { prior.entry.dmg += dmg; prior.weapon.dmg += dmg; return; }
+    if (prior) { prior.entry.dmg += dmg; prior.weapon.dmg += dmg; if (this._life.finalHit && this._life.finalHit.group === shotGroup) this._life.finalHit.dmg += dmg; return; }
     let entry = this._life.taken.get(num);
     if (!entry) { entry = { num, name: this.nameOf(num), teamKey: TEAM_KEY[team] || null, dmg: 0, hits: 0, weapons: [] }; this._life.taken.set(num, entry); }
     entry.dmg += dmg; entry.hits += 1;
-    let weapon = entry.weapons.find(w => w.weapon_id === wid && w.ambiguous === ambiguous);
-    if (!weapon) { weapon = { weapon_id: wid, name: wname, ambiguous, dmg: 0 }; entry.weapons.push(weapon); }
+    let weapon = entry.weapons.find(w => w.weapon_id === wid && w.ambiguous === ambiguous && (w.candKey || '') === candKey);
+    if (!weapon) { weapon = { weapon_id: wid, name: wname, ambiguous, pickup, dmg: 0, ...(ambiguous ? { names, candKey } : {}) }; entry.weapons.push(weapon); }
     weapon.dmg += dmg;
     groups.set(shotGroup, { entry, weapon });
+    this._life.finalHit = { num, dmg, group: shotGroup, sensor: hit.sensor != null ? hit.sensor : null, crit: !!hit.crit, dot: false,
+      weapon: wid != null || ambiguous ? { name: wname, ambiguous, pickup, ...(ambiguous ? { names } : {}) } : null };
   }
   /** A poison/DOT tick's damage (the `$HP` that answers our own `$LIFE` write -- `dotEcho` in `_onHp`) counts
    *  against the poisoner the same as any other hit, but `_dotSpec`'s table carries no weapon reference for
@@ -3482,8 +3491,9 @@ export class Engine {
   _lifeBookDot(num, team, dmg) {
     if (!this._life || dmg <= 0) return;
     let entry = this._life.taken.get(num);
-    if (!entry) { entry = { num, name: this.nameOf(num), teamKey: TEAM_KEY[team] || null, dmg: 0, hits: 0, weapons: [] }; this._life.taken.set(num, entry); }
-    entry.dmg += dmg; entry.hits += 1;
+    if (!entry) { entry = { num, name: this.nameOf(num), teamKey: TEAM_KEY[team] || null, dmg: 0, hits: 0, ticks: 0, weapons: [] }; this._life.taken.set(num, entry); }
+    entry.dmg += dmg; entry.ticks = (entry.ticks || 0) + 1;   // a tick is not a hit: the death screen counts hits
+    this._life.finalHit = { num, dmg, group: null, sensor: null, crit: false, dot: true, weapon: null };   // a lethal tick is the final hit
   }
   /** Which per-life ledger a fact timestamped `t` belongs to: the running life, the one just finished (still
    *  open to a straggling MC relay, see `dealtPartial`), or neither -- an older life is gone, so its facts
@@ -3529,11 +3539,15 @@ export class Engine {
    *  on every call (nothing else needs the sorted order, so nothing keeps it in sync). `finished` is true only
    *  for `_lastLife` -- the running life's `dealtPartial` never carries the death grace, only `wsEverDown`. */
   _ledgerSnapshot(life, finished) {
-    if (!life) return { taken: [], dealt: [], takenTotal: 0, dealtTotal: 0, dealtPartial: false };
-    const taken = [...life.taken.values()].map(e => ({ ...e, weapons: e.weapons.map(w => ({ ...w })) })).sort((a, b) => b.dmg - a.dmg);
+    if (!life) return { taken: [], dealt: [], takenTotal: 0, dealtTotal: 0, dealtPartial: false, shots: 0, kills: 0, aliveMs: 0, finalHit: null };
+    const taken = [...life.taken.values()].map(e => ({ ...e, weapons: e.weapons.map(w => ({ ...w, ...(w.names ? { names: w.names.slice() } : {}) })) })).sort((a, b) => b.dmg - a.dmg);
     const dealt = [...life.dealt.values()].map(e => ({ ...e, weapons: e.weapons.map(w => ({ ...w })) })).sort((a, b) => b.dmg - a.dmg);
     const grace = finished && life.deathAt != null && (this.now() - life.deathAt) < DEALT_GRACE_MS;
-    return { taken, dealt, takenTotal: taken.reduce((s, e) => s + e.dmg, 0), dealtTotal: dealt.reduce((s, e) => s + e.dmg, 0), dealtPartial: !!(life.wsEverDown || grace) };
+    const fh = life.finalHit;
+    return { taken, dealt, takenTotal: taken.reduce((s, e) => s + e.dmg, 0), dealtTotal: dealt.reduce((s, e) => s + e.dmg, 0), dealtPartial: !!(life.wsEverDown || grace),
+      // death screen: rounds fired, kills MC confirmed (best-effort, like dealt), time alive, and the last hit taken
+      shots: life.shots || 0, kills: life.kills || 0, aliveMs: Math.max(0, (life.deathAt != null ? life.deathAt : this.now()) - life.startedAt),
+      finalHit: fh ? { ...fh, weapon: fh.weapon ? { ...fh.weapon, ...(fh.weapon.names ? { names: fh.weapon.names.slice() } : {}) } : null } : null };
   }
 
   // ---------- S53: the smoke tell (fn 23) ----------
@@ -4319,6 +4333,7 @@ export class Engine {
     // the age gate: that gate stops a stale kill SOUND, and a victim that flushes its facts late still landed the hit
     // (`_lifeForFact` decides which life it belongs to).
     if (body.kind === 'hit') { this._bookDealtHit(body, t); this._changed(); return; }
+    if (body.kind === 'kill') { const life = this._lifeForFact(t); if (life) life.kills += 1; }   // death screen: booked before the age gate, like a hit
     if (t != null && this.now() - t > C.FEEDBACK_MAX_AGE_MS) { this.log('feedback too old — ignored', 'li'); return; }
     const pick = body.cue ? { frame: body.cue, tag: '' } : this._pickCue(body.kind);   // A15: a random take from the pool (kill confirms + taunts)
     const cue = pick.frame;
@@ -5170,7 +5185,7 @@ export class Engine {
     // that echo cannot arm hit reception early; `_endReconcile` re-arms explicitly once it is done.
     if (this._armPending && this._armPending.shotEnds !== false && (slot === 0 || slot === 1) && prev != null && mag < prev && !this.reconciling) this._armLife('first shot');   // 2026-09-19: a profile life never ends on a shot
     if (prev != null && mag < prev) this._actSeq++;   // pl4: `_writeMust` never repeats counts past a shot
-    if (prev != null && mag < prev && this.phase === 'live') this.shots += (prev - mag);
+    if (prev != null && mag < prev && this.phase === 'live') { this.shots += (prev - mag); if (this._life && this.alive) this._life.shots += (prev - mag); }   // death screen: this life's rounds too
     // Bench 2026-09-17: the shot-ready cue times from THIS frame, the gun's own report of the round, so the
     // cue can only be late, never early. Slots 0/1 only: slot 4 is melee and has no gauge.
     if (prev != null && mag < prev && this.phase === 'live' && (slot === 0 || slot === 1)) this.lastShot = { slot, at: this.now(), ms: this._fireIntervalMs(slot) };
@@ -5357,7 +5372,7 @@ export class Engine {
       this._lastHitFact = { at: now, shooter_num: this.latch.shooter_num, ir_proto: this.latch.ir_proto,
         ir_subtype: this.latch.ir_subtype, crit: this.latch.crit, dmg, shot_group };
       this.lastHitAt = this.now();
-      this._lifeBookHit(this.latch.shooter_num, this.latch.shooter_team, dmg, shot_group, resolved);   // S56: the per-life "what hit me" ledger
+      this._lifeBookHit(this.latch.shooter_num, this.latch.shooter_team, dmg, shot_group, resolved, { sensor: this.latch.sensor, crit: this.latch.crit });   // S56: the per-life "what hit me" ledger
       // F57 (bench 2026-09-09, "the critical sounds are a bit bugged when it was at 1 red"): the hit that CROSSES the
       // low-health threshold used to fire `low_health` AND the pain grunt in the same millisecond, and the gun plays
       // one clip at a time, so they cut each other off -- exactly once per life, at the moment the warning is the

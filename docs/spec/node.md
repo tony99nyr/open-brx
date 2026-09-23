@@ -206,6 +206,14 @@ it (§3.6). The `roster` turns a number into a name for the HUD; an unknown numb
   until the next death or the match end. A late relay books to the life its `t` falls in, or is dropped.
 - **`dealtPartial`** is true while MC's relay may still be catching up: the link dropped during that life, or (for
   `lastLife` only) the death was under `DEALT_GRACE_MS` (2000 ms) ago.
+- **The death screen's fields (2026-09-23).** Each life also carries `shots` (rounds the gun reported leaving while
+  alive), `kills` (MC's kill confirms, booked by their `t` like a dealt relay, before the stale-cue age gate),
+  `aliveMs` and `finalHit` `{num, dmg, sensor, crit, dot, weapon}`: the last hit booked, or the poison tick. A weapon
+  row carries `pickup` when the catalogue named it, and an ambiguous row carries `names`, one row per candidate set.
+- **What the DOWN screen may say** (`app/src/hud/deathscreen.js`). Dealt is never a numeral 0: no relay reads NO HITS
+  REPORTED (YET while `dealtPartial`). While `dealtPartial` a kill count reads "N+" or "?", and no accuracy is shown.
+  A final hit is shown only when it belongs to the named killer. MC's board, standings and kills stay on screen off
+  the link, each with its age (`_boardAge`), never as current.
 
 ### 3.6 Kill feedback is MC-driven — do NOT detect own-kills
 

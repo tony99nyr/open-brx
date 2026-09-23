@@ -77,7 +77,7 @@ const b = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });  
 const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 667, height: 375 }];
 const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted',
   'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
-  'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked', 'live-scores', 'live-scores-ffa', 'live-poison', 'live-smoke', 'down-poisoned', 'live-gun-no-answer', 'live-gun-locked', 'down-recap']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
+  'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked', 'live-scores', 'live-scores-ffa', 'live-poison', 'live-smoke', 'down-poisoned', 'live-gun-no-answer', 'live-gun-locked', 'down-recap', 'down-full', 'down-partial', 'down-unclear', 'down-zero-dealt', 'down-pickup', 'down-ffa', 'down-hill', 'down-stale']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
 let stepIdx = 0;   // counts every step this run selects; identical control flow in every shard, so `% count` partitions them
 const step = async (name, fn) => { if (ONLY && !name.includes(ONLY)) return; if (SHARD && stepIdx++ % SHARD[1] !== SHARD[0]) return; try { await fn(); console.log(`  ok   ${name}`); pass++; } catch (e) { console.log(`  FAIL ${name}: ${String(e.message || e).slice(0, 300)}`); fail++; errs.push(name); } };
 const open = async (view, stage, extra = '', ms) => {
@@ -807,7 +807,7 @@ for (const view of VIEWS) {
     must(r.hint === 'find_station' && /RESPAWN STATION/.test(r.ins || '') && r.lab === 'AND STAND THERE', JSON.stringify(r));
   });
   await step(`${view.name} #45b at the station before the delay is up: HOLD…, never a "00"`, async () => {
-    const pg = await open(view, 'down-hold', '', 3300); const r = await pg.evaluate(() => ({ hint: window.brx.engine.state().respawnHint, ins: (document.querySelector('.down .ins') || {}).textContent, rd: !!document.querySelector('#rd'), txt: document.querySelector('.down .c').innerText })); await pg.close();
+    const pg = await open(view, 'down-hold', '', 3300); const r = await pg.evaluate(() => ({ hint: window.brx.engine.state().respawnHint, ins: (document.querySelector('.down .ins') || {}).textContent, rd: !!document.querySelector('#rd'), txt: document.querySelector('.down .dn').innerText })); await pg.close();   // .dn: the countdown column, as THIS LIFE's own 00:01 ALIVE is not a countdown
     if (r.hint !== 'hold') { console.log('       (engine without the hold hint — step skipped: ' + r.hint + ')'); must(!r.rd && !/\b00\b/.test(r.txt), 'a 00 countdown on a scanner DOWN: ' + r.txt); return; }
     must(r.ins === 'HOLD…' && !r.rd && !/\b00\b/.test(r.txt), JSON.stringify(r));
   });
@@ -1267,9 +1267,13 @@ for (const view of VIEWS) {
     const read = () => pg.evaluate(() => ({ ghost: !!document.querySelector('.down .ghost'), recap: (document.querySelector('.down .recap') || {}).textContent || '', bottoms: Array.from(document.querySelectorAll('.down .recap > .rc')).map(s => Math.round(s.getBoundingClientRect().bottom / 3)), tiles: document.querySelectorAll('.down .recap > .rc').length, chips: document.querySelectorAll('.down .recap .tm').length }));
     const pg = await open(view, 'down'); let r = await read();
     must(!r.ghost, 'ghost numbers still there'); for (const k of ['TIME LEFT', 'FIRST TO 25', 'BLUE', 'YELLOW', 'YOU', 'KILLS', 'DEATH']) must(r.recap.includes(k), 'recap missing ' + k + ': ' + r.recap); must(new Set(r.bottoms).size === 1, 'recap wrapped ' + r.bottoms); must(r.tiles === 3 && r.chips === 2, 'tiles ' + r.tiles + ' chips ' + r.chips);
-    // the MC link drops: team totals and kills come from MC, so they leave the recap; the phone's own facts stay
-    await pg.evaluate(() => window.brxDemo.mcLost()); await pg.waitForTimeout(700); r = await read(); await pg.screenshot({ path: `${OUT}/${view.name}-down-offline.png` }); await pg.close();
-    must(r.chips === 0 && !r.recap.includes('KILL'), 'off-link recap still shows MC data: ' + r.recap); for (const k of ['TIME LEFT', 'SCORE CAP', 'DEATH', 'SHOT']) must(r.recap.includes(k), 'off-link recap missing ' + k + ': ' + r.recap);
+    // the MC link drops (death screen, 2026-09-23: "mark anything stale rather than showing an old number as current"):
+    // the team totals and kills MC sent stay on screen, but every tile that carries them says how old they are
+    await pg.evaluate(() => window.brxDemo.mcLost()); await pg.waitForTimeout(700); r = await read();
+    const stale = await pg.evaluate(() => [...document.querySelectorAll('.down .recap > .rc')].map(e => ({ lab: e.querySelector('.rl').textContent, stale: e.classList.contains('stale'), mc: !!e.querySelector('.tm') || /KILL/.test(e.textContent) })));
+    await pg.screenshot({ path: `${OUT}/${view.name}-down-offline.png` }); await pg.close();
+    must(stale.filter(x => x.mc).length === 2 && stale.filter(x => x.mc).every(x => x.stale && /AS OF \d+ S AGO/.test(x.lab)), 'off-link MC numbers must carry their age: ' + JSON.stringify(stale));
+    must(stale.filter(x => !x.mc).every(x => !x.stale), 'the phone\'s own clock was marked stale: ' + JSON.stringify(stale));
   });
   await step(`${view.name} #18/#27 REDEPLOYED fits and lists the kit`, async () => {
     const pg = await open(view, 'redeploy', '', 4100); const r = await pg.evaluate(() => { const m = document.querySelector('.mo.redeploy'); if (!m) return null; const t = m.querySelector('.t').getBoundingClientRect(), f = document.getElementById('frame').getBoundingClientRect(); const kit = Array.from(m.querySelectorAll('.kit .kn')).map(e => e.textContent); const s = m.querySelector('.r .s').getBoundingClientRect(), k = m.querySelector('.kit').getBoundingClientRect(), sl = m.querySelector('.slash').getBoundingClientRect(), tt = m.querySelector('.t'); return { right: t.right, frameRight: f.right, kit, overlap: k.top < s.bottom - 1, textLeft: t.left, slashRight: sl.right, clipped: tt.scrollWidth > tt.clientWidth + 1 }; }); await pg.close();
@@ -2130,43 +2134,178 @@ for (const view of VIEWS) {
     await pg.close();
     must(t && t.t === 'ASSAULT RIFLE' && t.fits, 'hit weapon line: ' + JSON.stringify(t));
   });
-  await step(`${view.name} S56 down-recap: a line under KILLED BY names the weapon, what this life took and dealt, and overlaps nothing`, async () => {
-    const pg = await open(view, 'down-recap');
-    await pg.waitForTimeout(2600);   // past the 2 s death grace: the link never dropped, so PARTIAL must clear on screen
-    const settled = await pg.evaluate(() => (document.querySelector('.down .lf') || {}).textContent);
-    must(/DEALT 27$/.test(settled || ''), 'the down line kept PARTIAL after the grace: ' + settled);
-    const r = await pg.evaluate(() => { const box = e => { if (!e) return null; const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
-      const lf = document.querySelector('.down .lf');
-      const rdEl = document.getElementById('rd');
-      return { rdLines: rdEl ? rdEl.offsetHeight / parseFloat(getComputedStyle(rdEl).lineHeight) : null, txt: lf ? lf.textContent : null, lf: box(lf), rd: box(document.getElementById('rd')), lab: box(document.querySelector('#dnhint .lab')),
-        tiles: [...document.querySelectorAll('#downrecap .rc')].map(box), w: innerWidth }; });
-    await pg.close();
-    const hit = (a, b) => a && b && a.l < b.r - 1 && a.r > b.l + 1 && a.t < b.b - 1 && a.b > b.t + 1;
-    must(/ASSAULT RIFLE · TOOK 115 · DEALT 27$/.test(r.txt || ''), 'this-life line: ' + r.txt);
-    must(r.rdLines != null && r.rdLines < 1.5, 'the countdown wrapped onto two lines: ' + r.rdLines);
-    must(r.lf.l >= 0 && r.lf.r <= r.w, 'the line leaves the screen: ' + JSON.stringify(r.lf));
-    must(![r.rd, r.lab, ...r.tiles].some(x => hit(r.lf, x)), 'the line overlaps the countdown or the recap: ' + JSON.stringify(r));
-    must(new Set(r.tiles.map(x => Math.round(x.b))).size === 1, 'the recap wrapped: ' + JSON.stringify(r.tiles));
+}
+// The death screen (2026-09-23, deathscreen.js; Tony: "a video game recap of what you did in that life and the current
+// game state"). Every stage below is a REAL life through the engine (demo.js `fullLife`), read off the rendered screen.
+// The geometry every death screen must keep: nothing leaves the frame, nothing is clipped, no block lies on another,
+// and the countdown stays one line (the S56 truths it replaces).
+const dsGeom = pg => pg.evaluate(src => { const dsUncovered = () => eval(src);
+  const box = e => { if (!e) return null; const b = e.getBoundingClientRect(); return b.width && b.height ? { l: b.left, r: b.right, t: b.top, b: b.bottom } : null; };
+  const f = document.getElementById('frame').getBoundingClientRect();
+  const blocks = { head: box(document.querySelector('.down .dsx .l2')), life: box(document.getElementById('dslife')), taken: box(document.getElementById('dstaken')),
+    dealt: box(document.getElementById('dsdealt')), count: box(document.querySelector('.down .dn')), pills: [...document.querySelectorAll('#frame[data-down] .chipbar .pill')].map(box).filter(Boolean),
+    capwarn: box(document.querySelector('.down .recap .capwarn')), safe: box(document.querySelector('.down #dnsafe span')), tiles: [...document.querySelectorAll('#downrecap .rc')].map(box).filter(Boolean) };
+  const clipped = [...document.querySelectorAll('.mo.down *')].filter(e => { const cs = getComputedStyle(e); return cs.display !== 'none' && (e.scrollWidth > e.clientWidth + 1 && cs.overflowX !== 'visible'); }).map(e => e.className);
+  const rd = document.getElementById('rd');
+  return { blocks, frame: { l: f.left, r: f.right, t: f.top, b: f.bottom }, clipped, rdLines: rd ? rd.offsetHeight / parseFloat(getComputedStyle(rd).lineHeight) : null,
+    top: dsUncovered() };
+}, dsUncoveredSrc);
+// #overlay is pointer-events:none, so elementFromPoint cannot see it. "Covered" is geometric instead: no visible
+// element that stacks above the death screen (#chips, or another moment in #overlay) lies on THIS LIFE or the killer.
+const dsUncoveredSrc = `(() => { const box = e => e && e.getBoundingClientRect();
+  const mine = ['.mo.down .dsx .l2', '#dslife', '#dstaken', '#dsdealt'].map(q => box(document.querySelector(q))).filter(b => b && b.width);
+  if (mine.length < 4) return 'absent';   // a missing or zero-size block is a failure, never a pass
+  const above = [...document.querySelectorAll('#chips *, #overlay > :not(.mo.down), #overlay > :not(.mo.down) *')].filter(e => { const cs = getComputedStyle(e); const b = e.getBoundingClientRect();
+    return cs.display !== 'none' && cs.visibility !== 'hidden' && +cs.opacity > 0 && b.width > 2 && b.height > 2 && (e.childElementCount === 0 ? (e.textContent || '').trim() : cs.backgroundColor !== 'rgba(0, 0, 0, 0)'); });
+  return !above.some(e => { const a = e.getBoundingClientRect(); return mine.some(b => a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1); }); })()`;
+const dsCheck = (g, label) => {
+  const hit = (a, b) => a && b && a.l < b.r - 1 && a.r > b.l + 1 && a.t < b.b - 1 && a.b > b.t + 1;
+  const { blocks: B, frame: F } = g;
+  for (const n of ['head', 'life', 'taken', 'dealt', 'count']) must(B[n], `${label}: the ${n} block is missing or has no size`);
+  const all = [['head', B.head], ['life', B.life], ['taken', B.taken], ['dealt', B.dealt], ['count', B.count], ...B.pills.map((p, i) => ['pill' + i, p]), ['capwarn', B.capwarn], ['safe', B.safe], ...B.tiles.map((t, i) => ['tile' + i, t])].filter(x => x[1]);
+  for (const [n, b] of all) must(b.l >= F.l - 1 && b.r <= F.r + 1 && b.t >= F.t - 1 && b.b <= F.b + 1, `${label}: ${n} leaves the frame ${JSON.stringify(b)}`);
+  for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) {
+    if (all[i][0] === 'taken' && all[j][0] === 'dealt') continue;   // side by side in one grid: checked below
+    if (all[i][0].startsWith('tile') && all[j][0].startsWith('tile')) continue;
+    if (all[i][0].startsWith('pill') && all[j][0].startsWith('pill')) continue;
+    must(!hit(all[i][1], all[j][1]), `${label}: ${all[i][0]} overlaps ${all[j][0]}`);
+  }
+  must(!hit(B.taken, B.dealt), `${label}: TAKEN overlaps DEALT`);
+  must(g.clipped.length === 0, `${label}: clipped text in ${g.clipped.join(', ')}`);
+  must(g.rdLines == null || g.rdLines < 1.5, `${label}: the countdown wrapped: ${g.rdLines}`);
+  must(g.top === true, `${label}: something covers the death screen (${g.top})`);
+  must(new Set(B.tiles.map(x => Math.round(x.b))).size <= 1, `${label}: THE GAME NOW wrapped: ${JSON.stringify(B.tiles)}`);
+};
+const dsText = pg => pg.evaluate(() => { const t = id => { const e = document.getElementById(id); return e ? e.innerText.replace(/\s+/g, ' ').trim() : null; };
+  return { final: t('dsfinal'), life: t('dslife'), taken: t('dstaken'), dealt: t('dsdealt'), game: t('downrecap'), kb: ((document.querySelector('.mo.down .kb') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
+    rows: [...document.querySelectorAll('#dstaken .dr')].map(e => e.innerText.replace(/\s+/g, ' ').trim()), dealtRows: [...document.querySelectorAll('#dsdealt .dr')].map(e => e.innerText.replace(/\s+/g, ' ').trim()),
+    partial: !!document.getElementById('dspartial'), stale: [...document.querySelectorAll('#downrecap .rc.stale .rl')].map(e => e.textContent) }; });
+for (const view of VIEWS) for (const skin of ['', '&night']) {
+  const sk = skin ? ' night' : '';
+  await step(`${view.name}${sk} death screen, full life: who killed you, THIS LIFE, taken and dealt by source, the game now`, async () => {
+    const pg = await open(view, 'down-full', skin, 5200);   // past the 2 s death grace: the link held, so nothing is PARTIAL
+    const t = await dsText(pg), g = await dsGeom(pg); await pg.close();
+    must(/KILLED BY VIPER/.test(t.kb || ''), 'killer: ' + t.kb);
+    must(t.final === 'ASSAULT RIFLE · FINAL HIT 71 · ON YOUR GUN', 'final hit: ' + t.final);
+    must(/^THIS LIFE \d\d:\d\d ALIVE · 7 ROUNDS · 1 KILL CONFIRMED$/.test(t.life || ''), 'this life: ' + t.life);
+    must(t.rows.length === 2 && /^VIPER KILLER 91 ASSAULT RIFLE$/.test(t.rows[0]) && /^GHOST 24 SMG$/.test(t.rows[1]), 'taken rows, biggest first: ' + JSON.stringify(t.rows));
+    must(/^DAMAGE TAKEN 115/.test(t.taken) && /^DAMAGE DEALT 48/.test(t.dealt) && !t.partial, 'totals: ' + JSON.stringify([t.taken, t.dealt, t.partial]));
+    must(t.dealtRows.length === 2 && /^GHOST 30/.test(t.dealtRows[0]) && /^VIPER 18/.test(t.dealtRows[1]), 'dealt rows: ' + JSON.stringify(t.dealtRows));
+    must(/TIME LEFT/.test(t.game) && /BLUE 18/.test(t.game) && /YELLOW 21/.test(t.game) && /FIRST TO 25/.test(t.game) && t.stale.length === 0, 'the game now: ' + JSON.stringify(t));
+    dsCheck(g, 'full');
   });
 }
-// S56 polish: the down line's hard cases, from a crafted life on the real down screen. A long weapon name with three-digit
-// numbers still fits and clears the countdown; an ambiguous killer weapon says WEAPON UNCLEAR; nothing dealt while the
-// link was down says DEALT ?, never a confident 0.
 for (const view of VIEWS) {
-  await step(`${view.name} S56 down line: long name fits, ambiguity says WEAPON UNCLEAR, an unknown dealt says ?`, async () => {
-    const pg = await open(view, 'down-recap');
-    const draw = life => pg.evaluate(l => { const h = window.brx.hud; h._moment = null; h._moments({ ...h._lastSt, lastLife: l });
-      const lf = document.querySelector('.down .lf'), rd = document.getElementById('rd'), b = lf && lf.getBoundingClientRect(), r = rd.getBoundingClientRect();
-      const hitsTile = !!b && [...document.querySelectorAll('#downrecap .rc')].some(e => { const t = e.getBoundingClientRect(); return b.left < t.right - 1 && b.right > t.left + 1 && b.top < t.bottom - 1 && b.bottom > t.top + 1; });
-      return { hitsTile, txt: lf ? lf.textContent : null, fits: !!b && b.left >= 0 && b.right <= innerWidth, clear: !!b && (b.right <= r.left + 1 || b.bottom <= r.top + 1 || b.top >= r.bottom - 1),
-        rdLines: rd.offsetHeight / parseFloat(getComputedStyle(rd).lineHeight) }; }, life);
-    const row = (w, dmg) => ({ num: 19, name: 'VIPER', dmg, hits: 3, weapons: [w] });
-    const long = await draw({ taken: [row({ weapon_id: 'rocket_launcher', name: 'Rocket Launcher', ambiguous: false, dmg: 120 }, 120), { num: 21, name: 'GHOST', dmg: 15, hits: 1, weapons: [] }], dealt: [{ victim: 'p9', name: 'GHOST', dmg: 140, hits: 5, weapons: [] }], takenTotal: 135, dealtTotal: 140, dealtPartial: true });
-    await pg.waitForTimeout(900); await pg.screenshot({ path: `${OUT}/${view.name}-down-line-long.png` });   // past the entry flash
-    const amb = await draw({ taken: [row({ weapon_id: null, name: null, ambiguous: true, dmg: 45 }, 45)], dealt: [], takenTotal: 45, dealtTotal: 0, dealtPartial: true });
+  await step(`${view.name} death screen, partial: a dropped MC link keeps DEALT PARTIAL and kills read "at least"`, async () => {
+    const pg = await open(view, 'down-partial', '', 5200);
+    const t = await dsText(pg), g = await dsGeom(pg); await pg.close();
+    must(t.partial && /^DAMAGE DEALT PARTIAL 48/.test(t.dealt), 'partial dealt: ' + t.dealt);
+    must(/· 1\+ KILLS CONFIRMED$/.test(t.life), 'kills while partial read "at least": ' + t.life);
+    dsCheck(g, 'partial');
+  });
+  await step(`${view.name} death screen, unclear weapon: two candidates are named with OR, never guessed`, async () => {
+    const pg = await open(view, 'down-unclear', '', 4200);
+    const t = await dsText(pg), g = await dsGeom(pg); await pg.close();
+    must(/^ASSAULT RIFLE OR USP-S · FINAL HIT \d+ · ON YOUR GUN$/.test(t.final || ''), 'final hit: ' + t.final);
+    must(/^VIPER KILLER \d+ ASSAULT RIFLE OR USP-S$/.test(t.rows[0] || ''), 'row: ' + JSON.stringify(t.rows));
+    dsCheck(g, 'unclear');
+  });
+  await step(`${view.name} death screen, zero dealt: no hit reported says so, never a numeral 0`, async () => {
+    const pg = await open(view, 'down-zero-dealt', '', 5200);
+    const t = await dsText(pg), g = await dsGeom(pg); await pg.close();
+    must(t.dealt === 'DAMAGE DEALT — NO HITS REPORTED', 'dealt: ' + t.dealt);
+    must(!/\b0\b/.test(t.dealt) && /4 ROUNDS · 0 KILLS CONFIRMED$/.test(t.life), 'this life: ' + t.life);
+    dsCheck(g, 'zero');
+  });
+  await step(`${view.name} death screen, pickup: a weapon off the wider catalogue is marked PICKUP`, async () => {
+    const pg = await open(view, 'down-pickup', '', 4200);
+    const t = await dsText(pg), g = await dsGeom(pg); await pg.close();
+    must(/^SHOTGUN PICKUP · FINAL HIT \d+ · ON YOUR GUN$/.test(t.final || '') && /^VIPER KILLER \d+ SHOTGUN PICKUP$/.test(t.rows[0] || ''), 'pickup: ' + JSON.stringify([t.final, t.rows]));
+    dsCheck(g, 'pickup');
+  });
+  await step(`${view.name} death screen, FFA: the game now gives your place and the leader`, async () => {
+    const pg = await open(view, 'down-ffa', '', 4200);
+    const t = await dsText(pg), g = await dsGeom(pg); await pg.close();
+    must(/2ND OF 4 · VIPER 13/.test(t.game) && /FIRST TO 25/.test(t.game), 'ffa: ' + t.game);
+    dsCheck(g, 'ffa');
+  });
+  await step(`${view.name} death screen, hill: the game now names who holds the hill`, async () => {
+    const pg = await open(view, 'down-hill', '', 4200);
+    const t = await dsText(pg), g = await dsGeom(pg); await pg.close();
+    must(/BLUE HOLDS THE HILL/.test(t.game), 'hill: ' + t.game);
+    dsCheck(g, 'hill');
+  });
+  await step(`${view.name} death screen, stale board: old numbers carry their age, never pass as current`, async () => {
+    const pg = await open(view, 'down-stale', '', 4200);
+    const t = await dsText(pg), g = await dsGeom(pg); await pg.close();
+    must(t.stale.length === 2 && t.stale.every(x => /AS OF \d+ S AGO/.test(x)), 'stale labels: ' + JSON.stringify(t.stale));
+    dsCheck(g, 'stale');
+  });
+  for (const [what, act, want] of [['gun link lost', 'dropGun', /GUN LINK LOST/], ['headset flapping', 'flapGun', /POWER-CYCLE THE HEADSET/]]) await step(`${view.name} death screen, ${what}: the pill sits in its band and covers nothing`, async () => {
+    const pg = await open(view, 'down-full', '', 4200);
+    await pg.evaluate(a => a === 'flapGun' ? window.brxDemo.flapGun(3, true) : window.brxDemo[a](), act); await pg.waitForTimeout(600);
+    const g = await dsGeom(pg), r = await pg.evaluate(() => { const c = document.querySelector('#frame[data-down] .chipbar'); const n = document.querySelector('.down .dn').getBoundingClientRect();
+      return { txt: c ? c.innerText.replace(/\s+/g, ' ') : '', clear: !c || [...c.children].every(p => { const b = p.getBoundingClientRect(); return b.right <= n.left + 1 || b.bottom <= n.top + 1; }),
+        tap: [...document.querySelectorAll('#frame[data-down] .chipbar button')].map(b => Math.round(b.getBoundingClientRect().height / (document.getElementById('frame').getBoundingClientRect().height / 390))) }; });
+    await pg.screenshot({ path: `${OUT}/${view.name}-down-${act}.png` }); await pg.close();
+    must(want.test(r.txt) && g.blocks.pills.length, `no ${what} pill while down: ` + r.txt);
+    must(r.clear, 'a pill lies on the countdown column: ' + r.txt);
+    must(r.tap.every(h => h >= 36), 'a pill button is under the tap-target floor: ' + JSON.stringify(r.tap));
+    dsCheck(g, what);
+  });
+  await step(`${view.name} death screen, crowded life: five sources, long names, three-digit numbers still fit, and a pill still has its band`, async () => {
+    const pg = await open(view, 'down-full', '', 4200);
+    await pg.evaluate(() => { const e = window.brx.engine, real = e.state.bind(e); const row = (num, name, dmg, w) => ({ num, name, teamKey: 'yellow', dmg, hits: 12, weapons: [w] });
+      const W = (name, extra = {}) => ({ weapon_id: 'x', name, ambiguous: false, pickup: false, dmg: 1, ...extra });
+      const L = { taken: [row(19, 'VIPER', 250, W('Rocket Launcher', { pickup: true })), row(21, 'GHOSTWALKER', 120, { weapon_id: null, name: null, ambiguous: true, names: ['Burst Rifle', 'Suppressor'], dmg: 1 }),
+        row(22, 'NIGHTHAWK', 99, W('Plasma Sniper')), row(23, 'ACE', 40, W('SMG')), row(24, 'BOLT', 5, W('USP-S'))], takenTotal: 514,
+        dealt: [{ victim: 'p9', name: 'GHOSTWALKER', dmg: 180, hits: 14, weapons: [W('Assault Rifle')] }, { victim: 'p8', name: 'NIGHTHAWK', dmg: 140, hits: 9, weapons: [W('Assault Rifle'), W('Desert Eagle')] }], dealtTotal: 320,
+        dealtPartial: true, shots: 188, kills: 3, aliveMs: 754000, finalHit: { num: 19, dmg: 115, sensor: 1, crit: true, dot: false, weapon: { name: 'Rocket Launcher', ambiguous: false, pickup: true } } };
+      e.state = () => ({ ...real(), lastLife: L });   // the render loop reads the engine every tick: stub the ledger there, not the HUD
+      window.brx.hud._moment = null; });
+    await pg.waitForTimeout(700);
+    const t = await dsText(pg), g = await dsGeom(pg); await pg.screenshot({ path: `${OUT}/${view.name}-down-crowded.png` }); await pg.close();
+    must(t.rows.length === 2 && /\+3 MORE · 144$/.test(t.taken), 'a fifth source: two rows and a +N line: ' + t.taken);
+    must(/BURST RIFLE OR SUPPRESSOR/.test(t.rows[1]) && /ROCKET LAUNCHER PICKUP · FINAL HIT 115 · ON YOUR HEADSET · CRIT$/.test(t.final), 'labels: ' + JSON.stringify([t.rows, t.final]));
+    must(/^THIS LIFE 12:34 ALIVE · 188 ROUNDS · 3\+ KILLS CONFIRMED$/.test(t.life), 'this life: ' + t.life);
+    dsCheck(g, 'crowded');
+  });
+  // Polish round 1: the station hints are the widest thing in the right column, and they once squeezed the killer
+  // block into one word per line. KILLED BY stays one line and the final hit at most two, beside every hint.
+  for (const [stage, ms] of [['down-find', 6200], ['down-at', 3300], ['down-hold', 3300]]) await step(`${view.name} death screen beside the station hint (${stage}): the killer block keeps its width`, async () => {
+    const pg = await open(view, stage, '', ms);
+    const g = await dsGeom(pg), kb = await pg.evaluate(() => { const k = document.querySelector('.mo.down .kb'), b = k && k.querySelector('b'); return k && b ? { h: k.offsetHeight, chip: b.offsetHeight } : null; }), fl = await pg.evaluate(() => { const e = document.getElementById('dsfinal'); return e ? Math.round(e.offsetHeight / parseFloat(getComputedStyle(e).lineHeight)) : null; });
+    await pg.screenshot({ path: `${OUT}/${view.name}-${stage}-deathscreen.png` }); await pg.close();
+    must(kb && kb.h <= kb.chip + 4, 'KILLED BY wrapped (the row is taller than its chip): ' + JSON.stringify(kb));   // oneLine() cannot judge a row with a padded chip in it
+    must(fl != null && fl <= 2, 'the final-hit line took ' + fl + ' lines');
+    dsCheck(g, stage);
+  });
+  // Polish round 2: the spawn-kill warning grows at levels 2 and 3 (respawn rules 2026-09-19) and once covered the killer.
+  for (const lvl of [2, 3]) await step(`${view.name} death screen under the level-${lvl} spawn-kill warning: the killer block stays clear of it`, async () => {
+    const pg = await open(view, 'down-full', '', 4200);
+    await pg.evaluate(l => { window.brx.engine._downWarn = l; }, lvl); await pg.waitForTimeout(600);
+    const g = await dsGeom(pg), cls = await pg.evaluate(() => (document.getElementById('dnsafe') || {}).className || '');
+    await pg.screenshot({ path: `${OUT}/${view.name}-down-warn${lvl}.png` }); await pg.close();
+    must(new RegExp('\\bw' + lvl + '\\b').test(cls) && g.blocks.safe, 'the level-' + lvl + ' warning is not showing: ' + cls);
+    dsCheck(g, 'warn ' + lvl);
+  });
+  // The screen is read DURING the timed respawn: it must hold the frame from the death until the respawn, then go.
+  await step(`${view.name} death screen owns the whole down period and closes on the respawn`, async () => {
+    const pg = await open(view, 'down-full', '', 2000);
+    await pg.waitForFunction(() => window.brx.engine.state().alive === false, null, { timeout: 8000 });   // sample from the death itself, whatever the load
+    const seen = [];
+    for (let i = 0; i < 40; i++) {
+      const r = await pg.evaluate(src => ({ alive: window.brx.engine.state().alive, down: !!document.querySelector('.mo.down #dslive'), rd: (document.getElementById('rd') || {}).textContent || null,
+        top: eval(src) }), dsUncoveredSrc);
+      seen.push(r); if (r.alive) break; await pg.waitForTimeout(250);
+    }
+    await pg.waitForTimeout(400);
+    const after = await pg.evaluate(() => ({ down: !!document.querySelector('.mo.down'), frameDown: !!document.getElementById('frame').dataset.down }));
     await pg.close();
-    must(/^ROCKET LAUNCHER · TOOK 135 FROM 2 · DEALT 140 PARTIAL$/.test(long.txt || '') && long.fits && long.clear && !long.hitsTile && long.rdLines < 1.5, 'long line: ' + JSON.stringify(long));
-    must(/^WEAPON UNCLEAR · TOOK 45 · DEALT \?$/.test(amb.txt || '') && amb.fits, 'ambiguous line: ' + JSON.stringify(amb));
+    const dead = seen.filter(r => !r.alive);
+    must(dead.length >= 16, 'the down period was not observed for the respawn delay: ' + dead.length);
+    must(dead.every(r => r.down && r.top === true), 'the death screen was missing or covered while down: ' + JSON.stringify(dead.filter(r => !(r.down && r.top)).slice(0, 3)));
+    must(seen[seen.length - 1].alive && !after.down && !after.frameDown, 'the screen did not close on the respawn: ' + JSON.stringify(after));
   });
 }
 // S57 (2026-09-23): the IR callout bus. A proto-15 word from a victim's gun becomes one chip in the live chip bar: KILL

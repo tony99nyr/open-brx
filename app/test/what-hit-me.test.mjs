@@ -236,3 +236,74 @@ test('dealt booking: without a shot_group, relays inside 150 ms are separate hit
   h2.feedback({ kind: 'hit', t: t2 + 20, victim: 'p9', victim_num: 21, dmg: 1 });
   assert.equal(h2.eng.state().life.dealt[0].hits, 1, 'a two-word weapon: one hit');
 });
+
+// ---- Death screen (2026-09-23): the ledger fields the full recap reads ----
+test('death screen: finalHit names the killing hit, its weapon and where it landed', () => {
+  const h = harness(); h.live();
+  h.hir(1, 0, 9, 0, 3); h.frame('$HP,45,61,0,*');
+  h.hir(4, 0, 9, 1, 3); h.frame('$HP,0,0,0,*');
+  const fh = h.eng.state().lastLife.finalHit;
+  assert.equal(fh.num, 19);
+  assert.ok(fh.dmg > 0);
+  assert.equal(fh.sensor, 4, 'the gun body took it');
+  assert.equal(fh.crit, true);
+  assert.equal(fh.dot, false);
+  assert.deepEqual(fh.weapon, { name: 'assault_rifle', ambiguous: false, pickup: false });
+});
+
+test('death screen: a catalogue match is marked as a pickup on the row and the final hit', () => {
+  const h = harness({ catalog: { weapons: CATALOG } }); h.live();
+  h.hir(4, 0, 20, 0, 3); h.frame('$HP,0,0,0,*');
+  const st = h.eng.state();
+  assert.equal(st.lastLife.taken[0].weapons[0].pickup, true);
+  assert.equal(st.lastLife.finalHit.weapon.pickup, true);
+  assert.equal(st.lastLife.finalHit.weapon.name, 'SHOTGUN');
+});
+
+test('death screen: ambiguous rows keep their candidate names, one row per candidate set', () => {
+  const shooter = { ...SHOOTER, weapons: [{ weapon_id: 'assault_rifle', hir: [9, 11] }, { weapon_id: 'smg', hir: [9] }, { weapon_id: 'shotgun', hir: [11] }] };
+  const h = harness({ shooter }); h.live();
+  h.hir(4, 0, 9, 0, 3); h.frame('$HP,45,61,0,*');
+  h.adv(400);
+  h.hir(4, 0, 11, 0, 3); h.frame('$HP,45,52,0,*');
+  const ws = h.eng.state().life.taken[0].weapons;
+  assert.equal(ws.length, 2, 'two different ambiguities from one source stay two rows');
+  assert.deepEqual(ws.map(w => w.names).sort(), [['assault_rifle', 'shotgun'], ['assault_rifle', 'smg']]);
+});
+
+test('death screen: shots, kills and time alive are counted per life', () => {
+  const h = harness(); h.live();
+  h.frame('$ALCD,30,100,0,90,0,*'); h.frame('$ALCD,27,100,0,90,0,*');
+  h.feedback({ kind: 'kill', t: h.now(), victim: 'p9', victim_team: 2 });
+  h.adv(5000);
+  h.hir(4, 0, 9, 0, 3); h.frame('$HP,0,0,0,*');
+  const last = h.eng.state().lastLife;
+  assert.equal(last.shots, 3);
+  assert.equal(last.kills, 1);
+  assert.ok(last.aliveMs >= 5000 && last.aliveMs < 6000, 'time alive: ' + last.aliveMs);
+  h.adv(8000);   // respawn
+  const life = h.eng.state().life;
+  assert.equal(life.shots, 0); assert.equal(life.kills, 0);
+});
+
+test('death screen: a late kill relay for the life that just ended books to lastLife', () => {
+  const h = harness(); h.live();
+  const before = h.now();
+  h.adv(50); h.hir(4, 0, 9, 0, 3); h.frame('$HP,0,0,0,*');
+  h.adv(300);
+  h.feedback({ kind: 'kill', t: before, victim: 'p9', victim_team: 2 });
+  const st = h.eng.state();
+  assert.equal(st.lastLife.kills, 1); assert.equal(st.life.kills, 0);
+});
+
+test('death screen: the final hit of a two-word shot carries both words\' damage', () => {
+  const shooter = { ...SHOOTER, weapons: [{ weapon_id: 'smg', hir: [8, 1] }] };
+  const h = harness({ shooter, dualEmitters: [{ proto: 0, subtype: 0, body: 8, headset: 1, cycle_ms: 100 }] });
+  h.live();
+  h.hir(4, 0, 8, 0, 0); h.frame('$HP,45,62,0,*');
+  h.adv(90);
+  h.hir(0, 0, 1, 0, 0); h.frame('$HP,45,61,0,*');
+  const fh = h.eng.state().life.finalHit;
+  assert.equal(fh.dmg, 9, 'the pair is one final hit: 8 + 1');
+  assert.equal(fh.sensor, 4, 'the first word\'s sensor');
+});

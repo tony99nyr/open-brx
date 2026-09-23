@@ -386,6 +386,23 @@ export function startDemo({ engine, log }) {
       // while the 250 ms render loop keeps pushing fresh diag data underneath.
       diag: on => { const h = hud(); if (!h) return; const open = h.diag.classList.contains('open'); if (on == null || !!on !== open) h.toggleDiag(); },
     };
+    // ---- The death screen (2026-09-23): every life below is driven through the REAL engine -- `$HIR`/`$HP` from a
+    // named shooter and magnitude, MC's `feedback` relays -- so the stage predicts engine.js instead of posing a ledger.
+    const GHOST = { player_id: 'p-3', player_num: 21, display: 'GHOST', team_id: foeKey, weapons: [{ weapon_id: 'smg', hir: [1, 8] }] };
+    Object.assign(ev, {
+      addGhost: () => { if (!roster.some(r => r.player_num === 21)) roster.push(GHOST); },
+      // VIPER carries two weapons that share magnitude 9, so a mag-9 hit is honestly ambiguous
+      viperTwin: () => { roster[1].weapons = [{ weapon_id: 'assault_rifle', hir: [9] }, { weapon_id: 'usp', hir: [9] }]; },
+      hitFrom: (num, mag, dmg = 9, sensor = 1) => { if (armor > 0) armor = Math.max(0, armor - dmg); else hp = Math.max(0, hp - dmg);
+        engine.feedFrame(`$HIR,${sensor},0,${num},${foe.tid},${mag},0,3,*`); engine.feedFrame(`$HP,${hp},${armor},0,*`); },
+      dieFrom: (num, mag, sensor = 4) => { armor = 0; hp = 0; engine.feedFrame(`$HIR,${sensor},0,${num},${foe.tid},${mag},0,3,*`); engine.feedFrame('$HP,0,0,0,*'); },
+      dealtTo: (victim, num, dmg, weapon_id = 'assault_rifle') => engine.onMcMessage({ kind: 'feedback', body: { player_id: 'p-demo', kind: 'hit', t: Date.now(), victim: 'p-' + victim.toLowerCase(), victim_num: num, victim_display: victim, dmg, weapon_id } }),
+      beacon: (tid = 1) => engine.feedFrame(`$HIR,4,15,0,${tid},8,0,0,*`),   // a grenade hill's IR beacon: owner tid, magnitude 8
+    });
+    // A full life: two sources, two victims, rounds fired and a confirmed kill, then VIPER's rifle finishes it.
+    const fullLife = [[2000, () => { ev.fire(7); ev.hitFrom(19, 9, 20); ev.hitFrom(21, 8, 12); ev.hitFrom(21, 8, 12); }],
+      [2150, () => { ev.dealtTo('VIPER', 19, 18); ev.dealtTo('GHOST', 21, 30, 'assault_rifle'); ev.killConfirm('GHOST'); }],
+      [2300, () => ev.score(3, 1, 1)], [2350, () => ev.dieFrom(19, 9)]];
     // each STAGE is a list of [delayMs, step] — the delays give the app's boot + render loop room between steps
     const kit = [[0, 'linkGun'], [50, () => ev.battery(82)], [150, 'assign'], [200, 'mcBound']];
     const kitted = [...kit, [300, 'briefDone']];
@@ -459,6 +476,15 @@ export function startDemo({ engine, log }) {
       'live-kill':         [...live, [2300, () => ev.killConfirm()]],
       'down':              [...live, [2300, () => ev.score(3, 1, 1)], [2350, 'die']],
       'down-recap':        [...live, [2100, () => { ev.hit(); ev.dealt(18); ev.dealt(9); }], [2300, () => ev.score(3, 1, 1)], [2350, 'die']],   // S56: TAKEN and DEALT on the down screen
+      // The death screen's states (deathscreen.js). Each is a real life through the engine; see `fullLife` above.
+      'down-full':         [[0, 'addGhost'], ...live, ...fullLife],
+      'down-partial':      [[0, 'addGhost'], ...live, [1950, 'mcLost'], [1960, 'mcBound'], ...fullLife],            // the link dropped this life: DEALT stays PARTIAL
+      'down-unclear':      [[0, 'viperTwin'], ...live, [2000, () => ev.hitFrom(19, 9, 20)], [2350, () => ev.dieFrom(19, 9)]],   // AR and USP-S share mag 9
+      'down-zero-dealt':   [...live, [2000, () => { ev.fire(4); ev.hitFrom(19, 9, 20); }], [2300, () => ev.score(3, 1, 1)], [2350, () => ev.dieFrom(19, 9)]],
+      'down-pickup':       [...live, [2000, () => ev.hitFrom(19, 20, 30)], [2350, () => ev.dieFrom(19, 20)]],       // mag 20 is the Shotgun, not in VIPER's kit
+      'down-ffa':          [[0, 'addGhost'], ...live, ...fullLife.slice(0, 2), [2300, 'scoreFfa'], [2350, () => ev.dieFrom(19, 9)]],
+      'down-hill':         [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.beacon(1)], [2300, () => ev.score(3, 1, 1)], [2350, () => ev.dieFrom(19, 9)]],
+      'down-stale':        [[0, 'addGhost'], ...live, ...fullLife, [2500, 'mcLost']],                                   // the board is old now: shown with its age
       'live-reload':       [...live, [2300, () => ev.fire(12)], [2600, 'reloadCycle']],
       'live-reload-overrun': [[0, () => { player.loadout = { weapons: [{ weapon_id: 'shotgun' }] }; }], ...live, [2300, () => ev.fire(20)], [2600, () => ev.reloadChain(18, 800)]],   // F123: the chain reload — nominal is the PER-SHELL time, so the bar is in overrun for the whole reload
       'live-switch':       [[0, 'twoWeapons'], ...live, [2300, () => ev.fire(3)], [2600, 'altCycle']],

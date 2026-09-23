@@ -2,6 +2,7 @@
 // the viewport. Structure re-renders only when the state "signature" changes; live numbers patch in
 // place so CSS animations don't restart every tick. Moments (T-MINUS, KILL, DOWN, REDEPLOY) live in
 // #overlay so they animate independently of the base HUD.
+import * as DS from './deathscreen.js';   // the DOWN screen's recap: THIS LIFE and THE GAME NOW
 
 const TEAM_COLOR = { blue: 'var(--team-blue)', yellow: 'var(--team-yellow)', red: 'var(--team-red)', green: 'var(--team-green)' };
 const TEAM_INK = { blue: '#04121e', yellow: '#1a1400', red: '#1a0404', green: '#041a0c' };
@@ -1382,25 +1383,12 @@ export class Hud {
     if (hint === 'pull_trigger') return `<span class="n nn on">▣</span><span class="ins on">PULL THE TRIGGER TO RESPAWN</span>${bar('on', 100)}<span class="lab on">AT THE STATION</span>`;
     return `<span class="n nn on">▣</span><span class="ins on">RESPAWNING…</span>${bar('on', 100)}<span class="lab on">AT THE STATION</span>`;
   }
-  /** The DOWN-screen recap: three labelled tiles — time left · the team race (cap under it) · your own line. */
+  /** The DOWN screen's THE GAME NOW strip (deathscreen.js `gameNow`): the clock, the race for the mode, the hill and
+   *  your match line. An old board keeps its numbers with its age beside them (the live board's own freshness rule). */
   _downRecap(st) {
-    const tile = (lab, val) => `<span class="rc"><span class="rv">${val}</span><span class="rl">${lab}</span></span>`;
-    const out = [tile('TIME LEFT', `<b class="tab">${mmss(st.clockMs)}</b>`)];
-    // Team totals and your kills come from Mission Control — shown only while the link is up (a stale board would lie);
-    // off-link the recap sticks to what the phone knows for itself: the clock, the cap, your deaths and shots.
-    const linked = st.wsState === 'bound';
-    const bd = linked ? st.board : null;
-    if (bd && bd.teams && bd.teams.length) {
-      const chips = bd.teams.map(t => { const k = String(t.team_id || '').toLowerCase(); const mine = st.teamKey && k === st.teamKey;
-        return `<span class="tm ${mine ? 'mine' : ''}" style="background:${TEAM_COLOR[k] || 'var(--plate)'};color:${TEAM_INK[k] || 'var(--num)'}"><span class="unskew">${esc(String(t.name || k).toUpperCase())} <b>${t.score != null ? t.score : '—'}</b></span></span>`; }).join('');
-      out.push(tile(bd.cap ? `FIRST TO ${bd.cap}` : 'SCORE', `<span class="tms">${chips}</span>`));
-    } else if (st.fragLimit) out.push(tile('SCORE CAP', `<b>${st.fragLimit}</b>`));
-    const me = linked && st.kills != null ? [`<b>${st.kills}</b> KILL${st.kills === 1 ? '' : 'S'}`, `<b>${st.deaths}</b> DEATH${st.deaths === 1 ? '' : 'S'}`]
-      : [`<b>${st.deaths}</b> DEATH${st.deaths === 1 ? '' : 'S'}`, `<b>${st.shots}</b> SHOT${st.shots === 1 ? '' : 'S'}`];
-    if (st.lives != null) me.push(`<b>${st.lives}</b> ${st.lives === 1 ? 'LIFE' : 'LIVES'} LEFT`);   // "no respawns" is already the big label above
-    out.push(tile('YOU', me.join(' · ')));
-    if (!linked && this._atCapMinusOne(st)) out.push('<div class="capwarn"><span class="unskew">MC OUT OF RANGE · A WIN IS CONFIRMED ONLY AT MISSION CONTROL</span></div>');
-    return out.join('');
+    let h = DS.gameNow(st, { stale: this._boardStale(st), age: this._boardAge(st), resultRows: r => this._resultRows({ rows: r }) });
+    if (st.wsState !== 'bound' && this._atCapMinusOne(st)) h += '<div class="capwarn"><span class="unskew">MC OUT OF RANGE · A WIN IS CONFIRMED ONLY AT MISSION CONTROL</span></div>';
+    return h;
   }
   /** True when the LAST board MC pushed has this player's team (or, in FFA, this player) one off the cap. The
    *  board may be stale — that is the point: this line makes no claim about the score, only about who confirms it. */
@@ -1534,7 +1522,10 @@ export class Hud {
     // S52: this is an accessibility control, not a perk, so keep the instruction
     // visible wherever the player can forget what ALT does. The picker warning
     // handles the conflicting second-weapon choice; this handles actual play.
-    if (st.phase !== 'idle' && st.loadout && st.loadout.overrides && st.loadout.overrides.easy_reload) {
+    // The death screen owns the middle of the frame: while DOWN the pills move to the band above THE GAME NOW
+    // (`#frame[data-down]`, set beside `data-takeover`), ALT = RELOAD is moot, and the pills say it in a few words.
+    const down = st.phase === 'live' && !st.alive;
+    if (!down && st.phase !== 'idle' && st.loadout && st.loadout.overrides && st.loadout.overrides.easy_reload) {
       pills.push('<span class="pill ok easyreload"><span class="unskew">ALT = RELOAD</span></span>');
     }
     if (st.wsState === 'bound') this.mcPill = false;   // the opt-in range pill is per outage, not forever
@@ -1542,7 +1533,8 @@ export class Hud {
     // Playing out of MC range is the NORMAL case mid-match (Tony, review 2026-09-03 #32): live shows it as the amber MC
     // dot only; a tap on the MC label shows the detail pill. Before the match (kitted/lobby) MC is required, so the pill stays.
     // (night hides the header dots, so there the dim pill is the only off-range signal)
-    else if (st.phase !== 'idle' && st.phase !== 'connected' && st.wsState !== 'bound' && (st.phase !== 'live' || this.mcPill || st.night)) pills.push(`<span class="pill warn"><span class="unskew">${st.phase === 'live' ? 'OUT OF MISSION CONTROL RANGE — SCORES SYNC WHEN YOU ARE BACK' : 'RECONNECTING TO MISSION CONTROL…'}</span></span>`);
+    // While DOWN one off the cap, the recap's own A31 line already says MC is out of range: no second pill for it.
+    else if (st.phase !== 'idle' && st.phase !== 'connected' && st.wsState !== 'bound' && !(down && this._atCapMinusOne(st)) && (st.phase !== 'live' || this.mcPill || st.night)) pills.push(`<span class="pill warn"><span class="unskew">${down ? 'MC OUT OF RANGE' : st.phase === 'live' ? 'OUT OF MISSION CONTROL RANGE — SCORES SYNC WHEN YOU ARE BACK' : 'RECONNECTING TO MISSION CONTROL…'}</span></span>`);
     // A tappable pill, not just a status: the retry now runs forever, but a player who has just
     // switched the gun on should not have to wait out a backoff — or go hunting in the debug panel,
     // which is where the only reconnect control used to live (Tony, field 2026-09-01).
@@ -1551,8 +1543,8 @@ export class Hud {
     // quick drops in a row, one steady line says the likely cause, whether the link is up this second or not.
     // Game day 2026-09-19: after 3 flaps in a row the phone stops reconnecting for 30 s (BrxLink's quiet
     // period). The line says what fixes it; RECONNECT NOW ends the quiet period at once. It shows in every phase.
-    if (st.gunFlapping && st.gunFlapping.quiet) pills.push(`<span class="pill bad" data-flap="${st.gunFlapping.count}" data-quiet="1"><span class="unskew">GUN KEEPS DROPPING. POWER-CYCLE THE HEADSET, THEN THE GUN RECONNECTS.</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
-    else if (st.phase !== 'idle' && st.gunFlapping) pills.push(`<span class="pill warn" data-flap="${st.gunFlapping.count}"><span class="unskew">HEADSET OFF? TURN THE HEADSET ON.</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
+    if (st.gunFlapping && st.gunFlapping.quiet) pills.push(`<span class="pill bad" data-flap="${st.gunFlapping.count}" data-quiet="1"><span class="unskew">${down ? 'POWER-CYCLE THE HEADSET' : 'GUN KEEPS DROPPING. POWER-CYCLE THE HEADSET, THEN THE GUN RECONNECTS.'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
+    else if (st.phase !== 'idle' && st.gunFlapping) pills.push(`<span class="pill warn" data-flap="${st.gunFlapping.count}"><span class="unskew">${down ? 'HEADSET OFF? TURN IT ON' : 'HEADSET OFF? TURN THE HEADSET ON.'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
     else if (st.phase !== 'idle' && !st.bleUp) pills.push(`<button class="pill bad" data-act="onReconnectGun"><span class="unskew">GUN LINK LOST — TAP TO RECONNECT</span></button>`);
     if (st.moment && st.moment.kind === 'go' && st.phase === 'live' && st.bleUp) pills.push(`<span class="pill ok"><span class="unskew">WEAPONS HOT</span></span>`);   // never 'hot' while the gun link is down
     const prompt = st.resync ? `<div class="prompt"><span class="unskew"><span class="pl">GUN RELINKED</span><span class="pi">${esc(st.resync.prompt).toUpperCase()}</span></span></div>` : '';
@@ -1588,6 +1580,8 @@ export class Hud {
     const reconcileUp = !!(st.phase === 'live' && st.reconciling);
     const tk = lockedUp ? 'gun_locked' : reloadUp ? 'reload' : switchUp ? 'switch' : reconcileUp ? 'reconcile' : '';
     if ((this.frame.dataset.takeover || '') !== tk) { if (tk) this.frame.dataset.takeover = tk; else delete this.frame.dataset.takeover; }
+    const downUp = st.phase === 'live' && !st.alive;   // the death screen: `#frame[data-down]` moves the pill bar clear of it
+    if (!!this.frame.dataset.down !== downUp) { if (downUp) this.frame.dataset.down = '1'; else delete this.frame.dataset.down; }
     // F272: affirmative MCU lock-up. Durable through the expected power-cycle link drop; only the locked
     // relink recovery clears it and moves this player onto the ordinary DOWN/respawn screen.
     if (lockedUp) {
@@ -1640,10 +1634,10 @@ export class Hud {
       if (this._moment !== downKey) {
         this._moment = downKey;
         const title = recoveryDown
-          ? '<span class="tt"><span class="t">GUN RESTARTED</span><span class="t t2">REDEPLOYING</span></span><span class="kb">REDEPLOYING</span>'
-          : `${st.respawnType === 'scanner' ? '<span class="tt"><span class="t">DOWN</span><span class="t t2">RESPAWN<br>AT STATION</span></span>' : '<span class="t">DOWN</span>'}<span class="kb">${kb.dot ? 'POISONED BY' : 'KILLED BY'} <b style="${tk ? `background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}` : 'background:var(--mut);color:var(--bg,#000)'}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span><span id="dnlife">${this._lifeLine(st, kb)}</span>`;
+          ? '<span class="tt rec"><span class="t">GUN RESTARTED</span><span class="t t2">REDEPLOYING</span></span><span class="kb">REDEPLOYING</span>'
+          : `${st.respawnType === 'scanner' ? '<span class="tt"><span class="t">DOWN</span><span class="t t2">RESPAWN<br>AT STATION</span></span>' : '<span class="t">DOWN</span>'}<span class="kb">${kb.dot ? 'POISONED BY' : 'KILLED BY'} <b style="${tk ? `background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}` : 'background:var(--mut);color:var(--bg,#000)'}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span><span id="dnlife">${DS.finalHitLine(st)}</span>`;
         this.overlay.innerHTML = `<div class="mo down"><div class="wash"></div>
-          <div class="c"><div class="l2">${title}</div>
+          <div class="c"><div class="dsx"><div class="l2">${title}</div><div class="dslive" id="dslive">${this._dsLive(st)}</div></div>
           <div class="dn" id="dnhint">${this._downHint(st)}</div></div>
           ${this._downSafe(st)}
           <div class="recap" id="downrecap">${this._downRecap(st)}</div></div>`;
@@ -1656,7 +1650,8 @@ export class Hud {
         const sf = this._downSafe(st); if (sf !== this._downSafeSig) { this._downSafeSig = sf; const el = this.overlay.querySelector('#dnsafe'); if (el) el.outerHTML = sf; }
         const rc = this.overlay.querySelector('#downrecap'); if (rc) { const h = this._downRecap(st); if (rc.innerHTML !== h) rc.innerHTML = h; }
         // S56: PARTIAL clears once the death grace is over and a straggling relay can still move DEALT, so re-read it
-        const dl = this.overlay.querySelector('#dnlife'); if (dl) { const h = this._lifeLine(st, st.killedBy || {}); if (dl.innerHTML !== h) dl.innerHTML = h; }
+        const dl = this.overlay.querySelector('#dnlife'); if (dl) { const h = DS.finalHitLine(st); if (dl.innerHTML !== h) dl.innerHTML = h; }
+        const ds = this.overlay.querySelector('#dslive'); if (ds) { const h = this._dsLive(st); if (ds.innerHTML !== h) ds.innerHTML = h; }
       }
       return;
     }
@@ -1783,23 +1778,8 @@ export class Hud {
     this._swap('kill', el, hold, hold + 400);   // three confirms 300ms apart used to stack three banners
     this.h.onHaptic && this.h.onHaptic('kill');
   }
-  /** S56: one short line under KILLED BY: the killer's weapon, what this life took (and from how many sources), and
-   *  what it dealt. The weapon is the killer's top weapon by damage: its name when resolved, WEAPON UNCLEAR when the
-   *  phone could not choose, nothing when it has no claim. Dealt comes from the victims' phones through Mission Control,
-   *  best-effort: PARTIAL when a hit may not have reached this phone, and ? rather than a confident 0 when nothing did. */
-  _lifeLine(st, kb) {
-    const life = st.lastLife; if (!life) return '';
-    const r = kb.num != null && !kb.dot ? (life.taken || []).find(x => x.num === kb.num) : null;
-    const w = r && (r.weapons || []).slice().sort((a, b) => b.dmg - a.dmg)[0];
-    const parts = [];
-    if (w && w.ambiguous) parts.push('WEAPON UNCLEAR');
-    else if (w && w.name) parts.push(esc(String(w.name).toUpperCase()));
-    const src = (life.taken || []).length;
-    if (life.takenTotal) parts.push(`TOOK <b>${life.takenTotal}</b>${src > 1 ? ` FROM ${src}` : ''}`);
-    if (life.dealtTotal) parts.push(`DEALT <b>${life.dealtTotal}</b>${life.dealtPartial ? ' PARTIAL' : ''}`);
-    else if (life.dealtPartial) parts.push('DEALT <b>?</b>');
-    return parts.length ? `<span class="lf">${parts.join(' · ')}</span>` : '';
-  }
+  /** The death screen's THIS LIFE block (deathscreen.js): time alive, shots, kills, then damage taken and dealt. */
+  _dsLive(st) { return st.lastLife ? DS.lifeLine(st) + `<div class="dstabs">${DS.tables(st)}</div>` : ''; }
   /** S56: the weapon line under the HIT chip. An ambiguous resolution names up to two candidates with OR
    *  (never a guess); three or more show WEAPON UNCLEAR instead. No line at all when the phone has no
    *  claim (an older MC sends no roster weapons). */
