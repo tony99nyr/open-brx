@@ -134,7 +134,7 @@ build the category-driven Mission Control picker.
 ## Start here
 
 Read [`bench-plan.md`](bench-plan.md). If Tony is at the bench, load `bench-session` and run sitting 1;
-otherwise take **S54 catalogue recoil fields** or **F202 tagger ownership picker**.
+otherwise take **S54 catalogue recoil fields**.
 
 ## Machine state
 

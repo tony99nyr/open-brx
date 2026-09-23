@@ -1898,13 +1898,14 @@ export class Hud {
         <div class="mcjoinhint" id="dg-mcjoinhint" role="status" aria-live="assertive"></div>
         <div class="mcin"><input class="mcurlfield" value="${esc(this.mcUrl)}" placeholder="ws://mission-control-ip:8766/ws" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div>
         <button class="qrbtn" data-act="onScanQr">▣ SCAN QR</button></div>`;
+    const changeGun = !this.diagData.engine || ['idle', 'connected'].includes(this.diagData.engine.phase);
     this.diag.innerHTML = `<button class="close" data-act="onCloseDiag">✕</button>${mcjoin}
       <div class="dbody" id="dbody">
         ${sec('PREFLIGHT', 'dg-pf')}${sec('LINK', 'dg-link')}${sec('ENGINE', 'dg-eng')}${sec('TIMINGS', 'dg-tim')}
         ${sec('LAST FRAMES', 'dg-frames', true)}${sec('HISTORY', 'dg-hist')}${sec('LOG', 'dg-log', true)}
       </div>
       <div class="gunhint" id="dg-gunhint" role="status" aria-live="assertive"></div>
-      <div class="btns"><button data-act="onCloseDiag" class="closex">CLOSE</button><button data-act="onReconnectGun" id="dg-relinkgun">RELINK GUN</button><button data-act="onReconnectMc">RELINK MC</button><button data-act="onShareLog">SHARE LOG</button></div>`;
+      <div class="btns"><button data-act="onCloseDiag" class="closex">CLOSE</button><button data-act="onChangeGun" id="dg-changegun" ${changeGun ? '' : 'disabled aria-disabled="true"'}>${changeGun ? 'CHANGE TAGGER' : 'TAGGER LOCKED DURING MATCH'}</button><button data-act="onReconnectGun" id="dg-relinkgun">RELINK GUN</button><button data-act="onReconnectMc">RELINK MC</button><button data-act="onShareLog">SHARE LOG</button></div>`;
     // Office test 2026-09-19: the debug NIGHT button was redundant -- the ☾/☀ switch (`#skin`, top right,
     // every screen) already flips the same `onToggleNight` handler, and NIGHT OPS (config.night) sets the
     // default from Mission Control's venue on its own. Removed here, not the handler: `#skin` still calls it.

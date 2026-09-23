@@ -1,5 +1,10 @@
 # Closed followups (archive)
 
+# Closed 2026-09-22: tagger ownership picker
+
+- 2026-09-22 **F202** the HUD diagnostics panel's CHANGE TAGGER action disconnects the current gun, clears
+  only the locally remembered tagger, and opens the existing picker; player/roster context is preserved.
+
 # Closed 2026-09-22: stale Mission Control target cleanup
 
 - 2026-09-22 **F203** a remembered MC target that times out before welcome now clears the saved LAN URL,

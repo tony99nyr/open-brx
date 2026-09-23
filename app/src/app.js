@@ -407,6 +407,24 @@ async function openPicker({ auto = false } = {}) {
 }
 Object.assign(hud.h, {
   onSetGun: () => openPicker(),
+  // F202: SET MY GUN is also available from the diagnostic panel while no match is running. Clear the
+  // remembered engine gun before scanning, otherwise the old saved blob keeps winning the picker ranking.
+  onChangeGun: async () => {
+    if (picking || !['idle', 'connected'].includes(engine.phase)) {
+      log(`change tagger ignored — phase is ${engine.phase}`, 'li');
+      return;
+    }
+    try {
+      if (hud.diag.classList.contains('open')) hud.toggleDiag(); else hud.sig = null;
+      await link.disconnect();
+      engine.forgetGun();
+      await openPicker();
+    } catch (e) {
+      log('change tagger: ' + (e && e.message || e), 'le');
+      if (!hud.diag.classList.contains('open')) hud.toggleDiag();
+      scheduleRender();
+    }
+  },
   onScanAgain: () => hud.h.onSetGun(),   // game day 2026-09-19: SCAN AGAIN on an empty gun list
   // F258: the fold over everything the picker could not rank as a tagger.
   onScanOther: () => { hud.setScanOther(!hud.scanOther); scheduleRender(); },

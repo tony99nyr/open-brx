@@ -21,6 +21,27 @@ const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/
 const TEST_BURST = [['$GLED,0,0,0,0,10,,*', 0.08], ['$GLED,,,,5,,,*', 0.08], ['$GLED,1,1,1,0,10,,*', 0.0]];
 
 function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
+
+test('F202: forgetting a tagger clears only the local gun ownership and persists the cleared blob', () => {
+  const storage = mkStorage();
+  const writes = [];
+  const eng = new Engine({ writer: frames => writes.push(...frames), storage, now: () => 1_000_000 });
+  eng.gun = { name: 'ALPHA-FE30', tail: 'FE30' };
+  eng.player = { player_id: 'p1', display: 'REAPER' };
+  eng.phase = 'connected';
+  eng.probeSent = true; eng.fw = 'old-fw'; eng.battery = 87; eng.lastVoltsAt = 123; eng.headEcho = '$ALCD,1';
+  eng.forgetGun();
+  assert.equal(eng.gun, null);
+  assert.equal(eng.player.player_id, 'p1', 'MC player context remains for the next assignment');
+  assert.equal(eng.probeSent, false, 'the next tagger gets a fresh firmware probe');
+  assert.equal(eng.fw, null, 'old tagger firmware is not shown for the next tagger');
+  assert.equal(eng.battery, null); assert.equal(eng.lastVoltsAt, 0); assert.equal(eng.headEcho, null);
+  assert.equal(eng.phase, 'idle', 'the replacement picker is rendered from the idle screen');
+  eng.phase = 'connected'; eng._probe();
+  assert.ok(writes.length > 0, 'fresh tagger probe is allowed after forgetting');
+  assert.equal(JSON.parse(storage.getItem('brx.engine')).gun, null, 'the remembered gun is gone after restart');
+});
+
 function harness({ mode = 'tdm', respawn = 'auto', timeLimit = 600, synced = true, delay = null } = {}) {
   const writes = []; const facts = []; const reports = []; const delays = [];
   let clock = 1_000_000;

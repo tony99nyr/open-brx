@@ -892,6 +892,22 @@ export class Engine {
   }
   clearPersisted() { try { this.storage && this.storage.removeItem(KEY); } catch (_) { /* ignore */ } }
 
+  /** F202: forget only the locally owned tagger so the picker can bind another one.
+   *  The MC player/roster context stays intact and will be re-bound when the next gun connects. */
+  forgetGun() {
+    this.gun = null;
+    this.bleUp = false;
+    this.probeSent = false;
+    this.fw = null;
+    this.battery = null;
+    this.lastVoltsAt = 0;
+    this.headEcho = null;
+    this._pendingPhase = null;
+    this._set('idle');
+    this._save();
+    this._changed();
+  }
+
   // ---------- helpers ----------
   _set(phase) {
     if (this.phase === phase) return;
