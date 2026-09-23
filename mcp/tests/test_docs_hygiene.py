@@ -811,3 +811,101 @@ def test_the_archive_citation_scan_still_matches():
         "from _ARCHIVE_CITERS_BASELINE, the list only ever shrinks")
     assert _ARCHIVE_REF.search("see [`archive/spec-net.md`](archive/spec-net.md)").group(1) == "spec-net.md"
     assert _ARCHIVE_REF.search("`docs/archive/hardware/range-experiment.md`").group(1) == "hardware/range-experiment.md"
+
+
+# --- routing lines never name a closed row; the index lists agree with their rows (2026-09-23 doc-rot) ---
+# The review found HANDOFF's "Next"/"Blocked" bullets and bench-plan's sittings and tables still sending work
+# through rows closed the same day, and index ids whose marker had moved on. History prose ("F206 is PROVEN")
+# may name a closed id; a line that ROUTES work may not.
+
+_MARK = "🔴|🟠|🟡|🟢|✅|⬜"
+_ID = r"(?<![A-Za-z0-9$§])([A-Z]\d{1,3})(?![0-9])"
+
+
+def _closed_ids() -> set[str]:
+    """Ids with a dated line in the archive (`- 2026-09-23 **S54**, **F268** …`) and no open row."""
+    out: set[str] = set()
+    for line in ARCHIVE.read_text(encoding="utf-8").split("\n"):
+        m = re.match(r"- 20\d\d-\d\d-\d\d ((?:\*\*[A-Z]\d{1,3}\*\*(?:,| and)?\s*)+)", line)
+        if m:
+            out |= set(re.findall(r"\*\*([A-Z]\d{1,3})\*\*", m.group(1)))
+    return out - set(_followup_definitions(FOLLOWUPS.read_text(encoding="utf-8")))
+
+
+def _routing_lines(path: pathlib.Path) -> list[tuple[int, str]]:
+    """HANDOFF: the "- **Next …**" and "- **Blocked**" bullets (with their continuation lines) and the "Start
+    here" list. bench-plan: the numbered steps under "Sittings" and the Desk work, Preconditions and Decisions
+    tables."""
+    out: list[tuple[int, str]] = []
+    lines = path.read_text(encoding="utf-8").split("\n")
+    if path == HANDOFF:
+        bullet = start = False
+        for n, line in enumerate(lines, 1):
+            if line.startswith("## "):
+                start, bullet = line.startswith("## Start here"), False
+            if re.match(r"- \*\*(Next|Blocked)", line):
+                bullet = True
+            elif not line.startswith("  "):
+                bullet = False
+            if bullet or (start and re.match(r"\s*\d+\. |\s{3}\S", line)):
+                out.append((n, line))
+    else:
+        section = ""
+        for n, line in enumerate(lines, 1):
+            if line.startswith("## "):
+                section = line
+            if section.startswith(("## Desk work", "## Preconditions", "## Decisions for Tony")) and line.startswith("|"):
+                out.append((n, line))
+            elif section.startswith("## Sittings") and re.match(r"\s*\d+\. ", line):
+                out.append((n, line))
+    return out
+
+
+def test_routing_lines_name_no_closed_row():
+    closed = _closed_ids()
+    assert len(closed) > 50, f"only {len(closed)} closed ids parsed: the archive pattern has stopped matching"
+    bad = []
+    for path in (HANDOFF, DOCS / "bench-plan.md"):
+        for n, line in _routing_lines(path):
+            hits = [i for i in re.findall(_ID, line) if i in closed]
+            if hits:
+                bad.append(f"{path.name}:{n} names closed {', '.join(hits)}: {line.strip()[:90]}")
+    assert not bad, "a Next/Blocked line, a sitting step or a desk/decision row routes work through a closed row:\n" + "\n".join(bad)
+
+
+def _index_marker_problems(text: str) -> list[str]:
+    """Each id in a `- 🟠 **A1** · **B2** …` index list must have a row whose marker matches. A marker right
+    before one id (`⬜ **D5**`) applies to that id only. A row may be defined mid-line (`**G9 🟠**`) or carry a few
+    words before its marker (`**S1 leftovers 🟡**`)."""
+    lines = text.split("\n")
+    defs: dict[str, str] = {}
+    for line in lines:
+        if re.match(rf"- ({_MARK}) \*\*", line):
+            continue
+        for m in re.finditer(rf"\*\*([A-Z]\d{{1,3}}′?)(?: [a-z]+){{0,3}} ?({_MARK})", line):
+            defs.setdefault(m.group(1), m.group(2))
+    problems = []
+    for n, line in enumerate(lines, 1):
+        head = re.match(rf"- ({_MARK}) ", line)
+        if not head:
+            continue
+        for tok in re.finditer(rf"(?:({_MARK}) )?\*\*([A-Z]\d{{1,3}}′?)\*\*", line):
+            want, ident = tok.group(1) or head.group(1), tok.group(2)
+            if ident not in defs:
+                problems.append(f"FOLLOWUPS.md:{n} indexes {ident}, which has no open row")
+            elif defs[ident] != want:
+                problems.append(f"FOLLOWUPS.md:{n} indexes {ident} as {want}; its row says {defs[ident]}")
+    return problems
+
+
+def test_the_index_lists_agree_with_their_rows():
+    problems = _index_marker_problems(FOLLOWUPS.read_text(encoding="utf-8"))
+    assert not problems, "the FOLLOWUPS index is stale (the ROW is right):\n" + "\n".join(problems)
+
+
+def test_the_index_check_can_actually_fail():
+    text = "- **Z9 🟡** a row\n- 🟠 **Z9** · **Z8**\n"
+    assert _index_marker_problems(text) == [
+        "FOLLOWUPS.md:2 indexes Z9 as 🟠; its row says 🟡",
+        "FOLLOWUPS.md:2 indexes Z8, which has no open row",
+    ]
