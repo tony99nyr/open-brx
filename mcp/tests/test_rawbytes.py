@@ -509,3 +509,35 @@ def test_a_failed_liveness_ping_write_keeps_the_results():
     assert len(result.writes) == 1
     assert result.pong_after is False
     assert any("liveness $PING write failed" in w for w in result.warnings)
+
+
+# -- the phone-paced plan (A7/A8's paced halves) -------------------------------------------------
+
+def test_phone_pacing_chunks_each_frame_alone_with_the_phones_gaps():
+    from brx_mcp.rawbytes import plan_phone_paced
+    long = "$" + "W" * 40 + ",*"           # 43 B: three chunks, 20 + 20 + 3
+    short = "$PING,*"                      # one chunk
+    plan = plan_phone_paced((long + short + long).encode())
+    assert [len(w.data) for w in plan.writes] == [20, 20, 3, 7, 20, 20, 3]
+    # multi-packet: 8 ms after each chunk, plus 18 ms after the frame; single-packet: 18 ms; none after the last
+    assert [w.delay_after_ms for w in plan.writes] == [8, 8, 26, 18, 8, 8, 0]
+    assert b"".join(w.data for w in plan.writes) == (long + short + long).encode()
+
+
+def test_phone_pacing_refuses_a_trailing_fragment():
+    from brx_mcp.rawbytes import plan_phone_paced
+    with raises(ValueError, match="whole frames"):
+        plan_phone_paced(b"$PING,*$AMMO,0,2")
+
+
+def test_phone_paced_a8_run_fits_the_bounds():
+    from brx_mcp.rawbytes import plan_phone_paced
+    weap = "$WEAP,0," + ",".join(["1"] * 42) + ",*"
+    plan = plan_phone_paced(repeat_stream(weap + weap, 25))
+    validate_plan(plan)
+
+
+def test_phone_pacing_block_pause_lands_after_every_n_frames_never_after_the_last():
+    from brx_mcp.rawbytes import plan_phone_paced
+    plan = plan_phone_paced(repeat_stream("$PING,*", 5), block_frames=2, block_pause_ms=300)
+    assert [w.delay_after_ms for w in plan.writes] == [18, 318, 18, 318, 0]

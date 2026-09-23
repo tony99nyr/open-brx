@@ -51,7 +51,8 @@
       counts as a pass only with this flag. --phone-block-frames/--phone-block-pause-ms override
       WRITE_PACING's block pause (ships off, 0/0, until a bench session finds a value for F269).
   python -m brx_mcp raw-bytes <address> (--segment TEXT ... | --stream FRAMES --repeat N)
-      [--chunk 20] [--delay-ms D | --delays-ms a,b,c] [--read-ms 2000] [--no-ping-after]
+      [--chunk 20] [--delay-ms D | --delays-ms a,b,c | --phone-pacing [--block-frames N --block-pause-ms P]]
+      [--read-ms 2000] [--no-ping-after]
       [--with-response] [--allow-incomplete] [--confirm] [--log PATH]
       F269's bounded raw-byte helper (brx_mcp/rawbytes.py), for the screamers cases A4/A7/A7b/A7c/A8
       (docs/bench-screamers-2026-09-19.md) that need EXACT control of GATT write boundaries and
@@ -61,7 +62,9 @@
       '3,50,1,*' with --delays-ms 60). --stream FRAMES --repeat N repeats FRAMES (one frame, or
       several concatenated, e.g. ten A7 frames or two alternating A8 $WEAP frames) N times and splits
       the result at --chunk-byte ATT boundaries with NO application sleep by default (A7/A7c/A8's
-      zero-gap stream); --delay-ms paces it instead. --delays-ms takes one delay per gap between
+      zero-gap stream); --delay-ms paces it evenly instead, and --phone-pacing paces it the way the
+      phone does (each frame chunked alone, 8 ms per chunk, 18 ms per frame: A7/A8's paced halves),
+      with an optional block pause after every N frames (A7: --block-frames 10 --block-pause-ms 300). --delays-ms takes one delay per gap between
       segments (zero allowed). --read-ms listens after the plan, then prints reply counts and the
       last $ALCD/$HP frame (A4/A7b/A8 read the magazine there). A $PING,* then checks liveness: no
       $PONG within 10 s is reported (--no-ping-after skips it). --with-response is the F270
@@ -842,16 +845,22 @@ def _dispatch_soak(rest: list[str]) -> None:
 async def _raw_bytes(address: str, *, segments: list[str], stream: str | None, repeat: int | None,
                      chunk: int, delay_ms: float | None, delays_ms: list[float] | None,
                      read_ms: int, response: bool, allow_incomplete: bool, confirm: bool,
-                     log_path: str | None, ping_after_s: float = 10.0) -> None:
+                     log_path: str | None, ping_after_s: float = 10.0,
+                     phone_pacing: bool = False, block_frames: int = 0,
+                     block_pause_ms: float = 0.0) -> None:
     """F269's bounded raw-byte helper: CLI glue only, see `brx_mcp/rawbytes.py` for the planning,
     validation and execution. Builds the plan and prints it BEFORE connecting (the same "print, then
     act" order `_soak` uses), so a refused/over-bound plan never opens a BLE link at all."""
     from pathlib import Path
 
     from . import storage
-    from .rawbytes import RawPlan, RawWrite, plan_from_segments, plan_from_stream, repeat_stream, validate_plan
+    from .rawbytes import (RawPlan, RawWrite, plan_from_segments, plan_from_stream, plan_phone_paced,
+                           repeat_stream, validate_plan)
 
-    if stream is not None:
+    if stream is not None and phone_pacing:
+        plan = plan_phone_paced(repeat_stream(stream, repeat or 0), chunk_size=chunk,
+                                block_frames=block_frames, block_pause_ms=block_pause_ms)
+    elif stream is not None:
         payload = repeat_stream(stream, repeat or 0)
         plan = plan_from_stream(payload, chunk_size=chunk)
         if delay_ms:   # a deliberately paced stream, not the default zero-gap replay
@@ -925,12 +934,20 @@ def _dispatch_raw_bytes(rest: list[str]) -> None:
     allow_incomplete = False
     confirm = False
     ping_after_s = 10.0
+    phone_pacing = False
+    block_frames, block_pause_ms = 0, 0.0
     log_path: str | None = None
     positional: list[str] = []
     it = iter(rest)
     for a in it:
         if a == "--no-ping-after":
             ping_after_s = 0.0
+        elif a == "--phone-pacing":
+            phone_pacing = True
+        elif a == "--block-frames":
+            block_frames = int(next(it))
+        elif a == "--block-pause-ms":
+            block_pause_ms = float(next(it))
         elif a == "--segment":
             segments.append(next(it))
         elif a == "--stream":
@@ -962,7 +979,9 @@ def _dispatch_raw_bytes(rest: list[str]) -> None:
     asyncio.run(_raw_bytes(address, segments=segments, stream=stream, repeat=repeat, chunk=chunk,
                            delay_ms=delay_ms, delays_ms=delays_ms, read_ms=read_ms,
                            response=with_response, allow_incomplete=allow_incomplete,
-                           confirm=confirm, log_path=log_path, ping_after_s=ping_after_s))
+                           confirm=confirm, log_path=log_path, ping_after_s=ping_after_s,
+                           phone_pacing=phone_pacing, block_frames=block_frames,
+                           block_pause_ms=block_pause_ms))
 
 
 async def _connect_metrics(address: str, runs: int, *, cold: str = "manual", warm_off_s: float = 10.0,

@@ -88,6 +88,37 @@ def plan_from_stream(payload: bytes, *, chunk_size: int = MAX_CHUNK_BYTES) -> Ra
     return RawPlan(writes=[RawWrite(chunk, 0.0) for chunk in split_at(payload, chunk_size)])
 
 
+def plan_phone_paced(payload: bytes, *, chunk_gap_ms: float | None = None,
+                     frame_gap_ms: float | None = None, chunk_size: int = MAX_CHUNK_BYTES,
+                     block_frames: int = 0, block_pause_ms: float = 0.0) -> RawPlan:
+    """The phone's own pacing (`app/src/brxlink.js` `write()`), for the paced halves of A7 and A8:
+    each frame is chunked on its own at `chunk_size`, a multi-packet frame sleeps `chunk_gap_ms` after
+    every chunk, and every frame is followed by `frame_gap_ms`. Defaults are the phone's
+    `WRITE_PACING` (via `soak.runner`, which mirrors it). `payload` must be whole frames, each ending
+    in `*`. No delay follows the last write. `block_frames`/`block_pause_ms` are the phone's block
+    pause (`WRITE_PACING.blockFrames`/`blockPauseMs`, shipped off): after every `block_frames` frames,
+    never after the last, add `block_pause_ms` (screamers A7's paced run: 10 frames, 300 ms)."""
+    from .soak.runner import PHONE_CHUNK_GAP_MS, PHONE_FRAME_GAP_MS
+    cg = PHONE_CHUNK_GAP_MS if chunk_gap_ms is None else chunk_gap_ms
+    fg = PHONE_FRAME_GAP_MS if frame_gap_ms is None else frame_gap_ms
+    if not payload.endswith(b"*"):
+        raise ValueError("phone pacing needs whole frames: the payload must end with '*'")
+    writes: list[RawWrite] = []
+    for n, body in enumerate(payload.split(b"*")[:-1], 1):
+        frame = body + b"*"
+        chunks = split_at(frame, chunk_size)
+        for i, chunk in enumerate(chunks):
+            gap = cg if len(frame) > chunk_size else 0.0
+            if i == len(chunks) - 1:
+                gap += fg
+                if block_frames > 0 and n % block_frames == 0:
+                    gap += block_pause_ms
+            writes.append(RawWrite(chunk, gap))
+    if writes:
+        writes[-1] = RawWrite(writes[-1].data, 0.0)
+    return RawPlan(writes=writes)
+
+
 def plan_from_segments(segments: Sequence[bytes | str],
                        delays_ms: float | Sequence[float] = 0.0) -> RawPlan:
     """One `RawWrite` per supplied segment, in order, never re-chunked or coalesced: each segment
