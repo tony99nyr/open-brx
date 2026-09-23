@@ -53,7 +53,7 @@ export function CommandBar() {
       )}
       {/* T3-A (field 2026-09-12): MC advertised a WSL2 NAT address in the QR/mDNS, so every phone
           failed to connect and the console never said why -- it looked like the phones were broken.
-          Same shared-frame reasoning as the tunnel banner below: every screen (including LOBBY's
+          Same shared-frame reasoning as the tunnel banner above: every screen (including LOBBY's
           readiness board) reads this, not just the one screen with a network control on it.
           F191 (Tony 2026-09-23): it stands for the whole session on a WSL host, so it goes LAST: a real alert
           above it always wins the operator's eye, and it never replaces one. */}
