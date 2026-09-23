@@ -36,6 +36,9 @@ export const DEMO_WEAPONS = [
       "recover_ms": 0
     },
     "crit_pct": 30,
+    "hir": [
+      21
+    ],
     "ammo_total": 70,
     "bars": {
       "power": 56,
@@ -78,6 +81,9 @@ export const DEMO_WEAPONS = [
       "heavy": 40,
       "after_heavy": 8
     },
+    "hir": [
+      9
+    ],
     "ammo_total": 224,
     "bars": {
       "power": 38,
@@ -118,6 +124,9 @@ export const DEMO_WEAPONS = [
       "recover_ms": 0
     },
     "crit_pct": 40,
+    "hir": [
+      10
+    ],
     "ammo_total": 252,
     "bars": {
       "power": 47,
@@ -158,6 +167,10 @@ export const DEMO_WEAPONS = [
       "per_shot": 0,
       "recover_ms": 0
     },
+    "hir": [
+      16,
+      70
+    ],
     "ammo_total": 120,
     "bars": {
       "power": 91,
@@ -198,6 +211,9 @@ export const DEMO_WEAPONS = [
       "per_shot": 0,
       "recover_ms": 0
     },
+    "hir": [
+      26
+    ],
     "ammo_total": 55,
     "bars": {
       "power": 64,
@@ -238,6 +254,9 @@ export const DEMO_WEAPONS = [
       "per_shot": 10,
       "recover_ms": 150
     },
+    "hir": [
+      9
+    ],
     "ammo_total": 900,
     "bars": {
       "power": 38,
@@ -279,6 +298,9 @@ export const DEMO_WEAPONS = [
       "per_shot": 0,
       "recover_ms": 0
     },
+    "hir": [
+      115
+    ],
     "ammo_total": 4,
     "bars": {
       "power": 100,
@@ -320,6 +342,9 @@ export const DEMO_WEAPONS = [
       "per_shot": 0,
       "recover_ms": 0
     },
+    "hir": [
+      115
+    ],
     "ammo_total": 4,
     "bars": {
       "power": 100,
@@ -359,6 +384,9 @@ export const DEMO_WEAPONS = [
       "per_shot": 0,
       "recover_ms": 0
     },
+    "hir": [
+      20
+    ],
     "ammo_total": 30,
     "bars": {
       "power": 73,
@@ -398,6 +426,10 @@ export const DEMO_WEAPONS = [
       "per_shot": 15,
       "recover_ms": 150
     },
+    "hir": [
+      1,
+      8
+    ],
     "ammo_total": 270,
     "bars": {
       "power": 38,
@@ -439,6 +471,9 @@ export const DEMO_WEAPONS = [
       "per_shot": 0,
       "recover_ms": 0
     },
+    "hir": [
+      6
+    ],
     "ammo_total": 32,
     "bars": {
       "power": 20,
@@ -479,6 +514,9 @@ export const DEMO_WEAPONS = [
       "per_shot": 0,
       "recover_ms": 0
     },
+    "hir": [
+      60
+    ],
     "ammo_total": 28,
     "bars": {
       "power": 82,
@@ -519,6 +557,9 @@ export const DEMO_WEAPONS = [
       "per_shot": 0,
       "recover_ms": 0
     },
+    "hir": [
+      9
+    ],
     "ammo_total": 160,
     "bars": {
       "power": 20,
@@ -558,6 +599,9 @@ export const DEMO_WEAPONS = [
       "per_shot": 15,
       "recover_ms": 150
     },
+    "hir": [
+      8
+    ],
     "ammo_total": 459,
     "bars": {
       "power": 29,
@@ -597,6 +641,9 @@ export const DEMO_WEAPONS = [
       "per_shot": 10,
       "recover_ms": 150
     },
+    "hir": [
+      8
+    ],
     "ammo_total": 210,
     "bars": {
       "power": 29,
@@ -637,6 +684,9 @@ export const DEMO_WEAPONS = [
       "per_shot": 0,
       "recover_ms": 0
     },
+    "hir": [
+      9
+    ],
     "ammo_total": 139,
     "bars": {
       "power": 38,

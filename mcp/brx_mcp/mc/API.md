@@ -493,6 +493,15 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
   or one whose `shots` sample predates its last landed hit, can spike and even exceed 100 %), `t_recv` re-basing for unsynced nodes, `match_id`
   parking, end freeze (`post_end_facts`), fresh-only `feedback`/`alert` (`FEEDBACK_MAX_AGE_MS`), the A11.4
   global-state alerts gated by `mc_confidence`.
+- **S56 "what hit me" (2026-09-23).** `roster()` now carries each player's `weapons: [{weapon_id, hir}]`
+  (`state._roster_weapons`) in slot order — `hir` off that player's own COMPILED `$WEAP` frame when MC
+  holds one (a perk moves the numbers), else `WeaponCatalog.hir_magnitudes()`. A whole-roster repush
+  (`_repush_lobby_config`, `push_config`) compiles every player before sending any of them, so a roster
+  read mid-repush can never mix one player's fresh weapon_id with another player's stale `hir`.
+  MC also relays `feedback{kind:"hit"}` to the SHOOTER's own node on a LIVE, first-ingest `hit_taken`
+  fact (`state._relay_hit_feedback`/`_relay_batch_hits`, keyed off `Scorer.hits_log` growth so a
+  duplicate seq, a parked fact, a post-end fact or a replay never re-fires it) — best-effort, same
+  contract as the existing kill feedback.
 - **Objective scoring — the `possession` fact (F70, node → MC).** An objective mode (`koth`/`domination`) is won on
   POSSESSION, and MC is not on the field, so the nodes report it. One event type, deliberately shaped so it cannot be
   double-counted:

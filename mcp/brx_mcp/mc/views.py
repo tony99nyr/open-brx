@@ -5,7 +5,7 @@ import math
 
 from typing import Sequence
 
-from .compile import CHARGE_TAP_CADENCE_MS, DEFAULT_POOL
+from .compile import CHARGE_TAP_CADENCE_MS, DEFAULT_POOL, hir_from_weap
 from .types import Weapon, WeaponView
 
 # The pool one hit is measured against when the caller does not say: 45 HP + 70 armour (GameConfig
@@ -143,6 +143,13 @@ def weapon_view(w: Weapon, pool: int = DEFAULT_POOL) -> WeaponView:
         view["recoil"] = recoil                         # S42: the declared target profile -- the node's only source of it
     if (crit_pct := w.get("crit_pct")) is not None:
         view["crit_pct"] = crit_pct                      # F62 (2026-09-18): the declared t6 crit chance
+    # S56 ("what hit me"): the base `$HIR` t5 magnitudes this weapon can emit, read off the SAME
+    # `weap_frame` the row already carries (`WeaponCatalog._to_weapon()`), so this never re-resolves
+    # the catalogue a second time or drifts from it. `.get` and a str() guard: a synthetic/demo row
+    # (fakes, hand-built test fixtures) can carry no `weap_frame` at all, and this view must degrade,
+    # never raise -- it runs on every hydrate and bind with no fallback behind it.
+    frame = w.get("weap_frame")
+    view["hir"] = hir_from_weap(frame) if isinstance(frame, str) else []
     return view
 
 

@@ -1972,8 +1972,46 @@ class Session:
         return next((t for t in self.teams if t["team_id"] == team_id), None)
 
     def roster(self) -> list[dict]:
-        return [{"player_id": p["player_id"], "player_num": p["player_num"], "display": p["display"], "team_id": p["team_id"]}
+        return [{"player_id": p["player_id"], "player_num": p["player_num"], "display": p["display"],
+                  "team_id": p["team_id"], "weapons": self._roster_weapons(p)}
                 for p in self.players.values()]
+
+    def _roster_weapons(self, p: Player) -> list[dict]:
+        """S56 ("what hit me"): `p`'s `weapons[]` for the wire roster (`RosterWeapon`), slot order
+        (list index == gun slot, same as `loadout.weapons`).
+
+        `hir` comes from `self.bundles[pid]`'s own compiled `$WEAP` frame for that slot when MC holds
+        one -- a perk such as Armour Piercing changes the magnitudes at compile time, so the
+        catalogue's base numbers would be WRONG for that player -- and falls back to the catalogue's
+        own `weap_frame` (`self.compiler.weapon_catalog()`, the same lookup `patch_player` already
+        uses) otherwise: no bundle yet (before the first compile), or a fake compiler in a test whose
+        template frame carries no real numbers. A player with no loadout at all gets `weapons: []`."""
+        weapons = (p.get("loadout") or {}).get("weapons") or []
+        if not weapons:
+            return []
+        head = (self.bundles.get(p["player_id"]) or {}).get("head") or []
+        weap_by_slot: dict[int, str] = {}
+        for frame in head:
+            if isinstance(frame, str) and frame.startswith("$WEAP,"):
+                parts = frame.split(",")
+                try:
+                    slot = int(parts[1])
+                except (IndexError, ValueError):
+                    continue
+                weap_by_slot[slot] = frame
+        catalog_by_id = {w["weapon_id"]: w for w in self.compiler.weapon_catalog()}
+        out: list[dict] = []
+        for slot, sel in enumerate(weapons):
+            weapon_id = sel.get("weapon_id")
+            if not weapon_id:
+                continue
+            frame = weap_by_slot.get(slot)
+            if frame is None:
+                row = catalog_by_id.get(weapon_id)
+                frame = row.get("weap_frame") if row else None
+            hir = _compile.hir_from_weap(frame) if isinstance(frame, str) else []
+            out.append({"weapon_id": weapon_id, "hir": hir})
+        return out
 
     def set_ready(self, pid: str, ready: bool, host_override: bool = False) -> Player:
         p = self.players[pid]
@@ -2228,8 +2266,15 @@ class Session:
         # (`_hydrate`), so the welcome shipped the NEW `config_id` beside the OLD frames: `engine.js`
         # `startAt` passes on the id it holds and the gun arms on the stale $TID/$GSET, while the board
         # reads pushed. Compiling for all and SENDING only to those with a socket is the invariant.
+        #
+        # S56: compile EVERY player first, THEN send. `roster()` (embedded in each `config` push)
+        # reads OTHER players' `self.bundles` for their `hir` magnitudes, so one loop that compiled
+        # and sent together could push an early player a roster naming a LATER player's new weapon_id
+        # beside that player's OLD, not-yet-recompiled hir numbers.
         for p in self.players.values():
-            self._push_config_to(p)
+            self._compile_and_store(p)
+        for p in self.players.values():
+            self._send_config_to(p)
         # Round-2 fix pass J: the same A13.5 re-arm `push_config` does. Without it a team or
         # `station_source` edit left every assigned station on the PRE-EDIT allow-list.
         self.arm_stations()
@@ -4429,7 +4474,15 @@ class Session:
             if pid and pid == self.config.get("vip_player_id"):
                 self._queue_role(pid, "vip", True)
         if self.scorer:
+            before = len(self.scorer.hits_log)
             self.scorer.ingest(nid, ev, t_recv, seq=seq)
+            # S56 ("what hit me"): `hits_log` only grows for a hit_taken fact that was genuinely
+            # scored just now -- never a duplicate seq, never parked onto another match, never past
+            # the A6.1 end freeze (see `_relay_hit_feedback`) -- so its length is the exact "is this
+            # new" signal, with no need to touch `scoring.py`'s own dedup.
+            if ev.get("type") == "hit_taken" and len(self.scorer.hits_log) > before:
+                t, shooter, victim, dmg = self.scorer.hits_log[-1]
+                self._relay_hit_feedback(shooter, victim, dmg, t, ev.get("weapon_id"))
             self._flush_pending_limit()   # a cap deferred by a batch never waits on the NEXT batch
             self._reconcile_end(nid, [ev], t_recv)   # A24/M2: a late fact can move the END itself
             self._restore_recap()
@@ -4464,7 +4517,9 @@ class Session:
             # a later fact in the batch still parks as post_end); only the finish waits for the batch.
             self._batch_depth += 1
             try:
+                before = len(self.scorer.hits_log)
                 self.scorer.ingest_batch(nid, events, t_recv)
+                self._relay_batch_hits(self.scorer.hits_log[before:])   # S56 ("what hit me")
                 if any(ev.get("match_id") == self.scorer.match_id for ev in events):   # no SYNC POINT for an all-parked batch
                     self.scorer.sync_point(t_recv, sum(1 for s in self.scorer.stats.values() if s.flushed), len(self.players))
             finally:
@@ -5388,9 +5443,10 @@ class Session:
         if fn is None:
             return None
         if self._pinned_hit_plan is None:
-            # `roster()` is the public identity-only wire view. It deliberately omits loadouts, so using
-            # it here produced an empty plan: conditional Breacher/Toxin rows never reached any head and
-            # A17 stopped the push. The compiler needs the authoritative Player records.
+            # `roster()` is the public wire view. S56 added a `weapons[]`/`hir` summary to it, but it
+            # still carries no perk or override -- using it here produced an empty plan: conditional
+            # Breacher/Toxin rows never reached any head and A17 stopped the push. The compiler needs
+            # the authoritative Player records.
             self._pinned_hit_plan = fn(list(self.players.values()),
                                        rekey=bool(self.config.get("hit_audio_rekey", False)))
         return self._pinned_hit_plan
@@ -5423,7 +5479,16 @@ class Session:
             return True
         return (self.nodes.get(p.get("node_id") or "") or {}).get("arm_state") in ("armed", "live")
 
-    def _push_config_to(self, p: Player):
+    def _compile_and_store(self, p: Player) -> None:
+        """The COMPILE half of `_push_config_to`: recompute `p`'s frames and store them, sending
+        nothing yet.
+
+        Split out (S56) so a whole-roster repush (`_repush_lobby_config`, and the first `push_config`
+        loop) can finish recompiling EVERY player before any push goes out. `roster()`, embedded in
+        each `config` push, reads OTHER players' `self.bundles` for their `hir` magnitudes; sending
+        inside the same pass that recompiles could hand an early player a roster naming a LATER
+        player's brand-new weapon_id beside that later player's OLD, not-yet-recompiled hir numbers --
+        a real defect this split exists to close, not a hypothetical one."""
         # The guard `push_config` carries, narrowed to ONE player: a `config` is a head write, and in
         # armed/live that head is the F121 disarmed table with nothing to re-spawn a gun already in play.
         # A node that never took this match's config is the exception — that write is its hot join.
@@ -5445,7 +5510,18 @@ class Session:
             for k in ("pool_life_t", "pool_life_judged", "pool_life_hit", "pool_life_n",
                       "pool_amber_pending"):
                 self._node_view(nid).pop(k, None)
+
+    def _send_config_to(self, p: Player) -> None:
+        """The SEND half of `_push_config_to` (see `_compile_and_store`): push the bundle already
+        stored for `p`. A no-op for a player with no node or no stored bundle."""
+        nid = p.get("node_id")
+        bundle = self.bundles.get(p["player_id"])
+        if nid and bundle is not None:
             self.net.push(nid, "config", {"config": self._wire_config(), "frames": bundle, "roster": self.roster()})
+
+    def _push_config_to(self, p: Player):
+        self._compile_and_store(p)
+        self._send_config_to(p)
 
     _ONE_TEAM_REFUSAL = ("ONLY ONE SIDE HAS PLAYERS — a match fought on one side cannot register a "
                          "hit; move players between teams")
@@ -5698,8 +5774,12 @@ class Session:
             return {"ok": True, "acks": self.acks, "repushed": True,
                     "config_id": self.config["config_id"]}
         self._next_game_no()
+        # S56: compile everybody first, then send -- see `_repush_lobby_config`'s own note on why a
+        # roster read (`hir`) needs every player's bundle to be the CURRENT one before any push goes out.
         for p in self.players.values():
-            self._push_config_to(p)
+            self._compile_and_store(p)
+        for p in self.players.values():
+            self._send_config_to(p)
         self.arm_stations()                    # A13.5: every assigned station learns this game's number
         self.lobby_pushed = True
         self.phase = "lobby"
@@ -6138,6 +6218,38 @@ class Session:
                 body = {**body, "cue": cue}   # A6.3: a full $PLAY frame
             body.setdefault("player_id", pid)                # envelope requires it; a node silently DROPS a feedback without it
             self.net.push(p["node_id"], "feedback", body)
+
+    def _relay_hit_feedback(self, shooter_pid: str | None, victim_pid: str, dmg: int, t: int,
+                             weapon_id: str | None = None) -> None:
+        """S56 ("what hit me"): best-effort feedback to the SHOOTER's own node naming what it just
+        hit, so that phone can attribute a `$HIR` its own headset heard without waiting on the
+        victim's node to say anything (which may be slow, or offline). The same best-effort contract
+        as the existing "kill" feedback (`scoring.Scorer._death`, also relayed through `_feedback`):
+        no queue, no retry -- a shooter with no socket simply misses it.
+
+        LIVE only. Callers pass a hit ONLY from `Scorer.hits_log`'s own growth (`_on_event`,
+        `ingest_batch`), which is already exactly "a genuinely new fact": never a duplicate seq,
+        never parked onto another match, never past the A6.1 end freeze, and never a fact replayed
+        while reconstructing a scorer (a replay's callbacks are wired up only AFTER the replay loop,
+        so nothing here runs during one). `victim_pid == shooter_pid` (a self-inflicted `$HIR`, e.g.
+        a grenade) never relays -- there is no THIRD party to tell."""
+        if self.phase != "live" or not shooter_pid or shooter_pid == victim_pid:
+            return
+        vp = self.players.get(victim_pid) or {}
+        body: dict = {"kind": "hit", "t": t, "victim": victim_pid, "victim_num": vp.get("player_num"),
+                      "victim_display": vp.get("display"), "dmg": dmg}
+        if weapon_id:
+            body["weapon_id"] = weapon_id
+        self._feedback(shooter_pid, body)
+
+    def _relay_batch_hits(self, new_hits: list[tuple[int, str, str, int]]) -> None:
+        """S56: relay every hit `Scorer.ingest_batch` just newly scored (`new_hits`, a slice of
+        `hits_log` -- see `_relay_hit_feedback`). No `weapon_id` here: `ingest_batch` sorts events by
+        `t` before scoring them, so pairing one `hits_log` entry back to the wire event that produced
+        it is not reliable across a whole batch. The single-fact path (`_on_event`) is where a
+        `weapon_id` actually gets attached; a batched hit still relays, just without naming the gun."""
+        for t, shooter, victim, dmg in new_hits:
+            self._relay_hit_feedback(shooter, victim, dmg, t)
 
     def _on_feed(self, entry: dict):
         self.feed.insert(0, entry)

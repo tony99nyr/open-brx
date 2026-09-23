@@ -1649,6 +1649,48 @@ class WeaponCatalog:
         rpc = self.rounds_per_charge(weapon_id)
         return rounds // rpc if rpc > 1 else rounds
 
+    def hir_magnitudes(self, weapon_id: str) -> list[int]:
+        """S56 ("what hit me"): the BASE `$HIR` t5 magnitudes this weapon can send a victim, from one
+        compiled `$WEAP` frame at slot 0 with no mods.
+
+        A `$HIR` fact carries only the raw IR magnitude (its own t5), never a weapon id, so a victim's
+        phone that wants to NAME what hit it must match that magnitude against the shooter's known
+        weapons. A weapon can put more than one number on the wire: t5 (`dmg`, the gun word), t12
+        (`headset_dmg`, the shooter's own second word on a dual-emitter weapon) and t37 (`tap`, a cell
+        weapon's tap damage, independent of its charge). Each is included only when the compiled frame
+        carries it greater than 0 -- the Shotgun's t5 and t12 are both 20, so it publishes one entry,
+        not two, because the phone can only tell a hit's SIZE, not which emitter sent it. Sorted
+        ascending and de-duplicated for the same reason `hir_from_weap()` is."""
+        return hir_from_weap(self.resolve(weapon_id, 0))
+
+
+def hir_from_weap(frame: str) -> list[int]:
+    """S56: the `$HIR` t5 magnitudes carried by one already-compiled `$WEAP,...` frame.
+
+    The same parse `WeaponCatalog.hir_magnitudes()` runs on a freshly resolved frame, but this one
+    takes a frame that is already on the wire -- a player's own compiled bundle, where a perk (Armour
+    Piercing's `dmg_abs`) may have changed t5 or zeroed t12 away from the catalogue's base numbers.
+    `WeaponCatalog.damage()` reads t5 the same way: `split(",")[self._T["dmg"] + 1]`, one token to the
+    right of the doc-token index, because index 0 of a split frame is `$WEAP` itself.
+
+    t5/t12/t37, each only when the frame carries it greater than 0; sorted ascending and
+    de-duplicated, because a phone matching a `$HIR` magnitude back to a weapon only needs to know
+    which SIZES that weapon can send, not which token sent it (the Shotgun's t5 and t12 are both 20:
+    one entry, not two)."""
+    p = frame.split(",")
+    T = WeaponCatalog._T
+    vals: set[int] = set()
+    for key in ("dmg", "headset_dmg", "tap"):
+        idx = T[key] + 1
+        if idx < len(p):
+            try:
+                v = int(p[idx] or 0)
+            except ValueError:
+                v = 0
+            if v > 0:
+                vals.add(v)
+    return sorted(vals)
+
 
 class Compiler:
     """Implements interfaces.Compiler."""
