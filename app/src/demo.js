@@ -100,7 +100,7 @@ export function startDemo({ engine, log }) {
     return prevReport ? prevReport(kind, body) : undefined;
   };
   const team = TEAMS[teamKey], foe = TEAMS[foeKey];
-  const roster = [{ player_id: 'p-demo', player_num: 7, display: 'REAPER', team_id: teamKey }, { player_id: 'p-2', player_num: 19, display: 'VIPER', team_id: foeKey }];
+  const roster = [{ player_id: 'p-demo', player_num: 7, display: 'REAPER', team_id: teamKey, weapons: [{ weapon_id: 'assault_rifle', hir: [9] }] }, { player_id: 'p-2', player_num: 19, display: 'VIPER', team_id: foeKey, weapons: [{ weapon_id: 'assault_rifle', hir: [9] }] }];   // S56: the demo $HIR magnitude 9 is the stock Assault Rifle's
   const config = { config_id: golden.config_id, mode: 'tdm', environment: 'outdoor',
     // `?night` is documented at the top of this file but was hardcoded false here, so the
     // config message overwrote the flag set from the URL above and the night theme could
@@ -346,6 +346,7 @@ export function startDemo({ engine, log }) {
       },
       alert: (kind = 'next_kill_wins', text) => engine.onMcMessage({ kind: 'alert', body: { kind, text: text || ({ next_kill_wins: 'NEXT KILL WINS', bomb_planted: 'BOMB PLANTED', point_captured: 'POINT CAPTURED', lead_taken: 'YOUR TEAM LEADS', time_60: 'ONE MINUTE LEFT', vip_down: 'VIP DOWN' })[kind] || kind.replace(/_/g, ' ').toUpperCase(), t: Date.now() } }),
       killMedals: (medals = ['double_kill', 'killing_spree'], victim = 'VIPER') => engine.onMcMessage({ kind: 'feedback', body: { player_id: 'p-demo', kind: 'kill', t: Date.now(), cue: golden.cues.kill, victim_team: foeKey, victim: 'p-' + String(victim).toLowerCase(), victim_display: victim, medals } }),
+      dealt: (dmg = 9, victim = 'VIPER') => engine.onMcMessage({ kind: 'feedback', body: { player_id: 'p-demo', kind: 'hit', t: Date.now(), victim: 'p-' + String(victim).toLowerCase(), victim_num: 19, victim_display: victim, dmg, weapon_id: 'assault_rifle' } }),   // S56
       killConfirm: (victim = 'VIPER') => engine.onMcMessage({ kind: 'feedback', body: { player_id: 'p-demo', kind: 'kill', t: Date.now(), cue: golden.cues.kill, victim_team: foeKey, victim: 'p-' + String(victim).toLowerCase(), victim_display: victim } }),
       // the gun (what the tagger would report)
       fire: n => fire(n == null ? 1 : n), reload, hit: d => hit(d == null ? 9 : d),
@@ -453,6 +454,7 @@ export function startDemo({ engine, log }) {
       'live-charge-ok':    [[0, 'chargeRifle'], ...live, [2300, () => ev.chargeAmmo(10)]],
       'live-kill':         [...live, [2300, () => ev.killConfirm()]],
       'down':              [...live, [2300, () => ev.score(3, 1, 1)], [2350, 'die']],
+      'down-recap':        [...live, [2100, () => { ev.hit(); ev.dealt(18); ev.dealt(9); }], [2300, () => ev.score(3, 1, 1)], [2350, 'die']],   // S56: TAKEN and DEALT on the down screen
       'live-reload':       [...live, [2300, () => ev.fire(12)], [2600, 'reloadCycle']],
       'live-reload-overrun': [[0, () => { player.loadout = { weapons: [{ weapon_id: 'shotgun' }] }; }], ...live, [2300, () => ev.fire(20)], [2600, () => ev.reloadChain(18, 800)]],   // F123: the chain reload — nominal is the PER-SHELL time, so the bar is in overrun for the whole reload
       'live-switch':       [[0, 'twoWeapons'], ...live, [2300, () => ev.fire(3)], [2600, 'altCycle']],

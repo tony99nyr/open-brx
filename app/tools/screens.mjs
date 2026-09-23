@@ -77,7 +77,7 @@ const b = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });  
 const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 667, height: 375 }];
 const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted',
   'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
-  'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked', 'live-scores', 'live-scores-ffa', 'live-poison', 'live-smoke', 'down-poisoned', 'live-gun-no-answer', 'live-gun-locked']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
+  'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked', 'live-scores', 'live-scores-ffa', 'live-poison', 'live-smoke', 'down-poisoned', 'live-gun-no-answer', 'live-gun-locked', 'down-recap']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
 let stepIdx = 0;   // counts every step this run selects; identical control flow in every shard, so `% count` partitions them
 const step = async (name, fn) => { if (ONLY && !name.includes(ONLY)) return; if (SHARD && stepIdx++ % SHARD[1] !== SHARD[0]) return; try { await fn(); console.log(`  ok   ${name}`); pass++; } catch (e) { console.log(`  FAIL ${name}: ${String(e.message || e).slice(0, 300)}`); fail++; errs.push(name); } };
 const open = async (view, stage, extra = '', ms) => {
@@ -2120,6 +2120,32 @@ const fakeGunPlugin = pg => pg.evaluate(() => {
 const relinkView = pg => pg.evaluate(() => { const b = document.querySelector('#diag [data-act="onReconnectGun"]'), h = document.getElementById('dg-gunhint'), d = document.getElementById('diag');
   return { label: b.textContent, disabled: b.disabled, hint: h ? h.textContent : '', hintFits: !h || h.scrollWidth <= h.clientWidth + 1, hintInPanel: !h || !h.textContent || h.getBoundingClientRect().right <= d.getBoundingClientRect().right + 1,
     live: h ? h.getAttribute('aria-live') : null, ...window.__ble }; });
+// S56 (2026-09-23): what hit you. The hit chip names the weapon from the shooter's roster loadout, and the down
+// screen books damage taken per source and damage dealt (relayed by Mission Control, best-effort).
+for (const view of VIEWS) {
+  await step(`${view.name} S56 live-hit: the hit chip names the weapon`, async () => {
+    const pg = await open(view, 'live-hit', '', 2200);   // the three hits land at 2.3 s and the chip lives under a second
+    await pg.waitForSelector('.mo.hit .hw', { timeout: 2000 }).catch(() => {});
+    const t = await pg.evaluate(() => { const e = document.querySelector('.mo.hit .hw'); return e ? { t: e.textContent, fits: e.getBoundingClientRect().right <= innerWidth && e.getBoundingClientRect().left >= 0 } : null; });
+    await pg.close();
+    must(t && t.t === 'ASSAULT RIFLE' && t.fits, 'hit weapon line: ' + JSON.stringify(t));
+  });
+  await step(`${view.name} S56 down-recap: a line under KILLED BY names the weapon, what this life took and dealt, and overlaps nothing`, async () => {
+    const pg = await open(view, 'down-recap');
+    const r = await pg.evaluate(() => { const box = e => { if (!e) return null; const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
+      const lf = document.querySelector('.down .lf');
+      const rdEl = document.getElementById('rd');
+      return { rdLines: rdEl ? rdEl.offsetHeight / parseFloat(getComputedStyle(rdEl).lineHeight) : null, txt: lf ? lf.textContent : null, lf: box(lf), rd: box(document.getElementById('rd')), lab: box(document.querySelector('#dnhint .lab')),
+        tiles: [...document.querySelectorAll('#downrecap .rc')].map(box), w: innerWidth }; });
+    await pg.close();
+    const hit = (a, b) => a && b && a.l < b.r - 1 && a.r > b.l + 1 && a.t < b.b - 1 && a.b > b.t + 1;
+    must(/ASSAULT RIFLE · TOOK 115 · DEALT 27 PARTIAL/.test(r.txt || ''), 'this-life line: ' + r.txt);
+    must(r.rdLines != null && r.rdLines < 1.5, 'the countdown wrapped onto two lines: ' + r.rdLines);
+    must(r.lf.l >= 0 && r.lf.r <= r.w, 'the line leaves the screen: ' + JSON.stringify(r.lf));
+    must(![r.rd, r.lab, ...r.tiles].some(x => hit(r.lf, x)), 'the line overlaps the countdown or the recap: ' + JSON.stringify(r));
+    must(new Set(r.tiles.map(x => Math.round(x.b))).size === 1, 'the recap wrapped: ' + JSON.stringify(r.tiles));
+  });
+}
 // 2026-09-23: the in-match CHANGE TAGGER label ("TAGGER LOCKED DURING MATCH") overran its button in the one-row
 // bar and lay over RELINK GUN, so a tap on RELINK GUN landed on the disabled button and did nothing.
 for (const view of VIEWS) for (const stage of ['diag-live', 'idle-diag']) {

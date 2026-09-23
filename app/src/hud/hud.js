@@ -1399,8 +1399,6 @@ export class Hud {
       : [`<b>${st.deaths}</b> DEATH${st.deaths === 1 ? '' : 'S'}`, `<b>${st.shots}</b> SHOT${st.shots === 1 ? '' : 'S'}`];
     if (st.lives != null) me.push(`<b>${st.lives}</b> ${st.lives === 1 ? 'LIFE' : 'LIVES'} LEFT`);   // "no respawns" is already the big label above
     out.push(tile('YOU', me.join(' · ')));
-    // A31/A24: one kill from the cap with MC unreachable is the exact moment a player decides the match is theirs
-    // and walks off. Say where a win actually gets confirmed — the phone cannot call it and never will.
     if (!linked && this._atCapMinusOne(st)) out.push('<div class="capwarn"><span class="unskew">MC OUT OF RANGE · A WIN IS CONFIRMED ONLY AT MISSION CONTROL</span></div>');
     return out.join('');
   }
@@ -1635,7 +1633,7 @@ export class Hud {
         this._moment = downKey;
         const title = recoveryDown
           ? '<span class="tt"><span class="t">GUN RESTARTED</span><span class="t t2">REDEPLOYING</span></span><span class="kb">REDEPLOYING</span>'
-          : `${st.respawnType === 'scanner' ? '<span class="tt"><span class="t">DOWN</span><span class="t t2">RESPAWN<br>AT STATION</span></span>' : '<span class="t">DOWN</span>'}<span class="kb">${kb.dot ? 'POISONED BY' : 'KILLED BY'} <b style="${tk ? `background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}` : 'background:var(--mut);color:var(--bg,#000)'}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span>`;
+          : `${st.respawnType === 'scanner' ? '<span class="tt"><span class="t">DOWN</span><span class="t t2">RESPAWN<br>AT STATION</span></span>' : '<span class="t">DOWN</span>'}<span class="kb">${kb.dot ? 'POISONED BY' : 'KILLED BY'} <b style="${tk ? `background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}` : 'background:var(--mut);color:var(--bg,#000)'}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span>${this._lifeLine(st, kb)}`;
         this.overlay.innerHTML = `<div class="mo down"><div class="wash"></div>
           <div class="c"><div class="l2">${title}</div>
           <div class="dn" id="dnhint">${this._downHint(st)}</div></div>
@@ -1779,6 +1777,36 @@ export class Hud {
   // gun's LEDs precisely because winning that surface needed ~30 Hz repaints that strobe, and
   // flicker in the 10-25 Hz band is the photosensitive-epilepsy trigger range. One transition only.
   // Renders at night too (dimmer, no whiteout) -- knowing you are being shot is not optional.
+  /** S56: the weapon line under the HIT chip. An ambiguous resolution names every candidate with OR (never a guess);
+   *  no line at all when the phone has no claim (an older MC sends no roster weapons). */
+  /** S56: one short line under KILLED BY: the killer's weapon (only when resolved without doubt), what this life
+   *  took, and what it dealt. Dealt comes from the victims' phones through Mission Control, best-effort, so it reads
+   *  PARTIAL whenever a hit may not have reached this phone. Empty when the phone has nothing to say. */
+  _lifeLine(st, kb) {
+    const life = st.lastLife; if (!life) return '';
+    const r = kb.num != null && !kb.dot ? (life.taken || []).find(x => x.num === kb.num) : null;
+    const w = r && (r.weapons || []).filter(x => x.name && !x.ambiguous).sort((a, b) => b.dmg - a.dmg)[0];
+    const parts = [];
+    if (w) parts.push(esc(String(w.name).toUpperCase()));
+    if (life.takenTotal) parts.push(`TOOK <b>${life.takenTotal}</b>`);
+    if (life.dealtTotal || life.dealtPartial) parts.push(`DEALT <b>${life.dealtTotal}</b>${life.dealtPartial ? ' PARTIAL' : ''}`);
+    return parts.length ? `<span class="lf">${parts.join(' · ')}</span>` : '';
+  }
+  /** S56: the weapon line under the HIT chip. An ambiguous resolution names every candidate with OR (never a guess);
+   *  no line at all when the phone has no claim (an older MC sends no roster weapons). */
+  /** S56: the weapon of the killing source on the KILLED BY line, only when the phone resolved it without doubt. */
+  _killWeapon(st, kb) {
+    if (kb.dot || kb.num == null || !st.lastLife) return '';
+    const r = (st.lastLife.taken || []).find(x => x.num === kb.num);
+    const w = r && (r.weapons || []).filter(x => x.name && !x.ambiguous).sort((a, b) => b.dmg - a.dmg)[0];
+    return w ? ` <span class="kw">${esc(String(w.name).toUpperCase())}</span>` : '';
+  }
+  _hitWeapon(w) {
+    if (!w) return '';
+    const names = w.ambiguous ? (w.names || []) : [w.name || w.id];
+    if (!names.length || names.length > 2) return w.ambiguous ? '<span class="hw">WEAPON UNCLEAR</span>' : '';
+    return `<span class="hw">${names.map(x => esc(String(x).toUpperCase())).join(' OR ')}</span>`;
+  }
   _hit(st, m) {
     const d = (m.data) || {};
     const tk = d.shooter_key || 'red';
@@ -1791,7 +1819,7 @@ export class Hud {
     // background at all. This way the day colour is the fallback.
     el.innerHTML = `<div class="vig"></div>
       <div class="hc"><span class="dmg tab">-${esc(d.dmg)}</span>
-      <span class="src" style="background:${TEAM_COLOR[tk] || 'var(--bad)'};color:${TEAM_INK[tk] || '#fff'}"><span class="unskew">HIT${where ? ' · ' + where : ''}</span></span></div>`;
+      <span class="src" style="background:${TEAM_COLOR[tk] || 'var(--bad)'};color:${TEAM_INK[tk] || '#fff'}"><span class="unskew">HIT${where ? ' · ' + where : ''}</span></span>${this._hitWeapon(d.weapon)}</div>`;
     this._swap('hit', el, 260, 700);
     this.h.onHaptic && this.h.onHaptic('hit');
   }
