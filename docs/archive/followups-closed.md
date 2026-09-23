@@ -635,3 +635,6 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
   The chip states the tunnel count and is never green. The real fix, a node-reported transport, is F309.
 - 2026-09-23 **F251** closed by `ec5c4ba3`: `mc/fake_invariants.json` lists seven node-protocol behaviours, asserted against
   Session/FakeNet and MockNode in Python and against the `?mock` backend in vitest; each side fails on an id with no case.
+- 2026-09-23 **F289** closed: Tony chose the board flag. The node reports the owed end write (`status.protected`,
+  `protect_ms` on respawn/team_change, brx4 `8b480775`/`bbbadf30`); MC stamps `LiveRow.possibly_protected` on a STALE
+  row whose newest evidence says it was owed, and LIVE reads POSSIBLY PROTECTED · HITS MAY NOT COUNT.

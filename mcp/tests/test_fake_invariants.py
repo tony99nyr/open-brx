@@ -89,3 +89,14 @@ def test_inv_stale_start():
         assert "OLDER" in str(error)
     else:
         raise AssertionError("START accepted an older head")
+
+
+def test_inv_protected_stale_only():
+    from test_mc_possibly_protected import go_quiet, live, rows
+    from test_mc_pool_stale import _status
+    s, net, clock, ps = live()
+    _status(net, clock, 0, ps[0], arm_state="live", protected=True)
+    assert not any(r.get("possibly_protected") for r in rows(s).values()), "a phone MC hears is never flagged"
+    go_quiet(s, net, clock, ps, 0)
+    assert all(r["status"] == "stale" for r in rows(s).values() if r.get("possibly_protected"))
+    assert rows(s)[ps[0]["player_id"]].get("possibly_protected") is True

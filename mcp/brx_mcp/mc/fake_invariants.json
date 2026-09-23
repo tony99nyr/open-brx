@@ -5,5 +5,6 @@
   {"id": "fresh_repush", "rule": "A lobby re-push issues a new config_id and retires acknowledgements for the previous head."},
   {"id": "updating", "rule": "Updating counts READY bound players without a current acknowledgement, except players whose gun refused the head."},
   {"id": "coverage_zones", "rule": "Derived coverage reports the level zones."},
-  {"id": "stale_start", "rule": "START refuses a successful acknowledgement for an older config_id even with host override."}
+  {"id": "stale_start", "rule": "START refuses a successful acknowledgement for an older config_id even with host override."},
+  {"id": "protected_stale_only", "rule": "A LIVE row carries possibly_protected only while its phone is stale."}
 ]

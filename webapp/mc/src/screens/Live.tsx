@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { setNotice } from '../notice';
-import { cureLabel, endDeliveryLine, gunLockedLabel, poolStaleLabel } from '../api/derive';
+import { cureLabel, endDeliveryLine, gunLockedLabel, poolStaleLabel, possiblyProtectedLabel } from '../api/derive';
 import { STALE_AFTER_MS, type LiveRow } from '../api/types';
 import { useStore } from '../store';
 import { F, T, fmtAge, fmtClock, fmtDuration, teamColor } from '../tokens';
@@ -287,6 +287,7 @@ function Row({ r, endUnconfirmed, open, onToggle }: { r: LiveRow; endUnconfirmed
   const silent = poolStaleLabel(r.pool_stale, r.pool_stale_ms);      // F208: grey, beside the name, never a status
   const cure = cureLabel(r.cure);                                    // F264: the node's own outcome; no_answer needs a human
   const locked = !syncWarn ? gunLockedLabel(r.gun_locked) : null;     // F272: never render a last-known verdict as current
+  const shielded = possiblyProtectedLabel(r);                        // F289: the one flag that is FOR a stale row
   // longhand sides, not `border` + `borderLeft`: React warns when the shorthand changes on a rerender (A47 opens the row)
   const rim = `1px solid ${endUnconfirmed ? T.bad : open ? T.acc : T.row}`;
   return (
@@ -303,6 +304,9 @@ function Row({ r, endUnconfirmed, open, onToggle }: { r: LiveRow; endUnconfirmed
         </button>
         {locked && <span data-gun-locked={r.player_id} role="alert" title="The player's phone proved that the gun stopped answering."
           style={{ display: 'block', font: F.mono(700, 11), letterSpacing: '.08em', color: T.bad }}>{locked}</span>}
+        {shielded && <span data-possibly-protected={r.player_id} role="status"
+          title="This phone went quiet before it ended spawn protection. Hits on this player may do no damage until the phone reconnects."
+          style={{ display: 'block', font: F.mono(700, 11), letterSpacing: '.08em', color: T.warn }}>{shielded} · HITS MAY NOT COUNT</span>}
         {silent && <span data-gun-silent={r.player_id} title="The phone says this gun's health and ammo readout may be out of date."
           style={{ display: 'block', font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>{silent}</span>}
         {cure && <span data-gun-cure={r.player_id} title="The node's own outcome after it probed the gun."

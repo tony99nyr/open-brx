@@ -908,6 +908,9 @@ class LiveRow(ScoreRow):
     gun_locked: NotRequired[bool]
     # A47: the latest operator action for this player in THIS match. Absent = none sent.
     operator: NotRequired[OperatorStatus]
+    # F289: true-only. The row is `stale` and the newest evidence says the phone had not ended spawn
+    # protection, so the gun may still take no damage. Absent = no such claim.
+    possibly_protected: NotRequired[bool]
 
 
 class LiveView(TypedDict):

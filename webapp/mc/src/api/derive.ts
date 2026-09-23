@@ -3,7 +3,7 @@
 // `types.ts` is the contract (the wire shapes generated from `mcp/brx_mcp/mc/types.py`, the view
 // shapes mirroring `mc/API.md`), so UI policy does not belong in it (review 2026-09-01). Nothing here
 // talks to the network; everything is a pure function of `State`.
-import type { EndDeliveryView, NodeView, State } from './types';
+import type { EndDeliveryView, LiveRow, NodeView, State } from './types';
 import { fmtAge } from '../tokens';
 /** A stable fingerprint of "which guns does MC know about right now".
  *
@@ -304,6 +304,13 @@ export function cureLabel(cure: 'asking' | 'dead' | 'alive' | 'no_answer' | null
   if (cure === 'no_answer') return 'GUN NOT ANSWERING - FORCE RESPAWN';
   return null;
 }
+
+/** F289 (Tony, 2026-09-23): a phone MC can no longer hear still owed the write that ends spawn
+ *  protection, so that gun may take no damage until the phone comes back. Stale rows only (the server
+ *  stamps it only there); it is a warning about the field, never a verdict. */
+export const POSSIBLY_PROTECTED = 'POSSIBLY PROTECTED';
+export const possiblyProtectedLabel = (r: Pick<LiveRow, 'status' | 'possibly_protected'>): string | null =>
+  r.status === 'stale' && r.possibly_protected === true ? POSSIBLY_PROTECTED : null;
 
 /** F272: a positive lock-up verdict from the player node. Only literal true is evidence; false,
  *  absence and older-server data render nothing. Callers additionally suppress last-known data when

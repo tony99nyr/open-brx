@@ -235,6 +235,10 @@ LiveView { match_id, go_live_t, time_limit_s, ends_t, score: { [team_id]: number
             phones_ended?: true /* A47: an ADOPTED match every claiming phone has ended; the console asks for END */ }
 LiveRow  = ScoreRow + { status: "alive"|"down"|"stale", respawn_in_s: number|null, sync_age_ms: number, pool_stale?: "silent"|"no_fire"|"write_lost", pool_stale_ms?: number /* F208/A46, as NodeView */,
             gun_locked?: true /* F272, as NodeView; suppress when this row is stale */,
+            possibly_protected?: true /* F289: ONLY on a "stale" row. The newest evidence from that phone (a `status.protected`,
+                                         or a respawn / team_change fact with `protect_ms` and no status after it) says it had not
+                                         ended spawn protection, so the gun may take no damage. Cleared by any later status without
+                                         `protected`, and at START. The console reads POSSIBLY PROTECTED · HITS MAY NOT COUNT */,
             operator?: OperatorStatus /* A47: the last operator action for this player in THIS match */ }
 OperatorStatus { cmd: "resync"|"respawn"|"relink", state: "sent"|"done"|"refused"|"no_answer" /* pl4: no answer 15 s after the send; relink "done" = started */, why: string|null, sent_t: number, result_t: number|null }
 ScoreRow { player_id, display, team_id: string|null, kills, deaths, assists, shots, shots_total, hits,

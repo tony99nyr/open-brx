@@ -118,7 +118,7 @@ On `main` 2026-09-23: the desk half of F297, F269 and F270. All three stay open 
   scoping needs an engine.js call-site change.
 - **Next bench task:** `connect-metrics --runs 10`, then screamers A7c and A8. **Blocked:** F270 on A8.
 ## Lane: Mission Control console honesty
-F178, F256, F251 closed 2026-09-23. **Next:** the F289 MC flag once brx4's fields land, then F309.
+F178, F256, F251 and F289 (MC flag) closed 2026-09-23. **Next:** F309, the phone-reported transport.
 
 ## Lane: phone screen gate and F289 (brx4)
 2026-09-23: `test:all -- --ui` green (19/19); causes in the log. **F289** node half on main; brx3 owns the MC flag.

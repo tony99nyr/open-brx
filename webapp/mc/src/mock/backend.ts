@@ -765,7 +765,7 @@ export class MockBackend implements Api {
     const k = alive.find(r => r.player_id === killerId) ?? alive[Math.floor(Math.random() * alive.length)];
     let v = alive[Math.floor(Math.random() * alive.length)];
     if (v === k) v = alive[(alive.indexOf(k) + 1) % alive.length];
-    for (const x of [k, v]) { delete x.pool_stale; delete x.pool_stale_ms; } k.kills++; k.streak++; k.hits += 3; k.shots += 6; v.deaths++; v.streak = 0; v.status = 'down'; v.respawn_in_s = this.config.respawn.delay_s;
+    for (const x of [k, v]) { delete x.pool_stale; delete x.pool_stale_ms; delete x.possibly_protected; } k.kills++; k.streak++; k.hits += 3; k.shots += 6; v.deaths++; v.streak = 0; v.status = 'down'; v.respawn_in_s = this.config.respawn.delay_s;
     // F116: `best_streak` is the longest of the match and NEVER resets — `streak` is 0 for whoever
     // died last, which is what made a 9-kill row read "streak 0" on the field.
     k.best_streak = Math.max(k.best_streak ?? 0, k.streak);
@@ -814,6 +814,10 @@ export class MockBackend implements Api {
     // each tick and the claim clears the moment that player kills or dies (their gun spoke).
     const quiet = rows.find(r => r.status === 'alive');
     if (quiet) { quiet.pool_stale = 'silent'; quiet.pool_stale_ms = 190_000; }
+    // F289: the demo's stale phone went quiet inside its spawn-protection window (`state.py
+    // _with_pool_stale`), so ?mock shows POSSIBLY PROTECTED. Stale rows only, as the server.
+    const lost = rows.find(r => r.status === 'stale');
+    if (lost) lost.possibly_protected = true;
     this.live_ = { rows, feed: [], go_live_t: s.go_live_t, match_id: s.match_id }; this.endedAt = undefined;
     this.feed({ t_match_s: 0, text: `MATCH LIVE — ${rows.length} NODES SPAWNED`, kind: 'sync', tag: 'SYNC POINT' });
   }
@@ -1464,7 +1468,7 @@ export class MockBackend implements Api {
     setTimeout(() => {
       const r = this.live_?.rows.find(x => x.player_id === player_id);
       if (!r || this.live_?.match_id !== match_id || r.operator?.sent_t !== t) return;
-      if (cmd === 'respawn') { r.status = 'alive'; r.respawn_in_s = null; }
+      if (cmd === 'respawn') { r.status = 'alive'; r.respawn_in_s = null; delete r.possibly_protected; }
       r.operator = { cmd, state: 'done', why: null, sent_t: t, result_t: now() };
       this.feed({ t_match_s: tm(), kind: 'alert', tag: 'OPERATOR',
                   text: cmd === 'respawn' ? `RESPAWNED ${who} (OPERATOR)` : `${word} DONE: ${who}` });

@@ -620,6 +620,11 @@ for idempotent replay. `status` carries no `seq`.
 | `loadout_request` | `{ node_id, player_id, slot:"primary"\|"secondary"\|"perk", kind:"weapon"\|"perk"\|"none", id?, try?:boolean }` | A10.3: phone self-serve pick (loadout.md §4.2). MC validates vs `loadout_policy`, applies, re-sends `assign`, optionally starts the try-out, and ALWAYS answers `loadout_ack` |
 | `loadout_browse` | `{ node_id, player_id, open:boolean }` | A10.3: HUD opened/closed its loadout browser → MC roster shows "PICKING…" (60 s server expiry) |
 
+F289 (2026-09-23): a `respawn` or infection `team_change` fact carries **`protect_ms?: int`** when the phone owes the
+write that ends spawn protection, and **`status.protected?: true`** is restated on every heartbeat while that write is
+owed; absence clears it. Only the phone lifts protection, so MC flags a STALE player whose newest evidence says it was
+still owed (`LiveRow.possibly_protected`); a connected phone is never flagged.
+
 F272 recovery nuance: while the replacement head is actively writing or retrying, the node omits
 `gun_locked` so MC clears POWER-CYCLE while the phone says KEEP POWER ON. If the bounded retry budget is
 exhausted, the node restates `gun_locked:true` because another power-cycle is actionable.

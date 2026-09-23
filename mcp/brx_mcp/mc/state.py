@@ -3450,6 +3450,11 @@ class Session:
         nv.pop("gun_locked", None)
         if body.get("gun_locked") is True:
             nv["gun_locked"] = True
+        # F289: the phone still owes the write that ends spawn protection. True-only and restated on
+        # every heartbeat like `gun_locked`, so a status without it is the newest evidence that it ended.
+        nv.pop("protect_owed", None)
+        if body.get("protected") is True:
+            nv["protect_owed"] = True
         # A28.3: `reach` is NOT taken from the status body. It feeds `coverage()` (which can gate a whole
         # mode) and the readiness amber (which un-blocks a start), so a client-asserted value would let a
         # phone claim its way past both. MC stamps it from the socket in `net._hello_gate`; the node's
@@ -4415,6 +4420,7 @@ class Session:
             self._on_operator_result(nid, ev, t_recv)
             return
         self._note_pool_life(nid, [ev])            # A36
+        self._note_protect(nid, [ev])              # F289
         self._ingest_retired(nid, [ev], t_recv)    # a late fact for the match the operator rolled past
         self._log(nid, ev.get("type", "event"), ev, t_recv, seq=seq, parked=parked)
         if not parked and ev.get("type") == "respawn":
@@ -4444,6 +4450,7 @@ class Session:
             if not events:
                 return
         self._note_pool_life(nid, events)          # A36
+        self._note_protect(nid, events)            # F289
         self._ingest_retired(nid, events, t_recv)  # a late fact for the match the operator rolled past
         for ev in events:
             self._log(nid, ev.get("type", "event"), ev, t_recv, seq=ev.get("seq"),
@@ -5889,6 +5896,8 @@ class Session:
         # ingested into one of those would otherwise end the match that is running NOW.
         sc.on_limit = lambda t, _sc=sc: self._on_frag_limit(t, _sc)
         self.scorer = sc
+        for nv in self.nodes.values():
+            nv.pop("protect_owed", None)       # F289: a window owed in the last match is not this one's
         # A24/M2: the roster AS IT GOES IN. `_replay` builds its Scorer from this, never from the live
         # dict, so a re-team made after the whistle cannot re-play the match on teams nobody wore.
         self._match_players = {pid: p.copy() for pid, p in self.players.items()}
@@ -6620,10 +6629,24 @@ class Session:
             view["phones_ended"] = True
         return view
 
+    def _note_protect(self, nid: str, events: list[Event]) -> None:
+        """F289 (Tony, 2026-09-23): a `respawn` or infection `team_change` fact with `protect_ms > 0`
+        says the phone armed spawn protection and owes the write that ends it. Only the phone lifts it,
+        so a phone that dies inside the window leaves the gun unhittable. Facts go out at once, so MC
+        learns of the window even when no status follows. A later status restates the truth either way:
+        a replayed batch only reaches MC from a phone that is back, and its next heartbeat corrects this."""
+        mid = self.scorer.match_id if self.scorer else None
+        for ev in events:
+            ms = ev.get("protect_ms")
+            if (ev.get("type") in ("respawn", "team_change") and mid and ev.get("match_id") == mid
+                    and isinstance(ms, int) and not isinstance(ms, bool) and ms > 0):
+                self._node_view(nid)["protect_owed"] = True
+
     def _with_pool_stale(self, rows: list[LiveRow]) -> list[LiveRow]:
         """F208: stamp each LIVE row with its node's `pool_stale` claim, only while the node makes one.
         F264: also stamps `cure`, the node's own outcome, the same way.
-        F272: stamps the positive `gun_locked` verdict; absence remains absent for older clients."""
+        F272: stamps the positive `gun_locked` verdict; absence remains absent for older clients.
+        F289: stamps `possibly_protected` on a stale row whose phone still owed the end of protection."""
         pid_node = {pid: nid for nid, pid in self.node_player.items()}
         for row in rows:
             nv = self.nodes.get(pid_node.get(row["player_id"], ""), {})
@@ -6635,6 +6658,10 @@ class Session:
                 row["cure"] = nv["cure"]
             if nv.get("gun_locked") is True:               # F272: strict true-only gate from `_on_status`
                 row["gun_locked"] = True
+            # F289: only for a phone MC can no longer hear. A connected phone ends its own protection
+            # within seconds, so flagging it would cry wolf on every respawn.
+            if row["status"] == "stale" and nv.get("protect_owed") is True:
+                row["possibly_protected"] = True
         return rows
 
     def _start_view(self, now: int) -> StartView | None:

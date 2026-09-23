@@ -74,6 +74,14 @@ const cases: Record<string, Case> = {
     internals(b).acks[id] = { ok: true, gun_echo: '$ALCD', config_id: 'older' };
     await expect(b.start(10, true)).rejects.toThrow('OLDER config');
   },
+  protected_stale_only: async b => {
+    await b.pushLobby(true);
+    await b.start(0, true);
+    (b as unknown as { goLive: () => void }).goLive();
+    const rows = (await b.getState()).live?.rows ?? [];
+    expect(rows.some(r => r.possibly_protected), 'control: the demo flags one row').toBe(true);
+    expect(rows.filter(r => r.possibly_protected).every(r => r.status === 'stale')).toBe(true);
+  },
 };
 
 describe('shared node fake invariants', () => {
