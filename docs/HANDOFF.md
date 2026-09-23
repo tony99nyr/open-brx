@@ -11,15 +11,14 @@ deaths occurred 2.7–4.2 seconds after station respawn, beyond the configured 2
 profile and regression tests show protection was active. The LOAD retry copy and shield recharge styling are now
 consistent with those live behaviors.
 App **0.4.5 is published as the `app-v0.4.5` GitHub release and pushed on `main`.** It includes the prior
-0.4.1-0.4.4 fixes plus the Android release build. Tony field-tests it after lunch. The release includes flap-backoff fixes, picker
+0.4.1-0.4.4 fixes plus the Android release build. The release includes flap-backoff fixes, picker
 connecting-state and pacing fixes, the respawn-profile rebuild, and today's office-test fixes: connecting-screen
 layout, the Mission Control LAN sweep paused during a gun connect, the low-health debounce, HUD layout, immersive
 fullscreen), an eight-finding review pass, life presets (Standard 45/70/0, Shields 45/0/105, Hardcore 45/0/0),
 and perk gain/cost lines on both UIs. **F206 is PROVEN**: levers §1 run f passed in a real TDM through Mission
 Control (cross-team hits registered). **The respawn-protection mechanism F121/F209 described is gone, replaced
 by 0.4.3's respawn profiles** (timed vs station, a weapon-arming delay independent of the protection window,
-equal go-live at T-3); both rows are closed. Today's two ghost-node incidents are already answered by the
-stale-node fix (`88ead536`), filed before the office test even ran. **The first field test after publish is the
+equal go-live at T-3); both rows are closed. **The first field test after publish is the
 Shields preset in a real match, plus the new respawn rules on both phones; both phones need wireless debugging
 re-enabled first.** Still open and P0: the BLE link-loop root cause (**F293**) and BLE setup-reliability metrics
 (**F297**); see `bench-plan.md`'s new "0.4.5 field check".
@@ -120,6 +119,9 @@ WITHDRAWN; do not act on it.
 
 ## Lane: Mission Control console honesty
 F178, F256, F251 closed 2026-09-23. **Next:** the F289 MC flag once brx4's fields land, then F309.
+
+## Lane: phone screen gate and F289 (brx4)
+2026-09-23: `test:all -- --ui` green (19/19); causes in the log. **F289** node half on main; brx3 owns the MC flag.
 
 ## Start here
 
