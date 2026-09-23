@@ -640,3 +640,6 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
   row whose newest evidence says it was owed, and LIVE reads POSSIBLY PROTECTED · HITS MAY NOT COUNT.
 - 2026-09-23 **F191** closed: Tony's rule is that the standing WSL banner never displaces a real alert. `CommandBar` already
   rendered every banner on its own condition; the WSL banner now sits LAST, below the tunnel alert, pinned in `console.test.tsx`.
+- 2026-09-23 **F284** closed: there is no 180 s give-up (likely the "3 min out of range" rejoin test step). The phone never
+  gives up on MC: it redials in every phase, 0.5 s doubling to 10 s (`transport.js` backoff), keeps the match local, and
+  queues facts (`ring.js`, 500 or 2 h); only a 4001/4003 refusal stops it. MC: stale at 8 s, gone at 10 min. Tony accepted it as is.

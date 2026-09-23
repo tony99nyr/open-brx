@@ -192,5 +192,4 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 |---|---|
 | **F268**, **F280**: the recoil rung basis (the time-to-kill proposal). The floors are settled at 60 | S54, sitting 8 |
 | **S48**: does "super indoor" mean less power, or a detuned carrier (levers §20)? | the super-indoor sheet (Q15) |
-| **F284**: the 180 s offline give-up policy for a phone (find its source first) | sitting 5's offline checks |
 | The ALT indoor/outdoor wording in `manual/fix.md` "IR isn't registering hits" step 4. The page says the field test found no emitted-range change, but V4_31 shows the mode sets emitter power (F171) | no sitting; a manual edit |
