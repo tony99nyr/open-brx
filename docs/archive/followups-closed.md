@@ -648,3 +648,6 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
 - 2026-09-23 **F284** closed: there is no 180 s give-up (likely the "3 min out of range" rejoin test step). The phone never
   gives up on MC: it redials in every phase, 0.5 s doubling to 10 s (`transport.js` backoff), keeps the match local, and
   queues facts (`ring.js`, 500 or 2 h); only a 4001/4003 refusal stops it. MC: stale at 8 s, gone at 10 min. Tony accepted it as is.
+- 2026-09-23 **F291** closed by the balance rules R1-R10 (docs/weapon-design.md, top table; `ef55b7db..6dae402d`):
+  Tony's duel rules are CI-gated at 65% on Standard. Charge Rifle 70 + 16-damage taps, Shotgun 700 ms / 30% range,
+  SMG 7 + 2, Burst Rifle t23 550 with its 40% crit, Deagle 700 ms, USP mag 12, Suppressor 100/85/70. Bench half: F308.

@@ -88,13 +88,10 @@ runbook needs a build from `main`: S56 and F309 are newer than 0.4.5.
 
 **S52 is closed (2026-09-22):** the HUD shows `ALT = RELOAD` and warns on conflicting secondary picks; app gates passed.
 
-Shipped: the `$WEAP` t12 headset word as a declared `wire.headset_dmg` (a captured t12 with no price is a refusal),
-crits on two weapons (`crit_pct`; hits-to-kill stays the GUARANTEED number), the counts derived from the shipped
-artefact, and the `/arsenal` page. The recoil rungs ship per weapon (S54, F268, F280 closed, `aa7b08b9`); the open balance work
-is F291 and F310. F260 is closed: dual-emitter words share a `shot_group`, so MC counts one physical pull for accuracy while retaining both damage facts.
-The Toxin Rifle SHIPPED 2026-09-19 (S16 closed): every hit poisons, the node tick clock, credited `death`
-with `dot: true`, the HUD poison and smoke tells, unhidden. `mcp/tools/balance_sim.py` balances any weapon
-(weapon-design.md §7.5c).
+**Balance rules R1-R10 shipped 2026-09-23** (`ef55b7db..6dae402d`): the one-page table at the top of
+[`weapon-design.md`](weapon-design.md) is the single home of every Tony balance rule; `test_balance_sim.py` gates each at
+65% on Standard (R7 is the tightest, 65.5%). The sim now models range bands (headset word close only) and crits.
+Recoil counts rounds per trigger pull by calibre (S54, `aa7b08b9`). F291 is closed. `balance_sim.py` balances any weapon.
 
 - **Next desk task:** **F310**, the balance rules on the Shields preset.
 - **Next bench task:** **F308** and **F292** in [`bench-2026-09-24.md`](bench-2026-09-24.md), then sitting 2 steps 1-4,
@@ -125,8 +122,8 @@ Use this priority stack; do not spend Tony's bench time on desk work:
 1. **Next sitting (now):** [`bench-2026-09-24.md`](bench-2026-09-24.md), on a build from `main` (S56 and F309 are
    newer than 0.4.5), then sitting 5 for F264/F277. Record evidence and promote/close each row from the result.
 2. **Screamer transport:** the runbook's Block 2, then A8b; capture F269/F270/F272, then F274's three hardware soaks. This unlocks Phase B-E; do not infer numbers from ordinary `send` runs.
-3. **Decisions before more code:** F291's open duel rule and F310 (the weapons lane); B21 waits for Tony's
-   release key. Defer S50/F281 until sitting 2 confirms `$TMP` semantics.
+3. **Decisions before more code:** F310's Shields bar and the heavies question (the weapons lane); B21's release key
+   exists (2026-09-23); the signed cut waits for the open desk fixes. Defer S50/F281 until sitting 2 confirms `$TMP` semantics.
 4. **Only after reliability:** E2/E3/E4, B17, K6/K8 and the remaining feature rows are roadmap work.
 
 If Tony is not at the bench, prepare the decision packet and inspect the exact FOLLOWUPS methods; do not invent a

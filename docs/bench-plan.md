@@ -43,7 +43,7 @@ superseded). See `docs/experiment-log/2026-09.md` (2026-09-19 pre-game entry) fo
 ### Next sitting: [`bench-2026-09-24.md`](bench-2026-09-24.md) (about 3 hours indoor, plus 60 min outdoor)
 
 One ordered runbook for the next sitting: F297/F293 connect reliability, the screamers transport steps A4, A7,
-A7b, A7c and A8 with `raw-bytes` (F269/F270), F308, S56, F291, F292, F298, F296, F309, F275
+A7b, A7c and A8 with `raw-bytes` (F269/F270), F308, S56, F292, F298, F296, F309, F275
 outdoors, S48's super-indoor grid in Tony's house, and S57's IR callout bus.
 It includes the 0.4.5 field check, on a build from `main` (S56 and F309 are newer than 0.4.5).
 
