@@ -479,8 +479,12 @@ class FakeConnectionManager:
                 for a, t in self.taggers.items()]
 
     async def connect(self, address: str, alias: str, **_) -> dict:
-        if alias in self.sessions:                  # mirror the real manager (catches a
-            raise ValueError(f"alias '{alias}' already connected")  # missing disconnect)
+        if alias in self.sessions:
+            if self.is_connected(alias):
+                raise ValueError(f"alias '{alias}' already connected")
+            # Mirror the real manager: a dropped link leaves an alias record behind,
+            # but a later connect replaces that dead session in place.
+            self.sessions.pop(alias, None)
         if address in self.fail_connect:            # simulate a gun that won't come up
             raise ConnectionError(f"could not connect to {address}")
         self.dropped.discard(alias)                 # a (re)connect heals a recoverable drop

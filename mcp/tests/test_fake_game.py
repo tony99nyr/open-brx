@@ -286,6 +286,25 @@ def test_fake_run_live_reconnects_dropped_gun():
     assert snap["over"] and snap["winner"] == "team1"
 
 
+def test_fake_manager_reopens_a_dropped_alias_but_refuses_a_live_one():
+    A = FakeTagger("AA:1")
+    mgr = FakeConnectionManager([A])
+
+    async def check():
+        await mgr.connect("AA:1", "t1")
+        try:
+            await mgr.connect("AA:1", "t1")
+        except ValueError as e:
+            assert "already connected" in str(e)
+        else:
+            raise AssertionError("a live alias must still refuse a duplicate connect")
+        mgr.drop("t1")
+        result = await mgr.connect("AA:1", "t1")
+        assert result["connected"] is True and mgr.is_connected("t1")
+
+    _run(check())
+
+
 def test_fake_run_live_force_stops_on_stall():
     # a frag game (no clock) where the opponent drops so no more kills happen must
     # NOT hang — the wall-clock safety force-stops it.

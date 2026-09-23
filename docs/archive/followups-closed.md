@@ -563,6 +563,10 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
 
 - 2026-09-22 **S52** `loadout.overrides.easy_reload` now reaches the phone HUD state, which renders `ALT = RELOAD`; the picker also warns before a secondary weapon request that would take the ALT button. The S52 engine regression and existing app screen gate pass.
 
+# Closed 2026-09-22: alias reconnect after BLE drop
+
+- 2026-09-22 **F249** `connect()` now replaces a dead alias session in both the real and fake BLE managers while preserving the live-alias refusal. The focused fake-manager regression and server safety suite pass.
+
 # Closed 2026-09-22: mock WSL warning parity
 
 - 2026-09-22 **F193** the Mission Control mock imports one shared warning constant, and the rendered MC test

@@ -153,8 +153,21 @@ class ConnectionManager:
         take down the BLE link.
         """
         if alias in self.sessions:
-            raise ValueError(f"alias '{alias}' already connected to "
-                             f"{self.sessions[alias].address}")
+            existing = self.sessions[alias]
+            try:
+                live = bool(existing.client.is_connected)
+            except Exception:  # noqa: BLE001 — a torn-down client is not live
+                live = False
+            if live:
+                raise ValueError(f"alias '{alias}' already connected to "
+                                 f"{existing.address}")
+            # A BLE drop leaves the manager's alias record behind, but the caller's
+            # next connect must be allowed to establish a fresh client in its place.
+            try:
+                await existing.client.disconnect()
+            except Exception:  # noqa: BLE001 — the client is already dead
+                pass
+            self.sessions.pop(alias, None)
         last_error: Exception | None = None
         for attempt in range(1, attempts + 1):
             client = BleakClient(address, timeout=20.0)
