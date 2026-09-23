@@ -122,6 +122,9 @@ F178, F256, F251, F289 (MC flag) closed and F309 built 2026-09-23. **Next:** F30
 
 ## Lane: phone gate, S56, B21 (brx4)
 2026-09-23: S56 built (minimal HUD; brx-hud recap open). F191, F284 closed. **B21:** `npm run android:release` ready; Tony creates the key.
+## Lane: F293 (brx5)
+2026-09-23: `brx_mcp.btlink` built. Next: read bench 1.3's captures.
+
 ## Start here
 
 Use this priority stack; do not spend Tony's bench time on desk work:
