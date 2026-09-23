@@ -61,6 +61,17 @@ when the same key arrived within `CALLOUT_DEDUPE_MS` (600 ms). The window is sho
 players on one team makes the same key twice, a second or so apart, and both must count. A callout word never overwrites `state().beacon`, which
 stays the hill and station beacon.
 
+## The rule for every event (Tony)
+
+One event, one word, sent once by the gun where it happened. No phone or gun ever relays a word. The player field
+names who did it, and the magnitude names the event and the team it concerns. A grenade hill already works this way:
+its capture word (magnitude 50) is its single broadcast. A phone-run hill or a flag capture follows the same shape:
+the capturing player's gun sends one word naming the capturer, with the capturing team in the magnitude.
+
+Reserved codes (not built in v1, all in the bench-silent range): `HILL_CAPTURED` 29 + team (29 to 32), player = the
+capturer; `FLAG_CAPTURED` 33 + team (33 to 36), player = the capturer. Adding one is a row in `IR_CALLOUT` and a
+receiver case.
+
 ## Scope (Tony, v1)
 
 Deaths and kills only. Hill captures keep their native path: the grenade's own capture word already reaches nearby
