@@ -212,11 +212,22 @@ export interface Player {
   voice_slots?: Record<string, string>;
 }
 
+/** S56: one weapon a roster player carries, so a victim's phone can name what hit it. */
+export interface RosterWeapon {
+  weapon_id: string;
+  /** The `$HIR` token-5 magnitudes this weapon's words can carry (`$WEAP` t5, t12 when > 0, t37 when > 0),
+   *  read from THIS player's compiled frame when MC holds one (a perk such as Armour Piercing changes them),
+   *  else the catalogue's base values. Sorted, unique. */
+  hir: number[];
+}
+
 export interface RosterEntry {
   player_id: string;
   player_num: number;
   display: string;
   team_id: string | null;
+  /** S56: the player's loadout, slot order (primary first). Absent = an older MC; the phone then names no weapon. */
+  weapons?: RosterWeapon[];
 }
 
 export interface Respawn {
@@ -724,6 +735,8 @@ export interface WeaponView {
   rounds_per_charge?: number;
   /** F62 (2026-09-18): $WEAP t6 primaryCritChance, 0-100; absent = never crits */
   crit_pct?: number;
+  /** S56: the base `$HIR` t5 magnitudes this weapon can emit (t5, t12, t37 when > 0), sorted, unique -- the phone's pickup fallback when a hit matches no roster weapon */
+  hir?: number[];
 }
 
 /** A sanitized whole-game preset stored on the Mission Control host. */
@@ -822,6 +835,8 @@ export interface Event {
   /** S16: the death came from the node's own poison tick (a `$LIFE` write), not from a hit. `shooter_num` and
    *  `shooter_team` then name the player who last applied the poison, which is who gets the kill. */
   dot?: boolean;
+  /** S56 (hit_taken): the weapon the victim's phone resolved from the shooter's roster loadout; absent = unresolved or ambiguous. */
+  weapon_id?: string;
   /** respawn */
   resync?: boolean;
   /** A47: the operator's FORCE RESPAWN, not a respawn after a death (scoring keeps the streak) */

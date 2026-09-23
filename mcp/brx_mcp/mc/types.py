@@ -195,11 +195,22 @@ class Player(TypedDict):
     voice_slots: NotRequired[dict[str, str]]
 
 
+class RosterWeapon(TypedDict):
+    """S56: one weapon a roster player carries, so a victim's phone can name what hit it."""
+    weapon_id: str
+    # The `$HIR` token-5 magnitudes this weapon's words can carry (`$WEAP` t5, t12 when > 0, t37 when > 0),
+    # read from THIS player's compiled frame when MC holds one (a perk such as Armour Piercing changes them),
+    # else the catalogue's base values. Sorted, unique.
+    hir: list[int]
+
+
 class RosterEntry(TypedDict):
     player_id: str
     player_num: int
     display: str
     team_id: str | None
+    # S56: the player's loadout, slot order (primary first). Absent = an older MC; the phone then names no weapon.
+    weapons: NotRequired[list[RosterWeapon]]
 
 
 # ---- §3 config + frames ----
@@ -684,6 +695,7 @@ class WeaponView(TypedDict):
     recoil: NotRequired[Recoil]     # S42: the declared target accuracy profile -- the node's `weaponRow(id).recoil`
     rounds_per_charge: NotRequired[int]  # A48: rounds of the cell one FULL charge spends -- the HUD's NOT ENOUGH ENERGY line reads this, never a hard-coded cost. `views.weapon_view()` resolves the catalogue's absent-means-1 row, so a real WeaponView always carries this; NotRequired only for a hand-built fixture that skips it
     crit_pct: NotRequired[int]      # F62 (2026-09-18): $WEAP t6 primaryCritChance, 0-100; absent = never crits
+    hir: NotRequired[list[int]]     # S56: the base `$HIR` t5 magnitudes this weapon can emit (t5, t12, t37 when > 0), sorted, unique -- the phone's pickup fallback when a hit matches no roster weapon
 
 
 class SavedGame(TypedDict):
@@ -784,6 +796,8 @@ class Event(TypedDict, total=False):
     # S16: the death came from the node's own poison tick (a `$LIFE` write), not from a hit. `shooter_num` and
     # `shooter_team` then name the player who last applied the poison, which is who gets the kill.
     dot: bool
+    # S56 (hit_taken): the weapon the victim's phone resolved from the shooter's roster loadout; absent = unresolved or ambiguous.
+    weapon_id: str
     # respawn
     resync: bool
     operator: bool   # A47: the operator's FORCE RESPAWN, not a respawn after a death (scoring keeps the streak)
