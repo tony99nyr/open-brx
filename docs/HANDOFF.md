@@ -2,26 +2,17 @@
 **State as of 2026-09-23 (desk follow-up).** This is the current truth; history is `git log -p -- docs/HANDOFF.md`.
 The bench order and desk-work list live in [`bench-plan.md`](bench-plan.md); update only the lane you worked.
 ## State of main (2026-09-23, after the desk closure)
-The 2026-09-23 desk closure is committed on `main`: S34 now self-hosts the HUD, utility, and Mission Control fonts, with app/MC/site builds and the site font/accessibility gate green. The 2026-09-20 playtest fixes are committed on `main`: score caps are opt-in, fresh Charge Rifle ammo is
-published, Breacher/Toxin and SMG headset damage are supported, dual-emitter hits are grouped and version-gated,
-LOAD announcements retry after reconnects, shields render as a separate HUD pool, scanner games with one
-team-scoped station warn the operator while uncovered teams use timed AUTO respawn, and utility mode now auto-joins
-an advertised Mission Control service on native phones. Focused app and MC suites are green. The playtest station
-deaths occurred 2.7–4.2 seconds after station respawn, beyond the configured 2-second protection window; the wire
-profile and regression tests show protection was active. The LOAD retry copy and shield recharge styling are now
-consistent with those live behaviors.
-App **0.4.5 is published as the `app-v0.4.5` GitHub release and pushed on `main`.** It includes the prior
-0.4.1-0.4.4 fixes plus the Android release build. The release includes flap-backoff fixes, picker
-connecting-state and pacing fixes, the respawn-profile rebuild, and today's office-test fixes: connecting-screen
-layout, the Mission Control LAN sweep paused during a gun connect, the low-health debounce, HUD layout, immersive
-fullscreen), an eight-finding review pass, life presets (Standard 45/70/0, Shields 45/0/105, Hardcore 45/0/0),
-and perk gain/cost lines on both UIs. **F206 is PROVEN**: levers §1 run f passed in a real TDM through Mission
-Control (cross-team hits registered). **The respawn-protection mechanism F121/F209 described is gone, replaced
-by 0.4.3's respawn profiles** (timed vs station, a weapon-arming delay independent of the protection window,
-equal go-live at T-3); both rows are closed. **The first field test after publish is the
-Shields preset in a real match, plus the new respawn rules on both phones; both phones need wireless debugging
-re-enabled first.** Still open and P0: the BLE link-loop root cause (**F293**) and BLE setup-reliability metrics
-(**F297**); see `bench-plan.md`'s new "0.4.5 field check".
+The 2026-09-23 desk closure (S34 self-hosted fonts) and the 2026-09-20 playtest fixes are committed on `main`
+(opt-in score caps, headset damage for Breacher/Toxin/SMG, grouped dual-emitter hits, LOAD retries, a separate
+shield pool, scanner-station warnings, utility auto-join); `git log` has the detail. The playtest station deaths
+came 2.7-4.2 s after respawn, beyond the 2 s window; the wire profile shows protection was active.
+App **0.4.5 is published as the `app-v0.4.5` GitHub release and pushed on `main`**, with the 0.4.1-0.4.4 fixes:
+flap back-off, picker pacing, the respawn-profile rebuild, the office-test fixes and life presets (Standard
+45/70/0, Shields 45/0/105, Hardcore 45/0/0). **F206 is PROVEN** (levers §1 run f, a real TDM through Mission
+Control). **0.4.3's respawn profiles replace the F121/F209 mechanism** (timed vs station, a separate
+weapon-arming delay, equal go-live at T-3); both rows are closed. **The first field test is the Shields preset in a real match plus the new respawn rules on
+both phones; re-enable wireless debugging on both first.** Still open and P0: the BLE link-loop root cause
+(**F293**) and BLE setup-reliability metrics (**F297**); see `bench-plan.md`'s "0.4.5 field check".
 **Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32**; the claim
 checklist is [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md). Facts that session 1
 proved, and that every lane builds on:
@@ -116,6 +107,17 @@ WITHDRAWN; do not act on it.
   sitting 3 (§26 groups A and B).
 - **Blocked:** S54 and sitting 8 on the rung decision; Extended Mags on `$TMP` (S50) and F281 on sitting 2;
   **F275** on outdoor space (sitting 10).
+## Lane: BLE reliability (desk half)
+Branch `feat/ble-reliability` (2026-09-23) builds the desk half of F297, F269 and F270. All three rows stay open for the bench.
+- **F297:** `python -m brx_mcp connect-metrics <address> --runs 10` prompts for a gun and headset power cycle, then
+  logs link time, first-attempt success and any headset or BLE drop within 30 s. The laptop connects, not the
+  phone: a clean laptop run beside a looping phone points F293 at the phone.
+- **F269:** `python -m brx_mcp raw-bytes` writes exact segments or a zero-gap stream under one writer lock and logs
+  each write after it completes. It unblocks the zero-gap halves of screamers A4, A7, A7b, A7c and A8.
+- **F270:** `WRITE_PACING.responseForMultiPacket` and `ble.RESPONSE_FOR_MULTI_PACKET` ship false;
+  `raw-bytes --with-response` gives the A8 comparison. Head/spawn-only scoping needs an engine.js call-site change.
+- **Next bench task:** `connect-metrics --runs 10` on one gun, then screamers A7c and A8 with `raw-bytes`.
+- **Blocked:** turning F270 on waits for A8 evidence.
 
 ## Lane: Mission Control console honesty
 F178, F256, F251 closed 2026-09-23. **Next:** the F289 MC flag once brx4's fields land, then F309.
