@@ -96,7 +96,7 @@ Each step tries one suspected trigger. Arm the gun with the bench victim head (`
 | A12 | low battery | repeat A7 on a pack below 20 % | any difference |
 | A13 | our peak writer | replay the live S42 recoil writer at today's throttle (a `$WEAP` plus an `$AMMO` every 250 ms) for up to 20 min | the time and frame count at any LOCK-UP: the per-gun traffic budget |
 
-**Running the split and zero-gap steps (F269, built 2026-09-23).** Use `python -m brx_mcp raw-bytes <address> …`.
+**Running the split and zero-gap steps (F269, built 2026-09-23).** Use `python -m brx_mcp raw-bytes <address> …`; the next sitting's order is [`bench-2026-09-24.md`](bench-2026-09-24.md).
 Single-quote every frame: in double quotes the shell turns `$AMMO` into nothing, and the tool then refuses the payload.
 The gun sends `$ALCD` only on a shot or a reload, so the A4, A7b and A8 lines hold the link open for 10 s: fire one round
 inside that window and read the printed last `$ALCD` (the magazine reads one lower than the value set). A run that
@@ -107,9 +107,11 @@ ends on a complete frame then sends one `$PING,*` and reports a missing `$PONG` 
 | A4 (no reset) | `--segment '$AMMO,0,10,50,1,*' --segment '$AMMO,0,17,50,1' --segment '$AMMO,0,23,50,1,*' --allow-incomplete --read-ms 10000` |
 | A4 (reset) | as above, with `--segment '$*'` before the last segment |
 | A7 zero-gap | `--stream` of nine `$PLAY,U37,3,10,,,,,*` then one `$QUERY,*`, concatenated, `--repeat 10`; read `QUERY=` in the reply counts |
+| A7 paced | the same, plus `--phone-pacing --block-frames 10 --block-pause-ms 300` |
 | A7b | `--segment '$AMMO,0,10,50,1,*' --segment '$AMMO,0,2' --segment '3,50,1,*' --delays-ms 0,60 --read-ms 10000`, then `--delays-ms 0,2000` |
 | A7c | `--stream '$PING,*' --repeat 146 --read-ms 5000`, then `--repeat 147`; read `PONG=` |
-| A8 zero-gap | `--stream` of the bench AR `$WEAP` from `compile.resolve()` at magazine 32, then at magazine 30, concatenated, `--repeat 25 --read-ms 10000` (50 frames) |
+| A8 zero-gap | `--stream` of the stock AR `$WEAP,0` at magazine 32 then at magazine 30 (`armgen.py 1 5 ar`, then with `t16=30 t39=30`; 111 B each), concatenated, `--repeat 25 --read-ms 10000` (50 frames) |
+| A8 paced | the same, plus `--phone-pacing`; add `--with-response` for the F270 comparison |
 
 **→ 2026-09-18, A1/A2 run.** A1: no `$PONG` to two pings 8 s apart, no reply to a follow-up `$PLAYX,0`, and no
 audio played at all; the gun spoke only "connected" and "phone disconnected" over the session, and the BLE link
