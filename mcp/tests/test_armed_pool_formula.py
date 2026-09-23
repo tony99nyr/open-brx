@@ -87,12 +87,12 @@ def test_health_pool_and_to_gc_and_validate_agree_across_hp_armor_perk_spread():
     # pushes at a real match. The 255 ceiling still applies, and so does a per-player health override.
 
     # rocket_launcher resolves at 150 a pull (115 + its 35 headset word) / mag 2 -> threshold 300. The perk
-    # must NOT swing this.
-    ok = C.validate(_cfg(45, 150), [_player("rocket_launcher")])
-    assert not any("ONE MAGAZINE" in w for w in ok["warnings"]), ok["warnings"]     # pool 195, legal
-    tipped = C.validate(_cfg(45, 150), [_player("rocket_launcher", perk="body_armor")])
+    # must NOT swing this: base 60 + 230 = 290 is legal, and the perk's armed 60 + min(255, 255) = 315 would not be.
+    ok = C.validate(_cfg(60, 230), [_player("rocket_launcher")])
+    assert not any("ONE MAGAZINE" in w for w in ok["warnings"]), ok["warnings"]     # pool 290, legal
+    tipped = C.validate(_cfg(60, 230), [_player("rocket_launcher", perk="body_armor")])
     assert not any("ONE MAGAZINE" in w for w in tipped["warnings"]), (
-        "body_armor re-graded the weapon: the guard reads the BASE pool (195), not the armed pool: "
+        "body_armor re-graded the weapon: the guard reads the BASE pool (290), not the armed pool: "
         f"{tipped['warnings']}"
     )
     # ...and the base pool itself still moves it: 60 + 250 = 310 > 300 is over the line (armour caps at 255)

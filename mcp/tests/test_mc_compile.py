@@ -1386,16 +1386,16 @@ def test_validate_grades_against_the_pool_the_gun_is_ARMED_with():
     # player's perk must not re-grade a weapon for the whole field. The two ARMING arithmetics above
     # are unchanged and still pinned to each other; what the guard quotes is the BASE pool, clamped
     # the same way.
-    hi = dict(cfg, health={"max_hp": 45, "max_armor": 260})       # capped 255 -> a 300 base, the perk adds nothing
+    hi = dict(cfg, health={"max_hp": 45, "max_armor": 254})       # a 299 base; +25 perk -> capped 255 armed
     head = c.compile(hi, roster("body_armor")[0], hi["teams"])["head"]
     t = next(f for f in head if f.startswith("$PSET")).split(",")
     assert int(t[4]) == 255, "armour is capped at the policy ceiling"
     warns = c.validate(hi, roster("body_armor", "rail_gun"))["warnings"]
     quoted = [w for w in warns if " pool" in w and "ONE MAGAZINE" in w]
     assert quoted, f"the rail gun cannot kill on one magazine at this pool — expected a warning: {warns}"
-    # 45 + min(255, 260) = 300 (two 149 rail hits make 298), with NO +25 from the perk
-    assert "vs a 300 pool" in quoted[0], quoted
-    assert " 330 pool" not in quoted[0], f"the guard used the UNCAPPED pool: {quoted[0]}"
+    # 45 + 254 = 299 (two 149 rail hits make 298), with NO +25 from the perk (armed: 45 + 255 = 300)
+    assert "vs a 299 pool" in quoted[0], quoted
+    assert " 300 pool" not in quoted[0], f"the guard used the ARMED pool: {quoted[0]}"
     # ...and the perk must make NO difference to the grade (F146): the same config, no perk, same line
     plain = [w for w in c.validate(hi, roster(None, "rail_gun"))["warnings"] if "ONE MAGAZINE" in w]
     assert plain and plain[0] == quoted[0], (plain, quoted)

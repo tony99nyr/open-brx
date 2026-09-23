@@ -270,7 +270,7 @@ export const DEMO_WEAPONS = [
     "name": "Rail Gun",
     "cls": "7",
     "weapon_class": "energy",
-    "desc": "A single charged slug that ends whoever it finds. Two shots, and then it is scrap.",
+    "desc": "A single charged slug that ends almost anyone it finds; a full Shields player is left on 1 HP. Two shots, and then it is scrap.",
     "clip": 2,
     "mags": 1,
     "reserve": 2,
