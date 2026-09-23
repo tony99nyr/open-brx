@@ -299,3 +299,98 @@ def test_main_writes_a_csv_and_a_summary_where_it_is_told():
         assert (out / "s_summary.txt").read_text().startswith("SWEEP toxin_rifle")
     finally:
         shutil.rmtree(out, ignore_errors=True)
+
+
+# --------------------------------------------------------------------------- #
+# Recoil duel mode (F291): Tony's three 2026-09-23 balance rules
+# --------------------------------------------------------------------------- #
+
+def test_recoil_profile_pins_the_shipped_ar_against_the_engine_test():
+    """`app/test/engine.test.mjs` ('S54: the round counts are derived from the row's dmg...') pins the
+    shipped Assault Rifle row's `_recoilProfile()` output at crisp 100, degraded 80, heavy 60, after 6
+    rounds, heavy after 9, settled at the 600 ms floor. This is the SAME row (`weapons.json`
+    `assault_rifle`), read through the Python mirror -- if the two ever disagree, one of the two files
+    drifted from `app/src/engine.js` and this test is what catches it."""
+    p = B.recoil_profile(CAT._row("assault_rifle"))
+    assert p == B.RecoilProfile(crisp=100.0, degraded=80, heavy=60.0, after_shots=6, heavy_after=9,
+                                settle_ms=600.0), p
+
+
+def test_recoil_profile_pins_the_engine_tests_synthetic_rows_too():
+    """The same table `app/test/engine.test.mjs` pins for energy_rifle/smg/force_rifle/stinger/
+    suppressor/toxin_rifle (reference calibre, a heavier round, the lightest and heaviest calibres, and
+    an odd midpoint that must round DOWN) -- restated here so a change to the derivation's arithmetic,
+    not just the AR's own numbers, shows up on both sides."""
+    def row(dmg, **recoil):
+        return {"dmg": dmg, "recoil": recoil}
+
+    def want(crisp, degraded, heavy, after_shots, heavy_after):
+        return B.RecoilProfile(crisp=crisp, degraded=degraded, heavy=heavy, after_shots=after_shots,
+                               heavy_after=heavy_after, settle_ms=600.0)
+
+    cases = [
+        (row(8, ceiling=100, floor=70, per_shot=10, recover_ms=150), want(100, 85, 70, 6, 9)),
+        (row(8, ceiling=100, floor=60, per_shot=15, recover_ms=150), want(100, 80, 60, 6, 9)),
+        (row(9, ceiling=100, floor=60, per_shot=10, recover_ms=150), want(100, 80, 60, 5, 8)),
+        (row(13, ceiling=100, floor=60, per_shot=8, recover_ms=120), want(100, 80, 60, 4, 6)),
+        (row(7, ceiling=100, floor=60, per_shot=15, recover_ms=150), want(100, 80, 60, 7, 10)),
+        (row(7, ceiling=100, floor=65, per_shot=10, recover_ms=150), want(100, 82, 65, 7, 10)),
+    ]
+    for r, expected in cases:
+        assert B.recoil_profile(r) == expected, (r, B.recoil_profile(r), expected)
+    # a one-press trigger (floor == ceiling) and a missing recoil block both carry nothing to degrade.
+    assert B.recoil_profile({"dmg": 9, "recoil": {"ceiling": 100, "floor": 100, "per_shot": 0}}) is None
+    assert B.recoil_profile({"dmg": 9}) is None
+
+
+def test_the_charge_rifle_carries_no_recoil_profile():
+    """`ceiling == floor == 100` on the Charge Rifle row: it cannot degrade, so its accuracy is fixed at
+    100 for both the charge and every tap (`_cr_shots` never reads a profile)."""
+    assert B.recoil_profile(CAT._row("charge_rifle")) is None
+
+
+def _recoil_model(**kw) -> B.RecoilDuelModel:
+    return B.RecoilDuelModel.from_catalog(CAT, **kw)
+
+
+def test_recoil_duel_seeded_runs_land_in_band():
+    """One seeded run per rule, at a rep count small enough to stay well under the suite's speed
+    budget, pinned to a band around the value this exact model gives at SEED -- reproducible per the
+    module's own convention (`cell_rng`: the seed plus the cell key, not run order)."""
+    m = _recoil_model()
+    r1 = B.recoil_duel_batch(B.run_recoil_duel_rule1, "cr", 2000, SEED, "rule1_test", m,
+                             float(B.CHARGE_TAP_CADENCE_MS))
+    r2 = B.recoil_duel_batch(B.run_recoil_duel_rule2, "ar", 2000, SEED, "rule2_test", m,
+                             float(B.CHARGE_TAP_CADENCE_MS))
+    r3 = B.recoil_duel_batch(B.run_recoil_duel_rule3, "burst", 2000, SEED, "rule3_test", m)
+    assert 0.88 < r1.win_rate < 0.98, r1.win_rate    # rule 1: a charged CR clearly beats an AR
+    assert 0.45 < r2.win_rate < 0.65, r2.win_rate     # rule 2: an AR that catches an uncharged CR, closer
+    assert 0.20 < r3.win_rate < 0.40, r3.win_rate     # rule 3: at the default 150-300 ms pause, the burst
+                                                       # player's own dead time outweighs full auto's degrade
+    # same seed, same cell key -> the same answer, regardless of what else ran first (parallel-safe).
+    again = B.recoil_duel_batch(B.run_recoil_duel_rule1, "cr", 2000, SEED, "rule1_test", m,
+                                float(B.CHARGE_TAP_CADENCE_MS))
+    assert (again.wins, again.reps) == (r1.wins, r1.reps)
+
+
+def test_recoil_duel_rule3_flips_with_a_shorter_burst_pause():
+    """The burst player is ALWAYS crisp in this model (burst_max 5 < the AR's derived after_shots 6:
+    see `test_recoil_profile_pins_the_shipped_ar_against_the_engine_test`), so the 150-300 ms pause
+    buys it no recoil recovery it did not already have on release -- it is pure dead time. Shrinking it
+    is the one lever that flips rule 3 back over 60%, which is the finding the report leads with."""
+    m = _recoil_model(burst_pause_min_ms=0.0, burst_pause_max_ms=50.0)
+    r = B.recoil_duel_batch(B.run_recoil_duel_rule3, "burst", 4000, SEED, "rule3_shortpause", m)
+    assert r.win_rate > 0.75, r.win_rate
+
+
+def test_recoil_duel_cli_runs_end_to_end():
+    out = pathlib.Path(tempfile.mkdtemp(prefix="balance_sim_recoil_"))
+    try:
+        rc = B.main(["--scenario", "recoil-duel", "--recoil-rule", "1", "--recoil-reps", "500",
+                     "--seed", "3", "--out", str(out / "r.csv")])
+        assert rc == 0
+        text = (out / "r_summary.txt").read_text()
+        assert "RECOIL DUEL" in text and "Rule 1: charged CR beats AR" in text
+        assert "Rule 3" not in text   # --recoil-rule 1 runs only rule 1
+    finally:
+        shutil.rmtree(out, ignore_errors=True)

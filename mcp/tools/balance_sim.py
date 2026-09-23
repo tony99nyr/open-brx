@@ -112,7 +112,7 @@ from dataclasses import dataclass, replace
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]))
 from brx_mcp.mc import state as _state  # noqa: E402
-from brx_mcp.mc.compile import CHARGE_TAP_CADENCE_MS, WeaponCatalog  # noqa: E402
+from brx_mcp.mc.compile import CHARGE_TAP_CADENCE_MS, HEALTH_PRESETS, WeaponCatalog  # noqa: E402
 
 # --------------------------------------------------------------------------- #
 # Invented model constants (see the module docstring)
@@ -829,6 +829,363 @@ def toxin_preset_config(pool: Pool | None = None) -> SimConfig:
 
 
 # --------------------------------------------------------------------------- #
+# Recoil duel mode (F291): Tony's three 2026-09-23 balance rules, checked stochastically
+# --------------------------------------------------------------------------- #
+#
+# `--scenario recoil-duel` runs a discrete-event 1v1 between an Assault Rifle and a Charge Rifle (rules
+# 1-2) or two Assault Rifles (rule 3), rolling a hit for every round and applying the SAME recoil
+# accuracy model the phone runs. It is deliberately a separate, simpler engine from `Match` above:
+# `Match` models a many-player skirmish with range bands and DoT; this models one specific mechanic
+# (rounds-per-pull recoil) that `Match` does not touch at all.
+#
+# THE RECOIL MODEL IS COPIED FROM `app/src/engine.js`, NOT RE-DERIVED. `_recoilProfile()` there is the
+# source of truth (S54/F268/F280, 2026-09-23): if the two ever disagree, engine.js is right and
+# `recoil_profile()` below needs to change, not the other way round. `test_balance_sim.py` pins this
+# function's Assault Rifle output against the same numbers `app/test/engine.test.mjs` pins, so a change
+# to either file's constants shows up as a red test in the other.
+RECOIL_CLEAN_ROUNDS = 5          # engine.js RECOIL_CLEAN_ROUNDS
+RECOIL_HEAVY_EXTRA_ROUNDS = 3    # engine.js RECOIL_HEAVY_EXTRA_ROUNDS
+RECOIL_REF_DMG = 8               # engine.js RECOIL_REF_DMG (the Assault Rifle/SMG/Energy Rifle's own dmg)
+RECOIL_SETTLE_MIN_MS = 600.0     # engine.js RECOIL_SETTLE_MIN_MS
+# The Charge Rifle's own build time is a bench "by feel" figure, not a wire number (weapons.json
+# charge_rifle notes, 2026-09-23): the wire's t14 reads 1250 ms, but a full charge takes about 3.5 s to
+# build. Rule 2 (an AR catching an uncharged CR) uses it as the duel's time cap: past that point the CR
+# is no longer "uncharged" by the rule's own premise, so the fight is out of scope for this rule.
+CHARGE_BUILD_MS = 3500.0
+
+
+def _js_round(x: float) -> int:
+    """`Math.round()`: half rounds toward +Infinity, unlike Python's round-half-to-even. None of the
+    shipped catalogue rows land exactly on a .5 today, but a copy of engine.js should still copy its
+    rounding rule, not Python's."""
+    return math.floor(x + 0.5)
+
+
+@dataclass(frozen=True)
+class RecoilProfile:
+    crisp: float
+    degraded: float
+    heavy: float | None
+    after_shots: int
+    heavy_after: int
+    settle_ms: float
+
+
+def recoil_profile(row: dict) -> RecoilProfile | None:
+    """A raw `weapons.json` row's `recoil` block, resolved to the three-state shape the gun is actually
+    driven with. A line-for-line mirror of `Engine.prototype._recoilProfile()` in `app/src/engine.js`
+    (S54/F268/F280): read that function's own docstring for what each field means and why. `None` for a
+    weapon with no `recoil` block, or whose floor is not below its ceiling (a one-press trigger such as
+    the Burst Rifle: it cannot be held in full auto, so it has nothing to degrade)."""
+    r = row.get("recoil")
+    if not r:
+        return None
+    crisp = float(r["crisp"] if r.get("crisp") is not None else r["ceiling"])
+    bottom = float(r["heavy"] if r.get("heavy") is not None else r["floor"])
+    if not (crisp > 0) or not (bottom < crisp):
+        return None
+    stats = row.get("stats") or {}
+    dmg = float(stats["dmg"] if stats.get("dmg") is not None else (row.get("dmg") or 0))
+    k = RECOIL_REF_DMG / dmg if dmg > 0 else 1.0
+    clean = max(2, _js_round(RECOIL_CLEAN_ROUNDS * k))
+    derived_after = clean + 1
+    after = _js_round(r["after_shots"] if r.get("after_shots") is not None else derived_after)
+    settle = max(RECOIL_SETTLE_MIN_MS,
+                 float((r["settle_ms"] if r.get("settle_ms") is not None else r.get("recover_ms")) or 0))
+    if not (after > 0):
+        return None
+    mid = _js_round(r["degraded"] if r.get("degraded") is not None else math.floor((crisp + bottom) / 2))
+    two = bottom < mid < crisp
+    extra = _js_round(RECOIL_HEAVY_EXTRA_ROUNDS * k)
+    derived_heavy_after = max(after + 1, clean + extra + 1)
+    heavy_after = _js_round(r["after_heavy"] if r.get("after_heavy") is not None else derived_heavy_after) \
+        if two else 0
+    return RecoilProfile(crisp=crisp, degraded=(mid if two else bottom), heavy=(bottom if two else None),
+                         after_shots=after, heavy_after=heavy_after, settle_ms=settle)
+
+
+def _recoil_step(profile: RecoilProfile | None, state: str, burst: int) -> tuple[str, int]:
+    """One landed round: bump the trigger-pull round count and return the state it earns. Mirrors
+    engine.js `_recoilStep()`: the BURST COUNT decides the state outright, it never walks one rung at a
+    time from whatever the state was before this round."""
+    if profile is None:
+        return state, burst
+    burst += 1
+    if profile.heavy is not None and burst >= profile.heavy_after:
+        state = "heavy"
+    elif burst >= profile.after_shots:
+        state = "degraded"
+    else:
+        state = "crisp"
+    return state, burst
+
+
+def _accuracy_pct(profile: RecoilProfile | None, state: str) -> float:
+    if profile is None:
+        return 100.0
+    return {"crisp": profile.crisp, "degraded": profile.degraded, "heavy": profile.heavy}[state]
+
+
+def _ar_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: int, reload_ms: float,
+             profile: RecoilProfile | None, aim_factor: float, *, burst_min: int | None = None,
+             burst_max: int | None = None, pause_min_ms: float = 0.0, pause_max_ms: float = 0.0,
+             rng: random.Random | None = None):
+    """Yields `(t, hit_p, dmg)` for one Assault Rifle combatant, in firing order. Full auto
+    (`burst_min` is None) empties the magazine in one unbroken hold: the recoil ladder is never
+    released, so it walks up and stays wherever the round count lands it, all the way to the reload.
+    Controlled bursts (`burst_min`/`burst_max` given) fire a random `[burst_min, burst_max]` rounds,
+    then release: the app's own `_onButton` resets the round count OUTRIGHT the moment the state is
+    still crisp on release (no settle needed), so a burst short enough never degrades the weapon at
+    all. A burst that DID degrade only recovers if the pause is at least `settle_ms` (600 ms floor) —
+    a 150-300 ms pause between bursts is not, so a weapon that got hot in one burst stays hot into the
+    next. A reload is a trigger release too, and it is always far longer than `settle_ms`."""
+    ammo, res = mag, reserve
+    state, burst = "crisp", 0
+    t = first_time
+    burst_mode = burst_min is not None
+    while True:
+        if ammo <= 0:
+            if res <= 0:
+                return
+            got = min(mag, res)
+            t += reload_ms
+            ammo, res = got, res - got
+            state, burst = "crisp", 0   # the reload is a release: the gun comes back crisp
+        blen = min(ammo, rng.randint(burst_min, burst_max)) if burst_mode else ammo
+        for _ in range(blen):
+            hit_p = (_accuracy_pct(profile, state) / 100.0) * aim_factor
+            yield (t, hit_p, dmg)
+            ammo -= 1
+            state, burst = _recoil_step(profile, state, burst)
+            t += fire_ms
+        if not burst_mode:
+            continue   # full auto never releases; the mag running dry is the only interruption
+        if state == "crisp":
+            burst = 0
+        pause = rng.uniform(pause_min_ms, pause_max_ms)
+        t += pause
+        if state != "crisp" and profile is not None and pause >= profile.settle_ms:
+            state, burst = "crisp", 0
+
+
+def _cr_shots(first_time: float, charge_dmg: int, tap_dmg: int, rounds_per_charge: int, tap_ms: float,
+             mag: int, reserve: int, reload_ms: float, aim_factor: float, *, start_charged: bool):
+    """Yields `(t, hit_p, dmg)` for one Charge Rifle combatant. The Charge Rifle's own `recoil` block
+    (`ceiling == floor == 100`) carries no profile at all, so its accuracy is always 100: every hit
+    chance here is `aim_factor` alone, charge or tap. `start_charged` fires the pre-built charge as the
+    first action (rule 1); otherwise the combatant is caught mid-fight with no charge ready and taps
+    only, for the whole duel — rule 2's own premise, not a thing this generator re-derives."""
+    ammo, res = mag, reserve
+    t = first_time
+    charged = start_charged
+    while True:
+        need = rounds_per_charge if charged else 1
+        if ammo < need:
+            if res <= 0:
+                return
+            got = min(mag, res)
+            if got <= 0:
+                return
+            t += reload_ms
+            ammo, res = got, res - got
+            continue
+        dmg = charge_dmg if charged else tap_dmg
+        yield (t, aim_factor, dmg)
+        ammo -= need
+        charged = False
+        t += tap_ms
+
+
+def _race(rng: random.Random, gen_a, gen_b, hp_a: int, hp_b: int, time_cap_ms: float) -> str | None:
+    """Runs two shot generators against each other's health pool in time order, rolling a hit for every
+    round. Returns `"a"`/`"b"` for the first to die, or `None` for a draw (both alive, or tied health,
+    at `time_cap_ms`)."""
+    hp = [hp_a, hp_b]
+    gens = [gen_a, gen_b]
+    nxt = [next(g, None) for g in gens]
+    while True:
+        cands = [i for i in (0, 1) if nxt[i] is not None and nxt[i][0] <= time_cap_ms]
+        if not cands:
+            break
+        i = min(cands, key=lambda i: nxt[i][0])
+        _, hit_p, dmg = nxt[i]
+        if rng.random() < hit_p:
+            j = 1 - i
+            hp[j] -= dmg
+            if hp[j] <= 0:
+                return "a" if i == 0 else "b"
+        nxt[i] = next(gens[i], None)
+    if hp[0] == hp[1]:
+        return None
+    return "a" if hp[0] > hp[1] else "b"
+
+
+@dataclass(frozen=True)
+class RecoilDuelModel:
+    """Every number the three duel rules need, read once from `WeaponCatalog` and the game's Standard
+    health preset — nothing here is typed in by hand."""
+    pool_hp: int
+    ar_dmg: int
+    ar_fire_ms: float
+    ar_mag: int
+    ar_reserve: int
+    ar_reload_ms: float
+    ar_profile: RecoilProfile | None
+    cr_charge_dmg: int
+    cr_tap_dmg: int
+    cr_rounds_per_charge: int
+    cr_mag: int
+    cr_reserve: int
+    cr_reload_ms: float
+    aim_factor: float
+    reaction_mean_ms: float
+    reaction_sd_ms: float
+    burst_min: int
+    burst_max: int
+    burst_pause_min_ms: float
+    burst_pause_max_ms: float
+    time_cap_ms: float
+
+    @classmethod
+    def from_catalog(cls, cat: WeaponCatalog, *, aim_factor: float = 0.9, reaction_mean_ms: float = 250.0,
+                     reaction_sd_ms: float = 80.0, burst_min: int = 3, burst_max: int = 5,
+                     burst_pause_min_ms: float = 150.0, burst_pause_max_ms: float = 300.0,
+                     time_cap_ms: float = 10_000.0) -> "RecoilDuelModel":
+        hp, armour, _shield = HEALTH_PRESETS["standard"]
+        ar_mag, ar_reserve, ar_reload_ms = cat._ammo("assault_rifle", None)
+        cr_mag, cr_reserve, cr_reload_ms = cat._ammo("charge_rifle", None)
+        return cls(pool_hp=hp + armour, ar_dmg=cat.damage_per_pull("assault_rifle"),
+                   ar_fire_ms=float(cat.fire_ms("assault_rifle")), ar_mag=ar_mag, ar_reserve=ar_reserve,
+                   ar_reload_ms=float(ar_reload_ms), ar_profile=recoil_profile(cat._row("assault_rifle")),
+                   cr_charge_dmg=cat.damage_per_pull("charge_rifle"), cr_tap_dmg=cat.tap_damage("charge_rifle"),
+                   cr_rounds_per_charge=cat.rounds_per_charge("charge_rifle"), cr_mag=cr_mag,
+                   cr_reserve=cr_reserve, cr_reload_ms=float(cr_reload_ms), aim_factor=aim_factor,
+                   reaction_mean_ms=reaction_mean_ms, reaction_sd_ms=reaction_sd_ms, burst_min=burst_min,
+                   burst_max=burst_max, burst_pause_min_ms=burst_pause_min_ms,
+                   burst_pause_max_ms=burst_pause_max_ms, time_cap_ms=time_cap_ms)
+
+    def _reaction(self, rng: random.Random) -> float:
+        return max(0.0, rng.gauss(self.reaction_mean_ms, self.reaction_sd_ms))
+
+
+def run_recoil_duel_rule1(rng: random.Random, m: RecoilDuelModel, tap_ms: float) -> str | None:
+    """Rule 1: a Charge Rifle player with a charge already built releases it the moment they act; the
+    Assault Rifle reacts on its own clock and opens full auto. `"cr"`/`"ar"`/`None` (a draw)."""
+    t_cr, t_ar = m._reaction(rng), m._reaction(rng)
+    gen_cr = _cr_shots(t_cr, m.cr_charge_dmg, m.cr_tap_dmg, m.cr_rounds_per_charge, tap_ms, m.cr_mag,
+                       m.cr_reserve, m.cr_reload_ms, m.aim_factor, start_charged=True)
+    gen_ar = _ar_shots(t_ar, m.ar_dmg, m.ar_fire_ms, m.ar_mag, m.ar_reserve, m.ar_reload_ms, m.ar_profile,
+                       m.aim_factor)
+    return {"a": "cr", "b": "ar", None: None}[_race(rng, gen_cr, gen_ar, m.pool_hp, m.pool_hp, m.time_cap_ms)]
+
+
+def run_recoil_duel_rule2(rng: random.Random, m: RecoilDuelModel, tap_ms: float) -> str | None:
+    """Rule 2: the Assault Rifle catches an uncharged Charge Rifle and gets the first shot; the CR's own
+    reaction is added ON TOP of the AR's (it reacts to being caught, not to a shared start). The CR
+    fights back with taps only, for the whole duel: it cannot build a fresh charge in time (about 3.5 s,
+    `CHARGE_BUILD_MS`), which is also this duel's time cap — past it the CR is no longer "uncharged" by
+    the rule's own premise. `"ar"`/`"cr"`/`None` (a draw)."""
+    t_ar = m._reaction(rng)
+    t_cr = t_ar + m._reaction(rng)
+    gen_ar = _ar_shots(t_ar, m.ar_dmg, m.ar_fire_ms, m.ar_mag, m.ar_reserve, m.ar_reload_ms, m.ar_profile,
+                       m.aim_factor)
+    gen_cr = _cr_shots(t_cr, m.cr_charge_dmg, m.cr_tap_dmg, m.cr_rounds_per_charge, tap_ms, m.cr_mag,
+                       m.cr_reserve, m.cr_reload_ms, m.aim_factor, start_charged=False)
+    return {"a": "ar", "b": "cr", None: None}[_race(rng, gen_ar, gen_cr, m.pool_hp, m.pool_hp, CHARGE_BUILD_MS)]
+
+
+def run_recoil_duel_rule3(rng: random.Random, m: RecoilDuelModel) -> str | None:
+    """Rule 3: two Assault Rifles. One fires controlled bursts (`burst_min`-`burst_max` rounds, a
+    150-300 ms pause between); the other holds full auto until the magazine or the target runs out.
+    `"burst"`/`"full_auto"`/`None` (a draw)."""
+    t_burst, t_full = m._reaction(rng), m._reaction(rng)
+    gen_burst = _ar_shots(t_burst, m.ar_dmg, m.ar_fire_ms, m.ar_mag, m.ar_reserve, m.ar_reload_ms,
+                          m.ar_profile, m.aim_factor, burst_min=m.burst_min, burst_max=m.burst_max,
+                          pause_min_ms=m.burst_pause_min_ms, pause_max_ms=m.burst_pause_max_ms, rng=rng)
+    gen_full = _ar_shots(t_full, m.ar_dmg, m.ar_fire_ms, m.ar_mag, m.ar_reserve, m.ar_reload_ms,
+                         m.ar_profile, m.aim_factor)
+    winner = _race(rng, gen_burst, gen_full, m.pool_hp, m.pool_hp, m.time_cap_ms)
+    return {"a": "burst", "b": "full_auto", None: None}[winner]
+
+
+@dataclass
+class RecoilDuelResult:
+    label: str
+    expected_winner: str
+    reps: int
+    wins: float   # duels the expected winner took; a draw counts half
+
+    @property
+    def win_rate(self) -> float:
+        return self.wins / self.reps if self.reps else float("nan")
+
+    def ci(self) -> tuple[float, float]:
+        p, n = self.win_rate, self.reps
+        half = 1.96 * math.sqrt(max(p * (1 - p), 1e-9) / n) if n else float("nan")
+        return max(0.0, p - half), min(1.0, p + half)
+
+
+def recoil_duel_batch(fn, expected_winner: str, reps: int, seed: int, label: str, *fn_args) -> RecoilDuelResult:
+    """`reps` seeded, independent duels of `fn(rng, *fn_args)`; `expected_winner` is the label the rule
+    claims wins most of the time. A draw counts half a win for both sides, same convention as `duel()`."""
+    rng = cell_rng(seed, "recoil_duel", label)
+    wins = 0.0
+    for _ in range(reps):
+        winner = fn(rng, *fn_args)
+        wins += 1.0 if winner == expected_winner else (0.5 if winner is None else 0.0)
+    return RecoilDuelResult(label, expected_winner, reps, wins)
+
+
+RECOIL_RULES = {
+    "1": ("Rule 1: charged CR beats AR", "cr", run_recoil_duel_rule1, True),
+    "2": ("Rule 2: AR catches uncharged CR", "ar", run_recoil_duel_rule2, True),
+    "3": ("Rule 3: AR burst beats AR full auto", "burst", run_recoil_duel_rule3, False),
+}
+
+
+def recoil_duel_report(m: RecoilDuelModel, reps: int, seed: int, rules=("1", "2", "3"),
+                       tap_ms_current: float = CHARGE_TAP_CADENCE_MS,
+                       tap_ms_proposed: float = 350.0) -> list[RecoilDuelResult]:
+    """One `RecoilDuelResult` per rule; rules 1 and 2 run once at each tap cadence (the shipped
+    `CHARGE_TAP_CADENCE_MS` and a proposed value), rule 3 once (it never touches the Charge Rifle)."""
+    out = []
+    for key in rules:
+        _desc, expected, fn, tap_dependent = RECOIL_RULES[key]
+        if tap_dependent:
+            for tap_label, tap_ms in (("current", tap_ms_current), ("proposed", tap_ms_proposed)):
+                out.append(recoil_duel_batch(fn, expected, reps, seed, f"rule{key}_tap_{tap_label}", m, tap_ms))
+        else:
+            out.append(recoil_duel_batch(fn, expected, reps, seed, f"rule{key}", m))
+    return out
+
+
+def recoil_duel_summary_text(results: list[RecoilDuelResult], m: RecoilDuelModel, tap_ms_current: float,
+                             tap_ms_proposed: float) -> str:
+    hp, armour, _shield = HEALTH_PRESETS["standard"]
+    lines = [
+        "RECOIL DUEL: Tony's three 2026-09-23 balance rules (F291), stochastic 1v1",
+        f"pool {m.pool_hp} (Standard: {hp} health + {armour} armour); aim factor {m.aim_factor:g} "
+        "(hit chance = accuracy/100 x aim factor -- the accuracy-to-hit-rate mapping is UNPROVEN on "
+        f"the bench); reaction N({m.reaction_mean_ms:.0f}, {m.reaction_sd_ms:.0f}) ms/player; "
+        f"burst {m.burst_min}-{m.burst_max} rounds, {m.burst_pause_min_ms:.0f}-{m.burst_pause_max_ms:.0f} ms pause",
+        f"Charge Rifle tap cadence: current {tap_ms_current:g} ms (CHARGE_TAP_CADENCE_MS), "
+        f"proposed {tap_ms_proposed:g} ms", "",
+        f"{'rule':<45}{'tap':<10}{'win rate':>9}{'95% CI':>16}  flag",
+    ]
+    for r in results:
+        rule_key = r.label.split("_")[0].replace("rule", "")
+        desc = RECOIL_RULES[rule_key][0]
+        tap = "-"
+        if "_tap_" in r.label:
+            tap = r.label.rsplit("_tap_", 1)[1]
+        lo, hi = r.ci()
+        flag = "UNDER 60%" if r.win_rate < 0.6 else ""
+        lines.append(f"{desc:<45}{tap:<10}{r.win_rate:>9.1%}{f'[{lo:.1%}, {hi:.1%}]':>16}  {flag}")
+    lines += ["", "\"most of the time\" = clearly above 50%; a rule under 60% is flagged."]
+    return "\n".join(lines) + "\n"
+
+
+# --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
 
@@ -836,8 +1193,9 @@ def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="balance_sim.py", description=__doc__.split("\n\n")[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter,
                                  epilog="Assumptions and simplifications: see the module docstring.")
-    ap.add_argument("--scenario", choices=("all", "duel", "team", "sweep"), default="all",
-                    help="all = duel matrix + team table (default); --sweep implies sweep")
+    ap.add_argument("--scenario", choices=("all", "duel", "team", "sweep", "recoil-duel"), default="all",
+                    help="all = duel matrix + team table (default); --sweep implies sweep; recoil-duel = "
+                         "F291's stochastic AR/CR 1v1 (Tony's 2026-09-23 balance rules, see the module docstring)")
     ap.add_argument("--preset", choices=sorted(PRESETS), help="a saved sweep (toxin = weapon-design.md §7.5b)")
     ap.add_argument("--weapon", help="the weapon under test for a sweep, or to limit the team table to one")
     ap.add_argument("--anchor", default=None,
@@ -863,6 +1221,22 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--jobs", type=int, default=min(8, os.cpu_count() or 1), help="worker processes")
     ap.add_argument("--out", default="balance_results.csv", help="CSV path (default: current directory)")
     ap.add_argument("--summary", default=None, help="summary path (default: the CSV name with _summary.txt)")
+    g = ap.add_argument_group("recoil-duel (F291)")
+    g.add_argument("--recoil-rule", choices=("1", "2", "3", "all"), default="all",
+                   help="which of Tony's three rules to run (default all)")
+    g.add_argument("--recoil-reps", type=int, default=10_000, help="duels per rule/tap-cadence cell")
+    g.add_argument("--recoil-seed", type=int, default=None, help="default: --seed")
+    g.add_argument("--aim-factor", type=float, default=0.9,
+                   help="base aim factor: hit chance = accuracy/100 x this (unproven on the bench)")
+    g.add_argument("--tap-ms", type=float, default=None,
+                   help="Charge Rifle tap cadence, the 'current' column (default: CHARGE_TAP_CADENCE_MS, 285)")
+    g.add_argument("--tap-ms-proposed", type=float, default=350.0, help="the 'proposed' column")
+    g.add_argument("--reaction-mean-ms", type=float, default=250.0)
+    g.add_argument("--reaction-sd-ms", type=float, default=80.0)
+    g.add_argument("--burst-min", type=int, default=3, help="rule 3: shortest controlled burst, rounds")
+    g.add_argument("--burst-max", type=int, default=5, help="rule 3: longest controlled burst, rounds")
+    g.add_argument("--burst-pause-min-ms", type=float, default=150.0)
+    g.add_argument("--burst-pause-max-ms", type=float, default=300.0)
     return ap
 
 
@@ -877,6 +1251,27 @@ def _apply_preset(args, ap) -> None:
     args.scenario = "sweep"
 
 
+def _run_recoil_duel(args) -> int:
+    cat = WeaponCatalog()
+    m = RecoilDuelModel.from_catalog(cat, aim_factor=args.aim_factor, reaction_mean_ms=args.reaction_mean_ms,
+                                     reaction_sd_ms=args.reaction_sd_ms, burst_min=args.burst_min,
+                                     burst_max=args.burst_max, burst_pause_min_ms=args.burst_pause_min_ms,
+                                     burst_pause_max_ms=args.burst_pause_max_ms)
+    seed = args.recoil_seed if args.recoil_seed is not None else args.seed
+    tap_current = args.tap_ms if args.tap_ms is not None else float(CHARGE_TAP_CADENCE_MS)
+    rules = ("1", "2", "3") if args.recoil_rule == "all" else (args.recoil_rule,)
+    t0 = walltime.time()
+    results = recoil_duel_report(m, args.recoil_reps, seed, rules, tap_current, args.tap_ms_proposed)
+    text = recoil_duel_summary_text(results, m, tap_current, args.tap_ms_proposed)
+    summary_path = args.summary or (os.path.splitext(args.out)[0] + "_summary.txt")
+    with open(summary_path, "w") as f:
+        f.write(text)
+    sys.stdout.write(text)
+    print(f"\n{len(results)} cells, {sum(r.reps for r in results)} duels in {walltime.time() - t0:.1f} s -> "
+         f"{summary_path}", file=sys.stderr)
+    return 0
+
+
 def main(argv=None) -> int:
     ap = build_parser()
     args = ap.parse_args(argv)
@@ -884,6 +1279,9 @@ def main(argv=None) -> int:
         _apply_preset(args, ap)
     if args.sweep and args.scenario == "all":
         args.scenario = "sweep"
+
+    if args.scenario == "recoil-duel":
+        return _run_recoil_duel(args)
 
     base = default_pool()
     pool = replace(base,
