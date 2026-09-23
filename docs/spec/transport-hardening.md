@@ -139,7 +139,7 @@ four of the six blocking waits, but they are on the known list (bench tools use 
 carries them. Screamers A1-A3 test only `$DPLAY`; a `$PB*`/`$AS` hang test needs its own step, not yet in the
 screamers sheet. If a future step shows a `$PB*` start can hang a gun, they move.
 
-## 5. Write with response for multi-packet frames (design, needs bench A8)
+## 5. Write with response for multi-packet frames (built, off by default; needs bench A8 to turn on)
 
 Every write today is `writeWithoutResponse` (`brxlink.js`, `ble.py`): no packet is acknowledged at the link layer,
 and a lost packet is invisible. Jay's ESP32 writes every chunk WITH response, and so did the 2018 app; neither
@@ -149,6 +149,15 @@ the intervals seen), so a 6-packet `$WEAP` goes from about 48 ms to about 250 ms
 about 2.5 s. Worth it only if A8 shows frames going missing at the current pacing. If it does, the change is
 one line in `brxlink.write` (and `ble._write`), and it applies to head and spawn only; a revive is on the critical
 path of a waiting player.
+
+**Built for F270.** `brxlink.js` `WRITE_PACING.responseForMultiPacket` and `ble.py`
+`RESPONSE_FOR_MULTI_PACKET` both ship `false`; nothing changes on the wire until A8 shows frames going missing
+at the current pacing and someone turns the flag on. A bench run can also pass `response_for_multi_packet`
+straight into `ble.py`'s `_write`/`send_phone_paced` to try it for one call without moving the default.
+Head-and-spawn-only scoping is not built: `write()`'s callers in `engine.js` never pass an option that tells
+the link a burst is head/spawn versus revive (`_write(frames, why)` carries no `options` on either path), so
+today the flag, when on, covers every multi-packet frame. Narrowing it to head and spawn needs an engine.js
+call-site change to thread that distinction through `options`, which is separate follow-up work.
 
 ## 6. Read-back after arming: what `$QUERY` proves (built; claim 19 confirmed 2026-09-19)
 
@@ -209,7 +218,7 @@ detector targets. A1c/A3 remain the bench gate for that mechanism and for the pr
 | §3 block pause on, a value | design | bench A8, A7 |
 | §3 trim the runt `$SIR` rows | design | bench A8b (one gun, trimmed and full arms alternated) |
 | §4 deny list | built | none needed; a future `$PB*`/`$AS` step may ADD `$PB*` |
-| §5 write with response on multi-packet frames | design | bench A8 |
+| §5 write with response on multi-packet frames | built, off by default | bench A8 (whether to turn it on) |
 | §6 `$QUERY` read-back of id, team, pools | built | claim 19 confirmed 2026-09-19; F271 closed 2026-09-21 |
 | §7 lock-up detector | built; bench threshold provisional | bench A13/A1c (stable-radio hang), plus the idle `$VOLTS` cadence |
 | §2 the budget rule | design | bench A13 (20 minutes at today's recoil writer rate: how long to a lock-up?) |

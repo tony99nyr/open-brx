@@ -32,6 +32,15 @@ from .protocol import (
 
 BUFFER_SIZE = 5000
 
+# F270 (docs/spec/transport-hardening.md §5): every write today is `response=False`, so a lost packet is
+# invisible at the link layer. Ships OFF: default behaviour is byte-identical. Worth turning on only if
+# bench A8 shows frames going missing at the current pacing -- a response write costs about one connection
+# interval per packet (30-50 ms), so a 6-packet `$WEAP` goes from about 48 ms to about 250 ms. A bench run
+# switches it per call with the `response_for_multi_packet` keyword on `_write`/`send_phone_paced` rather
+# than moving this default; a single-packet frame is never affected either way. Mirrors
+# `app/src/brxlink.js` `WRITE_PACING.responseForMultiPacket`, which is also OFF by default.
+RESPONSE_FOR_MULTI_PACKET = False
+
 
 @dataclass
 class Session:
@@ -248,7 +257,8 @@ class ConnectionManager:
 
     @staticmethod
     async def _write(client: BleakClient, payload: bytes, lock: asyncio.Lock | None = None,
-                     on_start: Callable[[], None] | None = None) -> None:
+                     on_start: Callable[[], None] | None = None,
+                     response_for_multi_packet: bool | None = None) -> None:
         # ATT write-without-response caps at MTU-3 (20 bytes at the default
         # MTU of 23, which the tagger sticks to). NUS is a byte stream, so
         # long frames are chunked; the tagger reassembles on ',*'.
@@ -256,10 +266,16 @@ class ConnectionManager:
             chunk = max(20, (client.mtu_size or 23) - 3)
         except Exception:  # noqa: BLE001 — backend without mtu_size
             chunk = 20
+        # F270: a multi-packet payload's chunks go WITH response when the lever is on; a payload that fits
+        # in one chunk is never affected (§5's scoping). `response_for_multi_packet=None` (every existing
+        # caller) reads the module default, so nothing changes unless a bench call passes True.
+        multi_packet = len(payload) > chunk
+        use_response = multi_packet and (
+            RESPONSE_FOR_MULTI_PACKET if response_for_multi_packet is None else response_for_multi_packet)
         async def _chunks() -> None:
             for i in range(0, len(payload), chunk):
                 await client.write_gatt_char(
-                    NUS_RX_CHAR_UUID, payload[i:i + chunk], response=False)
+                    NUS_RX_CHAR_UUID, payload[i:i + chunk], response=use_response)
                 await asyncio.sleep(0.02)
         if lock is None:                      # no session (a bare client): unchanged behaviour
             if on_start is not None:
@@ -284,7 +300,8 @@ class ConnectionManager:
 
     async def send_phone_paced(self, alias: str, command: str, *, chunk_gap_ms: int,
                                frame_gap_ms: int, chunk_size: int = 20,
-                               ack_cap_ms: int = 50) -> dict[str, Any]:
+                               ack_cap_ms: int = 50,
+                               response_for_multi_packet: bool | None = None) -> dict[str, Any]:
         """Write one frame chunked and paced the way `app/src/brxlink.js` `write()` paces it, for
         `soak --phone-pacing` (docs/FOLLOWUPS.md F283): a bench soak that reproduces the PHONE's
         transport, not this instrument's own `_write()` (fixed 20 ms after every chunk, no frame
@@ -292,17 +309,25 @@ class ConnectionManager:
         negotiate a bigger MTU, so `chunk_size` does not read `client.mtu_size` the way `_write`
         does. Still the SAME transport (this client, this session's `write_lock`): no second BLE
         stack, no second connection.
+
+        `response_for_multi_packet` mirrors brxlink.js's `WRITE_PACING.responseForMultiPacket` (F270,
+        §5): `None` (every caller today) reads the module default `RESPONSE_FOR_MULTI_PACKET` (off), a
+        bench run passes `True`/`False` to switch it for one call. Only a payload over `chunk_size`
+        (one packet) is ever sent with response.
         """
         session = self._get(alias)
         session.record("tx", command)
         payload = command.encode("utf-8")
+        multi_packet = len(payload) > chunk_size
+        use_response = multi_packet and (
+            RESPONSE_FOR_MULTI_PACKET if response_for_multi_packet is None else response_for_multi_packet)
         chunks = late_acks = 0
         async with session.write_lock:                      # hold it for the whole frame (see _write)
             for i in range(0, len(payload), chunk_size):
                 # brxlink.js `_sendChunk`: wait at most `ackCapMs` for the native write, then move on
                 # and count it as late. The write itself is not cancelled; it finishes in the background.
                 task = asyncio.ensure_future(session.client.write_gatt_char(
-                    NUS_RX_CHAR_UUID, payload[i:i + chunk_size], response=False))
+                    NUS_RX_CHAR_UUID, payload[i:i + chunk_size], response=use_response))
                 done, _ = await asyncio.wait({task}, timeout=ack_cap_ms / 1000)
                 if not done:
                     late_acks += 1

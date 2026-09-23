@@ -28,11 +28,14 @@ export const WRITE_ACK_CAP_MS = 50;
 export const LATE_RESENDS = 2;
 
 /** Writes one chunk to the gun's NUS RX characteristic through the plugin itself, not BleClient's queue.
- *  Native builds take a hex string (what BleClient sends); the web build takes the DataView. */
-export function directWriter(plugin = BluetoothLe, platform = () => Capacitor.getPlatform()) {
-  return (deviceId, dv) => plugin.writeWithoutResponse({
-    deviceId, service: NUS, characteristic: RX, value: platform() === 'web' ? dv : dataViewToHexString(dv),
-  });
+ *  Native builds take a hex string (what BleClient sends); the web build takes the DataView.
+ *  `response: true` calls the plugin's `write` (with-response) instead of `writeWithoutResponse`; same
+ *  deviceId/service/characteristic/value shape either way (F270, transport-hardening.md §5). */
+export function directWriter(plugin = BluetoothLe, platform = () => Capacitor.getPlatform(), { response = false } = {}) {
+  return (deviceId, dv) => {
+    const opts = { deviceId, service: NUS, characteristic: RX, value: platform() === 'web' ? dv : dataViewToHexString(dv) };
+    return response ? plugin.write(opts) : plugin.writeWithoutResponse(opts);
+  };
 }
 
 // F210: docs/manual/dev.md's headset note — "the headset must be linked or the gun will connect,
@@ -111,23 +114,40 @@ export class Reassembler {
  *  1 KB UART buffer (V4_30/V4_31 disassembly, 2026-09-18), so a long burst can outrun it and a lost `*` corrupts
  *  the next frame. `chunkGapMs`/`frameGapMs` are the pacing the field has run on since 2026-08; the BLOCK pause
  *  is a lever for the screamers sheet A7/A8: after every `blockFrames` frames of one write, sleep `blockPauseMs`. It ships OFF
- *  (blockFrames = 0): the evidence for a value is not measured yet, and a slower arm is a real cost at the line. */
-export const WRITE_PACING = Object.freeze({ chunkGapMs: 8, frameGapMs: 18, blockFrames: 0, blockPauseMs: 0 });
+ *  (blockFrames = 0): the evidence for a value is not measured yet, and a slower arm is a real cost at the line.
+ *
+ *  F270 (transport-hardening.md §5): `responseForMultiPacket` ships OFF. Every write today is
+ *  `writeWithoutResponse`, so a lost packet is invisible; the lever writes the chunks of a frame that
+ *  spans more than one 20-byte packet WITH response instead (single-packet frames are unaffected). Worth
+ *  it only if bench A8 shows frames going missing at the current pacing: a response write costs about one
+ *  connection interval per packet (30-50 ms), so a 6-packet `$WEAP` goes from about 48 ms to about 250 ms
+ *  and a full arm from about 1.2 s to about 2.5 s. Scoping note: the spec asks for head-and-spawn only (a
+ *  revive is on a waiting player's critical path), but `write()`'s callers (engine.js, out of scope for
+ *  this change) never pass an option that tells this link a burst is head/spawn versus revive -- both go
+ *  through `_write(frames, why)` with no `options` at all. So today the flag, when on, applies to EVERY
+ *  multi-packet frame; the head/spawn-only scoping needs an engine.js call-site change to pass that
+ *  distinction through `options`, which is future work, not done here. */
+export const WRITE_PACING = Object.freeze({ chunkGapMs: 8, frameGapMs: 18, blockFrames: 0, blockPauseMs: 0, responseForMultiPacket: false });
 
 export class BrxLink {
   constructor({ ble = BleClient, log = () => {}, onFrame = () => {}, onDrop = () => {}, onUp = () => {},
                 unbounded = () => false, chunkGapMs = WRITE_PACING.chunkGapMs, frameGapMs = WRITE_PACING.frameGapMs,
                 blockFrames = WRITE_PACING.blockFrames, blockPauseMs = WRITE_PACING.blockPauseMs,
+                responseForMultiPacket = WRITE_PACING.responseForMultiPacket,
                 now = () => Date.now(), flapWindowMs = FLAP_WINDOW_MS, flapHoldMs = FLAP_HOLD_MS,
                 flapBackoffMs = FLAP_BACKOFF_MS, quietMs = QUIET_MS,
                 onFlap = () => {}, onRelink = () => {}, relinkConnectMs = RELINK_CONNECT_MS, relinkAttempts = RELINK_ATTEMPTS,
                 relinkGapMs = RELINK_GAP_MS, relinkDisconnectCapMs = RELINK_DISCONNECT_CAP_MS,
-                writeChunk = null, ackCapMs = WRITE_ACK_CAP_MS, scanSettleMs = SCAN_SETTLE_MS } = {}) {
+                writeChunk = null, writeChunkResponse = null, ackCapMs = WRITE_ACK_CAP_MS, scanSettleMs = SCAN_SETTLE_MS } = {}) {
     this.scanSettleMs = scanSettleMs;
     this._scanStoppedAt = 0;   // when a scan stop last completed; the next connect() settles after it, once
     this._connecting = 0;      // native connect attempts in flight (no scan may start meanwhile)
     // The real plugin gets the direct path; an injected test double keeps its own writeWithoutResponse.
     this.writeChunk = writeChunk || (ble === BleClient ? directWriter() : (id, dv) => ble.writeWithoutResponse(id, NUS, RX, dv));
+    // F270: the with-response twin, used only for a multi-packet frame's chunks while `responseForMultiPacket`
+    // is on (WRITE_PACING / transport-hardening.md §5). Same injection shape as `writeChunk` above.
+    this.writeChunkResponse = writeChunkResponse || (ble === BleClient ? directWriter(BluetoothLe, undefined, { response: true }) : (id, dv) => ble.write(id, NUS, RX, dv));
+    this.responseForMultiPacket = responseForMultiPacket;
     this.ackCapMs = ackCapMs;
     this.lateAcks = 0;     // chunks whose answer took longer than ackCapMs (diagnostics)
     this.onRelink = onRelink;
@@ -460,6 +480,10 @@ export class BrxLink {
    *  so the gun's one-byte-per-loop parser can drain its buffer mid-arm (transport-hardening.md §3; off by
    *  default).
    *
+   *  `responseForMultiPacket` (off by default, §5) sends the chunks of any frame over 20 bytes with response
+   *  instead of without; a single-packet frame is never affected. Applies to every multi-packet frame in this
+   *  write, not only head/spawn (see the note on `WRITE_PACING`).
+   *
    *  A LATE chunk error (past the cap) belongs to the batch that sent the chunk, never to the link (pl3
    *  review 2026-09-17). The old link-wide flag let a late error from batch N cut batch N+1 partway, which
    *  dropped `$SPAWN`/`$AMMO`/`$BMAP` with no retry while batch N still reported true. Now:
@@ -483,9 +507,10 @@ export class BrxLink {
         for (let i = 0; i < list.length;) {
           const frame = list[i];
           this._note('tx', frame);
+          const useResponse = this.responseForMultiPacket && frame.length > 20;
           for (let o = 0; o < frame.length; o += 20) {
             chunks++;
-            if (!await this._sendChunk(id, textToDataView(frame.substr(o, 20)), batch, i)) late++;
+            if (!await this._sendChunk(id, textToDataView(frame.substr(o, 20)), batch, i, useResponse)) late++;
             if (frame.length > 20) await sleep(this.chunkGapMs);
           }
           await sleep(this.frameGapMs);
@@ -509,10 +534,19 @@ export class BrxLink {
   }
   /** Sends one chunk of frame `frameIdx` in `batch`. Resolves true when the plugin answered within `ackCapMs`,
    *  false when the cap ran out first. An error inside the cap rejects (the batch stops, as before). A LATER
-   *  error marks only `batch` (see `write`). */
-  _sendChunk(id, dv, batch = null, frameIdx = 0) {
+   *  error marks only `batch` (see `write`).
+   *
+   *  `useResponse` picks `writeChunkResponse` over `writeChunk` (F270). The cap and the late-resend logic are
+   *  UNCHANGED for a response chunk: a with-response write legitimately takes about one connection interval
+   *  (30-50 ms) to answer, close to `ackCapMs` (50 ms) by design, so `lateAcks`/the "write answers slow" log
+   *  will read higher with the lever on -- that is the expected cost of asking for an acknowledgement, not a
+   *  sign of the bridge congestion the cap was built to catch (see the note above `WRITE_ACK_CAP_MS`). The
+   *  resend-from-frame-start path only fires on an actual rejection (`batch.failed`), which a slow-but-eventually
+   *  -successful response write never sets, so a healthy response write is never retried just for being close
+   *  to the cap. */
+  _sendChunk(id, dv, batch = null, frameIdx = 0, useResponse = false) {
     let sent;
-    try { sent = Promise.resolve(this.writeChunk(id, dv)); } catch (e) { return Promise.reject(e); }
+    try { sent = Promise.resolve((useResponse ? this.writeChunkResponse : this.writeChunk)(id, dv)); } catch (e) { return Promise.reject(e); }
     return new Promise((resolve, reject) => {
       let done = false;
       const t = setTimeout(() => { done = true; resolve(false); }, this.ackCapMs);

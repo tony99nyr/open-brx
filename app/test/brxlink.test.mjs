@@ -624,11 +624,54 @@ test('the real plugin gets the direct writer; the web build is sent the DataView
 // the lever bench §14 measures, and until it is measured the field pacing must not move.
 test('write pacing: the shipped values are the field values and the block pause is off', async ctx => {
   const { WRITE_PACING } = await import('../src/brxlink.js');
-  assert.deepEqual(WRITE_PACING, { chunkGapMs: 8, frameGapMs: 18, blockFrames: 0, blockPauseMs: 0 });
+  assert.deepEqual(WRITE_PACING, { chunkGapMs: 8, frameGapMs: 18, blockFrames: 0, blockPauseMs: 0, responseForMultiPacket: false });
   assert.ok(Object.isFrozen(WRITE_PACING));
   const r = cleanRig(ctx);
   assert.equal(r.link.chunkGapMs, 8); assert.equal(r.link.frameGapMs, 18);
   assert.equal(r.link.blockFrames, 0); assert.equal(r.link.blockPauseMs, 0);
+  assert.equal(r.link.responseForMultiPacket, false);
+});
+
+// F270 (transport-hardening.md §5, FOLLOWUPS): the response-for-multi-packet lever. Off by default --
+// pin today's behaviour, that every chunk still goes through the without-response writer -- and, when on,
+// only a frame over one 20-byte packet is affected.
+function responseRig(ctx, opts = {}) {
+  const calls = [];
+  const plugin = {
+    writeWithoutResponse: o => { calls.push({ kind: 'noresp', value: o.value }); return Promise.resolve(); },
+    write: o => { calls.push({ kind: 'resp', value: o.value }); return Promise.resolve(); },
+  };
+  const ble = { initialize: async () => {}, disconnect: async () => {}, startNotifications: async () => {}, connect: async () => {} };
+  const link = new BrxLink({
+    ble, log: () => {}, ...opts,
+    writeChunk: directWriter(plugin, () => 'android'),
+    writeChunkResponse: directWriter(plugin, () => 'android', { response: true }),
+  });
+  ctx.after(() => link.disconnect());
+  return { link, calls };
+}
+
+test('F270: responseForMultiPacket off (default) -- every chunk, single- or multi-packet, uses the without-response writer', async ctx => {
+  const settle = useClock(ctx);
+  const { link, calls } = responseRig(ctx);
+  await link.connect('A', 'GUN-A-1111');
+  const done = link.write(SPAWN);
+  await settle(1000);
+  assert.equal(await done, true);
+  assert.equal(calls.length, chunksOf(SPAWN).length, 'every chunk was sent');
+  assert.ok(calls.every(c => c.kind === 'noresp'), 'the lever is off: nothing goes through the response writer');
+});
+
+test('F270: responseForMultiPacket on -- a multi-packet frame\'s chunks use the response writer, a single-packet frame\'s does not', async ctx => {
+  const settle = useClock(ctx);
+  const { link, calls } = responseRig(ctx, { responseForMultiPacket: true });
+  await link.connect('A', 'GUN-A-1111');
+  const done = link.write(SPAWN);
+  await settle(1000);
+  assert.equal(await done, true);
+  const expectedKinds = SPAWN.flatMap(f => Array(Math.ceil(f.length / 20)).fill(f.length > 20 ? 'resp' : 'noresp'));
+  assert.deepEqual(calls.map(c => c.kind), expectedKinds);
+  assert.deepEqual(calls.map(c => c.value), chunksOf(SPAWN), 'the chunk bytes are unchanged either way');
 });
 
 test('write pacing: with a block size set, a pause lands after every N frames and never after the last', async ctx => {
