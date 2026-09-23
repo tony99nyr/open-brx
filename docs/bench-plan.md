@@ -1,6 +1,6 @@
 # Bench plan: every open bench step, and the desk work that gates it
 
-Updated: 2026-09-18 (night). **Open this file first at the bench.** How a live bench run works with Tony (who drives
+Updated: 2026-09-23. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
 This file holds the ORDER only. Each step points to the sheet section or the FOLLOWUPS row that holds the procedure.
@@ -71,7 +71,7 @@ A3 repeats A1 on other channels and can lock the gun: power-cycle and re-arm bef
 4. `$TMP` t6 re-send: send t6 = 50 twice, then time one reload (5 min; method in the row). **F285**, **F281**.
 5. Complete the F285 table: repeat same non-zero t5 and t7 writes and compare fire timing/damage; for t11 first
    prove the missing-row default sound, then write two distinct ids and identify which one plays (15 min). **F285**.
-6. Levers §12 step 2 (does `$STOP` gate the trigger?), then §4 step 2 (a `$SIR` p5 stun on hit) (10 min). **F121**, **U11′**.
+6. Levers §12 step 2 (does `$STOP` gate the trigger?), then §4 step 2 (a `$SIR` p5 stun on hit) (10 min). **U11′**.
 7. **F262**: the shield-hit sound by sensor, ten shots at the headset and ten at the gun body (10 min, ears).
 8. Levers §2, melee (15 min; `$BMAP,8,7` and `$BMAP,8,4`; step 4 needs the rig). **K4**.
 9. Levers §16 step 6.3: does `$CLEAR` stop a headset `$IRTX` loop? (5 min, the rig). **B31**, **B23**.
@@ -103,7 +103,7 @@ Run it after the desk fixes for F265 and F261 land. Levers §1 run f (F206's pro
 
 ### Sitting 6: levers session 2 (two sittings; 2 guns, the rig for §9 step 5)
 
-- 6a (about 50 min): §3 `$BHIT` (**S16**), §6 steps 1-3 (**S29**), §7 (**S50**), §8 the fuse (**S16**).
+- 6a (about 50 min): §3 `$BHIT`, §6 steps 1-3 (**S29**), §7 (**S50**), §8 the fuse; use the levers sheet as the procedure source.
 - 6b (about 40 min): §9 the crit bonus (**S50**), §10 fn 35, 38, 30, 33, 50-52 (**U11′**), §15 a headless gun (**B26**).
 
 ### Sitting 7: levers session 4, the IR rig (two sittings; 2 guns, the rig)
@@ -148,15 +148,14 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 
 | row | lane | the work | blocked by |
 |---|---|---|---|
-| **F272** | levers and screamers | the lock-up detector on the phone and in MC (poll with the bare `$LIFE,*`) | nothing. Gates Phase E |
+| **F272** | levers and screamers | bench-validate the lock-up detector on the phone and in MC (poll with the bare `$LIFE,*`) | idle `$VOLTS`, stable-radio screamer, and mobile recovery evidence; gates Phase E |
 | **F300** | levers and screamers | decode the remaining `$QUERY` sound/gyro/per-slot loop before extending arming read-back | stock-image/capture decode |
 | **F269** | levers and screamers | switch the block pause on, and decide the runt `$SIR` rows | sittings 1 and 4 (A7, A8, A8b) |
-| screamers Phase B: **F270**, **F273**, plus one new row per trigger that Phase A reproduces | levers and screamers | one rule in code per reproduced trigger (write with response; the `$PB*`/`$AS` deny list) | sittings 1 and 4 |
+| screamers Phase B: **F270**, plus one new row per trigger that Phase A reproduces | levers and screamers | one rule in code per reproduced trigger (write with response; the `$PB*`/`$AS` deny list) | sittings 1 and 4; F273 is closed |
 | **F285** | levers and screamers | desk table is done; replace its UNMEASURED cells only from recorded bench results | sitting 2 steps 1, 3-5 |
-| **S55**, then **F274** | playtest and node | one accuracy owner (never write t4 during a smoke, re-send when it ends, re-send after `$SPAWN` but not after a `$LIFE` revive), then move the recoil writer onto one `$TMP` t4 frame | S55 first |
+| **F274** | playtest and node | measure the recoil writer's BLE write budget and complete the hardware soaks | A13 and the three two-hour hardware runs; S55 is shipped |
 | **B31** | playtest and node | the kill confirm: the victim's node sends a protocol-15 `$IRTX` through its own (dead) gun's headset | choose the IR design or the advert design (the row weighs both) |
 | **F277** | playtest and node | a detector for a reload that never completes | sitting 5 step 3 (a repro) |
-| **F256** | playtest and node | the coverage line | nothing |
 | **F268**, **F280**, then **S54** | weapons and perks | settle the rung basis with Tony (the time-to-kill proposal), then wire the six recoil fields once | a decision (Tony). The floors are settled at 60 |
 | **F281** | weapons and perks | move Quick Hands onto `$TMP` t6 in one piece, or not at all | sitting 2 step 4 (t6 absolute or additive) |
 | **S50** | weapons and perks | Extended Mags on `$TMP` t9 (one write per life, after `$SPAWN`, then an `$AMMO` fill) | sitting 2 step 2 (per slot or not) |

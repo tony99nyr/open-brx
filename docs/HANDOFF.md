@@ -1,4 +1,4 @@
-# Handoff: Open BRX — S34, F203, F196, F193, F192 and B22 closed; F190 confirmed stale and archived.
+# Handoff: Open BRX — desk closures through 2026-09-23; remaining work is bench- or decision-gated.
 **State as of 2026-09-23 (desk follow-up).** **Rules for this file.** One screen. It says what is true now; history is `git log -p -- docs/HANDOFF.md`. It has
 one section per open lane. **When several sessions close together, each one overwrites only its own lane section,
 never another lane's.** (On 2026-09-18 three lanes closed on the same night and rewrote each other's sections.)
