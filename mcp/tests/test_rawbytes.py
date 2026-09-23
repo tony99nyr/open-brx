@@ -559,3 +559,12 @@ def test_phone_pacing_block_pause_lands_after_every_n_frames_never_after_the_las
     from brx_mcp.rawbytes import plan_phone_paced
     plan = plan_phone_paced(repeat_stream("$PING,*", 5), block_frames=2, block_pause_ms=300)
     assert [w.delay_after_ms for w in plan.writes] == [18, 318, 18, 318, 0]
+
+
+def test_the_cli_refuses_an_unknown_flag_before_it_connects():
+    # An ignored --phone-pacing (an older build, or a typo) would run a "paced" control at zero gap.
+    from brx_mcp import __main__ as cli
+    for args in (["AA", "--stream", "$PING,*", "--repeat", "2", "--phone-pacng"],
+                 ["AA", "BB", "--stream", "$PING,*", "--repeat", "2"]):
+        with raises(SystemExit):
+            cli._dispatch_raw_bytes(args)

@@ -984,9 +984,14 @@ def _dispatch_raw_bytes(rest: list[str]) -> None:
             confirm = True
         elif a == "--log":
             log_path = next(it)
+        elif a.startswith("--"):
+            # An older or mistyped flag must not be dropped: an ignored --phone-pacing would run a
+            # "paced" control at zero gap and nothing would say so.
+            print(f"raw-bytes: unknown option {a}", file=sys.stderr)
+            sys.exit(2)
         else:
             positional.append(a)
-    if len(positional) < 1 or (not segments and stream is None):
+    if len(positional) != 1 or (not segments and stream is None):
         print(__doc__, file=sys.stderr)
         sys.exit(2)
     address = positional[0]
