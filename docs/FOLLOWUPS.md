@@ -1,6 +1,6 @@
 # Followups — open work only
 
-Updated: 2026-09-22. **Everything in this file is open.** Closed items are in
+Updated: 2026-09-23. **Everything in this file is open.** Closed items are in
 [`archive/followups-closed.md`](archive/followups-closed.md), verbatim and ordered by close date; the evidence
 behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date). Session close = strike or
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
@@ -151,9 +151,6 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 - **B14 🟡** voice-pack selection: every character voice uses one 22-slot layout (sound catalog), so the per-character
   map is now derivable without P3. `build`.
 - **B17 🟡** tutorial mode (`TutorialEngine`, audio-guided, event-gated). `build`.
-- **B18b 🟡** (was 🔴) headset-present gate in MC preflight. The detectors are known: link + `$ALCD` echo, `$VERSION`
-  token 2 = `hds.59`, rainbow blink = disconnected; a real registered hit is the only proof it can score. Open is the
-  MC wiring, not the detection. `build`.
 - **B21 🟠** release-sign + distribute the Android app (debug key today, `debuggable=true`; keystore out of repo, **→ 2026-09-19, this is no longer hypothetical: app 0.3.0 IS PUBLISHED and it is DEBUG-signed** (`app-v0.3.0`, F220 closed). It sideloads and it is what both phones run, but it carries the throwaway Android debug key, so the FIRST release-signed build will not upgrade over it and every player must uninstall once. That is a one-time cost that gets worse with every player who installs 0.3.x, and it is cheapest to pay before a public game rather than on a match day. ⚠ **WAITING ON TONY:** which signing key, and before which game. Every player who installs a debug-signed 0.3.x pays the uninstall once, so the cost only grows. `decision`.
   `assembleRelease`, version bump per build; iOS = TestFlight or source build). `build`.
 - **B23 🔴** respawn station for HOSTED games = a node-defined "downed" state. A dead hosted gun hears no IR and native
