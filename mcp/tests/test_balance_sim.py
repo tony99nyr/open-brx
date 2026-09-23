@@ -521,22 +521,22 @@ def test_r10_primaries_beat_sidearms_at_65_percent():
     the Force Rifle (burst mode + a real recoil ladder) are named, not modelled -- see
     `r10_summary_text`'s own trailing note for why.
 
-    ONE of the twelve cells does not clear 65% and is asserted against a lower bound instead
-    (Tony's own "if a half fails, report the numbers and do not lower the bar" instruction, applied
-    per cell rather than to the row-10 rule as a whole): the Suppressor against the Desert Eagle
-    reads ~62% at 10,000 reps, stable at ~61.7% at 100,000. Both weapons' numbers are Tony's own
-    real-world levers (R10) or pre-existing catalogue values (the Suppressor); there is no lever
-    left to sweep for this one cell without reopening either decision."""
+    All twelve cells clear the full 65% bar. The Suppressor against the Desert Eagle used to read
+    ~62% (stable at ~61.7% at 100,000 reps) until Tony's fix the same day (row 3): the Suppressor's
+    `heavy` rung is now explicitly 70, not the 60 floor every other reference-calibre weapon ships
+    ("it should be weaker since its silent but not too weak") -- a steadier heavy frame, not a
+    looser trigger. It now reads ~77.9% against the Deagle and ~99.8% against the USP, and still
+    trails every other primary against a bursting AR (~92.4%, the highest of the six), so it stays
+    the weakest primary by design."""
     m = _recoil_model()
     reps = 10_000
     for p in B.R10_PRIMARIES:
         for s in B.R10_SIDEARMS:
             r = B.r10_duel_batch(m, p, s, reps, SEED)
-            bar = 0.55 if (p, s) == ("suppressor", "deagle") else 0.65
-            assert r.win_rate >= bar, (
+            assert r.win_rate >= 0.65, (
                 f"{B.R10_PRIMARY_NAMES[p]} vs {B.R10_SIDEARM_NAMES[s]} broke R10(b): won only "
-                f"{r.win_rate:.1%} of {reps} duels (needs >= {bar:.0%}). See docs/weapon-design.md's "
-                "Balance rules table, row 10 (F308)."
+                f"{r.win_rate:.1%} of {reps} duels (needs >= 65%). See docs/weapon-design.md's "
+                "Balance rules table, row 12 (F308)."
             )
 
 

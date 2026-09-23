@@ -596,6 +596,7 @@ export const DEMO_WEAPONS = [
     "recoil": {
       "ceiling": 100,
       "floor": 60,
+      "heavy": 70,
       "per_shot": 15,
       "recover_ms": 150
     },

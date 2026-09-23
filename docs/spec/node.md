@@ -458,12 +458,20 @@ so the Burst Rifle (weakened for R6 the same session) still beats it most of the
 `test_ttk_band_and_no_strictly_dominant_weapon` (`mcp/tests/test_mc_compile.py`) still passes unchanged -- the
 AR still leads its family on every felt axis (ttk/kpc/pk/sust), so no exemption was needed there.
 
+**The Suppressor is its own explicit exception the other way (Tony, 2026-09-23, R10, `docs/weapon-design.md`'s
+Balance rules table, row 3)** -- "it should be weaker since its silent but not too weak." It declares
+`heavy: 70` (not derived; the 60 floor every other reference-calibre weapon ships): `degraded` still
+derives between `crisp` and the new `heavy`, landing at 85, not 80. `after_shots`/`after_heavy` are
+unaffected (they derive off the row's own `dmg`, not `heavy`). This is a steadier heavy frame, not a
+looser trigger: the Suppressor still trails every other primary against a bursting AR (R10(b),
+`docs/weapon-design.md`'s Balance rules table, row 12).
+
 | weapon | crisp | degraded | heavy | after_shots | after_heavy | settle_ms |
 |---|---|---|---|---|---|---|
 | assault_rifle | 100 | 70 | 40 | 6 | 7 | 600 |
 | burst_rifle | 100 | 100 | 100 | n/a | n/a | n/a (no recoil model: flat) |
 | smg | 100 | 80 | 60 | 6 | 9 | 600 |
-| suppressor | 100 | 80 | 60 | 7 | 10 | 600 |
+| suppressor | 100 | 85 | 70 | 7 | 10 | 600 |
 | energy_rifle | 100 | 85 | 70 | 6 | 9 | 600 |
 | force_rifle | 100 | 80 | 60 | 5 | 8 | 600 |
 | stinger | 100 | 80 | 60 | 4 | 6 | 600 |
