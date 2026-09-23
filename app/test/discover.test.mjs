@@ -199,7 +199,8 @@ test('F139 guard: app.js sweeps over ws:// from discover.js, never an http fetch
   assert.doesNotMatch(body, /8765/, 'the operator HTTP port is not reachable from the app at all');
   assert.doesNotMatch(body, /settings\.mcUrl\s*\|\||joinUrl:\s*settings\.mcUrl/, 'a remembered address must never pick the subnet');
   assert.match(body, /sweepPlan\(\{[^}]*joinUrl:\s*currentJoinUrl/, 'the subnet comes from THIS run\'s join');
-  assert.match(body, /new WebSocket\(url\)/, 'and the probe is a websocket, the scheme the LAN join path already uses');
+  assert.match(body, /sweepSubnetsForMc\(\{[^\n]*wsFactory/, 'the probe uses the shared WebSocket factory');
+  assert.match(src, /const wsFactory = makeWsFactory\(\)/, 'the factory selects the native socket on Android');
   // security (review pass 1): a websocket upgrade is all a squatter on the node port has to answer, and
   // the hello that follows carries this node's takeover key. A hit is a suggestion the player taps.
   assert.doesNotMatch(body, /connectMc\(/, 'the sweep must NEVER dial its own hit');

@@ -68,7 +68,8 @@ presented stale as current — round 5), Companion batt/fw slot (future → "—
 **amber** unknown/unsampled and does NOT block (battery not read, low phone battery, headset not yet proven,
 screen off) · **red** blocks the push (no phone on the gun, identity unknown/reverted, wrong Wi-Fi / MC
 unreachable, never synced); after the push a gun that didn't **echo** turns red and blocks start. An operator
-checklist strip: mobile data off, auto-join field SSID, auto-lock off, Do-Not-Disturb on. Summary + gate:
+checklist strip: Do-Not-Disturb on (the app keeps the screen awake itself). Nothing that asks a player to change a connection setting
+(Tony, 2026-09-23); a network problem is the app's or the host's to solve (contracts §5c (d)). Summary + gate:
 **"6/8 green, 2 amber, 0 red — GO"**; gate is **no reds**, not all-green; STANDBY while the roster is empty.
 The gate button is the status (bench 2026-09-17, `derive.armoryGate`): `N GUNS BLOCKED` (disabled, a red no
 push cures), `WAITING FOR N PHONES` (pressable), `NO PLAYERS YET ▸`, else `HARDWARE READY ▸`; it goes to GAMES.

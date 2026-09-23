@@ -728,9 +728,9 @@ corrupt its own score line; there is no wire command that lets one node write an
 | (a) | **iOS ATS** does not exempt `ws://` to an IP literal | WebView refuses the socket, silently | `NSAllowsLocalNetworking = true` via `ios-setup.sh` |
 | (b) | **iOS Local Network privacy** | LAN + mDNS silently blocked; no prompt | `NSLocalNetworkUsageDescription` + `NSBonjourServices: ["_openbrx._tcp"]` via `ios-setup.sh` |
 | (c) | **Android cleartext** blocked on API 28+ (`allowMixedContent` is not this) | `ws://` refused | `usesCleartextTraffic` / network_security_config via `android-setup.sh` |
-| (d) | **No-internet Wi-Fi is deprioritised** — the default route may go to cellular | "connecting…" forever with full bars | Android: turn mobile data off and disable OEM network switching; the current app only reports `connectionType`/reachability and does not bind the process. iOS: Wi-Fi Assist off. Preflight `ssid_ok`, `mc_reachable` |
+| (d) | **No-internet Wi-Fi is deprioritised** — the default route may go to cellular | "connecting…" forever with full bars | **Never a player step** (Tony, 2026-09-23: players do not change connection settings). Android: the app opens the MC socket on the Wi-Fi network for a LAN URL (`app/plugins/brx-net`, per-socket network choice; in build 2026-09-23, unproven on a phone until its bench row). Until an app carries it, the HOST turns the tunnel on and the phone reaches MC over mobile data by itself. iOS keeps local-subnet traffic on Wi-Fi. Preflight `ssid_ok`, `mc_reachable` are diagnostics |
 | (e) | **Auto-rejoin after walking out of range** may be off | nothing syncs at the base; recap empty | preflight `auto_join_ok`; per-OS muster step; MC's Network screen names the SSID |
-| (f) | **Mobile data** re-routes on some OEMs | as (d) | muster checklist; preflight `cellular_off` best-effort |
+| (f) | **Mobile data** re-routes on some OEMs | as (d) | as (d); preflight `cellular_off` is a best-effort DIAGNOSTIC for the board, never an instruction to the player |
 | (g) | **Calls / notifications** suspend the webview | timers stop (node.md §3.11) | Do-Not-Disturb on; preflight `dnd_on`; the resume→reconcile path |
 
 Any of (a)–(e) failing is a **red** on the readiness board for that node, with the gate named.

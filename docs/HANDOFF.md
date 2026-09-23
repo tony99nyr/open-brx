@@ -111,7 +111,7 @@ On `main` 2026-09-23: the desk half of F297, F269 and F270. All three stay open 
   scoping needs an engine.js call-site change.
 - **Next bench task:** the ordered runbook [`bench-2026-09-24.md`](bench-2026-09-24.md). **Blocked:** F270 on A8.
 ## Lane: Mission Control console honesty
-F178, F256, F251, F289 (MC flag) closed and F309 built 2026-09-23. **Next:** F309's four phone checks (bench row).
+F178, F256, F251, F289 closed; F309 and brx-net built 2026-09-23. **Next:** bench rows F309 and F311.
 
 ## Lane: phone gate, S56, B21 (brx4)
 2026-09-23: S56 built (minimal HUD; brx-hud recap open). F191, F284 closed. **B21:** `npm run android:release` ready; Tony creates the key.

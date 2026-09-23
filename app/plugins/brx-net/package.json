@@ -1,0 +1,13 @@
+{
+  "name": "brx-net",
+  "version": "0.1.0",
+  "description": "Open BRX: Android WebSockets pinned to the field Wi-Fi network",
+  "private": true,
+  "main": "src/index.js",
+  "module": "src/index.js",
+  "type": "module",
+  "files": ["android/src/main/", "android/build.gradle", "src/"],
+  "license": "MIT",
+  "peerDependencies": { "@capacitor/core": ">=8.0.0" },
+  "capacitor": { "android": { "src": "android" } }
+}

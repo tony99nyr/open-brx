@@ -611,7 +611,7 @@ inspectable on the field:
 
 - **Preflight (the top block; feeds `status.preflight`, contracts A4.9/A5.4):** expected SSID vs joined
   SSID (`ssid_ok`), MC reachable + last `welcome` age (`mc_reachable`), field SSID saved with auto-join
-  (`auto_join_ok`), mobile data off where readable (`cellular_off`), Do-Not-Disturb (`dnd_on`), clock-sync
+  (`auto_join_ok`), mobile data state where readable (`cellular_off`, a diagnostic only: the player is never told to change it), Do-Not-Disturb (`dnd_on`), clock-sync
   age and sample count (`synced`), phone battery % + charging (`phone_batt`), `screen_on` / `foreground`
   flags, gun link (`gun_linked`), headset (`headset_ok` = the last config/spawn echo arrived — amber until
   then), firmware from the probe set (`fw`), outbox queue depth, `match_id`, `player_num`, `config_id`.

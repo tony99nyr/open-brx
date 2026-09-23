@@ -114,11 +114,12 @@ flakes with many clients); use it only for a small game. Untested at scale.
 
 **Phone node checklist** (each player's phone, from [`spec/contracts.md` §5c](spec/contracts.md#5c-platform-network-gates-blocking-live-in-appscripts-setupsh--preflight); the Android app's `android-setup.sh`
 already sets the cleartext + Wi-Fi permissions and forces landscape):
-- **Join the game SSID**, and set it to **auto-join** (so a phone that drops rejoins without a human).
-- **Join the game Wi-Fi, then turn mobile data off on Android.** The app's current preflight can confirm the
-  connection type and MC reachability, but it does not bind the process to Wi-Fi; Android may otherwise move a
-  no-internet Wi-Fi socket to cellular. Disable any OEM "switch to mobile data" setting too. iOS routes on-link
-  private IPs over Wi-Fi; turn **Wi-Fi Assist off**.
+- **Join the game SSID** once. Phones rejoin a saved network by themselves, so nothing else is set.
+- **Leave the phone's connection settings alone** (Tony, 2026-09-23: players never change mobile data, Wi-Fi or
+  Wi-Fi Assist options). If the field Wi-Fi has no internet, Android may send the Mission Control socket over
+  mobile data, where the game network cannot be reached. The host fixes that by turning the internet tunnel on:
+  the phone then reaches MC over mobile data by itself. On Android the app also opens its LAN socket
+  on the Wi-Fi network itself (`app/plugins/brx-net`, not yet proven on a phone). iOS keeps on-link private IPs on Wi-Fi.
 - **Do Not Disturb ON.** The app itself keeps the screen awake and locked to landscape while armed/live (keep-awake
   plugin), so no auto-lock setting is needed — but **do not press the power button and do not take calls**: a locked or
   backgrounded phone suspends the HUD's timers (iOS/Android WebViews pause JS) until the app is back in front, when it
@@ -261,15 +262,15 @@ starts the next game (keep or clear the roster).
 |---|---|---|
 | **NO NODE — OPEN THE APP AND SET THE GUN** | no phone has bound this player's gun | player opens the app, taps Set Gun, connects the tagger |
 | **CLOCK NOT SYNCED — BLOCKS START** | the node hasn't completed the time handshake | wait a few seconds; if stuck, the phone can't reach MC — check Wi-Fi (below) |
-| **WRONG WI-FI / MC UNREACHABLE** | phone is off the game SSID or on cellular | join the game SSID, **turn mobile data off**, disable "smart network switch" |
+| **WRONG WI-FI / MC UNREACHABLE** | phone is off the game SSID or on cellular | join the game SSID; if it is joined and still unreachable, the host turns the internet tunnel on (never ask the player to change mobile data) |
 | **GUN LINK LOST — BLOCKS START** | the phone's BLE to its tagger dropped | power-cycle the tagger with its headset on; re-tap Set Gun |
 | **IDENTITY REVERTED — RE-STAMP $NAME** | the gun's stored name reverted (opened in Callsign) | re-enroll the gun's name; **never open the Callsign app on an enrolled gun** |
 | **GUN DID NOT ANSWER CONFIG — HEADSET OFF?** | empty `gun_echo` after the push | connect/replace the headset, power-cycle, re-push |
 | (amber) BATTERY / SCREEN OFF | non-blocking notices | fine to start; charge / wake / ignore |
 
 Other field issues:
-- **A phone won't rejoin the SSID** after a drop → confirm **auto-join** is on for that SSID and mobile
-  data is off; a phone that never rejoins still ran its own gun locally — its events backfill when it
+- **A phone won't rejoin the SSID** after a drop → the host turns the internet tunnel on, so the phone reaches
+  MC over mobile data by itself (never ask the player to change a phone setting); a phone that never rejoins still ran its own gun locally — its events backfill when it
   reconnects, and it shows **stale** on the board meanwhile.
 - **MC's address changed** (router handed a new IP / you restarted) → the printed `ws://` and the UI's
   QR update; phones re-scan the QR or re-enter the IP. Pin the router's DHCP lease for the Mac to avoid
@@ -293,7 +294,7 @@ feed is `GET /ui-ws` (WebSocket): a `snapshot` on every state change, plus `feed
 
 ## 8. Pre-game 60-second check
 
-1. Router up; Mac + phones on the game SSID; **mobile data off, DND on** each phone.
+1. Router up; Mac + phones on the game SSID; **DND on** each phone (never ask a player to change mobile data or Wi-Fi options).
 2. `python -m brx_mcp.mc` running; UI open; QR visible.
 3. Every rostered gun's row **green** (or amber-only) — **no reds**.
 4. Config set with a **time limit**; no `config_errors`.

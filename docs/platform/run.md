@@ -85,8 +85,8 @@ it, and start Mission Control:
 `~/.brx-mcp/sessions/<launch-id>/mc.log`, so there is nothing to redirect by hand.
 
 Open the exact link it prints, including the `#tok=` part. That is the operator token, and it is
-new every launch. On each phone: join the game Wi-Fi and set it to auto-join, turn **mobile data
-off** on Android, and turn Do Not Disturb on.
+new every launch. On each phone: join the game Wi-Fi and turn Do Not Disturb on. Leave every
+other connection setting alone: players never change mobile data or Wi-Fi options.
 
 ## Muster
 
@@ -200,10 +200,11 @@ Drag the zip into the issue form, describe what happened, and submit it.
 join, silently. Look for the rainbow blink, fix the headset, power-cycle that tagger and push again.
 
 **A phone shows as on the wrong Wi-Fi, or Mission Control unreachable.** The field router has no
-internet, so Android decides the network is dead and moves the phone onto mobile data. The link then
-leaves over cellular and never arrives. Turn mobile data off on that phone, and check auto-join is
-on for the game network. With the internet tunnel on (see *Reaching phones over the internet*) this stops
-being a fault: that phone reaches Mission Control over mobile data anyway and its row reads BACKHAUL.
+internet, so Android decides the network is dead and sends new connections over mobile data, where the
+game network cannot be reached. A current Android app is built to keep its own link on the game Wi-Fi, which is not yet proven on a phone. Do not ask the player to change anything on the phone. Turn the internet
+tunnel on (see *Reaching phones over the internet*): that phone then reaches Mission Control over mobile
+data by itself, and its row reads BACKHAUL. A phone with no mobile data at all is simply on the game
+Wi-Fi and is not affected.
 
 **A tagger will not connect, or connects and drops straight away.** A tagger left powered all day
 starts doing this: power-rest the taggers between sessions. Establishing a Bluetooth link succeeds

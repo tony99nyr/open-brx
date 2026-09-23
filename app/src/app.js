@@ -12,6 +12,7 @@ import { Transport, PRIOR_UTILITY_KEY, clearConsumedPriorUtilityHandoff } from '
 import { Hud } from './hud/hud.js';
 import { parseMcJoin } from './mcurl.js';
 import { sweepPlan, localIpFrom, sweepForMc as sweepSubnetsForMc } from './transport/discover.js';   // F139
+import { makeWsFactory } from './transport/netsocket.js';
 import { Presence, encodeUuid, stationView } from './beacon.js';   // utility items (docs/spec/utility.md)
 import { BeaconWatch, stationsInPlay } from './scanwatch.js';                        // playtest 2026-09-13: one scan operation at a time, open only in a match
 import { LogSync, chunkByBytes, DEFAULT_CHUNK_BYTES } from './logsync.js';   // background log sync (contracts A25)
@@ -40,6 +41,7 @@ function log(msg, cls = 'li') {
 
 // ---------- Capacitor plugins (all guarded: the web build must run in a desktop browser) ----------
 const plugins = {};
+const wsFactory = makeWsFactory();
 async function loadPlugins() {
   // Capacitor plugin objects are PROXIES that intercept every property — including `.then`. If a promise
   // resolves WITH the proxy, `await` adopts it as a thenable, calls proxy.then() (a fake native method), and
@@ -295,7 +297,7 @@ function connectMc(url, remember = true, join = {}) {
   if (transport) { try { transport.close(); } catch (_) { /* ignore */ } }
   const gun = engine.gun ? { name: engine.gun.name, tail: engine.gun.tail, fw: engine.fw || undefined } : null;
   // F309: carry the last known connection into the new Transport, so a redial is not a 5 s gap in the claim.
-  transport = new Transport({ node: { app_ver: APP_VER, connection_type: transport ? transport.connectionType : null }, gun, priorUtility: priorUtilityHandoff() });
+  transport = new Transport({ node: { app_ver: APP_VER, connection_type: transport ? transport.connectionType : null }, gun, priorUtility: priorUtilityHandoff(), wsFactory });
   const candidate = transport;
   // `log` is this node's own view of the sync (A25: MC shows none|offered|pulling|held per node);
   // app_ver/platform are added by the transport itself so every node type reports them (A29).
@@ -767,7 +769,7 @@ async function sweepForMc() {
   // Office test 2026-09-19 (Pixel 4/5): the sweep running ON TOP of a gun connect was the likely cause of
   // the 1-2 s freeze before "Connecting to <gun>…" appeared -- `picking` is true from the tap (onPick,
   // above) until the connect is up or gives up, so the sweep waits out the connect and resumes after.
-  const found = await sweepSubnetsForMc({ ...plan, wsFactory: url => new WebSocket(url), shouldStop,
+  const found = await sweepSubnetsForMc({ ...plan, wsFactory, shouldStop,
     isPaused: () => picking, onSubnet: sn => log(`sweep: ${sn}.0/24`, 'li') });
   if (!found) { log('sweep found no Mission Control — QR/manual join', 'li'); return; }
   if (shouldStop()) return;
