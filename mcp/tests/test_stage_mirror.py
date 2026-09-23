@@ -1432,6 +1432,8 @@ KNOWN_UNMIRRORED = {
     "_heatLockFrame", "_heatLockPress", "_overheatOnHud",
     # app lifecycle + the A26 pick debounce: the stage has no foreground/background and no MC to pick from
     "_awake", "commitPick",
+    # F202: local picker/storage operation; GunStage has no phone-owned gun binding to clear.
+    "forgetGun",
     # field 2026-09-17: the kill banner's victim name, resolved from MC's `feedback`; the stage has no MC and no banner
     "victimName",
     # bench 2026-09-17: the phone's day/night HUD skin and its per-MC-session pick; HUD chrome, no LED or game rule
