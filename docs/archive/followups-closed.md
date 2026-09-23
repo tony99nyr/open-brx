@@ -22,11 +22,12 @@
 - 2026-09-22 **F203** a remembered MC target that times out before welcome now clears the saved LAN URL,
   backhaul URL, and secret, then resumes discovery. Focused app tests pass 898/898.
 
-Moved out of `docs/FOLLOWUPS.md` on 2026-09-06. **Not maintained; grep it, do not read it.** Each block is
-verbatim, headed by the id, its close date and the line range it occupied in `FOLLOWUPS.md` at the time of the
-move. A block's *internal* statuses were true when it closed and may since have been superseded (the living
-files win: `docs/manual/`, `docs/spec/contracts.md`, `protocol/brx-protocol.md`, `docs/FOLLOWUPS.md`).
-Ordered by close date. Evidence for every claim is in `docs/experiment-log/`.
+This archive began as the 2026-09-06 migration from `docs/FOLLOWUPS.md`; later session-close blocks are appended
+in the same format. **Not maintained; grep it, do not read it.** Older snapshots can repeat an id when two lanes
+closed or corrected the same row; use the latest living entry in `docs/FOLLOWUPS.md` as the canonical status. A
+block's *internal* statuses were true when it closed and may since have been superseded (the living files win: `docs/manual/`,
+`docs/spec/contracts.md`, `protocol/brx-protocol.md`, `docs/FOLLOWUPS.md`). Evidence for every claim is in
+`docs/experiment-log/`.
 
 ---
 
@@ -595,12 +596,6 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
 - 2026-09-22 **B22** `build.json` now records Android `minSdk` 24 and `targetSdk` 36, and the rendered
   download card shows both values. The sidecar guard and real browser download-page check pass.
 
-# Closed 2026-09-22: stale Mission Control target clearing
-
-- 2026-09-22 **F203** an initial MC dial that receives no welcome now clears the app's remembered
-  `brx.mc_url` and Transport's persisted `brx.pub_url`/backhaul secret together, closes the dead attempt,
-  and resumes LAN discovery. A refusal or a newer join attempt is left untouched. Focused app transport and
-  discovery regressions pass.
 # Closed 2026-09-22: distinct USB query parser naming
 
 - 2026-09-22 **F252** renamed the USB-console parser to `parse_usb_query`; the protocol parser remains

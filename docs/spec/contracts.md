@@ -702,7 +702,7 @@ corrupt its own score line; there is no wire command that lets one node write an
 | (a) | **iOS ATS** does not exempt `ws://` to an IP literal | WebView refuses the socket, silently | `NSAllowsLocalNetworking = true` via `ios-setup.sh` |
 | (b) | **iOS Local Network privacy** | LAN + mDNS silently blocked; no prompt | `NSLocalNetworkUsageDescription` + `NSBonjourServices: ["_openbrx._tcp"]` via `ios-setup.sh` |
 | (c) | **Android cleartext** blocked on API 28+ (`allowMixedContent` is not this) | `ws://` refused | `usesCleartextTraffic` / network_security_config via `android-setup.sh` |
-| (d) | **No-internet Wi-Fi is deprioritised** — the default route may go to cellular | "connecting…" forever with full bars | Android: native `requestNetwork(WIFI)` + `bindProcessToNetwork`; iOS: Wi-Fi Assist off. Preflight `ssid_ok`, `mc_reachable` |
+| (d) | **No-internet Wi-Fi is deprioritised** — the default route may go to cellular | "connecting…" forever with full bars | Android: turn mobile data off and disable OEM network switching; the current app only reports `connectionType`/reachability and does not bind the process. iOS: Wi-Fi Assist off. Preflight `ssid_ok`, `mc_reachable` |
 | (e) | **Auto-rejoin after walking out of range** may be off | nothing syncs at the base; recap empty | preflight `auto_join_ok`; per-OS muster step; MC's Network screen names the SSID |
 | (f) | **Mobile data** re-routes on some OEMs | as (d) | muster checklist; preflight `cellular_off` best-effort |
 | (g) | **Calls / notifications** suspend the webview | timers stop (node.md §3.11) | Do-Not-Disturb on; preflight `dnd_on`; the resume→reconcile path |

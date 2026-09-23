@@ -40,11 +40,11 @@ superseded). See `docs/experiment-log/2026-09.md` (2026-09-19 pre-game entry) fo
 
 ## Sittings, in priority order
 
-### 0.4.4 field check (Saturday afternoon 2026-09-19, after Tony publishes)
+### 0.4.5 field check (after Tony publishes)
 
-Run this first, once app 0.4.4 is published and both phones have wireless debugging re-enabled.
+Run this first with the published app 0.4.5 and both phones' wireless debugging re-enabled.
 
-1. Install 0.4.4 on both phones (`npm run android:install` per phone, or the `app-v0.4.4` release download).
+1. Install 0.4.5 on both phones (`npm run android:install` per phone, or the `app-v0.4.5` release download).
 2. Connect timing on both phones: time from tap to linked, from cold, at least three tries each. Feeds **F297**.
 3. Watch for the link-loop symptom (a drop every 5-12 s after the first connect); if it recurs, log whether the
    phone's own Bluetooth was on or off through the pairing. Feeds **F293**.
@@ -98,7 +98,7 @@ Run it after the desk fixes for F265 and F261 land. Levers §1 run f (F206's pro
 3. **F265** (scoreboard freeze), **F261** (adopt from a fresh MC), **F257** (charge weapon HUD), **F256** (coverage
    line), **F237** (a slow Pixel 5 re-pick): each row holds its repro.
 4. The stun cue: hit a player with the EMP and listen for `X17` on the victim's gun (commit `273e949a`; FOLLOWUPS §9, F15 rung 9).
-5. The shield recharge cues on the Shields preset (**S29**: `N101`, `N102`, `VA6Y`, `N74`). If the "0.4.4 field
+5. The shield recharge cues on the Shields preset (**S29**: `N101`, `N102`, `VA6Y`, `N74`). If the "0.4.5 field
    check" already ran the Shields preset in a match, do not re-run it here; note the result instead.
 
 ### Sitting 6: levers session 2 (two sittings; 2 guns, the rig for §9 step 5)

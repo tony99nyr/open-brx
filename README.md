@@ -68,40 +68,10 @@ manual setup path.
 
 ## brx-mcp CLI quickstart
 
-The MCP server runs on **whichever machine owns the Bluetooth radio**: it is pure Python (`bleak` + `mcp`)
-and works identically on Windows, macOS and Linux. This is the direct tagger-control tool, separate from
-Mission Control above.
-
-```bash
-# FIRST: switch each tagger's HEADSET on. A gun with no headset accepts a BLE connection,
-# answers one ping, then drops the link, so `scan` and `identify` still look fine
-# while everything that configures or plays a game fails.
-
-# on the machine with the BLE radio (Windows PowerShell, macOS terminal, or Linux):
-git clone git@github.com:tony99nyr/open-brx.git && cd open-brx
-python -m venv .venv && . .venv/bin/activate   # (Windows: .venv\Scripts\activate)
-pip install -e ./mcp
-
-# first contact, no MCP client needed:
-python -m brx_mcp scan            # find the tagger (Gen2/3 advertise Nordic UART)
-python -m brx_mcp identify <addr> # $PING → generation check
-python -m brx_mcp listen <addr>   # read-only live console: pull trigger, watch $BUT/$HIR/$HP
-
-# ...and now actually play. This is the hardware-proven Tier-0 path: your laptop drives the
-# guns directly over BLE, so everyone has to stay within BLE range of it (a room or a yard).
-python -m brx_mcp play tdm <addr1> <addr2>             # a real Team Deathmatch, live scoring
-python -m brx_mcp play tdm <addr1> <addr2> outdoor=1 volume=90   # outdoors: louder, longer range
-#   modes: tdm ffa infection lms cs domination koth ctf extraction
-#   run `python -m brx_mcp --help` for the full command list
-#   (bare `python -m brx_mcp` starts the MCP server and blocks; that is not the help)
-
-# no guns to hand? this needs no hardware at all:
-python -m brx_mcp game-sim tdm                        # narrated demo match in your terminal
-
-# register it with your MCP client (stdio server; any client works):
-claude mcp add brx -- python -m brx_mcp        # Claude Code
-codex mcp add brx -- python -m brx_mcp         # Codex CLI; Cursor/others: command "python", args ["-m","brx_mcp"]
-```
+The direct tagger-control CLI and stdio MCP server are documented in the
+[`mcp/README.md`](mcp/README.md), which is the command reference and safe-order authority. It covers
+installation, first contact, `play`, `game-sim`, MCP registration, platform notes, and the full command table.
+The CLI table in that README is the command list; bare `python -m brx_mcp` starts the stdio server.
 
 > **What works today:** the command above ran a full TDM on two real taggers: scoring, respawn,
 > frag limit, correct winner (`docs/experiment-log/2026-08.md`, "FIRST LIVE M0 GAME"). The **phone-node +

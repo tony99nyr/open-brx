@@ -192,8 +192,9 @@ cold:
 - Whether the result was one-off or repeatable, and under what conditions.
 
 For a **software** PR, run the relevant test suite above first and say which one you ran (and its
-result) in the PR description. If you added or changed a fact in `docs/manual/`, note the `src:`
-evidence in the PR body even though it's already in the file.
+result) in the PR description. If you added or changed a fact in `docs/manual/`, link the supporting
+experiment-log or followup evidence in the PR body; manual pages intentionally do not carry per-sentence
+`src:` lines.
 
 ## Credit
 

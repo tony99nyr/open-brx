@@ -3,7 +3,7 @@
 Not maintained. Grep it, do not read it.
 
 Everything here was moved out of the living docs on or after 2026-09-06 because it was history
-(closed followups, superseded handoffs, dated bench sheets that ran, one-time design handoffs,
+(closed followups, superseded handoffs, dated bench sheets no longer in the running order, one-time design handoffs,
 retracted session write-ups). Nothing in this directory is a source of truth: if a file here
 disagrees with `docs/manual/`, `docs/spec/contracts.md`, `protocol/brx-protocol.md` or
 `docs/FOLLOWUPS.md`, the living file wins.

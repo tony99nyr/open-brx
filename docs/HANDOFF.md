@@ -3,7 +3,7 @@
 one section per open lane. **When several sessions close together, each one overwrites only its own lane section,
 never another lane's.** (On 2026-09-18 three lanes closed on the same night and rewrote each other's sections.)
 The bench order and the desk-work list live in one place: [`bench-plan.md`](bench-plan.md).
-## State of main (2026-09-19, after the pre-game office test)
+## State of main (2026-09-22, after the pre-game office test)
 The 2026-09-20 playtest fixes are committed on `main`: score caps are opt-in, fresh Charge Rifle ammo is
 published, Breacher/Toxin and SMG headset damage are supported, dual-emitter hits are grouped and version-gated,
 LOAD announcements retry after reconnects, shields render as a separate HUD pool, scanner games with one
@@ -24,7 +24,7 @@ equal go-live at T-3); both rows are closed. Today's two ghost-node incidents ar
 stale-node fix (`88ead536`), filed before the office test even ran. **The first field test after publish is the
 Shields preset in a real match, plus the new respawn rules on both phones; both phones need wireless debugging
 re-enabled first.** Still open and P0: the BLE link-loop root cause (**F293**) and BLE setup-reliability metrics
-(**F297**); see `bench-plan.md`'s new "0.4.4 field check".
+(**F297**); see `bench-plan.md`'s new "0.4.5 field check".
 **Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32**; the claim
 checklist is [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md). Facts that session 1
 proved, and that every lane builds on:
@@ -72,7 +72,7 @@ The F264 cure SHIPPED: on three unanswered pulls the node probes with `$LIFE,*`,
 GUN NOT ANSWERING on the operator's board when it cannot help. **F121 and F209 are CLOSED (2026-09-19)**,
 superseded by 0.4.3's respawn-profile rebuild (a separate weapon-arming delay, no default protection on a timed
 respawn, equal go-live at T-3); the evidence timeline ordering fix (F223) is now shipped.
-behind. Overnight cycle 1 (2026-09-18 night) closed **F261** (a fresh MC now records an orphan match from any
+Overnight cycle 1 (2026-09-18 night) closed **F261** (a fresh MC now records an orphan match from any
 unbound node) and **F257** (the charge-weapon HUD). Today's stale-node fix (`88ead536`, no open row) answers both
 ghost-node incidents from the office test. **F289** still flags the gap it leaves: an offline player
 mid-protection-window may stay protected all match. **F265 is closed:** status heartbeats now push a changed
@@ -82,8 +82,8 @@ RESYNC now proves the gun alive before any re-arm burst. **F288 is closed:** the
 `no_answer`, names the host cure, and yields its alert lane to link/reconnect controls. Also open: **F277** (a
 reload that never completes), and the office test's own new rows, **F293-F298** (link-loop root cause,
   the MC LAN sweep, the down-pattern LED redesign, BLE setup-reliability
-metrics, and a real Shields-preset match). App **0.4.4** is built on this branch, not yet published; see "State
-of main" above.
+metrics, and a real Shields-preset match). App **0.4.5** is the published release described in “State of main”
+above; the remaining field check validates that release.
 
 - **S55 is closed:** recoil now has one t4-only owner, native fn-23 priority and a phone HUD reason. **F274's
   desk half is complete:** its soak catalog matches the short t4 writer; the row remains open for hardware soaks.
@@ -96,7 +96,7 @@ of main" above.
 - **F179-F185, F188 and F189 are closed:** UI guards are behavioral, standby truth gates `npm test`, M2 accuracy is
   deterministic, Designer PLAY loads before KIT, and the KIT e2e finds the main-checkout venv from a worktree.
 - **F285 desk work is complete:** the guarded `$TMP` table marks only t4/t8 absolute and t9 additive; bench fills the unmeasured cells. **F178 and F187 remain decision first.**
-- **Next bench task:** the "0.4.4 field check" in [`bench-plan.md`](bench-plan.md) (connect timing on both
+- **Next bench task:** the "0.4.5 field check" in [`bench-plan.md`](bench-plan.md) (connect timing on both
   phones, the new respawn rules, the Shields preset, the down animation, full screen), then sitting 5, match
   verification: F264 live, the F277 repro, and the F256 row.
 - **Blocked:** F274 on its three two-hour hardware soaks; F277's detector on its repro.

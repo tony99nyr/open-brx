@@ -10,7 +10,7 @@ specified. Then **[`manual/`](manual/)**, the confirmed-facts manual the public 
 | **Running a match today** | [`field-runbook-mc.md`](field-runbook-mc.md) · [`field-process.md`](field-process.md) · [`field-issues.md`](field-issues.md) |
 | **Starting Mission Control on the dev box** (no hardware, no phones) | [`../mcp/brx_mcp/mc/README.md`](../mcp/brx_mcp/mc/README.md) → *Start it*: the one command, what it prints, the busy-port trap, served vs dev UI |
 | **Trying LEDs, sounds and events on ONE gun at the bench** | [`gun-stage.md`](gun-stage.md) (`python -m brx_mcp stage`) |
-| **Changing the code** | [`spec/README.md`](spec/README.md) → [`spec/contracts.md`](spec/contracts.md) · [`adding-weapons.md`](adding-weapons.md) for the end-to-end weapon workflow · [`adr/`](adr/) · [`archive/HANDOFF-dry-2026-09-13.md`](archive/HANDOFF-dry-2026-09-13.md), the completed contract-DRY execution record; remaining F42 cleanup is tracked in [`FOLLOWUPS.md`](FOLLOWUPS.md) |
+| **Changing the code** | [`spec/README.md`](spec/README.md) → [`spec/contracts.md`](spec/contracts.md) · [`adding-weapons.md`](adding-weapons.md) for the end-to-end weapon workflow · [`adr/`](adr/) · remaining F42 cleanup is tracked in [`FOLLOWUPS.md`](FOLLOWUPS.md) |
 | **An AI agent working on this repo** | `../CLAUDE.md` for hard rules + environment, then [`HANDOFF.md`](HANDOFF.md) |
 
 ## Status — three living files, one job each
@@ -26,7 +26,8 @@ specified. Then **[`manual/`](manual/)**, the confirmed-facts manual the public 
 Around them: **[`gotchas.md`](gotchas.md)** (field lore by symptom, plus the bench pre-flight) and
 **[`field-issues.md`](field-issues.md)** (the issue register + what to check next match).
 
-**The bench sheets, and which one to open** (a sheet is archived the moment its log entry lands):
+**The bench sheets, and which one to open** (completed sheets are retained in place when they remain useful
+historical context; the running order is always [`bench-plan.md`](bench-plan.md)):
 
 | sheet | what it is |
 |---|---|
@@ -132,9 +133,10 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
   (how to run the build + gate) and **[site/FORMAT.md](site/FORMAT.md)** (the page contract).
 
 ## Archive
-**[`archive/`](archive/)** — not maintained; grep it, do not read it. Closed followups, dated bench sheets that
-ran, superseded spec modules, the design-tool exports the briefs re-seed from. Only files a living doc still
-links stay; old HANDOFF banners live in `git log -p -- docs/HANDOFF.md`.
+**[`archive/`](archive/)** — not maintained; grep it, do not read it. It holds closed followups, superseded or
+dated bench sheets that no longer belong in the running order, superseded spec modules, and design-tool exports.
+Completed sheets retained as useful historical context stay in `docs/`; only files a living doc still links stay
+in the archive. Old HANDOFF banners live in `git log -p -- docs/HANDOFF.md`.
 
 ## The system in one paragraph
 The BRX tagger is **dumb** — it fires a weapon we define (`$WEAP`), reads IR hits, tracks health, and

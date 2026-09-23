@@ -43,7 +43,7 @@ a yard).
 python -m brx_mcp play tdm <addr1> <addr2>                       # a real Team Deathmatch, live scoring
 python -m brx_mcp play tdm <addr1> <addr2> outdoor=1 volume=90   # outdoors: louder, longer range
 #   modes: tdm ffa infection lms cs domination koth ctf extraction
-#   run `python -m brx_mcp` with no arguments for the full command list
+#   see the CLI commands table below for the full command list
 
 python -m brx_mcp game-sim tdm     # narrated demo match in your terminal, no hardware at all
 python -m brx_mcp usb-query        # read the USB device record (tagger on the Programing Port)

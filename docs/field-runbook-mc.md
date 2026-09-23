@@ -91,7 +91,7 @@ Wi-Fi and the MC `ws://` URL (from the join QR).
 Verify the install with no hardware and no phones:
 
 ```bash
-python -m brx_mcp.mc --demo --fake-net --ephemeral   # 8 demo players + 8 simulated phones, no session file
+.venv/bin/python -m brx_mcp.mc --demo --fake-net --ephemeral   # 8 demo players + 8 simulated phones, no session file
 # (--fake-net ALONE seeds nothing and --demo ALONE starts the real node server; both flags = the walkthrough.
 #  Every flag, and the busy-port trap: mcp/brx_mcp/mc/README.md → "Start it".)
 # it prints  Mission Control  http://127.0.0.1:8765/#tok=<token> … — open THAT link (the #tok= part is
@@ -112,15 +112,13 @@ and is more robust than a laptop AP. Both live matches so far used a travel rout
 **Fallback — the Mac's own hotspot.** macOS is a weak AP (Internet Sharing needs a separate uplink and
 flakes with many clients); use it only for a small game. Untested at scale.
 
-**Phone node checklist** (each player's phone, from `net.md §8b`; the Android app's `android-setup.sh`
+**Phone node checklist** (each player's phone, from [`spec/contracts.md` §5c](spec/contracts.md#5c-platform-network-gates-blocking-live-in-appscripts-setupsh--preflight); the Android app's `android-setup.sh`
 already sets the cleartext + Wi-Fi permissions and forces landscape):
 - **Join the game SSID**, and set it to **auto-join** (so a phone that drops rejoins without a human).
-- **Mobile data: Android OFF, iOS can stay on.** The field router has no internet, so Android marks it "no
-  internet" and many phones (Samsung "switch to mobile data", Pixel adaptive connectivity) move the default route to
-  cellular — a `ws://<private-ip>` then leaves over LTE and never reaches MC. Turning mobile data off (or tapping
-  "stay connected" on the no-internet prompt) is the reliable workaround until the app binds its socket to Wi-Fi
-  (net.md §8b(d), not yet implemented). iOS routes on-link private IPs over Wi-Fi regardless; just turn **Wi-Fi
-  Assist off**.
+- **Join the game Wi-Fi, then turn mobile data off on Android.** The app's current preflight can confirm the
+  connection type and MC reachability, but it does not bind the process to Wi-Fi; Android may otherwise move a
+  no-internet Wi-Fi socket to cellular. Disable any OEM "switch to mobile data" setting too. iOS routes on-link
+  private IPs over Wi-Fi; turn **Wi-Fi Assist off**.
 - **Do Not Disturb ON.** The app itself keeps the screen awake and locked to landscape while armed/live (keep-awake
   plugin), so no auto-lock setting is needed — but **do not press the power button and do not take calls**: a locked or
   backgrounded phone suspends the HUD's timers (iOS/Android WebViews pause JS) until the app is back in front, when it

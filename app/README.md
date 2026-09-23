@@ -35,7 +35,7 @@ npm ci && npm run build                 # bundle src/app.js -> www/app.js (esbui
 python3 -m http.server -d www 8080      # then http://localhost:8080/?demo
 ```
 
-Against a **real Mission Control** (see `mcp/brx_mcp/mc`): run `python -m brx_mcp.mc --demo`, note the
+Against a **real Mission Control** (see `mcp/brx_mcp/mc`): from the `app/` directory run `../.venv/bin/python -m brx_mcp.mc --demo`, note the
 `ws://<ip>:8766/ws` it prints, connect a gun in the app, then type/scan that address on the CONNECTED
 screen. The MC screen also shows a QR of the same URL. The Python reference node is
 `mcp/brx_mcp/mc/mock_node.py`; a real `FrameBundle` to develop against is
@@ -58,7 +58,7 @@ that fails before the fix (see `docs/hud-review-2026-09-03.md` for how the last 
 (Run the two files separately — each integration test spins up a server, so a single
 `node --test test/` can clash on resources.)
 
-## Field-LAN gates (net.md §8b)
+## Field-LAN gates ([`docs/spec/contracts.md` §5c](../docs/spec/contracts.md#5c-platform-network-gates-blocking-live-in-appscripts-setupsh--preflight))
 
 `scripts/ios-setup.sh` / `scripts/android-setup.sh` apply the settings the LAN path needs and that a
 regenerated platform would wipe: iOS Local-Network + Bonjour + ATS local networking + `bluetooth-central`
@@ -256,10 +256,10 @@ is rebuilt by the commands above — never hand-edit anything in `ios/` or `andr
 last, because regenerating the platform wipes it.
 
 That last point is why **`scripts/ios-setup.sh` exists**: iOS settings we depend on have to live in
-a committed script rather than in the Xcode project. Right now it applies the **Bluetooth usage
-strings** (`NSBluetoothAlwaysUsageDescription`). Those are not optional — **iOS terminates an app
-that touches CoreBluetooth without them**, and the crash gives no hint why. Anything else iOS-side
-we come to depend on belongs in that script too.
+a committed script rather than in the Xcode project. It applies the Bluetooth and camera usage strings,
+local-network/Bonjour and ATS exceptions, background Bluetooth mode, export-compliance declaration,
+fullscreen and landscape settings. These are not optional — **iOS terminates an app that touches
+CoreBluetooth or the camera without the corresponding usage string**, and the crash gives no hint why.
 
 ## Notes
 
