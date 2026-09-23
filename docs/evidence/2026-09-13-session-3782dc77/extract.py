@@ -122,13 +122,21 @@ def main() -> int:
     written.append(("acks.md", "\n".join(rows) + "\n"))
 
     # ---- 3. the hit / death / respawn timeline ---------------------------------------------- #
-    tsv = ["t_recv\tmatch_id\tnode_id\tkind\tplayer_id\tshooter_num\tshooter_team\tdmg\tsensor\tir_proto"]
-    for t, match_id, node, kind, body in db.execute(
-            "select t_recv, match_id, node_id, kind, body from envelopes "
-            "where kind in ('hit_taken','death','respawn') order by t_recv, id"):
+    tsv = ["t\tt_recv\tmatch_id\tnode_id\tkind\tplayer_id\tshooter_num\tshooter_team\tdmg\tsensor\tir_proto"]
+    events = []
+    for row_id, t_recv, match_id, node, kind, body in db.execute(
+            "select id, t_recv, match_id, node_id, kind, body from envelopes "
+            "where kind in ('hit_taken','death','respawn') order by id"):
         d = json.loads(body)
+        # Event time is authoritative when the node supplied it; unsynchronised or
+        # legacy envelopes fall back to MC arrival time (the same rule as replay).
+        event_t = d.get('t')
+        if not isinstance(event_t, (int, float)):
+            event_t = t_recv
+        events.append((event_t, row_id, t_recv, match_id, node, kind, d))
+    for event_t, _row_id, t_recv, match_id, node, kind, d in sorted(events, key=lambda r: (r[0], r[1])):
         tsv.append("\t".join(str(x) for x in (
-            t, match_id, node, kind, d.get("player_id", ""), d.get("shooter_num", ""),
+            event_t, t_recv, match_id, node, kind, d.get("player_id", ""), d.get("shooter_num", ""),
             d.get("shooter_team", ""), d.get("dmg", ""), d.get("sensor", ""), d.get("ir_proto", ""))))
     written.append(("events.tsv", "\n".join(tsv) + "\n"))
 

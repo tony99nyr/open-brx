@@ -79,8 +79,8 @@ right** and this index is stale. Do not cite it as evidence that something is or
 
 **Keyboard only** (tagged `build` or `decision` — no gun, no rig, no dim room):
 - 🔴 **B23** · **E5** · **F43** · **F231** · **F264** · **S10**
-- 🟠 **B4** · **B21** · **B31** · **E2** · **F12** · **F40** · **F70** · **F164** · **F182** · **F256** · **F260** · **F269** · **F272** · **F277** · **F280** · **F300** · **P8** · **S3** · **S14** · **S33** · **S50** · **S52** · **S53**
-- 🟡 **B1** · **B8** · **B14** · **B17** · **B18b** · **D1** · **D3** · **E3** · **E4** · **E6** · **F5** · **F16** · **F20** · **F24** · **F25** · **F42** · **F60** · **F68** · **F88** · **F95** · **F108** · **F109** · **F112** · **F113** · **F123** · **F126** · **F128** · **F130** · **F132** · **F133** · **F161** · **F176** · **F177** · **F178** · **F186** · **F187** · **F190** · **F191** · **F192** · **F193** · **F221** · **F223** · **F229** · **F233** · **F249** · **F251** · **F266** · **F267** · **F268** · **F270** · **F281** · **F284** · **F289** · **H1** · **H2** · **H6** · **H8** · **K2** · **Q12′** · **Q13** · **R3** · **S1** · **S2** · **S6** · **S7** · **S-A12** · **S13** · **S25** · **S27** · **S28** · **S29** · **S30** · **S31** · **S32** · **S34** · **S35** · **S36** · **S42** · **S43** · **S46** · **S47** · **S48** · **S49** · **S51** · **S54**
+- 🟠 **B4** · **B21** · **B31** · **E2** · **F12** · **F40** · **F70** · **F164** · **F256** · **F260** · **F269** · **F272** · **F277** · **F280** · **F300** · **P8** · **S3** · **S14** · **S33** · **S50** · **S52** · **S53**
+- 🟡 **B1** · **B8** · **B14** · **B17** · **D1** · **D3** · **E3** · **E4** · **E6** · **F5** · **F16** · **F20** · **F24** · **F25** · **F42** · **F60** · **F68** · **F88** · **F95** · **F108** · **F109** · **F112** · **F113** · **F123** · **F126** · **F128** · **F130** · **F132** · **F133** · **F161** · **F176** · **F177** · **F178** · **F186** · **F187** · **F190** · **F191** · **F192** · **F193** · **F221** · **F229** · **F233** · **F249** · **F251** · **F266** · **F267** · **F268** · **F270** · **F281** · **F284** · **F289** · **H1** · **H2** · **H6** · **H8** · **K2** · **Q12′** · **Q13** · **R3** · **S1** · **S2** · **S6** · **S7** · **S-A12** · **S13** · **S25** · **S27** · **S28** · **S29** · **S30** · **S31** · **S32** · **S34** · **S35** · **S36** · **S42** · **S43** · **S46** · **S47** · **S48** · **S49** · **S51** · **S54**
 - 🟢 **B11** · **B22** · ⬜ **D5** · **E7** · **F14** · **F17** · **F18** · **F19** · **F32** · **F52** · **F83** · **F87** · **F89** · **F93** · **F98** · **F99** · **F100** · **F107** · **F204** · **F224** · **F250** · **F252** · **F273** · ⬜ **H3** · ⬜ **H4** · ⬜ **H5** · ⬜ **K6** · ⬜ **K8** · **P14** · **R2** · **S19**
 
 ## 1. Before going public
@@ -333,7 +333,6 @@ nine of these eleven were root-caused without touching a gun.
 
 - **F219 🟠 Needs Tony at the bench** in scanner respawn mode, does a trigger held on `$BMAP` fn 98 still report `$BUT`? The revive gate needs this reading. `trigger`.
 - **F221 🟡 Decision for Tony.** Mark each item in `docs/mc-warning-audit-2026-09-16.md` keep, quieter or remove. `decision`.
-- **F223 🟡** the evidence extract and the Mission Control timeline order facts by `t_recv`, the arrival time. Order them by the fact's own `t`, the time it happened, instead. `build`.
 
 **Verification bench 2026-09-17, desk work built the same day. Evidence:** `docs/experiment-log/2026-09.md` (2026-09-17 entry).
 
@@ -1094,8 +1093,6 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   head re-push. Excluding stale-head players from the displayed total would also make MARK ALL READY unable to
   affect its own count. Settle whether this row wants a second "current head" count or different wording before
   changing behavior. `decision`.
-- **F182 🟠** validation wall-clock is too long to iterate against (Tony, 2026-09-13). Wants a fast inner loop with the
-  full run kept as the merge gate. `build`.
 - **F186 🟡** `recall`/`panic` are deliberately unwatched by end-delivery; decide if a recall should be confirmed. `decision`.
 - **F187 🟡** the end-delivery ladder is ~137 s, then the A34 reconcile is the long tail; a phone returning after the
   match is evicted gets nothing. **2026-09-22 desk read:** the boundary is the seventeenth retired match

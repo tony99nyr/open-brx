@@ -13,7 +13,7 @@ sanitising. Guns appear as their PIN-free aliases: `Tactix-3D4F` = ROCCO's, `Tac
 |---|---|---|
 | `heads.md` | The three match configs **and the compiled head MC pushed to each gun**, byte for byte | Everything. `$GSET` t1/t2, `$TID`, the `$WEAP,0` ammo pair and its t39/t40 tail |
 | `acks.md` | The six `ack_config` rows — what each gun echoed back | **F207/F201**: the echo reserve is the head's own t40 every time |
-| `events.tsv` | Every `hit_taken` / `death` / `respawn`, in order | **F206** (none at all in the TDM match), **F209** (the 0.0 s bursts), **F208** (the last hit, then silence) |
+| `events.tsv` | Every `hit_taken` / `death` / `respawn`, ordered by fact `t` with `t_recv` fallback | **F206** (none at all in the TDM match), **F209** (the 0.0 s bursts), **F208** (the last hit, then silence) |
 | `status-changes.tsv` | The status stream, **deduplicated to changes only** | **F208**: one row, then a 105 s gap, is the freeze |
 | `nodelog-*.log` | Six uploads from the two phones: engine log lines + the BLE frame ring | **F208** (`$BUT` arriving while nothing fires), **F203** (the stale-address retry storm), **F214** (`$PLAYX,0,*` at death) |
 

@@ -1,5 +1,17 @@
 # Closed followups (archive)
 
+# Closed 2026-09-23: evidence event-time ordering
+
+- 2026-09-23 **F223** the evidence extractor now emits both event time `t` and receive time `t_recv`,
+  sorting by the fact's own time with stable receive-order fallback for legacy/unsynchronised rows.
+
+# Closed 2026-09-23: validation inner loop and headset preflight
+
+- 2026-09-23 **F182** was already shipped in `fb5b3bcc`: `test-all.mjs` provides parallel, memory-bounded
+  focused jobs and preserves the full UI run as the merge gate; current contributor docs cover the workflow.
+- 2026-09-23 **B18b** was already shipped: MC proves headset presence from sustained link or config echo,
+  exposes the proof in readiness, and Armory renders the resulting state. Existing tests pass 16/16 and 14/14.
+
 # Closed 2026-09-22: tagger ownership picker
 
 - 2026-09-22 **F202** the HUD diagnostics panel's CHANGE TAGGER action disconnects the current gun, clears

@@ -71,7 +71,7 @@ Screamers Phase A has run A1 and A2 only.
 The F264 cure SHIPPED: on three unanswered pulls the node probes with `$LIFE,*`, acts only on the reply, and puts
 GUN NOT ANSWERING on the operator's board when it cannot help. **F121 and F209 are CLOSED (2026-09-19)**,
 superseded by 0.4.3's respawn-profile rebuild (a separate weapon-arming delay, no default protection on a timed
-respawn, equal go-live at T-3); F223 (order node facts by their own `t`) is the one open thread F209 leaves
+respawn, equal go-live at T-3); the evidence timeline ordering fix (F223) is now shipped.
 behind. Overnight cycle 1 (2026-09-18 night) closed **F261** (a fresh MC now records an orphan match from any
 unbound node) and **F257** (the charge-weapon HUD). Today's stale-node fix (`88ead536`, no open row) answers both
 ghost-node incidents from the office test. **F289** still flags the gap it leaves: an offline player
