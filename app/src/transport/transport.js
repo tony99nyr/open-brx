@@ -258,8 +258,10 @@ export class Transport {
   }
   /** F309: what this node may claim. The plugin reports the phone's CURRENT default network, but a bound
    *  socket keeps riding the network it opened on (Android's "switch to mobile data" moves the default and
-   *  leaves the socket on the field Wi-Fi). So `cellular` only while the bind-time value AND the current
-   *  one both say so; otherwise the bind-time value, which is the socket's.
+   *  leaves the socket on the field Wi-Fi). So it claims `cellular` only while the bind-time value AND the
+   *  current one both say so; otherwise it returns the CURRENT value -- except when the current value is
+   *  itself `cellular` but the bind-time one is not, where it falls back to the bind-time value (or
+   *  `'unknown'` if there is none).
    *  @returns {'wifi'|'cellular'|'none'|'unknown'|null} */
   _claimedTransport() {
     const now = this.connectionType, bound = this._boundConnType;

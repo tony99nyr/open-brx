@@ -28,6 +28,10 @@ pip install -e ./mcp
 
 ## First contact, no MCP client needed
 
+Switch the headset on first: a Gen2/3 gun with no headset accepts a BLE link, then drops it within
+seconds ([`docs/manual/hardware.md`](../docs/manual/hardware.md)), so `scan` and `identify` still
+look fine while everything that configures or plays a game fails.
+
 ```bash
 python -m brx_mcp scan             # find taggers (Gen2/3 advertise the Nordic UART service)
 python -m brx_mcp identify <addr>  # $PING, generation check, firmware, host image
@@ -70,6 +74,9 @@ claude mcp add brx -- python.exe -m brx_mcp
 | `sounds <words\|category:…> [addr]` | Search the on-gun sound catalog, and play each match on a gun |
 | `stage [--gun ADDR] [--ir PORT] [--mc URL] [--fake]` | The gun stage: a click-to-try page for one gun |
 | `ir-capture` · `ir-emit` · `ir-range` | Drive the ESP32 IR transceiver rig |
+| `soak <addr> <pattern> <minutes> […]` | P0 screamers traffic-pattern soak, classifying lock-ups/link drops/bad frames; flags in `python -m brx_mcp`'s usage text (`brx_mcp/__main__.py`'s module docstring) |
+| `raw-bytes <addr> (--segment … \| --stream … --repeat N) […]` | Exact GATT write boundaries and delays for the screamers cases; flags in `python -m brx_mcp`'s usage text (`brx_mcp/__main__.py`'s module docstring) |
+| `connect-metrics <addr> [--runs N] […]` | BLE setup-reliability metrics over N cold/warm connects; flags in `python -m brx_mcp`'s usage text (`brx_mcp/__main__.py`'s module docstring) |
 
 ## `diag-game`: the repeatable diagnostic game
 

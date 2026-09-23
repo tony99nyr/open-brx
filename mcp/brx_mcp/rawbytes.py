@@ -19,10 +19,11 @@ Two things this module is deliberately NOT:
     the gun's parser does not see write boundaries either -- a denied command split across two writes
     is exactly as denied as one sent whole.
 
-Planning (`repeat_stream`, `split_at`, `plan_from_stream`, `plan_from_segments`) is pure: no I/O, easy
-to unit test, and reused by the CLI to print the plan before it connects. `validate_plan` is the one
-refusal gate; `write_raw` always runs it (a `RawPlan` built by hand, not through the planners above,
-still gets the same bounds and safety checks -- nothing that reaches `write_raw` skips them).
+Planning (`repeat_stream`, `split_at`, `plan_from_stream`, `plan_phone_paced`, `plan_from_segments`) is
+pure: no I/O, easy to unit test, and reused by the CLI to print the plan before it connects.
+`validate_plan` is the one refusal gate; `write_raw` always runs it (a `RawPlan` built by hand, not
+through the planners above, still gets the same bounds and safety checks -- nothing that reaches
+`write_raw` skips them).
 """
 
 from __future__ import annotations
@@ -151,12 +152,17 @@ def validate_plan(plan: RawPlan, *, max_chunk: int = MAX_CHUNK_BYTES,
     altogether.
 
     Safety: the writes are concatenated back into one byte stream (the shape the gun's parser
-    actually sees) and run through `protocol.extract_frames`. Any decoded frame in
-    `DENIED_COMMANDS`/`HANG_PRONE_COMMANDS` is refused outright -- no `allow_hang` override exists
-    here, unlike `server.send`: this helper has no supervised-hang path. A frame outside the
-    known-safe list needs `confirm=True`, the same rule `server.send` applies. A trailing incomplete
-    frame (A4's lost `'*'`) is refused unless `allow_incomplete=True`, in which case it comes back as
-    a warning telling the caller to send `$*` next.
+    actually sees) and split into `$`-led pieces by hand -- no `protocol.extract_frames` here, since
+    that helper drops exactly the malformed shapes this scan exists to catch. Bytes before the first
+    `$` are refused outright: they could complete a frame the gun already holds. Each piece then runs
+    through the same rules `extract_frames` would apply, plus two of its own: bytes after a piece's
+    `'*'` are refused (they sit outside any frame), and the bare `$*` parser reset is always allowed,
+    never checked against the command lists. A piece in `DENIED_COMMANDS`/`HANG_PRONE_COMMANDS` is
+    refused outright -- no `allow_hang` override exists here, unlike `server.send`: this helper has
+    no supervised-hang path. A piece outside the known-safe list needs `confirm=True`, the same rule
+    `server.send` applies. A trailing incomplete frame (A4's lost `'*'`) is refused unless
+    `allow_incomplete=True`, in which case it comes back as a warning telling the caller to send `$*`
+    next.
     """
     if not plan.writes:
         raise ValueError("plan has no writes")

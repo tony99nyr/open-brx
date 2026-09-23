@@ -85,7 +85,7 @@ and it is one 7-byte frame.**
 
 ## 3. Pacing: arm in blocks, with a pause
 
-**Built, off by default.** `brxlink.WRITE_PACING = {chunkGapMs: 8, frameGapMs: 18, blockFrames: 0, blockPauseMs: 0}`.
+**Built, off by default.** `brxlink.WRITE_PACING = {chunkGapMs: 8, frameGapMs: 18, blockFrames: 0, blockPauseMs: 0, responseForMultiPacket: false}`.
 With `blockFrames` > 0 the link sleeps `blockPauseMs` after every `blockFrames` frames of one write, never after
 the last frame. The values ship as the field has run since 2026-08. Turning the block pause on is a one-line
 change in `WRITE_PACING`, so a bench session can try a value without touching the write loop.

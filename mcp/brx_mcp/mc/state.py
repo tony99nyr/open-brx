@@ -6234,11 +6234,11 @@ class Session:
 
     def _relay_hit_feedback(self, shooter_pid: str | None, victim_pid: str, dmg: int, t: int,
                              weapon_id: str | None = None, shot_group: int | str | None = None) -> None:
-        """S56 ("what hit me"): best-effort feedback to the SHOOTER's own node naming what it just
-        hit, so that phone can attribute a `$HIR` its own headset heard without waiting on the
-        victim's node to say anything (which may be slow, or offline). The same best-effort contract
-        as the existing "kill" feedback (`scoring.Scorer._death`, also relayed through `_feedback`):
-        no queue, no retry -- a shooter with no socket simply misses it.
+        """S56 ("what hit me"): tell the SHOOTER's own node the damage it just dealt, relaying the
+        VICTIM's own `hit_taken` fact, so that node can attribute a `$HIR` its own headset heard
+        without waiting on the victim's node to say anything (which may be slow, or offline). The
+        same best-effort contract as the existing "kill" feedback (`scoring.Scorer._death`, also
+        relayed through `_feedback`): no queue, no retry -- a shooter with no socket simply misses it.
 
         LIVE only. Callers pass a hit ONLY from `Scorer.hits_log`'s own growth (`_on_event`,
         `ingest_batch`), which is already exactly "a genuinely new fact": never a duplicate seq,
@@ -6262,7 +6262,9 @@ class Session:
         `hits_log` -- see `_relay_hit_feedback`). No `weapon_id` here: `ingest_batch` sorts events by
         `t` before scoring them, so pairing one `hits_log` entry back to the wire event that produced
         it is not reliable across a whole batch. The single-fact path (`_on_event`) is where a
-        `weapon_id` actually gets attached; a batched hit still relays, just without naming the gun."""
+        `weapon_id` actually gets attached; a batched hit still relays, just without naming the gun.
+        `shot_group` is also dropped here for the same reason, so the phone falls back to its own
+        `DUAL_RELAY_MS` heuristic to tell a two-word shot from two separate hits."""
         for t, shooter, victim, dmg in new_hits:
             self._relay_hit_feedback(shooter, victim, dmg, t)
 

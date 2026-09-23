@@ -18,7 +18,7 @@ the old `manual/07-platform.md`).
 > nodes have played **three whole matches on two phones** (2026-08-30 outdoors, 2026-09-01 outdoors,
 > 2026-09-11 on the Mac); a field of more than two phones, a dispersed timed start and recovery from a
 > real coverage loss have not been run (§7). The optional **backhaul** (a phone's own data plan reaching
-> Mission Control through a tunnel, §2.1) is specified and software-tested only (2026-09-12).
+> Mission Control through a tunnel, §2.1) is field-proven, one phone on cellular (2026-09-12, FOLLOWUPS B30).
 
 ---
 
@@ -97,7 +97,7 @@ connect to anything.
 
 **There is deliberately no line from Mission Control to any gun during play.**
 
-### 2.1 Backhaul — the one optional line (contracts A28, 2026-09-12; ⬜ specified, software-tested, never run on hardware)
+### 2.1 Backhaul — the one optional line (contracts A28; ✅ field-proven 2026-09-12, FOLLOWUPS B30)
 
 The dashed Wi-Fi line is the only thing the field LAN carries: the config push at the lobby, store-and-forward
 events, and best-effort feedback. Nothing gameplay-critical rides it, which is exactly why it can be extended
@@ -310,7 +310,7 @@ project's own words: "a green test ≠ 'works on real guns' — that's earned on
 | Native phone app: connects, drives `$SFLASH`, arms a full game, stable session | proven, single gun | 2026-08-25 |
 | Phone → Mission Control → gun: hello, roster bind, try-out fired a real gun | proven, single node, bench | 2026-08-25 night |
 | Mission Control full stack (Muster → Recap), FrameBundle compiler, operator auth, discovery, loadout policy, saved games | run at a real 1v1 game test on the Mac; the frag-limit end and END were found broken there (F124/F125) | 2026-09-11 game test; ~1,300 Python tests plus the MC e2e suite |
-| **Backhaul** (A28): tunnelled node socket, two-URL QR, backhaul-preferred node, derived coverage | ⬜ specified, software-tested on branch `backhaul-a28` | 2026-09-12; FOLLOWUPS B30 is the bench gate |
+| **Backhaul** (A28): tunnelled node socket, two-URL QR, backhaul-preferred node, derived coverage | proven, 1 phone on cellular | 2026-09-12 field test, FOLLOWUPS B30; merged to `main` |
 | FFA / Infection / LMS / CS / Domination / KotH / CTF / Extraction engines | software-tested only | 156 sim scenarios; objective modes wait on a station |
 | **MC ↔ two phones over a real field Wi-Fi, a whole match** | proven, 2 phones | 2026-08-30 FFA (300 s, 12 kills), 2026-09-01 outdoor TDM, 2026-09-11 1v1 game test (Mac host, mDNS auto-join); more than two phones untested |
 | Grenade as a control point (King of the Hill through the gun, over BLE) | proven | 2026-09-10; MC arms a phone point (F104/S5) |
@@ -326,7 +326,7 @@ project's own words: "a green test ≠ 'works on real guns' — that's earned on
 
 **Honest gaps (what is NOT proven yet)**, from `docs/archive/verification-checklist.md`:
 - **Mission Control ↔ more than two phones over a real field Wi-Fi**: two phones have played three whole matches (2026-08-30, 2026-09-01, 2026-09-11); larger fleets have not.
-- **Backhaul (A28)**: never on hardware. The gate is one Pixel with Wi-Fi off and data on, joining through a quick tunnel and receiving a kill confirm (B30).
+- **Backhaul (A28)**: field-proven on one phone (B30, 2026-09-12: a Pixel with Wi-Fi off and data on joined through a quick tunnel and received a kill confirm). More than one phone on cellular at once, and a bench regression from that same field test (F152, headset stays blinking green after a redeploy), are still open.
 - **A dispersed timed start on a real field** (players out of range before T-0): never run.
 - **Store-and-forward recovery after real coverage loss**: never run.
 - **20-minute two-node soak** with a screen-lock and a backgrounding, out of Wi-Fi range: open.

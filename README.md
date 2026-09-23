@@ -73,7 +73,7 @@ The direct tagger-control CLI and stdio MCP server are documented in the
 installation, first contact, `play`, `game-sim`, MCP registration, platform notes, and the full command table.
 The CLI table in that README is the command list; bare `python -m brx_mcp` starts the stdio server.
 
-> **What works today:** the command above ran a full TDM on two real taggers: scoring, respawn,
+> **What works today:** `python -m brx_mcp play tdm` ([`mcp/README.md`](mcp/README.md)) ran a full TDM on two real taggers: scoring, respawn,
 > frag limit, correct winner (`docs/experiment-log/2026-08.md`, "FIRST LIVE M0 GAME"). The **phone-node +
 > field Wi-Fi** path has run **two whole matches on real hardware**: a 300 s FFA on 2026-08-30 (two phones,
 > two taggers, one MacBook hosting; 12 kills, 126 landed hits, 12 respawns, a winner) and an outdoor TDM on

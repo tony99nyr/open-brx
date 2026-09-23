@@ -1792,8 +1792,9 @@ export class Hud {
     else if (life.dealtPartial) parts.push('DEALT <b>?</b>');
     return parts.length ? `<span class="lf">${parts.join(' · ')}</span>` : '';
   }
-  /** S56: the weapon line under the HIT chip. An ambiguous resolution names every candidate with OR (never a guess);
-   *  no line at all when the phone has no claim (an older MC sends no roster weapons). */
+  /** S56: the weapon line under the HIT chip. An ambiguous resolution names up to two candidates with OR
+   *  (never a guess); three or more show WEAPON UNCLEAR instead. No line at all when the phone has no
+   *  claim (an older MC sends no roster weapons). */
   _hitWeapon(w) {
     if (!w) return '';
     const names = w.ambiguous ? (w.names || []) : [w.name || w.id];

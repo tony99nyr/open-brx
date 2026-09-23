@@ -1,10 +1,11 @@
 """S56 ("what hit me") -- MC half: the `feedback{kind:"hit"}` relay to the SHOOTER's own node.
 
-A victim's own gun already tells its phone it was hit (`$HIR`). What that phone does NOT know is
-whose gun it was, unless the shooter's own weapon carries a magnitude no other rostered weapon
-shares. So MC relays the shooter's own `hit_taken` fact back to the SHOOTER'S node, best-effort --
-no queue, no retry, exactly like the existing "kill" feedback (`scoring.Scorer._death`) -- so both
-phones can show the same trade. `state.Session._relay_hit_feedback`/`_relay_batch_hits`."""
+A victim's own gun already tells its own phone it was hit (`$HIR`), and that phone already knows
+whose gun it was from the shooter's magnitude. What the SHOOTER's phone does NOT know, without this
+relay, is what it just hit. So MC relays the VICTIM's own `hit_taken` fact back to the SHOOTER's
+node, best-effort -- no queue, no retry, exactly like the existing "kill" feedback
+(`scoring.Scorer._death`) -- so the shooter can book it as damage dealt.
+`state.Session._relay_hit_feedback`/`_relay_batch_hits`."""
 from test_mc_block_b import go_live, mk, online
 
 
