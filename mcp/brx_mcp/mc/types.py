@@ -630,6 +630,11 @@ class FrameBundle(TypedDict):
     perk_effects: NotRequired[PerkEffectsResolved]   # S50 build 4: this player's compiled perk effect,
     #                                      absent when they carry no perk. Persisted here (not a
     #                                      one-shot message) so it survives an app restart.
+    callout_team: NotRequired[int | None]   # S57 (docs/ir-callouts.md): the smallest team id in 0..3 that
+    #                                      no player in this match holds, or None when all four are in use.
+    #                                      Every player's dead-man IR callout word (protocol 15) carries this
+    #                                      team, so a receiving phone hears it without it landing on a real
+    #                                      team's own id. The same value in every player's bundle for one match.
 
 
 class Weapon(TypedDict):

@@ -517,7 +517,10 @@ def test_ir_registers_reflects_the_games_sir_table():
     r = st.ir_registers()
     assert r["shot"]["registers"] and r["kill"]["registers"]              # proto 0 rows are in every head
     assert r["emp"]["registers"], r                                          # $SIR,8,0,,1: an EMP word lands as PLAIN damage today (F15 = make it a stun; F225 2026-09-17: fn 1, not fn 38)
-    assert not r["medic"]["registers"] and not r["beacon"]["registers"], r  # no proto 1 / 15 rows: ignored until F15 / B23
+    assert not r["medic"]["registers"], r                                    # no proto 1 row: ignored until F15
+    # S57 (2026-09-23): every mode's head now carries the proto-15 row (the IR callout bus needs it
+    # too, docs/ir-callouts.md), so "beacon"/"hill"/etc all register even on this default TDM stage.
+    assert r["beacon"]["registers"], r
 
 
 def test_kill_button_plays_the_top_medals_lights_too():

@@ -576,6 +576,10 @@ def assert_sir_covers_weapons(head: list[str]) -> None:
 # ~5 s -- owner team in the team field, mode in the magnitude (8 hill, 6 respawn station). `$SIR,15,0`
 # registered through fn 28 with ZERO player feedback (no sound, no flash, no vibration) is the row that
 # lets a gun report the beacon at all without also making the player experience one every 5 s.
+# S57 (2026-09-23, docs/ir-callouts.md): the same row is now what lets a gun in ANY mode report the
+# IR callout bus's own dead-man `$IRTX` word (also protocol 15, magnitudes 21-28, clear of the hill/
+# station magnitudes above) -- the name is kept because the row still exists to serve an objective's
+# beacon wherever one is present; it now also serves every mode with no objective at all.
 _OBJECTIVE_SIR_ROW = "$SIR,15,0,,28,0,0,1,,*"
 
 # --------------------------------------------------------------------------- #
@@ -1785,6 +1789,21 @@ class Compiler:
         tm = by_id.get(player.get("team_id") or "")
         return int(tm["tid"]) if tm else 0
 
+    @staticmethod
+    def _callout_team(teams: list[Team]) -> int | None:
+        """S57 (docs/ir-callouts.md): `frames.callout_team` -- the smallest team id in 0..3 that no
+        player in this match holds, or `None` when all four are in use. Every player's dead-man IR
+        callout word (protocol 15, DOWN/DOWN_BY) carries this team, so a live receiving phone can hear
+        it without it ever landing on a real team's own id; when it is `None`, the phone falls back to
+        the victim's own team and friendly-fire-on players simply do not hear it.
+
+        `teams` is the match's own team roster (`self._tid` maps every player into it), so the tids it
+        carries ARE the tids some player holds; this needs no per-player scan. Same for every player's
+        bundle in one match, because `teams` is the same list for the whole match. Friendly fire does
+        not change the rule -- the gate that matters lives on the phone, not in this id."""
+        held = {int(t["tid"]) for t in teams}
+        return next((tid for tid in range(4) if tid not in held), None)
+
     def _weapon_ids(self, player: Player) -> tuple[str, str | None]:
         """(primary, secondary-or-None). A10: no silent default secondary — an empty slot 1 is what the host
         asked for (ALT then falls back to reload; hardware-verified, loadout.md §2)."""
@@ -2244,8 +2263,15 @@ class Compiler:
         gun_pre = _pres.gun_pregame(prof, tid, night, gc.leds, ffa)
         _cs = bool(config.get("hit_audio_class", False))     # A17 class sounds -> a per-life `sir_pool` take
         sir_live = self.sir_table(plan, hits_rng, _cs, stun=stun_enabled(config))
-        if config["mode"] in _OBJECTIVE_MODES:
-            sir_live = list(sir_live) + [_OBJECTIVE_SIR_ROW]   # F70/F79: the silent proto-15 beacon row
+        # S57 (2026-09-23, docs/ir-callouts.md): the silent proto-15 beacon row now ships in EVERY
+        # mode's live table, not only `_OBJECTIVE_MODES` -- the IR callout bus needs a gun in ANY mode
+        # to REPORT a dead player's own `$IRTX` word, and fn 28 is the one function proven to register
+        # it with zero player feedback (see the row's own comment above `_OBJECTIVE_SIR_ROW`). Guarded
+        # rather than unconditional: `("15", "0")` is a RESERVED cell (`hitaudio.RESERVED_CELLS`) that
+        # no weapon or class group is ever allocated, so no table should already key it -- but if one
+        # ever does, that real row wins and this never doubles up on the same cell.
+        if ("15", "0") not in _sir_index(sir_live):
+            sir_live = list(sir_live) + [_OBJECTIVE_SIR_ROW]   # F70/F79/S57: the silent proto-15 beacon row
         # F121/A23: the HEAD carries the same cells DISARMED -- hits register, nothing moves, no sound. The
         # real table is a `sir_pool` take the node writes behind the first spawn's protection (F121 rebuild).
         sir_pregame = sir_spawn_protected(sir_live)
@@ -2310,6 +2336,7 @@ class Compiler:
             # the swap delay the gun will actually enforce between slots 0 and 1: the larger tok15 of the two
             # (bench 2026-09-04). The HUD's SWITCHING takeover runs for exactly this long.
             "swap_ms": max([int(f.split(",")[16]) for f in head if f.startswith("$WEAP,0,") or f.startswith("$WEAP,1,")] or [850]),
+            "callout_team": self._callout_team(teams),   # S57: the IR callout bus's own team id, or None
         }
         # Every registered hit wipes the headset (native flash, then dark; bench 2026-09-03). The
         # node re-sends this after each hit so the team colour is back for the rest of the life.

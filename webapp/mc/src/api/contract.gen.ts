@@ -650,6 +650,12 @@ export interface FrameBundle {
    *  absent when they carry no perk. Persisted here (not a
    *  one-shot message) so it survives an app restart. */
   perk_effects?: PerkEffectsResolved;
+  /** S57 (docs/ir-callouts.md): the smallest team id in 0..3 that
+   *  no player in this match holds, or None when all four are in use.
+   *  Every player's dead-man IR callout word (protocol 15) carries this
+   *  team, so a receiving phone hears it without it landing on a real
+   *  team's own id. The same value in every player's bundle for one match. */
+  callout_team?: number | null;
 }
 
 export interface Weapon {

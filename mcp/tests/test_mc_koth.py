@@ -55,8 +55,8 @@ def test_a_koth_game_compiles_and_its_head_can_hear_the_hill():
     for p in _roster(s):
         head = s.bundles[p["player_id"]]["head"]
         assert "$SIR,15,0,,28,0,0,1,,*" in head, f"koth head cannot hear a hill beacon: {head}"
-    # CONTROL: the same session on TDM ships no protocol-15 row, so this is the mode driving it and
-    # not a row every head happens to carry.
+    # CONTROL, updated for S57 (2026-09-23, docs/ir-callouts.md): the row now ships in every mode's
+    # head (the IR callout bus needs it too), so TDM carries it as well -- once, not doubled.
     s.set_config({"mode": "tdm"})
     # koth is BLUE+GREEN and tdm is BLUE+YELLOW, so the swap re-teams the green player onto blue and
     # leaves yellow empty -- the pile-up the round-2 one-team gate refuses. Split them again: this
@@ -64,7 +64,8 @@ def test_a_koth_game_compiles_and_its_head_can_hear_the_hill():
     _rebalance(s)
     s.push_config(force=True)
     for p in _roster(s):
-        assert not any(f.startswith("$SIR,15,0,") for f in s.bundles[p["player_id"]]["head"])
+        rows = [f for f in s.bundles[p["player_id"]]["head"] if f.startswith("$SIR,15,0,")]
+        assert rows == ["$SIR,15,0,,28,0,0,1,,*"], rows
 
 
 def test_the_koth_defaults_never_put_anyone_on_the_neutral_team():

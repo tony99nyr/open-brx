@@ -800,11 +800,77 @@ def test_koth_and_domination_ship_the_silent_beacon_row():
         assert "$SIR,15,0,,28,0,0,1,,*" in head, f"{mode} head is missing the proto-15 beacon row: {head}"
 
 
-def test_non_objective_modes_do_not_gain_the_beacon_row():
-    """The row is specific to objective/hill configs -- an ordinary TDM head must not grow a cell it
-    has no use for."""
-    head = C.compile(_cfg(mode="tdm"), _player(), _TEAMS)["head"]
-    assert not any(f.startswith("$SIR,15,0,") for f in head), head
+def test_every_mode_ships_the_beacon_row_once():
+    """S57 (2026-09-23, docs/ir-callouts.md): the row used to be objective/hill-only, but the IR
+    callout bus needs a gun in ANY mode to report a dead player's own `$IRTX` word, so an ordinary
+    TDM head now carries it too -- exactly once, never doubled."""
+    for mode in ("tdm", "ffa", "infection"):
+        head = C.compile(_cfg(mode=mode), _player(), _TEAMS)["head"]
+        rows = [f for f in head if f.startswith("$SIR,15,0,")]
+        assert rows == ["$SIR,15,0,,28,0,0,1,,*"], f"{mode} head: {rows}"
+
+
+def test_a_real_proto15_row_is_never_doubled_or_overwritten():
+    """S57 coordinator check: `("15", "0")` is a RESERVED cell (`hitaudio.RESERVED_CELLS`) that no
+    weapon or class group is ever allocated, so no live table ships its own `<15,0>` row today. If one
+    ever did, the fn-28 beacon/callout row must not double it or replace it -- the real row wins."""
+    import brx_mcp.mc.compile as CM
+    orig_sir_table = CM.Compiler.sir_table
+    fake_row = "$SIR,15,0,,1,0,0,1,,*"   # a REAL row on the reserved cell, a different function
+
+    def fake_sir_table(self, *a, **kw):
+        return list(orig_sir_table(self, *a, **kw)) + [fake_row]
+
+    CM.Compiler.sir_table = fake_sir_table
+    try:
+        b = C.compile(_cfg(mode="tdm"), _player(), _TEAMS)
+    finally:
+        CM.Compiler.sir_table = orig_sir_table
+    rows_15 = [f for f in b["sir_pool"][0] if f.startswith("$SIR,15,0,")]
+    assert rows_15 == [fake_row], f"a real <15,0> row must survive untouched, with no second row for the same cell: {rows_15}"
+
+
+# ---- S57: `frames.callout_team` (docs/ir-callouts.md) ------------------------
+def test_callout_team_is_the_smallest_unheld_tid_for_two_teams():
+    """`_TEAMS` here is blue (tid 1) / yellow (tid 2), so 0 is free."""
+    b = C.compile(_cfg(mode="tdm"), _player(), _TEAMS)
+    assert b["callout_team"] == 0
+
+
+def test_callout_team_in_a_hill_mode_where_tids_differ():
+    """koth's real teams are blue (1) / green (3) -- 2 is reserved for the neutral hill, so the
+    smallest FREE tid is 0, not 2."""
+    hill_teams = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
+                  {"team_id": "green", "name": "Green", "color": "green", "tid": 3}]
+    b = C.compile(_cfg(mode="koth"), _player(), hill_teams)
+    assert b["callout_team"] == 0
+
+
+def test_callout_team_is_none_when_all_four_tids_are_in_use():
+    four_teams = [{"team_id": "red", "name": "Red", "color": "red", "tid": 0},
+                  {"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
+                  {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2},
+                  {"team_id": "green", "name": "Green", "color": "green", "tid": 3}]
+    b = C.compile(_cfg(mode="tdm"), _player(team="red"), four_teams)
+    assert b["callout_team"] is None
+
+
+def test_callout_team_is_the_same_for_every_player_in_the_match():
+    """Same value whoever is compiled -- it is a property of the match's own team roster, not of
+    the player being compiled."""
+    cfg = _cfg(mode="tdm")
+    a = C.compile(cfg, _player(num=7, team="blue"), _TEAMS)
+    b = C.compile(cfg, _player(num=8, team="yellow"), _TEAMS)
+    assert a["callout_team"] == b["callout_team"] == 0
+
+
+def test_callout_team_with_friendly_fire_forced_on():
+    """FFA is the one mode that forces friendly fire on (compile()'s own `ffa =
+    config["mode"] == "ffa"`). `callout_team` follows the same rule regardless: computed from the
+    match's own single team, never special-cased for it."""
+    ffa_team = [{"team_id": "ffa", "name": "FFA", "color": "white", "tid": 1}]
+    b = C.compile(_cfg(mode="ffa"), _player(team="ffa"), ffa_team)
+    assert b["callout_team"] == 0
 
 
 def test_sir_covers_objective_guard_raises_when_the_beacon_row_is_missing():
@@ -1652,13 +1718,13 @@ def test_stun_ships_the_emp_row_only_when_the_config_asks():
     F121/A23 moved the LIVE table out of the head, and F209 moved it again, into the `sir_pool` take the node
     writes once the gun can fire, so the stun row is asserted where it now lands. The head's copy of the cell is a disarmed fn-28 registrar in both cases -- a
     countdown EMP must not stun either."""
-    from brx_mcp.mc.compile import _STUN_SIR_ROW
+    from brx_mcp.mc.compile import _STUN_SIR_ROW, _OBJECTIVE_SIR_ROW
     from brx_mcp.gameconfig import _SIR_TABLE
-    # CONTROL: no stun -> the stock table, in stock order, untouched
+    # CONTROL: no stun -> the stock table, in stock order, untouched, plus S57's proto-15 row every mode now carries
     b = C.compile(_cfg(), _player(), _TEAMS)
     # A44 (ours): the REAL table is the `sir_pool` take; the head carries the fn-28 twin.
     assert _sir_fn(b["sir_pool"][0]) == 1, "stock: the charge rifle's plain damage (fn 1 since F225, 2026-09-17)"
-    assert [f for f in b["sir_pool"][0] if f.startswith("$SIR,")] == list(_SIR_TABLE)
+    assert [f for f in b["sir_pool"][0] if f.startswith("$SIR,")] == list(_SIR_TABLE) + [_OBJECTIVE_SIR_ROW]
     assert _sir_fn(b["head"]) == 28, "F121: the head's copy of the cell moves no pool"
     # stun on -> fn 23 on the SAME cell, in the SAME position, nothing else moved
     on = C.compile(dict(_cfg(), stun={"duration_s": 10}), _player(), _TEAMS)
@@ -1669,7 +1735,8 @@ def test_stun_ships_the_emp_row_only_when_the_config_asks():
     assert _sir_fn(on["head"]) == 28, "F121: a countdown EMP must not smoke anyone pregame either"
     assert not [f for f in on["spawn"] if f.startswith("$SIR")], "F121 rebuild: the spawn write arms no table"
     assert rows_on.index(_STUN_SIR_ROW) == list(_SIR_TABLE).index("$SIR,8,0,,1,0,0,1,,*"), "in place, not appended"
-    assert [r for r in rows_on if not r.startswith("$SIR,8,0,")] == [r for r in _SIR_TABLE if not r.startswith("$SIR,8,0,")]
+    assert [r for r in rows_on if not r.startswith("$SIR,8,0,")] == \
+        [r for r in _SIR_TABLE if not r.startswith("$SIR,8,0,")] + [_OBJECTIVE_SIR_ROW]  # S57: every mode's tail row
     assert "$SIR,8,0,,23,0,0,1,,*" in rows_on and _STUN_SIR_ROW.split(",")[3] == "", "the sound token stays EMPTY (F43: never invent a sound id)"
     assert not ({int(r.split(",")[4]) for r in rows_on if r.split(",")[4].isdigit()} & {24, 25, 26, 27}), \
         "F253: the phantom family must not reach ANY shipped table"

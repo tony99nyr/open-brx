@@ -129,7 +129,8 @@ def test_assert_spawn_shielded_raises_when_the_order_is_reversed():
 
 def test_the_sir_pool_take_is_the_one_carrier_of_the_real_table():
     b = C.compile(_cfg(), _player(), _TEAMS)
-    assert b["sir_pool"] == [list(_SIR_TABLE)], "class sounds off: one take, the stock table verbatim"
+    # S57 (2026-09-23): the stock table plus the proto-15 row every mode now carries, verbatim.
+    assert b["sir_pool"] == [list(_SIR_TABLE) + [_OBJECTIVE_SIR_ROW]], "class sounds off: one take, the stock table verbatim"
     for mode in ("koth", "domination"):
         b = C.compile(_cfg(mode), _player(), _TEAMS)
         assert _OBJECTIVE_SIR_ROW in b["sir_pool"][0], f"{mode}: the take keeps the beacon row"
@@ -153,9 +154,12 @@ def test_the_hill_beacon_row_is_untouched_in_both_tables():
         b = C.compile(_cfg(mode), _player(), _TEAMS)
         assert _OBJECTIVE_SIR_ROW in b["head"], f"{mode} head cannot hear its own beacon"
         assert _OBJECTIVE_SIR_ROW in b["sir_pool"][0], f"{mode} arm take cannot hear its own beacon"
-    # CONTROL: a non-objective mode ships no proto-15 cell in either table
+    # CONTROL, updated for S57 (2026-09-23): a non-objective mode now ships the SAME row too (the IR
+    # callout bus needs it in every mode), but `spawn`/`revive` never carry a $SIR row at all -- the
+    # table survives $SPAWN by construction (F121), whatever mode this is.
     b = C.compile(_cfg("tdm"), _player(), _TEAMS)
-    assert not any(f.startswith("$SIR,15,0,") for f in b["head"] + b["spawn"])
+    assert b["head"].count("$SIR,15,0,,28,0,0,1,,*") == 1
+    assert not any(f.startswith("$SIR,15,0,") for f in b["spawn"])
 
 
 def test_the_delayed_blast_family_never_reaches_a_pregame_table():
@@ -253,7 +257,7 @@ def test_the_golden_bundle_is_spawn_protected_too():
     for k in ("spawn", "revive"):
         assert_spawn_shielded(b[k], k)
     assert b["spawn_protect_off"] == SPAWN_PROTECT_OFF
-    assert b["sir_pool"] == [list(_SIR_TABLE)]
+    assert b["sir_pool"] == [list(_SIR_TABLE) + [_OBJECTIVE_SIR_ROW]]   # S57: every mode's tail row
 
 
 def test_a_MALFORMED_sir_row_is_rejected_rather_than_waved_through_pregame():

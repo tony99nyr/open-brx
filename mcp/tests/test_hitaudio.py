@@ -211,7 +211,8 @@ def test_the_bundle_publishes_what_a_hit_will_sound_like():
     # default and ships no ROLLED tables -- turning it on would silence the ear-confirmed material layer on
     # every standard hit. F209: `sir_pool` still holds ONE take, the stock rows verbatim, because the node
     # arms every life from it after the protected spawn/revive write. Those writes carry the cells DISARMED.
-    assert b["sir_pool"] == [list(C._SIR_TABLE)], "the class layer ships off; one take, stock rows verbatim"
+    # S57 (2026-09-23): plus the proto-15 row every mode now carries (docs/ir-callouts.md).
+    assert b["sir_pool"] == [list(C._SIR_TABLE) + [C._OBJECTIVE_SIR_ROW]], "the class layer ships off; one take, stock rows verbatim"
     assert not [f for f in b["spawn"] + b["revive"] if f.startswith("$SIR") and f.split(",")[4] != "28"], "F209: nothing armed at $SPAWN"
     assert all(f.split(",")[4] == "28" for f in b["head"] if f.startswith("$SIR")), "the head arms nothing"
 
