@@ -46,10 +46,11 @@ echo "==> JDK: $JAVA_HOME ($("$JAVA_HOME/bin/javac" -version 2>&1))"
 # that already shipped would carry the SAME versionCode and a phone would refuse it as an upgrade.
 # Refuse here instead: bump package.json's version first. The check only reads the remote tags.
 VERSION="$(node -p "require('./package.json').version")"
-if git ls-remote --exit-code --tags origin "refs/tags/app-v${VERSION}" >/dev/null 2>&1; then
+rc=0; git ls-remote --exit-code --tags origin "refs/tags/app-v${VERSION}" >/dev/null 2>&1 || rc=$?
+if [ "$rc" -eq 0 ]; then
   echo "error: app-v${VERSION} is already released. Bump \"version\" in app/package.json, then build again." >&2
   exit 1
-elif [ $? -ne 2 ]; then
+elif [ "$rc" -ne 2 ]; then   # 2 = no such tag; anything else = the check itself failed
   echo "warning: could not reach origin to check app-v${VERSION}; make sure this version has not shipped." >&2
 fi
 
