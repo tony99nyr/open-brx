@@ -116,7 +116,7 @@ On `main` 2026-09-23: the desk half of F297, F269 and F270. All three stay open 
   liveness after. It runs screamers A4, A7b and the zero-gap A7, A7c and A8 (command lines: screamers sheet).
 - **F270:** `responseForMultiPacket` (brxlink) and `RESPONSE_FOR_MULTI_PACKET` (ble.py) ship false. Head/spawn-only
   scoping needs an engine.js call-site change.
-- **Next bench task:** `connect-metrics --runs 10`, then screamers A7c and A8. **Blocked:** F270 on A8.
+- **Next bench task:** the ordered runbook [`bench-2026-09-24.md`](bench-2026-09-24.md). **Blocked:** F270 on A8.
 ## Lane: Mission Control console honesty
 F178, F256, F251, F289 (MC flag) closed and F309 built 2026-09-23. **Next:** F309's four phone checks (bench row).
 
