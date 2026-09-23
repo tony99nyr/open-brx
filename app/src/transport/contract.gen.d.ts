@@ -826,6 +826,9 @@ export interface Event {
   resync?: boolean;
   /** A47: the operator's FORCE RESPAWN, not a respawn after a death (scoring keeps the streak) */
   operator?: boolean;
+  /** F289: the ms of spawn protection the phone must end itself; absent = none owed. Sent at once with the
+   *  respawn, so MC knows of the window even when the phone dies inside it and no status follows. */
+  protect_ms?: number;
   /** operator_result (A47): what the phone DID with an operator action MC sent (`control{resync|respawn|relink}`).
    *  Persisted like every fact, and read for the operator's feed and menu only: it never reaches the scorer. */
   cmd?: OperatorCmd;
@@ -884,6 +887,8 @@ export interface Event {
   cure?: 'asking' | 'dead' | 'alive' | 'no_answer';
   /** F272: positive lock-up verdict. False/absent is deliberately no claim. */
   gun_locked?: boolean;
+  /** F289: true-only while the phone still owes the write that ends spawn protection. Absent = no claim. */
+  protected?: boolean;
 }
 
 export interface ScoreRow {

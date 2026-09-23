@@ -787,6 +787,9 @@ class Event(TypedDict, total=False):
     # respawn
     resync: bool
     operator: bool   # A47: the operator's FORCE RESPAWN, not a respawn after a death (scoring keeps the streak)
+    # F289: the ms of spawn protection the phone must end itself; absent = none owed. Sent at once with the
+    # respawn, so MC knows of the window even when the phone dies inside it and no status follows.
+    protect_ms: int
     # operator_result (A47): what the phone DID with an operator action MC sent (`control{resync|respawn|relink}`).
     # Persisted like every fact, and read for the operator's feed and menu only: it never reaches the scorer.
     cmd: Literal["resync", "respawn", "relink"]
@@ -844,6 +847,8 @@ class Event(TypedDict, total=False):
     cure: Literal["asking", "dead", "alive", "no_answer"]
     # F272: positive lock-up verdict. False/absent is deliberately no claim.
     gun_locked: bool
+    # F289: true-only while the phone still owes the write that ends spawn protection. Absent = no claim.
+    protected: bool
 
 
 class ScoreRow(TypedDict):

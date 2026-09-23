@@ -315,3 +315,34 @@ test('review: a retried protection-off write pushes the trigger due so it never 
   h.adv(500);   // 2.51 s -- retry (2 s) + TRIGGER_AFTER_PROTECT_MS (0.5 s)
   assert.deepEqual(bmap0(h.since(n)), [HELD, LIVE], 'live only once safely past the retried protection-off');
 });
+
+// F289: only the phone ends spawn protection, so a phone that dies inside the window leaves the gun unhittable. The
+// node tells MC the window at once (`protect_ms` on the respawn fact) and while it lasts (status `protected`), so MC
+// can flag an OFFLINE player as possibly protected.
+test('F289: a station life reports its protection window at once and while the phone still owes the end write', () => {
+  const h = liveArmed({ respawn: 'scanner' });
+  assert.equal(h.eng.statusBody().protected, undefined, 'no claim before the respawn');
+  stationRevive(h);
+  assert.equal(h.facts.filter(f => f.type === 'respawn').pop().protect_ms, RP.station_protect_ms);
+  assert.equal(h.eng.statusBody().protected, true, 'protected while the end write is owed');
+  h.eng.onBleDropped(); h.adv(5000);
+  assert.equal(h.eng.statusBody().protected, true, 'a link that stays down cannot end it, so the claim stays');
+  const k = h.mark(); h.eng.onBleConnected(); h.adv(3000);
+  assert.ok(tmps(h.since(k)).includes(OFF), 'the reconnect ends protection');
+  assert.equal(h.eng.statusBody().protected, undefined, 'no claim once the end write went out');
+});
+test('F289: a timed life with no protection claims nothing', () => {
+  const h = liveArmed();
+  h.die(); h.adv(9000);
+  assert.equal(h.eng.alive, true, 'setup: auto revive');
+  assert.equal(h.facts.filter(f => f.type === 'respawn').pop().protect_ms, undefined);
+  assert.equal(h.eng.statusBody().protected, undefined);
+});
+test('F289: a timed life with protection on reports its window', () => {
+  const h = liveArmed({ bundle: timedProtect(1000) });
+  h.die(); h.adv(9000);
+  assert.equal(h.facts.filter(f => f.type === 'respawn').pop().protect_ms, 1000);
+  assert.equal(h.eng.statusBody().protected, true);
+  h.adv(1000);
+  assert.equal(h.eng.statusBody().protected, undefined, 'ended on the clock');
+});

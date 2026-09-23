@@ -2170,6 +2170,14 @@ export class Engine {
   }
   /** F209: true when spawn/revive leave the gun protected and `_armLife` must end it. */
   _protectsSpawn() { return this._protectMode() !== null; }
+  /** F289: the ms of spawn protection the PHONE still has to end, or 0. Only the phone lifts it (no gun-side timer is
+   *  known for `$TMP` t8), so a phone that dies inside the window leaves the gun unhittable. MC flags such an OFFLINE
+   *  player as possibly protected from this (`respawn` fact `protect_ms`, status `protected`). */
+  _protectOwedMs() {
+    const p = this._armPending, mode = this._protectMode();
+    if (!p || !(this.alive || p.flip) || !(mode === 'twin' || (mode === 'tmp' && p.off !== false))) return 0;
+    return Math.max(1, p.until != null ? p.until : SPAWN_PROTECT_MAX_MS);
+  }
   /** F209: a spawn/revive write just made the gun live with hit reception still silent. `flip`: an infection flip
    *  respawns the gun while the engine counts the player down. */
   _armAfterSpawn(flip = false, kind = 'timed') {
@@ -3116,7 +3124,8 @@ export class Engine {
     this._armAfterSpawn(false, kind);   // F209; 2026-09-19: the profile this revive used
     this._timedLifeAt = kind === 'timed' && stationId == null ? this.now() : null;   // a legacy bundle's station revive is not a timed one   // 2026-09-19: the spawn-kill window runs from a timed respawn
     this._gunTake();   // A11.7
-    this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}), ...(stationId != null ? { station: stationId } : {}), ...(operator ? { operator: true } : {}) });   // A47: `operator` = MC's FORCE RESPAWN (scoring keeps the streak)
+    const protectMs = this._protectOwedMs();   // F289: sent at once, so MC knows of the window even if the phone dies inside it
+    this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}), ...(stationId != null ? { station: stationId } : {}), ...(operator ? { operator: true } : {}), ...(protectMs ? { protect_ms: protectMs } : {}) });   // A47: `operator` = MC's FORCE RESPAWN (scoring keeps the streak)
     this.moment = { kind: 'redeploy', at: this.now() };
     this.log(operator ? 'respawned by the operator' : resync ? 'resync respawn' : stationId != null ? `respawned at station ${stationId}` : 'respawned', 'lk');
     this._eventLeds('respawned');   // A11 lights only (after the revive frames, so the burst ends on the fresh team colour); the sound went out with the revive write above
@@ -5435,6 +5444,8 @@ export class Engine {
       // above 0 and the arming was re-asserted, no revive; `no_answer` = nothing came back and the node has
       // deliberately done NOTHING. `no_answer` is the one that needs a human: FORCE RESPAWN.
       ...(this.cure ? { cure: this.cure.verdict } : {}),
+      // F289: true-only while the phone still owes the write that ends spawn protection.
+      ...(this._protectOwedMs() ? { protected: true } : {}),
       // During an active relink/head retry the player is already doing the right thing: KEEP POWER ON. Clear
       // MC's positive POWER-CYCLE claim until recovery either succeeds or spends its retry budget.
       ...(this.gunLocked && (!this._gunRecovery || (this._gunRecovery.nextAt == null && !this._gunRecovery.writing)) ? { gun_locked: true } : {}),
