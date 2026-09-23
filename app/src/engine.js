@@ -256,6 +256,11 @@ export const DOT_ECHO_MS = 1000;
 /** S16: a death this soon after our own tick write, with no newer `$HIR` latched, is the tick's kill, and the kill
  *  goes to the player who last applied the poison (Tony, 2026-09-18). A lethal negative answers `$LCD` at once. */
 export const DOT_KILL_MS = 1500;
+/** S56 "what hit me": how long after a death the last life's `dealt` ledger stays PARTIAL. A victim's MC
+ *  `feedback{kind:'hit'}` relay is best-effort and can still be in flight when this phone's own `death` fact
+ *  lands, so the total is not yet final; past this window it is read as complete (unless the MC link was ever
+ *  unbound during that life, which keeps it partial regardless). HUD information only, never a game rule. */
+const DEALT_GRACE_MS = 2000;
 /** S16: is this pool change exactly the echo of the tick `echo` ({pool, n})? The tick's pool moved by
  *  `min(n, before)` (a negative floors at 0) and the other two pools did not move. PURE. */
 export function dotEchoMatches(echo, before, after) {
@@ -640,6 +645,8 @@ export class Engine {
     this._hitGroupEpoch = Math.random().toString(36).slice(2);
     this._dualEmitters = [];
     this._lastHitFact = null;
+    this._life = this._freshLedger();   // S56 "what hit me": this life's damage taken/dealt ledger
+    this._lastLife = null;              // ...and a snapshot of the one before it, kept until the next death
     this._spawnAt = null;            // B5: this.now() of the last _spawn/_revive WRITE — the settle window below is measured from here
     this._armPending = null;         // F209: {at, flip, until, shotEnds, off, shield} from a spawn/revive write until `_armLife` ends spawn protection
     this._triggerPending = null;     // 2026-09-19: {at, due} while a timed spawn/revive holds the trigger (`$BMAP,0,98`)
@@ -1151,6 +1158,39 @@ export class Engine {
   }
   weaponRow(id) { const c = this.catalog; return (c && c.weapons && c.weapons.find(w => w.weapon_id === id)) || null; }
   perkRow(id) { const c = this.catalog; return (c && c.perks && c.perks.find(w => w.perk_id === id)) || null; }
+  /** S56 "what hit me": name the weapon behind a latched `$HIR` from its `mag` (token 5). NEVER guesses --
+   *  two candidates that share a magnitude come back `ambiguous`, with `weapon_id: null`, rather than a
+   *  coin-flip pick that could name the wrong gun. Returns `null` (no claim at all, not even "unknown") when
+   *  there is nothing to resolve against: no latch, or the shooter's roster entry predates `RosterEntry.weapons`
+   *  (an older MC). Otherwise `{weapon_id, name, source: 'loadout'|'catalog'|null, ambiguous, candidates}`:
+   *  the shooter's OWN loadout is tried first (one match -> 'loadout'); with none, the wider catalogue is
+   *  tried as a pickup, excluding the loadout's own ids so a pickup can never be misread as a loadout weapon
+   *  under a magnitude they happen to share; a magnitude nothing declares comes back `{weapon_id: null,
+   *  ambiguous: false, candidates: []}` -- unknown, but still a claim (nothing was skipped). HUD information
+   *  only: MC's own scoring never reads this. */
+  _resolveHitWeapon(latch) {
+    if (!latch) return null;
+    const shooter = this.roster.find(r => r.player_num === latch.shooter_num);
+    if (!shooter || !Array.isArray(shooter.weapons)) return null;   // no claim: older MC, or the shooter is not on the roster
+    const mag = latch.mag;
+    const nameFor = id => { const row = this.weaponRow(id); return (row && row.name) || id; };
+    const loadoutMatches = shooter.weapons.filter(w => Array.isArray(w.hir) && w.hir.includes(mag));
+    if (loadoutMatches.length === 1) {
+      const id = loadoutMatches[0].weapon_id;
+      return { weapon_id: id, name: nameFor(id), source: 'loadout', ambiguous: false, candidates: [] };
+    }
+    if (loadoutMatches.length > 1) return { weapon_id: null, name: null, source: null, ambiguous: true, candidates: loadoutMatches.map(w => w.weapon_id) };
+    // No loadout match: a pickup, not the shooter's own kit. The catalogue is the whole visible arsenal
+    // (`this.catalog.weapons`); the shooter's own ids are excluded so a shared magnitude cannot be misread.
+    const loadoutIds = new Set(shooter.weapons.map(w => w.weapon_id));
+    const catalogMatches = ((this.catalog && this.catalog.weapons) || []).filter(w => !loadoutIds.has(w.weapon_id) && Array.isArray(w.hir) && w.hir.includes(mag));
+    if (catalogMatches.length === 1) {
+      const id = catalogMatches[0].weapon_id;
+      return { weapon_id: id, name: nameFor(id), source: 'catalog', ambiguous: false, candidates: [] };
+    }
+    if (catalogMatches.length > 1) return { weapon_id: null, name: null, source: null, ambiguous: true, candidates: catalogMatches.map(w => w.weapon_id) };
+    return { weapon_id: null, name: null, source: null, ambiguous: false, candidates: [] };   // unknown magnitude
+  }
   armState() { return this.phase; }
 
   // ---------- BLE link ----------
@@ -1205,7 +1245,7 @@ export class Engine {
     if (pendingResync) this._operatorResult('resync', 'gun link down (RELINK first)', pendingResync);
     this._endReload('dropped'); this.switching = null; this.held = {}; this.lastButton = null; this._lightGen = (this._lightGen || 0) + 1; this.log('gun link lost', 'le'); this._changed();
   }   // no link, no reload echo: the takeover would be fiction (pass-2 UX review 2026-09-03); the gen bump means a stray delayed write can't reach a gun that relinks mid-flight either. `held` goes with it: `_onButton` keeps the FIRST edge, so a press whose release never arrived before the drop would read as held forever — and `lastButton` with it, for the same reason: the last thing the gun said would otherwise sit on the diag panel as a live edge the link can no longer complete (review 2026-09-12). `lastGunFrameAt` resets too (B4): a dead watchdog clock must not immediately re-fire the instant the next relink's first frame is still pending
-  setWsState(s, info) { this.wsState = s; this.wsReason = s === 'rejected' && info ? `${info.reason || 'refused'} (${info.code})` : null; this._changed(); }
+  setWsState(s, info) { this.wsState = s; this.wsReason = s === 'rejected' && info ? `${info.reason || 'refused'} (${info.code})` : null; if (s !== 'bound' && this._life) this._life.wsEverDown = true; this._changed(); }   // S56: dealtPartial reads this for the running life
 
   /** Pre-config probe set: only in CONNECTED/KITTED, never after a head is written (contracts §3). */
   _probe() {
@@ -2389,6 +2429,7 @@ export class Engine {
     this._accuracyOffset = 0; this._nativeAccUntil = 0; this._nativeAccWhy = null;   // `$SPAWN` clears every `$TMP`
     this._recoilArm('spawn');   // S42: a fresh life starts at the weapon's ceiling
     this._poisonClear('spawn'); this._smokeClear('spawn'); this.gunAcc = null; this._accZeroAt = null; this._smokeHirAt = null; this._dotEcho = null; this._dotKill = null;   // S16/S53: a new life carries neither
+    this._resetLifeLedger();   // S56: nor does the "what hit me" ledger
     this._cue('klaxon');
     // Spawn shield is ALWAYS 0 on hardware -- $PSET t5 is a capacity filled by an fn-11
     // grant, never a starting pool (bench 2026-08-27).
@@ -3113,6 +3154,7 @@ export class Engine {
     this._accuracyOffset = 0; this._nativeAccUntil = 0; this._nativeAccWhy = null;   // the revive's `$SPAWN` clears every `$TMP`
     this._recoilArm('revive');   // S42: a respawn resets to the weapon's ceiling
     this._poisonClear('respawn'); this._smokeClear('respawn'); this.gunAcc = null; this._accZeroAt = null; this._smokeHirAt = null; this._dotEcho = null; this._dotKill = null;   // S16/S53: a new life carries neither
+    this._resetLifeLedger();   // S56: nor does the "what hit me" ledger
     this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.deadAt = 0; this.killedBy = null; this.downReason = null;
     this.poolSrc = 'model';        // R2-3: a fresh life, and again from config.health until the gun speaks
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
@@ -3177,6 +3219,7 @@ export class Engine {
     this.spawned = false; this.alive = false; this.downReason = null; this.resync = null; this.reconciling = null; this.start = null; this._resyncRevive = false; this.reloading = null; this._reloadOutcome = null; this.held = {};
     this.stunned = null;   // F15: the end frames own the gun now
     this._poisonClear('match end'); this._smokeClear('match end');   // S16/S53: no life left to tick or to tell about
+    this._life = this._freshLedger(); this._lastLife = null;   // S56: nor a "what hit me" ledger to carry into the next lobby
     this._recoil = null;   // S42: no more life to drive accuracy for
     this.ready = false;
     this.moment = { kind: 'match_over', at: this.now() };
@@ -3302,6 +3345,93 @@ export class Engine {
     this.poison = null;
     this.log(`☣ poison over (${why})`, 'li');
     this._changed();
+  }
+
+  // ---------- S56: "what hit me" -- per-life damage taken/dealt ledger (HUD information, no game rule) ----------
+  /** A fresh per-life ledger: `taken`/`dealt` keyed by shooter_num / victim player_id, `shotGroups` so a
+   *  dual-emitter pair's second word adds to the hit its first word already opened instead of booking a
+   *  second one, `wsEverDown` (read by `dealtPartial`) and `startedAt`/`deathAt` (read by `_lifeForFact`,
+   *  stamped on the same synced clock as every fact). */
+  _freshLedger() {
+    return { taken: new Map(), dealt: new Map(), shotGroups: new Map(), wsEverDown: this.wsState !== 'bound', startedAt: this.now(), deathAt: null };
+  }
+  /** Reset at every new life: `_spawn` (go-live), `_revive` (timed/station/resync/operator), an infection
+   *  flip (inside `_death`, right after the snapshot below), and `_endLocal` (match end). */
+  _resetLifeLedger() { this._life = this._freshLedger(); }
+  /** Book a `hit_taken`'s damage against its shooter. The SECOND word of a dual-emitter pair (`shotGroup`
+   *  shared with the first -- see the pairing in `_onHp`) is the same physical shot, not a second hit: its
+   *  damage is added to the row the first word opened, `hits` is left alone, and the weapon breakdown
+   *  accumulates onto that same entry instead of opening a new one. `resolved` is `_resolveHitWeapon`'s
+   *  return; an ambiguous or null resolution books under `weapon_id: null` (an "unclaimed" row), same as an
+   *  unknown magnitude -- there is nothing more specific to say in either case. */
+  _lifeBookHit(num, team, dmg, shotGroup, resolved) {
+    if (!this._life) return;
+    const wid = resolved && !resolved.ambiguous && resolved.weapon_id != null ? resolved.weapon_id : null;
+    const wname = wid != null ? resolved.name : null;
+    const ambiguous = !!(resolved && resolved.ambiguous);
+    const groups = this._life.shotGroups;
+    const prior = groups.get(shotGroup);
+    if (prior) { prior.entry.dmg += dmg; prior.weapon.dmg += dmg; return; }
+    let entry = this._life.taken.get(num);
+    if (!entry) { entry = { num, name: this.nameOf(num), teamKey: TEAM_KEY[team] || null, dmg: 0, hits: 0, weapons: [] }; this._life.taken.set(num, entry); }
+    entry.dmg += dmg; entry.hits += 1;
+    let weapon = entry.weapons.find(w => w.weapon_id === wid && w.ambiguous === ambiguous);
+    if (!weapon) { weapon = { weapon_id: wid, name: wname, ambiguous, dmg: 0 }; entry.weapons.push(weapon); }
+    weapon.dmg += dmg;
+    groups.set(shotGroup, { entry, weapon });
+  }
+  /** A poison/DOT tick's damage (the `$HP` that answers our own `$LIFE` write -- `dotEcho` in `_onHp`) counts
+   *  against the poisoner the same as any other hit, but `_dotSpec`'s table carries no weapon reference for
+   *  it -- there is nothing honest to name a breakdown row after. Left OUT of `weapons` rather than invented;
+   *  only the source's total/hit count carry a tick's damage. (Judgement call: FOLLOWUPS can add a name once
+   *  `frames.dot` carries a `weapon_id`, per `DotSpec` in the wire contract.) */
+  _lifeBookDot(num, team, dmg) {
+    if (!this._life || dmg <= 0) return;
+    let entry = this._life.taken.get(num);
+    if (!entry) { entry = { num, name: this.nameOf(num), teamKey: TEAM_KEY[team] || null, dmg: 0, hits: 0, weapons: [] }; this._life.taken.set(num, entry); }
+    entry.dmg += dmg; entry.hits += 1;
+  }
+  /** Which per-life ledger a fact timestamped `t` belongs to: the running life, the one just finished (still
+   *  open to a straggling MC relay, see `dealtPartial`), or neither -- an older life is gone, so its facts
+   *  are dropped rather than misattributed. `t` is stamped on the engine's synced clock, the same one
+   *  `_freshLedger`/`_death` stamp `startedAt`/`deathAt` on; no `t` at all books to the running life. */
+  _lifeForFact(t) {
+    if (t == null) return this._life;
+    if (t >= this._life.startedAt) return this._life;
+    if (this._lastLife && this._lastLife.deathAt != null && t >= this._lastLife.startedAt && t <= this._lastLife.deathAt) return this._lastLife;
+    return null;
+  }
+  /** MC's best-effort relay of a hit WE landed (`feedback{kind:'hit'}`: `{victim, victim_num, victim_display,
+   *  dmg, weapon_id?}`), forwarded from the victim's own `hit_taken` fact -- so it can arrive late, out of
+   *  order, or never arrive at all, and is never waited on. `weapon_id` absent means MC could not resolve it
+   *  either (the victim had no claim, or it was ambiguous): booked as an unclaimed row, same as `_lifeBookHit`. */
+  _bookDealtHit(body, t) {
+    if (!body || body.victim == null) return;
+    const dmg = Number(body.dmg) || 0;
+    if (dmg <= 0) return;
+    const life = this._lifeForFact(t);
+    if (!life) return;   // too old for this life or the one behind it -- nobody left to credit it to
+    const weaponId = body.weapon_id != null ? body.weapon_id : null;
+    const weaponName = weaponId != null ? (() => { const row = this.weaponRow(weaponId); return (row && row.name) || weaponId; })() : null;
+    let entry = life.dealt.get(body.victim);
+    if (!entry) { entry = { victim: body.victim, name: null, dmg: 0, hits: 0, weapons: [] }; life.dealt.set(body.victim, entry); }
+    const name = (typeof body.victim_display === 'string' && body.victim_display) ? body.victim_display
+      : (body.victim_num != null ? this.nameOf(body.victim_num) : null);
+    if (name) entry.name = name;   // a later, better name replaces a null from an earlier num-only relay
+    entry.dmg += dmg; entry.hits += 1;
+    let weapon = entry.weapons.find(w => w.weapon_id === weaponId);
+    if (!weapon) { weapon = { weapon_id: weaponId, name: weaponName, ambiguous: false, dmg: 0 }; entry.weapons.push(weapon); }
+    weapon.dmg += dmg;
+  }
+  /** The read-only view `state()` publishes: sorted arrays and totals off the live Maps above, computed fresh
+   *  on every call (nothing else needs the sorted order, so nothing keeps it in sync). `finished` is true only
+   *  for `_lastLife` -- the running life's `dealtPartial` never carries the death grace, only `wsEverDown`. */
+  _ledgerSnapshot(life, finished) {
+    if (!life) return { taken: [], dealt: [], takenTotal: 0, dealtTotal: 0, dealtPartial: false };
+    const taken = [...life.taken.values()].map(e => ({ ...e, weapons: e.weapons.map(w => ({ ...w })) })).sort((a, b) => b.dmg - a.dmg);
+    const dealt = [...life.dealt.values()].map(e => ({ ...e, weapons: e.weapons.map(w => ({ ...w })) })).sort((a, b) => b.dmg - a.dmg);
+    const grace = finished && life.deathAt != null && (this.now() - life.deathAt) < DEALT_GRACE_MS;
+    return { taken, dealt, takenTotal: taken.reduce((s, e) => s + e.dmg, 0), dealtTotal: dealt.reduce((s, e) => s + e.dmg, 0), dealtPartial: !!(life.wsEverDown || grace) };
   }
 
   // ---------- S53: the smoke tell (fn 23) ----------
@@ -4082,6 +4212,10 @@ export class Engine {
   feedback(body, envT) {
     const t = body.t != null ? body.t : envT;
     if (t != null && this.now() - t > C.FEEDBACK_MAX_AGE_MS) { this.log('feedback too old — ignored', 'li'); return; }
+    // S56 "what hit me": MC's relay of a hit WE landed is a stats-only message -- no cue, no LED, no moment.
+    // The victim's OWN phone already played the hit/kill feedback for it; this is purely the ledger `state()`
+    // publishes, so it returns here rather than falling into the generic cue/SFLASH write below.
+    if (body.kind === 'hit') { this._bookDealtHit(body, t); this._changed(); return; }
     const pick = body.cue ? { frame: body.cue, tag: '' } : this._pickCue(body.kind);   // A15: a random take from the pool (kill confirms + taunts)
     const cue = pick.frame;
     this._write([SFLASH], `feedback ${body.kind}`);
@@ -4247,7 +4381,11 @@ export class Engine {
         // $HIR,<sensor>,<irProto>,<shooterId>,<shooterTeam>,<damage>,,<subtype> — with t[0] the command
         // word, sensor is t[1] and irProto is t[2]. `ir_proto` read t[1], so it had been reporting
         // the SENSOR all along; every hit_taken fact ever recorded carries that mix-up.
-        if (!Number.isNaN(team)) { this.latch = { shooter_num: Number.isNaN(num) ? 0 : num, shooter_team: team, at: this.now(), ir_proto: parseInt(t[2], 10), ir_subtype: parseInt(t[7], 10), crit: parseInt(t[6], 10), sensor: parseInt(t[1], 10) }; this.lastHitAt = this.now(); this._shieldReassert(); }
+        // S56: `mag` is token 5 as the shooter's OWN `$WEAP` t5 (or t12/t37 for a two-word weapon's second
+        // word), latched raw and unmapped to any pool -- `_resolveHitWeapon` matches it against the roster's
+        // `RosterWeapon.hir` to name what hit us. Never confused with the `dmg` `_onHp` computes from the
+        // pool delta a moment later: that number is armour/shield-adjusted, this one is the wire magnitude.
+        if (!Number.isNaN(team)) { this.latch = { shooter_num: Number.isNaN(num) ? 0 : num, shooter_team: team, at: this.now(), ir_proto: parseInt(t[2], 10), ir_subtype: parseInt(t[7], 10), crit: parseInt(t[6], 10), sensor: parseInt(t[1], 10), mag: parseInt(t[5], 10) }; this.lastHitAt = this.now(); this._shieldReassert(); }
         if (t[2] === '8') this._stun();   // F15: an EMP word (proto 8) -- a no-op unless config.stun is on; no $HP follows a status row, so nothing below sees it
         if (t[2] === '7') {               // S55: the Haze's fn-23 cell; repeated hits arrive while accuracy is already 0
           const until = this.now() + SMOKE_MS;
@@ -4980,6 +5118,9 @@ export class Engine {
     const dotEcho = !!(dmg > 0 && this._dotEcho && this.now() - this._dotEcho.at <= DOT_ECHO_MS
       && dotEchoMatches(this._dotEcho, pools0, { health: hp, armor, shield }));
     if (dotEcho) this._dotEcho = null;
+    // S56: a poison tick is not a `hit_taken` fact (see the guard below), but it is still damage the ledger
+    // owes the poisoner -- `this.poison.by` is still the applier here, ahead of any `_death`/`_poisonClear`.
+    if (dotEcho && this.poison && this.poison.by) this._lifeBookDot(this.poison.by.num, this.poison.by.team, dmg);
     // S29: damage RESTARTS the recharge clock and abandons a refill already running -- Callsign does the same
     // (`DetectRecoverShieldCommand._lastHitTime`), and it is the whole mechanic: the shield comes back only
     // when you break contact. Stamped on the pools moving, not on the `$HIR`, so a hit whose `$HIR` was lost
@@ -5010,6 +5151,7 @@ export class Engine {
     // The `maxArmor > 0` guard is gone with it: a HP threshold is meaningful whether or not the loadout
     // ever had armour, which is what that guard was working around.
     let hurtNow = false;
+    let hitWeapon = null;   // S56 "what hit me": set inside the hit_taken block below, read by the HUD 'hit' moment further down
     if (this.phase === 'live' && this.spawned && this.alive && !this.tutorial
         // `dmg > 0` mirrors stage.py, which imposes it structurally (its check is nested inside
         // `if dmg > 0`). Without it a ZERO-damage $HP frame -- a heal or regen tick, or a plain resend --
@@ -5073,12 +5215,22 @@ export class Engine {
         && prior.ir_proto === this.latch.ir_proto && prior.ir_subtype === this.latch.ir_subtype
         && prior.crit === this.latch.crit && (valuesMatch || !!equalDual);
       const shot_group = paired ? prior.shot_group : `${this._hitGroupEpoch}:${++this._hitGroupSeq}`;
+      // S56 "what hit me": resolved off THIS word's own `mag` -- a dual-emitter pair's second word carries a
+      // different magnitude from the first (e.g. body vs headset), and the roster's `hir` list covers both, so
+      // resolving per word rather than once per shot_group still converges on the one weapon. NEVER guessed:
+      // an ambiguous resolution never reaches the fact (MC would rather show nothing than the wrong gun), only
+      // the HUD's own "could be either of" line below.
+      const resolved = this._resolveHitWeapon(this.latch);
+      hitWeapon = resolved && resolved.weapon_id != null ? { id: resolved.weapon_id, name: resolved.name, source: resolved.source }
+        : resolved && resolved.ambiguous ? { ambiguous: true, names: resolved.candidates.map(id => { const row = this.weaponRow(id); return (row && row.name) || id; }) }
+        : null;
       this.emitFact({ type: 'hit_taken', match_id: this.matchId, shooter_num: this.latch.shooter_num,
         shooter_team: this.latch.shooter_team, dmg, ir_proto: this.latch.ir_proto, ir_subtype: this.latch.ir_subtype,
-        sensor: this.latch.sensor, shot_group });
+        sensor: this.latch.sensor, shot_group, ...(resolved && !resolved.ambiguous && resolved.weapon_id != null ? { weapon_id: resolved.weapon_id } : {}) });
       this._lastHitFact = { at: now, shooter_num: this.latch.shooter_num, ir_proto: this.latch.ir_proto,
         ir_subtype: this.latch.ir_subtype, crit: this.latch.crit, dmg, shot_group };
       this.lastHitAt = this.now();
+      this._lifeBookHit(this.latch.shooter_num, this.latch.shooter_team, dmg, shot_group, resolved);   // S56: the per-life "what hit me" ledger
       // F57 (bench 2026-09-09, "the critical sounds are a bit bugged when it was at 1 red"): the hit that CROSSES the
       // low-health threshold used to fire `low_health` AND the pain grunt in the same millisecond, and the gun plays
       // one clip at a time, so they cut each other off -- exactly once per life, at the moment the warning is the
@@ -5114,7 +5266,10 @@ export class Engine {
                   // the KEY, not the tid: the engine already owns tid->key (TEAM_KEY), and a second
                   // copy of that mapping in the HUD is a divergence waiting to happen
                   shooter_key: TEAM_KEY[this.latch ? this.latch.shooter_team : 0] || 'red',
-                  sensor: this.latch ? this.latch.sensor : null, hp, armor, shield } };
+                  // S56 "what hit me": {id, name, source} resolved, {ambiguous: true, names} two-or-more
+                  // candidates share the magnitude, or null (no claim, or an unknown magnitude) -- set above
+                  // in the hit_taken block, which always runs first (same `dmg > 0` gate) when this fires.
+                  sensor: this.latch ? this.latch.sensor : null, hp, armor, shield, weapon: hitWeapon } };
       } else if (before > 0) {
         // Pools went UP: a heal, an armour pickup, or a shield grant. `before > 0` keeps the
         // spawn/respawn refill out of it — that has its own 'redeploy' moment.
@@ -5192,6 +5347,10 @@ export class Engine {
     const dk = this._dotKill && this.now() - this._dotKill.at <= DOT_KILL_MS && (!this.latch || this.latch.at < this._dotKill.at) ? this._dotKill : null;
     this._dotKill = null; this._dotEcho = null;
     this._poisonClear('died'); this._smokeClear('died');   // S16/S53: neither survives a life
+    // S56: snapshot the life just ended (`state()`'s `lastLife`, kept until the NEXT death) before resetting
+    // for whatever comes next -- a normal down, or (below) an infection flip, which is itself a new life and
+    // must not carry the old one's numbers.
+    this._life.deathAt = this.now(); this._lastLife = this._life; this._resetLifeLedger();
     const fresh = dk ? true : this.latch && this.now() - this.latch.at <= C.DEATH_LATCH_MS;
     const shooter_num = dk ? dk.num : fresh ? this.latch.shooter_num : 0;
     const shooter_team = dk ? dk.team : fresh ? this.latch.shooter_team : (this.latch ? this.latch.shooter_team : 0);
@@ -5579,6 +5738,12 @@ export class Engine {
       canPickPrimary: this.canPick('primary'), canPickSecondary: this.canPick('secondary'), canPickPerk: this.canPick('perk'), tryoutSeen: this.tryoutSeen,
       game: this.game, kitOpen: this.kitOpen(), briefSeen: this.briefSeen, kitLocked: this.kitLocked,
       standby: !!this.standby,   // T2-B item 2: benched — the HUD shows SITTING OUT instead of the kit/lobby screen
+      // S56 "what hit me": this life's damage taken/dealt breakdown, and the one just finished (kept until
+      // the NEXT death). Each is `{taken, dealt, takenTotal, dealtTotal, dealtPartial}`; `taken`/`dealt` rows
+      // are sorted by `dmg` descending. `dealtPartial` is true while MC's best-effort relay could still be
+      // catching up (the link has dropped this life, or -- for `lastLife` only -- death was under 2 s ago).
+      life: this._ledgerSnapshot(this._life, false),
+      lastLife: this._lastLife ? this._ledgerSnapshot(this._lastLife, true) : null,
     };
   }
 }

@@ -1525,6 +1525,13 @@ KNOWN_UNMIRRORED = {
     # IS ported (`_dot_spec`/`_poison_hit`/`_poison_tick`/`_poison_strike`/`_poison_clear`), because that half
     # writes real `$LIFE` frames to the gun.
     "_smokeObserve", "_smokeCheck", "_smokeClear", "_aimView",
+    # S56 "what hit me": names the weapon behind a hit off the roster/catalog HIR magnitude table and keeps a
+    # per-life damage taken/dealt ledger for the HUD (reads `weaponRow`/`nameOf`, both already pinned above,
+    # plus MC's own `feedback{kind:'hit'}` relay). Writes nothing to the gun and changes no game rule -- not
+    # `alive`, not `hp`, not scoring -- only what the HUD shows about who or what hit this player and who this
+    # player hit, so there is nothing here for the stage, which predicts the GUN, to port.
+    "_resolveHitWeapon", "_lifeBookHit", "_lifeBookDot", "_freshLedger", "_resetLifeLedger",
+    "_ledgerSnapshot", "_bookDealtHit", "_lifeForFact",
 }
 
 

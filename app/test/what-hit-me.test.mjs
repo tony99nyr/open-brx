@@ -1,0 +1,207 @@
+// S56 "what hit me" (2026-09-23): the phone-side half -- resolving the shooter's weapon off the wire contract's
+// `RosterEntry.weapons[].hir` (the loadout) / `WeaponView.hir` (the wider catalogue, a pickup) magnitude tables,
+// and a per-life ledger of damage taken and dealt for the HUD. HUD information only, never a game rule: MC's
+// own scoring never reads any of it, so there is nothing here for `mcp/brx_mcp/stage/stage.py` to mirror (see
+// `KNOWN_UNMIRRORED` in mcp/tests/test_stage_mirror.py).
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { Engine } from '../src/engine.js';
+
+const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
+
+function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
+
+// The shooter (player_num 19, team yellow/tid 2) every test fires from, unless it needs its own loadout.
+const SHOOTER = { player_id: 'p2', player_num: 19, display: 'VIPER', team_id: 'yellow',
+  weapons: [{ weapon_id: 'assault_rifle', hir: [9] }] };
+
+function harness({ shooter = SHOOTER, catalog = null, dualEmitters = null } = {}) {
+  const writes = []; const facts = []; let clock = 1_000_000;
+  const config = { config_id: golden.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 600,
+    respawn: { type: 'auto', delay_s: 8 }, scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 },
+    teams: [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }] };
+  const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
+  const team = { team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 };
+  const roster = [{ player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue' }, shooter];
+  const eng = new Engine({ writer: fr => writes.push(...fr), emit: f => facts.push(f), report: () => {}, now: () => clock,
+    synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => fn() });
+  const bundle = { ...golden, player_id: 'p1' };
+  if (dualEmitters) bundle.dual_emitters = dualEmitters;
+  const h = {
+    eng, writes, facts, now: () => clock,
+    adv(ms) { clock += ms; eng.tick(); return h; },
+    frame(f) { eng.feedFrame(f); return h; },
+    kit() { eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); eng.onMcMessage({ kind: 'assign', body: { player, team, roster, catalog } }); return h; },
+    config_() { eng.onMcMessage({ kind: 'config', body: { config, frames: bundle, roster } }); return h; },
+    echo() { eng.feedFrame('$LCD,0,0,0,0,0,0,*'); return h; },
+    start(runwayMs = 0) { eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock + runwayMs, config_id: golden.config_id, seq: 1, countdown_s: Math.round(runwayMs / 1000) } }); return h; },
+    live() { h.kit().config_().echo().start(0); h.adv(10); eng.tick(); return h; },
+    // `$HIR,<sensor>,<irProto>,<shooterId>,<shooterTeam>,<magnitude>,<crit>,<subtype>,*` -- always from SHOOTER.
+    hir(sensor, proto, mag, crit, subtype) { eng.feedFrame(`$HIR,${sensor},${proto},${shooter.player_num},2,${mag},${crit},${subtype},*`); return h; },
+    feedback(body) { eng.onMcMessage({ kind: 'feedback', body: { player_id: 'p1', ...body } }); return h; },
+  };
+  return h;
+}
+
+test('unique loadout resolution: the shooter\'s own weapon matches its hir magnitude', () => {
+  const h = harness(); h.live();
+  h.hir(4, 0, 9, 0, 3); h.frame('$HP,45,61,0,*');
+  const hit = h.facts.find(f => f.type === 'hit_taken');
+  assert.equal(hit.weapon_id, 'assault_rifle');
+  assert.deepEqual(h.eng.moment.data.weapon, { id: 'assault_rifle', name: 'assault_rifle', source: 'loadout' });
+  const taken = h.eng.state().life.taken;
+  assert.equal(taken[0].weapons[0].weapon_id, 'assault_rifle');
+});
+
+test('ambiguity: two loadout weapons sharing a magnitude resolve to neither, and the fact carries no weapon_id', () => {
+  const shooter = { ...SHOOTER, weapons: [{ weapon_id: 'assault_rifle', hir: [9] }, { weapon_id: 'smg', hir: [9] }] };
+  const h = harness({ shooter }); h.live();
+  h.hir(4, 0, 9, 0, 3); h.frame('$HP,45,61,0,*');
+  const hit = h.facts.find(f => f.type === 'hit_taken');
+  assert.equal(hit.weapon_id, undefined, 'never guessed onto the wire');
+  assert.deepEqual(h.eng.moment.data.weapon, { ambiguous: true, names: ['assault_rifle', 'smg'] });
+  const taken = h.eng.state().life.taken;
+  assert.equal(taken[0].weapons[0].weapon_id, null);
+  assert.equal(taken[0].weapons[0].ambiguous, true);
+  assert.equal(taken[0].dmg, 9, 'the damage still counts even though the weapon does not');
+});
+
+const CATALOG = [
+  { weapon_id: 'assault_rifle', name: 'ASSAULT RIFLE', hir: [9] },
+  { weapon_id: 'shotgun', name: 'SHOTGUN', hir: [20] },
+];
+
+test('catalogue fallback: a pickup magnitude outside the loadout resolves off the wider catalogue', () => {
+  const h = harness({ catalog: { weapons: CATALOG } }); h.live();
+  h.hir(4, 0, 20, 0, 3); h.frame('$HP,45,50,0,*');
+  const hit = h.facts.find(f => f.type === 'hit_taken');
+  assert.equal(hit.weapon_id, 'shotgun');
+  assert.deepEqual(h.eng.moment.data.weapon, { id: 'shotgun', name: 'SHOTGUN', source: 'catalog' });
+});
+
+test('unknown magnitude: nothing in the loadout or the catalogue claims it', () => {
+  const h = harness({ catalog: { weapons: CATALOG } }); h.live();
+  h.hir(4, 0, 77, 0, 3); h.frame('$HP,45,60,0,*');
+  const hit = h.facts.find(f => f.type === 'hit_taken');
+  assert.equal(hit.weapon_id, undefined);
+  assert.equal(h.eng.moment.data.weapon, null);
+});
+
+test('no weapons on the roster (an older MC): no claim at all, not even "unknown"', () => {
+  const shooter = { player_id: 'p2', player_num: 19, display: 'VIPER', team_id: 'yellow' };   // no `weapons` field
+  const h = harness({ shooter }); h.live();
+  h.hir(4, 0, 9, 0, 3); h.frame('$HP,45,61,0,*');
+  const hit = h.facts.find(f => f.type === 'hit_taken');
+  assert.equal(hit.weapon_id, undefined);
+  assert.equal(h.eng.moment.data.weapon, null);
+  assert.equal(h.eng._resolveHitWeapon(h.eng.latch), null, 'the resolver itself returns null, not an "unknown" object');
+});
+
+test('a two-word weapon (dual-emitter pair) books as ONE hit with the summed damage', () => {
+  const shooter = { ...SHOOTER, weapons: [{ weapon_id: 'smg', hir: [8, 1] }] };
+  const h = harness({ shooter, dualEmitters: [{ proto: 0, subtype: 0, body: 8, headset: 1, cycle_ms: 100 }] });
+  h.live();
+  h.hir(4, 0, 8, 0, 0); h.frame('$HP,45,62,0,*');   // the body word: armor 70 -> 62, dmg 8
+  h.adv(90);
+  h.hir(0, 0, 1, 0, 0); h.frame('$HP,45,61,0,*');   // the headset word: armor 62 -> 61, dmg 1
+  const hits = h.facts.filter(f => f.type === 'hit_taken');
+  assert.equal(hits.length, 2, 'MC still sees both wire facts, paired by shot_group');
+  assert.equal(hits[0].shot_group, hits[1].shot_group);
+  assert.equal(hits[0].weapon_id, 'smg'); assert.equal(hits[1].weapon_id, 'smg');
+  const taken = h.eng.state().life.taken;
+  assert.equal(taken.length, 1);
+  assert.equal(taken[0].hits, 1, 'one physical shot, not two');
+  assert.equal(taken[0].dmg, 9, 'the two words summed');
+  assert.equal(taken[0].weapons.length, 1);
+  assert.equal(taken[0].weapons[0].weapon_id, 'smg');
+  assert.equal(taken[0].weapons[0].dmg, 9);
+});
+
+test('Charge Rifle: both the tap (16) and the full charge (70) magnitude resolve to the same weapon', () => {
+  const shooter = { ...SHOOTER, weapons: [{ weapon_id: 'charge_rifle', hir: [16, 70] }] };
+  const h = harness({ shooter }); h.live();
+  h.hir(4, 0, 16, 0, 5); h.frame('$HP,45,54,0,*');   // the tap: armor 70 -> 54, dmg 16
+  assert.equal(h.facts.find(f => f.type === 'hit_taken').weapon_id, 'charge_rifle');
+  h.adv(2000);
+  h.hir(4, 0, 70, 0, 5); h.frame('$HP,45,0,0,*');    // the full charge: armor 54 -> 0, dmg 54 (never lethal here)
+  const hits = h.facts.filter(f => f.type === 'hit_taken');
+  assert.equal(hits[hits.length - 1].weapon_id, 'charge_rifle');
+  const taken = h.eng.state().life.taken;
+  assert.equal(taken[0].hits, 2);
+  assert.equal(taken[0].dmg, 70);
+});
+
+test('per-life reset: the ledger empties on revive, and the finished life is snapshotted as lastLife', () => {
+  const h = harness(); h.live();
+  h.hir(4, 0, 9, 0, 3); h.frame('$HP,45,61,0,*');
+  assert.equal(h.eng.state().life.taken.length, 1);
+  h.hir(4, 0, 9, 0, 3); h.frame('$HP,0,0,0,*');   // the killing hit
+  assert.equal(h.eng.alive, false);
+  const st = h.eng.state();
+  assert.equal(st.life.taken.length, 0, 'a fresh, empty ledger for the down state');
+  assert.equal(st.lastLife.taken.length, 1, 'the finished life is snapshotted');
+  assert.equal(st.lastLife.taken[0].num, 19);
+  h.adv(8000);   // the auto respawn (config: delay_s 8)
+  assert.equal(h.eng.alive, true, 'setup: revived');
+  const st2 = h.eng.state();
+  assert.equal(st2.life.taken.length, 0, 'the new life starts empty too');
+  assert.equal(st2.lastLife.taken.length, 1, 'lastLife survives until the NEXT death');
+});
+
+test('per-life reset: an operator FORCE RESPAWN on a still-alive player resets the ledger too (no death, so `_death` never ran)', () => {
+  const h = harness(); h.live();
+  h.hir(4, 0, 9, 0, 3); h.frame('$HP,45,61,0,*');
+  assert.equal(h.eng.state().life.taken.length, 1, 'setup: the ledger is not empty');
+  assert.equal(h.eng.alive, true, 'setup: still alive — this respawn does not go through `_death`');
+  h.eng.control({ cmd: 'respawn', match_id: 'm1', player_id: 'p1' });
+  assert.equal(h.eng.alive, true);
+  assert.equal(h.eng.state().life.taken.length, 0, 'the forced respawn is a new life too');
+});
+
+test('dealt booking: a feedback{kind:"hit"} relay books into the running life', () => {
+  const h = harness({ catalog: { weapons: CATALOG } }); h.live();
+  const t = h.now();
+  h.feedback({ kind: 'hit', t, victim: 'p9', victim_num: 21, victim_display: 'GHOST', dmg: 12, weapon_id: 'assault_rifle' });
+  const st = h.eng.state();
+  assert.equal(st.life.dealt.length, 1);
+  assert.equal(st.life.dealt[0].victim, 'p9');
+  assert.equal(st.life.dealt[0].name, 'GHOST');
+  assert.equal(st.life.dealt[0].dmg, 12);
+  assert.equal(st.life.dealt[0].weapons[0].weapon_id, 'assault_rifle');
+  assert.equal(st.life.dealt[0].weapons[0].name, 'ASSAULT RIFLE');
+});
+
+test('dealt booking, older-life case: a straggling relay for the life that just ended updates lastLife, not the new one', () => {
+  const h = harness(); h.live();
+  const beforeDeath = h.now();
+  h.adv(50);
+  h.hir(4, 0, 9, 0, 3); h.frame('$HP,0,0,0,*');   // die 50 ms after `beforeDeath` -- the new (down) life starts here
+  h.adv(500);   // still inside FEEDBACK_MAX_AGE_MS of `beforeDeath`, and inside lastLife's window
+  h.feedback({ kind: 'hit', t: beforeDeath, victim: 'p9', victim_num: 21, dmg: 5 });
+  const st = h.eng.state();
+  assert.equal(st.life.dealt.length, 0, 'nothing books into the fresh (down) life');
+  assert.equal(st.lastLife.dealt.length, 1, 'the finished life gets it instead');
+  assert.equal(st.lastLife.dealt[0].dmg, 5);
+});
+
+test('dealtPartial: true within the 2 s death grace, even when the MC link never dropped', () => {
+  const h = harness(); h.live();
+  h.eng.setWsState('bound'); h.eng._resetLifeLedger();   // a clean, bound-throughout baseline for this life
+  h.hir(4, 0, 9, 0, 3); h.frame('$HP,0,0,0,*');
+  assert.equal(h.eng.state().lastLife.dealtPartial, true, 'inside the 2 s grace');
+  h.adv(2100);
+  assert.equal(h.eng.state().lastLife.dealtPartial, false, 'grace elapsed, and the link held throughout: final');
+});
+
+test('dealtPartial: true for the rest of the life (and its snapshot) once the MC link has ever been unbound', () => {
+  const h = harness(); h.live();
+  h.eng.setWsState('bound'); h.eng._resetLifeLedger();
+  assert.equal(h.eng.state().life.dealtPartial, false);
+  h.eng.setWsState('offline'); h.eng.setWsState('bound');   // a drop and a reconnect, mid-life
+  assert.equal(h.eng.state().life.dealtPartial, true, 'the running life carries the drop');
+  h.hir(4, 0, 9, 0, 3); h.frame('$HP,0,0,0,*');
+  h.adv(2100);   // well past the grace
+  assert.equal(h.eng.state().lastLife.dealtPartial, true, 'the drop, not the grace, is why this stays partial');
+});
