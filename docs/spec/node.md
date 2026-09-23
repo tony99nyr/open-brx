@@ -405,11 +405,12 @@ Below is what the node actually SHIPS today. `crisp` and `heavy` are each weapon
 gradual ladder and `degraded` is the midpoint rounded down, so two steps cost no weapon its identity: the assault
 rifle still bottoms out at 70 exactly as before, it just arrives there in two visible stages.
 
-⚠ **Every row below is DERIVED, because `weapons.json` declares none of these fields yet (S54).** The catalogue
-carries only `{ceiling, floor, per_shot, recover_ms}`, so a row cannot yet state a ladder of its own and the
-derivation IS the design. An earlier draft of this table printed raised floors of 60 for the SMG, the Suppressor and
-the Stinger. Those were a proposal, they were never shipped, and printing them here as fact would have had the spec
-lying about the wire. The proposal is F268 and the raise happens, if it happens, when S54 lands.
+**Legacy rows below are DERIVED.** `weapons.json` may now optionally carry the six explicit ladder fields
+`{crisp, degraded, heavy, after_shots, after_heavy, settle_ms}` (S54); rows that omit them continue to derive the
+values from `{ceiling, floor, per_shot, recover_ms}` exactly as before. An earlier draft of this table printed raised
+floors of 60 for the SMG, the Suppressor and the Stinger. Those were a proposal, they were never shipped, and
+printing them here as fact would have had the spec lying about the wire. The proposal is F268; no row currently
+overrides its legacy floor.
 
 | weapon | crisp | degraded | heavy | after_shots | after_heavy | settle_ms |
 |---|---|---|---|---|---|---|
@@ -422,8 +423,8 @@ lying about the wire. The proposal is F268 and the raise happens, if it happens,
 | stinger | 100 | 72 | 45 | 7 | 14 | 600 |
 | toxin_rifle | 100 | 82 | 65 | 4 | 8 | 600 |
 
-**Absent keys derive** (`weapons.json` still ships `{ceiling, floor, per_shot, recover_ms}`): `crisp` ← `ceiling`,
-`heavy` ← `floor`, `degraded` ← the midpoint rounded down, `after_shots` ← the ladder's length
+**Absent explicit keys derive** (`weapons.json` legacy rows still ship `{ceiling, floor, per_shot, recover_ms}`):
+`crisp` ← `ceiling`, `heavy` ← `floor`, `degraded` ← the midpoint rounded down, `after_shots` ← the ladder's length
 (`ceil((crisp - heavy) / per_shot)`), `after_heavy` ← twice that, `settle_ms` ← `RECOIL_SETTLE_MIN_MS` or
 `recover_ms`, whichever is longer. A ladder too short to split in two (`degraded` equal to either end) collapses
 back to ONE step, because a second write that sends the value the gun already holds wastes BLE traffic.

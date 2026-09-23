@@ -1081,7 +1081,9 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
                 sust += int(dot["per_tick"]) * 1000 / int(dot["tick_ms"]) * ticking_s / window_s
             pk = _one_mag_kill_p(mag, htk)
         rows.append({"id": wid, "fam": _weapon_family(cat, w), "nat_fam": _natural_family(cat, w), "htk": htk, "ttk": ttk, "sust": sust,
-                     "pk": pk, "kpc": kpc, "recoil_floor": (r.get("recoil") or {}).get("floor"),
+                     "pk": pk, "kpc": kpc,
+                     "recoil_heavy": (r.get("recoil") or {}).get("heavy",
+                                       (r.get("recoil") or {}).get("floor")),
                      "range_band": r.get("range_band"), "is_cell": rpc > 1 and cat.tap_damage(wid) > 0})
     for r in rows:
         if r["htk"] > 1 and not r["is_cell"]:
@@ -1092,8 +1094,9 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
     for r in pick:
         fams.setdefault(r["fam"], []).append(r)
 
-    AXES = ("ttk", "sust", "pk", "kpc")
-    BETTER = {"ttk": "lower", "sust": "higher", "pk": "higher", "kpc": "higher"}
+    AXES = ("ttk", "sust", "pk", "kpc", "recoil_heavy")
+    BETTER = {"ttk": "lower", "sust": "higher", "pk": "higher", "kpc": "higher",
+              "recoil_heavy": "higher"}
 
     def not_worse(a, b, axis):
         return a[axis] <= b[axis] if BETTER[axis] == "lower" else a[axis] >= b[axis]

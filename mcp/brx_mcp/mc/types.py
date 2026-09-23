@@ -475,13 +475,19 @@ class Recoil(TypedDict):
     reader. **F259 (2026-09-18): a STATE MACHINE, not a per-shot walk** -- `_recoilProfile` derives
     `crisp`/`degraded`/`heavy` states from this shape (`ceiling`/`floor` become `crisp`/`degraded`,
     `per_shot` sizes `after_shots`, `recover_ms` floors `settle_ms`): CRISP until the burst reaches
-    `after_shots` rounds (DEGRADED), HEAVY after `heavy_after_shots`, and back to CRISP in one step
-    once the trigger is quiet for `settle_ms`. `weapons.json` still ships this old ladder shape,
-    field for field; `docs/spec/node.md` §3.15 has the state machine's full rule table."""
+    `after_shots` rounds (DEGRADED), HEAVY after `after_heavy`, and back to CRISP in one step
+    once the trigger is quiet for `settle_ms`. The four legacy fields remain accepted as derivation
+    inputs; the six explicit fields are optional per-weapon overrides (S54)."""
     ceiling: int
     floor: int
     per_shot: int
     recover_ms: int
+    crisp: NotRequired[int]
+    degraded: NotRequired[int]
+    heavy: NotRequired[int]
+    after_shots: NotRequired[int]
+    after_heavy: NotRequired[int]
+    settle_ms: NotRequired[int]
 
 
 class GameConfigBase(TypedDict):

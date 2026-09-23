@@ -418,7 +418,8 @@ gun: `wire.range_outdoor_pct` writes `t2` outdoors, and the node writes `t21`/`t
   15-18 m outdoor), SMG close-mid (12 / 25-30), Assault Rifle/Burst/Charge Rifle mid (18-20 / 40-45),
   Suppressor/Energy Rifle mid (15 / 30, the deep-mag "LMG" role), Sniper Rifle/AMR long (full reach /
   60 m+). The power tier is provisionally mid (a power weapon, not a marksman one) pending a real call.
-- **`recoil: {ceiling, floor, per_shot, recover_ms}`** — the planned S42 node-driven profile (a harsh
+- **`recoil`** — the S42 node-driven profile (legacy `{ceiling, floor, per_shot, recover_ms}` inputs plus
+  optional explicit `{crisp, degraded, heavy, after_shots, after_heavy, settle_ms}` ladder fields; a harsh
   floor is a felt COST that offsets a fast TTK): SMG and Suppressor harshest (100/55, the sustained
   hoses), Assault Rifle and Energy Rifle medium (100/70), Burst Rifle mild and resetting between bursts
   (100/85), everything semi-automatic or one-shot none (100/100, no recoil model needed — two HIDDEN rows are

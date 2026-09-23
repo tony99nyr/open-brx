@@ -3601,7 +3601,7 @@ export class Engine {
    *    settle_ms   RECOIL_SETTLE_MIN_MS or `recover_ms`, whichever is longer. See that constant: a shorter
    *                floor would let a gap between two rounds read as a player lowering the weapon.
    *
-   *  ⚠ NOTHING DECLARES THESE FIELDS YET, so the derivation IS the design for every weapon (S54).
+   *  The catalogue may now declare explicit S54 overrides; rows without them use this legacy derivation.
    *  `weapons.json` carries only {ceiling, floor, per_shot, recover_ms}. A proposal exists to raise three
    *  floors -- the SMG and the Suppressor from 55, the Stinger from 45, all to 60 -- because the accuracy
    *  bench measured only 7 of 18 shots landing at 50 to 60, and a weapon that lands 39% of its rounds is

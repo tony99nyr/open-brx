@@ -100,12 +100,9 @@ of main" above.
   phones, the new respawn rules, the Shields preset, the down animation, full screen), then sitting 5, match
   verification: F264 live, the F277 repro, and the F256 row.
 - **Blocked:** F274 on its three two-hour hardware soaks; F277's detector on its repro.
-
 ## Lane: weapons and perks
 
-**S52 is closed (2026-09-22):** the phone HUD now carries `loadout.overrides.easy_reload`, shows the visible
-`ALT = RELOAD` chip, and the picker warns before a secondary request that would conflict with ALT. App unit and
-standby screen gates passed; no hardware proof was needed for this presentation-only change.
+**S52 is closed (2026-09-22):** the HUD shows `ALT = RELOAD` and warns on conflicting secondary picks; app gates passed.
 
 Shipped: the `$WEAP` t12 headset word as a declared `wire.headset_dmg` (a captured t12 with no price is a refusal),
 crits on two weapons (`crit_pct`; hits-to-kill stays the GUARANTEED number), the counts derived from the shipped
@@ -134,20 +131,19 @@ build the category-driven Mission Control picker.
 - **Next desk task:** none; the source-to-site fidelity gate prevents fields being dropped again.
 - **Next bench task:** continue S1 with any FX category except the completed `fx:hit` family.
 - **Blocked:** nothing.
-
 ## Start here
 
-Read [`bench-plan.md`](bench-plan.md). If Tony is at the bench, load the `bench-session` skill and run sitting 1.
-Otherwise take the next clear desk task, **S54 catalogue recoil fields** or **F202 tagger ownership picker**.
+Read [`bench-plan.md`](bench-plan.md). If Tony is at the bench, load `bench-session` and run sitting 1;
+otherwise take **S54 catalogue recoil fields** or **F202 tagger ownership picker**.
 
 ## Machine state
 
-MC runs from `mcp/` on 8765/8766 and serves `webapp/mc/dist`; rebuild that before starting it, and restart MC
-**between matches only**. Check with `ss -ltn | grep 876`.
+MC runs from `mcp/` on 8765/8766 and serves `webapp/mc/dist`; rebuild before starting and restart between matches.
+Check with `ss -ltn | grep 876`.
 
 ```
 setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise 192.168.0.55 --bench-volume
 ```
 
-The shield recharge runs only on the **Shields preset** (armour 0). WSL runs the Python suites and no-hardware MC;
-Windows Python drives BLE; the MacBook is the field target. Never modify stock firmware.
+The shield recharge runs only on the **Shields preset** (armour 0). WSL runs Python/no-hardware MC, Windows drives BLE,
+and the MacBook is the field target. Never modify stock firmware.

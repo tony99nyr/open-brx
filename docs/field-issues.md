@@ -32,7 +32,8 @@ root-caused without a gun.
   the 0.4.3 respawn-profile rebuild. What is left is **F223**.
 - ✅ **Worked:** `$GSET` t2 stayed 0 in all three heads and **outdoor FFA registered at an indoor-comparable
   rate** — the 2026-09-13 afternoon fix held up in a real game. Teams were pushed correctly on both guns.
-- 🔍 **F203 seen again:** a phone opened on a remembered, unreachable MC address and needed a QR rescue.
+- ✅ **F203** seen again: a phone opened on a remembered, unreachable MC address and needed a QR rescue.
+  Closed 2026-09-22: the initial welcome timeout now clears stale MC URL/backhaul persistence and resumes discovery.
 
 ---
 

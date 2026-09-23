@@ -417,13 +417,19 @@ export interface DotSpec {
  *  `crisp`/`degraded`/`heavy` states from this shape (`ceiling`/`floor` become `crisp`/`degraded`,
  *  `per_shot` sizes `after_shots`, `recover_ms` floors `settle_ms`): CRISP until the burst reaches
  *  `after_shots` rounds (DEGRADED), HEAVY after `heavy_after_shots`, and back to CRISP in one step
- *  once the trigger is quiet for `settle_ms`. `weapons.json` still ships this old ladder shape,
- *  field for field; `docs/spec/node.md` §3.15 has the state machine's full rule table. */
+ *  once the trigger is quiet for `settle_ms`. The four legacy fields remain accepted as derivation
+ *  inputs; the six explicit fields are optional per-weapon overrides (S54). */
 export interface Recoil {
   ceiling: number;
   floor: number;
   per_shot: number;
   recover_ms: number;
+  crisp?: number;
+  degraded?: number;
+  heavy?: number;
+  after_shots?: number;
+  after_heavy?: number;
+  settle_ms?: number;
 }
 
 export interface GameConfigBase {
