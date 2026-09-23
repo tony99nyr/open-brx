@@ -18,8 +18,9 @@ def test_an_ordinary_rifle_publishes_one_magnitude():
 
 
 def test_smg_publishes_both_the_gun_and_the_headset_word():
-    # smg: t5 (gun, 8) and t12 (headset, 1) -- two distinct words, sorted ascending.
-    assert CAT.hir_magnitudes("smg") == [1, 8]
+    # smg: t5 (gun, 7) and t12 (headset, 2) -- two distinct words, sorted ascending.
+    # 2026-09-23 (R5, F308): split moved 8+1 -> 7+2, close-range total unchanged at 9.
+    assert CAT.hir_magnitudes("smg") == [2, 7]
 
 
 def test_shotgun_deduplicates_equal_gun_and_headset_words():

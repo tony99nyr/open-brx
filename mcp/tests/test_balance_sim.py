@@ -308,13 +308,14 @@ def test_main_writes_a_csv_and_a_summary_where_it_is_told():
 def test_recoil_profile_pins_the_shipped_ar_against_the_engine_test():
     """`app/test/engine.test.mjs` ('S54: the round counts are derived from the row's dmg...') pins the
     shipped Assault Rifle row's `_recoilProfile()` output at crisp 100, degraded 70, heavy 40, after 6
-    rounds, heavy after 8, settled at the 600 ms floor -- Tony's 2026-09-23 deepening (F291): `heavy`
-    only starts once a burst holds past 7 rounds, an explicit `after_heavy: 8` declared alongside the
-    deeper floor. This is the SAME row (`weapons.json` `assault_rifle`), read through the Python
-    mirror -- if the two ever disagree, one of the two files drifted from `app/src/engine.js` and this
-    test is what catches it."""
+    rounds, heavy after 7, settled at the 600 ms floor -- Tony's 2026-09-23 deepening (F291), tightened
+    the same day (R7, F308): `heavy` now starts once a burst holds past 6 rounds, an explicit
+    `after_heavy: 7` declared alongside the deeper floor (was 8, one round later) so a full-auto AR
+    earns its own penalty sooner, making room for the Burst Rifle to beat it (R7). This is the SAME
+    row (`weapons.json` `assault_rifle`), read through the Python mirror -- if the two ever disagree,
+    one of the two files drifted from `app/src/engine.js` and this test is what catches it."""
     p = B.recoil_profile(CAT._row("assault_rifle"))
-    assert p == B.RecoilProfile(crisp=100.0, degraded=70, heavy=40.0, after_shots=6, heavy_after=8,
+    assert p == B.RecoilProfile(crisp=100.0, degraded=70, heavy=40.0, after_shots=6, heavy_after=7,
                                 settle_ms=600.0), p
 
 
@@ -384,7 +385,7 @@ def test_recoil_duel_rule3_wins_more_with_a_shorter_burst_pause():
     """The burst player is ALWAYS crisp in this model (burst_max 5 < the AR's derived after_shots 6:
     see `test_recoil_profile_pins_the_shipped_ar_against_the_engine_test`), so the 150-300 ms pause
     buys it no recoil recovery it did not already have on release -- it is pure dead time. Before
-    Tony's 2026-09-23 AR ladder deepening (degraded 70, heavy 40 from round 8), shrinking the pause was
+    Tony's 2026-09-23 AR ladder deepening (degraded 70, heavy 40 from round 7), shrinking the pause was
     the ONLY lever that got rule 3 over 60%; the deepened ladder now clears it at the shipped 150-300 ms
     pause too (see `test_recoil_duel_seeded_runs_land_in_band`), so a shorter pause only widens the
     margin further -- this pins that it still does, not that it is still load-bearing."""
@@ -441,11 +442,13 @@ def test_recoil_duel_cli_runs_end_to_end():
 
 def test_range_duel_close_band_adds_the_headset_word_mid_does_not():
     """`_pull_dmg()` is the whole close/mid mechanism (F308): close = gun word + a declared headset
-    word, mid = gun word alone. Direct, RNG-free check of the numbers Tony gave -- SMG 8+1=9 close /
-    8 mid, Shotgun 20+20=40 close / 20 mid, Burst Rifle 10 either way (it declares no headset word)."""
+    word, mid = gun word alone. Direct, RNG-free check of the numbers Tony gave -- SMG 7+2=9 close /
+    7 mid (R5, 2026-09-23: moved from 8+1 so the gun word alone drops further past the headset
+    word's reach), Shotgun 20+20=40 close / 20 mid, Burst Rifle 10 either way (it declares no
+    headset word)."""
     m = _recoil_model()
     assert B._pull_dmg(m.smg_gun_dmg, m.smg_headset_dmg, "close") == 9 == m.smg_gun_dmg + m.smg_headset_dmg
-    assert B._pull_dmg(m.smg_gun_dmg, m.smg_headset_dmg, "mid") == 8 == m.smg_gun_dmg
+    assert B._pull_dmg(m.smg_gun_dmg, m.smg_headset_dmg, "mid") == 7 == m.smg_gun_dmg
     assert B._pull_dmg(m.sg_gun_dmg, m.sg_headset_dmg, "close") == 40
     assert B._pull_dmg(m.sg_gun_dmg, m.sg_headset_dmg, "mid") == 20
     assert m.br_dmg == 10   # no headset word declared; band never touches it
@@ -458,37 +461,27 @@ def test_range_duel_rules_clear_the_65_percent_bar():
     bench. Break it once (e.g. put the Burst Rifle's `overrides.t23` back to 275) and watch R6 go red
     (13%, the pre-fix reading), then restore it.
 
-    Two of the nine cells do NOT clear 65% and are asserted against a lower bound instead, each with
-    its own reason (this session's own "if no lever passes, apply nothing for that rule and report
-    the numbers" instruction):
-
-    - R5's SMG pairing (a bursting AR beats a full-auto SMG past headset range) has no lever in scope
-      -- R5's allowed tuning is the Shotgun's `fire_ms` (R8), which this pairing does not touch -- and
-      measures ~62%, short but not badly.
-    - R7 (Burst Rifle beats a full-auto AR) shares its ONE lever -- the Burst Rifle's own `wire.dmg`
-      or `overrides.t23` -- with R6, and the two rules pull it in OPPOSITE directions: before the
-      2026-09-23 `t23` widening (275ms -> 410ms) R6 read 13% (badly broken) and R7 read 90%
-      (comfortable); a sweep of both the dmg axis and the gap axis (recorded in FOLLOWUPS F308) found
-      no single value clears both simultaneously -- the best joint point is a dead heat right at 65%
-      for both. R6 was prioritised, since it started far more broken.
-    """
+    All nine cells clear 65% at 10,000 reps. Two needed a second round of tuning the same day
+    (Tony, 2026-09-23, approved): R5's SMG pairing (a bursting AR beats a full-auto SMG past headset
+    range) read only ~62% with no lever in scope until the SMG's own split moved 8+1 to 7+2 (the
+    close-range total stays 9, but the gun word alone past the headset word's reach drops 8 to 7);
+    R7 (Burst Rifle beats a full-auto AR) shared R6's only lever and lost margin to it (a sweep of
+    both the Burst Rifle's dmg and gap axes found no single value clears both R6 and R7 -- FOLLOWUPS
+    F308) until the Assault Rifle's own `after_heavy` tightened 8 to 7 (heavy one round sooner on a
+    full-auto AR), a lever that touches neither the Burst Rifle nor R6's controlled-burst AR (its
+    burst never reaches round 7) at all."""
     m = _recoil_model()
     reps = 10_000
     results = {r.label.replace("range_", "", 1): r
               for r in B.range_duel_report(m, reps, SEED, tuple(sorted(B.RANGE_RULES)))}
 
-    def check(key: str, bar: float) -> None:
+    for key in sorted(B.RANGE_RULES):
         r = results[key]
         desc = B.RANGE_RULES[key][0]
-        assert r.win_rate >= bar, (
-            f"{desc} broke: won only {r.win_rate:.1%} of {reps} duels (needs >= {bar:.0%}). See "
+        assert r.win_rate >= 0.65, (
+            f"{desc} broke: won only {r.win_rate:.1%} of {reps} duels (needs >= 65%). See "
             "docs/weapon-design.md's Balance rules table (F308)."
         )
-
-    for key in ("4a", "4b", "4c", "4d", "5c", "6", "8", "9"):
-        check(key, 0.65)
-    check("5a", 0.55)   # no lever in scope; see the docstring
-    check("7", 0.55)    # shares R6's lever, pulled the opposite way; see the docstring
 
 
 def test_range_duel_cli_runs_end_to_end():

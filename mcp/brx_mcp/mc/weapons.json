@@ -25,7 +25,7 @@
     "recover_ms": 150,
     "degraded": 70,
     "heavy": 40,
-    "after_heavy": 8
+    "after_heavy": 7
    },
    "capture": {
     "src": "2026-08-26-weapons-ar-plus-burstrifle.btsnoop",
@@ -42,7 +42,7 @@
    ],
    "ap_dmg": 7,
    "ap_fire_ms": 225,
-   "notes": "The anchor, and the real stock M4 cadence. 13 hits at 100ms with 32 up and 192 in reserve: 17 kills without resupply and a 1.20s kill. 2026-09-17 arsenal review: cycle is back to Battle Company's native 100ms (it was throttled to 140ms so a deep reserve could not also out-cycle the field); the dominance test now grades on one-magazine kill chance rather than total kills, so the reserve alone no longer has to carry the whole weight of keeping the AR in check. 2026-09-23 (F291, the recoil duel sim): Tony deepened the ladder from degraded 80/heavy 60 to degraded 70/heavy 40, with `after_heavy` declared at 8 so heavy only starts once a burst holds past 7 rounds -- `after_shots` still derives to 6 from the reference dmg (unchanged). This is an explicit, deliberate exception to the SMG/Suppressor/Stinger 60 floor: those weapons stop at a mild penalty, the anchor rifle earns a real one for holding the trigger down, which is what makes short controlled bursts beat full auto in the duel sim."
+   "notes": "The anchor, and the real stock M4 cadence. 13 hits at 100ms with 32 up and 192 in reserve: 17 kills without resupply and a 1.20s kill. 2026-09-17 arsenal review: cycle is back to Battle Company's native 100ms (it was throttled to 140ms so a deep reserve could not also out-cycle the field); the dominance test now grades on one-magazine kill chance rather than total kills, so the reserve alone no longer has to carry the whole weight of keeping the AR in check. 2026-09-23 (F291, the recoil duel sim): Tony deepened the ladder from degraded 80/heavy 60 to degraded 70/heavy 40, with `after_heavy` declared at 8 so heavy only starts once a burst holds past 7 rounds -- `after_shots` still derives to 6 from the reference dmg (unchanged). This is an explicit, deliberate exception to the SMG/Suppressor/Stinger 60 floor: those weapons stop at a mild penalty, the anchor rifle earns a real one for holding the trigger down, which is what makes short controlled bursts beat full auto in the duel sim. **2026-09-23 (R7, F308):** `after_heavy` tightened 8 → 7 (heavy now starts on round 7, not round 8 -- degraded is still round 6 alone) so the Burst Rifle, weakened for R6, still loses to a full-auto Assault Rifle less often (R7): a full-auto AR earns its own penalty one round sooner, which is what makes room for the Burst Rifle to beat it."
   },
   {
    "weapon_id": "burst_rifle",
@@ -167,7 +167,7 @@
   {
    "weapon_id": "smg",
    "name": "SMG",
-   "desc": "A close-combat hose. The barrel hits for 8 and the headset adds 1, so a target reached by both emitters takes 9; the magazine leaves faster than you meant it to.",
+   "desc": "A close-combat hose. The barrel hits for 7 and the headset adds 2, so a target reached by both emitters takes 9; the magazine leaves faster than you meant it to.",
    "cls": 1,
    "role": "cqb",
    "class": "ballistic",
@@ -192,8 +192,9 @@
     "frame": "$WEAP,0,,100,0,0,8,0,,,,,,,,90,850,72,288,2500,0,0,100,100,,5,,,G03,,,,D26,D25,D24,D18,D11,,,,72,144,75,*"
    },
    "wire": {
+    "dmg": 7,
     "fire_ms": 100,
-    "headset_dmg": 1,
+    "headset_dmg": 2,
     "headset_range_outdoor": 100,
     "headset_range_indoor": 100,
     "range_outdoor_pct": 30
@@ -204,8 +205,8 @@
      "why": "Playtest 2026-09-20 requires the SMG headset to emit damage. The captured source is empty (gun only); Battle Company uses 2 for gun plus headset on every captured dual-emitter weapon."
     },
     "t12": {
-     "value": 1,
-     "why": "Playtest 2026-09-20 covered the gun emitter: the SMG produced no hit while the Shotgun headset control did. Tony expected the SMG to deal more damage when its headset emitter also reaches the target, so Open BRX deliberately adds the smallest observable priced second word: 1 damage."
+     "value": 2,
+     "why": "Playtest 2026-09-20 covered the gun emitter: the SMG produced no hit while the Shotgun headset control did. Tony expected the SMG to deal more damage when its headset emitter also reaches the target, so Open BRX deliberately adds a priced second word. 2026-09-23 (R5, F308): the split moved 8+1 to 7+2 -- the close-range total (9) is unchanged, but past the headset word's own reach (F275) the gun word alone now lands 7, not 8, widening the gap the range model gives a bursting AR (R5)."
     },
     "t13": {
      "value": 100,
@@ -224,7 +225,7 @@
    ],
    "ap_dmg": 5,
    "ap_fire_ms": 184,
-   "notes": "A close-combat hose. The gun word deals 8 and the deliberately added headset word deals 1, for 9 per pull when both emissions land: thirteen pulls and 1200ms against the standard pool. The magazine moves from 72 to 54, preserving four standard kills per reload so the Suppressor keeps its larger-magazine advantage. Covering the gun emitter in the 2026-09-20 playtest proved the old frame sent no headset damage at all; a Shotgun control did. The cycle moves from 95 to 100ms so the bonus stays inside the arsenal's 1.2-3.5s balance band."
+   "notes": "A close-combat hose. The gun word deals 7 and the deliberately added headset word deals 2, for 9 per pull when both emissions land: thirteen pulls and 1200ms against the standard pool -- htk/ttk are unchanged by the 2026-09-23 split, since the close-range total still holds at 9. The magazine moves from 72 to 54, preserving four standard kills per reload so the Suppressor keeps its larger-magazine advantage. Covering the gun emitter in the 2026-09-20 playtest proved the old frame sent no headset damage at all; a Shotgun control did. The cycle moves from 95 to 100ms so the bonus stays inside the arsenal's 1.2-3.5s balance band. 2026-09-23 (R5, F308): the split moved 8+1 to 7+2 so the gun word ALONE (past the headset word's own reach, F275) drops from 8 to 7, which a bursting AR's own 9 beats more often -- see the Balance rules table."
   },
   {
    "weapon_id": "shotgun",

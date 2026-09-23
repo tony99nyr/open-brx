@@ -449,15 +449,18 @@ is a one-press burst trigger and cannot be held in full auto, so it ships flat (
 
 **The Assault Rifle is its own explicit exception (Tony, 2026-09-23, F291), deeper still than the other
 reference-calibre weapons** — `docs/weapon-design.md`'s Balance rules table, row 3, has the rule and the duel
-that forced it. It declares `degraded: 70, heavy: 40` and an explicit `after_heavy: 8` (not derived):
+that forced it. It declares `degraded: 70, heavy: 40` and an explicit `after_heavy` (not derived):
 `after_shots` still derives to 6 from the reference damage, so a controlled burst (at most 5 rounds) still
-never degrades at all, but full auto now goes heavy one round sooner, on round 8 rather than 9.
+never degrades at all, but full auto now goes heavy sooner than the derived round 9. **Tightened again the
+same day (R7, `docs/weapon-design.md`'s Balance rules table, row 11, F308):** `after_heavy` 8 → 7, so heavy
+now starts on round 7 (degraded is round 6 alone) — a full-auto AR earns its own penalty one round sooner,
+so the Burst Rifle (weakened for R6 the same session) still beats it most of the time.
 `test_ttk_band_and_no_strictly_dominant_weapon` (`mcp/tests/test_mc_compile.py`) still passes unchanged -- the
 AR still leads its family on every felt axis (ttk/kpc/pk/sust), so no exemption was needed there.
 
 | weapon | crisp | degraded | heavy | after_shots | after_heavy | settle_ms |
 |---|---|---|---|---|---|---|
-| assault_rifle | 100 | 70 | 40 | 6 | 8 | 600 |
+| assault_rifle | 100 | 70 | 40 | 6 | 7 | 600 |
 | burst_rifle | 100 | 100 | 100 | n/a | n/a | n/a (no recoil model: flat) |
 | smg | 100 | 80 | 60 | 6 | 9 | 600 |
 | suppressor | 100 | 80 | 60 | 7 | 10 | 600 |

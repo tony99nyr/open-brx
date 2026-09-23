@@ -10,7 +10,7 @@ says the rule is judgement only.
 |---|---|---|---|---|
 | 1 | Recoil rungs count ROUNDS PER TRIGGER PULL, scaled by calibre: a reference 8-damage weapon fires 5 clean rounds then degrades, 3 more then goes heavy, both counts scaled by `8 / dmg`. A trigger release resets the count while the weapon is still crisp; recovery from degraded or heavy needs 600 ms of quiet. | Tony, 2026-09-23 | S54/F268/F280 (`aa7b08b9`) | `app/test/engine.test.mjs` "S54: the round counts are derived from the row's dmg…"; `mcp/tests/test_balance_sim.py::test_recoil_profile_pins_the_shipped_ar_against_the_engine_test`. The release-reset half is bench-provisional (F308) |
 | 2 | A one-press burst or single-shot trigger does not recoil at all — the Burst Rifle and the Charge Rifle both ship flat (`ceiling == floor == 100`). | Tony, 2026-09-23 | S54/F280 | `mcp/tests/test_balance_sim.py::test_recoil_profile_pins_the_engine_tests_synthetic_rows_too`, `::test_the_charge_rifle_carries_no_recoil_profile` |
-| 3 | Recoil floors are 60 for the SMG, Suppressor and Stinger. The Assault Rifle is the deliberate exception, deeper still at 100/70/40, degraded from round 6 and heavy from round 8 — only a player who holds past round 7 is punished. | Tony, 2026-09-18 (floor raise); the AR exception 2026-09-23 | F268; F291 (`1884c90e`) | same two tests as row 1; the per-weapon table in `docs/spec/node.md` §3.15 |
+| 3 | Recoil floors are 60 for the SMG, Suppressor and Stinger. The Assault Rifle is the deliberate exception, deeper still at 100/70/40, degraded from round 6 and heavy from round 7 (tightened from round 8 the same day, R7 row 11) — only a player who holds past round 6 is punished. | Tony, 2026-09-18 (floor raise); the AR exception 2026-09-23; tightened 2026-09-23 (R7) | F268; F291 (`1884c90e`); F308 | same two tests as row 1; the per-weapon table in `docs/spec/node.md` §3.15 |
 | 4 | Three duel rules, each "most of the time" meaning **≥ 65%** in a stochastic 1v1 at full Standard health: (R1) a Charge Rifle with its charge already built beats an Assault Rifle; (R2) a skilled Assault Rifle (controlled 3-5 round bursts) that catches an uncharged Charge Rifle beats it; (R3) an Assault Rifle firing controlled bursts beats one held in full auto. | Tony, 2026-09-23 | F291 | `python3 mcp/tools/balance_sim.py --scenario recoil-duel`; gated in CI by `mcp/tests/test_balance_sim.py::test_recoil_duel_rules_clear_the_65_percent_bar` |
 | 5 | Charge Rifle: charge damage 70 (`t5`), tap damage 16 (`t37`); a charged kill on Standard health is one charge plus three taps. The 285 ms tap cadence is the player's own trigger-pull speed, not a gun setting — no `$WEAP` field carries it. | Tony, 2026-09-23 | F280; F291 (`3759cd68`) | `weapons.json` `wire.dmg`/`wire.tap_dmg`, pinned by the row-4 CI gate; `CHARGE_TAP_CADENCE_MS`'s comment in `compile.py` |
 | 6 | Shotgun: 3 pulls to kill on Standard health, still no recoil model — it has none. Its gap from the rifles was the 800 ms cadence until row 11's R8 tightened it to 700 ms. | Tony, 2026-09-18; retuned 2026-09-23 (R8) | F291; F308 | 3-pull kill is judgement; the 700 ms cadence is gated by row 11's test |
@@ -18,7 +18,7 @@ says the rule is judgement only.
 | 8 | The headset is the primary target: 4 of the tagger's 5 hit sensors sit there, so it carries no bonus multiplier. `criticalShotModifier` (`t7`) compiles to 0, and a headset hit lands the same as a gun-body hit. | Tony, 2026-09-17 (arsenal review) | — | `mcp/tests/test_gameconfig.py::test_crit_modifier_defaults_to_zero_and_headset_multiplier_is_1x` |
 | 9 | Easy Reload is accessibility, not balance: it is never tuned or cut on balance grounds, and it lives beside the per-player pool handicap, independent of the perk slot. | Tony, 2026-09-17 ("my daughter cant reload the brx normally") | S50 | `mcp/tests/test_mc_loadout.py::test_easy_reload_is_refused_beside_a_chain_reload_weapon`, `::test_easy_reload_is_refused_beside_a_second_weapon_end_to_end` |
 | 10 | The rebalance changes numbers, not feel: every weapon keeps Battle Company's captured fire mode, burst pattern, heat/overheat mechanic and sound; only the declared balance tokens move. | design principle, ongoing | weapon-design.md §2.1 principles 1-3 | judgement, not tested |
-| 11 | R4-R9: six close/mid-range duel rules, each "most of the time" meaning **≥ 65%** (two flagged exceptions, not silently hidden). Close range lands the gun word plus a declared headset word; mid range (past the headset word's own reach, unmeasured — F275) lands the gun word alone. **(R4)** close range: the SMG (8+1=9/round, full auto) and the Shotgun (20+20=40/pull) each beat a bursting AR and the Burst Rifle. **(R5)** past headset range: a bursting AR beats the Shotgun; it beats the SMG too, but only ~62% (no lever was in scope for this pairing — reported, not tuned). **(R6)** a bursting AR beats the Burst Rifle. **(R7)** the Burst Rifle beats a full-auto AR — but R6 and R7 share the Burst Rifle's own numbers (`wire.dmg`/`overrides.t23`) as their only lever, pulled in OPPOSITE directions: no single token clears both (swept both axes; the joint best point is a dead heat at 65%), so R6 was prioritised (13% pre-fix vs R7's 90%) and R7 is reported at ~62%, not gated. **(R8)** close range: the Shotgun beats the SMG on full auto (row 6's 700 ms). **(R9)** past headset range: the SMG beats the Shotgun. | Tony, 2026-09-23 | F308 | `python3 mcp/tools/balance_sim.py --scenario range-duel`; gated in CI by `mcp/tests/test_balance_sim.py::test_range_duel_rules_clear_the_65_percent_bar` (R5's SMG pairing and R7 asserted at a lower bound, not 65% — see the test's own docstring) |
+| 11 | R4-R9: six close/mid-range duel rules, each "most of the time" meaning **≥ 65%**. Close range lands the gun word plus a declared headset word; mid range (past the headset word's own reach, unmeasured — F275) lands the gun word alone. **(R4)** close range: the SMG (7+2=9/round, full auto) and the Shotgun (20+20=40/pull) each beat a bursting AR and the Burst Rifle. **(R5)** past headset range: a bursting AR beats the Shotgun, and the SMG — the SMG's own split moved 8+1 to 7+2 (close-range total unchanged at 9) so the gun word alone drops to 7, which first read only ~62% at 8. **(R6)** a bursting AR beats the Burst Rifle. **(R7)** the Burst Rifle beats a full-auto AR — R6 and R7 first shared the Burst Rifle's own numbers as their only lever, pulled in OPPOSITE directions (no single Burst Rifle token cleared both); the Assault Rifle's own `after_heavy` tightening 8 → 7 (heavy one round sooner on full auto, row 3) gave R7 a lever that never touches R6's controlled-burst AR (it never reaches round 7) at all. **(R8)** close range: the Shotgun beats the SMG on full auto (row 6's 700 ms). **(R9)** past headset range: the SMG beats the Shotgun. | Tony, 2026-09-23 | F308 | `python3 mcp/tools/balance_sim.py --scenario range-duel`; gated in CI by `mcp/tests/test_balance_sim.py::test_range_duel_rules_clear_the_65_percent_bar` |
 
 ## ⚠️ Three arsenals, and only one of them is ours
 
@@ -228,7 +228,7 @@ sounds — and moves the numbers.
 | Burst Rifle | assault | 10 | 75 +410 | 12 | **2.05** | 53.6 | 42.8 | 36 | 216 | 1700 | 100% | — | **2026-09-17**: dmg 9→11 (`wire.dmg`); **2026-09-18** (F62): dmg 11→10, htk 11→12, TTK 1.42→1.56s — 40% `crit_pct` (a crit is x1.5 truncated, so 10→15) pays for itself: average damage per hit holds at 11.25, but the published number is now the guaranteed 4-pull kill; a 3-pull kill lands about 27% of the time. **2026-09-23** (R6, F308): burst gap (t23, `overrides.t23`) widened 275→410ms so a disciplined AR burst beats it most of the time — see the Balance rules table; htk unchanged, only cycle/TTK moved. Mag/reserve untouched |
 | Stinger | cqb | 15 | 250 | 8 | **1.75** | 60.0 | 43.5 | 18 | 144 | 1700 | 99% | — | cycle 120→250, res 72→144 |
 | Bolt Rifle | assault | 13 | 225 | 9 | **1.80** | 57.8 | 38.7 | 18 | 180 | 2000 | 98% | — | **stock** |
-| SMG | cqb | 8 | 100 | 13 | **1.20** | 80.0 | 54.7 | 54 | 216 | 2500 | 100% | 5 | **2026-09-20 playtest**: a covered gun emitter produced no headset hit because captured t12 was empty. Open BRX now deliberately adds a 1-damage headset word at the known-good carrier 100; cycle 95→100 and mag/reserve 72/288→54/216 keep the added word priced and preserve the Suppressor's magazine lead |
+| SMG | cqb | 7 | 100 | 13 | **1.20** | 70.0 | 47.8 | 54 | 216 | 2500 | 100% | 5 | **2026-09-20 playtest**: a covered gun emitter produced no headset hit because captured t12 was empty. Open BRX now deliberately adds a headset word at the known-good carrier 100; cycle 95→100 and mag/reserve 72/288→54/216 keep the added word priced and preserve the Suppressor's magazine lead. **2026-09-23** (R5, F308): the split moved 8+1→7+2 (close range still 9); `dmg`/`dps`/`sust`/one-mag % here are the GUN WORD ALONE (7), same caveat as the Shotgun |
 | Toxin Rifle | assault | 8 | 110 | 15 | **1.54** | 72.7 | 49.0 | 30 | 180 | 1600 | 99% | 5 | **2026-09-18**, in the picker since 2026-09-19: the gun lands the direct hit and the POISON is a tick clock on the victim's node (S16, `spec/node.md` §3.17). 4 damage a second for 5 s, refreshed on each hit, never stacked: worth 20, so twelve hits make it lethal even if the target breaks contact, which is the same 1.21 s the Assault Rifle needs to finish outright. §7.5 |
 | Suppressor | support | 8 | 140 | 15 | **1.96** | 57.1 | 48.0 | 75 | 384 | 2000 | 100% | — | **2026-09-17**: cycle 160→140 (`wire.fire_ms`); mag 48→75 (§2.3, family-scoped dominance) |
 | Assault Rifle | assault | 9 | 100 | 13 | **1.20** | 90.0 | 62.6 | 32 | 192 | 1400 | 100% | — | **2026-09-17**: cycle 140→100 (`wire.fire_ms`, native Battle Company speed) |
@@ -692,7 +692,7 @@ sits at `t42` (extra-headset range), present on the Rocket, Shotgun and Plasma S
 | Burst Rifle | 70 | mid | On the shelf |
 | Suppressor | 55 | mid | On the shelf |
 | Energy Rifle | 55 | mid | On the shelf |
-| SMG | 30 | close | **Real guess**, sits at the shelf edge. This is the gun word's carrier; the new 1-damage headset word uses the known-good 100 carrier so it actually emits reliably |
+| SMG | 30 | close | **Real guess**, sits at the shelf edge. This is the gun word's carrier; the headset word (2 damage since 2026-09-23, R5) uses the known-good 100 carrier so it actually emits reliably |
 | Shotgun | 30 | close | **Moved onto the flat shelf 2026-09-18, then corrected 2026-09-23** (Tony, R4/R5): 100 (full distance) let the gun word out-reach the game it is played at; set to match the SMG's own 30 so the two close-range weapons share one outdoor reach. See §7's dual-emitter write-up: the Shotgun's real close/far shape lives in `wire.headset_dmg`'s reach (`t13`/`t42`), which stays at 100 — the headset word's own real range is unmeasured, F275 |
 | Rocket Launcher | 22 | close | **Real guess.** A pickup-only one-shot heavy is meant to be earned at close range, not to out-reach the arsenal it out-damages (Tony, 2026-09-17). Same transition-band caveat as the Shotgun used to carry |
 | Rail Gun | 22 | close | Same reasoning and caveat as the Rocket Launcher |
@@ -1346,7 +1346,7 @@ because neither exists in its captured frame.
 | Shotgun | 45 | **70** |
 | Rocket Launcher | 115 | **115** |
 | Plasma Sniper | 25 | **80** |
-| SMG (Open BRX deviation) | 8 | **1** |
+| SMG (Open BRX deviation) | 7 | **2** |
 
 **It is the SHOOTER's headset that emits**, not the victim's that receives a bonus. Three things agree:
 `t1` names an IR *source*; V4_30 builds an `$IRTX` frame and sends it to the gun's own headset to emit;
@@ -1639,9 +1639,9 @@ while t5 stayed put) — a real, gun-enforced lever. 16 still closes a 115 pool 
 unchanged from the pre-F291 row. The AR's own rule-2 combatant was also corrected to burst, matching rule
 3 (Tony: the AR player who catches an uncharged CR is the skilled one, not a full-auto spray). With both
 changes plus the deeper AR ladder (`degraded: 70, heavy: 40`, `after_heavy: 8` — heavy from round 8, one
-round sooner than the shared 9), all three rules clear 65% at 10,000 reps: rule 1 about 94%, rule 2 about
-91%, rule 3 about 72%. The AR's `after_shots` (6) is unchanged, so a controlled burst still never
-degrades at all — only full auto pays the deeper floor.
+round sooner than the shared 9; tightened again the same day to `after_heavy: 7` for R7, row 11), all
+three rules clear 65% at 10,000 reps. The AR's `after_shots` (6) is unchanged, so a controlled burst
+still never degrades at all — only full auto pays the deeper floor.
 
 **The three rules are now a CI gate, not only a CLI report.** `mcp/tests/test_balance_sim.py::test_recoil_duel_rules_clear_the_65_percent_bar`
 runs 10,000 reps a rule and fails with the rule's name and a pointer to the Balance rules table (top of
@@ -1674,7 +1674,7 @@ what your gun IS rather than just weakening it.
 | weapon | plain | with Armour Piercing | against a bare target |
 |---|---|---|---|
 | Assault Rifle | 9 at 100 ms | 7 at 225 ms | 0.15 s slower |
-| SMG | 8+1 at 100 ms | 5 at 184 ms | 0.27 s slower |
+| SMG | 7+2 at 100 ms | 5 at 184 ms | 0.27 s slower |
 | Shotgun | 45 at 800 ms | 15 at 1000 ms | 0.40 s slower |
 | Suppressor | 8 at 140 ms | 3 at 155 ms | 0.21 s slower |
 | Energy Rifle | 9 at 150 ms | 8 at 405 ms | 0.23 s slower |

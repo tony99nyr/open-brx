@@ -157,12 +157,13 @@ def test_a_weapon_with_no_captured_t12_still_compiles_with_the_cell_empty():
 def test_smg_deliberately_adds_a_small_headset_word_that_the_headset_can_emit():
     """Playtest 2026-09-20: covering the SMG barrel produced no hit while the Shotgun control did.
     The pushed SMG had an empty t12, so its headset had no damage word to send. This is an explicit
-    Open BRX deviation from the captured frame, priced as 8 barrel + 1 headset with reliable carriers."""
+    Open BRX deviation from the captured frame, priced as 7 barrel + 2 headset with reliable carriers
+    (moved from 8+1 on 2026-09-23, R5/F308: the close-range total of 9 is unchanged, only the split)."""
     frame = CAT.resolve("smg", 0, environment="outdoor").split(",")
     T = WeaponCatalog._T
     assert frame[2] == "2", "t1 must select gun + headset or the new t12 word is never emitted"
-    assert frame[T["dmg"] + 1] == "8"
-    assert frame[T["headset_dmg"] + 1] == "1"
+    assert frame[T["dmg"] + 1] == "7"
+    assert frame[T["headset_dmg"] + 1] == "2"
     assert frame[T["headset_range_outdoor"] + 1] == "100"
     assert frame[T["headset_range_indoor"] + 1] == "100"
     assert CAT.damage_per_pull("smg") == 9

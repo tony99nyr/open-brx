@@ -3465,10 +3465,13 @@ test('S54: the round counts are derived from the row\'s dmg -- rounds per trigge
     'toxin_rifle: an odd midpoint rounds DOWN');
   // Tony, 2026-09-23 (F291, later the same day): deepened again off the recoil duel sim
   // (mcp/tools/balance_sim.py --scenario recoil-duel) -- degraded 70, heavy 40, and `after_heavy`
-  // now DECLARED at 8 (not derived) so heavy only starts once a burst holds past 7 rounds, punishing
-  // full auto without touching a controlled 3-5 round burst (`after_shots` still derives to 6).
-  assert.deepEqual(from(8, { crisp: 100, degraded: 70, heavy: 40, after_heavy: 8, ceiling: 100, floor: 70, per_shot: 10, recover_ms: 150 }),
-    row(100, 70, 40, 6, 8), 'assault_rifle: the explicit 2026-09-23 depths (70/40), heavy declared at round 8');
+  // DECLARED (not derived) so heavy only starts once a burst holds past a set number of rounds,
+  // punishing full auto without touching a controlled 3-5 round burst (`after_shots` still derives
+  // to 6). Tightened again the same day (R7, F308): 8 -> 7, so heavy starts on round 7, one round
+  // sooner -- degraded is still round 6 alone -- so a full-auto AR earns its own penalty sooner,
+  // making room for the Burst Rifle to beat it (R7).
+  assert.deepEqual(from(8, { crisp: 100, degraded: 70, heavy: 40, after_heavy: 7, ceiling: 100, floor: 70, per_shot: 10, recover_ms: 150 }),
+    row(100, 70, 40, 6, 7), 'assault_rifle: the 2026-09-23 depths (70/40), heavy declared at round 7 (R7, F308)');
   assert.equal(h.eng._recoilProfile(null), null);
   assert.equal(h.eng._recoilProfile({ dmg: 9, recoil: { ceiling: 100, floor: 100, per_shot: 0, recover_ms: 0 } }), null,
     'burst_rifle: a one-press trigger cannot be held in full auto, so it carries no recoil at all');

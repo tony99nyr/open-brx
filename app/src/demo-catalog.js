@@ -79,7 +79,7 @@ export const DEMO_WEAPONS = [
       "recover_ms": 150,
       "degraded": 70,
       "heavy": 40,
-      "after_heavy": 8
+      "after_heavy": 7
     },
     "hir": [
       9
@@ -400,7 +400,7 @@ export const DEMO_WEAPONS = [
     "name": "SMG",
     "cls": "1",
     "weapon_class": "ballistic",
-    "desc": "A close-combat hose. The barrel hits for 8 and the headset adds 1, so a target reached by both emitters takes 9; the magazine leaves faster than you meant it to.",
+    "desc": "A close-combat hose. The barrel hits for 7 and the headset adds 2, so a target reached by both emitters takes 9; the magazine leaves faster than you meant it to.",
     "clip": 54,
     "mags": 4,
     "reserve": 216,
@@ -427,8 +427,8 @@ export const DEMO_WEAPONS = [
       "recover_ms": 150
     },
     "hir": [
-      1,
-      8
+      2,
+      7
     ],
     "ammo_total": 270,
     "bars": {
