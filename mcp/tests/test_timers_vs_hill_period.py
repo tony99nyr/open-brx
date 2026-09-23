@@ -72,6 +72,13 @@ JUDGED = {
     "_HIT_INTERVAL_S": "the soak tool's simulated per-hit cue cadence (an assumption, not a fuse); no hill/mode in play",
     "_REVIVE_INTERVAL_S": "the soak tool's simulated revive cadence (the plan doc's own '3 minutes'); no hill/mode in play",
     "_BURST_INTERVAL_S": "the soak tool's simulated recoil-burst cadence (an assumption, not a fuse); no hill/mode in play",
+    "MAX_DELAY_MS": "F269: the raw-byte bench helper's per-gap validation ceiling (rawbytes.py) -- a bound checked "
+                    "once when a plan is built, not a timer that runs, and the helper runs no objective/mode",
+    "MAX_TOTAL_DELAY_MS": "F269: the raw-byte bench helper's whole-plan delay ceiling (rawbytes.py); same as "
+                          "MAX_DELAY_MS, a build-time bound, not a fuse, no hill/mode in play",
+    "REPLY_TIMEOUT_S": "F297: the connect-metrics bench tool's own $PING/$VERSION reply wait. Like LOCKUP_AFTER_S "
+                       "above, the connect-metrics run is a standalone BLE bench tool with no objective/mode "
+                       "engine running, so no hill beacon can reach it",
 }
 
 _CONST = re.compile(r"^\s*([A-Z_][A-Z0-9_]*_(S|MS))\s*(?::\s*[\w\[\], ]+)?\s*=\s*\(?\s*(-?\d[\d_.]*)", re.M)

@@ -50,6 +50,31 @@
       after each frame), not this instrument's own flatter 20 ms-per-chunk pacing. A Phase C run
       counts as a pass only with this flag. --phone-block-frames/--phone-block-pause-ms override
       WRITE_PACING's block pause (ships off, 0/0, until a bench session finds a value for F269).
+  python -m brx_mcp raw-bytes <address> (--segment TEXT ... | --stream FRAME --repeat N)
+      [--chunk 20] [--delay-ms D | --delays-ms a,b,c] [--read-ms 2000] [--with-response]
+      [--allow-incomplete] [--confirm] [--log PATH]
+      F269's bounded raw-byte helper (brx_mcp/rawbytes.py), for the screamers cases A4/A7/A7b/A7c/A8
+      (docs/bench-screamers-2026-09-19.md) that need EXACT control of GATT write boundaries and
+      inter-write delays, unlike `soak`/`send`/`send_batch` which always chunk+pace a frame
+      themselves. --segment sends each TEXT as its own GATT write, never re-chunked (A7b: two
+      writes with a gap between them). --stream FRAME --repeat N repeats FRAME N times and splits
+      the result at --chunk-byte ATT boundaries with NO application sleep between chunks by default
+      (A7/A7c/A8's zero-gap byte stream); pass --delay-ms to pace it instead. --delays-ms takes one
+      delay per gap for --segment mode (comma-separated, zero allowed). --read-ms listens after the
+      plan and prints reply counts by command. Every write and every frame the concatenated payload
+      decodes to is still checked against the known-safe/denied command tables: --confirm is needed
+      for an unknown command, --allow-incomplete for a deliberately truncated frame (A4); a denied or
+      hang-prone command (e.g. $DPLAY) is refused outright, no override.
+  python -m brx_mcp connect-metrics <address> [--runs N] [--cold manual|warm] [--warm-off-s S]
+      [--hold-s S] [--log PATH]
+      P0 BLE setup-reliability metrics (docs/FOLLOWUPS.md F297): connects a fresh gun+headset pair
+      N times (default 10) from cold and logs, per run, time to link, whether the first connect
+      attempt succeeded, and whether the headset link dropped within the first 30 s (--hold-s) of
+      the connect -- either the BLE link itself dropping or `$VERSION`'s headset token turning `?`.
+      --cold manual (default) prompts before each run so you can power-cycle the gun AND headset for
+      a real cold boot; --cold warm just disconnects and waits --warm-off-s (default 10) between
+      runs, for a quick unattended rehearsal of the tool itself. Prints one line per run, then a
+      summary (first-attempt success rate, link-time median/p90/max, headset-drop count).
 """
 
 from __future__ import annotations
@@ -807,6 +832,170 @@ def _dispatch_soak(rest: list[str]) -> None:
                       pause_ms=pause_ms, log_path=log_path, phone_pacing=phone_pacing,
                       phone_block_frames=phone_block_frames,
                       phone_block_pause_ms=phone_block_pause_ms))
+
+
+async def _raw_bytes(address: str, *, segments: list[str], stream: str | None, repeat: int | None,
+                     chunk: int, delay_ms: float | None, delays_ms: list[float] | None,
+                     read_ms: int, response: bool, allow_incomplete: bool, confirm: bool,
+                     log_path: str | None) -> None:
+    """F269's bounded raw-byte helper: CLI glue only, see `brx_mcp/rawbytes.py` for the planning,
+    validation and execution. Builds the plan and prints it BEFORE connecting (the same "print, then
+    act" order `_soak` uses), so a refused/over-bound plan never opens a BLE link at all."""
+    from pathlib import Path
+
+    from . import storage
+    from .rawbytes import RawPlan, RawWrite, plan_from_segments, plan_from_stream, repeat_stream, validate_plan
+
+    if stream is not None:
+        payload = repeat_stream(stream, repeat or 0)
+        plan = plan_from_stream(payload, chunk_size=chunk)
+        if delay_ms:   # a deliberately paced stream, not the default zero-gap replay
+            writes = [RawWrite(w.data, delay_ms) for w in plan.writes[:-1]]
+            writes.append(plan.writes[-1])
+            plan = RawPlan(writes=writes)
+    else:
+        gaps: float | list[float] = delays_ms if delays_ms is not None else (delay_ms or 0.0)
+        plan = plan_from_segments(segments, gaps)
+
+    warnings = validate_plan(plan, max_chunk=chunk, allow_incomplete=allow_incomplete, confirm=confirm)
+    print(f"# raw-bytes: {len(plan.writes)} write(s), {plan.total_bytes} B total, "
+          f"{plan.total_delay_ms:.0f} ms total delay", file=sys.stderr)
+    for w in warnings:
+        print(f"# warning: {w}", file=sys.stderr)
+
+    if log_path:
+        path = Path(log_path)
+    else:
+        storage.ensure_dirs()
+        label = f"rawbytes-{address.replace(':', '')}-{int(time.time())}"
+        path = storage.capture_path(label)
+    print(f"# logging to {path}", file=sys.stderr)
+
+    # deferred past validation/printing: `.ble` needs `bleak` (Windows-Python-only, CLAUDE.md), and a
+    # refused or over-bound plan should fail before a BLE link is ever opened.
+    from .ble import ConnectionManager
+    from .rawbytes import write_raw
+
+    mgr = ConnectionManager()
+    await mgr.connect(address, "rawbytes")
+    session = mgr.sessions.get("rawbytes")
+    if session is not None:
+        session.log_file = path
+        session.log_label = "raw-bytes"
+    try:
+        result = await write_raw(mgr, "rawbytes", plan, response=response, read_ms=read_ms,
+                                 max_chunk=chunk, allow_incomplete=allow_incomplete, confirm=confirm)
+    finally:
+        await mgr.disconnect("rawbytes")
+
+    for w in result.writes:
+        print(f"  [{w.t_start_ms:9.1f}..{w.t_done_ms:9.1f} ms] #{w.index:<3} {w.n_bytes:2d}B  {w.text}")
+    counts = ", ".join(f"{k}={v}" for k, v in sorted(result.reply_counts.items())) or "(none)"
+    print(f"\nreply counts: {counts}")
+
+
+def _dispatch_raw_bytes(rest: list[str]) -> None:
+    segments: list[str] = []
+    stream: str | None = None
+    repeat: int | None = None
+    chunk = 20
+    delay_ms: float | None = None
+    delays_ms: list[float] | None = None
+    read_ms = 2000
+    with_response = False
+    allow_incomplete = False
+    confirm = False
+    log_path: str | None = None
+    positional: list[str] = []
+    it = iter(rest)
+    for a in it:
+        if a == "--segment":
+            segments.append(next(it))
+        elif a == "--stream":
+            stream = next(it)
+        elif a == "--repeat":
+            repeat = int(next(it))
+        elif a == "--chunk":
+            chunk = int(next(it))
+        elif a == "--delay-ms":
+            delay_ms = float(next(it))
+        elif a == "--delays-ms":
+            delays_ms = [float(x) for x in next(it).split(",")]
+        elif a == "--read-ms":
+            read_ms = int(next(it))
+        elif a == "--with-response":
+            with_response = True
+        elif a == "--allow-incomplete":
+            allow_incomplete = True
+        elif a == "--confirm":
+            confirm = True
+        elif a == "--log":
+            log_path = next(it)
+        else:
+            positional.append(a)
+    if len(positional) < 1 or (not segments and stream is None):
+        print(__doc__, file=sys.stderr)
+        sys.exit(2)
+    address = positional[0]
+    asyncio.run(_raw_bytes(address, segments=segments, stream=stream, repeat=repeat, chunk=chunk,
+                           delay_ms=delay_ms, delays_ms=delays_ms, read_ms=read_ms,
+                           response=with_response, allow_incomplete=allow_incomplete,
+                           confirm=confirm, log_path=log_path))
+
+
+async def _connect_metrics(address: str, runs: int, *, cold: str = "manual", warm_off_s: float = 10.0,
+                           hold_s: float = 30.0, log_path: str | None = None) -> None:
+    """P0 BLE setup-reliability bench run (docs/FOLLOWUPS.md F297). CLI glue only: pick a log path
+    (the same captures/ location `soak`/`session_log` already write under), connect with the
+    existing BLE code, run, print the summary. See `brx_mcp/connmetrics/runner.py` for the run loop."""
+    from pathlib import Path
+
+    from . import storage
+    from .ble import ConnectionManager
+    from .connmetrics.runner import run_connect_metrics
+
+    if log_path:
+        path = Path(log_path)
+    else:
+        storage.ensure_dirs()
+        label = f"connect-metrics-{address.replace(':', '')}-{int(time.time())}"
+        path = storage.capture_path(label)
+    print(f"# connect-metrics: {address}, {runs} run(s), cold={cold}, logging to {path}",
+          file=sys.stderr)
+
+    mgr = ConnectionManager()
+    summary = await run_connect_metrics(mgr, address, runs, cold=cold, warm_off_s=warm_off_s,
+                                        hold_s=hold_s, log_path=path, out=sys.stderr)
+    print("\n" + summary.render())
+
+
+def _dispatch_connect_metrics(rest: list[str]) -> None:
+    runs, cold, warm_off_s, hold_s, log_path = 10, "manual", 10.0, 30.0, None
+    positional: list[str] = []
+    it = iter(rest)
+    for a in it:
+        if a == "--runs":
+            runs = int(next(it))
+        elif a == "--cold":
+            cold = next(it)
+        elif a == "--warm-off-s":
+            warm_off_s = float(next(it))
+        elif a == "--hold-s":
+            hold_s = float(next(it))
+        elif a == "--log":
+            log_path = next(it)
+        else:
+            positional.append(a)
+    if len(positional) < 1:
+        print(__doc__, file=sys.stderr)
+        sys.exit(2)
+    if cold not in ("manual", "warm"):
+        print(f"--cold must be 'manual' or 'warm', got {cold!r}\n", file=sys.stderr)
+        print(__doc__, file=sys.stderr)
+        sys.exit(2)
+    address = positional[0]
+    asyncio.run(_connect_metrics(address, runs, cold=cold, warm_off_s=warm_off_s, hold_s=hold_s,
+                                 log_path=log_path))
 
 
 def main() -> None:
@@ -1571,6 +1760,10 @@ def _dispatch(cmd: str, args: list[str]) -> None:
         _stage_main(args[1:])
     elif cmd == "soak":
         _dispatch_soak(args[1:])
+    elif cmd == "raw-bytes":
+        _dispatch_raw_bytes(args[1:])
+    elif cmd == "connect-metrics":
+        _dispatch_connect_metrics(args[1:])
     elif cmd == "sounds" and len(args) > 1:
         addr = next((a for a in args[2:] if ":" in a and len(a) >= 17), None)
         _sounds(" ".join(a for a in args[1:] if a != addr and not a.startswith("--")), addr)
