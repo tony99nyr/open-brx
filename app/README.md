@@ -96,7 +96,8 @@ npm run ios:open        # open the project in Xcode  (needs full Xcode)
 npm run ios:push        # build + install + launch on every paired iPhone, over Wi-Fi (see below)
 
 npm run android:setup   # build, add the Android platform if missing, sync
-npm run android:apk     # build the APK the public site hands out (-> webapp/download/)
+npm run android:apk     # build the DEBUG APK the public site hands out (-> webapp/download/)
+npm run android:release # build a SIGNED release APK; fails clearly with no key (see Release signing)
 npm run android:install # build from the working tree, install on the attached phone over adb, launch (bench loop)
 npm run sync            # build + sync every platform already added
 
@@ -203,17 +204,79 @@ same file. `webapp/download/build.json` is still the sidecar the release
 tooling writes and `mcp/tests/test_published_build.py` still checks (git provenance, branch, sidecar
 freshness); it just is not rendered into a name/size/date/sha256 table on the site anymore.
 
-The build is debug-signed. It sideloads fine, but a future release-signed build will **not**
-upgrade over it, and anyone who installed the debug build has to uninstall first. It is also
+**`npm run android:apk` builds a debug APK.** It sideloads fine, but a release-signed build will
+**not** upgrade over it, and anyone who installed a debug build has to uninstall first. It is also
 `android:debuggable="true"`, so anything attached over USB debugging can read the app's data, and it
 is signed with `~/.android/debug.keystore` — a key unique to whichever machine built it, so two
-people building the same commit get different bytes and different checksums. When we want real
-updates in place (and none of the above), add a keystore and switch this script to `assembleRelease`
-(FOLLOWUPS B21). `*.jks`, `*.keystore` and `keystore.properties` are git-ignored already.
+people building the same commit get different bytes and different checksums. Every 0.3.x and 0.4.x
+release was published this way (B21): see *Release signing* below for the fix, and the one-time
+uninstall it needs.
 
 **Version:** `android-setup.sh` stamps `versionName` from `package.json` and derives `versionCode`
 from it (`0.1.0` -> `100`). Bump `package.json` before cutting a build, or every build claims to be
 the same version. Capacitor's own placeholder is `1.0` / `1`, which is why this is stamped.
+
+### Release signing
+
+`npm run android:release` runs Gradle's `assembleRelease` instead of `assembleDebug`. It shares
+`android-setup.sh` with the debug path (same version stamp, same manifest patches), so the two
+builds never drift apart, but it never touches `webapp/download/` and never publishes anything —
+that stays a separate, deliberate step.
+
+**The key never lives in this repo.** `android-setup.sh` patches the generated
+`android/app/build.gradle` with a `signingConfigs.release` block that reads four values, in order,
+from environment variables, then from a properties file:
+
+| Value | Env var | Properties key |
+|---|---|---|
+| Keystore file (absolute path) | `BRX_KEYSTORE` | `storeFile` |
+| Keystore password | `BRX_KEYSTORE_PASSWORD` | `storePassword` |
+| Key alias | `BRX_KEY_ALIAS` | `keyAlias` |
+| Key password | `BRX_KEY_PASSWORD` | `keyPassword` |
+
+The properties file is read from `$BRX_KEYSTORE_PROPERTIES` if set, else `android/keystore.properties`
+(git-ignored, since the whole `android/` directory is), else `~/.brx/keystore.properties`. Put
+`storeFile` as an **absolute path outside the repo**, for example `~/.brx/openbrx-release.jks`.
+
+With none of these present, `assembleRelease` **fails** with a clear message naming what is
+missing. It never falls back to an unsigned or debug-signed apk that looks like a release build.
+`debuggable false` is also set on the release build type, always.
+
+**One version per release.** `versionCode` comes from `package.json`'s semver (`android-setup.sh`), so a
+second release at the same version could not install as an upgrade. `android:release` therefore refuses
+to build when the tag `app-v<version>` already exists on `origin`: bump `"version"` first. It only reads
+the remote tags, and warns rather than stops when `origin` cannot be reached.
+
+**One-time setup, on the maintainer's machine only:**
+
+```bash
+mkdir -p ~/.brx
+keytool -genkeypair -v \
+  -keystore ~/.brx/openbrx-release.jks \
+  -alias openbrx \
+  -keyalg RSA -keysize 4096 \
+  -validity 10000
+```
+
+Then either export the four env vars before `npm run android:release`, or write them once to
+`~/.brx/keystore.properties`:
+
+```properties
+storeFile=/absolute/path/to/.brx/openbrx-release.jks
+storePassword=<the keystore password>
+keyAlias=openbrx
+keyPassword=<the key password>
+```
+
+**Back up the keystore file and its passwords somewhere durable** (a password manager plus an
+offline copy). Losing the key is not recoverable: Android refuses to install an update signed with
+a different key over an app already on a phone, so a lost key means every future release needs a
+fresh package id and every player reinstalling from scratch, not upgrading.
+
+**The 0.3.x/0.4.x uninstall.** Every build published before this exists was signed with the
+machine-local Android debug key, not this one. The first release-signed build cannot upgrade over
+those installs (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`); every player uninstalls the old app once,
+then installs the new signed one. After that, updates install in place as normal.
 
 **Requirements:** JDK 21 (Capacitor 8 refuses 17 with *"invalid source release: 21"*) and the
 Android SDK. `minSdk` is **24 (Android 7.0)**; `targetSdk` is 36 (both live in the generated

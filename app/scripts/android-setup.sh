@@ -209,6 +209,109 @@ open(gradle, "w", encoding="utf-8").write(s)
 print(f"   versionName {ver} / versionCode {code}")
 VERSTAMP
 
+# --- release signing: read from OUTSIDE the repo, never generate or store a key here -----------
+# `assembleRelease` with no signingConfig produces an apk that is either unsigned or (worse)
+# silently signed with the debug key, which looks like a release but is not one (B21: 0.3.x was
+# published debug-signed by accident). We patch in a `signingConfigs.release` that Gradle only uses
+# when real signing material is present, and we make `assembleRelease`/`bundleRelease` fail with a
+# clear message otherwise. Tony creates the actual keystore himself; this script never touches key
+# material. See app/README.md > Release signing.
+GRADLE="android/app/build.gradle"
+echo "==> patching $GRADLE (release signingConfig)"
+python3 - "$GRADLE" <<'SIGNING'
+import re, sys
+p = sys.argv[1]
+s = open(p, encoding="utf-8").read()
+
+MARKER = "// Open BRX: release signing (android-setup.sh)"
+if MARKER in s:
+    print("   already applied")
+else:
+    prelude = (
+        MARKER + "\n"
+        "// Signing material lives OUTSIDE the repo: never a keystore, a password or a key in git.\n"
+        "// Resolved in order from environment variables, then a local properties file (in order:\n"
+        "// $BRX_KEYSTORE_PROPERTIES, android/keystore.properties, ~/.brx/keystore.properties).\n"
+        "// See app/README.md > Release signing.\n"
+        "def brxKeystoreProps = new Properties()\n"
+        "def brxKeystorePropsFile = System.getenv(\"BRX_KEYSTORE_PROPERTIES\")\n"
+        "    ? file(System.getenv(\"BRX_KEYSTORE_PROPERTIES\"))\n"
+        "    : (rootProject.file(\"keystore.properties\").exists()\n"
+        "        ? rootProject.file(\"keystore.properties\")\n"
+        "        : new File(System.getProperty(\"user.home\"), \".brx/keystore.properties\"))\n"
+        "if (brxKeystorePropsFile.exists()) {\n"
+        "    brxKeystorePropsFile.withInputStream { brxKeystoreProps.load(it) }\n"
+        "}\n"
+        "def brxStoreFile     = System.getenv(\"BRX_KEYSTORE\")          ?: brxKeystoreProps.getProperty(\"storeFile\")\n"
+        "def brxStorePassword = System.getenv(\"BRX_KEYSTORE_PASSWORD\") ?: brxKeystoreProps.getProperty(\"storePassword\")\n"
+        "def brxKeyAlias      = System.getenv(\"BRX_KEY_ALIAS\")         ?: brxKeystoreProps.getProperty(\"keyAlias\")\n"
+        "def brxKeyPassword   = System.getenv(\"BRX_KEY_PASSWORD\")      ?: brxKeystoreProps.getProperty(\"keyPassword\")\n"
+        "def brxHasReleaseSigning = brxStoreFile && brxStorePassword && brxKeyAlias && brxKeyPassword\n"
+        "\n"
+    )
+    s = prelude + s
+
+    # signingConfigs block, right after the `android {` opening line
+    s, n = re.subn(
+        r"(android \{\n)",
+        r"\1    signingConfigs {\n"
+        r"        if (brxHasReleaseSigning) {\n"
+        r"            release {\n"
+        r"                storeFile file(brxStoreFile)\n"
+        r"                storePassword brxStorePassword\n"
+        r"                keyAlias brxKeyAlias\n"
+        r"                keyPassword brxKeyPassword\n"
+        r"            }\n"
+        r"        }\n"
+        r"    }\n",
+        s, count=1,
+    )
+    if n != 1:
+        print("   android {} block not found in the expected shape - add signingConfigs by hand", file=sys.stderr)
+        sys.exit(1)
+
+    # buildTypes.release: never debuggable, and signed only when the material is present
+    old_release = (
+        "        release {\n"
+        "            minifyEnabled false\n"
+        "            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'\n"
+        "        }\n"
+    )
+    new_release = (
+        "        release {\n"
+        "            minifyEnabled false\n"
+        "            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'\n"
+        "            debuggable false\n"
+        "            if (brxHasReleaseSigning) {\n"
+        "                signingConfig signingConfigs.release\n"
+        "            }\n"
+        "        }\n"
+    )
+    if old_release not in s:
+        print("   buildTypes.release not found in the expected shape - add debuggable false / signingConfig by hand", file=sys.stderr)
+        sys.exit(1)
+    s = s.replace(old_release, new_release, 1)
+
+    # Fail assembleRelease/bundleRelease loudly when signing is not configured, instead of quietly
+    # shipping an unsigned or debug-signed "release".
+    s = s.rstrip("\n") + "\n\n" + (
+        "// Open BRX: refuse an unsigned or debug-signed \"release\" (android-setup.sh)\n"
+        "gradle.taskGraph.whenReady { graph ->\n"
+        "    def buildingRelease = graph.allTasks.any { it.name in [\"assembleRelease\", \"bundleRelease\"] }\n"
+        "    if (buildingRelease && !brxHasReleaseSigning) {\n"
+        "        throw new GradleException(\n"
+        "            \"Release signing is not configured. Set BRX_KEYSTORE, BRX_KEYSTORE_PASSWORD, \" +\n"
+        "            \"BRX_KEY_ALIAS and BRX_KEY_PASSWORD, or write storeFile/storePassword/keyAlias/keyPassword \" +\n"
+        "            \"to android/keystore.properties or ~/.brx/keystore.properties. See app/README.md > Release signing.\"\n"
+        "        )\n"
+        "    }\n"
+        "}\n"
+    )
+
+    open(p, "w", encoding="utf-8").write(s)
+    print("   ok")
+SIGNING
+
 echo "==> resulting BLE/location permissions:"
 grep -A1 -E "BLUETOOTH_SCAN|ACCESS_(FINE|COARSE)_LOCATION" "$MANIFEST" || true
-echo "==> done. Build a distributable APK with: npm run android:apk"
+echo "==> done. Build a distributable APK with: npm run android:apk (debug) or npm run android:release (signed)"
