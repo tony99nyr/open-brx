@@ -113,8 +113,8 @@ On `main` 2026-09-23: the desk half of F297, F269 and F270. All three stay open 
 ## Lane: Mission Control console honesty
 F178, F256, F251, F289 closed; F309 and brx-net built 2026-09-23. **Next:** bench rows F309 and F311.
 
-## Lane: phone gate, S56, B21 (brx4)
-2026-09-23: S56 built (minimal HUD; brx-hud recap open). F191, F284 closed. **B21:** `npm run android:release` ready; Tony creates the key.
+## Lane: S56, S57, B21 (brx4)
+2026-09-23: **S57 built** (IR callout bus, docs/ir-callouts.md); the bench on `bench-2026-09-24.md` settles its open questions. S56 built. **B21:** `npm run android:release` ready; Tony creates the key.
 ## Lane: F293 (brx5)
 2026-09-23: `brx_mcp.btlink` built. Next: read 1.3 captures.
 
