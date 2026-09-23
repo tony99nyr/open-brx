@@ -120,9 +120,8 @@ On `main` 2026-09-23: the desk half of F297, F269 and F270. All three stay open 
 ## Lane: Mission Control console honesty
 F178, F256, F251 and F289 (MC flag) closed 2026-09-23. **Next:** F309, the phone-reported transport.
 
-## Lane: phone gate, F289, S56 (brx4)
-2026-09-23: screen gate green; F289 closed (both halves). **S56 built** (A52, minimal HUD); open: brx-hud's full recap, a field check.
-
+## Lane: phone gate, S56, B21 (brx4)
+2026-09-23: S56 built (minimal HUD; brx-hud recap open). F191, F284 closed. **B21:** `npm run android:release` ready; Tony creates the key.
 ## Start here
 
 Use this priority stack; do not spend Tony's bench time on desk work:
