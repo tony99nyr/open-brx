@@ -190,7 +190,7 @@ input[type=range]{width:100%;height:44px;accent-color:var(--team);margin:0}   /*
   <section class="panel mcjoin" id="mcjoin">
     <h3>MISSION CONTROL CONNECTION</h3>
     <div class="hint" id="mcstateMain">AUTO-CONNECTING ON THIS WI-FI…</div>
-    <div class="rowc"><input id="mcUrlMain" placeholder="ws://mission-control-ip:8766/ws" inputmode="url" aria-label="Mission Control address"><button class="btn" id="btnMcMain"><span class="unskew">CONNECT</span></button><button class="btn" id="btnQrMain"><span class="unskew">SCAN QR</span></button></div>
+    <div class="rowc"><input id="mcUrlMain" placeholder="ws://mission-control-ip:8766/ws" inputmode="url" aria-label="Mission Control address" style="flex:1;min-width:180px;height:44px;background:var(--plate2);border:1px solid var(--edge);color:var(--num);font:14px var(--m);padding:0 10px"><button class="btn" id="btnMcMain"><span class="unskew">CONNECT</span></button><button class="btn" id="btnQrMain"><span class="unskew">SCAN QR</span></button></div>
     <div id="qrPanel" hidden><video id="qrVideo" playsinline></video><button class="btn" id="btnQrCancel">CANCEL SCAN</button></div>
     <div class="hint">If automatic discovery cannot find MC, enter its address here. Station setup remains available from ⓘ.</div>
   </section>
