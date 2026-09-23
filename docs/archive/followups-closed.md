@@ -1,5 +1,10 @@
 # Closed followups (archive)
 
+# Closed 2026-09-23: FFA standings ladder
+
+- 2026-09-23 **F18** was stale bookkeeping: the HUD already renders the FFA player standings board from the
+  Mission Control snapshot, labels the tab `STANDINGS`, and limits the player list to the top three.
+
 # Closed 2026-09-23: app lifecycle and utility contract coverage
 
 - 2026-09-23 **S35** added focused source-contract tests for app log-sync wiring and utility lifecycle identity,

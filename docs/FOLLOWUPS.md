@@ -81,7 +81,7 @@ right** and this index is stale. Do not cite it as evidence that something is or
 - 🔴 **B23** · **E5** · **F43** · **F231** · **F264** · **S10**
 - 🟠 **B4** · **B21** · **B31** · **E2** · **F12** · **F40** · **F70** · **F164** · **F256** · **F260** · **F269** · **F272** · **F277** · **F280** · **F300** · **P8** · **S3** · **S14** · **S33** · **S50** · **S53**
 - 🟡 **B1** · **B8** · **B14** · **B17** · **D1** · **D3** · **E3** · **E4** · **E6** · **F5** · **F16** · **F20** · **F24** · **F25** · **F42** · **F60** · **F68** · **F88** · **F95** · **F108** · **F109** · **F112** · **F113** · **F123** · **F126** · **F128** · **F130** · **F132** · **F133** · **F161** · **F176** · **F177** · **F178** · **F186** · **F187** · **F191** · **F221** · **F229** · **F233** · **F251** · **F266** · **F267** · **F268** · **F270** · **F281** · **F284** · **F289** · **H1** · **H2** · **H6** · **H8** · **K2** · **Q12′** · **Q13** · **R3** · **S1** · **S2** · **S6** · **S7** · **S-A12** · **S13** · **S25** · **S27** · **S28** · **S29** · **S30** · **S31** · **S32** · **S34** · **S36** · **S42** · **S43** · **S46** · **S47** · **S48** · **S49** · **S51** · **S54**
-- 🟢 **B11** · **B22** · ⬜ **D5** · **E7** · **F14** · **F17** · **F18** · **F19** · **F32** · **F52** · **F83** · **F87** · **F89** · **F93** · **F98** · **F99** · **F100** · **F107** · **F204** · **F250** · **F273** · ⬜ **H3** · ⬜ **H4** · ⬜ **H5** · ⬜ **K6** · ⬜ **K8** · **P14** · **R2** · **S19**
+- 🟢 **B11** · **B22** · ⬜ **D5** · **E7** · **F14** · **F17** · **F19** · **F32** · **F52** · **F83** · **F87** · **F89** · **F93** · **F98** · **F99** · **F100** · **F107** · **F204** · **F250** · **F273** · ⬜ **H3** · ⬜ **H4** · ⬜ **H5** · ⬜ **K6** · ⬜ **K8** · **P14** · **R2** · **S19**
 
 ## 1. Before going public
 
@@ -529,7 +529,6 @@ nine of these eleven were root-caused without touching a gun.
   operator-fires tools (`hittest`/`damage_bench` style) and a test pinning `BMAP` to MC's `_bmap()` remain. Re-read any
   past "trigger did nothing" negative from such a tool with this in mind. `build`.
 - **F17 🟢** lives cap: DOWN recap shows LIVES LEFT only if `config.respawn.lives` exists; no mode sets it. `build`.
-- **F18 🟢** FFA board is the top three players standing in for teams; a real FFA ladder is a small HUD follow-up. `build`.
 - **F19 🟢** after a PANIC the HUD shows the plain kitted screen; add a "HOST STOPPED THE MATCH" pill. `build`.
 - **F20 🟡 decision** kill confirm during a reload is deferred until the RELOADING takeover ends (~2 s). `decision`.
 - **F21 🟡** status-bar / display-corner inset fixed in code (APK 0.1.6+); verify on the Pixel 4 and Pixel 10. `eyes`.
