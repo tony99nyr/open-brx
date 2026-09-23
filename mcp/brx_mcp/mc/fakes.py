@@ -8,7 +8,7 @@ import time
 from typing import Callable
 
 from ..gameconfig import GSET_T2_SAFE
-from .compile import HEADSET_ALERT_BRIGHTNESS, SPAWN_PROTECT_OFF, SPAWN_PROTECT_ON, TRIGGER_HELD, TRIGGER_LIVE, VOL_TRYOUT, check_volume, life_frames, play_volume, respawn_settings, shield_frame   # one volume policy for the real and the fake paths
+from .compile import HEADSET_ALERT_BRIGHTNESS, SPAWN_PROTECT_OFF, SPAWN_PROTECT_ON, TRIGGER_HELD, TRIGGER_LIVE, VOL_TRYOUT, check_capture_row_fn, check_volume, life_frames, play_volume, respawn_settings, shield_frame   # one volume policy for the real and the fake paths
 from . import frames as _frames        # A36: a fake gun answers from the head it was actually sent
 from .types import (ArmoryRecord, FrameBundle, RespawnProfile, GameConfig, PerkView, Player, ScanRow, Team, VoiceOption, Weapon, WeaponView,
                     MAX_PLAYERS)
@@ -77,7 +77,8 @@ class FakeCompiler:
 
     def __init__(self, bench_volume: int | None = None, capture_row_fn: int | None = None) -> None:
         self.bench_volume = None if bench_volume is None else check_volume(bench_volume)   # `--bench-volume`, as Compiler
-        self.capture_row_fn = capture_row_fn   # F312 `--bench-capture-row`, as Compiler (the fake ships no $SIR)
+        # F312 `--bench-capture-row`, validated as Compiler does; the fake ships no $SIR, so it changes nothing here.
+        self.capture_row_fn = None if capture_row_fn is None else check_capture_row_fn(capture_row_fn)
 
     def compile(self, config: GameConfig, player: Player, teams: list[Team], roll=None,
                 plan=None) -> FrameBundle:

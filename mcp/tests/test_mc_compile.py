@@ -810,6 +810,25 @@ def test_every_mode_ships_the_beacon_row_once():
         assert rows == ["$SIR,15,0,,28,0,0,1,,*"], f"{mode} head: {rows}"
 
 
+def test_f312_a_real_proto15_row_under_the_bench_flag_is_refused_not_silently_kept():
+    """Under `--bench-capture-row 34`, a real `<15,0>` row would win the cell and the gun would never
+    run fn 34; the F312 guard refuses that bundle rather than let a bench result be read against it."""
+    import brx_mcp.mc.compile as CM
+    orig_sir_table = CM.Compiler.sir_table
+
+    def fake_sir_table(self, *a, **kw):
+        return list(orig_sir_table(self, *a, **kw)) + ["$SIR,15,0,,1,0,0,1,,*"]
+    CM.Compiler.sir_table = fake_sir_table
+    try:
+        try:
+            Compiler(capture_row_fn=34).compile(_cfg(mode="koth"), _player(), _TEAMS)
+            raise AssertionError("shipped a real <15,0> row under the bench flag")
+        except ValueError as e:
+            assert "F312 GUARD" in str(e), e
+    finally:
+        CM.Compiler.sir_table = orig_sir_table
+
+
 def test_a_real_proto15_row_is_never_doubled_or_overwritten():
     """S57 coordinator check: `("15", "0")` is a RESERVED cell (`hitaudio.RESERVED_CELLS`) that no
     weapon or class group is ever allocated, so no live table ships its own `<15,0>` row today. If one
@@ -2033,7 +2052,7 @@ def test_f312_only_the_bench_known_frames_are_accepted():
             pass
 
 
-def test_f312_the_cli_flag_reaches_the_compiler():
+def test_f312_the_cli_flag_parses_only_the_known_functions():
     from brx_mcp.mc.__main__ import parser
     assert parser().parse_args([]).bench_capture_row is None, "off unless asked for"
     assert parser().parse_args(["--bench-capture-row", "34"]).bench_capture_row == 34
@@ -2042,3 +2061,19 @@ def test_f312_the_cli_flag_reaches_the_compiler():
         raise AssertionError("argparse accepted an unknown function")
     except SystemExit:
         pass
+
+
+def test_f312_the_bench_flag_reaches_the_class_sound_takes_too():
+    """F312 review (High): with per-class hit audio on, each `sir_pool` take is rebuilt from the class
+    plan. They must carry fn 34 as well, or the gun keeps the head's fn-28 twin all match under a
+    banner that claims fn 34."""
+    bench = Compiler(capture_row_fn=34)
+    cfg = _cfg(mode="koth")
+    cfg["hit_audio_class"] = True
+    b = bench.compile(cfg, _player(), _TEAMS)
+    assert len(b["sir_pool"]) > 1, "control: class sounds roll several takes"
+    for take in b["sir_pool"]:
+        assert [f for f in take if f.startswith("$SIR,15,0,")] == ["$SIR,15,0,,34,,,,,*"], take
+    default = C.compile(cfg, _player(), _TEAMS)
+    for take in default["sir_pool"]:
+        assert [f for f in take if f.startswith("$SIR,15,0,")] == ["$SIR,15,0,,28,0,0,1,,*"], take

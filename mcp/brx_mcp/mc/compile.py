@@ -741,7 +741,8 @@ def assert_arms_after_spawn(head: list[str], bundle) -> None:
     head_cells = [c for c in _sir_cells([f for f in head if f.startswith("$SIR")]) if c != ("", "")]
     for take in pool:
         live = _sir_index(take)
-        # the hill beacon row is fn 28 in BOTH tables, so it is the one cell a take may leave silent
+        # the <15,0> capture row is exempt: the head's fn-28 twin is its shipped value, and the F312 guard
+        # in compile() checks every take carries the compiler's own capture row, whatever its function
         missing = [c for c in head_cells if c != ("15", "0") and live.get(c) in (None, _SPAWN_PROTECT_FN)]
         if missing:
             raise ValueError(
@@ -1728,6 +1729,13 @@ class Compiler:
         """The `<15,0>` row this compiler ships in every live table (S57, F312)."""
         return CAPTURE_ROWS[self.capture_row_fn if self.capture_row_fn is not None else CAPTURE_ROW_DEFAULT]
 
+    def _with_capture_row(self, rows: list[str]) -> list[str]:
+        """Every live `$SIR` table (the fixed one and every class-sound take) carries the capture row,
+        unless a real row already keys `("15", "0")` (a RESERVED cell no weapon is allocated). F312
+        review: the class-sound takes were rebuilt without it, so `--bench-capture-row 34` left the
+        head's fn-28 twin on the gun all match while the banner claimed fn 34."""
+        return rows if ("15", "0") in _sir_index(rows) else list(rows) + [self.capture_row()]
+
     def play_volume(self, environment: str | None) -> int:
         """The $VOL for a match head: the bench volume when set, else the venue volume."""
         return play_volume(environment) if self.bench_volume is None else self.bench_volume
@@ -2291,9 +2299,9 @@ class Compiler:
         # it with zero player feedback (see the row's own comment above `_OBJECTIVE_SIR_ROW`). Guarded
         # rather than unconditional: `("15", "0")` is a RESERVED cell (`hitaudio.RESERVED_CELLS`) that
         # no weapon or class group is ever allocated, so no table should already key it -- but if one
-        # ever does, that real row wins and this never doubles up on the same cell.
-        if ("15", "0") not in _sir_index(sir_live):
-            sir_live = list(sir_live) + [self.capture_row()]   # F70/F79/S57: the proto-15 beacon row (F312: its fn)
+        # ever does, that real row wins and this never doubles up on the same cell (under
+        # `--bench-capture-row` the F312 guard refuses such a bundle instead: the banner would lie).
+        sir_live = self._with_capture_row(sir_live)   # F70/F79/S57: the proto-15 beacon row (F312: its fn)
         # F121/A23: the HEAD carries the same cells DISARMED -- hits register, nothing moves, no sound. The
         # real table is a `sir_pool` take the node writes behind the first spawn's protection (F121 rebuild).
         sir_pregame = sir_spawn_protected(sir_live)
@@ -2413,8 +2421,16 @@ class Compiler:
         # bench-safe by construction. `sir_pool` is the ONLY carrier of the real table, so it is never empty:
         # one take of the fixed table (the objective row included) when class sounds are off. The node writes a
         # take when protection ends, but only if the gun's table is not the live one or class sounds are on.
-        bundle["sir_pool"] = ([self.sir_table(plan, hits_rng, _cs, stun=stun_enabled(config)) for _ in range(_SIR_TAKES)]
-                              if _cs else [list(sir_live)])
+        bundle["sir_pool"] = ([self._with_capture_row(self.sir_table(plan, hits_rng, _cs, stun=stun_enabled(config)))
+                               for _ in range(_SIR_TAKES)] if _cs else [list(sir_live)])
+        # F312 GUARD: every take keys <15,0>; and under `--bench-capture-row` it is the row the banner names,
+        # since a bench result read against the wrong function is worse than no result.
+        _cap = self.capture_row()
+        for sir_take in bundle["sir_pool"]:
+            if ("15", "0") not in _sir_index(sir_take):
+                raise ValueError("F312 GUARD: a sir_pool take has no <15,0> row, so the gun cannot report a capture")
+            if self.capture_row_fn is not None and _cap not in sir_take:
+                raise ValueError(f"F312 GUARD: --bench-capture-row asked for {_cap}, but a take ships another <15,0> row")
         bundle["hit_audio"] = {"rekey": bool(config.get("hit_audio_rekey", False)),
                                "cells": {w: f"{c[0]},{c[1]}" for w, c in plan.cells.items()},
                                "classes": {f"{c[0]},{c[1]}": k for c, (k, _fn) in plan.groups.items()},

@@ -109,7 +109,7 @@ On `main` 2026-09-23: the desk half of F297, F269 and F270. All three stay open 
   scoping needs an engine.js call-site change.
 - **Next bench task:** the ordered runbook [`bench-2026-09-24.md`](bench-2026-09-24.md). **Blocked:** F270 on A8.
 ## Lane: Mission Control console honesty
-F178, F256, F251, F289 closed; F309 and brx-net built 2026-09-23. **Next:** bench rows F309 and F311.
+F178, F256, F251, F289 closed; F309, brx-net, F312's gated row built 2026-09-23. **Next:** bench F309/F311/F312; APK 0.4.6 prepared in `~/brx3-release`, awaiting Tony's go.
 
 ## Lane: S56, S57, B21 (brx4)
 2026-09-23: **S57 built**, deaths, kills and objectives (docs/ir-callouts.md); Block 7 of `bench-2026-09-24.md` settles it, F312 first. S56 built. **B21:** key made; the signed cut waits for the desk fixes.
