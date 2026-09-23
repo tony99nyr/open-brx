@@ -826,7 +826,9 @@ _HISTORY = re.compile(r"\b(closed|answered|settled|shipped|proven|renumber\w*|al
 
 
 def _open_rows() -> list[tuple[str, str]]:
-    """(id, marker) for every row whose marker is live (🔴🟠🟡🟢); a ✅/⬜ row left in the file is not open."""
+    """(id, marker) for every row whose marker is live (🔴🟠🟡🟢); a ✅/⬜ row left in the file is not open.
+    A row may be defined mid-line (`**G9 🟠**`), so any bold id followed by a live marker counts: prose that bolds
+    a closed id beside a live marker would hide it from the routing guard. Keep markers out of such prose."""
     out = []
     for line in FOLLOWUPS.read_text(encoding="utf-8").split("\n"):
         if re.match(rf"- ({_MARK}) \*\*", line):

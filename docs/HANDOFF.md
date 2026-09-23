@@ -11,8 +11,8 @@ flap back-off, picker pacing, the respawn-profile rebuild, the office-test fixes
 45/70/0, Shields 45/0/105, Hardcore 45/0/0). **F206 is PROVEN** (levers §1 run f, a real TDM through Mission
 Control). **0.4.3's respawn profiles replace the F121/F209 mechanism** (timed vs station, a separate
 weapon-arming delay, equal go-live at T-3); both rows are closed. **The first field test is the Shields preset in a real match plus the new respawn rules on
-both phones; re-enable wireless debugging on both first.** Still open and P0: the BLE link-loop root cause
-(**F293**) and BLE setup-reliability metrics (**F297**); see Blocks 1 and 4 of [`bench-2026-09-24.md`](bench-2026-09-24.md).
+both phones** (Block 4 of [`bench-2026-09-24.md`](bench-2026-09-24.md)). Still open and P0: the BLE link-loop root
+cause (**F293**) and BLE setup-reliability metrics (**F297**); see Block 1.
 **Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32**; the claim
 checklist is [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md). Facts that session 1
 proved, and that every lane builds on:
