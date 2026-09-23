@@ -595,3 +595,42 @@ def test_r10_duel_cli_runs_end_to_end():
         assert "R10 (F308)" in text and "USP" in text and "Desert Eagle" in text
     finally:
         shutil.rmtree(out, ignore_errors=True)
+
+
+def _shields_low(cells) -> list[str]:
+    return [f"{name}: {r.win_rate:.1%}" for name, r in cells if r.win_rate < B.SHIELDS_BAR]
+
+
+def _shields_model() -> B.RecoilDuelModel:
+    m = _recoil_model(health_preset="shields")
+    assert m.pool_hp == 150
+    return m
+
+
+# F310 (Tony, 2026-09-23: "looser but generally yes"): every duel rule the Standard gates check (R1-R3, R4-R9,
+# R10b) holds on the Shields preset (45 health + 105 shield = 150) at `SHIELDS_BAR`, a PROPOSED 60% pending
+# Tony's decision. R10a is left out: its 35 HP finishing target is health only, the same on every preset.
+# Hardcore is reported by `--health-preset hardcore`, never gated. Three tests, so run_tests.py's SPLIT can
+# spread them. Break one once (e.g. set the bar to 0.64) and watch R8 go red at ~63%, then restore it.
+
+def test_shields_preset_recoil_rules_r1_to_r3():
+    m, reps, tap = _shields_model(), 10_000, float(B.CHARGE_TAP_CADENCE_MS)
+    cells = [("R1", B.recoil_duel_batch(B.run_recoil_duel_rule1, "cr", reps, SEED, "gate_rule1", m, tap)),
+             ("R2", B.recoil_duel_batch(B.run_recoil_duel_rule2, "ar", reps, SEED, "gate_rule2", m, tap)),
+             ("R3", B.recoil_duel_batch(B.run_recoil_duel_rule3, "burst", reps, SEED, "gate_rule3", m))]
+    low = _shields_low(cells)
+    assert not low, f"Shields preset under the {B.SHIELDS_BAR:.0%} bar (F310): " + "; ".join(low)
+
+
+def test_shields_preset_range_rules_r4_to_r9():
+    m = _shields_model()
+    low = _shields_low([(r.label, r) for r in B.range_duel_report(m, 10_000, SEED)])
+    assert not low, f"Shields preset under the {B.SHIELDS_BAR:.0%} bar (F310): " + "; ".join(low)
+
+
+def test_shields_preset_primaries_beat_sidearms_r10b():
+    m = _shields_model()
+    cells = [(f"R10b {B.R10_PRIMARY_NAMES[p]} vs {B.R10_SIDEARM_NAMES[s]}", B.r10_duel_batch(m, p, s, 10_000, SEED))
+             for p in B.R10_PRIMARIES for s in B.R10_SIDEARMS]
+    low = _shields_low(cells)
+    assert not low, f"Shields preset under the {B.SHIELDS_BAR:.0%} bar (F310): " + "; ".join(low)

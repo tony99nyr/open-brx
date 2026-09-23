@@ -58,7 +58,8 @@ FILE_TIMEOUT_S = float(os.environ.get("RUN_TESTS_TIMEOUT_S", "300"))
 # clock of a parallel run is the slowest process, and these files are several seconds of REAL waiting
 # (timers, reconnect windows, websocket round-trips), not CPU. Only list a file whose tests pass in any
 # subset: each chunk imports the module afresh, so a test that relies on an earlier one would fail loudly.
-SPLIT = {"test_mc_e2e": 5, "test_mc_polish": 6, "test_stage": 3, "test_stage_server": 2, "test_mc_net": 3}
+SPLIT = {"test_mc_e2e": 5, "test_mc_polish": 6, "test_stage": 3, "test_stage_server": 2, "test_mc_net": 3,
+         "test_balance_sim": 4}
 
 
 def run_file(stem: str, chunk: tuple[int, int] | None = None) -> dict:

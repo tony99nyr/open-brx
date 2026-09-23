@@ -1164,13 +1164,18 @@ class RecoilDuelModel:
     burst_pause_min_ms: float
     burst_pause_max_ms: float
     time_cap_ms: float
+    # F310: which health preset `pool_hp` came from (`compile.HEALTH_PRESETS`): the rules are Tony's at Standard,
+    # and F310 asks whether they hold, looser, on Shields (health + shield) and Hardcore (health alone).
+    health_preset: str = "standard"
 
     @classmethod
     def from_catalog(cls, cat: WeaponCatalog, *, aim_factor: float = 0.9, reaction_mean_ms: float = 250.0,
                      reaction_sd_ms: float = 80.0, burst_min: int = 3, burst_max: int = 5,
                      burst_pause_min_ms: float = 150.0, burst_pause_max_ms: float = 300.0,
-                     time_cap_ms: float = 10_000.0) -> "RecoilDuelModel":
-        hp, armour, _shield = HEALTH_PRESETS["standard"]
+                     time_cap_ms: float = 10_000.0, health_preset: str = "standard") -> "RecoilDuelModel":
+        # The duel treats the whole pool as one number: armour and shield both absorb before health, and a
+        # shield's recharge (Shields only) is slower than any duel here lasts, so it is left out.
+        hp, armour, shield = HEALTH_PRESETS[health_preset]
         ar_mag, ar_reserve, ar_reload_ms = cat._ammo("assault_rifle", None)
         cr_mag, cr_reserve, cr_reload_ms = cat._ammo("charge_rifle", None)
         smg_mag, smg_reserve, smg_reload_ms = cat._ammo("smg", None)
@@ -1182,7 +1187,7 @@ class RecoilDuelModel:
         sup_mag, sup_reserve, sup_reload_ms = cat._ammo("suppressor", None)
         amr_mag, amr_reserve, amr_reload_ms = cat._ammo("amr", None)
         bolt_mag, bolt_reserve, bolt_reload_ms = cat._ammo("bolt_rifle", None)
-        return cls(pool_hp=hp + armour, ar_dmg=cat.damage_per_pull("assault_rifle"),
+        return cls(health_preset=health_preset, pool_hp=hp + armour + shield, ar_dmg=cat.damage_per_pull("assault_rifle"),
                    ar_fire_ms=float(cat.fire_ms("assault_rifle")), ar_mag=ar_mag, ar_reserve=ar_reserve,
                    ar_reload_ms=float(ar_reload_ms), ar_profile=recoil_profile(cat._row("assault_rifle")),
                    cr_charge_dmg=cat.damage_per_pull("charge_rifle"), cr_tap_dmg=cat.tap_damage("charge_rifle"),
@@ -1319,10 +1324,10 @@ def recoil_duel_report(m: RecoilDuelModel, reps: int, seed: int, rules=("1", "2"
 
 def recoil_duel_summary_text(results: list[RecoilDuelResult], m: RecoilDuelModel, tap_ms_current: float,
                              tap_ms_proposed: float) -> str:
-    hp, armour, _shield = HEALTH_PRESETS["standard"]
+    hp, armour, shield = HEALTH_PRESETS[m.health_preset]
     lines = [
         "RECOIL DUEL: Tony's three 2026-09-23 balance rules (F291), stochastic 1v1",
-        f"pool {m.pool_hp} (Standard: {hp} health + {armour} armour); aim factor {m.aim_factor:g} "
+        f"pool {m.pool_hp} ({m.health_preset.capitalize()}: {hp} health + {armour} armour + {shield} shield); aim factor {m.aim_factor:g} "
         "(hit chance = accuracy/100 x aim factor -- the accuracy-to-hit-rate mapping is UNPROVEN on "
         f"the bench); reaction N({m.reaction_mean_ms:.0f}, {m.reaction_sd_ms:.0f}) ms/player; "
         f"burst {m.burst_min}-{m.burst_max} rounds, {m.burst_pause_min_ms:.0f}-{m.burst_pause_max_ms:.0f} ms pause",
@@ -1458,6 +1463,12 @@ R10_SIDEARM_NAMES = {"usp": "USP", "deagle": "Desert Eagle"}
 R10_FINISH_POOL_HP = 35        # "finishes a player on 35 HP" -- health only, no armour: a closing shot
 R10_FINISH_BAR_MS = 1000.0
 
+# F310: the balance rules on the Shields preset (45 health + 105 shield = 150). Tony, 2026-09-23: "looser but
+# generally yes". PROPOSED bar, pending Tony: 60%, set from the first three-preset run (lowest Shields cell R8 at
+# 63.0%, R4a at 65.0%, at 10,000 reps and seed 7). Hardcore (45 health) is reported, never gated: one-shot
+# kills are that preset's point.
+SHIELDS_BAR = 0.60
+
 
 def run_range_duel(rng: random.Random, m: RecoilDuelModel, a_kind: str, b_kind: str, band: str) -> str | None:
     """One duel between two `RANGE_COMBATANTS` at a range band. Returns the WINNING KIND (not "a"/"b"),
@@ -1505,7 +1516,7 @@ def range_duel_report(m: RecoilDuelModel, reps: int, seed: int, keys=tuple(RANGE
 def range_duel_summary_text(results: list[RecoilDuelResult], m: RecoilDuelModel) -> str:
     lines = [
         "RANGE DUEL: Tony's 2026-09-23 close/mid-range balance rules R4-R9 (F308), stochastic 1v1",
-        f"pool {m.pool_hp}; aim factor {m.aim_factor:g}; reaction N({m.reaction_mean_ms:.0f}, "
+        f"pool {m.pool_hp} ({m.health_preset}); aim factor {m.aim_factor:g}; reaction N({m.reaction_mean_ms:.0f}, "
         f"{m.reaction_sd_ms:.0f}) ms/player; bursting AR: {m.burst_min}-{m.burst_max} rounds, "
         f"{m.burst_pause_min_ms:.0f}-{m.burst_pause_max_ms:.0f} ms pause; close = gun word + declared "
         "headset word, mid = gun word only (past the headset word's own reach, unmeasured -- F275)", "",
@@ -1635,6 +1646,8 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--no-range", action="store_true", help="switch the range model off")
     ap.add_argument("--no-tactical-reload", action="store_true", help="reload only on an empty magazine")
     ap.add_argument("--health", type=int, help="override the game's max_hp")
+    ap.add_argument("--health-preset", choices=sorted(HEALTH_PRESETS), default="standard",
+                    help="recoil-duel/range-duel/r10-duel: the pool each duellist starts with (F310)")
     ap.add_argument("--armour", type=int, help="override the game's max_armor")
     ap.add_argument("--shield", type=int, help="override the spawn shield (default 0)")
     ap.add_argument("--respawn-s", type=float, help="override the game's respawn delay")
@@ -1689,7 +1702,8 @@ def _run_recoil_duel(args) -> int:
     m = RecoilDuelModel.from_catalog(cat, aim_factor=args.aim_factor, reaction_mean_ms=args.reaction_mean_ms,
                                      reaction_sd_ms=args.reaction_sd_ms, burst_min=args.burst_min,
                                      burst_max=args.burst_max, burst_pause_min_ms=args.burst_pause_min_ms,
-                                     burst_pause_max_ms=args.burst_pause_max_ms)
+                                     burst_pause_max_ms=args.burst_pause_max_ms,
+                                     health_preset=args.health_preset)
     seed = args.recoil_seed if args.recoil_seed is not None else args.seed
     tap_current = args.tap_ms if args.tap_ms is not None else float(CHARGE_TAP_CADENCE_MS)
     rules = ("1", "2", "3") if args.recoil_rule == "all" else (args.recoil_rule,)
@@ -1710,7 +1724,8 @@ def _run_range_duel(args) -> int:
     m = RecoilDuelModel.from_catalog(cat, aim_factor=args.aim_factor, reaction_mean_ms=args.reaction_mean_ms,
                                      reaction_sd_ms=args.reaction_sd_ms, burst_min=args.burst_min,
                                      burst_max=args.burst_max, burst_pause_min_ms=args.burst_pause_min_ms,
-                                     burst_pause_max_ms=args.burst_pause_max_ms)
+                                     burst_pause_max_ms=args.burst_pause_max_ms,
+                                     health_preset=args.health_preset)
     seed = args.recoil_seed if args.recoil_seed is not None else args.seed
     keys = tuple(sorted(RANGE_RULES)) if args.range_rule == "all" else (args.range_rule,)
     t0 = walltime.time()
@@ -1730,7 +1745,8 @@ def _run_r10_duel(args) -> int:
     m = RecoilDuelModel.from_catalog(cat, aim_factor=args.aim_factor, reaction_mean_ms=args.reaction_mean_ms,
                                      reaction_sd_ms=args.reaction_sd_ms, burst_min=args.burst_min,
                                      burst_max=args.burst_max, burst_pause_min_ms=args.burst_pause_min_ms,
-                                     burst_pause_max_ms=args.burst_pause_max_ms)
+                                     burst_pause_max_ms=args.burst_pause_max_ms,
+                                     health_preset=args.health_preset)
     seed = args.recoil_seed if args.recoil_seed is not None else args.seed
     t0 = walltime.time()
     finish, duels = r10_report(m, args.recoil_reps, seed)
