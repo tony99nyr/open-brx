@@ -582,6 +582,22 @@ def assert_sir_covers_weapons(head: list[str]) -> None:
 # beacon wherever one is present; it now also serves every mode with no objective at all.
 _OBJECTIVE_SIR_ROW = "$SIR,15,0,,28,0,0,1,,*"
 
+# F312 (2026-09-23, a code reading, bench-gated): with friendly fire off, a fn-28 row drops a word whose
+# team is the receiver's own (bench-confirmed), and a grenade's capture word and beacons carry the NEW
+# owner's team, so the capturing team may never report its own capture. fn 34 is the first candidate for
+# a row that registers whatever the team (bench-2026-09-24 Block 7 step 3 and step 8); its frame is the
+# bench's exact one. It ships only behind `--bench-capture-row 34` until Block 7 step 8 confirms both the
+# problem and that fn 34 registers without moving the capturer's pool. Keys = the `$SIR` function.
+CAPTURE_ROWS: dict[int, str] = {28: _OBJECTIVE_SIR_ROW, 34: "$SIR,15,0,,34,,,,,*"}
+CAPTURE_ROW_DEFAULT = 28
+
+
+def check_capture_row_fn(fn: object) -> int:
+    """F312: the `<15,0>` function a compiler may ship; only the bench-known frames in `CAPTURE_ROWS`."""
+    if isinstance(fn, bool) or not isinstance(fn, int) or fn not in CAPTURE_ROWS:
+        raise ValueError(f"capture row fn must be one of {sorted(CAPTURE_ROWS)}, not {fn!r}")
+    return fn
+
 # --------------------------------------------------------------------------- #
 # F121 / A23 SPAWN PROTECTION -- the head must not ARM hit reception
 # --------------------------------------------------------------------------- #
@@ -1700,11 +1716,17 @@ class Compiler:
     """Implements interfaces.Compiler."""
 
     def __init__(self, catalog: WeaponCatalog | None = None, perks: PerkCatalog | None = None,
-                 bench_volume: int | None = None) -> None:
+                 bench_volume: int | None = None, capture_row_fn: int | None = None) -> None:
         self.catalog = catalog or WeaponCatalog()
         self.perks = perks or PerkCatalog()
         # None = the venue volume. A number = `--bench-volume`: every $VOL this compiler writes.
         self.bench_volume = None if bench_volume is None else check_volume(bench_volume)
+        # F312: None = the shipped fn-28 row. A number = `--bench-capture-row`: the `<15,0>` row's function.
+        self.capture_row_fn = None if capture_row_fn is None else check_capture_row_fn(capture_row_fn)
+
+    def capture_row(self) -> str:
+        """The `<15,0>` row this compiler ships in every live table (S57, F312)."""
+        return CAPTURE_ROWS[self.capture_row_fn if self.capture_row_fn is not None else CAPTURE_ROW_DEFAULT]
 
     def play_volume(self, environment: str | None) -> int:
         """The $VOL for a match head: the bench volume when set, else the venue volume."""
@@ -2271,7 +2293,7 @@ class Compiler:
         # no weapon or class group is ever allocated, so no table should already key it -- but if one
         # ever does, that real row wins and this never doubles up on the same cell.
         if ("15", "0") not in _sir_index(sir_live):
-            sir_live = list(sir_live) + [_OBJECTIVE_SIR_ROW]   # F70/F79/S57: the silent proto-15 beacon row
+            sir_live = list(sir_live) + [self.capture_row()]   # F70/F79/S57: the proto-15 beacon row (F312: its fn)
         # F121/A23: the HEAD carries the same cells DISARMED -- hits register, nothing moves, no sound. The
         # real table is a `sir_pool` take the node writes behind the first spawn's protection (F121 rebuild).
         sir_pregame = sir_spawn_protected(sir_live)

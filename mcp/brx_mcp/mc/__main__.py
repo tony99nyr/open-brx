@@ -106,10 +106,11 @@ def build(args):
     from .store import Store
 
     bench_volume = getattr(args, "bench_volume", None)
-    compiler = FakeCompiler(bench_volume=bench_volume)
+    capture_row_fn = getattr(args, "bench_capture_row", None)   # F312
+    compiler = FakeCompiler(bench_volume=bench_volume, capture_row_fn=capture_row_fn)
     try:
         from .compile import Compiler as RealCompiler  # M-MODES lane
-        compiler = RealCompiler(bench_volume=bench_volume)
+        compiler = RealCompiler(bench_volume=bench_volume, capture_row_fn=capture_row_fn)
         log.info("compiler: real M-MODES compiler")
     except Exception as e:
         log.warning("compiler: FAKE (M-MODES compile.py not available: %s)", e)
@@ -410,6 +411,10 @@ def parser() -> argparse.ArgumentParser:
                     const=65,
                     help="bench run: every $VOL MC compiles (match heads, try-outs) plays at N "
                          "(default 65) instead of the venue volume. Not for a real game")
+    ap.add_argument("--bench-capture-row", type=int, choices=[28, 34], default=None, metavar="FN",
+                    help="bench run (F312): the $SIR <15,0> row's function in every live table. 34 is the "
+                         "team-blind candidate under bench test (bench-2026-09-24 Block 7 step 8); 28 is the "
+                         "shipped row. Not for a real game until the bench confirms it")
     ap.add_argument("-v", "--verbose", action="store_true")
     return ap
 
@@ -430,6 +435,11 @@ def main(argv=None):
         _rule = "!" * 78
         print(_rule, flush=True)
         print(f"  BENCH VOLUME {args.bench_volume}: not for a real game (every $VOL MC writes, try-outs too)", flush=True)
+        print(_rule, flush=True)
+    if args.bench_capture_row is not None:
+        _rule = "!" * 78
+        print(_rule, flush=True)
+        print(f"  BENCH CAPTURE ROW fn {args.bench_capture_row}: the <15,0> row every gun gets (F312). Not for a real game", flush=True)
         print(_rule, flush=True)
     if not inspect.iscoroutinefunction(getattr(net, "start", None)):
         # sync/fake net is already bound → its ws_url is real now. The async NetServer prints the nodes

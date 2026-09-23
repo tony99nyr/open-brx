@@ -894,16 +894,16 @@ def test_compile_raises_via_the_objective_guard_if_the_beacon_row_were_ever_drop
     config with nothing wired to protocol 15) and confirm `compile()` itself refuses to ship it,
     not just the unit-level guard above."""
     import brx_mcp.mc.compile as CM
-    orig = CM._OBJECTIVE_SIR_ROW
+    orig = CM.CAPTURE_ROWS[CM.CAPTURE_ROW_DEFAULT]   # F312: the compiler reads the row through CAPTURE_ROWS
     try:
-        CM._OBJECTIVE_SIR_ROW = "$SIR,0,0,,1,0,0,1,,*"   # a row that keys an EXISTING cell, not 15,0 -- the row silently "vanishes" as a beacon row
+        CM.CAPTURE_ROWS[CM.CAPTURE_ROW_DEFAULT] = "$SIR,0,0,,1,0,0,1,,*"   # a row that keys an EXISTING cell, not 15,0 -- the row silently "vanishes" as a beacon row
         try:
             C.compile(_cfg(mode="koth"), _player(), _TEAMS)
             assert False, "expected the F79 guard to raise when no protocol-15 row reaches the head"
         except ValueError as e:
             assert "F79" in str(e)
     finally:
-        CM._OBJECTIVE_SIR_ROW = orig
+        CM.CAPTURE_ROWS[CM.CAPTURE_ROW_DEFAULT] = orig
 
 
 # ---- the shared golden bundle (M10) --------------------------------------
@@ -1996,3 +1996,49 @@ def test_round3_field4_zero_damage_on_a_DAMAGE_row_is_an_error_and_a_grant_row_i
         compile_mod._SIR_TABLE = _SIR_TABLE
     assert r2["ok"], r2["errors"]
     assert any("healgun" in w and "GRANT" in w for w in r2["warnings"]), r2["warnings"]
+
+
+# --------------------------------------------------------------------------- F312 capture row (bench-gated)
+def test_f312_the_shipped_capture_row_is_fn_28_until_the_bench_says_otherwise():
+    """F312: the team-blind candidate (fn 34) must never ship by default. Every mode's live table and
+    head carry the fn-28 row unless the bench flag asks for another."""
+    from brx_mcp.mc import compile as CM
+    assert CM.CAPTURE_ROW_DEFAULT == 28 and Compiler().capture_row() == "$SIR,15,0,,28,0,0,1,,*"
+    for mode in ("tdm", "koth"):
+        b = C.compile(_cfg(mode=mode), _player(), _TEAMS)
+        live = [f for take in b["sir_pool"] for f in take if f.startswith("$SIR,15,0,")]
+        assert live and set(live) == {"$SIR,15,0,,28,0,0,1,,*"}, f"{mode}: {live}"
+
+
+def test_f312_the_bench_flag_ships_fn_34_live_and_keeps_the_head_protected():
+    """`--bench-capture-row 34`: every live table (the `sir_pool` takes the node writes after the spawn)
+    carries the bench's exact fn-34 frame, once; the HEAD stays the spawn-protected fn-28 twin, and the
+    F79 objective guard still passes because the <15,0> cell is present either way."""
+    bench = Compiler(capture_row_fn=34)
+    for mode in ("tdm", "ffa", "koth", "domination"):
+        b = bench.compile(_cfg(mode=mode), _player(), _TEAMS)
+        for take in b["sir_pool"]:
+            rows = [f for f in take if f.startswith("$SIR,15,0,")]
+            assert rows == ["$SIR,15,0,,34,,,,,*"], f"{mode} live take: {rows}"
+        head_rows = [f for f in b["head"] if f.startswith("$SIR,15,0,")]
+        assert len(head_rows) == 1 and ",,28," in head_rows[0], f"{mode} head must stay protected: {head_rows}"
+
+
+def test_f312_only_the_bench_known_frames_are_accepted():
+    for bad in (24, 0, "34", True, 35):
+        try:
+            Compiler(capture_row_fn=bad)
+            raise AssertionError(f"accepted capture row fn {bad!r}")
+        except ValueError:
+            pass
+
+
+def test_f312_the_cli_flag_reaches_the_compiler():
+    from brx_mcp.mc.__main__ import parser
+    assert parser().parse_args([]).bench_capture_row is None, "off unless asked for"
+    assert parser().parse_args(["--bench-capture-row", "34"]).bench_capture_row == 34
+    try:
+        parser().parse_args(["--bench-capture-row", "24"])
+        raise AssertionError("argparse accepted an unknown function")
+    except SystemExit:
+        pass
