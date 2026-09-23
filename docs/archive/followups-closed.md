@@ -518,6 +518,13 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
   plus a held seventh, cancels on an outside-frame release or eligibility loss, and refuses a gun link that comes
   up during the hold.
 
+# Closed 2026-09-22: low-risk polish residue
+
+- 2026-09-22 **F224** is stale: live-gun recovery has the bounded `GUN_RECOVERY_MAX_WRITES` retry budget and
+  exhaustion coverage; the picker is covered by behavior tests rather than a source-text grep; the night skin
+  raises standby contrast/weight; and the iOS-like picker path explicitly says **BLUETOOTH IS OFF** while keeping
+  Android-only enable/settings actions gated.
+
 # Closed 2026-09-22: standby screen truth in the standard gate
 
 - 2026-09-22 **F180** ordinary app `npm test` now runs all six existing A38 standby browser checks: both standby

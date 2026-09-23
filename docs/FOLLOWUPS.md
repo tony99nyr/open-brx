@@ -81,7 +81,7 @@ right** and this index is stale. Do not cite it as evidence that something is or
 - 🔴 **B23** · **E5** · **F43** · **F231** · **F264** · **S10**
 - 🟠 **B4** · **B21** · **B31** · **E2** · **F12** · **F40** · **F70** · **F164** · **F256** · **F260** · **F269** · **F272** · **F277** · **F280** · **F300** · **P8** · **S3** · **S14** · **S33** · **S50** · **S53**
 - 🟡 **B1** · **B8** · **B14** · **B17** · **D1** · **D3** · **E3** · **E4** · **E6** · **F5** · **F16** · **F20** · **F24** · **F25** · **F42** · **F60** · **F68** · **F88** · **F95** · **F108** · **F109** · **F112** · **F113** · **F123** · **F126** · **F128** · **F130** · **F132** · **F133** · **F161** · **F176** · **F177** · **F178** · **F186** · **F187** · **F191** · **F221** · **F229** · **F233** · **F251** · **F266** · **F267** · **F268** · **F270** · **F281** · **F284** · **F289** · **H1** · **H2** · **H6** · **H8** · **K2** · **Q12′** · **Q13** · **R3** · **S1** · **S2** · **S6** · **S7** · **S-A12** · **S13** · **S25** · **S27** · **S28** · **S29** · **S30** · **S31** · **S32** · **S34** · **S35** · **S36** · **S42** · **S43** · **S46** · **S47** · **S48** · **S49** · **S51** · **S54**
-- 🟢 **B11** · **B22** · ⬜ **D5** · **E7** · **F14** · **F17** · **F18** · **F19** · **F32** · **F52** · **F83** · **F87** · **F89** · **F93** · **F98** · **F99** · **F100** · **F107** · **F204** · **F224** · **F250** · **F252** · **F273** · ⬜ **H3** · ⬜ **H4** · ⬜ **H5** · ⬜ **K6** · ⬜ **K8** · **P14** · **R2** · **S19**
+- 🟢 **B11** · **B22** · ⬜ **D5** · **E7** · **F14** · **F17** · **F18** · **F19** · **F32** · **F52** · **F83** · **F87** · **F89** · **F93** · **F98** · **F99** · **F100** · **F107** · **F204** · **F250** · **F252** · **F273** · ⬜ **H3** · ⬜ **H4** · ⬜ **H5** · ⬜ **K6** · ⬜ **K8** · **P14** · **R2** · **S19**
 
 ## 1. Before going public
 
@@ -337,7 +337,6 @@ nine of these eleven were root-caused without touching a gun.
 **Verification bench 2026-09-17, desk work built the same day. Evidence:** `docs/experiment-log/2026-09.md` (2026-09-17 entry).
 
 - **F237 🟠 Needs Tony at the bench** confirm the Pixel 5 BLE flood is gone: no Choreographer skipped frames, taps land instantly, and stations are still detected in a scanner-respawn game with the 25-per-second scan guard in place. `trigger`. **Bench 2026-09-18, partly answered and sharpened:** the scan flood itself is gone and the picker is clean (F258), but the Pixel 5 still took **about 10 s** to connect after a tap on one occasion, and about 3 s on another. The distinguishing fact is Tony's: **after a force-close it reconnects immediately**, so a cold start is fast and the slow case is a re-pick while the app is already running. That points at leftover link or scan state in the process rather than the radio or the gun. Timers are hooked on `scan`/`stopScan`/`connect`/`disconnect` in the live app to catch the next slow one with a breakdown.
-- **F224 🟢** low items left by the polish loop: add a retry cap for a live-table write that keeps failing; the Bluetooth-picker test greps source text, the same pattern as F179; the green STANDING BY label has low contrast in night mode; iOS has no hint that Bluetooth is off. `build`.
 
 **Game test 2026-09-11 (1v1, two taggers). Full sheet: [`archive/game-test-2026-09-11.md`](archive/game-test-2026-09-11.md).**
 
