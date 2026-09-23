@@ -868,6 +868,8 @@ class Event(TypedDict, total=False):
     # F309: the phone's own connection (Capacitor Network `connectionType`), restated on every heartbeat.
     # A CLAIM, unlike `reach` (which MC stamps from the socket): only the phone knows whether it is
     # riding the field Wi-Fi. Absent = an older app or no answer; MC reads anything unknown as not cellular.
+    # The node says `cellular` only when the network at bind time AND the current one are both cellular
+    # (a bound socket stays on the network it opened on); the full rule is contracts §5d.
     transport: Literal["wifi", "cellular", "none", "unknown"]
 
 

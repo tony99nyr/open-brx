@@ -125,7 +125,7 @@ The engine emits **only node-observable facts**, handed to Transport. Two classe
 
 **Persisted facts** (queued in the ring if the LAN is down — §3.7; carry `Envelope.seq` + `match_id`):
 - **`hit_taken`** — on a `$HIR` (tok 2 ≠ 15) that drops `$HP`: `{shooter_num, shooter_team, dmg, ir_proto, sensor}`
-  (dmg = the hp+armor delta the hit caused).
+  (dmg = the hp+armor delta the hit caused), plus `weapon_id` when the shooter's weapon resolves (§3.5, S56).
 - **`death`** — on `$HP→0` (§3.4): `{shooter_num, shooter_team, desync?}` from the latch (§3.5) —
   `shooter_num: 0` when the latch is older than `DEATH_LATCH_MS` (environmental / unknown), and
   `desync: true` when the `$HP,0` was learned out of band — inside a rejoin reconcile or a lobby/armed
@@ -134,6 +134,9 @@ The engine emits **only node-observable facts**, handed to Transport. Two classe
   `resync: true` is a **legacy flag**: the retired live-reconnect resync set it; the reconcile that replaced it
   (§3.10) re-arms without emitting a respawn.
 - **`team_change`** — `{tid}` when this gun moved to another team mid-match (infection, §3.4).
+- **F289:** a `respawn` or `team_change` carries `protect_ms` when the phone still owes the write that ends spawn
+  protection (`engine.js _protectOwedMs`: the profile's `protect_ms`/`station_protect_ms`, else
+  `SPAWN_PROTECT_MAX_MS`, at least 1). It is sent at once, so MC knows of the window even if the phone dies inside it.
 `shooter_num` **0 is reserved** (contracts A5.1): never a player — a tutorial-armed gun, a stale latch, a
 desync. Players are 1–63.
 
@@ -147,6 +150,8 @@ facts. `t = synced_now()` (contracts §7). Idempotent by `(node_id, seq)`.
   idle|connected|kitted|lobby|armed|live` (the §3.8 game phase — **orthogonal** to link state); `t_minus_ms`
   only while ARMED; `deadline_s` = seconds left on the respawn timer when DOWN; `preflight` = `{ssid_ok,
   mc_reachable, auto_join_ok, cellular_off, dnd_on, phone_batt, screen_on, foreground, gun_linked, headset_ok}` (§5).
+  `protected: true` (F289) rides while the protection write is still owed; absence clears it. `transport` (F309) is
+  the phone's own connection claim, restated every beat; the bind rule is contracts §5d.
 
 **The `shots` counter rule** (contracts A4.4): `$ALCD` token 1 is the magazine count. A **decrement** (within
 one magazine) adds `prev − new` to `shots`; an **increase** (reload, pickup, respawn refill) is ignored and
@@ -186,6 +191,20 @@ valid `$HIR` (tok 2 ≠ 15); at death read the latch iff `now − at ≤ DEATH_L
 `shooter_num: 0`. Attribution is **exact**; there is no team-only fallback and no heuristic. The node still
 **never computes its own kills** — a kill you score is invisible in your own stream; only the *victim* reports
 it (§3.6). The `roster` turns a number into a name for the HUD; an unknown number is still reported verbatim.
+
+**The per-life damage ledger (S56 "what hit me", contracts A52).** HUD information only: no game rule reads it.
+- **Weapon naming.** The latch also holds `$HIR` token 5. The node matches it against the shooter's roster
+  `weapons[].hir` first, then against the catalogue as a pickup (the shooter's own ids left out). Two candidates
+  are `ambiguous` and never guessed: the row is unclaimed and `hit_taken` carries no `weapon_id`.
+- **Taken.** Each `hit_taken` books its `dmg` against the shooter's `num`. The second word of a dual-emitter shot
+  (same `shot_group`) adds damage and not a hit. A poison tick books against the poisoner with no weapon row.
+- **Dealt.** Each `feedback{kind:"hit"}` books against the victim, with the weapon named from the catalogue. A
+  relay with no `shot_group` pairs a two-word shot by time (`DUAL_RELAY_MS`, 150 ms).
+- **`state().life` and `lastLife`.** Each is `{taken[], dealt[], takenTotal, dealtTotal, dealtPartial}`, rows sorted
+  by `dmg`. A new life (spawn, revive, infection flip, match end) resets `life`; a death snapshots it as `lastLife`
+  until the next death. A late relay books to the life its `t` falls in, or is dropped.
+- **`dealtPartial`** is true while MC's relay may still be catching up: the link dropped during that life, or (for
+  `lastLife` only) the death was under `DEALT_GRACE_MS` (2000 ms) ago.
 
 ### 3.6 Kill feedback is MC-driven — do NOT detect own-kills
 
