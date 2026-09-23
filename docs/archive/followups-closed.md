@@ -1,5 +1,10 @@
 # Closed followups (archive)
 
+# Closed 2026-09-23: native playbook command safety decision
+
+- 2026-09-23 **F273** remains on the known command list: `$PB*` and `$AS` are used by bench tools, no compiled
+  bundle emits them, and the protocol/safety tests preserve that boundary. The row's decision was already recorded.
+
 # Closed 2026-09-23: FFA standings ladder
 
 - 2026-09-23 **F18** was stale bookkeeping: the HUD already renders the FFA player standings board from the
