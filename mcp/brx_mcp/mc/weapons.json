@@ -22,7 +22,9 @@
     "ceiling": 100,
     "floor": 70,
     "per_shot": 10,
-    "recover_ms": 150
+    "recover_ms": 150,
+    "degraded": 80,
+    "heavy": 60
    },
    "capture": {
     "src": "2026-08-26-weapons-ar-plus-burstrifle.btsnoop",
@@ -60,9 +62,9 @@
    "range_target_m": "18-20 indoor / 40-45 outdoor (Q15)",
    "recoil": {
     "ceiling": 100,
-    "floor": 85,
-    "per_shot": 5,
-    "recover_ms": 150
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 0
    },
    "capture": {
     "src": "2026-08-23-gset-respawn05.btsnoop",
@@ -174,7 +176,7 @@
    "ttk_ms": 1200,
    "recoil": {
     "ceiling": 100,
-    "floor": 55,
+    "floor": 60,
     "per_shot": 15,
     "recover_ms": 150
    },
@@ -267,7 +269,7 @@
    "weapon_id": "stinger",
    "recoil": {
     "ceiling": 100,
-    "floor": 45,
+    "floor": 60,
     "per_shot": 8,
     "recover_ms": 120
    },
@@ -455,7 +457,7 @@
    "ttk_ms": 1960,
    "recoil": {
     "ceiling": 100,
-    "floor": 55,
+    "floor": 60,
     "per_shot": 15,
     "recover_ms": 150
    },
@@ -538,11 +540,11 @@
    "reserve": 80,
    "reload_ms": 2500,
    "rounds_per_charge": 10,
-   "dmg": 74,
+   "dmg": 61,
    "rof": 6,
    "rng": 75,
-   "htk": 3,
-   "ttk_ms": 570,
+   "htk": 4,
+   "ttk_ms": 855,
    "range_band": "long",
    "range_target_m": "full reach indoor / 60m+ outdoor (Q15; it charges behind cover, then reaches)",
    "recoil": {
@@ -556,7 +558,7 @@
     "frame": "$WEAP,0,,100,8,0,100,0,,,,,,,,1250,850,100,200,2500,0,14,100,100,,14,,,E03,C15,C17,,D30,D29,D37,A73,C19,C04,20,150,100,100,75,*"
    },
    "wire": {
-    "dmg": 85,
+    "dmg": 70,
     "range_outdoor_pct": 85
    },
    "overrides": {
@@ -571,7 +573,7 @@
     "marksman",
     "sniper"
    ],
-   "notes": "Pre-charge it behind cover, then the kill is one release and two taps: an 85-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus two 20-damage taps drops a 115 pool in about 1s from release -- 3 trigger actions, 12 of the 40 rounds up, 84 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, eighty back -- three combo kills a magazine, ten across the kit."
+   "notes": "2026-09-23 (F280): charge damage 85 -> 70 (`wire.dmg`), which raises the kill from one charge plus two taps to one charge plus THREE. Pre-charge it behind cover, then the kill is one release and three taps: a 70-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus three 20-damage taps drops a 115 pool in 0.855s from release (4 trigger actions at the bench-measured 285ms tap cadence, S43 -- the cadence itself is a measured fact and is UNCHANGED here) -- 13 of the 40 rounds up, about 98 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, eighty back -- three combo kills a magazine, ten across the kit."
   },
   {
    "weapon_id": "glock",

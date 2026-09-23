@@ -382,13 +382,26 @@ export const RECOIL_SETTLE_MIN_MS = 600;
 // F259 step 2 (Tony, bench 2026-09-18): "maybe we can update it to do 2 steps instead of 1? normal
 // degraded and very degraded." The rungs are the OLD GRADUAL LADDER'S OWN ENDS: `crisp` is the ceiling it
 // started from and `heavy` is the floor it walked down to, with `degraded` halfway between. So the second
-// step costs no weapon its identity -- the assault rifle still bottoms out at 70 exactly as it always
-// did, it just arrives there in two visible stages instead of twenty invisible ones.
+// step cost no weapon its identity at the time -- the assault rifle bottomed out at 70 exactly as it
+// always did, it just arrived there in two visible stages instead of twenty invisible ones. S54
+// (2026-09-23) later moved the Assault Rifle's own floor to 60 (see below): a DEPTH change, not a return
+// of the coupling this paragraph is describing.
 //
-// `after_heavy` is twice `after_shots`: "you are holding the trigger", then "you are still holding it".
-// ⚠ THE DOUBLING HAS NO EVIDENCE BEHIND IT. It is a reading of what the two stages mean, not a
-// measurement, and it wants a bench pass.
-export const RECOIL_HEAVY_BURST_FACTOR = 2;
+// S54/F268/F280 (Tony, 2026-09-23): the ladder's DEPTH used to decide how many rounds a burst takes to
+// degrade (`ceil((crisp - heavy) / per_shot)`), which has no relationship to how long a player has held
+// the trigger down -- the bench measurement that forced this rewrite found `after_heavy` landing 6 rounds
+// into EVERY degrading weapon regardless of its floor, so `heavy` owned 84-98% of a magazine instead of
+// being the second of two stages. The rungs now key off ROUNDS PER TRIGGER PULL instead, scaled by
+// calibre: a reference weapon doing `RECOIL_REF_DMG` a hit fires `RECOIL_CLEAN_ROUNDS` clean rounds
+// before the next one degrades it, and `RECOIL_HEAVY_EXTRA_ROUNDS` more before heavy. A weapon with a
+// different `dmg` scales both counts by `RECOIL_REF_DMG / dmg`, so a bigger round kicks in sooner --
+// the calibre pays for its own damage, not the ladder's shape. This mirrors held-fire TIME without
+// depending on a weapon's fire interval, which several catalogue rows do not publish cleanly.
+export const RECOIL_CLEAN_ROUNDS = 5;
+export const RECOIL_HEAVY_EXTRA_ROUNDS = 3;
+// The reference weapon the two counts above are tuned against (the Assault Rifle/SMG/Energy Rifle's 8).
+// A weapon with double the damage kicks in after half the rounds; half the damage, twice as many.
+export const RECOIL_REF_DMG = 8;
 // F259 (bench 2026-09-18): how long the node owns a slot's magazine after it writes one, when the gun has
 // not yet echoed the number back. A `$WEAP` + `$AMMO` pair makes the gun send `$ALCD <clip>` then
 // `$ALCD <n>`, and that second frame is a decrement of `clip - n` that is NOT fire. The window normally
@@ -3570,6 +3583,13 @@ export class Engine {
   // `_recoilStep` reads from the motion sensor; a future flinch module can read `this._recoil.value`
   // (today's live accuracy) to decide how hard to jolt. Neither touches the writer or the verify/retry
   // loop below.
+  //
+  // S54 (2026-09-23), BENCH-PROVISIONAL: `_onButton` also reads the trigger's own `$BUT,0,0` release
+  // edge, but ONLY while the weapon is still CRISP -- a burst that never reached `afterShots` is cleared
+  // the moment the trigger comes up, rather than waiting out `settleMs` for a round count that was never
+  // going anywhere. This costs no write; the state has not changed. A DEGRADED or HEAVY weapon still
+  // recovers exactly as above: on the settle clock, one write, never on a button edge, because a release
+  // is evidence this pull is over, not that the player has stopped shooting for good.
   get recoilEnabled() { return !this.config || this.config.recoil !== false; }   // S42: default ON -- only an explicit `false` turns it off
   /** {weapon_id} for the ACTIVE slot, straight off the loadout -- the same lookup `_reloadPulled` and
    *  `weaponName` already use. */
@@ -3596,59 +3616,58 @@ export class Engine {
     if (!r.disabled && droppedVerify) r.dirty = true;
     this.log(`accuracy writes held ${ACC_HOLD_MS} ms — ${why}`, 'li');
   }
-  /** The three-state shape, read from the catalogue's `recoil` block.
+  /** The three-state shape, read from the catalogue ROW (`weaponRow(id)`'s shape: the `recoil` block
+   *  plus `dmg`, top-level or nested under `stats` -- the wire ships it under `stats`, test catalogues
+   *  often ship it flat, so both are read).
    *
-   *  ⚠ The block the catalogue ships TODAY is `{ceiling, floor, per_shot, recover_ms}`, the old gradual
-   *  ladder's shape, and `mcp/brx_mcp/mc/weapons.json` is owned elsewhere. So this reads the fields the
-   *  model wants (`crisp`, `degraded`, `heavy`, `after_shots`, `after_heavy`, `settle_ms`) and derives
-   *  each one when it is absent, which is how the new fields land without a second change here. The
-   *  derivation reproduces the catalogue owner's table exactly, because the table is the old ladder read
-   *  as three rungs rather than twenty:
-   *    crisp       the ladder's CEILING -- where the weapon has always started.
-   *    heavy       the ladder's FLOOR -- where it has always bottomed out. The second step therefore
-   *                costs no weapon its identity: the assault rifle still ends at 70, it just gets there
-   *                in two visible stages.
-   *    degraded    halfway between the two, rounded DOWN (the burst rifle's 100/85 reads as 92).
-   *    after_shots the ladder's LENGTH: the rounds it took to walk ceiling -> floor at `per_shot`. An
-   *                assault rifle (100 -> 70 at 10) reads as 3 rounds, a force rifle (100 -> 60 at 10) as
-   *                4, a stinger (100 -> 45 at 8) as 7. Those are playable numbers, not placeholders.
-   *    after_heavy RECOIL_HEAVY_BURST_FACTOR times `after_shots`. See that constant: the doubling is a
-   *                reading, not a measurement.
+   *  S54/F268/F280 (Tony, 2026-09-23): the rungs are keyed off ROUNDS PER TRIGGER PULL, scaled by
+   *  calibre, not off the ladder's own depth or the magazine size. A row's `crisp`/`degraded`/`heavy`/
+   *  `after_shots`/`after_heavy`/`settle_ms` fields still win outright when the catalogue declares them
+   *  (S54); a row that omits any of them derives it here:
+   *    crisp       the ladder's CEILING (`r.ceiling` if `r.crisp` is absent) -- where every weapon starts.
+   *    heavy       the ladder's FLOOR (`r.floor` if `r.heavy` is absent) -- where it bottoms out.
+   *    degraded    halfway between the two, rounded DOWN (a 100/85 pair reads as 92).
+   *    after_shots a reference weapon doing `RECOIL_REF_DMG` a hit fires `RECOIL_CLEAN_ROUNDS` (5) clean
+   *                rounds and degrades on the next one; a weapon with a different `dmg` scales the clean
+   *                count by `k = RECOIL_REF_DMG / dmg` (bigger rounds kick in sooner), floored at 2 clean
+   *                rounds so no weapon degrades on its opening shot.
+   *    after_heavy `RECOIL_HEAVY_EXTRA_ROUNDS` (3) more clean rounds beyond that, scaled by the same `k`,
+   *                then heavy on the next one. Floored at `after_shots + 1`, so the second rung can never
+   *                land before or beside the first.
    *    settle_ms   RECOIL_SETTLE_MIN_MS or `recover_ms`, whichever is longer. See that constant: a shorter
    *                floor would let a gap between two rounds read as a player lowering the weapon.
    *
-   *  The catalogue may now declare explicit S54 overrides; rows without them use this legacy derivation.
-   *  `weapons.json` carries only {ceiling, floor, per_shot, recover_ms}. A proposal exists to raise three
-   *  floors -- the SMG and the Suppressor from 55, the Stinger from 45, all to 60 -- because the accuracy
-   *  bench measured only 7 of 18 shots landing at 50 to 60, and a weapon that lands 39% of its rounds is
-   *  removed from the fight rather than penalised. That raise is F268 and IT IS NOT SHIPPED: an earlier
-   *  draft of this comment and of spec/node.md said those three weapons DECLARE `heavy`, which was never
-   *  true of any row. It wants the same bench pass as the doubling above: a magazine of full auto at 60
-   *  and again at 55, against a static target, counting `$HIR`.
-   *
-   *  A weapon that cannot degrade (floor == ceiling, which is most of the catalogue) arms NOTHING: there
-   *  is no state for it to change, so there is no write for it to make. Returns null for those.
+   *  A weapon that cannot degrade (floor == ceiling, most of the catalogue, and every one-press burst
+   *  trigger such as the Burst Rifle, which cannot be held in full auto) arms NOTHING: there is no state
+   *  for it to change, so there is no write for it to make. Returns null for those.
    *
    *  ⚠ An `after_heavy` at or below `after_shots` is not rejected: the burst that crosses the first
    *  threshold crosses the second in the same breath, so the weapon drops straight to `heavy` in ONE
    *  write and `degraded` never appears. That is coherent, it costs no extra write, and it is the
    *  catalogue's choice to make. PURE. */
-  _recoilProfile(r) {
+  _recoilProfile(row) {
+    const r = row && row.recoil;
     if (!r) return null;
     const crisp = +(r.crisp != null ? r.crisp : r.ceiling);
     const bottom = +(r.heavy != null ? r.heavy : r.floor);   // the ladder's floor: `heavy` once the catalogue declares it
-    const perShot = Math.max(0, +r.per_shot || 0);
-    const after = Math.round(+(r.after_shots != null ? r.after_shots
-      : (perShot > 0 ? Math.ceil((crisp - bottom) / perShot) : 0)));
+    if (!(crisp > 0) || !(bottom < crisp)) return null;
+    const stats = row.stats || {};
+    const dmg = +((stats.dmg != null ? stats.dmg : row.dmg)) || 0;
+    const k = dmg > 0 ? RECOIL_REF_DMG / dmg : 1;
+    const clean = Math.max(2, Math.round(RECOIL_CLEAN_ROUNDS * k));   // clean rounds before the burst earns a rung
+    const derivedAfter = clean + 1;                                    // the round that DOES earn one
+    const after = Math.round(+(r.after_shots != null ? r.after_shots : derivedAfter));
     const settle = Math.max(RECOIL_SETTLE_MIN_MS, +(r.settle_ms != null ? r.settle_ms : r.recover_ms) || 0);
-    if (!(crisp > 0) || !(bottom < crisp) || !(after > 0)) return null;
+    if (!(after > 0)) return null;
     const mid = Math.round(+(r.degraded != null ? r.degraded : Math.floor((crisp + bottom) / 2)));
     // The two rungs must be DISTINCT VALUES, or the second write wastes a BLE frame sending the value the
     // gun already holds. A ladder too short to split in two collapses back to one step.
     const two = mid > bottom && mid < crisp;
+    const extra = Math.round(RECOIL_HEAVY_EXTRA_ROUNDS * k);
+    const derivedHeavyAfter = Math.max(after + 1, clean + extra + 1);
     return { crisp, degraded: two ? mid : bottom, afterShots: after, settleMs: settle,
       heavy: two ? bottom : null,
-      heavyAfter: two ? Math.round(+(r.after_heavy != null ? r.after_heavy : after * RECOIL_HEAVY_BURST_FACTOR)) : 0 };
+      heavyAfter: two ? Math.round(+(r.after_heavy != null ? r.after_heavy : derivedHeavyAfter)) : 0 };
   }
   /** (Re)arm the accuracy model for the ACTIVE weapon: spawn, revive, a confirmed weapon swap and the
    *  reconcile re-arm all call this, because each one is a point where the gun's OWN live accuracy is known
@@ -3659,7 +3678,7 @@ export class Engine {
     const priorOffset = this._accuracyOffset;
     this._recoil = null;
     const id = this._activeWeaponId(); const row = id && this.weaponRow(id);
-    const p = this.recoilEnabled ? this._recoilProfile(row && row.recoil) : null;
+    const p = this.recoilEnabled ? this._recoilProfile(row) : null;
     const baked = this._headAccuracy(this.activeSlot);
     const base = baked != null ? baked : 100;
     const target = p ? p.crisp : base;
@@ -4680,6 +4699,16 @@ export class Engine {
     // let go instantly and the reload still completes ~1.4 s later. Whether a reload actually happened is
     // decided by the gun's ammo (`_onAmmo` / `_reloadDeadline`), never by a button edge or a timer.
     if (id === BTN_RELOAD && this.reloading) this.reloading.releasedAt = now;
+    // S54 (2026-09-23), BENCH-PROVISIONAL: the gun streams `$BUT,0,0` on every trigger release in app
+    // mode (docs/manual/dev.md), so a released trigger is direct evidence the burst has stopped -- while
+    // the weapon is still CRISP this costs no write, so the release simply clears the round count rather
+    // than waiting out `settleMs` for a burst that never degraded anything. A weapon already DEGRADED or
+    // HEAVY does NOT restore on release: recovery still needs the quiet the settle timer measures, in one
+    // write, because a release is not proof the player has stopped for good -- only that this pull has.
+    // The settle timer still clears the counter on its own as a fallback, so a dropped release edge never
+    // strands a stale burst. Not yet bench-proven: confirm no `$BUT,0,0` is lost under full auto and that
+    // it arrives in order with the `$ALCD` stream it is meant to race (FOLLOWUPS row to come).
+    if (id === BTN_TRIGGER) { const r = this._recoil; if (r && r.state === 'crisp' && r.burst > 0) r.burst = 0; }
   }
   /** How long each still-down button has been held, in ms. PURE — read from `state()` on every render. */
   heldMs() {

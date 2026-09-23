@@ -568,7 +568,7 @@ def test_weapon_views_follow_the_hosts_health_config():
             # plain ceil(pool/dmg) every other weapon uses. See views.weapon_view()'s tap_dmg branch.
             if v["htk"] and v["weapon_id"] != "charge_rifle":
                 assert v["htk"] == math.ceil(p / v["dmg_per_hit"])
-    assert [at[p]["charge_rifle"]["htk"] for p in (100, 115, 150, 200)] == [2, 3, 5, 7]
+    assert [at[p]["charge_rifle"]["htk"] for p in (100, 115, 150, 200)] == [3, 4, 5, 8]
     # and TTK moves with it, or the ARSENAL's TIME TO KILL column is decoration
     assert at[200]["assault_rifle"]["ttk_ms"] > at[115]["assault_rifle"]["ttk_ms"]
 

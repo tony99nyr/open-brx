@@ -3296,7 +3296,10 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
     });
     await step(`${tag} S55 recoil ${env}: RECOIL takes the reticle's place and clears after release`, async () => {
       const pg = await open(view, 'live', night ? '&night' : '');
-      await pg.evaluate(() => window.brxDemo.fire(3));
+      // S54: the demo primary is the Assault Rifle (dmg 8), which now degrades on round 6 of ONE held
+      // burst, not 3 -- `brxDemo.fire(n)` sends one press, `n` rounds, then one release, so this must
+      // reach the real threshold rather than a placeholder count.
+      await pg.evaluate(() => window.brxDemo.fire(6));
       await pg.waitForFunction(() => /RECOIL/.test((document.querySelector('.aimfx') || {}).innerText || ''));
       const a = await tells(pg);
       await pg.screenshot({ path: `${OUT}/${tag}-recoil-${env}.png` });
@@ -3304,7 +3307,7 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
       await pg.waitForFunction(() => !document.querySelector('.aimfx'));
       const c = await tells(pg);
       const healthy = await pg.evaluate(() => !window.brx.engine._recoil.disabled);
-      await pg.evaluate(() => window.brxDemo.fire(3));
+      await pg.evaluate(() => window.brxDemo.fire(6));
       await pg.waitForFunction(() => /RECOIL/.test((document.querySelector('.aimfx') || {}).innerText || ''));
       const again = await tells(pg); await pg.close();
       must(a.aim && /RECOIL/.test(a.aimText) && /RELEASE TO STEADY/.test(a.aimText), `the tell names the cause and remedy: ${JSON.stringify(a)}`);

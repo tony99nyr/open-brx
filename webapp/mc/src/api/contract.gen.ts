@@ -414,11 +414,20 @@ export interface DotSpec {
 /** S42 (2026-09-17): a weapon's TARGET accuracy profile -- `weapons.json` `recoil`, declared-only
  *  on the wire (compile.py `resolve()` never writes t21/t22 from it). `app/src/engine.js` is the sole
  *  reader. **F259 (2026-09-18): a STATE MACHINE, not a per-shot walk** -- `_recoilProfile` derives
- *  `crisp`/`degraded`/`heavy` states from this shape (`ceiling`/`floor` become `crisp`/`degraded`,
- *  `per_shot` sizes `after_shots`, `recover_ms` floors `settle_ms`): CRISP until the burst reaches
- *  `after_shots` rounds (DEGRADED), HEAVY after `after_heavy`, and back to CRISP in one step
- *  once the trigger is quiet for `settle_ms`. The four legacy fields remain accepted as derivation
- *  inputs; the six explicit fields are optional per-weapon overrides (S54). */
+ *  `crisp`/`degraded`/`heavy` states from this shape (`ceiling`/`floor` become `crisp`/`degraded`):
+ *  CRISP until the burst reaches `after_shots` rounds (DEGRADED), HEAVY after `after_heavy`, and back
+ *  to CRISP in one step once the trigger is quiet for `settle_ms`.
+ *
+ *  **S54/F268/F280 (2026-09-23): `after_shots`/`after_heavy` derive from ROUNDS PER TRIGGER PULL scaled
+ *  by calibre, not from the ladder's depth.** A weapon dealing the engine's reference damage (8, the
+ *  Assault Rifle/SMG/Energy Rifle) fires 5 clean rounds and degrades on the 6th, then 3 more clean
+ *  rounds and goes heavy on the 9th; a different `dmg` scales both counts by `8 / dmg`, so a bigger
+ *  round kicks in sooner. The four legacy fields (`ceiling`, `floor`, `per_shot`, `recover_ms`) remain
+ *  accepted as derivation inputs for `crisp`/`heavy`/`settle_ms`; `per_shot` no longer sizes anything.
+ *  The six explicit fields are optional per-weapon overrides that win outright over the derivation
+ *  (S54). `app/src/engine.js` also resets a still-CRISP burst on the gun's own trigger-release edge
+ *  (`$BUT,0,0`), at no cost in writes; a DEGRADED or HEAVY weapon still recovers only on `settle_ms`
+ *  quiet, in one write (bench-provisional). */
 export interface Recoil {
   ceiling: number;
   floor: number;

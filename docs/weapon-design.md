@@ -213,7 +213,7 @@ sounds — and moves the numbers.
 | Suppressor | support | 8 | 140 | 15 | **1.96** | 57.1 | 48.0 | 75 | 384 | 2000 | 100% | — | **2026-09-17**: cycle 160→140 (`wire.fire_ms`); mag 48→75 (§2.3, family-scoped dominance) |
 | Assault Rifle | assault | 9 | 100 | 13 | **1.20** | 90.0 | 62.6 | 32 | 192 | 1400 | 100% | — | **2026-09-17**: cycle 140→100 (`wire.fire_ms`, native Battle Company speed) |
 | Energy Rifle | support | 9 | 150 | 13 | **1.80** | 60.0 | 57.0 | 300 | 600 | 2400 | 100% | 6 | **2026-09-17**: cycle 200→150 (`wire.fire_ms`); overheat switched ON (F229: `t38`=150 override, `t35`=D11) |
-| Charge Rifle | support | 85 | 1250 | 3 | **0.57** | 68.0 | 45.3 | 40 | 80 | 2500 | 92% | 14 | **2026-09-17**: dmg 87→85 (`wire.dmg`, the CHARGE damage; tap damage `t37`=20 unchanged), mag/res 12/12→40/80, `rounds_per_charge`=10 (F225/F226/S43); `htk`/`ttk s` now count 1 charge + 2 taps (release-to-kill), not `ceil(pool/85)`. **2026-09-18 bench**: the tap cadence is **285 ms**, measured, not the 500 ms placeholder, so release-to-kill falls 1.00 s → **0.57 s**. The charge costing exactly 10 rounds, the 85 charge and the 20 tap were all confirmed on the wire in the same run. `DPS` and `sust` count CHARGES only (85 / 1.25 s, and 4 charges a magazine against `4 × 1.25 + reload`); the tap is a second cadence and no single figure covers both, so `ttk s` is the column that reads the mixed kill |
+| Charge Rifle | support | 70 | 1250 | 4 | **0.85** | 56.0 | 37.3 | 40 | 80 | 2500 | 92% | 14 | **2026-09-17**: dmg 87→85 (`wire.dmg`, the CHARGE damage; tap damage `t37`=20 unchanged), mag/res 12/12→40/80, `rounds_per_charge`=10 (F225/F226/S43); `htk`/`ttk s` now count 1 charge + 2 taps (release-to-kill), not `ceil(pool/85)`. **2026-09-18 bench**: the tap cadence is **285 ms**, measured, not the 500 ms placeholder, so release-to-kill falls 1.00 s → **0.57 s**. The charge costing exactly 10 rounds, the 85 charge and the 20 tap were all confirmed on the wire in the same run. **2026-09-23 (F280)**: charge damage 85→70 (`wire.dmg`), which pushes the kill to 1 charge + 3 taps and TTK 0.57→**0.85 s**; the tap cadence stays the bench-measured 285 ms (a physical fact, not a balance lever, and not moved here). `DPS` and `sust` count CHARGES only (70 / 1.25 s, and 4 charges a magazine against `4 × 1.25 + reload`); the tap is a second cadence and no single figure covers both, so `ttk s` is the column that reads the mixed kill |
 | Rocket Launcher | power | 115 | 1000 | 1 | **0.00** | 115.0 | 50.0 | 2 | 2 | 2600 | 91% | — | res 8→2, reload 1200→2600 |
 | Energy Launcher | power | 115 | 1600 | 1 | **0.00** | 71.9 | 50.0 | 2 | 2 | 1400 | 91% | — | cycle 360→1600, mag 1→2, res 6→2 |
 | Ion Sniper | power | 115 | 1400 | 1 | **0.00** | 82.1 | 47.9 | 2 | 2 | 2000 | 91% | — | cycle 1000→1400, res 12→2 |
@@ -420,14 +420,21 @@ gun: `wire.range_outdoor_pct` writes `t2` outdoors, and the node writes `t21`/`t
   60 m+). The power tier is provisionally mid (a power weapon, not a marksman one) pending a real call.
 - **`recoil`** — the S42 node-driven profile (legacy `{ceiling, floor, per_shot, recover_ms}` inputs plus
   optional explicit `{crisp, degraded, heavy, after_shots, after_heavy, settle_ms}` ladder fields; a harsh
-  floor is a felt COST that offsets a fast TTK): SMG and Suppressor harshest (100/55, the sustained
-  hoses), Assault Rifle and Energy Rifle medium (100/70), Burst Rifle mild and resetting between bursts
-  (100/85), everything semi-automatic or one-shot none (100/100, no recoil model needed — two HIDDEN rows are
-the exception and were never part of the ladder: `force_rifle` (100/60) and `stinger` (100/45), left as the
-arsenal cut found them — a Sniper
-  Rifle's future cost is a stance penalty, not recoil, and does not exist yet either). `per_shot` and
-  `recover_ms` reuse the S42 accuracy-walk bench numbers (2026-09-17: ~10 points per 0.15 s) as a
-  starting assumption, not a recoil-specific measurement.
+  floor is a felt COST that offsets a fast TTK): Assault Rifle, SMG, Suppressor and Stinger harshest
+  (100/60, S54/F268: Tony's 2026-09-18 floor raise on the SMG/Suppressor/Stinger, kept 2026-09-23, and
+  the Assault Rifle joins them at 2026-09-23 with an explicit `degraded: 80, heavy: 60` declaration),
+  Energy Rifle medium (100/70), Force Rifle at 100/60, everything semi-automatic or one-shot none
+  (100/100, no recoil model needed). The Burst Rifle is now one of those flat rows too: it is a
+  one-press burst trigger and cannot be held in full auto, so S54/F280 (2026-09-23) dropped it to
+  100/100 rather than leaving it a mild, unfireable ladder. A Sniper Rifle's future cost is a stance
+  penalty, not recoil, and does not exist yet either. `after_shots` and `after_heavy` (how many ROUNDS a
+  held trigger takes to reach `degraded`/`heavy`) no longer come from `per_shot` at all: S54/F280 derives
+  them from rounds per trigger pull, scaled by calibre (a weapon dealing the reference 8 damage fires 5
+  clean rounds and degrades on the 6th, then 3 more clean rounds and goes heavy on the 9th; a heavier
+  round scales both counts down by `8 / dmg`). `per_shot` and `recover_ms` remain only as the legacy
+  inputs for `crisp`/`heavy`/`settle_ms`. A trigger release (`$BUT,0,0`) while still CRISP also clears
+  the round count, at no cost in writes; a DEGRADED or HEAVY weapon still only recovers on the settle
+  clock (bench-provisional, S54).
 
 Neither field is read by `resolve()`: `t41`/`t2` (range) still ship whatever the capture carries (F135,
 F231 — this is the single biggest missing design axis, §5, U2), and `t21`/`t22` (accuracy ceiling/
@@ -473,7 +480,7 @@ Fastest cycle has the slowest reload and vice versa; nothing leads on both.
 | weapon | 45/55 (100) | **45/70 (115)** | 50/100 (150) | 100/100 (200) |
 |---|---|---|---|---|
 | Power tier (115 dmg) | 1 | **1** | **2** | 2 |
-| Charge Rifle | 2 | **3** | 5 | 7 |
+| Charge Rifle | 3 | **4** | 5 | 8 |
 | Sniper Rifle | 2 | **2** | 3 | 4 |
 | Shotgun | 3 | **3** | 4 | 5 |
 | Plasma Sniper | 3 | **4** | 5 | 6 |
@@ -491,8 +498,8 @@ Fastest cycle has the slowest reload and vice versa; nothing leads on both.
 | Glock-18 | 8 | **9** | 12 | 16 |
 
 **The Charge Rifle's `htk` in this table is trigger ACTIONS (1 charge + N taps), not equal-sized
-hits** (2026-09-17, F225/F226/S43) — at 200 the pool needs 1 charge (85) plus 6 taps (20 each, the
-last one overkilling by 5) to close, not `ceil(200/85) = 3`. Every other row is the plain
+hits** (2026-09-17, F225/F226/S43): at 200 the pool needs 1 charge (70, F280) plus 7 taps (20 each,
+the last one overkilling by 10) to close, not `ceil(200/70) = 3`. Every other row is the plain
 `ceil(pool/dmg)` every non-cell weapon uses.
 
 **The Toxin Rifle's row counts direct hits only**, with the same `ceil(pool/dmg)`. Its poison is worth

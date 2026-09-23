@@ -401,48 +401,60 @@ property to protect:** the number of t4 writes follows the number of STATE CHANG
 at most three a burst (two down, one back), where the old ladder cost about twenty. A t4 write does not reset the
 magazine or reserve and survives `$WEAP`; `$SPAWN` clears it (bench 2026-09-18).
 
-Below is what the node actually SHIPS today. `crisp` and `heavy` are each weapon's ceiling and floor from the old
-gradual ladder and `degraded` is the midpoint rounded down, so two steps cost no weapon its identity: the assault
-rifle still bottoms out at 70 exactly as before, it just arrives there in two visible stages.
+**S54/F268/F280 (Tony, 2026-09-23): the rungs are keyed off ROUNDS PER TRIGGER PULL, scaled by calibre, not off
+the ladder's own depth or the magazine size.** The old derivation (`after_shots` ← `ceil((crisp - heavy) / per_shot)`,
+the ladder's DEPTH) had no relationship to how long a player had held the trigger, and the bench measurement that
+forced this rewrite found `after_heavy` landing 6 rounds into every degrading weapon regardless of its floor, so
+`heavy` owned 84-98% of a magazine instead of being the second of two stages. A weapon dealing the engine's
+reference damage (8, the Assault Rifle, SMG and Energy Rifle) now fires 5 clean rounds and degrades on the 6th,
+then 3 more clean rounds and goes heavy on the 9th; a weapon with a different `dmg` scales both counts by
+`8 / dmg`, so bigger rounds kick in sooner. `crisp` and `heavy` are still each weapon's ceiling and floor and
+`degraded` is still the midpoint rounded down, so a weapon's ceiling and floor keep their old identity even
+though the rungs between them no longer do.
+
+**Reset on trigger release, while still CRISP (bench-provisional).** The gun streams a `$BUT,0,0` release edge
+every time the trigger comes up in app mode. While the weapon is still crisp that is direct evidence the burst
+has stopped, so the round count clears there and then, at no cost in writes, rather than waiting out `settle_ms`
+for a count that was never going anywhere. A DEGRADED or HEAVY weapon does NOT restore on release: recovery still
+needs the settle clock's quiet, in one write, because a release only proves this pull has ended, not that the
+player has stopped shooting for good. The settle clock still clears the round count on its own as a fallback, so
+a dropped release edge never strands a stale burst. Not yet bench-proven: confirm no `$BUT,0,0` is lost under
+full auto, and that it arrives in order against the `$ALCD` stream it races.
 
 **Legacy rows below are DERIVED.** `weapons.json` may now optionally carry the six explicit ladder fields
-`{crisp, degraded, heavy, after_shots, after_heavy, settle_ms}` (S54); rows that omit them continue to derive the
-values from `{ceiling, floor, per_shot, recover_ms}` exactly as before. An earlier draft of this table printed raised
-floors of 60 for the SMG, the Suppressor and the Stinger. Those were a proposal, they were never shipped, and
-printing them here as fact would have had the spec lying about the wire. The proposal is F268; no row currently
-overrides its legacy floor.
+`{crisp, degraded, heavy, after_shots, after_heavy, settle_ms}` (S54); rows that omit them derive `crisp`/`heavy`/
+`settle_ms` from `{ceiling, floor, recover_ms}` and `after_shots`/`after_heavy` from rounds-per-pull as above
+(`per_shot` no longer sizes anything). Both S54 judgements are now settled: the SMG, the Suppressor and the
+Stinger floors are UP at 60 (Tony, 2026-09-18, kept 2026-09-23), and the doubling that had no evidence behind it
+is replaced outright by the rounds-and-calibre derivation (F280). The Assault Rifle now declares its depths
+explicitly too (`degraded: 80, heavy: 60`), pulling its floor down from the legacy 70 to 60 alongside the other
+reference-calibre weapons. The Burst Rifle carries NO recoil at all: it is a one-press burst trigger and cannot
+be held in full auto, so it ships flat (`ceiling == floor == 100`, `per_shot 0`), the same as every other weapon
+that cannot degrade.
 
 | weapon | crisp | degraded | heavy | after_shots | after_heavy | settle_ms |
 |---|---|---|---|---|---|---|
-| assault_rifle | 100 | 85 | 70 | 3 | 6 | 600 |
-| burst_rifle | 100 | 92 | 85 | 3 | 6 | 600 |
-| smg | 100 | 77 | 55 | 3 | 6 | 600 |
-| suppressor | 100 | 77 | 55 | 3 | 6 | 600 |
-| energy_rifle | 100 | 85 | 70 | 3 | 6 | 600 |
-| force_rifle | 100 | 80 | 60 | 4 | 8 | 600 |
-| stinger | 100 | 72 | 45 | 7 | 14 | 600 |
-| toxin_rifle | 100 | 82 | 65 | 4 | 8 | 600 |
+| assault_rifle | 100 | 80 | 60 | 6 | 9 | 600 |
+| burst_rifle | 100 | 100 | 100 | n/a | n/a | n/a (no recoil model: flat) |
+| smg | 100 | 80 | 60 | 6 | 9 | 600 |
+| suppressor | 100 | 80 | 60 | 7 | 10 | 600 |
+| energy_rifle | 100 | 85 | 70 | 6 | 9 | 600 |
+| force_rifle | 100 | 80 | 60 | 5 | 8 | 600 |
+| stinger | 100 | 80 | 60 | 4 | 6 | 600 |
+| toxin_rifle | 100 | 82 | 65 | 7 | 10 | 600 |
 
 **Absent explicit keys derive** (`weapons.json` legacy rows still ship `{ceiling, floor, per_shot, recover_ms}`):
-`crisp` ← `ceiling`, `heavy` ← `floor`, `degraded` ← the midpoint rounded down, `after_shots` ← the ladder's length
-(`ceil((crisp - heavy) / per_shot)`), `after_heavy` ← twice that, `settle_ms` ← `RECOIL_SETTLE_MIN_MS` or
-`recover_ms`, whichever is longer. A ladder too short to split in two (`degraded` equal to either end) collapses
-back to ONE step, because a second write that sends the value the gun already holds wastes BLE traffic.
-
-⚠ **Two judgements here, both wanting a bench pass, and neither is shipped as stated.** The first is that three
-floors should come UP: the SMG and the Suppressor from 55, the Stinger from 45, all to 60, because the accuracy
-bench measured only 7 of 18 shots landing at 50 to 60, and a weapon that lands 39% of its rounds is removed from
-the fight rather than penalised. That raise is a PROPOSAL (F268) and the table above still ships the old floors.
-The second is that `after_heavy` doubles `after_shots` with **no evidence** behind the ratio, only an honest
-reading ("you are holding the trigger", then "you are still holding it"); that one IS shipped, because it is
-derived. One bench run answers both: a magazine of full auto at 60 and again at 55, against a static target,
-counting `$HIR`.
+`crisp` ← `ceiling`, `heavy` ← `floor`, `degraded` ← the midpoint rounded down, `settle_ms` ← `RECOIL_SETTLE_MIN_MS`
+or `recover_ms`, whichever is longer. `clean` (the clean rounds before a rung) ← `max(2, round(5 * k))`,
+`after_shots` ← `clean + 1`, and `after_heavy` ← `max(after_shots + 1, clean + round(3 * k) + 1)`, where
+`k = 8 / dmg`. A ladder too short to split in two (`degraded` equal to either end) collapses back to ONE step,
+because a second write that sends the value the gun already holds wastes BLE traffic.
 
 | rule | engine (`app/src/engine.js` `_recoilArm`/`_recoilStep`/`_recoilTick`/`_recoilFlush`/`_recoilWrite`/`_recoilVerify`) |
 |---|---|
 | arm | on spawn, revive and a confirmed weapon swap, to the ACTIVE weapon's declared `recoil`; `value` starts at `crisp`. Absent `config.recoil` (default) or an explicit `true` arms it; `config.recoil === false` never arms. A weapon that cannot degrade (`floor == ceiling`, most of the catalogue) or carries no `recoil` block arms NOTHING |
 | step down | the BURST decides the state, never the state before it: `after_shots` rounds make it DEGRADED, `after_heavy` rounds make it HEAVY, and one frame reporting several rounds at once (a run of lost `$ALCD`) lands on the rung those rounds earned in ONE write. Both steps land during the burst, with the trigger still down |
-| step up | `settle_ms` of quiet (`RECOIL_SETTLE_MIN_MS` floor: 600 ms, so a gap between two rounds can never read as the player lowering the weapon) puts it straight back to `crisp` from either degraded state, in one write — never a "released" flag |
+| step up | `settle_ms` of quiet (`RECOIL_SETTLE_MIN_MS` floor: 600 ms, so a gap between two rounds can never read as the player lowering the weapon) puts it straight back to `crisp` from either degraded state, in one write. A trigger release ($BUT,0,0) while still CRISP also clears the round count, at no cost in writes (S54, bench-provisional, see above), but a release never restores a DEGRADED or HEAVY weapon by itself: that recovery is still the settle clock's one write, never a "released" flag |
 | write | writes exactly `$TMP,,,,<value-base>,,,,,,,,*`: t4 only, absolute against the active weapon's compiled base. It never sends `$WEAP` or `$AMMO`, so recoil cannot reset or repair a magazine. The fake gun and F274 soak catalog implement the same contract |
 | native owner | fn-23 smoke/EMP owns t4 for `SMOKE_MS` (6000 ms). The node cancels verification, sends nothing during that window, extends it on repeated Haze hits even when accuracy is already 0, and reasserts its latest target after native recovery. An accuracy-0 `$ALCD` arriving before its Haze `$HIR` opens a 400 ms pairing hold so frame order cannot cancel smoke |
 | throttle | one writer, latest `value` wins; the minimum gap (`ACC_WRITE_MIN_GAP_MS`) throttles only a re-send. Existing reload, swap, overheat, reconcile, resync, stun, spawn-write, in-flight-shot and BLE-down guards remain conservative ordering barriers |

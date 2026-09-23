@@ -121,7 +121,16 @@ export function startDemo({ engine, log }) {
   let hp = 45, armor = 70, mag = 32, reserve = 384;
   let acc = 100;   // S53: the gun's live accuracy ($ALCD token 2). A smoke holds it at 0 for SMOKE_MS, like the bench gun
   const lcd = () => engine.feedFrame(`$LCD,${hp},${armor},0,0,${mag},${reserve},*`);
-  const fire = n => { for (let i = 0; i < n && mag > 0; i++) { mag--; engine.feedFrame('$BUT,0,1,*'); engine.feedFrame(`$ALCD,${mag},${acc},0,${reserve},0,*`); engine.feedFrame('$BUT,0,0,*'); } };
+  // S54 (2026-09-23): one continuous trigger pull for the whole burst, not a press-shot-release per
+  // round -- a full-auto weapon does not release between rounds, and the engine now reads a real
+  // release edge (`$BUT,0,0`) as evidence a still-CRISP burst has stopped (`_onButton`). A release after
+  // every simulated round would reset the recoil model's round count before the burst ever accumulated.
+  const fire = n => {
+    if (n <= 0 || mag <= 0) return;
+    engine.feedFrame('$BUT,0,1,*');
+    for (let i = 0; i < n && mag > 0; i++) { mag--; engine.feedFrame(`$ALCD,${mag},${acc},0,${reserve},0,*`); }
+    engine.feedFrame('$BUT,0,0,*');
+  };
   const reload = () => { const need = 32 - mag; const take = Math.min(need, reserve); reserve -= take; mag += take; engine.feedFrame(`$ALCD,${mag},${acc},0,${reserve},0,*`); };
   // S16: the demo gun answers the node's own poison ticks the way the bench measured (2026-09-09): a negative `$LIFE`
   // is per pool with no spill and floors at 0, a non-lethal one self-emits `$HP`, and a lethal one answers `$LCD`

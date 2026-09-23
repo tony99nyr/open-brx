@@ -82,7 +82,9 @@ export const WEAPONS: WeaponView[] = [
       "ceiling": 100,
       "floor": 70,
       "per_shot": 10,
-      "recover_ms": 150
+      "recover_ms": 150,
+      "degraded": 80,
+      "heavy": 60
     },
     "ammo_total": 224,
     "bars": {
@@ -119,9 +121,9 @@ export const WEAPONS: WeaponView[] = [
     "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
-      "floor": 85,
-      "per_shot": 5,
-      "recover_ms": 150
+      "floor": 100,
+      "per_shot": 0,
+      "recover_ms": 0
     },
     "crit_pct": 40,
     "ammo_total": 252,
@@ -143,10 +145,10 @@ export const WEAPONS: WeaponView[] = [
     "reserve": 80,
     "reload_s": 2.5,
     "reload_ms": 2500,
-    "dmg": 74,
+    "dmg": 61,
     "rpm": 6,
     "rng": 75,
-    "dmg_per_hit": 85,
+    "dmg_per_hit": 70,
     "dual_emitter": false,
     "pool": 115,
     "verified": false,
@@ -155,8 +157,8 @@ export const WEAPONS: WeaponView[] = [
       "sniper"
     ],
     "role": "marksman",
-    "htk": 3,
-    "ttk_ms": 570,
+    "htk": 4,
+    "ttk_ms": 855,
     "rounds_per_charge": 10,
     "recoil": {
       "ceiling": 100,
@@ -400,7 +402,7 @@ export const WEAPONS: WeaponView[] = [
     "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
-      "floor": 55,
+      "floor": 60,
       "per_shot": 15,
       "recover_ms": 150
     },
@@ -560,7 +562,7 @@ export const WEAPONS: WeaponView[] = [
     "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
-      "floor": 55,
+      "floor": 60,
       "per_shot": 15,
       "recover_ms": 150
     },

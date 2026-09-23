@@ -2697,15 +2697,19 @@ test('F68: a life with NO hits at all still gets its team colour repainted, on a
   assert.equal(h.writes.filter(f => f === teamRest).length, 1, 'the repaint keeps firing every interval with no hits at all');
 });
 
-// ---------- S42/F259: node-driven recoil (the accuracy ceiling/floor is ours, not the gun's) ----------
+// ---------- S42/F259/S54: node-driven recoil (the accuracy ceiling/floor is ours, not the gun's) ----------
 // `armRecoil` mirrors `goLive`: a fresh life on a single-weapon catalog carrying the `recoil` block the
 // test wants, ending on the same $LCD baseline `goLive` uses (establishes `_prevAmmo[0]` at mag 36 with
 // nothing counted as a shot yet -- the first $ALCD of a life is a baseline, never a decrement).
-function armRecoil(recoil, { recoilConfig } = {}) {
+// S54: the derivation also needs the row's `dmg` (rounds per trigger pull, scaled by calibre), so every
+// weapon here carries the reference damage (8, `RECOIL_REF_DMG`) unless a test asks for a different one --
+// that is the same `dmg` the shipping Assault Rifle/SMG/Energy Rifle carry, so `RECOIL_PROFILE` below
+// degrades and goes heavy at exactly the round counts those weapons do.
+function armRecoil(recoil, { recoilConfig, dmg = 8 } = {}) {
   const h = harness();
   h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster,
-    catalog: { weapons: [{ weapon_id: 'assault_rifle', name: 'Assault Rifle', clip: 32, reserve: 384, reload_s: 1.4, recoil }], perks: [] } } });
+    catalog: { weapons: [{ weapon_id: 'assault_rifle', name: 'Assault Rifle', clip: 32, reserve: 384, reload_s: 1.4, dmg, recoil }], perks: [] } } });
   if (recoilConfig !== undefined) h.config.recoil = recoilConfig;   // same object `config_()` sends -- mutate in place
   h.config_().echo().start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
   // Merge 2026-09-17: the SPAWN write owns `$AMMO` for ACC_HOLD_MS (`_holdAccuracyWrites`), so the accuracy
@@ -2717,11 +2721,12 @@ function armRecoil(recoil, { recoilConfig } = {}) {
   return h;
 }
 // F259: the ladder block the catalogue still ships, and the state shape `_recoilProfile` derives from it
-// -- crisp 100 (the ceiling), heavy 20 (the floor), degraded 60 (halfway), the first rung after 2 rounds
-// (100 -> 20 at 40 a round) and the second after 4, settle RECOIL_SETTLE_MIN_MS (`recover_ms` 150 is far
-// below that floor). A deliberately steep ladder, so a test can cross both rungs in a handful of rounds.
+// -- crisp 100 (the ceiling), heavy 20 (the floor), degraded 60 (halfway). S54: at `armRecoil`'s default
+// dmg 8 (`RECOIL_REF_DMG`, the same calibre as the shipping Assault Rifle/SMG/Energy Rifle), the first
+// rung lands on round 6 and the second on round 9 -- the exact numbers those three weapons ship with,
+// settle RECOIL_SETTLE_MIN_MS (`recover_ms` 150 is far below that floor).
 const RECOIL_PROFILE = { ceiling: 100, floor: 20, per_shot: 40, recover_ms: 150 };
-const DEGRADE_AFTER = 2, HEAVY_AFTER = 4, SETTLE_MS = RECOIL_SETTLE_MIN_MS;
+const DEGRADE_AFTER = 6, HEAVY_AFTER = 9, SETTLE_MS = RECOIL_SETTLE_MIN_MS;
 // F259 step 2 (Tony, bench 2026-09-18): "normal degraded and very degraded". The SHIPPING assault rifle
 // as the catalogue owner declares it, outright rather than derived -- the same row `_recoilProfile`
 // derives from that weapon's old ladder, so the two paths are checked against each other below.
@@ -2987,10 +2992,13 @@ test('F259: FIVE PRESSES ON A RESETTING GUN -- one degrade, one recovery, and th
   // restore puts it back, and the gun reports THAT -- a decrement of `clip - n`, which the burst counter
   // read as fire, so it crossed the threshold, wrote, reset, and round again. Nothing in this file modelled
   // the gun ANSWERING a write, so every test passed while the real thing oscillated.
-  // The profile is the shipping assault rifle: crisp 100, degraded 70, three rounds.
-  const h = armRecoil({ ceiling: 100, floor: 70, per_shot: 10, recover_ms: 150 });
-  assert.equal(h.eng._recoil.afterShots, 3, 'pre-condition: the shipping AR degrades after three rounds');
-  assert.equal(h.eng._recoil.heavyAfter, 6, 'and five presses must stay clear of its SECOND rung, or this test is measuring two degrades');
+  // S54: the shipping AR's own dmg (8) degrades only on round 6, too slow to reach in five presses at
+  // all, so this profile keeps the same crisp 100 / degraded 70 ladder but carries the Force Rifle's real
+  // dmg (9) instead, which reaches DEGRADED on round 5 and stays clear of HEAVY (round 8) for exactly the
+  // five presses Tony fired at the bench.
+  const h = armRecoil({ ceiling: 100, floor: 70, per_shot: 10, recover_ms: 150 }, { dmg: 9 });
+  assert.equal(h.eng._recoil.afterShots, 5, 'pre-condition: this profile degrades on the fifth round');
+  assert.equal(h.eng._recoil.heavyAfter, 8, 'and five presses must stay clear of its SECOND rung, or this test is measuring two degrades');
   const CLIP = 32, WRITE_MS = 40;               // the bench measured a write landing in 30-90 ms
   const gun = { mag: 11, reserve: 215 };
   let cursor = h.writes.length;
@@ -3210,6 +3218,51 @@ test('F259: a burst that never reaches the threshold is forgotten -- two taps a 
   assert.equal(weaps(h).length, 0, 'two short bursts, a settle apart, must not add up to one long one');
 });
 
+// ---------- S54: the trigger's own release ($BUT,0,0) resets a still-crisp burst, at no cost in writes ----------
+// Bench-provisional (2026-09-23): the gun streams a release edge every time the trigger comes up in app
+// mode. While the weapon is still CRISP that is direct, immediate evidence the burst has stopped, so the
+// round count clears there and then rather than waiting out `settleMs`. A DEGRADED or HEAVY weapon still
+// only recovers on the settle clock -- see the dedicated recovery tests above and in step 2 below.
+
+test('S54: a trigger release while crisp clears the round count, so a five-and-five split never adds up to a degrade', () => {
+  const h = armRecoil(RECOIL_PROFILE);   // default dmg 8: crisp until round DEGRADE_AFTER (6)
+  h.writes.length = 0;
+  fire(h, DEGRADE_AFTER - 1);            // five rounds -- one short of the sixth, threshold round
+  assert.equal(h.eng._recoil.state, 'crisp', 'pre-condition: five rounds must not yet have degraded the weapon');
+  assert.equal(h.eng._recoil.burst, DEGRADE_AFTER - 1);
+  h.frame('$BUT,0,0,*');                 // the trigger comes up
+  assert.equal(h.eng._recoil.burst, 0, 'a release while still crisp must clear the round count, at no cost in writes');
+  assert.equal(weaps(h).length, 0, 'clearing a crisp burst is not a state change and must not write');
+  fire(h, DEGRADE_AFTER - 1);            // a fresh pull, five more rounds
+  assert.equal(h.eng._recoil.state, 'crisp', 'ten rounds split by a release must not add up to one continuous burst');
+  assert.equal(weaps(h).length, 0, 'and still no write, because the weapon never left crisp');
+});
+
+test('S54: a trigger release while degraded does NOT restore the weapon -- recovery still waits for settleMs', () => {
+  const h = armRecoil(RECOIL_PROFILE);
+  fire(h, DEGRADE_AFTER); ack(h);        // degrade written and confirmed
+  assert.equal(h.eng._recoil.state, 'degraded', 'pre-condition: the burst must have degraded the weapon');
+  h.writes.length = 0;
+  h.frame('$BUT,0,0,*');                 // the trigger comes up
+  assert.equal(h.eng._recoil.state, 'degraded', 'a release must not restore a degraded weapon by itself');
+  assert.equal(weaps(h).length, 0, 'and it must cost no write either way');
+  h.adv(SETTLE_MS + 10); h.eng.tick();
+  assert.equal(h.eng._recoil.state, 'crisp', 'the settle clock still recovers it, exactly as before the release edge existed');
+  assert.equal(weaps(h).length, 1, 'and that recovery is still the one write it always was');
+});
+
+test('S54: full auto with no release edge still degrades exactly on the threshold round', () => {
+  // The release reset is an OPTIMISATION for a burst that stops short, never a requirement for the
+  // ordinary case: a trigger nobody lets go of must degrade on schedule regardless.
+  const h = armRecoil(RECOIL_PROFILE);
+  h.writes.length = 0;
+  fire(h, DEGRADE_AFTER - 1);
+  assert.equal(h.eng._recoil.state, 'crisp', `the first ${DEGRADE_AFTER - 1} round(s) must not degrade the weapon`);
+  fire(h, 1);
+  assert.equal(h.eng._recoil.state, 'degraded', 'the threshold round must degrade the weapon with no release in between');
+  assert.equal(weaps(h).length, 1);
+});
+
 // ---------- F259 step 2: crisp, degraded, heavily degraded, and still ONE recovery ----------
 // Tony, at the bench 2026-09-18, after the one-step writer ran on hardware: "maybe we can update it to do
 // 2 steps instead of 1? normal degraded and very degraded."
@@ -3389,20 +3442,32 @@ test('F259: arming ASSERTS the crisp value when the compiled $WEAP does not alre
   assert.equal(h.eng._recoil.state, 'crisp', 'and the weapon is CRISP while it says so -- this is not a degrade');
 });
 
-test('F259: the state shape is derived from the ladder block the catalogue still ships', () => {
-  // `weapons.json` is owned elsewhere, so `_recoilProfile` reads the fields it WANTS and falls back to the
-  // old gradual ladder. The derivation is that ladder read as three rungs instead of twenty: its ceiling is
-  // CRISP, its floor is HEAVY, and DEGRADED is halfway between, so no weapon loses the accuracy it has
-  // always ended a burst on. It reproduces the catalogue owner's own table, row for row.
+test('S54: the round counts are derived from the row\'s dmg -- rounds per trigger pull, scaled by calibre, pinned against the shipped table', () => {
+  // Tony, 2026-09-23: a reference weapon at dmg 8 (the Assault Rifle/SMG/Energy Rifle) fires 5 clean
+  // rounds and degrades on the 6th, then 3 more clean rounds and goes heavy on the 9th. A different `dmg`
+  // scales both counts by `8 / dmg`. These are the real `weapons.json` rows (`recoil` blocks) after the
+  // S54/F268 floor raise, so this pins the shipped table, not an abstract example.
   const h = armRecoil(RECOIL_PROFILE);
-  const from = (ceiling, floor, per_shot, recover_ms = 150) => h.eng._recoilProfile({ ceiling, floor, per_shot, recover_ms });
+  const from = (dmg, recoil) => h.eng._recoilProfile({ dmg, recoil });
   const row = (crisp, degraded, heavy, afterShots, heavyAfter) =>
     ({ crisp, degraded, heavy, afterShots, heavyAfter, settleMs: RECOIL_SETTLE_MIN_MS });
-  assert.deepEqual(from(100, 70, 10), row(100, 85, 70, 3, 6), 'the assault rifle, and the energy rifle with it');
-  assert.deepEqual(from(100, 85, 5), row(100, 92, 85, 3, 6), 'the burst rifle: an odd midpoint rounds DOWN');
-  assert.deepEqual(from(100, 60, 10), row(100, 80, 60, 4, 8), 'the force rifle: a longer ladder is a later pair of thresholds');
-  assert.deepEqual(from(100, 45, 8, 120), row(100, 72, 45, 7, 14), 'and the stinger, the longest of them');
+  assert.deepEqual(from(8, { ceiling: 100, floor: 70, per_shot: 10, recover_ms: 150 }), row(100, 85, 70, 6, 9),
+    'energy_rifle: reference calibre, its own (derived) depths');
+  assert.deepEqual(from(8, { ceiling: 100, floor: 60, per_shot: 15, recover_ms: 150 }), row(100, 80, 60, 6, 9),
+    'smg: reference calibre, the raised F268 floor');
+  assert.deepEqual(from(9, { ceiling: 100, floor: 60, per_shot: 10, recover_ms: 150 }), row(100, 80, 60, 5, 8),
+    'force_rifle: a heavier round reaches degraded sooner');
+  assert.deepEqual(from(13, { ceiling: 100, floor: 60, per_shot: 8, recover_ms: 120 }), row(100, 80, 60, 4, 6),
+    'stinger: the heaviest calibre here, the shortest ladder');
+  assert.deepEqual(from(7, { ceiling: 100, floor: 60, per_shot: 15, recover_ms: 150 }), row(100, 80, 60, 7, 10),
+    'suppressor: the lightest calibre, the longest ladder');
+  assert.deepEqual(from(7, { ceiling: 100, floor: 65, per_shot: 10, recover_ms: 150 }), row(100, 82, 65, 7, 10),
+    'toxin_rifle: an odd midpoint rounds DOWN');
+  assert.deepEqual(from(8, { crisp: 100, degraded: 80, heavy: 60, ceiling: 100, floor: 70, per_shot: 10, recover_ms: 150 }),
+    row(100, 80, 60, 6, 9), 'assault_rifle: the explicit S54 depths (80/60), derived round counts');
   assert.equal(h.eng._recoilProfile(null), null);
+  assert.equal(h.eng._recoilProfile({ dmg: 9, recoil: { ceiling: 100, floor: 100, per_shot: 0, recover_ms: 0 } }), null,
+    'burst_rifle: a one-press trigger cannot be held in full auto, so it carries no recoil at all');
 });
 
 test('F259 step 2: the DECLARED fields win outright, because the catalogue owner sets the real numbers', () => {
@@ -3412,23 +3477,23 @@ test('F259 step 2: the DECLARED fields win outright, because the catalogue owner
   // penalised. That is a judgement the derivation above cannot see, so those weapons DECLARE `heavy` and
   // the declared numbers must reach the model untouched.
   const h = armRecoil(RECOIL_PROFILE);
-  assert.deepEqual(h.eng._recoilProfile({ crisp: 100, degraded: 78, heavy: 60, after_shots: 3, after_heavy: 6, settle_ms: 600 }),
+  assert.deepEqual(h.eng._recoilProfile({ dmg: 8, recoil: { crisp: 100, degraded: 78, heavy: 60, after_shots: 3, after_heavy: 6, settle_ms: 600 } }),
     { crisp: 100, degraded: 78, heavy: 60, afterShots: 3, heavyAfter: 6, settleMs: 600 }, 'the SMG as the catalogue declares it');
   // A half-adopted row works too: a declared `heavy` IS the ladder's floor, and everything absent derives
-  // from it rather than from the old one.
-  assert.deepEqual(h.eng._recoilProfile({ ceiling: 100, floor: 45, per_shot: 8, recover_ms: 120, heavy: 60 }),
-    { crisp: 100, degraded: 80, heavy: 60, afterShots: 5, heavyAfter: 10, settleMs: RECOIL_SETTLE_MIN_MS });
+  // from it (including the round counts, off `dmg`) rather than from the old one.
+  assert.deepEqual(h.eng._recoilProfile({ dmg: 8, recoil: { ceiling: 100, floor: 45, per_shot: 8, recover_ms: 120, heavy: 60 } }),
+    { crisp: 100, degraded: 80, heavy: 60, afterShots: 6, heavyAfter: 9, settleMs: RECOIL_SETTLE_MIN_MS });
 });
 
 test('F259: a ladder too short to split in two collapses back to ONE step, rather than writing the same number twice', () => {
   // A second write that sends the gun the value it is already holding spends a magazine reset for nothing.
   const h = armRecoil(RECOIL_PROFILE);
-  assert.deepEqual(h.eng._recoilProfile({ ceiling: 100, floor: 99, per_shot: 1, recover_ms: 150 }),
-    { crisp: 100, degraded: 99, heavy: null, afterShots: 1, heavyAfter: 0, settleMs: RECOIL_SETTLE_MIN_MS });
-  assert.deepEqual(h.eng._recoilProfile({ crisp: 100, degraded: 70, heavy: 70, after_shots: 3 }),
+  assert.deepEqual(h.eng._recoilProfile({ dmg: 8, recoil: { ceiling: 100, floor: 99, per_shot: 1, recover_ms: 150 } }),
+    { crisp: 100, degraded: 99, heavy: null, afterShots: 6, heavyAfter: 0, settleMs: RECOIL_SETTLE_MIN_MS });
+  assert.deepEqual(h.eng._recoilProfile({ dmg: 8, recoil: { crisp: 100, degraded: 70, heavy: 70, after_shots: 3 } }),
     { crisp: 100, degraded: 70, heavy: null, afterShots: 3, heavyAfter: 0, settleMs: RECOIL_SETTLE_MIN_MS },
     'two rungs declared at the same accuracy are one rung');
-  assert.equal(h.eng._recoilProfile({ ceiling: 100, floor: 100, per_shot: 0, recover_ms: 0 }), null, 'and a flat weapon has no profile at all');
+  assert.equal(h.eng._recoilProfile({ dmg: 8, recoil: { ceiling: 100, floor: 100, per_shot: 0, recover_ms: 0 } }), null, 'and a flat weapon has no profile at all');
 });
 
 test('S55: the accuracy write fills only $TMP t4 and leaves every other modifier blank', () => {
@@ -3480,7 +3545,7 @@ test('F259: the restore VALUE nets a press the gun has not answered -- the stun 
   // `_acctLive` is what `_liveAmmo` hands the stun snapshot and the operator resync, and neither of those
   // consults the `shotInFlight` guard: they write when the game says to. So the value itself has to be right.
   const h = armRecoil(RECOIL_PROFILE);
-  fire(h); ack(h);                     // the gun and the node both say 34
+  fire(h, 2); ack(h);                  // two ordinary rounds, nothing to do with the recoil threshold -- the gun and the node both say 34
   assert.equal(h.eng._acctLive(0), 34, 'pre-condition: the account tracks the gun');
   h.frame('$BUT,0,1,*');               // the next round's trigger press -- the gun has not answered yet
   assert.equal(h.eng._acctLive(0), 33, 'the press must book the round straight away: it is the earliest evidence one is leaving');
@@ -3668,7 +3733,7 @@ test('S42 x A44: the SPAWN write owns $AMMO -- no accuracy write lands inside th
   const h = harness();
   h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster,
-    catalog: { weapons: [{ weapon_id: 'assault_rifle', name: 'Assault Rifle', clip: 32, reserve: 384, reload_s: 1.4, recoil: { ...RECOIL_PROFILE, settle_ms: 999999 } }], perks: [] } } });
+    catalog: { weapons: [{ weapon_id: 'assault_rifle', name: 'Assault Rifle', clip: 32, reserve: 384, reload_s: 1.4, dmg: 8, recoil: { ...RECOIL_PROFILE, settle_ms: 999999 } }], perks: [] } } });
   h.config_().echo().start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
   h.mag = 36; h.writes.length = 0;
   // A burst in the first moments of a life: the model degrades, but the spawn write still owns `$AMMO`.
@@ -3691,7 +3756,7 @@ test('S42 x A47: an operator RESYNC GUN holds the accuracy writer, then the live
   h.frame(`$HP,${h.eng.hp},${h.eng.armor},${h.eng.shield},*`);
   assert.ok(h.facts.some(f => f.type === 'operator_result' && f.cmd === 'resync' && f.ok === true),
     'pre-condition: the operator resync must be accepted');
-  assert.ok(h.writes.some(f => f.startsWith('$AMMO,0,34,')), 'pre-condition: the resync re-sends the accounted counts');
+  assert.ok(h.writes.some(f => f.startsWith(`$AMMO,0,${36 - DEGRADE_AFTER},`)), 'pre-condition: the resync re-sends the accounted counts');
   h.writes.length = 0;
   h.adv(ACC_WRITE_MIN_GAP_MS + 10); h.eng.tick();
   assert.equal(weaps(h).length, 0,
@@ -3718,8 +3783,8 @@ test('S42 x F15: a stun disarms the gun, and no accuracy write may re-arm it', (
 test('S42 x pl4: no accuracy write during an overheat lockout, and the writer resumes once the gun cools', () => {
   const h = armRecoil(RECOIL_PROFILE);
   h.writes.length = 0;
-  h.adv(60); h.frame(`$ALCD,${--h.mag},100,0,215,120,*`);   // a round AND a heat reading past the lockout line
-  h.adv(60); h.frame(`$ALCD,${--h.mag},100,0,215,120,*`);   // the threshold round, with the gun already locked out
+  for (let i = 0; i < DEGRADE_AFTER - 1; i++) { h.adv(60); h.frame(`$ALCD,${--h.mag},100,0,215,0,*`); }
+  h.adv(60); h.frame(`$ALCD,${--h.mag},100,0,215,120,*`);   // the threshold round, with the gun already locked out (heat past the lockout line)
   assert.equal(h.eng._heatBlocksFire(), true, 'pre-condition: the node must read the lockout');
   h.adv(ACC_HOLD_MS + ACC_WRITE_MIN_GAP_MS + 10); h.eng.tick();
   assert.equal(weaps(h).length, 0,
