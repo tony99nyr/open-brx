@@ -1626,7 +1626,8 @@ Run on 2026-09-19 with range on:
 | Burst Rifle, Desert Eagle | about 1.0 | about 1.0 | at parity with their anchors |
 
 **The Shotgun finding is for the catalogue, not the sim.** Even at 100% accuracy with range off, the
-Shotgun sits at 0.67 to 0.88: three pulls at 800 ms is 1.6 s against the rifle's 1.2 s. When every
+Shotgun sits at 0.67 to 0.88: three pulls at 800 ms was 1.6 s against the rifle's 1.2 s (this run
+predates R8, which moved the Shotgun to 700 ms on 2026-09-23; see the Balance rules table). When every
 fight is close, it reaches 1.05 at 2v2 but falls to 0.89 at 10v10. One hit chance for every weapon
 costs it most in a duel (53% at 100% accuracy, 29% at 50%), and much less in a team.
 
