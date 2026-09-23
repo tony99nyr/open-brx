@@ -12,7 +12,7 @@ flap back-off, picker pacing, the respawn-profile rebuild, the office-test fixes
 Control). **0.4.3's respawn profiles replace the F121/F209 mechanism** (timed vs station, a separate
 weapon-arming delay, equal go-live at T-3); both rows are closed. **The first field test is the Shields preset in a real match plus the new respawn rules on
 both phones; re-enable wireless debugging on both first.** Still open and P0: the BLE link-loop root cause
-(**F293**) and BLE setup-reliability metrics (**F297**); see `bench-plan.md`'s "0.4.5 field check".
+(**F293**) and BLE setup-reliability metrics (**F297**); see Blocks 1 and 4 of [`bench-2026-09-24.md`](bench-2026-09-24.md).
 **Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32**; the claim
 checklist is [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md). Facts that session 1
 proved, and that every lane builds on:
@@ -49,7 +49,7 @@ Screamers Phase A has run A1 and A2 only.
   bench-provisional. R4/T2's code-read already pinned the blocking wait, 1,023-byte usable UART rings, persistent
   split frames and `$*` cleanup. F269's raw-byte helper (`raw-bytes`) is built; F300 holds the `$QUERY` sound/gyro/per-slot remainder.
 - **Next bench task:** Block 2 of [`bench-2026-09-24.md`](bench-2026-09-24.md) (A4, A7, A7b, A7c, A8 with
-  `raw-bytes`), then A1c and A3-A6.
+  `raw-bytes`), then A1c, A3, A5, A6, A11 and A12.
 - **Blocked:** R4/T2's full `$SIR` table on the unresolved gun-to-controller effect owner; F269 and Phase C on
   complete A7/A8 numbers; Phase E on F272's bench validation; Phase D on the Phase B rules.
 ## Lane: playtest and the node cure

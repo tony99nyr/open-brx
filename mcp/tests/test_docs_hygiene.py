@@ -814,25 +814,25 @@ def test_the_archive_citation_scan_still_matches():
 
 
 # --- routing lines never name a closed row; the index lists agree with their rows ---
-# The review found HANDOFF's "Next"/"Blocked" bullets and bench-plan's sittings and tables still sending work
-# through rows closed the same day, and index ids whose marker had moved on. History prose ("F206 is PROVEN")
-# may name a closed id; a line that ROUTES work may not.
+# HANDOFF's "Next"/"Blocked" lines and bench-plan's sittings and tables must not send work through a closed row,
+# and each index id must carry its row's marker.
 
 _MARK = "🔴|🟠|🟡|🟢|✅|⬜"
 _ID = r"(?<![A-Za-z0-9$§\-])([A-Z]\d{1,3})(?![0-9′])"
-# A line that tells history may name a closed id ("F206's proof already ran", "F254 is CLOSED").
-_HISTORY = re.compile(r"closed|answered|settled|shipped|proven|renumber|already ran", re.I)
+# A clause that tells history may name a closed id ("F206's proof already ran", "F254 is CLOSED"). The exemption is
+# per clause (split on . ; and |), so a stale id in another clause of the same line is still caught; a
+# stale id written inside a history clause is the gap this leaves.
+_HISTORY = re.compile(r"\b(closed|answered|settled|shipped|proven|renumber\w*|already ran)\b", re.I)
 
 
 def _open_rows() -> list[tuple[str, str]]:
     """(id, marker) for every row whose marker is live (🔴🟠🟡🟢); a ✅/⬜ row left in the file is not open."""
     out = []
     for line in FOLLOWUPS.read_text(encoding="utf-8").split("\n"):
-        m = _ROW.match(line)
-        if m:
-            live = [s for s in ("🔴", "🟠", "🟡", "🟢") if s in m.group(2)[:12]]
-            if live:
-                out.append((m.group(1), live[0]))
+        if re.match(rf"- ({_MARK}) \*\*", line):
+            continue   # an index list, not a row
+        for m in re.finditer(r"\*\*([A-Z](?:-[A-Z])?\d{1,3}′?)(?: [a-z]+){0,3} ?(🔴|🟠|🟡|🟢)", line):
+            out.append((m.group(1), m.group(2)))
     return out
 
 
@@ -882,9 +882,8 @@ def test_routing_lines_name_no_closed_row():
     bad = []
     for path in (HANDOFF, DOCS / "bench-plan.md"):
         for n, line in _routing_lines(path):
-            if _HISTORY.search(line):
-                continue
-            hits = [i for i in re.findall(_ID, line) if i in closed]
+            clauses = [c for c in re.split(r"[.;|]", line) if not _HISTORY.search(c)]
+            hits = [i for c in clauses for i in re.findall(_ID, c) if i in closed]
             if hits:
                 bad.append(f"{path.name}:{n} names closed {', '.join(hits)}: {line.strip()[:90]}")
     assert not bad, "a Next/Blocked line, a sitting step or a desk/decision row routes work through a closed row:\n" + "\n".join(bad)
@@ -899,14 +898,14 @@ def _index_marker_problems(text: str) -> list[str]:
     for line in lines:
         if re.match(rf"- ({_MARK}) \*\*", line):
             continue
-        for m in re.finditer(rf"\*\*([A-Z]\d{{1,3}}′?)(?: [a-z]+){{0,3}} ?({_MARK})", line):
+        for m in re.finditer(rf"\*\*([A-Z](?:-[A-Z])?\d{{1,3}}′?)(?: [a-z]+){{0,3}} ?({_MARK})", line):
             defs.setdefault(m.group(1), m.group(2))
     problems = []
     for n, line in enumerate(lines, 1):
         head = re.match(rf"- ({_MARK}) ", line)
         if not head:
             continue
-        for tok in re.finditer(rf"(?:({_MARK}) )?\*\*([A-Z]\d{{1,3}}′?)\*\*", line):
+        for tok in re.finditer(rf"(?:({_MARK}) )?\*\*([A-Z](?:-[A-Z])?\d{{1,3}}′?)\*\*", line):
             want, ident = tok.group(1) or head.group(1), tok.group(2)
             if ident not in defs:
                 problems.append(f"FOLLOWUPS.md:{n} indexes {ident}, which has no open row")

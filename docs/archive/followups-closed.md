@@ -3,7 +3,7 @@
 # Closed 2026-09-23: kill confirm, superseded by the IR callout bus
 
 - 2026-09-23 **B31** the BLE-advert kill-confirm design is superseded by **S57**, which keeps the victim gun's own
-  `$IRTX` (a dead gun still forwards it). Closed with brx4's agreement; the design lives in the S57 row.
+  `$IRTX` (a dead gun still forwards it). The design lives in the S57 row.
 
 # Closed 2026-09-23: dual-emitter accuracy accounting
 

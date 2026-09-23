@@ -76,8 +76,8 @@ measured recoil numbers behind the shipped rungs. Groups C, D, E and F go into s
 
 ### Sitting 4: screamers Phase A, IR half (about 50 min; 1 gun, the rig)
 
-Screamers A8b, A9, A10, A13. A13 gives the per-gun traffic budget (**F274**). A13 replays today's `$WEAP` + `$AMMO`
-recoil writer. If the writer has moved to `$TMP` t4 by then, replay the `$TMP` form as well.
+Screamers A8b, A9, A10, A13. A13 gives the per-gun traffic budget (**F274**). A13 replays the shipped recoil writer,
+which writes `$TMP` t4 only (S55).
 
 ### Sitting 5: match verification (about 60 min; 2 guns, Phones + MC, film)
 
@@ -121,7 +121,7 @@ headset-word row was F254 before its renumber and is F275 now.
 
 ### Unattended and long runs (no sitting)
 
-- **Screamers Phase C** runs 1-4, 2 h each, one gun and a laptop (now unblocked with `soak --phone-pacing` built). Run 3 soaks the `$TMP` form of the recoil writer once it exists.
+- **Screamers Phase C** runs 1-4, 2 h each, one gun and a laptop (now unblocked with `soak --phone-pacing` built). Run 3 soaks the `$TMP` t4 recoil writer (S55).
 - **Screamers Phase D** (3 h, all guns, Phones + MC, the rig), after the Phase B rules are built.
 - **Screamers Phase E** (20 min), after the lock-up detector (**F272**) passes its bench validation.
 
@@ -144,7 +144,7 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 | screamers Phase B: **F270**, plus one new row per trigger that Phase A reproduces | levers and screamers | one rule in code per reproduced trigger (write with response; the `$PB*`/`$AS` deny list) | sittings 1 and 4 |
 | **F285** | levers and screamers | desk table is done; replace its UNMEASURED cells only from recorded bench results | sitting 2 steps 1, 3-5 |
 | **F274** | playtest and node | measure the recoil writer's BLE write budget and complete the hardware soaks | A13 and the three two-hour hardware runs; S55 is shipped |
-| **F277** | playtest and node | a detector for a reload that never completes | sitting 5 step 3 (a repro) |
+| **F277** | playtest and node | a detector for a reload that never completes | sitting 5 step 2 (a repro) |
 | **F281** | weapons and perks | move Quick Hands onto `$TMP` t6 in one piece, or not at all | sitting 2 step 4 (t6 absolute or additive) |
 | **S50** | weapons and perks | Extended Mags on `$TMP` t9 (one write per life, after `$SPAWN`, then an `$AMMO` fill) | sitting 2 step 2 (per slot or not) |
 

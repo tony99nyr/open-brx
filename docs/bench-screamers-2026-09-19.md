@@ -94,13 +94,13 @@ Each step tries one suspected trigger. Arm the gun with the bench victim head (`
 | A10 | IR plus BLE | A9 and A7 together | the player-count case: many hits and much traffic at once |
 | A11 | headset drop | switch the headset off during A7 | the gun resets its radio link; does it lock |
 | A12 | low battery | repeat A7 on a pack below 20 % | any difference |
-| A13 | our peak writer | replay the live S42 recoil writer at today's throttle (a `$WEAP` plus an `$AMMO` every 250 ms) for up to 20 min | the time and frame count at any LOCK-UP: the per-gun traffic budget |
+| A13 | our peak writer | replay the shipped recoil writer (S55: `$TMP` t4 accuracy writes only) at its throttle for up to 20 min | the time and frame count at any LOCK-UP: the per-gun traffic budget |
 
 **Running the split and zero-gap steps (F269, built 2026-09-23).** This table is the canonical argument list; the
 dated runbook ([`bench-2026-09-24.md`](bench-2026-09-24.md)) holds the order and the log lines. Every line is
 `python -m brx_mcp raw-bytes <address> <arguments>`. Single-quote every frame: in double quotes the shell turns
 `$AMMO` into nothing, and the tool then refuses the payload. `A7` below is nine `$PLAY,U37,3,10,,,,,*` then one
-`$QUERY,*`, concatenated; `WEAP32` and `WEAP30` are the stock AR `$WEAP,0` at magazine 32 and at magazine 30
+`$QUERY,*`, concatenated; `WEAP32` and `WEAP30` (shell variables from the runbook's env file, as is `A7`) are the stock AR `$WEAP,0` at magazine 32 and at magazine 30
 (`armgen.py 1 5 ar`, then with `t16=30 t39=30`; 111 B each).
 
 **Reading a magazine.** The gun sends `$ALCD` only on a shot or a reload. A run with `--read-ms` prints "FIRE NOW"
