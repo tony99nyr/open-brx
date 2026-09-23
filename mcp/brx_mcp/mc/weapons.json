@@ -545,7 +545,7 @@
    "rof": 6,
    "rng": 75,
    "htk": 4,
-   "ttk_ms": 1050,
+   "ttk_ms": 855,
    "range_band": "long",
    "range_target_m": "full reach indoor / 60m+ outdoor (Q15; it charges behind cover, then reaches)",
    "recoil": {
@@ -560,6 +560,7 @@
    },
    "wire": {
     "dmg": 70,
+    "tap_dmg": 16,
     "range_outdoor_pct": 85
    },
    "overrides": {
@@ -574,7 +575,7 @@
     "marksman",
     "sniper"
    ],
-   "notes": "2026-09-23 (F280): charge damage 85 -> 70 (`wire.dmg`), which raises the kill from one charge plus two taps to one charge plus THREE. Pre-charge it behind cover, then the kill is one release and three taps: a 70-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus three 20-damage taps drops a 115 pool in 1.05s from release (4 trigger actions at the CHARGE_TAP_CADENCE_MS tap cadence) -- 13 of the 40 rounds up, about 98 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, eighty back -- three combo kills a magazine, ten across the kit. 2026-09-23 (F291, later the same day): the tap cadence itself moved 285 -> 350ms, off the recoil duel sim, not a re-bench -- see CHARGE_TAP_CADENCE_MS in compile.py. htk/ttk_ms above are the RECOMPUTED numbers (1.05s, was 0.855s)."
+   "notes": "2026-09-23 (F280): charge damage 85 -> 70 (`wire.dmg`), which raises the kill from one charge plus two taps to one charge plus THREE. Pre-charge it behind cover, then the kill is one release and three taps: a 70-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus three taps drops a 115 pool from release -- 13 of the 40 rounds up, about 98 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, eighty back -- three combo kills a magazine, ten across the kit. 2026-09-23 (F291, later the same day): the recoil duel sim's rule 2 (an AR catching an uncharged CR should win) failed at the shipped tap damage. First tried moving the tap CADENCE (285 -> 350ms) -- reverted the same day, because that constant is the player's own physical pull rate: no $WEAP token encodes it and the gun neither reads nor enforces it, so it fixed nothing the gun does. Fixed on the wire instead: tap damage 20 -> 16 (`wire.tap_dmg`, t37, independent of the charge magnitude on t5, bench-proven 2026-09-17). 16 still closes the pool in exactly three taps (3 x 16 = 48 >= the 45 left after the charge), so the combo stays charge + 3 taps -- htk 4, ttk_ms 855, both unchanged from the pre-F291 numbers. Tap cadence stays the bench-measured 285ms (CHARGE_TAP_CADENCE_MS, compile.py)."
   },
   {
    "weapon_id": "glock",

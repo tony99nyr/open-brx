@@ -1063,13 +1063,14 @@ def _load_weapons() -> list[dict]:
 # the charge lands t5 (85 then) and every tap lands t37 (20). Module-level so `views.py` can redo the
 # same release-to-kill maths `WeaponCatalog.time_to_kill()` does, at whatever pool the host has set.
 #
-# 2026-09-23 (Tony, F291): raised 285 -> 350 as a BALANCE decision off the recoil duel sim
-# (`mcp/tools/balance_sim.py --scenario recoil-duel`), not a new bench measurement -- 285 remains the
-# only hardware-measured trigger-pull rate this constant has ever had. This is the one number in this
-# module the wire does not carry at all (no `$WEAP` token encodes a human's own tap rate), so there is
-# nothing for a bench session to re-measure against; flagged for the F308 bench row regardless, in
-# case a future session wants to check whether 350 is still comfortable at the trigger.
-CHARGE_TAP_CADENCE_MS = 350
+# 2026-09-23 (Tony, F291): briefly raised 285 -> 350 as an attempted fix for the recoil duel sim's rule 2
+# (an AR that catches an uncharged CR should beat it), then REVERTED the same day. This constant is the
+# player's own physical trigger-pull rate: no `$WEAP` token encodes it and the gun does not read or
+# enforce it at all, so moving it changes nothing the gun does -- only what this module's htk/ttk_ms
+# arithmetic assumes a human can do. Rule 2 is fixed on the wire instead, by pricing the Charge Rifle's
+# tap DAMAGE down (`wire.tap_dmg`, t37, a real gun-enforced token) rather than pretending the player taps
+# slower. 285 ms remains the only hardware-measured figure this constant has ever had.
+CHARGE_TAP_CADENCE_MS = 285
 
 
 class WeaponCatalog:
@@ -1364,6 +1365,14 @@ class WeaponCatalog:
                                      f"and overrides.{key}=100 so the receiver can hear it reliably")
                 self._override_index(weapon_id, key, reach)
             put("headset_dmg", 0 if dmg_abs is not None else int(headset_dmg))
+        # t37 (`charge tap damage`, F225/S43, bench-proven 2026-09-17: t37=30 changed only the tap while
+        # the charge stayed on t5) -- an independent balance lever from the charge magnitude, so it gets
+        # its own `wire.tap_dmg` override, the same plain pattern as `wire.fire_ms` below: written
+        # verbatim when declared, left exactly as the capture carries it otherwise. F291 (2026-09-23,
+        # Tony): the Charge Rifle's own kill combo (charge + N taps) is priced on THIS token, never on
+        # the tap CADENCE, which the gun does not read or enforce at all (see `CHARGE_TAP_CADENCE_MS`).
+        if wire.get("tap_dmg") is not None:
+            put("tap", int(wire["tap_dmg"]))
         # t6 (`primaryCritChance`, F62, closed 2026-09-18): the GUN rolls its own crit off this straight
         # percentage, magnitude x1.5 truncated, and `$HIR` token 6 reads 1 on the proc (0 on a normal
         # hit) so the victim's node can see it. This is NOT the same "declare it or we refuse" contract

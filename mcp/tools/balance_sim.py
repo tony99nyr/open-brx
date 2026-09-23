@@ -1232,10 +1232,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="base aim factor: hit chance = accuracy/100 x this (unproven on the bench)")
     g.add_argument("--tap-ms", type=float, default=None,
                    help="Charge Rifle tap cadence, the 'current' column (default: CHARGE_TAP_CADENCE_MS, "
-                        "350 as of F291's 2026-09-23 balance change, was 285)")
+                        "285, the player's own bench-measured pull rate -- NOT a $WEAP token, the gun "
+                        "does not read or enforce it, see the module's CHARGE_TAP_CADENCE_MS comment)")
     g.add_argument("--tap-ms-proposed", type=float, default=350.0,
-                   help="the 'proposed' column (default 350 -- same as the current shipped cadence "
-                        "unless overridden, kept for a caller exploring a further move)")
+                   help="a second cadence column for comparison only; changing it tests a hypothesis "
+                        "about how fast a player can physically tap, never a lever the gun ships")
     g.add_argument("--reaction-mean-ms", type=float, default=250.0)
     g.add_argument("--reaction-sd-ms", type=float, default=80.0)
     g.add_argument("--burst-min", type=int, default=3, help="rule 3: shortest controlled burst, rounds")

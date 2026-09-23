@@ -213,7 +213,7 @@ sounds — and moves the numbers.
 | Suppressor | support | 8 | 140 | 15 | **1.96** | 57.1 | 48.0 | 75 | 384 | 2000 | 100% | — | **2026-09-17**: cycle 160→140 (`wire.fire_ms`); mag 48→75 (§2.3, family-scoped dominance) |
 | Assault Rifle | assault | 9 | 100 | 13 | **1.20** | 90.0 | 62.6 | 32 | 192 | 1400 | 100% | — | **2026-09-17**: cycle 140→100 (`wire.fire_ms`, native Battle Company speed) |
 | Energy Rifle | support | 9 | 150 | 13 | **1.80** | 60.0 | 57.0 | 300 | 600 | 2400 | 100% | 6 | **2026-09-17**: cycle 200→150 (`wire.fire_ms`); overheat switched ON (F229: `t38`=150 override, `t35`=D11) |
-| Charge Rifle | support | 70 | 1250 | 4 | **1.05** | 56.0 | 37.3 | 40 | 80 | 2500 | 92% | 14 | **2026-09-17**: dmg 87→85 (`wire.dmg`, the CHARGE damage; tap damage `t37`=20 unchanged), mag/res 12/12→40/80, `rounds_per_charge`=10 (F225/F226/S43); `htk`/`ttk s` now count 1 charge + 2 taps (release-to-kill), not `ceil(pool/85)`. **2026-09-18 bench**: the tap cadence is **285 ms**, measured, not the 500 ms placeholder, so release-to-kill falls 1.00 s → **0.57 s**. The charge costing exactly 10 rounds, the 85 charge and the 20 tap were all confirmed on the wire in the same run. **2026-09-23 (F280)**: charge damage 85→70 (`wire.dmg`), which pushes the kill to 1 charge + 3 taps and TTK 0.57→0.85 s. **2026-09-23 (F291, later the same day)**: the tap cadence itself moved 285→**350 ms**, off the recoil duel sim (§7.5c), pushing TTK 0.85→**1.05 s**. This is a BALANCE decision, not a re-bench: 285 ms remains the only hardware-measured figure `CHARGE_TAP_CADENCE_MS` has had, and the token it models has no wire representation at all (no `$WEAP` field carries a human's own tap rate), so there is nothing on the gun to re-measure against — flagged for the F308 bench row regardless. `DPS` and `sust` count CHARGES only (70 / 1.25 s, and 4 charges a magazine against `4 × 1.25 + reload`); the tap is a second cadence and no single figure covers both, so `ttk s` is the column that reads the mixed kill |
+| Charge Rifle | support | 70 | 1250 | 4 | **0.85** | 56.0 | 37.3 | 40 | 80 | 2500 | 92% | 14 | **2026-09-17**: dmg 87→85 (`wire.dmg`, the CHARGE damage; tap damage `t37`=20 unchanged), mag/res 12/12→40/80, `rounds_per_charge`=10 (F225/F226/S43); `htk`/`ttk s` now count 1 charge + 2 taps (release-to-kill), not `ceil(pool/85)`. **2026-09-18 bench**: the tap cadence is **285 ms**, measured, not the 500 ms placeholder, so release-to-kill falls 1.00 s → **0.57 s**. The charge costing exactly 10 rounds, the 85 charge and the 20 tap were all confirmed on the wire in the same run. **2026-09-23 (F280)**: charge damage 85→70 (`wire.dmg`), which pushes the kill to 1 charge + 3 taps and TTK 0.57→0.85 s. **2026-09-23 (F291, later the same day)**: the recoil duel sim's rule 2 (an AR catching an uncharged CR should win) failed. First tried moving the tap CADENCE 285→350 ms — reverted the same day: that constant is the player's own physical pull rate, no `$WEAP` field carries it and the gun neither reads nor enforces it, so it changed nothing the gun does. Fixed on the wire instead: tap damage 20→**16** (`wire.tap_dmg`, t37, independent of the charge magnitude on t5, bench-proven 2026-09-17). 16 still closes the pool in exactly three taps (3×16=48 ≥ the 45 left after the charge), so `htk`/`ttk s` at the 115 pool are unchanged from the pre-F291 row. `DPS` and `sust` count CHARGES only (70 / 1.25 s, and 4 charges a magazine against `4 × 1.25 + reload`); the tap is a second cadence and no single figure covers both, so `ttk s` is the column that reads the mixed kill |
 | Rocket Launcher | power | 115 | 1000 | 1 | **0.00** | 115.0 | 50.0 | 2 | 2 | 2600 | 91% | — | res 8→2, reload 1200→2600 |
 | Energy Launcher | power | 115 | 1600 | 1 | **0.00** | 71.9 | 50.0 | 2 | 2 | 1400 | 91% | — | cycle 360→1600, mag 1→2, res 6→2 |
 | Ion Sniper | power | 115 | 1400 | 1 | **0.00** | 82.1 | 47.9 | 2 | 2 | 2000 | 91% | — | cycle 1000→1400, res 12→2 |
@@ -480,7 +480,7 @@ Fastest cycle has the slowest reload and vice versa; nothing leads on both.
 | weapon | 45/55 (100) | **45/70 (115)** | 50/100 (150) | 100/100 (200) |
 |---|---|---|---|---|
 | Power tier (115 dmg) | 1 | **1** | **2** | 2 |
-| Charge Rifle | 3 | **4** | 5 | 8 |
+| Charge Rifle | 3 | **4** | 6 | 10 |
 | Sniper Rifle | 2 | **2** | 3 | 4 |
 | Shotgun | 3 | **3** | 4 | 5 |
 | Plasma Sniper | 3 | **4** | 5 | 6 |
@@ -498,8 +498,8 @@ Fastest cycle has the slowest reload and vice versa; nothing leads on both.
 | Glock-18 | 8 | **9** | 12 | 16 |
 
 **The Charge Rifle's `htk` in this table is trigger ACTIONS (1 charge + N taps), not equal-sized
-hits** (2026-09-17, F225/F226/S43): at 200 the pool needs 1 charge (70, F280) plus 7 taps (20 each,
-the last one overkilling by 10) to close, not `ceil(200/70) = 3`. Every other row is the plain
+hits** (2026-09-17, F225/F226/S43): at 200 the pool needs 1 charge (70, F280) plus 9 taps (16 each,
+F291, the last one overkilling by 14) to close, not `ceil(200/70) = 3`. Every other row is the plain
 `ceil(pool/dmg)` every non-cell weapon uses.
 
 **The Toxin Rifle's row counts direct hits only**, with the same `ceil(pool/dmg)`. Its poison is worth
@@ -1600,14 +1600,22 @@ AR combatant was, at that point, still modelled as full auto too, so deepening t
 rule 3 also weakened the AR's own showing in rule 2, and the two pulled the one shared dial in opposite
 directions.
 
-**The fix that shipped:** the Charge Rifle tap cadence moved 285 → 350 ms (a balance choice off this sim,
-not a new bench measurement — 285 remains the only hardware-measured figure `CHARGE_TAP_CADENCE_MS` has
-ever had), and the AR's own rule-2 combatant was corrected to burst, matching rule 3 (Tony: the AR player
-who catches an uncharged CR is the skilled one, not a full-auto spray). With both changes plus a deeper
-AR ladder (`degraded: 70, heavy: 40`, `after_heavy: 8` — heavy from round 8, one round sooner than the
-shared 9), all three rules clear 65% at 10,000 reps: rule 1 about 94%, rule 2 about 70%, rule 3 about
-72%. The AR's `after_shots` (6) is unchanged, so a controlled burst still never degrades at all — only
-full auto pays the deeper floor.
+**A tap-cadence "fix" was tried and reverted the same day.** Moving `CHARGE_TAP_CADENCE_MS` 285 → 350 ms
+changed rule 2's numbers in the sim, but that constant is the PLAYER'S OWN physical trigger-pull rate: no
+`$WEAP` token encodes it, and the gun neither reads nor enforces it at all, so the move changed nothing a
+real gun does — only what this module's own htk/ttk_ms arithmetic assumed a human could do. Reverted; 285
+ms remains the only hardware-measured figure this constant has ever had.
+
+**The fix that shipped is on the wire.** The Charge Rifle's tap damage moved 20 → **16** (`wire.tap_dmg`,
+t37, independent of the charge magnitude on t5, bench-proven 2026-09-17: t37=30 changed only the tap
+while t5 stayed put) — a real, gun-enforced lever. 16 still closes a 115 pool in exactly three taps
+(3×16=48 ≥ the 45 left after the charge), so the combo stays charge + 3 taps and `htk`/`ttk_ms` are
+unchanged from the pre-F291 row. The AR's own rule-2 combatant was also corrected to burst, matching rule
+3 (Tony: the AR player who catches an uncharged CR is the skilled one, not a full-auto spray). With both
+changes plus the deeper AR ladder (`degraded: 70, heavy: 40`, `after_heavy: 8` — heavy from round 8, one
+round sooner than the shared 9), all three rules clear 65% at 10,000 reps: rule 1 about 94%, rule 2 about
+91%, rule 3 about 72%. The AR's `after_shots` (6) is unchanged, so a controlled burst still never
+degrades at all — only full auto pays the deeper floor.
 
 ### 7.7 Armour Piercing takes two levers, not one
 

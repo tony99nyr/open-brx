@@ -392,12 +392,15 @@ def test_resolve_changes_only_the_balance_tokens_of_the_captured_frame():
     balance = {1, T["dmg"] + 1, T["headset_dmg"] + 1, T["crit"] + 1, T["headset_range_outdoor"] + 1,
                T["headset_range_indoor"] + 1, T["fire"] + 1, T["mag"] + 1, T["clipstart"] + 1,
                T["reserve"] + 1, T["reserve_half"] + 1, T["reload"] + 1,
-               T["swap"] + 1}                                   # tok15 = draw time: `wire.swap_ms` on the sidearms (bench 2026-09-04)
+               T["swap"] + 1,                                   # tok15 = draw time: `wire.swap_ms` on the sidearms (bench 2026-09-04)
+               T["tap"] + 1}   # tok37 = charge tap damage: `wire.tap_dmg` (F291, 2026-09-23) on the Charge Rifle
     # tok12 (t12, `ExtraHeadsetDamage`) joined the balance set 2026-09-18: it now carries a DECLARED
     # `wire.headset_dmg`, priced independently of t5 (see `WeaponCatalog.damage_per_pull()`), so it
     # moves off the capture on every weapon that declares one. tok13/tok42 (`HeadsetRangeOutdoor`/
     # `HeadsetRangeIndoor`, the second word's own reach) joined the same day for the same reason: a
-    # declared `wire.headset_range_outdoor`/`_indoor` overwrites the captured cell.
+    # declared `wire.headset_range_outdoor`/`_indoor` overwrites the captured cell. tok37 (charge tap
+    # damage) joined 2026-09-23 (F291) the same way: it now carries a DECLARED `wire.tap_dmg`,
+    # independent of the charge magnitude on t5 (bench-proven 2026-09-17: t37=30 changed only the tap).
     cat = WeaponCatalog()
     for wid, row in rows.items():
         allowed = balance | {int(k.lstrip("tT")) + 1 for k in (row.get("overrides") or {})}

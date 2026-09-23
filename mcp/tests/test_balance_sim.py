@@ -366,9 +366,11 @@ def test_recoil_duel_seeded_runs_land_in_band():
                              float(B.CHARGE_TAP_CADENCE_MS))
     r3 = B.recoil_duel_batch(B.run_recoil_duel_rule3, "burst", 2000, SEED, "rule3_test", m)
     assert 0.88 < r1.win_rate < 0.98, r1.win_rate    # rule 1: a charged CR clearly beats an AR
-    assert 0.60 < r2.win_rate < 0.80, r2.win_rate     # rule 2: the AR is burst-disciplined too (Tony's
-                                                       # 2026-09-23 correction) and the tap cadence moved
-                                                       # 285->350ms the same day, both of which favour it
+    assert 0.82 < r2.win_rate < 0.98, r2.win_rate     # rule 2: the AR is burst-disciplined too (Tony's
+                                                       # 2026-09-23 correction) and the Charge Rifle's tap
+                                                       # damage moved 20->16 (wire.tap_dmg, t37 -- a real
+                                                       # gun-enforced lever; the tap CADENCE stays the
+                                                       # bench-measured 285ms, it was never a gun setting)
     assert 0.60 < r3.win_rate < 0.85, r3.win_rate     # rule 3: the deepened AR ladder (degraded 70,
                                                        # heavy 40 from round 8, Tony 2026-09-23) now clears
                                                        # rule 3 at the DEFAULT 150-300 ms pause -- shipped
