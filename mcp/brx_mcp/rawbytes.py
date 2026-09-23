@@ -284,23 +284,38 @@ async def write_raw(mgr: Any, alias: str, plan: RawPlan, *, clock: Clock | None 
             last_frames[name] = ev["raw"]
 
     pong_after: bool | None = None
-    if ping_after_s > 0:
-        # The screamers LOCK-UP definition: no `$PONG` within 10 s of a `$PING`. One complete, safe
-        # frame, written only after the plan (and its lock) is done.
-        mark = session.seq
-        async with session.write_lock:
-            await session.client.write_gatt_char(NUS_RX_CHAR_UUID, b"$PING,*", response=False)
-            session.record("tx", "$PING,*")
-        pong_after = False
-        waited = 0.0
-        while waited < ping_after_s:
+    ends_incomplete = bool(plan.writes) and b"*" not in b"".join(w.data for w in plan.writes).rsplit(b"$", 1)[-1]
+    if ping_after_s > 0 and ends_incomplete:
+        # A `$PING` now would complete the stale fragment: an unlogged parser reset (screamers A4/A7b).
+        warnings.append("no liveness $PING: the plan ends on an incomplete frame; send '$*' next")
+    elif ping_after_s > 0:
+        # The screamers LOCK-UP definition: no `$PONG` within 10 s of a `$PING`. Wait for the plan's own
+        # replies to go quiet first, so a late plan `$PONG` (an A7c stream) is not taken for this one.
+        last_seq, quiet, waited = session.seq, 0.0, 0.0
+        while quiet < 0.5 and waited < 5.0:
             await clock.sleep(0.25)
             waited += 0.25
-            out = mgr.get_events(alias, since_seq=mark, max_events=100_000)
-            if any(e["direction"] == "rx" and protocol.command_name(e["raw"]) == "PONG"
-                   for e in out["events"]):
-                pong_after = True
-                break
+            quiet = quiet + 0.25 if session.seq == last_seq else 0.0
+            last_seq = session.seq
+        mark = session.seq
+        try:
+            async with session.write_lock:
+                await session.client.write_gatt_char(NUS_RX_CHAR_UUID, b"$PING,*", response=False)
+                session.record("tx", "$PING,*")
+        except Exception as e:  # noqa: BLE001 -- a failed ping write is itself the evidence
+            warnings.append(f"liveness $PING write failed: {type(e).__name__}: {e}")
+            pong_after = False
+        else:
+            pong_after = False
+            waited = 0.0
+            while waited < ping_after_s:
+                await clock.sleep(0.25)
+                waited += 0.25
+                out = mgr.get_events(alias, since_seq=mark, max_events=100_000)
+                if any(e["direction"] == "rx" and protocol.command_name(e["raw"]) == "PONG"
+                       for e in out["events"]):
+                    pong_after = True
+                    break
 
     return RawResult(writes=logs, reply_counts=reply_counts, warnings=warnings,
                      last_frames=last_frames, pong_after=pong_after)

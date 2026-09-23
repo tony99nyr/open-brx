@@ -45,6 +45,7 @@ ATTEMPT_GAP_S = 1.5              # ble.py ConnectionManager.connect's own retry 
 REPLY_TIMEOUT_S = 5.0
 REPLY_POLL_S = 0.1
 SCAN_DURATION_S = 1
+DROP_SETTLE_S = 2.0   # how long a failed send waits for `is_connected` to report the drop
 ADVERT_POLL_S = 0.25              # short and independent of the batch's hold-window poll_s, so
                                   # t_advert_s/t_link_from_t0_s aren't inflated by it (up to ~4 s on
                                   # real hardware, where a scan actually takes SCAN_DURATION_S)
@@ -306,9 +307,16 @@ async def _time_reply_or_drop(mgr: Any, alias: str, cmd: str, prefix: str, clock
                                         poll_s=poll_s)
         return elapsed, ev, None
     except Exception:
+        failed_at = clock.now() - link_time
+        # bleak's `is_connected` can lag a real drop (WinRT's session status, CoreBluetooth's async
+        # didDisconnect), so give it DROP_SETTLE_S to catch up before calling the raise a tool error.
+        waited = 0.0
+        while mgr.is_connected(alias) and waited < DROP_SETTLE_S:
+            await clock.sleep(0.25)
+            waited += 0.25
         if mgr.is_connected(alias):
             raise
-        return None, None, clock.now() - link_time
+        return None, None, failed_at
 
 
 async def _cold_prep(mgr: Any, alias: str, k: int, n: int, cold: str, warm_off_s: float,

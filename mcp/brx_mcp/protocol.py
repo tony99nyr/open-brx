@@ -216,8 +216,9 @@ PANIC_SEQUENCE = ["$CLEAR,*", "$SP,99,*"]
 
 
 def _raw_word(command: str) -> str:
-    """The first token as written, `$` stripped, no Gen1 prefix handling."""
-    return command.lstrip("$").split(",", 1)[0]
+    """The first token as written, `$` stripped, no Gen1 prefix handling. Whitespace and a `*` that
+    ends the word are stripped too: `$FACTORY*` or `$ FACTORY,*` must not slip past the deny list."""
+    return command.lstrip("$").split(",", 1)[0].strip().rstrip("*").strip()
 
 
 def deny_reason(command: str, allow_hang: bool = False) -> str | None:

@@ -155,7 +155,9 @@ path of a waiting player.
 at the current pacing and someone turns the flag on. A bench run can also pass `response_for_multi_packet`
 straight into `ble.py`'s `_write`/`send_phone_paced` to try it for one call without moving the default.
 A response chunk waits for its answer with no 50 ms cap: the plugin keeps one write callback per device, so
-moving on early fails the next chunk as busy on Android and drops the first chunk's error on iOS.
+moving on early fails the next chunk as busy on Android and drops the first chunk's error on iOS. The plugin
+rejects an unanswered write after 5 s, which bounds the wait. The answer returns over the same bridge that lagged
+1-11 s on 2026-09-17 (see `WRITE_ACK_CAP_MS`), so the A8 run with the flag on must also run the beacon scan.
 Head-and-spawn-only scoping is not built: `write()`'s callers in `engine.js` never pass an option that tells
 the link a burst is head/spawn versus revive (`_write(frames, why)` carries no `options` on either path), so
 today the flag, when on, covers every multi-packet frame. Narrowing it to head and spawn needs an engine.js

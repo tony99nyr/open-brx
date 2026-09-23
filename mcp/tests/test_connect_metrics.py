@@ -555,3 +555,25 @@ def test_every_bundled_run_disconnects_cleanly():
                             clock=clock, out=None))
     assert "connmetrics" not in mgr.sessions
     assert mgr.disconnect_calls >= 3
+
+
+def test_a_send_that_fails_before_is_connected_catches_up_is_still_a_drop():
+    """Polish round 2: bleak's `is_connected` can lag a real drop (WinRT session status, CoreBluetooth's
+    async didDisconnect). A send that fails while the flag still reads True must wait for it to catch
+    up, and then count as a BLE drop, not a tool error."""
+    clock = FakeClock()
+    mgr = FakeMgr(clock)
+    real_send = mgr.send
+
+    async def lagging_send(alias, command, reply_window_ms=0):
+        if command.startswith("$VERSION"):
+            mgr.drop_ble_at = clock.now() + 1.0      # the flag reads the drop only 1 s later
+            raise RuntimeError("Unreachable")
+        return await real_send(alias, command, reply_window_ms)
+
+    mgr.send = lagging_send
+    summary = run(run_connect_metrics(mgr, "AA:BB:CC:DD:EE:FF", 1, cold="warm", warm_off_s=0,
+                                      clock=clock, out=None))
+    r = summary.runs[0]
+    assert r.error is None, r.error
+    assert r.ble_drop_s is not None and r.ble_drop_s < 1.0, "the drop time is when the send failed"

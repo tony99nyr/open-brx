@@ -453,4 +453,59 @@ def test_no_pong_after_the_plan_is_reported():
     clock = FakeClock()
     result = run(write_raw(mgr, "g", plan_from_segments(["$PING,*"]), clock=clock, ping_after_s=10))
     assert result.pong_after is False
-    assert abs(sum(clock.sleep_calls) - 10) < 0.01, "waited the full 10 s LOCK-UP window"
+    assert sum(clock.sleep_calls) >= 10, "waited the full 10 s LOCK-UP window"
+
+
+# -- polish loop 2 -------------------------------------------------------------------------------
+
+def test_a_denied_word_ending_in_star_or_padded_is_still_refused():
+    for frame in ("$FACTORY*", "$DPLAY*", "$ FACTORY,*", "$FACTORY\t,*"):
+        with raises(ValueError, match="refused, confirm or not"):
+            validate_plan(plan_from_segments([frame]), confirm=True)
+
+
+def test_no_liveness_ping_after_a_plan_that_ends_incomplete():
+    mgr = FakeMgr()
+    session = mgr.add("g")
+    result = run(write_raw(mgr, "g", plan_from_segments(["$AMMO,0,17,50,1"]), clock=FakeClock(),
+                           allow_incomplete=True, ping_after_s=10))
+    assert result.pong_after is None
+    assert b"$PING,*" not in [c["data"] for c in session.client.calls]
+    assert any("no liveness $PING" in w for w in result.warnings)
+
+
+def test_a_late_pong_from_the_plan_is_not_taken_for_the_liveness_reply():
+    # A7c: the plan's own $PONGs trail in after the writes. The liveness ping must not count them.
+    class LateReplyClock(FakeClock):
+        def __init__(self, session):
+            super().__init__()
+            self.session = session
+            self.late = 3
+
+        async def sleep(self, seconds: float) -> None:
+            await super().sleep(seconds)
+            if self.late:
+                self.late -= 1
+                self.session.record("rx", "$PONG,*")
+
+    mgr = FakeMgr()
+    session = mgr.add("g")
+    result = run(write_raw(mgr, "g", plan_from_segments(["$PING,*"]), clock=LateReplyClock(session),
+                           ping_after_s=10))
+    assert result.pong_after is False, "the gun never answered the liveness $PING"
+
+
+def test_a_failed_liveness_ping_write_keeps_the_results():
+    mgr = FakeMgr()
+    session = mgr.add("g")
+
+    async def fail_on_ping(char, data, response):
+        if data == b"$PING,*":
+            raise RuntimeError("Unreachable")
+
+    session.client.write_impl = fail_on_ping
+    result = run(write_raw(mgr, "g", plan_from_segments(["$AMMO,0,23,50,1,*"]), clock=FakeClock(),
+                           ping_after_s=10))
+    assert len(result.writes) == 1
+    assert result.pong_after is False
+    assert any("liveness $PING write failed" in w for w in result.warnings)

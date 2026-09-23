@@ -6784,6 +6784,7 @@ test('deny list: the generated set is the source, and the helpers read the comma
   assert.equal(frameCommand('not a frame'), '');
   assert.equal(deniedCommand('$PLAY,U37,3,10,,,,,*'), false, 'PLAY is not DPLAY: the match is on the whole word');
   assert.equal(deniedCommand('$DPLAY,A10,4,*'), true);
+  for (const f of ['$DPLAY*', '$ DPLAY,*', '$DPLAY\t,*', '$FACTORY*']) assert.equal(deniedCommand(f), true, `${JSON.stringify(f)} is still denied`);
   assert.equal(deniedCommand('$^RESET,*'), true, 'gun<->radio control frames are never ours');
   assert.equal(deniedCommand(''), false);
   assert.equal(deniedCommand(null), false);

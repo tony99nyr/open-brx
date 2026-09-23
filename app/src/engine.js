@@ -22,8 +22,9 @@ export const C = {
 export const SFLASH = '$SFLASH,*';
 export const PLAYX = '$PLAYX,0,*';
 /** The command word of a `$…` frame, or '' -- `$DPLAY,A10,4,*` -> 'DPLAY'. A gun<->radio control frame
- *  (`$!…`, `$^…`, `$&…`) keeps its prefix so it never matches a real command by accident. */
-export function frameCommand(f) { return typeof f === 'string' && f[0] === '$' ? f.slice(1).split(',')[0].toUpperCase() : ''; }
+ *  (`$!…`, `$^…`, `$&…`) keeps its prefix so it never matches a real command by accident. Whitespace and a
+ *  `*` that ends the word are stripped, so `$DPLAY*` or `$ DPLAY,*` cannot slip past the deny list. */
+export function frameCommand(f) { return typeof f === 'string' && f[0] === '$' ? f.slice(1).split(',')[0].trim().replace(/\*+$/, '').trim().toUpperCase() : ''; }
 /** True when the node must never write this frame (transport-hardening.md §4): the word is on the generated
  *  deny list, or it is a gun<->radio module control frame. */
 export function deniedCommand(f) { const w = frameCommand(f); return !!w && (W.NODE_DENIED_COMMANDS.has(w) || '!^&'.includes(w[0])); }

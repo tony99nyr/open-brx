@@ -195,3 +195,10 @@ def test_no_compiled_bundle_carries_a_denied_frame_and_the_guard_is_load_bearing
         assert "DENY-LIST GUARD" in str(e) and "DPLAY" in str(e)
     else:
         raise AssertionError("a bundle carrying $DPLAY must be refused at compile time")
+
+
+def test_a_denied_word_cannot_hide_behind_a_star_or_whitespace():
+    # `$FACTORY*` has no comma, so the old first-token split read the word as 'FACTORY*' and let it by.
+    for frame in ("$FACTORY*", "$DPLAY*", "$ FACTORY,*", "$FACTORY\t,*", "$dplay *"):
+        assert protocol.deny_reason(frame), frame
+    assert protocol.deny_reason("$PLAY,U37,3,10,,,,,*") is None
