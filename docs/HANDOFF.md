@@ -1,10 +1,10 @@
-# Handoff: Open BRX — F203, F196, F193, F192 and B22 closed; F190 confirmed stale and archived.
-**State as of 2026-09-22 (playtest follow-up).** **Rules for this file.** One screen. It says what is true now; history is `git log -p -- docs/HANDOFF.md`. It has
+# Handoff: Open BRX — S34, F203, F196, F193, F192 and B22 closed; F190 confirmed stale and archived.
+**State as of 2026-09-23 (desk follow-up).** **Rules for this file.** One screen. It says what is true now; history is `git log -p -- docs/HANDOFF.md`. It has
 one section per open lane. **When several sessions close together, each one overwrites only its own lane section,
 never another lane's.** (On 2026-09-18 three lanes closed on the same night and rewrote each other's sections.)
 The bench order and the desk-work list live in one place: [`bench-plan.md`](bench-plan.md).
-## State of main (2026-09-22, after the pre-game office test)
-The 2026-09-20 playtest fixes are committed on `main`: score caps are opt-in, fresh Charge Rifle ammo is
+## State of main (2026-09-23, after the desk closure)
+The 2026-09-23 desk closure is committed on `main`: S34 now self-hosts the HUD, utility, and Mission Control fonts, with app/MC/site builds and the site font/accessibility gate green. The 2026-09-20 playtest fixes are committed on `main`: score caps are opt-in, fresh Charge Rifle ammo is
 published, Breacher/Toxin and SMG headset damage are supported, dual-emitter hits are grouped and version-gated,
 LOAD announcements retry after reconnects, shields render as a separate HUD pool, scanner games with one
 team-scoped station warn the operator while uncovered teams use timed AUTO respawn, and utility mode now auto-joins

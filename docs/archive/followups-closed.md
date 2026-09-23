@@ -586,6 +586,10 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
 - 2026-09-22 **F196** the amendment citation resolver now scans `mcp/tests` as well as production code, so
   amendment rows can cite their regression tests without silently skipping them. The focused citation suite passes 4/4.
 
+# Closed 2026-09-23: self-host HUD and Mission Control fonts
+
+- 2026-09-23 **S34** removed the Google Fonts dependencies from the phone HUD, utility page, and Mission Control. Saira Condensed is now bundled for the app/site trees, while Mission Control bundles Oswald and Chakra Petch. The app, MC, and site builds pass; the site Playwright font/accessibility gate passes.
+
 # Closed 2026-09-22: Easy Reload HUD indication
 
 - 2026-09-22 **S52** `loadout.overrides.easy_reload` now reaches the phone HUD state, which renders `ALT = RELOAD`; the picker also warns before a secondary weapon request that would take the ALT button. The S52 engine regression and existing app screen gate pass.
