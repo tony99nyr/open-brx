@@ -5605,8 +5605,8 @@ class Session:
             if cov["level"] != "full":
                 raise CoverageRequired(
                     f"{self.config.get('mode')} needs FULL coverage (every player's phone on its own "
-                    f"internet path, which no phone can report yet); "
-                    f"{cov['on_backhaul']} of {cov['bound']} bound node(s) are", cov)
+                    f"internet path, which no phone can report yet); {cov['on_backhaul']} of "
+                    f"{cov['bound']} bound phone(s) joined through the tunnel, which is not proof of an independent path", cov)
         # Round-2 B: read the BOARD, not `go` — `go` is now also false for a `roster_faults` entry,
         # which is a different refusal with its own (unforceable) wording further down. Gating the
         # override on `go` printed "readiness has reds — clear them before pushing" with an EMPTY list
@@ -6666,8 +6666,8 @@ class Session:
                 "browsing": dict(self.browsing)}
 
     def _updating(self) -> int:
-        """F178 (Tony, 2026-09-23): READY stays the player's intent, and this is the part of it START
-        will still refuse on. A READY player with a phone bound whose gun has not answered the head
+        """F178 (Tony, 2026-09-23): READY stays the player's intent, and this is the part of it ARM
+        (`start()`) will still refuse on. A READY player with a phone bound whose gun has not answered the head
         MC pushed: no ack yet, or an ack for an older `config_id` (`_refuse_stale_ack`). A refused
         `{ok: false}` ack is a red on the board, not an update in flight, so it is not counted."""
         if not self.lobby_pushed:

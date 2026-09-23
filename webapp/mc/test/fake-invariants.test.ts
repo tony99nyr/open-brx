@@ -63,6 +63,9 @@ const cases: Record<string, Case> = {
   },
   coverage_zones: async b => {
     expect((await b.getState()).coverage?.level).toBe('zones');
+    const cov = (b as unknown as { coverage: (n: { player_id: string; reach: 'backhaul' }[]) => { level: string } })
+      .coverage([{ player_id: 'p1', reach: 'backhaul' }, { player_id: 'p2', reach: 'backhaul' }]);
+    expect(cov, 'every bound phone on the tunnel is still zones').toEqual({ level: 'zones', on_backhaul: 2, bound: 2 });
   },
   stale_start: async b => {
     await b.pushLobby(true);

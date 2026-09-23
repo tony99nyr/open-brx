@@ -630,6 +630,8 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
   calibre (5 clean at 8 damage, 3 more to heavy), a release reset while crisp, the Burst Rifle flat, floors at 60,
   the Assault Rifle at 80/60. The catalogue now carries the S54 fields. The bench half is F308.
 - 2026-09-23 **F178** closed: READY stays player intent (Tony's decision). `lobby.updating` counts the READY players whose
-  gun has not answered the pushed head, and LOBBY reads "6/7 READY · 1 UPDATING". Server, console, API.md and mock together.
+  gun has not answered the pushed head, and LOBBY reads "7/7 READY · 1 UPDATING" (the intent count, plus the updating tag). Server, console, API.md and mock together.
 - 2026-09-23 **F256** closed by the conservative fix: `coverage.level` is always `zones`, because `reach` names only the URL.
   The chip states the tunnel count and is never green. The real fix, a node-reported transport, is F309.
+- 2026-09-23 **F251** closed by `ec5c4ba3`: `mc/fake_invariants.json` lists seven node-protocol behaviours, asserted against
+  Session/FakeNet and MockNode in Python and against the `?mock` backend in vitest; each side fails on an id with no case.

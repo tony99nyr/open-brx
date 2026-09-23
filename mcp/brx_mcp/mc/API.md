@@ -157,8 +157,8 @@ State {
            acks: { [player_id]: { ok: boolean, gun_echo?: string, err?: string, config_id?: string } } },
                                               // F178 (2026-09-23): `ready` is the players' intent. `updating` is the part of
                                               // it whose gun has not answered the pushed head: a bound READY player with no ack
-                                              // yet, or an ok ack naming an older config_id. 0 before the push; a refused ack
-                                              // is a red, not counted. The console shows "6/7 READY · 1 UPDATING"; absent = 0.
+                                              // yet, or an ok ack naming an older config_id. 0 before the push; a refused ack,
+                                              // or an ok ack with no echo, is a red, not counted. The console shows "6/7 READY · 1 UPDATING"; absent = 0.
                                               // A36 (2026-09-13): `config_id` is WHICH config that gun answered for.
                                               // An ack naming a previous one is NOT an ack for the game about to
                                               // start -- `all_acked` reads false, the row carries the blocker

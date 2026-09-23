@@ -72,8 +72,10 @@ def test_inv_updating():
 
 
 def test_inv_coverage_zones():
-    s, _, _, _ = to_lobby(2)
-    assert s.coverage()["level"] == "zones"
+    s, _, _, ps = to_lobby(2)
+    for i in range(len(ps)):
+        s.net.simulate_hello(f"node{i}", f"GUN-{chr(65 + i)}", via="backhaul")
+    assert s.coverage() == {"level": "zones", "on_backhaul": 2, "bound": 2}, "every phone on the tunnel is still zones"
 
 
 def test_inv_stale_start():

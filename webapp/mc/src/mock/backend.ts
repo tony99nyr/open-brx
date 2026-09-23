@@ -162,7 +162,7 @@ export class MockBackend implements Api {
     if (!this.pushed) return 0;
     return this.players.filter(p => p.ready && p.node_id).filter(p => {
       const a = this.acks[p.player_id];
-      return !a || (a.ok && !!a.gun_echo && a.config_id !== this.config.config_id);
+      return !a || (a.ok && !!a.gun_echo && !!a.config_id && a.config_id !== this.config.config_id);
     }).length;
   }
   private stationIds() { return Object.values(this.stations).flatMap(s => s.assigned ? [s.assigned.id] : []).sort((a, b) => a - b); }

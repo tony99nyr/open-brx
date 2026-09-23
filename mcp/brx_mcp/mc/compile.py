@@ -2558,8 +2558,8 @@ class Compiler:
         """§7 rules → {ok, errors, warnings} (A6: frag-limit-without-coverage is a WARNING).
 
         **Two coverage opts, deliberately (A28.4).** `coverage` is the DERIVED one MC now computes every
-        time it validates (`Session.coverage()`: "full" iff every bound player node is connected over
-        backhaul). `venue_coverage` is the ASSERTED one — a human saying this park has coverage
+        time it validates (`Session.coverage()`; always "zones" since F256, because `reach` names only the
+        URL a phone joined through; F309 will derive "full" from a node-reported transport). `venue_coverage` is the ASSERTED one — a human saying this park has coverage
         everywhere — which nothing sets today. They do different work:
 
           * either one clears the A6.1 frag-limit warning and makes a frag-limit / survival end authoritative;

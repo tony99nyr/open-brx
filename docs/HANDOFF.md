@@ -118,18 +118,20 @@ WITHDRAWN; do not act on it.
 - **Blocked:** S54 and sitting 8 on the rung decision; Extended Mags on `$TMP` (S50) and F281 on sitting 2;
   **F275** on outdoor space (sitting 10).
 
+## Lane: Mission Control console honesty
+F178, F256, F251 closed 2026-09-23. **Next:** the F289 MC flag once brx4's fields land, then F309.
+
 ## Start here
 
 Use this priority stack; do not spend Tony's bench time on desk work:
 
 1. **Published-release proof (now):** install 0.4.5 on both phones and run the field check for F297/F293/F298/F296,
-   then sitting 5 for F264/F277/F256. Record evidence and promote/close each row from the result.
+   then sitting 5 for F264/F277. Record evidence and promote/close each row from the result.
 2. **Screamer transport (next sitting):** run Phase A controls and phone-paced A7/A8/A8b; capture F269/F270/F272,
    then complete F274's three hardware soaks. This unlocks Phase B-E; do not infer numbers from ordinary `send` runs.
-3. **Decision packet before more code:** settle F268/F280's recoil rung basis, F291's weapon choice, and B21/F178/F187/F191
+3. **Decision packet before more code:** settle F268/F280's recoil rung basis, F291's weapon choice, and B21/F187/F191
    policy questions. Then implement S54 once; defer S50/F281 until sitting 2 confirms `$TMP` semantics.
-4. **Only after reliability:** take safe desk candidates (F251 shared protocol tests, then a conservative F256 coverage
-   wording fix). E2/E3/E4, B17, K6/K8 and the remaining feature rows are roadmap work, not this session's first move.
+4. **Only after reliability:** E2/E3/E4, B17, K6/K8 and the remaining feature rows are roadmap work.
 
 If Tony is not at the bench, prepare the decision packet and inspect the exact FOLLOWUPS methods; do not invent a
 new implementation for a bench-gated row. All other open rows are parked in [`FOLLOWUPS.md`](FOLLOWUPS.md) by gate.
