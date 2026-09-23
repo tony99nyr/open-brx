@@ -1556,6 +1556,14 @@ export class Hud {
     else if (st.phase !== 'idle' && !st.bleUp) pills.push(`<button class="pill bad" data-act="onReconnectGun"><span class="unskew">GUN LINK LOST — TAP TO RECONNECT</span></button>`);
     if (st.moment && st.moment.kind === 'go' && st.phase === 'live' && st.bleUp) pills.push(`<span class="pill ok"><span class="unskew">WEAPONS HOT</span></span>`);   // never 'hot' while the gun link is down
     const prompt = st.resync ? `<div class="prompt"><span class="unskew"><span class="pl">GUN RELINKED</span><span class="pi">${esc(st.resync.prompt).toUpperCase()}</span></span></div>` : '';
+    // S57: the IR callout bus. One word from a victim's gun, heard by this one: KILL CONFIRMED when it names me as the
+    // killer, else ENEMY or TEAMMATE DOWN (the victim's name when the word named them). Live and alive only: a dead gun
+    // hears nothing, and the down screen owns the dead phone.
+    const co = st.callout;
+    if (co && st.phase === 'live' && st.alive) {
+      const lab = co.kind === 'kill_confirmed' ? 'KILL CONFIRMED' : co.kind === 'teammate_down' ? 'TEAMMATE DOWN' : 'ENEMY DOWN';
+      pills.push(`<span class="pill ${co.kind === 'teammate_down' ? 'warn' : 'ok'} callout" data-callout="${esc(co.kind)}"><span class="unskew">${lab}${co.name ? ' · ' + esc(String(co.name).toUpperCase()) : ''}</span></span>`);
+    }
     const html = `<div class="chipbar">${pills.join('')}</div>${prompt}`;
     if (this.chips.innerHTML !== html) this.chips.innerHTML = html;
   }

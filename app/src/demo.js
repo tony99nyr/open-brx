@@ -443,6 +443,10 @@ export function startDemo({ engine, log }) {
       'live-gun-locked':   [...live, [2300, 'gunLocked']],               // F272: power-cycle takeover + real drop/relink recovery
       'live-fired':        [...live, [2300, () => ev.fire(7)]],
       'live-hit':          [...live, [2300, () => { ev.hit(); ev.hit(); ev.hit(); }]],
+      // S57: one IR callout word from a victim's gun, as this gun reports it ($HIR, protocol 15; see docs/ir-callouts.md)
+      'live-callout-kill':     [...live, [2300, () => engine.feedFrame(`$HIR,4,15,7,3,${21 + foe.tid},0,0,*`)]],    // DOWN_BY naming me: KILL CONFIRMED
+      'live-callout-enemy':    [...live, [2300, () => engine.feedFrame(`$HIR,4,15,19,3,${25 + foe.tid},0,0,*`)]],   // DOWN naming VIPER: ENEMY DOWN
+      'live-callout-teammate': [...live, [2300, () => engine.feedFrame(`$HIR,4,15,23,3,${25 + team.tid},0,0,*`)]],  // DOWN on my team: TEAMMATE DOWN
       'live-lowhp':        [...live, [2300, 'lowHp']],
       'live-poison':       [[0, () => { bundle.dot = DEMO_DOT; }], ...live, [2300, () => ev.poison()]],          // S16: POISONED, counting down, health draining
       'live-smoke':        [...live, [2300, 'smoke']],                     // S53: SMOKED, where the reticle was

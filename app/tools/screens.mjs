@@ -2169,6 +2169,18 @@ for (const view of VIEWS) {
     must(/^WEAPON UNCLEAR · TOOK 45 · DEALT \?$/.test(amb.txt || '') && amb.fits, 'ambiguous line: ' + JSON.stringify(amb));
   });
 }
+// S57 (2026-09-23): the IR callout bus. A proto-15 word from a victim's gun becomes one chip in the live chip bar: KILL
+// CONFIRMED when it names me, ENEMY DOWN with the victim's name, TEAMMATE DOWN for my own team. The chip fits the bar.
+for (const view of VIEWS) for (const [stage, want] of [['live-callout-kill', /^KILL CONFIRMED$/], ['live-callout-enemy', /^ENEMY DOWN · VIPER$/], ['live-callout-teammate', /^TEAMMATE DOWN$/]]) {
+  await step(`${view.name} S57 ${stage}: the callout chip reads right and fits`, async () => {
+    const pg = await open(view, stage, '', 2800);
+    const r = await pg.evaluate(() => { const e = document.querySelector('.chipbar .callout'); if (!e) return null; const b = e.getBoundingClientRect();
+      return { t: e.textContent, fits: b.left >= 0 && b.right <= innerWidth && e.scrollWidth <= e.clientWidth + 1, beacon: window.brx.engine ? window.brx.engine.state().beacon : undefined }; });
+    await pg.close();
+    must(r && want.test(r.t) && r.fits, 'callout chip: ' + JSON.stringify(r));
+    must(!r.beacon, 'a callout word must not become a beacon: ' + JSON.stringify(r.beacon));
+  });
+}
 // 2026-09-23: the in-match CHANGE TAGGER label ("TAGGER LOCKED DURING MATCH") overran its button in the one-row
 // bar and lay over RELINK GUN, so a tap on RELINK GUN landed on the disabled button and did nothing.
 for (const view of VIEWS) for (const stage of ['diag-live', 'idle-diag']) {
