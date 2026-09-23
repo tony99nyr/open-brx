@@ -1,8 +1,6 @@
 # Handoff: Open BRX — desk closures through 2026-09-23; remaining work is bench- or decision-gated.
-**State as of 2026-09-23 (desk follow-up).** **Rules for this file.** One screen. It says what is true now; history is `git log -p -- docs/HANDOFF.md`. It has
-one section per open lane. **When several sessions close together, each one overwrites only its own lane section,
-never another lane's.** (On 2026-09-18 three lanes closed on the same night and rewrote each other's sections.)
-The bench order and the desk-work list live in one place: [`bench-plan.md`](bench-plan.md).
+**State as of 2026-09-23 (desk follow-up).** This is the current truth; history is `git log -p -- docs/HANDOFF.md`.
+The bench order and desk-work list live in [`bench-plan.md`](bench-plan.md); update only the lane you worked.
 ## State of main (2026-09-23, after the desk closure)
 The 2026-09-23 desk closure is committed on `main`: S34 now self-hosts the HUD, utility, and Mission Control fonts, with app/MC/site builds and the site font/accessibility gate green. The 2026-09-20 playtest fixes are committed on `main`: score caps are opt-in, fresh Charge Rifle ammo is
 published, Breacher/Toxin and SMG headset damage are supported, dual-emitter hits are grouped and version-gated,
@@ -120,30 +118,25 @@ WITHDRAWN; do not act on it.
 - **Blocked:** S54 and sitting 8 on the rung decision; Extended Mags on `$TMP` (S50) and F281 on sitting 2;
   **F275** on outdoor space (sitting 10).
 
-## Lane: sound catalog and public manual
-
-The public sound bank now exposes the complete 2,634-id union: AI category and description, raw acoustic
-measurements, on-gun/app availability, transcript and speaker, confirmed use, 291 by-ear checks (214 listener
-notes), 1,004 LaserTagMods community labels, and the 20 community noise flags. Copyable `$PLAY` frames now include
-the required volume and priority. The remaining S1 work is listening, not publishing: audit every FX category and
-build the category-driven Mission Control picker.
-
-- **Next desk task:** none; the source-to-site fidelity gate prevents fields being dropped again.
-- **Next bench task:** continue S1 with any FX category except the completed `fx:hit` family.
-- **Blocked:** nothing.
 ## Start here
 
-Read [`bench-plan.md`](bench-plan.md). If Tony is at the bench, load `bench-session` and run sitting 1;
-otherwise take **S54 catalogue recoil fields**.
+Use this priority stack; do not spend Tony's bench time on desk work:
+
+1. **Published-release proof (now):** install 0.4.5 on both phones and run the field check for F297/F293/F298/F296,
+   then sitting 5 for F264/F277/F256. Record evidence and promote/close each row from the result.
+2. **Screamer transport (next sitting):** run Phase A controls and phone-paced A7/A8/A8b; capture F269/F270/F272,
+   then complete F274's three hardware soaks. This unlocks Phase B-E; do not infer numbers from ordinary `send` runs.
+3. **Decision packet before more code:** settle F268/F280's recoil rung basis, F291's weapon choice, and B21/F178/F187/F191
+   policy questions. Then implement S54 once; defer S50/F281 until sitting 2 confirms `$TMP` semantics.
+4. **Only after reliability:** take safe desk candidates (F251 shared protocol tests, then a conservative F256 coverage
+   wording fix). E2/E3/E4, B17, K6/K8 and the remaining feature rows are roadmap work, not this session's first move.
+
+If Tony is not at the bench, prepare the decision packet and inspect the exact FOLLOWUPS methods; do not invent a
+new implementation for a bench-gated row. All other open rows are parked in [`FOLLOWUPS.md`](FOLLOWUPS.md) by gate.
 
 ## Machine state
 
-MC runs from `mcp/` on 8765/8766 and serves `webapp/mc/dist`; rebuild before starting and restart between matches.
-Check with `ss -ltn | grep 876`.
-
-```
-setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise 192.168.0.55 --bench-volume
-```
-
-The shield recharge runs only on the **Shields preset** (armour 0). WSL runs Python/no-hardware MC, Windows drives BLE,
-and the MacBook is the field target. Never modify stock firmware.
+MC is `mcp/` on 8765/8766 serving `webapp/mc/dist`; rebuild before starting and restart between matches
+(`ss -ltn | grep 876`). Launch with `setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise 192.168.0.55 --bench-volume`.
+Shields recharge only on the Shields preset (armour 0). WSL runs Python/no-hardware MC, Windows drives BLE, and the
+MacBook is the field target. Never modify stock firmware.
