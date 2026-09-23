@@ -416,7 +416,7 @@ export interface DotSpec {
  *  reader. **F259 (2026-09-18): a STATE MACHINE, not a per-shot walk** -- `_recoilProfile` derives
  *  `crisp`/`degraded`/`heavy` states from this shape (`ceiling`/`floor` become `crisp`/`degraded`,
  *  `per_shot` sizes `after_shots`, `recover_ms` floors `settle_ms`): CRISP until the burst reaches
- *  `after_shots` rounds (DEGRADED), HEAVY after `heavy_after_shots`, and back to CRISP in one step
+ *  `after_shots` rounds (DEGRADED), HEAVY after `after_heavy`, and back to CRISP in one step
  *  once the trigger is quiet for `settle_ms`. The four legacy fields remain accepted as derivation
  *  inputs; the six explicit fields are optional per-weapon overrides (S54). */
 export interface Recoil {
