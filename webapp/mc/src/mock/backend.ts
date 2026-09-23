@@ -153,7 +153,7 @@ export class MockBackend implements Api {
   private allAcked() {
     return this.players.length > 0 && this.players.filter(p => p.node_id).every(p => {
       const a = this.acks[p.player_id];
-      return !!a && a.ok && a.config_id === this.config.config_id;
+      return !!a && a.ok && !!a.gun_echo && a.config_id === this.config.config_id;
     });
   }
   /** `state.py _updating()` (F178): READY players with a node bound whose gun has not answered the
@@ -1079,7 +1079,8 @@ export class MockBackend implements Api {
     // pushed to the guns used to un-push it SILENTLY -- `pushed` fell false and the acks were just
     // dropped, with nothing on screen saying the guns were now stale (B1's root cause: guns left
     // running the OLD config with nothing visible naming the skew). The real `state.py set_config` now
-    // keeps `lobby_pushed` true and RE-PUSHES the fresh config to every bound node; the mock mirrors
+    // keeps `lobby_pushed` true and RE-PUSHES the fresh config to every bound node; shared checks live
+    // in mcp/brx_mcp/mc/fake_invariants.json, with cases in test/fake-invariants.test.ts. The mock models
     // that so `?mock` cannot demo a re-edit flow the real server would not produce. Acks clear
     // IMMEDIATELY (the console's "re-pushing" moment -- `GameEditPanel`'s status line reads this same
     // `acks` object) and repopulate the way `pushLobby` does, after a short delay standing in for the
@@ -1395,6 +1396,11 @@ export class MockBackend implements Api {
     if (!this.pushed) throw new Error('push config first');
     const rf = this.rosterFault();
     if (rf) throw new Error(rf);          // a team can empty out between the push and the whistle
+    const stale = this.players.filter(p => {
+      const a = this.acks[p.player_id];
+      return a?.ok && a.gun_echo && a.config_id && a.config_id !== this.config.config_id;
+    });
+    if (stale.length) throw new Error(`${stale.length} gun(s) last answered an OLDER config`);
     this.gameStarted = true;
     return this.schedule(runway_s, 1, uid('match'));
   }

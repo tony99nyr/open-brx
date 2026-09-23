@@ -3,22 +3,25 @@
 // unreachable in the demo at all -- while the real server arms the watch in `_finish()`, at the
 // whistle. That matters beyond the demo: the public site's console shots are taken from `?mock`, so a
 // state the demo cannot reach is a state nobody ever sees outside a jsdom test.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { MockBackend } from '../src/mock/backend';
 
-/** The demo's own path to a whistle: push, start with no runway, let `goLive` fire, then END.
- *
- *  The wait is not padding. `schedule()` only sets `start_` and `phase: 'armed'`; the armed -> live
- *  promotion happens inside `tick()`, which the demo runs on a ONE SECOND `setInterval`. So a whistle
- *  cannot be reached in less than a tick, and a shorter wait makes `control('end')` no-op against its
- *  own `!this.live_` guard -- which looks exactly like the bug this file is here to catch. */
+/** Push, start, advance the demo's one-second tick, then END. */
 async function endedDemo() {
+  vi.useFakeTimers();
   const b = new MockBackend();
-  await b.pushLobby(true);
-  await b.start(0, true);
-  await new Promise(r => setTimeout(r, 1300));
-  await b.control('end');
-  return b;
+  try {
+    await b.pushLobby(true);
+    // A fresh head cures the demo's stale ack before the server-equivalent START gate runs.
+    if (location.search.includes('faults=1')) await b.pushLobby(true);
+    await b.start(0, true);
+    await vi.advanceTimersByTimeAsync(1000);
+    await b.control('end');
+    return await b.getState();
+  } finally {
+    b.dispose();
+    vi.useRealTimers();
+  }
 }
 
 describe('mock end-delivery (A42) is armed at the whistle and derives the ladder', () => {
@@ -26,7 +29,7 @@ describe('mock end-delivery (A42) is armed at the whistle and derives the ladder
     const was = location.pathname + location.search;
     window.history.replaceState({}, '', '/?mock&faults=1');
     try {
-      const st = await (await endedDemo()).getState();
+      const st = await endedDemo();
       const ed = st.end_delivery;
       expect(ed, 'the watch is armed at the whistle, not when RECAP is opened').toBeTruthy();
       expect(ed!.unconfirmed.length, 'faults=1 leaves exactly one phone unconfirmed').toBe(1);
@@ -37,7 +40,7 @@ describe('mock end-delivery (A42) is armed at the whistle and derives the ladder
   });
 
   it('a clean demo says every HUD confirmed, and never claims to be retrying', async () => {
-    const st = await (await endedDemo()).getState();
+    const st = await endedDemo();
     const ed = st.end_delivery;
     expect(ed, 'still armed at the whistle with nobody missing').toBeTruthy();
     expect(ed!.unconfirmed.length).toBe(0);

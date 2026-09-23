@@ -283,7 +283,7 @@ class FakeNet:
         info = {"node_id": node_id, "node_type": node_type, "gun_name": gun_name, "gun_tail": tail, "fw": fw}
         if via:
             # A28.3: in the real server this is MC's own stamp off the socket, never the hello's claim.
-            # A FakeNet that does not mirror the real one is how F106(b) hid for a month.
+            # The shared node checks live in fake_invariants.json and test_fake_invariants.py.
             info["reach"] = via
         if prior_utility_node_id:
             # The real NetServer adds this only after proving the old utility node's takeover key.

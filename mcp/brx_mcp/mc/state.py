@@ -1987,10 +1987,10 @@ class Session:
         return p
 
     def ready_all(self) -> dict:
-        """Bench 2026-09-17: the operator's cure for a re-push that clears every READY on the way
-        through LOBBY. `push_config`/`_repush_lobby_config` mint a fresh head and reset `ready` on
-        the whole roster -- correct (a re-ack is owed on the new head), but a roster that had already
-        readied up found itself back at 0/N with no faster fix than tapping each `HOST OVERRIDE`
+        """Bench 2026-09-17: the operator's roster-wide READY control.
+
+        `push_config` and `_repush_lobby_config` retire acks while preserving READY. A roster that
+        has not readied up can use this control instead of tapping each `HOST OVERRIDE`
         (`set_ready(..., host_override=True)`) one player at a time. This is the SAME cure, for every
         rostered, non-standby player at once (`self.players` never holds a benched record -- those
         live in `self.standby`).

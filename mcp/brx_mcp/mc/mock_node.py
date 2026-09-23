@@ -6,7 +6,8 @@ Used by the M-NET tests, by the MC/UI lanes to demo without phones, and by Tony 
 
 then type `hit 19 2 9`, `die 19 2`, `respawn`, `drop`, `up`, `status`, `quit`.
 
-Behaviour mirrors the spec's node: persisted node_id + seq counter, hello{seq_next} → welcome
+Behaviour follows the spec's node (the checks it shares with the server and the other fakes are
+fake_invariants.json + tests/test_fake_invariants.py): persisted node_id + seq counter, hello{seq_next} → welcome
 (adopts seq_hi, stores the hydrated context), bind by advert name, live-only status heartbeat,
 a persisted-fact ring flushed as event_batch on reconnect and pruned on ack, NTP-lite offset,
 lifecycle transitions on start/end. It writes no BLE — the "gun" is a few numbers.
