@@ -47,6 +47,21 @@ describe('the command bar labels every view', () => {
     m.unmount();
   });
 
+  it('F191: the standing WSL banner never hides a real alert, and the real alert comes first', async () => {
+    // Tony 2026-09-23: the WSL2 NAT warning stands for the whole session on a WSL host, so it must never displace
+    // or outrank a real alert. Both render; the tunnel-down alert sits above the standing banner.
+    const d = await demo();
+    const lan = { ...d.state.lan, warning: 'PHONES CANNOT REACH THIS ADDRESS (WSL2)', public: { ...(d.state.lan.public ?? {}), status: 'error', error: 'tunnel exited' } };
+    const state = { ...d.state, lan } as State;
+    const m = await mountScreen(<CommandBar />, { ...d, state, view: 'lobby' });
+    const alerts = m.find('[role="alert"]').map(e => (e.textContent ?? '').toUpperCase());
+    const wsl = alerts.findIndex(t => t.includes('WSL2')), tunnel = alerts.findIndex(t => t.includes('INTERNET TUNNEL DOWN'));
+    expect(tunnel, 'the tunnel alert must render beside the WSL banner').toBeGreaterThanOrEqual(0);
+    expect(wsl, 'the WSL banner still renders').toBeGreaterThanOrEqual(0);
+    expect(tunnel, 'a real alert comes before the standing WSL banner').toBeLessThan(wsl);
+    m.unmount();
+  });
+
   it('survives a phase it has never heard of', async () => {
     // an older/newer server, or a hand-edited hash: an unknown phase must not blank the console
     const d = await demo();

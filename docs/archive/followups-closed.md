@@ -638,3 +638,5 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
 - 2026-09-23 **F289** closed: Tony chose the board flag. The node reports the owed end write (`status.protected`,
   `protect_ms` on respawn/team_change, brx4 `8b480775`/`bbbadf30`); MC stamps `LiveRow.possibly_protected` on a STALE
   row whose newest evidence says it was owed, and LIVE reads POSSIBLY PROTECTED · HITS MAY NOT COUNT.
+- 2026-09-23 **F191** closed: Tony's rule is that the standing WSL banner never displaces a real alert. `CommandBar` already
+  rendered every banner on its own condition; the WSL banner now sits LAST, below the tunnel alert, pinned in `console.test.tsx`.

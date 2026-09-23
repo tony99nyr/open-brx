@@ -80,7 +80,7 @@ right** and this index is stale. Do not cite it as evidence that something is or
 **Keyboard only** (tagged `build` or `decision` — no gun, no rig, no dim room):
 - 🔴 **B23** · **E5** · **F43** · **F231** · **F264** · **S10**
 - 🟠 **B4** · **B21** · **B31** · **E2** · **F12** · **F40** · **F70** · **F164** · **F269** · **F272** · **F277** · **F300** · **P8** · **S3** · **S14** · **S33** · **S50** · **S53**
-- 🟡 **B1** · **B8** · **B14** · **B17** · **D1** · **D3** · **E3** · **E4** · **E6** · **F5** · **F16** · **F20** · **F24** · **F25** · **F42** · **F60** · **F68** · **F88** · **F95** · **F108** · **F109** · **F112** · **F113** · **F123** · **F126** · **F128** · **F130** · **F132** · **F133** · **F161** · **F176** · **F177** · **F186** · **F191** · **F221** · **F229** · **F233** · **F266** · **F267** · **F270** · **F281** · **F284** · **F309** · **H1** · **H2** · **H6** · **H8** · **K2** · **Q12′** · **Q13** · **R3** · **S1** · **S2** · **S6** · **S7** · **S-A12** · **S13** · **S25** · **S27** · **S28** · **S29** · **S30** · **S31** · **S32** · **S36** · **S42** · **S43** · **S46** · **S47** · **S48** · **S49** · **S51**
+- 🟡 **B1** · **B8** · **B14** · **B17** · **D1** · **D3** · **E3** · **E4** · **E6** · **F5** · **F16** · **F20** · **F24** · **F25** · **F42** · **F60** · **F68** · **F88** · **F95** · **F108** · **F109** · **F112** · **F113** · **F123** · **F126** · **F128** · **F130** · **F132** · **F133** · **F161** · **F176** · **F177** · **F186** · **F221** · **F229** · **F233** · **F266** · **F267** · **F270** · **F281** · **F284** · **F309** · **H1** · **H2** · **H6** · **H8** · **K2** · **Q12′** · **Q13** · **R3** · **S1** · **S2** · **S6** · **S7** · **S-A12** · **S13** · **S25** · **S27** · **S28** · **S29** · **S30** · **S31** · **S32** · **S36** · **S42** · **S43** · **S46** · **S47** · **S48** · **S49** · **S51**
 - 🟢 **B11** · **B22** · ⬜ **D5** · **E7** · **F14** · **F17** · **F19** · **F32** · **F52** · **F83** · **F87** · **F89** · **F93** · **F98** · **F99** · **F100** · **F107** · **F204** · **F250** · ⬜ **H3** · ⬜ **H4** · ⬜ **H5** · ⬜ **K6** · ⬜ **K8** · **P14** · **R2** · **S19**
 
 ## 1. Before going public
@@ -1056,8 +1056,6 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   affect its own count. Settle whether this row wants a second "current head" count or different wording before
   changing behavior. `decision`. **→ Tony 2026-09-23:** keep READY as player intent and flag the stale phones in the count, e.g. `6 ready · 1 updating`, so the host sees why START refuses. `build`.
 - **F186 🟡** `recall`/`panic` are deliberately unwatched by end-delivery; decide if a recall should be confirmed. `decision`.
-- **F191 🟡** should a standing WSL banner displace other alerts in the shared header? Fixed in the e2e boots, not in
-  `CommandBar`. A product decision; low field risk. `decision`. **→ Tony 2026-09-23 (default taken):** the standing WSL banner never displaces another alert; a real alert wins. Check `CommandBar` does this, then close. `build`.
 - **F198 🔴 Needs Tony at the bench** the reflection theory behind `$GSET` t2 is untested and may INVERT the
   current fix. Reading: low sensitivity (t2=1) may be deliberate for INDOOR play, rejecting bounced/reflected
   shots off walls and ceilings, in which case the right end state is `indoor -> t2=1, outdoor -> t2=0` — the
