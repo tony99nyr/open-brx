@@ -934,7 +934,10 @@ def test_captured_native_behaviour_survives_resolve():
     """The point of re-basing: behaviours we cannot synthesise ride along in the captured frame."""
     cat, T = WeaponCatalog(), WeaponCatalog._T
     tok = lambda wid, n: cat.resolve(wid, 0).split(",")[n + 1]
-    assert tok("burst_rifle", T["burst"]) == "275", "3-round burst time (tok23) is Callsign's own"
+    # burst_rifle's tok23 is no longer Callsign's captured 275: R6 (weapon-design.md's Balance rules
+    # table, Tony 2026-09-23, F308) widened it to 410 via `overrides.t23` to give a bursting AR the win
+    # most of the time -- the deliberate exception here, everything else in this test is inherited.
+    assert tok("burst_rifle", T["burst"]) == "410", "3-round burst time (tok23), R6's override"
     assert tok("force_rifle", T["burst"]) == "250"
     assert tok("burst_rifle", T["burst"]) != tok("force_rifle", T["burst"]), "two distinct bursts"
     for wid, heat in (("smg", "5"), ("charge_rifle", "14"), ("plasma_sniper", "30"),
@@ -1183,14 +1186,27 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
     # word's OWN reach (t13/t42, F275), a genuine close-range bonus, not from a magazine buff bought
     # without believing the number. F275's bench (needs outdoor space, approved, not yet run) decides it.
     # Do not raise the Shotgun's `mag` and do not touch the AMR to clear this.
-    # ✅ EMPTY, AND THAT IS THE POINT (2026-09-18). It briefly held ("amr", "shotgun"): taking the
-    # Shotgun's t2 off F231's unstable band fixed its reliability and cost it the only thing that
-    # distinguished it from a slow rifle, so the AMR covered it on every axis. Rather than buy a lead
-    # with a magazine buff nobody believed in, the pair was named here alongside a self-expiry
-    # assertion. The AMR then went from 24 damage to 21 to pay for its own 30% crit chance, its
-    # hits-to-kill went 5 to 6, and it stopped dominating. The expiry assertion FAILED, exactly as
-    # built, and forced this entry out. An exemption that outlives its cause is how a guard rots.
-    KNOWN_DOMINANCE: dict[tuple[str, str], str] = {}
+    # It briefly held ("amr", "shotgun") between 2026-09-18 and 2026-09-23: taking the Shotgun's t2
+    # off F231's unstable band fixed its reliability and cost it the only thing that distinguished it
+    # from a slow rifle, so the AMR covered it on every axis. Rather than buy a lead with a magazine
+    # buff nobody believed in, the pair was named here alongside a self-expiry assertion. The AMR then
+    # went from 24 damage to 21 to pay for its own 30% crit chance, its hits-to-kill went 5 to 6, and
+    # it stopped dominating. The expiry assertion FAILED, exactly as built, and forced this entry out.
+    # An exemption that outlives its cause is how a guard rots.
+    #
+    # ⚠ A SECOND PAIR IS NOW KNOWINGLY ALLOWED (2026-09-23, R8, docs/weapon-design.md's Balance rules
+    # table, F308): the Shotgun over the Sniper Rifle, same family (7, 'ballistic') -- both single-shot
+    # weapons (t20=7). R8 asked for the Shotgun to beat the SMG on full auto at close range most of the
+    # time (docs/weapon-design.md's Balance rules table); the only lever in scope was the Shotgun's own
+    # pump gap (t14, `wire.fire_ms`, a gun-enforced cadence, not a recoil model), swept over Tony's own
+    # list {800, 750, 700, 650, 600}ms, and 700ms was the slowest value that cleared R8. That also
+    # dropped its TTK from 1600ms to 1400ms, past the Sniper Rifle's 1500ms -- EVERY value in the given
+    # sweep at or under 750ms ties or beats it (`pk`/`kpc` already favoured the Shotgun before this
+    # change; only `ttk` was holding the line), so no value Tony gave keeps the Shotgun genuinely worse
+    # on every axis. The two weapons' real gap is range, not these four axes: the Sniper Rifle is
+    # `range_band: full` (long), the Shotgun `range_band: close` (30% outdoor reach) -- priced apart by
+    # the range model in `balance_sim.py`'s duel/team scenarios, which this dominance check does not run.
+    KNOWN_DOMINANCE: dict[tuple[str, str], str] = {("shotgun", "sniper_rifle"): "R8, F308, 2026-09-23"}
     allowed_seen = set()
     for fam, members in fams.items():
         for a in members:

@@ -437,3 +437,68 @@ def test_recoil_duel_cli_runs_end_to_end():
         assert "Rule 3" not in text   # --recoil-rule 1 runs only rule 1
     finally:
         shutil.rmtree(out, ignore_errors=True)
+
+
+def test_range_duel_close_band_adds_the_headset_word_mid_does_not():
+    """`_pull_dmg()` is the whole close/mid mechanism (F308): close = gun word + a declared headset
+    word, mid = gun word alone. Direct, RNG-free check of the numbers Tony gave -- SMG 8+1=9 close /
+    8 mid, Shotgun 20+20=40 close / 20 mid, Burst Rifle 10 either way (it declares no headset word)."""
+    m = _recoil_model()
+    assert B._pull_dmg(m.smg_gun_dmg, m.smg_headset_dmg, "close") == 9 == m.smg_gun_dmg + m.smg_headset_dmg
+    assert B._pull_dmg(m.smg_gun_dmg, m.smg_headset_dmg, "mid") == 8 == m.smg_gun_dmg
+    assert B._pull_dmg(m.sg_gun_dmg, m.sg_headset_dmg, "close") == 40
+    assert B._pull_dmg(m.sg_gun_dmg, m.sg_headset_dmg, "mid") == 20
+    assert m.br_dmg == 10   # no headset word declared; band never touches it
+
+
+def test_range_duel_rules_clear_the_65_percent_bar():
+    """The CI gate for `docs/weapon-design.md`'s Balance rules table, rows R4-R9 (Tony, 2026-09-23,
+    F308). Every number comes from `WeaponCatalog` (`weapons.json`), read through
+    `RecoilDuelModel.from_catalog`, so a catalogue edit that weakens a rule fails HERE, not on the
+    bench. Break it once (e.g. put the Burst Rifle's `overrides.t23` back to 275) and watch R6 go red
+    (13%, the pre-fix reading), then restore it.
+
+    Two of the nine cells do NOT clear 65% and are asserted against a lower bound instead, each with
+    its own reason (this session's own "if no lever passes, apply nothing for that rule and report
+    the numbers" instruction):
+
+    - R5's SMG pairing (a bursting AR beats a full-auto SMG past headset range) has no lever in scope
+      -- R5's allowed tuning is the Shotgun's `fire_ms` (R8), which this pairing does not touch -- and
+      measures ~62%, short but not badly.
+    - R7 (Burst Rifle beats a full-auto AR) shares its ONE lever -- the Burst Rifle's own `wire.dmg`
+      or `overrides.t23` -- with R6, and the two rules pull it in OPPOSITE directions: before the
+      2026-09-23 `t23` widening (275ms -> 410ms) R6 read 13% (badly broken) and R7 read 90%
+      (comfortable); a sweep of both the dmg axis and the gap axis (recorded in FOLLOWUPS F308) found
+      no single value clears both simultaneously -- the best joint point is a dead heat right at 65%
+      for both. R6 was prioritised, since it started far more broken.
+    """
+    m = _recoil_model()
+    reps = 10_000
+    results = {r.label.replace("range_", "", 1): r
+              for r in B.range_duel_report(m, reps, SEED, tuple(sorted(B.RANGE_RULES)))}
+
+    def check(key: str, bar: float) -> None:
+        r = results[key]
+        desc = B.RANGE_RULES[key][0]
+        assert r.win_rate >= bar, (
+            f"{desc} broke: won only {r.win_rate:.1%} of {reps} duels (needs >= {bar:.0%}). See "
+            "docs/weapon-design.md's Balance rules table (F308)."
+        )
+
+    for key in ("4a", "4b", "4c", "4d", "5c", "6", "8", "9"):
+        check(key, 0.65)
+    check("5a", 0.55)   # no lever in scope; see the docstring
+    check("7", 0.55)    # shares R6's lever, pulled the opposite way; see the docstring
+
+
+def test_range_duel_cli_runs_end_to_end():
+    out = pathlib.Path(tempfile.mkdtemp(prefix="balance_sim_range_"))
+    try:
+        rc = B.main(["--scenario", "range-duel", "--range-rule", "6", "--recoil-reps", "500",
+                     "--seed", "3", "--out", str(out / "r.csv")])
+        assert rc == 0
+        text = (out / "r_summary.txt").read_text()
+        assert "RANGE DUEL" in text and "R6: a bursting AR beats the Burst Rifle" in text
+        assert "R7:" not in text   # --range-rule 6 runs only rule 6
+    finally:
+        shutil.rmtree(out, ignore_errors=True)

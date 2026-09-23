@@ -215,7 +215,7 @@ def test_gun_range_outdoor_pct_ships_the_catalogue_value_outdoors_only():
     weapon, the sidearms, melee) keeps its captured t2 at every venue, same as before this fix."""
     shipped = {"sniper_rifle": 100, "amr": 85, "charge_rifle": 85, "assault_rifle": 70,
                "burst_rifle": 70, "suppressor": 55, "energy_rifle": 55, "smg": 30,
-               "shotgun": 100, "rocket_launcher": 22, "rail_gun": 22}
+               "shotgun": 30, "rocket_launcher": 22, "rail_gun": 22}
     by_id = {w["weapon_id"]: w for w in ROWS}
     assert set(shipped) <= set(by_id), sorted(set(shipped) - set(by_id))
     for wid, want in shipped.items():
@@ -406,8 +406,10 @@ def test_htk_and_ttk_derive_from_base_damage_alone_with_no_crit_term():
         assert CAT.hits_to_kill(wid, DEFAULT_POOL) == want_htk, \
             f"{wid}: hits_to_kill() disagrees with ceil(pool / damage_per_pull()) -- a crit term crept into the chain"
         assert w["htk"] == want_htk, f"{wid}: catalogue htk is stale against the guaranteed derivation"
-    # the crit weapons, and the Toxin Rifle that dropped its crit, pinned to the numbers this change shipped (F62, 2026-09-18)
-    for wid, want_htk, want_ttk in (("burst_rifle", 12, 1558), ("amr", 6, 2000), ("toxin_rifle", 15, 1540)):
+    # the crit weapons, and the Toxin Rifle that dropped its crit, pinned to the numbers this change shipped
+    # (F62, 2026-09-18); burst_rifle's ttk moved 1558->2053 on 2026-09-23 (R6, F308) when its burst gap
+    # (t23) widened 275ms->410ms -- htk is unchanged, only cycle_ms moved, see the Balance rules table
+    for wid, want_htk, want_ttk in (("burst_rifle", 12, 2053), ("amr", 6, 2000), ("toxin_rifle", 15, 1540)):
         assert CAT.hits_to_kill(wid, DEFAULT_POOL) == want_htk, wid
         assert CAT.time_to_kill(wid, DEFAULT_POOL) == want_ttk, wid
         assert CAT.damage_per_pull(wid) == CAT.damage(wid), \

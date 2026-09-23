@@ -996,6 +996,51 @@ def _cr_shots(first_time: float, charge_dmg: int, tap_dmg: int, rounds_per_charg
         t += tap_ms
 
 
+def _pump_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: int, reload_ms: float,
+                aim_factor: float):
+    """Yields `(t, hit_p, dmg)` for a single-word-per-pull, no-recoil, chain-reload combatant (the
+    Shotgun): a fixed `fire_ms` between pulls (t14, the gun-enforced PUMP gap, not a recoil model --
+    weapon-design.md's Balance rules table row 6/R8), reload PER SHELL (`reload_type: chain`) once the
+    tube runs dry, same convention as `Match._start_reload()`'s chain branch."""
+    ammo, res = mag, reserve
+    t = first_time
+    while True:
+        if ammo <= 0:
+            if res <= 0:
+                return
+            got = min(mag, res)
+            t += reload_ms * got            # chain reload: reload_ms is PER SHELL
+            ammo, res = got, res - got
+        yield (t, aim_factor, dmg)
+        ammo -= 1
+        t += fire_ms
+
+
+def _burst3_shots(first_time: float, dmg: int, fire_ms: float, gap_ms: float, mag: int, reserve: int,
+                  reload_ms: float, aim_factor: float):
+    """Yields `(t, hit_p, dmg)` for a gun-ENFORCED 3-round burst combatant (t20 == 9, the Burst Rifle):
+    three rounds at `fire_ms` spacing, then `gap_ms` (t23) before the next burst -- continuous, no
+    player control and no recoil to hold or release (the row's `recoil.floor == ceiling`, so
+    `recoil_profile()` is always `None` for it; unlike `_ar_shots`'s controlled-burst mode, there is no
+    player-chosen pause here, only the gun's own enforced gap)."""
+    ammo, res = mag, reserve
+    t = first_time
+    while True:
+        if ammo <= 0:
+            if res <= 0:
+                return
+            got = min(mag, res)
+            t += reload_ms
+            ammo, res = got, res - got
+        blen = min(3, ammo)
+        for i in range(blen):
+            yield (t, aim_factor, dmg)
+            ammo -= 1
+            if i < blen - 1:
+                t += fire_ms
+        t += gap_ms
+
+
 def _race(rng: random.Random, gen_a, gen_b, hp_a: int, hp_b: int, time_cap_ms: float) -> str | None:
     """Runs two shot generators against each other's health pool in time order, rolling a hit for every
     round. Returns `"a"`/`"b"` for the first to die, or `None` for a draw (both alive, or tied health,
@@ -1037,6 +1082,26 @@ class RecoilDuelModel:
     cr_mag: int
     cr_reserve: int
     cr_reload_ms: float
+    # R4-R9 (F308): the SMG, the Shotgun and the Burst Rifle, read the same way -- see `run_range_duel()`.
+    smg_gun_dmg: int
+    smg_headset_dmg: int
+    smg_fire_ms: float
+    smg_mag: int
+    smg_reserve: int
+    smg_reload_ms: float
+    smg_profile: RecoilProfile | None
+    sg_gun_dmg: int
+    sg_headset_dmg: int
+    sg_fire_ms: float
+    sg_mag: int
+    sg_reserve: int
+    sg_reload_ms: float
+    br_dmg: int
+    br_fire_ms: float
+    br_gap_ms: float
+    br_mag: int
+    br_reserve: int
+    br_reload_ms: float
     aim_factor: float
     reaction_mean_ms: float
     reaction_sd_ms: float
@@ -1054,12 +1119,26 @@ class RecoilDuelModel:
         hp, armour, _shield = HEALTH_PRESETS["standard"]
         ar_mag, ar_reserve, ar_reload_ms = cat._ammo("assault_rifle", None)
         cr_mag, cr_reserve, cr_reload_ms = cat._ammo("charge_rifle", None)
+        smg_mag, smg_reserve, smg_reload_ms = cat._ammo("smg", None)
+        sg_mag, sg_reserve, sg_reload_ms = cat._ammo("shotgun", None)
+        br_mag, br_reserve, br_reload_ms = cat._ammo("burst_rifle", None)
         return cls(pool_hp=hp + armour, ar_dmg=cat.damage_per_pull("assault_rifle"),
                    ar_fire_ms=float(cat.fire_ms("assault_rifle")), ar_mag=ar_mag, ar_reserve=ar_reserve,
                    ar_reload_ms=float(ar_reload_ms), ar_profile=recoil_profile(cat._row("assault_rifle")),
                    cr_charge_dmg=cat.damage_per_pull("charge_rifle"), cr_tap_dmg=cat.tap_damage("charge_rifle"),
                    cr_rounds_per_charge=cat.rounds_per_charge("charge_rifle"), cr_mag=cr_mag,
-                   cr_reserve=cr_reserve, cr_reload_ms=float(cr_reload_ms), aim_factor=aim_factor,
+                   cr_reserve=cr_reserve, cr_reload_ms=float(cr_reload_ms),
+                   smg_gun_dmg=cat.damage("smg"), smg_headset_dmg=cat.damage_per_pull("smg") - cat.damage("smg"),
+                   smg_fire_ms=float(cat.fire_ms("smg")), smg_mag=smg_mag, smg_reserve=smg_reserve,
+                   smg_reload_ms=float(smg_reload_ms), smg_profile=recoil_profile(cat._row("smg")),
+                   sg_gun_dmg=cat.damage("shotgun"),
+                   sg_headset_dmg=cat.damage_per_pull("shotgun") - cat.damage("shotgun"),
+                   sg_fire_ms=float(cat.fire_ms("shotgun")), sg_mag=sg_mag, sg_reserve=sg_reserve,
+                   sg_reload_ms=float(sg_reload_ms),
+                   br_dmg=cat.damage_per_pull("burst_rifle"), br_fire_ms=float(cat.fire_ms("burst_rifle")),
+                   br_gap_ms=float(cat._frame_int("burst_rifle", "burst")), br_mag=br_mag,
+                   br_reserve=br_reserve, br_reload_ms=float(br_reload_ms),
+                   aim_factor=aim_factor,
                    reaction_mean_ms=reaction_mean_ms, reaction_sd_ms=reaction_sd_ms, burst_min=burst_min,
                    burst_max=burst_max, burst_pause_min_ms=burst_pause_min_ms,
                    burst_pause_max_ms=burst_pause_max_ms, time_cap_ms=time_cap_ms)
@@ -1188,6 +1267,124 @@ def recoil_duel_summary_text(results: list[RecoilDuelResult], m: RecoilDuelModel
 
 
 # --------------------------------------------------------------------------- #
+# Range duel mode (F308): Tony's 2026-09-23 R4-R9 close/mid-range balance rules, checked stochastically
+# --------------------------------------------------------------------------- #
+#
+# `--scenario range-duel` extends the recoil-duel engine above with a RANGE BAND: "close" (both the gun
+# word and a declared headset word land, `wire.headset_dmg`) or "mid" (past the headset word's own
+# reach -- unmeasured, F275 -- the gun word only). The band is a fixed setting per duel, not a per-shot
+# draw: Tony's rules are framed as "at close range" / "past the headset range", not a probability of
+# being in range. It reuses `_ar_shots`, `_race`, `recoil_profile()` and `RecoilDuelModel` from the
+# section above; only the SMG/Shotgun/Burst Rifle combatants and the band lookup are new.
+#
+# crit_pct (the Burst Rifle's 40%) is NOT modelled here, same simplification as rules 1-3's engine
+# (which never had a crit weapon to leave out): `damage_per_pull()` is the whole per-round number.
+
+def _pull_dmg(gun_dmg: int, headset_dmg: int, band: str) -> int:
+    """What one pull delivers at a range band: both words at "close", the gun word alone past the
+    headset word's own reach ("mid" -- F275, the headset word's real range is unmeasured)."""
+    return gun_dmg + headset_dmg if band == "close" else gun_dmg
+
+
+def _smg_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
+    dmg = _pull_dmg(m.smg_gun_dmg, m.smg_headset_dmg, band)
+    return _ar_shots(t, dmg, m.smg_fire_ms, m.smg_mag, m.smg_reserve, m.smg_reload_ms, m.smg_profile,
+                     m.aim_factor)   # full auto: R4/R8's "SMG on full auto, its best close use"
+
+
+def _shotgun_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
+    dmg = _pull_dmg(m.sg_gun_dmg, m.sg_headset_dmg, band)
+    return _pump_shots(t, dmg, m.sg_fire_ms, m.sg_mag, m.sg_reserve, m.sg_reload_ms, m.aim_factor)
+
+
+def _burst_rifle_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
+    # No headset word declared on the Burst Rifle -- `band` never changes its damage.
+    return _burst3_shots(t, m.br_dmg, m.br_fire_ms, m.br_gap_ms, m.br_mag, m.br_reserve, m.br_reload_ms,
+                         m.aim_factor)
+
+
+def _ar_burst_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
+    """"a bursting AR": the same controlled-3-to-5-round-burst discipline as recoil-duel rules 2/3."""
+    return _ar_shots(t, m.ar_dmg, m.ar_fire_ms, m.ar_mag, m.ar_reserve, m.ar_reload_ms, m.ar_profile,
+                     m.aim_factor, burst_min=m.burst_min, burst_max=m.burst_max,
+                     pause_min_ms=m.burst_pause_min_ms, pause_max_ms=m.burst_pause_max_ms, rng=rng)
+
+
+def _ar_full_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
+    """"a full-auto AR": held down, the same as recoil-duel rule 3's full-auto side."""
+    return _ar_shots(t, m.ar_dmg, m.ar_fire_ms, m.ar_mag, m.ar_reserve, m.ar_reload_ms, m.ar_profile,
+                     m.aim_factor)
+
+
+RANGE_COMBATANTS = {
+    "smg": _smg_combatant, "shotgun": _shotgun_combatant, "burst_rifle": _burst_rifle_combatant,
+    "ar_burst": _ar_burst_combatant, "ar_full": _ar_full_combatant,
+}
+
+
+def run_range_duel(rng: random.Random, m: RecoilDuelModel, a_kind: str, b_kind: str, band: str) -> str | None:
+    """One duel between two `RANGE_COMBATANTS` at a range band. Returns the WINNING KIND (not "a"/"b"),
+    or `None` for a draw."""
+    t_a, t_b = m._reaction(rng), m._reaction(rng)
+    gen_a = RANGE_COMBATANTS[a_kind](t_a, m, band, rng)
+    gen_b = RANGE_COMBATANTS[b_kind](t_b, m, band, rng)
+    winner = _race(rng, gen_a, gen_b, m.pool_hp, m.pool_hp, m.time_cap_ms)
+    return {"a": a_kind, "b": b_kind, None: None}[winner]
+
+
+# (description, expected winner, side a, side b, band). R5 tests only against "a rifle" -- the
+# bursting AR, the same reference discipline rules 1-3 use -- not also against the Burst Rifle: R4 is
+# the rule that explicitly names BOTH ("a bursting AR, and the Burst Rifle"), R5 says only "a rifle".
+RANGE_RULES = {
+    "4a": ("R4 close range: the SMG (full auto) beats a bursting AR", "smg", "smg", "ar_burst", "close"),
+    "4b": ("R4 close range: the SMG (full auto) beats the Burst Rifle", "smg", "smg", "burst_rifle", "close"),
+    "4c": ("R4 close range: the Shotgun beats a bursting AR", "shotgun", "shotgun", "ar_burst", "close"),
+    "4d": ("R4 close range: the Shotgun beats the Burst Rifle", "shotgun", "shotgun", "burst_rifle", "close"),
+    "5a": ("R5 past headset range: a bursting AR beats the SMG (full auto)", "ar_burst", "ar_burst", "smg", "mid"),
+    "5c": ("R5 past headset range: a bursting AR beats the Shotgun", "ar_burst", "ar_burst", "shotgun", "mid"),
+    "6": ("R6: a bursting AR beats the Burst Rifle", "ar_burst", "ar_burst", "burst_rifle", "mid"),
+    "7": ("R7: the Burst Rifle beats a full-auto AR", "burst_rifle", "burst_rifle", "ar_full", "mid"),
+    "8": ("R8 close range: the Shotgun beats the SMG (full auto)", "shotgun", "shotgun", "smg", "close"),
+    "9": ("R9 past headset range: the SMG (full auto) beats the Shotgun", "smg", "smg", "shotgun", "mid"),
+}
+
+
+def range_duel_batch(m: RecoilDuelModel, key: str, reps: int, seed: int) -> RecoilDuelResult:
+    """`reps` seeded, independent duels of `RANGE_RULES[key]`. A draw counts half a win, same
+    convention as `duel()`/`recoil_duel_batch()`."""
+    _desc, expected, a_kind, b_kind, band = RANGE_RULES[key]
+    rng = cell_rng(seed, "range_duel", key)
+    wins = 0.0
+    for _ in range(reps):
+        winner = run_range_duel(rng, m, a_kind, b_kind, band)
+        wins += 1.0 if winner == expected else (0.5 if winner is None else 0.0)
+    return RecoilDuelResult(f"range_{key}", expected, reps, wins)
+
+
+def range_duel_report(m: RecoilDuelModel, reps: int, seed: int, keys=tuple(RANGE_RULES)) -> list[RecoilDuelResult]:
+    return [range_duel_batch(m, key, reps, seed) for key in keys]
+
+
+def range_duel_summary_text(results: list[RecoilDuelResult], m: RecoilDuelModel) -> str:
+    lines = [
+        "RANGE DUEL: Tony's 2026-09-23 close/mid-range balance rules R4-R9 (F308), stochastic 1v1",
+        f"pool {m.pool_hp}; aim factor {m.aim_factor:g}; reaction N({m.reaction_mean_ms:.0f}, "
+        f"{m.reaction_sd_ms:.0f}) ms/player; bursting AR: {m.burst_min}-{m.burst_max} rounds, "
+        f"{m.burst_pause_min_ms:.0f}-{m.burst_pause_max_ms:.0f} ms pause; close = gun word + declared "
+        "headset word, mid = gun word only (past the headset word's own reach, unmeasured -- F275)", "",
+        f"{'rule':<62}{'win rate':>9}{'95% CI':>16}  flag",
+    ]
+    for r in results:
+        key = r.label.replace("range_", "", 1)
+        desc = RANGE_RULES[key][0]
+        lo, hi = r.ci()
+        flag = "UNDER 65%" if r.win_rate < 0.65 else ""
+        lines.append(f"{desc:<62}{r.win_rate:>9.1%}{f'[{lo:.1%}, {hi:.1%}]':>16}  {flag}")
+    lines += ["", "\"most of the time\" = at least 65% (docs/weapon-design.md's Balance rules table)."]
+    return "\n".join(lines) + "\n"
+
+
+# --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
 
@@ -1195,9 +1392,11 @@ def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="balance_sim.py", description=__doc__.split("\n\n")[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter,
                                  epilog="Assumptions and simplifications: see the module docstring.")
-    ap.add_argument("--scenario", choices=("all", "duel", "team", "sweep", "recoil-duel"), default="all",
+    ap.add_argument("--scenario", choices=("all", "duel", "team", "sweep", "recoil-duel", "range-duel"),
+                    default="all",
                     help="all = duel matrix + team table (default); --sweep implies sweep; recoil-duel = "
-                         "F291's stochastic AR/CR 1v1 (Tony's 2026-09-23 balance rules, see the module docstring)")
+                         "F291's stochastic AR/CR 1v1 (rules 1-3); range-duel = F308's stochastic "
+                         "close/mid-range 1v1 (rules R4-R9), see the module docstring")
     ap.add_argument("--preset", choices=sorted(PRESETS), help="a saved sweep (toxin = weapon-design.md §7.5b)")
     ap.add_argument("--weapon", help="the weapon under test for a sweep, or to limit the team table to one")
     ap.add_argument("--anchor", default=None,
@@ -1243,6 +1442,9 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--burst-max", type=int, default=5, help="rule 3: longest controlled burst, rounds")
     g.add_argument("--burst-pause-min-ms", type=float, default=150.0)
     g.add_argument("--burst-pause-max-ms", type=float, default=300.0)
+    g2 = ap.add_argument_group("range-duel (F308)")
+    g2.add_argument("--range-rule", choices=sorted(RANGE_RULES) + ["all"], default="all",
+                    help="which of Tony's R4-R9 rules to run (default all)")
     return ap
 
 
@@ -1278,6 +1480,26 @@ def _run_recoil_duel(args) -> int:
     return 0
 
 
+def _run_range_duel(args) -> int:
+    cat = WeaponCatalog()
+    m = RecoilDuelModel.from_catalog(cat, aim_factor=args.aim_factor, reaction_mean_ms=args.reaction_mean_ms,
+                                     reaction_sd_ms=args.reaction_sd_ms, burst_min=args.burst_min,
+                                     burst_max=args.burst_max, burst_pause_min_ms=args.burst_pause_min_ms,
+                                     burst_pause_max_ms=args.burst_pause_max_ms)
+    seed = args.recoil_seed if args.recoil_seed is not None else args.seed
+    keys = tuple(sorted(RANGE_RULES)) if args.range_rule == "all" else (args.range_rule,)
+    t0 = walltime.time()
+    results = range_duel_report(m, args.recoil_reps, seed, keys)
+    text = range_duel_summary_text(results, m)
+    summary_path = args.summary or (os.path.splitext(args.out)[0] + "_summary.txt")
+    with open(summary_path, "w") as f:
+        f.write(text)
+    sys.stdout.write(text)
+    print(f"\n{len(results)} cells, {sum(r.reps for r in results)} duels in {walltime.time() - t0:.1f} s -> "
+         f"{summary_path}", file=sys.stderr)
+    return 0
+
+
 def main(argv=None) -> int:
     ap = build_parser()
     args = ap.parse_args(argv)
@@ -1288,6 +1510,8 @@ def main(argv=None) -> int:
 
     if args.scenario == "recoil-duel":
         return _run_recoil_duel(args)
+    if args.scenario == "range-duel":
+        return _run_range_duel(args)
 
     base = default_pool()
     pool = replace(base,

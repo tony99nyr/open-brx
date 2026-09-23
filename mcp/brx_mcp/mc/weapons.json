@@ -58,7 +58,7 @@
    "rof": 100,
    "rng": 75,
    "htk": 12,
-   "ttk_ms": 1558,
+   "ttk_ms": 2053,
    "range_band": "mid",
    "range_target_m": "18-20 indoor / 40-45 outdoor (Q15)",
    "recoil": {
@@ -75,13 +75,19 @@
     "dmg": 10,
     "range_outdoor_pct": 70
    },
+   "overrides": {
+    "t23": {
+     "value": 410,
+     "why": "R6 (docs/weapon-design.md Balance rules table, Tony 2026-09-23): a bursting AR should beat the Burst Rifle most of the time, and the Burst Rifle should still beat a full-auto AR (R7). The recoil-duel sim (`--scenario range-duel`) showed the captured 275ms gap makes the Burst Rifle's sustained DPS beat even a disciplined, always-crisp AR burst -- a real balance hole, not a modelling artefact. Widening the gun-enforced gap between bursts (never the per-round dmg, which would move htk and unravel the crit_pct average-preserving cut from F62) is the smallest single-token lever that clears R6 with a safe margin; R7 does not clear 65% at any gap that also clears R6 (the two rules pull the same lever in opposite directions -- see weapon-design.md's Balance rules table note and F308)."
+    }
+   },
    "crit_pct": 40,
    "verified": false,
    "captured": true,
    "tags": [
     "assault"
    ],
-   "notes": "A real three-round burst: one pull, three rounds, and the gun enforces the gap. 11 hits from a 36-round mag with 216 behind it; the most total ammo of the burst pair, and the tighter of the two. 2026-09-17 arsenal review: damage raised 9 to 11 so the burst pair separates further from the SMG-class assault weapons on hits-to-kill, not only on cadence."
+   "notes": "A real three-round burst: one pull, three rounds, and the gun enforces the gap. 11 hits from a 36-round mag with 216 behind it; the most total ammo of the burst pair, and the tighter of the two. 2026-09-17 arsenal review: damage raised 9 to 11 so the burst pair separates further from the SMG-class assault weapons on hits-to-kill, not only on cadence. 2026-09-23 (R6/R7, F291/F308): the gap between bursts (t23) widened 275ms to 410ms so a disciplined AR burst beats it most of the time (R6); this is a real trade against R7 (Burst Rifle vs a full-auto AR), which no longer clears 65% -- see the Balance rules table."
   },
   {
    "weapon_id": "force_rifle",
@@ -232,12 +238,12 @@
    "reload_ms": 400,
    "reload_type": "chain",
    "dmg": 35,
-   "rof": 9,
+   "rof": 11,
    "rng": 75,
    "range_band": "close",
    "range_target_m": "8-10 indoor / 15-18 outdoor (Q15)",
    "htk": 3,
-   "ttk_ms": 1600,
+   "ttk_ms": 1400,
    "recoil": {
     "ceiling": 100,
     "floor": 100,
@@ -253,8 +259,8 @@
     "headset_dmg": 20,
     "headset_range_outdoor": 100,
     "headset_range_indoor": 100,
-    "fire_ms": 800,
-    "range_outdoor_pct": 100
+    "fire_ms": 700,
+    "range_outdoor_pct": 30
    },
    "min_app": "0.4.5",
    "verified": false,
@@ -264,7 +270,7 @@
    ],
    "ap_dmg": 15,
    "ap_fire_ms": 1000,
-   "notes": "Shell by shell, and the fastest recovery on the board. One pull sends two words: 20 from the gun and 20 from the shooter's own headset, both landing at any range this game is played at, 40 together. Three hits drop a target, six in the tube and a 400ms shell reload. Sustained pressure from the shallowest ammo pool outside the power tier."
+   "notes": "Shell by shell, and the fastest recovery on the board. One pull sends two words: 20 from the gun and 20 from the shooter's own headset, 40 together when both land -- the headset word's own range is unmeasured (F275), so at range this is 20 from the gun alone, same as the SMG's 30% outdoor reach. Three hits drop a target at close range, six in the tube and a 400ms shell reload. 2026-09-23 (R8, docs/weapon-design.md Balance rules table): the pump gap (t14, gun-enforced, not a recoil model) tightened 800ms to 700ms -- the slowest of the sweep {800,750,700,650,600} that gets the Shotgun to beat the SMG on full auto at close range most of the time (R8), confirmed not to also let it beat the rifles at mid range (R5/R9 unaffected). Sustained pressure from the shallowest ammo pool outside the power tier. Range: F291's outdoor 100% widened it past its own headset word's proven shelf; 2026-09-23 set it to the SMG's own 30%, so the two close-range weapons share one outdoor reach (R4/R5)."
   },
   {
    "weapon_id": "stinger",

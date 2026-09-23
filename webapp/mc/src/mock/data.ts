@@ -53,7 +53,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 56,
       "rof": 53,
       "ammo": 49,
-      "ttk": 27
+      "ttk": 35
     }
   },
   {
@@ -124,7 +124,7 @@ export const WEAPONS: WeaponView[] = [
     ],
     "role": "assault",
     "htk": 12,
-    "ttk_ms": 1558,
+    "ttk_ms": 2053,
     "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
@@ -141,7 +141,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 47,
       "rof": 100,
       "ammo": 83,
-      "ttk": 64
+      "ttk": 27
     }
   },
   {
@@ -228,7 +228,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 64,
       "rof": 47,
       "ammo": 43,
-      "ttk": 42
+      "ttk": 49
     }
   },
   {
@@ -271,7 +271,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 38,
       "rof": 67,
       "ammo": 100,
-      "ttk": 49
+      "ttk": 56
     }
   },
   {
@@ -374,7 +374,7 @@ export const WEAPONS: WeaponView[] = [
     "reload_s": 0.4,
     "reload_ms": 400,
     "dmg": 35,
-    "rpm": 9,
+    "rpm": 11,
     "rng": 75,
     "dmg_per_hit": 40,
     "dual_emitter": true,
@@ -385,7 +385,7 @@ export const WEAPONS: WeaponView[] = [
     ],
     "role": "cqb",
     "htk": 3,
-    "ttk_ms": 1600,
+    "ttk_ms": 1400,
     "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
@@ -401,7 +401,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 73,
       "rof": 40,
       "ammo": 31,
-      "ttk": 56
+      "ttk": 78
     }
   },
   {
@@ -531,7 +531,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 82,
       "rof": 20,
       "ammo": 26,
-      "ttk": 78
+      "ttk": 71
     }
   },
   {
@@ -616,7 +616,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 29,
       "rof": 73,
       "ammo": 94,
-      "ttk": 35
+      "ttk": 42
     }
   },
   {
@@ -658,7 +658,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 29,
       "rof": 87,
       "ammo": 71,
-      "ttk": 71
+      "ttk": 64
     }
   },
   {
@@ -701,7 +701,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 38,
       "rof": 60,
       "ammo": 60,
-      "ttk": 42
+      "ttk": 49
     }
   }
 ];
