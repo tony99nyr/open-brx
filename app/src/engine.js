@@ -2679,10 +2679,10 @@ export class Engine {
   }
   _irKillConfirmed(victimTeam, now) {
     this.callout = { kind: 'kill_confirmed', name: null, team: TEAM_KEY[victimTeam] || null, at: now };
-    const team = TEAM_KEY[victimTeam] || null;
-    const mcAlreadyConfirmed = this._takeKillMatch(this._mcKillOpen, team, now);
+    const tid = Number.isInteger(victimTeam) ? victimTeam : null;   // pair on the numeric tid: MC's team_id is not a colour key
+    const mcAlreadyConfirmed = this._takeKillMatch(this._mcKillOpen, tid, now);
     if (!mcAlreadyConfirmed) {
-      this._irKillOpen.push({ at: now, team });
+      this._irKillOpen.push({ at: now, team: tid });
       const pick = this._pickCue('kill');
       const lg = (this._lightGen = this._lightGen || 0);
       this._write([SFLASH], 'S57 IR kill confirmed');
@@ -4336,7 +4336,10 @@ export class Engine {
     // is its OWN separate timestamp, read back only by `_irKillConfirmed`: two of MC's OWN kills close
     // together (a real double kill, or `cue pools` test's back-to-back feedback calls) must never
     // self-suppress, only a genuinely different channel racing the same kill may.
-    const vt = body.victim_team != null ? String(body.victim_team).toLowerCase() : null;
+    // S57: MC names the victim's team by its team_id; resolve it to the tid through this match's own teams, since the IR
+    // word names it by tid (a team_id is a free config string, not always the colour key TEAM_KEY assumes)
+    const vtRow = body.victim_team != null ? ((this.config && this.config.teams) || []).find(x => x.team_id === body.victim_team) : null;
+    const vt = vtRow && Number.isInteger(vtRow.tid) ? vtRow.tid : null;
     const irAlreadyConfirmed = body.kind === 'kill' && this._takeKillMatch(this._irKillOpen, vt, this.now());
     if (medalCues.length) {
       medalCues.forEach((x, i) => this.delay(120 + i * MEDAL_GAP_MS, () => { if (this._lightGen === lg) this._write([x.f], `medal ${x.m}`); }));

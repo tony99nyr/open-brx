@@ -18,9 +18,8 @@ function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m
 const VIPER = { player_id: 'p2', player_num: 19, display: 'VIPER', team_id: 'yellow' };
 const GHOST = { player_id: 'p3', player_num: 20, display: 'GHOST', team_id: 'blue' };
 
-function harness({ mode = 'tdm', calloutTeam = 0, teamFlip } = {}) {
+function harness({ mode = 'tdm', calloutTeam = 0, teamFlip, teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }] } = {}) {
   const writes = []; const facts = []; let clock = 1_000_000;
-  const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
   const config = { config_id: golden.config_id, mode, environment: 'outdoor', night: false, time_limit_s: 600,
     respawn: { type: 'auto', delay_s: 5 }, scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams };
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
@@ -233,8 +232,8 @@ test('S57 kill confirm: a double kill where only ONE IR word lands still plays M
 });
 test('S57 kill confirm: confirms pair by victim team, so another team\'s MC kill is not swallowed', () => {
   const h = harness(); h.live();
-  h.irWord(7, IR_CALLOUT.DOWN_BY + 2);                     // IR: I killed someone on team 2 (yellow)
-  h.feedback({ kind: 'kill', victim_team: 'red' });        // MC: a different kill, a red victim
+  h.irWord(7, IR_CALLOUT.DOWN_BY + 2);                     // IR: I killed someone on tid 2 (yellow)
+  h.feedback({ kind: 'kill', victim_team: 'blue' });       // MC: a different kill, a victim on tid 1
   assert.equal(h.cues('VAA').length, 2, 'different victims, two lines');
 });
 test('S57 sender: a gun-recovery DOWN (a power-cycle, not a kill) sends no callout', () => {
@@ -247,4 +246,12 @@ test('S57 receiver: unassigned magnitudes 37-39 stay on the bus, ignored, never 
   h.irWord(5, 37); h.irWord(5, 39);
   assert.equal(h.eng.state().beacon, null);
   assert.equal(h.eng.state().callout, null);
+});
+test('S57 kill confirm: pairing resolves MC\'s team_id through the match\'s teams, not a colour name', () => {
+  // team ids are free config strings; a roster whose ids are not the colour keys must still pair (round 2)
+  const teams = [{ team_id: 'alpha', name: 'ALPHA', color: 'blue', tid: 1 }, { team_id: 'bravo', name: 'BRAVO', color: 'yellow', tid: 2 }];
+  const h = harness({ teams }); h.live();
+  h.irWord(7, IR_CALLOUT.DOWN_BY + 2);                     // IR: my kill, victim on tid 2
+  h.feedback({ kind: 'kill', victim_team: 'bravo' });      // MC: the same kill, team_id 'bravo' = tid 2
+  assert.equal(h.cues('VAA').length, 1, 'the same kill plays once');
 });
