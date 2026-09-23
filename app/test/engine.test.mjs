@@ -3472,6 +3472,16 @@ test('S54: the round counts are derived from the row\'s dmg -- rounds per trigge
   // making room for the Burst Rifle to beat it (R7).
   assert.deepEqual(from(8, { crisp: 100, degraded: 70, heavy: 40, after_heavy: 7, ceiling: 100, floor: 70, per_shot: 10, recover_ms: 150 }),
     row(100, 70, 40, 6, 7), 'assault_rifle: the 2026-09-23 depths (70/40), heavy declared at round 7 (R7, F308)');
+  // The Suppressor's own exception the OTHER way (Tony, 2026-09-23, R10, F308, docs/weapon-design.md's
+  // Balance rules table row 3): "it should be weaker since its silent but not too weak." An explicit
+  // `heavy: 70` (not the derived 60 floor every other reference-calibre weapon ships), declared
+  // alongside the captured `floor: 60` so `_recoilProfile` reads `heavy` over `floor`; `degraded`
+  // derives between `crisp` and the NEW `heavy` (85, not the un-fixed 80 two lines above).
+  // `afterShots`/`heavyAfter` are unaffected -- they derive off `dmg` (7), not `heavy` -- so they stay
+  // 7/10, the same as the un-fixed suppressor case above. Mirrors
+  // mcp/tests/test_balance_sim.py::test_recoil_profile_pins_the_shipped_suppressor_row.
+  assert.deepEqual(from(7, { ceiling: 100, floor: 60, heavy: 70, per_shot: 15, recover_ms: 150 }),
+    row(100, 85, 70, 7, 10), 'suppressor: the explicit 2026-09-23 heavy (70), degraded derives to 85 (R10, F308)');
   assert.equal(h.eng._recoilProfile(null), null);
   assert.equal(h.eng._recoilProfile({ dmg: 9, recoil: { ceiling: 100, floor: 100, per_shot: 0, recover_ms: 0 } }), null,
     'burst_rifle: a one-press trigger cannot be held in full auto, so it carries no recoil at all');

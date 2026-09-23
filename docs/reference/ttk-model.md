@@ -4,6 +4,14 @@ Reference for weapon balance work (docs/archive/game-test-2026-09-11.md Block D 
 below come from shipped-shooter community analysis and one probability-theory paper; BRX facts
 come from `mcp/brx_mcp/mc/weapons.json`, `protocol/brx-protocol.md`, and `mcp/brx_mcp/mc/compile.py`.
 
+> ⚠️ **This page is a dated design log, not a live reference.** Every weapon number below is frozen at
+> the date its own section was written (2026-09-11, then 12, then 17); none of it was updated for the
+> 2026-09-23 sidearm and Burst Rifle changes (R6/R10, `docs/weapon-design.md`'s Balance rules table).
+> **For the numbers a weapon ships with today, read `docs/weapon-design.md`'s Balance rules table and
+> §2.2 — never this page.** Keeping two synchronised copies of the same wire values is how this page
+> went stale the first time; it stays here for the REASONING (why a lever was chosen), which does not
+> expire the way a number does.
+
 ## 1. The standard formulas
 
 **Ideal (best-case) TTK**, the number every shooter community publishes first:

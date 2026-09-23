@@ -929,7 +929,7 @@ def _accuracy_pct(profile: RecoilProfile | None, state: str) -> float:
 def _ar_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: int, reload_ms: float,
              profile: RecoilProfile | None, aim_factor: float, *, burst_min: int | None = None,
              burst_max: int | None = None, pause_min_ms: float = 0.0, pause_max_ms: float = 0.0,
-             rng: random.Random | None = None):
+             rng: random.Random | None = None, crit_pct: int = 0):
     """Yields `(t, hit_p, dmg)` for one Assault Rifle combatant, in firing order. Full auto
     (`burst_min` is None) empties the magazine in one unbroken hold: the recoil ladder is never
     released, so it walks up and stays wherever the round count lands it, all the way to the reload.
@@ -938,7 +938,14 @@ def _ar_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: in
     still crisp on release (no settle needed), so a burst short enough never degrades the weapon at
     all. A burst that DID degrade only recovers if the pause is at least `settle_ms` (600 ms floor) —
     a 150-300 ms pause between bursts is not, so a weapon that got hot in one burst stays hot into the
-    next. A reload is a trigger release too, and it is always far longer than `settle_ms`."""
+    next. A reload is a trigger release too, and it is always far longer than `settle_ms`.
+
+    `crit_pct` (F308, polish round 1): the GUN rolls its own crit per round, independent of the hit
+    roll -- a crit still has to land -- at `magnitude x CRIT_MULT` truncated (`int()`), same formula
+    as `Match._shot()`'s `w.crit_pct` branch and `compile.py`'s `t6` write. 0 (the default) skips the
+    roll entirely, so every weapon with no declared `crit_pct` is unaffected. Requires `rng` whenever
+    `crit_pct` is nonzero; every caller here already threads one through for its own reasons (the
+    burst pause, or simply because the combatant wrapper always has one)."""
     ammo, res = mag, reserve
     state, burst = "crisp", 0
     t = first_time
@@ -954,7 +961,10 @@ def _ar_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: in
         blen = min(ammo, rng.randint(burst_min, burst_max)) if burst_mode else ammo
         for _ in range(blen):
             hit_p = (_accuracy_pct(profile, state) / 100.0) * aim_factor
-            yield (t, hit_p, dmg)
+            round_dmg = dmg
+            if crit_pct and rng.random() * 100.0 < crit_pct:
+                round_dmg = int(round_dmg * CRIT_MULT)
+            yield (t, hit_p, round_dmg)
             ammo -= 1
             state, burst = _recoil_step(profile, state, burst)
             t += fire_ms
@@ -1017,12 +1027,17 @@ def _pump_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: 
 
 
 def _burst3_shots(first_time: float, dmg: int, fire_ms: float, gap_ms: float, mag: int, reserve: int,
-                  reload_ms: float, aim_factor: float):
+                  reload_ms: float, aim_factor: float, *, rng: random.Random | None = None,
+                  crit_pct: int = 0):
     """Yields `(t, hit_p, dmg)` for a gun-ENFORCED 3-round burst combatant (t20 == 9, the Burst Rifle):
     three rounds at `fire_ms` spacing, then `gap_ms` (t23) before the next burst -- continuous, no
     player control and no recoil to hold or release (the row's `recoil.floor == ceiling`, so
     `recoil_profile()` is always `None` for it; unlike `_ar_shots`'s controlled-burst mode, there is no
-    player-chosen pause here, only the gun's own enforced gap)."""
+    player-chosen pause here, only the gun's own enforced gap).
+
+    `crit_pct` (F308, polish round 1): same per-round, gun-rolled crit as `_ar_shots` (`magnitude x
+    CRIT_MULT` truncated); requires `rng` whenever it is nonzero. The Burst Rifle's own 40% is the
+    reason this generator needed it at all."""
     ammo, res = mag, reserve
     t = first_time
     while True:
@@ -1034,7 +1049,10 @@ def _burst3_shots(first_time: float, dmg: int, fire_ms: float, gap_ms: float, ma
             ammo, res = got, res - got
         blen = min(3, ammo)
         for i in range(blen):
-            yield (t, aim_factor, dmg)
+            round_dmg = dmg
+            if crit_pct and rng.random() * 100.0 < crit_pct:
+                round_dmg = int(round_dmg * CRIT_MULT)
+            yield (t, aim_factor, round_dmg)
             ammo -= 1
             if i < blen - 1:
                 t += fire_ms
@@ -1102,6 +1120,7 @@ class RecoilDuelModel:
     br_mag: int
     br_reserve: int
     br_reload_ms: float
+    br_crit_pct: int
     # R10 (F308): the two live sidearms and the rifles they are duelled against. usp/deagle carry
     # no recoil profile (both ship floor == ceiling == 100) and no headset word.
     usp_dmg: int
@@ -1131,6 +1150,7 @@ class RecoilDuelModel:
     amr_mag: int
     amr_reserve: int
     amr_reload_ms: float
+    amr_crit_pct: int
     bolt_dmg: int
     bolt_fire_ms: float
     bolt_mag: int
@@ -1178,6 +1198,7 @@ class RecoilDuelModel:
                    br_dmg=cat.damage_per_pull("burst_rifle"), br_fire_ms=float(cat.fire_ms("burst_rifle")),
                    br_gap_ms=float(cat._frame_int("burst_rifle", "burst")), br_mag=br_mag,
                    br_reserve=br_reserve, br_reload_ms=float(br_reload_ms),
+                   br_crit_pct=int(cat._row("burst_rifle").get("crit_pct") or 0),
                    usp_dmg=cat.damage_per_pull("usp"), usp_fire_ms=float(cat.fire_ms("usp")),
                    usp_mag=usp_mag, usp_reserve=usp_reserve, usp_reload_ms=float(usp_reload_ms),
                    deagle_dmg=cat.damage_per_pull("deagle"), deagle_fire_ms=float(cat.fire_ms("deagle")),
@@ -1191,6 +1212,7 @@ class RecoilDuelModel:
                    sup_profile=recoil_profile(cat._row("suppressor")),
                    amr_dmg=cat.damage_per_pull("amr"), amr_fire_ms=float(cat.fire_ms("amr")),
                    amr_mag=amr_mag, amr_reserve=amr_reserve, amr_reload_ms=float(amr_reload_ms),
+                   amr_crit_pct=int(cat._row("amr").get("crit_pct") or 0),
                    bolt_dmg=cat.damage_per_pull("bolt_rifle"), bolt_fire_ms=float(cat.fire_ms("bolt_rifle")),
                    bolt_mag=bolt_mag, bolt_reserve=bolt_reserve, bolt_reload_ms=float(bolt_reload_ms),
                    aim_factor=aim_factor,
@@ -1355,7 +1377,7 @@ def _shotgun_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Rand
 def _burst_rifle_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
     # No headset word declared on the Burst Rifle -- `band` never changes its damage.
     return _burst3_shots(t, m.br_dmg, m.br_fire_ms, m.br_gap_ms, m.br_mag, m.br_reserve, m.br_reload_ms,
-                         m.aim_factor)
+                         m.aim_factor, rng=rng, crit_pct=m.br_crit_pct)
 
 
 def _ar_burst_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
@@ -1402,7 +1424,7 @@ def _suppressor_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.R
 
 def _amr_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
     return _ar_shots(t, m.amr_dmg, m.amr_fire_ms, m.amr_mag, m.amr_reserve, m.amr_reload_ms, None,
-                     m.aim_factor)
+                     m.aim_factor, rng=rng, crit_pct=m.amr_crit_pct)
 
 
 def _bolt_rifle_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):

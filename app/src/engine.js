@@ -4981,7 +4981,7 @@ export class Engine {
     // write, because a release is not proof the player has stopped for good -- only that this pull has.
     // The settle timer still clears the counter on its own as a fallback, so a dropped release edge never
     // strands a stale burst. Not yet bench-proven: confirm no `$BUT,0,0` is lost under full auto and that
-    // it arrives in order with the `$ALCD` stream it is meant to race (FOLLOWUPS row to come).
+    // it arrives in order with the `$ALCD` stream it is meant to race (docs/FOLLOWUPS.md F308).
     if (id === BTN_TRIGGER) { const r = this._recoil; if (r && r.state === 'crisp' && r.burst > 0) r.burst = 0; }
   }
   /** How long each still-down button has been held, in ms. PURE — read from `state()` on every render. */
