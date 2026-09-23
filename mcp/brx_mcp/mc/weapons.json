@@ -78,7 +78,7 @@
    "overrides": {
     "t23": {
      "value": 550,
-     "why": "R6 (docs/weapon-design.md Balance rules table, Tony 2026-09-23): a bursting AR should beat the Burst Rifle most of the time, and the Burst Rifle should still beat a full-auto AR (R7). The recoil-duel sim (`--scenario range-duel`) showed the captured 275ms gap makes the Burst Rifle's sustained DPS beat even a disciplined, always-crisp AR burst -- a real balance hole, not a modelling artefact. Widening the gun-enforced gap between bursts (never the per-round dmg, which would move htk and unravel the crit_pct average-preserving cut from F62) is the smallest single-token lever that clears R6. First shipped at 410ms without crits modelled. **2026-09-23, polish round 1 (F308):** modelling the Burst Rifle's own 40% `crit_pct` (previously not simulated at all) reopened R6 and R4b at 410ms -- the crit raises its average round damage about 20%, closing the margin the 410ms gap depended on. Tony kept the 40% crit and moved the gap again instead: 410 -> 550ms is the smallest single-token value (of dmg, crit_pct and this gap, all three swept) that clears R4b, R4d, R6 AND R7 together at the full 65% bar -- see docs/weapon-design.md Sec7.5d for the full sweep table."
+     "why": "R6/R7 (Tony, 2026-09-23; retuned 2026-09-23, polish round 1, once modelling the Burst Rifle's own 40% crit_pct reopened R6 at the first-shipped 410ms): 550ms is the smallest single-token value that clears R4b, R4d, R6 and R7 together with the crit kept. See docs/weapon-design.md Sec7.5d."
     }
    },
    "crit_pct": 40,
@@ -87,7 +87,7 @@
    "tags": [
     "assault"
    ],
-   "notes": "A real three-round burst: one pull, three rounds, and the gun enforces the gap. 11 hits from a 36-round mag with 216 behind it; the most total ammo of the burst pair, and the tighter of the two. 2026-09-17 arsenal review: damage raised 9 to 11 so the burst pair separates further from the SMG-class assault weapons on hits-to-kill, not only on cadence. 2026-09-23 (R6/R7, F291/F308): the gap between bursts (t23) widened 275ms to 410ms so a disciplined AR burst beats it most of the time (R6), against a real trade with R7. 2026-09-23, polish round 1 (F308): modelling the Burst Rifle's own 40% crit reopened R6 (and R4's SMG pairing) at 410ms, so t23 moved again, 410 to 550ms -- the smallest single-token value that clears R4b, R4d, R6 and R7 together with the crit kept. See the Balance rules table."
+   "notes": "A real three-round burst: one pull, three rounds, and the gun enforces the gap. 12 hits from a 36-round mag with 216 behind it; the most total ammo of the burst pair, and the tighter of the two. 2026-09-17 arsenal review: damage raised 9 to 11 so the burst pair separates further from the SMG-class assault weapons on hits-to-kill, not only on cadence. 2026-09-23 (R6/R7, F291/F308): the gap between bursts (t23) widened 275ms to 410ms so a disciplined AR burst beats it most of the time (R6), against a real trade with R7. 2026-09-23, polish round 1 (F308): modelling the Burst Rifle's own 40% crit reopened R6 (and R4's SMG pairing) at 410ms, so t23 moved again, 410 to 550ms -- the smallest single-token value that clears R4b, R4d, R6 and R7 together with the crit kept. See the Balance rules table."
   },
   {
    "weapon_id": "force_rifle",
@@ -444,7 +444,7 @@
     "marksman",
     "sniper"
    ],
-   "notes": "Anti-materiel weight at a rifle's cadence. 24 a hit every 400ms, five hits to a kill, 14 up and only 56 behind. The hardest-hitting automatic, and the shallowest."
+   "notes": "Anti-materiel weight at a rifle's cadence. 21 a hit every 400ms, six hits to a kill, 14 up and only 56 behind. The hardest hit outside the power tier, and the shallowest reserve. 2026-09-18 (F62): dmg 24 -> 21 to pay for its own 30% crit_pct (a crit is x1.5 truncated, so 21 -> 31), which raised htk 5 -> 6; the published number is now the guaranteed six-hit kill, five when a crit lands."
   },
   {
    "weapon_id": "suppressor",
@@ -541,7 +541,7 @@
   {
    "weapon_id": "charge_rifle",
    "name": "Charge Rifle",
-   "desc": "Hold it, and it holds. A full charge and two taps ends anyone, which is why it belongs to whoever saw the other person first.",
+   "desc": "Hold it, and it holds. A full charge and three taps ends anyone, which is why it belongs to whoever saw the other person first.",
    "cls": 5,
    "role": "marksman",
    "class": "energy",
@@ -583,7 +583,7 @@
     "marksman",
     "sniper"
    ],
-   "notes": "2026-09-23 (F280): charge damage 85 -> 70 (`wire.dmg`), which raises the kill from one charge plus two taps to one charge plus THREE. Pre-charge it behind cover, then the kill is one release and three taps: a 70-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus three taps drops a 115 pool from release -- 13 of the 40 rounds up, about 98 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, eighty back -- three combo kills a magazine, ten across the kit. 2026-09-23 (F291, later the same day): the recoil duel sim's rule 2 (an AR catching an uncharged CR should win) failed at the shipped tap damage. First tried moving the tap CADENCE (285 -> 350ms) -- reverted the same day, because that constant is the player's own physical pull rate: no $WEAP token encodes it and the gun neither reads nor enforces it, so it fixed nothing the gun does. Fixed on the wire instead: tap damage 20 -> 16 (`wire.tap_dmg`, t37, independent of the charge magnitude on t5, bench-proven 2026-09-17). 16 still closes the pool in exactly three taps (3 x 16 = 48 >= the 45 left after the charge), so the combo stays charge + 3 taps -- htk 4, ttk_ms 855, both unchanged from the pre-F291 numbers. Tap cadence stays the bench-measured 285ms (CHARGE_TAP_CADENCE_MS, compile.py)."
+   "notes": "2026-09-23 (F280): charge damage 85 -> 70 (`wire.dmg`), which raises the kill from one charge plus two taps to one charge plus THREE. Pre-charge it behind cover, then the kill is one release and three taps: a 70-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus three taps drops a 115 pool from release -- 13 of the 40 rounds up, about 98 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, eighty back -- three combo kills a magazine, nine across the kit. 2026-09-23 (F291, later the same day): the recoil duel sim's rule 2 (an AR catching an uncharged CR should win) failed at the shipped tap damage. First tried moving the tap CADENCE (285 -> 350ms) -- reverted the same day, because that constant is the player's own physical pull rate: no $WEAP token encodes it and the gun neither reads nor enforces it, so it fixed nothing the gun does. Fixed on the wire instead: tap damage 20 -> 16 (`wire.tap_dmg`, t37, independent of the charge magnitude on t5, bench-proven 2026-09-17). 16 still closes the pool in exactly three taps (3 x 16 = 48 >= the 45 left after the charge), so the combo stays charge + 3 taps -- htk 4, ttk_ms 855, both unchanged from the pre-F291 numbers. Tap cadence stays the bench-measured 285ms (CHARGE_TAP_CADENCE_MS, compile.py)."
   },
   {
    "weapon_id": "glock",
@@ -892,7 +892,7 @@
     "power",
     "heavy"
    ],
-   "notes": "Must be held to charge; a tap fires nothing at all. 1.5s of commitment for a guaranteed kill, and the fastest reload in the power tier for the trouble."
+   "notes": "Must be held to charge; a tap fires nothing at all. 1.5s of commitment for a guaranteed kill, and a reload (1.6s) quicker than every power-tier weapon but the Energy Launcher (1.4s) for the trouble."
   },
   {
    "weapon_id": "energy_launcher",
@@ -1170,7 +1170,7 @@
     "assault"
    ],
    "sir_fn": 1,
-   "notes": "Every hit poisons. The rounds themselves are weak and the poison is the payload: bring somebody down to about twenty and break contact, and they die anyway. Fired straight it kills in 1.54 s against the standard pool, slower than an assault rifle, but you only need twelve hits to make the poison lethal, which is the same 1.21 s the rifle takes to finish the job outright. The difference is that you never see it land, and they might reach a station first. It is the one weapon that punishes an enemy for walking away."
+   "notes": "Every hit poisons. The rounds themselves are weak and the poison is the payload: bring somebody down to about twenty and break contact, and they die anyway. Fired straight it kills in 1.54 s against the standard pool, slower than an assault rifle, but you only need twelve hits to make the poison lethal, and twelve hits take 1.21 s -- close to the rifle's own 1.20 s (docs/weapon-design.md Sec7.5 has the precise pair). The difference is that you never see it land, and they might reach a station first. It is the one weapon that punishes an enemy for walking away."
   }
  ]
 }

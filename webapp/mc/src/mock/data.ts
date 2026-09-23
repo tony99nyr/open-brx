@@ -149,7 +149,7 @@ export const WEAPONS: WeaponView[] = [
     "name": "Charge Rifle",
     "cls": "5",
     "weapon_class": "energy",
-    "desc": "Hold it, and it holds. A full charge and two taps ends anyone, which is why it belongs to whoever saw the other person first.",
+    "desc": "Hold it, and it holds. A full charge and three taps ends anyone, which is why it belongs to whoever saw the other person first.",
     "clip": 40,
     "mags": 2,
     "reserve": 80,

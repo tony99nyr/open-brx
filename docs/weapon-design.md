@@ -18,7 +18,7 @@ says the rule is judgement only.
 | 8 | The headset is the primary target: 4 of the tagger's 5 hit sensors sit there, so it carries no bonus multiplier. `criticalShotModifier` (`t7`) compiles to 0, and a headset hit lands the same as a gun-body hit. | Tony, 2026-09-17 (arsenal review) | — | `mcp/tests/test_gameconfig.py::test_crit_modifier_defaults_to_zero_and_headset_multiplier_is_1x` |
 | 9 | Easy Reload is accessibility, not balance: it is never tuned or cut on balance grounds, and it lives beside the per-player pool handicap, independent of the perk slot. | Tony, 2026-09-17 ("my daughter cant reload the brx normally") | S50 | `mcp/tests/test_mc_loadout.py::test_easy_reload_is_refused_beside_a_chain_reload_weapon`, `::test_easy_reload_is_refused_beside_a_second_weapon_end_to_end` |
 | 10 | The rebalance changes numbers, not feel: every weapon keeps Battle Company's captured fire mode, burst pattern, heat/overheat mechanic and sound; only the declared balance tokens move. | design principle, ongoing | weapon-design.md §2.1 principles 1-3 | judgement, not tested |
-| 11 | R4-R9: six close/mid-range duel rules (close = gun + headset word, mid = gun word alone), each **≥ 65%**. Modelling the Burst Rifle's 40% crit reopened R4b and R6; Tony kept the crit and moved the burst gap again, 410 → 550 ms, the smallest single-token value that clears all four affected cells — see §7.5d. | Tony, 2026-09-23 | F308 | §7.5d; `mcp/tests/test_balance_sim.py::test_range_duel_rules_clear_the_65_percent_bar` |
+| 11 | R4-R9: six close/mid-range duel rules (close = gun + headset word, mid = gun word alone), each **≥ 65%**. Modelling the Burst Rifle's 40% crit reopened R4b and R6; Tony kept the crit and moved the burst gap again, 410 → 550 ms, the smallest single-token value that clears all four affected cells — see §7.5d. ⚠️ R7 is the tightest of the ten cells, at 65.48%. | Tony, 2026-09-23 | F308 | §7.5d; `mcp/tests/test_balance_sim.py::test_range_duel_rules_clear_the_65_percent_bar` |
 | 12 | R10: sidearms finish a kill, they do not compete with rifles — real-world Desert Eagle cadence and USP magazine levers, plus the Suppressor's own recoil exception. All fourteen checks clear their bars. See §7.5e. | Tony, 2026-09-23 | F308 | §7.5e; `mcp/tests/test_balance_sim.py::test_r10_sidearms_finish_a_kill_under_a_second`, `::test_r10_primaries_beat_sidearms_at_65_percent` |
 
 ## ⚠️ Three arsenals, and only one of them is ours
@@ -230,7 +230,7 @@ sounds — and moves the numbers.
 | Stinger | cqb | 15 | 250 | 8 | **1.75** | 60.0 | 43.5 | 18 | 144 | 1700 | 99% | — | cycle 120→250, res 72→144 |
 | Bolt Rifle | assault | 13 | 225 | 9 | **1.80** | 57.8 | 38.7 | 18 | 180 | 2000 | 98% | — | **stock** |
 | SMG | cqb | 7 | 100 | 13 | **1.20** | 70.0 | 47.8 | 54 | 216 | 2500 | 100% | 5 | **2026-09-20 playtest**: a covered gun emitter produced no headset hit because captured t12 was empty. Open BRX now deliberately adds a headset word at the known-good carrier 100; cycle 95→100 and mag/reserve 72/288→54/216 keep the added word priced and preserve the Suppressor's magazine lead. **2026-09-23** (R5, F308): the split moved 8+1→7+2 (close range still 9); `dmg`/`dps`/`sust`/one-mag % here are the GUN WORD ALONE (7), same caveat as the Shotgun |
-| Toxin Rifle | assault | 8 | 110 | 15 | **1.54** | 72.7 | 49.0 | 30 | 180 | 1600 | 99% | 5 | **2026-09-18**, in the picker since 2026-09-19: the gun lands the direct hit and the POISON is a tick clock on the victim's node (S16, `spec/node.md` §3.17). 4 damage a second for 5 s, refreshed on each hit, never stacked: worth 20, so twelve hits make it lethal even if the target breaks contact, which is the same 1.21 s the Assault Rifle needs to finish outright. §7.5 |
+| Toxin Rifle | assault | 8 | 110 | 15 | **1.54** | 72.7 | 49.0 | 30 | 180 | 1600 | 99% | 5 | **2026-09-18**, in the picker since 2026-09-19: the gun lands the direct hit and the POISON is a tick clock on the victim's node (S16, `spec/node.md` §3.17). 4 damage a second for 5 s, refreshed on each hit, never stacked: worth 20, so twelve hits make it lethal even if the target breaks contact, and twelve hits take 1.21 s -- close to the Assault Rifle's own 1.20 s (§7.5's own pair). §7.5 |
 | Suppressor | support | 8 | 140 | 15 | **1.96** | 57.1 | 48.0 | 75 | 384 | 2000 | 100% | — | **2026-09-17**: cycle 160→140 (`wire.fire_ms`); mag 48→75 (§2.3, family-scoped dominance) |
 | Assault Rifle | assault | 9 | 100 | 13 | **1.20** | 90.0 | 62.6 | 32 | 192 | 1400 | 100% | — | **2026-09-17**: cycle 140→100 (`wire.fire_ms`, native Battle Company speed) |
 | Energy Rifle | support | 9 | 150 | 13 | **1.80** | 60.0 | 57.0 | 300 | 600 | 2400 | 100% | 6 | **2026-09-17**: cycle 200→150 (`wire.fire_ms`); overheat switched ON (F229: `t38`=150 override, `t35`=D11) |
@@ -1442,8 +1442,10 @@ specifically. See `docs/FOLLOWUPS.md` F71 and F275.
 same as every Callsign gun. What varies with distance is only the 70-damage headset word, through
 `t13` 80 outdoors and `t42` 30 indoors (35.2 and 28.2 kHz on the headset's own formula, 38000 − 140 × (100 − r);
 see `protocol/brx-protocol.md` §6). So Callsign's Shotgun is
-"45 at any range, 115 up close", not "short range". That is a better shape than our `t2` = 22, which
-puts the Shotgun's only word on the unstable knee of the receiver curve.
+"45 at any range, 115 up close", not "short range". ⚠️ **Superseded 2026-09-23 (R4/R5, see the
+correction three paragraphs above): our `t2` was 22 when this comparison was written, on the unstable
+13-26 knee it names. It now ships at 30, on the flat shelf's edge, matching the SMG — the comparison
+below is historical, not current.**
 
 ### 7.1 There are only four ways to take someone down
 
@@ -1690,12 +1692,16 @@ values (10,000 reps a cell) — kept here as history, not a live table:
 | lever | sweep | R4b | R4d | R6 | R7 | note |
 |---|---|---|---|---|---|---|
 | `crit_pct` | 40 → 0 | 48.8% → 81.2% | 68.8% → 87.9% | 21.7% → 68.3% | 87.8% → 67.0% | no partial value clears R4b AND R6; only removing the crit entirely does |
-| `overrides.t23` (gap) | 410 → 700 ms | 48.8% → 93.3% | 68.8% → 93.1% | 21.7% → 89.9% | 87.8% → 41.6% | **chosen: 550** — the only candidate that clears all four alone (79%/87%/69%/66%) |
+| `overrides.t23` (gap) | 410 → 700 ms | 48.8% → 93.3% | 68.8% → 93.1% | 21.7% → 89.9% | 87.8% → 41.6% | **chosen: 550** — the only candidate that clears all four alone (79%/86%/69%/65%; R7 is the tightest of the ten R4-R9 cells at 65.48%) |
 | `wire.dmg` | 10 → 7 | 48.8% → 96.2% | 68.8% → 96.5% | 21.7% → 95.2% | 87.8% → 37.6% | dmg 8 clears R4b/R4d/R6 but drops R7 to 61%; no integer value clears all four |
 
 **Tony's decision: keep the 40% crit, move the gap again** (`overrides.t23`, 410 → 550 ms — the
 smallest single-token value of the three swept above that clears R4b, R4d, R6 and R7 together with the
-crit modelled). Shipped 2026-09-23. All ten R4-R9 cells clear 65% again:
+crit modelled). Shipped 2026-09-23. All ten R4-R9 cells clear 65% again, but R7 (the Burst Rifle
+beats a full-auto AR) is the **tightest of all ten, at 65.48%** — the smallest single-token gap that
+clears the other three cells leaves R7 with almost no margin, since it is the one cell the gap moves
+the opposite direction from R4b/R4d/R6 (a wider gap helps them and hurts R7). Watch this cell first if
+any future catalogue edit touches the Burst Rifle or the Assault Rifle's recoil.
 `python3 mcp/tools/balance_sim.py --scenario range-duel`; gated in CI by
 `mcp/tests/test_balance_sim.py::test_range_duel_rules_clear_the_65_percent_bar`. Bench item:
 `docs/FOLLOWUPS.md` F308.
@@ -1753,7 +1759,7 @@ what your gun IS rather than just weakening it.
 |---|---|---|---|
 | Assault Rifle | 9 at 100 ms | 7 at 225 ms | 0.15 s slower |
 | SMG | 7+2 at 100 ms | 5 at 184 ms | 0.27 s slower |
-| Shotgun | 45 at 800 ms | 15 at 1000 ms | 0.40 s slower |
+| Shotgun | 20 at 700 ms | 15 at 1000 ms | 0.40 s slower |
 | Suppressor | 8 at 140 ms | 3 at 155 ms | 0.21 s slower |
 | Energy Rifle | 9 at 150 ms | 8 at 405 ms | 0.23 s slower |
 

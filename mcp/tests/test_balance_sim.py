@@ -509,7 +509,12 @@ def test_range_duel_rules_clear_the_65_percent_bar():
     65% once that was modelled (R4b ~48.8%, R6 ~21.7%). Tony kept the 40% crit and moved the gap again
     instead (410 -> 550ms, the smallest single-token value of the three swept -- dmg, crit_pct, gap --
     that clears R4b, R4d, R6 and R7 together; docs/weapon-design.md Sec7.5d has the full sweep, kept
-    as history). All ten cells clear 65% again with the crit modelled and the 550ms gap shipped."""
+    as history). All ten cells clear 65% again with the crit modelled and the 550ms gap shipped.
+
+    ⚠ R7 (the Burst Rifle beats a full-auto AR) is the TIGHTEST of all ten cells, at 65.48% -- the gap
+    that fixes R4b/R4d/R6 moves in the OPPOSITE direction from what R7 wants, so 550ms is a knife-edge
+    for R7, not a comfortable margin. Watch this cell first if a future catalogue edit touches the
+    Burst Rifle or the Assault Rifle's recoil (polish round 2, F308)."""
     m = _recoil_model()
     reps = 10_000
     results = {r.label.replace("range_", "", 1): r
