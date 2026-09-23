@@ -194,15 +194,16 @@ it (§3.6). The `roster` turns a number into a name for the HUD; an unknown numb
 
 **The per-life damage ledger (S56 "what hit me", contracts A52).** HUD information only: no game rule reads it.
 - **Weapon naming.** The latch also holds `$HIR` token 5. The node matches it against the shooter's roster
-  `weapons[].hir` first, then against the catalogue as a pickup (the shooter's own ids left out). Two candidates
-  are `ambiguous` and never guessed: the row is unclaimed and `hit_taken` carries no `weapon_id`.
+  `weapons[].hir` first, then against the catalogue as a pickup (the shooter's own ids left out). Two or more
+  candidates are `ambiguous` and never guessed: the row is unclaimed and `hit_taken` carries no `weapon_id`.
 - **Taken.** Each `hit_taken` books its `dmg` against the shooter's `num`. The second word of a dual-emitter shot
   (same `shot_group`) adds damage and not a hit. A poison tick books against the poisoner with no weapon row.
 - **Dealt.** Each `feedback{kind:"hit"}` books against the victim, with the weapon named from the catalogue. A
-  relay with no `shot_group` pairs a two-word shot by time (`DUAL_RELAY_MS`, 150 ms).
+  relay with no `shot_group` pairs a two-word shot by time (`DUAL_RELAY_MS`, 150 ms), only while this gun's active
+  weapon is a two-word one.
 - **`state().life` and `lastLife`.** Each is `{taken[], dealt[], takenTotal, dealtTotal, dealtPartial}`, rows sorted
   by `dmg`. A new life (spawn, revive, infection flip, match end) resets `life`; a death snapshots it as `lastLife`
-  until the next death. A late relay books to the life its `t` falls in, or is dropped.
+  until the next death or the match end. A late relay books to the life its `t` falls in, or is dropped.
 - **`dealtPartial`** is true while MC's relay may still be catching up: the link dropped during that life, or (for
   `lastLife` only) the death was under `DEALT_GRACE_MS` (2000 ms) ago.
 

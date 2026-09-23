@@ -153,16 +153,16 @@ def validate_plan(plan: RawPlan, *, max_chunk: int = MAX_CHUNK_BYTES,
 
     Safety: the writes are concatenated back into one byte stream (the shape the gun's parser
     actually sees) and split into `$`-led pieces by hand -- no `protocol.extract_frames` here, since
-    that helper drops exactly the malformed shapes this scan exists to catch. Bytes before the first
-    `$` are refused outright: they could complete a frame the gun already holds. Each piece then runs
+    that helper drops exactly the malformed shapes this scan exists to catch. Non-whitespace bytes
+    before the first `$` are refused outright: they could complete a frame the gun already holds. Each piece then runs
     through the same rules `extract_frames` would apply, plus two of its own: bytes after a piece's
     `'*'` are refused (they sit outside any frame), and the bare `$*` parser reset is always allowed,
     never checked against the command lists. A piece in `DENIED_COMMANDS`/`HANG_PRONE_COMMANDS` is
     refused outright -- no `allow_hang` override exists here, unlike `server.send`: this helper has
     no supervised-hang path. A piece outside the known-safe list needs `confirm=True`, the same rule
-    `server.send` applies. A trailing incomplete frame (A4's lost `'*'`) is refused unless
-    `allow_incomplete=True`, in which case it comes back as a warning telling the caller to send `$*`
-    next.
+    `server.send` applies. An incomplete piece (A4's lost `'*'`), mid-stream or trailing, is refused
+    unless `allow_incomplete=True`; it then comes back as a warning (for a trailing one: send `$*`
+    next).
     """
     if not plan.writes:
         raise ValueError("plan has no writes")

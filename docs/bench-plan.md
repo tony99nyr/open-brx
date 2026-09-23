@@ -44,16 +44,12 @@ superseded). See `docs/experiment-log/2026-09.md` (2026-09-19 pre-game entry) fo
 
 One ordered runbook for the next sitting: F297/F293 connect reliability, the screamers transport steps A4, A7,
 A7b, A7c and A8 with `raw-bytes` (F269/F270), F308, S56, F291, F292, F298, F296, F309, F275
-outdoors, S48's super-indoor grid in Tony's house, and S57's IR callout bus. It includes the 0.4.5 field check.
-
-### 0.4.5 field check
-
-Folded into the runbook above: connect timing (Block 1), the respawn rules, the Shields preset, the down animation
-and full screen (Block 4). The phones need a build from `main`, because S56 and F309 are newer than 0.4.5.
+outdoors, S48's super-indoor grid in Tony's house, and S57's IR callout bus.
+It includes the 0.4.5 field check, on a build from `main` (S56 and F309 are newer than 0.4.5).
 
 ### Sitting 1: screamers Phase A, transport half (about 55 min; 1 gun, a laptop)
 
-Screamers are P0. Screamers A3, A4 (run as levers §25), A5, A6, A7, A8, A11, A12. A7 and A8 give the block-pacing
+Screamers are P0. Screamers A3, A5, A6, A11, A12; A4, A7, A7b, A7c and A8 run in the runbook's Block 2. A7 and A8 give the block-pacing
 numbers (**F269**, **F270**); a lock-up feeds **F272**. Keep the block pause off until A7 and A8 give a number.
 A3 repeats A1 on other channels and can lock the gun: power-cycle and re-arm before the next step.
 
@@ -75,8 +71,8 @@ A3 repeats A1 on other channels and can lock the gun: power-cycle and re-arm bef
 
 ### Sitting 3: the recoil numbers, groups A and B (about 30 min; 2 guns on a fixed mount)
 
-Levers §26 groups A and B, pinned with `$TMP` t4 (§21 answered how; see "If §21 moves the mechanism"). **F308**.
-Groups C, D, E and F go into sitting 8.
+Levers §26 groups A and B, pinned with `$TMP` t4 (§21 answered how; see "If §21 moves the mechanism"): the
+measured recoil numbers behind the shipped rungs. Groups C, D, E and F go into sitting 8.
 
 ### Sitting 4: screamers Phase A, IR half (about 50 min; 1 gun, the rig)
 

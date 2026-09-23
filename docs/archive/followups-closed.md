@@ -2,8 +2,8 @@
 
 # Closed 2026-09-23: kill confirm, superseded by the IR callout bus
 
-- 2026-09-23 **B31** the kill confirm over the BLE advert or a relayed `$IRTX` is superseded by **S57**: one IR word
-  per death, sent once from the victim's own gun, nothing relayed (Tony). The design lives in the S57 row.
+- 2026-09-23 **B31** the BLE-advert kill-confirm design is superseded by **S57**, which keeps the victim gun's own
+  `$IRTX` (a dead gun still forwards it). Closed with brx4's agreement; the design lives in the S57 row.
 
 # Closed 2026-09-23: dual-emitter accuracy accounting
 

@@ -813,13 +813,27 @@ def test_the_archive_citation_scan_still_matches():
     assert _ARCHIVE_REF.search("`docs/archive/hardware/range-experiment.md`").group(1) == "hardware/range-experiment.md"
 
 
-# --- routing lines never name a closed row; the index lists agree with their rows (2026-09-23 doc-rot) ---
+# --- routing lines never name a closed row; the index lists agree with their rows ---
 # The review found HANDOFF's "Next"/"Blocked" bullets and bench-plan's sittings and tables still sending work
 # through rows closed the same day, and index ids whose marker had moved on. History prose ("F206 is PROVEN")
 # may name a closed id; a line that ROUTES work may not.
 
 _MARK = "🔴|🟠|🟡|🟢|✅|⬜"
-_ID = r"(?<![A-Za-z0-9$§])([A-Z]\d{1,3})(?![0-9])"
+_ID = r"(?<![A-Za-z0-9$§\-])([A-Z]\d{1,3})(?![0-9′])"
+# A line that tells history may name a closed id ("F206's proof already ran", "F254 is CLOSED").
+_HISTORY = re.compile(r"closed|answered|settled|shipped|proven|renumber|already ran", re.I)
+
+
+def _open_rows() -> list[tuple[str, str]]:
+    """(id, marker) for every row whose marker is live (🔴🟠🟡🟢); a ✅/⬜ row left in the file is not open."""
+    out = []
+    for line in FOLLOWUPS.read_text(encoding="utf-8").split("\n"):
+        m = _ROW.match(line)
+        if m:
+            live = [s for s in ("🔴", "🟠", "🟡", "🟢") if s in m.group(2)[:12]]
+            if live:
+                out.append((m.group(1), live[0]))
+    return out
 
 
 def _closed_ids() -> set[str]:
@@ -829,13 +843,14 @@ def _closed_ids() -> set[str]:
         m = re.match(r"- 20\d\d-\d\d-\d\d ((?:\*\*[A-Z]\d{1,3}\*\*(?:,| and)?\s*)+)", line)
         if m:
             out |= set(re.findall(r"\*\*([A-Z]\d{1,3})\*\*", m.group(1)))
-    return out - set(_followup_definitions(FOLLOWUPS.read_text(encoding="utf-8")))
+    live = {i for i, _ in _open_rows()}
+    return out - live
 
 
 def _routing_lines(path: pathlib.Path) -> list[tuple[int, str]]:
-    """HANDOFF: the "- **Next …**" and "- **Blocked**" bullets (with their continuation lines) and the "Start
-    here" list. bench-plan: the numbered steps under "Sittings" and the Desk work, Preconditions and Decisions
-    tables."""
+    """HANDOFF: the "- **Next …**" and "- **Blocked**" bullets (with their continuation lines), any line with an
+    inline "Next:", and the "Start here" list. bench-plan: every line under "Sittings", and the Desk work,
+    Preconditions and Decisions tables."""
     out: list[tuple[int, str]] = []
     lines = path.read_text(encoding="utf-8").split("\n")
     if path == HANDOFF:
@@ -847,7 +862,7 @@ def _routing_lines(path: pathlib.Path) -> list[tuple[int, str]]:
                 bullet = True
             elif not line.startswith("  "):
                 bullet = False
-            if bullet or (start and re.match(r"\s*\d+\. |\s{3}\S", line)):
+            if bullet or re.search(r"(^|\s|\*\*)Next:", line) or (start and re.match(r"\s*\d+\. |\s{3}\S", line)):
                 out.append((n, line))
     else:
         section = ""
@@ -856,7 +871,7 @@ def _routing_lines(path: pathlib.Path) -> list[tuple[int, str]]:
                 section = line
             if section.startswith(("## Desk work", "## Preconditions", "## Decisions for Tony")) and line.startswith("|"):
                 out.append((n, line))
-            elif section.startswith("## Sittings") and re.match(r"\s*\d+\. ", line):
+            elif section.startswith("## Sittings") and not line.startswith("#"):
                 out.append((n, line))
     return out
 
@@ -867,6 +882,8 @@ def test_routing_lines_name_no_closed_row():
     bad = []
     for path in (HANDOFF, DOCS / "bench-plan.md"):
         for n, line in _routing_lines(path):
+            if _HISTORY.search(line):
+                continue
             hits = [i for i in re.findall(_ID, line) if i in closed]
             if hits:
                 bad.append(f"{path.name}:{n} names closed {', '.join(hits)}: {line.strip()[:90]}")

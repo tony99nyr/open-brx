@@ -108,7 +108,7 @@ once every write is done; wait about 2 s, then fire one round. The tool counts o
 after the last write, so the expected magazine is the value the plan set minus that count. A run that ends on a
 complete frame then sends one `$PING,*` and reports a missing `$PONG` within 10 s.
 
-Run each control first, then three runs of each variant.
+Run each control first (once each for A7c, three times for the others), then three runs of each variant.
 
 | step | arm | arguments | pass |
 |---|---|---|---|

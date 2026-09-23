@@ -6235,8 +6235,8 @@ class Session:
     def _relay_hit_feedback(self, shooter_pid: str | None, victim_pid: str, dmg: int, t: int,
                              weapon_id: str | None = None, shot_group: int | str | None = None) -> None:
         """S56 ("what hit me"): tell the SHOOTER's own node the damage it just dealt, relaying the
-        VICTIM's own `hit_taken` fact, so that node can attribute a `$HIR` its own headset heard
-        without waiting on the victim's node to say anything (which may be slow, or offline). The
+        VICTIM's own `hit_taken` fact, so the shooter can book it as damage dealt. The shooter's own gun
+        hears nothing of a hit it lands, so this relay is its only source; it may be late, or never come. The
         same best-effort contract as the existing "kill" feedback (`scoring.Scorer._death`, also
         relayed through `_feedback`): no queue, no retry -- a shooter with no socket simply misses it.
 

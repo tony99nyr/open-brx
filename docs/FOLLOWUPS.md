@@ -66,7 +66,7 @@ latch, though the original self-replay-with-no-IR observation is still unreprodu
 **Two questions cover the whole file: does it need a gun, or does it need a keyboard?** The lists below are
 just the rows re-sorted; the rows themselves are the truth. An id appears in BOTH lists when it carries both a
 hardware tag and `build` (S10 is the biggest of those: the LED language is code that then needs an eye on it).
-**Re-sorted 2026-09-18 (the FOLLOWUPS accuracy audit) from every row's priority and tag; an untagged row is placed by what it needs.** ⚠ **This index has no guard.** It is the `tag` at the end of each row, re-sorted by hand
+**Re-sorted 2026-09-18 (the FOLLOWUPS accuracy audit) from every row's priority and tag; an untagged row is placed by what it needs.** ⚠ **The index markers are guarded (`test_docs_hygiene`); its completeness is not.** It is the `tag` at the end of each row, re-sorted by hand
 (`grep -n '\`bench\`' docs/FOLLOWUPS.md` and friends rebuild it); **if it disagrees with a row, the ROW is
 right** and this index is stale. Do not cite it as evidence that something is or is not open.
 
