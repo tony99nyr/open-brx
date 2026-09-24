@@ -4059,6 +4059,35 @@ await step('QA-19 kitted: READY UP is filled and the plates are not (the one act
   must(r.txt === 'READY UP', 'not the READY UP state: ' + JSON.stringify(r));
   must(r.lb > 3 * r.lp + 60, `READY UP is not visibly stronger than a slot plate: ${JSON.stringify(r)}`);
 });
+// QA-11: a control's hit area is its own box or its absolutely-placed ::after (the invisible-44px trick this file
+// already uses), whichever is bigger, in the 844x390 frame's own px. 56 frame px is 44 px on screen at the SE's
+// 0.79 scale. Measured on SE, where the scale bites.
+const qaHit = (pg, sels) => pg.evaluate(sels => {
+  const fr = document.getElementById('frame'), s = fr.getBoundingClientRect().width / fr.offsetWidth;
+  const out = [];
+  for (const sel of sels) for (const e of document.querySelectorAll(sel)) {
+    const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden' || !e.getClientRects().length) continue;
+    const r = e.getBoundingClientRect(), a = getComputedStyle(e, '::after');
+    let sc = e.parentElement; while (sc && !/(auto|scroll)/.test(getComputedStyle(sc).overflowY)) sc = sc.parentElement;
+    if (sc) { const b = sc.getBoundingClientRect(); if (r.top < b.top - 1 || r.bottom > b.bottom + 1) continue; }   // scrolled out of its list: not on screen to tap
+    const pa = a.content && a.content !== 'none' && a.position === 'absolute';
+    const w = Math.max(r.width / s, pa ? parseFloat(a.width) || 0 : 0), h = Math.max(r.height / s, pa ? parseFloat(a.height) || 0 : 0);
+    // the box has to be REACHABLE, not just declared: probe 27 frame px above and below the centre (inside a 56 box)
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2, hitAt = y => { const t = document.elementFromPoint(cx, y); return !!t && (t === e || e.contains(t)); };
+    const reach = hitAt(cy - 27 * s) && hitAt(cy + 27 * s);
+    out.push({ sel, t: e.textContent.trim().slice(0, 16), w: Math.round(w), h: Math.round(h), reach });
+  }
+  return out;
+}, sels);
+for (const [stage, sels] of [['kitted', ['.briefbtn']], ['loadout-primary', ['.lotab', '.lrow', '.lrow .linfo', '.lobtn']], ['result-players', ['.result .rseg .sg', '.result .rfoot .ready']], ['result-pending', ['.result .rfoot .ready']]]) {
+  await step(`QA-11 ${stage}: every control's hit area is >= 44 px on the SE (56 frame px)`, async () => {
+    const pg = await open(VIEWS[1], stage);
+    const r = await qaHit(pg, sels); await pg.close();
+    for (const sel of sels) must(r.some(x => x.sel === sel), `no ${sel} on ${stage}: the gate would pass on nothing`);
+    const small = r.filter(x => x.w < 56 || x.h < 56 || !x.reach);
+    must(small.length === 0, `hit areas under 56 frame px: ${JSON.stringify(small.slice(0, 6))}`);
+  });
+}
 
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;

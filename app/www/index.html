@@ -872,7 +872,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .result .rh1.win{color:var(--ok)}.result .rh1.lose{color:var(--bad)}.result .rh1.draw,.result .rh1.undecided{color:var(--warn)}
 .result .rmeta{grid-column:2;grid-row:2;font-size:11px;letter-spacing:.18em;color:var(--mut);font-weight:600;align-self:flex-end;padding-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .result .rseg{grid-column:3;grid-row:1/span 2;display:flex;align-self:center;pointer-events:auto}
-.result .rseg .sg{min-height:38px;padding:0 15px;border:1px solid var(--edge);background:var(--plate);color:var(--mut);font-family:var(--fd);font-weight:700;font-size:13px;letter-spacing:.18em;transform:skewX(-8deg)}
+.result .rseg .sg{min-height:38px;padding:0 15px;border:1px solid var(--edge);background:var(--plate);color:var(--mut);font-family:var(--fd);font-weight:700;font-size:14px;letter-spacing:.18em;transform:skewX(-8deg)}
 .result .rseg .sg+.sg{border-left:0}
 .result .rseg .sg .unskew{display:inline-block;transform:skewX(8deg)}
 .result .rseg .sg.on{background:var(--team);color:var(--team-ink);border-color:var(--team)}
@@ -1095,7 +1095,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .fch.none.on{background:var(--plate);color:var(--ok);border-color:var(--ok)}
 .fch.pend{border-color:var(--glow);color:var(--glow)}
 /* the ::after tap-area hack is gone: the chip is 46px tall now, so the control IS the tap target */
-.lrow{display:flex;align-items:center;gap:10px;min-height:50px;padding:5px 6px 5px 6px;background:var(--plate);border:1px solid var(--edge);transform:skewX(-6deg);flex:0 0 auto;pointer-events:auto}
+.lrow{display:flex;align-items:center;gap:10px;min-height:56px;padding:5px 6px 5px 6px;background:var(--plate);border:1px solid var(--edge);transform:skewX(-6deg);flex:0 0 auto;pointer-events:auto}
 .lrow > *{transform:skewX(6deg)}
 .lrow .thumb{flex:0 0 66px;height:36px;background-color:#0a1626;background-size:contain;background-repeat:no-repeat;background-position:center;border:1px solid var(--edge)}
 .lrow .thumb.perk{display:flex;align-items:center;justify-content:center;color:var(--glow);background:var(--plate2)}
@@ -1116,7 +1116,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
    invisible-44px-hit-target trick `.infobtn`/`.qrbtn`/`.mcin button` already use in this file; it stays a
    CHILD of `.linfo` so a tap inside it still resolves (and delegates) to `.linfo`, never to the row under it. */
 .lrow .linfo{flex:0 0 40px;height:40px;display:flex;align-items:center;justify-content:center;background:none;border:1px solid var(--edge);color:var(--mut);padding:0;position:relative;pointer-events:auto}
-.lrow .linfo::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:44px;height:44px}
+.lrow .linfo::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:56px;height:56px}
 .lrow .linfo .infog{width:19px;height:19px}
 .lrow.fo .linfo{color:var(--glow);border-color:var(--glow)}
 .lrow.pend{border-color:var(--glow)}
@@ -1211,8 +1211,14 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .lobby .setup .pulse i{width:10px;height:10px;background:var(--glow);opacity:.25;animation:setupdot 1.8s infinite}
 .lobby .setup .pulse i:nth-child(2){animation-delay:.3s}.lobby .setup .pulse i:nth-child(3){animation-delay:.6s}
 @keyframes setupdot{0%,100%{opacity:.2}30%{opacity:1}}
-.briefbtn{margin-top:2px;border:1px solid var(--edge);color:var(--mut);font-family:var(--fd);font-weight:700;font-size:12px;letter-spacing:.2em;padding:0 14px;min-height:36px;transform:skewX(-10deg);pointer-events:auto}
+.briefbtn{position:relative;margin-top:2px;border:1px solid var(--edge);color:var(--mut);font-family:var(--fd);font-weight:700;font-size:14px;letter-spacing:.2em;padding:0 14px;min-height:36px;transform:skewX(-10deg);pointer-events:auto}
 .briefbtn .unskew{display:inline-block;transform:skewX(10deg)}
+/* QA-11: 44 px on screen after the SE's 0.79 scale is 56 frame px. The kit, loadout and result controls keep
+   their drawn size (the 390 px frame has no height to give) and take an invisible 56 px hit box, the same trick
+   `.infobtn`/`.qrbtn`/`.linfo` already use. A list row is a real 56 px box instead: a hit box that spilled
+   into the next row would steal its taps. */
+.briefbtn::after,.lotab::after,.lobtn::after,.result .rseg .sg::after,.result .rfoot .ready::after{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:56px}
+.lotab,.lobtn,.result .rseg .sg,.result .rfoot .ready{position:relative}
 .bf{overflow:hidden}
 .bf .bfart{position:absolute;inset:0;background-size:cover;background-position:center;opacity:.55;animation:bfart 1.2s ease-out both}
 .bf .bfveil{position:absolute;inset:0;background:linear-gradient(90deg,rgba(3,4,7,.96) 0%,rgba(3,4,7,.86) 46%,rgba(3,4,7,.35) 100%),linear-gradient(0deg,rgba(3,4,7,.95) 0%,transparent 45%)}
