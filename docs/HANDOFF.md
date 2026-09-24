@@ -27,7 +27,7 @@ proved, and that every lane builds on:
 - **`$BUMP,<amount>,<hp>,<armour>,<shield>,<sound>` is confirmed on every field** (F65 closed).
 - **`$STUN,<ms>` is a native, SILENT stun.** The node plays `X17` itself (built, commit `273e949a`, not yet heard in a match).
 - **Poll a gun with the bare `$LIFE,*`**: a dead gun answers `$HP,0,0,0` at once. `$QUERY` holds a dead gun for ~2 s.
-- **The hosted BLE kill gave no `$DD`**, and no tested hosted protocol-15 word played an audible callout. A native TDM capture saw protocol-15 magnitude 2 after death. A DEAD gun still
+- **The hosted BLE kill gave no `$DD`**, and no tested hosted protocol-15 word played an audible callout. One native TDM capture (2026-09-04, source unknown) saw protocol-15 magnitude 2 after death. A DEAD gun still
   forwards a host `$IRTX` through its headset, so a kill confirm can ride IR (S57, the IR callout bus).
 - **`$LIFE,<hp>,0,0,1,*` then `$HLED,,6,*` revives a gun killed over BLE.** Untested on a real F264 stall.
 - **`$DPLAY` on a looping sound blocked the gun and dropped the link** (screamers A1). It stays on the never-send list.
@@ -36,8 +36,8 @@ Screamers remain P0. Phase A has run A1 and A2. The current order is in
 [`bench-plan.md`](bench-plan.md); the next runbook is [`bench-2026-09-24.md`](bench-2026-09-24.md).
 F269's `raw-bytes` helper is built for A4/A7/A7b/A7c/A8.
 
-- **Next bench task:** run the runbook's screamer transport block, then the focused
-  [native kill capture](bench-native-firmware-2026-09-23.md). Do not send `$AS,1`.
+- **Next bench task:** run the runbook's screamer transport block (Block 2), then Block 2b, the native kill
+  capture and the R4 checks (F320-F322); its hosted trials ride on Block 4.2. Do not send `$AS,1`.
 - **Next desk task:** prepare F293 GPIO logging and S48 carrier/duty measurement from the
   [R4 research plan](firmware-image-research-plan.md). R4/T5 read-only research is authorised; flashing remains
   decision first.
