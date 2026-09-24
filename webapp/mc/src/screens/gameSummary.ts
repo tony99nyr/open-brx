@@ -218,7 +218,7 @@ export function withHealthPreset(h: Partial<Health> | undefined | null): Health 
 const SOURCE_COPY: Record<StationSourceId, { label: string; hint: string }> = {
   grenade: { label: 'GRENADE', hint: 'A BRX Smart Grenade in hill mode. Bench-proven 2026-09-10; drives exactly ONE point (F88).' },
   ir_station: { label: 'IR STATION', hint: 'A BRX station / Utility Box speaking $CAPTURE. UNPROVEN — we have never had one on the bench.' },
-  phone: { label: 'PHONE', hint: 'A spare phone in the UTILITY role as a BLE control point: capture by presence, armed by MC at muster. Announces contested; can name its point (several are possible).' },
+  phone: { label: 'PHONE', hint: 'A Bluetooth control point: a StickS3 station, or a spare phone in the UTILITY role. Capture by presence, armed by MC at muster. Announces contested; can name its point (several are possible).' },
 };
 export const STATION_SOURCES: { value: StationSourceId; label: string; hint: string }[] =
   STATION_SOURCE_IDS.map(value => ({ value, ...SOURCE_COPY[value] }));

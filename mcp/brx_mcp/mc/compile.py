@@ -2998,9 +2998,9 @@ class Compiler:
                     # `applyStationConfig` calls `resetPoint()` when the game id changes), so the
                     # checklist is about the app being in the right role and staying awake on the point.
                     warnings.append(
-                        "SETUP: THE CONTROL POINT IS A PHONE — open the app in the UTILITY role, kind "
-                        "CONTROL, confirm it shows MC-ARMED for THIS game (arming resets the point; do NOT "
-                        "power-cycle it), leave the screen awake on the point, and check its battery. "
+                        "SETUP: THE CONTROL POINT IS A BLUETOOTH STATION — a StickS3, or a phone in the UTILITY "
+                        "role, kind CONTROL; confirm it shows MC-ARMED for THIS game (arming resets the point; do "
+                        "NOT power-cycle it), keep it awake on the point, and check its battery. "
                         "Players must be advertising (the HUD does this) or the point counts nobody")
                 else:
                     warnings.append(

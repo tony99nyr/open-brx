@@ -509,7 +509,7 @@ def test_a_phone_control_point_is_a_station_source_with_its_own_checklist():
     r = C.validate(s.config, _roster(s), {})
     assert r["ok"], r["errors"]
     setup = [w for w in r["warnings"] if w.startswith("SETUP:")]
-    assert len(setup) == 1 and "PHONE" in setup[0] and "MC-ARMED" in setup[0], setup
+    assert len(setup) == 1 and "BLUETOOTH STATION" in setup[0] and "MC-ARMED" in setup[0], setup
     assert "power-cycle" in setup[0].lower() and "do not" in setup[0].lower(), "a phone point is never power-cycled"
     assert "GRENADE" not in setup[0]
     # CONTROL: the grenade line is unchanged and still names the power cycle as the reset.

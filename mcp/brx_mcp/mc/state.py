@@ -2913,9 +2913,18 @@ class Session:
         station-gated game with no station is the F104 failure mode: nothing on the field, nothing said."""
         out: list[str] = []
         kinds = {a["kind"] for st in self.stations.values() if (a := st.get("assigned"))}
-        if self.config.get("station_source") == "phone" and "control" not in kinds:
-            out.append("SETUP: NO CONTROL-POINT PHONE IS ASSIGNED — this game's objective is a phone (station_source "
-                       "phone); assign a utility phone as CONTROL in ITEMS and arm it, or nothing on the field is the hill")
+        src = self.config.get("station_source")
+        if src == "phone" and "control" not in kinds:
+            out.append("SETUP: NO CONTROL STATION IS ASSIGNED — this game's objective is a Bluetooth control point "
+                       "(station_source phone); assign a StickS3 or a utility phone as CONTROL in ITEMS and arm it, "
+                       "or nothing on the field is the hill")
+        # Stick hills (2026-09-24): a CONTROL station advertises the same kind-5 point a phone does, and every
+        # phone drops it unless the source is "phone" (`engine.js _hillSourceAllowed`). Say so; never switch.
+        if src in ("grenade", "ir_station") and "control" in kinds:
+            what = "THE GRENADE" if src == "grenade" else "AN IR STATION"
+            out.append(f"SETUP: A CONTROL STATION IS ASSIGNED BUT THIS GAME'S OBJECTIVE IS {what} — every phone "
+                       "ignores the station's hill; set OBJECTIVE SOURCE to PHONE (a StickS3 or phone station), "
+                       "or clear the CONTROL station in ITEMS")
         if (self.config.get("respawn") or {}).get("type") == "scanner" and "respawn" not in kinds:
             out.append("SETUP: NO RESPAWN STATION IS ASSIGNED — respawn is SCANNER, so a downed player can only come "
                        "back at a station; assign a utility phone as RESPAWN in ITEMS and arm it")
