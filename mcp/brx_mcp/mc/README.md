@@ -46,11 +46,9 @@ curl -s http://127.0.0.1:8765/api/state | python3 -c 'import sys,json;s=json.loa
 # lobby 8 nodes
 ```
 
-**⚠ The banner prints BEFORE the port is bound.** If another MC already owns :8765 you still see
-`Mission Control  http://…:8765/`, then one line later
-`ERROR: [Errno 98] error while attempting to bind on address ('0.0.0.0', 8765)`, and every curl and
-browser check after that is answered by the OTHER server (a demo from an earlier session, typically).
-Check before you believe a result:
+**A busy HTTP port stops MC before the banner (F108).** MC binds :8765 first, so if another MC already
+owns it you get `Mission Control could not bind …:8765 (Address already in use)` on stderr and exit code
+2, never a success line. The node socket (:8766) still binds later, after the banner. To find a leftover:
 
 ```bash
 ss -ltnp | grep -E '8765|8766'            # who owns the ports (Linux/WSL; macOS: lsof -i :8765)

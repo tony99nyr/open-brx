@@ -9,6 +9,7 @@ import logging
 import os
 import secrets
 import socket
+import sys
 
 log = logging.getLogger("brx.mc")
 
@@ -427,10 +428,30 @@ def parser() -> argparse.ArgumentParser:
     return ap
 
 
+def bind_http_or_exit(host: str, port: int) -> socket.socket:
+    """F108: bind MC's HTTP socket BEFORE the banner. The banner used to print first, so a launch onto a busy
+    port showed "Mission Control http://..." and only then "[Errno 98] address already in use", and every
+    check after that was answered by whatever already held the port. Binding first means a busy port exits
+    non-zero with one clear line, and uvicorn is handed this very socket, so there is no second bind to race."""
+    try:
+        family, _t, _p, _c, addr = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE)[0]
+        sock = socket.socket(family, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)   # as uvicorn does: a TIME_WAIT is not a squatter
+        sock.bind(addr)
+        sock.listen(2048)
+    except OSError as e:
+        print(f"Mission Control could not bind {host}:{port} ({e.strerror or e}). Something else owns that port: "
+              f"stop it, or start MC with --port <another>.", file=sys.stderr, flush=True)
+        raise SystemExit(2)
+    sock.set_inheritable(True)
+    return sock
+
+
 def main(argv=None):
     args = parser().parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
+    http_sock = bind_http_or_exit(args.host, args.port)   # F108: before build() and before any banner
     session, net, extra = build(args)
     token = None if args.no_auth else (args.token or os.environ.get("BRX_MC_TOKEN") or secrets.token_urlsafe(6))
     from .api import create_app
@@ -465,7 +486,7 @@ def main(argv=None):
         print(f"  operator token: {token}   (open the URL above — it carries the token; --no-auth to disable)", flush=True)
     else:
         print("  auth DISABLED (--no-auth): any device on this LAN can control the match", flush=True)
-    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+    uvicorn.Server(uvicorn.Config(app, log_level="warning")).run(sockets=[http_sock])
 
 
 if __name__ == "__main__":
