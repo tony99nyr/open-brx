@@ -1,12 +1,12 @@
 # Followups — open work only
 
-Updated: 2026-09-24 (bench, StickS3). **Everything in this file is open.** Closed items are in
+Updated: 2026-09-24 (desk, evening, StickS3). **Everything in this file is open.** Closed items are in
 [`archive/followups-closed.md`](archive/followups-closed.md), ordered by close date with the newest last; the evidence
 behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date). Session close = strike or
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **CLAIM AN ID BY WRITING ITS ROW FIRST, before doing the work** -- a stub row and the bumped "next free" below, committed, then the investigation. Ids collided FOUR times on 2026-09-18 alone and every one was two sessions reading "next free" at the same moment and both working for an hour before either wrote anything down. The loser renumbers, which is tedious and loses cross-references. This is a process fault, not anyone's mistake. **Next free: B32 · D6 · E8 · F339 · G11 · H9 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **CLAIM AN ID BY WRITING ITS ROW FIRST, before doing the work** -- a stub row and the bumped "next free" below, committed, then the investigation. Ids collided FOUR times on 2026-09-18 alone and every one was two sessions reading "next free" at the same moment and both working for an hour before either wrote anything down. The loser renumbers, which is tedious and loses cross-references. This is a process fault, not anyone's mistake. **Next free: B32 · D6 · E8 · F339 · G11 · H10 ·
 K9 · P19 · Q20 · R5 · S60.** The id history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are **F26/F27**, the
 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive
@@ -37,7 +37,7 @@ right** and this index is stale. Do not cite it as evidence that something is or
 **Needs Tony at the bench** (tagged `trigger` · `bench` · `ears` · `eyes` · `space` · `grenade` · `capture` ·
 `hardware` — running order in [`bench-plan.md`](bench-plan.md)):
 - 🔴 **B26** · **F198** · **F231** · **F232** · **F264** · **F275** · **F293** · **F297** · **Q15** · **S10**
-- 🟠 **F50** · **F59** · **F152** · **F158** · **F162** · **F171** · **F183** · **F219** · **F226** · **F237** · **F269** · **F272** · **F274** · **F277** · **F300** · **F308** · **F311** · **F312** · **F314** · **F332** · **G9** · **P8** · **Q16** · **S9** · **S33** · **S57** · **S58**
+- 🟠 **F50** · **F59** · **F152** · **F158** · **F162** · **F171** · **F183** · **F219** · **F226** · **F237** · **F269** · **F272** · **F274** · **F277** · **F300** · **F308** · **F311** · **F312** · **F314** · **F332** · **G9** · **H9** · **P8** · **Q16** · **S9** · **S33** · **S57** · **S58**
 - 🟡 **B28** · **B29** · **B30** · **D1** · **D4** · **F3** · **F13** · **F21** · **F26** · **F27** · **F28** · **F30** · **F39** · **F63** · **F66** · **F67** · **F68** · **F75** · **F76** · **F82** · **F88** · **F128** · **F131** · **F167** · **F168** · **F169** · **F195** · **F214** · **F216** · **F227** · **F229** · **F233** · **F262** · **F267** · **F270** · **F282** · **F285** · **F292** · **F294** · **F296** · **F298** · **F307** · **F309** · **F313** · **F315** · **F320** · **F321** · **F322** · **G3** · **G10** · **H7** · **H8** · **K1** · **P3** · **P15** · **S1** · **S2** · **S7** · **S36** · **S49** · **S-A12** · **U11′**
 - 🟢 **B20** · **F29** · **F87** · **F99** · **F111** · **F114** · **F120** · **F250** · **F323** · **G4** · **P4** · **P12** · **S8** (F270 filed 🟡 on 2026-09-18; F65 closed the same day)
 
@@ -176,8 +176,15 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   coexistence jitter **on the critical path** instead of avoiding it, and almost certainly needs the power
   bank; both that jitter and the battery delta are asserted, never measured. Arm it **respawn** or **control**
   first: those are the only two kinds whose player side is built (K2/K3/K4 are not). Carries one `decision`:
-  `STATION_SOURCES` has no value for a Stick (§5g.7). A Stick was brought up on 2026-09-23 (F314, `bench-sticks3-2026-09-23.md`); receive is the open gap.
+  `STATION_SOURCES` has no value for a Stick (§5g.7). A Stick was brought up on 2026-09-23 (F314, `bench-sticks3-2026-09-23.md`); receive is the open gap. **→ 2026-09-24, desk:** mDNS discovery was never working on hardware before `e65aea17`: the async query was polled each loop, but `MDNS.begin` was never called, so the Stick's `_openbrx._tcp` browse could not have found anything.
   `build` · `hardware`.
+- **H9 🟠 STICK BLE STATIONS (HILL, PICKUP, RESPAWN) ARE UNPROVEN OVER THE AIR.** Filed 2026-09-24 from
+  the Bluetooth-only MVP decision (`e65aea17`): Stick IR receive and grenade hill support are post-MVP,
+  so the whole MVP now rests on `presence.h`'s ported Presence/ControlPoint/revive logic working against
+  a real phone over BLE, not just against the 6,000-tick host-test parity with beacon.js/control.js. No
+  standalone Stick has yet held a hill, taken a pickup or counted a revive against a live phone in the
+  field. Gate: Block 9 in `bench-2026-09-24.md` (the Stick over BLE), MUST for the Stick MVP, after the
+  0.4.11 hotfix (station identity mismatch between MC and the phone) ships. `bench`.
 - **R2 🟢** software `DUTY <0-255>` (and `PULSES`) command on the IR emitter, echoing its own duty; re-run the fn 1
   control at every duty before trusting a result. A nicety again since the emitter was fixed (2026-09-03). `build`.
 
