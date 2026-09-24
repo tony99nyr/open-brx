@@ -47,16 +47,21 @@ export function appVer(run = gitIn()) { return `${pkg.version}+${gitStamp(run)}`
 
 const ENTRIES = [['src/app.js', 'www/app.js'], ['src/utility.js', 'www/utility.js']];
 
-// The syntax floor. Capacitor's own docs (capacitorjs.com/docs/android, "Requirements") say Capacitor
-// requires an Android WebView with Chrome 60 or later; `minSdkVersion` 24 (Android 7) can ship an
-// Android System WebView older than that, so Capacitor's floor, not the SDK floor, is the real one.
-// Nothing in this app's own source needs more: the one feature above Chrome 60 in use, the `||=` in
-// `src/brxlink.js` (Chrome 85), is ordinary logical-assignment sugar and esbuild lowers it for us.
-// With no target esbuild ships esnext syntax untouched — a factory WebView below the syntax it used
-// (for example Chrome 83, one short of `||=`'s Chrome 85) then throws "Unexpected token" on load and
-// the whole app is a blank screen. Keep this in step with the guard script in index.html (below) and
-// with `test/build-target.test.mjs`, which fails if this floor is ever removed.
-export const TARGET = 'chrome60';
+// The syntax floor — chrome87, NOT Capacitor's own documented minimum (Chrome 60). A chrome60 build
+// (2026-09-24) fixed the "Unexpected token" parse crash on a factory Pixel 5 (Android 11, WebView
+// 83) but left the CSS "totally busted": `www/index.html`/`www/utility.html` lean on the `inset`
+// shorthand (`position:absolute;inset:0`, dozens of rules) for every full-bleed overlay layer, and
+// `inset` is Chrome 87/Safari 14.1 — below it the rule is invalid and dropped, so the layer keeps its
+// static position and collapses to the top-left instead of covering the frame. Flexbox `gap` (Chrome
+// 84, ~116 rules) is the same class of bug at a lower version; 87 covers both. Nothing else in the
+// CSS or this app's own JS needs more than 87 (`:has()` 105 and `color-mix()` 111 are used, but only
+// in presentational rules/values — see the app README's "Supported phones" section for the full
+// audit). `android.minWebViewVersion` in capacitor.config.json is the actual enforcement now (Bridge.
+// isMinimumWebViewInstalled() redirects to `server.errorPath` BEFORE index.html ever loads); this
+// `target` only has to keep esbuild from shipping syntax the resulting WebView floor cannot parse.
+// Keep this in step with capacitor.config.json's `minWebViewVersion` and with
+// `test/build-target.test.mjs`, which fails if either drifts from the other.
+export const TARGET = 'chrome87';
 
 export async function build() {
   const APP_VER = appVer();

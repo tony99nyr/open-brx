@@ -5,6 +5,10 @@
   "loggingBehavior": "none",
   "android": {
     "allowMixedContent": true,
-    "webContentsDebuggingEnabled": true
+    "webContentsDebuggingEnabled": true,
+    "minWebViewVersion": 87
+  },
+  "server": {
+    "errorPath": "webview-too-old.html"
   }
 }

@@ -27,6 +27,32 @@ www/index.html       the holo-theme CSS + #frame stage (design brief: docs/spec/
 when it drifts from the source. Never hand-edit `contract.gen.js`; `envelope.js` imports its tables
 and re-exports them under the names it already exported.
 
+## Supported phones
+
+**Android 7.0+ (`minSdk` 24) with Android System WebView 87+.** **iOS 15.0+** (Capacitor 8's own
+deployment target).
+
+The WebView floor is enforced by Capacitor itself, not by app code: `capacitor.config.json` sets
+`android.minWebViewVersion` to 87, so `Bridge.isMinimumWebViewInstalled()` redirects a WebView below
+it to `server.errorPath` (`www/webview-too-old.html`, a plain static page with an UPDATE WEBVIEW
+button) before `index.html`/`app.js` ever load. `scripts/build.mjs`'s esbuild `target` is kept at the
+same `chrome87` so the bundle never ships syntax that floor cannot parse.
+
+87, not Capacitor's own documented minimum of 60, because the CSS needs it: `www/index.html` and
+`www/utility.html` use the `inset` shorthand (`position:absolute;inset:0`) for every full-bleed HUD
+overlay layer, and that is Chrome 87 / Safari 14.1 — below it the declaration is invalid, the layer
+keeps its static position, and the HUD renders "shifted left and off screen" instead of covering the
+frame (confirmed on a Pixel 5, Android 11, factory WebView 83). Flexbox `gap` (~116 rules) is the same
+class of bug at Chrome 84, already covered by the 87 floor. Nothing else in the CSS or in this app's
+own JS needs more than 87 to lay out or run correctly. Two features above the floor are used but are
+purely presentational, never layout: CSS `:has()` (Chrome 105, three rules — a chip-bar position, a
+hidden pill, a countdown offset) and `color-mix()` (Chrome 111, ~33 uses — always a `background`/
+`border`/`box-shadow` colour, never a size or a position). An unsupported browser just keeps the
+plainer look those rules would have added.
+
+iOS's Safari floor never comes into it: every layout-breaking feature above needs Safari 14.1 or
+14.5, and Capacitor 8's own deployment target (15.0) already clears that, so no iOS setting changes.
+
 ## Run it
 
 ```bash
