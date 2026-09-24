@@ -43,6 +43,7 @@ class Advert(TypedDict):
     seq: int
     game: int
     threshold: int
+    taker: int
 
 
 class StationEntry(Advert):
@@ -322,7 +323,7 @@ def claimable(tid) -> bool:
 
 
 def encode_advert_uuid(role: str, id: int = 0, kind: str | int = 0, team: int = STATION_TEAM_ANY, state: int = 0,
-                       value: int = 0, seq: int = 0, game: int = 0, threshold: int = 0) -> str:
+                       value: int = 0, seq: int = 0, game: int = 0, threshold: int = 0, taker: int = 0) -> str:
     """beacon.js `encodeUuid`, byte for byte: what a phone station puts on the air."""
     r = ADVERT_ROLE.get(role) if isinstance(role, str) else int(role)
     if not r:
@@ -330,7 +331,7 @@ def encode_advert_uuid(role: str, id: int = 0, kind: str | int = 0, team: int = 
     k = ADVERT_KIND.get(kind, 0) if isinstance(kind, str) else int(kind)
     thr = 0 if not threshold else (256 + max(-128, round(threshold)) if threshold < 0 else min(127, round(threshold)))
     b = [*ADVERT_MAGIC, ADVERT_VERSION, r, (int(id) >> 8) & 0xFF, int(id) & 0xFF, k, int(team) & 0xFF,
-         int(state) & 0xFF, int(value) & 0xFF, int(seq) & 0xFF, int(game) & 0xFF, thr & 0xFF, 0]
+         int(state) & 0xFF, int(value) & 0xFF, int(seq) & 0xFF, int(game) & 0xFF, thr & 0xFF, int(taker) & 0xFF]
     h = "".join(f"{x & 0xFF:02x}" for x in b)
     return f"{h[0:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}"
 
@@ -352,7 +353,7 @@ def decode_advert_uuid(s: str) -> Advert | None:
     thr = 0 if b[14] == 0 else (b[14] - 256 if b[14] > 127 else b[14])
     return {"role": role, "id": (b[6] << 8) | b[7],
             "kind": (_ADVERT_KIND_NAME.get(b[8], f"kind{b[8]}") if role == "station" else None),
-            "team": b[9], "state": b[10], "value": b[11], "seq": b[12], "game": b[13], "threshold": thr}
+            "team": b[9], "state": b[10], "value": b[11], "seq": b[12], "game": b[13], "threshold": thr, "taker": b[15]}
 # The literal fallbacks and their REAL clip lengths, straight off engine.js `HILL_CUES` (ids confirmed by ear on
 # hardware 2026-09-10, rung S; lengths from mcp/brx_mcp/data/sound_catalog.json). `s` is what keeps the 0.114 s
 # tick out from under a 1.9-3.0 s callout. The compiled bundle overrides a frame the moment it carries the key.
