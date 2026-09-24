@@ -59,6 +59,13 @@ export const POOL_CHECK_SETTLE_MS = 2000;
 export const RESYNC_PROBE_S = 10;
 export const DEFAULT_RUNWAY_S = 120;
 export const PROTOCOL_V = 1;
+/** The venue volume (field-corrected 2026-08-30: 80 = on-gun L3 indoors, 90 = L4 outdoors) and the
+ *  bounds of the host's per-game knob, `GameConfig.volume`. The floor is on-gun L1: 30 is inaudible
+ *  for game audio, so the knob cannot choose silence. */
+export const VENUE_VOLUME_INDOOR = 80;
+export const VENUE_VOLUME_OUTDOOR = 90;
+export const GAME_VOLUME_MIN = 60;
+export const GAME_VOLUME_MAX = 100;
 export const TIMED_PROTECT_S_DEFAULT = 0;
 export const WEAPON_DELAY_MS_DEFAULT = 500;
 export const STATION_PROTECT_S_DEFAULT = 2;

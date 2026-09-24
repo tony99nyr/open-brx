@@ -4,7 +4,7 @@ import type {
   ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, ReportResult, SavedGame, ScanRow, ScoreRow, StartView, State, StationAssignment, StationKind, StationSourceId,
   StationView, TunnelProvider, TunnelStatus, WeaponView,
 } from '../api/types';
-import { STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS, STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
+import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS, STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
 import { withPolicy } from '../screens/gameSummary';
 import { GUN_FLAPPING_LINE, curedByPush } from '../api/derive';
 import { GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
@@ -1007,7 +1007,8 @@ export class MockBackend implements Api {
   async applyPreset(id: string) {
     const sg = this.presets.find(x => x.preset_id === id); if (!sg) throw new Error('no such saved game');
     const { config_id: _cid, loadout_policy, ...rest } = withPolicy(clone(sg.config)); void _cid;
-    const r = await this.putConfig({ ...rest, loadout_policy: { ...loadout_policy, preset: presetOf(loadout_policy) } });   // the name is re-derived, like the server
+    // K8: a saved game with no `volume` plays at the venue volume, never the previous game's knob (`state.py apply_preset`).
+    const r = await this.putConfig({ ...rest, volume: rest.volume ?? null, loadout_policy: { ...loadout_policy, preset: presetOf(loadout_policy) } });   // the name is re-derived, like the server
     this.activePreset = id; this.emit();
     return r;
   }
@@ -1036,6 +1037,11 @@ export class MockBackend implements Api {
     if ('station_source' in partial && partial.station_source != null && !MOCK_STATION_SOURCES.some(s => s.value === partial.station_source)) {
       throw new Error('station_source must be null or one of: '
         + MOCK_STATION_SOURCES.map(s => `${s.value} (${s.desc})`).join(', '));
+    }
+    // K8: `volume` is an integer GAME_VOLUME_MIN..MAX or null (the venue default), refused in the server's words.
+    if ('volume' in partial && partial.volume != null
+        && !(Number.isInteger(partial.volume) && partial.volume >= GAME_VOLUME_MIN && partial.volume <= GAME_VOLUME_MAX)) {
+      throw Object.assign(new Error(`volume must be an integer ${GAME_VOLUME_MIN}-${GAME_VOLUME_MAX} or null (the venue default), got ${JSON.stringify(partial.volume)}`), { status: 400 });
     }
     // 2026-09-19 respawn profiles: `respawn.protect_s`/`weapon_delay_ms`/`station_protect_s` are each a
     // closed set of options (`compile.respawn_settings`, same refusal wording); an absent key keeps its
@@ -1068,6 +1074,7 @@ export class MockBackend implements Api {
       if (partial.coverage === undefined && this.config.coverage !== undefined) base.coverage = this.config.coverage;
     }
     this.config = { ...base, ...partial, config_id: uid('cfg') };
+    if (this.config.volume == null) delete this.config.volume;   // K8: null = the venue default, stored as absence
     if (partial.loadout_policy) {
       // mirrors policy.merge (A10 §3): a preset NAME rewrites the rules, then any slot/hud_select keys in the same
       // patch merge on top, then the name is re-derived (custom if nothing matches). The un-named base is the

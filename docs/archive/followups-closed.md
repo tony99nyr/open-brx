@@ -657,3 +657,10 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
   the locked GAMES line; the clock subtitle breaks at its separators; KIT names ellipsise; the feed de-duplicates (the
   go-live and restart doubles); one noun, NODES; the GameEditPanel hook order; locked selects look locked; 36 px targets;
   11 px GAMES labels (the nav digits stay decorative). SPECTATE fits every player (`8b7a392c`).
+- 2026-09-24 **F108** closed: MC binds its HTTP socket before the banner and serves uvicorn on it; a busy port exits 2 with
+  one line (`f1ea2b47`, POSIX-only SO_REUSEADDR in `519f3172`).
+- 2026-09-24 **F325** closed: `respawn.gate` survives PUT /api/config, scanner only; null clears it, a bad value is a 400.
+- 2026-09-24 **F133** closed: the kit-lock notice carries the config_id it was raised for (`147671cb`); a re-push retires it too.
+- 2026-09-24 **F52** closed: the A16.3 readout timings have one owner, mc/types.py, generated to the phone (`bc2fd113`).
+- 2026-09-24 **K8** closed: a per-game `volume` (60-100, null = the venue default) in the game editor; --bench-volume still wins,
+  try-outs stay 69, saved games keep it.

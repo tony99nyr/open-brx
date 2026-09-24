@@ -119,7 +119,7 @@ Use this priority stack; do not spend Tony's bench time on desk work:
 2. **Screamer transport:** the runbook's Block 2, then A8b; capture F269/F270/F272, then F274's three hardware soaks. This unlocks Phase B-E; do not infer numbers from ordinary `send` runs.
 3. **Decisions before more code:** B21's release key exists (2026-09-23); the signed 0.4.6 cut waits for
    Tony's go to publish. Defer S50/F281 until sitting 2 confirms `$TMP` semantics.
-4. **Only after reliability:** E2/E3/E4, B17, K6/K8 and the remaining feature rows are roadmap work.
+4. **Only after reliability:** E2/E3/E4, B17, K6 and the remaining feature rows are roadmap work.
 
 If Tony is not at the bench, prepare the decision packet and inspect the exact FOLLOWUPS methods; do not invent a
 new implementation for a bench-gated row. All other open rows are parked in [`FOLLOWUPS.md`](FOLLOWUPS.md) by gate.

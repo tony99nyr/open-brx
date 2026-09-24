@@ -31,3 +31,10 @@ def test_a_bad_gate_is_refused():
         raise AssertionError("accepted an unknown gate")
     except ValueError as e:
         assert "respawn.gate" in str(e)
+
+
+def test_a_non_scanner_respawn_drops_the_gate():
+    s = _s()
+    s.set_config({"respawn": {"type": "scanner", "delay_s": 10, "gate": "presence"}})
+    s.set_config({"respawn": {"type": "auto", "delay_s": 10}})
+    assert "gate" not in s.config["respawn"], "the gate is scanner-only"

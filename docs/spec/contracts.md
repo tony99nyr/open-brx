@@ -179,6 +179,9 @@ GameConfig {
                                       //   disarms the victim's node for duration_s (default 10, 1..60). Absent = the stock
                                       //   charge-rifle damage row, byte-for-byte. Source: a $WEAP t3=8 slot (the charge rifle)
                                       //   or a proto-8 station. node.md §3.12.
+  volume?:     number | null,         // [K8] the match head's $VOL, an integer 60..100 (on-gun L1..max). Absent or null = the
+                                      //   venue volume (80 indoors, 90 outdoors); anything else is a 400. A saved game keeps it.
+                                      //   MC's --bench-volume still wins; a try-out keeps 69.
 }
 ```
 

@@ -30,7 +30,8 @@ export type {
 } from './contract.gen';
 // values (verbatimModuleSyntax: a value re-export may not ride in a `export type` statement)
 export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, NEVER_SEEN_MS, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS,
-  TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT, STATION_PROTECT_S_DEFAULT } from './contract.gen';
+  TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT, STATION_PROTECT_S_DEFAULT,
+  GAME_VOLUME_MIN, GAME_VOLUME_MAX, VENUE_VOLUME_INDOOR, VENUE_VOLUME_OUTDOOR } from './contract.gen';
 
 import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LogView, Phase, Player,
   PerkView, ScanRow, StationKind, StationView, VoiceList, PhaseRefusalBody, ModeInfo,

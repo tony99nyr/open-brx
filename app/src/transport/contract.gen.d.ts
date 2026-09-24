@@ -59,6 +59,13 @@ export declare const POOL_CHECK_SETTLE_MS: 2000;
 export declare const RESYNC_PROBE_S: 10;
 export declare const DEFAULT_RUNWAY_S: 120;
 export declare const PROTOCOL_V: 1;
+/** The venue volume (field-corrected 2026-08-30: 80 = on-gun L3 indoors, 90 = L4 outdoors) and the
+ *  bounds of the host's per-game knob, `GameConfig.volume`. The floor is on-gun L1: 30 is inaudible
+ *  for game audio, so the knob cannot choose silence. */
+export declare const VENUE_VOLUME_INDOOR: 80;
+export declare const VENUE_VOLUME_OUTDOOR: 90;
+export declare const GAME_VOLUME_MIN: 60;
+export declare const GAME_VOLUME_MAX: 100;
 export declare const TIMED_PROTECT_S_DEFAULT: 0;
 export declare const WEAPON_DELAY_MS_DEFAULT: 500;
 export declare const STATION_PROTECT_S_DEFAULT: 2;
@@ -553,6 +560,11 @@ export interface GameConfigBase {
    *  `config.recoil !== false`. Seam for stance/flinch (also S42, not built
    *  here): a future switch for either can sit right beside this one. */
   recoil?: boolean;
+  /** K8: the host's match-head $VOL, an integer 60..100
+   *  (`compile.GAME_VOLUME_MIN/MAX`). Absent or null = the venue volume
+   *  (`compile.play_volume`: 80 indoors, 90 outdoors); a null PUT removes
+   *  the key. `--bench-volume` still wins; a try-out keeps VOL_TRYOUT. */
+  volume?: number | null;
 }
 
 /** A complete config type whose policy may be omitted for server defaulting. */
@@ -580,6 +592,7 @@ export interface GameConfig {
   mode_params?: Record<string, number | boolean | string>;
   vip_player_id?: string | null;
   recoil?: boolean;
+  volume?: number | null;
   loadout_policy?: LoadoutPolicy;
 }
 
@@ -611,6 +624,7 @@ export interface ConfigView {
   mode_params?: Record<string, number | boolean | string>;
   vip_player_id?: string | null;
   recoil?: boolean;
+  volume?: number | null;
   loadout_policy: LoadoutPolicy;
 }
 

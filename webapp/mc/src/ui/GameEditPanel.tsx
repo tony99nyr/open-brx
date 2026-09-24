@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { pushGate } from '../api/derive';
+import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, VENUE_VOLUME_INDOOR, VENUE_VOLUME_OUTDOOR } from '../api/types';
 import type { GameConfig, LoadoutPolicy, SlotRule, WeaponView } from '../api/types';
 import { useStore } from '../store';
 import { F, T, roleOf } from '../tokens';
@@ -39,6 +40,8 @@ function patchOf(d: GameConfig, cfg: GameConfig, modes: Modes): Partial<GameConf
   const p: Partial<GameConfig> = {};
   if (d.mode !== cfg.mode) p.mode = d.mode;
   if (d.night !== cfg.night) p.night = d.night;
+  // K8: `null` is a real value here (back to the venue default), so it is compared, and sent, as one.
+  if ((d.volume ?? null) !== ((b ?? cfg).volume ?? null)) p.volume = d.volume ?? null;
   // `!b` (no known baseline for the new mode) always sends health/policy rather than silently
   // omitting or mis-comparing them -- see `baseFor`. Sent-but-unnecessary is harmless (it repeats a
   // value the server's own mode rebuild would have chosen anyway); pinned-but-wrong is not.
@@ -129,7 +132,7 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
     const def = modes.find(m => m.mode === v)?.defaults;
     // mirrors `set_config`: rebuild from the mode's defaults, carry the VENUE (a fact about the site,
     // not about the game) and whatever the operator has already set in this draft for it.
-    edit(d => (def ? ({ ...clone(def), config_id: d.config_id, environment: cfg.environment, night: d.night } as GameConfig) : { ...d, mode: v }));
+    edit(d => (def ? ({ ...clone(def), config_id: d.config_id, environment: cfg.environment, night: d.night, ...(d.volume != null ? { volume: d.volume } : {}) } as GameConfig) : { ...d, mode: v }));
   };
 
   const startEdit = () => { setConfirmCancel(false); setConfirmSave(false); setDraft(clone(cfg)); };
@@ -184,7 +187,7 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
               healthPresetOf(cfg.health) === 'custom'
                 ? `HP ${cfg.health.max_hp}/${cfg.health.max_armor}${cfg.health.max_shield ? `/${cfg.health.max_shield}` : ''}`
                 : HEALTH_PRESET_COPY.find(p => p.value === healthPresetOf(cfg.health))!.label
-            }
+            }{cfg.volume != null ? ` · VOL ${cfg.volume}` : ''}
           </span>
           <span style={{ flex: 1 }} />
           {/* The count lives on the COLLAPSED row too, because that is where the operator is standing
@@ -224,6 +227,10 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
                 <Toggle on={shown.night} onChange={v => edit(d => ({ ...d, night: v }))} label="night ops" />
                 <span style={{ font: F.chk(600, 12), color: shown.night ? T.ink : T.dim }}>{shown.night ? 'NIGHT' : 'DAY'}</span>
               </span>
+            </Row>
+            <Row label="VOLUME">
+              <VolumeEditor volume={shown.volume} environment={shown.environment} benchVolume={state.bench_volume}
+                onChange={v => edit(d => { const n = { ...d }; if (v == null) delete n.volume; else n.volume = v; return n; })} />
             </Row>
             <Row label="LIFE PRESET">
               <HealthPresetEditor health={shown.health} onChange={h => edit(d => ({ ...d, health: h }))} />
@@ -287,6 +294,53 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <span style={{ font: F.mono(600, 10.5), letterSpacing: '.22em', color: T.micro }}>{label}</span>
       {children}
+    </div>
+  );
+}
+
+/** K8 (Tony, field 2026-09-12): the host's per-game volume. VENUE DEFAULT is the absent key, so an older
+ *  server (no `volume` field at all) renders as the venue default and a tap there sends `null`. The
+ *  steps are the on-gun levels (`gameconfig.VOLUME_LEVELS`, 60..100); a value set another way (the API
+ *  takes any integer in range) gets its own button so the control never hides what the game holds. */
+const VOLUME_STEPS = [60, 70, 80, 90, 100] as const;
+function venueVolume(environment: string | undefined): number {
+  return environment === 'outdoor' ? VENUE_VOLUME_OUTDOOR : VENUE_VOLUME_INDOOR;   // unknown = the quieter, as the server
+}
+function VolumeEditor({ volume, environment, benchVolume, onChange }:
+  { volume: number | null | undefined; environment: string | undefined; benchVolume?: number; onChange: (v: number | null) => void }) {
+  const venue = venueVolume(environment);
+  const set = volume ?? null;
+  const steps: number[] = [...VOLUME_STEPS];
+  if (set != null && !steps.includes(set)) steps.push(set);
+  steps.sort((a, b) => a - b);
+  const btn = (on: boolean): React.CSSProperties => ({
+    font: F.chk(on ? 700 : 600, 12), letterSpacing: '.06em', padding: '6px 12px', minHeight: 36, minWidth: 44, cursor: 'pointer',
+    background: on ? 'rgba(57,180,255,.10)' : T.panelDeep, color: on ? T.acc : T.micro, border: `1px solid ${on ? T.acc : T.line}`,
+  });
+  const plays = benchVolume ?? set ?? venue;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div role="group" aria-label="volume" data-testid="game-edit-volume" style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+        <button type="button" className="hit44" aria-pressed={set == null} data-volume="venue" onClick={() => onChange(null)}
+          title={`Play at the venue level: ${venue} ${(environment ?? 'indoor').toUpperCase()}`} style={btn(set == null)}>
+          VENUE DEFAULT ({venue})
+        </button>
+        {steps.map(v => (
+          <button key={v} type="button" className="hit44" aria-pressed={set === v} data-volume={v} onClick={() => onChange(v)}
+            title={`Every gun plays this game at $VOL ${v}`} style={btn(set === v)}>
+            {v}
+          </button>
+        ))}
+      </div>
+      <div data-testid="game-edit-volume-note" style={{ font: F.chk(500, 11.5), color: T.micro, lineHeight: 1.45 }}>
+        {set == null
+          ? `PLAYS AT ${venue}: the ${(environment ?? 'indoor').toUpperCase()} venue default.`
+          : `PLAYS AT ${set}, set for this game (the venue default is ${venue}).`}
+        {` ${GAME_VOLUME_MIN} is on-gun level 1, ${GAME_VOLUME_MAX} the loudest. Try-outs stay at 69.`}
+        {benchVolume != null && (
+          <span style={{ color: T.warn }}>{` ▲ BENCH VOLUME ${benchVolume} OVERRIDES THIS ON THIS RUN: every gun plays at ${plays}.`}</span>
+        )}
+      </div>
     </div>
   );
 }

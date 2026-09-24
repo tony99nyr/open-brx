@@ -2090,13 +2090,16 @@ class Session:
 
     _CONFIG_KEYS = {"mode", "environment", "night", "time_limit_s", "respawn", "scoring",
                     "health", "teams", "led", "player_num_base", "loadout_policy", "presentation",
-                    "station_source", "mode_params", "vip_player_id", "stun", "coverage", "recoil"}
+                    "station_source", "mode_params", "vip_player_id", "stun", "coverage", "recoil",
+                    "volume"}
 
     def apply_preset(self, preset_id: str, config: GameConfig) -> dict:
         """A10 §8: apply a saved game — same path as PUT /api/config, but the state remembers WHICH game is playing."""
         self.active_preset_id = preset_id
         try:
-            return self.set_config(dict(config), _from_preset=True)
+            # K8: a saved game from before the volume knob carries no key; it plays at the venue volume,
+            # never at whatever the previous game's knob said.
+            return self.set_config({**dict(config), "volume": config.get("volume")}, _from_preset=True)
         except Exception:
             self.active_preset_id = None
             raise
@@ -2360,6 +2363,12 @@ class Session:
                 cfg["night"] = bool(v)
             elif k == "recoil":
                 cfg["recoil"] = bool(v)   # S42: default ON is absence, not a stored True -- see GameConfigBase.recoil
+            elif k == "volume":
+                # K8: the host's volume knob. `null` clears it back to the venue default (absent, as before K8).
+                if _compile.check_game_volume(v) is None:
+                    cfg.pop("volume", None)
+                else:
+                    cfg["volume"] = v
             elif k == "coverage":
                 # A31/A4.8: the venue's radio coverage. "full" is an ASSERTION the operator makes about
                 # the site (every phone on the LAN the whole match) and it unlocks a null `time_limit_s`
@@ -2403,7 +2412,7 @@ class Session:
                     # F325: the scanner gate (contracts §3 `respawn.gate`, A13.1). The node already reads it;
                     # MC used to drop it here, so no path could choose the presence gate. `null` clears it.
                     g = merged.get("gate")
-                    if g is not None:
+                    if g is not None and merged["type"] == "scanner":   # scanner only: another type drops it
                         if g not in ("trigger", "presence"):
                             raise ValueError("respawn.gate must be trigger|presence (scanner respawn only)")
                         respawn["gate"] = g

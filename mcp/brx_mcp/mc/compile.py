@@ -27,6 +27,7 @@ from .types import (MAX_PLAYERS, OBJECTIVE_MODES, STATION_PROTECT_S_DEFAULT, STA
                     TRIGGER_AFTER_PROTECT_MS, WEAPON_DELAY_MS_DEFAULT, DotSpec, FrameBundle, GameConfig, Health,
                     HealthPreset, HirCell, PerkEffectsResolved, PerkView, Player, RespawnProfile, StationProtectS, Team,
                     TimedProtectS, ValuePair, VoiceOption, WeaponDelayMs, Weapon, parse_app_ver, parse_win_by)
+from .types import GAME_VOLUME_MAX, GAME_VOLUME_MIN, VENUE_VOLUME_INDOOR, VENUE_VOLUME_OUTDOOR   # K8
 from . import presentation as _pres
 from .. import poolgauge as pg
 from .. import voices as _voices
@@ -57,7 +58,7 @@ from ..modes.registry import validate_mode_params as _validate_mode_params
 #   headset — but it is now the likely answer, and it is cheaper to test than to sweep.
 HEADSET_ALERT_BRIGHTNESS = 10
 
-VOL_BY_ENV = {"indoor": 80, "outdoor": 90}
+VOL_BY_ENV = {"indoor": VENUE_VOLUME_INDOOR, "outdoor": VENUE_VOLUME_OUTDOOR}
 VOL_PLAY = VOL_BY_ENV["indoor"]    # unknown venue -> the QUIETER of the two (see play_volume)
 VOL_TRYOUT = 69                    # a try-out is fired at ARM'S LENGTH from the player's own head,
                                    # so it keeps the quieter Callsign value (review 2026-08-31).
@@ -72,6 +73,28 @@ def check_volume(value) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 100:
         raise ValueError(f"volume must be an integer 0-100, got {value!r}")
     return value
+
+
+# K8 (Tony, field 2026-09-12): the host's per-game volume knob, `GameConfig.volume`. Absent or null =
+# the venue volume (`play_volume`). The bounds live in types.py (GAME_VOLUME_MIN/MAX, generated into
+# the console): the floor is on-gun level 1 (`gameconfig.VOLUME_LEVELS`, 60), since 55 is barely audible
+# at a bench and 30 is inaudible for game audio. `--bench-volume` still wins; a try-out keeps VOL_TRYOUT.
+
+
+def check_game_volume(value) -> int | None:
+    """`GameConfig.volume`: None (the venue default) or an integer GAME_VOLUME_MIN..GAME_VOLUME_MAX."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or not GAME_VOLUME_MIN <= value <= GAME_VOLUME_MAX:
+        raise ValueError(f"volume must be an integer {GAME_VOLUME_MIN}-{GAME_VOLUME_MAX} "
+                         f"or null (the venue default), got {value!r}")
+    return value
+
+
+def head_volume(config) -> int:
+    """The match head's $VOL for this config: the K8 knob when set, else the venue volume."""
+    v = check_game_volume(config.get("volume"))
+    return play_volume(config.get("environment")) if v is None else v
 
 # ---------------------------------------------------------------------------
 # Venue range (F234, correcting F135/B6) -- see docs/weapon-design.md §4.2 and
@@ -1770,9 +1793,9 @@ class Compiler:
         head's fn-28 twin on the gun all match while the banner claimed fn 34."""
         return rows if ("15", "0") in _sir_index(rows) else list(rows) + [self.capture_row()]
 
-    def play_volume(self, environment: str | None) -> int:
-        """The $VOL for a match head: the bench volume when set, else the venue volume."""
-        return play_volume(environment) if self.bench_volume is None else self.bench_volume
+    def head_volume(self, config) -> int:
+        """The $VOL for a match head: the bench volume when set, else the K8 knob, else the venue volume."""
+        return head_volume(config) if self.bench_volume is None else self.bench_volume
 
     def tryout_volume(self) -> int:
         """The $VOL for a try-out: the bench volume when set, else VOL_TRYOUT."""
@@ -1827,7 +1850,7 @@ class Compiler:
             respawns=0 if config["respawn"]["type"] == "none" else None,
             frag_limit=((config["scoring"].get("frag_limit") or 0)
                         if config["scoring"].get("win_by") in (None, "", "kills") else 0),
-            volume=self.play_volume(config["environment"]),
+            volume=self.head_volume(config),
             outdoor=config["environment"] == "outdoor",
             leds=(led.get("mode", "team") != "off") and not blackout,
             friendly_fire=(config["mode"] == "ffa"),  # FFA needs the gun to register same-$TID hits
@@ -2340,7 +2363,7 @@ class Compiler:
         # head — config, per player, SILENT (no $SPAWN, no $PLAY,VA81); ends with $TID (§1.1)
         env = config.get("environment")
         _gset = gc._gset()
-        head = [f"$VOL,{self.play_volume(env)},0,*", "$CLEAR,*", "$START,*",
+        head = [f"$VOL,{self.head_volume(config)},0,*", "$CLEAR,*", "$START,*",
                 _gset,
                 # F162: EMPTY today (`DRIVE_IO_MODE` is "off") -- the staged venue-mode candidates,
                 # right after $GSET so a bench rung changes one thing next to the frame it copies.

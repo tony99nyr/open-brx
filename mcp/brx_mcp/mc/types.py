@@ -66,6 +66,15 @@ RESYNC_PROBE_S = 10
 DEFAULT_RUNWAY_S = 120
 PROTOCOL_V = 1
 
+# ---- K8: the match-head $VOL (compile.play_volume / head_volume) ----
+# The venue volume (field-corrected 2026-08-30: 80 = on-gun L3 indoors, 90 = L4 outdoors) and the
+# bounds of the host's per-game knob, `GameConfig.volume`. The floor is on-gun L1: 30 is inaudible
+# for game audio, so the knob cannot choose silence.
+VENUE_VOLUME_INDOOR = 80
+VENUE_VOLUME_OUTDOOR = 90
+GAME_VOLUME_MIN = 60
+GAME_VOLUME_MAX = 100
+
 # ---- A29: the app build MC is compatible with ----
 # Versions are SEMVER and the tiers carry meaning (contracts A29): MAJOR = anything the game or the wire
 # depends on (protocol, engine rules, bundle shape), MINOR = HUD-facing features with no game impact,
@@ -598,6 +607,10 @@ class GameConfigBase(TypedDict):
     #                                              already rides every push wholesale, and `app/src/engine.js` reads
     #                                              `config.recoil !== false`. Seam for stance/flinch (also S42, not built
     #                                              here): a future switch for either can sit right beside this one.
+    volume: NotRequired[int | None]              # K8: the host's match-head $VOL, an integer 60..100
+    #                                              (`compile.GAME_VOLUME_MIN/MAX`). Absent or null = the venue volume
+    #                                              (`compile.play_volume`: 80 indoors, 90 outdoors); a null PUT removes
+    #                                              the key. `--bench-volume` still wins; a try-out keeps VOL_TRYOUT.
 
 
 class GameConfig(GameConfigBase):
