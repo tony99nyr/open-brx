@@ -154,6 +154,12 @@ static void test_home_vs_stats_and_default_hint() {
   CHECK(diag.kind == ScreenKind::SCR_DIAGNOSTICS);
   // The bench hint names the bench gestures and the current mode, never the operator's HOLD B: RESET.
   bench.bench_mode_label = "HILL";
+  {
+    StickState home = bench;
+    home.at_home = true;
+    home.control_present = true;  // the bench IR hill must not claim "shoot to capture" (post-MVP)
+    CHECK(compute_screen(home).kind == ScreenKind::SCR_NO_WIFI);
+  }
   CHECK_EQ(compute_screen(bench).hint, std::string("HILL   A: DIAG   HOLD B: MODE"));
 
   // Bench BRIDGE is not a hill: with no grenade beacon it says so, and a live one shows under BRIDGE.

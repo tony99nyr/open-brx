@@ -105,6 +105,7 @@ inline std::string format_mmss(uint32_t total_seconds) {
 // shows only NEUTRAL / HELD / BRIDGE_WAITING, because the IR hill has no such states to show.
 enum class ScreenKind : uint8_t {
   HILL_NEUTRAL,
+  SCR_NO_WIFI,  // no Wi-Fi set (bench mode): not a station yet, so it claims to be none
   BRIDGE_WAITING,  // bench BRIDGE mode with no live grenade beacon: nothing to repeat yet
   HILL_HELD,
   HILL_CAPTURING,
@@ -367,7 +368,12 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
     return spec;
   }
 
-  // at_home: the live gameplay screen.
+  // at_home: the live gameplay screen. With no Wi-Fi set the Stick is armed as nothing, and its IR
+  // hill and grenade bridge are post-MVP (Tony, 2026-09-24), so it says what is true: set up Wi-Fi.
+  if (s.link_state == LinkState::NOT_CONFIGURED && !s.bench_mode_label.empty()) {  // the .ino sets the label in bench mode only
+    spec.kind = ScreenKind::SCR_NO_WIFI;
+    return spec;
+  }
   if (s.control_present && s.control_ble) {
     // The Bluetooth hill. Contested beats everything (two teams' living bodies on it is the fact a
     // defender needs); then a held point shows HELD unless its bar is draining; a neutral one shows

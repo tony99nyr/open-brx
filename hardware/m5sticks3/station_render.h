@@ -412,6 +412,12 @@ inline void drawSystem(M5Canvas& c, const ScreenSpec& s) {
 inline void renderScreen(M5Canvas& canvas, const ScreenSpec& spec) {
   canvas.fillScreen(COL_BG);
   switch (spec.kind) {
+    case ScreenKind::SCR_NO_WIFI:
+      drawKicker(canvas, "SETUP");
+      fitCenterText(canvas, SCREEN_W / 2, 58, "NO WI-FI", SCREEN_W - 20,
+                    {&fonts::FreeSansBold24pt7b, &fonts::FreeSansBold18pt7b}, COL_NUM);
+      fitCenterText(canvas, SCREEN_W / 2, 100, "SET IT OVER USB", SCREEN_W - 20, {&fonts::FreeSansBold9pt7b}, COL_MUT);
+      break;
     case ScreenKind::BRIDGE_WAITING:
       drawKicker(canvas, "BRIDGE");
       fitCenterText(canvas, SCREEN_W / 2, 58, "NO BEACON", SCREEN_W - 20,
