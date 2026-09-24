@@ -210,10 +210,13 @@ it (§3.6). The `roster` turns a number into a name for the HUD; an unknown numb
   alive), `kills` (MC's kill confirms, booked by their `t` like a dealt relay, before the stale-cue age gate),
   `aliveMs` and `finalHit` `{num, dmg, sensor, crit, dot, weapon}`: the last hit booked, or the poison tick. A weapon
   row carries `pickup` when the catalogue named it, and an ambiguous row carries `names`, one row per candidate set.
-- **What the DOWN screen may say** (`app/src/hud/deathscreen.js`). Dealt is never a numeral 0: no relay reads NO HITS
-  REPORTED (YET while `dealtPartial`). While `dealtPartial` a kill count reads "N+" or "?", and no accuracy is shown.
-  A final hit is shown only when it belongs to the named killer. MC's board, standings and kills stay on screen off
-  the link, each with its age (`_boardAge`), never as current.
+- **What the DOWN screen shows** (`app/src/hud/deathscreen.js`, Tony 2026-09-23: "what were we killed by and just a
+  few callouts"). The killer (a skull icon and chip) and the killing weapon, with PICKUP, CRIT, "A / B" for two
+  candidates, or POISON; no damage number, because the killing hit is capped by what the player had left. Then up to
+  four callouts, numbers and icons: taken, dealt, kills, time alive. A callout with no value is not drawn: no damage
+  booked, no dealt relay, or no kill confirm while a relay may still be missing. While `dealtPartial` holds, dealt and
+  kills are drawn greyed with an out-of-sync icon, never "N+". The killing weapon is shown only when the final hit
+  belongs to the named killer. MC's board stays on screen off the link with a short age tag, never as current.
 
 ### 3.6 Kill feedback is MC-driven — do NOT detect own-kills
 
@@ -599,7 +602,7 @@ holds (the chip bar hides under them); **moments** are transient and stack above
 | RELOADING | takeover | `$BUT,2,1` (reload handle) or ALT on a one-weapon gun (`easy_reload`) | weapon name, a progress track sized to the catalog `reload_s` × the equipped perk's `reload_mult` (MC applies the same to `$WEAP` t18) | the mag comes back (`$ALCD` up), or `reload_s` + 600 ms; never while dead, in resync/reconcile, or with a dry reserve |
 | SWITCHING | takeover | ALT with two weapons | STOWING → DRAWING tiles (art + names), a track over the gun's swap delay = `FrameBundle.swap_ms` (`$WEAP` t15, bench 2026-09-04: the larger of the two slots; `quick_switch` halves it) | the next shot on the new slot → an ACTIVE ✓ confirm ("CONFIRMED BY YOUR GUN"), or the window expires → "READY" (assumed; the next `$ALCD` corrects `activeSlot`) |
 | RECONCILING | takeover | a BLE rejoin while LIVE (S7.1) | GUN RELINKED · SYNCING WITH YOUR GUN · 3 s fill · WEAPON DISARMED FOR A MOMENT | `state().reconciling` clears |
-| DOWN | takeover | death | auto mode: the countdown and GET TO SAFE SPACE FOR REDEPLOY (A49: larger and pulsing at warning level 2, a full-width 1 Hz band at level 3 after spawn kills); scanner mode: the **lesson** — RUN TO YOUR TEAM'S RESPAWN STATION (then pull the trigger there / and stand there, per `respawnGate`) → GET CLOSER + a closeness bar (RSSI vs the station's threshold) → HOLD… → PULL THE TRIGGER TO RESPAWN / RESPAWNING…; a recap row: TIME LEFT · the race to the cap (team chips + FIRST TO n, **only while MC is linked**, from `score.board`) · YOU (deaths, shots; kills only when linked) | revive |
+| DOWN | takeover | death | auto mode: the countdown and GET TO SAFE SPACE FOR REDEPLOY (A49: larger and pulsing at warning level 2, a full-width 1 Hz band at level 3 after spawn kills); scanner mode: the **lesson** — HEAD TO YOUR TEAM'S RESPAWN STATION (then pull the trigger / and stand there, per `respawnGate`) → GET CLOSER + a closeness bar (RSSI vs the station's threshold) → HOLD… → PULL THE TRIGGER TO RESPAWN / RESPAWNING…; the death screen (§3.5): the killer and weapon, the callouts, and a game strip of the clock, the race to the cap, the hill and the player's kills and deaths, MC's numbers with an age tag once stale | revive |
 | KILL CONFIRMED | moment (takeover-styled) | MC `feedback{kill}` | dims the HUD, KILL / CONFIRMED, the victim chip; **medal badges** land 2 s apart with the announcer lines (A11.4) | 1.8 s + 2 s per extra medal |
 | REDEPLOYED | moment | revive | the kit you go back in with (primary, secondary, perk — A14), a light sweep. A49: while a timed revive holds the trigger the line reads ACTIVATING WEAPON SYSTEMS… and turns to WEAPONS HOT when it goes live; a station revive reads SHIELD UP | 1.7 s, or the weapon delay + 0.4 s |
 | HIT / GAIN | moment | `$HP` down / up | the damage number + the shooter's team chip / +n POOL; one fade in, one fade out, never a repeating flash | 0.7 s / 1 s |

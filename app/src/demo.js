@@ -484,7 +484,10 @@ export function startDemo({ engine, log }) {
       'down-pickup':       [...live, [2000, () => ev.hitFrom(19, 20, 30)], [2350, () => ev.dieFrom(19, 20)]],       // mag 20 is the Shotgun, not in VIPER's kit
       'down-ffa':          [[0, 'addGhost'], ...live, ...fullLife.slice(0, 2), [2300, 'scoreFfa'], [2350, () => ev.dieFrom(19, 9)]],
       'down-hill':         [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.beacon(1)], [2300, () => ev.score(3, 1, 1)], [2350, () => ev.dieFrom(19, 9)]],
-      'down-stale':        [[0, 'addGhost'], ...live, ...fullLife, [2500, 'mcLost']],                                   // the board is old now: shown with its age
+      'down-stale':        [[0, 'addGhost'], ...live, ...fullLife, [2500, 'mcLost']],
+      // An MC older than S56: its roster carries no weapons, it pushes no score and relays no hit. The phone can name
+      // the killer from the roster but no weapon, and has nothing dealt: the screen must say so, not invent it.
+      'down-old-mc':       [[0, () => { for (const r of roster) delete r.weapons; }], ...live, [2000, () => { ev.fire(3); ev.hitFrom(19, 9, 20); }], [2350, () => ev.dieFrom(19, 9)]],                                   // the board is old now: shown with its age
       'live-reload':       [...live, [2300, () => ev.fire(12)], [2600, 'reloadCycle']],
       'live-reload-overrun': [[0, () => { player.loadout = { weapons: [{ weapon_id: 'shotgun' }] }; }], ...live, [2300, () => ev.fire(20)], [2600, () => ev.reloadChain(18, 800)]],   // F123: the chain reload — nominal is the PER-SHELL time, so the bar is in overrun for the whole reload
       'live-switch':       [[0, 'twoWeapons'], ...live, [2300, () => ev.fire(3)], [2600, 'altCycle']],

@@ -143,8 +143,8 @@ threshold, present}` of the station this player would use (present first, else s
 auto mode untouched, re-render economy).
 
 ### 4.3 DOWN screen (HUD session)
-Scanner mode replaces the countdown with the hint (shipped copy, `hud.js`): **RUN TO YOUR TEAM'S RESPAWN
-STATION** with the sub-label THEN PULL THE TRIGGER THERE (trigger gate) or AND STAND THERE (presence gate) (none
+Scanner mode replaces the countdown with the hint (shipped copy, `hud.js`): **HEAD TO YOUR TEAM'S RESPAWN
+STATION** with the sub-label THEN PULL THE TRIGGER (trigger gate) or AND STAND THERE (presence gate) (none
 in range) → **GET CLOSER** with a closeness bar and STATION IN RANGE · the live RSSI / threshold (approach) → **HOLD…** · AT THE
 STATION · ALMOST THERE (present, the respawn delay still running) → **PULL THE TRIGGER TO RESPAWN** (trigger
 gate) or **RESPAWNING…** (presence gate) → REDEPLOY moment on revive. Timer phase shows the delay countdown as today.

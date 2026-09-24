@@ -3427,7 +3427,9 @@ export class Engine {
     // write and its `$HP`, or just before the write, so "no newer `$HIR`" misread both ways (review 2026-09-19).
     this._dotEcho = { at: now, pool, n };
     // Only a HEALTH tick can kill. An armour or shield tick must not claim a death that lands in the next 1.5 s.
-    if (pool === 'health') this._dotKill = { at: now, num: p.by.num, team: p.by.team };
+    // `dmg`: what a lethal tick takes. The gun answers a lethal `$LIFE` with `$LCD`, never `$HP` (bench 2026-09-09), so
+    // no echo books it; `_death` books it to the ledger instead (the death screen's final tick, S56).
+    if (pool === 'health') this._dotKill = { at: now, num: p.by.num, team: p.by.team, dmg: Math.min(n, this.hp), booked: false };
     p.ticks++;
     this._write([frame], `poison tick ${p.ticks}: -${n} ${pool}${lethal ? ' (lethal)' : ''}`);
     if (!lethal) this._event('poison_tick');
@@ -5262,7 +5264,7 @@ export class Engine {
     if (dotEcho) this._dotEcho = null;
     // S56: a poison tick is not a `hit_taken` fact (see the guard below), but it is still damage the ledger
     // owes the poisoner -- `this.poison.by` is still the applier here, ahead of any `_death`/`_poisonClear`.
-    if (dotEcho && this.poison && this.poison.by) this._lifeBookDot(this.poison.by.num, this.poison.by.team, dmg);
+    if (dotEcho && this.poison && this.poison.by) { this._lifeBookDot(this.poison.by.num, this.poison.by.team, dmg); if (this._dotKill) this._dotKill.booked = true; }
     // S29: damage RESTARTS the recharge clock and abandons a refill already running -- Callsign does the same
     // (`DetectRecoverShieldCommand._lastHitTime`), and it is the whole mechanic: the shield comes back only
     // when you break contact. Stamped on the pools moving, not on the `$HIR`, so a hit whose `$HIR` was lost
@@ -5492,6 +5494,7 @@ export class Engine {
     // S56: snapshot the life just ended (`state()`'s `lastLife`, kept until the NEXT death) before resetting
     // for whatever comes next -- a normal down, or (below) an infection flip, which is itself a new life and
     // must not carry the old one's numbers.
+    if (dk && !dk.booked && dk.dmg > 0) this._lifeBookDot(dk.num, dk.team, dk.dmg);   // the lethal tick: answered by $LCD, so no echo booked it
     this._life.deathAt = this.now(); this._lastLife = this._life; this._resetLifeLedger();
     const fresh = dk ? true : this.latch && this.now() - this.latch.at <= C.DEATH_LATCH_MS;
     const shooter_num = dk ? dk.num : fresh ? this.latch.shooter_num : 0;

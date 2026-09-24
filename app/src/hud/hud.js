@@ -1356,7 +1356,7 @@ export class Hud {
   }
   /** The DOWN screen's middle block: the countdown in auto mode, or in scanner mode the respawn LESSON (utility.md
    *  §4.3, live bench 2026-09-04: "the very first time someone dies… the HUD should make it obvious"):
-   *  RUN TO YOUR TEAM'S RESPAWN STATION → GET CLOSER (closeness bar vs the station's threshold) → HOLD… (at the
+   *  HEAD TO YOUR TEAM'S RESPAWN STATION → GET CLOSER (closeness bar vs the station's threshold) → HOLD… (at the
    *  station, the short delay finishing) → PULL THE TRIGGER TO RESPAWN (green) / RESPAWNING… (presence gate). */
   _downHintKey(st) { const s = st.station || {}; return [st.respawnHint, st.respawnType, st.respawnIn, s.id, s.present, s.rssi != null ? Math.round(s.rssi) : null, st.downWarn].join('|'); }
   /** 2026-09-19 (Tony): a TIMED respawn happens where the player stands, so the DOWN screen tells them to move. The
@@ -1377,7 +1377,7 @@ export class Hud {
     const pct = rssi == null ? 0 : Math.max(0, Math.min(100, Math.round(100 * (rssi - (thr - 30)) / 30)));   // 30 dB below the threshold = 0, at it = 100
     const bar = (cls, w) => `<div class="near ${cls}"><i style="width:${w}%"></i></div>`;
     const presence = st.respawnGate === 'presence';   // some games revive by just being at the station — never tell those players to pull the trigger (polish round 2026-09-04)
-    if (hint === 'find_station') return `<span class="n nn">▣</span><span class="ins">RUN TO YOUR TEAM'S RESPAWN STATION</span><span class="lab">${presence ? 'AND STAND THERE' : 'THEN PULL THE TRIGGER THERE'}</span>`;
+    if (hint === 'find_station') return `<span class="n nn">▣</span><span class="ins">HEAD TO YOUR TEAM'S RESPAWN STATION</span><span class="lab">${presence ? 'AND STAND THERE' : 'THEN PULL THE TRIGGER'}</span>`;
     if (hint === 'approach') return `<span class="n nn">▣</span><span class="ins">GET CLOSER</span>${bar('', pct)}<span class="lab">STATION IN RANGE${rssi != null ? ` · <b class="tab">${rssi}</b> / ${thr} dBm` : ''}</span>`;
     if (hint === 'hold') return `<span class="n nn on">▣</span><span class="ins on">HOLD…</span>${bar('on hold', 100)}<span class="lab on">AT THE STATION · ALMOST THERE</span>`;
     if (hint === 'pull_trigger') return `<span class="n nn on">▣</span><span class="ins on">PULL THE TRIGGER TO RESPAWN</span>${bar('on', 100)}<span class="lab on">AT THE STATION</span>`;
@@ -1635,7 +1635,7 @@ export class Hud {
         this._moment = downKey;
         const title = recoveryDown
           ? '<span class="tt rec"><span class="t">GUN RESTARTED</span><span class="t t2">REDEPLOYING</span></span><span class="kb">REDEPLOYING</span>'
-          : `${st.respawnType === 'scanner' ? '<span class="tt"><span class="t">DOWN</span><span class="t t2">RESPAWN<br>AT STATION</span></span>' : '<span class="t">DOWN</span>'}<span class="kb">${kb.dot ? 'POISONED BY' : 'KILLED BY'} <b style="${tk ? `background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}` : 'background:var(--mut);color:var(--bg,#000)'}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span><span id="dnlife">${DS.finalHitLine(st)}</span>`;
+          : `${st.respawnType === 'scanner' ? '<span class="tt"><span class="t">DOWN</span><span class="t t2">RESPAWN<br>AT STATION</span></span>' : '<span class="t">DOWN</span>'}<span class="kb">${kb.dot ? DS.ICON.drop : DS.ICON.skull}<span class="sr">${kb.dot ? 'POISONED BY' : 'KILLED BY'}</span> <b style="${tk ? `background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}` : 'background:var(--mut);color:var(--bg,#000)'}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span><span id="dnlife">${DS.finalHitLine(st)}</span>`;
         this.overlay.innerHTML = `<div class="mo down"><div class="wash"></div>
           <div class="c"><div class="dsx"><div class="l2">${title}</div><div class="dslive" id="dslive">${this._dsLive(st)}</div></div>
           <div class="dn" id="dnhint">${this._downHint(st)}</div></div>
@@ -1778,8 +1778,12 @@ export class Hud {
     this._swap('kill', el, hold, hold + 400);   // three confirms 300ms apart used to stack three banners
     this.h.onHaptic && this.h.onHaptic('kill');
   }
-  /** The death screen's THIS LIFE block (deathscreen.js): time alive, shots, kills, then damage taken and dealt. */
-  _dsLive(st) { return st.lastLife ? DS.lifeLine(st) + `<div class="dstabs">${DS.tables(st)}</div>` : ''; }
+  /** The death screen's callouts (deathscreen.js): damage taken and dealt, kills, time alive. */
+  _dsLive(st) {
+    if (st.lastLife) return DS.callouts(st);
+    // The ledger is not saved (killedBy is): after an app restart while down, say why the numbers are missing.
+    return '<div class="dco" id="dslife"><span class="dnk">THIS LIFE\'S NUMBERS ARE NOT KEPT ACROSS AN APP RESTART</span></div>';
+  }
   /** S56: the weapon line under the HIT chip. An ambiguous resolution names up to two candidates with OR
    *  (never a guess); three or more show WEAPON UNCLEAR instead. No line at all when the phone has no
    *  claim (an older MC sends no roster weapons). */
@@ -1787,7 +1791,7 @@ export class Hud {
     if (!w) return '';
     const names = w.ambiguous ? (w.names || []) : [w.name || w.id];
     if (!names.length || names.length > 2) return w.ambiguous ? '<span class="hw">WEAPON UNCLEAR</span>' : '';
-    return `<span class="hw">${names.map(x => esc(String(x).toUpperCase())).join(' OR ')}</span>`;
+    return `<span class="hw">${names.map(x => esc(String(x).toUpperCase())).join(' / ')}</span>`;
   }
   // TAKING A HIT. Deliberately a single fade, never a repeating flicker: this feedback moved off the
   // gun's LEDs precisely because winning that surface needed ~30 Hz repaints that strobe, and

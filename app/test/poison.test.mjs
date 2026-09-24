@@ -241,6 +241,18 @@ test('S16: a LETHAL tick books the death to the applier, flagged dot:true, and p
   assert.equal(h.ticks().length, 1, 'no ticks on a dead gun');
 });
 
+test('S16 × S56: the lethal tick, answered by $LCD and never $HP, is still booked as the final tick on the death screen', () => {
+  const h = harness();
+  h.setPools(4, 0, 0);
+  h.toxin(3, 2, 0);
+  h.adv(1000);
+  const last = h.eng.state().lastLife;
+  const row = last.taken.find(r => r.num === 3);
+  assert.ok(row, 'the poisoner has a row');
+  assert.equal(row.ticks, 1, 'the lethal tick is booked once');
+  assert.deepEqual({ dot: last.finalHit.dot, num: last.finalHit.num, dmg: last.finalHit.dmg }, { dot: true, num: 3, dmg: 4 }, 'the final hit is the tick that killed');
+});
+
 test('S16: a lethal tick credits the MOST RECENT applier', () => {
   const h = harness();
   h.setPools(8, 0, 0);

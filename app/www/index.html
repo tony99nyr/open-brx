@@ -348,7 +348,6 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .down .recap .rl{font-size:12px;letter-spacing:.26em;color:var(--mut);font-weight:700}
 .down .recap .rv{font-size:12px;letter-spacing:.14em;color:var(--mut);font-weight:700;display:flex;align-items:baseline;gap:6px}
 .down .recap .rv b{color:var(--num);font-family:var(--fd);font-size:22px;letter-spacing:.02em;font-weight:700}
-.down .l2{position:relative}.down .lf{position:absolute;right:0;top:calc(100% + 6px);width:max-content;max-width:100%;text-align:right;line-height:1.35;font-size:11px;letter-spacing:.14em;color:var(--mut);font-weight:700}.down .lf b{color:var(--num)}   /* S56: this life under KILLED BY */
 .down .recap .tms{display:flex;gap:4px}
 .down .recap .tm{display:inline-block;padding:3px 12px;transform:skewX(-12deg);font-size:12px;letter-spacing:.14em}.down .recap .tm .unskew{display:inline-block;transform:skewX(12deg)}
 .down .recap .tm b{font-family:var(--fd);font-size:18px;color:inherit;margin-left:2px}
@@ -883,41 +882,40 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .down .recap{flex-wrap:wrap;row-gap:6px}
 .down .recap .capwarn{flex:0 0 100%;text-align:center;font-size:12px;letter-spacing:.16em;color:var(--warn);font-weight:700;transform:skewX(-10deg)}
 .down .recap .capwarn .unskew{display:inline-block;transform:skewX(10deg);white-space:normal}
-/* The death screen (2026-09-23, src/hud/deathscreen.js): left = who killed you + THIS LIFE, right = the countdown or
-   the station hint, bottom = THE GAME NOW. Fixed 844x390 frame: every block below is sized to fit it with 3 rows. */
-.down .c{top:44px;bottom:92px;left:32px;right:64px;transform:none;justify-content:space-between;gap:20px}   /* 92: the pill band (68-90) and THE GAME NOW below it stay clear */
-.down .dsx{display:flex;flex-direction:column;gap:8px;flex:0 0 460px;min-width:0;align-self:stretch;justify-content:flex-start}
-.down .dsx .l2{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:16px;row-gap:4px;align-items:center}   /* DOWN beside KILLED BY and the final hit */
+/* The death screen (2026-09-23, src/hud/deathscreen.js; Tony: "what were we killed by and just a few callouts").
+   Left: DOWN, the killer and the final hit, then four callouts. Right: the countdown or the station hint. Bottom: the
+   game strip. Icons are inline SVG in currentColor (emoji would render in colour on Android). */
+.down .c{top:44px;bottom:92px;left:32px;right:64px;transform:none;justify-content:space-between;gap:20px}   /* 92: the pill band (68-90) and the game strip stay clear */
+.down .dsx{display:flex;flex-direction:column;gap:26px;flex:0 0 460px;min-width:0;align-self:stretch;justify-content:center}
+.down .dsx .l2{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:18px;row-gap:6px;align-items:center}   /* DOWN beside the killer and the final hit */
 .down .dsx .l2 > .t,.down .dsx .l2 > .tt{grid-row:1 / span 2}.down .dsx .l2 > .kb{grid-column:2;justify-self:start}.down .dsx .l2 > #dnlife{grid-column:2}
-.down .dsx .t{font-size:44px;line-height:1}.down .dsx .tt{height:44px;width:180px;min-width:0}.down .dsx .tt.rec{width:300px}.down .dsx .tt.rec .t{font-size:32px}.down .dsx .tt .t{left:0;right:auto}.down .dsx .tt .t2{font-size:24px;text-align:left}
-.down .dsx .kb{font-size:12px}
-.down .fh .nw{white-space:nowrap}.down .fh{display:block;font-size:11px;letter-spacing:.12em;color:var(--mut);font-weight:700;line-height:1.3}.down .fh b{color:var(--num);font-family:var(--fd);font-size:15px;letter-spacing:.02em}.down .fh .fw{color:var(--num)}
-.down .pk{font-style:normal;font-size:11px;letter-spacing:.14em;padding:0 4px;border:1px solid var(--edge);color:var(--mut)}
-.down .dsl{display:flex;align-items:baseline;gap:10px;white-space:nowrap}
-.down .dsl .dh,.down .dth span{font-size:11px;letter-spacing:.24em;color:var(--mut);font-weight:700}
-.down .dsl .dv{font-size:12px;letter-spacing:.12em;color:var(--mut);font-weight:700}.down .dsl .dv b{color:var(--num);font-family:var(--fd);font-size:17px;letter-spacing:.02em}
-.down .dstabs{display:grid;grid-template-columns:1fr 1fr;gap:18px}
-.down .dst{min-width:0;display:flex;flex-direction:column;gap:4px}
-.down .dth{display:flex;align-items:baseline;gap:8px;padding-bottom:3px;border-bottom:1px solid var(--edge)}
-.down .dth b{margin-left:auto;color:var(--num);font-family:var(--fd);font-size:19px}
-.down .dth .pt{font-style:normal;font-size:11px;letter-spacing:.16em;font-weight:700;color:var(--warn);border:1px solid var(--warn);padding:0 4px;margin-left:auto}.down .dth .pt + b{margin-left:0}
-.down .dr{display:grid;grid-template-columns:4px 1fr;column-gap:7px;line-height:1.2}
-.down .dr .tk{grid-row:1 / span 2;align-self:stretch;transform:skewX(-12deg)}
-.down .dr .dn1{display:flex;align-items:baseline;gap:6px;min-width:0}.down .dr .nm{font-size:12px;letter-spacing:.1em;color:var(--num);font-weight:700;overflow-wrap:anywhere}
-.down .dr .dn1 b{margin-left:auto;color:var(--num);font-family:var(--fd);font-size:16px}
-.down .dr .dn2{font-size:12px;letter-spacing:.08em;color:var(--mut);font-weight:700}
-.down .dr.killer .nm{color:var(--bad)}.down .kx{font-style:normal;font-size:11px;letter-spacing:.16em;color:var(--bad)}
-.down .dmore,.down .dnone{font-size:11px;letter-spacing:.12em;color:var(--mut);font-weight:700}.down .dmore b{color:var(--num)}
-.down .recap{bottom:16px;gap:40px}
-.down .recap .rc.stale .rl{color:var(--warn)}
-.down .recap .capwarn{position:absolute;left:0;right:0;bottom:calc(100% + 10px)}   /* the death screen: the A31 line rides in the pill band, so the tiles never grow into THIS LIFE */
-[data-env="night"] .down .dr .tk{background:#ff8a8a!important;opacity:.5}
-[data-env="night"] .down .dth .pt{color:#ff8a8a;border-color:#ff8a8a}[data-env="night"] .down .recap .rc.stale .rl{color:#ff8a8a}
+.down .dsx .t{font-size:48px;line-height:1}.down .dsx .tt{height:48px;width:190px;min-width:0}.down .dsx .tt.rec{width:300px}.down .dsx .tt.rec .t{font-size:32px}.down .dsx .tt .t{left:0;right:auto}.down .dsx .tt .t2{font-size:24px;text-align:left}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}   /* read aloud, not drawn */
+.down .ic{width:1em;height:1em;flex:none;vertical-align:-.12em}
+.down .dsx .kb{font-size:18px;gap:8px;color:var(--bad)}.down .dsx .kb b{font-size:16px}
+.down .fh{display:flex;align-items:center;gap:10px;flex-wrap:wrap;white-space:nowrap}
+.down .fh .fw{font-size:14px;letter-spacing:.12em;color:var(--num);font-weight:700}
+.down .fh .fd{display:inline-flex;align-items:center;gap:5px;font-size:15px;color:var(--mut)}.down .fh .fd b{font-family:var(--fd);font-size:24px;line-height:1;color:var(--bad)}
+.down .pk,.down .cr{font-style:normal;font-size:11px;letter-spacing:.14em;font-weight:700;padding:0 4px;border:1px solid var(--edge);color:var(--mut)}.down .cr{border-color:var(--warn);color:var(--warn)}
+.down .dco{display:flex;gap:30px}   /* only the callouts that have a value are drawn, left to right */
+.down .co{display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;column-gap:7px;align-items:center}
+.down .co .ic{grid-row:1 / span 2;width:20px;height:20px;color:var(--mut)}.down .co.tk .ic{color:var(--bad)}.down .co.dl .ic{color:var(--ok)}
+.down .co b{font-family:var(--fd);font-size:32px;line-height:1;color:var(--num);white-space:nowrap}
+.down .co .cl{font-size:11px;letter-spacing:.22em;color:var(--mut);font-weight:700}
+.down .co.unsure b{color:var(--mut)}   /* a relay may still be missing: the number is what arrived so far */
+.down .co b{position:relative;justify-self:start}.down .co .us{position:absolute;left:100%;top:0;margin-left:3px;line-height:0}   /* out of the line box: every number keeps one baseline */.down .co.unsure .us .ic{width:13px;height:13px;color:var(--warn)}[data-env="night"] .down .co.unsure .us .ic{color:#ff8a8a}
+.down .dnk{grid-column:1 / -1;font-size:12px;letter-spacing:.14em;color:var(--mut);font-weight:700}
+.down .recap{bottom:18px;gap:34px;align-items:center}
+.down .recap .rv{font-size:13px;gap:6px;align-items:center}.down .recap .rv b{font-size:22px}.down .recap .rv .ic{width:15px;height:15px;color:var(--mut)}
+.down .recap .cap{font-family:var(--fd);font-size:16px;color:var(--mut);letter-spacing:.04em}.down .recap .ld{font-size:12px;letter-spacing:.12em;color:var(--mut);margin-left:6px}.down .recap .ld b{font-size:16px}
+.down .recap .ag{font-style:normal;font-size:11px;letter-spacing:.12em;font-weight:700;color:var(--warn);margin-left:4px}
+.down .recap .tm .ic{width:12px;height:12px;vertical-align:-.1em}
+.down .recap .capwarn{position:absolute;left:0;right:0;bottom:calc(100% + 10px)}   /* the A31 line rides in the pill band, so the strip never grows into the callouts */
+[data-env="night"] .down .dsx .kb,[data-env="night"] .down .fh .fd b,[data-env="night"] .down .co .ic{color:#ff8a8a}[data-env="night"] .down .cr,[data-env="night"] .down .recap .ag{color:#ff8a8a;border-color:#ff8a8a}
 /* the countdown / station column takes what the 460px left column leaves, and its copy wraps inside it */
 .down .c > .dn{flex:1 1 0;min-width:0}.down .c > .dn .ins{white-space:normal;font-size:22px;line-height:1.1}.down .c > .dn .lab{white-space:normal}.down .c > .dn .near{max-width:100%}
-/* the spawn-kill warning (levels 2 and 3) is bigger than level 1: THIS LIFE starts under it, never beneath it */
+/* the spawn-kill warning (levels 2 and 3) is bigger than level 1: the killer starts under it, never beneath it */
 .down:has(.safe.w2) .c,.down:has(.safe.w3) .c{top:72px}
-.down .dth span{white-space:nowrap;letter-spacing:.16em}
 #frame[data-down] .chipbar{top:auto;bottom:74px;left:32px;transform:none;flex-direction:row;gap:8px}   /* the death screen: the band between THIS LIFE and THE GAME NOW */
 /* connected screen: unmistakable MC state (bench 2026-08-25) */
 .mclinked{flex:1;display:flex;align-items:center;justify-content:center;min-height:96px;padding:0 22px;border:1px solid var(--ok);color:var(--ok);font-family:var(--fd);font-style:italic;font-weight:700;font-size:28px;letter-spacing:.2em;transform:skewX(-10deg);box-shadow:0 0 40px -12px var(--ok)}
