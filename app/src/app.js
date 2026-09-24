@@ -241,7 +241,7 @@ async function syncPlayerAdvert() {
     // ⚠ The gate records nothing for a failed call, so the next tick retries. The one that matters is the start that
     // clears the alive bit on death: a dead player whose advert still says alive=1 goes on converting a control point
     // for the whole death window, silently.
-    playerAdvertGate.failed(action);
+    playerAdvertGate.failed(action, Date.now());
     log('player advert failed — the phone may still be broadcasting the previous one; retrying: ' + (e && e.message || e), 'le');
   } finally { playerAdvertBusy = false; }
 }
