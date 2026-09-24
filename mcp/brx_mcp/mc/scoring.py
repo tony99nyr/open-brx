@@ -9,7 +9,7 @@ import io
 from typing import Any, Callable, Literal, Mapping, Sequence
 
 from .types import (ACC_MIN_SHOTS, ASSIST_WINDOW_MS, FEEDBACK_MAX_AGE_MS, MULTI_KILL_MS,
-                    STALE_AFTER_MS, AfterEndPlayer, AfterEndView, Event, Honor, LiveRow, Player,
+                    NEVER_SEEN_MS, STALE_AFTER_MS, AfterEndPlayer, AfterEndView, Event, Honor, LiveRow, Player,
                     PossessionView, RecapStationRow, RecapView, ScoreRow, Team, WinBy, WinnerView, parse_win_by)
 
 Feed = dict
@@ -650,7 +650,7 @@ class Scorer:
             st = self.stats[r["player_id"]]
             nid = pid_node.get(r["player_id"])
             seen = node_last_seen.get(nid, 0) if nid else 0
-            age = now - seen if seen else 10**9
+            age = now - seen if seen else NEVER_SEEN_MS
             status: Literal["alive", "down", "stale"]
             if age > STALE_AFTER_MS:
                 status = "stale"

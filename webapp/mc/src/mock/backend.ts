@@ -1,6 +1,6 @@
 // In-browser mock of the MC server (mcp/brx_mcp/mc/API.md). Stateful enough for every UI interaction.
 import type {
-  Api, ConfigView, Coverage, FeedEntry, GameConfig, LanPublic, LiveRow, Loadout, LoadoutPolicy, LogView, MatchHistoryRow, ModeInfo, NodeView, OperatorActionResult, OperatorCmd, PerkView, Phase, Player,
+  Api, ConfigView, Coverage, FeedEntry, GameConfig, LanPublic, LiveRow, LiveView, Loadout, LoadoutPolicy, LogView, MatchHistoryRow, ModeInfo, NodeView, OperatorActionResult, OperatorCmd, PerkView, Phase, Player,
   ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, ReportResult, SavedGame, ScanRow, ScoreRow, StartView, State, StationAssignment, StationKind, StationSourceId,
   StationView, TunnelProvider, TunnelStatus, WeaponView,
 } from '../api/types';
@@ -727,7 +727,17 @@ export class MockBackend implements Api {
     const score: Record<string, number> = {};
     for (const r of l.rows) if (r.team_id) score[r.team_id] = (score[r.team_id] ?? 0) + r.kills;
     const tl = this.config.time_limit_s ?? 600;
-    return { match_id: l.match_id, go_live_t: l.go_live_t, time_limit_s: tl, ends_t: l.go_live_t + tl * 1000, score, rows: clone(l.rows) };
+    const view: LiveView = { match_id: l.match_id, go_live_t: l.go_live_t, time_limit_s: tl, ends_t: l.go_live_t + tl * 1000, score, rows: clone(l.rows) };
+    // Visual QA H2: an objective match carries the possession tally (state.py `_live_view`). The demo
+    // phones "report" a fixed split of the elapsed time so ?mock shows the hill panel filling.
+    if (this.config.scoring.win_by === 'objective') {
+      const el = Math.max(0, Math.min(tl, (now() - l.go_live_t) / 1000));
+      const ids = this.config.teams.map(t => t.team_id);
+      const by_team: Record<string, number> = {};
+      ids.forEach((id, i) => { by_team[id] = Math.round(el * (i === 0 ? 0.55 : i === 1 ? 0.35 : 0)); });
+      view.possession = { by_team, neutral_s: Math.round(el * 0.1), sites: 1, reports: l.rows.length, observed_s: Math.round(el), of_s: tl };
+    }
+    return view;
   }
   private pool() { return poolOf(this.config.loadout_policy, WEAPONS, PERKS); }
   /** server `apply_policy()` — every player's kit brought into compliance with the current rules */

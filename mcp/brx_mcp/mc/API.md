@@ -234,8 +234,10 @@ NodeView { node_id, node_type, gun_name?, gun_tail?, player_id?, arm_state, last
            gun_locked?: true /* F272: current positive lock-up verdict; absence, false or junk clears it */,
            transport?: "wifi"|"cellular"|"none"|"unknown" /* F309: the phone's own last `status.transport` claim; absent = never reported */ }
 LiveView { match_id, go_live_t, time_limit_s, ends_t, score: { [team_id]: number }, rows: LiveRow[],
-            phones_ended?: true /* A47: an ADOPTED match every claiming phone has ended; the console asks for END */ }
-LiveRow  = ScoreRow + { status: "alive"|"down"|"stale", respawn_in_s: number|null, sync_age_ms: number, pool_stale?: "silent"|"no_fire"|"write_lost", pool_stale_ms?: number /* F208/A46, as NodeView */,
+            phones_ended?: true /* A47: an ADOPTED match every claiming phone has ended; the console asks for END */,
+            possession?: RecapView.possession /* visual QA H2 2026-09-23: the same merged tally, live; absent until a node reports one */ }
+LiveRow  = ScoreRow + { status: "alive"|"down"|"stale", respawn_in_s: number|null,
+            sync_age_ms: number /* NEVER_SEEN_MS (10^9) = MC has not heard this node since it started: a sentinel, not an age */, pool_stale?: "silent"|"no_fire"|"write_lost", pool_stale_ms?: number /* F208/A46, as NodeView */,
             gun_locked?: true /* F272, as NodeView; suppress when this row is stale */,
             possibly_protected?: true /* F289: ONLY on a "stale" row. The newest evidence from that phone (a `status.protected`,
                                          or a respawn / team_change fact with `protect_ms` and no status after it) says it had not

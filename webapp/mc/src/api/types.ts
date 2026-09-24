@@ -29,7 +29,7 @@ export type {
   SlotChoice, StationKind, StationSourceId, WinBy, TimedProtectS, WeaponDelayMs, StationProtectS,
 } from './contract.gen';
 // values (verbatimModuleSyntax: a value re-export may not ride in a `export type` statement)
-export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS,
+export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, NEVER_SEEN_MS, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS,
   TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT, STATION_PROTECT_S_DEFAULT } from './contract.gen';
 
 import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LogView, Phase, Player,
