@@ -4268,6 +4268,10 @@ const puRead = pg => pg.evaluate(() => {
     hw: (e => e && vis(e) ? box(e) : null)(document.querySelector('#overlay .hitwpn .hw')),
     ringPx: ring && vis(ring) ? ring.getBoundingClientRect().width / (fr.width / 844) : null,
     shieldLabel: vis(document.querySelector('.vitals .shieldlabel')),
+    // polish r2: the numbers each bar sits under, and the bars' painted widths (frame px)
+    shieldNum: (document.getElementById('shield') || {}).textContent, ovalPx: (e => e ? parseFloat(getComputedStyle(e).fontSize) : null)(document.getElementById('oval')),
+    armorBarW: (e => e ? e.getBoundingClientRect().width : null)(document.getElementById('shbar')),
+    switchedUp: !!document.querySelector('#overlay .mo.switched'), ammoText: (document.getElementById('mag') || {}).textContent,
     hintLines: hint && vis(hint) ? [pua, pul].filter(Boolean).map(e => { const r = document.createRange(); r.selectNodeContents(e); return new Set([...r.getClientRects()].filter(x => x.width > 1).map(x => Math.round(x.top / 4))).size; }) : null,
     // every colour the powerup pieces paint (text, fill, border), for the night check: no green, no white
     paints: [...document.querySelectorAll('#puhint *, #puheld *, .bar.oshield, .bar.oshield *, #overlay .mo.co[data-tone="item"], #overlay .mo.co[data-tone="item"] *')].filter(vis)
@@ -4363,6 +4367,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
   await step(`${tag}: both rockets fired: SWITCH WEAPON, and the ammo block still names the empty pickup in hand`, async () => {
     const pg = await open(view, 'live-pu-empty', N, 5200); const r = await puWait(pg, r => r.hint && r.hint.kind === 'switch', 2500); await shot(pg, 'empty'); await puClose(pg, night);
     must(r.hint && r.hint.act === 'SWITCH WEAPON' && r.hint.lab === 'ROCKETS EMPTY', `the hint: ${JSON.stringify(r.hint)}`);
+    must(!r.switchedUp, 'polish r2: no swap card over an EMPTY slot (it dims the SWITCH WEAPON hint)');
     must(!r.chip, 'the item is over: no held chip');
     must(/ROCKETS/.test(r.wn || ''), `the weapon name: ${JSON.stringify(r.wn)}`);
   });
@@ -4375,7 +4380,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
     const pg = await open(view, 'live-pu-claim-hit', N, 2900);
     const r = await puWait(pg, r => r.hw && r.hint, 1500); await shot(pg, 'claim-hit'); await puClose(pg, night);
     must(r.hw && r.hint, `setup: the weapon line and the hint are both up: ${JSON.stringify({ hw: r.hw, hint: r.hint && r.hint.box })}`);
-    must(apart(r.hint.box, r.hw), `the weapon line ${JSON.stringify(r.hw)} covers the hint ${JSON.stringify(r.hint.box)}`);
+    must(r.hint.box.t - r.hw.b >= 4 || r.hw.t - r.hint.box.b >= 4 || !(r.hint.box.l < r.hw.r && r.hint.box.r > r.hw.l), `the weapon line ${JSON.stringify(r.hw)} sits within 4 px of the hint ${JSON.stringify(r.hint.box)}`);
   });
   await step(`${tag}: the widest row (3-digit pools, a 175 overshield) stays clear of the hint, and at night drops the SHIELD word (UX M2)`, async () => {
     const pg = await open(view, 'live-pu-overshield-wide', N, 3000);
@@ -4383,6 +4388,9 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(r.obar && r.hint, 'setup: overshield and hint up');
     must(vclear(r.hint.box, r), `a vitals number or label runs into the hint: hint ${JSON.stringify(r.hint.box)} parts ${JSON.stringify(r.vparts)}`);
     if (night) must(!r.shieldLabel, 'night with an overshield: the SHIELD word is dropped');
+    must(r.shieldNum === '0', `polish r2 M1: the shield number is the BASE pool (0 here), +175 names the extra: ${r.shieldNum}`);
+    must(r.armorBarW == null || r.armorBarW < 1, `polish r2 M2: max_armor 0 paints no armour bar (was width:NaN%, full): ${r.armorBarW}`);
+    must(r.ovalPx >= 15, `the +N reads at 15 px: ${r.ovalPx}`);
   });
   await step(`${tag}: an Easy Reload player at a weapon station: EASY RELOAD / NO ROCKETS, one line each, type floors (UX M4)`, async () => {
     const pg = await open(view, 'live-pu-easy-reload', N, 2700);

@@ -118,10 +118,10 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
    inline by hud.js); night overrides it to the dim red below. Type floors: labels 11 px, actions 14 px. ---- */
 .bar.oshield{position:relative;height:9px;width:78%;border-color:var(--item);background:color-mix(in srgb,var(--item) 12%,var(--plate2))}
 .bar.oshield > i{background:var(--item);box-shadow:0 0 12px -2px var(--item)}
-.bar.oshield b{position:absolute;left:calc(100% + 8px);top:50%;transform:translateY(-50%) skewX(18deg);font-family:var(--fd);font-weight:700;font-size:13px;line-height:1;color:var(--item);white-space:nowrap}
-/* bottom 18 (polish r1 UX M1): below the QA-04 hit weapon line (.hitwpn, top 296) and the hit tag above it, so a hit taken
+.bar.oshield b{position:absolute;left:calc(100% + 8px);top:50%;transform:translateY(-50%) skewX(18deg);font-family:var(--fd);font-weight:700;font-size:15px;line-height:1;color:var(--item);white-space:nowrap}
+/* bottom 12 (polish r1 UX M1, r2: at least 4 px clear): below the QA-04 hit weapon line (.hitwpn, top 296) and the hit tag above it, so a hit taken
    at a station never covers the hint; at night the NIGHT OPS label steps aside for it (hud.js). */
-.puhint{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);pointer-events:none}
+.puhint{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);pointer-events:none}
 .nightlab.pu{display:none!important}
 .puhint:empty{display:none}
 /* The band between the vitals (right edge 336) and the frame's centre is 86 px, so the hint is at most 166 px wide and

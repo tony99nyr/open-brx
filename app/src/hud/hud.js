@@ -22,6 +22,10 @@ const mmssS = s => mmss(Math.max(0, Number(s) || 0) * 1000);   // the wire carri
 /** A56: the preset shield bar never passes 100%, and it excludes the overshield (which has its own block). */
 const shieldPct = st => { const os = st.powerup && st.powerup.overshield; const base = st.shield - (os ? os.left : 0);
   return st.maxShield > 0 ? Math.max(0, Math.min(100, Math.round(100 * base / st.maxShield))) : 0; };
+/** Polish r2: the preset shield pool alone, so the number matches its bar and "+N" names the overshield on top. */
+const shieldBase = st => { const os = st.powerup && st.powerup.overshield; return Math.max(0, st.shield - (os ? os.left : 0)); };
+/** Polish r2 M2: `max_armor: 0` (Silenced Sniper, the Shields preset) painted `width:NaN%`, which draws FULL. */
+const armorPct = st => (st.maxArmor > 0 ? Math.max(0, Math.min(100, Math.round(100 * st.armor / st.maxArmor))) : 0);
 const oshieldPct = st => { const os = st.powerup && st.powerup.overshield; return os && os.amount > 0 ? Math.max(0, Math.min(100, Math.round(100 * os.left / os.amount))) : 0; };
 /** A56: a spawn countdown the way Tony writes it, "1:40" (rounded UP: it never reads 0:00 while the item is still away). */
 const mss = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${pad2(s % 60)}`; };
@@ -1285,9 +1289,9 @@ export class Hud {
         : st.alive && st.shielded ? '<div class="spawnshield" role="status"><span class="k">SPAWN SHIELD</span><span class="s">YOU CANNOT BE HIT</span></div>'
         : st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>'}
       <div class="fxbar" id="fxbar">${this._fx(st)}</div>
-      <div class="vitals${os ? ' os' : ''}"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span>${low ? '<span class="lowtag">LOW</span>' : ''}${gunStale ? staleTag : ''}<span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>${st.maxShield > 0 ? `<span class="shield tab ${st.shield === 0 ? 'zero' : ''}" id="shield">${st.shield}</span><span class="hplab shieldlabel">SHIELD</span>` : ''}</div>
+      <div class="vitals${os ? ' os' : ''}"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span>${low ? '<span class="lowtag">LOW</span>' : ''}${gunStale ? staleTag : ''}<span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>${st.maxShield > 0 ? `<span class="shield tab ${shieldBase(st) === 0 ? 'zero' : ''}" id="shield">${shieldBase(st)}</span><span class="hplab shieldlabel">SHIELD</span>` : ''}</div>
         <div class="bar ${low ? 'low' : ''}"><i id="hpbar" style="width:${Math.round(100 * st.hp / st.maxHp)}%"></i></div>
-        <div class="bar armor"><i id="shbar" style="width:${Math.round(100 * st.armor / st.maxArmor)}%"></i></div>${st.maxShield > 0 ? `<div class="bar shield"><i id="shieldbar" style="width:${shieldPct(st)}%"></i></div>` : ''}${os ? `<div class="bar oshield" id="obarw" style="--item:${itemColor(os.color)}" aria-label="overshield"><i id="obar" style="width:${oshieldPct(st)}%"></i><b id="oval">+${os.left}</b></div>` : ''}</div>
+        ${st.maxArmor > 0 ? `<div class="bar armor"><i id="shbar" style="width:${armorPct(st)}%"></i></div>` : ''}${st.maxShield > 0 ? `<div class="bar shield"><i id="shieldbar" style="width:${shieldPct(st)}%"></i></div>` : ''}${os ? `<div class="bar oshield" id="obarw" style="--item:${itemColor(os.color)}" aria-label="overshield"><i id="obar" style="width:${oshieldPct(st)}%"></i><b id="oval">+${os.left}</b></div>` : ''}</div>
       ${st.powerup ? `<div class="puhint" id="puhint" role="status">${this._puHint(st)}</div>` : ''}
       <div class="ammo">${outOfAmmo ? `<span class="reload out solid"><span class="unskew">${energy ? 'OUT OF ENERGY' : 'OUT OF AMMO'}</span></span>`
           : overheating ? `<span class="reload hot solid"><span class="unskew">OVERHEAT</span></span>`
@@ -1591,19 +1595,22 @@ export class Hud {
       if (mode === 'kitted' || mode === 'over' || (mode === 'lobby' && !st.kitOpen && !st.ready)) setHtml('readynote', this._readyNote(st, mode));
     }
     if (st.phase === 'live') {
-      set('clock', mmss(st.clockMs)); set('hp', st.hp); set('sh', st.armor); set('shield', st.shield); set('mag', magText(st)); setHtml('res', this._resText(st));
-      const shield = q('shield'); if (shield) shield.classList.toggle('zero', st.shield === 0);
+      set('clock', mmss(st.clockMs)); set('hp', st.hp); set('sh', st.armor); set('shield', shieldBase(st)); set('mag', magText(st)); setHtml('res', this._resText(st));
+      const shield = q('shield'); if (shield) shield.classList.toggle('zero', shieldBase(st) === 0);
       set('batt', st.battery != null ? st.battery + '%' : '—');
       setHtml('fxbar', this._fx(st));                   // S16: the poison countdown
       setHtml('aimfx', this._aimFx(st));                // S53: the smoke countdown (the slot itself is structural)
       setHtml('stunfx', this._stunFx(st));              // F15: the stun countdown
       const hb = q('hpbar'); if (hb) hb.style.width = `${Math.round(100 * st.hp / st.maxHp)}%`;
-      const sb = q('shbar'); if (sb) sb.style.width = `${Math.round(100 * st.armor / st.maxArmor)}%`;
+      const sb = q('shbar'); if (sb) sb.style.width = `${armorPct(st)}%`;
       const shieldb = q('shieldbar'); if (shieldb) shieldb.style.width = `${shieldPct(st)}%`;
       const ob = q('obar'); if (ob) ob.style.width = `${oshieldPct(st)}%`;   // A56: the overshield block drains first
       if (st.powerup && st.powerup.overshield) set('oval', `+${st.powerup.overshield.left}`);
       if (st.powerup) { const hh = this._puHint(st); setHtml('puhint', hh); setHtml('puheld', this._puHeld(st));
-        const nl = this.hudEl.querySelector('.nightlab'); if (nl) nl.classList.toggle('pu', !!hh); }   // the hint takes NIGHT OPS's slot
+        const nl = this.hudEl.querySelector('.nightlab'); if (nl) nl.classList.toggle('pu', !!hh);
+        // polish r2: the item ran dry in hand; an ACTIVE card still up from the swap would sit over SWITCH WEAPON
+        const sw = this._overlays && this._overlays.switched;
+        if (sw && st.powerup.hint && st.powerup.hint.kind === 'switch') { clearTimeout(sw.t1); clearTimeout(sw.t2); sw.el.remove(); delete this._overlays.switched; } }   // the hint takes NIGHT OPS's slot
       const bf = q('battfill'); if (bf) bf.style.right = `${100 - (st.battery || 0)}%`;
       const pips = q('pips'); if (pips) { const html = this._pips(st); if (pips.innerHTML !== html) pips.innerHTML = html; }
       const heat = q('heat'); if (heat) {
@@ -1818,7 +1825,7 @@ export class Hud {
       this._momentAt = m.at;
       if (m.kind === 'kill') this._kill(st, m);
       else if (m.kind === 'redeploy') this._redeploy(st);
-      else if (m.kind === 'switched') this._switched(st, m);
+      else if (m.kind === 'switched') { if (!(st.ammo === 0 && st.activeSlot === (m.data && m.data.slot))) this._switched(st, m); }   // polish r2: no ACTIVE card for an empty slot
       else if (m.kind === 'alert') this._alert(st, m);
       else if (m.kind === 'hit') this._hit(st, m);
       else if (m.kind === 'gain') this._gain(st, m);
