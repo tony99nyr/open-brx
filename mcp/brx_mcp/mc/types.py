@@ -1093,6 +1093,7 @@ class StationAction(TypedDict):
     action: Literal["reset", "taken"]
     player_num: NotRequired[int]
     t: NotRequired[int]
+    age_ms: NotRequired[int]   # `taken`: how long ago the station awarded it (no synced clock); MC dates it t_recv - age_ms
 
 
 class StationControl(TypedDict):

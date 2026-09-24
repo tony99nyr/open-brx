@@ -326,3 +326,12 @@ test('M3: the overshield waits while a poison tick is unechoed (an absolute set 
   h.eng._dotEcho = null; h.adv(250); h.near(6, { state: 0, value: 58, taker: 7 });
   assert.equal(h.since(n).filter(f => f.startsWith('$LIFE,') && !E.isPoolProbe(f)).length, 1, 'granted once the echo is in');
 });
+
+test('polish r2: a poison echo that never matched stops blocking the overshield after DOT_ECHO_MS', () => {
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
+  h.at(61); h.near(6); h.adv(1100);
+  h.eng._dotEcho = { at: h.eng.now(), pool: 'health', n: 4 };   // its echo merged into a hit's $HP: never consumed
+  const n = h.mark(); h.near(6, { state: 0, value: 58, taker: 7 });
+  h.adv(E.DOT_ECHO_MS + 250); h.near(6, { state: 0, value: 57, taker: 7 });
+  assert.equal(h.since(n).filter(f => f.startsWith('$LIFE,') && !E.isPoolProbe(f)).length, 1, 'granted once the echo window passed');
+});

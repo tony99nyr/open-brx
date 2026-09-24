@@ -2828,7 +2828,11 @@ class Session:
             num = body.get("player_num")
             player = next((p for p in self.players.values() if p.get("player_num") == num), None) \
                 if isinstance(num, int) and not isinstance(num, bool) else None
-            self._take_item(nid, t_recv, player, num if isinstance(num, int) else None)
+            # Dated by `age_ms` (how long ago the station awarded it), never by the station's `t`: a Stick has no
+            # synced clock, and a report queued while the link was down must not take a LATER spawn.
+            age = body.get("age_ms")
+            t = t_recv - age if isinstance(age, int) and not isinstance(age, bool) and 0 <= age <= t_recv else t_recv
+            self._take_item(nid, t, player, num if isinstance(num, int) else None)
 
     def _wire_config(self) -> GameConfig:
         """The config a NODE receives: the operator's config plus `stations`, the allow-list of station ids MC

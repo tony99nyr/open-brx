@@ -55,9 +55,10 @@ export class PowerupStation {
     if (hasNext) this.nextAt = next;
   }
   /** Polish M1: hand every queued `taken` report to `send(body) -> boolean` (true = it left); the rest stay queued. */
-  drain(send) {
+  drain(send, now = Date.now()) {
     let n = 0;
-    while (this.unsent.length) { if (!send(this.unsent[0])) break; this.unsent.shift(); n++; }
+    // `age_ms`: how long ago the award was. MC dates the take by it, since a Stick has no synced clock (polish r2).
+    while (this.unsent.length) { const b = this.unsent[0]; if (!send({ ...b, age_ms: Math.max(0, now - b.t) })) break; this.unsent.shift(); n++; }
     return n;
   }
   /** One step: the self-spawn on its own countdown, then the claims heard since the last step. `players` are

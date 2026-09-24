@@ -159,7 +159,7 @@ async function applyStationConfig(body) {
   // A56: the item this powerup station grants, locked for the match (Tony: one item per station, never random).
   settings.item = settings.kind === 'powerup' && body.item && typeof body.item === 'object' ? body.item : null;
   pu.id = settings.id; pu.item = settings.item;
-  if (settings.game !== wasGame) { pu.available = null; pu.nextAt = null; pu.taker = 0; pu.ringAt = null; savePowerup(); }
+  if (settings.game !== wasGame) { pu.available = null; pu.nextAt = null; pu.taker = 0; pu.ringAt = null; pu.unsent = []; pu.awardedNext = null; savePowerup(); }
   settings.mcArmed = { game: settings.game, at: Date.now(), valid_ids: Array.isArray(body.valid_ids) ? body.valid_ids.slice(0, 32) : null };
   save();
   log(`MC armed this phone: ${KIND_LABEL[settings.kind]} · ${TEAM_NAMES[settings.team] || settings.team} · station ${settings.id} · threshold ${settings.threshold} dBm · game ${settings.game}`, 'lk');

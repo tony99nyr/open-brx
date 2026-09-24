@@ -1164,6 +1164,8 @@ export interface StationAction {
   action: 'reset' | 'taken';
   player_num?: number;
   t?: number;
+  /** `taken`: how long ago the station awarded it (no synced clock); MC dates it t_recv - age_ms */
+  age_ms?: number;
 }
 
 export interface StationControl {

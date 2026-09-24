@@ -4855,7 +4855,7 @@ export class Engine {
   /** Polish M3: the overshield is an ABSOLUTE `$LIFE` set, so it must not land on pools that are still moving: an unechoed
    *  poison tick (`_dotEcho`), a `$HIR` or `$HP` in the last OVERSHIELD_POOL_QUIET_MS, or a gun already at 0 health. */
   _puPoolsMoving(now) {
-    if (this._dotEcho || this.hp <= 0) return true;
+    if ((this._dotEcho && now - this._dotEcho.at <= DOT_ECHO_MS) || this.hp <= 0) return true;   // an echo that never matched expires
     if (this.latch && now - this.latch.at < OVERSHIELD_POOL_QUIET_MS) return true;
     return now - this._puPoolAt < OVERSHIELD_POOL_QUIET_MS;
   }

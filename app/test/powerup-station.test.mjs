@@ -146,8 +146,9 @@ test('M1: an unsent `taken` report waits in the queue and goes out on re-bind', 
   let sent = [];
   assert.equal(s.drain(() => false), 0, 'MC not bound: nothing leaves the queue');
   assert.equal(s.unsent.length, 1);
-  assert.equal(s.drain(b => { sent.push(b); return true; }), 1);
-  assert.deepEqual(sent, [{ id: 4, action: 'taken', player_num: 7, t: 1000 }]);
+  assert.equal(s.drain(b => { sent.push(b); return true; }, 31_000), 1);
+  // age_ms (polish r2): how long ago the award was, so MC can date it without a synced clock
+  assert.deepEqual(sent, [{ id: 4, action: 'taken', player_num: 7, t: 1000, age_ms: 30_000 }]);
   assert.deepEqual(s.unsent, []);
   assert.deepEqual(new PowerupStation({ id: 4, item: ROCKETS }).restore({ ...s.snapshot(), unsent: [{ id: 4, action: 'taken', player_num: 7, t: 1 }] }).unsent.length, 1, 'the queue survives a station restart');
 });

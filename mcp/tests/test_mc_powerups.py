@@ -571,3 +571,23 @@ def test_a_station_action_naming_another_stations_id_is_refused():
     # CONTROL: the same report from the station that holds id 6 is taken
     _action(s, clock, "u2", 6, "taken", player_num=p0["player_num"])
     assert s._station_view("u2")["item_available"] is False
+
+
+# --------------------------------------------------------------------------- polish round 2
+def test_a_late_taken_report_dates_by_age_ms_and_never_takes_the_next_spawn():
+    """A station that awarded spawn k while its link was down flushes the report after MC opened spawn k+1. A Stick
+    has no synced clock, so it says how long AGO it awarded (`age_ms`); MC dates it `t_recv - age_ms`, and a report
+    older than the current spawn is ignored."""
+    s, clock = _sess()
+    _station(s, "u1", 5, "overshield")
+    go = _live(s, clock)
+    p0 = s.players[s.node_player["phone-0"]]
+    clock.t = go + 70_000; s.tick()          # spawn 1 at 60 s is there
+    clock.t = go + 125_000; s.tick()         # spawn 2 at 120 s: still available (MC never heard the take at 70 s)
+    assert s._station_view("u1")["item_available"] is True
+    _action(s, clock, "u1", 5, "taken", player_num=p0["player_num"], age_ms=55_000)   # awarded at 70 s
+    assert s._station_view("u1")["item_available"] is True, "a report of the PREVIOUS spawn must not take this one"
+    assert "taken_by" not in s._station_view("u1")
+    # CONTROL: a fresh report (age 0) of THIS spawn is taken
+    _action(s, clock, "u1", 5, "taken", player_num=p0["player_num"], age_ms=0)
+    assert s._station_view("u1")["item_available"] is False
