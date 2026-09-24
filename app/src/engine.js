@@ -781,6 +781,7 @@ export class Engine {
     this.pendingPick = null;        // optimistic highlight until the ack lands: {slot, kind, id, at} — the row's ⟳
     this._pickDue = null;           // A26: a weapon pick waiting out PICK_DEBOUNCE_MS before it goes to MC: {slot, kind, id, at, try}
     this.kitLocked = false;         // A27/A30: the host advanced the phase while this player was still kitting — the lobby screen says so (loadout.md §4.4)
+    this.kitLockedFor = null;       // F133: the config_id the lock was raised for; a push of another game retires it
     // T2-B item 2 (2026-09-13): STANDBY (M-STANDBY §3): MC benched this player (`assign.standby: true`).
     // Forced back to KITTED-shaped, no frames written, no kit browsing -- "SITTING OUT" until PLAY sends
     // an ordinary `assign` (standby absent/false) and clears it.
@@ -1462,8 +1463,15 @@ export class Engine {
     if (why !== 'hydrate' && why !== 'relink' && this.phase === 'kitted' && !this.ended && this.kitOpen() && (this.browsing || !this.ready)) {
       this._cancelPick();
       this.kitLocked = true;
+      this.kitLockedFor = (config && config.config_id) || null;
       this.moment = { kind: 'kit_locked_by_host', at: this.now() };
       this.log('host locked kits while I was still kitting', 'li');
+    }
+    // F133: the lock notice belongs to the game it was raised for. A host who locks, never starts, and pushes
+    // a NEW game spends none of the other retirements (the kit_open edge, START, match end), so the next
+    // lobby still led with THE HOST LOCKED KITS. A config for another config_id retires it here.
+    else if (this.kitLocked && this.kitLockedFor && config && config.config_id && config.config_id !== this.kitLockedFor) {
+      this.kitLocked = false; this.kitLockedFor = null;
     }
     this.config = config || this.config;
     this.browse(false);   // the LOADOUT browser is a KITTED-phase screen; a config push ends kit-out
