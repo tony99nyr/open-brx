@@ -935,12 +935,16 @@ void loop() {
     brx_glue::pendingCaptureTeam = -1;
     if (bleHillActive()) sendFrame(String(encode(hill_capture_word(team)).c_str()));
   }
-  // The hill beacon (proto 15 mag 8) every 5 s: the Bluetooth hill's owner when MC armed a control
-  // station, else the bench IR HILL's (BRIDGE never beacons: the grenade it follows already does).
-  if ((bleHillActive() || point.mode == Mode::HILL) && now - lastBeaconTxMs >= BEACON_PERIOD_MS) {
+  // The periodic IR hill beacon (proto 15 mag 8, every 5 s) is a BENCH-mode feature only. An
+  // MC-assigned station (hill, respawn or pickup) never sends it: the Bluetooth hill's phones follow
+  // its advert, and the IR hill is post-MVP. Bench 2026-09-24: a Stick armed as a RESPAWN station kept
+  // its saved bench mode HILL and beaconed team 2 / magnitude 8 into a live match every 5 s; every gun
+  // near it logged the word. The S57 capture word above (once, on a capture) is the only IR an
+  // assigned station sends.
+  if (point.mode == Mode::HILL && !brx_glue::link.assignment().present &&
+      now - lastBeaconTxMs >= BEACON_PERIOD_MS) {
     lastBeaconTxMs = now;
-    const Word w = bleHillActive() ? hill_beacon_word(brx_glue::link.hill().owner) : point.beacon_word();
-    sendFrame(String(encode(w).c_str()));
+    sendFrame(String(encode(point.beacon_word()).c_str()));
   }
   if (autoBits.length() && now - lastAutoMs >= AUTO_TX_INTERVAL_MS) {
     lastAutoMs = now;
