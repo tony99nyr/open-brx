@@ -108,14 +108,14 @@ const RELOAD_NAG_FIRST = 5, RELOAD_NAG_EVERY = 3;
 // ⚠ Not ear-tuned. Halo's own numbers are 5 s and 4 s; Callsign's measured 6.4 s and 2.5 s. These are the
 // measured ones, and they are a named constant precisely so the bench can move them.
 const SHIELD_REGEN_DELAY_MS = 6500;   // quiet since the last damage before a refill may start
-// F345 (Tony, live match 2026-09-24: "the hud animation is kinda chunky" and SHIELDS ONLINE 3-4 s late): 10 every
+// F348 (Tony, live match 2026-09-24: "the hud animation is kinda chunky" and SHIELDS ONLINE 3-4 s late): 10 every
 // 300 ms was 11 writes for a 105 pool, each with a readout step or blink behind it, and in the field the BLE queue
 // stretched the planned 3.3 s to 5.1 s. Now a full pool is SHIELD_REGEN_GRANTS writes, one a second (about the same
 // 3 s), and the readout is not animated while a recharge runs. The phone draws the fill smoothly from `shieldRegen`.
 const SHIELD_REGEN_GRANTS = 4;        // a full pool in this many `$LIFE,0,0,<step>,*` grants (step = ceil(max / this): 27 for 105; 10-30 are bench-proven)
 const SHIELD_REGEN_STEP_MS = 1000;    // one grant per this: 0 -> full in about 3 s
 export const SHIELD_REGEN_WRITE_BUDGET = SHIELD_REGEN_GRANTS + 2;   // one recharge, `shield_charging` to `shield_online` inclusive
-// F344 (Tony, live match 2026-09-24: "you can die from a couple hits right after spawn"): a Shields life starts at
+// F347 (Tony, live match 2026-09-24: "you can die from a couple hits right after spawn"): a Shields life starts at
 // FULL shield, Halo's rule. `$SPAWN` leaves the shield POOL at 0 on hardware ($PSET t5 is a ceiling), so every
 // spawn and revive burst ends with one additive `$LIFE,0,0,<max>,*` that the gun clamps at t5. The gun answers it
 // with `$HP`; that rise is the spawn fill, not a recharge, so it says nothing (SHIELD_FILL_ECHO_MS).
@@ -2017,7 +2017,7 @@ export class Engine {
    *  it — a one-shot delayed callback cannot be un-scheduled. */
   _gunReadoutPaint(pool) {
     if (this.phase !== 'live' || !this.alive || !this.spawned || !this._gunTaken) return;
-    // F345: no readout animation while a recharge runs: each grant's step and blink sat in the BLE queue in front of
+    // F348: no readout animation while a recharge runs: each grant's step and blink sat in the BLE queue in front of
     // SHIELDS ONLINE. The grant that fills the pool ends the recharge first (`_shieldCharged`), so full is painted.
     if (pool === 'shield' && this._shieldRegen) return;
     const g = this.frames.gun, readout = g.readout;
@@ -2225,7 +2225,7 @@ export class Engine {
     }
     // The partial-level blink, tick()-polled (see `_readoutSettle`) -- runs only while `_roBlinkAt` is
     // armed, and stops on its own the instant the hold above expires.
-    if (this._roBlinkAt && this._roPool != null && !(this._roPool === 'shield' && this._shieldRegen)) {   // F345: no blink during a recharge
+    if (this._roBlinkAt && this._roPool != null && !(this._roPool === 'shield' && this._shieldRegen)) {   // F348: no blink during a recharge
       const entry = readout.pools.find(p => p.pool === this._roPool);
       const pair = entry && Array.isArray(entry.levels) ? entry.levels[this._roLevel] : null;
       if (pair && pair[1]) {
@@ -2480,7 +2480,7 @@ export class Engine {
     // 2026-09-19: `off` says whether this life was protected (a timed life with protection 0 writes no `$TMP` at all);
     // a shielded station life ends with the headset back on its rest frame.
     const off = p.off !== false && tmp ? [this.frames.spawn_protect_off] : [];
-    // F344: `shield_off` is the station's protection LIGHT going dark (a headset frame), never the shield POOL.
+    // F347: `shield_off` is the station's protection LIGHT going dark (a headset frame), never the shield POOL.
     const lightOff = p.shield && rp && rp.shield_off ? [rp.shield_off] : [];
     const frames = [...take, ...off, ...lightOff];
     if (!frames.length) { this._changed(); return; }
@@ -2578,7 +2578,7 @@ export class Engine {
     const f = this.frames && this.frames.cues && this.frames.cues[key];
     if (f && !this.cuesFired.has(key)) { this.cuesFired.add(key); this._write([f], `cue ${key}`); }
   }
-  /** F344: the pool write that makes a Shields life start at full shield: one additive `$LIFE,0,0,<max>,*` placed after
+  /** F347: the pool write that makes a Shields life start at full shield: one additive `$LIFE,0,0,<max>,*` placed after
    *  the burst's `$SPAWN` (which leaves the pool at 0), clamped by the gun at `$PSET` t5. Only a shields game
    *  (`shieldRegenOn`, armour 0): Standard ships shield 0, and an armoured game keeps its IR-filled shield.
    *  `[]` when SPAWN_SHIELD_FULL is off. A spawn read-back that follows the burst should read shield = maxShield. */
@@ -2603,7 +2603,7 @@ export class Engine {
     const rpSpawn = this._respawnProfile();
     const late = rpSpawn && !this._sirLive ? this._pickTable('sir_pool') : [];
     if (rpSpawn && !late.length && !this._sirLive) this.log('*** T-0 spawn: no live hit table to write (no sir_pool) ***', 'le');
-    const fill = this._spawnShieldFill();   // F344: a Shields life starts at full shield
+    const fill = this._spawnShieldFill();   // F347: a Shields life starts at full shield
     this._writeLife([...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), ...fill, SFLASH, ...(sp.frame ? [sp.frame] : [])], 'spawn' + (late.length ? ` + hit table ${late.length}r (late)` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : ''), life);
     if (late.length) this._sirLive = true;
     this.hurtFired = false;        // the low-health alert is once per LIFE
@@ -2620,7 +2620,7 @@ export class Engine {
     this._cue('klaxon');
     // Spawn shield is ALWAYS 0 on hardware -- $PSET t5 is a capacity filled by an fn-11
     // grant, never a starting pool (bench 2026-08-27).
-    this._shieldFillAt = fill.length ? this.now() : 0;   // F344: the pool is 0 until the gun answers the fill
+    this._shieldFillAt = fill.length ? this.now() : 0;   // F347: the pool is 0 until the gun answers the fill
     this.spawned = true; this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.killedBy = null; this.downReason = null; this.deadAt = 0; this.reloading = null; this._reloadOutcome = null; this.held = {};
     this.poolSrc = 'model';        // R2-3: those two numbers are config.health, not the gun's answer
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
@@ -3131,7 +3131,7 @@ export class Engine {
     }
     if (!this._shieldRegen) {
       const step = this._shieldRegenStep(), need = Math.max(1, Math.ceil((this.maxShield - this.shield) / step));
-      // `from`/`step`/`fullAt` are published (`state().shieldRegen`) so the phone draws the fill from them (F345)
+      // `from`/`step`/`fullAt` are published (`state().shieldRegen`) so the phone draws the fill from them (F348)
       this._shieldRegen = { startedAt: now, nextAt: now, grants: 0, from: this.shield, step, fullAt: now + (need - 1) * SHIELD_REGEN_STEP_MS };
       this.log(`shield recharge: ${this.shield}/${this.maxShield} after ${Math.round((now - this._shieldQuietAt) / 1000)}s without damage`, 'lk');
       this._event('shield_charging');
@@ -3154,7 +3154,7 @@ export class Engine {
     r.grants++; r.nextAt = now + SHIELD_REGEN_STEP_MS;
     this._write([`$LIFE,0,0,${r.step},*`], `shield regen grant ${r.grants}`);
   }
-  /** F345: one recharge grant, so a full pool takes SHIELD_REGEN_GRANTS writes. The gun clamps the last at t5. */
+  /** F348: one recharge grant, so a full pool takes SHIELD_REGEN_GRANTS writes. The gun clamps the last at t5. */
   _shieldRegenStep() { return Math.max(1, Math.ceil((this.maxShield || 0) / SHIELD_REGEN_GRANTS)); }
   /** S45: the heartbeat, replayed for as long as the shield is down and the recharge has not started. A LOOP
    *  the node drives, because the gun has no looping `$PLAY` -- the same shape as the hill possession tick,
@@ -3435,7 +3435,7 @@ export class Engine {
     const kind = rp && stationId != null && !flipped ? 'station' : 'timed';
     const revive = flipped || (rp ? (kind === 'station' ? rp.revive_station : rp.revive) : this.frames.revive);
     const life = this._lifeSeq = (this._lifeSeq || 0) + 1;   // pl3: a lost write is only this life's news
-    const fill = this._spawnShieldFill();   // F344: a Shields life starts at full shield
+    const fill = this._spawnShieldFill();   // F347: a Shields life starts at full shield
     this._writeLife([...(ps.frame ? [ps.frame] : []), ...sir, ...revive, ...fill, ...(sp.frame ? [sp.frame] : [])], 'revive' + (flipped ? ' (turned)' : '') + (fill.length ? ` + shield pool ${this.maxShield}` : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : ''), life);
     this.hurtFired = false;
     this._pendingHurtWrite = false;
@@ -3451,7 +3451,7 @@ export class Engine {
     this._recoilArm('revive');   // S42: a respawn resets to the weapon's ceiling
     this._poisonClear('respawn'); this._smokeClear('respawn'); this.gunAcc = null; this._accZeroAt = null; this._smokeHirAt = null; this._dotEcho = null; this._dotKill = null;   // S16/S53: a new life carries neither
     this._resetLifeLedger();   // S56: nor does the "what hit me" ledger
-    this._shieldFillAt = fill.length ? this.now() : 0;   // F344: the pool is 0 until the gun answers the fill
+    this._shieldFillAt = fill.length ? this.now() : 0;   // F347: the pool is 0 until the gun answers the fill
     this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.deadAt = 0; this.killedBy = null; this.downReason = null;
     this.poolSrc = 'model';        // R2-3: a fresh life, and again from config.health until the gun speaks
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
@@ -6062,7 +6062,7 @@ export class Engine {
         // spawn/respawn refill out of it — that has its own 'redeploy' moment.
         const gains = [['health', hp - this._prevHp], ['armor', armor - this._prevArmor],
                        ['shield', shield - this._prevShield]].filter(g => g[1] > 0);
-        // F344: the gun's answer to the spawn fill. The life started full; this is not a pickup or a recharge.
+        // F347: the gun's answer to the spawn fill. The life started full; this is not a pickup or a recharge.
         const fillEcho = gains.length && gains[0][0] === 'shield' && this._shieldFillAt && this.now() - this._shieldFillAt <= SHIELD_FILL_ECHO_MS;
         if (fillEcho) {
           if (shield >= this.maxShield) { this._shieldFillAt = 0; this._shieldCharged(); }
@@ -6071,7 +6071,7 @@ export class Engine {
           gains.sort((a, b) => b[1] - a[1]);
           this.moment = { kind: 'gain', at: this.now(),
             data: { pool: gains[0][0], amount: gains[0][1], hp, armor, shield } };
-          // S29/S45: a RECHARGE is several `$LIFE` grants (F345: 4, a second apart) and the gun plays one clip at a time,
+          // S29/S45: a RECHARGE is several `$LIFE` grants (F348: 4, a second apart) and the gun plays one clip at a time,
           // so the per-grant `shield_up` line cannot be allowed to fire twelve times over the top of it. The
           // recharge owns its own audio: `shield_charging` when `_shieldTick` writes the first grant, then
           // silence, then `shield_online` on the grant that reaches the ceiling (F57's rule -- two cues, one
@@ -6465,7 +6465,7 @@ export class Engine {
       // `down` = the shield BROKE this life (a spawn at 0 has not); `paused` = `_shieldTick`'s own stand-down, when no refill runs.
       shieldRegen: this.maxShield > 0 ? { on: this.shieldRegenOn, delayMs: SHIELD_REGEN_DELAY_MS, quietAt: this._shieldQuietAt || 0,
         charging: !!this._shieldRegen, down: !!this._shieldDown, gaveUp: !!this._shieldGaveUp,
-        // F345: the running recharge's clock, so the meter fills smoothly: `from` at `startedAt`, max at `fullAt`
+        // F348: the running recharge's clock, so the meter fills smoothly: `from` at `startedAt`, max at `fullAt`
         ...(this._shieldRegen ? { startedAt: this._shieldRegen.startedAt, from: this._shieldRegen.from, step: this._shieldRegen.step, fullAt: this._shieldRegen.fullAt } : {}),
         paused: !!this._standDown(['phase', 'spawned', 'ble', 'alive', 'reconciling', 'resync', 'tutorial', 'stunned']) } : null,
       // Bench 2026-09-17: `heat` is the active slot's last $ALCD heat token, null until one has been seen

@@ -1,12 +1,12 @@
-// F345: the shield RECHARGE feel (Tony, live match 2026-09-24, app 0.4.11): "the hud animation is kinda chunky",
+// F348: the shield RECHARGE feel (Tony, live match 2026-09-24, app 0.4.11): "the hud animation is kinda chunky",
 // "it makes the sound like shields are full" before the pool is, and "shields online" came 3-4 s after the HUD
 // showed full (and on the second phone not at all).
 //  - Fewer, larger grants: a full pool in SHIELD_REGEN_GRANTS writes, and no readout animation or blink writes on
 //    the gun while a recharge runs, so the BLE queue holds nothing in front of SHIELDS ONLINE.
 //  - The phone's shield meter draws the recharge from the engine's own start and rate (`state().shieldRegen`).
 //
-// (The F344 header below is kept from the harness this file shares.)
-// F344: the Shields preset spawns at FULL shield (Tony, live match 2026-09-24, app 0.4.11: "after spawn and after you
+// (The F347 header below is kept from the harness this file shares.)
+// F347: the Shields preset spawns at FULL shield (Tony, live match 2026-09-24, app 0.4.11: "after spawn and after you
 // are vulnerable then they power up. you can die from a couple hits right after spawn"). Halo's rule: every life
 // starts with the shield up.
 //
@@ -89,14 +89,14 @@ const stationEntry = () => ({ role: 'station', id: 5, kind: 'respawn', team: 1, 
 function broken() {
   const h = harness();
   h.adv(3000);
-  assert.equal(h.eng.shield, 105, 'setup: full from the spawn (F344)');
+  assert.equal(h.eng.shield, 105, 'setup: full from the spawn (F347)');
   h.gun.shield = 0; h.frame('$HIR,4,0,19,2,105,0,3,*'); h.frame('$HP,45,0,0,*');
   assert.equal(h.eng.shield, 0, 'setup: broken');
   return h;
 }
 const isReadout = f => f.startsWith('$GLED,');
 
-test('F345: a full recharge stays inside its BLE write budget: a few large grants, no readout animation on the gun', () => {
+test('F348: a full recharge stays inside its BLE write budget: a few large grants, no readout animation on the gun', () => {
   const h = broken();
   const n = h.mark();
   h.adv(14000);
@@ -110,7 +110,7 @@ test('F345: a full recharge stays inside its BLE write budget: a few large grant
   assert.equal(h.eng.shield, 105);
 });
 
-test('F345: every regen grant is a silent pool write: `$LIFE,0,0,<step>,*` with no sound token', () => {
+test('F348: every regen grant is a silent pool write: `$LIFE,0,0,<step>,*` with no sound token', () => {
   const h = broken();
   const n = h.mark();
   h.adv(14000);
@@ -120,7 +120,7 @@ test('F345: every regen grant is a silent pool write: `$LIFE,0,0,<step>,*` with 
   assert.deepEqual(h.since(n).filter(f => f.startsWith('$BUMP')), [], 'no `$BUMP` at all');
 });
 
-test('F345: the engine publishes the recharge start and rate, so the phone can draw it smoothly', () => {
+test('F348: the engine publishes the recharge start and rate, so the phone can draw it smoothly', () => {
   const h = broken();
   h.adv(6600);
   const sr = h.eng.state().shieldRegen;
@@ -131,7 +131,7 @@ test('F345: the engine publishes the recharge start and rate, so the phone can d
   assert.ok(sr.step > 0, 'the grant size');
 });
 
-test('F345: the meter draws the recharge as a line from the engine clock, never a grant ahead of the gun', async () => {
+test('F348: the meter draws the recharge as a line from the engine clock, never a grant ahead of the gun', async () => {
   const { meterModel } = await import('../src/hud/shieldmeter.js');
   const sr = { on: true, charging: true, down: false, gaveUp: false, paused: false, delayMs: 6500, quietAt: 0, startedAt: 10_000, from: 0, step: 27, fullAt: 13_000 };
   const at = (now, shield) => meterModel({ phase: 'live', alive: true, shield, maxShield: 105, shieldRegen: sr }, now).fill;
