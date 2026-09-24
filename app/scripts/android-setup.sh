@@ -302,7 +302,7 @@ else:
         "        throw new GradleException(\n"
         "            \"Release signing is not configured. Set BRX_KEYSTORE, BRX_KEYSTORE_PASSWORD, \" +\n"
         "            \"BRX_KEY_ALIAS and BRX_KEY_PASSWORD, or write storeFile/storePassword/keyAlias/keyPassword \" +\n"
-        "            \"to android/keystore.properties or ~/.brx/keystore.properties. See app/README.md > Release signing.\"\n"
+        "            \"to the file BRX_KEYSTORE_PROPERTIES names, android/keystore.properties or ~/.brx/keystore.properties. See app/README.md > Release signing.\"\n"
         "        )\n"
         "    }\n"
         "}\n"

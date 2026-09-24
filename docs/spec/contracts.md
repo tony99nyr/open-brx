@@ -506,7 +506,7 @@ directions 2026-08-25). So attribution is **exact, victim-side, BLE-native** —
 **Node-observable events** (a node emits these about ITS gun/player):
 ```jsonc
 Event =
- | { type:"hit_taken",   t, match_id, node_id, player_id, shooter_num, shooter_team, dmg, ir_proto?, sensor?, weapon_id? } // $HIR + the $HP delta it caused
+ | { type:"hit_taken",   t, match_id, node_id, player_id, shooter_num, shooter_team, dmg, ir_proto?, sensor?, weapon_id? } // $HIR + the $HP delta it caused; weapon_id (S56) = the shooter's roster weapon whose $HIR magnitude matches, else the catalogue's; absent when none matches or two share it
  |   // weapon_id? [S56, A52]: the weapon the VICTIM's phone resolved from the shooter's roster row by
  |   // matching $HIR token 5 against that row's `hir` list; absent = unresolved or ambiguous (two of the
  |   // shooter's weapons share a magnitude). With no loadout match the phone tries the catalogue as a pickup,

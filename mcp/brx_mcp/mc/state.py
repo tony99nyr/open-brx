@@ -2039,7 +2039,7 @@ class Session:
 
         `push_config` and `_repush_lobby_config` retire acks while preserving READY. A roster that
         has not readied up can use this control instead of tapping each `HOST OVERRIDE`
-        (`set_ready(..., host_override=True)`) one player at a time. This is the SAME cure, for every
+        (`set_ready(..., host_override=True)`) one player at a time. It does what HOST OVERRIDE does, for every
         rostered, non-standby player at once (`self.players` never holds a benched record -- those
         live in `self.standby`).
 

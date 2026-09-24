@@ -568,3 +568,10 @@ def test_the_cli_refuses_an_unknown_flag_before_it_connects():
                  ["AA", "BB", "--stream", "$PING,*", "--repeat", "2"]):
         with raises(SystemExit):
             cli._dispatch_raw_bytes(args)
+
+
+def test_the_cli_refuses_segment_and_stream_together_before_it_connects():
+    # Doc-rot 2026-09-23: both were accepted and --stream silently won, so a --segment control never ran.
+    from brx_mcp import __main__ as cli
+    with raises(SystemExit):
+        cli._dispatch_raw_bytes(["AA", "--segment", "$PING,*", "--stream", "$PING,*", "--repeat", "2"])

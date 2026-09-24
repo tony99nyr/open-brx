@@ -994,6 +994,10 @@ def _dispatch_raw_bytes(rest: list[str]) -> None:
     if len(positional) != 1 or (not segments and stream is None):
         print(__doc__, file=sys.stderr)
         sys.exit(2)
+    if segments and stream is not None:
+        # Doc-rot 2026-09-23: both used to be accepted and --stream silently won.
+        print("raw-bytes: use --segment or --stream, not both", file=sys.stderr)
+        sys.exit(2)
     address = positional[0]
     asyncio.run(_raw_bytes(address, segments=segments, stream=stream, repeat=repeat, chunk=chunk,
                            delay_ms=delay_ms, delays_ms=delays_ms, read_ms=read_ms,

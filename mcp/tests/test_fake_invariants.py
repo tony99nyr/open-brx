@@ -1,4 +1,7 @@
-"""Behaviour shared by the real Session, FakeNet and the wire-level MockNode."""
+"""Behaviour shared by the real Session, FakeNet and the wire-level MockNode (fake_invariants.json).
+
+The same ids are asserted against the console's in-browser mock (`webapp/mc/src/mock/backend.ts`) by
+`webapp/mc/test/fake-invariants.test.ts`; each side fails when an id has no case."""
 import json
 from pathlib import Path
 

@@ -11,7 +11,7 @@ instead of actually waiting), and `mgr` accepted as a duck-typed parameter so a 
 that never touches bleak/BLE hardware. `Clock` itself is imported from `soak.runner` rather than
 copied: it is a generic time source with nothing soak-specific in it.
 
-Gun facts this module leans on (from the task brief, docs/FOLLOWUPS.md F297):
+Gun facts this module leans on (docs/FOLLOWUPS.md F297):
   * `$VERSION,*` replies `$VERSION,<fw>,<hds>,<n>,,<host>,*` -- token 2 (`hds`) is `hds.<n>` when a
     headset is linked, `?` when it is not. `parse_version()` in `protocol.py` does not surface this
     token (it was never needed there), so `_headset_state()` below tokenizes the raw frame itself.
