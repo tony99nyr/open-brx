@@ -17,7 +17,9 @@
  *
  * Serial (115200), line-based commands (the brx-mcp `ir_emit` tool speaks these):
  *   TX <bits>        emit one frame (bits like 1010...; up to ~40 chars)
- *   TXN <n> <bits>   emit the frame n times (burst)
+ *   TXN <n> <bits> [gap_ms]   emit the frame n times (burst). No gap: today's spacing (the 40 ms LED hold plus
+ *                    20 ms). With gap_ms (0-10000): no LED hold, gap_ms of silence after each word, so words start
+ *                    (word + gap_ms) apart (F321's spacing ladder). The ack echoes gap= so the host can tell.
  *   PING             -> "PONG"
  *
  * NOTE: arduino-esp32 v3.x LEDC API (ledcAttach/ledcWrite by PIN). If you're on
@@ -59,7 +61,7 @@ inline void carrierOff() { ledcWrite(IR_TX_PIN, 0); }
 void mark(uint32_t us)  { carrierOn();  delayMicroseconds(us); carrierOff(); }
 void space(uint32_t us) { delayMicroseconds(us); }
 
-void sendFrame(const String& bits) {
+void sendFrame(const String& bits, bool hold = true) {
   digitalWrite(STATUS_LED, HIGH);  // visible "transmitting" indicator
   // NB: no frame-long noInterrupts() — the 38 kHz carrier is hardware (LEDC) and
   // delayMicroseconds() is a cycle-count busy-wait, so both work with interrupts
@@ -72,7 +74,7 @@ void sendFrame(const String& bits) {
   }
   // no explicit end-of-frame marker: after the last bit the carrier stays off, so the
   // receiver's pulseIn(LOW) times out to 0 — satisfying a decoder's "<250us" end check.
-  delay(LED_HOLD_MS);              // hold the LED so a single frame is clearly visible
+  if (hold) delay(LED_HOLD_MS);    // hold the LED so a single frame is clearly visible (skipped for a TXN gap run)
   digitalWrite(STATUS_LED, LOW);
 }
 
@@ -91,10 +93,23 @@ void handleLine(String line) {
     int sp = line.indexOf(' ', 4);
     if (sp < 0) { Serial.println("ERR TXN"); return; }
     int n = line.substring(4, sp).toInt();
-    String bits = line.substring(sp + 1); bits.trim();
-    for (int i = 0; i < n; i++) { sendFrame(bits); delay(20); }
+    String rest = line.substring(sp + 1); rest.trim();
+    int sp2 = rest.indexOf(' ');
+    String bits = sp2 < 0 ? rest : rest.substring(0, sp2);
+    long gap = -1;                                  // -1 = no gap given: today's behaviour
+    if (sp2 >= 0) {
+      String g = rest.substring(sp2 + 1); g.trim();
+      gap = g.toInt();
+      if (!g.length() || gap < 0 || gap > 10000 || (gap == 0 && g != "0")) { Serial.println("ERR TXN gap 0-10000 ms"); return; }
+    }
+    for (int i = 0; i < n; i++) {
+      if (gap < 0) { sendFrame(bits); delay(20); }
+      else { sendFrame(bits, false); if (gap) delay(gap); }
+    }
     Serial.print("SENT n="); Serial.print(n);
-    Serial.print(" bits="); Serial.println(bits.length());
+    Serial.print(" bits="); Serial.print(bits.length());
+    if (gap >= 0) { Serial.print(" gap="); Serial.print(gap); }
+    Serial.println();
     return;
   }
   if (line.startsWith("AUTO")) {
@@ -114,7 +129,7 @@ void setup() {
   ledcAttach(IR_TX_PIN, CARRIER_HZ, CARRIER_RES);  // v3.x API
   carrierOff();
   Serial.println("# BRX IR emit ready (ESP32-S3, IR LED on GPIO5).");
-  Serial.println("# Commands: TX <bits> | TXN <n> <bits> | AUTO <bits>|OFF | PING");
+  Serial.println("# Commands: TX <bits> | TXN <n> <bits> [gap_ms] | AUTO <bits>|OFF | PING");
   if (autoBits.length()) {
     Serial.print("# AUTO-TX armed, every "); Serial.print(AUTO_TX_INTERVAL_MS);
     Serial.print(" ms, bits="); Serial.println(autoBits.length());

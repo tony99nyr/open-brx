@@ -25,7 +25,7 @@
       output command does; `diag-game` runs the whole catalog in brx_mcp/diag/ and prints
       a pass/fail scorecard.
   python -m brx_mcp ir-capture [port] [seconds]        # capture BRX IR frames via the ESP32 bridge
-  python -m brx_mcp ir-emit <bits> [port] [repeat] [--wait]  # emit an IR frame via the ESP32 bridge
+  python -m brx_mcp ir-emit <bits> [port] [repeat] [--gap MS] [--wait]  # emit an IR frame via the ESP32 bridge (--gap: F321, 0-10000 ms after each word)
       the command returns as soon as the board acks, but it keeps transmitting for
       ~0.15s per repeat (repeat=1000 is ~2.5 min) — pass --wait (any position) to
       block until it is actually done, or watch board A yourself
@@ -1381,7 +1381,7 @@ def _ir_range(port: str | None, seconds: float, expected: int | None) -> None:
         print("-> marginal: bursts arrive but rarely decode clean — near the edge of range.")
 
 
-def _ir_emit(bits: str, port: str | None, repeat: int, wait: bool = False) -> None:
+def _ir_emit(bits: str, port: str | None, repeat: int, wait: bool = False, gap_ms: int | None = None) -> None:
     """Emit one IR frame `repeat` times via the ESP32 bridge.
 
     `IRBridge.emit` sends `TXN <repeat> <bits>` and returns as soon as the firmware
@@ -1392,16 +1392,23 @@ def _ir_emit(bits: str, port: str | None, repeat: int, wait: bool = False) -> No
     up front so that is never a surprise, and offer `--wait` to block until it is
     actually over.
     """
-    from .irbridge import IRBridge
-    est_s = repeat * 0.15
+    from .irbridge import GAP_MAX_MS, WORD_MS, IRBridge
+    if gap_ms is not None and not (0 <= gap_ms <= GAP_MAX_MS):
+        raise SystemExit(f"--gap must be 0-{GAP_MAX_MS} ms, got {gap_ms}")
+    # F321: with a gap the board skips its LED hold, so words start (word + gap) apart
+    est_s = repeat * (0.15 if gap_ms is None else (WORD_MS + gap_ms) / 1000)
     if repeat > 1:
         print(f"# repeat={repeat} -> estimated run time ~{est_s:.0f} s "
               "(this command returns immediately; the board keeps transmitting "
               "after that — use --wait or watch board A before believing it's done)",
               file=sys.stderr)
     br = IRBridge(port)
-    print(f"# emitting {bits!r} ×{repeat} on {br.port}", file=sys.stderr)
-    print(br.emit(bits, repeat))
+    print(f"# emitting {bits!r} ×{repeat} on {br.port}" + (f", gap {gap_ms} ms" if gap_ms is not None else ""), file=sys.stderr)
+    ack = br.emit(bits, repeat) if gap_ms is None else br.emit(bits, repeat, gap_ms=gap_ms)
+    print(ack)
+    if gap_ms is not None and "gap=" not in ack:
+        print("# WARNING: the board did not echo gap= -- it runs an older ir_emit.ino, which reads the gap as more bits. "
+              "Reflash the emitter board (Tony) before trusting this run.", file=sys.stderr)
     br.close()
     if wait:
         sleep_s = est_s + 1
@@ -1805,10 +1812,17 @@ def _dispatch(cmd: str, args: list[str]) -> None:
     elif cmd == "ir-emit" and len([a for a in args[1:] if a != "--wait"]) > 0:
         wait = "--wait" in args
         rest = [a for a in args[1:] if a != "--wait"]
+        gap_ms = None
+        if "--gap" in rest:
+            k = rest.index("--gap")
+            if k + 1 >= len(rest) or not rest[k + 1].isdigit():
+                raise SystemExit("--gap needs a whole number of milliseconds (0-10000)")
+            gap_ms = int(rest[k + 1])
+            del rest[k:k + 2]
         bits = rest[0]
         port = rest[1] if len(rest) > 1 and not rest[1].isdigit() else None
         repeat = next((int(a) for a in rest[1:] if a.isdigit()), 1)
-        _ir_emit(bits, port, repeat, wait=wait)
+        _ir_emit(bits, port, repeat, wait=wait, gap_ms=gap_ms)
     elif cmd == "reset" and len(args) > 1:
         asyncio.run(_reset(args[1]))
     elif cmd == "rename" and len(args) > 2:

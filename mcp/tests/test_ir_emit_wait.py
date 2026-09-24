@@ -28,9 +28,11 @@ class FakeBridge:
         self.calls: list[tuple[str, int]] = []
         FakeBridge.instances.append(self)
 
-    def emit(self, bits: str, repeat: int) -> str:
-        self.calls.append((bits, repeat))
-        return "ACK"
+    ack = "ACK"   # a test sets it to mimic an old or a new ir_emit.ino
+
+    def emit(self, bits: str, repeat: int, gap_ms: int | None = None) -> str:
+        self.calls.append((bits, repeat) if gap_ms is None else (bits, repeat, gap_ms))
+        return FakeBridge.ack
 
     def close(self) -> None:
         pass
@@ -116,7 +118,8 @@ def _dispatch_capturing_ir_emit_call(argv: list[str]) -> tuple:
     returns the (bits, port, repeat, wait) tuple it was called with."""
     calls: list[tuple] = []
     real = cli._ir_emit
-    cli._ir_emit = lambda bits, port, repeat, wait=False: calls.append((bits, port, repeat, wait))
+    cli._ir_emit = lambda bits, port, repeat, wait=False, gap_ms=None: calls.append(
+        (bits, port, repeat, wait) if gap_ms is None else (bits, port, repeat, wait, gap_ms))
     try:
         cli._dispatch("ir-emit", argv)
     finally:
@@ -149,3 +152,81 @@ def test_dispatch_positional_parsing_unchanged_without_wait():
     # bits-only, no port/repeat given -- existing positional parsing must still work
     got = _dispatch_capturing_ir_emit_call(["ir-emit", "101010"])
     assert got == ("101010", None, 1, False)
+
+
+# ---- F321: the TXN gap (2026-09-24) ---------------------------------------------------------------
+
+def test_gap_reaches_the_bridge_and_sets_the_estimate():
+    def run(slept):
+        FakeBridge.ack = "SENT n=10 bits=25 gap=60"
+        out = _emit_capturing_stderr("1" * 25, None, 10, wait=True, gap_ms=60)
+        assert FakeBridge.instances[0].calls == [("1" * 25, 10, 60)]
+        assert slept == [10 * (37 + 60) / 1000 + 1], slept   # words start (word + gap) apart
+        assert "WARNING" not in out
+    _with_fake_bridge_and_sleep(run)
+    FakeBridge.ack = "ACK"
+
+
+def test_gap_warns_when_the_board_runs_old_firmware():
+    def run(slept):
+        FakeBridge.ack = "SENT n=5 bits=28"   # no gap= : an old ir_emit.ino read the gap as bits
+        out = _emit_capturing_stderr("1" * 25, None, 5, gap_ms=30)
+        assert "older ir_emit.ino" in out
+    _with_fake_bridge_and_sleep(run)
+    FakeBridge.ack = "ACK"
+
+
+def test_gap_out_of_bounds_is_refused_before_anything_is_sent():
+    def run(slept):
+        for bad in (-1, 10001):
+            try:
+                _emit_capturing_stderr("1" * 25, None, 5, gap_ms=bad)
+            except SystemExit as e:
+                assert "0-10000" in str(e)
+            else:
+                raise AssertionError(f"gap {bad} was accepted")
+        assert FakeBridge.instances == []
+    _with_fake_bridge_and_sleep(run)
+
+
+def test_no_gap_keeps_todays_call_and_estimate():
+    def run(slept):
+        _emit_capturing_stderr("1" * 25, None, 4, wait=True)
+        assert FakeBridge.instances[0].calls == [("1" * 25, 4)]
+        assert slept == [4 * 0.15 + 1]
+    _with_fake_bridge_and_sleep(run)
+
+
+def test_bridge_builds_the_gap_command_and_bounds_it():
+    import brx_mcp.irbridge as ib
+    sent = []
+    br = ib.IRBridge.__new__(ib.IRBridge)
+    br._ser = type("S", (), {"write": lambda self, b: sent.append(b.decode())})()
+    br._readlines = lambda t: ["SENT n=3 bits=25 gap=0"]
+    assert "gap=0" in br.emit("1" * 25, 3, gap_ms=0)
+    assert sent == [f"TXN 3 {'1' * 25} 0\n"]
+    try:
+        br.emit("1" * 25, 3, gap_ms=20000)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("gap 20000 was accepted")
+    sent.clear()
+    br.emit("1" * 25, 1)
+    assert sent == [f"TX {'1' * 25}\n"], "no gap: today's command"
+
+
+def test_dispatch_gap_anywhere_among_the_arguments():
+    assert _dispatch_capturing_ir_emit_call(["ir-emit", "101010", "COM8", "10", "--gap", "60"]) == ("101010", "COM8", 10, False, 60)
+    assert _dispatch_capturing_ir_emit_call(["ir-emit", "--gap", "0", "101010", "COM8", "5", "--wait"]) == ("101010", "COM8", 5, True, 0)
+
+
+def test_dispatch_gap_without_a_number_is_refused():
+    for argv in (["ir-emit", "101010", "COM8", "5", "--gap"], ["ir-emit", "101010", "--gap", "fast"]):
+        try:
+            cli._dispatch("ir-emit", argv)
+        except SystemExit as e:
+            assert "--gap" in str(e)
+        else:
+            raise AssertionError(f"{argv} was accepted")
+
