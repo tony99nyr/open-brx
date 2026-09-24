@@ -241,3 +241,25 @@ BLE; Tony fired a gun by hand. Full evidence: `experiment-log/2026-09.md`, 2026-
 - **Two retractions:** the `PINSCAN` floating-pin reading (invalid, this receiver is RMT-only) and the claimed
   front-of-word decoder bug (`fold_glitches` already handles it).
 
+## Results (2026-09-24, late afternoon): the onboard receiver is the limit; an external VS1838B on Grove G9 works
+
+Stick on COM10, rig receiver (VS1838B) on COM7, rig emitter on COM8. Full evidence:
+`experiment-log/2026-09.md`, the 2026-09-24 late-afternoon entry.
+
+- **Optical control PASSES: a Sony TV remote decodes on the onboard receiver (G42) at 1 m** (5 frames, each with
+  the expected 2.29-2.46 ms header). Same spot, same 30 cm distance, A/B: the remote gave 2 headers from 3
+  presses; the rig's 38 kHz emitter gave 0 syncs from 3 words. **Conclusion: the onboard receiver's optics and
+  RMT path work; it does not pick up BRX-style IR, gun or emitter.** M5's own IR example matches our setup, an
+  April-2026 M5 forum post reports the same "sends but can't receive" symptom, and M5 warns reception is
+  abnormal under 30 cm.
+- **External receiver PROVEN: a VS1838B on Grove G9 decodes gun shots.** Sharing the rig's VS1838B (3.3 V) on
+  the Stick's Grove G9 with a common ground first went dead whenever the Stick's pin was live (A/B/A with the
+  remote: rig heard 0, 8, then 0 bursts). Cause: the Stick's pin state dragged the VS1838B's weak pull-up low.
+  Fix: an internal pull-up on the Grove receive pin. With the fix, both boards decoded the remote cleanly, and
+  the Stick decoded 3 of 3 real gun shots at 1 m as whole 25-bit words (player 4, team 1, magazine 22, parity
+  OK), cleaner than the rig, which stitched the same shots from fragments.
+- **Firmware (`0f50605e`):** `RXPIN 42|9|10`, persisted, refuses the TX pin; internal pull-up on a Grove RX pin;
+  the `STATUS` RX line names the active pin.
+- **F314: root cause found, workaround proven, row stays open.** Not yet built: a standalone wiring (VS1838B
+  powered from G10, not the shared rig) and a HILL capture test with real shots on a standalone Stick.
+

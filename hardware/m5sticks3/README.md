@@ -30,6 +30,11 @@ How it fits the game:
 
 ## Status
 
+**2026-09-24, late afternoon: F314's root cause is found, and a workaround is proven.** The onboard receiver
+(G42) decodes an ordinary TV remote fine but not BRX-style IR at any distance tried; an external VS1838B on a
+Grove pin (`RXPIN 9`/`RXPIN 10`) decoded 3 of 3 real gun shots at 1 m. See "External IR receiver" below. F314
+stays open until a standalone Stick (its own receiver power, not shared) captures a HILL by being shot.
+
 **2026-09-24: the Mission Control link (H8) is built and desk-verified only** -- host tests plus a
 clean `stick.py compile` against the real toolchain, nothing run on a Stick yet. See "Mission
 Control link (H8)" below.
@@ -153,7 +158,9 @@ The capture and emit line formats are the DevKitC rig's, so `mcp/tools/native_ca
 | `STATUS` | mode, owner, per-team charges, captures, advert seq and count, words heard, settings, the live UUID |
 | `MODE BRIDGE\|HILL` | ownership mode, persisted. Resets the point |
 | `ID <n>` · `GAME <n>` | advert bytes 6-7 and 13, persisted; a republish follows |
-| `TXPIN 46\|9\|10` | onboard LED or either Grove signal pin, persisted |
+| `TXPIN 46\|9\|10` | onboard LED or either Grove signal pin, persisted; refuses to double as the RX pin |
+| `RXPIN 42\|9\|10` | onboard receiver or either Grove pin, persisted; refuses to double as the TX pin. An internal pull-up is enabled on a Grove pin (see "External IR receiver" below). The `STATUS` RX line names the active pin |
+| `BL <n>` | screen brightness 0-255, not persisted; bench-only, for A/B-ing the backlight-PWM noise against the receiver (`BACKLIGHT_DIM 60` is the shipped idle level) |
 | `RESET` | neutral, charges cleared |
 
 Every received burst except the Stick's own echo prints `RAW n edges=.. us=[...]`, `DECODE bits=..
@@ -371,6 +378,18 @@ unresolved upstream bug on the ESP32-S3 (espressif/esp-idf#17811).
 **Echo filter.** The onboard LED and receiver are millimetres apart, so the sketch drops any
 received word that matches what it just sent within 150 ms of sending it, to stop self-hearing.
 
+**External IR receiver (bench 2026-09-24, F314).** The onboard receiver (G42) hears an ordinary TV remote fine,
+so its optics and RMT path are sound, but it does not decode BRX-style IR from a gun or an emitter at any
+distance tried. `RXPIN 9` or `RXPIN 10` moves receive to a Grove pin for an external 38 kHz receiver (a VS1838B
+or similar); the firmware enables an internal pull-up on that pin, because the receiver's own pull-up is weak
+enough that the Stick's pin state can drag it low. A VS1838B wired this way, sharing 3.3 V power with another
+receiver already on the bench, decoded 3 of 3 real gun shots at 1 m as whole 25-bit words.
+
+Safe standalone wiring (not yet built): power the VS1838B's VCC from a Grove pin driven HIGH at 3.3 V (the part
+draws about 1 mA and runs on 2.7-5.5 V), OUT to the Grove RX pin with the internal pull-up, GND to the Grove
+black wire. Leave the Grove port's red 5 V wire unused. **Warning: never power a VS1838B from the Grove port's
+5 V rail while its OUT pin sits on a Stick GPIO.** That puts 5 V on a 3.3 V pin.
+
 ## Screens
 
 `mockups/render.py` is **the design of record** (Tony approved it 2026-09-24): every screen, its
@@ -533,10 +552,10 @@ the register map is not in the installed M5Unified source, so the firmware does 
 
 - **F314: IR receive of a gun shot is unproven.** The rerun plan, with a fixed-distance ladder and
   controls, is `docs/bench-sticks3-2026-09-23.md`'s Rerun section.
-- **The Grove receiver swap test.** If no distance decodes cleanly on the onboard receiver, the next
-  step is to wire a known part (a Seeed Grove IR receiver, Vishay TSOP382 family, or a VS1838B) to a
-  Grove pin instead. The firmware today only reads G42 for receive; this test needs a small firmware
-  change to read a Grove pin, and that change is **not built**.
+- **The standalone external-receiver wiring.** `RXPIN 9`/`RXPIN 10` and the external-receiver bench proof are
+  built (see "External IR receiver" above), but only with the receiver sharing power with another one already
+  on the bench. The standalone wiring (VS1838B powered from a Grove pin, not borrowed) and a HILL capture test
+  with real shots on a standalone Stick are **not yet built**; this closes F314.
 - **H8**, whether a Stick should carry its own `station_source` value instead of borrowing
   `grenade`'s: `docs/spec/utility.md` §5g.7. (The Wi-Fi link itself is built; this is the one loose
   end §5g.7 left open and it does not block arming a Stick today.)
