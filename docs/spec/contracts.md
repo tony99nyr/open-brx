@@ -166,8 +166,8 @@ GameConfig {
                  preset: "standard" | "shields" | "hardcore" | "custom" },
   // [S45, weapon-design.md §7.3] `max_shield` IS the $PSET t5 CAPACITY now (a host field where there
   // used to be none — the compiler armed a fixed 70 on every game, preset or not); the pool itself
-  // still starts at 0 and fills from an IR fn-11 grant or, over BLE, from $LIFE,0,0,<n>,* (bench-proven
-  // 2026-09-11). `preset` is DERIVED, never authoritative on its own — `compile.resolve_health_preset()`
+  // is 0 after $SPAWN and fills from an IR fn-11 grant or, over BLE, from $LIFE,0,0,<n>,* (bench-proven
+  // 2026-09-11). F344: in a shields game the node's spawn and revive bursts end with that fill to the ceiling. `preset` is DERIVED, never authoritative on its own — `compile.resolve_health_preset()`
   // re-reads it from the three numbers on every PUT, mirroring `LoadoutPolicy.preset`. Named presets:
   // Standard 45/70/0 (no shield at all — the old free-for-everyone constant is gone), Shields 45/0/105
   // (armour 0 is what turns the S29 recharge on; 45, not 30, because armour piercing ignores the

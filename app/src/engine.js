@@ -110,6 +110,12 @@ const RELOAD_NAG_FIRST = 5, RELOAD_NAG_EVERY = 3;
 const SHIELD_REGEN_DELAY_MS = 6500;   // quiet since the last damage before a refill may start
 const SHIELD_REGEN_STEP = 10;         // `$LIFE,0,0,10,*` -- the grant the bench refilled with
 const SHIELD_REGEN_STEP_MS = 300;     // one grant per this: 0 -> 120 in 4.1 s
+// F344 (Tony, live match 2026-09-24: "you can die from a couple hits right after spawn"): a Shields life starts at
+// FULL shield, Halo's rule. `$SPAWN` leaves the shield POOL at 0 on hardware ($PSET t5 is a ceiling), so every
+// spawn and revive burst ends with one additive `$LIFE,0,0,<max>,*` that the gun clamps at t5. The gun answers it
+// with `$HP`; that rise is the spawn fill, not a recharge, so it says nothing (SHIELD_FILL_ECHO_MS).
+export const SPAWN_SHIELD_FULL = true;
+const SHIELD_FILL_ECHO_MS = 5000;     // a shield rise this soon after a spawn fill is the fill's own echo (under SHIELD_REGEN_DELAY_MS, so a recharge never reads as one)
 // A gun that stops echoing `$HP` would otherwise be granted at forever, so a refill is capped at the grants a
 // full pool can possibly need plus slack for the ones that landed while a hit was in flight.
 const SHIELD_REGEN_MAX_GRANTS_SLACK = 3;
@@ -2447,7 +2453,7 @@ export class Engine {
     const p = this._armPending, rp = this._respawnProfile(), now = this.now();
     if (!p || !p.shield || !rp || !rp.shield_on || now - this._shieldAt < SHIELD_REASSERT_MS) return;
     this._shieldAt = now;
-    this._write([rp.shield_on], 'shield after hit');
+    this._write([rp.shield_on], 'protection light after hit');
   }
   /** F209: end spawn protection. Called on the gun's first shot (`_onAmmo`) or at SPAWN_PROTECT_MAX_MS (`tick`), and
    *  by the reconcile end and the operator resync. Never arms a gun that died, ended or is no longer live.
@@ -2466,8 +2472,9 @@ export class Engine {
     // 2026-09-19: `off` says whether this life was protected (a timed life with protection 0 writes no `$TMP` at all);
     // a shielded station life ends with the headset back on its rest frame.
     const off = p.off !== false && tmp ? [this.frames.spawn_protect_off] : [];
-    const shieldOff = p.shield && rp && rp.shield_off ? [rp.shield_off] : [];
-    const frames = [...take, ...off, ...shieldOff];
+    // F344: `shield_off` is the station's protection LIGHT going dark (a headset frame), never the shield POOL.
+    const lightOff = p.shield && rp && rp.shield_off ? [rp.shield_off] : [];
+    const frames = [...take, ...off, ...lightOff];
     if (!frames.length) { this._changed(); return; }
     // F11 fix (playtest review 2026-09-13): `link.write` resolves `false` on a GATT error instead of
     // rejecting, so a failed write here used to leave the gun on fn 28 (no real $SIR table) for the
@@ -2475,7 +2482,7 @@ export class Engine {
     // (or the next shot) retries. Gated the same way the write itself was gated, so a life that ended
     // or moved on while the write was in flight is never re-armed; the retry itself only fires once the
     // link is back up (`tick()` gates the cap path on `bleUp`), so this cannot spin on a dead link.
-    const r = this._write(frames, off.length ? `end spawn protection (${why})${take.length ? ` + hit table ${take.length}r` : ''}${shieldOff.length ? ' + shield off' : ''}` : `arm hit reception (${why})`);
+    const r = this._write(frames, off.length ? `end spawn protection (${why})${take.length ? ` + hit table ${take.length}r` : ''}${lightOff.length ? ' + protection light off' : ''}` : `arm hit reception (${why})`);
     // Claimed at CALL time, as `_write` marks the opposite: the writes go out in call order, so a later head or
     // `$CLEAR` clears this again. A failed write takes the claim back, unless such a write already has.
     const gen = this._sirGen;   // read AFTER the call: the take's own rows bumped it
@@ -2563,6 +2570,14 @@ export class Engine {
     const f = this.frames && this.frames.cues && this.frames.cues[key];
     if (f && !this.cuesFired.has(key)) { this.cuesFired.add(key); this._write([f], `cue ${key}`); }
   }
+  /** F344: the pool write that makes a Shields life start at full shield: one additive `$LIFE,0,0,<max>,*` placed after
+   *  the burst's `$SPAWN` (which leaves the pool at 0), clamped by the gun at `$PSET` t5. Only a shields game
+   *  (`shieldRegenOn`, armour 0): Standard ships shield 0, and an armoured game keeps its IR-filled shield.
+   *  `[]` when SPAWN_SHIELD_FULL is off. A spawn read-back that follows the burst should read shield = maxShield. */
+  _spawnShieldFill() {
+    if (!SPAWN_SHIELD_FULL || !this.shieldRegenOn) return [];
+    return [`$LIFE,0,0,${this.maxShield},*`];
+  }
   _spawn(withCountdown) {
     if (!this.frames) return;
     if (withCountdown && !this.cuesFired.has('countdown')) this._cue('countdown');
@@ -2580,7 +2595,8 @@ export class Engine {
     const rpSpawn = this._respawnProfile();
     const late = rpSpawn && !this._sirLive ? this._pickTable('sir_pool') : [];
     if (rpSpawn && !late.length && !this._sirLive) this.log('*** T-0 spawn: no live hit table to write (no sir_pool) ***', 'le');
-    this._writeLife([...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), SFLASH, ...(sp.frame ? [sp.frame] : [])], 'spawn' + (late.length ? ` + hit table ${late.length}r (late)` : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : ''), life);
+    const fill = this._spawnShieldFill();   // F344: a Shields life starts at full shield
+    this._writeLife([...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), ...fill, SFLASH, ...(sp.frame ? [sp.frame] : [])], 'spawn' + (late.length ? ` + hit table ${late.length}r (late)` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : ''), life);
     if (late.length) this._sirLive = true;
     this.hurtFired = false;        // the low-health alert is once per LIFE
     this._pendingHurtWrite = false;
@@ -2596,6 +2612,7 @@ export class Engine {
     this._cue('klaxon');
     // Spawn shield is ALWAYS 0 on hardware -- $PSET t5 is a capacity filled by an fn-11
     // grant, never a starting pool (bench 2026-08-27).
+    this._shieldFillAt = fill.length ? this.now() : 0;   // F344: the pool is 0 until the gun answers the fill
     this.spawned = true; this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.killedBy = null; this.downReason = null; this.deadAt = 0; this.reloading = null; this._reloadOutcome = null; this.held = {};
     this.poolSrc = 'model';        // R2-3: those two numbers are config.health, not the gun's answer
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
@@ -3406,7 +3423,8 @@ export class Engine {
     const kind = rp && stationId != null && !flipped ? 'station' : 'timed';
     const revive = flipped || (rp ? (kind === 'station' ? rp.revive_station : rp.revive) : this.frames.revive);
     const life = this._lifeSeq = (this._lifeSeq || 0) + 1;   // pl3: a lost write is only this life's news
-    this._writeLife([...(ps.frame ? [ps.frame] : []), ...sir, ...revive, ...(sp.frame ? [sp.frame] : [])], 'revive' + (flipped ? ' (turned)' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : ''), life);
+    const fill = this._spawnShieldFill();   // F344: a Shields life starts at full shield
+    this._writeLife([...(ps.frame ? [ps.frame] : []), ...sir, ...revive, ...fill, ...(sp.frame ? [sp.frame] : [])], 'revive' + (flipped ? ' (turned)' : '') + (fill.length ? ` + shield pool ${this.maxShield}` : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : ''), life);
     this.hurtFired = false;
     this._pendingHurtWrite = false;
     // pl3 (2026-09-17): a swap or a heat reading from the last life must not follow the player into this one. An
@@ -3421,6 +3439,7 @@ export class Engine {
     this._recoilArm('revive');   // S42: a respawn resets to the weapon's ceiling
     this._poisonClear('respawn'); this._smokeClear('respawn'); this.gunAcc = null; this._accZeroAt = null; this._smokeHirAt = null; this._dotEcho = null; this._dotKill = null;   // S16/S53: a new life carries neither
     this._resetLifeLedger();   // S56: nor does the "what hit me" ledger
+    this._shieldFillAt = fill.length ? this.now() : 0;   // F344: the pool is 0 until the gun answers the fill
     this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.deadAt = 0; this.killedBy = null; this.downReason = null;
     this.poolSrc = 'model';        // R2-3: a fresh life, and again from config.health until the gun speaks
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
@@ -6031,7 +6050,12 @@ export class Engine {
         // spawn/respawn refill out of it — that has its own 'redeploy' moment.
         const gains = [['health', hp - this._prevHp], ['armor', armor - this._prevArmor],
                        ['shield', shield - this._prevShield]].filter(g => g[1] > 0);
-        if (gains.length) {
+        // F344: the gun's answer to the spawn fill. The life started full; this is not a pickup or a recharge.
+        const fillEcho = gains.length && gains[0][0] === 'shield' && this._shieldFillAt && this.now() - this._shieldFillAt <= SHIELD_FILL_ECHO_MS;
+        if (fillEcho) {
+          if (shield >= this.maxShield) { this._shieldFillAt = 0; this._shieldCharged(); }
+          this.log(`spawn shield fill: ${shield}/${this.maxShield}`, 'li');
+        } else if (gains.length) {
           gains.sort((a, b) => b[1] - a[1]);
           this.moment = { kind: 'gain', at: this.now(),
             data: { pool: gains[0][0], amount: gains[0][1], hp, armor, shield } };

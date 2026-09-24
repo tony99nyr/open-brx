@@ -25,6 +25,8 @@ const MAX_SHIELD = 70;                          // `harness()`'s own default shi
                                                  // `health.max_shield` field now; the golden bundle's OWN
                                                  // default is 0, Standard's shape -- see `shieldCeiling`)
 
+const FILL = `$LIFE,0,0,${MAX_SHIELD},*`;   // F344: the spawn fill a shields life ends its burst with
+
 function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 function harness({ shields = false, shieldCeiling = MAX_SHIELD } = {}) {
@@ -59,7 +61,9 @@ function harness({ shields = false, shieldCeiling = MAX_SHIELD } = {}) {
     count(frame) { return writes.filter(w => w === frame).length; },
     // F264: the dead-gun probe is a `$LIFE` frame too, so counting the command word alone counts questions as
     // pool changes. `isPoolProbe` is the one reading of that distinction; see its comment in engine.js.
-    grants() { return writes.filter(w => w.startsWith('$LIFE,') && !isPoolProbe(w)).length; },
+    // F344: a shields life starts with the spawn FILL (`$LIFE,0,0,<max>,*`) in its burst; that is not a recharge grant.
+    grants() { return writes.filter(w => w.startsWith('$LIFE,') && !isPoolProbe(w) && w !== FILL).length; },
+    fills() { return writes.filter(w => w === FILL).length; },
     /** Advance time the way a real gun would answer: every `$LIFE` the node writes comes back as the `$HP`
      *  echo it earned, clamped at the ceiling. Without this the node is granting into a void and the cap
      *  (rightly) stops it, so a test of the refill must play the gun's side. */
@@ -194,8 +198,10 @@ const DELAY = 6500;
 function shielded() {
   const h = harness({ shields: true });
   assert.equal(h.eng.shieldRegenOn, true, 'setup: this game recharges shields');
-  h.f(`$HP,30,0,${MAX_SHIELD},*`);                // the opening refill, already done
-  assert.equal(h.count(ONLINE), 1, 'setup: charged once');
+  assert.equal(h.fills(), 1, 'setup: the spawn filled the shield (F344)');
+  h.f(`$HP,30,0,${MAX_SHIELD},*`);                // the gun's answer to that fill
+  assert.equal(h.eng.shield, MAX_SHIELD, 'setup: full');
+  assert.equal(h.count(ONLINE), 0, 'setup: a spawn fill is not a recharge, so it is silent');
   return h;
 }
 
@@ -220,12 +226,12 @@ test('S29: break, heartbeat, refill, online -- the whole cycle', () => {
   // tick as `shield_charging` pass, because it lands just before it in the stream and the slice cannot see it.
   assert.equal(h.count(LOOP), Math.floor(DELAY / 1940), 'and it kept time all the way to it, and no further');
   assert.equal(h.eng.shield, MAX_SHIELD, 'the pool came back');
-  assert.equal(h.count(ONLINE), 2, 'and says so, once');
+  assert.equal(h.count(ONLINE), 1, 'and says so, once');
   assert.equal(h.count(UP), 0, 'never the per-grant line: twelve of those would cut each other off');
   assert.equal(h.grants(), MAX_SHIELD / 10, 'exactly the grants a full pool needs');
   h.run(4000);
   assert.equal(h.grants(), MAX_SHIELD / 10, 'and it stops granting once the gun says full');
-  assert.equal(h.count(ONLINE), 2, 'no second announcement');
+  assert.equal(h.count(ONLINE), 1, 'no second announcement');
 });
 
 test('S29: damage restarts the clock -- the shield comes back only when you break contact', () => {
@@ -290,7 +296,8 @@ test('S29: a dead gun is not refilled, and a fresh life does not heartbeat', () 
   assert.equal(h.count(DOWN), downs, 'a shield that starts at 0 never CROSSED 0: that is not a break');
   h.run(2500, { echo: false });
   assert.equal(h.count(LOOP), loops, 'a fresh life starts at shield 0 WITHOUT having broken: no heartbeat');
-  assert.equal(h.grants(), 0, 'and its first fill waits out the whole delay, never inside the spawn write');
+  assert.equal(h.grants(), 0, 'and no recharge grant: the life is filled by its spawn write instead (F344)');
+  assert.equal(h.fills(), 3, 'one fill per life: the go-live spawn and the two revives');
 });
 
 test('S29: a gun that never reports full is granted at a capped number of times, not forever', () => {
