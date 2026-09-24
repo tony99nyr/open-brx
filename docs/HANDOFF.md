@@ -98,16 +98,19 @@ disasm read (item 4's reload-target confounder, item 8's `$BMAP,0,0` weapon rese
 2026-09-24: 0.4.6 published; F318, F108, F325, F133, F52, K8 closed. **Next:** bench F309/F311/F312; 0.4.7 cut on brx1's word.
 
 ## Lane: S57, B21, StickS3 (brx4)
-2026-09-24 bench (firmware `96fb1868`, Stick only, no gun, no BLE): the round-1 `setHoldThresh` fix, the A+B joint-
-hold suppression and the A+B 10 s force restart all CONFIRMED clean on hardware (`bench-sticks3-2026-09-23.md`
-Results). SELFTEST still fails with the known F314 close-range distortion (no new gate). The side button (small
-power button) still restarts/powers off a locked Stick on USB power regardless of firmware state, confirming
-F332's row; F332 stays open, the PM1 register write is still unconfirmed. New gap found: standalone bench mode
-shows the same home screen for HILL and BRIDGE (filed against F333). Tony decided: persist the last
-`station_config` in NVS so a restart comes back as the same station; the operator lock (`lock_s`) stays RAM-only
-by design; being built now. The bench hold from brx1 is still in effect; do not flash until it lifts.
-**Next:** F314's distance ladder (`bench-sticks3-2026-09-23.md` Rerun), then F332 (datasheet or bench) and F333.
-The MC half of A58 (`station_config.lock_s` compile + console) is brx3's lane, not this one.
+2026-09-24 afternoon bench (Stick COM10, rig RX COM7, rig TX COM8, no gun on BLE, Tony fired a gun by hand): IR
+transmit is CONFIRMED clean at 5 cm, 30 cm, 1 m and 3 m (`bench-sticks3-2026-09-23.md` Results). Found and fixed a
+standalone-beacon bug that hit every field station: an ESP32-S3 HWCDC TX-timeout stalled `loop()` with no USB host
+attached (`fc8c3db4`); closed same-day as **F335**. Receive still fails at every distance and source tried (gun,
+rig emitter, a fresh-boot BRIDGE control); the Stick's own receiver does loop back its own transmitter at
+millimetre range, so the conclusion is the receiver hardware itself, not our firmware or the gun's carrier; **F314
+stays open**. The intermittent receiver "noise" is resolved as the idle-dim backlight PWM, fixed by `2a836bce`
+(F314's ranked cause 3, not the missing decode); two earlier readings (a floating-pin claim, a front-of-word
+decoder bug) are retracted. F332 and F333 are untouched today, both stay open. The bench hold from brx1 is still
+in effect; do not flash until it lifts.
+**Next:** the second Stick with the emitter at 5 cm, then an external 38 kHz receiver (Seeed Grove IR receiver or
+M5 Unit IR); F332 (datasheet or bench) and F333. The MC half of A58 (`station_config.lock_s` compile + console) is
+brx3's lane, not this one.
 ## Lane: powerups and the shield HUD (brx5)
 2026-09-24: S58 powerups built behind MC `--powerups`, off until bench Sitting A 3.3 (items 1-8) and 4.11 pass; three polish rounds. S59 Halo shield meter pushed. F293 fix pushed: a headset probe on every connect (release and wait 15 s on `?`), awaiting bench step 1.4. F331/S59 Lows done (open for Tony: night creep brightness, station display name). SELECT pickup branch `pu-select` HELD: bench 3.3 changed the button and overshield mechanisms, decisions with Tony.
 

@@ -219,3 +219,25 @@ No gun, no BLE use, USB on COM10, plus a temporary serial log of button DOWN/HOL
   untrue: a BRIDGE only repeats a grenade. With no beacon it now shows "BRIDGE / NO BEACON / MOVE NEAR A GRENADE"
   (Tony read it in full on the Stick); a live beacon shows the owner under a BRIDGE heading (host-tested only).
 
+## Results (2026-09-24 afternoon): transmit range, the USB-host TX bug, and the backlight noise fix
+
+Stick on COM10, rig receiver on COM7, rig emitter on COM8 (the older `ir_emit.ino`, misreads `--gap`). No gun on
+BLE; Tony fired a gun by hand. Full evidence: `experiment-log/2026-09.md`, 2026-09-24 afternoon entry.
+
+- **Transmit range CONFIRMED at 5 cm, 30 cm, 1 m and 3 m.** The HILL beacon decoded on the rig receiver at every
+  distance; at 3 m on battery with no USB host, 3 of 4 beacons decoded clean and 1 was two bits short.
+- **Bug found and fixed (`fc8c3db4`): a standalone beacon needs a live USB host.** The Stick stopped beaconing
+  once the flashing PC closed its serial port, an HWCDC TX-timeout stall in `loop()`. Fixed with
+  `Serial.setTxTimeoutMs(0)`; A/B/A/B on the bench confirmed both the bug and the fix. Filed and closed as
+  **F335**; every field station was affected.
+- **Safety lesson: never fire a shot word near a gun on this bench.** A `TXN` test hit Tony's gun and did damage.
+  Use the silent proto-15 hill word for bench transmit tests instead.
+- **Receive still fails at every distance and every source tried** (gun, rig emitter, fresh-boot BRIDGE control).
+  The Stick's own receiver loops back its own transmitter at millimetre range and re-arms correctly, so the
+  conclusion is the receiver hardware itself, not firmware or the gun's carrier. F314 stays open. Next: the
+  second Stick with the emitter at 5 cm, then an external 38 kHz receiver.
+- **Noise source found and fixed: the idle-dim backlight PWM (`2a836bce`), not ambient IR.** This closes F314's
+  ranked cause 3 without closing F314 itself; the missing decode remains unexplained.
+- **Two retractions:** the `PINSCAN` floating-pin reading (invalid, this receiver is RMT-only) and the claimed
+  front-of-word decoder bug (`fold_glitches` already handles it).
+

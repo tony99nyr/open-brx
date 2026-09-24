@@ -680,6 +680,11 @@ block's *internal* statuses were true when it closed and may since have been sup
 - 2026-09-24 **F52** closed: the A16.3 readout timings have one owner, mc/types.py, generated to the phone (`bc2fd113`).
 - 2026-09-24 **K8** closed: a per-game `volume` (60-100, null = the venue default) in the game editor; --bench-volume still wins,
   try-outs stay 69, saved games keep it.
+- 2026-09-24 **F335** closed (bench, StickS3, found and fixed the same day): a standalone HILL beacon stopped once the
+  flashing PC closed the Stick's USB serial port, because the ESP32-S3's HWCDC blocks `loop()` on a TX timeout with no
+  host attached. An A/B/A/B test proved it (port closed: no beacons; open: beacons; closed: none; open: beacons
+  resumed) and proved the fix, `Serial.setTxTimeoutMs(0)` (`fc8c3db4`): beacons continued every 5 s with the port
+  closed. Every field station was affected, since none carries a permanently attached host.
 
 # Closed 2026-09-24: the docs DRY pass
 
