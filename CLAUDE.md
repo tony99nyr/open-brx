@@ -41,7 +41,8 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   the *quieter* value. Field-corrected 2026-08-30: `$VOL,69` (iOS Callsign's value, and our old
   default) measures as roughly **on-gun level 2** and was inaudible outdoors. **Try-outs stay at 69** —
   they are fired at arm's length from the player's own head. CLI game commands still take volume as an
-  argument; keep the low default for probing. ⚠️ We have **no absolute SPL measurement** for any of
+  argument; keep the low default (30) for protocol probing, and use `$VOL,65` for bench runs (the `bench-session` skill: 30
+  and 55 are barely audible there). ⚠️ We have **no absolute SPL measurement** for any of
   these — treat 90 as a field value, not an indoor one.
 
 ## Environment (important)
@@ -99,7 +100,7 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
 | `mcp/` | Python MCP server (lab instrument) **+ `mcp/brx_mcp/mc/`**, the Mission Control server (M-MC) | A newcomer runs `./start.sh` (macOS/Linux) or `start.cmd` (Windows) from the repo root: it sets up Node, Python and the console, then starts MC. `mcp/brx_mcp/mc/README.md` → *Start it* (no-hardware demo: `cd mcp && ../.venv/bin/python -m brx_mcp.mc --demo --fake-net --no-auth --ephemeral`, the WSL venv, not Windows Python; a busy :8765 exits 2 with "could not bind" before any banner, F108). `API.md` is the server⇄UI contract. `webapp/mc/src/api/contract.gen.ts` + `app/src/transport/contract.gen.js` (the node↔MC wire contract's shapes and tables) are generated from `mcp/brx_mcp/mc/types.py` + `envelope.py` by `mcp/tools/gen_contract.py` — regenerate after editing either; `mcp/tests/test_contract_generated.py` gates staleness |
 | `app/` | Native phone app (Capacitor → Android + iOS) | `app/README.md`; `npm run android:apk` cuts a build and publishes it to the `app-v<version>` GitHub Release, and the site links the releases page (not a pinned asset) so a new cut never stales a manual page |
 | `firmware/` | Does not exist yet | Companion/station firmware is still to write; the ESP32 code that exists is `hardware/esp32-ir-bridge/` and `hardware/m5sticks3/` |
-| `webapp/mc/` | The Mission Control web UI (Vite/React/TS) | `webapp/mc/README.md`: `npm run dev`, `?mock` for the in-browser demo, design brief `docs/spec/design/mission-control.md`. **Nothing to build to verify it in a real browser** — it's a web app, so run the dev server and drive it. (Unlike MC, the phone HUD drives a real tagger over BLE and needs its stage harness: `app && npm run ui:stage`.) Any UI change follows the `ui-build-verify` user skill; a repo-wide accuracy pass follows `doc-rot-review` (`.claude/skills/doc-rot-review/SKILL.md`) |
+| `webapp/mc/` | The Mission Control web UI (Vite/React/TS) | `webapp/mc/README.md`: `npm run dev`, `?mock` for the in-browser demo, design brief `docs/spec/design/mission-control.md`. **Nothing to build to verify it in a real browser** — it's a web app, so run the dev server and drive it. (Unlike MC, the phone HUD drives a real tagger over BLE and needs its stage harness: `cd app && npm run ui:stage`.) Any UI change follows the `ui-build-verify` user skill; a repo-wide accuracy pass follows `doc-rot-review` (`.claude/skills/doc-rot-review/SKILL.md`) |
 | `webapp/` | **The Cloudflare deploy root**: the site generator's git-ignored output lands here beside the hand-kept `webapp/mc/` and `webapp/download/` | — |
 | `hardware/` | STLs/BOM, the Companion + Station specs | `hardware/brx-companion-spec.md`, `hardware/brx-station-spec.md`, `hardware/inventory.md` |
 | `protocol/` + `docs/` | Reference | `docs/README.md` |

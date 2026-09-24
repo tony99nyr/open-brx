@@ -60,10 +60,12 @@ appointed representative at an online or offline event.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the project maintainer, **[@tony99nyr](https://github.com/tony99nyr)**,
-by opening a GitHub issue on this repository, or, if the report itself needs
-to stay private (for example it names another person), by contacting
-[@tony99nyr](https://github.com/tony99nyr) directly through GitHub. All
-complaints will be reviewed and investigated promptly and fairly.
+by opening a GitHub issue on this repository. If the report itself needs to
+stay private (for example it names another person), open an issue that only
+asks for a private contact, with no details in it, and the maintainer will
+reply with a private channel. GitHub has no private messages, so do not wait
+for one. All complaints will be reviewed and investigated promptly and
+fairly.
 
 All community leaders are obligated to respect the privacy and security of the
 reporter of any incident.
