@@ -306,6 +306,22 @@ test('M2: no grant while STUNNED (the stun restore would erase it); the ready cl
   assert.ok(h.since(n).includes('$AMMO,2,2,0,1,*'), 'granted once the stun ended');
 });
 
+test('F331: a STUNNED player who walks out of range drops the claim (no claim_ready advertised, no grant after the stun)', () => {
+  for (const leave of [h => h.near(4, { median: -70 }), h => h.away()]) {
+    const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }], stun: { duration_s: 3 } });
+    h.at(121); h.near(4); h.adv(1100); h.near(4);
+    h.frame('$HIR,4,8,19,2,8,0,0,*');
+    assert.ok(h.eng.stunned && h.eng.state().powerupClaim.ready, 'setup: stunned while claim_ready');
+    h.adv(250); h.near(4);
+    assert.ok(h.eng.state().powerupClaim && h.eng.state().powerupClaim.ready, 'CONTROL: still in range, the ready latch is kept through the stun');
+    leave(h); h.adv(250);
+    assert.equal(h.eng.state().powerupClaim, null, 'out of range during the stun: the claim is dropped');
+    const n = h.mark(); h.adv(3000); h.near(4, { median: -70, state: 0, value: 106, taker: 7 });
+    assert.equal(h.eng.stunned, null, 'setup: the stun is over');
+    assert.deepEqual(grants(h.since(n)).filter(f => /^\$(AMMO,2|BMAP,1)/.test(f)), [], 'no grant for a claim dropped out of range');
+  }
+});
+
 test('M3: the overshield waits while a $HP arrived in the last 300 ms, then writes the FRESH pools', () => {
   assert.equal(E.OVERSHIELD_POOL_QUIET_MS, 300);
   const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });

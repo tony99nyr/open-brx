@@ -4878,7 +4878,13 @@ export class Engine {
     const ok = this.phase === 'live' && this.alive && this.bleUp && !this.resync && !this.reconciling && !this.gunLocked && !this.tutorial;
     // Polish M2: a STUNNED gun is disarmed and `_stunRestore` rewrites its ammo, which would erase a weapon grant. The claim
     // is not dropped: the ready latch is kept warm, so the station's answer is taken the moment the stun ends.
-    if (ok && this.stunned) { if (this._puReadyFor) this._puReadyFor.at = now; return; }
+    // F331: but only while the player stays in range; walking out drops the claim, so no claim_ready goes out.
+    if (ok && this.stunned) {
+      const cl = this._puClaim, st = cl ? this._puStation(items) : null;
+      const held = st && st.id === cl.station && Number.isFinite(this._puMedian(st)) && this._puMedian(st) >= this._puThreshold(st) - POWERUP_EXIT_DB;
+      if (!held) { this._puClaim = null; this._puReadyFor = null; } else if (this._puReadyFor) this._puReadyFor.at = now;
+      return;
+    }
     if (!ok) { this._puClaim = null; this._puReadyFor = null; return; }
     this._puTakerCheck(items, now);
     const st = this._puStation(items);
