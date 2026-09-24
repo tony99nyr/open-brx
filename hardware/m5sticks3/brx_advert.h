@@ -98,6 +98,13 @@ struct AdvertView {
   uint8_t value = 0;
   bool active = true;  // false: say nothing (a BRIDGE with no live grenade has no owner to report)
   uint8_t taker = 0;   // A56: a powerup's current holder; 0 on every other kind
+  // The station's identity on the wire. Any change republishes at once: bench 2026-09-24, MC re-armed
+  // a Stick for game 33, but only team/state/value were compared, so it kept advertising game 32 and
+  // every phone dropped it as another match's station.
+  uint8_t kind = 0;
+  uint16_t id = 0;
+  uint8_t game = 0;
+  int threshold = 0;
 };
 
 // Port of control.js ControlAdvertiser: owner/state changes republish at once, a value-only
@@ -113,6 +120,8 @@ struct AdvertPolicy {
   // "first" | "state" | "progress" | nullptr (keep the current advert).
   const char* due(const AdvertView& v, uint32_t now) const {
     if (!have_last) return "first";
+    if (last.kind != v.kind || last.id != v.id || last.game != v.game || last.threshold != v.threshold)
+      return "identity";
     if (last.team != v.team || last.state != v.state) return "state";
     if (last.value != v.value && (now - last_at) >= min_interval_ms) return "progress";
     return nullptr;
