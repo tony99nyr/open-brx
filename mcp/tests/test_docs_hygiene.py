@@ -654,8 +654,8 @@ def test_the_id_resolution_check_sees_real_ids():
 
 def test_the_living_status_files_are_dated():
     """FOLLOWUPS carries `Updated: YYYY-MM-DD`; HANDOFF carries `State as of YYYY-MM-DD` in its banner.
-    Both are how a reader decides whether to trust the file. `gotchas.md` and `field-issues.md` carry no
-    stamp today and are deliberately NOT enforced here: they are registers, not status files.
+    Both are how a reader decides whether to trust the file. `gotchas.md` carries no
+    stamp today and is deliberately NOT enforced here: it is a register, not a status file.
     """
     _stamp(FOLLOWUPS)     # raises with the filename if the stamp is gone
     head = HANDOFF.read_text(encoding="utf-8")[:1200]

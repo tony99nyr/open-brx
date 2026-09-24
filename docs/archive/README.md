@@ -28,4 +28,4 @@ closure is last.
 - `session-findings-2026-08.md`: the August protocol notebook, from `protocol/`. Every finding that still stands is
   in `protocol/brx-protocol.md`.
 - `field-issues.md`: the field issue register. Open field issues are rows in `docs/FOLLOWUPS.md` §6. Its three
-  still-open "Check next match" items (V3, V4, V5) are bullets in §10; V1, V2 and V8 were already F28, F29 and F3.
+  still-open "Check next match" items (V3, V4, V5) are bullets in §10; V1, V2 and V8 were already F28, F29 and F3; V6 was F31 (closed) and V7 is F32.
