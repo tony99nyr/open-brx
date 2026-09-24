@@ -89,7 +89,9 @@ floor is 111 (`d373c1ae`). **F308** 3.1-3.2 PASS (release order; the Shotgun/Des
 Burst Rifle's between-burst gap is INCONCLUSIVE on a hand pull, needs the rig). **S58** 3.3 items 1-8 all
 PASS or read as planned; `spec/powerups.md` is corrected where the bench refuted it (the overshield clamps to
 the `$PSET` max and needs a mid-life `$PSET` re-send to hold above it); two readings are unexplained and need a
-disasm read (item 4's reload-target confounder, item 8's `$BMAP,0,0` weapon reset).
+disasm read (item 4's reload-target confounder, item 8's `$BMAP,0,0` weapon reset). A heavy pickup equips
+straight onto the trigger with no extra write, measured: a mid-life `$WEAP` write alone, or `$WEAP` plus
+`$AMMO`, both equip; switching back needs a `$WEAP` re-send then the saved `$AMMO`.
 - **Next bench task:** Block 4 onward of [`bench-2026-09-24.md`](bench-2026-09-24.md); F293 step 5 and 4.11's
   RSSI pickup-range calibration land there.
 - **Next desk task:** none open for this lane.
