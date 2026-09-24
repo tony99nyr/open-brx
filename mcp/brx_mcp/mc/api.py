@@ -744,6 +744,11 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         asked = s.pull_log(nid, "manual")
         return JSONResponse({"ok": asked, "node_id": nid, "log": s.nodes[nid].get("log")})
 
+    async def wrong_port_ws(ws: WebSocket):
+        node = s.lan.get("ws_url") or "the node port (default 8766)"
+        await ws.accept()     # accept, then close: a close before accept reaches the client as a bare 403
+        await ws.close(code=4404, reason=f"this is the console port; nodes connect to {node}"[:120])
+
     async def ui_ws(ws: WebSocket):
         await ws.accept()
         bc.clients.add(ws)
@@ -896,6 +901,10 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/match/orphan/resume", orphan_resume, methods=["POST"]),
         Route("/api/match/orphan/end", orphan_end, methods=["POST"]),
         WebSocketRoute("/ui-ws", ui_ws),
+        # Bench 2026-09-24: a phone that dials the CONSOLE port with a websocket fell through to the
+        # StaticFiles mount below, which asserts on a non-http scope (8 ASGI tracebacks per connect).
+        # Every other websocket path on this port closes with 4404 and names the node URL instead.
+        WebSocketRoute("/{path:path}", wrong_port_ws),
     ]
     if UI_DIST.exists():
         routes.append(Mount("/", app=StaticFiles(directory=str(UI_DIST), html=True), name="ui"))

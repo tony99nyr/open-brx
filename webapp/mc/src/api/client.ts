@@ -23,7 +23,9 @@ const authListeners = new Set<(required: boolean) => void>();
 export const onAuthRequired = (cb: (required: boolean) => void) => { authListeners.add(cb); return () => { authListeners.delete(cb); }; };
 const notifyAuth = (required: boolean) => authListeners.forEach(cb => cb(required));
 
-export class AuthError extends Error { constructor() { super('OPERATOR TOKEN REQUIRED'); } }
+// Block 9 (2026-09-24): a tab left open across an MC restart holds the OLD token, and 'TOKEN REQUIRED' read as
+// nothing Tony had done wrong. Say what happened and the cure.
+export class AuthError extends Error { constructor() { super('OPERATOR LINK EXPIRED OR MISSING: reopen the console from the link MC printed (it ends #tok=…)'); } }
 
 async function j<T>(path: string, init?: RequestInit): Promise<T> {
   const method = (init?.method ?? 'GET').toUpperCase();
