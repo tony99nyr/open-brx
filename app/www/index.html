@@ -911,6 +911,12 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .result .lbrows{flex:1 1 auto;min-height:0;overflow:hidden auto}
 .result .lbr{font-size:14px;padding:3px 0;border-bottom:1px solid rgba(42,78,110,.35)}
 .result .lbr.me{color:var(--glow);background:rgba(95,214,255,.08)}
+/* QA-07: night sets --glow to transparent, so the player's own row (TEAMS and PLAYERS) painted its text in the
+   colour of its own background, 1:1. At night the row takes a dim red band, a --num edge and a lifted red ink
+   that clears 4.5:1 on that band; every cell (medals, a provisional ACC) takes the same ink. */
+[data-env="night"] .result .lbr.me,[data-env="night"] .result .tp.me{background:#1a0606;box-shadow:inset 3px 0 0 var(--num)}
+[data-env="night"] .result .lbr.me,[data-env="night"] .result .lbr.me .c,[data-env="night"] .result .tp.me,[data-env="night"] .result .tp.me .pv{color:#e06a6a}
+[data-env="night"] .result .tp.me{padding-left:6px}
 .result .lbh .c,.result .lbr .c{text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .result .lbh .c.n,.result .lbr .c.n,.result .lbh .c.m,.result .lbr .c.m{text-align:left}
 .result .lbr .c.n .dot{display:inline-block;width:7px;height:7px;margin-right:6px;vertical-align:middle}

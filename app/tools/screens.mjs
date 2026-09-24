@@ -3978,6 +3978,38 @@ for (const view of VIEWS) for (const night of [false, true]) {
   }
 }
 
+
+// QA lane D (2026-09-23)
+// The contrast of every painted text leaf under `sel`, against the background it actually sits on: the element's own
+// and its ancestors' background-colors composited bottom-up (alpha included) over the frame's black. A `transparent`
+// text colour (night sets `--glow` to transparent) composites to the background itself, so it measures 1:1, not "black".
+const qaContrast = (pg, sel) => pg.evaluate(sel => {
+  const parse = v => { const m = (v.match(/[\d.]+/g) || []).map(Number); return m.length < 3 ? [0, 0, 0, 0] : [m[0], m[1], m[2], m.length > 3 ? m[3] : 1]; };
+  const over = (top, under) => { const a = top[3]; return [0, 1, 2].map(i => top[i] * a + under[i] * (1 - a)); };
+  const lum = c => { const [r, g, b] = c.map(v => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }); return .2126 * r + .7152 * g + .0722 * b; };
+  const bgOf = el => { const layers = []; for (let n = el; n && n.nodeType === 1; n = n.parentElement) layers.push(parse(getComputedStyle(n).backgroundColor));
+    return layers.reverse().reduce((acc, l) => over(l, acc), [0, 0, 0]); };
+  const out = [];
+  for (const root of document.querySelectorAll(sel)) for (const e of [root, ...root.querySelectorAll('*')]) {
+    const own = Array.from(e.childNodes).some(n => n.nodeType === 3 && n.textContent.trim()); if (!own) continue;
+    const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden' || !e.getClientRects().length) continue;
+    const bg = bgOf(e), fg = over(parse(cs.color), bg), a = lum(fg), b = lum(bg);
+    out.push({ text: e.textContent.trim().slice(0, 24), ratio: Math.round(100 * (Math.max(a, b) + .05) / (Math.min(a, b) + .05)) / 100 });
+  }
+  return out;
+}, sel);
+for (const [stage, tab, sel] of [['result-win-team', 'TEAMS', '.result .tp.me'], ['result-players', 'PLAYERS', '.result .lbr.me']]) {
+  await step(`QA-07 night recap: the player's own row reads on ${tab} (>= 4.5:1)`, async () => {
+    const pg = await open(VIEWS[1], stage, '&night');
+    const r = await qaContrast(pg, sel); const on = await pg.evaluate(() => (document.querySelector('.rseg .sg.on') || {}).textContent || '');
+    await pg.close();
+    must(on.trim() === tab, `the stage did not open the ${tab} tab: "${on}"`);
+    must(r.length > 0, `no own-row text under ${sel}: the gate would pass on nothing`);
+    const bad = r.filter(x => x.ratio < 4.5);
+    must(bad.length === 0, `own row below 4.5:1 at night: ${JSON.stringify(bad)}`);
+  });
+}
+
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;
 }
