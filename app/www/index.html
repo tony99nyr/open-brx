@@ -133,12 +133,12 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
    the bar tells it. Day: Halo blue shield, a lime overshield layer on top, red when low;
    broken = the empty track pulses red and the frame is tinted; the delay = a faint fill creeping along the track; the refill =
    a rising sweep. Night (spec B4): red only; the overshield is brighter and double-railed; the one motion is a slow red pulse.
-   Top 2 + a 21 px strip ends at 23, clear of the clock plate (26, night 28) and the identity block (28). ---- */
+   Top 2 + a 16 px strip ends at 18 (Tony: between the 11 px candidate and 21), clear of the clock plate (26, night 28) and the identity block (28). ---- */
 .svm{--svc:#3cb6ff;--svc2:#b3e8ff;--svos:#b8ff3a;--svbad:#ff4848;--svtrk:rgba(3,10,22,.9);--svedge:#2f5f86;
-  position:absolute;left:50%;top:2px;width:520px;height:21px;transform:translateX(-50%);pointer-events:none;z-index:2}
+  position:absolute;left:50%;top:2px;width:520px;height:16px;transform:translateX(-50%);pointer-events:none;z-index:2}
 .svtint{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .25s;box-shadow:inset 0 0 130px -30px rgba(255,40,40,.62),inset 0 0 0 2px rgba(255,72,72,.5)}
 .alive.sv-down .svtint{opacity:1}
-.svbar{position:absolute;left:0;right:0;top:0;height:21px;background:var(--svtrk);border:1px solid var(--svedge);overflow:hidden;clip-path:polygon(0 0,100% 0,calc(100% - 12px) 100%,12px 100%)}
+.svbar{position:absolute;left:0;right:0;top:0;height:16px;background:var(--svtrk);border:1px solid var(--svedge);overflow:hidden;clip-path:polygon(0 0,100% 0,calc(100% - 12px) 100%,12px 100%)}
 .svbar > i{position:absolute;top:2px;bottom:2px;left:50%;transform:translateX(-50%);width:var(--w);max-width:calc(100% - 4px)}
 .svbar > i.svseg{top:0;bottom:0;left:0;transform:none;width:100%;max-width:none;background:repeating-linear-gradient(90deg,transparent 0 calc(20% - 4px),var(--svtrk) calc(20% - 4px) 20%)}
 .svbar > i.svdly{background:color-mix(in srgb,var(--svc2) 32%,transparent);transition:width .25s linear;overflow:hidden}

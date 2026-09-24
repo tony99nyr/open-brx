@@ -4477,11 +4477,11 @@ const svNightPixels = async (pg, r) => {
 const svWait = async (pg, ok, ms) => { let r = null; for (let t = 0; t < ms; t += 100) { r = await svRead(pg); if (ok(r)) return r; await pg.waitForTimeout(100); } return r; };
 for (const view of VIEWS) for (const night of [false, true]) {
   const N = night ? '&night' : '', tag = `${view.name} shield meter ${night ? 'night' : 'day'}`;
-  await step(`${tag}: the Shields preset draws the visor, taller, with no health on it, clear of the clock, the identity block, the link status and the chips, with no text or number`, async () => {
+  await step(`${tag}: the Shields preset draws the visor, about 16 px tall, with no health on it, clear of the clock, the identity block, the link status and the chips, with no text or number`, async () => {
     const pg = await open(view, 'live-shields-full', N, 3600);
     const r = await svWait(pg, r => r.m && r.shield >= 105, 2500); await pg.close();
     must(r.m, `no shield meter on a Shields game: ${JSON.stringify({ m: r.m, shield: r.shield, max: r.max })}`);
-    must(r.barH >= 19 && r.barH <= 23, `the strip is taller than the 11 px candidate, into the room the health line left (19-23 frame px): ${r.barH}`);
+    must(r.barH >= 15 && r.barH <= 17, `the strip is about 16 px, between the 11 px candidate and 21 (Tony: "something in between"): ${r.barH}`);
     must(r.health === 0, `health lives bottom left only, never on the visor (Tony: "why do we have health displayed in two places?"): ${r.health} health element(s)`);
     must(r.text === '', `the meter carries no text or number (Tony: "just the bar"): "${r.text}"`);
     must(r.s === 'ok' && r.fl > 400, `full: state ${r.s}, fill ${r.fl}`);
@@ -4529,6 +4529,14 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(h2.os && h2.osw < a.osw * 0.65 && h2.osw > a.osw * 0.35 && h2.fl > 400, `a 37 hit halves the overshield and leaves the shield: ${JSON.stringify({ osw: h2.osw, fl: h2.fl })}`);
     must(!g2.os && g2.osw < 1 && g2.fl < h2.fl, `the next hit ends it and then eats the shield: ${JSON.stringify({ os: g2.os, osw: g2.osw, fl: g2.fl })}`);
     must(!night || px.bad === 0, `night: green, teal or blue paint on the meter: ${JSON.stringify(px)}`);
+  });
+  await step(`${tag}: armour shows only in a game with armour: Standard has the number and the bar, a no-armour game has neither`, async () => {
+    const arm = pg => pg.evaluate(() => { const vis = e => !!e && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().width > 0;
+      return { num: vis(document.getElementById('sh')), lab: vis(document.querySelector('.vitals .armorlabel')), bar: vis(document.querySelector('.vitals .bar.armor')), max: window.brx.engine.state().maxArmor }; });
+    let pg = await open(view, 'live', N, 3000); const std = await arm(pg); await pg.close();
+    pg = await open(view, 'live-shields-full', N, 3000); const none = await arm(pg); await pg.close();
+    must(std.max > 0 && std.num && std.bar && (!night || std.lab), `Standard (armour ${std.max}): the number and the bar, as today (the ARMOR word is a night-only label): ${JSON.stringify(std)}`);
+    must(none.max === 0 && !none.num && !none.lab && !none.bar, `no armour in the game: no 0, no label, no empty bar (Tony): ${JSON.stringify(none)}`);
   });
   await step(`${tag}: the Standard preset draws no meter, until it holds an overshield`, async () => {
     let pg = await open(view, 'live', N, 3000); const r = await svRead(pg);
