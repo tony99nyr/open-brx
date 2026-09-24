@@ -103,7 +103,7 @@ On `main` 2026-09-23: the desk half of F297, F269 and F270. All three stay open 
 - **Next bench task:** the ordered runbook [`bench-2026-09-24.md`](bench-2026-09-24.md). **Blocked:** F270 on A8.
 - **F315 (2026-09-23):** hits resolve by IR cell, then magnitude; `--distinct-weapon-cells` (off) waits on bench 4.10.
 ## Lane: Mission Control console honesty
-F178, F256, F251, F289 closed; F309, brx-net, F312's gated row and the shared APK sidecar writer built 2026-09-23. **Next:** bench F309/F311/F312; APK 0.4.6 held in `~/brx3-release`.
+2026-09-23: F178/F256/F251/F289 closed; F309, brx-net, F312 gate, APK sidecar writer and the MC visual-QA pass (C1, H1-H6, M1-M24) built. **Next:** bench F309/F311/F312; decisions F317/F319; APK 0.4.6 held in `~/brx3-release`.
 
 ## Lane: S57, B21, StickS3 (brx4)
 2026-09-23: **S57 built** (docs/ir-callouts.md); Block 7 of `bench-2026-09-24.md` settles it, F312 first. **B21:** key made; the signed cut waits for the desk fixes. **StickS3 (H7):** BLE and IR TX work; IR RX is F314. Start the next Stick session with `.claude/skills/m5stick-bench` and `hardware/m5sticks3/README.md`: `stick.py flash`, then `SELFTEST`, then the sheet's rerun.

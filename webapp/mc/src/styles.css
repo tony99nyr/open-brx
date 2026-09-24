@@ -99,3 +99,7 @@ button:focus:not(:focus-visible), input:focus:not(:focus-visible) { outline: non
 @media (max-width: 900px) {
   .designer-rail { order: -1; position: static !important; max-width: none !important; }
 }
+
+/* SPECTATE under the fit rule (polish round 3): each cell's inline `font` shorthand resets line-height to
+   "normal" (about 1.5 for Oswald), taller than the row's floor, so the text clipped. Keep it tight. */
+[data-spectate="row"][data-fit] > * { line-height: 1.15 !important; }

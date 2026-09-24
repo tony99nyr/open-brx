@@ -85,7 +85,12 @@ function useViewport() {
 export const FIT_MIN_W = 1024;
 const isProjector = (vp: { w: number; h: number }) => vp.w >= FIT_MIN_W && vp.h >= 500;
 /** A row's floor under the fit rule: its tallest type (the K cell) plus its own padding. */
-export const rowMin = (SZ: SZ) => Math.round(SZ.rowK * 1.2);   // one line of the row's numbers: the fit layout may squeeze padding, never the text
+/** Polish round 3: under the fit rule a row carries NO vertical padding (boxes are border-box, so padding
+ *  inside a min-height squeezed the text), and grows between one full line of its tallest type and the
+ *  padded height it has when there is room. */
+export const FIT_LINE = 1.15;   // the cells' line height under the fit rule (styles.css [data-fit] rule)
+export const rowMin = (SZ: SZ) => Math.ceil(SZ.rowK * FIT_LINE) + 2;
+export const rowMax = (SZ: SZ) => Math.ceil(SZ.rowK * FIT_LINE) + 2 * SZ.pad + 2;
 
 export function Spectate() {
   const { state, feed, serverNow, connected, wantedView } = useStore();
@@ -287,11 +292,11 @@ function Board({ rows, SZ, fit }: { rows: (LiveRow | ScoreRow)[]; SZ: SZ; fit: b
         {rows.map(r => {
           const down = 'status' in r && r.status === 'down';
           return (
-            <div key={r.player_id} data-spectate="row"
-              style={{ display: 'grid', gridTemplateColumns: BOARD_COLS, gap: '0 16px', alignItems: 'center', padding: `${SZ.pad}px 18px`,
+            <div key={r.player_id} data-spectate="row" data-fit={fit ? '1' : undefined}
+              style={{ display: 'grid', gridTemplateColumns: BOARD_COLS, gap: '0 16px', alignItems: 'center', padding: fit ? '0 18px' : `${SZ.pad}px 18px`,
                        // a roster longer than the wall is tall shrinks its rows, but never past the
                        // height of their own text (polish 2026-09-23: 20 px rows at 900 px wide)
-                       ...(fit ? { flex: '0 1 auto', minHeight: rowMin(SZ), overflow: 'hidden' } : null),
+                       ...(fit ? { flex: '1 1 0px', minHeight: rowMin(SZ), maxHeight: rowMax(SZ), overflow: 'hidden' } : null),
                        background: T.panel, border: `1px solid ${T.row}`, borderLeft: `5px solid ${teamColor(r.team_id)}`, opacity: down ? .55 : 1 }}>
               <span data-spectate="name" title={r.display} style={{ ...chk(700, SZ.row), letterSpacing: '.1em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.display}</span>
               <span style={{ textAlign: 'right', ...osw(700, SZ.rowK) }}><Num value={r.kills} /></span>

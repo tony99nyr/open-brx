@@ -54,5 +54,6 @@ describeRole('ROLE colours are the CLASS_TAG colours', () => {
     expectRole(RL.support.color).toBe(CT.support);
     expectRole(RL.power.color).toBe(CT.heavy);
     expectRole(RL.sidearm.color).toBe(CT.sidearm);
+    expectRole(RL.melee.color).toBe('#8aa0b4');   // T.dim, as a literal for the site parser
   });
 });
