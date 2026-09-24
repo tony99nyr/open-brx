@@ -41,7 +41,7 @@ _PRESETS: dict[str, dict] = {
 }
 PRESET_IDS = tuple(_PRESETS)
 
-REFUSED_FLAG_OFF = ("powerups are OFF: start Mission Control with --powerups to give a station an item "
+REFUSED_FLAG_OFF = ("powerups are OFF: start Mission Control with --powerups (./start.sh -- --powerups) to give a station an item "
                     "(it stays off until the bench proves the spare weapon slots, powerups.md Sitting A)")
 
 
