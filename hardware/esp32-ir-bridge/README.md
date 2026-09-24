@@ -123,7 +123,7 @@ is **invisible** — to check it's firing, view it through a **phone camera** (y
 
 ## Serial command protocol (what the MCP tools speak)
 - **capture firmware** streams: `RAW <n> edges=<k> us=[d1,d2,…]` then `DECODE bits=<b> val=<bits>`.
-- **emit firmware** accepts: `TX <bits>`, `TXN <n> <bits>`, `PING`→`PONG`.
+- **emit firmware** accepts: `TX <bits>`, `TXN <n> <bits> [gap_ms]` (the gap, 0-10000 ms, skips the LED hold and leaves that much silence after each word; F321), `PING`→`PONG`. The host side is `ir-emit ... --gap MS`.
 
 Drive it from the repo (Windows Python, where pyserial + the COM port live):
 ```
