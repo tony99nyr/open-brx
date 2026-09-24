@@ -179,6 +179,11 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
   .control .ctally:empty{margin-top:0}
   .control .cwarn{font-size:11px;margin-top:3px;min-height:0}
   .control .cwarn:empty{margin-top:0}
+  .pup{margin-top:4px;gap:2px}
+  .pup .pstate{font-size:clamp(13px,5vh,20px)}
+  .pup .pnext{font-size:clamp(18px,8vh,32px)}
+  .pup .ptaker{font-size:11px}
+  .pring{width:56px;height:56px}.pring i{width:44px;height:44px}
   .hero .armed{margin-top:4px;font-size:11px}
   .hero .ids{font-size:11px;min-height:0}
   .hero .ids:empty{margin-top:0}
@@ -222,6 +227,20 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 label.hint{display:block;margin-top:12px}
 input[type=range]{width:100%;height:44px;accent-color:var(--team);margin:0}   /* 44px: this slider IS the calibration control */
 .big{font:700 24px var(--fd);letter-spacing:.06em;min-width:64px;text-align:center}
+/* ---- kind 2: the powerup station (A56). The item's own colour (`--item`, set by utility.js) carries the name and the
+   ring; AVAILABLE is the item colour, TAKEN is muted, and the countdown is the one number a player reads from afar. ---- */
+.pup{margin-top:10px;display:flex;flex-direction:column;align-items:center;gap:4px}
+.pup[hidden]{display:none}
+[data-kind-item] .hero .team{color:var(--item);text-shadow:0 0 40px color-mix(in srgb,var(--item) 55%,transparent)}
+.pup .pstate{font-family:var(--fd);font-weight:700;font-size:clamp(20px,6vw,32px);letter-spacing:.2em;color:var(--item,var(--glow))}
+.pup[data-pstate="taken"] .pstate{color:var(--mut)}
+.pup[data-pstate="unknown"] .pstate{font-size:clamp(13px,3.6vw,16px);color:var(--mut)}
+.pup .pnext{font-family:var(--fd);font-style:italic;font-weight:700;font-size:clamp(28px,9vw,52px);line-height:1;color:var(--num);min-height:0}
+.pup .ptaker{font:700 12px var(--fl);letter-spacing:.24em;color:var(--mut)}
+.pup .pnext:empty,.pup .ptaker:empty{display:none}
+.pring{--p:0;width:92px;height:92px;border-radius:50%;background:conic-gradient(var(--item,var(--glow)) calc(var(--p) * 360deg),rgba(255,255,255,.08) 0);display:grid;place-items:center}
+.pring i{width:74px;height:74px;border-radius:50%;background:#04070c}
+.pring[hidden]{display:none}
 #log{font:11px/1.45 var(--m);color:var(--mut);white-space:pre-wrap;max-height:160px;overflow:auto;margin:0}
 .danger{border-color:var(--bad);color:var(--bad)}
 </style>
@@ -247,6 +266,14 @@ input[type=range]{width:100%;height:44px;accent-color:var(--team);margin:0}   /*
       <div class="cbanner" id="cbanner"></div>
       <div class="ctally" id="ctally"></div>
       <div class="cwarn" id="cwarn"></div>
+    </section>
+    <!-- A56 (docs/spec/powerups.md): kind 2 with an item. The big name above is the item's; this says whether it is
+         here, the 1 s ring while a player stands at the station, and TAKEN with the countdown to the next spawn. -->
+    <section class="pup" id="pup" hidden aria-live="polite">
+      <div class="pring" id="pring" role="progressbar" aria-label="claim" aria-valuemin="0" aria-valuemax="100" hidden><i></i></div>
+      <div class="pstate" id="pstate"></div>
+      <div class="pnext" id="pnext"></div>
+      <div class="ptaker" id="ptaker"></div>
     </section>
     <div class="armed" id="armed"></div>
     <div class="ids" id="ids"></div>

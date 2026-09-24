@@ -114,6 +114,33 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .bar.armor > i{background:repeating-linear-gradient(90deg,var(--armor) 0 34px,transparent 34px 38px);box-shadow:none}
 .bar.shield{height:7px;width:78%}
 .bar.shield > i{background:repeating-linear-gradient(90deg,var(--shield) 0 34px,transparent 34px 38px);box-shadow:none}
+/* ---- A56 powerups (docs/spec/powerups.md). Every piece takes the ITEM's own colour (`--item`, a literal #rrggbb set
+   inline by hud.js); night overrides it to the dim red below. Type floors: labels 11 px, actions 14 px. ---- */
+.bar.oshield{position:relative;height:9px;width:78%;border-color:var(--item);background:color-mix(in srgb,var(--item) 12%,var(--plate2))}
+.bar.oshield > i{background:var(--item);box-shadow:0 0 12px -2px var(--item)}
+.bar.oshield b{position:absolute;left:calc(100% + 8px);top:50%;transform:translateY(-50%) skewX(18deg);font-family:var(--fd);font-weight:700;font-size:13px;line-height:1;color:var(--item);white-space:nowrap}
+.puhint{position:absolute;left:50%;bottom:64px;transform:translateX(-50%);pointer-events:none}
+.puhint:empty{display:none}
+/* The band between the vitals (right edge 336) and the frame's centre is 86 px, so the hint is at most 166 px wide and
+   WRAPS rather than grows: a long name or STATION NOT ANSWERING takes a second line upward, never the vitals' space. */
+.puhint .pu{box-sizing:border-box;display:flex;align-items:center;gap:8px;width:max-content;max-width:166px;padding:6px 11px 7px;background:color-mix(in srgb,var(--item) 14%,rgba(3,6,10,.82));border:1px solid color-mix(in srgb,var(--item) 70%,transparent)}
+.puhint .put{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0}
+.puhint .pua{font-family:var(--fd);font-weight:700;font-size:17px;line-height:1.02;letter-spacing:.08em;color:var(--num)}
+.puhint .pul{font-size:11px;line-height:1.2;font-weight:700;letter-spacing:.14em;color:var(--item)}
+.puhint .pu[data-kind="no_answer"]{border-color:var(--warn)}.puhint .pu[data-kind="no_answer"] .pua{color:var(--warn);font-size:15px}
+.puhint .pu[data-kind="taken"] .pua,.puhint .pu[data-kind="taken_by"] .pua{font-size:15px}
+.puhint .pu[data-kind="granted"] .pua{color:var(--item);font-style:italic;font-size:20px}
+.puring{--p:0;flex:none;width:30px;height:30px;border-radius:50%;background:conic-gradient(var(--item) calc(var(--p) * 360deg),rgba(255,255,255,.12) 0);display:grid;place-items:center}
+.puring i{width:21px;height:21px;border-radius:50%;background:#04070c}
+/* the held item sits ABOVE the ammo column, out of its flow, so the column never grows up into the callout band */
+.puheld{position:absolute;right:0;bottom:calc(100% + 8px)}
+.puheld:empty{display:none}
+.puchip{display:flex;align-items:center;gap:8px;padding:3px 10px;border:1px solid color-mix(in srgb,var(--item) 60%,transparent);background:color-mix(in srgb,var(--item) 12%,transparent);transform:skewX(-12deg)}
+.puchip > *{transform:skewX(12deg)}
+.puchip .sw{display:block;width:6px;height:16px;background:var(--item)}
+.puchip .nm{font-family:var(--fd);font-weight:700;font-size:14px;letter-spacing:.14em;color:var(--item)}
+.puchip b{font-family:var(--fd);font-weight:700;font-size:20px;line-height:1;color:var(--num)}
+.puchip.on{border-color:var(--item);box-shadow:0 0 16px -6px var(--item)}
 .ammo{position:absolute;right:36px;bottom:32px;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
 .ammo .nums{display:flex;align-items:baseline;gap:8px}
 .ammo .mag{font-family:var(--fd);font-style:italic;font-weight:700;font-size:84px;line-height:.8;text-shadow:0 0 24px color-mix(in srgb,var(--glow) 50%,transparent)}
@@ -324,6 +351,12 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 [data-env="night"] .bar > i{background:var(--health);box-shadow:none}
 [data-env="night"] .bar.armor{height:4px;width:70%}[data-env="night"] .bar.armor > i{background:var(--armor)}
 [data-env="night"] .bar.shield{height:4px;width:70%}[data-env="night"] .bar.shield > i{background:var(--shield)}
+/* A56 at night: the item's colour gives way to the dim red, nothing glows, the ring is flat */
+[data-env="night"] .bar.oshield,[data-env="night"] .puhint .pu,[data-env="night"] .puchip{--item:#c9484a!important}
+[data-env="night"] .vitals.os .shield{font-size:30px}   /* an overshield on an armoured game: the row carries three numbers, so the shield sits at the armour's size */
+[data-env="night"] .bar.oshield{height:4px;width:70%;background:#120505}[data-env="night"] .bar.oshield > i{box-shadow:none}
+[data-env="night"] .puhint .pu{background:#0d0303;border-color:#3a1414}[data-env="night"] .puring{background:conic-gradient(#c9484a calc(var(--p) * 360deg),#2a1010 0)}
+[data-env="night"] .puchip{background:transparent;border-color:#3a1414;box-shadow:none}
 [data-env="night"] .ammo .mag{font-style:normal;font-size:76px;text-shadow:none;color:var(--num)}
 [data-env="night"] .ammo .res{font-size:20px;color:var(--num)}   /* QA-22: "/384" was --mut, 2.7:1 */
 [data-env="night"] .stats{display:flex;top:30px;left:36px;right:auto;bottom:auto;font-size:11px;letter-spacing:.24em}   /* was stacked on .ammo's corner (brx-opus night audit 2026-08-26) */
@@ -354,7 +387,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
    DOWN) and HILL CAPTURED / HILL LOST (hud.js `_co`). A short band under the clock, clear of the vitals and the ammo,
    so the live HUD stays readable behind it. The name is the headline; --co says who went down. */
 .co{pointer-events:none}
-.co[data-tone="enemy"]{--co:var(--ok)}.co[data-tone="mate"]{--co:var(--warn)}.co[data-tone="ours"]{--co:var(--team)}.co[data-tone="theirs"]{--co:var(--bad)}
+.co[data-tone="enemy"]{--co:var(--ok)}.co[data-tone="mate"]{--co:var(--warn)}.co[data-tone="ours"]{--co:var(--team)}.co[data-tone="theirs"]{--co:var(--bad)}.co[data-tone="item"]{--co:var(--item,var(--glow))}
 .co .cob{position:absolute;top:130px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 34px 9px;white-space:nowrap;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--co) 20%,#04070c) 12%,color-mix(in srgb,var(--co) 20%,#04070c) 88%,transparent);border-top:1px solid color-mix(in srgb,var(--co) 65%,transparent);border-bottom:1px solid color-mix(in srgb,var(--co) 65%,transparent);animation:coin .18s ease-out}
 .co .row{display:flex;align-items:center;gap:12px}
 .co .tag{font-family:var(--fd);font-weight:700;font-size:14px;letter-spacing:.2em;color:var(--co);padding:2px 10px;border:1px solid var(--co);transform:skewX(-10deg)}
@@ -542,7 +575,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 [data-env="night"] .mo{animation:none!important}
 [data-env="night"] .whiteout{display:none}
 /* QA-05 night: the same callout card, dim red on black, no glow, no motion, no green (spec B4). */
-[data-env="night"] .co[data-tone="enemy"],[data-env="night"] .co[data-tone="ours"]{--co:#c9484a}[data-env="night"] .co[data-tone="mate"],[data-env="night"] .co[data-tone="theirs"]{--co:#a8782a}
+[data-env="night"] .co[data-tone="enemy"],[data-env="night"] .co[data-tone="ours"],[data-env="night"] .co[data-tone="item"]{--co:#c9484a}[data-env="night"] .co[data-tone="mate"],[data-env="night"] .co[data-tone="theirs"]{--co:#a8782a}
 [data-env="night"] .co .cob{background:#120505;border-color:#3a1414;animation:none}
 [data-env="night"] .co *{animation:none!important}   /* night is still (B4): the medal lines show at once instead of arriving one by one */
 [data-env="night"] .co .nm{color:var(--num);text-shadow:none}[data-env="night"] .co .sw{background:#5a2222!important}

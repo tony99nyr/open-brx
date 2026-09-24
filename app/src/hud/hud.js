@@ -19,6 +19,14 @@ const pad2 = n => String(Math.max(0, Math.floor(n))).padStart(2, '0');
 const digits = n => pad2(Math.min(99, Math.max(0, Math.floor(n)))).split('').map(c => `<span class="d">${c}</span>`).join('');
 const mmss = ms => { const s = Math.max(0, Math.round(ms / 1000)); return `${pad2(s / 60)}:${pad2(s % 60)}`; };
 const mmssS = s => mmss(Math.max(0, Number(s) || 0) * 1000);   // the wire carries possession in SECONDS
+/** A56: the preset shield bar never passes 100%, and it excludes the overshield (which has its own block). */
+const shieldPct = st => { const os = st.powerup && st.powerup.overshield; const base = st.shield - (os ? os.left : 0);
+  return st.maxShield > 0 ? Math.max(0, Math.min(100, Math.round(100 * base / st.maxShield))) : 0; };
+const oshieldPct = st => { const os = st.powerup && st.powerup.overshield; return os && os.amount > 0 ? Math.max(0, Math.min(100, Math.round(100 * os.left / os.amount))) : 0; };
+/** A56: a spawn countdown the way Tony writes it, "1:40" (rounded UP: it never reads 0:00 while the item is still away). */
+const mss = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${pad2(s % 60)}`; };
+/** A56: an item's own colour from the wire, only ever a literal `#rrggbb` (it lands in a style attribute). */
+const itemColor = c => (/^#[0-9a-f]{6}$/i.test(String(c || '')) ? c : 'var(--glow)');
 const clock12 = t => { const d = new Date(Number(t) || 0); const h = d.getHours(); return `${h % 12 === 0 ? 12 : h % 12}:${pad2(d.getMinutes())}${h < 12 ? 'AM' : 'PM'}`; };
 const num = v => (typeof v === 'number' && Number.isFinite(v)) ? v : null;
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -455,6 +463,8 @@ export class Hud {
       // F288: both gun-health facts change live markup. Flatten the objects: joining the objects themselves
       // would turn every non-null value into the same "[object Object]" and miss no_fire → no_answer.
       st.poolStale && st.poolStale.why, st.cure && st.cure.verdict, !!st.gunFlapping, !!st.reconciling, !!st.gunLocked, st.gunRecovery, st.downReason,
+      // A56: the powerup hint/held slots exist only in a powerup game; the overshield bar and the shield number are structure
+      !!st.powerup, !!(st.powerup && st.powerup.overshield), !!(st.powerup && st.powerup.held && st.powerup.held.active),
       // F258: `this.scan.length` used to sit here, so every scan hit that added a device rebuilt the
       // whole screen. The picker's rows, its empty placeholder and its fold are all patched in place
       // by `_patchScan` now, so nothing about the scan is structure any more.
@@ -1258,6 +1268,8 @@ export class Hud {
     const gunStale = !st.bleUp;
     const mcStale = st.wsState !== 'bound';
     const staleTag = '<span class="staletag" aria-label="stale value">STALE</span>';
+    const os = st.powerup && st.powerup.overshield;   // A56: the overshield block on the shield bar
+    const puActive = !!(st.powerup && st.powerup.held && st.powerup.held.active);
     return `<div class="alive${gunStale ? ' gunstale' : ''}${mcStale ? ' mcstale' : ''}"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
       ${low ? '<div class="firevig"></div>' : ''}
       ${overheating ? '<div class="heatvig"></div><div class="heatword">OVERHEAT</div>' : ''}
@@ -1273,9 +1285,10 @@ export class Hud {
         : st.alive && st.shielded ? '<div class="spawnshield" role="status"><span class="k">SPAWN SHIELD</span><span class="s">YOU CANNOT BE HIT</span></div>'
         : st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>'}
       <div class="fxbar" id="fxbar">${this._fx(st)}</div>
-      <div class="vitals"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span>${low ? '<span class="lowtag">LOW</span>' : ''}${gunStale ? staleTag : ''}<span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>${st.maxShield > 0 ? `<span class="shield tab ${st.shield === 0 ? 'zero' : ''}" id="shield">${st.shield}</span><span class="hplab shieldlabel">SHIELD</span>` : ''}</div>
+      <div class="vitals${os ? ' os' : ''}"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span>${low ? '<span class="lowtag">LOW</span>' : ''}${gunStale ? staleTag : ''}<span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>${st.maxShield > 0 || os ? `<span class="shield tab ${st.shield === 0 ? 'zero' : ''}" id="shield">${st.shield}</span><span class="hplab shieldlabel">SHIELD</span>` : ''}</div>
         <div class="bar ${low ? 'low' : ''}"><i id="hpbar" style="width:${Math.round(100 * st.hp / st.maxHp)}%"></i></div>
-        <div class="bar armor"><i id="shbar" style="width:${Math.round(100 * st.armor / st.maxArmor)}%"></i></div>${st.maxShield > 0 ? `<div class="bar shield"><i id="shieldbar" style="width:${Math.round(100 * st.shield / st.maxShield)}%"></i></div>` : ''}</div>
+        <div class="bar armor"><i id="shbar" style="width:${Math.round(100 * st.armor / st.maxArmor)}%"></i></div>${st.maxShield > 0 ? `<div class="bar shield"><i id="shieldbar" style="width:${shieldPct(st)}%"></i></div>` : ''}${os ? `<div class="bar oshield" id="obarw" style="--item:${itemColor(os.color)}" aria-label="overshield"><i id="obar" style="width:${oshieldPct(st)}%"></i><b id="oval">+${os.left}</b></div>` : ''}</div>
+      ${st.powerup ? `<div class="puhint" id="puhint" role="status">${this._puHint(st)}</div>` : ''}
       <div class="ammo">${outOfAmmo ? `<span class="reload out solid"><span class="unskew">${energy ? 'OUT OF ENERGY' : 'OUT OF AMMO'}</span></span>`
           : overheating ? `<span class="reload hot solid"><span class="unskew">OVERHEAT</span></span>`
           : energyOut ? `<span class="reload out solid"><span class="unskew">OUT OF ENERGY</span></span>`
@@ -1286,8 +1299,32 @@ export class Hud {
         ${belowCharge && st.ammo > 0 ? '<div class="enote">NOT ENOUGH ENERGY</div>' : ''}
         <div class="pips" id="pips">${this._pips(st)}</div>
         ${this._heatBar(st)}
-        <span class="wn"><span class="slot">${st.activeSlot ? 'SECONDARY' : 'PRIMARY'}</span>${esc(st.weapon)}</span></div>
+        ${st.powerup ? `<div class="puheld" id="puheld">${this._puHeld(st)}</div>` : ''}
+        <span class="wn"><span class="slot">${puActive || st.activeSlot >= 2 ? 'PICKUP' : st.activeSlot ? 'SECONDARY' : 'PRIMARY'}</span>${esc(st.weapon)}</span></div>
       <div class="nightlab">NIGHT OPS</div>${kb}${this.board ? this._board(st) : ''}</div>`;
+  }
+  /** A56 (docs/spec/powerups.md): the powerup station hint, centre-bottom between the vitals and the ammo. A 1 s ring
+   *  while the player stands at the station (HOLD STILL), the item once granted, who took it, or the countdown. */
+  _puHint(st) {
+    const h = st.powerup && st.powerup.hint; if (!h) return '';
+    const name = esc(h.name || ''), c = itemColor(h.color);
+    const ring = p => `<span class="puring" style="--p:${Math.max(0, Math.min(1, p)).toFixed(3)}" aria-hidden="true"><i></i></span>`;
+    const line = (act, lab, extra = '') => `<span class="pu" data-kind="${esc(h.kind)}" style="--item:${c}">${extra}<span class="put"><span class="pua">${act}</span>${lab ? `<span class="pul">${lab}</span>` : ''}</span></span>`;
+    switch (h.kind) {
+      case 'claiming': return line('HOLD STILL', name, ring(h.progress || 0));
+      case 'no_answer': return line('STATION NOT ANSWERING', name);   // no ring: nothing is filling any more
+      case 'granted': return line(name, h.replaced ? `REPLACES ${esc(h.replaced)}` : 'PICKED UP');
+      case 'approach': return line('GET CLOSER', name);
+      case 'taken_by': return line(`TAKEN BY ${esc(h.by)}`, h.nextInMs != null ? `NEXT ${name} ${mss(h.nextInMs)}` : name);
+      case 'taken': return line(`${name} IN ${mss(h.nextInMs || 0)}`, 'NEXT SPAWN');
+      case 'switch': return line('SWITCH WEAPON', `${name} EMPTY`);
+      default: return '';
+    }
+  }
+  /** A56: the held weapon item beside the ammo, with its charges left. */
+  _puHeld(st) {
+    const h = st.powerup && st.powerup.held; if (!h) return '';
+    return `<span class="puchip${h.active ? ' on' : ''}" style="--item:${itemColor(h.color)}"><i class="sw"></i><span class="nm">${esc(h.name)}</span><b class="tab" id="puleft">${h.left}</b></span>`;
   }
   /** F288: a trigger-path failure needs to reach the player, not live only in MC diagnostics. `no_answer`
    *  is conclusive and names the host-side cure. `no_fire` is the earlier, recoverable observation; silence
@@ -1560,7 +1597,10 @@ export class Hud {
       setHtml('stunfx', this._stunFx(st));              // F15: the stun countdown
       const hb = q('hpbar'); if (hb) hb.style.width = `${Math.round(100 * st.hp / st.maxHp)}%`;
       const sb = q('shbar'); if (sb) sb.style.width = `${Math.round(100 * st.armor / st.maxArmor)}%`;
-      const shieldb = q('shieldbar'); if (shieldb) shieldb.style.width = `${Math.round(100 * st.shield / st.maxShield)}%`;
+      const shieldb = q('shieldbar'); if (shieldb) shieldb.style.width = `${shieldPct(st)}%`;
+      const ob = q('obar'); if (ob) ob.style.width = `${oshieldPct(st)}%`;   // A56: the overshield block drains first
+      if (st.powerup && st.powerup.overshield) set('oval', `+${st.powerup.overshield.left}`);
+      if (st.powerup) { setHtml('puhint', this._puHint(st)); setHtml('puheld', this._puHeld(st)); }
       const bf = q('battfill'); if (bf) bf.style.right = `${100 - (st.battery || 0)}%`;
       const pips = q('pips'); if (pips) { const html = this._pips(st); if (pips.innerHTML !== html) pips.innerHTML = html; }
       const heat = q('heat'); if (heat) {
@@ -1761,9 +1801,8 @@ export class Hud {
       const pct = Math.min(100, Math.round(100 * st.switchingMs / st.switchWindowMs));
       if (this._moment !== 'switch') {
         this._moment = 'switch';
-        const lo = st.loadout || {}; const items = [lo.primary, lo.secondary];
         this.overlay.innerHTML = `<div class="mo switching"><div class="c"><span class="t">SWITCHING</span>
-          <div class="pair">${this._wtile(items[st.switchFrom], 'STOWING', 'from')}<span class="arr">▸▸▸</span>${this._wtile(items[st.switchTo], 'DRAWING', 'to')}</div>
+          <div class="pair">${this._wtile(this._slotItem(st, st.switchFrom), 'STOWING', 'from')}<span class="arr">▸▸▸</span>${this._wtile(this._slotItem(st, st.switchTo), 'DRAWING', 'to')}</div>
           <div class="track"><i id="swbar" style="width:${pct}%"></i></div></div></div>`;
         this.h.onHaptic && this.h.onHaptic('tap');
       } else { const b = this.overlay.querySelector('#swbar'); if (b) b.style.width = pct + '%'; }
@@ -1830,15 +1869,17 @@ export class Hud {
     const el = document.createElement('div');
     el.className = 'mo co' + (spec.kill || spec.killStyle ? ' kill' : '');
     el.dataset.kind = spec.kind; el.dataset.tone = spec.tone; el.dataset.src = spec.src;
+    if (spec.color) el.style.setProperty('--item', itemColor(spec.color));   // A56: a powerup card is the ITEM's colour, not a team's
     const medals = (spec.medals || []).filter(k => MEDAL_LABEL[k]);
     el.innerHTML = `<div class="cob"><div class="row"><span class="tag"><span class="unskew">${esc(spec.tag)}</span></span>`
-      + `${tk ? `<i class="sw" style="background:${TEAM_COLOR[tk]}"></i>` : ''}<span class="nm vt">${esc(String(spec.name).toUpperCase())}</span></div>`
+      + `${tk ? `<i class="sw" style="background:${TEAM_COLOR[tk]}"></i>` : spec.color ? `<i class="sw" style="background:${itemColor(spec.color)}"></i>` : ''}<span class="nm vt">${esc(String(spec.name).toUpperCase())}</span></div>`
       + `${spec.sub ? `<span class="by">${esc(spec.sub)}</span>` : ''}`
       + `${medals.length ? `<div class="medals">${medals.map((k, i) => `<span class="medal ${esc(k)}" style="animation-delay:${.12 + i * 2}s"><span class="unskew">${MEDAL_LABEL[k]}</span></span>`).join('')}</div>` : ''}</div>`;
     if (spec.kill) { this._flash(); this.h.onHaptic && this.h.onHaptic('kill'); }   // `_flash` is a no-op at night
     const hold = spec.hold + Math.max(0, medals.length - 1) * 2000;   // each medal line plays 2 s after the last (engine MEDAL_GAP_MS)
     const node = this._swap('co', el, hold, hold + 300);
     Object.assign(node.dataset, { kind: spec.kind, tone: spec.tone, src: spec.src });   // a reused node keeps its old data-* otherwise
+    if (spec.color) node.style.setProperty('--item', itemColor(spec.color)); else node.style.removeProperty('--item');
     return hold;
   }
   /** The IR and hill halves: fire the card once per NEW event (keyed on its `at`), and take any card down the
@@ -1873,6 +1914,18 @@ export class Hud {
       this._coIrVictim = co.victim;
       const rec = this._overlays && this._overlays.co;
       if (rec && rec.el.dataset.src === 'ir') { const nm = rec.el.querySelector('.nm'); if (nm) nm.textContent = String(co.victim).toUpperCase(); }
+    }
+    // A56: "<ITEM> AVAILABLE" at each spawn time (every phone, from its own schedule), and a pickup that SWAPS one
+    // weapon item for another ("RAIL GUN · REPLACES ROCKETS", lead 2026-09-24). Both in the item's colour.
+    const ps = st.powerupSpawn;
+    if (ps && ps.at !== this._coPuAt) {
+      this._coPuAt = ps.at;
+      this._co(st, { kind: 'powerup_spawn', src: 'powerup', tone: 'item', tag: 'POWERUP', name: `${ps.name} AVAILABLE`, color: ps.color, sub: '', hold: 2200 });
+    }
+    const pg = st.powerupGrant;
+    if (pg && pg.at !== this._coPgAt) {
+      this._coPgAt = pg.at;
+      if (pg.replaced) this._co(st, { kind: 'powerup_swap', src: 'powerup', tone: 'item', tag: 'PICKUP', name: pg.name, color: pg.color, sub: `REPLACES ${String(pg.replaced).toUpperCase()}`, hold: 2200 });
     }
     const hc = st.hillCallout;
     if (hc && hc.at !== this._coHillAt) {
@@ -1960,6 +2013,14 @@ export class Hud {
   }
 
   /** One weapon tile for the SWITCHING takeover and the ACTIVE confirm. */
+  /** What sits in gun slot `slot`: the loadout's primary/secondary, or (A56) the powerup item the ALT cycle reaches. */
+  _slotItem(st, slot) {
+    const lo = st.loadout || {};
+    if (slot === 0 || slot === 1) return [lo.primary, lo.secondary][slot] || null;
+    const h = st.powerup && st.powerup.held;
+    if (h && h.slot === slot) return { kind: 'weapon', weapon_id: h.weapon_id, name: h.name };
+    return slot != null && slot >= 2 ? { kind: 'weapon', weapon_id: st.weaponId, name: st.weapon || 'PICKUP' } : null;
+  }
   _wtile(it, label, cls) {
     if (!it) return `<span class="wt ${cls}"><span class="th none">—</span><span class="wl">${label}</span><span class="wn">NONE</span></span>`;
     const th = it.kind === 'perk' ? `<span class="th perk">${perkGlyph(it.perk_id)}</span>` : `<span class="th">${weaponArt(it.weapon_id)}</span>`;
@@ -1967,7 +2028,7 @@ export class Hud {
   }
   /** The swap confirmed (by the next shot's $ALCD) or assumed (window expired): the new weapon, marked ACTIVE. */
   _switched(st, m) {
-    const lo = st.loadout || {}; const it = [lo.primary, lo.secondary][m.data && m.data.slot] || null;
+    const it = this._slotItem(st, m.data && m.data.slot);
     const el = document.createElement('div'); el.className = 'mo switched';
     el.innerHTML = `<div class="c"><div class="in">${this._wtile(it, 'ACTIVE ✓', 'to on')}<span class="s">${m.data && m.data.assumed ? 'READY' : 'CONFIRMED BY YOUR GUN'}</span></div></div>`;
     this._swap('switched', el, 900, 1200);

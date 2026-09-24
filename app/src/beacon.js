@@ -12,13 +12,16 @@
 //   8    kind              station: 1 respawn · 2 powerup · 3 extraction · 4 bomb · 5 control  (player: 0)
 //   9    team              0..3 = the gun's $TID team, 255 = neutral / any team
 //   10   state             kind-specific (respawn: 1 ready · 0 disabled; bomb: 0 idle 1 planted 2 defused 3 detonated;
-//                           player: bit0 alive, bit1 planting, bit2 defusing, bit3 extracting)
-//   11   value             kind-specific small number (seconds left, cooldown, progress %)
+//                           player: bit0 alive, bit1 planting, bit2 defusing, bit3 extracting, bit4 claiming,
+//                           bit5 claim_ready (A56 powerups: standing at a powerup station, then past the 1 s dwell);
+//                           powerup: 1 available · 0 taken (value = seconds to the next spawn; 0 with value 0 = unknown)
+//   11   value             kind-specific small number (seconds left, cooldown, progress %); a claiming player: the station id
 //   12   seq               bumps on every state change so a scanner can tell a fresh advert from a stale one
 //   13   game              low 8 bits of the game's config hash; 0 = any game (a station from another match is ignored)
 //   14   threshold         the station's own "you are AT me" RSSI in dBm as int8 (0 = use the scanner's default).
 //                           Calibrated on the station's screen, so player phones need no per-station config.
-//   15   reserved          0
+//   15   taker             A56: a powerup station's winner, the player_num it granted the item to (0 = none);
+//                           cleared at the next spawn. 0 on every other advert.
 
 export const MAGIC = [0x4f, 0x42, 0x52, 0x58];
 export const VERSION = 1;
@@ -26,17 +29,25 @@ export const ROLE = { station: 1, player: 2 };
 export const KIND = { respawn: 1, powerup: 2, extraction: 3, bomb: 4, control: 5 };
 export const KIND_NAME = Object.fromEntries(Object.entries(KIND).map(([k, v]) => [v, k]));
 export const TEAM_ANY = 255;
-export const PLAYER_STATE = { alive: 1, planting: 2, defusing: 4, extracting: 8 };
+export const PLAYER_STATE = { alive: 1, planting: 2, defusing: 4, extracting: 8, claiming: 16, claim_ready: 32 };
+/** A56: how many raw samples the claim range reads a median over (one wild sample out of three is ignored). */
+export const MEDIAN_SAMPLES = 3;
+/** The median of a short list of RSSI samples (the lower middle for an even count). PURE. */
+export function medianOf(samples) {
+  const a = (samples || []).filter(Number.isFinite).slice().sort((x, y) => x - y);
+  if (!a.length) return null;
+  return a[Math.floor((a.length - 1) / 2)];
+}
 
 const hex2 = n => (n & 0xff).toString(16).padStart(2, '0');
 
 /** Build the UUID string for a station or a player advert. Unknown/absent fields default to 0. */
-export function encodeUuid({ role, id = 0, kind = 0, team = TEAM_ANY, state = 0, value = 0, seq = 0, game = 0, threshold = 0 }) {
+export function encodeUuid({ role, id = 0, kind = 0, team = TEAM_ANY, state = 0, value = 0, seq = 0, game = 0, threshold = 0, taker = 0 }) {
   const r = typeof role === 'string' ? ROLE[role] : role;
   if (!r) throw new Error('role required (station|player)');
   const k = typeof kind === 'string' ? (KIND[kind] || 0) : kind;
   const thr = threshold ? (threshold < 0 ? 256 + Math.max(-128, Math.round(threshold)) : Math.min(127, Math.round(threshold))) : 0;
-  const b = [...MAGIC, VERSION, r, (id >> 8) & 0xff, id & 0xff, k, team & 0xff, state & 0xff, value & 0xff, seq & 0xff, game & 0xff, thr & 0xff, 0];
+  const b = [...MAGIC, VERSION, r, (id >> 8) & 0xff, id & 0xff, k, team & 0xff, state & 0xff, value & 0xff, seq & 0xff, game & 0xff, thr & 0xff, taker & 0xff];
   const h = b.map(hex2).join('');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
@@ -52,7 +63,7 @@ export function decodeUuid(s) {
   if (!role) return null;
   const thr = b[14] === 0 ? 0 : (b[14] > 127 ? b[14] - 256 : b[14]);
   return { role, id: (b[6] << 8) | b[7], kind: role === 'station' ? (KIND_NAME[b[8]] || `kind${b[8]}`) : null,
-    team: b[9], state: b[10], value: b[11], seq: b[12], game: b[13], threshold: thr };
+    team: b[9], state: b[10], value: b[11], seq: b[12], game: b[13], threshold: thr, taker: b[15] };
 }
 
 /** The first Open BRX advert among a scan result's service UUIDs, decoded, or null. */
@@ -84,10 +95,13 @@ export class Presence {
     if (this.game && d.game && d.game !== this.game) return null;   // another match's station
     const key = `${d.role}:${d.id}`;
     let e = this.entries.get(key);
-    if (!e) { e = { ...d, rssi: rssi, raw: rssi, seenAt: now, present: false, sinceAbove: null, firstAt: now }; this.entries.set(key, e); }
+    if (!e) { e = { ...d, rssi: rssi, raw: rssi, seenAt: now, present: false, sinceAbove: null, firstAt: now, samples: [rssi], median: rssi }; this.entries.set(key, e); }
     else {
-      const fresh = d.seq !== e.seq || d.state !== e.state || d.team !== e.team || d.value !== e.value || d.threshold !== e.threshold;
+      const fresh = d.seq !== e.seq || d.state !== e.state || d.team !== e.team || d.value !== e.value || d.threshold !== e.threshold || d.taker !== e.taker;
       Object.assign(e, d, { raw: rssi, seenAt: now, rssi: e.rssi + this.alpha * (rssi - e.rssi) });
+      // A56: the powerup claim reads the MEDIAN of the last MEDIAN_SAMPLES raw samples, beside the EMA (which the
+      // respawn and control paths keep reading, unchanged): a 1 ft range cannot afford one wild sample.
+      e.samples = [...(e.samples || []), rssi].slice(-MEDIAN_SAMPLES); e.median = medianOf(e.samples);
       if (fresh) e.changedAt = now;
     }
     return e;
@@ -125,5 +139,6 @@ export class Presence {
 export function stationView(e) {
   if (!e) return null;
   return { id: e.id, kind: e.kind, team: e.team, state: e.state, value: e.value, rssi: Math.round(e.rssi), threshold: e.threshold, present: !!e.present,
+    ...(e.taker ? { taker: e.taker } : {}), ...(Number.isFinite(e.median) ? { median: Math.round(e.median) } : {}),
     ...(Number.isFinite(e.ageMs) ? { ageMs: Math.round(e.ageMs) } : {}) };
 }
