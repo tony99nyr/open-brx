@@ -5,7 +5,7 @@ recorded here the day they are made, so a buying decision never lives only in ch
 shopping list this grew from is archived at `docs/archive/hardware/bench-shopping-list.md` (grep it, do
 not read it). Gun sticker labels stay out of the repo; the device registry in `~/.brx-mcp/` holds them.
 
-**Updated: 2026-09-11.**
+**Updated: 2026-09-23.**
 
 ## On hand
 
@@ -18,16 +18,12 @@ not read it). Gun sticker labels stay out of the repo; the device registry in `~
 | ELEGOO Electronic Fun Kit (235 pc) | 1 kit | breadboard, jumpers, resistors, 2N2222, caps, status LEDs | 2026-08-26 |
 | Aideepen nRF24L01+PA+LNA + HW-200 adapter | 3 + 3 | exploratory gun-mesh tap; off the critical path | 2026-08-26 |
 | USB-C cables, 5 V USB charger | several | power + serial for every board | before 2026-08 |
+| M5StickS3 ESP32-S3 Mini IoT Dev Kit (M5Stack K150) | 2 | the hardware Station node (`brx-station-spec.md` S1 tier in a case): IR RX G42, IR TX G46, 1.14" LCD, speaker, 250 mAh, BLE 5. First unit flashed and bench-brought-up 2026-09-23 (`hardware/m5sticks3/README.md`, `docs/bench-sticks3-2026-09-23.md`) | 2026-09-11 |
+| Seeed Grove Infrared Emitter (101020026), 940 nm, ±17°, driver on board | 3 | the stronger beacon for the Stick (the bare CHANZON LED cliffs at 8 to 10 ft). Two in use, one spare | 2026-09-11 |
 
-## On order
-
-| item | qty | vendor | cost | ordered | purpose |
-|---|---|---|---|---|---|
-| M5StickS3 ESP32-S3 Mini IoT Dev Kit (M5Stack K150) | 2 | M5Stack | $21.50 each + ~$10 shipping incl. tariff | 2026-09-11 | the hardware Station node (`brx-station-spec.md` S1 tier in a case): IR RX G42, IR TX G46, 1.14" LCD, speaker, 250 mAh, BLE 5. One is the hill or powerup, one the witness receiver |
-| Seeed Grove Infrared Emitter (101020026), 940 nm, ±17°, driver on board | 3 | Mouser | $12.90 + $8.49 shipping + $2.84 tariff = $24.23 | 2026-09-11 | the stronger beacon for the Stick (the bare CHANZON LED cliffs at 8 to 10 ft). Two in use, one spare |
-
-Seeed direct wanted $26.11 DHL on $8.60 of parts. Mouser (used here) and Amazon (the Seeed listing and the
-M5Stack official store, checked 2026-09-11) carry both with domestic shipping. Buy there.
+Seeed direct wanted $26.11 DHL on $8.60 of parts. Mouser and Amazon (the Seeed listing and the
+M5Stack official store, checked 2026-09-11) carry both with domestic shipping; both items were bought
+from Mouser.
 
 ## Planned, not ordered
 
@@ -44,8 +40,5 @@ M5Stack official store, checked 2026-09-11) carry both with domestic shipping. B
 - The 16-pixel ring at full single-colour brightness is an estimated 320 mA (16 × 20 mA per channel, not measured), most of the Grove budget: cap brightness near 50 percent or feed the ring from the power bank.
 - The Atom Matrix ($14.95, 5×5 matrix, IR TX only, no receiver, no battery) was considered and rejected for the first unit; it remains the cheaper fixed-hill option once a receiver unit is added.
 
-## First bench gate (when the Sticks arrive)
-
-1. Flash `m5sticks3/`, speaker off, hold the Stick in the grenade's cone at 6 ft: a `proto=15 mag=8` decode on serial.
-2. Watch a HUD phone pick up the Stick's kind-5 control-point advert with the beacon's owner.
-3. Range walk the Grove emitter against a stock gun, against the bare-LED cliff of 8 to 10 ft.
+The bench gates for the Stick (what to run and the results) live in `docs/bench-sticks3-2026-09-23.md`,
+not here.
