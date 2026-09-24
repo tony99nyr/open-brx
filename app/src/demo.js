@@ -215,6 +215,12 @@ export function startDemo({ engine, log }) {
       linkGun: () => engine.onBleConnected(gunObj), dropGun: () => engine.onBleDropped(), relinkGun: () => engine.onBleConnected(),
       // bench 2026-09-17: the headset is off, so the gun keeps dropping the link (BrxLink.flapping)
       flapGun: (count = 3, quiet = false) => { engine.onBleDropped(); engine.setGunFlapping({ count, next_retry_at: Date.now() + 30000, quiet }); },
+      // F293: BrxLink's `$VERSION` probe. 'joining'/'not_joined': the link is down while the headset joins the gun;
+      // 'joined': the first hds.N reading, and the link comes up.
+      headsetJoin: state => {
+        if (state === 'joined') { engine.setHeadsetJoin({ state, since: Date.now() }); engine.onBleConnected(); return; }
+        engine.onBleDropped(); engine.setGunFlapping(null); engine.setHeadsetJoin({ state, since: Date.now() });
+      },
       resyncProbe: () => engine._beginResync('demo'),   // the trigger-first resync prompt (a lobby/armed reconnect, or a resume) — a live rejoin RECONCILES instead (S7.1)
       battery: pct => engine.feedFrame(`$VOLTS,8101,3789,${pct},48,*`),
       mcBound: () => engine.setWsState('bound'), mcLost: () => engine.setWsState('closed'),
@@ -491,6 +497,8 @@ export function startDemo({ engine, log }) {
       // the one case that used to need an UNRELATED field to also change before the screen ever caught up.
       'kitted-headset-off': [...kitted, [400, () => ev.flapGun(3)]],   // bench 2026-09-17: HEADSET OFF? + RECONNECT NOW
       'connected-headset-off': [[0, 'linkGun'], [50, () => ev.battery(82)], [400, () => ev.flapGun(2)]],   // the same, before MC binds
+      'kitted-headset-joining':    [...kitted, [400, () => ev.headsetJoin('joining')]],      // F293: $VERSION reads ?, the phone waits
+      'kitted-headset-not-joined': [...kitted, [400, () => ev.headsetJoin('not_joined')]],   // F293: 60 s of ?, waits for RECONNECT NOW
       'connected-linked':  [[0, 'linkGun'], [400, 'mcBound']],
       'setup':             [[0, () => { policy.kit_open = false; }], ...kit],
       'briefing':          kit,

@@ -98,11 +98,11 @@ let transport = null;
 const link = new BrxLink({
   log, onFrame: f => engine.feedFrame(f),
   onDrop: () => { engine.onBleDropped(); haptic('down'); },
-  onUp: advert => {
+  onUp: (advert, probe) => {
     // F211 fix: a link that just came up (fresh connect, or the forever-reconnect loop's own success)
     // must close the picker if it is somehow still open, so the beacon scan (scanwatch.js) is free again.
     if (scanning) { scanning = false; stopPickerPaint(); hud.setScan([]); link.stopScan().catch(() => {}); }
-    engine.onBleConnected(advert);
+    engine.onBleConnected(advert, probe);   // F293: `probe` = what BrxLink's connect probe sent and read
     if (transport) {
       transport.gun = { name: advert.name, tail: advert.tail, fw: engine.fw || undefined };
       if (transport.state === 'bound') { try { transport.bind({ player_id: engine.player && engine.player.player_id, gun: engine.gun ? { name: engine.gun.name, tail: engine.gun.tail, fw: engine.fw || undefined } : undefined }); } catch (_) { /* best-effort */ } }
@@ -110,6 +110,10 @@ const link = new BrxLink({
   },
   unbounded: () => engine.phase === 'armed' || engine.phase === 'live',
   onFlap: f => engine.setGunFlapping(f),
+  // F293: every connect probes `$VERSION` before the link counts as up; the engine picks the probe frames (no `$STOP`
+  // on a relink) and shows HEADSET JOINING / HEADSET NOT JOINED from the link's headset state.
+  probeFrames: () => engine.linkProbeFrames(),
+  onHeadset: h => engine.setHeadsetJoin(h),
   onRelink: () => scheduleRender(),   // RELINK GUN reads RELINKING… and is disabled while a relink runs (bench 2026-09-17)
 });
 const engine = new Engine({
@@ -533,7 +537,8 @@ Object.assign(hud.h, {
   // A link that is down: cut the backoff short. A link the app believes is up: really cycle it (playtest
   // 2026-09-13, RELINK GUN did nothing there). The relink path re-writes the head only where that is safe.
   // HEADSET OFF? RECONNECT NOW: start the flap backoff again and dial at once (a link that is up is left alone).
-  onReconnectNow: () => { link.resetFlap(); engine.setGunFlapping(null); if (link.deviceId && !link.connected) link.retryNow(); },
+  // F293: it also ends HEADSET NOT JOINED and starts the 60 s headset cap again.
+  onReconnectNow: () => { link.resetFlap(); engine.setGunFlapping(null); link.resetHeadset(); engine.setHeadsetJoin(link.headsetJoin); if (link.deviceId && !link.connected) link.retryNow(); },
   onReconnectGun: () => { if (link.deviceId) link.relink().catch(e => log('relink: ' + (e && e.message || e), 'le')); },
   onReconnectMc: () => {
     const url = settings.mcUrl || lastMcUrl;
@@ -597,7 +602,9 @@ Object.assign(hud.h, {
 });
 async function rejoinGun() {
   const want = engine.gun && engine.gun.name; if (!want) return;
-  log(`match in progress — reconnecting to ${want}…`, 'lk');
+  // F293: say "match in progress" only when one is (the phase restores as IDLE until the relink, so read the pending one)
+  const p = engine.phase !== 'idle' ? engine.phase : engine._pendingPhase;
+  log(p === 'armed' || p === 'live' ? `match in progress — reconnecting to ${want}…` : `reconnecting to your gun ${want}…`, 'lk');
   let done = false;
   scanning = true;   // claim the radio before the first await (the beacon watch yields to it)
   await stopAnyScan();

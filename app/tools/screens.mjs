@@ -593,6 +593,34 @@ for (const view of VIEWS) {
     const after = await read(); await pg.close();
     must(!after.some(t => /GUN KEEPS DROPPING/.test(t)), 'RECONNECT NOW left the quiet line up: ' + JSON.stringify(after));
   });
+  // F293 (bench 2026-09-24): the phone probes `$VERSION` on every connect. While token 2 reads `?` the HUD says the
+  // headset is joining; after 60 s it says what fixes it and waits for RECONNECT NOW; the first `hds.N` clears the lines.
+  const chipPills = pg => pg.evaluate(() => Array.from(document.querySelectorAll('.chipbar .pill')).map(p => p.textContent.trim()));
+  await step(`${view.name} headset-join-1 joining: HEADSET JOINING, and no link-lost or headset-off line beside it`, async () => {
+    const pg = await open(view, 'kitted-headset-joining'); const pills = await chipPills(pg);
+    await pg.screenshot({ path: `${OUT}/${view.name}-headset-joining.png` });
+    const bad = await invariants(pg); await pg.close();
+    must(pills.includes('HEADSET JOINING'), 'no HEADSET JOINING line: ' + JSON.stringify(pills));
+    must(!pills.some(t => /GUN LINK LOST|HEADSET OFF\?|GUN KEEPS DROPPING/.test(t)), 'one line only: ' + JSON.stringify(pills));
+    must(bad.length === 0, bad.join(';'));
+  });
+  await step(`${view.name} headset-join-2 not joined: the power-cycle line and RECONNECT NOW, and the tap clears it`, async () => {
+    const pg = await open(view, 'kitted-headset-not-joined'); const pills = await chipPills(pg);
+    await pg.screenshot({ path: `${OUT}/${view.name}-headset-not-joined.png` });
+    must(pills.includes('HEADSET NOT JOINED · POWER-CYCLE THE HEADSET') && pills.includes('RECONNECT NOW'), JSON.stringify(pills));
+    must(!pills.some(t => /GUN LINK LOST|HEADSET JOINING|HEADSET OFF\?/.test(t)), 'one line only: ' + JSON.stringify(pills));
+    const bad = await invariants(pg); must(bad.length === 0, bad.join(';'));
+    await pg.click('.chipbar [data-act="onReconnectNow"]'); await pg.waitForTimeout(400);
+    const after = await chipPills(pg); await pg.close();
+    must(!after.some(t => /HEADSET NOT JOINED/.test(t)), 'RECONNECT NOW left the line up: ' + JSON.stringify(after));
+  });
+  await step(`${view.name} headset-join-3 the first hds.N reading clears HEADSET OFF? at once`, async () => {
+    const pg = await open(view, 'kitted-headset-off');
+    must((await chipPills(pg)).includes('HEADSET OFF? TURN THE HEADSET ON.'), 'the stage has no headset-off line to clear');
+    await pg.evaluate(() => window.brxDemo.headsetJoin('joined')); await pg.waitForTimeout(300);
+    const after = await chipPills(pg); await pg.close();
+    must(!after.some(t => /HEADSET OFF\?|GUN KEEPS DROPPING|HEADSET JOINING|GUN LINK LOST/.test(t)), 'a warning outlived the hds.N reading: ' + JSON.stringify(after));
+  });
   await step(`${view.name} #32 live off MC range: amber dot, no pill; tapping MC shows the detail`, async () => {
     const pg = await open(view, 'live-mclost'); const read = () => pg.evaluate(() => ({ dot: document.querySelector('#mcdot').className, pills: Array.from(document.querySelectorAll('.chipbar .pill')).map(p => p.textContent.trim()) }));
     let r = await read(); must(/\bws\b/.test(r.dot), 'MC dot not amber: ' + r.dot); must(!r.pills.some(t => /MISSION CONTROL/.test(t)), 'pill shown unasked: ' + r.pills);

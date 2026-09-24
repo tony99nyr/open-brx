@@ -1410,6 +1410,9 @@ KNOWN_UNMIRRORED = {
     "resumeSchedule", "_event", "_probe", "_checkEcho", "ackEnd", "onResultPush", "resultWait",
     # bench 2026-09-17: BrxLink's flap count, passed through to the HUD and MC; no game rule reads it
     "setGunFlapping",
+    # F293: BrxLink's `$VERSION` headset probe. The frames it sends and the headset state it shows the HUD; no game rule
+    # reads either, and the stage has no BrxLink
+    "linkProbeFrames", "setHeadsetJoin",
     # F289: what the node tells MC about owed spawn protection (respawn fact + statusBody); no game rule reads it
     "_protectOwedMs",
     # F272: node/BrxLink liveness and locked-head recovery. The stage is itself the deterministic gun driver,

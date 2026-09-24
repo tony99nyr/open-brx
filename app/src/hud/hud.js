@@ -467,7 +467,7 @@ export class Hud {
       chargeCost(st) != null && st.ammo != null && st.ammo < chargeCost(st), st.reserve > 0,   // OUT OF ENERGY / RECHARGE prompt + the NOT ENOUGH ENERGY note are structural too
       // F288: both gun-health facts change live markup. Flatten the objects: joining the objects themselves
       // would turn every non-null value into the same "[object Object]" and miss no_fire → no_answer.
-      st.poolStale && st.poolStale.why, st.cure && st.cure.verdict, !!st.gunFlapping, !!st.reconciling, !!st.gunLocked, st.gunRecovery, st.downReason,
+      st.poolStale && st.poolStale.why, st.cure && st.cure.verdict, !!st.gunFlapping, st.headsetJoin && st.headsetJoin.state, !!st.reconciling, !!st.gunLocked, st.gunRecovery, st.downReason,
       // A56: the powerup hint/held slots exist only in a powerup game; the overshield bar and the shield number are structure
       !!st.powerup, !!(st.powerup && st.powerup.overshield), !!(st.powerup && st.powerup.held && st.powerup.held.active),
       SV.meterShown(st), hasArmor(st),   // the shield meter exists or not; the armour number and bar exist or not
@@ -1653,7 +1653,13 @@ export class Hud {
     // quick drops in a row, one steady line says the likely cause, whether the link is up this second or not.
     // Game day 2026-09-19: after 3 flaps in a row the phone stops reconnecting for 30 s (BrxLink's quiet
     // period). The line says what fixes it; RECONNECT NOW ends the quiet period at once. It shows in every phase.
-    if (st.gunFlapping && st.gunFlapping.quiet) pills.push(`<span class="pill bad" data-flap="${st.gunFlapping.count}" data-quiet="1"><span class="unskew">${down ? 'POWER-CYCLE THE HEADSET' : 'GUN KEEPS DROPPING. POWER-CYCLE THE HEADSET, THEN THE GUN RECONNECTS.'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
+    // F293 (bench 2026-09-24): the phone reads the headset state from `$VERSION` on every connect. While it reads `?`
+    // the headset is still joining the gun and the phone waits; after 60 s it stops and waits for RECONNECT NOW. Both
+    // lines show in every phase, in place of the flap lines and GUN LINK LOST (the link is down on purpose).
+    const hj = st.headsetJoin && st.headsetJoin.state;
+    if (hj === 'not_joined') pills.push(`<span class="pill bad" data-headset="not_joined"><span class="unskew">HEADSET NOT JOINED · POWER-CYCLE THE HEADSET</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
+    else if (hj === 'joining' && !st.bleUp) pills.push(`<span class="pill warn" data-headset="joining"><span class="unskew">HEADSET JOINING</span></span>`);
+    else if (st.gunFlapping && st.gunFlapping.quiet) pills.push(`<span class="pill bad" data-flap="${st.gunFlapping.count}" data-quiet="1"><span class="unskew">${down ? 'POWER-CYCLE THE HEADSET' : 'GUN KEEPS DROPPING. POWER-CYCLE THE HEADSET, THEN THE GUN RECONNECTS.'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
     else if (st.phase !== 'idle' && st.gunFlapping) pills.push(`<span class="pill warn" data-flap="${st.gunFlapping.count}"><span class="unskew">${down ? 'HEADSET OFF? TURN IT ON' : 'HEADSET OFF? TURN THE HEADSET ON.'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
     // QA-02: on the live HUD this is a solid, steady bar (16 px, no blink): the frozen numbers below depend on it.
     else if (st.phase !== 'idle' && !st.bleUp) pills.push(`<button class="pill bad${st.phase === 'live' && !down ? ' gunlost' : ''}" data-act="onReconnectGun"><span class="unskew">GUN LINK LOST — TAP TO RECONNECT</span></button>`);
