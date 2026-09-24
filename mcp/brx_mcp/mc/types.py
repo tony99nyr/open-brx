@@ -1081,6 +1081,7 @@ class StationUpdate(TypedDict):
     id: int
     available: bool
     next_spawn_in_ms: NotRequired[int]
+    reset: NotRequired[bool]   # an operator reset: the station accepts it even for a spawn it already awarded
 
 
 class StationAction(TypedDict):

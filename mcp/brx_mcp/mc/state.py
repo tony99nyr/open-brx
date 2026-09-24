@@ -2699,9 +2699,11 @@ class Session:
         return {"id": a["id"], "available": row["available"],
                 "next_spawn_in_ms": max(0, _pu.spawn_at(row["item"], self._pu_sched["go"], row["next_k"]) - self.now_ms())}
 
-    def _push_station_update(self, nid: str) -> None:
+    def _push_station_update(self, nid: str, reset: bool = False) -> None:
         body = self._pu_update_body(nid)
         if body is not None:
+            if reset:
+                body["reset"] = True   # the station tells an operator reset from a re-send of a spawn it awarded
             self.net.push(nid, "station_update", body)
 
     def _powerup_tick(self, now: int) -> None:
@@ -2795,7 +2797,7 @@ class Session:
         row["available"], row["taken_by"], row["since"] = True, None, self.now_ms()
         self._on_feed({"t_match_s": self._operator_t_match(self.now_ms()), "tag": "OPERATOR", "kind": "info",
                        "text": f"OPERATOR RESET · STATION #{self.stations[nid]['assigned']['id']}"})
-        self._push_station_update(nid)
+        self._push_station_update(nid, reset=True)
         self._changed()
 
     def reset_station(self, nid: str) -> dict:

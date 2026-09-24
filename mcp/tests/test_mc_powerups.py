@@ -423,7 +423,8 @@ def test_operator_reset_from_the_station_makes_the_item_available_now_on_the_fix
     assert s._station_view("u1")["item_available"] is False
     clock.t = go + 80_000
     _action(s, clock, "u1", 5, "reset")
-    assert _pushed(s, "station_update", "u1")[-1] == {"id": 5, "available": True, "next_spawn_in_ms": 40_000}
+    # `reset: true` tells the station this is an operator reset, not a re-send of a spawn it already awarded
+    assert _pushed(s, "station_update", "u1")[-1] == {"id": 5, "available": True, "next_spawn_in_ms": 40_000, "reset": True}
     assert s._station_view("u1")["item_available"] is True
     assert "OPERATOR RESET · STATION #5" in _feed(s)
     # the pickup the player made BEFORE the reset, replayed late from its outbox, does not take the new item
@@ -448,7 +449,7 @@ def test_console_reset_route_and_its_refusals():
     go = _live(s, clock)
     clock.t = go + 1_000
     s.reset_station("u1")
-    assert _pushed(s, "station_update", "u1")[-1] == {"id": 5, "available": True, "next_spawn_in_ms": 119_000}
+    assert _pushed(s, "station_update", "u1")[-1] == {"id": 5, "available": True, "next_spawn_in_ms": 119_000, "reset": True}
     assert "OPERATOR RESET · STATION #5" in _feed(s)
     off, clock2 = _sess(powerups=False)
     off.net.simulate_utility_hello("u1")

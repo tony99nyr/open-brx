@@ -1151,6 +1151,8 @@ export interface StationUpdate {
   id: number;
   available: boolean;
   next_spawn_in_ms?: number;
+  /** an operator reset: the station accepts it even for a spawn it already awarded */
+  reset?: boolean;
 }
 
 /** A56 (S58): a powerup station -> MC, live only (no seq). `reset` = the operator reset the item at the
