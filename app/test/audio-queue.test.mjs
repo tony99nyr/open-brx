@@ -271,10 +271,22 @@ test('B koth-capture-kill-lead: the kill confirm, then the lead change, both in 
   const hc = one(b, 'hill_captured'), k = one(b, 'kill'), l = one(b, 'lead_taken');
   assert.ok(heardInFull(k) && heardInFull(l) && k.start < l.start);
   assert.ok(k.start >= hc.end && k.start - hc.end <= MUST_LATENCY_MS, `the kill ${k.start - hc.end} ms after the hill line`);
+  assert.ok(k.latency <= hc.ms + MUST_LATENCY_MS, `kill ${k.latency} ms: at most the hill line on air, plus ${MUST_LATENCY_MS} ms`);
+  assert.ok(l.latency <= hc.ms + 2000 + 2 * MUST_LATENCY_MS, `lead ${l.latency} ms: the hill line, then the IR kill card's 2 s`);
 });
 test('B koth-capture-kill-lead: "Hill Captured" is heard at once, through the hum (finding B2)', () => {
   const hc = one(B['koth-capture-kill-lead'], 'hill_captured');
   assert.ok(heardInFull(hc) && hc.latency <= 50, `${hc.status}, ${hc.latency} ms`);
+});
+test('B: an objective line\'s flush never lands inside my own kill or medal clip', () => {
+  for (const s of SCENARIOS) {
+    const b = B[s.id], own = b.gun.clips.filter(c => c.must && c.start != null);
+    for (const w of b.writes.filter(x => x.frames.includes(PLAYX) && /^(hill_captured|hill_lost|enemy_down)\b/.test(x.why))) {
+      const hit = own.filter(c => c.start <= w.t && w.t < c.end);
+      assert.deepEqual(hit.map(c => c.cue), [], `${s.id}: ${w.why} at ${w.t}`);
+    }
+  }
+  assert.ok(B['koth-hum-objectives'].writes.some(x => x.frames.includes(PLAYX) && /^hill_captured/.test(x.why)), 'not vacuous: an objective flush happened');
 });
 test('B koth-hum-objectives: under the hum, both hill lines and "Target down" are heard; the ambient alert is not', () => {
   const b = B['koth-hum-objectives'];
@@ -313,13 +325,17 @@ test('B koth-flap-standard: the kill line is heard in full, the stale "Hill Capt
   assert.ok(heardInFull(one(b, 'hill_lost')));
 });
 
-test('B standard-control: kill, lead, double kill and the hill capture are all heard in full; first blood folds into the double kill', () => {
+test('B standard-control: kill, lead, first blood and double kill are all heard in full, in that order', () => {
   const b = B['standard-control'];
-  for (const cue of ['kill', 'lead_taken', 'double_kill', 'hill_captured']) assert.ok(heardInFull(one(b, cue)), cue);
+  const order = ['kill', 'lead_taken', 'first_blood', 'double_kill'].map(cue => one(b, cue));
+  // The hill capture at 6 s lands behind 4.2 s of medal voice: it would start 3 s late, past its 2 s limit, so its card
+  // shows without its line (docs/announcer.md, Late lines).
+  assert.ok(b.dropped.some(d => d.cue === 'hill_captured' && /card only/.test(d.why)));
+  order.forEach(c => assert.ok(heardInFull(c), c.cue));
+  for (let i = 1; i < order.length; i++) assert.ok(order[i - 1].start < order[i].start, `${order[i - 1].cue} before ${order[i].cue}`);
+  // The first-blood line waits behind the lead change (the `medal` rank), and the second kill's MC item folds it: the
+  // spree fold never drops first blood (review H1), it says it and then the newest tier.
   assert.equal(clipsOf(b, 'kill').length, 1, 'the second kill is confirmed by its double-kill line, which replaces the plain line');
-  // The first-blood line waits behind the lead change (the `medal` rank); the second kill's MC item then folds it (the
-  // spree rule: the newest medal line only).
-  assert.ok(b.dropped.some(d => d.cue === 'first_blood' && /folded/.test(d.why)));
 });
 test('B standard-control: "Your team takes the lead" is heard (finding B1: it expired behind two kill items)', () => {
   const l = one(B['standard-control'], 'lead_taken');

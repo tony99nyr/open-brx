@@ -157,7 +157,12 @@ export class Announcer {
     if (it.key != null) {
       const cur = this.current;
       if (cur && cur.key === it.key && now < cur.until) {
-        if (cur.kind === it.kind && !it.preemptKey) { this.log(`announcer: ${it.kind} is already playing, duplicate dropped`); return null; }
+        if (cur.kind === it.kind && !it.preemptKey) {
+          // The state on air is true again, so any other state of this key still waiting is false: drop it too (a queued
+          // `lead_lost` behind a `lead_taken` that is true again would otherwise wait forever, TTL Infinity).
+          this.queue = this.queue.filter(q => { if (q.key !== it.key) return true; this._dropped(q); this.log(`announcer: ${q.kind} dropped: ${it.kind} is true again`); return false; });
+          this.log(`announcer: ${it.kind} is already playing, duplicate dropped`); return null;
+        }
         // The hill rule: the newest word about the point takes over the hill line on air, but never jumps a
         // higher-priority item that is waiting (a flapping hill must not starve a kill confirm or a lead change).
         // A preempt that does not stop the line it replaces (the pool lines) may only start on a silent gun (P1).

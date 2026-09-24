@@ -4804,14 +4804,18 @@ export class Engine {
     let medals = medalCues, medalList = Array.isArray(body.medals) ? body.medals.slice() : [];
     if (isKill) {
       // Round 2 M1, a spree: older MC kills still WAITING fold into this one item, so the queue never stacks a line per
-      // kill. The newest medal line only (a triple supersedes the double), the newest card. The folded items leave
+      // kill. The newest medal line only (a triple supersedes the double), the newest card. FIRST BLOOD is never folded:
+      // it is said first, then the newest tier (it is a different fact, and the `medal` rank makes it wait behind a lead
+      // change, so a second kill often lands while it waits). The card lists every folded medal. The folded items leave
       // WITHOUT `onDrop`: their pairing entries stay, marked as said, so their IR twins do not speak for them either.
       const waiting = this._ann.queue.filter(q => (q.kind === 'kill_confirmed' || q.kind === 'medal') && q.src === 'mc');
       if (waiting.length) {
         waiting.forEach(q => { this._ann.remove(q); if (q.entry) q.entry.killLine = true; });
-        const older = waiting.map(q => q.medals).filter(m => m && m.length).pop();
-        if (medals.length) medals = [medals[0]];
-        else if (older) { medals = [older[0]]; medalList = [older[0].m]; }
+        const folded = waiting.flatMap(q => q.medals || []);
+        const fb = [...folded, ...medals].find(x => x.m === 'first_blood');
+        const tier = medals.find(x => x.m !== 'first_blood') || folded.filter(x => x.m !== 'first_blood').pop();
+        medals = [fb, tier].filter(Boolean);
+        medalList = [...new Set([...waiting.flatMap(q => q.medalList || []), ...medalList])];
         this.log(`announcer: ${waiting.length} waiting kill confirm(s) folded into this one (${medals.length ? medals[0].m : 'the plain line'})`, 'li');
       }
     }
@@ -4829,7 +4833,7 @@ export class Engine {
     // docs/announcer.md: once this kill's line was said (its IR twin started and was not muted), what is left to say is
     // medal lines only. They rank `medal`, after a lead change, so the lead MC sent with this kill is not held behind them.
     const killSaid = isKill && medals.length > 0 && irAt != null && !(irMatch && irMatch.item && irMatch.item.muted);
-    const item = this._ann.push({ kind: isKill ? (killSaid ? 'medal' : 'kill_confirmed') : 'alert', src: 'mc', key: isKill ? null : `fb:${body.kind}`, audioMs, entry: mcEntry, medals,
+    const item = this._ann.push({ kind: isKill ? (killSaid ? 'medal' : 'kill_confirmed') : 'alert', src: 'mc', key: isKill ? null : `fb:${body.kind}`, audioMs, entry: mcEntry, medals, medalList,
       bannerMs: isKill ? Math.max(KILL_CARD_MS, audioMs) : 0,
       ok: () => this._lightGen === lg,
       onDrop: () => { if (mcEntry) this._mcKillOpen = this._mcKillOpen.filter(x => x !== mcEntry); },   // unheard: no IR twin may pair with it

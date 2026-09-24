@@ -377,13 +377,16 @@ class PolicyB {
         this.ann.extend(ir.item, t + KILL_CARD_MS);
         return;
       }
-      // engine.js round 2 M1, the spree fold: older MC kills still WAITING fold into this one; the newest medal line only
+      // engine.js round 2 M1, the spree fold: older MC kills still WAITING fold into this one: first blood (never folded),
+      // then the newest medal tier
       const waiting = this.ann.queue.filter(q => q.src === 'mc' && (q.kind === 'kill_confirmed' || q.kind === 'medal'));
       if (waiting.length) {
-        waiting.forEach(q => { this.ann.remove(q); this._dropItem(q, 'folded into the newer kill (spree)'); });
-        const older = waiting.map(q => q.medals).filter(m => m && m.length).pop();
-        if (medals.length) medals = [medals[0]];
-        else if (older) medals = [older[0]];
+        const folded = waiting.flatMap(q => q.medals || []);
+        const fb = [...folded, ...medals].find(m => m === 'first_blood');
+        const tier = medals.find(m => m !== 'first_blood') || folded.filter(m => m !== 'first_blood').pop();
+        const keep = [fb, tier].filter(Boolean);
+        waiting.forEach(q => { this.ann.remove(q); q.lines = (q.lines || []).filter(l => !keep.includes(l.cue)); this._dropItem(q, 'folded into the newer kill (spree)'); });
+        medals = keep;
       }
       if (ir) {
         if (ir.item && this.ann.queue.includes(ir.item)) {   // IR still waiting: MC's item replaces it and speaks the kill once

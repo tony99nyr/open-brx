@@ -483,6 +483,32 @@ test('shield loop: the hill lines are objective lines: each cuts the loop and is
   assert.deepEqual(tail(h, m), ['X', 'VB0P'], 'Hill Lost, through the loop');
 });
 
+test('H1: first blood waits behind the lead change, a double kill arrives: first blood is never folded, and the HUD keeps it', () => {
+  const h = harness().live();
+  h.irWord(7, IR_CALLOUT.DOWN_BY + 2); h.adv(300);                 // kill 1: IR says the kill line
+  h.kill({ medals: ['first_blood'] }); h.alert('lead_taken');       // MC: first blood (a `medal` item) and the lead change
+  h.adv(1400);                                                      // the lead line is on air, first blood waits
+  h.irWord(7, IR_CALLOUT.DOWN_BY + 2); h.adv(300);                 // kill 2 inside that window
+  h.kill({ medals: ['double_kill'] });
+  const seen = new Set();
+  for (let i = 0; i < 240; i++) { h.adv(50); const c = h.eng.state().card; if (c && c.kind === 'kill') (c.data.medals || []).forEach(m => seen.add(m)); }
+  const fb = h.plays(golden.cues.first_blood.split(',')[4])[0], dk = h.plays(golden.cues.double_kill.split(',')[4])[0];
+  assert.ok(fb, 'first blood is said, not folded away');
+  assert.ok(dk && dk.t > fb.t, 'then the newest tier, the double kill');
+  assert.ok(seen.has('first_blood') && seen.has('double_kill'), 'the kill card lists both medals: ' + [...seen]);
+  assert.ok(h.eng.medals.includes('first_blood'), 'and `medals` holds first blood');
+});
+
+test('M2 unit: a lead state on air again drops the stale opposite state still queued', () => {
+  let t = 0; const played = [];
+  const a = new Announcer(() => t);
+  const lead = kind => ({ kind, key: 'lead', audioMs: 1900, play: () => played.push(kind) });
+  a.push(lead('lead_taken')); t = 100; a.push(lead('lead_lost')); t = 200; a.push(lead('lead_taken'));
+  assert.deepEqual(a.queue.map(q => q.kind), [], 'the queued lead_lost is false now: dropped with the duplicate');
+  for (t = 300; t < 20000; t += 100) a.tick(t);
+  assert.deepEqual(played, ['lead_taken']);
+});
+
 test('the possession tick never sounds while my kill or its medal lines are on air (a token-1 clip cuts them)', () => {
   const h = harness({ mode: 'koth' }).live();
   const beacon = () => h.eng.feedFrame('$HIR,4,15,0,1,8,0,0,*');   // BLUE (us) holds the point

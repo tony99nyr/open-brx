@@ -29,7 +29,8 @@ named `kill` is refused.
 
 **Exempt, by design** (they answer the player's own body or trigger at once, or play before go-live when nothing
 else is on air): the pain grunts (`pain_short`, `pain_long`, `pain_melee`; a grunt that would start more than 500 ms
-after its hit, `PAIN_STALE_MS`, is dropped: behind the shield-break line of the same hit it would play 2.6 s late), `hit_taken`, `died`, the low-health
+after its hit, `PAIN_STALE_MS`, is dropped: behind the shield-break line of the same hit it would play 2.6 s late; while
+the shield loop blocks the gun, every grunt is dropped), `hit_taken`, `died`, the low-health
 loop (`hurt`), `shield_down` and its heartbeat (`shield_loop`), `stunned`, `stun_over`, `poisoned`, `poison_tick`,
 `smoked`, `reload_nag`, the spawn line (`spawn`, `respawned`), `countdown`, `klaxon`, `runway_30/20/10`, the whistle's
 `game_over` and `survivors_win` (written at match end, after the queue is cleared), and the gun's sight flash `$SFLASH`. The hill possession tick (`hill_tick`, 0.11 s) and the shield heartbeat (`shield_loop`)
@@ -117,7 +118,8 @@ silently. The must-hear lines get longer: my kill confirm and its medal lines 6 
 
 **Spree.** When a new MC kill arrives while older MC kills still wait, they fold into ONE item: the newest medal line
 only (a triple supersedes the double) and the newest card. Five kills 1 s apart never queue more than about 4 s of
-voice. The folded kills keep their pairing, marked as said, so their IR twins stay silent.
+voice. First blood is never folded: the item says it first, then the newest tier, and the kill card lists every
+folded medal. The folded kills keep their pairing, marked as said, so their IR twins stay silent.
 
 ## Stale items and duplicates (`ANNOUNCE_TTL_MS`)
 
@@ -130,6 +132,8 @@ the queue unplayed runs its `onDrop`, which undoes its kill-confirm pairing, so 
 confirm nobody heard. Items with the same key collapse.
 The same kind already playing or waiting is dropped. A different kind with the same key that is still waiting is
 replaced: "takes the lead" then "lost the lead" says only the second, and a newer hill word replaces an older one.
+When the state on air comes true again (on air "takes the lead", waiting "lost the lead", then "takes the lead" again),
+the new item is a duplicate and the waiting item is false: both are dropped.
 
 ## Pre-emption
 

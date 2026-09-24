@@ -4274,12 +4274,14 @@ test('A17: armour and shield absorb in silence; the grunt belongs to HEALTH, sti
   // ... and the short/long choice is still made by DAMAGE, from the same pain pools (Tony: "it should use the
   // pain pool for short or pain pool for long"). 45 >= voice.pain_long_min (40) → a long-pain take.
   assert.ok(plays().some(f => longTakes.includes(f)), 'a 45-damage hit takes a LONG pain');
-  h.adv(700); h.writes.length = 0;
+  // Past the long take (VAE 1.25 s, VAF 1.16 s; the pick is random). 700 ms here left up to 550 ms of it on the gun, so a
+  // grunt for the next hit would start more than PAIN_STALE_MS after its hit and is dropped, by design (docs/announcer.md).
+  h.adv(1300); h.writes.length = 0;
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,31,0,0,*');
   assert.ok(plays().some(f => shortTakes.includes(f)), 'a 9-damage hit takes a SHORT pain');
 
   // A bundle from an older MC passes no pool at all: `_pain` must behave exactly as it did before A17.
-  h.adv(700); h.writes.length = 0;
+  h.adv(1300); h.writes.length = 0;   // past the short take on the gun as well (up to 0.79 s), for the same reason
   h.eng._pain(9, 0);
   assert.equal(plays().length, 1, 'no pool given (pre-A17 caller): grunts as before');
 });
