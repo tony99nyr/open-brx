@@ -388,6 +388,9 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
     async def arm_stations(_):
         return JSONResponse({"ok": True, **s.arm_stations()})
 
+    async def unlock_stations(_):
+        return JSONResponse(s.unlock_stations())     # A58: any phase
+
     async def release_station(req):
         """A41: the operator's cure for a phone stuck in utility mode -- releases in ANY phase, so no
         `_refuse_station_change_in_play` here (see `release_station`'s own docstring)."""
@@ -867,6 +870,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/stations/{nid}/reset", reset_station, methods=["POST"]),
         Route("/api/stations", stations_list),
         Route("/api/stations/arm", arm_stations, methods=["POST"]),
+        Route("/api/stations/unlock", unlock_stations, methods=["POST"]),
         Route("/api/stations/{nid}", put_station, methods=["PUT"]),
         Route("/api/stations/{nid}", delete_station, methods=["DELETE"]),
         Route("/api/stations/{nid}/release", release_station, methods=["POST"]),

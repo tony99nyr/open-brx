@@ -69,6 +69,13 @@ export const GAME_VOLUME_MAX = 100;
 export const TIMED_PROTECT_S_DEFAULT = 0;
 export const WEAPON_DELAY_MS_DEFAULT = 500;
 export const STATION_PROTECT_S_DEFAULT = 2;
+/** A58: the station tamper lock (`station_config.lock_s`). The LOAD value covers a lobby wait of up to
+ *  STATION_LOCK_LOBBY_S plus the match, because a muster station hears nothing after the lobby push. */
+export const STATION_LOCK_MAX_S = 7200;
+export const STATION_LOCK_LOBBY_S = 1800;
+export const STATION_LOCK_MARGIN_S = 120;
+/** a boot instant (t_recv - uptime_s) that moves further than this is a new boot */
+export const STATION_REBOOT_SLACK_MS = 5000;
 /** timed: the trigger goes live at least this long after protection ends */
 export const TRIGGER_AFTER_PROTECT_MS = 500;
 /** a death this soon after a timed respawn raises the down-screen warning */

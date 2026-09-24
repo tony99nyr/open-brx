@@ -22,6 +22,13 @@ JUDGED = {
     "SHIELD_REGEN_DELAY_S": "S29 (2026-09-18): the quiet a player must hold before shields refill. Reset ONLY by\n                             real damage -- `engine.js _onHp` resets `_shieldQuietAt` under `if (dmg > 0)`, and a\n                             hill beacon (`$HIR` tok2 = 15, the silent fn-28 row) moves no pool, so `dmg` is 0 and\n                             the beacon cannot hold the refill off. That mattered: standing on a point would\n                             otherwise mean never recharging",
     "CURE_COOLDOWN_S": "F264: the floor between cure attempts, across lives. `_cure_at` is stamped only when a\n                       cure STARTS, inside `_cure_tick`, and no received frame of any kind resets it, a hill\n                       beacon included. So a beacon cannot hold a cure off, and cannot bring one on",
     "QUERY_POLL_S": "F264: the divergence poll's own cadence. `_poll_at` is stamped only when the poll itself\n                    asks, never by an incoming frame, so a beacon cannot keep it from firing",
+    "STATION_LOCK_MAX_S": "A58 (2026-09-24): the cap on a station's tamper lock. It is a countdown on the STATION from\n"
+                          "the station_config that set it; no IR frame resets or extends it, so a beacon cannot hold it",
+    "STATION_LOCK_LOBBY_S": "A58: the lobby wait the LOAD lock covers. It is added once when MC computes lock_s and no\n"
+                            "received frame of any kind moves it",
+    "STATION_LOCK_MARGIN_S": "A58: the slack added to every lock. A constant in the lock_s sum, never a timer a frame resets",
+    "STATION_REBOOT_SLACK_MS": "A58: how far a station's boot instant may drift between heartbeats before MC calls it a\n"
+                               "reboot. It compares two status bodies, never waits, and an IR frame never reaches MC",
     "SPAWN_KILL_WINDOW_MS": "A49 (2026-09-19): how soon after a timed respawn a death counts as a spawn kill. It is\n                            measured from the revive write to the death, and only a death ends it. A hill beacon moves\n                            no pool, so it cannot cause the death that closes the window, nor hold it open",
     "HEAVY_SPAWN_EVERY_S": "A56 (S58): a powerup's spawn interval on MC's match clock (`state._powerup_tick`); read off\n"
                            "                           go-live and MC's own clock, never an IR frame, and only a `pickup` fact moves the item",

@@ -11,6 +11,7 @@ import { OperatorMenu, operatorMenuId } from './OperatorMenu';
 import { isKillScored } from './gameSummary';
 import { heldSeconds, hillOwner, isObjectiveScored, objectiveWord } from './objective';
 import { PowerupStrip } from '../ui/Powerups';
+import { StationAlerts } from '../ui/StationAlerts';
 
 // S24 (game test 2026-09-11, D4): the board was `minmax(130px,1.5fr) 40px 40px 40px 52px 56px 48px …`
 // at `gap:'0 10px'` with 9 px headers over 14-16 px values, and K/D/A were three identical right-aligned
@@ -190,6 +191,7 @@ export function Live() {
         )}
       </div>
       {objective && <HillPanel state={state} lv={lv} teamIds={teamIds} />}
+      <StationAlerts showUnlock />
       <PowerupStrip />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
         <div style={{ flex: '2 1 560px', minWidth: 0 }}>

@@ -44,6 +44,7 @@ reach — each one exists because a screen was unverifiable by eye without it.
 | `?mock&restored=1` | a persisted session silently restored, two ghost players with no phone ever bound (F142) |
 | `?mock&powerups=off` / `=old` | A56 powerups: MC started without `--powerups` (the ITEMS picker is replaced by a one-line note, and an `item_preset` is refused), or an MC that predates `GET /api/powerups` (404). With neither, the demo has powerups ON |
 | `?mock&tunnelfail=1` | the next TURN ON of the tunnel fails instead of coming up (A28) |
+| `?mock&stationlock=1` | A58: the seeded ASSIGNED station carries a live tamper lock and a RESTARTED attention line, so `StationAlerts`, UNLOCK STATIONS and the ITEMS card's LOCKED tag can be seen without a real station |
 
 ## Verifying it in a real browser — there is nothing to build
 

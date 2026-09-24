@@ -126,6 +126,9 @@ export interface Api {
   resetStation(node_id: string): Promise<{ ok?: boolean }>;
   deleteStation(node_id: string): Promise<void>;
   armStations(): Promise<{ ok: boolean; armed: number; pending: string[] }>;
+  /** A58: `POST /api/stations/unlock` -- a lock value of 0 to every station, in any phase (the tamper
+   *  lock cure: anyone at a station can use its buttons until the next START re-locks it). */
+  unlockStations(): Promise<{ ok: boolean; armed: number; pending: string[] }>;
   /** A41: the cure for a phone stuck in utility mode. Pushes `control{cmd:"release_utility"}` to ONE
    *  utility node; `ok` is whether a socket took the push, not whether the phone reloaded (no ack kind
    *  exists for `control`). Works in every phase, armed/live included, and touches nothing else. */

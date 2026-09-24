@@ -123,7 +123,7 @@ def test_mc_arms_the_esp32_station_exactly_like_a_phone():
     v = s.set_station(node_id, {"kind": "respawn", "team": "blue", "id": 3, "threshold": -70})
     pushed = [b for n, k, b in s.net.pushed if k == "station_config" and n == node_id]
     assert pushed and pushed[-1] == {"kind": "respawn", "team": 1, "id": 3, "threshold": -70,
-                                      "game": 1, "valid_ids": [3]}, pushed
+                                      "game": 1, "valid_ids": [3], "lock_s": 0}, pushed
     assert v["armed"]["game"] == 1 and v["attention"] == []
     # And what MC just sent is itself a wire-valid station_config (the 2026-09-07 `alert` lesson).
     E.validate(E.make_envelope("station_config", pushed[-1]), direction="mc")

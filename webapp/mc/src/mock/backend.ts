@@ -102,7 +102,9 @@ export class MockBackend implements Api {
   private evicted = new Set<string>();
   // A13.5: one utility phone that said hello and is waiting to be assigned (the ITEMS panel demo). Mirrors
   // `Session.stations` / `_station_view` in state.py, including the attention flags the server derives.
-  private stations: Record<string, { assigned: StationAssignment | null; armed: StationView['armed']; arm_pending: boolean; report: StationView['report']; seen: number; offline?: boolean; takenAt?: number; takenBy?: number; resetAt?: number }> = {
+  private stations: Record<string, { assigned: StationAssignment | null; armed: StationView['armed']; arm_pending: boolean; report: StationView['report']; seen: number; offline?: boolean; takenAt?: number; takenBy?: number; resetAt?: number;
+    /** A58: MC's clock, absent = unlocked -- `unlockStations()` is the one write that clears it. */
+    lockUntil?: number; attention?: string[] }> = {
     'util-a1b2c3': { assigned: null, armed: null, arm_pending: false, report: { kind: 'respawn', team: 1, station_id: 1, threshold: -74, live: false, revives: 0, armed: false, battery: 64 }, seen: now() },
     // F106(i): a second seeded phone that is ASSIGNED but OUT OF WI-FI (the operator carried it out to the
     // field before it ever got the arming push) so `?mock` alone can show OUT OF WI-FI / ARM PENDING on the
@@ -156,8 +158,10 @@ export class MockBackend implements Api {
       if (a && fresh && rep.armed === false) attention.push('PHONE SAYS NOT ARMED');
       if (a && fresh && rep.station_id != null && rep.station_id !== a.id) attention.push(`PHONE ADVERTISES ID ${rep.station_id}, ASSIGNED ${a.id}`);
       if (typeof rep.battery === 'number' && rep.battery < 30) attention.push('BATTERY LOW');
+      attention.push(...(st.attention ?? []));   // A58 demo/test seed: STATION #N ... lines
       return { node_id, assigned: a, armed: st.armed, arm_pending: st.arm_pending, report: rep, app_ver: 'utility',
-        last_seen_ms: now() - st.seen, online: !st.offline, attention, game: this.gameNo, ...this.itemState(st) };
+        last_seen_ms: now() - st.seen, online: !st.offline, attention, game: this.gameNo,
+        ...(st.lockUntil ? { lock_until_ms: st.lockUntil } : {}), ...this.itemState(st) };
     });
   }
   /** The demo's config-proof fault for this gun, or undefined — only under `?mock&faults=1`.
@@ -257,6 +261,12 @@ export class MockBackend implements Api {
     st.assigned = null; st.armed = null; st.arm_pending = false; this.emit();
   }
   async armStations() { for (const n of Object.keys(this.stations)) this.armStation(n); this.emit(); return { ok: true, armed: this.stationIds().length, pending: [] }; }
+  /** A58: `POST /api/stations/unlock` -- a lock value of 0 to every ASSIGNED station, any phase. */
+  async unlockStations() {
+    for (const st of Object.values(this.stations)) if (st.assigned) st.lockUntil = undefined;
+    this.emit();
+    return { ok: true, armed: this.stationIds().length, pending: [] };
+  }
   /** A41/F184: accepted RELEASE clears deployment truth but retains the card until a proven HUD hello. */
   async releaseStation(node_id: string): Promise<{ ok: boolean }> {
     const st = this.stations[node_id]; if (!st) throw Object.assign(new Error('no such station'), { status: 404 });
@@ -357,6 +367,10 @@ export class MockBackend implements Api {
   private orphan_: { match_id: string; player_ids: string[] } | null =
     typeof location !== 'undefined' && new URLSearchParams(location.search).get('orphan') === '1'
       ? { match_id: 'm-lost', player_ids: ['p1', 'p2'] } : null;
+  /** `?mock&stationlock=1` — A58: seeds the seeded powerup station (`util-a1b2c3`, assigned once
+   *  `putStation` runs) with a live tamper lock and a RESTARTED attention line, so `StationAlerts` and
+   *  the ITEMS card's LOCKED tag can be seen without a real station bench. */
+  private demoStationLock = typeof location !== 'undefined' && new URLSearchParams(location.search).get('stationlock') === '1';
 
   constructor() {
     this.players = PLAYERS.map(([display, team_id, gi], i) => ({
@@ -397,6 +411,13 @@ export class MockBackend implements Api {
     if (this.demoStalePhone) {
       this.players = this.players.filter(p => p.gun_id !== 'GUN-G' && p.gun_id !== 'GUN-H');
       this.staleNodes.add('C3E5');   // GUN-H's phone: it said hello earlier, and has been silent since
+    }
+    // A58: seed the already-assigned station (util-d4e5f6) with a live lock and a RESTARTED line, so
+    // StationAlerts / UNLOCK STATIONS / the ITEMS LOCKED tag can all be seen from `?mock&stationlock=1`.
+    if (this.demoStationLock) {
+      const st = this.stations['util-d4e5f6'];
+      st.lockUntil = now() + 6 * 60 * 1000;
+      st.attention = ['STATION #8 RESTARTED 2 TIMES'];
     }
     this.timer = window.setInterval(() => this.tick(), 1000);
   }

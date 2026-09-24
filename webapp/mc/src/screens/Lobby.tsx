@@ -10,6 +10,7 @@ import { PreArmSummary, armOverrideCopy } from '../ui/PreArmSummary';
 import { StandDownChip, StandbySection } from '../ui/Standby';
 import { GameEditPanel } from '../ui/GameEditPanel';
 import { UnrosteredPhonesBanner } from '../ui/UnrosteredPhones';
+import { StationAlerts } from '../ui/StationAlerts';
 import { ARM_TIMEOUT_MS } from './OperatorMenu';
 
 /** H5 (visual QA 2026-09-23): the phases the server refuses every LOBBY write in. `push_config`
@@ -265,6 +266,9 @@ export function Lobby() {
       {/* Match reminders: the field steps (power-cycle the grenade, place it) plus A31's standing
           "this win is settled at MC" line, naming the phones with no backhaul — see ui/SetupSteps */}
       <SetupSteps style={{ marginBottom: 12 }} />
+      {/* A58: the same lines an ARMED/LIVE operator sees, and where "LOCK EXPIRES MID-MATCH, REJOIN IT"
+          shows. No UNLOCK here: the LOAD lock is the only one a muster station gets, and START re-locks. */}
+      <StationAlerts />
       {/* F-3/A39: a connected phone with nobody in the roster claiming it — last night's "4 guns
           connected, only 2 in lobby" confusion, made visible where the operator is actually looking. */}
       <UnrosteredPhonesBanner style={{ marginBottom: 12 }} />

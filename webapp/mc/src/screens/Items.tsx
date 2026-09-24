@@ -50,7 +50,7 @@ const presetOf = (item: StationItem | undefined, presets: PowerupPreset[] | null
     : presets.find(p => p.item.kind === item.kind && (p.item.weapon_id ?? null) === (item.weapon_id ?? null))?.preset ?? null;
 
 function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
-  const { state, run, api } = useStore();
+  const { state, run, api, serverNow } = useStore();
   const teams = state?.teams ?? [];
   const a = s.assigned;
   // The draft is the operator's edit in progress; it starts from the assignment (or what the phone reports).
@@ -89,6 +89,9 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
   // about -- and the LINK row below still says OUT OF WI-FI either way.
   const status = !a ? (s.online ? 'NOT ASSIGNED' : 'OFFLINE') : s.arm_pending ? 'ARM PENDING' : s.armed ? `MC-ARMED · GAME ${s.armed.game}` : 'ASSIGNED';
   const color = !a ? T.micro : s.attention.length || s.arm_pending ? T.warn : T.ok;
+  // A58: a live tamper lock, while it is still in the future -- `lock_until_ms` is MC's clock, so the
+  // comparison runs through `serverNow()`, not the browser's own clock (`ItemState`'s countdown above does the same).
+  const tamperLocked = !!s.lock_until_ms && s.lock_until_ms > serverNow();
   // F104 follow-up: a phone that disagrees with what MC thinks it armed (never heard ARM, advertises a
   // different id, or is still on an older game's config) needs the SAME fix as a pending arm — push the
   // arming again. An UNCHANGED assignment goes through POST /api/stations/arm, not a PUT: a PUT is refused
@@ -115,7 +118,10 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
         <span style={{ font: F.osw(700, 18), letterSpacing: '.08em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {a ? `${KIND_SHORT[a.kind]} ${a.id}` : 'UTILITY PHONE'}
         </span>
-        <Tag color={color} ink={a ? T.accInk : T.ink}>{status}</Tag>
+        <span style={{ display: 'flex', gap: 6, flex: 'none' }}>
+          {tamperLocked && <Tag data-testid="station-locked" color={T.line2} ink={T.dim}>LOCKED</Tag>}
+          <Tag color={color} ink={a ? T.accInk : T.ink}>{status}</Tag>
+        </span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '82px 1fr', gap: '6px 10px', alignItems: 'center' }}>
         <Micro>PHONE</Micro><Val color={T.dim}>{s.node_id.slice(0, 12)}</Val>

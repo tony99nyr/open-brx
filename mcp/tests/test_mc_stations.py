@@ -211,7 +211,7 @@ def test_assigning_a_station_pushes_station_config_with_game_and_the_allow_list(
     s.net.simulate_utility_hello("util-1")
     v = s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 3, "threshold": -70})
     cfg = _pushed(s, "station_config", "util-1")
-    assert cfg and cfg[-1] == {"kind": "respawn", "team": 1, "id": 3, "threshold": -70, "game": 1, "valid_ids": [3]}, cfg
+    assert cfg and cfg[-1] == {"kind": "respawn", "team": 1, "id": 3, "threshold": -70, "game": 1, "valid_ids": [3], "lock_s": 0}, cfg
     assert v["armed"]["game"] == 1 and v["attention"] == [], v
     # a second station changes the allow-list EVERY station echoes, so both are re-armed
     s.net.simulate_utility_hello("util-2")

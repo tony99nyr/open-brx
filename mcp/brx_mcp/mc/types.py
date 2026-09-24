@@ -257,6 +257,12 @@ StationProtectS = Literal[0, 2, 3]         # station: seconds of t8 = -100; the 
 TIMED_PROTECT_S_DEFAULT = 0
 WEAPON_DELAY_MS_DEFAULT = 500
 STATION_PROTECT_S_DEFAULT = 2
+# A58: the station tamper lock (`station_config.lock_s`). The LOAD value covers a lobby wait of up to
+# STATION_LOCK_LOBBY_S plus the match, because a muster station hears nothing after the lobby push.
+STATION_LOCK_MAX_S = 7200
+STATION_LOCK_LOBBY_S = 1800
+STATION_LOCK_MARGIN_S = 120
+STATION_REBOOT_SLACK_MS = 5000             # a boot instant (t_recv - uptime_s) that moves further than this is a new boot
 TRIGGER_AFTER_PROTECT_MS = 500             # timed: the trigger goes live at least this long after protection ends
 SPAWN_KILL_WINDOW_MS = 10000               # a death this soon after a timed respawn raises the down-screen warning
 # Review finding, 2026-09-19: an app below 0.4.3 has no `respawn_profile` path at all -- it keeps the OLD
@@ -1139,6 +1145,9 @@ class StationReport(TypedDict):
     armed: NotRequired[bool]
     battery: NotRequired[float]
     control: NotRequired[StationControl]
+    uptime_s: NotRequired[int]                       # A58: seconds since this station booted
+    boot_count: NotRequired[int]                     # A58: boots since the station was flashed (persisted)
+    assoc: NotRequired[Literal["muster", "held"]]    # A58: the Wi-Fi association mode (utility.md §5g.4)
 
 
 class StationArmed(TypedDict):
@@ -1166,6 +1175,10 @@ class StationView(TypedDict):
     item_available: NotRequired[bool]
     next_spawn_at_ms: NotRequired[int | None]
     taken_by: NotRequired[int]   # A56: the player_num that took the item this spawn; cleared at the next spawn
+    # A58: the tamper lock MC last sent (`lock_until_ms` is MC's clock; absent = unlocked) and the restarts
+    # MC counted inside this game's lock window.
+    lock_until_ms: NotRequired[int]
+    restarts: NotRequired[int]
 
 
 class RecapStationRow(TypedDict):
