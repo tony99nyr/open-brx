@@ -19,3 +19,20 @@ class Skipped(Exception):
 def needs(condition, what: str) -> None:
     if not condition:
         raise Skipped(what)
+
+
+def xfail(reason: str, fn) -> None:
+    """An EXPECTED FAILURE: a test that pins a known, filed bug (`reason` names the FOLLOWUPS row).
+
+    `fn()` must fail with an AssertionError; that counts as a skip, reported as `xfail: <reason>`.
+    If it passes, the bug is fixed (or the test broke): that is a FAILURE, so the marker cannot
+    outlive the bug. Remove the `xfail` and keep the test.
+
+        def test_x():
+            xfail("F999: MC counts the kill twice", lambda: _the_real_assertions())
+    """
+    try:
+        fn()
+    except AssertionError:
+        raise Skipped(f"xfail: {reason}") from None
+    raise AssertionError(f"XPASS: expected to fail ({reason}), but it passed. Remove the xfail marker.")

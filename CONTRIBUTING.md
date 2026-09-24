@@ -53,6 +53,7 @@ Python:
 cd mcp && python3 run_tests.py            # everything
 cd mcp && python3 run_tests.py modes cs   # only files matching these substrings
 cd mcp && python3 run_tests.py -j 1       # one file at a time; --inline runs every file in one process, streamed
+cd mcp && python3 run_tests.py chaos      # chaos testing only (its own `chaos` job in test:all; docs/chaos-testing.md)
 ```
 No hardware needed; tests that require optional extras (websockets etc.) skip cleanly if they're
 missing rather than failing the run. The suite includes a static-type gate: `pip install pyright`

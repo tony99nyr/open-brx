@@ -10,6 +10,7 @@ specified. Then **[`manual/`](manual/)**, the confirmed-facts manual the public 
 | **Running a match today** | [`field-runbook-mc.md`](field-runbook-mc.md) · [`field-process.md`](field-process.md) · [`field-issues.md`](field-issues.md) |
 | **Starting Mission Control on the dev box** (no hardware, no phones) | [`../mcp/brx_mcp/mc/README.md`](../mcp/brx_mcp/mc/README.md) → *Start it*: the one command, what it prints, the busy-port trap, served vs dev UI |
 | **Trying LEDs, sounds and events on ONE gun at the bench** | [`gun-stage.md`](gun-stage.md) (`python -m brx_mcp stage`) |
+| **Checking that MC survives hard matches** (drops, restarts, clock jumps, trades) | [`chaos-testing.md`](chaos-testing.md) (`python -m brx_mcp.chaos`) |
 | **Changing the code** | [`spec/README.md`](spec/README.md) → [`spec/contracts.md`](spec/contracts.md) · [`adding-weapons.md`](adding-weapons.md) for the end-to-end weapon workflow · [`adr/`](adr/) · remaining F42 cleanup is tracked in [`FOLLOWUPS.md`](FOLLOWUPS.md) |
 | **An AI agent working on this repo** | `../CLAUDE.md` for hard rules + environment, then [`HANDOFF.md`](HANDOFF.md) |
 
@@ -67,6 +68,8 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 - **[wsl-dev-runbook.md](wsl-dev-runbook.md)** — working on the WSL/Windows box: the two-Python split, the UNC
   install path, first contact, where captures land.
 - **[gun-stage.md](gun-stage.md)** — the click-to-try page + walkthrough for one real gun.
+- **[chaos-testing.md](chaos-testing.md)**: the seeded chaos fuzzer over the real MC stack, the invariants, and how
+  to add a scenario or turn a bug into one.
 - **[capture-runbook.md](capture-runbook.md)** — how to take a capture (iOS PacketLogger, Android HCI
   snoop, the ESP32 IR rig, the decoders and their gotchas) and the capture jobs still open.
 
