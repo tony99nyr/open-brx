@@ -3702,6 +3702,57 @@ await step('QA-28 the ⓘ is drawn, not a font glyph', async () => {
   must(r.svg && r.label, 'the ⓘ is still a text glyph (an empty box where the font lacks U+24D8): ' + JSON.stringify(r));
 });
 
+// QA lane E (2026-09-23)
+// QA-23: the utility page (www/utility.html + src/utility.js) is a spare phone propped up sideways as a
+// field item -- a normal way to leave it -- and at 844x390 / 667x375 the old portrait-only flex column ran
+// 900-1130px tall: the capture bar sat below the fold, and a scrolled screenshot could crop out everything
+// BETWEEN two unrelated facts (the advertise badge and the MC-arm line; the CONTESTED banner and its own
+// ETA sentence, deliberately adjacent by design -- see utility.html's .cflash comment), reading as one
+// contradictory sentence with nothing to show they were not. Every stage entry `tools/stage.html` lists
+// under "Utility phone" is covered here; portrait (390x844) must render byte-for-byte the same as before.
+const UTIL_KINDS = [['respawn', 1, 1], ['respawn', 255, 2], ['powerup', 2, 1], ['extraction', 255, 1], ['bomb', 0, 1], ['control', 255, 1]];
+const UTIL_VIEWS = [{ name: 'landscape-844x390', width: 844, height: 390 }, { name: 'landscape-667x375', width: 667, height: 375 }];
+const openUtility = async (view, kind, team, id) => {
+  const pg = await b.newPage({ viewport: { width: view.width, height: view.height } });
+  await pg.addInitScript(({ kind, team, id }) => {
+    localStorage.setItem('brx.utility', JSON.stringify({ kind, team, id, tx: 'high', threshold: -74, dwell: 800, game: 0 }));
+  }, { kind, team, id });
+  await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`);
+  await pg.waitForTimeout(1600);
+  return pg;
+};
+for (const [kind, team, id] of UTIL_KINDS) {
+  for (const view of UTIL_VIEWS) {
+    await step(`utility landscape fit: ${kind}/${team}/${id} @ ${view.name}`, async () => {
+      const pg = await openUtility(view, kind, team, id);
+      const r = await pg.evaluate(() => {
+        const rect = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { top: b.top, bottom: b.bottom }; };
+        const control = document.getElementById('control');
+        const isControl = control && !control.hidden;
+        const bar = isControl ? rect(document.getElementById('cbar')) : rect(document.querySelector('.hero .status'));
+        return { docH: document.documentElement.scrollHeight, vh: window.innerHeight, isControl, bar };
+      });
+      await pg.screenshot({ path: `${OUT}/util-${kind}-${team}-${id}-${view.name}.png` }); await pg.close();
+      must(r.docH <= r.vh, `the page scrolls vertically at ${view.name}: document height ${r.docH} > viewport ${r.vh}`);
+      must(r.bar, `no ${r.isControl ? 'capture bar (#cbar)' : 'primary status (.hero .status)'} found on screen`);
+      must(r.bar.top >= 0 && r.bar.bottom <= r.vh, `the ${r.isControl ? 'capture bar' : 'primary status'} is not fully in view at ${view.name}: ${JSON.stringify(r.bar)} (viewport ${r.vh})`);
+    });
+  }
+}
+await step('utility landscape fit: portrait is unchanged (.side keeps the original 14px flex rhythm)', async () => {
+  const pg = await openUtility({ width: 390, height: 844 }, 'respawn', 1, 1);
+  const r = await pg.evaluate(() => {
+    const side = document.getElementById('side'); const cs = getComputedStyle(side);
+    const heroBottom = document.querySelector('.hero').getBoundingClientRect().bottom;
+    const playersTop = document.querySelector('.panel.players').getBoundingClientRect().top;
+    return { display: cs.display, flexDirection: cs.flexDirection, gap: cs.rowGap || cs.gap, heroToPlayers: playersTop - heroBottom };
+  });
+  await pg.close();
+  must(r.display === 'flex' && r.flexDirection === 'column', `#side must stay a plain flex column outside the landscape gate: ${JSON.stringify(r)}`);
+  must(Math.round(parseFloat(r.gap)) === 14, `#side must keep the page's own 14px gap in portrait: ${JSON.stringify(r)}`);
+  must(Math.abs(r.heroToPlayers - 14) <= 1, `hero-to-players gap drifted from the original 14px in portrait: ${r.heroToPlayers}`);
+});
+
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;
 }

@@ -128,6 +128,76 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 .players .pteam.blue{color:var(--team-blue)}.players .pteam.yellow{color:var(--team-yellow)}.players .pteam.red{color:var(--team-red)}.players .pteam.green{color:var(--team-green)}
 .players .rssi{font-family:var(--fd);font-weight:700;font-size:20px}.players .rssi small{font:11px var(--m);color:var(--mut);margin-left:4px}.players .pres{color:var(--ok);font-weight:700;text-align:right;font-size:11px;letter-spacing:.04em;overflow:hidden}
 .foot{text-align:center;font-size:10px;letter-spacing:.3em;color:var(--mut);margin-top:auto}
+/* Portrait's `.side` wrapper (QA-23, below) must be invisible to portrait's own rhythm: same flex column,
+   same 14px gap `body` already used between these four sections, so wrapping them for the landscape grid
+   changes nothing here. */
+.side{display:flex;flex-direction:column;gap:14px}
+
+/* ---- QA-23 (2026-09-23): landscape fit. Propped-up-sideways is a normal way to leave this phone on the
+   field, and the portrait flow above ran 900-1130px tall at 844x390 / 667x375 -- the capture bar sat below
+   the fold, and a scrolled screenshot could crop out everything BETWEEN two unrelated facts (the advertise
+   badge and the MC-arm line; a contest banner and its own ETA sentence -- deliberately adjacent already,
+   see the .cflash comment above), reading as one contradictory sentence with nothing to show they weren't.
+   Both pairs are legitimate independent facts, so the fix is fitting the primary status (kind/team/status)
+   PLUS the capture bar above the fold with real separation, not hiding either one. Two columns: `.hero`
+   (identity + capture bar, the thing read from across the field) never scrolls on its own; `.side` (player
+   list, MC join, the exit hold, the footer) is secondary and gets the one scrollbar if it needs it, which
+   keeps the outer page itself always exactly one viewport tall. Scoped to this media query only --
+   portrait is the same flex column it always was. */
+@media (orientation:landscape) and (max-height:520px){
+  html,body{height:100%}
+  body{display:grid;grid-template-columns:minmax(190px,38%) 1fr;grid-template-rows:auto minmax(0,1fr);
+    grid-template-areas:"top top" "hero side";gap:8px;padding:8px 10px;min-height:0;overflow:hidden}
+  .top{grid-area:top;margin:0}
+  .wm{font-size:15px}.wm small{letter-spacing:.24em;margin-left:6px}
+  .infobtn{width:28px;height:28px;font-size:11px}
+  .exitbtn[hidden]{display:none}
+  .hero{grid-area:hero;min-height:0;min-width:0;overflow-y:auto;display:flex;flex-direction:column;
+    justify-content:center;padding:8px 10px 6px;margin:0}
+  /* Type floor (decided): a label is >= 11px, whatever the vertical squeeze -- clamp()s below are bounded
+     at 11px, and every fixed size on this list is 11px or more. */
+  .hero .kind{font-size:clamp(11px,4vh,15px);letter-spacing:.1em}
+  .hero .team{font-size:clamp(24px,13vh,44px);line-height:.95;margin:2px 0 3px}
+  .hero .sid{font-size:11px}
+  .hero .status{margin-top:4px;padding:2px 8px;font-size:11px}
+  .hero .revives{margin-top:4px;font-size:12px;min-height:0}
+  .hero .revives:empty{margin-top:0}
+  .control{margin-top:5px}
+  .control .cowner{font-size:clamp(11px,3.6vh,15px);min-height:0}
+  .cbar{height:24px;margin:3px 0 3px}
+  .cbar b{font-size:11px}
+  .cbar u{font-size:12px}
+  .control .crate{font-size:11px;min-height:0}
+  .control .cnet{font-size:11px;min-height:0}
+  .control .ceta{font-size:clamp(12px,4.2vh,18px);margin-top:2px;min-height:0}
+  /* the badge reads as a distinct chip, not a plain line the ETA sentence above it runs into -- and it
+     takes no space at all when it has nothing to say (idle/held, no contest). */
+  .control .cbanner{font-size:11px;margin-top:2px;padding:2px 7px;border:1px solid var(--warn);
+    display:inline-block;min-height:0}
+  .control .cbanner:empty{display:none;padding:0;border:0;margin:0}
+  .control .ctally{font-size:11px;margin-top:2px;min-height:0}
+  .control .ctally:empty{margin-top:0}
+  .control .cwarn{font-size:11px;margin-top:3px;min-height:0}
+  .control .cwarn:empty{margin-top:0}
+  .hero .armed{margin-top:4px;font-size:11px}
+  .hero .ids{font-size:11px;min-height:0}
+  .hero .ids:empty{margin-top:0}
+
+  .side{grid-area:side;display:flex;flex-direction:column;gap:6px;min-height:0;min-width:0;overflow-y:auto}
+  /* visible first (when it is shown at all): the one control that lets an accidentally-armed phone escape
+     without hunting through the player list and the MC panel below it. Tap-target floor (decided, #58's
+     own 36px gate): height stays >= 36px, only the padding that made room for the fold-warning below
+     goes away. */
+  #exitHud{order:-1;margin:0;padding:8px 12px;min-height:36px;font-size:11px}
+  .side .panel{padding:7px 9px}
+  .side .panel h3{font-size:11px;margin-bottom:4px}
+  .players .row{grid-template-columns:24px 42px 1fr 40px 62px;gap:4px;padding:4px;font-size:11px}
+  .players .rssi{font-size:15px}
+  /* branding only, no field meaning -- dropped here rather than shrunk under the label floor */
+  .side .foot{display:none}
+  .mcjoin .rowc input,.mcjoin .rowc .btn{min-height:36px;height:36px}
+  .mcjoin .hint{font-size:11px}
+}
 
 /* ---- the config drawer: hidden until the ⓘ is tapped seven times ---- */
 #cfg{position:fixed;inset:0;z-index:10;background:rgba(2,4,10,.96);overflow:auto;padding:max(14px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px}
@@ -182,28 +252,33 @@ input[type=range]{width:100%;height:44px;accent-color:var(--team);margin:0}   /*
     <div class="ids" id="ids"></div>
   </section>
 
-  <section class="panel players">
-    <h3 id="ptitle">PLAYER PHONES IN RANGE</h3>
-    <div id="players"></div>
-  </section>
+  <!-- QA-23 (2026-09-23): grouped so the landscape layout below can put this whole cluster in ONE
+       scrollable secondary column beside `.hero`, without touching portrait (unchanged, unwrapped
+       flow) or any element id utility.js drives. -->
+  <div class="side" id="side">
+    <section class="panel players">
+      <h3 id="ptitle">PLAYER PHONES IN RANGE</h3>
+      <div id="players"></div>
+    </section>
 
-  <section class="panel mcjoin" id="mcjoin">
-    <h3>MISSION CONTROL CONNECTION</h3>
-    <div class="hint" id="mcstateMain">AUTO-CONNECTING ON THIS WI-FI…</div>
-    <div class="rowc"><input id="mcUrlMain" placeholder="ws://mission-control-ip:8766/ws" inputmode="url" aria-label="Mission Control address" style="flex:1;min-width:180px;height:44px;background:var(--plate2);border:1px solid var(--edge);color:var(--num);font:14px var(--m);padding:0 10px"><button class="btn" id="btnMcMain"><span class="unskew">CONNECT</span></button><button class="btn" id="btnQrMain"><span class="unskew">SCAN QR</span></button></div>
-    <div id="qrPanel" hidden><video id="qrVideo" playsinline></video><button class="btn" id="btnQrCancel">CANCEL SCAN</button></div>
-    <div class="hint">If automatic discovery cannot find MC, enter its address here. Station setup remains available from ⓘ.</div>
-  </section>
+    <section class="panel mcjoin" id="mcjoin">
+      <h3>MISSION CONTROL CONNECTION</h3>
+      <div class="hint" id="mcstateMain">AUTO-CONNECTING ON THIS WI-FI…</div>
+      <div class="rowc"><input id="mcUrlMain" placeholder="ws://mission-control-ip:8766/ws" inputmode="url" aria-label="Mission Control address" style="flex:1;min-width:180px;height:44px;background:var(--plate2);border:1px solid var(--edge);color:var(--num);font:14px var(--m);padding:0 10px"><button class="btn" id="btnMcMain"><span class="unskew">CONNECT</span></button><button class="btn" id="btnQrMain"><span class="unskew">SCAN QR</span></button></div>
+      <div id="qrPanel" hidden><video id="qrVideo" playsinline></video><button class="btn" id="btnQrCancel">CANCEL SCAN</button></div>
+      <div class="hint">If automatic discovery cannot find MC, enter its address here. Station setup remains available from ⓘ.</div>
+    </section>
 
-  <!-- A41 / field 2026-09-12, tightened field-safety fix 2026-09-13: leaving utility mode is NOT the
-       anti-cheat concern the ⓘ gate protects (that stays on kind/team/id/threshold, behind the
-       seven-tap gesture, unchanged) -- this is only for a phone nobody has claimed as a field item yet.
-       `utility.js render()` hides it once the phone is armed EITHER way -- an MC push, or the
-       seven-tap drawer's own START button -- or once it is simply advertising (live), so a deployed
-       station never keeps this one-hold exit sitting in the open. -->
-  <button id="exitHud" class="exitbtn" aria-label="hold about one second to leave utility mode and go back to your HUD"><span class="fill" id="exitFill"></span><span class="lbl unskew">STUCK? HOLD TO EXIT ▸ HUD</span></button>
+    <!-- A41 / field 2026-09-12, tightened field-safety fix 2026-09-13: leaving utility mode is NOT the
+         anti-cheat concern the ⓘ gate protects (that stays on kind/team/id/threshold, behind the
+         seven-tap gesture, unchanged) -- this is only for a phone nobody has claimed as a field item yet.
+         `utility.js render()` hides it once the phone is armed EITHER way -- an MC push, or the
+         seven-tap drawer's own START button -- or once it is simply advertising (live), so a deployed
+         station never keeps this one-hold exit sitting in the open. -->
+    <button id="exitHud" class="exitbtn" aria-label="hold about one second to leave utility mode and go back to your HUD"><span class="fill" id="exitFill"></span><span class="lbl unskew">STUCK? HOLD TO EXIT ▸ HUD</span></button>
 
-  <div class="foot">OPEN BRX · UTILITY ITEM</div>
+    <div class="foot">OPEN BRX · UTILITY ITEM</div>
+  </div>
 
   <!-- §5d.4's crossing flash, OUTSIDE .hero on purpose. `.hero` is `transform: skewX(-4deg)`, and a
        transformed element is the containing block for its `position:fixed` descendants — nested in there,
