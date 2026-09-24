@@ -114,7 +114,7 @@ every MC-armed station was invisible to players.
 ships. F332 (PM1 side-button registers 0x49/0x4A) and F333 (five station screens unwired) are
 untouched. F314 (Stick IR receive) is post-MVP; do not build toward it.
 ## Lane: powerups and the shield HUD (brx5)
-2026-09-24: S58 powerups built behind MC `--powerups`, off until bench Sitting A 3.3 (items 1-8) and 4.11 pass; three polish rounds. S59 Halo shield meter pushed. F293 fix pushed: a headset probe on every connect (release and wait 15 s on `?`), awaiting bench step 1.4. F331/S59 Lows done (open for Tony: night creep brightness, station display name). SELECT pickup branch `pu-select` HELD: bench 3.3 changed the button and overshield mechanisms, decisions with Tony.
+2026-09-24: S58 reworked to Tony's shapes and pushed behind `--powerups`: the heavy goes straight on the trigger (SELECT toggles, done by the phone), the overshield raises the `$PSET` shield max under 1 s of spawn protection (hits during the grant ignored). F293 and F339 fixed. Next: bench 3.4-3.5, then the flag decision.
 
 ## Start here
 
