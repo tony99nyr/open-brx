@@ -361,6 +361,15 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         """A56 (S58): `PowerupsView` -- MC's powerups flag and the item presets, expanded from its defaults."""
         return JSONResponse(s.powerups_view())
 
+    async def reset_station(req):
+        """A56: the operator reset of a powerup station's item (armed/live, `--powerups` only)."""
+        try:
+            return JSONResponse(s.reset_station(req.path_params["nid"]))
+        except KeyError:
+            return _err("no such station", 404)
+        except ValueError as e:
+            return _err(str(e))
+
     async def put_station(req):
         nid = req.path_params["nid"]
         try:
@@ -855,6 +864,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/options", get_options),
         Route("/api/options", put_options, methods=["PUT"]),
         Route("/api/powerups", powerups_view),
+        Route("/api/stations/{nid}/reset", reset_station, methods=["POST"]),
         Route("/api/stations", stations_list),
         Route("/api/stations/arm", arm_stations, methods=["POST"]),
         Route("/api/stations/{nid}", put_station, methods=["PUT"]),

@@ -1083,6 +1083,17 @@ class StationUpdate(TypedDict):
     next_spawn_in_ms: NotRequired[int]
 
 
+class StationAction(TypedDict):
+    """A56 (S58): a powerup station -> MC, live only (no seq). `reset` = the operator reset the item at the
+    station (available NOW; the fixed spawn times do not move). `taken` = the station decided who took it
+    (first come at the station); `player_num` names the winner. MC dedupes `taken` against the player's own
+    `pickup` fact by station and spawn: whichever arrives first marks the item taken, the second is a no-op."""
+    id: int
+    action: Literal["reset", "taken"]
+    player_num: NotRequired[int]
+    t: NotRequired[int]
+
+
 class StationControl(TypedDict):
     owner: NotRequired[int]
     progress: NotRequired[int]
@@ -1126,6 +1137,7 @@ class StationView(TypedDict):
     # A56 (S58): a powerup station's live item state as MC last told it: whether the item is there, and when it next spawns.
     item_available: NotRequired[bool]
     next_spawn_at_ms: NotRequired[int | None]
+    taken_by: NotRequired[int]   # A56: the player_num that took the item this spawn; cleared at the next spawn
 
 
 class RecapStationRow(TypedDict):
@@ -1611,7 +1623,8 @@ class Envelope(TypedDict):
 
 
 NODE_KINDS = {"hello", "bind", "event", "event_batch", "status", "ack_config", "time_req",
-              "log_offer", "log_data", "ready", "loadout_request", "loadout_browse"}   # A10: loadout_*
+              "log_offer", "log_data", "ready", "loadout_request", "loadout_browse",   # A10: loadout_*
+              "station_action"}   # A56 (S58): a powerup station's reset / taken report, live only
 MC_KINDS = {"welcome", "assign", "tutorial", "config", "start", "feedback", "control",
             "time_res", "pull_log", "ack", "apply", "score", "loadout_ack",             # A10: loadout_ack
             "alert",    # A11.4 -- omitted here until 2026-09-07, so every alert MC sent was rejected

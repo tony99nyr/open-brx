@@ -102,6 +102,7 @@ export const NODE_KINDS = new Set([
   'log_data',
   'log_offer',
   'ready',
+  'station_action',
   'status',
   'time_req',
 ]);
@@ -193,6 +194,7 @@ export const REQUIRED = {
   ready: ['node_id', 'player_id', 'ready'],
   loadout_request: ['node_id', 'player_id', 'slot', 'kind'],
   loadout_browse: ['node_id', 'player_id', 'open'],
+  station_action: ['id', 'action'],
   welcome: ['session_id', 'server_t', 'seq_hi'],
   assign: ['player', 'team', 'roster'],
   tutorial: ['frames'],

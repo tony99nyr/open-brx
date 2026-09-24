@@ -114,7 +114,7 @@ export type OperatorCmd = 'resync' | 'respawn' | 'relink';
 export declare const MC_KINDS: ReadonlySet<McKind>;
 export type McKind = 'ack' | 'alert' | 'apply' | 'assign' | 'config' | 'control' | 'feedback' | 'join' | 'loadout_ack' | 'pull_log' | 'result' | 'score' | 'start' | 'station_config' | 'station_update' | 'time_res' | 'tutorial' | 'welcome';
 export declare const NODE_KINDS: ReadonlySet<NodeKind>;
-export type NodeKind = 'ack_config' | 'bind' | 'event' | 'event_batch' | 'hello' | 'loadout_browse' | 'loadout_request' | 'log_data' | 'log_offer' | 'ready' | 'status' | 'time_req';
+export type NodeKind = 'ack_config' | 'bind' | 'event' | 'event_batch' | 'hello' | 'loadout_browse' | 'loadout_request' | 'log_data' | 'log_offer' | 'ready' | 'station_action' | 'status' | 'time_req';
 export declare const CONTROL_CMDS: ReadonlySet<ControlCmd>;
 export type ControlCmd = 'abort_start' | 'end' | 'panic' | 'recall' | 'release_utility' | 'relink' | 'respawn' | 'resync';
 /** ⚠ This is a WHITELIST and an unlisted type is REJECTED at the socket, not ignored downstream --
@@ -1153,6 +1153,17 @@ export interface StationUpdate {
   next_spawn_in_ms?: number;
 }
 
+/** A56 (S58): a powerup station -> MC, live only (no seq). `reset` = the operator reset the item at the
+ *  station (available NOW; the fixed spawn times do not move). `taken` = the station decided who took it
+ *  (first come at the station); `player_num` names the winner. MC dedupes `taken` against the player's own
+ *  `pickup` fact by station and spawn: whichever arrives first marks the item taken, the second is a no-op. */
+export interface StationAction {
+  id: number;
+  action: 'reset' | 'taken';
+  player_num?: number;
+  t?: number;
+}
+
 export interface StationControl {
   owner?: number;
   progress?: number;
@@ -1196,6 +1207,8 @@ export interface StationView {
   /** A56 (S58): a powerup station's live item state as MC last told it: whether the item is there, and when it next spawns. */
   item_available?: boolean;
   next_spawn_at_ms?: number | null;
+  /** A56: the player_num that took the item this spawn; cleared at the next spawn */
+  taken_by?: number;
 }
 
 /** One assigned utility station's self-authoritative recap heartbeat. */

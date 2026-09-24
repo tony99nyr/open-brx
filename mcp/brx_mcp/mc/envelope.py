@@ -56,6 +56,7 @@ REQUIRED: dict[str, tuple[str, ...]] = {
     # A10 (loadout.md §4): `id`/`try` are OPTIONAL — a required field that is absent DROPS the frame
     "loadout_request": ("node_id", "player_id", "slot", "kind"),
     "loadout_browse": ("node_id", "player_id", "open"),
+    "station_action": ("id", "action"),   # A56 (S58): live only; `player_num` (taken) and `t` optional
     # MC → node
     "welcome": ("session_id", "server_t", "seq_hi"),
     "assign": ("player", "team", "roster"),

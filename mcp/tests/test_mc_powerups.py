@@ -317,9 +317,10 @@ def test_the_halo_schedule_on_the_match_clock():
     clock.t = go + 59_000; s.tick()
     assert len(_pushed(s, "station_update", "u1")) == 1, "CONTROL: nothing before the spawn time"
     clock.t = go + 60_000; s.tick()
-    assert _pushed(s, "station_update", "u1")[-1] == {"id": 5, "available": True}
+    # the time to the NEXT spawn instant rides even while the item is there: the station counts down itself
+    assert _pushed(s, "station_update", "u1")[-1] == {"id": 5, "available": True, "next_spawn_in_ms": 60_000}
     assert s._station_view("u1")["item_available"] is True
-    assert s._station_view("u1")["next_spawn_at_ms"] is None
+    assert s._station_view("u1")["next_spawn_at_ms"] == go + 120_000
     # untaken through the next spawn time: it never stacks, it just stays
     clock.t = go + 120_500; s.tick()
     assert s._station_view("u1")["item_available"] is True
@@ -334,7 +335,7 @@ def test_the_halo_schedule_on_the_match_clock():
     _pickup(s, clock, 5, nid="phone-1", seq=1)
     assert len(_pushed(s, "station_update", "u1")) == n
     clock.t = go + 180_000; s.tick()
-    assert _pushed(s, "station_update", "u1")[-1] == {"id": 5, "available": True}
+    assert _pushed(s, "station_update", "u1")[-1] == {"id": 5, "available": True, "next_spawn_in_ms": 60_000}
 
 
 def test_a_reconnecting_station_is_told_its_current_state():
@@ -345,7 +346,7 @@ def test_a_reconnecting_station_is_told_its_current_state():
     s.net.pushed.clear()
     s.net.simulate_utility_hello("u1")               # the phone rebooted
     assert _pushed(s, "station_config", "u1"), "re-armed as before"
-    assert _pushed(s, "station_update", "u1") == [{"id": 5, "available": True}]
+    assert _pushed(s, "station_update", "u1") == [{"id": 5, "available": True, "next_spawn_in_ms": 115_000}]
     _pickup(s, clock, 5, kind="weapon", weapon_id="rocket_launcher")
     s.net.pushed.clear()
     clock.t = go + 200_000
@@ -390,3 +391,109 @@ def test_pickup_is_stored_and_never_scored():
                                 "item_kind": "overshield", "seq": 3}], clock.t)
     assert [k for k, _ in logged] == ["pickup"]
     assert s._station_view("u1")["item_available"] is False
+
+
+# --------------------------------------------------------------------------- station_action (the station's uplink)
+def _action(s, clock, nid, sid, action, **extra):
+    s.net.simulate_node_message(nid, "station_action", {"id": sid, "action": action, "t": clock.t, **extra}, clock.t)
+
+
+def _feed(s):
+    return [r["text"] for r in s.feed]
+
+
+def test_station_action_is_a_node_kind_with_required_fields():
+    from brx_mcp.mc.types import NODE_KINDS, StationAction  # noqa: F401
+    assert "station_action" in NODE_KINDS
+    env = E.make_envelope("station_action", {"id": 5, "action": "reset", "t": 1_800_000_000_000})
+    assert E.decode(E.encode(env), direction="node")["body"]["action"] == "reset"
+    try:
+        E.validate(E.make_envelope("station_action", {"id": 5}), direction="node")
+        raise AssertionError("station_action without an action was accepted")
+    except E.EnvelopeError as e:
+        assert e.reason == "missing_field", e.reason
+
+
+def test_operator_reset_from_the_station_makes_the_item_available_now_on_the_fixed_schedule():
+    s, clock = _sess()
+    _station(s, "u1", 5, "overshield")
+    go = _live(s, clock)
+    clock.t = go + 70_000; s.tick()
+    _pickup(s, clock, 5)
+    assert s._station_view("u1")["item_available"] is False
+    clock.t = go + 80_000
+    _action(s, clock, "u1", 5, "reset")
+    assert _pushed(s, "station_update", "u1")[-1] == {"id": 5, "available": True, "next_spawn_in_ms": 40_000}
+    assert s._station_view("u1")["item_available"] is True
+    assert "OPERATOR RESET · STATION #5" in _feed(s)
+    # the pickup the player made BEFORE the reset, replayed late from its outbox, does not take the new item
+    p = s.players[s.node_player["phone-0"]]
+    s.net.simulate_event("phone-0", {"type": "pickup", "t": go + 70_000, "match_id": s.start_info["match_id"],
+                                     "node_id": "phone-0", "player_id": p["player_id"], "station_id": 5,
+                                     "item_kind": "overshield", "seq": 9}, clock.t)
+    assert s._station_view("u1")["item_available"] is True
+    # no restart and no stacking: the next spawn is still 2:00
+    clock.t = go + 120_000; s.tick()
+    assert _pushed(s, "station_update", "u1")[-1] == {"id": 5, "available": True, "next_spawn_in_ms": 60_000}
+    # CONTROL: a reset naming another station's id changes nothing here
+    _pickup(s, clock, 5, seq=10)
+    _action(s, clock, "u1", 99, "reset")
+    assert s._station_view("u1")["item_available"] is False
+
+
+def test_console_reset_route_and_its_refusals():
+    s, clock = _sess()
+    _station(s, "u1", 5, "rockets")
+    _refused(lambda: s.reset_station("u1"), "armed or live")
+    go = _live(s, clock)
+    clock.t = go + 1_000
+    s.reset_station("u1")
+    assert _pushed(s, "station_update", "u1")[-1] == {"id": 5, "available": True, "next_spawn_in_ms": 119_000}
+    assert "OPERATOR RESET · STATION #5" in _feed(s)
+    off, clock2 = _sess(powerups=False)
+    off.net.simulate_utility_hello("u1")
+    off.set_station("u1", {"kind": "powerup", "team": "any", "id": 5})
+    _live(off, clock2)
+    _refused(lambda: off.reset_station("u1"), "--powerups")
+    try:
+        import httpx  # noqa: F401
+        from starlette.testclient import TestClient
+    except Exception:
+        return
+    from brx_mcp.mc.api import create_app
+    c = TestClient(create_app(s))
+    assert c.post("/api/stations/u1/reset").status_code == 200
+    assert c.post("/api/stations/nope/reset").status_code == 404
+    assert c.post("/api/stations/u1/reset").json()["ok"] is True
+    r = TestClient(create_app(off)).post("/api/stations/u1/reset")
+    assert r.status_code == 400 and "--powerups" in r.json()["error"]
+
+
+def test_taken_records_the_winner_and_dedupes_against_the_pickup_fact():
+    s, clock = _sess()
+    _station(s, "u1", 5, "rockets")
+    go = _live(s, clock)
+    clock.t = go + 121_000; s.tick()
+    p0 = s.players[s.node_player["phone-0"]]
+    n = len(_pushed(s, "station_update", "u1"))
+    _action(s, clock, "u1", 5, "taken", player_num=p0["player_num"])
+    v = s._station_view("u1")
+    assert v["item_available"] is False and v["taken_by"] == p0["player_num"]
+    line = f"{p0['display']} TOOK ROCKETS · STATION #5"
+    assert _feed(s).count(line) == 1
+    assert len(_pushed(s, "station_update", "u1")) == n + 1
+    # the player's own pickup fact for the same spawn is a no-op: no second line, no second update
+    _pickup(s, clock, 5, kind="weapon", weapon_id="rocket_launcher")
+    assert _feed(s).count(line) == 1 and len(_pushed(s, "station_update", "u1")) == n + 1
+    # cleared at the next spawn
+    clock.t = go + 240_000; s.tick()
+    assert "taken_by" not in s._station_view("u1") and s._station_view("u1")["item_available"] is True
+    # the other order: the pickup first writes the same line, then `taken` is the no-op
+    _pickup(s, clock, 5, kind="weapon", weapon_id="rocket_launcher", seq=2)
+    assert _feed(s).count(line) == 2 and s._station_view("u1")["taken_by"] == p0["player_num"]
+    m = len(_pushed(s, "station_update", "u1"))
+    p1 = s.players[s.node_player["phone-1"]]
+    _action(s, clock, "u1", 5, "taken", player_num=p1["player_num"])
+    assert s._station_view("u1")["taken_by"] == p0["player_num"], "the second report never overwrites the first"
+    assert len(_pushed(s, "station_update", "u1")) == m
+    assert not any("P1 TOOK" in t for t in _feed(s))

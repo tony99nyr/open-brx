@@ -2682,10 +2682,10 @@ class Session:
         a = (self.stations.get(nid) or {}).get("assigned")
         if row is None or not a:
             return None
-        body: dict = {"id": a["id"], "available": row["available"]}
-        if not row["available"]:
-            body["next_spawn_in_ms"] = max(0, _pu.spawn_at(row["item"], self._pu_sched["go"], row["next_k"]) - self.now_ms())
-        return body
+        # The time to the NEXT spawn instant, ALWAYS (even while the item is there): the station counts down
+        # and spawns on its own, so a lost MC link never freezes it.
+        return {"id": a["id"], "available": row["available"],
+                "next_spawn_in_ms": max(0, _pu.spawn_at(row["item"], self._pu_sched["go"], row["next_k"]) - self.now_ms())}
 
     def _push_station_update(self, nid: str) -> None:
         body = self._pu_update_body(nid)
@@ -2704,7 +2704,10 @@ class Session:
             rows = {}
             for nid, _a, item in self._item_stations():
                 k = _pu.last_spawn_index(item, go, now)
-                rows[nid] = {"item": item, "available": k >= 0, "next_k": k + 1}
+                # `since`: when the item in the station now became available (a spawn or an operator reset);
+                # a fact older than that is about an earlier item. `taken_by`: this spawn's taker, if any.
+                rows[nid] = {"item": item, "available": k >= 0, "next_k": k + 1,
+                             "since": _pu.spawn_at(item, go, k) if k >= 0 else go, "taken_by": None}
             self._pu_sched = {"match_id": mid, "go": go, "st": rows}
             for nid in rows:
                 self._push_station_update(nid)
@@ -2718,7 +2721,8 @@ class Session:
                 row["next_k"] += 1
                 fired = True
             if fired:
-                row["available"] = True
+                row["available"], row["taken_by"] = True, None
+                row["since"] = _pu.spawn_at(row["item"], go, row["next_k"] - 1)
                 self._push_station_update(nid)      # at each spawn time, even one that finds the item still there
                 changed = True
         if changed:
@@ -2726,8 +2730,9 @@ class Session:
 
     def _on_pickup(self, ev: Event, t_recv: int, parked: bool) -> None:
         """A56: a player's `pickup` fact. Stored by the caller and NEVER scored; here it only empties the
-        station until its next spawn time on the schedule and tells the station. A second pickup of an item
-        already taken, or a late fact about an item that has spawned again since, changes nothing."""
+        station until its next spawn time on the schedule and tells the station. A second report of an item
+        already taken (the station's own `taken`, or another pickup), or a late fact about an item that has
+        spawned or been reset since, changes nothing."""
         if parked or not self._pu_sched or ev.get("match_id") != self._pu_sched.get("match_id"):
             return
         sid = ev.get("station_id")
@@ -2735,14 +2740,65 @@ class Session:
                     if (st.get("assigned") or {}).get("id") == sid and n in self._pu_sched["st"]), None)
         if nid is None:
             return
-        row, go = self._pu_sched["st"][nid], self._pu_sched["go"]
         t = ev.get("t")
         t = t if isinstance(t, int) and not isinstance(t, bool) and t <= t_recv else t_recv
-        if not row["available"] or t < _pu.spawn_at(row["item"], go, row["next_k"] - 1):
-            return
+        self._take_item(nid, t, self.players.get(ev.get("player_id") or ""))
+
+    def _take_item(self, nid: str, t: int, player: Player | None, player_num: int | None = None) -> bool:
+        """Mark this spawn's item taken, once. The dedupe key is the station and its current item: an item
+        already taken is a no-op, and so is a report from before the item became available (`since`)."""
+        row = self._pu_sched["st"][nid]
+        if not row["available"] or t < row["since"]:
+            return False
+        a = self.stations[nid]["assigned"]
+        num = player.get("player_num") if player else player_num
         row["available"] = False
+        row["taken_by"] = num if isinstance(num, int) and not isinstance(num, bool) else None
+        who = (player or {}).get("display") or (f"PLAYER {num}" if row["taken_by"] is not None else "A PLAYER")
+        self._on_feed({"t_match_s": self._operator_t_match(self.now_ms()), "tag": "POWERUP", "kind": "info",
+                       "text": f"{str(who).upper()} TOOK {row['item']['name']} · STATION #{a['id']}"})
         self._push_station_update(nid)
         self._changed()
+        return True
+
+    def _reset_item(self, nid: str) -> None:
+        """The operator reset: the item is available NOW. The fixed spawn times do not move (no restart, and
+        the next spawn does not stack a second item)."""
+        row = self._pu_sched["st"][nid]
+        row["available"], row["taken_by"], row["since"] = True, None, self.now_ms()
+        self._on_feed({"t_match_s": self._operator_t_match(self.now_ms()), "tag": "OPERATOR", "kind": "info",
+                       "text": f"OPERATOR RESET · STATION #{self.stations[nid]['assigned']['id']}"})
+        self._push_station_update(nid)
+        self._changed()
+
+    def reset_station(self, nid: str) -> dict:
+        """`POST /api/stations/{node_id}/reset`: the console's operator reset, the same as the station's own."""
+        if nid not in self.stations:
+            raise KeyError(nid)
+        if not self.powerups_enabled:
+            raise ValueError(_pu.REFUSED_FLAG_OFF)
+        if self.phase not in ("armed", "live"):
+            raise ValueError(f"the match is {self.phase.upper()}: an item can be reset only while a match is armed or live")
+        self._powerup_tick(self.now_ms())          # make sure this match's schedule exists
+        if nid not in (self._pu_sched.get("st") or {}):
+            raise ValueError(f"{nid!r} is not a powerup station with an item in this match")
+        self._reset_item(nid)
+        return {"ok": True}
+
+    def _on_station_action(self, nid: str, body: dict, t_recv: int) -> None:
+        """A56: a station's live-only report (`StationAction`). Ignored unless it comes from the station that
+        holds that id and an item schedule runs for it."""
+        a = (self.stations.get(nid) or {}).get("assigned") or {}
+        if (not self.powerups_enabled or not self._pu_sched or nid not in self._pu_sched["st"]
+                or body.get("id") != a.get("id")):
+            return
+        if body.get("action") == "reset":
+            self._reset_item(nid)
+        elif body.get("action") == "taken":
+            num = body.get("player_num")
+            player = next((p for p in self.players.values() if p.get("player_num") == num), None) \
+                if isinstance(num, int) and not isinstance(num, bool) else None
+            self._take_item(nid, t_recv, player, num if isinstance(num, int) else None)
 
     def _wire_config(self) -> GameConfig:
         """The config a NODE receives: the operator's config plus `stations`, the allow-list of station ids MC
@@ -3060,8 +3116,9 @@ class Session:
         if pu is not None:                         # A56: only while a schedule runs for the match in play
             row = self._pu_sched["st"][nid]
             view["item_available"] = row["available"]
-            view["next_spawn_at_ms"] = (None if row["available"]
-                                        else _pu.spawn_at(row["item"], self._pu_sched["go"], row["next_k"]))
+            view["next_spawn_at_ms"] = _pu.spawn_at(row["item"], self._pu_sched["go"], row["next_k"])
+            if row.get("taken_by") is not None:
+                view["taken_by"] = row["taken_by"]
         return view
 
     def stations_view(self) -> list[StationView]:
@@ -5061,6 +5118,8 @@ class Session:
         elif kind == "event_batch":
             self.ingest_batch(nid, body.get("events", []), t_recv)
             return
+        elif kind == "station_action":
+            self._on_station_action(nid, body, t_recv)    # A56 (S58)
         elif kind == "log_offer":
             # A25: the node is telling us what it holds. Record it, then ask (gated by `log_sync` and
             # by the ~1 MB per-node budget, both inside `pull_log`).

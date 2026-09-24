@@ -23,7 +23,7 @@ export type {
   LobbyView, GameAnnouncementView, SyncAckState, SyncRow, SyncTotals, SyncView, SessionOptions, VersionsView,
   NoticesView, RestoredFromView, SnapshotFeedRow, OrphanMatchView, OperatorActionResult, OperatorStatus,
   TunnelStatus, TunnelProviderValue, ValuePair, RespawnProfile, DotSpec, HirCell,
-  StationItem, PowerupSlot, StationUpdate, PowerupPreset, PowerupsView,   // A56 (S58)
+  StationItem, PowerupSlot, StationUpdate, StationAction, PowerupPreset, PowerupsView,   // A56 (S58)
 } from './contract.gen';
 export type {
   ArmState, ControlCmd, HealthPreset, ItemKind, LoadoutPreset, McKind, NodeDeniedCommand, NodeKind, OperatorCmd, PersistedEventType, Phase,
