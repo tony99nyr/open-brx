@@ -1273,7 +1273,7 @@ export class MockBackend implements Api {
    *  ready_all()`. LOBBY only, `this.players` alone (STANDBY lives in `this.standby`, untouched),
    *  and never touches acks or the config head. */
   async readyAll() {
-    if (this.phase !== 'lobby') throw new Error('mark all ready only runs on LOBBY');
+    if (this.phase !== 'lobby') throw new Error(`mark all ready needs the lobby, and MC is at ${String(this.phase).toUpperCase()}: ${this.phase === 'recap' ? 'press NEXT MATCH first' : 'load a game and send it to the phones first'}`);   // mirrors state.py
     const readied: string[] = [];
     for (const p of this.players) {
       if (!p.ready) { p.ready = true; delete this.trying[p.player_id]; delete this.browsing[p.player_id]; readied.push(p.player_id); }

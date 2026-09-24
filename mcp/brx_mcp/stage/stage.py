@@ -672,6 +672,9 @@ class GunStage:
         self._dot_echo: DotEchoState | None = None
         self._dot_kill: DotKillState | None = None
         self._last_hir_at: float | None = None
+        # engine.js `_lastHitFact.at`: the clock of the last hit that MOVED a pool. A smoke, EMP or Breacher word stamps
+        # `_last_hir_at` too, so the poison-kill rule reads this one (integration pass 2026-09-23).
+        self._last_dmg_hit_at: float | None = None
         self._pending: list[asyncio.Task] = []
         self._loop: asyncio.AbstractEventLoop | None = None   # reactions run here; see _spawn_task (2026-09-07)
         # 2026-09-07 (bench): `state()` measured 527-658 ms on real hardware -- almost entirely
@@ -3221,6 +3224,8 @@ class GunStage:
                                              {"health": hp, "armor": armor, "shield": shield}))
         if dot_echo:
             self._dot_echo = None
+        if dmg > 0 and not dot_echo and self._last_hir_at is not None and self.now() - self._last_hir_at <= 1.0:
+            self._last_dmg_hit_at = self.now()   # engine.js: `_lastHitFact` is stamped only by a hit that moved a pool
         cues = self.bundle.get("cues", {})
         hs = self.bundle.get("headset") or {}
         # S29 (engine.js `_onHp`): damage RESTARTS the recharge clock and abandons a refill already running --
@@ -3254,13 +3259,13 @@ class GunStage:
             self._shield_regen = None; self._shield_down = False   # S29: a dead gun is not refilled, and the heartbeat stops with the life
             self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None   # engine.js `_death`: the gun stops the reload when you drop; so does the HUD
             self._stun_restore("died")             # F15: death cancels the stun -- no restore write; the revive's own $AMMO re-arms the next life
-            # S16 (engine.js `_death`): a death straight after our own poison tick, with no newer `$HIR` behind
+            # S16 (engine.js `_death`): a death straight after our own poison tick, with no newer DAMAGING hit behind
             # it, is the TICK's kill, credited to whoever last applied the poison. The stage keeps no MC facts
             # layer to book a `death` fact against (that credit line, and its `dot: true` flag, is MC's own
             # bookkeeping to make from the fact it receives) -- so this is a log line naming the applier, not a
             # fabricated facts mechanism.
             dk = self._dot_kill
-            if dk and self.now() - dk["at"] <= DOT_KILL_S and (self._last_hir_at is None or self._last_hir_at < dk["at"]):
+            if dk and self.now() - dk["at"] <= DOT_KILL_S and (self._last_dmg_hit_at is None or self._last_dmg_hit_at < dk["at"]):
                 self._log(f"☠ poison kill credited to #{dk['num']} (team {dk['team']})", "info")
             self._dot_kill = None; self._dot_echo = None
             self._poison_clear("died")             # S16: a stack never survives a life (Tony, 2026-09-18)

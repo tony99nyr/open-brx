@@ -1238,6 +1238,17 @@ export class Engine {
     }
     return { weapon_id: null, name: null, source: null, ambiguous: false, candidates: [] };   // nothing claims it
   }
+  /** The killing word's weapon (see its call site in `_onHp`): an exact, unambiguous loadout match stands; failing
+   *  that, the weapon already booked against this shooter this life (the biggest by damage); failing that, no weapon
+   *  at all rather than a catalogue guess made from a clamped magnitude. Same return shape as `_resolveHitWeapon`. */
+  _lethalWeapon(num, resolved) {
+    if (resolved && resolved.source === 'loadout' && !resolved.ambiguous) return resolved;
+    const entry = this._life && this._life.taken.get(num);
+    const prior = entry && entry.weapons.filter(w => w.weapon_id != null || w.ambiguous).sort((a, b) => b.dmg - a.dmg)[0];
+    if (prior && prior.weapon_id != null) return { weapon_id: prior.weapon_id, name: prior.name, source: prior.pickup ? 'catalog' : 'loadout', ambiguous: false, candidates: [] };
+    if (prior && prior.ambiguous) return { weapon_id: null, name: null, source: null, ambiguous: true, candidates: prior.candKey ? prior.candKey.split('|') : [] };
+    return resolved ? { weapon_id: null, name: null, source: null, ambiguous: false, candidates: [] } : null;
+  }
   armState() { return this.phase; }
 
   // ---------- BLE link ----------
@@ -5380,7 +5391,13 @@ export class Engine {
       // resolving per word rather than once per shot_group still converges on the one weapon. NEVER guessed:
       // an ambiguous resolution never reaches the fact (MC would rather show nothing than the wrong gun), only
       // the HUD's own "could be either of" line below.
-      const resolved = this._resolveHitWeapon(this.latch);
+      // Integration pass 2026-09-23: on the killing blow the gun can report the victim's REMAINING pool in token 5
+      // instead of the weapon's own value (the overkill clamp, protocol/brx-protocol.md `$HIR` token 5), and that
+      // number can match some other catalogue weapon ("AMR · PICKUP"). The clamp is recognisable: token 5 equals the
+      // whole pool held before the hit. Only then does the word keep just an exact loadout match; otherwise it takes
+      // the weapon this shooter was already resolved to this life, else it names nothing.
+      const clamped = hp <= 0 && this.latch.mag === pools0.health + pools0.armor + pools0.shield;
+      const resolved = clamped ? this._lethalWeapon(this.latch.shooter_num, this._resolveHitWeapon(this.latch)) : this._resolveHitWeapon(this.latch);
       hitWeapon = resolved && resolved.weapon_id != null ? { id: resolved.weapon_id, name: resolved.name, source: resolved.source }
         : resolved && resolved.ambiguous ? { ambiguous: true, names: resolved.candidates.map(id => { const row = this.weaponRow(id); return (row && row.name) || id; }) }
         : null;
@@ -5504,7 +5521,10 @@ export class Engine {
     // S16: a death straight after our own poison tick, with no newer `$HIR` behind it, is the TICK's kill, and the
     // kill goes to the player who last applied the poison (Tony, 2026-09-18). A newer latch means a real hit landed
     // after the tick, and that hit is the kill.
-    const dk = this._dotKill && this.now() - this._dotKill.at <= DOT_KILL_MS && (!this.latch || this.latch.at < this._dotKill.at) ? this._dotKill : null;
+    // Integration pass 2026-09-23: "newer" means a newer DAMAGING hit (`_lastHitFact`, stamped only when a hit moved
+    // a pool), not any latch: a smoke, EMP or Breacher word latches too, and one landing between the lethal tick and
+    // its `$LCD` used to hand the kill to a player who did no damage.
+    const dk = this._dotKill && this.now() - this._dotKill.at <= DOT_KILL_MS && (!this._lastHitFact || this._lastHitFact.at < this._dotKill.at) ? this._dotKill : null;
     this._dotKill = null; this._dotEcho = null;
     this._poisonClear('died'); this._smokeClear('died');   // S16/S53: neither survives a life
     // S56: snapshot the life just ended (`state()`'s `lastLife`, kept until the NEXT death) before resetting

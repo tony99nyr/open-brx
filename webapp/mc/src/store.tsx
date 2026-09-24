@@ -171,7 +171,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       s => {
         offset.current = s.t - Date.now();
         const mid = s.live?.match_id ?? null;
-        if (mid !== feedMatch.current) { feedMatch.current = mid; if (mid) setFeed([]); }   // a new match starts a new feed
+        // A new match starts a new feed. The snapshot carries the server's feed (newest first, the order kept here),
+        // so a console opened or reloaded mid-match shows what already happened (integration pass 2026-09-23); an
+        // empty local feed is seeded from it too, and live `feed` pushes keep prepending as before.
+        const seed = (Array.isArray(s.feed) ? s.feed : []) as FeedEntry[];
+        if (mid !== feedMatch.current) { feedMatch.current = mid; if (mid) setFeed(seed.slice(0, 60)); }
+        else if (mid && seed.length) setFeed(f => (f.length ? f : seed.slice(0, 60)));
         setState(s);
         followPhase(s);
       },

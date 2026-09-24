@@ -1534,7 +1534,7 @@ KNOWN_UNMIRRORED = {
     # plus MC's own `feedback{kind:'hit'}` relay). Writes nothing to the gun and changes no game rule -- not
     # `alive`, not `hp`, not scoring -- only what the HUD shows about who or what hit this player and who this
     # player hit, so there is nothing here for the stage, which predicts the GUN, to port.
-    "_resolveHitWeapon", "_lifeBookHit", "_lifeBookDot", "_freshLedger", "_resetLifeLedger",
+    "_resolveHitWeapon", "_lethalWeapon", "_lifeBookHit", "_lifeBookDot", "_freshLedger", "_resetLifeLedger",
     "_ledgerSnapshot", "_bookDealtHit", "_lifeForFact",
 }
 

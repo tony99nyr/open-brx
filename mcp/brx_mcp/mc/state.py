@@ -2061,7 +2061,10 @@ class Session:
         every ordinary roster edit -- so the HUD picks up the green READY state MC just gave it, not
         only the console's own count."""
         if self.phase != "lobby":
-            raise ValueError("mark all ready only runs on LOBBY")
+            # Integration pass 2026-09-23: the operator is standing on the LOBBY tab when this fires, so naming the tab
+            # says nothing. Name the phase MC is really in and the button that moves it on.
+            step = "press NEXT MATCH first" if self.phase == "recap" else "load a game and send it to the phones first"
+            raise ValueError(f"mark all ready needs the lobby, and MC is at {self.phase.upper()}: {step}")
         readied: list[str] = []
         for pid, p in self.players.items():
             if not p.get("ready"):

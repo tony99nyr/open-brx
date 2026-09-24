@@ -2315,6 +2315,7 @@ for (const view of VIEWS) {
     const seen = [];
     for (let i = 0; i < 40; i++) {
       const r = await pg.evaluate(src => ({ alive: window.brx.engine.state().alive, down: !!document.querySelector('.mo.down #dslive .co'), rd: (document.getElementById('rd') || {}).textContent || null,
+        aimfx: !!document.querySelector('.aimfx'),   // integration pass 2026-09-23: the RECOIL chip lingered over the death screen
         top: eval(src) }), dsUncoveredSrc);
       seen.push(r); if (r.alive) break; await pg.waitForTimeout(250);
     }
@@ -2323,6 +2324,7 @@ for (const view of VIEWS) {
     await pg.close();
     const dead = seen.filter(r => !r.alive);
     must(dead.length >= 16, 'the down period was not observed for the respawn delay: ' + dead.length);
+    must(dead.every(r => !r.aimfx), 'a recoil/smoke chip showed on a dead player: ' + JSON.stringify(dead.filter(r => r.aimfx).slice(0, 2)));
     must(dead.every(r => r.down && r.top === true), 'the death screen was missing or covered while down: ' + JSON.stringify(dead.filter(r => !(r.down && r.top === true)).slice(0, 3)));
     must(seen[seen.length - 1].alive && !after.down && !after.frameDown, 'the screen did not close on the respawn: ' + JSON.stringify(after));
   });

@@ -383,3 +383,18 @@ test('S16: a webview that stalled drops the ticks it missed rather than firing t
   h.adv(250);
   assert.equal(h.ticks().length, 1, 'and the next is a full interval away, not due at once');
 });
+
+test('integration 2026-09-23: a smoke word between the lethal tick and its $LCD does not take the poisoner\'s kill', () => {
+  const h = harness();
+  h.setPools(4, 0, 0);
+  h.toxin(3, 2, 0);
+  h.gun.hold = true;
+  h.adv(1000);                                   // the lethal tick is written; its $LCD is held
+  h.eng.feedFrame('$HIR,0,7,9,1,6,0,0,*');       // a smoke word from player 9: latches, moves no pool
+  h.release();                                   // now the $LCD lands
+  const d = h.kind('death');
+  assert.equal(d.length, 1);
+  assert.equal(d[0].shooter_num, 3, 'the poisoner keeps the kill');
+  assert.equal(d[0].dot, true);
+  assert.equal(h.eng.state().lastLife.finalHit.dot, true, 'the lethal tick is still the final hit');
+});

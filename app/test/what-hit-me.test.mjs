@@ -402,3 +402,24 @@ test('F315: an older MC roster (no cells) is not out-voted by a newer cached cat
   assert.equal(r.weapon_id, 'assault_rifle');
   assert.equal(r.source, 'loadout');
 });
+
+test('integration 2026-09-23: a killing blow whose magnitude is the clamped remaining pool keeps the shooter\'s real weapon', () => {
+  const h = harness({ catalog: { weapons: CATALOG } }); h.live();
+  h.hir(4, 0, 9, 0, 3); h.frame('$HP,20,0,0,*');   // the rifle leaves 20 in the pool
+  h.adv(300);
+  h.hir(4, 0, 20, 0, 3); h.frame('$HP,0,0,0,*');   // token 5 = 20 = the whole pool: the clamp, which the catalogue would call a Shotgun
+  const last = h.eng.state().lastLife;
+  assert.equal(last.finalHit.weapon.name, 'ASSAULT RIFLE', 'not "SHOTGUN · PICKUP"');
+  assert.equal(last.finalHit.weapon.pickup, false);
+  const facts = h.facts.filter(f => f.type === 'hit_taken');
+  assert.equal(facts[facts.length - 1].weapon_id, 'assault_rifle', 'MC is told the real weapon too');
+});
+
+test('integration 2026-09-23: a clamped killing blow with no earlier hit names no weapon rather than guess', () => {
+  const h = harness({ catalog: { weapons: CATALOG } }); h.live();
+  h.frame('$HP,20,0,0,*');   // the pool already down to 20 (no hit booked)
+  h.hir(4, 0, 20, 0, 3); h.frame('$HP,0,0,0,*');   // token 5 = the whole pool: a clamp, not a Shotgun
+  const fh = h.eng.state().lastLife.finalHit;
+  assert.equal(fh.weapon, null);
+  assert.equal(h.facts.filter(f => f.type === 'hit_taken').pop().weapon_id, undefined);
+});
