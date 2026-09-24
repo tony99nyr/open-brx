@@ -620,3 +620,19 @@ def test_an_invalid_restored_item_is_dropped_with_a_log_line_not_ticked():
         assert s._station_view("u2")["item_available"] is True
         msgs = [r.getMessage() for r in records if "invalid" in r.getMessage()]
         assert len(msgs) == 1 and "#5" in msgs[0], msgs
+
+
+def test_the_hit_plan_carrier_is_the_compilers_own():
+    """Polish leftover: `_hit_plan` built the pickup carrier inline, a copy of `Compiler._pickup_carrier`.
+    It now calls the compiler's method, so the two cannot drift."""
+    s, _clock = _sess()
+    _station(s, "u1", 5, "rockets")
+    seen = []
+    orig = Compiler._pickup_carrier
+    Compiler._pickup_carrier = staticmethod(lambda pickups: seen.append(list(pickups)) or orig(pickups))  # type: ignore[method-assign]
+    try:
+        s._pinned_hit_plan = None
+        s._hit_plan()
+    finally:
+        Compiler._pickup_carrier = staticmethod(orig)  # type: ignore[method-assign]
+    assert seen == [[{"weapon_id": "rocket_launcher", "slot": 2}]], seen
