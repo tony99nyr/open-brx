@@ -32,7 +32,7 @@ reaches `docs/manual/` only when it is CONFIRMED here.
 | 11 | fn 34/35 register on a dead gun; fn 38 halves HP damage; fn 30 back x2; fn 33 silent kill; fn 50-52 colour only (V4_30) | 10 | **CONFIRMED for fn 34 (2026-09-18, §16).** A `$SIR,14,0,NULL,34,,,,,*` row on a gun killed over BLE (`$HP,0,0,0`) still registered `$HIR` from an `$IRTX` type-14 revive beam. fn 35, 38, 30 and 33 untested this session. |
 | 12 | `$SIR` p6/p8 make the victim re-emit the hit (splash) (V4_30, sheets) | 11 | **CODE-READ ONLY (v4.32, 2026-09-21): UNRESOLVED.** A five-field formatter (its command is unidentified) forwards values but contains no re-emit branch; the effect may live downstream. |
 | 13 | `$STOP` closes and `$START` opens IR reception; the same flag gates the trigger (inferred); both clear `$GSET`'s app-mode flags (V4_30, V4_31) | 12 | **DIFFERENT (2026-09-18, §23 step 2).** `$STOP` blocks a hit's damage but not the `$HIR`, and it survives `$SPAWN`; `$START,*` plus a `$GSET`/`$TID` re-send reopens it. §12 step 2 (does `$STOP` gate the trigger?) is open. |
-| 14 | The gun sends `$DD,<killer>,<team>` when it dies (Jay's code); a kill confirmation is a protocol-15 subtype-0 IR word (BC's UART sheet) | 13 | **HOSTED BLE RESULT ONLY (2026-09-18).** A gun killed by one hosted hit gave `$HP,0,0,0` then `$LCD,0,0,0,0,6,24`, with no `$DD`. The hosted protocol-15 magnitudes 1–39 sweep gave no audible native callout, though every word registered silently (fn 28 on `<15,0>`, team-gated). A dead gun forwarded a host `$IRTX` frame through its headset. **Native differs:** an earlier native TDM receiver capture saw a protocol-15 magnitude-2 word after death; the 2026-09-23 gun code read found an eleven-field death send request. The source, full serial prefix and recipient behaviour still need the [focused capture](bench-native-firmware-2026-09-23.md). Do not infer native absence from the hosted result. |
+| 14 | The gun sends `$DD,<killer>,<team>` when it dies (Jay's code); a kill confirmation is a protocol-15 subtype-0 IR word (BC's UART sheet) | 13 | **HOSTED BLE RESULT ONLY (2026-09-18).** A gun killed by one hosted hit gave `$HP,0,0,0` then `$LCD,0,0,0,0,6,24`, with no `$DD`. The hosted protocol-15 magnitudes 1–39 sweep gave no audible native callout, though every word registered silently (fn 28 on `<15,0>`, team-gated). A dead gun forwarded a host `$IRTX` frame through its headset. **Native differs:** an earlier native TDM receiver capture saw a protocol-15 magnitude-2 word after death; the 2026-09-23 gun code read found an eleven-field death send request. The source, full serial prefix and recipient behaviour still need the [focused capture](bench-2026-09-24.md#block-2b-the-native-kill-word-and-the-firmware-readings-r4-70-min-plus-20-optional). Do not infer native absence from the hosted result. |
 | 15 | Split frames get lost; bursts overflow; `$DPLAY` on a loop sound hangs the gun (V4_31) | 14 (screamers sheet Phase A) | **PARTLY CONFIRMED.** A1: `$DPLAY,A10,4,*` got no `$PONG`, no reply and no audio, and the link dropped about 15 s later; it recovered on reconnect with no power cycle needed, so this is a partial screamer rather than a proven full lock. A2 control (`$DPLAY,U37,4,*`, one-shot) answered `$PING` at once. `$DPLAY` stays on the never-send list either way. |
 | 16 | `$RADSK` every 4 s keeps a headless gun linked (Jay's code, V4_31) | 15 | **CODE-READ ONLY (v4.32, 2026-09-21): UNRESOLVED.** The name occurs in headset/native message machinery, but no clean inbound timer refresh was established. |
 | 17 | `$IRTX` type 14 to a downed ally is a revive beam, read via fn 34 (BC app) | 16 | **CONFIRMED (2026-09-18, §16 steps 1-3).** A dead gun with `$SIR,14,0,NULL,34,,,,,*` registered `$HIR,4,14,1,2,1,0,0` from a live gun's `$IRTX,100,14,1,2,1,0,0,100,1,,0,*` (field 4 = the dead gun's own team), and `$LIFE,30,0,0,1,*` then revived it. A live or dead gun forwards a host `$IRTX` through its headset. Still open: step 4 (field 4 = 1) and step 6.3 (does `$CLEAR` stop a headset loop). |
@@ -365,7 +365,7 @@ this). **Re-send `$GSET` after any mid-match `$START`**, because the `$START` cl
 
 The steps below record the original hosted hypothesis and the 2026-09-18 trial. They are not the current native
 procedure. The hosted `$DD` and audible-callout results are in checklist row 14. A later native TDM capture saw
-protocol-15 magnitude 2 after a kill. The [native capture sheet](bench-native-firmware-2026-09-23.md) tests its
+protocol-15 magnitude 2 after a kill. [Block 2b of the runbook](bench-2026-09-24.md#block-2b-the-native-kill-word-and-the-firmware-readings-r4-70-min-plus-20-optional) tests its
 source and recipient. Do not repeat the 0–63 sweep.
 
 The original hypothesis combined Battle Company's UART callout list, Callsign's app-driven kill voice, and Jay's
@@ -757,28 +757,9 @@ to poison", "chance to TASE") need no node logic.
 
 ## 25. The `$*` parser reset (screamers A4, 10 min, session 3)
 
-**CODE-READ, NOT BENCH-PROVEN (v4.32, 2026-09-21):** the parser resets only token 0 and the token index when it
-reads `$`; tokens 1..59 remain. On `*` it snapshots the working set, dispatches, and the common return path clears
-all 60 working tokens. A bare `$*` therefore dispatches an unmatched empty command and reaches that full cleanup.
-There is no inter-byte timeout. So a frame that loses its `*` leaves stale tokens behind, and the next frame, even a
-resend of the same frame, lands on them unless `$*` closes and cleans the partial frame. The old
-screamers A4 used `$QUERY`, which ignores its tokens, so it could not see this. This section replaces it, on one gun
-armed with the bench AR.
-
-1. **Control.** Send `$AMMO,0,10,50,1,*`, then `$AMMO,0,23,50,1,*`. Read the magazine from the next `$ALCD` (fire one
-   round if the gun sends none, and add one back). Expect 23.
-Steps 2 and 3 are blocked until F269's raw-byte helper records each chunk after the GATT write completes. The
-stage's current TX log records intent before connection/write admission and is not transport proof.
-
-2. **No reset.** Send `$AMMO,0,10,50,1,*`. With that helper, write `$AMMO,0,17,50,1` and require its post-write
-   chunk record, then send `$AMMO,0,23,50,1,*` normally and read the magazine. V4_30 predicts a BAD FRAME: not 23.
-3. **With the reset.** Repeat step 2, then use a separate helper write for `$*` before the complete 23-round frame.
-   Require post-write chunk records for the incomplete write and `$*` in that order. Expect 23.
-
-Run steps 2 and 3 three times each (the screamers sheet's rule for a result that counts).
-
-**Reading.** If step 2 fails and step 3 passes, the link sends `$*` (2 B) before each burst and before every resend in
-`brxlink.write`, and a lost packet costs one frame, not two. This becomes a Phase B rule in the screamers sheet.
+Moved. The procedure, the control and the command lines are screamers A4 in
+[`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md) (Phase A and its `raw-bytes` table), with the
+code read beside them. That table is canonical; it runs in Block 2 of [`bench-2026-09-24.md`](bench-2026-09-24.md).
 
 ## Close
 

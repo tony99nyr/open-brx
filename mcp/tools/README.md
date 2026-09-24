@@ -54,5 +54,6 @@ PATH, so no personal machine path is hardcoded.
 | `ltp_convert.py` | Converts any audio file into a `.LTP` on-gun sound (headerless raw PCM, s16le, mono, 44.1 kHz). |
 | `soundbank_analyze.py` | Turns a folder of BRX sound files into a machine-readable catalogue: transcripts, acoustic descriptors, spectrograms. |
 | `soundbank_classify.py` | Assigns each on-gun sound a category and plain-English description, from `soundbank_analyze.py`'s output. |
+| `soundbank_community.py` | Folds community sound labels (a scrubbed restatement of Jay's shared "BRX Audio" sheet, `data/community_sound_labels.csv`) into `data/sound_catalog.json` as a separate `community_label` field, and re-renders `sound-catalog.md`. Never overwrites our own `description`/`transcript`/`verified_by_ear`. |
 | `balance_sim.py` | Monte Carlo balance sim for every catalogue weapon: a 1v1 duel matrix, a team table against an anchor weapon, and a parameter sweep (`--preset toxin` is the Toxin Rifle study). Reads every number from `WeaponCatalog`; an importable library with a `main()`. See `docs/weapon-design.md` §7.5c. |
 | `soundbank_leadin.py` | Measures lead-in silence, attack time, and trailing silence in bank clips, to separate clip padding from firmware audio latency. |

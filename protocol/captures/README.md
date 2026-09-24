@@ -1,6 +1,6 @@
 # Decoded capture transcripts
 
-> Section references of the form §7e, §7n, §7o point into `../session-findings-2026-08.md` (the archived
+> Section references of the form §7e, §7n, §7o point into `../../docs/archive/session-findings-2026-08.md` (the archived
 > session write-ups); the current reading of each fact is in `../brx-protocol.md`. How to take a capture
 > of your own is `../../docs/capture-runbook.md`.
 
@@ -28,8 +28,9 @@ Each transcript shares its basename with the raw trace it was decoded from.
 | `2026-08-25-offline-game-playerid-69.txt` | Start Offline Game with the app's player id set to **69**. The wire carries `$PSET,63`, the 6-bit maximum — the P2 lead that `$PSET` token 1 is the player id |
 | `2026-08-25-offline-game-playerid-7.txt` | The same offline game with the id set to **7**. Wire carries `$PSET,6`. With the capture above: the app is 1-based (1–64), the wire is 0-based (0–63) |
 | `2026-08-26-weapons-ar-plus-burstrifle.txt` | Arm with two operator-named weapons: slot 0 Assault Rifle (`R01`, full auto), slot 1 Burst Rifle (`R18`, 3-round burst). Confirms `$WEAP` token 23 = burstWeaponTime (275 on `R18`, empty on `R01`) |
+| `2026-09-18-callsign-shield-recharge.txt` | **Callsign's shield recharge** (cap30), the victim's gun: Callsign's "shield" is the ARMOUR pool, recharged with `$BUMP,12,,1,,,*` repeated until the pool clamps, then one Shotgun kill. The source of the live `$BUMP` row in `../brx-protocol.md` §3 |
 
-The `raw/` directory holds these ten plus thirteen more weapon-naming and failure-mode traces that
+The `raw/` directory holds these eleven plus thirteen more weapon-naming and failure-mode traces that
 were never decoded to a transcript; `raw/README.md` describes each one.
 
 **One trap when reading any of these.** A kill you *score* is invisible in your own gun's stream. The

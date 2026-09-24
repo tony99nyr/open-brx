@@ -9,6 +9,7 @@ If something is not on this page, it is not a feature. Adopted 2026-09-09 (see `
 |---|---|---|
 | `docs/platform/platform.md` | `/platform` | The Open BRX platform (marketing landing) |
 | `docs/platform/index.md` | `/` | The BRX, unlocked. |
+| `docs/platform/arsenal.md` | `/arsenal` | The whole arsenal. Three slots. (marketing landing) |
 | `docs/platform/docs.md` | `/docs` | Platform docs |
 | `docs/platform/install.md` | `/docs/install` | Install |
 | `docs/platform/run.md` | `/docs/run-a-game` | Running a match |
@@ -55,8 +56,8 @@ Rules, all of them:
 
 ## Landing pages
 
-Three pages are landings, not doc pages: `docs/platform/index.md` (`/`), `docs/platform/platform.md`
-(`/platform`) and `docs/manual/index.md` (`/manual`). The generator renders their markdown into distinct shapes:
+Four pages are landings, not doc pages: `docs/platform/index.md` (`/`), `docs/platform/platform.md`
+(`/platform`), `docs/platform/arsenal.md` (`/arsenal`) and `docs/manual/index.md` (`/manual`). The generator renders their markdown into distinct shapes:
 
 - `# Title` is the hero headline. The first paragraph is the hero lede. The first list whose items
   are all links is the hero buttons (the first item is the primary button). The first image is the
@@ -76,7 +77,7 @@ Three pages are landings, not doc pages: `docs/platform/index.md` (`/`), `docs/p
 - A list of links renders as buttons.
 - A fenced code block with no language renders as a terminal panel.
 - A ` ```data ` fence with one keyword renders a generated component. On landings: `counts`, `modes`,
-  `roles`, `manual`, `release`, `huddemo` (the real phone HUD from `app/www`, `?demo&kit`, in the phone frame, loaded on tap). On a doc page: `download` (the Android card off `webapp/download/build.json`),
+  `roles`, `arsenal`, `manual`, `release`, `huddemo` (the real phone HUD from `app/www`, `?demo&kit`, in the phone frame, loaded on tap). On a doc page: `download` (the Android card off `webapp/download/build.json`),
   plus the two tables below. Every component reads repo source (`site/lib/facts.mjs`), never prose.
 - A wide shot followed directly by a caption list is the pinned layout on a desktop: the shot holds
   while the captions scroll past it.

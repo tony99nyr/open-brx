@@ -2213,6 +2213,19 @@ test('A27: a new match from MC retires the lock notice from the match-complete s
   assert.equal(h.eng.state().kitLocked, false, 'and takes last match\'s lock notice with it');
 });
 
+// F133: a host who locks the kit, never starts, and pushes a NEW game spent none of the other retirements, so the
+// next lobby still led with THE HOST LOCKED KITS. The latch now carries the config_id it was raised for.
+test('F133: a push of another game retires the lock notice; the same game keeps it', () => {
+  const h = kitA10();
+  h.eng.browse(true);
+  h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: h.bundle, roster: h.roster } });
+  assert.equal(h.eng.state().kitLocked, true, 'control: the lock is raised for this game');
+  h.eng.onMcMessage({ kind: 'config', body: { config: { ...h.config }, frames: h.bundle, roster: h.roster } });
+  assert.equal(h.eng.state().kitLocked, true, 'the same config_id again (a reconnect, a repeat) keeps the notice');
+  h.eng.onMcMessage({ kind: 'config', body: { config: { ...h.config, config_id: 'another-game' }, frames: h.bundle, roster: h.roster } });
+  assert.equal(h.eng.state().kitLocked, false, 'a new game in the lobby does not lead with the old lock');
+});
+
 test('A30 CONTROL: a player who had already readied up gets no lock notice (they asked for the advance)', () => {
   const h = kitA10();
   h.eng.setReady(true);
@@ -5249,6 +5262,33 @@ test('A16.3 levels: level maths -- round(fraction*6) clamped to 0..6, floored to
   assert.equal(at(15), 2, '15/45 = 1/3 exactly -> round(2.0) = 2');
   assert.equal(at(23), 3, '23/45 -> round(3.07) = 3');
   assert.equal(at(30), 4, '30/45 = 2/3 exactly -> round(4.0) = 4');
+});
+
+test('A56 overshield: the gun shows shield + overshield as ONE teal pool, max = preset max + overshield (Tony 2026-09-24)', () => {
+  const h = levelHarness();
+  const entry = { pool: 'shield', max: 30 };
+  h.eng.shield = 30; h.eng._prevShield = 30;
+  h.eng._puGrantShield('os1', { name: 'OVERSHIELD', amount: 75 }, h.eng.now());   // shield 30 -> 105, past the max
+  assert.equal(h.eng.shield, 105);
+  assert.equal(h.eng._readoutLevel(entry), 6, 'fresh overshield: 105 of 30+75 -> full');
+  h.eng.shield = 60;   // a hit drains the overshield first: 60 of 105
+  assert.equal(h.eng._readoutLevel(entry), 3, 'the drain is visible while the overshield holds: round(60/105*6) = 3');
+  h.eng._overshield = null; h.eng.shield = 30;   // overshield gone: the max falls back to the preset's
+  assert.equal(h.eng._readoutLevel(entry), 6, 'no overshield: 30 of 30 -> full again');
+  // the 3-band path reads the same maximum
+  const bands = { pool: 'shield', max: 30, bands: [[0.66, 'HI'], [0.33, 'MID'], [0, 'LO']] };
+  h.eng._overshield = { base: 30, amount: 75 }; h.eng.shield = 60;
+  assert.equal(h.eng._readoutBand(bands)[1], 'MID', '60 of 105 is the middle band, not full');
+});
+
+test('A56 overshield on a no-shield preset (Standard, shield entry max 0): the overshield alone is the teal pool', () => {
+  const h = levelHarness();
+  const entry = { pool: 'shield', max: 0 };
+  h.eng.shield = 0; h.eng._prevShield = 0;
+  h.eng._puGrantShield('os1', { name: 'OVERSHIELD', amount: 75 }, h.eng.now());
+  assert.equal(h.eng._readoutLevel(entry), 6, '75 of 0+75 -> full (was floored to 1 against a max of 0)');
+  h.eng.shield = 40;
+  assert.equal(h.eng._readoutLevel(entry), 3, 'round(40/75*6) = 3');
 });
 
 test('A16.3 levels: a drop animates lead(solid) -> blink-gap(all off) -> step down one level per step_ms -> settles', () => {

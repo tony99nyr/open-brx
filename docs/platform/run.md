@@ -17,8 +17,7 @@ python -m brx_mcp play tdm <addr1> <addr2>
 ```
 
 Get the addresses from `python -m brx_mcp scan`. Add `outdoor=1 volume=90` outdoors: the default
-volume of 80 is set for indoors, and anything near 69 is roughly on-tagger level 2 and is inaudible in
-the open.
+volume of 80 is set for indoors.
 
 **Mission Control plus a phone on every tagger.** Each player carries a phone running the BRX
 Companion, which holds the Bluetooth link to that player's tagger and runs that player's game. Mission
@@ -170,8 +169,9 @@ kills, deaths, accuracy and medals. The recap stays **provisional** until every 
 flushed its events, so a player still walking back can still change a number.
 
 Before anyone closes the app, have each player hit **Share log**. The HUD keeps its log and the last
-60 raw Bluetooth frames in memory only, and closing the app loses them. Then copy off the session
-database (`~/.brx-mcp/mc/session-<id>.sqlite`) and the log you saved above. Results export as CSV,
+60 raw Bluetooth frames in memory only, and closing the app loses them. The launch folder
+`~/.brx-mcp/sessions/<launch-id>/` already holds the session database (`session.sqlite`) and the
+Mission Control log (`mc.log`); copy it off if you want to keep it. Results export as CSV,
 and every finished match of the session stays available. Starting the next game is one action, and
 you can keep or clear the roster. Power the taggers off between sessions.
 

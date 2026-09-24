@@ -514,6 +514,11 @@ class Session:
         # the operator can re-team a player during recap, and a late flush would then replay the
         # finished match on the new teams. Frozen at `_schedule` and again at the whistle.
         self._match_players: dict[str, Player] | None = None
+        # node_id -> player_id for EVERY node that spoke for a player in the match in play, connected or not.
+        # `node_player` holds only the nodes bound to THIS process, so a snapshot built from it alone lost the
+        # binding of a phone that had not said hello since the last restart (or that was hot-swapped out), and
+        # the next resume replayed that phone's stored facts for nobody (chaos testing 2026-09-24).
+        self._match_nodes: dict[str, str] = {}
         # F206: the station rows frozen at `_finish` for the match that just ended (see `_scorer_recap`).
         self._match_stations: list[RecapStationRow] | None = None
         # F184: a station may become a HUD before the whistle. It leaves ITEMS/allow-lists immediately,
@@ -645,7 +650,8 @@ class Session:
                 "config": self.config, "players": {pid: dict(p) for pid, p in players.items()},
                 # node_id -> player_id as armed: the stored facts are keyed by node, and a resumed replay
                 # must attribute them before any phone has said hello to the new process.
-                "node_player": {nid: pid for nid, pid in self.node_player.items() if pid in players},
+                "node_player": {nid: pid for nid, pid in {**self._match_nodes, **self.node_player}.items()
+                                if pid in players},
                 "synced_at_lobby": dict(self.synced_at_lobby),
                 # An accepted LIVE release removes the active row, but its frozen tally still belongs
                 # to this match and must survive an MC restart before the whistle.
@@ -803,6 +809,13 @@ class Session:
                 self.teams = snap["teams"]
             if snap.get("config"):
                 self.config = snap["config"]
+                # K8 (polish round 2): a hand-edited volume outside the range is dropped at load (the venue
+                # default), rather than raising later, inside a compile.
+                try:
+                    if _compile.check_game_volume(self.config.get("volume")) is None:
+                        self.config.pop("volume", None)
+                except ValueError:
+                    self.config.pop("volume", None)
             self.active_preset_id = snap.get("active_preset_id")
             # S5(a): a restored station comes back UNARMED -- `armed=None, arm_pending=True` -- because the
             # phone itself remembers nothing about MC across a restart; the existing "re-arm on next hello"
@@ -1645,9 +1658,17 @@ class Session:
             # into the recap scorer put a 0/0 row for somebody who was not there into the archived
             # recap and the result every node is holding (round-2 review 2026-09-12).
             self.scorer.register_player(pid, p)
+            # ...and in the match roster the snapshot carries. `_match_snapshot` keeps a node's binding
+            # only for a player in `_match_players`, so an MC restart dropped the hot joiner's binding and
+            # the resumed scorer ignored every fact they had sent (chaos testing 2026-09-24).
+            if self._match_players is not None:
+                self._match_players[pid] = p.copy()
         if gun_id:
             self._adopt_node_for_gun(p)
         self._after_player_change(p)
+        if self.in_play():               # F329: a hot joiner is in the snapshot before any crash can drop them
+            self._persist_dirty = True
+            self.persist_now()
         return p
 
     def patch_player(self, pid: str, **fields) -> Player:
@@ -2105,13 +2126,16 @@ class Session:
 
     _CONFIG_KEYS = {"mode", "environment", "night", "time_limit_s", "respawn", "scoring",
                     "health", "teams", "led", "player_num_base", "loadout_policy", "presentation",
-                    "station_source", "mode_params", "vip_player_id", "stun", "coverage", "recoil"}
+                    "station_source", "mode_params", "vip_player_id", "stun", "coverage", "recoil",
+                    "volume"}
 
     def apply_preset(self, preset_id: str, config: GameConfig) -> dict:
         """A10 §8: apply a saved game — same path as PUT /api/config, but the state remembers WHICH game is playing."""
         self.active_preset_id = preset_id
         try:
-            return self.set_config(dict(config), _from_preset=True)
+            # K8: a saved game from before the volume knob carries no key; it plays at the venue volume,
+            # never at whatever the previous game's knob said.
+            return self.set_config({**dict(config), "volume": config.get("volume")}, _from_preset=True)
         except Exception:
             self.active_preset_id = None
             raise
@@ -2222,6 +2246,10 @@ class Session:
                 cfg["environment"] = self.config["environment"]
             if "night" not in patch and "night" in self.config:
                 cfg["night"] = self.config["night"]
+            # K8 (polish round 2): the host sets the volume for the site, like the venue, so a mode switch
+            # keeps it; the game editor already carried it, and the two now agree.
+            if "volume" not in patch and (vol := self.config.get("volume")) is not None:
+                cfg["volume"] = vol
             if "coverage" not in patch and (cov := self.config.get("coverage")) is not None:
                 cfg["coverage"] = cov
         cfg = self._merge_config(cfg, patch, mode)
@@ -2375,6 +2403,12 @@ class Session:
                 cfg["night"] = bool(v)
             elif k == "recoil":
                 cfg["recoil"] = bool(v)   # S42: default ON is absence, not a stored True -- see GameConfigBase.recoil
+            elif k == "volume":
+                # K8: the host's volume knob. `null` clears it back to the venue default (absent, as before K8).
+                if _compile.check_game_volume(v) is None:
+                    cfg.pop("volume", None)
+                else:
+                    cfg["volume"] = v
             elif k == "coverage":
                 # A31/A4.8: the venue's radio coverage. "full" is an ASSERTION the operator makes about
                 # the site (every phone on the LAN the whole match) and it unlocks a null `time_limit_s`
@@ -2415,6 +2449,13 @@ class Session:
                         respawn["weapon_delay_ms"] = merged["weapon_delay_ms"]
                     if "station_protect_s" in merged:
                         respawn["station_protect_s"] = merged["station_protect_s"]
+                    # F325: the scanner gate (contracts §3 `respawn.gate`, A13.1). The node already reads it;
+                    # MC used to drop it here, so no path could choose the presence gate. `null` clears it.
+                    g = merged.get("gate")
+                    if g is not None and merged["type"] == "scanner":   # scanner only: another type drops it
+                        if g not in ("trigger", "presence"):
+                            raise ValueError("respawn.gate must be trigger|presence (scanner respawn only)")
+                        respawn["gate"] = g
                     cfg["respawn"] = respawn
                 if k == "scoring":
                     fl = merged.get("frag_limit")
@@ -3476,6 +3517,9 @@ class Session:
             if prev in self.nodes:
                 self.nodes[prev].pop("player_id", None)
         self.node_player[nid] = p["player_id"]
+        new_match_binding = self.in_play() and self._match_nodes.get(nid) != p["player_id"]
+        if self.in_play():
+            self._match_nodes[nid] = p["player_id"]
         p["node_id"] = nid
         self._node_view(nid)["player_id"] = p["player_id"]
         if self.phase in ("kit", "lobby", "armed") and self.nodes.get(nid, {}).get("synced"):
@@ -3497,6 +3541,12 @@ class Session:
                 self._push_config_to(p)
                 if self.start_info:
                     self.net.push(nid, "start", self._start_body())
+        if new_match_binding:
+            # F329: a node that joins the match in play is written to the snapshot NOW, not after the 2 s
+            # debounce. A crash inside that window resumed without the binding, and the node's stored
+            # facts then scored for nobody.
+            self._persist_dirty = True
+            self.persist_now()
 
     def evict_node(self, nid: str) -> bool:
         """Operator recovery: kick a node (e.g. a stranger that hello'd with a live gun name before its owner's phone).
@@ -4192,6 +4242,7 @@ class Session:
         players: dict = raw_players if isinstance(raw_players, dict) else {}
         node_player = {n: p for n, p in (m.get("node_player") or {}).items()
                        if isinstance(n, str) and isinstance(p, str) and p in self.players}
+        self._match_nodes = dict(node_player)     # carried into this process's own snapshots
         for nid, synced in (m.get("synced_at_lobby") or {}).items():
             if isinstance(nid, str) and synced is True:
                 self.synced_at_lobby[nid] = True
@@ -4359,6 +4410,7 @@ class Session:
         self._scheduled_ids.add(match_id)
         self._game_no_started = True
         self._match_players = {pid: p.copy() for pid, p in self.players.items()}
+        self._match_nodes = dict(self.node_player)      # F327: never the previous match's bindings
         self._end_delivery, self._end_delivery_told = {}, None
         self.end_reason = None
         self.last_recap = None
@@ -5012,15 +5064,21 @@ class Session:
         `old.players` IS `self.players`, so a re-team made in the debrief would otherwise replay the
         finished match on the new teams and hand the win to a side that never held it.
         """
+        # The stored facts are keyed by node, so the replay binds them through EVERY node that spoke for a
+        # player in this match (`_match_nodes`), not only the nodes connected now: a phone offline since an
+        # MC restart, or hot-swapped out, still played this match (chaos testing 2026-09-24). The match's
+        # own map WINS over the live one: a phone handed to someone else in the debrief played the match as
+        # its first holder. The scorer then reads the live map again, as `_build_scorer`'s does.
         sc = Scorer(old.match_id, old.go_live_t, old.time_limit_s, old.mode,
                     self._match_players if self._match_players is not None else old.players,
-                    list(old.teams.values()), old.node_player, old.synced_at_lobby,
+                    list(old.teams.values()), {**old.node_player, **self._match_nodes}, old.synced_at_lobby,
                     now_ms=self.now_ms, win_by=old.win_by, frag_limit=old.frag_limit)
         if freeze_at is not None:
             sc.set_end(freeze_at)
         for r in facts:
             body: Event = r["body"]
             sc.ingest(r["node_id"], body.copy(), r.get("t_recv") or 0, seq=r.get("seq"))
+        sc.node_player = old.node_player
         return sc
 
     def _adopt_scorer(self, old: Scorer, sc: Scorer) -> None:
@@ -6266,6 +6324,7 @@ class Session:
         # A24/M2: the roster AS IT GOES IN. `_replay` builds its Scorer from this, never from the live
         # dict, so a re-team made after the whistle cannot re-play the match on teams nobody wore.
         self._match_players = {pid: p.copy() for pid, p in self.players.items()}
+        self._match_nodes = dict(self.node_player)
         # A25: the ~1 MB pulled-log budget is PER MATCH, not per session. It was never reset, so after
         # three or four matches of logs every node was over it and the recap ask stopped going out --
         # silently, on the match most likely to be the one worth debugging.
@@ -6941,6 +7000,7 @@ class Session:
         else:
             self._retired_scorer = None
             self._retired_stations = None
+            self._match_nodes = {}
         self.session_id = uuid.uuid4().hex[:8]
         self.phase = "muster"
         self.start_info = None

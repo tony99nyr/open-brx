@@ -46,9 +46,12 @@ LaserTagMods (JEDGE/JBOX) prominently; this project is a fresh, independent impl
     player/headset kill-count acks, `$RADSK`, `$PH`.
   - **Player IDs numbered from 1901 up** (Player 1 = 1901). (Note: Callsign uses team ids; this
     1901 scheme is JEDGE's host-side convention.)
-- **`$SIR` IR-effect codes** (matches our §5): 1=standard(shield→armor→HP), 10=+HP, 11=+shields,
+- **`$SIR` IR-effect codes** as JEDGE labels them: 1=standard(shield→armor→HP), 10=+HP, 11=+shields,
   13=+armor, 36=force/sniper passthrough, 37=bolt/burst/AMR, 38=charge, 24=energy launcher,
   28=tear gas, plus rail/rocket/energy-blade/rifle-bash/war-hammer. **~14 distinct IR recognitions.**
+  These are JEDGE's weapon labels, not measured effects. Our bench disagrees on several (fn 36/37 are
+  headset-only multipliers, fn 38 lands half, fn 24 is a phantom-hit generator): the measured function map
+  is [`brx-protocol.md` §5](../../protocol/brx-protocol.md).
 - **`$BMAP` buttons:** 0=trigger, 1=alt-fire (`99`=wildcard), 2=reload(`97`=reload action),
   3=select, 4=left, 5=right, 8=gyro/motion. (Matches our hardware-verified map.)
 
@@ -62,7 +65,7 @@ LaserTagMods (JEDGE/JBOX) prominently; this project is a fresh, independent impl
 
 ## JBOX station behaviours (= the "boxes", our objective-station node)
 
-The functional catalogue worth reproducing in our `firmware/objective-station/`:
+The functional catalogue worth reproducing in our objective station ([`hardware/brx-station-spec.md`](../../hardware/brx-station-spec.md)):
 - **Domination** — basic (per-player + per-team scoring over BLE), with score limits, and
   tug-of-war variants.
 - **Capture the Flag** — via a LoRa base-pair or JEDGE flag-carrier.

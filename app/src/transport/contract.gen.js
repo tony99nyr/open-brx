@@ -6,6 +6,15 @@ export const MULTI_KILL_MS = 4000;
 export const FEEDBACK_MAX_AGE_MS = 3000;
 export const STATUS_HEARTBEAT_MS = 2000;
 export const STALE_AFTER_MS = 8000;
+/** F52: the A16.3 gun readout's timings, shipped in `gun.readout`. One owner here, so the generator emits them
+ *  to the phone (contract.gen.js) and poolgauge / presentation / the stage import them: no literal copies left
+ *  to disagree after a bench retune. Their meanings are documented at poolgauge.py's readout section. */
+export const READOUT_LEAD_MS = 180;
+export const READOUT_BLINK_GAP_MS = 80;
+export const READOUT_STEP_MS = 120;
+export const READOUT_BLINK_MS = 400;
+export const READOUT_MIN_GAP_MS = 400;
+export const READOUT_HOLD_S = 4;
 /** The `sync_age_ms` a LIVE row carries when MC has never heard its node in THIS process (no node bound,
  *  or MC restarted mid-match and the phone has not spoken since). It is a sentinel, not an age: the
  *  console must print "not heard", never "11d13h ago" (visual QA H3, 2026-09-23). */
@@ -50,6 +59,13 @@ export const POOL_CHECK_SETTLE_MS = 2000;
 export const RESYNC_PROBE_S = 10;
 export const DEFAULT_RUNWAY_S = 120;
 export const PROTOCOL_V = 1;
+/** The venue volume (field-corrected 2026-08-30: 80 = on-gun L3 indoors, 90 = L4 outdoors) and the
+ *  bounds of the host's per-game knob, `GameConfig.volume`. The floor is on-gun L1: 30 is inaudible
+ *  for game audio, so the knob cannot choose silence. */
+export const VENUE_VOLUME_INDOOR = 80;
+export const VENUE_VOLUME_OUTDOOR = 90;
+export const GAME_VOLUME_MIN = 60;
+export const GAME_VOLUME_MAX = 100;
 export const TIMED_PROTECT_S_DEFAULT = 0;
 export const WEAPON_DELAY_MS_DEFAULT = 500;
 export const STATION_PROTECT_S_DEFAULT = 2;

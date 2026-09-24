@@ -943,6 +943,22 @@ def test_level_for_delegates_to_the_one_shared_poolgauge_formula():
     assert st._level_for({"pool": "health", "max": 45}, "health") == 0
 
 
+def test_readout_max_adds_a_held_overshield_to_the_shield_pool():
+    """A56 (Tony, 2026-09-24): shield + overshield is ONE teal pool on the gun, measured against the
+    preset's max plus the overshield. Mirrors engine.js `_readoutMax` and its A56 overshield tests."""
+    st, _ = mk()
+    st._overshield = {"base": 30, "amount": 75}
+    st.shield = 60
+    assert st._level_for({"pool": "shield", "max": 30}, "shield") == 3, "60 of 105, not clamped full"
+    assert st._readout_max({"pool": "armor", "max": 70}) == 70, "only the shield pool grows"
+    st._overshield = {"base": 0, "amount": 75}   # Standard: the shield entry ships with max 0
+    st.shield = 75
+    assert st._level_for({"pool": "shield", "max": 0}, "shield") == 6
+    st._overshield = None
+    st.shield = 30
+    assert st._readout_max({"pool": "shield", "max": 30}) == 30
+
+
 def test_drop_animation_lead_blink_gap_step_down_settle_blink_and_revert():
     async def go():
         st, mgr = mk()

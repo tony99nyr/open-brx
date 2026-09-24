@@ -498,7 +498,9 @@ export function Kit() {
                   style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: on ? 'rgba(57,180,255,.06)' : 'transparent', border: `1px solid ${on ? T.acc : 'transparent'}`, cursor: 'pointer', minHeight: 44, opacity: liveNode ? 1 : 0.55 }}>
                   <span style={{ width: 4, flex: 'none', alignSelf: 'stretch', background: teamColor(pl.team_id) }} />
                   <span style={{ flex: '1 1 0', minWidth: 0 }}>
-                    <span style={{ display: 'block', font: F.chk(700, 14), letterSpacing: '.14em' }}><span style={{ color: T.micro, font: F.mono(500, 11) }}>#{pl.player_num} </span>{pl.display}</span>
+                    {/* F318: a TRYING chip took the room and the callsign was squeezed; it ellipsises, and says itself in full on hover. */}
+                    <span data-kit-name={pl.player_id} title={`#${pl.player_num} ${pl.display}`}
+                      style={{ display: 'block', font: F.chk(700, 14), letterSpacing: '.14em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><span style={{ color: T.micro, font: F.mono(500, 11) }}>#{pl.player_num} </span>{pl.display}</span>
                     <span style={{ display: 'flex', gap: 8, font: F.mono(500, 11), letterSpacing: '.06em', color: T.micro, whiteSpace: 'nowrap', overflow: 'hidden' }}>
                       <span>{pl.gun_id ?? 'NO GUN'}</span>
                       <span style={{ color: T.faint }}>·</span>
@@ -581,7 +583,7 @@ export function Kit() {
                 <span style={{ font: F.mono(500, 11), letterSpacing: '.22em', color: T.micro }}>VOICE</span>
                 {voices.length > 2 ? (
                   <select aria-label={`voice for ${sp.display}`} disabled={locked} value={sp.voice ?? 'male'} onChange={e => patch({ voice: e.target.value })}
-                    style={{ background: T.inset, color: T.ink, border: `1px solid ${T.line2}`, font: F.mono(600, 11), letterSpacing: '.06em', padding: '6px 8px', minHeight: 36, cursor: 'pointer' }}>
+                    style={{ background: T.inset, color: T.ink, border: `1px solid ${T.line2}`, font: F.mono(600, 11), letterSpacing: '.06em', padding: '6px 8px', minHeight: 36, ...lockedSelect(locked) }}>
                     {/* No "unverified" marker here. A bare `·` in a native <select> has no legend and
                         no tooltip — Tony asked what it meant, which is the answer. Whether a pack has
                         been confirmed BY EAR is a developer's concern, and the operator finds out the
@@ -595,7 +597,7 @@ export function Kit() {
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: T.inset, border: `1px solid ${T.line}` }}>
                 <Blink color={node ? T.ok : T.bad} />
                 <select aria-label={`gun for ${sp.display}`} disabled={locked} value={selectedGun} onChange={e => patch({ gun_id: e.target.value || null })}
-                  style={{ background: T.inset, color: T.ink, border: `1px solid ${T.line2}`, font: F.mono(600, 11), letterSpacing: '.06em', padding: '6px 8px', minHeight: 36, cursor: 'pointer' }}>
+                  style={{ background: T.inset, color: T.ink, border: `1px solid ${T.line2}`, font: F.mono(600, 11), letterSpacing: '.06em', padding: '6px 8px', minHeight: 36, ...lockedSelect(locked) }}>
                   <option value="">— NO GUN —</option>
                   {gunOptions.map(o => {
                     const takenBy = players.find(q => q.player_id !== sp.player_id && (q.gun_id || '').toUpperCase() === o.gun_id.toUpperCase());
@@ -976,6 +978,10 @@ function PerkTrade({ k, style }: { k: PerkView; style?: CSSProperties }) {
 const shortName = (n: string) => n.replace(/ Rifle$/i, '').replace(/ Launcher$/i, ' LNCHR').toUpperCase();
 
 /** Player number 1–63, draft-then-commit (see ValueBox). */
+/** F318: a native `disabled` select looked exactly like a live one on this dark theme in ARMED/LIVE. */
+const lockedSelect = (locked: boolean): CSSProperties =>
+  (locked ? { opacity: 0.45, cursor: 'not-allowed' } : { cursor: 'pointer' });
+
 function PlayerNum({ value, onCommit, disabled }: { value: number; onCommit: (n: number) => void; disabled?: boolean }) {
   const [draft, setDraft] = useState(String(value));
   const [invalid, setInvalid] = useState(false);
@@ -992,7 +998,7 @@ function PlayerNum({ value, onCommit, disabled }: { value: number; onCommit: (n:
   return (
     <>
       <input className="numbox" type="number" min={1} max={63} value={draft} disabled={disabled} aria-label="player number (1–63)" aria-invalid={invalid || undefined}
-        style={{ width: '2.6em', font: F.mono(600, 11), color: invalid ? T.bad : T.acc, textAlign: 'left', minHeight: 32, borderBottom: invalid ? `1px solid ${T.bad}` : undefined }}
+        style={{ width: '2.6em', font: F.mono(600, 11), color: invalid ? T.bad : T.acc, textAlign: 'left', minHeight: 36, borderBottom: invalid ? `1px solid ${T.bad}` : undefined }}
         onFocus={() => { setFocused(true); setInvalid(false); }} onBlur={() => { setFocused(false); commit(); }} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
         onChange={e => setDraft(e.target.value)} />
       {invalid && <span role="alert" style={{ marginLeft: 8, font: F.mono(500, 11), letterSpacing: '.12em', color: T.bad }}>PLAYER NUMBER MUST BE 1–63</span>}

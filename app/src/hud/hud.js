@@ -626,7 +626,7 @@ export class Hud {
   }
 
   // F211: with Bluetooth off the picker used to just sit empty, with no line telling the player why
-  // (game-test-2026-09-13.md C2). `bluetoothOn` is app.js-owned (constructor note above) and re-checked
+  // (docs/archive/game-test-2026-09-13.md C2). `bluetoothOn` is app.js-owned (constructor note above) and re-checked
   // on every SET MY GUN tap and on the OS adapter-state notification, so this only ever shows what the
   // phone reports right now. The buttons only appear where the plugin actually offers them (Android).
   _idleBtOff() {
@@ -1819,7 +1819,7 @@ export class Hud {
       this._momentAt = m.at;
       if (m.kind === 'kill') this._kill(st, m);
       else if (m.kind === 'redeploy') this._redeploy(st);
-      else if (m.kind === 'switched') { if (!(st.ammo === 0 && st.activeSlot === (m.data && m.data.slot))) this._switched(st, m); }   // polish r2: no ACTIVE card for an empty slot
+      else if (m.kind === 'switched') { const held = st.powerup && st.powerup.held; if (!(held && st.ammo === 0 && st.activeSlot === held.slot && st.activeSlot === (m.data && m.data.slot))) this._switched(st, m); }   // polish r2/r3: no ACTIVE card for an EMPTY PICKUP slot (a loadout swap keeps it)
       else if (m.kind === 'alert') this._alert(st, m);
       else if (m.kind === 'hit') this._hit(st, m);
       else if (m.kind === 'gain') this._gain(st, m);

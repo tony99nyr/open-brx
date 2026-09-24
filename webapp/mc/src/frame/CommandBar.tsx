@@ -133,7 +133,8 @@ export function CommandBar() {
                   : id)}
                 style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3, fontFamily: "'Chakra Petch'", background: active ? '#0c1420' : 'transparent',
                   border: 'none', borderBottom: `2px solid ${active ? T.acc : 'transparent'}`, cursor: 'pointer', color: active ? T.ink : T.dim, minHeight: 44, whiteSpace: 'nowrap' }}>
-                <span style={{ font: F.mono(600, 9), letterSpacing: '.2em', color: active ? T.acc : 'rgba(92,113,134,.7)' }}>0{i + 1}</span>
+                {/* F318: the step digit is decorative (the label beside it carries the meaning), so 9 px stays and readers skip it. */}
+                <span aria-hidden="true" style={{ font: F.mono(600, 9), letterSpacing: '.2em', color: active ? T.acc : 'rgba(92,113,134,.7)' }}>0{i + 1}</span>
                 <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.22em' }}>{label}{id === 'build' && view === 'designer' ? <span style={{ color: T.acc }}> ▸ DESIGNER</span> : ''}
                   {/* Bench 2026-09-17: phones are in a match this MC did not start. Only while that is true. */}
                   {id === 'live' && state?.orphan_match && (
@@ -151,9 +152,13 @@ export function CommandBar() {
             style={{ background: 'transparent', border: `1px solid ${T.warn}`, color: T.warn, font: F.chk(700, 12), padding: '7px 12px', cursor: 'pointer', minHeight: 40, whiteSpace: 'nowrap' }}>
             <span className="cb-long">Operator token needed ▸</span><span className="cb-short">Token ▸</span></button>}
 
-          <span style={{ font: F.chk(700, 12), letterSpacing: '.16em', whiteSpace: 'nowrap',
-                         color: state?.phase === 'live' ? T.bad : state?.phase === 'armed' ? T.warn : state?.phase === 'recap' ? T.ok : T.dim }}>
-            {state?.phase === 'live' ? '● LIVE' : state?.phase === 'armed' ? '▲ ARMED' : state?.phase === 'recap' ? '■ MATCH OVER' : '◇ SETUP'}
+          {/* F318: offline, the phase is the LAST SNAPSHOT's, not a fact. A red ● LIVE beside MC OFFLINE
+              read as "the match is live and fine", so the chip goes grey and says it is the last known. */}
+          <span data-testid="phase-chip" title={offline ? 'MC is offline: this is the phase in the last snapshot' : undefined}
+                style={{ font: F.chk(700, 12), letterSpacing: '.16em', whiteSpace: 'nowrap',
+                         color: offline ? T.dim : state?.phase === 'live' ? T.bad : state?.phase === 'armed' ? T.warn : state?.phase === 'recap' ? T.ok : T.dim }}>
+            {offline && state ? 'LAST KNOWN: ' : ''}
+            {state?.phase === 'live' ? (offline ? '○ LIVE' : '● LIVE') : state?.phase === 'armed' ? '▲ ARMED' : state?.phase === 'recap' ? '■ MATCH OVER' : '◇ SETUP'}
           </span>
           {/* `--bench-volume N`: every gun plays at N, not the venue level. Say it where nobody can miss it. */}
           {state?.bench_volume != null && (

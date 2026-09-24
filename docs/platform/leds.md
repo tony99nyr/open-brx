@@ -1,5 +1,5 @@
 # What the lights mean in a game
-Last verified: 2026-09-12
+Last verified: 2026-09-24
 
 In an Open BRX game the host takes over the tagger body LEDs and the headset ring, so what you see is
 ours. For the stock behaviour of a tagger nobody is hosting, see [Meet the BRX](/manual/hardware).
@@ -100,21 +100,9 @@ A carrier blinks white and never the flag's colour: a team colour is an identity
 
 ## Colours
 
-Both surfaces share one nine colour palette.
-
-| Index | Colour |
-|---|---|
-| 0 | red |
-| 1 | blue |
-| 2 | yellow |
-| 3 | green |
-| 4 | purple |
-| 5 | teal |
-| 6 | white |
-| 7 | pink |
-| 8 | orange |
-
-Index 9 and above are dark, which is how a segment is switched off. Pools read like this:
+Both surfaces share the tagger's nine colour palette. The index of each colour is in
+[Meet the BRX](/manual/hardware). Index 9 and above are dark, which is how a segment is switched off.
+Pools read like this:
 
 | Pool | Colour |
 |---|---|
@@ -125,12 +113,12 @@ Index 9 and above are dark, which is how a segment is switched off. Pools read l
 Only health changes hue as it falls. Shield and armour keep one colour and let the bar length carry
 the level.
 
-**You will not see a shield bar in a game today.** A tagger spawns with shield 0 and reports 0 on
-every life, because nothing Open BRX compiles grants one. The pool itself is writable: on 2026-09-11
-the bench filled it over Bluetooth with `$LIFE,0,0,20,*` and emptied it again with a negative, on a
-tagger with no shield row in its IR table at all. So the teal row above is a design waiting on a game
-that hands shields out, not a limit of the hardware. Everything else on this page has been watched on
-real hardware.
+**You see a shield bar only on the Shields health preset** (45 health, no armour, 105 shield). The
+Standard and Hardcore presets grant no shield, so the tagger reports 0 on every life. The pool is
+writable over Bluetooth: on 2026-09-11 the bench filled it with `$LIFE,0,0,20,*` and emptied it
+again with a negative. A painted teal segment has been seen on a spawned tagger, but the Shields
+preset has not yet run in a real match. Everything else on this page has been watched on real
+hardware.
 
 Teams paint red (team 0), blue (team 1), yellow (team 2) and purple (team 3). Team 3 fights as green
 on the wire and paints purple, because green is what a headset flashes on a hit and out. Free-for-all

@@ -129,7 +129,7 @@ cd mcp && ../.venv/bin/python run_tests.py
 - **Stale e2e servers** (`cd app && npm run ui:e2e`, the phone e2e). The suite now binds free ports, so a killed
   run no longer blocks the next one, but its demo MC can stay alive and hold memory. Find and stop it by process:
   `pkill -f "[b]rx_mcp.mc .*--no-auth"` (the brackets stop the pattern matching the shell that runs it; it also stops
-  an MC you started by hand with `--no-auth`). `npm run test:all` kills its jobs' process groups on a timeout or Ctrl-C.
+  an MC you started by hand with `--no-auth`). `pnpm run test:all` kills its jobs' process groups on a timeout or Ctrl-C.
 - **The e2e refuses a stale bundle** (*"FATAL: STALE BUNDLE"*). `cd app && npm run build` first.
 
 ## 4. Reading a session store — the thing that settles arguments
@@ -172,8 +172,8 @@ txt = ''.join(json.loads(b)['chunk'] for b, in c.execute(
 
 | what | where |
 |---|---|
-| Every issue reported from a live session + status | [`field-issues.md`](field-issues.md) |
-| Shipped-but-unconfirmed fixes, with what would prove/disprove each | [`field-issues.md`](field-issues.md) → *Check next match* |
+| Every open issue reported from a live session | [`FOLLOWUPS.md`](FOLLOWUPS.md) §6 |
+| Shipped-but-unconfirmed fixes, with what would prove/disprove each | [`FOLLOWUPS.md`](FOLLOWUPS.md) §10 |
 | The lab notebook — append after every session | [`experiment-log.md`](experiment-log.md) |
 | Open work, all of it (Mac-only capture jobs: `capture-runbook.md`) | [`FOLLOWUPS.md`](FOLLOWUPS.md) |
 

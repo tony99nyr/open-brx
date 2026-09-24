@@ -48,15 +48,14 @@ npx playwright install chromium           # once; npm test includes focused scre
 npm test                                  # all unit tests + A38 standby UI at both phone sizes
 node --test test/engine.test.mjs        # engine (node.md §3, A6)
 node --test test/transport.test.mjs     # the wire (needs ../.venv for the integration test)
+                                         #   (run the two files separately — each spins up a server, so a
+                                         #    single `node --test test/` can clash on resources)
 node --test test/beacon.test.mjs        # the utility-item advert codec + presence
 npm run ui:screens                      # screen truth: what a person sees, per state (tools/README.md)
 ```
 
 **Reviewing or changing a screen?** Start `npm run ui:stage`, jump to the state, and add a `screens.mjs` step
 that fails before the fix (see `docs/hud-review-2026-09-03.md` for how the last review was run).
-
-(Run the two files separately — each integration test spins up a server, so a single
-`node --test test/` can clash on resources.)
 
 ## Field-LAN gates ([`docs/spec/contracts.md` §5c](../docs/spec/contracts.md#5c-platform-network-gates-blocking-live-in-appscripts-setupsh--preflight))
 

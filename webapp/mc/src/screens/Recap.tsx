@@ -413,7 +413,7 @@ function Row({ r, mvp }: { r: ScoreRow; mvp: boolean }) {
 }
 
 function chip(on: boolean): React.CSSProperties {
-  return { font: F.mono(600, 11), letterSpacing: '.1em', padding: '5px 10px', minHeight: 28, cursor: 'pointer',
+  return { font: F.mono(600, 11), letterSpacing: '.1em', padding: '5px 10px', minHeight: 36, cursor: 'pointer',   // F318: was 28 px
            background: on ? T.acc : 'transparent', color: on ? T.accInk : T.dim,
            border: `1px solid ${on ? T.acc : T.line2}` };
 }

@@ -1,8 +1,9 @@
 # Transport hardening: what a node may write to a gun, how fast, and how it knows the gun is still there
 
-- **Status:** design, 2026-09-18. Two parts are built (§4 the deny list, §3 the pacing constants). The rest is
-  a design that waits on the measurements in Phase A of `docs/bench-screamers-2026-09-19.md` ("bench A8" below means its step A8;
-  the levers sheet §14 maps its old step numbers to these).
+- **Status:** design, 2026-09-18. Built: §3 the pacing constants, §4 the deny list, §5 write-with-response (off by
+  default), §6 the `$QUERY` read-back and §7 the lock-up detector (threshold provisional). Each heading says what is
+  still owed. The open parts wait on the measurements in Phase A of `docs/bench-screamers-2026-09-19.md` ("bench A8"
+  below means its step A8; the levers sheet §14 maps its old step numbers to these).
   Binds to `node.md` §7 (the BLE plumbing), `contracts.md` §8 (the frame contract) and `protocol/brx-protocol.md`
   §1 to §2 (the serial parser).
 - **Owner interface:** the node (`app/src/brxlink.js`, `app/src/engine.js`), the bench stage (`mcp/brx_mcp/stage/`),

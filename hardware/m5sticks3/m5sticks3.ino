@@ -20,10 +20,14 @@
 #include <BLEAdvertising.h>
 #include <M5Unified.h>
 #include <Preferences.h>
+#include <cctype>
 
 #include "brx_advert.h"
 #include "brx_ir.h"
 #include "control_point.h"
+#include "mc_link_glue.h"   // H8: Wi-Fi/mDNS/WebSocket to Mission Control (docs/spec/utility.md §5g)
+#include "station_render.h" // the M5GFX renderer for a ScreenSpec (Arduino-only)
+#include "station_screen.h" // the pure screen MODEL: state -> ScreenSpec (host-tested)
 
 using namespace brx;
 
@@ -88,7 +92,32 @@ uint32_t lastTxDoneMs = 0;
 String lastTxBits;
 Word lastWord;
 uint32_t lastWordAt = 0;
+uint32_t sentWordCount = 0;  // every sendFrame() call, for the DIAGNOSTICS/STATS "IR SENT" row
 bool displayDirty = true;
+String lastSelfTestResult = "-";  // "-" | "PASS" | "FAIL", for the DIAGNOSTICS screen
+
+// ---- screen model/render (station_screen.h / station_render.h) ------------------------------- //
+M5Canvas canvas(&M5.Display);   // one off-screen sprite, pushed once per paint: no flicker
+HomeNav homeNav;                // Tony, 2026-09-24: idle timeout + A-long-press "go home"
+uint8_t lastControlOwner = TEAM_ANY;  // tracks a HILL/BRIDGE owner change, to time "HELD m:ss"
+uint32_t heldSinceMs = 0;
+uint32_t confirmArmedAtMs = 0;  // mirrors station_ui.h's own armed_at_ms_ (no getter there; see pollButtons())
+bool resetOutcomeActive = false;  // a RESET was just confirmed; show its outcome briefly, then clear
+bool resetOutcomeOk = false;      // true = sent to MC; false = RESET NEEDS MISSION CONTROL
+bool resetOutcomeLocked = false;  // A58: the RESET was refused by the match lock (shows LOCKED)
+ForceRestart forceRestart;        // A58: A + B held 7 s restarts the Stick, locked or not
+uint32_t lastRestartCountdown = 0;
+uint32_t resetOutcomeAtMs = 0;
+constexpr uint32_t RESET_OUTCOME_SHOW_MS = 2500;
+
+// Screen brightness (README's "Screens" section): dim after idle, wake on a button or a real state
+// change (anything that already sets `displayDirty`, e.g. a pickup or a capture) -- never on the
+// routine ~4 Hz countdown repaint below, or the backlight would never dim during a live countdown.
+constexpr uint8_t BACKLIGHT_BRIGHT = 120;  // matches setup()'s existing setBrightness(120)
+constexpr uint8_t BACKLIGHT_DIM = 25;
+constexpr uint32_t BACKLIGHT_IDLE_MS = 30000;
+uint32_t lastWakeMs = 0;
+bool backlightDimmed = false;
 
 // ---- IR receive (RMT) ------------------------------------------------------------------------ //
 rmt_data_t rxBuf[RX_SYMBOLS];
@@ -222,13 +251,14 @@ static size_t buildSymbols(const String& bits, rmt_data_t* sym, size_t cap) {
 // sent. It never feeds ownership and never counts as a heard word. BENCH TO CONFIRM what a PASS means: M5 asks for
 // 30 cm between sender and receiver, so a FAIL here may be overdrive, not a fault; aim a mirror or card for a bounce.
 static void selfTest(const String& bits) {
-  if (txPinActive < 0 && !initTx(settings.txpin)) { Serial.println("SELFTEST FAIL tx init"); return; }
+  if (txPinActive < 0 && !initTx(settings.txpin)) { lastSelfTestResult = "FAIL"; Serial.println("SELFTEST FAIL tx init"); return; }
   pollRx();  // a real word that finished just before this must be read, not discarded with the rebuilt channel
   rmtDeinit(IR_RX_PIN);
-  if (!initRx()) { Serial.println("SELFTEST FAIL rx init"); return; }
+  if (!initRx()) { lastSelfTestResult = "FAIL"; Serial.println("SELFTEST FAIL rx init"); return; }
   static rmt_data_t sym[64];
   size_t n = buildSymbols(bits, sym, 64);
   if (!rmtWrite(txPinActive, sym, n, 200)) {
+    lastSelfTestResult = "FAIL";
     Serial.println("SELFTEST FAIL tx write");
     rmtDeinit(IR_RX_PIN);
     if (!initRx()) Serial.println("ERR rx re-init after selftest");
@@ -237,6 +267,7 @@ static void selfTest(const String& bits) {
   uint32_t t0 = millis();
   while (!rmtReceiveCompleted(IR_RX_PIN) && millis() - t0 < 150) delay(1);
   if (!rmtReceiveCompleted(IR_RX_PIN)) {
+    lastSelfTestResult = "FAIL";
     Serial.printf("SELFTEST FAIL txpin=%d no burst within 150 ms of the transmit\n", txPinActive);
   } else {
     static std::vector<uint32_t> d;
@@ -248,6 +279,7 @@ static void selfTest(const String& bits) {
     printFrame(d, r, got >= RX_SYMBOLS);
     rawEnabled = raw;
     bool pass = r.complete && r.bits == bits.c_str();
+    lastSelfTestResult = pass ? "PASS" : "FAIL";
     // the pin says what was tested: G46 is the onboard LED; 9/10 is a Grove emitter, where aim and distance decide
     Serial.printf("SELFTEST %s txpin=%d sent=%s got=%s\n", pass ? "PASS" : "FAIL", txPinActive, bits.c_str(), r.bits.c_str());
   }
@@ -261,6 +293,7 @@ static void sendFrame(const String& bits) {
   static rmt_data_t sym[64];
   size_t n = buildSymbols(bits, sym, 64);
   if (!rmtWrite(txPinActive, sym, n, 200)) Serial.println("ERR tx write");  // blocking; ~40 ms per word
+  sentWordCount++;  // every attempt counts, as frameCount does for receive (DIAGNOSTICS/STATS "IR SENT")
   lastTxDoneMs = millis();
   lastTxBits = bits;
   // Whatever the receiver caught of our own word is thrown away. A bare re-arm here failed on the first bring-up
@@ -273,21 +306,58 @@ static void sendFrame(const String& bits) {
 }
 
 // ---- BLE advert ------------------------------------------------------------------------------ //
+// H8: once Mission Control has ARMED this Stick (`brx_glue::link.state() == ASSIGNED`), the advert's
+// id/kind/game/threshold come from that assignment, not the serial ID/GAME/MODE bench settings --
+// mirrors utility.js's own applyStationConfig(). Team/state/value/active still come from whichever
+// engine actually knows them: control_point.h for kind "control" (IR-driven, unchanged), the
+// powerup schedule for kind "powerup" (self-spawn + CLAIM, station_link.h), or a flat "nothing to
+// report yet" for a kind this firmware cannot run (respawn/extraction/bomb, §5g.5: "shown and
+// reported, not faked"). With no MC assignment at all this is exactly the pre-H8 standalone bench
+// behaviour (control_point.h only), unchanged.
+static AdvertView currentAdvertView(uint32_t now) {
+  using brx_glue::link;
+  if (link.state() != LinkState::ASSIGNED) return point.view(now);
+  const StationAssignment& a = link.assignment();
+  if (a.kind == "control") return point.view(now);
+  if (a.kind == "powerup") {
+    PowerupAdvertView p = link.powerup().view(now);
+    AdvertView v;
+    v.team = TEAM_ANY;
+    v.state = p.state;
+    v.value = p.value;
+    v.taker = p.taker;
+    v.active = true;
+    return v;
+  }
+  // respawn / extraction / bomb: armed and advertised, but this firmware has no player-side rule
+  // for any of them yet, so it says nothing beyond "here I am, on this team, doing nothing".
+  AdvertView v;
+  v.team = (uint8_t)a.team;
+  v.state = 0;
+  v.value = 0;
+  v.active = true;
+  return v;
+}
+
 bool advertising = false;
 uint32_t advertRetryAt = 0;
 static void publishAdvert(const AdvertView& v, uint32_t now) {
+  using brx_glue::link;
   uint8_t seq = policy.published(v, now);
-  Advert a;
-  a.role = ROLE_STATION;
-  a.id = settings.id;
-  a.kind = KIND_CONTROL;
-  a.team = v.team;
-  a.state = v.state;
-  a.value = v.value;
-  a.seq = seq;
-  a.game = settings.game;
-  a.threshold = 0;
-  String uuid = advert_uuid(a).c_str();
+  bool assigned = link.state() == LinkState::ASSIGNED;
+  const StationAssignment& a = link.assignment();
+  Advert adv_;
+  adv_.role = ROLE_STATION;
+  adv_.id = assigned ? (uint16_t)a.id : settings.id;
+  adv_.kind = assigned ? station_kind_byte(a.kind) : KIND_CONTROL;
+  adv_.team = v.team;
+  adv_.state = v.state;
+  adv_.value = v.value;
+  adv_.seq = seq;
+  adv_.game = assigned ? (uint8_t)a.game : settings.game;
+  adv_.threshold = assigned ? a.threshold : 0;
+  adv_.taker = v.taker;
+  String uuid = advert_uuid(adv_).c_str();
   if (!adv) { policy.have_last = false; return; }
   adv->stop();
   BLEAdvertisementData data;
@@ -327,7 +397,7 @@ static void initBle() {
 // on the phones a stale "neutral" would look exactly like a live one. Their own 4 s expiry then
 // drops the point, which is the truth.
 static void pollAdvert(uint32_t now) {
-  AdvertView v = point.view(now);
+  AdvertView v = currentAdvertView(now);
   if (!v.active) {
     if (advertising) {
       if (adv) adv->stop();
@@ -337,55 +407,108 @@ static void pollAdvert(uint32_t now) {
       Serial.println("ADVERT withdrawn (no live beacon)");
       displayDirty = true;
     }
+    brx_glue::mcSetLive(advertising);
     return;
   }
-  if (advertRetryAt && (int32_t)(now - advertRetryAt) < 0) return;
+  if (advertRetryAt && (int32_t)(now - advertRetryAt) < 0) { brx_glue::mcSetLive(advertising); return; }
   advertRetryAt = 0;
   if (policy.due(v, now)) publishAdvert(v, now);
+  // H8 (polish round 1): status.live must say whether the advert is ACTUALLY up, not merely that MC
+  // armed this station -- publishAdvert() may have just failed (ERR advert start) and left
+  // `advertising` false even though a station_config was applied.
+  brx_glue::mcSetLive(advertising);
 }
 
-// ---- display --------------------------------------------------------------------------------- //
-static const char* TEAM_NAMES[] = {"RED", "BLUE", "YELLOW", "GREEN"};
-static uint16_t teamColor(uint8_t team) {
-  switch (team) {
-    case 0: return M5.Display.color565(200, 20, 20);
-    case 1: return M5.Display.color565(20, 60, 220);
-    case 2: return M5.Display.color565(220, 190, 0);
-    case 3: return M5.Display.color565(20, 160, 40);
-    default: return M5.Display.color565(90, 90, 90);
+// ---- display: station_screen.h (the model) -> station_render.h (the M5GFX draw) --------------- //
+// THE DESIGN OF RECORD is mockups/render.py (Tony approved it 2026-09-24); station_screen.h and
+// station_render.h are its two halves (README's "Screens" section). This replaces the old paint()/
+// paintOperator() pair: one model, one renderer, for both standalone bench use (control_point.h with
+// no Wi-Fi at all) and an MC-armed station.
+static std::string toUpperStd(const std::string& in) {
+  std::string out = in;
+  for (auto& ch : out) ch = (char)toupper((unsigned char)ch);
+  return out;
+}
+
+static StickState buildStickState(uint32_t now) {
+  using brx_glue::link;
+  StickState st;
+  st.now_ms = now;
+  st.link_state = link.state();
+  st.ble_on = true;
+  st.mc_connected = (link.state() == LinkState::WELCOMED || link.state() == LinkState::ASSIGNED);
+  st.ir_active = lastWordAt != 0 && (now - lastWordAt) < 300;
+  st.battery_pct = -1;  // bench to confirm: no on-device battery reading wired up yet (README)
+
+  const StationAssignment& a = link.assignment();
+  st.assignment_present = a.present;
+  st.assignment_id = a.present ? a.id : -1;
+
+  bool standalone = (link.state() == LinkState::NOT_CONFIGURED);
+  st.control_present = standalone || (a.present && a.kind == "control");
+  if (st.control_present) {
+    st.control_owner = point.owner;
+    st.control_progress_pct = point.progress();
+    if (point.owner != lastControlOwner) {
+      heldSinceMs = now;
+      lastControlOwner = point.owner;
+    }
+    uint32_t heldMs = (point.owner == TEAM_ANY) ? 0 : (now - heldSinceMs);
+    st.control_hold_time = format_mmss(heldMs / 1000);
   }
-}
 
-static void paint(uint32_t now) {
-  AdvertView v = point.view(now);
-  M5.Display.startWrite();
-  M5.Display.fillScreen(teamColor(v.team));
-  M5.Display.setTextColor(TFT_WHITE, teamColor(v.team));
-  M5.Display.setTextDatum(top_left);
-  M5.Display.setTextSize(2);
-  M5.Display.setCursor(4, 4);
-  M5.Display.print(point.mode == Mode::HILL ? "HILL " : "BRIDGE ");
-  M5.Display.print(settings.id);
-  M5.Display.setTextSize(3);
-  M5.Display.setCursor(4, 34);
-  M5.Display.print(v.team == TEAM_ANY ? "NEUTRAL" : TEAM_NAMES[v.team & 3]);
-  M5.Display.setTextSize(2);
-  M5.Display.setCursor(4, 70);
-  if (point.mode == Mode::HILL) {
-    M5.Display.printf("%u%%", v.value);
+  if (a.present && a.kind == "powerup") {
+    st.powerup_present = true;
+    st.powerup_available = link.powerup().available();
+    st.powerup_taker = link.powerup().taker();
+    PowerupAdvertView pv = link.powerup().view(now);
+    st.powerup_remaining_s = pv.value;
+    st.powerup_period_s = a.item.spawn_every_s > 0 ? (uint32_t)a.item.spawn_every_s : 60;
+    st.item_name = toUpperStd(a.item.name);
+    st.item_color_hex = a.item.color;
+    st.item_is_special = a.item.kind != "weapon";
+  }
+
+  st.ir_heard = wordCount;
+  st.ir_sent = sentWordCount;
+  if (lastWordAt) {
+    char buf[32];
+    snprintf(buf, sizeof buf, "P%d T%d M%d OK", lastWord.player, lastWord.team, lastWord.mag);
+    st.last_word = buf;
+  }
+  st.selftest_result = std::string(lastSelfTestResult.c_str());
+  st.tx_pin = settings.txpin;
+
+  if (a.present) {
+    st.stats_kind_label = (a.kind == "powerup")
+        ? "PICKUP - " + (a.item.name.empty() ? std::string("?") : toUpperStd(a.item.name))
+        : toUpperStd(a.kind) + " #" + std::to_string(a.id);
+    st.stats_last_taken = (a.kind == "powerup" && link.powerup().taker())
+        ? "P" + std::to_string(link.powerup().taker()) : std::string("-");
+  } else if (standalone) {
+    st.stats_kind_label = point.mode == Mode::HILL ? "HILL (BENCH)" : "BRIDGE (BENCH)";
+    st.stats_last_taken = "-";
   } else {
-    M5.Display.print(v.active ? "beacon ok" : (point.heard_beacon ? "beacon LOST, advert off" : "no beacon yet"));
+    st.stats_kind_label = "-";
+    st.stats_last_taken = "-";
   }
-  M5.Display.setTextSize(1);
-  M5.Display.setCursor(4, 100);
-  M5.Display.printf("words %lu  adv %lu", (unsigned long)wordCount, (unsigned long)advertCount);
-  M5.Display.setCursor(4, 112);
-  if (lastWordAt) M5.Display.printf("last p%d t%d m%d %lus", lastWord.proto, lastWord.team, lastWord.mag,
-                                    (unsigned long)((now - lastWordAt) / 1000));
-  M5.Display.setCursor(4, 124);
-  M5.Display.printf("tx G%u  %s", settings.txpin,
-                    currentUuid.length() >= 20 ? currentUuid.c_str() + 20 : "no advert");
-  M5.Display.endWrite();
+
+  st.button_phase = brx_glue::buttons.phase();
+  st.confirm_armed_at_ms = confirmArmedAtMs;
+  st.reset_outcome_active = resetOutcomeActive;
+  st.reset_outcome_ok = resetOutcomeOk;
+  st.reset_outcome_locked = resetOutcomeLocked;
+  st.locked = link.lock().locked(now);
+  st.lock_remaining_s = link.lock().remaining_s(now);
+  st.force_restart_countdown_s = forceRestart.countdown_s();
+  st.at_home = homeNav.at_home();
+  return st;
+}
+
+static void paintFromModel(uint32_t now) {
+  ScreenSpec spec = compute_screen(buildStickState(now));
+  brx_render::renderScreen(canvas, spec);
+  canvas.pushSprite(0, 0);
 }
 
 // ---- serial commands ------------------------------------------------------------------------- //
@@ -396,6 +519,24 @@ static void printStatus() {
                 (unsigned long)point.charge[3], (unsigned long)point.captures, policy.seq,
                 (unsigned long)advertCount, (unsigned long)wordCount, settings.id, settings.game, settings.txpin,
                 currentUuid.c_str());
+  // H8: the MC link state, on its own line so a pre-H8 tool that parses STATUS's key=value pairs
+  // (mcp/tools/stick.py `parse_status`) keeps working unchanged.
+  const brx::StationLink& link = brx_glue::link;
+  const brx::StationAssignment& a = link.assignment();
+  Serial.printf("LINK state=%s mode=%s actions=%s dropped_for_match=%d node_id=%s wifi=%s kind=%s team=%d id=%d game=%d threshold=%d",
+                brx::link_state_label(link.state()), link.mode() == brx::AssocMode::HELD ? "HELD" : "MUSTER",
+                link.actions_enabled() ? "ON" : "OFF", link.dropped_for_match() ? 1 : 0,
+                link.identity().node_id.c_str(), brx_glue::wifiSsid.c_str(), a.present ? a.kind.c_str() : "-",
+                a.present ? a.team : -1, a.present ? a.id : -1, a.present ? a.game : -1,
+                a.present ? a.threshold : 0);
+  Serial.printf(" locked=%d lock_s=%lu boots=%lu uptime_s=%lu", link.lock().locked(millis()) ? 1 : 0,
+                (unsigned long)link.lock().remaining_s(millis()), (unsigned long)brx_glue::bootCount,
+                (unsigned long)(millis() / 1000));
+  if (a.present && a.kind == "powerup") {
+    Serial.printf(" powerup_available=%d taker=%u pending_actions=%u", link.powerup().available() ? 1 : 0,
+                  link.powerup().taker(), (unsigned)link.pending_action_count());
+  }
+  Serial.println();
 }
 
 static void setMode(Mode m) {
@@ -412,6 +553,16 @@ static void handleLine(String line) {
   if (!line.length()) return;
   if (line == "PING") { Serial.println("PONG"); return; }
   if (line == "STATUS") { printStatus(); return; }
+  // A58: while the match lock is on, only the read-only commands run (station_ui.h's allow-list,
+  // host-tested; default deny). Checked before mcHandleLine so WIFI/MC/LINK/ACTIONS are refused too.
+  if (brx_glue::link.lock().locked(millis()) && !serial_command_allowed_while_locked(std::string(line.c_str()))) {
+    Serial.printf("ERR locked (%lu s left)\n", (unsigned long)brx_glue::link.lock().remaining_s(millis()));
+    return;
+  }
+  // H8: WIFI / MC / LINK MUSTER|HELD / LINK OFF / ACTIONS ON|OFF (docs/spec/utility.md §5g.3/§5g.4).
+  // Checked before everything below so a typo like "WIFI" with no args still lands here, not in the
+  // ERR unknown at the bottom.
+  if (brx_glue::mcHandleLine(line)) return;
   if (line == "RAW ON" || line == "RAW OFF") {   // explicit, for tools: the bare `r` is a toggle whose state a caller cannot see
     rawEnabled = line == "RAW ON";
     Serial.printf("# RAW dump %s\n", rawEnabled ? "ON" : "OFF");
@@ -496,10 +647,98 @@ static void pollSerial() {
 }
 
 // ---- buttons --------------------------------------------------------------------------------- //
+// H8 (Tony via brx1, 2026-09-24): once Wi-Fi has ever been configured, the buttons become OPERATOR
+// controls -- a short press pages away from home, a 2 s hold arms a RESET confirm, and a SECOND 2 s
+// hold sends it to Mission Control (station_ui.h's StationButtons). Players never press anything on
+// a station. Before any WIFI command has ever been given, the Stick is in its pre-H8 standalone
+// bench mode and the buttons keep their original meaning (local point RESET / MODE toggle) exactly
+// as before, since that bench workflow needs no Wi-Fi at all.
+//
+// HOME (Tony, 2026-09-24, added after render.py shipped): the operator must always be able to get
+// back to the station's home (live gameplay) screen without a restart, and neither gesture below
+// changes any station state -- only which screen HomeNav says to draw. (a) 20 s with no button press
+// returns home by itself (HomeNav::poll_idle, station_screen.h, host-tested). (b) A 1 s hold of A
+// goes home from anywhere and also cancels an open RESET confirm -- reusing station_ui.h's own
+// short-press cancel path, since that header gains no new method here. In standalone bench mode A's
+// hold is already RESET (a real, safety-critical, station-state-changing gesture: "a knock on the
+// field must not flip the point"), so the new home gesture lives only in the operator branch below;
+// standalone's short press is a simple home/diagnostics TOGGLE instead (it has no hold to spare), and
+// the 20 s idle timeout still applies either way.
+//
+// A58: holding A AND B together for 7 s restarts the Stick (ForceRestart, station_ui.h), in either
+// branch and whether the match lock is on or not. While both are down (and for one loop after both
+// come up) every single-button click and hold below is swallowed, so the joint hold never also goes
+// home, arms a RESET, resets the point or flips the mode. While the match lock is on, B's hold is
+// refused with a LOCKED transient; A (stats paging, the 1 s home) still works, read-only.
 static void pollButtons() {
-  // Long presses only: a knock on the field must not flip the point or its mode.
-  if (M5.BtnA.wasHold()) { point.reset(); Serial.println("RESET neutral (button)"); displayDirty = true; }
-  if (M5.BtnB.wasHold()) setMode(point.mode == Mode::HILL ? Mode::BRIDGE : Mode::HILL);
+  using brx_glue::link;
+  uint32_t now = millis();
+  if (forceRestart.update(M5.BtnA.isPressed(), M5.BtnB.isPressed(), now)) {
+    Serial.println("FORCE RESTART (A + B held 7 s)");
+    Serial.flush();
+    ESP.restart();
+  }
+  uint32_t countdown = forceRestart.countdown_s();
+  if (countdown != lastRestartCountdown) { lastRestartCountdown = countdown; displayDirty = true; }
+  if (forceRestart.suppress_single()) {
+    homeNav.note_activity(now);
+    if (brx_glue::buttons.poll_timeout(now)) displayDirty = true;
+    return;
+  }
+  if (link.state() == LinkState::NOT_CONFIGURED) {
+    // Long presses only: a knock on the field must not flip the point or its mode.
+    if (M5.BtnA.wasHold()) { point.reset(); Serial.println("RESET neutral (button)"); displayDirty = true; }
+    if (M5.BtnA.wasClicked()) {
+      if (homeNav.at_home()) homeNav.leave_home(now); else homeNav.go_home(now);
+      displayDirty = true;
+    }
+    if (M5.BtnB.wasHold()) setMode(point.mode == Mode::HILL ? Mode::BRIDGE : Mode::HILL);
+    if (homeNav.poll_idle(now)) displayDirty = true;
+    return;
+  }
+  if (M5.BtnA.wasClicked()) {
+    ButtonPhase before = brx_glue::buttons.phase();
+    brx_glue::buttons.on_short_press();
+    if (before == ButtonPhase::CONFIRM_ARMED) homeNav.note_activity(now);  // cancelled, not a page move
+    else homeNav.leave_home(now);
+    displayDirty = true;
+  }
+  if (M5.BtnA.wasHold()) {
+    if (brx_glue::buttons.phase() == ButtonPhase::CONFIRM_ARMED) brx_glue::buttons.on_short_press();  // cancel it
+    homeNav.go_home(now);
+    displayDirty = true;
+  }
+  bool locked = link.lock().locked(now);
+  // A58: a confirm left open when a lock arrives must not sit on screen offering a RESET it will refuse.
+  if (locked && brx_glue::buttons.phase() == ButtonPhase::CONFIRM_ARMED) {
+    brx_glue::buttons.on_short_press();  // the same cancel path A's short press uses
+    displayDirty = true;
+  }
+  if (M5.BtnB.wasHold() && locked) {
+    resetOutcomeActive = true;  // reuse the reset-outcome transient, as LOCKED
+    resetOutcomeLocked = true;
+    resetOutcomeOk = false;
+    resetOutcomeAtMs = now;
+    Serial.printf("RESET refused: station locked (%lu s left)\n", (unsigned long)link.lock().remaining_s(now));
+    homeNav.note_activity(now);
+    displayDirty = true;
+  } else if (M5.BtnB.wasHold()) {
+    if (brx_glue::buttons.on_long_press(now)) {
+      bool sent = brx_glue::mcSendResetAction();
+      resetOutcomeActive = true;
+      resetOutcomeLocked = false;
+      resetOutcomeOk = sent;
+      resetOutcomeAtMs = now;
+      Serial.println(sent ? "RESET sent to Mission Control" : "RESET NEEDS MISSION CONTROL");
+    } else {
+      confirmArmedAtMs = now;  // mirrors station_ui.h's own armed_at_ms_: set on a fresh arm AND a
+                                // past-timeout re-arm, exactly the two cases on_long_press() returns false
+    }
+    homeNav.note_activity(now);
+    displayDirty = true;
+  }
+  if (brx_glue::buttons.poll_timeout(now)) displayDirty = true;
+  if (homeNav.poll_idle(now)) displayDirty = true;
 }
 
 // ---- setup / loop ---------------------------------------------------------------------------- //
@@ -514,7 +753,19 @@ void setup() {
   // short random pulses and no gun shot at all until this line. M5's own IR example calls it the same way.
   M5.Power.setExtOutput(true, m5::ext_none);
   M5.Display.setRotation(1);  // landscape, 240 x 135
-  M5.Display.setBrightness(120);
+  M5.Display.setBrightness(BACKLIGHT_BRIGHT);
+  // M5Unified's default hold is 500 ms. The screen model assumes these: A's hold goes home (1 s), and
+  // B's hold arms and sends RESET (2 s, the knock-safety rule). Standalone bench RESET on A is 1 s too.
+  M5.BtnA.setHoldThresh(HOME_LONG_PRESS_MS);
+  M5.BtnB.setHoldThresh(LONG_PRESS_MS);
+  canvas.setColorDepth(16);
+  // One off-screen sprite for every screen, pushed once per paint (~65 KB). PSRAM keeps it out of the
+  // internal DRAM that Wi-Fi and BLE share; without a sprite nothing draws, so say so on the serial port.
+  canvas.setPsram(true);
+  if (!canvas.createSprite(240, 135)) {
+    canvas.setPsram(false);  // a build without PSRAM: fall back to internal DRAM rather than a dark screen
+    if (!canvas.createSprite(240, 135)) Serial.println("ERR display sprite alloc (no screen)");
+  }
   Serial.begin(115200);
   delay(300);
   loadSettings();
@@ -523,9 +774,12 @@ void setup() {
   Serial.printf("# mode=%s id=%u game=%u txpin=%u\n", point.mode == Mode::HILL ? "HILL" : "BRIDGE", settings.id,
                 settings.game, settings.txpin);
   Serial.println("# Commands: SELFTEST [bits] | RAW ON|OFF | TX <bits> | TXN <n> <bits> | AUTO <bits>|OFF | PING | STATUS | MODE BRIDGE|HILL | ID <n> | GAME <n> | TXPIN 46|9|10 | RESET | r s c");
+  Serial.println("# H8: WIFI <ssid> <pass> | MC <ws://host:port/path> | LINK MUSTER|HELD|OFF|RECONNECT | ACTIONS ON|OFF");
+  Serial.println("# A58: while MC's match lock is on, state-changing commands answer ERR locked; A+B held 7 s restarts");
   if (!initRx()) Serial.println("ERR rx init (RMT)");
   if (!initTx(settings.txpin)) Serial.println("ERR tx init (RMT)");
   initBle();
+  brx_glue::mcSetup();   // H8: loads Wi-Fi/node_id/node_key/LINK mode from Preferences, joins if set
   pollAdvert(millis());  // HILL advertises at once; BRIDGE waits for its first live beacon
 }
 
@@ -536,6 +790,8 @@ void loop() {
   pollSerial();
   pollButtons();
   pollAdvert(now);
+  brx_glue::mcLoop(now);  // H8: Wi-Fi/mDNS/WebSocket to Mission Control; never blocks
+  if (brx_glue::mcScreenWake) { brx_glue::mcScreenWake = false; displayDirty = true; }
   if (point.mode == Mode::HILL && now - lastBeaconTxMs >= BEACON_PERIOD_MS) {
     lastBeaconTxMs = now;
     sendFrame(String(encode(point.beacon_word()).c_str()));
@@ -544,11 +800,30 @@ void loop() {
     lastAutoMs = now;
     sendFrame(autoBits);
   }
-  static uint32_t lastPaint = 0;
-  if (displayDirty || now - lastPaint > 1000) {
-    paint(now);
-    lastPaint = now;
+  if (resetOutcomeActive && now - resetOutcomeAtMs >= RESET_OUTCOME_SHOW_MS) {
+    resetOutcomeActive = false;  // the transient RESET SENT / RESET NEEDS MISSION CONTROL screen expires
+    displayDirty = true;
+  }
+  // Redraw on a real change (`displayDirty`), or at most ~4 Hz so a countdown (a pickup's NEXT SPAWN,
+  // a RESET confirm's draining timeout bar, the JOINING dots) still moves -- README's "Screens"
+  // section. The screen itself is always drawn into `canvas` off-screen and pushed once, so there is
+  // no flicker and no contention with IR receive (RMT is hardware-buffered) or the Wi-Fi/BLE loop.
+  static uint32_t lastPaintMs = 0;
+  const uint32_t REPAINT_INTERVAL_MS = 250;
+  if (displayDirty || now - lastPaintMs >= REPAINT_INTERVAL_MS) {
+    paintFromModel(now);
+    lastPaintMs = now;
+    if (displayDirty) {
+      // Wake the backlight on a real event only (a button, a pickup, a capture) -- never on the
+      // routine ~4 Hz countdown repaint above, or it would never dim during a live countdown.
+      lastWakeMs = now;
+      if (backlightDimmed) { M5.Display.setBrightness(BACKLIGHT_BRIGHT); backlightDimmed = false; }
+    }
     displayDirty = false;
+  }
+  if (!backlightDimmed && now - lastWakeMs >= BACKLIGHT_IDLE_MS) {
+    M5.Display.setBrightness(BACKLIGHT_DIM);
+    backlightDimmed = true;
   }
   delay(2);
 }

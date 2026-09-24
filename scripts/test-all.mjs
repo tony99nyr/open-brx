@@ -87,7 +87,10 @@ const e2e = (script, secs, mb = 700) => ({
   env: async () => ({ MC_PORT: String(await freePort()), MC_WS_PORT: String(await freePort()), VITE_PORT: String(await freePort()) }),
 });
 const JOBS = [
-  { name: 'mcp', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(PY_J)], mb: 150 + 70 * PY_J, secs: 20 },
+  { name: 'mcp', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(PY_J), '--exclude', 'chaos'], mb: 150 + 70 * PY_J, secs: 20 },
+  // Chaos testing (docs/chaos-testing.md): the fixed CI seeds of every scenario, each a full match on the real MC
+  // stack with a field of MockNodes. Its own job so a red chaos run reads as one, not as "mcp".
+  { name: 'chaos', cwd: 'mcp', cmd: [PY, 'run_tests.py', '-j', String(PY_J), 'chaos'], mb: 150 + 90 * PY_J, secs: 8 },
   { name: 'mc-tsc', cwd: 'webapp/mc', cmd: ['npx', 'tsc', '-b'], mb: 450, secs: 10 },
   { name: 'mc-vitest', cwd: 'webapp/mc', cmd: ['npx', 'vitest', 'run', `--maxWorkers=${VITEST_W}`], mb: 300 + 300 * VITEST_W, secs: 15 },
   { name: 'app-tsc', cwd: 'app', cmd: ['npx', 'tsc', '--noEmit'], mb: 350, secs: 3 },

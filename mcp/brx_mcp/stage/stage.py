@@ -532,6 +532,9 @@ class GunStage:
         self.hp = 45
         self.armor = 70
         self.shield = 0
+        # A56: engine.js `_overshield` ({amount, base, ...}). The stage models no powerup station, so nothing sets
+        # it yet (the grant is pinned in test_stage_mirror's KNOWN_UNMIRRORED); `_readout_max` reads it the phone's way.
+        self._overshield: dict | None = None
         self.max_hp = 45
         self.max_armor = 70
         self.max_shield = 0        # S45 (engine.js `maxShield`): the `$PSET` t5 ceiling, read back off the compiled head
@@ -3387,13 +3390,23 @@ class GunStage:
         highest-first, the same `frac > threshold` rule as `_gun_rest`). Mirrors engine.js `_readoutBand`."""
         pool = entry.get("pool")
         level = self.hp if pool == "health" else self.armor if pool == "armor" else self.shield
-        maximum = entry.get("max") or 0
+        maximum = self._readout_max(entry)
         frac = (level / maximum) if maximum > 0 else 0
         bands = entry.get("bands") or []
         for thr, frame in bands:
             if frac > thr:
                 return [thr, frame]
         return bands[-1] if bands else None
+
+    def _readout_max(self, entry: dict) -> int:
+        """A56 (Tony, 2026-09-24): the maximum a readout entry measures against. While an overshield is held,
+        the shield entry's maximum is the preset's max plus the overshield: ONE teal pool. Mirrors engine.js
+        `_readoutMax`."""
+        maximum = entry.get("max") or 0
+        maximum = maximum if maximum > 0 else 0
+        o = self._overshield if entry.get("pool") == "shield" else None
+        amount = (o or {}).get("amount") or 0
+        return maximum + amount if amount > 0 else maximum
 
     def _pool_values(self) -> dict:
         """The node's own view of its pools, keyed the way `poolgauge.handover_pool` expects."""
@@ -3437,7 +3450,7 @@ class GunStage:
         if frame == self._readout_frame:
             return
         now = self.now()
-        hold_s = float(readout.get("hold_s", 4))
+        hold_s = float(readout.get("hold_s", _pres.READOUT_HOLD_S))
         self._readout_gen += 1
         gen = self._readout_gen
         if self._readout_last_write_at is not None and now - self._readout_last_write_at < READOUT_COALESCE_S:
@@ -4015,7 +4028,7 @@ class GunStage:
         the pool holds anything) -- delegate to it rather than re-deriving it, so the node's rounding
         can never quietly drift from what MC's own `levels` frame table assumes."""
         amount = self.hp if pool == "health" else self.armor if pool == "armor" else self.shield
-        return _pg.level_for(amount, entry.get("max") or 0)
+        return _pg.level_for(amount, self._readout_max(entry))
 
     def _level_paint(self, readout: dict, entry: dict, pool: str) -> None:
         """A16.3: (re)target the drop/rise animation at this pool's new level.
@@ -4049,12 +4062,12 @@ class GunStage:
         if pool == self._readout_last_pool and prev == target:
             return                                   # already showing this pool at this exact level
         self._readout_last_pool = pool
-        lead_s = float(readout.get("lead_ms", 180)) / 1000
-        gap_s = float(readout.get("blink_gap_ms", 80)) / 1000
-        step_s = float(readout.get("step_ms", 120)) / 1000
-        blink_s = float(readout.get("blink_ms", 400)) / 1000
-        hold_s = float(readout.get("hold_s", 4))
-        min_gap_s = float(readout.get("min_gap_ms", 400)) / 1000
+        lead_s = float(readout.get("lead_ms", _pg.READOUT_LEAD_MS)) / 1000
+        gap_s = float(readout.get("blink_gap_ms", _pg.READOUT_BLINK_GAP_MS)) / 1000
+        step_s = float(readout.get("step_ms", _pg.READOUT_STEP_MS)) / 1000
+        blink_s = float(readout.get("blink_ms", _pg.READOUT_BLINK_MS)) / 1000
+        hold_s = float(readout.get("hold_s", _pres.READOUT_HOLD_S))
+        min_gap_s = float(readout.get("min_gap_ms", _pg.READOUT_MIN_GAP_MS)) / 1000
         now = self.now()
         rapid = self._level_last_start is not None and (now - self._level_last_start) < min_gap_s
         self._level_last_start = now

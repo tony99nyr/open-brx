@@ -417,14 +417,17 @@ def test_run_error_does_not_stop_the_batch():
     assert summary.runs[2].error is None and summary.runs[2].ok is True
 
 
-def test_only_ping_and_version_are_ever_sent():
+def test_only_the_probe_frames_are_ever_sent():
     clock = FakeClock()
     mgr = FakeMgr(clock)
     mgr.headset_schedule = [(0.0, "linked"), (6.0, "not_linked")]
     run(run_connect_metrics(mgr, "AA:BB:CC:DD:EE:FF", 2, cold="warm", warm_off_s=0.5, hold_s=9,
                             poll_s=3, clock=clock, out=None))
     assert mgr.sent, "expected some commands to have been sent"
-    assert all(c in ("$PING,*", "$VERSION,*") for c in mgr.sent)
+    assert all(c in ("$PING,*", "$STOP,*", "$PHONE,*", "$VERSION,*") for c in mgr.sent)
+    # a just-booted gun answers no $VERSION until $PHONE wakes it (bench 2026-09-24)
+    first_version = mgr.sent.index("$VERSION,*")
+    assert "$PHONE,*" in mgr.sent[:first_version]
 
 
 def test_frame_log_is_attached_to_the_session_on_a_successful_link(tmp_path=None):

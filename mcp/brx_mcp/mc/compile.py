@@ -27,6 +27,7 @@ from .types import (MAX_PLAYERS, OBJECTIVE_MODES, STATION_PROTECT_S_DEFAULT, STA
                     TRIGGER_AFTER_PROTECT_MS, WEAPON_DELAY_MS_DEFAULT, DotSpec, FrameBundle, GameConfig, Health,
                     HealthPreset, HirCell, PerkEffectsResolved, PerkView, Player, PowerupSlot, RespawnProfile, StationProtectS, Team,
                     TimedProtectS, ValuePair, VoiceOption, WeaponDelayMs, Weapon, parse_app_ver, parse_win_by)
+from .types import GAME_VOLUME_MAX, GAME_VOLUME_MIN, VENUE_VOLUME_INDOOR, VENUE_VOLUME_OUTDOOR   # K8
 from . import presentation as _pres
 from .. import poolgauge as pg
 from .. import voices as _voices
@@ -57,7 +58,7 @@ from ..modes.registry import validate_mode_params as _validate_mode_params
 #   headset — but it is now the likely answer, and it is cheaper to test than to sweep.
 HEADSET_ALERT_BRIGHTNESS = 10
 
-VOL_BY_ENV = {"indoor": 80, "outdoor": 90}
+VOL_BY_ENV = {"indoor": VENUE_VOLUME_INDOOR, "outdoor": VENUE_VOLUME_OUTDOOR}
 VOL_PLAY = VOL_BY_ENV["indoor"]    # unknown venue -> the QUIETER of the two (see play_volume)
 VOL_TRYOUT = 69                    # a try-out is fired at ARM'S LENGTH from the player's own head,
                                    # so it keeps the quieter Callsign value (review 2026-08-31).
@@ -72,6 +73,28 @@ def check_volume(value) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 100:
         raise ValueError(f"volume must be an integer 0-100, got {value!r}")
     return value
+
+
+# K8 (Tony, field 2026-09-12): the host's per-game volume knob, `GameConfig.volume`. Absent or null =
+# the venue volume (`play_volume`). The bounds live in types.py (GAME_VOLUME_MIN/MAX, generated into
+# the console): the floor is on-gun level 1 (`gameconfig.VOLUME_LEVELS`, 60), since 55 is barely audible
+# at a bench and 30 is inaudible for game audio. `--bench-volume` still wins; a try-out keeps VOL_TRYOUT.
+
+
+def check_game_volume(value) -> int | None:
+    """`GameConfig.volume`: None (the venue default) or an integer GAME_VOLUME_MIN..GAME_VOLUME_MAX."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or not GAME_VOLUME_MIN <= value <= GAME_VOLUME_MAX:
+        raise ValueError(f"volume must be an integer {GAME_VOLUME_MIN}-{GAME_VOLUME_MAX} "
+                         f"or null (the venue default), got {value!r}")
+    return value
+
+
+def head_volume(config) -> int:
+    """The match head's $VOL for this config: the K8 knob when set, else the venue volume."""
+    v = check_game_volume(config.get("volume"))
+    return play_volume(config.get("environment")) if v is None else v
 
 # ---------------------------------------------------------------------------
 # Venue range (F234, correcting F135/B6) -- see docs/weapon-design.md §4.2 and
@@ -160,7 +183,7 @@ GSET_T3_BY_ENV: dict[str, int] = {"indoor": 1, "outdoor": 0}
 # (`iRPower, soundOnHit, rangeOutdoor, rangeIndoor`) which reads exactly like the venue control we
 # want -- but that shape was already probed on the bench and emitted ZERO IR against a receiver
 # control, and the 2026-09-04 metadata read recovered the real, 11-field shape
-# (protocol/brx-protocol.md §3.2; docs/bench-flash-control-2026-09-05.md):
+# (protocol/brx-protocol.md §3.2; docs/archive/bench-flash-control-2026-09-05.md):
 #     $IRTX,<Direction>,<BulletType>,<PlayerId>,<Team>,<Damage>,<IsCriticalShot>,
 #           <Power>,<IrRange>,<LoopFire>,<IrPulse>,<FlashLED>,*
 # In that shape `$IRTX` is a RAW TRANSMIT, not a mode: `Power`/`IrRange` are parameters of the word
@@ -399,7 +422,7 @@ _SIR_NO_POOL = frozenset({8, 23, 24, 25, 26, 27, 28, 35, 31, 32, 34})     # regi
 # the two earlier readings: 2026-08-27's "x1.0" matrix was rig-pinned to the gun body (correct, body is
 # always x1) and 2026-09-02's x1.25/x2 reading was taken on the headset at the MC-compiled default
 # t7=50 (also correct) -- neither was wrong, they measured different sensors. Method lesson: record the
-# `$HIR` sensor field on every hit. See docs/weapon-design.md §6 and brx-protocol.md §5,
+# `$HIR` sensor field on every hit. See docs/ir-effects-design.md §6 and brx-protocol.md §5,
 # experiment-log/2026-09.md (2026-09-11, bench).
 def headset_multiplier(fn: int, crit_modifier: int) -> float:
     """HEADSET-sensor damage multiplier for a $SIR row's function, at the compiled `$GSET`
@@ -1479,7 +1502,7 @@ class WeaponCatalog:
         lands floor(t5 x headset_multiplier(37, t7)) (t7 = the compiled `$GSET` criticalShotModifier;
         see `headset_multiplier()`), a status row lands nothing, and a missing row drops the hit
         entirely (bench 2026-08-26, headset scaling bench-confirmed 2026-09-11 to be sensor-gated and
-        t7-dependent, superseding the earlier flat x1.25/x2 reading; docs/weapon-design.md §6.2).
+        t7-dependent, superseding the earlier flat x1.25/x2 reading; docs/ir-effects-design.md §6.2).
         `validate()` warns about all three; this method always returns the gun-body (x1) number.
         For plain damage rows — the majority — this is the applied damage on either sensor and `$HIR`
         token 5 echoes it.
@@ -1531,7 +1554,7 @@ class WeaponCatalog:
 
         Armor absorbs at face value and spills into HP (bench §7r). This is the guaranteed-kill number:
         `damage_per_pull()` IS the gun-body applied damage per pull, so this is correct for a body-only
-        kill, not an over-estimate. ⚠ Two things this does not model (docs/weapon-design.md §6). First,
+        kill, not an over-estimate. ⚠ Two things this does not model (docs/ir-effects-design.md §6). First,
         a `$SIR` multiplier row lands MORE on a HEADSET hit: **fn 36 lands floor(magnitude x
         headset_multiplier(36, t7)) and fn 37 lands floor(magnitude x headset_multiplier(37, t7))**, t7
         = the compiled crit_modifier (bench-confirmed 2026-09-11, superseding the earlier flat x1.25/x2
@@ -1770,9 +1793,9 @@ class Compiler:
         head's fn-28 twin on the gun all match while the banner claimed fn 34."""
         return rows if ("15", "0") in _sir_index(rows) else list(rows) + [self.capture_row()]
 
-    def play_volume(self, environment: str | None) -> int:
-        """The $VOL for a match head: the bench volume when set, else the venue volume."""
-        return play_volume(environment) if self.bench_volume is None else self.bench_volume
+    def head_volume(self, config) -> int:
+        """The $VOL for a match head: the bench volume when set, else the K8 knob, else the venue volume."""
+        return head_volume(config) if self.bench_volume is None else self.bench_volume
 
     def tryout_volume(self) -> int:
         """The $VOL for a try-out: the bench volume when set, else VOL_TRYOUT."""
@@ -1827,7 +1850,7 @@ class Compiler:
             respawns=0 if config["respawn"]["type"] == "none" else None,
             frag_limit=((config["scoring"].get("frag_limit") or 0)
                         if config["scoring"].get("win_by") in (None, "", "kills") else 0),
-            volume=self.play_volume(config["environment"]),
+            volume=self.head_volume(config),
             outdoor=config["environment"] == "outdoor",
             leds=(led.get("mode", "team") != "off") and not blackout,
             friendly_fire=(config["mode"] == "ffa"),  # FFA needs the gun to register same-$TID hits
@@ -2372,7 +2395,7 @@ class Compiler:
         # head — config, per player, SILENT (no $SPAWN, no $PLAY,VA81); ends with $TID (§1.1)
         env = config.get("environment")
         _gset = gc._gset()
-        head = [f"$VOL,{self.play_volume(env)},0,*", "$CLEAR,*", "$START,*",
+        head = [f"$VOL,{self.head_volume(config)},0,*", "$CLEAR,*", "$START,*",
                 _gset,
                 # F162: EMPTY today (`DRIVE_IO_MODE` is "off") -- the staged venue-mode candidates,
                 # right after $GSET so a bench rung changes one thing next to the frame it copies.
@@ -3086,7 +3109,7 @@ class Compiler:
         # The mag>=htk invariant above computes on raw t5 and cannot see this: it passed an Energy
         # Launcher (mag 2, htk 1) that lands on $SIR,9,3,,24 — a status row — and deals ZERO damage
         # in every game we ship. Validating the weapon alone is not enough; the effect lives in the
-        # (weapon, table) pair. Bench-confirmed 2026-08-26, see docs/weapon-design.md §6.2.
+        # (weapon, table) pair. Bench-confirmed 2026-08-26, see docs/ir-effects-design.md §6.2.
         #
         # 🔴 THE FIRST TWO ARE ERRORS (round-2 fix pass K, 2026-09-12). They are the definition of
         # unkillable: a weapon whose <t3,t4> keys no row has every hit silently DROPPED, and one on a
@@ -3151,11 +3174,11 @@ class Compiler:
                 if fn is None:
                     flagged.add(wid)
                     errors.append(f"{wid} keys $SIR {key[0]},{key[1]} — NO ROW in the pushed table, so "
-                                  f"every hit is silently dropped (weapon-design.md §6.2)")
+                                  f"every hit is silently dropped (ir-effects-design.md §6.2)")
                 elif fn in _SIR_NO_POOL:
                     flagged.add(wid)
                     errors.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, which registers a "
-                                  f"hit but moves no pool: the weapon DEALS NO DAMAGE (weapon-design.md §6.2)")
+                                  f"hit but moves no pool: the weapon DEALS NO DAMAGE (ir-effects-design.md §6.2)")
                 elif fn not in _SIR_GRANT and not self.catalog.damage(wid):
                     # 🔴 Round-3 FIELD-4 (2026-09-13) — the third door into the same unkillable class.
                     # The two errors above key off the $SIR FUNCTION; a weapon on a perfectly ordinary
@@ -3167,14 +3190,14 @@ class Compiler:
                     flagged.add(wid)
                     errors.append(f"{wid} deals 0 DAMAGE on $SIR {key[0]},{key[1]} → function {fn}, a "
                                   f"damage row: every hit registers and takes nothing off the pool, so "
-                                  f"the weapon cannot kill (weapon-design.md §6.2)")
+                                  f"the weapon cannot kill (ir-effects-design.md §6.2)")
                 elif fn in _SIR_GRANT:
                     flagged.add(wid)
                     dual = " (16/17/20/21 are DUAL-POLARITY: they still damage enemies, 17/21 armor-piercing)" \
                            if fn in (16, 17, 20, 21) else ""
                     warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, a GRANT "
                                     f"(heal/armor/shield): it HEALS an ally it hits{dual} "
-                                    f"(weapon-design.md §6.2)")
+                                    f"(ir-effects-design.md §6.2)")
                 elif fn in (36, 37):
                     flagged.add(wid)
                     cm = self._to_gc(config, p).crit_modifier
@@ -3190,22 +3213,22 @@ class Compiler:
                                         f"hit lands the raw t5 (x1) (bench 2026-09-11). The published "
                                         f"htk/ttk_ms are the GUN-BODY (guaranteed-kill) number, so an "
                                         f"all-headset kill needs fewer hits than published "
-                                        f"(weapon-design.md §6.2)")
+                                        f"(ir-effects-design.md §6.2)")
                     else:
                         warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, a "
                                         f"HEADSET-ONLY multiplier row: at this game's compiled crit_modifier "
                                         f"({cm}) the multiplier is 1.0x, so a headset hit lands the same as "
-                                        f"a gun-body hit (bench 2026-09-11, weapon-design.md §6.2)")
+                                        f"a gun-body hit (bench 2026-09-11, ir-effects-design.md §6.2)")
                 elif fn in _SIR_ARMOR_PIERCING:
                     flagged.add(wid)
                     warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, ARMOR-PIERCING: it "
                                     f"bypasses armor and shields, so htk is ceil(hp/dmg), not ceil(pool/dmg) "
-                                    f"(weapon-design.md §6.2)")
+                                    f"(ir-effects-design.md §6.2)")
                 elif fn not in _SIR_PLAIN_DAMAGE:
                     flagged.add(wid)
                     warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, which is NOT in the "
                                     f"bench-confirmed plain-damage set {sorted(_SIR_PLAIN_DAMAGE)}: its effect "
-                                    f"on the victim is uncharacterised (weapon-design.md §6.2)")
+                                    f"on the victim is uncharacterised (ir-effects-design.md §6.2)")
 
         # frag-limit on a non-covered venue is a coverage-zone early end, not a guaranteed win (C1/M7)
         scoring = config.get("scoring", {})

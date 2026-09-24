@@ -15,7 +15,7 @@ a pair that happens to differ.
 
 ## Frame: ~25-bit word, pulse-width encoded
 
-- **Carrier:** 38 kHz, 980 nm (the wavelength on the gun's Class 1 IEC 60825-1 label; not
+- **Carrier:** 38 kHz by default (a `$WEAP` range token below 100 detunes it lower, `[disasm]`: `brx-protocol.md` §6, the `2, 41` row), 980 nm (the wavelength on the gun's Class 1 IEC 60825-1 label; not
   measured here). A standard VS1838B/TSOP demod receiver recovers the carrier. Many hobby IR
   parts are centred on 940 nm, so pick 980 nm-capable receivers.
 - **Sync/start:** a **~2 ms LOW pulse** precedes the frame (node1 gates on `pulseIn(pin, LOW) > 1500 µs`,
@@ -240,7 +240,7 @@ symptom is a run of frames that are *prefixes* of the real word (16/17/20/21/24 
 
 | Source | B (proto) | P | T | D (magnitude) | C | U | Note |
 |---|---|---|---|---|---|---|---|
-| Assault Rifle | 0 | id | team | 9 | 0 | 0 | the stock AR emits 9, not the manual's 24 |
+| Assault Rifle | 0 | id | team | 9 | 0 | 0 | the stock AR emits 9; the 24 in older notes is from BC's boosted enemy-tier sheet |
 | Shotgun | 0 | id | team | 45 | 0 | 0 | |
 | Sniper | 0 | id | team | 80 | 0 | 1 | subtype 1 keys the fn-36 row |
 | Rocket Launcher | 10 | id | team | 115 | 0 | 0 | |

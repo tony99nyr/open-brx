@@ -11,7 +11,7 @@
 // carries those cue keys).
 
 import * as W from './transport/envelope.js';   // single source for the contracts §9 constants
-import { SPAWN_KILL_WINDOW_MS } from './transport/contract.gen.js';   // 2026-09-19: the spawn-kill escalation window
+import { SPAWN_KILL_WINDOW_MS, READOUT_LEAD_MS, READOUT_BLINK_GAP_MS, READOUT_STEP_MS, READOUT_BLINK_MS, READOUT_MIN_GAP_MS, READOUT_HOLD_S } from './transport/contract.gen.js';   // the spawn-kill window (2026-09-19) and the A16.3 readout timings (F52)
 import { stationView, TEAM_ANY } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
 import { CONTROL_STATE, claimable } from './control.js';   // the phone control point's advert bits + who may own a point (utility.md §5 `control`, K1)
 export const C = {
@@ -814,6 +814,7 @@ export class Engine {
     this.pendingPick = null;        // optimistic highlight until the ack lands: {slot, kind, id, at} — the row's ⟳
     this._pickDue = null;           // A26: a weapon pick waiting out PICK_DEBOUNCE_MS before it goes to MC: {slot, kind, id, at, try}
     this.kitLocked = false;         // A27/A30: the host advanced the phase while this player was still kitting — the lobby screen says so (loadout.md §4.4)
+    this.kitLockedFor = null;       // F133: the config_id the lock was raised for; a push of another game retires it
     // T2-B item 2 (2026-09-13): STANDBY (M-STANDBY §3): MC benched this player (`assign.standby: true`).
     // Forced back to KITTED-shaped, no frames written, no kit browsing -- "SITTING OUT" until PLAY sends
     // an ordinary `assign` (standby absent/false) and clears it.
@@ -1502,8 +1503,15 @@ export class Engine {
     if (why !== 'hydrate' && why !== 'relink' && this.phase === 'kitted' && !this.ended && this.kitOpen() && (this.browsing || !this.ready)) {
       this._cancelPick();
       this.kitLocked = true;
+      this.kitLockedFor = (config && config.config_id) || null;
       this.moment = { kind: 'kit_locked_by_host', at: this.now() };
       this.log('host locked kits while I was still kitting', 'li');
+    }
+    // F133: the lock notice belongs to the game it was raised for. A host who locks, never starts, and pushes
+    // a NEW game spends none of the other retirements (the kit_open edge, START, match end), so the next
+    // lobby still led with THE HOST LOCKED KITS. A config for another config_id retires it here.
+    else if (this.kitLocked && this.kitLockedFor && config && config.config_id && config.config_id !== this.kitLockedFor) {
+      this.kitLocked = false; this.kitLockedFor = null;
     }
     this.config = config || this.config;
     this.browse(false);   // the LOADOUT browser is a KITTED-phase screen; a config push ends kit-out
@@ -1921,7 +1929,8 @@ export class Engine {
    *  pool's level/max exceeds (bands ordered highest-first, same `frac > threshold` rule as `_gunRest`). */
   _readoutBand(entry) {
     const level = entry.pool === 'health' ? this.hp : entry.pool === 'armor' ? this.armor : this.shield;
-    const frac = entry.max > 0 ? level / entry.max : 0;
+    const max = this._readoutMax(entry);
+    const frac = max > 0 ? level / max : 0;
     const bands = entry.bands || [];
     return bands.find(b => frac > b[0]) || bands[bands.length - 1] || null;
   }
@@ -1930,10 +1939,21 @@ export class Engine {
    *  anything left so "1 HP" and "dead" never render the same (poolgauge._segments' rule, extended). */
   _readoutLevel(entry) {
     const value = entry.pool === 'health' ? this.hp : entry.pool === 'armor' ? this.armor : this.shield;
-    const frac = entry.max > 0 ? value / entry.max : 0;
+    const max = this._readoutMax(entry);
+    const frac = max > 0 ? value / max : 0;
     let level = Math.max(0, Math.min(6, Math.round(frac * 6)));
     if (level === 0 && value > 0) level = 1;
     return level;
+  }
+  /** A56 (Tony, 2026-09-24): the maximum one readout entry measures against. While an overshield is held,
+   *  the shield entry's maximum is the preset's max PLUS the overshield, so the gun shows shield + overshield
+   *  as ONE teal pool that drains visibly (the phone HUD shows the overshield as its own layer; see
+   *  led-language.md §5). On a no-shield preset (max 0) the overshield alone is that pool. Mirrors
+   *  `stage.py`'s `_readout_max`. */
+  _readoutMax(entry) {
+    const max = entry.max > 0 ? entry.max : 0;
+    const o = entry.pool === 'shield' && this._overshield;
+    return o && o.amount > 0 ? max + o.amount : max;
   }
   /** A16.5: the node's own view of its pools, keyed the way `handoverPool` expects. Mirrors
    *  `stage.py`'s `_pool_values`. */
@@ -1963,7 +1983,7 @@ export class Engine {
     this._readoutLastPool = pool;   // A16: which pool a reload should glance -- the one that most recently actually moved, not a fresh "is it below max" guess (shield defaults to 0 and would always look "damaged")
     const frame = band[1];
     if (frame === this._readoutFrame) return;   // no visible change — nothing to write, hold left alone
-    const now = this.now(), holdMs = Math.max(0, Math.round((readout.hold_s != null ? readout.hold_s : 4) * 1000));
+    const now = this.now(), holdMs = Math.max(0, Math.round((readout.hold_s != null ? readout.hold_s : READOUT_HOLD_S) * 1000));
     if (this._readoutLastWriteAt != null && now - this._readoutLastWriteAt < READOUT_COALESCE_MS) {
       this._readoutHoldStartAt = now; this._readoutHoldMs = holdMs; this._readoutHoldActive = true;   // coalesced: restart the hold, drop the write
       return;
@@ -1995,7 +2015,7 @@ export class Engine {
     // level can change several times a second, so coalesce: inside the window, retarget WITHOUT replaying
     // the lead + all-off blink -- step straight to the new level from where the strip already is.
     const now = this.now();
-    const rapid = this._roLastStartAt != null && (now - this._roLastStartAt) < (readout.min_gap_ms != null ? readout.min_gap_ms : 400);
+    const rapid = this._roLastStartAt != null && (now - this._roLastStartAt) < (readout.min_gap_ms != null ? readout.min_gap_ms : READOUT_MIN_GAP_MS);
     this._roLastStartAt = now;
     // A16.3 (polish 2026-09-07): on a life's FIRST paint for a pool there is no `_roLevel` yet. Settling
     // straight in would mean the first hit of EVERY life has no drop animation -- health and armour start
@@ -2024,9 +2044,9 @@ export class Engine {
     const gen = (this._roGen = (this._roGen || 0) + 1);
     const lg = (this._lightGen = this._lightGen || 0);
     this._roPool = pool; this._roAnimating = true;
-    const leadMs = Math.max(0, Math.round(readout.lead_ms != null ? readout.lead_ms : 180));
-    const gapMs = Math.max(0, Math.round(readout.blink_gap_ms != null ? readout.blink_gap_ms : 80));
-    const stepMs = Math.max(0, Math.round(readout.step_ms != null ? readout.step_ms : 120));
+    const leadMs = Math.max(0, Math.round(readout.lead_ms != null ? readout.lead_ms : READOUT_LEAD_MS));
+    const gapMs = Math.max(0, Math.round(readout.blink_gap_ms != null ? readout.blink_gap_ms : READOUT_BLINK_GAP_MS));
+    const stepMs = Math.max(0, Math.round(readout.step_ms != null ? readout.step_ms : READOUT_STEP_MS));
     const ok = () => this._roGen === gen && this._lightGen === lg && this.alive;
     const paint = (lvl, why) => {
       const f = entry.levels[lvl] && entry.levels[lvl][0];
@@ -2100,7 +2120,7 @@ export class Engine {
   _readoutSettle(gen, lg, readout, entry, pool, level) {
     if (!(this._roGen === gen && this._lightGen === lg && this.alive)) return;
     this._roAnimating = false;
-    const now = this.now(), holdMs = Math.max(0, Math.round((readout.hold_s != null ? readout.hold_s : 4) * 1000));
+    const now = this.now(), holdMs = Math.max(0, Math.round((readout.hold_s != null ? readout.hold_s : READOUT_HOLD_S) * 1000));
     this._readoutLastWriteAt = now; this._readoutHoldStartAt = now; this._readoutHoldMs = holdMs; this._readoutHoldActive = true;
     const pair = entry.levels[level];
     if (pair && pair[1]) { this._roBlinkOn = false; this._roBlinkAt = now; }   // the solid half is already on the strip from the settling step
@@ -2162,7 +2182,7 @@ export class Engine {
       const entry = readout.pools.find(p => p.pool === this._roPool);
       const pair = entry && Array.isArray(entry.levels) ? entry.levels[this._roLevel] : null;
       if (pair && pair[1]) {
-        const blinkMs = Math.max(0, Math.round(readout.blink_ms != null ? readout.blink_ms : 400));
+        const blinkMs = Math.max(0, Math.round(readout.blink_ms != null ? readout.blink_ms : READOUT_BLINK_MS));
         if (now - this._roBlinkAt >= blinkMs) {
           this._roBlinkOn = !this._roBlinkOn;
           const f = this._roBlinkOn ? pair[1] : pair[0];
@@ -2769,8 +2789,8 @@ export class Engine {
    *  same kill does. Whichever lands first plays the cue; `feedback()` reads `_irKillCueAt` back to skip its
    *  own plain kill line within CALLOUT_WINDOW_MS (medal cues still play — they carry information this word
    *  does not). The IR word never touches the score: only MC's feedback does that. No victim name is ever
-   *  known here — read `victimName`'s comment: the `kill` moment's HUD banner is hard-wired "CONFIRMED BY
-   *  MISSION CONTROL" (hud.js `_kill`), which would be a lie for a pure IR confirm, so this uses
+   *  known here — read `victimName`'s comment: the `kill` moment's HUD banner names Mission Control as
+   *  its source (hud.js `_kill`), which would be a lie for a pure IR confirm, so this uses
    *  `state().callout` instead of that moment. */
   /** S57 polish: pair the two kill-confirm channels ONE-TO-ONE, never by a bare timestamp. `open` is the other channel's
    *  list of unmatched confirms; the oldest one inside CALLOUT_WINDOW_MS whose victim team agrees (or is unknown on

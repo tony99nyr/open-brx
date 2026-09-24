@@ -6,6 +6,7 @@ The system Python here has no pytest/pip, so this is the suite entry point:
     python3 run_tests.py modes cs   # run only files matching these substrings
     python3 run_tests.py -j 1       # one file at a time (still one process per file)
     python3 run_tests.py --inline   # the old way: every file in THIS process, output streamed
+    python3 run_tests.py --exclude chaos   # every file except those matching (repeatable)
 
 Each test is a top-level `test_*` function; a raised assertion/exception = fail.
 Exits non-zero if anything fails (CI-friendly).
@@ -59,7 +60,7 @@ FILE_TIMEOUT_S = float(os.environ.get("RUN_TESTS_TIMEOUT_S", "300"))
 # (timers, reconnect windows, websocket round-trips), not CPU. Only list a file whose tests pass in any
 # subset: each chunk imports the module afresh, so a test that relies on an earlier one would fail loudly.
 SPLIT = {"test_mc_e2e": 5, "test_mc_polish": 6, "test_stage": 3, "test_stage_server": 2, "test_mc_net": 3,
-         "test_balance_sim": 4}
+         "test_balance_sim": 4, "test_chaos_fuzz": 9, "test_chaos_gun": 3}
 
 
 def run_file(stem: str, chunk: tuple[int, int] | None = None) -> dict:
@@ -180,11 +181,14 @@ def main(argv: list[str]) -> int:
     inline = "--inline" in argv
     jobs = os.cpu_count() or 4
     filters: list[str] = []
+    excludes: list[str] = []
     it = iter(argv)
     for a in it:
         if a == "--inline":
             continue
-        if a in ("-j", "--jobs"):
+        if a == "--exclude":            # skip files matching this substring (test-all runs `chaos` as its own job)
+            excludes.append(next(it))
+        elif a in ("-j", "--jobs"):
             jobs = int(next(it))
         elif a.startswith("-j") and a[2:].isdigit():
             jobs = int(a[2:])
@@ -194,6 +198,8 @@ def main(argv: list[str]) -> int:
     files = sorted((ROOT / "tests").glob("test_*.py"))
     if filters:
         files = [f for f in files if any(s in f.stem for s in filters)]
+    if excludes:
+        files = [f for f in files if not any(s in f.stem for s in excludes)]
     stems = [f.stem for f in files]
 
     t0 = time.monotonic()
