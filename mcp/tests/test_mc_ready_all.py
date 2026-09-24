@@ -96,7 +96,7 @@ def test_ready_all_keeps_standby_players_out():
 def test_ready_all_refused_outside_lobby():
     s, net, clock, ps = mk(2)
     assert s.phase != "lobby"
-    with raises(ValueError, match="LOBBY"):
+    with raises(ValueError, match="needs the lobby"):
         s.ready_all()
     assert all(not p["ready"] for p in s.players.values()), "a refused call changes nothing"
 
@@ -111,7 +111,7 @@ def test_ready_all_refused_once_armed():
                                    clock["t"])
     s.start(runway_s=1)
     assert s.phase in ("armed", "live")
-    with raises(ValueError, match="LOBBY"):
+    with raises(ValueError, match="needs the lobby"):
         s.ready_all()
 
 
