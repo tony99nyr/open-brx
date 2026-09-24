@@ -114,7 +114,7 @@ F178, F256, F251, F289 closed; F309, brx-net, F312's gated row built 2026-09-23.
 ## Lane: S56, S57, B21 (brx4)
 2026-09-23: **S57 built**, deaths, kills and objectives (docs/ir-callouts.md); Block 7 of `bench-2026-09-24.md` settles it, F312 first. S56 built. **B21:** key made; the signed cut waits for the desk fixes.
 ## Lane: F293 and the death screen (brx5)
-2026-09-23: `brx_mcp.btlink` built; the S56 death screen built (`hud/deathscreen.js`). Next: read bench 1.3's captures; F313's field check.
+2026-09-23: btlink built; death screen simplified with Tony. Next: bench 1.3 captures, F313, then brx1's integration pass.
 
 ## Start here
 
