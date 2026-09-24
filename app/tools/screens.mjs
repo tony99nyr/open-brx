@@ -4162,6 +4162,17 @@ for (const view of VIEWS) {
   });
 }
 
+// QA merge review (2026-09-23): the gun picker's signal bars stayed green at night after lane A's QA-12 fix.
+for (const view of VIEWS) await step(`${view.name} QA-17 idle night: nothing on the gun picker is green`, async () => {
+  const pg = await open(view, 'idle', '&night');
+  const bad = await pg.evaluate(() => { const rgb = v => (v.match(/[\d.]+/g) || []).map(Number); const out = [];
+    for (const e of document.querySelectorAll('#hud *, #chips *')) { const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden' || !e.getBoundingClientRect().width) continue;
+      for (const v of [cs.color, cs.backgroundColor]) { const [r, g, b, a = 1] = rgb(v); if (a > 0.1 && g > r + 30 && g > b) out.push(`${e.className}:${v}`); } }
+    return out; });
+  await pg.close();
+  must(bad.length === 0, 'green at night: ' + bad.slice(0, 5).join(', '));
+});
+
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;
 }

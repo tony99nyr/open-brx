@@ -606,6 +606,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .tagrow .sig{display:inline-flex;transform:skewX(6deg);align-items:flex-end;gap:2px}
 .tagrow .sig i{width:4px;background:var(--edge);display:block}
 .tagrow .sig i.on{background:var(--ok)}
+[data-env="night"] .tagrow .sig i.on{background:var(--num)}   /* QA-17 (merge review): no green at night, the signal bars too */
 .tagrow .sig b{color:var(--mut);font-size:11px;margin-left:6px;font-weight:700}
 .tagrow .inuse{display:inline-block;transform:skewX(6deg);color:var(--warn);font-size:11px;font-weight:700;letter-spacing:.1em}
 .idle .help{font-size:12px;color:var(--mut);line-height:1.5;margin-top:auto}
