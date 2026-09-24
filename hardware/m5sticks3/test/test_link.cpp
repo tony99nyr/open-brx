@@ -571,7 +571,7 @@ static void test_reassigning_a_powerup_to_a_new_id_resets_the_schedule() {
 
 // CONTROL: a re-arm that changes neither kind nor id (team/game only) must NOT reset an in-progress
 // schedule -- an operator bumping the game byte at muster must not un-claim a live item.
-static void test_a_rearm_with_the_same_kind_and_id_does_not_reset_the_schedule() {
+static void test_a_new_game_resets_the_schedule_but_a_same_game_repush_does_not() {
   StationLink link;
   StationAssignment p1;
   p1.present = true;
@@ -588,11 +588,27 @@ static void test_a_rearm_with_the_same_kind_and_id_does_not_reset_the_schedule()
   link.powerup().tick(1000);
   link.powerup().mark_taken(3, 1000);
 
-  StationAssignment p2 = p1;
-  p2.game = 2;  // muster re-push, same station
-  CHECK(link.apply_station_config(p2));  // game changed: "changed" is still reported
-  CHECK(!link.powerup().available());     // ...but the schedule itself survives
+  // the same config pushed again (same game): the schedule and its taker survive
+  CHECK(!link.apply_station_config(p1));
   CHECK_EQ(link.powerup().taker(), (uint8_t)3);
+  // a new game is a new match: the last match's taker and anchor must not carry over (round 3)
+  StationAssignment p2 = p1;
+  p2.game = 2;
+  CHECK(link.apply_station_config(p2));
+  CHECK_EQ(link.powerup().taker(), (uint8_t)0);
+}
+
+static void test_switching_to_held_clears_a_muster_drop() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true;
+  a.kind = "control";
+  a.id = 2;
+  a.game = 1;
+  link.apply_station_config(a);   // muster (the default): the first arm latches the drop
+  CHECK(link.dropped_for_match());
+  link.set_mode(AssocMode::HELD);
+  CHECK(!link.dropped_for_match());
 }
 
 static void test_muster_drops_the_link_at_match_start_held_does_not() {
@@ -943,7 +959,8 @@ int main(int argc, char** argv) {
   test_claim_gate_unscoped_game_zero_matches_anything();
   test_switching_away_and_back_to_powerup_resets_the_schedule();
   test_reassigning_a_powerup_to_a_new_id_resets_the_schedule();
-  test_a_rearm_with_the_same_kind_and_id_does_not_reset_the_schedule();
+  test_a_new_game_resets_the_schedule_but_a_same_game_repush_does_not();
+  test_switching_to_held_clears_a_muster_drop();
   test_link_walks_through_every_state_in_order();
   test_ws_closed_never_discards_identity_or_assignment();
   test_wifi_down_from_not_configured_stays_not_configured();

@@ -311,6 +311,14 @@ static bool mcTryMdns(WsAddress& out) {
 
 // ---- the main poll, called every loop() with the current millis() ------------------------------
 static void mcLoop(uint32_t now) {
+  // The station's own play runs FIRST, before any Wi-Fi or WebSocket handling, because MUSTER keeps Wi-Fi down for
+  // the whole match: SELF-SPAWN and the CLAIM scan are gated on the PERSISTED assignment
+  // (`has_powerup_assignment()`), never on link state. (Polish round 3: they used to sit after the `!wifiUp` early
+  // return below, so a muster station never spawned or awarded during play.)
+  if (link.has_powerup_assignment()) {
+    link.tick_powerup(now);
+    mcPollClaimScan(now);
+  }
   // Wi-Fi association.
   bool wifiUp = WiFi.status() == WL_CONNECTED;
   if (wifiUp && link.state() == LinkState::JOINING_WIFI) link.wifi_up();
@@ -390,12 +398,6 @@ static void mcLoop(uint32_t now) {
     }
   }
 
-  // Polish round 1 (CRITICAL): SELF-SPAWN and the CLAIM scan are gated on the PERSISTED assignment
-  // (`has_powerup_assignment()`), never on link state -- a link drop must not freeze the schedule.
-  if (link.has_powerup_assignment()) {
-    link.tick_powerup(now);
-    mcPollClaimScan(now);
-  }
 }
 
 // ---- serial commands: WIFI / MC / LINK ---------------------------------------------------------

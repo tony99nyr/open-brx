@@ -486,7 +486,8 @@ class StationLink {
  public:
   LinkState state() const { return state_; }
   AssocMode mode() const { return mode_; }
-  void set_mode(AssocMode m) { mode_ = m; }
+  // Switching to HELD clears a muster drop: a held station must never sit behind a latch it cannot see (round 3).
+  void set_mode(AssocMode m) { mode_ = m; if (m == AssocMode::HELD) dropped_for_match_ = false; }
 
   const StationIdentity& identity() const { return identity_; }
   void set_identity(const StationIdentity& id) { identity_ = id; }
@@ -568,7 +569,10 @@ class StationLink {
     // 0-is-never-real sentinel that excluded exactly this case.
     bool game_changed = !assignment_.present || assignment_.game != a.game;
     bool changed = kind_or_id_changed || assignment_.team != a.team || game_changed;
-    if (kind_or_id_changed) {
+    // Polish round 3: a new GAME is a new match, and a match's spawn schedule starts again from first_at_s, so the
+    // taker and anchor of the last match must not carry over (under MUSTER no station_update can arrive to correct it
+    // before play). Only a same-game re-push (the same config sent again) keeps the schedule.
+    if (kind_or_id_changed || game_changed) {
       powerup_ = PowerupSchedule();
       claims_ = ClaimGate();
     }
