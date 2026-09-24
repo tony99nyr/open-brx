@@ -338,7 +338,7 @@ export function armoryGate(board: { status?: string; blockers?: string[] | null;
       why: gating[0]?.blockers?.[0] ?? 'Clear the fault to continue' };
   }
   if (nWaiting) {
-    return { label: `WAITING FOR ${plural(nWaiting, 'PHONE')}`, disabled: false, ready: false,
+    return { label: `WAITING FOR ${plural(nWaiting, 'PHONE')} ▸`, disabled: false, ready: false,
       why: 'Open the BRX app on each phone and set its gun. You can still go on to GAMES.' };
   }
   if (board.length === 0) {

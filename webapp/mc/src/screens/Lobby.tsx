@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { RUNWAYS, useRunway } from '../runway';
 import { GUN_CONFIG_FAULT, RE_PUSH_HERE, STALE_ACK_FAULT, blocksPush, curedByPush, pushGate, reachLabel, reachOf, reachTooltip, sentenceCase, splitBlocker } from '../api/derive';
 import type { Player } from '../api/types';
@@ -10,6 +10,16 @@ import { PreArmSummary, armOverrideCopy } from '../ui/PreArmSummary';
 import { StandDownChip, StandbySection } from '../ui/Standby';
 import { GameEditPanel } from '../ui/GameEditPanel';
 import { UnrosteredPhonesBanner } from '../ui/UnrosteredPhones';
+import { ARM_TIMEOUT_MS } from './OperatorMenu';
+
+/** H5 (visual QA 2026-09-23): the phases the server refuses every LOBBY write in. `push_config`
+ *  (`_refuse_push_in_play`), `ready_all` and a re-team all refuse in ARMED and LIVE, so LOBBY there is
+ *  a read-only view of the teams with the reason and the screen that is in charge now. */
+const lobbyReadOnly = (phase: string | undefined): boolean => phase === 'armed' || phase === 'live';
+
+/** M2: the rows a host has to chase come first. Not ready before ready; the server's order inside each. */
+const notReadyFirst = (ps: Player[]): Player[] =>
+  ps.map((p, i) => ({ p, i })).sort((a, b) => (Number(!!a.p.ready) - Number(!!b.p.ready)) || a.i - b.i).map(x => x.p);
 
 
 export function Lobby() {
@@ -18,11 +28,26 @@ export function Lobby() {
   const [drag, setDrag] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);          // RE-PUSH in flight (R2-1)
   const [readyAllBusy, setReadyAllBusy] = useState(false);   // MARK ALL READY in flight (bench 2026-09-17)
+  // M2 (visual QA 2026-09-23): MARK ALL READY fired on one tap. It is the host overriding every phone's
+  // own READY at once, so the first tap arms it and the second fires it, the same two-tap pattern (and
+  // the same expiry) as the LIVE operator menu.
+  const [readyAllArmed, setReadyAllArmed] = useState(false);
+  useEffect(() => {
+    if (!readyAllArmed) return;
+    const id = setTimeout(() => setReadyAllArmed(false), ARM_TIMEOUT_MS);
+    return () => clearTimeout(id);
+  }, [readyAllArmed]);
   if (!state) return null;
   const { players, lobby, readiness, teams } = state;
   const teamIds = state.config.mode === 'ffa' ? ['ffa'] : state.config.teams.map(t => t.team_id);
-  const cols = teamIds.map(id => ({ id, name: teams.find(t => t.team_id === id)?.name ?? `${id.toUpperCase()} TEAM`, color: teamColor(id), members: players.filter(p => p.team_id === id) }));
-  const unassigned = players.filter(p => !teamIds.includes(p.team_id ?? ''));
+  const cols = teamIds.map(id => ({ id, name: teams.find(t => t.team_id === id)?.name ?? `${id.toUpperCase()} TEAM`, color: teamColor(id), members: notReadyFirst(players.filter(p => p.team_id === id)) }));
+  const unassigned = notReadyFirst(players.filter(p => !teamIds.includes(p.team_id ?? '')));
+  // H5: in ARMED/LIVE nothing on this screen may write (see `lobbyReadOnly`). Outside the lobby phase
+  // but before the match (BUILD, KIT, RECAP) the push is still the way in, and it moves MC to LOBBY;
+  // only MARK ALL READY waits, because `ready_all` refuses anywhere but LOBBY (a per-player READY does not).
+  const readOnly = lobbyReadOnly(state.phase);
+  const readyOpen = state.phase === 'lobby';
+  const empty = players.length === 0;
   const counts = cols.map(c => c.members.length);
   const balanced = Math.max(...counts) - Math.min(...counts) <= 1 && unassigned.length === 0;
   // EVERY judgement about pushing this config — the unplayable roster, the ack count, A36's three
@@ -160,9 +185,12 @@ export function Lobby() {
       <ScreenHeader kicker="[ A5 // LOBBY ]" title="Team Assignment" right={
         <>
           {rosterFault
-            ? <Tag color={T.bad} size={9} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{counts.join(' V ')} — CANNOT PLAY</Tag>
-            : <Tag color={balanced ? T.ok : T.warn} size={9} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{counts.join(' V ')} — {balanced ? 'BALANCED' : 'UNBALANCED'}</Tag>}
-          {cLine && <Tag color={cColor} size={9} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{cLine}</Tag>}
+            ? <Tag color={T.bad} size={11} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{counts.join(' V ')} — CANNOT PLAY</Tag>
+            // M20: an empty roster is not "0 V 0 BALANCED" in green. It is nobody, and says so in grey.
+            : empty
+              ? <Tag data-roster-empty="1" color={T.line2} ink={T.dim} size={11} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>NO PLAYERS YET</Tag>
+              : <Tag color={balanced ? T.ok : T.warn} size={11} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{counts.join(' V ')} — {balanced ? 'BALANCED' : 'UNBALANCED'}</Tag>}
+          {cLine && <Tag color={cColor} size={11} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{cLine}</Tag>}
           <Progress n={nReady} total={players.length} label="READY" color={T.ok} />
           {nUpdating > 0 && (
             <span data-updating="1" title={updatingTitle} style={{ font: F.osw(700, 20), color: T.warn }}>
@@ -174,16 +202,44 @@ export function Lobby() {
               gathering and looking at this header's own ready count. One PrimaryButton, right beside
               the count it changes; same gate as before (hidden, not merely disabled, once nobody
               needs it or the roster is empty). */}
-          {!allReady && players.length > 0 && (
-            <span data-mark-all-ready="1">
-              <PrimaryButton onClick={readyAll} disabled={readyAllBusy} pad="9px 18px" size={12}
-                title="Marks every rostered player ready. Never touches the gun config or the acks — arming still checks those exactly as before.">
-                {readyAllBusy ? 'MARKING ALL READY…' : 'MARK ALL READY ▸'}
+          {!allReady && players.length > 0 && readyOpen && (
+            <span data-mark-all-ready="1" data-armed={readyAllArmed ? '1' : undefined}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              {readyAllArmed && (
+                <span role="status" data-mark-all-confirm="1" style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: T.warn, maxWidth: 300, lineHeight: 1.4 }}>
+                  ▲ OVERRIDES {notReady.length} PHONE{notReady.length === 1 ? '' : 'S'}: {notReady.join(', ')}
+                </span>
+              )}
+              <PrimaryButton onClick={readyAllArmed ? () => { setReadyAllArmed(false); readyAll(); } : () => setReadyAllArmed(true)}
+                disabled={readyAllBusy} pad="9px 18px" size={12}
+                title="Marks every rostered player ready, over their phones. Never touches the gun config or the acks: arming still checks those exactly as before. Tap twice.">
+                {readyAllBusy ? 'MARKING ALL READY…' : readyAllArmed ? `TAP AGAIN: MARK ${notReady.length} READY ▸` : 'MARK ALL READY ▸'}
               </PrimaryButton>
+              {readyAllArmed && (
+                <button type="button" data-mark-all-cancel="1" onClick={() => setReadyAllArmed(false)} className="hov-acc"
+                  style={{ ...BTN_RESET, font: F.chk(600, 11), letterSpacing: '.16em', color: T.dim, border: `1px solid ${T.line}`, padding: '8px 14px', minHeight: 40 }}>CANCEL</button>
+              )}
             </span>
           )}
         </>
       } />
+      {readOnly && (
+        <div role="status" data-lobby-readonly={state.phase} style={{ marginBottom: 12, display: 'flex', flexWrap: 'wrap', gap: '8px 16px', alignItems: 'center',
+          background: T.panelAlt, border: `1px solid ${T.line2}`, borderLeft: `3px solid ${T.acc}`, padding: '12px 16px' }}>
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 320px' }}>
+            <span style={{ font: F.chk(700, 13), letterSpacing: '.12em', color: T.ink }}>
+              {state.phase === 'live' ? 'THE MATCH IS LIVE.' : 'THE COUNTDOWN IS RUNNING.'} THIS LOBBY IS READ-ONLY.
+            </span>
+            <span style={{ font: F.chk(500, 12), color: T.dim, lineHeight: 1.5 }}>
+              Every gun already holds this match's config, and MC refuses a push, a READY change or a team move until the match ends.
+            </span>
+          </span>
+          <button type="button" data-lobby-goto={state.phase} className="hov-acc" onClick={() => setView(state.phase)}
+            style={{ ...BTN_RESET, font: F.chk(700, 12), letterSpacing: '.16em', color: T.acc, border: `1px solid ${T.acc}`, padding: '10px 16px', minHeight: 44 }}>
+            GO TO {state.phase.toUpperCase()} ▸
+          </button>
+        </div>
+      )}
       {rosterFault && (
         <div role="alert" data-testid="roster-fault" style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6,
           background: 'rgba(255,82,82,.08)', border: `1px solid ${T.bad}`, borderLeft: `3px solid ${T.bad}`, padding: '12px 16px' }}>
@@ -202,18 +258,20 @@ export function Lobby() {
           connected, only 2 in lobby" confusion, made visible where the operator is actually looking. */}
       <UnrosteredPhonesBanner style={{ marginBottom: 12 }} />
       {/* B3: mode/night/health/weapon-pool, editable right here — no stepper, no recall needed pre-arm */}
-      <GameEditPanel style={{ marginBottom: 12 }} />
+      {/* H5: in ARMED/LIVE the panel locks itself, but its status line reads "GUNS NOT CONFIGURED YET"
+          about guns that are playing, so it is not shown here at all then. */}
+      {!readOnly && <GameEditPanel style={{ marginBottom: 12 }} />}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
         {cols.map(col => (
           <div key={col.id} style={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column' }}
-            onDragOver={e => e.preventDefault()} onDrop={() => { const p = players.find(x => x.player_id === drag); if (p) reteam(p, col.id); setDrag(null); }}>
+            onDragOver={e => { if (!readOnly) e.preventDefault(); }} onDrop={() => { const p = players.find(x => x.player_id === drag); if (p && !readOnly) reteam(p, col.id); setDrag(null); }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: T.panelAlt, border: `1px solid ${T.line}`, borderBottom: 'none', borderTop: `2px solid ${col.color}` }}>
               <span style={{ font: F.chk(700, 13), letterSpacing: '.24em', color: col.color }}>{col.name}</span>
               <span style={{ flex: 1 }} />
               <span style={{ font: F.osw(600, 12), ...TAB, color: T.dim }}>{col.members.length} OPERATORS</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3, border: `1px solid ${drag ? T.acc : T.line}`, padding: 6, background: T.panelDeep, minHeight: 200 }}>
-              {col.members.map(mb => <MemberRow key={mb.player_id} p={mb} teamIds={teamIds} reach={reachOfPlayer(mb.player_id)} noPhone={noPhoneOf(mb.player_id)} onDragStart={() => setDrag(mb.player_id)} onMove={t => reteam(mb, t)} />)}
+              {col.members.map(mb => <MemberRow key={mb.player_id} p={mb} teamIds={teamIds} reach={reachOfPlayer(mb.player_id)} noPhone={noPhoneOf(mb.player_id)} readOnly={readOnly} onDragStart={() => setDrag(mb.player_id)} onMove={t => reteam(mb, t)} />)}
             </div>
           </div>
         ))}
@@ -221,7 +279,7 @@ export function Lobby() {
           <div style={{ flex: '1 1 240px' }}>
             <div style={{ padding: '10px 14px', background: T.panelAlt, border: `1px solid ${T.line}`, borderBottom: 'none', borderTop: `2px solid ${T.warn}`, font: F.chk(700, 13), letterSpacing: '.24em', color: T.warn }}>UNASSIGNED</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3, border: `1px solid ${T.line}`, padding: 6, background: T.panelDeep }}>
-              {unassigned.map(mb => <MemberRow key={mb.player_id} p={mb} teamIds={teamIds} reach={reachOfPlayer(mb.player_id)} noPhone={noPhoneOf(mb.player_id)} onDragStart={() => setDrag(mb.player_id)} onMove={t => reteam(mb, t)} />)}
+              {unassigned.map(mb => <MemberRow key={mb.player_id} p={mb} teamIds={teamIds} reach={reachOfPlayer(mb.player_id)} noPhone={noPhoneOf(mb.player_id)} readOnly={readOnly} onDragStart={() => setDrag(mb.player_id)} onMove={t => reteam(mb, t)} />)}
             </div>
           </div>
         )}
@@ -230,6 +288,7 @@ export function Lobby() {
       <StandbySection />
       {/* The pre-arm check (2026-09-13). LOAD split "the game is loaded" from "the guns are
           configured", so the two halves have to be verified separately and named per player. */}
+      {!readOnly && <>
       <PreArmSummary />
       {/* Action rail — rebuilt 2026-09-01: "lots of small uppercase text. poor organization and
           readability and usability". One status line in sentence case, faults as a real per-gun list
@@ -238,7 +297,7 @@ export function Lobby() {
       <div data-rail="lobby" style={{ marginTop: 16, background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}` }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '16px 28px', padding: '16px 20px' }}>
           <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
-            <Step n={1} done={allReady} label={<>Ready <b style={{ font: F.osw(700, 16), color: allReady ? T.ok : T.warn }}>{nReady}/{players.length}</b></>} />
+            <Step n={1} done={allReady} label={<>Ready <b style={{ font: F.osw(700, 16), color: allReady ? T.ok : empty ? T.micro : T.warn }}>{nReady}/{players.length}</b></>} />
             <Step n={2} done={allAcked} label={<>Config pushed {lobby.pushed && <b style={{ font: F.osw(700, 16), color: allAcked ? T.ok : T.warn }}>{acked}/{players.length}</b>}</>} />
             {/* Bench 2026-09-17 (Tony): the countdown length is chosen only when ARM COUNTDOWN is the next
                 action: the lobby is pushed and every gun has acked (in sync). Before that it is plain text. */}
@@ -283,13 +342,21 @@ export function Lobby() {
                 : pushBlockedCount > 0 ? `RE-PUSH CONFIG OVER ${pushBlockedCount} BLOCKED ▸` : 'RE-PUSH CONFIG ▸'}
             </button>
           )}
-          <PrimaryButton onClick={() => pushAndArm()} disabled={armDisabled} title={armTitle}>
-            {lobby.pushed ? 'ARM COUNTDOWN ▸' : 'PUSH CONFIG & ARM ▸'}
-          </PrimaryButton>
+          {/* M3 (visual QA 2026-09-23): this control does ONE thing per step, and its label says which.
+              Before the push it pushes (ARM is a second, deliberate tap once every gun confirms); after
+              it, it arms. It used to read PUSH CONFIG & ARM, and it has never armed on that tap. */}
+          <span data-lobby-primary={lobby.pushed ? 'arm' : 'push'} style={{ display: 'inline-flex' }}>
+            <PrimaryButton onClick={() => pushAndArm()} disabled={armDisabled}
+              title={armTitle || (lobby.pushed
+                ? 'Starts the countdown on every gun.'
+                : 'Sends this config to every gun. ARM COUNTDOWN takes its place once every gun confirms it.')}>
+              {lobby.pushed ? 'ARM COUNTDOWN ▸' : 'PUSH CONFIG ▸'}
+            </PrimaryButton>
+          </span>
         </div>
 
         <div style={{ padding: '0 20px 14px', font: F.chk(600, 13), lineHeight: 1.5,
-                      color: faults.length ? T.bad : waitRows.length ? T.micro : notReady.length ? T.warn : T.ok }}>
+                      color: faults.length ? T.bad : empty || waitRows.length ? T.micro : notReady.length ? T.warn : T.ok }}>
           {/* U-1 (2026-09-13): `staleAcked` used to be consulted ONLY in the no-faults branch — and a
               stale ack always lands in that row's `blockers` (state.py `readiness()`), which makes the
               row red, which puts it in `faults`. So the generic count always won and the sentence
@@ -303,6 +370,8 @@ export function Lobby() {
                 // Bench 2026-09-16: LOBBY reached from GAMES without KIT. Nothing had opened the kit and
                 // nothing was pushed, so the phones said HOST IS SETTING UP and could not ready up. The line
                 // named the players and not the step that frees them.
+                // M20: nobody is not "all nodes ready".
+                || (empty ? 'Nobody is on the roster yet. Add players in KIT, or let their phones join first.' : '')
                 || (notReady.length
                   ? `Not ready yet: ${notReady.join(', ')}${lobby.pushed ? '' : '. Their phones say HOST IS SETTING UP until you open KIT or push the config.'}`
                   : '')
@@ -312,7 +381,10 @@ export function Lobby() {
                 // headset off, or gun asleep?" with an empty list, about guns that had answered.
                 || (lobby.pushed && !allAcked
                     ? verificationLines.join(' · ') || 'Waiting for every gun to verify the config'
-                    : 'All nodes ready and in range. Push, then walk.'))}
+                    // M3: say the next step, not both of them
+                    : lobby.pushed
+                      ? 'Every gun has confirmed this config. Arm the countdown, then walk out.'
+                      : 'Everyone is ready. Push the config to the guns next.'))}
           {/* R2-8: …and only when there is a fault the sentence above did NOT already account for.
               With two stale acks and nothing else, every red IS the stale ack, and "2 guns cannot
               start" beside "REAPER, VIPER still answering for an older config" counts the same two
@@ -388,6 +460,11 @@ export function Lobby() {
           CANNOT BE OVERRIDDEN — RE-PUSH CONFIG BEFORE THE COUNTDOWN
         </div>
       )}
+      {!allReady && players.length > 0 && !readyOpen && (
+        <div data-ready-closed={state.phase} style={{ marginTop: 8, font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro, lineHeight: 1.5 }}>
+          MARK ALL READY OPENS ONCE THE CONFIG IS PUSHED. MC IS AT {state.phase.toUpperCase()}, NOT LOBBY.
+        </div>
+      )}
       {!allReady && players.length > 0 && (
         <div data-mark-ready="1" style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', font: F.mono(500, 11), letterSpacing: '.14em', color: T.dim }}>
           <span style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: T.micro, marginRight: 4 }}>MARK READY</span>
@@ -396,12 +473,14 @@ export function Lobby() {
           ))}
         </div>
       )}
+      </>}
     </div>
   );
 }
 
-function MemberRow({ p, teamIds, reach, noPhone, onDragStart, onMove }: { p: Player; teamIds: string[]; reach?: 'lan' | 'backhaul'; noPhone?: boolean; onDragStart: () => void; onMove: (team_id: string) => void }) {
-  const others = teamIds.filter(t => t !== p.team_id);
+function MemberRow({ p, teamIds, reach, noPhone, readOnly, onDragStart, onMove }: { p: Player; teamIds: string[]; reach?: 'lan' | 'backhaul'; noPhone?: boolean; readOnly?: boolean; onDragStart: () => void; onMove: (team_id: string) => void }) {
+  // H5: no move chips, no drag and no STAND DOWN while the match is in play (the server refuses them)
+  const others = readOnly ? [] : teamIds.filter(t => t !== p.team_id);
   // F-7 (2026-09-13): the wide layout wraps to 3-4 lines at 393 px — name, gun, NO PHONE, reach,
   // move-to chips, STAND DOWN and the ready tag all competing for one flex-wrap row with nothing
   // grouped. `useNarrow` (ui/index.tsx, same watched-viewport pattern Spectate.tsx's own
@@ -410,7 +489,11 @@ function MemberRow({ p, teamIds, reach, noPhone, onDragStart, onMove }: { p: Pla
   // two. jsdom lays nothing out, so this is proved as a MECHANISM here (`data-compact-row` appears,
   // the row count is right) and re-measured in pixels at 393 px by the e2e walk.
   const narrow = useNarrow();
-  const readyTag = p.ready ? <OutlineTag color={T.ok} border="rgba(46,204,113,.5)">READY</OutlineTag> : <OutlineTag color={T.micro} border={T.line}>WAIT</OutlineTag>;
+  // M2 (visual QA 2026-09-23): a grey WAIT read as "fine, nothing to do". NOT READY is the row the host
+  // has to chase, so it is amber and says it in words.
+  const readyTag = p.ready
+    ? <span data-ready-tag="ready"><OutlineTag color={T.ok} border="rgba(46,204,113,.5)">READY</OutlineTag></span>
+    : <span data-ready-tag="not-ready"><OutlineTag color={T.warn} border={T.warn} title="This player's phone has not said READY yet">NOT READY</OutlineTag></span>;
   // A28.3: which path this node's live socket is actually on right now — absent until a node
   // connects, never invented for one that hasn't (older server included). S40 (field 2026-09-12):
   // "BACKHAUL" read to an operator as "on cellular" — the word is now the same one the REACH
@@ -437,30 +520,30 @@ function MemberRow({ p, teamIds, reach, noPhone, onDragStart, onMove }: { p: Pla
   );
   if (narrow) {
     return (
-      <div className="hov-acc" draggable onDragStart={onDragStart} data-no-phone={noPhone ? '1' : undefined} data-compact-row="1"
-        style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px', background: T.panel, border: `1px solid ${T.line}`, cursor: 'grab', minHeight: 44, opacity: noPhone ? 0.55 : 1 }}>
+      <div className="hov-acc" draggable={!readOnly} onDragStart={readOnly ? undefined : onDragStart} data-no-phone={noPhone ? '1' : undefined} data-compact-row="1"
+        style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px', background: T.panel, border: `1px solid ${T.line}`, cursor: readOnly ? 'default' : 'grab', minHeight: 44, opacity: noPhone ? 0.55 : 1 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span aria-hidden style={{ font: F.mono(600, 12), color: T.faint, letterSpacing: '-.1em', flex: 'none' }}>⠿</span>
           <span style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            <span style={{ font: F.chk(700, 14), letterSpacing: '.12em' }}><span style={{ color: T.micro, font: F.mono(500, 10) }}>#{p.player_num} </span>{p.display}</span>
+            <span style={{ font: F.chk(700, 14), letterSpacing: '.12em' }}><span style={{ color: T.micro, font: F.mono(500, 11) }}>#{p.player_num} </span>{p.display}</span>
             <span style={{ color: T.faint }}> · </span>
-            <span style={{ font: F.mono(500, 10), color: T.micro }}>{p.gun_id ?? 'NO GUN'}</span>
+            <span style={{ font: F.mono(500, 11), color: T.micro }}>{p.gun_id ?? 'NO GUN'}</span>
           </span>
           <span style={{ flex: 'none' }}>{readyTag}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           {statusTags}
           {moveChips}
-          <StandDownChip p={p} />
+          {!readOnly && <StandDownChip p={p} />}
         </div>
       </div>
     );
   }
   return (
-    <div className="hov-acc" draggable onDragStart={onDragStart} data-no-phone={noPhone ? '1' : undefined}
+    <div className="hov-acc" draggable={!readOnly} onDragStart={readOnly ? undefined : onDragStart} data-no-phone={noPhone ? '1' : undefined}
       // F142 (field 2026-09-12, ISSUE 11b): a restored player with no phone bound read exactly like a
       // real, connected one — dim the row and say so, the same treatment KIT now gives it.
-      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: T.panel, border: `1px solid ${T.line}`, cursor: 'grab', minHeight: 44, flexWrap: 'wrap', opacity: noPhone ? 0.55 : 1 }}>
+      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: T.panel, border: `1px solid ${T.line}`, cursor: readOnly ? 'default' : 'grab', minHeight: 44, flexWrap: 'wrap', opacity: noPhone ? 0.55 : 1 }}>
       <span aria-hidden style={{ font: F.mono(600, 12), color: T.faint, letterSpacing: '-.1em' }}>⠿</span>
       {/* F7 (phone-width pass, 2026-09-13): `flex: 1` with `minWidth: 0` let this collapse to 26 px at
           393 px — narrower than the word "VIPER" — and a callsign is one unbreakable word, so it
@@ -468,12 +551,12 @@ function MemberRow({ p, teamIds, reach, noPhone, onDragStart, onMove }: { p: Pla
           shot. A basis wide enough for a callsign, and `anywhere` so nothing can ever paint outside
           the box again; the row already wraps, so the chips drop to their own line instead. */}
       <span style={{ flex: '1 1 116px', minWidth: 0, overflowWrap: 'anywhere' }}>
-        <span style={{ display: 'block', font: F.chk(700, 14), letterSpacing: '.14em' }}><span style={{ color: T.micro, font: F.mono(500, 10) }}>#{p.player_num} </span>{p.display}</span>
-        <span style={{ display: 'block', font: F.mono(500, 10), color: T.micro }}>{p.gun_id ?? 'NO GUN'}</span>
+        <span style={{ display: 'block', font: F.chk(700, 14), letterSpacing: '.14em' }}><span style={{ color: T.micro, font: F.mono(500, 11) }}>#{p.player_num} </span>{p.display}</span>
+        <span style={{ display: 'block', font: F.mono(500, 11), color: T.micro }}>{p.gun_id ?? 'NO GUN'}</span>
       </span>
       {statusTags}
       {moveChips}
-      <StandDownChip p={p} />
+      {!readOnly && <StandDownChip p={p} />}
       {readyTag}
     </div>
   );

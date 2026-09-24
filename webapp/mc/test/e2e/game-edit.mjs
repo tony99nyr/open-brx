@@ -316,7 +316,7 @@ async function runMock(browser, viteBase) {
   // The `?mock` fixture always carries one deliberately RED gun (kit-continue.mjs's own comment on
   // it), so the plain PUSH button stays disabled here on purpose — the host's real path in that case
   // is the HOST OVERRIDE tray's "Push anyway", not a blocked primary button.
-  const pushBtn = pg.locator('main button:has-text("PUSH CONFIG & ARM")');
+  const pushBtn = pg.locator('main [data-lobby-primary="push"] button');
   if (await pushBtn.isEnabled().catch(() => false)) await pushBtn.click();
   else await pg.locator('main button:has-text("Push anyway")').click();
   await pg.waitForTimeout(400);
@@ -421,7 +421,7 @@ async function runReal(browser, viteBase, mcBase, vp = { width: 1280, height: 80
   // console-side indicator; this proves the SERVER really does re-push rather than un-push).
   await pg.evaluate(() => { location.hash = '#lobby'; });
   await until(() => onLobby(pg), 8000, 'LOBBY to open');
-  const pushBtn = pg.locator('main button:has-text("PUSH CONFIG & ARM")');
+  const pushBtn = pg.locator('main [data-lobby-primary="push"] button');
   if (await pushBtn.count()) { await pushBtn.click(); }
   await until(async () => (await (await fetch(`${mcBase}/api/state`)).json()).lobby.pushed === true, 8000, 'the real server to report pushed');
   ok(`LOBBY pushed on the real server   ${await shot(pg, `11-real-lobby-pushed-${tag}`)}`);

@@ -47,7 +47,10 @@ describe('LOBBY: MARK ALL READY', () => {
       readyAll: async () => { calls.push('readyAll'); return { ok: true, readied: s.players.filter(p => !p.ready).map(p => p.player_id) }; },
       setReady: async () => { calls.push('setReady'); return s.players[0]; },
     } });
+    // M2 (2026-09-23): a two-tap confirm. The first tap arms it and sends nothing.
     await m.click('MARK ALL READY');
+    expect(calls, 'the first tap only arms the confirm').toEqual([]);
+    await m.click('TAP AGAIN');
     expect(calls).toEqual(['readyAll']);
     m.unmount();
   });
