@@ -56,6 +56,7 @@ REQUIRED: dict[str, tuple[str, ...]] = {
     # A10 (loadout.md §4): `id`/`try` are OPTIONAL — a required field that is absent DROPS the frame
     "loadout_request": ("node_id", "player_id", "slot", "kind"),
     "loadout_browse": ("node_id", "player_id", "open"),
+    "station_action": ("id", "action"),   # A56 (S58): live only; `player_num` (taken) and `t` optional
     # MC → node
     "welcome": ("session_id", "server_t", "seq_hi"),
     "assign": ("player", "team", "roster"),
@@ -108,6 +109,8 @@ EVENT_REQUIRED: dict[str, tuple[str, ...]] = {
     "possession": ("hold_ms",),
     # A47: `why` is optional (present on a refusal). `cmd` and `ok` are the fact itself.
     "operator_result": ("cmd", "ok"),
+    # A56 (S58): a player took a powerup station's item. `weapon_id` is optional (an overshield has none).
+    "pickup": ("station_id", "item_kind"),
 }
 
 

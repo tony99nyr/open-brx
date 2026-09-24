@@ -37,10 +37,12 @@ from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_P
                     KitView, LanPublic, LanView, LobbyAck, LobbyView, Loadout, LoadoutOverrides, LoadoutPolicy,
                     LoadoutPool, McConfidence, NoticesView, OperatorActionResult, OperatorCmd, PerkView, ModeInfo, Phase, PhaseRefusalBody, Player,
                     LiveRow, ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, Respawn, ScanRow, SessionOptions,
-                    SnapshotFeedRow, SlotRule, State, StationAssignment, StationRef, StationControl, StationReport,
+                    SnapshotFeedRow, SlotRule, State, StationAssignment, StationItem, PowerupSlot, PowerupsView, StationRef, StationControl, StationReport,
                     StationView, SyncAckState, SyncRow, SyncTotals, SyncView, VersionsView, RestoredFromView,
                     StartNodeView, StartView, Stun, OrphanMatchView, Team, Weapon, WeaponSel, WinnerView, LiveView, NodeView,
                     app_tier, compatible, is_arm_state, is_station_kind, parse_app_ver, parse_win_by)
+
+from . import powerups as _pu
 
 if TYPE_CHECKING:                      # `presets.PresetStore` is attached by `__main__`/`create_app`
     from .presets import PresetStore
@@ -343,6 +345,11 @@ class Session:
         # never pruned while it holds an assignment (the operator set it up; a 10-minute silence is a phone
         # propped on a hill, not a phantom).
         self.stations: dict[str, dict] = {}
+        # A56 (S58): `--powerups`. Off (the default), MC refuses an item preset, compiles no spare slot, sends no
+        # `item` and runs no spawn schedule; a stored item (a restored snapshot) is inert. `__main__` sets it.
+        self.powerups_enabled = False
+        # A56: the spawn schedule of the match in play, on MC's own clock: {"match_id", "go", "st": {nid: {...}}}.
+        self._pu_sched: dict = {}
         # The per-match `game` byte a station is armed with (utility.md §5b.3 / roadmap C1). It changes on
         # the first config push AFTER a match has started, so a station in range at the next muster learns
         # that a new match exists -- `applyStationConfig` resets the point when the number changes, and
@@ -2630,9 +2637,168 @@ class Session:
             self._game_no_started = False
 
     def _station_ids(self) -> list[StationRef]:
-        rows: list[StationRef] = [{"id": a["id"], "kind": a["kind"]}
-                                  for st in self.stations.values() if (a := st.get("assigned"))]
+        rows: list[StationRef] = []
+        for st in self.stations.values():
+            if a := st.get("assigned"):
+                row: StationRef = {"id": a["id"], "kind": a["kind"]}
+                if item := self._active_item(a):
+                    row["item"] = item                  # A56: the phone knows the item and its schedule without MC
+                rows.append(row)
         return sorted(rows, key=lambda x: x["id"])
+
+    # ---------- powerups (A56 / S58, docs/spec/powerups.md) ----------
+    def powerups_view(self) -> PowerupsView:
+        """`GET /api/powerups`: the flag and the item presets, expanded from `powerups.py`'s defaults."""
+        return _pu.presets_view(self.powerups_enabled, getattr(self.compiler, "catalog", None))
+
+    def _active_item(self, a: dict | None) -> StationItem | None:
+        """The item a station assignment carries INTO THIS RUN: only with the flag on, only on a powerup station.
+        Anything else (the flag off, a restored item on another kind) is inert, never sent and never compiled."""
+        if not self.powerups_enabled or not a or a.get("kind") != "powerup":
+            return None
+        item = a.get("item")
+        if not isinstance(item, dict) or item.get("kind") not in ("weapon", "overshield"):
+            return None
+        return cast(StationItem, item)
+
+    def _item_stations(self) -> list[tuple[str, dict, StationItem]]:
+        """(node_id, assignment, item) for every assigned station with an active item, by station id."""
+        out = [(nid, a, item) for nid, st in self.stations.items()
+               if (a := st.get("assigned")) and (item := self._active_item(a))]
+        return sorted(out, key=lambda r: r[1]["id"])
+
+    def _powerup_slots(self) -> list[PowerupSlot]:
+        """`GameConfig.powerups`: each distinct pickup weapon, by station id, into slot 2 then 3."""
+        return _pu.weapon_slots(item for _nid, _a, item in self._item_stations())
+
+    def _compile_config(self) -> GameConfig:
+        """The config `compile()` reads: the operator's, plus the pickup weapons MC armed (A56)."""
+        slots = self._powerup_slots()
+        return cast(GameConfig, {**self.config, "powerups": slots}) if slots else self.config
+
+    def _pu_update_body(self, nid: str) -> dict | None:
+        """The `station_update` for one item station from the schedule in play, or None when there is none."""
+        row = (self._pu_sched.get("st") or {}).get(nid)
+        a = (self.stations.get(nid) or {}).get("assigned")
+        if row is None or not a:
+            return None
+        # The time to the NEXT spawn instant, ALWAYS (even while the item is there): the station counts down
+        # and spawns on its own, so a lost MC link never freezes it.
+        return {"id": a["id"], "available": row["available"],
+                "next_spawn_in_ms": max(0, _pu.spawn_at(row["item"], self._pu_sched["go"], row["next_k"]) - self.now_ms())}
+
+    def _push_station_update(self, nid: str) -> None:
+        body = self._pu_update_body(nid)
+        if body is not None:
+            self.net.push(nid, "station_update", body)
+
+    def _powerup_tick(self, now: int) -> None:
+        """A56: the Halo schedule on MC's match clock. Items spawn at `first_at_s`, then every `spawn_every_s`
+        after go-live; a spawn never stacks (an untaken item just stays). Built once per match, at the first
+        tick that sees it armed, and each station is told its state then, at every spawn time, on a pickup
+        and on its reconnect. A match resumed after an MC restart assumes an item is there if a spawn passed."""
+        if not self.powerups_enabled or not self.start_info or self.phase not in ("armed", "live"):
+            return
+        mid, go = self.start_info["match_id"], int(self.start_info["go_live_t"])
+        if self._pu_sched.get("match_id") != mid:
+            rows = {}
+            for nid, _a, item in self._item_stations():
+                k = _pu.last_spawn_index(item, go, now)
+                # `since`: when the item in the station now became available (a spawn or an operator reset);
+                # a fact older than that is about an earlier item. `taken_by`: this spawn's taker, if any.
+                rows[nid] = {"item": item, "available": k >= 0, "next_k": k + 1,
+                             "since": _pu.spawn_at(item, go, k) if k >= 0 else go, "taken_by": None}
+            self._pu_sched = {"match_id": mid, "go": go, "st": rows}
+            for nid in rows:
+                self._push_station_update(nid)
+            if rows:
+                self._changed()
+            return
+        changed = False
+        for nid, row in self._pu_sched["st"].items():
+            fired = False
+            while now >= _pu.spawn_at(row["item"], go, row["next_k"]):
+                row["next_k"] += 1
+                fired = True
+            if fired:
+                row["available"], row["taken_by"] = True, None
+                row["since"] = _pu.spawn_at(row["item"], go, row["next_k"] - 1)
+                self._push_station_update(nid)      # at each spawn time, even one that finds the item still there
+                changed = True
+        if changed:
+            self._changed()
+
+    def _on_pickup(self, ev: Event, t_recv: int, parked: bool) -> None:
+        """A56: a player's `pickup` fact. Stored by the caller and NEVER scored; here it only empties the
+        station until its next spawn time on the schedule and tells the station. A second report of an item
+        already taken (the station's own `taken`, or another pickup), or a late fact about an item that has
+        spawned or been reset since, changes nothing."""
+        if parked or not self._pu_sched or ev.get("match_id") != self._pu_sched.get("match_id"):
+            return
+        sid = ev.get("station_id")
+        nid = next((n for n, st in self.stations.items()
+                    if (st.get("assigned") or {}).get("id") == sid and n in self._pu_sched["st"]), None)
+        if nid is None:
+            return
+        t = ev.get("t")
+        t = t if isinstance(t, int) and not isinstance(t, bool) and t <= t_recv else t_recv
+        self._take_item(nid, t, self.players.get(ev.get("player_id") or ""))
+
+    def _take_item(self, nid: str, t: int, player: Player | None, player_num: int | None = None) -> bool:
+        """Mark this spawn's item taken, once. The dedupe key is the station and its current item: an item
+        already taken is a no-op, and so is a report from before the item became available (`since`)."""
+        row = self._pu_sched["st"][nid]
+        if not row["available"] or t < row["since"]:
+            return False
+        a = self.stations[nid]["assigned"]
+        num = player.get("player_num") if player else player_num
+        row["available"] = False
+        row["taken_by"] = num if isinstance(num, int) and not isinstance(num, bool) else None
+        who = (player or {}).get("display") or (f"PLAYER {num}" if row["taken_by"] is not None else "A PLAYER")
+        self._on_feed({"t_match_s": self._operator_t_match(self.now_ms()), "tag": "POWERUP", "kind": "info",
+                       "text": f"{str(who).upper()} TOOK {row['item']['name']} · STATION #{a['id']}"})
+        self._push_station_update(nid)
+        self._changed()
+        return True
+
+    def _reset_item(self, nid: str) -> None:
+        """The operator reset: the item is available NOW. The fixed spawn times do not move (no restart, and
+        the next spawn does not stack a second item)."""
+        row = self._pu_sched["st"][nid]
+        row["available"], row["taken_by"], row["since"] = True, None, self.now_ms()
+        self._on_feed({"t_match_s": self._operator_t_match(self.now_ms()), "tag": "OPERATOR", "kind": "info",
+                       "text": f"OPERATOR RESET · STATION #{self.stations[nid]['assigned']['id']}"})
+        self._push_station_update(nid)
+        self._changed()
+
+    def reset_station(self, nid: str) -> dict:
+        """`POST /api/stations/{node_id}/reset`: the console's operator reset, the same as the station's own."""
+        if nid not in self.stations:
+            raise KeyError(nid)
+        if not self.powerups_enabled:
+            raise ValueError(_pu.REFUSED_FLAG_OFF)
+        if self.phase not in ("armed", "live"):
+            raise ValueError(f"the match is {self.phase.upper()}: an item can be reset only while a match is armed or live")
+        self._powerup_tick(self.now_ms())          # make sure this match's schedule exists
+        if nid not in (self._pu_sched.get("st") or {}):
+            raise ValueError(f"{nid!r} is not a powerup station with an item in this match")
+        self._reset_item(nid)
+        return {"ok": True}
+
+    def _on_station_action(self, nid: str, body: dict, t_recv: int) -> None:
+        """A56: a station's live-only report (`StationAction`). Ignored unless it comes from the station that
+        holds that id and an item schedule runs for it."""
+        a = (self.stations.get(nid) or {}).get("assigned") or {}
+        if (not self.powerups_enabled or not self._pu_sched or nid not in self._pu_sched["st"]
+                or body.get("id") != a.get("id")):
+            return
+        if body.get("action") == "reset":
+            self._reset_item(nid)
+        elif body.get("action") == "taken":
+            num = body.get("player_num")
+            player = next((p for p in self.players.values() if p.get("player_num") == num), None) \
+                if isinstance(num, int) and not isinstance(num, bool) else None
+            self._take_item(nid, t_recv, player, num if isinstance(num, int) else None)
 
     def _wire_config(self) -> GameConfig:
         """The config a NODE receives: the operator's config plus `stations`, the allow-list of station ids MC
@@ -2640,6 +2806,8 @@ class Session:
         operator does not edit it."""
         ids = self._station_ids()
         cfg = self.config
+        if slots := self._powerup_slots():
+            cfg = cast(GameConfig, {**cfg, "powerups": slots})    # A56: the pickup weapons compile armed
         if (cfg.get("respawn") or {}).get("type") == "scanner":
             assigned = [a for st in self.stations.values() if (a := st.get("assigned")) and a.get("kind") == "respawn"]
             if assigned and not any(a.get("team") == STATION_TEAM_ANY for a in assigned):
@@ -2729,17 +2897,33 @@ class Session:
         # phone re-opened elsewhere under a NEW node_id (a player role, or its storage cleared) and is
         # never coming back to THIS one. Refuse here, same voice as the rest of this validation, rather
         # than let the push fail silently downstream.
+        # A56 (S58): a powerup station's item, picked from MC's presets. The expanded item is what is stored.
+        if "item" in a:
+            raise ValueError("send item_preset (one of: " + ", ".join(_pu.PRESET_IDS) + "), not a raw item")
+        item: StationItem | None = None
+        if "item_preset" in a and a["item_preset"] is not None:
+            if not self.powerups_enabled:
+                raise ValueError(_pu.REFUSED_FLAG_OFF)
+            if kind != "powerup":
+                raise ValueError(f"item_preset is for a powerup station, not {kind!r}")
+            if not isinstance(a["item_preset"], str):
+                raise ValueError("item_preset must be one of: " + ", ".join(_pu.PRESET_IDS))
+            item = _pu.expand(a["item_preset"], getattr(self.compiler, "catalog", None))
+            others = [it for n, _a, it in self._item_stations() if n != nid]
+            _pu.weapon_slots([*others, item])      # refuses a third different weapon
         if (self.nodes.get(nid) or {}).get("stale"):
             raise ValueError(f"{nid!r} has not been heard from recently (its link has gone stale); it cannot be "
                              "assigned until it reconnects -- if this phone reopened elsewhere, its NEW node_id "
                              "is the one to assign instead")
+        slots_before = self._powerup_slots()
         st = self.stations.setdefault(nid, {"node_id": nid, "assigned": None, "report": {}, "armed": None})
         assignment: StationAssignment = {"kind": kind, "team": team, "id": sid, "threshold": thr, "at": self.now_ms()}
+        if item is not None:
+            assignment["item"] = item
         st["assigned"] = assignment
         self.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle", "synced": False, "last_seen_ms": 0})
         # An assignment changes the allow-list every OTHER station echoes, so all of them are re-armed.
-        self.arm_stations()
-        self._repush_stations_to_players()
+        self._after_station_change(slots_before)
         self._validate()
         self._changed()
         return self._station_view(nid)
@@ -2749,10 +2933,10 @@ class Session:
         if not st:
             return False
         self._refuse_station_change_in_play()
+        slots_before = self._powerup_slots()
         st["assigned"] = None
         st["armed"] = None
-        self.arm_stations()                    # the survivors' valid_ids shrink
-        self._repush_stations_to_players()
+        self._after_station_change(slots_before)   # the survivors' valid_ids shrink
         self._validate()
         self._changed()
         return True
@@ -2791,12 +2975,24 @@ class Session:
                 rec = self._station_recap_row(self._station_view(nid))
                 if rec is not None:
                     self._departed_match_stations[nid] = rec
+            slots_before = self._powerup_slots()
             st["assigned"], st["armed"], st["arm_pending"] = None, None, False
-            self.arm_stations()                    # the survivors' valid_ids shrink
-            self._repush_stations_to_players()
+            self._after_station_change(slots_before)   # the survivors' valid_ids shrink
             self._validate()                       # ...and the SETUP warnings tell the truth again
             self._changed()
         return ok
+
+    def _after_station_change(self, slots_before: list[PowerupSlot]) -> None:
+        """Re-arm every station and re-push the players' allow-list -- or, when the pickup weapons moved (A56),
+        a fresh head for the whole roster, because the spare slots are in the FRAMES, not only the config.
+        Never in play: `_repush_stations_to_players` is lobby-only, and a moved slot set can only happen in
+        the lobby (`set_station`/`clear_station` refuse in play, and `release_station` keeps the item's slot
+        until the next push rather than re-arming a live gun)."""
+        if self._powerup_slots() != slots_before and self.lobby_pushed and not self.in_play():
+            self._fresh_head_repush()              # re-arms the stations too
+            return
+        self.arm_stations()
+        self._repush_stations_to_players()
 
     def _refuse_station_change_in_play(self) -> None:
         """An assignment or clear is a `config` re-push to every player (below), and the phone's
@@ -2835,6 +3031,8 @@ class Session:
             return False
         body = {"kind": a["kind"], "team": a["team"], "id": a["id"], "threshold": a["threshold"],
                 "game": self._game_byte(), "valid_ids": [x["id"] for x in self._station_ids()]}
+        if item := self._active_item(a):
+            body["item"] = item                    # A56: an older Stick ignores it
         ok = self.net.push(nid, "station_config", body)
         if ok is False:                        # NetServer says "no live socket"; a fake returns None
             st["arm_pending"] = True
@@ -2914,6 +3112,13 @@ class Session:
                 "last_seen_ms": (now - seen) if seen else None,
                 "online": bool(seen) and not node_stale,
                 "attention": attention, "game": self._game_byte()}
+        pu = self._pu_update_body(nid) if self.phase in ("armed", "live") else None
+        if pu is not None:                         # A56: only while a schedule runs for the match in play
+            row = self._pu_sched["st"][nid]
+            view["item_available"] = row["available"]
+            view["next_spawn_at_ms"] = _pu.spawn_at(row["item"], self._pu_sched["go"], row["next_k"])
+            if row.get("taken_by") is not None:
+                view["taken_by"] = row["taken_by"]
         return view
 
     def stations_view(self) -> list[StationView]:
@@ -3380,6 +3585,7 @@ class Session:
             st["platform"] = nv.get("platform") or st.get("platform")   # A29: stations report the same way
             if st.get("assigned"):
                 self._arm_station(nid)
+                self._push_station_update(nid)     # A56: a powerup station re-anchors its spawn countdown
             self._changed()
             return None
         # F184 (field 2026-09-22): RELEASE can only ask a utility phone to reload as a HUD; until this
@@ -4489,6 +4695,11 @@ class Session:
             self._log(nid, "operator_result", ev, t_recv, seq=seq, parked=parked)
             self._on_operator_result(nid, ev, t_recv)
             return
+        if ev.get("type") == "pickup":
+            # A56: stored like every fact, never scored; it moves only the station's item state.
+            self._log(nid, "pickup", ev, t_recv, seq=seq, parked=parked)
+            self._on_pickup(ev, t_recv, parked)
+            return
         self._note_pool_life(nid, [ev])            # A36
         self._note_protect(nid, [ev])              # F289
         self._ingest_retired(nid, [ev], t_recv)    # a late fact for the match the operator rolled past
@@ -4525,6 +4736,16 @@ class Session:
                           parked=not self.scorer or ev.get("match_id") != self.scorer.match_id)
                 self._on_operator_result(nid, ev, t_recv)
             events = [ev for ev in events if ev.get("type") != "operator_result"]
+            if not events:
+                return
+        pickups = [ev for ev in events if ev.get("type") == "pickup"]
+        if pickups:
+            # A56: stored, never scored, and kept out of the batch's re-base and SYNC POINT.
+            for ev in pickups:
+                parked = not self.scorer or ev.get("match_id") != self.scorer.match_id
+                self._log(nid, "pickup", ev, t_recv, seq=ev.get("seq"), parked=parked)
+                self._on_pickup(ev, t_recv, parked)
+            events = [ev for ev in events if ev.get("type") != "pickup"]
             if not events:
                 return
         self._note_pool_life(nid, events)          # A36
@@ -4897,6 +5118,8 @@ class Session:
         elif kind == "event_batch":
             self.ingest_batch(nid, body.get("events", []), t_recv)
             return
+        elif kind == "station_action":
+            self._on_station_action(nid, body, t_recv)    # A56 (S58)
         elif kind == "log_offer":
             # A25: the node is telling us what it holds. Record it, then ask (gated by `log_sync` and
             # by the ~1 MB per-node budget, both inside `pull_log`).
@@ -5473,7 +5696,10 @@ class Session:
             # still carries no perk or override -- using it here produced an empty plan: conditional
             # Breacher/Toxin rows never reached any head and A17 stopped the push. The compiler needs
             # the authoritative Player records.
-            self._pinned_hit_plan = fn(list(self.players.values()),
+            # A56: the pickup weapons ride as a stand-in carrier, so every gun's `$SIR` covers their cells.
+            carrier = [cast(Player, {"player_id": "_powerups", "loadout": {"weapons": [
+                {"weapon_id": pu["weapon_id"]} for pu in slots]}})] if (slots := self._powerup_slots()) else []
+            self._pinned_hit_plan = fn(list(self.players.values()) + carrier,
                                        rekey=bool(self.config.get("hit_audio_rekey", False)))
         return self._pinned_hit_plan
 
@@ -5483,7 +5709,7 @@ class Session:
         plan = self._hit_plan()
         if plan is not None:
             kw["plan"] = plan
-        bundle = self.compiler.compile(self.config, p, self.teams, **kw)
+        bundle = self.compiler.compile(self._compile_config(), p, self.teams, **kw)
         rolled = (bundle.get("voice") or {}).get("rolled") if isinstance(bundle, dict) else None
         if rolled:
             import logging
@@ -6531,6 +6757,7 @@ class Session:
         if self.phase == "armed" and self._promote_phase(self.start_info["go_live_t"], now) == "live":
             self._changed()
         self._push_due_roles(now)
+        self._powerup_tick(now)                     # A56: the item spawn schedule (a no-op with the flag off)
         self._operator_no_answer(now)
         tl = self.config.get("time_limit_s")
         # F-2026-09-17c: an ADOPTED match has no config of its own at MC — `tl` is the operator's CURRENT

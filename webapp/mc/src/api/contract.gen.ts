@@ -113,7 +113,7 @@ export type OperatorCmd = 'resync' | 'respawn' | 'relink';
 // ---- kind vocabularies ----
 export const MC_KINDS = ['ack', 'alert', 'apply', 'assign', 'config', 'control', 'feedback', 'join', 'loadout_ack', 'pull_log', 'result', 'score', 'start', 'station_config', 'station_update', 'time_res', 'tutorial', 'welcome'] as const;
 export type McKind = typeof MC_KINDS[number];
-export const NODE_KINDS = ['ack_config', 'bind', 'event', 'event_batch', 'hello', 'loadout_browse', 'loadout_request', 'log_data', 'log_offer', 'ready', 'status', 'time_req'] as const;
+export const NODE_KINDS = ['ack_config', 'bind', 'event', 'event_batch', 'hello', 'loadout_browse', 'loadout_request', 'log_data', 'log_offer', 'ready', 'station_action', 'status', 'time_req'] as const;
 export type NodeKind = typeof NODE_KINDS[number];
 export const CONTROL_CMDS = ['abort_start', 'end', 'panic', 'recall', 'release_utility', 'relink', 'respawn', 'resync'] as const;
 export type ControlCmd = typeof CONTROL_CMDS[number];
@@ -1153,6 +1153,17 @@ export interface StationUpdate {
   next_spawn_in_ms?: number;
 }
 
+/** A56 (S58): a powerup station -> MC, live only (no seq). `reset` = the operator reset the item at the
+ *  station (available NOW; the fixed spawn times do not move). `taken` = the station decided who took it
+ *  (first come at the station); `player_num` names the winner. MC dedupes `taken` against the player's own
+ *  `pickup` fact by station and spawn: whichever arrives first marks the item taken, the second is a no-op. */
+export interface StationAction {
+  id: number;
+  action: 'reset' | 'taken';
+  player_num?: number;
+  t?: number;
+}
+
 export interface StationControl {
   owner?: number;
   progress?: number;
@@ -1196,6 +1207,8 @@ export interface StationView {
   /** A56 (S58): a powerup station's live item state as MC last told it: whether the item is there, and when it next spawns. */
   item_available?: boolean;
   next_spawn_at_ms?: number | null;
+  /** A56: the player_num that took the item this spawn; cleared at the next spawn */
+  taken_by?: number;
 }
 
 /** One assigned utility station's self-authoritative recap heartbeat. */
@@ -1709,6 +1722,7 @@ export const REQUIRED: Record<string, readonly string[]> = {
   ready: ['node_id', 'player_id', 'ready'],
   loadout_request: ['node_id', 'player_id', 'slot', 'kind'],
   loadout_browse: ['node_id', 'player_id', 'open'],
+  station_action: ['id', 'action'],
   welcome: ['session_id', 'server_t', 'seq_hi'],
   assign: ['player', 'team', 'roster'],
   tutorial: ['frames'],
@@ -1735,6 +1749,7 @@ export const EVENT_REQUIRED: Record<string, readonly string[]> = {
   team_change: ['tid'],
   possession: ['hold_ms'],
   operator_result: ['cmd', 'ok'],
+  pickup: ['station_id', 'item_kind'],
 };
 export const ACCEPT_MIN: Record<string, readonly string[]> = {
   result: ['match_id'],

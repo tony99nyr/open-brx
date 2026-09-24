@@ -25,7 +25,7 @@ from .perks import PerkCatalog
 from .policy import SIDEARM_TAG          # F146: one vocabulary for "this is a backup weapon"
 from .types import (MAX_PLAYERS, OBJECTIVE_MODES, STATION_PROTECT_S_DEFAULT, STATION_SOURCES, TIMED_PROTECT_S_DEFAULT,
                     TRIGGER_AFTER_PROTECT_MS, WEAPON_DELAY_MS_DEFAULT, DotSpec, FrameBundle, GameConfig, Health,
-                    HealthPreset, HirCell, PerkEffectsResolved, PerkView, Player, RespawnProfile, StationProtectS, Team,
+                    HealthPreset, HirCell, PerkEffectsResolved, PerkView, Player, PowerupSlot, RespawnProfile, StationProtectS, Team,
                     TimedProtectS, ValuePair, VoiceOption, WeaponDelayMs, Weapon, parse_app_ver, parse_win_by)
 from . import presentation as _pres
 from .. import poolgauge as pg
@@ -1868,6 +1868,35 @@ class Compiler:
         held = {int(t["tid"]) for t in teams}
         return next((tid for tid in range(4) if tid not in held), None)
 
+    def _pickup_slots(self, config: GameConfig) -> list[PowerupSlot]:
+        """A56 (S58): `config.powerups`, checked. Each row names a catalogued weapon and a spare slot (2 or 3),
+        and no slot is used twice. A bad row is refused rather than armed into a slot the loadout owns."""
+        from .powerups import PICKUP_SLOTS
+        rows = config.get("powerups") or []
+        if not isinstance(rows, list):
+            raise ValueError("powerups must be a list of {weapon_id, slot}")
+        out: list[PowerupSlot] = []
+        for r in rows:
+            wid = r.get("weapon_id") if isinstance(r, dict) else None
+            slot = r.get("slot") if isinstance(r, dict) else None
+            if not isinstance(wid, str) or wid not in self.catalog._by_id:
+                raise ValueError(f"powerups: unknown weapon_id {wid!r}")
+            if isinstance(slot, bool) or slot not in PICKUP_SLOTS:
+                raise ValueError(f"powerups: slot must be one of {list(PICKUP_SLOTS)}, not {slot!r}")
+            if any(o["slot"] == slot for o in out):
+                raise ValueError(f"powerups: slot {slot} is used twice")
+            out.append({"weapon_id": wid, "slot": slot})
+        return out
+
+    @staticmethod
+    def _pickup_carrier(pickups: list[PowerupSlot]) -> list[Player]:
+        """A stand-in roster row that 'carries' the pickup weapons, so the A17 hit plan (and so every gun's
+        `$SIR` table) covers them: a pickup hit on a cell no gun has a row for would be dropped in silence."""
+        if not pickups:
+            return []
+        return [cast(Player, {"player_id": "_powerups", "loadout": {"weapons": [{"weapon_id": pu["weapon_id"]}
+                                                                              for pu in pickups]}})]
+
     def _weapon_ids(self, player: Player) -> tuple[str, str | None]:
         """(primary, secondary-or-None). A10: no silent default secondary — an empty slot 1 is what the host
         asked for (ALT then falls back to reload; hardware-verified, loadout.md §2)."""
@@ -2335,8 +2364,11 @@ class Compiler:
         # bundle, tests, `bundle_for`) gets an in-place plan built from THIS player's weapons: sounds only,
         # nothing re-keyed, so a per-player plan can never disagree about which cells exist.
         hits_rng = roll if roll is not None else _random.Random(0)     # None = deterministic, for the golden bundle
+        # A56 (S58): the pickup weapons MC armed for this game (`GameConfig.powerups`, set by the session only
+        # under `--powerups`). Absent = none, and then nothing below changes a single frame.
+        pickups = self._pickup_slots(config)
         if plan is None:
-            plan = self.hit_plan([player], rekey=False)
+            plan = self.hit_plan([player, *self._pickup_carrier(pickups)], rekey=False)
         # head — config, per player, SILENT (no $SPAWN, no $PLAY,VA81); ends with $TID (§1.1)
         env = config.get("environment")
         _gset = gc._gset()
@@ -2351,6 +2383,12 @@ class Compiler:
         if w1:
             head.append(self._rekey(self.catalog.resolve(w1, 1, swap_mods, environment=env), plan.cell_for(w1)))   # slot 1 only when a secondary exists (A10)
         head.append(self._rekey(self.catalog.resolve("melee", 4, swap_mods, environment=env), plan.cell_for("melee")))
+        # A56: each pickup weapon in its spare slot with its normal `$WEAP` tokens. It is LOCKED by the empty
+        # magazine below and by the ALT `$BMAP` cycle, which stays 0/1 only (`gc._bmap()` is not touched): the
+        # player's own phone unlocks it at the station with a mid-life `$AMMO` + `$BMAP` (powerups.md).
+        for pu in pickups:
+            head.append(self._rekey(self.catalog.resolve(pu["weapon_id"], pu["slot"], swap_mods, environment=env),
+                                    plan.cell_for(pu["weapon_id"])))
         bmap = list(gc._bmap())
         if not w1 and not gc.alt_reload:
             # Empty slot 2 (A10 §2): with one $WEAP slot loaded, weapon-cycle (fn 100) has nothing to cycle to and
@@ -2409,6 +2447,9 @@ class Compiler:
         if w1:
             smag, sres = self.catalog.spawn_ammo(w1)
             ammo.append(f"$AMMO,1,{smag},{sres},1,*")
+        # A56: a pickup slot's magazine and reserve are 0 at every spawn and revive, so an item never carries
+        # into the next life (`powerups.LOST_AT_DEATH`) even if the gun would restore it after `$SPAWN`.
+        ammo += [f"$AMMO,{pu['slot']},0,0,1,*" for pu in pickups]
 
         # spawn = $PLAYX,0 -> $SPAWN -> $AMMOs -> $BMAP,0,0 (the T-0 tail; M-START wraps VA81 + $SFLASH)
         # ... + the headset team colour LAST. Bench 2026-09-03 (hled_spawned.py): `$SPAWN` CLEARS
