@@ -33,7 +33,7 @@ from .tunnel import TunnelError
 from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS,
                     OBJECTIVE_MODES, OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_KINDS, STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S,
-                    STATION_LOCK_MAX_S, STATION_REBOOT_SLACK_MS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, Event,
+                    STATION_LOCK_MAX_S, STATION_REBOOT_SLACK_MS, STATUS_HEARTBEAT_MS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, Event,
                     ConfigView, Coverage, EndDeliveryRow, EndDeliveryView, FrameBundle, GameAnnouncementView, GameConfig,
                     KitView, LanPublic, LanView, LobbyAck, LobbyView, Loadout, LoadoutOverrides, LoadoutPolicy,
                     LoadoutPool, McConfidence, NoticesView, OperatorActionResult, OperatorCmd, PerkView, ModeInfo, Phase, PhaseRefusalBody, Player,
@@ -3076,7 +3076,7 @@ class Session:
                     self._departed_match_stations[nid] = rec
             slots_before = self._powerup_slots()
             st["assigned"], st["armed"], st["arm_pending"] = None, None, False
-            for k in ("lock", "lock_game", "locked_since", "unlocked_at", "restarts"):
+            for k in ("lock", "lock_game", "locked_since", "unlocked_at", "restarts", "tally"):
                 st.pop(k, None)                # A58: a release unlocks the Stick too (utility.md)
             self._after_station_change(slots_before)   # the survivors' valid_ids shrink
             self._validate()                       # ...and the SETUP warnings tell the truth again
@@ -3201,6 +3201,33 @@ class Session:
         when = boot_at if boot_at is not None else t_recv
         if new and since is not None and when >= since and (until is None or when <= until):
             st["restarts"] = st.get("restarts", 0) + new
+
+    def _keep_station_tally(self, st: dict, t_recv: int) -> None:
+        """A58 (brx4): a restarted Stick resumes its tally from the one saved at its last capture, so a report can
+        DROP mid-match. A station's count within one game only grows, so MC keeps the per-team maximum of
+        `control.hold_ms` and the largest `revives` for the game the station is armed with, and writes them back
+        into the report. A new game or a new assignment starts clean; a beat within one heartbeat of that arming may
+        still carry the old tally, so it passes through without seeding the new one (a beat later than that, from a
+        station slow to apply the arming, can still seed it: a small race the self-authoritative design accepts)."""
+        armed = st.get("armed") or {}
+        game, rep = armed.get("game"), st["report"]
+        if game is None or t_recv < (armed.get("at") or 0) + STATUS_HEARTBEAT_MS:
+            return
+        key = [game, armed.get("kind"), armed.get("id")]   # a re-assigned station is a new tally, same game or not
+        tally = st.get("tally")
+        if not tally or tally.get("key") != key:
+            tally = st["tally"] = {"key": key, "hold_ms": {}, "revives": None}
+        control = rep.get("control")
+        hold = control.get("hold_ms") if isinstance(control, dict) else None
+        if isinstance(hold, dict):
+            for tid, ms in hold.items():
+                if isinstance(ms, int) and not isinstance(ms, bool) and ms > tally["hold_ms"].get(tid, -1):
+                    tally["hold_ms"][tid] = ms
+            rep["control"] = {**control, "hold_ms": {**hold, **tally["hold_ms"]}}
+        rv = rep.get("revives")
+        if isinstance(rv, int) and not isinstance(rv, bool):
+            tally["revives"] = max(rv, tally["revives"] or 0)
+            rep["revives"] = tally["revives"]
 
     def unlock_stations(self) -> dict:
         """A58 `POST /api/stations/unlock`: `lock_s: 0` to every assigned station now. A muster station out of
@@ -3988,6 +4015,7 @@ class Session:
                                                      "armed", "control", "battery", "uptime_s", "boot_count", "assoc")
                             if k in body}
             self._note_station_boot(st, body, t_recv)   # A58: before last_seen moves, a restart is judged on this beat
+            self._keep_station_tally(st, t_recv)
             st["last_seen_ms"] = t_recv
             if body.get("app_ver"):                # roadmap A3: the heartbeat, not just the hello, keeps this fresh
                 st["app_ver"] = body["app_ver"]
