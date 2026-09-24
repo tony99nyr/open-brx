@@ -91,7 +91,7 @@ reordered `$BUT,0,0`); 3.2 the Shotgun and Desert Eagle PASS on the median fire 
 `fire_ms`); the Burst Rifle's between-burst gap is INCONCLUSIVE, a hand pull cannot separate the true `t23` gap
 from its own cadence, so `bench-2026-09-24.md` 3.2 now calls for a fixed-rhythm rig pull.
 - **Next bench task:** Block 3.3 onward of [`bench-2026-09-24.md`](bench-2026-09-24.md).
-- **Next desk task:** build F293's proposed fix and re-measure; find what breaks the CSS at WebView 83 (F334).
+- **Next desk task:** brx5 builds F293's fix (disconnect-and-wait on `?`); re-measure it with step 1.4. F334 closed: the WebView floor is 111 (`d373c1ae`).
 - **Blocked:** F270 on A8.
 ## Lane: Mission Control console honesty
 2026-09-24: 0.4.6 published; F318, F108, F325, F133, F52, K8 closed. **Next:** bench F309/F311/F312; 0.4.7 cut on brx1's word.

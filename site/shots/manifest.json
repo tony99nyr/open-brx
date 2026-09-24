@@ -1,5 +1,5 @@
 {
-  "taken": "2026-09-24T13:46:54.113Z",
+  "taken": "2026-09-24T15:02:40.747Z",
   "mc_src": "3b1b8ba8759d8a4e4e9156388e22f49c76bdae1a",
   "hud_src": "5c5ce37ecc75af3583e32f532aebdce16715659a",
   "mc_shell": "9ea5c65bbafd244cb934229dd67dd1de33c5c2a6",
@@ -38,7 +38,7 @@
     "hud-hit.jpg": {
       "w": 891,
       "h": 411,
-      "bytes": 91246
+      "bytes": 91346
     },
     "hud-down.jpg": {
       "w": 891,
