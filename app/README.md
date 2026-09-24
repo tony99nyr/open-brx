@@ -105,6 +105,9 @@ regenerated platform would wipe: iOS Local-Network + Bonjour + ATS local network
 background mode + landscape; Android cleartext + Wi‑Fi/network-state + foreground-service + landscape.
 The BLE-without-location fix is there too. **These are not optional** — without them `ws://` to a
 private IP silently never opens, or a BLE scan returns nothing.
+Android 11 and older (API 30 and lower) are different: there a BLE scan finds nothing while the system
+Location toggle is off, whatever the manifest says. The picker checks this (`src/location.js`, F340) and shows
+TURN ON LOCATION TO FIND YOUR TAGGER with a button to the Location settings. Android 12+ and iOS skip the check.
 
 ## Prerequisites
 

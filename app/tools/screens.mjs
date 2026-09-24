@@ -526,6 +526,38 @@ for (const view of VIEWS) {
     await pg.close();
     must(after > before.logLen, 'tapping TURN ON BLUETOOTH left no trace — the control looks dead');
   });
+  // F340 (bench 2026-09-24, Android 11): with Location services off the scan found nothing and the picker said
+  // "No guns found". It now names the cause and offers the one fix, day and night.
+  for (const skin of ['', '&night']) await step(`${view.name} F340 picker-location-off${skin}: TURN ON LOCATION, why, and OPEN LOCATION SETTINGS that calls the plugin`, async () => {
+    const pg = await open(view, 'picker-location-off', skin);
+    const r = await pg.evaluate(() => {
+      const sc = (document.getElementById('frame').getBoundingClientRect().width / 844) || 1;   // frame px, as the A56 steps
+      const vis = e => { if (!e) return false; for (let n = e; n && n.id !== 'frame'; n = n.parentElement) { const c = getComputedStyle(n); if (c.display === 'none' || c.visibility === 'hidden' || +c.opacity < .3) return false; } const b = e.getBoundingClientRect(); return b.width > 0 && b.height > 0; };
+      const head = document.querySelector('.idle .locoff .sc'), body = document.querySelector('.idle .locoff .locwhy'), btn = document.querySelector('.idle [data-act="onOpenLocationSettings"]');
+      const px = e => e ? parseFloat(getComputedStyle(e).fontSize) : 0;
+      return { env: (document.querySelector('[data-env]') || { dataset: {} }).dataset.env || 'day',
+        head: head && vis(head) ? head.textContent.trim() : null, headPx: px(head),
+        body: body && vis(body) ? body.textContent.trim() : null, bodyPx: px(body),
+        btn: btn && vis(btn) ? btn.textContent.trim() : null, btnPx: px(btn), btnH: btn ? Math.round(btn.getBoundingClientRect().height / sc) : 0, btnW: btn ? Math.round(btn.getBoundingClientRect().width / sc) : 0,
+        rows: document.querySelectorAll('.idle .tagrow').length, none: vis(document.querySelector('.idle .nonefound')) };
+    });
+    must(r.env === (skin ? 'night' : 'day'), 'the skin did not apply: ' + JSON.stringify(r));
+    must(r.head === 'TURN ON LOCATION TO FIND YOUR TAGGER', 'headline: ' + JSON.stringify(r));
+    must(/Android 11 and older/.test(r.body || '') && /Location on/.test(r.body || ''), 'the why line: ' + JSON.stringify(r));
+    must(r.btn === 'OPEN LOCATION SETTINGS', 'the button: ' + JSON.stringify(r));
+    must(r.btnH >= 56 && r.btnW >= 56, 'OPEN LOCATION SETTINGS is under the 56 px tap target: ' + JSON.stringify(r));
+    must(r.headPx >= 11 && r.bodyPx >= 11 && r.btnPx >= 14, `type floors: head ${r.headPx}, body ${r.bodyPx}, action ${r.btnPx}`);
+    must(r.rows === 0 && !r.none, '"No guns found" or rows show with Location off: ' + JSON.stringify(r));
+    const bad = await invariants(pg); must(bad.length === 0, bad.join(';'));
+    await pg.evaluate(() => { window.__locCalls = 0; window.brx.link.ble.openLocationSettings = async () => { window.__locCalls++; }; });
+    await pg.click('.idle [data-act="onOpenLocationSettings"]'); await pg.waitForTimeout(200);
+    const calls = await pg.evaluate(() => window.__locCalls);
+    must(calls === 1, 'tapping OPEN LOCATION SETTINGS did not call openLocationSettings: ' + calls);
+    await pg.evaluate(() => window.brxDemo.locationOn()); await pg.waitForTimeout(300);
+    const back = await pg.evaluate(() => ({ loc: !!document.querySelector('.idle .locoff'), list: !!document.querySelector('.idle .list') }));
+    await pg.close();
+    must(!back.loc && back.list, 'Location back on did not return the picker to its list: ' + JSON.stringify(back));
+  });
   await step(`${view.name} #4 connected: URL field, SCAN QR and the hint sit on one centre line`, async () => {
     const pg = await open(view, 'connected'); const ys = await pg.evaluate(() => ['.mcin', '.qrbtn', '.note.join'].map(s => { const r = document.querySelector(s).getBoundingClientRect(); return r.top + r.height / 2; })); await pg.close();
     must(Math.max(...ys) - Math.min(...ys) < 6, 'centres ' + ys.map(Math.round).join(','));

@@ -178,6 +178,30 @@ static void test_home_vs_stats_and_default_hint() {
 }
 
 // ---- an unassigned, unarmed link shows JOINING while at home ---------------------------------
+static void test_respawn_redeploy_flash() {
+  StickState s;
+  s.at_home = true;
+  s.link_state = LinkState::ASSIGNED;
+  s.assignment_present = true;
+  s.respawn_present = true;
+  s.respawn_live = true;
+  s.respawn_revives = 3;
+  CHECK(compute_screen(s).kind == ScreenKind::RESPAWN_OWNED);
+  s.respawn_redeploy = true;  // a revive just happened: the green flash, carrying the new count
+  ScreenSpec f = compute_screen(s);
+  CHECK(f.kind == ScreenKind::RESPAWN_REDEPLOY);
+  CHECK_EQ(f.revives, 3);
+}
+
+static void test_welcomed_unassigned_shows_linked_waiting() {
+  StickState s;
+  s.at_home = true;
+  s.link_state = LinkState::WELCOMED;
+  CHECK(compute_screen(s).kind == ScreenKind::SCR_LINKED_WAITING);
+  s.link_state = LinkState::LOOKING_FOR_MC;
+  CHECK(compute_screen(s).kind == ScreenKind::SCR_JOINING);
+}
+
 static void test_unassigned_link_shows_joining() {
   StickState s;
   s.at_home = true;
@@ -377,6 +401,8 @@ int main() {
   test_low_battery_takes_priority();
   test_home_vs_stats_and_default_hint();
   test_unassigned_link_shows_joining();
+  test_welcomed_unassigned_shows_linked_waiting();
+  test_respawn_redeploy_flash();
   test_unrun_kind_shows_assigned_not_fake_gameplay();
   test_ble_hill_picks_neutral_capturing_losing_stalled_contested_and_held();
   test_bench_hill_is_unchanged_by_the_bluetooth_hill();

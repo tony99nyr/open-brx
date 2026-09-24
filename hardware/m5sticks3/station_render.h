@@ -340,6 +340,12 @@ inline void drawSystem(M5Canvas& c, const ScreenSpec& s) {
       fitCenterText(c, SCREEN_W / 2, 100, "BY MISSION CONTROL", SCREEN_W - 20, {&fonts::FreeSansBold9pt7b}, COL_MUT);
       break;
     }
+    case ScreenKind::SCR_LINKED_WAITING:
+      drawKicker(c, "SYSTEM");
+      fitCenterText(c, SCREEN_W / 2, 52, "LINKED", SCREEN_W - 20,
+                    {&fonts::FreeSansBold24pt7b, &fonts::FreeSansBold18pt7b}, COL_NUM);
+      fitCenterText(c, SCREEN_W / 2, 96, "ASSIGN ME IN MC", SCREEN_W - 20, {&fonts::FreeSansBold9pt7b}, COL_MUT);
+      break;
     case ScreenKind::SCR_JOINING: {
       drawKicker(c, "SYSTEM");
       fitCenterText(c, SCREEN_W / 2, 46, "LOOKING FOR", SCREEN_W - 20, {&fonts::FreeSansBold18pt7b}, COL_NUM);
@@ -417,6 +423,13 @@ inline void renderScreen(M5Canvas& canvas, const ScreenSpec& spec) {
       fitCenterText(canvas, SCREEN_W / 2, 58, "NO WI-FI", SCREEN_W - 20,
                     {&fonts::FreeSansBold24pt7b, &fonts::FreeSansBold18pt7b}, COL_NUM);
       fitCenterText(canvas, SCREEN_W / 2, 100, "SET IT OVER USB", SCREEN_W - 20, {&fonts::FreeSansBold9pt7b}, COL_MUT);
+      break;
+    case ScreenKind::RESPAWN_REDEPLOY:
+      fillMain(canvas, rgb(20, 170, 70));
+      fitCenterText(canvas, SCREEN_W / 2, 58, "REDEPLOY", SCREEN_W - 20,
+                    {&fonts::FreeSansBold24pt7b, &fonts::FreeSansBold18pt7b}, rgb(255, 255, 255));
+      fitCenterText(canvas, SCREEN_W / 2, 102, "REVIVES " + std::to_string(spec.revives), SCREEN_W - 20,
+                    {&fonts::FreeSansBold12pt7b}, rgb(255, 255, 255));
       break;
     case ScreenKind::BRIDGE_WAITING:
       drawKicker(canvas, "BRIDGE");

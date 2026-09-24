@@ -71,7 +71,7 @@ struct StationAssignment {
   std::string kind;  // "respawn" | "powerup" | "extraction" | "bomb" | "control"
   int team = 255;     // TEAM_ANY
   int id = 0;
-  int threshold = -74;  // dBm; parse_station_config resolves 0/absent to STICK_DEFAULT_THRESHOLD_DBM
+  int threshold = -57;  // dBm; parse_station_config resolves 0/absent to STICK_DEFAULT_THRESHOLD_DBM
   bool threshold_defaulted = false;  // MC sent 0/absent: `threshold` is the Stick's default, not MC's
   int game = 0;         // per-match byte; 0 = "any" (v1, unscoped)
   std::vector<int> valid_ids;
@@ -179,7 +179,7 @@ struct StatusFields {
   std::string kind = "respawn";  // the current advert kind, whatever MC last armed (or the default)
   int team = 255;
   int station_id = 0;
-  int threshold = -74;
+  int threshold = -57;
   bool live = false;    // currently advertising
   bool armed = false;   // MC has armed this station (a station_config was applied)
   int battery_pct = -1; // -1 = absent (no battery reading yet)
@@ -306,10 +306,11 @@ inline StationItem parse_item(const json::Value& v) {
 // answers 0 for both -- means "use the Stick's own default", not "an RSSI floor of literally 0
 // dBm" (which would always be true and defeat the point of a threshold). An MC value other than 0
 // overrides it. This is a placeholder pending a bench measurement (README).
-// -74 dBm, the phone utility station's default (utility.js DEFAULTS.threshold, bench-tuned 2026-09-04). It is
+// -57 dBm, the StickS3's platform default (Tony, 2026-09-24, walked at 3-5 m: "the stick actually works better";
+// a phone station defaults to -70). It is
 // also what the Stick advertises in byte 14, and a player's phone measures a respawn station against byte 14
 // (beacon.js Presence), so the Stick must advertise the same value it measures by.
-constexpr int STICK_DEFAULT_THRESHOLD_DBM = -74;
+constexpr int STICK_DEFAULT_THRESHOLD_DBM = -57;  // Tony, 2026-09-24, after walking both stations at 3-5 m
 
 // Required per contracts.md §5 (`REQUIRED["station_config"]`): kind, team, id. `threshold`/`game`/
 // `valid_ids`/`item` are optional (utility.md §5c, A56).
@@ -471,11 +472,11 @@ inline uint8_t station_kind_byte(const std::string& kind) {
 
 // ---- the presence threshold (hill + respawn) -------------------------------------------------------
 // The threshold a Bluetooth station measures PLAYERS against. MC's value when it sent one; when it sent
-// 0/absent, the phone station's own default (utility.js DEFAULTS.threshold, -74 dBm), so a Stick hill
-// or respawn station behaves like a phone station. The advertised byte 14 is the same -74
+// 0/absent, the StickS3's own platform default (-57 dBm, Tony), measured and advertised alike.
+// The advertised byte 14 is the same -57
 // (STICK_DEFAULT_THRESHOLD_DBM), and the pickup claim keeps its -80 floor (ClaimGate).
 inline int presence_threshold_dbm(const StationAssignment& a) {
-  return a.threshold_defaulted ? PRESENCE_DEFAULT_THRESHOLD_DBM : a.threshold;
+  return a.threshold_defaulted ? STICK_DEFAULT_THRESHOLD_DBM : a.threshold;
 }
 
 // ---- the saved hill owner (F332: a restart must not wipe an enemy hold) ----------------------------

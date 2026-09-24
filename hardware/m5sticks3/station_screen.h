@@ -106,6 +106,7 @@ inline std::string format_mmss(uint32_t total_seconds) {
 enum class ScreenKind : uint8_t {
   HILL_NEUTRAL,
   SCR_NO_WIFI,  // no Wi-Fi set (bench mode): not a station yet, so it claims to be none
+  RESPAWN_REDEPLOY,  // a revive just happened: the green flash, then back to RESPAWN_OWNED
   BRIDGE_WAITING,  // bench BRIDGE mode with no live grenade beacon: nothing to repeat yet
   HILL_HELD,
   HILL_CAPTURING,
@@ -119,6 +120,7 @@ enum class ScreenKind : uint8_t {
   SCR_SETTINGS,
   SCR_ASSIGNED,
   SCR_JOINING,
+  SCR_LINKED_WAITING,  // welcomed by MC, no station assigned yet: "LINKED / ASSIGN ME IN MC"
   SCR_LOW_BATTERY,
   SCR_STATS,
   SCR_RESET_CONFIRM,
@@ -251,6 +253,7 @@ struct StickState {
   bool respawn_present = false;
   int respawn_team = 255;       // the assignment's team; 255 = any team
   uint32_t respawn_revives = 0;
+  bool respawn_redeploy = false;  // a revive just happened here: flash green REDEPLOY (Tony, 2026-09-24)
   bool respawn_live = false;    // the BLE advert is actually up
 
   // powerup (A56, station_link.h's PowerupSchedule)
@@ -440,12 +443,19 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
       spec.kind = ScreenKind::RESPAWN_OWNED;
       spec.respawn_team = (s.respawn_team >= 0 && s.respawn_team <= 3) ? s.respawn_team : -1;
       spec.revives = (int)s.respawn_revives;
+      if (s.respawn_redeploy) spec.kind = ScreenKind::RESPAWN_REDEPLOY;
     }
     return spec;
   }
   if (s.assignment_present) {
     spec.kind = ScreenKind::SCR_ASSIGNED;
     spec.assigned_role = s.stats_kind_label;
+    return spec;
+  }
+  // Linked but not assigned (bench 2026-09-24: the screen said LOOKING FOR MISSION CONTROL while MC
+  // already listed the Stick). Only the states before the welcome are "looking".
+  if (s.link_state == LinkState::WELCOMED) {
+    spec.kind = ScreenKind::SCR_LINKED_WAITING;
     return spec;
   }
   spec.kind = ScreenKind::SCR_JOINING;

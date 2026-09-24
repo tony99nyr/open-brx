@@ -46,7 +46,7 @@ scan, 1 s windows every 1.2 s, beside its own advert. The rules are ports of the
   counts revives (a present player's alive bit going 0 to 1), reported as `revives` in the status.
 - **Pickup**: unchanged.
 
-Hill and respawn presence use MC's threshold, or the phone's -74 dBm when MC sends none (the pickup
+Hill and respawn presence use MC's threshold, or the Stick's -57 dBm (Tony, 2026-09-24) when MC sends none (the pickup
 claim keeps its -80 dBm floor). A hill's owner is saved in NVS on each change of hands (never on a
 progress tick), tagged with the game and station id, so a Stick restarted from its restored config
 comes back held by that owner with the possession tally saved at that change (F332). The save is
@@ -327,7 +327,7 @@ only drops the current socket and association; it does not forget the saved SSID
 command, if one is ever added, would be the other way back to the button toggle.
 
 **THRESHOLD.** `0` in `station_config.threshold` (or the key absent) means "use the Stick's own
-default", **-74 dBm**, the phone station's default (`STICK_DEFAULT_THRESHOLD_DBM`), which is also what the Stick advertises; any other value from
+default", **-57 dBm**, the StickS3's default (`STICK_DEFAULT_THRESHOLD_DBM`, Tony 2026-09-24; a phone station uses -70), which is also what the Stick advertises; any other value from
 MC overrides it. Not yet bench-measured against a real player phone.
 
 **Bench to confirm, all of it:** the mDNS query actually resolving MC on the field router; the

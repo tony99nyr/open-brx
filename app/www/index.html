@@ -675,6 +675,10 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .tagrow .sig b{color:var(--mut);font-size:11px;margin-left:6px;font-weight:700}
 .tagrow .inuse{display:inline-block;transform:skewX(6deg);color:var(--warn);font-size:11px;font-weight:700;letter-spacing:.1em}
 .idle .help{font-size:12px;color:var(--mut);line-height:1.5;margin-top:auto}
+/* F340: the Location-off state (Android 11 and older). A 56 px action, a 13 px reason line. */
+.idle .locoff{display:flex;flex-direction:column;gap:12px;flex:1;padding-right:40px;box-sizing:border-box}   /* clears the day/night switch in the right gutter */
+.idle .locoff .locwhy{font-size:13px;line-height:1.5;color:var(--bad)}
+.idle .r .bigbtn.locbtn{height:56px;width:auto;align-self:flex-start;padding:0 20px;font-size:15px;letter-spacing:.12em}
 .idle .list{display:flex;flex-direction:column;gap:10px;overflow:hidden auto;max-height:230px;padding:0 4px}
 /* F258: the picker's boxes are fixed and patched in place, so `hidden` has to beat the class rules
    that set an explicit display (a UA `[hidden]{display:none}` loses to `.tagrow .sig` and friends).

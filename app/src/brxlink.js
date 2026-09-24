@@ -339,6 +339,15 @@ export class BrxLink {
     try { await this.ble.openBluetoothSettings(); return true; } catch (e) { this._log('open bluetooth settings: ' + (e && e.message || e), 'le'); return false; }
   }
 
+  /** F340, Android only: whether Location services are on. A failure is NOT swallowed here: the caller
+   *  (location.js `locationBlocked`) logs it and scans anyway. */
+  async isLocationEnabled() { return !!(await this.ble.isLocationEnabled()); }
+  /** F340, Android only: open the OS Location settings page. */
+  async openLocationSettings() {
+    if (typeof this.ble.openLocationSettings !== 'function') return false;
+    try { await this.ble.openLocationSettings(); return true; } catch (e) { this._log('open location settings: ' + (e && e.message || e), 'le'); return false; }
+  }
+
   _log(m, cls) { this.log(m, cls); }
   _note(dir, f) { this.frames.push({ t: Date.now(), dir, f }); if (this.frames.length > 60) this.frames.shift(); }
 

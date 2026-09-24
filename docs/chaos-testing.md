@@ -9,8 +9,8 @@ F329), and one open limit (F330).
 A chaos run stands up the real Session, NetServer, Compiler and session store in one process. The field is
 2 to 20 MockNodes on the real WebSocket. The run plays a match through a seeded sequence of actions:
 
-- combat: hits (multi-word shots too), kills, same-tick trades, team kills, respawns;
-- the wire: node drops and batch flushes, duplicate and reordered facts, malformed bytes;
+- combat: hits (multi-word shots too), kills, same-tick trades, team kills, deaths to an unrostered shooter, respawns;
+- the wire: node drops and batch flushes, duplicate, resent and reordered facts, malformed bytes;
 - the phones: clock jumps and jitter, late joins, stale heads, stale match ids, possession reports;
 - MC itself: a clean restart, a crash, the operator's END and the time limit.
 
@@ -61,6 +61,14 @@ They are in `invariants.py`. Each one applies to every scenario.
 - `possession_is_max_merged`: KOTH possession is the highest cumulative report per team, never a sum.
 - `game_byte_matches_stations`: a connected node that holds MC's current head holds the game byte MC arms
   its stations with (`config.game_byte` equals `station_config.game`), across restarts and crashes.
+- `kill_feedback_matches_credit`: every `feedback` of kind `kill` that a node receives matches exactly one
+  kill credited to that node's player in the ledger. MC sends no cue for a death that nobody is credited
+  with (an unknown or unrostered shooter, a self-kill, a team kill), and never two cues for one kill
+  (a resend, a duplicate, a restart, a resume). The rule is one-way: the cues are a subset of the credited
+  kills. MC skips a cue by design when a kill is older than `FEEDBACK_MAX_AGE_MS` on arrival, when the
+  victim's node never synced its clock, in a replay, and when the killer's node has no socket. A kill
+  that MC cued live and a late fact then parked (the fact moved a frag-cap end earlier) still counts.
+  The scenario `unknown-shooter-no-kill-cue` checks the other direction (`every_kill_cued`).
 - At the end: `ends_exactly_once`, `frag_cap_ends_match` and `recap_equals_board`.
 - The runner adds `field_settles`: every connected node has its facts acknowledged after each step.
 

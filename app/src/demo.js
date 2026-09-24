@@ -5,6 +5,7 @@ import golden from '../../mcp/brx_mcp/mc/golden_bundle.json';
 import { DEMO_WEAPONS, DEMO_PERKS } from './demo-catalog.js';   // a COPY of the server catalog shape (regenerate from weapons.json when it changes)
 import { GunPicker } from './gunpicker.js';   // F258: the stage drives the picker the phone drives
 import { NUS } from './brxlink.js';
+import { locationCheck } from './location.js';   // F340: the stage runs the phone's own Location check
 
 // ?demo            scripted match (kit → arm → live → down → redeploy…)
 // ?demo&kit        stops at KITTED so the LOADOUT browser can be explored (fake MC answers picks after ~300 ms)
@@ -247,6 +248,13 @@ export function startDemo({ engine, log }) {
       // F211: the picker with Bluetooth off (docs/archive/game-test-2026-09-13.md C2). `platform` defaults to 'web'
       // (no enable/settings buttons — iOS has neither); pass 'android' for the button variant.
       bluetoothOff: (platform) => { const h = hud(); if (h) { h.bluetoothOn = false; if (platform) h.platform = platform; h.setScan([]); h.render(engine.state()); } },
+      // F340: Android 11 with Location services off. The phone's own `locationCheck` runs with a plugin that answers
+      // off (then on), so the stage shows what that check writes, not a hand-set flag.
+      locationOff: async () => { const h = hud(); if (!h) return; h.platform = 'android'; h.setScan([]);
+        await locationCheck({ platform: () => 'android', sdk: () => 30, probe: async () => false, hud: h, log })(); h.render(engine.state()); },
+      locationOn: async () => { const h = hud(); if (!h) return;
+        const { cleared } = await locationCheck({ platform: () => 'android', sdk: () => 30, probe: async () => true, hud: h, log })();
+        if (cleared) { h.scanActive = true; h.setScan([]); } h.render(engine.state()); },
       // kit-out
       assign: () => engine.onMcMessage({ kind: 'assign', body: { player, team, roster, catalog, policy, game } }),
       kitOpen: open => { policy.kit_open = open; ev.assign(); },
@@ -501,6 +509,7 @@ export function startDemo({ engine, log }) {
       'idle-assigned':     [[0, () => ev.scanNoisy('BRAVO')]],   // MC told this phone which gun it carries
       'idle-bt-off':         [[0, () => ev.bluetoothOff()]],           // F211: no enable/settings buttons (iOS-like)
       'idle-bt-off-android': [[0, () => ev.bluetoothOff('android')]],  // F211: TURN ON BLUETOOTH + BLUETOOTH SETTINGS
+      'picker-location-off': [[0, () => ev.locationOff()]],             // F340: Android 11, Location off: TURN ON LOCATION
       'connected':         [[0, 'linkGun'], [50, () => ev.battery(82)]],
       // F137 (field 2026-09-12): MC binds while the player still sits on the pre-kit CONNECTED screen —
       // the one case that used to need an UNRELATED field to also change before the screen ever caught up.

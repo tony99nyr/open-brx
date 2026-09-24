@@ -30,7 +30,7 @@ from ..modes.registry import default_params as _default_params, params_schema_js
     validate_mode_params as _validate_mode_params, \
     requires_coverage as _requires_coverage                        # A18: the mode's own rules, engine-declared
 from .tunnel import TunnelError
-from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS,
+from .types import (PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM, PHONE_THRESHOLD_ZERO_APP, CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS,
                     OBJECTIVE_MODES, OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_KINDS, STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S,
                     STATION_LOCK_MAX_S, STATION_REBOOT_SLACK_MS, STATUS_HEARTBEAT_MS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, Event,
@@ -2980,9 +2980,11 @@ class Session:
         clash = next((n for n, st in self.stations.items() if n != nid and (st.get("assigned") or {}).get("id") == sid), None)
         if clash:
             raise ValueError(f"station id {sid} is already assigned to {clash}; ids must be unique on the field")
-        thr = a.get("threshold", -74)
-        if not (isinstance(thr, int) and not isinstance(thr, bool) and -100 <= thr <= -30):
-            raise ValueError("threshold must be an integer dBm in -100..-30 (the presence bubble; -74 ≈ 10 ft at high TX)")
+        # F345: 0 (and absent) = the station's own PLATFORM default, which it advertises in byte 14 (a respawn
+        # station: a phone -66, a StickS3 -60, both about 3 m). Any other value is the operator's override.
+        thr = a.get("threshold", 0)
+        if not (isinstance(thr, int) and not isinstance(thr, bool) and (thr == 0 or -100 <= thr <= -30)):
+            raise ValueError("threshold must be 0 (the station's own default) or an integer dBm in -100..-30 (the presence bubble)")
         # Only a phone that said hello as a UTILITY node can be a station. A player's HUD ignores
         # `station_config`, and assigning it would advertise a station id to every player that nothing
         # on the field emits (review 2026-09-11).
@@ -3121,6 +3123,20 @@ class Session:
             if nid and pid in self.bundles:
                 self.net.push(nid, "config", {"config": cfg, "frames": self.bundles[pid], "roster": roster})
 
+    @staticmethod
+    def _wire_threshold(nid: str, st: dict, a: StationAssignment) -> int:
+        """F345: the `station_config.threshold` one station is sent. 0 means "your own platform default", but a phone
+        app older than PHONE_THRESHOLD_ZERO_APP clamps 0 to -30 dBm (a few cm: no revive is possible). Such a phone,
+        or one whose version MC cannot parse, gets the explicit value instead: the new phone respawn default for a
+        respawn station, the old -74 for any other kind. A StickS3 (platform `esp32`) has always read 0 correctly."""
+        thr = a["threshold"]
+        if thr != 0 or st.get("platform") == "esp32" or nid.startswith("stick-"):
+            return thr
+        v = parse_app_ver(st.get("app_ver"))
+        if v is not None and v >= PHONE_THRESHOLD_ZERO_APP:
+            return 0
+        return PHONE_RESPAWN_THRESHOLD_DBM if a["kind"] == "respawn" else PHONE_STATION_THRESHOLD_DBM
+
     def _arm_station(self, nid: str, relock: bool = False) -> bool:
         """Push `station_config` to one assigned station. Best-effort: an offline phone is flagged
         `arm_pending` (roadmap A4 "bring back to re-arm") and armed on its next hello, never retried on a timer."""
@@ -3130,7 +3146,7 @@ class Session:
         a = st.get("assigned")
         if not a:
             return False
-        body = {"kind": a["kind"], "team": a["team"], "id": a["id"], "threshold": a["threshold"],
+        body = {"kind": a["kind"], "team": a["team"], "id": a["id"], "threshold": self._wire_threshold(nid, st, a),
                 "game": self._game_byte(), "valid_ids": [x["id"] for x in self._station_ids()]}
         if item := self._active_item(a):
             body["item"] = item                    # A56: an older Stick ignores it
