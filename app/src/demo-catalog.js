@@ -85,7 +85,7 @@ export const DEMO_WEAPONS = [
       "per_shot": 10,
       "recover_ms": 150,
       "degraded": 70,
-      "heavy": 40,
+      "heavy": 45,
       "after_heavy": 7
     },
     "hir": [
@@ -129,7 +129,7 @@ export const DEMO_WEAPONS = [
     ],
     "role": "assault",
     "htk": 12,
-    "ttk_ms": 2567,
+    "ttk_ms": 2530,
     "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,

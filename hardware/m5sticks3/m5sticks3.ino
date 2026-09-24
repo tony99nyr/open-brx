@@ -640,10 +640,47 @@ static void setMode(Mode m) {
   displayDirty = true;
 }
 
+uint32_t playersStreamUntilMs = 0;
+static void printPlayers() {
+  const brx::PlayerPresence& pr = brx_glue::presence;
+  for (size_t i = 0; i < pr.capacity(); i++) {
+    const brx::PlayerEntry& e = pr.slot(i);
+    if (!e.used) continue;
+    const int med = brx::PlayerPresence::median_of(e);
+    const int t = pr.threshold_for(e);
+    Serial.printf("PLAYER id=%u team=%u alive=%u raw=%d median=%d ema=%.1f thr=%d near_floor=%d near=%d present=%d age_ms=%lu game=%u\n",
+                  (unsigned)e.id, (unsigned)e.team, (unsigned)(e.state & 1), e.raw, med, e.rssi, t,
+                  t - brx::REVIVE_MARGIN_DB, med >= t - brx::REVIVE_MARGIN_DB ? 1 : 0, e.present ? 1 : 0,
+                  (unsigned long)e.age_ms, (unsigned)e.game);
+  }
+  Serial.printf("PLAYERS default_threshold=%d revives=%lu\n", pr.default_threshold,
+                (unsigned long)brx_glue::link.revives().revives);
+}
+
 static void handleLine(String line) {
   line.trim();
   if (!line.length()) return;
   if (line == "PING") { Serial.println("PONG"); return; }
+  // Bench diagnostic: every player the station hears, with what presence and the revive rule judge.
+  // `PLAYERS STREAM <s>` repeats it every 250 ms for <s> seconds (max 120) from loop(), non-blocking,
+  // so a controlled 1 m / 3 m / beside measurement gets dense data (bench 2026-09-24: a polled dump
+  // saw each phone only every 1-7 s and could not separate range from sampling).
+  if (line == "PMIC") {  // read-only: the side-button lock bits (M5PM1 0x49/0x4A bit0; bit7 of 0x49 is never written)
+    uint8_t c1 = M5.In_I2C.readRegister8(brx_glue::PM1_ADDR, brx_glue::PM1_BTN_CFG_1, brx_glue::PM1_I2C_HZ);
+    uint8_t c2 = M5.In_I2C.readRegister8(brx_glue::PM1_ADDR, brx_glue::PM1_BTN_CFG_2, brx_glue::PM1_I2C_HZ);
+    Serial.printf("PMIC 0x49=%02x 0x4A=%02x single_reset_disabled=%u double_off_disabled=%u dl_lock=%u want_lock=%u\n",
+                  c1, c2, c1 & 1, c2 & 1, (c1 >> 7) & 1, brx_glue::pmicSideButtonLocked ? 1 : 0);
+    return;
+  }
+  if (line == "PLAYERS") { printPlayers(); return; }
+  if (line.startsWith("PLAYERS STREAM")) {
+    long secs = line.length() > 15 ? line.substring(15).toInt() : 30;
+    if (secs < 1) secs = 1;
+    if (secs > 120) secs = 120;
+    playersStreamUntilMs = millis() + (uint32_t)secs * 1000u;
+    Serial.printf("PLAYERS STREAM %ld s\n", secs);
+    return;
+  }
   // Bench diagnostic: A/B the receiver noise against the backlight (below 60 it makes IR noise).
   // BL 0 = off; the next wake or dim restores the normal levels.
   if (line.startsWith("BL ")) {
@@ -934,6 +971,10 @@ void loop() {
   pollButtons();
   pollAdvert(now);
   brx_glue::mcLoop(now);  // H8: Wi-Fi/mDNS/WebSocket to Mission Control; never blocks
+  {  // PLAYERS STREAM (bench diagnostic): the player view every 250 ms while it runs
+    static uint32_t lastPlayersMs = 0;
+    if ((int32_t)(playersStreamUntilMs - now) > 0 && now - lastPlayersMs >= 250) { lastPlayersMs = now; printPlayers(); }
+  }
   if (brx_glue::mcScreenWake) { brx_glue::mcScreenWake = false; displayDirty = true; }
   // S57: a Bluetooth hill that just changed hands sends the grenade's capture word once (magnitude 50,
   // the new owner's team), as control_point.h's IR HILL does. Only a CAPTURE sends it: a point drained

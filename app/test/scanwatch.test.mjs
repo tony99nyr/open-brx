@@ -2,7 +2,7 @@
 // because the restart stamp was written only after the slow bridge answered, and restarts overlapped.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BeaconWatch, RESCAN_DOWN_MS, RESCAN_IDLE_MS, ScanGuard, stationsInPlay, stationScanStep, SCAN_BUDGET_PER_S, GUARD_WINDOW_MS, GUARD_PAUSE_MS, GUARD_HOLD_MS, PRESENCE_SAMPLE_MS } from '../src/scanwatch.js';
+import { BeaconWatch, aliveNeedsBeacon, RESCAN_DOWN_MS, RESCAN_IDLE_MS, ScanGuard, stationsInPlay, stationScanStep, SCAN_BUDGET_PER_S, GUARD_WINDOW_MS, GUARD_PAUSE_MS, GUARD_HOLD_MS, PRESENCE_SAMPLE_MS } from '../src/scanwatch.js';
 import { Presence, encodeUuid } from '../src/beacon.js';
 
 /** A link whose every scan call takes `lag` ms of fake time to settle, like a starved Capacitor bridge. */
@@ -21,7 +21,10 @@ function rig({ failStart = false } = {}) {
   return { watch, calls, flush, scans, logs, hits, adv: ms => { clock += ms; }, get now() { return clock; }, get maxInFlight() { return maxInFlight; } };
 }
 const live = (alive = true) => ({ phase: 'live', alive, respawnType: 'scanner' });
-const SCANNER = { mode: 'tdm', respawn: { type: 'scanner', delay_s: 5 } };   // a game with a respawn station
+// A scanner-respawn game that also has a powerup station, so an ALIVE player reads station adverts too: the scan
+// mechanics below run on it. F342: a respawn-only station game opens the scan only while the player is down.
+const SCANNER = { mode: 'tdm', respawn: { type: 'scanner', delay_s: 5 }, stations: [{ id: 1, kind: 'respawn' }, { id: 6, kind: 'powerup' }] };
+const RESPAWN_ONLY = { mode: 'tdm', respawn: { type: 'scanner', delay_s: 5 }, stations: [{ id: 1, kind: 'respawn' }] };
 
 test('a slow bridge never stacks restarts: one scan operation at a time', async () => {
   const r = rig();
@@ -155,6 +158,43 @@ test('the guard backs the scan off under a synthetic flood: close, pause, reopen
   // quiet for the hold time: one mode back up
   for (let t = 0; t <= GUARD_HOLD_MS; t += 1000) { r.adv(1000); r.watch.tick(live(), { config: SCANNER }); await r.flush(); }
   assert.equal(r.scans.at(-1).opts.scanMode, 1, 'a quiet minute steps back up one mode');
+});
+
+test('F342: a gun reconnect inside the match keeps the lowered scan mode; the next game starts at full rate', async () => {
+  // Field 2026-09-24 (Pixel 5): the guard lowered the scan at arm time, the gun dropped, and the reconnect (which
+  // owns the radio, `pickerOpen`) reset the mode. The scan reopened at low latency and flooded again during the
+  // reconcile's re-arm writes.
+  const r = rig();
+  r.watch.tick(live(), { config: SCANNER }); await r.flush();
+  await flood(r, live(), { perSec: 60, ms: GUARD_WINDOW_MS + 100 });
+  for (let t = 0; t <= GUARD_PAUSE_MS + 1000; t += 1000) { r.adv(1000); r.watch.tick(live(), { config: SCANNER }); await r.flush(); }
+  assert.equal(r.scans.at(-1).opts.scanMode, 1, 'setup: the guard lowered the scan to balanced');
+  const released = r.watch.release(); await r.flush(); await released;   // the reconnect takes the radio
+  for (let t = 0; t < 3000; t += 1000) { r.adv(1000); r.watch.tick(live(), { pickerOpen: true, config: SCANNER }); await r.flush(); }
+  assert.equal(r.watch.open, false, 'the reconnect owns the radio');
+  r.adv(RESCAN_DOWN_MS); r.watch.tick(live(), { config: SCANNER }); await r.flush();
+  assert.equal(r.watch.open, true);
+  assert.equal(r.scans.at(-1).opts.scanMode, 1, 'reopened at the mode the guard chose, not at low latency');
+  r.watch.tick({ phase: 'kitted', alive: true }, { config: SCANNER }); await r.flush();   // the match ends
+  r.adv(RESCAN_DOWN_MS); r.watch.tick({ phase: 'armed', alive: true }, { config: SCANNER }); await r.flush();
+  assert.equal(r.scans.at(-1).opts.scanMode, 2, 'the next game starts at full rate');
+});
+
+test('F342: in a respawn-only station game the scan is closed while the player is alive, and opens at once on a death', async () => {
+  // Field 2026-09-24 (Pixel 5): 60 results/s at arm time and 78 at the lowest scan mode, during the T-3 hit table and
+  // the T-0 spawn burst. Only a DOWN player reads a respawn station.
+  const r = rig();
+  r.watch.tick({ phase: 'armed', alive: true, respawnType: 'scanner' }, { config: RESPAWN_ONLY }); await r.flush();
+  r.watch.tick(live(), { config: RESPAWN_ONLY }); await r.flush();
+  assert.deepEqual(r.calls, [], 'no scan at arm time or while alive');
+  r.adv(1000); r.watch.tick(live(false), { config: RESPAWN_ONLY }); await r.flush();
+  assert.equal(r.watch.open, true, 'the death opens it at once');
+  assert.equal(r.scans.at(-1).opts.scanMode, 2);
+  r.adv(9000); r.watch.tick(live(true), { config: RESPAWN_ONLY }); await r.flush();
+  assert.equal(r.watch.open, false, 'the revive closes it again');
+  assert.equal(aliveNeedsBeacon(RESPAWN_ONLY), false);
+  assert.equal(aliveNeedsBeacon(SCANNER), true, 'a powerup station is read alive');
+  assert.equal(aliveNeedsBeacon({ station_source: 'phone' }), true, 'so is a phone control point');
 });
 
 test('a down scanner-respawn player never drops below balanced, and is never paused', async () => {

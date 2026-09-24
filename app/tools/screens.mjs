@@ -3879,7 +3879,8 @@ const CO_CASES = [
   ['live-callout-teammate', 'teammate_down', 'MAVERICK', 'mate', 3400, 2600],
   ['live-kill', 'kill', 'VIPER', 'enemy', 3400, 2600],
   ['live-hill-captured', 'hill_captured', 'HILL CAPTURED', 'ours', 3600, 2800],
-  ['live-hill-lost', 'hill_lost', 'HILL LOST', 'theirs', 3600, 2800],
+  // docs/announcer.md: a card stays up while its line plays, and "Hill Lost!" (VB0P) is 2.976 s: its slot is 3.126 s, the card fades from 2.826 s
+  ['live-hill-lost', 'hill_lost', 'HILL LOST', 'theirs', 3600, 3300],
 ];
 const coRead = pg => pg.evaluate(() => {
   const el = document.querySelector('#overlay .mo.co'); if (!el) return null;
@@ -4292,6 +4293,9 @@ for (const view of VIEWS) await step(`${view.name} QA-17 idle night: nothing on 
 // The engine plays one sound for the pair, so the HUD gives one flash and one buzz, not two.
 for (const view of VIEWS) await step(`${view.name} QA-05 one kill, one buzz: MC's card after the IR card neither flashes nor buzzes again`, async () => {
   const pg = await open(view, 'live-callout-kill', '', 2700);
+  // The IR card must be ON SCREEN before MC's twin is sent: under load the stage's IR word can land late, and an MC card
+  // that beats the IR card's render is correctly the kill's one flash, which this step would then miscount.
+  await pg.waitForSelector('#overlay .mo.co[data-src="ir"]', { timeout: 4000 });
   const r = await pg.evaluate(async () => { const h = window.brx.hud; let buzz = 0, flash = 0; const oh = h.h.onHaptic, of = h._flash.bind(h);
     h.h.onHaptic = k => { if (k === 'kill') buzz++; }; h._flash = () => { flash++; of(); };
     window.brxDemo.killConfirm('VIPER'); await new Promise(r => setTimeout(r, 600));
@@ -4322,9 +4326,9 @@ for (const view of VIEWS) await step(`${view.name} QA-05 kill buzz: an MC-only k
     window.brxDemo.killConfirm('VIPER'); await wait(700); const mcOnly = buzz;
     await wait(2600); buzz = 0;
     ir(); await wait(300); window.brxDemo.killConfirm('VIPER'); await wait(300);
-    ir(); await wait(300); window.brxDemo.killConfirm('GHOST'); await wait(700);
+    ir(); await wait(300); window.brxDemo.killConfirm('GHOST'); await wait(2600);   // docs/announcer.md: the second kill's card waits for the first's slot
     const double = buzz; await wait(3200); buzz = 0;
-    ir(); await wait(800); ir(); await wait(150); window.brxDemo.killConfirm('VIPER'); await wait(150); window.brxDemo.killConfirm('GHOST'); await wait(700);   // both IR words first (polish round 3), past S57's 600 ms dedupe
+    ir(); await wait(800); ir(); await wait(150); window.brxDemo.killConfirm('VIPER'); await wait(150); window.brxDemo.killConfirm('GHOST'); await wait(2600);   // both IR words first (polish round 3), past S57's 600 ms dedupe
     const bothIrFirst = buzz; await wait(3200); buzz = 0;
     ir(); await wait(3300); window.brxDemo.killConfirm('SABLE'); await wait(700);   // an IR word whose MC twin never came, then a later MC-only kill
     h.h.onHaptic = oh; return { mcOnly, double, bothIrFirst, afterOrphan: buzz }; });
@@ -4333,6 +4337,29 @@ for (const view of VIEWS) await step(`${view.name} QA-05 kill buzz: an MC-only k
   must(r.afterOrphan === 2, `an orphan IR card buzzes, and a later unpaired MC kill still buzzes: ${JSON.stringify(r)}`);
   must(r.mcOnly === 1, `an MC-only kill must buzz once: ${JSON.stringify(r)}`);
   must(r.double === 2, `two kills must buzz twice, however their cards overlap: ${JSON.stringify(r)}`);
+});
+
+// docs/announcer.md (field 2026-09-24, Tony: "the hud alert for takes the lead and the kill confirmation both played on top
+// of each other"). Stage `live-announcer` sends MC's kill feedback and its lead alert on the same tick. Sampled every 50 ms:
+// the kill card comes first, the lead banner second, and the two are never both up at full strength (a card fading out,
+// `.out`, may still be leaving as the next one arrives).
+for (const view of VIEWS) await step(`${view.name} announcer queue: KILL CONFIRMED, then TAKES THE LEAD, never on screen together`, async () => {
+  const pg = await open(view, 'live-announcer', '', 2150);
+  const r = await pg.evaluate(async () => { const wait = ms => new Promise(r => setTimeout(r, ms)); const seen = [];
+    for (let i = 0; i < 90; i++) {
+      const co = document.querySelector('#overlay .mo.co'), al = document.querySelector('#overlay .mo.alert');
+      seen.push({ t: i * 50, co: co && !co.classList.contains('out') ? co.dataset.kind : null, al: al && !al.classList.contains('out') ? al.querySelector('.t').textContent : null,
+        q: (window.brx.engine.state().announcer || {}).queued || [] });
+      await wait(50);
+    }
+    return seen; });
+  await pg.screenshot({ path: `${OUT}/${view.name}-announcer-after.png` }); await pg.close();
+  const firstCo = r.findIndex(x => x.co === 'kill'), firstAl = r.findIndex(x => x.al === 'YOUR TEAM TAKES THE LEAD');
+  must(firstCo >= 0, 'no KILL CONFIRMED card: ' + JSON.stringify(r.slice(0, 6)));
+  must(firstAl > firstCo, `the lead banner must follow the kill card (card at ${firstCo * 50} ms, banner at ${firstAl * 50} ms)`);
+  must(r.some(x => x.co === 'kill' && x.q.includes('lead_taken')), 'the stage must SHOW two items: the lead change waiting while the kill card is up');
+  const both = r.filter(x => x.co && x.al);
+  must(both.length === 0, 'the kill card and the lead banner were both up at once: ' + JSON.stringify(both.slice(0, 3)));
 });
 
 // S57 names (Tony 2026-09-24): KILL CONFIRMED opens with the victim's team; the victim's own DOWN word, 250 ms later,
@@ -4647,6 +4674,26 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(last && last.s === 'ok' && last.shield >= 105, `full again: ${JSON.stringify({ s: last && last.s, shield: last && last.shield })}`);
     must(!toast, 'no teal "+N SHIELD" toast over the meter during a recharge');
   });
+  await step(`${tag}: the refill grows smoothly: sampled every 100 ms, the fill never stands still while it charges and never jumps a grant (F349)`, async () => {
+    const pg = await open(view, 'live-shields-broken', N, 3300);
+    const ws = []; let chargeSeen = false;
+    for (let t = 0; t < 14000; t += 100) {
+      const r = await svRead(pg);
+      if (r.s === 'charge') { chargeSeen = true; ws.push(r.fl); }
+      else if (chargeSeen) break;
+      await pg.waitForTimeout(100);
+    }
+    await pg.close();
+    let still = 0, longest = 0, jump = 0;
+    for (let i = 1; i < ws.length; i++) {
+      still = Math.abs(ws[i] - ws[i - 1]) < 0.5 ? still + 1 : 0; longest = Math.max(longest, still);
+      jump = Math.max(jump, ws[i] - ws[i - 1]);
+    }
+    must(ws.length >= 10, `setup: the refill was sampled (${ws.length} samples)`);
+    must(ws.every((w, i) => i === 0 || w >= ws[i - 1] - 0.5), `the fill only rises: ${ws.map(Math.round).join(' ')}`);
+    must(longest <= (night ? 3 : 2), `the fill stood still for ${longest} samples in a row (a grant-by-grant step): ${ws.map(Math.round).join(' ')}`);
+    must(jump < 0.2 * 844, `the largest move between two samples is ${Math.round(jump)} px, a grant-sized jump: ${ws.map(Math.round).join(' ')}`);
+  });
   await step(`${tag}: the overshield is a layer over the shield, drained first by hits, and only hits remove it`, async () => {
     const pg = await open(view, 'live-shields-os', N, 3200);
     const a = await svWait(pg, r => r.os && r.osw > 400, 3000);
@@ -4690,16 +4737,16 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(c.s === 'charge', `setup: the refill ran: ${c.s}`);
     must(w.s !== 'charge' && w.wait && w.dly < 60, `after the hit: back to the delay, the creep near 0: ${JSON.stringify({ s: w.s, wait: w.wait, dly: w.dly })}`);
   });
-  await step(`${tag}: a death clears the red tint, and a respawn starts unshielded but not broken: no red pulse, no tint, the creep runs (polish M3)`, async () => {
+  await step(`${tag}: a death clears the red tint, and a respawn starts at FULL shield (F348): no red pulse, no tint, no creep (polish M3)`, async () => {
     const pg = await open(view, 'live-shields-broken', N, 3300);
     const d0 = await svWait(pg, r => r.tint, 2000);
     await pg.evaluate(() => window.brxDemo.die()); await pg.waitForTimeout(700);
     const dead = await pg.evaluate(() => ({ tint: !!document.querySelector('.alive.sv-down'), alive: window.brx.engine.state().alive }));
-    await pg.evaluate(() => window.brxDemo.respawn()); const back = await svWait(pg, r => r.m && r.shield === 0 && r.wait, 4000); await pg.waitForTimeout(300); const b2 = await svRead(pg);
+    await pg.evaluate(() => window.brxDemo.respawn()); const back = await svWait(pg, r => r.m && r.shield >= 105, 4000); await pg.waitForTimeout(300); const b2 = await svRead(pg);
     await pg.close();
     must(d0.tint, 'setup: broken, tinted');
     must(!dead.alive && !dead.tint, `dead: no tint: ${JSON.stringify(dead)}`);
-    must(b2.m && b2.s !== 'down' && !b2.tint && b2.wait, `respawned: a fresh life at 0 has not broken: ${JSON.stringify({ s: b2.s, tint: b2.tint, wait: b2.wait })}`);
+    must(b2.m && b2.s === 'ok' && b2.shield >= 105 && !b2.tint && !b2.wait, `respawned: a fresh Shields life starts full (F348): ${JSON.stringify({ s: b2.s, shield: b2.shield, tint: b2.tint, wait: b2.wait })}`);
   });
   await step(`${tag}: no tint while shielded, with the shield or an overshield alone (polish M3)`, async () => {
     let pg = await open(view, 'live-shields-hit', N, 3600); const h = await svWait(pg, r => r.m && r.shield > 0 && r.shield < 105, 2000); await pg.close();

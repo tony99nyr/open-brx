@@ -38,7 +38,7 @@ function log(msg, cls = 'li') {
 
 // ---------- settings (persisted; the station survives an app restart the way it was) ----------
 // mcArmed: {game, at, valid_ids} once MC pushed station_config. threshold 0 = this platform's own default for the
-// kind (beacon.js phoneStationThreshold: a respawn station -66, about 3 m, F345; every other kind -74); anything
+// kind (beacon.js phoneStationThreshold: a respawn station -70, about 3-5 m, F345; every other kind -74); anything
 // else is the operator's or MC's override. 0.8 s dwell = get in range, brief pause, green (bench-tuned 2026-09-04). captureS/netCap belong to kind 5 (§5d.1): seconds ONE net
 // player needs for ONE phase, and the clamp on how much a rush can stack.
 const DEFAULTS = { kind: 'respawn', team: 1, id: 1, tx: 'high', threshold: 0, thrV: 2, dwell: 800, game: 0, mcArmed: null, mc: '', mc_auto: false,

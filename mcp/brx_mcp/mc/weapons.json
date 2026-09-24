@@ -24,7 +24,7 @@
     "per_shot": 10,
     "recover_ms": 150,
     "degraded": 70,
-    "heavy": 40,
+    "heavy": 45,
     "after_heavy": 7
    },
    "capture": {
@@ -58,7 +58,7 @@
    "rof": 100,
    "rng": 75,
    "htk": 12,
-   "ttk_ms": 2567,
+   "ttk_ms": 2530,
    "range_band": "mid",
    "range_target_m": "18-20 indoor / 40-45 outdoor (Q15)",
    "recoil": {
@@ -77,7 +77,7 @@
    },
    "overrides": {
     "t23": {
-     "value": 550,
+     "value": 540,
      "why": "R6/R7 (Tony, 2026-09-23; retuned 2026-09-23, polish round 1, once modelling the Burst Rifle's own 40% crit_pct reopened R6 at the first-shipped 410ms): 550ms is the smallest single-token value that clears R4b, R4d, R6 and R7 together with the crit kept. See docs/weapon-design.md Sec7.5d."
     }
    },

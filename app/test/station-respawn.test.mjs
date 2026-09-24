@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { encodeUuid, Presence, PLAYER_STATE, TEAM_ANY, countRevives, REVIVE_MARGIN_DB, RESPAWN_RSSI_DBM, STATION_THRESHOLD_DBM, phoneStationThreshold, stationThreshold, applyThreshold, migrateThreshold } from '../src/beacon.js';
 
-const THR = -66;   // the phone respawn station's platform default (F345)
+const THR = -70;   // the phone respawn station's platform default (F345)
 const TEAM = 1;
 function station() { return new Presence({ defaultThreshold: THR, dwellMs: 800, alpha: 0.35 }); }
 function hear(pres, id, alive, rssi, now, team = TEAM) {
@@ -28,7 +28,7 @@ const ALIVE_FAR = [true, -85, 2000];   // in play, heard across the field
 const DIES_FAR = [false, -85, 2000];
 
 test('a revive heard at 3 m on the weaker player advert (below the threshold) counts', () => {
-  // The station hears the player at -72 dBm, 6 dB under -66 (field: -63..-68 forward, less ~8 dB of TX gap).
+  // The station hears the player at -72 dBm, 2 dB under -70 (field: -63..-68 forward, less ~8 dB of TX gap).
   assert.equal(run([ALIVE_FAR, DIES_FAR, [false, -72, 3000], [true, -72, 250]]), 1);
 });
 
@@ -69,17 +69,17 @@ test('review M2: a player first heard dead (a resync, a reload) is not a revive 
 
 // F345 (Tony 2026-09-24): 3 m is the respawn station's maximum range. Measured at 3 m on the player phone: a phone
 // station -63 to -68 dBm, a StickS3 -53 to -58. So the default is per platform, like the powerup claim's.
-test('the respawn threshold default is per platform: phone -66, StickS3 -60', () => {
-  assert.deepEqual({ ...RESPAWN_RSSI_DBM }, { phone: -66, sticks3: -60 });
+test('the respawn threshold default is per platform: phone -70, StickS3 -57 (Tony, 2026-09-24)', () => {
+  assert.deepEqual({ ...RESPAWN_RSSI_DBM }, { phone: -70, sticks3: -57 });
   assert.ok(Object.isFrozen(RESPAWN_RSSI_DBM));
-  assert.equal(phoneStationThreshold('respawn'), -66);
+  assert.equal(phoneStationThreshold('respawn'), -70);
   for (const kind of ['control', 'extraction', 'bomb']) assert.equal(phoneStationThreshold(kind), STATION_THRESHOLD_DBM, kind);
   assert.equal(STATION_THRESHOLD_DBM, -74, 'the other kinds keep the 2026-09-04 bench value');
 });
 
 test('review M3: MC\'s threshold 0 means the platform default, never a -30 dBm bubble', () => {
   assert.equal(applyThreshold(0, -70), 0, '0 is "your own default" (0.4.11 and older clamped it to -30)');
-  assert.equal(stationThreshold({ threshold: applyThreshold(0, -70), kind: 'respawn' }), -66);
+  assert.equal(stationThreshold({ threshold: applyThreshold(0, -70), kind: 'respawn' }), -70);
   assert.equal(stationThreshold({ threshold: applyThreshold(0, -70), kind: 'control' }), -74);
   assert.equal(applyThreshold(-58, 0), -58, 'an override is kept');
   assert.equal(applyThreshold(-20, 0), -30); assert.equal(applyThreshold(-120, 0), -100);

@@ -1457,6 +1457,14 @@ KNOWN_UNMIRRORED = {
     # It never books a death/kill/score (MC's own facts already did that), only a HUD chip and a locally-picked
     # cue; the stage has no HUD and no cue picker to mirror either half against.
     "_onIrCallout", "_irKillConfirmed", "_takeKillMatch",
+    # 2026-09-24 (docs/announcer.md): an MC alert or the node's clock warning as one announcer-queue item. The stage has
+    # no MC and no HUD; its only announcer lines are the hill callouts, whose queue behaviour alone (the later hill word
+    # preempts, the tick waits out the clip) is what `_hill_busy_until` already mirrors.
+    "_announceAlert", "_announceStatus", "_card",
+    # 2026-09-24 (docs/announcer.md, "The gun's audio FIFO"): the phone's model of the gun's audio queue and the
+    # must-hear $PLAYX flush. NOT yet ported: the stage's own writes do not model the FIFO, and its heartbeat does not
+    # skip a beat that would sound over the refill. A stage/phone divergence on audio timing only, no game rule.
+    "_audioWrite", "_clipLen", "_sayMust", "_audioSync", "_audioHit", "_shieldLoopPeriod",   # the pool voice lines, the same queue; the stage speaks them at once
     # bench 2026-09-17: the phone's day/night HUD skin and its per-MC-session pick; HUD chrome, no LED or game rule
     "setNight", "ownNightChoice", "_autoNight", "_loadNight", "_storeNight",
     # bench 2026-09-17: the ammo gauge's shot-ready cue ($WEAP token 14 timed from $ALCD); HUD display only, no game rule
@@ -1964,8 +1972,18 @@ async def shield_run(st, mgr, clock, seconds: float) -> None:
         await settle(st)
 
 
-SHIELD_STEP = 10   # S.SHIELD_REGEN_STEP, spelled out so a change to it fails this file loudly
+SHIELD_GRANTS = 4   # S.SHIELD_REGEN_GRANTS (F349: a full pool in this many grants), spelled out so a change fails loudly
 SHIELD_LOOP_S_TEST = S.SHIELD_LOOP_S   # the heartbeat period the ordering test makes due by hand
+
+
+def gun_says(st, frame: str) -> None:
+    """F348: a pool frame the test puts in the GUN's mouth, with the fake gun's own pools set to match first. The
+    fake's pools are what its later `$LIFE` answers report, so a shield the test breaks must be broken on the fake
+    too, or the recharge's first grant would echo the full pool the spawn fill left there."""
+    t = frame.split(",")
+    for fake in st.mgr.taggers.values():
+        fake.hp, fake.armor, fake.shield = int(t[1]), int(t[2]), int(t[3])
+    st._on_rx(frame)
 
 
 async def shielded(st, mgr, clock):
@@ -1973,18 +1991,91 @@ async def shielded(st, mgr, clock):
     await live(st)
     assert st.shield_regen_on, "setup: this game recharges shields"
     clock.advance(1.0)
-    st._on_rx(f"$HP,30,0,{st.max_shield},*"); await settle(st)
+    st.poll(); await settle(st)                                  # F348: flush the fake's queued answers (they carry its pools)
+    assert st.shield == st.max_shield, "setup: the spawn filled the shield (F348)"
+    gun_says(st, f"$HP,30,0,{st.max_shield},*"); await settle(st)
     assert st.shield == st.max_shield, "setup: charged"
+
+
+def test_f344_every_shields_life_starts_at_full_shield_like_the_phone():
+    """F348 (Tony, live match 2026-09-24: "you can die from a couple hits right after spawn"): engine.js ends every
+    spawn and revive burst of a shields game with one additive `$LIFE,0,0,<max>,*`, because `$SPAWN` leaves the pool
+    at 0 on hardware. The stage writes the same: the T-0 spawn, a timed revive and a station revive all start full,
+    say nothing about it, and stay full when spawn protection (t8 and the protection LIGHT) ends.
+    CONTROL: the Standard preset (no shield) writes no pool grant at all."""
+    async def go():
+        st, mgr, clock = mk_shields()
+        fill = f"$LIFE,0,0,{st.max_shield},*"
+        c = shield_cues(st)
+        await st.connect(GUN)
+        await st.arm()
+        st.bundle["cues"]["countdown"] = ""
+        n = mark(mgr)
+        await st.spawn(); await settle(st)
+        st.poll(); await settle(st)                                # the fake gun's answers reach the stage
+        burst = since(mgr, n)
+        assert fill in burst and burst.index(fill) > burst.index("$SPAWN,,*"), burst
+        assert st.shield == st.max_shield == 105, "the T-0 spawn starts full"
+        for station in (None, 1):
+            st._on_rx("$HP,0,0,0,*"); await settle(st)
+            assert not st.alive, "setup: down"
+            m = mark(mgr)
+            await st.revive(station=station); await settle(st)
+            st.poll(); await settle(st)
+            burst = since(mgr, m)
+            assert fill in burst and burst.index(fill) > burst.index("$SPAWN,,*"), (station, burst)
+            assert st.shield == st.max_shield, f"the revive starts full (station={station})"
+            await shield_run(st, mgr, clock, 3.0)                  # past any spawn protection
+            assert st.shield == st.max_shield, "and stays full when protection ends"
+        await shield_run(st, mgr, clock, S.SHIELD_REGEN_DELAY_S + 3.0)
+        stream = since(mgr, n)
+        assert c["shield_online"] not in stream and c["shield_charging"] not in stream, "a spawn fill is not a recharge"
+        assert [f for f in stream if f.startswith("$LIFE,") and f != PROBE_LIFE] == [fill] * 3, "one fill per life, no grants"
+        # CONTROL: Standard (armour, no shield)
+        st2, mgr2, _ = mk_gain()
+        await st2.connect(GUN); await st2.arm(); st2.bundle["cues"]["countdown"] = ""
+        k = mark(mgr2)
+        await st2.spawn(); await settle(st2)
+        assert not [f for f in since(mgr2, k) if f.startswith("$LIFE,") and f != PROBE_LIFE], "no pool write without a shield"
+    asyncio.run(go())
+
+
+def test_f344_the_spawn_fill_switch_matches_the_phone():
+    js = _ENGINE_JS.read_text(encoding="utf-8")
+    assert f"export const SPAWN_SHIELD_FULL = {'true' if S.SPAWN_SHIELD_FULL else 'false'};" in js
+    assert f"const SHIELD_FILL_ECHO_MS = {int(S.SHIELD_FILL_ECHO_S * 1000)};" in js
+
+
+def test_f345_a_recharge_writes_a_few_large_grants_and_no_readout_like_the_phone():
+    """F349 (field 2026-09-24): a 105 recharge was 11 grants with a readout step or blink behind each, and SHIELDS
+    ONLINE queued behind them. The stage writes what the phone does: SHIELD_REGEN_GRANTS grants and no readout
+    write on the gun while the recharge runs."""
+    async def go():
+        st, mgr, clock = mk_shields()
+        await shielded(st, mgr, clock)
+        n = mark(mgr)
+        clock.advance(1.0)
+        gun_says(st, "$HP,30,0,0,*"); await settle(st)
+        await shield_run(st, mgr, clock, S.SHIELD_REGEN_DELAY_S + 5.0)
+        w = since(mgr, n)
+        online = st.bundle["cues"]["shield_online"]
+        assert online in w, f"SHIELDS ONLINE: {[f for f in w if 'VA6Y' in f]}"
+        c = w.index(st.bundle["cues"]["shield_charging"])
+        during = w[c:w.index(online) + 1]
+        assert len(during) <= S.SHIELD_REGEN_GRANTS + 2, during
+        assert not [f for f in during if f.startswith("$GLED,")], f"no readout write during the recharge: {during}"
+        assert st.shield == st.max_shield
+    asyncio.run(go())
 
 
 def test_the_recharge_constants_match_the_phone():
     js = _ENGINE_JS.read_text(encoding="utf-8")
     assert f"const SHIELD_REGEN_DELAY_MS = {int(S.SHIELD_REGEN_DELAY_S * 1000)};" in js
-    assert f"const SHIELD_REGEN_STEP = {S.SHIELD_REGEN_STEP};" in js
+    assert f"const SHIELD_REGEN_GRANTS = {S.SHIELD_REGEN_GRANTS};" in js
     assert f"const SHIELD_REGEN_STEP_MS = {int(S.SHIELD_REGEN_STEP_S * 1000)};" in js
     assert f"const SHIELD_REGEN_MAX_GRANTS_SLACK = {S.SHIELD_REGEN_MAX_GRANTS_SLACK};" in js
     assert f"const SHIELD_LOOP_MS = {int(S.SHIELD_LOOP_S * 1000)};" in js
-    assert S.SHIELD_REGEN_STEP == SHIELD_STEP
+    assert S.SHIELD_REGEN_GRANTS == SHIELD_GRANTS
 
 
 def test_break_heartbeat_refill_online_is_the_whole_cycle():
@@ -1997,7 +2088,7 @@ def test_break_heartbeat_refill_online_is_the_whole_cycle():
         c = shield_cues(st)
         n = mark(mgr)
         clock.advance(1.0)
-        st._on_rx("$HP,30,0,0,*"); await settle(st)                  # the shield takes a hit all the way through
+        gun_says(st, "$HP,30,0,0,*"); await settle(st)                  # the shield takes a hit all the way through
         assert since(mgr, n).count(c["shield_down"]) == 1, "the break speaks"
         assert c["shield_loop"] not in since(mgr, n), "the heartbeat does not land under the break cue"
         await shield_run(st, mgr, clock, 2.1)
@@ -2021,7 +2112,7 @@ def test_break_heartbeat_refill_online_is_the_whole_cycle():
         # CEILING, not floor division (S45: the Shields preset's 105 is not a multiple of the 10-point
         # step) -- the last grant overshoots and the firmware clamps at the $PSET ceiling, so a pool
         # that does not divide evenly still needs one more grant than a floor would count.
-        assert grants(mgr, n) == math.ceil(st.max_shield / SHIELD_STEP), "exactly the grants a full pool needs"
+        assert grants(mgr, n) == SHIELD_GRANTS, "exactly the grants a full pool needs"
         n2 = mark(mgr)
         await shield_run(st, mgr, clock, 4.0)
         assert grants(mgr, n2) == 0 and c["shield_online"] not in since(mgr, n2), "and it stops once the gun says full"
@@ -2037,10 +2128,10 @@ def test_damage_restarts_the_clock_and_abandons_a_refill_already_running():
         c = shield_cues(st)
         n = mark(mgr)
         clock.advance(1.0)
-        st._on_rx("$HP,30,0,0,*"); await settle(st)
+        gun_says(st, "$HP,30,0,0,*"); await settle(st)
         await shield_run(st, mgr, clock, S.SHIELD_REGEN_DELAY_S - 1.0)
         assert grants(mgr, n) == 0, "setup: nearly there"
-        st._on_rx("$HP,25,0,0,*"); await settle(st)                  # hit again
+        gun_says(st, "$HP,25,0,0,*"); await settle(st)                  # hit again
         await shield_run(st, mgr, clock, S.SHIELD_REGEN_DELAY_S - 1.0)
         assert grants(mgr, n) == 0, "the hit put the whole delay back"
         await shield_run(st, mgr, clock, 2.0)
@@ -2067,7 +2158,7 @@ def test_a_stand_down_mid_refill_re_earns_the_delay_and_never_announces_twice():
         c = shield_cues(st)
         n = mark(mgr)
         clock.advance(1.0)
-        st._on_rx("$HP,30,0,0,*"); await settle(st)
+        gun_says(st, "$HP,30,0,0,*"); await settle(st)
         await shield_run(st, mgr, clock, S.SHIELD_REGEN_DELAY_S + 0.6)
         assert since(mgr, n).count(c["shield_charging"]) == 1, "setup: a refill is running"
         assert 0 < st.shield < st.max_shield, f"setup: part way up ({st.shield})"
@@ -2099,11 +2190,11 @@ def test_the_heartbeat_follows_the_pool_and_stops_when_the_refill_gives_up():
         await shielded(st, mgr, clock)
         c = shield_cues(st)
         clock.advance(1.0)
-        st._on_rx("$HP,30,0,0,*"); await settle(st)
+        gun_says(st, "$HP,30,0,0,*"); await settle(st)
         await shield_run(st, mgr, clock, S.SHIELD_REGEN_DELAY_S + 0.9)
         assert 0 < st.shield < st.max_shield, f"setup: part way up ({st.shield})"
         n = mark(mgr)
-        st._on_rx(f"$HP,20,0,{st.shield},*"); await settle(st)     # a hit on HEALTH: the shield stays up
+        gun_says(st, f"$HP,20,0,{st.shield},*"); await settle(st)     # a hit on HEALTH: the shield stays up
         await shield_run(st, mgr, clock, 6.0)
         assert c["shield_loop"] not in since(mgr, n), "the shield is not GONE, so nothing may say it is"
         # ...and once the cap gives up on a gun that never reports full, the heartbeat stops with it.
@@ -2134,7 +2225,7 @@ def test_an_ordinary_game_never_grants_and_a_dead_gun_is_not_refilled():
         assert st.max_shield == 70 and not st.shield_regen_on, "a non-zero shield beside armour does not opt in"
         n = mark(mgr)
         clock.advance(1.0)
-        st._on_rx("$HP,45,70,0,*"); await settle(st)
+        gun_says(st, "$HP,45,70,0,*"); await settle(st)
         await shield_run(st, mgr, clock, S.SHIELD_REGEN_DELAY_S * 2)
         assert grants(mgr, n) == 0, "no $LIFE beside armour, ceiling or not"
         # ...and the actual default (Standard: 45/70/0, no shield at all) is silent for the trivial reason too
@@ -2146,15 +2237,15 @@ def test_an_ordinary_game_never_grants_and_a_dead_gun_is_not_refilled():
         await shielded(st2, mgr2, clock2)
         c = shield_cues(st2)
         clock2.advance(1.0)
-        st2._on_rx("$HP,30,0,0,*"); await settle(st2)
+        gun_says(st2, "$HP,30,0,0,*"); await settle(st2)
         n2 = mark(mgr2)
-        st2._on_rx("$HP,0,0,0,*"); await settle(st2)
+        gun_says(st2, "$HP,0,0,0,*"); await settle(st2)
         assert not st2.alive, "setup: dead"
         await shield_run(st2, mgr2, clock2, S.SHIELD_REGEN_DELAY_S * 2)
         assert grants(mgr2, n2) == 0, "nothing is granted to a dead gun"
         # ...nor to a STUNNED one: it is disarmed, and a write there fights the stun restore
         await st2.revive(); await settle(st2)
-        st2._on_rx("$HP,30,0,0,*"); await settle(st2)
+        gun_says(st2, "$HP,30,0,0,*"); await settle(st2)
         st2.set_profile(stun=60)
         st2._stun(); await settle(st2)
         assert st2.stunned, "setup: stunned"
@@ -2167,7 +2258,7 @@ def test_an_ordinary_game_never_grants_and_a_dead_gun_is_not_refilled():
         await st2.revive(); await settle(st2)
         n3 = mark(mgr2)
         clock2.advance(1.0)
-        st2._on_rx("$HP,30,0,0,*"); await settle(st2)
+        gun_says(st2, "$HP,30,0,0,*"); await settle(st2)
         assert c["shield_down"] not in since(mgr2, n3), "a shield that STARTS at 0 never crossed 0"
         await shield_run(st2, mgr2, clock2, 2.5)
         assert c["shield_loop"] not in since(mgr2, n3), "so a fresh life does not heartbeat" 
@@ -2184,11 +2275,11 @@ def test_a_gun_that_never_reports_full_is_granted_at_a_capped_number_of_times():
         await settle(st)
         n = mark(mgr)
         clock.advance(1.0)
-        st._on_rx("$HP,30,0,0,*"); await settle(st)
+        gun_says(st, "$HP,30,0,0,*"); await settle(st)
         # The gun's OWN ceiling is 0, so every grant lands and the pool still never reaches the 70 the head
         # says it has. That is the cap's second case verbatim: the ceiling is not what the head said.
         mgr.taggers[GUN].cfg_shield = 0
-        cap = math.ceil(st.max_shield / SHIELD_STEP) + S.SHIELD_REGEN_MAX_GRANTS_SLACK
+        cap = SHIELD_GRANTS + S.SHIELD_REGEN_MAX_GRANTS_SLACK
         await shield_run(st, mgr, clock, S.SHIELD_REGEN_DELAY_S + 20.0)
         assert grants(mgr, n) == cap, f"a full pool of grants plus the slack, then it gives up ({cap})"
         n2 = mark(mgr)
@@ -2210,7 +2301,7 @@ def test_no_heartbeat_is_written_in_the_same_tick_the_recharge_starts():
         await shielded(st, mgr, clock)
         c = shield_cues(st)
         clock.advance(1.0)
-        st._on_rx("$HP,30,0,0,*"); await settle(st)                # the shield breaks
+        gun_says(st, "$HP,30,0,0,*"); await settle(st)                # the shield breaks
         assert st._shield_down, "setup: the shield is down"
         now = st.now()
         st._shield_quiet_at = now - S.SHIELD_REGEN_DELAY_S         # the refill is due NOW
@@ -2224,7 +2315,7 @@ def test_no_heartbeat_is_written_in_the_same_tick_the_recharge_starts():
         st2, mgr2, clock2 = mk_shields()
         await shielded(st2, mgr2, clock2)
         clock2.advance(1.0)
-        st2._on_rx("$HP,30,0,0,*"); await settle(st2)
+        gun_says(st2, "$HP,30,0,0,*"); await settle(st2)
         now2 = st2.now()
         st2._shield_loop_at = now2 - SHIELD_LOOP_S_TEST
         n2 = mark(mgr2)

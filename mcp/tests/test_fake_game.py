@@ -538,3 +538,49 @@ def test_reconnect_is_not_declared_until_the_gun_answers_the_probe():
         _run(play2())
     assert err2.getvalue().count("(reconnected BB:2)") == 1, err2.getvalue()
     assert "not listening" not in err2.getvalue()
+
+
+# ---- F341: the gun's byte parser, as a fault knob --------------------------- #
+# Field 2026-09-24 (app 0.4.11, Tactix-FE30): a `$PSET` whose `*` chunk was lost, then the same `$PSET` again from its
+# first byte, armed `$HP,4545,7070,0`. The parser keeps tokens 1..59 across a `$` (transport-hardening.md §1.3),
+# so the second copy is appended to the first. `feed_bytes` is that parser; `$*` (screamers A4) resets it.
+_PSET = "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H22,X49,U15,W71,A10,*"
+
+
+def test_faketagger_parser_appends_a_resent_pset_to_a_partial_one():
+    t = FakeTagger("AA:1", team=1)
+    t.feed_bytes(_PSET[:60])                           # the `*` chunk never arrived
+    t.write(_PSET)                                     # ...and the frame went again from its first byte
+    t.write("$SPAWN,,*")
+    assert (t.hp, t.armor) == (4545, 7070)
+    assert t.drain()[-1].startswith("$LCD,4545,7070,")
+
+
+def test_faketagger_parser_reset_clears_the_partial_frame():
+    t = FakeTagger("AA:1", team=1)
+    t.feed_bytes(_PSET[:60])
+    t.write("$*")                                      # the reset brxlink now sends before any re-send
+    t.write(_PSET)
+    t.write("$SPAWN,,*")
+    assert (t.hp, t.armor) == (45, 70)
+
+
+def test_faketagger_a_partial_frame_corrupts_the_next_frame_whatever_it_is():
+    t = FakeTagger("AA:1", team=1)
+    t.feed_bytes("$AMMO,0,17,50,1")                    # screamers A4's shape: no `*`
+    t.write("$AMMO,0,23,50,1,*")
+    assert t.mag.get(0) != 23, "BAD FRAME, the magazine is not 23 (bench A4 without `$*`)"
+    u = FakeTagger("AA:2", team=1)
+    u.feed_bytes("$AMMO,0,17,50,1")
+    u.write("$*")
+    u.write("$AMMO,0,23,50,1,*")
+    assert u.mag.get(0) == 23, "with `$*`: 23 (bench A4)"
+
+
+def test_faketagger_life_mode_1_sets_absolute_pools_clamped_at_the_pset():
+    t = FakeTagger("AA:1", team=1)
+    t.feed_bytes(_PSET[:60]); t.write(_PSET); t.write("$SPAWN,,*")
+    t.write("$*"); t.write(_PSET); t.write("$LIFE,45,70,0,1,*")
+    assert (t.hp, t.armor) == (45, 70) and (t.cfg_hp, t.cfg_armor) == (45, 70)
+    t.write("$LIFE,99,99,0,1,*")
+    assert (t.hp, t.armor) == (45, 70), "mode 1 clamps at the `$PSET` maxima"

@@ -82,7 +82,7 @@ State {
   nodes: NodeView[],                          // every node that ever said hello this session
   stations: StationView[], game_no: number,   // A13.5: the ITEMS panel (see GET /api/stations); game_no = the advert `game` byte stations are armed with THIS match (bumps on the first push after a match started)
   readiness: ReadinessSnapshot,               // Each ReadinessRow also carries `reach` and `last_reach` (same values as NodeView),
-                                               // and `pool_stale: "silent"|"no_fire"|"write_lost"|null`, `pool_stale_ms: number|null` (F208/A46; null = not stale or not reported).
+                                               // and `pool_stale: "silent"|"no_fire"|"write_lost"|"pool_wrong"|null`, `pool_stale_ms: number|null` (F208/A46; null = not stale or not reported).
                                                // F272: optional `gun_locked: true` is a current positive lock-up verdict. Missing/false
                                                // means no claim (including an older app); never render it from an offline/stale row.
                                                // The node omits it while actively re-arming, then restates it if retries are exhausted.
@@ -230,14 +230,14 @@ NodeView { node_id, node_type, gun_name?, gun_tail?, player_id?, arm_state, last
        // next ask — otherwise the one state the operator was waiting for is erased two seconds after it appears.
 NodeView { node_id, node_type, gun_name?, gun_tail?, player_id?, arm_state, last_seen_ms, synced, preflight?, battery?, fw?, hp?, armor?, ammo?, alive?, reach?: "lan"|"backhaul" /* A28.3: stamped by MC from the socket's arrival path (loopback / Cf-Connecting-Ip / public peer = backhaul), never from the phone's claim; cleared on disconnect */,
            last_reach?: "lan"|"backhaul" /* F155 (field 2026-09-12): the path this node was last HEARD over. `reach` goes away with the socket; this outlives it, and it is what makes an unreachable row's reason honest */,
-           pool_stale?: "silent"|"no_fire"|"write_lost", pool_stale_ms?: number /* F208/A46: the node's current `status.pool_stale` claim (no gun frame for 185 s / three trigger presses with no shot / this life's spawn or revive write lost, pl4) and ms since the gun last reported a pool. Absent = not stale, or an older app; each heartbeat restates it */,
+           pool_stale?: "silent"|"no_fire"|"write_lost"|"pool_wrong", pool_stale_ms?: number /* F208/A46: the node's current `status.pool_stale` claim (no gun frame for 185 s / three trigger presses with no shot / this life's spawn or revive write lost, pl4 / the gun's pools are not the armed ones after two repairs, F341) and ms since the gun last reported a pool. Absent = not stale, or an older app; each heartbeat restates it */,
            gun_locked?: true /* F272: current positive lock-up verdict; absence, false or junk clears it */,
            transport?: "wifi"|"cellular"|"none"|"unknown" /* F309: the phone's own last `status.transport` claim; absent = never reported */ }
 LiveView { match_id, go_live_t, time_limit_s, ends_t, score: { [team_id]: number }, rows: LiveRow[],
             phones_ended?: true /* A47: an ADOPTED match every claiming phone has ended; the console asks for END */,
             possession?: RecapView.possession /* visual QA H2 2026-09-23: the same merged tally, live; absent until a node reports one */ }
 LiveRow  = ScoreRow + { status: "alive"|"down"|"stale", respawn_in_s: number|null,
-            sync_age_ms: number /* NEVER_SEEN_MS (10^9) = MC has not heard this node since it started: a sentinel, not an age */, pool_stale?: "silent"|"no_fire"|"write_lost", pool_stale_ms?: number /* F208/A46, as NodeView */,
+            sync_age_ms: number /* NEVER_SEEN_MS (10^9) = MC has not heard this node since it started: a sentinel, not an age */, pool_stale?: "silent"|"no_fire"|"write_lost"|"pool_wrong", pool_stale_ms?: number /* F208/A46, as NodeView */,
             gun_locked?: true /* F272, as NodeView; suppress when this row is stale */,
             possibly_protected?: true /* F289: ONLY on a "stale" row. The newest evidence from that phone (a `status.protected`,
                                          or a respawn / team_change fact with `protect_ms` and no status after it) says it had not

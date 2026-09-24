@@ -10,7 +10,7 @@ says the rule is judgement only.
 |---|---|---|---|---|
 | 1 | Recoil rungs count ROUNDS PER TRIGGER PULL, scaled by calibre: a reference 8-damage weapon fires 5 clean rounds then degrades, 3 more then goes heavy, both counts scaled by `8 / dmg`. A trigger release resets the count while the weapon is still crisp; recovery from degraded or heavy needs 600 ms of quiet. | Tony, 2026-09-23 | S54/F268/F280 (`aa7b08b9`) | `app/test/engine.test.mjs` "S54: the round counts are derived from the row's dmg…"; `mcp/tests/test_balance_sim.py::test_recoil_profile_pins_the_shipped_ar_against_the_engine_test`. The release-reset half is bench-provisional (F308) |
 | 2 | A one-press burst or single-shot trigger does not recoil at all — the Burst Rifle and the Charge Rifle both ship flat (`ceiling == floor == 100`). | Tony, 2026-09-23 | S54/F280 | `mcp/tests/test_balance_sim.py::test_recoil_profile_pins_the_engine_tests_synthetic_rows_too`, `::test_the_charge_rifle_carries_no_recoil_profile` |
-| 3 | Recoil floors are 60 for the SMG and the Stinger. The Assault Rifle is the deliberate exception, deeper still at 100/70/40, degraded from round 6 and heavy from round 7 (tightened from round 8 the same day, R7 row 11) — only a player who holds past round 6 is punished. The Suppressor is the exception the OTHER way (R10, row 12): Tony — "it should be weaker since its silent but not too weak" — so its `heavy` is declared at 70, not the 60 floor; `degraded` derives between crisp and the new heavy, to 85 (was 80). | Tony, 2026-09-18 (floor raise); the AR exception 2026-09-23; tightened 2026-09-23 (R7); the Suppressor exception 2026-09-23 (R10) | F268; F291 (`1884c90e`); F308 | same two tests as row 1; the per-weapon table in `docs/spec/node.md` §3.15 |
+| 3 | Recoil floors are 60 for the SMG and the Stinger. The Assault Rifle is the deliberate exception, deeper still at 100/70/45, degraded from round 6 and heavy from round 7 (tightened from round 8 the same day, R7 row 11; `heavy` eased 40 → 45 the following day, polish round 2 — "full auto point blank … too harsh") — only a player who holds past round 6 is punished. The Suppressor is the exception the OTHER way (R10, row 12): Tony — "it should be weaker since its silent but not too weak" — so its `heavy` is declared at 70, not the 60 floor; `degraded` derives between crisp and the new heavy, to 85 (was 80). | Tony, 2026-09-18 (floor raise); the AR exception 2026-09-23; tightened 2026-09-23 (R7); eased 2026-09-24 (F308, polish round 2); the Suppressor exception 2026-09-23 (R10) | F268; F291 (`1884c90e`); F308 | same two tests as row 1; the per-weapon table in `docs/spec/node.md` §3.15 |
 | 4 | Three duel rules, each "most of the time" meaning **≥ 65%** in a stochastic 1v1 at full Standard health: (R1) a Charge Rifle with its charge already built beats an Assault Rifle; (R2) a skilled Assault Rifle (controlled 3-5 round bursts) that catches an uncharged Charge Rifle beats it; (R3) an Assault Rifle firing controlled bursts beats one held in full auto. | Tony, 2026-09-23 | F291 | `python3 mcp/tools/balance_sim.py --scenario recoil-duel`; gated in CI by `mcp/tests/test_balance_sim.py::test_recoil_duel_rules_clear_the_65_percent_bar` |
 | 5 | Charge Rifle: charge damage 70 (`t5`), tap damage 16 (`t37`); a charged kill on Standard health is one charge plus three taps. The 285 ms tap cadence is the player's own trigger-pull speed, not a gun setting — no `$WEAP` field carries it. | Tony, 2026-09-23 | F280; F291 (`3759cd68`) | `weapons.json` `wire.dmg`/`wire.tap_dmg`, pinned by the row-4 CI gate; `CHARGE_TAP_CADENCE_MS`'s comment in `compile.py` |
 | 6 | Shotgun: 3 pulls to kill on Standard health, still no recoil model — it has none. Its gap from the rifles was the 800 ms cadence until row 11's R8 tightened it to 700 ms. | Tony, 2026-09-18; retuned 2026-09-23 (R8) | F291; F308 | 3-pull kill is judgement; the 700 ms cadence is gated by row 11's test |
@@ -18,7 +18,7 @@ says the rule is judgement only.
 | 8 | The headset is the primary target: 4 of the tagger's 5 hit sensors sit there, so it carries no bonus multiplier. `criticalShotModifier` (`t7`) compiles to 0, and a headset hit lands the same as a gun-body hit. | Tony, 2026-09-17 (arsenal review) | — | `mcp/tests/test_gameconfig.py::test_crit_modifier_defaults_to_zero_and_headset_multiplier_is_1x` |
 | 9 | Easy Reload is accessibility, not balance: it is never tuned or cut on balance grounds, and it lives beside the per-player pool handicap, independent of the perk slot. | Tony, 2026-09-17 ("my daughter cant reload the brx normally") | S50 | `mcp/tests/test_mc_loadout.py::test_easy_reload_is_refused_beside_a_chain_reload_weapon`, `::test_easy_reload_is_refused_beside_a_second_weapon_end_to_end` |
 | 10 | The rebalance changes numbers, not feel: every weapon keeps Battle Company's captured fire mode, burst pattern, heat/overheat mechanic and sound; only the declared balance tokens move. | design principle, ongoing | weapon-design.md §2.1 principles 1-3 | judgement, not tested |
-| 11 | R4-R9: six close/mid-range duel rules (close = gun + headset word, mid = gun word alone), each **≥ 65%**. Modelling the Burst Rifle's 40% crit reopened R4b and R6; Tony kept the crit and moved the burst gap again, 410 → 550 ms, the smallest single-token value that clears all four affected cells — see §7.5d. ⚠️ R7 is the tightest of the ten cells, at 65.48%. | Tony, 2026-09-23 | F308 | §7.5d; `mcp/tests/test_balance_sim.py::test_range_duel_rules_clear_the_65_percent_bar` |
+| 11 | R4-R9: six close/mid-range duel rules (close = gun + headset word, mid = gun word alone), each **≥ 65%** — except R7 (the Burst Rifle beats a full-auto AR), whose bar is **≥ 55%**. Modelling the Burst Rifle's 40% crit reopened R4b and R6; Tony kept the crit and moved the burst gap again, 410 → 550 ms, the smallest single-token value that clears all four affected cells — see §7.5d. **2026-09-24, polish round 2** (bench 4.3, "full auto point blank … too harsh"): Tony chose to ease the Assault Rifle's `heavy` recoil 40 → 45 and the Burst Rifle's burst gap 550 → 540 ms rather than hold the deeper numbers — "leave the AR at 45 … I like our rock paper scissor design": a bursting AR still beats a full-auto AR and the Burst Rifle, and the Burst Rifle still beats a full-auto AR, now **more often than not** (R7, ~57%) rather than most of the time. R3 and R6 stay at 65% (both clear it, ~67%/~66%). | Tony, 2026-09-23; eased 2026-09-24 | F308 | §7.5d; `mcp/tests/test_balance_sim.py::test_range_duel_rules_clear_their_bar` |
 | 12 | R10: sidearms finish a kill, they do not compete with rifles — real-world Desert Eagle cadence and USP magazine levers, plus the Suppressor's own recoil exception. All fourteen checks clear their bars. See §7.5e. | Tony, 2026-09-23 | F308 | §7.5e; `mcp/tests/test_balance_sim.py::test_r10_sidearms_finish_a_kill_under_a_second`, `::test_r10_primaries_beat_sidearms_at_65_percent` |
 | 13 | Every rule R1-R10b also holds on the Shields preset (150 pool) at a looser **≥ 60%** bar; Hardcore is reported, not gated. | Tony, 2026-09-23 (F310: "looser but generally yes", then "60 is fine") | F310 | `mcp/tests/test_balance_sim.py::test_shields_preset_recoil_rules_r1_to_r3`, `::test_shields_preset_range_rules_r4_to_r9`, `::test_shields_preset_primaries_beat_sidearms_r10b`; detail §7.5f |
 
@@ -109,7 +109,7 @@ synthesise:
 | behaviour | token | who has it |
 |---|---|---|
 | **fire mode** | `t20` | see §4.1 — this is the big one |
-| 3-round burst timing | `t23` | Burst Rifle (captured 275, ships 550 since 2026-09-23 — R6, row 11, §7.5d), Force Rifle (250) — nobody else |
+| 3-round burst timing | `t23` | Burst Rifle (captured 275, ships 540 since 2026-09-24 — R6/R7, row 11, §7.5d), Force Rifle (250) — nobody else |
 | overheat + overheat sound | `t24`/`t35` | SMG (5), Energy Rifle (6), Charge Rifle (14), Plasma Sniper (30) |
 | damage type | `t3` | Rocket 10 lethal-explosive, Rail 6 armor-piercing, Melee 13, Charge Rifle 8 |
 | reload type | `t19` | Shotgun **2 = Shells**, Melee 10 — everything else 0 |
@@ -200,7 +200,7 @@ sounds — and moves the numbers.
 | Plasma Sniper | marksman | 25 | 400 | 4 | **1.20** | 62.5 | 41.7 | 10 | 80 | 2000 | 95% | 30 | dmg 80→25, cycle 225→400; **2026-09-18**: htk 5→4, TTK 1.60→1.20s (our chosen 10-damage headset word, `wire.headset_dmg`/t12, stacks unconditionally, 35 real per pull; ⚠️ this weapon has NEVER been captured -- cap30 fired only a Shotgun -- so its second word rests on a sourced t12=80 and nothing else); `dmg`/`dps`/`sust`/one-mag % here are the gun word alone, same caveat as the Shotgun; §7 |
 | AMR | support | 21 | 400 | 6 | **2.00** | 52.5 | 42.0 | 14 | 56 | 1400 | 99% | — | dmg 18→24, cycle 360→400; **2026-09-18** (F62): dmg 24→21, htk 5→6, TTK 1.60→2.00s — 30% `crit_pct` (a crit is x1.5 truncated, so 21→31) pays for itself: average damage per hit holds at 24.15, but the published number is now the GUARANTEED five-hit-plus kill, six hits when unlucky. Mag/reserve untouched |
 | Force Rifle | assault | 10 | 100 +250 | 12 | **1.65** | 66.7 | 50.7 | 36 | 144 | 1700 | 100% | — | dmg 9→10 |
-| Burst Rifle | assault | 10 | 75 +550 | 12 | **2.57** | 42.9 | 35.6 | 36 | 216 | 1700 | 100% | — | **2026-09-17**: dmg 9→11 (`wire.dmg`); **2026-09-18** (F62): dmg 11→10, htk 11→12, TTK 1.42→1.56s — 40% `crit_pct` (a crit is x1.5 truncated, so 10→15) pays for itself: average damage per hit holds at 11.25, but the published number is now the guaranteed 4-pull kill; a 3-pull kill lands about 27% of the time. **2026-09-23** (R6, F308): burst gap (t23, `overrides.t23`) widened 275→410ms so a disciplined AR burst beats it most of the time. **2026-09-23, polish round 1** (F308): modelling the crit reopened R6 at 410ms, so the gap widened again, 410→550ms — see the Balance rules table §7.5d; htk unchanged, only cycle/TTK moved. Mag/reserve untouched |
+| Burst Rifle | assault | 10 | 75 +540 | 12 | **2.53** | 43.5 | 36.1 | 36 | 216 | 1700 | 100% | — | **2026-09-17**: dmg 9→11 (`wire.dmg`); **2026-09-18** (F62): dmg 11→10, htk 11→12, TTK 1.42→1.56s — 40% `crit_pct` (a crit is x1.5 truncated, so 10→15) pays for itself: average damage per hit holds at 11.25, but the published number is now the guaranteed 4-pull kill; a 3-pull kill lands about 27% of the time. **2026-09-23** (R6, F308): burst gap (t23, `overrides.t23`) widened 275→410ms so a disciplined AR burst beats it most of the time. **2026-09-23, polish round 1** (F308): modelling the crit reopened R6 at 410ms, so the gap widened again, 410→550ms — see the Balance rules table §7.5d; htk unchanged, only cycle/TTK moved. **2026-09-24, polish round 2** (F308, "full auto point blank ... too harsh"): the gap eased 550→540ms alongside the AR's own `heavy` easing (see the AR row below); htk still unchanged. Mag/reserve untouched |
 | Stinger | cqb | 15 | 250 | 8 | **1.75** | 60.0 | 43.5 | 18 | 144 | 1700 | 99% | — | cycle 120→250, res 72→144 |
 | Bolt Rifle | assault | 13 | 225 | 9 | **1.80** | 57.8 | 38.7 | 18 | 180 | 2000 | 98% | — | **stock** |
 | SMG | cqb | 7 | 100 | 13 | **1.20** | 70.0 | 47.8 | 54 | 216 | 2500 | 100% | 5 | **2026-09-20 playtest**: a covered gun emitter produced no headset hit because captured t12 was empty. Open BRX now deliberately adds a headset word at the known-good carrier 100; cycle 95→100 and mag/reserve 72/288→54/216 keep the added word priced and preserve the Suppressor's magazine lead. **2026-09-23** (R5, F308): the split moved 8+1→7+2 (close range still 9); `dmg`/`dps`/`sust`/one-mag % here are the GUN WORD ALONE (7), same caveat as the Shotgun |
@@ -243,11 +243,11 @@ Both are hidden from the picker. The Burst Rifle shipped stock until its 2026-09
   a player who picks on feel has no reason to take anything else in this family, so the AR's cost is
   owed and unpaid.
 - **Burst Rifle**: damage 10 (`wire.dmg`), 12 hits, a real three-round burst: 75 ms inside the burst,
-  then a 550 ms gap between bursts (R6, row 11 below, §7.5d), for a 2.57 s TTK. It carries a 40%
+  then a 540 ms gap between bursts (R6/R7, row 11 below, §7.5d), for a 2.53 s TTK. It carries a 40%
   `crit_pct`. The "changed" column holds its history. No longer ships byte-for-byte (`verified: false`).
 - **Force Rifle**: hidden since the 2026-09-17 cuts, and kept for custom games, not retuned. Both burst
   weapons now land 10 damage and 12 hits, and the Force Rifle's shorter burst gap makes it the faster of
-  the pair (1.65 s against 2.57 s), with a smaller reserve and a slower five-part reload.
+  the pair (1.65 s against 2.53 s), with a smaller reserve and a slower five-part reload.
 - **Bolt Rifle** — stock. Single shot, 9 hits, 22 kills.
 - **SMG**: **2026-09-20 playtest: the headset now emits a priced second word** (7 + 2 since R5, 2026-09-23;
   the history below is the first 8 + 1 pass). Covering
@@ -431,7 +431,7 @@ gun: `wire.range_outdoor_pct` writes `t2` outdoors, and the node drives accuracy
 - **`recoil`** — the S42 node-driven profile (legacy `{ceiling, floor, per_shot, recover_ms}` inputs plus
   optional explicit `{crisp, degraded, heavy, after_shots, after_heavy, settle_ms}` ladder fields; a harsh
   floor is a felt COST that offsets a fast TTK): SMG, Suppressor and Stinger harshest (100/60, S54/F268:
-  Tony's 2026-09-18 floor raise, kept 2026-09-23), the Assault Rifle deeper STILL (100/70/40, its own
+  Tony's 2026-09-18 floor raise, kept 2026-09-23), the Assault Rifle deeper STILL (100/70/45, its own
   explicit exception, §7.5c below), Energy Rifle medium (100/70), Force Rifle at 100/60, everything
   semi-automatic or one-shot none
   (100/100, no recoil model needed). The Burst Rifle is now one of those flat rows too: it is a
@@ -1162,10 +1162,19 @@ smallest single-token value of the three swept above that clears R4b, R4d, R6 an
 crit modelled). Shipped 2026-09-23. All ten R4-R9 cells clear 65% again, but R7 (the Burst Rifle
 beats a full-auto AR) is the **tightest of all ten, at 65.48%** — the smallest single-token gap that
 clears the other three cells leaves R7 with almost no margin, since it is the one cell the gap moves
-the opposite direction from R4b/R4d/R6 (a wider gap helps them and hurts R7). Watch this cell first if
-any future catalogue edit touches the Burst Rifle or the Assault Rifle's recoil.
+the opposite direction from R4b/R4d/R6 (a wider gap helps them and hurts R7).
+
+**Polish round 2 (Tony, 2026-09-24, F308, bench 4.3): "full auto point blank … too harsh."** Rather
+than hold the 100/70/40 AR ladder that made R7 a knife-edge, Tony chose to ease it — "leave the AR at
+45 … I like our rock paper scissor design": `recoil.heavy` 40 → 45 (row 3), and the Burst Rifle's own
+`overrides.t23` gap eased 550 → 540 ms alongside it. R7 settles at **~57.1%**, under the shared 65%
+bar, so R7 alone gets its own bar, **55%** (`RANGE_BAR_OVERRIDES` in the test, row 11) — the
+rock-paper-scissors triangle still holds (a bursting AR beats a full-auto AR and the Burst Rifle; the
+Burst Rifle beats a full-auto AR), just "more often than not" for R7 rather than "most of the time".
+R3 (~67.1%) and R6 (~66.2%) both still clear 65% at the eased numbers, unchanged. On Shields, R7 rises
+to ~72.4%, comfortably inside `SHIELDS_BAR` (60%), so the Shields bar is untouched.
 `python3 mcp/tools/balance_sim.py --scenario range-duel`; gated in CI by
-`mcp/tests/test_balance_sim.py::test_range_duel_rules_clear_the_65_percent_bar`. Bench item:
+`mcp/tests/test_balance_sim.py::test_range_duel_rules_clear_their_bar`. Bench item:
 `docs/FOLLOWUPS.md` F308.
 
 ### 7.5e R10: sidearms finish a kill, they do not compete with rifles (row 12)
@@ -1203,12 +1212,12 @@ allows, so the pool is treated as one number. 10,000 reps, seed 7:
 
 | rule | Standard | Shields | Hardcore |
 |---|---|---|---|
-| R1 charged Charge Rifle beats an AR | 93.8% | 97.6% | 90.0% |
+| R1 charged Charge Rifle beats an AR | 92.8% | 96.2% | 90.0% |
 | R2 AR beats an uncharged Charge Rifle | 91.7% | 84.8% | 90.7% |
-| R3 bursting AR beats full-auto AR | 76.7% | 88.6% | 20.2% |
+| R3 bursting AR beats full-auto AR | 67.1% | 79.4% | 20.0% |
 | R4a SMG beats a bursting AR, close | 71.0% | 65.0% | 81.1% |
-| R6 bursting AR beats the Burst Rifle | 69.3% | 69.8% | 66.7% |
-| R7 Burst Rifle beats a full-auto AR | 65.5% | 83.2% | 9.8% |
+| R6 bursting AR beats the Burst Rifle | 66.2% | 67.4% | 64.6% |
+| R7 Burst Rifle beats a full-auto AR | 57.1% | 72.4% | 10.1% |
 | R8 Shotgun beats the SMG, close | 69.0% | **63.0%** | 4.7% |
 | R10b Suppressor beats the Desert Eagle | 78.3% | 68.9% | 43.4% |
 
@@ -1218,6 +1227,13 @@ gated. **Shields bar: 60%, Tony 2026-09-23** (the lowest cell, R8, clears it by 
 reps is about ±1 point). `SHIELDS_BAR` in `balance_sim.py`; gated by `mcp/tests/test_balance_sim.py::
 test_shields_preset_recoil_rules_r1_to_r3`, `::test_shields_preset_range_rules_r4_to_r9` and
 `::test_shields_preset_primaries_beat_sidearms_r10b`.
+
+**2026-09-24, polish round 2 (F308):** the AR's `heavy` eased 40 → 45 and the Burst Rifle's burst gap
+eased 550 → 540 ms (Balance rules table, row 11). R3 moves 76.7→67.1% (Standard) and R7 moves
+65.5→57.1% (Standard) — both stay on their own bar (R3 still 65%; R7 gets its own 55%, row 11). Every
+Shields cell moves with them but stays clear of `SHIELDS_BAR` (R7 rises to 72.4% on Shields, R3 falls
+to 79.4%, still well over 60%), so the Shields bar itself is untouched. R4a, R8 and R10b are unaffected
+(neither weapon's recoil ladder is in scope for those cells at these bands).
 
 **Decisions for Tony (F310).**
 1. **The Shields bar: decided (Tony, 2026-09-23): 60%.** See the Balance rules table, row 13.

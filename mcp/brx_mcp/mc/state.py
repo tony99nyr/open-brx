@@ -2981,7 +2981,7 @@ class Session:
         if clash:
             raise ValueError(f"station id {sid} is already assigned to {clash}; ids must be unique on the field")
         # F345: 0 (and absent) = the station's own PLATFORM default, which it advertises in byte 14 (a respawn
-        # station: a phone -66, a StickS3 -60, both about 3 m). Any other value is the operator's override.
+        # station: a phone -70, a StickS3 -57, Tony 2026-09-24). Any other value is the operator's override.
         thr = a.get("threshold", 0)
         if not (isinstance(thr, int) and not isinstance(thr, bool) and (thr == 0 or -100 <= thr <= -30)):
             raise ValueError("threshold must be 0 (the station's own default) or an integer dBm in -100..-30 (the presence bubble)")
@@ -3955,7 +3955,7 @@ class Session:
         reason, stale_ms = body.get("pool_stale"), body.get("pool_stale_ms")
         nv.pop("pool_stale", None)
         nv.pop("pool_stale_ms", None)
-        if reason in ("silent", "no_fire", "write_lost"):
+        if reason in ("silent", "no_fire", "write_lost", "pool_wrong"):
             nv["pool_stale"] = reason
             if isinstance(stale_ms, int) and not isinstance(stale_ms, bool) and stale_ms >= 0:
                 nv["pool_stale_ms"] = stale_ms

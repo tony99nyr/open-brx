@@ -231,6 +231,8 @@ QUERY = "$QUERY,*"             # F264 (engine.js QUERY): one 8-byte ask -- see `
 # REVIVE path. Mirror this constant, never a helper that takes arguments -- the first argument anyone
 # passes will be a heal. `test_stage_cure.py` asserts the frame the stage writes is byte-exactly this.
 PROBE_LIFE = "$LIFE,0,0,0,*"
+# F341 (engine.js / brxlink.js `PARSER_RESET`): the gun's parser reset (v4.32 code read; screamers A4 is its pending bench proof).
+PARSER_RESET = "$*"
 # F15 (engine.js STUN_PLAY): the cue on the gun that just went dark, in the same write as the disarm.
 # X17 is Battle Company's concussion-grenade clip (catalogue: fx:explosion, 7.9 s).
 STUN_PLAY = "$PLAY,X17,4,6,,,,,*"
@@ -243,9 +245,14 @@ RELOAD_NAG_FIRST, RELOAD_NAG_EVERY = 5, 3   # engine.js RELOAD_NAG_FIRST / RELOA
 # S29 the shield recharge (engine.js SHIELD_REGEN_*): quiet since the last damage, the `$LIFE` grant and its
 # cadence, the grant cap, and the period the shield-down heartbeat replays on. SECONDS here, ms on the phone.
 SHIELD_REGEN_DELAY_S = 6.5          # engine.js SHIELD_REGEN_DELAY_MS -- Callsign's own 6.2-6.6 s (capture 2026-09-18)
-SHIELD_REGEN_STEP = 10              # engine.js SHIELD_REGEN_STEP -- `$LIFE,0,0,10,*`
-SHIELD_REGEN_STEP_S = 0.3           # engine.js SHIELD_REGEN_STEP_MS -- 0 -> 120 in 4.1 s (bench 2026-09-17)
+SHIELD_REGEN_GRANTS = 4             # engine.js SHIELD_REGEN_GRANTS (F349) -- a full pool in this many `$LIFE,0,0,<step>,*`
+SHIELD_REGEN_STEP_S = 1.0           # engine.js SHIELD_REGEN_STEP_MS -- one grant a second: 0 -> full in about 3 s
 SHIELD_REGEN_MAX_GRANTS_SLACK = 3   # engine.js SHIELD_REGEN_MAX_GRANTS_SLACK
+# F348 (engine.js SPAWN_SHIELD_FULL / SHIELD_FILL_ECHO_MS): a shields life starts at FULL shield. `$SPAWN` leaves the
+# pool at 0 on hardware, so every spawn and revive burst ends with one additive `$LIFE,0,0,<max>,*`; the gun's `$HP`
+# answer inside SHIELD_FILL_ECHO_S is that fill, not a recharge, and says nothing.
+SPAWN_SHIELD_FULL = True
+SHIELD_FILL_ECHO_S = 5.0
 SHIELD_LOOP_S = 1.94                # engine.js SHIELD_LOOP_MS -- N74's own length, so a replay cannot stack
 MEDAL_GAP_S = 2.0              # engine.js MEDAL_GAP_MS
 READOUT_COALESCE_S = 0.3       # engine.js READOUT_COALESCE_MS (A16 §3.1): a repaint within this of the last WRITE only restarts the hold
@@ -604,6 +611,13 @@ class GunStage:
         self._poll_at: float = 0.0
         self._probed_life: int | None = None
         self._spawn_at: float | None = None   # F264 (engine.js `_spawnAt`): now() of the last spawn/revive, for `_spawn_probe_tick`
+        # F341 (engine.js `_poolCheck`/`_poolRepair`/`poolWrong`/`_psetNow`): the spawn read-back's answer is
+        # COMPARED with the armed pools, a mismatch is repaired and read back, and POOL_REPAIR_TRIES repairs that
+        # do not hold become `pool_stale` 'pool_wrong'. `_pset_now` is the `$PSET` this life wrote (its scream take).
+        self._pool_check: dict | None = None
+        self._pool_repair: dict | None = None
+        self.pool_wrong: dict | None = None
+        self._pset_now: str | None = None
         # F264: the cure's own VERDICT -- None, or {verdict: 'asking'|'dead'|'alive'|'no_answer', at}. Read
         # by `state()` so the console can tell "the node tried and got nothing" from a bare stale claim (a
         # phone log reached nobody on 2026-09-18).
@@ -612,6 +626,7 @@ class GunStage:
         # the refill in flight, the clock the delay runs from (a spawn, or the last damage), the last heartbeat,
         # and whether the shield BROKE this life (a spawn starts at 0 without breaking and must not heartbeat).
         self._shield_regen: dict | None = None
+        self._shield_fill_at = 0.0          # F348: now() of the last spawn fill write, 0 once answered (engine.js `_shieldFillAt`)
         self._shield_quiet_at = 0.0
         self._shield_loop_at = 0.0
         self._shield_down = False
@@ -1329,6 +1344,8 @@ class GunStage:
     CURE_COOLDOWN_S = 30.0      # engine.js CURE_COOLDOWN_MS -- the floor between cures, ACROSS lives
     QUERY_POLL_S = 20.0         # engine.js QUERY_POLL_MS -- the divergence poll's own cadence, live match only
     SPAWN_PROBE_S = 2.5         # engine.js SPAWN_PROBE_MS -- the once-per-life spawn/revive read-back's delay
+    POOL_REPAIR_TRIES = 2       # engine.js POOL_REPAIR_TRIES (F341) -- repairs before the `pool_wrong` verdict
+    POOL_REPAIR_READ_S = 1.5    # engine.js POOL_REPAIR_READ_MS -- a repair write has this long before the read-back
     # F264 v3 (bench 2026-09-19, two taggers v4.32): a DEAD gun holds its `$QUERY` status-array print loop
     # for about 2 s before a late, UNTERMINATED body finally arrives (a live gun's own body lands ~30 ms
     # behind its `$LCD`). Gated on the probe clock alone, not on an active cure -- the body outlives
@@ -1861,7 +1878,103 @@ class GunStage:
             return
         self._probed_life = self._life
         self._poll_at = now
+        self._pool_check = {"life": self._life}   # F341: the answer is COMPARED, not just awaited (`_pool_verify`)
         self._spawn_task(self._ask_gun("spawn read-back: did the gun take the burst?"))
+
+    def _pool_ceilings(self) -> dict:
+        """engine.js `_poolCeilings` (F341): the pools this life armed, read off the compiled `$PSET` (`max_hp`,
+        `max_armor`, `max_shield`). The stage carries no overshield (A56), so there is no raised shield max. PURE."""
+        return {"hp": self.max_hp, "armor": self.max_armor, "shield": self.max_shield}
+
+    @staticmethod
+    def _pools_over(hp: int, armor: int, shield: int, c: dict) -> bool:
+        """engine.js `_poolsOver` (F341): above the armed ceilings; armour counts only in a game that arms some. PURE."""
+        return hp > c["hp"] or (c["armor"] > 0 and armor > c["armor"]) or shield > c["shield"]
+
+    def _pool_verify(self, hp: int, armor: int, shield: int, solicited: bool) -> None:
+        """engine.js `_poolVerify` (F341): a pool ABOVE its ceiling starts a repair, and only that does. The spawn
+        read-back's answer below the spawn pools with no `$HIR` since the spawn is logged, never written (grenade and
+        station damage carry no `$HIR`). A repair's read-back confirms it or schedules the next attempt. Never writes."""
+        if not self.spawned or not self.alive or not hp > 0:
+            return
+        life, now = self._life, self.now()
+        if self.pool_wrong is not None and self.pool_wrong["life"] == life:
+            return
+        c = self._pool_ceilings()
+        over = self._pools_over(hp, armor, shield, c)
+        if solicited and self._pool_check is not None and self._pool_check["life"] == life:
+            self._pool_check = None
+            hit = self._last_hir_at is not None and self._spawn_at is not None and self._last_hir_at >= self._spawn_at
+            if not over and not hit and (hp != c["hp"] or armor != c["armor"]):
+                self._log(f"spawn read-back: the gun reads {hp}/{armor}/{shield}, not the spawn pools {c['hp']}/{c['armor']}, "
+                          "with no $HIR since the spawn (a grenade, a station or a lost $HIR can do that; nothing is written) (F341)", "warn")
+        rp = self._pool_repair if self._pool_repair is not None and self._pool_repair["life"] == life else None
+        if rp is not None and rp["read_at"] and solicited:
+            rp["read_at"] = 0.0
+            if not over:
+                self._log(f"pool repair held: the gun reads {hp}/{armor}/{shield} (attempt {rp['attempts']} of "
+                          f"{self.POOL_REPAIR_TRIES})", "info")
+                self._pool_repair = None
+                return
+            rp["due_at"] = now
+        if not over or rp is not None:
+            return
+        self._log(f"*** gun pools {hp}/{armor}/{shield} are above the armed ceiling {c['hp']}/{c['armor']}/{c['shield']} -- "
+                  "repairing ($*, the life's $PSET, $LIFE set) (F341) ***", "error")
+        self._pool_repair = {"life": life, "attempts": 0, "due_at": now, "read_at": 0.0, "wrote": False}
+
+    def _pool_repair_tick(self, now: float) -> None:
+        """engine.js `_poolRepairTick` (F341): one step per tick, never beside another probe (the cure, an operator
+        resync). The write is `$*`, the life's `$PSET` verbatim (`write` puts the `$TID` behind it, F206), then
+        `$LIFE,<hp>,<armor>,<shield>,1,*` at the gun's latest pools clamped to the ceilings. A mode-1 `$LIFE` revives a
+        dead gun, so an unanswered read-back is the `pool_wrong` verdict, never another write."""
+        rp = self._pool_repair
+        if rp is None:
+            return
+        if rp["life"] != self._life or not self.alive:
+            self._pool_repair = None
+            return
+        if (self._stand_down(("spawned", "ble", "alive")) or self._cure is not None
+                or self._operator_resync_pending is not None):
+            if rp["read_at"]:                  # engine.js: ask again afterwards, never a verdict
+                rp["read_at"], rp["wrote"], rp["due_at"] = 0.0, True, now
+            return
+        if self._arm_pending is not None and not rp["wrote"] and not rp["read_at"]:
+            return   # engine.js: spawn protection is still up
+
+        def verdict(why: str) -> None:
+            self._pool_repair = None
+            self.pool_wrong = {"life": rp["life"], "at": now, "hp": self.hp, "armor": self.armor, "shield": self.shield}
+            self._log(f"*** gun pools still wrong ({why}): the player may be unkillable. Operator: FORCE RESPAWN (F341) ***", "error")
+
+        if rp["read_at"]:
+            if now - rp["read_at"] < self.QUERY_REPLY_S:
+                return
+            verdict(f"the read-back after repair {rp['attempts']} went unanswered")
+            return
+        if now < rp["due_at"]:
+            return
+        if rp["wrote"]:
+            rp["wrote"], rp["read_at"] = False, now
+            self._spawn_task(self._ask_gun(f"pool repair read-back {rp['attempts']}/{self.POOL_REPAIR_TRIES}"))
+            return
+        c = self._pool_ceilings()
+        if not self._pools_over(self.hp, self.armor, self.shield, c):
+            self._log(f"pool repair not needed: the gun now reads {self.hp}/{self.armor}/{self.shield}", "info")
+            self._pool_repair = None
+            return
+        if rp["attempts"] >= self.POOL_REPAIR_TRIES:
+            verdict(f"{self.POOL_REPAIR_TRIES} repairs did not hold, it reads {self.hp}/{self.armor}/{self.shield}")
+            return
+        rp["attempts"] += 1
+        t = {"hp": min(self.hp, c["hp"]), "armor": min(self.armor, c["armor"]), "shield": min(self.shield, c["shield"])}
+        pset = self._pset_now or next((f for f in (self.bundle.get("head") or [])
+                                       if isinstance(f, str) and f.startswith("$PSET,")), None)
+        self._spawn_task(self.write([PARSER_RESET, *([pset] if pset else []), f"$LIFE,{t['hp']},{t['armor']},{t['shield']},1,*"],
+                                    f"pool repair {rp['attempts']}/{self.POOL_REPAIR_TRIES}: {self.hp}/{self.armor}/{self.shield} "
+                                    f"above {c['hp']}/{c['armor']}/{c['shield']} -> {t['hp']}/{t['armor']}/{t['shield']}", gap_ms=0))
+        self.hp, self.armor, self.shield = t["hp"], t["armor"], t["shield"]
+        rp["wrote"], rp["due_at"] = True, now + self.POOL_REPAIR_READ_S
 
     def pool_stale(self, now: float | None = None) -> dict | None:
         """engine.js `poolStale`: None when fresh, else {why: 'silent'|'no_fire', s: seconds since the last pool report or None}."""
@@ -1873,6 +1986,8 @@ class GunStage:
             return {"why": "silent", "s": age}
         if self.alive and self._no_fire_pulls >= self.NO_FIRE_PULLS:
             return {"why": "no_fire", "s": age}
+        if self.alive and self.pool_wrong is not None and self.pool_wrong["life"] == self._life:
+            return {"why": "pool_wrong", "s": age}   # F341
         return None
 
     def _pick_table(self, kind: str) -> list[str]:
@@ -1970,7 +2085,7 @@ class GunStage:
         if not p or not p["shield"] or not rp or not rp.get("shield_on") or now - self._shield_at < self.SHIELD_REASSERT_S:
             return
         self._shield_at = now
-        self._spawn_task(self.write([rp["shield_on"]], "shield after hit", gap_ms=0))
+        self._spawn_task(self.write([rp["shield_on"]], "protection light after hit", gap_ms=0))
 
     def _arm_life(self, why: str) -> None:
         # Deliberate partial parity with engine.js: the stage has no reconcile-on-drop re-arm, no infection
@@ -1991,12 +2106,13 @@ class GunStage:
         # at all). A shielded station life ends with the headset back on its rest frame.
         rp = self._respawn_profile()
         offs = [off] if pending["off"] and tmp and off is not None else []
-        shield_off = [rp["shield_off"]] if pending["shield"] and rp and rp.get("shield_off") else []
-        frames = take + offs + shield_off
+        # F348: `shield_off` is the station's protection LIGHT going dark (a headset frame), never the shield POOL.
+        light_off = [rp["shield_off"]] if pending["shield"] and rp and rp.get("shield_off") else []
+        frames = take + offs + light_off
         if not frames:
             return
         why = ((f"end spawn protection ({why})" + (f" + hit table {len(take)}r" if take else "")
-                + (" + shield off" if shield_off else "")) if offs else f"arm hit reception ({why})")
+                + (" + protection light off" if light_off else "")) if offs else f"arm hit reception ({why})")
         self._spawn_task(self.write(frames, why, gap_ms=60, take=bool(take)))
 
     # ---- game -------------------------------------------------------------------------------------
@@ -2012,6 +2128,7 @@ class GunStage:
         self._reset_hill()                                       # engine.js `_resetHill` on a new match: game 2 must not inherit game 1's point or its once-per-game warnings
         self._cure = None; self._query_at = 0.0; self._cure_life = None; self._cure_at = 0.0; self._poll_at = 0.0   # F264: a new match owes the last one's gun nothing
         self._probed_life = None; self.cure = None
+        self._pool_check = None; self._pool_repair = None; self.pool_wrong = None; self._pset_now = None   # F341
         self._prev_ammo = {}; self._prev_reserve = {}; self._shot_acct = {}; self.active_slot = 0; self._recoil_slot = 0; self.reloading = None   # engine.js `_writeHead`
         hs = self.bundle.get("headset") or {}
         if hs.get("pregame"):
@@ -2027,6 +2144,7 @@ class GunStage:
         if not ps:
             return None, ""
         self.scream_this_life = ps_id
+        self._pset_now = ps   # F341 (engine.js `_psetNow`): the `$PSET` a pool repair re-writes
         if ps_id:
             self._log(f"scream this life: {ps_id} \"{_snd.describe(ps_id)}\"", "info")
         return ps, f" + scream {ps_id}{ps_tag}"
@@ -2072,8 +2190,11 @@ class GunStage:
             self._arm_pending = None; self._trigger_pending = None
         else:
             self._arm_after_spawn()                              # F209 (an older bundle): hits stay silent until the gun fires or the cap
-        await self.write(late + ([ps] if ps else []) + list(rp["spawn"] if rp else self.bundle["spawn"]) + [SFLASH] + ([fr] if fr else []),
-                          "spawn" + (f" + hit table {len(late)}r (late)" if late else "") + ps_why + self._line_tag(fr, tag),
+        fill = self._spawn_shield_fill()                          # F348: a shields life starts at full shield
+        self._shield_fill_start(fill)
+        await self.write(late + ([ps] if ps else []) + list(rp["spawn"] if rp else self.bundle["spawn"]) + fill + [SFLASH] + ([fr] if fr else []),
+                          "spawn" + (f" + hit table {len(late)}r (late)" if late else "")
+                          + (f" + shield pool {self.max_shield}" if fill else "") + ps_why + self._line_tag(fr, tag),
                           take=bool(late))
         self._after_spawn()
         hs = self.bundle.get("headset") or {}
@@ -2105,8 +2226,10 @@ class GunStage:
         # or not, so the window must also require `station is None` -- otherwise a legacy station revive would
         # wrongly start the spawn-kill escalation.
         self._timed_life_at = self.now() if kind == "timed" and station is None else None   # 2026-09-19: the spawn-kill window runs from a timed respawn
-        await self.write(([ps] if ps else []) + list(revive) + ([fr] if fr else []),
-                          "revive" + ps_why + self._line_tag(fr, tag))
+        fill = self._spawn_shield_fill()                          # F348: a shields life starts at full shield
+        self._shield_fill_start(fill)
+        await self.write(([ps] if ps else []) + list(revive) + fill + ([fr] if fr else []),
+                          "revive" + (f" + shield pool {self.max_shield}" if fill else "") + ps_why + self._line_tag(fr, tag))
         self._after_spawn()
         # engine.js `_armAfterSpawn`: an unprotected life arms at once while the phase is live. Here that is
         # after the revive write returns, so the take still follows the revive frames, as on the phone.
@@ -2224,7 +2347,9 @@ class GunStage:
         # generation counter already bumps once per `_after_spawn()` call -- the same "which life is this"
         # concept that field already existed for. Do not ALSO bump it here: `_gun_take` bumps it again a
         # few lines down, and a second increment here would count two per life instead of one.
-        self.hp = self.max_hp; self.armor = self.max_armor; self.shield = 0   # engine.js `_afterSpawn`/`_revive`: shield always starts at 0, not a max
+        self.hp = self.max_hp; self.armor = self.max_armor   # engine.js `_spawn`/`_revive`
+        if not self._shield_fill_at:
+            self.shield = 0   # no fill: `$SPAWN` leaves the pool at 0 (a filled life was zeroed before its write, F348)
         self._hurt_fired = False
         self._pending_hurt_write = False   # engine.js `_armLife`/`_writeLife`: a new life owes no alert from the last one
         self._shot_due_at = None; self._no_fire_pulls = 0; self._dry_pulls = 0   # F208: a fresh life owes no shots; the RELOAD nag: and it starts loaded, so no dry spell is running
@@ -2593,6 +2718,7 @@ class GunStage:
         self._cure_tick(now)                     # F264: and once no_fire is concluded, ASK the gun, then act on the answer
         self._poll_tick(now)                     # F264: ...and ask it every QUERY_POLL_S anyway, so nobody has to pull a dead trigger first
         self._spawn_probe_tick(now)              # F264: ...and once a life, read back the biggest write of that life
+        self._pool_repair_tick(now)              # F341: ...and when the pools it read back are wrong, repair them and read again
         if self.stunned and now >= self.stunned["until"]:
             self._stun_restore("expired")        # F15: the stun timer -- restore the LIVE counts (engine.js tick())
         self._poison_tick(now)                   # S16: the poison tick clock (engine.js tick())
@@ -2642,14 +2768,15 @@ class GunStage:
                 self._shield_loop_tick(now)
             return
         if not self._shield_regen:
-            self._shield_regen = {"started_at": now, "next_at": now, "grants": 0}
+            step = self._shield_regen_step()
+            self._shield_regen = {"started_at": now, "next_at": now, "grants": 0, "from": self.shield, "step": step}
             self._log(f"shield recharge: {self.shield}/{self.max_shield} after "
                       f"{now - self._shield_quiet_at:.1f}s without damage", "info")
             self._event_now("shield_charging")
         r = self._shield_regen
         if now < r["next_at"]:
             return
-        if r["grants"] >= math.ceil(self.max_shield / SHIELD_REGEN_STEP) + SHIELD_REGEN_MAX_GRANTS_SLACK:
+        if r["grants"] >= SHIELD_REGEN_GRANTS + SHIELD_REGEN_MAX_GRANTS_SLACK:
             # A full pool's worth of grants and the gun still does not report full: stop rather than write at
             # it forever. Either the echoes are lost, or the ceiling is not what the head said.
             # `_shield_gave_up` is what makes it STICK: clearing `_shield_regen` alone put the next tick
@@ -2662,7 +2789,26 @@ class GunStage:
             return
         r["grants"] += 1
         r["next_at"] = now + SHIELD_REGEN_STEP_S
-        self._spawn_task(self.write([f"$LIFE,0,0,{SHIELD_REGEN_STEP},*"], f"shield regen grant {r['grants']}", gap_ms=0))
+        self._spawn_task(self.write([f"$LIFE,0,0,{r['step']},*"], f"shield regen grant {r['grants']}", gap_ms=0))
+
+    def _shield_regen_step(self) -> int:
+        """engine.js `_shieldRegenStep` (F349): one grant, so a full pool takes SHIELD_REGEN_GRANTS writes."""
+        return max(1, math.ceil((self.max_shield or 0) / SHIELD_REGEN_GRANTS))
+
+    def _spawn_shield_fill(self) -> list[str]:
+        """engine.js `_spawnShieldFill` (F348): the pool write that makes a shields life start at full shield, one
+        additive `$LIFE,0,0,<max>,*` after the burst's `$SPAWN`, clamped by the gun at `$PSET` t5. Only a shields
+        game (`shield_regen_on`). A spawn read-back that follows the burst should read shield = max_shield."""
+        if not SPAWN_SHIELD_FULL or not self.shield_regen_on:
+            return []
+        return [f"$LIFE,0,0,{self.max_shield},*"]
+
+    def _shield_fill_start(self, fill: list[str]) -> None:
+        """F348: before the burst goes out (engine.js sets these synchronously after queueing it): the pool is 0
+        until the gun answers the fill, and the answer is recognised by `_shield_fill_at`."""
+        self._shield_fill_at = self.now() if fill else 0.0
+        if fill:
+            self.shield = 0
 
     def _shield_loop_tick(self, now: float) -> None:
         """engine.js `_shieldLoopTick`: the heartbeat, replayed while the shield is down and the recharge has
@@ -2799,8 +2945,10 @@ class GunStage:
                 self.tele.update(hp=hp, armor=armor, **({"shield": shield} if shield is not None else {}))
                 if cmd == "LCD":
                     self._on_lcd(hp, armor, desync=solicited)
+                    self._pool_verify(self.hp, self.armor, self.shield, False)   # F341: a `$SPAWN`'s own `$LCD`
                 else:
                     self._on_pools(hp, armor, shield, desync=solicited)
+                    self._pool_verify(self.hp, self.armor, self.shield, solicited)   # F341 (engine.js HP case)
                 if solicited or self._operator_resync_pending is not None:
                     self._operator_resync_answer(cmd, t, solicited=solicited)
                 if solicited:
@@ -3340,10 +3488,17 @@ class GunStage:
             elif dmg > 0 and hp > 0:
                 if gains:
                     self._log(f"pool rise ({', '.join(f'{p} +{d}' for p, d in gains)}) in the same frame as {dmg} damage: the HIT wins, no gain event (F14)", "info")
+            elif (gains and gains[0][0] == "shield" and self._shield_fill_at
+                  and now - self._shield_fill_at <= SHIELD_FILL_ECHO_S):
+                # F348 (engine.js `_onHp` `fillEcho`): the gun's answer to the spawn fill. The life started full.
+                if shield >= self.max_shield:
+                    self._shield_fill_at = 0.0
+                    self._shield_charged()
+                self._log(f"spawn shield fill: {shield}/{self.max_shield}", "info")
             elif before > 0 and gains:
                 pool, amount = gains[0]
                 # S45 (engine.js `_onHp`): the grant that FILLS the shield says SHIELDS ONLINE instead of
-                # the per-grant `shield_up` line -- a refill is a dozen `$LIFE` grants 300 ms apart and the gun
+                # the per-grant `shield_up` line -- a refill is several `$LIFE` grants (F349: 4, a second apart) and the gun
                 # plays one clip at a time, so the two would cut each other off on the frame the news lands
                 # (F57's rule: two cues, one speaker, the rarer one wins). What makes it an EDGE is this branch,
                 # not a comparison of its own: it runs only when a pool actually ROSE, so a frame reporting a
@@ -3377,7 +3532,9 @@ class GunStage:
             return
         readout = g.get("readout")
         if readout and readout.get("pools"):
-            if pool:
+            # F349 (engine.js `_gunReadoutPaint`): no readout animation while a recharge runs; the grant that fills
+            # the pool ends the recharge first (`_shield_charged`), so full is painted.
+            if pool and not (pool == "shield" and self._shield_regen):
                 self._readout_paint(pool)
             return
         if g.get("in_play") == "health":
@@ -4278,8 +4435,8 @@ class GunStage:
                 add("shield_cycle", "SHIELD BREAK AND RECHARGE (shoot it off, then wait)",
                     f"sound: the break cue, then the heartbeat every {SHIELD_LOOP_S:g}s while the shield is gone · "
                     f"after {SHIELD_REGEN_DELAY_S:g}s with NO further hits the heartbeat stops and the charge cue plays, "
-                    f"then {SHIELD_REGEN_STEP}-point `$LIFE` grants every {SHIELD_REGEN_STEP_S:g}s refill the pool "
-                    f"({self.max_shield} in about {self.max_shield / SHIELD_REGEN_STEP * SHIELD_REGEN_STEP_S:.1f}s) and "
+                    f"then {self._shield_regen_step()}-point `$LIFE` grants every {SHIELD_REGEN_STEP_S:g}s refill the pool "
+                    f"({self.max_shield} in about {(SHIELD_REGEN_GRANTS - 1) * SHIELD_REGEN_STEP_S:.1f}s) and "
                     "the ONLINE line plays at full. Any hit in the wait restarts the whole delay",
                     "ir", {"kind": "shot", "repeat": max(1, math.ceil(self.max_shield / 20))}, needs_ir=True)
             add("death", "DEATH (emitter kills you)",
