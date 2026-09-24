@@ -30,7 +30,7 @@ reaches `docs/manual/` only when it is CONFIRMED here.
 | 9 | fn 24-27 are 5/4/3/2 s fuses; p5 is the cell the fuse fires (V4_30, sheets) | 8 | **BENCH DIFFERENT for fn 24; CODE-READ UNRESOLVED for the sequence.** On 2026-09-11 fn 24 generated persistent fake `$HIR` ticks about every 5.07 s until `$SPAWN`, with no pool damage. The v4.32 gun image only exposes `$SIR` forwarding, not the timer/effect owner. |
 | 10 | The crit bonus is `$PSET` t6 (we ship 50), scaled by `$GSET` t7 (V4_31, sheets) | 9 | |
 | 11 | fn 34/35 register on a dead gun; fn 38 halves HP damage; fn 30 back x2; fn 33 silent kill; fn 50-52 colour only (V4_30) | 10 | **CONFIRMED for fn 34 (2026-09-18, §16).** A `$SIR,14,0,NULL,34,,,,,*` row on a gun killed over BLE (`$HP,0,0,0`) still registered `$HIR` from an `$IRTX` type-14 revive beam. fn 35, 38, 30 and 33 untested this session. |
-| 12 | `$SIR` p6/p8 make the victim re-emit the hit (splash) (V4_30, sheets) | 11 | **CODE-READ ONLY (v4.32, 2026-09-21): UNRESOLVED.** The gun-side `$SIR` path forwards values but contains no re-emit branch; the effect may live downstream. |
+| 12 | `$SIR` p6/p8 make the victim re-emit the hit (splash) (V4_30, sheets) | 11 | **CODE-READ ONLY (v4.32, 2026-09-21): UNRESOLVED.** A five-field formatter (its command is unidentified) forwards values but contains no re-emit branch; the effect may live downstream. |
 | 13 | `$STOP` closes and `$START` opens IR reception; the same flag gates the trigger (inferred); both clear `$GSET`'s app-mode flags (V4_30, V4_31) | 12 | **DIFFERENT (2026-09-18, §23 step 2).** `$STOP` blocks a hit's damage but not the `$HIR`, and it survives `$SPAWN`; `$START,*` plus a `$GSET`/`$TID` re-send reopens it. §12 step 2 (does `$STOP` gate the trigger?) is open. |
 | 14 | The gun sends `$DD,<killer>,<team>` when it dies (Jay's code); a kill confirmation is a protocol-15 subtype-0 IR word (BC's UART sheet) | 13 | **HOSTED BLE RESULT ONLY (2026-09-18).** A gun killed by one hosted hit gave `$HP,0,0,0` then `$LCD,0,0,0,0,6,24`, with no `$DD`. The hosted protocol-15 magnitudes 1–39 sweep gave no audible native callout, though every word registered silently (fn 28 on `<15,0>`, team-gated). A dead gun forwarded a host `$IRTX` frame through its headset. **Native differs:** an earlier native TDM receiver capture saw a protocol-15 magnitude-2 word after death; the 2026-09-23 gun code read found an eleven-field death send request. The source, full serial prefix and recipient behaviour still need the [focused capture](bench-native-firmware-2026-09-23.md). Do not infer native absence from the hosted result. |
 | 15 | Split frames get lost; bursts overflow; `$DPLAY` on a loop sound hangs the gun (V4_31) | 14 (screamers sheet Phase A) | **PARTLY CONFIRMED.** A1: `$DPLAY,A10,4,*` got no `$PONG`, no reply and no audio, and the link dropped about 15 s later; it recovered on reconnect with no power cycle needed, so this is a partial screamer rather than a proven full lock. A2 control (`$DPLAY,U37,4,*`, one-shot) answered `$PING` at once. `$DPLAY` stays on the never-send list either way. |
@@ -283,7 +283,7 @@ V4_30 gives fn 24, 25, 26 and 27 fuses of 5.0, 4.0, 3.0 and 2.0 s. On 09-18, fn 
 The code explains the loop: in app mode an expired fuse injects a **protocol-9** word, and `<9,3>` was fn 24 at the
 time. Also, `$SIR` p5 on these rows is a cell key (low nibble = protocol, high nibble = subtype).
 
-**Code-read target (v4.32, 2026-09-21).** The gun-side `$SIR` routine formats and forwards five values but has no
+**Code-read target (v4.32, 2026-09-21).** A five-field formatter (its command is unidentified) forwards five values but has no
 function switch, timer or cell decode, so it cannot confirm the old timing sequence. Use a distinct target cell
 (`<10,0>` = fn 1) for the timed runs and reserve a self-referential source/target run for the recursion control.
 Three runs per function must produce one delayed event near 5/4/3/2 s before the claim advances.
@@ -340,7 +340,7 @@ A `$SIR` row with p6 above 0 makes the **victim** send the hit on to everyone ar
 p6 = 100. On B, send `$SIR,0,0,,1,0,100,1,,*` and put the receiver rig beside B. Hit B once. Does the rig decode a
 second word, 0 to 250 ms after the hit, with A's id and crit = 1?
 
-**Code-read target (v4.32, 2026-09-21).** The gun-side `$SIR` forwarding path has no visible p6/p8 re-emit branch;
+**Code-read target (v4.32, 2026-09-21).** A five-field formatter (its command is unidentified) has no visible p6/p8 re-emit branch;
 the headset may own it. First prove the rig can receive a known B-emitted word in the same geometry. Shield the rig
 from A's direct beam, re-arm B to a nonlethal baseline before every trial, and counterbalance p6 = 0/1/50/100 at
 0.25 m and 2 m, five trials per cell. Repeat indoors with p6 = 0 while varying p8 = 0/1/50/100. Require a
