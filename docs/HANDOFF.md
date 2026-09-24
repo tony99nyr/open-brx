@@ -27,31 +27,24 @@ proved, and that every lane builds on:
 - **`$BUMP,<amount>,<hp>,<armour>,<shield>,<sound>` is confirmed on every field** (F65 closed).
 - **`$STUN,<ms>` is a native, SILENT stun.** The node plays `X17` itself (built, commit `273e949a`, not yet heard in a match).
 - **Poll a gun with the bare `$LIFE,*`**: a dead gun answers `$HP,0,0,0` at once. `$QUERY` holds a dead gun for ~2 s.
-- **`$DD` does not exist on this gun**, and no protocol-15 word plays a native kill callout. A DEAD gun still
+- **The hosted BLE kill gave no `$DD`**, and no tested hosted protocol-15 word played an audible callout. A native TDM capture saw protocol-15 magnitude 2 after death. A DEAD gun still
   forwards a host `$IRTX` through its headset, so a kill confirm can ride IR (S57, the IR callout bus).
 - **`$LIFE,<hp>,0,0,1,*` then `$HLED,,6,*` revives a gun killed over BLE.** Untested on a real F264 stall.
 - **`$DPLAY` on a looping sound blocked the gun and dropped the link** (screamers A1). It stays on the never-send list.
 ## Lane: levers and screamers
-Screamers are Tony's P0. Levers session 1 ran in three sittings; its remainder is bench-plan sitting 2.
-Screamers Phase A has run A1 and A2 only.
-- **Next desk task:** reprioritize outside R4; R4/T5 is decision first and remains blocked on Tony's explicit
-  recovery-research decision. **T4 is complete:** the verified update ZIP contains 211 audio payloads, not 213;
-  193 match the off-gun bank, 18 differ and none add an id. The streaming comparator copied no audio and the
-  catalog stayed unchanged. **T3 is complete:** all 128 command rows now have a
-  sampled-version vocabulary gate; core Open BRX names occur in every sampled tagger, `$CONNECT` joins at 2.08b,
-  and the five known-safe candidates `$AS`, `$IT`, `$KK`, `$SP` and `$UP` occur only in 4.32. `$VERSION` then `$PING` is the conservative older-gun
-  probe, but the existing safety tier still decides every send. **The untested-levers pass is complete:** corrected
-  v4.32 contradicts the seven-field `$BHIT` and `$SPAWN`-shield claims, while fuse/splash/station semantics cross
-  an unresolved gun-to-controller forwarding boundary; the levers sheet now gives a controlled next step for each
-  and marks the undefined protocol-15 “perk/proximity” meanings blocked on source clarification. **F272's build is complete:** the phone and MC now expose a
-  durable, older-node-safe lock verdict after two unanswered all-zero `$LIFE` reads, and recovery restores the
-  full head before the configured down/respawn path begins. Its 8 s threshold and stable-radio screamer remain
-  bench-provisional. R4/T2's code-read already pinned the blocking wait, 1,023-byte usable UART rings, persistent
-  split frames and `$*` cleanup. F269's raw-byte helper (`raw-bytes`) is built; F300 holds the `$QUERY` sound/gyro/per-slot remainder.
-- **Next bench task:** Block 2 of [`bench-2026-09-24.md`](bench-2026-09-24.md) (A4, A7, A7b, A7c, A8 with
-  `raw-bytes`), then A1c, A3, A5, A6, A11 and A12.
-- **Blocked:** R4/T2's full `$SIR` table on the unresolved gun-to-controller effect owner; F269 and Phase C on
-  complete A7/A8 numbers; Phase E on F272's bench validation; Phase D on the Phase B rules.
+Screamers remain P0. Phase A has run A1 and A2. The current order is in
+[`bench-plan.md`](bench-plan.md); the next runbook is [`bench-2026-09-24.md`](bench-2026-09-24.md).
+F269's `raw-bytes` helper is built for A4/A7/A7b/A7c/A8.
+
+- **Next bench task:** run the runbook's screamer transport block, then the focused
+  [native kill capture](bench-native-firmware-2026-09-23.md). Do not send `$AS,1`.
+- **Next desk task:** prepare F293 GPIO logging and S48 carrier/duty measurement from the
+  [R4 research plan](firmware-image-research-plan.md). R4/T5 read-only research is authorised; flashing remains
+  decision first.
+- **Open boundaries:** hosted RAM-table loading and headset routing, protocol-15 magnitude-2 source and receiver,
+  native win checks, F308 ordering, and headset mode-5 effects. See the dated
+  [experiment log](experiment-log/2026-09.md) for evidence and uncertainty.
+
 ## Lane: playtest and the node cure
 
 The F264 cure SHIPPED: on three unanswered pulls the node probes with `$LIFE,*`, acts only on the reply, and puts

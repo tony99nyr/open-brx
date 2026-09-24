@@ -36,6 +36,8 @@ historical context; the running order is always [`bench-plan.md`](bench-plan.md)
 | **[`bench-plan.md`](bench-plan.md)** | **open this first.** Every bench test in one order, as sittings of 60 min or less, with the equipment, the preconditions, and which sheet owns what |
 | [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md) | live: verifies the firmware findings on v4.32 (claims 1-27) |
 | [`bench-2026-09-24.md`](bench-2026-09-24.md) | live: the next sitting's ordered runbook (connect reliability, screamers transport, one match, F275 outdoors, S48 in the house) |
+| [`bench-native-firmware-2026-09-23.md`](bench-native-firmware-2026-09-23.md) | planned: focused native fatal-hit capture, with hosted controls |
+
 | [`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md) | live, P0: reproduce and prevent the screamer lock-up (Phases A-E) |
 | [`bench-perks-2026-09-18.md`](bench-perks-2026-09-18.md) | history: every section answered on 2026-09-18 (the log's perks bench entry, items 5-8) |
 | [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md) | superseded by the plan; history |

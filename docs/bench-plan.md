@@ -79,6 +79,14 @@ measured recoil numbers behind the shipped rungs. Groups C, D, E and F go into s
 Screamers A8b, A9, A10, A13. A13 gives the per-gun traffic budget (**F274**). A13 replays the shipped recoil writer,
 which writes `$TMP` t4 only (S55, shipped).
 
+### Sittings 4a and 4b: native fatal-hit capture (60 + up to 45 min; 2 guns, paired headsets, rig, laptop)
+
+Run after the screamer transport controls in sittings 1 and 4. Use the
+[native firmware sheet](bench-native-firmware-2026-09-23.md): two native TDM fatal hits alternate with two hosted
+controls in 4a; one final pair completes the three-pair result in 4b. The result tests the source and receiver of
+protocol-15 magnitude 2. Start native TDM from the
+gun menu; do not send `$AS,1`. Defer FFA, Survival and indoor/outdoor checks to their own setups.
+
 ### Sitting 5: match verification (about 60 min; 2 guns, Phones + MC, film)
 
 Levers §1 run f (F206's proof) **already ran and passed**, 2026-09-19; do not re-run it here.
@@ -160,6 +168,7 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 | sheet | status | owns |
 |---|---|---|
 | [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md) | live | claims 1-27, §1-§26 |
+| [`bench-native-firmware-2026-09-23.md`](bench-native-firmware-2026-09-23.md) | planned | native fatal-hit protocol-15 source and receiver |
 | [`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md) | live, P0 | the screamers: Phases A-E (A1, A2 done) |
 | [`bench-perks-2026-09-18.md`](bench-perks-2026-09-18.md) | history | every section answered 2026-09-18 |
 | [`bench-grenade.md`](bench-grenade.md) | open, backlog | the grenade and hill rungs |

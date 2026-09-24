@@ -32,7 +32,7 @@ reaches `docs/manual/` only when it is CONFIRMED here.
 | 11 | fn 34/35 register on a dead gun; fn 38 halves HP damage; fn 30 back x2; fn 33 silent kill; fn 50-52 colour only (V4_30) | 10 | **CONFIRMED for fn 34 (2026-09-18, §16).** A `$SIR,14,0,NULL,34,,,,,*` row on a gun killed over BLE (`$HP,0,0,0`) still registered `$HIR` from an `$IRTX` type-14 revive beam. fn 35, 38, 30 and 33 untested this session. |
 | 12 | `$SIR` p6/p8 make the victim re-emit the hit (splash) (V4_30, sheets) | 11 | **CODE-READ ONLY (v4.32, 2026-09-21): UNRESOLVED.** The gun-side `$SIR` path forwards values but contains no re-emit branch; the effect may live downstream. |
 | 13 | `$STOP` closes and `$START` opens IR reception; the same flag gates the trigger (inferred); both clear `$GSET`'s app-mode flags (V4_30, V4_31) | 12 | **DIFFERENT (2026-09-18, §23 step 2).** `$STOP` blocks a hit's damage but not the `$HIR`, and it survives `$SPAWN`; `$START,*` plus a `$GSET`/`$TID` re-send reopens it. §12 step 2 (does `$STOP` gate the trigger?) is open. |
-| 14 | The gun sends `$DD,<killer>,<team>` when it dies (Jay's code); a kill confirmation is a protocol-15 subtype-0 IR word (BC's UART sheet) | 13 | **REFUTED, both halves, for this gun.** A gun killed by one hit gave `$HP,0,0,0` then `$LCD,0,0,0,0,6,24`, with NO `$DD`. §13 step 3's sweep of protocol-15 magnitudes 1-39 found no native audible callout on any of them, though every one registered silently (fn 28 on `<15,0>`, team-gated). So the gun does not announce a kill on its own in app mode; Callsign's kill voice is an app-side `$PLAY`. The node must not build on `$DD`. **A DEAD gun still forwards a host `$IRTX` frame out through its headset and emits the exact word**, confirmed with a control (a dying gun itself emits no IR on death). So a protocol-15 word sent via `$IRTX` through the dead gun's headset IS a usable, silent, firmware-free carrier for a host-defined kill-confirm signal. |
+| 14 | The gun sends `$DD,<killer>,<team>` when it dies (Jay's code); a kill confirmation is a protocol-15 subtype-0 IR word (BC's UART sheet) | 13 | **HOSTED BLE RESULT ONLY (2026-09-18).** A gun killed by one hosted hit gave `$HP,0,0,0` then `$LCD,0,0,0,0,6,24`, with no `$DD`. The hosted protocol-15 magnitudes 1–39 sweep gave no audible native callout, though every word registered silently (fn 28 on `<15,0>`, team-gated). A dead gun forwarded a host `$IRTX` frame through its headset. **Native differs:** an earlier native TDM receiver capture saw a protocol-15 magnitude-2 word after death; the 2026-09-23 gun code read found an eleven-field death send request. The source, full serial prefix and recipient behaviour still need the [focused capture](bench-native-firmware-2026-09-23.md). Do not infer native absence from the hosted result. |
 | 15 | Split frames get lost; bursts overflow; `$DPLAY` on a loop sound hangs the gun (V4_31) | 14 (screamers sheet Phase A) | **PARTLY CONFIRMED.** A1: `$DPLAY,A10,4,*` got no `$PONG`, no reply and no audio, and the link dropped about 15 s later; it recovered on reconnect with no power cycle needed, so this is a partial screamer rather than a proven full lock. A2 control (`$DPLAY,U37,4,*`, one-shot) answered `$PING` at once. `$DPLAY` stays on the never-send list either way. |
 | 16 | `$RADSK` every 4 s keeps a headless gun linked (Jay's code, V4_31) | 15 | **CODE-READ ONLY (v4.32, 2026-09-21): UNRESOLVED.** The name occurs in headset/native message machinery, but no clean inbound timer refresh was established. |
 | 17 | `$IRTX` type 14 to a downed ally is a revive beam, read via fn 34 (BC app) | 16 | **CONFIRMED (2026-09-18, §16 steps 1-3).** A dead gun with `$SIR,14,0,NULL,34,,,,,*` registered `$HIR,4,14,1,2,1,0,0` from a live gun's `$IRTX,100,14,1,2,1,0,0,100,1,,0,*` (field 4 = the dead gun's own team), and `$LIFE,30,0,0,1,*` then revived it. A live or dead gun forwards a host `$IRTX` through its headset. Still open: step 4 (field 4 = 1) and step 6.3 (does `$CLEAR` stop a headset loop). |
@@ -361,39 +361,18 @@ trigger (inferred). V4_31 also shows that `$START` and `$STOP` clear the app-mod
 If step 1 registers nothing and step 3 registers, MC can close F121 by sending `$STOP` until spawn (§23 builds on
 this). **Re-send `$GSET` after any mid-match `$START`**, because the `$START` cleared its app-mode flags.
 
-## 13. Kill confirmation: a discovery phase (30 min, needs the IR rig)
+## 13. Kill confirmation: historical hosted discovery
 
-We do not yet know how a stock game confirms a kill, so this section discovers it before anything is built on it.
+The steps below record the original hosted hypothesis and the 2026-09-18 trial. They are not the current native
+procedure. The hosted `$DD` and audible-callout results are in checklist row 14. A later native TDM capture saw
+protocol-15 magnitude 2 after a kill. The [native capture sheet](bench-native-firmware-2026-09-23.md) tests its
+source and recipient. Do not repeat the 0–63 sweep.
 
-What the sources say:
-- Battle Company's own UART sheet lists **"Kill confirmation"** and **"Player Respawn Request"** among the protocol-15
-  callouts of its `$SIR,15,0` row ("call out for audio"), next to control point, respawn station, capture the flag
-  and the grenade types. So a kill confirmation is most likely a **protocol-15, subtype-0 IR word**, and the gun that
-  receives it needs a `<15,0>` `$SIR` row. Jay (LaserTagMods) told Tony the same: the kill-confirm IR "has to be `$SIR`
-  setup".
-- The sheet's Callsign death sample shows the app side: the victim's gun reports `$HP,0,0,0`, the app credits the last
-  `$HIR` shooter, and the app tells the killer's gun to play the kill-confirmation voice (`V3A` male, `VBA` female).
-- Jay's ESP32 code reads a `$DD,<killer>,<team>` frame from the gun when its player dies.
-- The V4_31 disassembly found no IR send in the gun's own death routine.
-- Known protocol-15 magnitudes from Jay's JBOX code: 6 respawn, 8 perk or KOTH pulse, 10 proximity, 50 capture. The
-  kill-confirmation magnitude is not in any source we hold.
-
-Steps:
-1. **Listen for `$DD`.** Kill B (the recipe above). Log every frame B sends for 5 s after the death.
-2. **Passive capture at death.** Point the IR rig at B's headset domes, then at A, and kill B again. Record every word
-   (protocol, player, team, magnitude, crit, subtype) in the 5 s after the death. Repeat with B carrying the full stock
-   Callsign `$SIR` table (from the sheet) instead of ours.
-3. **Magnitude sweep.** Give B the row `$SIR,15,0,,28,0,0,1,,*` (registers, no pool change). From the rig, emit
-   protocol-15, subtype-0 words at every magnitude from 0 to 63 except 6, 8, 10 and 50, one per second, with player 1
-   and team 1. For each, log B's `$HIR` and listen for a callout. A kill-confirmation voice (`V3A`/`VBA`) or a named
-   callout marks the magnitude.
-4. **Ask Jay** which magnitude and fields the kill confirmation uses. His answer turns step 3 into one shot.
-
-⚠️ Do not run Callsign on our own guns to capture a reference: it resets an enrolled gun's name. Use a spare gun, or
-rename it afterwards.
-
-**Reading.** Step 1 or 2 shows who produces the confirmation. Step 3 gives the word. Together they tell us whether the
-killer's gun can hear its own kill confirmed with no phone or MC in the loop.
+The original hypothesis combined Battle Company's UART callout list, Callsign's app-driven kill voice, and Jay's
+`$DD` example. The hosted bench found no `$DD` and no audible callout for magnitudes 1–39. It did show that a dead
+gun forwards a host `$IRTX` word. Those results apply to the hosted setup. The v4.32 code read and prior native
+TDM receiver capture identify protocol-15 magnitude 2 as a native candidate. The current sheet tests the sender,
+receiver and repeats. Keep Callsign off enrolled guns: it can reset a gun's name.
 
 ## 14. How the transport fails (moved to the screamers sheet)
 
