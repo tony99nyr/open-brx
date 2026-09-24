@@ -1853,8 +1853,9 @@ export class Hud {
     if (co && co.at !== this._coIrAt) {
       this._coIrAt = co.at;
       const team = co.team ? String(co.team).toLowerCase() : null, op = `${team ? team.toUpperCase() : 'ENEMY'} OPERATIVE`;
-      // The IR word cannot carry the victim (docs/ir-callouts.md): a KILL CONFIRMED names the team. When MC's own
-      // named card for the same kill is already up it is richer, so the IR word leaves it alone.
+      // A DOWN_BY word names the killer, not the victim: the card opens with the victim's team and takes the name
+      // when the victim's own DOWN word pairs with it (below). When MC's named card for the same kill is already up
+      // it is richer, so the IR word leaves it alone.
       if (co.kind === 'kill_confirmed') {
         if (!(this._coMcUntil > Date.now())) (this._coIrKills = this._coIrKills || []).push(Date.now());
         if (!(this._coMcUntil > Date.now())) this._co(st, { kind: 'kill_confirmed', src: 'ir', tone: 'enemy', kill: true, tag: 'KILL CONFIRMED', name: op, team, sub: 'CONFIRMED BY THEIR GUN · MC KEEPS THE SCORE', hold: 2000 });
@@ -1863,6 +1864,15 @@ export class Hud {
         this._co(st, { kind: co.kind, src: 'ir', tone: mate ? 'mate' : 'enemy', tag: mate ? 'TEAMMATE DOWN' : 'ENEMY DOWN',
           name: co.name || (mate ? `${team ? team.toUpperCase() + ' ' : ''}TEAMMATE` : op), team, sub: co.by ? `BY ${String(co.by).toUpperCase()}` : '', hold: 2000 });
       }
+      this._coIrVictim = null;
+    }
+    // S57 names (Tony 2026-09-24): the victim's DOWN word lands ~250 ms after its DOWN_BY and names the victim. The card
+    // for that same callout takes the name in place, with no new card, flash or buzz. MC's named card, if it is up
+    // already, keeps its own name.
+    if (co && co.at === this._coIrAt && co.victim && co.victim !== this._coIrVictim) {
+      this._coIrVictim = co.victim;
+      const rec = this._overlays && this._overlays.co;
+      if (rec && rec.el.dataset.src === 'ir') { const nm = rec.el.querySelector('.nm'); if (nm) nm.textContent = String(co.victim).toUpperCase(); }
     }
     const hc = st.hillCallout;
     if (hc && hc.at !== this._coHillAt) {

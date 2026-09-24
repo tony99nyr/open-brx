@@ -25,7 +25,9 @@ costs a sound, nothing else.
 
 ## Event codes (`IR_CALLOUT`)
 
-An IR word carries one player id, so ONE word names the killer and its magnitude names the victim's team:
+An IR word carries one player id. A `DOWN_BY` names the killer, and its magnitude names the victim's team. Since
+2026-09-24 (**Tony**) a death with a known killer sends TWO words, `DOWN_BY` then `DOWN`, so receivers learn the
+victim's name as well:
 
 | Code | Magnitude | Player id in the word | Meaning |
 |---|---|---|---|
@@ -33,7 +35,12 @@ An IR word carries one player id, so ONE word names the killer and its magnitude
 | `DOWN` | 25 + victim's team id (25 to 28) | the victim | a player of that team went down; the killer is unknown (or it was the victim's own doing) |
 
 All magnitudes sit in the bench-silent range 1 to 39, clear of 2, 6, 8 and 10. The word is protocol 15, subtype 0,
-direction 100 (all domes), fired once (`$IRTX` field 9 = 1), from the victim's phone right after its death is booked. A gun-recovery DOWN (the player power-cycled a locked gun)
+direction 100 (all domes), fired once (`$IRTX` field 9 = 1), from the victim's phone right after its death is booked.
+With a known killer, a `DOWN` naming the victim follows 250 ms later (`CALLOUT_NAME_GAP_MS`, clear of the headset's
+199 ms single-shot guard), through the normal write path and never retried. Every phone in a match must run a build with this pairing (the first build
+after app 0.4.5): an older phone reads the second word as a second death, plays ENEMY DOWN on top of a kill cue, and
+shows two callouts. The pairing accepts a `DOWN` 150 to 600 ms after its `DOWN_BY`; two same-team deaths inside that
+window whose first `DOWN_BY` is lost can still swap names, which is presentation only. A gun-recovery DOWN (the player power-cycled a locked gun)
 is not a kill, so it sends nothing; neither does an infection flip.
 
 The word's team field is `frames.callout_team`: a team id that no player in this match holds, compiled by MC. With
@@ -49,6 +56,7 @@ not.
 | `DOWN_BY` or `DOWN` | the victim's team is mine (not FFA) | TEAMMATE DOWN: a HUD chip only, no sound (**Tony**: no suitable line exists) |
 | `DOWN_BY` or `DOWN` | the victim's team is another, or FFA | ENEMY DOWN: "Target down." (`VB8`) and a HUD chip |
 | `DOWN` | the player id is mine | nothing (my own phone already knows) |
+| `DOWN` | pairs with the oldest open `DOWN_BY` for the same victim team inside 1 s (`CALLOUT_PAIR_MS`) | the SAME death: the victim's name is added to that callout (`state().callout.victim`); no second callout, no cue. An unpaired `DOWN_BY` is dropped after the window; a lone `DOWN` is a callout as above |
 
 The first matching row wins, so the killer hears KILL CONFIRMED and not ENEMY DOWN as well.
 
@@ -66,8 +74,10 @@ stays the hill and station beacon.
 
 ## The rule for every event (Tony)
 
-One event, one word, sent once by the device where it happened. No phone, gun or station ever relays a word. The
-player field names who did it, and the magnitude names the event and the team it concerns.
+One event, one word, sent once by the device where it happened, with one exception: a death with a known killer is
+two words, `DOWN_BY` then `DOWN`, because one player field cannot name both the killer and the victim (**Tony**,
+2026-09-24). No phone, gun or station ever relays a word. The player field names who did it (or, in `DOWN`, who it
+happened to), and the magnitude names the event and the team it concerns.
 
 ## Objective events (2026-09-23)
 

@@ -527,6 +527,9 @@ export const IR_CALLOUT = {
   ENEMY_DOWN_CUE: 'VB8',   // "Target down." (sound_catalog.json: 1.014 s)
 };
 const CALLOUT_DEDUPE_MS = 600;   // one physical word lands on several sensors ~14 ms apart (F85); short enough that a real double kill still counts twice a second or so later
+const CALLOUT_PAIR_MIN_MS = 150; // S57 names (Tony 2026-09-24): a DOWN pairs with a DOWN_BY for the same victim team only this long
+const CALLOUT_PAIR_MS = 600;     // ...to this long after it: the sender spaces them 250 ms, so an earlier death's DOWN cannot claim a newer DOWN_BY
+const CALLOUT_NAME_GAP_MS = 250; // the victim's DOWN word goes out this long after its DOWN_BY: clear of the headset's 199 ms single-shot guard
 const CALLOUT_WINDOW_MS = 3000;  // kill-confirm first-to-arrive (Tony), and how long `state().callout` stays lit
 
 /** A16.5: which pool the readout should actually SHOW, given that `pool` is the one that just moved and
@@ -690,6 +693,7 @@ export class Engine {
     // S57 kill confirm, first to arrive, once (Tony): each channel stamps ONLY its own timestamp and reads
     // ONLY the other's, so two of the SAME channel's kills close together (a real double kill) never
     // self-suppress -- only a genuinely DIFFERENT channel confirming the same kill does.
+    this._downByOpen = [];           // S57 names: DOWN_BY words still waiting for their victim's DOWN, [{at, team}], oldest first
     this._irKillOpen = [];           // S57: IR kill confirms that played a cue and no MC feedback{kill} has matched yet, [{at, team}]
     this._mcKillOpen = [];           // S57: MC feedback{kill}s no IR confirm has matched yet, [{at, team}] (see `_takeKillMatch`)
     this.hill = null;               // {owner, at, from_neutral} — the control point's OWNER and when its last beacon landed. State from the wire; the cadence below is ours
@@ -1748,7 +1752,7 @@ export class Engine {
     // this reset, startAt skipped re-arming from `live` and resumeSchedule returned `live` early — the
     // T-0 spawn never ran and the gun sat alive-with-0-hp (bench 2026-09-04, S7, on hardware). Drop the
     // stale live/down state so the new match re-arms → spawns.
-    if (newMatch) { this.spawned = false; this.alive = false; this.deadAt = 0; this.killedBy = null; this.downReason = null; this._resetHill(); this.callout = null; this._irKillOpen = []; this._mcKillOpen = []; }   // game 2 must not inherit game 1's owner, tally, warnings or kill-confirm race
+    if (newMatch) { this.spawned = false; this.alive = false; this.deadAt = 0; this.killedBy = null; this.downReason = null; this._resetHill(); this.callout = null; this._irKillOpen = []; this._mcKillOpen = []; this._downByOpen = []; }   // game 2 must not inherit game 1's owner, tally, warnings or kill-confirm race
     this._turned = false;               // last match's infection flip must not score this one as "turned" (polish 2026-09-04)
     if (this.phase === 'lobby' || this.phase === 'kitted' || this.phase === 'armed' || (newMatch && this.phase === 'live')) this._set('armed');
     this._save();
@@ -2679,11 +2683,33 @@ export class Engine {
     if (!this.alive || this.phase !== 'live') return;    // a dead gun would not report it anyway (the doc), and callouts are a live-match thing only
     if (Number.isNaN(player) || Number.isNaN(magnitude)) return;
     const key = `${magnitude}:${player}`;
-    if (this._calloutSeen && this._calloutSeen.has(key) && now - this._calloutSeen.get(key) < CALLOUT_DEDUPE_MS) return;
+    if (this._calloutSeen && this._calloutSeen.has(key) && now - this._calloutSeen.get(key) < CALLOUT_DEDUPE_MS) {
+      // A same-killer double kill of one team inside the dedupe: the second DOWN_BY is not a new callout, but its
+      // victim's DOWN is coming, so it still opens a pairing slot (sensor copies, ~14 ms apart, do not).
+      if (magnitude < IR_CALLOUT.DOWN && now - this._calloutSeen.get(key) >= CALLOUT_PAIR_MIN_MS) {
+        (this._downByOpen || (this._downByOpen = [])).push({ at: now, team: magnitude - IR_CALLOUT.DOWN_BY, quiet: true });
+        this._calloutSeen.set(key, now);
+      }
+      return;
+    }
     (this._calloutSeen || (this._calloutSeen = new Map())).set(key, now);
     const isDownBy = magnitude < IR_CALLOUT.DOWN;
     const victimTeam = magnitude - (isDownBy ? IR_CALLOUT.DOWN_BY : IR_CALLOUT.DOWN);
     const myNum = this.player && this.player.player_num;
+    // S57 names (Tony 2026-09-24): the victim's phone sends DOWN_BY (the killer) and, CALLOUT_NAME_GAP_MS later, DOWN
+    // (the victim). A DOWN that pairs with the OLDEST open DOWN_BY for the same victim team inside CALLOUT_PAIR_MS is
+    // the same death: it only adds the victim's name to that callout, with no second callout and no cue. A DOWN_BY
+    // left unpaired past the window is dropped; a lone DOWN (its DOWN_BY lost, or a killer unknown) is a callout.
+    this._downByOpen = (this._downByOpen || []).filter(e => now - e.at <= CALLOUT_PAIR_MS);
+    if (isDownBy) this._downByOpen.push({ at: now, team: victimTeam });
+    else {
+      const i = this._downByOpen.findIndex(e => e.team === victimTeam && now - e.at >= CALLOUT_PAIR_MIN_MS);
+      if (i >= 0) {
+        const open = this._downByOpen.splice(i, 1)[0];
+        if (this.callout && this.callout.at === open.at && player !== myNum) { this.callout = { ...this.callout, victim: this.nameOf(player) }; this._changed(); }
+        return;
+      }
+    }
     if (isDownBy && player === myNum) { this._irKillConfirmed(victimTeam, now); return; }   // row 1: I made this kill
     if (!isDownBy && player === myNum) return;   // row 4: my own DOWN — my own phone already knows
     // FFA: `$TID` equality never means friendly (A5.2/contracts.md), so a bare team match is always ENEMY DOWN there.
@@ -5614,6 +5640,13 @@ export class Engine {
         const magnitude = (selfOrUnknown ? IR_CALLOUT.DOWN : IR_CALLOUT.DOWN_BY) + myTid;
         const calloutTeam = typeof (this.frames && this.frames.callout_team) === 'number' ? this.frames.callout_team : myTid;
         this._write([`$IRTX,${IR_CALLOUT.DIRECTION},${IR_CALLOUT.PROTO},${player},${calloutTeam},${magnitude},0,${IR_CALLOUT.SUBTYPE},100,1,,0,*`], 'S57 IR callout');
+        // S57 names (Tony 2026-09-24): a DOWN_BY names only the killer, so a second word, DOWN naming ME, follows it
+        // for every receiver to pair (see `_onIrCallout`). Once, through the normal write path, never retried.
+        if (!selfOrUnknown) {
+          const down = `$IRTX,${IR_CALLOUT.DIRECTION},${IR_CALLOUT.PROTO},${myNum},${calloutTeam},${IR_CALLOUT.DOWN + myTid},0,${IR_CALLOUT.SUBTYPE},100,1,,0,*`;
+          const lg = this._lightGen;
+          this.delay(CALLOUT_NAME_GAP_MS, () => { if (this._lightGen === lg && this.phase === 'live' && this.bleUp) this._write([down], 'S57 IR callout: the victim\'s name'); });
+        }
       }
     }
     this.switching = null;          // a swap indicator must not outlive the player
@@ -5884,7 +5917,7 @@ export class Engine {
       // F72: the most recent grenade/station beacon (proto-15 $HIR) — owner team + magnitude (8 hill, 6 respawn),
       // null once nobody has reported one this life. Not `station` above: that is BLE advert presence, this is IR.
       beacon: this.beacon || null,
-      callout: this.callout || null,   // S57: {kind: 'kill_confirmed'|'enemy_down'|'teammate_down', name, team, at, by?} — cleared in tick() above; `by` = the killer a DOWN_BY word named (QA-05)
+      callout: this.callout || null,   // S57: {kind: 'kill_confirmed'|'enemy_down'|'teammate_down', name, team, at, by?, victim?} — `victim` arrives with the paired DOWN word — cleared in tick() above; `by` = the killer a DOWN_BY word named (QA-05)
       hillCallout: this.hillCallout || null,   // QA-05: {kind: 'hill_captured'|'hill_lost', at}, the transition `_hillSay` just announced; presentation only, cleared in tick()
       // The control point as the hill logic reads it: {owner (2 = neutral), at, from_neutral}, null once
       // presence has expired (>= 2 missed beacons). Two sources write it, never both in one game: a
