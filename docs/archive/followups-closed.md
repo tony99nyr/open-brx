@@ -702,3 +702,7 @@ block's *internal* statuses were true when it closed and may since have been sup
 - 2026-09-24 **F329** fixed (chaos testing, `mc_crash`): an MC CRASH within the 2 s snapshot debounce of a hot join
   (or of a phone binding in the middle of a match) resumed without that binding, and the player's stored facts scored
   for nobody. A bind or an added player while a match is in play now writes the snapshot at once.
+- 2026-09-24 **F334** fixed (bench, Pixel 5 on the factory WebView 83): the app floor is now Android System WebView
+  111 and iOS 16.2, set by what the CSS uses (`color-mix()` meter fills; `inset`, flex `gap`). Capacitor's own
+  `minWebViewVersion` check shows `webview-too-old.html` below it, with a Play Store button. Tony verified the page, the
+  link and the normal HUD after the update. `d373c1ae`.
