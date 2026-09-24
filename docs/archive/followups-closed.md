@@ -653,3 +653,7 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
   SMG 7 + 2, Burst Rifle t23 550 with its 40% crit, Deagle 700 ms, USP mag 12, Suppressor 100/85/70. Bench half: F308.
 - 2026-09-23 **F310** closed: every balance rule R1-R10b holds on the Shields preset, gated at 60% (Tony: "60 is fine");
   Hardcore reported only; the heavies decision is Balance rules row 7. Detail: docs/weapon-design.md §7.5f, row 13.
+- 2026-09-24 **F318** closed: the MC visual-QA Lows. LIVE offline reads LAST KNOWN, not a red LIVE; VIEW GAME · NOT LOADED;
+  the locked GAMES line; the clock subtitle breaks at its separators; KIT names ellipsise; the feed de-duplicates (the
+  go-live and restart doubles); one noun, NODES; the GameEditPanel hook order; locked selects look locked; 36 px targets;
+  11 px GAMES labels (the nav digits stay decorative). SPECTATE fits every player (`8b7a392c`).

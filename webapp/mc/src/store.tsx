@@ -85,6 +85,24 @@ export interface Store {
 export const StoreCtx = createContext<Store | null>(null);
 const Ctx = StoreCtx;
 
+/** F318: one feed line showed twice right after go-live, and FIRST BLOOD twice after a recall and a
+ *  restart. Both were one race: a snapshot's `feed` REPLACES the local list (a new match, or a reopened
+ *  socket), and a live `feed` push for an entry that snapshot already carried then PREPENDS it again.
+ *  A FeedEntry has no seq, so its identity is everything it says: the match clock, kind, tag and text.
+ *  Two entries equal in all four say nothing different, so showing one of them loses nothing. */
+export const feedKey = (e: FeedEntry): string => `${e.t_match_s}|${e.kind}|${e.tag ?? ''}|${e.text}`;
+const FEED_MAX = 60;
+export function dedupeFeed(es: FeedEntry[]): FeedEntry[] {
+  const seen = new Set<string>();
+  const out: FeedEntry[] = [];
+  for (const e of es) { const k = feedKey(e); if (!seen.has(k)) { seen.add(k); out.push(e); } if (out.length >= FEED_MAX) break; }
+  return out;
+}
+export function prependFeed(f: FeedEntry[], e: FeedEntry): FeedEntry[] {
+  const k = feedKey(e);
+  return f.some(x => feedKey(x) === k) ? f : [e, ...f].slice(0, FEED_MAX);
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const mock = useMemo(isMock, []);
   const api = useMemo<Api>(() => (mock ? new MockBackend() : createHttpApi()), [mock]);
@@ -183,13 +201,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const seed = (hasFeed ? s.feed : []) as FeedEntry[];
         const reseed = reseedFeed.current && hasFeed;   // an older MC sends no feed: keep what this tab has
         if (hasFeed) reseedFeed.current = false;
-        if (mid !== feedMatch.current) { feedMatch.current = mid; if (mid) setFeed(seed.slice(0, 60)); }
-        else if (mid && reseed) setFeed(seed.slice(0, 60));
-        else if (mid && seed.length) setFeed(f => (f.length ? f : seed.slice(0, 60)));
+        if (mid !== feedMatch.current) { feedMatch.current = mid; if (mid) setFeed(dedupeFeed(seed)); }
+        else if (mid && reseed) setFeed(dedupeFeed(seed));
+        else if (mid && seed.length) setFeed(f => (f.length ? f : dedupeFeed(seed)));
         setState(s);
         followPhase(s);
       },
-      e => setFeed(f => [e, ...f].slice(0, 60)),
+      e => setFeed(f => prependFeed(f, e)),
       ok => { if (ok) reseedFeed.current = true; setConnected(ok); },
     );
     const unAuth = mock ? () => {} : onAuthRequired(setAuthRequired);

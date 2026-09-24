@@ -479,10 +479,22 @@ describe('GameEditPanel — a mode this console has no defaults for (F.5)', () =
 
 describe('GameEditPanel — VIEW LOADED GAME, and nothing locked after the whistle (2026-09-16)', () => {
   it('the collapsed control reads VIEW LOADED GAME, never EDIT LOADED GAME', async () => {
-    const { m } = await gameScreen('kit');
+    const { m, d, resync } = await gameScreen('kit');
+    await d.api.loadGame();
+    await resync();
     const toggle = m.find('[data-testid="game-edit-toggle"]')[0];
     expect(toggle.textContent).toContain('VIEW LOADED GAME');
     expect(m.text()).not.toContain('EDIT LOADED GAME');
+    m.unmount();
+  });
+
+  // F318: the empty LOBBY showed VIEW LOADED GAME beside PRE-ARM CHECK's NO GAME LOADED.
+  it('with nothing loaded, LOBBY never calls the game LOADED beside NO GAME LOADED', async () => {
+    const { m } = await gameScreen('lobby');
+    expect(m.find('[data-testid="pre-arm-verdict"]')[0]?.textContent).toBe('NO GAME LOADED');
+    const toggle = m.find('[data-testid="game-edit-toggle"]')[0];
+    expect(toggle.textContent).toContain('VIEW GAME · NOT LOADED');
+    expect(m.text()).not.toContain('VIEW LOADED GAME');
     m.unmount();
   });
 

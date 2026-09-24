@@ -214,7 +214,7 @@ try {
     await liveNotice.waitFor({ state: 'visible', timeout: 10000 });
     if (expect(await liveNotice.count() === 1, 'the explicit real LIVE board carries the end-delivery notice too')) {
       const text = (await liveNotice.innerText()).replace(/\s+/g, ' ').toUpperCase();
-      expect(/HUDS? (HAS|HAVE) NOT CONFIRMED THE END/.test(text), 'the LIVE notice says confirmation is missing');
+      expect(/NODES? (HAS|HAVE) NOT CONFIRMED THE END/.test(text), 'the LIVE notice says confirmation is missing');
       expect(/RE-DELIVERING/.test(text), 'the LIVE notice says MC is still re-delivering');
     }
     expect(await pg.locator('[data-end-confirm="pending"]').count() === ed.unconfirmed.length,

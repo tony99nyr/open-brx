@@ -214,7 +214,7 @@ export function Games() {
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
       <fieldset disabled={venueInert} style={{ border: 'none', margin: 0, padding: 0 }}>
         <div role="group" aria-label="venue" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, padding: '6px 12px', border: `1px solid ${T.line}`, background: T.panelDeep, opacity: venueInert ? 0.5 : 1 }}>
-          <span style={{ font: F.mono(600, 10), letterSpacing: '.24em', color: T.dim }}>VENUE</span>
+          <span style={{ font: F.mono(600, 11), letterSpacing: '.24em', color: T.dim }}>VENUE</span>
           <Seg value={cfg.environment} options={[{ value: 'indoor', label: 'INDOOR' }, { value: 'outdoor', label: 'OUTDOOR' }]} onChange={v => { if (!venueInert) run(() => api.putConfig({ environment: v })); }} pad="9px 14px" />
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: F.chk(600, 11), letterSpacing: '.14em', color: cfg.night ? T.ink : T.dim }}>NIGHT OPS <Toggle on={cfg.night} onChange={v => { if (!venueInert) run(() => api.putConfig({ night: v })); }} label="night ops" /></span>
           {editing && <span data-testid="venue-in-draft" style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.warn }}>IN THE DRAFT BELOW</span>}
@@ -274,11 +274,11 @@ export function Games() {
                   corner={<>
                     {!(gm && MODE_ART.has(gm.mode)) && <ModeEmblem mode={g.config.mode} />}
                     <span style={{ position: 'absolute', top: 6, left: 6, font: F.osw(700, 12), letterSpacing: '.12em', background: on ? PERK_COLOR : T.panelAlt, color: on ? T.accInk : T.dim, padding: '2px 7px' }}>{gm?.abbr ?? g.config.mode.toUpperCase()}</span>
-                    {on && <span style={{ position: 'absolute', top: 6, right: 6 }}><Tag size={9} color={PERK_COLOR}>PLAYING</Tag></span>}
-                    {g.builtin && !on && <span style={{ position: 'absolute', top: 8, right: 6, font: F.mono(500, 9.5), letterSpacing: '.14em', color: T.dim, textShadow: '0 1px 4px #000' }}>BUILT-IN</span>}
+                    {on && <span style={{ position: 'absolute', top: 6, right: 6 }}><Tag size={11} color={PERK_COLOR}>PLAYING</Tag></span>}
+                    {g.builtin && !on && <span style={{ position: 'absolute', top: 8, right: 6, font: F.mono(500, 11), letterSpacing: '.14em', color: T.dim, textShadow: '0 1px 4px #000' }}>BUILT-IN</span>}
                   </>} />
                 <div style={{ font: F.osw(600, 17), letterSpacing: '.06em', lineHeight: 1.1, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{g.name.toUpperCase()}</div>
-                <div style={{ font: F.mono(500, 10.5), letterSpacing: '.1em', color: T.acc, lineHeight: 1.5 }}>{rulesLine(g.config, weapons, perks)}</div>
+                <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.acc, lineHeight: 1.5 }}>{rulesLine(g.config, weapons, perks)}</div>
                 <div style={{ font: F.chk(500, 12), color: T.dim, lineHeight: 1.45, flex: 1, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{g.desc || `${gm?.name ?? g.config.mode} · ${Math.round((g.config.time_limit_s ?? 0) / 60)} MIN · ${
                   healthPresetOf(g.config.health) === 'custom'
                     ? `HP ${g.config.health.max_hp} / ARMOR ${g.config.health.max_armor}${g.config.health.max_shield ? ` / SHIELD ${g.config.health.max_shield}` : ''}`
@@ -326,8 +326,8 @@ export function Games() {
                   corner={<>
                     {!MODE_ART.has(m.mode) && <ModeEmblem mode={m.mode} />}
                     <span style={{ position: 'absolute', top: 6, left: 6, font: F.osw(700, 12), letterSpacing: '.12em', background: on ? T.acc : T.panelAlt, color: on ? T.accInk : T.dim, padding: '2px 7px' }}>{m.abbr}</span>
-                    {on && <span style={{ position: 'absolute', top: 6, right: 6 }}><Tag size={9}>PLAYING</Tag></span>}
-                    {base && <span style={{ position: 'absolute', top: 6, right: 6 }}><Tag size={9} color={T.line2} ink={T.ink}>BASE</Tag></span>}
+                    {on && <span style={{ position: 'absolute', top: 6, right: 6 }}><Tag size={11}>PLAYING</Tag></span>}
+                    {base && <span style={{ position: 'absolute', top: 6, right: 6 }}><Tag size={11} color={T.line2} ink={T.ink}>BASE</Tag></span>}
                   </>} />
                 <div style={{ flex: 1 }}>
                   <div style={{ font: F.osw(600, 15), letterSpacing: '.08em' }}>{m.name}</div>
@@ -389,7 +389,7 @@ export function Games() {
           <div style={{ background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderLeft: `3px solid ${state.lobby.pushed && everyoneAcked ? T.ok : T.warn}` }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 20px', padding: '14px 18px' }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ font: F.mono(600, 10.5), letterSpacing: '.26em', color: custom ? T.warn : activeSaved ? PERK_COLOR : T.acc }}>{custom ? 'TUNED — NOT SAVED' : activeSaved ? 'SAVED GAME' : 'STOCK MODE'} // LOADED</div>
+                <div style={{ font: F.mono(600, 11), letterSpacing: '.26em', color: custom ? T.warn : activeSaved ? PERK_COLOR : T.acc }}>{custom ? 'TUNED — NOT SAVED' : activeSaved ? 'SAVED GAME' : 'STOCK MODE'} // LOADED</div>
                 <div data-testid="playing-title" style={{ font: F.osw(700, 28), letterSpacing: '.08em', textTransform: 'uppercase', marginTop: 2, lineHeight: 1.1 }}>{title}</div>
               </div>
               <span style={{ flex: 1 }} />
@@ -442,7 +442,9 @@ export function Games() {
                             ? `${gameSent} of ${gameTotal} phone${gameTotal === 1 ? '' : 's'} have the game so far — the rest are not connected. Kitting is next, and the guns are configured at the lobby push.`
                             : 'The phones have the game. Kitting is next, and the guns are configured at the lobby push.')
                         : !everyoneAcked ? `No config echo from ${gate.noEcho.join(', ') || 'some guns'} — headset off, or gun asleep?`
-                          : 'Every gun is holding this config. Adjust it here and SAVE AND LOAD, or continue to KIT.'))}
+                          // F318: under the LOCKED banner there is nothing to adjust, so say what is true.
+                          : locked ? 'Every gun is holding this config. The banner above says how to edit it again.'
+                            : 'Every gun is holding this config. Adjust it here and SAVE AND LOAD, or continue to KIT.'))}
               {gate.staleAckLine && notOnlyStale.length > 0 && (
                 <span style={{ color: T.micro }}>{`  ·  ${notOnlyStale.length} gun${notOnlyStale.length === 1 ? '' : 's'} cannot start`}</span>
               )}
@@ -494,7 +496,7 @@ export function Games() {
           {/* THE GAME — what the players will get */}
           <div style={{ flex: '1 1 330px', maxWidth: 480, position: 'sticky', top: 12, display: 'flex', flexDirection: 'column', gap: 0, background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderLeft: `3px solid ${custom ? T.warn : activeSaved ? PERK_COLOR : T.acc}` }}>
             <div style={{ padding: '14px 18px 0' }}>
-              <div style={{ font: F.mono(600, 10.5), letterSpacing: '.26em', color: custom ? T.warn : activeSaved ? PERK_COLOR : T.acc }}>{custom ? 'TUNED — NOT SAVED' : activeSaved ? 'SAVED GAME' : 'STOCK MODE'} // PLAYING</div>
+              <div style={{ font: F.mono(600, 11), letterSpacing: '.26em', color: custom ? T.warn : activeSaved ? PERK_COLOR : T.acc }}>{custom ? 'TUNED — NOT SAVED' : activeSaved ? 'SAVED GAME' : 'STOCK MODE'} // PLAYING</div>
               <div data-testid="playing-title" style={{ font: F.osw(700, 28), letterSpacing: '.08em', textTransform: 'uppercase', marginTop: 2, lineHeight: 1.1 }}>{title}</div>
             </div>
             {mode && MODE_ART.has(mode.mode) && (
@@ -506,10 +508,10 @@ export function Games() {
                   9999 px track, so every value sat far off the right edge and read as blank. */}
               <GameSettings testid="rail-settings" style={{ gridTemplateColumns: 'minmax(0,1fr)' }} rows={gameSettingRows(cfg, mode, weapons, perks)} />
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                <span data-testid="rail-designer"><GhostButton size={10} pad="8px 14px" onClick={() => openDesigner(activeSaved && !activeSaved.builtin ? { game: activeSaved } : { fromLive: true, game: activeSaved ?? undefined, copy: !!activeSaved })} title="Open this game in the designer">{activeSaved && !activeSaved.builtin ? 'EDIT THIS GAME ▸' : custom ? 'SAVE THIS AS A GAME ▸' : activeSaved ? 'MAKE MY OWN ▸' : 'CUSTOMIZE ▸'}</GhostButton></span>
+                <span data-testid="rail-designer"><GhostButton size={11} pad="8px 14px" onClick={() => openDesigner(activeSaved && !activeSaved.builtin ? { game: activeSaved } : { fromLive: true, game: activeSaved ?? undefined, copy: !!activeSaved })} title="Open this game in the designer">{activeSaved && !activeSaved.builtin ? 'EDIT THIS GAME ▸' : custom ? 'SAVE THIS AS A GAME ▸' : activeSaved ? 'MAKE MY OWN ▸' : 'CUSTOMIZE ▸'}</GhostButton></span>
               </div>
               {errorsAndWarnings}
-              <div style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro, lineHeight: 1.6 }}>VENUE = WHERE YOU ARE PLAYING TONIGHT (NOT PART OF THE GAME). LOAD ▸ SENDS THIS GAME TO EVERY CONNECTED PHONE AND KEEPS YOU HERE, ON THE ACTIVE GAME CONFIG, WHERE YOU CAN EDIT IT AND LOAD AGAIN. IT DOES NOT WRITE THE GUNS — WEAPONS GO WITH THE ARM, AT THE LOBBY PUSH AFTER KITTING. CONTINUE TO KIT ▸ IS THEN ONE TAP. A "BASE" TAG MARKS THE STOCK MODE THE PLAYING GAME IS BUILT ON.</div>
+              <div style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro, lineHeight: 1.6 }}>VENUE = WHERE YOU ARE PLAYING TONIGHT (NOT PART OF THE GAME). LOAD ▸ SENDS THIS GAME TO EVERY CONNECTED PHONE AND KEEPS YOU HERE, ON THE ACTIVE GAME CONFIG, WHERE YOU CAN EDIT IT AND LOAD AGAIN. IT DOES NOT WRITE THE GUNS — WEAPONS GO WITH THE ARM, AT THE LOBBY PUSH AFTER KITTING. CONTINUE TO KIT ▸ IS THEN ONE TAP. A "BASE" TAG MARKS THE STOCK MODE THE PLAYING GAME IS BUILT ON.</div>
             </div>
           </div>
         </div>

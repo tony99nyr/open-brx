@@ -15,6 +15,38 @@ const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
  *  the finished session forward first, roster and game kept. */
 const EDITABLE = new Set(['muster', 'build', 'kit', 'lobby', 'recap']);
 
+type Modes = ReturnType<typeof useStore>['modes'];
+
+/** The config a patch is measured AGAINST. A mode switch rebuilds the whole config from that mode's
+ *  defaults server-side (`state.py set_config`), so once the draft has changed mode, "did the
+ *  operator change the health" is a question about the NEW mode's defaults, not the old game's --
+ *  otherwise the patch would carry the previous mode's numbers and pin them. */
+function baseFor(d: GameConfig, cfg: GameConfig, modes: Modes): GameConfig | null {
+  if (d.mode === cfg.mode) return cfg;
+  const def = modes.find(m => m.mode === d.mode)?.defaults;
+  // `null`, never `cfg`, when the new mode's defaults cannot be found (a `modes` catalog that is
+  // empty or missing this entry -- an older/partial fetch). `cfg` still carries the OLD mode's
+  // health/policy, and comparing the draft against it either drops a real edit that happens to
+  // coincide with the old value, or -- the actual bug -- PINS the old mode's numbers into the patch
+  // as if the operator had deliberately chosen them. `patchOf` below reads `null` as "no baseline to
+  // diff against" and sends the draft's own values outright instead.
+  return def ? ({ ...clone(def), environment: cfg.environment, night: cfg.night } as GameConfig) : null;
+}
+/** ONE patch, carrying exactly what the operator changed — never the whole config (which would
+ *  re-assert this mode's every default over anything another screen touched meanwhile). */
+function patchOf(d: GameConfig, cfg: GameConfig, modes: Modes): Partial<GameConfig> {
+  const b = baseFor(d, cfg, modes);
+  const p: Partial<GameConfig> = {};
+  if (d.mode !== cfg.mode) p.mode = d.mode;
+  if (d.night !== cfg.night) p.night = d.night;
+  // `!b` (no known baseline for the new mode) always sends health/policy rather than silently
+  // omitting or mis-comparing them -- see `baseFor`. Sent-but-unnecessary is harmless (it repeats a
+  // value the server's own mode rebuild would have chosen anyway); pinned-but-wrong is not.
+  if (!b || JSON.stringify(d.health) !== JSON.stringify(b.health)) p.health = d.health;
+  if (!b || JSON.stringify(d.loadout_policy) !== JSON.stringify(b.loadout_policy)) p.loadout_policy = d.loadout_policy;
+  return p;
+}
+
 /** B3 (field 2026-09-12): editing the LOADED game meant leaving KIT/LOBBY for the GAMES stepper or the
  *  full DESIGNER. Tony: "the flow for editing the current loaded game is very bad. i need to be able
  *  to edit the current loaded game on the fly." This is that edit, inline, on the screen the operator
@@ -54,6 +86,14 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
   // config to seed it from.
   const cfgId = state?.config.config_id;
   useEffect(() => { if (alwaysOpen && !draft && state) setDraft(clone(state.config)); }, [alwaysOpen, draft, state, cfgId]);
+  const patch = draft && state ? patchOf(draft, state.config, modes) : {};
+  const dirty = Object.keys(patch).length > 0;
+  // GAMES's `editing` flag (Games.tsx `guarded`) needs to tell an UNTOUCHED draft (silently dropped)
+  // from a CHANGED one (worth one word: UNSAVED EDITS DISCARDED) when the operator picks a different
+  // game while this panel is still open. That question belongs here, next to `dirty` itself.
+  // F318: above the `!state` return, so the hook order never depends on whether a snapshot has arrived.
+  const hasState = !!state;
+  useEffect(() => { if (hasState) onDirtyChange?.(dirty); }, [dirty, onDirtyChange, hasState]);
   if (!state) return null;
   const cfg = state.config;
   // Defensive like KIT's own `pol` read: a session restored from before A10 (or an older MC) can carry
@@ -63,6 +103,7 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
   const pol = polOf(shown);
   const locked = !EDITABLE.has(state.phase);
   const pushed = state.lobby.pushed;
+  const loaded = !!state.game?.loaded || pushed;   // PreArmSummary's own test for NO GAME LOADED
   // A36/pushGate, not a second `a.ok` count kept here: an ack with no test against `config.config_id`
   // reads CONFIRMED for a gun that answered the PREVIOUS config, and did so on KIT and LOBBY the day
   // `pushGate` was written to stop exactly that -- but this panel had grown its own count and never
@@ -72,41 +113,6 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
   const total = gate.total;
   const open = draft !== null;
 
-  /** The config a patch is measured AGAINST. A mode switch rebuilds the whole config from that mode's
-   *  defaults server-side (`state.py set_config`), so once the draft has changed mode, "did the
-   *  operator change the health" is a question about the NEW mode's defaults, not the old game's --
-   *  otherwise the patch would carry the previous mode's numbers and pin them. */
-  const baseFor = (d: GameConfig): GameConfig | null => {
-    if (d.mode === cfg.mode) return cfg;
-    const def = modes.find(m => m.mode === d.mode)?.defaults;
-    // `null`, never `cfg`, when the new mode's defaults cannot be found (a `modes` catalog that is
-    // empty or missing this entry -- an older/partial fetch). `cfg` still carries the OLD mode's
-    // health/policy, and comparing the draft against it either drops a real edit that happens to
-    // coincide with the old value, or -- the actual bug -- PINS the old mode's numbers into the patch
-    // as if the operator had deliberately chosen them. `patchOf` below reads `null` as "no baseline to
-    // diff against" and sends the draft's own values outright instead.
-    return def ? ({ ...clone(def), environment: cfg.environment, night: cfg.night } as GameConfig) : null;
-  };
-  /** ONE patch, carrying exactly what the operator changed — never the whole config (which would
-   *  re-assert this mode's every default over anything another screen touched meanwhile). */
-  const patchOf = (d: GameConfig): Partial<GameConfig> => {
-    const b = baseFor(d);
-    const p: Partial<GameConfig> = {};
-    if (d.mode !== cfg.mode) p.mode = d.mode;
-    if (d.night !== cfg.night) p.night = d.night;
-    // `!b` (no known baseline for the new mode) always sends health/policy rather than silently
-    // omitting or mis-comparing them -- see `baseFor`. Sent-but-unnecessary is harmless (it repeats a
-    // value the server's own mode rebuild would have chosen anyway); pinned-but-wrong is not.
-    if (!b || JSON.stringify(d.health) !== JSON.stringify(b.health)) p.health = d.health;
-    if (!b || JSON.stringify(d.loadout_policy) !== JSON.stringify(b.loadout_policy)) p.loadout_policy = d.loadout_policy;
-    return p;
-  };
-  const patch = draft ? patchOf(draft) : {};
-  const dirty = Object.keys(patch).length > 0;
-  // GAMES's `editing` flag (Games.tsx `guarded`) needs to tell an UNTOUCHED draft (silently dropped)
-  // from a CHANGED one (worth one word: UNSAVED EDITS DISCARDED) when the operator picks a different
-  // game while this panel is still open. That question belongs here, next to `dirty` itself.
-  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   /** The reshape this SAVE would produce -- the SAME predicate GAMES's mode tiles show, never a second
    *  one. Asked of the DRAFT, which is why the per-tap confirm this panel used to carry is gone: the
    *  question belongs to the tap that actually moves people, and that tap is SAVE AND LOAD. */
@@ -168,7 +174,9 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
                    background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', minHeight: 44, color: T.ink }}>
           {/* 2026-09-16, Tony: "VIEW" is more intuitive and less distracting. Opening it shows the loaded
               game; nothing changes until SAVE. */}
-          <span style={{ font: F.chk(700, 12), letterSpacing: '.2em', color: T.acc }}>{open ? '▾' : '▸'} VIEW LOADED GAME</span>
+          {/* F318: with nothing loaded, LOBBY's pre-arm check says NO GAME LOADED right below this row, so
+              the row must not call the game LOADED. The same predicate as PreArmSummary's. */}
+          <span style={{ font: F.chk(700, 12), letterSpacing: '.2em', color: T.acc }}>{open ? '▾' : '▸'} {loaded ? 'VIEW LOADED GAME' : 'VIEW GAME · NOT LOADED'}</span>
           {/* G (round-2, 2026-09-12): 11px, not 10.5 — the host reads this chip at arm's length on the
               collapsed row. */}
           <span style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>
