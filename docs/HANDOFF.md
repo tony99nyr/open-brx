@@ -90,8 +90,8 @@ On `main` 2026-09-23: the desk halves of **F297** (`connect-metrics`), **F269** 
 
 ## Lane: S57, B21, StickS3 (brx4)
 2026-09-23: **S57 built** (docs/ir-callouts.md); Block 7 of `bench-2026-09-24.md` settles it, F312 first. **B21:** key made and 0.4.6 built; its one blocker is above. **StickS3 (H7):** BLE and IR TX work; IR RX is F314. Start the next Stick session with `.claude/skills/m5stick-bench` and `hardware/m5sticks3/README.md`: `stick.py flash`, then `SELFTEST`, then the sheet's rerun.
-## Lane: F293, death screen, integration and HUD QA (brx5)
-2026-09-23: btlink; death screen; integration pass; HUD QA-01..24 fixed (Tony's decisions on F316). Next: bench 1.3, F313.
+## Lane: powerups and the shield HUD (brx5)
+2026-09-24: S58 powerups built behind MC `--powerups`, off until bench Sitting A 3.3 (items 1-8) and 4.11 pass; three polish rounds. Next: S59 Halo shield variants await Tony's pick (branch `shield-halo`), F331 Lows.
 
 ## Start here
 
