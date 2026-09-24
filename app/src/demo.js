@@ -332,6 +332,15 @@ export function startDemo({ engine, log }) {
       // Bench 2026-09-17 (brx-weapons item 6): charge_rifle's cell reads "ammo left" but a full charge
       // costs 10 -- the first $ALCD sets the 40-cell cap, the second lands the test value.
       chargeRifle: () => { player.loadout = { weapons: [{ weapon_id: 'charge_rifle' }] }; },
+      // QA lane B (2026-09-23): three live states the stage had no button for. Each goes through the real engine.
+      // OVERHEAT: the charge rifle, then the gun's own $ALCD at heat 108 (past the lockout), fed until the engine
+      // takes it (F259's echo window can swallow a single frame, see screens.mjs `setAmmo`).
+      overheat: () => { engine.player.loadout.weapons[0] = { weapon_id: 'charge_rifle' }; let n = 0;
+        const feed = () => { engine.feedFrame('$ALCD,3,100,0,80,108,*'); if (!engine.state().overheatShown && ++n < 25) setTimeout(feed, 200); }; feed(); },
+      // F15 stun: the host's `config.stun` on (set before the bundle, see the stage), then one EMP word (proto 8) from VIPER.
+      stun: () => { if (engine.config && !engine.config.stun) engine.config.stun = { duration_s: 10 }; engine.feedFrame(`$HIR,4,8,19,${foe.tid},8,0,0,*`); },   // the button turns the host's stun on first
+      // 2026-09-19 station respawn: the bundle's respawn_profile gives a station life 2 s of visible protection (`shielded`).
+      stationRespawn: () => { if (engine.alive) return; engine._revive(false, 3); hp = engine.maxHp; armor = engine.maxArmor; setTimeout(lcd, 250); },
       chargeAmmo: (ammo, reserve = 80) => { engine.feedFrame('$ALCD,40,100,0,80,0,*'); engine.feedFrame(`$ALCD,${ammo},100,0,${reserve},0,*`); },
       alt: () => { engine.feedFrame('$BUT,1,1,*'); engine.feedFrame('$BUT,1,0,*'); },   // the ALT button: a swap with two weapons, a reload with one
       altCycle: () => {                                     // what a real swap looks like: ALT, then the next shot reports the new slot
@@ -398,6 +407,8 @@ export function startDemo({ engine, log }) {
       dieFrom: (num, mag, sensor = 4) => { armor = 0; hp = 0; engine.feedFrame(`$HIR,${sensor},0,${num},${foe.tid},${mag},0,3,*`); engine.feedFrame('$HP,0,0,0,*'); },
       dealtTo: (victim, num, dmg, weapon_id = 'assault_rifle') => engine.onMcMessage({ kind: 'feedback', body: { player_id: 'p-demo', kind: 'hit', t: Date.now(), victim: 'p-' + victim.toLowerCase(), victim_num: num, victim_display: victim, dmg, weapon_id } }),
       beacon: (tid = 1) => engine.feedFrame(`$HIR,4,15,0,${tid},8,0,0,*`),   // a grenade hill's IR beacon: owner tid, magnitude 8
+      hillTaken: (tid = 1) => engine.feedFrame(`$HIR,4,15,0,${tid},50,0,0,*`),   // QA-05: the grenade's capture word (magnitude 50) naming the new owner
+      addMate: () => { if (!roster.some(r => r.player_num === 23)) roster.push({ player_id: 'p-4', player_num: 23, display: 'MAVERICK', team_id: teamKey }); },   // QA-05: a teammate the roster can name
     });
     // A full life: two sources, two victims, rounds fired and a confirmed kill, then VIPER's rifle finishes it.
     const fullLife = [[2000, () => { ev.fire(7); ev.hitFrom(19, 9, 20); ev.hitFrom(21, 8, 12); ev.hitFrom(21, 8, 12); }],
@@ -463,7 +474,7 @@ export function startDemo({ engine, log }) {
       // S57: one IR callout word from a victim's gun, as this gun reports it ($HIR, protocol 15; see docs/ir-callouts.md)
       'live-callout-kill':     [...live, [2300, () => engine.feedFrame(`$HIR,4,15,7,3,${21 + foe.tid},0,0,*`)]],    // DOWN_BY naming me: KILL CONFIRMED
       'live-callout-enemy':    [...live, [2300, () => engine.feedFrame(`$HIR,4,15,19,3,${25 + foe.tid},0,0,*`)]],   // DOWN naming VIPER: ENEMY DOWN
-      'live-callout-teammate': [...live, [2300, () => engine.feedFrame(`$HIR,4,15,23,3,${25 + team.tid},0,0,*`)]],  // DOWN on my team: TEAMMATE DOWN
+      'live-callout-teammate': [[0, () => ev.addMate()], ...live, [2300, () => engine.feedFrame(`$HIR,4,15,23,3,${25 + team.tid},0,0,*`)]],  // DOWN naming MAVERICK (my team): TEAMMATE DOWN (QA-05: a teammate the roster can name)
       'live-lowhp':        [...live, [2300, 'lowHp']],
       'live-poison':       [[0, () => { bundle.dot = DEMO_DOT; }], ...live, [2300, () => ev.poison()]],          // S16: POISONED, counting down, health draining
       'live-smoke':        [...live, [2300, 'smoke']],                     // S53: SMOKED, where the reticle was
@@ -499,6 +510,10 @@ export function startDemo({ engine, log }) {
       'down-at':           [[0, () => ev.scanner(3)], ...live, [2300, 'die'], [2400, () => ev.station(-58, true)]],
       'live-alert':        [...live, [2300, () => ev.alert('bomb_planted')]],
       'live-medals':       [...live, [2300, () => ev.killMedals(['double_kill', 'killing_spree'])]],
+      // QA lane B (2026-09-23): the station-respawn spawn shield (2 s, `shielded`), the F15 stun, and OVERHEAT.
+      'live-shield':       [...live, [2300, 'die'], [2800, 'stationRespawn']],
+      'live-stunned':      [[0, () => { config.stun = { duration_s: 10 }; }], ...live, [2300, 'stun']],
+      'live-overheat':     [...live, [2300, 'overheat']],
       'redeploy':          [...live, [2300, 'die'], [2800, 'respawn']],
       'live-nogun':        [...live, [2300, 'dropGun']],
       'resync':            [...live, [2300, 'dropGun'], [3300, 'relinkGun']],   // a live rejoin → the 3 s RECONCILING takeover (S7.1)
@@ -529,6 +544,12 @@ export function startDemo({ engine, log }) {
       // case where the pre-join screen's own copy (same #mcurl id) would otherwise coexist with it.
       'idle-diag':         [[0, 'scan'], [400, () => ev.diag(true)]],
       'connected-diag':    [...[[0, 'linkGun']], [400, () => ev.diag(true)]],
+      // ---- QA lane C (2026-09-23), QA-05: the callout card. The hill stages drive the REAL engine's hill logic with the
+      // grenade's own IR words: a beacon (magnitude 8), then the capture word (magnitude 50) naming the new owner. Default team
+      // only: on yellow (tid 2, the neutral sentinel) the engine refuses to decide ownership (F82) and stays silent. ----
+      'live-callout-by':    [[0, () => ev.addMate()], ...live, [2300, () => engine.feedFrame(`$HIR,4,15,23,3,${21 + foe.tid},0,0,*`)]],   // DOWN_BY naming MAVERICK: ENEMY DOWN · BY MAVERICK
+      'live-hill-captured': [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.beacon(2)], [2400, () => ev.hillTaken(team.tid)]],
+      'live-hill-lost':     [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.beacon(team.tid)], [2400, () => ev.hillTaken(team.tid === 0 ? 3 : 0)]],   // we hold it (adopted silently), then an enemy's capture word
     };
     const steps = STAGES[stageName];
     if (!steps) log(`stage "${stageName}" unknown — one of: ${Object.keys(STAGES).join(' ')}`, 'le');

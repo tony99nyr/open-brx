@@ -255,3 +255,26 @@ test('S57 kill confirm: pairing resolves MC\'s team_id through the match\'s team
   h.feedback({ kind: 'kill', victim_team: 'bravo' });      // MC: the same kill, team_id 'bravo' = tid 2
   assert.equal(h.cues('VAA').length, 1, 'the same kill plays once');
 });
+
+// ---------- QA-05 (2026-09-23): read-only presentation fields for the HUD's callout card ----------
+
+test('QA-05: a DOWN_BY word from another killer carries the killer as `by`, and still no victim name', () => {
+  const h = harness(); h.live();
+  h.irWord(20, IR_CALLOUT.DOWN_BY + 2);   // GHOST (my team) killed a member of team 2 (yellow)
+  assert.deepEqual(h.eng.state().callout, { kind: 'enemy_down', name: null, team: 'yellow', at: h.now(), by: 'GHOST' });
+  assert.equal(h.eng.score, null, 'presentation only: the score never moves');
+});
+
+test('QA-05: a hill changing hands sets state().hillCallout on the same decision that speaks the line', () => {
+  const h = harness(); h.live();
+  assert.equal(h.eng.state().hillCallout, null);
+  h.frame('$HIR,4,15,0,2,8,0,0,*');                 // a neutral point in range
+  h.adv(400); h.frame('$HIR,4,15,0,1,50,0,0,*');    // we (tid 1) take it
+  assert.deepEqual(h.eng.state().hillCallout, { kind: 'hill_captured', at: h.now() });
+  assert.equal(h.cues('VB0N').length, 1, 'the control: the audio line played on the same transition');
+  h.adv(400); h.frame('$HIR,4,15,0,0,50,0,0,*');    // red (tid 0) takes it off us
+  assert.deepEqual(h.eng.state().hillCallout, { kind: 'hill_lost', at: h.now() });
+  h.adv(3100);
+  assert.equal(h.eng.state().hillCallout, null, 'cleared after the callout window, like state().callout');
+  assert.equal(h.eng.score, null, 'no score, no rule: the hill tally is untouched by this field');
+});

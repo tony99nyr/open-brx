@@ -693,6 +693,7 @@ export class Engine {
     this._irKillOpen = [];           // S57: IR kill confirms that played a cue and no MC feedback{kill} has matched yet, [{at, team}]
     this._mcKillOpen = [];           // S57: MC feedback{kill}s no IR confirm has matched yet, [{at, team}] (see `_takeKillMatch`)
     this.hill = null;               // {owner, at, from_neutral} — the control point's OWNER and when its last beacon landed. State from the wire; the cadence below is ours
+    this.hillCallout = null;        // QA-05: {kind: 'hill_captured'|'hill_lost', at} — the last transition `_hillSay` announced, for the HUD card (read-only)
     this._hillBusyUntil = 0;        // the announcer is occupied by a hill callout until this (now + the clip's real length) — the tick waits, it never overlaps
     this._hillTickAt = 0;           // when the possession tick last played (0 = not ticking)
     this._hillTeam2Warned = false;  // F82 is logged once per game, not once per beacon
@@ -2593,6 +2594,9 @@ export class Engine {
    *  the stale line is actually stopped on the gun rather than left to mix — and only when we are cutting
    *  off our OWN in-flight hill callout, so nothing else's audio is ever clipped by this path. */
   _hillSay(kind, why) {
+    // QA-05: the HUD's HILL CAPTURED / HILL LOST card reads this. Read-only presentation, set on the SAME
+    // decision that speaks the line (and before the muted-cue return, so a muted line still shows).
+    if (kind === 'hill_captured' || kind === 'hill_lost') this.hillCallout = { kind, at: this.now() };
     const cue = this._hillCue(kind);
     if (!cue.frame) return;
     const now = this.now();
@@ -2684,7 +2688,10 @@ export class Engine {
     if (!isDownBy && player === myNum) return;   // row 4: my own DOWN — my own phone already knows
     // FFA: `$TID` equality never means friendly (A5.2/contracts.md), so a bare team match is always ENEMY DOWN there.
     const teammate = this.config && this.config.mode !== 'ffa' && this.teamTid != null && victimTeam === this.teamTid;
-    this.callout = { kind: teammate ? 'teammate_down' : 'enemy_down', name: isDownBy ? null : this.nameOf(player), team: TEAM_KEY[victimTeam] || null, at: now };
+    // QA-05: a DOWN_BY word names the KILLER, never the victim, so `by` carries that name for the HUD card
+    // ("YELLOW DOWN · BY GHOST"). Read-only presentation, present only when the word named a killer.
+    const by = isDownBy ? this.nameOf(player) : null;
+    this.callout = { kind: teammate ? 'teammate_down' : 'enemy_down', name: isDownBy ? null : this.nameOf(player), team: TEAM_KEY[victimTeam] || null, at: now, ...(by ? { by } : {}) };
     if (!teammate) this._write([`$PLAY,,4,6,${IR_CALLOUT.ENEMY_DOWN_CUE},,,,*`], 'S57 ENEMY DOWN');   // row 3: a teammate gets the HUD chip only, no sound
     this._changed();
   }
@@ -2889,7 +2896,7 @@ export class Engine {
   }
   /** A new match must not inherit the last one's point, its tally, or its once-per-game warnings. */
   _resetHill() {
-    this.hill = null; this._hillTickAt = 0; this._hillBusyUntil = 0;
+    this.hill = null; this.hillCallout = null; this._hillTickAt = 0; this._hillBusyUntil = 0;
     this._controlSite = null; this._controlSig = ''; this._hillSaidAt = 0;
     this._hillWasContested = false; this._hillContestedAt = 0; this._hillOwnerWhenSilenced = undefined;
     this._hillTeam2Warned = false; this._hillSourceWarned = '';
@@ -3227,6 +3234,7 @@ export class Engine {
       this._reportPossession(now);     // and the possession CLOCK, which is what the mode is scored on
       if (this.moment && now - this.moment.at > 4000) { this.moment = null; }
       if (this.callout && now - this.callout.at > CALLOUT_WINDOW_MS) { this.callout = null; }   // S57: the HUD chip's own lifetime, independent of `moment`'s
+      if (this.hillCallout && now - this.hillCallout.at > CALLOUT_WINDOW_MS) { this.hillCallout = null; }   // QA-05: the same lifetime
       // A swap the gun never confirmed with a shot: past the assumed window we TAKE the swap as done (the real
       // duration has never been timed — FOLLOWUPS F4; the next $ALCD corrects activeSlot if the gun disagrees).
       if (this.switching && now - this.switching.at > this.switchWindowMs()) {
@@ -4400,7 +4408,9 @@ export class Engine {
       else this.score = { kills: 1 };
       this.scoreAt = this.now();
       if (!irAlreadyConfirmed) this._mcKillOpen.push({ at: this.now(), team: vt });   // an unmatched MC confirm waits for its IR twin
-      this.moment = { kind: 'kill', at: this.now(), data: { victim_team: body.victim_team, victim: this.victimName(body), medals: Array.isArray(body.medals) ? body.medals.slice() : [] } };
+      // `ir_paired` (presentation only): this MC confirm matched an IR KILL CONFIRMED the phone already heard, so the
+      // HUD can avoid a second flash and buzz for the same kill (QA polish round 2).
+      this.moment = { kind: 'kill', at: this.now(), data: { victim_team: body.victim_team, victim: this.victimName(body), medals: Array.isArray(body.medals) ? body.medals.slice() : [], ir_paired: !!irAlreadyConfirmed } };
     }
     this._changed();
   }
@@ -5833,7 +5843,7 @@ export class Engine {
     const now = this.now();
     const r = this.respawnDelayMs;
     return {
-      phase: this.phase, bleUp: this.bleUp, gunFlapping: this.gunFlapping, wsState: this.wsState, gun: this.gun, night: this.night,
+      phase: this.phase, bleUp: this.bleUp, gunFlapping: this.gunFlapping, wsState: this.wsState, wsReason: this.wsReason || null, gun: this.gun, night: this.night,   // QA-08: the HUD reads MC's refusal reason (the chip and the READY note both asked for it and got undefined)
       nightOps: !!(this.config && this.config.night),
       player: this.player, team: this.team, teamKey: this.teamKey, teamName: this.team ? (this.team.name || TEAM_NAME[this.team.tid] || '').toUpperCase() : '',
       callsign: this.player ? this.player.display : '', playerNum: this.player ? this.player.player_num : null,
@@ -5874,7 +5884,8 @@ export class Engine {
       // F72: the most recent grenade/station beacon (proto-15 $HIR) — owner team + magnitude (8 hill, 6 respawn),
       // null once nobody has reported one this life. Not `station` above: that is BLE advert presence, this is IR.
       beacon: this.beacon || null,
-      callout: this.callout || null,   // S57: {kind: 'kill_confirmed'|'enemy_down'|'teammate_down', name, team, at} — cleared in tick() above
+      callout: this.callout || null,   // S57: {kind: 'kill_confirmed'|'enemy_down'|'teammate_down', name, team, at, by?} — cleared in tick() above; `by` = the killer a DOWN_BY word named (QA-05)
+      hillCallout: this.hillCallout || null,   // QA-05: {kind: 'hill_captured'|'hill_lost', at}, the transition `_hillSay` just announced; presentation only, cleared in tick()
       // The control point as the hill logic reads it: {owner (2 = neutral), at, from_neutral}, null once
       // presence has expired (>= 2 missed beacons). Two sources write it, never both in one game: a
       // grenade's IR beacon (derived from `beacon` above), or a phone CONTROL POINT's BLE advert, which adds

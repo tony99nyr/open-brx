@@ -107,8 +107,8 @@ F178, F256, F251, F289 closed; F309, brx-net, F312's gated row and the shared AP
 
 ## Lane: S57, B21, StickS3 (brx4)
 2026-09-23: **S57 built** (docs/ir-callouts.md); Block 7 of `bench-2026-09-24.md` settles it, F312 first. **B21:** key made; the signed cut waits for the desk fixes. **StickS3 (H7):** BLE and IR TX work; IR RX is F314. Start the next Stick session with `.claude/skills/m5stick-bench` and `hardware/m5sticks3/README.md`: `stick.py flash`, then `SELFTEST`, then the sheet's rerun.
-## Lane: F293, death screen, integration pass (brx5)
-2026-09-23: btlink; death screen with Tony; pre-APK integration pass done (F316 Lows). Next: bench 1.3 captures, F313.
+## Lane: F293, death screen, integration and HUD QA (brx5)
+2026-09-23: btlink; death screen; integration pass; HUD QA-01..24 fixed (Tony's decisions on F316). Next: bench 1.3, F313.
 
 ## Start here
 

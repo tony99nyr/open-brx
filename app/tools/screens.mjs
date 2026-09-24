@@ -1249,9 +1249,9 @@ for (const view of VIEWS) {
     await pg.waitForTimeout(2200); const gone = await pg.evaluate(() => !document.querySelector('.mo.reloading')); await pg.close();
     must(r, 'no RELOADING overlay'); must(r.t === 'RELOADING' && /^ASSAULT RIFLE$/.test(r.s), JSON.stringify(r)); must(r.w > 5 && r.w < 100 && /S$/.test(r.n), 'progress ' + r.w + ' ' + r.n); must(r.big >= 60, 'too small'); must(gone, 'takeover did not clear once the mag was back');
   });
-  await step(`${view.name} #19 KILL CONFIRMED is a takeover, not a sticker`, async () => {
-    const pg = await open(view, 'live-kill', '', 3000); const r = await pg.evaluate(() => { const k = document.querySelector('.mo.kill'); if (!k) return null; const c = k.querySelector('.c').getBoundingClientRect(), f = k.getBoundingClientRect(); return { mid: (c.top + c.height / 2 - f.top) / f.height, big: parseFloat(getComputedStyle(k.querySelector('.k')).fontSize), bg: getComputedStyle(k).backgroundImage }; }); await pg.close();
-    must(r, 'no kill overlay'); must(r.mid > .3 && r.mid < .6, 'not centred: ' + r.mid); must(r.big >= 90, 'KILL ' + r.big + 'px'); must(/0\.9/.test(r.bg), 'HUD not dimmed behind it');
+  await step(`${view.name} #19 KILL CONFIRMED is the callout card (QA-05): centred, named large, the live HUD still readable behind it`, async () => {
+    const pg = await open(view, 'live-kill', '', 3000); const r = await pg.evaluate(() => { const k = document.querySelector('.mo.kill'); if (!k) return null; const c = k.querySelector('.cob').getBoundingClientRect(), f = document.getElementById('frame').getBoundingClientRect(); return { mid: (c.left + c.width / 2 - f.left) / f.width, big: parseFloat(getComputedStyle(k.querySelector('.nm')).fontSize), bg: getComputedStyle(k).backgroundImage }; }); await pg.close();
+    must(r, 'no kill card'); must(r.mid > .45 && r.mid < .55, 'not centred: ' + r.mid); must(r.big >= 30, 'the name is ' + r.big + 'px'); must(r.bg === 'none', 'the whole HUD is dimmed behind it: ' + r.bg);
   });
   await step(`${view.name} kill-name KILL CONFIRMED names the victim by gamertag, never by player_id (field 2026-09-17)`, async () => {
     // MC's wire: `victim` is a player_id. The banner resolves it; a bare id on screen is the bug.
@@ -1845,7 +1845,7 @@ for (const view of VIEWS) {
       return { nm: nm ? nm.textContent.trim() : null, tagText: tag ? tag.textContent.trim() : null, arming: tag ? tag.classList.contains('arming') : null }; });
     await pg2.close();
     must(/SMG/.test(after.nm || ''), 'the hero is not focused on the acked weapon: ' + JSON.stringify(after));
-    must(after.tagText === 'EQUIPPED', 'the hero never turned to EQUIPPED once the ack landed: ' + JSON.stringify(after));
+    must(after.tagText === '✓ ON', 'the hero never turned to ✓ ON (QA-09: was EQUIPPED) once the ack landed: ' + JSON.stringify(after));
     must(after.arming === false, 'the hero kept the amber arming look after the ack: ' + JSON.stringify(after));
   });
   await step(`${view.name} #61 A26: REVIEW KIT ▸ lands on the three-plate kit summary with READY UP`, async () => {
@@ -2076,7 +2076,7 @@ await step('F156 connected-diag: only ONE #mcurl exists — the pre-join screen 
 });
 await step('F156 connected: closing the ⓘ panel restores the pre-join screen\'s own copy', async () => {
   const pg = await open(VIEWS[0], 'connected-diag');
-  await pg.click('[data-act="onCloseDiag"].close');   // the panel sits ABOVE #info (z-index 6 vs 5) while open, so this is the real close path
+  await pg.click('[data-act="onCloseDiag"].closex');   // the panel sits ABOVE #info (z-index 6 vs 5) while open, so this is the real close path (QA-24: CLOSE in the action row is the only one)
   await pg.waitForTimeout(150);
   const r = await pg.evaluate(() => { const d = document.getElementById('diag'); return { open: d.classList.contains('open'), count: document.querySelectorAll('#mcurl').length, outsideDiag: !!(document.getElementById('mcurl') && !d.contains(document.getElementById('mcurl'))) }; });
   await pg.close();
@@ -2129,8 +2129,8 @@ const relinkView = pg => pg.evaluate(() => { const b = document.querySelector('#
 for (const view of VIEWS) {
   await step(`${view.name} S56 live-hit: the hit chip names the weapon`, async () => {
     const pg = await open(view, 'live-hit', '', 2200);   // the three hits land at 2.3 s and the chip lives under a second
-    await pg.waitForSelector('.mo.hit .hw', { timeout: 2000 }).catch(() => {});
-    const t = await pg.evaluate(() => { const e = document.querySelector('.mo.hit .hw'); return e ? { t: e.textContent, fits: e.getBoundingClientRect().right <= innerWidth && e.getBoundingClientRect().left >= 0 } : null; });
+    await pg.waitForSelector('.mo.hitwpn .hw', { timeout: 2000 }).catch(() => {});   // QA-04: the line has its own overlay now
+    const t = await pg.evaluate(() => { const e = document.querySelector('.mo.hitwpn .hw'); return e ? { t: e.textContent, fits: e.getBoundingClientRect().right <= innerWidth && e.getBoundingClientRect().left >= 0 } : null; });
     await pg.close();
     must(t && t.t === 'ASSAULT RIFLE' && t.fits, 'hit weapon line: ' + JSON.stringify(t));
   });
@@ -2529,7 +2529,7 @@ await step('polish-3 loadout-perk: a perk picked after a timed-out weapon arm sh
   must(r.engineStillUnconfirmed, 'sanity: the weapon arm really did settle unconfirmed underneath');
   must(!r.unconfPresent, 'the perk row shows the ≈/unconf treatment it never earned');
   must(r.eqMark === '✓', 'the perk row does not read a plain confirmed ✓: ' + r.eqMark);
-  must(r.heroText === 'EQUIPPED', 'the perk hero pane: ' + r.heroText);
+  must(r.heroText === '✓ ON', 'the perk hero pane: ' + r.heroText);
 });
 
 // ---------- Bench 2026-09-16: press feedback on EVERY tappable thing (hud.js `_tapDown`/`_tapUp`) ----------
@@ -3577,6 +3577,648 @@ await step('S16 lethal tick: DOWN says POISONED BY and names the applier', async
   const r = await pg.evaluate(() => ({ kb: (document.querySelector('.mo.down .kb') || {}).innerText || '', alive: window.brx.engine.state().alive }));
   await pg.screenshot({ path: `${OUT}/se-down-poisoned.png` }); await pg.close();
   must(!r.alive && /^POISONED BY/.test(r.kb.trim()) && /VIPER/.test(r.kb), `the down screen tells the player the poison did it: ${JSON.stringify(r)}`);
+});
+
+// QA lane A (2026-09-23) ---------- the first-launch path: gun picker, connected, mc-rejected, the ⓘ diag panel ----------
+// Every check reads computed colours and on-screen rects, never engine state. Contrast is WCAG 2.x: the text colour
+// (with the element's effective opacity and the colour's alpha blended in) against the first opaque background up
+// the tree, or the frame's own background when a control is border-only.
+const qaA = {
+  contrastOf: () => {
+    const rgba = c => { const m = String(c).match(/[\d.]+/g); if (!m) return null; return { r: +m[0], g: +m[1], b: +m[2], a: m.length > 3 ? +m[3] : 1 }; };
+    const lum = ({ r, g, b }) => { const f = x => { x /= 255; return x <= .03928 ? x / 12.92 : ((x + .055) / 1.055) ** 2.4; }; return .2126 * f(r) + .7152 * f(g) + .0722 * f(b); };
+    const frameBg = () => { const f = document.getElementById('frame'); const c = rgba(getComputedStyle(f).backgroundColor); if (c && c.a > .5) return c;
+      const m = getComputedStyle(f).backgroundImage.match(/rgba?\([^)]*\)|#[0-9a-f]{3,6}/i); return m ? rgba(m[0]) || { r: 0, g: 0, b: 0, a: 1 } : { r: 3, g: 4, b: 7, a: 1 }; };
+    const bgOf = e => { for (let n = e; n && n.id !== 'frame'; n = n.parentElement) { const c = rgba(getComputedStyle(n).backgroundColor); if (c && c.a > .5) return c; } return frameBg(); };
+    const opac = e => { let o = 1; for (let n = e; n; n = n.parentElement) o *= +getComputedStyle(n).opacity; return o; };
+    const mix = (fg, bg, a) => ({ r: fg.r * a + bg.r * (1 - a), g: fg.g * a + bg.g * (1 - a), b: fg.b * a + bg.b * (1 - a) });
+    return (e, colour) => { const bg = bgOf(e), fg = rgba(colour || getComputedStyle(e).color); const eff = mix(fg, bg, fg.a * opac(e));
+      const L1 = lum(eff), L2 = lum(bg); return (Math.max(L1, L2) + .05) / (Math.min(L1, L2) + .05); };
+  },
+};
+for (const stage of ['idle', 'connected', 'idle-diag', 'connected-diag']) {
+  await step(`QA-01 ${stage} night: every control on the first-launch path reads at >= 4.5:1`, async () => {
+    const pg = await open(VIEWS[1], stage, '&night');
+    const bad = await pg.evaluate(`(${qaA.contrastOf.toString()})()`).then(() => pg.evaluate(src => {
+      const ratio = eval(src)();
+      const vis = e => { const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden') return false; const r = e.getBoundingClientRect(); return r.width > 1 && r.height > 1; };
+      const diag = document.getElementById('diag'), roots = [document.getElementById('hud'), document.getElementById('info'), document.getElementById('skin')];
+      if (diag.classList.contains('open')) roots.push(diag);
+      const out = [], seen = new Set();
+      for (const root of roots) for (const c of [root, ...root.querySelectorAll('button, input, [data-act]')]) {
+        if (!c.matches('button, input, [data-act]') || seen.has(c) || !vis(c) || c.disabled || c.getAttribute('aria-disabled') === 'true') continue;
+        if (c.closest('.tagrow.used')) continue;   // a gun another player holds is dimmed on purpose; it is not the way forward
+        seen.add(c);
+        const name = (c.id ? '#' + c.id : '') + '.' + String(c.className).split(' ')[0] + ' "' + (c.value || c.textContent || c.getAttribute('aria-label') || '').trim().slice(0, 24) + '"';
+        if (c.tagName === 'INPUT') { const col = c.value ? null : getComputedStyle(c, '::placeholder').color; const r = ratio(c, col); if (r < 4.5) out.push(`${name} ${r.toFixed(2)}:1`); continue; }
+        const texts = [c, ...c.querySelectorAll('*')].filter(e => vis(e) && [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()));
+        const svgs = texts.length ? [] : [...c.querySelectorAll('svg')].filter(vis);
+        for (const e of [...texts, ...svgs]) { const r = ratio(e); if (r < 4.5) out.push(`${name} ${e === c ? '' : '<' + e.tagName.toLowerCase() + '> '}${r.toFixed(2)}:1`); }
+      }
+      return out;
+    }, qaA.contrastOf.toString()));
+    await pg.screenshot({ path: `${OUT}/qa-a-night-${stage}.png` }); await pg.close();
+    must(bad.length === 0, 'below 4.5:1 at night: ' + bad.join(' ; '));
+  });
+}
+await step('QA-12 idle night: the MAC tails and the SCANNING header stay visible', async () => {
+  const pg = await open(VIEWS[1], 'idle', '&night');
+  const r = await pg.evaluate(src => { const ratio = eval(src)();
+    const sc = document.querySelector('.idle .sc'), tails = [...document.querySelectorAll('.tagrow:not(.used) .nm b')];
+    return { sc: sc ? +ratio(sc).toFixed(2) : null, dot: sc && sc.querySelector('i') ? getComputedStyle(sc.querySelector('i')).backgroundColor : null, tails: tails.map(t => [t.textContent, +ratio(t).toFixed(2)]) };
+  }, qaA.contrastOf.toString());
+  await pg.close();
+  must(r.sc != null && r.sc >= 2.5, 'the SCANNING header is gone at night: ' + JSON.stringify(r));
+  must(r.tails.length >= 2 && r.tails.every(([, c]) => c >= 4.5), 'a MAC tail is unreadable at night (guns with one name look identical): ' + JSON.stringify(r.tails));
+});
+await step('QA-08 mc-rejected: NOT JOINED, READY UP disabled with MC\'s reason, no IN SYNC', async () => {
+  const pg = await open(VIEWS[1], 'mc-rejected', '', 3000);
+  const r = await pg.evaluate(() => { const b = document.querySelector('.lobby button.ready'), st = document.getElementById('mcstatus'), n = document.getElementById('readynote');
+    return { status: st ? st.textContent : '', btn: b ? { dis: b.disabled || b.getAttribute('aria-disabled') === 'true', t: b.textContent } : null, note: n ? n.textContent : '', ws: window.brx.engine.state().wsState, ready: window.brx.engine.state().ready }; });
+  await pg.click('.lobby button.ready', { force: true }).catch(() => {});
+  await pg.waitForTimeout(150);
+  const after = await pg.evaluate(() => window.brx.engine.state().ready);
+  await pg.close();
+  must(r.ws === 'rejected', 'stage did not reach rejected: ' + r.ws);
+  must(/NOT JOINED/.test(r.status) && !/IN SYNC|CONNECTING/.test(r.status), 'the status line contradicts the rejection: ' + r.status);
+  must(r.btn && r.btn.dis, 'READY UP stays enabled after Mission Control turned this phone away: ' + JSON.stringify(r.btn));
+  must(/roster|full/i.test(r.note) && /host/i.test(r.note), 'the note under READY UP does not give MC\'s reason: ' + r.note);
+  must(!after, 'a tap on the disabled READY UP still readied the player');
+});
+await step('QA-13 connected: the copy names CONNECT, the title is not LINKED, in-progress is amber, the placeholder fits', async () => {
+  const pg = await open(VIEWS[1], 'connected');
+  const r = await pg.evaluate(() => { const note = (document.querySelector('.lobby .note.join') || {}).textContent || '', cs = (document.querySelector('.lobby .cs') || {}).textContent || '';
+    const i = document.getElementById('mcurl'), cv = document.createElement('canvas').getContext('2d');
+    const ics = getComputedStyle(i); cv.font = `${ics.fontSize} ${ics.fontFamily}`;
+    const need = cv.measureText(i.placeholder).width, have = i.clientWidth - parseFloat(ics.paddingLeft) - parseFloat(ics.paddingRight);
+    const prog = document.querySelector('#mcstatus .prog'), bad = document.querySelector('#mcstatus .bad');
+    return { note, cs, ph: i.placeholder, need, have, status: document.getElementById('mcstatus').textContent, prog: prog ? getComputedStyle(prog).color : null, bad: bad ? bad.textContent : null, warn: getComputedStyle(document.getElementById('frame')).getPropertyValue('--warn').trim() };
+  });
+  await pg.close();
+  must(/CONNECT\b/.test(r.note), 'the join copy does not name the CONNECT button: ' + r.note);
+  must(r.cs.trim() !== 'LINKED', 'the title says LINKED while Mission Control is not joined');
+  must(!r.bad, 'an in-progress state is painted as an error (red): ' + r.bad);
+  must(r.need <= r.have + 1, `the placeholder is truncated: needs ${r.need.toFixed(0)}px, has ${r.have.toFixed(0)}px (${r.ph})`);
+});
+for (const skin of ['', '&night']) await step(`QA-24 idle-diag${skin}: the ⓘ panel is opaque, has ONE close control, and its last row scrolls fully into view`, async () => {
+  const pg = await open(VIEWS[1], 'idle-diag', skin);
+  const r = await pg.evaluate(async () => { const d = document.getElementById('diag'), body = document.getElementById('dbody');
+    const bg = getComputedStyle(d).backgroundColor, a = (bg.match(/[\d.]+/g) || []).length > 3 ? +bg.match(/[\d.]+/g)[3] : 1;
+    const closes = [...d.querySelectorAll('[data-act="onCloseDiag"]')].filter(e => getComputedStyle(e).display !== 'none').length;
+    body.scrollTop = body.scrollHeight; await new Promise(res => setTimeout(res, 50));
+    const last = body.lastElementChild.getBoundingClientRect(), box = body.getBoundingClientRect();
+    return { a, closes, lastBottom: last.bottom, boxBottom: box.bottom };
+  });
+  await pg.close();
+  must(r.a === 1, 'the panel is translucent (alpha ' + r.a + '): the screen behind bleeds through');
+  must(r.closes === 1, `the panel has ${r.closes} close controls`);
+  must(r.lastBottom <= r.boxBottom + 1, `the last row is clipped at the bottom when scrolled fully: ${JSON.stringify(r)}`);
+});
+for (const stage of ['connected', 'idle-diag']) await step(`QA-11 ${stage} SE: the corner buttons and the join controls take a >= 44px tap on screen`, async () => {
+  const pg = await open(VIEWS[1], stage);
+  const bad = await pg.evaluate(() => {
+    const d = document.getElementById('diag'), open = d.classList.contains('open'), scope = open ? d : document.getElementById('hud');
+    const out = [], ctl = open ? [] : [document.getElementById('info'), document.getElementById('skin')];   // the open panel sits above the corner buttons
+    ctl.push(scope.querySelector('#mcurl'), scope.querySelector('[data-act="onSetUrl"]'), scope.querySelector('[data-act="onScanQr"]'));
+    for (const c of ctl) { if (!c) { out.push('missing control'); continue; }
+      const r = c.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      // A 44px square centred on the control: its four edge midpoints must all land on the control.
+      const pts = [[cx - 21.5, cy], [cx + 21.5, cy], [cx, cy - 21.5], [cx, cy + 21.5]];
+      const miss = pts.filter(([x, y]) => { const hit = document.elementFromPoint(Math.max(0, x), Math.max(0, y)); return !(hit && (hit === c || c.contains(hit))); });
+      // a point outside the frame is outside the app (glass or the SE's letterbox band): nothing there can be tapped
+      const fr = document.getElementById('frame').getBoundingClientRect();
+      const edge = miss.filter(([x, y]) => y >= fr.top && y <= fr.bottom && x >= fr.left && x <= fr.right);
+      if (edge.length) out.push(`${c.id || c.className || c.dataset.act} ${Math.round(r.width)}x${Math.round(r.height)} misses ${JSON.stringify(edge.map(p => p.map(Math.round)))}`);
+    }
+    return out;
+  });
+  await pg.close();
+  must(bad.length === 0, 'tap target under 44px on screen: ' + bad.join(' ; '));
+});
+await step('QA-28 the ⓘ is drawn, not a font glyph', async () => {
+  const pg = await open(VIEWS[1], 'idle');
+  const r = await pg.evaluate(() => { const i = document.getElementById('info'); return { svg: !!i.querySelector('svg'), label: i.getAttribute('aria-label') }; });
+  await pg.close();
+  must(r.svg && r.label, 'the ⓘ is still a text glyph (an empty box where the font lacks U+24D8): ' + JSON.stringify(r));
+});
+
+// QA lane E (2026-09-23)
+// QA-23: the utility page (www/utility.html + src/utility.js) is a spare phone propped up sideways as a
+// field item -- a normal way to leave it -- and at 844x390 / 667x375 the old portrait-only flex column ran
+// 900-1130px tall: the capture bar sat below the fold, and a scrolled screenshot could crop out everything
+// BETWEEN two unrelated facts (the advertise badge and the MC-arm line; the CONTESTED banner and its own
+// ETA sentence, deliberately adjacent by design -- see utility.html's .cflash comment), reading as one
+// contradictory sentence with nothing to show they were not. Every stage entry `tools/stage.html` lists
+// under "Utility phone" is covered here; portrait (390x844) must render byte-for-byte the same as before.
+const UTIL_KINDS = [['respawn', 1, 1], ['respawn', 255, 2], ['powerup', 2, 1], ['extraction', 255, 1], ['bomb', 0, 1], ['control', 255, 1]];
+const UTIL_VIEWS = [{ name: 'landscape-844x390', width: 844, height: 390 }, { name: 'landscape-667x375', width: 667, height: 375 }];
+const openUtility = async (view, kind, team, id) => {
+  const pg = await b.newPage({ viewport: { width: view.width, height: view.height } });
+  await pg.addInitScript(({ kind, team, id }) => {
+    localStorage.setItem('brx.utility', JSON.stringify({ kind, team, id, tx: 'high', threshold: -74, dwell: 800, game: 0 }));
+  }, { kind, team, id });
+  await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`);
+  await pg.waitForTimeout(1600);
+  return pg;
+};
+for (const [kind, team, id] of UTIL_KINDS) {
+  for (const view of UTIL_VIEWS) {
+    await step(`utility landscape fit: ${kind}/${team}/${id} @ ${view.name}`, async () => {
+      const pg = await openUtility(view, kind, team, id);
+      const r = await pg.evaluate(() => {
+        const rect = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { top: b.top, bottom: b.bottom }; };
+        const control = document.getElementById('control');
+        const isControl = control && !control.hidden;
+        const bar = isControl ? rect(document.getElementById('cbar')) : rect(document.querySelector('.hero .status'));
+        return { docH: document.documentElement.scrollHeight, vh: window.innerHeight, isControl, bar };
+      });
+      await pg.screenshot({ path: `${OUT}/util-${kind}-${team}-${id}-${view.name}.png` }); await pg.close();
+      must(r.docH <= r.vh, `the page scrolls vertically at ${view.name}: document height ${r.docH} > viewport ${r.vh}`);
+      must(r.bar, `no ${r.isControl ? 'capture bar (#cbar)' : 'primary status (.hero .status)'} found on screen`);
+      must(r.bar.top >= 0 && r.bar.bottom <= r.vh, `the ${r.isControl ? 'capture bar' : 'primary status'} is not fully in view at ${view.name}: ${JSON.stringify(r.bar)} (viewport ${r.vh})`);
+    });
+  }
+}
+await step('utility landscape fit: portrait is unchanged (.side keeps the original 14px flex rhythm)', async () => {
+  const pg = await openUtility({ width: 390, height: 844 }, 'respawn', 1, 1);
+  const r = await pg.evaluate(() => {
+    const side = document.getElementById('side'); const cs = getComputedStyle(side);
+    const heroBottom = document.querySelector('.hero').getBoundingClientRect().bottom;
+    const playersTop = document.querySelector('.panel.players').getBoundingClientRect().top;
+    return { display: cs.display, flexDirection: cs.flexDirection, gap: cs.rowGap || cs.gap, heroToPlayers: playersTop - heroBottom };
+  });
+  await pg.close();
+  must(r.display === 'flex' && r.flexDirection === 'column', `#side must stay a plain flex column outside the landscape gate: ${JSON.stringify(r)}`);
+  must(Math.round(parseFloat(r.gap)) === 14, `#side must keep the page's own 14px gap in portrait: ${JSON.stringify(r)}`);
+  must(Math.abs(r.heroToPlayers - 14) <= 1, `hero-to-players gap drifted from the original 14px in portrait: ${r.heroToPlayers}`);
+});
+
+// QA lane C (2026-09-23)
+// QA-05: one callout card for every "someone went down" and "the hill changed hands" moment, whichever path it
+// came by (S57 IR word, MC's kill feedback, the engine's own hill transition). Each case: the card is on screen,
+// names someone (or the objective) at >= 18 frame px, sits clear of the vitals and the ammo block, carries the
+// tone of who went down, and is gone again within its hold. Night: the same card, dim red, no green, no whiteout.
+const CO_CASES = [
+  // [stage, kind, the name the card must print, tone, ms from load to give up waiting, the hold it must clear within]
+  ['live-callout-kill', 'kill_confirmed', 'YELLOW', 'enemy', 3400, 2600],
+  ['live-callout-enemy', 'enemy_down', 'VIPER', 'enemy', 3400, 2600],
+  ['live-callout-teammate', 'teammate_down', 'MAVERICK', 'mate', 3400, 2600],
+  ['live-kill', 'kill', 'VIPER', 'enemy', 3400, 2600],
+  ['live-hill-captured', 'hill_captured', 'HILL CAPTURED', 'ours', 3600, 2800],
+  ['live-hill-lost', 'hill_lost', 'HILL LOST', 'theirs', 3600, 2800],
+];
+const coRead = pg => pg.evaluate(() => {
+  const el = document.querySelector('#overlay .mo.co'); if (!el) return null;
+  const cs = getComputedStyle(el), nm = el.querySelector('.nm');
+  const box = e => { const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
+  const rgb = s => (s.match(/\d+(\.\d+)?/g) || []).slice(0, 3).map(Number);
+  const green = [el, ...el.querySelectorAll('*')].some(e => { const c = getComputedStyle(e); return [c.color, c.backgroundColor, c.borderTopColor].some(v => { const [r, g, b2] = rgb(v); const a = /rgba/.test(v) ? Number(v.split(',')[3]) : 1; return a > 0.05 && g > r + 12 && g > b2 - 8 && g > 40; }); });
+  return { kind: el.dataset.kind, tone: el.dataset.tone, vis: cs.display !== 'none' && cs.visibility !== 'hidden' && Number(cs.opacity) > 0.5 && el.getBoundingClientRect().width > 0,
+    name: nm ? nm.textContent.trim() : '', px: nm ? parseFloat(getComputedStyle(nm).fontSize) : 0, accent: cs.getPropertyValue('--co').trim(),
+    card: box(el.querySelector('.cob') || el), vitals: box(document.querySelector('.vitals')), ammo: box(document.querySelector('.ammo')),
+    green, whiteout: !!document.querySelector('#overlay .whiteout'), at: performance.now() };
+});
+for (const view of VIEWS) for (const night of [false, true]) for (const [stage, kind, name, tone, waitMs, holdMs] of CO_CASES) {
+  await step(`${view.name} QA-05 callout ${stage} ${night ? 'night' : 'day'}: one card, named, >= 18 px, clear of vitals/ammo, gone within its hold`, async () => {
+    const pg = await open(view, stage, night ? '&night' : '', 1200);
+    let r = null; for (let t = 0; t < waitMs && !((r = await coRead(pg)) && r.kind === kind); t += 50) await pg.waitForTimeout(50);
+    await pg.screenshot({ path: `${OUT}/${view.name}-qa05-${stage}${night ? '-night' : ''}.png` });
+    must(r, `no callout card on screen (want ${kind})`);
+    must(r.kind === kind && r.vis, `card: ${JSON.stringify(r)}`);
+    must(r.name.toUpperCase().includes(name), `the card names ${JSON.stringify(r.name)}, want ${name}`);
+    must(r.px >= 18, `the name is ${r.px}px, the floor is 18`);
+    must(r.tone === tone && r.accent, `tone ${r.tone} accent ${r.accent}, want ${tone}`);
+    must(apart(r.card, r.vitals) && apart(r.card, r.ammo), `the card covers the vitals or the ammo: ${JSON.stringify({ card: r.card, vitals: r.vitals, ammo: r.ammo })}`);
+    if (night) must(!r.green && !r.whiteout, `night: green ${r.green} whiteout ${r.whiteout}`);
+    const t0 = r.at; let gone = false; for (let t = 0; t < holdMs + 1500 && !gone; t += 100) { await pg.waitForTimeout(100); gone = await pg.evaluate(() => !document.querySelector('#overlay .mo.co')); }
+    const took = await pg.evaluate(t => performance.now() - t, t0); await pg.close();
+    must(gone && took <= holdMs + 150, `the card was still up ${Math.round(took)} ms after it appeared (hold ${holdMs})`);
+  });
+}
+for (const view of VIEWS) for (const night of [false, true]) {
+  await step(`${view.name} QA-05 callout ${night ? 'night' : 'day'}: an enemy down and a teammate down do not share a colour`, async () => {
+    const accent = {};
+    for (const [stage, kind, tone] of [['live-callout-enemy', 'enemy_down', 'enemy'], ['live-callout-teammate', 'teammate_down', 'mate']]) {
+      const pg = await open(view, stage, night ? '&night' : '', 1200);
+      let r = null; for (let t = 0; t < 3400 && !((r = await coRead(pg)) && r.kind === kind); t += 50) await pg.waitForTimeout(50);
+      await pg.close(); must(r && r.tone === tone, `${stage}: ${JSON.stringify(r)}`); accent[tone] = r.accent;
+    }
+    must(accent.enemy && accent.mate && accent.enemy !== accent.mate, JSON.stringify(accent));
+  });
+}
+
+// QA lane B (2026-09-23)
+// The live HUD fixes from the 2026-09-23 visual QA (QA-02, 03, 04, 06, 10, 11, 17, 21, 22) and the two live states that
+// had no stage: the station-respawn spawn shield and the F15 stun. Every check reads what a person sees: computed
+// styles, rects and hit-testing, never engine state alone.
+{
+  /** What the eye gets from one element: its text, rect, font size, colour, the product of every ancestor's opacity
+   *  up to #frame (a dimmed parent dims the number), whether it is displayed, and its running animations. */
+  const look = (pg, sel) => pg.evaluate(sel => {
+    const e = document.querySelector(sel); if (!e) return null;
+    let op = 1, shown = true;
+    for (let n = e; n && n.id !== 'frame'; n = n.parentElement) { const c = getComputedStyle(n); op *= +c.opacity; if (c.display === 'none' || c.visibility === 'hidden') shown = false; }
+    const c = getComputedStyle(e), r = e.getBoundingClientRect();
+    return { text: e.innerText.replace(/\s+/g, ' ').trim(), l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width, h: r.height, font: parseFloat(c.fontSize), color: c.color, bg: c.backgroundColor,
+      op: Math.round(op * 100) / 100, shown: shown && r.width > 0 && r.height > 0, anim: c.animationName };
+  }, sel);
+  const rgb = css => (/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/.exec(css || '') || []).slice(1).map(Number);
+  const green = css => { const [r, g, b] = rgb(css); return g > r + 30 && g > b; };
+  const lum = css => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; const [r, g, b] = rgb(css); return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+  const onBlack = css => (lum(css) + 0.05) / 0.05;
+  for (const view of VIEWS) for (const night of [false, true]) {
+    const skin = night ? 'night' : 'day', N = night ? '&night' : '';
+    await step(`${view.name} QA-02 gun drop ${skin}: HP and ammo dim and say STALE, a solid 16 px link bar`, async () => {
+      const pg = await open(view, 'live', N);
+      const live = { hp: await look(pg, '#hp'), mag: await look(pg, '#mag') };
+      await pg.evaluate(() => window.brxDemo.dropGun()); await pg.waitForTimeout(400);
+      const r = { hp: await look(pg, '#hp'), mag: await look(pg, '#mag'), vtag: await look(pg, '.vitals .staletag'), atag: await look(pg, '.ammo .staletag'),
+        bar: await look(pg, '.chipbar [data-act="onReconnectGun"]'), dot: await look(pg, '#linkdot') };
+      await pg.screenshot({ path: `${OUT}/${view.name}-qa02-gundrop-${skin}.png` });
+      const bad = await invariants(pg); await pg.close();
+      must(live.hp.op === 1 && live.mag.op === 1, `pre-condition: a linked gun's numbers are not dimmed: ${JSON.stringify(live)}`);
+      must(r.hp.op <= 0.5 && r.mag.op <= 0.5, `the frozen HP and ammo must be dimmed: hp ${r.hp.op}, mag ${r.mag.op}`);
+      for (const k of ['vtag', 'atag']) must(r[k] && r[k].shown && r[k].text === 'STALE' && r[k].font >= 11 && r[k].op >= 0.9, `${k} must say STALE, visibly: ${JSON.stringify(r[k])}`);
+      must(r.bar && r.bar.shown && r.bar.font >= 16 && r.bar.anim === 'none' && rgb(r.bar.bg).length === 3 && !/rgba\(0, 0, 0, 0\)/.test(r.bar.bg), `the link bar must be solid, steady and 16 px: ${JSON.stringify(r.bar)}`);
+      must(r.dot && r.dot.shown && r.dot.anim === 'none' || !night, `night keeps a steady NO GUN dot: ${JSON.stringify(r.dot)}`);
+      if (night) { const [R, G, B] = rgb(r.dot.bg); must(R > 200 && G < 120 && B < 120, `the night NO GUN dot is red: ${r.dot.bg}`); }
+      must(bad.length === 0, bad.join(' ; '));
+    });
+    await step(`${view.name} QA-02 MC drop ${skin}: the MC-fed K and A say STALE, the gun-fed HP and ammo stay live`, async () => {
+      const pg = await open(view, 'live', N);
+      await pg.evaluate(() => { window.brx.engine.deaths = 1; window.brxDemo.score(3, 1, 1); }); await pg.waitForTimeout(300);   // one death so D is on screen
+      await pg.evaluate(() => window.brxDemo.mcLost()); await pg.waitForTimeout(400);
+      const r = { hp: await look(pg, '#hp'), mag: await look(pg, '#mag'), tag: await look(pg, '.stats .staletag'), k: await look(pg, '#st-K'), d: await look(pg, '#st-D'), gunTags: await pg.evaluate(() => document.querySelectorAll('.vitals .staletag, .ammo .staletag').length) };
+      await pg.screenshot({ path: `${OUT}/${view.name}-qa02-mcdrop-${skin}.png` }); await pg.close();
+      must(r.tag && r.tag.shown && r.tag.text === 'STALE' && r.tag.font >= 11, `K/A come from MC: they must say STALE: ${JSON.stringify(r.tag)}`);
+      must(r.k && r.k.op <= 0.5, `the K number must be dimmed: ${JSON.stringify(r.k)}`);
+      must(r.d && r.d.op === 1, `D is this phone's own count, so an MC drop must not dim it (polish round 1): ${JSON.stringify(r.d)}`);
+      must(r.hp.op === 1 && r.mag.op === 1 && r.gunTags === 0, `HP and ammo still come from the linked gun, so they must NOT read stale: ${JSON.stringify(r)}`);
+    });
+    await step(`${view.name} QA-03/06 hit ${skin}: TAKING FIRE shows, and the hit number never overlaps it`, async () => {
+      const pg = await open(view, 'live', N);
+      await pg.evaluate(() => window.brxDemo.hitFrom(19, 9, 9)); await pg.waitForTimeout(350);   // past the 0.28 s slam, before the 0.7 s removal
+      const r = { tf: await look(pg, '.takingfire .t'), dmg: await look(pg, '.mo.hit .dmg'), hc: await look(pg, '.mo.hit .hc') };
+      await pg.screenshot({ path: `${OUT}/${view.name}-qa03-hit-${skin}.png` }); await pg.close();
+      must(r.tf && r.tf.shown && r.tf.text === 'TAKING FIRE', `TAKING FIRE must show${night ? ' at night too' : ''}: ${JSON.stringify(r.tf)}`);
+      if (night) must(r.tf.anim === 'none' && !green(r.tf.color), `night TAKING FIRE is still and red: ${JSON.stringify(r.tf)}`);
+      must(r.dmg && r.hc, `the hit number must be on screen: ${JSON.stringify(r)}`);
+      must(r.hc.t >= r.tf.b + 4 && apart({ l: r.dmg.l, r: r.dmg.r, t: r.dmg.t, b: r.dmg.b }, { l: r.tf.l, r: r.tf.r, t: r.tf.t, b: r.tf.b }), `the hit stack must sit below TAKING FIRE with a gap: tf bottom ${r.tf.b}, stack top ${r.hc.t}, dmg top ${r.dmg.t}`);
+    });
+    await step(`${view.name} QA-04 hit weapon ${skin}: 16 px for 1.5 s, then a small LAST HIT line to about 5 s`, async () => {
+      const pg = await open(view, 'live', N);
+      const t0 = await pg.evaluate(() => { window.brxDemo.hitFrom(19, 9, 9); return performance.now(); });
+      const at = async ms => { await pg.waitForFunction(({ t, ms }) => performance.now() - t >= ms, { t: t0, ms }, { polling: 50 }); return look(pg, '.hitwpn .hw'); };
+      const big = await at(1300), small = await at(3500);
+      await pg.screenshot({ path: `${OUT}/${view.name}-qa04-lasthit-${skin}.png` });
+      const gone = await at(6000); await pg.close();
+      must(big && big.shown && big.text === 'ASSAULT RIFLE' && big.font >= 16 && big.op >= 0.9, `at 1.3 s the weapon reads large: ${JSON.stringify(big)}`);
+      must(big.l >= 0 && big.r <= view.width, `the weapon line fits the screen: ${JSON.stringify(big)}`);
+      must(small && small.shown && /ASSAULT RIFLE/.test(small.text) && small.font >= 11 && small.font < 16, `at 3.5 s a small LAST HIT line remains: ${JSON.stringify(small)}`);
+      must(!gone || !gone.shown, `by 6 s the line is gone: ${JSON.stringify(gone)}`);
+    });
+    await step(`${view.name} QA-10/06 low HP ${skin}: the number never blinks below 80%, and LOW says so`, async () => {
+      const pg = await open(view, 'live-lowhp', N);
+      const ops = []; for (let i = 0; i < 8; i++) { ops.push((await look(pg, '#hp')).op * +(await pg.evaluate(() => getComputedStyle(document.getElementById('hp')).opacity))); await pg.waitForTimeout(140); }
+      const r = { hp: await look(pg, '#hp'), tag: await look(pg, '.lowtag'), vig: await look(pg, '.firevig') };
+      await pg.screenshot({ path: `${OUT}/${view.name}-qa10-lowhp-${skin}.png` }); await pg.close();
+      must(Math.min(...ops) >= 0.8 && r.hp.anim === 'none', `the HP number must hold at >= 80% opacity: ${ops.join(',')} anim ${r.hp.anim}`);
+      must(r.tag && r.tag.shown && r.tag.text === 'LOW' && r.tag.font >= 11, `LOW must show beside the HP: ${JSON.stringify(r.tag)}`);
+      must(r.vig && r.vig.shown, `the low-HP vignette must show${night ? ' at night (dim, still)' : ''}: ${JSON.stringify(r.vig)}`);
+      if (night) must(r.vig.anim === 'none', `night: no pulse: ${r.vig.anim}`);
+    });
+    await step(`${view.name} QA-06 kill + medals ${skin}: the banner shows${night ? ', dim and still' : ''}`, async () => {
+      const pg = await open(view, 'live', N);
+      await pg.evaluate(() => window.brxDemo.killMedals(['double_kill', 'killing_spree'])); await pg.waitForTimeout(400);
+      const r = await pg.evaluate(() => { const k = document.querySelector('.mo.kill'); if (!k) return null; const all = [k, ...k.querySelectorAll('*')];
+        return { shown: getComputedStyle(k).display !== 'none' && k.getBoundingClientRect().width > 0, text: k.innerText.replace(/\s+/g, ' '),
+          anims: all.filter(n => getComputedStyle(n).animationName !== 'none' && getComputedStyle(n).display !== 'none').length,
+          colors: all.filter(n => getComputedStyle(n).display !== 'none').flatMap(n => [getComputedStyle(n).color, getComputedStyle(n).backgroundColor]),
+          white: !!document.querySelector('.whiteout') && getComputedStyle(document.querySelector('.whiteout')).display !== 'none' }; });
+      await pg.screenshot({ path: `${OUT}/${view.name}-qa06-medals-${skin}.png` }); await pg.close();
+      must(r && r.shown && /KILL/.test(r.text) && /DOUBLE KILL/.test(r.text), `the kill banner and its medals must show: ${JSON.stringify(r && r.text)}`);
+      if (night) {
+        must(r.anims === 0 && !r.white, `night: no animation, no whiteout: ${r.anims} ${r.white}`);
+        must(!r.colors.some(c => green(c)) && !r.colors.some(c => bright(c, 150)), `night: nothing green or bright: ${r.colors.filter(c => green(c) || bright(c, 150))}`);
+      }
+    });
+    await step(`${view.name} QA-11 live controls ${skin}: MC, clock, callsign and the link bar hit >= 44 px on screen`, async () => {
+      const pg = await open(view, 'live-nogun', N);
+      const r = await pg.evaluate(() => [['MC', '.topright button.mclink'], ['clock', '.clockplate'], ['callsign', '.ident'], ['link bar', '.chipbar [data-act="onReconnectGun"]']].map(([k, sel]) => {
+        const e = document.querySelector(sel); if (!e || getComputedStyle(e).display === 'none') return [k, 'hidden'];
+        for (let n = e; n; n = n.parentElement) if (getComputedStyle(n).display === 'none') return [k, 'hidden'];
+        const b = e.getBoundingClientRect(), cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+        const hits = (x, y) => { const t = document.elementFromPoint(x, y); return !!t && (t === e || e.contains(t)); };
+        return [k, hits(cx, cy - 21) && hits(cx, cy + 21) && hits(cx - 21, cy) && hits(cx + 21, cy) ? 'ok' : `small ${Math.round(b.width)}x${Math.round(b.height)}`];
+      }));
+      await pg.close();
+      const small = r.filter(([, v]) => v !== 'ok' && v !== 'hidden');
+      must(small.length === 0, `under 44 px on screen: ${JSON.stringify(small)}`);
+      if (!night) must(r.every(([, v]) => v === 'ok'), `day shows every control: ${JSON.stringify(r)}`);
+    });
+    await step(`${view.name} spawn shield ${skin}: a station respawn shows SPAWN SHIELD for its 2 s, then clears`, async () => {
+      const pg = await open(view, 'live-shield', N, 1600);
+      await pg.waitForFunction(() => window.brx.engine.state().shielded, null, { timeout: 5000 });
+      await pg.waitForTimeout(250);
+      const on = await look(pg, '.spawnshield');
+      // By day the REDEPLOYED takeover covers the frame for its first 1.7 s; while it is up it must say SHIELD UP itself.
+      const takeover = await pg.evaluate(() => { const h = document.querySelector('.mo.redeploy .r .h'); return h ? h.textContent : null; });
+      await pg.screenshot({ path: `${OUT}/${view.name}-shield-${skin}.png` });
+      await pg.waitForFunction(() => !window.brx.engine.state().shielded, null, { timeout: 4000 }); await pg.waitForTimeout(300);
+      const off = await look(pg, '.spawnshield'); await pg.close();
+      must(on && on.shown && /SPAWN SHIELD/.test(on.text) && on.font >= 11, `the spawn shield must show while it protects: ${JSON.stringify(on)}`);
+      if (night) must(!green(on.color) && on.anim === 'none', `night: red, still: ${JSON.stringify(on)}`);
+      must(takeover == null || /SHIELD UP/.test(takeover), `a REDEPLOYED takeover over the shield must name it: ${takeover}`);
+      must(!off || !off.shown, `the shield visual must clear with the protection: ${JSON.stringify(off)}`);
+    });
+    await step(`${view.name} F15 stun ${skin}: STUNNED, the gun disarmed, counting down`, async () => {
+      const pg = await open(view, 'live-stunned', N, 4200);
+      const s = await pg.evaluate(() => window.brx.engine.state().stunned);
+      const r = await look(pg, '.aimfx.stun');
+      await pg.screenshot({ path: `${OUT}/${view.name}-stun-${skin}.png` });
+      const bad = await invariants(pg); await pg.close();
+      must(s && s.leftMs > 0, `pre-condition: the engine is stunned: ${JSON.stringify(s)}`);
+      must(r && r.shown && /STUNNED/.test(r.text) && /DISARMED/.test(r.text) && /\d+\s*SEC/.test(r.text), `the stun must show with its countdown: ${JSON.stringify(r)}`);
+      if (night) must(!green(r.color) && r.anim === 'none', `night: no green, no motion: ${JSON.stringify(r)}`);
+      must(bad.length === 0, bad.join(' ; '));
+    });
+  }
+  for (const view of VIEWS) {
+    await step(`${view.name} QA-17/22 night live HUD: no green; armour and link status shown; clock and reserve >= 4.5:1`, async () => {
+      const pg = await b.newPage({ viewport: { width: view.width, height: view.height } });
+      await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=live&night`);
+      await pg.waitForFunction(() => Array.from(document.querySelectorAll('.chipbar .pill')).some(p => /WEAPONS HOT/.test(p.textContent)), null, { timeout: 8000 });
+      const hot = await pg.evaluate(() => { const p = Array.from(document.querySelectorAll('.chipbar .pill')).find(x => /WEAPONS HOT/.test(x.textContent)); return { color: getComputedStyle(p).color, border: getComputedStyle(p).borderTopColor }; });
+      await pg.waitForTimeout(3000);
+      const r = { sh: await look(pg, '#sh'), dot: await look(pg, '#linkdot'), mc: await look(pg, '#mcdot'), clock: await look(pg, '#clock'), res: await look(pg, '#res'),
+        greens: await pg.evaluate(() => Array.from(document.querySelectorAll('.alive *, #chips *')).filter(n => { const c = getComputedStyle(n); if (c.display === 'none') return false; return [c.color, c.backgroundColor, c.borderTopColor].some(x => { const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?/.exec(x); return m && (m[4] == null || +m[4] > 0) && +m[2] > +m[1] + 30 && +m[2] > +m[3]; }); }).map(n => n.className || n.id)) };
+      await pg.screenshot({ path: `${OUT}/${view.name}-qa22-night.png` }); await pg.close();
+      must(!green(hot.color) && !green(hot.border), `WEAPONS HOT must not be green at night: ${JSON.stringify(hot)}`);
+      must(r.greens.length === 0, `green on the night live HUD: ${r.greens.join(', ')}`);
+      must(r.sh && r.sh.shown && r.sh.font >= 14, `the armour number must show at night: ${JSON.stringify(r.sh)}`);
+      must(r.dot && r.dot.shown && r.mc && r.mc.shown, `the gun and MC link status must show at night: ${JSON.stringify({ dot: r.dot, mc: r.mc })}`);
+      must(onBlack(r.clock.color) >= 4.4 && onBlack(r.res.color) >= 4.4, `clock ${onBlack(r.clock.color).toFixed(2)}:1, reserve ${onBlack(r.res.color).toFixed(2)}:1`);
+    });
+    await step(`${view.name} QA-17 night weapon switch: CONFIRMED BY YOUR GUN is not green`, async () => {
+      const pg = await open(view, 'live-switch', '&night');
+      await pg.waitForSelector('.mo.switched .s', { timeout: 4000 });
+      const r = await look(pg, '.mo.switched .s'); await pg.close();
+      must(r && !green(r.color), `night switched line: ${JSON.stringify(r)}`);
+    });
+    await step(`${view.name} QA-21 live labels: TDM, the squad and PRIMARY are >= 11 px`, async () => {
+      const pg = await open(view, 'live');
+      const r = { m: await look(pg, '.clockplate .m'), sq: await look(pg, '.ident .sq'), slot: await look(pg, '.ammo .wn .slot') }; await pg.close();
+      must(Object.values(r).every(x => x && x.font >= 11), JSON.stringify(Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v && v.font]))));
+    });
+    await step(`${view.name} live-overheat stage: the stage reaches OVERHEAT through the engine`, async () => {
+      const pg = await open(view, 'live-overheat', '', 4200);
+      await pg.waitForFunction(() => window.brx.engine.state().overheatShown, null, { timeout: 5000 });
+      const r = await look(pg, '.heatword'); await pg.close();
+      must(r && r.shown && r.text === 'OVERHEAT', JSON.stringify(r));
+    });
+  }
+}
+
+
+// QA lane D (2026-09-23)
+// The contrast of every painted text leaf under `sel`, against the background it actually sits on: the element's own
+// and its ancestors' background-colors composited bottom-up (alpha included) over the frame's black. A `transparent`
+// text colour (night sets `--glow` to transparent) composites to the background itself, so it measures 1:1, not "black".
+const qaContrast = (pg, sel) => pg.evaluate(sel => {
+  const parse = v => { const m = (v.match(/[\d.]+/g) || []).map(Number); return m.length < 3 ? [0, 0, 0, 0] : [m[0], m[1], m[2], m.length > 3 ? m[3] : 1]; };
+  const over = (top, under) => { const a = top[3]; return [0, 1, 2].map(i => top[i] * a + under[i] * (1 - a)); };
+  const lum = c => { const [r, g, b] = c.map(v => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }); return .2126 * r + .7152 * g + .0722 * b; };
+  const bgOf = el => { const layers = []; for (let n = el; n && n.nodeType === 1; n = n.parentElement) layers.push(parse(getComputedStyle(n).backgroundColor));
+    return layers.reverse().reduce((acc, l) => over(l, acc), [0, 0, 0]); };
+  const out = [];
+  for (const root of document.querySelectorAll(sel)) for (const e of [root, ...root.querySelectorAll('*')]) {
+    const own = Array.from(e.childNodes).some(n => n.nodeType === 3 && n.textContent.trim()); if (!own) continue;
+    const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden' || !e.getClientRects().length) continue;
+    const bg = bgOf(e), fg = over(parse(cs.color), bg), a = lum(fg), b = lum(bg);
+    out.push({ text: e.textContent.trim().slice(0, 24), ratio: Math.round(100 * (Math.max(a, b) + .05) / (Math.min(a, b) + .05)) / 100 });
+  }
+  return out;
+}, sel);
+for (const [stage, tab, sel] of [['result-win-team', 'TEAMS', '.result .tp.me'], ['result-players', 'PLAYERS', '.result .lbr.me']]) {
+  await step(`QA-07 night recap: the player's own row reads on ${tab} (>= 4.5:1)`, async () => {
+    const pg = await open(VIEWS[1], stage, '&night');
+    const r = await qaContrast(pg, sel); const on = await pg.evaluate(() => (document.querySelector('.rseg .sg.on') || {}).textContent || '');
+    await pg.close();
+    must(on.trim() === tab, `the stage did not open the ${tab} tab: "${on}"`);
+    must(r.length > 0, `no own-row text under ${sel}: the gate would pass on nothing`);
+    const bad = r.filter(x => x.ratio < 4.5);
+    must(bad.length === 0, `own row below 4.5:1 at night: ${JSON.stringify(bad)}`);
+  });
+}
+for (const view of VIEWS) {
+  await step(`${view.name} QA-09 loadout hero: the ✓ ON tag and every bar label read whole`, async () => {
+    const pg = await open(view, 'loadout-primary');
+    const r = await pg.evaluate(() => {
+      const nm = document.querySelector('.lodetail .nm'), tag = nm && nm.querySelector('.eqtag');
+      const clipped = e => e.scrollWidth > e.clientWidth + 1;
+      const labs = Array.from(document.querySelectorAll('.lodetail .tb > span')).map(s => {
+        const rg = document.createRange(); rg.selectNodeContents(s); const tops = new Set(Array.from(rg.getClientRects()).filter(x => x.width > 1).map(x => Math.round(x.top / 4)));
+        return { t: s.textContent.trim(), lines: tops.size, clipped: clipped(s) }; });
+      return { nm: nm ? nm.textContent.trim() : null, nmClipped: nm ? clipped(nm) : null, tag: tag ? tag.textContent.trim() : null,
+        tagInside: tag && nm ? tag.getBoundingClientRect().right <= Math.min(nm.getBoundingClientRect().right, document.querySelector('.lodetail').getBoundingClientRect().right) + 1 : false, labs };
+    });
+    await pg.close();
+    must(r.tag === '✓ ON', `the equipped weapon's hero tag: ${JSON.stringify(r)}`);
+    must(!r.nmClipped && r.tagInside, `the hero line is cut: ${JSON.stringify(r)}`);
+    must(r.labs.length >= 3 && r.labs.every(l => l.lines === 1 && !l.clipped), `a bar label wraps or clips: ${JSON.stringify(r.labs)}`);
+    must(r.labs.some(l => l.t === 'RESERVE'), `the ammo bar is not labelled RESERVE: ${JSON.stringify(r.labs)}`);
+  });
+}
+await step('QA-17 night: no green on the kit, lobby, briefing or result screens (spec B4)', async () => {
+  const green = [];
+  for (const stage of ['kitted', 'kitted-ready', 'lobby-ready', 'loadout-picked', 'briefing', 'result-players', 'result-win-team']) {
+    const pg = await open(VIEWS[1], stage, '&night');
+    green.push(...await pg.evaluate(stage => {
+      const isGreen = v => { const m = (v.match(/[\d.]+/g) || []).map(Number); if (m.length < 3 || (m.length > 3 && m[3] < .05)) return false; return m[1] > m[0] + 24 && m[1] > m[2]; };
+      const out = [];
+      for (const e of document.querySelectorAll('#hud *')) {
+        const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden' || !e.getClientRects().length) continue;
+        const own = Array.from(e.childNodes).some(n => n.nodeType === 3 && n.textContent.trim());
+        for (const [k, v] of [['color', own ? cs.color : ''], ['bg', cs.backgroundColor], ['border', parseFloat(cs.borderTopWidth) ? cs.borderTopColor : '']])
+          if (v && isGreen(v)) out.push(`${stage} ${k} ${v} "${(e.textContent || e.className).trim().slice(0, 20)}"`);
+      }
+      return out;
+    }, stage));
+    await pg.close();
+  }
+  must(green.length === 0, 'green at night: ' + green.slice(0, 8).join(' ; '));
+});
+await step('QA-19 kitted: READY UP is filled and the plates are not (the one action outranks the slots)', async () => {
+  const pg = await open(VIEWS[1], 'kitted');
+  const r = await pg.evaluate(() => {
+    const a = c => { const m = (c.match(/[\d.]+/g) || []).map(Number); return m.length > 3 ? m[3] : m.length ? 1 : 0; };
+    const lum = c => { const m = (c.match(/[\d.]+/g) || []).map(Number); return (m[0] + m[1] + m[2]) / 3 * a(c); };
+    const btn = document.querySelector('.foot .ready[data-act="onReady"]'), plate = document.querySelector('.plate.slot');
+    return { btn: btn && getComputedStyle(btn).backgroundColor, plate: plate && getComputedStyle(plate).backgroundColor, lb: btn ? lum(getComputedStyle(btn).backgroundColor) : 0, lp: plate ? lum(getComputedStyle(plate).backgroundColor) : 0, txt: btn && btn.textContent.trim() };
+  });
+  await pg.close();
+  must(r.txt === 'READY UP', 'not the READY UP state: ' + JSON.stringify(r));
+  must(r.lb > 3 * r.lp + 60, `READY UP is not visibly stronger than a slot plate: ${JSON.stringify(r)}`);
+});
+// QA-11: a control's hit area is its own box or its absolutely-placed ::after (the invisible-44px trick this file
+// already uses), whichever is bigger, in the 844x390 frame's own px. 56 frame px is 44 px on screen at the SE's
+// 0.79 scale. Measured on SE, where the scale bites.
+const qaHit = (pg, sels) => pg.evaluate(sels => {
+  const fr = document.getElementById('frame'), s = fr.getBoundingClientRect().width / fr.offsetWidth;
+  const out = [];
+  for (const sel of sels) for (const e of document.querySelectorAll(sel)) {
+    const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden' || !e.getClientRects().length) continue;
+    const r = e.getBoundingClientRect(), a = getComputedStyle(e, '::after');
+    let sc = e.parentElement; while (sc && !/(auto|scroll)/.test(getComputedStyle(sc).overflowY)) sc = sc.parentElement;
+    if (sc) { const b = sc.getBoundingClientRect(); if (r.top < b.top - 1 || r.bottom > b.bottom + 1) continue; }   // scrolled out of its list: not on screen to tap
+    const pa = a.content && a.content !== 'none' && a.position === 'absolute';
+    const w = Math.max(r.width / s, pa ? parseFloat(a.width) || 0 : 0), h = Math.max(r.height / s, pa ? parseFloat(a.height) || 0 : 0);
+    // the box has to be REACHABLE, not just declared: probe 27 frame px above and below the centre (inside a 56 box)
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2, hitAt = y => { const t = document.elementFromPoint(cx, y); return !!t && (t === e || e.contains(t)); };
+    const reach = hitAt(cy - 27 * s) && hitAt(cy + 27 * s);
+    out.push({ sel, t: e.textContent.trim().slice(0, 16), w: Math.round(w), h: Math.round(h), reach });
+  }
+  return out;
+}, sels);
+for (const [stage, sels] of [['kitted', ['.briefbtn']], ['loadout-primary', ['.lotab', '.lrow', '.lrow .linfo', '.lobtn']], ['loadout-secondary', ['.fch']], ['result-players', ['.result .rseg .sg', '.result .rfoot .ready']], ['result-pending', ['.result .rfoot .ready']]]) {
+  await step(`QA-11 ${stage}: every control's hit area is >= 44 px on the SE (56 frame px)`, async () => {
+    const pg = await open(VIEWS[1], stage);
+    const r = await qaHit(pg, sels); await pg.close();
+    for (const sel of sels) must(r.some(x => x.sel === sel), `no ${sel} on ${stage}: the gate would pass on nothing`);
+    const small = r.filter(x => x.w < 56 || x.h < 56 || !x.reach);
+    must(small.length === 0, `hit areas under 56 frame px: ${JSON.stringify(small.slice(0, 6))}`);
+  });
+}
+// QA-21: in the frame's own px, no painted text under 11 px, and the biggest text inside any button (the words that
+// name the action) at least 14 px. A small label inside a button (the tab's PRIMARY over its 18 px value) is a label.
+await step('QA-21 kit, loadout, briefing and results: labels >= 11 px, every button names its action at >= 14 px', async () => {
+  const bad = [];
+  for (const stage of ['kitted', 'kitted-full', 'lobby', 'briefing', 'briefing-long', 'loadout-primary', 'loadout-secondary', 'loadout-perk', 'result-players', 'result-win-team', 'result-unreached', 'history']) {
+    const pg = await open(VIEWS[1], stage);
+    bad.push(...await pg.evaluate(stage => {
+      const out = [], vis = e => { const cs = getComputedStyle(e); return cs.display !== 'none' && cs.visibility !== 'hidden' && e.getClientRects().length; };
+      for (const e of document.querySelectorAll('#hud *')) {
+        if (!vis(e) || !Array.from(e.childNodes).some(n => n.nodeType === 3 && n.textContent.trim())) continue;
+        const fs = parseFloat(getComputedStyle(e).fontSize); if (fs < 11) out.push(`${stage} ${fs}px "${e.textContent.trim().slice(0, 20)}"`);
+      }
+      for (const btn of document.querySelectorAll('#hud button')) {
+        if (!vis(btn)) continue;
+        const sizes = [btn, ...btn.querySelectorAll('*')].filter(e => vis(e) && Array.from(e.childNodes).some(n => n.nodeType === 3 && n.textContent.trim())).map(e => parseFloat(getComputedStyle(e).fontSize));
+        if (sizes.length && Math.max(...sizes) < 14) out.push(`${stage} button ${Math.max(...sizes)}px "${btn.textContent.trim().slice(0, 20)}"`);
+      }
+      return out;
+    }, stage));
+    await pg.close();
+  }
+  must(bad.length === 0, 'under the type floor: ' + [...new Set(bad)].slice(0, 10).join(' ; '));
+});
+for (const stage of ['result-unreached', 'result-pending']) {
+  await step(`QA-14 ${stage} (SE): one status line, and no pill over the title`, async () => {
+    const pg = await open(VIEWS[1], stage);
+    const r = await pg.evaluate(() => {
+      const vis = e => { const cs = getComputedStyle(e); return cs.display !== 'none' && cs.visibility !== 'hidden' && e.getClientRects().length > 0; };
+      const hit = (a, b) => a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1;
+      const title = document.querySelector('.result .rh1'), tr = title && title.getBoundingClientRect();
+      const pills = Array.from(document.querySelectorAll('.chipbar .pill')).filter(vis);
+      return { title: title ? title.textContent.trim() : null, lines: Array.from(document.querySelectorAll('.result .rfoot .retmc, .result .rfoot .syncline')).filter(vis).map(e => e.textContent.trim()),
+        pills: pills.map(p => p.textContent.trim()), onTitle: pills.filter(p => tr && hit(p.getBoundingClientRect(), tr)).map(p => p.textContent.trim()) };
+    });
+    await pg.close();
+    must(r.title && /MC NOT REACHED|RESULT PENDING/.test(r.title), 'not the no-result screen: ' + JSON.stringify(r));
+    must(r.lines.length === 1 && r.lines[0] === 'RETURN TO MISSION CONTROL', 'the footer does not carry exactly one status line: ' + JSON.stringify(r.lines));
+    must(r.onTitle.length === 0, 'a pill sits on the title: ' + JSON.stringify(r.onTitle));
+    must(!r.pills.some(p => /MISSION CONTROL/.test(p)), 'the MC pill repeats the footer line: ' + JSON.stringify(r.pills));
+  });
+}
+await step('QA-15 stage result: a result MC just delivered never reads OUT OF RANGE under it', async () => {
+  const pg = await open(VIEWS[0], 'result-win-team');
+  await pg.waitForTimeout(1200);   // the 1 s sync poller in app.js
+  const r = await pg.evaluate(() => ({ ws: window.brx.engine.state().wsState, line: (document.querySelector('.result .syncline') || {}).textContent || '' }));
+  await pg.close();
+  must(r.ws === 'bound', 'the stage did not deliver the result over a bound link: ' + JSON.stringify(r));
+  must(!/OUT OF RANGE/.test(r.line) && /SENT TO THE HOST|SENDING/.test(r.line), 'the sync line contradicts the link that just delivered the result: ' + JSON.stringify(r));
+});
+for (const view of VIEWS) {
+  await step(`${view.name} QA-20 briefing-long: clamped host notes open in full, and the mode art has no readable fake clock`, async () => {
+    const pg = await open(view, 'briefing-long');
+    const g = await pg.evaluate(() => { const s = window.brx.engine.state(); return { desc: s.game.desc, load: s.game.loadout_line, rules: s.game.ruleset }; });
+    const before = await pg.evaluate(() => { const b = document.querySelector('.bf .bfmorebtn'), art = document.querySelector('.bf .bfart');
+      const blur = art ? (getComputedStyle(art).filter.match(/blur\(([\d.]+)px\)/) || [0, 0])[1] : 0;
+      return { btn: !!b && !b.hidden && b.getClientRects().length > 0, label: b ? b.textContent.trim() : null, blur: +blur }; });
+    must(before.btn, `the notes are clamped but there is no way to read them in full: ${JSON.stringify(before)}`);
+    must(before.blur >= 3, `the mode art is sharp enough to read its baked-in HUD numbers: ${JSON.stringify(before)}`);
+    await pg.click('.bf .bfmorebtn'); await pg.waitForTimeout(150);
+    const open1 = await pg.evaluate(() => { const p = document.querySelector('.bf .bfmore'); if (!p) return null;
+      const fr = document.getElementById('frame').getBoundingClientRect(), r = p.getBoundingClientRect(), cta = document.querySelector('.bf .ready.go').getBoundingClientRect();
+      return { txt: p.innerText.replace(/\s+/g, ' '), inFrame: r.left >= fr.left - 1 && r.right <= fr.right + 1 && r.top >= fr.top - 1 && r.bottom <= fr.bottom + 1, overCta: r.bottom > cta.top + 1,
+        clipped: Array.from(p.querySelectorAll('.mv')).some(e => e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1), scrolls: p.scrollHeight > p.clientHeight + 1 }; });
+    await pg.click('.bf .bfmorebtn'); await pg.waitForTimeout(150);
+    const closed = await pg.evaluate(() => !document.querySelector('.bf .bfmore'));
+    await pg.close();
+    const flat = t => String(t).replace(/\s+/g, ' ').trim();
+    must(open1, 'FULL NOTES opened nothing');
+    must(open1.txt.includes(flat(g.desc)) && open1.txt.includes(flat(g.load)) && open1.txt.includes(flat(g.rules)), `the panel does not carry the host's full text: ${open1.txt.slice(0, 200)}`);
+    must(open1.inFrame && !open1.overCta && !open1.clipped, `the notes panel is cut or covers the CTA: ${JSON.stringify({ ...open1, txt: undefined })}`);
+    must(closed, 'CLOSE NOTES did not close the panel');
+  });
+}
+
+// QA merge review (2026-09-23): the gun picker's signal bars stayed green at night after lane A's QA-12 fix.
+for (const view of VIEWS) await step(`${view.name} QA-17 idle night: nothing on the gun picker is green`, async () => {
+  const pg = await open(view, 'idle', '&night');
+  const bad = await pg.evaluate(() => { const rgb = v => (v.match(/[\d.]+/g) || []).map(Number); const out = [];
+    for (const e of document.querySelectorAll('#hud *, #chips *')) { const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden' || !e.getBoundingClientRect().width) continue;
+      for (const v of [cs.color, cs.backgroundColor]) { const [r, g, b, a = 1] = rgb(v); if (a > 0.1 && g > r + 30 && g > b) out.push(`${e.className}:${v}`); } }
+    return out; });
+  await pg.close();
+  must(bad.length === 0, 'green at night: ' + bad.slice(0, 5).join(', '));
+});
+
+// QA polish round 1 (2026-09-23): the IR KILL CONFIRMED card usually lands first, then MC's named card for the SAME kill.
+// The engine plays one sound for the pair, so the HUD gives one flash and one buzz, not two.
+for (const view of VIEWS) await step(`${view.name} QA-05 one kill, one buzz: MC's card after the IR card neither flashes nor buzzes again`, async () => {
+  const pg = await open(view, 'live-callout-kill', '', 2700);
+  const r = await pg.evaluate(async () => { const h = window.brx.hud; let buzz = 0, flash = 0; const oh = h.h.onHaptic, of = h._flash.bind(h);
+    h.h.onHaptic = k => { if (k === 'kill') buzz++; }; h._flash = () => { flash++; of(); };
+    window.brxDemo.killConfirm('VIPER'); await new Promise(r => setTimeout(r, 600));
+    const card = document.querySelector('.mo.co'); h.h.onHaptic = oh;
+    return { buzz, flash, name: card ? card.querySelector('.nm').textContent : null }; });
+  await pg.close();
+  must(r.name === 'VIPER', `MC's card must name the victim: ${JSON.stringify(r)}`);
+  must(r.buzz === 0 && r.flash === 0, `the second card for the same kill buzzed or flashed again: ${JSON.stringify(r)}`);
+});
+
+// QA polish round 1 (2026-09-23): QA-19 at night. READY UP was a dim outline no stronger than the slot plates.
+await step('QA-19 kitted night: READY UP is filled and outranks the plates', async () => {
+  const pg = await open(VIEWS[1], 'kitted', '&night');
+  const r = await pg.evaluate(() => { const lum = c => { const m = (c.match(/[\d.]+/g) || []).map(Number); const a = m.length > 3 ? m[3] : 1; return (m[0] + m[1] + m[2]) / 3 * a; };
+    const btn = document.querySelector('.foot .ready[data-act="onReady"]'), plate = document.querySelector('.plate.slot');
+    return { txt: btn && btn.textContent.trim(), lb: lum(getComputedStyle(btn).backgroundColor), lp: lum(getComputedStyle(plate).backgroundColor) }; });
+  await pg.close();
+  must(r.txt === 'READY UP' && r.lb > 3 * r.lp + 15, `night READY UP is not visibly stronger than a slot plate: ${JSON.stringify(r)}`);
+});
+
+// QA polish round 2 (2026-09-23): the buzz rule, both ways. An MC-only kill buzzes once; a double kill buzzes for each
+// kill even when the second IR card was held back behind the first MC card.
+for (const view of VIEWS) await step(`${view.name} QA-05 kill buzz: an MC-only kill buzzes once, a double kill buzzes twice`, async () => {
+  const pg = await open(view, 'live', '', 4200);
+  const r = await pg.evaluate(async () => { const h = window.brx.hud, e = window.brx.engine, wait = ms => new Promise(r => setTimeout(r, ms));
+    let buzz = 0; const oh = h.h.onHaptic; h.h.onHaptic = k => { if (k === 'kill') buzz++; };
+    const ir = () => e.feedFrame('$HIR,4,15,7,3,23,0,0,*');   // DOWN_BY naming me: an IR KILL CONFIRMED (stage live-callout-kill's word)
+    window.brxDemo.killConfirm('VIPER'); await wait(700); const mcOnly = buzz;
+    await wait(2600); buzz = 0;
+    ir(); await wait(300); window.brxDemo.killConfirm('VIPER'); await wait(300);
+    ir(); await wait(300); window.brxDemo.killConfirm('GHOST'); await wait(700);
+    const double = buzz; await wait(3200); buzz = 0;
+    ir(); await wait(800); ir(); await wait(150); window.brxDemo.killConfirm('VIPER'); await wait(150); window.brxDemo.killConfirm('GHOST'); await wait(700);   // both IR words first (polish round 3), past S57's 600 ms dedupe
+    const bothIrFirst = buzz; await wait(3200); buzz = 0;
+    ir(); await wait(3300); window.brxDemo.killConfirm('SABLE'); await wait(700);   // an IR word whose MC twin never came, then a later MC-only kill
+    h.h.onHaptic = oh; return { mcOnly, double, bothIrFirst, afterOrphan: buzz }; });
+  await pg.close();
+  must(r.bothIrFirst === 2, `two kills whose IR words both came first must buzz twice: ${JSON.stringify(r)}`);
+  must(r.afterOrphan === 2, `an orphan IR card buzzes, and a later unpaired MC kill still buzzes: ${JSON.stringify(r)}`);
+  must(r.mcOnly === 1, `an MC-only kill must buzz once: ${JSON.stringify(r)}`);
+  must(r.double === 2, `two kills must buzz twice, however their cards overlap: ${JSON.stringify(r)}`);
 });
 
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {

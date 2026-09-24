@@ -132,6 +132,7 @@ const usesCellGauge = st => {
 const HOLD_TO_RECHARGE = 'HOLD TO RECHARGE';
 /** S53/S55: the ONE accuracy pill says WHY the player cannot hit. The engine hands the reason (`st.aim.reason`);
  *  the HUD never guesses one. Smoke is the only reason built; S55 adds recoil, flinch and stance rows here. */
+const HIT_WPN_BIG_MS = 1500, HIT_WPN_GONE_MS = 5000;   // QA-04: the hit weapon name, large then small (`_hitWpn`)
 const AIM_REASON = {
   smoke: { word: 'SMOKED', sub: 'YOUR SHOTS WILL MISS' },
   recoil: { word: 'RECOIL', sub: 'RELEASE TO STEADY' },
@@ -156,6 +157,10 @@ const discoveredRow = d => { if (!d) return '';
 // Polish-loop pass 1+2: every join control that redials/drops the live MC link needs the armed/live
 // two-tap guard (`_click` below) — `onJoinDiscovered` (an address the player never typed) and
 // `onReconnectMc` (the same teardown, same button row) joined `onSetUrl`/`onScanQr` in pass 2.
+// QA-08 (2026-09-23): MC's refusal (`roster_full (4003)`) in words: `roster full`. The close code stays in the diag log.
+const refusalWords = r => r ? String(r).replace(/\s*\(\d+\)\s*$/, '').replace(/_/g, ' ').toLowerCase() : '';
+// QA-13: the old placeholder (ws://mission-control-ip:8766/ws) was cut off in the pre-join field.
+const MC_URL_HINT = 'ws://HOST-IP:8766/ws';
 const JOIN_GATED_ACTS = new Set(['onSetUrl', 'onScanQr', 'onJoinDiscovered', 'onReconnectMc']);
 const JOIN_ACT_VERB = { onScanQr: 'SCAN A NEW QR', onJoinDiscovered: 'JOIN THAT ADDRESS', onReconnectMc: 'RECONNECT', onSetUrl: 'RECONNECT' };
 // A10: human labels for catalog rows (never the raw $WEAP class id — design review round 3)
@@ -241,7 +246,7 @@ function statBlock(r, opts = {}) {
   // real WeaponView always did), the four-bar block grew the panel into the footer: the F111 hypothesis, made real.
   // The rack's ⓘ pane keeps the full four.
   return `${bar('POWER', pick(b.power, st.dmg, r && r.dmg))}${bar('RATE OF FIRE', pick(b.rof, st.rof, r && r.rpm))}` +
-    (opts.compact ? '' : `${bar('AMMO CARRIED', b.ammo)}${bar('KILL SPEED', b.ttk)}`) +
+    (opts.compact ? '' : `${bar('RESERVE', b.ammo)}${bar('KILL SPEED', b.ttk)}`) +
     (facts ? `<div class="facts">${facts}</div>` : '');
 }
 
@@ -255,6 +260,8 @@ export class Hud {
     this.frame = root.querySelector('#frame'); this.hudEl = root.querySelector('#hud');
     this.overlay = root.querySelector('#overlay'); this.chips = root.querySelector('#chips');
     this.diag = root.querySelector('#diag'); this.info = root.querySelector('#info');
+    // QA-28 (2026-09-23): U+24D8 renders as an empty box where the font lacks it (headless Chromium did); draw it.
+    if (this.info && !this.info.querySelector('svg')) this.info.innerHTML = INFO_SVG;
     this.skin = root.querySelector('#skin');   // the day/night skin switch (a sibling of #hud, so it needs its own listener)
     if (this.skin) this.skin.addEventListener('click', e => this._click(e));
     this.sig = null; this.scan = []; this.link = {}; this.diagData = {}; this.mcUrl = '';
@@ -352,6 +359,13 @@ export class Hud {
     // second past the tap reads as a dead control.
     // A26: the ⓘ on a rack row only MOVES THE DETAIL PANE. It equips nothing, sends nothing and touches no
     // engine state, so like the results views it is answered here and never round-trips the app's handler map.
+    // QA-20: FULL NOTES on the briefing only READS text the phone already holds, so it is answered here too.
+    if (act === 'onBriefMore') {
+      this.bfMore = !this.bfMore;
+      this.sig = null; if (this._lastSt) this.render(this._lastSt);
+      return;
+    }
+    if (act === 'onBriefDone') this.bfMore = false;   // leaving the briefing closes its notes (then the app handler runs)
     if (act === 'onLoInfo') {
       this.lo.focus = arg || null; this.lo.confirm = null;
       this.sig = null; if (this._lastSt) this.render(this._lastSt);
@@ -436,7 +450,7 @@ export class Hud {
     if (this.board) this.frame.dataset.board = this.board; else delete this.frame.dataset.board;
     const sig = [st.phase, st.alive, !!st.killedBy, st.night, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.underFire, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
       st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.reserve === 0, (st.mag || 0) > AMMO_PIP_MAX, st.battery != null && st.battery <= 15,
-      st.heatEverSeen, st.overheatShown, !!(st.alive && st.aim && AIM_REASON[st.aim.reason]),   // S53: the smoke tell takes the centre slot from the reticle / TAKING FIRE   // bench 2026-09-17: OVERHEAT prompt/overlay and the heat bar's existence are structural, not patched in place. `st.overheating` (the mechanic) is not read here at all: the HUD draws the display window only
+      st.heatEverSeen, st.overheatShown, !!(st.alive && st.aim && AIM_REASON[st.aim.reason]), !!st.shielded, !!st.stunned,   // QA 2026-09-23: the spawn shield and the stun take the centre slot   // S53: the smoke tell takes the centre slot from the reticle / TAKING FIRE   // bench 2026-09-17: OVERHEAT prompt/overlay and the heat bar's existence are structural, not patched in place. `st.overheating` (the mechanic) is not read here at all: the HUD draws the display window only
       chargeCost(st) != null && st.ammo != null && st.ammo < chargeCost(st), st.reserve > 0,   // OUT OF ENERGY / RECHARGE prompt + the NOT ENOUGH ENERGY note are structural too
       // F288: both gun-health facts change live markup. Flatten the objects: joining the objects themselves
       // would turn every non-null value into the same "[object Object]" and miss no_fire → no_answer.
@@ -549,6 +563,12 @@ export class Hud {
     const body = this.hudEl.querySelector('.bf .bfbody');
     if (!body) { this._bfFit = null; return; }
     const nm = body.querySelector('.bfname'); if (!nm) return;
+    // QA-20: FULL NOTES shows only when a clamp actually cut the host's text (or while its panel is open).
+    const btn = this.hudEl.querySelector('.bf .bfmorebtn');
+    if (btn && !this.bfMore) {
+      const cut = Array.from(body.querySelectorAll('.bfdesc, .bfload .v, .bfk .lab')).some(e => e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1);
+      if (btn.hidden === cut) btn.hidden = !cut;
+    }
     // Re-checked every render, not memoised on the text: the webfont swaps in AFTER the first paint and a name
     // that fitted on one line in the fallback face wraps to two in Saira Condensed — a one-shot fit measured
     // the wrong font and left the overflow on screen. New content starts again from the design size.
@@ -722,7 +742,8 @@ export class Hud {
 
   _lobby(st, mode) {
     const [nm, tail] = splitGun(st.gun);
-    const cs = esc(st.callsign || (mode === 'connected' ? 'LINKED' : 'OPERATOR'));
+    // QA-13 (2026-09-23): LINKED read as "joined" beside a CONNECTING… line. Before MC binds, the gun is set and nothing more.
+    const cs = esc(st.callsign || (mode === 'connected' ? (st.wsState === 'bound' ? 'LINKED' : 'GUN SET') : 'OPERATOR'));
     const team = st.teamName ? `<span class="chip"><span class="unskew">${esc(st.teamName)} SQUAD</span></span>` : '';
     const tw = this._tryoutShown(st) ? st.tutorialWeapon : null;
     // MC pushes a WeaponView here (it carries the ranked `bars`), which names the magazine `clip`;
@@ -753,6 +774,8 @@ export class Hud {
     const lead = (mode === 'kitted' || mode === 'lobby') && (refusal || st.kitLocked)
       ? `<div class="kitlock">${refusal ? esc(refusal.toUpperCase()) : 'THE HOST LOCKED KITS — you play what you had'}</div>` : '';
     let foot, status;
+    // QA-08 (2026-09-23): MC turned this phone away. A READY UP that MC will never hear is disabled; the note says why.
+    const refused = st.wsState === 'rejected' ? ' disabled aria-disabled="true"' : '';
     // F156/F135 (field 2026-09-12): the join controls now also live in the ⓘ panel (`_diagShell`), reachable
     // from every phase — same `#mcurl` id, so this copy steps aside rather than duplicate it while that
     // panel is open (`onSetUrl` reads the input by id; app.js is another lane, so there can only be one).
@@ -764,7 +787,7 @@ export class Hud {
         ? `<div class="note join">Connecting from the ⓘ panel, top right — it's already open.</div>`
         // Polish-loop pass 2: mDNS no longer auto-joins (app.js review pass 2 — a phone must never hand its
         // takeover key/join secret to whoever answers first), so "it connects by itself" was now FALSE.
-        : `${discoveredRow(this.discovered)}<div class="mcin"><input id="mcurl" value="${esc(this.mcUrl)}" placeholder="ws://mission-control-ip:8766/ws" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div><button class="qrbtn" data-act="onScanQr">▣ SCAN QR</button><div class="note join">On the same Wi-Fi it appears here: tap JOIN. Otherwise scan the QR or type its address.</div>`;
+        : `${discoveredRow(this.discovered)}<div class="mcin"><input id="mcurl" value="${esc(this.mcUrl)}" placeholder="${MC_URL_HINT}" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div><button class="qrbtn" data-act="onScanQr">▣ SCAN QR</button><div class="note join">Scan the host's QR, or type its address and tap CONNECT. On the same Wi-Fi the host can also show up here: tap JOIN.</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     } else if (mode === 'setup') {
       // §4.1: calm, not an error — the host hasn't picked the game yet
@@ -779,7 +802,7 @@ export class Hud {
       // only sets it once `setReady` clears the standby/phase/clock-sync guards, engine.js), so the
       // green treatment below tracks the same flag; `aria-pressed` says so explicitly, for a11y and so
       // a test can read the confirmed state without parsing a colour.
-      foot = `${lead}<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady" aria-pressed="${!!st.ready}"><span class="unskew">${st.ready ? 'READY ✓' : 'READY UP'}</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
+      foot = `${lead}<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady" aria-pressed="${!!st.ready}"${refused}><span class="unskew">${st.ready ? 'READY ✓' : 'READY UP'}</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>${st.game ? '<button class="briefbtn" data-act="onBriefing"><span class="unskew">▤ BRIEFING</span></button>' : ''}`;
     } else if (mode === 'over') {
       // F117: this is the one control gating the next match and it read as a status line — declarative label,
@@ -800,7 +823,7 @@ export class Hud {
       // player whose kit-out window ended (a push or re-push that landed) before they ever hit READY
       // UP, this is the only door left. Same control, same note the kitted screen uses; a player who
       // is already `ready` still reads STANDING BY below, unchanged.
-      foot = `${lead}<button class="ready off" data-act="onReady" aria-pressed="false"><span class="unskew">READY UP</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
+      foot = `${lead}<button class="ready off" data-act="onReady" aria-pressed="false"${refused}><span class="unskew">READY UP</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     } else {
       // Bench 2026-09-16: a READY player in the lobby fell through to this grey STANDING BY button, so readying
@@ -836,8 +859,16 @@ export class Hud {
     const locked = !st.canPickPrimary && !st.canPickSecondary && !st.canPickPerk;
     const cta = locked ? 'SEE MY KIT ▸' : 'BUILD MY KIT ▸';
     const sub = locked ? 'Your kit is set by the host — take a look.' : 'Pick your weapons when you are ready.';
-    return `<div class="lobby bf" data-mode="${esc(mode)}"><div class="scan"></div><div class="edgeglow"></div>
+    // QA-20: the host's notes and loadout line are clamped to fit the frame. When the clamp bites (measured in
+    // `_fitBriefing`), FULL NOTES opens a panel over the body with every word the host wrote, the ruleset included.
+    const more = this.bfMore && (g.desc || g.loadout_line || g.ruleset) ? `<div class="bfmore" role="dialog" aria-label="Full briefing notes">
+        ${g.ruleset ? `<div class="mk">RULES</div><div class="mv">${esc(g.ruleset)}</div>` : ''}
+        ${g.desc ? `<div class="mk">HOST NOTES</div><div class="mv">${esc(g.desc)}</div>` : ''}
+        ${g.loadout_line ? `<div class="mk">LOADOUT</div><div class="mv">${esc(g.loadout_line)}</div>` : ''}</div>` : '';
+    const moreBtn = (g.desc || g.loadout_line || g.ruleset) ? `<button class="bfmorebtn" data-act="onBriefMore" aria-expanded="${!!this.bfMore}" ${this.bfMore ? '' : 'hidden'}><span class="unskew">${this.bfMore ? 'CLOSE NOTES ▴' : 'FULL NOTES ▸'}</span></button>` : '';
+    return `<div class="lobby bf ${this.bfMore ? 'more' : ''}" data-mode="${esc(mode)}"><div class="scan"></div><div class="edgeglow"></div>
       <div class="bfart" style="background-image:url('assets/modes/${esc(mode)}.jpg')"></div><div class="bfveil"></div>
+      ${moreBtn}${more}
       <div class="bfbody">
         <div class="bfk r r0">${g.abbr ? `<span class="chip"><span class="unskew">${esc(g.abbr)}</span></span>` : ''}<span class="lab">GAME BRIEFING${g.ruleset ? ' · ' + esc(g.ruleset) : ''}</span></div>
         <div class="bfname r r1">${esc(String(name).toUpperCase())}</div>
@@ -950,7 +981,8 @@ export class Hud {
         // Pass 3: gated the same way the row is (`unconfHere` + kind) — a perk's detail pane must never
         // inherit a weapon arm's stale timeout.
         : (focus.key === eqKey && !pend && unconfHere && st.tryoutUnconfirmed.kind === focus.kind) ? '<span class="eqtag unconf">UNCONFIRMED</span>'
-        : (focus.key === eqKey && !pend) ? '<span class="eqtag">EQUIPPED</span>' : '';
+        // QA-09: "EQUIPPED" was cut to "EQUIPPE…" beside a long name on both widths; "✓ ON" says the same thing.
+        : (focus.key === eqKey && !pend) ? '<span class="eqtag">✓ ON</span>' : '';
       if (focus.kind === 'perk') detail = `<div class="art perk">${perkGlyph(focus.id)}</div><div class="nm">${esc(r.name).toUpperCase()}${heroTag}</div><div class="ln pk">PERK · ${perkEffectHtml(r)}${r.verified === false ? ' · <span style="color:var(--warn)">NOT YET FIELD-TESTED</span>' : ''}</div><div class="desc">${esc(r.desc || '')}</div>`;
       else detail = `<div class="art">${weaponArt(focus.id)}</div><div class="nm">${esc(r.name).toUpperCase()} <span class="rolechip">${esc(roleName(r))}</span>${heroTag}</div><div class="ln">MAG ${r.clip != null ? r.clip : '—'} · RESERVE ${r.reserve != null ? r.reserve : '—'}${r.reload_s != null ? ' · RELOAD ' + r.reload_s + 'S' : ''}</div>${statBlock(r)}${r.caution ? `<div class="caution">▲ ${esc(r.caution)}</div>` : ''}<div class="desc">${esc(r.desc || '')}</div>`;
     } else if (can) detail = `<div class="small" style="padding-top:30px">${tab === 'secondary' ? (sidearmOnly(rule) ? 'Pick a sidearm — or leave it on NONE.' : 'Pick a second weapon — or leave it on NONE.') : tab === 'perk' ? 'Pick a perk — or leave it on NONE.' : 'Pick your main weapon.'}</div>`;
@@ -1055,10 +1087,12 @@ export class Hud {
     // --- body ---
     let body;
     if (!R) {
+      // QA-14: this panel used to repeat the status (walk back into range) that the footer line already says, inside
+      // a dashed box that filled the body with nothing. It now says only what the footer does not: who has the result.
       body = `<div class="rwait"><div class="wl">${wait === 'unreached'
-        ? 'Your phone never reached Mission Control after the whistle. The host has the scores — the result is read off Mission Control, not off this screen.'
-        : 'The match is over. Mission Control decides how it ended and sends the result here — walk back into range if you are out of it.'}</div>
-        <div class="wl dim">Your own line is below. It is what this phone counted, not the result.</div></div>`;
+        ? 'Your phone never reached Mission Control after the whistle. The host has the scores: read the result there.'
+        : 'Mission Control decides how the match ended and sends the result here.'}</div>
+        <div class="wl dim">The line below is what this phone counted. It is not the result.</div></div>`;
     } else if (tab === 'team') {
       body = `<div class="rteams" style="grid-template-columns:repeat(${Math.min(4, teams.length)},minmax(0,1fr))">${teams.map(t => {
         const k = String(t.team_id == null ? '' : t.team_id).toLowerCase();
@@ -1122,6 +1156,9 @@ export class Hud {
     // It sat a pixel off the OUT OF RANGE line under it, a stack too tight to read (design-result-pending.png);
     // the room comes from `.fl`'s gap, so no line has to lose its own wording to make space.
     const ret = R ? '' : '<div class="retmc">RETURN TO MISSION CONTROL</div>';
+    // QA-14: with no result and no link, RETURN TO MISSION CONTROL is the one status line; OUT OF RANGE under it said
+    // the same thing again (and the MC pill a third time: `.pill.mcr` steps aside on this screen, index.html).
+    const syncShown = (!R && !(this.sync && this.sync.bound)) ? '' : sync;
     const mcv = (!R && st.game && st.game.mc_verify) ? `<div class="mcvline">${esc(String(st.game.mc_verify).toUpperCase())}</div>` : '';
 
     return `<div class="lobby result rv"><div class="scan"></div><div class="edgeglow"></div>
@@ -1129,7 +1166,7 @@ export class Hud {
       <div class="rbody">${body}</div>
       ${holdStrip}${honorStrip}${afterStrip}
       <div class="rstats" style="grid-template-columns:repeat(${tiles.n},minmax(0,1fr))">${tiles.html}</div>
-      <div class="rfoot foot"><div class="fl">${ret}${mcv}${sync}${sess}</div>
+      <div class="rfoot foot"><div class="fl">${ret}${mcv}${syncShown}${sess}</div>
         <button class="ready ${reopened ? 'ghost' : ''}" data-act="${reopened ? 'onCloseView' : 'onEndOk'}"><span class="unskew">${reopened ? 'CLOSE' : 'OK'}</span></button></div></div>`;
   }
 
@@ -1215,7 +1252,13 @@ export class Hud {
     const [nm] = splitGun(st.gun);
     const stat = (k, v) => `<span>${k}<b class="${v == null ? 'mut' : ''}" id="st-${k}">${v == null ? '—' : v}</b></span>`;
     const kb = st.killedBy ? `` : '';
-    return `<div class="alive"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
+    // QA-02 (2026-09-23): HP, armour and ammo come from the GUN. With the gun link down they are the last
+    // values it sent, so they dim and say STALE; they must never read as live. MC's link does not feed them
+    // (the gun keeps reporting over BLE), so an MC drop marks the MC-fed numbers instead: K and A.
+    const gunStale = !st.bleUp;
+    const mcStale = st.wsState !== 'bound';
+    const staleTag = '<span class="staletag" aria-label="stale value">STALE</span>';
+    return `<div class="alive${gunStale ? ' gunstale' : ''}${mcStale ? ' mcstale' : ''}"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
       ${low ? '<div class="firevig"></div>' : ''}
       ${overheating ? '<div class="heatvig"></div><div class="heatword">OVERHEAT</div>' : ''}
       <div class="clockplate" data-act="onBoard" data-arg="team" role="button" aria-label="Team scores"><div class="in"><span class="t tab" id="clock">${mmss(st.clockMs)}</span><span class="m">${esc(st.mode)}</span></div></div>
@@ -1224,11 +1267,13 @@ export class Hud {
         <span class="batt tab"><span class="shell"><span class="fill" id="battfill" style="right:${100 - (st.battery || 0)}%"></span></span><span id="batt">${st.battery != null ? st.battery + '%' : '—'}</span></span></div>
       ${st.battery != null && st.battery <= 15 ? `<div class="battwarn">GUN BATT ${st.battery}% — CHARGE SOON</div>` : ''}
       ${this._gunHealthWarning(st)}
-      <div class="stats tab">${st.kills > 0 ? stat('K', st.kills) : ''}${st.deaths > 0 ? stat('D', st.deaths) : ''}${st.assists > 0 ? stat('A', st.assists) : ''}${accShown(st) != null ? stat('ACC', accShown(st) + '%') : ''}</div>
-      ${st.alive && st.aim && AIM_REASON[st.aim.reason] ? `<div class="aimfx ${esc(st.aim.reason)}${overheating ? ' tight' : ''}" id="aimfx">${this._aimFx(st)}</div>`
+      <div class="stats tab">${st.kills > 0 ? stat('K', st.kills) : ''}${st.deaths > 0 ? stat('D', st.deaths) : ''}${st.assists > 0 ? stat('A', st.assists) : ''}${accShown(st) != null ? stat('ACC', accShown(st) + '%') : ''}${mcStale && (st.kills > 0 || st.assists > 0) ? staleTag : ''}</div>
+      ${st.alive && st.stunned ? `<div class="aimfx stun" id="stunfx">${this._stunFx(st)}</div>`
+        : st.alive && st.aim && AIM_REASON[st.aim.reason] ? `<div class="aimfx ${esc(st.aim.reason)}${overheating ? ' tight' : ''}" id="aimfx">${this._aimFx(st)}</div>`
+        : st.alive && st.shielded ? '<div class="spawnshield" role="status"><span class="k">SPAWN SHIELD</span><span class="s">YOU CANNOT BE HIT</span></div>'
         : st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>'}
       <div class="fxbar" id="fxbar">${this._fx(st)}</div>
-      <div class="vitals"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span><span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>${st.maxShield > 0 ? `<span class="shield tab ${st.shield === 0 ? 'zero' : ''}" id="shield">${st.shield}</span><span class="hplab shieldlabel">SHIELD</span>` : ''}</div>
+      <div class="vitals"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span>${low ? '<span class="lowtag">LOW</span>' : ''}${gunStale ? staleTag : ''}<span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>${st.maxShield > 0 ? `<span class="shield tab ${st.shield === 0 ? 'zero' : ''}" id="shield">${st.shield}</span><span class="hplab shieldlabel">SHIELD</span>` : ''}</div>
         <div class="bar ${low ? 'low' : ''}"><i id="hpbar" style="width:${Math.round(100 * st.hp / st.maxHp)}%"></i></div>
         <div class="bar armor"><i id="shbar" style="width:${Math.round(100 * st.armor / st.maxArmor)}%"></i></div>${st.maxShield > 0 ? `<div class="bar shield"><i id="shieldbar" style="width:${Math.round(100 * st.shield / st.maxShield)}%"></i></div>` : ''}</div>
       <div class="ammo">${outOfAmmo ? `<span class="reload out solid"><span class="unskew">${energy ? 'OUT OF ENERGY' : 'OUT OF AMMO'}</span></span>`
@@ -1237,7 +1282,7 @@ export class Hud {
           : energyLow ? `<span class="reload solid"><span class="unskew">${HOLD_TO_RECHARGE}</span></span>`
           : lowMag ? (energy ? `<span class="reload solid"><span class="unskew">${HOLD_TO_RECHARGE}</span></span>`
             : `<span class="reload ${st.ammo === 0 ? 'solid' : ''}"><span class="unskew">RELOAD ▸▸</span></span>`) : ''}
-        <div class="nums"><span class="mag tab ${lowMag ? 'warn' : ''}" id="mag">${magText(st)}</span><span class="res tab" id="res">${this._resText(st)}</span></div>
+        <div class="nums">${gunStale ? staleTag : ''}<span class="mag tab ${lowMag ? 'warn' : ''}" id="mag">${magText(st)}</span><span class="res tab" id="res">${this._resText(st)}</span></div>
         ${belowCharge && st.ammo > 0 ? '<div class="enote">NOT ENOUGH ENERGY</div>' : ''}
         <div class="pips" id="pips">${this._pips(st)}</div>
         ${this._heatBar(st)}
@@ -1279,6 +1324,12 @@ export class Hud {
     if (!r) return '';
     return `<span class="k">${r.word}</span><span class="s">${r.sub}</span><span class="t tab" id="aimleft">${secsLeft(a.leftMs)}<small>SEC</small></span>`
       + `<i class="clr"><b style="width:${pctLeft(a.leftMs, a.totalMs)}%"></b></i>`;
+  }
+  /** F15 x QA review 2026-09-23: an EMP has disarmed the gun (`st.stunned`, engine `_stun`). The trigger does
+   *  nothing until the timer runs out, so the centre slot says so and counts it down. Patched every render. */
+  _stunFx(st) {
+    const s = st.stunned; if (!s) return '';
+    return `<span class="k">STUNNED</span><span class="s">YOUR GUN IS DISARMED</span><span class="t tab" id="stunleft">${secsLeft(s.leftMs)}<small>SEC</small></span>`;
   }
   /** Bench 2026-09-17: how old the scores on the overlay are. MC pushes every change to a bound phone, so the
    *  numbers are current while the link is up; off the link they are the last push, and the label gives its age.
@@ -1459,8 +1510,12 @@ export class Hud {
   // ---------- per-tick patch ----------
   _statusLine(st, mode) {
     // Player-facing wording; the raw wsState / synced / headEcho / arm_state stay in the diag panel (LINK/ENGINE).
-    const mc = st.wsState === 'bound' ? '<b>HOST ✓</b>' : '<span class="bad">CONNECTING…</span>';
-    const clock = st.synced ? '<b>IN SYNC ✓</b>' : '<span class="bad">SYNCING…</span>';
+    // QA-08/QA-13 (2026-09-23): a refusal is NOT JOINED (red) and nothing else — no clock claim beside it; a link
+    // still in progress is amber, not the error red; a pre-join phone with no address yet is not "connecting".
+    const ws = st.wsState;
+    if (ws === 'rejected') return mode === 'connected' ? 'GUN <b>CONNECTED ✓</b> · <span class="bad">NOT JOINED</span>' : '<span class="bad">NOT JOINED</span>';
+    const mc = ws === 'bound' ? '<b>HOST ✓</b>' : mode === 'connected' && !this.mcUrl ? '<span class="prog">NOT JOINED YET</span>' : '<span class="prog">CONNECTING…</span>';
+    const clock = st.synced ? '<b>IN SYNC ✓</b>' : '<span class="prog">SYNCING…</span>';
     if (mode === 'connected') return `GUN <b>CONNECTED ✓</b> · ${mc}`;
     if (mode === 'lobby') return `<b>LOCKED IN ✓</b>${st.headEcho ? '' : ' · <span class="bad">GUN NOT ANSWERING — CHECK HEADSET</span>'} · ${clock}`;
     return `${st.tutorial ? '<span style="color:var(--warn)">TRY-OUT ARMED — FIRE A FEW ROUNDS</span><br>' : ''}${mc} · ${clock}`;
@@ -1468,6 +1523,10 @@ export class Hud {
   /** The line under the READY button. The UNSYNCED case is shared by both screens because `engine.setReady`
    *  refuses the tap until the clock is synced — on either of them, and silently. */
   _readyNote(st, mode) {
+    if (st.wsState === 'rejected' && mode !== 'over') {
+      const why = refusalWords(st.wsReason);
+      return `Mission Control turned this phone away${why ? ': ' + why : ''}. Ask the host, then rejoin from the i button, top right.`;
+    }
     if (!st.synced && !st.ready) return 'Syncing clock with Mission Control… you can ready up in a moment.';
     // NOT "the host cannot start until everyone has": `_all_ready` gates KIT -> LOBBY only, so after a
     // match the host pushes the next one whenever they like. Promising a veto the player does not have is
@@ -1498,6 +1557,7 @@ export class Hud {
       set('batt', st.battery != null ? st.battery + '%' : '—');
       setHtml('fxbar', this._fx(st));                   // S16: the poison countdown
       setHtml('aimfx', this._aimFx(st));                // S53: the smoke countdown (the slot itself is structural)
+      setHtml('stunfx', this._stunFx(st));              // F15: the stun countdown
       const hb = q('hpbar'); if (hb) hb.style.width = `${Math.round(100 * st.hp / st.maxHp)}%`;
       const sb = q('shbar'); if (sb) sb.style.width = `${Math.round(100 * st.armor / st.maxArmor)}%`;
       const shieldb = q('shieldbar'); if (shieldb) shieldb.style.width = `${Math.round(100 * st.shield / st.maxShield)}%`;
@@ -1529,12 +1589,12 @@ export class Hud {
       pills.push('<span class="pill ok easyreload"><span class="unskew">ALT = RELOAD</span></span>');
     }
     if (st.wsState === 'bound') this.mcPill = false;   // the opt-in range pill is per outage, not forever
-    if (st.wsState === 'rejected') pills.push(`<span class="pill bad"><span class="unskew">ASK THE HOST — COULDN'T JOIN${st.wsReason ? ' (' + esc(String(st.wsReason)).toUpperCase() + ')' : ''}</span></span>`);
+    if (st.wsState === 'rejected') pills.push(`<span class="pill bad"><span class="unskew">ASK THE HOST — COULDN'T JOIN${refusalWords(st.wsReason) ? ' (' + esc(refusalWords(st.wsReason)).toUpperCase() + ')' : ''}</span></span>`);
     // Playing out of MC range is the NORMAL case mid-match (Tony, review 2026-09-03 #32): live shows it as the amber MC
     // dot only; a tap on the MC label shows the detail pill. Before the match (kitted/lobby) MC is required, so the pill stays.
     // (night hides the header dots, so there the dim pill is the only off-range signal)
     // While DOWN one off the cap, the recap's own A31 line already says MC is out of range: no second pill for it.
-    else if (st.phase !== 'idle' && st.phase !== 'connected' && st.wsState !== 'bound' && !(down && this._atCapMinusOne(st)) && (st.phase !== 'live' || this.mcPill || st.night)) pills.push(`<span class="pill warn"><span class="unskew">${down ? 'MC OUT OF RANGE' : st.phase === 'live' ? 'OUT OF MISSION CONTROL RANGE — SCORES SYNC WHEN YOU ARE BACK' : 'RECONNECTING TO MISSION CONTROL…'}</span></span>`);
+    else if (st.phase !== 'idle' && st.phase !== 'connected' && st.wsState !== 'bound' && !(down && this._atCapMinusOne(st)) && (st.phase !== 'live' || this.mcPill || st.night)) pills.push(`<span class="pill warn mcr"><span class="unskew">${down ? 'MC OUT OF RANGE' : st.phase === 'live' ? 'OUT OF MISSION CONTROL RANGE — SCORES SYNC WHEN YOU ARE BACK' : 'RECONNECTING TO MISSION CONTROL…'}</span></span>`);
     // A tappable pill, not just a status: the retry now runs forever, but a player who has just
     // switched the gun on should not have to wait out a backoff — or go hunting in the debug panel,
     // which is where the only reconnect control used to live (Tony, field 2026-09-01).
@@ -1545,17 +1605,14 @@ export class Hud {
     // period). The line says what fixes it; RECONNECT NOW ends the quiet period at once. It shows in every phase.
     if (st.gunFlapping && st.gunFlapping.quiet) pills.push(`<span class="pill bad" data-flap="${st.gunFlapping.count}" data-quiet="1"><span class="unskew">${down ? 'POWER-CYCLE THE HEADSET' : 'GUN KEEPS DROPPING. POWER-CYCLE THE HEADSET, THEN THE GUN RECONNECTS.'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
     else if (st.phase !== 'idle' && st.gunFlapping) pills.push(`<span class="pill warn" data-flap="${st.gunFlapping.count}"><span class="unskew">${down ? 'HEADSET OFF? TURN IT ON' : 'HEADSET OFF? TURN THE HEADSET ON.'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
-    else if (st.phase !== 'idle' && !st.bleUp) pills.push(`<button class="pill bad" data-act="onReconnectGun"><span class="unskew">GUN LINK LOST — TAP TO RECONNECT</span></button>`);
+    // QA-02: on the live HUD this is a solid, steady bar (16 px, no blink): the frozen numbers below depend on it.
+    else if (st.phase !== 'idle' && !st.bleUp) pills.push(`<button class="pill bad${st.phase === 'live' && !down ? ' gunlost' : ''}" data-act="onReconnectGun"><span class="unskew">GUN LINK LOST — TAP TO RECONNECT</span></button>`);
     if (st.moment && st.moment.kind === 'go' && st.phase === 'live' && st.bleUp) pills.push(`<span class="pill ok"><span class="unskew">WEAPONS HOT</span></span>`);   // never 'hot' while the gun link is down
     const prompt = st.resync ? `<div class="prompt"><span class="unskew"><span class="pl">GUN RELINKED</span><span class="pi">${esc(st.resync.prompt).toUpperCase()}</span></span></div>` : '';
-    // S57: the IR callout bus. One word from a victim's gun, heard by this one: KILL CONFIRMED when it names me as the
-    // killer, else ENEMY or TEAMMATE DOWN (the victim's name when the word named them). Live and alive only: a dead gun
-    // hears nothing, and the down screen owns the dead phone.
-    const co = st.callout;
-    if (co && st.phase === 'live' && st.alive) {
-      const lab = co.kind === 'kill_confirmed' ? 'KILL CONFIRMED' : co.kind === 'teammate_down' ? 'TEAMMATE DOWN' : 'ENEMY DOWN';
-      pills.push(`<span class="pill ${co.kind === 'teammate_down' ? 'warn' : 'ok'} callout" data-callout="${esc(co.kind)}"><span class="unskew">${lab}${co.name ? ' · ' + esc(String(co.name).toUpperCase()) : ''}</span></span>`);
-    }
+    // S57 / QA-05: the IR callout bus and the hill transitions render as the callout CARD (`_co`), the same
+    // component MC's kill uses, never as a pill here. `_coSync` only watches for a new event (a unit test drives
+    // `_chips` on a bare object, hence the guard).
+    if (this._coSync) this._coSync(st);
     const html = `<div class="chipbar">${pills.join('')}</div>${prompt}`;
     if (this.chips.innerHTML !== html) this.chips.innerHTML = html;
   }
@@ -1761,22 +1818,74 @@ export class Hud {
     if (this.frame.dataset.env === 'night') return;
     const now = Date.now(); if (this._flashAt && now - this._flashAt < 500) return; this._flashAt = now;   // ≤2 flashes/s whatever the event burst (WCAG 2.3.1)
     const w = document.createElement('div'); w.className = 'whiteout'; this.overlay.appendChild(w); setTimeout(() => w.remove(), 120); }
-  _kill(st, m) {
-    if (this.frame.dataset.env === 'night') return;
-    const vt = (m.data && m.data.victim_team) || 'yellow'; const vk = String(vt).toLowerCase();
+  // ---------- QA-05: the callout card ----------
+  // ONE component for every "someone went down" and "the hill changed hands" moment, whichever path it came by:
+  // MC's kill feedback (`moment.kind === 'kill'`), an S57 IR word (`state().callout`) or the engine's own hill
+  // transition (`state().hillCallout`). A short card in the band under the clock, clear of the vitals and the
+  // ammo, so the live HUD stays readable behind it. The name is the headline (>= 18 px); the accent says who went
+  // down (enemy vs teammate, ours vs theirs). Night: the same card in dim red, no whiteout, no motion.
+  // One node for every kind (`_swap('co')`): the newest event replaces the card in place, it never stacks.
+  _co(st, spec) {
+    const tk = spec.team && TEAM_COLOR[spec.team] ? spec.team : null;
     const el = document.createElement('div');
-    el.className = 'mo kill';
-    el.innerHTML = `<div class="rays"></div><div class="ring1"></div><div class="ring2"></div>
-      <div class="c"><span class="elim"><span class="unskew">+1 ELIMINATION</span></span><span class="k">KILL</span><span class="cf">CONFIRMED</span>
-      <div class="bars"><i style="width:90px;background:var(--warn)"></i><i style="width:34px;background:var(--glow)"></i><i style="width:12px;background:var(--glow);opacity:.5"></i></div></div>
-      <div class="foot"><span class="vt" style="background:${TEAM_COLOR[vk] || 'var(--team-yellow)'};color:${TEAM_INK[vk] || '#1a1400'}"><span class="unskew">${esc((m.data && m.data.victim) || (vk.toUpperCase() + ' OPERATIVE'))} DOWN</span></span>
-      <span class="by">K ${st.kills != null ? st.kills : ''} · CONFIRMED BY MISSION CONTROL</span></div>`;
-    const medals = (m.data && Array.isArray(m.data.medals) ? m.data.medals : []).filter(k => MEDAL_LABEL[k]);
-    if (medals.length) el.querySelector('.c').insertAdjacentHTML('beforeend', `<div class="medals">${medals.map((k, i) => `<span class="medal ${esc(k)}" style="animation-delay:${.12 + i * 2}s"><span class="unskew">${MEDAL_LABEL[k]}</span></span>`).join('')}</div>`);
-    this._flash();
-    const hold = 1800 + Math.max(0, medals.length - 1) * 2000;   // each medal line plays 2 s after the last (engine MEDAL_GAP_MS)
-    this._swap('kill', el, hold, hold + 400);   // three confirms 300ms apart used to stack three banners
-    this.h.onHaptic && this.h.onHaptic('kill');
+    el.className = 'mo co' + (spec.kill || spec.killStyle ? ' kill' : '');
+    el.dataset.kind = spec.kind; el.dataset.tone = spec.tone; el.dataset.src = spec.src;
+    const medals = (spec.medals || []).filter(k => MEDAL_LABEL[k]);
+    el.innerHTML = `<div class="cob"><div class="row"><span class="tag"><span class="unskew">${esc(spec.tag)}</span></span>`
+      + `${tk ? `<i class="sw" style="background:${TEAM_COLOR[tk]}"></i>` : ''}<span class="nm vt">${esc(String(spec.name).toUpperCase())}</span></div>`
+      + `${spec.sub ? `<span class="by">${esc(spec.sub)}</span>` : ''}`
+      + `${medals.length ? `<div class="medals">${medals.map((k, i) => `<span class="medal ${esc(k)}" style="animation-delay:${.12 + i * 2}s"><span class="unskew">${MEDAL_LABEL[k]}</span></span>`).join('')}</div>` : ''}</div>`;
+    if (spec.kill) { this._flash(); this.h.onHaptic && this.h.onHaptic('kill'); }   // `_flash` is a no-op at night
+    const hold = spec.hold + Math.max(0, medals.length - 1) * 2000;   // each medal line plays 2 s after the last (engine MEDAL_GAP_MS)
+    const node = this._swap('co', el, hold, hold + 300);
+    Object.assign(node.dataset, { kind: spec.kind, tone: spec.tone, src: spec.src });   // a reused node keeps its old data-* otherwise
+    return hold;
+  }
+  /** The IR and hill halves: fire the card once per NEW event (keyed on its `at`), and take any card down the
+   *  moment the player is no longer live and alive (the down screen owns the dead phone). */
+  _coSync(st) {
+    if (!(st.phase === 'live' && st.alive)) {
+      const rec = this._overlays && this._overlays.co;
+      if (rec) { clearTimeout(rec.t1); clearTimeout(rec.t2); rec.el.remove(); delete this._overlays.co; }
+      return;
+    }
+    const co = st.callout;
+    if (co && co.at !== this._coIrAt) {
+      this._coIrAt = co.at;
+      const team = co.team ? String(co.team).toLowerCase() : null, op = `${team ? team.toUpperCase() : 'ENEMY'} OPERATIVE`;
+      // The IR word cannot carry the victim (docs/ir-callouts.md): a KILL CONFIRMED names the team. When MC's own
+      // named card for the same kill is already up it is richer, so the IR word leaves it alone.
+      if (co.kind === 'kill_confirmed') {
+        if (!(this._coMcUntil > Date.now())) (this._coIrKills = this._coIrKills || []).push(Date.now());
+        if (!(this._coMcUntil > Date.now())) this._co(st, { kind: 'kill_confirmed', src: 'ir', tone: 'enemy', kill: true, tag: 'KILL CONFIRMED', name: op, team, sub: 'CONFIRMED BY THEIR GUN · MC KEEPS THE SCORE', hold: 2000 });
+      } else {
+        const mate = co.kind === 'teammate_down';
+        this._co(st, { kind: co.kind, src: 'ir', tone: mate ? 'mate' : 'enemy', tag: mate ? 'TEAMMATE DOWN' : 'ENEMY DOWN',
+          name: co.name || (mate ? `${team ? team.toUpperCase() + ' ' : ''}TEAMMATE` : op), team, sub: co.by ? `BY ${String(co.by).toUpperCase()}` : '', hold: 2000 });
+      }
+    }
+    const hc = st.hillCallout;
+    if (hc && hc.at !== this._coHillAt) {
+      this._coHillAt = hc.at;
+      const ours = hc.kind === 'hill_captured';
+      this._co(st, { kind: hc.kind, src: 'hill', tone: ours ? 'ours' : 'theirs', tag: 'OBJECTIVE', name: ours ? 'HILL CAPTURED' : 'HILL LOST',
+        team: ours ? st.teamKey : null, sub: ours ? 'YOUR TEAM HOLDS THE POINT' : 'THE POINT IS NOT YOURS', hold: 2200 });
+    }
+  }
+  /** MC's kill feedback: the same card, named from MC's `victim_display` (else "<TEAM> OPERATIVE"), with the medals. */
+  _kill(st, m) {
+    const d = m.data || {}; const vk = String(d.victim_team || 'yellow').toLowerCase();
+    // Polish rounds 1-3: MC's named card stays quiet (no second flash or buzz) only when the engine paired this confirm
+    // with an IR KILL CONFIRMED (`ir_paired`) AND an IR card really showed for it, flash and all. Each shown IR card
+    // is used once, so a kill whose IR card was held back behind another card still buzzes on its MC card.
+    // Polish round 3: a QUEUE of IR cards still waiting for their MC twin, not one mark, so IR1 IR2 MC1 MC2 is two
+    // buzzes as surely as IR1 MC1 IR2 MC2. Entries older than the pairing window are dropped unmatched.
+    const now = Date.now(); this._coIrKills = (this._coIrKills || []).filter(t => now - t < 3000);
+    const irFirst = !!d.ir_paired && this._coIrKills.length > 0;
+    if (irFirst) this._coIrKills.shift();
+    const hold = this._co(st, { kind: 'kill', src: 'mc', tone: 'enemy', kill: !irFirst, killStyle: true, tag: 'KILL CONFIRMED', name: d.victim || (vk.toUpperCase() + ' OPERATIVE'), team: vk,
+      sub: `+1 ELIMINATION · K ${st.kills != null ? st.kills : ''} · MISSION CONTROL`, medals: Array.isArray(d.medals) ? d.medals : [], hold: 1800 });
+    this._coMcUntil = Date.now() + hold;
   }
   /** The death screen's callouts (deathscreen.js): damage taken and dealt, kills, time alive. */
   _dsLive(st) {
@@ -1809,9 +1918,22 @@ export class Hud {
     // background at all. This way the day colour is the fallback.
     el.innerHTML = `<div class="vig"></div>
       <div class="hc"><span class="dmg tab">-${esc(d.dmg)}</span>
-      <span class="src" style="background:${TEAM_COLOR[tk] || 'var(--bad)'};color:${TEAM_INK[tk] || '#fff'}"><span class="unskew">HIT${where ? ' · ' + where : ''}</span></span>${this._hitWeapon(d.weapon)}</div>`;
+      <span class="src" style="background:${TEAM_COLOR[tk] || 'var(--bad)'};color:${TEAM_INK[tk] || '#fff'}"><span class="unskew">HIT${where ? ' · ' + where : ''}</span></span></div>`;
     this._swap('hit', el, 260, 700);
+    this._hitWpn(this._hitWeapon(d.weapon));
     this.h.onHaptic && this.h.onHaptic('hit');
+  }
+
+  /** QA-04 (2026-09-23): the S56 weapon line outlives the hit flash. The flash is gone in 700 ms, far too soon to
+   *  read a name in motion, so the name has its own overlay: 16 px for HIT_WPN_BIG_MS, then a small
+   *  LAST HIT line until HIT_WPN_GONE_MS. A new hit restarts both. No line when the phone has no claim. */
+  _hitWpn(html) {
+    if (!html) return;
+    const el = document.createElement('div'); el.className = 'mo hitwpn';
+    el.innerHTML = html;
+    const node = this._swap('hitwpn', el, HIT_WPN_GONE_MS - 400, HIT_WPN_GONE_MS);
+    clearTimeout(this._hwT);
+    this._hwT = setTimeout(() => node.classList.add('last'), HIT_WPN_BIG_MS);
   }
 
   // GAINING a pool: heal, armour pickup, shield grant. Colour matches the pool so the player learns
@@ -1914,10 +2036,11 @@ export class Hud {
     const mcjoin = `<div class="mcjoin"><div class="mcjoinnote" id="dg-mcjoinnote">MISSION CONTROL</div>
         <div id="dg-discovered"></div>
         <div class="mcjoinhint" id="dg-mcjoinhint" role="status" aria-live="assertive"></div>
-        <div class="mcin"><input class="mcurlfield" value="${esc(this.mcUrl)}" placeholder="ws://mission-control-ip:8766/ws" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div>
+        <div class="mcin"><input class="mcurlfield" value="${esc(this.mcUrl)}" placeholder="${MC_URL_HINT}" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div>
         <button class="qrbtn" data-act="onScanQr">▣ SCAN QR</button></div>`;
     const changeGun = !this.diagData.engine || ['idle', 'connected'].includes(this.diagData.engine.phase);
-    this.diag.innerHTML = `<button class="close" data-act="onCloseDiag">✕</button>${mcjoin}
+    // QA-24 (2026-09-23): ONE close control. The top ✕ duplicated CLOSE in the action row and cost the join block 30px.
+    this.diag.innerHTML = `${mcjoin}
       <div class="dbody" id="dbody">
         ${sec('PREFLIGHT', 'dg-pf')}${sec('LINK', 'dg-link')}${sec('ENGINE', 'dg-eng')}${sec('TIMINGS', 'dg-tim')}
         ${sec('LAST FRAMES', 'dg-frames', true)}${sec('HISTORY', 'dg-hist')}${sec('LOG', 'dg-log', true)}
