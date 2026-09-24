@@ -14,6 +14,8 @@ import { parseMcJoin } from './mcurl.js';
 import { sweepPlan, localIpFrom, sweepForMc as sweepSubnetsForMc } from './transport/discover.js';   // F139
 import { makeWsFactory } from './transport/netsocket.js';
 import { Presence, encodeUuid, stationView } from './beacon.js';   // utility items (docs/spec/utility.md)
+import { ControlAdvertiser } from './control.js';                    // A56: the advert restart throttle, shared with the control point
+import { playerClaimAdvert } from './powerup.js';                     // A56: the powerup claim bits on the player advert
 import { BeaconWatch, stationsInPlay } from './scanwatch.js';                        // playtest 2026-09-13: one scan operation at a time, open only in a match
 import { LogSync, chunkByBytes, DEFAULT_CHUNK_BYTES } from './logsync.js';   // background log sync (contracts A25)
 import { APP_VER, platformName } from './build.js';                  // the REAL build id (contracts A29)
@@ -204,18 +206,28 @@ function presenceTick() {
   engine.setStations(list);
 }
 let playerAdvert = null;
+const playerAdvertThrottle = new ControlAdvertiser();   // A56: a value-only change restarts at most once a second (control.js)
 async function syncPlayerAdvert() {
   if (!plugins.beacon || !isNative()) return;
   const st = engine.state();
   const num = st.playerNum, tid = engine.teamTid;
+  // A56 (powerups): while this phone claims a station's item it adds `claiming`, then `claim_ready`, with the station id
+  // in `value`, and advertises in low-latency mode so the station hears it inside the 1 s dwell.
+  const claim = playerClaimAdvert(st.powerupClaim);
+  const view = { team: tid, state: (st.alive ? 1 : 0) | claim.bits, value: claim.value };
   // Only a utility station reads a player advert, so a game with no stations advertises nothing: every
   // other phone's scan would carry it over its own bridge for no reader (bench 2026-09-17 flood).
   const want = (num != null && tid != null && st.phase !== 'idle' && stationsInPlay(engine.config))
-    ? encodeUuid({ role: 'player', id: num, team: tid, state: st.alive ? 1 : 0, game: st.config ? gameByte(st.config.config_id) : 0 }) : null;
+    ? encodeUuid({ role: 'player', id: num, team: tid, state: view.state, value: view.value, game: st.config ? gameByte(st.config.config_id) : 0 }) : null;
   if (want === playerAdvert) return;
+  if (want && !playerAdvertThrottle.due(view, Date.now())) return;   // a state change goes at once; a value-only change waits
   playerAdvert = want;
   try {
-    if (want) { await plugins.beacon.start({ uuid: want, txPower: 'medium', mode: 'balanced' }); log(`advertising as player ${num} team ${tid}${st.alive ? '' : ' (down)'}`, 'li'); }
+    if (want) {
+      playerAdvertThrottle.published(view, Date.now());
+      await plugins.beacon.start({ uuid: want, txPower: 'medium', mode: claim.mode });
+      log(`advertising as player ${num} team ${tid}${st.alive ? '' : ' (down)'}${claim.bits ? ` · ${st.powerupClaim.ready ? 'CLAIM READY' : 'claiming'} station ${claim.value}` : ''}`, 'li');
+    }
     else await plugins.beacon.stop();
   } catch (e) {
     // ⚠ Put the intent BACK so the next tick retries. `playerAdvert` was assigned before the await, so a

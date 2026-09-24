@@ -7,6 +7,7 @@ import { BrxLink } from './brxlink.js';
 import { ScanGuard, SCAN_MODES, stationScanStep } from './scanwatch.js';   // the BLE flood guard (bench 2026-09-17)
 import { Presence, encodeUuid, KIND, TEAM_ANY, PLAYER_STATE } from './beacon.js';
 import { ControlPoint, ControlAdvertiser, CONTROL_STATE, NEUTRAL as CONTROL_NEUTRAL, claimable, DEFAULT_CAPTURE_S, DEFAULT_NET_CAP } from './control.js';   // kind 5: the control point (utility.md §5, K1)
+import { PowerupStation } from './powerup.js';   // kind 2: the powerup station decides who took its item (A56, docs/spec/powerups.md)
 import { Transport } from './transport/transport.js';   // utility.md §5b/§5c: the phone joins MC at muster to be ARMED (contracts A13.5)
 import { makeEnvelope, encode } from './transport/envelope.js';   // stage harness only: a real station_config ENVELOPE, not a bare function call (review 2026-09-11 lane-4)
 import { APP_VER } from './build.js';   // A29: the REAL build, baked by scripts/build.mjs
@@ -78,6 +79,12 @@ const CONTROL_KEY = 'brx.station.control';
 const savedPoint = (() => { try { return JSON.parse(localStorage.getItem(CONTROL_KEY) || 'null'); } catch (_) { return null; } })();
 const point = new ControlPoint({ captureS: settings.captureS, netCap: settings.netCap }).restore(savedPoint);
 const advert = new ControlAdvertiser();     // owns `seq` (advert byte 12) and the republish rate limit
+// Kind 2, the powerup station (A56). Like the control point it is match state with its own key: a station rebooted
+// mid-match must come back knowing whether its item was taken and when the next one spawns.
+const POWERUP_KEY = 'brx.station.powerup';
+const pu = new PowerupStation({ id: settings.id, item: settings.item || null })
+  .restore((() => { try { return JSON.parse(localStorage.getItem(POWERUP_KEY) || 'null'); } catch (_) { return null; } })());
+function savePowerup() { try { localStorage.setItem(POWERUP_KEY, JSON.stringify(pu.snapshot())); } catch (_) { /* ignore */ } }
 if (savedPoint && Number.isFinite(+savedPoint.seq)) advert.seq = (+savedPoint.seq) & 0xff;   // a scanner must not see seq go backwards across our restart
 /** §5d.6: written on every change, read at startup. */
 function saveControl() {
@@ -98,11 +105,14 @@ const SCAN_RESTART_MS = 8000;        // S6: a long scan STALLS on Android, worse
  *  so `settings.team` does not apply to it at all: ownership is decided by play, not by the operator. */
 function advertFields() {
   if (settings.kind === 'control') return point.advert();
+  // A56: a powerup station with an item advertises its item's state: 1 available, or 0 with the seconds to the next
+  // spawn and the winner in byte 15 (`taker`); 0 with value 0 until MC's first `station_update` (unknown).
+  if (settings.kind === 'powerup' && pu.item) return { team: settings.team, ...pu.advert(Date.now()) };
   return { team: settings.team, state: 1, value: 0 };
 }
 function stationUuid() {
   const f = advertFields();
-  return encodeUuid({ role: 'station', id: settings.id, kind: settings.kind, team: f.team, state: f.state, value: f.value, seq: advert.seq, game: settings.game, threshold: settings.threshold });
+  return encodeUuid({ role: 'station', id: settings.id, kind: settings.kind, team: f.team, state: f.state, value: f.value, seq: advert.seq, game: settings.game, threshold: settings.threshold, taker: f.taker || 0 });
 }
 /** `quiet` is the control point's once-a-second progress republish: it re-keys the advert but says nothing
  *  new, and logging it would bury a whole match's real events under a wall of UUIDs. */
@@ -146,6 +156,10 @@ async function applyStationConfig(body) {
   // one), so this is where the point resets. The manual button behind the seven-tap gate is the field
   // fallback, not the mechanism.
   if (settings.game !== wasGame) resetPoint(`MC armed game ${settings.game}`);
+  // A56: the item this powerup station grants, locked for the match (Tony: one item per station, never random).
+  settings.item = settings.kind === 'powerup' && body.item && typeof body.item === 'object' ? body.item : null;
+  pu.id = settings.id; pu.item = settings.item;
+  if (settings.game !== wasGame) { pu.available = null; pu.nextAt = null; pu.taker = 0; pu.ringAt = null; savePowerup(); }
   settings.mcArmed = { game: settings.game, at: Date.now(), valid_ids: Array.isArray(body.valid_ids) ? body.valid_ids.slice(0, 32) : null };
   save();
   log(`MC armed this phone: ${KIND_LABEL[settings.kind]} · ${TEAM_NAMES[settings.team] || settings.team} · station ${settings.id} · threshold ${settings.threshold} dBm · game ${settings.game}`, 'lk');
@@ -174,6 +188,7 @@ function connectMc(url, { wsFactory, trusted = true, pub, secret } = {}) {
   transport.onMessage(m => {
     if (!m) return;
     if (m.kind === 'station_config') applyStationConfig(m.body);
+    else if (m.kind === 'station_update') applyStationUpdate(m.body);
     else if (m.kind === 'control' && m.body && m.body.cmd === 'release_utility') { log('Mission Control released this phone back to HUD', 'lk'); exitToHud(); }
   });
   transport.onState(s => { mcState = s; log(`MC ${s}${transport.rejected ? ' — ' + transport.rejected.reason : ''}`, s === 'bound' ? 'lk' : 'li'); render(); });
@@ -323,12 +338,43 @@ function tick() {
   }
   for (const id of wasAlive.keys()) if (!seen.has(id)) wasAlive.delete(id);   // don't grow unbounded over a long session
   if (settings.kind === 'control') controlTick(now);
+  if (settings.kind === 'powerup') powerupTick(now);
   // Two control points on the same station id are ONE presence entry on every player phone (`beacon.js` keys
   // `station:<id>`), so their adverts alternate and every reader sees the owner flip several times a second.
   // Nothing on the reader side can separate them -- the id IS the identity -- so the only real fix is the
   // operator seeing it, and the default id is 1 on every fresh install.
   _twin = presence.stations().some(e => e.id === settings.id && e.kind === settings.kind) ? settings.id : 0;
   render();
+}
+
+// ---------- kind 2: the powerup station (A56, docs/spec/powerups.md) ----------
+/** MC's `station_update {id, available, next_spawn_in_ms}`: the time REMAINING, re-anchored on arrival. */
+function applyStationUpdate(body) {
+  if (!body || typeof body !== 'object') return;
+  if (body.id != null && +body.id !== settings.id) return;
+  pu.update(body, Date.now()); savePowerup();
+  log(`MC: item ${body.available ? 'AVAILABLE' : 'TAKEN'}${Number.isFinite(+body.next_spawn_in_ms) ? ` · next spawn in ${Math.round(+body.next_spawn_in_ms / 1000)} s` : ''}`, 'li');
+  if (settings.live) startAdvert();
+  render();
+}
+/** One step: the self-spawn, then the claims. The station, not the phones, decides who took the item. */
+function powerupTick(now) {
+  if (!pu.item) return;
+  const { changed, events } = pu.tick(presence.players(), now);
+  for (const e of events) {
+    if (e.type === 'spawned') { log(`${pu.item.name} SPAWNED`, 'lk'); flash(`${String(pu.item.name).toUpperCase()} AVAILABLE`, 'any'); }
+    else if (e.type === 'taken') {
+      log(`${pu.item.name} TAKEN by player ${e.player_num}`, 'lk'); flash(`TAKEN · P${e.player_num}`, 'any');
+      // MC's relay (the MC lane adds the kind): best-effort, like every station message; the advert is the truth.
+      try { if (transport && !transport.report('station_action', { id: settings.id, action: 'taken', player_num: e.player_num, t: transport.syncedNow() })) log('station_action not sent (MC not bound): the advert still names the taker', 'li'); }
+      catch (err) { log('station_action refused: ' + (err && err.message || err), 'le'); }
+    }
+  }
+  if (changed || events.length) savePowerup();
+  if (!settings.live) return;
+  if (!advertising) { if (now - _advertRetryAt >= 1000) { _advertRetryAt = now; startAdvert(); } return; }
+  const why = advert.due(advertFields(), now);
+  if (why) startAdvert(why === 'progress');   // the countdown ticking down is a quiet re-key; taken / available is logged
 }
 
 // ---------- kind 5: the control point ----------
@@ -411,6 +457,7 @@ function render() {
   $('team').textContent = isControl ? (heldBy == null ? 'NEUTRAL' : (TEAM_NAMES[heldBy] || `TEAM ${heldBy}`))
     : (TEAM_NAMES[settings.team] || `TEAM ${settings.team}`);
   renderControl(isControl, v, heldBy);
+  renderPowerup();
   $('sid').textContent = `STATION ${settings.id}`; $('sidn').textContent = settings.id;
   $('status').textContent = advertising ? 'LIVE' : (plugins.beacon && support.advertising ? 'READY' : 'CANNOT ADVERTISE');
   $('status').className = 'status ' + (advertising ? 'on' : 'off');
@@ -470,6 +517,27 @@ function render() {
   for (const b of document.querySelectorAll('[data-tx]')) b.classList.toggle('sel', b.dataset.tx === settings.tx);
   for (const b of document.querySelectorAll('[data-kind]')) b.classList.toggle('sel', b.dataset.kind === settings.kind);
   for (const b of document.querySelectorAll('[data-team]')) b.classList.toggle('sel', +b.dataset.team === settings.team);
+}
+
+/** A56: the powerup station's screen. The item's name in its own colour, AVAILABLE or TAKEN with the countdown, and
+ *  a 1 s ring from the first `claiming` advert it hears. */
+function renderPowerup() {
+  const el = $('pup'); if (!el) return;
+  const on = settings.kind === 'powerup' && !!pu.item;
+  el.hidden = !on;
+  if (!on) { delete document.documentElement.dataset.kindItem; return; }
+  const now = Date.now(), v = pu.view(now), item = pu.item;
+  document.documentElement.dataset.kindItem = '';
+  document.documentElement.style.setProperty('--item', /^#[0-9a-f]{6}$/i.test(item.color || '') ? item.color : 'var(--glow)');
+  $('team').textContent = String(item.name || 'POWERUP').toUpperCase();
+  el.dataset.pstate = v.available === true ? (v.ringAt != null ? 'claiming' : 'available') : v.available === false ? 'taken' : 'unknown';
+  $('pstate').textContent = v.available === true ? (v.ringAt != null ? 'HOLD STILL' : 'AVAILABLE') : v.available === false ? 'TAKEN' : 'WAITING FOR MISSION CONTROL';
+  $('pnext').textContent = v.available === false && v.nextInMs != null ? `NEXT ${mmss(v.nextInMs + 999)}` : '';
+  $('ptaker').textContent = v.available === false && v.taker ? `BY PLAYER ${v.taker}` : '';
+  const ring = $('pring'); const p = v.ringAt != null ? Math.min(1, (now - v.ringAt) / 1000) : 0;
+  ring.hidden = v.ringAt == null;
+  ring.style.setProperty('--p', p.toFixed(3));
+  ring.setAttribute('aria-valuenow', String(Math.round(p * 100)));
 }
 
 /** The animated part: owner, a progress bar with the DIRECTION and speed of change, the net push, and the
@@ -654,7 +722,7 @@ function wireExit() {
   await startScan();
   setInterval(tick, 250);
   if (DEMO) seedDemo();
-  window.brxUtility = { settings, presence, point, advert, startAdvert, stopAdvert, render, log: logLines, stationUuid, advertFields, encodeUuid, applyStationConfig, connectMc, mcMessage: stageMcMessage, exitToHud, get transport() { return transport; } };
+  window.brxUtility = { settings, presence, point, pu, advert, startAdvert, stopAdvert, render, log: logLines, stationUuid, advertFields, encodeUuid, applyStationConfig, connectMc, mcMessage: stageMcMessage, exitToHud, get transport() { return transport; } };
   window.brxUtil = window.brxUtility;
 })();
 
@@ -668,7 +736,8 @@ function seedDemo() {
                 { id: 31, team: 0, alive: true, rssi: () => -70 + 14 * Math.sin((Date.now() - t0) / 11000) }];
   setInterval(() => {
     const now = Date.now();
-    for (const f of fake) presence.observe([encodeUuid({ role: 'player', id: f.id, kind: 0, team: f.team, state: f.alive ? PLAYER_STATE.alive : 0, seq: 0, game: settings.game })], f.rssi() + (Math.random() - .5) * 2, now);
+    // A56: `bits`/`value` let a stage step make a fake phone CLAIM a powerup station (`claiming`/`claim_ready`, station id)
+    for (const f of fake) presence.observe([encodeUuid({ role: 'player', id: f.id, kind: 0, team: f.team, state: (f.alive ? PLAYER_STATE.alive : 0) | (f.bits || 0), value: f.value || 0, seq: 0, game: settings.game })], f.rssi() + (Math.random() - .5) * 2, now);
   }, 250);
   window.brxUtilityFake = fake;
 }

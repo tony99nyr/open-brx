@@ -9,7 +9,7 @@ test('station uuid round-trips every field, and is a well-formed 128-bit uuid', 
   assert.ok(u.startsWith('4f425258-01'), 'magic OBRX then version 1');
   assert.equal(u, '4f425258-0101-012c-0101-0100075ac600', 'the exact vector mcp/tests/test_beacon.py pins too — the phones and MC must agree byte for byte');
   const d = decodeUuid(u);
-  assert.deepEqual(d, { role: 'station', id: 300, kind: 'respawn', team: 1, state: 1, value: 0, seq: 7, game: 0x5a, threshold: -58 });
+  assert.deepEqual(d, { role: 'station', id: 300, kind: 'respawn', team: 1, state: 1, value: 0, seq: 7, game: 0x5a, threshold: -58, taker: 0 });   // A56: byte 15 is `taker` (0 = none)
 });
 
 test('player uuid: id is the player_num, kind is null, state carries the alive/intent bits', () => {

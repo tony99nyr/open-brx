@@ -4239,6 +4239,154 @@ for (const view of VIEWS) for (const skin of ['', '&night']) await step(`${view.
   must(r.buzz === 1, 'one kill, one buzz: the name arrives with no second one: ' + r.buzz);
 });
 
+// A56 powerups (docs/spec/powerups.md; the claim is Tony's 2026-09-24 change via the brx5 lead). Every stage drives the
+// REAL engine with a powerup game and fake station adverts (demo.js `puAt`/`puTake`). Each step reads what a person
+// sees: the hint's words and type sizes in FRAME px (computed font-size is layout px, which the #frame scale leaves
+// alone), its box against the vitals and the ammo, the held chip in the ammo column, the callout cards, the overshield
+// block. Day and night, at both widths. The 2026-09-23 type floors: a label >= 11 px, an action >= 14 px.
+const puRead = pg => pg.evaluate(() => {
+  const vis = e => { if (!e) return false; for (let n = e; n && n.id !== 'frame'; n = n.parentElement) { const c = getComputedStyle(n); if (c.display === 'none' || c.visibility === 'hidden' || +c.opacity < .3) return false; } const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  const box = e => { if (!e) return null; const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
+  const fr = document.getElementById('frame').getBoundingClientRect();
+  const hint = document.querySelector('#puhint .pu'), pua = hint && hint.querySelector('.pua'), pul = hint && hint.querySelector('.pul');
+  const ring = hint && hint.querySelector('.puring');
+  const chip = document.querySelector('#puheld .puchip');
+  const co = document.querySelector('#overlay .mo.co');
+  const ob = document.querySelector('.bar.oshield');
+  return {
+    hint: hint && vis(hint) ? { kind: hint.dataset.kind, act: pua ? pua.textContent.trim() : '', lab: pul ? pul.textContent.trim() : '',
+      actPx: pua ? parseFloat(getComputedStyle(pua).fontSize) : 0, labPx: pul ? parseFloat(getComputedStyle(pul).fontSize) : 99,
+      ring: ring && vis(ring) ? parseFloat(getComputedStyle(ring).getPropertyValue('--p')) : null, box: box(hint), color: getComputedStyle(pua).color } : null,
+    chip: chip && vis(chip) ? { text: chip.innerText.replace(/\s+/g, ' ').trim(), box: box(chip), px: parseFloat(getComputedStyle(chip.querySelector('.nm')).fontSize) } : null,
+    card: co && vis(co) ? { kind: co.dataset.kind, name: (co.querySelector('.nm') || {}).textContent, sub: ((co.querySelector('.by') || {}).textContent || '').trim(),
+      px: parseFloat(getComputedStyle(co.querySelector('.nm')).fontSize), box: box(co.querySelector('.cob') || co) } : null,
+    obar: ob && vis(ob) ? { val: (ob.querySelector('b') || {}).textContent, w: ob.querySelector('i').getBoundingClientRect().width, shieldNum: (document.getElementById('shield') || {}).textContent } : null,
+    wn: (document.querySelector('.ammo .wn') || {}).innerText, vitals: box(document.querySelector('.vitals')), ammo: box(document.querySelector('.ammo')),
+    frame: { l: fr.left, r: fr.right, t: fr.top, b: fr.bottom }, puDom: !!document.querySelector('#puhint, #puheld'),
+  };
+});
+const puWait = async (pg, ok, ms) => { let r = null; for (let t = 0; t < ms; t += 100) { r = await puRead(pg); if (ok(r)) return r; await pg.waitForTimeout(100); } return r; };
+const inside = (a, f) => a.l >= f.l - 1 && a.r <= f.r + 1 && a.t >= f.t - 1 && a.b <= f.b + 1;
+for (const view of VIEWS) for (const night of [false, true]) {
+  const N = night ? '&night' : '', tag = `${view.name} A56 ${night ? 'night' : 'day'}`;
+  const shot = (pg, name) => pg.screenshot({ path: `${OUT}/${view.name}-a56-${name}${night ? '-night' : ''}.png` });
+  await step(`${tag}: a powerup game with nothing near leaves the live HUD as it was, and a game with no items has no powerup slots at all`, async () => {
+    let pg = await open(view, 'live-pu', N); let r = await puRead(pg); await pg.close();
+    must(!r.hint && !r.chip && !r.card, `nothing near, nothing held: ${JSON.stringify({ hint: r.hint, chip: r.chip, card: r.card })}`);
+    pg = await open(view, 'live', N); r = await puRead(pg); await pg.close();
+    must(!r.puDom, 'a game without powerup items carries no powerup elements (inert)');
+  });
+  await step(`${tag}: standing at the station, the 1 s ring fills with HOLD STILL, on the frame and clear of the vitals and the ammo`, async () => {
+    const pg = await open(view, 'live-pu-claim', N, 2700);
+    const a = await puWait(pg, r => r.hint && r.hint.kind === 'claiming', 1500);
+    await pg.waitForTimeout(300); const b2 = await puRead(pg); await shot(pg, 'claim'); await pg.close();
+    must(a && a.hint && a.hint.act === 'HOLD STILL' && a.hint.lab === 'ROCKETS', `the hint: ${JSON.stringify(a && a.hint)}`);
+    must(a.hint.actPx >= 14 && a.hint.labPx >= 11, `type floors: action ${a.hint.actPx}px, label ${a.hint.labPx}px`);
+    must(a.hint.ring != null && b2.hint && b2.hint.ring > a.hint.ring, `the ring must fill: ${a.hint.ring} then ${b2.hint && b2.hint.ring}`);
+    must(inside(a.hint.box, a.frame) && apart(a.hint.box, a.vitals) && apart(a.hint.box, a.ammo), `the hint box ${JSON.stringify(a.hint.box)} vs vitals ${JSON.stringify(a.vitals)} ammo ${JSON.stringify(a.ammo)}`);
+  });
+  await step(`${tag}: heard but not at it, the hint says GET CLOSER`, async () => {
+    const pg = await open(view, 'live-pu-approach', N, 2700); const r = await puWait(pg, r => r.hint, 1500); await pg.close();
+    must(r.hint && r.hint.kind === 'approach' && r.hint.act === 'GET CLOSER', JSON.stringify(r.hint));
+  });
+  await step(`${tag}: the station names me: ROCKETS picked up, and the held chip beside the ammo shows 2 charges`, async () => {
+    const pg = await open(view, 'live-pu-rockets', N, 3000);
+    const r = await puWait(pg, r => r.chip && r.hint && r.hint.kind === 'granted', 2500); await shot(pg, 'rockets'); await pg.close();
+    must(r.hint && r.hint.kind === 'granted' && r.hint.act === 'ROCKETS' && r.hint.lab === 'PICKED UP', `the hint: ${JSON.stringify(r.hint)}`);
+    must(apart(r.hint.box, r.vitals) && apart(r.hint.box, r.ammo), `the hint: ${JSON.stringify(r.hint.box)}`);
+    must(r.chip && r.chip.text === 'ROCKETS 2', `the held chip: ${JSON.stringify(r.chip)}`);
+    must(r.chip.px >= 11 && inside(r.chip.box, r.frame) && apart(r.chip.box, r.vitals), `chip ${JSON.stringify(r.chip)}`);
+    must(r.chip.box.l >= r.ammo.l - 1 && r.chip.box.r <= r.ammo.r + 8 && r.chip.box.b <= r.ammo.t + 1, `the chip sits over the ammo column (a skewed box leans a few px right): chip ${JSON.stringify(r.chip.box)} ammo ${JSON.stringify(r.ammo)}`);
+  });
+  await step(`${tag}: a second weapon pickup swaps: the card says RAIL GUN, REPLACES ROCKETS, and the chip follows`, async () => {
+    const pg = await open(view, 'live-pu-swap', N, 4300);
+    const r = await puWait(pg, r => r.card && r.card.kind === 'powerup_swap', 2500); await shot(pg, 'swap');
+    const after = await puWait(pg, x => x.chip && x.chip.text === 'RAIL GUN 2', 1000); await pg.close();
+    must(r.card && r.card.kind === 'powerup_swap' && r.card.name === 'RAIL GUN' && r.card.sub === 'REPLACES ROCKETS', `the card: ${JSON.stringify(r.card)}`);
+    must(r.card.px >= 18 && apart(r.card.box, r.vitals) && apart(r.card.box, r.ammo), `the card: ${JSON.stringify(r.card)}`);
+    must(after.chip && after.chip.text === 'RAIL GUN 2', `the chip: ${JSON.stringify(after.chip)}`);
+  });
+  await step(`${tag}: a spawn announces <ITEM> AVAILABLE on the callout card in the item's colour, clear of the vitals and the ammo`, async () => {
+    const pg = await open(view, 'live-pu-spawn', N, 2000);
+    const r = await puWait(pg, r => r.card && r.card.kind === 'powerup_spawn', 3000); await shot(pg, 'spawn'); await pg.close();
+    must(r.card && r.card.name === 'OVERSHIELD AVAILABLE', `the card: ${JSON.stringify(r.card)}`);
+    must(r.card.px >= 18 && inside(r.card.box, r.frame) && apart(r.card.box, r.vitals) && apart(r.card.box, r.ammo), `the card: ${JSON.stringify(r.card)}`);
+  });
+  await step(`${tag}: the overshield is its own block on the shield bar (+75), drained first by a hit`, async () => {
+    let pg = await open(view, 'live-pu-overshield', N, 3000);
+    const r = await puWait(pg, r => r.obar, 2500); await shot(pg, 'overshield'); await pg.close();
+    must(r.obar && r.obar.val === '+75' && r.obar.shieldNum === '75' && r.obar.w > 20, `the overshield block: ${JSON.stringify(r.obar)}`);
+    pg = await open(view, 'live-pu-overshield-hit', N, 4000);
+    const h = await puWait(pg, r => r.obar && r.obar.val === '+45', 2500); await pg.close();
+    must(h.obar && h.obar.val === '+45' && h.obar.w < r.obar.w, `after a 30-damage hit: ${JSON.stringify(h.obar)} (was ${JSON.stringify(r.obar)})`);
+  });
+  await step(`${tag}: another player won it: TAKEN BY VIPER, with the countdown to the next spawn`, async () => {
+    const pg = await open(view, 'live-pu-taken-by', N, 3300); const r = await puWait(pg, r => r.hint && r.hint.kind === 'taken_by', 2000); await shot(pg, 'taken-by'); await pg.close();
+    must(r.hint && r.hint.act === 'TAKEN BY VIPER' && /^NEXT ROCKETS 1:5\d$/.test(r.hint.lab), `the hint: ${JSON.stringify(r.hint)}`);
+    must(r.hint.actPx >= 14 && r.hint.labPx >= 11, `type floors: ${r.hint.actPx}/${r.hint.labPx}`);
+    must(inside(r.hint.box, r.frame) && apart(r.hint.box, r.vitals) && apart(r.hint.box, r.ammo), `a long line wraps, it never reaches the vitals: ${JSON.stringify(r.hint.box)} vitals ${JSON.stringify(r.vitals)}`);
+  });
+  await step(`${tag}: ready for 3 s and the station never answers: STATION NOT ANSWERING`, async () => {
+    const pg = await open(view, 'live-pu-no-answer', N, 5600); const r = await puWait(pg, r => r.hint && r.hint.kind === 'no_answer', 2500); await shot(pg, 'no-answer'); await pg.close();
+    must(r.hint && r.hint.act === 'STATION NOT ANSWERING' && r.hint.actPx >= 14, `the hint: ${JSON.stringify(r.hint)}`);
+    must(inside(r.hint.box, r.frame) && apart(r.hint.box, r.vitals) && apart(r.hint.box, r.ammo), `the widest hint must still fit: ${JSON.stringify(r.hint.box)}`);
+  });
+  await step(`${tag}: the item is not there: the countdown to the next spawn`, async () => {
+    const pg = await open(view, 'live-pu-taken', N, 2800); const r = await puWait(pg, r => r.hint, 1500); await pg.close();
+    must(r.hint && r.hint.kind === 'taken' && /^ROCKETS IN 1:5\d$/.test(r.hint.act) && r.hint.lab === 'NEXT SPAWN', `the hint: ${JSON.stringify(r.hint)}`);
+    must(apart(r.hint.box, r.vitals) && apart(r.hint.box, r.ammo), `the hint: ${JSON.stringify(r.hint.box)}`);
+  });
+  await step(`${tag}: both rockets fired: SWITCH WEAPON, and the ammo block still names the empty pickup in hand`, async () => {
+    const pg = await open(view, 'live-pu-empty', N, 5200); const r = await puWait(pg, r => r.hint && r.hint.kind === 'switch', 2500); await shot(pg, 'empty'); await pg.close();
+    must(r.hint && r.hint.act === 'SWITCH WEAPON' && r.hint.lab === 'ROCKETS EMPTY', `the hint: ${JSON.stringify(r.hint)}`);
+    must(!r.chip, 'the item is over: no held chip');
+    must(/ROCKETS/.test(r.wn || ''), `the weapon name: ${JSON.stringify(r.wn)}`);
+  });
+  await step(`${tag}: a death with an item held: the down screen shows no item, and the item is gone`, async () => {
+    const pg = await open(view, 'down-pu-held', N, 4700); const r = await puRead(pg); const held = await pg.evaluate(() => window.brx.engine.state().powerup.held); await pg.close();
+    must(!r.chip && !r.hint, `nothing of the item on the down screen: ${JSON.stringify({ chip: r.chip, hint: r.hint })}`);
+    must(held === null, 'the held item ended at the death');
+  });
+}
+// The powerup STATION (utility.html, kind 2): its item's name, AVAILABLE, the 1 s ring from the first claiming advert,
+// then TAKEN with the winner and the countdown. Driven through the REAL wire: `station_config` with the item, then
+// MC's `station_update`, then a fake player phone (utility.js `seedDemo`) that claims and turns claim_ready.
+const PU_ITEM = { kind: 'weapon', weapon_id: 'rocket_launcher', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'ROCKETS', color: '#ff7a1a' };
+const puStation = pg => pg.evaluate(() => { const t = id => { const e = document.getElementById(id); return e && !e.hidden && e.getBoundingClientRect().height > 0 ? e.textContent.trim() : null; };
+  const ring = document.getElementById('pring'); return { name: t('team'), kind: t('kind'), state: t('pstate'), next: t('pnext'), taker: t('ptaker'), pup: !!document.getElementById('pup') && !document.getElementById('pup').hidden,
+    ring: ring && !ring.hidden ? parseFloat(ring.style.getPropertyValue('--p')) : null, docH: document.documentElement.scrollHeight, vh: innerHeight,
+    px: (() => { const e = document.getElementById('pstate'); return e ? parseFloat(getComputedStyle(e).fontSize) : 0; })(), advert: window.brxUtility.advertFields() }; });
+for (const view of UTIL_VIEWS) {
+  await step(`utility A56 powerup station @ ${view.name}: its item, AVAILABLE, the claim ring, then TAKEN BY PLAYER 7 with the countdown`, async () => {
+    const pg = await openUtility(view, 'powerup', 255, 4);
+    await pg.evaluate(item => { window.brxUtility.mcMessage('station_config', { kind: 'powerup', team: 255, id: 4, game: 0, item }); }, PU_ITEM);
+    await pg.waitForTimeout(300);
+    const before = await puStation(pg);
+    await pg.evaluate(() => window.brxUtility.mcMessage('station_update', { id: 4, available: true, next_spawn_in_ms: 120000 }));
+    await pg.waitForTimeout(400);
+    const avail = await puStation(pg);
+    await pg.evaluate(() => { const f = window.brxUtilityFake[0]; f.bits = 16; f.value = 4; });   // player 7 steps up: claiming
+    await pg.waitForTimeout(700);
+    const claiming = await puStation(pg); await pg.screenshot({ path: `${OUT}/util-a56-claim-${view.name}.png` });
+    await pg.evaluate(() => { const f = window.brxUtilityFake[0]; f.bits = 48; });   // past the phone's own dwell: claim_ready
+    await pg.waitForTimeout(700);
+    const taken = await puStation(pg); await pg.screenshot({ path: `${OUT}/util-a56-taken-${view.name}.png` }); await pg.close();
+    must(before.name === 'ROCKETS' && before.pup && before.state === 'WAITING FOR MISSION CONTROL', `before MC's first update: ${JSON.stringify(before)}`);
+    must(before.advert.state === 0 && before.advert.value === 0 && before.advert.taker === 0, `the unknown advert pair: ${JSON.stringify(before.advert)}`);
+    must(avail.state === 'AVAILABLE' && avail.advert.state === 1, `available: ${JSON.stringify(avail)}`);
+    must(claiming.state === 'HOLD STILL' && claiming.ring > 0, `the ring from the first claiming advert: ${JSON.stringify(claiming)}`);
+    must(taken.state === 'TAKEN' && taken.taker === 'BY PLAYER 7' && /^NEXT 1:5\d$/.test(taken.next || ''), `taken: ${JSON.stringify(taken)}`);
+    must(taken.advert.state === 0 && taken.advert.taker === 7 && taken.advert.value >= 110, `the advert names the taker: ${JSON.stringify(taken.advert)}`);
+    must(taken.px >= 11 && taken.docH <= taken.vh, `fits the landscape screen, labels >= 11 px: ${JSON.stringify(taken)}`);
+  });
+}
+await step('utility A56 a powerup station from an MC with no item (the flag off, or an older MC) stays the plain POWERUP station', async () => {
+  const pg = await openUtility(UTIL_VIEWS[0], 'powerup', 255, 4);
+  await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'powerup', team: 255, id: 4, game: 0 }));
+  await pg.waitForTimeout(400); const r = await puStation(pg); await pg.close();
+  must(!r.pup && r.kind === 'POWERUP' && r.advert.state === 1, `no item: ${JSON.stringify(r)}`);
+});
+
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;
 }

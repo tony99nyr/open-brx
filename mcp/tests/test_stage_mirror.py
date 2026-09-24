@@ -1475,6 +1475,16 @@ KNOWN_UNMIRRORED = {
     "_headsetDeath", "_headsetDelayed", "_headsetFlash", "_headsetRest", "_reassertDeathBlink",
     # roles + stations
     "_carrier", "_setRole", "_respawnStation", "_stationRevivable", "setStations",
+    # A56 (S58, docs/spec/powerups.md), behind MC's `--powerups` flag until bench Sitting A passes. PRESENTATION only:
+    # the spawn announcer and the HUD's view (`_puTick`, `powerupView`, `_puNextInMs`). GAME STATE, but not portable
+    # yet: the claim, the grant, the end of an item and the overshield all hang off a powerup station's advert (its
+    # median RSSI and its `taker` byte, like `setStations` above) and the MATCH CLOCK's spawn schedule (like `goLiveT`
+    # below), and the stage models neither. The gun-facing writes (`_puGrantWeapon`/`_puGrantShield`/`_puEnd`) are the
+    # part to port, as a hand-driven stage button, once Sitting A has proved the spare slot and the `$BMAP` cycle.
+    "_puReset", "_puItems", "_puElapsed", "_puAdvertOf", "_puClaimable", "_puNextInMs", "_puMedian", "_puThreshold",
+    "_puStation", "_puAltRestore", "_puAltWith", "_altCycle", "_nextAltSlot", "_puObserve", "_puClaimTick",
+    "_puTakerCheck", "_puTick", "_puGrantWeapon", "_puGrantShield", "_puAmmo", "_puEnd", "_puShieldFrame", "_puDeath",
+    "powerupView",
     # S42 (2026-09-17): node-driven recoil. Every one of these reads `weaponRow(id).recoil` off the
     # CATALOG (`_activeWeaponId` -> `this.catalog`) -- and `weaponRow`/`catalog` are already pinned
     # above ("kitting / loadout browser -- HUD surface, no stage equivalent"): the bench configures a

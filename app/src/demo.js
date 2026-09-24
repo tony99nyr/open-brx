@@ -119,6 +119,7 @@ export function startDemo({ engine, log }) {
   ];
 
   let hp = 45, armor = 70, mag = 32, reserve = 384;
+  let shield = 0;   // A56: only an OVERSHIELD grant fills it on the demo gun (a `$LIFE` mode-2 set past the max); hits take it first
   let acc = 100;   // S53: the gun's live accuracy ($ALCD token 2). A smoke holds it at 0 for SMOKE_MS, like the bench gun
   const lcd = () => engine.feedFrame(`$LCD,${hp},${armor},0,0,${mag},${reserve},*`);
   // S54 (2026-09-23): one continuous trigger pull for the whole burst, not a press-shot-release per
@@ -156,7 +157,10 @@ export function startDemo({ engine, log }) {
           engine.feedFrame(`$ALCD,${live.ammo ?? mag},${acc},${engine.activeSlot || slot},${live.reserve ?? reserve},0,*`);
         }, 40);
       }
-      if (f.startsWith('$SPAWN,')) acc = 100;   // hardware clears every `$TMP` token on spawn
+      if (f.startsWith('$SPAWN,')) { acc = 100; shield = 0; }   // hardware clears every `$TMP` token on spawn, and the spawn shield is 0
+      // A56: `$LIFE` mode 2 is an ABSOLUTE set with no clamp (the overshield grant); the gun answers `$HP` with the new pools
+      const set = /^\$LIFE,(\d+),(\d+),(\d+),2,\*$/.exec(f);
+      if (set) { [hp, armor, shield] = set.slice(1).map(Number); setTimeout(() => engine.feedFrame(`$HP,${hp},${armor},${shield},*`), 40); continue; }
       const m = /^\$LIFE,(-?\d+),(-?\d+),(-?\d+),\*$/.exec(f);
       if (!m || !f.includes('-')) continue;
       const [dh, da] = m.slice(1).map(Number);
@@ -164,7 +168,7 @@ export function startDemo({ engine, log }) {
       setTimeout(() => engine.feedFrame(hp === 0 ? `$LCD,0,0,0,0,${mag},${reserve},*` : `$HP,${hp},${armor},0,*`), 40);
     }
   };
-  const hit = (dmg = 9) => { if (armor > 0) armor = Math.max(0, armor - dmg); else hp = Math.max(0, hp - dmg); engine.feedFrame(`$HIR,4,0,19,${foe.tid},9,0,3,*`); engine.feedFrame(`$HP,${hp},${armor},0,*`); };
+  const hit = (dmg = 9) => { if (shield > 0) shield = Math.max(0, shield - dmg); else if (armor > 0) armor = Math.max(0, armor - dmg); else hp = Math.max(0, hp - dmg); engine.feedFrame(`$HIR,4,0,19,${foe.tid},9,0,3,*`); engine.feedFrame(`$HP,${hp},${armor},${shield},*`); };
 
 
   // ---------- STAGE harness: ?demo&stage=<state> ----------
@@ -360,7 +364,7 @@ export function startDemo({ engine, log }) {
       // the gun (what the tagger would report)
       fire: n => fire(n == null ? 1 : n), reload, hit: d => hit(d == null ? 9 : d),
       spawnEcho: () => { hp = engine.maxHp; armor = engine.maxArmor; mag = 32; reserve = 384; lcd(); },
-      die: () => { armor = 0; hp = 0; engine.feedFrame(`$HIR,4,0,19,${foe.tid},9,0,3,*`); engine.feedFrame('$HP,0,0,0,*'); },
+      die: () => { armor = 0; hp = 0; shield = 0; engine.feedFrame(`$HIR,4,0,19,${foe.tid},9,0,3,*`); engine.feedFrame('$HP,0,0,0,*'); },
       respawn: () => { if (engine.alive) return; engine._revive(false); hp = engine.maxHp; armor = engine.maxArmor; setTimeout(lcd, 250); },
       heal: (n = 15) => { hp = Math.min(engine.maxHp, hp + n); engine.feedFrame(`$HP,${hp},${armor},0,*`); },
       armorUp: (n = 30) => { armor = Math.min(engine.maxArmor, armor + n); engine.feedFrame(`$HP,${hp},${armor},0,*`); },
@@ -409,6 +413,37 @@ export function startDemo({ engine, log }) {
       beacon: (tid = 1) => engine.feedFrame(`$HIR,4,15,0,${tid},8,0,0,*`),   // a grenade hill's IR beacon: owner tid, magnitude 8
       hillTaken: (tid = 1) => engine.feedFrame(`$HIR,4,15,0,${tid},50,0,0,*`),   // QA-05: the grenade's capture word (magnitude 50) naming the new owner
       addMate: () => { if (!roster.some(r => r.player_num === 23)) roster.push({ player_id: 'p-4', player_num: 23, display: 'MAVERICK', team_id: teamKey }); },   // QA-05: a teammate the roster can name
+    });
+    // ---- A56 powerups (docs/spec/powerups.md): a powerup game through the REAL engine. The config carries the stations'
+    // items and the armed pickup slots exactly as MC's `--powerups` compile sends them; the stations are fake adverts fed
+    // through the same presence path the app uses, with the claim's median RSSI and the station's `taker` byte. ----
+    const PU = {
+      rockets: { kind: 'weapon', weapon_id: 'rocket_launcher', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'ROCKETS', color: '#ff7a1a' },
+      rail: { kind: 'weapon', weapon_id: 'rail_gun', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'RAIL GUN', color: '#b06cff' },
+      overshield: { kind: 'overshield', amount: 75, spawn_every_s: 60, first_at_s: 60, name: 'OVERSHIELD', color: '#3ad6ff' },
+    };
+    const puList = new Map();
+    const puFeed = () => { const list = [...puList.values()].map(e => ({ ...e, seenAt: Date.now(), ageMs: 0 }));
+      const pr = (typeof window !== 'undefined' && window.brx) ? window.brx.presence : null;
+      if (pr) pr.stations = () => list;   // the app feeds engine.setStations(presence.stations()) every 250 ms
+      engine.setStations(list); };
+    Object.assign(ev, {
+      // `firstOvershield`: the overshield's first spawn in seconds after go-live (the spawn-card stage uses 1)
+      powerups: (firstOvershield = 60) => { config.stations = [{ id: 4, kind: 'powerup', item: PU.rockets }, { id: 5, kind: 'powerup', item: PU.rail },
+        { id: 6, kind: 'powerup', item: { ...PU.overshield, first_at_s: firstOvershield } }];
+        config.powerups = [{ weapon_id: 'rocket_launcher', slot: 2 }, { weapon_id: 'rail_gun', slot: 3 }]; },
+      // one powerup station's advert: `median` is the claim's range reading (in range at -55, the default threshold)
+      puAt: (id = 4, { median = -50, state = 1, value = 0, taker = 0 } = {}) => {
+        puList.clear();
+        puList.set(id, { role: 'station', kind: 'powerup', id, team: 255, state, value, taker, seq: 0, game: 0, threshold: 0, median, raw: median, rssi: median, present: false });
+        puFeed(); },
+      puAway: () => { puList.clear(); puFeed(); },
+      // stand at the station past the 1 s dwell, then the station names its winner (7 = this phone, 19 = VIPER)
+      puTake: (id = 4, taker = 7) => { ev.puAt(id); setTimeout(() => ev.puAt(id, { state: 0, value: 118, taker }), 1300); },
+      // ALT onto the pickup slot, and a round out of it, as the gun reports them ($ALCD token 3 = the slot)
+      puAlt: () => { ev.alt(); const h = engine.state().powerup && engine.state().powerup.held; if (h) setTimeout(() => engine.feedFrame(`$ALCD,${h.left},100,${h.slot},0,0,*`), 600); },
+      puFire: () => { const h = engine.state().powerup && engine.state().powerup.held; if (!h) return;
+        engine.feedFrame('$BUT,0,1,*'); engine.feedFrame(`$ALCD,${Math.max(0, h.left - 1)},100,${h.slot},0,0,*`); engine.feedFrame('$BUT,0,0,*'); },
     });
     // A full life: two sources, two victims, rounds fired and a confirmed kill, then VIPER's rifle finishes it.
     const fullLife = [[2000, () => { ev.fire(7); ev.hitFrom(19, 9, 20); ev.hitFrom(21, 8, 12); ev.hitFrom(21, 8, 12); }],
@@ -552,6 +587,20 @@ export function startDemo({ engine, log }) {
       'live-callout-by':    [[0, () => ev.addMate()], ...live, [2300, () => engine.feedFrame(`$HIR,4,15,23,3,${21 + foe.tid},0,0,*`)]],   // DOWN_BY naming MAVERICK: ENEMY DOWN · BY MAVERICK
       'live-hill-captured': [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.beacon(2)], [2400, () => ev.hillTaken(team.tid)]],
       'live-hill-lost':     [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.beacon(team.tid)], [2400, () => ev.hillTaken(team.tid === 0 ? 3 : 0)]],   // we hold it (adopted silently), then an enemy's capture word
+      // ---- A56 powerups: every state below is the REAL engine, fed a powerup game and fake station adverts ----
+      'live-pu':             [[0, () => ev.powerups()], ...live],                                                      // a powerup game, nothing near: the HUD is unchanged
+      'live-pu-spawn':       [[0, () => ev.powerups(1)], ...live],                                                     // OVERSHIELD AVAILABLE, 1 s after go-live
+      'live-pu-approach':    [[0, () => ev.powerups()], ...live, [2300, () => ev.puAt(4, { median: -62 })]],          // heard, not at it: GET CLOSER
+      'live-pu-claim':       [[0, () => ev.powerups()], ...live, [2300, () => ev.puAt(4)]],                             // standing at it: the ring, HOLD STILL
+      'live-pu-rockets':     [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)]],                           // the station named me: ROCKETS, 2 charges beside the ammo
+      'live-pu-swap':        [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [3900, () => ev.puTake(5)]],   // RAIL GUN replaces ROCKETS
+      'live-pu-overshield':  [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(6)]],                           // +75 on the shield bar
+      'live-pu-overshield-hit': [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(6)], [3900, () => ev.hit(30)]],   // hits take the overshield first
+      'live-pu-empty':       [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [3900, 'puAlt'], [4700, 'puFire'], [4800, 'puFire']],   // both rockets fired: SWITCH WEAPON
+      'down-pu-held':        [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [3900, 'die']],           // a death with an item held: it is gone
+      'live-pu-taken-by':    [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4, 19)]],                      // VIPER won it: TAKEN BY VIPER
+      'live-pu-no-answer':   [[0, () => ev.powerups()], ...live, [2300, () => ev.puAt(4)]],                             // ready, and the station never answers
+      'live-pu-taken':       [[0, () => ev.powerups()], ...live, [2300, () => ev.puAt(4, { state: 0, value: 110, median: -60 })]],   // taken: the countdown to the next spawn
     };
     const steps = STAGES[stageName];
     if (!steps) log(`stage "${stageName}" unknown — one of: ${Object.keys(STAGES).join(' ')}`, 'le');
