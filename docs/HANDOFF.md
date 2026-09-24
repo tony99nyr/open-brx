@@ -89,7 +89,13 @@ On `main` 2026-09-23: the desk halves of **F297** (`connect-metrics`), **F269** 
 2026-09-24: 0.4.6 published; F318, F108, F325, F133, F52, K8 closed. **Next:** bench F309/F311/F312; 0.4.7 cut on brx1's word.
 
 ## Lane: S57, B21, StickS3 (brx4)
-2026-09-23: **S57 built** (docs/ir-callouts.md); Block 7 of `bench-2026-09-24.md` settles it, F312 first. **B21:** key made and 0.4.6 built; its one blocker is above. **StickS3 (H7):** BLE and IR TX work; IR RX is F314. Start the next Stick session with `.claude/skills/m5stick-bench` and `hardware/m5sticks3/README.md`: `stick.py flash`, then `SELFTEST`, then the sheet's rerun.
+2026-09-24: the StickS3 station screens (`7d3aab31`, two polish rounds `25ed6096`/`764dffd3`) and the A58 match
+lock (`7f6765b9`) are on `main`; both are unproven on hardware. `F332` is filed: the side button's PM1 lock is a
+documented TODO (registers 0x49/0x4A unconfirmed), so a locked Stick can still be restarted or powered off by
+hand. `F333` is filed: five screens (hill capturing/contested, the respawn revive count, an empty pickup, the
+settings flow) are not yet wired. The bench hold from brx1 is still in effect; do not flash until it lifts.
+**Next:** F314's distance ladder (`bench-sticks3-2026-09-23.md` Rerun), then F332 (datasheet or bench) and F333.
+The MC half of A58 (`station_config.lock_s` compile + console) is brx3's lane, not this one.
 ## Lane: powerups and the shield HUD (brx5)
 2026-09-24: S58 powerups built behind MC `--powerups`, off until bench Sitting A 3.3 (items 1-8) and 4.11 pass; three polish rounds. Next: S59 Halo shield variants await Tony's pick (branch `shield-halo`), F331 Lows.
 
