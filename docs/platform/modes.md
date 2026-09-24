@@ -16,7 +16,7 @@ met a tagger can still surprise you.
 |---|---|---|
 | Team Deathmatch | Teams score a point per elimination. Downed players respawn after a delay. Highest score at the cap or the clock wins. | The laptop-only path on 2026-08-25: two taggers, one command, spawn, hits, deaths, host-driven respawn, a frag limit and the correct winner. The Mission Control plus phones path ran outdoors on 2026-09-01 with two Android phones, and the frag limit ends the match from Mission Control's own scorer. |
 | Free-for-all | No teams. Every elimination scores for the shooter. First to the frag limit, or the top score at the clock. | A 300 second match on 2026-08-30: two phones, two taggers, 12 kills over 126 landed hits. |
-| King of the Hill | One point. Hold the hill and possession scores for your team. | Proven end to end through a tagger on 2026-09-10. The hill is a BRX Smart Grenade in hill mode, so the mode needs no station hardware at all: the grenade beacons its owner, the tagger reports the beacon over Bluetooth, and Mission Control scores possession. |
+| King of the Hill | One point. Hold the hill and possession scores for your team. | Proven end to end through a tagger on 2026-09-10, using a BRX Smart Grenade in hill mode: the grenade beacons its owner, the tagger reports the beacon over Bluetooth, and Mission Control scores possession. The grenade hill still works and stays selectable, but it is now post-MVP: the default hill is a spare phone in the utility role, captured by presence. |
 
 **Written, never played on taggers:**
 
@@ -127,11 +127,11 @@ the reload without it counting for anything.
 
 A control point is a place on the field a team can own: the King of the Hill point, a Domination point, a bomb site. There are two ways to put one on your field, and the choice is not cheap against expensive.
 
-**The Smart Grenade is what works today.** It is the only control point you can shoot, and the only one that plays inside a native game with no host running at all. What it does and what it costs are on the [gameplay page](/manual/gameplay). King of the Hill uses it, and that is the mode that has been played on hardware.
+**The Smart Grenade is the only control point you can shoot**, and the only one that plays inside a native game with no host running at all. What it does and what it costs are on the [gameplay page](/manual/gameplay). It is the control point King of the Hill was proven with on hardware, on 2026-09-10, but the mode's default has since moved on: King of the Hill now defaults to a phone control point instead, and the grenade is a post-MVP option you can still pick.
 
-**A phone as a control point is designed and specified, and not built.** Read the table below as the plan. It is what you reach for when you want more than one point, or want the point to count people, or want it to keep scoring after you walk away.
+**A phone as a control point is King of the Hill's default (2026-09-24).** Read the table below as the plan. It is what you reach for when you want more than one point, or want the point to count people, or want it to keep scoring after you walk away.
 
-| | Smart Grenade, Hill mode | A phone as a control point (written, never played on taggers) |
+| | Smart Grenade, Hill mode (post-MVP) | A phone as a control point (written, never played on taggers; the King of the Hill default) |
 |---|---|---|
 | How you capture it | shoot it. Charge accumulates, any weapon counts | stand on it |
 | More than one point | no. A beacon carries no point id, so two grenades cannot be told apart on the wire | yes. Every point carries its own station id |
@@ -148,11 +148,11 @@ A control point is a place on the field a team can own: the King of the Hill poi
 
 The money does not buy capability, then. It buys the interaction: you can shoot the grenade, everybody nearby sees and hears it flip, and it works in a native game with nothing else switched on.
 
-**One caveat if you run a hill game today.** An enemy-held hill emits an ordinary damage word, so in a hosted game its chip damage is currently indistinguishable from being shot. A fix is under investigation (moving our own weapons off the IR protocol the hill uses) and it has not been tested.
+**One caveat if you run a grenade hill game today.** An enemy-held grenade hill emits an ordinary damage word, so in a hosted game its chip damage is currently indistinguishable from being shot. A fix is under investigation (moving our own weapons off the IR protocol the hill uses) and it has not been tested.
 
 ## What is not built yet
 
-- The remaining objective modes (Domination, Capture the Flag, Counter-Strike) cannot be configured from Mission Control. Their settings do not cross the wire yet. King of the Hill is the exception: it is in the mode list, and its hill is a Smart Grenade rather than a station.
+- The remaining objective modes (Domination, Capture the Flag, Counter-Strike) cannot be configured from Mission Control. Their settings do not cross the wire yet. King of the Hill is the exception: it is in the mode list, and its hill now defaults to a phone control point rather than the Smart Grenade, which stays selectable as a post-MVP option.
 - Extraction's objective rules (the zone, the loot, the channel timer) run only on the laptop command line. The phone knows nothing about them.
 - Syphon and regenerating health are laptop-only for the same reason.
 - Mission Control arms utility phones from the muster items panel: a spare phone can be armed as a respawn station or a control point before the match. Dedicated station hardware does not exist yet, and the Smart Grenade is set by its own button, not by Mission Control.

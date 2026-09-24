@@ -201,7 +201,7 @@ def test_compiling_a_hill_head_on_the_neutral_tid_raises():
 # --------------------------------------------------------------------------- #
 def test_a_koth_config_carries_a_station_source_the_operator_can_see():
     cfg = default_config("koth")
-    assert cfg["station_source"] == "grenade", cfg.get("station_source")
+    assert cfg["station_source"] == "phone", cfg.get("station_source")   # Tony 2026-09-24: grenade is post-MVP
     # A mode with no objective emitter must not grow the key at all: a saved game's identity is its
     # whole config, so a null nobody set would have re-keyed every stored game.
     assert "station_source" not in default_config("tdm")
@@ -242,7 +242,7 @@ def test_the_config_put_refuses_an_unknown_station_source():
         raise AssertionError("MC accepted an unknown station_source")
     except ValueError as e:
         assert all(v in str(e) for v in STATION_SOURCES), e
-    assert s.config["station_source"] == "grenade", "the refused PUT must not have touched the config"
+    assert s.config["station_source"] == "phone", "the refused PUT must not have touched the config"
     # CONTROL: a value IN the vocabulary applies.
     s.set_config({"station_source": "ir_station"})
     assert s.config["station_source"] == "ir_station"
@@ -268,6 +268,7 @@ def test_a_grenade_objective_tells_the_operator_to_power_cycle_it_first():
     sign of why (bench 2026-09-10: a power-cycled grenade read team 2 = NEUTRAL; one that had been
     claimed in a native game still read its old owner)."""
     s = _sess("koth")
+    s.set_config({"station_source": "grenade"})   # post-MVP, picked by hand (the stock card is "phone")
     setup = [w for w in s.config_warnings if w.startswith("SETUP:")]
     assert len(setup) == 1, s.config_warnings
     w = setup[0].upper()
@@ -301,7 +302,7 @@ def test_multiple_control_points_on_a_grenade_source_are_refused():
     """F88: a beacon carries no station id, so two grenades in range are indistinguishable and would
     fight over the same point. MC cannot configure points today, so this is the guard for a config
     that reaches the compiler another way (a hand-built preset, the sim, a future designer field)."""
-    cfg = dict(default_config("koth"), control_points=3)
+    cfg = dict(default_config("koth"), station_source="grenade", control_points=3)
     res = C.validate(cfg, [], {})
     assert any("F88" in e for e in res["errors"]), res["errors"]
     # CONTROLS: one point is fine, and a source that NAMES its point is not limited this way.
@@ -326,7 +327,7 @@ def test_the_mode_row_is_shaped_like_every_other_one_and_wins_by_possession():
     # The rail's rows come off this row and the config, so both have to exist for koth.
     s = _sess("koth")
     view = next(m for m in s.modes() if m["mode"] == "koth")
-    assert view["defaults"]["station_source"] == "grenade"
+    assert view["defaults"]["station_source"] == "phone"
     assert view["defaults"]["presentation"]["preset"] == "standard"
 
 
@@ -509,10 +510,42 @@ def test_a_phone_control_point_is_a_station_source_with_its_own_checklist():
     r = C.validate(s.config, _roster(s), {})
     assert r["ok"], r["errors"]
     setup = [w for w in r["warnings"] if w.startswith("SETUP:")]
-    assert len(setup) == 1 and "PHONE" in setup[0] and "MC-ARMED" in setup[0], setup
+    assert len(setup) == 1 and "BLUETOOTH STATION" in setup[0] and "MC-ARMED" in setup[0], setup
     assert "power-cycle" in setup[0].lower() and "do not" in setup[0].lower(), "a phone point is never power-cycled"
     assert "GRENADE" not in setup[0]
     # CONTROL: the grenade line is unchanged and still names the power cycle as the reset.
     s.set_config({"station_source": "grenade"})
     g = [w for w in C.validate(s.config, _roster(s), {})["warnings"] if w.startswith("SETUP:")]
     assert len(g) == 1 and "POWER-CYCLE THE GRENADE" in g[0], g
+
+
+def test_koth_defaults_to_a_bluetooth_hill_and_the_grenade_stays_selectable():
+    """Tony 2026-09-24: grenade hill support is POST-MVP; the MVP hill is a Bluetooth control point (a StickS3
+    or phone station), so the stock KOTH card compiles station_source "phone". A saved game or an operator
+    can still pick the grenade (it stays in the vocabulary, marked post-MVP in the console)."""
+    from brx_mcp.mc.state import default_config
+    assert default_config("koth").get("station_source") == "phone"
+    s = _sess_koth_for_default()
+    assert s.config["station_source"] == "phone"
+    s.set_config({"station_source": "grenade"})
+    assert s.config["station_source"] == "grenade"
+
+
+def _sess_koth_for_default():
+    from brx_mcp.mc.compile import Compiler
+    from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
+    from brx_mcp.mc.state import Session
+    s = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()))
+    s.set_config({"mode": "koth"})
+    return s
+
+
+def test_a_koth_game_saved_before_the_phone_default_still_loads_on_the_grenade():
+    """Saved games carry their own `station_source`, so one saved while the stock card was the grenade
+    comes back on the grenade (it is still selectable), and the SETUP lines follow it."""
+    s = _sess_koth_for_default()
+    old = s.sanitize_config(dict(default_config("koth"), station_source="grenade"))
+    s.set_config({"mode": "tdm"})
+    s.apply_preset("saved-before", old)
+    assert s.config["mode"] == "koth" and s.config["station_source"] == "grenade"
+    assert any("POWER-CYCLE" in w for w in s.config_warnings), s.config_warnings

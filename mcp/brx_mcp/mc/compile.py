@@ -2998,15 +2998,15 @@ class Compiler:
                     # `applyStationConfig` calls `resetPoint()` when the game id changes), so the
                     # checklist is about the app being in the right role and staying awake on the point.
                     warnings.append(
-                        "SETUP: THE CONTROL POINT IS A PHONE — open the app in the UTILITY role, kind "
-                        "CONTROL, confirm it shows MC-ARMED for THIS game (arming resets the point; do NOT "
-                        "power-cycle it), leave the screen awake on the point, and check its battery. "
+                        "SETUP: THE CONTROL POINT IS A BLUETOOTH STATION — a phone in the UTILITY role, kind "
+                        "CONTROL; confirm it shows MC-ARMED for THIS game (arming resets the point; do "
+                        "NOT power-cycle it), keep it awake on the point, and check its battery. "
                         "Players must be advertising (the HUD does this) or the point counts nobody")
                 else:
                     warnings.append(
                         "SETUP: PLACE AND POWER THE IR STATION, AND CHECK IT READS NEUTRAL BEFORE THE "
                         "WHISTLE — ⚠ UNPROVEN: we have never had one on the bench, so nothing confirms it "
-                        "speaks the protocol our nodes read. Run the grenade if you want a hill we have measured")
+                        "speaks the protocol our nodes read. Use OBJECTIVE SOURCE PHONE for the MVP hill")
 
         # unknown weapon / perk ids; a perk rides BESIDE a secondary weapon (A14) -- the ALT-button pairing is refused by policy.py before it gets here
         for p in roster:

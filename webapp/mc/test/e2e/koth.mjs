@@ -334,6 +334,15 @@ async function resetTdm(base) {
  *  what a STEP may have done to the roster, not against what a mode pick does. `reteam-visible` still
  *  does not call it: what that step watches is exactly the mode pick's own re-teaming.
  */
+// Tony 2026-09-24: KOTH's stock hill is a Bluetooth station (`station_source: "phone"`); the grenade is
+// POST-MVP but still selectable, so the grenade-specific steps pick it by hand.
+const OBJ_PHONE = 'BLUETOOTH HILL · PHONE · PRESENCE';
+const PHONE_STEP = 'BLUETOOTH STATION';
+async function setSource(base, station_source) {
+  const r = await fetch(`${base}/api/config`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ station_source }) });
+  if (!r.ok) throw new Error(`setSource(${station_source}): PUT /api/config ${r.status}`);
+}
+
 async function rebalance(base) {
   const st = await (await fetch(`${base}/api/state`)).json();
   const teams = st.config.teams.map(t => t.team_id);
@@ -452,12 +461,12 @@ step('objective-row', async ({ browser, base }) => {
   const row = railRow(pg, 'OBJECTIVE');
   expect(await row.count() > 0, 'the rail has an OBJECTIVE row for a station-gated mode');
   const v = (await row.textContent()).trim();
-  expect(v === 'GRENADE HILL · ONE POINT', `OBJECTIVE reads "GRENADE HILL · ONE POINT" (saw ${JSON.stringify(v)})`);
+  expect(v === OBJ_PHONE, `OBJECTIVE reads "${OBJ_PHONE}" (saw ${JSON.stringify(v)})`);
   expect(await row.isVisible(), 'the OBJECTIVE row is visible, not merely in the DOM');
   // and it must be ABSENT for a mode that has no station source — the row is not decoration
   await pickTile(pg, tdmCard(pg), { what: 'TDM playing', playing: false });
   await until(async () => (await railRow(pg, 'OBJECTIVE').count()) === 0, 6000, 'the OBJECTIVE row to disappear for TDM');
-  ok(`OBJECTIVE = GRENADE HILL · ONE POINT on koth, absent on tdm  ${await shot(pg, '03-objective-row')}`);
+  ok(`OBJECTIVE = ${OBJ_PHONE} on koth, absent on tdm  ${await shot(pg, '03-objective-row')}`);
   await closePage(pg);
 });
 
@@ -467,6 +476,7 @@ step('setup-warning', async ({ browser, base }) => {
   // it must NOT be on screen before a hill mode is picked
   expect(await pg.locator('text=POWER-CYCLE THE GRENADE').count() === 0, 'no grenade setup step is shown for the default mode');
   await pickKoth(pg, { playing: false });
+  await setSource(base, 'grenade');           // post-MVP, picked by hand: its field step is still the operator's
   await until(async () => (await pg.locator('text=POWER-CYCLE THE GRENADE').count()) > 0, 8000, 'the SETUP warning to arrive with the snapshot');
   const warn = pg.locator('main div[role="status"] div', { hasText: 'POWER-CYCLE THE GRENADE' }).first();
   expect(await warn.isVisible(), 'the SETUP warning is visible in the rail');
@@ -513,8 +523,8 @@ step('setup-steps-prematch', async ({ browser, base }) => {
     await until(() => steps_.count().then(n => n > 0), 8000, `the SETUP steps on ${view}`);
     expect(await steps_.isVisible(), `the SETUP step is VISIBLE on ${view.toUpperCase()}, where it is actionable`);
     const txt = (await steps_.textContent()).toUpperCase();
-    expect(txt.includes('POWER-CYCLE THE GRENADE'), `${view}: the step names the power cycle`);
-    expect(txt.includes('PLACE IT'), `${view}: the step says to place it`);
+    expect(txt.includes('CONTROL POINT IS A BLUETOOTH STATION'), `${view}: the step names the station hill`);
+    expect(txt.includes('MC-ARMED'), `${view}: the step says to check it is MC-armed`);
     // the narrowing, asserted on the screen the operator reads last
     const screen = (await pg.locator('main').textContent());
     expect(!/\$SIR/.test(screen), `${view}: no $SIR multiplier advisory on a pre-match screen`);
@@ -628,17 +638,17 @@ step('station-source-control', async ({ browser, base }) => {
   expect(await grp.count() === 1, 'the DESIGNER has an OBJECTIVE SOURCE control for a station-gated mode');
   if (await grp.count() !== 1) { await shot(pg, '07-station-source-MISSING'); await closePage(pg); return; }
   const labels = (await grp.locator('button').allTextContents()).map(s => s.trim());
-  expect(JSON.stringify(labels) === JSON.stringify(['GRENADE', 'IR STATION', 'PHONE']), `it offers exactly the server vocabulary (saw ${JSON.stringify(labels)})`);
+  expect(JSON.stringify(labels) === JSON.stringify(['GRENADE · POST-MVP', 'IR STATION', 'PHONE']), `it offers exactly the server vocabulary, the grenade marked post-MVP (saw ${JSON.stringify(labels)})`);
   const on = await grp.locator('button[aria-pressed="true"]').textContent();
-  expect(on.trim() === 'GRENADE', `koth defaults to GRENADE (saw ${JSON.stringify(on.trim())})`);
+  expect(on.trim() === 'PHONE', `koth defaults to PHONE (saw ${JSON.stringify(on.trim())})`);
   // clicking the other value must visibly change the rail, not just the draft object
   await grp.locator('button:text-is("IR STATION")').click();
   await until(async () => /IR STATION/.test(await pg.locator('aside.designer-rail').textContent()), 4000, 'the designer rail to follow the pick');
   expect((await grp.locator('button[aria-pressed="true"]').textContent()).trim() === 'IR STATION', 'the chip reports itself pressed');
   const hint = await pg.locator('main').textContent();
   expect(/UNPROVEN|NEVER HAD ONE|NOT CONFIRMED/i.test(hint), 'IR STATION is marked as never bench-proven');
-  await grp.locator('button:text-is("GRENADE")').click();
-  await until(async () => /GRENADE/.test(await railRow(pg, 'OBJECTIVE').textContent()), 4000, 'the rail back to GRENADE');
+  await grp.locator('button:text-is("GRENADE · POST-MVP")').click();
+  await until(async () => /GRENADE HILL/.test(await railRow(pg, 'OBJECTIVE').textContent()), 4000, 'the rail to follow the grenade pick');
   ok(`OBJECTIVE SOURCE is reachable and both values respond  ${await shot(pg, '07-station-source')}`);
   await closePage(pg);
 });
@@ -1146,11 +1156,11 @@ for (const [name, vp] of [['pixel4', { width: 393, height: 830 }], ['tablet', { 
     // the two things this flow exists to say must survive the narrow layout: still rendered, still
     // unclipped. (`isVisible()` is not "in the viewport" — the width check is what proves nothing is
     // cut off, and the rail is below the fold at 393px by design.)
-    const warn = pg.locator('main div[role="status"] div', { hasText: 'POWER-CYCLE THE GRENADE' }).first();
+    const warn = pg.locator('main div[role="status"] div', { hasText: PHONE_STEP }).first();
     expect(await warn.isVisible(), `the SETUP warning is still rendered at ${vp.width}px`);
     const wb = await warn.boundingBox();
     expect(wb && wb.x >= -1 && wb.x + wb.width <= vp.width + 1, `the SETUP warning fits the ${vp.width}px width (${JSON.stringify(wb)})`);
-    expect((await railRow(pg, 'OBJECTIVE').textContent()).includes('GRENADE HILL'), `the OBJECTIVE row survives at ${vp.width}px`);
+    expect((await railRow(pg, 'OBJECTIVE').textContent()).includes('BLUETOOTH HILL'), `the OBJECTIVE row survives at ${vp.width}px`);
     ok(`${vp.width}x${vp.height} clean  ${await shot(pg, `13-${name}`)}`);
     await closePage(pg);
   });
@@ -1187,7 +1197,7 @@ step('audit-text', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
   await pickKoth(pg, { playing: false });
-  await until(async () => (await pg.locator('text=POWER-CYCLE THE GRENADE').count()) > 0, 8000, 'the SETUP warning');
+  await until(async () => (await pg.locator(`text=${PHONE_STEP}`).count()) > 0, 8000, 'the SETUP warning');
   // meaning-carrying text only: the nav's 01..05 digits and the mode-card abbreviations are decorative
   const tiny = await pg.evaluate(() => [...document.querySelectorAll('main *')]
     .filter(el => el.children.length === 0 && (el.textContent || '').trim().length > 3)
@@ -1208,8 +1218,8 @@ step('mock-demo', async ({ browser, base }) => {
   await until(() => pg.locator('main', { hasText: '[ A2 // GAMES ]' }).count().then(n => n > 0), 10000, 'the mock GAMES screen');
   await showCards(pg);
   await pickKoth(pg, { ms: 6000, what: 'KotH playing in the demo' });
-  expect((await railRow(pg, 'OBJECTIVE').textContent()).trim() === 'GRENADE HILL · ONE POINT', 'the demo shows the same OBJECTIVE row');
-  expect(await pg.locator('text=POWER-CYCLE THE GRENADE').first().isVisible(), 'the demo shows the same SETUP step');
+  expect((await railRow(pg, 'OBJECTIVE').textContent()).trim() === OBJ_PHONE, 'the demo shows the same OBJECTIVE row');
+  expect(await pg.locator(`text=${PHONE_STEP}`).first().isVisible(), 'the demo shows the same SETUP step');
   // The demo backend lives in the page, so a reload restarts it: `go()` is out, and the walk has to
   // be a real click. The nav tab is the right one here — this step is about the KIT team chips, not
   // about pushing, and the demo's deliberately RED gun would make LOAD the forcing variant.

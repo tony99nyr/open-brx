@@ -95,11 +95,11 @@ brx-mcp also speaks MCP, the protocol AI agents use to call tools. So an agent c
 
 ## Objectives
 
-### A grenade is a control point.
+### A control point: presence, or a grenade you shoot.
 
 ![A BRX smart grenade in hill mode, lit](/photos/grenade.jpg)
 
-Set a BRX smart grenade to hill mode and it becomes a king-of-the-hill objective. The taggers already see its beacon, so possession is read off the player's own tagger. No base, no extra hardware, no firmware change. The same idea gives you respawn points: a spare phone works as one today, and a pocket station follows the same beacon design.
+The King of the Hill point defaults to presence: a spare phone sitting on the objective, reading who is nearby over Bluetooth. Set a BRX smart grenade to hill mode instead and it also works as a king-of-the-hill objective, shot rather than stood on: the taggers already see its beacon, so possession is read off the player's own tagger, with no base, no extra hardware and no firmware change. The same presence idea gives you respawn points: a spare phone works as one today.
 
 ## The kit
 

@@ -18,7 +18,7 @@ describe('mock putConfig — a bare {mode} patch mirrors default_config(mode)', 
     await b.putConfig({ mode: 'koth' });
     const koth = await b.getState();
     expect(koth.config.teams.map(t => t.team_id).sort(), 'KOTH declares BLUE/GREEN, not TDM leftovers').toEqual(['blue', 'green']);
-    expect(koth.config.station_source, 'KOTH needs its objective source too').toBe('grenade');
+    expect(koth.config.station_source, 'KOTH needs its objective source too').toBe('phone');
   });
 
   it('a venue fact set before the switch survives it, exactly like the server carries it forward', async () => {
@@ -33,8 +33,8 @@ describe('mock putConfig — a bare {mode} patch mirrors default_config(mode)', 
   it('TDM -> FFA drops the stale station_source the way the server does', async () => {
     const b = new MockBackend();
     await b.putConfig({ mode: 'koth' });
-    expect((await b.getState()).config.station_source).toBe('grenade');
+    expect((await b.getState()).config.station_source).toBe('phone');
     await b.putConfig({ mode: 'ffa' });
-    expect((await b.getState()).config.station_source, 'FFA has no objective source; the old grenade key must not survive').toBeUndefined();
+    expect((await b.getState()).config.station_source, 'FFA has no objective source; the old key must not survive').toBeUndefined();
   });
 });

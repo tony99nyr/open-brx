@@ -382,10 +382,10 @@ def test_the_utility_heartbeat_is_kept_as_the_stations_report():
 def test_a_station_gated_game_with_nothing_assigned_says_so_in_config_warnings():
     s = _sess("koth", station_source="phone")
     s._validate()
-    assert any("NO CONTROL-POINT PHONE" in w for w in s.config_warnings), s.config_warnings
+    assert any("NO CONTROL STATION IS ASSIGNED" in w for w in s.config_warnings), s.config_warnings
     s.net.simulate_utility_hello("util-1")
     s.set_station("util-1", {"kind": "control", "team": "any", "id": 9})
-    assert not any("NO CONTROL-POINT PHONE" in w for w in s.config_warnings), "assigning one clears it"
+    assert not any("NO CONTROL STATION IS ASSIGNED" in w for w in s.config_warnings), "assigning one clears it"
     # scanner respawn wants a respawn station the same way
     t = _sess(respawn={"type": "scanner", "delay_s": 15})
     assert any("NO RESPAWN STATION" in w for w in t.config_warnings), t.config_warnings
@@ -899,3 +899,27 @@ def test_a_release_that_reached_no_socket_leaves_the_assignment_alone():
     assert s.release_station("util-1") is False
     assert (s.stations["util-1"]["assigned"] or {}).get("id") == 9
     assert [x["id"] for x in s._station_ids()] == [9]
+
+
+def test_a_control_station_under_a_grenade_objective_is_named_not_silently_ignored():
+    """Stick hills (Tony 2026-09-24: Stick stations are Bluetooth-only for MVP) advertise the same kind-5
+    control point a phone does, and every phone drops it unless station_source is "phone"
+    (`engine.js _hillSourceAllowed`). KOTH's stock card is "grenade", so an assigned CONTROL station
+    was a hill nobody could take, and MC said nothing. It says so now; it does not switch the source
+    (a grenade hill with a spare station out is a real setup)."""
+    for src, word in (("grenade", "GRENADE"), ("ir_station", "IR STATION")):
+        s = _sess("koth", station_source=src)
+        s.net.simulate_utility_hello("util-1")
+        s.set_station("util-1", {"kind": "control", "team": "any", "id": 9})
+        hits = [w for w in s.config_warnings if "A CONTROL STATION IS ASSIGNED" in w]
+        assert hits and word in hits[0] and "OBJECTIVE SOURCE" in hits[0], (src, s.config_warnings)
+        assert s.config["station_source"] == src, "never auto-switched"
+    # CONTROL: the right source, or no control station, says nothing
+    s = _sess("koth", station_source="phone")
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "control", "team": "any", "id": 9})
+    assert not any("A CONTROL STATION IS ASSIGNED" in w for w in s.config_warnings), s.config_warnings
+    t = _sess("koth", station_source="grenade")
+    t.net.simulate_utility_hello("util-1")
+    t.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 4})
+    assert not any("A CONTROL STATION IS ASSIGNED" in w for w in t.config_warnings), t.config_warnings

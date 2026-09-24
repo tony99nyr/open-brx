@@ -46,7 +46,7 @@ kills), CaptureTheFlag, SquadLeader.
 | **Supremacy** | manual, EUG, APK | 3 factions (Nexus/Resistance/Vanguard), class-based | score / control | **0** | – | – | class abilities are `$WEAP`/`$PSET` loadouts |
 | **Last Man Standing** | APK | elimination, limited lives | last alive | **0** | – | – | nodes track lives; no props |
 | **Domination** | APK | hold **control points** for score-over-time | most point-time / Score | **1** | control-point stations | optional (live board) | points self-authoritative (LED = owner); `DominationBoxes` in APK |
-| **King of the Hill / Territory** | APK (`Territory`) | hold a **zone** | time held | **1** | zone/hill station | optional | the hill can be a real grenade in hill mode (`utility-roadmap.md` §7); domination is the same primitive with more than one point |
+| **King of the Hill / Territory** | APK (`Territory`) | hold a **zone** | time held | **1** | zone/hill station | optional | MVP default: a spare phone in the utility role, captured by presence (a StickS3 hill by presence is being ported, not yet bench-proven); the grenade also works as the hill (bench-proven 2026-09-10, `utility-roadmap.md` §7) but is post-MVP; domination is the same primitive with more than one point |
 | **Capture the Flag** | APK, Callsign Team Arena | grab enemy **flag**, return to base | captures / CaptureTheFlag win | **1** | flag bases (+ flag object / QR) | **wanted** ("flag taken!") | Callsign uses QR flags |
 | **Assault** | APK | attack/defend **objectives** in sequence | objectives armed/held | **1** | objective stations | optional | attackers arm points, defenders hold |
 | **Team Arena** (Callsign) | APK, EUG | TDM + **QR weapon pickups** + capturable flags | kills + captures | **1** | QR codes (pickups/flags) | optional | QR = cheap props; weapon pickup = `$WEAP` push |
@@ -117,7 +117,7 @@ hosted gun ignores the grenade's station words (2026-09-04); a dead gun still re
 | **Standard CTF** | 1 | 2 flag bases | grab enemy flag → return to own base |
 | **Assault CTF** (one-sided) | 1 | 1 flag base | attackers steal/hold, defenders protect; asymmetric spawns/roles |
 | **Center-flag CTF** | 1 | 1 neutral flag + 2 bases | both teams fight for a mid flag, return to own base |
-| **King of the Hill** | 1 | hill station **or the grenade as zone emitter** | hold the zone for time |
+| **King of the Hill** | 1 | MVP default: a spare phone in the utility role, captured by presence (a StickS3 hill by presence is being ported, not yet bench-proven); the grenade as zone emitter also works but is post-MVP | hold the zone for time |
 | **VIP escort (A→B)** | 1 | 1 extraction station + **VIP player role** | VIP = special low-HP loadout (General-style role); escorts protect; VIP triggers the extraction station on arrival |
 | **Hostage rescue + extract** | 1 | extraction station + hostage role | hostage = neutral/downed player freed by a teammate via IR (revive-style), then escorted to the extraction station |
 | **Counter-Strike (plant/defuse)** | 1 | bomb-site **stations** (a utility phone, roadmap K4), **the grenade as the bomb**, or an IR box | attacker plants (present + hold the trigger) → the site runs the plant timer; defender defuses the same way → round ends on detonate / defuse / elimination; blast = each phone in radius applies `$BHIT` to its own gun |
@@ -169,6 +169,12 @@ and its limits are documented once in `reference/grenade.md` and published in `m
 the phones announce captures from them when the game's `station_source` is `grenade`; a phone-point game ignores a
 stray grenade (`ir-callouts.md`, which also records F312: with friendly fire off, the
 capturing team may not hear its own capture).
+
+**Decision (Tony, 2026-09-24): the grenade hill is post-MVP.** Mission Control's stock KOTH game now defaults
+`station_source` to `phone`, a control point captured by presence on a spare phone in the utility role. The
+same value covers a Stick control point too (the advert and the rules are the same), though a StickS3 hill by
+presence is being ported and is not yet bench-proven. The grenade stays selectable and still works, but it is
+no longer the default or the recommended setup.
 
 ## What each needs, in one line
 

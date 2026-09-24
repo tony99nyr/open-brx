@@ -224,6 +224,22 @@ def no_config_to_live_node(world: World) -> None:
             _fail("no_config_to_live_node", f"node {n.index} took {n.live_configs} config push(es) while LIVE")
 
 
+@invariant("game_byte_matches_stations")
+def game_byte_matches_stations(world: World) -> None:
+    """One game byte per match (the 0.4.10 hotfix): a connected node that holds MC's current head holds the
+    byte MC arms its stations with (`_arm_station` sends `_game_byte()` as `station_config.game`), across
+    restarts and crashes. A phone on another byte ignores every MC-armed station, and they ignore it."""
+    s = world.session
+    want = s._game_byte()
+    for n in world.nodes:
+        cfg = n.context.get("config")
+        if not n.link_up or not isinstance(cfg, dict) or cfg.get("config_id") != s.config.get("config_id"):
+            continue
+        if cfg.get("game_byte") != want:
+            _fail("game_byte_matches_stations",
+                  f"node {n.index} holds game_byte {cfg.get('game_byte')!r}; MC arms stations with {want}")
+
+
 @invariant("snapshot_survives_restart")
 def snapshot_survives_restart(world: World) -> None:
     """An MC restart mid-match brings back the same match, phase and board."""

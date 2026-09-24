@@ -67,9 +67,11 @@ def test_the_control_point_reload_and_ammo_actions_through_the_api():
     with _client() as c:
         c.post("/api/do", json={"action": "connect", "address": "FA:KE:00:00:00:01"})
         r = c.post("/api/do", json={"action": "set_profile", "mode": "koth"}).json()
-        assert r["station_source"] == "grenade" and "phone" in r["station_sources"], "koth's own source is the grenade"
+        assert r["station_source"] == "phone" and "grenade" in r["station_sources"], "koth's own source is a station"
+        r = c.post("/api/do", json={"action": "set_profile", "station_source": "grenade"}).json()
+        assert r["station_source"] == "grenade" and r["profile"]["station_source"] == "grenade"
         r = c.post("/api/do", json={"action": "set_profile", "station_source": "phone"}).json()
-        assert r["station_source"] == "phone" and r["profile"]["station_source"] == "phone"
+        assert r["station_source"] == "phone"   # back to the station hill the rest of this test drives
         assert c.post("/api/do", json={"action": "set_profile", "station_source": "pigeon"}).status_code == 400
         # F15: every profile key the page can send must be on the action's allow-list -- `stun` was not, and the
         # browser drive showed a select that changed nothing while the page said RE-ARM (caught 2026-09-11)
