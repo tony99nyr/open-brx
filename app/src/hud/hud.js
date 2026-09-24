@@ -21,7 +21,10 @@ const digits = n => pad2(Math.min(99, Math.max(0, Math.floor(n)))).split('').map
 const mmss = ms => { const s = Math.max(0, Math.round(ms / 1000)); return `${pad2(s / 60)}:${pad2(s % 60)}`; };
 const mmssS = s => mmss(Math.max(0, Number(s) || 0) * 1000);   // the wire carries possession in SECONDS
 /** Polish r2 M2: `max_armor: 0` (Silenced Sniper, the Shields preset) painted `width:NaN%`, which draws FULL. */
-const armorPct = st => (st.maxArmor > 0 ? Math.max(0, Math.min(100, Math.round(100 * st.armor / st.maxArmor))) : 0);
+const armorPct = (st, peak = 0) => { const top = Math.max(st.maxArmor || 0, peak); return top > 0 ? Math.max(0, Math.min(100, Math.round(100 * st.armor / top))) : 0; };
+/** Tony 2026-09-24: "If there is no armor we dont need the 0 or the empty armor bar. If we have armor then the number and
+ *  bar show." A game with armour, or armour granted in a game without it (a perk, a pickup). */
+const hasArmor = st => st.maxArmor > 0 || st.armor > 0;
 /** A56: a spawn countdown the way Tony writes it, "1:40" (rounded UP: it never reads 0:00 while the item is still away). */
 const mss = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${pad2(s % 60)}`; };
 /** A56: an item's own colour from the wire, only ever a literal `#rrggbb` (it lands in a style attribute). */
@@ -447,6 +450,8 @@ export class Hud {
 
   render(st) {
     this._lastSt = st;
+    // armour granted past a max of 0 has no max to be a share of: the bar measures it against the most this life held
+    this._armPeak = st.armor > 0 ? Math.max(this._armPeak || 0, st.armor) : 0;
     if (!st.ended) this.view = null;   // a new match retires a reopened results/history screen
     if (this.board && !(st.phase === 'live' && st.alive)) this.board = null;   // the scores overlay belongs to the live screen only
     this.frame.dataset.team = st.teamKey || 'blue';
@@ -465,7 +470,7 @@ export class Hud {
       st.poolStale && st.poolStale.why, st.cure && st.cure.verdict, !!st.gunFlapping, !!st.reconciling, !!st.gunLocked, st.gunRecovery, st.downReason,
       // A56: the powerup hint/held slots exist only in a powerup game; the overshield bar and the shield number are structure
       !!st.powerup, !!(st.powerup && st.powerup.overshield), !!(st.powerup && st.powerup.held && st.powerup.held.active),
-      SV.meterShown(st),   // the shield meter exists or not
+      SV.meterShown(st), hasArmor(st),   // the shield meter exists or not; the armour number and bar exist or not
       // F258: `this.scan.length` used to sit here, so every scan hit that added a device rebuilt the
       // whole screen. The picker's rows, its empty placeholder and its fold are all patched in place
       // by `_patchScan` now, so nothing about the scan is structure any more.
@@ -778,7 +783,8 @@ export class Hud {
     const plates = st.player && mode !== 'setup' ? `${tryout}<div class="plates" ${tw ? 'style="display:none"' : ''}>
         ${this._slotPlate(st, 'primary', mode, ammoLine)}${this._slotPlate(st, 'secondary', mode)}${this._slotPlate(st, 'perk', mode)}
         ${mode === 'kitted' && !tw && (st.canPickPrimary || st.canPickSecondary || st.canPickPerk) ? '<div class="platehint">TAP A SLOT TO CHANGE YOUR LOADOUT</div>' : ''}</div>` : '';
-    const hpar = st.player && mode !== 'setup' ? `<span class="hpar tab"><span style="color:var(--health)">HP ${st.maxHp}</span> · <span style="color:var(--armor)">ARMOR ${st.maxArmor}</span>${st.maxShield > 0 ? ` · <span style="color:var(--shield)">SHIELD ${st.maxShield}</span>` : ''}${st.playerNum ? ` · #${st.playerNum}` : ''}</span>` : '';
+    const hpar = st.player && mode !== 'setup' ? `<span class="hpar tab">${[`<span style="color:var(--health)">HP ${st.maxHp}</span>`, st.maxArmor > 0 ? `<span style="color:var(--armor)">ARMOR ${st.maxArmor}</span>` : '',
+      st.maxShield > 0 ? `<span style="color:var(--shield)">SHIELD ${st.maxShield}</span>` : '', st.playerNum ? `#${st.playerNum}` : ''].filter(Boolean).join(' · ')}</span>` : '';
     // A27/A30 (loadout.md §4.4): a host advance that lands mid-kit is never a silent screen swap, and a refusal
     // from MC is MC's own copy — shown VERBATIM on whichever screen the player is standing on when it arrives.
     const refusal = st.loadoutAck && !st.loadoutAck.ok && st.loadoutAck.reason ? String(st.loadoutAck.reason) : null;
@@ -864,7 +870,7 @@ export class Hud {
     const name = g.name || g.mode_name || String(mode).toUpperCase();
     const mins = g.time_limit_s ? Math.round(g.time_limit_s / 60) : null;
     const rs = g.respawn ? (g.respawn.type === 'none' ? 'NONE · LIVES' : `${g.respawn.type === 'scanner' ? 'AT A SCANNER' : 'AUTO'} · ${g.respawn.delay_s}s`) : (g.respawn_text || '—');
-    const hp = g.health ? `${g.health.max_hp} HP · ${g.health.max_armor} ARMOR${g.health.max_shield > 0 ? ` · ${g.health.max_shield} SHIELD` : ''}` : '—';
+    const hp = g.health ? `${g.health.max_hp} HP${g.health.max_armor > 0 ? ` · ${g.health.max_armor} ARMOR` : ''}${g.health.max_shield > 0 ? ` · ${g.health.max_shield} SHIELD` : ''}` : '—';
     const venue = [g.environment ? String(g.environment).toUpperCase() : null, g.night ? 'NIGHT OPS' : null].filter(Boolean).join(' · ') || '—';
     const rows = [['TEAMS', g.teams_text || '—'], ['WIN', g.win_text || '—'], ['RESPAWN', rs], ['TIME', mins ? `${mins} MIN` : '—'], ['LIFE', hp], ['VENUE', venue]];
     const locked = !st.canPickPrimary && !st.canPickSecondary && !st.canPickPerk;
@@ -1285,10 +1291,10 @@ export class Hud {
         : st.alive && st.aim && AIM_REASON[st.aim.reason] ? `<div class="aimfx ${esc(st.aim.reason)}${overheating ? ' tight' : ''}" id="aimfx">${this._aimFx(st)}</div>`
         : st.alive && st.shielded ? '<div class="spawnshield" role="status"><span class="k">SPAWN SHIELD</span><span class="s">YOU CANNOT BE HIT</span></div>'
         : st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>'}
-      <div class="fxbar" id="fxbar">${this._fx(st)}</div>${sv ? SV.meterHtml(st) : ''}
-      <div class="vitals"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span>${low ? '<span class="lowtag">LOW</span>' : ''}${gunStale ? staleTag : ''}${st.maxArmor > 0 ? `<span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>` : ''}</div>
+      <div class="fxbar" id="fxbar">${this._fx(st)}</div>${sv ? SV.meterHtml(st, this._svFx) : ''}
+      <div class="vitals"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span>${low ? '<span class="lowtag">LOW</span>' : ''}${gunStale ? staleTag : ''}${hasArmor(st) ? `<span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>` : ''}</div>
         <div class="bar ${low ? 'low' : ''}"><i id="hpbar" style="width:${Math.round(100 * st.hp / st.maxHp)}%"></i></div>
-        ${st.maxArmor > 0 ? `<div class="bar armor"><i id="shbar" style="width:${armorPct(st)}%"></i></div>` : ''}</div>
+        ${hasArmor(st) ? `<div class="bar armor"><i id="shbar" style="width:${armorPct(st, this._armPeak)}%"></i></div>` : ''}</div>
       ${st.powerup ? `<div class="puhint" id="puhint" role="status">${this._puHint(st)}</div>` : ''}
       <div class="ammo">${outOfAmmo ? `<span class="reload out solid"><span class="unskew">${energy ? 'OUT OF ENERGY' : 'OUT OF AMMO'}</span></span>`
           : overheating ? `<span class="reload hot solid"><span class="unskew">OVERHEAT</span></span>`
@@ -1598,7 +1604,7 @@ export class Hud {
       setHtml('aimfx', this._aimFx(st));                // S53: the smoke countdown (the slot itself is structural)
       setHtml('stunfx', this._stunFx(st));              // F15: the stun countdown
       const hb = q('hpbar'); if (hb) hb.style.width = `${Math.round(100 * st.hp / st.maxHp)}%`;
-      const sb = q('shbar'); if (sb) sb.style.width = `${armorPct(st)}%`;
+      const sb = q('shbar'); if (sb) sb.style.width = `${armorPct(st, this._armPeak)}%`;
       SV.patchMeter(this.hudEl, st, this._svFx);   // the shield meter (the overshield drains first, on the same strip)
       if (st.powerup) { const hh = this._puHint(st); setHtml('puhint', hh); setHtml('puheld', this._puHeld(st));
         const nl = this.hudEl.querySelector('.nightlab'); if (nl) nl.classList.toggle('pu', !!hh);
@@ -2070,7 +2076,7 @@ export class Hud {
     const lo = st.loadout || {};
     const ki = (k, it) => !it ? '' : `<span class="ki">${it.kind === 'perk' ? `<span class="th">${perkGlyph(it.perk_id)}</span>` : `<span class="th">${weaponArt(it.weapon_id)}</span>`}<span><span class="kk">${k}</span><br><span class="kn">${esc(it.name).toUpperCase()}</span></span></span>`;
     el.innerHTML = `<div class="wipe"></div><div class="slash"></div><div class="beam"></div>
-      <div class="r"><span class="t">REDEPLOYED</span>${this._redeployLine(st)}<span class="s">${st.maxHp} HP · ${st.maxArmor} ARMOR · MAG FULL</span>
+      <div class="r"><span class="t">REDEPLOYED</span>${this._redeployLine(st)}<span class="s">${st.maxHp} HP${st.maxArmor > 0 ? ` · ${st.maxArmor} ARMOR` : ''} · MAG FULL</span>
         <div class="kit">${ki('PRIMARY', lo.primary)}${ki('SECONDARY', lo.secondary)}${ki('PERK', lo.perk)}</div></div>
       <div class="l"><span class="cs">${esc(st.callsign)}</span><span class="sq">${esc(st.teamName)} SQUAD</span></div>`;
     this._flash();

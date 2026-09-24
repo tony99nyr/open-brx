@@ -35,11 +35,13 @@ export function meterModel(st, now = Date.now()) {
   const waiting = !!(sr && sr.on && !sr.charging && !sr.gaveUp && !sr.paused && !os && alive && base < max);
   const elapsed = waiting ? Math.max(0, now - (sr.quietAt || 0)) : 0;
   const delayPct = waiting ? clamp01(elapsed / sr.delayMs) : 0;
+  // the refill stands down (a stun, a resync): the creep holds where it was, not empty and not still filling
+  const frozen = !!(sr && sr.paused && sr.on && !sr.charging && !sr.gaveUp && !os && alive && base < max);
   const pct = max > 0 ? clamp01(base / max) : 0;
   const state = down ? 'down' : charging ? 'charge' : pct > 0 && pct <= 0.25 ? 'low' : 'ok';
   return {
     base, max, pct, os: !!os, osLeft, osAmount: os ? os.amount || 0 : 0, osPct: os && os.amount > 0 ? clamp01(osLeft / os.amount) : 0, onlyOs: !!os && max <= 0,
-    state, down, charging, waiting, delayPct, alive,
+    state, down, charging, waiting, frozen, delayPct, alive,
   };
 }
 
@@ -51,8 +53,9 @@ const aria = m => Object.entries(ariaVals(m)).map(([k, v]) => `${k}="${v}"`).joi
 
 /** The markup for the live screen (rebuilt only with the screen's structure; `patchMeter` moves it). The strip drains
  *  from both ends to the centre, so every layer is centred (CSS). */
-export function meterHtml(st, now) {
+export function meterHtml(st, fx = {}, now) {
   const m = meterModel(st, now);
+  if (m.frozen && fx.dl != null) m.delayPct = fx.dl;   // a rebuild during a stun keeps the creep where it stood
   return `<div class="svm" id="svm" data-s="${m.state}"${m.os ? ' data-os=""' : ''}${m.onlyOs ? ' data-only-os=""' : ''}${m.waiting ? ' data-wait=""' : ''} role="meter" aria-label="shield" ${aria(m)}>`
     + `<div class="svbar"><i class="svgh" data-k="gh" style="--w:${pctStr(m.pct)}"></i><i class="svfl" data-k="fl" style="--w:${pctStr(m.pct)}"></i>`
     // the delay creep comes AFTER the fill and the overshield, so it paints over a part-full shield too
@@ -68,6 +71,7 @@ export function patchMeter(hudEl, st, fx, now = Date.now()) {
   el.toggleAttribute('data-wait', m.waiting);
   for (const [k, v] of Object.entries(ariaVals(m))) if (el.getAttribute(k) !== v) el.setAttribute(k, v);
   if (alive) alive.classList.toggle('sv-down', m.down);
+  if (m.frozen && fx.dl != null) m.delayPct = fx.dl; else fx.dl = m.delayPct;
   const vals = { gh: m.pct, fl: m.pct, os: m.osPct, dl: m.delayPct };
   for (const n of el.querySelectorAll('[data-k]')) {
     const x = vals[n.dataset.k]; if (x == null) continue;

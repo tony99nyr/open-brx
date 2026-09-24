@@ -4534,7 +4534,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(!g2.os && g2.osw < 1 && g2.fl < h2.fl, `the next hit ends it and then eats the shield: ${JSON.stringify({ os: g2.os, osw: g2.osw, fl: g2.fl })}`);
     must(!night || px.bad === 0, `night: green, teal or blue paint on the meter: ${JSON.stringify(px)}`);
   });
-  await step(`${tag}: armour shows only in a game with armour: Standard has the number and the bar, a no-armour game has neither`, async () => {
+  await step(`${tag}: armor (armour) shows only in a game with armour: Standard has the number and the bar, a no-armour game has neither`, async () => {
     const arm = pg => pg.evaluate(() => { const vis = e => !!e && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().width > 0;
       return { num: vis(document.getElementById('sh')), lab: vis(document.querySelector('.vitals .armorlabel')), bar: vis(document.querySelector('.vitals .bar.armor')), max: window.brx.engine.state().maxArmor }; });
     let pg = await open(view, 'live', N, 3000); const std = await arm(pg); await pg.close();
@@ -4591,6 +4591,51 @@ for (const view of VIEWS) for (const night of [false, true]) {
     await pg.close();
     must(r.wait && r.dly > 60, `setup: the delay running under a part-full shield: ${JSON.stringify({ wait: r.wait, dly: r.dly, shield: r.shield })}`);
     must(top && top.after && top.z[0] === top.z[1] && top.crosses, `the creep is drawn above the fill: ${JSON.stringify(top)}`);
+  });
+  await step(`${tag}: armor (armour) granted in a no-armour game shows its number and bar (polish r2 M1)`, async () => {
+    const pg = await open(view, 'live-shields-full', N, 3300);
+    await pg.evaluate(() => window.brx.engine.feedFrame('$HP,45,30,105,*')); await pg.waitForTimeout(600);
+    const r = await pg.evaluate(() => { const vis = e => !!e && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().width > 0;
+      const bar = document.querySelector('.vitals .bar.armor i');
+      return { max: window.brx.engine.state().maxArmor, armor: window.brx.engine.state().armor, num: vis(document.getElementById('sh')) && document.getElementById('sh').textContent, bar: vis(bar) }; });
+    await pg.close();
+    must(r.max === 0 && r.armor === 30, `setup: armour 30 in a max-0 game: ${JSON.stringify(r)}`);
+    must(r.num === '30' && r.bar, `the granted armour shows (Tony: "if we have armor then the number and bar show"): ${JSON.stringify(r)}`);
+  });
+  await step(`${tag}: armor (armour): no "0 ARMOR" on the pre-game line, the briefing or REDEPLOYED in a no-armour game (polish r2 Low)`, async () => {
+    let pg = await open(view, 'lobby-shields', N, 2000); const lobby = await pg.evaluate(() => (document.querySelector('.hpar') || {}).textContent || null); await pg.close();
+    pg = await open(view, 'briefing', N + '&locked&brief', 1600); const brief = await pg.evaluate(() => document.getElementById('hud').innerText); await pg.close();
+    pg = await open(view, 'redeploy-shields', N, 2600);
+    const red = await pg.waitForSelector('#overlay .redeploy .s', { timeout: 3000 }).then(e => e.textContent()).catch(() => null); await pg.close();
+    must(lobby && /HP 45/.test(lobby) && !/ARMOR/.test(lobby), `the pre-game line: ${lobby}`);
+    must(/45 HP/.test(brief) && !/0 ARMOR/.test(brief), `the briefing: ${(brief.match(/.{0,20}HP.{0,30}/) || [''])[0]}`);
+    must(night ? red === null : red && /45 HP/.test(red) && !/ARMOR/.test(red), `REDEPLOYED${night ? ' (no card at night)' : ''}: ${red}`);
+  });
+  if (night) await step(`${tag}: the delay creep rail reads against the fill beside it (pixels, polish r2 M2)`, async () => {
+    const pg = await open(view, 'live-shields-hit', N, 3600); const w0 = await svWait(pg, r => r.wait && r.dly > 120, 5000);
+    must(w0.wait && w0.dly < w0.fl - 40, `setup: the creep shorter than the fill, so the fill shows beside it on the same rows: ${JSON.stringify({ dly: w0.dly, fl: w0.fl })}`);
+    await pg.evaluate(() => document.getAnimations().forEach(a => a.pause()));
+    const box = await pg.evaluate(() => { const d = document.querySelector('#svm .svdly').getBoundingClientRect(), f = document.querySelector('#svm .svfl').getBoundingClientRect();
+      // the rail, and the fill on the SAME rows just past the rail's end (the creep grows from the centre, the fill is wider)
+      return { rail: { l: d.left + 6, r: d.right - 6, t: d.top + 1, b: d.bottom - 1 }, fill: { l: d.right + 3, r: Math.min(f.right - 3, d.right + 30), t: d.top + 1, b: d.bottom - 1 } }; });
+    const buf = await pg.screenshot(); await pg.close();
+    const q = await b.newPage();
+    const lum = await q.evaluate(async ([b64, box]) => { const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+      const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+      const L = v => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; };
+      const mean = z => { let s = 0, n = 0; const d = x.getImageData(Math.round(z.l), Math.round(z.t), Math.max(1, Math.round(z.r - z.l)), Math.max(1, Math.round(z.b - z.t))).data;
+        for (let i = 0; i < d.length; i += 4) { s += .2126 * L(d[i]) + .7152 * L(d[i + 1]) + .0722 * L(d[i + 2]); n++; } return s / n; };
+      return { rail: mean(box.rail), fill: mean(box.fill) }; }, [buf.toString('base64'), box]);
+    await q.close();
+    const ratio = (Math.max(lum.rail, lum.fill) + .05) / (Math.min(lum.rail, lum.fill) + .05);
+    must(ratio >= 1.5, `the rail against the fill: ${ratio.toFixed(2)}:1 ${JSON.stringify(lum)}`);
+  });
+  await step(`${tag}: a stun during the delay freezes the creep where it was (polish r2 Low)`, async () => {
+    const pg = await open(view, 'live-shields-broken', N, 3300); const w = await svWait(pg, r => r.wait && r.dly > 100, 6000);
+    await pg.evaluate(() => window.brxDemo.stun()); await pg.waitForTimeout(500); const a = await svRead(pg); await pg.waitForTimeout(1200); const c = await svRead(pg);
+    const stunned = await pg.evaluate(() => !!window.brx.engine.state().stunned); await pg.close();
+    must(w.wait && stunned, `setup: waiting, then stunned: ${JSON.stringify({ wait: w.wait, stunned })}`);
+    must(a.dly > 60 && Math.abs(c.dly - a.dly) < 2, `the creep holds its width while the refill stands down: ${a.dly} -> ${c.dly}`);
   });
   await step(`${tag}: the Standard preset draws no meter, until it holds an overshield`, async () => {
     let pg = await open(view, 'live', N, 3000); const r = await svRead(pg);

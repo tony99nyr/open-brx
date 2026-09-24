@@ -109,6 +109,8 @@ export function startDemo({ engine, log }) {
     respawn: { type: ['auto', 'scanner', 'none'].includes(q.get('respawn')) ? q.get('respawn') : 'auto', delay_s: +q.get('delay') || 8 },
     scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams: [team, foe] };
   const bundle = { ...golden, player_id: 'p-demo' };
+  // the host-locked Silenced Sniper is a no-armour game (its briefing says so): its config and its $PSET must agree
+  if (locked) { config.health = { max_hp: 45, max_armor: 0 }; bundle.head = bundle.head.map(f => f.startsWith('$PSET,') ? f.replace(/^(\$PSET,\d+,\d+,)\d+,\d+,/, '$145,0,') : f); }
   // A24 `result.rows`: EVERY player's ScoreRow, which is what makes a leaderboard possible on the phone.
   // Four players over two teams, one of them with `acc_provisional` (dimmed ACC) and one with no medals.
   const RESULT_ROWS = [
@@ -633,6 +635,8 @@ export function startDemo({ engine, log }) {
       'live-shields-broken':   [[0, () => { ev.powerups(); ev.shieldsPreset(); }], ...live, [2300, 'shieldFill'], [2900, 'shieldBreak']],   // the recharge starts on its own after the delay
       'live-shields-os':       [[0, () => { ev.powerups(); ev.shieldsPreset(); }], ...live, [2300, 'shieldFill'], [2600, 'overshield']],
       'live-shields-os-hit':   [[0, () => { ev.powerups(); ev.shieldsPreset(); }], ...live, [2300, 'shieldFill'], [2600, 'overshield'], [5000, () => ev.shieldHit(37)]],
+      'lobby-shields':         [[0, () => ev.shieldsPreset()], ...lobby],                                                                  // the pre-game line of a no-armour game
+      'redeploy-shields':      [[0, () => { ev.powerups(); ev.shieldsPreset(); }], ...live, [2300, 'die'], [2800, 'respawn']],            // REDEPLOYED in a no-armour game
       'live-shields-callout':  [[0, () => { ev.addMate(); ev.powerups(); ev.shieldsPreset(); }], ...live, [2300, 'shieldFill'], [2500, () => engine.feedFrame(`$HIR,4,15,23,3,${21 + foe.tid},0,0,*`)]],   // the meter beside the callout card
       'live-shields-claim':    [[0, () => { ev.powerups(); ev.shieldsPreset(); }], ...live, [2300, 'shieldFill'], [2500, () => ev.puAt(4)]],   // the meter beside the powerup hint
       'live-pu-overshield-wide': [[0, () => { ev.powerups(); ev.widePools(); }], ...live, [2300, () => ev.puTake(6)]],
