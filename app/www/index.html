@@ -1061,7 +1061,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .plate.slot .h{font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .plate.slot.pk .thumb.perk{color:var(--perk,#c48bff)}.plate.slot.pk.tap{border-color:var(--perk,#c48bff);box-shadow:0 0 22px -12px var(--perk,#c48bff)}
 .lobby .hpar{font-size:12px;letter-spacing:.14em;font-weight:700;color:var(--mut);margin-left:6px;white-space:nowrap}
-.plate.slot .s{font-size:10.5px;letter-spacing:.06em;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.plate.slot .s{font-size:11px;letter-spacing:.03em;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .plate.slot.tap{border-color:var(--glow);box-shadow:0 0 22px -12px var(--glow)}
 .plate.slot.locked{opacity:.75}
 .lobby .platehint{flex:0 0 100%;padding-left:8px;margin-top:-2px;font-size:11px;letter-spacing:.24em;color:var(--mut);font-weight:700}
@@ -1087,8 +1087,8 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 /* WEAPONS | PERKS | NONE. Field 2026-09-01: "the perks menu is really small and hard to see, it
    was hard to figure out how to open the perks menu". These are the only way to reach perks, so
    they are sized as the primary control they are, not as a filter chip. */
-.lofilt{display:flex;gap:8px;margin-bottom:8px;flex:0 0 auto}
-.fch{height:46px;min-width:0;flex:0 0 auto;padding:0 16px;background:var(--plate2);border:1px solid var(--edge);color:var(--ink);font-size:13px;letter-spacing:.14em;font-weight:700;transform:skewX(-10deg);position:relative;pointer-events:auto;white-space:nowrap}
+.lofilt{display:flex;gap:8px;margin-bottom:8px;padding-top:5px;flex:0 0 auto}   /* QA-11: room inside the scroller for the chips' 56 px hit box; the scroller clipped its top 5 px */
+.fch{height:46px;min-width:0;flex:0 0 auto;padding:0 16px;background:var(--plate2);border:1px solid var(--edge);color:var(--ink);font-size:14px;letter-spacing:.14em;font-weight:700;transform:skewX(-10deg);position:relative;pointer-events:auto;white-space:nowrap}
 .fch .unskew{display:inline-block;transform:skewX(10deg)}
 .fch.on{background:var(--num);color:#04121e;border-color:var(--num)}
 .fch.none{margin-left:auto}
@@ -1127,7 +1127,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .lrow.warn{border-color:var(--warn);box-shadow:inset 0 0 0 1px var(--warn)}.lrow.warn .st{color:var(--warn)}   /* A14: first tap of the ALT-button confirm */
 .ackchip.cf{animation:blink 1s infinite}
 .lotab.locked{opacity:.55;cursor:default}
-.locount{font-size:10px;letter-spacing:.22em;color:var(--mut);font-weight:700;padding:2px 4px;flex:0 0 auto}
+.locount{font-size:11px;letter-spacing:.22em;color:var(--mut);font-weight:700;padding:2px 4px;flex:0 0 auto}
 .lo .lolist{-webkit-mask-image:linear-gradient(#000 86%,transparent);mask-image:linear-gradient(#000 86%,transparent);padding-bottom:28px}
 .eqtag{font-family:var(--fl);font-style:normal;font-size:11px;letter-spacing:.2em;color:var(--ok);border:1px solid var(--ok);padding:2px 7px;margin-left:8px;vertical-align:middle;font-weight:700}
 .eqtag.arming{color:var(--warn);border-color:var(--warn)}   /* A26/F129: the hero pane while st.pendingPick names this weapon — never claims EQUIPPED before the ack */
@@ -1217,7 +1217,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
    their drawn size (the 390 px frame has no height to give) and take an invisible 56 px hit box, the same trick
    `.infobtn`/`.qrbtn`/`.linfo` already use. A list row is a real 56 px box instead: a hit box that spilled
    into the next row would steal its taps. */
-.briefbtn::after,.lotab::after,.lobtn::after,.result .rseg .sg::after,.result .rfoot .ready::after{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:56px}
+.briefbtn::after,.lotab::after,.fch::after,.lobtn::after,.result .rseg .sg::after,.result .rfoot .ready::after{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:56px}
 .lotab,.lobtn,.result .rseg .sg,.result .rfoot .ready{position:relative}
 .bf{overflow:hidden}
 .bf .bfart{position:absolute;inset:0;background-size:cover;background-position:center;opacity:.55;animation:bfart 1.2s ease-out both}

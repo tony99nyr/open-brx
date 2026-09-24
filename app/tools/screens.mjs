@@ -4079,7 +4079,7 @@ const qaHit = (pg, sels) => pg.evaluate(sels => {
   }
   return out;
 }, sels);
-for (const [stage, sels] of [['kitted', ['.briefbtn']], ['loadout-primary', ['.lotab', '.lrow', '.lrow .linfo', '.lobtn']], ['result-players', ['.result .rseg .sg', '.result .rfoot .ready']], ['result-pending', ['.result .rfoot .ready']]]) {
+for (const [stage, sels] of [['kitted', ['.briefbtn']], ['loadout-primary', ['.lotab', '.lrow', '.lrow .linfo', '.lobtn']], ['loadout-secondary', ['.fch']], ['result-players', ['.result .rseg .sg', '.result .rfoot .ready']], ['result-pending', ['.result .rfoot .ready']]]) {
   await step(`QA-11 ${stage}: every control's hit area is >= 44 px on the SE (56 frame px)`, async () => {
     const pg = await open(VIEWS[1], stage);
     const r = await qaHit(pg, sels); await pg.close();
@@ -4088,6 +4088,29 @@ for (const [stage, sels] of [['kitted', ['.briefbtn']], ['loadout-primary', ['.l
     must(small.length === 0, `hit areas under 56 frame px: ${JSON.stringify(small.slice(0, 6))}`);
   });
 }
+// QA-21: in the frame's own px, no painted text under 11 px, and the biggest text inside any button (the words that
+// name the action) at least 14 px. A small label inside a button (the tab's PRIMARY over its 18 px value) is a label.
+await step('QA-21 kit, loadout, briefing and results: labels >= 11 px, every button names its action at >= 14 px', async () => {
+  const bad = [];
+  for (const stage of ['kitted', 'kitted-full', 'lobby', 'briefing', 'briefing-long', 'loadout-primary', 'loadout-secondary', 'loadout-perk', 'result-players', 'result-win-team', 'result-unreached', 'history']) {
+    const pg = await open(VIEWS[1], stage);
+    bad.push(...await pg.evaluate(stage => {
+      const out = [], vis = e => { const cs = getComputedStyle(e); return cs.display !== 'none' && cs.visibility !== 'hidden' && e.getClientRects().length; };
+      for (const e of document.querySelectorAll('#hud *')) {
+        if (!vis(e) || !Array.from(e.childNodes).some(n => n.nodeType === 3 && n.textContent.trim())) continue;
+        const fs = parseFloat(getComputedStyle(e).fontSize); if (fs < 11) out.push(`${stage} ${fs}px "${e.textContent.trim().slice(0, 20)}"`);
+      }
+      for (const btn of document.querySelectorAll('#hud button')) {
+        if (!vis(btn)) continue;
+        const sizes = [btn, ...btn.querySelectorAll('*')].filter(e => vis(e) && Array.from(e.childNodes).some(n => n.nodeType === 3 && n.textContent.trim())).map(e => parseFloat(getComputedStyle(e).fontSize));
+        if (sizes.length && Math.max(...sizes) < 14) out.push(`${stage} button ${Math.max(...sizes)}px "${btn.textContent.trim().slice(0, 20)}"`);
+      }
+      return out;
+    }, stage));
+    await pg.close();
+  }
+  must(bad.length === 0, 'under the type floor: ' + [...new Set(bad)].slice(0, 10).join(' ; '));
+});
 
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;
