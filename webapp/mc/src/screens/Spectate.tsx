@@ -35,7 +35,7 @@
 // sit side by side. At 900 px they stack, the two share one viewport's height, and eight rows came out
 // about 20 px tall. Below 1024 the page scrolls instead, and under the fit rule every row keeps a
 // readable minimum height (`rowMin`) rather than shrinking past its own text.
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { LiveRow, ScoreRow } from '../api/types';
 import { useStore } from '../store';
 import { F, T, fmtClock, fmtDuration, teamColor } from '../tokens';
@@ -257,6 +257,30 @@ function Clock({ remaining, sub, stale, SZ }: { remaining: number; sub: string; 
 }
 
 const BOARD_COLS = 'minmax(200px,2fr) 78px 78px 78px 92px';
+/** One column of a multi-column board: the same five cells, sized to share the width (F318). */
+const BOARD_COLS_TIGHT = 'minmax(0,2fr) minmax(34px,.55fr) minmax(34px,.55fr) minmax(34px,.55fr) minmax(40px,.6fr)';
+
+/** F318 (Tony, 2026-09-24): a wall never drops a player. The board fits every row by, in order: the
+ *  normal size; smaller row type down to the legibility floor (16 px, 18 px for K); more columns, as far
+ *  as the width allows; and only then pages that rotate, labelled PAGE n / N. Pure, so it is tested. */
+export const ROW_FLOOR = 16, ROWK_FLOOR = 18, COL_MIN_W = 280, ROW_GAP = 3, MAX_COLS = 4;
+export type BoardFit = { cols: number; row: number; rowK: number; perCol: number; pages: number };
+const rowNeed = (rowK: number) => Math.ceil(rowK * FIT_LINE) + 2 + ROW_GAP;
+export function fitBoard(n: number, height: number, width: number, base: { row: number; rowK: number }): BoardFit {
+  const maxCols = Math.max(1, Math.min(MAX_COLS, Math.floor(width / COL_MIN_W)));
+  const fitsAt = (rowK: number) => Math.max(1, Math.floor(height / rowNeed(rowK)));   // rows one column holds
+  const scaled = (rowK: number) => ({ rowK, row: Math.max(ROW_FLOOR, Math.round(base.row * rowK / base.rowK)) });
+  for (let cols = 1; cols <= maxCols; cols++) {
+    const perCol = Math.ceil(n / cols);
+    if (perCol <= fitsAt(base.rowK)) return { cols, ...scaled(base.rowK), perCol, pages: 1 };
+    // the largest row type, down to the floor, at which this many columns hold everybody
+    const rowK = Math.floor(((height / perCol) - 2 - ROW_GAP) / FIT_LINE);
+    if (rowK >= ROWK_FLOOR) return { cols, ...scaled(Math.min(base.rowK, rowK)), perCol, pages: 1 };
+  }
+  const perCol = fitsAt(ROWK_FLOOR);
+  return { cols: maxCols, ...scaled(ROWK_FLOOR), perCol, pages: Math.max(1, Math.ceil(n / (perCol * maxCols))) };
+}
+export const PAGE_MS = 8000;
 
 function Board({ rows, SZ, fit }: { rows: (LiveRow | ScoreRow)[]; SZ: SZ; fit: boolean }) {
   // The board's own scroll container. A projector never reaches it — the columns total ~530 px and any
@@ -271,41 +295,81 @@ function Board({ rows, SZ, fit }: { rows: (LiveRow | ScoreRow)[]; SZ: SZ; fit: b
   // edge and no scrollbar (393 px walk, 2026-09-12). <ScrollX> fades the cut edge and prints the
   // hint, and only while there is more to the right — so a projector, which never overflows, shows
   // neither. Its hint carries the board's own type size: nothing on this screen goes under 16 px.
+  //
+  // F318 (Tony, 2026-09-24): under the fit rule the board MEASURES its room and `fitBoard` decides how
+  // every player fits (smaller type, more columns, then rotating pages). It never drops a row. jsdom has
+  // no layout (a 0 px room), so there the board keeps its single column.
+  const box = useRef<HTMLDivElement>(null);
+  const [room, setRoom] = useState<{ h: number; w: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!fit || !el) { setRoom(null); return; }
+    const measure = () => setRoom({ h: el.clientHeight, w: el.clientWidth });
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure); ro.observe(el);
+    return () => ro.disconnect();
+  }, [fit]);
+  const headH = Math.ceil(SZ.label * FIT_LINE) + 2 * SZ.pad + 2 + ROW_GAP;
+  const pageH = Math.ceil(SZ.label * FIT_LINE) + 6;   // the PAGE n / N strip, counted only when the wall pages
+  const lay0 = fit && room && room.h > 0 ? fitBoard(rows.length, Math.max(0, room.h - headH), room.w, SZ) : null;
+  const lay = lay0 && lay0.pages > 1 && room ? fitBoard(rows.length, Math.max(0, room.h - headH - pageH), room.w, SZ) : lay0;
+  const pages = lay?.pages ?? 1;
+  const [page, setPage] = useState(0);
+  useEffect(() => {
+    if (pages <= 1) { setPage(0); return; }
+    setPage(p => p % pages);
+    const id = setInterval(() => setPage(p => (p + 1) % pages), PAGE_MS);
+    return () => clearInterval(id);
+  }, [pages]);
+  const cols = lay?.cols ?? 1;
+  const perCol = lay?.perCol ?? rows.length;
+  const perPage = perCol * cols;
+  // Paged, the split must not follow the live ranking: a player whose rank moves across a page boundary
+  // between two turns would be skipped. Players are dealt to pages by a steady order (roster number, then
+  // id) and each page keeps the live ranking within itself.
+  const steady = [...rows].sort((a, b) => ((a as { player_num?: number }).player_num ?? 0) - ((b as { player_num?: number }).player_num ?? 0)
+    || a.player_id.localeCompare(b.player_id));
+  const onPage = new Set(steady.slice(page * perPage, (page + 1) * perPage).map(r => r.player_id));
+  const shown = pages > 1 ? rows.filter(r => onPage.has(r.player_id)) : rows;
+  const sz: SZ = lay ? { ...SZ, row: lay.row, rowK: lay.rowK } : SZ;
+  const grid = cols > 1 ? BOARD_COLS_TIGHT : BOARD_COLS;
+  const columns = Array.from({ length: cols }, (_, c) => shown.slice(c * perCol, (c + 1) * perCol));
+  const fitCol = fit ? { flex: '1 1 0px', minHeight: 0, display: 'flex', flexDirection: 'column' as const } : null;
   return (
     <>
     <ScrollX hint="▸ SCROLL FOR D · A · STK" hintSize={SZ.label} hintStyle={{ letterSpacing: '.18em', padding: '0 0 6px 18px' }}
       style={{ ...(fit ? { overflowY: 'hidden', flex: '1 1 0px', minHeight: 0, display: 'flex', flexDirection: 'column' } : null) }}>
-    <div style={{ minWidth: 540, ...(fit ? { flex: '1 1 0px', minHeight: 0, display: 'flex', flexDirection: 'column' } : null) }}>
-      <div style={{ display: 'grid', gridTemplateColumns: BOARD_COLS, gap: '0 16px', padding: `${SZ.pad}px 18px`, flex: 'none',
-                    background: T.panelAlt, border: `1px solid ${T.line}`, ...chk(700, SZ.label), letterSpacing: '.18em', color: T.dim }}>
-        <span>PLAYER</span>
-        <span style={{ textAlign: 'right' }}>K</span>
-        <span style={{ textAlign: 'right' }}>D</span>
-        <span style={{ textAlign: 'right' }}>A</span>
-        <span style={{ textAlign: 'right' }}>STK</span>
-      </div>
-      <div data-spectate="rows" style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 3,
-                                         ...(fit ? { flex: '1 1 0px', minHeight: 0, overflow: 'hidden' } : null) }}>
-        {rows.length === 0 && (
-          <div style={{ ...chk(600, SZ.label), letterSpacing: '.16em', color: T.micro, padding: '16px 18px' }}>NO SCORES YET.</div>
-        )}
-        {rows.map(r => {
-          const down = 'status' in r && r.status === 'down';
-          return (
-            <div key={r.player_id} data-spectate="row" data-fit={fit ? '1' : undefined}
-              style={{ display: 'grid', gridTemplateColumns: BOARD_COLS, gap: '0 16px', alignItems: 'center', padding: fit ? '0 18px' : `${SZ.pad}px 18px`,
-                       // a roster longer than the wall is tall shrinks its rows, but never past the
-                       // height of their own text (polish 2026-09-23: 20 px rows at 900 px wide)
-                       ...(fit ? { flex: '1 1 0px', minHeight: rowMin(SZ), maxHeight: rowMax(SZ), overflow: 'hidden' } : null),
-                       background: T.panel, border: `1px solid ${T.row}`, borderLeft: `5px solid ${teamColor(r.team_id)}`, opacity: down ? .55 : 1 }}>
-              <span data-spectate="name" title={r.display} style={{ ...chk(700, SZ.row), letterSpacing: '.1em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.display}</span>
-              <span style={{ textAlign: 'right', ...osw(700, SZ.rowK) }}><Num value={r.kills} /></span>
-              <span style={{ textAlign: 'right', ...osw(600, SZ.row), color: T.dim }}><Num value={r.deaths} /></span>
-              <span style={{ textAlign: 'right', ...osw(600, SZ.row), color: T.dim }}><Num value={r.assists} /></span>
-              <span style={{ textAlign: 'right', ...osw(600, SZ.row), color: bestStreak(r) >= 3 ? T.warn : T.dim }}><Num value={bestStreak(r)} /></span>
-            </div>
-          );
-        })}
+    <div ref={box} data-spectate="board-cols" data-cols={cols} data-pages={pages}
+      style={{ minWidth: cols > 1 ? 0 : 540, display: 'flex', flexDirection: 'column', ...(fit ? { flex: '1 1 0px', minHeight: 0 } : null) }}>
+      {pages > 1 && (
+        <div data-spectate="page" style={{ flex: 'none', height: pageH, ...chk(700, SZ.label), lineHeight: `${pageH}px`,
+                                           letterSpacing: '.2em', color: T.warn }}>
+          PAGE {page + 1} / {pages} · {rows.length} PLAYERS
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 12, ...(fit ? { flex: '1 1 0px', minHeight: 0 } : null) }}>
+      {columns.map((col, c) => (
+        <div key={c} style={{ flex: '1 1 0px', minWidth: 0, ...(fitCol ?? { display: 'flex', flexDirection: 'column' }) }}>
+          <div style={{ display: 'grid', gridTemplateColumns: grid, gap: grid === BOARD_COLS_TIGHT ? '0 8px' : '0 16px', padding: `${SZ.pad}px 18px`, flex: 'none',
+                        background: T.panelAlt, border: `1px solid ${T.line}`, ...chk(700, SZ.label), letterSpacing: '.18em', color: T.dim }}>
+            <span data-spectate="board-head" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              PLAYER
+            </span>
+            <span style={{ textAlign: 'right' }}>K</span>
+            <span style={{ textAlign: 'right' }}>D</span>
+            <span style={{ textAlign: 'right' }}>A</span>
+            <span style={{ textAlign: 'right' }}>STK</span>
+          </div>
+          <div data-spectate="rows" style={{ display: 'flex', flexDirection: 'column', gap: ROW_GAP, marginTop: ROW_GAP,
+                                             ...(fit ? { flex: '1 1 0px', minHeight: 0, overflow: 'hidden' } : null) }}>
+            {c === 0 && rows.length === 0 && (
+              <div style={{ ...chk(600, SZ.label), letterSpacing: '.16em', color: T.micro, padding: '16px 18px' }}>NO SCORES YET.</div>
+            )}
+            {col.map(r => <BoardRow key={r.player_id} r={r} SZ={sz} fit={fit} grid={grid} />)}
+          </div>
+        </div>
+      ))}
       </div>
     </div>
     </ScrollX>
@@ -315,6 +379,24 @@ function Board({ rows, SZ, fit }: { rows: (LiveRow | ScoreRow)[]; SZ: SZ; fit: b
       </div>
     )}
     </>
+  );
+}
+
+function BoardRow({ r, SZ, fit, grid }: { r: LiveRow | ScoreRow; SZ: SZ; fit: boolean; grid: string }) {
+  const down = 'status' in r && r.status === 'down';
+  return (
+    <div data-spectate="row" data-fit={fit ? '1' : undefined}
+      style={{ display: 'grid', gridTemplateColumns: grid, gap: grid === BOARD_COLS_TIGHT ? '0 8px' : '0 16px', alignItems: 'center', padding: fit ? '0 18px' : `${SZ.pad}px 18px`,
+               // a roster longer than the wall is tall shrinks its rows, but never past the
+               // height of their own text (polish 2026-09-23: 20 px rows at 900 px wide)
+               ...(fit ? { flex: '1 1 0px', minHeight: rowMin(SZ), maxHeight: rowMax(SZ), overflow: 'hidden' } : null),
+               background: T.panel, border: `1px solid ${T.row}`, borderLeft: `5px solid ${teamColor(r.team_id)}`, opacity: down ? .55 : 1 }}>
+      <span data-spectate="name" title={r.display} style={{ ...chk(700, SZ.row), letterSpacing: '.1em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.display}</span>
+      <span style={{ textAlign: 'right', ...osw(700, SZ.rowK) }}><Num value={r.kills} /></span>
+      <span style={{ textAlign: 'right', ...osw(600, SZ.row), color: T.dim }}><Num value={r.deaths} /></span>
+      <span style={{ textAlign: 'right', ...osw(600, SZ.row), color: T.dim }}><Num value={r.assists} /></span>
+      <span style={{ textAlign: 'right', ...osw(600, SZ.row), color: bestStreak(r) >= 3 ? T.warn : T.dim }}><Num value={bestStreak(r)} /></span>
+    </div>
   );
 }
 
