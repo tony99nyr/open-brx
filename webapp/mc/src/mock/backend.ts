@@ -1,6 +1,6 @@
 // In-browser mock of the MC server (mcp/brx_mcp/mc/API.md). Stateful enough for every UI interaction.
 import type {
-  Api, ConfigView, Coverage, FeedEntry, GameConfig, LanPublic, LiveRow, LiveView, Loadout, LoadoutPolicy, LogView, MatchHistoryRow, ModeInfo, NodeView, OperatorActionResult, OperatorCmd, PerkView, Phase, Player,
+  Api, ConfigView, PowerupPreset, PowerupsView, Coverage, FeedEntry, GameConfig, LanPublic, LiveRow, LiveView, Loadout, LoadoutPolicy, LogView, MatchHistoryRow, ModeInfo, NodeView, OperatorActionResult, OperatorCmd, PerkView, Phase, Player,
   ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, ReportResult, SavedGame, ScanRow, ScoreRow, StartView, State, StationAssignment, StationKind, StationSourceId,
   StationView, TunnelProvider, TunnelStatus, WeaponView,
 } from '../api/types';
@@ -12,6 +12,20 @@ import { PRESETS, apply as applyPolicy, conflict, defaultPolicy, pool as poolOf,
 import { WSL_UNREACHABLE_WARNING } from './wslWarning';
 
 const now = () => Date.now();
+// A56 (S58, docs/spec/powerups.md): MC's item presets, expanded from its default constants (Tony 2026-09-24:
+// heavies every 120 s, Overshield +75 every 60 s, each first spawning after one interval; a weapon item's
+// charges are its magazine, weapons.json `mag`). The real list comes from `GET /api/powerups`; this mirrors it
+// so `?mock` and the tests work without the server. `?mock&powerups=off` demos MC started without
+// `--powerups`; `?mock&powerups=old` demos an MC that predates the route (404).
+const POWERUP_PRESETS: PowerupPreset[] = [
+  { preset: 'rockets', item: { kind: 'weapon', weapon_id: 'rocket_launcher', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'ROCKETS', color: '#ff6a2b' } },
+  { preset: 'rail_gun', item: { kind: 'weapon', weapon_id: 'rail_gun', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'RAIL GUN', color: '#38b6ff' } },
+  { preset: 'overshield', item: { kind: 'overshield', amount: 75, spawn_every_s: 60, first_at_s: 60, name: 'OVERSHIELD', color: '#b58cff' } },
+];
+const mockPowerups = (): 'on' | 'off' | 'old' => {
+  const v = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('powerups') : null;
+  return v === 'off' || v === 'old' ? v : 'on';
+};
 // loadout.md §8 — the shipped example so the SAVED GAMES shelf is never empty on first use
 const BUILTIN_SNIPER = (): SavedGame => {
   const ffa: ConfigView = withPolicy(clone(MODES.find(m => m.mode === 'ffa')!.defaults));
@@ -88,7 +102,7 @@ export class MockBackend implements Api {
   private evicted = new Set<string>();
   // A13.5: one utility phone that said hello and is waiting to be assigned (the ITEMS panel demo). Mirrors
   // `Session.stations` / `_station_view` in state.py, including the attention flags the server derives.
-  private stations: Record<string, { assigned: StationAssignment | null; armed: StationView['armed']; arm_pending: boolean; report: StationView['report']; seen: number; offline?: boolean }> = {
+  private stations: Record<string, { assigned: StationAssignment | null; armed: StationView['armed']; arm_pending: boolean; report: StationView['report']; seen: number; offline?: boolean; takenAt?: number; takenBy?: number; resetAt?: number }> = {
     'util-a1b2c3': { assigned: null, armed: null, arm_pending: false, report: { kind: 'respawn', team: 1, station_id: 1, threshold: -74, live: false, revives: 0, armed: false, battery: 64 }, seen: now() },
     // F106(i): a second seeded phone that is ASSIGNED but OUT OF WI-FI (the operator carried it out to the
     // field before it ever got the arming push) so `?mock` alone can show OUT OF WI-FI / ARM PENDING on the
@@ -101,6 +115,37 @@ export class MockBackend implements Api {
   };
   private gameNo = 1;
   private gameStarted = false;
+  /** A56: a powerup station's live item state on the match clock (`StationView.item_available` /
+   *  `next_spawn_at_ms`): spawns at `first_at_s`, then every `spawn_every_s`; an item stays until taken and a
+   *  spawn never stacks. Only while a match is armed or live; outside one the fields are absent. */
+  private itemState(st: { assigned: StationAssignment | null; takenAt?: number; takenBy?: number; resetAt?: number }): Partial<StationView> & { taken_by?: number } {
+    const it = st.assigned?.item;
+    const t0 = this.live_?.go_live_t ?? this.start_?.go_live_t;
+    if (!it || t0 == null || !['armed', 'live'].includes(this.phase)) return {};
+    const t = now();
+    const spawnAt = (k: number) => t0 + (it.first_at_s + k * it.spawn_every_s) * 1000;
+    let k = 0; while (spawnAt(k) <= t) k++;          // k = spawns so far; spawnAt(k) is the next one
+    // the item last appeared at the later of the last spawn and a host RESET
+    const appeared = Math.max(k > 0 ? spawnAt(k - 1) : -Infinity, st.resetAt ?? -Infinity);
+    const available = appeared > -Infinity && (st.takenAt == null || st.takenAt < appeared);
+    // as the server: next_spawn_at_ms is the next spawn instant, sent while AVAILABLE too
+    return { item_available: available, next_spawn_at_ms: spawnAt(k), ...(!available && st.takenBy != null ? { taken_by: st.takenBy } : {}) };
+  }
+  /** Demo/test stand-in for a player's `pickup` fact relayed by MC: the item at this station was taken now. */
+  pickupStation(node_id: string, player_num?: number) { const st = this.stations[node_id]; if (st) { st.takenAt = now(); st.takenBy = player_num; this.emit(); } }
+  async resetStation(node_id: string): Promise<{ ok: boolean }> {
+    const st = this.stations[node_id]; if (!st) throw Object.assign(new Error('no such station'), { status: 404, body: { error: 'no such station' } });
+    if (mockPowerups() !== 'on') throw new Error('powerups are off on this MC: there is no item to reset');
+    if (!st.assigned?.item) throw new Error('this station has no item to reset');
+    if (!['armed', 'live'].includes(this.phase)) throw new Error(`an item reset needs a match ARMED or LIVE (MC is at ${this.phase.toUpperCase()})`);
+    st.resetAt = now(); st.takenAt = undefined; st.takenBy = undefined; this.emit();
+    return { ok: true };
+  }
+  async getPowerups(): Promise<PowerupsView> {
+    const m = mockPowerups();
+    if (m === 'old') throw Object.assign(new Error('Not Found'), { status: 404 });
+    return { enabled: m === 'on', presets: clone(POWERUP_PRESETS) };
+  }
   private stationViews(): StationView[] {
     return Object.entries(this.stations).map(([node_id, st]) => {
       const attention: string[] = [];
@@ -112,7 +157,7 @@ export class MockBackend implements Api {
       if (a && fresh && rep.station_id != null && rep.station_id !== a.id) attention.push(`PHONE ADVERTISES ID ${rep.station_id}, ASSIGNED ${a.id}`);
       if (typeof rep.battery === 'number' && rep.battery < 30) attention.push('BATTERY LOW');
       return { node_id, assigned: a, armed: st.armed, arm_pending: st.arm_pending, report: rep, app_ver: 'utility',
-        last_seen_ms: now() - st.seen, online: !st.offline, attention, game: this.gameNo };
+        last_seen_ms: now() - st.seen, online: !st.offline, attention, game: this.gameNo, ...this.itemState(st) };
     });
   }
   /** The demo's config-proof fault for this gun, or undefined — only under `?mock&faults=1`.
@@ -173,8 +218,21 @@ export class MockBackend implements Api {
     // the demo phone applies it, as utility.js does: it now reports what it was told
     st.report = { ...st.report, kind: st.assigned.kind, team: st.assigned.team, station_id: st.assigned.id, threshold: st.assigned.threshold, armed: true, live: true };
   }
-  async putStation(node_id: string, a: { kind: StationKind; team: number | string; id: number; threshold?: number }): Promise<StationView> {
+  async putStation(node_id: string, a: { kind: StationKind; team: number | string; id: number; threshold?: number; item_preset?: string }): Promise<StationView> {
+    // as `state.py set_station`: no station PUT while the match is armed or live (players already hold
+    // `config.stations`, and A56's items are locked for the match)
+    if (this.phase === 'armed' || this.phase === 'live') {
+      throw Object.assign(new Error(`the match is ${this.phase.toUpperCase()}: stations and their items are locked for the match -- RECALL or END it first`), { status: 400 });
+    }
     if (!STATION_KINDS.includes(a.kind)) throw new Error(`kind must be one of ${STATION_KINDS.join(', ')}`);
+    let item: StationAssignment['item'];
+    if (a.item_preset != null) {
+      if (mockPowerups() !== 'on') throw new Error('powerups are off on this MC: start it with --powerups to give a station an item');
+      if (a.kind !== 'powerup') throw new Error(`item_preset is only for a powerup station, not ${a.kind}`);
+      const p = POWERUP_PRESETS.find(x => x.preset === a.item_preset);
+      if (!p) throw new Error(`unknown item_preset '${a.item_preset}': one of ${POWERUP_PRESETS.map(x => x.preset).join(', ')}`);
+      item = clone(p.item);
+    }
     let team: number;
     if (typeof a.team === 'string') {
       if (a.team === 'any' || a.team === 'ffa') team = 255;
@@ -188,7 +246,8 @@ export class MockBackend implements Api {
     const threshold = a.threshold ?? -74;
     if (!Number.isInteger(threshold) || threshold < -100 || threshold > -30) throw new Error('threshold must be an integer dBm in -100..-30 (the presence bubble; -74 ≈ 10 ft at high TX)');
     const st = this.stations[node_id] ?? (this.stations[node_id] = { assigned: null, armed: null, arm_pending: false, report: {}, seen: now() });
-    st.assigned = { kind: a.kind, team, id: a.id, threshold, at: now() };
+    st.assigned = { kind: a.kind, team, id: a.id, threshold, at: now(), ...(item ? { item } : {}) };
+    st.takenAt = undefined; st.takenBy = undefined; st.resetAt = undefined;
     for (const n of Object.keys(this.stations)) this.armStation(n);
     this.emit();
     return this.stationViews().find(v => v.node_id === node_id)!;

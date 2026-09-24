@@ -36,7 +36,12 @@ export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, NEVER_SEEN_MS, STALE_AFTER_MS, STAT
 import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LogView, Phase, Player,
   PerkView, ScanRow, StationKind, StationView, VoiceList, PhaseRefusalBody, ModeInfo,
   WeaponView, SavedGame, LanPublic, MatchHistoryRow, PresentationView, RecapView, State,
-  OperatorActionResult, OperatorCmd } from './contract.gen';
+  OperatorActionResult, OperatorCmd, PowerupsView, StationView as GenStationView } from './contract.gen';
+
+/** A56 round 2: `StationView.taken_by` (the player_num who took the item, while it is not available) is
+ *  NOT in the generated contract yet: the MC lane adds it to `types.py` and regenerates. Until then the
+ *  console reads it through this widening; drop it once `contract.gen.ts` carries the field. */
+export type StationViewLive = GenStationView & { taken_by?: number | null };
 
 export type TunnelProvider = import('./contract.gen').TunnelProviderValue | null;
 
@@ -114,7 +119,14 @@ export interface Api {
    *  server's `error` text is the whole point of the rejection, never swallow it. */
   setTunnel(on: boolean): Promise<LanPublic>;
   /** A13.5: assign a utility phone (kind / team / id / threshold); MC pushes `station_config` at once. 400 in the operator's voice. */
-  putStation(node_id: string, a: { kind: StationKind; team: number | string; id: number; threshold?: number }): Promise<StationView>;
+  putStation(node_id: string, a: { kind: StationKind; team: number | string; id: number; threshold?: number;
+    /** A56: a `powerup` station's item, one of `getPowerups().presets[].preset`. Refused when MC's powerups flag is off. */
+    item_preset?: string }): Promise<StationView>;
+  /** A56: `GET /api/powerups` -- MC's powerups flag and the item presets. Rejects with status 404 on an MC that predates powerups. */
+  getPowerups(): Promise<PowerupsView>;
+  /** A56 round 2: `POST /api/stations/{node_id}/reset` -- a powerup station's item is available NOW, off its
+   *  schedule (armed/live only). A route-less 404 is an MC that predates this UI. */
+  resetStation(node_id: string): Promise<{ ok?: boolean }>;
   deleteStation(node_id: string): Promise<void>;
   armStations(): Promise<{ ok: boolean; armed: number; pending: string[] }>;
   /** A41: the cure for a phone stuck in utility mode. Pushes `control{cmd:"release_utility"}` to ONE
