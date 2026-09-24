@@ -244,7 +244,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
    dimmed, and tagged STALE in words, so a frozen number never reads as live. An MC drop marks only what MC feeds (K, A). */
 .staletag{align-self:center;font-family:var(--fl);font-style:normal;font-size:14px;font-weight:700;letter-spacing:.2em;padding:2px 8px;border:1.5px solid var(--bad);color:var(--bad);line-height:1.1;white-space:nowrap}
 .gunstale .vitals .hp,.gunstale .vitals .sh,.gunstale .vitals .shield,.gunstale .vitals .bar,.gunstale .ammo .mag,.gunstale .ammo .res,.gunstale .ammo .pips,.gunstale .ammo .heat{opacity:.35;text-shadow:none;filter:grayscale(.6)}
-.mcstale .stats b{opacity:.45}
+.mcstale #st-K,.mcstale #st-A,.mcstale #st-ACC{opacity:.45}   /* only what MC feeds: D is this phone's own count (polish round 1) */
 .stats .staletag{font-size:11px;padding:1px 6px}
 /* the link-lost bar on the live HUD: solid red, 16 px, steady (hud.js `_chips`, `.gunlost`) */
 .pill.bad.gunlost{animation:none;font-size:16px;letter-spacing:.16em;padding:8px 22px;background:var(--bad);border-color:var(--bad);color:#1a0404;position:relative}
@@ -658,7 +658,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
    (READY UP, READY FOR NEXT MATCH, OK) is the strongest thing on screen: a 2px lifted-red frame on a dim red
    fill. A confirmed READY ✓ is quieter: a 1px frame, no fill. STANDING BY stays the plate. */
 [data-env="night"] .lobby{--ok:var(--num)}
-[data-env="night"] .lobby .ready.off,[data-env="night"] .result .rfoot .ready:not(.ghost){background:#2a0c0c;color:#e06a6a;border:2px solid #e06a6a;box-shadow:none}
+[data-env="night"] .lobby .ready.off,[data-env="night"] .result .rfoot .ready:not(.ghost){background:#5c1616;color:#f08080;border:2px solid #e06a6a;box-shadow:none}   /* polish round 1: filled, so the one action outranks the near-black plates at night too */
 [data-env="night"] .lobby .ready[aria-pressed="true"],[data-env="night"] .lobby .ready.wait.on{background:transparent;color:var(--num);border:1px solid var(--num);box-shadow:none}
 .lobby .note{font-size:13px;color:var(--mut);font-weight:600;max-width:200px;line-height:1.5}
 /* A27/A30: the host locked kits under this player, or MC refused a pick. It LEADS the screen -- one line

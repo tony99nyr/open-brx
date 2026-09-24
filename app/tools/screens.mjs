@@ -3846,12 +3846,13 @@ for (const view of VIEWS) for (const night of [false, true]) {
     });
     await step(`${view.name} QA-02 MC drop ${skin}: the MC-fed K and A say STALE, the gun-fed HP and ammo stay live`, async () => {
       const pg = await open(view, 'live', N);
-      await pg.evaluate(() => window.brxDemo.score(3, 1, 1)); await pg.waitForTimeout(300);
+      await pg.evaluate(() => { window.brx.engine.deaths = 1; window.brxDemo.score(3, 1, 1); }); await pg.waitForTimeout(300);   // one death so D is on screen
       await pg.evaluate(() => window.brxDemo.mcLost()); await pg.waitForTimeout(400);
-      const r = { hp: await look(pg, '#hp'), mag: await look(pg, '#mag'), tag: await look(pg, '.stats .staletag'), k: await look(pg, '#st-K'), gunTags: await pg.evaluate(() => document.querySelectorAll('.vitals .staletag, .ammo .staletag').length) };
+      const r = { hp: await look(pg, '#hp'), mag: await look(pg, '#mag'), tag: await look(pg, '.stats .staletag'), k: await look(pg, '#st-K'), d: await look(pg, '#st-D'), gunTags: await pg.evaluate(() => document.querySelectorAll('.vitals .staletag, .ammo .staletag').length) };
       await pg.screenshot({ path: `${OUT}/${view.name}-qa02-mcdrop-${skin}.png` }); await pg.close();
       must(r.tag && r.tag.shown && r.tag.text === 'STALE' && r.tag.font >= 11, `K/A come from MC: they must say STALE: ${JSON.stringify(r.tag)}`);
       must(r.k && r.k.op <= 0.5, `the K number must be dimmed: ${JSON.stringify(r.k)}`);
+      must(r.d && r.d.op === 1, `D is this phone's own count, so an MC drop must not dim it (polish round 1): ${JSON.stringify(r.d)}`);
       must(r.hp.op === 1 && r.mag.op === 1 && r.gunTags === 0, `HP and ammo still come from the linked gun, so they must NOT read stale: ${JSON.stringify(r)}`);
     });
     await step(`${view.name} QA-03/06 hit ${skin}: TAKING FIRE shows, and the hit number never overlaps it`, async () => {
@@ -4171,6 +4172,30 @@ for (const view of VIEWS) await step(`${view.name} QA-17 idle night: nothing on 
     return out; });
   await pg.close();
   must(bad.length === 0, 'green at night: ' + bad.slice(0, 5).join(', '));
+});
+
+// QA polish round 1 (2026-09-23): the IR KILL CONFIRMED card usually lands first, then MC's named card for the SAME kill.
+// The engine plays one sound for the pair, so the HUD gives one flash and one buzz, not two.
+for (const view of VIEWS) await step(`${view.name} QA-05 one kill, one buzz: MC's card after the IR card neither flashes nor buzzes again`, async () => {
+  const pg = await open(view, 'live-callout-kill', '', 2700);
+  const r = await pg.evaluate(async () => { const h = window.brx.hud; let buzz = 0, flash = 0; const oh = h.h.onHaptic, of = h._flash.bind(h);
+    h.h.onHaptic = k => { if (k === 'kill') buzz++; }; h._flash = () => { flash++; of(); };
+    window.brxDemo.killConfirm('VIPER'); await new Promise(r => setTimeout(r, 600));
+    const card = document.querySelector('.mo.co'); h.h.onHaptic = oh;
+    return { buzz, flash, name: card ? card.querySelector('.nm').textContent : null }; });
+  await pg.close();
+  must(r.name === 'VIPER', `MC's card must name the victim: ${JSON.stringify(r)}`);
+  must(r.buzz === 0 && r.flash === 0, `the second card for the same kill buzzed or flashed again: ${JSON.stringify(r)}`);
+});
+
+// QA polish round 1 (2026-09-23): QA-19 at night. READY UP was a dim outline no stronger than the slot plates.
+await step('QA-19 kitted night: READY UP is filled and outranks the plates', async () => {
+  const pg = await open(VIEWS[1], 'kitted', '&night');
+  const r = await pg.evaluate(() => { const lum = c => { const m = (c.match(/[\d.]+/g) || []).map(Number); const a = m.length > 3 ? m[3] : 1; return (m[0] + m[1] + m[2]) / 3 * a; };
+    const btn = document.querySelector('.foot .ready[data-act="onReady"]'), plate = document.querySelector('.plate.slot');
+    return { txt: btn && btn.textContent.trim(), lb: lum(getComputedStyle(btn).backgroundColor), lp: lum(getComputedStyle(plate).backgroundColor) }; });
+  await pg.close();
+  must(r.txt === 'READY UP' && r.lb > 3 * r.lp + 15, `night READY UP is not visibly stronger than a slot plate: ${JSON.stringify(r)}`);
 });
 
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {

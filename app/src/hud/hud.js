@@ -1828,7 +1828,7 @@ export class Hud {
   _co(st, spec) {
     const tk = spec.team && TEAM_COLOR[spec.team] ? spec.team : null;
     const el = document.createElement('div');
-    el.className = 'mo co' + (spec.kill ? ' kill' : '');
+    el.className = 'mo co' + (spec.kill || spec.killStyle ? ' kill' : '');
     el.dataset.kind = spec.kind; el.dataset.tone = spec.tone; el.dataset.src = spec.src;
     const medals = (spec.medals || []).filter(k => MEDAL_LABEL[k]);
     el.innerHTML = `<div class="cob"><div class="row"><span class="tag"><span class="unskew">${esc(spec.tag)}</span></span>`
@@ -1856,6 +1856,7 @@ export class Hud {
       // The IR word cannot carry the victim (docs/ir-callouts.md): a KILL CONFIRMED names the team. When MC's own
       // named card for the same kill is already up it is richer, so the IR word leaves it alone.
       if (co.kind === 'kill_confirmed') {
+        if (!(this._coMcUntil > Date.now())) this._coIrKillAt = Date.now();
         if (!(this._coMcUntil > Date.now())) this._co(st, { kind: 'kill_confirmed', src: 'ir', tone: 'enemy', kill: true, tag: 'KILL CONFIRMED', name: op, team, sub: 'CONFIRMED BY THEIR GUN · MC KEEPS THE SCORE', hold: 2000 });
       } else {
         const mate = co.kind === 'teammate_down';
@@ -1874,7 +1875,10 @@ export class Hud {
   /** MC's kill feedback: the same card, named from MC's `victim_display` (else "<TEAM> OPERATIVE"), with the medals. */
   _kill(st, m) {
     const d = m.data || {}; const vk = String(d.victim_team || 'yellow').toLowerCase();
-    const hold = this._co(st, { kind: 'kill', src: 'mc', tone: 'enemy', kill: true, tag: 'KILL CONFIRMED', name: d.victim || (vk.toUpperCase() + ' OPERATIVE'), team: vk,
+    // Polish round 1: when the IR KILL CONFIRMED card for this kill is already up (it usually arrives first), MC's
+    // named card replaces it in place with no second flash or buzz, as the engine already plays no second sound.
+    const irFirst = this._coIrKillAt && Date.now() - this._coIrKillAt < 3000;
+    const hold = this._co(st, { kind: 'kill', src: 'mc', tone: 'enemy', kill: !irFirst, killStyle: true, tag: 'KILL CONFIRMED', name: d.victim || (vk.toUpperCase() + ' OPERATIVE'), team: vk,
       sub: `+1 ELIMINATION · K ${st.kills != null ? st.kills : ''} · MISSION CONTROL`, medals: Array.isArray(d.medals) ? d.medals : [], hold: 1800 });
     this._coMcUntil = Date.now() + hold;
   }
