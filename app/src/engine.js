@@ -1921,7 +1921,8 @@ export class Engine {
    *  pool's level/max exceeds (bands ordered highest-first, same `frac > threshold` rule as `_gunRest`). */
   _readoutBand(entry) {
     const level = entry.pool === 'health' ? this.hp : entry.pool === 'armor' ? this.armor : this.shield;
-    const frac = entry.max > 0 ? level / entry.max : 0;
+    const max = this._readoutMax(entry);
+    const frac = max > 0 ? level / max : 0;
     const bands = entry.bands || [];
     return bands.find(b => frac > b[0]) || bands[bands.length - 1] || null;
   }
@@ -1930,10 +1931,21 @@ export class Engine {
    *  anything left so "1 HP" and "dead" never render the same (poolgauge._segments' rule, extended). */
   _readoutLevel(entry) {
     const value = entry.pool === 'health' ? this.hp : entry.pool === 'armor' ? this.armor : this.shield;
-    const frac = entry.max > 0 ? value / entry.max : 0;
+    const max = this._readoutMax(entry);
+    const frac = max > 0 ? value / max : 0;
     let level = Math.max(0, Math.min(6, Math.round(frac * 6)));
     if (level === 0 && value > 0) level = 1;
     return level;
+  }
+  /** A56 (Tony, 2026-09-24): the maximum one readout entry measures against. While an overshield is held,
+   *  the shield entry's maximum is the preset's max PLUS the overshield, so the gun shows shield + overshield
+   *  as ONE teal pool that drains visibly (the phone HUD shows the overshield as its own layer; see
+   *  led-language.md §5). On a no-shield preset (max 0) the overshield alone is that pool. Mirrors
+   *  `stage.py`'s `_readout_max`. */
+  _readoutMax(entry) {
+    const max = entry.max > 0 ? entry.max : 0;
+    const o = entry.pool === 'shield' && this._overshield;
+    return o && o.amount > 0 ? max + o.amount : max;
   }
   /** A16.5: the node's own view of its pools, keyed the way `handoverPool` expects. Mirrors
    *  `stage.py`'s `_pool_values`. */
