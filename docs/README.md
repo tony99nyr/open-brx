@@ -106,6 +106,8 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 - **[ir-callouts.md](ir-callouts.md)** — the IR callout bus (S57): one protocol-15 word from the victim's gun per
   death, its code table, dedupe, team gating, and why it never scores.
 - [`hud-review-2026-09-03.md`](hud-review-2026-09-03.md) — the closed HUD review ledger that `screens.mjs` cites.
+- **[audio-queue-scenarios.md](audio-queue-scenarios.md)**: the gun-audio simulator (FIFO, `$PLAYX`, the shield hum)
+  and eight game situations run under the app today and the 0.4.12 rule: what plays, late, cut or lost.
 
 ## Ground truth
 | Fact | Canonical home |
