@@ -4198,6 +4198,23 @@ await step('QA-19 kitted night: READY UP is filled and outranks the plates', asy
   must(r.txt === 'READY UP' && r.lb > 3 * r.lp + 15, `night READY UP is not visibly stronger than a slot plate: ${JSON.stringify(r)}`);
 });
 
+// QA polish round 2 (2026-09-23): the buzz rule, both ways. An MC-only kill buzzes once; a double kill buzzes for each
+// kill even when the second IR card was held back behind the first MC card.
+for (const view of VIEWS) await step(`${view.name} QA-05 kill buzz: an MC-only kill buzzes once, a double kill buzzes twice`, async () => {
+  const pg = await open(view, 'live', '', 4200);
+  const r = await pg.evaluate(async () => { const h = window.brx.hud, e = window.brx.engine, wait = ms => new Promise(r => setTimeout(r, ms));
+    let buzz = 0; const oh = h.h.onHaptic; h.h.onHaptic = k => { if (k === 'kill') buzz++; };
+    const ir = () => e.feedFrame('$HIR,4,15,7,3,23,0,0,*');   // DOWN_BY naming me: an IR KILL CONFIRMED (stage live-callout-kill's word)
+    window.brxDemo.killConfirm('VIPER'); await wait(700); const mcOnly = buzz;
+    await wait(2600); buzz = 0;
+    ir(); await wait(300); window.brxDemo.killConfirm('VIPER'); await wait(300);
+    ir(); await wait(300); window.brxDemo.killConfirm('GHOST'); await wait(700);
+    h.h.onHaptic = oh; return { mcOnly, double: buzz }; });
+  await pg.close();
+  must(r.mcOnly === 1, `an MC-only kill must buzz once: ${JSON.stringify(r)}`);
+  must(r.double === 2, `two kills must buzz twice, however their cards overlap: ${JSON.stringify(r)}`);
+});
+
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;
 }

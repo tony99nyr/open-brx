@@ -1875,9 +1875,11 @@ export class Hud {
   /** MC's kill feedback: the same card, named from MC's `victim_display` (else "<TEAM> OPERATIVE"), with the medals. */
   _kill(st, m) {
     const d = m.data || {}; const vk = String(d.victim_team || 'yellow').toLowerCase();
-    // Polish round 1: when the IR KILL CONFIRMED card for this kill is already up (it usually arrives first), MC's
-    // named card replaces it in place with no second flash or buzz, as the engine already plays no second sound.
-    const irFirst = this._coIrKillAt && Date.now() - this._coIrKillAt < 3000;
+    // Polish rounds 1-2: MC's named card stays quiet (no second flash or buzz) only when the engine paired this confirm
+    // with an IR KILL CONFIRMED (`ir_paired`) AND that IR card really showed, flash and all. The IR mark is consumed
+    // here, so the next kill of a double kill, whose IR card may have been held back behind this one, still buzzes.
+    const irFirst = !!d.ir_paired && !!this._coIrKillAt && Date.now() - this._coIrKillAt < 3000;
+    this._coIrKillAt = 0;
     const hold = this._co(st, { kind: 'kill', src: 'mc', tone: 'enemy', kill: !irFirst, killStyle: true, tag: 'KILL CONFIRMED', name: d.victim || (vk.toUpperCase() + ' OPERATIVE'), team: vk,
       sub: `+1 ELIMINATION · K ${st.kills != null ? st.kills : ''} · MISSION CONTROL`, medals: Array.isArray(d.medals) ? d.medals : [], hold: 1800 });
     this._coMcUntil = Date.now() + hold;

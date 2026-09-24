@@ -4408,7 +4408,9 @@ export class Engine {
       else this.score = { kills: 1 };
       this.scoreAt = this.now();
       if (!irAlreadyConfirmed) this._mcKillOpen.push({ at: this.now(), team: vt });   // an unmatched MC confirm waits for its IR twin
-      this.moment = { kind: 'kill', at: this.now(), data: { victim_team: body.victim_team, victim: this.victimName(body), medals: Array.isArray(body.medals) ? body.medals.slice() : [] } };
+      // `ir_paired` (presentation only): this MC confirm matched an IR KILL CONFIRMED the phone already heard, so the
+      // HUD can avoid a second flash and buzz for the same kill (QA polish round 2).
+      this.moment = { kind: 'kill', at: this.now(), data: { victim_team: body.victim_team, victim: this.victimName(body), medals: Array.isArray(body.medals) ? body.medals.slice() : [], ir_paired: !!irAlreadyConfirmed } };
     }
     this._changed();
   }
