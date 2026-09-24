@@ -46,6 +46,26 @@ costs the player their secondary while the item lasts.
    decides whether a per-phone offset is needed. It also measures the claim latency (in range to TAKEN on the
    station).
 
+## Bench 2026-09-24, Sitting A 3.3 (brx2, Tactix-FE30): what it changed
+
+Measured on one gun, raw MCP writes (not the app). They overturn parts of the mechanism above; the build stays
+behind the flag until the design catches up (open for Tony, S58).
+- **Overshield set past max does NOT stick.** `$LIFE,45,70,75,2,*` echoes 75, then reads back 70 (the `$PSET` shield
+  max) within 0.75 s; 60 holds. A mid-life `$PSET` re-send raising shield max 70 → 145 (nothing else changed) then
+  holds 145 for over 100 s, and the gun still fires and ALT still cycles. Untested: being hit, and `spawned` across a
+  hit and a death. Death clears it (145 → 0; the respawn gives 45/70/0).
+- **`$BMAP,<btn>,<slot>,,,,,*` FIRES that slot on each press and does not move the trigger's weapon** (the trigger
+  kept firing slot 1 after SELECT fired slot 2; the same for slot 3, outside the cycle). It fires even with the
+  trigger blocked (`$BMAP,0,98`). `$BMAP,<btn>,100,<slot>,99,99,99` does NOT select a slot. Button ids: SELECT 3,
+  left 4, right 5. The ALT cycle `$BMAP,1,100,0,1,2,99` goes 0 → 1 → 2, and a new `$BMAP` restarts it at the list start.
+- **A respawn refills EVERY slot, item slots included**, so item slots must be re-emptied after each `$SPAWN`
+  (compile's spawn and revive already write `$AMMO,<slot>,0,0,1` after `$SPAWN`). An empty slot cannot fire.
+- **An empty slot stays in the ALT cycle** (ALT went 1 → 2, clicking empty, → 0): an ALT-cycle design must drop an
+  empty item slot from the list, or keep item slots out of ALT.
+- A mid-life `$AMMO` for another slot did not move the trigger's weapon (after `$AMMO,2,0,0,1` the trigger fired
+  slot 1). OPEN: once, after the right button fired slot 2, the reload handle reloaded slot 2; whether reload targets
+  the last slot fired needs a disassembly read.
+
 ## Contract (A56, additive)
 
 - **`StationAssignment.item?`** for kind `powerup`:
