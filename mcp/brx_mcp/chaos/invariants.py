@@ -285,6 +285,73 @@ def possession_is_max_merged(world: World) -> None:
                                           f"the reports say {want_s} neutral {round(neutral / 1000)}")
 
 
+def credited_enemy_kills(world: World, sc, *, cued_before_end: bool = False) -> Counter:
+    """The kills the ledger says MC must credit and cue: (killer, victim, t) for every emitted death of
+    this match that is not parked after the end, whose shooter is a rostered player other than the
+    victim, and that is not a team kill. Read from EVERY emitted fact, not only the acknowledged ones:
+    MC can cue a kill before its ack reaches the node, and the cue must still match a real fact.
+
+    `cued_before_end`: also count a death parked after the end if MC held it BEFORE the whistle
+    (`world.end_delivered`). A late fact can move a frag-cap end EARLIER (A24/M2), and that parks a kill
+    MC had already credited and cued live. A cue cannot be taken back, so that cue is legitimate."""
+    num_pid = world.num_to_pid()
+    post = _post_end_keys(sc)
+    held = (world.end_delivered or set()) if cued_before_end else set()
+    out: Counter = Counter()
+    for (nid, seq), ev in world.ledger.facts.items():
+        if ev.get("type") != "death" or ev.get("match_id") != sc.match_id:
+            continue
+        if (nid, seq) in post and (nid, seq) not in held:
+            continue
+        victim = str(ev.get("player_id"))
+        killer = num_pid.get(int(ev.get("shooter_num", 0) or 0))
+        if killer is None or killer == victim:
+            continue
+        if world.scenario.mode != "ffa" and world.team_of(killer) == world.team_of(victim):
+            continue
+        out[(killer, victim, int(ev.get("t", 0)))] += 1
+    return out
+
+
+def kill_feedback(world: World) -> Counter:
+    """Every `feedback` of kind "kill" each node received, keyed as `credited_enemy_kills` keys them.
+    A cue addressed to a player other than the node's own is keyed to the node's player, so a misroute
+    shows up as a cue for a kill that player never made."""
+    got: Counter = Counter()
+    for n in world.nodes:
+        own = world.players[n.index]["player_id"]
+        for fb in n.feedback:
+            if fb.get("kind") != "kill":
+                continue
+            who = fb.get("player_id") if fb.get("player_id") == own else f"{own}<-misrouted:{fb.get('player_id')}"
+            got[(who, fb.get("victim"), int(fb.get("t", 0) or 0))] += 1
+    return got
+
+
+@invariant("kill_feedback_matches_credit")
+def kill_feedback_matches_credit(world: World) -> None:
+    """brx1 + brx4 (2026-09-24): every kill cue MC sends to a node matches exactly one kill credited to
+    that node's player. No cue for a death nobody is credited with (an unknown or unrostered shooter, a
+    self-kill, a team kill), and never two cues for one kill (a duplicate, a resend, a restart, a resume).
+
+    ONE-WAY on purpose: cues are a SUBSET of credited kills. MC skips a cue by design when the kill is
+    older than FEEDBACK_MAX_AGE_MS on arrival (a flush after a drop, a clock jump), when the victim's node
+    never synced its clock (A5.7), in a replay (`_replay`, `_retire_scorer`), and when the killer's node
+    has no socket (best effort, no queue). A kill MC cued live and a late fact then parked, by moving a
+    frag-cap end earlier, still counts as credited (see `credited_enemy_kills`). A scenario with none of those checks the other direction
+    itself (`every_kill_cued` in scenarios/regressions.py)."""
+    sc = world.session.scorer
+    if sc is None:
+        return
+    want = credited_enemy_kills(world, sc, cued_before_end=True)
+    got = kill_feedback(world)
+    extra = got - want
+    if extra:
+        _fail("kill_feedback_matches_credit",
+              f"kill cues with no credited kill behind them (or one too many), as (player, victim, t): "
+              f"{dict(list(extra.items())[:5])}")
+
+
 # ------------------------------------------------------------------------------ end of the run
 @invariant("ends_exactly_once", when="end")
 def ends_exactly_once(world: World) -> None:

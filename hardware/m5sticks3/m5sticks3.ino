@@ -526,6 +526,7 @@ static StickState buildStickState(uint32_t now) {
     st.respawn_present = true;
     st.respawn_team = a.team;
     st.respawn_revives = link.revives().revives;
+    st.respawn_redeploy = (int32_t)(brx_glue::reviveFlashUntilMs - now) > 0;
     st.respawn_live = advertising;
   }
 

@@ -52,6 +52,10 @@ constexpr uint32_t SCAN_PERIOD_MS = 1200;
 // runs all match beside the advert and (HELD) Wi-Fi on one radio, so it is 50 of 100. BENCH TO CONFIRM
 // (README): a phone's advert every ~100-250 ms still lands several times per 1 s window at 50%.
 constexpr uint16_t SCAN_INTERVAL_UNITS = 100;
+// Tony (2026-09-24): a revive at a respawn Stick flashes the screen green, REDEPLOY, and counts up.
+static const uint32_t REVIVE_FLASH_MS = 1500;
+static uint32_t reviveFlashUntilMs = 0;
+
 constexpr uint16_t SCAN_WINDOW_UNITS = 50;
 
 // ---- persisted state (Preferences, namespace "brxmc" -- separate from "brx"'s bench settings) --
@@ -418,9 +422,9 @@ static void mcPollPlayerScan(uint32_t now) {
     scan->setAdvertisedDeviceCallbacks(&playerScanCallbacks, /*wantDuplicates=*/true);
     scan->setActiveScan(false);  // passive: we only read the advert, never need a scan response
     scan->setInterval(SCAN_INTERVAL_UNITS);
-    scan->setWindow(SCAN_WINDOW_UNITS);
     playerScanConfigured = true;
   }
+  scan->setWindow(scan_window_units(link.assignment().kind));  // per kind: heavy for a hill only
   scanFeedsClaims = link.has_powerup_assignment();
   scanFeedsPresence = link.has_control_assignment() || link.has_respawn_assignment();
   scan->start(SCAN_WINDOW_S, onPlayerScanComplete, false);
@@ -476,6 +480,7 @@ static void mcTickPlayers(uint32_t now) {
   }
   if (link.revives().revives != revivesBefore) {
     mcScreenWake = true;
+    reviveFlashUntilMs = millis() + REVIVE_FLASH_MS;  // Tony: flash green for REDEPLOY, and count up
     Serial.printf("REVIVE count=%lu\n", (unsigned long)link.revives().revives);
   }
 }

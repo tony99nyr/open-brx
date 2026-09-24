@@ -7,7 +7,25 @@ paste its actions here, and name the FOLLOWUPS row or the commit in `doc`.
 """
 from __future__ import annotations
 
-from ..registry import Scenario, scenario
+from ..invariants import credited_enemy_kills, kill_feedback
+from ..registry import InvariantError, Scenario, scenario
+from ..world import World
+
+
+def every_kill_cued(world: World) -> None:
+    """The other direction of `kill_feedback_matches_credit`, for a script with none of MC's designed
+    skips (no drop, no clock jump, every node synced and connected when its kill lands): every credited
+    enemy kill got exactly one kill cue, and the unrostered shooter's death got none."""
+    sc = world.session.scorer
+    if sc is None:
+        raise InvariantError("every_kill_cued", "the match has no scorer")
+    want = credited_enemy_kills(world, sc)
+    got = kill_feedback(world)
+    if got != want:
+        raise InvariantError("every_kill_cued", f"cues {dict(got)} != credited enemy kills {dict(want)}")
+    unknown = [k for k in sc.kills if k["killer"] is None]
+    if len(unknown) != 1:
+        raise InvariantError("every_kill_cued", f"want one death with no credited killer, MC holds {unknown}")
 
 scenario(Scenario(
     name="restart-after-hot-join", mode="tdm", nodes=4,
@@ -108,5 +126,28 @@ scenario(Scenario(
         {"name": "kill", "params": {"victim": 0, "shooter": 1}},
         {"name": "kill", "params": {"victim": 2, "shooter": 1}},
     ],
+    ci_seeds=(1,),
+))
+
+scenario(Scenario(
+    name="unknown-shooter-no-kill-cue", mode="tdm", nodes=4,
+    doc="Field 2026-09-24 (brx1, brx4): a player died to `shooter_num` 11 in a match with no player 11. MC must "
+        "credit nobody and cue nobody, and every other kill still gets its one cue, through a resend of the "
+        "kill, a team kill and an MC restart.",
+    script=[
+        # nodes 0 and 2 are blue, 1 and 3 are yellow; the roster holds player numbers 1 to 4 only
+        {"name": "kill", "params": {"victim": 0, "shooter": 1}},
+        {"name": "unknown_shooter_death", "params": {"victim": 2, "shooter_num": 11}},
+        {"name": "resend_death", "params": {"node": 0, "as_batch": False}},
+        {"name": "team_kill", "params": {"victim": 3, "shooter": 1}},
+        {"name": "mc_restart", "params": {}},
+        {"name": "resend_death", "params": {"node": 0, "as_batch": True}},
+        {"name": "respawn", "params": {"node": 0}},
+        {"name": "respawn", "params": {"node": 2}},
+        {"name": "kill", "params": {"victim": 1, "shooter": 2}},
+        {"name": "kill", "params": {"victim": 0, "shooter": 1}},
+        {"name": "end", "params": {}},
+    ],
+    checks=(every_kill_cued,),
     ci_seeds=(1,),
 ))
