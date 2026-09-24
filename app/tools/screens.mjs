@@ -4028,6 +4028,37 @@ for (const view of VIEWS) {
     must(r.labs.some(l => l.t === 'RESERVE'), `the ammo bar is not labelled RESERVE: ${JSON.stringify(r.labs)}`);
   });
 }
+await step('QA-17 night: no green on the kit, lobby, briefing or result screens (spec B4)', async () => {
+  const green = [];
+  for (const stage of ['kitted', 'kitted-ready', 'lobby-ready', 'loadout-picked', 'briefing', 'result-players', 'result-win-team']) {
+    const pg = await open(VIEWS[1], stage, '&night');
+    green.push(...await pg.evaluate(stage => {
+      const isGreen = v => { const m = (v.match(/[\d.]+/g) || []).map(Number); if (m.length < 3 || (m.length > 3 && m[3] < .05)) return false; return m[1] > m[0] + 24 && m[1] > m[2]; };
+      const out = [];
+      for (const e of document.querySelectorAll('#hud *')) {
+        const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden' || !e.getClientRects().length) continue;
+        const own = Array.from(e.childNodes).some(n => n.nodeType === 3 && n.textContent.trim());
+        for (const [k, v] of [['color', own ? cs.color : ''], ['bg', cs.backgroundColor], ['border', parseFloat(cs.borderTopWidth) ? cs.borderTopColor : '']])
+          if (v && isGreen(v)) out.push(`${stage} ${k} ${v} "${(e.textContent || e.className).trim().slice(0, 20)}"`);
+      }
+      return out;
+    }, stage));
+    await pg.close();
+  }
+  must(green.length === 0, 'green at night: ' + green.slice(0, 8).join(' ; '));
+});
+await step('QA-19 kitted: READY UP is filled and the plates are not (the one action outranks the slots)', async () => {
+  const pg = await open(VIEWS[1], 'kitted');
+  const r = await pg.evaluate(() => {
+    const a = c => { const m = (c.match(/[\d.]+/g) || []).map(Number); return m.length > 3 ? m[3] : m.length ? 1 : 0; };
+    const lum = c => { const m = (c.match(/[\d.]+/g) || []).map(Number); return (m[0] + m[1] + m[2]) / 3 * a(c); };
+    const btn = document.querySelector('.foot .ready[data-act="onReady"]'), plate = document.querySelector('.plate.slot');
+    return { btn: btn && getComputedStyle(btn).backgroundColor, plate: plate && getComputedStyle(plate).backgroundColor, lb: btn ? lum(getComputedStyle(btn).backgroundColor) : 0, lp: plate ? lum(getComputedStyle(plate).backgroundColor) : 0, txt: btn && btn.textContent.trim() };
+  });
+  await pg.close();
+  must(r.txt === 'READY UP', 'not the READY UP state: ' + JSON.stringify(r));
+  must(r.lb > 3 * r.lp + 60, `READY UP is not visibly stronger than a slot plate: ${JSON.stringify(r)}`);
+});
 
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;

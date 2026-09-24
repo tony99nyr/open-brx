@@ -648,10 +648,17 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .lobby .foot{position:absolute;left:36px;right:36px;bottom:34px;display:flex;align-items:center;gap:20px}
 .ready{flex:1;height:60px;background:var(--ok);color:#04120a;font-family:var(--fd);font-style:italic;font-weight:700;font-size:26px;white-space:nowrap;letter-spacing:.2em;transform:skewX(-10deg);box-shadow:0 0 40px -8px var(--ok)}
 .ready .unskew{display:inline-block;transform:skewX(10deg)}
-.ready.off{background:var(--plate);color:var(--num);border:1px solid var(--edge);box-shadow:none}
+.ready.off{background:var(--glow);color:#04121e;border:0;box-shadow:0 0 40px -8px var(--glow)}   /* QA-19: READY UP is the screen's one action, so it wears the filled forward look (BUILD MY KIT, REVIEW KIT), not a ghost plate; READY ✓ stays --ok green */
 .ready:disabled{opacity:.45;cursor:default}   /* QA-08: READY UP while MC refuses this phone */
 .ready.wait{background:var(--plate);color:var(--mut);border:1px solid var(--edge);box-shadow:none;font-size:20px;cursor:default}   /* F117: `.wait` is now the INERT button only (STANDING BY). A real control never wears it. */
 .ready.wait.on{background:var(--ok);color:#04120a;border:none;box-shadow:0 0 40px -8px var(--ok)}
+/* QA-17/QA-19 night: no green anywhere on the kit, lobby, briefing or result screens (spec B4), and no filled
+   bright button. `--ok` takes the night ink inside .lobby (every one of those screens is a .lobby). The action
+   (READY UP, READY FOR NEXT MATCH, OK) is the strongest thing on screen: a 2px lifted-red frame on a dim red
+   fill. A confirmed READY ✓ is quieter: a 1px frame, no fill. STANDING BY stays the plate. */
+[data-env="night"] .lobby{--ok:var(--num)}
+[data-env="night"] .lobby .ready.off,[data-env="night"] .result .rfoot .ready:not(.ghost){background:#2a0c0c;color:#e06a6a;border:2px solid #e06a6a;box-shadow:none}
+[data-env="night"] .lobby .ready[aria-pressed="true"],[data-env="night"] .lobby .ready.wait.on{background:transparent;color:var(--num);border:1px solid var(--num);box-shadow:none}
 .lobby .note{font-size:13px;color:var(--mut);font-weight:600;max-width:200px;line-height:1.5}
 /* A27/A30: the host locked kits under this player, or MC refused a pick. It LEADS the screen -- one line
    sitting directly above the footer's button, never a silent screen swap and never buried in the note. */
@@ -1183,7 +1190,16 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 [data-env="night"] .lrow.rej{border-color:var(--bad);box-shadow:none}
 [data-env="night"] .lo .lolist{-webkit-mask-image:none;mask-image:none}
 [data-env="night"] .lobtn,[data-env="night"] .lobtn.try,[data-env="night"] .lobtn.review{background:var(--plate2);color:var(--num);border:1px solid var(--edge)}
-[data-env="night"] .plate.slot.tap{box-shadow:none;border-color:var(--edge)}
+[data-env="night"] .plate.slot.tap{box-shadow:none;border-color:var(--mut)}   /* QA-18: --edge (#2a1010) left a tappable plate with no visible frame */
+/* QA-18: night hides the weapon photo (above), which left an empty black box on every plate, row and the hero
+   pane. The box goes with it. Perk glyphs and the NONE dash are drawn, not photographed, so they stay, in night
+   ink. Everything the day skin drew in --glow (transparent at night) gets a night colour here: the ▸ cue, the
+   focused row's ⓘ, the in-flight row, the player number, the host-locked slot's name. */
+[data-env="night"] .plate.slot .thumb:not(.perk):not(.none),[data-env="night"] .lrow .thumb:not(.perk),[data-env="night"] .lo .lodetail .art:not(.perk){display:none}
+[data-env="night"] .plate.slot .thumb.perk,[data-env="night"] .plate.slot.pk .thumb.perk,[data-env="night"] .lrow .thumb.perk,[data-env="night"] .lo .lodetail .art.perk{color:var(--num);background:#000;border-color:var(--edge)}
+[data-env="night"] .plate.slot .k .cue,[data-env="night"] .lo .who .num,[data-env="night"] .lolock .cur{color:var(--num)}
+[data-env="night"] .lrow.fo .linfo{color:var(--num);border-color:var(--num)}
+[data-env="night"] .lrow.pend,[data-env="night"] .fch.pend{border-color:var(--warn)}[data-env="night"] .lrow.pend .st,[data-env="night"] .fch.pend{color:var(--warn)}
 .plate.wart .in{padding:10px 10px 10px 12px}   /* the subtitle line needs the width (MAG 300 · RESERVE 600) */
 
 /* ---------- A10 §4.1 / §4.6: setting-up state + BRIEFING ---------- */
