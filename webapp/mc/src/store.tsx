@@ -145,6 +145,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // match's events piled on top of the first's, producing a feed with two FIRST BLOODs and
   // non-monotonic clocks (`t_match_s` is relative to each match's own start). Field 2026-09-01.
   const feedMatch = useRef<string | null>(null);
+  // Set each time /ui-ws (re)opens: the next snapshot's feed REPLACES the local one. A tab left open
+  // across an MC restart kept the old process's events and never showed the new one's "MC RESTARTED"
+  // line, so it disagreed with every freshly loaded tab (MC visual QA 2026-09-23). A reconnect after a
+  // Wi-Fi blip is the same case: the feed pushes sent while the socket was down were never received.
+  const reseedFeed = useRef(true);
   // A view restored from the URL must not be stomped by the first server snapshot. The follow rule is
   // "move when the phase ADVANCES"; on a refresh there has been no advance yet, so the first snapshot
   // only seeds the baseline. Without this every reload bounced straight back to the phase screen.
@@ -174,14 +179,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // A new match starts a new feed. The snapshot carries the server's feed (newest first, the order kept here),
         // so a console opened or reloaded mid-match shows what already happened (integration pass 2026-09-23); an
         // empty local feed is seeded from it too, and live `feed` pushes keep prepending as before.
-        const seed = (Array.isArray(s.feed) ? s.feed : []) as FeedEntry[];
+        const hasFeed = Array.isArray(s.feed);
+        const seed = (hasFeed ? s.feed : []) as FeedEntry[];
+        const reseed = reseedFeed.current && hasFeed;   // an older MC sends no feed: keep what this tab has
+        if (hasFeed) reseedFeed.current = false;
         if (mid !== feedMatch.current) { feedMatch.current = mid; if (mid) setFeed(seed.slice(0, 60)); }
+        else if (mid && reseed) setFeed(seed.slice(0, 60));
         else if (mid && seed.length) setFeed(f => (f.length ? f : seed.slice(0, 60)));
         setState(s);
         followPhase(s);
       },
       e => setFeed(f => [e, ...f].slice(0, 60)),
-      ok => setConnected(ok),
+      ok => { if (ok) reseedFeed.current = true; setConnected(ok); },
     );
     const unAuth = mock ? () => {} : onAuthRequired(setAuthRequired);
     return () => { un(); unAuth(); };
