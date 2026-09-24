@@ -69,6 +69,7 @@ import re
 from typing import Any
 
 from .. import poolgauge as pg
+from .types import MEDALS
 from .. import sounds as snd
 from .types import READOUT_HOLD_S, GameConfig, GunSummary, PresentationRow, PresentationSummary
 
@@ -115,9 +116,9 @@ EVENTS: dict[str, dict] = {
     # -- the shooter's kill feedback (MC `feedback` push; ONE of these per kill, most specific wins) --
     "kill":          dict(source="mc", group="announcer", desc="you scored a kill",                 sound="voice:kill", gun_led=None, headset=None, flash="green"),
     "first_blood":   dict(source="mc", group="announcer", desc="first kill of the match",           sound="VA7H", gun_led=None,      headset=None, flash="green"),
-    "double_kill":   dict(source="mc", group="announcer", desc="2 kills inside the multi window",   sound="VA7E", gun_led=None,      headset=None, flash="green"),
-    "triple_kill":   dict(source="mc", group="announcer", desc="3 kills inside the window",         sound="VA7Q", gun_led=None,      headset=None, flash="green"),
-    "killtacular":   dict(source="mc", group="announcer", desc="4+ kills inside the window",        sound="V124", gun_led=None,      headset=None, flash="green"),
+    "double_kill":   dict(source="mc", group="announcer", desc="2 kills in a chain",   sound="VA7E", gun_led=None,      headset=None, flash="green"),
+    "triple_kill":   dict(source="mc", group="announcer", desc="3 kills in a chain",         sound="VA7Q", gun_led=None,      headset=None, flash="green"),
+    "killtacular":   dict(source="mc", group="announcer", desc="4 kills in a chain", sound="VA7M", gun_led=None,      headset=None, flash="green"),  # ear-confirmed 2026-09-24: Tony -- better than V124
     "killing_spree": dict(source="mc", group="announcer", desc="5 kills without dying",             sound="VA7K", gun_led=None,      headset=None, flash="green"),  # ear-confirmed 2026-09-11: Tony -- clean; V125 is the other read, also clean, but VA7K has the sting and matches VA7H/VA7E/VA7Q
     "unstoppable":   dict(source="mc", group="announcer", desc="10 kills without dying",             sound="VX0U", gun_led=None, headset=None, flash="green"),  # ear-confirmed 2026-09-11: Tony -- "Domination, Halo voice" -- the only streak-shaped bank line
     "multi":         dict(source="mc", group="announcer", desc="legacy: any multi-kill (older MCs)", sound="VA7E", gun_led=None,      headset=None),
@@ -163,13 +164,19 @@ EVENTS: dict[str, dict] = {
     "raid_ending":         dict(source="hud", group="player",    desc="hard end approaching: extract or die (node clock)", sound="VA3U", gun_led=pg.RED, headset=None),     # "Incoming air raid, find cover."
     "raid_over":           dict(source="hud", group="player",    desc="the bombardment: everyone still out is killed",  sound="X20",  gun_led=pg.RED,    headset=None),     # 4 artillery explosions (by ear)
 }
+# Tony 2026-09-24, Halo 3's ladder: every medal types.MEDALS names and the table above does not spell out
+# gets its announcer cue from there (killtrocity ... killionaire). A medal with no gun line has sound None: no cue
+# is compiled, so the phone shows the text and the voice stays silent. `test_presentation` pins every medal's
+# sound to its MEDALS clip, the spelled-out ones included.
+for _m in MEDALS:
+    EVENTS.setdefault(_m["key"], dict(source="mc", group="announcer", desc=f"{_m['count']} kills in a chain (Halo 3)",
+                                      sound=_m["clip"], gun_led=None, headset=None, flash="green"))
 # MC-driven events that assert something about the WHOLE match. Sent only while MC is confident (A11.5).
 GLOBAL_STATE_EVENTS = {"lead_taken", "lead_lost", "next_kill_wins", "last_survivor"}
 
 # HUD banner text per event (the node shows it as an `alert` moment; the brx-hud session owns the look).
 TEXT = {
-    "first_blood": "FIRST BLOOD", "double_kill": "DOUBLE KILL", "triple_kill": "TRIPLE KILL",
-    "killtacular": "KILLTACULAR", "killing_spree": "KILLING SPREE", "unstoppable": "UNSTOPPABLE",
+    **{m["key"]: m["label"] for m in MEDALS},   # every kill medal's banner (types.MEDALS)
     "lead_taken": "YOUR TEAM TAKES THE LEAD", "lead_lost": "YOUR TEAM LOST THE LEAD",
     "next_kill_wins": "NEXT KILL WINS", "last_survivor": "ONE SURVIVOR REMAINS",
     "infected": "THE INFECTION SPREADS", "survivors_win": "SURVIVORS HELD THEIR GROUND",

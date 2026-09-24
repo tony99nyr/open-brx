@@ -3,6 +3,14 @@
 // ---- constants (types.py §9 + envelope.py's module-level constants) ----
 export const ASSIST_WINDOW_MS = 4000;
 export const MULTI_KILL_MS = 4000;
+/** Tony 2026-09-24, ear-confirmed at volume 69: the multi-kill ladder, Halo 3's order with the two tiers the gun
+ *  has no voice for (Overkill, Killpocalypse) removed, so every kill from 2 to 8 is voiced ("front stack them ...
+ *  we get a sound bite on every kill"). The one table for every kill medal MC awards. `kind` multi = kills in a
+ *  chain, each within MULTI_KILL_MS of the last (the HIGHEST count reached is the medal, killionaire at 8 and
+ *  beyond); streak = kills without dying; first = the match's first kill. `clip` is the gun's voice line (null
+ *  = no line: the HUD shows the text and the voice stays silent), `clip_ms` its length from the sound catalogue.
+ *  The phone reads labels and clips from here (contract.gen MEDALS). */
+export const MEDALS: readonly { readonly key: string; readonly kind: string; readonly count: number; readonly label: string; readonly clip: string; readonly clip_ms: number }[] = [{"key": "first_blood", "kind": "first", "count": 1, "label": "FIRST BLOOD", "clip": "VA7H", "clip_ms": 2456}, {"key": "double_kill", "kind": "multi", "count": 2, "label": "DOUBLE KILL", "clip": "VA7E", "clip_ms": 1787}, {"key": "triple_kill", "kind": "multi", "count": 3, "label": "TRIPLE KILL", "clip": "VA7Q", "clip_ms": 1904}, {"key": "killtacular", "kind": "multi", "count": 4, "label": "KILLTACULAR", "clip": "VA7M", "clip_ms": 1924}, {"key": "killtrocity", "kind": "multi", "count": 5, "label": "KILLTROCITY", "clip": "VA7O", "clip_ms": 1924}, {"key": "killamanjaro", "kind": "multi", "count": 6, "label": "KILLAMANJARO", "clip": "VA7J", "clip_ms": 1927}, {"key": "killtastrophe", "kind": "multi", "count": 7, "label": "KILLTASTROPHE", "clip": "VA7N", "clip_ms": 1924}, {"key": "killionaire", "kind": "multi", "count": 8, "label": "KILLIONAIRE", "clip": "VA7L", "clip_ms": 1924}, {"key": "killing_spree", "kind": "streak", "count": 5, "label": "KILLING SPREE", "clip": "VA7K", "clip_ms": 1924}, {"key": "unstoppable", "kind": "streak", "count": 10, "label": "UNSTOPPABLE", "clip": "VX0U", "clip_ms": 1175}];
 export const FEEDBACK_MAX_AGE_MS = 3000;
 export const STATUS_HEARTBEAT_MS = 2000;
 export const STALE_AFTER_MS = 8000;
@@ -1051,7 +1059,7 @@ export interface ScoreRow {
   shots_total?: number;
   /** F116: the LONGEST streak this match. `streak` stayed for compatibility. */
   best_streak?: number;
-  /** the biggest multi-kill (2 = double, 3 = triple, 4+ = killtacular); 0 = none */
+  /** the longest multi-kill chain (2 double ... 8+ killionaire, types.MEDALS); 0 = none */
   multi_best?: number;
   /** this player drew first blood */
   first_blood?: boolean;

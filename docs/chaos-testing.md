@@ -9,7 +9,8 @@ F329), and one open limit (F330).
 A chaos run stands up the real Session, NetServer, Compiler and session store in one process. The field is
 2 to 20 MockNodes on the real WebSocket. The run plays a match through a seeded sequence of actions:
 
-- combat: hits (multi-word shots too), kills, same-tick trades, team kills, deaths to an unrostered shooter, respawns;
+- combat: hits (multi-word shots too), kills, same-tick trades, team kills, deaths to an unrostered shooter, respawns,
+  and kills at a scripted time (`timed_kill`, for a script that needs exact gaps);
 - the wire: node drops and batch flushes, duplicate, resent and reordered facts, malformed bytes;
 - the phones: clock jumps and jitter, late joins, stale heads, stale match ids, possession reports;
 - MC itself: a clean restart, a crash, the operator's END and the time limit.
@@ -69,6 +70,21 @@ They are in `invariants.py`. Each one applies to every scenario.
   victim's node never synced its clock, in a replay, and when the killer's node has no socket. A kill
   that MC cued live and a late fact then parked (the fact moved a frag-cap end earlier) still counts.
   The scenario `unknown-shooter-no-kill-cue` checks the other direction (`every_kill_cued`).
+- `medals_track_credited_kills`: every enemy kill carries the medals that its killer's credited kills imply,
+  from `types.MEDALS`. The rules are Halo 3's multi-kill ladder:
+  - The multi medal is the highest one whose count the chain has reached.
+  - A kill within `MULTI_KILL_MS` of the killer's previous kill extends the chain. A bigger gap starts a
+    new chain. The killer's own death does not reset the chain.
+  - First blood goes once, to the first credited kill.
+  - A streak medal fires at its exact count of kills without a death.
+
+  The invariant checks the current scorer's per-kill record kill for kill. It also checks the medals on
+  every kill cue that a node received. The cue check is one-way, for the same designed skips as
+  `kill_feedback_matches_credit`. Medals depend on the order in which MC took the facts, so the World
+  taps `Scorer.ingest` for its inputs: the order, `t_recv`, the batch re-base and the node's sync state.
+  The fact content comes from the ledger. The invariant takes MC's verdict on whether a fact scored, and
+  models the A5.7 suppression: a kill on a never-synced victim node earns no multi medal. The scenario
+  `multi-kill-ladder` pins one 11-kill chain, a gap and a new chain.
 - At the end: `ends_exactly_once`, `frag_cap_ends_match` and `recap_equals_board`.
 - The runner adds `field_settles`: every connected node has its facts acknowledged after each step.
 
@@ -119,6 +135,9 @@ A field bug works the same way: write the actions that the field saw as a script
 - The field has no station nodes, and a run plays one match. `game_byte_matches_stations` compares each
   node with the byte MC would arm a station with. The bump to a new match is covered by
   `tests/test_mc_stations_game_byte.py`.
+- `medals_track_credited_kills` reads the order in which MC took the facts from a tap on `Scorer.ingest`,
+  not from the ledger. The field cannot fix that order: a flush, a reorder or a replay sets it. The
+  invariant checks the medal rules on that order. The other invariants check which facts scored.
 - Facts of the same step can arrive in either order, so a fact in the step that ended the match is not
   judged by that end (`credited_inside_window`).
 - A phone clock that runs AHEAD can put a credited kill after a frag cap that MC reached on an earlier

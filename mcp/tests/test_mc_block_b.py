@@ -254,7 +254,7 @@ def test_a_1v1_shows_medals_even_though_honors_needs_three_players():
     assert sc.honors() == [], "honors still need an audience — that rule is unchanged"
     assert fb[0]["medals"] == ["first_blood"], "the medals were always computed; they were discarded"
     medals = {r["player_id"]: r["medals"] for r in sc.rows()}
-    assert medals["p0"] == ["FIRST BLOOD", "DOUBLE KILL", "TRIPLE KILL", "KILLTACULAR ×2", "KILLING SPREE"], medals
+    assert medals["p0"] == ["FIRST BLOOD", "DOUBLE KILL", "TRIPLE KILL", "KILLTACULAR", "KILLTROCITY", "KILLING SPREE"], medals
     assert medals["p1"] == []
 
 

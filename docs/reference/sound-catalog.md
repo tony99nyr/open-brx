@@ -443,14 +443,14 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 | VA7G | 1.0 | line | Finish him! · community label (agrees, unconfirmed): Finish Him |
 | VA7H | 2.5 | medal | First Blood · community label (agrees, unconfirmed): First Blood |
 | VA7I | 1.7 | medal | Flawless victory! · community label (agrees, unconfirmed): Flawless Victory |
-| VA7J | 1.9 | kill_confirm | Kill them in Juro! · community label (differs, unconfirmed): Killamanjaro; KILLAMENJARO |
-| VA7K | 1.9 | medal | Killing spree · community label (agrees, unconfirmed): Killing Spree |
-| VA7L | 1.9 | kill_confirm | Killian Air · community label (differs, unconfirmed): Killionaire |
-| VA7M | 1.9 | medal | GO TACULAR! · community label (differs, unconfirmed): Killtacular; KILL TACULAR |
-| VA7N | 1.9 | line | Joltastrophe · community label (differs, unconfirmed): Killtastrophy; KILL TASTRIFY |
-| VA7O | 1.9 | line | CULTURUSITY · community label (differs, unconfirmed): Killtrosity; KILL TROSITY |
+| VA7J | 1.9 | medal | Killamanjaro · community label (differs, unconfirmed): Killamanjaro; KILLAMENJARO |
+| VA7K | 1.9 | medal | Killing Spree · community label (agrees, unconfirmed): Killing Spree |
+| VA7L | 1.9 | medal | Killionaire · community label (differs, unconfirmed): Killionaire |
+| VA7M | 1.9 | medal | Killtacular · community label (differs, unconfirmed): Killtacular; KILL TACULAR |
+| VA7N | 1.9 | medal | Killtastrophe · community label (differs, unconfirmed): Killtastrophy; KILL TASTRIFY |
+| VA7O | 1.9 | medal | Killtrocity · community label (differs, unconfirmed): Killtrosity; KILL TROSITY |
 | VA7P | 1.5 | line | Test your might. · community label (agrees, unconfirmed): Test your might |
-| VA7Q | 1.9 | medal | Triple Kill! · community label (differs, unconfirmed): Triple Kill; TRIPPLE KILL |
+| VA7Q | 1.9 | medal | Triple Kill · community label (differs, unconfirmed): Triple Kill; TRIPPLE KILL |
 | VA8 | 1.0 | kill_confirm | Kill! · community label (agrees, unconfirmed): Kill |
 | VA80 | 3.0 | countdown | Three, two, one. · community label (agrees, unconfirmed): Three, Two, One |
 | VA81 | 3.0 | countdown | Three, two, one. · community label (differs, unconfirmed): Three, Two, One; 3, 2, 1, WITH MUSIC |
@@ -3279,12 +3279,12 @@ The LaserTagMods BRX Audio sheet, an open community sheet shared by Jay of Laser
 | VA6T | UAV | UAB |
 | VA6U | Under Cover | Undercover. |
 | VA78 | Welcome to Lasertag Pro | Welcome to Battle Company! |
-| VA7J | Killamanjaro; KILLAMENJARO | Kill them in Juro! |
-| VA7L | Killionaire | Killian Air |
-| VA7M | Killtacular; KILL TACULAR | GO TACULAR! |
-| VA7N | Killtastrophy; KILL TASTRIFY | Joltastrophe |
-| VA7O | Killtrosity; KILL TROSITY | CULTURUSITY |
-| VA7Q | Triple Kill; TRIPPLE KILL | Triple Kill! |
+| VA7J | Killamanjaro; KILLAMENJARO | Killamanjaro |
+| VA7L | Killionaire | Killionaire |
+| VA7M | Killtacular; KILL TACULAR | Killtacular |
+| VA7N | Killtastrophy; KILL TASTRIFY | Killtastrophe |
+| VA7O | Killtrosity; KILL TROSITY | Killtrocity |
+| VA7Q | Triple Kill; TRIPPLE KILL | Triple Kill |
 | VA81 | Three, Two, One; 3, 2, 1, WITH MUSIC | Three, two, one. |
 | VA83 | Countdown from 10; 10, 9, ..., 0 | 10, 9, 8, 7, 6, 5, 4, 3, 2, 1. |
 | VA84 | Countdown from 10; 10, 9, ... 0 W MUSIC | 10, 9, 8, 7, 6, 5, 4, 3, 2, 1. |

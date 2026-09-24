@@ -33762,7 +33762,11 @@
       },
       "verified_by_ear": true,
       "community_label": "Double Kill",
-      "community_status": "agrees"
+      "community_status": "agrees",
+      "heard": "Double Kill",
+      "transcript_verified_by_ear": true,
+      "speech_untrusted": "Whisper heard: Double Kill",
+      "known_use": "Double Kill; Open BRX multi-kill 2 medal line (Tony, by ear 2026-09-24)"
     },
     {
       "id": "VA7F",
@@ -33864,10 +33868,10 @@
       "on_gun": true,
       "in_app": true,
       "kind": "voice",
-      "category": "voice:kill_confirm",
+      "category": "voice:medal",
       "speaker": "Announcer (male)",
-      "description": "Kill them in Juro!",
-      "transcript": "Kill them in Juro!",
+      "description": "Killamanjaro",
+      "transcript": "Killamanjaro",
       "shape": {
         "envelope": "impact",
         "flatness": 0.047,
@@ -33878,7 +33882,12 @@
         "attack_s": 0.224
       },
       "community_label": "Killamanjaro; KILLAMENJARO",
-      "community_status": "differs"
+      "community_status": "differs",
+      "heard": "Killamanjaro",
+      "verified_by_ear": true,
+      "transcript_verified_by_ear": true,
+      "speech_untrusted": "Whisper heard: Kill them in Juro!",
+      "known_use": "Killamanjaro; Open BRX multi-kill 6 medal line (Tony, by ear 2026-09-24)"
     },
     {
       "id": "VA7K",
@@ -33889,8 +33898,8 @@
       "kind": "voice",
       "category": "voice:medal",
       "speaker": "Announcer (male)",
-      "description": "Killing spree",
-      "transcript": "Killing spree",
+      "description": "Killing Spree",
+      "transcript": "Killing Spree",
       "shape": {
         "envelope": "impact",
         "flatness": 0.047,
@@ -33901,7 +33910,12 @@
         "attack_s": 0.192
       },
       "community_label": "Killing Spree",
-      "community_status": "agrees"
+      "community_status": "agrees",
+      "heard": "Killing Spree",
+      "verified_by_ear": true,
+      "transcript_verified_by_ear": true,
+      "speech_untrusted": "Whisper heard: Killing spree",
+      "known_use": "Killing Spree; Open BRX killing spree, 5 without dying medal line (Tony, by ear 2026-09-24)"
     },
     {
       "id": "VA7L",
@@ -33910,10 +33924,10 @@
       "on_gun": true,
       "in_app": true,
       "kind": "voice",
-      "category": "voice:kill_confirm",
+      "category": "voice:medal",
       "speaker": "Announcer (male)",
-      "description": "Killian Air",
-      "transcript": "Killian Air",
+      "description": "Killionaire",
+      "transcript": "Killionaire",
       "shape": {
         "envelope": "decaying",
         "flatness": 0.037,
@@ -33924,7 +33938,12 @@
         "attack_s": 0.256
       },
       "community_label": "Killionaire",
-      "community_status": "differs"
+      "community_status": "differs",
+      "heard": "Killionaire",
+      "verified_by_ear": true,
+      "transcript_verified_by_ear": true,
+      "speech_untrusted": "Whisper heard: Killian Air",
+      "known_use": "Killionaire; Open BRX multi-kill 8 and beyond medal line (Tony, by ear 2026-09-24)"
     },
     {
       "id": "VA7M",
@@ -33935,8 +33954,8 @@
       "kind": "voice",
       "category": "voice:medal",
       "speaker": "Announcer (male)",
-      "description": "GO TACULAR!",
-      "transcript": "GO TACULAR!",
+      "description": "Killtacular",
+      "transcript": "Killtacular",
       "shape": {
         "envelope": "impact",
         "flatness": 0.048,
@@ -33947,7 +33966,12 @@
         "attack_s": 0.224
       },
       "community_label": "Killtacular; KILL TACULAR",
-      "community_status": "differs"
+      "community_status": "differs",
+      "heard": "Killtacular",
+      "verified_by_ear": true,
+      "transcript_verified_by_ear": true,
+      "speech_untrusted": "Whisper heard: GO TACULAR!",
+      "known_use": "Killtacular; Open BRX multi-kill 4 (preferred over V124) medal line (Tony, by ear 2026-09-24)"
     },
     {
       "id": "VA7N",
@@ -33956,10 +33980,10 @@
       "on_gun": true,
       "in_app": true,
       "kind": "voice",
-      "category": "voice:line",
+      "category": "voice:medal",
       "speaker": "Announcer (male)",
-      "description": "Joltastrophe",
-      "transcript": "Joltastrophe",
+      "description": "Killtastrophe",
+      "transcript": "Killtastrophe",
       "shape": {
         "envelope": "impact",
         "flatness": 0.055,
@@ -33970,7 +33994,12 @@
         "attack_s": 0.224
       },
       "community_label": "Killtastrophy; KILL TASTRIFY",
-      "community_status": "differs"
+      "community_status": "differs",
+      "heard": "Killtastrophe",
+      "verified_by_ear": true,
+      "transcript_verified_by_ear": true,
+      "speech_untrusted": "Whisper heard: Joltastrophe",
+      "known_use": "Killtastrophe; Open BRX multi-kill 7 medal line (Tony, by ear 2026-09-24)"
     },
     {
       "id": "VA7O",
@@ -33979,10 +34008,10 @@
       "on_gun": true,
       "in_app": true,
       "kind": "voice",
-      "category": "voice:line",
+      "category": "voice:medal",
       "speaker": "Announcer (male)",
-      "description": "CULTURUSITY",
-      "transcript": "CULTURUSITY",
+      "description": "Killtrocity",
+      "transcript": "Killtrocity",
       "shape": {
         "envelope": "decaying",
         "flatness": 0.05,
@@ -33993,7 +34022,12 @@
         "attack_s": 0.224
       },
       "community_label": "Killtrosity; KILL TROSITY",
-      "community_status": "differs"
+      "community_status": "differs",
+      "heard": "Killtrocity",
+      "verified_by_ear": true,
+      "transcript_verified_by_ear": true,
+      "speech_untrusted": "Whisper heard: CULTURUSITY",
+      "known_use": "Killtrocity; Open BRX multi-kill 5 medal line (Tony, by ear 2026-09-24)"
     },
     {
       "id": "VA7P",
@@ -34027,8 +34061,8 @@
       "kind": "voice",
       "category": "voice:medal",
       "speaker": "Announcer (male)",
-      "description": "Triple Kill!",
-      "transcript": "Triple Kill!",
+      "description": "Triple Kill",
+      "transcript": "Triple Kill",
       "shape": {
         "envelope": "impact",
         "flatness": 0.036,
@@ -34040,7 +34074,11 @@
       },
       "verified_by_ear": true,
       "community_label": "Triple Kill; TRIPPLE KILL",
-      "community_status": "differs"
+      "community_status": "differs",
+      "heard": "Triple Kill",
+      "transcript_verified_by_ear": true,
+      "speech_untrusted": "Whisper heard: Triple Kill!",
+      "known_use": "Triple Kill; Open BRX multi-kill 3 medal line (Tony, by ear 2026-09-24)"
     },
     {
       "id": "VA8",

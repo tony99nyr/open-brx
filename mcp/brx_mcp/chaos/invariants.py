@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from ..mc.types import CLOCK_TIE_MS
+from ..mc.types import CLOCK_TIE_MS, MEDALS, MULTI_KILL_MS
 from .registry import InvariantError, invariant
 from .world import World
 
@@ -350,6 +350,135 @@ def kill_feedback_matches_credit(world: World) -> None:
         _fail("kill_feedback_matches_credit",
               f"kill cues with no credited kill behind them (or one too many), as (player, victim, t): "
               f"{dict(list(extra.items())[:5])}")
+
+
+# The medal table, read from `types.MEDALS` (the one table) and nowhere else.
+_MULTI_COUNTS = sorted((m["count"], m["key"]) for m in MEDALS if m["kind"] == "multi")
+_STREAK_COUNTS = {m["count"]: m["key"] for m in MEDALS if m["kind"] == "streak"}
+_FIRST_KEY = next(m["key"] for m in MEDALS if m["kind"] == "first")
+
+
+def multi_medal_for(chain: int) -> str | None:
+    """Halo 3's ladder: the HIGHEST multi medal whose count the chain has reached (None below the lowest)."""
+    best = None
+    for count, key in _MULTI_COUNTS:
+        if chain >= count:
+            best = key
+    return best
+
+
+def expected_medals(world: World, entries: list[dict]) -> list[tuple[str, str, int, tuple[str, ...]]]:
+    """The medals each credited enemy kill must carry, derived from ONE scorer's input stream (the
+    World's tap), as (killer, victim, t, medals) in the order the scorer took them.
+
+    The fact's content comes from the ledger when it holds the (node, seq); the ORDER, t_recv, the batch
+    re-base and the node's sync state come from the tap, because the medals depend on the order MC took
+    the facts in, and a drop, a flush, a reorder or a restart's replay changes that order. MC's verdict
+    ("scored" or not) is taken as given: dedup, the stale-match park and the end freeze are the other
+    invariants' business. The rules, from scoring.py and types.MEDALS:
+
+    * the chain: an enemy kill within MULTI_KILL_MS of the killer's previous enemy kill (by the scored
+      time, which may be EARLIER after a reorder) extends it; a bigger gap starts a new chain of 1. The
+      killer's own death does NOT reset the chain (only the streak).
+    * A5.7 suppression (the VICTIM's node never synced, or its batch was re-based): the kill scores
+      multi 1 and leaves the chain as it was, but it still moves the killer's previous-kill time.
+    * first blood: the first credited enemy kill this scorer took.
+    * a streak medal at its exact count of enemy kills without a death or a (non-operator) respawn.
+    """
+    num_pid = world.num_to_pid()
+    streak: Counter = Counter()
+    last_t: dict[str, int] = {}
+    chain: dict[str, int] = {}
+    first_taken = False
+    out = []
+    for e in entries:
+        if e["result"] != "scored" or not isinstance(e["ev"], dict):
+            continue
+        ev = world.ledger.facts.get((e["node_id"], e["seq"]), e["ev"]) if e["seq"] is not None else e["ev"]
+        kind = ev.get("type")
+        pid = str(ev.get("player_id"))
+        if kind == "respawn":
+            if not ev.get("operator"):
+                streak[pid] = 0
+            continue
+        if kind != "death":
+            continue
+        if e["rebase"] is not None:
+            t = int(ev.get("t", e["t_recv"])) + e["rebase"]
+        elif e["synced"]:
+            t = int(ev.get("t", e["t_recv"]))
+        else:
+            t = int(e["t_recv"])
+        suppressed = e["suppress"] or not e["synced"]
+        streak[pid] = 0
+        killer = num_pid.get(int(ev.get("shooter_num", 0) or 0))
+        if killer is None or killer == pid:
+            continue
+        if world.scenario.mode != "ffa" and world.team_of(killer) == world.team_of(pid):
+            continue
+        streak[killer] += 1
+        multi = 1
+        if not suppressed:
+            if killer in last_t and t - last_t[killer] <= MULTI_KILL_MS:
+                chain[killer] = chain.get(killer, 1) + 1
+                multi = chain[killer]
+            else:
+                chain[killer] = 1
+        medals = []
+        if not first_taken:
+            first_taken = True
+            medals.append(_FIRST_KEY)
+        if (m := multi_medal_for(multi)) is not None:
+            medals.append(m)
+        if (m := _STREAK_COUNTS.get(streak[killer])) is not None:
+            medals.append(m)
+        last_t[killer] = t
+        out.append((killer, pid, t, tuple(medals)))
+    return out
+
+
+@invariant("medals_track_credited_kills")
+def medals_track_credited_kills(world: World) -> None:
+    """Tony 2026-09-24 (Halo 3's multi-kill ladder): every enemy kill carries the medals its killer's
+    credited kills imply: the ladder medal for the chain length at that kill, first blood once per match
+    on the first credited kill, and a streak medal at its exact count (`expected_medals` has the rules).
+
+    Two checks. (1) The current scorer's per-kill record (`kills[i]["medals"]`) equals what its own input
+    stream implies, kill for kill. (2) Every kill cue a node received carries the medals that the input
+    stream of SOME scorer of this match implies for that (killer, victim, t): the cue came from the scorer
+    live at the time, which a restart or a frag-cap reconcile may since have replaced, and a replay can
+    take the facts in another order. Check (2) is one-way, as `kill_feedback_matches_credit` is: MC skips a
+    cue by design (a stale kill, an unsynced victim node, a replay, no socket), and that invariant already
+    fails a cue with no credited kill behind it."""
+    sc = world.session.scorer
+    if sc is None:
+        return
+    mine = world.ingests.get(id(sc), [])
+    want = expected_medals(world, mine)
+    have = [(k["killer"], k["victim"], int(k["t"]), tuple(k["medals"])) for k in sc.kills if "medals" in k]
+    if want != have:
+        i = next((j for j, (a, b) in enumerate(zip(want, have)) if a != b), min(len(want), len(have)))
+        _fail("medals_track_credited_kills",
+              f"kill #{i + 1} of {len(have)} (killer, victim, t, medals): MC recorded "
+              f"{have[i] if i < len(have) else None}, its credited kills imply {want[i] if i < len(want) else None}")
+    allowed: dict[tuple[str, str, int], set[tuple[str, ...]]] = {}
+    for sid, entries in world.ingests.items():
+        if getattr(world.scorers.get(sid), "match_id", None) != sc.match_id:
+            continue
+        for killer, victim, t, medals in expected_medals(world, entries):
+            allowed.setdefault((killer, victim, t), set()).add(medals)
+    for n in world.nodes:
+        for fb in n.feedback:
+            if fb.get("kind") != "kill" or fb.get("player_id") is None:
+                continue
+            key = (str(fb["player_id"]), str(fb.get("victim")), int(fb.get("t", 0) or 0))
+            if key not in allowed:
+                continue            # a cue with no credited kill is `kill_feedback_matches_credit`'s to fail
+            got = tuple(fb.get("medals") or ())
+            if got not in allowed[key]:
+                _fail("medals_track_credited_kills",
+                      f"node {n.index}'s kill cue for {key} carried medals {list(got)}; the credited kills "
+                      f"imply {sorted(allowed[key])}")
 
 
 # ------------------------------------------------------------------------------ end of the run

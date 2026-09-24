@@ -98,6 +98,9 @@ async def _play(world: World, rng: random.Random) -> None:
         for inbox in (n.received, n.feedback, n.controls, n.tutorials, n.configs, n.loadout_acks, n.starts,
                       n.acks, n.applies, n.time_res, n.ack_latency_s):
             inbox.clear()
+    # The scorer input tap (`medals_track_credited_kills`) holds every scorer and its inputs: this match's are done.
+    world.ingests.clear()
+    world.scorers.clear()
 
 
 def run_soak(*, minutes: float, nodes: int = 12, max_growth_mb: float = 32.0, seed: int = 1,

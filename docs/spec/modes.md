@@ -236,7 +236,8 @@ the tagger speak a sample when the host changes a voice.
 ## 5b. Medal catalog & feedback cues
 
 Medals are awarded per player from exact attribution (A4.1). Kill-moment medals ride `feedback.medals` (A11.4:
-first_blood · double_kill / triple_kill / killtacular · killing_spree at 5 · unstoppable at 10) with their own
+first_blood · one multi-kill medal, double_kill 2 up to killionaire 8+ (A61, `types.MEDALS`) · killing_spree at 5 ·
+unstoppable at 10) with their own
 cues; recap honors (`scoring.honors()` + `compile.award_medals`): MVP (top `kills − deaths`, tie → K/D), Top Gun
 (most kills), Highest K/D, Sharp Shooter (accuracy above a min-shots threshold), Survivalist (fewest deaths),
 First Blood, multi-kills, Assistant. No honors under 3 scored players; MVP and Top Gun require kills > 0.
