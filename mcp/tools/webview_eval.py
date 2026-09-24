@@ -7,7 +7,7 @@ promise if it returns one), printing the JSON result. No screen taps, no guessin
 
 Runs under the Windows venv: adb's port forward binds Windows localhost, which WSL cannot reach.
 
-Usage: python webview_eval.py <js expression> [--serial 192.168.0.48:42183] [--pkg com.openbrx.companion]
+Usage: python webview_eval.py <js expression> [--serial 192.168.0.48:42183] [--pkg com.openbrx.companion] [--port 9222]
   e.g.  python webview_eval.py "window.brx.engine.phase"
         python webview_eval.py "window.brx.switchRole('utility')"
         python webview_eval.py "window.brxUtility.settings"
@@ -59,6 +59,7 @@ async def evaluate(ws_url, expr):
 
 
 def main():
+    global PORT
     args = sys.argv[1:]
     if not args:
         raise SystemExit(__doc__)
@@ -71,6 +72,8 @@ def main():
             serial = args[i + 1]; i += 2
         elif args[i] == "--pkg":
             pkg = args[i + 1]; i += 2
+        elif args[i] == "--port":   # a Windows portproxy rule can hold 9222 (the CDP crawl setup)
+            PORT = int(args[i + 1]); i += 2
         else:
             expr_parts.append(args[i]); i += 1
     expr = " ".join(expr_parts)
