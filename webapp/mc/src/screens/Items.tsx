@@ -59,7 +59,12 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
   // The draft is the operator's edit in progress; it starts from the assignment (or what the phone reports).
   const [kind, setKind] = useState<StationKind>(a?.kind ?? s.report.kind ?? 'respawn');
   const [team, setTeam] = useState<number>(a?.team ?? s.report.team ?? 255);
-  const [id, setId] = useState<number>(a?.id ?? s.report.station_id ?? 1);
+  // Block 9 (brx4): an unarmed station reports station_id 0, and the API refuses 0, so ASSIGN + ARM did nothing.
+  // Start from the next id no other assigned station holds.
+  const freeId = () => { const used = new Set((state?.stations ?? []).flatMap(o => (o.assigned ? [o.assigned.id] : [])));
+    let n = 1; while (used.has(n)) n += 1; return n; };
+  const [id, setId] = useState<number>(() => a?.id ?? ((s.report.station_id ?? 0) >= 1 ? s.report.station_id! : freeId()));
+  const [applyErr, setApplyErr] = useState<string | null>(null);   // a refused write, on THIS card (the header may be off-screen)
   const [threshold, setThreshold] = useState<number>(a?.threshold ?? s.report.threshold ?? -74);
   const [busy, setBusy] = useState(false);
   const [released, setReleased] = useState<boolean | null>(null);   // A41: last RELEASE result, this card only
@@ -108,10 +113,11 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
   // a powerup station still waiting for its item pick is not a live button, so it must not look like one
   const lit = (dirty || needsRearm) && !(dirty && needsPick);
   const apply = async () => {
-    setBusy(true);
+    setBusy(true); setApplyErr(null);
+    const keep = <T,>(fn: () => Promise<T>) => async () => { try { return await fn(); } catch (e) { setApplyErr((e as Error).message); throw e; } };
     try {
-      if (dirty) await run(() => api.putStation(s.node_id, { kind, team: control ? 255 : team, id, threshold, ...(picking && chosen ? { item_preset: chosen } : {}) }));
-      else await run(() => api.armStations());
+      if (dirty) await run(keep(() => api.putStation(s.node_id, { kind, team: control ? 255 : team, id, threshold, ...(picking && chosen ? { item_preset: chosen } : {}) })));
+      else await run(keep(() => api.armStations()));
     } finally { setBusy(false); }
   };
   const rep = s.report;
@@ -198,6 +204,7 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
               border: `1px solid ${lit ? T.acc : T.line}`, clipPath: CHAMFER.tl14, cursor: busy ? 'wait' : dirty && needsPick ? 'not-allowed' : lit ? 'pointer' : 'default', minHeight: 40 }}>
             {a ? (dirty ? 'ARM WITH CHANGES' : needsRearm ? 'RE-ARM' : 'ARMED') : 'ASSIGN + ARM'}
           </button>
+          {applyErr && <span data-testid="station-apply-error" role="alert" style={{ flexBasis: '100%', font: F.chk(700, 11), letterSpacing: '.06em', color: T.bad }}>▲ NOT ARMED: {applyErr}</span>}
           {a && <GhostButton onClick={async () => { await run(() => api.deleteStation(s.node_id)); }} title="drop the assignment; the phone keeps advertising whatever it was last armed with">CLEAR</GhostButton>}
           {/* A41: the cure for a phone stuck in utility mode -- a player's own exit is the same seven-tap
               gesture that opens this card's settings, undiscoverable on the phone and with no feedback on
