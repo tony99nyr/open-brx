@@ -81,19 +81,17 @@ Recoil counts rounds per trigger pull by calibre (S54, `aa7b08b9`). F291 is clos
   then sitting 3 (§26 groups A and B).
 - **Blocked:** Extended Mags on `$TMP` (S50) and F281 on sitting 2; **F275** on outdoor space (runbook Block 5).
 ## Lane: BLE reliability (brx2)
-2026-09-24 bench, Blocks 0-1, 1.4 and 3.1-3.2 of [`bench-2026-09-24.md`](bench-2026-09-24.md) done. **F297** has
-real numbers (laptop control 10/10 first-attempt, median link 1.37 s, p90 2.41 s; the phone run was confounded
-by a tooling bug, now fixed, `9b94e318`). **F293**'s loop reproduced on demand, without btsnoop, then brx5's
-`HEADSET_JOIN_MODE 'disconnect'` fix (`ffbc987c`) VERIFIED at the bench (build `main` + a local, BLE-unrelated
-`c63876ac`): no loop in 3 A runs, the A headset-join time (12 s) sits within 3 s of the B control median (15 s),
-warnings clear at relink. Step 5 (mid-match power-cycle) did not run, needs MC, so the row stays OPEN, not
-closed. F334 (filed by this lane) is closed: the WebView floor is 111 (`d373c1ae`). **F308** 3.1 PASSES (release
-order confirmed, no lost or reordered `$BUT,0,0`); 3.2 the Shotgun and Desert Eagle PASS on the median fire gap
-(both read about 20 ms over `fire_ms`); the Burst Rifle's between-burst gap is INCONCLUSIVE, a hand pull cannot
-separate the true `t23` gap from its own cadence, so `bench-2026-09-24.md` 3.2 now calls for a fixed-rhythm rig
-pull.
-- **Next bench task:** Block 3.3 onward of [`bench-2026-09-24.md`](bench-2026-09-24.md); F293 step 5 (mid-match
-  headset power-cycle) moves into Block 4.
+2026-09-24 bench, Blocks 0-1, 1.4 and 3.1-3.3 of [`bench-2026-09-24.md`](bench-2026-09-24.md) done. **F297**:
+laptop control 10/10 first-attempt, median link 1.37 s; the phone run's tooling bug is fixed (`9b94e318`).
+**F293**: the loop reproduced on demand, then brx5's `HEADSET_JOIN_MODE 'disconnect'` fix (`ffbc987c`) VERIFIED
+except the mid-match step (needs MC), so the row stays OPEN. F334 (filed by this lane) is closed: the WebView
+floor is 111 (`d373c1ae`). **F308** 3.1-3.2 PASS (release order; the Shotgun/Desert Eagle median fire gap; the
+Burst Rifle's between-burst gap is INCONCLUSIVE on a hand pull, needs the rig). **S58** 3.3 items 1-8 all
+PASS or read as planned; `spec/powerups.md` is corrected where the bench refuted it (the overshield clamps to
+the `$PSET` max and needs a mid-life `$PSET` re-send to hold above it); two readings are unexplained and need a
+disasm read (item 4's reload-target confounder, item 8's `$BMAP,0,0` weapon reset).
+- **Next bench task:** Block 4 onward of [`bench-2026-09-24.md`](bench-2026-09-24.md); F293 step 5 and 4.11's
+  RSSI pickup-range calibration land there.
 - **Next desk task:** none open for this lane.
 - **Blocked:** F270 on A8.
 ## Lane: Mission Control console honesty
