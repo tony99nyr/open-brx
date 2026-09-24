@@ -392,3 +392,13 @@ test('F315: a picked-up weapon on its own cell beats a loadout weapon that only 
   assert.deepEqual(resolveOn(h, 0, 9, 3), { weapon_id: 'usp_s', name: 'USP-S', source: 'catalog', ambiguous: false, candidates: [] });
   assert.equal(resolveOn(h, 0, 9, 0).weapon_id, 'assault_rifle', 'the AR still names its own cell');
 });
+
+test('F315: an older MC roster (no cells) is not out-voted by a newer cached catalogue\'s cell match', () => {
+  // The roster names the AR by magnitude only; the catalogue (from a newer MC) lists the Energy Rifle on (0,0) at 9.
+  // Without the guard, the catalogue's tier-1 cell match would beat the roster's tier-3 magnitude match.
+  const catalog = { weapons: [{ ...ENERGY, name: 'ENERGY RIFLE' }, { ...AR, name: 'ASSAULT RIFLE' }] };
+  const h = harness({ shooter: { ...SHOOTER, weapons: [{ weapon_id: 'assault_rifle', hir: [9] }] }, catalog }); h.live();
+  const r = resolveOn(h, 0, 9, 0);
+  assert.equal(r.weapon_id, 'assault_rifle');
+  assert.equal(r.source, 'loadout');
+});

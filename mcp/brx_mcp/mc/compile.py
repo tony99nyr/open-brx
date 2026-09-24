@@ -2036,7 +2036,7 @@ class Compiler:
                 warnings.append(f"{' and '.join(clash)} share IR cell <{c[0]},{c[1]}> and a magnitude, and the flag could not "
                                 f"move one (no free cell under that protocol, or not a plain-damage row): a phone names such a hit \"A / B\" (F315)")
         rows = len(self._with_capture_row(self.sir_table(plan, None, stun=stun_enabled(config))))
-        if rows > _ha.MAX_SIR_ROWS:
+        if moved and rows > _ha.MAX_SIR_ROWS:
             warnings.append(f"the $SIR table is {rows} rows, over the {_ha.MAX_SIR_ROWS}-row community ceiling "
                             f"(hitaudio.MAX_SIR_ROWS, never measured: F39); --distinct-weapon-cells adds one row "
                             f"per moved weapon (F315)")

@@ -5447,7 +5447,8 @@ class Session:
         already armed. Those guns keep firing on the old cells; the new table has no row for them; every
         such hit is dropped in silence with both ends reporting healthy. `assert_sir_covers_weapons`
         cannot catch it -- it checks ONE head's internal consistency, never cross-player agreement.
-        Inert while `hit_audio_rekey` is off (cells never move), and a live landmine the moment it is on.
+        Cells move under `hit_audio_rekey` and under `--distinct-weapon-cells` (F315); either one makes the pin load-
+        bearing. With both off the cells never move and the pin is inert.
 
         `push_config()` clears the pin, so a deliberate full re-push re-derives; nothing else does.
 

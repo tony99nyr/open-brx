@@ -1210,7 +1210,10 @@ export class Engine {
     const shooter = this.roster.find(r => r.player_num === latch.shooter_num);
     if (!shooter || !Array.isArray(shooter.weapons)) return null;   // no claim: older MC, or the shooter is not on the roster
     const { mag, ir_proto: proto, ir_subtype: subtype } = latch;
-    const hasCell = Number.isInteger(proto) && Number.isInteger(subtype);
+    // The cell tiers need the shooter's own cells: an older MC's roster has none, and a catalogue cached from a newer
+    // MC must not out-vote that roster's magnitude match with a cell match of its own.
+    const rosterHasCells = shooter.weapons.some(w => Array.isArray(w.cells));
+    const hasCell = rosterHasCells && Number.isInteger(proto) && Number.isInteger(subtype);
     const onCell = c => c && Number(c.proto) === proto && Number(c.subtype) === subtype;
     const tiers = [
       w => hasCell && Array.isArray(w.cells) && w.cells.some(c => onCell(c) && Number(c.mag) === mag),   // 1. cell + magnitude
