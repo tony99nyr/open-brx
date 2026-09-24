@@ -464,6 +464,7 @@ class PendingActionQueue {
 
   bool empty() const { return entries_.empty(); }
   size_t size() const { return entries_.size(); }
+  void clear() { entries_.clear(); }
 
   // FIFO: the oldest queued report comes out first. Returns false (leaving `out` untouched) when
   // the queue is empty.
@@ -576,6 +577,8 @@ class StationLink {
       powerup_ = PowerupSchedule();
       claims_ = ClaimGate();
     }
+    // A56 (brx5): unsent `taken` reports belong to the game they were awarded in; a new game drops them.
+    if (game_changed) pending_actions_.clear();
     assignment_ = a;
     state_ = LinkState::ASSIGNED;
     if (a.kind == "powerup") {

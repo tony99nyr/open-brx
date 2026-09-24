@@ -34,11 +34,15 @@ inline std::string build_station_action_body(int station_id, const std::string& 
 
 // A CLAIM's report is its own shape, not the generic {id, action, t} above: it needs `player_num`
 // too. Kept obviously separate so either shape can be renamed independently once brx5 settles it.
-inline std::string build_station_action_taken_body(int station_id, int player_num, int64_t t_ms) {
+// A56 (brx5, 2026-09-24): `age_ms` is how long ago the award happened, computed when the report is SENT. It is
+// clock-free (the Stick has no synced clock, so `t` means nothing to MC); MC dates the take t_recv - age_ms and ignores
+// a report older than the current spawn, so a report queued while the link was down never takes a later spawn.
+inline std::string build_station_action_taken_body(int station_id, int player_num, int64_t t_ms, uint32_t age_ms) {
   std::string j = "{";
   j += "\"id\":" + std::to_string(station_id) + ",";
   j += "\"action\":\"taken\",";
   j += "\"player_num\":" + std::to_string(player_num) + ",";
+  j += "\"age_ms\":" + std::to_string(age_ms) + ",";
   j += "\"t\":" + std::to_string(t_ms);
   j += "}";
   return j;
@@ -57,9 +61,11 @@ inline std::string maybe_build_reset_action(const StationLink& link, int64_t t_m
 // Polish round 2: takes the whole queued report, not a bare player_num -- `station_id` is the one
 // captured at the moment of the award (PendingTakenReport, station_link.h), never the station's
 // CURRENT assignment, which may have moved on by the time this is flushed.
-inline std::string maybe_build_taken_action(const StationLink& link, const PendingTakenReport& rep) {
+inline std::string maybe_build_taken_action(const StationLink& link, const PendingTakenReport& rep, uint32_t now_ms) {
   if (!link.actions_enabled()) return std::string();
-  return build_station_action_taken_body(rep.station_id, rep.player_num, rep.t_ms);
+  // unsigned subtraction: correct across a millis() wrap, as long as the report is under ~49 days old
+  uint32_t age = now_ms - (uint32_t)rep.t_ms;
+  return build_station_action_taken_body(rep.station_id, rep.player_num, rep.t_ms, age);
 }
 
 // The stats pages a short press cycles through ("view stats, local only"): station kind, who took

@@ -29,8 +29,8 @@ using namespace brx;
 static void test_station_action_body_is_pinned() {
   CHECK_EQ(build_station_action_body(9, "reset", 1700000000000LL),
            std::string("{\"id\":9,\"action\":\"reset\",\"t\":1700000000000}"));
-  CHECK_EQ(build_station_action_taken_body(9, 5, 1700000000000LL),
-           std::string("{\"id\":9,\"action\":\"taken\",\"player_num\":5,\"t\":1700000000000}"));
+  CHECK_EQ(build_station_action_taken_body(9, 5, 1700000000000LL, 250),
+           std::string("{\"id\":9,\"action\":\"taken\",\"player_num\":5,\"age_ms\":250,\"t\":1700000000000}"));
 }
 
 // Polish round 1 (2026-09-24): MC does not accept `station_action` yet, so nothing may be BUILT,
@@ -45,15 +45,15 @@ static void test_actions_disabled_by_default_builds_nothing() {
   PendingTakenReport rep{9, 5, 0, 1000};
   CHECK(!link.actions_enabled());
   CHECK(maybe_build_reset_action(link, 1000).empty());
-  CHECK(maybe_build_taken_action(link, rep).empty());
+  CHECK(maybe_build_taken_action(link, rep, 1400).empty());
   link.set_actions_enabled(true);
   CHECK_EQ(maybe_build_reset_action(link, 1000),
            std::string("{\"id\":9,\"action\":\"reset\",\"t\":1000}"));
-  CHECK_EQ(maybe_build_taken_action(link, rep),
-           std::string("{\"id\":9,\"action\":\"taken\",\"player_num\":5,\"t\":1000}"));
+  CHECK_EQ(maybe_build_taken_action(link, rep, 1400),
+           std::string("{\"id\":9,\"action\":\"taken\",\"player_num\":5,\"age_ms\":400,\"t\":1000}"));
   link.set_actions_enabled(false);
   CHECK(maybe_build_reset_action(link, 1000).empty());  // flipping back off builds nothing again
-  CHECK(maybe_build_taken_action(link, rep).empty());
+  CHECK(maybe_build_taken_action(link, rep, 1400).empty());
 }
 
 static void test_actions_gate_with_no_assignment_builds_nothing_even_when_enabled() {
@@ -63,8 +63,18 @@ static void test_actions_gate_with_no_assignment_builds_nothing_even_when_enable
   // A queued CLAIM report already carries its own station_id (captured at award time), so it can
   // still be built even with no CURRENT assignment (e.g. the station was since reassigned).
   PendingTakenReport rep{9, 5, 0, 1000};
-  CHECK_EQ(maybe_build_taken_action(link, rep),
-           std::string("{\"id\":9,\"action\":\"taken\",\"player_num\":5,\"t\":1000}"));
+  CHECK_EQ(maybe_build_taken_action(link, rep, 1400),
+           std::string("{\"id\":9,\"action\":\"taken\",\"player_num\":5,\"age_ms\":400,\"t\":1000}"));
+}
+
+// A56: age_ms is computed at SEND time, and survives a millis() wrap.
+static void test_taken_age_is_computed_at_send_time_and_wrap_safe() {
+  StationLink link;
+  link.set_actions_enabled(true);
+  PendingTakenReport rep{9, 5, 0, 1000};
+  CHECK(maybe_build_taken_action(link, rep, 6000).find("\"age_ms\":5000") != std::string::npos);
+  PendingTakenReport late{9, 5, 0, (int64_t)0xFFFFFF00u};   // awarded 256 ms before the counter wrapped
+  CHECK(maybe_build_taken_action(link, late, 100).find("\"age_ms\":356") != std::string::npos);
 }
 
 static void test_short_press_pages_through_every_page_and_wraps() {
@@ -134,6 +144,7 @@ int main() {
   test_station_action_body_is_pinned();
   test_actions_disabled_by_default_builds_nothing();
   test_actions_gate_with_no_assignment_builds_nothing_even_when_enabled();
+  test_taken_age_is_computed_at_send_time_and_wrap_safe();
   test_short_press_pages_through_every_page_and_wraps();
   test_one_long_press_arms_a_second_confirms();
   test_a_second_long_press_past_the_timeout_re_arms_instead_of_confirming();

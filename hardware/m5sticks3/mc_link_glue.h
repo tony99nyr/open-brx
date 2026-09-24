@@ -389,7 +389,7 @@ static void mcLoop(uint32_t now) {
   if (ws.isConnected()) {
     PendingTakenReport rep;
     while (link.pop_pending_action(rep)) {
-      std::string body = maybe_build_taken_action(link, rep);
+      std::string body = maybe_build_taken_action(link, rep, now);   // age_ms computed now, at send time
       if (!body.empty()) {
         std::string env = make_envelope("station_action", body, mcNextActionId().c_str(), rep.t_ms);
         String envArduino(env.c_str());

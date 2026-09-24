@@ -793,6 +793,25 @@ static void test_award_claim_enqueues_with_the_station_id_captured_at_award_time
   CHECK(!link.has_pending_actions());  // drained
 }
 
+// A56 (brx5): unsent taken reports belong to their game; a new game drops them, a same-game re-push keeps them.
+static void test_a_new_game_clears_unsent_taken_reports() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true;
+  a.kind = "powerup";
+  a.id = 8;
+  a.game = 1;
+  link.apply_station_config(a);
+  ClaimWinner w{true, 5};
+  CHECK(link.award_claim(w, 1000));
+  link.apply_station_config(a);            // same game, pushed again
+  CHECK(link.has_pending_actions());
+  StationAssignment b = a;
+  b.game = 2;
+  link.apply_station_config(b);            // a new game
+  CHECK(!link.has_pending_actions());
+}
+
 // --- polish round 2, item 4 (brx5, A56): refuse a stale available:true for the awarded spawn -----
 
 static void test_a_bare_available_true_for_the_awarded_spawn_is_refused() {
@@ -980,6 +999,7 @@ int main(int argc, char** argv) {
   test_pending_action_queue_newest_per_spawn_instant_wins();
   test_pending_action_queue_pop_front_on_empty_queue_fails();
   test_award_claim_enqueues_with_the_station_id_captured_at_award_time();
+  test_a_new_game_clears_unsent_taken_reports();
   test_a_bare_available_true_for_the_awarded_spawn_is_refused();
   test_an_available_true_too_soon_after_the_awarded_instant_is_refused();
   test_an_available_true_far_enough_past_the_awarded_instant_is_accepted();
