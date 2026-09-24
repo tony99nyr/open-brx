@@ -36,7 +36,7 @@ right** and this index is stale. Do not cite it as evidence that something is or
 
 **Needs Tony at the bench** (tagged `trigger` · `bench` · `ears` · `eyes` · `space` · `grenade` · `capture` ·
 `hardware` — running order in [`bench-plan.md`](bench-plan.md)):
-- 🔴 **B26** · **F198** · **F231** · **F232** · **F264** · **F275** · **F293** · **F297** · **K4** · **Q15** · **S10**
+- 🔴 **B26** · **F198** · **F231** · **F232** · **F264** · **F275** · **F293** · **F297** · **Q15** · **S10**
 - 🟠 **F50** · **F59** · **F152** · **F158** · **F162** · **F171** · **F183** · **F219** · **F226** · **F237** · **F269** · **F272** · **F274** · **F277** · **F300** · **F308** · **F311** · **F312** · **F314** · **F332** · **G9** · **P8** · **Q16** · **S9** · **S33** · **S57** · **S58**
 - 🟡 **B28** · **B29** · **B30** · **D1** · **D4** · **F3** · **F13** · **F21** · **F26** · **F27** · **F28** · **F30** · **F39** · **F63** · **F66** · **F67** · **F68** · **F75** · **F76** · **F82** · **F88** · **F128** · **F131** · **F167** · **F168** · **F169** · **F195** · **F214** · **F216** · **F227** · **F229** · **F233** · **F262** · **F267** · **F270** · **F282** · **F285** · **F292** · **F294** · **F296** · **F298** · **F307** · **F309** · **F313** · **F315** · **F320** · **F321** · **F322** · **G3** · **G10** · **H7** · **H8** · **K1** · **P3** · **P15** · **S1** · **S2** · **S7** · **S36** · **S49** · **S-A12** · **U11′**
 - 🟢 **B20** · **F29** · **F87** · **F99** · **F111** · **F114** · **F120** · **F250** · **F323** · **G4** · **P4** · **P12** · **S8** (F270 filed 🟡 on 2026-09-18; F65 closed the same day)
@@ -230,8 +230,6 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   §19 step 7. `trigger` (bench 1.4).
 - **K2 🟡** perk on ALT-fire: the ALT button cycles slots (`$BMAP,1,100,0,1,99,99`), so it is a slot-loading question;
   `$BUT` AltFire is the host-side path for arbitrary perks. `build`.
-- **K4 🔴** melee does not work in our compiled game while our frames are byte-identical to Callsign's (`$WEAP,4`, three
-  `$SIR,13,*` rows, `$GSET` gyroscope=1, `$BMAP,8,4`). One swing: select slot 4, watch `$BUT,8` and `$HIR,…,13`. **→ 2026-09-18, a lead:** BC's own weapon sheet names `$WEAP` t1 `WeaponIRSource` and every stock melee ships 1 = headset only. The V4_31 fire path confirms it: with t1 = 1 the swing leaves as an `$IRTX` frame to the HEADSET at range t2/t41 (t13/t42 are read only for t1 = 2 or 3, so the empty t13/t42 on our row is NOT the fault; the catalogue is unchanged). So K4 is either the swing detection (`$GSET` t5 = 1, `$BMAP,8,4`, started, live, un-stunned) or the headset emitter path (the range token is a carrier frequency, and the melee row's t2 = 90 is 36.75 kHz). The V4_30 image has no `$MELEE` handler (the `$BUT,4,0` reply may be a coincidence) and `$FIREX,4,*` fires a slot with no swing, which is the control that separates the emitter from the gyro; a receiver control must face the headset domes, not the barrel. `bench-firmware-levers-2026-09-19.md` §2. `trigger` (bench 1.1).
 - **K6 ⬜** per-game weapon tuning (damage / fire sound / rate inside a saved game); `SavedGame.weapon_tuning` is
   reserved in `spec/loadout.md` §8. Needs its own spec. `build`.
 
@@ -1152,7 +1150,6 @@ Preflight, every session: [`gotchas.md`](gotchas.md) "Before a bench session".
   someone who is reading the code correctly.
 
 **Trigger in hand** (one gun, our compiled game, Tony firing):
-- 1.1 **K4** melee swing, watch `$BUT,8` / `$HIR,…,13`.
 - 1.4 **K1** `$WEAP` t19 = 5, pull the trigger on an empty chamber, watch `$ALCD`.
 - 1.5 **U11′** fire enemy **35** and ally **31, 32, 34** at a held gun; report what you hear, see, or cannot do.
   (Enemy 8 and 24-28 are done — F73, closed 2026-09-11.)

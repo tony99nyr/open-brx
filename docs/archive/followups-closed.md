@@ -711,3 +711,13 @@ block's *internal* statuses were true when it closed and may since have been sup
   111 and iOS 16.2, set by what the CSS uses (`color-mix()` meter fills; `inset`, flex `gap`). Capacitor's own
   `minWebViewVersion` check shows `webview-too-old.html` below it, with a Play Store button. Tony verified the page, the
   link and the normal HUD after the update. `d373c1ae`.
+- 2026-09-24 **K4** closed (bench, Tactix-FE30 vs Tactix-9498, both on the shipped melee frames): melee WORKS in our
+  compiled game on v4.32. A swing (`$BMAP,8,4` or `,8,7`) gives `$BUT,8` plus an isolated `$ALCD` at that slot, and
+  a swing landed on the victim's headset gave `$HIR,4,13,5,1,90,0,1,*` twice, killing a Standard 115 pool (armour
+  70 then HP 45). The `$MELEE`/`$XYZZY` control gave NO reply either, so the old `$MELEE` → `$BUT,4,0` note did
+  not reproduce and was a coincidence, not a real command. An emitter A/B (the barrel covered by hand versus the
+  headset domes covered) found the shot leaves the SHOOTER'S HEADSET, not the barrel: one hit with the barrel
+  covered, no hit in two swings with the headset domes covered (small n; A was not BLE-connected during the A/B,
+  so it is Tony's report of the swing, not a `$BUT,8` wire confirmation). Matches the `$WEAP` t1 = 1 "headset only"
+  code reading. Why it failed on 2026-08-26 is unknown. Reading: melee at 90 damage kills a full Standard pool in
+  two swings.
