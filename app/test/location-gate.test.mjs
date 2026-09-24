@@ -72,7 +72,7 @@ test('F340 guard: openPicker checks Location before it scans, and app resume re-
   const body = src.slice(i, src.indexOf('\nObject.assign(hud.h,', i));
   const gate = body.indexOf('await checkLocation('), scan = body.indexOf('await link.scan(');
   assert.ok(gate > 0 && scan > 0 && gate < scan, 'openPicker must check Location services BEFORE it starts the scan');
-  assert.match(src, /addListener\('resume'/, 'the App resume event must re-check Location');
+  assert.match(src, /addListener\('resume', \(\) => \{ locationTick\(/, 'the App resume event must re-check Location');
   assert.match(src, /onOpenLocationSettings:/, 'the OPEN LOCATION SETTINGS handler is missing');
 });
 
@@ -85,4 +85,48 @@ test('locationCheck: writes hud.locationOn and reports the moment Location comes
   on = true;
   assert.deepEqual(await chk(), { blocked: false, cleared: true }); assert.equal(hud.locationOn, true);
   assert.deepEqual(await chk(), { blocked: false, cleared: false });
+});
+
+// F340 review M2: the tick's gates are a pure function, so removing any one of them fails here.
+test('locationTickDue: runs only on native Android 30 and lower, in IDLE, with the radio free and no guns listed', async () => {
+  const { locationTickDue } = await import('../src/location.js');
+  const ok = { native: true, platform: 'android', sdk: 30, phase: 'idle', connected: false, picking: false,
+    connecting: false, bluetoothOn: true, locationOn: true, hasGuns: false };
+  assert.equal(locationTickDue(ok), true);
+  const no = { native: false, platform: 'ios', sdk: 31, phase: 'live', connected: true, picking: true,
+    connecting: true, bluetoothOn: false, hasGuns: true };
+  for (const [k, v] of Object.entries(no)) assert.equal(locationTickDue({ ...ok, [k]: v }), false, `${k}=${v} must stop the tick`);
+  assert.equal(locationTickDue({ ...ok, sdk: undefined }), false, 'an unknown API level must stop the tick');
+  assert.equal(locationTickDue({ ...ok, phase: 'armed' }), false);
+  // guns on the list are proof enough ONLY while Location reads on; with it off the tick must keep checking
+  assert.equal(locationTickDue({ ...ok, hasGuns: true, locationOn: false }), true);
+});
+
+// F340 review M1: an app restart mid-match rejoins by name. With Location off that scan finds nothing, and
+// Location coming back on must rejoin the remembered gun, not make the player pick it by hand.
+test('afterLocationOn: a remembered gun rejoins; no remembered gun opens the picker', async () => {
+  const { afterLocationOn } = await import('../src/location.js');
+  assert.equal(afterLocationOn({ rememberedGun: true, connected: false }), 'rejoin');
+  assert.equal(afterLocationOn({ rememberedGun: false, connected: false }), 'picker');
+  assert.equal(afterLocationOn({ rememberedGun: true, connected: true }), null);
+});
+
+test('F340 review guard: app.js gates the tick with locationTickDue and routes Location-on through afterLocationOn', () => {
+  const src = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+  const i = src.indexOf('async function locationTick(');
+  assert.ok(i > 0, 'locationTick is gone from app.js -- FIX this guard, do not delete it');
+  const body = src.slice(i, src.indexOf('\n}\n', i));
+  assert.match(body, /if \(!locationTickDue\(\{/, 'locationTick must gate on locationTickDue');
+  for (const k of ['phase: engine.phase', 'connected: link.connected', 'picking,', 'connecting: !!hud.connecting', 'hasGuns:'])
+    assert.ok(body.includes(k), `locationTick no longer passes ${k} to locationTickDue`);
+  assert.match(body, /afterLocationOn\(\{ rememberedGun: !!engine\.gun/, 'Location-on must ask afterLocationOn');
+  assert.match(body, /=== 'rejoin'\) rejoinGun\(\)/, 'a remembered gun must rejoin, not open the picker');
+});
+
+test('F340 review guard: openPicker refuses a second start while one is still opening', () => {
+  const src = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+  const i = src.indexOf('async function openPicker(');
+  const body = src.slice(i, src.indexOf('\nObject.assign(hud.h,', i));
+  assert.match(body, /if \(pickerOpening\) return;/);
+  assert.match(body, /finally \{ pickerOpening = false; \}/);
 });

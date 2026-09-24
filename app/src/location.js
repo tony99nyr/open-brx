@@ -35,3 +35,19 @@ export function locationCheck({ platform, sdk, probe, hud, log = () => {} }) {
     return { blocked, cleared: was && !blocked };
   };
 }
+
+/** F340 review M2: whether `locationTick` (app.js) re-checks now. Only on native Android 30 and lower, in
+ *  IDLE, with the radio free: never mid-connect, never over a pick, never with Bluetooth off (its own
+ *  message wins). A list with guns on it is proof enough that Location is on, so the tick then rests. */
+export function locationTickDue({ native, platform, sdk, phase, connected, picking, connecting, bluetoothOn, locationOn, hasGuns }) {
+  if (!native || platform !== 'android' || typeof sdk !== 'number' || sdk > LOCATION_MAX_SDK) return false;
+  if (phase !== 'idle' || connected || picking || connecting || bluetoothOn === false) return false;
+  return !(locationOn !== false && hasGuns);
+}
+
+/** F340 review M1: what Location coming back on starts. A remembered gun (an app restart mid-match) rejoins
+ *  by name, as boot does; otherwise the picker opens. Nothing when a gun is already linked. */
+export function afterLocationOn({ rememberedGun, connected }) {
+  if (connected) return null;
+  return rememberedGun ? 'rejoin' : 'picker';
+}

@@ -20,8 +20,8 @@ import { LogSync, chunkByBytes, DEFAULT_CHUNK_BYTES } from './logsync.js';   // 
 import { APP_VER, platformName } from './build.js';                  // the REAL build id (contracts A29)
 import { applyResult, HISTORY_MAX } from './history.js';             // per-match history + the A24 result patch
 import { LogRing } from './logring.js';                              // T1-B: a match's own lines must survive to the recap pull
-import { installTapHoldDoor } from './tapgate.js';
-import { locationCheck, LOCATION_MAX_SDK } from './location.js';     // F340: Android 11 and older scan nothing with Location off                   // T2-B: taps AND a hold on the last, for the hidden utility-mode door
+import { installTapHoldDoor } from './tapgate.js';                   // T2-B: taps AND a hold on the last, for the hidden utility-mode door
+import { locationCheck, locationTickDue, afterLocationOn } from './location.js';   // F340: Android 11 and older scan nothing with Location off
 
 const $ = id => document.getElementById(id);
 // T1-B (field 2026-09-12): a flat 400-line ring rolled a whole failing match's early lines out
@@ -373,6 +373,7 @@ function connectMc(url, remember = true, join = {}) {
 // false drop, then onUp from the connect that lost), and SET MY GUN opened a scan AFTER onUp had already
 // closed the picker, so it stayed open in the lobby. Both taps are now ignored while a pick connects.
 let scanning = false, picking = false, pickerScanSeq = 0;
+let pickerOpening = false;   // F340 review: true from openPicker's first await to its end, so a second start is refused
 // F258 (bench 2026-09-18): the picker's list lives in `gunpicker.js` — ranking, first-seen order and
 // the "has anything visible changed" flag. Nothing in this file sorts or paints from a scan hit.
 const pacer = new ScanPacer();   // app 0.4.2: picker scan starts are debounced; automatic ones back off
@@ -399,14 +400,20 @@ async function checkLocation() {
 const LOCATION_POLL_MS = 3000;
 let locationTicking = false;
 async function locationTick() {
-  if (locationTicking || !isNative() || platformName() !== 'android' || typeof androidSdk !== 'number' || androidSdk > LOCATION_MAX_SDK) return;
-  if (engine.phase !== 'idle' || link.connected || picking || hud.connecting || hud.bluetoothOn === false) return;
-  if (hud.locationOn !== false && hud.scan.some(d => !d.other)) return;   // a list with guns on it is proof enough
+  if (locationTicking) return;
+  if (!locationTickDue({ native: isNative(), platform: platformName(), sdk: androidSdk, phase: engine.phase, connected: link.connected, picking,
+    connecting: !!hud.connecting, bluetoothOn: hud.bluetoothOn, locationOn: hud.locationOn, hasGuns: hud.scan.some(d => !d.other) })) return;
   locationTicking = true;
   try {
     const r = await checkLocation();
     if (r.blocked && scanning) { scanning = false; pickerScanSeq++; stopPickerPaint(); hud.setScan([]); link.stopScan().catch(() => {}); scheduleRender(); }
-    else if (r.cleared) openPicker().catch(e => log('scan after location on: ' + (e && e.message || e), 'le'));
+    else if (r.cleared) {
+      // F340 review M1: a remembered gun (an app restart mid-match) rejoins by name, as boot does. The picker open is
+      // a plain one, not `auto`: it resets the pacer's back-off on purpose, since the player just fixed the cause.
+      const next = afterLocationOn({ rememberedGun: !!engine.gun, connected: link.connected });
+      if (next === 'rejoin') rejoinGun().catch(e => log('rejoin after location on: ' + (e && e.message || e), 'le'));
+      else if (next === 'picker') openPicker().catch(e => log('scan after location on: ' + (e && e.message || e), 'le'));
+    }
   } finally { locationTicking = false; }
 }
 /** Paints the picker at PAINT_MS, and only when something a player would see actually changed. A scan
@@ -430,6 +437,8 @@ function assignedGun() {
  *  rejoin fallback), so the start is paced by `pacer`'s back-off. A tap resets that back-off. */
 async function openPicker({ auto = false } = {}) {
     if (picking) return;
+    if (pickerOpening) return;
+    pickerOpening = true; try {
     if (!pacer.allow({ auto, open: scanning && link.scanning })) { log(auto ? 'gun scan: automatic reopen held back (back-off)' : 'gun scan already running', 'li'); return; }
     if (hud.connecting) { hud.setConnecting(null); scheduleRender(); }   // SCAN AGAIN after a failed connect
     // F211: check the adapter BEFORE opening the radio — starting a scan with Bluetooth off just sits
@@ -465,6 +474,7 @@ async function openPicker({ auto = false } = {}) {
         log('gun scan stopped after ' + PICKER_SCAN_MS / 1000 + ' s; tap SCAN AGAIN to look again', 'li');
       }, PICKER_SCAN_MS);
     } catch (e) { scanning = false; stopPickerPaint(); log('scan: ' + (e && e.message || e), 'le'); }
+    } finally { pickerOpening = false; }
 }
 Object.assign(hud.h, {
   onSetGun: () => openPicker(),
