@@ -336,3 +336,50 @@ test('F293 lows: the down screen has a short not-joined line; the joining pill h
   const joining = chips({ phase: 'kitted', alive: true, bleUp: false, headsetJoin: { state: 'joining' } });
   assert.match(joining, /HEADSET JOINING/); assert.match(joining, /onReconnectNow/);
 });
+
+// ---- polish round 2 (2026-09-24) ----
+
+test('F293 round 2: a stalled write queue is logged as stalled, not counted as a ? reading', async ctx => {
+  const settle = useClock(ctx);
+  const r = hsRig(ctx);
+  const up = r.link.connect('A', 'GUN-A-3D4F'); await settle(300); await up;
+  r.link._q = new Promise(() => {});                 // a write ahead of the probe never finishes
+  r.cb(); await settle(VERSION_REPLY_MS + 10500, 10);
+  assert.ok(r.log.some(m => /stalled write queue/.test(m)), 'the log must name a stalled write queue');
+  assert.ok(!r.log.some(m => /no \$VERSION reply/.test(m)), 'a stall is not a missing reply');
+  assert.equal(r.link._hsSince, 0, 'a stall starts no headset cap');
+  assert.notEqual(r.link.headsetJoin.state, 'joining');
+});
+
+test('F293 round 2: openPicker ends a background reconnect loop that is between dials', () => {
+  const src = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+  const i = src.indexOf('async function openPicker'); assert.ok(i > 0);
+  assert.match(src.slice(i, i + 1600), /if \(link\.connecting \|\| link\._reconnecting\)/);
+});
+
+test('F293 round 2: a RELINK in live hands over to the reconnect loop once the cap has passed', async ctx => {
+  const settle = useClock(ctx);
+  const r = hsRig(ctx, { unbounded: () => true });
+  const up = r.link.connect('A', 'GUN-A-3D4F'); await settle(300); await up;
+  r.headset = '?';
+  const rl = r.link.relink();
+  await settle(HEADSET_JOIN_CAP_MS + HEADSET_SETTLE_MS + 2000, 10);
+  assert.equal(r.link.relinking, false, 'RELINK GUN stays disabled for the whole outage');
+  assert.equal(await rl, false);
+  const n = r.attempts;
+  await settle(HEADSET_SETTLE_MS + 1000, 10);
+  assert.ok(r.attempts > n, 'the reconnect loop keeps trying');
+});
+
+test('F293 round 2: the settle wait is never shorter than the poll interval at the cap edge', async ctx => {
+  const settle = useClock(ctx);
+  const at = [];
+  const r = hsRig(ctx, { headsetJoinCapMs: 15500 });
+  const conn = r.link.ble.connect; r.link.ble.connect = async (...a) => { at.push(Date.now()); return conn(...a); };
+  r.headset = '?';
+  r.link.connect('A', 'GUN-A-3D4F');
+  await settle(20000, 10);
+  const gaps = at.slice(1).map((t, k) => t - at[k]);
+  assert.ok(gaps.length >= 2, JSON.stringify(gaps));
+  assert.ok(gaps.every(g => g >= 2000), 'a redial at once at the cap edge: ' + JSON.stringify(gaps));
+});

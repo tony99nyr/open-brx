@@ -407,7 +407,7 @@ export class BrxLink {
         await this.ble.startNotifications(id, NUS, TX, v => this._notify(v));
         if (att.dropped) throw new Error('the gun dropped the link while it was connecting');
         if (!this.headsetProbe) return true;
-        const out = await this._probeHeadset(id, att, gen, seq);
+        const out = await this._probeHeadset(id, att, gen, seq, relink);
         if (out === 'retry') { i--; continue; }         // a headset wait is not a failed connect attempt
         // polish (low): the gun dropped the link as the hds.N reply landed. Never claim a link that is already gone.
         if (out === 'up' && att.dropped) throw new Error('the gun dropped the link as the headset probe answered');
@@ -429,8 +429,8 @@ export class BrxLink {
    *  'retry' (the headset has not joined: the link is released, or it dropped, and the wait is done), 'parked' (the
    *  cap ran out: not_joined), or false (a newer connect won). Throws when the gun drops the link before any reply
    *  in a cycle with no `?` yet, so that drop runs the ordinary connect-failure retry. */
-  async _probeHeadset(id, att, gen, seq) {
-    let r;
+  async _probeHeadset(id, att, gen, seq, relink = false) {
+    let r, stalled = false;
     this._atts.add(att);
     try {
       let frames;
@@ -447,6 +447,8 @@ export class BrxLink {
           break;
         }
         if (r === true) { this._setHeadset('joined'); return 'up'; }
+        // Round 2: the backstop fired, so the probe never left the write queue. That says nothing about the headset.
+        if (r === 'stalled') { stalled = true; break; }
         // Polish (M2): in armed or live one `?` or timeout would cost at least 15 s with the gun down, so read once more.
         if (!reread && this.unbounded()) { reread = true; r = await this._readVersion(id, att, seq, ['$VERSION,*'], 'headset re-read'); continue; }
         this._noteUnjoined(r === 'timeout');
@@ -465,7 +467,11 @@ export class BrxLink {
     const claimed = !mine && this._attemptId === id;
     if (!att.dropped && !claimed) { try { await this.ble.disconnect(id); } catch (_) { /* best-effort */ } }
     if (gen !== this._gen) return false;
-    const capped = this.now() >= this._hsSince + this.headsetJoinCapMs;
+    if (stalled) {
+      this._log(`headset probe: stalled write queue, the probe was not sent in ${this.versionReplyMs + 10000} ms. Link released, retrying`, 'le');
+      throw new Error('stalled write queue during the headset probe');   // the ordinary connect-failure retry
+    }
+    const capped = !!this._hsSince && this.now() >= this._hsSince + this.headsetJoinCapMs;
     if (capped) {
       const was = this._hs;
       this._setHeadset('not_joined');
@@ -479,10 +485,14 @@ export class BrxLink {
     }
     const hold = this.headsetJoinMode === 'hold';
     const left = this._hsSince + this.headsetJoinCapMs - this.now();
-    const wait = capped ? this.headsetSettleMs : Math.max(0, Math.min(hold ? this.headsetPollMs : this.headsetSettleMs, left));
+    // Round 2: floored at the poll interval, so the phone never redials at once at the cap edge.
+    const wait = capped ? this.headsetSettleMs : Math.max(this.headsetPollMs, Math.min(hold ? this.headsetPollMs : this.headsetSettleMs, left));
     this._log(att.dropped ? `the gun dropped the link while the headset joins: next try in ${wait} ms (not a flap)`
       : `headset not joined yet: link released, next try in ${wait} ms (not a flap)`, 'li');
     await this._waitOrWake(wait);
+    // Round 2: a RELINK in armed or live past the cap hands over to the reconnect loop, so RELINK GUN is not
+    // disabled for the whole outage.
+    if (capped && relink && gen === this._gen) return 'handover';
     return 'retry';
   }
   /** Sends `frames` on the probing link and waits for a `$VERSION` reply: true (hds.N), false (`?`), 'timeout'
@@ -502,7 +512,7 @@ export class BrxLink {
       w.done = done;
       this._versionWait = w;
       att.wake = () => done('dropped');
-      const back = setTimeout(() => done('timeout'), this.versionReplyMs + 10000);
+      const back = setTimeout(() => done('stalled'), this.versionReplyMs + 10000);   // round 2: the write never started
       this.write(frames, label, { deviceId: id, onStart: () => { if (!over) t = setTimeout(() => done('timeout'), this.versionReplyMs); } });
     });
   }
@@ -576,6 +586,7 @@ export class BrxLink {
       if (gen !== this._gen || this.deviceId !== id) return false;
       if (ok === true) { this.connected = true; this._upAt = this.now(); this._armStable(); this._log(`reconnected (relink, ${this.now() - t0} ms)`, 'lk'); this._up(); return true; }
       if (ok === 'parked') return false;   // F293: not_joined waits for a manual action
+      if (ok === 'handover') { this._log('relink: the headset has not joined past the cap, handing over to the reconnect loop', 'li'); this._reconnect(); return false; }
       this._reconnect();
       return false;
     } finally { this._setRelinking(false); }

@@ -409,7 +409,8 @@ async function openPicker({ auto = false } = {}) {
     // Review 2026-09-19: a background reconnect loop (a remembered gun that is off) also holds the radio --
     // `link.scan()` throws "a gun connect is in flight" and the picker showed "No guns found" with no scan
     // ever having run. End that loop first, the smallest safe option: SET MY GUN is meant to override it.
-    if (link.connecting) { log('gun scan: ending the background reconnect so the picker can use the radio', 'li'); await link.disconnect(); }
+    // F293 round 2: also between dials (a headset settle wait), or the loop dials again under the picker's scan.
+    if (link.connecting || link._reconnecting) { log('gun scan: ending the background reconnect so the picker can use the radio', 'li'); await link.disconnect(); }
     scanning = true;       // claim the radio first, so no beacon tick reopens its scan while this one stops it
     try {
       await stopAnyScan();   // tap = (re)start a fresh scan, never leave the picker idle (bench 2026-08-25); the beacon watch yields to the picker
