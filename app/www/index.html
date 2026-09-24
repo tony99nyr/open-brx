@@ -119,7 +119,10 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .bar.oshield{position:relative;height:9px;width:78%;border-color:var(--item);background:color-mix(in srgb,var(--item) 12%,var(--plate2))}
 .bar.oshield > i{background:var(--item);box-shadow:0 0 12px -2px var(--item)}
 .bar.oshield b{position:absolute;left:calc(100% + 8px);top:50%;transform:translateY(-50%) skewX(18deg);font-family:var(--fd);font-weight:700;font-size:13px;line-height:1;color:var(--item);white-space:nowrap}
-.puhint{position:absolute;left:50%;bottom:64px;transform:translateX(-50%);pointer-events:none}
+/* bottom 18 (polish r1 UX M1): below the QA-04 hit weapon line (.hitwpn, top 296) and the hit tag above it, so a hit taken
+   at a station never covers the hint; at night the NIGHT OPS label steps aside for it (hud.js). */
+.puhint{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);pointer-events:none}
+.nightlab.pu{display:none!important}
 .puhint:empty{display:none}
 /* The band between the vitals (right edge 336) and the frame's centre is 86 px, so the hint is at most 166 px wide and
    WRAPS rather than grows: a long name or STATION NOT ANSWERING takes a second line upward, never the vitals' space. */
@@ -130,8 +133,8 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .puhint .pu[data-kind="no_answer"]{border-color:var(--warn)}.puhint .pu[data-kind="no_answer"] .pua{color:var(--warn);font-size:15px}
 .puhint .pu[data-kind="taken"] .pua,.puhint .pu[data-kind="taken_by"] .pua{font-size:15px}
 .puhint .pu[data-kind="granted"] .pua{color:var(--item);font-style:italic;font-size:20px}
-.puring{--p:0;flex:none;width:30px;height:30px;border-radius:50%;background:conic-gradient(var(--item) calc(var(--p) * 360deg),rgba(255,255,255,.12) 0);display:grid;place-items:center}
-.puring i{width:21px;height:21px;border-radius:50%;background:#04070c}
+.puring{--p:0;flex:none;width:40px;height:40px;border-radius:50%;background:conic-gradient(var(--item) calc(var(--p) * 360deg),rgba(255,255,255,.12) 0);display:grid;place-items:center}
+.puring i{width:29px;height:29px;border-radius:50%;background:#04070c}
 /* the held item sits ABOVE the ammo column, out of its flow, so the column never grows up into the callout band */
 .puheld{position:absolute;right:0;bottom:calc(100% + 8px)}
 .puheld:empty{display:none}
@@ -353,7 +356,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 [data-env="night"] .bar.shield{height:4px;width:70%}[data-env="night"] .bar.shield > i{background:var(--shield)}
 /* A56 at night: the item's colour gives way to the dim red, nothing glows, the ring is flat */
 [data-env="night"] .bar.oshield,[data-env="night"] .puhint .pu,[data-env="night"] .puchip{--item:#c9484a!important}
-[data-env="night"] .vitals.os .shield{font-size:30px}   /* an overshield on an armoured game: the row carries three numbers, so the shield sits at the armour's size */
+[data-env="night"] .vitals.os .shield{font-size:30px}[data-env="night"] .vitals.os .shieldlabel{display:none}   /* UX M2: the +N on the bar names it; the word ran into the hint */   /* an overshield on an armoured game: the row carries three numbers, so the shield sits at the armour's size */
 [data-env="night"] .bar.oshield{height:4px;width:70%;background:#120505}[data-env="night"] .bar.oshield > i{box-shadow:none}
 [data-env="night"] .puhint .pu{background:#0d0303;border-color:#3a1414}[data-env="night"] .puring{background:conic-gradient(#c9484a calc(var(--p) * 360deg),#2a1010 0)}
 [data-env="night"] .puchip{background:transparent;border-color:#3a1414;box-shadow:none}
