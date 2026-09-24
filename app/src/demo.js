@@ -162,6 +162,12 @@ export function startDemo({ engine, log }) {
       const set = /^\$LIFE,(\d+),(\d+),(\d+),2,\*$/.exec(f);
       if (set) { [hp, armor, shield] = set.slice(1).map(Number); setTimeout(() => engine.feedFrame(`$HP,${hp},${armor},${shield},*`), 40); continue; }
       const m = /^\$LIFE,(-?\d+),(-?\d+),(-?\d+),\*$/.exec(f);
+      // S29: the node's shield refill is `$LIFE,0,0,10,*`, additive and clamped at the `$PSET` t5 ceiling (bench 2026-09-17
+      // step 7), answered by `$HP`. Without this the stage's Shields preset never recharged, so its HUD could not be looked at.
+      if (m && !f.includes('-') && +m[1] === 0 && +m[2] === 0 && +m[3] > 0) {
+        shield = Math.min(Math.max(shield, engine.maxShield), shield + Number(m[3]));
+        setTimeout(() => engine.feedFrame(`$HP,${hp},${armor},${shield},*`), 40); continue;
+      }
       if (!m || !f.includes('-')) continue;
       const [dh, da] = m.slice(1).map(Number);
       hp = Math.max(0, hp + dh); armor = Math.max(0, armor + da);   // the demo gun carries no shield
@@ -442,6 +448,18 @@ export function startDemo({ engine, log }) {
       widePools: () => { config.health = { max_hp: 100, max_armor: 0, max_shield: 100 };
         bundle.head = bundle.head.map(f => f.startsWith('$PSET,') ? f.replace(/^(\$PSET,\d+,\d+,)\d+,\d+,\d+,/, '$1100,0,100,') : f);
         config.stations = config.stations.map(x => x.id === 6 ? { ...x, item: { ...x.item, amount: 175 } } : x); },
+      // Shield HUD pass (2026-09-24): the Shields preset exactly as compile.HEALTH_PRESETS ships it (45 HP, 0 armour, 105
+      // shield), so the engine's own S29 recharge runs. Everything below feeds frames the gun would send.
+      shieldsPreset: () => { config.health = { max_hp: 45, max_armor: 0, max_shield: 105 };
+        bundle.head = bundle.head.map(f => f.startsWith('$PSET,') ? f.replace(/^(\$PSET,\d+,\d+,)\d+,\d+,\d+,/, '$145,0,105,') : f); },
+      // the gun reports a full shield, as it does at the end of a refill
+      shieldFill: () => { shield = engine.maxShield; engine.feedFrame(`$HP,${hp},${armor},${shield},*`); },
+      // one hit the shield (or the overshield on top of it) absorbs
+      shieldHit: (d = 30) => hit(d),
+      // a hit that takes exactly what is left of the shield: SHIELD DOWN, and the engine's recharge clock restarts
+      shieldBreak: () => { if (shield > 0) hit(shield); },
+      // take the overshield from station 6 (the powerup game must be on: `powerups`)
+      overshield: () => ev.puTake(6),
       // stand at the station past the 1 s dwell, then the station names its winner (7 = this phone, 19 = VIPER)
       puTake: (id = 4, taker = 7) => { ev.puAt(id); setTimeout(() => ev.puAt(id, { state: 0, value: 118, taker }), 1300); },
       // ALT onto the pickup slot, and a round out of it, as the gun reports them ($ALCD token 3 = the slot)
@@ -608,6 +626,15 @@ export function startDemo({ engine, log }) {
       // polish r1 (UX): a hit while standing at a station (the QA-04 weapon line must not cover the hint), the widest
       // night row (Shields preset, 3-digit pools, a 175 overshield) and an Easy Reload player at a weapon station
       'live-pu-claim-hit':   [[0, () => ev.powerups()], ...live, [2300, () => ev.puAt(4)], [2700, () => ev.hitFrom(19, 9, 9)]],
+      // ---- Shield HUD pass (2026-09-24, `&shieldv=a|b|c`): the Shields preset through the REAL engine's S29 recharge ----
+      'live-shields':          [[0, () => { ev.powerups(); ev.shieldsPreset(); }], ...live],                                          // spawns at 0; the engine refills after its delay
+      'live-shields-full':     [[0, () => { ev.powerups(); ev.shieldsPreset(); }], ...live, [2300, 'shieldFill']],
+      'live-shields-hit':      [[0, () => { ev.powerups(); ev.shieldsPreset(); }], ...live, [2300, 'shieldFill'], [2900, () => ev.shieldHit(30)]],
+      'live-shields-broken':   [[0, () => { ev.powerups(); ev.shieldsPreset(); }], ...live, [2300, 'shieldFill'], [2900, 'shieldBreak']],   // the recharge starts on its own after the delay
+      'live-shields-os':       [[0, () => { ev.powerups(); ev.shieldsPreset(); }], ...live, [2300, 'shieldFill'], [2600, 'overshield']],
+      'live-shields-os-hit':   [[0, () => { ev.powerups(); ev.shieldsPreset(); }], ...live, [2300, 'shieldFill'], [2600, 'overshield'], [5000, () => ev.shieldHit(37)]],
+      'live-shields-callout':  [[0, () => { ev.addMate(); ev.powerups(); ev.shieldsPreset(); }], ...live, [2300, 'shieldFill'], [2500, () => engine.feedFrame(`$HIR,4,15,23,3,${21 + foe.tid},0,0,*`)]],   // the meter beside the callout card
+      'live-shields-claim':    [[0, () => { ev.powerups(); ev.shieldsPreset(); }], ...live, [2300, 'shieldFill'], [2500, () => ev.puAt(4)]],   // the meter beside the powerup hint
       'live-pu-overshield-wide': [[0, () => { ev.powerups(); ev.widePools(); }], ...live, [2300, () => ev.puTake(6)]],
       'live-pu-easy-reload': [[0, () => { ev.powerups(); player.loadout = { ...player.loadout, overrides: { easy_reload: true } }; }], ...live, [2300, () => ev.puAt(4)]],
     };

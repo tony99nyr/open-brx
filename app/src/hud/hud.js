@@ -2,7 +2,8 @@
 // the viewport. Structure re-renders only when the state "signature" changes; live numbers patch in
 // place so CSS animations don't restart every tick. Moments (T-MINUS, KILL, DOWN, REDEPLOY) live in
 // #overlay so they animate independently of the base HUD.
-import * as DS from './deathscreen.js';   // the DOWN screen's recap: THIS LIFE and THE GAME NOW
+import * as DS from './deathscreen.js';
+import * as SV from './shieldmeter.js';   // the shield HUD pass (2026-09-24): `?shieldv=a|b|c` only; no param = today's HUD   // the DOWN screen's recap: THIS LIFE and THE GAME NOW
 
 const TEAM_COLOR = { blue: 'var(--team-blue)', yellow: 'var(--team-yellow)', red: 'var(--team-red)', green: 'var(--team-green)' };
 const TEAM_INK = { blue: '#04121e', yellow: '#1a1400', red: '#1a0404', green: '#041a0c' };
@@ -298,6 +299,8 @@ export class Hud {
     // sends nothing and touches no engine state. `_cueAt` / `_cueT` drive the ammo gauge's shot-ready cue.
     this.board = null; this._cueAt = null; this._cueT = null;
     this.info.addEventListener('click', () => this.toggleDiag());
+    this.sv = SV.shieldVariant(); this._svFx = { shield: null, base: 0 };   // null = today's shield row, untouched
+    if (this.sv) this.frame.dataset.shieldv = this.sv;
     this.hudEl.addEventListener('click', e => this._click(e));
     this.diag.addEventListener('click', e => this._click(e));
     // The chip bar is a sibling of #hud, so its pill buttons (GUN LINK LOST, RECONNECT NOW) need their own listener:
@@ -469,6 +472,7 @@ export class Hud {
       st.poolStale && st.poolStale.why, st.cure && st.cure.verdict, !!st.gunFlapping, !!st.reconciling, !!st.gunLocked, st.gunRecovery, st.downReason,
       // A56: the powerup hint/held slots exist only in a powerup game; the overshield bar and the shield number are structure
       !!st.powerup, !!(st.powerup && st.powerup.overshield), !!(st.powerup && st.powerup.held && st.powerup.held.active),
+      this.sv && SV.meterShown(st),   // the shield HUD pass: the meter exists or not
       // F258: `this.scan.length` used to sit here, so every scan hit that added a device rebuilt the
       // whole screen. The picker's rows, its empty placeholder and its fold are all patched in place
       // by `_patchScan` now, so nothing about the scan is structure any more.
@@ -1274,7 +1278,8 @@ export class Hud {
     const staleTag = '<span class="staletag" aria-label="stale value">STALE</span>';
     const os = st.powerup && st.powerup.overshield;   // A56: the overshield block on the shield bar
     const puActive = !!(st.powerup && st.powerup.held && st.powerup.held.active);
-    return `<div class="alive${gunStale ? ' gunstale' : ''}${mcStale ? ' mcstale' : ''}"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
+    const sv = this.sv && SV.meterShown(st) ? this.sv : null;   // the shield HUD pass: the meter replaces the shield row under the HP
+    return `<div class="alive${gunStale ? ' gunstale' : ''}${mcStale ? ' mcstale' : ''}${SV.aliveClass(st, sv)}"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
       ${low ? '<div class="firevig"></div>' : ''}
       ${overheating ? '<div class="heatvig"></div><div class="heatword">OVERHEAT</div>' : ''}
       <div class="clockplate" data-act="onBoard" data-arg="team" role="button" aria-label="Team scores"><div class="in"><span class="t tab" id="clock">${mmss(st.clockMs)}</span><span class="m">${esc(st.mode)}</span></div></div>
@@ -1288,7 +1293,7 @@ export class Hud {
         : st.alive && st.aim && AIM_REASON[st.aim.reason] ? `<div class="aimfx ${esc(st.aim.reason)}${overheating ? ' tight' : ''}" id="aimfx">${this._aimFx(st)}</div>`
         : st.alive && st.shielded ? '<div class="spawnshield" role="status"><span class="k">SPAWN SHIELD</span><span class="s">YOU CANNOT BE HIT</span></div>'
         : st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>'}
-      <div class="fxbar" id="fxbar">${this._fx(st)}</div>
+      <div class="fxbar" id="fxbar">${this._fx(st)}</div>${sv ? SV.meterHtml(st, sv) : ''}
       <div class="vitals${os ? ' os' : ''}"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span>${low ? '<span class="lowtag">LOW</span>' : ''}${gunStale ? staleTag : ''}<span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>${st.maxShield > 0 ? `<span class="shield tab ${shieldBase(st) === 0 ? 'zero' : ''}" id="shield">${shieldBase(st)}</span><span class="hplab shieldlabel">SHIELD</span>` : ''}</div>
         <div class="bar ${low ? 'low' : ''}"><i id="hpbar" style="width:${Math.round(100 * st.hp / st.maxHp)}%"></i></div>
         ${st.maxArmor > 0 ? `<div class="bar armor"><i id="shbar" style="width:${armorPct(st)}%"></i></div>` : ''}${st.maxShield > 0 ? `<div class="bar shield"><i id="shieldbar" style="width:${shieldPct(st)}%"></i></div>` : ''}${os ? `<div class="bar oshield" id="obarw" style="--item:${itemColor(os.color)}" aria-label="overshield"><i id="obar" style="width:${oshieldPct(st)}%"></i><b id="oval">+${os.left}</b></div>` : ''}</div>
@@ -1605,6 +1610,7 @@ export class Hud {
       const sb = q('shbar'); if (sb) sb.style.width = `${armorPct(st)}%`;
       const shieldb = q('shieldbar'); if (shieldb) shieldb.style.width = `${shieldPct(st)}%`;
       const ob = q('obar'); if (ob) ob.style.width = `${oshieldPct(st)}%`;   // A56: the overshield block drains first
+      if (this.sv) SV.patchMeter(this.hudEl, st, this.sv, this._svFx);
       if (st.powerup && st.powerup.overshield) set('oval', `+${st.powerup.overshield.left}`);
       if (st.powerup) { const hh = this._puHint(st); setHtml('puhint', hh); setHtml('puheld', this._puHeld(st));
         const nl = this.hudEl.querySelector('.nightlab'); if (nl) nl.classList.toggle('pu', !!hh);
@@ -2013,6 +2019,8 @@ export class Hud {
   // one mapping across the gun strip and the HUD (poolgauge.py: shield teal, armour purple, health green).
   _gain(st, m) {
     const d = (m.data) || {};
+    // The shield HUD pass: the meter shows every shield gain (a recharge is a dozen of them), so no toast on top.
+    if (this.sv && d.pool === 'shield' && SV.meterShown(st)) return;
     const el = document.createElement('div');
     el.className = `mo gain ${esc(d.pool)}`;
     const label = d.pool === 'armor' ? 'ARMOUR' : d.pool === 'shield' ? 'SHIELD' : 'HEALTH';

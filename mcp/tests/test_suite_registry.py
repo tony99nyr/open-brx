@@ -26,6 +26,7 @@ NOT_GATES = {
     "app/tools/shots.mjs": "writes screenshots of the demo HUD for review; asserts nothing",
     "app/tools/rig.mjs": "drives a HUD against a live MC you started by hand; a screenshot rig, not a gate",
     "app/tools/scenarios.mjs": "drives scenarios against a live MC you started by hand; screenshots, not a gate",
+    "app/tools/shieldgallery.mjs": "builds the shield-variant gallery for Tony's pick (2026-09-24); run on demand, removed with the variants",
     "webapp/mc/test/e2e/vite.m2.config.mjs": "a vite config that m2-ui.mjs loads",
     "webapp/mc/test/e2e/vite.proxy.config.mjs": "a vite config that the e2e scripts load",
     "webapp/mc/test/e2e/python-path.mjs": "the shared Python resolver imported by kit-continue.mjs; its behavior has a focused Vitest gate",

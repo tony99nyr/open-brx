@@ -6189,6 +6189,10 @@ export class Engine {
       callsign: this.player ? this.player.display : '', playerNum: this.player ? this.player.player_num : null,
       mode: this.config ? String(this.config.mode || '').toUpperCase() : '', weapon: this.weaponName,
       hp: this.hp, armor: this.armor, shield: this.shield, maxHp: this.maxHp, maxArmor: this.maxArmor, maxShield: this.maxShield, ammo: this.ammo, reserve: this.reserve, mag: (this._puHeld && this.activeSlot === this._puHeld.slot ? this._puHeld.charges : (this._ammoBySlot()[this.activeSlot] ?? this.mag)),   // A56: a held item's denominator is its charges
+      // S29 shield HUD pass (2026-09-24): a READ-ONLY view of the recharge so the phone can draw the engine's real
+      // timing (the delay since `quietAt`, then a grant every `stepMs`). null in a game with no shield. It changes no rule.
+      shieldRegen: this.maxShield > 0 ? { on: this.shieldRegenOn, delayMs: SHIELD_REGEN_DELAY_MS, stepMs: SHIELD_REGEN_STEP_MS, step: SHIELD_REGEN_STEP,
+        quietAt: this._shieldQuietAt || 0, charging: !!this._shieldRegen, down: !!this._shieldDown, gaveUp: !!this._shieldGaveUp } : null,
       // Bench 2026-09-17: `heat` is the active slot's last $ALCD heat token, null until one has been seen
       // this life (a non-heat weapon never sends a non-zero one).
       heat: this.heatBySlot[this.activeSlot] != null ? this.heatBySlot[this.activeSlot] : null,
