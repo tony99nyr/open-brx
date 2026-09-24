@@ -101,6 +101,7 @@ On `main` 2026-09-23: the desk half of F297, F269 and F270. All three stay open 
 - **F270:** `responseForMultiPacket` (brxlink) and `RESPONSE_FOR_MULTI_PACKET` (ble.py) ship false. Head/spawn-only
   scoping needs an engine.js call-site change.
 - **Next bench task:** the ordered runbook [`bench-2026-09-24.md`](bench-2026-09-24.md). **Blocked:** F270 on A8.
+- **F315 (2026-09-23):** hits resolve by IR cell, then magnitude; `--distinct-weapon-cells` (off) waits on bench 4.10.
 ## Lane: Mission Control console honesty
 F178, F256, F251, F289 closed; F309, brx-net, F312's gated row and the shared APK sidecar writer built 2026-09-23. **Next:** bench F309/F311/F312; APK 0.4.6 held in `~/brx3-release`.
 
