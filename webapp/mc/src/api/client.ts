@@ -158,6 +158,13 @@ export function createHttpApi(): Api {
     pullLog: id => post(`/api/nodes/${encodeURIComponent(id)}/pull_log`),
     setTunnel: on => post('/api/tunnel', { on }),
     getPowerups: () => j('/api/powerups'),
+    resetStation: id => post<{ ok?: boolean }>(`/api/stations/${encodeURIComponent(id)}/reset`).catch((e: Error & { status?: number; body?: unknown }) => {
+      // a route-less 404 is an OLD server; a 404 carrying the server's own `error` is its words (as `skewOr404`)
+      if (e?.status === 404 && typeof (e.body as { error?: unknown } | undefined)?.error !== 'string') {
+        throw Object.assign(new Error('THE MC SERVER PREDATES THIS UI (no station reset route). RESTART IT: python -m brx_mcp.mc'), { status: 404 });
+      }
+      throw e;
+    }),
     putStation: (id, a) => j(`/api/stations/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(a) }),
     deleteStation: async id => { await j(`/api/stations/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
     armStations: () => post('/api/stations/arm'),

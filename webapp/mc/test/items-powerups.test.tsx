@@ -187,3 +187,112 @@ describe('ITEMS — the ?mock backend speaks A56', () => {
     await expect(api.putStation(NODE, { kind: 'powerup', team: 'any', id: 4, item_preset: 'rockets' })).rejects.toThrow(/LIVE/);
   });
 });
+
+// Round 2 (brx5 lead, 2026-09-24): RESET makes a powerup station's item available now, and the row
+// names who took it (`StationView.taken_by`, a player_num, shown as the roster display).
+describe('ITEMS — RESET makes the item available now', () => {
+  /** A powerup station already assigned OVERSHIELD, with the item taken, in `phase`. */
+  async function inPlay(phase: State['phase'], over: Partial<Api> = {}, pv?: PowerupsView) {
+    const api = new MockBackend();
+    await api.putStation(NODE, { kind: 'powerup', team: 'any', id: 4, item_preset: 'overshield' });
+    Object.assign(api, over, pv ? { getPowerups: async () => pv } : {});
+    const base = await api.getState();
+    const state: State = { ...base, phase, stations: base.stations!.map(s => s.node_id === NODE ? { ...s, item_available: false, next_spawn_at_ms: Date.now() + 30_000 } : s) };
+    let error: string | null = null;
+    const run: <T,>(fn: () => Promise<T>) => Promise<T | undefined> = async fn => {
+      try { error = null; return await fn(); } catch (e) { error = (e as Error).message; return undefined; }
+    };
+    const m = await mount(<StoreCtx.Provider value={makeStore({ state, view: 'muster' }, { api, run })}><Armory /></StoreCtx.Provider>);
+    await m.update(<StoreCtx.Provider value={makeStore({ state, view: 'muster' }, { api, run })}><Armory /></StoreCtx.Provider>);
+    const reset = () => m.find(`[data-station-card="${NODE}"] [data-testid="item-reset"]`)[0] as HTMLButtonElement | undefined;
+    return { m, api, reset, error: () => error, card: () => m.find(`[data-station-card="${NODE}"]`)[0] };
+  }
+
+  it('is absent at muster, and absent in play when powerups are off', async () => {
+    const a = await inPlay('muster');
+    expect(a.reset(), 'no RESET outside a match').toBeUndefined();
+    a.m.unmount();
+    const b = await inPlay('live', {}, { enabled: false, presets: [] });
+    expect(b.reset(), 'no RESET with the flag off').toBeUndefined();
+    b.m.unmount();
+  });
+
+  it('while ARMED or LIVE: the first tap only asks, the second calls reset, CANCEL backs out', async () => {
+    for (const phase of ['armed', 'live'] as const) {
+      const calls: string[] = [];
+      const { m, reset, card } = await inPlay(phase, { resetStation: async (n: string) => { calls.push(n); return { ok: true }; } } as Partial<Api>);
+      expect(reset(), `${phase}: RESET is shown`).toBeTruthy();
+      await m.click('RESET ITEM');
+      expect(calls, `${phase}: one tap sends nothing`).toEqual([]);
+      expect(card().textContent).toMatch(/TAP RESET ITEM AGAIN/);
+      await m.click('CANCEL');
+      expect(card().textContent).not.toMatch(/TAP RESET ITEM AGAIN/);
+      await m.click('RESET ITEM');
+      await m.click('RESET ITEM');
+      expect(calls, `${phase}: the confirm calls reset for this station`).toEqual([NODE]);
+      m.unmount();
+    }
+  });
+
+  it('a refusal (or an older MC) reaches the operator', async () => {
+    const MSG = 'THE MC SERVER PREDATES THIS UI (no station reset route). RESTART IT: python -m brx_mcp.mc';
+    const { m, error } = await inPlay('live', { resetStation: async () => { throw new Error(MSG); } } as Partial<Api>);
+    await m.click('RESET ITEM');
+    await m.click('RESET ITEM');
+    expect(error()).toBe(MSG);
+    m.unmount();
+  });
+});
+
+describe('ITEMS — TAKEN BY', () => {
+  async function takenRow(extra: Partial<StationView>) {
+    const d = new MockBackend();
+    const base = await d.getState();
+    const item = (await d.getPowerups()).presets[0].item;
+    const p = base.players[1];
+    const state: State = { ...base, stations: [{ ...base.stations![0], assigned: { kind: 'powerup', team: 255, id: 4, threshold: -74, item },
+      armed: { game: 1, at: 0, kind: 'powerup', team: 255, id: 4 }, attention: [], ...extra } as StationView] };
+    const m = await mount(<StoreCtx.Provider value={makeStore({ state, view: 'muster' }, { api: d })}><Armory /></StoreCtx.Provider>);
+    return { m, p, text: m.find('[data-testid="station-item"]')[0]?.textContent ?? '(no row)' };
+  }
+  it('names the player who took it, by roster display, beside NEXT', async () => {
+    const d = new MockBackend(); const pl = (await d.getState()).players[1];
+    const { m, text } = await takenRow({ item_available: false, next_spawn_at_ms: Date.now() + 50_000, taken_by: pl.player_num } as Partial<StationView>);
+    expect(text).toMatch(/NEXT \d:\d\d/);
+    expect(text).toContain(`TAKEN BY ${pl.display.toUpperCase()}`);
+    m.unmount();
+  });
+  it('shows nothing extra when the field is absent, or while AVAILABLE', async () => {
+    const a = await takenRow({ item_available: false, next_spawn_at_ms: Date.now() + 50_000 });
+    expect(a.text).not.toMatch(/TAKEN BY/);
+    a.m.unmount();
+    const b = await takenRow({ item_available: true, next_spawn_at_ms: Date.now() + 50_000, taken_by: 2 } as Partial<StationView>);
+    expect(b.text).not.toMatch(/TAKEN BY|NEXT/);
+    b.m.unmount();
+  });
+  it('a spawn time already past shows NEXT 0:00, never a negative', async () => {
+    const { m, text } = await takenRow({ item_available: false, next_spawn_at_ms: Date.now() - 5_000 });
+    expect(text).toMatch(/NEXT 0:00/);
+    m.unmount();
+  });
+});
+
+describe('ITEMS — the ?mock backend: reset and taken_by', () => {
+  it('a pickup records who took it; RESET makes it available again and clears taken_by; refused outside play', async () => {
+    const api = new MockBackend();
+    await api.putStation(NODE, { kind: 'powerup', team: 'any', id: 4, item_preset: 'overshield' });
+    await expect(api.resetStation(NODE)).rejects.toThrow(/ARMED or LIVE/);
+    const mb = api as unknown as { phase: string; start_: { go_live_t: number } };
+    mb.phase = 'live'; mb.start_ = { go_live_t: Date.now() - 61_000 } as never;
+    const v0 = (await api.getState()).stations!.find(s => s.node_id === NODE)!;
+    expect(v0.item_available).toBe(true);
+    api.pickupStation(NODE, 3);
+    const v1 = (await api.getState()).stations!.find(s => s.node_id === NODE)! as StationView & { taken_by?: number };
+    expect(v1.item_available).toBe(false);
+    expect(v1.taken_by).toBe(3);
+    await api.resetStation(NODE);
+    const v2 = (await api.getState()).stations!.find(s => s.node_id === NODE)! as StationView & { taken_by?: number };
+    expect(v2.item_available).toBe(true);
+    expect(v2.taken_by).toBeUndefined();
+  });
+});

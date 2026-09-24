@@ -160,3 +160,25 @@ describe('makeReport posts to /api/report and reads version skew plainly', () =>
   });
 });
 
+
+// A56 (powerups): the two new routes. The server lane adds them in parallel, so these pin the path and
+// method only; the route-table check joins the list above once `api.py` serves them.
+describe('A56 powerup routes', () => {
+  const call = async (status: number, body: string, type: string, fn: (a: ReturnType<typeof createHttpApi>) => Promise<unknown>) => {
+    const seen: { url: string; method: string }[] = [];
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      seen.push({ url: String(url), method: (init?.method ?? 'GET').toUpperCase() });
+      return new Response(body, { status, headers: { 'content-type': type } });
+    }) as typeof fetch;
+    try { await fn(createHttpApi()); return { seen, err: '' }; } catch (e) { return { seen, err: (e as Error).message }; } finally { globalThis.fetch = real; }
+  };
+  it('getPowerups is GET /api/powerups; resetStation is POST /api/stations/{id}/reset', async () => {
+    expect((await call(200, '{"enabled":true,"presets":[]}', 'application/json', a => a.getPowerups())).seen).toEqual([{ url: '/api/powerups', method: 'GET' }]);
+    expect((await call(200, '{"ok":true}', 'application/json', a => a.resetStation('util a'))).seen).toEqual([{ url: '/api/stations/util%20a/reset', method: 'POST' }]);
+  });
+  it('a bare 404 on reset is an older MC; the handler\'s own 404 is its words', async () => {
+    expect((await call(404, 'Not Found', 'text/plain', a => a.resetStation('u1'))).err).toMatch(/PREDATES THIS UI/);
+    expect((await call(404, '{"error":"no such station"}', 'application/json', a => a.resetStation('u1'))).err).toBe('no such station');
+  });
+});

@@ -102,7 +102,7 @@ export class MockBackend implements Api {
   private evicted = new Set<string>();
   // A13.5: one utility phone that said hello and is waiting to be assigned (the ITEMS panel demo). Mirrors
   // `Session.stations` / `_station_view` in state.py, including the attention flags the server derives.
-  private stations: Record<string, { assigned: StationAssignment | null; armed: StationView['armed']; arm_pending: boolean; report: StationView['report']; seen: number; offline?: boolean; takenAt?: number }> = {
+  private stations: Record<string, { assigned: StationAssignment | null; armed: StationView['armed']; arm_pending: boolean; report: StationView['report']; seen: number; offline?: boolean; takenAt?: number; takenBy?: number; resetAt?: number }> = {
     'util-a1b2c3': { assigned: null, armed: null, arm_pending: false, report: { kind: 'respawn', team: 1, station_id: 1, threshold: -74, live: false, revives: 0, armed: false, battery: 64 }, seen: now() },
     // F106(i): a second seeded phone that is ASSIGNED but OUT OF WI-FI (the operator carried it out to the
     // field before it ever got the arming push) so `?mock` alone can show OUT OF WI-FI / ARM PENDING on the
@@ -118,19 +118,29 @@ export class MockBackend implements Api {
   /** A56: a powerup station's live item state on the match clock (`StationView.item_available` /
    *  `next_spawn_at_ms`): spawns at `first_at_s`, then every `spawn_every_s`; an item stays until taken and a
    *  spawn never stacks. Only while a match is armed or live; outside one the fields are absent. */
-  private itemState(st: { assigned: StationAssignment | null; takenAt?: number }): Partial<StationView> {
+  private itemState(st: { assigned: StationAssignment | null; takenAt?: number; takenBy?: number; resetAt?: number }): Partial<StationView> & { taken_by?: number } {
     const it = st.assigned?.item;
     const t0 = this.live_?.go_live_t ?? this.start_?.go_live_t;
     if (!it || t0 == null || !['armed', 'live'].includes(this.phase)) return {};
     const t = now();
     const spawnAt = (k: number) => t0 + (it.first_at_s + k * it.spawn_every_s) * 1000;
     let k = 0; while (spawnAt(k) <= t) k++;          // k = spawns so far; spawnAt(k) is the next one
-    const last = k > 0 ? spawnAt(k - 1) : null;
-    const available = last != null && (st.takenAt == null || st.takenAt < last);
-    return { item_available: available, next_spawn_at_ms: available ? null : spawnAt(k) };
+    // the item last appeared at the later of the last spawn and a host RESET
+    const appeared = Math.max(k > 0 ? spawnAt(k - 1) : -Infinity, st.resetAt ?? -Infinity);
+    const available = appeared > -Infinity && (st.takenAt == null || st.takenAt < appeared);
+    // as the server: next_spawn_at_ms is the next spawn instant, sent while AVAILABLE too
+    return { item_available: available, next_spawn_at_ms: spawnAt(k), ...(!available && st.takenBy != null ? { taken_by: st.takenBy } : {}) };
   }
   /** Demo/test stand-in for a player's `pickup` fact relayed by MC: the item at this station was taken now. */
-  pickupStation(node_id: string) { const st = this.stations[node_id]; if (st) { st.takenAt = now(); this.emit(); } }
+  pickupStation(node_id: string, player_num?: number) { const st = this.stations[node_id]; if (st) { st.takenAt = now(); st.takenBy = player_num; this.emit(); } }
+  async resetStation(node_id: string): Promise<{ ok: boolean }> {
+    const st = this.stations[node_id]; if (!st) throw Object.assign(new Error('no such station'), { status: 404, body: { error: 'no such station' } });
+    if (mockPowerups() !== 'on') throw new Error('powerups are off on this MC: there is no item to reset');
+    if (!st.assigned?.item) throw new Error('this station has no item to reset');
+    if (!['armed', 'live'].includes(this.phase)) throw new Error(`an item reset needs a match ARMED or LIVE (MC is at ${this.phase.toUpperCase()})`);
+    st.resetAt = now(); st.takenAt = undefined; st.takenBy = undefined; this.emit();
+    return { ok: true };
+  }
   async getPowerups(): Promise<PowerupsView> {
     const m = mockPowerups();
     if (m === 'old') throw Object.assign(new Error('Not Found'), { status: 404 });
@@ -237,7 +247,7 @@ export class MockBackend implements Api {
     if (!Number.isInteger(threshold) || threshold < -100 || threshold > -30) throw new Error('threshold must be an integer dBm in -100..-30 (the presence bubble; -74 ≈ 10 ft at high TX)');
     const st = this.stations[node_id] ?? (this.stations[node_id] = { assigned: null, armed: null, arm_pending: false, report: {}, seen: now() });
     st.assigned = { kind: a.kind, team, id: a.id, threshold, at: now(), ...(item ? { item } : {}) };
-    st.takenAt = undefined;
+    st.takenAt = undefined; st.takenBy = undefined; st.resetAt = undefined;
     for (const n of Object.keys(this.stations)) this.armStation(n);
     this.emit();
     return this.stationViews().find(v => v.node_id === node_id)!;
