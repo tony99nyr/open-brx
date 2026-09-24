@@ -36,16 +36,15 @@ export class PowerupStation {
     this.unsent = [];        // polish M1: `station_action` taken reports MC has not had yet, sent on (re-)bind
   }
   get everyMs() { const s = Number(this.item && this.item.spawn_every_s); return s > 0 ? s * 1000 : 0; }
-  /** MC's `station_update {available, next_spawn_in_ms}`: the time REMAINING, re-anchored on arrival. */
+  /** MC's `station_update {available, next_spawn_in_ms, reset?}`: the time REMAINING, re-anchored on arrival. */
   update(body, now) {
     if (!body || typeof body !== 'object') return;
     const hasNext = body.next_spawn_in_ms != null && Number.isFinite(+body.next_spawn_in_ms) && +body.next_spawn_in_ms >= 0;
     const next = hasNext ? now + Math.round(+body.next_spawn_in_ms) : null;
     // Polish M1: MC re-opening the spawn this station already AWARDED means MC never heard `taken` (a lost report, a
     // reconnect re-send, a restarted MC). A LATER spawn instant (about one interval on) is a new item and is accepted.
-    // ⚠ An operator RESET arrives as the same plain `available: true` with the same next spawn, so it is refused too:
-    // the item then reappears at the station's own next spawn, never twice. An optional `reset: true` would tell them apart.
-    if (body.available === true && this.available === false && this.taker && this.awardedNext != null) {
+    // An operator reset carries `reset: true` (A56) and is always accepted: the item is there now.
+    if (body.available === true && body.reset !== true && this.available === false && this.taker && this.awardedNext != null) {
       const half = this.everyMs > 0 ? this.everyMs / 2 : 1000;
       if (next == null || next < this.awardedNext + half) return;
     }

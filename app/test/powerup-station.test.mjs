@@ -128,6 +128,16 @@ test('M1: MC cannot re-open the spawn the station already gave away (its taken r
   assert.equal(s.available, true); assert.equal(s.taker, 0);
 });
 
+test('an operator reset (`reset: true`) re-opens the awarded spawn at once; the fixed next spawn stays', () => {
+  const s = new PowerupStation({ id: 4, item: ROCKETS });
+  s.update({ available: true, next_spawn_in_ms: 100_000 }, 0);
+  s.tick([player(7, READY, 4)], 1000);
+  s.update({ available: true, next_spawn_in_ms: 89_000, reset: true }, 11_000);
+  assert.equal(s.available, true, 'a reset is accepted for the awarded spawn');
+  assert.equal(s.taker, 0);
+  assert.equal(s.nextAt, 100_000, 'the fixed spawn time does not move');
+});
+
 test('M1: an unsent `taken` report waits in the queue and goes out on re-bind', () => {
   const s = new PowerupStation({ id: 4, item: ROCKETS });
   s.update({ available: true, next_spawn_in_ms: 100_000 }, 0);
