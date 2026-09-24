@@ -699,3 +699,6 @@ block's *internal* statuses were true when it closed and may since have been sup
   nodes connected NOW, so a phone offline since an MC restart lost its kills from the recap when the cap was reached,
   and the cap could move to the wrong kill. `_replay` now binds through `_match_nodes` too. Regression scenario
   `cap-after-restart-offline-node`.
+- 2026-09-24 **F329** fixed (chaos testing, `mc_crash`): an MC CRASH within the 2 s snapshot debounce of a hot join
+  (or of a phone binding in the middle of a match) resumed without that binding, and the player's stored facts scored
+  for nobody. A bind or an added player while a match is in play now writes the snapshot at once.
