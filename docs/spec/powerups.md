@@ -40,6 +40,10 @@ costs the player their secondary while the item lasts.
 7. Overshield: on a Standard-preset gun (shield max 0) and a Shields-preset gun, write the shield to its current
    value plus 75 with `$LIFE` token 4 = 2 (set past max). Pass: `$HP` reads the new shield; the next hits take the
    shield first; nothing refills it; a death clears it.
+8. Pickup range calibration (brx2's runbook): the RSSI median at 15, 30, 60 and 100 cm for each phone (Pixel,
+   iPhone) against each station type (phone station, StickS3). It sets `POWERUP_RSSI_DBM` per station kind and
+   decides whether a per-phone offset is needed. It also measures the claim latency (in range to TAKEN on the
+   station).
 
 ## Contract (A56, additive)
 
@@ -52,19 +56,23 @@ costs the player their secondary while the item lasts.
 - **`GameConfig.powerups?`**: `[{weapon_id, slot}]`, the pickup WEAPONS MC armed and where (compile's output; at
   most two, slots 2 and 3). An overshield needs no slot.
 - **New fact `pickup`** from the player phone: `{match_id, station_id, item_kind, weapon_id?, t}`.
-- **`station_update {id, available, next_spawn_in_ms?}`** from MC to the station, on a pickup and at each spawn
-  time: the time REMAINING, since a Stick has no synced clock (agreed with brx4 for H8, 2026-09-24). The station
+- **`station_update {id, available, next_spawn_in_ms?}`** from MC to the station, on a pickup, at each spawn time and
+  on an operator reset, always with `next_spawn_in_ms` (the next spawn instant, even while available): the time REMAINING, since a Stick has no synced clock (agreed with brx4 for H8, 2026-09-24). The station
   advertises state 1 (available) or 0 (taken) and, while taken, the seconds to the next spawn in `value` (capped
   at 255). On a reconnect MC re-sends the current state and the station re-anchors on arrival. An older Stick
   ignores `item`.
+- **`station_action {id, action: "reset" | "taken", player_num?, t}`** from a station to MC, live-only: an operator
+  reset request, or the station's own record of who took the item (below).
+- **The advert (utility.md §2):** the player advert gains state bit 4 `claiming` and bit 5 `claim_ready`, with the
+  claimed station id in `value`; the station advert's reserved byte 15 becomes `taker` (the winner's
+  `player_num`, 0 = none).
 
 ## The schedule (Tony, 2026-09-24: "like Halo")
 
 Items spawn at fixed times on the match clock: at `first_at_s`, then every `spawn_every_s`. An item is available
 from its spawn time until a player takes it; then the station is empty until the next spawn time. An item nobody
 took simply stays; a spawn time never stacks a second one. Every phone and station can compute the schedule from
-the match clock; MC's `pickup` relay tells the station (and so every phone, through the station's advert) that an
-item was taken early.
+the match clock. The station itself decides who took an item (below) and advertises it, so every phone in range sees it taken.
 
 ## One item per station, locked for the match (Tony, 2026-09-24)
 
@@ -114,13 +122,59 @@ and AVAILABLE, for example OVERSHIELD AVAILABLE, in the item's colour. It fires 
 schedule and the match clock, so it needs neither MC nor the station. It is skipped when the phone knows the item is
 still sitting there untaken since the last spawn (the station's advert said available). Presentation only.
 
-## The grant on the phone
+## The pickup: about 1 ft, 1 s, first come at the station (Tony, 2026-09-24)
 
-Presence (the existing `Presence` tracker, the station's own threshold byte), then the trigger: the same gate as a
-station respawn, so a player walking past does not take an item by accident. The HUD hint walks
-GET CLOSER → PULL THE TRIGGER FOR <ITEM> → <ITEM> READY, and the item then shows beside the ammo with its charges.
-A depleted station shows its cooldown. Offline (no MC relay), the phone keeps its own per-station cooldown for
-this player.
+"You need to be close to the pickup, within 1ft bluetooth range. Hold for 1s to get the powerup and then its taken
+and unavailable until the next spawn." Tony then confirmed the hold means "standing in range for 1s": there is no
+button, and the gun's buttons play no part.
+
+1. **Range.** The player's phone judges it from the station advert's RSSI: the **median of the last 3 samples**
+   (the scan samples each device at 4/s), so one wild packet neither grants nor blocks. In range means the median is
+   at or above the station's threshold (advert byte 14). Out of range means below the threshold minus 3 dB. The respawn
+   path keeps its EMA.
+2. **Threshold.** RSSI differs by phone and by station hardware, so there are three layers. Each station kind has
+   its own default (`POWERUP_RSSI_DBM`: a phone station -55, a StickS3 -58, both placeholders until the calibration
+   step below). MC can override it (`StationAssignment.threshold`, 0 = the station's default). The station advertises
+   the result in byte 14. If the calibration shows phones differing by more than 4 dB, the app gains a
+   per-model offset table.
+3. **Dwell.** In range continuously for `POWERUP_DWELL_MS` (1000). Leaving range resets it. The HUD shows a
+   1 s progress ring and HOLD STILL.
+4. **Claim.** The player advert (role 2) carries state bit 4 `claiming` while in range and bit 5 `claim_ready`
+   after the dwell. Its `value` byte carries the claimed station id (a powerup station id is 1..255). While
+   `claiming` is set the phone advertises in low-latency mode (about 100 ms on Android), otherwise balanced.
+5. **The station decides.** It is the one party that hears every claimant (a phone station and a Stick alike). It
+   awards the item to the **first** player advert it hears with `claim_ready` for its own id while the item is
+   available. A tie inside one scan batch goes to the lower `player_num`. It ignores a claim it hears below
+   `CLAIM_FLOOR_DBM` (-80), which limits cross-talk and a cheap spoof. Its screen shows a 1 s ring from the first
+   `claiming` advert, for display only.
+6. **Taken.** The station advertises state 0, `value` = the seconds to the next spawn (capped at 255), and byte 15
+   `taker` = the winner's `player_num` (1..63, 0 = none) until the next spawn. It reports
+   `station_action {id, action: "taken", player_num, t}` to MC (best effort).
+7. **The grant.** A phone applies the item only when the station's advert shows `taker` equal to its own
+   `player_num` and it was `claim_ready` for that station. It then sends the `pickup` fact (queued, so it is the
+   reliable record; MC dedupes it against the station's report by station and spawn). A loser's HUD says TAKEN BY
+   <name>. A phone that is ready for 3 s with no answer says STATION NOT ANSWERING.
+8. **Unavailable until the next spawn.** The next spawn is the fixed schedule above, not a cooldown from the
+   moment of taking (Halo). MC's `station_update` always carries `next_spawn_in_ms` (the time to the next spawn
+   instant, even while available). The station counts it down itself, spawns at 0 and then every `spawn_every_s`,
+   and re-anchors on every update, never spawning one instant twice. A lost MC link therefore does not freeze a station.
+
+The HUD walks GET CLOSER → HOLD STILL (the ring) → <ITEM> READY, and the item then shows beside the ammo with its
+charges. An unavailable station shows its countdown.
+
+**Security posture** is unchanged from `utility.md` §3: adverts are unauthenticated. A second phone advertising
+`claim_ready` could take an item from across the field if the station hears it above the floor. That is the same
+casual-threat trade-off as the respawn station.
+
+## Operator reset (Tony, 2026-09-24)
+
+A Stick's buttons are for the MC operator only (view stats, reset the station), never for players. The operator
+reset makes the item available **now**. It comes from the Stick (a 2 s long press plus an on-screen confirm) or from
+the MC console (RESET on the station's card, `POST /api/stations/{node_id}/reset`). The station sends
+`station_action {id, action: "reset", t}` (live-only) and applies nothing until MC answers with
+`station_update {available: true, next_spawn_in_ms}`, so MC stays the source of truth. Offline, the Stick says
+RESET NEEDS MISSION CONTROL. The schedule keeps its fixed times; the next spawn instant finds the item taken or
+still there (no stacking). MC logs OPERATOR RESET · STATION #<id> and records it on the board. Agreed with brx4.
 
 ## Items and defaults (Tony, 2026-09-24)
 

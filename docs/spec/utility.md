@@ -55,12 +55,13 @@ byte  0-3   4F 42 52 58   'OBRX'
       8     kind           station: 1 respawn · 2 powerup · 3 extraction · 4 bomb · 5 control   (player: 0)
       9     team           0..3 = the gun's $TID team · 255 = neutral / any
       10    state          kind-specific (respawn 1 ready/0 disabled · bomb 0 idle 1 planted 2 defused 3 detonated ·
-                            player: bit0 alive, bit1 planting, bit2 defusing, bit3 extracting)
-      11    value          kind-specific small number (seconds left, cooldown, progress %)
+                            player: bit0 alive, bit1 planting, bit2 defusing, bit3 extracting,
+                            bit4 claiming, bit5 claim_ready (A56, powerups.md))
+      11    value          kind-specific small number (seconds left, cooldown, progress %; a claiming player: the station id)
       12    seq            bumps on every state change (a scanner tells fresh from stale)
       13    game           low 8 bits of the game's config hash · 0 = any game
       14    threshold      the station's own "you are AT me" RSSI, int8 dBm · 0 = scanner default
-      15    reserved       0
+      15    taker          a powerup station: the player_num that took the item (A56) · 0 = none / other kinds
 ```
 
 Codec: `beacon.js encodeUuid()/decodeUuid()`, pinned by `app/test/beacon.test.mjs` (round trip, case and
