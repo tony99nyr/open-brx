@@ -136,7 +136,13 @@ swap and you would only have 1."
 - **Weapon pickups** (Rockets, Rail Gun, later the other heavies) share ONE pickup-weapon holding. Taking a second
   weapon SWAPS: the new one replaces the old, which is gone (not dropped for someone else; that is an idea for
   later). On the gun: zero the old slot's `$AMMO`, write the ALT cycle with the new slot, `$AMMO` the new slot with
-  its charges. The HUD says it on the callout card: RAIL GUN replaces ROCKETS.
+  its charges. The HUD says it on the callout card: RAIL GUN replaces ROCKETS. **Bench 2026-09-24, measured: the
+  pickup equips straight onto the trigger, with no extra write.** A mid-life `$WEAP,<slot>,…` for the new weapon
+  plus its `$AMMO` write, sent in that order, fires it on the very next trigger pull; a mid-life `$WEAP` write
+  alone, with no `$AMMO` sent, also equips the weapon on the trigger. `$AMMO` alone never switches the trigger's
+  weapon. Switching back to the primary needs both writes in the same order: re-send its `$WEAP`, then its saved
+  `$AMMO`. Reading: a re-armed slot's ALT position holds where it last was, not slot 0. Untested: whether a
+  mid-life `$WEAP` re-send resets other per-weapon state, such as heat or swap delay.
 - **Non-weapon powerups** (first: Overshield) stack alongside a held weapon pickup: Rockets and an Overshield
   together is fine.
 
