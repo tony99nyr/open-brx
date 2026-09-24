@@ -1243,6 +1243,18 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .bf .bfload{display:flex;gap:10px;align-items:baseline;font-size:12px;line-height:1.35;color:var(--num);font-weight:600;max-width:540px}
 .bf .bfload .v{min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}   /* F110: the host writes this line and it is the LAST row — unclamped it grew straight into the CTA footer */
 .bf .bfload .k{flex:0 0 auto;font-size:11px;letter-spacing:.26em;color:var(--glow);font-weight:700;padding-top:2px;padding-left:2px}   /* integration pass 2026-09-23: the L sat on .bfbody's overflow edge and was clipped ("OADOUT") */
+/* QA-20: the mode art is a render with a fake HUD baked in (a 04:52 TIME REMAINING clock on tdm.jpg), which read as
+   live data behind a real briefing. Blurred, it stays atmosphere and no number in it can be read. */
+.bf .bfart{inset:-12px;filter:blur(5px)}
+/* QA-20: FULL NOTES. The button sits top right, clear of the ⓘ column; the panel covers the body, never the CTA. */
+.bf .bfmorebtn{position:absolute;top:22px;right:58px;z-index:3;height:36px;padding:0 14px;font-family:var(--fd);font-weight:700;font-size:14px;letter-spacing:.16em;color:var(--num);background:rgba(4,12,20,.92);border:1px solid var(--glow);transform:skewX(-10deg);pointer-events:auto}
+.bf .bfmorebtn .unskew{display:inline-block;transform:skewX(10deg)}
+.bf .bfmorebtn::after{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:56px}
+.bf .bfmore{position:absolute;top:66px;left:36px;right:58px;bottom:100px;z-index:2;overflow:hidden auto;display:flex;flex-direction:column;gap:3px;padding:10px 14px;background:rgba(3,4,7,.97);border:1px solid var(--edge);pointer-events:auto}
+.bf .bfmore .mk{font-size:11px;letter-spacing:.26em;color:var(--glow);font-weight:700;margin-top:6px}
+.bf .bfmore .mk:first-child{margin-top:0}
+.bf .bfmore .mv{font-size:14px;line-height:1.45;color:var(--num);font-weight:600;user-select:text}
+.bf.more .bfbody{visibility:hidden}
 .bf .bffoot{position:absolute;left:36px;right:36px;bottom:24px;display:flex;align-items:center;justify-content:space-between;gap:20px}
 .bf .who{display:flex;align-items:baseline;gap:10px}.bf .who .cs{font-family:var(--fd);font-style:italic;font-weight:700;font-size:22px;letter-spacing:.08em}.bf .who .num{font-family:var(--fd);font-weight:700;color:var(--glow);font-size:16px}
 .bf .cta{display:flex;align-items:center;gap:16px}
@@ -1252,6 +1264,8 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 @media (max-height:360px){.bf .bfname{font-size:34px}.bf .bfdesc{-webkit-line-clamp:1;height:18.125px}.bf .bfbody{gap:5px;bottom:90px}.bf .ready.go{height:54px;font-size:22px}}
 /* night: no art, no glow, no white — the red ramp only */
 [data-env="night"] .bf .bfart{display:none}
+[data-env="night"] .bf .bfmore{background:#000;border-color:var(--edge)}[data-env="night"] .bf .bfmore .mk{color:var(--warn)}[data-env="night"] .bf .bfmore .mv{color:var(--num)}
+[data-env="night"] .bf .bfmorebtn{background:#000;color:var(--num);border-color:var(--mut)}
 [data-env="night"] .bf .bfveil{background:#000}
 [data-env="night"] .bf .bfname{text-shadow:none;color:var(--num)}
 [data-env="night"] .bf .bfdesc,[data-env="night"] .bf .bfload,[data-env="night"] .bf .bfrules .v{color:var(--num)}

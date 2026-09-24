@@ -4137,6 +4137,30 @@ await step('QA-15 stage result: a result MC just delivered never reads OUT OF RA
   must(r.ws === 'bound', 'the stage did not deliver the result over a bound link: ' + JSON.stringify(r));
   must(!/OUT OF RANGE/.test(r.line) && /SENT TO THE HOST|SENDING/.test(r.line), 'the sync line contradicts the link that just delivered the result: ' + JSON.stringify(r));
 });
+for (const view of VIEWS) {
+  await step(`${view.name} QA-20 briefing-long: clamped host notes open in full, and the mode art has no readable fake clock`, async () => {
+    const pg = await open(view, 'briefing-long');
+    const g = await pg.evaluate(() => { const s = window.brx.engine.state(); return { desc: s.game.desc, load: s.game.loadout_line, rules: s.game.ruleset }; });
+    const before = await pg.evaluate(() => { const b = document.querySelector('.bf .bfmorebtn'), art = document.querySelector('.bf .bfart');
+      const blur = art ? (getComputedStyle(art).filter.match(/blur\(([\d.]+)px\)/) || [0, 0])[1] : 0;
+      return { btn: !!b && !b.hidden && b.getClientRects().length > 0, label: b ? b.textContent.trim() : null, blur: +blur }; });
+    must(before.btn, `the notes are clamped but there is no way to read them in full: ${JSON.stringify(before)}`);
+    must(before.blur >= 3, `the mode art is sharp enough to read its baked-in HUD numbers: ${JSON.stringify(before)}`);
+    await pg.click('.bf .bfmorebtn'); await pg.waitForTimeout(150);
+    const open1 = await pg.evaluate(() => { const p = document.querySelector('.bf .bfmore'); if (!p) return null;
+      const fr = document.getElementById('frame').getBoundingClientRect(), r = p.getBoundingClientRect(), cta = document.querySelector('.bf .ready.go').getBoundingClientRect();
+      return { txt: p.innerText.replace(/\s+/g, ' '), inFrame: r.left >= fr.left - 1 && r.right <= fr.right + 1 && r.top >= fr.top - 1 && r.bottom <= fr.bottom + 1, overCta: r.bottom > cta.top + 1,
+        clipped: Array.from(p.querySelectorAll('.mv')).some(e => e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1), scrolls: p.scrollHeight > p.clientHeight + 1 }; });
+    await pg.click('.bf .bfmorebtn'); await pg.waitForTimeout(150);
+    const closed = await pg.evaluate(() => !document.querySelector('.bf .bfmore'));
+    await pg.close();
+    const flat = t => String(t).replace(/\s+/g, ' ').trim();
+    must(open1, 'FULL NOTES opened nothing');
+    must(open1.txt.includes(flat(g.desc)) && open1.txt.includes(flat(g.load)) && open1.txt.includes(flat(g.rules)), `the panel does not carry the host's full text: ${open1.txt.slice(0, 200)}`);
+    must(open1.inFrame && !open1.overCta && !open1.clipped, `the notes panel is cut or covers the CTA: ${JSON.stringify({ ...open1, txt: undefined })}`);
+    must(closed, 'CLOSE NOTES did not close the panel');
+  });
+}
 
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;

@@ -359,6 +359,13 @@ export class Hud {
     // second past the tap reads as a dead control.
     // A26: the ⓘ on a rack row only MOVES THE DETAIL PANE. It equips nothing, sends nothing and touches no
     // engine state, so like the results views it is answered here and never round-trips the app's handler map.
+    // QA-20: FULL NOTES on the briefing only READS text the phone already holds, so it is answered here too.
+    if (act === 'onBriefMore') {
+      this.bfMore = !this.bfMore;
+      this.sig = null; if (this._lastSt) this.render(this._lastSt);
+      return;
+    }
+    if (act === 'onBriefDone') this.bfMore = false;   // leaving the briefing closes its notes (then the app handler runs)
     if (act === 'onLoInfo') {
       this.lo.focus = arg || null; this.lo.confirm = null;
       this.sig = null; if (this._lastSt) this.render(this._lastSt);
@@ -556,6 +563,12 @@ export class Hud {
     const body = this.hudEl.querySelector('.bf .bfbody');
     if (!body) { this._bfFit = null; return; }
     const nm = body.querySelector('.bfname'); if (!nm) return;
+    // QA-20: FULL NOTES shows only when a clamp actually cut the host's text (or while its panel is open).
+    const btn = this.hudEl.querySelector('.bf .bfmorebtn');
+    if (btn && !this.bfMore) {
+      const cut = Array.from(body.querySelectorAll('.bfdesc, .bfload .v, .bfk .lab')).some(e => e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1);
+      if (btn.hidden === cut) btn.hidden = !cut;
+    }
     // Re-checked every render, not memoised on the text: the webfont swaps in AFTER the first paint and a name
     // that fitted on one line in the fallback face wraps to two in Saira Condensed — a one-shot fit measured
     // the wrong font and left the overflow on screen. New content starts again from the design size.
@@ -846,8 +859,16 @@ export class Hud {
     const locked = !st.canPickPrimary && !st.canPickSecondary && !st.canPickPerk;
     const cta = locked ? 'SEE MY KIT ▸' : 'BUILD MY KIT ▸';
     const sub = locked ? 'Your kit is set by the host — take a look.' : 'Pick your weapons when you are ready.';
-    return `<div class="lobby bf" data-mode="${esc(mode)}"><div class="scan"></div><div class="edgeglow"></div>
+    // QA-20: the host's notes and loadout line are clamped to fit the frame. When the clamp bites (measured in
+    // `_fitBriefing`), FULL NOTES opens a panel over the body with every word the host wrote, the ruleset included.
+    const more = this.bfMore && (g.desc || g.loadout_line || g.ruleset) ? `<div class="bfmore" role="dialog" aria-label="Full briefing notes">
+        ${g.ruleset ? `<div class="mk">RULES</div><div class="mv">${esc(g.ruleset)}</div>` : ''}
+        ${g.desc ? `<div class="mk">HOST NOTES</div><div class="mv">${esc(g.desc)}</div>` : ''}
+        ${g.loadout_line ? `<div class="mk">LOADOUT</div><div class="mv">${esc(g.loadout_line)}</div>` : ''}</div>` : '';
+    const moreBtn = (g.desc || g.loadout_line || g.ruleset) ? `<button class="bfmorebtn" data-act="onBriefMore" aria-expanded="${!!this.bfMore}" ${this.bfMore ? '' : 'hidden'}><span class="unskew">${this.bfMore ? 'CLOSE NOTES ▴' : 'FULL NOTES ▸'}</span></button>` : '';
+    return `<div class="lobby bf ${this.bfMore ? 'more' : ''}" data-mode="${esc(mode)}"><div class="scan"></div><div class="edgeglow"></div>
       <div class="bfart" style="background-image:url('assets/modes/${esc(mode)}.jpg')"></div><div class="bfveil"></div>
+      ${moreBtn}${more}
       <div class="bfbody">
         <div class="bfk r r0">${g.abbr ? `<span class="chip"><span class="unskew">${esc(g.abbr)}</span></span>` : ''}<span class="lab">GAME BRIEFING${g.ruleset ? ' · ' + esc(g.ruleset) : ''}</span></div>
         <div class="bfname r r1">${esc(String(name).toUpperCase())}</div>
