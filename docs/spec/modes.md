@@ -67,7 +67,7 @@ contracts §3 `FrameBundle` fields like this:
   host setting now** — it used to be a fixed constant (70) armed on every game whether the host wanted
   shields or not, with the token's own comment warning "do not treat it as a setting". The CEILING alone
   still does nothing by itself: `$SPAWN` leaves the pool at 0 and the node's own `$LIFE,0,0,<n>,*` writes
-  fill it (contracts §3; F347: the spawn and revive bursts end with a fill to the ceiling, so a life starts
+  fill it (contracts §3; F348: the spawn and revive bursts end with a fill to the ceiling, so a life starts
   full; S29's shield recharge after that; `app/src/engine.js shieldRegenOn`), which
   only runs when the game's `health.max_armor` is 0 too — see `compile.is_shields_preset`/
   `HEALTH_PRESETS`. An IR `$SIR` function-11/grant row can also raise the pool; nothing in this compiler

@@ -3955,7 +3955,7 @@ class Session:
         reason, stale_ms = body.get("pool_stale"), body.get("pool_stale_ms")
         nv.pop("pool_stale", None)
         nv.pop("pool_stale_ms", None)
-        if reason in ("silent", "no_fire", "write_lost"):
+        if reason in ("silent", "no_fire", "write_lost", "pool_wrong"):
             nv["pool_stale"] = reason
             if isinstance(stale_ms, int) and not isinstance(stale_ms, bool) and stale_ms >= 0:
                 nv["pool_stale_ms"] = stale_ms

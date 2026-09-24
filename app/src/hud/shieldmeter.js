@@ -14,7 +14,7 @@
 //   no white and no sweep; the one motion is the broken track's slow red brightness pulse.
 // - The timing is the engine's: `st.shieldRegen` (engine.js S29) gives the delay and the grant cadence. The sounds
 //   are the engine's too: `shield_down` (N101) and `shield_charging` (N102) already play on the gun. No phone audio.
-// - F348 (Tony, field 2026-09-24: "the hud animation is kinda chunky it doesn't grow smoothly"): the refill is drawn
+// - F349 (Tony, field 2026-09-24: "the hud animation is kinda chunky it doesn't grow smoothly"): the refill is drawn
 //   from the engine's own recharge clock (`shieldRegen.startedAt/from/fullAt`), a straight line from where it started
 //   to full, and never more than one grant ahead of the pool the gun reported. By day it moves at frame rate
 //   (`requestAnimationFrame`); at night and under reduced motion it moves only with the HUD's own patch.
@@ -49,7 +49,7 @@ export function meterModel(st, now = Date.now()) {
   };
 }
 
-/** F348: the fill the meter draws. At rest it is the pool. During a recharge it is a straight line from `from` at
+/** F349: the fill the meter draws. At rest it is the pool. During a recharge it is a straight line from `from` at
  *  `startedAt` to the max at `fullAt` (the engine's own grant clock), capped at one grant above the pool the gun has
  *  reported, so a slow link holds the bar back instead of drawing a full shield the gun does not have. PURE. */
 function fillPct(st, sr, charging, base, max, pct, now) {
@@ -107,13 +107,13 @@ export function patchMeter(hudEl, st, fx, now = Date.now()) {
     if (total < fx.shield && !m.down) pulse(el, 'hit', 450);   // the break has its own steady pulse (data-s="down")
   }
   fx.shield = total;
-  fx.st = st;   // F348: the frame-rate fill reads the latest state
+  fx.st = st;   // F349: the frame-rate fill reads the latest state
   const smooth = m.charging && !reducedMotion() && !el.closest('[data-env="night"]') && typeof requestAnimationFrame === 'function';
   el.toggleAttribute('data-raf', smooth);   // CSS: no width transition while the fill moves every frame
   if (smooth && !fx.raf) fx.raf = requestAnimationFrame(() => fillFrame(hudEl, fx));
 }
 const reducedMotion = () => { try { return !!(typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (_) { return false; } };
-/** F348: one animation frame of the refill. Stops itself when the recharge ends or the meter is gone. */
+/** F349: one animation frame of the refill. Stops itself when the recharge ends or the meter is gone. */
 function fillFrame(hudEl, fx) {
   fx.raf = 0;
   const el = hudEl && hudEl.querySelector('#svm'); if (!el || !fx.st) return;

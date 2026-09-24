@@ -4647,7 +4647,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(last && last.s === 'ok' && last.shield >= 105, `full again: ${JSON.stringify({ s: last && last.s, shield: last && last.shield })}`);
     must(!toast, 'no teal "+N SHIELD" toast over the meter during a recharge');
   });
-  await step(`${tag}: the refill grows smoothly: sampled every 100 ms, the fill never stands still while it charges and never jumps a grant (F348)`, async () => {
+  await step(`${tag}: the refill grows smoothly: sampled every 100 ms, the fill never stands still while it charges and never jumps a grant (F349)`, async () => {
     const pg = await open(view, 'live-shields-broken', N, 3300);
     const ws = []; let chargeSeen = false;
     for (let t = 0; t < 14000; t += 100) {
@@ -4710,7 +4710,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(c.s === 'charge', `setup: the refill ran: ${c.s}`);
     must(w.s !== 'charge' && w.wait && w.dly < 60, `after the hit: back to the delay, the creep near 0: ${JSON.stringify({ s: w.s, wait: w.wait, dly: w.dly })}`);
   });
-  await step(`${tag}: a death clears the red tint, and a respawn starts at FULL shield (F347): no red pulse, no tint, no creep (polish M3)`, async () => {
+  await step(`${tag}: a death clears the red tint, and a respawn starts at FULL shield (F348): no red pulse, no tint, no creep (polish M3)`, async () => {
     const pg = await open(view, 'live-shields-broken', N, 3300);
     const d0 = await svWait(pg, r => r.tint, 2000);
     await pg.evaluate(() => window.brxDemo.die()); await pg.waitForTimeout(700);
@@ -4719,7 +4719,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
     await pg.close();
     must(d0.tint, 'setup: broken, tinted');
     must(!dead.alive && !dead.tint, `dead: no tint: ${JSON.stringify(dead)}`);
-    must(b2.m && b2.s === 'ok' && b2.shield >= 105 && !b2.tint && !b2.wait, `respawned: a fresh Shields life starts full (F347): ${JSON.stringify({ s: b2.s, shield: b2.shield, tint: b2.tint, wait: b2.wait })}`);
+    must(b2.m && b2.s === 'ok' && b2.shield >= 105 && !b2.tint && !b2.wait, `respawned: a fresh Shields life starts full (F348): ${JSON.stringify({ s: b2.s, shield: b2.shield, tint: b2.tint, wait: b2.wait })}`);
   });
   await step(`${tag}: no tint while shielded, with the shield or an overshield alone (polish M3)`, async () => {
     let pg = await open(view, 'live-shields-hit', N, 3600); const h = await svWait(pg, r => r.m && r.shield > 0 && r.shield < 105, 2000); await pg.close();

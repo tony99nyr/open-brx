@@ -868,7 +868,7 @@ class NodeView(TypedDict):
     reach: NotRequired[Literal["lan", "backhaul"]]
     last_reach: NotRequired[Literal["lan", "backhaul"]]
     # F208: the node's last `status.pool_stale` / `pool_stale_ms`. Absent = not stale, or an older app.
-    pool_stale: NotRequired[Literal["silent", "no_fire", "write_lost"]]
+    pool_stale: NotRequired[Literal["silent", "no_fire", "write_lost", "pool_wrong"]]
     pool_stale_ms: NotRequired[int]
     # F264: what the node ITSELF did about a `pool_stale` claim, so the board reads more than "stale".
     # `asking` = a $QUERY/$LIFE probe is out; `dead` = the gun answered health 0 and the death is booked;
@@ -959,9 +959,11 @@ class Event(TypedDict, total=False):
     # F208: the pool this status reports is STALE, and why. A gun that died kept a byte-identical status
     # for 105 s and looked like a healthy idle player. `"silent"` = no gun frame for 185 s; `"no_fire"` =
     # three trigger presses in a row got no shot back; `"write_lost"` = this life's spawn or revive write was
-    # lost and the phone did not repeat it (pl4: RESYNC GUN clears it). `pool_stale_ms` = ms since the gun last reported a
+    # lost and the phone did not repeat it (pl4: RESYNC GUN clears it); `"pool_wrong"` = the gun reports pools above (or,
+    # at the spawn read-back, other than) the ones its `$PSET` armed, and two repairs did not hold (F341: FORCE RESPAWN).
+    # `pool_stale_ms` = ms since the gun last reported a
     # pool. Absent = not stale, or an older app: MC then shows no cue at all.
-    pool_stale: Literal["silent", "no_fire", "write_lost"]
+    pool_stale: Literal["silent", "no_fire", "write_lost", "pool_wrong"]
     pool_stale_ms: int
     # F264: what the node ITSELF did about a `pool_stale` claim, so the board reads more than "stale".
     # `asking` = a $QUERY/$LIFE probe is out; `dead` = the gun answered health 0 and the death is booked;
@@ -1026,7 +1028,7 @@ class LiveRow(ScoreRow):
     sync_age_ms: int
     respawn_in_s: int | None
     # F208: the bound node's `pool_stale` / `pool_stale_ms`, as NodeView. Absent = not stale.
-    pool_stale: NotRequired[Literal["silent", "no_fire", "write_lost"]]
+    pool_stale: NotRequired[Literal["silent", "no_fire", "write_lost", "pool_wrong"]]
     pool_stale_ms: NotRequired[int]
     # F264: what the node ITSELF did about a `pool_stale` claim, so the board reads more than "stale".
     # `asking` = a $QUERY/$LIFE probe is out; `dead` = the gun answered health 0 and the death is booked;
@@ -1439,7 +1441,7 @@ class ReadinessRow(TypedDict):
     # `status.preflight.gun_flapping` (bench 2026-09-17). The card shows one steady HEADSET OFF line while
     # it is true. An older server omits it, so a reader treats a missing key as false.
     gun_flapping: NotRequired[bool]
-    pool_stale: Literal["silent", "no_fire", "write_lost"] | None   # F208: `status.pool_stale`; None = not stale or not reported
+    pool_stale: Literal["silent", "no_fire", "write_lost", "pool_wrong"] | None   # F208: `status.pool_stale`; None = not stale or not reported
     pool_stale_ms: int | None                        # F208: `status.pool_stale_ms`; None = not reported
     cure: Literal["asking", "dead", "alive", "no_answer"] | None    # F264: the node's own outcome; None = it has not acted
     gun_locked: NotRequired[bool]                        # F272: positive verdict only; absent = no claim or older app

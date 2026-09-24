@@ -26,6 +26,19 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 export const WRITE_ACK_CAP_MS = 50;
 /** How many times one batch sends again from a frame a late chunk error hit, before it reports failure. */
 export const LATE_RESENDS = 2;
+/** F341: the gun's parser reset. v4.32 code read (docs/bench-screamers-2026-09-19.md, the A4 row): `$` clears
+ *  token 0 and the index; `*` dispatches the empty command, and the common return path clears every token. Screamers
+ *  A4 (bench-2026-09-24.md Block 2) is its pending bench proof; nothing in the docs contradicts it. The
+ *  parser keeps tokens 1..59 across a `$` (transport-hardening.md §1.3), so a frame that lost its `*` puts its
+ *  text in front of the NEXT frame's tokens.
+ *
+ *  Field 2026-09-24 (0.4.11, Pixel 5, Tactix-FE30): the last chunk of the spawn burst's `$PSET` failed with Android
+ *  status 201 (`ERROR_GATT_WRITE_REQUEST_BUSY`: the stack did not send it). That chunk carried the `*`. The loop
+ *  then sent the `$PSET` again from its first byte, the gun appended the second copy to the first, and it read
+ *  hp "45"+"45" and armour "70"+"70": `$HP,4545,7070,0` for the rest of the match. So a chunk error is UNCERTAIN
+ *  (a busy chunk did not go; any other late error may or may not have gone), and after one the gun's parser may
+ *  hold a partial frame. This link writes `PARSER_RESET` before the next frame it sends after any chunk error. */
+export const PARSER_RESET = '$*';
 
 /** Writes one chunk to the gun's NUS RX characteristic through the plugin itself, not BleClient's queue.
  *  Native builds take a hex string (what BleClient sends); the web build takes the DataView.
@@ -204,6 +217,9 @@ export class BrxLink {
     this.deviceId = null; this.advert = null; this.connected = false; this.retries = 0; this.lastReason = null;
     this._init = null; this._q = Promise.resolve(); this._scanning = false; this._re = new Reassembler();
     this.lateLost = 0;     // late chunk errors that landed after their batch had resolved (diagnostics)
+    this._resetOwed = new Set();   // F341: device ids whose parser a chunk error or a drop left unknown; their next frame goes after `$*`
+    this._openBatch = null;        // F341: the batch sending now ({..., id, cur}), so a late error from an older batch can mark it
+    this.parserResets = 0;     // F341: how many `$*` resets this link wrote (diagnostics)
     this.lastLateLost = null;   // pl4: {label, frame, of, text} of the last one
     this._scanOp = Promise.resolve(); this._scanTok = 0;   // scan start/stop run one at a time, in call order
     this._linkSeq = 0;     // bumps per native connect; a retired link's disconnect callback is ignored (relink)
@@ -606,6 +622,8 @@ export class BrxLink {
     } finally { this._setRelinking(false); }
   }
   _markDown() {
+    const ob = this._openBatch;   // F341: a drop in the middle of a write can cut a frame with no chunk error to say so
+    if (ob && ob.open && ob.id === this.deviceId) this._resetOwed.add(ob.id);
     this.connected = false; this._log(`*** gun disconnected ***`, 'le'); this.onDrop();
     clearTimeout(this._stableTimer); this._stableTimer = null;
   }
@@ -702,19 +720,36 @@ export class BrxLink {
    *    retry runs. It never stops partway.
    *  - A late error that lands after its batch resolved is logged at `le` with the batch label and the frame
    *    (pl4: a lost trigger row must be visible in the phone log), counted (`lateLost`) and kept as
-   *    `lastLateLost`. It cannot touch any other batch.
+   *    `lastLateLost`. It never cuts any other batch (F341 below may make it send one frame again).
+   *  - F341: after ANY chunk error (late, inside the cap, or after the batch resolved) or a link drop, the next frame
+   *    this link sends to that gun goes after `PARSER_RESET` (`$*`), in this batch or the next. A late error on the
+   *    LAST frame of a batch that lands while the next batch to the same gun is sending marks that batch at frame 0
+   *    (its first frame was appended to the partial one), so it resets and sends again from there. A re-send never starts on a parser
+   *    that may hold a partial frame.
    *  `label`: what the batch is, for that log line (the engine passes its `why`). */
   write(frames, label = '', options = undefined) {
     const id = (options && options.deviceId) || this.deviceId; if (!id) return Promise.resolve(false);   // F293: the probe writes before the link is claimed
     if (this._probing && !(options && options.deviceId)) { this._log(`write refused while the headset probe owns the link: ${label || 'unlabelled'}`, 'li'); return Promise.resolve(false); }
     const list = Array.isArray(frames) ? frames : [frames];
-    const batch = { failed: null, open: true, label, list };   // `failed`: the earliest frame index a late error hit
+    const batch = { failed: null, open: true, label, list, id, cur: 0 };   // `failed`: the earliest frame index a late error hit; `cur`: the frame sending now
     this._q = this._q.then(async () => {
       if (options && typeof options.onStart === 'function') options.onStart();
       let late = 0, chunks = 0, resends = 0, lost = false, sentFrames = 0;
+      // F341: one `$*` on its own, then the frame gap. Its own chunk error marks the batch like any other, so the
+      // next boundary owes another reset (bounded by LATE_RESENDS like every re-send).
+      const reset = async (frameIdx, why) => {
+        this._resetOwed.delete(id); this.parserResets++; chunks++;
+        this._note('tx', PARSER_RESET);
+        this._log(`write: ${why} -- sent ${PARSER_RESET} first to clear the gun's parser`, why.startsWith('a chunk') ? 'le' : 'li');
+        if (!await this._sendChunk(id, textToDataView(PARSER_RESET), batch, frameIdx, false)) late++;
+        await sleep(this.frameGapMs);
+      };
+      this._openBatch = batch;
       try {
         for (let i = 0; i < list.length;) {
           const frame = list[i];
+          if (this._resetOwed.has(id)) await reset(i, 'the link dropped or an earlier write lost a chunk');
+          batch.cur = i;
           this._note('tx', frame);
           const useResponse = this.responseForMultiPacket && frame.length > 20;
           for (let o = 0; o < frame.length; o += 20) {
@@ -725,8 +760,12 @@ export class BrxLink {
           await sleep(this.frameGapMs);
           i++;
           if (batch.failed != null) {
+            // F341: NEVER re-send (or go on) straight after an uncertain chunk. The gun may hold a partial frame, and
+            // the next `$` would append to its tokens. The reset goes first, whether or not a re-send follows.
             const from = batch.failed; batch.failed = null;
-            if (resends < LATE_RESENDS) {
+            const again = resends < LATE_RESENDS;
+            await reset(from, `a chunk of frame ${from + 1} of ${list.length} was lost`);
+            if (again) {
               resends++; i = from;
               this._log(`write: a chunk of frame ${from + 1} of ${list.length} was lost -- sending again from that frame`, 'le');
             } else lost = true;   // finish the batch, then report the loss
@@ -734,11 +773,16 @@ export class BrxLink {
           sentFrames++;
           if (this.blockFrames > 0 && this.blockPauseMs > 0 && sentFrames % this.blockFrames === 0 && i < list.length) await sleep(this.blockPauseMs);
         }
-      } finally { batch.open = false; }
+      } finally { batch.open = false; if (this._openBatch === batch) this._openBatch = null; }
       if (late) { this.lateAcks += late; this._log(`write answers slow: ${late} of ${chunks} chunk(s) past ${this.ackCapMs} ms, sent on without them`, 'le'); }
       if (lost) { this._log(`write: chunks still lost after ${LATE_RESENDS} re-send(s) -- the batch is sent but reports failure`, 'le'); return false; }
       return true;
-    }).catch(e => { batch.open = false; this._log('write err: ' + (e && e.message || e), 'le'); return false; });
+    }).catch(e => {
+      // F341: a chunk error inside the cap stops the batch mid-frame, so the gun may hold a partial frame. The next
+      // write starts with `$*`.
+      batch.open = false; if (this._openBatch === batch) this._openBatch = null; this._resetOwed.add(id);
+      this._log('write err: ' + (e && e.message || e), 'le'); return false;
+    });
     return this._q;
   }
   /** Sends one chunk of frame `frameIdx` in `batch`. Resolves true when the plugin answered within `ackCapMs`,
@@ -766,6 +810,16 @@ export class BrxLink {
             this._log('write err (after the answer cap): ' + msg, 'le');
           } else {
             this.lateLost++;
+            // F341: the gun may hold a partial frame. Its next `*` dispatches the frame after it and clears every token,
+            // so only ONE frame is damaged: this batch's own frame when the lost chunk is inside it (or the frame after it,
+            // when the lost chunk carried the `*`; the node's pool check is the backstop there), or, when it is this
+            // batch's last frame, the first frame of the next batch to this gun. If that batch is sending, mark its frame 0
+            // so it resets and sends it again.
+            // Otherwise the next write to this gun starts with `$*`.
+            const open = this._openBatch;
+            const lastOfBatch = !!batch && frameIdx === batch.list.length - 1;
+            if (open && open.open && open.id === id && lastOfBatch) open.failed = 0;
+            else if (!open || open.id !== id) this._resetOwed.add(id);
             const b = batch || { label: '', list: [] };
             const frame = String(b.list[frameIdx] || '');
             this.lastLateLost = { label: b.label, frame: frameIdx, of: b.list.length, text: frame };

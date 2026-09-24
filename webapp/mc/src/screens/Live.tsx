@@ -435,7 +435,7 @@ function Row({ r, endUnconfirmed, open, onToggle, offline }: { r: LiveRow; endUn
           title="This phone went quiet before it ended spawn protection. Hits on this player may do no damage until the phone reconnects."
           style={{ display: 'block', font: F.mono(700, 11), letterSpacing: '.08em', color: T.warn }}>{shielded} · HITS MAY NOT COUNT</span>}
         {silent && <span data-gun-silent={r.player_id} title="The phone says this gun's health and ammo readout may be out of date."
-          style={{ display: 'block', font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>{silent}</span>}
+          style={{ display: 'block', font: F.mono(500, 11), letterSpacing: '.08em', color: r.pool_stale === 'pool_wrong' ? T.warn : T.micro }}>{silent}</span>}
         {cure && <span data-gun-cure={r.player_id} title="The node's own outcome after it probed the gun."
           style={{ display: 'block', font: F.mono(500, 11), letterSpacing: '.08em', color: r.cure === 'no_answer' ? T.warn : T.micro }}>{cure}</span>}
       </span>

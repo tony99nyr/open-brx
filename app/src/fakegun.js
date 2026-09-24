@@ -4,7 +4,7 @@
 // $LCD,<hp>,<armor>,… + $ALCD refill. Drive it from the console / playwright: window.fakeGun.fire(n) /
 // .hit(n[,shooter,team]) / .kill() / .reload() / .volts().
 export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
-  let hp = 45, armor = 70, magCap = 32, mag = 32, reserve = 384, spawned = false;
+  let hp = 45, armor = 70, magCap = 32, mag = 32, reserve = 384, spawned = false, maxHp = 45, maxArmor = 70;
   const feed = f => engine.feedFrame(f);
   const writes = [];                                  // every frame the 'gun' received — e2e assertions read this
   engine.writer = (frames) => {
@@ -25,7 +25,11 @@ export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
       // honor the $AMMO the head/spawn writes — the mag is whatever the LOADOUT says, not a hardcoded 32
       const am = frames.find(f => f.startsWith('$AMMO,0,'));
       if (am) { const t = am.split(','); magCap = +t[2] || magCap; reserve = +t[3] || reserve; }
-      if (batch.includes('$SPAWN')) { spawned = true; hp = 45; armor = 70; mag = magCap;
+      // F341: the pools a spawn arms are the last `$PSET`'s t3/t4, as on a real gun (the node checks them)
+      const ps = [...frames].reverse().find(f => f.startsWith('$PSET,'));
+      if (ps) { const t = ps.split(','); if (/^\d+$/.test(t[3] || '')) maxHp = +t[3]; if (/^\d+$/.test(t[4] || '')) maxArmor = +t[4]; }
+      if (frames.includes('$LIFE,0,0,0,*')) feed(spawned ? `$HP,${hp},${armor},0,*` : '$HP,0,0,0,*');   // the read probe
+      if (batch.includes('$SPAWN')) { spawned = true; hp = maxHp; armor = maxArmor; mag = magCap;
         feed(`$LCD,${hp},${armor},0,0,${mag},32768,*`); feed(`$ALCD,${mag},100,0,${reserve},0,*`); }
       if (batch.includes('$CLEAR') && batch.includes('$SP,99')) { spawned = false; }
     }, 120);

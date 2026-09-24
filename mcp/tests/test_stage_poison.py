@@ -117,6 +117,7 @@ class Bench:
         would vanish on the first tick instead of draining, and the test would measure the harness."""
         t = self.tagger
         t.cfg_hp, t.cfg_armor, t.cfg_shield = max(t.cfg_hp, hp), max(t.cfg_armor, armor), max(t.cfg_shield, shield)
+        self.st.max_shield = max(self.st.max_shield, shield)   # F341: the stage repairs a pool above its armed ceiling
         self.tagger.hp, self.tagger.armor, self.tagger.shield = hp, armor, shield
         self.st._inject_rx(f"$HP,{hp},{armor},{shield},*")
         await self._settle()

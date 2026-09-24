@@ -21,13 +21,13 @@ const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/
 const NAG = golden.cues.reload_nag;             // $PLAY,,4,6,VX73,* -- "Reload"
 const ONLINE = golden.cues.shield_online;       // $PLAY,,4,6,VA6Y,* -- "Shields Online"
 const UP = golden.cues.shield_up;               // $PLAY,,4,6,VA8C,* -- "SHIELD ONLINE", the per-grant line
-const GRANTS = SHIELD_REGEN_WRITE_BUDGET - 2;   // F348: a full pool in this many grants (engine.js SHIELD_REGEN_GRANTS)
+const GRANTS = SHIELD_REGEN_WRITE_BUDGET - 2;   // F349: a full pool in this many grants (engine.js SHIELD_REGEN_GRANTS)
 const MAX_SHIELD = 70;                          // `harness()`'s own default shield ceiling (S45: a real
                                                  // `health.max_shield` field now; the golden bundle's OWN
                                                  // default is 0, Standard's shape -- see `shieldCeiling`)
 
 const FILL = `$LIFE,0,0,${MAX_SHIELD},*`;
-const STEP = Math.ceil(MAX_SHIELD / GRANTS);   // F348: one recharge grant   // F347: the spawn fill a shields life ends its burst with
+const STEP = Math.ceil(MAX_SHIELD / GRANTS);   // F349: one recharge grant   // F348: the spawn fill a shields life ends its burst with
 
 function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
@@ -63,7 +63,7 @@ function harness({ shields = false, shieldCeiling = MAX_SHIELD } = {}) {
     count(frame) { return writes.filter(w => w === frame).length; },
     // F264: the dead-gun probe is a `$LIFE` frame too, so counting the command word alone counts questions as
     // pool changes. `isPoolProbe` is the one reading of that distinction; see its comment in engine.js.
-    // F347: a shields life starts with the spawn FILL (`$LIFE,0,0,<max>,*`) in its burst; that is not a recharge grant.
+    // F348: a shields life starts with the spawn FILL (`$LIFE,0,0,<max>,*`) in its burst; that is not a recharge grant.
     grants() { return writes.filter(w => w.startsWith('$LIFE,') && !isPoolProbe(w) && w !== FILL).length; },
     fills() { return writes.filter(w => w === FILL).length; },
     /** Advance time the way a real gun would answer: every `$LIFE` the node writes comes back as the `$HP`
@@ -202,7 +202,7 @@ const DELAY = 6500;
 function shielded() {
   const h = harness({ shields: true });
   assert.equal(h.eng.shieldRegenOn, true, 'setup: this game recharges shields');
-  assert.equal(h.fills(), 1, 'setup: the spawn filled the shield (F347)');
+  assert.equal(h.fills(), 1, 'setup: the spawn filled the shield (F348)');
   h.f(`$HP,30,0,${MAX_SHIELD},*`);                // the gun's answer to that fill
   assert.equal(h.eng.shield, MAX_SHIELD, 'setup: full');
   assert.equal(h.count(ONLINE), 0, 'setup: a spawn fill is not a recharge, so it is silent');
@@ -300,14 +300,14 @@ test('S29: a dead gun is not refilled, and a fresh life does not heartbeat', () 
   assert.equal(h.count(DOWN), downs, 'a shield that starts at 0 never CROSSED 0: that is not a break');
   h.run(2500, { echo: false });
   assert.equal(h.count(LOOP), loops, 'a fresh life starts at shield 0 WITHOUT having broken: no heartbeat');
-  assert.equal(h.grants(), 0, 'and no recharge grant: the life is filled by its spawn write instead (F347)');
+  assert.equal(h.grants(), 0, 'and no recharge grant: the life is filled by its spawn write instead (F348)');
   assert.equal(h.fills(), 3, 'one fill per life: the go-live spawn and the two revives');
 });
 
 test('S29: a gun that never reports full is granted at a capped number of times, not forever', () => {
   const h = shielded();
   h.f('$HP,30,0,0,*');
-  h.run(DELAY + 30000, { echo: false, probes: true });   // the gun never answers a grant (F348: 7 s of grants outlast F272's probe pair, so it answers those)
+  h.run(DELAY + 30000, { echo: false, probes: true });   // the gun never answers a grant (F349: 7 s of grants outlast F272's probe pair, so it answers those)
   assert.equal(h.grants(), GRANTS + 3, 'a full pool of grants plus the slack, then it gives up');
   h.run(30000, { echo: false, probes: true });
   assert.equal(h.grants(), GRANTS + 3, 'and it does not start again on its own');

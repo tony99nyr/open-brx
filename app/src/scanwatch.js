@@ -48,6 +48,21 @@ export function stationsInPlay(config) {
 /** True when a match-time reader needs station adverts: phase armed or live, in a game with stations. */
 export function beaconNeeded(st, config) { return !!st && (st.phase === 'armed' || st.phase === 'live') && stationsInPlay(config); }
 
+/**
+ * F342 (field 2026-09-24, Pixel 5): True when a player who is ALIVE reads station adverts: a phone control point
+ * (`station_source: 'phone'`) or an armed station of any kind but `respawn` (a powerup, a control point). The respawn
+ * station is read only by a DOWN scanner-respawn player (`_respawnStation`: the revive, the hint, the presence gate).
+ * The field logged 60 results/s at arm time and 78 results/s at the lowest scan mode, from station and player adverts,
+ * all of it crossing the bridge the gun writes answer on, during the T-3 hit table and the T-0 spawn burst. So in a
+ * respawn-only station game the scan is open only while the player is down.
+ */
+export function aliveNeedsBeacon(config) {
+  if (!config) return false;
+  if (config.station_source === 'phone') return true;
+  // A legacy id-only entry (no kind) could be anything, so it counts as read while alive.
+  return Array.isArray(config.stations) && config.stations.some(x => !(x && typeof x === 'object' && x.kind === 'respawn'));
+}
+
 // Presence (beacon.js) is read every 250 ms (app.js presenceTick → engine.setStations), its dwell is
 // 0.8 s and its expiry 4 s. One sample per device per 250 ms is 4 a second: 3 samples inside the dwell
 // and 16 inside the expiry. A faster sample only moves the EMA between two reads nobody makes.
@@ -172,17 +187,21 @@ export class BeaconWatch {
    * Returns the operation it started, or null.
    */
   tick(st, { pickerOpen = false, config = null } = {}) {
-    const wanted = beaconNeeded(st, config) && !pickerOpen && this.native();
     const down = !!st && st.phase === 'live' && !st.alive && st.respawnType === 'scanner';
+    const wanted = beaconNeeded(st, config) && (down || aliveNeedsBeacon(config)) && !pickerOpen && this.native();
     const justDied = this.lastAlive && down;
     if (this.busy) return null;   // before the alive edge is consumed, so a death during a restart still kicks one
     this.lastAlive = !st || st.alive !== false;
     const now = this.now();
     if (!wanted) {
-      this.modeIdx = 0; this.pausedUntil = 0; this._floorWarned = false;   // the next game starts at full rate
+      // The next GAME starts at full rate. A gun picker or a reconnect inside the same match does not: F342 (field
+      // 2026-09-24, Pixel 5) reset the mode on every gun reconnect, so the scan reopened at low latency and flooded
+      // again (26 results/s) while the reconcile re-armed the gun. The field the guard measured is still the same.
+      if (!beaconNeeded(st, config)) { this.modeIdx = 0; this.pausedUntil = 0; this._floorWarned = false; }
       if (this.open && !pickerOpen) return this._serial(() => this._stop());
       return null;
     }
+    if (justDied && !aliveNeedsBeacon(config)) this.modeIdx = 0;   // F342: a respawn-only game scans per death; each opens at full rate
     const floor = down ? 1 : SCAN_MODES.length - 1;   // a down player hunting a station never drops to low power
     if (this.modeIdx > floor) this.modeIdx = floor;   // takes effect on the death kick below
     if (!this.open) {

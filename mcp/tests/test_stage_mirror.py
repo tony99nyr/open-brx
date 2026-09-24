@@ -1964,12 +1964,12 @@ async def shield_run(st, mgr, clock, seconds: float) -> None:
         await settle(st)
 
 
-SHIELD_GRANTS = 4   # S.SHIELD_REGEN_GRANTS (F348: a full pool in this many grants), spelled out so a change fails loudly
+SHIELD_GRANTS = 4   # S.SHIELD_REGEN_GRANTS (F349: a full pool in this many grants), spelled out so a change fails loudly
 SHIELD_LOOP_S_TEST = S.SHIELD_LOOP_S   # the heartbeat period the ordering test makes due by hand
 
 
 def gun_says(st, frame: str) -> None:
-    """F347: a pool frame the test puts in the GUN's mouth, with the fake gun's own pools set to match first. The
+    """F348: a pool frame the test puts in the GUN's mouth, with the fake gun's own pools set to match first. The
     fake's pools are what its later `$LIFE` answers report, so a shield the test breaks must be broken on the fake
     too, or the recharge's first grant would echo the full pool the spawn fill left there."""
     t = frame.split(",")
@@ -1983,14 +1983,14 @@ async def shielded(st, mgr, clock):
     await live(st)
     assert st.shield_regen_on, "setup: this game recharges shields"
     clock.advance(1.0)
-    st.poll(); await settle(st)                                  # F347: flush the fake's queued answers (they carry its pools)
-    assert st.shield == st.max_shield, "setup: the spawn filled the shield (F347)"
+    st.poll(); await settle(st)                                  # F348: flush the fake's queued answers (they carry its pools)
+    assert st.shield == st.max_shield, "setup: the spawn filled the shield (F348)"
     gun_says(st, f"$HP,30,0,{st.max_shield},*"); await settle(st)
     assert st.shield == st.max_shield, "setup: charged"
 
 
 def test_f344_every_shields_life_starts_at_full_shield_like_the_phone():
-    """F347 (Tony, live match 2026-09-24: "you can die from a couple hits right after spawn"): engine.js ends every
+    """F348 (Tony, live match 2026-09-24: "you can die from a couple hits right after spawn"): engine.js ends every
     spawn and revive burst of a shields game with one additive `$LIFE,0,0,<max>,*`, because `$SPAWN` leaves the pool
     at 0 on hardware. The stage writes the same: the T-0 spawn, a timed revive and a station revive all start full,
     say nothing about it, and stay full when spawn protection (t8 and the protection LIGHT) ends.
@@ -2039,7 +2039,7 @@ def test_f344_the_spawn_fill_switch_matches_the_phone():
 
 
 def test_f345_a_recharge_writes_a_few_large_grants_and_no_readout_like_the_phone():
-    """F348 (field 2026-09-24): a 105 recharge was 11 grants with a readout step or blink behind each, and SHIELDS
+    """F349 (field 2026-09-24): a 105 recharge was 11 grants with a readout step or blink behind each, and SHIELDS
     ONLINE queued behind them. The stage writes what the phone does: SHIELD_REGEN_GRANTS grants and no readout
     write on the gun while the recharge runs."""
     async def go():

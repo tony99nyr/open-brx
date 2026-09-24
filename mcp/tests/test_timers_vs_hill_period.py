@@ -19,7 +19,7 @@ PERIOD_S = hb.BEACON_PERIOD_S
 
 # name -> why a 5 s emitter cannot keep it from firing (or why it is not a fuse at all)
 JUDGED = {
-    "SHIELD_FILL_ECHO_S": "F347 (2026-09-24): how long after a spawn fill a shield rise counts as that fill's echo, not a\n                             grant. A hill beacon moves no pool, so it can neither end nor extend the window",
+    "SHIELD_FILL_ECHO_S": "F348 (2026-09-24): how long after a spawn fill a shield rise counts as that fill's echo, not a\n                             grant. A hill beacon moves no pool, so it can neither end nor extend the window",
     "ENROL_WINDOW_S": "A60 (2026-09-24): the window of the per-peer trust-key enrolment rate limit in MC's\n"
                       "net layer. It counts hellos that ask for a key; no IR frame reaches it, so a beacon cannot touch it",
     "SHIELD_REGEN_DELAY_S": "S29 (2026-09-18): the quiet a player must hold before shields refill. Reset ONLY by\n                             real damage -- `engine.js _onHp` resets `_shieldQuietAt` under `if (dmg > 0)`, and a\n                             hill beacon (`$HIR` tok2 = 15, the silent fn-28 row) moves no pool, so `dmg` is 0 and\n                             the beacon cannot hold the refill off. That mattered: standing on a point would\n                             otherwise mean never recharging",

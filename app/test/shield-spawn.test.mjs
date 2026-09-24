@@ -1,4 +1,4 @@
-// F347: the Shields preset spawns at FULL shield (Tony, live match 2026-09-24, app 0.4.11: "after spawn and after you
+// F348: the Shields preset spawns at FULL shield (Tony, live match 2026-09-24, app 0.4.11: "after spawn and after you
 // are vulnerable then they power up. you can die from a couple hits right after spawn"). Halo's rule: every life
 // starts with the shield up.
 //
@@ -75,7 +75,7 @@ function harness({ health = SHIELDS, respawn = 'auto' } = {}) {
 }
 const stationEntry = () => ({ role: 'station', id: 5, kind: 'respawn', team: 1, state: 1, value: 0, seq: 0, game: 0, threshold: -60, rssi: -50, raw: -50, present: true });
 
-test('F347: the T-0 spawn of a Shields game starts at FULL shield (105), with no recharge and no "shields online"', () => {
+test('F348: the T-0 spawn of a Shields game starts at FULL shield (105), with no recharge and no "shields online"', () => {
   const h = harness();
   const n = h.startAt;
   h.adv(100);
@@ -91,7 +91,7 @@ test('F347: the T-0 spawn of a Shields game starts at FULL shield (105), with no
   assert.equal(h.eng.shield, 105);
 });
 
-test('F347: a timed revive starts at FULL shield too', () => {
+test('F348: a timed revive starts at FULL shield too', () => {
   const h = harness();
   h.adv(5000).die();
   assert.equal(h.eng.alive, false, 'setup: down');
@@ -108,7 +108,7 @@ test('F347: a timed revive starts at FULL shield too', () => {
   assert.equal(h.eng.shield, 105);
 });
 
-test('F347: a station revive starts at FULL shield and stays there when spawn protection ends', () => {
+test('F348: a station revive starts at FULL shield and stays there when spawn protection ends', () => {
   const h = harness({ respawn: 'scanner' });
   h.adv(5000).die();
   h.adv(9000);
@@ -129,7 +129,7 @@ test('F347: a station revive starts at FULL shield and stays there when spawn pr
   assert.equal(h.cues(n, 'shield_online'), 0);
 });
 
-test('F347 control: the Standard preset (no shield) spawns and revives exactly as before, with no pool write', () => {
+test('F348 control: the Standard preset (no shield) spawns and revives exactly as before, with no pool write', () => {
   const h = harness({ health: STANDARD });
   const n = h.startAt;
   h.adv(100);
@@ -140,7 +140,7 @@ test('F347 control: the Standard preset (no shield) spawns and revives exactly a
   assert.equal(h.eng.shield, 0);
 });
 
-test('F347 control: a shield broken in play still recharges the old way, and says SHIELDS ONLINE at the top', () => {
+test('F348 control: a shield broken in play still recharges the old way, and says SHIELDS ONLINE at the top', () => {
   const h = harness();
   h.adv(3000);
   h.gun.shield = 0; h.frame('$HIR,4,0,19,2,105,0,3,*'); h.frame('$HP,45,0,0,*');
