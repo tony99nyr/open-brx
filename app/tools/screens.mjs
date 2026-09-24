@@ -1047,7 +1047,8 @@ for (const view of VIEWS) {
       onPointRow: (r => r ? { cls: r.className.replace('row ', ''), struck: getComputedStyle(r).textDecorationLine.includes('line-through') } : null)(
         [...document.querySelectorAll('#players .row')].find(r => (r.querySelector('.pres') || {}).textContent === 'ON POINT')),
       cstate: document.documentElement.getAttribute('data-cstate'), dteam: document.documentElement.getAttribute('data-team'),
-      painted: Math.round(100 * fill.width / bar.width), claims: document.querySelectorAll('#players .row.claim').length,
+      // layout widths, not bounding boxes: the bar is skewed, and a skewed 0-width fill still has a bounding box as wide as its lean
+      painted: Math.round(100 * document.getElementById('cfill').offsetWidth / document.getElementById('cbar').clientWidth), claims: document.querySelectorAll('#players .row.claim').length,
       revives: document.getElementById('revives').textContent,
       wire: (h => { const b = i => parseInt(h.slice(i * 2, i * 2 + 2), 16); return { kind: b(8), team: b(9), state: b(10), value: b(11), seq: b(12) }; })(window.brxUtility.stationUuid().replace(/-/g, '')) };
   });
@@ -3866,6 +3867,50 @@ await step('utility landscape fit: portrait is unchanged (.side keeps the origin
   must(Math.round(parseFloat(r.gap)) === 14, `#side must keep the page's own 14px gap in portrait: ${JSON.stringify(r)}`);
   must(Math.abs(r.heroToPlayers - 14) <= 1, `hero-to-players gap drifted from the original 14px in portrait: ${r.heroToPlayers}`);
 });
+// Utility visual QA (Tony, 0.4.11 on a Pixel 5, 2026-09-24): "some letters are leaning back, some overlapping UI, the
+// angles don't all line up". Per kind, Pixel 5 portrait and landscape, main screen and drawer: no text leans backwards
+// (net skewX > 0 up its ancestor chain), every slanted box uses the ONE house angle (--skew, which must equal the HUD's own in index.html), no box or text
+// runs off the screen, and the linked MC panel is folded to its status line.
+const houseSkew = async pg => pg.evaluate(() => {
+  const vis = e => { const cs = getComputedStyle(e); const r = e.getBoundingClientRect(); return cs.display !== 'none' && cs.visibility !== 'hidden' && r.width > 0 && r.height > 0 && !e.closest('[hidden]'); };
+  const tan = e => { let t = 0; for (let n = e; n && n.nodeType === 1; n = n.parentElement) { const m = getComputedStyle(n).transform; if (m && m !== 'none') t += new DOMMatrix(m).c; } return t; };
+  const deg = t => Math.round(Math.atan(t) * 1800 / Math.PI) / 10;
+  const nm = e => e.id ? '#' + e.id : e.tagName.toLowerCase() + '.' + String(e.className).trim().replace(/\s+/g, '.');
+  const house = deg(Math.tan(parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--skew')) * Math.PI / 180));
+  const cfgOpen = !document.getElementById('cfg').hidden;
+  const all = [...(cfgOpen ? document.getElementById('cfg') : document.body).querySelectorAll('*')].filter(e => vis(e) && (cfgOpen || !e.closest('#cfg')));
+  const back = [], angles = new Set(), off = [];
+  for (const e of all) {
+    const text = [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
+    if (text && deg(tan(e)) > 0.2) back.push(`${nm(e)} "${e.textContent.trim().slice(0, 20)}" ${deg(tan(e))}deg`);
+    const cs = getComputedStyle(e);
+    if (cs.transform !== 'none' && new DOMMatrix(cs.transform).c !== 0 && (parseFloat(cs.borderTopWidth) > 0 || cs.backgroundColor !== 'rgba(0, 0, 0, 0)')) angles.add(deg(tan(e)));
+    const r = e.getBoundingClientRect();
+    if ((text || parseFloat(cs.borderTopWidth) > 0) && e.id !== 'cfg' && (r.left < -1 || r.right > innerWidth + 1)) off.push(`${nm(e)} ${Math.round(r.left)}..${Math.round(r.right)}`);
+  }
+  const mj = document.getElementById('mcjoin');
+  return { house, back, angles: [...angles], off, folded: !!mj && mj.classList.contains('linked') && !vis(document.getElementById('mcUrlMain')) && vis(document.getElementById('btnMcChange')) };
+});
+const HUD_SKEW = parseFloat((fs.readFileSync(path.join(WWW, 'index.html'), 'utf8').match(/--skew:\s*(-?[\d.]+)deg/) || [])[1]);
+for (const kind of ['respawn', 'powerup', 'control']) {
+  for (const view of [{ name: 'pixel5-portrait', width: 393, height: 851 }, { name: 'pixel5-landscape', width: 851, height: 393 }]) {
+    await step(`utility house slant: ${kind} @ ${view.name}: no backwards text, one angle, nothing off screen, linked MC panel folded`, async () => {
+      const pg = await openUtility(view, kind, 1, 1);
+      if (kind === 'control') { await pg.evaluate(() => { window.brxUtility.point.capturing = 1; window.brxUtility.point.progress = 50; }); await pg.waitForTimeout(600); }
+      const main = await houseSkew(pg);
+      await pg.evaluate(() => window.brxUtilityGate.open()); await pg.waitForTimeout(200);
+      const drawer = await houseSkew(pg);
+      await pg.screenshot({ path: `${OUT}/util-house-${kind}-${view.name}.png` }); await pg.close();
+      for (const [where, r] of [['main', main], ['drawer', drawer]]) {
+        must(Number.isFinite(HUD_SKEW) && r.house === HUD_SKEW, `${where}: the utility --skew ${r.house} is not the HUD's ${HUD_SKEW}`);
+        must(!r.back.length, `${where}: text leans backwards: ${r.back.join(' ; ')}`);
+        must(r.angles.every(a => a === r.house), `${where}: slanted boxes off the house angle ${r.house}: ${JSON.stringify(r.angles)}`);
+        must(!r.off.length, `${where}: runs off the screen: ${r.off.join(' ; ')}`);
+      }
+      must(main.folded, 'linked to MC, the main-screen MC panel must fold to its status line and CHANGE');
+    });
+  }
+}
 
 // QA lane C (2026-09-23)
 // QA-05: one callout card for every "someone went down" and "the hill changed hands" moment, whichever path it

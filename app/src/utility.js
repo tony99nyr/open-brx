@@ -145,7 +145,7 @@ async function startAdvert(quiet = false) {
   render();
 }
 // ---------- Mission Control: hello as a utility node, take `station_config` (A13.5) ----------
-let transport = null, mcState = 'offline';
+let transport = null, mcState = 'offline', mcFormOpen = false;   // mcFormOpen: CHANGE unfolded the linked MC panel
 const TEAM_ID_TO_TID = { blue: 1, yellow: 2, red: 0, green: 3, any: TEAM_ANY, ffa: TEAM_ANY };
 function mcUrl() { const q = new URLSearchParams(location.search).get('mc'); if (q) return q; if (settings.mc) return settings.mc; try { return localStorage.getItem('brx.mc_url') || ''; } catch (_) { return ''; } }
 /** Apply MC's arming message: kind / team / id / threshold / game / valid_ids → the advert; mark MC-ARMED; come up live. */
@@ -512,7 +512,7 @@ function render() {
   $('txhint').textContent = support.txPowerControl ? (TX_HINT[settings.tx] || '') : 'no transmit-power control on this platform · radius = threshold only';
   $('thr').textContent = `${thr()} dBm${settings.threshold ? '' : ' · default'}`; $('thrRange').value = thr();
   $('dwell').textContent = `${(settings.dwell / 1000).toFixed(1)} s`;
-  $('btnStart').textContent = advertising ? 'STOP' : 'START';
+  { const bs = $('btnStart'); ((bs.querySelector && bs.querySelector('.unskew')) || bs).textContent = advertising ? 'STOP' : 'START'; }   // into the .unskew span: replacing it slanted the word with its button
   const armed = settings.mcArmed;
   $('armed').textContent = armed ? `MC-ARMED · GAME ${armed.game || 0}` : 'NOT ARMED BY MISSION CONTROL';
   $('armed').className = 'armed ' + (armed ? 'on' : '');
@@ -539,6 +539,14 @@ function render() {
   const mcText = mcState === 'bound' ? 'MISSION CONTROL ✓ LINKED' : mcState === 'offline' ? (settings.mc ? 'MISSION CONTROL · OFFLINE' : 'MISSION CONTROL · SEARCHING THIS WI-FI') : `MISSION CONTROL · ${mcState.toUpperCase()}…`;
   $('mcstate').textContent = mcText;
   const mainState = $('mcstateMain'); if (mainState) mainState.textContent = mcText;
+  // Linked: fold the main-screen MC panel to its status line plus CHANGE (Tony 2026-09-24); any other state unfolds it
+  // and forgets a CHANGE, so the next link folds it again.
+  const mcj = $('mcjoin');
+  if (mcj) {
+    const linked = mcState === 'bound'; if (!linked) mcFormOpen = false;
+    mcj.classList.toggle('linked', linked && !mcFormOpen);
+    const chg = $('btnMcChange'); if (chg) { chg.hidden = !linked; chg.setAttribute('aria-expanded', String(mcFormOpen)); (chg.firstElementChild || chg).textContent = mcFormOpen ? 'HIDE' : 'CHANGE'; }
+  }
   const mainInput = $('mcUrlMain'); if (mainInput && document.activeElement !== mainInput) mainInput.value = settings.mc || mcUrl() || '';
   if (document.activeElement !== $('mcUrl')) $('mcUrl').value = settings.mc || mcUrl() || '';
   const rows = presence.players().map(p => {
@@ -601,6 +609,7 @@ function renderControl(isControl, v, heldBy) {
   // while it builds, which falls out of colouring it by whoever byte 9 names.
   $('cfill').style.setProperty('--bar', `var(--team-${TEAM_KEYS[holder] || 'any'})`);
   $('cpct').textContent = `${v.value}%`;
+  $('cpct').style.setProperty('--pctx', `${v.value >= 50 ? v.value / 2 : (v.value + 100) / 2}%`);   // clear of the edge arrow at v
   $('cbar').setAttribute('aria-valuenow', String(v.value));
   $('cbar').setAttribute('aria-valuetext', `${v.value}% ${hname == null ? 'neutral' : `for ${hname}`}`);
   // Speed of change, not just direction: more net players = the stripes move faster. 1.2 s per cycle at
@@ -639,6 +648,7 @@ function wire() {
   $('btnMc').onclick = () => connectTypedMc($('mcUrl').value);
   if ($('btnMcMain')) $('btnMcMain').onclick = () => connectTypedMc($('mcUrlMain').value);
   if ($('btnQrMain')) $('btnQrMain').onclick = () => scanUtilityQr();
+  if ($('btnMcChange')) $('btnMcChange').onclick = () => { mcFormOpen = !mcFormOpen; render(); };
   $('btnHud').onclick = exitToHud;
   for (const b of document.querySelectorAll('[data-kind]')) b.onclick = () => { settings.kind = b.dataset.kind; save(); restartIfLive(); };
   for (const b of document.querySelectorAll('[data-team]')) b.onclick = () => { settings.team = +b.dataset.team; save(); restartIfLive(); };

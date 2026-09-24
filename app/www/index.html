@@ -12,6 +12,9 @@
 <style>
 /* ============ tokens (Phone HUD v2 holo theme) ============ */
 :root{
+  /* the HOUSE SLANT: every slanted box leans --skew, and .unskew stands its text back up. utility.html carries the same
+     two values (tools/screens.mjs "utility house slant" pins them equal); change both or neither. */
+  --skew:-12deg;--unskew:12deg;
   /* team-red is a crimson-rose, hue-shifted off the alarm red (--bad #ff5252) so a red-team player's accents don't read as danger (design review #14) */
   --team-blue:#3a86ff;--team-yellow:#ffd23f;--team-red:#f43f5e;--team-green:#2ecc71;
   --team:var(--team-blue);--team-ink:#04121e;
@@ -49,7 +52,7 @@ html,body{margin:0;height:100%;background:#030407;color:var(--num);font-family:v
 .tab{font-variant-numeric:tabular-nums}
 .fd{font-family:var(--fd)}
 .it{font-style:italic;font-weight:700}
-.skew{transform:skewX(-12deg)}.unskew{display:inline-block;transform:skewX(12deg)}
+.skew{transform:skewX(var(--skew))}.unskew{display:inline-block;transform:skewX(var(--unskew))}   /* the house slant: --skew in :root */
 .skew8{transform:skewX(-8deg)}.unskew8{display:block;transform:skewX(8deg)}
 .skew6{transform:skewX(-6deg)}.unskew6{display:inline-block;transform:skewX(6deg)}
 .skew10{transform:skewX(-10deg)}.unskew10{display:inline-block;transform:skewX(10deg)}
