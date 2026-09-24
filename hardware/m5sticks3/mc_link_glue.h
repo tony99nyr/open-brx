@@ -95,6 +95,9 @@ static void mcSaveWifi(const String& ssid, const String& pass) {
   mcPrefs.begin("brxmc", false);
   mcPrefs.putString("ssid", ssid);
   mcPrefs.putString("pass", pass);
+  // A new network means a new event: a station config saved at the last one must not come back.
+  mcPrefs.remove("station_cfg");
+  mcPrefs.remove("station_sid");
   mcPrefs.end();
   wifiSsid = ssid;
   wifiPass = pass;
@@ -116,6 +119,51 @@ static void mcSaveActionsEnabled(bool on) {
   mcPrefs.begin("brxmc", false);
   mcPrefs.putBool("actions", on);
   mcPrefs.end();
+}
+
+// ---- restart survival: the last applied station_config ("station_cfg", no lock_s) ---------------
+// SavedStationConfig (station_link.h, host-tested) decides WHEN to write; these only touch flash. A
+// same-config re-push (MC's mid-match lock carrier) serialises to the same string and writes nothing.
+SavedStationConfig savedConfig;
+
+static void mcWriteSavedConfig() {
+  mcPrefs.begin("brxmc", false);
+  mcPrefs.putString("station_cfg", savedConfig.stored().c_str());
+  mcPrefs.putString("station_sid", savedConfig.session_id().c_str());  // the WELCOME session it came in
+  mcPrefs.end();
+  Serial.println("# station_config saved (restart survival)");
+}
+
+static void mcEraseSavedConfig() {
+  mcPrefs.begin("brxmc", false);
+  mcPrefs.remove("station_cfg");
+  mcPrefs.remove("station_sid");
+  mcPrefs.end();
+  Serial.println("# saved station_config erased");
+}
+
+// At boot, before Wi-Fi: play the saved station at once (see restore_station_config's comment for
+// why this never latches the MUSTER drop and never carries a lock).
+static void mcRestoreSavedConfig(StationLink& link) {
+  mcPrefs.begin("brxmc", true);
+  String body = mcPrefs.getString("station_cfg", "");
+  String sid = mcPrefs.getString("station_sid", "");
+  mcPrefs.end();
+  savedConfig.loaded(body.c_str(), sid.c_str());
+  if (!savedConfig.has()) return;
+  // Review round 1: bench mode (no Wi-Fi SSID set) never restores; the saved copy is left alone.
+  if (wifiSsid.length() == 0) {
+    Serial.println("# saved station_config kept but not restored (no Wi-Fi set: bench mode)");
+    return;
+  }
+  StationAssignment a = savedConfig.restore();
+  if (!link.restore_station_config(a)) {
+    Serial.println("# saved station_config does not parse; erasing it");
+    if (savedConfig.note_released()) mcEraseSavedConfig();
+    return;
+  }
+  Serial.printf("RESTORED kind=%s team=%d id=%d game=%d (from flash; unlocked)\n", a.kind.c_str(), a.team,
+                a.id, a.game);
 }
 
 // ---- A58: the PMIC side-button lock (TODO, deliberately NOT written) -------------------------------
@@ -270,6 +318,16 @@ static void mcSendHello() {
   link.ws_open_hello_sent();
 }
 
+// The MUSTER drop's radio action. WHEN is station_link.h's decision (take_muster_drop, host-tested);
+// this only performs it, from mcHandleFrame or mcLoop.
+static void mcPerformMusterDrop() {
+  Serial.println("MUSTER: dropping the Wi-Fi association for the match (LINK RECONNECT to rejoin)");
+  ws.disconnect();
+  WiFi.disconnect();
+  wsWantOpen = false;
+  link.wifi_down();
+}
+
 static void mcHandleFrame(const String& text) {
   bool ok = false;
   json::Value env = json::parse(std::string(text.c_str()), &ok);
@@ -282,6 +340,13 @@ static void mcHandleFrame(const String& text) {
     mcScreenWake = true;
     if (!w.node_key.empty()) mcSaveNodeKey(w.node_key.c_str());
     Serial.printf("WELCOME session=%s\n", w.session_id.c_str());
+    // Review round 1 (HIGH): a saved config from another MC session is an old match's; erase it, and
+    // drop the assignment too while it is still the restored one (station_link.h decides).
+    bool wasRestored = link.restored();
+    if (w.ok && apply_welcome_to_saved(link, savedConfig, w.session_id)) {
+      mcEraseSavedConfig();
+      if (wasRestored && !link.restored()) Serial.println("STALE restored config (new MC session): UNASSIGNED");
+    }
   } else if (kind == "station_config") {
     StationAssignment a = parse_station_config(body);
     if (a.present) {
@@ -290,16 +355,15 @@ static void mcHandleFrame(const String& text) {
       // radio action the glue owns; the decision itself is pure and tested in station_link.h.
       uint32_t rx = millis();
       link.apply_station_config(a, rx);  // A58: also REPLACES the match lock, counted from `rx`
+      // Only when it differs (lock_s excluded) or the session is new.
+      if (savedConfig.note_applied(a, link.session_id())) mcWriteSavedConfig();
       mcScreenWake = true;
       Serial.printf("MC-ARMED kind=%s team=%d id=%d game=%d threshold=%d lock_s=%d\n", a.kind.c_str(), a.team,
                     a.id, a.game, a.threshold, a.lock_s);
-      if (link.dropped_for_match()) {
-        Serial.println("MUSTER: dropping the Wi-Fi association for the match (LINK RECONNECT to rejoin)");
-        ws.disconnect();
-        WiFi.disconnect();
-        wsWantOpen = false;
-        link.wifi_down();
-      }
+      // Due now, except the first config after a restore: that drop waits for MC's re-anchoring
+      // station_update, or MUSTER_DROP_DEFER_MS (review round 1); mcLoop and the update path retry.
+      if (link.take_muster_drop(rx)) mcPerformMusterDrop();
+      else if (link.muster_drop_pending()) Serial.println("MUSTER: drop deferred until MC's station_update");
     }
   } else if (kind == "station_update") {
     StationUpdateMsg u = parse_station_update(body);
@@ -307,11 +371,13 @@ static void mcHandleFrame(const String& text) {
       mcScreenWake = true;
       Serial.printf("STATION_UPDATE id=%d available=%d next_spawn_in_ms=%ld\n", u.id, u.available,
                     u.next_spawn_in_ms);
+      if (link.take_muster_drop(millis())) mcPerformMusterDrop();  // a deferred drop: the re-anchor landed
     }
   } else if (kind == "control") {
     std::string cmd = parse_control_cmd(body);
     if (cmd == "release_utility") {
       link.apply_release();
+      if (savedConfig.note_released()) mcEraseSavedConfig();  // a released Stick must not come back armed
       mcScreenWake = true;
       Serial.println("RELEASED (control.release_utility): back to UNASSIGNED");
     }
@@ -372,6 +438,8 @@ static void mcLoop(uint32_t now) {
     mcScreenWake = true;
     Serial.println("UNLOCKED (match lock ran out)");
   }
+  // A deferred MUSTER drop whose 2 s ran out with no station_update (review round 1).
+  if (link.take_muster_drop(now)) mcPerformMusterDrop();
   bool wantPmicLock = link.lock().locked(now);
   if (wantPmicLock != pmicSideButtonLocked) pmicSetSideButtonLock(wantPmicLock);
   // Wi-Fi association.
@@ -537,6 +605,7 @@ static bool mcSendResetAction() {
 static void mcSetup() {
   mcLoadPrefs(link);
   mcCountBoot();                   // A58
+  mcRestoreSavedConfig(link);      // restart survival: before WiFi.begin, so the station plays at once
   pmicSetSideButtonLock(false);    // A58: every boot starts unlocked, the PMIC included
   bootRandomPrefix = esp_random();  // the fixed half of every station_action envelope id this boot
   WiFi.mode(WIFI_STA);

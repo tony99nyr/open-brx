@@ -206,8 +206,34 @@ static void test_serial_allow_list_while_locked_is_default_deny() {
   }
 }
 
+static void test_a_button_held_at_boot_is_ignored_until_released_once() {
+  BootHeldButtons b;
+  b.update(true, true);  // both still held from the force restart
+  CHECK(b.a_masked());
+  CHECK(b.b_masked());
+  CHECK(!b.a_down());
+  CHECK(!b.b_down());
+  b.update(true, true);
+  CHECK(!b.a_down());
+  b.update(false, true);  // A comes up: that loop still swallows A's release edge
+  CHECK(b.a_masked());
+  b.update(false, true);  // one full loop up: A is live again, B is still masked
+  CHECK(!b.a_masked());
+  CHECK(b.b_masked());
+  b.update(true, true);   // a fresh A press counts; B, never released, still does not
+  CHECK(b.a_down());
+  CHECK(!b.b_down());
+  // A button up at boot is never masked.
+  BootHeldButtons c;
+  c.update(false, false);
+  c.update(true, false);
+  CHECK(c.a_down());
+  CHECK(!c.a_masked());
+}
+
 int main() {
   test_station_action_body_is_pinned();
+  test_a_button_held_at_boot_is_ignored_until_released_once();
   test_actions_on_by_default_and_off_builds_nothing();
   test_actions_gate_with_no_assignment_builds_nothing_even_when_enabled();
   test_taken_age_is_computed_at_send_time_and_wrap_safe();

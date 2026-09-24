@@ -468,6 +468,20 @@ locked. MC detects a restart from the status heartbeat: `uptime_s` goes back to 
 `boot_count` goes up. The heartbeat also carries `assoc` (`muster` or `held`) and `lock_s`, the
 seconds left on the lock.
 
+**What survives a restart.** Saved in flash: the Wi-Fi credentials, the node id and key, the LINK mode
+(MUSTER or HELD), ACTIONS, and the last station config MC sent (without its `lock_s`, and written only
+when it changes). Not saved: the lock, the spawn timer and the taker. So a Stick that restarts
+mid-match comes back as the same station at once, unlocked, with a fresh schedule, and `STATUS` shows
+`restored=1` until MC sends a config again. A restored Stick does not know whether the match is still
+running, so even under MUSTER it tries to rejoin Wi-Fi. If MC answers, MC's current config replaces
+the restored one (with the remaining lock, once MC sends `lock_s` (A58)), and the MUSTER drop waits
+for MC's next `station_update` (at most 2 s) so the schedule is re-anchored first. If not, the Stick
+keeps playing the restored station. A WELCOME from a different MC session erases the saved config and
+drops a still-restored assignment back to UNASSIGNED. `control{cmd:"release_utility"}` also erases
+it. With no Wi-Fi SSID set (bench mode) the Stick never restores. A button
+still held when the Stick boots (hands still on A+B after a force restart) is ignored until it is
+released.
+
 The side button still restarts or powers off a locked Stick. The M5PM1 PMIC can disable both, but
 the register map is not in the installed M5Unified source, so the firmware does not write it yet
 (the TODO is in `mc_link_glue.h`, `pmicSetSideButtonLock`).

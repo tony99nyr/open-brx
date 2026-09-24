@@ -106,6 +106,7 @@ bool resetOutcomeActive = false;  // a RESET was just confirmed; show its outcom
 bool resetOutcomeOk = false;      // true = sent to MC; false = RESET NEEDS MISSION CONTROL
 bool resetOutcomeLocked = false;  // A58: the RESET was refused by the match lock (shows LOCKED)
 ForceRestart forceRestart;        // A58: A + B held 7 s restarts the Stick, locked or not
+BootHeldButtons bootHeld;         // a button still down from before this boot is ignored until released
 uint32_t lastRestartCountdown = 0;
 uint32_t resetOutcomeAtMs = 0;
 constexpr uint32_t RESET_OUTCOME_SHOW_MS = 2500;
@@ -314,9 +315,12 @@ static void sendFrame(const String& bits) {
 // report yet" for a kind this firmware cannot run (respawn/extraction/bomb, §5g.5: "shown and
 // reported, not faked"). With no MC assignment at all this is exactly the pre-H8 standalone bench
 // behaviour (control_point.h only), unchanged.
+// Gated on the PERSISTED assignment, never the link state (the has_powerup_assignment() rule): a
+// MUSTER drop puts the state back at JOINING WI-FI for the whole match, and a boot-time restore never
+// reaches ASSIGNED until MC answers, yet both must keep advertising the assigned station.
 static AdvertView currentAdvertView(uint32_t now) {
   using brx_glue::link;
-  if (link.state() != LinkState::ASSIGNED) return point.view(now);
+  if (!link.assignment().present) return point.view(now);
   const StationAssignment& a = link.assignment();
   if (a.kind == "control") return point.view(now);
   if (a.kind == "powerup") {
@@ -344,8 +348,8 @@ uint32_t advertRetryAt = 0;
 static void publishAdvert(const AdvertView& v, uint32_t now) {
   using brx_glue::link;
   uint8_t seq = policy.published(v, now);
-  bool assigned = link.state() == LinkState::ASSIGNED;
   const StationAssignment& a = link.assignment();
+  bool assigned = a.present;  // the assignment, not the link state (see currentAdvertView)
   Advert adv_;
   adv_.role = ROLE_STATION;
   adv_.id = assigned ? (uint16_t)a.id : settings.id;
@@ -532,6 +536,7 @@ static void printStatus() {
   Serial.printf(" locked=%d lock_s=%lu boots=%lu uptime_s=%lu", link.lock().locked(millis()) ? 1 : 0,
                 (unsigned long)link.lock().remaining_s(millis()), (unsigned long)brx_glue::bootCount,
                 (unsigned long)(millis() / 1000));
+  Serial.printf(" restored=%d", link.restored() ? 1 : 0);  // 1 = assignment from flash, MC silent since boot
   if (a.present && a.kind == "powerup") {
     Serial.printf(" powerup_available=%d taker=%u pending_actions=%u", link.powerup().available() ? 1 : 0,
                   link.powerup().taker(), (unsigned)link.pending_action_count());
@@ -673,7 +678,27 @@ static void pollSerial() {
 static void pollButtons() {
   using brx_glue::link;
   uint32_t now = millis();
-  if (forceRestart.update(M5.BtnA.isPressed(), M5.BtnB.isPressed(), now)) {
+  // Bench 2026-09-24: a button still held from before this boot (the operator's hands still on A+B
+  // after a force restart) is ignored until it has been released once (BootHeldButtons, station_ui.h).
+  // Every read below goes through these gated copies, never M5.BtnA/BtnB directly.
+  bool wasMasked = bootHeld.a_masked() || bootHeld.b_masked();
+  bootHeld.update(M5.BtnA.isPressed(), M5.BtnB.isPressed());
+  if (!wasMasked && (bootHeld.a_masked() || bootHeld.b_masked())) {
+    Serial.println("# button held at boot: ignored until released");
+  }
+  const bool aOk = !bootHeld.a_masked(), bOk = !bootHeld.b_masked();
+  const bool aPressed = aOk && M5.BtnA.wasPressed(), bPressed = bOk && M5.BtnB.wasPressed();
+  const bool aHold = aOk && M5.BtnA.wasHold(), bHold = bOk && M5.BtnB.wasHold();
+  const bool aReleased = aOk && M5.BtnA.wasReleased(), bReleased = bOk && M5.BtnB.wasReleased();
+  const bool aClicked = aOk && M5.BtnA.wasClicked();
+  // Bench diagnostic: the serial timestamps between DOWN and HOLD measure the real hold threshold.
+  if (aPressed) Serial.printf("BTN A down thresh=%u\n", (unsigned)M5.BtnA.getHoldThresh());
+  if (bPressed) Serial.printf("BTN B down thresh=%u\n", (unsigned)M5.BtnB.getHoldThresh());
+  if (aHold) Serial.println("BTN A hold");
+  if (bHold) Serial.println("BTN B hold");
+  if (aReleased) Serial.println("BTN A up");
+  if (bReleased) Serial.println("BTN B up");
+  if (forceRestart.update(bootHeld.a_down(), bootHeld.b_down(), now)) {
     Serial.println("FORCE RESTART (A + B held 7 s)");
     Serial.flush();
     ESP.restart();
@@ -687,23 +712,23 @@ static void pollButtons() {
   }
   if (link.state() == LinkState::NOT_CONFIGURED) {
     // Long presses only: a knock on the field must not flip the point or its mode.
-    if (M5.BtnA.wasHold()) { point.reset(); Serial.println("RESET neutral (button)"); displayDirty = true; }
-    if (M5.BtnA.wasClicked()) {
+    if (aHold) { point.reset(); Serial.println("RESET neutral (button)"); displayDirty = true; }
+    if (aClicked) {
       if (homeNav.at_home()) homeNav.leave_home(now); else homeNav.go_home(now);
       displayDirty = true;
     }
-    if (M5.BtnB.wasHold()) setMode(point.mode == Mode::HILL ? Mode::BRIDGE : Mode::HILL);
+    if (bHold) setMode(point.mode == Mode::HILL ? Mode::BRIDGE : Mode::HILL);
     if (homeNav.poll_idle(now)) displayDirty = true;
     return;
   }
-  if (M5.BtnA.wasClicked()) {
+  if (aClicked) {
     ButtonPhase before = brx_glue::buttons.phase();
     brx_glue::buttons.on_short_press();
     if (before == ButtonPhase::CONFIRM_ARMED) homeNav.note_activity(now);  // cancelled, not a page move
     else homeNav.leave_home(now);
     displayDirty = true;
   }
-  if (M5.BtnA.wasHold()) {
+  if (aHold) {
     if (brx_glue::buttons.phase() == ButtonPhase::CONFIRM_ARMED) brx_glue::buttons.on_short_press();  // cancel it
     homeNav.go_home(now);
     displayDirty = true;
@@ -714,7 +739,7 @@ static void pollButtons() {
     brx_glue::buttons.on_short_press();  // the same cancel path A's short press uses
     displayDirty = true;
   }
-  if (M5.BtnB.wasHold() && locked) {
+  if (bHold && locked) {
     resetOutcomeActive = true;  // reuse the reset-outcome transient, as LOCKED
     resetOutcomeLocked = true;
     resetOutcomeOk = false;
@@ -722,7 +747,7 @@ static void pollButtons() {
     Serial.printf("RESET refused: station locked (%lu s left)\n", (unsigned long)link.lock().remaining_s(now));
     homeNav.note_activity(now);
     displayDirty = true;
-  } else if (M5.BtnB.wasHold()) {
+  } else if (bHold) {
     if (brx_glue::buttons.on_long_press(now)) {
       bool sent = brx_glue::mcSendResetAction();
       resetOutcomeActive = true;

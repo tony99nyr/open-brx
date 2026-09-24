@@ -207,6 +207,49 @@ class ForceRestart {
   uint32_t now_ms_ = 0;
 };
 
+// ---- a button already down at boot is ignored until it has been released once ---------------------
+// Bench 2026-09-24: after the A+B force restart the operator was still holding both buttons when the
+// new boot came up, and the button library read that as a fresh press, so the new boot logged
+// "BTN A hold" (and, held on, would have gone home, armed a RESET, or started a second force-restart
+// countdown). The first `update()` call records which buttons are down; each one stays masked until it
+// has been up for one full loop() -- the same "swallow the release edge too" rule as ForceRestart,
+// since the library reports a click on the loop in which the button comes up.
+//
+// The .ino feeds the raw `isPressed()` levels once per loop(), before anything else reads a button,
+// and treats a masked button as not pressed and without edges (ForceRestart gets `a_down()`/`b_down()`).
+class BootHeldButtons {
+ public:
+  void update(bool a_down, bool b_down) {
+    if (!started_) {
+      started_ = true;
+      a_.masked = a_down;
+      b_.masked = b_down;
+    }
+    step(a_, a_down);
+    step(b_, b_down);
+  }
+  bool a_masked() const { return a_.masked; }
+  bool b_masked() const { return b_.masked; }
+  // The level the rest of the loop should see: a masked button reads as up.
+  bool a_down() const { return a_.down && !a_.masked; }
+  bool b_down() const { return b_.down && !b_.masked; }
+
+ private:
+  struct One {
+    bool masked = false;
+    bool down = false;
+    bool prev_down = false;
+  };
+  static void step(One& o, bool down) {
+    // Unmask on the SECOND consecutive up call: the loop in which it comes up still swallows its edge.
+    if (o.masked && !down && !o.prev_down) o.masked = false;
+    o.prev_down = down;
+    o.down = down;
+  }
+  bool started_ = false;
+  One a_, b_;
+};
+
 // ---- A58: which serial commands still run while the match lock is on ------------------------------
 // Default DENY: anything not named here answers "ERR locked" while locked, so a command added later
 // is locked until someone decides otherwise. Allowed: the read-only ones (PING, STATUS), the RAW dump

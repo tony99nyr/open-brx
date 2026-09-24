@@ -1039,6 +1039,218 @@ static void test_status_body_carries_health_fields_only_when_set() {
   CHECK(b.find("uptime_s") == std::string::npos && b.find("lock_s") == std::string::npos);
 }
 
+// --- restart survival: the saved station_config (Tony, 2026-09-24) ---------------------------------
+
+static StationAssignment powerup_config(int game, int lock_s) {
+  bool ok = false;
+  std::string body = R"({"kind":"powerup","team":255,"id":8,"threshold":-61,"game":)" + std::to_string(game) +
+                     R"(,"valid_ids":[3,4],"lock_s":)" + std::to_string(lock_s) +
+                     R"(,"item":{"kind":"weapon","weapon_id":"rail","charges":3,"spawn_every_s":45,"first_at_s":30,"name":"RAIL \"X\"","color":"#ff8800"}})";
+  StationAssignment a = parse_station_config(json::parse(body, &ok));
+  CHECK(ok);
+  return a;
+}
+
+static void test_saved_config_round_trips_without_lock_s() {
+  SavedStationConfig saved;
+  StationAssignment a = powerup_config(7, 900);
+  CHECK(saved.note_applied(a, "s1"));
+  CHECK(saved.stored().find("lock_s") == std::string::npos);
+  StationAssignment r = saved.restore();
+  CHECK(r.present);
+  CHECK_EQ(r.kind, std::string("powerup"));
+  CHECK_EQ(r.team, 255);
+  CHECK_EQ(r.id, 8);
+  CHECK_EQ(r.threshold, -61);
+  CHECK_EQ(r.game, 7);
+  CHECK_EQ(r.valid_ids.size(), (size_t)2);
+  CHECK_EQ(r.lock_s, 0);
+  CHECK(r.item.present);
+  CHECK_EQ(r.item.weapon_id, std::string("rail"));
+  CHECK_EQ(r.item.charges, 3L);
+  CHECK_EQ(r.item.spawn_every_s, 45);
+  CHECK_EQ(r.item.first_at_s, 30);
+  CHECK_EQ(r.item.name, std::string("RAIL \"X\""));
+  CHECK_EQ(r.item.color, std::string("#ff8800"));
+  // What flash would hold survives a reboot: a fresh mirror loaded with the stored body restores the same.
+  SavedStationConfig boot;
+  boot.loaded(saved.stored());
+  CHECK_EQ(station_config_storage_body(boot.restore()), saved.stored());
+}
+
+static void test_a_same_config_repush_with_a_new_lock_does_not_rewrite_storage() {
+  SavedStationConfig saved;
+  int writes = 0;
+  if (saved.note_applied(powerup_config(7, 900), "s1")) writes++;
+  if (saved.note_applied(powerup_config(7, 600), "s1")) writes++;  // MC's lock carrier: same config, new lock
+  if (saved.note_applied(powerup_config(7, 0), "s1")) writes++;    // and the unlock
+  CHECK_EQ(writes, 1);
+  if (saved.note_applied(powerup_config(8, 0), "s1")) writes++;    // a new game IS a new config
+  CHECK_EQ(writes, 2);
+}
+
+static void test_a_restored_assignment_applies_unlocked_and_never_latches_the_muster_drop() {
+  SavedStationConfig saved;
+  saved.note_applied(powerup_config(7, 900), "s1");
+  StationLink link;  // MUSTER, the default
+  CHECK(link.restore_station_config(saved.restore()));
+  CHECK(link.restored());
+  CHECK(link.assignment().present);
+  CHECK(link.has_powerup_assignment());
+  CHECK(!link.lock().locked(0));
+  CHECK(!link.dropped_for_match());
+  CHECK(link.powerup().available());
+  CHECK(link.state() != LinkState::ASSIGNED);  // MC has not armed it this boot
+  // Even a body that somehow carried a lock restores unlocked.
+  StationAssignment locked = powerup_config(7, 900);
+  StationLink link2;
+  link2.restore_station_config(locked);
+  CHECK(!link2.lock().locked(0));
+}
+
+static void test_mc_config_after_a_restore_replaces_it_without_a_second_schedule_reset() {
+  SavedStationConfig saved;
+  saved.note_applied(powerup_config(7, 0), "s1");
+  StationLink link;
+  link.restore_station_config(saved.restore());
+  // The restored station awards a claim while MC is unreachable.
+  ClaimWinner w;
+  w.won = true;
+  w.player_num = 5;
+  CHECK(link.award_claim(w, 1000));
+  CHECK_EQ(link.powerup().taker(), (uint8_t)5);
+  // MC answers with the SAME game and the remaining lock: the schedule is kept, the lock is taken, and
+  // (first arm this boot, under MUSTER) the drop is latched.
+  link.apply_station_config(powerup_config(7, 300), 2000);
+  CHECK(!link.restored());
+  CHECK_EQ(link.powerup().taker(), (uint8_t)5);
+  CHECK(link.lock().locked(2000));
+  CHECK(link.dropped_for_match());
+  // A different game after a restore does reset the schedule (the existing rule).
+  StationLink link2;
+  link2.restore_station_config(saved.restore());
+  link2.award_claim(w, 1000);
+  link2.apply_station_config(powerup_config(9, 0), 2000);
+  CHECK_EQ(link2.powerup().taker(), (uint8_t)0);
+  // HELD never latches the drop, restore or not.
+  StationLink held;
+  held.set_mode(AssocMode::HELD);
+  held.restore_station_config(saved.restore());
+  held.apply_station_config(powerup_config(7, 0), 2000);
+  CHECK(!held.dropped_for_match());
+}
+
+static void test_release_clears_the_saved_config_and_the_restored_flag() {
+  SavedStationConfig saved;
+  saved.note_applied(powerup_config(7, 0), "s1");
+  StationLink link;
+  link.restore_station_config(saved.restore());
+  link.apply_release();
+  CHECK(!link.restored());
+  CHECK(!link.assignment().present);
+  CHECK(saved.note_released());   // the glue erases the key
+  CHECK(!saved.has());
+  CHECK(!saved.restore().present);
+  CHECK(!saved.note_released());  // nothing left: no second erase
+  // A body that no longer parses restores nothing (the glue then erases it).
+  SavedStationConfig bad;
+  bad.loaded("{garbage");
+  CHECK(!bad.restore().present);
+}
+
+static WelcomeMsg welcome(const std::string& sid) {
+  WelcomeMsg w;
+  w.ok = true;
+  w.session_id = sid;
+  return w;
+}
+
+static void test_a_welcome_from_another_session_erases_the_saved_config_and_drops_the_restore() {
+  SavedStationConfig saved;
+  saved.note_applied(powerup_config(7, 0), "old");
+  StationLink link;
+  link.restore_station_config(saved.restore());
+  link.apply_welcome(welcome("new"));
+  CHECK(apply_welcome_to_saved(link, saved, "new"));  // the glue erases both keys
+  CHECK(!saved.has());
+  CHECK(!link.assignment().present);
+  CHECK(!link.restored());
+  // The same session keeps both.
+  SavedStationConfig same;
+  same.note_applied(powerup_config(7, 0), "s1");
+  StationLink l2;
+  l2.restore_station_config(same.restore());
+  l2.apply_welcome(welcome("s1"));
+  CHECK(!apply_welcome_to_saved(l2, same, "s1"));
+  CHECK(same.has());
+  CHECK(l2.restored());
+  // A copy with no stored session id is stale on the first WELCOME.
+  SavedStationConfig legacy;
+  legacy.loaded(station_config_storage_body(powerup_config(7, 0)));
+  StationLink l3;
+  l3.restore_station_config(legacy.restore());
+  CHECK(apply_welcome_to_saved(l3, legacy, "s1"));
+  CHECK(!l3.assignment().present);
+
+  // A WELCOME with no session id never erases (it would churn NVS on every reconnect).
+  SavedStationConfig kept;
+  kept.loaded(station_config_storage_body(powerup_config(7, 0)), "s1");
+  StationLink l4;
+  l4.restore_station_config(kept.restore());
+  CHECK(!apply_welcome_to_saved(l4, kept, ""));
+  CHECK(l4.assignment().present);
+}
+
+static void test_a_new_session_never_touches_a_config_mc_sent_this_boot() {
+  SavedStationConfig saved;
+  StationLink link;
+  link.set_mode(AssocMode::HELD);
+  link.apply_welcome(welcome("s1"));
+  StationAssignment a = powerup_config(7, 0);
+  link.apply_station_config(a, 0);
+  saved.note_applied(a, link.session_id());
+  CHECK_EQ(saved.session_id(), std::string("s1"));
+  // MC restarts; the held Stick re-hellos into a new session.
+  link.apply_welcome(welcome("s2"));
+  CHECK(apply_welcome_to_saved(link, saved, "s2"));  // the old copy goes
+  CHECK(link.assignment().present);                  // the live assignment stays
+  // The same config re-sent in the new session is saved again, with the new session id.
+  CHECK(saved.note_applied(a, "s2"));
+  CHECK(!saved.note_applied(a, "s2"));
+}
+
+static void test_the_muster_drop_after_a_restore_waits_for_the_re_anchor_or_2_s() {
+  SavedStationConfig saved;
+  saved.note_applied(powerup_config(7, 0), "s1");
+  StationLink link;  // MUSTER
+  link.restore_station_config(saved.restore());
+  uint32_t t0 = 0xFFFFF000u;  // straddles the millis() wrap
+  link.apply_station_config(powerup_config(7, 0), t0);
+  CHECK(link.dropped_for_match());
+  CHECK(!link.take_muster_drop(t0));
+  CHECK(!link.take_muster_drop(t0 + 1999));
+  CHECK(link.muster_drop_pending());
+  // The station_update lands: the drop is due at once, and only once.
+  StationUpdateMsg u;
+  u.present = true;
+  u.id = 8;
+  u.available = false;
+  u.next_spawn_in_ms = 20000;
+  CHECK(link.apply_station_update(u, t0 + 500));
+  CHECK(link.take_muster_drop(t0 + 500));
+  CHECK(!link.take_muster_drop(t0 + 600));
+  // No update at all: due after 2 s.
+  StationLink l2;
+  l2.restore_station_config(saved.restore());
+  l2.apply_station_config(powerup_config(7, 0), t0);
+  CHECK(!l2.take_muster_drop(t0 + 1999));
+  CHECK(l2.take_muster_drop(t0 + 2000));
+  // A drop with no restore is due at once, as before.
+  StationLink l3;
+  l3.apply_station_config(powerup_config(7, 0), 100);
+  CHECK(l3.take_muster_drop(100));
+}
+
 int main(int argc, char** argv) {
   if (argc > 1) {
     // Golden-dump mode for mcp/tests/test_utility_esp32.py: write the exact envelope strings this
@@ -1145,6 +1357,14 @@ int main(int argc, char** argv) {
   test_a_same_game_repush_replaces_the_lock_and_keeps_everything_else();
   test_release_lifts_the_lock();
   test_status_body_carries_health_fields_only_when_set();
+  test_saved_config_round_trips_without_lock_s();
+  test_a_same_config_repush_with_a_new_lock_does_not_rewrite_storage();
+  test_a_restored_assignment_applies_unlocked_and_never_latches_the_muster_drop();
+  test_mc_config_after_a_restore_replaces_it_without_a_second_schedule_reset();
+  test_release_clears_the_saved_config_and_the_restored_flag();
+  test_a_welcome_from_another_session_erases_the_saved_config_and_drops_the_restore();
+  test_a_new_session_never_touches_a_config_mc_sent_this_boot();
+  test_the_muster_drop_after_a_restore_waits_for_the_re_anchor_or_2_s();
   if (failures) {
     std::printf("%d check(s) failed\n", failures);
     return 1;
