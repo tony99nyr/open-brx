@@ -250,7 +250,7 @@ def do_raw(args) -> None:
     Leaves RAW on afterwards (the firmware's `r` is a toggle that survives until power-cycle;
     `sercmd.py`'s own STATUS/`s` check exists in native_capture.py, not needed for one bench look)."""
     port = select_stick_port(_list_ports(), explicit=args.port)
-    proc = _run(cmd_argv(port, args.secs, ["r"]), timeout=args.secs + 15)
+    proc = _run(cmd_argv(port, args.secs, ["RAW ON"]), timeout=args.secs + 15)
     if proc.stderr:
         print(proc.stderr, file=sys.stderr)
     if proc.returncode:

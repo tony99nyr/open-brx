@@ -412,9 +412,15 @@ static void handleLine(String line) {
   if (!line.length()) return;
   if (line == "PING") { Serial.println("PONG"); return; }
   if (line == "STATUS") { printStatus(); return; }
+  if (line == "RAW ON" || line == "RAW OFF") {   // explicit, for tools: the bare `r` is a toggle whose state a caller cannot see
+    rawEnabled = line == "RAW ON";
+    Serial.printf("# RAW dump %s\n", rawEnabled ? "ON" : "OFF");
+    return;
+  }
   if (line == "SELFTEST" || line.startsWith("SELFTEST ")) {
-    String bits = line.length() > 8 ? line.substring(9) : String(encode(point.beacon_word()).c_str());
+    String bits = line.length() > 8 ? line.substring(9) : String("");
     bits.trim();
+    if (!bits.length()) bits = String(encode(point.beacon_word()).c_str());   // bare SELFTEST: the beacon word
     selfTest(bits);
     return;
   }
@@ -516,7 +522,7 @@ void setup() {
   Serial.println("# BRX StickS3 station ready (RX G42 via RMT, speaker off).");
   Serial.printf("# mode=%s id=%u game=%u txpin=%u\n", point.mode == Mode::HILL ? "HILL" : "BRIDGE", settings.id,
                 settings.game, settings.txpin);
-  Serial.println("# Commands: SELFTEST [bits] | TX <bits> | TXN <n> <bits> | AUTO <bits>|OFF | PING | STATUS | MODE BRIDGE|HILL | ID <n> | GAME <n> | TXPIN 46|9|10 | RESET | r s c");
+  Serial.println("# Commands: SELFTEST [bits] | RAW ON|OFF | TX <bits> | TXN <n> <bits> | AUTO <bits>|OFF | PING | STATUS | MODE BRIDGE|HILL | ID <n> | GAME <n> | TXPIN 46|9|10 | RESET | r s c");
   if (!initRx()) Serial.println("ERR rx init (RMT)");
   if (!initTx(settings.txpin)) Serial.println("ERR tx init (RMT)");
   initBle();

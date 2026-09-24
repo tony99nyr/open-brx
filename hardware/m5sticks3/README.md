@@ -142,6 +142,7 @@ The capture and emit line formats are the DevKitC rig's, so `mcp/tools/native_ca
 | command | does |
 |---|---|
 | `r` / `s` / `c` | toggle the RAW dump / print frame count / clear, as `ir_capture.ino` |
+| `RAW ON` / `RAW OFF` | set the RAW dump explicitly (what `stick.py raw` sends; the bare `r` is a toggle, and RAW is on at boot) |
 | `SELFTEST [bits]` | loop the Stick's own LED into its own receiver: send one word, wait for the echo, print RAW plus decode, and `SELFTEST PASS` or `FAIL`. Defaults to the current beacon word when `bits` is omitted. Never feeds ownership. **Bench to confirm** what a PASS means here: M5 asks for 30 cm between sender and receiver, so a FAIL at millimetre range may be overdrive, not a fault |
 | `TX <bits>` · `TXN <n> <bits>` · `AUTO <bits>\|OFF` · `PING` | as `ir_emit.ino` |
 | `STATUS` | mode, owner, per-team charges, captures, advert seq and count, words heard, settings, the live UUID |

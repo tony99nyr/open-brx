@@ -155,7 +155,7 @@ edges, so no RMT setting explains stretched marks. Ranked causes to separate at 
 2. **Aim.** At 3-6 ft hand-held shots missed even the rig's receiver (0 bursts); at 1 ft the rig decoded 2 of 3.
 3. **Ambient disturbance.** A ~650 Hz stream of 144 us pulses came and went (source unproven); it lowers a receiver's
    gain and fuses with words inside the 20 ms idle window.
-4. Buffer (96 symbols) and the 20 ms idle threshold: they cut or fuse long bursts, but a single word fits.
+4. Buffer (96 symbols on the first bring-up, 128 since the desk session) and the 20 ms idle threshold: they cut or fuse long bursts, but a single word fits.
 5. Polarity: ruled out (the rig's own word arrived with correct bit order at 6 in).
 
 **Setup.** Rest the gun on something fixed (a box or a tripod), barrel level with the target and pointed straight at

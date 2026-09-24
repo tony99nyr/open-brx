@@ -29,6 +29,7 @@ built the same way as `bench-session` (guns). Keep to it.
 
 ## The fast loop
 
+Start every Stick session with `stick.py cmd 3 SELFTEST` (the receiver health check, no gun needed).
 For most steps: `stick.py flash` (only after a firmware edit) -> `stick.py cmd <secs> <commands>` ->
 `stick.py raw <secs>` (when a decode question is open) -> `stick.py ble <secs>` (to check the advert).
 `stick.py status` is the cheap first move whenever the Stick's state is in doubt. `stick.py ports`
@@ -54,7 +55,7 @@ Tony's rule from the gun bench applies here too: no bad data, nothing flaky.
 The gate list and its running results live in `docs/bench-sticks3-2026-09-23.md` (a later session may
 have renamed or superseded it: check `docs/HANDOFF.md`'s station lane first). Work the gates in
 order; do not skip one because a later one looks more interesting. `hardware/m5sticks3/README.md`
-"First bench gate" is the reference recipe if the sheet is stale.
+("The fast loop", "Serial commands", "Diagnostics") is the reference if the sheet is stale.
 
 ## Known pitfalls
 
