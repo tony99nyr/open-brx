@@ -57,7 +57,7 @@ static void mcLoadPrefs(StationLink& link) {
   String nodeId = mcPrefs.getString("node_id", "");
   String nodeKey = mcPrefs.getString("node_key", "");
   uint8_t assoc = mcPrefs.getUChar("assoc", (uint8_t)AssocMode::MUSTER);
-  actionsEnabled = mcPrefs.getBool("actions", false);  // default OFF (polish round 1)
+  actionsEnabled = mcPrefs.getBool("actions", true);  // default ON since MC accepts station_action (A56, f3fe3cf6); ACTIONS OFF for an older MC
   mcPrefs.end();
   if (nodeId.length() == 0) {
     // A stable id, or MC sees a new item every power cycle (§5g.2). No node_id was ever chosen, so

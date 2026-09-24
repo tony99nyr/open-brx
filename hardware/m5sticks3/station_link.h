@@ -657,7 +657,7 @@ class StationLink {
   ClaimGate claims_;
   PendingActionQueue pending_actions_;
   Backoff backoff_;
-  bool actions_enabled_ = false;
+  bool actions_enabled_ = true;   // MC accepts station_action since A56 landed (f3fe3cf6); `ACTIONS OFF` for an older MC
   bool dropped_for_match_ = false;
 };
 

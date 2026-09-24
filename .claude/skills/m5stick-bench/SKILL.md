@@ -59,6 +59,7 @@ order; do not skip one because a later one looks more interesting. `hardware/m5s
 
 ## Known pitfalls
 
+- **Restart: single-click the small side button.** (docs.m5stack.com/en/core/StickS3.)
 - **Let `stick.py` find the port.** It picks the Stick by vendor id 0x303a. An explicit `--port` must also be a Stick, or it refuses; never point it at a rig board or a gun's port.
 - **EXT_5V is off by default.** The receiver and onboard LED are dead until the firmware calls
   `M5.Power.setExtOutput(true, ...)`; a Stick with no IR activity at all is often just this, not a

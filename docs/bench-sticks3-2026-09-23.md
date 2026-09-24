@@ -42,6 +42,8 @@ cd /mnt/c && "$CLI" compile --fqbn "m5stack:esp32:m5stack_sticks3:PartitionSchem
 
 ## Gate 1: flash, boot, serial
 
+**Restart: single-click the small side button** (docs.m5stack.com/en/core/StickS3).
+
 1. Tony plugs the Stick into the laptop by USB-C and powers it on. The agent lists ports and picks the `0x303a` one.
 2. The agent flashes: `"$CLI" upload --fqbn <as gate 0> -p COM<n> 'C:\Users\Tony\brx-sticks3\m5sticks3'`. The
    factory firmware ignores a software reset, so the first flash needs download mode: Tony holds the Stick's

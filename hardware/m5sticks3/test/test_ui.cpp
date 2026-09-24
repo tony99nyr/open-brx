@@ -33,9 +33,9 @@ static void test_station_action_body_is_pinned() {
            std::string("{\"id\":9,\"action\":\"taken\",\"player_num\":5,\"age_ms\":250,\"t\":1700000000000}"));
 }
 
-// Polish round 1 (2026-09-24): MC does not accept `station_action` yet, so nothing may be BUILT,
-// let alone sent, while ACTIONS is off (the default).
-static void test_actions_disabled_by_default_builds_nothing() {
+// ACTIONS is ON by default since MC accepts station_action (A56, f3fe3cf6). `ACTIONS OFF` (for an older MC, which
+// would count the kind toward its malformed-frame quarantine) must still build nothing.
+static void test_actions_on_by_default_and_off_builds_nothing() {
   StationLink link;
   StationAssignment a;
   a.present = true;
@@ -43,7 +43,8 @@ static void test_actions_disabled_by_default_builds_nothing() {
   a.id = 9;
   link.apply_station_config(a);
   PendingTakenReport rep{9, 5, 0, 1000};
-  CHECK(!link.actions_enabled());
+  CHECK(link.actions_enabled());
+  link.set_actions_enabled(false);
   CHECK(maybe_build_reset_action(link, 1000).empty());
   CHECK(maybe_build_taken_action(link, rep, 1400).empty());
   link.set_actions_enabled(true);
@@ -142,7 +143,7 @@ static void test_link_state_label_covers_every_state() {
 
 int main() {
   test_station_action_body_is_pinned();
-  test_actions_disabled_by_default_builds_nothing();
+  test_actions_on_by_default_and_off_builds_nothing();
   test_actions_gate_with_no_assignment_builds_nothing_even_when_enabled();
   test_taken_age_is_computed_at_send_time_and_wrap_safe();
   test_short_press_pages_through_every_page_and_wraps();

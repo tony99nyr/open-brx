@@ -220,7 +220,7 @@ dials the plain LAN socket a phone on the same Wi-Fi would use.
 | `LINK MUSTER` \| `LINK HELD` | the association mode (§5g.4), persisted. `MUSTER` (default) drops Wi-Fi for the match once armed; `HELD` stays linked and reconnects |
 | `LINK OFF` | drop the socket and Wi-Fi association now |
 | `LINK RECONNECT` | clear the MUSTER drop's latch (below) and rejoin Wi-Fi -- the operator action that brings a Stick back to the table between matches |
-| `ACTIONS ON` \| `ACTIONS OFF` | whether `station_action` (RESET, CLAIM's report) is sent to MC at all, persisted, **default OFF** -- see "RESET" below |
+| `ACTIONS ON` \| `ACTIONS OFF` | whether `station_action` (RESET, CLAIM's report) is sent to MC at all, persisted, **default ON** since MC accepts it (A56); `ACTIONS OFF` for an older MC -- see "RESET" below |
 | `STATUS` | gained a second `LINK ...` line: link state, mode, ACTIONS, whether a MUSTER drop is latched, node_id, SSID, and the current assignment |
 
 **The two association modes** are carried end to end: `apply_station_config()` (`station_link.h`)
@@ -275,12 +275,10 @@ across a reboot), the Stick's two buttons become OPERATOR controls -- players ne
   `ACTIONS OFF` (below), the screen says RESET NEEDS MISSION CONTROL either way: this Stick is not
   telling MC anything in either case, so that is the honest message for both.
 
-**ACTIONS gate.** MC does not accept `station_action` yet (it is not in `NODE_KINDS`), so every one
-sent today is a malformed frame counted toward MC's per-socket quarantine (net.md §8, roughly 20/s).
-`ACTIONS` defaults to **OFF**: RESET and a CLAIM's "taken" report are never sent to MC while it is
-off, though RESET's local confirm flow and a CLAIM's local award (the advert's `taker` byte) both
-still work exactly the same -- only the report to MC is gated. Turn it on with `ACTIONS ON` once MC
-actually accepts the kind.
+**ACTIONS gate.** MC accepts `station_action` since A56 landed (`f3fe3cf6`), so `ACTIONS` defaults to
+**ON**. An older MC (before A56) counts the kind toward its per-socket malformed-frame quarantine (net.md §8), so
+set `ACTIONS OFF` against one. With it off, RESET and a CLAIM's "taken" report are never sent to MC, though RESET's
+local confirm flow and a CLAIM's local award (the advert's `taker` byte) still work the same.
 
 **Getting the legacy toggle back.** With the buttons repurposed, `MODE BRIDGE|HILL` over serial still
 works exactly as before (it is not gated on the link at all) -- that is the only way to reach it once
@@ -321,7 +319,7 @@ refuse/accept rule (polish round 2) -- built from the coordinator's brief alone,
 6. Try `LINK HELD` vs the `LINK MUSTER` default and watch whether the advert stays live at go-live.
    Under `MUSTER`, confirm `STATUS` shows `dropped_for_match=1` right after the drop, that the Stick
    does NOT rejoin Wi-Fi on its own, and that `LINK RECONNECT` is what brings it back.
-7. `ACTIONS ON`, then hold B once (arms RESET) and again within 5 s (sends it) and confirm MC saw it
+7. (ACTIONS is on by default.) Hold B once (arms RESET) and again within 5 s (sends it) and confirm MC saw it
    (once MC accepts the kind); with `ACTIONS OFF` (the default) confirm nothing reaches MC either way
    and the screen still says RESET NEEDS MISSION CONTROL. Short-press A and confirm it only pages,
    never arms a reset.
@@ -337,10 +335,13 @@ refuse/accept rule (polish round 2) -- built from the coordinator's brief alone,
 | `json_lite.h` | pure C++: a tiny tolerant JSON reader/writer for the M-NET envelope bodies (H8) |
 | `station_link.h` | pure C++: the MC link state machine, hello/status builders, station_config/station_update/control parsers, the powerup self-spawn schedule, and the CLAIM award logic (H8, A56) |
 | `station_ui.h` | pure C++: the operator button state machine (page / RESET confirm) and the `station_action` builder (H8) |
+| `station_screen.h` | pure C++: the screen MODEL -- state -> ScreenSpec, plus `HomeNav` (idle timeout / go-home). See "Screens" below |
+| `station_render.h` | Arduino-only: draws a ScreenSpec with M5GFX into an off-screen `M5Canvas`. See "Screens" below |
 | `mc_link_glue.h` | Arduino-only: Wi-Fi, mDNS, the WebSocket to MC, BLE claim-scanning, Preferences -- the plumbing on top of the three headers above (H8) |
 | `test/test_core.cpp` | host tests for `brx_ir.h`/`brx_advert.h`/`control_point.h` |
 | `test/test_link.cpp` | host tests for `station_link.h`/`json_lite.h`, plus a golden-dump mode `mcp/tests/test_utility_esp32.py` uses to drive MC with the exact JSON this firmware builds |
 | `test/test_ui.cpp` | host tests for `station_ui.h` |
+| `test/test_screen.cpp` | host tests for `station_screen.h` |
 
 All run under `mcp/tests/test_sticks3_core.py` when `g++` exists. The pure headers never include
 Arduino, so the logic is tested on the laptop and the sketch + `mc_link_glue.h` are the only plumbing.
@@ -369,6 +370,79 @@ unresolved upstream bug on the ESP32-S3 (espressif/esp-idf#17811).
 
 **Echo filter.** The onboard LED and receiver are millimetres apart, so the sketch drops any
 received word that matches what it just sent within 150 ms of sending it, to stop self-hearing.
+
+## Screens
+
+`mockups/render.py` is **the design of record** (Tony approved it 2026-09-24): every screen, its
+exact copy, and its layout grid (status strip / main block / hint bar) live there first, rendered
+with Pillow so they can be reviewed as PNGs before any firmware is touched. `station_screen.h` is a
+pure, host-tested model of it: a state -> `ScreenSpec` function (which screen, its words, colour
+roles, progress values, hint bar text, status-strip flags), tested by `test/test_screen.cpp` the same
+way every other pure header here is. `station_render.h` is the other half, Arduino-only: it draws a
+`ScreenSpec` with M5GFX into an off-screen `M5Canvas`, pushed once per paint
+(`m5sticks3.ino`'s `paintFromModel()`).
+
+**Fonts.** M5GFX ships no condensed bold font; the closest built-ins are the Adafruit-GFX
+"FreeSansBold" family at four fixed sizes (9/12/18/24 pt) -- bold, but not condensed, so a long word
+sits wider on the Stick than in the mockup. Converting the repo's own Saira Condensed TTF to a VLW or
+u8g2 font is a follow-up, not done here.
+
+**Redraw policy.** `loop()` redraws on a real change (`displayDirty`, the same flag every other
+handler here already sets) or at least every ~250 ms (4 Hz), so a countdown (a pickup's NEXT SPAWN, a
+RESET confirm's draining timeout bar, the JOINING dots) still moves. Every screen is drawn into the
+canvas and pushed once, never straight to the panel, so drawing never competes with IR receive (RMT
+is hardware-buffered) or the Wi-Fi/BLE loop.
+
+**Screen brightness.** `m5sticks3.ino`'s `loop()` (not the pure model) drops
+`M5.Display.setBrightness()` from 120 to 25 after 30 s with no real event (a button press or a state
+change such as a pickup or a capture), and wakes back to 120 on the next one.
+
+**Home.** The operator can always get back to the live gameplay screen without a restart
+(`station_screen.h`'s `HomeNav`, host-tested): 20 s with no button press returns home by itself, and
+a 1 s hold of A goes home at once from anywhere, cancelling an open RESET confirm on the way. Neither
+gesture changes any station state -- see "Buttons and power" below.
+
+**Could not match render.py exactly:**
+
+- HILL_CAPTURING and HILL_CONTESTED (a percentage climbing toward capture; a contested flash):
+  `control_point.h`'s HILL has no discrete "capturing" transition (charge just accumulates
+  continuously) and sets no contested state at all (`CONTROL_CONTESTED` is a defined advert bit
+  nothing ever sets). `compute_screen()` never emits either; `station_render.h` still draws them for
+  when that changes.
+- RESPAWN_OWNED's revive count: this firmware tracks no revives for a respawn station (§5g.5: "shown
+  and reported, not faked"). A respawn/extraction/bomb assignment shows the generic ASSIGNED screen
+  instead.
+- PICKUP_EMPTY: nothing in `StationItem`/`PowerupSchedule` tracks a globally-exhausted item, only
+  available/taken.
+- SETTINGS: not wired to any button flow yet (`ID`/`GAME`/`TXPIN` stay serial-only); the renderer
+  exists, `compute_screen()` never produces it.
+- A welcomed-but-not-yet-armed link (MC found, no `station_config` applied yet) reuses the JOINING
+  screen's "LOOKING FOR MISSION CONTROL" copy, which undersells it once MC is actually found;
+  render.py has no separate screen for that state.
+- `hold_time`/`next_spawn` both go through one canonical m:ss formatter (`format_mmss`: minutes
+  unpadded, seconds zero-padded); render.py's own scene literals hardcode "04:12" vs "1:40"
+  inconsistently, since render.py never defines the formatter itself.
+
+**Bench to confirm:** colours and legibility on the real panel -- none of this has been seen lit.
+
+## Buttons and power
+
+The two GPIO buttons (A = G11, B = G12; see "Hardware and pins" above) are OPERATOR controls once any
+`WIFI` command has ever been given; before that they keep their standalone bench meaning (long-press
+RESET / MODE toggle) documented there.
+
+| button | gesture | does |
+|---|---|---|
+| A | short press | next page: leaves the home/gameplay screen for STATS (standalone bench mode: toggles DIAGNOSTICS) |
+| A | hold ~1 s | HOME: back to the live gameplay screen from anywhere, cancelling an open RESET confirm on the way. Changes no station state (`station_screen.h`'s `HomeNav`, host-tested) |
+| B | hold 2 s, then hold again within 5 s | RESET: the second hold sends `station_action{action:"reset"}` to Mission Control |
+| small side button | single click | power on, or restart if the Stick is already on |
+| small side button | double click | POWER OFF (**bench to confirm:** whether this fires while the Stick is on USB power, as it always is at the bench) |
+| small side button | held while plugging in USB | download mode (first flash over factory firmware only): the screen stays dark and the internal green LED flashes, matching our own bring-up |
+
+Source: docs.m5stack.com/en/core/StickS3, "Button Operation Instructions". **Bench to confirm:** the
+mapping assumed above of `M5.BtnA`/`M5.BtnB` to the Stick's two physical keys -- BtnA the front M5
+logo key, BtnB the larger side key -- since this firmware's button code has never been seen lit.
 
 ## Diagnostics
 
