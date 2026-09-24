@@ -164,9 +164,13 @@ const magText = st => usesCellGauge(st)
 const mcHost = url => { try { return new URL(url).host; } catch (_) { return String(url || ''); } };
 // Polish-loop pass 2: `d.source` (app.js, landed) is 'sweep' (a port sweep on the joined Wi-Fi) or 'mdns'
 // (a broadcast advert) — worded so a player can tell which kind of "found" this is; the action is the same.
+// A60: `d.text` (app.js, autojoin.js `offerText`) says why this address needs a tap: a new MC, several
+// found, or one that could not prove it is ours. It is shown verbatim (it names its own tap); no text =
+// the plain found row.
 const discoveredRow = d => { if (!d) return '';
   const label = d.source === 'mdns' ? 'FOUND BY BROADCAST' : 'FOUND ON THE NETWORK';
-  return `<div class="discoveredrow" data-act="onJoinDiscovered"><span class="unskew">MISSION CONTROL ${label} AT ${esc(mcHost(d.url))} · JOIN</span></div>`; };
+  const text = d.text ? esc(d.text) : `MISSION CONTROL ${label} AT ${esc(mcHost(d.url))} · JOIN`;
+  return `<div class="discoveredrow" data-act="onJoinDiscovered"><span class="unskew">${text}</span></div>`; };
 // Polish-loop pass 1+2: every join control that redials/drops the live MC link needs the armed/live
 // two-tap guard (`_click` below) — `onJoinDiscovered` (an address the player never typed) and
 // `onReconnectMc` (the same teardown, same button row) joined `onSetUrl`/`onScanQr` in pass 2.
@@ -481,7 +485,7 @@ export class Hud {
       // whole screen. The picker's rows, its empty placeholder and its fold are all patched in place
       // by `_patchScan` now, so nothing about the scan is structure any more.
       st.kills > 0, st.deaths > 0, st.assists > 0, accShown(st) != null, st.reserve != null, st.bleUp, st.ended, this.bluetoothOn, this.locationOn,
-      this.discovered && this.discovered.url,   // Polish-loop pass 1: the discovered-MC row on the pre-join screen (`_joinConfirm` only touches the diag panel, patched directly, not here)
+      this.discovered && this.discovered.url, this.discovered && this.discovered.text,   // A60: the reason can change on the same url   // Polish-loop pass 1: the discovered-MC row on the pre-join screen (`_joinConfirm` only touches the diag panel, patched directly, not here)
       st.rejoin, !!st.pendingTeardown, this.sync && this.sync.bound, this.sync && this.sync.pending,
       // F137 (field 2026-09-12, found verifying the fix below): the pre-kit CONNECTED screen swaps a whole
       // block (the type-address box vs "MC LINKED") on `wsState`, not just text — `_patch` only ever touched

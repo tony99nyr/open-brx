@@ -95,7 +95,7 @@ reproduce it; a second phone's SCAN AGAIN mid-join is the leading reading, follo
 - **Next desk task:** none open for this lane.
 - **Blocked:** F270 on A8.
 ## Lane: Mission Control console honesty
-2026-09-24: APKs 0.4.7, 0.4.8 and 0.4.9 published (each on green CI); A58's MC half on main (Lows F337); 0.4.10 published with it. KOTH's stock hill is now a Bluetooth station (`station_source` phone); the grenade hill and Stick IR receive are POST-MVP (F338). **Next:** bench F309/F311/F312.
+2026-09-24: APKs 0.4.7-0.4.11 published (each on green CI). On main: A58 station lock, KOTH phone-hill default (F338), utility sweep, the console-port ws guard, the chaos kill-cue invariant, and A60 MC auto-join (Lows and Tony's first-contact decision: F346). **Next:** 0.4.12 cut on brx1's word; bench F309/F311/F312.
 
 ## Lane: S57, B21, StickS3 (brx4)
 2026-09-24, evening (desk, no bench). Tony's decisions: Stick stations are Bluetooth-only for the

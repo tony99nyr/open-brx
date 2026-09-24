@@ -204,7 +204,7 @@ test('F139 guard: app.js sweeps over ws:// from discover.js, never an http fetch
   // security (review pass 1): a websocket upgrade is all a squatter on the node port has to answer, and
   // the hello that follows carries this node's takeover key. A hit is a suggestion the player taps.
   assert.doesNotMatch(body, /connectMc\(/, 'the sweep must NEVER dial its own hit');
-  assert.match(body, /suggestMc\(found, 'sweep'\)/, 'it OFFERS the hit for the player to tap instead');
+  assert.match(body, /suggestMc\(found, 'sweep'\)/, 'it hands the hit to suggestMc (a JOIN row, or an A60 proof dial)');
   assert.match(src, /import \{ sweepPlan, localIpFrom, sweepForMc as sweepSubnetsForMc \} from '\.\/transport\/discover\.js'/);
 });
 
@@ -229,7 +229,7 @@ test('F139 guard: the discovered address is joined only by an explicit tap, and 
   assert.ok(i > 0, 'the JOIN handler the HUD calls is gone — FIX this guard, do not delete it');
   const body = src.slice(i, src.indexOf('\n  },', i));
   assert.match(body, /hud\.discovered/, 'it dials what the sweep suggested');
-  assert.match(body, /connectMc\(d\.url, false, \{ trusted: false \}\)/,
+  assert.match(body, /connectMc\(d\.url, false, \{ trusted: false, user: true \}\)/,
     'remember:FALSE — a tapped address is not the explicit target and is persisted only if it binds us; trusted:false keeps the key off the hello');
   // and the transport half of that promise
   const t = readFileSync(path.resolve(HERE, '../src/transport/transport.js'), 'utf8');
@@ -253,7 +253,9 @@ test('F153c guard: ONE coalesced entry point for the network-came-back signal', 
 test('security guard: a SUGGESTED address persists only once it binds us; a USER-PROVIDED one persists at the dial', () => {
   const src = readFileSync(APP_JS, 'utf8');
   const writes = [...src.matchAll(/settings\.mcUrl\s*=\s*[^=]/g)];
-  assert.equal(writes.length, 3, 'user dial, successful bind, and failed-target clearing');
+  // A60 (F203 revised): a remembered url that misses its first welcome is NOT cleared any more; the
+  // transport keeps redialling it and a sweep runs beside it. So only the two writes are left.
+  assert.equal(writes.length, 2, 'user dial and successful bind; nothing clears a remembered url');
 
   // 1. the dial-time write is gated on `remember`, which only a user-provided address gets
   const connect = src.indexOf('function connectMc(');
@@ -264,7 +266,7 @@ test('security guard: a SUGGESTED address persists only once it binds us; a USER
 
   // 2. ...and the suggestion path passes remember:false, so nothing is written until it binds
   const tap = src.slice(src.indexOf('onJoinDiscovered:'), src.indexOf('\n  },', src.indexOf('onJoinDiscovered:')));
-  assert.match(tap, /connectMc\(d\.url, false, \{ trusted: false \}\)/,
+  assert.match(tap, /connectMc\(d\.url, false, \{ trusted: false, user: true \}\)/,
     'an address the user never named: not persisted at the dial, and keyless on the wire');
 
   // 3. the second write is the bind — which is what finally remembers a suggestion that was right
@@ -274,14 +276,17 @@ test('security guard: a SUGGESTED address persists only once it binds us; a USER
     'the second write is in the bound branch');
   assert.match(src.slice(writes[1].index, writes[1].index + 60), /settings\.mcUrl = transport\.url/,
     'and it remembers the url that actually bound us, not whatever was dialled');
-  assert.match(src.slice(writes[2].index - 260, writes[2].index + 220), /no welcome within/,
-    'an unreachable remembered target is cleared only after the initial welcome timeout');
+  const catchAt = src.indexOf('/no welcome within/.test(');
+  assert.ok(catchAt > 0, 'the first-welcome-timeout branch is gone: FIX this guard, do not delete it');
+  const f203 = src.slice(catchAt, src.indexOf('\n', catchAt));
+  assert.match(f203, /sweepForMc\(\)/, 'a missed first welcome starts a sweep beside the remembered dial');
+  assert.doesNotMatch(f203, /settings\.mcUrl|clearJoinTarget|\.close\(\)/, 'and forgets nothing, closes nothing (F203 revised, A60)');
 
   // 4. the user-provided callers really do ask to be remembered
   const qr = src.slice(src.indexOf('QR scanned — connecting'), src.indexOf('QR scanned — connecting') + 240);
-  assert.match(qr, /connectMc\(join\.url, true, \{ pub: join\.pub, secret: join\.secret \}\)/, 'a scanned QR is the user naming an address');
+  assert.match(qr, /connectMc\(join\.url, true, \{ pub: join\.pub, secret: join\.secret, user: true \}\)/, 'a scanned QR is the user naming an address');
   const typed = src.slice(src.indexOf('onSetUrl:'), src.indexOf('\n  },', src.indexOf('onSetUrl:')));
-  assert.match(typed, /connectMc\(j\.url, true, \{ pub: j\.pub, secret: j\.secret \}\)/, 'so is a typed join code');
+  assert.match(typed, /connectMc\(j\.url, true, \{ pub: j\.pub, secret: j\.secret, user: true \}\)/, 'so is a typed join code');
 });
 
 test('security guard: an mDNS advert is offered, never dialled — same one-tap row as a sweep hit', () => {
@@ -291,12 +296,19 @@ test('security guard: an mDNS advert is offered, never dialled — same one-tap 
   const body = src.slice(i, src.indexOf('\n}\n', i));
   assert.doesNotMatch(body, /connectMc\(/, 'anything on the field Wi-Fi can advertise _openbrx._tcp');
   assert.match(body, /suggestMc\(url, 'mdns'\)/);
-  // and the offer itself dials nothing
+  // A60: the only dial suggestMc makes is a VERIFY dial (keyless, nothing processed before the proof)
   const j = src.indexOf('function suggestMc(');
-  const offer = src.slice(j, src.indexOf('\n}\n', j));
+  const suggest = src.slice(j, src.indexOf('\n}\n', j));
+  const dials = [...suggest.matchAll(/connectMc\([^\n]*/g)].map(m => m[0]);
+  // (the remembered url, re-dialled when discovery sees it and nothing is dialling, is not automatic in
+  // this sense: the player named it or it bound us, the same rule as every boot dial)
+  assert.deepEqual(dials, ['connectMc(settings.mcUrl);', 'connectMc(url, false, { verify: true, source });'], 'an automatic dial is a proof dial, never a trusted or keyless-trusting one');
+  assert.match(suggest, /holdsTrustKey\(\)/, 'only a phone that holds a trust key may proof-dial');
+  // and the offer itself dials nothing
+  const k = src.indexOf('function offerMc(');
+  const offer = src.slice(k, src.indexOf('\n}\n', k));
   assert.doesNotMatch(offer, /connectMc\(/);
-  assert.match(offer, /hud\.discovered = \{ url, at: Date\.now\(\), source \}/);
-  assert.match(offer, /tap JOIN \(it is no longer joined automatically\)/, 'the 2026-09-11 game test joined with no QR at all — the log line has to say what replaced that');
+  assert.match(offer, /hud\.discovered = \{ url, at: Date\.now\(\), source, reason, text \}/);
   assert.match(offer, /state === 'bound'/, 'never offered while we are already home');
 });
 
@@ -307,7 +319,43 @@ test('security guard: no automatic dial is left anywhere — every connectMc cal
     return line;
   }).filter(l => !l.startsWith('*') && !l.startsWith('//'));
   for (const l of callers) {
-    assert.ok(/params|d\.url|j\.url|join\.url|settings\.mcUrl|\bv\)|\burl,|\burl\)/.test(l), `unexpected connectMc caller: ${l}`);
+    assert.ok(/params|d\.url|j\.url|join\.url|settings\.mcUrl|\bv\)|\bv, true, \{ user: true \}\)|\burl,|\burl\)/.test(l), `unexpected connectMc caller: ${l}`);
   }
   assert.ok(callers.length >= 4, 'the real callers are still there');
+  // A60: the one caller that no person started (a discovery hit) must be a verify dial...
+  const auto = callers.filter(l => /connectMc\(url, false/.test(l));
+  assert.deepEqual(auto, ['connectMc(url, false, { verify: true, source });']);
+  // ...and a verify dial must send neither the takeover key, the join secret nor the utility proof
+  const t = readFileSync(path.resolve(HERE, '../src/transport/transport.js'), 'utf8');
+  assert.match(t, /this\.trusted = trusted !== false && !this\.verify;/, 'verify forces an untrusted (keyless) hello');
+  assert.match(t, /this\.secret && this\.trusted \? \{ secret: this\.secret \}/);
+  assert.match(t, /this\.nodeKey && this\.trusted \? \{ node_key: this\.nodeKey \}/);
+  assert.match(t, /this\.priorUtility && this\.trusted \? \{ prior_utility: this\.priorUtility \}/);
+  assert.match(t, /if \(this\.pub && !this\.verify\) this\._dialVia\('backhaul'/, 'and never goes to the trusted MC\'s tunnel');
+});
+
+test('A60 guard: the verify path processes nothing before the proof check', () => {
+  const t = readFileSync(path.resolve(HERE, '../src/transport/transport.js'), 'utf8');
+  // _onWelcome: the verify block is the FIRST statement, ahead of every timer, key, join and hydrate
+  const w = t.indexOf('  _onWelcome(body) {');
+  const welcome = t.slice(w, t.indexOf('\n  }\n', w));
+  const firstStmt = welcome.split('\n').slice(1).find(l => l.trim() && !l.trim().startsWith('//'));
+  assert.equal(firstStmt.trim(), 'if (this.verify) {', 'the proof check must come before anything else in the welcome');
+  const check = welcome.indexOf('matchingKey(');
+  for (const later of ['this._adoptSecret', 'this._adoptPub', 'this._storeTrustKey', 'this.nodeKey = body.node_key', 'this._absorb', 'this.bind()', '_onHydrate', '_setState(']) {
+    const at = welcome.indexOf(later);
+    assert.ok(at > check, `${later} runs after the proof check`);
+  }
+  // _onFrame: nothing but the welcome is looked at while a verify dial is unproven
+  const f = t.indexOf('  _onFrame(text) {');
+  const frame = t.slice(f, t.indexOf('\n  }\n', f));
+  const gate = frame.indexOf("if (this.verify) return;");
+  assert.ok(gate > 0 && gate > frame.indexOf("if (kind === 'welcome')"), 'the verify gate sits right after the welcome dispatch');
+  for (const later of ["kind === 'ack'", "kind === 'time_res'", "kind === 'config'", "kind === 'join'", 'DELIVERED.has']) {
+    assert.ok(frame.indexOf(later) > gate, `${later} is processed only after the verify gate`);
+  }
+  // and connect() in verify mode touches no held pub/secret/url scope before the proof
+  const c = t.indexOf('    if (this.verify) {\n      // A60: nothing held');
+  const vconnect = t.slice(c, t.indexOf('\n    }\n', c));
+  assert.doesNotMatch(vconnect, /_setPub|_setSecret|_pubUrlKey/);
 });

@@ -1,0 +1,9 @@
+{
+  "_about": "A60 shared test vector: mcp/tests/test_mc_trust.py and app/test/mcproof.test.mjs both check it.",
+  "install_secret_b64url": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+  "node_id": "node-VECTOR0001",
+  "trust_key": "zJ_1bSBjeFYHap0p5xs8SWpIWdFp6Lef8rWaqzy-nmg",
+  "mc_challenge": "ZGVmZ2hpamtsbW5vcHFycw",
+  "session_id": "a1b2c3d4",
+  "mc_proof": "DMdVZNSnsMOBCRL-whxjcef_DuTkXZG_deLvsStM2Jk"
+}

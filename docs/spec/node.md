@@ -557,6 +557,40 @@ RELEASE TO STEADY and the recovery countdown where the reticle was. Smoke has di
 remain unbuilt until their mechanics are specified. The writer/native arbitration is in §3.15. A smoke cue
 (`_event('smoked')`) remains a hook with no presentation row.
 
+### 3.19 Joining Mission Control: with no tap, or with one (contracts A60)
+
+A phone joins with no tap when it can tell the MC is the one the player already trusted. It asks for one
+tap when it cannot, and the JOIN row says why. The policy is `app/src/transport/autojoin.js`.
+
+- **No tap.** The remembered address (a QR, a typed address, a tapped JOIN, or an address that bound us)
+  is redialled with the normal backoff for as long as the app runs. A missed first welcome clears
+  nothing (F203 revised); a sweep starts beside the redial.
+- **No tap, after a proof.** A discovery hit (mDNS or the sweep) at an address other than the remembered
+  or dialling one is proof-dialled when the phone holds a trust key and the host is not cooling down.
+  With several hosts, the proof decides which one is ours. The dial sends no `node_key`, no join secret
+  and no utility proof, and the transport processes nothing from it until `welcome.mc_proof` matches a
+  held key. A match joins as a trusted dial would, and the new address becomes the remembered one.
+- **Never overridden.** While a dial the player named is inside its welcome window, discovery changes
+  nothing. A proof dial never becomes RECONNECT MC's target.
+- **One tap.** Each case puts its reason in the JOIN row (it names its own tap):
+  - no trust key, one other host: `NEW MISSION CONTROL · <ip> · TAP JOIN`;
+  - no trust key, two or more other hosts (or all of them cooling down): `SEVERAL MISSION CONTROLS · TAP YOURS`;
+  - a wrong proof, or none (an older MC): `UNVERIFIED MISSION CONTROL · <ip> · TAP JOIN IF YOURS`.
+  A failed proof dial cools that host for 10 minutes. A host that never answered gets no row at once.
+- **The trust key.** A phone dial asks for its key (`hello.mc_enroll`). MC issues it once per node_id
+  per install. A phone that lost its key still redials its remembered address with no tap, but an MC
+  that moved needs one tap. The phone keeps up to four keys, one per MC install it joined. A new key is
+  always kept; it evicts the oldest key that never proved an MC, else the one proven least recently. A utility phone joins untrusted by design and holds no key.
+- **After a demo restart.** `--demo` and `--ephemeral` make a new install secret on every launch, so the
+  phone shows UNVERIFIED and needs one tap.
+- **What the proof does not stop.** MC answers a challenge for any node_id without authentication, so a
+  host that can reach the real MC can relay a phone's challenge through it and pass. A pass makes that
+  host the trusted MC: it receives the node_key, the join secret and the utility proof on the next hello,
+  and can push config, starts and controls, and repoint the tunnel. The enrolling welcome also carries
+  the trust key in clear over ws://, so one passive capture of it lets the capturer impersonate MC to
+  that phone for as long as the key is held. The proof is not bound to host:port, because behind a
+  portproxy MC's local address is not the address the phone dialled.
+
 ## 4. The HUD — requirements and state mapping
 
 The HUD is the player's whole world during a match. Design target: **readable at a glance, at arm's

@@ -609,6 +609,11 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         out_dir = evidence if store_path.name == "session.sqlite" else home_dir() / "reports"
         launch_id = None if store_path.name == "session.sqlite" else f"session-{s.store.session_id}"
         secrets = [t for t in (token, getattr(s, "join_secret", None)) if t]
+        # A60: the install secret and every trust key this MC can name are never allowed into a zip.
+        _net = getattr(s, "net", None)
+        _trust = getattr(_net, "trust", None)
+        if _trust is not None:
+            secrets += _trust.secret_values(list(getattr(_net, "nodes", {}) or {}))
         known = _report_known()
         try:
             loop = asyncio.get_running_loop()
