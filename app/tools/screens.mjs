@@ -2160,8 +2160,15 @@ await step('polish-3 diag-live: the two-tap hint is an assertive live region', a
 // button state comes from `link.relinking` through app.js's diag push, exactly as on the phone.
 const fakeGunPlugin = pg => pg.evaluate(() => {
   const l = window.brx.link, w = window.__ble = { disconnects: 0, connects: 0, release: null };
-  l.ble = { initialize: async () => {}, disconnect: async () => { w.disconnects++; }, startNotifications: async () => {}, writeWithoutResponse: async () => {},
+  // F293: every connect now probes `$VERSION` before the link counts as up, so the fake answers as a real gun with a
+  // headset linked does. The link's writes go through `writeChunk` (the direct plugin path), not `ble`, so that is faked too.
+  let notify = null;
+  l.ble = { initialize: async () => {}, disconnect: async () => { w.disconnects++; }, startNotifications: async (id, s, c, cb) => { notify = cb; }, writeWithoutResponse: async () => {},
     connect: () => { w.connects++; return new Promise(res => { w.release = res; }); } };
+  l.writeChunk = async (id, dv) => {
+    const f = new TextDecoder().decode(new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength));
+    if (f === '$VERSION,*' && notify) { const n = notify; setTimeout(() => n(new DataView(new TextEncoder().encode('$VERSION,v4.32,hds.59,4,,devhost.03,*').buffer)), 20); }
+  };
   l.deviceId = 'A'; l.connected = true; l.advert = { name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' };
 });
 const relinkView = pg => pg.evaluate(() => { const b = document.querySelector('#diag [data-act="onReconnectGun"]'), h = document.getElementById('dg-gunhint'), d = document.getElementById('diag');
