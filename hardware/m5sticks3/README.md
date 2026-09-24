@@ -219,27 +219,48 @@ dials the plain LAN socket a phone on the same Wi-Fi would use.
 | `MC <ws://lan-ip:port/path>` | the typed floor, MC's LAN address; a one-off dial, never persisted |
 | `LINK MUSTER` \| `LINK HELD` | the association mode (§5g.4), persisted. `MUSTER` (default) drops Wi-Fi for the match once armed; `HELD` stays linked and reconnects |
 | `LINK OFF` | drop the socket and Wi-Fi association now |
+| `LINK RECONNECT` | clear the MUSTER drop's latch (below) and rejoin Wi-Fi -- the operator action that brings a Stick back to the table between matches |
 | `ACTIONS ON` \| `ACTIONS OFF` | whether `station_action` (RESET, CLAIM's report) is sent to MC at all, persisted, **default OFF** -- see "RESET" below |
-| `STATUS` | gained a second `LINK ...` line: link state, mode, ACTIONS, node_id, SSID, and the current assignment |
+| `STATUS` | gained a second `LINK ...` line: link state, mode, ACTIONS, whether a MUSTER drop is latched, node_id, SSID, and the current assignment |
 
-**The two association modes** are carried end to end: `should_drop_link_at_match_start()`
-(`station_link.h`) is the one call site that decides, and the glue calls it when an ARMED station's
-`game` byte changes (MC's own muster-push signal) -- `MUSTER` disconnects Wi-Fi at that instant,
-`HELD` does nothing. Neither mode ever discards `node_key` or the current assignment on a drop.
+**The two association modes** are carried end to end: `apply_station_config()` (`station_link.h`)
+decides, on every game-byte edge under `MUSTER` -- **including the very first arm after boot**
+(polish round 2: there is no separate "armed but not yet live" phase a station can observe, so
+0 -> N counts as a new match exactly like N -> N+1 does). The decision LATCHES as
+`dropped_for_match()`: the glue drops the socket once, and its own Wi-Fi reconnect kick then
+refuses to re-associate while the latch holds (polish round 2 fixed a real bug here -- the kick
+used to undo the drop on the very next `loop()` tick). Nothing clears the latch automatically,
+since a station has no wire signal for "the match is over" (§5g.2: no facts, no ring, nothing
+routed to it) -- `LINK RECONNECT` is the one documented way back. `HELD` never sets the latch at
+all. Neither mode ever discards `node_key` or the current assignment on a drop.
 
 **The powerup station (A56, `docs/spec/powerups.md`).** `station_config.item`
 (`{kind, weapon_id?, charges?, amount?, spawn_every_s, first_at_s, name, color}`) and
-`station_update {id, available, next_spawn_in_ms}` are parsed and stored. SELF-SPAWN
+`station_update {id, available, next_spawn_in_ms, reset?}` are parsed and stored. SELF-SPAWN
 (`PowerupSchedule` in `station_link.h`) counts its own local clock down to the next spawn and flips
-itself available at zero -- a lost MC link never freezes it -- and every `station_update` re-anchors
-that clock, MC being authoritative whenever it is reachable. CLAIM (`ClaimGate`) scans for a player
-phone's own advert (role 2, state bit 4 `claiming`, bit 5 `claim_ready`, `value` = the target station
-id, `id` = the claimant's player_num) and awards the first `claim_ready` heard for its own id, at
--80 dBm or stronger, ties going to the lower player_num -- the Stick counts no dwell of its own, only
-the phone's. The advert then carries `state 0` (taken), `value` = seconds to the next spawn (capped
-255), and the new byte 15 `taker` (the winner's player_num, 0 = none); `state 1` (available) is
-always `value 0`. A won claim is reported best-effort as `station_action {id, action:"taken",
-player_num, t}` -- **proposed to brx5, not a final contract.**
+itself available at zero -- a lost MC link never freezes it, and polish round 2 fixed a real bug
+where the ticking (and the CLAIM scan below) were wrongly gated on the link being `ASSIGNED`, so any
+drop froze both; both now run off the persisted assignment alone
+(`StationLink::has_powerup_assignment()`). Every `station_update` re-anchors the clock, MC being
+authoritative whenever it is reachable -- except that **a station which has locally awarded the
+current spawn refuses a bare `available:true` for it** (polish round 2, brx5): accepted only when
+`reset:true` (an explicit operator RESET, which still respects MC's own fixed schedule) or when the
+update's own implied next spawn is at least half a `spawn_every_s` interval past the awarded instant
+-- otherwise it is a stale echo of the claim that already happened, and applying it would silently
+un-claim an item a player is legitimately holding.
+
+CLAIM (`ClaimGate`) scans for a player phone's own advert (role 2, state bit 4 `claiming`, bit 5
+`claim_ready`, `value` = the target station id, `id` = the claimant's player_num) and awards the
+first `claim_ready` heard for its own id, at -80 dBm or stronger, ties going to the lower player_num
+-- the Stick counts no dwell of its own, only the phone's. The advert then carries `state 0` (taken),
+`value` = seconds to the next spawn (capped 255), and the new byte 15 `taker` (the winner's
+player_num, 0 = none); `state 1` (available) is always `value 0`. A won claim is reported
+best-effort as `station_action {id, action:"taken", player_num, t}` -- **proposed to brx5, not a
+final contract** -- but polish round 2 found the award was being reported straight from the BLE
+scan-complete callback, which must never touch the WebSocket. The callback now only enqueues
+(`PendingActionQueue`, bounded at 8, the newest report per spawn instant replacing any older one for
+the same instant); `mcLoop` is the only place anything is ever sent, draining the queue once per
+tick while a socket is live (still gated by `ACTIONS`, below).
 
 **Buttons and RESET.** Once Wi-Fi has ever been configured (the first `WIFI` command, ever, even
 across a reboot), the Stick's two buttons become OPERATOR controls -- players never press anything
@@ -279,8 +300,11 @@ reason for existing); the CLAIM scan actually catching a phone advertising every
 claiming (`CLAIM_SCAN_PERIOD_MS`/`CLAIM_SCAN_WINDOW_S` in `mc_link_glue.h` are guesses); the
 `ROLE_PLAYER` advert layout this firmware assumes (id = player_num, value = target station id) --
 FYI'd by brx5, never seen on our own bench; the -58 dBm threshold placeholder; the button timing
-(2 s hold, 5 s confirm timeout) at arm's length; and the operator screen's legibility on the real
-1.14" panel (`paintOperator()` has never been seen lit).
+(2 s hold, 5 s confirm timeout) at arm's length; the operator screen's legibility on the real
+1.14" panel (`paintOperator()` has never been seen lit); whether `LINK RECONNECT` actually needs
+typing over serial in practice or wants a button/timeout of its own; and the `available:true`
+refuse/accept rule (polish round 2) -- built from the coordinator's brief alone, since
+`app/src/powerup.js` does not exist in this checkout to mirror.
 
 **Bench steps (Tony's):**
 
@@ -295,6 +319,8 @@ FYI'd by brx5, never seen on our own bench; the -58 dBm threshold placeholder; t
    claim it from a player phone and confirm state flips to 0 with a plausible countdown in `value`
    and the taker's player_num in the last byte.
 6. Try `LINK HELD` vs the `LINK MUSTER` default and watch whether the advert stays live at go-live.
+   Under `MUSTER`, confirm `STATUS` shows `dropped_for_match=1` right after the drop, that the Stick
+   does NOT rejoin Wi-Fi on its own, and that `LINK RECONNECT` is what brings it back.
 7. `ACTIONS ON`, then hold B once (arms RESET) and again within 5 s (sends it) and confirm MC saw it
    (once MC accepts the kind); with `ACTIONS OFF` (the default) confirm nothing reaches MC either way
    and the screen still says RESET NEEDS MISSION CONTROL. Short-press A and confirm it only pages,

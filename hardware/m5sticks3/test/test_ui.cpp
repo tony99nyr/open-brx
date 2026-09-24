@@ -42,23 +42,29 @@ static void test_actions_disabled_by_default_builds_nothing() {
   a.kind = "powerup";
   a.id = 9;
   link.apply_station_config(a);
+  PendingTakenReport rep{9, 5, 0, 1000};
   CHECK(!link.actions_enabled());
   CHECK(maybe_build_reset_action(link, 1000).empty());
-  CHECK(maybe_build_taken_action(link, 5, 1000).empty());
+  CHECK(maybe_build_taken_action(link, rep).empty());
   link.set_actions_enabled(true);
   CHECK_EQ(maybe_build_reset_action(link, 1000),
            std::string("{\"id\":9,\"action\":\"reset\",\"t\":1000}"));
-  CHECK_EQ(maybe_build_taken_action(link, 5, 1000),
+  CHECK_EQ(maybe_build_taken_action(link, rep),
            std::string("{\"id\":9,\"action\":\"taken\",\"player_num\":5,\"t\":1000}"));
   link.set_actions_enabled(false);
   CHECK(maybe_build_reset_action(link, 1000).empty());  // flipping back off builds nothing again
+  CHECK(maybe_build_taken_action(link, rep).empty());
 }
 
 static void test_actions_gate_with_no_assignment_builds_nothing_even_when_enabled() {
   StationLink link;
   link.set_actions_enabled(true);
-  CHECK(maybe_build_reset_action(link, 1000).empty());
-  CHECK(maybe_build_taken_action(link, 5, 1000).empty());
+  CHECK(maybe_build_reset_action(link, 1000).empty());  // no assignment: RESET has no id to name
+  // A queued CLAIM report already carries its own station_id (captured at award time), so it can
+  // still be built even with no CURRENT assignment (e.g. the station was since reassigned).
+  PendingTakenReport rep{9, 5, 0, 1000};
+  CHECK_EQ(maybe_build_taken_action(link, rep),
+           std::string("{\"id\":9,\"action\":\"taken\",\"player_num\":5,\"t\":1000}"));
 }
 
 static void test_short_press_pages_through_every_page_and_wraps() {

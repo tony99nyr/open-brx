@@ -346,7 +346,9 @@ static void test_mc_available_true_clears_the_taker() {
   StationUpdateMsg reset;
   reset.present = true;
   reset.available = true;
-  s.apply_update(reset, 600);  // MC's answer to a RESET (or the next self-spawn it confirms)
+  reset.reset = true;  // polish round 2: a bare available:true for the SAME spawn is now refused;
+                        // this must say it is an actual operator RESET to be honoured
+  s.apply_update(reset, 600);  // MC's answer to a RESET
   CHECK(s.available());
   CHECK_EQ(s.taker(), (uint8_t)0);
 }
@@ -602,6 +604,255 @@ static void test_muster_drops_the_link_at_match_start_held_does_not() {
   CHECK(!held.should_drop_link_at_match_start());
 }
 
+// --- polish round 2, item 1 (CRITICAL): survives a link drop ------------------------------------
+
+static void test_has_powerup_assignment_survives_a_link_drop() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true;
+  a.kind = "powerup";
+  a.id = 8;
+  link.apply_station_config(a);
+  CHECK(link.has_powerup_assignment());
+  link.ws_closed();  // simulate the link dropping (state -> LOOKING_FOR_MC)
+  CHECK(link.state() != LinkState::ASSIGNED);
+  CHECK(link.has_powerup_assignment());  // the assignment itself is untouched
+}
+
+static void test_self_spawn_still_ticks_after_a_link_drop() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true;
+  a.kind = "powerup";
+  a.id = 8;
+  link.apply_station_config(a);
+  StationUpdateMsg u;
+  u.present = true;
+  u.id = 8;
+  u.available = false;
+  u.next_spawn_in_ms = 1000;
+  link.apply_station_update(u, 0);
+  link.ws_closed();
+  CHECK(link.state() != LinkState::ASSIGNED);
+  CHECK(!link.powerup().available());
+  CHECK(link.tick_powerup(1000));  // fires even though the link is down
+  CHECK(link.powerup().available());
+}
+
+static void test_claim_still_awards_after_a_link_drop() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true;
+  a.kind = "powerup";
+  a.id = 8;
+  link.apply_station_config(a);
+  link.ws_closed();
+  CHECK(link.state() != LinkState::ASSIGNED);
+  ClaimWinner w{true, 5};
+  CHECK(link.award_claim(w, 1000));  // still awards -- the advert's `taker` must not depend on the link
+  CHECK_EQ(link.powerup().taker(), (uint8_t)5);
+  CHECK(link.has_pending_actions());  // the report is queued for whenever the socket comes back
+}
+
+static void test_a_non_powerup_assignment_never_reports_a_powerup_assignment() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true;
+  a.kind = "control";
+  a.id = 8;
+  link.apply_station_config(a);
+  CHECK(!link.has_powerup_assignment());
+}
+
+// --- polish round 2, item 2 (CRITICAL): the muster edge and the reconnect latch ------------------
+
+static void test_the_first_ever_arm_sets_dropped_for_match_under_muster() {
+  StationLink link;  // MUSTER is the default
+  CHECK(!link.dropped_for_match());
+  StationAssignment a;
+  a.present = true;
+  a.kind = "respawn";
+  a.id = 3;
+  a.game = 1;  // MC's game byte is never 0 -- this IS the first real arm
+  link.apply_station_config(a);
+  CHECK(link.dropped_for_match());  // 0 -> 1 counts as a new match, not just N -> M
+}
+
+static void test_held_never_sets_dropped_for_match() {
+  StationLink link;
+  link.set_mode(AssocMode::HELD);
+  StationAssignment a;
+  a.present = true;
+  a.kind = "respawn";
+  a.id = 3;
+  a.game = 1;
+  link.apply_station_config(a);
+  CHECK(!link.dropped_for_match());
+}
+
+static void test_a_same_game_repush_does_not_set_dropped_for_match() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true;
+  a.kind = "respawn";
+  a.id = 3;
+  a.game = 1;
+  link.apply_station_config(a);
+  link.clear_dropped_for_match();  // as if the operator already reconnected it after match 1's muster
+  StationAssignment edit = a;
+  edit.threshold = -60;  // an edit at muster, SAME match: game is unchanged
+  link.apply_station_config(edit);
+  CHECK(!link.dropped_for_match());
+}
+
+static void test_dropped_for_match_latches_until_explicitly_cleared() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true;
+  a.kind = "respawn";
+  a.id = 3;
+  a.game = 1;
+  link.apply_station_config(a);
+  CHECK(link.dropped_for_match());
+  link.clear_dropped_for_match();
+  CHECK(!link.dropped_for_match());
+}
+
+static void test_a_new_game_number_sets_dropped_for_match_again_after_a_reconnect() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true;
+  a.kind = "respawn";
+  a.id = 3;
+  a.game = 1;
+  link.apply_station_config(a);    // match 1's muster
+  link.clear_dropped_for_match();  // the operator's explicit LINK RECONNECT, back at the table
+  StationAssignment a2 = a;
+  a2.game = 2;  // match 2's muster push
+  link.apply_station_config(a2);
+  CHECK(link.dropped_for_match());
+}
+
+// --- polish round 2, item 3 (HIGH): the pending station_action queue ----------------------------
+
+static void test_pending_action_queue_is_fifo_and_drops_the_oldest_when_full() {
+  PendingActionQueue q;
+  for (int i = 0; i < 10; i++) q.push(9, i + 1, (uint32_t)(1000 * i), 1000 + i);
+  CHECK_EQ(q.size(), PendingActionQueue::CAPACITY);
+  PendingTakenReport out;
+  CHECK(q.pop_front(out));
+  CHECK_EQ(out.player_num, 3);  // the two oldest (i=0,1) were evicted to make room
+}
+
+static void test_pending_action_queue_newest_per_spawn_instant_wins() {
+  PendingActionQueue q;
+  q.push(9, 5, 1000, 100);
+  q.push(9, 7, 1000, 200);  // same station + spawn instant: replaces, does not append
+  CHECK_EQ(q.size(), (size_t)1);
+  PendingTakenReport out;
+  CHECK(q.pop_front(out));
+  CHECK_EQ(out.player_num, 7);
+  CHECK_EQ(out.t_ms, (int64_t)200);
+}
+
+static void test_pending_action_queue_pop_front_on_empty_queue_fails() {
+  PendingActionQueue q;
+  PendingTakenReport out;
+  CHECK(!q.pop_front(out));
+}
+
+static void test_award_claim_enqueues_with_the_station_id_captured_at_award_time() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true;
+  a.kind = "powerup";
+  a.id = 8;
+  link.apply_station_config(a);
+  ClaimWinner w{true, 5};
+  CHECK(link.award_claim(w, 1000));
+  PendingTakenReport out;
+  CHECK(link.pop_pending_action(out));
+  CHECK_EQ(out.station_id, 8);
+  CHECK_EQ(out.player_num, 5);
+  CHECK(!link.has_pending_actions());  // drained
+}
+
+// --- polish round 2, item 4 (brx5, A56): refuse a stale available:true for the awarded spawn -----
+
+static void test_a_bare_available_true_for_the_awarded_spawn_is_refused() {
+  PowerupSchedule s;
+  StationUpdateMsg u;
+  u.present = true;
+  u.available = false;
+  u.next_spawn_in_ms = 1000;
+  s.apply_update(u, 0);   // anchor at t=1000
+  s.mark_taken(5, 1000);  // awarded instant = 1000
+  StationUpdateMsg stale;
+  stale.present = true;
+  stale.available = true;  // no reset, no next_spawn: an ambiguous, unproven "available" echo
+  s.apply_update(stale, 1100);
+  CHECK(!s.available());  // refused: still taken
+  CHECK_EQ(s.taker(), (uint8_t)5);
+}
+
+static void test_an_available_true_too_soon_after_the_awarded_instant_is_refused() {
+  PowerupSchedule s;
+  StationUpdateMsg u;
+  u.present = true;
+  u.available = false;
+  u.next_spawn_in_ms = 1000;
+  s.apply_update(u, 0);
+  s.mark_taken(5, 1000);  // awarded instant = 1000; spawn_every_s defaults to 60 (half interval 30000 ms)
+  StationUpdateMsg tooSoon;
+  tooSoon.present = true;
+  tooSoon.available = true;
+  tooSoon.next_spawn_in_ms = 5000;  // implies the next spawn is at 1100 + 5000 = 6100 (5100 ms past 1000)
+  s.apply_update(tooSoon, 1100);
+  CHECK(!s.available());  // 5100 ms < half of 60 s: still refused
+  CHECK_EQ(s.taker(), (uint8_t)5);
+}
+
+static void test_an_available_true_far_enough_past_the_awarded_instant_is_accepted() {
+  PowerupSchedule s;
+  StationUpdateMsg u;
+  u.present = true;
+  u.available = false;
+  u.next_spawn_in_ms = 1000;
+  s.apply_update(u, 0);
+  s.mark_taken(5, 1000);  // awarded instant = 1000; half interval = 30000 ms
+  StationUpdateMsg later;
+  later.present = true;
+  later.available = true;
+  later.next_spawn_in_ms = 30000;  // implies the next spawn is at 1000 + 30000 = 31000 (30000 ms past)
+  s.apply_update(later, 1000);
+  CHECK(s.available());  // at the half-interval boundary: accepted
+  CHECK_EQ(s.taker(), (uint8_t)0);
+}
+
+static void test_reset_true_is_always_accepted_regardless_of_timing() {
+  PowerupSchedule s;
+  StationUpdateMsg u;
+  u.present = true;
+  u.available = false;
+  u.next_spawn_in_ms = 1000;
+  s.apply_update(u, 0);
+  s.mark_taken(5, 1000);
+  StationUpdateMsg reset;
+  reset.present = true;
+  reset.available = true;
+  reset.reset = true;
+  reset.next_spawn_in_ms = 5000;  // "a reset keeps the fixed next spawn": MC's own value is trusted as-is
+  s.apply_update(reset, 1100);
+  CHECK(s.available());
+  CHECK_EQ(s.taker(), (uint8_t)0);
+}
+
+static void test_should_accept_available_with_nothing_awarded_always_accepts() {
+  PowerupSchedule s;  // fresh: nothing has ever been locally claimed
+  CHECK(s.should_accept_available(false, -1, 0));
+  CHECK(s.should_accept_available(false, 100, 12345));
+}
+
 static void test_backoff_doubles_and_caps_and_resets_on_welcome() {
   StationLink link;
   Backoff& b = link.backoff();
@@ -699,6 +950,24 @@ int main(int argc, char** argv) {
   test_release_drops_to_unassigned_but_keeps_the_link();
   test_station_update_applies_only_to_the_currently_assigned_id();
   test_muster_drops_the_link_at_match_start_held_does_not();
+  test_has_powerup_assignment_survives_a_link_drop();
+  test_self_spawn_still_ticks_after_a_link_drop();
+  test_claim_still_awards_after_a_link_drop();
+  test_a_non_powerup_assignment_never_reports_a_powerup_assignment();
+  test_the_first_ever_arm_sets_dropped_for_match_under_muster();
+  test_held_never_sets_dropped_for_match();
+  test_a_same_game_repush_does_not_set_dropped_for_match();
+  test_dropped_for_match_latches_until_explicitly_cleared();
+  test_a_new_game_number_sets_dropped_for_match_again_after_a_reconnect();
+  test_pending_action_queue_is_fifo_and_drops_the_oldest_when_full();
+  test_pending_action_queue_newest_per_spawn_instant_wins();
+  test_pending_action_queue_pop_front_on_empty_queue_fails();
+  test_award_claim_enqueues_with_the_station_id_captured_at_award_time();
+  test_a_bare_available_true_for_the_awarded_spawn_is_refused();
+  test_an_available_true_too_soon_after_the_awarded_instant_is_refused();
+  test_an_available_true_far_enough_past_the_awarded_instant_is_accepted();
+  test_reset_true_is_always_accepted_regardless_of_timing();
+  test_should_accept_available_with_nothing_awarded_always_accepts();
   test_backoff_doubles_and_caps_and_resets_on_welcome();
   if (failures) {
     std::printf("%d check(s) failed\n", failures);

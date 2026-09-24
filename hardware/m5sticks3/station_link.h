@@ -84,6 +84,10 @@ struct StationUpdateMsg {
   int id = 0;
   bool available = false;
   long next_spawn_in_ms = -1;  // relative (no synced clock); -1 = absent
+  // A56 polish round 2 (brx5): MC sets this only on an operator RESET. `app/src/powerup.js` does
+  // not exist in this checkout to mirror; this shape and the accept/refuse rule below are built from
+  // the brief alone (docs/spec/powerups.md, and the coordinator's message, are the only sources).
+  bool reset = false;
 };
 
 struct WelcomeMsg {
@@ -217,6 +221,7 @@ inline StationUpdateMsg parse_station_update(const json::Value& body) {
   u.id = (int)body.get("id").as_int();
   u.available = body.get("available").as_bool(false);
   u.next_spawn_in_ms = body.has("next_spawn_in_ms") ? body.get("next_spawn_in_ms").as_int(-1) : -1;
+  u.reset = body.get("reset").as_bool(false);
   return u;
 }
 
@@ -254,23 +259,46 @@ class PowerupSchedule {
  public:
   bool available() const { return available_; }
   uint8_t taker() const { return taker_; }
+  uint32_t anchor_ms() const { return anchor_ms_; }
 
   void apply_item(const StationItem& it) {
     if (it.present && it.spawn_every_s > 0) spawn_every_s_ = it.spawn_every_s;
   }
 
+  // A56 polish round 2 (brx5): should an incoming `station_update{available:true}` actually be
+  // applied? A station that has awarded the current spawn (a LOCAL claim, `mark_taken`) must REFUSE
+  // a stale or duplicate `available:true` for that SAME spawn -- accepting it would silently
+  // un-claim an item a player already legitimately holds. Accepted when: nothing is being protected
+  // (no local award since the last genuine spawn); `reset` is set (an explicit operator RESET is
+  // always honoured -- "a reset keeps the fixed next spawn", so it still goes through the normal
+  // re-anchor below, just never refused); or the incoming update's own implied next-spawn instant is
+  // at least half a `spawn_every_s` interval past the awarded one, which can only mean a genuinely
+  // later spawn cycle, not an echo of the one just claimed. `app/src/powerup.js` does not exist in
+  // this checkout to mirror; this rule is built from the brief alone.
+  bool should_accept_available(bool reset, long incoming_next_spawn_in_ms, uint32_t received_at_ms) const {
+    if (!has_awarded_instant_) return true;
+    if (reset) return true;
+    if (incoming_next_spawn_in_ms < 0) return false;  // nothing to prove this is a later cycle
+    uint32_t incoming_next_ms = received_at_ms + (uint32_t)incoming_next_spawn_in_ms;
+    long half_interval_ms = (long)(spawn_every_s_ > 0 ? spawn_every_s_ : 60) * 1000L / 2;
+    long advance_ms = (long)(incoming_next_ms - awarded_instant_ms_);
+    return advance_ms >= half_interval_ms;
+  }
+
   // MC is authoritative: always re-anchors when a next_spawn_in_ms rides along, even one that is
   // already in the past by the time it lands (`tick()` below folds a stale anchor forward without
-  // an extra false spawn). `available:true` (e.g. RESET's answer) clears any taker shown locally --
-  // "a reset while TAKEN clears taker only when MC's station_update {available:true} arrives".
+  // an extra false spawn). An ACCEPTED `available:true` clears any taker shown locally and lifts the
+  // local-award protection above; a REFUSED one changes nothing at all (not even the anchor), since
+  // applying half of a rejected update would be its own kind of wrong.
   void apply_update(const StationUpdateMsg& u, uint32_t received_at_ms) {
     if (!u.present) return;
+    if (u.available && !should_accept_available(u.reset, u.next_spawn_in_ms, received_at_ms)) return;
     available_ = u.available;
     if (u.next_spawn_in_ms >= 0) {
       anchor_ms_ = received_at_ms + (uint32_t)u.next_spawn_in_ms;
       has_anchor_ = true;
     }
-    if (available_) taker_ = 0;
+    if (available_) { taker_ = 0; has_awarded_instant_ = false; }
   }
 
   // The Stick's own local clock (SELF-SPAWN). Call every loop() with the current millis(); returns
@@ -280,6 +308,7 @@ class PowerupSchedule {
     if ((int32_t)(now_ms - anchor_ms_) < 0) return false;  // not due yet (wrap-safe signed compare)
     available_ = true;
     taker_ = 0;
+    has_awarded_instant_ = false;
     return true;
   }
 
@@ -287,17 +316,22 @@ class PowerupSchedule {
   // instant, never "now + spawn_every_s" -- the schedule is fixed-time, not a cooldown after a
   // grant -- folding forward past any periods already missed so a late-processed claim never
   // double-spawns an instant it already passed. MC's own next `station_update` corrects this
-  // estimate once it arrives; this is only the Stick's best local guess until then.
-  void mark_taken(uint8_t player_num, uint32_t now_ms) {
+  // estimate once it arrives; this is only the Stick's best local guess until then. Returns the
+  // spawn instant that was just claimed (the caller enqueues it as the CLAIM report's dedup key).
+  uint32_t mark_taken(uint8_t player_num, uint32_t now_ms) {
+    uint32_t awarded = has_anchor_ ? anchor_ms_ : now_ms;
     available_ = false;
     taker_ = player_num;
+    has_awarded_instant_ = true;
+    awarded_instant_ms_ = awarded;
     uint32_t period_ms = (uint32_t)(spawn_every_s_ > 0 ? spawn_every_s_ : 60) * 1000u;
     if (!has_anchor_) {
       anchor_ms_ = now_ms + period_ms;
       has_anchor_ = true;
-      return;
+      return awarded;
     }
     while ((int32_t)(now_ms - anchor_ms_) >= 0) anchor_ms_ += period_ms;
+    return awarded;
   }
 
   PowerupAdvertView view(uint32_t now_ms) const {
@@ -319,6 +353,8 @@ class PowerupSchedule {
   uint32_t anchor_ms_ = 0;
   int spawn_every_s_ = 60;
   uint8_t taker_ = 0;
+  bool has_awarded_instant_ = false;  // true once a LOCAL claim has awarded the current spawn
+  uint32_t awarded_instant_ms_ = 0;
 };
 
 // ---- the CLAIM award (A56, confirmed 2026-09-24) -------------------------------------------------
@@ -395,6 +431,53 @@ struct Backoff {
   }
 };
 
+// ---- pending station_action reports (polish round 2) ---------------------------------------------
+// A CLAIM award happens inside a BLE scan-complete callback (mc_link_glue.h), which must NEVER touch
+// the WebSocket directly -- the library is not written to be called from there, and no I/O belongs
+// in a callback anyway. The callback only enqueues; mcLoop is the one place that ever sends. Bounded
+// (a handful of stray claims is already an unusual field state) and keyed by the spawn instant being
+// reported: a second report for the SAME instant replaces the first ("the newest per spawn instant
+// wins") instead of piling up, and the OLDEST distinct instant is dropped to make room once full --
+// a report about a spawn cycle several cycles ago is the one MC needs least.
+struct PendingTakenReport {
+  int station_id = 0;  // captured at the moment of the award -- a later reassignment must not relabel it
+  int player_num = 0;
+  uint32_t spawn_instant_ms = 0;
+  int64_t t_ms = 0;
+};
+
+class PendingActionQueue {
+ public:
+  static constexpr size_t CAPACITY = 8;
+
+  void push(int station_id, int player_num, uint32_t spawn_instant_ms, int64_t t_ms) {
+    for (auto& e : entries_) {
+      if (e.station_id == station_id && e.spawn_instant_ms == spawn_instant_ms) {
+        e.player_num = player_num;
+        e.t_ms = t_ms;
+        return;
+      }
+    }
+    if (entries_.size() >= CAPACITY) entries_.erase(entries_.begin());
+    entries_.push_back(PendingTakenReport{station_id, player_num, spawn_instant_ms, t_ms});
+  }
+
+  bool empty() const { return entries_.empty(); }
+  size_t size() const { return entries_.size(); }
+
+  // FIFO: the oldest queued report comes out first. Returns false (leaving `out` untouched) when
+  // the queue is empty.
+  bool pop_front(PendingTakenReport& out) {
+    if (entries_.empty()) return false;
+    out = entries_.front();
+    entries_.erase(entries_.begin());
+    return true;
+  }
+
+ private:
+  std::vector<PendingTakenReport> entries_;
+};
+
 // ---- the link state machine ------------------------------------------------------------------
 // Owns no I/O: the .ino drives every transition from a real Wi-Fi/socket event and reads back what
 // to do next. §5g.4's whole point lives in one method here (`should_drop_link_at_match_start`): the
@@ -462,6 +545,13 @@ class StationLink {
     backoff_.reset();
   }
 
+  // Polish round 1 (2026-09-24): whether SELF-SPAWN ticking and the CLAIM scan should run at all.
+  // This is the PERSISTED assignment, never the link state -- state() drops to LOOKING_FOR_MC on any
+  // WS hiccup, and gating on it froze the schedule on every disconnect (the exact bug SELF-SPAWN
+  // exists to prevent). §5g.4 is explicit that an assignment survives a drop; this is that survival,
+  // read by the glue instead of re-deriving it from link state.
+  bool has_powerup_assignment() const { return assignment_.present && assignment_.kind == "powerup"; }
+
   // Returns true when a field that changes the advert actually moved, so the caller republishes
   // only when it must (mirrors `AdvertPolicy::due`'s "first/state/progress" distinction upstream).
   bool apply_station_config(const StationAssignment& a) {
@@ -471,7 +561,13 @@ class StationLink {
     // available/taker/anchor state. Team/game alone changing (the same station re-armed) does not
     // reset the schedule.
     bool kind_or_id_changed = !assignment_.present || assignment_.kind != a.kind || assignment_.id != a.id;
-    bool changed = kind_or_id_changed || assignment_.team != a.team || assignment_.game != a.game;
+    // Polish round 2: the game byte moving is the muster-push edge (§5g.4) -- including the very
+    // FIRST arm after boot (assignment_.present was false), since a station has no other way to
+    // observe "I have just been armed for a match": there is no separate "armed but not yet live"
+    // signal it ever receives. `lastGameByte`-style tracking used to live in the glue and required a
+    // 0-is-never-real sentinel that excluded exactly this case.
+    bool game_changed = !assignment_.present || assignment_.game != a.game;
+    bool changed = kind_or_id_changed || assignment_.team != a.team || game_changed;
     if (kind_or_id_changed) {
       powerup_ = PowerupSchedule();
       claims_ = ClaimGate();
@@ -482,6 +578,11 @@ class StationLink {
       powerup_.apply_item(a.item);
       claims_.configure(a.id, a.game);
     }
+    // The actual Wi-Fi disconnect is the glue's (it owns the radio); this only records the decision,
+    // so mcLoop's reconnect logic can respect it. It stays latched until the operator's explicit
+    // `clear_dropped_for_match()` -- there is no wire signal a station could use to notice "the match
+    // is over" on its own (§5g.2: no facts, no ring, no `result`/`control{end}` routed to it).
+    if (game_changed && should_drop_link_at_match_start()) dropped_for_match_ = true;
     return changed;
   }
 
@@ -496,18 +597,25 @@ class StationLink {
     return true;
   }
 
-  // SELF-SPAWN (A56): call every loop() with the current millis(). A lost MC link must not freeze
-  // the schedule -- this is what keeps it moving with no round trip.
+  // SELF-SPAWN (A56): call every loop() with the current millis(), gated on `has_powerup_assignment()`
+  // ONLY -- never on link state. A lost MC link must not freeze the schedule.
   bool tick_powerup(uint32_t now_ms) { return powerup_.tick(now_ms); }
 
   // A claim batch resolved to a winner (ClaimGate::resolve_batch, called by the .ino after a BLE
-  // scan window): take it, if the station is still available. Returns false (no-op) otherwise --
-  // a winner from a batch that started before someone else's claim already landed is stale.
+  // scan window): take it, if the station is still available, whatever the link state is (the same
+  // "assignment survives a drop" rule as SELF-SPAWN). Polish round 2: the report to MC is only
+  // ENQUEUED here, never sent -- the BLE scan-complete callback that calls this must not touch the
+  // socket. `mcLoop` (or a test) drains it with `pop_pending_action`.
   bool award_claim(const ClaimWinner& w, uint32_t now_ms) {
     if (!w.won || !powerup_.available()) return false;
-    powerup_.mark_taken(w.player_num, now_ms);
+    uint32_t spawn_instant = powerup_.mark_taken(w.player_num, now_ms);
+    pending_actions_.push(assignment_.id, w.player_num, spawn_instant, (int64_t)now_ms);
     return true;
   }
+
+  bool pop_pending_action(PendingTakenReport& out) { return pending_actions_.pop_front(out); }
+  bool has_pending_actions() const { return !pending_actions_.empty(); }
+  size_t pending_action_count() const { return pending_actions_.size(); }
 
   // control{cmd:"release_utility"} (§5g.7): drop to UNASSIGNED -- the nearest true equivalent of a
   // phone's BACK TO HUD, since a Stick has no HUD to return to. The Wi-Fi/MC link itself is
@@ -519,10 +627,17 @@ class StationLink {
     if (state_ == LinkState::ASSIGNED) state_ = LinkState::WELCOMED;
   }
 
-  // §5g.4: the ONE call site that decides whether the Wi-Fi association survives go-live. Called by
-  // the .ino when the assignment's `game` byte changes (the muster-push signal) or on an explicit
-  // "match starting" cue; `held` returns false and the caller leaves Wi-Fi exactly where it is.
+  // §5g.4: the ONE call site that decides whether MUSTER mode would drop the Wi-Fi association for
+  // the match. `held` returns false and nothing about the link changes on a game-byte edge.
   bool should_drop_link_at_match_start() const { return mode_ == AssocMode::MUSTER; }
+
+  // Polish round 2: the latch `apply_station_config` sets when a MUSTER drop just happened. While
+  // true, the glue's Wi-Fi reconnect kick must NOT re-associate (or the deliberate drop is undone on
+  // the very next loop() tick, which was the bug). Cleared only by the operator's explicit action
+  // (documented as `LINK RECONNECT`, README "Mission Control link (H8)") -- there is no automatic
+  // "match over" signal this station could observe instead.
+  bool dropped_for_match() const { return dropped_for_match_; }
+  void clear_dropped_for_match() { dropped_for_match_ = false; }
 
  private:
   LinkState state_ = LinkState::NOT_CONFIGURED;
@@ -533,8 +648,10 @@ class StationLink {
   uint32_t last_update_at_ms_ = 0;
   PowerupSchedule powerup_;
   ClaimGate claims_;
+  PendingActionQueue pending_actions_;
   Backoff backoff_;
   bool actions_enabled_ = false;
+  bool dropped_for_match_ = false;
 };
 
 }  // namespace brx

@@ -505,14 +505,15 @@ static void printStatus() {
   // (mcp/tools/stick.py `parse_status`) keeps working unchanged.
   const brx::StationLink& link = brx_glue::link;
   const brx::StationAssignment& a = link.assignment();
-  Serial.printf("LINK state=%s mode=%s actions=%s node_id=%s wifi=%s kind=%s team=%d id=%d game=%d threshold=%d",
+  Serial.printf("LINK state=%s mode=%s actions=%s dropped_for_match=%d node_id=%s wifi=%s kind=%s team=%d id=%d game=%d threshold=%d",
                 brx::link_state_label(link.state()), link.mode() == brx::AssocMode::HELD ? "HELD" : "MUSTER",
-                link.actions_enabled() ? "ON" : "OFF", link.identity().node_id.c_str(),
-                brx_glue::wifiSsid.c_str(), a.present ? a.kind.c_str() : "-",
+                link.actions_enabled() ? "ON" : "OFF", link.dropped_for_match() ? 1 : 0,
+                link.identity().node_id.c_str(), brx_glue::wifiSsid.c_str(), a.present ? a.kind.c_str() : "-",
                 a.present ? a.team : -1, a.present ? a.id : -1, a.present ? a.game : -1,
                 a.present ? a.threshold : 0);
   if (a.present && a.kind == "powerup") {
-    Serial.printf(" powerup_available=%d taker=%u", link.powerup().available() ? 1 : 0, link.powerup().taker());
+    Serial.printf(" powerup_available=%d taker=%u pending_actions=%u", link.powerup().available() ? 1 : 0,
+                  link.powerup().taker(), (unsigned)link.pending_action_count());
   }
   Serial.println();
 }
@@ -669,7 +670,7 @@ void setup() {
   Serial.printf("# mode=%s id=%u game=%u txpin=%u\n", point.mode == Mode::HILL ? "HILL" : "BRIDGE", settings.id,
                 settings.game, settings.txpin);
   Serial.println("# Commands: SELFTEST [bits] | RAW ON|OFF | TX <bits> | TXN <n> <bits> | AUTO <bits>|OFF | PING | STATUS | MODE BRIDGE|HILL | ID <n> | GAME <n> | TXPIN 46|9|10 | RESET | r s c");
-  Serial.println("# H8: WIFI <ssid> <pass> | MC <ws://host:port/path> | LINK MUSTER|HELD | LINK OFF | ACTIONS ON|OFF");
+  Serial.println("# H8: WIFI <ssid> <pass> | MC <ws://host:port/path> | LINK MUSTER|HELD|OFF|RECONNECT | ACTIONS ON|OFF");
   if (!initRx()) Serial.println("ERR rx init (RMT)");
   if (!initTx(settings.txpin)) Serial.println("ERR tx init (RMT)");
   initBle();

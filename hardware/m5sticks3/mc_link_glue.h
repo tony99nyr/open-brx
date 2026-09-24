@@ -143,7 +143,6 @@ uint32_t lastMdnsTryMs = 0;
 uint32_t lastHeartbeatMs = 0;
 uint32_t lastClaimScanMs = 0;
 bool wsWantOpen = false;     // true once we have picked an address and should be socket-connected
-int lastGameByte = 0;        // for detecting the muster-push "new match" edge (§5g.4)
 // Polish round 1: `status.live` must say whether the BLE advert is actually up, not merely that MC
 // armed us -- an advert can fail to start (ERR advert start, m5sticks3.ino publishAdvert()) or a
 // BRIDGE can withdraw it (no live beacon) while still fully ASSIGNED. The .ino calls mcSetLive()
@@ -185,26 +184,22 @@ class ClaimScanCallbacks : public BLEAdvertisedDeviceCallbacks {
 ClaimScanCallbacks claimScanCallbacks;
 bool claimScanConfigured = false;
 
+// Polish round 2 (HIGH): this callback must NEVER touch the WebSocket -- it runs off the BLE scan's
+// own completion, not mcLoop, and the library is not written to be called from there (nor does any
+// other I/O belong in a callback). `award_claim` only enqueues the report (station_link.h); mcLoop is
+// the sole place anything is ever sent, and it drains the queue every tick.
 static void onClaimScanComplete(BLEScanResults /*results*/) {
   ClaimWinner w = link.claims().resolve_batch();
-  // The award is ALWAYS local, whatever ACTIONS says: the advert carries `taker` either way. Only
-  // the report to MC is gated (`maybe_build_taken_action` -- station_ui.h -- returns empty with
-  // ACTIONS off, so nothing is built, let alone sent).
   if (link.award_claim(w, millis())) {
-    Serial.printf("CLAIM station=%d taker=%u\n", link.assignment().id, w.player_num);
-    std::string body = maybe_build_taken_action(link, w.player_num, (int64_t)millis());
-    if (!body.empty() && ws.isConnected()) {
-      std::string envStd = make_envelope("station_action", body, mcNextActionId().c_str(), (int64_t)millis());
-      String envArduino(envStd.c_str());
-      ws.sendTXT(envArduino);
-    }
+    Serial.printf("CLAIM station=%d taker=%u (queued for MC)\n", link.assignment().id, w.player_num);
   }
   BLEDevice::getScan()->clearResults();
 }
 
 static void mcPollClaimScan(uint32_t now) {
-  if (link.state() != LinkState::ASSIGNED) return;
-  if (link.assignment().kind != "powerup") return;
+  // Polish round 1 (CRITICAL): gated on the PERSISTED assignment, never link state -- see
+  // `has_powerup_assignment()`'s own comment in station_link.h.
+  if (!link.has_powerup_assignment()) return;
   if (!link.powerup().available()) return;  // nothing to claim while taken
   if (now - lastClaimScanMs < CLAIM_SCAN_PERIOD_MS) return;
   BLEScan* scan = BLEDevice::getScan();
@@ -222,18 +217,6 @@ static void mcPollClaimScan(uint32_t now) {
     claimScanConfigured = true;
   }
   scan->start(CLAIM_SCAN_WINDOW_S, onClaimScanComplete, false);
-}
-
-// ---- station_config -> the advert's kind/team/id/game, and the powerup item ---------------------
-// Returns true when this Stick just crossed into a NEW match (the game byte moved), which is the
-// §5g.4 muster-push signal `should_drop_link_at_match_start()` acts on.
-static bool mcApplyStationConfig(const StationAssignment& a) {
-  int prevGame = lastGameByte;
-  link.apply_station_config(a);
-  lastGameByte = a.game;
-  Serial.printf("MC-ARMED kind=%s team=%d id=%d game=%d threshold=%d\n", a.kind.c_str(), a.team,
-                a.id, a.game, a.threshold);
-  return prevGame != 0 && a.game != prevGame;
 }
 
 // ---- WebSocket event handling ------------------------------------------------------------------
@@ -260,9 +243,14 @@ static void mcHandleFrame(const String& text) {
   } else if (kind == "station_config") {
     StationAssignment a = parse_station_config(body);
     if (a.present) {
-      bool newMatch = mcApplyStationConfig(a);
-      if (newMatch && link.should_drop_link_at_match_start()) {
-        Serial.println("MUSTER: dropping the Wi-Fi association for the match");
+      // §5g.4 + polish round 2: apply_station_config() decides AND latches `dropped_for_match()`
+      // (a game-byte edge under MUSTER, including the very first arm after boot) -- this is only the
+      // radio action the glue owns; the decision itself is pure and tested in station_link.h.
+      link.apply_station_config(a);
+      Serial.printf("MC-ARMED kind=%s team=%d id=%d game=%d threshold=%d\n", a.kind.c_str(), a.team,
+                    a.id, a.game, a.threshold);
+      if (link.dropped_for_match()) {
+        Serial.println("MUSTER: dropping the Wi-Fi association for the match (LINK RECONNECT to rejoin)");
         ws.disconnect();
         WiFi.disconnect();
         wsWantOpen = false;
@@ -330,7 +318,10 @@ static void mcLoop(uint32_t now) {
     link.wifi_down();
   }
   if (!wifiUp) {
-    if (link.state() == LinkState::JOINING_WIFI && wifiSsid.length() &&
+    // Polish round 2 (CRITICAL): a deliberate MUSTER drop must STAY dropped. Without this guard the
+    // very next tick's kick re-associated Wi-Fi immediately, undoing the drop `mcHandleFrame` just
+    // performed -- the whole point of MUSTER. `LINK RECONNECT` (below) is the only way past it.
+    if (!link.dropped_for_match() && link.state() == LinkState::JOINING_WIFI && wifiSsid.length() &&
         WiFi.status() != WL_IDLE_STATUS) {
       WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());  // (re)kick the association; cheap if already trying
     }
@@ -383,8 +374,25 @@ static void mcLoop(uint32_t now) {
     ws.sendTXT(env);
   }
 
-  // SELF-SPAWN: the local clock keeps the powerup schedule moving with no MC round trip.
-  if (link.state() == LinkState::ASSIGNED && link.assignment().kind == "powerup") {
+  // Polish round 2 (HIGH): the ONLY place a queued CLAIM report is ever sent -- never from the BLE
+  // scan callback that enqueued it. Best-effort, like every other send here: drained while a socket
+  // is live, left queued otherwise (bounded, station_link.h's PendingActionQueue). `ACTIONS` gates
+  // `maybe_build_taken_action` itself, so a report is simply dropped, never built, while it is off.
+  if (ws.isConnected()) {
+    PendingTakenReport rep;
+    while (link.pop_pending_action(rep)) {
+      std::string body = maybe_build_taken_action(link, rep);
+      if (!body.empty()) {
+        std::string env = make_envelope("station_action", body, mcNextActionId().c_str(), rep.t_ms);
+        String envArduino(env.c_str());
+        ws.sendTXT(envArduino);
+      }
+    }
+  }
+
+  // Polish round 1 (CRITICAL): SELF-SPAWN and the CLAIM scan are gated on the PERSISTED assignment
+  // (`has_powerup_assignment()`), never on link state -- a link drop must not freeze the schedule.
+  if (link.has_powerup_assignment()) {
     link.tick_powerup(now);
     mcPollClaimScan(now);
   }
@@ -426,6 +434,14 @@ static bool mcHandleLine(const String& lineIn) {
     wsWantOpen = false;
     haveTypedMc = false;
     Serial.println("LINK OFF");
+    return true;
+  }
+  if (line == "LINK RECONNECT") {
+    // Polish round 2: the documented operator action that clears a MUSTER drop's latch (§5g.4) --
+    // "bring the Stick back to the table between matches". Without this the station can never
+    // receive the NEXT muster's station_config at all: it has no other way back onto Wi-Fi.
+    link.clear_dropped_for_match();
+    Serial.println("LINK RECONNECT (will rejoin Wi-Fi)");
     return true;
   }
   if (line == "ACTIONS ON" || line == "ACTIONS OFF") {

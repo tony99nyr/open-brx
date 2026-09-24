@@ -54,9 +54,12 @@ inline std::string maybe_build_reset_action(const StationLink& link, int64_t t_m
   return build_station_action_body(link.assignment().id, "reset", t_ms);
 }
 
-inline std::string maybe_build_taken_action(const StationLink& link, int player_num, int64_t t_ms) {
-  if (!link.actions_enabled() || !link.assignment().present) return std::string();
-  return build_station_action_taken_body(link.assignment().id, player_num, t_ms);
+// Polish round 2: takes the whole queued report, not a bare player_num -- `station_id` is the one
+// captured at the moment of the award (PendingTakenReport, station_link.h), never the station's
+// CURRENT assignment, which may have moved on by the time this is flushed.
+inline std::string maybe_build_taken_action(const StationLink& link, const PendingTakenReport& rep) {
+  if (!link.actions_enabled()) return std::string();
+  return build_station_action_taken_body(rep.station_id, rep.player_num, rep.t_ms);
 }
 
 // The stats pages a short press cycles through ("view stats, local only"): station kind, who took
