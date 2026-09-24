@@ -668,7 +668,8 @@ export class MockBackend implements Api {
         : undefined,
       start: this.start_ ? clone(this.start_) : undefined,
       live: this.live_ ? this.liveView() : undefined,
-      recap: this.recap_ ? clone(this.recap_) : undefined,
+      // `since_end_ms`, as `state.py settling()` adds it: RECAP reads the real match length from it (M23)
+      recap: this.recap_ ? { ...clone(this.recap_), ...(this.endedAt !== undefined ? { since_end_ms: Math.max(0, now() - this.endedAt) } : {}) } : undefined,
       end_delivery: this.endDelivery(),      // A42
       orphan_match: this.orphanView(),
     };

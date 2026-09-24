@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { MatchHistoryRow, RecapStationRow, RecapView, ScoreRow } from '../api/types';
 import { endDeliveryLine } from '../api/derive';
+import { recapDeliveryText } from './recapDelivery';
 import { useStore } from '../store';
 import { CHAMFER, F, T, fmtDuration, teamColor } from '../tokens';
 import { BTN_RESET, Brackets, Num, SectionRule, PrimaryButton } from '../ui';
@@ -118,6 +119,21 @@ export function Recap() {
   const edv = past ? null : state.end_delivery;
   const edLine = endDeliveryLine(edv);
   const edStragglers = edv?.unconfirmed ?? [];
+  const edUnconfirmed = new Set(edStragglers.map(u => u.player_id));
+  const edText = edv ? recapDeliveryText(edv) : null;
+  // M23 (visual QA 2026-09-23): the header printed the TIME LIMIT, so a match ended early at 2:13 read
+  // as 10:00. The length is read from the server's own clock: `since_end_ms` is `now - scorer.end_t`
+  // (state.py `settling()`), `t` is that same `now`, and `live.go_live_t` is the whistle's start, all on
+  // one snapshot. Without all three (an older MC, or a recap with no scorer behind it) the header says
+  // it is the LIMIT rather than pass the limit off as the length.
+  const limitS = state.config.time_limit_s ?? 0;
+  const playedS = !past && state.live && typeof rc.since_end_ms === 'number' && typeof state.t === 'number'
+    ? Math.min(limitS || Infinity, Math.max(0, Math.round((state.t - rc.since_end_ms - state.live.go_live_t) / 1000)))
+    : null;
+  const lengthLabel = past ? ''
+    : playedS == null ? (limitS ? ` · LIMIT ${fmtDuration(limitS)}` : '')
+    : limitS && playedS < limitS ? ` · ${fmtDuration(playedS)} OF ${fmtDuration(limitS)}`
+    : ` · ${fmtDuration(playedS)}`;
 
   return (
     <div className="screen">
@@ -164,16 +180,20 @@ export function Recap() {
           anybody's score row. A player whose phone dropped off the Wi-Fi did nothing wrong, and a line that
           sits inside the results reads as if they did. Live match only: an archived recap is read long
           after the phone in question was put away, and `end_delivery` is about the match in hand. */}
-      {!past && edLine && (
-        <div data-testid="end-delivery-recap" role={edLine.ok ? undefined : 'alert'}
-          style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${edLine.ok ? T.line2 : T.bad}`,
-            borderLeft: `3px solid ${edLine.ok ? T.ok : T.bad}`, background: edLine.ok ? undefined : 'rgba(255,82,82,.07)',
-            font: F.mono(500, 11), letterSpacing: '.1em', color: edLine.ok ? T.dim : T.bad, lineHeight: 1.5 }}>
-          {edLine.ok ? `✓ ${edLine.text}` : (
-            <>▲ {edStragglers.length} HUD{edStragglers.length === 1 ? '' : 'S'} NEVER CONFIRMED THE END
-              {' '}({edStragglers.map(u => u.display).join(', ')}). THIS IS A DELIVERY FACT — IT SAYS NOTHING
-              {' '}ABOUT HOW THEY PLAYED. THAT TAGGER MAY HAVE PLAYED ON AFTER THE WHISTLE: CHECK IT ON THE GUN.</>
-          )}
+      {/* M1 (visual QA 2026-09-23): this block said "8 HUDS NEVER CONFIRMED THE END" five seconds after
+          the whistle, while MC was still re-delivering, beside a command-bar "REACHED 8 OF 8 NODES" and a
+          row of "SYNCED ✓". It now follows the server's own `retrying`: amber and "NOT CONFIRMED YET"
+          while MC is still trying, red and "NEVER" only once the ladder is spent. It also says how many
+          phones the END REACHED (the socket took it), because reaching a phone is not a confirmation. */}
+      {!past && edLine && edv && (
+        <div data-testid="end-delivery-recap" data-end-state={edLine.ok ? 'confirmed' : edv.retrying ? 'retrying' : 'spent'}
+          role={edLine.ok ? undefined : edv.retrying ? 'status' : 'alert'}
+          style={{ marginBottom: 12, padding: '8px 14px',
+            border: `1px solid ${edLine.ok ? T.line2 : edv.retrying ? T.warn : T.bad}`,
+            borderLeft: `3px solid ${edLine.ok ? T.ok : edv.retrying ? T.warn : T.bad}`,
+            background: edLine.ok ? undefined : edv.retrying ? 'rgba(255,176,32,.08)' : 'rgba(255,82,82,.07)',
+            font: F.mono(500, 11), letterSpacing: '.1em', color: edLine.ok ? T.dim : edv.retrying ? T.warn : T.bad, lineHeight: 1.5 }}>
+          {edLine.ok ? `✓ ${edLine.text}` : `▲ ${edText}`}
         </div>
       )}
       {/* an ARCHIVED match must be described by ITS OWN mode, not the config the host is drafting
@@ -181,7 +201,7 @@ export function Recap() {
       {/* the match length is a DURATION (a fixed span, over before this screen shows), not a clock still
           counting down, so it prints unpadded like every other span on this screen (fmtClock would pad
           it to "10:00" beside unpadded possession spans such as "7:21") */}
-      <div style={{ font: F.mono(500, 11), letterSpacing: '.22em', color: T.dim, marginBottom: 8 }}>[ A8 // MATCH COMPLETE · {(past ? past.mode : state.config.mode).toUpperCase()}{past ? '' : ` · ${fmtDuration(state.config.time_limit_s ?? 0)}`} ]</div>
+      <div style={{ font: F.mono(500, 11), letterSpacing: '.22em', color: T.dim, marginBottom: 8 }}>[ A8 // MATCH COMPLETE · {(past ? past.mode : state.config.mode).toUpperCase()}<span data-testid="recap-length">{lengthLabel}</span> ]</div>
       <Brackets color="#ffd23f" size={18} style={{ background: `linear-gradient(90deg,rgba(255,210,63,.1),transparent 60%),linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, padding: '22px 26px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '18px 44px', marginBottom: 18 }}>
         <div>
           <div style={{ font: F.osw(700, 46), letterSpacing: '.08em', lineHeight: 1.15 }}>
@@ -278,21 +298,29 @@ export function Recap() {
       {/* DATA SYNC reads the LIVE roster and node link state, so it says nothing true about a match
           that ended hours ago — it would show today's phones against yesterday's game */}
       {!past && <>
-      <SectionRule label="DATA SYNC" hint="WHO HAS DELIVERED THEIR MATCH DATA" />
+      {/* M1: a bare "SYNCED ✓" beside "8 HUDS NEVER CONFIRMED THE END" read as a contradiction. The two
+          are different facts, so each chip names its own: the match DATA the phone delivered, and, for a
+          HUD still in `end_delivery.unconfirmed`, that its END is not confirmed. A phone MC has not heard
+          from since the whistle (`recap.awaiting`) is not called synced at all. */}
+      <SectionRule label="DATA SYNC" hint="WHO HAS DELIVERED THEIR MATCH DATA · NOT THE SAME AS CONFIRMING THE END" />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 22 }}>
         {state.players.map(pl => {
           const nv = state.nodes.find(n => n.node_id === pl.node_id);
           const missing = rc.missing.includes(pl.player_id);
+          const quiet = (rc.awaiting ?? []).includes(pl.player_id);
           const fresh = nv && (nv.last_seen_ms ?? 1e9) < 30000;
           const pend = nv?.pending ?? null;
-          const [txt, col] = !missing ? ['SYNCED ✓', T.ok]
+          const [txt, col] = !missing && quiet ? ['NO REPORT SINCE THE WHISTLE', T.warn]
+            : !missing ? ['DATA SYNCED ✓', T.ok]
             : fresh && pend ? [`SENDING · ${pend} LEFT`, T.warn]
             : fresh ? ['CONNECTED — AWAITING DATA', T.warn]
             : ['OUT OF RANGE — WILL SYNC ON RETURN', T.bad];
+          const endOpen = edUnconfirmed.has(pl.player_id);
           return (
-            <span key={pl.player_id} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10, background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${col}`, padding: '8px 14px' }}>
+            <span key={pl.player_id} data-sync-chip={pl.player_id} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10, background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${endOpen && col === T.ok ? T.warn : col}`, padding: '8px 14px' }}>
               <span style={{ font: F.chk(700, 12), letterSpacing: '.06em' }}>{pl.display}</span>
               <span style={{ font: F.mono(600, 11), letterSpacing: '.1em', color: col }}>{txt}</span>
+              {endOpen && <span data-end-open="1" style={{ font: F.mono(600, 11), letterSpacing: '.1em', color: edv?.retrying ? T.warn : T.bad }}>· END NOT CONFIRMED</span>}
             </span>
           );
         })}
