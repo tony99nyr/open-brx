@@ -2219,8 +2219,8 @@ class Session:
                 cfg["night"] = self.config["night"]
             # K8 (polish round 2): the host sets the volume for the site, like the venue, so a mode switch
             # keeps it; the game editor already carried it, and the two now agree.
-            if "volume" not in patch and self.config.get("volume") is not None:
-                cfg["volume"] = self.config["volume"]
+            if "volume" not in patch and (vol := self.config.get("volume")) is not None:
+                cfg["volume"] = vol
             if "coverage" not in patch and (cov := self.config.get("coverage")) is not None:
                 cfg["coverage"] = cov
         cfg = self._merge_config(cfg, patch, mode)
