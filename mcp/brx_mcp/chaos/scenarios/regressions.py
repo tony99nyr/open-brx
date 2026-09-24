@@ -57,6 +57,22 @@ scenario(Scenario(
 ))
 
 scenario(Scenario(
+    name="game-byte-across-restarts", mode="tdm", nodes=4,
+    doc="Hotfix 0.4.10: player phones and MC-armed stations scoped presence by different game bytes. "
+        "`game_byte_matches_stations` checks every step; this script walks a restart, a crash and a hot join.",
+    script=[
+        {"name": "kill", "params": {"victim": 1, "shooter": 2}},
+        {"name": "mc_restart", "params": {}},
+        {"name": "late_join", "params": {}},
+        {"name": "drop", "params": {"node": 1}},
+        {"name": "mc_crash", "params": {}},
+        {"name": "reconnect", "params": {"node": 1}},
+        {"name": "end", "params": {}},
+    ],
+    ci_seeds=(1,),
+))
+
+scenario(Scenario(
     name="clock-back-assist", mode="tdm", nodes=4,
     doc="Chaos 2026-09-24 (F330, OPEN): after a backward clock jump, a hit from the victim's NEXT life sorts before "
         "its death, and a replay credits an assist the live board never gave.",

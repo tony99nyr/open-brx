@@ -59,6 +59,8 @@ They are in `invariants.py`. Each one applies to every scenario.
 - `tick_never_raises`: `Session.tick()` never raises (the server would only log it).
 - `snapshot_survives_restart`: an MC restart brings back the same match, phase and board.
 - `possession_is_max_merged`: KOTH possession is the highest cumulative report per team, never a sum.
+- `game_byte_matches_stations`: a connected node that holds MC's current head holds the game byte MC arms
+  its stations with (`config.game_byte` equals `station_config.game`), across restarts and crashes.
 - At the end: `ends_exactly_once`, `frag_cap_ends_match` and `recap_equals_board`.
 - The runner adds `field_settles`: every connected node has its facts acknowledged after each step.
 
@@ -106,6 +108,9 @@ A field bug works the same way: write the actions that the field saw as a script
 ## Known limits
 
 - The fields are MockNodes, not phones. `engine.js` is covered by the stage mirror, not here.
+- The field has no station nodes, and a run plays one match. `game_byte_matches_stations` compares each
+  node with the byte MC would arm a station with. The bump to a new match is covered by
+  `tests/test_mc_stations_game_byte.py`.
 - Facts of the same step can arrive in either order, so a fact in the step that ended the match is not
   judged by that end (`credited_inside_window`).
 - A phone clock that runs AHEAD can put a credited kill after a frag cap that MC reached on an earlier

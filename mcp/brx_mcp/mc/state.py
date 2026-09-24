@@ -2890,8 +2890,8 @@ class Session:
 
     def _wire_config(self) -> GameConfig:
         """The config a NODE receives: the operator's config plus `stations`, the allow-list of station ids MC
-        armed for this game (contracts A13.1). Never written into `self.config` -- it is derived, and the
-        operator does not edit it."""
+        armed for this game (contracts A13.1), and `game_byte`, the advert byte its stations carry this match.
+        Never written into `self.config` -- it is derived, and the operator does not edit it."""
         ids = self._station_ids()
         cfg = self.config
         if slots := self._powerup_slots():
@@ -2903,9 +2903,9 @@ class Session:
                 auto = [int(t["tid"]) for t in (cfg.get("teams") or []) if isinstance(t.get("tid"), int) and t["tid"] not in covered]
                 if auto:
                     cfg = {**cfg, "respawn_auto_teams": auto}
-        if not ids and cfg is self.config:
-            return self.config
-        return cast(GameConfig, {**cfg, **({"stations": ids} if ids else {})})
+        # One game byte per match: the SAME number `_arm_station` sends as `station_config.game`, read at
+        # send time on both paths, so a phone and a station can never scope one match by different bytes.
+        return cast(GameConfig, {**cfg, **({"stations": ids} if ids else {}), "game_byte": self._game_byte()})
 
     def _station_warnings(self) -> list[str]:
         """What the objective / respawn rules need on the FIELD that the ITEMS panel has not assigned.

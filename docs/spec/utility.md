@@ -59,7 +59,7 @@ byte  0-3   4F 42 52 58   'OBRX'
                             bit4 claiming, bit5 claim_ready (A56, powerups.md))
       11    value          kind-specific small number (seconds left, cooldown, progress %; a claiming player: the station id)
       12    seq            bumps on every state change (a scanner tells fresh from stale)
-      13    game           low 8 bits of the game's config hash · 0 = any game
+      13    game           the match's game byte from MC (station_config.game = config.game_byte, A59) · 0 = any game
       14    threshold      the station's own "you are AT me" RSSI, int8 dBm · 0 = scanner default
       15    taker          a powerup station: the player_num that took the item (A56) · 0 = none / other kinds
 ```
@@ -108,7 +108,7 @@ body, and is not directional. That is why the respawn gate below requires an act
 area effects (blast, extraction zone) the fuzziness is acceptable. A hard edge needs line of sight, which is
 the QR-on-screen method — a last resort, not built.
 
-**Security posture (be honest):** adverts are **unauthenticated** — any BLE device can broadcast one, and the station *dictates* its own team and "at me" threshold to every player. So the only real gates on a revive are: the gun must be **physically dead**, the player must **pull the trigger**, and the station id must be on the game's `config.stations` **allow-list** (small integers — weak). A determined player can carry a second phone in utility role advertising a team-matched station with `threshold:-100` and revive themselves anywhere. This is an **accepted casual-threat tradeoff** (friends on a LAN), not a proximity *guarantee*. The `game` byte scopes presence to one match (a station on a different non-zero game byte is ignored) but is **best-effort**: manual stations default to game 0 ("any"), so today two nearby games must use **disjoint station ids**; real per-match scoping waits on MC assigning stations (§5). For a hard, un-spoofable edge, the QR-on-screen method is the only option.
+**Security posture (be honest):** adverts are **unauthenticated** — any BLE device can broadcast one, and the station *dictates* its own team and "at me" threshold to every player. So the only real gates on a revive are: the gun must be **physically dead**, the player must **pull the trigger**, and the station id must be on the game's `config.stations` **allow-list** (small integers — weak). A determined player can carry a second phone in utility role advertising a team-matched station with `threshold:-100` and revive themselves anywhere. This is an **accepted casual-threat tradeoff** (friends on a LAN), not a proximity *guarantee*. The `game` byte scopes presence to one match (a station on a different non-zero game byte is ignored) but is **best-effort**: manual stations default to game 0 ("any"), so two nearby games with hand-armed stations must use **disjoint station ids**. MC-armed stations and players share MC's byte (§5c, A59). For a hard, un-spoofable edge, the QR-on-screen method is the only option.
 
 ## 4. The scanner respawn (v1, built and unit-tested)
 
@@ -205,6 +205,12 @@ same message over the same wire with no amendment: **§5g**.
 The phone applies it to its advert, sets MC-ARMED, and locks the config drawer. `valid_ids` (optional) is
 the allow-list echoed for the station's own display; the authoritative allow-list players enforce is
 `config.stations` in the game bundle. Absent `game` = 0 (any). This is a **contracts A13.5** addition.
+
+**One game byte per match (A59, F338).** `game` is MC's match counter (1..255, bumped by the first push after a
+match has started). Every player `config` MC sends carries the same number as `config.game_byte`, so a player
+phone scopes presence and its own advert by the byte its stations advertise (`beacon.js configGameByte`). A
+config without it (an older MC) reads 0, any game. Before A59 the player hashed its `config_id`, and every
+MC-armed station and every player ignored each other.
 
 Mission Control drives all of the §5 kinds from the ITEMS panel (§5b); stations are self-authoritative and
 report at recap (MC is not live mid-match). (A duplicate of the §5 table that sat here as §5d was removed

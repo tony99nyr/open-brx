@@ -557,6 +557,10 @@ export interface GameConfigBase {
    *  operator; a player phone honours only these ids (`engine.js _stationAllowed`) --
    *  and when the list is ABSENT (nothing assigned) it honours ANY station (the hand-armed fallback). */
   powerups?: PowerupSlot[];
+  /** F-hotfix (contracts A-row): the advert `game` byte (1..255) MC arms its stations with
+   *  (`station_config.game`) for THIS match. Set by `Session._wire_config()`; a player phone
+   *  scopes presence and its own advert by it. Absent (an older MC) = 0, any game. */
+  game_byte?: number;
   /** Derived scanner fallback: teams without a station use timed AUTO respawn. */
   respawn_auto_teams?: number[];
   /** F70: what is emitting this game's objective -- `STATION_SOURCES` above
@@ -631,6 +635,7 @@ export interface GameConfig {
   siphon?: Siphon;
   stations?: StationRef[];
   powerups?: PowerupSlot[];
+  game_byte?: number;
   respawn_auto_teams?: number[];
   station_source?: string;
   presentation?: Record<string, unknown>;
@@ -664,6 +669,7 @@ export interface ConfigView {
   siphon?: Siphon;
   stations?: StationRef[];
   powerups?: PowerupSlot[];
+  game_byte?: number;
   respawn_auto_teams?: number[];
   station_source?: string;
   presentation?: Record<string, unknown>;

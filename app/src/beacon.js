@@ -17,7 +17,7 @@
 //                           powerup: 1 available · 0 taken (value = seconds to the next spawn; 0 with value 0 = unknown)
 //   11   value             kind-specific small number (seconds left, cooldown, progress %); a claiming player: the station id
 //   12   seq               bumps on every state change so a scanner can tell a fresh advert from a stale one
-//   13   game              low 8 bits of the game's config hash; 0 = any game (a station from another match is ignored)
+//   13   game              the match's game byte from MC (station_config.game = config.game_byte); 0 = any game (a station from another match is ignored)
 //   14   threshold         the station's own "you are AT me" RSSI in dBm as int8 (0 = use the scanner's default).
 //                           Calibrated on the station's screen, so player phones need no per-station config.
 //   15   taker             A56: a powerup station's winner, the player_num it granted the item to (0 = none);
@@ -70,6 +70,17 @@ export function decodeUuid(s) {
 export function decodeAdvert(uuids) {
   for (const u of uuids || []) { const d = decodeUuid(u); if (d) return d; }
   return null;
+}
+
+/**
+ * The game byte a PLAYER phone scopes by: presence filtering and its own advert. MC sends `config.game_byte`,
+ * the same number it arms its stations with (`station_config.game`), so one match has one byte on both sides.
+ * Absent or malformed (an older MC) = 0, "any game": Presence accepts either side's 0, so an older MC still
+ * works. Never a hash of `config_id`: no MC-armed station (phone or StickS3) ever carries that number.
+ */
+export function configGameByte(config) {
+  const b = config && config.game_byte;
+  return Number.isInteger(b) && b >= 1 && b <= 255 ? b : 0;
 }
 
 /**

@@ -13,7 +13,7 @@ import { Hud } from './hud/hud.js';
 import { parseMcJoin } from './mcurl.js';
 import { sweepPlan, localIpFrom, sweepForMc as sweepSubnetsForMc } from './transport/discover.js';   // F139
 import { makeWsFactory } from './transport/netsocket.js';
-import { Presence, encodeUuid, stationView, AdvertGate } from './beacon.js';   // utility items (docs/spec/utility.md)
+import { Presence, encodeUuid, stationView, AdvertGate, configGameByte } from './beacon.js';   // utility items (docs/spec/utility.md)
 import { playerClaimAdvert } from './powerup.js';                     // A56: the powerup claim bits on the player advert
 import { BeaconWatch, stationsInPlay } from './scanwatch.js';                        // playtest 2026-09-13: one scan operation at a time, open only in a match
 import { LogSync, chunkByBytes, DEFAULT_CHUNK_BYTES } from './logsync.js';   // background log sync (contracts A25)
@@ -192,13 +192,12 @@ const presence = new Presence({ defaultThreshold: -74, dwellMs: 800 });   // 0.8
 const stationWas = new Map();
 // The match's game byte scopes presence to THIS game (beacon.js Presence `game` filter): a station that
 // advertises a different non-zero game byte is ignored. 0 = "any game" on both sides (manual stations
-// default to it), so this is best-effort until MC assigns stations — the `config.stations` allow-list is
-// the primary scope. Derived from config_id so both this player and (later) an MC-assigned station agree.
-function gameByte(id) { let h = 0; for (const c of String(id || '')) h = (h * 31 + c.charCodeAt(0)) & 0xff; return h; }
+// default to it). The byte is MC's `config.game_byte`, the same number it arms its stations with
+// (`configGameByte`, beacon.js); the `config.stations` allow-list is the primary scope.
 const beaconWatch = new BeaconWatch({ link, log, native: isNative, onHit: hit => presence.observe(hit.uuids, hit.rssi, Date.now()) });
 setInterval(() => {
   const st = engine.state();
-  presence.game = st.config ? gameByte(st.config.config_id) : 0;   // scope presence to this game (best-effort; §utility)
+  presence.game = configGameByte(st.config);   // scope presence to this game (best-effort; §utility)
   beaconWatch.tick(st, { pickerOpen: scanning || link.connecting, config: engine.config });   // no stations: no scan (bench 2026-09-17 flood); app 0.4.2: none while a connect is in flight
 }, 1000);
 async function stopAnyScan() {   // the picker owns the radio from here: `scanning` is already set, so the watch will not reopen
@@ -227,7 +226,7 @@ async function syncPlayerAdvert() {
   // Only a utility station reads a player advert, so a game with no stations advertises nothing: every
   // other phone's scan would carry it over its own bridge for no reader (bench 2026-09-17 flood).
   const want = (num != null && tid != null && st.phase !== 'idle' && stationsInPlay(engine.config))
-    ? encodeUuid({ role: 'player', id: num, team: tid, state: (st.alive ? 1 : 0) | claim.bits, value: claim.value, game: st.config ? gameByte(st.config.config_id) : 0 }) : null;
+    ? encodeUuid({ role: 'player', id: num, team: tid, state: (st.alive ? 1 : 0) | claim.bits, value: claim.value, game: configGameByte(st.config) }) : null;
   const action = playerAdvertGate.due(want, Date.now());
   if (!action) return;
   playerAdvertBusy = true;
