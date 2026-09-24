@@ -108,9 +108,9 @@ test('app.js onPick: the connecting state runs from the tap, per attempt, and to
   const firstAwait = pick.indexOf('await ');
   const shown = pick.indexOf('hud.setConnecting({ name, attempt: 1');
   assert.ok(shown > 0 && shown < firstAwait, 'the connecting state must show before the first await (the tap)');
-  assert.match(pick, /onAttempt: \(i, of\) => \{ hud\.setConnecting\(\{ name, attempt: i, of: link\.unbounded\(\) \? null : of, failed: false \}\)/,
+  assert.match(pick, /onAttempt: \(i, of\) => \{ hud\.setConnecting\(\{ name, attempt: i, of: link\.unbounded\(\) \? null : of, failed: false(, headset: hs\(\))? \}\)/,   // F293 polish: the headset state rides along
     'each attempt must update the attempt count, and clear `of` once the loop is unbounded (review 2026-09-19: "Retrying (7 of 5)…")');
-  assert.match(pick, /hud\.setConnecting\(failed \? \{[^}]*failed: true \} : null\)/, 'a failure keeps a failed state on screen; a link clears it');
+  assert.match(pick, /hud\.setConnecting\(failed \? \{[^}]*failed: true \} : (notJoined \? \{[^}]*\} : )?null\)/, 'a failure keeps a failed state on screen; a link clears it');
   const setGun = src.slice(src.indexOf('async function openPicker'), src.indexOf('onScanAgain:'));
   assert.match(setGun, /hud\.setConnecting\(null\)/, 'SCAN AGAIN must clear the failed state');
 });

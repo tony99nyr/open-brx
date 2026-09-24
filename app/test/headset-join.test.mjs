@@ -12,6 +12,8 @@ import * as L from '../src/brxlink.js';
 const { BrxLink } = L;
 const HEADSET_SETTLE_MS = L.HEADSET_SETTLE_MS ?? 15000, HEADSET_JOIN_CAP_MS = L.HEADSET_JOIN_CAP_MS ?? 60000, VERSION_REPLY_MS = L.VERSION_REPLY_MS ?? 2000;
 import { Engine, PROBE_FW } from '../src/engine.js';
+import { Hud, connectingText } from '../src/hud/hud.js';
+import { readFileSync } from 'node:fs';
 
 function useClock(ctx) {
   ctx.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 1_700_000_000_000 });
@@ -22,18 +24,18 @@ function useClock(ctx) {
 
 /** A gun whose `$VERSION` reply carries `r.headset` as token 2 (`?` or `hds.59`), or no reply when `r.reply` is false. */
 function hsRig(ctx, opts = {}) {
-  const r = { attempts: 0, cb: null, notify: null, writes: [], disconnects: 0, ups: [], drops: 0, flaps: [], heads: [], log: [], headset: 'hds.59', reply: true };
+  const r = { attempts: 0, cb: null, notify: null, writes: [], disconnects: 0, ups: [], drops: 0, flaps: [], heads: [], log: [], headset: 'hds.59', reply: true, queue: [], frames: [] };
   const ble = {
     initialize: async () => {},
     connect: async (id, c) => { r.attempts++; r.cb = c; },
-    disconnect: async () => { r.disconnects++; },
+    disconnect: async () => { r.disconnects++; const c = r.cb; if (c) c(); },   // the real plugin fires the drop callback too
     startNotifications: async (id, s, ch, cb) => { r.notify = cb; },
     writeWithoutResponse: async (id, s, ch, dv) => {
       const f = dataViewToText(dv); r.writes.push(f);
-      if (f === '$VERSION,*' && r.reply) { const hs = r.headset, n = r.notify; setTimeout(() => n && n(textToDataView(`$VERSION,v4.32,${hs},4,,devhost.03,*`)), 30); }
+      if (f === '$VERSION,*' && r.reply) { const hs = r.queue.length ? r.queue.shift() : r.headset, n = r.notify; setTimeout(() => n && n(textToDataView(`$VERSION,v4.32,${hs},4,,devhost.03,*`)), 30); }
     },
   };
-  r.link = new BrxLink({ ble, headsetProbe: true, log: m => r.log.push(m), onUp: (a, p) => r.ups.push(p), onDrop: () => r.drops++,
+  r.link = new BrxLink({ ble, headsetProbe: true, log: m => r.log.push(m), onFrame: f => r.frames.push(f), onUp: (a, p) => r.ups.push(p), onDrop: () => r.drops++,
     onFlap: f => r.flaps.push(f), onHeadset: h => r.heads.push(h), ...opts });
   ctx.after(() => r.link.disconnect());
   return r;
@@ -230,4 +232,107 @@ test('F293 engine: headsetJoin is on the state, and joined clears the flap warni
   assert.deepEqual(eng.state().headsetJoin, { state: 'joining', since: 10 });
   eng.setHeadsetJoin({ state: 'joined', since: 20 });
   assert.equal(eng.state().gunFlapping, null);
+});
+
+// ---- polish round 1 (2026-09-24) ----
+
+test('F293 H1: a link that comes up starts the MC link when none runs (a first pick can end at the cap)', () => {
+  const src = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+  const i = src.search(/onUp: \(advert, probe\) =>/); assert.ok(i > 0, 'the onUp wiring moved -- fix this guard');
+  assert.match(src.slice(i, i + 1400), /if \(settings\.mcUrl && !transport\) connectMc\(settings\.mcUrl\)/, 'onUp must start the MC link');
+  const j = src.indexOf('const up = await link.connect(deviceId'); assert.ok(j > 0);
+  assert.match(src.slice(j, j + 500), /link\.deviceId === deviceId/, 'a pick parked at the cap still counts as the gun chosen');
+});
+
+test('F293 M1: a picker pick during a reconnect probe is not undone by the stale probe', async ctx => {
+  const settle = useClock(ctx);
+  const r = hsRig(ctx);
+  const up = r.link.connect('A', 'GUN-A-3D4F'); await settle(300); await up;
+  r.reply = false;                                   // the reconnect probe waits for a reply that never comes
+  r.cb(); await settle(200);
+  assert.equal(r.link.connected, false);
+  r.reply = true;
+  const pick = r.link.connect('A', 'GUN-A-3D4F'); await settle(400); await pick;
+  assert.equal(r.link.connected, true, 'the pick links');
+  const d = r.disconnects;
+  await settle(4000, 10);                            // the stale probe's timer runs out
+  assert.equal(r.disconnects, d, 'the stale probe released the new link to the same gun');
+  assert.equal(r.link.connected, true);
+  assert.equal(r.link._probing, 0, 'no probe owns the link');
+  r.notify(textToDataView('$BUT,0,1,*')); await settle(5);
+  assert.ok(r.frames.includes('$BUT,0,1,*'), 'frames reach the engine after the link is up');
+});
+
+test('F293 M2: a relink in live reads $VERSION once more before it releases the link', async ctx => {
+  const settle = useClock(ctx);
+  const r = hsRig(ctx, { unbounded: () => true });
+  const up = r.link.connect('A', 'GUN-A-3D4F'); await settle(300); await up;
+  r.queue = ['?', 'hds.59'];                          // a false ? on the first read
+  r.cb(); await settle(600);
+  assert.equal(r.ups.length, 2, 'the second read saw hds.N and linked');
+  assert.equal(r.disconnects, 0, 'one false ? must not cost 15 s with the gun down mid-match');
+});
+
+test('F293 M2: in live the 60 s cap shows not_joined but keeps trying, and the gun comes back by itself', async ctx => {
+  const settle = useClock(ctx);
+  const r = hsRig(ctx, { unbounded: () => true });
+  const up = r.link.connect('A', 'GUN-A-3D4F'); await settle(300); await up;
+  r.headset = '?';
+  r.cb();
+  await settle(HEADSET_JOIN_CAP_MS + 2000, 10);
+  assert.equal(r.link.headsetJoin.state, 'not_joined');
+  const n = r.attempts;
+  await settle(HEADSET_SETTLE_MS + 1000, 10);
+  assert.ok(r.attempts > n, 'mid-match the phone keeps trying after the cap');
+  assert.ok(r.attempts < n + 3, 'at the settle pace, not a tight loop');
+  assert.equal(r.link.headsetJoin.state, 'not_joined', 'the line does not flip back to joining');
+  r.headset = 'hds.59';
+  await settle(HEADSET_SETTLE_MS + 1000, 10);
+  assert.equal(r.link.connected, true);
+});
+
+test('F293 M2: the $VERSION reply timer starts when the probe write starts, not before the queue', async ctx => {
+  const settle = useClock(ctx);
+  const r = hsRig(ctx);
+  const up = r.link.connect('A', 'GUN-A-3D4F'); await settle(300); await up;
+  r.link.write(Array.from({ length: 120 }, () => '$VOL,65,0,*'), 'a long engine write');   // about 2.2 s of queue
+  r.cb(); await settle(4000, 10);
+  assert.equal(r.link.connected, true, 'a queued probe timed out before it was sent');
+  assert.equal(r.disconnects, 0);
+});
+
+test('F293 lows: engine writes are refused while a probe owns the link', async ctx => {
+  const settle = useClock(ctx);
+  const r = hsRig(ctx);
+  const up = r.link.connect('A', 'GUN-A-3D4F'); await settle(300); await up;
+  r.reply = false; r.cb(); await settle(100);
+  const w = r.link.write(['$HLED,1,*'], 'engine'); await settle(200);
+  assert.equal(await w, false);
+  assert.ok(!r.writes.includes('$HLED,1,*'));
+});
+
+test('F293 lows: a drop that lands as the probe reads hds.N is not claimed as up', async ctx => {
+  const settle = useClock(ctx);
+  const r = hsRig(ctx);
+  r.link.connect('A', 'GUN-A-3D4F');
+  for (let i = 0; i < 400 && !r.link._versionWait; i++) await settle(1);
+  const c = r.cb, n = r.notify;
+  n(textToDataView('$VERSION,v4.32,hds.59,4,,devhost.03,*')); c();   // the reply and the drop in one delivery
+  await settle(5);
+  assert.equal(r.ups.length, 0, 'onUp ran for a link that had already dropped');
+});
+
+test('F293 M3: the picker says the headset is joining, then not joined', () => {
+  assert.deepEqual(connectingText({ name: 'GUN-A-3D4F', attempt: 1, of: 5, headset: 'joining' }),
+    { head: 'Connecting to GUN-A-3D4F…', line: 'Headset joining the gun, about 15 s' });
+  assert.deepEqual(connectingText({ name: 'GUN-A-3D4F', failed: true, headset: 'not_joined' }),
+    { head: 'Headset not joined to GUN-A-3D4F', line: 'Power-cycle the headset, then tap Scan again.' });
+});
+
+test('F293 lows: the down screen has a short not-joined line; the joining pill has RECONNECT NOW', () => {
+  const chips = st => { const fake = { chips: { innerHTML: '' }, mcPill: false, _atCapMinusOne: () => false }; Hud.prototype._chips.call(fake, { wsState: 'bound', ...st }); return fake.chips.innerHTML; };
+  const down = chips({ phase: 'live', alive: false, bleUp: false, headsetJoin: { state: 'not_joined' } });
+  assert.match(down, />HEADSET NOT JOINED</); assert.doesNotMatch(down, /· POWER-CYCLE/);
+  const joining = chips({ phase: 'kitted', alive: true, bleUp: false, headsetJoin: { state: 'joining' } });
+  assert.match(joining, /HEADSET JOINING/); assert.match(joining, /onReconnectNow/);
 });

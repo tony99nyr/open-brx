@@ -177,8 +177,12 @@ export class BrxLink {
     this._hs = null;       // F293: 'joining' | 'not_joined' | 'joined' | null (never probed)
     this._hsAt = 0;        // when `_hs` last changed
     this._hsSince = 0;     // the cap clock: the first `?` of this cycle (0 when none)
-    this._probing = false; // a probe owns the link: frames are noted but not given to the engine
-    this._versionWait = null;
+    // Polish 2026-09-24 (M1): both are tagged with the attempt's link `seq`, so a stale probe from an older `_gen`
+    // can never clear them under a newer probe.
+    this._probing = 0;     // the `seq` of the attempt whose probe owns the link (0: none). Frames are noted, not given to the engine
+    this._versionWait = null;   // {seq, done} of the `$VERSION` read in flight
+    this._atts = new Set();     // the attempts whose probe runs; a `_gen` change wakes them
+    this._attemptId = null;     // the device the newest connect attempt dials
     this.scanSettleMs = scanSettleMs;
     this._scanStoppedAt = 0;   // when a scan stop last completed; the next connect() settles after it, once
     this._connecting = 0;      // native connect attempts in flight (no scan may start meanwhile)
@@ -345,6 +349,7 @@ export class BrxLink {
     this._gen++;                       // retires any loop still chasing the previous gun
     this._setFlap(0);                  // a manual connect ends any flap wait or quiet period at once
     this.resetHeadset();               // F293: ...and any headset wait, with a fresh 60 s cap
+    this._wakeProbes();                // polish (M1): a probe of the old generation stops now, not at its timeout
     if (this._wake) this._wake();      // ...and WAKE it, or it sleeps out its backoff still holding
                                        // `_reconnecting`, which blocks the new gun's reconnect entirely
     this.advert = splitAdvert(advertName, deviceId);
@@ -380,8 +385,9 @@ export class BrxLink {
       if (gen !== this._gen) { this._log('reconnect abandoned — a different gun was selected', 'li'); return false; }
       if (onAttempt) { try { onAttempt(i, attempts); } catch (_) { /* a listener must not break the link */ } }
       const t0 = this.now();
+      let seq = 0;
       try {
-        const seq = ++this._linkSeq;
+        seq = ++this._linkSeq; this._attemptId = id;
         const att = { dropped: false, wake: null };
         // Only a link that was up runs the drop path. A failed connect also fires this callback, and it
         // used to log a second "gun disconnected" and tell the engine about a drop that never happened.
@@ -397,15 +403,17 @@ export class BrxLink {
           try { await this.ble.disconnect(id); } catch (_) { /* ignore */ }   // or two devices feed the engine
           return false;
         }
-        if (this.headsetProbe) this._probing = true;   // set before the notifications start: no frame reaches the engine early
+        if (this.headsetProbe) this._probing = seq;    // set before the notifications start: no frame reaches the engine early
         await this.ble.startNotifications(id, NUS, TX, v => this._notify(v));
         if (att.dropped) throw new Error('the gun dropped the link while it was connecting');
         if (!this.headsetProbe) return true;
         const out = await this._probeHeadset(id, att, gen, seq);
         if (out === 'retry') { i--; continue; }         // a headset wait is not a failed connect attempt
+        // polish (low): the gun dropped the link as the hds.N reply landed. Never claim a link that is already gone.
+        if (out === 'up' && att.dropped) throw new Error('the gun dropped the link as the headset probe answered');
         return out === 'up' ? true : out;             // 'parked' at the cap, false when a newer connect won
       } catch (e) {
-        this._probing = false;
+        if (this._probing === seq) this._probing = 0;
         last = e; this.retries = i;
         const keep = relink ? i < attempts : forever || this.unbounded() || i < attempts;
         if (!keep) throw last;
@@ -423,13 +431,15 @@ export class BrxLink {
    *  in a cycle with no `?` yet, so that drop runs the ordinary connect-failure retry. */
   async _probeHeadset(id, att, gen, seq) {
     let r;
+    this._atts.add(att);
     try {
       let frames;
       try { frames = this.probeFrames(); } catch (_) { frames = DEFAULT_PROBE; }
       if (!Array.isArray(frames) || !frames.length) frames = DEFAULT_PROBE;
       if (!frames.includes('$VERSION,*')) frames = [...frames, '$VERSION,*'];
       this._probeSent = frames;
-      r = await this._readVersion(id, att, frames, 'headset probe');
+      r = await this._readVersion(id, att, seq, frames, 'headset probe');
+      let reread = false;
       for (;;) {
         if (gen !== this._gen) break;
         if (r === 'dropped') {
@@ -437,51 +447,74 @@ export class BrxLink {
           break;
         }
         if (r === true) { this._setHeadset('joined'); return 'up'; }
+        // Polish (M2): in armed or live one `?` or timeout would cost at least 15 s with the gun down, so read once more.
+        if (!reread && this.unbounded()) { reread = true; r = await this._readVersion(id, att, seq, ['$VERSION,*'], 'headset re-read'); continue; }
         this._noteUnjoined(r === 'timeout');
         if (this.headsetJoinMode !== 'hold' || this.now() >= this._hsSince + this.headsetJoinCapMs) break;
         await new Promise(res => { const t = setTimeout(res, this.headsetPollMs); att.wake = () => { clearTimeout(t); res(); }; });
         att.wake = null;
         if (att.dropped) { r = 'dropped'; continue; }
         if (gen !== this._gen) break;
-        r = await this._readVersion(id, att, ['$VERSION,*'], 'headset poll');
+        r = await this._readVersion(id, att, seq, ['$VERSION,*'], 'headset poll');
       }
-    } finally { this._probing = false; att.wake = null; }
-    // Release the link (a dropped one needs no release). Its own disconnect callback must not run.
-    if (seq === this._linkSeq) this._linkSeq++;
-    if (!att.dropped) { try { await this.ble.disconnect(id); } catch (_) { /* best-effort */ } }
+    } finally { if (this._probing === seq) this._probing = 0; att.wake = null; this._atts.delete(att); }
+    // Release the link (a dropped one needs no release). Its own disconnect callback must not run. Polish (M1): when a
+    // newer attempt has already dialled this same gun, the link is ITS link now: leave it alone.
+    const mine = seq === this._linkSeq;
+    if (mine) this._linkSeq++;
+    const claimed = !mine && this._attemptId === id;
+    if (!att.dropped && !claimed) { try { await this.ble.disconnect(id); } catch (_) { /* best-effort */ } }
     if (gen !== this._gen) return false;
-    if (this.now() >= this._hsSince + this.headsetJoinCapMs) {
+    const capped = this.now() >= this._hsSince + this.headsetJoinCapMs;
+    if (capped) {
+      const was = this._hs;
       this._setHeadset('not_joined');
-      this._log(`headset not joined after ${Math.round(this.headsetJoinCapMs / 1000)} s: no more automatic tries. Power-cycle the headset, then tap RECONNECT NOW`, 'le');
-      return 'parked';
+      // Polish (M2): only kitted, lobby and idle stop at the cap. A gun stranded mid-match must come back by itself,
+      // so armed and live keep the disconnect-and-wait cycle (it is not the harmful loop) at the settle pace.
+      if (!this.unbounded()) {
+        this._log(`headset not joined after ${Math.round(this.headsetJoinCapMs / 1000)} s: no more automatic tries. Power-cycle the headset, then tap RECONNECT NOW`, 'le');
+        return 'parked';
+      }
+      if (was !== 'not_joined') this._log(`headset not joined after ${Math.round(this.headsetJoinCapMs / 1000)} s: a match runs, so the phone keeps trying every ${this.headsetSettleMs} ms`, 'le');
     }
     const hold = this.headsetJoinMode === 'hold';
-    const wait = Math.max(0, Math.min(hold ? this.headsetPollMs : this.headsetSettleMs, this._hsSince + this.headsetJoinCapMs - this.now()));
+    const left = this._hsSince + this.headsetJoinCapMs - this.now();
+    const wait = capped ? this.headsetSettleMs : Math.max(0, Math.min(hold ? this.headsetPollMs : this.headsetSettleMs, left));
     this._log(att.dropped ? `the gun dropped the link while the headset joins: next try in ${wait} ms (not a flap)`
       : `headset not joined yet: link released, next try in ${wait} ms (not a flap)`, 'li');
     await this._waitOrWake(wait);
     return 'retry';
   }
   /** Sends `frames` on the probing link and waits for a `$VERSION` reply: true (hds.N), false (`?`), 'timeout'
-   *  (none in `versionReplyMs`, which counts as `?`) or 'dropped'. */
-  _readVersion(id, att, frames, label) {
+   *  (none in `versionReplyMs`, which counts as `?`) or 'dropped'. Polish (M2): the reply timer starts when the
+   *  write leaves the queue (`onStart`), not before it, so a long write ahead of the probe cannot fake a `?`. A
+   *  backstop of `versionReplyMs` + 10 s ends the read if the write never starts, so no path hangs. */
+  _readVersion(id, att, seq, frames, label) {
     return new Promise(res => {
-      let t = null;
-      const done = v => { clearTimeout(t); if (this._versionWait === done) this._versionWait = null; att.wake = null; res(v); };
-      this._versionWait = done;
+      let t = null, over = false;
+      const w = { seq, done: null };
+      const done = v => {
+        if (over) return; over = true;
+        clearTimeout(t); clearTimeout(back);
+        if (this._versionWait === w) this._versionWait = null;
+        att.wake = null; res(v);
+      };
+      w.done = done;
+      this._versionWait = w;
       att.wake = () => done('dropped');
-      t = setTimeout(() => done('timeout'), this.versionReplyMs);
-      this.write(frames, label, { deviceId: id });
+      const back = setTimeout(() => done('timeout'), this.versionReplyMs + 10000);
+      this.write(frames, label, { deviceId: id, onStart: () => { if (!over) t = setTimeout(() => done('timeout'), this.versionReplyMs); } });
     });
   }
   /** A `?` (or a timeout) reading: the headset is joining. Starts the cap clock and clears any flap streak: the
-   *  headset explains the drops, so they are not flaps. */
+   *  headset explains the drops, so they are not flaps. Past the cap (a match keeps trying) it stays `not_joined`. */
   _noteUnjoined(timeout) {
     if (!this._hsSince) this._hsSince = this.now();
-    this._setHeadset('joining');
+    this._setHeadset(this.now() >= this._hsSince + this.headsetJoinCapMs ? 'not_joined' : 'joining');
     if (this._flapStreak || this._flapNextAt) this._setFlap(0);
     this._log(timeout ? `headset probe: no $VERSION reply in ${this.versionReplyMs} ms, counted as not joined` : 'headset probe: $VERSION reads ? (headset not joined)', 'li');
   }
+  _wakeProbes() { for (const a of this._atts) { if (a.wake) a.wake(); } }
   /** Tells the app the link is up, with what the probe learned (engine.onBleConnected's second argument). */
   _up() {
     let probe;
@@ -605,6 +638,7 @@ export class BrxLink {
   }
   async disconnect() {
     this._gen++;                       // stop any forever-loop before it re-adopts this gun
+    this._wakeProbes();
     if (this._wake) this._wake();
     clearTimeout(this._stableTimer); this._stableTimer = null; this._setFlap(0);
     this._hsSince = 0; this._setHeadset(null);
@@ -614,8 +648,11 @@ export class BrxLink {
   _notify(value) {
     for (const f of this._re.pump(dataViewToText(value))) {
       this._note('rx', f);
-      if (this._versionWait) { const h = headsetLinked(f); if (h != null) { this._lastVersion = f; this._versionWait(h); } }
-      if (!this._probing) this.onFrame(f);   // F293: the engine hears nothing from a link it has not been told about
+      const w = this._versionWait;
+      if (w) { const h = headsetLinked(f); if (h != null) { this._lastVersion = f; w.done(h); } }
+      // F293: the engine hears nothing from a link it has not been told about. Frames in the probe window (a `$BUT`
+      // press, an `$ALCD` shot) are noted in `frames` for the log and DROPPED, not replayed after the link is up.
+      if (!this._probing) this.onFrame(f);
     }
   }
 
@@ -644,6 +681,7 @@ export class BrxLink {
    *  `label`: what the batch is, for that log line (the engine passes its `why`). */
   write(frames, label = '', options = undefined) {
     const id = (options && options.deviceId) || this.deviceId; if (!id) return Promise.resolve(false);   // F293: the probe writes before the link is claimed
+    if (this._probing && !(options && options.deviceId)) { this._log(`write refused while the headset probe owns the link: ${label || 'unlabelled'}`, 'li'); return Promise.resolve(false); }
     const list = Array.isArray(frames) ? frames : [frames];
     const batch = { failed: null, open: true, label, list };   // `failed`: the earliest frame index a late error hit
     this._q = this._q.then(async () => {

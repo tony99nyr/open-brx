@@ -241,7 +241,7 @@ export function startDemo({ engine, log }) {
       // game day 2026-09-19: the picker with an empty list and no scan running (SCAN AGAIN)
       pickerIdle: (active = false) => { const h = hud(); if (!h) return; h.scanActive = active; h.setScan([]); h.render(engine.state()); },
       // app 0.4.2: the picker from a gun tap until the link is up. attempt > 1 is a retry; failed = gave up.
-      pickerConnecting: (attempt = 1, failed = false) => { const h = hud(); if (!h) return; h.scanActive = false; h.setScan([]); h.setConnecting({ name: 'GUN-A-3D4F', attempt, of: 5, failed }); h.render(engine.state()); },
+      pickerConnecting: (attempt = 1, failed = false, headset = null) => { const h = hud(); if (!h) return; h.scanActive = false; h.setScan([]); h.setConnecting({ name: 'GUN-A-3D4F', attempt, of: 5, failed, ...(headset ? { headset } : {}) }); h.render(engine.state()); },   // F293: `headset` = BrxLink's probe state
       pickerConnectDone: () => { const h = hud(); if (!h) return; h.setConnecting(null); h.render(engine.state()); },
       scanOther: () => { const h = hud(); if (!h) return; h.setScanOther(!h.scanOther); h.render(engine.state()); },
       // F211: the picker with Bluetooth off (docs/archive/game-test-2026-09-13.md C2). `platform` defaults to 'web'

@@ -49,6 +49,9 @@ const MEDAL_LABEL = { first_blood: 'FIRST BLOOD', double_kill: 'DOUBLE KILL', tr
 /** App 0.4.2: the words of the picker's "Connecting to <gun>" block, from `hud.connecting`. */
 export function connectingText(conn) {
   const nm = String((conn && conn.name) || 'your gun');
+  // F293 polish (M3): the headset state from BrxLink's `$VERSION` probe, while the pick waits for it
+  if (conn && conn.failed && conn.headset === 'not_joined') return { head: `Headset not joined to ${nm}`, line: 'Power-cycle the headset, then tap Scan again.' };
+  if (conn && !conn.failed && conn.headset === 'joining') return { head: `Connecting to ${nm}…`, line: 'Headset joining the gun, about 15 s' };
   if (conn && conn.failed) return { head: `Could not connect to ${nm}`, line: 'Turn the gun off and on, then tap Scan again.' };
   // Review 2026-09-19: armed/live makes the loop retry FOREVER (BrxLink.unbounded()), past the `of` it
   // started with -- app.js sends `of: null` for that case, so the count is never printed once `attempt`
@@ -1657,8 +1660,8 @@ export class Hud {
     // the headset is still joining the gun and the phone waits; after 60 s it stops and waits for RECONNECT NOW. Both
     // lines show in every phase, in place of the flap lines and GUN LINK LOST (the link is down on purpose).
     const hj = st.headsetJoin && st.headsetJoin.state;
-    if (hj === 'not_joined') pills.push(`<span class="pill bad" data-headset="not_joined"><span class="unskew">HEADSET NOT JOINED · POWER-CYCLE THE HEADSET</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
-    else if (hj === 'joining' && !st.bleUp) pills.push(`<span class="pill warn" data-headset="joining"><span class="unskew">HEADSET JOINING</span></span>`);
+    if (hj === 'not_joined') pills.push(`<span class="pill bad" data-headset="not_joined"><span class="unskew">${down ? 'HEADSET NOT JOINED' : 'HEADSET NOT JOINED · POWER-CYCLE THE HEADSET'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
+    else if (hj === 'joining' && !st.bleUp) pills.push(`<span class="pill warn" data-headset="joining"><span class="unskew">HEADSET JOINING</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
     else if (st.gunFlapping && st.gunFlapping.quiet) pills.push(`<span class="pill bad" data-flap="${st.gunFlapping.count}" data-quiet="1"><span class="unskew">${down ? 'POWER-CYCLE THE HEADSET' : 'GUN KEEPS DROPPING. POWER-CYCLE THE HEADSET, THEN THE GUN RECONNECTS.'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
     else if (st.phase !== 'idle' && st.gunFlapping) pills.push(`<span class="pill warn" data-flap="${st.gunFlapping.count}"><span class="unskew">${down ? 'HEADSET OFF? TURN IT ON' : 'HEADSET OFF? TURN THE HEADSET ON.'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
     // QA-02: on the live HUD this is a solid, steady bar (16 px, no blink): the frozen numbers below depend on it.

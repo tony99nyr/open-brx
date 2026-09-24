@@ -103,6 +103,9 @@ const link = new BrxLink({
     // must close the picker if it is somehow still open, so the beacon scan (scanwatch.js) is free again.
     if (scanning) { scanning = false; stopPickerPaint(); hud.setScan([]); link.stopScan().catch(() => {}); }
     engine.onBleConnected(advert, probe);   // F293: `probe` = what BrxLink's connect probe sent and read
+    // F293 polish (H1): a first pick can end at the headset cap with no MC link started; a later RECONNECT NOW
+    // then links the gun here, so this is where the MC link starts when none runs.
+    if (settings.mcUrl && !transport) connectMc(settings.mcUrl);
     if (transport) {
       transport.gun = { name: advert.name, tail: advert.tail, fw: engine.fw || undefined };
       if (transport.state === 'bound') { try { transport.bind({ player_id: engine.player && engine.player.player_id, gun: engine.gun ? { name: engine.gun.name, tail: engine.gun.tail, fw: engine.fw || undefined } : undefined }); } catch (_) { /* best-effort */ } }
@@ -113,7 +116,11 @@ const link = new BrxLink({
   // F293: every connect probes `$VERSION` before the link counts as up; the engine picks the probe frames (no `$STOP`
   // on a relink) and shows HEADSET JOINING / HEADSET NOT JOINED from the link's headset state.
   probeFrames: () => engine.linkProbeFrames(),
-  onHeadset: h => engine.setHeadsetJoin(h),
+  onHeadset: h => {
+    engine.setHeadsetJoin(h);
+    // F293 polish (M3): the picker's "Connecting to <gun>" block says the headset is joining, not "keep the gun close"
+    if (hud.connecting && !hud.connecting.failed) { hud.setConnecting({ ...hud.connecting, headset: h ? h.state : null }); scheduleRender(); }
+  },
   onRelink: () => scheduleRender(),   // RELINK GUN reads RELINKING… and is disabled while a relink runs (bench 2026-09-17)
 });
 const engine = new Engine({
@@ -466,18 +473,21 @@ Object.assign(hud.h, {
     hud.setScan([]); hud.setConnecting({ name, attempt: 1, of: 5, failed: false }); scheduleRender();
     stopPickerPaint();
     log(`connecting to ${name}…`);
-    let failed = false;
+    let failed = false, notJoined = false;
     try {
       await link.stopScan();
       // `connect` waits for the stop to complete plus SCAN_SETTLE_MS before its first attempt (brxlink.js)
       // `of: null` once unbounded() -- never a stale "Retrying (7 of 5)…" (review 2026-09-19)
-      const up = await link.connect(deviceId, d.name, { onAttempt: (i, of) => { hud.setConnecting({ name, attempt: i, of: link.unbounded() ? null : of, failed: false }); scheduleRender(); } });
-      if (up !== false && settings.mcUrl && !transport) connectMc(settings.mcUrl);
+      const hs = () => (link.headsetJoin ? link.headsetJoin.state : null);
+      const up = await link.connect(deviceId, d.name, { onAttempt: (i, of) => { hud.setConnecting({ name, attempt: i, of: link.unbounded() ? null : of, failed: false, headset: hs() }); scheduleRender(); } });
+      // F293 polish (H1): a pick that ended at the headset cap still chose this gun (BrxLink keeps it for RECONNECT NOW)
+      if ((up !== false || link.deviceId === deviceId) && settings.mcUrl && !transport) connectMc(settings.mcUrl);
+      if (up === false && link.deviceId === deviceId && hs() === 'not_joined') notJoined = true;
     }
     catch (e) { failed = true; log('connect failed: ' + (e && e.message || e), 'le'); }
     finally { picking = false; scanning = false; }
     // a failed connect keeps the gun's name on screen with a plain message and SCAN AGAIN (onScanAgain)
-    hud.setConnecting(failed ? { name, attempt: 5, of: 5, failed: true } : null);
+    hud.setConnecting(failed ? { name, attempt: 5, of: 5, failed: true } : notJoined ? { name, failed: true, headset: 'not_joined' } : null);
     scheduleRender();
   },
   onUtility: () => switchRole('utility'),   // the HUD's way into utility mode (brx-hud adds the control; 7 taps on the stage also work)

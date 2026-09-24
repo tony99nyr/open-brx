@@ -456,6 +456,21 @@ for (const view of VIEWS) {
     const done = await read(); await pg.close();
     must(!done.box && done.none, 'the picker did not return to its list after the connect state cleared: ' + JSON.stringify(done));
   });
+  // F293 polish (M3): a first pick while the headset still boots waits up to 60 s. The block says why.
+  await step(`${view.name} headset-join-4 picker: a pick waiting on the headset says so, then says it did not join`, async () => {
+    const pg = await open(view, 'idle-noisy');
+    const read = () => pg.evaluate(() => { const c = document.querySelector('.idle .list .connecting');
+      return { head: (c && c.querySelector('.cn') || {}).textContent || '', line: (c && c.querySelector('.cst') || {}).textContent || '', rescan: !!document.querySelector('.idle .list .rescan') && getComputedStyle(document.querySelector('.idle .list .rescan')).display !== 'none' }; });
+    await pg.evaluate(() => window.brxDemo.pickerConnecting(1, false, 'joining')); await pg.waitForTimeout(200);
+    const joining = await read();
+    await pg.screenshot({ path: `${OUT}/${view.name}-picker-headset-joining.png` });
+    must(joining.head === 'Connecting to GUN-A-3D4F…' && joining.line === 'Headset joining the gun, about 15 s', JSON.stringify(joining));
+    let bad = await invariants(pg); must(bad.length === 0, bad.join(';'));
+    await pg.evaluate(() => window.brxDemo.pickerConnecting(5, true, 'not_joined')); await pg.waitForTimeout(200);
+    const nj = await read(); bad = await invariants(pg); await pg.close();
+    must(nj.head === 'Headset not joined to GUN-A-3D4F' && nj.line === 'Power-cycle the headset, then tap Scan again.' && nj.rescan, JSON.stringify(nj));
+    must(bad.length === 0, bad.join(';'));
+  });
   await step(`${view.name} F258 idle-assigned: the gun MC assigned to this player is offered first`, async () => {
     const pg = await open(view, 'idle-assigned');
     const first = await pg.evaluate(() => (document.querySelector('.taggers .tagrow .nm') || {}).textContent || '');
@@ -600,7 +615,7 @@ for (const view of VIEWS) {
     const pg = await open(view, 'kitted-headset-joining'); const pills = await chipPills(pg);
     await pg.screenshot({ path: `${OUT}/${view.name}-headset-joining.png` });
     const bad = await invariants(pg); await pg.close();
-    must(pills.includes('HEADSET JOINING'), 'no HEADSET JOINING line: ' + JSON.stringify(pills));
+    must(pills.includes('HEADSET JOINING') && pills.includes('RECONNECT NOW'), 'no HEADSET JOINING line with RECONNECT NOW: ' + JSON.stringify(pills));
     must(!pills.some(t => /GUN LINK LOST|HEADSET OFF\?|GUN KEEPS DROPPING/.test(t)), 'one line only: ' + JSON.stringify(pills));
     must(bad.length === 0, bad.join(';'));
   });

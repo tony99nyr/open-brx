@@ -37,7 +37,7 @@ test('F258 guard: onPick stops the scan before it connects, and holds the radio 
   const src = readFileSync(APP_JS, 'utf8');
   const i = src.indexOf('onPick: async deviceId =>');
   assert.ok(i > 0, 'the onPick handler is gone from app.js -- FIX this guard, do not delete it');
-  const block = src.slice(i, i + 900);
+  const block = src.slice(i, i + 1400);   // F293 polish added the headset state to the pick
   const stop = block.indexOf('await link.stopScan()'), conn = block.indexOf('await link.connect(');
   assert.ok(stop > 0 && conn > 0, 'onPick no longer awaits both stopScan and connect: ' + block.slice(0, 200));
   assert.ok(stop < conn, 'onPick must AWAIT link.stopScan() BEFORE link.connect(), or the scan contends with the connect');
