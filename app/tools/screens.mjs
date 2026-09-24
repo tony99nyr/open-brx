@@ -3868,45 +3868,53 @@ await step('utility landscape fit: portrait is unchanged (.side keeps the origin
   must(Math.abs(r.heroToPlayers - 14) <= 1, `hero-to-players gap drifted from the original 14px in portrait: ${r.heroToPlayers}`);
 });
 // Utility visual QA (Tony, 0.4.11 on a Pixel 5, 2026-09-24): "some letters are leaning back, some overlapping UI, the
-// angles don't all line up". Per kind, Pixel 5 portrait and landscape, main screen and drawer: no text leans backwards
-// (net skewX > 0 up its ancestor chain), every slanted box uses the ONE house angle (--skew, which must equal the HUD's own in index.html), no box or text
-// runs off the screen, and the linked MC panel is folded to its status line.
-const houseSkew = async pg => pg.evaluate(() => {
+// angles don't all line up", then "just do regular untilted". Per kind, Pixel 5 portrait and landscape, main screen and
+// drawer: nothing on the utility page is skewed or italic, no bordered box touches or crosses another, the ⓘ tap count
+// sits on screen and clear of the ⓘ border, the player table's columns line up within 2 px, and the linked MC panel
+// is folded to its status line.
+const utilQa = pg => pg.evaluate(() => {
   const vis = e => { const cs = getComputedStyle(e); const r = e.getBoundingClientRect(); return cs.display !== 'none' && cs.visibility !== 'hidden' && r.width > 0 && r.height > 0 && !e.closest('[hidden]'); };
-  const tan = e => { let t = 0; for (let n = e; n && n.nodeType === 1; n = n.parentElement) { const m = getComputedStyle(n).transform; if (m && m !== 'none') t += new DOMMatrix(m).c; } return t; };
-  const deg = t => Math.round(Math.atan(t) * 1800 / Math.PI) / 10;
   const nm = e => e.id ? '#' + e.id : e.tagName.toLowerCase() + '.' + String(e.className).trim().replace(/\s+/g, '.');
-  const house = deg(Math.tan(parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--skew')) * Math.PI / 180));
   const cfgOpen = !document.getElementById('cfg').hidden;
   const all = [...(cfgOpen ? document.getElementById('cfg') : document.body).querySelectorAll('*')].filter(e => vis(e) && (cfgOpen || !e.closest('#cfg')));
-  const back = [], angles = new Set(), off = [];
+  const tilt = [];
   for (const e of all) {
-    const text = [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
-    if (text && deg(tan(e)) > 0.2) back.push(`${nm(e)} "${e.textContent.trim().slice(0, 20)}" ${deg(tan(e))}deg`);
     const cs = getComputedStyle(e);
-    if (cs.transform !== 'none' && new DOMMatrix(cs.transform).c !== 0 && (parseFloat(cs.borderTopWidth) > 0 || cs.backgroundColor !== 'rgba(0, 0, 0, 0)')) angles.add(deg(tan(e)));
-    const r = e.getBoundingClientRect();
-    if ((text || parseFloat(cs.borderTopWidth) > 0) && e.id !== 'cfg' && (r.left < -1 || r.right > innerWidth + 1)) off.push(`${nm(e)} ${Math.round(r.left)}..${Math.round(r.right)}`);
+    if (cs.transform !== 'none' && Math.abs(new DOMMatrix(cs.transform).c) > 1e-6) tilt.push('skewed ' + nm(e));
+    if (cs.fontStyle !== 'normal' && [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) tilt.push('italic ' + nm(e));
   }
+  const boxed = e => { const cs = getComputedStyle(e); return ['Top', 'Right', 'Bottom', 'Left'].every(s => parseFloat(cs['border' + s + 'Width']) > 0 && cs['border' + s + 'Style'] !== 'none'); };
+  const boxes = all.filter(boxed), touch = [];
+  for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+    const a = boxes[i], b = boxes[j], A = a.getBoundingClientRect(), B = b.getBoundingClientRect();
+    if (a.contains(b) || b.contains(a)) { const [o, n] = a.contains(b) ? [A, B] : [B, A]; const g = Math.min(n.left - o.left, o.right - n.right, n.top - o.top, o.bottom - n.bottom); if (g < 2) touch.push(`${nm(a)} / ${nm(b)} nested gap ${Math.round(g)}`); continue; }
+    if (Math.max(A.left, B.left) - Math.min(A.right, B.right) < 2 && Math.max(A.top, B.top) - Math.min(A.bottom, B.bottom) < 2) touch.push(`${nm(a)} / ${nm(b)}`);
+  }
+  const P = document.getElementById('infoProg').getBoundingClientRect(), I = document.getElementById('info').getBoundingClientRect();
+  const badge = { shown: vis(document.getElementById('infoProg')), onScreen: P.left >= 0 && P.top >= 0 && P.right <= innerWidth && P.bottom <= innerHeight,
+    clear: Math.max(P.left, I.left) - Math.min(P.right, I.right) >= 2 || Math.max(P.top, I.top) - Math.min(P.bottom, I.bottom) >= 2 };
+  const rows = [...document.querySelectorAll('#players .row:not(.empty)')].filter(vis), cols = [];
+  for (let c = 0; c < 5 && rows.length > 1; c++) { const L = rows.map(r => r.children[c].getBoundingClientRect().left); if (Math.max(...L) - Math.min(...L) > 2) cols.push(`column ${c + 1} starts at ${L.map(Math.round).join('/')}`); }
+  const E = rows.map(r => r.querySelector('.rssi small').getBoundingClientRect().right); if (rows.length > 1 && Math.max(...E) - Math.min(...E) > 2) cols.push(`rssi ends at ${E.map(Math.round).join('/')}`);
   const mj = document.getElementById('mcjoin');
-  return { house, back, angles: [...angles], off, folded: !!mj && mj.classList.contains('linked') && !vis(document.getElementById('mcUrlMain')) && vis(document.getElementById('btnMcChange')) };
+  return { tilt, touch, badge, rows: rows.length, cols, folded: !!mj && mj.classList.contains('linked') && !vis(document.getElementById('mcUrlMain')) && vis(document.getElementById('btnMcChange')) };
 });
-const HUD_SKEW = parseFloat((fs.readFileSync(path.join(WWW, 'index.html'), 'utf8').match(/--skew:\s*(-?[\d.]+)deg/) || [])[1]);
 for (const kind of ['respawn', 'powerup', 'control']) {
   for (const view of [{ name: 'pixel5-portrait', width: 393, height: 851 }, { name: 'pixel5-landscape', width: 851, height: 393 }]) {
-    await step(`utility house slant: ${kind} @ ${view.name}: no backwards text, one angle, nothing off screen, linked MC panel folded`, async () => {
+    await step(`utility untilted: ${kind} @ ${view.name}: no skew or italic, no touching borders, tap count clear of ⓘ, table columns aligned, linked MC panel folded`, async () => {
       const pg = await openUtility(view, kind, 1, 1);
       if (kind === 'control') { await pg.evaluate(() => { window.brxUtility.point.capturing = 1; window.brxUtility.point.progress = 50; }); await pg.waitForTimeout(600); }
-      const main = await houseSkew(pg);
+      for (let i = 0; i < 3; i++) await pg.click('#info');
+      const main = await utilQa(pg);
       await pg.evaluate(() => window.brxUtilityGate.open()); await pg.waitForTimeout(200);
-      const drawer = await houseSkew(pg);
-      await pg.screenshot({ path: `${OUT}/util-house-${kind}-${view.name}.png` }); await pg.close();
+      const drawer = await utilQa(pg);
+      await pg.screenshot({ path: `${OUT}/util-untilted-${kind}-${view.name}.png` }); await pg.close();
       for (const [where, r] of [['main', main], ['drawer', drawer]]) {
-        must(Number.isFinite(HUD_SKEW) && r.house === HUD_SKEW, `${where}: the utility --skew ${r.house} is not the HUD's ${HUD_SKEW}`);
-        must(!r.back.length, `${where}: text leans backwards: ${r.back.join(' ; ')}`);
-        must(r.angles.every(a => a === r.house), `${where}: slanted boxes off the house angle ${r.house}: ${JSON.stringify(r.angles)}`);
-        must(!r.off.length, `${where}: runs off the screen: ${r.off.join(' ; ')}`);
+        must(!r.tilt.length, `${where}: tilted: ${r.tilt.join(' ; ')}`);
+        must(!r.touch.length, `${where}: bordered boxes touch or cross: ${r.touch.join(' ; ')}`);
       }
+      must(main.badge.shown && main.badge.onScreen && main.badge.clear, `the ⓘ tap count must be on screen and clear of the ⓘ border: ${JSON.stringify(main.badge)}`);
+      must(main.rows >= 2 && !main.cols.length, `player table columns misaligned: ${main.cols.join(' ; ')} (${main.rows} rows)`);
       must(main.folded, 'linked to MC, the main-screen MC panel must fold to its status line and CHANGE');
     });
   }

@@ -14,8 +14,7 @@
    players walk past, so the screen is a STATUS DISPLAY only — the configuration lives behind the ⓘ in the corner:
    seven taps within three seconds open it (Tony, 2026-09-04: "as an anticheat we can't offer the controls to the
    station once MC has started it"). utility.js drives every id below; keep them. */
-:root{--skew:-12deg;--unskew:12deg;   /* the HOUSE SLANT, the same two values as index.html's :root */
-  --team-blue:#3a86ff;--team-yellow:#ffd23f;--team-red:#f43f5e;--team-green:#2ecc71;--team-any:#9aa8b8;
+:root{--team-blue:#3a86ff;--team-yellow:#ffd23f;--team-red:#f43f5e;--team-green:#2ecc71;--team-any:#9aa8b8;
   --team:var(--team-blue);--team-ink:#04121e;--num:#eef9ff;--glow:#5fd6ff;--mut:#7fa0b8;--ink:#e8eef5;
   --plate:rgba(12,28,44,.85);--plate2:rgba(4,12,20,.9);--edge:#2a4e6e;--ok:#39e07c;--warn:#ffb020;--bad:#ff5252;
   --fd:'Saira Condensed',sans-serif;--fl:'Chakra Petch',sans-serif;--m:ui-monospace,Menlo,Consolas,monospace;
@@ -26,39 +25,40 @@
 html,body{margin:0;min-height:100%;background:#02040a;color:var(--num);font-family:var(--fl);overscroll-behavior:none}
 body{background:var(--bg);padding:max(14px,env(safe-area-inset-top)) 16px max(20px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px;min-height:100vh}
 button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:none;padding:0;user-select:none}
-/* Every slanted edge, chip, button and bar uses the ONE house slant (--skew, the HUD's own value); text inside a
-   slanted box stands back up with .unskew. Never put .unskew on text whose box is NOT slanted: it leans backwards. */
-.skew{transform:skewX(var(--skew))}.unskew{display:inline-block;transform:skewX(var(--unskew))}
+/* No slant on this page (Tony, 2026-09-24: "just do regular untilted"): every box, button, badge and bar is a plain
+   rectangle, and nothing is skewed, so a slanted edge can never cross a straight border. The HUD keeps its own slant.
+   .unskew is only the label span inside a button now (utility.js writes START/STOP into it); it transforms nothing. */
+.unskew{display:inline-block}
 
 /* ---- header: wordmark + the ⓘ (single taps do nothing; seven within 3 s open the config) ---- */
 .top{display:flex;align-items:center;justify-content:space-between}
-.wm{font-family:var(--fd);font-style:italic;font-weight:700;font-size:22px;letter-spacing:.14em}.wm b{color:var(--glow)}
+.wm{font-family:var(--fd);font-weight:700;font-size:22px;letter-spacing:.14em}.wm b{color:var(--glow)}
 .wm small{font-family:var(--fl);font-style:normal;font-size:10px;letter-spacing:.34em;color:var(--mut);margin-left:10px;vertical-align:middle}
 .infobtn{width:40px;height:40px;border:1px solid var(--edge);color:var(--mut);font:600 15px var(--fl);display:flex;align-items:center;justify-content:center;position:relative}
 .infobtn svg{width:20px;height:20px}   /* drawn, not the U+24D8 glyph: a font without it shows an empty box (the HUD's QA-28) */
 .infobtn::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:56px;height:56px}   /* the tap target */
 /* the ⓘ gesture is 7 taps in 3 s with ZERO feedback on any single tap (field 2026-09-12) -- this is the
    ONLY feedback: a small count that appears on tap 1 and fades on timeout or on the drawer opening. */
-.infoprog{position:absolute;right:-6px;top:-6px;min-width:16px;height:16px;padding:0 3px;border-radius:8px;background:var(--glow);color:var(--team-ink,#04121e);font:700 10px var(--m);display:flex;align-items:center;justify-content:center;pointer-events:none}
+.infoprog{position:absolute;right:calc(100% + 8px);top:50%;transform:translateY(-50%);   /* beside the box, clear of its border */
+  min-width:16px;height:16px;padding:0 3px;border-radius:8px;background:var(--glow);color:var(--team-ink,#04121e);font:700 10px var(--m);display:flex;align-items:center;justify-content:center;pointer-events:none}
 .infoprog[hidden]{display:none}
 
 /* ---- a second, discoverable exit: HOLD to leave utility mode, no drawer, no settings touched.
    Visible only while nobody has claimed this phone as a field item (utility.js render(), `mcArmed`
    gates `hidden`); a deployed station stays behind the ⓘ gate, unchanged. HELD, not tapped, so a bag
    jostle cannot cross it and a passerby needs a deliberate ~1.2 s press, same order as the entry gate. ---- */
-.exitbtn{position:relative;overflow:hidden;align-self:center;margin-top:2px;padding:12px 18px;min-height:38px;box-sizing:border-box;border:1px solid var(--edge);color:var(--mut);font:600 11px var(--fl);letter-spacing:.16em;background:var(--plate2);-webkit-user-select:none;user-select:none;touch-action:none;transform:skewX(var(--skew))}
+.exitbtn{position:relative;overflow:hidden;align-self:center;margin-top:2px;padding:12px 18px;min-height:38px;box-sizing:border-box;border:1px solid var(--edge);color:var(--mut);font:600 11px var(--fl);letter-spacing:.16em;background:var(--plate2);-webkit-user-select:none;user-select:none;touch-action:none}
 .exitbtn[hidden]{display:none}
 .exitbtn .fill{position:absolute;inset:0;left:0;width:0;background:color-mix(in srgb, var(--warn) 34%, transparent)}
 .exitbtn .lbl{position:relative}
 
 /* ---- the status display ---- */
 .hero{position:relative;border:1px solid var(--team);background:linear-gradient(180deg,color-mix(in srgb,var(--team) 26%,#04070c) 0%,var(--plate2) 100%);padding:22px 18px 18px;text-align:center;box-shadow:0 0 60px -20px var(--team)}
-/* The hero is a plain box, like the panels under it: it is the full height of the screen, and at any slant its
-   corners ran off the 16px gutter (portrait) and into the side column (landscape). The chip and the bar inside carry the slant. */
+/* The hero is a plain box, like the panels under it (a skewed hero ran off the 16px gutter and into the landscape side column). */
 .hero .kind{font-family:var(--fd);font-weight:700;font-size:clamp(22px,6vw,34px);letter-spacing:.18em;color:var(--num)}
-.hero .team{font-family:var(--fd);font-style:italic;font-weight:700;font-size:clamp(64px,22vw,120px);line-height:.9;letter-spacing:.04em;color:var(--team);text-shadow:0 0 40px color-mix(in srgb,var(--team) 60%,transparent);margin:4px 0 6px}
+.hero .team{font-family:var(--fd);font-weight:700;font-size:clamp(64px,22vw,120px);line-height:.9;letter-spacing:.04em;color:var(--team);text-shadow:0 0 40px color-mix(in srgb,var(--team) 60%,transparent);margin:4px 0 6px}
 .hero .sid{font-family:var(--m);color:var(--mut);letter-spacing:.24em;font-size:13px}
-.hero .status{display:inline-block;margin-top:12px;padding:6px 16px;font:700 12px var(--fl);letter-spacing:.24em;border:1px solid var(--edge);color:var(--mut);transform:skewX(var(--skew))}
+.hero .status{display:inline-block;margin-top:12px;padding:6px 16px;font:700 12px var(--fl);letter-spacing:.24em;border:1px solid var(--edge);color:var(--mut)}
 .hero .status.on{background:var(--ok);color:#03140a;border-color:var(--ok);box-shadow:0 0 30px -8px var(--ok)}
 .hero .revives{margin-top:12px;font-family:var(--fd);font-weight:700;font-size:20px;letter-spacing:.1em;color:var(--ok);min-height:1em}
 .hero .armed{margin-top:10px;font:700 11px var(--fl);letter-spacing:.24em;color:var(--mut)}.hero .armed.on{color:var(--glow)}
@@ -71,13 +71,13 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 .control{margin-top:14px}
 .control[hidden]{display:none}
 .control .cowner{font-family:var(--fd);font-weight:700;font-size:clamp(15px,4.4vw,22px);letter-spacing:.18em;color:var(--num);min-height:1em}
-.cbar{position:relative;height:40px;margin:8px 0 6px;border:1px solid var(--edge);background:#03080e;overflow:hidden;transform:skewX(var(--skew))}
+.cbar{position:relative;height:40px;margin:8px 0 6px;border:1px solid var(--edge);background:#03080e;overflow:hidden}
 .cbar i{position:absolute;left:0;top:0;bottom:0;width:0;background:linear-gradient(180deg,color-mix(in srgb,var(--bar,var(--team)) 88%,#fff) 0%,color-mix(in srgb,var(--bar,var(--team)) 55%,#04070c) 100%);box-shadow:0 0 30px -6px var(--bar,var(--team));transition:width .3s linear}
 /* the % sits in the middle of the LARGER side of the bar (utility.js sets --pctx), so the edge arrow never runs over it */
-.cbar b{position:absolute;top:0;bottom:0;left:var(--pctx,50%);display:flex;align-items:center;justify-content:center;font-family:var(--fd);font-weight:700;font-size:17px;letter-spacing:.22em;color:var(--num);text-shadow:0 1px 4px #000,0 0 10px #000;transform:translateX(-50%) skewX(var(--unskew))}
+.cbar b{position:absolute;top:0;bottom:0;left:var(--pctx,50%);display:flex;align-items:center;justify-content:center;font-family:var(--fd);font-weight:700;font-size:17px;letter-spacing:.22em;color:var(--num);text-shadow:0 1px 4px #000,0 0 10px #000;transform:translateX(-50%)}
 /* the moving stripes: present only while the bar is actually changing, reversed when it drains, and their
    period is --cspd, which utility.js sets from the NET player count -- speed is information here */
-.cbar .cchev{position:absolute;inset:0;opacity:0;background-image:repeating-linear-gradient(90deg,transparent 0 12px,rgba(255,255,255,.22) 12px 20px,transparent 20px 32px);background-size:32px 100%}   /* 90deg: the bar's own skew slants the stripes to the house angle, parallel to its ends */
+.cbar .cchev{position:absolute;inset:0;opacity:0;background-image:repeating-linear-gradient(90deg,transparent 0 12px,rgba(255,255,255,.22) 12px 20px,transparent 20px 32px);background-size:32px 100%}   /* 90deg: upright stripes, parallel to the bar's ends */
 [data-cstate="rising"] .cbar .cchev,[data-cstate="falling"] .cbar .cchev,[data-cstate="contested"] .cbar .cchev{opacity:1;animation:cchev var(--cspd,1.2s) linear infinite}
 [data-cstate="falling"] .cbar .cchev{animation-direction:reverse}
 @keyframes cchev{from{background-position:0 0}to{background-position:32px 0}}
@@ -86,7 +86,7 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 [data-cstate="held"] .cbar i{animation:chold 2.6s ease-in-out infinite}
 @keyframes chold{0%,100%{filter:brightness(1)}50%{filter:brightness(1.18)}}
 /* the arrow rides ON the moving edge (§5d.4) */
-.cbar u{position:absolute;top:50%;transform:translate(-50%,-50%) skewX(var(--unskew));font:16px/1 var(--fl);color:var(--num);text-shadow:0 0 8px #000;transition:left .3s linear;pointer-events:none}
+.cbar u{position:absolute;top:50%;transform:translate(-50%,-50%);font:16px/1 var(--fl);color:var(--num);text-shadow:0 0 8px #000;transition:left .3s linear;pointer-events:none}
 .cbar u[hidden]{display:none}
 .control .crate{font-family:var(--fd);font-weight:700;font-size:15px;letter-spacing:.16em;color:var(--glow);min-height:1em}
 .control .cnet{font:12px var(--m);color:var(--mut);letter-spacing:.08em;min-height:1.2em}
@@ -98,6 +98,8 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 [data-cstate="contested"] .control .cbanner{animation:cblink 1s steps(1,end) infinite}
 @keyframes cblink{0%,49%{opacity:1}50%,100%{opacity:.25}}
 .control .cwarn{font:600 11px/1.4 var(--fl);letter-spacing:.06em;color:var(--bad);margin-top:6px}
+/* an empty line takes no room (landscape already did this): reserved blanks left a 150px hole in the portrait hero */
+.control .ceta:empty,.control .cbanner:empty,.control .ctally:empty,.control .cwarn:empty{display:none}
 /* §5d.4 the transition: one full-width flash and a large word at each crossing — unmistakable from across a
    room, and the one thing the gun cannot show (a callout is a single 2 s clip). */
 /* The wash is the across-the-room half and covers the whole screen; the WORD sits in the top band, over the
@@ -106,7 +108,7 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 .cflash{position:fixed;inset:0;z-index:5;display:flex;align-items:flex-start;justify-content:center;pointer-events:none;
   background:color-mix(in srgb,var(--fc,var(--num)) 30%,transparent)}
 .cflash span{display:block;max-width:100%;margin-top:9vh;padding:0 10px;overflow-wrap:anywhere;
-  font-family:var(--fd);font-style:italic;font-weight:700;font-size:clamp(28px,10vw,84px);line-height:.95;letter-spacing:.06em;text-align:center;
+  font-family:var(--fd);font-weight:700;font-size:clamp(28px,10vw,84px);line-height:.95;letter-spacing:.06em;text-align:center;
   color:var(--fc,var(--num));text-shadow:0 0 40px #000,0 2px 10px #000}
 .cflash[hidden]{display:none}
 .cflash[data-fteam="red"]{--fc:var(--team-red)}.cflash[data-fteam="blue"]{--fc:var(--team-blue)}
@@ -115,6 +117,9 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 @keyframes cflash{0%{opacity:0;transform:scale(1.3)}8%{opacity:1;transform:scale(1)}70%{opacity:1}100%{opacity:0}}
 /* the roster marks (§5d.4): counted, DOWN, or in range but off the point */
 .players .row.dead{text-decoration:line-through;opacity:.75}
+/* the raw reading is an inline-block so it draws its OWN strike: inherited from the 20px reading, the line landed under
+   the 11px text and read as an underline */
+.players .rssi small{display:inline-block}.players .row.dead .rssi small{text-decoration:line-through}
 .players .row.far{opacity:.45}
 /* F82: present and alive, but its team can never hold a point — not a contributor, and not merely absent */
 .players .row.refused{opacity:.7}
@@ -124,15 +129,17 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 /* ---- players in range: a read-only readout (the host glances; players learn nothing they can use) ---- */
 .panel{background:var(--plate);border:1px solid var(--edge);padding:12px 14px}
 .panel h3{margin:0 0 8px;font:700 11px var(--fl);letter-spacing:.26em;color:var(--mut)}
-.players .row{display:grid;grid-template-columns:34px 56px 1fr 46px 74px;gap:6px;align-items:center;padding:8px 6px;border-bottom:1px solid #101a26;font-family:var(--m);font-size:13px;white-space:nowrap}
+/* every row carries the same 4px left border (transparent unless .claim colours it), so the columns line up row to row;
+   the rssi column is right-aligned with tabular digits, so the state column never shifts */
+.players .row{display:grid;grid-template-columns:30px 50px minmax(0,120px) 44px 74px;gap:4px;align-items:center;padding:8px 6px;border-bottom:1px solid #101a26;border-left:4px solid transparent;font-variant-numeric:tabular-nums;font-family:var(--m);font-size:13px;white-space:nowrap}
 .players .state.alive{color:var(--ok)}.players .state.down{color:var(--bad)}
 .players .row.near{background:color-mix(in srgb,var(--team) 22%,transparent)}
 /* on a control point: this body is CONVERTING the point, in its own team's colour (a down player on the
    point, or a live one just outside the bubble, deliberately has no bar) */
 .players .row.claim{border-left:4px solid var(--rowteam,var(--team))}
-.players .row.empty{color:var(--mut);grid-template-columns:1fr;font-family:var(--fl);letter-spacing:.1em}
+.players .row.empty{color:var(--mut);grid-template-columns:1fr;border-left:0;font-family:var(--fl);letter-spacing:.1em}
 .players .pteam.blue{color:var(--team-blue)}.players .pteam.yellow{color:var(--team-yellow)}.players .pteam.red{color:var(--team-red)}.players .pteam.green{color:var(--team-green)}
-.players .rssi{font-family:var(--fd);font-weight:700;font-size:20px}.players .rssi small{font:11px var(--m);color:var(--mut);margin-left:4px}.players .pres{color:var(--ok);font-weight:700;text-align:right;font-size:11px;letter-spacing:.04em;overflow:hidden}
+.players .rssi{font-family:var(--fd);font-weight:700;font-size:20px;text-align:right;padding-right:4px;white-space:nowrap}.players .rssi small{font:11px var(--m);color:var(--mut);margin-left:4px}.players .pres{color:var(--ok);font-weight:700;text-align:right;font-size:11px;letter-spacing:.04em;overflow:hidden}
 .foot{text-align:center;font-size:10px;letter-spacing:.3em;color:var(--mut);margin-top:auto}
 /* Portrait's `.side` wrapper (QA-23, below) must be invisible to portrait's own rhythm: same flex column,
    same 14px gap `body` already used between these four sections, so wrapping them for the landscape grid
@@ -141,6 +148,7 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 /* the MC panel, folded while linked: one line, the status and CHANGE */
 .mcline{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .mcchg{min-height:40px;padding:0 14px;font-size:12px;flex:none}.mcchg[hidden]{display:none}
+.mcform{margin-top:8px}   /* clear of CHANGE/HIDE above it */
 .mcjoin.linked h3,.mcjoin.linked .mcform{display:none}
 .mcjoin.linked #mcstateMain{color:var(--ok);font-weight:700;letter-spacing:.08em}
 
@@ -207,7 +215,7 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
   #exitHud{order:-1;margin:0;padding:8px 12px;min-height:36px;font-size:11px}
   .side .panel{padding:7px 9px}
   .side .panel h3{font-size:11px;margin-bottom:4px}
-  .players .row{grid-template-columns:24px 42px 1fr 40px 74px;gap:4px;padding:4px;font-size:11px}
+  .players .row{grid-template-columns:24px 42px minmax(0,112px) 40px 74px;gap:4px;padding:4px;font-size:11px}
   .players .rssi{font-size:15px}
   /* branding only, no field meaning -- dropped here rather than shrunk under the label floor */
   .side .foot{display:none}
@@ -219,24 +227,24 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 #cfg{position:fixed;inset:0;z-index:10;background:rgba(2,4,10,.96);overflow:auto;padding:max(14px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px}
 #cfg[hidden]{display:none}
 .cfghead{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.cfghead .t{font-family:var(--fd);font-style:italic;font-weight:700;font-size:24px;letter-spacing:.12em}
+.cfghead .t{font-family:var(--fd);font-weight:700;font-size:24px;letter-spacing:.12em}
 .cfghead .btn{flex:none;white-space:nowrap}   /* CLOSE ✕ on one line */
 .cfghead .s{font-size:11px;letter-spacing:.24em;color:var(--warn);font-weight:700}
-.btn{min-height:48px;padding:0 16px;background:var(--plate2);color:var(--num);border:1px solid var(--edge);font:700 14px var(--fd);letter-spacing:.14em;transform:skewX(var(--skew))}
+.btn{min-height:48px;padding:0 16px;background:var(--plate2);color:var(--num);border:1px solid var(--edge);font:700 14px var(--fd);letter-spacing:.14em}
 .btn.primary{background:var(--team);color:var(--team-ink);border-color:var(--team)}
 .btn.ghost{color:var(--mut)}
-.actions{display:flex;gap:10px;padding:0 8px}   /* 8px: a 60px slanted button's corners stay inside the panel column */.actions .btn{flex:1;min-height:60px;font-size:18px}
+.actions{display:flex;gap:10px}.actions .btn{flex:1;min-height:60px;font-size:18px}
 .seg{display:flex;flex-wrap:wrap;gap:8px}
-.seg button{position:relative;min-height:46px;padding:0 16px;background:var(--plate2);color:var(--ink);border:1px solid var(--edge);font:700 13px var(--fd);letter-spacing:.14em;transform:skewX(var(--skew))}
-.seg button > span{display:inline-block;transform:skewX(var(--unskew))}
+.seg button{position:relative;min-height:46px;padding:0 16px;background:var(--plate2);color:var(--ink);border:1px solid var(--edge);font:700 13px var(--fd);letter-spacing:.14em}
+.seg button > span{display:inline-block}
 .seg button.sel{background:var(--team);color:var(--team-ink);border-color:var(--team)}
 .seg button.blue.sel{background:var(--team-blue);color:#04121e}.seg button.yellow.sel{background:var(--team-yellow);color:#1a1400}.seg button.red.sel{background:var(--team-red);color:#1a0404}.seg button.green.sel{background:var(--team-green);color:#041a0c}.seg button.any.sel{background:var(--team-any);color:#0a0f14}
 .def{font:600 8px var(--fl);letter-spacing:.2em;color:var(--warn);border:1px solid var(--warn);padding:1px 4px;margin-left:6px;vertical-align:middle}   /* the DEFAULT badge */
 .seg button.sel .def{color:inherit;border-color:currentColor;opacity:.8}
 .rowc{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .hint{font:12px/1.4 var(--fl);color:var(--mut)}
-label.hint{display:block;margin-top:12px}
-input[type=range]{width:100%;height:44px;accent-color:var(--team);margin:0}   /* 44px: this slider IS the calibration control */
+label.hint{display:block;margin:12px 0 8px}
+input[type=range]{width:100%;height:44px;accent-color:var(--team);margin:8px 0 0}   /* 44px: this slider IS the calibration control */
 .big{font:700 24px var(--fd);letter-spacing:.06em;min-width:64px;text-align:center}
 /* ---- kind 2: the powerup station (A56). The item's own colour (`--item`, set by utility.js) carries the name and the
    ring; AVAILABLE is the item colour, TAKEN is muted, and the countdown is the one number a player reads from afar. ---- */
@@ -246,7 +254,7 @@ input[type=range]{width:100%;height:44px;accent-color:var(--team);margin:0}   /*
 .pup .pstate{font-family:var(--fd);font-weight:700;font-size:clamp(20px,6vw,32px);letter-spacing:.2em;color:var(--item,var(--glow))}
 .pup[data-pstate="taken"] .pstate{color:var(--mut)}
 .pup[data-pstate="unknown"] .pstate{font-size:clamp(13px,3.6vw,16px);color:var(--mut)}
-.pup .pnext{font-family:var(--fd);font-style:italic;font-weight:700;font-size:clamp(28px,9vw,52px);line-height:1;color:var(--num);min-height:0}
+.pup .pnext{font-family:var(--fd);font-weight:700;font-size:clamp(28px,9vw,52px);line-height:1;color:var(--num);min-height:0}
 .pup .ptaker{font:700 12px var(--fl);letter-spacing:.24em;color:var(--mut)}
 .pup .pnext:empty,.pup .ptaker:empty{display:none}
 .pring{--p:0;width:92px;height:92px;border-radius:50%;background:conic-gradient(var(--item,var(--glow)) calc(var(--p) * 360deg),rgba(255,255,255,.08) 0);display:grid;place-items:center}
@@ -322,9 +330,9 @@ input[type=range]{width:100%;height:44px;accent-color:var(--team);margin:0}   /*
     <div class="foot">OPEN BRX · UTILITY ITEM</div>
   </div>
 
-  <!-- §5d.4's crossing flash, OUTSIDE .hero on purpose. `.hero` was once skewed, and a
-       transformed element is the containing block for its `position:fixed` descendants — nested in there,
-       `inset:0` resolved to the hero box: a skewed patch sitting on the capture bar and the LOST IN n S
+  <!-- §5d.4's crossing flash, OUTSIDE .hero on purpose. A transformed element is the containing block
+       for its `position:fixed` descendants, and `.hero` was once skewed — nested in there, `inset:0`
+       resolved to the hero box: a skewed patch sitting on the capture bar and the LOST IN n S
        countdown, for the full 2.6 s, exactly when a contest starts. -->
   <div class="cflash" id="cflash" hidden aria-hidden="true"><span id="cflashw"></span></div>
 
