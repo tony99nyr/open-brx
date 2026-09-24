@@ -38,9 +38,11 @@ costs the player their secondary while the item lasts.
 5. With the item slot out of the cycle and an empty magazine, confirm it cannot fire by any button.
 6. After a death and `$SPAWN`, does the pickup slot's magazine come back? (If it does, the phone zeroes it.)
 7. Overshield: on a Standard-preset gun (shield max 0) and a Shields-preset gun, write the shield to its current
-   value plus 75 with `$LIFE` token 4 = 2 (set past max). Pass: `$HP` reads the new shield; the next hits take the
-   shield first; nothing refills it; a death clears it. Also: the same write to a gun at `$HP,0` must not revive it
-   (mode 1 with health above 0 is a proven revive; mode 2 is unmeasured).
+   value plus 75 with `$LIFE` token 4 = 2 (set past max). **Bench 2026-09-24, measured: the raw write does NOT
+   stick past the `$PSET` shield max; `$HP` clamps back to the max within about 0.75 s.** A grant above the
+   preset max holds only once a mid-life `$PSET` re-send raises the shield max first. A death clears it. Also:
+   the same write to a gun at `$HP,0` must not revive it (mode 1 with health above 0 is a proven revive; mode 2
+   is unmeasured).
 8. Pickup range calibration (brx2's runbook): the RSSI median at 15, 30, 60 and 100 cm for each phone (Pixel,
    iPhone) against each station type (phone station, StickS3). It sets `POWERUP_RSSI_DBM` per station kind and
    decides whether a per-phone offset is needed. It also measures the claim latency (in range to TAKEN on the
@@ -133,12 +135,13 @@ swap and you would only have 1."
 
 **Overshield mechanics.** A positive `$BUMP` clamps at the `$PSET` maximum (protocol.md, the `$BUMP` row), so it
 cannot put shield above max. The grant is `$LIFE` with token 4 = 2 (set past max) on the shield pool: current +
-`OVERSHIELD_AMOUNT` (75). It takes hits first (the gun's cascade drains shield before armour and HP), does not
-regenerate (`OVERSHIELD_REGEN` off), does not decay (`OVERSHIELD_DECAY_PER_S` 0), and is gone at death. In the Shields
-preset the node's own recharge (S29, `$BUMP` refills) must never write while the shield is above the preset max, so
-a clamping refill cannot cut the overshield down. Bench (Bench gate item 7): the shield set past max sticks; hits
-drain it first; a `$BUMP` shield refill on a gun already above max does not lower it (so the recharge rule is
-belt-and-braces, not load-bearing).
+`OVERSHIELD_AMOUNT` (75). Design: it takes hits first (the gun's cascade drains shield before armour and HP), does
+not regenerate (`OVERSHIELD_REGEN` off), does not decay (`OVERSHIELD_DECAY_PER_S` 0), and is gone at death. **Bench
+2026-09-24 (Bench gate item 7), measured: the raw `$LIFE` write does NOT stick past the `$PSET` shield max; `$HP`
+clamps back to the max within about 0.75 s.** The grant must pair a mid-life `$PSET` re-send that raises the shield
+max, and only then does the `$LIFE` write hold. A death clears it. Untested: hits draining the shield first, and a
+`$BUMP` refill on a gun already holding a raised max, so the recharge-rule design above remains a design intent,
+not a bench-confirmed guard.
 
 ## Station powerup modes (Tony, 2026-09-24: "future variations wanted")
 
