@@ -82,8 +82,8 @@ const freePort = () => new Promise((resolve, reject) => {
 
 // name, working dir, command, `mb` (peak PSS measured 2026-09-16, with a margin), `secs` (typical, for ordering),
 // and whether it needs app/www. `env` may be a function (for per-job ports).
-const e2e = (script, secs) => ({
-  name: `mc-${script}`, cwd: 'webapp/mc', cmd: ['node', `test/e2e/${script}.mjs`], ui: true, mb: 700, secs,
+const e2e = (script, secs, mb = 700) => ({
+  name: `mc-${script}`, cwd: 'webapp/mc', cmd: ['node', `test/e2e/${script}.mjs`], ui: true, mb, secs,
   env: async () => ({ MC_PORT: String(await freePort()), MC_WS_PORT: String(await freePort()), VITE_PORT: String(await freePort()) }),
 });
 const JOBS = [
@@ -101,7 +101,11 @@ const JOBS = [
   { name: 'app-moments', cwd: 'app', cmd: ['node', 'tools/moments.mjs'], www: true, ui: true, mb: 500, secs: 60 },
   // two real MCs and two phone HUDs against the built console, so it needs webapp/mc/dist as well as app/www
   { name: 'app-e2e', cwd: 'app', cmd: ['node', 'tools/e2e.mjs'], www: true, dist: true, ui: true, mb: 1000, secs: 65 },
-  ...[['koth', 45], ['backhaul', 20], ['kit-continue', 22], ['end-delivery', 13], ['standby', 87], ['m2-ui', 46], ['game-edit', 32], ['operator-menu', 18], ['report', 15]].map(([s, t]) => e2e(s, t)),
+  ...[['koth', 45], ['backhaul', 20], ['kit-continue', 22], ['end-delivery', 13], ['standby', 87], ['m2-ui', 46], ['game-edit', 32], ['operator-menu', 18], ['report', 15],
+      // MC visual QA 2026-09-23: measured as 1.0-1.1 GB RSS summed over the process tree (shared pages counted
+      // twice), so 900 MB sits between that and the older jobs' measured 700 MB PSS.
+      ['designer-rail-play', 9, 900], ['frame', 7, 900], ['lobby-updating', 3, 900], ['recap-next', 20, 900],
+      ['feed-reload', 9, 900], ['mc-restart', 13, 900], ['live-board', 19, 900]].map(([s, t, mb]) => e2e(s, t, mb)),
 ].filter(j => (UI || !j.ui) && (!filters.length || filters.some(f => j.name.includes(f))));
 
 if (LIST) { for (const j of JOBS) console.log(j.name); process.exit(0); }

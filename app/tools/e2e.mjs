@@ -341,9 +341,9 @@ await step('LOAD ▸ on GAMES shows the LOADED GAME state; CONTINUE TO KIT ▸ a
   await until(async () => (await st()).phase === 'kit', 6000, 'server phase kit');
   await until(async () => (await mc.locator('text=KIT EACH PLAYER').count()) > 0 && (await mc.locator('input[aria-label="new operator callsign"]').count()) > 0, 6000, 'KIT screen rendered (header + roster input)');
 });
-await step('guard: PUSH CONFIG & ARM exists AND is disabled with an empty roster', async () => {
+await step('guard: the LOBBY push button exists AND is disabled with an empty roster', async () => {
   await nav(3);
-  const btn = mc.locator('button:has-text("PUSH CONFIG & ARM")').first();
+  const btn = mc.locator('[data-lobby-primary="push"] button').first();
   await until(async () => (await btn.count()) > 0, 6000, 'PUSH button rendered');
   expect((await btn.isDisabled()) === true, 'push button clickable with no players');
   await nav(2);   // back to kit for the join flow
@@ -804,14 +804,14 @@ await step('both HUDs tap READY UP', async () => {
   }
   await until(async () => (await st()).readiness.go === true, 20000, 'readiness green-light');
 });
-await step('PUSH CONFIG & ARM from the Lobby UI → 2/2 acked', async () => {
+await step('PUSH CONFIG from the Lobby UI → 2/2 acked', async () => {
   // all-ready AUTO-advances kit→lobby (the view follows) — only click Kit's CONTINUE if that didn't happen
   if ((await st()).phase !== 'lobby') { await mc.click('button:has-text("CONTINUE ▸")'); }
   await until(async () => (await st()).phase === 'lobby', 6000, 'server phase lobby');
-  await until(async () => (await mc.locator('button:has-text("PUSH CONFIG & ARM")').count()) > 0, 6000, 'lobby rail visible');
+  await until(async () => (await mc.locator('[data-lobby-primary="push"] button').count()) > 0, 6000, 'lobby rail visible');
   // Bench 2026-09-17: the countdown picker appears only once the push is in sync, beside ARM COUNTDOWN.
   expect((await mc.locator('select[aria-label="countdown length"]').count()) === 0, 'no countdown picker before the push');
-  await mc.click('button:has-text("PUSH CONFIG & ARM")');
+  await mc.click('[data-lobby-primary="push"] button');
   await until(async () => { const s = await st(); const a = s.lobby.acks || {}; return Object.values(a).filter(x => x.ok).length === 2; }, 20000, '2 acks');
   await until(async () => (await mc.locator('button:has-text("ARM COUNTDOWN")').count()) > 0, 8000, 'arm button');
   await until(async () => (await mc.locator('select[aria-label="countdown length"] option', { hasText: '00:10' }).count()) > 0, 8000, 'quick 10s runway preset in the picker once in sync');
@@ -1290,7 +1290,7 @@ await step('compat-older-server: new UI renders GAMES / DESIGNER / KIT against a
   await until(async () => (await pg.locator('text=KIT EACH PLAYER').count()) > 0, 6000, 'KIT rendered');
   expect((await pg.locator('text=GAME RULES').count()) === 0, 'KIT shows a GAME RULES chip with no policy');
   if ((await pg.locator('div[role="button"]:has-text("ALPHA")').count()) > 0) { await pg.locator('div[role="button"]:has-text("ALPHA")').first().click(); await pg.waitForTimeout(400); await noCrash('KIT (player selected)'); expect((await pg.locator('div[role="button"]:has-text("PRIMARY")').count()) > 0, 'KIT slot cards missing for a selected player'); }
-  await nav(3); await noCrash('LOBBY'); await until(async () => (await pg.locator('button:has-text("PUSH CONFIG & ARM")').count()) > 0, 6000, 'LOBBY rendered');
+  await nav(3); await noCrash('LOBBY'); await until(async () => (await pg.locator('[data-lobby-primary="push"] button').count()) > 0, 6000, 'LOBBY rendered');
   await nav(0); await noCrash('ARMORY');
   await pg.screenshot({ path: path.join(OUT, `${String(++shotN).padStart(2, '0')}-compat-older-server.png`) });
   expect(errs.length === 0, 'errors against the stale server: ' + errs.join(' | '));
