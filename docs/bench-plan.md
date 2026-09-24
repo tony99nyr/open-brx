@@ -73,7 +73,7 @@ A3 repeats A1 on other channels and can lock the gun: power-cycle and re-arm bef
    prove the missing-row default sound, then write two distinct ids and identify which one plays (15 min). **F285**.
 6. Levers §12 step 2 (does `$STOP` gate the trigger?), then §4 step 2 (a `$SIR` p5 stun on hit) (10 min). **U11′**.
 7. **F262**: the shield-hit sound by sensor, ten shots at the headset and ten at the gun body (10 min, ears).
-8. Levers §2, melee (15 min; `$BMAP,8,7` and `$BMAP,8,4`; step 4 needs the rig). **K4**.
+8. ~~Levers §2, melee.~~ **K4** closed 2026-09-24: melee works in our compiled game (bench 2026-09-24 entry, `archive/followups-closed.md`). Steps 5 and 7 (the `$BHIT`/`$FIREX` controls) stay optional, not blocking.
 9. Levers §16 step 6.3: does `$CLEAR` stop a headset `$IRTX` loop? (5 min, the rig). **S57**, **B23**.
 10. **F282**: the compiled Suppressor against the compiled AR in a dark room: does either flash, and which is quieter?
    Then `$WEAP` t25/t26 at 0 and at a large value on one weapon (10 min; eyes, ears; method in the row).
