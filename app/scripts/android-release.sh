@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Build a SIGNED Android release apk (B21). This is a build step only: it never publishes or
-# uploads anything, and it never touches webapp/download or GitHub Releases (that is
-# android-apk.sh's debug path, kept separate on purpose).
+# uploads anything, and never touches GitHub Releases. It does copy the APK into webapp/download and
+# write the download sidecar (build.json) through scripts/apk-sidecar.mjs, the writer android-apk.sh
+# uses. Commit the version bump FIRST, build, then commit build.json on top: the sidecar names the
+# commit it was built from, and a dirty tree marks it dirty. APK_OUT_DIR sends a dry run elsewhere.
 #
 #   npm run android:release
 #
@@ -64,7 +66,26 @@ APK="android/app/build/outputs/apk/release/app-release.apk"
 [ -f "$APK" ] || { echo "error: $APK missing after a successful build" >&2; exit 1; }
 VERSION="$(node -p "require('./package.json').version")"
 
+# --- the download sidecar, the same writer android:apk uses -----------------------------------------
+# `git` is the commit this APK was built from; the release's asset URL is written up front, so the bump
+# commit carries a sidecar the site and test_published_build.py accept. Publishing stays separate.
+REPO="$(cd .. && pwd)"
+GIT_SHA="$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+DIRTY="$(git -C "$REPO" status --porcelain -- app ':(exclude)app/*.md' ':(exclude)app/release-notes' 2>/dev/null || true)"
+if [ -n "$DIRTY" ]; then
+  echo "WARNING: app sources are not committed; the stamp and the sidecar say dirty. Publish only a clean build." >&2
+fi
+SLUG="$(git -C "$REPO" remote get-url origin 2>/dev/null | sed -E 's#^(git@github.com:|https://github.com/)##; s#\.git$##')"
+[ -n "$SLUG" ] || SLUG="tony99nyr/open-brx"
+OUT="${APK_OUT_DIR:-$REPO/webapp/download}"   # override for a dry run that must not touch the site
+TAG="app-v${VERSION}"
+NAME="$(node scripts/apk-sidecar.mjs write --apk "$APK" --out "$OUT" --version "$VERSION" --variant release \
+  --git "$GIT_SHA" --dirty "$([ -n "$DIRTY" ] && echo 1 || echo 0)" --gradle "$REPO/app/android/variables.gradle" \
+  --slug "$SLUG" --release "$TAG")"
+[ -n "$NAME" ] || { echo "error: apk-sidecar.mjs wrote no file name" >&2; exit 1; }
+
 echo
-echo "==> android/app/build/outputs/apk/release/app-release.apk"
+echo "==> $OUT/$NAME (and android/app/build/outputs/apk/release/app-release.apk)"
 echo "    version $VERSION, signed, local only. Nothing has been published."
-echo "    Hand it to Tony to sideload or distribute; publishing is a separate, deliberate step."
+echo "    The sidecar $OUT/build.json names $TAG. Commit it on top of the committed bump, then push and"
+echo "    publish $TAG with that exact file at once. Publishing is a separate, deliberate step."

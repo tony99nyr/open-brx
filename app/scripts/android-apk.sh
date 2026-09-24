@@ -16,9 +16,9 @@
 # site (a non-default `APK_OUT_DIR` also skips publishing). Never fatal: no `gh`, no auth, or no
 # network still leaves a complete local build and a valid sidecar.
 #
-# Why debug and not release: there is no release keystore in this project yet. A debug apk
-# sideloads fine, but it is signed with the throwaway Android debug key, so the first
-# release-signed build will NOT upgrade over it (players will have to uninstall first).
+# This is the DEBUG path, signed with the throwaway Android debug key. The release-signed build is
+# `npm run android:release` (app/README.md, Release signing); a release build does NOT upgrade over a debug one, so
+# players uninstall once when they move between the two.
 #
 # Requires JDK 21 (Capacitor 8) and the Android SDK. If JAVA_HOME is unset or points at an
 # older JDK, this script looks for a 21 in ~/.jdks and /usr/lib/jvm.
@@ -77,42 +77,10 @@ if [ -n "$DIRTY" ]; then
   echo
 fi
 OUT="${APK_OUT_DIR:-$REPO/webapp/download}"   # override for a trial build that must not touch the site
-NAME="brx-companion-${VERSION}-android-debug.apk"
-mkdir -p "$OUT"
-cp "$APK" "$OUT/$NAME"
-# exactly one apk lives there: the site build refuses to guess between two. Prune AFTER the copy so a
-# failure never leaves the folder empty, and case-insensitively so a stray .APK cannot survive to
-# hard-fail the site build.
-# -samefile, not -name: on a case-insensitive filesystem (macOS) a pre-existing "…-debug.APK" keeps
-# its own directory entry when cp writes through it, and a name-based prune would delete the inode we
-# just wrote. Compare identity instead.
-find "$OUT" -maxdepth 1 -iname '*.apk' ! -samefile "$OUT/$NAME" -print -delete
-
-# A sidecar for the site: the build date cannot be read back off the apk (a checkout rewrites the
-# mtime, the zip entries are normalised), and the site refuses the sidecar if it stops matching.
-node -e '
-const fs = require("fs"), crypto = require("crypto");
-const [file, dir, gradlePath] = [process.argv[1], process.argv[2], process.argv[6]];
-const buf = fs.readFileSync(dir + "/" + file);
-const gradle = fs.readFileSync(gradlePath, "utf8");
-const sdk = (name) => {
-const m = gradle.match(new RegExp(name + "Version\\s*[=:]\\s*(?:rootProject\\.ext\\.[^:]+\\s*[=:]\\s*)?(\\d+)"));
-  if (!m) throw new Error("android-apk: could not read " + name + " from " + gradlePath);
-  return Number(m[1]);
-};
-const sha256 = crypto.createHash("sha256").update(buf).digest("hex");
-// "built" describes the BYTES, not this run: a rebuild that produces an identical apk (gradle was
-// up to date) keeps the original date rather than aging the download page forward for nothing.
-let built = new Date().toISOString();
-try {
-  const prev = JSON.parse(fs.readFileSync(dir + "/build.json", "utf8"));
-  if (prev.sha256 === sha256 && prev.built) built = prev.built;
-} catch {}
-fs.writeFileSync(dir + "/build.json", JSON.stringify({
-  file, version: process.argv[3], variant: "debug", minSdk: sdk("minSdk"), targetSdk: sdk("targetSdk"), built, bytes: buf.length, sha256,
-  git: process.argv[4], dirty: process.argv[5] === "1",
-}, null, 1) + "\n");
-' "$NAME" "$OUT" "$VERSION" "$GIT_SHA" "$([ -n "$DIRTY" ] && echo 1 || echo 0)" "$REPO/app/android/variables.gradle"
+# The copy, the one-APK prune and the sidecar are `scripts/apk-sidecar.mjs`, shared with android:release.
+NAME="$(node scripts/apk-sidecar.mjs write --apk "$APK" --out "$OUT" --version "$VERSION" --variant debug \
+  --git "$GIT_SHA" --dirty "$([ -n "$DIRTY" ] && echo 1 || echo 0)" --gradle "$REPO/app/android/variables.gradle")"
+[ -n "$NAME" ] || { echo "error: apk-sidecar.mjs wrote no file name" >&2; exit 1; }
 
 # Publish the build as a GitHub Release asset and record its URL in the sidecar. The release, not the
 # repo, is where a build is meant to live: a committed apk adds ~5 MB to git history that no purge
@@ -133,14 +101,7 @@ if [ "${APK_PUBLISH:-1}" = "1" ] && [ "$OUT" = "$REPO/webapp/download" ]; then
     fi
     ASSET_URL="$(gh release view "$TAG" --json assets -q ".assets[] | select(.name==\"$NAME\") | .url" 2>/dev/null || true)"
     if [ -n "$ASSET_URL" ]; then
-      node -e '
-const fs = require("fs");
-const [dir, url, tag] = process.argv.slice(1);
-const p = dir + "/build.json";
-const d = JSON.parse(fs.readFileSync(p, "utf8"));
-d.url = url; d.release = tag;
-fs.writeFileSync(p, JSON.stringify(d, null, 1) + "\n");
-' "$OUT" "$ASSET_URL" "$TAG"
+      node scripts/apk-sidecar.mjs set-url --out "$OUT" --url "$ASSET_URL" --release "$TAG"
       echo "    url:     $ASSET_URL"
     fi
   else

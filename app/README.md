@@ -220,8 +220,9 @@ the same version. Capacitor's own placeholder is `1.0` / `1`, which is why this 
 
 `npm run android:release` runs Gradle's `assembleRelease` instead of `assembleDebug`. It shares
 `android-setup.sh` with the debug path (same version stamp, same manifest patches), so the two
-builds never drift apart, but it never touches `webapp/download/` and never publishes anything —
-that stays a separate, deliberate step.
+builds never drift apart. It never publishes anything; that stays a separate, deliberate step. Like the
+debug path, it copies the APK into `webapp/download/` and writes the `build.json` sidecar there, through
+the one shared writer (`scripts/apk-sidecar.mjs`); `APK_OUT_DIR` sends a dry run elsewhere.
 
 **The key never lives in this repo.** `android-setup.sh` patches the generated
 `android/app/build.gradle` with a `signingConfigs.release` block that reads four values, in order,

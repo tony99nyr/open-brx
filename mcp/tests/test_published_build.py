@@ -106,10 +106,13 @@ def test_published_build_records_android_sdk_bounds():
 
 
 def test_apk_writer_preserves_android_sdk_bounds():
-    writer = (REPO / "app/scripts/android-apk.sh").read_text(encoding="utf-8")
-    assert 'minSdk: sdk("minSdk")' in writer
-    assert 'targetSdk: sdk("targetSdk")' in writer
-    assert '"$REPO/app/android/variables.gradle"' in writer
+    """One sidecar writer (`apk-sidecar.mjs`) for both builds; each build hands it the gradle variables."""
+    writer = (REPO / "app/scripts/apk-sidecar.mjs").read_text(encoding="utf-8")
+    assert "minSdk: sdk(gradle, 'minSdk')" in writer
+    assert "targetSdk: sdk(gradle, 'targetSdk')" in writer
+    for script in ("android-apk.sh", "android-release.sh"):
+        src = (REPO / "app/scripts" / script).read_text(encoding="utf-8")
+        assert '"$REPO/app/android/variables.gradle"' in src, script
 
 
 def test_published_build_was_not_cut_from_a_dirty_tree():
