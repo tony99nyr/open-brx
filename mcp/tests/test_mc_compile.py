@@ -956,8 +956,10 @@ def test_captured_native_behaviour_survives_resolve():
     # burst_rifle's tok23 is no longer Callsign's captured 275: R6 (weapon-design.md's Balance rules
     # table, Tony 2026-09-23, F308) widened it to 410 via `overrides.t23` to give a bursting AR the win
     # most of the time, then 410 -> 550 the same day (polish round 1) once modelling the Burst Rifle's
-    # own 40% crit reopened R6 -- the deliberate exception here, everything else in this test inherited.
-    assert tok("burst_rifle", T["burst"]) == "550", "3-round burst time (tok23), R6's override"
+    # own 40% crit reopened R6, then 550 -> 540 on 2026-09-24 (polish round 2, "full auto point blank
+    # ... too harsh") alongside the AR's own `heavy` easing 40 -> 45 -- the deliberate exception here,
+    # everything else in this test inherited.
+    assert tok("burst_rifle", T["burst"]) == "540", "3-round burst time (tok23), R6's override"
     assert tok("force_rifle", T["burst"]) == "250"
     assert tok("burst_rifle", T["burst"]) != tok("force_rifle", T["burst"]), "two distinct bursts"
     for wid, heat in (("smg", "5"), ("charge_rifle", "14"), ("plasma_sniper", "30"),

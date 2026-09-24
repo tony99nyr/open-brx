@@ -3482,9 +3482,11 @@ test('S54: the round counts are derived from the row\'s dmg -- rounds per trigge
   // punishing full auto without touching a controlled 3-5 round burst (`after_shots` still derives
   // to 6). Tightened again the same day (R7, F308): 8 -> 7, so heavy starts on round 7, one round
   // sooner -- degraded is still round 6 alone -- so a full-auto AR earns its own penalty sooner,
-  // making room for the Burst Rifle to beat it (R7).
-  assert.deepEqual(from(8, { crisp: 100, degraded: 70, heavy: 40, after_heavy: 7, ceiling: 100, floor: 70, per_shot: 10, recover_ms: 150 }),
-    row(100, 70, 40, 6, 7), 'assault_rifle: the 2026-09-23 depths (70/40), heavy declared at round 7 (R7, F308)');
+  // making room for the Burst Rifle to beat it (R7). Eased 40 -> 45 the same day, polish round 2
+  // (F308, "full auto point blank ... too harsh"): `after_shots`/`after_heavy` unchanged, only the
+  // heavy floor itself is shallower.
+  assert.deepEqual(from(8, { crisp: 100, degraded: 70, heavy: 45, after_heavy: 7, ceiling: 100, floor: 70, per_shot: 10, recover_ms: 150 }),
+    row(100, 70, 45, 6, 7), 'assault_rifle: the 2026-09-24 depths (70/45), heavy declared at round 7 (R7, F308)');
   // The Suppressor's own exception the OTHER way (Tony, 2026-09-23, R10, F308, docs/weapon-design.md's
   // Balance rules table row 3): "it should be weaker since its silent but not too weak." An explicit
   // `heavy: 70` (not the derived 60 floor every other reference-calibre weapon ships), declared

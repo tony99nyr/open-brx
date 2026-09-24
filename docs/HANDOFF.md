@@ -71,14 +71,15 @@ runbook needs a build from `main`: S56 and F309 are newer than 0.4.5.
 **S52 is closed (2026-09-22):** the HUD shows `ALT = RELOAD` and warns on conflicting secondary picks; app gates passed.
 
 **Balance rules R1-R10 shipped 2026-09-23** (`ef55b7db..6dae402d`): the one-page table at the top of
-[`weapon-design.md`](weapon-design.md) is the single home of every Tony balance rule; `test_balance_sim.py` gates each at
-65% on Standard (R7 is the tightest, 65.5%). The sim now models range bands (headset word close only) and crits.
-Recoil counts rounds per trigger pull by calibre (S54, `aa7b08b9`). F291 is closed. `balance_sim.py` balances any weapon.
+[`weapon-design.md`](weapon-design.md) is the single home of every Tony balance rule; `test_balance_sim.py` gates each rule
+at 65% on Standard, except R7. Recoil counts rounds per trigger pull by calibre (S54, `aa7b08b9`); F291 closed.
+**F308 polish 2, 2026-09-24** ("too harsh" at bench 4.3): AR `heavy` 40→45, Burst Rifle `t23` gap 550→540ms
+(not the bench's 100/70/55, which broke R3). R7 ~57%, own 55% bar now (`RANGE_BAR_OVERRIDES`); R3/R6 stay 65%.
 
 - **Next desk task:** none open. F310 is closed (Shields bar 60%, heavies decided); every rule lives in the
   Balance rules table at the top of `weapon-design.md`.
-- **Next bench task:** **F308** and **F292** in [`bench-2026-09-24.md`](bench-2026-09-24.md), then sitting 2 steps 1-4,
-  then sitting 3 (§26 groups A and B).
+- **Next bench task:** confirm the eased AR ladder (100/70/45) and the 540ms Burst Rifle gap, then **F292** in
+  [`bench-2026-09-24.md`](bench-2026-09-24.md), sitting 2 steps 1-4, sitting 3 (§26 groups A and B).
 - **Blocked:** Extended Mags on `$TMP` (S50) and F281 on sitting 2; **F275** on outdoor space (runbook Block 5).
 ## Lane: BLE reliability (brx2)
 2026-09-24, day sitting: Blocks 0-1, 1.4 (all 5 steps PASS) and 3.1-3.3 of
