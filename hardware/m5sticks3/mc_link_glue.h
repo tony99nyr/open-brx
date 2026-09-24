@@ -184,6 +184,10 @@ class ClaimScanCallbacks : public BLEAdvertisedDeviceCallbacks {
 ClaimScanCallbacks claimScanCallbacks;
 bool claimScanConfigured = false;
 
+// Set when something the operator should see changed: an MC frame, a self-spawn, a claim, a link change.
+// The .ino reads and clears it, and treats it like a button press: repaint AND wake the backlight.
+static volatile bool mcScreenWake = false;  // volatile: the claim-scan callback sets it too
+
 // Polish round 2 (HIGH): this callback must NEVER touch the WebSocket -- it runs off the BLE scan's
 // own completion, not mcLoop, and the library is not written to be called from there (nor does any
 // other I/O belong in a callback). `award_claim` only enqueues the report (station_link.h); mcLoop is
@@ -191,6 +195,7 @@ bool claimScanConfigured = false;
 static void onClaimScanComplete(BLEScanResults /*results*/) {
   ClaimWinner w = link.claims().resolve_batch();
   if (link.award_claim(w, millis())) {
+    mcScreenWake = true;  // the player at the station just took it: show TAKEN BY at once
     Serial.printf("CLAIM station=%d taker=%u (queued for MC)\n", link.assignment().id, w.player_num);
   }
   BLEDevice::getScan()->clearResults();
@@ -228,10 +233,6 @@ static void mcSendHello() {
   ws.sendTXT(env);
   link.ws_open_hello_sent();
 }
-
-// Set when an MC frame changed what the screen shows (a welcome, an arm, a pickup taken, a release).
-// The .ino reads and clears it, and treats it like a button press: repaint AND wake the backlight.
-static bool mcScreenWake = false;
 
 static void mcHandleFrame(const String& text) {
   bool ok = false;
@@ -324,7 +325,7 @@ static void mcLoop(uint32_t now) {
   // (`has_powerup_assignment()`), never on link state. (Polish round 3: they used to sit after the `!wifiUp` early
   // return below, so a muster station never spawned or awarded during play.)
   if (link.has_powerup_assignment()) {
-    link.tick_powerup(now);
+    if (link.tick_powerup(now)) mcScreenWake = true;  // a SELF-SPAWN: the item is back
     mcPollClaimScan(now);
   }
   // Wi-Fi association.
@@ -333,6 +334,9 @@ static void mcLoop(uint32_t now) {
   if (!wifiUp && link.state() != LinkState::NOT_CONFIGURED && link.state() != LinkState::JOINING_WIFI) {
     link.wifi_down();
   }
+  // Any link state change (Wi-Fi lost, MC found, joined, closed) is an event the operator should see.
+  static LinkState lastLinkState = link.state();
+  if (link.state() != lastLinkState) { lastLinkState = link.state(); mcScreenWake = true; }
   if (!wifiUp) {
     // Polish round 2 (CRITICAL): a deliberate MUSTER drop must STAY dropped. Without this guard the
     // very next tick's kick re-associated Wi-Fi immediately, undoing the drop `mcHandleFrame` just
