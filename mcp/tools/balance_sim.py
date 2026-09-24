@@ -1465,7 +1465,7 @@ R10_FINISH_POOL_HP = 35        # "finishes a player on 35 HP" -- health only, no
 R10_FINISH_BAR_MS = 1000.0
 
 # F310: the balance rules on the Shields preset (45 health + 105 shield = 150). Tony, 2026-09-23: "looser but
-# generally yes". PROPOSED bar, pending Tony: 60%, set from the first three-preset run (lowest Shields cell R8 at
+# generally yes". Bar: 60%, Tony 2026-09-23 ("60 is fine"), set from the first three-preset run (lowest Shields cell R8 at
 # 63.0%, R4a at 65.0%, at 10,000 reps and seed 7). Hardcore (45 health) is reported, never gated: one-shot
 # kills are that preset's point.
 SHIELDS_BAR = 0.60

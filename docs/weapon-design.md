@@ -20,6 +20,7 @@ says the rule is judgement only.
 | 10 | The rebalance changes numbers, not feel: every weapon keeps Battle Company's captured fire mode, burst pattern, heat/overheat mechanic and sound; only the declared balance tokens move. | design principle, ongoing | weapon-design.md §2.1 principles 1-3 | judgement, not tested |
 | 11 | R4-R9: six close/mid-range duel rules (close = gun + headset word, mid = gun word alone), each **≥ 65%**. Modelling the Burst Rifle's 40% crit reopened R4b and R6; Tony kept the crit and moved the burst gap again, 410 → 550 ms, the smallest single-token value that clears all four affected cells — see §7.5d. ⚠️ R7 is the tightest of the ten cells, at 65.48%. | Tony, 2026-09-23 | F308 | §7.5d; `mcp/tests/test_balance_sim.py::test_range_duel_rules_clear_the_65_percent_bar` |
 | 12 | R10: sidearms finish a kill, they do not compete with rifles — real-world Desert Eagle cadence and USP magazine levers, plus the Suppressor's own recoil exception. All fourteen checks clear their bars. See §7.5e. | Tony, 2026-09-23 | F308 | §7.5e; `mcp/tests/test_balance_sim.py::test_r10_sidearms_finish_a_kill_under_a_second`, `::test_r10_primaries_beat_sidearms_at_65_percent` |
+| 13 | Every rule R1-R10b also holds on the Shields preset (150 pool) at a looser **≥ 60%** bar; Hardcore is reported, not gated. | Tony, 2026-09-23 (F310: "looser but generally yes", then "60 is fine") | F310 | `mcp/tests/test_balance_sim.py::test_shields_preset_recoil_rules_r1_to_r3`, `::test_shields_preset_range_rules_r4_to_r9`, `::test_shields_preset_primaries_beat_sidearms_r10b`; detail §7.5f |
 
 ## ⚠️ Three arsenals, and only one of them is ours
 
@@ -1759,13 +1760,13 @@ allows, so the pool is treated as one number. 10,000 reps, seed 7:
 
 Every other R4-R9 and R10b cell reads 74% or more on Shields. On Hardcore a few rounds kill, so the rules
 built on sustained fire (R3, R7, R8, most of R10b) collapse, which is that preset's point; it is reported, not
-gated. **Proposed Shields bar: 60%** (the lowest cell, R8, clears it by 3 points; the 95% interval at 10,000
+gated. **Shields bar: 60%, Tony 2026-09-23** (the lowest cell, R8, clears it by 3 points; the 95% interval at 10,000
 reps is about ±1 point). `SHIELDS_BAR` in `balance_sim.py`; gated by `mcp/tests/test_balance_sim.py::
 test_shields_preset_recoil_rules_r1_to_r3`, `::test_shields_preset_range_rules_r4_to_r9` and
 `::test_shields_preset_primaries_beat_sidearms_r10b`.
 
 **Decisions for Tony (F310).**
-1. **The Shields bar.** 60% as proposed, or another value.
+1. **The Shields bar: decided (Tony, 2026-09-23): 60%.** See the Balance rules table, row 13.
 2. **The heavies on Shields: decided (Tony, 2026-09-23).** The Rocket Launcher's headset word adds 35, so a close
    hit makes 150 and kills a full Shields player. How far that word reaches is unmeasured (F275). The Rail Gun does 149: a
    kill on Standard and Hardcore, and a full Shields player left on 1 HP. The hidden heavies stay at 115. See the

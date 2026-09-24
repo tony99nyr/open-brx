@@ -93,8 +93,8 @@ runbook needs a build from `main`: S56 and F309 are newer than 0.4.5.
 65% on Standard (R7 is the tightest, 65.5%). The sim now models range bands (headset word close only) and crits.
 Recoil counts rounds per trigger pull by calibre (S54, `aa7b08b9`). F291 is closed. `balance_sim.py` balances any weapon.
 
-- **Next desk task:** **F310** is built and the heavies are decided (rocket headset word 35, Rail Gun 149); the
-  Shields bar (60% proposed) waits on Tony, `weapon-design.md` §7.5f.
+- **Next desk task:** none open. F310 is closed (Shields bar 60%, heavies decided); every rule lives in the
+  Balance rules table at the top of `weapon-design.md`.
 - **Next bench task:** **F308** and **F292** in [`bench-2026-09-24.md`](bench-2026-09-24.md), then sitting 2 steps 1-4,
   then sitting 3 (§26 groups A and B).
 - **Blocked:** Extended Mags on `$TMP` (S50) and F281 on sitting 2; **F275** on outdoor space (runbook Block 5).
@@ -123,8 +123,8 @@ Use this priority stack; do not spend Tony's bench time on desk work:
 1. **Next sitting (now):** [`bench-2026-09-24.md`](bench-2026-09-24.md), on a build from `main` (S56 and F309 are
    newer than 0.4.5), then sitting 5 for F264/F277. Record evidence and promote/close each row from the result.
 2. **Screamer transport:** the runbook's Block 2, then A8b; capture F269/F270/F272, then F274's three hardware soaks. This unlocks Phase B-E; do not infer numbers from ordinary `send` runs.
-3. **Decisions before more code:** F310's Shields bar (the weapons lane); B21's release key
-   exists (2026-09-23); the signed cut waits for the open desk fixes. Defer S50/F281 until sitting 2 confirms `$TMP` semantics.
+3. **Decisions before more code:** B21's release key exists (2026-09-23); the signed 0.4.6 cut waits for
+   Tony's go to publish. Defer S50/F281 until sitting 2 confirms `$TMP` semantics.
 4. **Only after reliability:** E2/E3/E4, B17, K6/K8 and the remaining feature rows are roadmap work.
 
 If Tony is not at the bench, prepare the decision packet and inspect the exact FOLLOWUPS methods; do not invent a

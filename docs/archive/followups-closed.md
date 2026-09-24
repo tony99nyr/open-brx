@@ -651,3 +651,5 @@ Field feedback from Tony's 2026-09-19 office test (Pixel 4 + Pixel 5) drove App 
 - 2026-09-23 **F291** closed by the balance rules R1-R10 (docs/weapon-design.md, top table; `ef55b7db..6dae402d`):
   Tony's duel rules are CI-gated at 65% on Standard. Charge Rifle 70 + 16-damage taps, Shotgun 700 ms / 30% range,
   SMG 7 + 2, Burst Rifle t23 550 with its 40% crit, Deagle 700 ms, USP mag 12, Suppressor 100/85/70. Bench half: F308.
+- 2026-09-23 **F310** closed: every balance rule R1-R10b holds on the Shields preset, gated at 60% (Tony: "60 is fine");
+  Hardcore reported only; the heavies decision is Balance rules row 7. Detail: docs/weapon-design.md §7.5f, row 13.

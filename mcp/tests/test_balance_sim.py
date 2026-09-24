@@ -608,8 +608,8 @@ def _shields_model() -> B.RecoilDuelModel:
 
 
 # F310 (Tony, 2026-09-23: "looser but generally yes"): every duel rule the Standard gates check (R1-R3, R4-R9,
-# R10b) holds on the Shields preset (45 health + 105 shield = 150) at `SHIELDS_BAR`, a PROPOSED 60% pending
-# Tony's decision. R10a is left out: its 35 HP finishing target is health only, the same on every preset.
+# R10b) holds on the Shields preset (45 health + 105 shield = 150) at `SHIELDS_BAR`, 60%, Tony's
+# decision of 2026-09-23. R10a is left out: its 35 HP finishing target is health only, the same on every preset.
 # Hardcore is reported by `--health-preset hardcore`, never gated. Three tests, so run_tests.py's SPLIT can
 # spread them. Break one once (e.g. set the bar to 0.64) and watch R8 go red at ~63%, then restore it.
 
