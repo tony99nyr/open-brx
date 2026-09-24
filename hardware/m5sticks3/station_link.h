@@ -19,6 +19,7 @@
 
 #include "brx_advert.h"
 #include "json_lite.h"
+#include "presence.h"  // the Bluetooth hill and the revive count a control/respawn assignment runs
 
 namespace brx {
 
@@ -70,7 +71,8 @@ struct StationAssignment {
   std::string kind;  // "respawn" | "powerup" | "extraction" | "bomb" | "control"
   int team = 255;     // TEAM_ANY
   int id = 0;
-  int threshold = -58;  // dBm; parse_station_config resolves 0/absent to STICK_DEFAULT_THRESHOLD_DBM
+  int threshold = -74;  // dBm; parse_station_config resolves 0/absent to STICK_DEFAULT_THRESHOLD_DBM
+  bool threshold_defaulted = false;  // MC sent 0/absent: `threshold` is the Stick's default, not MC's
   int game = 0;         // per-match byte; 0 = "any" (v1, unscoped)
   std::vector<int> valid_ids;
   StationItem item;  // A56, additive: absent on an older MC or a non-powerup kind
@@ -185,6 +187,14 @@ struct StatusFields {
   int control_owner = 255;
   int control_progress = 0;
   bool control_contested = false;
+  // Additive (left unset, the body is byte-identical to the older shape and its goldens): the
+  // possession tally MC's recap reads (`report.control.hold_ms`, state.py _merge_station_recap_report),
+  // keyed by tid as a string; a team that never held the point is left out, as control.js holdMs does.
+  bool control_has_hold = false;
+  uint32_t control_hold_ms[4] = {0, 0, 0, 0};
+  // Additive, respawn only: the revives counted here (utility.js `revives`; StationReport.revives).
+  bool has_revives = false;
+  uint32_t revives = 0;
   // A58 (additive; left unset, the body is byte-identical to the pre-A58 shape and its goldens):
   // MC detects a restart when `uptime_s` goes backwards or `boot_count` moves, and reads the
   // association mode so it knows whether a mid-match re-push can reach this Stick at all.
@@ -213,8 +223,21 @@ inline std::string build_status_body(const StatusFields& f) {
   if (f.has_control) {
     j += ",\"control\":{\"owner\":" + std::to_string(f.control_owner) +
          ",\"progress\":" + std::to_string(f.control_progress) +
-         ",\"contested\":" + std::string(f.control_contested ? "true" : "false") + "}";
+         ",\"contested\":" + std::string(f.control_contested ? "true" : "false");
+    if (f.control_has_hold) {
+      j += ",\"hold_ms\":{";
+      bool first = true;
+      for (int t = 0; t < 4; t++) {
+        if (!f.control_hold_ms[t]) continue;
+        if (!first) j += ",";
+        first = false;
+        j += "\"" + std::to_string(t) + "\":" + std::to_string(f.control_hold_ms[t]);
+      }
+      j += "}";
+    }
+    j += "}";
   }
+  if (f.has_revives) j += ",\"revives\":" + std::to_string(f.revives);
   if (f.has_health) {
     j += ",\"uptime_s\":" + std::to_string(f.uptime_s);
     j += ",\"boot_count\":" + std::to_string(f.boot_count);
@@ -262,7 +285,10 @@ inline StationItem parse_item(const json::Value& v) {
 // answers 0 for both -- means "use the Stick's own default", not "an RSSI floor of literally 0
 // dBm" (which would always be true and defeat the point of a threshold). An MC value other than 0
 // overrides it. This is a placeholder pending a bench measurement (README).
-constexpr int STICK_DEFAULT_THRESHOLD_DBM = -58;
+// -74 dBm, the phone utility station's default (utility.js DEFAULTS.threshold, bench-tuned 2026-09-04). It is
+// also what the Stick advertises in byte 14, and a player's phone measures a respawn station against byte 14
+// (beacon.js Presence), so the Stick must advertise the same value it measures by.
+constexpr int STICK_DEFAULT_THRESHOLD_DBM = -74;
 
 // Required per contracts.md §5 (`REQUIRED["station_config"]`): kind, team, id. `threshold`/`game`/
 // `valid_ids`/`item` are optional (utility.md §5c, A56).
@@ -275,6 +301,9 @@ inline StationAssignment parse_station_config(const json::Value& body) {
   a.id = (int)body.get("id").as_int();
   int t = (int)body.get("threshold").as_int(0);
   a.threshold = (t == 0) ? STICK_DEFAULT_THRESHOLD_DBM : t;
+  // The saved copy (station_config_storage_body) writes the resolved value plus this marker, so a
+  // restored config still knows MC asked for "the default". MC itself never sends the key.
+  a.threshold_defaulted = (t == 0) || body.get("threshold_default").as_bool(false);
   a.game = (int)body.get("game").as_int(0);
   const json::Value& ids = body.get("valid_ids");
   if (ids.is_array()) {
@@ -309,6 +338,7 @@ inline std::string station_config_storage_body(const StationAssignment& a) {
   j += ",\"team\":" + std::to_string(a.team);
   j += ",\"id\":" + std::to_string(a.id);
   j += ",\"threshold\":" + std::to_string(a.threshold);
+  if (a.threshold_defaulted) j += ",\"threshold_default\":true";
   j += ",\"game\":" + std::to_string(a.game);
   j += ",\"valid_ids\":[";
   for (size_t i = 0; i < a.valid_ids.size(); i++) {
@@ -417,6 +447,116 @@ inline uint8_t station_kind_byte(const std::string& kind) {
   if (kind == "bomb") return KIND_BOMB;
   return KIND_CONTROL;  // "control", or anything MC would never actually send (it validates first)
 }
+
+// ---- the presence threshold (hill + respawn) -------------------------------------------------------
+// The threshold a Bluetooth station measures PLAYERS against. MC's value when it sent one; when it sent
+// 0/absent, the phone station's own default (utility.js DEFAULTS.threshold, -74 dBm), so a Stick hill
+// or respawn station behaves like a phone station. The advertised byte 14 is the same -74
+// (STICK_DEFAULT_THRESHOLD_DBM), and the pickup claim keeps its -80 floor (ClaimGate).
+inline int presence_threshold_dbm(const StationAssignment& a) {
+  return a.threshold_defaulted ? PRESENCE_DEFAULT_THRESHOLD_DBM : a.threshold;
+}
+
+// ---- the saved hill owner (F332: a restart must not wipe an enemy hold) ----------------------------
+// A mirror of Preferences "brxmc" hill_owner / hill_game / hill_id / hill_sid / hill_hold, like
+// SavedStationConfig: it owns no I/O, and each call answers whether the glue must write or erase now.
+// Written ONLY when the owner changes (a capture, or a drain to neutral), never on a progress tick,
+// with the possession tally as it stood at that moment. Tagged with the game byte, the station id AND
+// the MC session the config came in, because a new MC session numbers its games from 1 again and must
+// not revive an old match's owner. `held` is `owner != HILL_NEUTRAL` (control.js: held <=> owner).
+class SavedHill {
+ public:
+  // At boot, from Preferences (`has` false = no hill_owner key). `hold` may be null (no tally saved).
+  void loaded(bool has, int owner, int game, int id, const std::string& session_id, const uint32_t* hold) {
+    has_ = has;
+    owner_ = owner;
+    game_ = game;
+    id_ = id;
+    session_id_ = session_id;
+    for (int t = 0; t < 4; t++) hold_[t] = hold ? hold[t] : 0;
+  }
+  bool has() const { return has_; }
+  int owner() const { return owner_; }
+  int game() const { return game_; }
+  int id() const { return id_; }
+  const std::string& session_id() const { return session_id_; }
+  const uint32_t* hold_ms() const { return hold_; }
+
+  // After every hill tick of a control assignment, with the session the assignment came in (the saved
+  // config's, which a restored MUSTER Stick still knows with no WELCOME). True = write all keys now.
+  bool note_owner(const StationAssignment& a, const std::string& session_id, const BleControlPoint& hill) {
+    const int owner = hill.owner;
+    if (!has_ && owner == HILL_NEUTRAL) return false;  // nothing held, nothing saved: nothing to say
+    // Unchanged = same owner under the same tag, compared plainly (never via tag_matches, whose "no
+    // empty session" rule would make an untagged save look changed and write flash every tick).
+    if (has_ && owner == owner_ && game_ == a.game && id_ == a.id && session_id_ == session_id) return false;
+    has_ = true;
+    owner_ = owner;
+    game_ = a.game;
+    id_ = a.id;
+    session_id_ = session_id;
+    for (int t = 0; t < 4; t++) hold_[t] = hill.hold_ms[t];
+    return true;
+  }
+
+  // After every applied or restored station_config: a save that belongs to another game, id, kind or
+  // session is cleared. True = erase the keys now.
+  bool note_config(const StationAssignment& a, const std::string& session_id) {
+    if (!has_) return false;
+    if (a.present && a.kind == "control" && tag_matches(a, session_id)) return false;
+    return clear();
+  }
+
+  // A WELCOME from another MC session: the save is an old match's (as SavedStationConfig::stale_for).
+  // A WELCOME with no session id says nothing. True = erase the keys now.
+  bool note_welcome(const std::string& welcome_session_id) {
+    if (!has_ || welcome_session_id.empty() || welcome_session_id == session_id_) return false;
+    return clear();
+  }
+
+  // control{release_utility} or the operator's point RESET: the hold goes. True = erase the keys now.
+  bool clear() {
+    if (!has_) return false;
+    has_ = false;
+    owner_ = HILL_NEUTRAL;
+    for (auto& h : hold_) h = 0;
+    return true;
+  }
+
+  // At boot, after a saved station_config was restored: the owner to bring the point back held by, or
+  // HILL_NEUTRAL when the tag does not match that config and its session (or nothing is saved).
+  int restore_owner(const StationAssignment& a, const std::string& session_id) const {
+    if (!has_ || !tag_matches(a, session_id)) return HILL_NEUTRAL;
+    return hill_claimable(owner_) ? owner_ : HILL_NEUTRAL;
+  }
+
+  // Restore the point itself: held by the saved owner at 100, with the saved tally. False (and the point
+  // left as it is) when the save is not this config's.
+  bool restore_into(const StationAssignment& a, const std::string& session_id, BleControlPoint& hill) const {
+    if (!has_ || !tag_matches(a, session_id)) return false;
+    hill.restore_held(owner_, hold_);
+    return true;
+  }
+
+ private:
+  bool tag_matches(const StationAssignment& a, const std::string& session_id) const {
+    return a.present && a.kind == "control" && game_ == a.game && id_ == a.id && !session_id.empty() &&
+           session_id_ == session_id;
+  }
+  bool has_ = false;
+  int owner_ = HILL_NEUTRAL;
+  int game_ = 0;
+  int id_ = 0;
+  std::string session_id_;
+  uint32_t hold_[4] = {0, 0, 0, 0};
+};
+
+// ---- the advert state byte of a kind with no live state of its own -------------------------------
+// respawn: utility.js advertFields() sends `state: 1` ("ready"), and engine.js _respawnStation() skips
+// any respawn advert whose state is 0 (beacon.js byte 10: 0 = disabled). Before 2026-09-24 a Stick
+// sent 0 here, so no phone ever used a Stick respawn station. extraction / bomb: 0, "armed and doing
+// nothing" (no player-side rule for either yet). control and powerup carry live state and never ask.
+inline uint8_t station_static_state(const std::string& kind) { return kind == "respawn" ? 1 : 0; }
 
 // ---- the powerup schedule (A56, final design 2026-09-24; NOT pickup mechanics) -------------------
 // State 1 = available, value 0. State 0 = taken, value = seconds to the next spawn (capped at
@@ -686,12 +826,12 @@ class StationLink {
 
   Backoff& backoff() { return backoff_; }
 
-  // Polish round 1 (2026-09-24): `station_action` is PROPOSED and not yet in MC's `NODE_KINDS`
-  // whitelist, so every one sent today is a malformed frame MC counts toward its per-socket
-  // quarantine (net.md §8, ~20/s). Default OFF, persisted by the .ino (`ACTIONS ON|OFF`). Gates only
-  // the REPORT to MC (`maybe_build_reset_action`/`maybe_build_taken_action`, station_ui.h): a reset
-  // still runs its local confirm flow and a claim still awards locally (the advert carries `taker`)
-  // whatever this flag says.
+  // MC accepts `station_action` since A56 (f3fe3cf6), so the default is ON; the .ino persists the
+  // choice (`ACTIONS ON|OFF`), and OFF is for an older MC that would count every one as a malformed
+  // frame toward its per-socket quarantine (net.md §8). Gates only the REPORT to MC
+  // (`maybe_build_reset_action`/`maybe_build_taken_action`, station_ui.h): a reset still runs its
+  // local confirm flow and a claim still awards locally (the advert carries `taker`) whatever this
+  // flag says.
   void set_actions_enabled(bool on) { actions_enabled_ = on; }
   bool actions_enabled() const { return actions_enabled_; }
 
@@ -739,6 +879,39 @@ class StationLink {
   // exists to prevent). §5g.4 is explicit that an assignment survives a drop; this is that survival,
   // read by the glue instead of re-deriving it from link state.
   bool has_powerup_assignment() const { return assignment_.present && assignment_.kind == "powerup"; }
+  // The same persisted-assignment rule for the Bluetooth stations (presence.h): a MUSTER station
+  // plays its hill or counts its revives with Wi-Fi down for the whole match.
+  bool has_control_assignment() const { return assignment_.present && assignment_.kind == "control"; }
+  bool has_respawn_assignment() const { return assignment_.present && assignment_.kind == "respawn"; }
+
+  // The Bluetooth hill (control.js ControlPoint) and the respawn revive count. They reset with the
+  // powerup schedule, on the same rule: a new kind, id or GAME starts clean, and a same-game re-push
+  // (MC's mid-match lock carrier) keeps the match going.
+  BleControlPoint& hill() { return hill_; }
+  const BleControlPoint& hill() const { return hill_; }
+  const ReviveCounter& revives() const { return revives_; }
+
+  // The operator's point RESET (serial RESET, the bench A hold; utility.js btnPointReset): the Bluetooth
+  // hill goes back to nobody when a control station is assigned. True when there was one to reset (the
+  // glue then clears the saved owner too).
+  bool reset_hill() {
+    if (!has_control_assignment()) return false;
+    hill_.reset();
+    return true;
+  }
+
+  // Bumps whenever the station becomes a DIFFERENT station: a new kind, id or game, a restore, a
+  // release. A same-game re-push leaves it alone. The glue empties its sighting ring on a bump.
+  uint32_t assignment_epoch() const { return epoch_; }
+
+  // One STATION_TICK_MS step of the assigned kind's player rule, after PlayerPresence::tick. The
+  // caller acts on the returned edges (the IR capture word, the screen); nothing here does I/O.
+  HillUpdate tick_players(const PlayerPresence& players, uint32_t now_ms) {
+    HillUpdate u;
+    if (has_control_assignment()) u = hill_.update(players, now_ms);
+    else if (has_respawn_assignment()) revives_.update(players);
+    return u;
+  }
 
   // A58: the operator-control lock (MatchLock, above). Read-only for the glue and the screen.
   const MatchLock& lock() const { return lock_; }
@@ -776,6 +949,9 @@ class StationLink {
     if (kind_or_id_changed || game_changed) {
       powerup_ = PowerupSchedule();
       claims_ = ClaimGate();
+      hill_.reset();
+      revives_.reset();
+      epoch_++;
     }
     // A56 (brx5): unsent `taken` reports belong to the game they were awarded in; a new game drops them.
     if (game_changed) pending_actions_.clear();
@@ -838,6 +1014,9 @@ class StationLink {
     lock_.clear();
     powerup_ = PowerupSchedule();
     claims_ = ClaimGate();
+    hill_.reset();  // neutral here; the glue brings a saved hold back (SavedHill::restore_into, F332)
+    revives_.reset();
+    epoch_++;
     pending_actions_.clear();
     last_update_ = StationUpdateMsg();
     assignment_ = a;
@@ -906,6 +1085,9 @@ class StationLink {
     assignment_ = StationAssignment();
     last_update_ = StationUpdateMsg();
     powerup_ = PowerupSchedule();
+    hill_.reset();
+    revives_.reset();
+    epoch_++;
     if (state_ == LinkState::ASSIGNED) state_ = LinkState::WELCOMED;
   }
 
@@ -930,6 +1112,9 @@ class StationLink {
   uint32_t last_update_at_ms_ = 0;
   PowerupSchedule powerup_;
   ClaimGate claims_;
+  BleControlPoint hill_;
+  ReviveCounter revives_;
+  uint32_t epoch_ = 0;
   PendingActionQueue pending_actions_;
   Backoff backoff_;
   bool actions_enabled_ = true;   // MC accepts station_action since A56 landed (f3fe3cf6); `ACTIONS OFF` for an older MC

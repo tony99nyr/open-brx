@@ -28,6 +28,37 @@ How it fits the game:
   see "Mission Control link (H8)" below): it takes a `hello`/`welcome`/`station_config` like any
   utility phone, self-spawns a powerup on its own local clock, and scans for a player's CLAIM.
 
+## Bluetooth stations (MVP)
+
+Tony's decision (2026-09-24): an MC-armed Stick station is **Bluetooth-only** for the MVP. It reads
+the players' own adverts (role 2: id = player number, team, state bit 0 = alive) with one passive BLE
+scan, 1 s windows every 1.2 s, beside its own advert. The rules are ports of the phone station's code
+(`presence.h`, host-tested in `test/test_presence.cpp` and cross-checked against the JS):
+
+- **Hill** (`control`): presence capture, `app/src/control.js`. A player counts when present
+  (smoothed RSSI, EMA alpha 0.35, at or above the threshold for 0.8 s; off 6 dB below it or after
+  4 s with no advert) and alive, on team 0, 1 or 3 (team 2 is refused, F82). Rate = net x 100 /
+  10 s per second, where net is the leading team minus the largest single other team, capped at 3.
+  An enemy-held point drains to neutral before it builds. Ticked every 250 ms; the advert republishes
+  a state change at once and progress at most once a second. A capture also sends the S57 IR capture
+  word once, and the hill beacon still goes out every 5 s.
+- **Respawn**: advertises state 1 ("ready"; phones ignore a respawn advert with state 0), and
+  counts revives (a present player's alive bit going 0 to 1), reported as `revives` in the status.
+- **Pickup**: unchanged.
+
+Hill and respawn presence use MC's threshold, or the phone's -74 dBm when MC sends none (the pickup
+claim keeps its -80 dBm floor). A hill's owner is saved in NVS on each change of hands (never on a
+progress tick), tagged with the game and station id, so a Stick restarted from its restored config
+comes back held by that owner with the possession tally saved at that change (F332). The save is
+tagged with the MC session too, so a new session, a new game, another id, `release_utility` or the
+operator's point RESET clears it. The player scan runs at 50% duty (window 50 of interval 100,
+`SCAN_WINDOW_UNITS`), down from the claim scan's 99; bench to confirm it still hears every phone.
+mDNS discovery is asynchronous, so the hill never waits on it.
+
+**Arm hill Sticks with `station_source` `phone`, or leave it absent.** A phone follows a control
+advert only then (`engine.js _hillSourceAllowed`); under `grenade` it follows the IR beacon instead.
+**IR receive is post-MVP (F314):** it drives only the bench HILL/BRIDGE below.
+
 ## Status
 
 **2026-09-24, late afternoon: F314's root cause is found, and a workaround is proven.** The onboard receiver
@@ -208,7 +239,8 @@ pure link/parsing/scheduling logic is `station_link.h` + `json_lite.h`; the oper
 buttons are `station_ui.h`; the Arduino plumbing (Wi-Fi, mDNS, the WebSocket, BLE claim-scanning,
 Preferences) is `mc_link_glue.h`.
 
-**Discovery.** mDNS (`_openbrx._tcp`, `MDNS.queryService("openbrx","tcp")`) is the intended path; the
+**Discovery.** mDNS (`_openbrx._tcp`, an async query polled each loop so the station's play never waits;
+`MDNS.begin` once Wi-Fi is up, stopped when Wi-Fi drops; bench to confirm on a real Stick) is the intended path; the
 mandatory floor is the serial console, since a Stick has no camera to scan MC's QR (§5g.3). The MC
 address, from either path, is **never persisted across reboots** -- only the Wi-Fi SSID/password are
 (Preferences), so every power-on starts at LOOKING FOR MC and either hears mDNS or needs a fresh
@@ -295,16 +327,16 @@ only drops the current socket and association; it does not forget the saved SSID
 command, if one is ever added, would be the other way back to the button toggle.
 
 **THRESHOLD.** `0` in `station_config.threshold` (or the key absent) means "use the Stick's own
-default", currently a **placeholder -58 dBm** (`STICK_DEFAULT_THRESHOLD_DBM`); any other value from
+default", **-74 dBm**, the phone station's default (`STICK_DEFAULT_THRESHOLD_DBM`), which is also what the Stick advertises; any other value from
 MC overrides it. Not yet bench-measured against a real player phone.
 
 **Bench to confirm, all of it:** the mDNS query actually resolving MC on the field router; the
 WebSocket surviving a reconnect (and the library's own retry not fighting the association-mode
 policy above it); Wi-Fi 4 + BLE 5 coexistence jitter on the advert while `HELD` (§5g.4's whole
 reason for existing); the CLAIM scan actually catching a phone advertising every ~100-250 ms while
-claiming (`CLAIM_SCAN_PERIOD_MS`/`CLAIM_SCAN_WINDOW_S` in `mc_link_glue.h` are guesses); the
+claiming (`SCAN_PERIOD_MS`/`SCAN_WINDOW_S`/`SCAN_WINDOW_UNITS` in `mc_link_glue.h` are guesses); the
 `ROLE_PLAYER` advert layout this firmware assumes (id = player_num, value = target station id) --
-FYI'd by brx5, never seen on our own bench; the -58 dBm threshold placeholder; the button timing
+FYI'd by brx5, never seen on our own bench; the button timing
 (2 s hold, 5 s confirm timeout) at arm's length; the operator screen's legibility on the real
 1.14" panel (`paintOperator()` has never been seen lit); whether `LINK RECONNECT` actually needs
 typing over serial in practice or wants a button/timeout of its own; and the `available:true`
@@ -338,17 +370,19 @@ refuse/accept rule (polish round 2) -- built from the coordinator's brief alone,
 | `m5sticks3.ino` | the Arduino wrapper: RMT receive on G42, RMT transmit with a hardware 38 kHz carrier, NimBLE advert, M5Unified display and buttons, Preferences |
 | `brx_ir.h` | pure C++: pulse durations to bits to fields, and back; the measured timings; the parity rule |
 | `brx_advert.h` | pure C++: the 16-byte advert and its UUID string (+ the A56 `taker` byte and its reverse decoder), an exact port of `app/src/beacon.js encodeUuid`; the republish policy from `control.js` |
-| `control_point.h` | pure C++: the BRIDGE and HILL ownership state machines |
+| `control_point.h` | pure C++: the bench BRIDGE and IR HILL ownership state machines |
+| `presence.h` | pure C++: the Bluetooth stations -- player presence, the presence hill and the revive count, ports of `beacon.js`/`control.js`/`utility.js` |
 | `json_lite.h` | pure C++: a tiny tolerant JSON reader/writer for the M-NET envelope bodies (H8) |
 | `station_link.h` | pure C++: the MC link state machine, hello/status builders, station_config/station_update/control parsers, the powerup self-spawn schedule, and the CLAIM award logic (H8, A56) |
 | `station_ui.h` | pure C++: the operator button state machine (page / RESET confirm) and the `station_action` builder (H8) |
 | `station_screen.h` | pure C++: the screen MODEL -- state -> ScreenSpec, plus `HomeNav` (idle timeout / go-home). See "Screens" below |
 | `station_render.h` | Arduino-only: draws a ScreenSpec with M5GFX into an off-screen `M5Canvas`. See "Screens" below |
-| `mc_link_glue.h` | Arduino-only: Wi-Fi, mDNS, the WebSocket to MC, BLE claim-scanning, Preferences -- the plumbing on top of the three headers above (H8) |
+| `mc_link_glue.h` | Arduino-only: Wi-Fi, mDNS, the WebSocket to MC, the shared BLE player scan and the 250 ms hill/revive tick, Preferences -- the plumbing on top of the headers above (H8) |
 | `test/test_core.cpp` | host tests for `brx_ir.h`/`brx_advert.h`/`control_point.h` |
 | `test/test_link.cpp` | host tests for `station_link.h`/`json_lite.h`, plus a golden-dump mode `mcp/tests/test_utility_esp32.py` uses to drive MC with the exact JSON this firmware builds |
 | `test/test_ui.cpp` | host tests for `station_ui.h` |
 | `test/test_screen.cpp` | host tests for `station_screen.h` |
+| `test/test_presence.cpp` | host tests for `presence.h` |
 
 All run under `mcp/tests/test_sticks3_core.py` when `g++` exists. The pure headers never include
 Arduino, so the logic is tested on the laptop and the sketch + `mc_link_glue.h` are the only plumbing.
@@ -423,14 +457,15 @@ gesture changes any station state -- see "Buttons and power" below.
 
 **Could not match render.py exactly:**
 
-- HILL_CAPTURING and HILL_CONTESTED (a percentage climbing toward capture; a contested flash):
-  `control_point.h`'s HILL has no discrete "capturing" transition (charge just accumulates
-  continuously) and sets no contested state at all (`CONTROL_CONTESTED` is a defined advert bit
-  nothing ever sets). `compute_screen()` never emits either; `station_render.h` still draws them for
-  when that changes.
-- RESPAWN_OWNED's revive count: this firmware tracks no revives for a respawn station (§5g.5: "shown
-  and reported, not faked"). A respawn/extraction/bomb assignment shows the generic ASSIGNED screen
-  instead.
+- HILL_CAPTURING and HILL_CONTESTED: only the Bluetooth hill reaches them. CAPTURING names the team
+  whose bar it is with a verb render.py does not have: CAPTURING (rising), LOSING (its bar is
+  draining) or STALLED (part built, nobody on it). A held point whose owner tops it back up stays
+  HELD. The small lines under NEUTRAL and CONTESTED say STAND HERE TO CAPTURE and TEAMS ON THE POINT,
+  since this hill counts bodies, not shots. The bench IR hill still never emits either screen.
+- RESPAWN: OWNED shows the team and the revive count; a station for any team (team 255) shows ANY
+  TEAM in the neutral colour. IDLE is shown only when the advert is down, and says ADVERT DOWN
+  rather than render.py's AWAITING ASSIGNMENT. An extraction/bomb assignment shows the generic
+  ASSIGNED screen.
 - PICKUP_EMPTY: nothing in `StationItem`/`PowerupSchedule` tracks a globally-exhausted item, only
   available/taken.
 - SETTINGS: not wired to any button flow yet (`ID`/`GAME`/`TXPIN` stay serial-only); the renderer
