@@ -1845,7 +1845,7 @@ for (const view of VIEWS) {
       return { nm: nm ? nm.textContent.trim() : null, tagText: tag ? tag.textContent.trim() : null, arming: tag ? tag.classList.contains('arming') : null }; });
     await pg2.close();
     must(/SMG/.test(after.nm || ''), 'the hero is not focused on the acked weapon: ' + JSON.stringify(after));
-    must(after.tagText === 'EQUIPPED', 'the hero never turned to EQUIPPED once the ack landed: ' + JSON.stringify(after));
+    must(after.tagText === '✓ ON', 'the hero never turned to ✓ ON (QA-09: was EQUIPPED) once the ack landed: ' + JSON.stringify(after));
     must(after.arming === false, 'the hero kept the amber arming look after the ack: ' + JSON.stringify(after));
   });
   await step(`${view.name} #61 A26: REVIEW KIT ▸ lands on the three-plate kit summary with READY UP`, async () => {
@@ -2529,7 +2529,7 @@ await step('polish-3 loadout-perk: a perk picked after a timed-out weapon arm sh
   must(r.engineStillUnconfirmed, 'sanity: the weapon arm really did settle unconfirmed underneath');
   must(!r.unconfPresent, 'the perk row shows the ≈/unconf treatment it never earned');
   must(r.eqMark === '✓', 'the perk row does not read a plain confirmed ✓: ' + r.eqMark);
-  must(r.heroText === 'EQUIPPED', 'the perk hero pane: ' + r.heroText);
+  must(r.heroText === '✓ ON', 'the perk hero pane: ' + r.heroText);
 });
 
 // ---------- Bench 2026-09-16: press feedback on EVERY tappable thing (hud.js `_tapDown`/`_tapUp`) ----------
@@ -4007,6 +4007,25 @@ for (const [stage, tab, sel] of [['result-win-team', 'TEAMS', '.result .tp.me'],
     must(r.length > 0, `no own-row text under ${sel}: the gate would pass on nothing`);
     const bad = r.filter(x => x.ratio < 4.5);
     must(bad.length === 0, `own row below 4.5:1 at night: ${JSON.stringify(bad)}`);
+  });
+}
+for (const view of VIEWS) {
+  await step(`${view.name} QA-09 loadout hero: the ✓ ON tag and every bar label read whole`, async () => {
+    const pg = await open(view, 'loadout-primary');
+    const r = await pg.evaluate(() => {
+      const nm = document.querySelector('.lodetail .nm'), tag = nm && nm.querySelector('.eqtag');
+      const clipped = e => e.scrollWidth > e.clientWidth + 1;
+      const labs = Array.from(document.querySelectorAll('.lodetail .tb > span')).map(s => {
+        const rg = document.createRange(); rg.selectNodeContents(s); const tops = new Set(Array.from(rg.getClientRects()).filter(x => x.width > 1).map(x => Math.round(x.top / 4)));
+        return { t: s.textContent.trim(), lines: tops.size, clipped: clipped(s) }; });
+      return { nm: nm ? nm.textContent.trim() : null, nmClipped: nm ? clipped(nm) : null, tag: tag ? tag.textContent.trim() : null,
+        tagInside: tag && nm ? tag.getBoundingClientRect().right <= Math.min(nm.getBoundingClientRect().right, document.querySelector('.lodetail').getBoundingClientRect().right) + 1 : false, labs };
+    });
+    await pg.close();
+    must(r.tag === '✓ ON', `the equipped weapon's hero tag: ${JSON.stringify(r)}`);
+    must(!r.nmClipped && r.tagInside, `the hero line is cut: ${JSON.stringify(r)}`);
+    must(r.labs.length >= 3 && r.labs.every(l => l.lines === 1 && !l.clipped), `a bar label wraps or clips: ${JSON.stringify(r.labs)}`);
+    must(r.labs.some(l => l.t === 'RESERVE'), `the ammo bar is not labelled RESERVE: ${JSON.stringify(r.labs)}`);
   });
 }
 

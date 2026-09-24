@@ -246,7 +246,7 @@ function statBlock(r, opts = {}) {
   // real WeaponView always did), the four-bar block grew the panel into the footer: the F111 hypothesis, made real.
   // The rack's ⓘ pane keeps the full four.
   return `${bar('POWER', pick(b.power, st.dmg, r && r.dmg))}${bar('RATE OF FIRE', pick(b.rof, st.rof, r && r.rpm))}` +
-    (opts.compact ? '' : `${bar('AMMO CARRIED', b.ammo)}${bar('KILL SPEED', b.ttk)}`) +
+    (opts.compact ? '' : `${bar('RESERVE', b.ammo)}${bar('KILL SPEED', b.ttk)}`) +
     (facts ? `<div class="facts">${facts}</div>` : '');
 }
 
@@ -960,7 +960,8 @@ export class Hud {
         // Pass 3: gated the same way the row is (`unconfHere` + kind) — a perk's detail pane must never
         // inherit a weapon arm's stale timeout.
         : (focus.key === eqKey && !pend && unconfHere && st.tryoutUnconfirmed.kind === focus.kind) ? '<span class="eqtag unconf">UNCONFIRMED</span>'
-        : (focus.key === eqKey && !pend) ? '<span class="eqtag">EQUIPPED</span>' : '';
+        // QA-09: "EQUIPPED" was cut to "EQUIPPE…" beside a long name on both widths; "✓ ON" says the same thing.
+        : (focus.key === eqKey && !pend) ? '<span class="eqtag">✓ ON</span>' : '';
       if (focus.kind === 'perk') detail = `<div class="art perk">${perkGlyph(focus.id)}</div><div class="nm">${esc(r.name).toUpperCase()}${heroTag}</div><div class="ln pk">PERK · ${perkEffectHtml(r)}${r.verified === false ? ' · <span style="color:var(--warn)">NOT YET FIELD-TESTED</span>' : ''}</div><div class="desc">${esc(r.desc || '')}</div>`;
       else detail = `<div class="art">${weaponArt(focus.id)}</div><div class="nm">${esc(r.name).toUpperCase()} <span class="rolechip">${esc(roleName(r))}</span>${heroTag}</div><div class="ln">MAG ${r.clip != null ? r.clip : '—'} · RESERVE ${r.reserve != null ? r.reserve : '—'}${r.reload_s != null ? ' · RELOAD ' + r.reload_s + 'S' : ''}</div>${statBlock(r)}${r.caution ? `<div class="caution">▲ ${esc(r.caution)}</div>` : ''}<div class="desc">${esc(r.desc || '')}</div>`;
     } else if (can) detail = `<div class="small" style="padding-top:30px">${tab === 'secondary' ? (sidearmOnly(rule) ? 'Pick a sidearm — or leave it on NONE.' : 'Pick a second weapon — or leave it on NONE.') : tab === 'perk' ? 'Pick a perk — or leave it on NONE.' : 'Pick your main weapon.'}</div>`;
