@@ -4252,7 +4252,7 @@ const puRead = pg => pg.evaluate(() => {
   const ring = hint && hint.querySelector('.puring');
   const chip = document.querySelector('#puheld .puchip');
   const co = document.querySelector('#overlay .mo.co');
-  const ob = document.querySelector('.bar.oshield');
+  const ob = document.querySelector('#svm[data-os] .svos');   // the overshield: the lime layer on the shield meter (the Visor)
   return {
     hint: hint && vis(hint) ? { kind: hint.dataset.kind, act: pua ? pua.textContent.trim() : '', lab: pul ? pul.textContent.trim() : '',
       actPx: pua ? parseFloat(getComputedStyle(pua).fontSize) : 0, labPx: pul ? parseFloat(getComputedStyle(pul).fontSize) : 99,
@@ -4260,21 +4260,19 @@ const puRead = pg => pg.evaluate(() => {
     chip: chip && vis(chip) ? { text: chip.innerText.replace(/\s+/g, ' ').trim(), box: box(chip), px: parseFloat(getComputedStyle(chip.querySelector('.nm')).fontSize) } : null,
     card: co && vis(co) ? { kind: co.dataset.kind, name: (co.querySelector('.nm') || {}).textContent, sub: ((co.querySelector('.by') || {}).textContent || '').trim(),
       px: parseFloat(getComputedStyle(co.querySelector('.nm')).fontSize), box: box(co.querySelector('.cob') || co) } : null,
-    obar: ob && vis(ob) ? { val: (ob.querySelector('b') || {}).textContent, w: ob.querySelector('i').getBoundingClientRect().width, shieldNum: (document.getElementById('shield') || {}).textContent } : null,
+    obar: ob && vis(ob) ? { left: (window.brx.engine.state().powerup.overshield || {}).left, w: ob.getBoundingClientRect().width, text: document.getElementById('svm').textContent.trim() } : null,
     wn: (document.querySelector('.ammo .wn') || {}).innerText, vitals: box(document.querySelector('.vitals')), ammo: box(document.querySelector('.ammo')),
     frame: { l: fr.left, r: fr.right, t: fr.top, b: fr.bottom }, puDom: !!document.querySelector('#puhint, #puheld'),
     // polish r1 (UX M2): the vitals' own PARTS, since a wide night row overflows the fixed-width .vitals box
     vparts: [...document.querySelectorAll('.vitals .nums > *, .vitals .bar')].filter(vis).map(box),
     hw: (e => e && vis(e) ? box(e) : null)(document.querySelector('#overlay .hitwpn .hw')),
     ringPx: ring && vis(ring) ? ring.getBoundingClientRect().width / (fr.width / 844) : null,
-    shieldLabel: vis(document.querySelector('.vitals .shieldlabel')),
     // polish r2: the numbers each bar sits under, and the bars' painted widths (frame px)
-    shieldNum: (document.getElementById('shield') || {}).textContent, ovalPx: (e => e ? parseFloat(getComputedStyle(e).fontSize) : null)(document.getElementById('oval')),
     armorBarW: (e => e ? e.getBoundingClientRect().width : null)(document.getElementById('shbar')),
     switchedUp: !!document.querySelector('#overlay .mo.switched'), ammoText: (document.getElementById('mag') || {}).textContent,
     hintLines: hint && vis(hint) ? [pua, pul].filter(Boolean).map(e => { const r = document.createRange(); r.selectNodeContents(e); return new Set([...r.getClientRects()].filter(x => x.width > 1).map(x => Math.round(x.top / 4))).size; }) : null,
     // every colour the powerup pieces paint (text, fill, border), for the night check: no green, no white
-    paints: [...document.querySelectorAll('#puhint *, #puheld *, .bar.oshield, .bar.oshield *, #overlay .mo.co[data-tone="item"], #overlay .mo.co[data-tone="item"] *')].filter(vis)
+    paints: [...document.querySelectorAll('#puhint *, #puheld *, #svm, #svm *, #overlay .mo.co[data-tone="item"], #overlay .mo.co[data-tone="item"] *')].filter(vis)
       .flatMap(e => { const c = getComputedStyle(e); return [c.color, c.backgroundColor, c.borderTopColor].map(v => [e.className || e.tagName, v]); }),
   };
 });
@@ -4339,14 +4337,14 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(r.card && r.card.name === 'OVERSHIELD AVAILABLE', `the card: ${JSON.stringify(r.card)}`);
     must(r.card.px >= 18 && inside(r.card.box, r.frame) && vclear(r.card.box, r) && apart(r.card.box, r.ammo), `the card: ${JSON.stringify(r.card)}`);
   });
-  await step(`${tag}: the overshield is its own block on the shield bar (+75), drained first by a hit`, async () => {
+  await step(`${tag}: the overshield is a layer on the shield meter, drained first by a hit`, async () => {
     let pg = await open(view, 'live-pu-overshield', N, 3000);
     const r = await puWait(pg, r => r.obar, 2500); await shot(pg, 'overshield'); await puClose(pg, night);
-    must(r.obar && r.obar.val === '+75' && r.obar.shieldNum === undefined && r.obar.w > 20, `the overshield block, and no unlabelled duplicate shield number on a Standard game: ${JSON.stringify(r.obar)}`);
+    must(r.obar && r.obar.left === 75 && r.obar.text === '' && r.obar.w > 20, `the overshield layer, with no number on the meter: ${JSON.stringify(r.obar)}`);
     must(r.hint && r.hint.act === 'OVERSHIELD' && r.hint.lab === 'PICKED UP', `the overshield keeps PICKED UP: ${JSON.stringify(r.hint)}`);
     pg = await open(view, 'live-pu-overshield-hit', N, 4000);
-    const h = await puWait(pg, r => r.obar && r.obar.val === '+45', 2500); await puClose(pg, night);
-    must(h.obar && h.obar.val === '+45' && h.obar.w < r.obar.w, `after a 30-damage hit: ${JSON.stringify(h.obar)} (was ${JSON.stringify(r.obar)})`);
+    const h = await puWait(pg, r => r.obar && r.obar.left === 45, 2500); await pg.waitForTimeout(400); const h2 = await puRead(pg); await puClose(pg, night);
+    must(h.obar && h2.obar && h2.obar.left === 45 && h2.obar.w < r.obar.w, `after a 30-damage hit: ${JSON.stringify(h2.obar)} (was ${JSON.stringify(r.obar)})`);
   });
   await step(`${tag}: another player won it: TAKEN BY VIPER, with the countdown to the next spawn`, async () => {
     const pg = await open(view, 'live-pu-taken-by', N, 3300); const r = await puWait(pg, r => r.hint && r.hint.kind === 'taken_by', 2000); await shot(pg, 'taken-by'); await puClose(pg, night);
@@ -4382,15 +4380,12 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(r.hw && r.hint, `setup: the weapon line and the hint are both up: ${JSON.stringify({ hw: r.hw, hint: r.hint && r.hint.box })}`);
     must(r.hint.box.t - r.hw.b >= 4 || r.hw.t - r.hint.box.b >= 4 || !(r.hint.box.l < r.hw.r && r.hint.box.r > r.hw.l), `the weapon line ${JSON.stringify(r.hw)} sits within 4 px of the hint ${JSON.stringify(r.hint.box)}`);
   });
-  await step(`${tag}: the widest row (3-digit pools, a 175 overshield) stays clear of the hint, and at night drops the SHIELD word (UX M2)`, async () => {
+  await step(`${tag}: the widest row (3-digit pools, a 175 overshield) stays clear of the hint (UX M2)`, async () => {
     const pg = await open(view, 'live-pu-overshield-wide', N, 3000);
     const r = await puWait(pg, r => r.obar && r.hint, 2500); await shot(pg, 'wide'); await puClose(pg, night);
     must(r.obar && r.hint, 'setup: overshield and hint up');
     must(vclear(r.hint.box, r), `a vitals number or label runs into the hint: hint ${JSON.stringify(r.hint.box)} parts ${JSON.stringify(r.vparts)}`);
-    if (night) must(!r.shieldLabel, 'night with an overshield: the SHIELD word is dropped');
-    must(r.shieldNum === '0', `polish r2 M1: the shield number is the BASE pool (0 here), +175 names the extra: ${r.shieldNum}`);
     must(r.armorBarW == null || r.armorBarW < 1, `polish r2 M2: max_armor 0 paints no armour bar (was width:NaN%, full): ${r.armorBarW}`);
-    must(r.ovalPx >= 15, `the +N reads at 15 px: ${r.ovalPx}`);
   });
   await step(`${tag}: an Easy Reload player at a weapon station: EASY RELOAD / NO ROCKETS, one line each, type floors (UX M4)`, async () => {
     const pg = await open(view, 'live-pu-easy-reload', N, 2700);
@@ -4438,6 +4433,120 @@ await step('utility A56 a powerup station from an MC with no item (the flag off,
   await pg.waitForTimeout(400); const r = await puStation(pg); await pg.close();
   must(!r.pup && r.kind === 'POWERUP' && r.advert.state === 1, `no item: ${JSON.stringify(r)}`);
 });
+
+// ---- The shield meter (Visor, Tony 2026-09-24: "C but maybe a hair taller", "doesnt fade. only hits"). The shield is a
+// long strip on the top edge in any game with a shield, or while an overshield is held. No text and no number in it: the
+// bar tells the story. Every state below is the REAL engine on the stage (`live-shields*`), its S29 recharge on the real
+// clock. Night (spec B4): red only, so the pixels the meter and the red tint paint are scanned for green, teal and blue.
+const svRead = pg => pg.evaluate(() => {
+  const vis = e => { if (!e) return null; const c = getComputedStyle(e); if (c.display === 'none' || c.visibility === 'hidden') return null;
+    const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 ? { l: r.left, t: r.top, r: r.right, b: r.bottom } : null; };
+  const frame = document.getElementById('frame'), fr = frame.getBoundingClientRect(), k = fr.width / 844;
+  const m = document.getElementById('svm'), bar = m && m.querySelector('.svbar'), w = sel => { const e = m && m.querySelector(sel); return e ? e.getBoundingClientRect().width / k : 0; };
+  const tint = document.querySelector('.alive .svtint'), st = window.brx.engine.state();
+  return { m: !!m && !!vis(m), s: m && m.dataset.s, wait: !!(m && m.hasAttribute('data-wait')), os: !!(m && m.hasAttribute('data-os')), text: m ? m.textContent.trim() : null,
+    barH: bar ? bar.getBoundingClientRect().height / k : 0, anim: bar ? getComputedStyle(bar).animationName : '', fl: w('.svfl'), osw: w('.svos'), dly: w('.svdly'),
+    sweep: m ? getComputedStyle(m.querySelector('.svfl'), '::after').animationName : '',
+    tint: !!document.querySelector('.alive.sv-down') && !!tint && +getComputedStyle(tint).opacity > 0.9,
+    parts: [bar].map(vis).filter(Boolean), frame: vis(frame), k,
+    health: m ? [...m.querySelectorAll('*')].filter(e => /hp|health/i.test(String(e.className)) || /hp|health/i.test(e.dataset.k || '')).length : 0,
+    others: Object.fromEntries(Object.entries({ clock: '.alive .clockplate', ident: '.alive .ident', topright: '.alive .topright', chips: '#chips .pill', ammo: '.alive .ammo', callout: '#overlay .co .cob', puhint: '#puhint .pu' })
+      .map(([n, sel]) => [n, [...document.querySelectorAll(sel)].map(vis).filter(Boolean)])),
+    toast: !!document.querySelector('#overlay .mo.gain.shield'),
+    shield: st.shield, max: st.maxShield, os: st.powerup && st.powerup.overshield ? st.powerup.overshield.left : null,
+    charging: !!(st.shieldRegen && st.shieldRegen.charging) };
+});
+const svApart = (a, c) => a.r <= c.l + 0.5 || c.r <= a.l + 0.5 || a.b <= c.t + 0.5 || c.b <= a.t + 0.5;
+const svClear = r => { const out = []; for (const p of r.parts) for (const [n, bs] of Object.entries(r.others)) for (const x of bs) if (!svApart(p, x)) out.push(`${n} ${JSON.stringify(x)} vs ${JSON.stringify(p)}`); return out; };
+/** Night: the meter's parts and the frame's outer 44 frame-px band (the red tint), visible green or teal/blue pixels. */
+const svNightPixels = async (pg, r) => {
+  const buf = await pg.screenshot(); const F = r.frame, band = 44 * r.k, pad = 6;
+  const zones = [...r.parts.map(p => ({ l: p.l - pad, t: p.t - pad, r: p.r + pad, b: p.b + pad })),
+    { l: F.l, t: F.t, r: F.r, b: F.t + band }, { l: F.l, t: F.b - band, r: F.r, b: F.b }, { l: F.l, t: F.t, r: F.l + band, b: F.b }, { l: F.r - band, t: F.t, r: F.r, b: F.b }];
+  const q = await b.newPage();
+  const n = await q.evaluate(async ([b64, zones]) => { const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height).data; let bad = 0, at = null;
+    for (let i = 0; i < d.length; i += 4) { const p = i / 4, X = p % c.width, Y = Math.floor(p / c.width);
+      if (!zones.some(z => X >= z.l && X <= z.r && Y >= z.t && Y <= z.b)) continue;
+      const R = d[i], G = d[i + 1], B = d[i + 2];
+      if ((G >= 70 && G > R + 24) || (B >= 70 && B > R + 24)) { bad++; at = at || [X, Y, R, G, B]; } }
+    return { bad, at }; }, [buf.toString('base64'), zones]);
+  await q.close(); return n;
+};
+const svWait = async (pg, ok, ms) => { let r = null; for (let t = 0; t < ms; t += 100) { r = await svRead(pg); if (ok(r)) return r; await pg.waitForTimeout(100); } return r; };
+for (const view of VIEWS) for (const night of [false, true]) {
+  const N = night ? '&night' : '', tag = `${view.name} shield meter ${night ? 'night' : 'day'}`;
+  await step(`${tag}: the Shields preset draws the visor, taller, with no health on it, clear of the clock, the identity block, the link status and the chips, with no text or number`, async () => {
+    const pg = await open(view, 'live-shields-full', N, 3600);
+    const r = await svWait(pg, r => r.m && r.shield >= 105, 2500); await pg.close();
+    must(r.m, `no shield meter on a Shields game: ${JSON.stringify({ m: r.m, shield: r.shield, max: r.max })}`);
+    must(r.barH >= 19 && r.barH <= 23, `the strip is taller than the 11 px candidate, into the room the health line left (19-23 frame px): ${r.barH}`);
+    must(r.health === 0, `health lives bottom left only, never on the visor (Tony: "why do we have health displayed in two places?"): ${r.health} health element(s)`);
+    must(r.text === '', `the meter carries no text or number (Tony: "just the bar"): "${r.text}"`);
+    must(r.s === 'ok' && r.fl > 400, `full: state ${r.s}, fill ${r.fl}`);
+    const hits = svClear(r); must(hits.length === 0, `the meter overlaps: ${hits.join(' ; ')}`);
+  });
+  await step(`${tag}: shield broken: the empty track pulses red and the frame is tinted red`, async () => {
+    const pg = await open(view, 'live-shields-broken', N, 3500);
+    const r = await svWait(pg, r => r.s === 'down', 2500); await pg.waitForTimeout(400); const r2 = await svRead(pg);
+    const px = night ? await svNightPixels(pg, r2) : null; await pg.close();
+    must(r.m && r.s === 'down', `the meter must say the shield is broken: ${JSON.stringify({ m: r.m, s: r.s, shield: r.shield })}`);
+    must(/^svdown/.test(r2.anim), `the broken track pulses: animation "${r2.anim}"`);
+    must(r2.tint, 'the frame is tinted red while unshielded');
+    must(!night || px.bad === 0, `night: green, teal or blue paint on the meter or the tint: ${JSON.stringify(px)}`);
+  });
+  await step(`${tag}: the recharge, over time through the real engine: broken, the delay fill creeps, then the refill sweeps, then full; no SHIELD toast`, async () => {
+    const pg = await open(view, 'live-shields-broken', N, 3300);
+    const seen = []; let brokeAt = null, chargeAt = null, dly = [], sweep = '', toast = false, last = null;
+    for (let t = 0; t < 13000; t += 150) {
+      const r = await svRead(pg); last = r; toast = toast || r.toast;
+      if (r.s === 'down' && brokeAt == null) brokeAt = Date.now();
+      if (r.s === 'down' && r.wait) dly.push(r.dly);
+      if (r.s === 'charge' && chargeAt == null) { chargeAt = Date.now(); sweep = r.sweep; }
+      if (!seen.length || seen[seen.length - 1] !== r.s) seen.push(r.s);
+      if (chargeAt && r.s === 'ok' && r.shield >= 105) break;
+      await pg.waitForTimeout(150);
+    }
+    await pg.close();
+    must(seen.join('>').includes('down>charge>ok'), `the states in order: ${seen.join('>')}`);
+    must(brokeAt && chargeAt && chargeAt - brokeAt >= 5800, `the refill waits for the engine's 6.5 s: ${chargeAt && brokeAt ? chargeAt - brokeAt : 'never'} ms`);
+    must(dly.length > 5 && dly[dly.length - 1] > dly[0] + 100, `the delay fill creeps along the track: ${dly.slice(0, 3)} ... ${dly.slice(-3)}`);
+    must(night ? sweep === 'none' || sweep === '' : sweep === 'svsweep', `the refill ${night ? 'has no sweep at night' : 'sweeps'}: "${sweep}"`);
+    must(last && last.s === 'ok' && last.shield >= 105, `full again: ${JSON.stringify({ s: last && last.s, shield: last && last.shield })}`);
+    must(!toast, 'no teal "+N SHIELD" toast over the meter during a recharge');
+  });
+  await step(`${tag}: the overshield is a layer over the shield, drained first by hits, and only hits remove it`, async () => {
+    const pg = await open(view, 'live-shields-os', N, 3200);
+    const a = await svWait(pg, r => r.os && r.osw > 400, 3000);
+    await pg.waitForTimeout(2500); const still = await svRead(pg);   // no decay: 2.5 s later it is as full as it was
+    await pg.evaluate(() => window.brxDemo.shieldHit(37)); const h = await svWait(pg, r => r.os === 38, 2000); await pg.waitForTimeout(500); const h2 = await svRead(pg);
+    const px = night ? await svNightPixels(pg, h2) : null;
+    await pg.evaluate(() => window.brxDemo.shieldHit(40)); const g = await svWait(pg, r => !r.os && r.shield <= 105, 2500); await pg.waitForTimeout(500); const g2 = await svRead(pg);
+    await pg.close();
+    must(a.os && a.osw > 400 && a.text === '', `held: ${JSON.stringify({ os: a.os, w: a.osw, text: a.text })}`);
+    must(still.os && Math.abs(still.osw - a.osw) < 2 && still.shield === a.shield, `no decay: ${a.osw} -> ${still.osw}, shield ${a.shield} -> ${still.shield}`);
+    must(h2.os && h2.osw < a.osw * 0.65 && h2.osw > a.osw * 0.35 && h2.fl > 400, `a 37 hit halves the overshield and leaves the shield: ${JSON.stringify({ osw: h2.osw, fl: h2.fl })}`);
+    must(!g2.os && g2.osw < 1 && g2.fl < h2.fl, `the next hit ends it and then eats the shield: ${JSON.stringify({ os: g2.os, osw: g2.osw, fl: g2.fl })}`);
+    must(!night || px.bad === 0, `night: green, teal or blue paint on the meter: ${JSON.stringify(px)}`);
+  });
+  await step(`${tag}: the Standard preset draws no meter, until it holds an overshield`, async () => {
+    let pg = await open(view, 'live', N, 3000); const r = await svRead(pg);
+    // a shield grant with no meter up (a perk grant in a game with no shield): the "+N SHIELD" toast is the only word of
+    // it, and at night it must be red, never the old teal
+    await pg.evaluate(() => window.brx.engine.feedFrame('$HP,45,70,20,*'));
+    const toast = await pg.waitForSelector('#overlay .mo.gain.shield .amt', { timeout: 2000 }).then(e => e.evaluate(n => getComputedStyle(n).color)).catch(() => null);
+    await pg.close();
+    must(!r.m && r.max === 0, `Standard: no shield meter: ${JSON.stringify({ m: r.m, max: r.max })}`);
+    const tc = (toast || '').match(/\d+/g) || [];
+    must(toast && (!night || (+tc[1] <= +tc[0] + 12 && +tc[2] <= +tc[0] + 12)), `the shield toast with no meter up${night ? ', red at night' : ''}: ${toast}`);
+    pg = await open(view, 'live-pu-overshield', N, 3000); const o = await svWait(pg, r => r.m && r.os, 2500);
+    const px = night ? await svNightPixels(pg, o) : null; await pg.close();
+    must(o.m && o.os && o.text === '', `Standard + overshield: the meter shows the layer alone: ${JSON.stringify({ m: o.m, os: o.os, text: o.text })}`);
+    const hits = svClear(o); must(hits.length === 0, `the meter overlaps: ${hits.join(' ; ')}`);
+    must(!night || px.bad === 0, `night: green, teal or blue paint on the meter: ${JSON.stringify(px)}`);
+  });
+}
 
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;

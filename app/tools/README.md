@@ -16,9 +16,6 @@ One-time: `cd app && npm i --no-save playwright && npx playwright install chromi
   death, respawn, kill confirm, low ammo/HP, gun drop/relink, MC lost/back, push/start/abort/end/PANIC. Variants:
   screen size, team colour, respawn type/delay, night, host-locked loadout, MC rejecting picks. `/hud/?demo&stage=live`
   opens a state alone. The states live in `src/demo.js` (STAGES); every load starts from a clean engine.
-- **`shieldgallery.mjs`** — the shield HUD pass (2026-09-24): frozen shots of the `&shieldv=a|b|c` variants in every shield
-  state, day and night, at 891×411 and 667×375, with the overlap, type-floor and night-colour checks. `node tools/shieldgallery.mjs [outDir]`
-  (default `/tmp/claude-1000/shield-gallery`). Not in test:all: it exists for one pick and goes away with the variants.
 - **`screens.mjs`** — `npm run ui:screens`: the screen-truth suite from the 2026-09-03 HUD review (docs/hud-review-2026-09-03.md).
   Every reported item is an assertion about what a person sees (rects, wraps, overlaps, visible text), run over the stage
   states at the design width AND a 667px phone, with desktop scrollbars ON — both reproduced the report and headless

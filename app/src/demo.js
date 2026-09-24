@@ -448,7 +448,7 @@ export function startDemo({ engine, log }) {
       widePools: () => { config.health = { max_hp: 100, max_armor: 0, max_shield: 100 };
         bundle.head = bundle.head.map(f => f.startsWith('$PSET,') ? f.replace(/^(\$PSET,\d+,\d+,)\d+,\d+,\d+,/, '$1100,0,100,') : f);
         config.stations = config.stations.map(x => x.id === 6 ? { ...x, item: { ...x.item, amount: 175 } } : x); },
-      // Shield HUD pass (2026-09-24): the Shields preset exactly as compile.HEALTH_PRESETS ships it (45 HP, 0 armour, 105
+      // The shield meter (2026-09-24): the Shields preset exactly as compile.HEALTH_PRESETS ships it (45 HP, 0 armour, 105
       // shield), so the engine's own S29 recharge runs. Everything below feeds frames the gun would send.
       shieldsPreset: () => { config.health = { max_hp: 45, max_armor: 0, max_shield: 105 };
         bundle.head = bundle.head.map(f => f.startsWith('$PSET,') ? f.replace(/^(\$PSET,\d+,\d+,)\d+,\d+,\d+,/, '$145,0,105,') : f); },
@@ -626,7 +626,7 @@ export function startDemo({ engine, log }) {
       // polish r1 (UX): a hit while standing at a station (the QA-04 weapon line must not cover the hint), the widest
       // night row (Shields preset, 3-digit pools, a 175 overshield) and an Easy Reload player at a weapon station
       'live-pu-claim-hit':   [[0, () => ev.powerups()], ...live, [2300, () => ev.puAt(4)], [2700, () => ev.hitFrom(19, 9, 9)]],
-      // ---- Shield HUD pass (2026-09-24, `&shieldv=a|b|c`): the Shields preset through the REAL engine's S29 recharge ----
+      // ---- The shield meter (the Visor, 2026-09-24): the Shields preset through the REAL engine's S29 recharge ----
       'live-shields':          [[0, () => { ev.powerups(); ev.shieldsPreset(); }], ...live],                                          // spawns at 0; the engine refills after its delay
       'live-shields-full':     [[0, () => { ev.powerups(); ev.shieldsPreset(); }], ...live, [2300, 'shieldFill']],
       'live-shields-hit':      [[0, () => { ev.powerups(); ev.shieldsPreset(); }], ...live, [2300, 'shieldFill'], [2900, () => ev.shieldHit(30)]],

@@ -34,7 +34,6 @@
   <label>team <select id="team"><option>blue</option><option>yellow</option><option>red</option><option>green</option></select></label>
   <label>respawn <select id="respawn"><option>auto</option><option>scanner</option><option>none</option></select> <input id="delay" type="number" value="8" min="1" max="120" style="width:52px" title="respawn delay (s)"> s</label>
   <label><input type="checkbox" id="night"> night theme</label>
-  <label>shield HUD <select id="shieldv"><option value="">today</option><option value="a">A · crown</option><option value="b">B · arc</option><option value="c">C · underline</option></select></label>
   <label><input type="checkbox" id="locked"> host-locked loadout (sniper)</label>
   <label><input type="checkbox" id="reject"> MC rejects every pick</label>
   <h2>Gun events</h2>
@@ -104,11 +103,10 @@
     if ($('team').value !== 'blue') p.set('team', $('team').value);
     if ($('respawn').value !== 'auto') p.set('respawn', $('respawn').value);
     if ($('delay').value !== '8') p.set('delay', $('delay').value);
-    if ($('shieldv').value) p.set('shieldv', $('shieldv').value);
     return '/hud/?' + p.toString().replace(/=(&|$)/g, '$1'); }
   function load() { $('hlog').hidden = true; $('hlog').textContent = ''; const [w, h] = $('size').value.split('x'); iframe.width = w; iframe.height = h; const u = url(); $('url').textContent = location.origin + u; $('stage').textContent = cur;
     for (const b of list.querySelectorAll('button')) b.classList.toggle('on', b.dataset.stage === cur); iframe.src = u + '&_=' + Date.now(); }
-  for (const id of ['size', 'team', 'respawn', 'delay', 'night', 'locked', 'reject', 'shieldv']) $(id).addEventListener('change', load);
+  for (const id of ['size', 'team', 'respawn', 'delay', 'night', 'locked', 'reject']) $(id).addEventListener('change', load);
   function ev(name, ...args) { if (cur.startsWith('util:')) { say('the utility page has no event panel yet (it needs a demo hook in utility.js)'); return; } const w = iframe.contentWindow; const d = w && w.brxDemo; const say = m => { $('hlog').textContent = m; $('hlog').hidden = false; }; if (!d || !d[name]) { say(`no brxDemo.${name} in the frame yet`); return; } try { d[name](...args); } catch (e) { say('event failed: ' + e.message); } }
   setInterval(() => { try { const w = iframe.contentWindow, b = w && w.brx; if (!b) return; const s = b.engine.state();
     $('phase').textContent = s.phase + (s.ended ? (s.endAck ? ' · over' : ' · result') : '') + (s.browsing ? ' · browsing' : '') + (s.tutorial ? ' · tryout' : '');
