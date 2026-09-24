@@ -322,6 +322,13 @@ waits, then spawns; the respawn white flash is scheduled ≥ 1.0 s after `$SPAWN
 `_endLocal`, panic, resync, reconcile and BLE drop cancels every pending light step; `max` for shield comes from
 MC (`$PSET` token 5), never parsed from a frame. Night arrives pre-compiled: no engine change.
 
+**Overshield (A56, Tony, 2026-09-24).** The gun shows shield plus overshield as one teal pool. While an overshield
+is held, the shield readout measures the whole shield value against MC's `max` plus the overshield amount
+(`engine.js _readoutMax`, mirrored by `stage.py _readout_max`). When the overshield is gone, the maximum falls back
+to MC's `max`. A no-shield preset (Standard, shield `max` 0) still ships the shield entry, so there the overshield
+alone is the teal pool. The phone HUD shows the overshield as a separate green layer (Halo). The difference is
+deliberate: three LEDs have no room for a second shield colour, and the HUD does.
+
 ## 6. Findings, ranked by match-day impact (all four lenses merged; ✔ = verified in code by the lead)
 
 ⚠ **The "where" column is a SNAPSHOT of where each finding was found, on 2026-09-06.** The line numbers have

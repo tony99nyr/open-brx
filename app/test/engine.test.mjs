@@ -5251,6 +5251,33 @@ test('A16.3 levels: level maths -- round(fraction*6) clamped to 0..6, floored to
   assert.equal(at(30), 4, '30/45 = 2/3 exactly -> round(4.0) = 4');
 });
 
+test('A56 overshield: the gun shows shield + overshield as ONE teal pool, max = preset max + overshield (Tony 2026-09-24)', () => {
+  const h = levelHarness();
+  const entry = { pool: 'shield', max: 30 };
+  h.eng.shield = 30; h.eng._prevShield = 30;
+  h.eng._puGrantShield('os1', { name: 'OVERSHIELD', amount: 75 }, h.eng.now());   // shield 30 -> 105, past the max
+  assert.equal(h.eng.shield, 105);
+  assert.equal(h.eng._readoutLevel(entry), 6, 'fresh overshield: 105 of 30+75 -> full');
+  h.eng.shield = 60;   // a hit drains the overshield first: 60 of 105
+  assert.equal(h.eng._readoutLevel(entry), 3, 'the drain is visible while the overshield holds: round(60/105*6) = 3');
+  h.eng._overshield = null; h.eng.shield = 30;   // overshield gone: the max falls back to the preset's
+  assert.equal(h.eng._readoutLevel(entry), 6, 'no overshield: 30 of 30 -> full again');
+  // the 3-band path reads the same maximum
+  const bands = { pool: 'shield', max: 30, bands: [[0.66, 'HI'], [0.33, 'MID'], [0, 'LO']] };
+  h.eng._overshield = { base: 30, amount: 75 }; h.eng.shield = 60;
+  assert.equal(h.eng._readoutBand(bands)[1], 'MID', '60 of 105 is the middle band, not full');
+});
+
+test('A56 overshield on a no-shield preset (Standard, shield entry max 0): the overshield alone is the teal pool', () => {
+  const h = levelHarness();
+  const entry = { pool: 'shield', max: 0 };
+  h.eng.shield = 0; h.eng._prevShield = 0;
+  h.eng._puGrantShield('os1', { name: 'OVERSHIELD', amount: 75 }, h.eng.now());
+  assert.equal(h.eng._readoutLevel(entry), 6, '75 of 0+75 -> full (was floored to 1 against a max of 0)');
+  h.eng.shield = 40;
+  assert.equal(h.eng._readoutLevel(entry), 3, 'round(40/75*6) = 3');
+});
+
 test('A16.3 levels: a drop animates lead(solid) -> blink-gap(all off) -> step down one level per step_ms -> settles', () => {
   const h = levelHarness();
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,23,0,0,*');   // establishes level 3
