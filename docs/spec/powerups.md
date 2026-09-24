@@ -74,6 +74,27 @@ its interval; two stations can hold different items and each follows its own sch
 and a Rockets station both spawn at 2:00. At most two different WEAPON items per game (spare slots 2 and 3); two
 stations with the same weapon share its slot.
 
+## Two kinds of powerup (Tony, 2026-09-24)
+
+"You could pickup rockets and pickup overshield. You can't pickup the railgun and the rockets, if you tried it would
+swap and you would only have 1."
+
+- **Weapon pickups** (Rockets, Rail Gun, later the other heavies) share ONE pickup-weapon holding. Taking a second
+  weapon SWAPS: the new one replaces the old, which is gone (not dropped for someone else; that is an idea for
+  later). On the gun: zero the old slot's `$AMMO`, write the ALT cycle with the new slot, `$AMMO` the new slot with
+  its charges. The HUD says it on the callout card: RAIL GUN replaces ROCKETS.
+- **Non-weapon powerups** (first: Overshield) stack alongside a held weapon pickup: Rockets and an Overshield
+  together is fine.
+
+**Overshield mechanics.** A positive `$BUMP` clamps at the `$PSET` maximum (protocol.md, the `$BUMP` row), so it
+cannot put shield above max. The grant is `$LIFE` with token 4 = 2 (set past max) on the shield pool: current +
+`OVERSHIELD_AMOUNT` (75). It takes hits first (the gun's cascade drains shield before armour and HP), does not
+regenerate (`OVERSHIELD_REGEN` off), does not decay (`OVERSHIELD_DECAY_PER_S` 0), and is gone at death. In the Shields
+preset the node's own recharge (S29, `$BUMP` refills) must never write while the shield is above the preset max, so
+a clamping refill cannot cut the overshield down. Bench (Bench gate item 7): the shield set past max sticks; hits
+drain it first; a `$BUMP` shield refill on a gun already above max does not lower it (so the recharge rule is
+belt-and-braces, not load-bearing).
+
 ## Station powerup modes (Tony, 2026-09-24: "future variations wanted")
 
 A powerup station's config is its item plus its schedule, set per game by MC. **Fixed** (the item and the Halo
@@ -114,4 +135,4 @@ Decided:
 Defaults still to confirm (named constants, easy to change):
 - **Charges:** a weapon item's own magazine (Rockets: 2), no reserve.
 - **Lost at death:** a weapon item's unused charges do not carry into the next life.
-- **One weapon item at a time:** a second weapon grant while holding one is refused; an overshield is separate.
+- *(decided, see below: a second weapon SWAPS.)*
