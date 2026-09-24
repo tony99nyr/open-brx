@@ -229,6 +229,10 @@ static void mcSendHello() {
   link.ws_open_hello_sent();
 }
 
+// Set when an MC frame changed what the screen shows (a welcome, an arm, a pickup taken, a release).
+// The .ino reads and clears it, and treats it like a button press: repaint AND wake the backlight.
+static bool mcScreenWake = false;
+
 static void mcHandleFrame(const String& text) {
   bool ok = false;
   json::Value env = json::parse(std::string(text.c_str()), &ok);
@@ -238,6 +242,7 @@ static void mcHandleFrame(const String& text) {
   if (kind == "welcome") {
     WelcomeMsg w = parse_welcome(body);
     link.apply_welcome(w);
+    mcScreenWake = true;
     if (!w.node_key.empty()) mcSaveNodeKey(w.node_key.c_str());
     Serial.printf("WELCOME session=%s\n", w.session_id.c_str());
   } else if (kind == "station_config") {
@@ -247,6 +252,7 @@ static void mcHandleFrame(const String& text) {
       // (a game-byte edge under MUSTER, including the very first arm after boot) -- this is only the
       // radio action the glue owns; the decision itself is pure and tested in station_link.h.
       link.apply_station_config(a);
+      mcScreenWake = true;
       Serial.printf("MC-ARMED kind=%s team=%d id=%d game=%d threshold=%d\n", a.kind.c_str(), a.team,
                     a.id, a.game, a.threshold);
       if (link.dropped_for_match()) {
@@ -260,6 +266,7 @@ static void mcHandleFrame(const String& text) {
   } else if (kind == "station_update") {
     StationUpdateMsg u = parse_station_update(body);
     if (link.apply_station_update(u, millis())) {
+      mcScreenWake = true;
       Serial.printf("STATION_UPDATE id=%d available=%d next_spawn_in_ms=%ld\n", u.id, u.available,
                     u.next_spawn_in_ms);
     }
@@ -267,6 +274,7 @@ static void mcHandleFrame(const String& text) {
     std::string cmd = parse_control_cmd(body);
     if (cmd == "release_utility") {
       link.apply_release();
+      mcScreenWake = true;
       Serial.println("RELEASED (control.release_utility): back to UNASSIGNED");
     }
   }

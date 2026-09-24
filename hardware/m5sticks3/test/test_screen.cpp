@@ -58,6 +58,12 @@ static void test_pickup_ready_vs_taken() {
   auto lookup = [](int player_num) -> std::string { return player_num == 7 ? "VIPER" : ""; };
   ScreenSpec named = compute_screen(s, lookup);
   CHECK_EQ(named.taken_by, std::string("VIPER"));
+
+  // MC said taken but named no taker (a Stick reboot lost it): no "TAKEN BY" with a blank name.
+  s.powerup_taker = 0;
+  ScreenSpec anon = compute_screen(s, lookup);
+  CHECK(anon.kind == ScreenKind::PICKUP_TAKEN);
+  CHECK_EQ(anon.taken_by, std::string(""));
 }
 
 // ---- reset confirm and its draining timeout -------------------------------------------------
@@ -135,6 +141,10 @@ static void test_home_vs_stats_and_default_hint() {
   ScreenSpec away = compute_screen(s);
   CHECK(away.kind == ScreenKind::SCR_STATS);
   CHECK_EQ(away.hint, std::string(DEFAULT_HINT));
+  CHECK_EQ(away.stats_battery, std::string("-"));  // no reading wired yet
+  s.battery_pct = 64;
+  CHECK_EQ(compute_screen(s).stats_battery, std::string("64%"));
+  s.battery_pct = -1;
 
   // Standalone bench mode (Wi-Fi never configured) shows diagnostics instead of the stats table.
   StickState bench;

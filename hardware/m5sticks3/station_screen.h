@@ -173,6 +173,7 @@ struct ScreenSpec {
   std::string stats_next_spawn;  // "M:SS" | "AVAILABLE" | "-"
   std::string stats_mc_link;     // link_state_label(), upper-case already
   std::string stats_ir_words;    // "128/64"
+  std::string stats_battery;     // "NN%" or "-" (render.py's stats page row)
 
   // SYSTEM: reset_confirm
   int reset_timeout_pct = 100;    // counts down 100 -> 0 over RESET_CONFIRM_TIMEOUT_MS
@@ -300,6 +301,7 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
                                                : std::string("-");
     spec.stats_mc_link = link_state_label(s.link_state);
     spec.stats_ir_words = std::to_string(s.ir_heard) + "/" + std::to_string(s.ir_sent);
+    spec.stats_battery = s.battery_pct >= 0 ? std::to_string(s.battery_pct) + "%" : std::string("-");
     return spec;
   }
 

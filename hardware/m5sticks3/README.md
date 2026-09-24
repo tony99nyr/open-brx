@@ -320,7 +320,7 @@ refuse/accept rule (polish round 2) -- built from the coordinator's brief alone,
    Under `MUSTER`, confirm `STATUS` shows `dropped_for_match=1` right after the drop, that the Stick
    does NOT rejoin Wi-Fi on its own, and that `LINK RECONNECT` is what brings it back.
 7. (ACTIONS is on by default.) Hold B once (arms RESET) and again within 5 s (sends it) and confirm MC saw it
-   (once MC accepts the kind); with `ACTIONS OFF` (the default) confirm nothing reaches MC either way
+   (once MC accepts the kind); with `ACTIONS OFF` confirm nothing reaches MC either way
    and the screen still says RESET NEEDS MISSION CONTROL. Short-press A and confirm it only pages,
    never arms a reset.
 

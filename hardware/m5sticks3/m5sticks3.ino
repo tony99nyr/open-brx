@@ -705,8 +705,18 @@ void setup() {
   M5.Power.setExtOutput(true, m5::ext_none);
   M5.Display.setRotation(1);  // landscape, 240 x 135
   M5.Display.setBrightness(BACKLIGHT_BRIGHT);
+  // M5Unified's default hold is 500 ms. The screen model assumes these: A's hold goes home (1 s), and
+  // B's hold arms and sends RESET (2 s, the knock-safety rule). Standalone bench RESET on A is 1 s too.
+  M5.BtnA.setHoldThresh(HOME_LONG_PRESS_MS);
+  M5.BtnB.setHoldThresh(LONG_PRESS_MS);
   canvas.setColorDepth(16);
-  canvas.createSprite(240, 135);  // one off-screen sprite for every screen; pushed once per paint
+  // One off-screen sprite for every screen, pushed once per paint (~65 KB). PSRAM keeps it out of the
+  // internal DRAM that Wi-Fi and BLE share; without a sprite nothing draws, so say so on the serial port.
+  canvas.setPsram(true);
+  if (!canvas.createSprite(240, 135)) {
+    canvas.setPsram(false);  // a build without PSRAM: fall back to internal DRAM rather than a dark screen
+    if (!canvas.createSprite(240, 135)) Serial.println("ERR display sprite alloc (no screen)");
+  }
   Serial.begin(115200);
   delay(300);
   loadSettings();
@@ -731,6 +741,7 @@ void loop() {
   pollButtons();
   pollAdvert(now);
   brx_glue::mcLoop(now);  // H8: Wi-Fi/mDNS/WebSocket to Mission Control; never blocks
+  if (brx_glue::mcScreenWake) { brx_glue::mcScreenWake = false; displayDirty = true; }
   if (point.mode == Mode::HILL && now - lastBeaconTxMs >= BEACON_PERIOD_MS) {
     lastBeaconTxMs = now;
     sendFrame(String(encode(point.beacon_word()).c_str()));

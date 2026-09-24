@@ -302,6 +302,7 @@ inline void drawSystem(M5Canvas& c, const ScreenSpec& s) {
                      {"LAST TAKEN", s.stats_last_taken.empty() ? "-" : s.stats_last_taken},
                      {"NEXT SPAWN", s.stats_next_spawn.empty() ? "-" : s.stats_next_spawn},
                      {"MC LINK", s.stats_mc_link},
+                     {"BATTERY", s.stats_battery.empty() ? "-" : s.stats_battery},
                      {"IR WORDS", s.stats_ir_words}},
                   MAIN_TOP + 20, 14);
       break;
