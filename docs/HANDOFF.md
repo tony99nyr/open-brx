@@ -81,18 +81,23 @@ Recoil counts rounds per trigger pull by calibre (S54, `aa7b08b9`). F291 is clos
   then sitting 3 (§26 groups A and B).
 - **Blocked:** Extended Mags on `$TMP` (S50) and F281 on sitting 2; **F275** on outdoor space (runbook Block 5).
 ## Lane: BLE reliability (brx2)
-2026-09-24, day sitting: Blocks 0-1, 1.4 and 3.1-3.3 of [`bench-2026-09-24.md`](bench-2026-09-24.md) done, plus
-a melee side-run (K4 CLOSED: melee works in our compiled game, the shot leaves the shooter's headset) and F336
-(melee `$HIR` carries no front/back direction, a design question only, not build-blocking). **F297**: laptop
-control 10/10, median link 1.37 s. **F308** 3.1-3.2 PASS. **S58** 3.3 items 1-8 PASS,
-`spec/powerups.md` corrected. Evening, Block 4 setup (0.4.11+f366156e, `--powerups`): **F293** stays OPEN, still pending its mid-match step,
-and now carries a NEW flap shape under load too (Tactix-FE30, 3 relinks with a 4-12 s headset loss each,
-`hds.N`-confirmed not the old relink-before-join shape); scanners (Stick, phone station) alone did not
-reproduce it; a second phone's SCAN AGAIN mid-join is the leading reading, follow-up is Block 1 step 1.5.
-**F340** (Android ≤11, location off = empty scan) confirmed on the bench, routed to brx1.
+2026-09-24, day sitting: Blocks 0-1, 1.4 (all 5 steps PASS) and 3.1-3.3 of
+[`bench-2026-09-24.md`](bench-2026-09-24.md) done, plus a melee side-run (K4 CLOSED) and F336 (melee `$HIR`
+carries no front/back direction, a design question only). **F297**: laptop control 10/10, median 1.37 s.
+**F308** 3.1-3.2 PASS; 4.3 PASSES too but Tony calls it too harsh, DECISION the AR ladder becomes 100/70/55.
+**S58** 3.3 items 1-8 PASS, `spec/powerups.md` corrected. Evening, Block 4 setup (0.4.11+f366156e,
+`--powerups`): **F293** stays OPEN for a NEW load-triggered flap shape (not the fixed relink-before-join
+shape); follow-up is Block 1 step 1.5 (a second phone's SCAN AGAIN mid-join). **F340** confirmed on the bench.
+**S57** 7.11 PASSES but finds a real collision: the victim-name word is lost inside the headset's 199 ms rate
+guard, brx4 fixing in 0.4.12. **F345**'s tonight decision (-70/-57) does not match the branch's shipped
+defaults (-66/-60), flagged for brx1. **F344**/**F333**: brx4's Stick fixes (fn-15 beacon, advert
+game-byte) make the revive count correct in MC; the Stick's own screen still doesn't update it. **F347**
+filed: the native shield hum blocks the audio FIFO, explaining tonight's late/missing kill and shield cues;
+Tony's decision drops the "Shields Online" callout, brx4's 0.4.12 adds FIFO modelling, and brx2 is building a
+simulator and scenario suite for it. **F341** (unkillable-gun frame corruption) is brx1's, unchanged here.
 - **Next bench task:** Block 1 step 1.5 (the SCAN AGAIN A/B/A), then Block 4 onward of
-  [`bench-2026-09-24.md`](bench-2026-09-24.md); F293's own mid-match step and 4.11's RSSI calibration land there.
-- **Next desk task:** none open for this lane.
+  [`bench-2026-09-24.md`](bench-2026-09-24.md); 4.11's RSSI calibration lands there.
+- **Next desk task:** the audio-FIFO simulator and scenario suite for F347.
 - **Blocked:** F270 on A8.
 ## Lane: Mission Control console honesty
 2026-09-24: APKs 0.4.7-0.4.11 published (each on green CI). On main: A58 station lock, KOTH phone-hill default (F338), utility sweep, the console-port ws guard, the chaos kill-cue invariant, and A60 MC auto-join (Lows and Tony's first-contact decision: F346). **Next:** 0.4.12 cut on brx1's word; bench F309/F311/F312.

@@ -45,15 +45,20 @@ superseded). See `docs/experiment-log/2026-09.md` (2026-09-19 pre-game entry) fo
 **Block 0 (preflight), Block 1 (F297/F293 connect reliability), Block 1.4 (the F293 fix re-check, PASS except
 step 5), and Block 3.1-3.3 (F308: release order, fire intervals; S58: pickup slots, buttons, overshield) are
 DONE, 2026-09-24** (see the experiment log's 2026-09-24 bench entry). Step 1.3 was not needed as a planned step:
-the loop was reproduced on demand, without a btsnoop capture. Step 1.4's step 5 (a headset power-cycle
-mid-match) did not run, since it needs MC; it moves into Block 4 below. **The next sitting starts at Block 4.**
+the loop was reproduced on demand, without a btsnoop capture. **Step 1.4's step 5 (a headset power-cycle
+mid-match) ran in the 2026-09-24 evening sitting and PASSES** (no loop, a 2 s reconnect); 1.4 is fully done.
+Also done that evening, against MC: **Block 4.3 PASSES** (the AR's recoil ladder, though Tony calls it too
+harsh at point blank, so the shipped ladder moves to 100/70/55, F308) and **Block 7 step 11 PASSES** (the
+victim-name word registers alone but collides in play inside the headset's rate guard, S57). **The next
+sitting starts at Block 4** (the remaining items, below).
 S58's 3.3 open items: 4.11's RSSI pickup-range calibration (not run), item 7's untested hits-draining-the-shield
 and dead-gun `$LIFE` mode-2 cases, item 4's reload-targets-last-slot-fired confounder, and item 8's `$BMAP,0,0`
 weapon-reset confounder, both needing a disassembly read rather than a bench re-run. What remains otherwise: the
 rest of F308's bench items in `docs/weapon-design.md`'s Balance rules table, the screamers transport steps A4,
 A7, A7b, A7c and A8 with `raw-bytes` (F269/F270), the native kill word and the R4 readings (Block 2b:
-F320-F322), S56, F292, F298, F296, F309, F293's step 5 (the mid-match headset power-cycle), F275
-outdoors, S48's super-indoor grid in Tony's house, S57's IR callout bus, the release loop (Block 4.0), the
+F320-F322), S56, F292, F298, F296, F309, F275
+outdoors, S48's super-indoor grid in Tony's house, S57's IR callout bus (the rest of its steps; step 11 is
+done), the release loop (Block 4.0), the
 Bluetooth KOTH hill by phone (F70, F338; Block 4.13, needs 0.4.11), and the Stick over BLE (Block 9, MUST for the
 Stick MVP). **F338 (Tony, 2026-09-24): the grenade hill and Stick IR receive are POST-MVP**, so their steps moved
 to LATER in the runbook. Its sitting plan orders the rest: Sitting A already ran and closed 2026-09-24; MUST
