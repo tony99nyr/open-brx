@@ -399,7 +399,7 @@ export function Kit() {
   const confirmFor = (key: string) => (confirm && sp && confirm.pid === sp.player_id && confirm.key === key ? confirm.label : null);
 
   const rulesChip = pol && (
-    <button type="button" className="hov-acc" onClick={() => setView('build')} title="Loadout rules are set in BUILD"
+    <button type="button" className="hov-acc" onClick={() => setView('build')} title="Loadout rules are set in GAMES"
       style={{ ...BTN_RESET, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 12px', border: `1px solid ${T.line}`, minHeight: 36, cursor: 'pointer' }}>
       <span style={{ width: 6, height: 6, background: PERK_COLOR }} />
       <span style={{ font: F.mono(600, 10), letterSpacing: '.2em', color: T.dim }}>GAME RULES</span>

@@ -66,11 +66,29 @@ button:focus:not(:focus-visible), input:focus:not(:focus-visible) { outline: non
    strength. The <ScrollX> hint says which way to go; this says where the page was cut. */
 .scroll-x { -webkit-mask-image: linear-gradient(90deg,#000 calc(100% - 40px),transparent); mask-image: linear-gradient(90deg,#000 calc(100% - 40px),transparent); }
 
-/* The command bar's toasts (an action's notice, the red error strip, PANIC's receipt). They used to
-   sit in the same nowrap row as the phase tag and the menu, so at 393px a notice squeezed a primary
-   button onto three lines (72px tall, measured 2026-09-12; that button was the command bar's own NEW
-   SESSION, cut 2026-09-17). On a phone they take a row of their own under the bar instead. */
-.cb-notices { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+/* The command bar (M9, visual QA 2026-09-23). One row from 900px up: the tabs never wrap, and the
+   less important parts fold first (the brand words, then the tab padding, then the long token label).
+   Below 900px the row may wrap. The toasts and errors (an action's notice, the red error strip, PANIC's
+   receipt) are a strip of their own under the row at every width, so nothing squeezes the controls. */
+.cb-row { display: flex; flex-wrap: nowrap; align-items: center; gap: 12px 26px; padding: 12px 20px 10px; }
+.cb-row > .cb-brand, .cb-row > .cb-right { flex-shrink: 0; }
+.cb-nav { min-width: 0; flex-wrap: nowrap; }
+.cb-tab { padding: 8px 16px 7px; }
+.cb-short { display: none; }
+@media (max-width: 1180px) {
+  .cb-row { gap: 12px 16px; }
+  .cb-brand-text { display: none; }
+  .cb-tab { padding: 8px 11px 7px; }
+  .cb-long { display: none; }
+  .cb-short { display: inline; }
+}
+@media (max-width: 899px) {
+  .cb-row { flex-wrap: wrap; }
+  .cb-nav { flex-wrap: wrap; }
+}
+.cb-notices { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 0 20px 10px; }
+.cb-notices:empty { display: none; }
+/* kept from F129 (2026-09-12): at phone width the strip is a full-width row under the bar */
 @media (max-width: 820px) {
   .cb-notices { order: 9; flex: 1 1 100%; justify-content: flex-start; }
 }

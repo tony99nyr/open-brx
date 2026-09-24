@@ -1,4 +1,5 @@
 import { F, T } from '../tokens';
+import { InfoIcon } from './index';
 
 /** F162 superseded (bench, 2026-09-16): the old dismissable banner ("SET EACH GUN TO <VENUE> (HOLD
  *  ALT 3 S)") had to be dismissed on every screen, every session, Tony's word for it was
@@ -25,7 +26,7 @@ export function VenueModeManualLink({ style }: { style?: React.CSSProperties }) 
       style={{ font: F.mono(600, 16), color: T.dim, textDecoration: 'none', lineHeight: 1,
                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 44, minWidth: 44, ...style }}>
       {/* Bench 2026-09-17 (Tony): a small clickable icon, no label. The accessible name and the tooltip carry the words. */}
-      <span aria-hidden="true">ⓘ</span>
+      <InfoIcon size={18} />
     </a>
   );
 }

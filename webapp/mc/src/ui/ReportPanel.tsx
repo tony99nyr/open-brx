@@ -26,7 +26,13 @@ export function ReportPanel({ onClose }: { onClose: () => void }) {
   const [downloadErr, setDownloadErr] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => { dialogRef.current?.focus(); }, []);
+  // M22 (visual QA 2026-09-23): focus goes INTO the dialog when it opens, and back into it whenever the
+  // control that held it goes away. MAKE REPORT unmounts the moment it is pressed (idle → busy), and
+  // the browser drops focus to <body>, behind the overlay, so a keyboard user was stranded there.
+  useEffect(() => {
+    const d = dialogRef.current;
+    if (d && !d.contains(document.activeElement)) d.focus();
+  }, [phase]);
   // Escape closes; Tab/Shift+Tab stay inside the dialog while it is open (focus already returns to
   // the ☰ button on close — CommandBar's own `onClose`).
   useEffect(() => {
@@ -125,6 +131,11 @@ export function ReportPanel({ onClose }: { onClose: () => void }) {
           )}
           {phase === 'done' && result && (
             <>
+              {/* M22: the privacy warning used to vanish at the moment it matters most, when the file
+                  exists and is about to be posted. It stays, above the controls that post it. */}
+              <div data-testid="report-privacy" style={{ font: F.chk(600, 12), lineHeight: 1.5, color: T.ink, border: `1px solid ${T.line2}`, background: T.panelAlt, padding: '9px 12px' }}>
+                GitHub issues are public, so open the file and check it before you post it. Short names, numbers and text you typed (team and game names) are not changed.
+              </div>
               {result.too_large && (
                 <div role="alert" style={{ font: F.chk(700, 12), lineHeight: 1.5, color: T.warn, border: `1px solid ${T.warn}`, background: 'rgba(255,176,32,.1)', padding: '9px 12px' }}>
                   ▲ This report is larger than 25 MB, GitHub&#39;s limit for an attachment. Make the issue anyway and say so: a developer will ask for the file another way.
