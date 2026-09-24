@@ -63,7 +63,7 @@ Rules and detectors:
   and contended with the phones). Battery/firmware/headset come from the node (§4 readiness) [A4.9].
 - **Headset gate.** Headset OFF drops the BLE link entirely (`$DISCONNECT`), so a live link plus the head echo
   IS the headset proof; a `$SPAWN` on a healthy headset echoes `$LCD,45,70,…`. Bench 2026-08-25
-  (`protocol/session-findings-2026-08.md` §7r; `docs/experiment-log.md` 2026-08-25 late). Battery is **amber, not red**,
+  (`docs/archive/session-findings-2026-08.md` §7r; `docs/experiment-log.md` 2026-08-25 late). Battery is **amber, not red**,
   when unsampled [A1].
 - **Edge cases:** duplicate sticker → both rows red; unenrolled gun → `identity:"unknown"`, listed as unclaimed,
   never green; a gun that will not advertise (asleep, menu, flat) → red "not seen"; Gen1 (Bluetooth Classic)
@@ -493,7 +493,7 @@ Weapon {
   // ⚠ `damage` is the MAGNITUDE the weapon emits ($WEAP t5), not the damage that lands. What lands is
   // decided by the victim's $SIR row for this weapon's <t3,t4>: a multiplier row lands floor(x1.25) or x2, a
   // status row lands nothing, a missing row drops the hit. Damage is a property of the (weapon, $SIR
-  // table) PAIR — see docs/weapon-design.md §6. `Compiler.validate()` warns on all three cases.
+  // table) PAIR — see docs/ir-effects-design.md §6. `Compiler.validate()` warns on all three cases.
   // `dmg_hit`/`cycle_ms`/`charged` are what `weapon_view(w, pool)` re-derives htk and ttk_ms from
   // when the host changes `health` (weapon-design.md §2.5). dmg_hit is what one TRIGGER PULL delivers
   // (`WeaponCatalog.damage_per_pull()`): the t5 magnitude, plus a declared `wire.headset_dmg` on the

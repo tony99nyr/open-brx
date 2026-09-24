@@ -33,7 +33,7 @@ PSET = "$PSET,{pid},0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H
 
 # The two-sided $SIR function map as bench-measured 2026-08-26 (experiment-log: "the COMPLETE
 # two-sided $SIR function map"). ⚠ Rows 36/37 are the sensor-gated multiplier pair, RESOLVED
-# 2026-09-11 (bench) — see docs/weapon-design.md §6 and compile.py `headset_multiplier()`. They are
+# 2026-09-11 (bench) — see docs/ir-effects-design.md §6 and compile.py `headset_multiplier()`. They are
 # here because they are what the bench arms with, at PSET's crit_modifier=50 above.
 # ⚠ F225 (bench 2026-09-17): the `<8,0>` cell was function 38, which HALVES every hit (a charge of
 # 100 landed 50). Re-pointed at function 1 (plain damage) — see gameconfig.py `_SIR_TABLE`.

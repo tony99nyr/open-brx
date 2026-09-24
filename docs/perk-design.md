@@ -137,7 +137,7 @@ runs on the real `$TID`, so it is deception only, and it fools your own team too
 
 **A damage-over-time perk is buildable, and the inventory was wrong to reject it.** `$LIFE` takes
 negatives, so a poison or burn effect is a node tick clock, not a missing firmware feature. The design
-is in [`weapon-design.md`](weapon-design.md) §6.3b and the open work is S16. It belongs to a weapon
+is in [`ir-effects-design.md`](ir-effects-design.md) §6.3b and the open work is S16. It belongs to a weapon
 first, the Toxin Rifle; a "your rounds burn" perk is the same mechanism in the third slot.
 
 **Now buildable.** Lucky Shot, a crit chance on your primary: F62 closed 2026-09-18 (`$WEAP` t6 is a
@@ -145,7 +145,7 @@ percentage the gun rolls), and `crit_pct` already ships on the Burst Rifle and t
 ride with Armour Piercing (`weapon-design.md` §7.5).
 
 **Blocked on hardware or a fact we do not have.** Alt-Fire Mode (t7 to t11 are empty on all 20 captured
-frames; a 2026-09-18 code read says they are a live chance-based alt-fire, `weapon-design.md` §6.3f,
+frames; a 2026-09-18 code read says they are a live chance-based alt-fire, `ir-effects-design.md` §6.3f,
 code read, not bench-proven).
 Emitter Selection (two source documents disagree about what t4 does). Regional Quiet Mode (`$GSET` t3,
 decoded from the app, never exercised). Death Nova (the native Sentinel emits a real IR word from the
@@ -248,7 +248,7 @@ sweep of 2026-09-17, which ran in a session scratchpad and is **not in the repo*
 | Personal EMP | Your primary's hits jam the enemy's gun for a few seconds. | A per-player `$SIR` cell keyed to the stun function the game-wide `config.stun` toggle already uses. | MOVED HERE ON REVIEW: it is not compile-time buildable. A `$SIR` table is game-wide, so keying one player's weapon to a stun function stuns for everyone who carries that key. | True per-player `$SIR` keys, the same blocker Medic Beam has. ⚠️ The stun cell is fn 23 (F253); fn 24 ships a phantom hit every 5 s and must never be keyed. | report-07, report-08 §4 |
 | Killstreak / Vengeance | A run of kills earns a reward, fully offline. | Would need the node to detect its own kills locally. | The gun never learns it hit someone; the node cannot see its own kills at all (ADR-0001). | Nothing short of a firmware change (disallowed), or accepting MC's best-effort `score`/`feedback` push, which moves the idea into Group C instead. | report-10 §13 (hard limit 1) |
 | Lucky Shot | A rare shot crits for extra damage. | `$WEAP` t6 (`primaryCritChance`). | NONE NOW: F62 closed 2026-09-18. t6 is a percentage the gun rolls; a crit lands ×1.5 and sets `$HIR` token 6. `crit_pct` ships on the Burst Rifle and the AMR. | Buildable as a perk; never beside Armour Piercing (`weapon-design.md` §7.5). | report-08 §1 (t6), F62 |
-| Alt-Fire Mode | Your weapon carries a second, different attack. | `$WEAP` t7-t11 (secondary fire block: chance, damage type, power type, damage, crit chance). | Empty on all 20 captured stock frames. A 2026-09-18 code read says t7 is a chance and t8-t11 the rolled key, damage and crit (`weapon-design.md` §6.3f); code read, not bench-proven. | A bench flip of t7-t11 on a live weapon to see if a secondary fire mode actually fires. | report-08 §1 (t7-t11), weapon-design §6.3f |
+| Alt-Fire Mode | Your weapon carries a second, different attack. | `$WEAP` t7-t11 (secondary fire block: chance, damage type, power type, damage, crit chance). | Empty on all 20 captured stock frames. A 2026-09-18 code read says t7 is a chance and t8-t11 the rolled key, damage and crit (`ir-effects-design.md` §6.3f); code read, not bench-proven. | A bench flip of t7-t11 on a live weapon to see if a secondary fire mode actually fires. | report-08 §1 (t7-t11), ir-effects-design §6.3f |
 | Emitter Selection | Your weapon fires from the headset only, or from both emitters. | `$WEAP` t4, read either as IR subtype or as `primaryPowerType` (which emitter fires). | The two source documents contradict each other on what t4 does; neither reading is bench-flipped. | A bench test that isolates t4 from t3 and checks which reading holds. | report-08 §1 and §11 (t3/t4 contradiction) |
 | Regional Quiet Mode | Your weapon runs on reduced power for indoor play. | `$GSET` t3 (`gunLaserRegion`), described as a legal power-region control. | APK-decoded only, never exercised on the bench. | A bench sweep of t3 values with a range ladder, the same method used to prove t2. | report-08 §3 (t3), report-09 (t3 "written, NOT RUN") |
 | Death Nova | Your death damages anyone standing close. | The native Sentinel death-nova already emits real IR (proto 10, magnitude 125) from the headset at death. | We do not know whether this is a settable weapon trait or fixed to one gun model; it cannot be forced or assigned by MC or the node. | Bench research into what triggers the death-nova, and whether any `$WEAP`/`$PSET` field controls it. | report-08 §6 |
@@ -258,7 +258,7 @@ sweep of 2026-09-17, which ran in a session scratchpad and is **not in the repo*
 ## E. Rejected
 
 (One row was struck on review: a damage-over-time trap was listed here as impossible. It is not.
-`$LIFE` takes negatives and the tick clock runs on the node: `weapon-design.md` §6.3b, S16.)
+`$LIFE` takes negatives and the tick clock runs on the node: `ir-effects-design.md` §6.3b, S16.)
 
 | Idea | Reason | Evidence anchor |
 |---|---|---|

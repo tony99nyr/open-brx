@@ -180,7 +180,7 @@ test('RELINK GUN with no gun picked does nothing', async () => {
   assert.equal(r.disconnects.length, 0);
 });
 
-// F210 (game-test-2026-09-13.md C1): docs/manual/dev.md — a gun with no headset linked connects,
+// F210 (docs/archive/game-test-2026-09-13.md C1): docs/manual/dev.md — a gun with no headset linked connects,
 // answers a $PING, then drops itself within seconds, forever. `_connectWithRetry`'s own backoff only
 // grows on a FAILED connect; a connect that SUCCEEDS and then drops seconds later never fails, so the
 // old code reconnected the instant it dropped and spun as fast as the hardware allowed.

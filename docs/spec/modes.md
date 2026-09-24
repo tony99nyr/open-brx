@@ -8,7 +8,6 @@
   `mcp/brx_mcp/modes/` (pure rules engines, the CLI/sim path). **Nodes never call it** — a phone (JS) or Companion
   (C++) writes the compiled `FrameBundle` verbatim. One frame authority, one runtime that compiles.
 - **Ground truth (link, don't restate):** `protocol/brx-protocol.md` (the command reference),
-  `protocol/session-findings-2026-08.md` (§7e arm, §7p/§7q player id, §7o feedback, §7r the bench run),
   `protocol/callsign-extract/protocol-classes.md` ($WEAP/$GSET/$PSET token maps),
   `protocol/callsign-extract/sound-bank.md` (voice families), `docs/game-modes.md` (mode catalog),
   `docs/manual/gameplay.md` (the public arsenal page).
@@ -165,7 +164,8 @@ Static data owned by M-MODES: **`mcp/brx_mcp/mc/weapons.json`** (22 rows: the 19
 the three A12 sidearms, melee), each row carrying `capture.frame` (the real frame Battle Company sent), a `wire`
 block naming only the balance tokens we overwrite, optional declared `overrides`, `htk`/`ttk_ms`, `tags`, `role`.
 **Why the numbers are what they are is `docs/weapon-design.md`** (the damage model, the rebalance table, the
-`$SIR` layer, the token appendix); the public arsenal page is `docs/manual/gameplay.md`.
+token appendix); the `$SIR` layer and the IR-effects study are `docs/ir-effects-design.md`; the public arsenal
+page is `docs/manual/gameplay.md`.
 
 - `WeaponCatalog.resolve(weapon_id, slot) → "$WEAP,<slot>,<tail>"` — the base is the weapon's **own captured
   frame**, and only the balance tokens are overwritten: `t5` damage, `t14` fire interval, `t16`+`t39` mag,
@@ -180,7 +180,7 @@ block naming only the balance tokens we overwrite, optional declared `overrides`
 - ⚠ **Damage is a property of the (weapon, `$SIR` table) pair.** `Compiler.validate()` cross-checks each
   weapon's `<t3,t4>` against the table MC pushes. Two cases are errors (since 2026-09-12): no row (hits silently
   dropped) and a no-pool function (a hit that moves nothing). A weapon whose compiled damage is 0 on a damage row
-  is the third. The Energy Launcher's `<9,3>` cell is fn 1 since 2026-09-18 (weapon-design.md §6.2).
+  is the third. The Energy Launcher's `<9,3>` cell is fn 1 since 2026-09-18 (ir-effects-design.md §6.2).
 
 ## 4. Tutorial arming (phase 3a) — private try-out, compiled by MC
 

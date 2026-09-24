@@ -4,7 +4,7 @@
   in `mcp/brx_mcp/mc/API.md`). Binds to `contracts.md` §3 (`FrameBundle`), §5 (`start`, `welcome`), §6 (lifecycle),
   **§7 (clock sync — this module's spine)**. Phase 5 of `README.md` §3. The original host-controls / interface /
   task sections are archived at `docs/archive/spec-start-sequence-tasks.md` (2026-09-06).
-- **Ground truth referenced, not restated:** arm/go-live frame order `protocol/session-findings-2026-08.md` §7e; `$PLAY` two-slot
+- **Ground truth referenced, not restated:** arm/go-live frame order `docs/archive/session-findings-2026-08.md` §7e; `$PLAY` two-slot
   semantics §7o; sound ids `mcp/brx_mcp/mc/compile.py` (`cues`) + `callsign-extract/sound-bank.md`.
 
 The problem this solves: you cannot keep every player in Wi-Fi range at T-0 — on a large park most nodes
@@ -117,7 +117,7 @@ $SFLASH,*                  # node's own template: "you are live" (PROVISIONAL as
   a free heal and an erased death — it is never written blind.
 - **Panic remains `frames.panic`** (`$CLEAR,*` then `$SP,99,*`, house rule) — the host's emergency stop, not
   part of any abort/recall path (§5 E7).
-- **Hold-across-disperse.** The confirmed live arm (`protocol/session-findings-2026-08.md` §7e) writes `$START`→config→`$SPAWN`
+- **Hold-across-disperse.** The confirmed live arm (`docs/archive/session-findings-2026-08.md` §7e) writes `$START`→config→`$SPAWN`
   within seconds on one held link. M-START instead holds the gun in `$START`+config-but-**UNSPAWNED** across the
   walk-to-base (minutes) and only fires the T-0 `$SPAWN` at the end. **Bench 2026-08-25 (§7r): a ~2-min hold then
   `$SPAWN` went live with `$LCD,45,70,…` and full ammo**; the 5-min run was interrupted and is still owed

@@ -146,8 +146,8 @@ and per-phone VPNs (Tailscale on every phone is setup on every phone).
 | Teams beyond 4 | unlimited *logical* teams | MC scores by roster; players wear armbands; no on-gun friendly-fire protection in that mode | software-tested only |
 
 The wire itself is `spec/contracts.md` §5; the gun↔headset and config-survival facts are
-`protocol/session-findings-2026-08.md` §7r; the counting limits are also sourced to
-B10 (`docs/archive/pre-2026-09-06-followups-snapshot.md`), `docs/spec/contracts.md` A5.1, `protocol/session-findings-2026-08.md` §7p
+`docs/archive/session-findings-2026-08.md` §7r; the counting limits are also sourced to
+B10 (`docs/archive/pre-2026-09-06-followups-snapshot.md`), `docs/spec/contracts.md` A5.1, `docs/archive/session-findings-2026-08.md` §7p
 and `docs/game-modes.md` §Team structure.
 
 ---
@@ -275,7 +275,7 @@ provisional until every node has flushed.
 
 The mechanisms behind each row: `spec/contracts.md` §5a (store-and-forward), `spec/node.md` §3.10
 (the live-rejoin reconcile: a 3 s disarmed re-arm that never heals; lobby/armed rejoins re-write the head),
-`protocol/session-findings-2026-08.md` §7r (config survives a BLE drop, a power-cycle wipes it, headset off
+`docs/archive/session-findings-2026-08.md` §7r (config survives a BLE drop, a power-cycle wipes it, headset off
 drops the link).
 
 ---
@@ -297,7 +297,7 @@ project's own words: "a green test ≠ 'works on real guns' — that's earned on
 | Remote game start over BLE (config → spawn → live → timed match → respawn) | proven | multiple sessions, 2026-08-23 → 25 |
 | Full Team Deathmatch: scoring, respawn, frag limit, correct winner, BLE held all match | proven, 2 guns | 2026-08-25 "FIRST LIVE M0 GAME" |
 | Synced start across guns (config-all-then-spawn barrier) | proven, 3 guns | 2026-08-25, B10 (archived) |
-| Exact per-player attribution over BLE (`$PSET` id → `$HIR` shooter) | proven | 2026-08-25, `protocol/session-findings-2026-08.md` §7p/§7q |
+| Exact per-player attribution over BLE (`$PSET` id → `$HIR` shooter) | proven | 2026-08-25, `docs/archive/session-findings-2026-08.md` §7p/§7q |
 | Native kill feedback from our stack: green-sight flash (`$SFLASH`) + announcer (`$PLAY` slot 4) | proven | 2026-08-25 / 26 |
 | Four native teams; firmware-enforced friendly fire; live team flip | proven | 2026-08-26 |
 | `$WEAP` map: damage, fire interval, fire modes (auto / single / burst / charge / melee), overheat; all 19 Callsign weapons captured (20 frames) | proven | 2026-08-26 |

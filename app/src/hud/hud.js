@@ -615,7 +615,7 @@ export class Hud {
   }
 
   // F211: with Bluetooth off the picker used to just sit empty, with no line telling the player why
-  // (game-test-2026-09-13.md C2). `bluetoothOn` is app.js-owned (constructor note above) and re-checked
+  // (docs/archive/game-test-2026-09-13.md C2). `bluetoothOn` is app.js-owned (constructor note above) and re-checked
   // on every SET MY GUN tap and on the OS adapter-state notification, so this only ever shows what the
   // phone reports right now. The buttons only appear where the plugin actually offers them (Android).
   _idleBtOff() {

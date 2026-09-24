@@ -7,7 +7,7 @@ specified. Then **[`manual/`](manual/)**, the confirmed-facts manual the public 
 | You are… | Read |
 |---|---|
 | **A BRX owner wondering if you can use this** | [`architecture-topology.md`](architecture-topology.md) §3 · [`platform/index.md`](platform/index.md) · the [root README](../README.md) |
-| **Running a match today** | [`field-runbook-mc.md`](field-runbook-mc.md) · [`field-process.md`](field-process.md) · [`field-issues.md`](field-issues.md) |
+| **Running a match today** | [`field-runbook-mc.md`](field-runbook-mc.md) · [`field-process.md`](field-process.md) · [`FOLLOWUPS.md`](FOLLOWUPS.md) §6 and §10 (field bugs and the checks for the next match) |
 | **Starting Mission Control on the dev box** (no hardware, no phones) | [`../mcp/brx_mcp/mc/README.md`](../mcp/brx_mcp/mc/README.md) → *Start it*: the one command, what it prints, the busy-port trap, served vs dev UI |
 | **Trying LEDs, sounds and events on ONE gun at the bench** | [`gun-stage.md`](gun-stage.md) (`python -m brx_mcp stage`) |
 | **Checking that MC survives hard matches** (drops, restarts, clock jumps, trades) | [`chaos-testing.md`](chaos-testing.md) (`python -m brx_mcp.chaos`) |
@@ -24,28 +24,28 @@ specified. Then **[`manual/`](manual/)**, the confirmed-facts manual the public 
   [`experiment-log.md`](experiment-log.md) is its index. **Append after every session.** Nobody reads it
   for orientation; grep it.
 
-Around them: **[`gotchas.md`](gotchas.md)** (field lore by symptom, plus the bench pre-flight) and
-**[`field-issues.md`](field-issues.md)** (the issue register + what to check next match).
+Around them: **[`gotchas.md`](gotchas.md)** (field lore by symptom, plus the bench pre-flight). The old field
+issue register, `field-issues.md`, was archived on 2026-09-24: a field issue is a FOLLOWUPS row (§6), and a check for
+the next match is a §10 bullet.
 
 **The bench sheets, and which one to open** (completed sheets are retained in place when they remain useful
 historical context; the running order is always [`bench-plan.md`](bench-plan.md)):
 
 | sheet | what it is |
 |---|---|
-| **[`game-test-2026-09-13.md`](game-test-2026-09-13.md)** | **the 2026-09-13 game test.** 2 players, 3 matches; eleven ids (F206-F216), four of them 🔴. Nine were root-caused from the MC store alone (it carries the compiled heads AND the phones' node logs) |
+| **[`archive/game-test-2026-09-13.md`](archive/game-test-2026-09-13.md)** | archived 2026-09-24. **The 2026-09-13 game test.** 2 players, 3 matches; eleven ids (F206-F216), four of them 🔴. Nine were root-caused from the MC store alone (it carries the compiled heads AND the phones' node logs) |
 | **[`evidence/2026-09-13-session-3782dc77/`](evidence/2026-09-13-session-3782dc77/)** | the sanitised MC store behind that sheet — compiled heads, gun echoes, event timeline, node logs, and the `extract.py` that rebuilds them |
 | **[`bench-plan.md`](bench-plan.md)** | **open this first.** Every bench test in one order, as sittings of 60 min or less, with the equipment, the preconditions, and which sheet owns what |
 | [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md) | live: verifies the firmware findings on v4.32 (claims 1-27) |
 | [`bench-2026-09-24.md`](bench-2026-09-24.md) | live: the next sitting's ordered runbook (connect reliability, screamers transport, the native kill word in Block 2b, one match, F275 outdoors, S48 in the house) |
-| [`bench-native-firmware-2026-09-23.md`](bench-native-firmware-2026-09-23.md) | moved: a pointer to Block 2b of the runbook (the native fatal-hit capture and the R4 checks) |
 | [`bench-sticks3-2026-09-23.md`](bench-sticks3-2026-09-23.md) | live: the M5StickS3 first-bring-up gate sheet (F314, IR receive after transmit) |
 | [`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md) | live, P0: reproduce and prevent the screamer lock-up (Phases A-E) |
 | [`bench-perks-2026-09-18.md`](bench-perks-2026-09-18.md) | history: every section answered on 2026-09-18 (the log's perks bench entry, items 5-8) |
-| [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md) | superseded by the plan; history |
+| [`archive/bench-critical-2026-09-11.md`](archive/bench-critical-2026-09-11.md) | archived 2026-09-24: superseded by the plan; history |
 | [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) | superseded as the running order; keeps the method of its unrun rungs. FOLLOWUPS §9 is the register (ids) |
 | [`bench-grenade.md`](bench-grenade.md) | the grenade/hill rungs. Read its *What is answered* table first, then *Still to run* |
-| [`bench-super-indoor-2026-09-07.md`](bench-super-indoor-2026-09-07.md) | Q15, parked until Tony decides what S48 "super indoor" means |
-| [`bench-flash-control-2026-09-05.md`](bench-flash-control-2026-09-05.md) | history: the flash ladder, answered; the queue CITES it rather than re-deriving it. The t6/t21/t22/F23 designs are in [`archive/bench-weap-tokens-discovery-2026-09-04.md`](archive/bench-weap-tokens-discovery-2026-09-04.md), cited from the queue's BQ-D1 row |
+| [`archive/bench-super-indoor-2026-09-07.md`](archive/bench-super-indoor-2026-09-07.md) | archived 2026-09-24: Q15. Tony defined S48 on 2026-09-23; its sweep is Block 6 of the runbook |
+| [`archive/bench-flash-control-2026-09-05.md`](archive/bench-flash-control-2026-09-05.md) | archived 2026-09-24. History: the flash ladder, answered; the queue CITES it rather than re-deriving it. The t6/t21/t22/F23 designs are in [`archive/bench-weap-tokens-discovery-2026-09-04.md`](archive/bench-weap-tokens-discovery-2026-09-04.md), cited from the queue's BQ-D1 row |
 
 ### Session close is three writes
 1. One entry in the current month's experiment log (the evidence).
@@ -92,7 +92,10 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
   mechanic mapping, the tier ladder and the genre research.
 - **[edge-brp.md](edge-brp.md)** — the competitive study of Battle Company's EDGE + Battle Rifle Pro, and the
   parity targets it sets. It is strategy context, not manual evidence.
-- **[weapon-design.md](weapon-design.md)** — the balance rationale and the open flatten-vs-retune decision.
+- **[weapon-design.md](weapon-design.md)**: the Balance rules table, the damage model and the balance rationale
+  for every shipped weapon.
+- **[ir-effects-design.md](ir-effects-design.md)**: the `$SIR` layer and the IR-effects study. It covers what a
+  victim's row does to a hit, the weapon axes and archetypes that opens, and why range is a carrier frequency.
 - **[perk-design.md](perk-design.md)** — the third kit slot: the rules a perk has to obey here, the core set and
   its costs, the next wave and what gates each one, and every rejected idea with its reason.
 - **[utility-roadmap.md](utility-roadmap.md)** — the objective-station work in order, the grenade-as-control-point
@@ -109,7 +112,7 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 |---|---|
 | Serial command reference (framing, tables, `$SIR`, `$WEAP`, safe testing) | [`../protocol/brx-protocol.md`](../protocol/brx-protocol.md) |
 | Stock firmware `$` vocabulary by tagger/headset version (code-derived, not bench proof) | [`reference/firmware-commands.md`](reference/firmware-commands.md) |
-| Dated session findings + retracted readings (2026-08) | [`../protocol/session-findings-2026-08.md`](../protocol/session-findings-2026-08.md) |
+| Dated session findings + retracted readings (2026-08) | [`archive/session-findings-2026-08.md`](archive/session-findings-2026-08.md) |
 | Stock firmware image research (R4): decompile plan, status, findings | [`firmware-image-research-plan.md`](firmware-image-research-plan.md) |
 | IR shot protocol + station words | [`../protocol/brx-ir-protocol.md`](../protocol/brx-ir-protocol.md) |
 | `$GSET`/`$WEAP`/`$PSET` field maps, modes, grenade (APK teardown) | [`../protocol/callsign-extract/`](../protocol/callsign-extract/) |

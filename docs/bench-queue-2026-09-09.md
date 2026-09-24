@@ -9,7 +9,7 @@ in the repo and was checked against its source. Nothing here is a new script.
 ⚠ **Answered rungs are OUT of the tables.** BQ-A1, BQ-C1, BQ-D7, G 3.2 and the whole 2026-09-11 sound sitting
 (BQ-B1 to BQ-B8, BQ-B6 excepted) are done; each keeps one line where it was and its result or its lesson in
 *Answered rungs* near the bottom, so nothing you read on the way to the next rung is closed work.
-**Tomorrow's sitting is not this sheet** — it is [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md),
+**Tomorrow's sitting is not this sheet** — it is [`archive/bench-critical-2026-09-11.md`](archive/bench-critical-2026-09-11.md),
 the four readings still open there, deliberately self-contained. Come back here for the rest of the queue.
 
 **Read first:** the pre-flight in [`gotchas.md`](gotchas.md) §"Before a bench session" — in order, every
@@ -147,7 +147,7 @@ use `firemode_probe.py` at all (trap 3).
 | BQ-D5 | **F26** attribution | two guns, two phones, ten shots | does the `$HIR` shooter field map to `player_num` as `scoring.py` assumes | shoot from a known `$PSET` player id |
 | BQ-D6 | **0.5 U11′** the status functions — **enemy 8 and 24-28 are DONE** (F73, closed 2026-09-11: fn 28 registers with NO sound, flash or vibration — the row to ship for beacons; fn 8 is silent but still flashes and buzzes; fn 24-27 fire ONE long grenade-ish clip, truncated by the next event). **Still open: enemy 35 and ally 31, 32, 34** | fire enemy 35 and ally 31, 32, 34 at a held gun. ⚠ **The three traps that VOIDED this run the first time, all mandatory:** (1) **`$SPAWN` before every arm** — a gun can latch an IR event and replay it every ~5 s with nothing in the air (F74), which is what produced the "varied sounds"; (2) **ONE row in the table at a time**, and read the `$HIR` protocol back per trial, or you are attributing another cell's effect; (3) **3 ft of separation** — a point-blank emitter corrupts the protocol field and silently lands you in a different cell | what you hear, see, or cannot do — only a human holding the gun can name these | fn 1 (plain damage) and fn 10/11 (heals) as the two known ends |
 | BQ-D7 | ✅ **ANSWERED 2026-09-10** — holding a hill does NOT change `$ALCD` cadence (a clean null). Do not re-run; see *Answered rungs* below | — | — | — |
-| BQ-D8 | **F15** rung 9 | **frames already written**: [`bench-flash-control-2026-09-05.md`](bench-flash-control-2026-09-05.md) rungs 9-10, plus a Damage=0 variant `$BHIT,0,1,<enemy team>,0,0,1,0,*` for the flash-only question. `$BHIT` is host→gun self-injection: **no shooter gun needed**. Not on the safe list (trap 4) | native small-LED flash? hit sound? `$HP` drop? any `$HIR` self-echo (probably none — `$BHIT` bypasses the sensor; confirm it explicitly) | after the three shapes, fire a real synthetic IR shot at the same gun and confirm it still registers — rules out `$BHIT` corrupting internal state |
+| BQ-D8 | **F15** rung 9 | **frames already written**: [`archive/bench-flash-control-2026-09-05.md`](archive/bench-flash-control-2026-09-05.md) rungs 9-10, plus a Damage=0 variant `$BHIT,0,1,<enemy team>,0,0,1,0,*` for the flash-only question. `$BHIT` is host→gun self-injection: **no shooter gun needed**. Not on the safe list (trap 4) | native small-LED flash? hit sound? `$HP` drop? any `$HIR` self-echo (probably none — `$BHIT` bypasses the sensor; confirm it explicitly) | after the three shapes, fire a real synthetic IR shot at the same gun and confirm it still registers — rules out `$BHIT` corrupting internal state |
 | BQ-D9 | **F27** | **full arm** per weapon (handle-triggered, so `firemode_probe` cannot do it): swap the weapon frame, resend `BMAP`/`$SPAWN`/`spawn_tail`, pull the handle, next | `$ALCD` refill timing per weapon vs its catalog **`reload_ms`** (§9's row says `reload_s`, which is not a field that exists) | BQ-C6's AR measurement calibrates the method; past that, no stopwatch precision needed |
 
 ---
@@ -155,7 +155,7 @@ use `firemode_probe.py` at all (trap 3).
 ## Block E — eyes, dim room + camera rig (~50 min, one sitting)
 
 Rig: `ledcam.py` / `led_flashcam.py`, ND filter or a sunglasses lens. The hosted-vs-native control
-pair from [`bench-flash-control-2026-09-05.md`](bench-flash-control-2026-09-05.md) §6b runs **before**
+pair from [`archive/bench-flash-control-2026-09-05.md`](archive/bench-flash-control-2026-09-05.md) §6b runs **before**
 any rung — a missing control spoiled U2.
 
 - **S2 6b** the flash-LED ladder (baseline `$LED,9,1,1,1,*` should read peak 41-44 / w-sum 135-156;
@@ -210,7 +210,7 @@ found). Commands are already written in [`bench-grenade.md`](bench-grenade.md) �
 ## Block H — the MacBook / capture day
 
 - **Q15 super-indoor** has its own sheet,
-  [`bench-super-indoor-2026-09-07.md`](bench-super-indoor-2026-09-07.md), and it is **entirely
+  [`archive/bench-super-indoor-2026-09-07.md`](archive/bench-super-indoor-2026-09-07.md), and it is **entirely
   outstanding**. It needs its own plumbing pass first (pyserial, `/dev/cu.*`, the CH34x driver) —
   do not fold it into the Windows-rig blocks.
 - **P8** (weapon stat values), **P3** (squad voice re-host), **G3** — batch the Mac + iPhone captures ([`capture-runbook.md`](capture-runbook.md)); P8 itself was captured 2026-09-11 over WireGuard, and P12 is dropped (`$PB*` is silent on v4.32).

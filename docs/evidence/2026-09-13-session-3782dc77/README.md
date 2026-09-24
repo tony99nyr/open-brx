@@ -1,7 +1,7 @@
 # Evidence — 2026-09-13 playtest, MC session `3782dc77`
 
 The committed, sanitised extract of the MC session store behind
-[`../../game-test-2026-09-13.md`](../../game-test-2026-09-13.md) (F206-F216). **The store itself is not in the
+[`../../archive/game-test-2026-09-13.md`](../../archive/game-test-2026-09-13.md) (F206-F216). **The store itself is not in the
 repo** — ~900 KB, one MacBook, and its node logs carry headset sticker ids. Everything the write-up argues
 from is here instead, so the argument survives that machine.
 

@@ -1,6 +1,6 @@
 # Decoded capture transcripts
 
-> Section references of the form §7e, §7n, §7o point into `../session-findings-2026-08.md` (the archived
+> Section references of the form §7e, §7n, §7o point into `../../docs/archive/session-findings-2026-08.md` (the archived
 > session write-ups); the current reading of each fact is in `../brx-protocol.md`. How to take a capture
 > of your own is `../../docs/capture-runbook.md`.
 

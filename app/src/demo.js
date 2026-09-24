@@ -226,7 +226,7 @@ export function startDemo({ engine, log }) {
       pickerConnecting: (attempt = 1, failed = false) => { const h = hud(); if (!h) return; h.scanActive = false; h.setScan([]); h.setConnecting({ name: 'GUN-A-3D4F', attempt, of: 5, failed }); h.render(engine.state()); },
       pickerConnectDone: () => { const h = hud(); if (!h) return; h.setConnecting(null); h.render(engine.state()); },
       scanOther: () => { const h = hud(); if (!h) return; h.setScanOther(!h.scanOther); h.render(engine.state()); },
-      // F211: the picker with Bluetooth off (game-test-2026-09-13.md C2). `platform` defaults to 'web'
+      // F211: the picker with Bluetooth off (docs/archive/game-test-2026-09-13.md C2). `platform` defaults to 'web'
       // (no enable/settings buttons — iOS has neither); pass 'android' for the button variant.
       bluetoothOff: (platform) => { const h = hud(); if (h) { h.bluetoothOn = false; if (platform) h.platform = platform; h.setScan([]); h.render(engine.state()); } },
       // kit-out

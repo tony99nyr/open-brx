@@ -82,7 +82,7 @@ No. The gun resolves friend/enemy by **team id (`$TID`)** in the IR hit, so team
 
 ## Hard ceilings (design around these; everything else is software or a pending bench test)
 
-1. **The gun keeps no game state** (`protocol/session-findings-2026-08.md` §7n) and BLE reaches ~1–30 m → anything needing a
+1. **The gun keeps no game state** (`protocol/brx-protocol.md` §7) and BLE reaches ~1–30 m → anything needing a
    clock, score or respawn needs a listener *on the player* out on a field. This is the whole reason for
    per-player nodes (ADR-0001/0002).
 2. **One BLE central holds a handful of guns** (Android caps at 7 GATT connections; a laptop radio is
@@ -151,7 +151,7 @@ watches `$HP`, refills). The shield fills over BLE too (Hard ceilings #7), so al
 | **Syphon** (Fortnite/CoD "health-on-kill") | killer regains HP on each kill | MC routes `$LIFE` to the **exact** killer's node via `apply{frames}` (`$HIR` tok3 names the shooter) | reaches the killer only while their node is in coverage (contracts A6.4) |
 | **Halo shields (regen after no-damage)** | health/armor refills to full after T s without taking damage | **node-driven**: the node watches its own gun's `$HP` stream and sends **`$LIFE`** (additive, clamped; `$BUMP` is inert) once no decrease for T s. Works offline. | refills any pool, shield included (`$LIFE,0,0,<n>,*`); the Shields preset ships this recharge |
 | **Overshield / powerup pickup** | grab an item → temporary extra pool | the node grants `$LIFE` armor on the pickup (roadmap K3) | a shield or armour overshield, both over BLE; the shield is capped by the game's `$PSET` shield ceiling |
-| **Medic / Lifesteal support role** | a role heals teammates | `$SIR` dual-polarity functions heal allies and damage enemies in firmware (`weapon-design.md` §6.3), or the node grants `$LIFE` | role logic like General/VIP |
+| **Medic / Lifesteal support role** | a role heals teammates | `$SIR` dual-polarity functions heal allies and damage enemies in firmware (`ir-effects-design.md` §6.3), or the node grants `$LIFE` | role logic like General/VIP |
 
 > **Corroboration (FB group crawl):** native shields + medic behaviour are real on stock BRX today —
 > **energy weapons grant a temporary shield when you equip a new weapon**, and the Supremacy **Medic

@@ -75,7 +75,7 @@ match nodes return to KITTED (A5.9) · runway default 120 s (A5.10) · MC = Pyth
 Capacitor · full `config` + bundle at lobby all-ready, then only `start` at go time · play volume 80 indoors /
 90 outdoors, try-outs 69 (2026-08-30) · a perk is its own slot (A14).
 
-Closed on the bench 2026-08-25 (`protocol/session-findings-2026-08.md` §7r): a 2-min hold-across-disperse then `$SPAWN` goes
+Closed on the bench 2026-08-25 (§7r of the [archived August notebook](../archive/session-findings-2026-08.md)): a 2-min hold-across-disperse then `$SPAWN` goes
 live with config intact (5-min run still owed); the head write is silent; headset off drops the link, so link +
 echo is the headset proof; an unspawned gun ignores IR; a live `$TID` write flips hit resolution immediately.
 

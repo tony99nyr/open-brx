@@ -142,7 +142,7 @@ on the other fifteen:
 | Energy Rifle (`E12`) | 6 | `D122` |
 
 `t35` (`weaponFeatureA`) is populated on those same four and nothing else — so for these weapons it
-is specifically the **overheat sound**. Pairs with the live heat telemetry in `$ALCD` token 5 (`../session-findings-2026-08.md` §7j).
+is specifically the **overheat sound**. Pairs with the live heat telemetry in `$ALCD` token 5 (`../brx-protocol.md` §4).
 
 `t23` (burst) likewise has exactly two holders, both burst weapons: Burst Rifle `275`, Force Rifle
 `250`.
@@ -346,14 +346,14 @@ ammoOrGearPickUp, energyShieldLoop`.
 
 Confirms the Mac session's hypothesis that PSET's trailing tokens (`H44,JAD,V33,…`) are a
 positional sound set — each slot is a named game-event sound. Note fields are HP/**shields**
-(+criticalDamageBonus); reconcile the armor token against the live `$LCD` echo (`../session-findings-2026-08.md` §7e) when testing.
+(+criticalDamageBonus); reconcile the armor token against the live `$LCD` echo (`../brx-protocol.md` §4) when testing.
 
 ## Other command field maps (source-derived)
 
 | Command | Fields (in order) | Notes |
 |---|---|---|
 | **BMAP** | buttonNumber, function, swapSlot0..3 | button remap + 4 weapon-swap slots |
-| **AMMO** | metadata fields = `clip, functionToApply` (partial parse) | **Wire form is `$AMMO,<slot>,<clip>,<reserve>,<flag>,*` — hardware-verified** from the iOS capture (`../session-findings-2026-08.md` §7e) that ran a live game (e.g. `$AMMO,0,36,108,1,*`). The metadata field list is incomplete (missing the leading slot and the reserve); trust the captured wire form. |
+| **AMMO** | metadata fields = `clip, functionToApply` (partial parse) | **Wire form is `$AMMO,<slot>,<clip>,<reserve>,<flag>,*` — hardware-verified** from the iOS capture (`../../docs/archive/session-findings-2026-08.md` §7e) that ran a live game (e.g. `$AMMO,0,36,108,1,*`). The metadata field list is incomplete (missing the leading slot and the reserve); trust the captured wire form. |
 | **GLED** | mid, effect, optionA, optionB | gun LED — **not** r,g,b. ⚠️ **These field names are WRONG on the wire** (the teardown recovers names in declaration order, with no types). Bench truth: `$GLED,<led1>,<led2>,<led3>,<apply-gate>,<brightness>` — three independently addressable body LEDs, each a palette index 0-8 (0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal · 6 white · 7 pink · 8 orange). **Token 4 is an apply gate, not an `effect` enum**: 0/6/7/8/9/10 apply the frame's colours at full brightness, 5 applies them at ~1/3 brightness, 1/2/3/4 are no-ops that leave the previous colour lit; nothing animates, so the `LedEffect` enum below does not describe it. `$GLED,,,,5,,,*` blanks a gun because its colour tokens are **empty** and t4=5 applies them. Token 5 is brightness: 0 off · 1 dim · >=2 full. Colour is **not** only team-derived. See `protocol/brx-protocol.md` §command table. |
 | **GREN** | iRType, crit, modifier, indoorMode, operationMode, channel, (GrenadeType, MaxCount) | **Smart Grenade config**. Bench status (it does not set the grenade's mode): `../brx-protocol.md` §3 |
 | **HFIRE** | Range, CountIRPulses, RateOfFire, FlashLED | ⚠ **Partial and wrong on the wire.** The real shape has 11 fields: `Direction, BulletType, PlayerId, Team, Damage, IsCriticalShot, PowerLevel, Range, CountIRPulses, RateOfFire, FlashLED`; this 4-field guess emitted zero IR. Status: `../brx-protocol.md` §3 |

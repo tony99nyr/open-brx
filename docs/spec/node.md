@@ -524,7 +524,7 @@ kind from the `hit`/`role` repaints already on this path.
 
 ### 3.17 Damage over time: the node holds the tick clock (S16)
 
-The gun has no damage-over-time function we can rely on (`weapon-design.md` §6.3b: fn 24's delayed ticks were
+The gun has no damage-over-time function we can rely on (`ir-effects-design.md` §6.3b: fn 24's delayed ticks were
 measured only against a REPEATING source). The node builds it instead, because `$LIFE` takes negatives and a node
 may write its own gun freely mid-match. Built 2026-09-19 in `engine.js` (`_poisonHit`, `_poisonTick`,
 `_poisonStrike`), mirrored in `stage.py`; Tony's decisions of 2026-09-18/19 are the rules below.

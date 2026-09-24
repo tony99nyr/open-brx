@@ -20,7 +20,7 @@ reliable, any-mode, and driven live by Mission Control.
 
 ## Why it has to exist (what the teardown + crawl proved)
 
-1. **The gun keeps no game state** (`protocol/session-findings-2026-08.md` §7n) — a *location* can't be authored
+1. **The gun keeps no game state** (`protocol/brx-protocol.md` §7) — a *location* can't be authored
    by the guns; it needs a local authority that shows truth (LED/sound) on the spot.
 2. **Objective modes need fixed contested points** (`docs/game-modes.md` Tier 1) — Domination/KotH/
    CTF/Assault all centre on *places*, not players.
@@ -84,7 +84,7 @@ The station both **receives** hits (capture) and **emits** tags (perks, respawn,
 ## LED / ownership model
 
 - **1× WS2812B** (Mini) or a **ring/strip** (Base/Tower) shows the **current owner's team colour**
-  (red/blue/yellow/green; the firmware's 9-colour index — `protocol/session-findings-2026-08.md` §7i, §7j — maps
+  (red/blue/yellow/green; the firmware's 9-colour index — the `$GLED` palette in `protocol/brx-protocol.md` §3.2 — maps
   cleanly to the LED). White/neutral = unclaimed.
 - **On capture:** flash + (Base tier) a sound; hold shows accumulation (e.g. a per-second pulse while
   a Domination point scores). This is the "truth on the spot" that makes objective play legible without

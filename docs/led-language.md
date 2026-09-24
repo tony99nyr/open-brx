@@ -4,8 +4,8 @@
 bench moves it. It covers how the gun body LEDs, the headset RGB LED and the headset's small flash LED
 behave in a hosted game, across four lenses: game design, hardware/protocol, code/spec consistency, and
 match-day ops and accessibility. `mcp/brx_mcp/poolgauge.py` implements it and cites this file throughout.
-Open build items are **S10** in [`FOLLOWUPS.md`](FOLLOWUPS.md); the bench ladder is §6 of
-[`bench-flash-control-2026-09-05.md`](bench-flash-control-2026-09-05.md).
+Open build items are **S10** in [`FOLLOWUPS.md`](FOLLOWUPS.md); the two unrun rungs of the old
+bench ladder (L10 and L11, with their frames) are in the S10 row there.
 
 Tony's constraints, in his words: LEDs "add to the immersion and have a functional purpose across the gun and
 headset"; "configured per mode in the game config"; "LEAVE the native hit flash alone so it goes super bright

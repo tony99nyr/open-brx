@@ -658,7 +658,7 @@ def test_mag_invariant_reports_each_weapon_once_per_pool():
     assert len(said) == 1, said
 
 
-# ---- $SIR effect guard (weapon-design.md §6.2) -----------------------------
+# ---- $SIR effect guard (ir-effects-design.md §6.2) -----------------------------
 def test_sir_effect_guard_is_an_ERROR_for_a_weapon_that_deals_no_damage():
     """A weapon's damage is a property of the (weapon, `$SIR` table) PAIR — its `<t3,t4>` keys a row
     whose FUNCTION decides what the IR magnitude does. The Energy Launcher used to key `$SIR,9,3,,24`,

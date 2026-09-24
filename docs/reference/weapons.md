@@ -23,7 +23,7 @@ Raw traces: `protocol/captures/raw/`. Regenerate the underlying table with
 for every function including the fn 36/37 multiplier pair. **Applied** damage on a HEADSET hit can be
 more: magnitude × the victim's `$SIR`-function multiplier, where fn 36/37 scale with the compiled
 `$GSET criticalShotModifier` (t7) — not a flat "1.5 if crit"; see `protocol/brx-protocol.md` §5 and
-`session-findings-2026-08.md` §7r). `cycle` = `t14`, the per-shot cycle time in ms, which for charge weapons is the
+§4.1). `cycle` = `t14`, the per-shot cycle time in ms, which for charge weapons is the
 charge time. `clip`/`t40` = `t16`/**`t40`**. ⚠ The `t40` column is NOT the carried reserve. A captured frame carries `t17` at exactly twice `t40`, and the bench corrected F207 on 2026-09-18: **`t17` is the count the player carries**, and `t40` is only what the `$ALCD` reserve shows in the moment between `$WEAP` and `$SPAWN` (`protocol/brx-protocol.md` §6, the `16 / 39 / 40 / 17` row). By that rule the carried reserve is twice the `t40` shown here: the Assault Rifle's 192 means 384 carried. F255 (closed): `$AMMO,<slot>,<clip>,<reserve>` rides both `frames.spawn` and `frames.revive`, so the gun is set to the full catalogue reserve at every spawn and the HUD agrees with it. `heat` = `t24`, non-zero only on weapons that overheat.
 
 | weapon | sound | behaviour | dmg | cycle ms | clip | t40 | heat |
@@ -71,6 +71,6 @@ It equalled the applied damage across the four weapons exp 2 tested because all 
 **fn-1** rows, and (bench 2026-09-11) it equals the applied damage on a GUN-BODY hit for EVERY row,
 fn 36/37 included. In general **applied (headset) = magnitude × the victim's `$SIR`-function
 multiplier**, where fn 36/37 scale with the compiled `$GSET criticalShotModifier` (t7) rather than a
-flat "1.5-if-crit" (`protocol/brx-protocol.md` §5, `session-findings-2026-08.md` §7r). Weapon stats are still server-fetched per `apk-harvest.md`, so the numbers above
+flat "1.5-if-crit" (`protocol/brx-protocol.md` §5 and §4.1). Weapon stats are still server-fetched per `apk-harvest.md`, so the numbers above
 are what the app sent on the day: a faithful record of the wire (as emitted magnitudes), not necessarily
 BRX's current live-service balance.

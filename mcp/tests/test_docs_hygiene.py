@@ -481,8 +481,8 @@ def _dated_closed_ids() -> set[str]:
     return {m.group(1) for m in re.finditer(r"^- \d{4}-\d{2}-\d{2} \*\*([A-Z]\d{1,3})\b(?!\.\d)", text, re.M)}
 
 
-# 2026-09-17 doc-rot review: the set held 🔴🟠🟡 only, and `field-issues.md` — the register every field
-# report lands in — marks its open items 🔍 ("open, evidence named") and 💭 ("open, design"), per its own
+# 2026-09-17 doc-rot review: the set held 🔴🟠🟡 only, and `field-issues.md` (archived 2026-09-24), then the register every field
+# report landed in, marked its open items 🔍 ("open, evidence named") and 💭 ("open, design"), per its own
 # legend. So F206 and F207 sat there as open for a day after both closed, and this check was green.
 # 🔧 ("fixed, needs a field check") is deliberately NOT here: the work IS done, the row is a reminder.
 _OPEN_GLYPHS = ("🔴", "🟠", "🟡", "🔍", "💭")
@@ -520,7 +520,7 @@ def _closed_ids_cited_as_open() -> list[str]:
     carries a glyph anywhere in it.
 
     ⚠ The heading arm used to read only the text BEFORE the glyph, which is one of the two orders a
-    heading is written in. `bench-critical-2026-09-11.md` writes the other one — `### BC-A1 — does it
+    heading is written in. `archive/bench-critical-2026-09-11.md` wrote the other one — `### BC-A1 — does it
     change the protocol? (15 min) 🔴 F91` — so three rungs headed red for ids retired on 2026-09-11 and
     the check reported green. A glyph anywhere in a heading now claims every id in that heading.
     """
@@ -763,8 +763,6 @@ _ARCHIVE_CITERS_BASELINE = {
     "docs/architecture-topology.md",        # verification-checklist.md
     "docs/bench-grenade.md",                # bench-grenade-answered.md
     "docs/bench-queue-2026-09-09.md",       # bench-weap-tokens-discovery-2026-09-04.md, hardware/range-experiment.md
-    "docs/field-issues.md",                 # docs/archive/game-test-2026-09-11.md
-    "docs/game-test-2026-09-13.md",         # docs/archive/HANDOFF-gset-t2-2026-09-13.md: provenance, the sheet that ran that afternoon
     "docs/reference/ttk-model.md",          # game-test-2026-09-11.md (D2 provenance, cited twice)
     "docs/site/README.md",                  # site/SIMPLIFY-PLAN.md
     "docs/spec/contracts.md",               # mode-extensibility.md, spec-armory.md, spec-net.md
