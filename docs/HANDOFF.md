@@ -81,17 +81,15 @@ Recoil counts rounds per trigger pull by calibre (S54, `aa7b08b9`). F291 is clos
   then sitting 3 (§26 groups A and B).
 - **Blocked:** Extended Mags on `$TMP` (S50) and F281 on sitting 2; **F275** on outdoor space (runbook Block 5).
 ## Lane: BLE reliability (brx2)
-2026-09-24 bench, Blocks 0-1, 1.4 and 3.1-3.3 of [`bench-2026-09-24.md`](bench-2026-09-24.md) done. **F297**:
-laptop control 10/10 first-attempt, median link 1.37 s; the phone run's tooling bug is fixed (`9b94e318`).
-**F293**: the loop reproduced on demand, then brx5's `HEADSET_JOIN_MODE 'disconnect'` fix (`ffbc987c`) VERIFIED
-except the mid-match step (needs MC), so the row stays OPEN. F334 (filed by this lane) is closed: the WebView
-floor is 111 (`d373c1ae`). **F308** 3.1-3.2 PASS (release order; the Shotgun/Desert Eagle median fire gap; the
-Burst Rifle's between-burst gap is INCONCLUSIVE on a hand pull, needs the rig). **S58** 3.3 items 1-8 all
-PASS or read as planned; `spec/powerups.md` is corrected where the bench refuted it (the overshield clamps to
-the `$PSET` max and needs a mid-life `$PSET` re-send to hold above it); two readings are unexplained and need a
-disasm read (item 4's reload-target confounder, item 8's `$BMAP,0,0` weapon reset). A heavy pickup equips
-straight onto the trigger with no extra write, measured: a mid-life `$WEAP` write alone, or `$WEAP` plus
-`$AMMO`, both equip; switching back needs a `$WEAP` re-send then the saved `$AMMO`.
+2026-09-24 bench, Blocks 0-1, 1.4 and 3.1-3.3 of [`bench-2026-09-24.md`](bench-2026-09-24.md) done, plus a
+melee side-run. **F297**: laptop control 10/10 first-attempt, median link 1.37 s; the phone run's tooling bug is
+fixed (`9b94e318`). **F293**: brx5's `HEADSET_JOIN_MODE 'disconnect'` fix (`ffbc987c`) VERIFIED except the
+mid-match step (needs MC), so the row stays OPEN. F334 (filed by this lane) closed: WebView floor 111
+(`d373c1ae`). **F308** 3.1-3.2 PASS; the Burst Rifle's between-burst gap needs the rig. **S58** 3.3 items 1-8
+all PASS or read as planned, `spec/powerups.md` corrected (the overshield clamps to `$PSET` max; a heavy
+pickup equips straight onto the trigger). **K4 CLOSED 2026-09-24**: melee works in our compiled game (two
+guns, two confirmed hits), and the shot leaves the shooter's headset, not the barrel (`archive/followups-closed.md`,
+`manual/dev.md`).
 - **Next bench task:** Block 4 onward of [`bench-2026-09-24.md`](bench-2026-09-24.md); F293 step 5 and 4.11's
   RSSI pickup-range calibration land there.
 - **Next desk task:** none open for this lane.
