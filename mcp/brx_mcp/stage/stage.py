@@ -3437,7 +3437,7 @@ class GunStage:
         if frame == self._readout_frame:
             return
         now = self.now()
-        hold_s = float(readout.get("hold_s", 4))
+        hold_s = float(readout.get("hold_s", _pres.READOUT_HOLD_S))
         self._readout_gen += 1
         gen = self._readout_gen
         if self._readout_last_write_at is not None and now - self._readout_last_write_at < READOUT_COALESCE_S:
@@ -4049,12 +4049,12 @@ class GunStage:
         if pool == self._readout_last_pool and prev == target:
             return                                   # already showing this pool at this exact level
         self._readout_last_pool = pool
-        lead_s = float(readout.get("lead_ms", 180)) / 1000
-        gap_s = float(readout.get("blink_gap_ms", 80)) / 1000
-        step_s = float(readout.get("step_ms", 120)) / 1000
-        blink_s = float(readout.get("blink_ms", 400)) / 1000
-        hold_s = float(readout.get("hold_s", 4))
-        min_gap_s = float(readout.get("min_gap_ms", 400)) / 1000
+        lead_s = float(readout.get("lead_ms", _pg.READOUT_LEAD_MS)) / 1000
+        gap_s = float(readout.get("blink_gap_ms", _pg.READOUT_BLINK_GAP_MS)) / 1000
+        step_s = float(readout.get("step_ms", _pg.READOUT_STEP_MS)) / 1000
+        blink_s = float(readout.get("blink_ms", _pg.READOUT_BLINK_MS)) / 1000
+        hold_s = float(readout.get("hold_s", _pres.READOUT_HOLD_S))
+        min_gap_s = float(readout.get("min_gap_ms", _pg.READOUT_MIN_GAP_MS)) / 1000
         now = self.now()
         rapid = self._level_last_start is not None and (now - self._level_last_start) < min_gap_s
         self._level_last_start = now

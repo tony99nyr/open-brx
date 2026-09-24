@@ -11,7 +11,7 @@
 // carries those cue keys).
 
 import * as W from './transport/envelope.js';   // single source for the contracts §9 constants
-import { SPAWN_KILL_WINDOW_MS } from './transport/contract.gen.js';   // 2026-09-19: the spawn-kill escalation window
+import { SPAWN_KILL_WINDOW_MS, READOUT_LEAD_MS, READOUT_BLINK_GAP_MS, READOUT_STEP_MS, READOUT_BLINK_MS, READOUT_MIN_GAP_MS, READOUT_HOLD_S } from './transport/contract.gen.js';   // 2026-09-19: the spawn-kill escalation window
 import { stationView, TEAM_ANY } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
 import { CONTROL_STATE, claimable } from './control.js';   // the phone control point's advert bits + who may own a point (utility.md §5 `control`, K1)
 export const C = {
@@ -1931,7 +1931,7 @@ export class Engine {
     this._readoutLastPool = pool;   // A16: which pool a reload should glance -- the one that most recently actually moved, not a fresh "is it below max" guess (shield defaults to 0 and would always look "damaged")
     const frame = band[1];
     if (frame === this._readoutFrame) return;   // no visible change — nothing to write, hold left alone
-    const now = this.now(), holdMs = Math.max(0, Math.round((readout.hold_s != null ? readout.hold_s : 4) * 1000));
+    const now = this.now(), holdMs = Math.max(0, Math.round((readout.hold_s != null ? readout.hold_s : READOUT_HOLD_S) * 1000));
     if (this._readoutLastWriteAt != null && now - this._readoutLastWriteAt < READOUT_COALESCE_MS) {
       this._readoutHoldStartAt = now; this._readoutHoldMs = holdMs; this._readoutHoldActive = true;   // coalesced: restart the hold, drop the write
       return;
@@ -1963,7 +1963,7 @@ export class Engine {
     // level can change several times a second, so coalesce: inside the window, retarget WITHOUT replaying
     // the lead + all-off blink -- step straight to the new level from where the strip already is.
     const now = this.now();
-    const rapid = this._roLastStartAt != null && (now - this._roLastStartAt) < (readout.min_gap_ms != null ? readout.min_gap_ms : 400);
+    const rapid = this._roLastStartAt != null && (now - this._roLastStartAt) < (readout.min_gap_ms != null ? readout.min_gap_ms : READOUT_MIN_GAP_MS);
     this._roLastStartAt = now;
     // A16.3 (polish 2026-09-07): on a life's FIRST paint for a pool there is no `_roLevel` yet. Settling
     // straight in would mean the first hit of EVERY life has no drop animation -- health and armour start
@@ -1992,9 +1992,9 @@ export class Engine {
     const gen = (this._roGen = (this._roGen || 0) + 1);
     const lg = (this._lightGen = this._lightGen || 0);
     this._roPool = pool; this._roAnimating = true;
-    const leadMs = Math.max(0, Math.round(readout.lead_ms != null ? readout.lead_ms : 180));
-    const gapMs = Math.max(0, Math.round(readout.blink_gap_ms != null ? readout.blink_gap_ms : 80));
-    const stepMs = Math.max(0, Math.round(readout.step_ms != null ? readout.step_ms : 120));
+    const leadMs = Math.max(0, Math.round(readout.lead_ms != null ? readout.lead_ms : READOUT_LEAD_MS));
+    const gapMs = Math.max(0, Math.round(readout.blink_gap_ms != null ? readout.blink_gap_ms : READOUT_BLINK_GAP_MS));
+    const stepMs = Math.max(0, Math.round(readout.step_ms != null ? readout.step_ms : READOUT_STEP_MS));
     const ok = () => this._roGen === gen && this._lightGen === lg && this.alive;
     const paint = (lvl, why) => {
       const f = entry.levels[lvl] && entry.levels[lvl][0];
@@ -2068,7 +2068,7 @@ export class Engine {
   _readoutSettle(gen, lg, readout, entry, pool, level) {
     if (!(this._roGen === gen && this._lightGen === lg && this.alive)) return;
     this._roAnimating = false;
-    const now = this.now(), holdMs = Math.max(0, Math.round((readout.hold_s != null ? readout.hold_s : 4) * 1000));
+    const now = this.now(), holdMs = Math.max(0, Math.round((readout.hold_s != null ? readout.hold_s : READOUT_HOLD_S) * 1000));
     this._readoutLastWriteAt = now; this._readoutHoldStartAt = now; this._readoutHoldMs = holdMs; this._readoutHoldActive = true;
     const pair = entry.levels[level];
     if (pair && pair[1]) { this._roBlinkOn = false; this._roBlinkAt = now; }   // the solid half is already on the strip from the settling step
@@ -2130,7 +2130,7 @@ export class Engine {
       const entry = readout.pools.find(p => p.pool === this._roPool);
       const pair = entry && Array.isArray(entry.levels) ? entry.levels[this._roLevel] : null;
       if (pair && pair[1]) {
-        const blinkMs = Math.max(0, Math.round(readout.blink_ms != null ? readout.blink_ms : 400));
+        const blinkMs = Math.max(0, Math.round(readout.blink_ms != null ? readout.blink_ms : READOUT_BLINK_MS));
         if (now - this._roBlinkAt >= blinkMs) {
           this._roBlinkOn = !this._roBlinkOn;
           const f = this._roBlinkOn ? pair[1] : pair[0];

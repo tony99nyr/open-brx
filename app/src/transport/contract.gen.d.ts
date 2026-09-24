@@ -6,6 +6,15 @@ export declare const MULTI_KILL_MS: 4000;
 export declare const FEEDBACK_MAX_AGE_MS: 3000;
 export declare const STATUS_HEARTBEAT_MS: 2000;
 export declare const STALE_AFTER_MS: 8000;
+/** F52: the A16.3 gun readout's timings, shipped in `gun.readout`. One owner here, so the generator emits them
+ *  to the phone (contract.gen.js) and poolgauge / presentation / the stage import them: no literal copies left
+ *  to disagree after a bench retune. Their meanings are documented at poolgauge.py's readout section. */
+export declare const READOUT_LEAD_MS: 180;
+export declare const READOUT_BLINK_GAP_MS: 80;
+export declare const READOUT_STEP_MS: 120;
+export declare const READOUT_BLINK_MS: 400;
+export declare const READOUT_MIN_GAP_MS: 400;
+export declare const READOUT_HOLD_S: 4;
 /** The `sync_age_ms` a LIVE row carries when MC has never heard its node in THIS process (no node bound,
  *  or MC restarted mid-match and the phone has not spoken since). It is a sentinel, not an age: the
  *  console must print "not heard", never "11d13h ago" (visual QA H3, 2026-09-23). */
