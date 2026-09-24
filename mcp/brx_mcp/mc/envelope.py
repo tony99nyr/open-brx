@@ -32,7 +32,8 @@ MAX_LOG_CHUNK_BYTES = 48 * 1024       # log_data chunk cap (fits under the envel
 # so a fact the phone learns to send reaches nothing until it is named here (the F40/F60 shape:
 # both ends report healthy). `possession` is the objective-mode tally (mc/API.md, F70).
 PERSISTED_EVENT_TYPES = {"hit_taken", "death", "respawn", "team_change", "possession",
-                         "operator_result"}   # A47: the phone's answer to an operator action (never scored)
+                         "operator_result",   # A47: the phone's answer to an operator action (never scored)
+                         "pickup"}            # A56 (S58): a player took a powerup station's item (never scored)
 
 # Plausibility window for `t` (Unix ms): reject obvious garbage (seconds instead of ms, negative,
 # far future). A node with a wrong clock still lands inside this window; MC keeps t_recv anyway.
@@ -78,6 +79,7 @@ REQUIRED: dict[str, tuple[str, ...]] = {
     "result": ("match_id", "outcome", "winner", "rows", "provisional", "t"),
     # A13.5 (F104): the arming message. `threshold` / `game` / `valid_ids` are optional (utility.md §5c).
     "station_config": ("kind", "team", "id"),
+    "station_update": ("id", "available"),   # A56 (S58)
     # A28.2: the tunnel came up or went down. `pub` is required but NULLABLE -- null is the fact "there
     # is no public URL any more", which the node has to act on; the check above is `key not in body`,
     # so a present null passes and an omitted key (an MC that forgot to say) is refused.

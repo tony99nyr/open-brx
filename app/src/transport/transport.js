@@ -49,7 +49,8 @@ import { APP_VER, platformName } from '../build.js';
  *  EXPORTED so `test/transport.test.mjs` can pin DELIVERED ⊇ every `case` in the engine's `onMcMessage`. */
 export const DELIVERED = new Set(['assign', 'config', 'tutorial', 'start', 'feedback', 'control', 'apply', 'score', 'time_res', 'pull_log', 'loadout_ack', 'alert',
   'result',           // A24: the match result. Without this line the whole FINAL RESULTS screen is dead on the real wire.
-  'station_config']); // A13.5 (F104/F105)
+  'station_config',   // A13.5 (F104/F105)
+  'station_update']);  // A56 (S58): a powerup station's available / taken state
 
 /** A28.2: a cosmetic-only difference (scheme/host case, a trailing '/') must not look like "a
  *  different MC" and wipe a held pub/secret -- normalize before comparing a stored url to a given one. */

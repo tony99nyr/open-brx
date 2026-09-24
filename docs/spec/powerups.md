@@ -66,6 +66,14 @@ took simply stays; a spawn time never stacks a second one. Every phone and stati
 the match clock; MC's `pickup` relay tells the station (and so every phone, through the station's advert) that an
 item was taken early.
 
+## One item per station, locked for the match (Tony, 2026-09-24)
+
+The host picks each powerup station's item at setup (the ITEMS panel), and it cannot change once the match is armed
+(MC already refuses station changes in play). Nothing is random. One powerup station in play grants its one item on
+its interval; two stations can hold different items and each follows its own schedule, so an Overshield station
+and a Rockets station both spawn at 2:00. At most two different WEAPON items per game (spare slots 2 and 3); two
+stations with the same weapon share its slot.
+
 ## The spawn announcement (Tony, 2026-09-24)
 
 At each spawn time every player's phone shows a HUD event on the callout card (QA-05's component): the item's name

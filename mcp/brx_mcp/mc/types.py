@@ -475,11 +475,51 @@ def is_station_kind(value: object) -> TypeGuard[StationKind]:
 STATION_TEAM_ANY = 255        # advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral
 
 
+StationItemKind = Literal["weapon", "overshield"]
+
+
+class StationItem(TypedDict):
+    """A56 (S58, docs/spec/powerups.md): what a `powerup` station grants, and when it spawns on the match clock.
+    A weapon item grants `charges` rounds of `weapon_id` (armed at start in a spare slot, `GameConfig.powerups`);
+    an overshield grants `amount` shield on top, hit first, no regen, gone at death. `spawn_every_s` is 1-255 so
+    the station advert's one-byte `value` can count it down; `name` is at most 12 characters; `color` is `#rrggbb`."""
+    kind: StationItemKind
+    weapon_id: NotRequired[str]
+    charges: NotRequired[int]
+    amount: NotRequired[int]
+    spawn_every_s: int
+    first_at_s: int
+    name: str
+    color: str
+
+
+class PowerupPreset(TypedDict):
+    """A56: one item the host can pick for a powerup station (`GET /api/powerups`), MC's defaults expanded.
+    `preset` is what `PUT` sends back as `item_preset`."""
+    preset: str
+    item: StationItem
+
+
+class PowerupsView(TypedDict):
+    """A56: `GET /api/powerups`. `enabled` is MC's powerups flag (off until the bench passes); the console hides
+    the item picker when it is false."""
+    enabled: bool
+    presets: list[PowerupPreset]
+
+
+class PowerupSlot(TypedDict):
+    """A56: a pickup weapon MC armed at start (empty, out of the ALT cycle) and the gun slot it went into (2 or 3)."""
+    weapon_id: str
+    slot: int
+
+
 class StationRef(TypedDict):
     """One armed utility item on `GameConfig.stations` -- exactly what `state.py _station_ids()` builds
-    (`{"id": a["id"], "kind": a["kind"]}`), sorted by id. Both keys are always present."""
+    (`{"id": a["id"], "kind": a["kind"]}`), sorted by id. `item` (A56) rides along for a powerup station, so a
+    player's phone knows the item and its spawn schedule without MC."""
     id: int
     kind: StationKind
+    item: NotRequired[StationItem]
 
 
 class Stun(TypedDict):
@@ -541,6 +581,7 @@ class GameConfigBase(TypedDict):
     player_num_base: NotRequired[int]   # A6.5
     siphon: NotRequired[Siphon]         # S14: heal-on-kill; absent or {0,0} = off
     stations: NotRequired[list[StationRef]]   # A13.1 (F104): the utility items MC armed for THIS game, when at least one is assigned.
+    powerups: NotRequired[list[PowerupSlot]]  # A56 (S58): pickup weapons armed at start in spare slots; absent = none (or the flag is off)
     #                                     Set by `Session._wire_config()` from the ITEMS assignments, never by the
     #                                     operator; a player phone honours only these ids (`engine.js _stationAllowed`) --
     #                                     and when the list is ABSENT (nothing assigned) it honours ANY station (the hand-armed fallback).
@@ -800,7 +841,7 @@ class NodeView(TypedDict):
 
 
 class Event(TypedDict, total=False):
-    type: Literal["hit_taken", "death", "respawn", "team_change", "status", "possession", "operator_result"]
+    type: Literal["hit_taken", "death", "respawn", "team_change", "status", "possession", "operator_result", "pickup"]
     t: int
     match_id: str | None
     node_id: str
@@ -834,6 +875,9 @@ class Event(TypedDict, total=False):
     cmd: Literal["resync", "respawn", "relink"]
     ok: bool
     why: str   # present on a refusal: the phone's own reason ("stunned", "not live", ...)
+    # pickup (A56, S58): the player took a powerup station's item. Presentation and station state only; never scored.
+    station_id: int
+    item_kind: StationItemKind
     # team_change
     tid: int
     # possession (F70, objective modes) — a CUMULATIVE tally for ONE control point, resent as it grows.
@@ -1028,6 +1072,15 @@ class StationAssignment(TypedDict):
     id: int
     threshold: int
     at: NotRequired[int]
+    item: NotRequired[StationItem]   # A56 (S58): a powerup station's item and spawn schedule
+
+
+class StationUpdate(TypedDict):
+    """A56: MC -> a powerup station, on a pickup and at each spawn time. `next_spawn_in_ms` is time REMAINING
+    (a Stick has no synced clock); the station re-anchors on arrival and MC re-sends it on a reconnect."""
+    id: int
+    available: bool
+    next_spawn_in_ms: NotRequired[int]
 
 
 class StationControl(TypedDict):
@@ -1070,6 +1123,9 @@ class StationView(TypedDict):
     online: bool
     attention: list[str]
     game: int
+    # A56 (S58): a powerup station's live item state as MC last told it: whether the item is there, and when it next spawns.
+    item_available: NotRequired[bool]
+    next_spawn_at_ms: NotRequired[int | None]
 
 
 class RecapStationRow(TypedDict):
@@ -1566,7 +1622,9 @@ MC_KINDS = {"welcome", "assign", "tutorial", "config", "start", "feedback", "con
             "join",     # A28.2 (2026-09-12): the tunnel came up or went down -- pub + secret, the same body
                         # `welcome.join` carries. Broadcast, not pushed, so `test_mc_envelope_kinds.py`'s AST
                         # scan (which reads `self.net.push(...)` sites only) does NOT cover it.
-            "station_config"}   # A13.5 (F104, 2026-09-11): MC -> a utility node. The same trap as `alert`:
+            "station_config",   # (A13.5 note below)
+            "station_update"}   # A56 (S58): MC -> a powerup station: available / taken + the time to the next spawn.
+                                # A13.5 (F104, 2026-09-11): MC -> a utility node. The same trap as `alert`:
                                 # the phone's `MC_KINDS` (app/src/transport/envelope.js) must list it too, or
                                 # the arming message is dropped as malformed before `onMessage` ever sees it.
 CONTROL_CMDS = {"end", "panic", "abort_start", "recall",

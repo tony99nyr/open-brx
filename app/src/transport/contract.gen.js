@@ -86,6 +86,7 @@ export const MC_KINDS = new Set([
   'score',
   'start',
   'station_config',
+  'station_update',
   'time_res',
   'tutorial',
   'welcome',
@@ -117,11 +118,12 @@ export const CONTROL_CMDS = new Set([
 /** ⚠ This is a WHITELIST and an unlisted type is REJECTED at the socket, not ignored downstream --
  *  so a fact the phone learns to send reaches nothing until it is named here (the F40/F60 shape:
  *  both ends report healthy). `possession` is the objective-mode tally (mc/API.md, F70).
- *  A47: the phone's answer to an operator action (never scored) */
+ *  A56 (S58): a player took a powerup station's item (never scored) */
 export const PERSISTED_EVENT_TYPES = new Set([
   'death',
   'hit_taken',
   'operator_result',
+  'pickup',
   'possession',
   'respawn',
   'team_change',
@@ -207,6 +209,7 @@ export const REQUIRED = {
   alert: ['kind', 'text', 'player_id', 't'],
   result: ['match_id', 'outcome', 'winner', 'rows', 'provisional', 't'],
   station_config: ['kind', 'team', 'id'],
+  station_update: ['id', 'available'],
   join: ['pub', 'secret'],
 };
 export const EVENT_REQUIRED = {

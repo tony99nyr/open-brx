@@ -22,11 +22,12 @@ export type {
   LiveView, StartNodeView, StartView, State, GameConfigBase, LanView, KitView, GunConfigReadback, LobbyAck,
   LobbyView, GameAnnouncementView, SyncAckState, SyncRow, SyncTotals, SyncView, SessionOptions, VersionsView,
   NoticesView, RestoredFromView, SnapshotFeedRow, OrphanMatchView, OperatorActionResult, OperatorStatus,
-  TunnelStatus, TunnelProviderValue, ValuePair, RespawnProfile, DotSpec, HirCell
+  TunnelStatus, TunnelProviderValue, ValuePair, RespawnProfile, DotSpec, HirCell,
+  StationItem, PowerupSlot, StationUpdate, PowerupPreset, PowerupsView,   // A56 (S58)
 } from './contract.gen';
 export type {
   ArmState, ControlCmd, HealthPreset, ItemKind, LoadoutPreset, McKind, NodeDeniedCommand, NodeKind, OperatorCmd, PersistedEventType, Phase,
-  SlotChoice, StationKind, StationSourceId, WinBy, TimedProtectS, WeaponDelayMs, StationProtectS,
+  SlotChoice, StationKind, StationSourceId, WinBy, TimedProtectS, WeaponDelayMs, StationProtectS, StationItemKind,
 } from './contract.gen';
 // values (verbatimModuleSyntax: a value re-export may not ride in a `export type` statement)
 export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, NEVER_SEEN_MS, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS,

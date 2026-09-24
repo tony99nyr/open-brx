@@ -101,6 +101,7 @@ export type PoolEmptyCode = 'off' | 'fixed_missing' | 'only_ids_missing' | 'need
 /** A13 / spec/utility.md §5: what a utility phone can be. Mirrors `KIND` in `app/src/beacon.js` (the advert
  *  byte 8) and `KIND_LABEL` in `app/src/utility.js`; a `station_config` naming anything else is refused at PUT. */
 export type StationKind = 'respawn' | 'powerup' | 'extraction' | 'bomb' | 'control';
+export type StationItemKind = 'weapon' | 'overshield';
 export type TunnelStatus = 'off' | 'starting' | 'up' | 'error';
 export type TunnelProviderValue = 'cloudflared' | 'manual';
 /** 2026-09-16: the PRE-ARM CHECK's ACKED cell. `none` = no head pushed for this lobby; `waiting` = pushed,
@@ -110,7 +111,7 @@ export type SyncAckState = 'acked' | 'waiting' | 'failed' | 'none';
 export type OperatorCmd = 'resync' | 'respawn' | 'relink';
 
 // ---- kind vocabularies ----
-export const MC_KINDS = ['ack', 'alert', 'apply', 'assign', 'config', 'control', 'feedback', 'join', 'loadout_ack', 'pull_log', 'result', 'score', 'start', 'station_config', 'time_res', 'tutorial', 'welcome'] as const;
+export const MC_KINDS = ['ack', 'alert', 'apply', 'assign', 'config', 'control', 'feedback', 'join', 'loadout_ack', 'pull_log', 'result', 'score', 'start', 'station_config', 'station_update', 'time_res', 'tutorial', 'welcome'] as const;
 export type McKind = typeof MC_KINDS[number];
 export const NODE_KINDS = ['ack_config', 'bind', 'event', 'event_batch', 'hello', 'loadout_browse', 'loadout_request', 'log_data', 'log_offer', 'ready', 'status', 'time_req'] as const;
 export type NodeKind = typeof NODE_KINDS[number];
@@ -119,8 +120,8 @@ export type ControlCmd = typeof CONTROL_CMDS[number];
 /** ⚠ This is a WHITELIST and an unlisted type is REJECTED at the socket, not ignored downstream --
  *  so a fact the phone learns to send reaches nothing until it is named here (the F40/F60 shape:
  *  both ends report healthy). `possession` is the objective-mode tally (mc/API.md, F70).
- *  A47: the phone's answer to an operator action (never scored) */
-export const PERSISTED_EVENT_TYPES = ['death', 'hit_taken', 'operator_result', 'possession', 'respawn', 'team_change'] as const;
+ *  A56 (S58): a player took a powerup station's item (never scored) */
+export const PERSISTED_EVENT_TYPES = ['death', 'hit_taken', 'operator_result', 'pickup', 'possession', 'respawn', 'team_change'] as const;
 export type PersistedEventType = typeof PERSISTED_EVENT_TYPES[number];
 export const STATION_KINDS = ['respawn', 'powerup', 'extraction', 'bomb', 'control'] as const;
 /** The command words a NODE must never write to its gun, whatever a bundle or a debug panel says:
@@ -413,11 +414,48 @@ export interface PerkEffectsResolved {
   max_shield?: ValuePair;
 }
 
+/** A56 (S58, docs/spec/powerups.md): what a `powerup` station grants, and when it spawns on the match clock.
+ *  A weapon item grants `charges` rounds of `weapon_id` (armed at start in a spare slot, `GameConfig.powerups`);
+ *  an overshield grants `amount` shield on top, hit first, no regen, gone at death. `spawn_every_s` is 1-255 so
+ *  the station advert's one-byte `value` can count it down; `name` is at most 12 characters; `color` is `#rrggbb`. */
+export interface StationItem {
+  kind: StationItemKind;
+  weapon_id?: string;
+  charges?: number;
+  amount?: number;
+  spawn_every_s: number;
+  first_at_s: number;
+  name: string;
+  color: string;
+}
+
+/** A56: one item the host can pick for a powerup station (`GET /api/powerups`), MC's defaults expanded.
+ *  `preset` is what `PUT` sends back as `item_preset`. */
+export interface PowerupPreset {
+  preset: string;
+  item: StationItem;
+}
+
+/** A56: `GET /api/powerups`. `enabled` is MC's powerups flag (off until the bench passes); the console hides
+ *  the item picker when it is false. */
+export interface PowerupsView {
+  enabled: boolean;
+  presets: PowerupPreset[];
+}
+
+/** A56: a pickup weapon MC armed at start (empty, out of the ALT cycle) and the gun slot it went into (2 or 3). */
+export interface PowerupSlot {
+  weapon_id: string;
+  slot: number;
+}
+
 /** One armed utility item on `GameConfig.stations` -- exactly what `state.py _station_ids()` builds
- *  (`{"id": a["id"], "kind": a["kind"]}`), sorted by id. Both keys are always present. */
+ *  (`{"id": a["id"], "kind": a["kind"]}`), sorted by id. `item` (A56) rides along for a powerup station, so a
+ *  player's phone knows the item and its spawn schedule without MC. */
 export interface StationRef {
   id: number;
   kind: StationKind;
+  item?: StationItem;
 }
 
 export interface Stun {
@@ -485,11 +523,13 @@ export interface GameConfigBase {
   player_num_base?: number;
   /** S14: heal-on-kill; absent or {0,0} = off */
   siphon?: Siphon;
-  /** A13.1 (F104): the utility items MC armed for THIS game, when at least one is assigned.
+  /** A13.1 (F104): the utility items MC armed for THIS game, when at least one is assigned. */
+  stations?: StationRef[];
+  /** A56 (S58): pickup weapons armed at start in spare slots; absent = none (or the flag is off)
    *  Set by `Session._wire_config()` from the ITEMS assignments, never by the
    *  operator; a player phone honours only these ids (`engine.js _stationAllowed`) --
    *  and when the list is ABSENT (nothing assigned) it honours ANY station (the hand-armed fallback). */
-  stations?: StationRef[];
+  powerups?: PowerupSlot[];
   /** Derived scanner fallback: teams without a station use timed AUTO respawn. */
   respawn_auto_teams?: number[];
   /** F70: what is emitting this game's objective -- `STATION_SOURCES` above
@@ -558,6 +598,7 @@ export interface GameConfig {
   player_num_base?: number;
   siphon?: Siphon;
   stations?: StationRef[];
+  powerups?: PowerupSlot[];
   respawn_auto_teams?: number[];
   station_source?: string;
   presentation?: Record<string, unknown>;
@@ -589,6 +630,7 @@ export interface ConfigView {
   player_num_base?: number;
   siphon?: Siphon;
   stations?: StationRef[];
+  powerups?: PowerupSlot[];
   respawn_auto_teams?: number[];
   station_source?: string;
   presentation?: Record<string, unknown>;
@@ -841,7 +883,7 @@ export interface NodeView {
 }
 
 export interface Event {
-  type?: 'hit_taken' | 'death' | 'respawn' | 'team_change' | 'status' | 'possession' | 'operator_result';
+  type?: 'hit_taken' | 'death' | 'respawn' | 'team_change' | 'status' | 'possession' | 'operator_result' | 'pickup';
   t?: number;
   match_id?: string | null;
   node_id?: string;
@@ -877,6 +919,9 @@ export interface Event {
   ok?: boolean;
   /** present on a refusal: the phone's own reason ("stunned", "not live", ...) */
   why?: string;
+  /** pickup (A56, S58): the player took a powerup station's item. Presentation and station state only; never scored. */
+  station_id?: number;
+  item_kind?: StationItemKind;
   /** team_change */
   tid?: number;
   /** possession (F70, objective modes) — a CUMULATIVE tally for ONE control point, resent as it grows.
@@ -1096,6 +1141,16 @@ export interface StationAssignment {
   id: number;
   threshold: number;
   at?: number;
+  /** A56 (S58): a powerup station's item and spawn schedule */
+  item?: StationItem;
+}
+
+/** A56: MC -> a powerup station, on a pickup and at each spawn time. `next_spawn_in_ms` is time REMAINING
+ *  (a Stick has no synced clock); the station re-anchors on arrival and MC re-sends it on a reconnect. */
+export interface StationUpdate {
+  id: number;
+  available: boolean;
+  next_spawn_in_ms?: number;
 }
 
 export interface StationControl {
@@ -1138,6 +1193,9 @@ export interface StationView {
   online: boolean;
   attention: string[];
   game: number;
+  /** A56 (S58): a powerup station's live item state as MC last told it: whether the item is there, and when it next spawns. */
+  item_available?: boolean;
+  next_spawn_at_ms?: number | null;
 }
 
 /** One assigned utility station's self-authoritative recap heartbeat. */
@@ -1667,6 +1725,7 @@ export const REQUIRED: Record<string, readonly string[]> = {
   alert: ['kind', 'text', 'player_id', 't'],
   result: ['match_id', 'outcome', 'winner', 'rows', 'provisional', 't'],
   station_config: ['kind', 'team', 'id'],
+  station_update: ['id', 'available'],
   join: ['pub', 'secret'],
 };
 export const EVENT_REQUIRED: Record<string, readonly string[]> = {
