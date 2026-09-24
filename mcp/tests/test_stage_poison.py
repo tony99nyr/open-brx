@@ -380,3 +380,20 @@ def test_an_armour_tick_does_not_claim_an_unrelated_death():
         assert not any("poison kill credited" in e["text"] for e in b.st.log), \
             "only a health tick can kill, so this is not a poison kill"
     asyncio.run(go())
+
+
+def test_a_smoke_word_between_the_lethal_tick_and_its_lcd_does_not_take_the_poisoners_kill():
+    """Integration pass 2026-09-23 (engine.js `_death`): the kill rule reads the last hit that MOVED a pool. A smoke
+    word latches like any `$HIR` but moves nothing, so it must not hand the kill to its thrower."""
+    async def go():
+        b = await Bench().start()
+        await b.set_pools(4, 0, 0)
+        await b.toxin(3, 2, 0)
+        b.hold = True
+        await b.adv(1.0)                         # the lethal tick is written; its $LCD is held
+        await b.rx("$HIR,0,7,9,1,6,0,0,*")       # a smoke word from player 9: a readable team, no pool moves
+        await b.release()
+        assert not b.st.alive
+        assert any("poison kill credited to #3" in e["text"] for e in b.st.log), \
+            "the smoke word did not take the poisoner's kill"
+    asyncio.run(go())

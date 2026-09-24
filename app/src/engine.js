@@ -1239,12 +1239,15 @@ export class Engine {
     return { weapon_id: null, name: null, source: null, ambiguous: false, candidates: [] };   // nothing claims it
   }
   /** The killing word's weapon (see its call site in `_onHp`): an exact, unambiguous loadout match stands; failing
-   *  that, the weapon already booked against this shooter this life (the biggest by damage); failing that, no weapon
+   *  that, the one weapon this shooter has used on this player this life (only if exactly one); failing that, no weapon
    *  at all rather than a catalogue guess made from a clamped magnitude. Same return shape as `_resolveHitWeapon`. */
   _lethalWeapon(num, resolved) {
     if (resolved && resolved.source === 'loadout' && !resolved.ambiguous) return resolved;
+    // Only when this shooter has used exactly ONE weapon (or one ambiguous set) on this player this life: a pistol
+    // chip followed by a rifle kill must not name the pistol (polish round 1). Two or more is a guess, so none.
     const entry = this._life && this._life.taken.get(num);
-    const prior = entry && entry.weapons.filter(w => w.weapon_id != null || w.ambiguous).sort((a, b) => b.dmg - a.dmg)[0];
+    const used = entry ? entry.weapons.filter(w => w.weapon_id != null || w.ambiguous) : [];
+    const prior = used.length === 1 ? used[0] : null;
     if (prior && prior.weapon_id != null) return { weapon_id: prior.weapon_id, name: prior.name, source: prior.pickup ? 'catalog' : 'loadout', ambiguous: false, candidates: [] };
     if (prior && prior.ambiguous) return { weapon_id: null, name: null, source: null, ambiguous: true, candidates: prior.candKey ? prior.candKey.split('|') : [] };
     return resolved ? { weapon_id: null, name: null, source: null, ambiguous: false, candidates: [] } : null;

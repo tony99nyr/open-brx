@@ -423,3 +423,14 @@ test('integration 2026-09-23: a clamped killing blow with no earlier hit names n
   assert.equal(fh.weapon, null);
   assert.equal(h.facts.filter(f => f.type === 'hit_taken').pop().weapon_id, undefined);
 });
+
+test('polish round 1: a clamped kill after hits from two different weapons names neither', () => {
+  const shooter = { ...SHOOTER, weapons: [{ weapon_id: 'assault_rifle', hir: [9] }, { weapon_id: 'shotgun', hir: [20] }] };
+  const h = harness({ shooter, catalog: { weapons: CATALOG } }); h.live();
+  h.hir(4, 0, 9, 0, 3); h.frame('$HP,45,61,0,*');     // the rifle
+  h.adv(300);
+  h.hir(4, 0, 20, 0, 3); h.frame('$HP,17,0,0,*');     // the shotgun
+  h.adv(300);
+  h.hir(4, 0, 17, 0, 3); h.frame('$HP,0,0,0,*');      // the clamp: 17 = the whole pool, and no loadout weapon sends 17
+  assert.equal(h.eng.state().lastLife.finalHit.weapon, null, 'two weapons used: the killing one is unknowable, so none');
+});
