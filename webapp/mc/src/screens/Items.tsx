@@ -28,7 +28,7 @@ export function Items() {
   const nArmed = stations.filter(s => s.assigned && s.armed && !s.attention.length).length;
   return (
     <div style={{ marginTop: 20 }} data-testid="items-panel">
-      <SectionRule label={`ITEMS // ${stations.length} UTILITY PHONE${stations.length === 1 ? '' : 'S'}`}
+      <SectionRule label={`ITEMS // ${stations.length} STATION${stations.length === 1 ? '' : 'S'}`}
         hint={<>{nArmed}/{stations.length} ARMED · GAME {state.game_no ?? '—'} · ASSIGN, THEN PLACE — A STATION NEEDS NO WI-FI ONCE ARMED</>} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 12 }}>
         {/* keyed on the node and the assignment ONLY. The phone's `report` (kind/team/id/threshold/…) is
@@ -48,6 +48,9 @@ export function Items() {
 const presetOf = (item: StationItem | undefined, presets: PowerupPreset[] | null) =>
   !item || !presets ? null
     : presets.find(p => p.item.kind === item.kind && (p.item.weapon_id ?? null) === (item.weapon_id ?? null))?.preset ?? null;
+
+/** What the station IS: a StickS3 says hello with platform `esp32` (hardware/m5sticks3), a phone with its OS. */
+const deviceOf = (s: StationView) => (s.platform === 'esp32' ? 'STICKS3' : 'PHONE');
 
 function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
   const { state, run, api, serverNow } = useStore();
@@ -91,6 +94,8 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
   const color = !a ? T.micro : s.attention.length || s.arm_pending ? T.warn : T.ok;
   // A58: a live tamper lock, while it is still in the future -- `lock_until_ms` is MC's clock, so the
   // comparison runs through `serverNow()`, not the browser's own clock (`ItemState`'s countdown above does the same).
+  const stick = deviceOf(s) === 'STICKS3';
+  const releaseLabel = stick ? 'RELEASE' : 'RELEASE ▸ HUD';
   const tamperLocked = !!s.lock_until_ms && s.lock_until_ms > serverNow();
   // F104 follow-up: a phone that disagrees with what MC thinks it armed (never heard ARM, advertises a
   // different id, or is still on an older game's config) needs the SAME fix as a pending arm — push the
@@ -116,7 +121,7 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
     <div data-station-card={s.node_id} style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${color}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 11, clipPath: CHAMFER.tr12 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
         <span style={{ font: F.osw(700, 18), letterSpacing: '.08em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {a ? `${KIND_SHORT[a.kind]} ${a.id}` : 'UTILITY PHONE'}
+          {a ? `${KIND_SHORT[a.kind]} ${a.id}` : stick ? 'STICKS3' : 'UTILITY PHONE'}
         </span>
         <span style={{ display: 'flex', gap: 6, flex: 'none' }}>
           {tamperLocked && <Tag data-testid="station-locked" color={T.line2} ink={T.dim}>LOCKED</Tag>}
@@ -124,10 +129,10 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
         </span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '82px 1fr', gap: '6px 10px', alignItems: 'center' }}>
-        <Micro>PHONE</Micro><Val color={T.dim}>{s.node_id.slice(0, 12)}</Val>
+        <Micro>{deviceOf(s)}</Micro><Val color={T.dim}>{s.node_id.slice(0, 12)}</Val>
         <Micro>LINK</Micro><Val color={!s.online ? T.warn : T.dim}>{age == null ? 'NEVER' : `${fmtAge(age)} AGO`}{!s.online && ' — OUT OF WI-FI'}</Val>
         {/* what the PHONE says it is, so an assignment that never landed shows as the two disagreeing */}
-        <Micro>PHONE SAYS</Micro>
+        <Micro>{deviceOf(s)} SAYS</Micro>
         <Val color={rep.armed ? T.dim : T.warn}>
           {rep.kind ? `${KIND_LABEL[rep.kind] ?? rep.kind} ${rep.station_id ?? '?'} · ${TID_NAME[rep.team ?? 255] ?? rep.team}` : '—'}
           {rep.armed === false && ' · NOT ARMED'}{rep.live ? ' · ADVERTISING' : ''}
@@ -158,7 +163,7 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
         </div>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: `1px solid ${T.line2}`, paddingTop: 10 }}>
-        <div style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.acc }}>▸ WHAT IS THIS PHONE?</div>
+        <div style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.acc }}>▸ WHAT IS THIS {deviceOf(s)}?</div>
         <Seg label={`kind for ${s.node_id}`} value={kind} size={11} pad="5px 8px" wrap
           options={STATION_KINDS.map(k => ({ value: k, label: KIND_SHORT[k] }))} titles={Object.fromEntries(STATION_KINDS.map(k => [k, KIND_LABEL[k]]))}
           onChange={k => { setKind(k); if (k === 'control') setTeam(255); }} />
@@ -175,8 +180,11 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
             beside the button that triggers it. */}
         {confirmRelease && (
           <SwitchConfirm dropsDraft={false}
-            split={`RELEASE SENDS THIS PHONE BACK TO ITS OWN HUD RIGHT NOW, EVEN LIVE — ONCE IT LEAVES, NOTHING ON THIS CONSOLE CAN REACH IT AGAIN. THE ONLY WAY BACK IS WALKING TO IT AND DOING THE SEVEN-TAP GESTURE.`}
-            action="TAP RELEASE ▸ HUD AGAIN TO SEND IT" />
+            split={stick
+              // a Stick has no HUD: a release drops it to UNASSIGNED and unlocks it, and its link stays (station_link.h apply_release)
+              ? 'RELEASE DROPS THIS STICKS3 TO UNASSIGNED RIGHT NOW, EVEN LIVE, AND UNLOCKS IT. IT STAYS LINKED, SO YOU CAN ASSIGN IT AGAIN HERE.'
+              : 'RELEASE SENDS THIS PHONE BACK TO ITS OWN HUD RIGHT NOW, EVEN LIVE — ONCE IT LEAVES, NOTHING ON THIS CONSOLE CAN REACH IT AGAIN. THE ONLY WAY BACK IS WALKING TO IT AND DOING THE SEVEN-TAP GESTURE.'}
+            action={`TAP ${releaseLabel} AGAIN TO SEND IT`} />
         )}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* 2026-09-19: an offline phone (stale link, server-judged) cannot be assigned or armed --
@@ -213,7 +221,7 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
             title={!s.online ? 'no live socket to this phone right now, so there is nothing to push to it'
               : confirmRelease ? 'tap again to confirm — this sends the phone away from this page and nothing here can reach it again until someone walks to it'
               : 'send this phone back to its own HUD — the fix for a phone stuck in utility mode, with no seven-tap gesture needed on the phone itself'}>
-            RELEASE ▸ HUD
+            {releaseLabel}
           </GhostButton>
           {confirmRelease && <GhostButton size={11} onClick={() => setConfirmRelease(false)} title="back out — nothing was sent">CANCEL</GhostButton>}
           {released != null && <Tag color={released ? T.ok : T.warn} ink={T.ink}>{released ? 'SENT' : 'NO SOCKET'}</Tag>}

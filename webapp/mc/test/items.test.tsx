@@ -28,7 +28,7 @@ describe('ITEMS — utility phones at muster', () => {
     expect(panel.length).toBe(1);
     // F106(i): the mock seeds TWO utility phones so ?mock can demo OUT OF WI-FI / ARM PENDING (below)
     // without live hardware — the panel header count is the cheapest proof both are actually listed.
-    expect(panel[0].textContent).toMatch(/ITEMS \/\/ 2 UTILITY PHONES/);
+    expect(panel[0].textContent).toMatch(/ITEMS \/\/ 2 STATIONS/);
     expect(panel[0].textContent).toMatch(/NOT ASSIGNED/);
     expect(panel[0].textContent).toMatch(/GAME 1/);
     // the phone's own report is shown so an assignment that never lands reads as the two disagreeing
@@ -290,12 +290,12 @@ describe('ITEMS — the ASSIGN + ARM / CLEAR buttons a person actually presses',
     await api.releaseStation('util-a1b2c3');
     await settle();
     expect(state().stations?.find(s => s.node_id === 'util-a1b2c3')?.assigned).toBeNull();
-    expect(m.find('[data-testid="items-panel"]')[0].textContent).toMatch(/ITEMS \/\/ 2 UTILITY PHONES/);
+    expect(m.find('[data-testid="items-panel"]')[0].textContent).toMatch(/ITEMS \/\/ 2 STATIONS/);
 
     api.confirmStationHud('util-a1b2c3');
     await settle();
     expect(state().stations?.some(s => s.node_id === 'util-a1b2c3')).toBe(false);
-    expect(m.find('[data-testid="items-panel"]')[0].textContent).toMatch(/ITEMS \/\/ 1 UTILITY PHONE/);
+    expect(m.find('[data-testid="items-panel"]')[0].textContent).toMatch(/ITEMS \/\/ 1 STATION(?!S)/);
     m.unmount();
   });
 

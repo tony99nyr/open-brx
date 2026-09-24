@@ -101,16 +101,16 @@ const step = (name, fn) => steps.push({ name, fn });
 
 step('f184-confirmed-hud-removes-items-card', async ({ browser, base }) => {
   const pg = await go(await newPage(browser, base), 'muster');
-  await until(() => pg.locator('text=ITEMS // 2 UTILITY PHONES').count().then(n => n > 0), 8000,
+  await until(() => pg.locator('text=ITEMS // 2 STATIONS').count().then(n => n > 0), 8000,
     'the two utility-phone cards to render');
   await pg.evaluate(async () => {
     const api = window.__MC_MOCK__;
     await api.releaseStation('util-a1b2c3');
     api.confirmStationHud('util-a1b2c3');
   });
-  await until(() => pg.locator('text=ITEMS // 1 UTILITY PHONE').count().then(n => n > 0), 4000,
+  await until(() => pg.locator('text=ITEMS // 1 STATION').count().then(n => n > 0), 4000,
     'the authenticated HUD snapshot to remove the old card');
-  expect(await pg.locator('text=ITEMS // 2 UTILITY PHONES').count() === 0,
+  expect(await pg.locator('text=ITEMS // 2 STATIONS').count() === 0,
     'the stale two-phone ITEMS header is gone');
   const panel = pg.locator('[data-testid="items-panel"]');
   await panel.scrollIntoViewIfNeeded();

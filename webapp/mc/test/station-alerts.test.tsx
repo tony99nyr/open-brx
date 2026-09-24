@@ -210,3 +210,30 @@ describe('ITEMS — the LOCKED tag', () => {
     m.unmount();
   });
 });
+
+describe('ITEMS — a StickS3 is named as one, not as a phone', () => {
+  async function itemsWith(stations: StationView[]) {
+    const api = new MockBackend();
+    const base = await api.getState();
+    const state: State = { ...base, stations };
+    const node = () => <StoreCtx.Provider value={makeStore({ state, view: 'muster' }, { api })}><Items /></StoreCtx.Provider>;
+    const m = await mount(node());
+    await m.update(node());
+    return m;
+  }
+
+  it('an unassigned esp32 station reads STICKS3, and a phone still reads UTILITY PHONE', async () => {
+    // brx4, 2026-09-24: the first real Stick on MC was listed as "UTILITY PHONE stick-1cc3e1".
+    const m = await itemsWith([
+      station('stick-1cc3e1', { assigned: null, armed: null, platform: 'esp32' }),
+      station('util-phone1', { assigned: null, armed: null, platform: 'android' }),
+    ]);
+    const stick = m.find('[data-station-card="stick-1cc3e1"]')[0]?.textContent ?? '';
+    const phone = m.find('[data-station-card="util-phone1"]')[0]?.textContent ?? '';
+    expect(stick).toMatch(/STICKS3/);
+    expect(stick).not.toMatch(/PHONE/);
+    expect(phone).toMatch(/UTILITY PHONE/);
+    expect(m.text()).toMatch(/2 STATIONS/);
+    m.unmount();
+  });
+});
