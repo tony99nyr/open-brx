@@ -81,7 +81,10 @@ schedule above) is the first mode Open BRX supports. Later modes are additive, f
 a game mode built around one: MC picks the item at each spawn time and sends it in `station_update` (a new optional
 `item`), and phones and Sticks take it from there. The trade-off to design for then: with a fixed item every phone
 knows what spawns when, even offline; with a random one a phone learns the item only from MC or the station's
-advert, so an offline phone may announce "POWERUP AVAILABLE" without the item's name.
+advert, so an offline phone may announce "POWERUP AVAILABLE" without the item's name. Bluetooth closes most of that gap (Tony): while an item is
+available the station's advert `value` is free (it is 0 in the fixed mode; it counts down only while the station is
+taken), so a random station can put the current item's index there, from a small item table in the game config.
+Any phone in Bluetooth range then reads what is sitting at the station with no MC contact.
 
 ## The spawn announcement (Tony, 2026-09-24)
 
