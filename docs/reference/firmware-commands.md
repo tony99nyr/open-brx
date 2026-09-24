@@ -40,7 +40,7 @@ The separate v5-to-v6 audio ZIP hashes to
   four explicit version conflicts plus names otherwise unknown to the safe rail.
 - **Bench:** `proven` means our v4.32 hardware showed the effect; `claimed` means a source or inconclusive send
   exists; `never sent` means we have not intentionally sent the exact shape. This column is an evidence ledger,
-  not the stale `CommandInfo.proven` flag alone: `$STUN` and `$TMP` are bench-proven despite that old flag. A send
+  not the `CommandInfo.proven` flag alone. A send
   with no observable reply counts as `claimed`. Each command's current status and its evidence live in the protocol
   reference; where this column and a protocol row disagree, the protocol row wins.
 - **Needs firmware** is a vocabulary gate over the seven sampled images. “2.02c+ sampled” means first present in

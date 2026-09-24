@@ -40,7 +40,7 @@ superseded). See `docs/experiment-log/2026-09.md` (2026-09-19 pre-game entry) fo
 
 ## Sittings, in priority order
 
-### Next sitting: [`bench-2026-09-24.md`](bench-2026-09-24.md) (MUST: about 4 h 10 min in three setups)
+### Next sitting: [`bench-2026-09-24.md`](bench-2026-09-24.md) (MUST: about 4 h 30 min in three setups)
 
 One ordered runbook for the next sitting: F297/F293 connect reliability, the screamers transport steps A4, A7,
 A7b, A7c and A8 with `raw-bytes` (F269/F270), the native kill word and the R4 readings (Block 2b: F320-F322), F308,

@@ -229,7 +229,7 @@ One port, one `.BIN`. Firmware for the tagger, headset, hatchet, shield and side
 
 **Practical levels**
 
-- **Play:** the Open BRX game default above. An unknown venue gets the quieter of the two levels.
+- **Play:** the Open BRX game default above. An unknown venue gets the indoor level, the quieter one.
 - **Try-outs:** 69. A try-out is fired at arm's length from the player's own head, so it stays quiet.
 - **Bench / diagnostics:** 30 or lower keeps the neighbors happy and still confirms the command path (the gun echoes its state, you just won't hear it).
 

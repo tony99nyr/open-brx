@@ -1201,8 +1201,8 @@ sound (O01 ships; alternates O05 O02 O04 O06 O03; its zero damage is fixed, F165
 **S-A12.1**; **D4** does "double kill" fire under our config (3 guns); **P15** alarm id.
 
 **Space / tape measure** (receiver on a taped mark, no victim gun):
-- 2.1 **Q15** t41 ladder, `ir-range` detect%/decode%: its super-indoor sweep is Block 6 of
-  [`bench-2026-09-24.md`](bench-2026-09-24.md) (margin first, closing control mandatory: a missing one spoiled U2). 2.4 **Q16** divergence at 3 m, 0/10/20/30/40/50°, taken in the same sitting.
+- 2.1 **Q15** t41 ladder, `ir-range` detect%/decode%: the t41 indoor rung is levers §19 step 5
+  ([`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md)) (margin first, closing control mandatory: a missing one spoiled U2). 2.4 **Q16** divergence at 3 m, 0/10/20/30/40/50°, taken in the same sitting.
 - 2.2 the "halo assassinate": a back-dome melee is a different word, or the same word on tok1 = 1? (melee is magnitude 90).
 - 2.3 sensor map (tok1 0/1/2/3/4) at ~5 m. **F28** back dome at field distance.
 - IR range of real guns vs our emitter, outdoor mode / weapon / angle (`docs/archive/hardware/range-experiment.md`); the grenade beacon's ~18–20 ft.
