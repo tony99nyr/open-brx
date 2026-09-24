@@ -1825,7 +1825,7 @@ export class Hud {
       this._momentAt = m.at;
       if (m.kind === 'kill') this._kill(st, m);
       else if (m.kind === 'redeploy') this._redeploy(st);
-      else if (m.kind === 'switched') { if (!(st.ammo === 0 && st.activeSlot === (m.data && m.data.slot))) this._switched(st, m); }   // polish r2: no ACTIVE card for an empty slot
+      else if (m.kind === 'switched') { const held = st.powerup && st.powerup.held; if (!(held && st.ammo === 0 && st.activeSlot === held.slot && st.activeSlot === (m.data && m.data.slot))) this._switched(st, m); }   // polish r2/r3: no ACTIVE card for an EMPTY PICKUP slot (a loadout swap keeps it)
       else if (m.kind === 'alert') this._alert(st, m);
       else if (m.kind === 'hit') this._hit(st, m);
       else if (m.kind === 'gain') this._gain(st, m);
