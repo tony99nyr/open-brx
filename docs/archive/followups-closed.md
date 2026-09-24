@@ -688,3 +688,14 @@ block's *internal* statuses were true when it closed and may since have been sup
   (`app/src/hud/hud.js`), so an out-of-range player still sees a confirmed kill. What is left is tracked as **S57**.
 - 2026-09-24 **F299** merged: the same Pixel 5 first-connect evidence and goal as F297, so its review task is
   tracked as **F297**.
+- 2026-09-24 **F326** fixed (chaos testing, found and closed the same day): an MC restart in the middle of a match lost
+  every fact of a player who HOT-JOINED it. `_match_snapshot` keeps a node's binding only for a player in
+  `_match_players`, and a late joiner was never added there. `add_player` now adds them. Regression scenario
+  `restart-after-hot-join` (`mcp/brx_mcp/chaos/scenarios/regressions.py`).
+- 2026-09-24 **F327** fixed (chaos testing): a SECOND MC restart lost the facts of any phone that had not said hello
+  since the first, because each snapshot kept only the bindings of connected nodes. `Session._match_nodes` now keeps
+  every node that spoke for a player in the match. Regression scenario `restart-twice-while-offline`.
+- 2026-09-24 **F328** fixed (chaos testing): the frag cap's re-derivation (`_replay`) bound the stored facts through the
+  nodes connected NOW, so a phone offline since an MC restart lost its kills from the recap when the cap was reached,
+  and the cap could move to the wrong kill. `_replay` now binds through `_match_nodes` too. Regression scenario
+  `cap-after-restart-offline-node`.

@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **CLAIM AN ID BY WRITING ITS ROW FIRST, before doing the work** -- a stub row and the bumped "next free" below, committed, then the investigation. Ids collided FOUR times on 2026-09-18 alone and every one was two sessions reading "next free" at the same moment and both working for an hour before either wrote anything down. The loser renumbers, which is tedious and loses cross-references. This is a process fault, not anyone's mistake. **Next free: B32 · D6 · E8 · F326 · G11 · H9 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **CLAIM AN ID BY WRITING ITS ROW FIRST, before doing the work** -- a stub row and the bumped "next free" below, committed, then the investigation. Ids collided FOUR times on 2026-09-18 alone and every one was two sessions reading "next free" at the same moment and both working for an hour before either wrote anything down. The loser renumbers, which is tedious and loses cross-references. This is a process fault, not anyone's mistake. **Next free: B32 · D6 · E8 · F329 · G11 · H9 ·
 K9 · P19 · Q20 · R5 · S59.** The id history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are **F26/F27**, the
 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive
