@@ -1856,7 +1856,7 @@ export class Hud {
       // The IR word cannot carry the victim (docs/ir-callouts.md): a KILL CONFIRMED names the team. When MC's own
       // named card for the same kill is already up it is richer, so the IR word leaves it alone.
       if (co.kind === 'kill_confirmed') {
-        if (!(this._coMcUntil > Date.now())) this._coIrKillAt = Date.now();
+        if (!(this._coMcUntil > Date.now())) (this._coIrKills = this._coIrKills || []).push(Date.now());
         if (!(this._coMcUntil > Date.now())) this._co(st, { kind: 'kill_confirmed', src: 'ir', tone: 'enemy', kill: true, tag: 'KILL CONFIRMED', name: op, team, sub: 'CONFIRMED BY THEIR GUN · MC KEEPS THE SCORE', hold: 2000 });
       } else {
         const mate = co.kind === 'teammate_down';
@@ -1875,11 +1875,14 @@ export class Hud {
   /** MC's kill feedback: the same card, named from MC's `victim_display` (else "<TEAM> OPERATIVE"), with the medals. */
   _kill(st, m) {
     const d = m.data || {}; const vk = String(d.victim_team || 'yellow').toLowerCase();
-    // Polish rounds 1-2: MC's named card stays quiet (no second flash or buzz) only when the engine paired this confirm
-    // with an IR KILL CONFIRMED (`ir_paired`) AND that IR card really showed, flash and all. The IR mark is consumed
-    // here, so the next kill of a double kill, whose IR card may have been held back behind this one, still buzzes.
-    const irFirst = !!d.ir_paired && !!this._coIrKillAt && Date.now() - this._coIrKillAt < 3000;
-    this._coIrKillAt = 0;
+    // Polish rounds 1-3: MC's named card stays quiet (no second flash or buzz) only when the engine paired this confirm
+    // with an IR KILL CONFIRMED (`ir_paired`) AND an IR card really showed for it, flash and all. Each shown IR card
+    // is used once, so a kill whose IR card was held back behind another card still buzzes on its MC card.
+    // Polish round 3: a QUEUE of IR cards still waiting for their MC twin, not one mark, so IR1 IR2 MC1 MC2 is two
+    // buzzes as surely as IR1 MC1 IR2 MC2. Entries older than the pairing window are dropped unmatched.
+    const now = Date.now(); this._coIrKills = (this._coIrKills || []).filter(t => now - t < 3000);
+    const irFirst = !!d.ir_paired && this._coIrKills.length > 0;
+    if (irFirst) this._coIrKills.shift();
     const hold = this._co(st, { kind: 'kill', src: 'mc', tone: 'enemy', kill: !irFirst, killStyle: true, tag: 'KILL CONFIRMED', name: d.victim || (vk.toUpperCase() + ' OPERATIVE'), team: vk,
       sub: `+1 ELIMINATION · K ${st.kills != null ? st.kills : ''} · MISSION CONTROL`, medals: Array.isArray(d.medals) ? d.medals : [], hold: 1800 });
     this._coMcUntil = Date.now() + hold;

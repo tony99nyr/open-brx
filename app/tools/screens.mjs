@@ -4209,8 +4209,14 @@ for (const view of VIEWS) await step(`${view.name} QA-05 kill buzz: an MC-only k
     await wait(2600); buzz = 0;
     ir(); await wait(300); window.brxDemo.killConfirm('VIPER'); await wait(300);
     ir(); await wait(300); window.brxDemo.killConfirm('GHOST'); await wait(700);
-    h.h.onHaptic = oh; return { mcOnly, double: buzz }; });
+    const double = buzz; await wait(3200); buzz = 0;
+    ir(); await wait(800); ir(); await wait(150); window.brxDemo.killConfirm('VIPER'); await wait(150); window.brxDemo.killConfirm('GHOST'); await wait(700);   // both IR words first (polish round 3), past S57's 600 ms dedupe
+    const bothIrFirst = buzz; await wait(3200); buzz = 0;
+    ir(); await wait(3300); window.brxDemo.killConfirm('SABLE'); await wait(700);   // an IR word whose MC twin never came, then a later MC-only kill
+    h.h.onHaptic = oh; return { mcOnly, double, bothIrFirst, afterOrphan: buzz }; });
   await pg.close();
+  must(r.bothIrFirst === 2, `two kills whose IR words both came first must buzz twice: ${JSON.stringify(r)}`);
+  must(r.afterOrphan === 2, `an orphan IR card buzzes, and a later unpaired MC kill still buzzes: ${JSON.stringify(r)}`);
   must(r.mcOnly === 1, `an MC-only kill must buzz once: ${JSON.stringify(r)}`);
   must(r.double === 2, `two kills must buzz twice, however their cards overlap: ${JSON.stringify(r)}`);
 });
