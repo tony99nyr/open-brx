@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from . import envelope as E
+from .mcid import TrustRegistry, valid_challenge
 from .types import PROTOCOL_V, STALE_AFTER_MS, STATUS_HEARTBEAT_MS
 
 log = logging.getLogger("brx.mc.net")
@@ -178,8 +179,11 @@ class NetServer:
     """Implements `interfaces.NetServer` (sync callback registration; async start/stop)."""
 
     def __init__(self, *, session_id: str | None = None, stale_after_ms: int = STALE_AFTER_MS,
-                 hello_timeout_s: float = HELLO_TIMEOUT_S, ping_interval_s: float = WS_PING_INTERVAL_S):
+                 hello_timeout_s: float = HELLO_TIMEOUT_S, ping_interval_s: float = WS_PING_INTERVAL_S,
+                 trust: TrustRegistry | None = None):
         self.session_id = session_id or uuid.uuid4().hex[:8]
+        # A60: MC's install identity. In memory unless the caller hands in a persisted one (`__main__`).
+        self.trust = trust if trust is not None else TrustRegistry(None)
         self.stale_after_ms = stale_after_ms
         self.hello_timeout_s = hello_timeout_s
         self.ping_interval_s = ping_interval_s
@@ -756,6 +760,16 @@ class NetServer:
             welcome["prior_utility_consumed"] = True
         if node_ctx:
             welcome["node"] = node_ctx
+        # A60: prove this is the MC install the phone trusted, and hand a trust key to a node that asks
+        # for its first one. A utility phone has no takeover key and joins untrusted by design.
+        if rec.node_type != "utility":
+            challenge = body.get("mc_challenge")
+            if valid_challenge(challenge):
+                welcome["mc_proof"] = self.trust.proof(node_id, str(challenge), self.session_id)
+            if body.get("mc_enroll") is True:
+                key = self.trust.enroll(node_id, _peer_host(ws))   # validated id, rate-limited per address
+                if key:
+                    welcome["mc_trust"] = {"key": key}
         try:
             await ws.send(E.encode(E.make_envelope("welcome", welcome)))
         except BaseException:

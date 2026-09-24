@@ -11,7 +11,7 @@ a gun, a network or a machine is replaced before anything is written:
   * private IPs -> `LAN-IP-1`, other IPs -> `IP-1`       * Wi-Fi names -> `WIFI-1`, ...
   * local host names (`.local`, `.lan`, `.home.arpa`, `*.ts.net`) -> `HOST-1`, ...
   * `*.trycloudflare.com` -> `TUNNEL-HOST`               * the home folder -> `~`, the user name -> `USER`
-  * operator token, join secret, node keys -> `[REDACTED]`
+  * operator token, join secret, node keys, MC trust keys and install secret (A60) -> `[REDACTED]`
 
 The same raw value always gets the same alias inside one report, so a reader can still follow
 "TAGGER-2 dropped out" from the log to the database. The alias map itself never goes in the zip.
@@ -290,7 +290,7 @@ def _collect_json(al: Aliaser, value: Any, parent_key: str = "") -> None:
                     al.add(PIN, sv)
                 elif kl in _KEYS_BLE:
                     _add_ble(al, sv)
-                elif kl in _KEYS_SECRET:
+                elif kl in _KEYS_SECRET or (kl == "key" and parent_key == "mc_trust"):   # A60 trust key
                     al.add(SECRET, sv)
                 elif kl in _KEYS_WIFI:
                     al.add(WIFI, sv)
@@ -303,6 +303,23 @@ def _collect_json(al: Aliaser, value: Any, parent_key: str = "") -> None:
             _collect_json(al, v, parent_key)
     elif isinstance(value, str):
         _collect_text(al, value)
+
+
+def _collect_install_identity(al: Aliaser, db: sqlite3.Connection) -> None:
+    """A60: MC's install secret (`mc-install-secret`, never packed) and the trust key it derives for
+    every node in this store are secrets the guard must search for, whether or not the caller passed
+    them. Read only: a report never creates the file."""
+    from .mcid import b64url, read_install_secret, trust_key
+    inst = read_install_secret(home_dir())
+    if not inst:
+        return
+    al.add(SECRET, b64url(inst))
+    try:
+        ids = [str(n) for (n,) in db.execute("SELECT DISTINCT node_id FROM envelopes") if n]
+    except sqlite3.Error:
+        ids = []
+    for nid in ids:
+        al.add(SECRET, trust_key(inst, nid))
 
 
 def _collect_text(al: Aliaser, text: str) -> None:
@@ -808,6 +825,7 @@ def build_report(evidence_dir: Path, out_dir: Path | None = None, *, armory_path
         _collect_roster(al, roster_path)
         db = sqlite3.connect(str(work))
         try:
+            _collect_install_identity(al, db)
             for _t, _c, _rid, val in _text_cells(db):
                 parsed = None
                 if val.lstrip()[:1] in ("{", "["):

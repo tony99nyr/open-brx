@@ -24,6 +24,7 @@ import * as E from './envelope.js';
 import { Ring, defaultStorage } from './ring.js';
 import { Clock } from './clock.js';
 import { APP_VER, platformName } from '../build.js';
+import { newChallenge, matchingKey, validTrustKey } from './mcproof.js';
 
 /** @typedef {{getItem(key:string): string|null, setItem(key:string, value:string): void, removeItem(key:string): void}} TransportStorage */
 /** @typedef {{onopen: WebSocket['onopen'], onmessage: WebSocket['onmessage'], onerror: WebSocket['onerror'], onclose: WebSocket['onclose'], send(data:string): void, close(code?:number, reason?:string): void, bufferedAmount?: number}} TransportSocket */
@@ -34,8 +35,8 @@ import { APP_VER, platformName } from '../build.js';
 /** @typedef {{baseMs:number, capMs:number, jitter:number}} BackoffOptions */
 /** @typedef {Record<string, unknown>} TransportBody */
 /** @typedef {{v:number, kind:string, id:string, t:number, body:TransportBody, seq?:number}} TransportEnvelope */
-/** @typedef {{url?:string, mdns?:string, qr?:string, pub?:string|null, secret?:string|null, trusted?:boolean}} ConnectOptions */
-/** @typedef {{storage?:TransportStorage, wsFactory?:(url:string) => TransportSocket, node?:TransportNode, gun?:TransportGun|null, priorUtility?:PriorUtility|null, heartbeatMs?:number, now?:() => number, timers?:TransportTimers, random?:() => number, backoff?:BackoffOptions, helloTimeoutMs?:number, welcomeTimeoutMs?:number, keyPrefix?:string, backhaulGiveupMs?:number, pubRetryMs?:number, lanGiveupMs?:number, reclaimRetryMs?:number}} TransportOptions */
+/** @typedef {{url?:string, mdns?:string, qr?:string, pub?:string|null, secret?:string|null, trusted?:boolean, verify?:boolean}} ConnectOptions */
+/** @typedef {{storage?:TransportStorage, wsFactory?:(url:string) => TransportSocket, node?:TransportNode, gun?:TransportGun|null, priorUtility?:PriorUtility|null, heartbeatMs?:number, now?:() => number, timers?:TransportTimers, random?:() => number, backoff?:BackoffOptions, helloTimeoutMs?:number, welcomeTimeoutMs?:number, keyPrefix?:string, backhaulGiveupMs?:number, pubRetryMs?:number, lanGiveupMs?:number, reclaimRetryMs?:number, randomBytes?:(n:number) => Uint8Array}} TransportOptions */
 /** @typedef {{type?:string, t?:number, match_id?:string|null, node_id?:string, player_id?:string|null} & Record<string, unknown>} TransportFact */
 /** @typedef {Record<string, unknown> & {pending?:number, dropped?:number, preflight?:Record<string, unknown>}} StatusBody */
 /** @typedef {'offline'|'connecting'|'open'|'bound'|'rejected'} TransportState */
@@ -96,12 +97,25 @@ export function clearConsumedPriorUtilityHandoff(transport, storage = defaultSto
   try { storage.removeItem(PRIOR_UTILITY_KEY); return true; } catch (_) { return false; }
 }
 
+/** A60: does this install hold a trust key for its own node_id? The app asks before it chooses a verify
+ *  dial over a JOIN row, with no Transport built. Mirrors `Transport#trustKeys`.
+ * @param {TransportStorage} [storage] @param {string} [keyPrefix] @returns {boolean} */
+export function holdsTrustKey(storage = defaultStorage(), keyPrefix = 'brx') {
+  try {
+    const nodeId = storage.getItem(`${keyPrefix}.node_id`);
+    const v = JSON.parse(storage.getItem(`${keyPrefix}.mc_trust`) || 'null');
+    return !!nodeId && !!v && v.node_id === nodeId && Array.isArray(v.keys) && v.keys.some(validTrustKey);
+  } catch (_) { return false; }
+}
+
 /** Review pass 2: an UNTRUSTED dial (a JOIN-row address, so we withheld our node_key) can be refused
  *  `4003 in_use` for one reason that is not an attack and not a mistake: OUR OWN previous socket at that
  *  MC has not gone stale yet. A8.2 is explicit that a stale holder is displaced WITHOUT a key, so the fix
  *  is to wait out the stale window and try once more. Derived from the contract constant so the two
  *  cannot drift apart. Only ever spent once per connect(), and only while untrusted. */
 export const RECLAIM_RETRY_MS = E.STALE_AFTER_MS + 1500;
+/** A60: trust keys kept per node_id, one per MC install this phone joined (a laptop swap keeps both). */
+export const TRUST_KEYS_MAX = 4;
 
 export class Transport {
   /**
@@ -111,7 +125,8 @@ export class Transport {
                 heartbeatMs = E.STATUS_HEARTBEAT_MS, now = () => Date.now(), timers = globalThis,
                 random = Math.random, backoff = { baseMs: 500, capMs: 10000, jitter: 0.2 }, helloTimeoutMs = 5000,
                 welcomeTimeoutMs = 10000, keyPrefix = 'brx', backhaulGiveupMs = BACKHAUL_GIVEUP_MS,
-                pubRetryMs = PUB_RETRY_MS, lanGiveupMs = LAN_GIVEUP_MS, reclaimRetryMs = RECLAIM_RETRY_MS } = {}) {
+                pubRetryMs = PUB_RETRY_MS, lanGiveupMs = LAN_GIVEUP_MS, reclaimRetryMs = RECLAIM_RETRY_MS,
+                randomBytes = undefined } = {}) {
     this.storage = storage; this.wsFactory = wsFactory; this.now = now; this.timers = timers; this.random = random;
     this.backoff = backoff; this.helloTimeoutMs = helloTimeoutMs; this.heartbeatMs = heartbeatMs; this.welcomeTimeoutMs = welcomeTimeoutMs;
     this.backhaulGiveupMs = backhaulGiveupMs; this.pubRetryMs = pubRetryMs; this.lanGiveupMs = lanGiveupMs; this.reclaimRetryMs = reclaimRetryMs;
@@ -125,6 +140,14 @@ export class Transport {
     this.secret = this._persisted(this._secretKey) || null;         // A28.2: the QR's join secret, session- AND url-scoped
     this._persistedSessionId = this._persisted(this._sessionKey) || null;
     this._pubUrl = this._persisted(this._pubUrlKey) || null;        // A28.2: the LAN url this pub/secret pair belongs to
+    // A60: the trust keys MC installs have issued to THIS node_id (`welcome.mc_trust.key`), newest first.
+    this._trustKeyKey = `${keyPrefix}.mc_trust`;
+    /** @type {((n:number) => Uint8Array)|undefined} */ this.randomBytes = randomBytes;
+    /** A60: a `verify` dial (an address the player never named) withholds every secret, sends a fresh
+     *  `mc_challenge`, and processes NOTHING until the welcome's `mc_proof` checks out. */
+    this.verify = false; /** @type {string|null} */ this._challenge = null;
+    this._enrollSent = false;   // A60: did the hello on the live socket ask for a trust key?
+    /** @type {'no_proof'|'bad_proof'|'no_key'|'no_random'|null} */ this.verifyFailed = null;
     this.reach = null;                       // A28.3: 'lan' | 'backhaul' | null (not yet welcomed)
     /** @type {'wifi'|'cellular'|'none'|'unknown'|null} */
     this.connectionType = node.connection_type || null;   // F309: the phone's own connection; null = never told (web, tests)
@@ -171,7 +194,7 @@ export class Transport {
 
   // ---------- public API (net.md §6) ----------
   /** @param {ConnectOptions} [options] @returns {Promise<TransportBody>} */
-  connect({ url, mdns, qr, pub, secret, trusted = true } = {}) {
+  connect({ url, mdns, qr, pub, secret, trusted = true, verify = false } = {}) {
     // F153b (field 2026-09-12): a new connect() SUPERSEDES whatever dial is already in flight. A QR
     // rescan after the tunnel restarted, a typed address, RECONNECT MC -- each hands us a new triple,
     // and the socket already connecting was aimed at the old one. Left alone it holds the slot until the
@@ -180,9 +203,22 @@ export class Transport {
     // old connect() promise, and dial the new target from the top of the ladder below.
     this._abortInFlight('superseded by a new connect()', 'reconnect');
     this.attempt = 0;
-    this.trusted = trusted !== false;   // stays false until this peer welcomes us (see `trusted` above)
+    this.verify = verify === true; this._challenge = null; this.verifyFailed = null;
+    this.trusted = trusted !== false && !this.verify;   // stays false until this peer welcomes us (see `trusted` above)
     this._reclaimTried = false;
     const nextUrl = url || qr || this.url;
+    if (this.verify) {
+      // A60: nothing held for the MC we trust (pub, secret, the url they belong to) is touched until this
+      // host proves it IS that MC. A failed proof must leave the phone exactly as it was.
+      if (!this.hasTrustKey()) { this.verifyFailed = 'no_key'; return Promise.reject(Object.assign(new Error('connect: no trust key to verify with'), { code: 'mc_unproven' })); }
+      if (!nextUrl) return Promise.reject(new Error('connect: no url'));
+      this.url = nextUrl; this.closed = false; this.rejected = null;
+      return new Promise((resolve, reject) => {
+        this._firstWelcome = { resolve, reject };
+        this._armConnectTimeout(this.welcomeTimeoutMs);
+        this._open();
+      });
+    }
     // A28.2 security: pub/secret are only ever valid for the MC that issued them. A different LAN
     // target (a phone told to join a different MC) means the tunnel/secret held for the OLD one must
     // not be dialled or offered — drop both before adopting whatever THIS call gives us.
@@ -368,6 +404,67 @@ export class Transport {
     this._setPub(null); this._setSecret(null);
     this._pubUrl = null; this._remove(this._pubUrlKey);
   }
+  /** A60: the trust keys held for this node_id, newest first (at most TRUST_KEYS_MAX: one per MC install
+   *  this phone has joined). A store written for another node_id counts as empty.
+   *  @returns {string[]} */
+  trustKeys() { return this._trustStore().keys; }
+  /** `proven_at[key]` = when that key last proved an MC (ms). @returns {{keys:string[], provenAt:Record<string, number>}} */
+  _trustStore() {
+    try {
+      const v = JSON.parse(this._persisted(this._trustKeyKey) || 'null');
+      if (!v || v.node_id !== this.nodeId || !Array.isArray(v.keys)) return { keys: [], provenAt: {} };
+      const keys = v.keys.filter(validTrustKey).slice(0, TRUST_KEYS_MAX);
+      /** @type {Record<string, number>} */ const provenAt = {};
+      const raw = v.proven_at && typeof v.proven_at === 'object' ? v.proven_at : {};
+      for (const k of keys) if (Number.isFinite(raw[k])) provenAt[k] = Number(raw[k]);
+      return { keys, provenAt };
+    } catch (_) { return { keys: [], provenAt: {} }; }
+  }
+  /** @param {string[]} keys @param {Record<string, number>} provenAt */
+  _saveTrust(keys, provenAt) { this._store(this._trustKeyKey, JSON.stringify({ node_id: this.nodeId, keys, proven_at: provenAt })); }
+  hasTrustKey() { return this.trustKeys().length > 0; }
+  /** A new key goes first and is always kept. Over TRUST_KEYS_MAX one older key goes: an unproven one
+   *  first (the oldest), else the one that proved an MC least recently.
+   *  @param {unknown} key */
+  _storeTrustKey(key) {
+    if (!validTrustKey(key)) return;
+    const k = /** @type {string} */ (key);
+    const { keys, provenAt } = this._trustStore();
+    if (keys.includes(k)) return;
+    const next = [k, ...keys];
+    while (next.length > TRUST_KEYS_MAX) {
+      const older = next.slice(1);
+      const unproven = older.filter(x => !(x in provenAt));
+      const victim = unproven.length ? unproven[unproven.length - 1]
+        : older.reduce((a, b) => (provenAt[b] < provenAt[a] ? b : a));
+      next.splice(next.indexOf(victim), 1);
+      delete provenAt[victim];
+    }
+    this._saveTrust(next, provenAt);
+  }
+  /** @param {string} key */
+  _markProven(key) {
+    const { keys, provenAt } = this._trustStore();
+    if (keys.includes(key)) this._saveTrust(keys, { ...provenAt, [key]: this.now() });
+  }
+  /** A60: the welcome on a verify dial did not prove this is the MC we trust. Close at once, process
+   *  nothing, store nothing, and settle connect() with `code: 'mc_unproven'` so the app can say why.
+   *  @param {'no_proof'|'bad_proof'|'no_random'} why */
+  _failVerify(why) {
+    this.verifyFailed = why; this.closed = true;
+    const p = this._firstWelcome; this._firstWelcome = null;
+    this._abortInFlight(null, 'unproven');
+    if (this._connectTimer) { this.timers.clearTimeout(this._connectTimer); this._connectTimer = null; }
+    this._setState('offline');
+    if (p) p.reject(Object.assign(new Error(`connect: mission control not proven (${why})`), { code: 'mc_unproven' }));
+  }
+  /** A60: the proof checked out. From here this is a trusted dial, and the url-scope rule every other
+   *  connect() applies at the dial (A28.2) applies now: a pub/secret held for another address goes. */
+  _onVerified() {
+    this.verify = false; this._challenge = null; this.trusted = true;
+    if (this.url && this._pubUrl && normUrl(this.url) !== normUrl(this._pubUrl)) { this._setPub(null); this._setSecret(null); }
+    if (this.url) { this._pubUrl = this.url; this._store(this._pubUrlKey, this.url); }
+  }
   /** A28.3: MC handed us a (possibly changed, possibly null) pub. `null` = the tunnel went down. A
    *  newly (or differently) learned pub is probed on the very next chance (`_kickPubRetry`), not left
    *  to wait out a stale PUB_RETRY_MS countdown — "prefer backhaul when offered" means offered NOW.
@@ -415,6 +512,10 @@ export class Transport {
   _helloBody(via) {
     return {
       node_id: this.nodeId, node_type: this.nodeType, app_ver: this.appVer, platform: this.platformName(), via,   // A29 + A28.3
+      // A60: a verify dial asks MC to prove itself; every other phone dial asks for its trust key (MC
+      // issues one per node_id, once).
+      ...(this.verify && this._challenge ? { mc_challenge: this._challenge } : {}),
+      ...(!this.verify && this.nodeType === 'phone' ? { mc_enroll: true } : {}),
       ...(this.secret && this.trusted ? { secret: this.secret } : {}),
       gun: this.gun ? { name: this.gun.name, tail: this.gun.tail, ...(this.gun.fw ? { fw: this.gun.fw } : {}) } : undefined,
       seq_next: this.ring.seqNext, ...(this.nodeKey && this.trusted ? { node_key: this.nodeKey } : {}),
@@ -424,7 +525,8 @@ export class Transport {
   _open() {
     if (this.closed) return;
     this._setState('connecting');
-    if (this.pub) this._dialVia('backhaul', this.pub);
+    // A60: a verify dial goes to the address it was given, never to the tunnel of the MC we trust.
+    if (this.pub && !this.verify) this._dialVia('backhaul', this.pub);
     else this._dialVia('lan', this.url);
   }
   /** Dial one URL as the primary/live socket. `via` is 'lan' or 'backhaul' — A28.3 policy: a 'backhaul'
@@ -462,8 +564,12 @@ export class Transport {
     ws.onopen = () => {
       if (ws !== this._ws) return;
       this.attempt = 0;
+      if (this.verify) {   // A60: a fresh challenge per socket, so a recorded proof can never be replayed
+        try { this._challenge = newChallenge(this.randomBytes); } catch (_) { this._failVerify('no_random'); return; }
+      }
       const hello = this._helloBody(via);
       this._priorUtilityOffered = !!hello.prior_utility;
+      this._enrollSent = hello.mc_enroll === true;
       this._sendRaw(E.makeEnvelope('hello', hello), ws);
       // 'backhaul': the giveup timer armed above already covers "no welcome in time" -- nothing to re-arm.
       // 'lan': the socket is open, so the pre-open giveup has done its job -- clear it (leaving it armed
@@ -599,6 +705,7 @@ export class Transport {
     this.stats.received++;
     const { kind, body } = env;
     if (kind === 'welcome') return this._onWelcome(body);
+    if (this.verify) return;   // A60: an unproven host gets nothing processed, not even an ack
     if (kind === 'ack') { this.ring.prune(Number(body.seq_hi)); return; }
     if (kind === 'time_res') { this.clock.sample(Number(body.t_node), Number(body.server_t), this.now()); }
     if (kind === 'assign') { this._absorb({ player: body.player, team: body.team, roster: body.roster }); }
@@ -613,6 +720,14 @@ export class Transport {
   }
   /** @param {TransportBody} body */
   _onWelcome(body) {
+    // A60: FIRST, before any timer, key, secret, join target, hydrate, bind or delivery: on a verify
+    // dial the welcome must prove it came from the MC install whose trust key we hold.
+    if (this.verify) {
+      if (typeof body.mc_proof !== 'string' || !body.mc_proof) { this._failVerify('no_proof'); return; }
+      const proven = this._challenge ? matchingKey(this.trustKeys(), body.mc_proof, this._challenge, body.session_id) : null;
+      if (!proven) { this._failVerify('bad_proof'); return; }
+      this._onVerified(); this._markProven(proven);
+    }
     if (this._helloTimer) { this.timers.clearTimeout(this._helloTimer); this._helloTimer = null; }
     if (this._connectTimer) { this.timers.clearTimeout(this._connectTimer); this._connectTimer = null; }
     // A28.2: pub/secret are session-scoped — a session change (MC restarted) invalidates whatever this node held.
@@ -623,6 +738,11 @@ export class Transport {
     // It welcomed us, so it speaks the M-NET protocol and is the MC we dialled: the next hello may carry
     // the key (a keyless hello cannot take a still-live node_id back, A8.2) and the secret.
     this.trusted = true; this._reclaimTried = false;
+    // A60: MC's trust key for this node (issued once per node_id). Only a user-named, remembered or
+    // proof-verified dial ever reaches this line, so the key comes from a host the phone had reason to trust.
+    // ...and only when THIS socket's hello asked for it (`mc_enroll`): a key nobody asked for is ignored.
+    const trust = objectBody(body.mc_trust);
+    if (trust && this._enrollSent) this._storeTrustKey(trust.key);
     if (sessionId) { this._persistedSessionId = sessionId; this._store(this._sessionKey, sessionId); }
     this.sessionId = sessionId;
     this.priorUtilityConsumed = this._priorUtilityOffered && body.prior_utility_consumed === true;

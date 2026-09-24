@@ -2466,6 +2466,38 @@ await step('polish-1 connected: the discovered-MC row is absent by default, appe
   await pg.close();
   must(calls === 1, 'tapping the discovered row did not call onJoinDiscovered');
 });
+// A60 polish: the JOIN row says WHY a tap is needed. On the smallest phone (667x375) all three texts fit
+// ONE line on the pre-join screen; in the narrow ⓘ panel (a 361 px column, monospace) they may wrap to
+// two, as the plain row always did, but never overflow. Both at or above the 11 px floor, JOIN named once.
+for (const [stage, sel, maxLines] of [['connected', '.lobby .discoveredrow', 1], ['idle-diag', '#diag .discoveredrow', 2]]) {
+  await step(`A60 se ${stage}: the three JOIN-row reasons fit ${maxLines} line(s) at 667x375, above 11 px, JOIN once`, async () => {
+    const pg = await open(VIEWS[1], stage);
+    const { offerText } = await import('../src/transport/autojoin.js');
+    const url = 'ws://192.168.100.200:8766/ws';   // the widest LAN host a phone will show
+    for (const reason of ['new', 'several', 'unproven']) {
+      const text = offerText(reason, url);
+      await pg.evaluate(t => { window.brx.hud.setDiscovered({ url: 'ws://192.168.100.200:8766/ws', at: Date.now(), source: 'mdns', reason: 'x', text: t });
+        window.brx.hud.render(window.brx.engine.state()); if (window.brx.hud.renderDiag) window.brx.hud.renderDiag(); }, text);
+      await pg.waitForTimeout(80);
+      const row = await pg.evaluate(q => {
+        const e = document.querySelector(q); if (!e) return null;
+        const span = e.querySelector('span') || e; const cs = getComputedStyle(span);
+        const r = e.getBoundingClientRect(), tb = span.getBoundingClientRect();
+        const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4;
+        // the lobby row is nowrap and centred, so an overlong text spills out of BOTH sides: measure the text box
+        return { text: e.textContent, lines: Math.round(tb.height / lh), h: tb.height, lh,
+                 inside: tb.left >= r.left - 1 && tb.right <= r.right + 1 && tb.left >= -1 && tb.right <= innerWidth + 1,
+                 w: Math.round(tb.width), rowW: Math.round(r.width), px: parseFloat(cs.fontSize) }; }, sel);
+      must(row, `${reason}: the row never rendered in ${sel}`);
+      must(row.text.trim() === text, `${reason}: row text is not the reason verbatim: ${row.text}`);
+      must((row.text.match(/JOIN/g) || []).length <= 1, `${reason}: JOIN appears twice: ${row.text}`);
+      must(row.h <= row.lh * (maxLines + 0.5), `${reason}: the row took more than ${maxLines} line(s) at 667 px in ${sel}: ${JSON.stringify(row)}`);
+      must(row.inside, `${reason}: the text overflows its row at 667 px in ${sel}: ${JSON.stringify(row)}`);
+      must(row.px >= 11, `${reason}: ${row.px}px is under the 11 px floor in ${sel}`);
+    }
+    await pg.close();
+  });
+}
 await step('polish-1 idle-diag: the discovered-MC row also renders inside the ⓘ panel', async () => {
   const pg = await open(VIEWS[0], 'idle-diag');
   await pg.evaluate(() => { window.brx.hud.setDiscovered({ url: 'ws://192.168.1.42:8766/ws', at: Date.now() }); window.brx.hud.renderDiag(); });

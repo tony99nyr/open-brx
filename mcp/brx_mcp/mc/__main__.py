@@ -123,7 +123,13 @@ def build(args):
     if not args.fake_net:
         try:
             from .net import NetServer as RealNet  # M-NET lane
+            from .mcid import TrustRegistry
+            from ..storage import home_dir as _home
             net = RealNet()
+            # A60: the install identity persists next to session.json; demo/ephemeral keep the in-memory
+            # one NetServer starts with.
+            if not (args.demo or getattr(args, "ephemeral", False)):
+                net.trust = TrustRegistry(_home())
             log.info("net: real M-NET WebSocket server")
         except Exception as e:
             log.warning("net: FAKE in-memory (M-NET net.py not available: %s)", e)
