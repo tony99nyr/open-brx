@@ -438,6 +438,10 @@ export function startDemo({ engine, log }) {
         puList.set(id, { role: 'station', kind: 'powerup', id, team: 255, state, value, taker, seq: 0, game: 0, threshold: 0, median, raw: median, rssi: median, present: false });
         puFeed(); },
       puAway: () => { puList.clear(); puFeed(); },
+      // the Shields preset at 3-digit pools with a 175 overshield: the widest vitals row a powerup game can draw
+      widePools: () => { config.health = { max_hp: 100, max_armor: 0, max_shield: 100 };
+        bundle.head = bundle.head.map(f => f.startsWith('$PSET,') ? f.replace(/^(\$PSET,\d+,\d+,)\d+,\d+,\d+,/, '$1100,0,100,') : f);
+        config.stations = config.stations.map(x => x.id === 6 ? { ...x, item: { ...x.item, amount: 175 } } : x); },
       // stand at the station past the 1 s dwell, then the station names its winner (7 = this phone, 19 = VIPER)
       puTake: (id = 4, taker = 7) => { ev.puAt(id); setTimeout(() => ev.puAt(id, { state: 0, value: 118, taker }), 1300); },
       // ALT onto the pickup slot, and a round out of it, as the gun reports them ($ALCD token 3 = the slot)
@@ -601,6 +605,11 @@ export function startDemo({ engine, log }) {
       'live-pu-taken-by':    [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4, 19)]],                      // VIPER won it: TAKEN BY VIPER
       'live-pu-no-answer':   [[0, () => ev.powerups()], ...live, [2300, () => ev.puAt(4)]],                             // ready, and the station never answers
       'live-pu-taken':       [[0, () => ev.powerups()], ...live, [2300, () => ev.puAt(4, { state: 0, value: 110, median: -60 })]],   // taken: the countdown to the next spawn
+      // polish r1 (UX): a hit while standing at a station (the QA-04 weapon line must not cover the hint), the widest
+      // night row (Shields preset, 3-digit pools, a 175 overshield) and an Easy Reload player at a weapon station
+      'live-pu-claim-hit':   [[0, () => ev.powerups()], ...live, [2300, () => ev.puAt(4)], [2700, () => ev.hitFrom(19, 9, 9)]],
+      'live-pu-overshield-wide': [[0, () => { ev.powerups(); ev.widePools(); }], ...live, [2300, () => ev.puTake(6)]],
+      'live-pu-easy-reload': [[0, () => { ev.powerups(); player.loadout = { ...player.loadout, overrides: { easy_reload: true } }; }], ...live, [2300, () => ev.puAt(4)]],
     };
     const steps = STAGES[stageName];
     if (!steps) log(`stage "${stageName}" unknown — one of: ${Object.keys(STAGES).join(' ')}`, 'le');

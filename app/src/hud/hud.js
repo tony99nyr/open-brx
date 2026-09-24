@@ -1285,7 +1285,7 @@ export class Hud {
         : st.alive && st.shielded ? '<div class="spawnshield" role="status"><span class="k">SPAWN SHIELD</span><span class="s">YOU CANNOT BE HIT</span></div>'
         : st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>'}
       <div class="fxbar" id="fxbar">${this._fx(st)}</div>
-      <div class="vitals${os ? ' os' : ''}"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span>${low ? '<span class="lowtag">LOW</span>' : ''}${gunStale ? staleTag : ''}<span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>${st.maxShield > 0 || os ? `<span class="shield tab ${st.shield === 0 ? 'zero' : ''}" id="shield">${st.shield}</span><span class="hplab shieldlabel">SHIELD</span>` : ''}</div>
+      <div class="vitals${os ? ' os' : ''}"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span>${low ? '<span class="lowtag">LOW</span>' : ''}${gunStale ? staleTag : ''}<span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>${st.maxShield > 0 ? `<span class="shield tab ${st.shield === 0 ? 'zero' : ''}" id="shield">${st.shield}</span><span class="hplab shieldlabel">SHIELD</span>` : ''}</div>
         <div class="bar ${low ? 'low' : ''}"><i id="hpbar" style="width:${Math.round(100 * st.hp / st.maxHp)}%"></i></div>
         <div class="bar armor"><i id="shbar" style="width:${Math.round(100 * st.armor / st.maxArmor)}%"></i></div>${st.maxShield > 0 ? `<div class="bar shield"><i id="shieldbar" style="width:${shieldPct(st)}%"></i></div>` : ''}${os ? `<div class="bar oshield" id="obarw" style="--item:${itemColor(os.color)}" aria-label="overshield"><i id="obar" style="width:${oshieldPct(st)}%"></i><b id="oval">+${os.left}</b></div>` : ''}</div>
       ${st.powerup ? `<div class="puhint" id="puhint" role="status">${this._puHint(st)}</div>` : ''}
@@ -1301,7 +1301,7 @@ export class Hud {
         ${this._heatBar(st)}
         ${st.powerup ? `<div class="puheld" id="puheld">${this._puHeld(st)}</div>` : ''}
         <span class="wn"><span class="slot">${puActive || st.activeSlot >= 2 ? 'PICKUP' : st.activeSlot ? 'SECONDARY' : 'PRIMARY'}</span>${esc(st.weapon)}</span></div>
-      <div class="nightlab">NIGHT OPS</div>${kb}${this.board ? this._board(st) : ''}</div>`;
+      <div class="nightlab${st.powerup && this._puHint(st) ? ' pu' : ''}">NIGHT OPS</div>${kb}${this.board ? this._board(st) : ''}</div>`;
   }
   /** A56 (docs/spec/powerups.md): the powerup station hint, centre-bottom between the vitals and the ammo. A 1 s ring
    *  while the player stands at the station (HOLD STILL), the item once granted, who took it, or the countdown. */
@@ -1312,11 +1312,12 @@ export class Hud {
     const line = (act, lab, extra = '') => `<span class="pu" data-kind="${esc(h.kind)}" style="--item:${c}">${extra}<span class="put"><span class="pua">${act}</span>${lab ? `<span class="pul">${lab}</span>` : ''}</span></span>`;
     switch (h.kind) {
       case 'claiming': return line('HOLD STILL', name, ring(h.progress || 0));
-      case 'no_answer': return line('STATION NOT ANSWERING', name);   // no ring: nothing is filling any more
-      case 'granted': return line(name, h.replaced ? `REPLACES ${esc(h.replaced)}` : 'PICKED UP');
+      case 'no_answer': return line('NOT ANSWERING', `${name} STATION`);   // no ring: nothing is filling any more; two short lines, never four
+      // UX M5: a weapon item says how to reach it (the callout card already said any swap); the overshield just is
+      case 'granted': return line(name, h.itemKind === 'overshield' ? 'PICKED UP' : 'ALT TO USE');
       case 'approach': return line('GET CLOSER', name);
-      case 'easy_reload': return line(`${name} NEEDS ALT`, 'EASY RELOAD KEEPS IT');
-      case 'taken_by': return line(`TAKEN BY ${esc(h.by)}`, h.nextInMs != null ? `NEXT ${name} ${mss(h.nextInMs)}` : name);
+      case 'easy_reload': return line('EASY RELOAD', `NO ${name}`);   // UX M4: one line each
+      case 'taken_by': return line(h.nextInMs != null ? `TAKEN · ${mss(h.nextInMs)}` : 'TAKEN', `BY ${esc(h.by)}`);
       case 'taken': return line(`${name} IN ${mss(h.nextInMs || 0)}`, 'NEXT SPAWN');
       case 'switch': return line('SWITCH WEAPON', `${name} EMPTY`);
       default: return '';
@@ -1601,7 +1602,8 @@ export class Hud {
       const shieldb = q('shieldbar'); if (shieldb) shieldb.style.width = `${shieldPct(st)}%`;
       const ob = q('obar'); if (ob) ob.style.width = `${oshieldPct(st)}%`;   // A56: the overshield block drains first
       if (st.powerup && st.powerup.overshield) set('oval', `+${st.powerup.overshield.left}`);
-      if (st.powerup) { setHtml('puhint', this._puHint(st)); setHtml('puheld', this._puHeld(st)); }
+      if (st.powerup) { const hh = this._puHint(st); setHtml('puhint', hh); setHtml('puheld', this._puHeld(st));
+        const nl = this.hudEl.querySelector('.nightlab'); if (nl) nl.classList.toggle('pu', !!hh); }   // the hint takes NIGHT OPS's slot
       const bf = q('battfill'); if (bf) bf.style.right = `${100 - (st.battery || 0)}%`;
       const pips = q('pips'); if (pips) { const html = this._pips(st); if (pips.innerHTML !== html) pips.innerHTML = html; }
       const heat = q('heat'); if (heat) {

@@ -4975,7 +4975,7 @@ export class Engine {
       const st = this._puStation(items), g = this.powerupGrant, cl = this._puClaim;
       const nameOf = item => String(item.name || '').toUpperCase();
       if (this._puEmptied && this.activeSlot === this._puEmptied.slot) hint = { kind: 'switch', name: this._puEmptied.name, color: null };
-      else if (g && now - g.at < PU_READY_MS) hint = { kind: 'granted', name: g.name, color: g.color, ...(g.replaced ? { replaced: g.replaced } : {}) };
+      else if (g && now - g.at < PU_READY_MS) hint = { kind: 'granted', name: g.name, color: g.color, itemKind: g.kind, ...(g.replaced ? { replaced: g.replaced } : {}) };
       else if (cl && items[cl.station]) {
         const item = items[cl.station], base = { name: nameOf(item), color: item.color || null, station: cl.station };
         hint = cl.readyAt != null && now - cl.readyAt >= POWERUP_NO_ANSWER_MS ? { kind: 'no_answer', ...base }
