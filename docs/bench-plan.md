@@ -42,11 +42,12 @@ superseded). See `docs/experiment-log/2026-09.md` (2026-09-19 pre-game entry) fo
 
 ### Next sitting: [`bench-2026-09-24.md`](bench-2026-09-24.md) (MUST: about 4 h 30 min in three setups)
 
-**Block 0 (preflight) and Block 1 (F297/F293 connect reliability) are DONE, 2026-09-24** (see the experiment
-log's 2026-09-24 bench entry). Step 1.3 was not needed as a planned step: the loop was reproduced on demand,
-without a btsnoop capture. **The next sitting starts at Block 3.** What remains: F308, the screamers transport
-steps A4, A7, A7b, A7c and A8 with `raw-bytes` (F269/F270), the native kill word and the R4 readings (Block 2b:
-F320-F322), S56, F292, F298, F296, F309, F275
+**Block 0 (preflight), Block 1 (F297/F293 connect reliability), and Block 3.1-3.2 (F308: release order, fire
+intervals) are DONE, 2026-09-24** (see the experiment log's 2026-09-24 bench entry). Step 1.3 was not needed as
+a planned step: the loop was reproduced on demand, without a btsnoop capture. **The next sitting starts at Block
+3.3.** What remains: the rest of F308's bench items in `docs/weapon-design.md`'s Balance rules table, the
+screamers transport steps A4, A7, A7b, A7c and A8 with `raw-bytes` (F269/F270), the native kill word and the R4
+readings (Block 2b: F320-F322), S56, F292, F298, F296, F309, F275
 outdoors, S48's super-indoor grid in Tony's house, and S57's IR callout bus, with the 0.4.6 loop (Block 4.0).
 Its sitting plan orders them: MUST sittings A-C, a stop point, then LATER by setup.
 
