@@ -4307,7 +4307,10 @@ const puRead = pg => pg.evaluate(() => {
     hint: hint && vis(hint) ? { kind: hint.dataset.kind, act: pua ? pua.textContent.trim() : '', lab: pul ? pul.textContent.trim() : '',
       actPx: pua ? parseFloat(getComputedStyle(pua).fontSize) : 0, labPx: pul ? parseFloat(getComputedStyle(pul).fontSize) : 99,
       ring: ring && vis(ring) ? parseFloat(getComputedStyle(ring).getPropertyValue('--p')) : null, box: box(hint), color: getComputedStyle(pua).color } : null,
-    chip: chip && vis(chip) ? { text: chip.innerText.replace(/\s+/g, ' ').trim(), box: box(chip), px: parseFloat(getComputedStyle(chip.querySelector('.nm')).fontSize) } : null,
+    chip: chip && vis(chip) ? { text: chip.innerText.replace(/\s+/g, ' ').trim(), box: box(chip), px: parseFloat(getComputedStyle(chip.querySelector('.nm')).fontSize), on: chip.classList.contains('on'),
+      // one line: the name, the count and SELECT share one row (their vertical centres within 6 px of each other)
+      rows: new Set([...chip.querySelectorAll('.nm, b, .sel')].map(e => { const b = e.getBoundingClientRect(); return Math.round((b.top + b.bottom) / 12); })).size,
+      selPx: chip.querySelector('.sel') ? parseFloat(getComputedStyle(chip.querySelector('.sel')).fontSize) : 0 } : null,
     card: co && vis(co) ? { kind: co.dataset.kind, name: (co.querySelector('.nm') || {}).textContent, sub: ((co.querySelector('.by') || {}).textContent || '').trim(),
       px: parseFloat(getComputedStyle(co.querySelector('.nm')).fontSize), box: box(co.querySelector('.cob') || co) } : null,
     obar: ob && vis(ob) ? { left: (window.brx.engine.state().powerup.overshield || {}).left, w: ob.getBoundingClientRect().width, text: document.getElementById('svm').textContent.trim() } : null,
@@ -4363,23 +4366,29 @@ for (const view of VIEWS) for (const night of [false, true]) {
     const pg = await open(view, 'live-pu-approach', N, 2700); const r = await puWait(pg, r => r.hint, 1500); await puClose(pg, night);
     must(r.hint && r.hint.kind === 'approach' && r.hint.act === 'GET CLOSER', JSON.stringify(r.hint));
   });
-  await step(`${tag}: the station names me: ROCKETS picked up, and the held chip beside the ammo shows 2 charges`, async () => {
+  await step(`${tag}: the station names me: ROCKETS ON TRIGGER, 2 SHOTS, and the lit held chip beside the ammo shows 2 charges and SELECT on one line`, async () => {
     const pg = await open(view, 'live-pu-rockets', N, 3000);
     const r = await puWait(pg, r => r.chip && r.hint && r.hint.kind === 'granted', 2500); await shot(pg, 'rockets'); await puClose(pg, night);
-    must(r.hint && r.hint.kind === 'granted' && r.hint.act === 'ROCKETS' && r.hint.lab === 'ALT TO USE', `a weapon item says how to reach it (UX M5): ${JSON.stringify(r.hint)}`);
-    must(vclear(r.hint.box, r) && apart(r.hint.box, r.ammo), `the hint: ${JSON.stringify(r.hint.box)}`);
-    must(r.chip && r.chip.text === 'ROCKETS 2', `the held chip: ${JSON.stringify(r.chip)}`);
+    must(r.hint && r.hint.kind === 'granted' && r.hint.act === 'ROCKETS ON TRIGGER' && r.hint.lab === '2 SHOTS', `Tony 2026-09-24, straight to trigger: ${JSON.stringify(r.hint)}`);
+    must(r.hint.actPx >= 14 && r.hint.labPx >= 11, `type floors: action ${r.hint.actPx}px, label ${r.hint.labPx}px`);
+    must(inside(r.hint.box, r.frame) && vclear(r.hint.box, r) && apart(r.hint.box, r.ammo), `the hint: ${JSON.stringify(r.hint.box)}`);
+    must(r.chip && r.chip.text === 'ROCKETS 2 SELECT' && r.chip.on, `the held chip, lit (on the trigger): ${JSON.stringify(r.chip)}`);
+    must(r.chip.rows === 1 && r.chip.selPx >= 11, `the chip is ONE line, SELECT at the 11 px floor: ${JSON.stringify(r.chip)}`);
+    must(/ROCKETS/.test(r.wn || ''), `the ammo block names the heavy on the trigger: ${JSON.stringify(r.wn)}`);
     must(r.chip.px >= 11 && inside(r.chip.box, r.frame) && vclear(r.chip.box, r), `chip ${JSON.stringify(r.chip)}`);
-    must(r.chip.box.l >= r.ammo.l - 1 && r.chip.box.r <= r.ammo.r + 8 && r.chip.box.b <= r.ammo.t + 1, `the chip sits over the ammo column (a skewed box leans a few px right): chip ${JSON.stringify(r.chip.box)} ammo ${JSON.stringify(r.ammo)}`);
+    // SELECT (Tony 2026-09-24) makes the chip wider than the night ammo column, so it is held to the column's RIGHT edge and
+    // may run left over empty frame, never into the hint or the vitals (a skewed box leans a few px right)
+    must(r.chip.box.r <= r.ammo.r + 8 && r.chip.box.r >= r.ammo.r - 24 && r.chip.box.b <= r.ammo.t + 1 && apart(r.chip.box, r.hint.box), `the chip sits over the ammo column, clear of the hint: chip ${JSON.stringify(r.chip.box)} ammo ${JSON.stringify(r.ammo)} hint ${JSON.stringify(r.hint.box)}`);
   });
   await step(`${tag}: a second weapon pickup swaps: the card says RAIL GUN, REPLACES ROCKETS, and the chip follows`, async () => {
     const pg = await open(view, 'live-pu-swap', N, 4300);
     const r = await puWait(pg, r => r.card && r.card.kind === 'powerup_swap', 2500); await shot(pg, 'swap');
-    const after = await puWait(pg, x => x.chip && x.chip.text === 'RAIL GUN 2', 1000); await puClose(pg, night);
+    const after = await puWait(pg, x => x.chip && x.chip.text === 'RAIL GUN 2 SELECT', 1000); await puClose(pg, night);
     must(r.card && r.card.kind === 'powerup_swap' && r.card.name === 'RAIL GUN' && r.card.sub === 'REPLACES ROCKETS', `the card: ${JSON.stringify(r.card)}`);
     must(r.card.px >= 18 && vclear(r.card.box, r) && apart(r.card.box, r.ammo), `the card: ${JSON.stringify(r.card)}`);
-    must(after.chip && after.chip.text === 'RAIL GUN 2', `the chip: ${JSON.stringify(after.chip)}`);
-    must(r.hint && r.hint.act === 'RAIL GUN' && r.hint.lab === 'ALT TO USE', `the card says the swap, so the hint says how to use it (UX M5): ${JSON.stringify(r.hint)}`);
+    must(after.chip && after.chip.text === 'RAIL GUN 2 SELECT' && after.chip.on && after.chip.rows === 1, `the chip: ${JSON.stringify(after.chip)}`);
+    must(r.hint && r.hint.act === 'RAIL GUN ON TRIGGER' && r.hint.lab === '2 SHOTS', `the card says the swap, the hint says it is on the trigger: ${JSON.stringify(r.hint)}`);
+    must(inside(r.hint.box, r.frame) && vclear(r.hint.box, r) && apart(r.hint.box, r.ammo), `the longest ON TRIGGER hint still fits: ${JSON.stringify(r.hint.box)}`);
   });
   await step(`${tag}: a spawn announces <ITEM> AVAILABLE on the callout card in the item's colour, clear of the vitals and the ammo`, async () => {
     const pg = await open(view, 'live-pu-spawn', N, 2000);
@@ -4412,12 +4421,17 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(r.hint && r.hint.kind === 'taken' && /^ROCKETS IN 1:5\d$/.test(r.hint.act) && r.hint.lab === 'NEXT SPAWN', `the hint: ${JSON.stringify(r.hint)}`);
     must(vclear(r.hint.box, r) && apart(r.hint.box, r.ammo), `the hint: ${JSON.stringify(r.hint.box)}`);
   });
-  await step(`${tag}: both rockets fired: SWITCH WEAPON, and the ammo block still names the empty pickup in hand`, async () => {
-    const pg = await open(view, 'live-pu-empty', N, 5200); const r = await puWait(pg, r => r.hint && r.hint.kind === 'switch', 2500); await shot(pg, 'empty'); await puClose(pg, night);
-    must(r.hint && r.hint.act === 'SWITCH WEAPON' && r.hint.lab === 'ROCKETS EMPTY', `the hint: ${JSON.stringify(r.hint)}`);
-    must(!r.switchedUp, 'polish r2: no swap card over an EMPTY slot (it dims the SWITCH WEAPON hint)');
+  await step(`${tag}: both rockets fired: the phone puts the loadout weapon back on the trigger, and the hint says so briefly`, async () => {
+    const pg = await open(view, 'live-pu-empty', N, 5200); const r = await puWait(pg, r => r.hint && r.hint.kind === 'switched_back', 2500); await shot(pg, 'empty'); await puClose(pg, night);
+    must(r.hint && r.hint.act === 'ROCKETS EMPTY' && /^BACK TO \S/.test(r.hint.lab), `the hint: ${JSON.stringify(r.hint)}`);
+    must(r.hint.actPx >= 14 && r.hint.labPx >= 11 && inside(r.hint.box, r.frame) && vclear(r.hint.box, r) && apart(r.hint.box, r.ammo), `floors and room: ${JSON.stringify(r.hint)}`);
     must(!r.chip, 'the item is over: no held chip');
-    must(/ROCKETS/.test(r.wn || ''), `the weapon name: ${JSON.stringify(r.wn)}`);
+    must(!/ROCKETS/.test(r.wn || ''), `the ammo block names the loadout weapon again: ${JSON.stringify(r.wn)}`);
+  });
+  await step(`${tag}: SELECT with the rockets held: the loadout weapon back on the trigger, the chip dims and keeps its 2 charges`, async () => {
+    const pg = await open(view, 'live-pu-select', N, 6600); const r = await puWait(pg, r => r.chip && !r.chip.on, 2500); await shot(pg, 'select'); await puClose(pg, night);
+    must(r.chip && !r.chip.on && r.chip.text === 'ROCKETS 2 SELECT' && r.chip.rows === 1, `the chip, off the trigger: ${JSON.stringify(r.chip)}`);
+    must(!/ROCKETS/.test(r.wn || ''), `the ammo block names the loadout weapon: ${JSON.stringify(r.wn)}`);
   });
   await step(`${tag}: a death with an item held: the down screen shows no item, and the item is gone`, async () => {
     const pg = await open(view, 'down-pu-held', N, 4700); const r = await puRead(pg); const held = await pg.evaluate(() => window.brx.engine.state().powerup.held); await puClose(pg, night);
@@ -4437,11 +4451,10 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(vclear(r.hint.box, r), `a vitals number or label runs into the hint: hint ${JSON.stringify(r.hint.box)} parts ${JSON.stringify(r.vparts)}`);
     must(r.armorBarW == null || r.armorBarW < 1, `polish r2 M2: max_armor 0 paints no armour bar (was width:NaN%, full): ${r.armorBarW}`);
   });
-  await step(`${tag}: an Easy Reload player at a weapon station: EASY RELOAD / NO ROCKETS, one line each, type floors (UX M4)`, async () => {
+  await step(`${tag}: an Easy Reload player at a weapon station claims it like anyone (the pickup never touches ALT): HOLD STILL`, async () => {
     const pg = await open(view, 'live-pu-easy-reload', N, 2700);
     const r = await puWait(pg, r => r.hint, 1500); await shot(pg, 'easy-reload'); await puClose(pg, night);
-    must(r.hint && r.hint.kind === 'easy_reload' && r.hint.act === 'EASY RELOAD' && r.hint.lab === 'NO ROCKETS', `the hint: ${JSON.stringify(r.hint)}`);
-    must(r.hintLines.every(n => n === 1), `each line is ONE line: ${JSON.stringify(r.hintLines)}`);
+    must(r.hint && r.hint.kind === 'claiming' && r.hint.act === 'HOLD STILL' && r.hint.lab === 'ROCKETS', `the hint: ${JSON.stringify(r.hint)}`);
     must(r.hint.actPx >= 14 && r.hint.labPx >= 11 && vclear(r.hint.box, r) && apart(r.hint.box, r.ammo), `floors and room: ${JSON.stringify(r.hint)}`);
   });
 }

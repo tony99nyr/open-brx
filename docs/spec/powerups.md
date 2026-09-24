@@ -5,28 +5,47 @@ below). Tony's model: a station (a utility phone or an M5Stick) is assigned a ki
 (MC) per game. A powerup station grants an item, for example a pickup-only heavy (rockets). Contract row: A56.
 Roadmap entry it replaces: K3 in `docs/utility-roadmap.md`; the station half of S46.
 
-## The mechanism: armed at start, unlocked at the station
+## The mechanism: armed at start, straight onto the trigger
+
+Tony, 2026-09-24: "straight to trigger. id prefer trigger fires it", then "select should equip it if possible". A
+picked-up heavy (Rockets, Rail Gun) goes onto the trigger at once. The player needs no button to reach it.
 
 A mid-match config re-push to a live gun clears `spawned` and silences it for the rest of the match
-(`utility.md` §5g.6), so a pickup must never re-arm the gun. Instead:
+(`utility.md` §5g.6), so a pickup must never re-arm the gun. Instead the phone writes small mid-life frames:
 
 1. **At arm time** MC compiles the game's pickup weapon into a spare gun slot with its normal `$WEAP`: slot 2 for
-   the first powerup item, slot 3 for a second (bench 2026-09-17: slots 0-3 each take a `$WEAP` and their own
-   `$AMMO`). Its magazine and reserve start at **0**.
-2. **Locked** means two things, both already proven levers: the slot is **out of the ALT cycle**
-   (`$BMAP,1,100,0,1,99,99`, today's default, cycles 0 and 1 only), and its **magazine is empty**. A player who
-   somehow reached it could not fire it.
-3. **The grant** (the player's own phone, at the station): one `$AMMO` write for the pickup slot (the item's
-   charges as the magazine, reserve 0), then one `$BMAP` write that puts the slot into the ALT cycle
-   (`$BMAP,1,100,0,1,2,99`). Both are small mid-life writes, like recoil's and the trigger hold's; neither touches
-   the config.
-4. **The end of an item**: when its magazine reaches 0, or at the player's death, the phone writes the old ALT
-   cycle back (`$BMAP,1,100,0,1,99,99`) and, if the pickup slot is active, the HUD tells the player to switch
-   (the gun, not the phone, owns the active slot).
+   the first powerup weapon, slot 3 for a second. Every spawn and revive writes `$AMMO,<slot>,0,0,1` for it, so the
+   slot is empty. The ALT `$BMAP` row is not touched: a heavy is never in the ALT cycle.
+2. **The grant.** The phone saves the slot the trigger is on and its magazine and reserve (from its `$ALCD`
+   account). Then it re-sends the pickup slot's head `$WEAP` verbatim, which equips it on the trigger (bench
+   2026-09-24), then `$AMMO,<slot>,<charges>,0,1,*`. The grant writes no `$BMAP`, so an Easy Reload player is granted
+   like anyone.
+3. **A second heavy swaps.** The phone zeroes the old slot's `$AMMO`, then writes the new slot's `$WEAP` and `$AMMO`.
+   The switch-back target stays the loadout weapon. The HUD says RAIL GUN, REPLACES ROCKETS.
+4. **SELECT toggles** (`$BUT,3,1`, a press; the release, which `$PHONE` also sends, never acts). On the heavy, SELECT
+   saves its charges left and re-sends the saved weapon's `$WEAP` plus its saved `$AMMO`. On the loadout weapon, SELECT
+   saves that weapon's counts and re-sends the heavy's `$WEAP` plus `$AMMO` with its charges left. The phone does the
+   equip, because a native `$BMAP` fires a slot and never equips it. SELECT stays at the head's `$BMAP,3,98`. SELECT is
+   ignored with no heavy held, while dead, stunned or reconciling, while an ALT swap is pending, and inside
+   `PU_SELECT_DEBOUNCE_MS` (400) of the last one.
+5. **ALT keeps its job.** If ALT moves the trigger off the heavy, the heavy keeps its charges and SELECT brings it
+   back. The phone tracks the trigger's slot from `$ALCD`; melee's slot 4 does not count as leaving the heavy.
+6. **The end, when the heavy's magazine reaches 0** (its `$ALCD`). The phone re-sends the saved slot's head `$WEAP`,
+   then `$AMMO` with the saved magazine and reserve. The HUD shows ROCKETS EMPTY, BACK TO <WEAPON> briefly.
+7. **A death with the heavy held.** The item is lost (`LOST_AT_DEATH`). Compile's revive re-empties the pickup slot.
+   The trigger's slot after `$SPAWN` is unproven, so after the revive burst the phone re-sends slot 0's head `$WEAP`
+   and the burst's own `$AMMO,0,…` row (a safe re-equip). An operator respawn of a live player does the same.
+8. **A reconcile** (a BLE relink) re-arms from the spawn `$AMMO` rows, which empty the pickup slot, so the phone then
+   writes the held heavy's charges back.
+9. **Persisted:** the held item, its saved switch-back slot and counts, the trigger's slot, and a pending slot-0
+   re-equip. An app restart mid-item still switches back correctly.
 
-**Fallback** if the bench shows the spare slot is unusable: the grant writes the item into slot 1 mid-life
-(`$WEAP,1,…` then `$AMMO`, bench-proven 2026-09-17, S42) and restores the loadout's secondary at the end. It
-costs the player their secondary while the item lasts.
+The HUD's grant hint is `<ITEM> ON TRIGGER` with the shots (for example 2 SHOTS). The held chip beside the ammo shows
+the heavy, its charges and SELECT on one line, lit while the heavy is on the trigger. Everything stays behind the
+powerups flag. The overshield is unchanged by this section.
+
+**Decided by the lead, 2026-09-24, then overridden the same day:** a first draft blocked ALT (`$BMAP,1,98`) while the
+heavy was on the trigger. Tony's SELECT decision dropped the block: ALT keeps its normal job.
 
 ## Bench gate (Sitting A, MUST, before the flag turns on)
 
@@ -47,6 +66,11 @@ costs the player their secondary while the item lasts.
    iPhone) against each station type (phone station, StickS3). It sets `POWERUP_RSSI_DBM` per station kind and
    decides whether a per-phone offset is needed. It also measures the claim latency (in range to TAKEN on the
    station).
+9. **The trigger flow (Tony, 2026-09-24):** (a) does a mid-life `$WEAP` re-send reset per-weapon state beyond ammo
+   (heat, the swap delay)? (b) Which slot is on the trigger after a `$SPAWN`, with the heavy on it at the death? (The
+   phone re-equips slot 0 either way.) (c) Does the gun report `$BUT,3,1` while SELECT is mapped `$BMAP,3,98`
+   (blocked)? If it does not, SELECT needs a direct map (for example `$BMAP,3,<a spare fn>`) that the gun reports but
+   that fires nothing, and this section changes. (d) The flow end to end: bench-2026-09-24 step 3.4.
 
 ## Bench 2026-09-24, Sitting A 3.3 (brx2, Tactix-FE30): what it changed
 
@@ -135,8 +159,8 @@ swap and you would only have 1."
 
 - **Weapon pickups** (Rockets, Rail Gun, later the other heavies) share ONE pickup-weapon holding. Taking a second
   weapon SWAPS: the new one replaces the old, which is gone (not dropped for someone else; that is an idea for
-  later). On the gun: zero the old slot's `$AMMO`, write the ALT cycle with the new slot, `$AMMO` the new slot with
-  its charges. The HUD says it on the callout card: RAIL GUN replaces ROCKETS. **Bench 2026-09-24, measured: the
+  later). On the gun: zero the old slot's `$AMMO`, then the new slot's head `$WEAP` and its `$AMMO` with the charges
+  (the mechanism above). The HUD says it on the callout card: RAIL GUN replaces ROCKETS. **Bench 2026-09-24, measured: the
   pickup equips straight onto the trigger, with no extra write.** A mid-life `$WEAP,<slot>,…` for the new weapon
   plus its `$AMMO` write, sent in that order, fires it on the very next trigger pull; a mid-life `$WEAP` write
   alone, with no `$AMMO` sent, also equips the weapon on the trigger. `$AMMO` alone never switches the trigger's

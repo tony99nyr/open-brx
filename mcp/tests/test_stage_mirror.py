@@ -1497,8 +1497,12 @@ KNOWN_UNMIRRORED = {
     # below), and the stage models neither. The gun-facing writes (`_puGrantWeapon`/`_puGrantShield`/`_puEnd`) are the
     # part to port, as a hand-driven stage button, once Sitting A has proved the spare slot and the `$BMAP` cycle.
     "_puReset", "_puItems", "_puElapsed", "_puAdvertOf", "_puClaimable", "_puNextInMs", "_puMedian", "_puThreshold",
-    "_puStation", "_puAltRestore", "_puAltWith", "_altCycle", "_nextAltSlot", "_puObserve", "_puClaimTick",
-    "_puTakerCheck", "_puAltBlocked", "_puPoolsMoving", "_puTick", "_puGrantWeapon", "_puGrantShield", "_puAmmo", "_puEnd", "_puShieldFrame", "_puDeath",
+    "_puStation", "_altCycle", "_nextAltSlot", "_puObserve", "_puClaimTick",
+    "_puTakerCheck", "_puPoolsMoving", "_puTick", "_puGrantWeapon", "_puGrantShield", "_puAmmo", "_puEnd", "_puShieldFrame", "_puDeath",
+    # Tony 2026-09-24, "straight to trigger" + "select should equip it": the heavy goes onto the trigger with its head
+    # `$WEAP` re-sent, SELECT toggles it, and the empty magazine / a death / a reconcile hand the trigger back. All of it
+    # hangs off a held item, which only a powerup station's grant (above) creates, so it is unportable for the same reason.
+    "_puHeadWeap", "_puOnHeavy", "_puLoadoutSlot", "_puCounts", "_puEquip", "_puSelectPressed", "_puRevive", "_puReconciled",
     "powerupView",
     # S42 (2026-09-17): node-driven recoil. Every one of these reads `weaponRow(id).recoil` off the
     # CATALOG (`_activeWeaponId` -> `this.catalog`) -- and `weaponRow`/`catalog` are already pinned

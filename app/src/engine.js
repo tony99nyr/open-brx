@@ -438,7 +438,7 @@ export const RECOIL_REF_DMG = 8;
 // TRIGGER_NO_FIRE_MS would have been a coincidence, not a reason.
 export const ACC_ECHO_MS = 700;
 // $BUT ids (protocol §$BUT — `$BUT,<id>,<state>`; state 1 press / 0 release).
-const BTN_TRIGGER = 0, BTN_ALT = 1, BTN_RELOAD = 2;
+const BTN_TRIGGER = 0, BTN_ALT = 1, BTN_RELOAD = 2, BTN_SELECT = 3;
 const TEAM_KEY = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green' };
 // A16.5 (2026-09-09): outermost -> innermost, the order BRX depletes -- shield goes, then armour, then
 // health. Mirrors `poolgauge.py`'s `READOUT_POOL_INWARD`; kept as its own constant here too rather than
@@ -541,7 +541,10 @@ export const PU_WEAPON_SWAPS = true;        // lead 2026-09-24: a second WEAPON 
 export const OVERSHIELD_AMOUNT = 75;        // the fallback when an item carries no `amount` (MC normally expands it)
 export const OVERSHIELD_DECAY_PER_S = 0;    // Tony: no decay. Not read yet: a non-zero value needs a decay writer first
 // `charges` falls back to the weapon's own catalogue magazine (`clip`) when the item carries none: the fifth default.
-export const PU_ALT_DEFAULT = '$BMAP,1,100,0,1,99,99,*';   // today's ALT cycle (slots 0 and 1), when the head carries no ALT row
+// Tony 2026-09-24: "straight to trigger. id prefer trigger fires it", then "select should equip it if possible". A mid-life
+// `$WEAP,<slot>,…` equips that slot on the trigger at once (bench 2026-09-24, powerups.md "Sitting A 3.3"), so the phone
+// equips the heavy itself and no `$BMAP` is ever written: ALT keeps its job, SELECT stays at the head's `$BMAP,3,98`.
+export const PU_SELECT_DEBOUNCE_MS = 400;   // a second SELECT press inside this is the same press (a double press toggles once)
 export const PU_ANNOUNCE_MS = 2400;         // the spawn card's hold, and the gap between two announcements that land together
 export const PU_ANNOUNCE_LATE_MS = 5000;    // a spawn noticed later than this (a frozen webview) is not announced
 export const PU_READY_MS = 2500;            // how long the station hint names the item after a grant
@@ -962,9 +965,10 @@ export class Engine {
         // T2-B item 2: a benched player who force-closes must come back SITTING OUT, not to a normal
         // kit screen that lets them browse/ready while MC still thinks they are parked.
         standby: this.standby,
-        // A56: an app restart mid-match must still end a held item (its death / empty write) and keep the overshield out of
-        // the S29 refill's way.
-        pu: this._puHeld || this._overshield ? { held: this._puHeld, overshield: this._overshield, seen: this._puSeen } : null,
+        // A56: an app restart mid-match must still end a held item (the switch-back needs `held.back`, the saved weapon and its
+        // counts, and `held.trig`, the slot on the trigger), re-equip slot 0 after a death with a heavy held, and keep the
+        // overshield out of the S29 refill's way.
+        pu: this._puHeld || this._overshield || this._puReequip ? { held: this._puHeld, overshield: this._overshield, seen: this._puSeen, reequip: !!this._puReequip } : null,
       }));
     } catch (_) { /* ignore */ }
   }
@@ -982,7 +986,7 @@ export class Engine {
         catalog: s.catalog || null, policy: s.policy || null, game: s.game || null, briefSeen: !!s.briefSeen,
         probeSent: !!s.probeSent, standby: !!s.standby,
         gunLocked: s.gunLocked && s.gunLocked.match_id === s.matchId && s.phase === 'live' ? s.gunLocked : null });
-      if (s.pu && typeof s.pu === 'object') { this._puHeld = s.pu.held || null; this._overshield = s.pu.overshield || null; this._puSeen = s.pu.seen || {}; }   // A56
+      if (s.pu && typeof s.pu === 'object') { this._puHeld = s.pu.held || null; this._overshield = s.pu.overshield || null; this._puSeen = s.pu.seen || {}; this._puReequip = !!s.pu.reequip; }   // A56
       // Phase is re-derived when the gun reconnects (resumeSchedule); until then we are idle.
       this._pendingPhase = s.phase;
     } catch (_) { /* ignore */ }
@@ -1226,8 +1230,7 @@ export class Engine {
   get goLiveT() { return this.start ? this.start.go_live_t : null; }
   get endT() { return (this.goLiveT && this.timeLimitMs) ? this.goLiveT + this.timeLimitMs : null; }
   get weaponName() {
-    if (this._puHeld && this.activeSlot === this._puHeld.slot) return this._puHeld.name;   // A56: the pickup slot is in hand
-    if (this._puEmptied && this.activeSlot === this._puEmptied.slot) return this._puEmptied.name;   // ...and still in hand once it ran dry
+    if (this._puOnHeavy()) return this._puHeld.name;   // A56: the heavy is on the trigger
     const ws = this.player && this.player.loadout && this.player.loadout.weapons;
     const w = ws && (ws[this.activeSlot] || ws[0]);
     if (!w) return 'PRIMARY';
@@ -3354,7 +3357,8 @@ export class Engine {
       // A swap the gun never confirmed with a shot: past the assumed window we TAKE the swap as done (the real
       // duration has never been timed — FOLLOWUPS F4; the next $ALCD corrects activeSlot if the gun disagrees).
       if (this.switching && now - this.switching.at > this.switchWindowMs()) {
-        const to = this._nextAltSlot(this.switching.from); this.switching = null; this.activeSlot = to;   // A56: a held item joins the cycle
+        const to = this._nextAltSlot(this.switching.from); this.switching = null; this.activeSlot = to;
+        if (this._puHeld) this._puHeld.trig = to;   // A56: ALT took the trigger off the heavy (the heavy keeps its charges)
         this._recoilArm('swap (assumed)');   // S42: the new slot's weapon gets its own profile, at its ceiling
         this.moment = { kind: 'switched', at: now, data: { slot: to, assumed: true } };
         this.log(`swap to slot ${to} assumed after ${this.switchWindowMs()}ms (no shot yet)`, 'li');
@@ -3400,6 +3404,7 @@ export class Engine {
     this._lastTeamRepaintAt = this.now();   // F68: as at spawn — the respawn flash is this life's first paint
     this._prevAmmo = {}; this._prevReserve = {}; this._shotAcct = {}; this.activeSlot = 0;   // both maps: a stun before the first shot of a NEW life must snapshot this life's reserve, not the last one's (polish review 2026-09-11)   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
     this._accuracyOffset = 0; this._nativeAccUntil = 0; this._nativeAccWhy = null;   // the revive's `$SPAWN` clears every `$TMP`
+    this._puRevive(revive);   // A56: a heavy held at the death is gone; slot 0 is re-equipped behind the revive burst
     this._recoilArm('revive');   // S42: a respawn resets to the weapon's ceiling
     this._poisonClear('respawn'); this._smokeClear('respawn'); this.gunAcc = null; this._accZeroAt = null; this._smokeHirAt = null; this._dotEcho = null; this._dotKill = null;   // S16/S53: a new life carries neither
     this._resetLifeLedger();   // S56: nor does the "what hit me" ledger
@@ -4787,7 +4792,7 @@ export class Engine {
   // UNLOCKED here with small mid-life writes -- never a config re-push, which would clear `spawned` (utility.md §5g.6).
   /** Every powerup state field back to empty: a new match, a new config, a reset. */
   _puReset() {
-    this._puHeld = null;        // the weapon item in hand: {station, weapon_id, slot, charges, left, name, color, at}
+    this._puHeld = null;        // the weapon item: {station, weapon_id, slot, charges, left, name, color, at, back: {slot, mag, res}, trig}
     this._overshield = null;    // {station, base, amount, name, color, at}: the shield at the grant is `base`
     this._puClaim = null;       // {station, since, readyAt}: standing in range of a station whose item is there
     this._puReadyFor = null;    // {station, at}: the last station this phone was claim_ready for (the grant needs it)
@@ -4795,7 +4800,9 @@ export class Engine {
     this._puAdvert = {};        // station id -> {state, value, taker, at}: the station's own last advert
     this._puSeen = {};          // station id -> the last spawn index the announcer has dealt with
     this._puQueue = [];         // announcements that landed together, one card at a time
-    this._puEmptied = null;     // {slot, name, at}: a weapon item ran dry while its slot was in hand
+    this._puBack = null;        // {name, to, at}: a weapon item ran dry and the saved weapon went back on the trigger
+    this._puReequip = false;    // a heavy was held at the death: re-equip slot 0 behind the revive burst
+    this._puSelectAt = 0;       // now() of the last SELECT that acted (the debounce)
     this.powerupSpawn = null;   // {name, color, at, station}: the "<ITEM> AVAILABLE" card (presentation only)
     this.powerupGrant = null;   // {name, color, kind, at, replaced?}: the grant, for the HUD's READY / swap card
   }
@@ -4846,20 +4853,43 @@ export class Engine {
     const held = this._puClaim ? mine.find(e => e.id === this._puClaim.station) : null;
     return held || mine.sort((a, b) => this._puMedian(b) - this._puMedian(a))[0] || null;
   }
-  /** The ALT row the head wrote, which is what an item's end writes back (98 for one weapon, 97 for Easy Reload). */
-  _puAltRestore() {
-    const head = (this.frames && this.frames.head) || [];
-    return head.find(f => typeof f === 'string' && f.startsWith('$BMAP,1,')) || PU_ALT_DEFAULT;
-  }
-  /** The ALT cycle with the pickup slot in it. One loadout weapon: slot 1 is empty, so the cycle is 0 -> slot. */
-  _puAltWith(slot) { return this._slotCount() >= 2 ? `$BMAP,1,100,0,1,${slot},99,*` : `$BMAP,1,100,0,${slot},99,99,*`; }
-  /** The ALT cycle as the gun runs it right now (for an ASSUMED swap and the HUD's SWITCHING target). */
-  _altCycle() {
-    const c = this._slotCount() >= 2 ? [0, 1] : [0];
-    if (this._puHeld && !c.includes(this._puHeld.slot)) c.push(this._puHeld.slot);
-    return c;
-  }
+  /** The ALT cycle as the gun runs it right now (for an ASSUMED swap and the HUD's SWITCHING target). A heavy is never in
+   *  it: the phone puts the heavy on the trigger with its `$WEAP` and never rewrites ALT (Tony, 2026-09-24). */
+  _altCycle() { return this._slotCount() >= 2 ? [0, 1] : [0]; }
   _nextAltSlot(from) { const c = this._altCycle(), i = c.indexOf(from); return i < 0 ? c[0] : c[(i + 1) % c.length]; }
+  /** The head's own `$WEAP` row for `slot`, verbatim, or null. Re-sending it mid-life equips that slot on the trigger
+   *  at once (and refills it, so an `$AMMO` always follows): bench 2026-09-24, powerups.md "Sitting A 3.3". */
+  _puHeadWeap(slot) {
+    const head = (this.frames && this.frames.head) || [];
+    return head.find(f => typeof f === 'string' && f.startsWith(`$WEAP,${slot},`)) || null;
+  }
+  /** Is the held heavy on the trigger? `held.trig` is fed by `$ALCD` for slots 0-3 and by the node's own equips;
+   *  melee's slot 4 never moves it (it is its own button, not the trigger). PURE. */
+  _puOnHeavy() { const h = this._puHeld; return !!(h && h.trig === h.slot); }
+  /** The loadout slot the trigger is on, for the switch-back target: 0 or 1, else 0 (slot 4 is melee). PURE. */
+  _puLoadoutSlot(s) { return s === 0 || (s === 1 && this._slotCount() >= 2) ? s : 0; }
+  /** [mag, reserve] the gun holds in `slot` now: the node's magazine account (`_liveAmmo`), else the spawn row. PURE. */
+  _puCounts(slot) {
+    const l = this._liveAmmo()[slot]; if (l) return l;
+    const m = this._acctLive(slot), r = this._prevReserve[slot];
+    return [m != null ? m : 0, r != null ? r : 0];
+  }
+  /** Put `slot` on the trigger: `pre` (a swap's zeroing), its head `$WEAP`, then `$AMMO` with the counts it must hold.
+   *  The `$WEAP` refills the slot, so the `$AMMO` is what makes the counts right; both go in one write, in that order. */
+  _puEquip(slot, mag, res, why, pre = []) {
+    const weap = this._puHeadWeap(slot);
+    if (!weap) { this.log(`powerup: the head carries no $WEAP for slot ${slot}; nothing equipped (${why})`, 'le'); return false; }
+    this._acctWrote(slot, mag, res);   // F259: the gun's `$WEAP` reset and our `$AMMO` echo are bookkeeping, never a shot
+    this._prevAmmo[slot] = mag; this._prevReserve[slot] = res;   // what the slot holds now, should the echo never come back
+    this._write([...pre, weap, `$AMMO,${slot},${mag},${res},1,*`], why);
+    this._holdAccuracyWrites('powerup equip');
+    if (this.reloading) this._endReload('swapped');
+    this.switching = null; this.activeSlot = slot;
+    this._publishAmmo(slot, mag, res);   // the ammo block shows what is on the trigger now, before the gun's first `$ALCD`
+    if (this._puHeld) this._puHeld.trig = slot;
+    this._recoilArm('powerup equip');   // S42: as a confirmed ALT swap, the slot's own profile
+    return true;
+  }
   /** Called from `setStations`: remember each powerup station's advert (the "taken early" relay reaches phones this way). */
   _puObserve(now) {
     for (const e of this.stations) {
@@ -4892,16 +4922,12 @@ export class Engine {
     const c = this._puClaim && this._puClaim.station === st.id ? this._puClaim : null;
     const med = this._puMedian(st), thr = this._puThreshold(st);
     const inRange = Number.isFinite(med) && (c ? med >= thr - POWERUP_EXIT_DB : med >= thr);   // enter at the threshold, leave 3 dB under it
-    if (!inRange || !this._puClaimable(st.id, items[st.id], now) || this._puAltBlocked(items[st.id])) { this._puClaim = null; return; }
+    if (!inRange || !this._puClaimable(st.id, items[st.id], now)) { this._puClaim = null; return; }
     if (!c) this._puClaim = { station: st.id, since: now, readyAt: null };
     const cl = this._puClaim;
     if (cl.readyAt == null && now - cl.since >= POWERUP_DWELL_MS) { cl.readyAt = now; this.log(`powerup: claim ready at station ${st.id}`, 'li'); }
     if (cl.readyAt != null) this._puReadyFor = { station: st.id, at: now };
   }
-  /** Easy Reload is an accessibility feature (Tony's daughter cannot work the reload lever): it keeps ALT on reload,
-   *  and a weapon grant rewrites the ALT row. So an Easy Reload player never claims a WEAPON item; an overshield
-   *  touches no button and is still taken. Filed for Tony (S58): a side button could select the item instead. */
-  _puAltBlocked(item) { return !!(item && item.kind === 'weapon' && this._easyReload()); }
   /** Polish M3: the overshield is an ABSOLUTE `$LIFE` set, so it must not land on pools that are still moving: an unechoed
    *  poison tick (`_dotEcho`), a `$HIR` or `$HP` in the last OVERSHIELD_POOL_QUIET_MS, or a gun already at 0 health. */
   _puPoolsMoving(now) {
@@ -4951,27 +4977,30 @@ export class Engine {
     } else if (this.powerupSpawn && !this._puQueue.length && now - this.powerupSpawn.at > PU_ANNOUNCE_MS + 1000) this.powerupSpawn = null;
     if (this.powerupGrant && now - this.powerupGrant.at > PU_READY_MS + 1000) this.powerupGrant = null;
   }
-  /** A weapon item: `$AMMO` for its armed spare slot, then the ALT cycle that reaches it. A second weapon item SWAPS
-   *  the first out (PU_WEAPON_SWAPS): the old slot is zeroed, then the cycle names the new slot, then its charges. */
+  /** A weapon item goes STRAIGHT ONTO THE TRIGGER (Tony, 2026-09-24): save the slot the trigger is on and its counts
+   *  (the switch-back target), then the pickup slot's head `$WEAP` and `$AMMO` with the charges. No ALT or SELECT write,
+   *  so an Easy Reload player is granted like anyone. A second weapon item SWAPS (PU_WEAPON_SWAPS): the old slot is
+   *  zeroed first, and the switch-back target stays the loadout weapon. */
   _puGrantWeapon(id, item, now) {
     const armed = ((this.config && this.config.powerups) || []).find(p => p && p.weapon_id === item.weapon_id);
     if (!armed || !Number.isFinite(+armed.slot)) { this.log(`powerup: ${item.weapon_id} has no armed slot in this game (config.powerups)`, 'le'); return false; }
     const slot = +armed.slot;
+    if (!this._puHeadWeap(slot)) { this.log(`powerup: the head carries no $WEAP for slot ${slot} (${item.weapon_id})`, 'le'); return false; }
     const row = this.weaponRow(item.weapon_id);
     const charges = Number.isFinite(+item.charges) && +item.charges > 0 ? +item.charges : (row && row.clip > 0 ? row.clip : 1);
     const old = this._puHeld;
     if (old && !PU_WEAPON_SWAPS) { this.log(`powerup: already holding ${old.name}`, 'li'); return false; }
-    // First grant (powerups.md step 3): the charges, then the cycle. A swap (lead 2026-09-24): the old slot zeroed,
-    // the cycle naming the new slot, then the new charges -- so the old item is unreachable before the new one lands.
-    const ammo = `$AMMO,${slot},${charges},${PU_RESERVE},1,*`, alt = this._puAltWith(slot);
-    const frames = !old ? [ammo, alt] : old.slot !== slot ? [`$AMMO,${old.slot},0,0,1,*`, alt, ammo] : [alt, ammo];
-    if (old && old.slot !== slot) this._acctWrote(old.slot, 0, 0);
-    this._acctWrote(slot, charges, PU_RESERVE);   // F259: the gun's echo of this write is bookkeeping, never a shot
-    this._write(frames, `powerup: ${item.name} (${charges} in slot ${slot})${old ? ` replaces ${old.name}` : ''}`);
-    this._puEmptied = null;
+    // The switch-back target. A swap keeps the first grant's, unless the trigger has since gone back to a loadout
+    // weapon (ALT or SELECT), whose counts are newer.
+    let back = old && old.trig === old.slot && old.back ? old.back : null;
+    if (!back) { const t = this._puLoadoutSlot(old ? old.trig : this.activeSlot), [mag, res] = this._puCounts(t); back = { slot: t, mag, res }; }
+    const pre = old && old.slot !== slot ? [`$AMMO,${old.slot},0,0,1,*`] : [];
+    if (pre.length) this._acctWrote(old.slot, 0, 0);
     const name = String(item.name || item.weapon_id).toUpperCase();
-    this._puHeld = { station: id, weapon_id: item.weapon_id, slot, charges, left: charges, name, color: item.color || null, at: now };
-    this.powerupGrant = { kind: 'weapon', name, color: item.color || null, at: now, ...(old ? { replaced: old.name } : {}) };
+    this._puHeld = { station: id, weapon_id: item.weapon_id, slot, charges, left: charges, name, color: item.color || null, at: now, back, trig: back.slot };
+    this._puBack = null;
+    this._puEquip(slot, charges, PU_RESERVE, `powerup: ${name} on the trigger (${charges} in slot ${slot}; back to slot ${back.slot} at ${back.mag}/${back.res})${old ? ` replaces ${old.name}` : ''}`, pre);
+    this.powerupGrant = { kind: 'weapon', name, color: item.color || null, charges, at: now, ...(old ? { replaced: old.name } : {}) };
     return true;
   }
   /** The overshield: the shield set to its current value plus `amount`, past the preset's max (`$LIFE` mode 2 is an
@@ -4988,44 +5017,92 @@ export class Engine {
     this.powerupGrant = { kind: 'overshield', name, color: item.color || null, at: now };
     return true;
   }
-  /** `$ALCD` for the held item's slot: its magazine. Empty ends the item. */
+  /** Every `$ALCD` that reached the ordinary path: the slot is the trigger's (melee's slot 4 is not, and an unheld pickup
+   *  slot is only our own zeroing echo). The heavy's own magazine reaching 0 ends the item. */
   _puAmmo(slot, mag) {
-    const h = this._puHeld; if (!h || slot !== h.slot) return;
+    const h = this._puHeld; if (!h || slot === 4 || (slot >= 2 && slot !== h.slot)) return null;
+    h.trig = slot;
+    if (slot !== h.slot) return null;
     h.left = mag;
-    if (mag <= 0) this._puEnd('empty');
+    if (mag > 0) return null;
+    this._puEnd('empty');
+    return this.activeSlot;   // the slot the switch-back just put on the trigger: `_onAmmo` must not move it back
   }
-  /** The end of a weapon item: the old ALT cycle back, and (at a death) the slot zeroed so no charge carries over. */
+  /** SELECT (`$BUT,3,1`) with a heavy held TOGGLES the trigger (Tony, 2026-09-24: "select should equip it if possible"):
+   *  on the heavy -> the saved weapon with its saved counts; on a loadout weapon -> the heavy with its charges left, the
+   *  weapon's counts saved first. The PHONE equips (a native `$BMAP` fires a slot, never equips it), so SELECT stays at
+   *  the head's `$BMAP,3,98` and nothing but `$WEAP` + `$AMMO` is written. */
+  _puSelectPressed() {
+    const h = this._puHeld; if (!h) return;
+    if (this.phase !== 'live' || !this.alive || this.tutorial || !this.bleUp || this.stunned || this.reconciling || this.resync || this.switching) {
+      this.log('SELECT ignored (dead, stunned, reconciling or a swap pending)', 'li'); return;
+    }
+    const now = this.now();
+    if (this._puSelectAt && now - this._puSelectAt < PU_SELECT_DEBOUNCE_MS) return;
+    this._puSelectAt = now;
+    if (this._puOnHeavy()) {
+      h.left = this._puCounts(h.slot)[0];
+      const b = h.back || { slot: 0, mag: this._puCounts(0)[0], res: this._puCounts(0)[1] };
+      this._puEquip(b.slot, b.mag, b.res, `SELECT: ${h.name} off the trigger (${h.left} left), slot ${b.slot} back at ${b.mag}/${b.res}`);
+    } else {
+      const t = this._puLoadoutSlot(h.trig), [mag, res] = this._puCounts(t);
+      h.back = { slot: t, mag, res };
+      this._puEquip(h.slot, h.left, PU_RESERVE, `SELECT: ${h.name} on the trigger (${h.left} left), slot ${t} saved at ${mag}/${res}`);
+    }
+    this._save();
+  }
+  /** The end of a weapon item. Empty: the saved weapon back on the trigger with its saved counts (`$WEAP` then `$AMMO`),
+   *  and the HUD says so briefly. Death: nothing now (compile's revive re-empties the pickup slot); `_puRevive`
+   *  re-equips slot 0 behind the revive burst, since the trigger slot after `$SPAWN` is unproven. */
   _puEnd(why) {
     const h = this._puHeld; if (!h) return;
     this._puHeld = null;
-    const frames = [this._puAltRestore()];
-    if (why === 'death' && PU_LOST_AT_DEATH) frames.push(`$AMMO,${h.slot},0,0,1,*`);
-    this._write(frames, `powerup: ${h.name} over (${why})`);
-    if (why === 'empty' && this.activeSlot === h.slot) this._puEmptied = { slot: h.slot, name: h.name, at: this.now() };
+    if (why === 'death' && PU_LOST_AT_DEATH) { this._puReequip = true; this.log(`powerup: ${h.name} lost at the death`, 'li'); this._save(); return; }
+    const b = h.back || { slot: 0, mag: this._puCounts(0)[0], res: this._puCounts(0)[1] };
+    this._puEquip(b.slot, b.mag, b.res, `powerup: ${h.name} over (${why}), slot ${b.slot} back on the trigger at ${b.mag}/${b.res}`);
+    this._puBack = { name: h.name, to: this.weaponName, at: this.now() };
     this._save();
+  }
+  /** Death: a weapon item's charges are lost, and the overshield is gone. */
+  _puDeath() {
+    if (this._puHeld) this._puEnd('death');
+    this._overshield = null; this._puBack = null;
+  }
+  /** `_revive`, after its burst: an item still held (an operator respawn of a LIVE player skips `_death`) is lost the same
+   *  way, and slot 0 is re-equipped with its head `$WEAP` and the burst's own `$AMMO,0,…` (a safe re-equip). */
+  _puRevive(burst) {
+    if (this._puHeld) { this._puHeld = null; this._puReequip = true; }
+    if (!this._puReequip) return;
+    this._puReequip = false;
+    const row = (burst || []).find(f => typeof f === 'string' && f.startsWith('$AMMO,0,')) || ((this.frames && this.frames.spawn) || []).find(f => f.startsWith('$AMMO,0,'));
+    const t = row ? row.split(',') : null;
+    if (t) this._puEquip(0, +t[2] || 0, +t[3] || 0, 'powerup: slot 0 re-equipped after the revive');
+    this._save();
+  }
+  /** The reconcile re-arm writes the spawn `$AMMO` rows, which empty the pickup slots: a held heavy gets its charges back. */
+  _puReconciled() {
+    const h = this._puHeld; if (!h) return;
+    this._acctWrote(h.slot, h.left, PU_RESERVE);
+    this._write([`$AMMO,${h.slot},${h.left},${PU_RESERVE},1,*`], `reconcile: ${h.name} keeps its ${h.left}`);
   }
   /** `$HP`: the overshield is gone once the shield is back to where it started (a stale pre-grant frame excepted). */
   _puShieldFrame(shield) {
     const o = this._overshield; if (!o) return;
     if (shield < o.base || (shield <= o.base && this.now() - o.at > OVERSHIELD_ECHO_MS)) { this._overshield = null; this.log(`powerup: ${o.name} gone`, 'li'); }
   }
-  /** Death: a weapon item's charges are lost, and the overshield is gone. */
-  _puDeath() {
-    if (this._puHeld) this._puEnd('death');
-    this._overshield = null; this._puEmptied = null;
-  }
   /** The HUD's powerup view, or null when the game has no powerup items (the inert case). PURE. */
   powerupView(now = this.now()) {
     const items = this._puItems(); if (!items) return null;
     const h = this._puHeld, o = this._overshield;
-    const held = h ? { name: h.name, color: h.color, weapon_id: h.weapon_id, slot: h.slot, charges: h.charges, left: h.left, active: this.activeSlot === h.slot } : null;
+    const held = h ? { name: h.name, color: h.color, weapon_id: h.weapon_id, slot: h.slot, charges: h.charges, left: h.left, active: this._puOnHeavy(), back: h.back ? { ...h.back } : null } : null;
     const overshield = o ? { name: o.name, color: o.color, amount: o.amount, left: Math.max(0, Math.min(o.amount, this.shield - o.base)), base: o.base } : null;
     let hint = null;
     if (this.phase === 'live' && this.alive) {
       const st = this._puStation(items), g = this.powerupGrant, cl = this._puClaim;
       const nameOf = item => String(item.name || '').toUpperCase();
-      if (this._puEmptied && this.activeSlot === this._puEmptied.slot) hint = { kind: 'switch', name: this._puEmptied.name, color: null };
-      else if (g && now - g.at < PU_READY_MS) hint = { kind: 'granted', name: g.name, color: g.color, itemKind: g.kind, ...(g.replaced ? { replaced: g.replaced } : {}) };
+      const b = this._puBack;
+      if (b && now - b.at < PU_READY_MS) hint = { kind: 'switched_back', name: b.name, to: b.to, color: null };
+      else if (g && now - g.at < PU_READY_MS) hint = { kind: 'granted', name: g.name, color: g.color, itemKind: g.kind, ...(g.charges != null ? { charges: g.charges } : {}), ...(g.replaced ? { replaced: g.replaced } : {}) };
       else if (cl && items[cl.station]) {
         const item = items[cl.station], base = { name: nameOf(item), color: item.color || null, station: cl.station };
         hint = cl.readyAt != null && now - cl.readyAt >= POWERUP_NO_ANSWER_MS ? { kind: 'no_answer', ...base }
@@ -5034,8 +5111,7 @@ export class Engine {
         const item = items[st.id], base = { name: nameOf(item), color: item.color || null, station: st.id };
         const med = this._puMedian(st), near = Number.isFinite(med) && med >= this._puThreshold(st) - PU_NEAR_DB;
         const a = this._puAdvertOf(st.id, now), me = this.player ? this.player.player_num : null;
-        if (near && this._puClaimable(st.id, item, now) && this._puAltBlocked(item)) hint = { kind: 'easy_reload', ...base };
-        else if (near && this._puClaimable(st.id, item, now)) hint = { kind: 'approach', ...base };
+        if (near && this._puClaimable(st.id, item, now)) hint = { kind: 'approach', ...base };
         else if (near && a && a.state === 0 && a.taker && a.taker !== me) hint = { kind: 'taken_by', ...base, by: String(this.nameOf(a.taker) || `PLAYER ${a.taker}`).toUpperCase(), nextInMs: this._puNextInMs(item, now) };
         else if (near) hint = { kind: 'taken', ...base, nextInMs: this._puNextInMs(item, now) };
       }
@@ -5399,6 +5475,7 @@ export class Engine {
       if (id === BTN_ALT) this._altPressed();
       else if (id === BTN_RELOAD) this._reloadPulled();
       else if (id === BTN_TRIGGER) { this._triggerPulled(); this._heatLockPress(); this._awaitShot(); }   // a DEAD gun still reports the pull (bench 2026-09-04): the station-revive gate
+      else if (id === BTN_SELECT) this._puSelectPressed();   // A56: a PRESS only; `$PHONE` also sends `$BUT,3,0`, a release, which never acts
       return;                                                // `feedFrame` fires the one `_changed()` for this frame
     }
     if (state !== 0) return;
@@ -5445,7 +5522,7 @@ export class Engine {
     // that can confirm it — it runs to `switchWindowMs()` and then books an ASSUMED swap, leaving
     // `activeSlot` on a weapon the player is not holding for the rest of the life (review 2026-09-12).
     if (this.stunned) { this.log('ALT ignored — the gun is stunned', 'li'); return; }
-    if (this._slotCount() < 2 && !this._puHeld) {   // A56: a held item puts a second slot in the cycle
+    if (this._slotCount() < 2) {
       // Bench 2026-09-17 (match 592e444eff): with an empty slot 1, compile.py maps ALT to fn 98 (inert)
       // UNLESS the player is running easy_reload, which keeps ALT -> fn 97 (RELOAD) on purpose
       // (loadout.md §2 `alt_reload`). Calling `_reloadPulled()` for anyone else opened a RELOADING
@@ -5631,7 +5708,7 @@ export class Engine {
     // the gun's own rising count rather than on `_endReload`, because that is what "the player reloaded" means
     // on the wire -- a shell-by-shell shotgun chain, a swap onto a loaded slot and a spawn refill all land here.
     if (prev != null && mag > prev) this._dryPulls = 0;
-    this._puAmmo(slot, mag);   // A56: the held item's magazine; empty ends the item
+    const puBack = this._puAmmo(slot, mag);   // A56: the held item's magazine; empty ends the item and switches back
     if (this.switching && slot !== this.switching.from && (slot < 2 || (this._puHeld && slot === this._puHeld.slot))) {
       // slot 4 is MELEE and arrives on its own $ALCD — it is not the weapon swap we were waiting for.
       // NB this interval is ALT-press -> next SHOT, so it includes the player's reaction time. It is a
@@ -5648,7 +5725,13 @@ export class Engine {
       this.activeSlot = slot;
       this._recoilArm('swap (confirmed)');   // S42: the new slot's weapon gets its own profile, at its ceiling
     }
-    this._prevAmmo[slot] = mag; this.activeSlot = slot;
+    this._prevAmmo[slot] = mag;
+    if (puBack != null) {   // A56: the heavy ran dry and the node put the saved weapon back on the trigger: show THAT
+      if (reserve != null && !Number.isNaN(reserve)) this._prevReserve[slot] = reserve;
+      this._publishAmmo(puBack, this._prevAmmo[puBack], this._prevReserve[puBack]);
+      return;
+    }
+    this.activeSlot = slot;
     // S42/F259: recoil is stepped by `_acctSpent`, off the ACCOUNT above, never off this raw decrement.
     // The node's own `$WEAP` reset and `$AMMO` restore arrive here as a 26-round drop that no player fired
     // (bench 2026-09-18), and reading the frame delta booked it as a burst -- see the echo-window note.
@@ -6045,6 +6128,7 @@ export class Engine {
       const ammo = ((this.frames && this.frames.spawn) || []).filter(f => f.startsWith('$AMMO,'));
       if (ammo.length) {
         this._write(ammo, 'reconcile: re-arm');
+        this._puReconciled();   // A56: the re-arm's `$AMMO,<pickup slot>,0,0,1` must not take a held heavy's charges
         // S42 (merge 2026-09-17): the reconcile re-arms COARSELY, with the frame's spawn counts. The accuracy
         // writer's `$AMMO` restore carries the node's magazine account, which is still the pre-drop live
         // counts, so a write here would put the old magazine straight back over the re-arm. Re-arm the model
@@ -6238,7 +6322,7 @@ export class Engine {
       player: this.player, team: this.team, teamKey: this.teamKey, teamName: this.team ? (this.team.name || TEAM_NAME[this.team.tid] || '').toUpperCase() : '',
       callsign: this.player ? this.player.display : '', playerNum: this.player ? this.player.player_num : null,
       mode: this.config ? String(this.config.mode || '').toUpperCase() : '', weapon: this.weaponName,
-      hp: this.hp, armor: this.armor, shield: this.shield, maxHp: this.maxHp, maxArmor: this.maxArmor, maxShield: this.maxShield, ammo: this.ammo, reserve: this.reserve, mag: (this._puHeld && this.activeSlot === this._puHeld.slot ? this._puHeld.charges : (this._ammoBySlot()[this.activeSlot] ?? this.mag)),   // A56: a held item's denominator is its charges
+      hp: this.hp, armor: this.armor, shield: this.shield, maxHp: this.maxHp, maxArmor: this.maxArmor, maxShield: this.maxShield, ammo: this.ammo, reserve: this.reserve, mag: (this._puOnHeavy() ? this._puHeld.charges : (this._ammoBySlot()[this.activeSlot] ?? this.mag)),   // A56: a held item's denominator is its charges
       // S29 shield meter (2026-09-24): a READ-ONLY view of the recharge so the phone can draw the engine's real
       // timing (the delay since `quietAt`). null in a game with no shield. It changes no rule.
       // `down` = the shield BROKE this life (a spawn at 0 has not); `paused` = `_shieldTick`'s own stand-down, when no refill runs.
@@ -6306,7 +6390,7 @@ export class Engine {
       tryoutUnconfirmed: this.tryoutUnconfirmed,   // polish-loop pass 3: {tab, kind} | null — the last arm settled with no confirming report — honest, not a real ✓, and identified so it never bleeds onto an unrelated row
 
       // follows the LIVE slot, not always the primary (field 2026-08-30)
-      weaponId: this._puHeld && this.activeSlot === this._puHeld.slot ? this._puHeld.weapon_id : (() => { const ws = this.player && this.player.loadout && this.player.loadout.weapons; const w = ws && (ws[this.activeSlot] || ws[0]); return w ? w.weapon_id : null; })(),
+      weaponId: this._puOnHeavy() ? this._puHeld.weapon_id : (() => { const ws = this.player && this.player.loadout && this.player.loadout.weapons; const w = ws && (ws[this.activeSlot] || ws[0]); return w ? w.weapon_id : null; })(),
       // A48 (merge 2026-09-17): the catalogue now names the weapon's class and, for a charge weapon, what one
       // full charge costs. Both go to the HUD so it stops guessing either from the weapon id. Null when the
       // bundle is pre-A48 or the id is not in the catalogue -- the HUD keeps a named fallback for that.

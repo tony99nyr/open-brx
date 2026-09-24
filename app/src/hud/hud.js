@@ -1323,20 +1323,22 @@ export class Hud {
     switch (h.kind) {
       case 'claiming': return line('HOLD STILL', name, ring(h.progress || 0));
       case 'no_answer': return line('NOT ANSWERING', `${name} STATION`);   // no ring: nothing is filling any more; two short lines, never four
-      // UX M5: a weapon item says how to reach it (the callout card already said any swap); the overshield just is
-      case 'granted': return line(name, h.itemKind === 'overshield' ? 'PICKED UP' : 'ALT TO USE');
+      // Tony 2026-09-24, "straight to trigger": a weapon item is already on the trigger, so the hint says so and how many
+      // shots it holds (the callout card already said any swap); the overshield just is
+      case 'granted': return h.itemKind === 'overshield' ? line(name, 'PICKED UP')
+        : line(`${name} ON TRIGGER`, h.charges != null ? `${h.charges} SHOT${h.charges === 1 ? '' : 'S'}` : '');
       case 'approach': return line('GET CLOSER', name);
-      case 'easy_reload': return line('EASY RELOAD', `NO ${name}`);   // UX M4: one line each
       case 'taken_by': return line(h.nextInMs != null ? `TAKEN · ${mss(h.nextInMs)}` : 'TAKEN', `BY ${esc(h.by)}`);
       case 'taken': return line(`${name} IN ${mss(h.nextInMs || 0)}`, 'NEXT SPAWN');
-      case 'switch': return line('SWITCH WEAPON', `${name} EMPTY`);
+      case 'switched_back': return line(`${name} EMPTY`, `BACK TO ${esc(h.to || '')}`);   // the phone put the saved weapon back on the trigger
       default: return '';
     }
   }
-  /** A56: the held weapon item beside the ammo, with its charges left. */
+  /** A56: the held weapon item beside the ammo, with its charges left, lit while it is on the trigger. SELECT toggles the
+   *  trigger between the heavy and the player's weapon (Tony, 2026-09-24), so the chip names the button. One line. */
   _puHeld(st) {
     const h = st.powerup && st.powerup.held; if (!h) return '';
-    return `<span class="puchip${h.active ? ' on' : ''}" style="--item:${itemColor(h.color)}"><i class="sw"></i><span class="nm">${esc(h.name)}</span><b class="tab" id="puleft">${h.left}</b></span>`;
+    return `<span class="puchip${h.active ? ' on' : ''}" style="--item:${itemColor(h.color)}"><i class="sw"></i><span class="nm">${esc(h.name)}</span><b class="tab" id="puleft">${h.left}</b><span class="sel">SELECT</span></span>`;
   }
   /** F288: a trigger-path failure needs to reach the player, not live only in MC diagnostics. `no_answer`
    *  is conclusive and names the host-side cure. `no_fire` is the earlier, recoverable observation; silence
@@ -1611,9 +1613,7 @@ export class Hud {
       SV.patchMeter(this.hudEl, st, this._svFx);   // the shield meter (the overshield drains first, on the same strip)
       if (st.powerup) { const hh = this._puHint(st); setHtml('puhint', hh); setHtml('puheld', this._puHeld(st));
         const nl = this.hudEl.querySelector('.nightlab'); if (nl) nl.classList.toggle('pu', !!hh);
-        // polish r2: the item ran dry in hand; an ACTIVE card still up from the swap would sit over SWITCH WEAPON
-        const sw = this._overlays && this._overlays.switched;
-        if (sw && st.powerup.hint && st.powerup.hint.kind === 'switch') { clearTimeout(sw.t1); clearTimeout(sw.t2); sw.el.remove(); delete this._overlays.switched; } }   // the hint takes NIGHT OPS's slot
+      }   // the hint takes NIGHT OPS's slot
       const bf = q('battfill'); if (bf) bf.style.right = `${100 - (st.battery || 0)}%`;
       const pips = q('pips'); if (pips) { const html = this._pips(st); if (pips.innerHTML !== html) pips.innerHTML = html; }
       const heat = q('heat'); if (heat) {

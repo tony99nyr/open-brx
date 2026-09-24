@@ -16,6 +16,10 @@ const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/
 const ROCKETS = { kind: 'weapon', weapon_id: 'rocket_launcher', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'ROCKETS', color: '#ff7a1a' };
 const RAIL = { kind: 'weapon', weapon_id: 'rail_gun', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'RAIL GUN', color: '#8a5cff' };
 const OVERSHIELD = { kind: 'overshield', amount: 75, spawn_every_s: 60, first_at_s: 60, name: 'OVERSHIELD', color: '#3ad6ff' };
+// The pickup slots' head `$WEAP` rows (`WeaponCatalog.resolve()` output, 2026-09-24; the grant re-sends them verbatim).
+const WEAP = { 2: '$WEAP,2,2,100,10,0,115,0,,,,,,35,100,1000,850,2,2,2600,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,1,75,100,*',
+  3: '$WEAP,3,0,100,6,0,149,0,,,,,,,,1200,850,2,2,2400,0,2,100,100,,0,,,C03,C08,,,D36,D35,D34,A73,,,,,2,1,75,*' };
+const WEAP0 = golden.head.find(f => f.startsWith("$WEAP,0,"));
 
 function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
@@ -29,15 +33,25 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons, ...(overrides ? { overrides } : {}) }, voice: 'male' };
   // The fake gun answers the node's liveness probe the way the bench gun does (`$LIFE,0,0,0,*` -> `$HP` at once), so a
   // long quiet stretch on the match clock is not read as a locked-up gun (F272).
-  const answers = [];
-  const eng = new Engine({ writer: fr => { writes.push(...fr); for (const f of fr) if (f === E.PROBE_LIFE) answers.push(f); }, emit: f => facts.push(f), report: () => {}, now: () => clock,
-    synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
+  const answers = [], store = mkStorage();
+  const mk = () => new Engine({ writer: fr => { writes.push(...fr); for (const f of fr) if (f === E.PROBE_LIFE) answers.push(f); }, emit: f => facts.push(f), report: () => {}, now: () => clock,
+    synced: () => true, storage: store, log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
+  let eng = mk();
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   const roster = [{ player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue' }, { player_id: 'p2', player_num: 19, display: 'VIPER', team_id: 'yellow' }];
   eng.onMcMessage({ kind: 'assign', body: { player, team: teams[0], roster } });
   const frames = { ...golden, player_id: 'p1' };
   // the Shields preset (armour 0, a shield ceiling): the maxima are read back from the head's `$PSET`, so rewrite it there
   if (maxShield) frames.head = frames.head.map(f => f.startsWith('$PSET,') ? f.replace(/^\$PSET,(\d+),(\d+),45,70,0,/, `$PSET,$1,$2,45,0,${maxShield},`) : f);
+  // A56: compile arms each pickup weapon in its spare slot with a normal `$WEAP` in the head, and every spawn and revive
+  // empties it with `$AMMO,<slot>,0,0,1` (compile.py; the respawn profile's bursts carry the same `ammo` rows).
+  if (powerups) {
+    frames.head = [...frames.head, ...powerups.map(p => WEAP[p.slot])];
+    const empty = powerups.map(p => `$AMMO,${p.slot},0,0,1,*`);
+    const withEmpty = list => { const i = list.map(f => f.startsWith('$AMMO,')).lastIndexOf(true); return i < 0 ? list : [...list.slice(0, i + 1), ...empty, ...list.slice(i + 1)]; };
+    frames.spawn = withEmpty(frames.spawn); frames.revive = withEmpty(frames.revive);
+    if (frames.respawn_profile) frames.respawn_profile = { ...frames.respawn_profile, spawn: withEmpty(frames.respawn_profile.spawn), revive: withEmpty(frames.respawn_profile.revive), revive_station: withEmpty(frames.respawn_profile.revive_station) };
+  }
   eng.onMcMessage({ kind: 'config', body: { config, frames, roster } });
   eng.feedFrame('$LCD,0,0,0,0,0,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
@@ -59,13 +73,21 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
     take(id, taker = 7) { h.near(id); h.adv(1100); h.near(id, { state: 0, value: 110, taker }); return h; },
     away() { eng.setStations([]); return h; },
     die() { eng.feedFrame('$HIR,4,0,19,2,9,0,3,*'); eng.feedFrame('$HP,0,0,0,*'); return h; },
+    /** SELECT (`$BUT` id 3): a press, then its release. */
+    select() { eng.feedFrame('$BUT,3,1,*'); eng.feedFrame('$BUT,3,0,*'); return h; },
+    /** One round out of `slot`, as the gun reports it: the press, the `$ALCD` (token 3 = the slot), the release. */
+    fire(slot, mag, res = 0) { eng.feedFrame('$BUT,0,1,*'); eng.feedFrame(`$ALCD,${mag},100,${slot},${res},0,*`); eng.feedFrame('$BUT,0,0,*'); return h; },
+    /** The app process restarts mid-match: a new Engine on the same storage, the gun reconnects, the reconcile runs out. */
+    restart() { eng = mk(); h.eng = eng; eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); eng.feedFrame(`$HP,${45},${70},0,*`); return h; },
   };
   h.adv(10); h.adv(3000);   // T-0 spawn, then the live life settles
   eng.feedFrame('$HP,45,70,0,*');
   return h;
 }
 const bmap1 = w => w.filter(f => f.startsWith('$BMAP,1,'));
-const grants = w => w.filter(f => /^\$(AMMO|BMAP),/.test(f) || (f.startsWith('$LIFE,') && !E.isPoolProbe(f)));
+const grants = w => w.filter(f => /^\$(WEAP|AMMO|BMAP),/.test(f) || (f.startsWith('$LIFE,') && !E.isPoolProbe(f)));
+/** The gun-facing weapon writes: `$WEAP`, `$AMMO` and any `$BMAP` (ALT, SELECT or trigger rows). */
+const puw = w => w.filter(f => /^\$(WEAP|AMMO|BMAP),/.test(f));
 
 test('inert: a config with no powerup items announces nothing, claims nothing, grants nothing', () => {
   const h = harness();
@@ -139,19 +161,6 @@ test('no grant when the station names me but this phone was never claim_ready fo
   assert.deepEqual(grants(h.since(n)), []);
 });
 
-test('the grant: claim_ready, then taker == me: $AMMO for the pickup slot, then the ALT cycle, and a pickup fact, once', () => {
-  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
-  h.at(121); const n = h.mark(); h.take(4);
-  assert.deepEqual(grants(h.since(n)), ['$AMMO,2,2,0,1,*', '$BMAP,1,100,0,1,2,99,*']);
-  const f = h.facts.filter(x => x.type === 'pickup');
-  assert.equal(f.length, 1); assert.deepEqual({ ...f[0] }, { type: 'pickup', match_id: 'm1', station_id: 4, item_kind: 'weapon', weapon_id: 'rocket_launcher' });
-  const s = h.eng.state().powerup;
-  assert.equal(s.held.name, 'ROCKETS'); assert.equal(s.held.left, 2); assert.equal(s.hint.kind, 'granted');
-  const m = h.mark(); h.adv(1000); h.near(4, { state: 0, value: 108, taker: 7 }); h.adv(1000);
-  assert.deepEqual(grants(h.since(m)), [], 'the same taker advert heard again grants nothing more');
-  assert.equal(h.facts.filter(x => x.type === 'pickup').length, 1);
-});
-
 test('STATION NOT ANSWERING: claim_ready for 3 s and the advert still says available', () => {
   assert.equal(E.POWERUP_NO_ANSWER_MS, 3000);
   const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
@@ -173,58 +182,12 @@ test('not there to take: the advert says taken, so the phone does not claim and 
   assert.equal(h2.eng.state().powerup.hint.kind, 'taken');
 });
 
-test('weapon grant with ONE loadout weapon skips the empty slot 1 in the ALT cycle', () => {
-  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }], weapons: [{ weapon_id: 'assault_rifle' }] });
-  h.at(121); const n = h.mark(); h.take(4);
-  assert.deepEqual(bmap1(h.since(n)), ['$BMAP,1,100,0,2,99,99,*']);
-});
-
-test('the end of a weapon item: its magazine reaching 0 writes the old ALT cycle back', () => {
-  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
-  h.at(121); h.take(4); h.away();
-  h.adv(800);   // past the grant's own echo window
-  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
-  h.frame('$BUT,0,1,*').frame('$ALCD,1,100,2,0,0,*').frame('$BUT,0,0,*');
-  assert.equal(h.eng.state().powerup.held.left, 1);
-  assert.equal(h.eng.state().activeSlot, 2);
-  assert.equal(h.eng.state().weapon, 'ROCKETS', 'the ammo block names the item while its slot is active');
-  const n = h.mark();
-  h.frame('$BUT,0,1,*').frame('$ALCD,0,100,2,0,0,*').frame('$BUT,0,0,*');
-  assert.deepEqual(bmap1(h.since(n)), [golden.head.find(f => f.startsWith('$BMAP,1,'))]);
-  assert.equal(h.eng.state().powerup.held, null);
-  assert.equal(h.eng.state().powerup.hint.kind, 'switch', 'the empty pickup slot is still in hand: tell the player to switch');
-});
-
-test('the end of a weapon item: a death zeroes the slot and writes the old ALT cycle back (charges are lost at death)', () => {
-  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
-  h.at(121); h.take(4); h.away();
-  const n = h.mark(); h.die();
-  const w = h.since(n);
-  assert.ok(w.includes('$AMMO,2,0,0,1,*'), 'the pickup slot is zeroed');
-  assert.deepEqual(bmap1(w), [golden.head.find(f => f.startsWith('$BMAP,1,'))]);
-  assert.equal(E.PU_LOST_AT_DEATH, true);
-  assert.equal(h.eng.state().powerup.held, null);
-});
-
-test('a second WEAPON pickup swaps the first out: zero the old slot, the ALT cycle with the new slot, then the new charges', () => {
-  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }, { id: 5, kind: 'powerup', item: RAIL }],
-    powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }, { weapon_id: 'rail_gun', slot: 3 }] });
-  h.at(121); h.take(4);
-  const n = h.mark(); h.take(5);
-  assert.deepEqual(grants(h.since(n)), ['$AMMO,2,0,0,1,*', '$BMAP,1,100,0,1,3,99,*', '$AMMO,3,2,0,1,*']);
-  const s = h.eng.state();
-  assert.equal(s.powerup.held.name, 'RAIL GUN');
-  assert.equal(s.powerupGrant.replaced, 'ROCKETS', 'the HUD can say RAIL GUN replaces ROCKETS');
-  assert.equal(E.PU_WEAPON_SWAPS, true);
-  assert.equal(h.facts.filter(f => f.type === 'pickup').length, 2);
-});
-
 test('a dead player does not claim', () => {
   const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
   h.at(121); h.die(); h.near(4); h.adv(1500); h.near(4);
   assert.equal(h.eng.state().powerupClaim, null);
   const n = h.mark(); h.near(4, { state: 0, value: 110, taker: 7 });
-  assert.deepEqual(h.since(n).filter(f => /^\$(AMMO,2|BMAP,1)/.test(f)), []);
+  assert.deepEqual(h.since(n).filter(f => /^\$(WEAP,2|AMMO,2,[1-9])/.test(f)), []);
 });
 
 test('overshield: current shield + amount with $LIFE token 4 = 2 (set past max), at the current health and armour', () => {
@@ -282,25 +245,13 @@ test('overshield is gone at death', () => {
   assert.equal(h.eng.state().powerup.overshield, null);
 });
 
-test('Easy Reload keeps ALT: an Easy Reload player does not claim a WEAPON item (its grant rewrites ALT), and the HUD says why', () => {
-  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }, { id: 6, kind: 'powerup', item: OVERSHIELD }],
-    powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }], overrides: { easy_reload: true } });
-  h.at(121); const n = h.mark(); h.near(4); h.adv(1100); h.near(4);
-  assert.equal(h.eng.state().powerupClaim, null, 'no claim bits go out for a weapon item');
-  assert.equal(h.eng.state().powerup.hint.kind, 'easy_reload');
-  h.near(4, { state: 0, value: 110, taker: 7 }); h.adv(300);
-  assert.deepEqual(bmap1(h.since(n)), [], 'ALT is never rewritten');
-  h.take(6);
-  assert.equal(h.facts.filter(f => f.type === 'pickup' && f.item_kind === 'overshield').length, 1, 'an overshield touches no button, so it is still taken');
-});
-
 test('M2: no grant while STUNNED (the stun restore would erase it); the ready claim waits and is granted once the stun ends', () => {
   const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }], stun: { duration_s: 3 } });
   h.at(121); h.near(4); h.adv(1100); h.near(4);
   h.frame('$HIR,4,8,19,2,8,0,0,*');   // an EMP word: the gun is disarmed for 3 s
   assert.ok(h.eng.stunned, 'setup: stunned');
   const n = h.mark(); h.near(4, { state: 0, value: 110, taker: 7 }); h.adv(500); h.near(4, { state: 0, value: 110, taker: 7 });
-  assert.deepEqual(grants(h.since(n)).filter(f => /^\$(AMMO,2|BMAP,1)/.test(f)), [], 'nothing granted inside the stun');
+  assert.deepEqual(grants(h.since(n)).filter(f => /^\$(WEAP,2|AMMO,2,[1-9])/.test(f)), [], 'nothing granted inside the stun');
   h.adv(3000); h.near(4, { state: 0, value: 106, taker: 7 });
   assert.equal(h.eng.stunned, null, 'setup: the stun is over');
   assert.ok(h.since(n).includes('$AMMO,2,2,0,1,*'), 'granted once the stun ended');
@@ -318,7 +269,7 @@ test('F331: a STUNNED player who walks out of range drops the claim (no claim_re
     assert.equal(h.eng.state().powerupClaim, null, 'out of range during the stun: the claim is dropped');
     const n = h.mark(); h.adv(3000); h.near(4, { median: -70, state: 0, value: 106, taker: 7 });
     assert.equal(h.eng.stunned, null, 'setup: the stun is over');
-    assert.deepEqual(grants(h.since(n)).filter(f => /^\$(AMMO,2|BMAP,1)/.test(f)), [], 'no grant for a claim dropped out of range');
+    assert.deepEqual(grants(h.since(n)).filter(f => /^\$(WEAP,2|AMMO,2,[1-9])/.test(f)), [], 'no grant for a claim dropped out of range');
   }
 });
 
@@ -350,4 +301,170 @@ test('polish r2: a poison echo that never matched stops blocking the overshield 
   const n = h.mark(); h.near(6, { state: 0, value: 58, taker: 7 });
   h.adv(E.DOT_ECHO_MS + 250); h.near(6, { state: 0, value: 57, taker: 7 });
   assert.equal(h.since(n).filter(f => f.startsWith('$LIFE,') && !E.isPoolProbe(f)).length, 1, 'granted once the echo window passed');
+});
+
+// ---- Tony, 2026-09-24: "straight to trigger. id prefer trigger fires it" + "select should equip it if possible". ----
+// Bench (Tactix-FE30, powerups.md "Sitting A 3.3"): a mid-life `$WEAP,<slot>,…` makes that slot the trigger's weapon at
+// once; `$AMMO` alone never switches; the switch-back is the saved weapon's `$WEAP` then its saved `$AMMO`.
+const ROCKET_GAME = { stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] };
+const TWO_HEAVIES = { stations: [{ id: 4, kind: 'powerup', item: ROCKETS }, { id: 5, kind: 'powerup', item: RAIL }],
+  powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }, { weapon_id: 'rail_gun', slot: 3 }] };
+/** A rocket game where the player has fired two AR rounds (slot 0 holds 30 / 190) before reaching the station. */
+function armed(opts = {}) {
+  const h = harness({ ...ROCKET_GAME, ...opts });
+  h.at(115); h.fire(0, 31, 190); h.adv(300); h.fire(0, 30, 190);
+  h.at(121);
+  return h;
+}
+
+test('trigger grant: save the trigger slot and its counts, re-send the pickup slot\'s head $WEAP, then $AMMO with the charges, and a pickup fact, once', () => {
+  const h = armed(); const n = h.mark(); h.take(4);
+  assert.deepEqual(puw(h.since(n)), [WEAP[2], '$AMMO,2,2,0,1,*'], 'the $WEAP puts it on the trigger, the $AMMO gives it the charges');
+  const f = h.facts.filter(x => x.type === 'pickup');
+  assert.equal(f.length, 1); assert.deepEqual({ ...f[0] }, { type: 'pickup', match_id: 'm1', station_id: 4, item_kind: 'weapon', weapon_id: 'rocket_launcher' });
+  const s = h.eng.state();
+  assert.equal(s.activeSlot, 2, 'the gun equipped it at once, so the node knows the trigger slot');
+  assert.equal(s.weapon, 'ROCKETS');
+  assert.equal(s.ammo, 2, 'the ammo block shows the heavy\'s charges at once, not the AR\'s magazine');
+  assert.equal(s.powerup.held.name, 'ROCKETS'); assert.equal(s.powerup.held.left, 2); assert.equal(s.powerup.held.active, true);
+  assert.deepEqual(s.powerup.held.back, { slot: 0, mag: 30, res: 190 }, 'the switch-back target: the AR with its live counts');
+  assert.equal(s.powerup.hint.kind, 'granted');
+  const m = h.mark(); h.adv(1000); h.near(4, { state: 0, value: 108, taker: 7 }); h.adv(1000);
+  assert.deepEqual(puw(h.since(m)), [], 'the same taker advert heard again grants nothing more');
+  assert.equal(h.facts.filter(x => x.type === 'pickup').length, 1);
+});
+
+test('trigger grant: no SELECT write and no ALT cycle write, ever (no $BMAP at all)', () => {
+  for (const weapons of [undefined, [{ weapon_id: 'assault_rifle' }]]) {
+    const h = armed(weapons ? { weapons } : {}); const n = h.mark();
+    h.take(4); h.adv(800); h.fire(2, 1); h.adv(300); h.fire(2, 0); h.adv(500);
+    assert.deepEqual(h.since(n).filter(f => f.startsWith('$BMAP,')), [], `grant to switch-back: no $BMAP (${weapons ? 'one weapon' : 'two weapons'})`);
+  }
+});
+
+test('Easy Reload is granted: the pickup never touches ALT, so an Easy Reload player takes a weapon item like anyone', () => {
+  const h = armed({ overrides: { easy_reload: true } });
+  const n = h.mark(); h.take(4);
+  assert.deepEqual(puw(h.since(n)), [WEAP[2], '$AMMO,2,2,0,1,*']);
+  assert.equal(h.facts.filter(f => f.type === 'pickup' && f.item_kind === 'weapon').length, 1);
+  assert.equal(h.eng.state().powerup.held.name, 'ROCKETS');
+});
+
+test('the empty magazine switches back: the saved weapon\'s head $WEAP, then $AMMO with the SAVED counts', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800);   // past the grant's own echo window
+  h.fire(2, 1);
+  assert.equal(h.eng.state().powerup.held.left, 1);
+  const n = h.mark(); h.adv(300); h.fire(2, 0);
+  assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,30,190,1,*']);
+  const s = h.eng.state();
+  assert.equal(s.powerup.held, null); assert.equal(s.activeSlot, 0);
+  assert.equal(s.powerup.hint.kind, 'switched_back'); assert.equal(s.powerup.hint.name, 'ROCKETS');
+  assert.equal(s.weapon, 'ASSAULT RIFLE', 'the ammo block names the AR again');
+  assert.equal(s.ammo, 30, 'and shows its saved magazine');
+});
+
+test('a second heavy swaps: zero the old slot, the new slot\'s $WEAP and $AMMO; the switch-back target stays the loadout weapon', () => {
+  const h = armed(TWO_HEAVIES); h.take(4);
+  const n = h.mark(); h.take(5);
+  assert.deepEqual(puw(h.since(n)), ['$AMMO,2,0,0,1,*', WEAP[3], '$AMMO,3,2,0,1,*']);
+  const s = h.eng.state();
+  assert.equal(s.powerup.held.name, 'RAIL GUN'); assert.equal(s.activeSlot, 3);
+  assert.deepEqual(s.powerup.held.back, { slot: 0, mag: 30, res: 190 });
+  assert.equal(s.powerupGrant.replaced, 'ROCKETS', 'the HUD can say RAIL GUN replaces ROCKETS');
+  assert.equal(h.facts.filter(f => f.type === 'pickup').length, 2);
+  h.away(); h.adv(800); h.fire(3, 1); h.adv(300); const m = h.mark(); h.fire(3, 0);
+  assert.deepEqual(puw(h.since(m)), [WEAP0, '$AMMO,0,30,190,1,*'], 'the rail runs dry back to the AR, not to the rockets');
+});
+
+test('a death with the heavy held: the item is lost, and after the revive burst slot 0\'s head $WEAP and spawn $AMMO re-equip it', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800);
+  const n = h.mark(); h.die();
+  assert.deepEqual(puw(h.since(n)), [], 'nothing at the death: compile\'s revive re-empties the pickup slot');
+  assert.equal(h.eng.state().powerup.held, null);
+  assert.equal(E.PU_LOST_AT_DEATH, true);
+  h.adv(9000);
+  assert.equal(h.eng.alive, true, 'setup: revived');
+  const w = puw(h.since(n)), sp = h.since(n).indexOf('$SPAWN,,*');
+  const i = w.indexOf(WEAP0);
+  assert.ok(sp >= 0 && i >= 0 && h.since(n).indexOf(WEAP0) > sp, `slot 0's $WEAP follows the $SPAWN: ${JSON.stringify(w)}`);
+  assert.equal(w[i + 1], '$AMMO,0,32,192,1,*', 'then the spawn $AMMO for slot 0');
+  assert.equal(h.eng.state().activeSlot, 0);
+  const m = h.mark(); h.adv(9000); h.die(); h.adv(9000);
+  assert.ok(!h.since(m).includes(WEAP0), 'CONTROL: a later death with no heavy held re-equips nothing');
+});
+
+test('melee (slot 4) does not count as leaving the heavy: the item stays on the trigger and SELECT still switches BACK', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800);
+  h.frame('$BUT,4,1,*').frame('$ALCD,1,100,4,0,0,*').frame('$ALCD,0,100,4,0,0,*').frame('$BUT,4,0,*');
+  const s = h.eng.state();
+  assert.ok(s.powerup.held, 'a melee $ALCD with 0 is not the heavy running dry');
+  assert.equal(s.powerup.held.active, true, 'still on the trigger');
+  assert.equal(s.weapon, 'ROCKETS');
+  const n = h.mark(); h.adv(500); h.select();
+  assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,30,190,1,*'], 'SELECT switches back to the AR, never "re-equips" from slot 4');
+});
+
+test('an app restart mid-item still switches back with the saved counts', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800); h.fire(2, 1);
+  h.restart(); h.adv(6000);
+  assert.ok(h.eng.state().powerup && h.eng.state().powerup.held, 'the held item survived the restart');
+  assert.deepEqual(h.eng.state().powerup.held.back, { slot: 0, mag: 30, res: 190 });
+  const n = h.mark(); h.fire(2, 0);
+  assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,30,190,1,*']);
+  assert.equal(h.eng.state().powerup.held, null);
+});
+
+test('SELECT toggles: heavy -> the saved weapon with its counts, then the saved weapon -> the heavy with its charges left', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800); h.fire(2, 1);
+  let n = h.mark(); h.adv(500); h.select();
+  assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,30,190,1,*'], 'off the heavy: the AR back with its saved counts');
+  let s = h.eng.state();
+  assert.equal(s.activeSlot, 0); assert.equal(s.powerup.held.active, false); assert.equal(s.powerup.held.left, 1, 'the heavy keeps its charge');
+  h.adv(800); h.fire(0, 29, 190);
+  n = h.mark(); h.adv(500); h.select();
+  assert.deepEqual(puw(h.since(n)), [WEAP[2], '$AMMO,2,1,0,1,*'], 'back on the heavy: its $WEAP, then the one charge left');
+  s = h.eng.state();
+  assert.equal(s.activeSlot, 2); assert.equal(s.powerup.held.active, true);
+  assert.deepEqual(s.powerup.held.back, { slot: 0, mag: 29, res: 190 }, 'the AR round fired since is saved');
+});
+
+test('SELECT: the release alone does nothing, a double press toggles once, and no item means no write', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800);
+  let n = h.mark(); h.frame('$BUT,3,0,*');
+  assert.deepEqual(puw(h.since(n)), [], 'a release ($PHONE sends one too) never acts');
+  n = h.mark(); h.select(); h.adv(100); h.select();
+  assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,30,190,1,*'], 'a double press inside the debounce toggles once');
+  const h2 = armed(); n = h2.mark(); h2.adv(500); h2.select();
+  assert.deepEqual(puw(h2.since(n)), [], 'no heavy held: SELECT writes nothing');
+});
+
+test('SELECT is ignored while stunned, dead, or while an ALT swap is pending', () => {
+  const h = armed({ stun: { duration_s: 3 } }); h.take(4); h.away(); h.adv(800);
+  h.frame('$HIR,4,8,19,2,8,0,0,*');
+  assert.ok(h.eng.stunned, 'setup: stunned');
+  let n = h.mark(); h.select();
+  assert.deepEqual(puw(h.since(n)).filter(f => f.startsWith('$WEAP,')), [], 'stunned: no equip');
+  h.adv(3500);
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
+  assert.ok(h.eng.switching, 'setup: an ALT swap is pending');
+  n = h.mark(); h.adv(100); h.select();
+  assert.deepEqual(puw(h.since(n)).filter(f => f.startsWith('$WEAP,')), [], 'a swap already pending: no equip');
+  h.adv(2000); n = h.mark(); h.select();
+  assert.equal(puw(h.since(n)).filter(f => f.startsWith('$WEAP,')).length, 1, 'CONTROL: once the swap is over, SELECT acts');
+  const d = harness(ROCKET_GAME); d.at(121); d.take(4); d.away(); d.adv(800); d.die();
+  n = d.mark(); d.adv(500); d.select();
+  assert.deepEqual(puw(d.since(n)).filter(f => f.startsWith('$WEAP,')), [], 'dead: no equip');
+});
+
+test('ALT off the heavy keeps its charges, and SELECT brings it back with them', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800); h.fire(2, 1);
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
+  h.adv(300); h.fire(1, 5, 24);
+  let s = h.eng.state();
+  assert.ok(s.powerup.held, 'ALT does not end the item'); assert.equal(s.powerup.held.left, 1); assert.equal(s.powerup.held.active, false);
+  assert.equal(s.activeSlot, 1);
+  const n = h.mark(); h.adv(500); h.select();
+  assert.deepEqual(puw(h.since(n)), [WEAP[2], '$AMMO,2,1,0,1,*']);
+  s = h.eng.state();
+  assert.deepEqual(s.powerup.held.back, { slot: 1, mag: 5, res: 24 }, 'the switch-back target is now the secondary the trigger was on');
 });

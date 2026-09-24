@@ -436,6 +436,8 @@ export function startDemo({ engine, log }) {
       rail: { kind: 'weapon', weapon_id: 'rail_gun', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'RAIL GUN', color: '#b06cff' },
       overshield: { kind: 'overshield', amount: 75, spawn_every_s: 60, first_at_s: 60, name: 'OVERSHIELD', color: '#3ad6ff' },
     };
+    const PU_WEAP = { 2: '$WEAP,2,2,100,10,0,115,0,,,,,,35,100,1000,850,2,2,2600,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,1,75,100,*',
+      3: '$WEAP,3,0,100,6,0,149,0,,,,,,,,1200,850,2,2,2400,0,2,100,100,,0,,,C03,C08,,,D36,D35,D34,A73,,,,,2,1,75,*' };
     const puList = new Map();
     const puFeed = () => { const list = [...puList.values()].map(e => ({ ...e, seenAt: Date.now(), ageMs: 0 }));
       const pr = (typeof window !== 'undefined' && window.brx) ? window.brx.presence : null;
@@ -445,7 +447,13 @@ export function startDemo({ engine, log }) {
       // `firstOvershield`: the overshield's first spawn in seconds after go-live (the spawn-card stage uses 1)
       powerups: (firstOvershield = 60) => { config.stations = [{ id: 4, kind: 'powerup', item: PU.rockets }, { id: 5, kind: 'powerup', item: PU.rail },
         { id: 6, kind: 'powerup', item: { ...PU.overshield, first_at_s: firstOvershield } }];
-        config.powerups = [{ weapon_id: 'rocket_launcher', slot: 2 }, { weapon_id: 'rail_gun', slot: 3 }]; },
+        config.powerups = [{ weapon_id: 'rocket_launcher', slot: 2 }, { weapon_id: 'rail_gun', slot: 3 }];
+        // compile arms each pickup in its spare slot with its head `$WEAP` (the grant re-sends it verbatim to put the heavy
+        // on the trigger) and empties it at every spawn and revive. The rows are `WeaponCatalog.resolve()` output, 2026-09-24.
+        if (!bundle.head.some(f => f.startsWith('$WEAP,2,'))) bundle.head = [...bundle.head, PU_WEAP[2], PU_WEAP[3]];
+        const empty = ['$AMMO,2,0,0,1,*', '$AMMO,3,0,0,1,*'], add = l => l.some(f => f === empty[0]) ? l : l.flatMap(f => f.startsWith('$AMMO,1,') ? [f, ...empty] : [f]);
+        bundle.spawn = add(bundle.spawn); bundle.revive = add(bundle.revive);
+        if (bundle.respawn_profile) bundle.respawn_profile = { ...bundle.respawn_profile, spawn: add(bundle.respawn_profile.spawn), revive: add(bundle.respawn_profile.revive), revive_station: add(bundle.respawn_profile.revive_station) }; },
       // one powerup station's advert: `median` is the claim's range reading (in range at -55, the default threshold)
       puAt: (id = 4, { median = -50, state = 1, value = 0, taker = 0 } = {}) => {
         puList.clear();
@@ -470,8 +478,9 @@ export function startDemo({ engine, log }) {
       overshield: () => ev.puTake(6),
       // stand at the station past the 1 s dwell, then the station names its winner (7 = this phone, 19 = VIPER)
       puTake: (id = 4, taker = 7) => { ev.puAt(id); setTimeout(() => ev.puAt(id, { state: 0, value: 118, taker }), 1300); },
-      // ALT onto the pickup slot, and a round out of it, as the gun reports them ($ALCD token 3 = the slot)
-      puAlt: () => { ev.alt(); const h = engine.state().powerup && engine.state().powerup.held; if (h) setTimeout(() => engine.feedFrame(`$ALCD,${h.left},100,${h.slot},0,0,*`), 600); },
+      // SELECT (a press, then its release): with a heavy held it toggles the trigger between the heavy and the player's weapon
+      puSelect: () => { engine.feedFrame('$BUT,3,1,*'); engine.feedFrame('$BUT,3,0,*'); },
+      // a round out of the heavy on the trigger, as the gun reports it ($ALCD token 3 = the slot)
       puFire: () => { const h = engine.state().powerup && engine.state().powerup.held; if (!h) return;
         engine.feedFrame('$BUT,0,1,*'); engine.feedFrame(`$ALCD,${Math.max(0, h.left - 1)},100,${h.slot},0,0,*`); engine.feedFrame('$BUT,0,0,*'); },
     });
@@ -628,7 +637,8 @@ export function startDemo({ engine, log }) {
       'live-pu-swap':        [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [3900, () => ev.puTake(5)]],   // RAIL GUN replaces ROCKETS
       'live-pu-overshield':  [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(6)]],                           // +75 on the shield bar
       'live-pu-overshield-hit': [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(6)], [3900, () => ev.hit(30)]],   // hits take the overshield first
-      'live-pu-empty':       [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [3900, 'puAlt'], [4700, 'puFire'], [4800, 'puFire']],   // both rockets fired: SWITCH WEAPON
+      'live-pu-select':      [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [6300, 'puSelect']],       // SELECT: the AR back on the trigger, the rockets kept
+      'live-pu-empty':       [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [4700, 'puFire'], [4800, 'puFire']],   // both rockets fired: the AR back on the trigger
       'down-pu-held':        [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [3900, 'die']],           // a death with an item held: it is gone
       'live-pu-taken-by':    [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4, 19)]],                      // VIPER won it: TAKEN BY VIPER
       'live-pu-no-answer':   [[0, () => ev.powerups()], ...live, [2300, () => ev.puAt(4)]],                             // ready, and the station never answers
