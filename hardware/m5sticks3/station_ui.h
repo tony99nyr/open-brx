@@ -261,7 +261,7 @@ class BootHeldButtons {
 // The single-key r/s/c commands are handled before any line is parsed and are left as they are:
 // they toggle the RAW dump, print the frame count, and zero that counter, none of which is play.
 inline bool serial_command_allowed_while_locked(const std::string& line) {
-  return line == "PING" || line == "STATUS" || line == "RAW ON" || line == "RAW OFF" || line == "AUTO" ||
+  return line == "PING" || line == "STATUS" || line == "PLAYERS" || line == "PMIC" || line.rfind("PLAYERS STREAM", 0) == 0 || line == "RAW ON" || line == "RAW OFF" || line == "AUTO" ||
          line == "AUTO OFF";
 }
 
