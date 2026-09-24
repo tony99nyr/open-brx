@@ -712,8 +712,13 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 #frame[data-screen="lobby"] .chipbar{top:98px;flex-direction:row;gap:8px}   /* the band between the callsign block and the plates */
 #frame[data-screen="lo"] .chipbar{top:auto;bottom:70px;flex-direction:row;gap:8px}   /* loadout browser: over the faded list end, clear of tabs, filters and the action bar */
 #frame[data-screen="panel"] .chipbar{top:2px;flex-direction:row;gap:8px}   /* briefing / result: the strip above the content */
-#frame[data-screen="lo"] .pill,#frame[data-screen="panel"] .pill{font-size:10px;letter-spacing:.14em;padding:5px 12px}
-#frame[data-screen="lobby"] .pill{font-size:10px;letter-spacing:.14em;padding:5px 12px}
+/* QA-14: on the result screen the centred strip sat on the title (MC NOT REACHED · SEE MISSION CONTROL). The pills
+   go to the top right, clear of the ⓘ column, and TEAMS/PLAYERS drops to the bottom of the header to make room.
+   The MC-range pill steps aside here: the footer's status line already says it. */
+#frame[data-screen="panel"]:has(.lobby.result) .chipbar{top:2px;left:auto;right:58px;transform:none}
+#frame:has(.lobby.result) .pill.mcr{display:none}
+#frame[data-screen="lo"] .pill,#frame[data-screen="panel"] .pill{font-size:11px;letter-spacing:.14em;padding:5px 12px}
+#frame[data-screen="lobby"] .pill{font-size:11px;letter-spacing:.14em;padding:5px 12px}
 #frame[data-screen="lobby"] button.pill{min-height:0;position:relative}#frame[data-screen="lobby"] button.pill::after{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:44px}
 .pill{font-size:11px;letter-spacing:.2em;font-weight:700;padding:4px 14px;transform:skewX(-10deg);background:var(--plate);border:1px solid var(--edge);color:var(--mut)}
 .pill .unskew{display:inline-block;transform:skewX(10deg)}
@@ -871,16 +876,16 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .result .rh1.p{font-size:18px;line-height:1.2;letter-spacing:.1em;color:var(--warn);max-width:560px}
 .result .rh1.win{color:var(--ok)}.result .rh1.lose{color:var(--bad)}.result .rh1.draw,.result .rh1.undecided{color:var(--warn)}
 .result .rmeta{grid-column:2;grid-row:2;font-size:11px;letter-spacing:.18em;color:var(--mut);font-weight:600;align-self:flex-end;padding-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.result .rseg{grid-column:3;grid-row:1/span 2;display:flex;align-self:center;pointer-events:auto}
+.result .rseg{grid-column:3;grid-row:1/span 2;display:flex;align-self:end;pointer-events:auto}   /* QA-14: bottom of the header, so a pill in the top-right strip clears it */
 .result .rseg .sg{min-height:38px;padding:0 15px;border:1px solid var(--edge);background:var(--plate);color:var(--mut);font-family:var(--fd);font-weight:700;font-size:14px;letter-spacing:.18em;transform:skewX(-8deg)}
 .result .rseg .sg+.sg{border-left:0}
 .result .rseg .sg .unskew{display:inline-block;transform:skewX(8deg)}
 .result .rseg .sg.on{background:var(--team);color:var(--team-ink);border-color:var(--team)}
 .result .rbody{flex:1 1 auto;min-height:0;overflow:hidden}
 /* --- waiting for the push: what the screen knows, and never an outcome --- */
-.result .rwait{display:flex;flex-direction:column;justify-content:center;gap:8px;height:100%;border:1px dashed var(--edge);padding:10px 16px}
-.result .rwait .wl{font-size:13px;line-height:1.45;color:var(--num);max-width:660px}
-.result .rwait .wl.dim{color:var(--mut);font-size:12px}
+.result .rwait{display:flex;flex-direction:column;justify-content:center;gap:8px;height:100%;border-left:3px solid var(--warn);padding:6px 16px}   /* QA-14: no dashed empty panel; the words sit in the middle of the body on one amber rule */
+.result .rwait .wl{font-size:15px;line-height:1.45;color:var(--num);max-width:660px}
+.result .rwait .wl.dim{color:var(--mut);font-size:13px}
 /* --- TEAM view --- */
 .result .rteams{display:grid;gap:10px;height:100%;min-height:0}
 /* Bench 2026-09-18 (Tony), third pass: on YOUR team the left edge is the team colour and the names sat hard

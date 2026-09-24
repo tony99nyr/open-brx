@@ -4111,6 +4111,32 @@ await step('QA-21 kit, loadout, briefing and results: labels >= 11 px, every but
   }
   must(bad.length === 0, 'under the type floor: ' + [...new Set(bad)].slice(0, 10).join(' ; '));
 });
+for (const stage of ['result-unreached', 'result-pending']) {
+  await step(`QA-14 ${stage} (SE): one status line, and no pill over the title`, async () => {
+    const pg = await open(VIEWS[1], stage);
+    const r = await pg.evaluate(() => {
+      const vis = e => { const cs = getComputedStyle(e); return cs.display !== 'none' && cs.visibility !== 'hidden' && e.getClientRects().length > 0; };
+      const hit = (a, b) => a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1;
+      const title = document.querySelector('.result .rh1'), tr = title && title.getBoundingClientRect();
+      const pills = Array.from(document.querySelectorAll('.chipbar .pill')).filter(vis);
+      return { title: title ? title.textContent.trim() : null, lines: Array.from(document.querySelectorAll('.result .rfoot .retmc, .result .rfoot .syncline')).filter(vis).map(e => e.textContent.trim()),
+        pills: pills.map(p => p.textContent.trim()), onTitle: pills.filter(p => tr && hit(p.getBoundingClientRect(), tr)).map(p => p.textContent.trim()) };
+    });
+    await pg.close();
+    must(r.title && /MC NOT REACHED|RESULT PENDING/.test(r.title), 'not the no-result screen: ' + JSON.stringify(r));
+    must(r.lines.length === 1 && r.lines[0] === 'RETURN TO MISSION CONTROL', 'the footer does not carry exactly one status line: ' + JSON.stringify(r.lines));
+    must(r.onTitle.length === 0, 'a pill sits on the title: ' + JSON.stringify(r.onTitle));
+    must(!r.pills.some(p => /MISSION CONTROL/.test(p)), 'the MC pill repeats the footer line: ' + JSON.stringify(r.pills));
+  });
+}
+await step('QA-15 stage result: a result MC just delivered never reads OUT OF RANGE under it', async () => {
+  const pg = await open(VIEWS[0], 'result-win-team');
+  await pg.waitForTimeout(1200);   // the 1 s sync poller in app.js
+  const r = await pg.evaluate(() => ({ ws: window.brx.engine.state().wsState, line: (document.querySelector('.result .syncline') || {}).textContent || '' }));
+  await pg.close();
+  must(r.ws === 'bound', 'the stage did not deliver the result over a bound link: ' + JSON.stringify(r));
+  must(!/OUT OF RANGE/.test(r.line) && /SENT TO THE HOST|SENDING/.test(r.line), 'the sync line contradicts the link that just delivered the result: ' + JSON.stringify(r));
+});
 
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;

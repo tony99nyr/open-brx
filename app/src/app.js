@@ -630,7 +630,10 @@ function renderNow() {
 }
 setInterval(() => { presenceTick(); engine.tick(); syncPlayerAdvert().catch(() => {}); scheduleRender(); }, 250);
 setInterval(refreshPreflight, 5000);
-setInterval(() => { try { hud.sync = { bound: !!transport && transport.state === 'bound', pending: transport && transport.ring ? transport.ring.pending().length : 0 }; if (transport) hud.sessionId = transport.sessionId || null; } catch (_) { /* ignore */ } }, 1000);   // never joined → stays null (OVERALL); the harness may set it
+// QA-15 (2026-09-23): the stage has no transport, so this read "never bound" and every stage result said OUT OF RANGE
+// under a result MC had just delivered. On a phone a result only arrives over a bound transport, and the engine's
+// wsState follows transport.onState, so the stage reads the engine's link instead: it predicts the phone again.
+setInterval(() => { try { hud.sync = (DEMO && !transport) ? { bound: engine.state().wsState === 'bound', pending: 0 } : { bound: !!transport && transport.state === 'bound', pending: transport && transport.ring ? transport.ring.pending().length : 0 }; if (transport) hud.sessionId = transport.sessionId || null; } catch (_) { /* ignore */ } }, 1000);   // never joined → stays null (OVERALL); the harness may set it
 
 // ---------- app lifecycle (§3.11) ----------
 function onForeground(fg) {

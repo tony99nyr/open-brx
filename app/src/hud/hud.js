@@ -1066,10 +1066,12 @@ export class Hud {
     // --- body ---
     let body;
     if (!R) {
+      // QA-14: this panel used to repeat the status (walk back into range) that the footer line already says, inside
+      // a dashed box that filled the body with nothing. It now says only what the footer does not: who has the result.
       body = `<div class="rwait"><div class="wl">${wait === 'unreached'
-        ? 'Your phone never reached Mission Control after the whistle. The host has the scores — the result is read off Mission Control, not off this screen.'
-        : 'The match is over. Mission Control decides how it ended and sends the result here — walk back into range if you are out of it.'}</div>
-        <div class="wl dim">Your own line is below. It is what this phone counted, not the result.</div></div>`;
+        ? 'Your phone never reached Mission Control after the whistle. The host has the scores: read the result there.'
+        : 'Mission Control decides how the match ended and sends the result here.'}</div>
+        <div class="wl dim">The line below is what this phone counted. It is not the result.</div></div>`;
     } else if (tab === 'team') {
       body = `<div class="rteams" style="grid-template-columns:repeat(${Math.min(4, teams.length)},minmax(0,1fr))">${teams.map(t => {
         const k = String(t.team_id == null ? '' : t.team_id).toLowerCase();
@@ -1133,6 +1135,9 @@ export class Hud {
     // It sat a pixel off the OUT OF RANGE line under it, a stack too tight to read (design-result-pending.png);
     // the room comes from `.fl`'s gap, so no line has to lose its own wording to make space.
     const ret = R ? '' : '<div class="retmc">RETURN TO MISSION CONTROL</div>';
+    // QA-14: with no result and no link, RETURN TO MISSION CONTROL is the one status line; OUT OF RANGE under it said
+    // the same thing again (and the MC pill a third time: `.pill.mcr` steps aside on this screen, index.html).
+    const syncShown = (!R && !(this.sync && this.sync.bound)) ? '' : sync;
     const mcv = (!R && st.game && st.game.mc_verify) ? `<div class="mcvline">${esc(String(st.game.mc_verify).toUpperCase())}</div>` : '';
 
     return `<div class="lobby result rv"><div class="scan"></div><div class="edgeglow"></div>
@@ -1140,7 +1145,7 @@ export class Hud {
       <div class="rbody">${body}</div>
       ${holdStrip}${honorStrip}${afterStrip}
       <div class="rstats" style="grid-template-columns:repeat(${tiles.n},minmax(0,1fr))">${tiles.html}</div>
-      <div class="rfoot foot"><div class="fl">${ret}${mcv}${sync}${sess}</div>
+      <div class="rfoot foot"><div class="fl">${ret}${mcv}${syncShown}${sess}</div>
         <button class="ready ${reopened ? 'ghost' : ''}" data-act="${reopened ? 'onCloseView' : 'onEndOk'}"><span class="unskew">${reopened ? 'CLOSE' : 'OK'}</span></button></div></div>`;
   }
 
@@ -1568,7 +1573,7 @@ export class Hud {
     // dot only; a tap on the MC label shows the detail pill. Before the match (kitted/lobby) MC is required, so the pill stays.
     // (night hides the header dots, so there the dim pill is the only off-range signal)
     // While DOWN one off the cap, the recap's own A31 line already says MC is out of range: no second pill for it.
-    else if (st.phase !== 'idle' && st.phase !== 'connected' && st.wsState !== 'bound' && !(down && this._atCapMinusOne(st)) && (st.phase !== 'live' || this.mcPill || st.night)) pills.push(`<span class="pill warn"><span class="unskew">${down ? 'MC OUT OF RANGE' : st.phase === 'live' ? 'OUT OF MISSION CONTROL RANGE — SCORES SYNC WHEN YOU ARE BACK' : 'RECONNECTING TO MISSION CONTROL…'}</span></span>`);
+    else if (st.phase !== 'idle' && st.phase !== 'connected' && st.wsState !== 'bound' && !(down && this._atCapMinusOne(st)) && (st.phase !== 'live' || this.mcPill || st.night)) pills.push(`<span class="pill warn mcr"><span class="unskew">${down ? 'MC OUT OF RANGE' : st.phase === 'live' ? 'OUT OF MISSION CONTROL RANGE — SCORES SYNC WHEN YOU ARE BACK' : 'RECONNECTING TO MISSION CONTROL…'}</span></span>`);
     // A tappable pill, not just a status: the retry now runs forever, but a player who has just
     // switched the gun on should not have to wait out a backoff — or go hunting in the debug panel,
     // which is where the only reconnect control used to live (Tony, field 2026-09-01).
