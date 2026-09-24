@@ -86,15 +86,17 @@ the advertised threshold overriding the default, neutral admitting every team, o
 **Respawn range: 3 m at most (Tony, 2026-09-24; F345).** Measured at 3 m on the player phone: a phone station reads
 -63 to -68 dBm, a StickS3 -53 to -58 (the Stick transmits hotter). So the default is **per platform**, like the powerup
 claim's: a phone station **-66 dBm**, a StickS3 **-60 dBm** (`beacon.js RESPAWN_RSSI_DBM`; the Stick's copy is
-`hardware/m5sticks3/station_link.h STICK_DEFAULT_THRESHOLD_DBM`). The other kinds on a phone station keep the
+`hardware/m5sticks3/station_link.h STICK_DEFAULT_THRESHOLD_DBM`, **pending**: it still resolves 0 to -74). The other kinds on a phone station keep the
 2026-09-04 bench value, -74 dBm at high TX (about 10 ft). MC's `StationAssignment.threshold` still overrides; **0**
-(or absent) means the station's own default, which it resolves and advertises in byte 14. A player phone falls
+(or absent) means the station's own default, which it resolves and advertises in byte 14. A phone app older than
+0.4.12 clamped 0 to -30, so MC sends such a phone the explicit value (`state.py _wire_threshold`). A player phone falls
 back to its own `Presence` default (-74, `app.js`) only for an advert whose byte 14 is 0; an MC-armed station never
 sends that. Dwell stays **0.8 s** on both sides.
 
 **The revive count (F344).** A respawn station counts a revive when a player's alive bit goes 0 → 1 while the
 station hears them **near**: the median of the last 3 readings at or above its threshold minus
-`REVIVE_MARGIN_DB` (10). It does not use `present`. The player decides the revive on the station's HIGH-TX advert,
+`REVIVE_MARGIN_DB` (10). It does not use `present`. It counts only a player of its own team (any player at a
+neutral station), and only after it has seen that player die this game, so go-live and a resync never count. The player decides the revive on the station's HIGH-TX advert,
 and the station hears the player's MEDIUM-TX advert, about 8 dB weaker; `present` also adds a dwell behind the EMA.
 Field 2026-09-24: a phone station at -74 counted neither of two revives at it.
 

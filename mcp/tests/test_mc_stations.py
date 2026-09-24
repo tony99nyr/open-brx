@@ -227,7 +227,7 @@ def test_threshold_0_or_absent_means_the_stations_own_platform_default():
     """F345: a respawn station's default range is per platform (a phone -66, a StickS3 -60, about 3 m). MC must
     not stamp one number over both: absent or 0 goes out as 0, and the station advertises its own default."""
     s = _sess()
-    s.net.simulate_utility_hello("util-1")
+    s.net.simulate_utility_hello("util-1", app_ver="0.4.12+abc")
     s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 3})
     assert _pushed(s, "station_config", "util-1")[-1]["threshold"] == 0
     s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 3, "threshold": 0})
@@ -240,6 +240,22 @@ def test_threshold_0_or_absent_means_the_stations_own_platform_default():
             raise AssertionError(f"accepted threshold {bad}")
         except ValueError as e:
             assert "threshold" in str(e)
+
+
+def test_threshold_0_goes_out_explicit_to_a_phone_app_that_clamps_it():
+    """F345 review H1: app 0.4.11 and older clamps a `station_config` threshold of 0 to -30 dBm (a few cm), so no
+    revive is possible. Such a phone (or one whose version MC cannot parse) gets the explicit old value: -66 for a
+    respawn station (the new phone default), -74 for any other kind. 0.4.12 and later, and a StickS3, get 0."""
+    s = _sess()
+    for nid, ver, kind, team, sid, want in (("util-old", "0.4.11+f366156e", "respawn", "blue", 3, -66),
+                                            ("util-unk", "utility", "control", "any", 4, -74),
+                                            ("util-new", "0.4.12+abc", "respawn", "blue", 5, 0)):
+        s.net.simulate_utility_hello(nid, app_ver=ver)
+        s.set_station(nid, {"kind": kind, "team": team, "id": sid})
+        assert _pushed(s, "station_config", nid)[-1]["threshold"] == want, (nid, _pushed(s, "station_config", nid)[-1])
+    s.net.simulate_utility_hello("util-old2", app_ver="0.4.10+85c98553")
+    s.set_station("util-old2", {"kind": "respawn", "team": "blue", "id": 6, "threshold": -58})   # an override is sent as is
+    assert _pushed(s, "station_config", "util-old2")[-1]["threshold"] == -58
 
 
 def test_the_assignment_is_validated_in_the_operators_voice():

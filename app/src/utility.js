@@ -5,7 +5,7 @@
 // No gun, no engine: the revive itself happens on the player's phone (engine.js _triggerPulled).
 import { BrxLink } from './brxlink.js';
 import { ScanGuard, SCAN_MODES, stationScanStep } from './scanwatch.js';   // the BLE flood guard (bench 2026-09-17)
-import { Presence, encodeUuid, KIND, TEAM_ANY, PLAYER_STATE, countRevives, phoneStationThreshold, STATION_THRESHOLD_DBM } from './beacon.js';
+import { Presence, encodeUuid, KIND, TEAM_ANY, PLAYER_STATE, countRevives, stationThreshold, applyThreshold, migrateThreshold } from './beacon.js';
 import { ControlPoint, ControlAdvertiser, CONTROL_STATE, NEUTRAL as CONTROL_NEUTRAL, claimable, DEFAULT_CAPTURE_S, DEFAULT_NET_CAP } from './control.js';   // kind 5: the control point (utility.md §5, K1)
 import { PowerupStation } from './powerup.js';   // kind 2: the powerup station decides who took its item (A56, docs/spec/powerups.md)
 import { Transport } from './transport/transport.js';   // utility.md §5b/§5c: the phone joins MC at muster to be ARMED (contracts A13.5)
@@ -42,12 +42,10 @@ function log(msg, cls = 'li') {
 const DEFAULTS = { kind: 'respawn', team: 1, id: 1, tx: 'high', threshold: 0, thrV: 2, dwell: 800, game: 0, mcArmed: null, mc: '', mc_auto: false,
   captureS: DEFAULT_CAPTURE_S, netCap: DEFAULT_NET_CAP };
 const DEMO = /[?&](stage|demo)\b/.test(typeof location !== 'undefined' ? location.search : '');   // the stage harness: no radio, fake players
-const settings = (() => { try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem('brx.utility') || '{}') }; } catch (_) { return { ...DEFAULTS }; } })();
-// F345: before thrV 2 every station saved the old -74 default as if the operator had chosen it. Read that as
-// "the platform default" once, so a respawn station picks up -66; a SET or slider value stays as it was.
-if (settings.thrV !== 2) { if (settings.threshold === STATION_THRESHOLD_DBM) settings.threshold = 0; settings.thrV = 2; }
+// F345: settings saved before thrV 2 hold the old -74 default as if chosen; migrateThreshold reads it as 0 once.
+const settings = (() => { try { return migrateThreshold({ ...DEFAULTS, ...JSON.parse(localStorage.getItem('brx.utility') || '{}') }); } catch (_) { return { ...DEFAULTS }; } })();
 /** The threshold this station advertises (byte 14) and measures players by: the override, else the platform default. */
-const thr = () => settings.threshold || phoneStationThreshold(settings.kind);
+const thr = () => stationThreshold(settings);
 function save() { try { localStorage.setItem('brx.utility', JSON.stringify(settings)); } catch (_) { /* ignore */ } }
 
 // ---------- plugins ----------
@@ -102,7 +100,7 @@ const link = new BrxLink({ log });
 // the station never did, so `beacon.js`'s filter was dead code here. It only bites once MC arms a non-zero
 // game (v1 manual stations stay at 0 = any), which is exactly when two games share a field.
 const presence = new Presence({ defaultThreshold: thr(), dwellMs: settings.dwell, alpha: 0.35, game: settings.game });
-const wasAlive = new Map();          // player id → alive bit, to count revives that happened here
+const wasAlive = new Map();          // player id → { alive, died } for THIS game, to count revives that happened here (beacon.js countRevives)
 let revives = 0, scanning = false, _lastScanRestart = 0, _scanBusy = false, _twin = 0;
 const scanGuard = new ScanGuard(); let _scanModeIdx = 0, _scanModeSince = 0;   // a crowded field drops the player watch to balanced (scanwatch.js)
 const SCAN_RESTART_MS = 8000;        // S6: a long scan STALLS on Android, worse while we also advertise — restart it on this cadence (8s > the ~6s floor Android's ~5-starts/30s throttle imposes)
@@ -154,15 +152,14 @@ async function applyStationConfig(body) {
   if (body.kind && KIND_LABEL[body.kind]) settings.kind = body.kind;
   if (body.team != null) settings.team = typeof body.team === 'number' ? body.team : (TEAM_ID_TO_TID[String(body.team).toLowerCase()] ?? settings.team);
   if (Number.isFinite(+body.id) && +body.id >= 1) settings.id = Math.min(65535, Math.round(+body.id));
-  // 0 (or absent) = this platform's own default (F345); it used to clamp 0 to -30, a bubble of a few centimetres.
-  if (Number.isFinite(+body.threshold)) settings.threshold = +body.threshold === 0 ? 0 : Math.max(-100, Math.min(-30, Math.round(+body.threshold)));
+  settings.threshold = applyThreshold(body.threshold, settings.threshold);   // F345: 0 = this platform's own default
   const wasGame = settings.game;
   settings.game = Number.isFinite(+body.game) ? (+body.game & 0xff) : 0;   // absent = 0 (any game), v1
   // A NEW game must not resume the last one's owner with the last one's possession seconds in the tally.
   // Arming is the only signal a station gets that a match changed (it is deliberately offline for the rest of
   // one), so this is where the point resets. The manual button behind the seven-tap gate is the field
   // fallback, not the mechanism.
-  if (settings.game !== wasGame) resetPoint(`MC armed game ${settings.game}`);
+  if (settings.game !== wasGame) { resetPoint(`MC armed game ${settings.game}`); wasAlive.clear(); revives = 0; }   // F344 review M2: a death seen last game is not one this game
   // A56: the item this powerup station grants, locked for the match (Tony: one item per station, never random).
   settings.item = settings.kind === 'powerup' && body.item && typeof body.item === 'object' ? body.item : null;
   pu.id = settings.id; pu.item = settings.item;
@@ -337,7 +334,7 @@ function tick() {
   presence.game = settings.game;
   presence.tick(now);
   // F344: a revive counts on the player being NEAR, not `present` (beacon.js countRevives says why).
-  for (const p of countRevives(presence, wasAlive)) {
+  for (const p of countRevives(presence, wasAlive, { team: settings.team })) {
     if (settings.kind !== 'respawn') continue;
     revives++; log(`player ${p.id} (${TEAM_NAMES[p.team] || p.team}) revived here at ${Math.round(Number.isFinite(p.median) ? p.median : p.rssi)} dBm`, 'lk');
   }

@@ -80,6 +80,10 @@ export declare const STATION_REBOOT_SLACK_MS: 5000;
 export declare const TRIGGER_AFTER_PROTECT_MS: 500;
 /** a death this soon after a timed respawn raises the down-screen warning */
 export declare const SPAWN_KILL_WINDOW_MS: 10000;
+/** F345: a phone station's own threshold defaults (app/src/beacon.js RESPAWN_RSSI_DBM.phone, STATION_THRESHOLD_DBM),
+ *  sent explicitly instead of 0 to a phone app older than PHONE_THRESHOLD_ZERO_APP (which clamps 0 to -30 dBm). */
+export declare const PHONE_RESPAWN_THRESHOLD_DBM: -66;
+export declare const PHONE_STATION_THRESHOLD_DBM: -74;
 /** advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral */
 export declare const STATION_TEAM_ANY: 255;
 /** net.md §8 size cap */

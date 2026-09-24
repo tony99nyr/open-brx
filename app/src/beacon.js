@@ -159,6 +159,21 @@ export const STATION_THRESHOLD_DBM = -74;
 /** A phone station's own default for `kind` (utility.js, when `settings.threshold` is 0). */
 export function phoneStationThreshold(kind) { return kind === 'respawn' ? RESPAWN_RSSI_DBM.phone : STATION_THRESHOLD_DBM; }
 
+/** utility.js `thr()`: what a phone station advertises and measures by, its override or else its platform default. */
+export function stationThreshold({ threshold, kind }) { return threshold || phoneStationThreshold(kind); }
+/** `station_config.threshold` -> the phone station's stored value. 0 = the platform default (F345; 0.4.11 and older
+ *  clamped it to -30 dBm, a bubble of a few cm). Not a number: keep `current`. */
+export function applyThreshold(raw, current) {
+  if (raw == null || raw === '' || !Number.isFinite(+raw)) return current;
+  if (+raw === 0) return 0;
+  return Math.max(-100, Math.min(-30, Math.round(+raw)));
+}
+/** Settings saved before thrV 2 stored the old -74 default as if chosen: read it as 0 (the platform default) once. */
+export function migrateThreshold(saved) {
+  if (saved.thrV === 2) return saved;
+  return { ...saved, threshold: saved.threshold === STATION_THRESHOLD_DBM ? 0 : saved.threshold, thrV: 2 };
+}
+
 /**
  * A respawn station's revive count (utility.js tick; F344). A revive is a player whose alive bit went 0 -> 1 while
  * the station heard them NEAR: the median of their last MEDIAN_SAMPLES readings at or above the station's
@@ -166,22 +181,38 @@ export function phoneStationThreshold(kind) { return kind === 'respawn' ? RESPAW
  * station's HIGH-TX advert; the station hears the player's MEDIUM-TX advert, about 8 dB weaker at the same
  * distance, and `present` adds a 0.8 s dwell behind an EMA. A player who walked in, pulled the trigger and left
  * was never present on the station side (field 2026-09-24: a phone station at -74 counted neither of two
- * revives). The margin covers the TX gap plus 2 dB. `wasAlive` (player id -> alive bit) is the caller's memory;
- * a player Presence has forgotten is forgotten here too. Returns the players counted on this call.
+ * revives). The margin covers the TX gap plus 2 dB.
+ *
+ * Review of a10eed0c: only a player the station serves counts (its own team, or anyone at a TEAM_ANY station; M1),
+ * and only a 0 -> 1 edge after the station has SEEN that player die, alive then down (M2). So go-live beside the
+ * base station (down in the lobby, alive at the start) and a first-heard-down player coming up (a resync, a reload)
+ * never count. `memory` (player id -> { alive, died }) is the caller's, for ONE game: clear it when the game
+ * changes. It outlives Presence's expiry on purpose, so a player who died out of earshot and walked in still
+ * counts; REVIVE_MEMORY_MAX bounds it. Returns the players counted on this call.
  * The StickS3 copies the old rule (`hardware/m5sticks3/presence.h` ReviveCounter) and needs the same change.
  */
 export const REVIVE_MARGIN_DB = 10;
-export function countRevives(presence, wasAlive) {
-  const revived = [], seen = new Set();
+export const REVIVE_MEMORY_MAX = 256;
+export function countRevives(presence, memory, { team = TEAM_ANY } = {}) {
+  const revived = [];
   for (const p of presence.players()) {
-    seen.add(p.id);
+    if (p.ageMs != null && p.ageMs > presence.expiryMs) continue;   // a stale entry says nothing new
+    if (team !== TEAM_ANY && p.team !== team) continue;
     const alive = !!(p.state & PLAYER_STATE.alive);
-    const level = Number.isFinite(p.median) ? p.median : p.rssi;
-    const near = p.ageMs == null || p.ageMs <= presence.expiryMs ? level >= presence.thresholdFor(p) - REVIVE_MARGIN_DB : false;
-    if (wasAlive.get(p.id) === false && alive && near) revived.push(p);
-    wasAlive.set(p.id, alive);
+    const m = memory.get(p.id);
+    if (!m) {
+      if (memory.size >= REVIVE_MEMORY_MAX) memory.delete(memory.keys().next().value);
+      memory.set(p.id, { alive, died: false });
+      continue;
+    }
+    if (m.alive && !alive) m.died = true;
+    else if (!m.alive && alive && m.died) {
+      const level = Number.isFinite(p.median) ? p.median : p.rssi;
+      if (level >= presence.thresholdFor(p) - REVIVE_MARGIN_DB) revived.push(p);
+      m.died = false;
+    }
+    m.alive = alive;
   }
-  for (const id of wasAlive.keys()) if (!seen.has(id)) wasAlive.delete(id);
   return revived;
 }
 
