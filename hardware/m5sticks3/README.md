@@ -24,10 +24,15 @@ How it fits the game:
   behaves like a grenade on the wire in both modes. Whether a Stick should get its own
   `station_source` value, instead of borrowing `grenade`'s, is the open **H8** decision
   (`docs/spec/utility.md` §5g.7).
-- Arming the Stick from Mission Control over Wi-Fi, and everything else about it as a non-phone
-  utility node, is designed but not built: the spec is `docs/spec/utility.md` §5g.
+- Arming the Stick from Mission Control over Wi-Fi is **built, desk-verified, never flashed** (H8;
+  see "Mission Control link (H8)" below): it takes a `hello`/`welcome`/`station_config` like any
+  utility phone, self-spawns a powerup on its own local clock, and scans for a player's CLAIM.
 
 ## Status
+
+**2026-09-24: the Mission Control link (H8) is built and desk-verified only** -- host tests plus a
+clean `stick.py compile` against the real toolchain, nothing run on a Stick yet. See "Mission
+Control link (H8)" below.
 
 **2026-09-23: first bring-up on a real Stick.** Flash, boot, and serial all work. The BLE advert
 and IR transmit both work. IR receive of a gun shot is open (**F314**): the receiver hears a burst
@@ -182,18 +187,138 @@ Both modes advertise `role 1, kind 5 (control), id, team (255 = neutral), state 
 4), value, seq, game` as one 128-bit service UUID, non-connectable, republished at once on an owner
 or state change and at most once a second on a value-only change.
 
+## Mission Control link (H8)
+
+**Status: built 2026-09-24, DESK-VERIFIED ONLY.** Every claim in this section comes from host tests
+(`test/test_link.cpp`, `test/test_ui.cpp`) and a clean `stick.py compile` against the real ESP32-S3
+toolchain. **None of it has run on a Stick.** Flashing and bench-confirming it is Tony's.
+
+The Stick is a Wi-Fi utility node exactly like a phone in the `utility` role (`docs/spec/utility.md`
+§5g): it says `hello {node_id, node_type:"utility", app_ver, platform:"esp32", seq_next:0}`, takes
+`welcome`'s `node_key`, and MC arms it with the same `station_config` a phone gets. It never binds a
+gun, never acks a config, and keeps `seq_next: 0` forever (a station emits no persisted facts). The
+pure link/parsing/scheduling logic is `station_link.h` + `json_lite.h`; the operator's on-device
+buttons are `station_ui.h`; the Arduino plumbing (Wi-Fi, mDNS, the WebSocket, BLE claim-scanning,
+Preferences) is `mc_link_glue.h`.
+
+**Discovery.** mDNS (`_openbrx._tcp`, `MDNS.queryService("openbrx","tcp")`) is the intended path; the
+mandatory floor is the serial console, since a Stick has no camera to scan MC's QR (§5g.3). The MC
+address, from either path, is **never persisted across reboots** -- only the Wi-Fi SSID/password are
+(Preferences), so every power-on starts at LOOKING FOR MC and either hears mDNS or needs a fresh
+`MC <ws-url>`. **Both paths are LAN-only**: mDNS never crosses a router, and a typed `MC <ws-url>`
+means the MC's LAN address (`ws://<lan-ip>:<port>/ws`, from the console or the QR). Pointing it at
+A28's public backhaul URL will not work: that tunnel enforces a join secret
+(`envelope.py`'s `via`/`secret`, contracts.md §5), and this firmware never sends one -- it only ever
+dials the plain LAN socket a phone on the same Wi-Fi would use.
+
+**Serial commands** (in addition to the ones above):
+
+| command | does |
+|---|---|
+| `WIFI <ssid> <pass>` | join and persist the Wi-Fi credentials |
+| `MC <ws://lan-ip:port/path>` | the typed floor, MC's LAN address; a one-off dial, never persisted |
+| `LINK MUSTER` \| `LINK HELD` | the association mode (§5g.4), persisted. `MUSTER` (default) drops Wi-Fi for the match once armed; `HELD` stays linked and reconnects |
+| `LINK OFF` | drop the socket and Wi-Fi association now |
+| `ACTIONS ON` \| `ACTIONS OFF` | whether `station_action` (RESET, CLAIM's report) is sent to MC at all, persisted, **default OFF** -- see "RESET" below |
+| `STATUS` | gained a second `LINK ...` line: link state, mode, ACTIONS, node_id, SSID, and the current assignment |
+
+**The two association modes** are carried end to end: `should_drop_link_at_match_start()`
+(`station_link.h`) is the one call site that decides, and the glue calls it when an ARMED station's
+`game` byte changes (MC's own muster-push signal) -- `MUSTER` disconnects Wi-Fi at that instant,
+`HELD` does nothing. Neither mode ever discards `node_key` or the current assignment on a drop.
+
+**The powerup station (A56, `docs/spec/powerups.md`).** `station_config.item`
+(`{kind, weapon_id?, charges?, amount?, spawn_every_s, first_at_s, name, color}`) and
+`station_update {id, available, next_spawn_in_ms}` are parsed and stored. SELF-SPAWN
+(`PowerupSchedule` in `station_link.h`) counts its own local clock down to the next spawn and flips
+itself available at zero -- a lost MC link never freezes it -- and every `station_update` re-anchors
+that clock, MC being authoritative whenever it is reachable. CLAIM (`ClaimGate`) scans for a player
+phone's own advert (role 2, state bit 4 `claiming`, bit 5 `claim_ready`, `value` = the target station
+id, `id` = the claimant's player_num) and awards the first `claim_ready` heard for its own id, at
+-80 dBm or stronger, ties going to the lower player_num -- the Stick counts no dwell of its own, only
+the phone's. The advert then carries `state 0` (taken), `value` = seconds to the next spawn (capped
+255), and the new byte 15 `taker` (the winner's player_num, 0 = none); `state 1` (available) is
+always `value 0`. A won claim is reported best-effort as `station_action {id, action:"taken",
+player_num, t}` -- **proposed to brx5, not a final contract.**
+
+**Buttons and RESET.** Once Wi-Fi has ever been configured (the first `WIFI` command, ever, even
+across a reboot), the Stick's two buttons become OPERATOR controls -- players never press anything
+-- and this REPLACES the legacy standalone BRIDGE/HILL toggle on the buttons:
+
+- **A: STATS**, a short press only. Pages through local stats (kind, last taker, time to next spawn,
+  MC link, battery), all read-only; nothing here is ever sent anywhere.
+- **B: RESET**, a 2 s hold. The first hold arms a confirm; a SECOND 2 s hold within 5 s sends
+  `station_action {id, action:"reset", t}` (proposed to brx5, not final) and changes nothing locally
+  -- the station only changes once MC answers (a powerup's answer is `station_update
+  {available:true, ...}`, which is what actually clears a shown `taker`). With no MC link, or with
+  `ACTIONS OFF` (below), the screen says RESET NEEDS MISSION CONTROL either way: this Stick is not
+  telling MC anything in either case, so that is the honest message for both.
+
+**ACTIONS gate.** MC does not accept `station_action` yet (it is not in `NODE_KINDS`), so every one
+sent today is a malformed frame counted toward MC's per-socket quarantine (net.md §8, roughly 20/s).
+`ACTIONS` defaults to **OFF**: RESET and a CLAIM's "taken" report are never sent to MC while it is
+off, though RESET's local confirm flow and a CLAIM's local award (the advert's `taker` byte) both
+still work exactly the same -- only the report to MC is gated. Turn it on with `ACTIONS ON` once MC
+actually accepts the kind.
+
+**Getting the legacy toggle back.** With the buttons repurposed, `MODE BRIDGE|HILL` over serial still
+works exactly as before (it is not gated on the link at all) -- that is the only way to reach it once
+any `WIFI` command has ever been given, since Wi-Fi credentials persist across reboots and there is
+no serial command yet to erase them and fall back to the pre-H8 NOT-CONFIGURED state (`LINK OFF`
+only drops the current socket and association; it does not forget the saved SSID). A "forget Wi-Fi"
+command, if one is ever added, would be the other way back to the button toggle.
+
+**THRESHOLD.** `0` in `station_config.threshold` (or the key absent) means "use the Stick's own
+default", currently a **placeholder -58 dBm** (`STICK_DEFAULT_THRESHOLD_DBM`); any other value from
+MC overrides it. Not yet bench-measured against a real player phone.
+
+**Bench to confirm, all of it:** the mDNS query actually resolving MC on the field router; the
+WebSocket surviving a reconnect (and the library's own retry not fighting the association-mode
+policy above it); Wi-Fi 4 + BLE 5 coexistence jitter on the advert while `HELD` (§5g.4's whole
+reason for existing); the CLAIM scan actually catching a phone advertising every ~100-250 ms while
+claiming (`CLAIM_SCAN_PERIOD_MS`/`CLAIM_SCAN_WINDOW_S` in `mc_link_glue.h` are guesses); the
+`ROLE_PLAYER` advert layout this firmware assumes (id = player_num, value = target station id) --
+FYI'd by brx5, never seen on our own bench; the -58 dBm threshold placeholder; the button timing
+(2 s hold, 5 s confirm timeout) at arm's length; and the operator screen's legibility on the real
+1.14" panel (`paintOperator()` has never been seen lit).
+
+**Bench steps (Tony's):**
+
+1. Flash (`stick.py flash`), then `stick.py cmd 5 WIFI <your-ssid> <your-pass>` and confirm it joins
+   (`STATUS` shows `LINK state=LOOKING FOR MC` or better).
+2. Start MC with mDNS advertising on (the default), or `MC ws://<mc-ip>:<port>/ws` from the QR/console.
+3. `STATUS` should show `LINK state=LINKED, NOT ARMED node_id=stick-...`.
+4. From MC's ITEMS panel, assign the Stick as RESPAWN or CONTROL (POWERUP/EXTRACTION/BOMB arm but
+   have no player-side rule yet, §5g.5) and confirm `STATUS` shows `kind=... id=... game=...` and the
+   advert UUID changes (`stick.py ble` from another device).
+5. For a POWERUP: arm it with an item, confirm the advert shows state 1 (available) at first, then
+   claim it from a player phone and confirm state flips to 0 with a plausible countdown in `value`
+   and the taker's player_num in the last byte.
+6. Try `LINK HELD` vs the `LINK MUSTER` default and watch whether the advert stays live at go-live.
+7. `ACTIONS ON`, then hold B once (arms RESET) and again within 5 s (sends it) and confirm MC saw it
+   (once MC accepts the kind); with `ACTIONS OFF` (the default) confirm nothing reaches MC either way
+   and the screen still says RESET NEEDS MISSION CONTROL. Short-press A and confirm it only pages,
+   never arms a reset.
+
 ## Firmware architecture
 
 | file | what |
 |---|---|
 | `m5sticks3.ino` | the Arduino wrapper: RMT receive on G42, RMT transmit with a hardware 38 kHz carrier, NimBLE advert, M5Unified display and buttons, Preferences |
 | `brx_ir.h` | pure C++: pulse durations to bits to fields, and back; the measured timings; the parity rule |
-| `brx_advert.h` | pure C++: the 16-byte advert and its UUID string, an exact port of `app/src/beacon.js encodeUuid`; the republish policy from `control.js` |
+| `brx_advert.h` | pure C++: the 16-byte advert and its UUID string (+ the A56 `taker` byte and its reverse decoder), an exact port of `app/src/beacon.js encodeUuid`; the republish policy from `control.js` |
 | `control_point.h` | pure C++: the BRIDGE and HILL ownership state machines |
-| `test/test_core.cpp` | host tests for the three headers, run by `mcp/tests/test_sticks3_core.py` when `g++` exists |
+| `json_lite.h` | pure C++: a tiny tolerant JSON reader/writer for the M-NET envelope bodies (H8) |
+| `station_link.h` | pure C++: the MC link state machine, hello/status builders, station_config/station_update/control parsers, the powerup self-spawn schedule, and the CLAIM award logic (H8, A56) |
+| `station_ui.h` | pure C++: the operator button state machine (page / RESET confirm) and the `station_action` builder (H8) |
+| `mc_link_glue.h` | Arduino-only: Wi-Fi, mDNS, the WebSocket to MC, BLE claim-scanning, Preferences -- the plumbing on top of the three headers above (H8) |
+| `test/test_core.cpp` | host tests for `brx_ir.h`/`brx_advert.h`/`control_point.h` |
+| `test/test_link.cpp` | host tests for `station_link.h`/`json_lite.h`, plus a golden-dump mode `mcp/tests/test_utility_esp32.py` uses to drive MC with the exact JSON this firmware builds |
+| `test/test_ui.cpp` | host tests for `station_ui.h` |
 
-The three headers never include Arduino, so the logic is tested on the laptop and the sketch is
-only plumbing. Keep it that way.
+All run under `mcp/tests/test_sticks3_core.py` when `g++` exists. The pure headers never include
+Arduino, so the logic is tested on the laptop and the sketch + `mc_link_glue.h` are the only plumbing.
+Keep it that way.
 
 **BLE advert.** The advert is 16 bytes: a 4-byte magic, a version byte, then role, id (2 bytes),
 kind, team, state, value, seq, game, an RSSI threshold, and a pad byte, rendered as one 128-bit
@@ -271,6 +396,12 @@ received word that matches what it just sent within 150 ms of sending it, to sto
   Grove pin instead. The firmware today only reads G42 for receive; this test needs a small firmware
   change to read a Grove pin, and that change is **not built**.
 - **H8**, whether a Stick should carry its own `station_source` value instead of borrowing
-  `grenade`'s: `docs/spec/utility.md` §5g.7.
+  `grenade`'s: `docs/spec/utility.md` §5g.7. (The Wi-Fi link itself is built; this is the one loose
+  end §5g.7 left open and it does not block arming a Stick today.)
+- **Everything in "Mission Control link (H8)"'s "Bench to confirm" list above** -- none of it has
+  run on a Stick.
+- **`station_action` (RESET, CLAIM's "taken" report) is proposed to brx5, not a final contract.**
+  Its shape lives in one function each (`build_station_action_body` in `station_ui.h`,
+  `mcBuildStationActionTaken` in `mc_link_glue.h`) so a rename is a one-line change.
 - **Which Grove pin (G9 or G10) the yellow wire drives on this unit**, given M5's own pinout page
   and the M5Unified port mapping disagree; see "Hardware and pins" above.

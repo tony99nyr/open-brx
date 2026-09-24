@@ -480,11 +480,20 @@ they are built.
 
 ## 5g. A NON-PHONE utility node: the M5StickS3 armed over Wi-Fi (H8)
 
-**Status: designed, not built. 2026-09-14, Tony's call:** program the Stick at Mission Control during setup,
-then carry it out and place it. This section is the spec of record for a utility node that is **not** a phone.
-It changes no wire and adds no advert byte; it is written down because every sentence in §5b/§5c says "phone",
-and the next reader needs to know which of those words are load-bearing and which are just the first client we
-happened to build.
+**Status: built 2026-09-24, DESK-VERIFIED ONLY (never flashed).** `hardware/m5sticks3/station_link.h`
+(+ `json_lite.h`, `station_ui.h`) implement §5g.2's minimum client: hello/welcome/station_config,
+the two association modes below, and the powerup schedule and CLAIM award (A56, `docs/spec/powerups.md`),
+host-tested in `hardware/m5sticks3/test/`. An MC-side test (`mcp/tests/test_utility_esp32.py`)
+drives a real `Session` with the exact JSON the firmware builds. `hardware/m5sticks3/mc_link_glue.h`
+is the Arduino plumbing (Wi-Fi, mDNS, WebSocket, BLE claim-scanning) and compiles clean against the
+real ESP32-S3 toolchain. Everything else in this section, the bench behaviour of any of it, is
+**Tony's to confirm**; see `hardware/m5sticks3/README.md` §"Mission Control link (H8)" for the full
+bench-to-confirm list and steps. 2026-09-14, Tony's call: program the Stick at Mission Control during
+setup, then carry it out and place it. This section is the spec of record for a utility node that is
+**not** a phone. It changes no wire (A56's `station_config.item` and `station_update` are additive,
+and its advert byte 15 `taker` was previously a fixed pad byte); it is written down because every
+sentence in §5b/§5c says "phone", and the next reader needs to know which of those words are
+load-bearing and which are just the first client we happened to build.
 
 ### 5g.1 The wire already admits it — there is nothing to amend
 
