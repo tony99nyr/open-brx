@@ -124,7 +124,8 @@ and the gate:
 - **`trigger`** (default): the player **pulls the trigger**. A dead gun still reports `$BUT,0,1` over BLE
   (bench 2026-09-04). Presence is the gate, the pull is the act — fifty feet away the gate is closed, and
   standing near without pulling does nothing. It also feels like the native station: face it and pull.
-- **`presence`**: dwelling there past the delay is enough (a mode's choice).
+- **`presence`**: dwelling there past the delay is enough (a mode's choice). Only the node reads `gate` today:
+  MC has no field for it (`types.Respawn`) and drops the key at `PUT /api/config`, so every MC game plays `trigger`.
 
 On revive the node writes `frames.revive` exactly as an auto respawn does, and the `respawn` fact carries
 **`station: <id>`** (A13.2). Auto and none modes ignore stations entirely.

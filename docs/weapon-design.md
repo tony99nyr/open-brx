@@ -188,10 +188,8 @@ sounds — and moves the numbers.
 
 ## 2. The rebalance (shipped)
 
-> ⚠ **Read §6.2 with this section.** The table below is computed on raw `t5`. The `$SIR` table MC
-> actually pushes multiplies two of the three subtypes in use, so **five weapons do not deal their
-> `t5`** and four of them fall outside the band once that is applied. The numbers here are correct as
-> *frame* values and as a balance skeleton; they are not the damage that lands.
+> The table below is computed on raw `t5`. That is the damage that lands: MC compiles `t7 = 0`, so the
+> fn 36/37 headset multipliers are ×1 (§6.2).
 
 ### 2.1 Principles
 
@@ -252,8 +250,8 @@ respawn refills the whole kit, so how many kills a full kit could theoretically 
 about any single life. The Charge Rifle's `mag`/`reserve` are ROUNDS of its 10-round cell
 (`rounds_per_charge`), so its one-mag figure is computed on 4 charges (`40 / 10`), not 40 hits.
 
-Three weapons ship **exactly as Battle Company sent them** (`verified: true`): the Burst Rifle, the
-Bolt Rifle and Melee — their stock numbers already sat in the band.
+Two weapons ship **exactly as Battle Company sent them** (`verified: true`): the Bolt Rifle and Melee.
+Both are hidden from the picker. The Burst Rifle shipped stock until its 2026-09-17 retune.
 
 **Role identities**
 
@@ -269,24 +267,24 @@ Bolt Rifle and Melee — their stock numbers already sat in the band.
   lead on kills per clip. ⚠️ **That is a paper lead, not a felt one.** Until stance and recoil ship,
   a player who picks on feel has no reason to take anything else in this family, so the AR's cost is
   owed and unpaid.
-- **Burst Rifle** — **2026-09-17: damage 9 → 11** (`wire.dmg`), 13 hits → 11, so the real three-round
-  burst separates further from the SMG-class assault weapons on hits-to-kill, not only on cadence
-  (75 ms intra-burst then a gap between bursts — the gap moved 275 → 410 → 550 ms on 2026-09-23, R6,
-  row 11 below, §7.5d). No longer ships byte-for-byte (`verified: false`).
-- **Force Rifle** — hidden since the 2026-09-17 cuts, and its old "heavier twin" identity is gone:
-  the Burst Rifle went to 11 damage that day while the Force Rifle stayed at 10, so it is now the
-  lighter AND slower of the burst pair (12 hits and 1.65 s against 11 hits and 1.42 s), with half the
-  reserve and a slower five-part reload. It is kept for custom games, not retuned.
+- **Burst Rifle**: damage 10 (`wire.dmg`), 12 hits, a real three-round burst: 75 ms inside the burst,
+  then a 550 ms gap between bursts (R6, row 11 below, §7.5d), for a 2.57 s TTK. It carries a 40%
+  `crit_pct`. The "changed" column holds its history. No longer ships byte-for-byte (`verified: false`).
+- **Force Rifle**: hidden since the 2026-09-17 cuts, and kept for custom games, not retuned. Both burst
+  weapons now land 10 damage and 12 hits, and the Force Rifle's shorter burst gap makes it the faster of
+  the pair (1.65 s against 2.57 s), with a smaller reserve and a slower five-part reload.
 - **Bolt Rifle** — stock. Single shot, 9 hits, 22 kills.
-- **SMG** — **2026-09-20 playtest: the headset now emits a priced 1-damage second word.** Covering
+- **SMG**: **2026-09-20 playtest: the headset now emits a priced second word** (7 + 2 since R5, 2026-09-23;
+  the history below is the first 8 + 1 pass). Covering
   the gun emitter produced no hit because the captured SMG frame had an empty t12; the Shotgun control
   did produce one. The second word uses carrier 100, which is known to pass the receiver, while the gun
   keeps its outdoor 30 carrier. To keep the combined 9-damage pull inside the balance band and preserve
   the Suppressor's magazine lead, cycle 95 → 100 ms and mag/reserve 72/288 → 54/216. Its heat value
-  (`t24 = 5`) remains inert: overheat requires t37/t38, which only the Charge Rifle carries.
-- **Shotgun** — three hits, six shells, a **400 ms Shells-type reload** — the highest sustained
-  output in the arsenal from its shallowest ammo pool. Unchanged in the 2026-09-17 pass; its numbers
-  already matched Tony's target.
+  (`t24 = 5`) remains inert: overheat requires t37/t38, which only the Charge Rifle and the Energy Rifle
+  (its `t38` override) carry.
+- **Shotgun**: three hits, six shells, a **400 ms Shells-type reload**. Since 2026-09-18 each hit is a
+  20-damage gun word plus our 20-damage headset word (was 45 on the gun alone), so its sustained output
+  (26.1) is now among the lowest; its identity is the three-hit kill up close, not throughput.
 - **Stinger** — full auto, eight hits, 20 kills. Reserve doubled so it is not simply the SMG's worse
   sibling.
 - **Sniper Rifle** — the only two-hit weapon outside the power tier, on a 1.5 s cycle. Unchanged in the
@@ -294,8 +292,8 @@ Bolt Rifle and Melee — their stock numbers already sat in the band.
 - **Plasma Sniper** — a marksman rifle that fires like a carbine and **overheats** (`t24 = 30`).
   Damage dropped hard (80 → 25) precisely so its cycle could stay fast enough for the heat mechanic
   to matter.
-- **AMR** — the hardest-hitting automatic (24 a hit) and the shallowest (14 kills). Unchanged in the
-  2026-09-17 pass.
+- **AMR**: semi-automatic (`t20 = 7`), 21 a hit and 6 hits, a 14-round magazine and a 30% `crit_pct`
+  (F62, 2026-09-18).
 - **Suppressor** — **2026-09-17: cycle 160 → 140 ms** (`wire.fire_ms`); quiet, no muzzle flash, the
   deepest total pool, the slowest kill. **Mag 48 → 75** (a second 2026-09-17 change, §2.3): the
   family-scoped dominance test pairs it against the SMG (same fire mode, same `weapon_class`), which
@@ -311,31 +309,30 @@ Bolt Rifle and Melee — their stock numbers already sat in the band.
 - **Charge Rifle** — **2026-09-17 (F225/F226/S43): the balance-breaking bug and the ambush design.**
   `<8,0>` used to key `$SIR` function 38, which HALVES every hit (a 100-magnitude charge landed 50);
   re-keyed to function 1 (plain damage) in `gameconfig._SIR_TABLE`, and `_SIR_PLAIN_DAMAGE` no longer
-  allow-lists 38 so nothing can key to it by accident again (`compile.py`). Damage is now two
-  independent numbers: `t5` (charge) `85` via `wire.dmg`, `t37` (tap) `20` (already the captured
-  value). A full charge costs 10 rounds of the cell and +56 heat; a tap costs 1 round and +14 heat;
+  allow-lists 38 so nothing can key to it by accident again (`compile.py`). Damage is two
+  independent numbers: `t5` (charge) `70` via `wire.dmg` and `t37` (tap) `16` via `wire.tap_dmg` (first
+  shipped at 85 and 20; the "changed" column holds the steps). A full charge costs 10 rounds of the cell and +56 heat; a tap costs 1 round and +14 heat;
   the lockout sits at about heat 103 for about 4.8 s. The new catalogue field `rounds_per_charge: 10`
   says so explicitly, and every place that used to read `mag`/`reserve` as hit counts (the one-magazine
   guard, the dominance table's kill-chance axis) now divides by it first. The design point (S43,
-  Tony): nobody lands a second charge in a 1v1, so the intended kill is **one charge plus two taps**
-  (85 + 20 + 20 = 125 ≥ 115), 12 rounds and 84 heat, safely under the lockout. Cell size raised
+  Tony): nobody lands a second charge in a 1v1, so the intended kill is **one charge plus three taps**
+  (70 + 16 + 16 + 16 = 118 ≥ 115), 13 rounds and 98 heat, under the lockout. Cell size raised
   100/200 → **40/80** rounds (4 charges up, 8 back) from the old 12/12 the first pass shipped, cutting
   the previous single-most-dominant weapon in the arsenal down to a magazine that holds one real kill
   combo with one charge spare.
 
   **2026-09-17, second pass: the model now counts the real combo.** `hits_to_kill()` used to publish
-  `ceil(pool/85) = 2`, silently pretending every hit is a full charge; it now counts 1 charge plus
-  however many taps close the rest of the pool — **`htk` = 3, `ttk_ms` = 1000** at the 115 pool. TTK is
+  `ceil(pool/charge)`, silently pretending every hit is a full charge; it now counts 1 charge plus
+  however many taps close the rest of the pool: **`htk` = 4, `ttk_ms` = 855** at the 115 pool. TTK is
   deliberately RELEASE-to-kill, not charge-to-kill: the charge is pre-built behind cover, so the ~3.5 s
   (by feel; `t14` itself reads 1250 ms, a separate and still-unreconciled number) it takes to build is
   SETUP, not combat time — that pre-charge is the weapon's whole identity (S43). The two taps that
-  follow cost `WeaponCatalog.CHARGE_TAP_CADENCE_MS` (500 ms, a documented placeholder for "about 1 s"
-  pending a bench-measured tap cadence) each. `rounds_to_kill()` is the ROUNDS version of the same
-  combo (12: `rounds_per_charge` + 1 round per tap) for anything that must compare against a raw
+  follow cost `WeaponCatalog.CHARGE_TAP_CADENCE_MS` (285 ms) each. `rounds_to_kill()` is the ROUNDS
+  version of the same combo (13: `rounds_per_charge` + 1 round per tap) for anything that must compare against a raw
   `mag`/`reserve` count — the one-magazine guard and kills-per-clip both use it, never `hits_to_kill()`
   directly. The SUSTAINED-DPS and one-magazine-kill-chance axes (§2.3) still model the weapon as
   repeated full charges (a charge is near-certain once released; no per-action accuracy model exists to
-  mix that with a tap's p=0.7 trigger pull), so they keep the simpler `ceil(pool/85) = 2` — a different
+  mix that with a tap's p=0.7 trigger pull), so they keep the simpler `ceil(pool/70) = 2`, a different
   question ("how hard can this sustain fire") from "what does the one pre-built kill cost".
 - **Sidearms (2026-09-04, rebalanced D2 2026-09-12)** — Glock-18, USP-S, Desert Eagle: slot-2 backups
   built on the Bolt Rifle's captured frame (the one captured semi-automatic: `t20 = 7`, one shot per
@@ -448,13 +445,14 @@ mode/class bucket) trivially leads — there is nothing to be out-led by. Two qu
 this rule, both **declared catalogue data that the COMPILER never writes**
 (`test_range_and_recoil_are_declared_not_wired` is the guard). Read that precisely: `range_band` and
 `recoil` are human-facing intent, and neither is the wire value. The wire values exist and do reach a
-gun: `wire.range_outdoor_pct` writes `t2` outdoors, and the node writes `t21`/`t22` at runtime:
+gun: `wire.range_outdoor_pct` writes `t2` outdoors, and the node drives accuracy at runtime (`$TMP` t4, contracts A51):
 
 - **`range_band`** (`"close" | "close-mid" | "mid" | "long"`, plus a `range_target_m` human string) —
   the per-venue metres Q15 will calibrate once `t2` is (F231): Shotgun/sidearms close (8-10 m indoor /
-  15-18 m outdoor), SMG close-mid (12 / 25-30), Assault Rifle/Burst/Charge Rifle mid (18-20 / 40-45),
-  Suppressor/Energy Rifle mid (15 / 30, the deep-mag "LMG" role), Sniper Rifle/AMR long (full reach /
-  60 m+). The power tier is provisionally mid (a power weapon, not a marksman one) pending a real call.
+  15-18 m outdoor), SMG close-mid (12 / 25-30), Assault Rifle/Burst/Toxin Rifle mid (18-20 / 40-45),
+  Suppressor/Energy Rifle mid (15 / 30, the deep-mag "LMG" role), Sniper Rifle/AMR/Charge Rifle long
+  (full reach / 60 m+). The two picker power weapons (Rocket Launcher, Rail Gun) are close.
+  `weapons.json` is the list; this paragraph only explains the bands.
 - **`recoil`** — the S42 node-driven profile (legacy `{ceiling, floor, per_shot, recover_ms}` inputs plus
   optional explicit `{crisp, degraded, heavy, after_shots, after_heavy, settle_ms}` ladder fields; a harsh
   floor is a felt COST that offsets a fast TTK): SMG, Suppressor and Stinger harshest (100/60, S54/F268:
@@ -473,9 +471,10 @@ gun: `wire.range_outdoor_pct` writes `t2` outdoors, and the node writes `t21`/`t
   the round count, at no cost in writes; a DEGRADED or HEAVY weapon still only recovers on the settle
   clock (bench-provisional, S54).
 
-Neither field is read by `resolve()`: `t41`/`t2` (range) still ship whatever the capture carries (F135,
-F231 — this is the single biggest missing design axis, §5, U2), and `t21`/`t22` (accuracy ceiling/
-floor) still ship 100/100 on every weapon (native walk off, F230). Both are declared now specifically
+Neither field is read by `resolve()`. Range reaches the wire through its own field, `wire.range_outdoor_pct`
+(`t2` outdoors), and the node writes accuracy at runtime (S54/S55), while the frame keeps `t21`/`t22` at
+100/100 (native walk off, F230). Calibrating range in metres is still the biggest missing design axis
+(F135, F231, §5, U2). Both are declared now specifically
 so the NEXT retune tunes them alongside the numbers above instead of re-deriving this whole argument
 from scratch once the levers exist.
 
@@ -589,20 +588,18 @@ token `protocol-classes.md` has a **name** for, must carry a value, and must car
 in `resolve()` and pinned by tests. The pinning test then allows exactly the declared token for that
 weapon and nothing else. An undeclared drift still fails.
 
-Two overrides ship, both from the 2026-08-26 field range:
+`weapons.json` is the list of overrides that ship (29 entries across 14 weapons on 2026-09-24). The two below
+are the first, from the 2026-08-26 field range; each later entry carries its own `why`.
 
 | weapon | token | change | why |
 |---|---|---|---|
 | Sniper Rifle, AMR, Force Rifle | `t33` reload part 3 | `D21` → `D02` | `D21` fires a "disable" chirp alongside the reload — reproduced on two guns. `D02` is the clean cocking beat the AR/Burst/Bolt chains already end on. |
-| Energy Launcher | `t27` fire sound | `J15` → `O01` | `J15` is a **music sting** (`J` = music/SFX in the DK legend), inherited from the "unnamed secondary" frame. `O01` (1.45 s) is an ordnance report; the whole **O** family is otherwise unused by the stock arsenal. |
+| Energy Launcher | `t27` fire sound | `J15` → `O06` | `J15` is a **music sting** (`J` = music/SFX in the DK legend), inherited from the "unnamed secondary" frame. The first pick was `O01` (1.45 s); `O06` (1.81 s) replaced it by ear on 2026-09-11. The whole **O** family is otherwise unused by the stock arsenal. |
 
 **Correction to the bench note:** the D21 weapons are the Sniper Rifle, the AMR and the **Force
 Rifle** — not the Bolt Rifle. Bolt shares `D04+D03` but its captured chain already ends on `D02`, so
 it needs no override; Force Rifle's chain is `D23+D22+D21`. Pinned by a test so the distinction
 cannot quietly rot.
-
-Other `O` candidates for a bench audition if `O01` does not sit right: `O05` 1.46 s, `O02` 1.71 s,
-`O04` 1.79 s, `O06` 1.81 s, `O03` 2.51 s. Any of them fits the Energy Launcher's 1600 ms cycle.
 
 ### 3.3 – 3.4 Two retracted sound rules (provenance in git history)
 
@@ -776,11 +773,10 @@ weapon with a wide ceiling-to-floor gap punishes mag-dumping without touching it
 numbers at all — a different route to the same "don't just hold the trigger" goal the Assault Rifle's
 cycle retune reached for by hand (§2, "Role identities").
 
-**Every weapon in the catalog ships `t21 = t22 = 100`** — the captured Battle Company default, carried
-through unchanged by `resolve()` (Appendix). The model is present on the wire and unused: turning it on
-for any weapon is a deliberate balance decision, not something the current roster does today. No
-per-weapon values are proposed here — that is future work, and it wants the recovery rate measured
-first.
+**Every weapon's frame still ships `t21 = t22 = 100`**, the captured Battle Company default, carried
+through unchanged by `resolve()` (Appendix), so the native walk stays off (F230). Recoil ships another
+way: the node drives accuracy at runtime from each weapon's declared `recoil` profile in `weapons.json`,
+with one absolute `$TMP` t4 write (S54/S55, contracts A51; Balance rules rows 1-3).
 
 ---
 
@@ -846,135 +842,39 @@ every game head (`gameconfig._SIR_TABLE`, sent by `Compiler.compile()`).
 - The row's **function** decides the effect: damage, add-HP, add-armor, add-shield, or a status
   event that touches no pool (experiment-log, *"SPECIAL-WEAPONS TIER"* — *"`D8` is not 'damage' — it
   is the MAGNITUDE"*).
-- Pools drain **shields → armor → HP**, and armor overflow spills into shields.
-  > ⚠ **The third pool is discarded in our code, not just under-specified.** `protocol.py` parses only
-  > `$HP` token 1, `app/src/engine.js` drops the shield token, and the phone engine — the thing that
-  > actually scores a live game — has no concept of shields anywhere. Harmless until now because
-  > nothing could fill the pool; it **fails open** the moment a shield charger exists, which is now an
-  > evening's work. Pending decision: `docs/spec/node.md` §10-Q12 and FOLLOWUPS Q12.
-- **Shields are not a BLE-writable pool.** They fill only from an IR function-11 event — which is
-  what closed P16 after `$PSET` shield values had done nothing all session.
+- Pools drain **shields → armor → HP**, and armor overflow spills into shields. The phone engine
+  counts the shield in `hit_taken.dmg` and the HUD shows it; what is still open is `docs/spec/node.md`
+  §10 Q12 (FOLLOWUPS Q12′).
+- **Shield fill.** `$PSET` t5 sets the shield CAPACITY, not a fill (P16). The pool fills from an IR
+  function-11 event or over BLE with `$LIFE,0,0,<n>,*` (F109, bench 2026-09-11), which is how the Shields
+  preset recharges (§7.3).
 
 So a weapon is a **`<t5, t3, t4>` triple against a table we author**, not a damage number. Two guns
 with identical `t5` can do entirely different things.
 
-### 6.2 ⚠ What this supersedes in this document
+### 6.2 The multiplier functions, and what the shipped table does now
 
-> **2026-09-17 (arsenal review): the default `crit_modifier` (compiled `$GSET criticalShotModifier`,
-> t7) is now 0, not 50.** BRX has 4 hit sensors on the headset and 1 on the tagger, and play aims at
-> the head, so the headset is already the primary target and needs no bonus multiplier — a headset
-> hit and a gun-body hit now land the same number. The ×1.25/×2 readings below are still a correct,
-> bench-confirmed record of the FORMULA at `t7=50`; they no longer describe the MC-compiled default.
-> `headset_multiplier(36, 0)` and `headset_multiplier(37, 0)` both return 1.0 (`compile.py`,
-> `mcp/tests/test_headset_multiplier.py`, `mcp/tests/test_gameconfig.py`).
+The function on a victim's `$SIR` row decides what a hit lands (§6.1). Two stock rows carry multiplier
+functions: `<0,1>` → fn 36 and `<0,3>` → fn 37. Bench 2026-09-02, then F23 on 2026-09-11: both are real,
+they act only on a HEADSET hit, and they scale with `$GSET` t7 (`criticalShotModifier`): fn 36 lands
+`floor(magnitude × (1 + t7/200))`, fn 37 lands `magnitude × (1 + 2·t7/100)`. A gun-body hit is ×1 on
+every function. Row tails do not gate the multiplier (`brx-protocol.md` §5).
 
-> **2026-09-17 (F225): fn 38, named "standard" below, is not.** Bench 2026-09-17, headset front dome
-> with the gun sensor covered, proved fn 38 HALVES every hit (a Charge Rifle charge of magnitude 100
-> landed 50, a tap of 20 landed 10), at `t7` 0 and 50 alike. Every row below that reads "`<8,0>` | 38 |
-> standard | ... | 20 (×1)" is wrong; the shipped `_SIR_TABLE` no longer keys the Charge Rifle to fn 38
-> at all (moved to fn 1, plain damage). Treat the Charge Rifle rows in the two tables just below as
-> historical only — §2.2 carries the current numbers.
-
-Four corrections, in descending order of how much they matter.
-
-**1. §2's balance table is computed on raw `t5`, and five weapons do not deal `t5` — on a HEADSET
-hit.** The table MC actually pushes assigns **multiplier functions** to two of the three subtypes in
-use — `<0,1>` → fn 36 (**×1.25**) and `<0,3>` → fn 37 (**×2**) **[two-sided map]**. Every weapon whose
-captured `t4` is 1 or 3 therefore lands more than its `t5` on the headset; on the GUN BODY every one
-of them lands exactly `t5` (×1), same as any other row (bench 2026-09-11).
-
-⚠ The ×1.25/×2 columns below are the HEADSET reading at `t7=50` (the MC-compiled `$GSET
-criticalShotModifier` default); a gun-body hit is ×1 on all three functions (`compile.headset_multiplier()`).
-
-| weapon | t3,t4 | `$SIR` fn | multiplier | t5 | effective | htk shipped | htk real | TTK shipped | **TTK real** |
-|---|---|---|---|---|---|---|---|---|---|
-| Assault Rifle | 0,0 | 1 | standard | 9 | 9 | 13 | 13 | 2.28 | **2.28** |
-| Burst Rifle | 0,3 | 37 | **x2** | 9 | 18 | 13 | 7 | 1.70 | **0.85** ⚠ |
-| Force Rifle | 0,1 | 36 | **x1.25** | 10 | 12 (floor) | 12 | 10 | 1.65 | **1.35** ⚠ |
-| Bolt Rifle | 0,3 | 37 | **x2** | 13 | 26 | 9 | 5 | 1.80 | **0.90** ⚠ |
-| SMG | 0,0 | 1 | standard | 8 | 8 | 15 | 15 | 1.96 | **1.96** |
-| Shotgun | 0,0 | 1 | standard | 45 | 45 | 3 | 3 | 1.60 | **1.60** |
-| Stinger | 0,0 | 1 | standard | 15 | 15 | 8 | 8 | 1.75 | **1.75** |
-| Sniper Rifle | 0,1 | 36 | **x1.25** | 60 | 75 | 2 | 2 | 1.50 | **1.50** |
-| Plasma Sniper | 0,0 | 1 | standard | 25 | 25 | 5 | 5 | 1.60 | **1.60** |
-| AMR | 0,3 | 37 | **x2** | 24 | 48 | 5 | 3 | 1.60 | **0.80** ⚠ |
-| Suppressor | 0,0 | 1 | standard | 8 | 8 | 15 | 15 | 2.24 | **2.24** |
-| Energy Rifle | 0,0 | 1 | standard | 9 | 9 | 13 | 13 | 2.40 | **2.40** |
-| Charge Rifle | 8,0 | 38 | standard | 100 | 100 | 2 | 2 | 2.50 | **2.50** |
-| Rocket Launcher | 10,0 | 1 | standard | 115 | 115 | 1 | 1 | 0.00 | **0.00** |
-| Rail Gun | 6,0 | 1 | standard | 115 | 115 | 1 | 1 | 1.20 | **1.20** |
-| Laser Cannon | 0,0 | 1 | standard | 115 | 115 | 1 | 1 | 1.50 | **1.50** |
-| Energy Launcher | 9,3 | 24 | **landed 0 — mechanism open** | 115 | — | 1 | — | 0.00 | **never kills** |
-| Ion Sniper | 0,0 | 1 | standard | 115 | 115 | 1 | 1 | 0.00 | **0.00** |
-
-**Four weapons fall out of the 1.5–3.5 s band once the multiplier is applied**, and the Energy
-Launcher's cell `<9,3>` maps to **fn 24, which landed nothing on that key**, so as shipped it
-**does no damage at all**. The `htk`/`ttk_ms` fields in `weapons.json` and the band/dominance test in
-`test_mc_compile.py` all use raw `t5` and are wrong for those five rows.
-
-**✅ CONFIRMED 2026-09-02 — this table stands.** It was taken through the real shipped `_SIR_TABLE`,
-one IR word per row, three trials each, `hits == 1` verified, with a trailing known-good control
-(experiment-log 2026-08-26), and it has since been reproduced independently: **16 trials, magnitudes
-20/40/9/7, 8 different `$SIR` row-tail shapes, an fn 1 control on subtype 0 in every trial**
-(`brx-protocol.md` §5). The rule is **fn 36 = floor(magnitude × 1.25)** and **fn 37 = magnitude × 2**;
-the ×1.25 **truncates** (7 → 8, not 9), which is why the Force Rifle's 10 lands as 12, not 12.5. Row
-tails do **not** gate the multiplier: `0,0,1,,` / `,,,,` / `0,0,0,,` / `0,0,2,,` / `0,1,1,,` / none /
-`0,0,1,60` all produced ×1.25 and ×2.
-
-✅ **RESOLVED 2026-09-11 (bench, F23): the 2026-08-27 ×1.0 matrix and the 2026-09-02 ×1.25/×2 reading
-were BOTH correct — they measured different sensors, and neither was outvoted.** Everything in the
-function map above was measured at the gun-body sensor (`$HIR` tok1 = 4, 20/20 at ~40 cm), which is
-always ×1 for fn 1/36/37 alike; the 2026-09-02 reading was taken on the headset (sensor 0) at the
-MC-compiled `t7=50`. A same-night sweep on gun Tactix-3D4F fired the same word sets at both sensors and at
-`t7` = 0/50/100: the body held ×1 throughout every `t7`, and the headset scaled with `t7` exactly as
-`fn 36 -> 1+t7/200`, `fn 37 -> 1+2·t7/100` predicts — a `t7=0` closing control on fn 37 read the
-headset back to ×1, isolating `t7` (not the function alone) as the driver. The emitter is
-function-agnostic (a fn 1 control read 20 while fn 37 read 40 in the same run), so the scaling
-happens inside the gun, gated on which sensor caught the hit. The single non-reproduction of fn 24
-dealing damage on protocol 7 is unrelated to this and stays open. The full narrative, including the
-held-gun hypothesis that is no longer needed, is in the experiment log
-(`docs/experiment-log/2026-09.md`, 2026-09-11 bench).
+**This is fixed for the shipped game.** MC compiles t7 = 0 (2026-09-17 arsenal review: the headset is
+already the primary target), so fn 36 and fn 37 both land ×1 (`compile.headset_multiplier()`,
+`mcp/tests/test_headset_multiplier.py`). The two cells that were live bugs are fn 1 in
+`gameconfig._SIR_TABLE`: `<8,0>` (the Charge Rifle; fn 38 halved every hit, F225) and `<9,3>` (the Energy
+Launcher; fn 24 landed nothing, bench 2026-09-18). The flatten-or-retune question is moot at t7 = 0.
+The per-weapon tables, the confirmation trials and the resolution narrative are in git history and in
+`docs/experiment-log/2026-09.md` (2026-09-02 and 2026-09-11).
 
 > **Method rule: record the protocol, the `$HIR` token 1, and the firing range beside every pool
 > measurement.** All three started as unstated conditions discovered after the fact and each cost a re-run.
 > The default question for any new claim is "under what conditions is this true?", asked at capture time.
 
-| shipped row | function | magnitude 20 lands as (gun body / headset at t7=50) | weapons on that key |
-|---|---|---|---|
-| `<0,0>` | 1 | **20** (×1) / **20** (×1) | the other 12 weapons |
-| `<0,1>` | 36 | **20** (×1) / **25** (floor ×1.25) | Force Rifle, Sniper Rifle |
-| `<0,3>` | 37 | **20** (×1) / **40** (×2) | Burst Rifle, Bolt Rifle, AMR |
-| `<8,0>` | 38 | **20** (×1) | Charge Rifle |
-| `<6,0>` | 1 | **20** (×1) | Rail Gun |
-| `<9,3>` | 24 | **0 — no damage at all** | **Energy Launcher** |
-
-The multipliers behave identically through the shipped rows as through the synthetic protocol-5 row
-they were first measured on, so the table above is the effective-damage table for the shipped game —
-gated on which sensor caught the hit, per the resolution above.
-
 > ⚠ **A measurement artifact worth remembering.** The first pass read the Burst Rifle as unaffected.
 > It was not — the trial had counted *registered hits* rather than per-hit damage, and a ×2 multiplier
-> is indistinguishable from two registered hits unless you check `hits == 1`. Bolt and AMR registered
-> twice and looked wrong; Burst registered once and looked fine. Same bug, opposite appearance.
-
-**Two fixes, and they are not independent.**
-
-1. **Flatten `_SIR_TABLE` to fn 1** everywhere and make multipliers an explicit opt-in per-game
-   modifier. This also fixes the Energy Launcher for free, since `<9,3>` would become a damage row.
-2. **Retune `t5`** for the five multiplied weapons and separately move the Energy Launcher off `<9,3>`
-   (an `overrides` entry on `t3`/`t4`), or change that row's function.
-
-**The multipliers are real (U10, 2026-09-02), so this decision is live, and the recommendation is flatten**, and the deciding argument is
-asymmetry: flattening restores exactly the §2 numbers, which are *already* band-checked and
-dominance-checked, so it costs **zero retune**.
-Retuning means recomputing five weapons and re-running the dominance check with multipliers folded in —
-and leaves a weapon's real damage depending on *the other player's* config, which is a nasty class of
-bug and invisible to every balance tool we have (`htk`, `ttk_ms` and the band/dominance tests all
-compute on raw `t5`).
-
-**Not applied here.** The Energy Launcher is a bug and must be fixed either way; *which* fix is right
-depends on the flatten decision, so doing it now risks doing it twice. Tony's call — the numbers are
-in.
+> is indistinguishable from two registered hits unless you check `hits == 1`.
 
 ### 6.2b The worse bug: `validate()` passed it
 
@@ -1137,14 +1037,16 @@ spend a session on:
   incendiary — all named in the `DamageType` enum and in the manual's perk list — are **not** `$SIR`
   functions that tick a pool. If we want a DoT it has to be host-driven (repeat emissions from a
   station, or a Companion applying `$BHIT` on a timer), not a fire-and-forget effect.
-  > ⚠️ Note this list is no longer a "status function" list: **24, 25, 26 and 27 were later found to
-  > deal damage on protocol 7**, having moved no pool on protocol 5. The DoT negative is unaffected —
-  > none of them ticked — but do not read membership here as "inert".
+  > ⚠️ fn 24-27 are not inert. One unreproduced reading had them dealing damage on protocol 7; the
+  > 2026-09-18 re-measure (two guns, single hand-aimed shots) found **no damage at all** and a phantom
+  > `$HIR` every 5.07 s until `$SPAWN`. The re-measure is the current record (`protocol/brx-protocol.md`
+  > §5, "Phantom hit generator"). Never ship fn 24-27 on a cell a weapon can reach.
 
 ### 6.3b Damage over time: the axis the catalogue does not have (S16)
 
 Tony, 2026-09-17: "we don't have any damage over time weapons, like a poison gun". Correct, and the
-mechanism for one has been unblocked since 2026-09-09. Nothing in the 22-weapon catalogue ticks.
+mechanism for one has been unblocked since 2026-09-09. **Shipped 2026-09-19 as the Toxin Rifle** (S16
+closed; every hit poisons; the node tick clock is `spec/node.md` §3.17). The design record follows.
 
 **The certain route is the node.** `$LIFE,<hp>,<armour>,<shield>,*` takes negatives, so the victim's
 own phone can drain the victim's own pools on a timer, with no firmware change and no IR frame per
@@ -1169,10 +1071,8 @@ the original magnitude, about 420 ms apart (bench 2026-09-11). That looks exactl
 once the source stopped; a separate 2026-08-26 sweep fired each status function **once** and watched
 for 18 s with no ticks at all. So "one hand-aimed fn-24 shot produces several ticks" is **unproven**,
 and the two results may simply mean one delayed tick per word. Do not build a weapon on it until a
-bench fires single fn-24 shots and counts the ticks. There is a live reason to run that test anyway:
-`$SIR,9,3,,24` is the **Energy Launcher** row, and MC ships it in every game
-(`gameconfig._SIR_TABLE`), so a weapon we already list may be ticking victims a few seconds after every
-hit, and nobody has ever watched for it.
+bench fires single fn-24 shots and counts the ticks. The Energy Launcher's `<9,3>` row no longer uses
+fn 24: it is fn 1 since the 2026-09-18 bench (§6.2), and fn 24-27 ship on no cell a weapon can reach.
 
 **The weapon it buys: a Toxin Rifle.** Low direct damage, a poison stack on hit, and a real weakness.
 The shape that fits the ladder:
@@ -1198,17 +1098,17 @@ the shooter sees, given the shooter's gun never learns that it hit anyone.
 
 ### 6.3c Archetypes the catalogue does not have
 
-§6.3 proves five levers. The 22-weapon catalogue uses one of them (armour piercing, on the AMR and the
-Rail Gun). These are the weapons the other levers already allow. None needs firmware, and each names
-the one thing it waits on.
+§6.3 proves five levers. These are the weapons they allow. None needs firmware. Two rows have shipped
+since this table was written (Toxin Rifle, crit); armour piercing is now a perk (§7.7). The rest name the
+one thing they wait on.
 
 | archetype | what the player does | mechanism | waits on |
 |---|---|---|---|
-| **Toxin Rifle** | tag someone and they keep losing health after you break contact | node tick clock on `$LIFE` negatives, keyed to the `$WEAP` t3 damage type echoed in `$HIR` token 2 (the enum already has 11 = gas) | S16: the node behaviour is specified (`spec/node.md` §3.17); what is left is kill credit for a lethal tick, then the code |
+| **Toxin Rifle** | tag someone and they keep losing health after you break contact | node tick clock on `$LIFE` negatives, keyed to the `$WEAP` t3 damage type echoed in `$HIR` token 2 (the enum already has 11 = gas) | shipped 2026-09-19 (S16 closed, `spec/node.md` §3.17) |
 | **Medic gun** | heal a teammate by tagging them | `$SIR` fn 10, 9 or 14, by overflow flavour. The firmware enforces "allies only" by itself: a heal fired at an enemy is silently dropped | per-player `$SIR` keys, and a decision about whether a healer belongs in a team of eight |
 | **Flux beam** | one weapon that heals a friend and hurts an enemy, decided by who you point it at | ONE `$SIR` row: fn 16, 17, 20, 21 or 22 are dual-polarity. No host logic at all | the same per-player key work, plus a damage number that is fair in both directions |
 | **Jammer** | win a fight without taking any health | `$SIR` fn 23 silences the victim's gun and forces its live accuracy to zero for 6 to 8 s, while it keeps firing and emitting | F66: the silence was heard by ear and the number cited as proof was the accuracy field, so the mechanism is unconfirmed |
-| **Crit weapon** | a shot that sometimes hits much harder | the IR crit bit is proven at x1.5 and echoes on `$HIR` token 6. `$WEAP` t6 (`primaryCritChance`) reads 0 on every stock weapon | F62, measured in `bench-perks-2026-09-18.md` §1: can a tagger roll its own crit, or is the bit emitter-only? |
+| **Crit weapon** | a shot that sometimes hits much harder | the IR crit bit is proven at x1.5 and echoes on `$HIR` token 6. `$WEAP` t6 (`primaryCritChance`) reads 0 on every stock weapon | shipped: F62 closed 2026-09-18 (`t6` is a percentage the gun rolls); `crit_pct` 40 on the Burst Rifle, 30 on the AMR |
 
 Two cautions carry over from §6.2. A `$SIR` table is **game-wide**, so any archetype that needs its own
 function needs per-player keys before it can ship beside the others. And a victim-side multiplier is
@@ -1343,8 +1243,8 @@ receiver, not the firmware.**
 
 | band | carrier | weapons | what it means |
 |---|---|---|---|
-| 32.4 to 38 kHz | inside the pass-band | Sniper 100, AMR and Charge 85, AR and Burst 70, Suppressor and Energy Rifle 55 | **seven weapons, all inside the receiver's window.** "Sniper 100 versus Suppressor 55" is probably not a difference a player can feel |
-| 28.25 to 29.25 kHz | on the knee | SMG, Breacher and Haze 30, Shotgun and the heavies 22 | **six weapons in the steep region**, where sunlight, angle and reflection dominate and behaviour is unstable |
+| 32.4 to 38 kHz | inside the pass-band | Sniper 100, AMR and Charge 85, AR, Burst and Toxin 70, Suppressor and Energy Rifle 55 | **eight weapons, all inside the receiver's window.** "Sniper 100 versus Suppressor 55" is probably not a difference a player can feel |
+| 28.25 to 29.25 kHz | on the knee | SMG, Shotgun, Breacher and Haze 30, Rocket Launcher and Rail Gun 22 | **six weapons in the steep region**, where sunlight, angle and reflection dominate and behaviour is unstable |
 
 That is the worst of both: the long weapons are undifferentiated and the short ones are erratic. It also
 means **range may not be a usable balance axis in the direction we assumed** — you can make a weapon
@@ -1362,10 +1262,10 @@ Named 2026-09-18 from Battle Company's own weapon sheets, via the LaserTagMods m
 `WeaponIRSource`**: 0 gun laser, 1 headset only, **2 gun AND headset**, 3 double gun, 4 double gun plus
 headset, 5 dry fire. Exactly three stock weapons set 2, and for those **`t12` is a second word's damage**
 with `t13`/`t42` its outdoor/indoor reach. After the 2026-09-20 playtest, Open BRX deliberately gives
-the SMG the same dual-emitter source with a priced 1-damage word; both t1 and t12 are explicit overrides
+the SMG the same dual-emitter source with a priced 2-damage word (7 + 2 since R5); both t1 and t12 are explicit overrides
 because neither exists in its captured frame.
 
-| weapon | gun laser (`t5`, range `t2`) | headset word (`t12`, range `t13`/`t42`) |
+| weapon (stock values; §2.2 has what we ship) | gun laser (`t5`, range `t2`) | headset word (`t12`, range `t13`/`t42`) |
 |---|---|---|
 | Shotgun | 45 | **70** |
 | Rocket Launcher | 115 | **115** |
@@ -1382,8 +1282,9 @@ melee, explosions", which is a statement about the shooter's hardware. `t37`/`t3
 can take either, or **both**. And 45 + 70 is **115**, which is exactly the standard pool: if both words
 reach the same person, a single trigger pull kills them outright.
 
-Our catalogue models one word of 45 and a ladder position of 3 hits at 1.60 s. Every bench run we have
-done would have missed the second word, because at a bench the operator holds both guns and shoots a
+When this was written, our catalogue modelled one word of 45 and a ladder position of 3 hits at 1.60 s.
+Since 2026-09-18 it models both words: 20 on the gun and our chosen 20 on the headset (§2.2). Every bench
+run before then would have missed the second word, because at a bench the operator holds both guns and shoots a
 covered gun sensor at arm's length, and in a game you shoot a person across a field.
 
 ⚠️ **Sourced, not measured.** The test is which EMITTER sent which word, so it is run on the shooter:
@@ -1467,6 +1368,9 @@ A fifth, **damage over time**, is node-driven (S16, `spec/node.md` §3.17). It i
 which is what makes it the natural counter to denial.
 
 ### 7.2 The triangle, in seconds
+
+> ⚠️ **Superseded by §7.7.** Armour Piercing is a perk priced per weapon (`ap_dmg`/`ap_fire_ms` in
+> `weapons.json`), not a flat `t5` = 3 on the primary. This section is kept for the reasoning.
 
 The Assault Rifle chassis at 9 damage and 100 ms, against the three pools we ship. Armour Piercing is
 priced at **`t5` = 3**, one third of base. That number is not "about 60%": it is the integer that works.
@@ -1856,18 +1760,24 @@ moves no pool, together with live accuracy at 0.
 
 ## Appendix — token positions
 
-`resolve()` writes exactly these and nothing else. Doc `tokN` == `frame.split(",")[N+1]`.
+What `resolve()` writes, read from `WeaponCatalog._T` and `resolve()` in `mcp/brx_mcp/mc/compile.py` on
+2026-09-24 (the code is canonical; re-read it before trusting this table). Doc `tokN` ==
+`frame.split(",")[N+1]`.
 
 | token | field | written? |
 |---|---|---|
 | `t0` | slot | ✅ set per call |
-| `t5` | damage | ✅ when `wire.dmg` is present |
-| `t14` | fire interval / charge time | ✅ when `wire.fire_ms` is present |
+| `t2` | gun range, outdoor (carrier, §6.5) | ✅ from `wire.range_outdoor_pct` outdoors |
+| `t5` | damage | ✅ when `wire.dmg` is present (or an Armour Piercing price, §7.7) |
+| `t6` | crit chance | ✅ when `crit_pct` is declared (F62) |
+| `t12` / `t13` / `t42` | headset word: damage, outdoor and indoor range (§7.0) | ✅ from `wire.headset_dmg` / `headset_range_*` where the frame has a headset word |
+| `t14` | fire interval / charge time | ✅ when `wire.fire_ms` is present (or an AP cycle) |
+| `t15` | weapon swap delay | ✅ always: `wire.swap_ms`, else the captured value (850 on stock guns), scaled by a `switch_mult` perk |
 | `t16` / `t39` | max clip / clip start | ✅ always, kept equal |
 | `t17` / `t40` | reserve / reserve-half | ✅ always, kept at `t17 == 2 × t40` |
 | `t18` | reload ms | ✅ always |
-| `t15` | the constant **850** in every captured frame | ❌ **never** — unidentified |
-| `t3` `t4` | the **`$SIR` composite key** — selects the victim-side effect, including multipliers (§6) | ❌ inherited from the capture |
-| `t19` `t20` `t23` `t24` `t25` `t26` `t27–36` `t41` `t42` | reload type, **fire mode**, burst, overheat, muzzle flash, all sounds, ranges | ❌ inherited from the capture |
+| `t37` | charge rifle tap damage | ✅ when `wire.tap_dmg` is present |
+| `t3` `t4` | the **`$SIR` composite key**: selects the victim-side effect (§6) | inherited, unless an override or a re-key (Armour Piercing, `--distinct-weapon-cells`) moves it |
+| `t19` `t20` `t21` `t22` `t23` `t24` `t25` `t26` `t27–36` `t38` `t41` | reload type, **fire mode**, accuracy, burst, overheat, muzzle flash, sounds, indoor range | ❌ inherited from the capture |
 | declared `overrides` | one named token per entry, with a stated reason (§3.2) | ✅ where declared |
-| `t7–t13` | secondary fire | ❌ empty on all twenty stock weapons — no BRX weapon has an alt-fire |
+| `t7–t11` | secondary fire | ❌ empty on every stock weapon; no BRX weapon has an alt-fire |

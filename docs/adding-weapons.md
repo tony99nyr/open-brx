@@ -75,7 +75,7 @@ session report and promote any new protocol fact before enabling the weapon for 
 
 ## Dogfood: Breacher and Toxin Rifle
 
-Breacher is catalog id `stripper`. It preserves the captured Stripper frame, emits `<5,0>`, and requests
+Breacher is catalog id `stripper`. It is built on the captured Suppressor frame (`based_on: suppressor`; no support weapon was ever captured), emits `<5,0>`, and requests
 function 20 through `sir_fn`. It is nonlethal and secondary-only, so validation must accept it beside a
 lethal primary while every victim gets its conditional row.
 

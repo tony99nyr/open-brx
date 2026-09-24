@@ -2,7 +2,7 @@
 
 The utility role turns a spare phone into an item on the field. This is the **order of work** for everything
 the utility path still owes, written so any session can pick up a row and know what to build, on which
-surface, and what proves it. It carries no status: what is built, what is open and what is next live in
+surface, and what proves it. It carries no status beyond one "built" note in §1: what is built, what is open and what is next live in
 [`FOLLOWUPS.md`](FOLLOWUPS.md) and [`HANDOFF.md`](HANDOFF.md).
 
 The spec of record stays [`spec/utility.md`](spec/utility.md) (advert format, presence, the respawn rule, MC
@@ -33,7 +33,11 @@ in full but not built.
 ## 1. Cross-cutting work first
 
 These unblock every kind and are cheap relative to the kinds themselves. Row ids are permanent — other
-documents cite them.
+documents and code comments cite them. **Always cite them as "roadmap A2", "roadmap K4" and so on:** the bare
+ids collide with the contracts A-rows and the FOLLOWUPS B and K rows (FOLLOWUPS K4 is melee, not the bomb site).
+
+**Built, kept for the citations:** A1-A6 and C1 (MC station arming, PR #1, 2026-09-11; contracts A13.5) and K1
+(the phone control point, F94, closed 2026-09-11). What is still owed is in FOLLOWUPS.
 
 **A · The arming loop (MC ↔ station)** — MC server + console, plus the phone half.
 
@@ -80,7 +84,8 @@ per-team gun callouts (`VB0N` captured / `VB0P` lost / `VB0O` contested / `U100`
 phone off the station's own advert, with no LAN**, and progress persisted on the station, which stays
 self-authoritative and reports at recap. The opt-in LAN-coupled variant (points-to-win, roaming hills) is in §8 below
 and is a deliberate exception to A4.8. The rows below are the surfaces; the spec wins on the rule.
-Build items: **F94** (§5d), **F95** (roaming hills, §8 below) and **F98** (Territories, §8 below).
+Built as **F94** (§5d, closed 2026-09-11). Still design: **F95** (roaming hills, §8 below) and **F98**
+(Territories, §8 below).
 
 **Territories (§8 below, F98) is the strongest case for building this row**, and it needs nothing beyond §5d: several
 points, each scoring for its owner **whether or not anyone stands on it**, win on the total. It kills camping by
@@ -130,7 +135,7 @@ the payload code in `value` and the taker marked so the same player cannot re-ta
 write to its own gun from the bundle's `powerups[]` frames plus a `pickup` fact; AMMO and WEAPON variants of
 the existing GAIN moment; `bundle.powerups` in the compiler.
 **Bench gate:** take an armour powerup and read the pool in the `$LCD` echo; take a weapon swap and fire the
-new weapon. **Needs:** nothing beyond the respawn primitive. Shields stay IR-only (fn-11) and are out of scope.
+new weapon. **Needs:** nothing beyond the respawn primitive. A shield powerup is possible over BLE (`$LIFE,0,0,<n>,*`, F109) but is out of scope here.
 
 ### K4 · Bomb site (last: the most moving parts)
 
@@ -175,7 +180,7 @@ after K1–K4 prove the intent-bit path.
 | who | rows |
 |---|---|
 | **brx-grenade** (spec, plugin, radio) | spec updates for each kind (`utility.md` §5 → real sections), B1–B3, station state machines' spec text, S7 |
-| **brx** (MC server + console) | A1, A2, A4, A5 (compiler), A6, C1, the `hill` / `domination` / `cs` modes and scoring, E1-E2 (FOLLOWUPS §2) |
+| **brx** (MC server + console) | A1, A2, A4, A5 (compiler), A6, C1, the `hill` / `domination` / `cs` modes and scoring, E2 (FOLLOWUPS) |
 | **brx-hud** (phones) | A3, A5 (phone), C2, every `utility.js` state machine and screen, every engine rule + HUD copy per kind, harness stages and screen-truth steps |
 | **Tony** | bench gates (§4), thresholds, the blast-damage decision, which kind after K1 |
 
@@ -367,8 +372,8 @@ callout, and the ban on queueing anything off a beacon). `engine.js:_hillCallout
 **And a mode primitive we did not have: shield the holder.** Both grenade words carry the OWNER's team, and the
 firmware gates by polarity — damage lands only from an enemy, grants only from your own team. So `<0,0>` on fn 1
 punishes challengers while `<15,0>` on a grant function (fn 11/18) shields holders, with the firmware doing the
-team logic. Untested (see `bench-grenade.md` programme D), and it would be the first shield our stack can fill
-at all (F60).
+team logic. Untested (see `bench-grenade.md` programme D), and it would be the first shield granted by the
+firmware from a hill (F60); the node can already fill the shield over BLE (F109).
 ⚠ **But you cannot have both halves in one cell** — a grant on `<15,0>` costs you the READ of every enemy-held
 hill, which is the whole mode. The conflict is worked through in the next section; it applies to any
 firmware-granted hill reward, shield included, not just to rate of fire.
@@ -390,7 +395,7 @@ a `$WEAP` write is the moment a magazine can be silently refilled or truncated.
 
 **What is unmeasured, and gates the build (`bench-grenade.md` rung Z).** How low token 14 can go before the
 firmware clamps or the IR stops keying; whether the push/revert preserves ammo; whether it fires correctly off a
-real beacon. A faster cadence also interacts with the t21/t22 recoil model (F46), so a boost may cost accuracy as
+real beacon. A faster cadence also interacts with the node's recoil model (S42/S54), so a boost may cost accuracy as
 a side effect. Do not price the boost before the floor is measured.
 
 ## 8. Designs specified but not built

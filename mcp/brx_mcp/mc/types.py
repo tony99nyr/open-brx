@@ -319,8 +319,9 @@ class Siphon(TypedDict):
     """S14: heal the killer on each kill (Fortnite/CoD "health on kill").
 
     Both are **added** to the killer's own pool and clamped by the gun ($LIFE is additive-clamped),
-    so they can never overfill. There is deliberately no `shield`: that pool is IR-only (P16), so a
-    number here would be written and silently do nothing.
+    so they can never overfill. There is no `shield` term yet. The shield CAN be filled over BLE
+    (`$LIFE,0,0,<n>,*`, F109, bench 2026-09-11), so one can be added if a mode wants it. Typed only:
+    compile and the node do not act on `siphon` today (S14 open).
     """
     hp: int
     armor: int
@@ -558,7 +559,7 @@ class GameConfigBase(TypedDict):
     #                                              per weapon. DEFAULT OFF -- an unmatched cell is silently ignored (the
     #                                              F11 shape), so it stays off until FOLLOWUPS F38/F39 clear it at the bench.
     stun: NotRequired["Stun"]                    # F15/A20: the host-driven STUN (EMP). Present = the `<8,0>` $SIR cell
-    #                                              ships as fn 24 (status, no damage) and a proto-8 $HIR disarms the
+    #                                              ships as fn 23 (status, no damage; F253) and a proto-8 $HIR disarms the
     #                                              victim's node for `duration_s` (default 10, 1..60). Absent = the stock
     #                                              charge-rifle damage row, byte-for-byte. Source: a $WEAP t3=8 slot
     #                                              (the charge rifle) or a proto-8 station.

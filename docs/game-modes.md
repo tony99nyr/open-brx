@@ -3,8 +3,9 @@
 Every BRX game mode we know of, from all sources (V7 manual, Extended User Guide, the Callsign APK harvest,
 community), classified by **what infrastructure each needs to run at scale**, plus the hard ceilings every
 mode design has to respect. The flagship Extraction design has its own page, `extraction-design.md`.
-**This page carries no status**: what is built today is `HANDOFF.md`, and what is still open is
-`FOLLOWUPS.md`. The MC config schema per mode is `spec/modes.md` §2;
+**This page carries no status**: what is built today is `HANDOFF.md`, what is still open is
+`FOLLOWUPS.md`, and the modes that have an engine are the names in `mcp/brx_mcp/modes/registry.py` (MC's
+selectable subset is `state.MODES`, `spec/modes.md` §2). The MC config schema per mode is `spec/modes.md` §2;
 the grenade's own modes are `reference/grenade.md` and the public manual (`manual/gameplay.md`). Consolidated
 2026-09-06: the constraints ledger (`mode-limits.md`) was dropped and the grenade section moved out; the
 surviving conclusions are the §Hard ceilings below.
@@ -37,7 +38,7 @@ kills), CaptureTheFlag, SquadLeader.
 | Mode | Source | Core mechanic | Scoring / win | Tier | Props | Broadcast | Notes |
 |---|---|---|---|---|---|---|---|
 | **Free For All** | manual, EUG, APK | everyone vs everyone, friendly fire on | most kills (Slayer) / K-D | **0** | – | – | per-player attribution is **EXACT over BLE** (`$HIR` tok3 = shooter id); FFA is **never-friendly**, scoring is roster-based (A5.2) |
-| **Team Death Match** | manual, EUG, APK | two to four teams, weapons + perks | team kills / Death | **0** | – | – | ✅ played end to end on two guns 2026-08-25 |
+| **Team Death Match** | manual, EUG, APK | two to four teams, weapons + perks | team kills / Death | **0** | – | – | the baseline mode |
 | **Survival / Infection** | manual, EUG, APK | humans vs infected; a kill converts a human | last human / infection spread | **0** | – | – | node flips a killed human to the infected team on `$HP,0` (the live `$TID` flip is bench-proven) |
 | **The Swarm** | EUG, APK | infection, but a **Hive Queen** is the infected respawn point | last human | **0** | – | – | respawn point is a **player role**, not a prop |
 | **Generals** | EUG, APK | TDM where a **General** is the team's mobile respawn point | eliminate the General / kills | **0** | – | – | respawn = seek the General, pull trigger; node enforces the role |
@@ -45,7 +46,7 @@ kills), CaptureTheFlag, SquadLeader.
 | **Supremacy** | manual, EUG, APK | 3 factions (Nexus/Resistance/Vanguard), class-based | score / control | **0** | – | – | class abilities are `$WEAP`/`$PSET` loadouts |
 | **Last Man Standing** | APK | elimination, limited lives | last alive | **0** | – | – | nodes track lives; no props |
 | **Domination** | APK | hold **control points** for score-over-time | most point-time / Score | **1** | control-point stations | optional (live board) | points self-authoritative (LED = owner); `DominationBoxes` in APK |
-| **King of the Hill / Territory** | APK (`Territory`) | hold a **zone** | time held | **1** | zone/hill station | optional | ✅ built and proven end to end through the gun 2026-09-10 (the hill is a real grenade in hill mode); domination is the same primitive with more than one point |
+| **King of the Hill / Territory** | APK (`Territory`) | hold a **zone** | time held | **1** | zone/hill station | optional | the hill can be a real grenade in hill mode (`utility-roadmap.md` §7); domination is the same primitive with more than one point |
 | **Capture the Flag** | APK, Callsign Team Arena | grab enemy **flag**, return to base | captures / CaptureTheFlag win | **1** | flag bases (+ flag object / QR) | **wanted** ("flag taken!") | Callsign uses QR flags |
 | **Assault** | APK | attack/defend **objectives** in sequence | objectives armed/held | **1** | objective stations | optional | attackers arm points, defenders hold |
 | **Team Arena** (Callsign) | APK, EUG | TDM + **QR weapon pickups** + capturable flags | kills + captures | **1** | QR codes (pickups/flags) | optional | QR = cheap props; weapon pickup = `$WEAP` push |
@@ -53,10 +54,10 @@ kills), CaptureTheFlag, SquadLeader.
 
 ## How to read it for building
 
-- **Tier 0 is the MVP** and is built: TDM works on hardware; FFA/Slayer get **EXACT per-player attribution
-  over BLE** (`$PSET` tok1 sets player_num, `$HIR` tok3 reports the shooter), and FFA is never-friendly with
-  roster-based scoring (A5.2); infection/Generals/Commander/Swarm are host-side rule modules over the same
-  event stream + a designated player role.
+- **Tier 0 is the MVP.** FFA/Slayer get **EXACT per-player attribution over BLE** (`$PSET` tok1 sets
+  player_num, `$HIR` tok3 reports the shooter), and FFA is never-friendly with roster-based scoring (A5.2).
+  Infection has an engine; Generals/Commander/Swarm would be host-side rule modules over the same event
+  stream + a designated player role, and none exists yet.
 - **Tier 1 unlocks the objective modes** — the **objective-station** primitive. Today that primitive is a
   **utility phone** (BLE advert presence + the trigger as the act; `spec/utility.md`); an IR box
   (`hardware/brx-station-spec.md`) and the grenade (via the B23 bridge) are the shoot-to-capture variants. Each
@@ -65,8 +66,7 @@ kills), CaptureTheFlag, SquadLeader.
   needs location on each node. Do this last.
 
 **Respawn stations** are cross-cutting: any tier benefits from them as sync points on a large field, and they
-double as the physical respawn point for modes that don't use a player-role respawn. The phone respawn
-station is built and bench-proven (2026-09-04).
+double as the physical respawn point for modes that don't use a player-role respawn (`spec/utility.md` §4).
 
 ## Team structure — is it only all-red vs all-blue?
 
@@ -101,9 +101,9 @@ No. The gun resolves friend/enemy by **team id (`$TID`)** in the IR hit, so team
    reboots, keep batteries topped, never assume a session-long link.
 6. **A phone with its screen on drains fast** and is fragile outdoors → mount fixed objectives with power,
    case them.
-7. **The shield pool is IR-only**: granted only by a `$SIR` function-11 event, never by `$PSET`/`$LIFE`
-   (P16, 2026-08-26). Over BLE alone, armor + HP are the working pools; a station with an emitter can grant
-   shields.
+7. **`$PSET` sets the shield ceiling, not a fill** (P16, 2026-08-26). The pool fills from a `$SIR`
+   function-11 event or over BLE with `$LIFE,0,0,<n>,*` (F109, bench 2026-09-11), which is how the Shields
+   preset recharges.
 
 Facts that used to be listed as pending and are now settled: per-player id over BLE (P2, 2026-08-25); four
 native teams and firmware FF (P9, 2026-08-26); `$HIR` tok5 = raw magnitude, damage = `$HP` delta (P10); no
@@ -134,8 +134,7 @@ The flagship mode: raid, loot, call a **loud** extraction, survive the channel, 
 drop everything. It is Tier 1 (one station) and it is the single mode Battle Company's Edge has nothing
 like. The full design — the ARC Raiders / Fortnite-Sprites event ladder, the BRX mechanic mapping, the
 tier ladder, the variants and the genre research — is [`extraction-design.md`](extraction-design.md).
-The rules engine is built and sim-proven (`mcp/brx_mcp/modes/extraction.py`,
-`python -m brx_mcp extraction-sim`); the station and an MC loot scorer are what remain.
+What is built and what remains: `extraction-design.md` §What we actually have to build.
 
 ## Health / regen variants (all Tier 0 — no props)
 
@@ -145,14 +144,13 @@ on v4.32 — it does nothing in either direction. Use `$LIFE` only.** `$LIFE` is
 self-emits `$HP`, and it also **accepts NEGATIVES and drains** (per pool, floors at 0, no spill into the next
 pool) — which is what makes damage-over-time buildable at all (S16). The live test
 found **no native armor regen** (armor held through 30 s idle), so any "regen" must be **host-driven** (node
-watches `$HP`, refills). The shield pool is IR-only (Hard ceilings #7), so over BLE alone armor + HP are the
-working pools.
+watches `$HP`, refills). The shield fills over BLE too (Hard ceilings #7), so all three pools are writable.
 
 | Variant | Mechanic | How (Tier 0) | Caveat |
 |---|---|---|---|
 | **Syphon** (Fortnite/CoD "health-on-kill") | killer regains HP on each kill | MC routes `$LIFE` to the **exact** killer's node via `apply{frames}` (`$HIR` tok3 names the shooter) | reaches the killer only while their node is in coverage (contracts A6.4) |
-| **Halo shields (regen after no-damage)** | health/armor refills to full after T s without taking damage | **node-driven** — the node watches its own gun's `$HP` stream and sends **`$LIFE`** (additive, clamped; `$BUMP` is inert) once no decrease for T s. Works offline. | refills armor + HP; a station with an emitter can refill shields too |
-| **Overshield / powerup pickup** | grab an item → temporary extra pool | the node grants `$LIFE` armor on the pickup (roadmap K3) | an **armor** overshield over BLE; a true shield overshield needs fn-11 from a station |
+| **Halo shields (regen after no-damage)** | health/armor refills to full after T s without taking damage | **node-driven**: the node watches its own gun's `$HP` stream and sends **`$LIFE`** (additive, clamped; `$BUMP` is inert) once no decrease for T s. Works offline. | refills any pool, shield included (`$LIFE,0,0,<n>,*`); the Shields preset ships this recharge |
+| **Overshield / powerup pickup** | grab an item → temporary extra pool | the node grants `$LIFE` armor on the pickup (roadmap K3) | a shield or armour overshield, both over BLE; the shield is capped by the game's `$PSET` shield ceiling |
 | **Medic / Lifesteal support role** | a role heals teammates | `$SIR` dual-polarity functions heal allies and damage enemies in firmware (`weapon-design.md` §6.3), or the node grants `$LIFE` | role logic like General/VIP |
 
 > **Corroboration (FB group crawl):** native shields + medic behaviour are real on stock BRX today —

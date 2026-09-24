@@ -110,14 +110,23 @@ RosterEntry { player_id, player_num, display, team_id, weapons?: RosterWeapon[] 
                              // is that player's loadout in SLOT ORDER (index == gun slot); absent means an
                              // older MC, so the phone names no weapon. Compiled, not catalogue-only: a perk
                              // (Armour Piercing) moves the numbers, and `RosterEntry.weapons` follows it.
-RosterWeapon { weapon_id: string, hir: number[] }
+RosterWeapon { weapon_id: string, hir: number[], cells?: HirCell[] }
                              // [S56] the distinct `$HIR` token-5 magnitudes this weapon's words can carry
                              // (t5 `dmg`, t12 `headset_dmg`, t37 `tap`, each only when > 0), sorted, unique.
                              // A victim's `$HIR` fact carries only a raw magnitude, never a weapon id, so a
                              // phone matches it against the SHOOTER's roster row to name what hit it.
+                             // [F315, A57] `cells`: the same words with the cell each one rides, one entry per
+                             // `hir` magnitude, sorted by it, read from the compiled frame after any re-key
+                             // (Armour Piercing, `--distinct-weapon-cells`). The phone matches cell + magnitude
+                             // first. Absent = an older MC; the phone then matches `hir` alone.
+HirCell { proto: number, subtype: number, mag: number }
+                             // [F315] one `$HIR` word: the IR protocol (`$WEAP` t3, `$HIR` token 2), the subtype
+                             // (t4) and the magnitude (t5, t12 or t37). All words of one `$WEAP` frame share its cell.
 
 WeaponView.hir: number[]     // [S56] the same magnitude set, on the catalogue/kit-out `Weapon`/`WeaponView`
                              // shapes (`views.weapon_view()`), read off that weapon's own compiled `weap_frame`.
+WeaponView.cells?: HirCell[] // [F315, A57] the same, with the catalogue frame's own cell. A match's re-key shows
+                             // only in the roster's `cells`, never here.
 ```
 - **≤ 63 players per match** (6-bit id, 0 reserved). `player_num` is *session* state, not armory state — the same gun
   gets a different number next game.
@@ -128,8 +137,7 @@ WeaponView.hir: number[]     // [S56] the same magnitude set, on the catalogue/k
   `GameConfig.loadout_policy` (presets `open`/`no_heavies`/`snipers`/`custom`, per-slot `choice`
   player|host|fixed|off + `kinds` + tag/id rules) is server-computed into `State.loadout_pool {primary,
   secondary_weapons, perks}` [A14.4 replaces `secondary_perks`]; `SlotRule.kinds` may be `"sidearm"` (pistols
-  only) [A12.2]; the host API refuses Easy Reload beside a second weapon (400), a phone pick applies and knocks
-  the other slot out (`loadout_ack.dropped`) [A14.2]; a player's `ready` ends their try-out and kit → lobby
+  only) [A12.2]; Easy Reload and its conflicts are host-only (`loadout.md` §2.1 is canonical); a player's `ready` ends their try-out and kit → lobby
   auto-advances only when every rostered player is ready [A10.4].
 
 ## 3. Game config, frames, modes (authoring output of M-MODES)
@@ -146,7 +154,8 @@ GameConfig {
   time_limit_s: number,               // REQUIRED and > 0 on the phone path [A4.8]: the only end condition
                                       // that reaches a dispersed node. (null allowed only when validate()
                                       // is told the venue is fully LAN-covered.)
-  respawn:     { type: "auto"|"scanner"|"none", delay_s: number, gate?: "trigger"|"presence",   // gate: A13.1 (scanner only)
+  respawn:     { type: "auto"|"scanner"|"none", delay_s: number, gate?: "trigger"|"presence",   // gate: A13.1 (scanner only). NODE-SIDE
+                 // ONLY: the node reads it (default trigger); MC has no `gate` field (types.Respawn) and drops it at PUT /api/config
                  protect_s?: 0|1|2, weapon_delay_ms?: 500|1000|3000, station_protect_s?: 0|2|3 },  // [A49] defaults 0 / 500 / 2
   stations?:   [ { id: number, kind: "respawn"|"powerup"|"extraction"|"bomb"|"control" } ],          // A13.1: the utility items valid in this game
   scoring:     { frag_limit: number|null, win_by: "kills"|"survival"|"objective" }, // frag_limit / survival ends are LAN-covered-only [A4.8]
@@ -179,6 +188,13 @@ GameConfig {
                                       //   disarms the victim's node for duration_s (default 10, 1..60). Absent = the stock
                                       //   charge-rifle damage row, byte-for-byte. Source: a $WEAP t3=8 slot (the charge rifle)
                                       //   or a proto-8 station. node.md §3.12.
+  // Six more fields ride here; types.py `GameConfigBase` is the full list and the comments there are canonical:
+  siphon?:     { hp: number, armor: number },   // S14 heal-on-kill. Typed only: compile and the node do not act on it yet (modes.md §2)
+  respawn_auto_teams?: number[],      // derived: teams with no station fall back to timed AUTO respawn
+  station_source?: string,            // [F70] what emits the objective ("grenade" | "ir_station"); objective modes only
+  coverage?:   "full" | "partial",    // [A31, A4.8] the venue's radio coverage
+  recoil?:     boolean,               // [S42] node-driven recoil; absent or true = on
+  hit_audio_class?: boolean, hit_audio_rekey?: boolean,   // [A17] per-weapon $SIR sounds; both default off
 }
 ```
 
@@ -914,6 +930,7 @@ Volume per §3. BLE writes chunk at 20 bytes (§app).
 
 | id | date | what | folded into |
 |---|---|---|---|
+| A57 | 2026-09-24 | F315 HIT CELLS. `RosterWeapon` gains `cells?: HirCell[]` (`{proto, subtype, mag}`, one per `hir` magnitude, sorted by it) read from the player's compiled `$WEAP` frame after any re-key (Armour Piercing, `--distinct-weapon-cells`); `WeaponView` carries the catalogue frame's cells. A victim's phone matches cell + magnitude first, so two weapons with the same magnitude on different cells no longer collide. Absent = an older MC; the phone falls back to `hir` alone. | body §2 (`RosterWeapon`, `HirCell`, `WeaponView.cells`); `types.py`; `state.py` (`_roster_weapons`); `views.py` (`weapon_view`) |
 | A56 | 2026-09-24 | POWERUPS, PROPOSED (docs/spec/powerups.md; built behind a flag, off until bench Sitting A proves the spare weapon slots and the `$BMAP` cycle). A powerup station's `StationAssignment.item?` `{kind: weapon\|overshield, weapon_id?, charges?, amount?, spawn_every_s, first_at_s, name, color}` (the same object in the player's `config.stations[]` entry); items spawn at fixed match-clock times (Tony: Rockets and Rail Gun every 120 s, Overshield +75 every 60 s, first after one interval); `GameConfig.powerups?` `[{weapon_id, slot}]`, pickup weapons armed at start in slots 2 and 3 with an empty magazine and out of the ALT cycle; a player fact `pickup {match_id, station_id, item_kind, weapon_id?, t}`; MC's `station_update {id, available, next_spawn_in_ms?}` to the station (time remaining: a Stick has no synced clock; agreed with brx4 for H8). A weapon grant is a mid-life `$AMMO` plus a `$BMAP` ALT-cycle write, never a config re-push. | powerups.md (proposed) |
 | A55 | 2026-09-24 | S57 NAMES THE VICTIM (Tony; docs/ir-callouts.md). A death with a known killer now sends TWO protocol-15 words from the victim's gun: `DOWN_BY` (player = killer), then 250 ms later `DOWN` (player = victim). A receiving phone pairs a `DOWN` with the oldest open `DOWN_BY` for the same victim team inside 1 s: it adds the victim's name to that callout (`state().callout.victim`) with no second callout or cue. No MC or wire-schema change; phone-to-phone IR only. |
 | A54 | 2026-09-23 | S57 THE IR CALLOUT BUS (docs/ir-callouts.md). Presentation only: nothing is relayed and nothing is scored. When a player dies, the victim's phone makes its own dead gun send ONE `$IRTX` word, protocol 15 (`DOWN_BY` 21 + victim tid, player = killer; `DOWN` 25 + victim tid, player = victim); other phones play KILL CONFIRMED, ENEMY DOWN or a silent TEAMMATE DOWN chip. MC ships two things: **(1)** the silent `$SIR,15,0,,28,0,0,1,,*` row in EVERY mode's live table, not only `_OBJECTIVE_MODES`, added only when no `<15,0>` row exists (the cell is reserved in `hitaudio.RESERVED_CELLS`); **(2)** `FrameBundle.callout_team?: int | null`, the smallest tid 0-3 no team in the match holds, or null. The word carries it in its team field so the gun's fn-28 own-team drop spares every real team; the receiving phone reads the victim's team from the magnitude, never from that field. Null falls back to the victim's own tid (teammates then miss it). | body §3 (`FrameBundle`), docs/ir-callouts.md |
