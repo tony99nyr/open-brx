@@ -2,8 +2,8 @@
 // the viewport. Structure re-renders only when the state "signature" changes; live numbers patch in
 // place so CSS animations don't restart every tick. Moments (T-MINUS, KILL, DOWN, REDEPLOY) live in
 // #overlay so they animate independently of the base HUD.
-import * as DS from './deathscreen.js';
-import * as SV from './shieldmeter.js';   // the shield meter (the Visor, Tony 2026-09-24): the strip on the top edge   // the DOWN screen's recap: THIS LIFE and THE GAME NOW
+import * as DS from './deathscreen.js';   // the DOWN screen's recap: THIS LIFE and THE GAME NOW
+import * as SV from './shieldmeter.js';   // the shield meter (the Visor, Tony 2026-09-24): the strip on the top edge
 
 const TEAM_COLOR = { blue: 'var(--team-blue)', yellow: 'var(--team-yellow)', red: 'var(--team-red)', green: 'var(--team-green)' };
 const TEAM_INK = { blue: '#04121e', yellow: '#1a1400', red: '#1a0404', green: '#041a0c' };
@@ -293,7 +293,7 @@ export class Hud {
     // sends nothing and touches no engine state. `_cueAt` / `_cueT` drive the ammo gauge's shot-ready cue.
     this.board = null; this._cueAt = null; this._cueT = null;
     this.info.addEventListener('click', () => this.toggleDiag());
-    this._svFx = { shield: null, base: 0 };   // the shield meter's memory between frames (its one-shot hit flash)
+    this._svFx = { shield: null };   // the shield meter's memory between frames (its one-shot hit flash)
     this.hudEl.addEventListener('click', e => this._click(e));
     this.diag.addEventListener('click', e => this._click(e));
     // The chip bar is a sibling of #hud, so its pill buttons (GUN LINK LOST, RECONNECT NOW) need their own listener:

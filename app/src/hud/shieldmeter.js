@@ -28,29 +28,35 @@ export function meterModel(st, now = Date.now()) {
   const max = st.maxShield || 0;
   const sr = st.shieldRegen || null;
   const alive = !!st.alive;
-  const down = alive && max > 0 && base === 0 && !os;
+  // BROKEN is the engine's latch (`shieldRegen.down`): a fresh life at 0 has not broken, so it gets no red pulse and no tint
+  const down = alive && max > 0 && base === 0 && !os && !!(sr && sr.down);
   const charging = !!(sr && sr.charging) && !os;
-  const waiting = !!(sr && sr.on && !sr.charging && !sr.gaveUp && !os && alive && base < max);
+  // `paused`: the engine's refill stands down (stunned, resyncing, the link down...), so the creep must not fill and hold
+  const waiting = !!(sr && sr.on && !sr.charging && !sr.gaveUp && !sr.paused && !os && alive && base < max);
   const elapsed = waiting ? Math.max(0, now - (sr.quietAt || 0)) : 0;
   const delayPct = waiting ? clamp01(elapsed / sr.delayMs) : 0;
   const pct = max > 0 ? clamp01(base / max) : 0;
   const state = down ? 'down' : charging ? 'charge' : pct > 0 && pct <= 0.25 ? 'low' : 'ok';
   return {
-    base, max, pct, os: !!os, osLeft, osPct: os && os.amount > 0 ? clamp01(osLeft / os.amount) : 0, onlyOs: !!os && max <= 0,
+    base, max, pct, os: !!os, osLeft, osAmount: os ? os.amount || 0 : 0, osPct: os && os.amount > 0 ? clamp01(osLeft / os.amount) : 0, onlyOs: !!os && max <= 0,
     state, down, charging, waiting, delayPct, alive,
   };
 }
 
 // ---- markup ----
 const pctStr = x => `${Math.round(x * 1000) / 10}%`;
+/** For a screen reader only: the meter shows no number (Tony: "just the bar"). The overshield counts on top of the max. */
+const ariaVals = m => ({ 'aria-valuemin': '0', 'aria-valuemax': String(m.max + (m.os ? m.osAmount : 0)), 'aria-valuenow': String(m.base + m.osLeft) });
+const aria = m => Object.entries(ariaVals(m)).map(([k, v]) => `${k}="${v}"`).join(' ');
 
 /** The markup for the live screen (rebuilt only with the screen's structure; `patchMeter` moves it). The strip drains
  *  from both ends to the centre, so every layer is centred (CSS). */
 export function meterHtml(st, now) {
   const m = meterModel(st, now);
-  return `<div class="svm" id="svm" data-s="${m.state}"${m.os ? ' data-os=""' : ''}${m.onlyOs ? ' data-only-os=""' : ''} role="meter" aria-label="shield">`
-    + `<div class="svbar"><i class="svdly" data-k="dl" style="--w:${pctStr(m.delayPct)}"></i><i class="svgh" data-k="gh" style="--w:${pctStr(m.pct)}"></i><i class="svfl" data-k="fl" style="--w:${pctStr(m.pct)}"></i>`
-    + `<i class="svos" data-k="os" style="--w:${pctStr(m.osPct)}"></i><i class="svseg"></i></div></div><div class="svtint" aria-hidden="true"></div>`;
+  return `<div class="svm" id="svm" data-s="${m.state}"${m.os ? ' data-os=""' : ''}${m.onlyOs ? ' data-only-os=""' : ''}${m.waiting ? ' data-wait=""' : ''} role="meter" aria-label="shield" ${aria(m)}>`
+    + `<div class="svbar"><i class="svgh" data-k="gh" style="--w:${pctStr(m.pct)}"></i><i class="svfl" data-k="fl" style="--w:${pctStr(m.pct)}"></i>`
+    // the delay creep comes AFTER the fill and the overshield, so it paints over a part-full shield too
+    + `<i class="svos" data-k="os" style="--w:${pctStr(m.osPct)}"></i><i class="svdly" data-k="dl" style="--w:${pctStr(m.delayPct)}"></i><i class="svseg"></i></div></div><div class="svtint" aria-hidden="true"></div>`;
 }
 
 /** Moves the meter to `st` in place, and fires the one-shot hit flash. `fx` is the HUD's own memory between frames. */
@@ -59,7 +65,8 @@ export function patchMeter(hudEl, st, fx, now = Date.now()) {
   const m = meterModel(st, now);
   const alive = el.closest('.alive');
   if (el.dataset.s !== m.state) el.dataset.s = m.state;
-  el.toggleAttribute('data-wait', m.waiting && !m.charging);
+  el.toggleAttribute('data-wait', m.waiting);
+  for (const [k, v] of Object.entries(ariaVals(m))) if (el.getAttribute(k) !== v) el.setAttribute(k, v);
   if (alive) alive.classList.toggle('sv-down', m.down);
   const vals = { gh: m.pct, fl: m.pct, os: m.osPct, dl: m.delayPct };
   for (const n of el.querySelectorAll('[data-k]')) {
@@ -72,7 +79,7 @@ export function patchMeter(hudEl, st, fx, now = Date.now()) {
   if (fx.shield != null && st.alive && st.phase === 'live') {
     if (total < fx.shield && !m.down) pulse(el, 'hit', 450);   // the break has its own steady pulse (data-s="down")
   }
-  fx.shield = total; fx.base = m.base;
+  fx.shield = total;
 }
 function pulse(el, cls, ms) {
   el.classList.remove('hit'); void el.offsetWidth; el.classList.add(cls);
