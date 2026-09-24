@@ -447,6 +447,10 @@ void setup() {
   cfg.internal_mic = false;
   M5.begin(cfg);
   M5.Speaker.end();
+  // The IR receiver (G42) and transmitter (G46) run off the M5PM1 EXT_5V rail, which M5Unified leaves OFF by default
+  // (docs.m5stack.com/en/arduino/m5sticks3/m5pm1). Without it the receiver is unpowered: bench 2026-09-23 saw only
+  // short random pulses and no gun shot at all until this line. M5's own IR example calls it the same way.
+  M5.Power.setExtOutput(true, m5::ext_none);
   M5.Display.setRotation(1);  // landscape, 240 x 135
   M5.Display.setBrightness(120);
   Serial.begin(115200);
