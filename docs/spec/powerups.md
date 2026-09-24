@@ -74,6 +74,15 @@ its interval; two stations can hold different items and each follows its own sch
 and a Rockets station both spawn at 2:00. At most two different WEAPON items per game (spare slots 2 and 3); two
 stations with the same weapon share its slot.
 
+## Station powerup modes (Tony, 2026-09-24: "future variations wanted")
+
+A powerup station's config is its item plus its schedule, set per game by MC. **Fixed** (the item and the Halo
+schedule above) is the first mode Open BRX supports. Later modes are additive, for example a **random** station or
+a game mode built around one: MC picks the item at each spawn time and sends it in `station_update` (a new optional
+`item`), and phones and Sticks take it from there. The trade-off to design for then: with a fixed item every phone
+knows what spawns when, even offline; with a random one a phone learns the item only from MC or the station's
+advert, so an offline phone may announce "POWERUP AVAILABLE" without the item's name.
+
 ## The spawn announcement (Tony, 2026-09-24)
 
 At each spawn time every player's phone shows a HUD event on the callout card (QA-05's component): the item's name
