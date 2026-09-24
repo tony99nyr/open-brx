@@ -88,7 +88,7 @@ costs the player their secondary while the item lasts.
 
 Items spawn at fixed times on the match clock: at `first_at_s`, then every `spawn_every_s`. An item is available
 from its spawn time until a player takes it; then the station is empty until the next spawn time. An item nobody
-took simply stays; a spawn time never stacks a second one. Every phone and station can compute the schedule from
+took simply stays; a spawn time never stacks a second one (Tony: only ever ONE item waiting at a station; the next spawn replaces it). Every phone and station can compute the schedule from
 the match clock. The station itself decides who took an item (below) and advertises it, so every phone in range sees it taken.
 
 ## One item per station, locked for the match (Tony, 2026-09-24)
@@ -204,6 +204,6 @@ Decided:
   refills up to its own max, so it never tops the overshield back up.
 
 Defaults still to confirm (named constants, easy to change):
-- **Charges:** a weapon item's own magazine (Rockets: 2), no reserve.
+- **Charges:** `item.charges` is the rounds granted to the player who takes it (the magazine, no reserve), never a count of pickups left: a station holds at most one item. MC decides it per game, in the item it sends. The default is the weapon's own magazine (Rockets: 2) until a balance decision (Tony, 2026-09-24: "2 rockets, or 4 shots"); an operator control to change it is later. The Stick shows no charges count.
 - **Lost at death:** a weapon item's unused charges do not carry into the next life.
 - *(decided, see below: a second weapon SWAPS.)*
