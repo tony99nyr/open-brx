@@ -111,7 +111,7 @@ by design; being built now. The bench hold from brx1 is still in effect; do not 
 **Next:** F314's distance ladder (`bench-sticks3-2026-09-23.md` Rerun), then F332 (datasheet or bench) and F333.
 The MC half of A58 (`station_config.lock_s` compile + console) is brx3's lane, not this one.
 ## Lane: powerups and the shield HUD (brx5)
-2026-09-24: S58 powerups built behind MC `--powerups`, off until bench Sitting A 3.3 (items 1-8) and 4.11 pass; three polish rounds. S59 Halo shield meter pushed. F293 fix pushed: a headset probe on every connect (release and wait 15 s on `?`), awaiting bench step 1.4. Next: F331 Lows, S59 Lows.
+2026-09-24: S58 powerups built behind MC `--powerups`, off until bench Sitting A 3.3 (items 1-8) and 4.11 pass; three polish rounds. S59 Halo shield meter pushed. F293 fix pushed: a headset probe on every connect (release and wait 15 s on `?`), awaiting bench step 1.4. F331/S59 Lows done (open for Tony: night creep brightness, station display name). SELECT pickup branch `pu-select` HELD: bench 3.3 changed the button and overshield mechanisms, decisions with Tony.
 
 ## Start here
 

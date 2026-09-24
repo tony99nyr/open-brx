@@ -238,7 +238,7 @@ async function syncPlayerAdvert() {
       log(`advertising as player ${num} team ${tid}${st.alive ? '' : ' (down)'}${claim.bits ? ` · ${st.powerupClaim.ready ? 'CLAIM READY' : 'claiming'} station ${claim.value}` : ''}`, 'li');
     } else { await plugins.beacon.stop(); playerAdvertGate.stopped(); }
   } catch (e) {
-    // ⚠ The gate records nothing for a failed call, so the next tick retries. The one that matters is the start that
+    // ⚠ The gate records nothing for a failed call, so retried after ADVERT_FAIL_BACKOFF_MS. The one that matters is the start that
     // clears the alive bit on death: a dead player whose advert still says alive=1 goes on converting a control point
     // for the whole death window, silently.
     playerAdvertGate.failed(action, Date.now());
