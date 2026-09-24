@@ -30,7 +30,7 @@ export function ItemState({ s, item }: { s: StationView; item: StationItem }) {
     return () => clearInterval(h);
   }, [next]);
   const live = s.item_available === true ? <Tag color={T.ok} ink={T.accInk}>AVAILABLE</Tag>
-    : s.item_available === false ? <span style={{ color: T.warn }}>{next != null ? `NEXT ${countdown(next - serverNow())}` : 'TAKEN'}{takenBy && <span style={{ color: T.dim }}> · TAKEN BY {takenBy.toUpperCase()}</span>}</span>
+    : s.item_available === false ? <span style={{ color: T.dim }}>{next != null ? `NEXT ${countdown(next - serverNow())}` : 'TAKEN'}{takenBy && <span style={{ color: T.dim }}> · TAKEN BY {takenBy.toUpperCase()}</span>}</span>
     : <span style={{ color: T.micro }}>{schedule(item)}</span>;
   return (
     <span data-testid="station-item" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', font: F.chk(600, 12), letterSpacing: '.08em', color: T.dim }}>
@@ -57,7 +57,7 @@ function ResetItem({ s, item }: { s: StationView; item: StationItem }) {
     <div data-testid="item-reset" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {confirm && (
         <span role="status" style={{ font: F.chk(700, 11), letterSpacing: '.08em', color: T.warn }}>
-          ▲ RESET PUTS THE {item.name} BACK ON THIS STATION NOW, OFF ITS SCHEDULE. TAP RESET ITEM AGAIN TO SEND IT.
+          ▲ RESET MAKES THE {item.name} AVAILABLE ON THIS STATION NOW, OFF ITS SCHEDULE. TAP RESET ITEM AGAIN TO SEND IT.
         </span>)}
       <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <GhostButton onClick={() => (confirm ? send() : setConfirm(true))}
