@@ -107,8 +107,8 @@ F178, F256, F251, F289 closed; F309, brx-net, F312's gated row and the shared AP
 
 ## Lane: S56, S57, B21 (brx4)
 2026-09-23: **S57 built**, deaths, kills and objectives (docs/ir-callouts.md); Block 7 of `bench-2026-09-24.md` settles it, F312 first. S56 built. **B21:** key made; the signed cut waits for the desk fixes. **StickS3 bring-up (H7):** BLE and IR TX work, IR RX broken (F314); rerun gates 2, 4, 5 next.
-## Lane: F293 and the death screen (brx5)
-2026-09-23: btlink built; death screen simplified with Tony. Next: bench 1.3 captures, F313, then brx1's integration pass.
+## Lane: F293, death screen, integration pass (brx5)
+2026-09-23: btlink; death screen with Tony; pre-APK integration pass done (F316 Lows). Next: bench 1.3 captures, F313.
 
 ## Start here
 
