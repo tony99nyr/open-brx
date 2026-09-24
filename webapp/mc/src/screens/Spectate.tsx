@@ -33,10 +33,11 @@
 import { useEffect, useState } from 'react';
 import type { LiveRow, ScoreRow } from '../api/types';
 import { useStore } from '../store';
-import { F, T, fmtClock, teamColor } from '../tokens';
+import { F, T, fmtClock, fmtDuration, teamColor } from '../tokens';
 import { Num, ScrollX } from '../ui';
 import { bestStreak } from './Live';
 import { isKillScored } from './gameSummary';
+import { heldSeconds, hillOwner, isObjectiveScored, objectiveWord } from './objective';
 
 /** Type sizes, in px, computed from the viewport the same way `clamp(min, Npx-per-vh, max)` would.
  *  Everything here is deliberately above the console's own scale — this screen is not operated, it is
@@ -110,19 +111,32 @@ export function Spectate() {
   const rows: LiveRow[] = [...lv.rows].sort((a, b) => b.kills - a.kills || a.deaths - b.deaths);
   const cap = isKillScored(state.config) ? state.config.scoring.frag_limit : null;
   const teamName = (id: string) => (state.teams.find(t => t.team_id === id)?.name ?? id).toUpperCase();
+  // Visual QA H2 (2026-09-23): a hill match is won on possession, so the room sees held time, not a kill
+  // score that goes negative on a team kill. No possession reported yet = a dash, never a 0:00.
+  const objective = isObjectiveScored(state.config) && teamIds.length >= 2;
+  const word = objectiveWord(state.config.mode);
+  const block = (id: string, side: 'left' | 'right') => {
+    const held = heldSeconds(lv, id);
+    return (
+      <TeamBlock key={id} name={teamName(id)} color={teamColor(id)} side={side} SZ={SZ}
+        value={objective ? (held == null ? '—' : <Num value={fmtDuration(held)} />) : <Num value={lv.score[id] ?? 0} />}
+        label={objective ? `${word} TIME` : undefined} />
+    );
+  };
+  const owner = objective ? hillOwner(state) : null;
 
   return (
     <Frame {...frame}>
       <div style={{ display: 'flex', alignItems: 'stretch', gap: 18, flexWrap: 'wrap', marginBottom: 22 }}>
         {teamIds.length >= 2 ? (
           <>
-            <TeamBlock name={teamName(teamIds[0])} color={teamColor(teamIds[0])} score={lv.score[teamIds[0]] ?? 0} side="left" SZ={SZ} />
-            <Clock remaining={remaining} sub={`${state.config.mode.toUpperCase()}${cap ? ` · FIRST TO ${cap}` : ''}`} stale={!connected} SZ={SZ} />
-            <TeamBlock name={teamName(teamIds[1])} color={teamColor(teamIds[1])} score={lv.score[teamIds[1]] ?? 0} side="right" SZ={SZ} />
+            {block(teamIds[0], 'left')}
+            <Clock remaining={remaining} sub={`${state.config.mode.toUpperCase()}${cap ? ` · FIRST TO ${cap}` : ''}${objective ? ` · MOST ${word} TIME WINS` : ''}`} stale={!connected} SZ={SZ} />
+            {block(teamIds[1], 'right')}
           </>
         ) : (
           <>
-            <TeamBlock name={rows[0]?.display ?? '—'} color={T.ink} score={rows[0]?.kills ?? 0} side="left" label="LEADER" SZ={SZ} />
+            <TeamBlock name={rows[0]?.display ?? '—'} color={T.ink} value={<Num value={rows[0]?.kills ?? 0} />} side="left" label="LEADER" SZ={SZ} />
             <Clock remaining={remaining} sub={`FFA${cap ? ` · FIRST TO ${cap}` : ''}`} stale={!connected} SZ={SZ} />
           </>
         )}
@@ -130,9 +144,15 @@ export function Spectate() {
       {/* the rest of a 3+ team game, under the headline pair rather than squeezed into it */}
       {teamIds.length > 2 && (
         <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 22 }}>
-          {teamIds.slice(2).map(id => (
-            <TeamBlock key={id} name={teamName(id)} color={teamColor(id)} score={lv.score[id] ?? 0} side="left" SZ={SZ} />
-          ))}
+          {teamIds.slice(2).map(id => block(id, 'left'))}
+        </div>
+      )}
+      {objective && (
+        // the hill, in one line the back of the room can read: who holds it (when MC knows) and how
+        // well the tally is covered. Text only: nothing on this screen is a control.
+        <div data-spectate="hill" style={{ ...chk(700, SZ.label), letterSpacing: '.18em', color: T.micro, marginBottom: 18, flex: 'none' }}>
+          {word}: {owner ? <span style={{ color: owner.team_id ? teamColor(owner.team_id) : T.dim }}>{owner.text}{owner.stale ? ' (LAST REPORT)' : ''}</span> : 'OWNER NOT REPORTED LIVE'}
+          {' · '}{lv.possession ? `BEST COVERAGE ${fmtDuration(lv.possession.observed_s)}` : 'NO POSSESSION REPORTED YET'}
         </div>
       )}
       <div style={{ display: 'flex', gap: 22, alignItems: 'stretch', flexWrap: 'wrap',
@@ -195,7 +215,7 @@ function Waiting({ text, SZ }: { text: string; SZ: SZ }) {
   );
 }
 
-function TeamBlock({ name, color, score, side, label, SZ }: { name: string; color: string; score: number; side: 'left' | 'right'; label?: string; SZ: SZ }) {
+function TeamBlock({ name, color, value, side, label, SZ }: { name: string; color: string; value: React.ReactNode; side: 'left' | 'right'; label?: string; SZ: SZ }) {
   return (
     <div style={{ flex: '1 1 300px', minWidth: 0, background: `linear-gradient(${side === 'left' ? 90 : 270}deg,${color}26,transparent)`,
       border: `1px solid ${T.line}`, [side === 'left' ? 'borderLeft' : 'borderRight']: `6px solid ${color}`,
@@ -204,7 +224,7 @@ function TeamBlock({ name, color, score, side, label, SZ }: { name: string; colo
       {/* wraps rather than ellipsises: on a projector the name always fits, and on a phone a truncated
           "YELLOW TE…" is worse than two lines (393px walk, 2026-09-12) */}
       <span style={{ ...chk(700, SZ.name), letterSpacing: '.22em', color, maxWidth: '100%', overflowWrap: 'anywhere' }}>{name}</span>
-      <span data-spectate="score" style={{ ...osw(700, SZ.score), lineHeight: 1 }}><Num value={score} /></span>
+      <span data-spectate="score" style={{ ...osw(700, SZ.score), lineHeight: 1 }}>{value}</span>
     </div>
   );
 }
@@ -263,7 +283,7 @@ function Board({ rows, SZ, fit }: { rows: (LiveRow | ScoreRow)[]; SZ: SZ; fit: b
                        // the bottom of it; the type is already at its 16 px floor by then
                        ...(fit ? { flex: '0 1 auto', minHeight: 0, overflow: 'hidden' } : null),
                        background: T.panel, border: `1px solid ${T.row}`, borderLeft: `5px solid ${teamColor(r.team_id)}`, opacity: down ? .55 : 1 }}>
-              <span style={{ ...chk(700, SZ.row), letterSpacing: '.1em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.display}</span>
+              <span data-spectate="name" title={r.display} style={{ ...chk(700, SZ.row), letterSpacing: '.1em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.display}</span>
               <span style={{ textAlign: 'right', ...osw(700, SZ.rowK) }}><Num value={r.kills} /></span>
               <span style={{ textAlign: 'right', ...osw(600, SZ.row), color: T.dim }}><Num value={r.deaths} /></span>
               <span style={{ textAlign: 'right', ...osw(600, SZ.row), color: T.dim }}><Num value={r.assists} /></span>

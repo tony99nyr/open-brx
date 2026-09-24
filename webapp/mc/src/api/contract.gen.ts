@@ -6,6 +6,10 @@ export const MULTI_KILL_MS = 4000;
 export const FEEDBACK_MAX_AGE_MS = 3000;
 export const STATUS_HEARTBEAT_MS = 2000;
 export const STALE_AFTER_MS = 8000;
+/** The `sync_age_ms` a LIVE row carries when MC has never heard its node in THIS process (no node bound,
+ *  or MC restarted mid-match and the phone has not spoken since). It is a sentinel, not an age: the
+ *  console must print "not heard", never "11d13h ago" (visual QA H3, 2026-09-23). */
+export const NEVER_SEEN_MS = 1000000000;
 /** A24/M2: how far apart two cap-reaching kills may be and still count as the SAME moment. contracts.md
  *  §7 gives no single number -- it says phone clocks "drift <<1 s over a match" after a lobby re-sync, so
  *  1 s is the width of the band inside which MC cannot tell which of two kills landed first. Two players
@@ -1033,6 +1037,10 @@ export interface LiveView {
    *  (`kitted` for this match, or another match), and at least one does. MC never ends an adopted match
    *  itself; the console asks the operator to press END. Absent = no such claim. */
   phones_ended?: boolean;
+  /** Objective modes (win_by "objective"): the same merged possession tally the recap carries
+   *  (`Scorer.possession()`), so the board can headline what actually decides the match. Absent until
+   *  some node has reported possession, exactly as on RecapView. */
+  possession?: PossessionView;
 }
 
 export interface StartNodeView {

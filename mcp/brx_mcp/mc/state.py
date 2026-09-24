@@ -6768,6 +6768,10 @@ class Session:
                               self.scorer.match_id)}
         if self.phase == "live" and self.is_adopted() and self._phones_ended(self.scorer.match_id):
             view["phones_ended"] = True
+        # Visual QA H2 (2026-09-23): an objective match is won on possession, so the board needs the
+        # tally the recap already has. Read-only, and absent until a node reports one.
+        if (poss := self.scorer.possession()) is not None:
+            view["possession"] = poss
         return view
 
     def _note_protect(self, nid: str, events: list[Event]) -> None:
