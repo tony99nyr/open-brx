@@ -4838,12 +4838,16 @@ export class Engine {
     const c = this._puClaim && this._puClaim.station === st.id ? this._puClaim : null;
     const med = this._puMedian(st), thr = this._puThreshold(st);
     const inRange = Number.isFinite(med) && (c ? med >= thr - POWERUP_EXIT_DB : med >= thr);   // enter at the threshold, leave 3 dB under it
-    if (!inRange || !this._puClaimable(st.id, items[st.id], now)) { this._puClaim = null; return; }
+    if (!inRange || !this._puClaimable(st.id, items[st.id], now) || this._puAltBlocked(items[st.id])) { this._puClaim = null; return; }
     if (!c) this._puClaim = { station: st.id, since: now, readyAt: null };
     const cl = this._puClaim;
     if (cl.readyAt == null && now - cl.since >= POWERUP_DWELL_MS) { cl.readyAt = now; this.log(`powerup: claim ready at station ${st.id}`, 'li'); }
     if (cl.readyAt != null) this._puReadyFor = { station: st.id, at: now };
   }
+  /** Easy Reload is an accessibility feature (Tony's daughter cannot work the reload lever): it keeps ALT on reload,
+   *  and a weapon grant rewrites the ALT row. So an Easy Reload player never claims a WEAPON item; an overshield
+   *  touches no button and is still taken. Filed for Tony (S58): a side button could select the item instead. */
+  _puAltBlocked(item) { return !!(item && item.kind === 'weapon' && this._easyReload()); }
   /** The grant happens only when a station's advert names THIS player as `taker` and this phone was claim_ready for it. */
   _puTakerCheck(items, now) {
     const me = this.player ? this.player.player_num : null;
@@ -4969,7 +4973,8 @@ export class Engine {
         const item = items[st.id], base = { name: nameOf(item), color: item.color || null, station: st.id };
         const med = this._puMedian(st), near = Number.isFinite(med) && med >= this._puThreshold(st) - PU_NEAR_DB;
         const a = this._puAdvertOf(st.id, now), me = this.player ? this.player.player_num : null;
-        if (near && this._puClaimable(st.id, item, now)) hint = { kind: 'approach', ...base };
+        if (near && this._puClaimable(st.id, item, now) && this._puAltBlocked(item)) hint = { kind: 'easy_reload', ...base };
+        else if (near && this._puClaimable(st.id, item, now)) hint = { kind: 'approach', ...base };
         else if (near && a && a.state === 0 && a.taker && a.taker !== me) hint = { kind: 'taken_by', ...base, by: String(this.nameOf(a.taker) || `PLAYER ${a.taker}`).toUpperCase(), nextInMs: this._puNextInMs(item, now) };
         else if (near) hint = { kind: 'taken', ...base, nextInMs: this._puNextInMs(item, now) };
       }

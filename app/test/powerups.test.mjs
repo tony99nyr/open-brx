@@ -20,13 +20,13 @@ const OVERSHIELD = { kind: 'overshield', amount: 75, spawn_every_s: 60, first_at
 function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 /** A live TDM with `stations` on the config (and `powerups` slots for the weapon items), past T-0. */
-function harness({ stations = [], powerups = undefined, maxShield = 0, weapons = [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] } = {}) {
+function harness({ stations = [], powerups = undefined, maxShield = 0, weapons = [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], overrides = undefined } = {}) {
   const writes = []; const facts = []; let clock = 1_000_000;
   const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
   const config = { config_id: golden.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 900,
     respawn: { type: 'auto', delay_s: 8 }, scoring: { frag_limit: 25, win_by: 'kills' }, health: maxShield ? { max_hp: 45, max_armor: 0, max_shield: maxShield } : { max_hp: 45, max_armor: 70, max_shield: 0 }, teams,
     ...(stations.length ? { stations } : {}), ...(powerups ? { powerups } : {}) };
-  const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons }, voice: 'male' };
+  const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons, ...(overrides ? { overrides } : {}) }, voice: 'male' };
   // The fake gun answers the node's liveness probe the way the bench gun does (`$LIFE,0,0,0,*` -> `$HP` at once), so a
   // long quiet stretch on the match clock is not read as a locked-up gun (F272).
   const answers = [];
@@ -280,4 +280,16 @@ test('overshield is gone at death', () => {
   h.at(61); h.take(6); h.frame('$HP,45,70,75,*');
   h.die();
   assert.equal(h.eng.state().powerup.overshield, null);
+});
+
+test('Easy Reload keeps ALT: an Easy Reload player does not claim a WEAPON item (its grant rewrites ALT), and the HUD says why', () => {
+  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }, { id: 6, kind: 'powerup', item: OVERSHIELD }],
+    powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }], overrides: { easy_reload: true } });
+  h.at(121); const n = h.mark(); h.near(4); h.adv(1100); h.near(4);
+  assert.equal(h.eng.state().powerupClaim, null, 'no claim bits go out for a weapon item');
+  assert.equal(h.eng.state().powerup.hint.kind, 'easy_reload');
+  h.near(4, { state: 0, value: 110, taker: 7 }); h.adv(300);
+  assert.deepEqual(bmap1(h.since(n)), [], 'ALT is never rewritten');
+  h.take(6);
+  assert.equal(h.facts.filter(f => f.type === 'pickup' && f.item_kind === 'overshield').length, 1, 'an overshield touches no button, so it is still taken');
 });

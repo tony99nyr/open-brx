@@ -1315,6 +1315,7 @@ export class Hud {
       case 'no_answer': return line('STATION NOT ANSWERING', name);   // no ring: nothing is filling any more
       case 'granted': return line(name, h.replaced ? `REPLACES ${esc(h.replaced)}` : 'PICKED UP');
       case 'approach': return line('GET CLOSER', name);
+      case 'easy_reload': return line(`${name} NEEDS ALT`, 'EASY RELOAD KEEPS IT');
       case 'taken_by': return line(`TAKEN BY ${esc(h.by)}`, h.nextInMs != null ? `NEXT ${name} ${mss(h.nextInMs)}` : name);
       case 'taken': return line(`${name} IN ${mss(h.nextInMs || 0)}`, 'NEXT SPAWN');
       case 'switch': return line('SWITCH WEAPON', `${name} EMPTY`);
