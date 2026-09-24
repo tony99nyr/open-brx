@@ -7,7 +7,7 @@ import { MockBackend } from '../src/mock/backend';
 import { Games } from '../src/screens/Games';
 import { Kit } from '../src/screens/Kit';
 import { Recap } from '../src/screens/Recap';
-import { StoreCtx, StoreProvider, dedupeFeed, feedKey, prependFeed, useStore } from '../src/store';
+import { SEED_RACE_MS, StoreCtx, StoreProvider, feedKey, isSeedEcho, seedMemo, useStore } from '../src/store';
 import { demo, fixtureApi, makeStore, mount, mountScreen } from './harness';
 
 describe('F318 item 1: the command bar while MC is offline', () => {
@@ -133,9 +133,16 @@ describe('F318 items 6 and 12: a feed line never shows twice', () => {
     expect(feedKey(FB)).toBe(feedKey({ ...FB }));
     expect(feedKey(FB)).not.toBe(feedKey({ ...FB, t_match_s: 11 }));
     expect(feedKey(FB)).not.toBe(feedKey({ ...FB, tag: 'NOTE' }));
-    expect(prependFeed([K, FB], FB)).toEqual([K, FB]);
-    expect(prependFeed([K], FB)).toEqual([FB, K]);
-    expect(dedupeFeed([K, FB, K])).toEqual([K, FB]);
+  });
+
+  // Polish round 1: identical lines are real too (a second END press repeats "END AGAIN" at t 0). Only a
+  // push that echoes a row the seed already carried, inside the race window, is dropped, and only once.
+  it('drops a seed echo once, inside the window, and keeps a genuine repeat', () => {
+    const memo = seedMemo([K, FB], 1000);
+    expect(isSeedEcho(memo, FB, 1500), 'the seed row arriving late is the race').toBe(true);
+    expect(isSeedEcho(memo, FB, 1600), 'a second identical push is a real repeat').toBe(false);
+    expect(isSeedEcho(seedMemo([K], 1000), K, 1000 + SEED_RACE_MS + 1), 'after the window, never').toBe(false);
+    expect(isSeedEcho(null, K, 0)).toBe(false);
   });
 
   afterEach(() => { vi.unstubAllGlobals(); });

@@ -92,15 +92,24 @@ const Ctx = StoreCtx;
  *  Two entries equal in all four say nothing different, so showing one of them loses nothing. */
 export const feedKey = (e: FeedEntry): string => `${e.t_match_s}|${e.kind}|${e.tag ?? ''}|${e.text}`;
 const FEED_MAX = 60;
-export function dedupeFeed(es: FeedEntry[]): FeedEntry[] {
-  const seen = new Set<string>();
-  const out: FeedEntry[] = [];
-  for (const e of es) { const k = feedKey(e); if (!seen.has(k)) { seen.add(k); out.push(e); } if (out.length >= FEED_MAX) break; }
-  return out;
-}
-export function prependFeed(f: FeedEntry[], e: FeedEntry): FeedEntry[] {
-  const k = feedKey(e);
-  return f.some(x => feedKey(x) === k) ? f : [e, ...f].slice(0, FEED_MAX);
+/** Polish round 1: identical lines are real too. A second END press sends the same "END AGAIN" line at
+ *  t 0, and so do repeated RECONCILED and TOLD N PHONES lines, so the feed must never collapse equals in
+ *  general. Only the race above is a double: a live push for a row the snapshot seed ALREADY carried. So a
+ *  seed arms one "consume" per row for SEED_RACE_MS, and a matching push inside that window is dropped once. */
+export const SEED_RACE_MS = 3000;
+export type SeedMemo = { keys: Map<string, number>; until: number };
+export const seedMemo = (seed: FeedEntry[], now: number): SeedMemo => {
+  const keys = new Map<string, number>();
+  for (const e of seed) keys.set(feedKey(e), (keys.get(feedKey(e)) ?? 0) + 1);
+  return { keys, until: now + SEED_RACE_MS };
+};
+/** Is this live push the seed's own row arriving late? Consumes one use when it is. */
+export function isSeedEcho(memo: SeedMemo | null, e: FeedEntry, now: number): boolean {
+  if (!memo || now > memo.until) return false;
+  const k = feedKey(e), n = memo.keys.get(k) ?? 0;
+  if (n <= 0) return false;
+  memo.keys.set(k, n - 1);
+  return true;
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
@@ -168,6 +177,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // line, so it disagreed with every freshly loaded tab (MC visual QA 2026-09-23). A reconnect after a
   // Wi-Fi blip is the same case: the feed pushes sent while the socket was down were never received.
   const reseedFeed = useRef(true);
+  const seedMemoRef = useRef<SeedMemo | null>(null);   // the last seed's rows, for the seed-then-push race (polish round 1)
   // A view restored from the URL must not be stomped by the first server snapshot. The follow rule is
   // "move when the phase ADVANCES"; on a refresh there has been no advance yet, so the first snapshot
   // only seeds the baseline. Without this every reload bounced straight back to the phase screen.
@@ -201,13 +211,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const seed = (hasFeed ? s.feed : []) as FeedEntry[];
         const reseed = reseedFeed.current && hasFeed;   // an older MC sends no feed: keep what this tab has
         if (hasFeed) reseedFeed.current = false;
-        if (mid !== feedMatch.current) { feedMatch.current = mid; if (mid) setFeed(dedupeFeed(seed)); }
-        else if (mid && reseed) setFeed(dedupeFeed(seed));
-        else if (mid && seed.length) setFeed(f => (f.length ? f : dedupeFeed(seed)));
+        const applySeed = () => { seedMemoRef.current = seedMemo(seed, Date.now()); setFeed(seed.slice(0, FEED_MAX)); };
+        if (mid !== feedMatch.current) { feedMatch.current = mid; if (mid) applySeed(); }
+        else if (mid && reseed) applySeed();
+        else if (mid && seed.length) setFeed(f => { if (f.length) return f; seedMemoRef.current = seedMemo(seed, Date.now()); return seed.slice(0, FEED_MAX); });
         setState(s);
         followPhase(s);
       },
-      e => setFeed(f => prependFeed(f, e)),
+      e => { if (!isSeedEcho(seedMemoRef.current, e, Date.now())) setFeed(f => [e, ...f].slice(0, FEED_MAX)); },
       ok => { if (ok) reseedFeed.current = true; setConnected(ok); },
     );
     const unAuth = mock ? () => {} : onAuthRequired(setAuthRequired);

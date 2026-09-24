@@ -293,7 +293,8 @@ State.kit += { browsing: { [player_id]: t_ms } }             // MC roster shows 
   tap that names who is not ready. A player moved out of the kit editor by a forced advance sees "THE HOST LOCKED KITS —
   you play what you had" on the lobby screen, never a silent screen swap. The line reads the node's `kitLocked`
   latch (the `moment kit_locked_by_host` is the event record, not what draws it), and the latch retires on the
-  kit's reopening, at START, at a new match, and (F133) when a config for another `config_id` arrives.
+  kit's reopening, at START, at a new match, and (F133) when a config for another `config_id` arrives. Every lobby
+  re-push mints a fresh `config_id` (F6), so a re-team of the same game also retires the notice; that only hides it early.
 - **A30 (2026-09-12): the kit LOCKS at START** — in `armed`/`live` a phone pick is refused (`loadout_ack ok:false`, reason above) and host edits are 409; a `config` to a live gun un-spawns it and nothing re-spawns it (engine.js `_applyConfig` + `resumeSchedule`). Picks before START still re-push in LOBBY as before.
 - `tryout()` refuses only when **the lobby has been pushed** (`lobby_pushed`) — no longer "any node in LOBBY". Its
   error text is the `loadout_ack.reason` / the MC toast.

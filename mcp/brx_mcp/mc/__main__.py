@@ -436,7 +436,8 @@ def bind_http_or_exit(host: str, port: int) -> socket.socket:
     try:
         family, _t, _p, _c, addr = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE)[0]
         sock = socket.socket(family, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)   # as uvicorn does: a TIME_WAIT is not a squatter
+        if os.name != "nt":   # as asyncio does on POSIX only: on Windows SO_REUSEADDR lets a second MC share a LISTENING port
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)   # a TIME_WAIT is not a squatter
         sock.bind(addr)
         sock.listen(2048)
     except OSError as e:
