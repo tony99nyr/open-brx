@@ -350,6 +350,9 @@ class Session:
         self.powerups_enabled = False
         # A56: the spawn schedule of the match in play, on MC's own clock: {"match_id", "go", "st": {nid: {...}}}.
         self._pu_sched: dict = {}
+        # ...and the schedule a restarted MC read back from its snapshot (M1): adopted by `_powerup_tick` for
+        # the SAME match only, so an MC restart mid-match does not bring every taken item back.
+        self._pu_restored: dict | None = None
         # The per-match `game` byte a station is armed with (utility.md §5b.3 / roadmap C1). It changes on
         # the first config push AFTER a match has started, so a station in range at the next muster learns
         # that a new match exists -- `applyStationConfig` resets the point when the number changes, and
@@ -621,7 +624,10 @@ class Session:
                     # Absent outside armed/live: A46 still boots every other restart before any delivery.
                     **({"match": m} if (m := self._match_snapshot()) else {}),
                     # A34: the retired matches, so a restarted MC can still end a phone that missed the end.
-                    "ended": self._ended_snapshot()}
+                    "ended": self._ended_snapshot(),
+                    # A56 (M1): the powerup schedule of the match in play, so a restart keeps taken items taken.
+                    **({"powerups": self._pu_sched} if self._pu_sched and self.in_play()
+                       and self._pu_sched.get("match_id") == self.current_match_id() else {})}
             tmp = self._persist_path.with_suffix(".tmp")
             tmp.write_text(json.dumps(snap))
             tmp.replace(self._persist_path)
@@ -831,6 +837,8 @@ class Session:
                 # resuming a match nobody is playing any more. `saved_ms` lives on the outer snapshot,
                 # not the nested match dict, so it is carried across here under its own key.
                 self._resume_pending = {**snap["match"], "_saved_ms": snap.get("saved_ms")}
+                if isinstance(snap.get("powerups"), dict):
+                    self._pu_restored = snap["powerups"]      # A56 (M1): adopted for this same match only
             self._repair_player_nums()
             # S45: a snapshot persisted before `health.max_shield`/`preset` existed restores a 2-key
             # health blob -- normalize it to CUSTOM (the shield intent is unknown) rather than leaving
@@ -2678,6 +2686,10 @@ class Session:
 
     def _pu_update_body(self, nid: str) -> dict | None:
         """The `station_update` for one item station from the schedule in play, or None when there is none."""
+        # Only for the match in play (M2): a station reconnecting in RECAP or LOBBY must not get the old
+        # match's state and start counting down to a spawn that will never come.
+        if not self.in_play() or self._pu_sched.get("match_id") != self.current_match_id():
+            return None
         row = (self._pu_sched.get("st") or {}).get(nid)
         a = (self.stations.get(nid) or {}).get("assigned")
         if row is None or not a:
@@ -2702,18 +2714,33 @@ class Session:
         mid, go = self.start_info["match_id"], int(self.start_info["go_live_t"])
         if self._pu_sched.get("match_id") != mid:
             rows = {}
+            restored, self._pu_restored = self._pu_restored, None
+            kept = (restored.get("st") or {}) if isinstance(restored, dict) and restored.get("match_id") == mid else {}
             for nid, _a, item in self._item_stations():
+                old = kept.get(nid)
+                if isinstance(old, dict) and isinstance(old.get("next_k"), int) and isinstance(old.get("since"), int):
+                    # M1: the SAME match's schedule from before the restart, taken items and all; any spawn
+                    # that passed while MC was down fires on the catch-up tick below.
+                    rows[nid] = {"item": item, "available": bool(old.get("available")), "next_k": old["next_k"],
+                                 "since": old["since"], "taken_by": old.get("taken_by")}
+                    continue
                 k = _pu.last_spawn_index(item, go, now)
                 # `since`: when the item in the station now became available (a spawn or an operator reset);
                 # a fact older than that is about an earlier item. `taken_by`: this spawn's taker, if any.
                 rows[nid] = {"item": item, "available": k >= 0, "next_k": k + 1,
                              "since": _pu.spawn_at(item, go, k) if k >= 0 else go, "taken_by": None}
             self._pu_sched = {"match_id": mid, "go": go, "st": rows}
+            self._pu_catch_up(now, go, push=False)
             for nid in rows:
                 self._push_station_update(nid)
             if rows:
                 self._changed()
             return
+        if self._pu_catch_up(now, go, push=True):
+            self._changed()
+
+    def _pu_catch_up(self, now: int, go: int, push: bool) -> bool:
+        """Fire every spawn time that has passed; True when any did."""
         changed = False
         for nid, row in self._pu_sched["st"].items():
             fired = False
@@ -2723,10 +2750,10 @@ class Session:
             if fired:
                 row["available"], row["taken_by"] = True, None
                 row["since"] = _pu.spawn_at(row["item"], go, row["next_k"] - 1)
-                self._push_station_update(nid)      # at each spawn time, even one that finds the item still there
+                if push:
+                    self._push_station_update(nid)  # at each spawn time, even one that finds the item still there
                 changed = True
-        if changed:
-            self._changed()
+        return changed
 
     def _on_pickup(self, ev: Event, t_recv: int, parked: bool) -> None:
         """A56: a player's `pickup` fact. Stored by the caller and NEVER scored; here it only empties the
@@ -2789,7 +2816,8 @@ class Session:
         """A56: a station's live-only report (`StationAction`). Ignored unless it comes from the station that
         holds that id and an item schedule runs for it."""
         a = (self.stations.get(nid) or {}).get("assigned") or {}
-        if (not self.powerups_enabled or not self._pu_sched or nid not in self._pu_sched["st"]
+        if (not self.powerups_enabled or not self.in_play() or not self._pu_sched
+                or self._pu_sched.get("match_id") != self.current_match_id() or nid not in self._pu_sched["st"]
                 or body.get("id") != a.get("id")):
             return
         if body.get("action") == "reset":

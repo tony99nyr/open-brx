@@ -497,3 +497,76 @@ def test_taken_records_the_winner_and_dedupes_against_the_pickup_fact():
     assert s._station_view("u1")["taken_by"] == p0["player_num"], "the second report never overwrites the first"
     assert len(_pushed(s, "station_update", "u1")) == m
     assert not any("P1 TOOK" in t for t in _feed(s))
+
+
+# --------------------------------------------------------------------------- polish round 1
+def test_a_restart_mid_match_keeps_a_taken_item_taken():
+    """M1: `_pu_sched` rides in the snapshot and is restored for the SAME match only."""
+    import pathlib
+    import tempfile
+    s, clock = _sess()
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    _station(s, "u1", 5, "overshield")
+    go = _live(s, clock)
+    clock.t = go + 61_000; s.tick()
+    _pickup(s, clock, 5)
+    assert s._station_view("u1")["item_available"] is False
+    clock.t = go + 70_000
+    s._persist_last = 0.0
+    s._persist()
+    s2 = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=clock, voice_rng=random.Random(7))
+    s2.powerups_enabled = True
+    s2._persist_path = s._persist_path
+    assert s2.restore_snapshot()
+    s2.tick()
+    assert s2.phase in ("armed", "live") and s2.start_info["match_id"] == s.start_info["match_id"]
+    s2.net.simulate_utility_hello("u1")
+    ups = _pushed(s2, "station_update", "u1")
+    assert ups and all(u["available"] is False for u in ups), ups
+    assert ups[-1]["next_spawn_in_ms"] == 50_000
+    view = s2._station_view("u1")
+    assert view["item_available"] is False and view["taken_by"] == s.players[s.node_player["phone-0"]]["player_num"]
+    # CONTROL: the next spawn still comes on the fixed schedule
+    clock.t = go + 120_000; s2.tick()
+    assert _pushed(s2, "station_update", "u1")[-1]["available"] is True
+
+
+def test_a_station_reconnecting_after_the_match_gets_no_update():
+    """M2: RECAP / LOBBY is not the match; the old schedule must not reach the station."""
+    s, clock = _sess()
+    _station(s, "u1", 5, "overshield")
+    go = _live(s, clock)
+    clock.t = go + 61_000; s.tick()
+    s.net.pushed.clear()
+    s.net.simulate_utility_hello("u1")
+    assert _pushed(s, "station_update", "u1"), "CONTROL: in play the reconnect is told"
+    s.control("end")
+    s.net.pushed.clear()
+    s.net.simulate_utility_hello("u1")
+    assert _pushed(s, "station_update", "u1") == [], f"phase {s.phase}"
+    assert "item_available" not in s._station_view("u1")
+    s.set_phase("lobby", force=True)
+    assert s.phase == "lobby"
+    s.net.pushed.clear()
+    s.net.simulate_utility_hello("u1")
+    assert _pushed(s, "station_update", "u1") == []
+    # and a station action out of play does nothing
+    _action(s, clock, "u1", 5, "reset")
+    assert _pushed(s, "station_update", "u1") == [] and "OPERATOR RESET · STATION #5" not in _feed(s)
+
+
+def test_a_station_action_naming_another_stations_id_is_refused():
+    s, clock = _sess()
+    _station(s, "u1", 5, "overshield")
+    _station(s, "u2", 6, "rockets")
+    go = _live(s, clock)
+    clock.t = go + 125_000; s.tick()
+    n = len(_pushed(s, "station_update"))
+    p0 = s.players[s.node_player["phone-0"]]
+    _action(s, clock, "u1", 6, "taken", player_num=p0["player_num"])     # u1 claims u2's item
+    assert s._station_view("u2")["item_available"] is True and "taken_by" not in s._station_view("u2")
+    assert s._station_view("u1")["item_available"] is True
+    assert len(_pushed(s, "station_update")) == n and not any("TOOK" in t for t in _feed(s))
+    # CONTROL: the same report from the station that holds id 6 is taken
+    _action(s, clock, "u2", 6, "taken", player_num=p0["player_num"])
+    assert s._station_view("u2")["item_available"] is False
