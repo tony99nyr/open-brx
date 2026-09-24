@@ -41,15 +41,19 @@ costs the player their secondary while the item lasts.
 ## Contract (A56, additive)
 
 - **`StationAssignment.item?`** for kind `powerup`: `{weapon_id, charges, cooldown_s, name, color}`.
-  `charges` is the magazine granted; `cooldown_s` is how long this station stays depleted after a grant.
+  `charges` is the magazine granted; `cooldown_s` (1-255, so the advert's one-byte `value` can count it down) is how
+  long this station stays depleted after a grant; `name` is at most 12 characters (a Stick may marquee it); `color`
+  is `#rrggbb`, the item's own colour, not a team.
   The same object rides in the player's `config.stations[]` entry for that station (`{id, kind, item?}`), so a
   player's phone knows what a station grants without MC.
 - **`GameConfig.powerups?`**: `[{weapon_id, slot}]`, the pickup weapons MC armed and where (compile's output;
   at most two, slots 2 and 3).
 - **New fact `pickup`** from the player phone: `{match_id, station_id, weapon_id, t}`. MC relays a
-  `station_update {id, depleted_until}` to the station, which advertises state 0 (depleted) and the seconds left
-  in `value`, then state 1 again.
-- The Stick (H8) takes the same `station_config`; brx4 builds its client on this payload.
+  `station_update {id, depleted_for_ms, depleted_until?}` to the station: the time REMAINING (a Stick has no synced
+  clock), with the epoch as an optional extra. The station advertises state 0 (depleted) and the seconds left in
+  `value`, then state 1 again. On a reconnect MC re-sends the current state and the station re-anchors on arrival.
+- The Stick (H8) takes the same `station_config` and `station_update`; brx4 builds its client on this payload
+  (agreed 2026-09-24). An older Stick ignores `item`.
 
 ## The grant on the phone
 
