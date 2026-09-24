@@ -19,14 +19,14 @@ Raw traces: `protocol/captures/raw/`. Regenerate the underlying table with
 `python -m brx_mcp.weapmap protocol/captures/raw/*.btsnoop`.
 
 **Reading the columns.** `dmg` = `t5` (the **raw magnitude** the weapon emits, per bench exp 2; an AR emits
-9, the manual's 24 was stale — and, bench 2026-09-11, `t5` IS the applied damage on a GUN-BODY hit,
+9; the 24 in older notes comes from BC's boosted enemy-tier sheet, not the stock frame; and, bench 2026-09-11, `t5` IS the applied damage on a GUN-BODY hit,
 for every function including the fn 36/37 multiplier pair. **Applied** damage on a HEADSET hit can be
 more: magnitude × the victim's `$SIR`-function multiplier, where fn 36/37 scale with the compiled
 `$GSET criticalShotModifier` (t7) — not a flat "1.5 if crit"; see `protocol/brx-protocol.md` §5 and
-`session-findings-2026-08.md` §7r). `cycle` = `t14`, the per-shot cycle time in ms, which for charge weapons is the
-charge time. `clip`/`reserve` = `t16`/**`t40`**. ⚠ The token matters: a captured frame carries `t17` at exactly twice `t40` (F207: the gun's own `$ALCD` reserve mirrors `t40`, so `t40` is the player's spare-round count and `t17` is twice it). This table reads `t40`, so the Assault Rifle's 192 is the stock gun's spare rounds under that reading. F255 (closed): `$AMMO,<slot>,<clip>,<reserve>` rides both `frames.spawn` and `frames.revive`, so the gun is set to the full catalogue reserve at every spawn and the HUD agrees with it. `heat` = `t24`, non-zero only on weapons that overheat.
+§4.1). `cycle` = `t14`, the per-shot cycle time in ms, which for charge weapons is the
+charge time. `clip`/`t40` = `t16`/**`t40`**. ⚠ The `t40` column is NOT the carried reserve. A captured frame carries `t17` at exactly twice `t40`, and the bench corrected F207 on 2026-09-18: **`t17` is the count the player carries**, and `t40` is only what the `$ALCD` reserve shows in the moment between `$WEAP` and `$SPAWN` (`protocol/brx-protocol.md` §6, the `16 / 39 / 40 / 17` row). By that rule the carried reserve is twice the `t40` shown here: the Assault Rifle's 192 means 384 carried. F255 (closed): `$AMMO,<slot>,<clip>,<reserve>` rides both `frames.spawn` and `frames.revive`, so the gun is set to the full catalogue reserve at every spawn and the HUD agrees with it. `heat` = `t24`, non-zero only on weapons that overheat.
 
-| weapon | sound | behaviour | dmg | cycle ms | clip | reserve | heat |
+| weapon | sound | behaviour | dmg | cycle ms | clip | t40 | heat |
 |---|---|---|---|---|---|---|---|
 | **(unnamed secondary)** | `T01` | default secondary in every early capture | 45 | 900 | 6 | 12 | 0 |
 | **AMR** | `S07` | single shot, no full auto | 18 | 360 | 14 | 28 | 0 |
@@ -66,11 +66,11 @@ behaviour it describes, and empty on all the others:
 
 ## Caveat worth carrying
 
-`t5` **is the raw magnitude** the weapon emits in the IR word: an AR emits 9, the manual's 24 was stale.
+`t5` **is the raw magnitude** the weapon emits in the IR word: an AR emits 9; the 24 in older notes comes from BC's boosted enemy-tier sheet.
 It equalled the applied damage across the four weapons exp 2 tested because all four key to `$SIR`
 **fn-1** rows, and (bench 2026-09-11) it equals the applied damage on a GUN-BODY hit for EVERY row,
 fn 36/37 included. In general **applied (headset) = magnitude × the victim's `$SIR`-function
 multiplier**, where fn 36/37 scale with the compiled `$GSET criticalShotModifier` (t7) rather than a
-flat "1.5-if-crit" (`protocol/brx-protocol.md` §5, `session-findings-2026-08.md` §7r). Weapon stats are still server-fetched per `apk-harvest.md`, so the numbers above
+flat "1.5-if-crit" (`protocol/brx-protocol.md` §5 and §4.1). Weapon stats are still server-fetched per `apk-harvest.md`, so the numbers above
 are what the app sent on the day: a faithful record of the wire (as emitted magnitudes), not necessarily
 BRX's current live-service balance.

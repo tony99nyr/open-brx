@@ -184,9 +184,7 @@ know.
 | Explosion / melee range | shrunk | full |
 | Gun hit radius | n/a | bright sunlight cuts it roughly in half (IR noise filtering) |
 
-The width measurements were repeated on three guns. Separately, there is an untested theory that
-`$GSET` token 2 set to 1 rejects reflected indoor shots. That theory concerns the Bluetooth field, not
-the gun's native ALT mode (set at power-on).
+The width measurements were repeated on three guns.
 
 ## Sighting the Laser
 
@@ -379,8 +377,8 @@ this section covers building a game and the gotchas that catch new users.
 - Keep the phone within about 1 m of its gun for the whole match. It is the game engine.
 - A hosted game typically takes about 1 minute to show up as joinable on a second phone. It
   round-trips through the cloud.
-- On connect the Android app sets the gun's internal volume to 100 out of 100. iOS sets it to
-  69. Whichever phone you host from, that is the volume your gun ends up at.
+- On connect the app sets the gun's volume, and Android and iOS send different values (see
+  [Sound](/manual/sound)). Whichever phone you host from, that is the volume your gun ends up at.
 - Owners report the app only works on Android 10 or earlier. iOS is fine.
 
 **Building and starting a game:**
@@ -418,11 +416,8 @@ this section covers building a game and the gotchas that catch new users.
 > **Field objectives in Callsign are printed QR codes.** Respawn points, weapon pickups, control
 > points and supply drops are all paper you scan or fire at, not boxes.
 
-> **Volume.** The app's whole global settings screen is one Sound slider. On connect the Android
-> app sets the gun to 100 on its internal 0-100 scale, and iOS sets it to 69. 69 is quieter than
-> the number suggests: measured on 2026-08-30 it lands at roughly on-gun level 2, and it was
-> inaudible outdoors. Anything much below 50 makes weapon sounds effectively silent, and 30
-> measures as inaudible over room noise. Open BRX plays at 80 indoors and 90 outdoors instead.
+> **Volume.** The app's whole global settings screen is one Sound slider. What each app sends on
+> connect, and what Open BRX plays instead, is on [Sound](/manual/sound).
 
 > **Gotcha 1: the app renames your gun.** Every session Callsign writes the name "Tactix2" to
 > the gun. Gave a gun a custom Bluetooth name with Open BRX tools? Opening Callsign on it

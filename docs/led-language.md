@@ -4,8 +4,8 @@
 bench moves it. It covers how the gun body LEDs, the headset RGB LED and the headset's small flash LED
 behave in a hosted game, across four lenses: game design, hardware/protocol, code/spec consistency, and
 match-day ops and accessibility. `mcp/brx_mcp/poolgauge.py` implements it and cites this file throughout.
-Open build items are **S10** in [`FOLLOWUPS.md`](FOLLOWUPS.md); the bench ladder is §6 of
-[`bench-flash-control-2026-09-05.md`](bench-flash-control-2026-09-05.md).
+Open build items are **S10** in [`FOLLOWUPS.md`](FOLLOWUPS.md); the two unrun rungs of the old
+bench ladder (L10 and L11, with their frames) are in the S10 row there.
 
 Tony's constraints, in his words: LEDs "add to the immersion and have a functional purpose across the gun and
 headset"; "configured per mode in the game config"; "LEAVE the native hit flash alone so it goes super bright
@@ -14,18 +14,21 @@ on hit"; "flash our brightest flash on headset during respawn when down since na
 less and generally dimmer"; "the team color on the gun doesn't need to be static bright, it should be dark and
 only light up for events".
 
-## 1. Verdict in six lines
+## 1. Verdict in six lines (the 2026-09-06 review)
+
+This section and §6-§7 record the review as written. Where the design moved since, the amendment wins: the gun
+rests on the team colour at DIM brightness (A16.4, `poolgauge.team_frame(dim=True)`), not dark.
 
 1. The surface split is right (gun = what the player sees, headset = what others see) and the build inverts it
    on the gun: the body rests on a static team colour the player already knows and shows nothing about pools.
-2. **Three real bugs ship today**: the gun-body team table is offset from the server's tids (yellow team gets a
+2. **Three real bugs shipped on 2026-09-06** (the first two are fixed: F33 2026-09-10, F240 2026-09-18): the gun-body team table is offset from the server's tids (yellow team gets a
    RED gun), `night: true` is a blackout that also deletes the DOWN signal, and the last-stand / infection
    "died: red headset" never lands because the engine marks the player dead before it plays the event.
 3. **The DOWN signal is solved and costs nothing** (bench 2026-09-07): the firmware's own bright out-flash runs in
    hosted games all along, and our `$HLED,,6` blank was disabling it. Swap the blank for colour 9, write nothing at
    death, and re-arm with one `$HLOOP,1,2500` as insurance. The whole `$LED` pulsing scheme is deleted.
 4. Night must become an overlay (dim, sparse, slower) over the per-mode block, with the DOWN signal exempt.
-5. The gun body becomes **dark at rest** with a **transient pool readout** — three segments at first, SEVEN
+5. The gun body becomes **dark at rest** (amended by A16.4: DIM team colour) with a **transient pool readout**: three segments at first, SEVEN
    levels since A16.3 (now viable after the blank)
    and event bursts; the headset stays native on hits, gets **held role states** (carrier, infected, VIP,
    extraction beacon) that survive hits, and the brightest down pulse we can make.
@@ -49,14 +52,14 @@ only light up for events".
 | moment | gun body | headset big LED | headset small LED |
 |---|---|---|---|
 | pregame (armed, unspawned, muster) | team colour, held | team colour, solid | dark |
-| start (T-0) | firmware spawn breathing, then `take` at +2.5 s: **dark** | white ×2 at +1.0 s, then dark | dark |
-| in-play rest | **dark** | dark (native) | dark |
-| pool change (damage, heal, grant) | **readout**: 3 / 2 / 1 segments of the pool that moved, hue by pool; held 4 s after the last change, then dark | native hit flash only, untouched | native hit flash only |
+| start (T-0) | firmware spawn breathing, then `take` at +2.5 s: **team colour, DIM** (A16.4) | white ×2 at +1.0 s, then dark | dark |
+| in-play rest | **team colour, DIM** (A16.4: the readout paints FULL, so brightness separates the two) | dark (native) | dark |
+| pool change (damage, heal, grant) | **readout**: 3 / 2 / 1 segments of the pool that moved, hue by pool; held 4 s after the last change, then the DIM rest | native hit flash only, untouched | native hit flash only |
 | reload | readout glance, 2 s | nothing | nothing |
 | low health (armour 0, HP falling, once per life) | readout already shows 1–2 red/yellow segments | Callsign's pink fade-blink (`hurt_led`, byte-identical) | native |
 | death | **nothing written for 2.5 s** (the gun's own hit flash runs), then the blank; dark while down | **nothing written for 2.5 s** (the native hit flash and whatever the firmware runs on the headset at death are left alone; we cannot replicate them), then the **down signal** | native, then the down signal |
 | last 1 s before an auto `$SPAWN` | dark | quiet | quiet |
-| respawn | breathing, then `take`: dark | white ×2 at +1.0 s after `$SPAWN`, then dark | dark |
+| respawn | breathing, then `take`: team colour, DIM | white ×2 at +1.0 s after `$SPAWN`, then dark | dark |
 | kill credited (MC push) | no burst (the sight already flashes: `$SFLASH`) | nothing | one green flash (`$LED,9,1`) |
 | medals / lead / clock | sound only | nothing | one green flash on the kill family only |
 
@@ -120,7 +123,7 @@ restarts from the level currently displayed, never queues; a gain animates upwar
 Stepping down is monotonic (segments going out), which is not a flash, so it does not spend the 3-per-second
 ceiling; the sustained partial blink stays at 1.25 Hz.
 
-Dark frames: the rest and every revert are the **blank** `$GLED,,,,5,,,*`, not a `9,9,9` paint, until the blank's idempotency and a dark paint's hold are measured (L12–L14).
+Dark frames (as designed 2026-09-06; A16.4 now rests the body on the DIM team colour, so a revert paints `poolgauge.team_frame(dim=True)`): the rest and every revert were the **blank** `$GLED,,,,5,,,*`, not a `9,9,9` paint, until the blank's idempotency and a dark paint's hold are measured (L12–L14).
 
 Rules: the **innermost pool that moved is the news** (`poolgauge.changed_pool`); one write per change, none when
 the frame is unchanged, a change inside 300 ms of the last write only restarts the hold; bursts end on dark, or on
@@ -214,7 +217,7 @@ A `headset.role` state the node re-asserts after every registered hit (the way t
 | surface / moment | day | night |
 |---|---|---|
 | gun pregame | team, full (`$GLED,c,c,c,0,10`) | team, dim (**token 5 = 1**: `$GLED,c,c,c,0,1,,*`) ⚠ NOT apply-gate 5 — that is OFF, not a dimmer (retracted 2026-09-07 by A/B on a host-owned strip; the old "~1/3" reading was taken while the firmware breathing was still contending) |
-| gun rest | dark | dark |
+| gun rest | team, dim (A16.4) | team, dim: brightness no longer separates rest from readout at night (A16.4 ⚠) |
 | gun readout | full, 4 s hold, reload glance 2 s | dim, 2 s hold, glance 1 s |
 | gun bursts | objective, extraction ladder (none at death) | same set, dim; no decorative bursts |
 | headset pregame / role states / low health | full (`$HLED` tok5 = 10) | dim (tok5 = 1) |
@@ -265,7 +268,7 @@ presentation.lights: {
   blackout: false,                       // was led.mode:"off". true = no frame anywhere EXCEPT `down`
   gun: {
     pregame: "team" | "off",             // muster: the armed, unspawned body in the team colour
-    rest:    "dark" | "team" | "native", // DEFAULT dark; native = firmware breathing, nothing sent
+    rest:    "dark" | "team" | "native", // DEFAULT team at DIM (A16.4; was dark); native = firmware breathing, nothing sent
     bursts:  true,                       // was gun_flash
     readout: { pools: ["shield","armor","health"], hold_s: 4, reload_glance_s: 2 }   // [] = no readout
   },
@@ -300,7 +303,7 @@ constant shared by compile and presentation); `respawn.delay_s ≥ 3`.
 ## 5. Bundle tables and node rules (A4.2: MC compiles every frame, the node selects and owns the timers)
 
 ```jsonc
-gun: { rest: "$GLED,,,,5,,,*",       // the BLANK is the rest frame: the one frame proven to leave the strip dark AND out of the breathing loop (a `9,9,9` dark paint after a blank is unmeasured over time, L13/L14)
+gun: { rest: "$GLED,,,,5,,,*",       // as designed; A16.4 ships the DIM team paint as the in-play rest. The BLANK was the rest frame: the one frame proven to leave the strip dark AND out of the breathing loop (a `9,9,9` dark paint after a blank is unmeasured over time, L13/L14)
        blank: "$GLED,,,,5,,,*", after_spawn_s: 2.5, take: [blank],
        readout?: { hold_s, reload_glance_s,
                    pools: [ { pool: "shield", max: 70, bands: [[0.66, f3], [0.33, f2], [0.0, f1]] },   // outermost first
@@ -360,7 +363,7 @@ per-player BLINK ME (`$HLED` white ×2); DOWN-screen copy for scanner players wh
 ("YOUR HEADSET IS FLASHING GREEN. EVERYONE CAN SEE YOU ARE OUT. Walk to your station." / night: "… call OUT as you
 walk"); a HUD pill when `$HIR` and the trigger both go silent while alive (headset asleep).
 
-## 7. Build plan (S10), by subagent
+## 7. Build plan (S10), by subagent (as planned 2026-09-06; FOLLOWUPS S10 holds what is still open)
 
 Contract first, then four parallel lanes with disjoint files, sonnet for the mechanical lanes:
 

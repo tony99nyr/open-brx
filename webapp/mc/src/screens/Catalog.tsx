@@ -120,7 +120,7 @@ export function Catalog() {
                         the SAME constant the pools read (`policy.UNPLAYABLE_IDS`, mirrored once in
                         gameSummary.ts). Delete the id there the day the bench fixes its $SIR row. */}
                     {UNPLAYABLE_IDS.has(w.weapon_id) && (
-                      <span data-testid="not-playable" title="Its hit row keys a $SIR function that moves no pool, so every hit registers and deals nothing. Excluded from KIT and the DESIGNER until the row is fixed on the bench (docs/weapon-design.md §6.2)."
+                      <span data-testid="not-playable" title="Its hit row keys a $SIR function that moves no pool, so every hit registers and deals nothing. Excluded from KIT and the DESIGNER until the row is fixed on the bench (docs/ir-effects-design.md §6.2)."
                         style={{ font: F.mono(700, 8.5), letterSpacing: '.14em', color: T.accInk, background: T.bad, padding: '2px 6px', marginLeft: 8, whiteSpace: 'nowrap' }}>
                         NOT PLAYABLE · HIT ROW DEALS NO DAMAGE
                       </span>

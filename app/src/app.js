@@ -391,7 +391,7 @@ async function openPicker({ auto = false } = {}) {
     if (!pacer.allow({ auto, open: scanning && link.scanning })) { log(auto ? 'gun scan: automatic reopen held back (back-off)' : 'gun scan already running', 'li'); return; }
     if (hud.connecting) { hud.setConnecting(null); scheduleRender(); }   // SCAN AGAIN after a failed connect
     // F211: check the adapter BEFORE opening the radio — starting a scan with Bluetooth off just sits
-    // there silently (game-test-2026-09-13.md C2). `watchEnabled` (boot, below) re-runs this the moment
+    // there silently (docs/archive/game-test-2026-09-13.md C2). `watchEnabled` (boot, below) re-runs this the moment
     // Bluetooth comes back on, so the operator never has to tap SET MY GUN a second time.
     if (!setBluetoothOn(await link.isEnabled())) { hud.setScan([]); scheduleRender(); return; }
     if (picking || link.connected) return;   // re-check: isEnabled() waited in the plugin queue behind a connect

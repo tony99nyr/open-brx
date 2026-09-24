@@ -266,6 +266,46 @@ static void test_advert_matches_beacon_js() {
   big.game = 200;
   big.threshold = -128;
   CHECK_EQ(advert_uuid(big), std::string("4f425258-0101-012c-0503-05ffffc88000"));
+
+  // A56: byte 15 is now `taker` (a powerup's holder, player_num 1..63; 0 = none), not a fixed pad
+  // byte -- the three vectors above all default it to 0, so their strings are UNCHANGED by this.
+  Advert taken;
+  taken.id = 8;
+  taken.kind = KIND_POWERUP;
+  taken.team = TEAM_ANY;
+  taken.state = 0;
+  taken.value = 42;
+  taken.taker = 7;
+  CHECK_EQ(advert_uuid(taken), std::string("4f425258-0101-0008-02ff-002a00000007"));
+}
+
+static void test_decode_advert_round_trips_and_rejects_strangers() {
+  Advert a;
+  a.id = 300;
+  a.kind = KIND_CONTROL;
+  a.team = 3;
+  a.state = 5;
+  a.value = 255;
+  a.seq = 255;
+  a.game = 200;
+  a.threshold = -128;
+  a.taker = 61;
+  Advert out;
+  CHECK(decode_advert(advert_uuid(a), out));
+  CHECK_EQ(out.role, a.role);
+  CHECK_EQ(out.id, a.id);
+  CHECK_EQ(out.kind, a.kind);
+  CHECK_EQ(out.team, a.team);
+  CHECK_EQ(out.state, a.state);
+  CHECK_EQ(out.value, a.value);
+  CHECK_EQ(out.seq, a.seq);
+  CHECK_EQ(out.game, a.game);
+  CHECK_EQ(out.threshold, a.threshold);
+  CHECK_EQ(out.taker, a.taker);
+  // A stranger's BLE UUID (right shape, wrong magic) is rejected, not mis-decoded.
+  CHECK(!decode_advert("6ba7b810-9dad-11d1-80b4-00c04fd430c8", out));
+  CHECK(!decode_advert("too-short", out));
+  CHECK(!decode_advert("", out));
 }
 
 static void test_advert_policy_mirrors_control_js() {
@@ -432,6 +472,7 @@ int main() {
   test_withdrawn_advert_republishes_as_first_with_seq_intact();
   test_equal_parity_pair_is_invalid();
   test_advert_matches_beacon_js();
+  test_decode_advert_round_trips_and_rejects_strangers();
   test_advert_policy_mirrors_control_js();
   test_bridge_mirrors_the_grenade();
   test_bridge_goes_stale_after_two_missed_beacons();

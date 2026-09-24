@@ -53,8 +53,8 @@ method-body decompile (Ghidra) is only needed to pin the last ~6 always-empty `$
 low priority, since declaration order is already validated against live frames.
 
 - **Weapon/character stat tables** — still NOT in the JSON assets; likely in metadata field-default
-  data or server-fetched. The manual's stock stats (`docs/reference/brx-manual-notes.md`) remain the
-  anchor set.
+  data or server-fetched. The anchor set is now the captured stock frames in
+  `docs/reference/weapons.md` (`docs/reference/brx-manual-notes.md` is a source stub).
 
 ## Reproduce
 

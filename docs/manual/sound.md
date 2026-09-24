@@ -221,15 +221,15 @@ One port, one `.BIN`. Firmware for the tagger, headset, hatchet, shield and side
 
 - Android Callsign: `$VOL,100`
 - iOS Callsign: `$VOL,69`
-- Open BRX game default: 80 indoors / 90 outdoors (`compile.play_volume()` sets it from the venue; 69 is estimated at roughly on-gun level 2, and it was inaudible on a field, 2026-08-30)
+- Open BRX game default: set from the venue, see [Modes and setup](/docs/modes). 69 measures at roughly on-gun level 2, and it was inaudible on a field (2026-08-30)
 - Open BRX try-out default: 69 (fired at arm's length)
 - Open BRX probing default: 30 (deliberately quiet, and deliberately not for games)
 
-> **30 is not "quiet"; it is silent for weapon audio.** Measured with a microphone harness: at volume 100 the gun's sounds peak at 7-37 times the room noise floor, and at 30 nothing rises above room noise. Volume 45 is barely audible. Use 65 or higher to hear a tagger reliably. Open BRX plays at 80 indoors / 90 outdoors, because 69 was measurably too quiet across a field (2026-08-30). No absolute SPL figure exists for any of these values.
+> **30 is not "quiet"; it is silent for weapon audio.** Measured with a microphone harness: at volume 100 the gun's sounds peak at 7-37 times the room noise floor, and at 30 nothing rises above room noise. Volume 45 is barely audible. Use 65 or higher to hear a tagger reliably. No absolute SPL figure exists for any of these values.
 
 **Practical levels**
 
-- **Play:** 80 indoors, 90 outdoors. That is what Open BRX sets from the venue, and an unknown venue gets the quieter of the two. The official iOS app's 69 is too quiet for game audio on a field; the Android app sends 100.
+- **Play:** the Open BRX game default above. An unknown venue gets the indoor level, the quieter one.
 - **Try-outs:** 69. A try-out is fired at arm's length from the player's own head, so it stays quiet.
 - **Bench / diagnostics:** 30 or lower keeps the neighbors happy and still confirms the command path (the gun echoes its state, you just won't hear it).
 

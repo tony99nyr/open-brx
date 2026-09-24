@@ -368,11 +368,14 @@ READOUT_LEVEL_COUNT = 7   # levels[] is always exactly this long, index 0..6
 # The drop-animation timings (bench-tuned 2026-09-07): shipped in `gun.readout` so the node never
 # hand-picks them. Not touched by night mode -- only brightness (token 5) is, same as every other
 # readout frame; see `_blink_frame`/`readout_levels` below.
-READOUT_LEAD_MS = 180        # step 1: hold the level you were AT, solid
-READOUT_BLINK_GAP_MS = 80    # step 2: one all-off blink ("show current health in one blink")
-READOUT_STEP_MS = 120        # step 3: one level per this many ms while stepping down/up
-READOUT_BLINK_MS = 400       # step 4: on/off period once settled on a partial level
-READOUT_MIN_GAP_MS = 400     # a change inside this window skips the lead + all-off blink and steps
+# F52: the values live in mc/types.py (one owner, generated to the phone); their meanings are here.
+from .mc.types import (READOUT_BLINK_GAP_MS, READOUT_BLINK_MS, READOUT_LEAD_MS,  # noqa: E402
+                       READOUT_MIN_GAP_MS, READOUT_STEP_MS)
+# READOUT_LEAD_MS       step 1: hold the level you were AT, solid
+# READOUT_BLINK_GAP_MS  step 2: one all-off blink ("show current health in one blink")
+# READOUT_STEP_MS       step 3: one level per this many ms while stepping down/up
+# READOUT_BLINK_MS      step 4: on/off period once settled on a partial level
+# READOUT_MIN_GAP_MS    a change inside this window skips the lead + all-off blink and steps
                              # straight down from where the strip is. This is the SAFETY knob: each
                              # all-off is a dark->lit transition and automatic fire is a burst of
                              # drops inside one second, which without this exceeds the 3-light-ups-

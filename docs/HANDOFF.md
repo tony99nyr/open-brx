@@ -14,23 +14,12 @@ weapon-arming delay, equal go-live at T-3); both rows are closed. **The first fi
 both phones** (Block 4 of [`bench-2026-09-24.md`](bench-2026-09-24.md)). Still open and P0: the BLE link-loop root
 cause (**F293**) and BLE setup-reliability metrics (**F297**); see Block 1.
 **Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32**; the claim
-checklist is [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md). Facts that session 1
-proved, and that every lane builds on:
-- **`$TMP` works over BLE** for t4 (accuracy, also the REAL hit rate), t5 (full-auto interval only), t6 (reload
-  time), t7 (outgoing damage), t8 (incoming damage) and t9 (magazine, raw rounds, ADDS on every re-send). No token
-  resets the magazine. `$SPAWN` zeroes `$TMP`; a `$LIFE` revive keeps it. ⚠️ t4 is last-writer-wins against the
-  gun's own fn 23 smoke, and the smoke's ~6 s timer resets t4 to 0 regardless.
-- **`$STOP` blocks a hit's damage but not its `$HIR`, and it survives `$SPAWN`.** Anything that sends `$STOP` must
-  send `$START` (plus `$GSET` and `$TID`) before the next life.
-- **`$SPAWN,,*` then `$TMP` t8 = -100 then `$TID` protects a spawn** with no fn-28 twin table; the `$SIR` table
-  survives `$SPAWN`. The t8 write must come AFTER `$SPAWN`.
-- **`$BUMP,<amount>,<hp>,<armour>,<shield>,<sound>` is confirmed on every field** (F65 closed).
-- **`$STUN,<ms>` is a native, SILENT stun.** The node plays `X17` itself (built, commit `273e949a`, not yet heard in a match).
-- **Poll a gun with the bare `$LIFE,*`**: a dead gun answers `$HP,0,0,0` at once. `$QUERY` holds a dead gun for ~2 s.
-- **The hosted BLE kill gave no `$DD`**, and no tested hosted protocol-15 word played an audible callout. One native TDM capture (2026-09-04, source unknown) saw protocol-15 magnitude 2 after death. A DEAD gun still
-  forwards a host `$IRTX` through its headset, so a kill confirm can ride IR (S57, the IR callout bus).
-- **`$LIFE,<hp>,0,0,1,*` then `$HLED,,6,*` revives a gun killed over BLE.** Untested on a real F264 stall.
-- **`$DPLAY` on a looping sound blocked the gun and dropped the link** (screamers A1). It stays on the never-send list.
+checklist is [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md). The facts session 1 proved
+(`$TMP`, `$STOP`, spawn protection, `$BUMP`, `$STUN`, the `$LIFE` probe and revive, the IR kill confirm, `$DPLAY`)
+live in [`protocol/brx-protocol.md`](../protocol/brx-protocol.md) and [`manual/dev.md`](manual/dev.md).
+**APK 0.4.6: one blocker.** brx3 built it release-signed (held in `~/brx3-release`; the B21 key exists). It waits
+only on the go or no-go in step 4.0 of [`bench-2026-09-24.md`](bench-2026-09-24.md); then Tony publishes it. Every
+player uninstalls the debug-signed 0.4.5 once.
 ## Lane: levers and screamers
 Screamers remain P0. Phase A has run A1 and A2. The current order is in
 [`bench-plan.md`](bench-plan.md); the next runbook is [`bench-2026-09-24.md`](bench-2026-09-24.md).
@@ -92,21 +81,15 @@ Recoil counts rounds per trigger pull by calibre (S54, `aa7b08b9`). F291 is clos
   then sitting 3 (§26 groups A and B).
 - **Blocked:** Extended Mags on `$TMP` (S50) and F281 on sitting 2; **F275** on outdoor space (runbook Block 5).
 ## Lane: BLE reliability (desk half)
-On `main` 2026-09-23: the desk half of F297, F269 and F270. All three stay open for the bench.
-- **F297:** `python -m brx_mcp connect-metrics <address> --runs 10` asks for a gun and headset power cycle, then
-  logs link time, first-attempt success and any headset or BLE drop within 30 s. The laptop connects, so a clean
-  laptop run beside a looping phone points F293 at the phone.
-- **F269:** `python -m brx_mcp raw-bytes` writes exact segments or a zero-gap stream under one lock and checks
-  liveness after. It runs screamers A4, A7b and the zero-gap A7, A7c and A8 (command lines: screamers sheet).
-- **F270:** `responseForMultiPacket` (brxlink) and `RESPONSE_FOR_MULTI_PACKET` (ble.py) ship false. Head/spawn-only
-  scoping needs an engine.js call-site change.
+On `main` 2026-09-23: the desk halves of **F297** (`connect-metrics`), **F269** (`raw-bytes`) and **F270**
+(write-with-response off). All three stay open for the bench; the rows hold the detail.
 - **Next bench task:** the ordered runbook [`bench-2026-09-24.md`](bench-2026-09-24.md). **Blocked:** F270 on A8.
 - **F315 (2026-09-23):** hits resolve by IR cell, then magnitude; `--distinct-weapon-cells` (off) waits on bench 4.10.
 ## Lane: Mission Control console honesty
-2026-09-23: F178/F256/F251/F289 closed; F309, brx-net, F312 gate, APK sidecar writer and the MC visual-QA pass (C1, H1-H6, M1-M24) built. **Next:** bench F309/F311/F312; decisions F317/F319; APK 0.4.6 held in `~/brx3-release`.
+2026-09-24: 0.4.6 published; F318, F108, F325, F133, F52, K8 closed. **Next:** bench F309/F311/F312; 0.4.7 cut on brx1's word.
 
 ## Lane: S57, B21, StickS3 (brx4)
-2026-09-23: **S57 built** (docs/ir-callouts.md); Block 7 of `bench-2026-09-24.md` settles it, F312 first. **B21:** key made; the signed cut waits for the desk fixes. **StickS3 (H7):** BLE and IR TX work; IR RX is F314. Start the next Stick session with `.claude/skills/m5stick-bench` and `hardware/m5sticks3/README.md`: `stick.py flash`, then `SELFTEST`, then the sheet's rerun.
+2026-09-23: **S57 built** (docs/ir-callouts.md); Block 7 of `bench-2026-09-24.md` settles it, F312 first. **B21:** key made and 0.4.6 built; its one blocker is above. **StickS3 (H7):** BLE and IR TX work; IR RX is F314. Start the next Stick session with `.claude/skills/m5stick-bench` and `hardware/m5sticks3/README.md`: `stick.py flash`, then `SELFTEST`, then the sheet's rerun.
 ## Lane: F293, death screen, integration and HUD QA (brx5)
 2026-09-23: btlink; death screen; integration pass; HUD QA-01..24 fixed (Tony's decisions on F316). Next: bench 1.3, F313.
 
@@ -117,9 +100,9 @@ Use this priority stack; do not spend Tony's bench time on desk work:
 1. **Next sitting (now):** [`bench-2026-09-24.md`](bench-2026-09-24.md), on a build from `main` (S56 and F309 are
    newer than 0.4.5), then sitting 5 for F264/F277. Record evidence and promote/close each row from the result.
 2. **Screamer transport:** the runbook's Block 2, then A8b; capture F269/F270/F272, then F274's three hardware soaks. This unlocks Phase B-E; do not infer numbers from ordinary `send` runs.
-3. **Decisions before more code:** B21's release key exists (2026-09-23); the signed 0.4.6 cut waits for
-   Tony's go to publish. Defer S50/F281 until sitting 2 confirms `$TMP` semantics.
-4. **Only after reliability:** E2/E3/E4, B17, K6/K8 and the remaining feature rows are roadmap work.
+3. **Decisions before more code:** 0.4.6 is published (2026-09-24, `app-v0.4.6`). Defer S50/F281
+   until sitting 2 confirms `$TMP` semantics.
+4. **Only after reliability:** E2/E3/E4, B17, K6 and the remaining feature rows are roadmap work.
 
 If Tony is not at the bench, prepare the decision packet and inspect the exact FOLLOWUPS methods; do not invent a
 new implementation for a bench-gated row. All other open rows are parked in [`FOLLOWUPS.md`](FOLLOWUPS.md) by gate.

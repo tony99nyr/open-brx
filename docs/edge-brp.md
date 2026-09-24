@@ -42,7 +42,7 @@ This is EDGE's immersion headline and its **moat**, delivered through the **Util
   EDGE software"). ⚠ Whether DMX is native to EDGE or routed through the UBox relay is **not
   documented** — treat "DMX + relays via UBox" as the model, mechanism unconfirmed.
 - **Sound/music:** a **unique soundtrack per game mode** over the venue PA + per-game SFX +
-  announcements. Taggers carry **2000+ on-device SFX** (≈ our 2166-id bank, `reference/sound-catalog.md`).
+  announcements. Taggers carry **2000+ on-device SFX** (≈ the 2,477 sounds on our guns, `reference/sound-catalog.md`).
 - The **UBox is the physical bridge** — one hardware unit **reconfigured in software** to be any of
   **20+ box types**. It's a networked relay/effect-node + prop controller that "fully integrates to
   the EDGE engine."

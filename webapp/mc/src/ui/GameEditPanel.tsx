@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { pushGate } from '../api/derive';
+import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, VENUE_VOLUME_INDOOR, VENUE_VOLUME_OUTDOOR } from '../api/types';
 import type { GameConfig, LoadoutPolicy, SlotRule, WeaponView } from '../api/types';
 import { useStore } from '../store';
 import { F, T, roleOf } from '../tokens';
@@ -14,6 +15,40 @@ const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
 /** the phases `state.py set_config` takes a config patch in. RECAP too since 2026-09-16: the edit rolls
  *  the finished session forward first, roster and game kept. */
 const EDITABLE = new Set(['muster', 'build', 'kit', 'lobby', 'recap']);
+
+type Modes = ReturnType<typeof useStore>['modes'];
+
+/** The config a patch is measured AGAINST. A mode switch rebuilds the whole config from that mode's
+ *  defaults server-side (`state.py set_config`), so once the draft has changed mode, "did the
+ *  operator change the health" is a question about the NEW mode's defaults, not the old game's --
+ *  otherwise the patch would carry the previous mode's numbers and pin them. */
+function baseFor(d: GameConfig, cfg: GameConfig, modes: Modes): GameConfig | null {
+  if (d.mode === cfg.mode) return cfg;
+  const def = modes.find(m => m.mode === d.mode)?.defaults;
+  // `null`, never `cfg`, when the new mode's defaults cannot be found (a `modes` catalog that is
+  // empty or missing this entry -- an older/partial fetch). `cfg` still carries the OLD mode's
+  // health/policy, and comparing the draft against it either drops a real edit that happens to
+  // coincide with the old value, or -- the actual bug -- PINS the old mode's numbers into the patch
+  // as if the operator had deliberately chosen them. `patchOf` below reads `null` as "no baseline to
+  // diff against" and sends the draft's own values outright instead.
+  return def ? ({ ...clone(def), environment: cfg.environment, night: cfg.night } as GameConfig) : null;
+}
+/** ONE patch, carrying exactly what the operator changed — never the whole config (which would
+ *  re-assert this mode's every default over anything another screen touched meanwhile). */
+function patchOf(d: GameConfig, cfg: GameConfig, modes: Modes): Partial<GameConfig> {
+  const b = baseFor(d, cfg, modes);
+  const p: Partial<GameConfig> = {};
+  if (d.mode !== cfg.mode) p.mode = d.mode;
+  if (d.night !== cfg.night) p.night = d.night;
+  // K8: `null` is a real value here (back to the venue default), so it is compared, and sent, as one.
+  if ((d.volume ?? null) !== ((b ?? cfg).volume ?? null)) p.volume = d.volume ?? null;
+  // `!b` (no known baseline for the new mode) always sends health/policy rather than silently
+  // omitting or mis-comparing them -- see `baseFor`. Sent-but-unnecessary is harmless (it repeats a
+  // value the server's own mode rebuild would have chosen anyway); pinned-but-wrong is not.
+  if (!b || JSON.stringify(d.health) !== JSON.stringify(b.health)) p.health = d.health;
+  if (!b || JSON.stringify(d.loadout_policy) !== JSON.stringify(b.loadout_policy)) p.loadout_policy = d.loadout_policy;
+  return p;
+}
 
 /** B3 (field 2026-09-12): editing the LOADED game meant leaving KIT/LOBBY for the GAMES stepper or the
  *  full DESIGNER. Tony: "the flow for editing the current loaded game is very bad. i need to be able
@@ -54,6 +89,14 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
   // config to seed it from.
   const cfgId = state?.config.config_id;
   useEffect(() => { if (alwaysOpen && !draft && state) setDraft(clone(state.config)); }, [alwaysOpen, draft, state, cfgId]);
+  const patch = draft && state ? patchOf(draft, state.config, modes) : {};
+  const dirty = Object.keys(patch).length > 0;
+  // GAMES's `editing` flag (Games.tsx `guarded`) needs to tell an UNTOUCHED draft (silently dropped)
+  // from a CHANGED one (worth one word: UNSAVED EDITS DISCARDED) when the operator picks a different
+  // game while this panel is still open. That question belongs here, next to `dirty` itself.
+  // F318: above the `!state` return, so the hook order never depends on whether a snapshot has arrived.
+  const hasState = !!state;
+  useEffect(() => { if (hasState) onDirtyChange?.(dirty); }, [dirty, onDirtyChange, hasState]);
   if (!state) return null;
   const cfg = state.config;
   // Defensive like KIT's own `pol` read: a session restored from before A10 (or an older MC) can carry
@@ -63,6 +106,7 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
   const pol = polOf(shown);
   const locked = !EDITABLE.has(state.phase);
   const pushed = state.lobby.pushed;
+  const loaded = !!state.game?.loaded || pushed;   // PreArmSummary's own test for NO GAME LOADED
   // A36/pushGate, not a second `a.ok` count kept here: an ack with no test against `config.config_id`
   // reads CONFIRMED for a gun that answered the PREVIOUS config, and did so on KIT and LOBBY the day
   // `pushGate` was written to stop exactly that -- but this panel had grown its own count and never
@@ -72,41 +116,6 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
   const total = gate.total;
   const open = draft !== null;
 
-  /** The config a patch is measured AGAINST. A mode switch rebuilds the whole config from that mode's
-   *  defaults server-side (`state.py set_config`), so once the draft has changed mode, "did the
-   *  operator change the health" is a question about the NEW mode's defaults, not the old game's --
-   *  otherwise the patch would carry the previous mode's numbers and pin them. */
-  const baseFor = (d: GameConfig): GameConfig | null => {
-    if (d.mode === cfg.mode) return cfg;
-    const def = modes.find(m => m.mode === d.mode)?.defaults;
-    // `null`, never `cfg`, when the new mode's defaults cannot be found (a `modes` catalog that is
-    // empty or missing this entry -- an older/partial fetch). `cfg` still carries the OLD mode's
-    // health/policy, and comparing the draft against it either drops a real edit that happens to
-    // coincide with the old value, or -- the actual bug -- PINS the old mode's numbers into the patch
-    // as if the operator had deliberately chosen them. `patchOf` below reads `null` as "no baseline to
-    // diff against" and sends the draft's own values outright instead.
-    return def ? ({ ...clone(def), environment: cfg.environment, night: cfg.night } as GameConfig) : null;
-  };
-  /** ONE patch, carrying exactly what the operator changed — never the whole config (which would
-   *  re-assert this mode's every default over anything another screen touched meanwhile). */
-  const patchOf = (d: GameConfig): Partial<GameConfig> => {
-    const b = baseFor(d);
-    const p: Partial<GameConfig> = {};
-    if (d.mode !== cfg.mode) p.mode = d.mode;
-    if (d.night !== cfg.night) p.night = d.night;
-    // `!b` (no known baseline for the new mode) always sends health/policy rather than silently
-    // omitting or mis-comparing them -- see `baseFor`. Sent-but-unnecessary is harmless (it repeats a
-    // value the server's own mode rebuild would have chosen anyway); pinned-but-wrong is not.
-    if (!b || JSON.stringify(d.health) !== JSON.stringify(b.health)) p.health = d.health;
-    if (!b || JSON.stringify(d.loadout_policy) !== JSON.stringify(b.loadout_policy)) p.loadout_policy = d.loadout_policy;
-    return p;
-  };
-  const patch = draft ? patchOf(draft) : {};
-  const dirty = Object.keys(patch).length > 0;
-  // GAMES's `editing` flag (Games.tsx `guarded`) needs to tell an UNTOUCHED draft (silently dropped)
-  // from a CHANGED one (worth one word: UNSAVED EDITS DISCARDED) when the operator picks a different
-  // game while this panel is still open. That question belongs here, next to `dirty` itself.
-  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   /** The reshape this SAVE would produce -- the SAME predicate GAMES's mode tiles show, never a second
    *  one. Asked of the DRAFT, which is why the per-tap confirm this panel used to carry is gone: the
    *  question belongs to the tap that actually moves people, and that tap is SAVE AND LOAD. */
@@ -123,7 +132,7 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
     const def = modes.find(m => m.mode === v)?.defaults;
     // mirrors `set_config`: rebuild from the mode's defaults, carry the VENUE (a fact about the site,
     // not about the game) and whatever the operator has already set in this draft for it.
-    edit(d => (def ? ({ ...clone(def), config_id: d.config_id, environment: cfg.environment, night: d.night } as GameConfig) : { ...d, mode: v }));
+    edit(d => (def ? ({ ...clone(def), config_id: d.config_id, environment: cfg.environment, night: d.night, ...(d.volume != null ? { volume: d.volume } : {}) } as GameConfig) : { ...d, mode: v }));
   };
 
   const startEdit = () => { setConfirmCancel(false); setConfirmSave(false); setDraft(clone(cfg)); };
@@ -168,7 +177,9 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
                    background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', minHeight: 44, color: T.ink }}>
           {/* 2026-09-16, Tony: "VIEW" is more intuitive and less distracting. Opening it shows the loaded
               game; nothing changes until SAVE. */}
-          <span style={{ font: F.chk(700, 12), letterSpacing: '.2em', color: T.acc }}>{open ? '▾' : '▸'} VIEW LOADED GAME</span>
+          {/* F318: with nothing loaded, LOBBY's pre-arm check says NO GAME LOADED right below this row, so
+              the row must not call the game LOADED. The same predicate as PreArmSummary's. */}
+          <span style={{ font: F.chk(700, 12), letterSpacing: '.2em', color: T.acc }}>{open ? '▾' : '▸'} {loaded ? 'VIEW LOADED GAME' : 'VIEW GAME · NOT LOADED'}</span>
           {/* G (round-2, 2026-09-12): 11px, not 10.5 — the host reads this chip at arm's length on the
               collapsed row. */}
           <span style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>
@@ -176,7 +187,7 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
               healthPresetOf(cfg.health) === 'custom'
                 ? `HP ${cfg.health.max_hp}/${cfg.health.max_armor}${cfg.health.max_shield ? `/${cfg.health.max_shield}` : ''}`
                 : HEALTH_PRESET_COPY.find(p => p.value === healthPresetOf(cfg.health))!.label
-            }
+            }{cfg.volume != null ? ` · VOL ${cfg.volume}` : ''}
           </span>
           <span style={{ flex: 1 }} />
           {/* The count lives on the COLLAPSED row too, because that is where the operator is standing
@@ -205,7 +216,7 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
                   <Seg label="mode" value={shown.mode} wrap options={modes.map(m => ({ value: m.mode, label: m.abbr }))}
                     titles={Object.fromEntries(modes.map(m => [m.mode, m.name]))}
                     onChange={pickMode} />
-                  <div style={{ font: F.chk(500, 11.5), color: T.micro, marginTop: 6 }}>Switching mode replaces time limit, respawn, health and weapon rules with that mode's defaults, and moves players onto that mode's teams. Venue (day/night) stays. Nothing is sent until {saveLabel.replace(' ▸', '')}.</div>
+                  <div style={{ font: F.chk(500, 11.5), color: T.micro, marginTop: 6 }}>Switching mode replaces time limit, respawn, health and weapon rules with that mode's defaults, and moves players onto that mode's teams. Venue (day/night) and volume stay. Nothing is sent until {saveLabel.replace(' ▸', '')}.</div>
                 </>
               ) : (
                 <span style={{ font: F.chk(600, 12), color: T.micro }}>{shown.mode.toUpperCase()} — mode list unavailable (server predates this UI?)</span>
@@ -216,6 +227,10 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
                 <Toggle on={shown.night} onChange={v => edit(d => ({ ...d, night: v }))} label="night ops" />
                 <span style={{ font: F.chk(600, 12), color: shown.night ? T.ink : T.dim }}>{shown.night ? 'NIGHT' : 'DAY'}</span>
               </span>
+            </Row>
+            <Row label="VOLUME">
+              <VolumeEditor volume={shown.volume} environment={shown.environment} benchVolume={state.bench_volume}
+                onChange={v => edit(d => { const n = { ...d }; if (v == null) delete n.volume; else n.volume = v; return n; })} />
             </Row>
             <Row label="LIFE PRESET">
               <HealthPresetEditor health={shown.health} onChange={h => edit(d => ({ ...d, health: h }))} />
@@ -279,6 +294,53 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <span style={{ font: F.mono(600, 10.5), letterSpacing: '.22em', color: T.micro }}>{label}</span>
       {children}
+    </div>
+  );
+}
+
+/** K8 (Tony, field 2026-09-12): the host's per-game volume. VENUE DEFAULT is the absent key, so an older
+ *  server (no `volume` field at all) renders as the venue default and a tap there sends `null`. The
+ *  steps are the on-gun levels (`gameconfig.VOLUME_LEVELS`, 60..100); a value set another way (the API
+ *  takes any integer in range) gets its own button so the control never hides what the game holds. */
+const VOLUME_STEPS = [60, 70, 80, 90, 100] as const;
+function venueVolume(environment: string | undefined): number {
+  return environment === 'outdoor' ? VENUE_VOLUME_OUTDOOR : VENUE_VOLUME_INDOOR;   // unknown = the quieter, as the server
+}
+function VolumeEditor({ volume, environment, benchVolume, onChange }:
+  { volume: number | null | undefined; environment: string | undefined; benchVolume?: number; onChange: (v: number | null) => void }) {
+  const venue = venueVolume(environment);
+  const set = volume ?? null;
+  const steps: number[] = [...VOLUME_STEPS];
+  if (set != null && !steps.includes(set)) steps.push(set);
+  steps.sort((a, b) => a - b);
+  const btn = (on: boolean): React.CSSProperties => ({
+    font: F.chk(on ? 700 : 600, 12), letterSpacing: '.06em', padding: '6px 12px', minHeight: 36, minWidth: 44, cursor: 'pointer',
+    background: on ? 'rgba(57,180,255,.10)' : T.panelDeep, color: on ? T.acc : T.micro, border: `1px solid ${on ? T.acc : T.line}`,
+  });
+  const plays = benchVolume ?? set ?? venue;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div role="group" aria-label="volume" data-testid="game-edit-volume" style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+        <button type="button" className="hit44" aria-pressed={set == null} data-volume="venue" onClick={() => onChange(null)}
+          title={`Play at the venue level: ${venue} ${(environment ?? 'indoor').toUpperCase()}`} style={btn(set == null)}>
+          VENUE DEFAULT ({venue})
+        </button>
+        {steps.map(v => (
+          <button key={v} type="button" className="hit44" aria-pressed={set === v} data-volume={v} onClick={() => onChange(v)}
+            title={`Every gun plays this game at $VOL ${v}`} style={btn(set === v)}>
+            {v}
+          </button>
+        ))}
+      </div>
+      <div data-testid="game-edit-volume-note" style={{ font: F.chk(500, 11.5), color: T.micro, lineHeight: 1.45 }}>
+        {set == null
+          ? `PLAYS AT ${venue}: the ${(environment ?? 'indoor').toUpperCase()} venue default.`
+          : `PLAYS AT ${set}, set for this game (the venue default is ${venue}).`}
+        {` ${GAME_VOLUME_MIN} is on-gun level 1, ${GAME_VOLUME_MAX} the loudest. Try-outs stay at 69.`}
+        {benchVolume != null && (
+          <span style={{ color: T.warn }}>{` ▲ BENCH VOLUME ${benchVolume} OVERRIDES THIS ON THIS RUN: every gun plays at ${plays}.`}</span>
+        )}
+      </div>
     </div>
   );
 }

@@ -34,7 +34,7 @@ arsenal
 
 ## Counters
 
-### There are only four ways to take someone down
+### There are five ways to take someone down
 
 Every weapon in the list above is one of these, and each one beats something and loses to something else. That is the whole design, and it is why the arsenal is not a ladder with a best weapon at the top.
 
@@ -42,8 +42,7 @@ Every weapon in the list above is one of these, and each one beats something and
 - **Armour piercing.** Goes straight to health and ignores the armour entirely. It has to be priced down to pay for that, so against someone wearing nothing it is strictly worse than the rifle you gave up.
 - **Stripping.** Removes every protective layer and cannot kill. Devastating against a heavily armoured target with a teammate behind you, and literally nothing against a bare one.
 - **Denial.** Drops the target's accuracy to zero for a few seconds. It beats anyone who has to aim and does nothing at all to someone who simply walks away.
-
-A fifth is coming: damage over time, which is the answer to walking away, and therefore the natural counter to denial.
+- **Damage over time.** The Toxin Rifle poisons on every hit, and the poison keeps draining the target's pools for a few seconds after the target breaks contact. It is the answer to walking away, and therefore the natural counter to denial.
 
 ## Limits
 
@@ -51,7 +50,7 @@ A fifth is coming: damage over time, which is the answer to walking away, and th
 
 This is a platform built on someone else's firmware, over a serial protocol, and being honest about the edges is more useful than pretending there are none.
 
-- **Range is a carrier frequency, not a distance.** The range field shifts the infrared carrier, and the receiver has a knee in its response curve. Between about 31 and 100 every value reaches as far as anyone has been able to pace out, so a short-range weapon is not something the hardware lets us simply ask for.
+- **Range is a threshold, not a distance.** We measured the range field in a garden with two taggers. A very low value barely lands at all, there is a sharp change somewhere between 13 and 26, and between about 31 and 100 every value reaches as far as anyone has been able to pace out. So a short-range weapon is not something the hardware lets us simply ask for.
 - **Some weapons fire twice.** Three of them send a second infrared word from the shooter's own headset, about 88 milliseconds behind the first, with its own damage and its own reach. We measured it on the wire rather than reading it off a spec.
 - **The firmware is never modified.** Every weapon here is assembled from frames the tagger already understands. That is a hard rule, not a limitation we are working around.
 

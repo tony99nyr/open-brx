@@ -24,6 +24,7 @@
 #include "brx_advert.h"
 #include "brx_ir.h"
 #include "control_point.h"
+#include "mc_link_glue.h"   // H8: Wi-Fi/mDNS/WebSocket to Mission Control (docs/spec/utility.md §5g)
 
 using namespace brx;
 
@@ -273,21 +274,58 @@ static void sendFrame(const String& bits) {
 }
 
 // ---- BLE advert ------------------------------------------------------------------------------ //
+// H8: once Mission Control has ARMED this Stick (`brx_glue::link.state() == ASSIGNED`), the advert's
+// id/kind/game/threshold come from that assignment, not the serial ID/GAME/MODE bench settings --
+// mirrors utility.js's own applyStationConfig(). Team/state/value/active still come from whichever
+// engine actually knows them: control_point.h for kind "control" (IR-driven, unchanged), the
+// powerup schedule for kind "powerup" (self-spawn + CLAIM, station_link.h), or a flat "nothing to
+// report yet" for a kind this firmware cannot run (respawn/extraction/bomb, §5g.5: "shown and
+// reported, not faked"). With no MC assignment at all this is exactly the pre-H8 standalone bench
+// behaviour (control_point.h only), unchanged.
+static AdvertView currentAdvertView(uint32_t now) {
+  using brx_glue::link;
+  if (link.state() != LinkState::ASSIGNED) return point.view(now);
+  const StationAssignment& a = link.assignment();
+  if (a.kind == "control") return point.view(now);
+  if (a.kind == "powerup") {
+    PowerupAdvertView p = link.powerup().view(now);
+    AdvertView v;
+    v.team = TEAM_ANY;
+    v.state = p.state;
+    v.value = p.value;
+    v.taker = p.taker;
+    v.active = true;
+    return v;
+  }
+  // respawn / extraction / bomb: armed and advertised, but this firmware has no player-side rule
+  // for any of them yet, so it says nothing beyond "here I am, on this team, doing nothing".
+  AdvertView v;
+  v.team = (uint8_t)a.team;
+  v.state = 0;
+  v.value = 0;
+  v.active = true;
+  return v;
+}
+
 bool advertising = false;
 uint32_t advertRetryAt = 0;
 static void publishAdvert(const AdvertView& v, uint32_t now) {
+  using brx_glue::link;
   uint8_t seq = policy.published(v, now);
-  Advert a;
-  a.role = ROLE_STATION;
-  a.id = settings.id;
-  a.kind = KIND_CONTROL;
-  a.team = v.team;
-  a.state = v.state;
-  a.value = v.value;
-  a.seq = seq;
-  a.game = settings.game;
-  a.threshold = 0;
-  String uuid = advert_uuid(a).c_str();
+  bool assigned = link.state() == LinkState::ASSIGNED;
+  const StationAssignment& a = link.assignment();
+  Advert adv_;
+  adv_.role = ROLE_STATION;
+  adv_.id = assigned ? (uint16_t)a.id : settings.id;
+  adv_.kind = assigned ? station_kind_byte(a.kind) : KIND_CONTROL;
+  adv_.team = v.team;
+  adv_.state = v.state;
+  adv_.value = v.value;
+  adv_.seq = seq;
+  adv_.game = assigned ? (uint8_t)a.game : settings.game;
+  adv_.threshold = assigned ? a.threshold : 0;
+  adv_.taker = v.taker;
+  String uuid = advert_uuid(adv_).c_str();
   if (!adv) { policy.have_last = false; return; }
   adv->stop();
   BLEAdvertisementData data;
@@ -327,7 +365,7 @@ static void initBle() {
 // on the phones a stale "neutral" would look exactly like a live one. Their own 4 s expiry then
 // drops the point, which is the truth.
 static void pollAdvert(uint32_t now) {
-  AdvertView v = point.view(now);
+  AdvertView v = currentAdvertView(now);
   if (!v.active) {
     if (advertising) {
       if (adv) adv->stop();
@@ -337,11 +375,16 @@ static void pollAdvert(uint32_t now) {
       Serial.println("ADVERT withdrawn (no live beacon)");
       displayDirty = true;
     }
+    brx_glue::mcSetLive(advertising);
     return;
   }
-  if (advertRetryAt && (int32_t)(now - advertRetryAt) < 0) return;
+  if (advertRetryAt && (int32_t)(now - advertRetryAt) < 0) { brx_glue::mcSetLive(advertising); return; }
   advertRetryAt = 0;
   if (policy.due(v, now)) publishAdvert(v, now);
+  // H8 (polish round 1): status.live must say whether the advert is ACTUALLY up, not merely that MC
+  // armed this station -- publishAdvert() may have just failed (ERR advert start) and left
+  // `advertising` false even though a station_config was applied.
+  brx_glue::mcSetLive(advertising);
 }
 
 // ---- display --------------------------------------------------------------------------------- //
@@ -388,6 +431,68 @@ static void paint(uint32_t now) {
   M5.Display.endWrite();
 }
 
+// H8's operator screen (Tony via brx1, 2026-09-24): local stats only, paged by a short press;
+// nothing here is sent anywhere. Bench to confirm the layout on the real 1.14" panel -- this has
+// never been seen on a Stick. Kept as its own function, separate from the pre-H8 `paint()` above,
+// which stays exactly as it was for standalone bench use (control_point.h with no Wi-Fi at all).
+static void paintOperator(uint32_t now) {
+  using brx_glue::link;
+  using brx_glue::buttons;
+  const StationAssignment& a = link.assignment();
+  uint16_t bg = a.present ? teamColor((uint8_t)a.team) : M5.Display.color565(40, 40, 40);
+  M5.Display.startWrite();
+  M5.Display.fillScreen(bg);
+  M5.Display.setTextColor(TFT_WHITE, bg);
+  M5.Display.setTextDatum(top_left);
+  M5.Display.setTextSize(2);
+  M5.Display.setCursor(4, 4);
+  M5.Display.print(a.present ? a.kind.c_str() : "NOT ARMED");
+  M5.Display.setTextSize(1);
+  M5.Display.setCursor(4, 24);
+  M5.Display.printf("id %d  game %d", a.present ? a.id : -1, a.present ? a.game : -1);
+
+  M5.Display.setTextSize(2);
+  M5.Display.setCursor(4, 50);
+  if (buttons.phase() == ButtonPhase::CONFIRM_ARMED) {
+    M5.Display.print("RESET?");
+    M5.Display.setTextSize(1);
+    M5.Display.setCursor(4, 74);
+    M5.Display.print("hold again to confirm");
+  } else {
+    switch (buttons.page()) {
+      case StatsPage::KIND:
+        M5.Display.print(a.present ? a.kind.c_str() : "-");
+        break;
+      case StatsPage::LAST_ITEM:
+        if (a.present && a.kind == "powerup" && link.powerup().taker()) {
+          M5.Display.printf("taker P%u", link.powerup().taker());
+        } else {
+          M5.Display.print("no taker");
+        }
+        break;
+      case StatsPage::NEXT_SPAWN:
+        if (a.present && a.kind == "powerup" && !link.powerup().available()) {
+          M5.Display.printf("%us to spawn", link.powerup().view(now).value);
+        } else {
+          M5.Display.print(a.present && a.kind == "powerup" ? "AVAILABLE" : "-");
+        }
+        break;
+      case StatsPage::LINK:
+        M5.Display.print(link_state_label(link.state()));
+        break;
+      case StatsPage::BATTERY:
+        M5.Display.print("-");  // bench to confirm: M5Unified battery API not wired up yet
+        break;
+      default:
+        break;
+    }
+  }
+  M5.Display.setTextSize(1);
+  M5.Display.setCursor(4, 124);
+  M5.Display.print(link_state_label(link.state()));
+  M5.Display.endWrite();
+}
+
 // ---- serial commands ------------------------------------------------------------------------- //
 static void printStatus() {
   Serial.printf("STATUS mode=%s owner=%d charges=%lu,%lu,%lu,%lu captures=%lu seq=%u adverts=%lu words=%lu id=%u game=%u txpin=%u uuid=%s\n",
@@ -396,6 +501,21 @@ static void printStatus() {
                 (unsigned long)point.charge[3], (unsigned long)point.captures, policy.seq,
                 (unsigned long)advertCount, (unsigned long)wordCount, settings.id, settings.game, settings.txpin,
                 currentUuid.c_str());
+  // H8: the MC link state, on its own line so a pre-H8 tool that parses STATUS's key=value pairs
+  // (mcp/tools/stick.py `parse_status`) keeps working unchanged.
+  const brx::StationLink& link = brx_glue::link;
+  const brx::StationAssignment& a = link.assignment();
+  Serial.printf("LINK state=%s mode=%s actions=%s dropped_for_match=%d node_id=%s wifi=%s kind=%s team=%d id=%d game=%d threshold=%d",
+                brx::link_state_label(link.state()), link.mode() == brx::AssocMode::HELD ? "HELD" : "MUSTER",
+                link.actions_enabled() ? "ON" : "OFF", link.dropped_for_match() ? 1 : 0,
+                link.identity().node_id.c_str(), brx_glue::wifiSsid.c_str(), a.present ? a.kind.c_str() : "-",
+                a.present ? a.team : -1, a.present ? a.id : -1, a.present ? a.game : -1,
+                a.present ? a.threshold : 0);
+  if (a.present && a.kind == "powerup") {
+    Serial.printf(" powerup_available=%d taker=%u pending_actions=%u", link.powerup().available() ? 1 : 0,
+                  link.powerup().taker(), (unsigned)link.pending_action_count());
+  }
+  Serial.println();
 }
 
 static void setMode(Mode m) {
@@ -412,6 +532,10 @@ static void handleLine(String line) {
   if (!line.length()) return;
   if (line == "PING") { Serial.println("PONG"); return; }
   if (line == "STATUS") { printStatus(); return; }
+  // H8: WIFI / MC / LINK MUSTER|HELD / LINK OFF / ACTIONS ON|OFF (docs/spec/utility.md §5g.3/§5g.4).
+  // Checked before everything below so a typo like "WIFI" with no args still lands here, not in the
+  // ERR unknown at the bottom.
+  if (brx_glue::mcHandleLine(line)) return;
   if (line == "RAW ON" || line == "RAW OFF") {   // explicit, for tools: the bare `r` is a toggle whose state a caller cannot see
     rawEnabled = line == "RAW ON";
     Serial.printf("# RAW dump %s\n", rawEnabled ? "ON" : "OFF");
@@ -496,10 +620,33 @@ static void pollSerial() {
 }
 
 // ---- buttons --------------------------------------------------------------------------------- //
+// H8 (Tony via brx1, 2026-09-24): once Wi-Fi has ever been configured, the buttons become OPERATOR
+// controls -- a short press pages through local stats, a 2 s hold arms a RESET confirm, and a
+// SECOND 2 s hold sends it to Mission Control (station_ui.h's StationButtons). Players never press
+// anything on a station. Before any WIFI command has ever been given, the Stick is in its pre-H8
+// standalone bench mode and the buttons keep their original meaning (local point RESET / MODE
+// toggle) exactly as before, since that bench workflow needs no Wi-Fi at all.
 static void pollButtons() {
-  // Long presses only: a knock on the field must not flip the point or its mode.
-  if (M5.BtnA.wasHold()) { point.reset(); Serial.println("RESET neutral (button)"); displayDirty = true; }
-  if (M5.BtnB.wasHold()) setMode(point.mode == Mode::HILL ? Mode::BRIDGE : Mode::HILL);
+  using brx_glue::link;
+  if (link.state() == LinkState::NOT_CONFIGURED) {
+    // Long presses only: a knock on the field must not flip the point or its mode.
+    if (M5.BtnA.wasHold()) { point.reset(); Serial.println("RESET neutral (button)"); displayDirty = true; }
+    if (M5.BtnB.wasHold()) setMode(point.mode == Mode::HILL ? Mode::BRIDGE : Mode::HILL);
+    return;
+  }
+  // Polish round 1: A is STATS (short press only), B is RESET (2 s hold), never both on one button.
+  if (M5.BtnA.wasClicked()) { brx_glue::buttons.on_short_press(); displayDirty = true; }
+  if (M5.BtnB.wasHold()) {
+    uint32_t now = millis();
+    if (brx_glue::buttons.on_long_press(now)) {
+      bool sent = brx_glue::mcSendResetAction();
+      Serial.println(sent ? "RESET sent to Mission Control" : "RESET NEEDS MISSION CONTROL");
+      displayDirty = true;
+    } else {
+      displayDirty = true;  // opened (or re-opened) the confirm prompt
+    }
+  }
+  if (brx_glue::buttons.poll_timeout(millis())) displayDirty = true;
 }
 
 // ---- setup / loop ---------------------------------------------------------------------------- //
@@ -523,9 +670,11 @@ void setup() {
   Serial.printf("# mode=%s id=%u game=%u txpin=%u\n", point.mode == Mode::HILL ? "HILL" : "BRIDGE", settings.id,
                 settings.game, settings.txpin);
   Serial.println("# Commands: SELFTEST [bits] | RAW ON|OFF | TX <bits> | TXN <n> <bits> | AUTO <bits>|OFF | PING | STATUS | MODE BRIDGE|HILL | ID <n> | GAME <n> | TXPIN 46|9|10 | RESET | r s c");
+  Serial.println("# H8: WIFI <ssid> <pass> | MC <ws://host:port/path> | LINK MUSTER|HELD|OFF|RECONNECT | ACTIONS ON|OFF");
   if (!initRx()) Serial.println("ERR rx init (RMT)");
   if (!initTx(settings.txpin)) Serial.println("ERR tx init (RMT)");
   initBle();
+  brx_glue::mcSetup();   // H8: loads Wi-Fi/node_id/node_key/LINK mode from Preferences, joins if set
   pollAdvert(millis());  // HILL advertises at once; BRIDGE waits for its first live beacon
 }
 
@@ -536,6 +685,7 @@ void loop() {
   pollSerial();
   pollButtons();
   pollAdvert(now);
+  brx_glue::mcLoop(now);  // H8: Wi-Fi/mDNS/WebSocket to Mission Control; never blocks
   if (point.mode == Mode::HILL && now - lastBeaconTxMs >= BEACON_PERIOD_MS) {
     lastBeaconTxMs = now;
     sendFrame(String(encode(point.beacon_word()).c_str()));
@@ -546,7 +696,8 @@ void loop() {
   }
   static uint32_t lastPaint = 0;
   if (displayDirty || now - lastPaint > 1000) {
-    paint(now);
+    if (brx_glue::link.state() == LinkState::NOT_CONFIGURED) paint(now);
+    else paintOperator(now);
     lastPaint = now;
     displayDirty = false;
   }

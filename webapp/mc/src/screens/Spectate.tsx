@@ -39,7 +39,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { LiveRow, ScoreRow } from '../api/types';
 import { useStore } from '../store';
 import { F, T, fmtClock, fmtDuration, teamColor } from '../tokens';
-import { Num, ScrollX } from '../ui';
+import { ClockSub, Num, ScrollX } from '../ui';
 import { TEAM_KILL_NOTE, bestStreak } from './Live';
 import { isKillScored } from './gameSummary';
 import { heldSeconds, hillOwner, isObjectiveScored, objectiveWord } from './objective';
@@ -251,7 +251,7 @@ function Clock({ remaining, sub, stale, SZ }: { remaining: number; sub: string; 
                   display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
       <span style={{ ...chk(700, SZ.label), letterSpacing: '.26em', color: stale ? T.bad : T.micro }}>{stale ? 'CLOCK FROZEN' : 'TIME REMAINING'}</span>
       <span data-spectate="clock" style={{ ...osw(700, SZ.clock), lineHeight: 1 }}><Num value={fmtClock(remaining)} /></span>
-      <span style={{ ...chk(600, SZ.label), letterSpacing: '.2em', color: T.micro }}>{sub}</span>
+      <ClockSub text={sub} style={{ ...chk(600, SZ.label), letterSpacing: '.2em', color: T.micro }} />
     </div>
   );
 }

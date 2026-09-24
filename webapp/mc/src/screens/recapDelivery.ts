@@ -30,8 +30,7 @@ export function recapDeliveryText(ed: EndDeliveryView): string | null {
     + `${reach}, AND REACHING A NODE IS NOT A CONFIRMATION. ${fact} THAT TAGGER MAY HAVE PLAYED ON AFTER THE WHISTLE: CHECK IT ON THE GUN.`;
 }
 
-/** The clean-end line in RECAP's own noun. LIVE keeps `endDeliveryLine`'s wording; RECAP sits under the
- *  command bar's "REACHED N OF N NODES", so it says NODES too. */
+/** The clean-end line in RECAP's own noun, NODES, which `endDeliveryLine` (LIVE) now uses too (F318). */
 export function recapDeliveryOkText(ed: Pick<EndDeliveryView, 'total'>): string {
   return `ALL ${ed.total} NODE${ed.total === 1 ? '' : 'S'} CONFIRMED THE END`;
 }

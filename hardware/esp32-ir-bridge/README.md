@@ -1,4 +1,4 @@
-# ESP32-S3 IR bridge — capture (and later emit) BRX IR
+# ESP32-S3 IR bridge — capture and emit BRX IR
 
 The IR capture/emit rig (the plan it grew from is archived at `docs/archive/hardware/ir-prototype-plan.md`;
 its three phases are done: capture, emit, and the `$SIR` effect sweep) and the eventual Claude↔hardware bridge for
@@ -134,10 +134,8 @@ python -m brx_mcp ir-emit <bits> [port] [repeat]
 bits). These are the same calls the `diag-game ir` cases use once the bridge is present.
 
 ## Next
-- Tune `ir_emit.ino`'s `MARK_ONE/MARK_ZERO/BIT_SPACE/START_*` to the timings `ir-capture` recorded,
-  then emit a captured "hit" and confirm a stock gun reports `$HIR` (Phase B).
 - Wire the two `ir.*` diagnostic cases (`diag/cases.py`) to call `IRBridge` so `diag-game <addr> ir`
-  runs capture+emit as scored tests.
+  runs capture+emit as scored tests. Today those cases carry no send/verify, so they are skipped.
 
 ## Board registry — which ESP32-S3 is which (2026-08-26)
 

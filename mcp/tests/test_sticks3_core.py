@@ -4,7 +4,12 @@ They pin the IR word codec to the bench-measured timings, the BLE advert to stri
 app/src/beacon.js, and the two ownership modes to the 2026-09-10 grenade findings. This runs them
 under the same runner as everything else so a change to the headers cannot go green silently.
 Skips when there is no g++ (system python without a compiler must stay green).
-"""
+
+H8 (2026-09-24) added a second host binary, `test/test_link.cpp`, for the Mission Control link core
+(`station_link.h` + `json_lite.h`): the hello/status JSON builders, the tolerant parsers, and the
+link state machine. It is built and run the same way as `test_core.cpp` below. A new C++ test file
+under `test/` belongs in `TEST_FILES` here, or it never runs anywhere (`mcp/tests/test_utility_esp32.py`
+also builds `test_link.cpp` directly, in its own golden-dump mode -- see that file's docstring)."""
 import pathlib
 import shutil
 import subprocess
@@ -14,27 +19,34 @@ from _skip import needs
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CORE = ROOT / "hardware" / "m5sticks3"
-TEST = CORE / "test" / "test_core.cpp"
+TEST_FILES = ("test_core.cpp", "test_link.cpp", "test_ui.cpp")
 GXX = shutil.which("g++")
+
+
+def _build_and_run(name: str):
+    src = CORE / "test" / name
+    assert src.exists(), f"{src} is missing"
+    with tempfile.TemporaryDirectory() as td:
+        exe = pathlib.Path(td) / src.stem
+        build = subprocess.run(
+            [GXX, "-std=c++17", "-Wall", "-Wextra", "-Werror", f"-I{CORE}", str(src), "-o", str(exe)],
+            capture_output=True, text=True, timeout=120,
+        )
+        assert build.returncode == 0, f"g++ failed on {name}:\n{build.stdout}\n{build.stderr}"
+        run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=60)
+        assert run.returncode == 0, f"{name} failed:\n{run.stdout}\n{run.stderr}"
+        assert "all checks passed" in run.stdout, run.stdout
 
 
 def test_sticks3_core_host_tests_pass():
     needs(GXX, "g++")
-    assert TEST.exists(), f"{TEST} is missing"
-    with tempfile.TemporaryDirectory() as td:
-        exe = pathlib.Path(td) / "test_core"
-        build = subprocess.run(
-            [GXX, "-std=c++17", "-Wall", "-Wextra", "-Werror", f"-I{CORE}", str(TEST), "-o", str(exe)],
-            capture_output=True, text=True, timeout=120,
-        )
-        assert build.returncode == 0, f"g++ failed:\n{build.stdout}\n{build.stderr}"
-        run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=60)
-        assert run.returncode == 0, f"core tests failed:\n{run.stdout}\n{run.stderr}"
-        assert "all checks passed" in run.stdout
+    for name in TEST_FILES:
+        _build_and_run(name)
 
 
 def test_sticks3_headers_have_no_arduino_dependency():
-    """The core must stay host-testable: nothing in the three headers may pull in Arduino."""
-    for name in ("brx_ir.h", "brx_advert.h", "control_point.h"):
+    """The core must stay host-testable: nothing in these headers may pull in Arduino."""
+    for name in ("brx_ir.h", "brx_advert.h", "control_point.h", "station_link.h", "json_lite.h",
+                 "station_ui.h"):
         text = (CORE / name).read_text(encoding="utf-8")
         assert "Arduino.h" not in text and "M5Unified" not in text, f"{name} includes Arduino"

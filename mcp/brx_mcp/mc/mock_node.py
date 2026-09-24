@@ -399,7 +399,11 @@ class MockNode:
             self.configs.append(body)
             self.context.update({k: body.get(k) for k in ("config", "frames", "roster")})
             self._absorb_context({"config": body.get("config"), "frames": body.get("frames")})
-            self.arm_state = "lobby"
+            # engine.js `_applyConfig` keeps an ARMED or LIVE phase. A hot joiner takes its `start` in the
+            # welcome and its `config` after it, so resetting to LOBBY here stranded it there for the
+            # whole match (the repeat `start` is a same-seq no-op). Found by chaos testing, 2026-09-24.
+            if self.arm_state not in ("armed", "live"):
+                self.arm_state = "lobby"
             ack = {"config_id": (body.get("config") or {}).get("config_id"), "ok": True}
             if self.gun_echo:
                 # A36: a real gun answers the head's `$WEAP,0` with a slot-0 `$ALCD` carrying that

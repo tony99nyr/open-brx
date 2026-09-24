@@ -6,7 +6,7 @@
 //
 //  * LIVE names the straggler while MC is re-delivering, and the board's STATUS column says so on that row
 //  * RECAP names them as a DELIVERY fact — never anything that could be read as a score
-//  * a clean end says so too ("ALL 4 HUDS CONFIRMED THE END"), because that is what was asked for
+//  * a clean end says so too ("ALL 4 NODES CONFIRMED THE END"), because that is what was asked for
 //  * an ARCHIVED match never shows it, and a server that does not send it renders nothing at all
 import { describe, expect, it } from 'vitest';
 import { Live } from '../src/screens/Live';
@@ -63,7 +63,8 @@ describe('A42 · LIVE tells the operator who has not confirmed the end', () => {
     expect(el, 'the notice is on the screen').toBeTruthy();
     const t = strip(el.textContent ?? '');
     expect(t).toContain('BRAVO');
-    expect(t).toMatch(/1 OF 2 HUDS? HAS NOT CONFIRMED THE END/);
+    expect(t).toMatch(/1 OF 2 NODES HAS NOT CONFIRMED THE END/);
+    expect(t, 'F318: one noun, NODES, as RECAP says').not.toMatch(/HUDS?\b/);
     expect(t).toContain('RE-DELIVERING');
   });
 
@@ -78,7 +79,8 @@ describe('A42 · LIVE tells the operator who has not confirmed the end', () => {
   it('says so when every HUD confirmed — the thing that was actually asked for', async () => {
     const m = await liveWith(ALL_IN);
     const t = strip(m.find('[data-testid="end-delivery"]')[0].textContent ?? '');
-    expect(t).toContain('ALL 2 HUDS CONFIRMED THE END');
+    expect(t).toContain('ALL 2 NODES CONFIRMED THE END');
+    expect(t, 'F318: one noun, NODES, as RECAP says').not.toMatch(/HUDS?\b/);
   });
 
   it("marks that player's own row in the STATUS column, and nobody else's", async () => {

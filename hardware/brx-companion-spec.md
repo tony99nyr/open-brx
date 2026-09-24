@@ -29,8 +29,8 @@ of that phone — **not** a requirement for scoring: per-player attribution is B
 
 ## ⚡ 2026-08-25 reframe — the `$SFLASH` tier collapse + the real core BOM
 
-Two findings since this spec was written change the shape of the product (see ADR-0001,
-`protocol/session-findings-2026-08.md` §7o):
+Two findings since this spec was written change the shape of the product (see ADR-0001 and
+`protocol/brx-protocol.md` §3.2):
 
 **The gun is already the speaker AND the display.** The `$SFLASH` capture proved a host can drive
 the gun's own feedback over BLE: `$SFLASH,*` greens the sight, `$PLAY` plays on the gun's (loud)

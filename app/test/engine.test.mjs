@@ -2213,6 +2213,19 @@ test('A27: a new match from MC retires the lock notice from the match-complete s
   assert.equal(h.eng.state().kitLocked, false, 'and takes last match\'s lock notice with it');
 });
 
+// F133: a host who locks the kit, never starts, and pushes a NEW game spent none of the other retirements, so the
+// next lobby still led with THE HOST LOCKED KITS. The latch now carries the config_id it was raised for.
+test('F133: a push of another game retires the lock notice; the same game keeps it', () => {
+  const h = kitA10();
+  h.eng.browse(true);
+  h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: h.bundle, roster: h.roster } });
+  assert.equal(h.eng.state().kitLocked, true, 'control: the lock is raised for this game');
+  h.eng.onMcMessage({ kind: 'config', body: { config: { ...h.config }, frames: h.bundle, roster: h.roster } });
+  assert.equal(h.eng.state().kitLocked, true, 'the same config_id again (a reconnect, a repeat) keeps the notice');
+  h.eng.onMcMessage({ kind: 'config', body: { config: { ...h.config, config_id: 'another-game' }, frames: h.bundle, roster: h.roster } });
+  assert.equal(h.eng.state().kitLocked, false, 'a new game in the lobby does not lead with the old lock');
+});
+
 test('A30 CONTROL: a player who had already readied up gets no lock notice (they asked for the advance)', () => {
   const h = kitA10();
   h.eng.setReady(true);

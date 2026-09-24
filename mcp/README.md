@@ -100,8 +100,8 @@ claude mcp add brx -- python.exe -m brx_mcp
 | `parse_query_dump(text)` | Parse a USB `QUERY` record |
 | Resources: `protocol_doc`, `known_devices`, `capture` | The protocol reference, the device registry, capture files |
 
-> **Never end a bench run on a bare `$CLEAR`.** `panic` sends `$CLEAR,*` then `$SP,99,*`, which
-> leaves the gun with no `$SIR` table, so it cannot be hit until it is re-armed.
+> **Never end a bench run on a bare `$CLEAR`.** See `CLAUDE.md` → Hard rules and
+> `protocol/brx-protocol.md` §3 for why.
 
 ## Platform notes
 

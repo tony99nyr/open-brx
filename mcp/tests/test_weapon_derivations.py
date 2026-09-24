@@ -771,7 +771,7 @@ def test_the_poison_block_is_declared_and_never_reaches_the_wire():
         wid = w["weapon_id"]
         d = w["dot"]
         assert {"per_tick", "tick_ms", "duration_ms", "refresh", "stack"} <= set(d), wid
-        assert d["stack"] is False, f"{wid}: poison REFRESHES, it never stacks (§6.3b)"
+        assert d["stack"] is False, f"{wid}: poison REFRESHES, it never stacks (ir-effects-design.md §6.3b)"
         frame = CAT.resolve(wid, 0)
         for value in (str(d["per_tick"]), str(d["tick_ms"]), str(d["duration_ms"])):
             assert f",{value}," not in frame.replace(f",{w['wire']['fire_ms']},", ",_,"), (

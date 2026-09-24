@@ -4,7 +4,7 @@ Run: python3 run_tests.py headset_multiplier
 Sensor-gated headset scaling superseded the flat x1.25/x2 reading from 2026-09-02: the gun-body
 sensor is always x1 for fn 1/36/37 alike, and the headset scale is a function of the compiled
 `$GSET` criticalShotModifier (t7), not a fixed constant. See experiment-log/2026-09.md
-(2026-09-11, bench) and docs/weapon-design.md §6.
+(2026-09-11, bench) and docs/ir-effects-design.md §6.
 
 2026-09-17 (arsenal review): the MC-COMPILED DEFAULT crit_modifier moved from 50 to 0 (BRX has 4
 headset sensors and 1 tagger sensor, and play aims at the head, so the headset needs no bonus). The

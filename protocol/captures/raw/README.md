@@ -1,7 +1,7 @@
 # Raw BLE captures (btsnoop)
 
-> Section references of the form §7e, §7n, §7o point into `../session-findings-2026-08.md` (the archived
-> session write-ups); the current reading of each fact is in `../brx-protocol.md`.
+> Section references of the form §7e, §7n, §7o point into `../../../docs/archive/session-findings-2026-08.md` (the archived
+> session write-ups); the current reading of each fact is in `../../brx-protocol.md`.
 
 The **unprocessed** iPhone Bluetooth HCI traces behind the decoded transcripts in the parent
 directory. Committed because a raw trace answers questions we haven't thought of yet: the

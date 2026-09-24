@@ -53,3 +53,11 @@ clear (see `app/README.md`, experiment-log "native app validated on hardware").
 - **Supersedes** the Web-Bluetooth-PWA framing in the retired `phone-app-spec.md` /
   `field-architecture.md` / tier plans. Anything still describing the player path as a browser PWA is
   wrong; cite this ADR.
+
+## Amended 2026-09-24 (doc accuracy)
+
+- The Web Bluetooth dev harness no longer exists. No tracked file calls `navigator.bluetooth`, and `webapp/`
+  is now the Cloudflare deploy root (the public site plus `webapp/mc/`, the Mission Control UI). The phone
+  HUD's no-gun iteration loop is the stage harness (`app`: `npm run ui:stage`).
+- The WinRT/CoreBluetooth/BlueZ list names the backends of `bleak`, the Python BLE library in `mcp/`, not of
+  the Capacitor plugin. The plugin uses the phone's native BLE stack (Android, iOS).

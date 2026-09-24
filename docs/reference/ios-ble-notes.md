@@ -46,7 +46,7 @@ Worth knowing by heart:
 | reason | meaning |
 |---|---|
 | `0x16` | **local host terminated** — our app/the phone hung up (a bug on our side) |
-| `0x13` | **remote user terminated** — the gun hung up (e.g. the `protocol/session-findings-2026-08.md` §7m headset gate) |
+| `0x13` | **remote user terminated** — the gun hung up (e.g. the headset gate, `protocol/brx-protocol.md` §1) |
 | `0x08` | supervision timeout — out of range / gun powered off |
 | `0x3E` | connection failed to be established — the flaky-establishment case |
 

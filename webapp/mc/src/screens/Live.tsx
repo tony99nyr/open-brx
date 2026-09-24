@@ -5,7 +5,7 @@ import { NEVER_SEEN_MS, STALE_AFTER_MS, type LiveRow, type LiveView, type State 
 import { useStore } from '../store';
 import { F, T, fmtAge, fmtClock, fmtDuration, teamColor } from '../tokens';
 import { columnEdges, type Column } from './columns';
-import { Blink, GhostButton, Num, ScrollX, Tag, shortCoverageLine, coverageColor } from '../ui';
+import { Blink, ClockSub, GhostButton, Num, ScrollX, Tag, shortCoverageLine, coverageColor } from '../ui';
 import { OrphanMatch } from '../ui/OrphanMatch';
 import { OperatorMenu, operatorMenuId } from './OperatorMenu';
 import { isKillScored } from './gameSummary';
@@ -390,11 +390,11 @@ function TimeCell({ remaining, sub, dim }: { remaining: number; sub: string; dim
   return (
     <div role="status" aria-live="off" title={dim ? 'MC offline — clock frozen at the last snapshot' : undefined}
       style={{ flex: '0 1 240px', background: T.panel, border: `1px solid ${dim ? T.bad : T.line}`, padding: '14px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, opacity: dim ? .45 : 1 }}>
-      <span style={{ font: F.mono(500, 11), letterSpacing: '.2em', color: T.micro }}>{dim ? 'TIME REMAINING · OFFLINE' : 'TIME REMAINING'}</span>
+      <ClockSub text={dim ? 'TIME REMAINING · OFFLINE' : 'TIME REMAINING'} style={{ font: F.mono(500, 11), letterSpacing: '.2em', color: T.micro }} />
       {/* the clock is the one number that changes every second — a per-digit cell is what stops it
           re-centring on every tick (the HUD's A5 defect, same cause) */}
       <span style={{ font: F.osw(700, 40), lineHeight: 1 }}><Num value={fmtClock(remaining)} /></span>
-      <span style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: T.micro }}>{sub}</span>
+      <ClockSub text={sub} style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: T.micro }} />
     </div>
   );
 }

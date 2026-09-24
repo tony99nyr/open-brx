@@ -70,7 +70,7 @@ from typing import Any
 
 from .. import poolgauge as pg
 from .. import sounds as snd
-from .types import GameConfig, GunSummary, PresentationRow, PresentationSummary
+from .types import READOUT_HOLD_S, GameConfig, GunSummary, PresentationRow, PresentationSummary
 
 PALETTE = {"red": 0, "blue": 1, "yellow": 2, "green": 3, "purple": 4, "teal": 5, "white": 6,
            "pink": 7, "orange": 8}
@@ -394,7 +394,7 @@ GUN_BLANK = pg.GUN_BLANK    # one string, defined once (poolgauge) -- the CLI dr
 # each a static per-band $GLED segment frame (poolgauge.readout_bands) MC ships so the node never parses
 # a frame: it just measures its own level/max and picks the first band whose fraction that exceeds.
 READOUT_POOL_ORDER = ("shield", "armor", "health")
-GUN_READOUT_DEFAULT = {"pools": list(READOUT_POOL_ORDER), "hold_s": 4, "reload_glance_s": 2}
+GUN_READOUT_DEFAULT = {"pools": list(READOUT_POOL_ORDER), "hold_s": READOUT_HOLD_S, "reload_glance_s": 2}
 NIGHT_READOUT = {"hold_s": 2, "reload_glance_s": 1}   # §3.4: night halves both holds
 
 # `blackout` (led-language.md §4/§6 finding #2, 2026-09-07): the EXPLICIT "no lights anywhere except
@@ -942,7 +942,7 @@ def gun_readout(profile: dict, night: bool, hp: int = 45, armor: int = 70, shiel
     pools = [p for p in READOUT_POOL_ORDER if p in (conf.get("pools") or [])]
     if not pools:
         return {}
-    hold_s, glance_s = conf.get("hold_s", 4), conf.get("reload_glance_s", 2)
+    hold_s, glance_s = conf.get("hold_s", READOUT_HOLD_S), conf.get("reload_glance_s", 2)
     if night:
         hold_s = min(hold_s, NIGHT_READOUT["hold_s"])
         glance_s = min(glance_s, NIGHT_READOUT["reload_glance_s"])

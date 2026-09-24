@@ -277,8 +277,10 @@ export function ValueBox({ value, unit, onChange, min = 0, max = 9999, step = 1,
   };
   const setFocused = (f: boolean) => { focused.current = f; };
   return (
-    <span style={{ font: F.osw(700, 17), ...TAB, background: T.inset, border: `1px solid ${T.line2}`, padding: '4px 14px', display: 'inline-flex', alignItems: 'baseline', gap: 6, minHeight: 44 }}>
+    <span style={{ font: F.osw(700, 17), ...TAB, background: T.inset, border: `1px solid ${T.line2}`, padding: '2px 14px', display: 'inline-flex', alignItems: 'baseline', gap: 6, minHeight: 44 }}>
+      {/* F318: the wrapper was 44 px, but the input (the part a finger has to hit) was 27 px. */}
       <input className="numbox" type="number" value={draft} min={min} max={max} step={step} aria-label={label ?? unit ?? 'value'}
+        style={{ minHeight: 36 }}
         onFocus={() => setFocused(true)} onBlur={() => { setFocused(false); commit(); }}
         onKeyDown={e => { if (e.key === 'Enter') { (e.target as HTMLInputElement).blur(); } }}
         onChange={e => setDraft(e.target.value)} />
@@ -395,3 +397,16 @@ export function shortCoverageLine(coverage: Coverage | null | undefined): string
 }
 /** F309: green only when the server derives FULL coverage (every phone on cellular through the tunnel). */
 export const coverageColor = (coverage: Coverage | null | undefined): string => (coverage?.level === 'full' ? T.ok : T.micro);
+
+/** F318: a clock subtitle ("KOTH · FIRST TO 3 · MOST HILL TIME WINS") wrapped mid-phrase at 1280 and
+ *  900 px. Each ` · ` part stays whole, so the line only ever breaks between parts, and it centres. */
+export function ClockSub({ text, style }: { text: string; style?: Sx }) {
+  const parts = text.split(' · ');
+  return (
+    <span data-clock-sub="1" style={{ textAlign: 'center', lineHeight: 1.4, ...style }}>
+      {parts.map((p, i) => (
+        <span key={i} style={{ whiteSpace: 'nowrap' }}>{i ? '· ' : ''}{p}{i < parts.length - 1 ? ' ' : ''}</span>
+      ))}
+    </span>
+  );
+}

@@ -483,7 +483,7 @@ for (const view of VIEWS) {
     must(after.marks.every((m, i) => m === 'm' + i), 'a row node was destroyed and rebuilt: ' + JSON.stringify(after.marks));
     must(JSON.stringify(after.rssi) !== JSON.stringify(before.rssi), 'the signal readings never updated, so this step proves nothing: ' + JSON.stringify(before.rssi));
   });
-  // F211 (game-test-2026-09-13.md C2): the picker used to sit empty with no message when Bluetooth was off.
+  // F211 (docs/archive/game-test-2026-09-13.md C2): the picker used to sit empty with no message when Bluetooth was off.
   await step(`${view.name} F211 idle-bt-off: the Bluetooth-off message replaces the list, no Android-only buttons`, async () => {
     const pg = await open(view, 'idle-bt-off');
     const r = await pg.evaluate(() => ({

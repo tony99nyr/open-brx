@@ -10,7 +10,7 @@ written twice.
 | [`FORMAT.md`](FORMAT.md) | **The contract.** The source format, the file-to-URL map, landing-page rules, the one extension, and the house style. If it is not in there, it is not a feature. |
 
 `docs/archive/site/SIMPLIFY-PLAN.md` has the history of why the site looks like this (what the old
-block-DSL generator cost, what was cut, what was measured) — history, not instructions.
+block-DSL generator cost, what was cut, what was measured): history, not instructions.
 
 **The build.** `cd site && npm ci` once, then:
 

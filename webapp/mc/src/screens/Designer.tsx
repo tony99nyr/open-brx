@@ -148,7 +148,7 @@ export function Designer() {
       if (nm) {
         const r = await save();
         if (!r || await run(() => api.applyPreset(r.preset_id)) === undefined) return;
-      } else if (await run(() => api.putConfig({ ...cfg, config_id: state.config.config_id })) === undefined) return;
+      } else if (await run(() => api.putConfig({ ...cfg, volume: cfg.volume ?? null, config_id: state.config.config_id })) === undefined) return;   // K8: no knob = the venue default, never the last game's
       if (await run(() => api.putConfig({ environment: state.config.environment, night: state.config.night })) === undefined) return;
       // C1 (visual QA 2026-09-23): the shortcut here used to key on `seed.fromLive`, which means only
       // "seed the draft from tonight's config". The GAMES rail's CUSTOMIZE sets it too, BEFORE anything

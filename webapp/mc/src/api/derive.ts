@@ -76,7 +76,7 @@ export function staleReachReason(n: Pick<NodeView, 'reach' | 'last_reach' | 'las
  *  told them to CLEAR, which is the opposite of what `force` is for. */
 /** A42 — ONE sentence about end delivery, so LIVE and RECAP cannot say it two different ways.
  *
- *  Both halves are the answer the operator asked for: a clean end says ALL N HUDS CONFIRMED (that is the
+ *  Both halves are the answer the operator asked for: a clean end says ALL N NODES CONFIRMED (that is the
  *  thing that was missing), and an unconfirmed one NAMES the phones and, once MC has stopped re-delivering,
  *  says what only a person can do about it. It is a fact about DELIVERY — never about how anyone played —
  *  so nothing here may read as a score, and neither screen may render it inside the board.
@@ -86,9 +86,10 @@ export function staleReachReason(n: Pick<NodeView, 'reach' | 'last_reach' | 'las
 export function endDeliveryLine(ed: EndDeliveryView | null | undefined): { ok: boolean; text: string } | null {
   if (!ed || !ed.total) return null;
   const n = ed.unconfirmed.length;
-  if (!n) return { ok: true, text: `ALL ${ed.total} HUD${ed.total === 1 ? '' : 'S'} CONFIRMED THE END` };
+  // F318: NODE, the one noun RECAP and the command bar's "REACHED N OF N NODES" use. It said HUDS here.
+  if (!n) return { ok: true, text: `ALL ${ed.total} NODE${ed.total === 1 ? '' : 'S'} CONFIRMED THE END` };
   const who = ed.unconfirmed.map(u => u.display).join(', ');
-  const head = `${n} OF ${ed.total} HUD${ed.total === 1 ? '' : 'S'} ${n === 1 ? 'HAS' : 'HAVE'} NOT CONFIRMED THE END (${who})`;
+  const head = `${n} OF ${ed.total} NODE${ed.total === 1 ? '' : 'S'} ${n === 1 ? 'HAS' : 'HAVE'} NOT CONFIRMED THE END (${who})`;
   if (ed.retrying) return { ok: false, text: `${head} — RE-DELIVERING` };
   // The tries are the server's own count, never a number this file knows: the ladder is `state.py`'s.
   const tries = Math.max(...ed.unconfirmed.map(u => u.tries), 0);

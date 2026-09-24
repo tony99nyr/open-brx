@@ -71,7 +71,7 @@ manual setup path.
 The direct tagger-control CLI and stdio MCP server are documented in the
 [`mcp/README.md`](mcp/README.md), which is the command reference and safe-order authority. It covers
 installation, first contact, `play`, `game-sim`, MCP registration, platform notes, and the full command table.
-The CLI table in that README is the command list; bare `python -m brx_mcp` starts the stdio server.
+That README's CLI table is the canonical command list; bare `python -m brx_mcp` starts the stdio server.
 
 > **What works today:** `python -m brx_mcp play tdm` ([`mcp/README.md`](mcp/README.md)) ran a full TDM on two real taggers: scoring, respawn,
 > frag limit, correct winner (`docs/experiment-log/2026-08.md`, "FIRST LIVE M0 GAME"). The **phone-node +
@@ -88,14 +88,10 @@ The CLI table in that README is the command list; bare `python -m brx_mcp` start
 
 ### Platform notes
 
-- **WSL2 has no Bluetooth.** Develop in WSL, but run the server with **Windows Python**
-  (`python.exe`); an MCP client running in WSL can register it directly:
-  `claude mcp add brx -- python.exe -m brx_mcp` (or your client's equivalent, with the package installed into Windows Python).
-- **macOS:** grant your terminal Bluetooth permission (System Settings → Privacy & Security →
-  Bluetooth). CoreBluetooth reports per-machine UUIDs instead of MAC addresses, so the
-  `~/.brx-mcp/known-devices.json` registry is per-machine: re-scan on the MacBook.
-- **Gen1 taggers** use Bluetooth Classic (SPP, 57600 baud; headset must be connected). `bleak`
-  is BLE-only: pair the tagger in the OS and use the serial port path instead (guide todo).
+WSL2 has no Bluetooth, macOS needs a Bluetooth permission grant and reports per-machine UUIDs
+instead of MAC addresses, and Gen1 taggers need a serial path instead of BLE. The full detail lives
+in [`mcp/README.md`](mcp/README.md) → *Platform notes* (and, for the WSL/Windows box specifically,
+[`docs/wsl-dev-runbook.md`](docs/wsl-dev-runbook.md)).
 
 ## The phone app and the public site
 
@@ -110,9 +106,8 @@ The CLI table in that README is the command list; bare `python -m brx_mcp` start
 - Nothing here can brick a tagger: stock firmware is untouched; a power-cycle restores it.
 - The MCP refuses malformed frames and requires `confirm=true` for commands outside the
   known-safe list enforced in `mcp/brx_mcp/protocol.py` (documented in `protocol/brx-protocol.md` §3).
-- A `panic` tool (`$CLEAR,*` + `$SP,99,*`) silences and stops any tagger. It leaves the gun with **no
-  `$SIR` table**, so it cannot be hit until it is re-armed or power-cycled: correct for a panic stop, not
-  a playable state.
+- A `panic` tool silences and stops any tagger, but leaves it unhittable until it's re-armed or
+  power-cycled: see `CLAUDE.md` → Hard rules and `protocol/brx-protocol.md` §3 for the exact sequence.
 
 ## Roadmap
 
