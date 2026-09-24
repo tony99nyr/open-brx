@@ -28,6 +28,13 @@ export const ROLE: Record<string, { label: string; color: string }> = {
 /** older MC (no `role`): no label at all rather than a raw class id (review round 3: no protocol ids on screen) */
 export const roleOf = (role?: string, cls?: string) => ROLE[role ?? ''] ?? { label: CLS_COLOR[cls ?? ''] ? (cls ?? '').toUpperCase() : '', color: CLS_COLOR[cls ?? ''] ?? '#8aa0b4' };
 export const PERK_COLOR = '#c48bff';
+/** M14 (visual QA 2026-09-23): weapon CLASS tints, a muted set of their own. The ROLE colours above
+ *  are the team blue, yellow and green and the alarm red, so a SUPPORT tag read as "green team" and a
+ *  HEAVY tag as a fault. These stay low in saturation and away from every TEAM and alarm hue
+ *  (`test/tokens.test.ts` checks both). */
+export const CLASS_TAG: Record<'heavy' | 'sniper' | 'assault' | 'cqb' | 'support' | 'sidearm', string> = {
+  heavy: '#b8a07e', sniper: '#86b0a8', assault: '#8d9db4', cqb: '#b88f8a', support: '#98a880', sidearm: '#bdb8b0',
+};
 
 // font shorthands (React accepts the CSS `font` shorthand as a string)
 export const F = {

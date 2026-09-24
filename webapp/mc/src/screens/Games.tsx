@@ -36,6 +36,7 @@ import { F, PERK_COLOR, T } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, Shelf, StripedSlot, SwitchConfirm, Tag, Toggle, onKey } from '../ui';
 import { HEALTH_PRESET_COPY, emptyRequiredSlots, gameSig, healthPresetOf, poolEmptyMessage, rulesLine, splitLine } from './gameSummary';
 import { MODE_ART } from '../modeArt';
+import { ModeEmblem } from './ModeEmblem';
 import { VenueModeManualLink } from '../ui/VenueModeReminder';
 import { GameEditPanel } from '../ui/GameEditPanel';
 import { GameSentStatus, GameSettings, LoadStatus, gameSettingRows } from '../ui/LoadedGame';
@@ -195,6 +196,11 @@ export function Games() {
   // The cure for a stale HEAD belongs to the push that writes heads, so it appears only once there
   // has been one. Before that there is nothing on a gun to be stale.
   const showRePush = state.lobby.pushed && !locked && (gate.curableRows.length > 0 || !everyoneAcked);
+  // M12 (visual QA 2026-09-23): this read "The game is on the guns" whenever a game was LOADED, and a
+  // LOAD writes no gun. Only a LOBBY push puts a config on the guns, so say which one has happened.
+  const continueKitTitle = state.lobby.pushed
+    ? 'The guns hold this config. This takes the phones to their kit screens.'
+    : 'The game is sent to the phones. The guns are configured at the lobby push, after kitting. This takes the phones to their kit screens.';
   const faults = gate.redRows.map(b => ({ who: b.sticker, why: b.blockers ?? [] }));
   const notOnlyStale = gate.redRows.filter(b => !((b.blockers ?? []).length > 0 && (b.blockers ?? []).every(w => w.startsWith(STALE_ACK_FAULT))));
 
@@ -264,8 +270,9 @@ export function Games() {
               <div key={g.preset_id} className="hov-acc" role="button" tabIndex={0} aria-pressed={on} aria-label={`play ${g.name}`} onClick={() => { if (tappable(on)) playSaved(g); }} onKeyDown={onKey(() => { if (tappable(on)) playSaved(g); })}
                 style={{ flex: '0 0 262px', display: 'flex', flexDirection: 'column', gap: 8, padding: 10, cursor: tappable(on) ? 'pointer' : 'default',
                   background: on ? 'rgba(196,139,255,.07)' : T.panel, border: `1px solid ${on ? PERK_COLOR : T.line}`, borderTop: `2px solid ${on ? PERK_COLOR : T.line2}` }}>
-                <StripedSlot height={70} style={{ background: gm && MODE_ART.has(gm.mode) ? `url(assets/modes/${gm.mode}.jpg) center/cover no-repeat` : undefined }}
+                <StripedSlot height={70} style={{ background: gm && MODE_ART.has(gm.mode) ? `url(assets/modes/${gm.mode}.jpg) center/cover no-repeat` : undefined, overflow: 'hidden' }}
                   corner={<>
+                    {!(gm && MODE_ART.has(gm.mode)) && <ModeEmblem mode={g.config.mode} />}
                     <span style={{ position: 'absolute', top: 6, left: 6, font: F.osw(700, 12), letterSpacing: '.12em', background: on ? PERK_COLOR : T.panelAlt, color: on ? T.accInk : T.dim, padding: '2px 7px' }}>{gm?.abbr ?? g.config.mode.toUpperCase()}</span>
                     {on && <span style={{ position: 'absolute', top: 6, right: 6 }}><Tag size={9} color={PERK_COLOR}>PLAYING</Tag></span>}
                     {g.builtin && !on && <span style={{ position: 'absolute', top: 8, right: 6, font: F.mono(500, 9.5), letterSpacing: '.14em', color: T.dim, textShadow: '0 1px 4px #000' }}>BUILT-IN</span>}
@@ -315,8 +322,9 @@ export function Games() {
             return (
               <div key={m.mode} className="hov-acc" role="button" tabIndex={0} aria-pressed={on} aria-label={`play ${m.name}`} onClick={() => { if (tappable(on)) playStock(m); }} onKeyDown={onKey(() => { if (tappable(on)) playStock(m); })}
                 style={{ background: on ? 'rgba(57,180,255,.06)' : T.panel, border: `1px solid ${on ? T.acc : T.line}`, borderTop: `2px solid ${on ? T.acc : base ? T.line2 : 'transparent'}`, padding: 10, display: 'flex', flexDirection: 'column', gap: 10, cursor: tappable(on) ? 'pointer' : 'default' }}>
-                <StripedSlot height={76} caption={MODE_ART.has(m.mode) ? undefined : 'mode art'} style={{ background: MODE_ART.has(m.mode) ? `url(assets/modes/${m.mode}.jpg) center/cover no-repeat` : undefined }}
+                <StripedSlot height={76} style={{ background: MODE_ART.has(m.mode) ? `url(assets/modes/${m.mode}.jpg) center/cover no-repeat` : undefined, overflow: 'hidden' }}
                   corner={<>
+                    {!MODE_ART.has(m.mode) && <ModeEmblem mode={m.mode} />}
                     <span style={{ position: 'absolute', top: 6, left: 6, font: F.osw(700, 12), letterSpacing: '.12em', background: on ? T.acc : T.panelAlt, color: on ? T.accInk : T.dim, padding: '2px 7px' }}>{m.abbr}</span>
                     {on && <span style={{ position: 'absolute', top: 6, right: 6 }}><Tag size={9}>PLAYING</Tag></span>}
                     {base && <span style={{ position: 'absolute', top: 6, right: 6 }}><Tag size={9} color={T.line2} ink={T.ink}>BASE</Tag></span>}
@@ -355,7 +363,7 @@ export function Games() {
           {venueChips}
           {loaded ? (
             <span data-testid="game-continue-kit">
-              <PrimaryButton disabled={locked} title={locked ? blockedReason : 'The game is on the guns. This takes the phones to their kit screens.'}
+              <PrimaryButton disabled={locked} title={locked ? blockedReason : continueKitTitle}
                 onClick={async () => { await run(() => api.setPhase('kit')); setView('kit'); }}>CONTINUE TO KIT ▸</PrimaryButton>
             </span>
           ) : (
@@ -494,9 +502,11 @@ export function Games() {
             )}
             <div style={{ padding: '12px 18px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ font: F.chk(500, 13), lineHeight: 1.55, color: T.body }}>{activeSaved?.desc || mode?.brief}</div>
-              <GameSettings minCol={9999} rows={gameSettingRows(cfg, mode, weapons, perks)} />
+              {/* H1 (visual QA 2026-09-23): one column in this narrow rail. `minCol={9999}` asked for a
+                  9999 px track, so every value sat far off the right edge and read as blank. */}
+              <GameSettings testid="rail-settings" style={{ gridTemplateColumns: 'minmax(0,1fr)' }} rows={gameSettingRows(cfg, mode, weapons, perks)} />
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                <GhostButton size={10} pad="8px 14px" onClick={() => openDesigner(activeSaved && !activeSaved.builtin ? { game: activeSaved } : { fromLive: true, game: activeSaved ?? undefined, copy: !!activeSaved })} title="Open this game in the designer">{activeSaved && !activeSaved.builtin ? 'EDIT THIS GAME ▸' : custom ? 'SAVE THIS AS A GAME ▸' : activeSaved ? 'MAKE MY OWN ▸' : 'CUSTOMIZE ▸'}</GhostButton>
+                <span data-testid="rail-designer"><GhostButton size={10} pad="8px 14px" onClick={() => openDesigner(activeSaved && !activeSaved.builtin ? { game: activeSaved } : { fromLive: true, game: activeSaved ?? undefined, copy: !!activeSaved })} title="Open this game in the designer">{activeSaved && !activeSaved.builtin ? 'EDIT THIS GAME ▸' : custom ? 'SAVE THIS AS A GAME ▸' : activeSaved ? 'MAKE MY OWN ▸' : 'CUSTOMIZE ▸'}</GhostButton></span>
               </div>
               {errorsAndWarnings}
               <div style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro, lineHeight: 1.6 }}>VENUE = WHERE YOU ARE PLAYING TONIGHT (NOT PART OF THE GAME). LOAD ▸ SENDS THIS GAME TO EVERY CONNECTED PHONE AND KEEPS YOU HERE, ON THE ACTIVE GAME CONFIG, WHERE YOU CAN EDIT IT AND LOAD AGAIN. IT DOES NOT WRITE THE GUNS — WEAPONS GO WITH THE ARM, AT THE LOBBY PUSH AFTER KITTING. CONTINUE TO KIT ▸ IS THEN ONE TAP. A "BASE" TAG MARKS THE STOCK MODE THE PLAYING GAME IS BUILT ON.</div>

@@ -1,6 +1,7 @@
 // ADVANCED — SOUNDS & LIGHTS (read only). A11 / A11.5.
 //
-// Shows TONIGHT'S applied game's presentation profile from GET /api/presentation: the preset, the seven
+// Shows the presentation profile from GET /api/presentation (TONIGHT'S applied game; in the DESIGNER,
+// only while the draft shares that profile, see M16 below): the preset, the seven
 // switches, MC's live confidence (which gates the MC-driven global-state events), and every event with
 // its SOURCE (HUD = the phone fires it from its own gun and clock; MC = only Mission Control can know it,
 // pushed best-effort while the HUDs are in coverage), its sound (id + the words from the on-gun sound
@@ -12,7 +13,7 @@
 // Polish 2026-09-04: the confidence line is neutral before the match (no HUD is connected yet, that is not a
 // fault), names players when live; a muted row says SOUND OFF (strike-through alone is not a signal, and the
 // mute is sound-only: the LED burst still fires); a re-open never shows an old table under a new error.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { PresentationRow, PresentationView } from '../api/types';
 import { useStore } from '../store';
 import { F, T } from '../tokens';
@@ -41,8 +42,19 @@ function Colour({ idx }: { idx: number | null }) {
   );
 }
 
-export function AdvancedPresentation() {
+/** Key-order-free JSON, so a draft and the applied config compare by content. */
+const stable = (v: unknown): string => Array.isArray(v) ? `[${v.map(stable).join(',')}]`
+  : v && typeof v === 'object' ? `{${Object.keys(v as object).sort().map(k => `${JSON.stringify(k)}:${stable((v as Record<string, unknown>)[k])}`).join(',')}}`
+  : JSON.stringify(v ?? null);
+
+/** M16 (visual QA 2026-09-23): the DESIGNER edits a draft, and this panel showed tonight's APPLIED
+ *  game under it. `/api/presentation` resolves only the applied config, so the table is shown only
+ *  while the draft carries the same profile. When the draft's profile differs, the panel names the
+ *  draft's preset and says the table arrives once the game is played, never someone else's table. */
+export function AdvancedPresentation({ draft }: { draft?: { presentation?: Record<string, unknown> } } = {}) {
   const { api, state } = useStore();
+  const draftDiffers = !!draft && !!state && stable(draft.presentation) !== stable(state.config.presentation);
+  const draftPreset = String((draft?.presentation as { preset?: unknown } | undefined)?.preset ?? 'default').replace('_', ' ').toUpperCase();
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<PresentationView | null>(null);
   const [err, setErr] = useState<{ status?: number; msg: string } | null>(null);
@@ -50,13 +62,20 @@ export function AdvancedPresentation() {
 
   // Loaded from the click that opens the panel (not an effect): the fetch is the user's action, and
   // its failure is shown where they clicked. Re-opening re-fetches, so the view is never stale.
-  const toggle = () => {
-    if (open) { setOpen(false); return; }
-    setOpen(true); setLoading(true); setErr(null); setView(null);   // never show a previous load under a new error
+  const load = () => {
+    setErr(null); setView(null);   // never show a previous load under a new error
+    if (draftDiffers) { setLoading(false); return; }   // the server cannot resolve a draft: nothing to fetch
+    setLoading(true);
     api.getPresentation()
       .then(v => { setView(v); setLoading(false); })
       .catch((e: Error & { status?: number }) => { setErr({ status: e.status, msg: e.message || 'request failed' }); setLoading(false); });
   };
+  const toggle = () => {
+    if (open) { setOpen(false); return; }
+    setOpen(true); load();
+  };
+  // A base-mode switch in the draft can move it on or off the applied profile while the panel is open.
+  useEffect(() => { if (open) load(); }, [draftDiffers]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const stale = err?.status === 404;
   return (
@@ -69,14 +88,17 @@ export function AdvancedPresentation() {
       </button>
       {open && (
         <div id="advanced-presentation-body" style={{ marginTop: 12, background: T.panel, border: `1px solid ${T.line}`, padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ font: F.chk(500, 12), color: T.micro, lineHeight: 1.45 }}>
-            This is tonight's <b>applied</b> game, as the server resolved it, not the draft above. The preset and per-event edits are set on the
-            server for now; the picker comes next.
+          <div data-testid="presentation-scope" style={{ font: F.chk(500, 12), color: T.micro, lineHeight: 1.45 }}>
+            {!draft
+              ? <>Read only. This is tonight's applied game, as the server resolved it.</>
+              : draftDiffers
+                ? <>Read only. The draft above uses the <b data-testid="presentation-draft-preset">{draftPreset}</b> profile, and tonight's applied game uses a different one. The server resolves the full table for the applied game only, so it shows here once you play this game.</>
+                : <>Read only. These are the sounds and lights of the draft above, which shares its profile with tonight's applied game. The designer does not change them.</>}
           </div>
           {loading && <div role="status" style={{ font: F.mono(600, 10.5), letterSpacing: '.14em', color: T.dim }}>LOADING…</div>}
           {stale && <div role="alert" style={{ font: F.mono(600, 10), letterSpacing: '.12em', color: T.warn }}>▲ THE MC SERVER PREDATES THIS UI — IT HAS NO /api/presentation. RESTART IT: <code>python -m brx_mcp.mc</code></div>}
           {err && !stale && <div role="alert" style={{ font: F.mono(600, 10), letterSpacing: '.12em', color: T.warn }}>▲ COULD NOT LOAD THE PRESENTATION PROFILE — {err.msg.toUpperCase()}</div>}
-          {view && (
+          {view && !draftDiffers && (
             <>
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
                 <span style={{ font: F.mono(600, 10.5), letterSpacing: '.22em', color: T.dim }}>PRESET</span>

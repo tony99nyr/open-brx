@@ -5,13 +5,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LoadoutPreset, PerkView, SavedGame, SlotChoice, SlotRule, StationProtectS, TimedProtectS, WeaponDelayMs, WeaponView } from '../api/types';
 import { STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
 import { useStore } from '../store';
-import { F, PERK_COLOR, ROLE, T, TAB, roleOf } from '../tokens';
+import { CLASS_TAG, F, PERK_COLOR, T, TAB, roleOf } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, StripedSlot, Toggle, ValueBox } from '../ui';
 import { PerkGlyph } from './Kit';
 import { AdvancedPresentation } from './AdvancedPresentation';
 import { HealthPresetEditor } from './HealthPresetEditor';
 import { HEALTH_PRESET_COPY, STATION_SOURCES, TEMPLATE_RULES, UNPLAYABLE_IDS, admitsWeapons, computePool, emptyRequiredSlots, gameSig, healthPresetOf, isKillScored, objectiveLine, poolEmptyMessage, presetOf, rulesLine, unplayablePick, winLine, withPolicy } from './gameSummary';
 import { MODE_ART } from '../modeArt';
+import { ModeEmblem } from './ModeEmblem';
 import { CONFIG_EDITABLE_PHASES, MODE_PICK_PHASES, lockedReason } from './Games';
 
 const TEMPLATES: { value: LoadoutPreset; label: string; hint: string }[] = [
@@ -19,10 +20,12 @@ const TEMPLATES: { value: LoadoutPreset; label: string; hint: string }[] = [
   { value: 'no_heavies', label: 'NO HEAVIES', hint: 'Rockets, rail, cannon and launchers off in both weapon slots; every perk open' },
   { value: 'snipers', label: 'SNIPERS', hint: 'Everyone gets the sniper rifle, no secondary, no perks, no picking' },
 ];
+// M14 (visual QA 2026-09-23): the class tints are their own muted set (tokens.ts `CLASS_TAG`), not
+// the ROLE colours, which were the team blue, yellow and green and the alarm red.
 const TAGS: { tag: string; label: string; color: string }[] = [
-  { tag: 'heavy', label: 'HEAVY', color: ROLE.power.color }, { tag: 'sniper', label: 'SNIPER', color: ROLE.marksman.color },
-  { tag: 'assault', label: 'ASSAULT', color: ROLE.assault.color }, { tag: 'cqb', label: 'CLOSE RANGE', color: ROLE.cqb.color }, { tag: 'support', label: 'SUPPORT', color: ROLE.support.color },
-  { tag: 'sidearm', label: 'SIDEARM', color: ROLE.sidearm.color },   // A12: the pistols
+  { tag: 'heavy', label: 'HEAVY', color: CLASS_TAG.heavy }, { tag: 'sniper', label: 'SNIPER', color: CLASS_TAG.sniper },
+  { tag: 'assault', label: 'ASSAULT', color: CLASS_TAG.assault }, { tag: 'cqb', label: 'CLOSE RANGE', color: CLASS_TAG.cqb }, { tag: 'support', label: 'SUPPORT', color: CLASS_TAG.support },
+  { tag: 'sidearm', label: 'SIDEARM', color: CLASS_TAG.sidearm },   // A12: the pistols
 ];
 const clone = <X,>(x: X): X => JSON.parse(JSON.stringify(x));
 const toggle = (xs: string[], x: string) => (xs.includes(x) ? xs.filter(y => y !== x) : [...xs, x]);
@@ -147,11 +150,18 @@ export function Designer() {
         if (!r || await run(() => api.applyPreset(r.preset_id)) === undefined) return;
       } else if (await run(() => api.putConfig({ ...cfg, config_id: state.config.config_id })) === undefined) return;
       if (await run(() => api.putConfig({ environment: state.config.environment, night: state.config.night })) === undefined) return;
-      // Opened from the LOADED game (GameEditPanel): applying must not silently drop LOBBY back to KIT.
-      if (seed?.fromLive) { setView(state.phase === 'lobby' ? 'lobby' : 'kit'); return; }
-      // F188: PLAY means LOAD, not merely navigate. LOAD announces the applied game to every connected
-      // phone without writing a gun; the later LOBBY push remains the first head write.
-      if (await run(() => api.loadGame()) === undefined) return;
+      // C1 (visual QA 2026-09-23): the shortcut here used to key on `seed.fromLive`, which means only
+      // "seed the draft from tonight's config". The GAMES rail's CUSTOMIZE sets it too, BEFORE anything
+      // is loaded, so PLAY jumped to KIT with the server still in BUILD and no game loaded. What
+      // decides the path is whether a game was already loaded when PLAY was tapped:
+      //  - loaded: `set_config` has just re-announced the edit (state.py SAVE AND LOAD), so there is
+      //    nothing to LOAD, and a LOBBY edit must not drop the field back to KIT;
+      //  - not loaded (F188): PLAY means LOAD. LOAD announces the applied game to every connected
+      //    phone without writing a gun; the later LOBBY push remains the first head write.
+      const wasLoaded = !!state.game?.loaded || !!state.lobby?.pushed;
+      if (wasLoaded) {
+        if (state.phase === 'lobby' || state.phase === 'kit') { setView(state.phase); return; }
+      } else if (await run(() => api.loadGame()) === undefined) return;
       if (await run(() => api.setPhase('kit')) !== undefined) setView('kit');
     } finally {
       endAction();
@@ -182,8 +192,8 @@ export function Designer() {
                 return (
                   <button key={m.mode} type="button" aria-pressed={on} onClick={() => setBase(m)} className={on ? undefined : 'hov-acc'}
                     style={{ ...BTN_RESET, display: 'flex', flexDirection: 'column', gap: 8, padding: 8, textAlign: 'left', background: on ? 'rgba(57,180,255,.06)' : T.panel, border: `1px solid ${on ? T.acc : T.line}`, cursor: on ? 'default' : 'pointer' }}>
-                    <StripedSlot height={54} style={{ background: MODE_ART.has(m.mode) ? `url(assets/modes/${m.mode}.jpg) center/cover no-repeat` : undefined }}
-                      corner={<span style={{ position: 'absolute', top: 5, left: 5, font: F.osw(700, 11), letterSpacing: '.12em', background: on ? T.acc : T.panelAlt, color: on ? T.accInk : T.dim, padding: '1px 6px' }}>{m.abbr}</span>} />
+                    <StripedSlot height={54} style={{ background: MODE_ART.has(m.mode) ? `url(assets/modes/${m.mode}.jpg) center/cover no-repeat` : undefined, overflow: 'hidden' }}
+                      corner={<>{!MODE_ART.has(m.mode) && <ModeEmblem mode={m.mode} />}<span style={{ position: 'absolute', top: 5, left: 5, font: F.osw(700, 11), letterSpacing: '.12em', background: on ? T.acc : T.panelAlt, color: on ? T.accInk : T.dim, padding: '1px 6px' }}>{m.abbr}</span></>} />
                     <span style={{ font: F.osw(600, 13), letterSpacing: '.08em', color: on ? T.ink : T.dim }}>{m.name}</span>
                   </button>
                 );
@@ -286,7 +296,7 @@ export function Designer() {
             </div>
           </section>
 
-          <AdvancedPresentation />
+          <AdvancedPresentation draft={cfg} />
         </div>
 
         {/* summary rail */}
@@ -373,12 +383,21 @@ function SlotEditor({ slot, rule, pool, weapons: catalogue, perks, onRule }:
   const WHO: Record<string, string> = isPerk
     ? { player: 'players pick a perk from what is allowed below (the host can override)', host: 'the host picks each player\'s perk on the KIT page', fixed: 'everyone gets the one perk you tap below', off: 'nobody gets a perk this game' }
     : { player: 'players choose from what is allowed below (the host can override)', host: 'the host chooses for each player on the KIT page', fixed: 'everyone gets the one weapon you tap below', off: 'nobody gets a slot 2 — the alt-fire button does nothing' };
-  // a class chip is ON / PARTIAL (some of its weapons switched off by id) / OFF
+  // M15 (visual QA 2026-09-23): what THIS slot could ever hold, whatever the rules say. A pickup-only
+  // heavy is in no starting pool, and a non-lethal weapon is never a primary (computePool mirrors
+  // policy.py on both). Counting those as chip members made HEAVY read "◐ 0/2" under OPEN, a partial
+  // state no tap could ever complete, so a chip counts only the members the slot can actually take.
+  const lockReason = (w: WeaponView): string | null =>
+    w.pickup_only ? 'PICKUP ONLY' : (!sec && w.lethal === false) ? 'SECONDARY ONLY' : null;
+  const eligible = weapons.filter(w => !lockReason(w));
+  const membersOf = (tag: string) => eligible.filter(w => (w.tags ?? []).includes(tag));
+  // a class chip is ON / PARTIAL (some of its weapons switched off) / OFF. A class with none of its
+  // members allowed is OFF, never "◐ 0/2": nothing of it can be issued, so it must look off.
   const tagState = (tag: string) => {
     if (rule.exclude_tags.includes(tag)) return 'off';
-    const members = weapons.filter(w => (w.tags ?? []).includes(tag));
+    const members = membersOf(tag);
     const n = members.filter(w => allowedW.includes(w.weapon_id)).length;
-    return n === members.length ? 'on' : `${n}/${members.length}`;
+    return n === 0 ? 'off' : n === members.length ? 'on' : `${n}/${members.length}`;
   };
   // F141 (field 2026-09-12): a chip reading PARTIAL — some of its own weapons off, usually because a
   // DIFFERENT class chip already excludes them (the AMR is support AND sniper; switching HEAVY off
@@ -388,10 +407,18 @@ function SlotEditor({ slot, rule, pool, weapons: catalogue, perks, onRule }:
   // changed and the chip looked stuck ("cannot deselect it" — exactly what a field operator hit while
   // excluding heavy/support/assault/cqb and then reaching for sniper last). The rule is simpler and
   // matches the chip's own on/off reading: anything but fully OFF taps to OFF; only OFF taps to ON.
+  //
+  // M15: an OFF chip now also covers a class whose members are all off through ANOTHER chip. Tapping
+  // it ON must then visibly switch them on, or the chip is a dead control: so the other chips that
+  // hold them off are lifted, and every OTHER member of those classes is kept off by id, exactly as a
+  // single weapon row's tap does (`allowThroughTag`). The other chips then read partial, which is true.
   const tapTag = (tag: string) => {
     if (tagState(tag) === 'off') {
-      onRule({ exclude_tags: rule.exclude_tags.filter(t => t !== tag),                                    // whole class back ON, incl. members switched off by id
-               exclude_ids: rule.exclude_ids.filter(id => !(weapons.find(w => w.weapon_id === id)?.tags ?? []).includes(tag)) });   // review #14
+      const members = membersOf(tag).map(w => w.weapon_id);
+      const blocking = rule.exclude_tags.filter(t => t !== tag && eligible.some(w => members.includes(w.weapon_id) && (w.tags ?? []).includes(t)));
+      const keepOff = eligible.filter(w => !members.includes(w.weapon_id) && (w.tags ?? []).some(t => blocking.includes(t))).map(w => w.weapon_id);
+      onRule({ exclude_tags: rule.exclude_tags.filter(t => t !== tag && !blocking.includes(t)),        // whole class back ON, incl. members switched off by id
+               exclude_ids: Array.from(new Set([...rule.exclude_ids.filter(id => !(weapons.find(w => w.weapon_id === id)?.tags ?? []).includes(tag)), ...keepOff])) });   // review #14
     } else {
       onRule({ exclude_tags: [...rule.exclude_tags, tag] });                                              // whole class off, on or partial alike
     }
@@ -422,9 +449,14 @@ function SlotEditor({ slot, rule, pool, weapons: catalogue, perks, onRule }:
         <span style={{ font: F.chk(500, 11), color: T.dim }}>{WHO[rule.choice]}</span>
         {sec && !off && !fixed && (
           <span style={{ display: 'inline-flex', gap: 4, marginLeft: 'auto', flex: '0 0 auto' }}>
-            {/* A12: WEAPONS and SIDEARMS are exclusive — 'weapon' already admits the pistols, 'sidearm' is the narrower kind */}
-            <Chip on={rule.kinds.includes('weapon')} color={T.acc} onClick={() => { const k = (rule.kinds.includes('weapon') ? rule.kinds.filter(x => x !== 'weapon') : [...rule.kinds.filter(x => x !== 'sidearm'), 'weapon']) as SlotRule['kinds']; if (k.length) onRule({ kinds: k }); }}>WEAPONS</Chip>
-            <Chip on={rule.kinds.includes('sidearm')} color={ROLE.sidearm.color} onClick={() => { const k = (rule.kinds.includes('sidearm') ? rule.kinds.filter(x => x !== 'sidearm') : [...rule.kinds.filter(x => x !== 'weapon'), 'sidearm']) as SlotRule['kinds']; if (k.length) onRule({ kinds: k }); }}>SIDEARMS</Chip>
+            {/* A12: the two kinds are exclusive, and 'weapon' already admits the pistols. M15 (visual QA
+                2026-09-23): the chips read WEAPONS ✓ and SIDEARMS off while every pistol in the table
+                below was ✓ and counted. They say what each choice means now: ALL WEAPONS (pistols
+                included) or SIDEARMS ONLY, and exactly one is on. */}
+            <Chip testid="kind-all" on={rule.kinds.includes('weapon')} color={T.acc} onClick={() => { if (!rule.kinds.includes('weapon')) onRule({ kinds: ['weapon'] }); }}
+              title={rule.kinds.includes('weapon') ? 'Every weapon, pistols included' : 'Allow every weapon here, pistols included'}>ALL WEAPONS</Chip>
+            <Chip testid="kind-sidearms" on={sidearmsOnly} color={CLASS_TAG.sidearm} onClick={() => { if (!sidearmsOnly) onRule({ kinds: ['sidearm'] }); }}
+              title={sidearmsOnly ? 'Only the pistols' : 'Narrow this slot to the pistols only'}>SIDEARMS ONLY</Chip>
           </span>
         )}
       </div>
@@ -432,7 +464,7 @@ function SlotEditor({ slot, rule, pool, weapons: catalogue, perks, onRule }:
         <>
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
             {/* A12: under SIDEARMS the other classes are off by KIND, not by id — a row of ◐ 0/5 chips would say the wrong thing */}
-            {TAGS.filter(t => !sidearmsOnly || t.tag === 'sidearm').map(t => { const st = tagState(t.tag); return <Chip key={t.tag} on={st !== 'off'} partial={st !== 'on' && st !== 'off' ? st : undefined} color={t.color} onClick={() => tapTag(t.tag)}>{t.label}</Chip>; })}
+            {TAGS.filter(t => (!sidearmsOnly || t.tag === 'sidearm') && membersOf(t.tag).length > 0).map(t => { const st = tagState(t.tag); return <Chip key={t.tag} on={st !== 'off'} partial={st !== 'on' && st !== 'off' ? st : undefined} color={t.color} onClick={() => tapTag(t.tag)}>{t.label}</Chip>; })}
           </div>
           <div style={{ font: F.chk(500, 12), letterSpacing: '.02em', color: T.micro, lineHeight: 1.5, maxWidth: '68ch' }}>A chip switches a whole class. Tap a weapon to switch just that one. A partial chip (1/5) means some of its weapons are off, and a weapon in two classes is off when either chip is off.</div>
         </>
@@ -451,6 +483,17 @@ function SlotEditor({ slot, rule, pool, weapons: catalogue, perks, onRule }:
             const byTag = !inPool && !byId && !fixed;   // off because of a class chip
             const on = fixed ? rule.fixed_id === w.weapon_id : inPool;
             const role = roleOf(w.role, w.cls);
+            // M15: a weapon this slot can never hold is not a control. It used to be a struck-through
+            // row whose tap changed nothing ("off by the HEAVY chip — tap to allow"): it now says why.
+            const locked = lockReason(w);
+            if (locked) return (
+              <div key={w.weapon_id} data-locked={locked} aria-label={`${w.name}, ${locked.toLowerCase()}`}
+                style={{ display: 'grid', gridTemplateColumns: '22px 1fr auto', alignItems: 'center', gap: 10, padding: '0 12px', minHeight: 38, borderTop: i ? `1px solid ${T.line}` : 'none' }}>
+                <span aria-hidden style={{ font: F.chk(700, 12), color: T.faint }}>–</span>
+                <span style={{ font: F.chk(500, 13), letterSpacing: '.02em', color: T.micro, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.name}</span>
+                <span style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro, whiteSpace: 'nowrap' }}>{locked}</span>
+              </div>
+            );
             const tip = fixed ? `Tap to make ${w.name} the fixed weapon`
               : byTag ? `Off by the ${role.label || 'class'} chip — tap to allow just this one`
               : byId ? 'Off — tap to allow' : 'Allowed — tap to switch off';
@@ -505,10 +548,10 @@ function SlotEditor({ slot, rule, pool, weapons: catalogue, perks, onRule }:
 
 // Was a solid fill in the class's own saturated colour — five of them, twice on screen. The colour
 // now rides on a 3px left edge, so the chips still read as a set without shouting (2026-09-02).
-function Chip({ on, partial, color, onClick, children }: { on: boolean; partial?: string; color: string; onClick: () => void; children: React.ReactNode }) {
+function Chip({ on, partial, color, onClick, children, testid, title }: { on: boolean; partial?: string; color: string; onClick: () => void; children: React.ReactNode; testid?: string; title?: string }) {
   const mixed = on && !!partial;
   return (
-    <button type="button" aria-pressed={mixed ? 'mixed' : on} onClick={onClick} className="hit44" title={mixed ? `${partial} of this class allowed (the rest off by another chip or by id) — tap to switch the whole class off` : on ? 'Allowed — tap to switch the whole class off' : 'Off — tap to allow the class'}
+    <button type="button" data-testid={testid} aria-pressed={mixed ? 'mixed' : on} onClick={onClick} className="hit44" title={title ?? (mixed ? `${partial} of this class allowed (the rest off by another chip or by id) — tap to switch the whole class off` : on ? 'Allowed — tap to switch the whole class off' : 'Off — tap to allow the class')}
       style={{ ...BTN_RESET, font: F.chk(600, 12), letterSpacing: '.02em', padding: '7px 12px', minHeight: 36, cursor: 'pointer',
                // No fill. Five saturated blocks, twice on screen, were the loudest thing on the page —
                // "the colors of the buttons are too harsh maybe just border color or a dimmer hue"

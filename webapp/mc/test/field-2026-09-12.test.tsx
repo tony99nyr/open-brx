@@ -33,10 +33,37 @@ const DUAL_CLASS_WEAPON: WeaponView = {
   verified: false, tags: ['support', 'sniper'], role: 'support', htk: 10,
 };
 
+const SNIPER_ONLY: WeaponView = { ...DUAL_CLASS_WEAPON, weapon_id: 'fixture_sniper', name: 'Fixture Sniper', tags: ['sniper'], role: 'marksman' };
+const SUPPORT_ONLY: WeaponView = { ...DUAL_CLASS_WEAPON, weapon_id: 'fixture_support', name: 'Fixture Support', tags: ['support'], role: 'support' };
+
+describe('M15 — a class with nothing allowed reads OFF, and tapping it switches its members on', () => {
+  it('reads off (never ◐ 0/1) when another chip holds every member off, and one tap allows them', async () => {
+    const d = await demo();
+    const m = await mountScreen(<Designer />, { ...d, weapons: [DUAL_CLASS_WEAPON, SUPPORT_ONLY] });
+    const chipsSel = '[aria-label="primary slot rules"] button';
+    const chip = (label: string) => m.find(chipsSel).find(b =>
+      (b.getAttribute('title') ?? '').includes('class') && (b.textContent ?? '').trim().endsWith(label));
+    const row = () => m.find('[aria-label="primary slot rules"] button[aria-label^="Fixture Dual-Class Rifle"]')[0];
+    await act(async () => { chip('SUPPORT')!.click(); });
+    const sniper = chip('SNIPER')!;
+    expect(sniper.getAttribute('aria-pressed'), 'SNIPER has nothing allowed, so it reads off').toBe('false');
+    expect(sniper.textContent, 'no partial glyph on an off chip').not.toContain('◐');
+    expect(row().getAttribute('aria-pressed')).toBe('false');
+    await act(async () => { sniper.click(); });
+    expect(chip('SNIPER')!.getAttribute('aria-pressed'), 'one tap switched the class on').toBe('true');
+    expect(row().getAttribute('aria-pressed'), 'and its member is allowed').toBe('true');
+    expect(chip('SUPPORT')!.getAttribute('aria-pressed'), 'SUPPORT is partial: its other member stays off').toBe('mixed');
+    expect(m.find('[aria-label="primary slot rules"] button[aria-label^="Fixture Support"]')[0].getAttribute('aria-pressed')).toBe('false');
+    m.unmount();
+  });
+});
+
 describe('F141 — Designer class chip toggle', () => {
   it('a chip left PARTIAL by another chip\'s exclusion still toggles fully OFF on tap, and back ON on the next', async () => {
     const d = await demo();
-    const m = await mountScreen(<Designer />, { ...d, weapons: [DUAL_CLASS_WEAPON] });
+    // M15 (visual QA 2026-09-23): a chip with NONE of its members allowed now reads OFF, so the
+    // partial case needs a second sniper that SUPPORT does not touch.
+    const m = await mountScreen(<Designer />, { ...d, weapons: [DUAL_CLASS_WEAPON, SNIPER_ONLY] });
     const chipsSel = '[aria-label="primary slot rules"] button';
     const chip = (label: string) => m.find(chipsSel).find(b =>
       (b.getAttribute('title') ?? '').includes('class') && (b.textContent ?? '').trim().endsWith(label));
