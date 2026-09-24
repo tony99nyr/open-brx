@@ -84,6 +84,8 @@ test('F293: hds.N keeps today\'s behaviour: the probe links, and quick drops sti
   assert.equal(r.ups.length, 1);
   assert.equal(r.ups[0].probed, true); assert.equal(r.ups[0].headset, 'hds.59'); assert.equal(r.ups[0].fw, 'v4.32');
   assert.equal(r.link.headsetJoin.state, 'joined');
+  // field 2026-09-24 (brx2): a joined probe was SILENT, so a loop log could not tell `hds.N` from a bypassed probe
+  assert.ok(r.log.some(m => /headset probe: hds\.59 \(joined\)/.test(m)), 'a joined probe is logged with the headset version');
   r.cb(); await settle(400);                         // flap 1: reconnect at once, probe hds, up again
   assert.equal(r.ups.length, 2);
   r.cb(); await settle(50);                          // flap 2: today's 5 s back-off
