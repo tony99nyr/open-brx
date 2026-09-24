@@ -217,9 +217,12 @@ static void sendFrame(const String& bits) {
   if (!rmtWrite(txPinActive, sym, n, 200)) Serial.println("ERR tx write");  // blocking; ~40 ms per word
   lastTxDoneMs = millis();
   lastTxBits = bits;
-  // Whatever the receiver caught of our own word is thrown away by re-arming the read.
+  // Whatever the receiver caught of our own word is thrown away. A bare re-arm here failed on the first bring-up
+  // (2026-09-23): the driver logged `rmt_receive(401): channel not in enable state` after every transmit, because the
+  // echo left a reception in flight. Rebuild the RX channel instead, so every transmit ends with a clean, armed read.
   delay(2);
-  armRx();
+  rmtDeinit(IR_RX_PIN);
+  if (!initRx()) Serial.println("ERR rx re-init after tx");
 }
 
 // ---- BLE advert ------------------------------------------------------------------------------ //
