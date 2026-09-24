@@ -44,11 +44,13 @@ test('build: capacitor.config.json points server.errorPath at a real file in www
 
 test('build: the errorPath page does not itself use the CSS that set the floor', () => {
   // It is what a WebView BELOW the floor sees instead of index.html — it cannot lean on `inset`
-  // (Chrome 87, the very feature that raised the floor) or flexbox `gap` (Chrome 84) without
-  // reproducing the exact "shifted left and off screen" bug it exists to report.
+  // (Chrome 87), flexbox `gap` (Chrome 84) or `color-mix()` (Chrome 111, the feature that raised the
+  // floor to 111) without reproducing the exact bug it exists to report: a missing/misplaced layer or
+  // a background that silently never rendered.
   const errorPath = CONFIG.server && CONFIG.server.errorPath;
   const src = readFileSync(path.join(ROOT, 'www', errorPath), 'utf8');
   assert.doesNotMatch(src, /[;"']\s*inset\s*:/, 'the errorPath page uses the `inset` shorthand — it needs the same WebView it is meant to catch');
+  assert.doesNotMatch(src, /color-mix\(/, 'the errorPath page uses color-mix() — it needs the same WebView it is meant to catch');
 });
 
 test('build: index.html and utility.html load the bundle with a plain <script src>, not a hand-rolled guard', () => {

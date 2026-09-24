@@ -6,7 +6,7 @@
   "android": {
     "allowMixedContent": true,
     "webContentsDebuggingEnabled": true,
-    "minWebViewVersion": 87
+    "minWebViewVersion": 111
   },
   "server": {
     "errorPath": "webview-too-old.html"

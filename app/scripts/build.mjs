@@ -47,21 +47,23 @@ export function appVer(run = gitIn()) { return `${pkg.version}+${gitStamp(run)}`
 
 const ENTRIES = [['src/app.js', 'www/app.js'], ['src/utility.js', 'www/utility.js']];
 
-// The syntax floor — chrome87, NOT Capacitor's own documented minimum (Chrome 60). A chrome60 build
-// (2026-09-24) fixed the "Unexpected token" parse crash on a factory Pixel 5 (Android 11, WebView
-// 83) but left the CSS "totally busted": `www/index.html`/`www/utility.html` lean on the `inset`
-// shorthand (`position:absolute;inset:0`, dozens of rules) for every full-bleed overlay layer, and
-// `inset` is Chrome 87/Safari 14.1 — below it the rule is invalid and dropped, so the layer keeps its
-// static position and collapses to the top-left instead of covering the frame. Flexbox `gap` (Chrome
-// 84, ~116 rules) is the same class of bug at a lower version; 87 covers both. Nothing else in the
-// CSS or this app's own JS needs more than 87 (`:has()` 105 and `color-mix()` 111 are used, but only
-// in presentational rules/values — see the app README's "Supported phones" section for the full
-// audit). `android.minWebViewVersion` in capacitor.config.json is the actual enforcement now (Bridge.
-// isMinimumWebViewInstalled() redirects to `server.errorPath` BEFORE index.html ever loads); this
-// `target` only has to keep esbuild from shipping syntax the resulting WebView floor cannot parse.
-// Keep this in step with capacitor.config.json's `minWebViewVersion` and with
-// `test/build-target.test.mjs`, which fails if either drifts from the other.
-export const TARGET = 'chrome87';
+// The syntax floor — chrome111, NOT Capacitor's own documented minimum (Chrome 60) and not the
+// chrome87 this raised from on 2026-09-24. Two rounds of field testing on a factory Pixel 5 (Android
+// 11, WebView 83): chrome60 fixed the "Unexpected token" parse crash (logical assignment needs Chrome
+// 85) but left the layout "totally busted" — `www/index.html`/`www/utility.html`'s `inset` shorthand
+// (`position:absolute;inset:0`, every full-bleed overlay layer) is Chrome 87/Safari 14.1, and below it
+// the rule is invalid and the layer collapses to the top-left instead of covering the frame. chrome87
+// fixed THAT, but missed `color-mix()` (Chrome 111/Safari 16.2, ~33 uses): 17 of them are `background`
+// with no fallback colour, several ARE a meter's fill (`.reloading`/`.switching`/`.down .near`'s
+// progress bars) — below 111 the whole `background` declaration is invalid, so the fill is not a
+// worse colour, it is GONE, and the player has no reload/switch/spawn-protection countdown at all.
+// Nothing else in the CSS or this app's own JS needs more than 111 — see the app README's "Supported
+// phones" section for the full audit. `android.minWebViewVersion` in capacitor.config.json is the
+// actual enforcement now (Bridge.isMinimumWebViewInstalled() redirects to `server.errorPath` BEFORE
+// index.html ever loads); this `target` only has to keep esbuild from shipping syntax the resulting
+// WebView floor cannot parse. Keep this in step with capacitor.config.json's `minWebViewVersion` and
+// with `test/build-target.test.mjs`, which fails if either drifts from the other.
+export const TARGET = 'chrome111';
 
 export async function build() {
   const APP_VER = appVer();
