@@ -6,7 +6,7 @@ import { EvictButton } from '../ui/EvictButton';
 import { StandbySection, guardedOnce, standDownLocked } from '../ui/Standby';
 import { CHAMFER, F, PERK_COLOR, T, TAB, fmtAge, roleOf, teamColor } from '../tokens';
 import { UNPLAYABLE_IDS, takesAlt } from './gameSummary';
-import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, SectionRule, Seg, SegBar, StripedSlot, Tag, ValueBox, onKey } from '../ui';
+import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, ScrollX, SectionRule, Seg, SegBar, StripedSlot, Tag, ValueBox, onKey } from '../ui';
 import { GameEditPanel } from '../ui/GameEditPanel';
 import { UnrosteredPhonesBanner } from '../ui/UnrosteredPhones';
 
@@ -402,9 +402,9 @@ export function Kit() {
     <button type="button" className="hov-acc" onClick={() => setView('build')} title="Loadout rules are set in GAMES"
       style={{ ...BTN_RESET, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 12px', border: `1px solid ${T.line}`, minHeight: 36, cursor: 'pointer' }}>
       <span style={{ width: 6, height: 6, background: PERK_COLOR }} />
-      <span style={{ font: F.mono(600, 10), letterSpacing: '.2em', color: T.dim }}>GAME RULES</span>
+      <span style={{ font: F.mono(600, 11), letterSpacing: '.2em', color: T.dim }}>GAME RULES</span>
       <span style={{ font: F.chk(700, 11), letterSpacing: '.14em' }}>{PRESET_LABEL[pol.preset] ?? pol.preset.toUpperCase()}</span>
-      {!pol.hud_select && <span style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro }}>· PHONE PICKS OFF</span>}
+      {!pol.hud_select && <span style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: T.micro }}>· PHONE PICKS OFF</span>}
     </button>
   );
 
@@ -449,7 +449,11 @@ export function Kit() {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, alignItems: 'flex-start' }}>
         {/* roster */}
         <div className="kit-roster" style={{ flex: '1 1 250px', maxWidth: 330, display: 'flex', flexDirection: 'column' }}>
-          <div style={{ border: `1px solid ${T.line}`, borderBottom: 'none' }}><PanelHeader label="SQUAD ROSTER" right={<span style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: T.micro }}>{players.length} OPERATORS</span>} /></div>
+          <div style={{ border: `1px solid ${T.line}`, borderBottom: 'none' }}><PanelHeader label="SQUAD ROSTER" right={<span style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: T.micro }}>{players.length} OPERATORS</span>} /></div>
+          {/* M18 (visual QA 2026-09-23): at 900 px and under the roster is a sideways strip, and at 900 px
+              it showed 4 of 8 players with nothing on screen saying there were more. <ScrollX> owns the
+              scroll now: it fades the cut edge and prints the hint, and only while more is off the edge. */}
+          <ScrollX hint={`▸ SCROLL FOR ALL ${players.length} PLAYERS`} hintStyle={{ padding: '6px 0 6px 2px' }} style={{ scrollSnapType: 'x proximity' }}>
           <div className="kit-roster-rows" style={{ display: 'flex', flexDirection: 'column', gap: 3, border: `1px solid ${T.line}`, padding: 6, background: T.panelDeep }}>
             {players.map(pl => {
               const on = pl.player_id === sp?.player_id;
@@ -462,11 +466,11 @@ export function Kit() {
               const liveNode = state.nodes.some(n => n.player_id === pl.player_id);
               const kittedRow = !!(p0 && pl.team_id && pl.gun_id);
               let chip: ReactNode;
-              if (tw) chip = <span style={{ font: F.chk(700, 9), letterSpacing: '.14em', color: T.accInk, background: T.warn, padding: '2px 7px', animation: 'tryPulse 1.6s infinite', whiteSpace: 'nowrap' }}>TRYING {(wById(tw)?.name ?? tw).toUpperCase()}</span>;
-              else if (pl.ready) chip = <span style={{ font: F.chk(700, 10), letterSpacing: '.14em', color: T.ok }}>READY ✓</span>;
-              else if (isBrowsing) chip = <span style={{ font: F.chk(700, 10), letterSpacing: '.14em', color: T.acc, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Blink color={T.acc} period={1.2} size={6} />PICKING…</span>;
-              else if (!liveNode) chip = <span style={{ font: F.chk(700, 10), letterSpacing: '.14em', color: T.micro }}>NO PHONE</span>;
-              else chip = <span style={{ font: F.chk(700, 10), letterSpacing: '.14em', color: kittedRow ? T.dim : T.micro }}>{kittedRow ? 'KITTED' : pl.gun_id ? 'FITTING' : 'NO GUN'}</span>;
+              if (tw) chip = <span style={{ font: F.chk(700, 11), letterSpacing: '.14em', color: T.accInk, background: T.warn, padding: '2px 7px', animation: 'tryPulse 1.6s infinite', whiteSpace: 'nowrap' }}>TRYING {(wById(tw)?.name ?? tw).toUpperCase()}</span>;
+              else if (pl.ready) chip = <span style={{ font: F.chk(700, 11), letterSpacing: '.14em', color: T.ok }}>READY ✓</span>;
+              else if (isBrowsing) chip = <span style={{ font: F.chk(700, 11), letterSpacing: '.14em', color: T.acc, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Blink color={T.acc} period={1.2} size={6} />PICKING…</span>;
+              else if (!liveNode) chip = <span style={{ font: F.chk(700, 11), letterSpacing: '.14em', color: T.micro }}>NO PHONE</span>;
+              else chip = <span style={{ font: F.chk(700, 11), letterSpacing: '.14em', color: kittedRow ? T.dim : T.micro }}>{kittedRow ? 'KITTED' : pl.gun_id ? 'FITTING' : 'NO GUN'}</span>;
               return (
                 <div key={pl.player_id} className="hov-acc kit-row" role="button" tabIndex={0} aria-pressed={on} data-no-phone={liveNode ? undefined : '1'}
                   onClick={() => setSelPlayer(pl.player_id)} onKeyDown={onKey(() => setSelPlayer(pl.player_id))}
@@ -477,8 +481,8 @@ export function Kit() {
                   style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: on ? 'rgba(57,180,255,.06)' : 'transparent', border: `1px solid ${on ? T.acc : 'transparent'}`, cursor: 'pointer', minHeight: 44, opacity: liveNode ? 1 : 0.55 }}>
                   <span style={{ width: 4, flex: 'none', alignSelf: 'stretch', background: teamColor(pl.team_id) }} />
                   <span style={{ flex: '1 1 0', minWidth: 0 }}>
-                    <span style={{ display: 'block', font: F.chk(700, 14), letterSpacing: '.14em' }}><span style={{ color: T.micro, font: F.mono(500, 10) }}>#{pl.player_num} </span>{pl.display}</span>
-                    <span style={{ display: 'flex', gap: 8, font: F.mono(500, 10), letterSpacing: '.06em', color: T.micro, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                    <span style={{ display: 'block', font: F.chk(700, 14), letterSpacing: '.14em' }}><span style={{ color: T.micro, font: F.mono(500, 11) }}>#{pl.player_num} </span>{pl.display}</span>
+                    <span style={{ display: 'flex', gap: 8, font: F.mono(500, 11), letterSpacing: '.06em', color: T.micro, whiteSpace: 'nowrap', overflow: 'hidden' }}>
                       <span>{pl.gun_id ?? 'NO GUN'}</span>
                       <span style={{ color: T.faint }}>·</span>
                       <span style={{ color: T.dim, overflow: 'hidden', textOverflow: 'ellipsis' }}>{p0 ? shortName(p0.name) : '—'}
@@ -509,9 +513,10 @@ export function Kit() {
               style={{ display: 'flex', gap: 6, padding: '6px 4px 2px' }}>
               <input className="textbox" value={newName} onChange={e => setNewName(e.target.value)} placeholder="+ ADD OPERATOR" aria-label="new operator callsign"
                 style={{ flex: 1, font: F.chk(600, 12), letterSpacing: '.1em', borderBottomColor: T.line, minHeight: 44 }} />
-              <GhostButton size={10} pad="4px 10px">ADD</GhostButton>
+              <GhostButton size={11} pad="4px 10px">ADD</GhostButton>
             </form>
           </div>
+          </ScrollX>
           {/* STANDBY (2026-09-12): parked players, with PLAY. Nothing on an older server. */}
           <StandbySection style={{ marginTop: 10 }} />
         </div>
@@ -524,7 +529,7 @@ export function Kit() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                 <span style={{ width: 6, height: 46, background: teamColor(sp.team_id) }} />
                 <div>
-                  <div style={{ font: F.mono(500, 9), letterSpacing: '.26em', color: T.micro }}>OPERATOR
+                  <div style={{ font: F.mono(500, 11), letterSpacing: '.26em', color: T.micro }}>OPERATOR
                     <span style={{ marginLeft: 10, color: T.acc }}>#<PlayerNum key={sp.player_id} value={sp.player_num} onCommit={n => patch({ player_num: n })} /></span>
                   </div>
                   <DraftText key={sp.player_id} value={sp.display} ariaLabel="operator callsign" transform={s => s.toUpperCase()} onCommit={v => patch({ display: v })}
@@ -540,7 +545,7 @@ export function Kit() {
                 </GhostButton>
               )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ font: F.mono(500, 9), letterSpacing: '.22em', color: T.micro }}>TEAM</span>
+                <span style={{ font: F.mono(500, 11), letterSpacing: '.22em', color: T.micro }}>TEAM</span>
                 <span role="group" aria-label="team" style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                   {(state.config.mode === 'ffa' ? ['ffa'] : state.config.teams.map(tm => tm.team_id)).map(t => {
                     const on = sp.team_id === t;
@@ -555,7 +560,7 @@ export function Kit() {
                 </span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ font: F.mono(500, 9), letterSpacing: '.22em', color: T.micro }}>VOICE</span>
+                <span style={{ font: F.mono(500, 11), letterSpacing: '.22em', color: T.micro }}>VOICE</span>
                 {voices.length > 2 ? (
                   <select aria-label={`voice for ${sp.display}`} value={sp.voice ?? 'male'} onChange={e => patch({ voice: e.target.value })}
                     style={{ background: T.inset, color: T.ink, border: `1px solid ${T.line2}`, font: F.mono(600, 11), letterSpacing: '.06em', padding: '6px 8px', minHeight: 36, cursor: 'pointer' }}>
@@ -599,7 +604,7 @@ export function Kit() {
                   onClear={perk && !slotLocked('perk') ? clearPerk : undefined} />
                 <PoolCard hp={gameHp} armor={gameAr} pool={playerPool} onSet={patchPool} onClear={clearPool} name={sp.display}
                   easy={!!lo.overrides?.easy_reload} onEasy={setEasyReload} easyAsk={confirmFor('easy_reload')} />
-                <div style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro, padding: '2px 4px' }}>
+                <div style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: T.micro, padding: '2px 4px' }}>
                   {pol?.hud_select ? '▲ PLAYERS PICK ON THEIR PHONE — ANYTHING YOU SET HERE OVERRIDES IT AND SHOWS ON THEIR SCREEN' : '▲ PHONE PICKS ARE OFF — YOU KIT EVERY PLAYER HERE'}
                 </div>
               </div>
@@ -652,20 +657,20 @@ export function Kit() {
                         title={!allowed ? 'Not allowed by this game’s rules' : fixed ? 'Fixed by the ruleset' : undefined}
                         onClick={() => { if (!dis) (slot === 'primary' ? pickPrimary : pickSecondary)(w); }} onKeyDown={onKey(() => { if (!dis) (slot === 'primary' ? pickPrimary : pickSecondary)(w); })}
                         style={{ background: on ? 'rgba(57,180,255,.08)' : dis ? T.panelDeep : T.panel, border: `1px solid ${ask ? T.warn : on ? T.acc : T.line}`, padding: 8, cursor: dis ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', gap: 7, minHeight: 44 }}>
-                        {ask && <span role="alert" style={{ font: F.chk(700, 10), letterSpacing: '.12em', color: T.warn }}>▲ {ask}</span>}
+                        {ask && <span role="alert" style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: T.warn }}>▲ {ask}</span>}
                         <StripedSlot height={64} style={{ background: `repeating-linear-gradient(45deg,${T.slot} 0 6px,${T.panel} 6px 12px)`, opacity: dis ? .25 : 1, filter: dis ? 'grayscale(1)' : undefined }}
                           corner={<>
-                            <span style={{ position: 'absolute', top: 3, right: 5, font: F.mono(600, 8), letterSpacing: '.14em', color: role.color }}>{role.label}</span>
-                            {on && <span style={{ position: 'absolute', top: 3, left: 5, font: F.chk(700, 8), letterSpacing: '.14em', color: T.accInk, background: T.acc, padding: '1px 5px' }}>{slot === 'primary' ? 'PRIMARY' : 'SECONDARY'}</span>}
+                            <span style={{ position: 'absolute', top: 3, right: 5, font: F.mono(600, 11), letterSpacing: '.14em', color: role.color }}>{role.label}</span>
+                            {on && <span style={{ position: 'absolute', bottom: 3, left: 5, font: F.chk(700, 11), letterSpacing: '.14em', color: T.accInk, background: T.acc, padding: '1px 5px' }}>{slot === 'primary' ? 'PRIMARY' : 'SECONDARY'}</span>}
                           </>}>
                           <WeaponArt key={w.weapon_id} id={w.weapon_id} size={22} />
                         </StripedSlot>
                         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 6 }}>
                           {dis && <Lock color={T.micro} size={10} />}
                           <span style={{ font: F.chk(700, 12), letterSpacing: '.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: dis ? T.dim : T.ink, flex: 1 }}>{w.name}</span>
-                          {w.caution && <span title={w.caution} aria-label={w.caution} style={{ font: F.chk(700, 10), color: T.bad }}>▲</span>}
+                          {w.caution && <span title={w.caution} aria-label={w.caution} style={{ font: F.chk(700, 11), color: T.bad }}>▲</span>}
                           <span style={{ font: F.osw(600, 11), ...TAB, color: T.micro }} title={`magazine ${w.clip}`}>MAG {w.clip}</span>
-                          {verdicts[w.weapon_id] && <span title={verdicts[w.weapon_id].note || undefined} style={{ font: F.chk(700, 10), color: verdicts[w.weapon_id].verdict === 'pass' ? T.ok : T.bad }}>{verdicts[w.weapon_id].verdict === 'pass' ? '✓' : '✗'}</span>}
+                          {verdicts[w.weapon_id] && <span title={verdicts[w.weapon_id].note || undefined} style={{ font: F.chk(700, 11), color: verdicts[w.weapon_id].verdict === 'pass' ? T.ok : T.bad }}>{verdicts[w.weapon_id].verdict === 'pass' ? '✓' : '✗'}</span>}
                         </div>
                       </div>
                     );
@@ -684,14 +689,14 @@ export function Kit() {
                         aria-label={`${k.name} perk${dis ? ', not allowed by the rules' : ''}`} title={!allowed ? 'Not allowed by this game’s rules' : takesAlt(k) && secondaryW ? `Takes the ALT button — drops their ${secondaryW.name}` : undefined}
                         onClick={() => { if (!dis) pickPerk(k); }} onKeyDown={onKey(() => { if (!dis) pickPerk(k); })}
                         style={{ background: on ? 'rgba(196,139,255,.08)' : T.panel, border: `1px solid ${ask ? T.warn : on ? PERK_COLOR : T.line}`, padding: 10, cursor: dis ? 'not-allowed' : 'pointer', display: 'flex', gap: 12, alignItems: 'center', minHeight: 44, opacity: dis ? .32 : 1, flexWrap: 'wrap' }}>
-                        {ask && <span role="alert" style={{ flex: '1 0 100%', font: F.chk(700, 10), letterSpacing: '.12em', color: T.warn }}>▲ {ask}</span>}
+                        {ask && <span role="alert" style={{ flex: '1 0 100%', font: F.chk(700, 11), letterSpacing: '.12em', color: T.warn }}>▲ {ask}</span>}
                         <span style={{ width: 52, height: 52, flex: 'none', display: 'grid', placeItems: 'center', background: T.inset, border: `1px solid ${on ? PERK_COLOR : T.line}` }}><PerkGlyph id={k.perk_id} size={30} color={on ? PERK_COLOR : T.dim} /></span>
                         <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
                           <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                             <span style={{ font: F.chk(700, 13), letterSpacing: '.05em' }}>{k.name}</span>
-                            {!k.verified && <span title="Effect not yet proven on hardware" style={{ font: F.mono(500, 8), letterSpacing: '.14em', color: T.warn }}>UNPROVEN</span>}
+                            {!k.verified && <span title="Effect not yet proven on hardware" style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: T.warn }}>UNPROVEN</span>}
                           </span>
-                          <PerkTrade k={k} style={{ font: F.mono(600, 10), letterSpacing: '.1em' }} />
+                          <PerkTrade k={k} style={{ font: F.mono(600, 11), letterSpacing: '.1em' }} />
                         </span>
                       </div>
                     );
@@ -729,9 +734,9 @@ function SlotCard({ label, slot, active, onClick, rule, item, kind, required, on
       style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', minHeight: 96, cursor: 'pointer',
         background: active ? (isPerk ? 'rgba(196,139,255,.07)' : 'rgba(57,180,255,.07)') : T.panel,
         borderTop: `1px ${empty ? 'dashed' : 'solid'} ${active ? color : T.line}`, borderRight: `1px ${empty ? 'dashed' : 'solid'} ${active ? color : T.line}`, borderBottom: `1px ${empty ? 'dashed' : 'solid'} ${active ? color : T.line}`, borderLeft: `3px solid ${active ? color : T.line2}` }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '2px 8px', flexWrap: 'wrap' }}>
         <span style={{ font: F.chk(700, 12), letterSpacing: '.22em', color: active ? color : T.dim }}>{active ? '▸ ' : ''}{label}</span>
-        <span style={{ font: F.mono(500, 8.5), letterSpacing: '.12em', color: locked ? T.warn : T.micro, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 5 }}>{locked && <Lock color={T.warn} />}{right}</span>
+        <span style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: locked ? T.warn : T.micro, marginLeft: 'auto', textAlign: 'right', display: 'inline-flex', alignItems: 'center', gap: 5 }}>{locked && <Lock color={T.warn} />}{right}</span>
       </div>
       {empty ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 48 }}>
@@ -746,7 +751,7 @@ function SlotCard({ label, slot, active, onClick, rule, item, kind, required, on
           <span style={{ width: 84, height: 48, flex: 'none', background: T.inset, border: `1px solid ${T.line}` }}><WeaponArt key={item.weapon_id} id={item.weapon_id} size={20} /></span>
           <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span style={{ font: F.osw(700, 18), letterSpacing: '.06em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name.toUpperCase()}</span>
-            <span data-slot-ammo="1" style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: T.micro, lineHeight: 1.35 }}><span style={{ color: roleOf(item.role, item.cls).color }}>{roleOf(item.role, item.cls).label}</span> · MAG {item.clip} · RES {item.reserve}</span>
+            <span data-slot-ammo="1" style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro, lineHeight: 1.35 }}><span style={{ color: roleOf(item.role, item.cls).color }}>{roleOf(item.role, item.cls).label}</span> · MAG {item.clip} · RES {item.reserve}</span>
           </span>
         </div>
       ) : item && (
@@ -754,20 +759,20 @@ function SlotCard({ label, slot, active, onClick, rule, item, kind, required, on
           <span style={{ width: 48, height: 48, flex: 'none', display: 'grid', placeItems: 'center', background: T.inset, border: `1px solid ${PERK_COLOR}` }}><PerkGlyph id={item.perk_id} size={28} color={PERK_COLOR} /></span>
           <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span style={{ font: F.osw(700, 18), letterSpacing: '.06em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name.toUpperCase()}</span>
-            <span data-slot-ammo="1" style={{ font: F.mono(500, 10), letterSpacing: '.1em', lineHeight: 1.35 }}><span style={{ color: PERK_COLOR }}>PERK</span> · <PerkTrade k={item} /></span>
+            <span data-slot-ammo="1" style={{ font: F.mono(500, 11), letterSpacing: '.1em', lineHeight: 1.35 }}><span style={{ color: PERK_COLOR }}>PERK</span> · <PerkTrade k={item} /></span>
           </span>
         </div>
       )}
       {onClear && (
         <button type="button" data-slot-clear={slot} onClick={e => { e.stopPropagation(); onClear(); }} aria-label={`clear ${slot}`} title={slot === 'perk' ? 'No perk' : 'Leave slot 2 empty'} className="hov-acc-ink"
-          style={{ ...BTN_RESET, position: 'absolute', right: 8, bottom: 8, width: clearW - 12, textAlign: 'right', font: F.mono(600, 9), letterSpacing: '.14em', color: T.micro, padding: '8px 10px', minHeight: 36, boxSizing: 'border-box' }}>✕ CLEAR</button>
+          style={{ ...BTN_RESET, position: 'absolute', right: 8, bottom: 8, width: clearW - 12, textAlign: 'right', font: F.mono(600, 11), letterSpacing: '.14em', color: T.micro, padding: '8px 10px', minHeight: 36, boxSizing: 'border-box' }}>✕ CLEAR</button>
       )}
-      {required && !item && <span style={{ font: F.mono(500, 9), color: T.bad }}>A PRIMARY IS REQUIRED</span>}
+      {required && !item && <span style={{ font: F.mono(500, 11), color: T.bad }}>A PRIMARY IS REQUIRED</span>}
       {overridden && (
-        <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', font: F.mono(600, 9.5), letterSpacing: '.12em', color: T.warn }}>
+        <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', font: F.mono(600, 11), letterSpacing: '.12em', color: T.warn }}>
           ▲ CHANGED FROM THEIR PHONE — YOURS WAS {overridden.label.toUpperCase()}
           <button type="button" onClick={e => { e.stopPropagation(); onReapply?.(overridden); }} className="hov-warnbg"
-            style={{ ...BTN_RESET, font: F.chk(700, 10), letterSpacing: '.16em', color: T.warn, border: `1px solid ${T.warn}`, padding: '7px 12px', minHeight: 36 }}>REAPPLY MINE</button>
+            style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.16em', color: T.warn, border: `1px solid ${T.warn}`, padding: '7px 12px', minHeight: 36 }}>REAPPLY MINE</button>
         </div>
       )}
     </div>
@@ -786,15 +791,15 @@ function ArsenalHeader({ slot, rule, pool, weapons, preset, onClear, onBuild }:
     : sidearms ? `${nAllowed} SIDEARMS${presetTxt}`
     : `${nAllowed} OF ${weapons.length} WEAPONS${presetTxt}`;
   const hint = choice === 'fixed' || choice === 'off'
-    ? <button type="button" className="hov-acc-ink" onClick={onBuild} style={{ ...BTN_RESET, font: F.mono(600, 9), letterSpacing: '.18em', color: T.warn, minHeight: 36 }}>CHANGE IN GAMES ▸</button>
+    ? <button type="button" className="hov-acc-ink" onClick={onBuild} style={{ ...BTN_RESET, font: F.mono(600, 11), letterSpacing: '.18em', color: T.warn, minHeight: 36 }}>CHANGE IN GAMES ▸</button>
     : <span>{slot === 'primary' ? 'SELECT TO ARM · TRY-OUT STARTS ON PICK' : slot === 'secondary' ? 'SELECT · WEAPONS TRY OUT ON PICK' : 'SELECT · APPLIED WHEN THE GAME IS PUSHED'}</span>;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
       <SectionRule label={`ARSENAL // ${slot.toUpperCase()} · ${summary}`} hint={hint} style={{ marginBottom: 0 }} />
       {slot !== 'primary' && choice !== 'off' && (
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-          {onClear && <GhostButton size={10} pad="6px 12px" onClick={onClear} title={slot === 'perk' ? 'No perk this game' : 'Leave slot 2 empty — alt-fire does nothing'}>{slot === 'perk' ? 'NONE · NO PERK' : 'NONE · LEAVE EMPTY'}</GhostButton>}
-          <span style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro, marginLeft: 'auto' }}>
+          {onClear && <GhostButton size={11} pad="6px 12px" onClick={onClear} title={slot === 'perk' ? 'No perk this game' : 'Leave slot 2 empty — alt-fire does nothing'}>{slot === 'perk' ? 'NONE · NO PERK' : 'NONE · LEAVE EMPTY'}</GhostButton>}
+          <span style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: T.micro, marginLeft: 'auto' }}>
             {/* S50: Easy Reload left this slot for the per-player accessibility card, so the perk line
                 no longer advertises it — nothing in this rack can take the ALT button today. */}
             {slot === 'perk' ? <>A PERK RIDES BESIDE BOTH WEAPONS · <b style={{ color: T.dim }}>EASY RELOAD</b> IS ON THE POOL CARD NOW</>
@@ -813,15 +818,15 @@ function WeaponHero({ w, slot, sp, tryingId, pushed, verdicts, setVerdicts }:
   return (
     <>
       <StripedSlot style={{ flex: '1 1 240px', maxWidth: 320, minHeight: 140 }}
-        corner={<span style={{ position: 'absolute', top: 8, left: 10, zIndex: 1, font: F.mono(600, 9), letterSpacing: '.22em', color: T.dim, background: 'rgba(7,9,13,.75)', padding: '2px 6px' }}>{slot.toUpperCase()}</span>}>
+        corner={<span style={{ position: 'absolute', top: 8, left: 10, zIndex: 1, font: F.mono(600, 11), letterSpacing: '.22em', color: T.dim, background: 'rgba(7,9,13,.75)', padding: '2px 6px' }}>{slot.toUpperCase()}</span>}>
         <WeaponArt key={w.weapon_id} id={w.weapon_id} size={56} testId="weapon-hero-art" />
       </StripedSlot>
       <div style={{ flex: '1 1 300px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap' }}>
           <span style={{ font: F.osw(700, 28), letterSpacing: '.08em', textTransform: 'uppercase' }}>{w.name}</span>
           <Tag color={role.color} style={{ letterSpacing: '.22em', padding: '3px 10px' }}>{role.label}</Tag>
-          {!w.verified && <span title="Retuned from the captured Callsign frame for balance — not the stock numbers" style={{ font: F.mono(500, 9), letterSpacing: '.16em', color: T.micro }}>TUNED · NOT STOCK</span>}
-          {w.caution && <span role="alert" style={{ font: F.mono(600, 9), letterSpacing: '.14em', color: T.bad }}>▲ {w.caution.toUpperCase()}</span>}
+          {!w.verified && <span title="Retuned from the captured Callsign frame for balance — not the stock numbers" style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: T.micro }}>TUNED · NOT STOCK</span>}
+          {w.caution && <span role="alert" style={{ font: F.mono(600, 11), letterSpacing: '.14em', color: T.bad }}>▲ {w.caution.toUpperCase()}</span>}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: '7px 14px', alignItems: 'center', maxWidth: 440 }}>
           {/* Field 2026-08-30: these read `dmg`/`rpm` straight, but `dmg` is "% of a 115 pool per hit"
@@ -844,19 +849,19 @@ function WeaponHero({ w, slot, sp, tryingId, pushed, verdicts, setVerdicts }:
           {w.ttk_ms != null && <NumberCell label="TIME TO KILL" value={+(w.ttk_ms / 1000).toFixed(2)} unit="s" size={20} pad="6px 14px" />}
         </div>
         {w.desc && <div style={{ font: F.chk(500, 12), lineHeight: 1.5, color: T.dim, maxWidth: '54ch' }}>{w.desc}</div>}
-        {w.dual_emitter && <div style={{ font: F.mono(500, 9), letterSpacing: '.1em', color: T.micro, maxWidth: '54ch' }}>* ONE TRIGGER MAY EMIT SEPARATE GUN AND HEADSET WORDS; THE TOTAL ASSUMES BOTH LAND.</div>}
+        {w.dual_emitter && <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro, maxWidth: '54ch' }}>* ONE TRIGGER MAY EMIT SEPARATE GUN AND HEADSET WORDS; THE TOTAL ASSUMES BOTH LAND.</div>}
         {tryingId && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', font: F.mono(500, 10), letterSpacing: '.12em', color: T.warn }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', font: F.mono(500, 11), letterSpacing: '.12em', color: T.warn }}>
             ▲ TRYING OUT ON {sp.display}'S GUN — HAVE THEM FIRE A FEW ROUNDS · POINT AWAY FROM OTHERS
-            <GhostButton size={10} pad="4px 10px" onClick={() => run(() => api.endTryout(sp.player_id))}>END TRY-OUT</GhostButton>
+            <GhostButton size={11} pad="4px 10px" onClick={() => run(() => api.endTryout(sp.player_id))}>END TRY-OUT</GhostButton>
             <span style={{ display: 'inline-flex', gap: 6 }}>
-              <GhostButton size={10} pad="4px 10px" onClick={async () => { await run(() => api.rangeVerdict(tryingId, 'pass')); setVerdicts(v => ({ ...v, [tryingId]: { verdict: 'pass', note: '' } })); }}>SOUNDS RIGHT ✓</GhostButton>
-              <GhostButton size={10} pad="4px 10px" onClick={async () => { const note = window.prompt('what is wrong? (sound / rate / damage / no burst…)'); if (note === null) return; await run(() => api.rangeVerdict(tryingId, 'issue', note)); setVerdicts(v => ({ ...v, [tryingId]: { verdict: 'issue', note } })); }}>LOG ISSUE ✗</GhostButton>
+              <GhostButton size={11} pad="4px 10px" onClick={async () => { await run(() => api.rangeVerdict(tryingId, 'pass')); setVerdicts(v => ({ ...v, [tryingId]: { verdict: 'pass', note: '' } })); }}>SOUNDS RIGHT ✓</GhostButton>
+              <GhostButton size={11} pad="4px 10px" onClick={async () => { const note = window.prompt('what is wrong? (sound / rate / damage / no burst…)'); if (note === null) return; await run(() => api.rangeVerdict(tryingId, 'issue', note)); setVerdicts(v => ({ ...v, [tryingId]: { verdict: 'issue', note } })); }}>LOG ISSUE ✗</GhostButton>
             </span>
           </div>
         )}
-        {pushed && <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.micro }}>TRY-OUTS CLOSED — THE GAME HAS BEEN PUSHED TO THE GUNS</div>}
-        {verdicts[w.weapon_id]?.verdict === 'issue' && <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.bad }}>RANGE LOG: {verdicts[w.weapon_id].note.toUpperCase()}</div>}
+        {pushed && <div style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>TRY-OUTS CLOSED — THE GAME HAS BEEN PUSHED TO THE GUNS</div>}
+        {verdicts[w.weapon_id]?.verdict === 'issue' && <div style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.bad }}>RANGE LOG: {verdicts[w.weapon_id].note.toUpperCase()}</div>}
       </div>
     </>
   );
@@ -874,7 +879,7 @@ function PerkHero({ k }: { k: PerkView }) {
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap' }}>
           <span style={{ font: F.osw(700, 28), letterSpacing: '.08em', textTransform: 'uppercase' }}>{k.name}</span>
           <Tag color={PERK_COLOR} style={{ letterSpacing: '.22em', padding: '3px 10px' }}>PERK</Tag>
-          {!k.verified && <span title="Effect not yet proven on hardware" style={{ font: F.mono(500, 9), letterSpacing: '.16em', color: T.warn }}>UNPROVEN ON HARDWARE</span>}
+          {!k.verified && <span title="Effect not yet proven on hardware" style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: T.warn }}>UNPROVEN ON HARDWARE</span>}
         </div>
         {/* S50 (2026-09-19): GAIN and COST, read straight off the server's `PerkView.gain`/`.cost` —
             this used to rebuild the same numbers from `effects` and got the sign wrong on every
@@ -890,7 +895,7 @@ function PerkHero({ k }: { k: PerkView }) {
           </div>
         )}
         <div style={{ font: F.chk(500, 13), lineHeight: 1.5, color: T.body, maxWidth: '54ch' }}>{k.desc}</div>
-        <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.micro }}>PASSIVE — APPLIED TO THE GUN WHEN THE GAME IS PUSHED · NOTHING TO TRY OUT{fx.alt_reload ? ' · TAKES THE ALT BUTTON: NO SECOND WEAPON WITH THIS ONE' : ' · RIDES BESIDE BOTH WEAPONS'}</div>
+        <div style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>PASSIVE — APPLIED TO THE GUN WHEN THE GAME IS PUSHED · NOTHING TO TRY OUT{fx.alt_reload ? ' · TAKES THE ALT BUTTON: NO SECOND WEAPON WITH THIS ONE' : ' · RIDES BESIDE BOTH WEAPONS'}</div>
       </div>
     </>
   );
@@ -969,10 +974,10 @@ function PlayerNum({ value, onCommit }: { value: number; onCommit: (n: number) =
   return (
     <>
       <input className="numbox" type="number" min={1} max={63} value={draft} aria-label="player number (1–63)" aria-invalid={invalid || undefined}
-        style={{ width: '2.6em', font: F.mono(600, 10), color: invalid ? T.bad : T.acc, textAlign: 'left', minHeight: 32, borderBottom: invalid ? `1px solid ${T.bad}` : undefined }}
+        style={{ width: '2.6em', font: F.mono(600, 11), color: invalid ? T.bad : T.acc, textAlign: 'left', minHeight: 32, borderBottom: invalid ? `1px solid ${T.bad}` : undefined }}
         onFocus={() => { setFocused(true); setInvalid(false); }} onBlur={() => { setFocused(false); commit(); }} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
         onChange={e => setDraft(e.target.value)} />
-      {invalid && <span role="alert" style={{ marginLeft: 8, font: F.mono(500, 9), letterSpacing: '.12em', color: T.bad }}>PLAYER NUMBER MUST BE 1–63</span>}
+      {invalid && <span role="alert" style={{ marginLeft: 8, font: F.mono(500, 11), letterSpacing: '.12em', color: T.bad }}>PLAYER NUMBER MUST BE 1–63</span>}
     </>
   );
 }
@@ -980,7 +985,7 @@ function PlayerNum({ value, onCommit }: { value: number; onCommit: (n: number) =
 function StatRow({ label, pct }: { label: string; pct: number }) {
   return (
     <>
-      <span style={{ font: F.mono(500, 9.5), letterSpacing: '.2em', color: T.micro }}>{label}</span>
+      <span style={{ font: F.mono(500, 11), letterSpacing: '.2em', color: T.micro }}>{label}</span>
       <SegBar pct={pct} color={T.ink} height={10} cell={10} style={{ display: 'block' }} />
     </>
   );
@@ -1011,13 +1016,13 @@ function PoolCard({ hp, armor, pool, onSet, onClear, name, easy, onEasy, easyAsk
     <div data-pool-card style={{ border: `1px solid ${on ? T.warn : T.line}`, background: T.panelDeep, padding: '8px 10px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
         <span style={{ font: F.chk(700, 11), letterSpacing: '.18em', color: easy ? T.acc : T.dim }}>EASY RELOAD</span>
-        <Seg value={easy ? 'on' : 'off'} onChange={v => onEasy(v === 'on')} size={10} pad="4px 12px"
+        <Seg value={easy ? 'on' : 'off'} onChange={v => onEasy(v === 'on')} size={11} pad="4px 12px"
           label={`easy reload for ${name}`}
           titles={{ off: `${name} reloads with the lever, like everyone else`, on: `The ALT button reloads ${name}'s gun` }}
           options={[{ value: 'off', label: 'OFF' }, { value: 'on', label: 'ON' }]} />
       </div>
-      {easyAsk && <span role="alert" data-easy-ask style={{ font: F.chk(700, 10), letterSpacing: '.12em', color: T.warn }}>▲ {easyAsk}</span>}
-      <div data-easy-note style={{ font: F.mono(500, 9), letterSpacing: '.1em', color: easy ? T.acc : T.micro, lineHeight: 1.6 }}>
+      {easyAsk && <span role="alert" data-easy-ask style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: T.warn }}>▲ {easyAsk}</span>}
+      <div data-easy-note style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: easy ? T.acc : T.micro, lineHeight: 1.6 }}>
         {easy
           ? `▲ ON PURPOSE: ${who} RELOADS WITH THE ALT BUTTON, NOT THE LEVER. NO SECOND WEAPON, BECAUSE ALT CANNOT DO BOTH.`
           : '▲ THE ALT BUTTON RELOADS, FOR A PLAYER WHO CANNOT WORK THE RELOAD LEVER. IT WINS NO FIGHTS: IT COSTS THE SECOND WEAPON.'}
@@ -1025,7 +1030,7 @@ function PoolCard({ hp, armor, pool, onSet, onClear, name, easy, onEasy, easyAsk
       <span style={{ height: 1, background: T.line }} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <span style={{ font: F.chk(700, 11), letterSpacing: '.18em', color: on ? T.warn : T.dim }}>POOL</span>
-        <span data-pool-state style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: on ? T.warn : T.micro }}>
+        <span data-pool-state style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: on ? T.warn : T.micro }}>
           {on ? `${mult}\u00d7 GAME POOL` : 'GAME DEFAULT'}
         </span>
       </div>
@@ -1036,18 +1041,18 @@ function PoolCard({ hp, armor, pool, onSet, onClear, name, easy, onEasy, easyAsk
           <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ font: F.chk(600, 11), letterSpacing: '.14em', color: T.dim, width: 52 }}>{isHp ? 'HEALTH' : 'ARMOR'}</span>
             <ValueBox value={val} unit={isHp ? 'HP' : 'AR'} min={isHp ? 1 : 0} max={999} label={`${name} ${isHp ? 'health' : 'armor'}`} onChange={v => onSet(k, v)} />
-            <span data-pool-base={k} style={{ font: F.mono(500, 10), letterSpacing: '.06em', color: set ? T.micro : T.faint, whiteSpace: 'nowrap' }}>
+            <span data-pool-base={k} style={{ font: F.mono(500, 11), letterSpacing: '.06em', color: set ? T.micro : T.faint, whiteSpace: 'nowrap' }}>
               {set ? `GAME ${base}` : 'SAME AS GAME'}
             </span>
           </div>
         );
       })}
-      <div style={{ font: F.mono(500, 9), letterSpacing: '.1em', color: on ? T.warn : T.micro, lineHeight: 1.6 }}>
+      <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: on ? T.warn : T.micro, lineHeight: 1.6 }}>
         {on
           ? `\u25b2 ON PURPOSE: ${name.toUpperCase()} IS ARMED AT ${pool.hp} HP / ${pool.armor} AR. EVERY OTHER PLAYER USES THE GAME POOL.`
           : '\u25b2 SET A DIFFERENT POOL FOR THIS ONE PLAYER (A HANDICAP: A YOUNGER PLAYER, OR THE SOLO SIDE OF A 2v1).'}
       </div>
-      {on && <GhostButton onClick={onClear} color={T.warn} border={T.warn} size={10} pad="7px 12px">MATCH THE GAME POOL</GhostButton>}
+      {on && <GhostButton onClick={onClear} color={T.warn} border={T.warn} size={11} pad="7px 12px">MATCH THE GAME POOL</GhostButton>}
     </div>
   );
 }

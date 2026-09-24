@@ -50,7 +50,9 @@ button:focus:not(:focus-visible), input:focus:not(:focus-visible) { outline: non
      whole roster panel wider than the phone, so anything under the strip (the STANDBY bench, 2026-09-12)
      ran off the right edge. The strip scrolls INSIDE the panel; the panel stays the width of the screen. */
   .kit-roster { max-width: none !important; flex: 1 1 100% !important; min-width: 0; }
-  .kit-roster-rows { flex-direction: row !important; overflow-x: auto; flex-wrap: nowrap; scroll-snap-type: x proximity; -webkit-mask-image: linear-gradient(90deg,#000 90%,transparent); mask-image: linear-gradient(90deg,#000 90%,transparent); }
+  /* M18 (2026-09-23): the strip no longer scrolls itself. It is as wide as its rows, and the <ScrollX>
+     around it (Kit.tsx) scrolls, fades the cut edge and prints the hint, only while it overflows. */
+  .kit-roster-rows { flex-direction: row !important; flex-wrap: nowrap; width: max-content; min-width: 100%; box-sizing: border-box; }
   .kit-roster-rows .kit-row { scroll-snap-align: start; }
   /* 210px is the WIDTH, not just the basis: `min-width:auto` let a row grow to its content, so the
      first row's READY tag sat at x=407 on a 393px phone — off the screen entirely (measured

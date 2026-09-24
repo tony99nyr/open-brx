@@ -196,7 +196,7 @@ async function runReal(browser, viteBase, mcBase, vp, tag) {
   const r1 = await readyText(pg);
   expect(r1.endsWith(`/${n0 - 1}`), `the READY total dropped to /${n0 - 1} (saw ${r1})`);
   // the bench is not counted as a blocker: the push stays available for the rest
-  expect(await pg.locator('main button:has-text("PUSH CONFIG & ARM")').isDisabled() === false, 'PUSH CONFIG & ARM is still live for the players who remain');
+  expect(await pg.locator('main [data-lobby-primary="push"] button').isDisabled() === false, 'PUSH CONFIG is still live for the players who remain');
   ok(`STANDBY: ${target.display} on the bench, Ready ${r1}   ${await shot(pg, `41-${tag}-lobby-parked`)}`);
   ok(`audit: ${await audit(pg, `${tag} parked`)}`);
 

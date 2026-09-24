@@ -32,7 +32,7 @@ describe('ARMORY gate · the label is the status', () => {
   it('names the phones it waits for, and still goes on to GAMES', async () => {
     const { d, state } = await session([{ status: 'waiting' }, { status: 'waiting' }]);
     const m = await mountScreen(<Armory />, { state, weapons: d.weapons, perks: d.perks });
-    expect(gateBtn(m).textContent).toBe('WAITING FOR 2 PHONES');
+    expect(gateBtn(m).textContent).toBe('WAITING FOR 2 PHONES ▸');
     expect(gateBtn(m).disabled, 'a waiting phone never blocked navigation').toBe(false);
     expect(m.text()).not.toContain('CONTINUE ▸');
     m.unmount();
@@ -59,7 +59,7 @@ describe('ARMORY gate · the label is the status', () => {
 
   it('the pure rule, including an empty board', () => {
     expect(armoryGate([]).label).toBe('NO PLAYERS YET ▸');
-    expect(armoryGate([{ status: 'waiting' }]).label).toBe('WAITING FOR 1 PHONE');
+    expect(armoryGate([{ status: 'waiting' }]).label).toBe('WAITING FOR 1 PHONE ▸');
     expect(armoryGate([{ status: 'red', blockers: [LINK_LOST] }, { status: 'red', blockers: [LINK_LOST] }]).label).toBe('2 GUNS BLOCKED');
     expect(armoryGate([{ status: 'green' }]).ready).toBe(true);
   });

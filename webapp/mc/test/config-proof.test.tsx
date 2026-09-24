@@ -332,7 +332,7 @@ describe('R2-2 · the console refuses only what the server refuses', () => {
     const { d, state } = await lobbyWith({ 0: { status: 'red', blockers: [POOL] } },
       { pushed: false, all_acked: false, acks: {} });
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
-    const push = btn(m, 'PUSH CONFIG & ARM');
+    const push = btn(m, 'PUSH CONFIG ▸');
     expect(push, 'the unpushed lobby shows the push as its primary').toBeTruthy();
     expect(push!.disabled, 'the server accepts this push — A37 excluded the three from its own gate').toBe(false);
     m.unmount();
@@ -342,7 +342,7 @@ describe('R2-2 · the console refuses only what the server refuses', () => {
     const { d, state } = await lobbyWith({ 0: { status: 'red', blockers: [LINK_LOST] } },
       { pushed: false, all_acked: false, acks: {} });
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
-    expect(btn(m, 'PUSH CONFIG & ARM')!.disabled).toBe(true);
+    expect(btn(m, 'PUSH CONFIG ▸')!.disabled).toBe(true);
     m.unmount();
   });
 
@@ -561,7 +561,7 @@ describe('F3 · a phone that has not arrived blocks the FIRST push, not a re-pus
     const { d, state } = await lobbyWith({ 1: { status: 'waiting', blockers: [] } },
       { pushed: false, all_acked: false, acks: {} });
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
-    expect(btn(m, 'PUSH CONFIG & ARM')!.disabled).toBe(true);
+    expect(btn(m, 'PUSH CONFIG ▸')!.disabled).toBe(true);
     m.unmount();
   });
 });

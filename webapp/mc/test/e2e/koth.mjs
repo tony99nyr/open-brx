@@ -845,7 +845,7 @@ step('load-path', async ({ browser, base }) => {
     const verdict = (await pg.locator('[data-testid="pre-arm-verdict"]').innerText()).replace(/\s+/g, ' ');
     expect(!/IN SYNC/.test(verdict), `before the push the pre-arm check is not satisfied (saw ${JSON.stringify(verdict)})`);
   }
-  const pushBtn = pg.locator('main button:has-text("PUSH CONFIG & ARM")');
+  const pushBtn = pg.locator('main [data-lobby-primary="push"] button');
   if (await pushBtn.isEnabled().catch(() => false)) await pushBtn.click();
   else await pg.locator('main [data-override="1"] button').first().click();
   await until(async () => (await (await fetch(`${base}/api/state`)).json()).lobby.pushed === true, 10000, 'the LOBBY push to configure the guns');

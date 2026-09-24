@@ -19,7 +19,8 @@ async function boardWith(row: Partial<ReadinessRow>) {
   const board = [{ ...first, ...row } as ReadinessRow, ...rest];
   const state: State = { ...d.state, readiness: { ...d.state.readiness, board } };
   const m = await mountScreen(<Armory />, { state, view: 'muster', weapons: d.weapons, perks: d.perks });
-  return { m, cell: () => m.find('[data-headset]')[0] };
+  // M4: problem cards sort first, so row 0's card is found by its sticker, not by its position
+  return { m, cell: () => m.find(`[data-gun-card="${first.sticker}"] [data-headset]`)[0] };
 }
 
 describe('ARMORY · how a headset was proven (A32)', () => {

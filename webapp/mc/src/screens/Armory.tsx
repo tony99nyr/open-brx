@@ -85,6 +85,15 @@ function LogCell({ log }: { log?: LogView }) {
   );
 }
 
+/** M4 (visual QA 2026-09-23): the cards the operator has to act on come first. Red, then amber, then a
+ *  phone that has not arrived, then green; the server's order is kept inside each group. */
+const STATUS_RANK: Record<string, number> = { red: 0, amber: 1, waiting: 2, green: 3 };
+function problemsFirst<R extends { status?: string }>(board: R[]): R[] {
+  return board.map((g, i) => ({ g, i }))
+    .sort((a, b) => ((STATUS_RANK[a.g.status ?? ''] ?? 1) - (STATUS_RANK[b.g.status ?? ''] ?? 1)) || a.i - b.i)
+    .map(x => x.g);
+}
+
 export function Armory() {
   const { state, run, api, setView } = useStore();
   const [scanning, setScanning] = useState(false);
@@ -169,9 +178,12 @@ export function Armory() {
               <button type="button" data-testid="armory-gate" data-gate-ready={gate.ready ? '1' : '0'}
                 className={!gate.disabled ? 'hov-accbg' : ''} disabled={gate.disabled} title={gate.why}
                 onClick={async () => { await run(() => api.setPhase('build')); setView('build'); }}
+                // M4 (visual QA 2026-09-23): WAITING FOR N PHONES is pressable (it goes on to GAMES), but in
+                // dim grey on a panel it read as disabled. Anything pressable that is not HARDWARE READY is
+                // an accent outline now; only a real block is the flat grey `disabled` look.
                 style={{ font: F.osw(700, 20), letterSpacing: '.22em', padding: '10px 26px 10px 32px', whiteSpace: 'nowrap',
-                  background: gate.disabled ? 'transparent' : gate.ready && nGreen ? T.ok : T.panelAlt, color: gate.disabled ? T.micro : gate.ready && nGreen ? T.accInk : T.dim,
-                  border: `1px solid ${gate.disabled ? T.line2 : gate.ready && nGreen ? T.ok : T.line}`, clipPath: CHAMFER.tl14,
+                  background: gate.disabled ? 'transparent' : gate.ready && nGreen ? T.ok : T.panelAlt, color: gate.disabled ? T.micro : gate.ready && nGreen ? T.accInk : T.acc,
+                  border: `1px solid ${gate.disabled ? T.line2 : gate.ready && nGreen ? T.ok : T.acc}`, clipPath: CHAMFER.tl14,
                   cursor: gate.disabled ? 'not-allowed' : 'pointer', minHeight: 48 }}>{gate.label}</button>
             </div>
             {backhaul.errLine}
@@ -181,7 +193,7 @@ export function Armory() {
       <div style={{ display: 'flex', gap: 14, alignItems: 'stretch', flexWrap: 'wrap', marginBottom: 20 }}>
         <JoinPanel />
         <div style={{ flex: '1 1 520px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 12, alignContent: 'start' }}>
-          {board.map(g => <GunCard key={g.sticker} g={g} />)}
+          {problemsFirst(board).map(g => <GunCard key={g.sticker} g={g} />)}
           {board.length === 0 && <div style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: T.micro, padding: '20px 4px' }}>NO PLAYERS YET — ADD OPERATORS IN KIT, OR JUST GET PHONES JOINED FIRST ◂</div>}
         </div>
       </div>
@@ -360,7 +372,7 @@ function GunCard({ g }: { g: ReadinessRow }) {
     : g.headset === 'proven' ? (g.headset_proof === 'link' ? 'CONNECTED (LINK)' : 'CONNECTED (ECHO)')
     : g.headset === 'absent' ? '—' : 'UNKNOWN';
   return (
-    <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${color}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 11, clipPath: CHAMFER.tr12, opacity: waiting ? 0.62 : 1 }}>
+    <div data-gun-card={g.sticker} data-status={g.status} style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${color}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 11, clipPath: CHAMFER.tr12, opacity: waiting ? 0.62 : 1 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0, flex: '1 1 auto' }}>
           {/* the sticker usually ALREADY ends in the tail ("ALPHA-3D4F"), and printing it again wrapped
@@ -427,7 +439,7 @@ function GunCard({ g }: { g: ReadinessRow }) {
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ font: F.osw(600, 14), ...TAB, minWidth: 38, color: stale ? T.micro : battColor }}>{batt == null ? '—' : stale ? `${batt}%*` : `${batt}%`}</span>
           <SegBar pct={stale ? 0 : batt ?? 0} color={battColor} height={8} cell={7} style={{ flex: 1, maxWidth: 96 }} />
-          {stale && <span style={{ font: F.mono(500, 8), color: T.micro }}>*OLD</span>}
+          {stale && <span style={{ font: F.mono(500, 11), color: T.micro }}>*OLD</span>}
         </span>
         <Micro>LINK</Micro><Val color={stale ? T.warn : T.dim}>{linkText}</Val>   {/* this branch only runs when a node IS linked */}
         {/* F-armory-dedup: phone battery and firmware, carried by the row (`state.py readiness()` puts
