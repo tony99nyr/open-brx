@@ -76,15 +76,15 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .clockplate{position:absolute;top:26px;left:50%;transform:translateX(-50%) skewX(-12deg);background:var(--plate);border:1px solid var(--edge);padding:4px 26px}
 .clockplate .in{transform:skewX(12deg);display:flex;align-items:baseline;gap:10px}
 .clockplate .t{font-family:var(--fd);font-weight:700;font-size:30px;letter-spacing:.04em;text-shadow:0 0 18px color-mix(in srgb,var(--glow) 55%,transparent)}
-.clockplate .m{font-size:10px;letter-spacing:.24em;color:var(--mut);font-weight:600}
+.clockplate .m{font-size:11px;letter-spacing:.24em;color:var(--mut);font-weight:600}
 .ident{position:absolute;top:28px;left:34px;display:flex;align-items:center;gap:8px}
 .ident .arrow{width:0;height:0;border-top:11px solid transparent;border-bottom:11px solid transparent;border-left:14px solid var(--team)}
 .ident .cs{font-family:var(--fd);font-style:italic;font-weight:700;font-size:20px;letter-spacing:.1em}
-.ident .sq{font-size:10px;letter-spacing:.2em;color:var(--team);font-weight:700}
+.ident .sq{font-size:11px;letter-spacing:.2em;color:var(--team);font-weight:700}
 .topright{position:absolute;top:26px;right:48px;display:flex;align-items:center;gap:16px;font-size:13px;color:var(--mut);font-weight:600;white-space:nowrap}
 .topright .link{display:flex;align-items:center;gap:5px}
 .topright button.mclink{font:inherit;color:inherit;letter-spacing:inherit;pointer-events:auto;position:relative;padding:0}
-.topright button.mclink::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:44px;height:44px}   /* the tap target; the visual stays a dot + label */
+.topright button.mclink::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:56px;height:56px}   /* the tap target; the visual stays a dot + label */
 .topright .dot{width:9px;height:9px;background:var(--ok);border-radius:50%;box-shadow:0 0 8px var(--ok)}
 .topright .dot.off{background:var(--bad);box-shadow:0 0 8px var(--bad);animation:blink .7s infinite}
 .topright .dot.ws{background:var(--warn);box-shadow:0 0 8px var(--warn)}
@@ -101,13 +101,13 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .vitals{position:absolute;left:36px;bottom:32px;display:flex;flex-direction:column;gap:7px;width:300px}
 .vitals .nums{display:flex;align-items:baseline;gap:10px}
 .vitals .hp{font-family:var(--fd);font-style:italic;font-weight:700;font-size:84px;line-height:.8;text-shadow:0 0 24px color-mix(in srgb,var(--health) 50%,transparent)}
-.vitals .hp.low{color:var(--bad);text-shadow:0 0 28px rgba(255,60,60,.7);animation:blink 1s infinite}
+.vitals .hp.low{color:var(--bad);text-shadow:0 0 28px rgba(255,60,60,.7)}   /* QA-10: the number itself never blinks (it read at 20% half the time); the vignette and the bar pulse instead */
 .vitals .sh{font-family:var(--fd);font-weight:700;font-size:24px;color:var(--armor)}
 .vitals .shield{font-family:var(--fd);font-weight:700;font-size:24px;color:var(--shield)}
 .vitals .sh.zero{color:var(--mut)}
 .vitals .shield.zero{color:var(--mut)}
 .bar{height:14px;transform:skewX(-18deg);background:var(--plate2);border:1px solid var(--edge);padding:2px}
-.bar.low{border-color:var(--bad)}
+.bar.low{border-color:var(--bad);animation:hudglow 1s infinite}
 .bar > i{display:block;height:100%;background:repeating-linear-gradient(90deg,var(--health) 0 22px,transparent 22px 26px);box-shadow:0 0 12px color-mix(in srgb,var(--health) 60%,transparent);transition:width .15s}
 .bar.low > i{background:repeating-linear-gradient(90deg,var(--bad) 0 22px,transparent 22px 26px);box-shadow:0 0 12px rgba(255,60,60,.7)}
 .bar.armor{height:9px;width:78%}
@@ -178,7 +178,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 /* Field 2026-08-30: at 11px muted this was unreadable at a glance and Tony could not tell which
    weapon was equipped. It is primary information, so it is sized like primary information. */
 .ammo .wn{font-family:var(--fd);font-weight:700;font-size:24px;letter-spacing:.14em;color:var(--ink);display:flex;align-items:baseline;gap:8px;text-shadow:0 0 16px color-mix(in srgb,var(--glow) 35%,transparent)}
-.ammo .wn .slot{font-size:10px;font-weight:600;letter-spacing:.22em;color:var(--mut)}
+.ammo .wn .slot{font-size:11px;font-weight:600;letter-spacing:.22em;color:var(--mut)}
 /* ALT weapon swap: the gun will not fire until it finishes, so say so, centre-screen and unmissable. */
 .swapping{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:10px;z-index:6;pointer-events:none}
 .swapping .big{font-family:var(--fd);font-style:italic;font-weight:700;font-size:52px;letter-spacing:.06em;color:var(--warn);text-shadow:0 0 30px rgba(255,176,32,.55);animation:swapPulse .5s ease-in-out infinite alternate}
@@ -192,10 +192,12 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
    AMMO instead of RELOAD (never both) — see hud.js `_live()`'s `outOfAmmo`. */
 .reload.out{background:var(--bad);color:#fff}
 .firevig{position:absolute;inset:0;box-shadow:inset 0 0 140px -20px rgba(255,40,40,.55);animation:hudglow 1s infinite;pointer-events:none}
-.takingfire{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:10px}
+/* QA-03 (2026-09-23): TAKING FIRE ends at y=200 and the hit stack (.hit .hc) starts at y=212, a fixed 12 px gap, so the
+   damage number can never be drawn over the word. The word sits ABOVE its dot, which stays where the reticle is. */
+.takingfire{position:absolute;left:50%;bottom:calc(100% - 200px);transform:translateX(-50%);display:flex;flex-direction:column-reverse;align-items:center;gap:10px}
 .takingfire .r{width:6px;height:6px;border:1px solid var(--bad);border-radius:50%}
 .takingfire .t{font-family:var(--fd);font-style:italic;font-weight:700;font-size:22px;letter-spacing:.3em;color:var(--bad);text-indent:.3em;animation:blink .5s infinite}
-.battwarn{position:absolute;top:96px;right:48px;font-size:10px;letter-spacing:.16em;color:var(--warn);font-weight:700}
+.battwarn{position:absolute;top:96px;right:48px;font-size:11px;letter-spacing:.16em;color:var(--warn);font-weight:700}
 /* F288: the engine's gun-health verdict used to stop at MC. Keep the player warning in the quiet lane below
    the header, above the reticle, and use words as well as colour. It never takes taps from the match HUD. */
 .gunwarn{position:absolute;z-index:5;left:50%;top:100px;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;gap:14px;min-width:260px;max-width:calc(100% - 110px);padding:6px 16px 7px;border:1px solid currentColor;background:rgba(12,10,8,.9);pointer-events:none;text-align:center;white-space:nowrap}
@@ -236,10 +238,32 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .aimfx .clr b{display:block;height:100%;background:#eef3f7}
 /* (S21, 2026-09-12: the camera look-through is gone — the #cam layer, the `cam-on`/`#frame.cam` rules and
    the scrims that only existed under it went with the chip. The QR join scanner is unrelated and stays.) */
+
+/* ============ QA lane B (2026-09-23): the live HUD ============ */
+/* QA-02: values the gun no longer confirms. With the gun link down, HP, armour and ammo are the last numbers the gun sent:
+   dimmed, and tagged STALE in words, so a frozen number never reads as live. An MC drop marks only what MC feeds (K, A). */
+.staletag{align-self:center;font-family:var(--fl);font-style:normal;font-size:14px;font-weight:700;letter-spacing:.2em;padding:2px 8px;border:1.5px solid var(--bad);color:var(--bad);line-height:1.1;white-space:nowrap}
+.gunstale .vitals .hp,.gunstale .vitals .sh,.gunstale .vitals .shield,.gunstale .vitals .bar,.gunstale .ammo .mag,.gunstale .ammo .res,.gunstale .ammo .pips,.gunstale .ammo .heat{opacity:.35;text-shadow:none;filter:grayscale(.6)}
+.mcstale .stats b{opacity:.45}
+.stats .staletag{font-size:11px;padding:1px 6px}
+/* the link-lost bar on the live HUD: solid red, 16 px, steady (hud.js `_chips`, `.gunlost`) */
+.pill.bad.gunlost{animation:none;font-size:16px;letter-spacing:.16em;padding:8px 22px;background:var(--bad);border-color:var(--bad);color:#1a0404;position:relative}
+.chipbar button.pill{position:relative}
+.chipbar button.pill::after{content:"";position:absolute;left:-4px;right:-4px;top:50%;transform:translateY(-50%);height:56px}   /* QA-11: 56 frame px tall = 44 px after the SE 0.79 scale */
+.clockplate::after,.ident::after{content:"";position:absolute;left:-6px;right:-6px;top:50%;transform:translateY(-50%);height:56px}
+/* QA-06/QA-10: low HP says so in words too, in both skins (at night the number is red anyway) */
+.lowtag{align-self:center;font-family:var(--fl);font-style:normal;font-size:14px;font-weight:700;letter-spacing:.2em;padding:2px 8px;background:var(--bad);color:#1a0404;line-height:1.1}
+/* 2026-09-19 respawn rules: a station respawn's 2 s visible protection, in the reticle's slot */
+.spawnshield{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 20px 9px;border:1.5px solid var(--shield);background:color-mix(in srgb,var(--shield) 16%,rgba(3,6,10,.8));pointer-events:none;white-space:nowrap}
+.spawnshield .k{font-family:var(--fd);font-style:italic;font-weight:700;font-size:28px;letter-spacing:.24em;text-indent:.24em;color:var(--shield);line-height:1}
+.spawnshield .s{font-size:12px;letter-spacing:.2em;font-weight:700;color:var(--num)}
+/* F15: an EMP stun, the gun disarmed; takes the centre slot over smoke and recoil */
+.aimfx.stun{background:rgba(255,176,32,.16);border-color:var(--warn)}
+.aimfx.stun .k,.aimfx.stun .t{color:var(--warn)}
 /* ============ night ============ */
 [data-env="night"] .clockplate{border:0;background:none;top:28px}
-[data-env="night"] .clockplate .t{font-size:22px;font-weight:600;color:var(--mut);text-shadow:none}
-[data-env="night"] .clockplate .m,[data-env="night"] .ident,[data-env="night"] .topright,[data-env="night"] .reticle,[data-env="night"] .firevig,[data-env="night"] .takingfire{display:none}
+[data-env="night"] .clockplate .t{font-size:22px;font-weight:600;color:var(--num);text-shadow:none}   /* QA-22: --mut measured 2.7:1; --num is 4.5:1 */
+[data-env="night"] .clockplate .m,[data-env="night"] .ident,[data-env="night"] .reticle{display:none}
 /* Bench 2026-09-17: `.pips` itself must NOT go with the list above — it is also the ammo/energy bar's
    container, and the bar has to keep reading at night (Tony). Only the discrete bullet-pip `<i>` children
    declutter; a `.bar` (ammo or energy) inside `.pips` is a direct child `<div>`, never matched by `> i`. */
@@ -292,8 +316,8 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 [data-env="night"] .swapping .big{font-size:22px;color:var(--num);text-shadow:none;animation:none}
 [data-env="night"] .swapping .sub,[data-env="night"] .swapping .track{display:none}
 [data-env="night"] .vitals .hp{font-style:normal;font-size:76px;text-shadow:none;animation:none;color:var(--num)}
-[data-env="night"] .vitals .sh{display:none}
-[data-env="night"] .vitals .armorlabel{display:none}
+[data-env="night"] .vitals .sh{font-size:30px;color:var(--armor);text-shadow:none}   /* QA-22: the armour number stays at night */
+[data-env="night"] .vitals .sh.zero{color:var(--mut)}
 [data-env="night"] .vitals .shield{display:inline;color:var(--num);font-size:76px;text-shadow:none;animation:none}
 [data-env="night"] .vitals .shieldlabel{display:inline}
 [data-env="night"] .bar{height:5px;transform:none;border:0;padding:0;background:#120505}
@@ -301,9 +325,9 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 [data-env="night"] .bar.armor{height:4px;width:70%}[data-env="night"] .bar.armor > i{background:var(--armor)}
 [data-env="night"] .bar.shield{height:4px;width:70%}[data-env="night"] .bar.shield > i{background:var(--shield)}
 [data-env="night"] .ammo .mag{font-style:normal;font-size:76px;text-shadow:none;color:var(--num)}
-[data-env="night"] .ammo .res{font-size:20px}
+[data-env="night"] .ammo .res{font-size:20px;color:var(--num)}   /* QA-22: "/384" was --mut, 2.7:1 */
 [data-env="night"] .stats{display:flex;top:30px;left:36px;right:auto;bottom:auto;font-size:11px;letter-spacing:.24em}   /* was stacked on .ammo's corner (brx-opus night audit 2026-08-26) */
-.nightlab{display:none;position:absolute;bottom:34px;left:50%;transform:translateX(-50%);font-size:10px;letter-spacing:.34em;color:var(--mut);font-weight:600}
+.nightlab{display:none;position:absolute;bottom:34px;left:50%;transform:translateX(-50%);font-size:11px;letter-spacing:.34em;color:var(--mut);font-weight:600}
 [data-env="night"] .nightlab{display:block}
 [data-env="night"] .hplab{display:inline;font-size:11px;letter-spacing:.24em;color:var(--mut);font-weight:600}
 .hplab{display:none}
@@ -477,8 +501,14 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
    the 10-25Hz band is the photosensitive-epilepsy trigger range (experiment-log 2026-09-02). */
 .hit{pointer-events:none}
 .hit .vig{position:absolute;inset:0;box-shadow:inset 0 0 200px -20px rgba(255,40,40,.85);background:radial-gradient(ellipse 130% 100% at 50% 50%,transparent 45%,rgba(120,0,0,.35) 100%);animation:hitin .12s ease-out}
-.hit .hc{position:absolute;top:66%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:6px}
-.hit .hc .hw{font:700 13px var(--fl);letter-spacing:.08em;color:var(--num);text-shadow:0 1px 3px #000;white-space:nowrap}   /* S56: the weapon that hit you */
+.hit .hc{position:absolute;top:212px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px}   /* QA-03: 12 px under TAKING FIRE */
+/* S56 x QA-04: the weapon that hit you, in its own overlay (hud.js `_hitWpn`) under the hit stack: 16 px for 1.5 s, then
+   a small LAST HIT line until 5 s. The hit flash itself is gone in 700 ms. */
+.hitwpn{pointer-events:none}
+.hitwpn .hw{position:absolute;top:296px;left:50%;transform:translateX(-50%);font:700 17px var(--fl);letter-spacing:.08em;color:var(--num);text-shadow:0 1px 3px #000;white-space:nowrap}
+.hitwpn.last .hw{font-size:12px;letter-spacing:.14em;color:var(--mut)}
+.hitwpn.last .hw::before{content:'LAST HIT \00B7  '}
+.hitwpn.out{animation:hitout .4s ease-in forwards}
 .hit .dmg{font-family:var(--fd);font-style:italic;font-weight:700;font-size:58px;line-height:.8;color:var(--bad);text-shadow:0 0 40px rgba(255,60,60,.7);animation:slam .28s cubic-bezier(.2,1.4,.4,1)}
 .hit .src{font-family:var(--fd);font-weight:700;font-size:13px;letter-spacing:.2em;padding:3px 14px;transform:skewX(-12deg)}
 .hit.out{animation:hitout .42s ease-in forwards}
@@ -516,6 +546,32 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 [data-env="night"] .co .cob{background:#120505;border-color:#3a1414;animation:none}
 [data-env="night"] .co .nm{color:var(--num);text-shadow:none}[data-env="night"] .co .sw{background:#5a2222!important}
 [data-env="night"] .co .medal{background:#2a0d0d!important;color:#ff8a8a!important;box-shadow:none!important}
+/* ---- QA lane B (2026-09-23): the live HUD at night. Red and amber on black, no green, no flash, no strobe (spec B4). ---- */
+/* QA-22/QA-02: the link status stays at night; the NO GUN dot is the brightest red on the screen, steady */
+[data-env="night"] .topright{color:var(--num)}
+[data-env="night"] .topright .dot{background:#5a2222;box-shadow:none}
+[data-env="night"] .topright .dot.off{background:#ff5a5a;box-shadow:none;animation:none;width:12px;height:12px}
+[data-env="night"] .topright .dot.ws{background:var(--warn);box-shadow:none}
+[data-env="night"] .batt .shell{border-color:var(--num)}[data-env="night"] .batt .fill{background:var(--num)}
+/* QA-17: no green on the live HUD at night (WEAPONS HOT, ALT = RELOAD, CONFIRMED BY YOUR GUN) */
+#frame[data-env="night"][data-screen="live"] .chipbar .pill.ok:not(.callout){border-color:var(--num);color:var(--num)}
+[data-env="night"] .alive{--ok:var(--num)}
+[data-env="night"] .switched .s,[data-env="night"] .wt.on .wl{color:var(--num)}
+/* QA-02 at night */
+[data-env="night"] .staletag{border-color:#ef6868;color:#ef6868}
+[data-env="night"] .pill.bad.gunlost{background:#2a0c0c;border-color:#ef6868;color:#ef6868}
+/* QA-06: taking fire, low HP and the kill banner, dim and still */
+[data-env="night"] .takingfire .t{color:var(--num);animation:none;text-shadow:none}
+[data-env="night"] .takingfire .r{border-color:var(--num)}
+[data-env="night"] .firevig{box-shadow:inset 0 0 90px -20px #4a0c0c;animation:none}
+[data-env="night"] .bar.low{animation:none}
+[data-env="night"] .lowtag{background:#2a0c0c;color:#ef6868;border:1px solid #ef6868}
+[data-env="night"] .hitwpn.last .hw{color:var(--num)}
+[data-env="night"] .spawnshield{background:#0d0303;border-color:var(--num)}
+[data-env="night"] .spawnshield .k{color:var(--num)}
+[data-env="night"] .aimfx.stun{background:#120505;border-color:var(--warn)}
+[data-env="night"] .aimfx.stun .k,[data-env="night"] .aimfx.stun .t{color:#e0a143}
+
 [data-env="night"] .down{background:#000}[data-env="night"] .down .wash,[data-env="night"] .down .ghost{display:none}
 [data-env="night"] .tminus{background:#000}[data-env="night"] .tminus .hz,[data-env="night"] .tminus .glow{display:none}
 [data-env="night"] .redeploy .wipe,[data-env="night"] .redeploy .slash{display:none}

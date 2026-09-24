@@ -132,6 +132,7 @@ const usesCellGauge = st => {
 const HOLD_TO_RECHARGE = 'HOLD TO RECHARGE';
 /** S53/S55: the ONE accuracy pill says WHY the player cannot hit. The engine hands the reason (`st.aim.reason`);
  *  the HUD never guesses one. Smoke is the only reason built; S55 adds recoil, flinch and stance rows here. */
+const HIT_WPN_BIG_MS = 1500, HIT_WPN_GONE_MS = 5000;   // QA-04: the hit weapon name, large then small (`_hitWpn`)
 const AIM_REASON = {
   smoke: { word: 'SMOKED', sub: 'YOUR SHOTS WILL MISS' },
   recoil: { word: 'RECOIL', sub: 'RELEASE TO STEADY' },
@@ -442,7 +443,7 @@ export class Hud {
     if (this.board) this.frame.dataset.board = this.board; else delete this.frame.dataset.board;
     const sig = [st.phase, st.alive, !!st.killedBy, st.night, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.underFire, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
       st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.reserve === 0, (st.mag || 0) > AMMO_PIP_MAX, st.battery != null && st.battery <= 15,
-      st.heatEverSeen, st.overheatShown, !!(st.alive && st.aim && AIM_REASON[st.aim.reason]),   // S53: the smoke tell takes the centre slot from the reticle / TAKING FIRE   // bench 2026-09-17: OVERHEAT prompt/overlay and the heat bar's existence are structural, not patched in place. `st.overheating` (the mechanic) is not read here at all: the HUD draws the display window only
+      st.heatEverSeen, st.overheatShown, !!(st.alive && st.aim && AIM_REASON[st.aim.reason]), !!st.shielded, !!st.stunned,   // QA 2026-09-23: the spawn shield and the stun take the centre slot   // S53: the smoke tell takes the centre slot from the reticle / TAKING FIRE   // bench 2026-09-17: OVERHEAT prompt/overlay and the heat bar's existence are structural, not patched in place. `st.overheating` (the mechanic) is not read here at all: the HUD draws the display window only
       chargeCost(st) != null && st.ammo != null && st.ammo < chargeCost(st), st.reserve > 0,   // OUT OF ENERGY / RECHARGE prompt + the NOT ENOUGH ENERGY note are structural too
       // F288: both gun-health facts change live markup. Flatten the objects: joining the objects themselves
       // would turn every non-null value into the same "[object Object]" and miss no_fire → no_answer.
@@ -1224,7 +1225,13 @@ export class Hud {
     const [nm] = splitGun(st.gun);
     const stat = (k, v) => `<span>${k}<b class="${v == null ? 'mut' : ''}" id="st-${k}">${v == null ? '—' : v}</b></span>`;
     const kb = st.killedBy ? `` : '';
-    return `<div class="alive"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
+    // QA-02 (2026-09-23): HP, armour and ammo come from the GUN. With the gun link down they are the last
+    // values it sent, so they dim and say STALE; they must never read as live. MC's link does not feed them
+    // (the gun keeps reporting over BLE), so an MC drop marks the MC-fed numbers instead: K and A.
+    const gunStale = !st.bleUp;
+    const mcStale = st.wsState !== 'bound';
+    const staleTag = '<span class="staletag" aria-label="stale value">STALE</span>';
+    return `<div class="alive${gunStale ? ' gunstale' : ''}${mcStale ? ' mcstale' : ''}"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
       ${low ? '<div class="firevig"></div>' : ''}
       ${overheating ? '<div class="heatvig"></div><div class="heatword">OVERHEAT</div>' : ''}
       <div class="clockplate" data-act="onBoard" data-arg="team" role="button" aria-label="Team scores"><div class="in"><span class="t tab" id="clock">${mmss(st.clockMs)}</span><span class="m">${esc(st.mode)}</span></div></div>
@@ -1233,11 +1240,13 @@ export class Hud {
         <span class="batt tab"><span class="shell"><span class="fill" id="battfill" style="right:${100 - (st.battery || 0)}%"></span></span><span id="batt">${st.battery != null ? st.battery + '%' : '—'}</span></span></div>
       ${st.battery != null && st.battery <= 15 ? `<div class="battwarn">GUN BATT ${st.battery}% — CHARGE SOON</div>` : ''}
       ${this._gunHealthWarning(st)}
-      <div class="stats tab">${st.kills > 0 ? stat('K', st.kills) : ''}${st.deaths > 0 ? stat('D', st.deaths) : ''}${st.assists > 0 ? stat('A', st.assists) : ''}${accShown(st) != null ? stat('ACC', accShown(st) + '%') : ''}</div>
-      ${st.alive && st.aim && AIM_REASON[st.aim.reason] ? `<div class="aimfx ${esc(st.aim.reason)}${overheating ? ' tight' : ''}" id="aimfx">${this._aimFx(st)}</div>`
+      <div class="stats tab">${st.kills > 0 ? stat('K', st.kills) : ''}${st.deaths > 0 ? stat('D', st.deaths) : ''}${st.assists > 0 ? stat('A', st.assists) : ''}${accShown(st) != null ? stat('ACC', accShown(st) + '%') : ''}${mcStale && (st.kills > 0 || st.assists > 0) ? staleTag : ''}</div>
+      ${st.alive && st.stunned ? `<div class="aimfx stun" id="stunfx">${this._stunFx(st)}</div>`
+        : st.alive && st.aim && AIM_REASON[st.aim.reason] ? `<div class="aimfx ${esc(st.aim.reason)}${overheating ? ' tight' : ''}" id="aimfx">${this._aimFx(st)}</div>`
+        : st.alive && st.shielded ? '<div class="spawnshield" role="status"><span class="k">SPAWN SHIELD</span><span class="s">YOU CANNOT BE HIT</span></div>'
         : st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>'}
       <div class="fxbar" id="fxbar">${this._fx(st)}</div>
-      <div class="vitals"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span><span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>${st.maxShield > 0 ? `<span class="shield tab ${st.shield === 0 ? 'zero' : ''}" id="shield">${st.shield}</span><span class="hplab shieldlabel">SHIELD</span>` : ''}</div>
+      <div class="vitals"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span>${low ? '<span class="lowtag">LOW</span>' : ''}${gunStale ? staleTag : ''}<span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>${st.maxShield > 0 ? `<span class="shield tab ${st.shield === 0 ? 'zero' : ''}" id="shield">${st.shield}</span><span class="hplab shieldlabel">SHIELD</span>` : ''}</div>
         <div class="bar ${low ? 'low' : ''}"><i id="hpbar" style="width:${Math.round(100 * st.hp / st.maxHp)}%"></i></div>
         <div class="bar armor"><i id="shbar" style="width:${Math.round(100 * st.armor / st.maxArmor)}%"></i></div>${st.maxShield > 0 ? `<div class="bar shield"><i id="shieldbar" style="width:${Math.round(100 * st.shield / st.maxShield)}%"></i></div>` : ''}</div>
       <div class="ammo">${outOfAmmo ? `<span class="reload out solid"><span class="unskew">${energy ? 'OUT OF ENERGY' : 'OUT OF AMMO'}</span></span>`
@@ -1246,7 +1255,7 @@ export class Hud {
           : energyLow ? `<span class="reload solid"><span class="unskew">${HOLD_TO_RECHARGE}</span></span>`
           : lowMag ? (energy ? `<span class="reload solid"><span class="unskew">${HOLD_TO_RECHARGE}</span></span>`
             : `<span class="reload ${st.ammo === 0 ? 'solid' : ''}"><span class="unskew">RELOAD ▸▸</span></span>`) : ''}
-        <div class="nums"><span class="mag tab ${lowMag ? 'warn' : ''}" id="mag">${magText(st)}</span><span class="res tab" id="res">${this._resText(st)}</span></div>
+        <div class="nums">${gunStale ? staleTag : ''}<span class="mag tab ${lowMag ? 'warn' : ''}" id="mag">${magText(st)}</span><span class="res tab" id="res">${this._resText(st)}</span></div>
         ${belowCharge && st.ammo > 0 ? '<div class="enote">NOT ENOUGH ENERGY</div>' : ''}
         <div class="pips" id="pips">${this._pips(st)}</div>
         ${this._heatBar(st)}
@@ -1288,6 +1297,12 @@ export class Hud {
     if (!r) return '';
     return `<span class="k">${r.word}</span><span class="s">${r.sub}</span><span class="t tab" id="aimleft">${secsLeft(a.leftMs)}<small>SEC</small></span>`
       + `<i class="clr"><b style="width:${pctLeft(a.leftMs, a.totalMs)}%"></b></i>`;
+  }
+  /** F15 x QA review 2026-09-23: an EMP has disarmed the gun (`st.stunned`, engine `_stun`). The trigger does
+   *  nothing until the timer runs out, so the centre slot says so and counts it down. Patched every render. */
+  _stunFx(st) {
+    const s = st.stunned; if (!s) return '';
+    return `<span class="k">STUNNED</span><span class="s">YOUR GUN IS DISARMED</span><span class="t tab" id="stunleft">${secsLeft(s.leftMs)}<small>SEC</small></span>`;
   }
   /** Bench 2026-09-17: how old the scores on the overlay are. MC pushes every change to a bound phone, so the
    *  numbers are current while the link is up; off the link they are the last push, and the label gives its age.
@@ -1515,6 +1530,7 @@ export class Hud {
       set('batt', st.battery != null ? st.battery + '%' : '—');
       setHtml('fxbar', this._fx(st));                   // S16: the poison countdown
       setHtml('aimfx', this._aimFx(st));                // S53: the smoke countdown (the slot itself is structural)
+      setHtml('stunfx', this._stunFx(st));              // F15: the stun countdown
       const hb = q('hpbar'); if (hb) hb.style.width = `${Math.round(100 * st.hp / st.maxHp)}%`;
       const sb = q('shbar'); if (sb) sb.style.width = `${Math.round(100 * st.armor / st.maxArmor)}%`;
       const shieldb = q('shieldbar'); if (shieldb) shieldb.style.width = `${Math.round(100 * st.shield / st.maxShield)}%`;
@@ -1562,7 +1578,8 @@ export class Hud {
     // period). The line says what fixes it; RECONNECT NOW ends the quiet period at once. It shows in every phase.
     if (st.gunFlapping && st.gunFlapping.quiet) pills.push(`<span class="pill bad" data-flap="${st.gunFlapping.count}" data-quiet="1"><span class="unskew">${down ? 'POWER-CYCLE THE HEADSET' : 'GUN KEEPS DROPPING. POWER-CYCLE THE HEADSET, THEN THE GUN RECONNECTS.'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
     else if (st.phase !== 'idle' && st.gunFlapping) pills.push(`<span class="pill warn" data-flap="${st.gunFlapping.count}"><span class="unskew">${down ? 'HEADSET OFF? TURN IT ON' : 'HEADSET OFF? TURN THE HEADSET ON.'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
-    else if (st.phase !== 'idle' && !st.bleUp) pills.push(`<button class="pill bad" data-act="onReconnectGun"><span class="unskew">GUN LINK LOST — TAP TO RECONNECT</span></button>`);
+    // QA-02: on the live HUD this is a solid, steady bar (16 px, no blink): the frozen numbers below depend on it.
+    else if (st.phase !== 'idle' && !st.bleUp) pills.push(`<button class="pill bad${st.phase === 'live' && !down ? ' gunlost' : ''}" data-act="onReconnectGun"><span class="unskew">GUN LINK LOST — TAP TO RECONNECT</span></button>`);
     if (st.moment && st.moment.kind === 'go' && st.phase === 'live' && st.bleUp) pills.push(`<span class="pill ok"><span class="unskew">WEAPONS HOT</span></span>`);   // never 'hot' while the gun link is down
     const prompt = st.resync ? `<div class="prompt"><span class="unskew"><span class="pl">GUN RELINKED</span><span class="pi">${esc(st.resync.prompt).toUpperCase()}</span></span></div>` : '';
     // S57 / QA-05: the IR callout bus and the hill transitions render as the callout CARD (`_co`), the same
@@ -1865,9 +1882,22 @@ export class Hud {
     // background at all. This way the day colour is the fallback.
     el.innerHTML = `<div class="vig"></div>
       <div class="hc"><span class="dmg tab">-${esc(d.dmg)}</span>
-      <span class="src" style="background:${TEAM_COLOR[tk] || 'var(--bad)'};color:${TEAM_INK[tk] || '#fff'}"><span class="unskew">HIT${where ? ' · ' + where : ''}</span></span>${this._hitWeapon(d.weapon)}</div>`;
+      <span class="src" style="background:${TEAM_COLOR[tk] || 'var(--bad)'};color:${TEAM_INK[tk] || '#fff'}"><span class="unskew">HIT${where ? ' · ' + where : ''}</span></span></div>`;
     this._swap('hit', el, 260, 700);
+    this._hitWpn(this._hitWeapon(d.weapon));
     this.h.onHaptic && this.h.onHaptic('hit');
+  }
+
+  /** QA-04 (2026-09-23): the S56 weapon line outlives the hit flash. The flash is gone in 700 ms, far too soon to
+   *  read a name in motion, so the name has its own overlay: 16 px for HIT_WPN_BIG_MS, then a small
+   *  LAST HIT line until HIT_WPN_GONE_MS. A new hit restarts both. No line when the phone has no claim. */
+  _hitWpn(html) {
+    if (!html) return;
+    const el = document.createElement('div'); el.className = 'mo hitwpn';
+    el.innerHTML = html;
+    const node = this._swap('hitwpn', el, HIT_WPN_GONE_MS - 400, HIT_WPN_GONE_MS);
+    clearTimeout(this._hwT);
+    this._hwT = setTimeout(() => node.classList.add('last'), HIT_WPN_BIG_MS);
   }
 
   // GAINING a pool: heal, armour pickup, shield grant. Colour matches the pool so the player learns

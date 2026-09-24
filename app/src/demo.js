@@ -332,6 +332,15 @@ export function startDemo({ engine, log }) {
       // Bench 2026-09-17 (brx-weapons item 6): charge_rifle's cell reads "ammo left" but a full charge
       // costs 10 -- the first $ALCD sets the 40-cell cap, the second lands the test value.
       chargeRifle: () => { player.loadout = { weapons: [{ weapon_id: 'charge_rifle' }] }; },
+      // QA lane B (2026-09-23): three live states the stage had no button for. Each goes through the real engine.
+      // OVERHEAT: the charge rifle, then the gun's own $ALCD at heat 108 (past the lockout), fed until the engine
+      // takes it (F259's echo window can swallow a single frame, see screens.mjs `setAmmo`).
+      overheat: () => { engine.player.loadout.weapons[0] = { weapon_id: 'charge_rifle' }; let n = 0;
+        const feed = () => { engine.feedFrame('$ALCD,3,100,0,80,108,*'); if (!engine.state().overheatShown && ++n < 25) setTimeout(feed, 200); }; feed(); },
+      // F15 stun: the host's `config.stun` on (set before the bundle, see the stage), then one EMP word (proto 8) from VIPER.
+      stun: () => { if (engine.config && !engine.config.stun) engine.config.stun = { duration_s: 10 }; engine.feedFrame(`$HIR,4,8,19,${foe.tid},8,0,0,*`); },   // the button turns the host's stun on first
+      // 2026-09-19 station respawn: the bundle's respawn_profile gives a station life 2 s of visible protection (`shielded`).
+      stationRespawn: () => { if (engine.alive) return; engine._revive(false, 3); hp = engine.maxHp; armor = engine.maxArmor; setTimeout(lcd, 250); },
       chargeAmmo: (ammo, reserve = 80) => { engine.feedFrame('$ALCD,40,100,0,80,0,*'); engine.feedFrame(`$ALCD,${ammo},100,0,${reserve},0,*`); },
       alt: () => { engine.feedFrame('$BUT,1,1,*'); engine.feedFrame('$BUT,1,0,*'); },   // the ALT button: a swap with two weapons, a reload with one
       altCycle: () => {                                     // what a real swap looks like: ALT, then the next shot reports the new slot
@@ -501,6 +510,10 @@ export function startDemo({ engine, log }) {
       'down-at':           [[0, () => ev.scanner(3)], ...live, [2300, 'die'], [2400, () => ev.station(-58, true)]],
       'live-alert':        [...live, [2300, () => ev.alert('bomb_planted')]],
       'live-medals':       [...live, [2300, () => ev.killMedals(['double_kill', 'killing_spree'])]],
+      // QA lane B (2026-09-23): the station-respawn spawn shield (2 s, `shielded`), the F15 stun, and OVERHEAT.
+      'live-shield':       [...live, [2300, 'die'], [2800, 'stationRespawn']],
+      'live-stunned':      [[0, () => { config.stun = { duration_s: 10 }; }], ...live, [2300, 'stun']],
+      'live-overheat':     [...live, [2300, 'overheat']],
       'redeploy':          [...live, [2300, 'die'], [2800, 'respawn']],
       'live-nogun':        [...live, [2300, 'dropGun']],
       'resync':            [...live, [2300, 'dropGun'], [3300, 'relinkGun']],   // a live rejoin → the 3 s RECONCILING takeover (S7.1)
