@@ -42,6 +42,8 @@ cd /mnt/c && "$CLI" compile --fqbn "m5stack:esp32:m5stack_sticks3:PartitionSchem
 
 ## Gate 1: flash, boot, serial
 
+**Restart: single-click the small side button** (docs.m5stack.com/en/core/StickS3).
+
 1. Tony plugs the Stick into the laptop by USB-C and powers it on. The agent lists ports and picks the `0x303a` one.
 2. The agent flashes: `"$CLI" upload --fqbn <as gate 0> -p COM<n> 'C:\Users\Tony\brx-sticks3\m5sticks3'`. The
    factory firmware ignores a software reset, so the first flash needs download mode: Tony holds the Stick's
@@ -183,4 +185,59 @@ off itself).
    against it instead of the onboard receiver. The firmware today only reads G42 for receive, so this test needs a
    small firmware change first to read a Grove pin instead, and **that change is not built**. Write it before the
    swap session, not during it.
+
+## Results (2026-09-24, Stick only, firmware `96fb1868`)
+
+No gun, no BLE use, USB on COM10, plus a temporary serial log of button DOWN/HOLD/UP edges with the hold threshold.
+
+- **SELFTEST: still FAIL, same F314 distortion.** 25 bits sent (`1111000000100000100000010`), 23 decoded
+  (`00100000010000100000010`); the first mark read 2069 us, then distorted. Consistent with F314; not a new gate.
+- **A click opens DIAGNOSTICS, 20 s idle returns home. CONFIRMED.**
+- **`setHoldThresh` fix (round 1, `25ed6096`). CONFIRMED.** Serial: B's DOWN at 702.432 s, HOLD at 704.432 s,
+  exactly 2.000 s against `thresh=2000`; A's threshold read 1000. The earlier "B fires at 1 s" reading is now
+  explained as confounded, not refuted: Tony's "1 s" presses ran about 3.5 s, and a 30 s no-touch control logged
+  nothing, so that run proved nothing either way. **INCONCLUSIVE**, superseded by this clean reading.
+- **A+B joint-hold suppression. CONFIRMED.** Releasing at 2.5 s and 4.5 s fired the single-button holds inside the
+  library but produced no RESET and no MODE change.
+- **A+B force restart at 10 s. CONFIRMED.** Countdown shown, log `FORCE RESTART (A + B held 7 s)`, ready again
+  1.25 s later, boot count rose. New finding: buttons still held at boot logged a "BTN A hold" on the fresh boot
+  (harmless; being fixed).
+- **Side button (small power button, green LED), on USB power. CONFIRMED.** Single click restarts (screen off
+  then on); double click powers off even on USB; a further single click powers it back on. Boot count rose 4 -> 9
+  across these presses. F332's lock must block both gestures; F332 stays open (the PM1 write is unconfirmed).
+- **Gap, standalone bench mode: HILL and BRIDGE show the same home screen.** Serial logged `MODE HILL`; the
+  screen did not change. Filed against F333.
+- **Decision:** persist the last `station_config` in NVS so a restart comes back as the same station; the
+  operator lock (`lock_s`) stays RAM-only by design. Built and pushed as `37a2b064`.
+- **Buttons held through a force restart are ignored at boot (`37a2b064`). CONFIRMED.** A+B held about 12 s:
+  `FORCE RESTART` at 7 s, ready 1.25 s later, then no BTN edge, no second restart and no RESET while Tony kept
+  holding. The restore itself is untested: it needs Wi-Fi and a config from MC.
+- **Bench-mode hint fixed and CONFIRMED.** The hint bar showed the operator's "HOLD B: RESET" in bench mode,
+  where B flips HILL/BRIDGE. It now reads "<MODE>   A: DIAG   HOLD B: MODE"; a B hold changed it to BRIDGE on
+  screen. This closes the HILL/BRIDGE look-alike gap filed against F333.
+- **Bench BRIDGE home fixed and CONFIRMED.** BRIDGE showed the HILL "NEUTRAL, SHOOT TO CAPTURE" screen, which is
+  untrue: a BRIDGE only repeats a grenade. With no beacon it now shows "BRIDGE / NO BEACON / MOVE NEAR A GRENADE"
+  (Tony read it in full on the Stick); a live beacon shows the owner under a BRIDGE heading (host-tested only).
+
+## Results (2026-09-24 afternoon): transmit range, the USB-host TX bug, and the backlight noise fix
+
+Stick on COM10, rig receiver on COM7, rig emitter on COM8 (the older `ir_emit.ino`, misreads `--gap`). No gun on
+BLE; Tony fired a gun by hand. Full evidence: `experiment-log/2026-09.md`, 2026-09-24 afternoon entry.
+
+- **Transmit range CONFIRMED at 5 cm, 30 cm, 1 m and 3 m.** The HILL beacon decoded on the rig receiver at every
+  distance; at 3 m on battery with no USB host, 3 of 4 beacons decoded clean and 1 was two bits short.
+- **Bug found and fixed (`fc8c3db4`): a standalone beacon needs a live USB host.** The Stick stopped beaconing
+  once the flashing PC closed its serial port, an HWCDC TX-timeout stall in `loop()`. Fixed with
+  `Serial.setTxTimeoutMs(0)`; A/B/A/B on the bench confirmed both the bug and the fix. Filed and closed as
+  **F335**; every field station was affected.
+- **Safety lesson: never fire a shot word near a gun on this bench.** A `TXN` test hit Tony's gun and did damage.
+  Use the silent proto-15 hill word for bench transmit tests instead.
+- **Receive still fails at every distance and every source tried** (gun, rig emitter, fresh-boot BRIDGE control).
+  The Stick's own receiver loops back its own transmitter at millimetre range and re-arms correctly, so the
+  conclusion is the receiver hardware itself, not firmware or the gun's carrier. F314 stays open. Next: the
+  second Stick with the emitter at 5 cm, then an external 38 kHz receiver.
+- **Noise source found and fixed: the idle-dim backlight PWM (`2a836bce`), not ambient IR.** This closes F314's
+  ranked cause 3 without closing F314 itself; the missing decode remains unexplained.
+- **Two retractions:** the `PINSCAN` floating-pin reading (invalid, this receiver is RMT-only) and the claimed
+  front-of-word decoder bug (`fold_glitches` already handles it).
 

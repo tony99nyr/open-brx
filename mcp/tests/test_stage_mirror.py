@@ -60,13 +60,25 @@ async def stop(st, id=None):
 # F102 -- the phone CONTROL POINT (kind 5), mirrored from engine.js `_onControlAdvert` / `_hillTick`
 # ======================================================================================================
 
+def test_byte_15_taker_is_decoded_and_encoded_as_beacon_js_does():
+    """F331: a powerup station's winner rides in byte 15 (`taker`, beacon.js `decodeUuid`); the stage ignored it."""
+    u = encode_advert_uuid("station", 4, "powerup", 255, 0, 110, taker=7)
+    raw = u.replace("-", "")
+    assert raw[30:32] == "07", "taker at byte 15"
+    d = decode_advert_uuid(u)
+    assert d is not None and d["taker"] == 7 and d["value"] == 110
+    # CONTROL: the same advert with byte 15 cleared names nobody
+    d0 = decode_advert_uuid(raw[:30] + "00")
+    assert d0 is not None and d0["taker"] == 0
+
+
 def test_the_advert_is_decoded_through_the_phones_byte_layout_not_a_side_door():
     """The stage feeds an injected advert through beacon.js's 16-byte layout: team is byte 9, FLAGS byte 10,
     progress byte 11. A literal UUID lands in the same model as the fields do; anything that is not an Open
     BRX advert, or not a control point, is refused rather than guessed at."""
     u = encode_advert_uuid("station", 7, "control", 1, S.CONTROL_STATE["held"] | S.CONTROL_STATE["rising"], 42)
     d = decode_advert_uuid(u)
-    assert d == {"role": "station", "id": 7, "kind": "control", "team": 1, "state": 5, "value": 42, "seq": 0, "game": 0, "threshold": 0}
+    assert d == {"role": "station", "id": 7, "kind": "control", "team": 1, "state": 5, "value": 42, "seq": 0, "game": 0, "threshold": 0, "taker": 0}
     raw = u.replace("-", "")
     assert raw[18:20] == "01" and raw[20:22] == "05" and raw[22:24] == "2a", "team / flags / value at bytes 9 / 10 / 11"
     # CONTROL: a flipped magic byte is not ours; a respawn-kind advert is not a control point
@@ -1410,6 +1422,9 @@ KNOWN_UNMIRRORED = {
     "resumeSchedule", "_event", "_probe", "_checkEcho", "ackEnd", "onResultPush", "resultWait",
     # bench 2026-09-17: BrxLink's flap count, passed through to the HUD and MC; no game rule reads it
     "setGunFlapping",
+    # F293: BrxLink's `$VERSION` headset probe. The frames it sends and the headset state it shows the HUD; no game rule
+    # reads either, and the stage has no BrxLink
+    "linkProbeFrames", "setHeadsetJoin",
     # F289: what the node tells MC about owed spawn protection (respawn fact + statusBody); no game rule reads it
     "_protectOwedMs",
     # F272: node/BrxLink liveness and locked-head recovery. The stage is itself the deterministic gun driver,

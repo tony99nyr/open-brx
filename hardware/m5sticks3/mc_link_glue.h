@@ -49,6 +49,16 @@ Preferences mcPrefs;
 String wifiSsid, wifiPass;
 String stationAppVer = "h8-0.1";  // bumped by hand; no build-time git sha injection in this sketch yet
 bool actionsEnabled = false;      // mirrors link.actions_enabled(); persisted so ACTIONS survives a reboot
+uint32_t bootCount = 0;           // A58: incremented once per boot in mcSetup(); rides on every status
+
+// A58: count this boot. MC reads `boot_count` (with `uptime_s`) off the status heartbeat to notice
+// that a Stick restarted mid-match -- the one event that silently drops its RAM-only match lock.
+static void mcCountBoot() {
+  mcPrefs.begin("brxmc", false);
+  bootCount = mcPrefs.getUInt("boots", 0) + 1;
+  mcPrefs.putUInt("boots", bootCount);
+  mcPrefs.end();
+}
 
 static void mcLoadPrefs(StationLink& link) {
   mcPrefs.begin("brxmc", true);
@@ -57,7 +67,7 @@ static void mcLoadPrefs(StationLink& link) {
   String nodeId = mcPrefs.getString("node_id", "");
   String nodeKey = mcPrefs.getString("node_key", "");
   uint8_t assoc = mcPrefs.getUChar("assoc", (uint8_t)AssocMode::MUSTER);
-  actionsEnabled = mcPrefs.getBool("actions", false);  // default OFF (polish round 1)
+  actionsEnabled = mcPrefs.getBool("actions", true);  // default ON since MC accepts station_action (A56, f3fe3cf6); ACTIONS OFF for an older MC
   mcPrefs.end();
   if (nodeId.length() == 0) {
     // A stable id, or MC sees a new item every power cycle (§5g.2). No node_id was ever chosen, so
@@ -85,6 +95,9 @@ static void mcSaveWifi(const String& ssid, const String& pass) {
   mcPrefs.begin("brxmc", false);
   mcPrefs.putString("ssid", ssid);
   mcPrefs.putString("pass", pass);
+  // A new network means a new event: a station config saved at the last one must not come back.
+  mcPrefs.remove("station_cfg");
+  mcPrefs.remove("station_sid");
   mcPrefs.end();
   wifiSsid = ssid;
   wifiPass = pass;
@@ -106,6 +119,77 @@ static void mcSaveActionsEnabled(bool on) {
   mcPrefs.begin("brxmc", false);
   mcPrefs.putBool("actions", on);
   mcPrefs.end();
+}
+
+// ---- restart survival: the last applied station_config ("station_cfg", no lock_s) ---------------
+// SavedStationConfig (station_link.h, host-tested) decides WHEN to write; these only touch flash. A
+// same-config re-push (MC's mid-match lock carrier) serialises to the same string and writes nothing.
+SavedStationConfig savedConfig;
+
+static void mcWriteSavedConfig() {
+  mcPrefs.begin("brxmc", false);
+  mcPrefs.putString("station_cfg", savedConfig.stored().c_str());
+  mcPrefs.putString("station_sid", savedConfig.session_id().c_str());  // the WELCOME session it came in
+  mcPrefs.end();
+  Serial.println("# station_config saved (restart survival)");
+}
+
+static void mcEraseSavedConfig() {
+  mcPrefs.begin("brxmc", false);
+  mcPrefs.remove("station_cfg");
+  mcPrefs.remove("station_sid");
+  mcPrefs.end();
+  Serial.println("# saved station_config erased");
+}
+
+// At boot, before Wi-Fi: play the saved station at once (see restore_station_config's comment for
+// why this never latches the MUSTER drop and never carries a lock).
+static void mcRestoreSavedConfig(StationLink& link) {
+  mcPrefs.begin("brxmc", true);
+  String body = mcPrefs.getString("station_cfg", "");
+  String sid = mcPrefs.getString("station_sid", "");
+  mcPrefs.end();
+  savedConfig.loaded(body.c_str(), sid.c_str());
+  if (!savedConfig.has()) return;
+  // Review round 1: bench mode (no Wi-Fi SSID set) never restores; the saved copy is left alone.
+  if (wifiSsid.length() == 0) {
+    Serial.println("# saved station_config kept but not restored (no Wi-Fi set: bench mode)");
+    return;
+  }
+  StationAssignment a = savedConfig.restore();
+  if (!link.restore_station_config(a)) {
+    Serial.println("# saved station_config does not parse; erasing it");
+    if (savedConfig.note_released()) mcEraseSavedConfig();
+    return;
+  }
+  Serial.printf("RESTORED kind=%s team=%d id=%d game=%d (from flash; unlocked)\n", a.kind.c_str(), a.team,
+                a.id, a.game);
+}
+
+// ---- A58: the PMIC side-button lock (TODO, deliberately NOT written) -------------------------------
+// The StickS3's small side button is wired to the M5PM1 PMIC, not the ESP32: a single click resets
+// the Stick and a double click powers it off, whatever the firmware says. The brief for A58 names
+// M5PM1 register 0x49 bit0 (disable the single-click reset) and register 0x4A bit0 (disable the
+// double-click power-off). What the installed M5Unified 0.2.21 source DOES confirm: the PM1 sits at
+// I2C 0x6E (`M5PM1_Class::DEFAULT_ADDRESS`, utility/power/M5PM1_Class.hpp; also M5GFX.cpp's
+// `m5pm1_i2c_addr`), `M5.Power.M5pm1` is public on an ESP32-S3 build, and it inherits I2C_Device's
+// public read-modify-write `bitOn(reg, mask)` / `bitOff(reg, mask)` (utility/I2C_Class.hpp). What it
+// does NOT confirm: its register table (utility/power/M5PM1_Class.cpp) stops at 0x45 (IRQ_MASK3);
+// 0x49 and 0x4A are not named anywhere in M5Unified or M5GFX. So nothing here writes the PM1.
+//
+// TODO(A58, bench + M5PM1 datasheet): once 0x49/0x4A are confirmed from the datasheet, the body is
+//   locked ? M5.Power.M5pm1.bitOn(0x49, 0x01) && M5.Power.M5pm1.bitOn(0x4A, 0x01)
+//          : M5.Power.M5pm1.bitOff(0x49, 0x01) && M5.Power.M5pm1.bitOff(0x4A, 0x01)
+// guarded by `M5.Power.getType() == m5::Power_Class::pmic_m5pm1`. NEVER touch bit7 of 0x49 (the
+// download-mode lock) or any other bit or register. The call sites below (a lock starting or ending,
+// and unconditionally clear at boot) are already in place, so enabling it is this one body.
+// Until then a player CAN restart a locked Stick with the side button; the restart drops the lock,
+// and MC sees it as a moved `boot_count`.
+bool pmicSideButtonLocked = false;  // what the PMIC was last asked for (today: only what we WOULD ask)
+static void pmicSetSideButtonLock(bool locked) {
+  pmicSideButtonLocked = locked;
+  Serial.printf("# PMIC side-button lock %s (TODO: not written, register map unconfirmed)\n",
+                locked ? "ON" : "OFF");
 }
 
 // ---- the typed floor: `MC <ws-url>` (never persisted across reboots, §5g.3) ---------------------
@@ -184,6 +268,10 @@ class ClaimScanCallbacks : public BLEAdvertisedDeviceCallbacks {
 ClaimScanCallbacks claimScanCallbacks;
 bool claimScanConfigured = false;
 
+// Set when something the operator should see changed: an MC frame, a self-spawn, a claim, a link change.
+// The .ino reads and clears it, and treats it like a button press: repaint AND wake the backlight.
+static volatile bool mcScreenWake = false;  // volatile: the claim-scan callback sets it too
+
 // Polish round 2 (HIGH): this callback must NEVER touch the WebSocket -- it runs off the BLE scan's
 // own completion, not mcLoop, and the library is not written to be called from there (nor does any
 // other I/O belong in a callback). `award_claim` only enqueues the report (station_link.h); mcLoop is
@@ -191,6 +279,7 @@ bool claimScanConfigured = false;
 static void onClaimScanComplete(BLEScanResults /*results*/) {
   ClaimWinner w = link.claims().resolve_batch();
   if (link.award_claim(w, millis())) {
+    mcScreenWake = true;  // the player at the station just took it: show TAKEN BY at once
     Serial.printf("CLAIM station=%d taker=%u (queued for MC)\n", link.assignment().id, w.player_num);
   }
   BLEDevice::getScan()->clearResults();
@@ -229,6 +318,16 @@ static void mcSendHello() {
   link.ws_open_hello_sent();
 }
 
+// The MUSTER drop's radio action. WHEN is station_link.h's decision (take_muster_drop, host-tested);
+// this only performs it, from mcHandleFrame or mcLoop.
+static void mcPerformMusterDrop() {
+  Serial.println("MUSTER: dropping the Wi-Fi association for the match (LINK RECONNECT to rejoin)");
+  ws.disconnect();
+  WiFi.disconnect();
+  wsWantOpen = false;
+  link.wifi_down();
+}
+
 static void mcHandleFrame(const String& text) {
   bool ok = false;
   json::Value env = json::parse(std::string(text.c_str()), &ok);
@@ -238,35 +337,48 @@ static void mcHandleFrame(const String& text) {
   if (kind == "welcome") {
     WelcomeMsg w = parse_welcome(body);
     link.apply_welcome(w);
+    mcScreenWake = true;
     if (!w.node_key.empty()) mcSaveNodeKey(w.node_key.c_str());
     Serial.printf("WELCOME session=%s\n", w.session_id.c_str());
+    // Review round 1 (HIGH): a saved config from another MC session is an old match's; erase it, and
+    // drop the assignment too while it is still the restored one (station_link.h decides).
+    bool wasRestored = link.restored();
+    if (w.ok && apply_welcome_to_saved(link, savedConfig, w.session_id)) {
+      mcEraseSavedConfig();
+      if (wasRestored && !link.restored()) Serial.println("STALE restored config (new MC session): UNASSIGNED");
+    }
   } else if (kind == "station_config") {
     StationAssignment a = parse_station_config(body);
     if (a.present) {
       // §5g.4 + polish round 2: apply_station_config() decides AND latches `dropped_for_match()`
       // (a game-byte edge under MUSTER, including the very first arm after boot) -- this is only the
       // radio action the glue owns; the decision itself is pure and tested in station_link.h.
-      link.apply_station_config(a);
-      Serial.printf("MC-ARMED kind=%s team=%d id=%d game=%d threshold=%d\n", a.kind.c_str(), a.team,
-                    a.id, a.game, a.threshold);
-      if (link.dropped_for_match()) {
-        Serial.println("MUSTER: dropping the Wi-Fi association for the match (LINK RECONNECT to rejoin)");
-        ws.disconnect();
-        WiFi.disconnect();
-        wsWantOpen = false;
-        link.wifi_down();
-      }
+      uint32_t rx = millis();
+      link.apply_station_config(a, rx);  // A58: also REPLACES the match lock, counted from `rx`
+      // Only when it differs (lock_s excluded) or the session is new.
+      if (savedConfig.note_applied(a, link.session_id())) mcWriteSavedConfig();
+      mcScreenWake = true;
+      Serial.printf("MC-ARMED kind=%s team=%d id=%d game=%d threshold=%d lock_s=%d\n", a.kind.c_str(), a.team,
+                    a.id, a.game, a.threshold, a.lock_s);
+      // Due now, except the first config after a restore: that drop waits for MC's re-anchoring
+      // station_update, or MUSTER_DROP_DEFER_MS (review round 1); mcLoop and the update path retry.
+      if (link.take_muster_drop(rx)) mcPerformMusterDrop();
+      else if (link.muster_drop_pending()) Serial.println("MUSTER: drop deferred until MC's station_update");
     }
   } else if (kind == "station_update") {
     StationUpdateMsg u = parse_station_update(body);
     if (link.apply_station_update(u, millis())) {
+      mcScreenWake = true;
       Serial.printf("STATION_UPDATE id=%d available=%d next_spawn_in_ms=%ld\n", u.id, u.available,
                     u.next_spawn_in_ms);
+      if (link.take_muster_drop(millis())) mcPerformMusterDrop();  // a deferred drop: the re-anchor landed
     }
   } else if (kind == "control") {
     std::string cmd = parse_control_cmd(body);
     if (cmd == "release_utility") {
       link.apply_release();
+      if (savedConfig.note_released()) mcEraseSavedConfig();  // a released Stick must not come back armed
+      mcScreenWake = true;
       Serial.println("RELEASED (control.release_utility): back to UNASSIGNED");
     }
   }
@@ -316,15 +428,29 @@ static void mcLoop(uint32_t now) {
   // (`has_powerup_assignment()`), never on link state. (Polish round 3: they used to sit after the `!wifiUp` early
   // return below, so a muster station never spawned or awarded during play.)
   if (link.has_powerup_assignment()) {
-    link.tick_powerup(now);
+    if (link.tick_powerup(now)) mcScreenWake = true;  // a SELF-SPAWN: the item is back
     mcPollClaimScan(now);
   }
+  // A58: the match lock counts down on millis() whatever the link is doing (MUSTER is off Wi-Fi for
+  // the whole match) and auto-unlocks at zero. The PMIC follows the lock on every edge: a start, a
+  // replacement by a later config, lock_s 0, a release, or the countdown running out.
+  if (link.poll_lock(now)) {
+    mcScreenWake = true;
+    Serial.println("UNLOCKED (match lock ran out)");
+  }
+  // A deferred MUSTER drop whose 2 s ran out with no station_update (review round 1).
+  if (link.take_muster_drop(now)) mcPerformMusterDrop();
+  bool wantPmicLock = link.lock().locked(now);
+  if (wantPmicLock != pmicSideButtonLocked) pmicSetSideButtonLock(wantPmicLock);
   // Wi-Fi association.
   bool wifiUp = WiFi.status() == WL_CONNECTED;
   if (wifiUp && link.state() == LinkState::JOINING_WIFI) link.wifi_up();
   if (!wifiUp && link.state() != LinkState::NOT_CONFIGURED && link.state() != LinkState::JOINING_WIFI) {
     link.wifi_down();
   }
+  // Any link state change (Wi-Fi lost, MC found, joined, closed) is an event the operator should see.
+  static LinkState lastLinkState = link.state();
+  if (link.state() != lastLinkState) { lastLinkState = link.state(); mcScreenWake = true; }
   if (!wifiUp) {
     // Polish round 2 (CRITICAL): a deliberate MUSTER drop must STAY dropped. Without this guard the
     // very next tick's kick re-associated Wi-Fi immediately, undoing the drop `mcHandleFrame` just
@@ -375,6 +501,11 @@ static void mcLoop(uint32_t now) {
     f.threshold = a.present ? a.threshold : STICK_DEFAULT_THRESHOLD_DBM;
     f.live = stationLive;  // the real BLE advert state, not merely "MC armed us" (polish round 1)
     f.armed = link.state() == LinkState::ASSIGNED;
+    f.has_health = true;  // A58
+    f.uptime_s = now / 1000;
+    f.boot_count = bootCount;
+    f.assoc = link.mode() == AssocMode::HELD ? "held" : "muster";
+    f.lock_s = (long)link.lock().remaining_s(now);
     String body = String(build_status_body(f).c_str());
     char envId[13];
     snprintf(envId, sizeof envId, "%08lx%02x", (unsigned long)now, (unsigned)esp_random() & 0xff);
@@ -473,6 +604,9 @@ static bool mcSendResetAction() {
 // ---- setup ------------------------------------------------------------------------------------- //
 static void mcSetup() {
   mcLoadPrefs(link);
+  mcCountBoot();                   // A58
+  mcRestoreSavedConfig(link);      // restart survival: before WiFi.begin, so the station plays at once
+  pmicSetSideButtonLock(false);    // A58: every boot starts unlocked, the PMIC included
   bootRandomPrefix = esp_random();  // the fixed half of every station_action envelope id this boot
   WiFi.mode(WIFI_STA);
   if (wifiSsid.length()) WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());

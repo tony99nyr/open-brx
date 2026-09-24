@@ -3,6 +3,7 @@
 // place so CSS animations don't restart every tick. Moments (T-MINUS, KILL, DOWN, REDEPLOY) live in
 // #overlay so they animate independently of the base HUD.
 import * as DS from './deathscreen.js';   // the DOWN screen's recap: THIS LIFE and THE GAME NOW
+import * as SV from './shieldmeter.js';   // the shield meter (the Visor, Tony 2026-09-24): the strip on the top edge
 
 const TEAM_COLOR = { blue: 'var(--team-blue)', yellow: 'var(--team-yellow)', red: 'var(--team-red)', green: 'var(--team-green)' };
 const TEAM_INK = { blue: '#04121e', yellow: '#1a1400', red: '#1a0404', green: '#041a0c' };
@@ -19,14 +20,11 @@ const pad2 = n => String(Math.max(0, Math.floor(n))).padStart(2, '0');
 const digits = n => pad2(Math.min(99, Math.max(0, Math.floor(n)))).split('').map(c => `<span class="d">${c}</span>`).join('');
 const mmss = ms => { const s = Math.max(0, Math.round(ms / 1000)); return `${pad2(s / 60)}:${pad2(s % 60)}`; };
 const mmssS = s => mmss(Math.max(0, Number(s) || 0) * 1000);   // the wire carries possession in SECONDS
-/** A56: the preset shield bar never passes 100%, and it excludes the overshield (which has its own block). */
-const shieldPct = st => { const os = st.powerup && st.powerup.overshield; const base = st.shield - (os ? os.left : 0);
-  return st.maxShield > 0 ? Math.max(0, Math.min(100, Math.round(100 * base / st.maxShield))) : 0; };
-/** Polish r2: the preset shield pool alone, so the number matches its bar and "+N" names the overshield on top. */
-const shieldBase = st => { const os = st.powerup && st.powerup.overshield; return Math.max(0, st.shield - (os ? os.left : 0)); };
 /** Polish r2 M2: `max_armor: 0` (Silenced Sniper, the Shields preset) painted `width:NaN%`, which draws FULL. */
-const armorPct = st => (st.maxArmor > 0 ? Math.max(0, Math.min(100, Math.round(100 * st.armor / st.maxArmor))) : 0);
-const oshieldPct = st => { const os = st.powerup && st.powerup.overshield; return os && os.amount > 0 ? Math.max(0, Math.min(100, Math.round(100 * os.left / os.amount))) : 0; };
+const armorPct = (st, peak = 0) => { const top = Math.max(st.maxArmor || 0, peak); return top > 0 ? Math.max(0, Math.min(100, Math.round(100 * st.armor / top))) : 0; };
+/** Tony 2026-09-24: "If there is no armor we dont need the 0 or the empty armor bar. If we have armor then the number and
+ *  bar show." A game with armour, or armour granted in a game without it (a perk, a pickup). */
+const hasArmor = st => st.maxArmor > 0 || st.armor > 0;
 /** A56: a spawn countdown the way Tony writes it, "1:40" (rounded UP: it never reads 0:00 while the item is still away). */
 const mss = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${pad2(s % 60)}`; };
 /** A56: an item's own colour from the wire, only ever a literal `#rrggbb` (it lands in a style attribute). */
@@ -51,6 +49,9 @@ const MEDAL_LABEL = { first_blood: 'FIRST BLOOD', double_kill: 'DOUBLE KILL', tr
 /** App 0.4.2: the words of the picker's "Connecting to <gun>" block, from `hud.connecting`. */
 export function connectingText(conn) {
   const nm = String((conn && conn.name) || 'your gun');
+  // F293 polish (M3): the headset state from BrxLink's `$VERSION` probe, while the pick waits for it
+  if (conn && conn.failed && conn.headset === 'not_joined') return { head: `Headset not joined to ${nm}`, line: 'Power-cycle the headset, then tap Scan again.' };
+  if (conn && !conn.failed && conn.headset === 'joining') return { head: `Connecting to ${nm}…`, line: 'Headset joining the gun, about 15 s' };
   if (conn && conn.failed) return { head: `Could not connect to ${nm}`, line: 'Turn the gun off and on, then tap Scan again.' };
   // Review 2026-09-19: armed/live makes the loop retry FOREVER (BrxLink.unbounded()), past the `of` it
   // started with -- app.js sends `of: null` for that case, so the count is never printed once `attempt`
@@ -298,6 +299,7 @@ export class Hud {
     // sends nothing and touches no engine state. `_cueAt` / `_cueT` drive the ammo gauge's shot-ready cue.
     this.board = null; this._cueAt = null; this._cueT = null;
     this.info.addEventListener('click', () => this.toggleDiag());
+    this._svFx = { shield: null };   // the shield meter's memory between frames (its one-shot hit flash)
     this.hudEl.addEventListener('click', e => this._click(e));
     this.diag.addEventListener('click', e => this._click(e));
     // The chip bar is a sibling of #hud, so its pill buttons (GUN LINK LOST, RECONNECT NOW) need their own listener:
@@ -451,6 +453,8 @@ export class Hud {
 
   render(st) {
     this._lastSt = st;
+    // armour granted past a max of 0 has no max to be a share of: the bar measures it against the most this life held
+    this._armPeak = st.armor > 0 ? Math.max(this._armPeak || 0, st.armor) : 0;
     if (!st.ended) this.view = null;   // a new match retires a reopened results/history screen
     if (this.board && !(st.phase === 'live' && st.alive)) this.board = null;   // the scores overlay belongs to the live screen only
     this.frame.dataset.team = st.teamKey || 'blue';
@@ -466,9 +470,10 @@ export class Hud {
       chargeCost(st) != null && st.ammo != null && st.ammo < chargeCost(st), st.reserve > 0,   // OUT OF ENERGY / RECHARGE prompt + the NOT ENOUGH ENERGY note are structural too
       // F288: both gun-health facts change live markup. Flatten the objects: joining the objects themselves
       // would turn every non-null value into the same "[object Object]" and miss no_fire → no_answer.
-      st.poolStale && st.poolStale.why, st.cure && st.cure.verdict, !!st.gunFlapping, !!st.reconciling, !!st.gunLocked, st.gunRecovery, st.downReason,
+      st.poolStale && st.poolStale.why, st.cure && st.cure.verdict, !!st.gunFlapping, st.headsetJoin && st.headsetJoin.state, !!st.reconciling, !!st.gunLocked, st.gunRecovery, st.downReason,
       // A56: the powerup hint/held slots exist only in a powerup game; the overshield bar and the shield number are structure
       !!st.powerup, !!(st.powerup && st.powerup.overshield), !!(st.powerup && st.powerup.held && st.powerup.held.active),
+      SV.meterShown(st), hasArmor(st),   // the shield meter exists or not; the armour number and bar exist or not
       // F258: `this.scan.length` used to sit here, so every scan hit that added a device rebuilt the
       // whole screen. The picker's rows, its empty placeholder and its fold are all patched in place
       // by `_patchScan` now, so nothing about the scan is structure any more.
@@ -781,7 +786,8 @@ export class Hud {
     const plates = st.player && mode !== 'setup' ? `${tryout}<div class="plates" ${tw ? 'style="display:none"' : ''}>
         ${this._slotPlate(st, 'primary', mode, ammoLine)}${this._slotPlate(st, 'secondary', mode)}${this._slotPlate(st, 'perk', mode)}
         ${mode === 'kitted' && !tw && (st.canPickPrimary || st.canPickSecondary || st.canPickPerk) ? '<div class="platehint">TAP A SLOT TO CHANGE YOUR LOADOUT</div>' : ''}</div>` : '';
-    const hpar = st.player && mode !== 'setup' ? `<span class="hpar tab"><span style="color:var(--health)">HP ${st.maxHp}</span> · <span style="color:var(--armor)">ARMOR ${st.maxArmor}</span>${st.maxShield > 0 ? ` · <span style="color:var(--shield)">SHIELD ${st.maxShield}</span>` : ''}${st.playerNum ? ` · #${st.playerNum}` : ''}</span>` : '';
+    const hpar = st.player && mode !== 'setup' ? `<span class="hpar tab">${[`<span style="color:var(--health)">HP ${st.maxHp}</span>`, st.maxArmor > 0 ? `<span style="color:var(--armor)">ARMOR ${st.maxArmor}</span>` : '',
+      st.maxShield > 0 ? `<span style="color:var(--shield)">SHIELD ${st.maxShield}</span>` : '', st.playerNum ? `#${st.playerNum}` : ''].filter(Boolean).join(' · ')}</span>` : '';
     // A27/A30 (loadout.md §4.4): a host advance that lands mid-kit is never a silent screen swap, and a refusal
     // from MC is MC's own copy — shown VERBATIM on whichever screen the player is standing on when it arrives.
     const refusal = st.loadoutAck && !st.loadoutAck.ok && st.loadoutAck.reason ? String(st.loadoutAck.reason) : null;
@@ -867,7 +873,7 @@ export class Hud {
     const name = g.name || g.mode_name || String(mode).toUpperCase();
     const mins = g.time_limit_s ? Math.round(g.time_limit_s / 60) : null;
     const rs = g.respawn ? (g.respawn.type === 'none' ? 'NONE · LIVES' : `${g.respawn.type === 'scanner' ? 'AT A SCANNER' : 'AUTO'} · ${g.respawn.delay_s}s`) : (g.respawn_text || '—');
-    const hp = g.health ? `${g.health.max_hp} HP · ${g.health.max_armor} ARMOR${g.health.max_shield > 0 ? ` · ${g.health.max_shield} SHIELD` : ''}` : '—';
+    const hp = g.health ? `${g.health.max_hp} HP${g.health.max_armor > 0 ? ` · ${g.health.max_armor} ARMOR` : ''}${g.health.max_shield > 0 ? ` · ${g.health.max_shield} SHIELD` : ''}` : '—';
     const venue = [g.environment ? String(g.environment).toUpperCase() : null, g.night ? 'NIGHT OPS' : null].filter(Boolean).join(' · ') || '—';
     const rows = [['TEAMS', g.teams_text || '—'], ['WIN', g.win_text || '—'], ['RESPAWN', rs], ['TIME', mins ? `${mins} MIN` : '—'], ['LIFE', hp], ['VENUE', venue]];
     const locked = !st.canPickPrimary && !st.canPickSecondary && !st.canPickPerk;
@@ -1272,9 +1278,9 @@ export class Hud {
     const gunStale = !st.bleUp;
     const mcStale = st.wsState !== 'bound';
     const staleTag = '<span class="staletag" aria-label="stale value">STALE</span>';
-    const os = st.powerup && st.powerup.overshield;   // A56: the overshield block on the shield bar
     const puActive = !!(st.powerup && st.powerup.held && st.powerup.held.active);
-    return `<div class="alive${gunStale ? ' gunstale' : ''}${mcStale ? ' mcstale' : ''}"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
+    const sv = SV.meterShown(st);   // the shield meter: a shield game, or an overshield held
+    return `<div class="alive${gunStale ? ' gunstale' : ''}${mcStale ? ' mcstale' : ''}${sv ? ' sv' : ''}"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
       ${low ? '<div class="firevig"></div>' : ''}
       ${overheating ? '<div class="heatvig"></div><div class="heatword">OVERHEAT</div>' : ''}
       <div class="clockplate" data-act="onBoard" data-arg="team" role="button" aria-label="Team scores"><div class="in"><span class="t tab" id="clock">${mmss(st.clockMs)}</span><span class="m">${esc(st.mode)}</span></div></div>
@@ -1288,10 +1294,10 @@ export class Hud {
         : st.alive && st.aim && AIM_REASON[st.aim.reason] ? `<div class="aimfx ${esc(st.aim.reason)}${overheating ? ' tight' : ''}" id="aimfx">${this._aimFx(st)}</div>`
         : st.alive && st.shielded ? '<div class="spawnshield" role="status"><span class="k">SPAWN SHIELD</span><span class="s">YOU CANNOT BE HIT</span></div>'
         : st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>'}
-      <div class="fxbar" id="fxbar">${this._fx(st)}</div>
-      <div class="vitals${os ? ' os' : ''}"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span>${low ? '<span class="lowtag">LOW</span>' : ''}${gunStale ? staleTag : ''}<span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>${st.maxShield > 0 ? `<span class="shield tab ${shieldBase(st) === 0 ? 'zero' : ''}" id="shield">${shieldBase(st)}</span><span class="hplab shieldlabel">SHIELD</span>` : ''}</div>
+      <div class="fxbar" id="fxbar">${this._fx(st)}</div>${sv ? SV.meterHtml(st, this._svFx) : ''}
+      <div class="vitals"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span>${low ? '<span class="lowtag">LOW</span>' : ''}${gunStale ? staleTag : ''}${hasArmor(st) ? `<span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>` : ''}</div>
         <div class="bar ${low ? 'low' : ''}"><i id="hpbar" style="width:${Math.round(100 * st.hp / st.maxHp)}%"></i></div>
-        ${st.maxArmor > 0 ? `<div class="bar armor"><i id="shbar" style="width:${armorPct(st)}%"></i></div>` : ''}${st.maxShield > 0 ? `<div class="bar shield"><i id="shieldbar" style="width:${shieldPct(st)}%"></i></div>` : ''}${os ? `<div class="bar oshield" id="obarw" style="--item:${itemColor(os.color)}" aria-label="overshield"><i id="obar" style="width:${oshieldPct(st)}%"></i><b id="oval">+${os.left}</b></div>` : ''}</div>
+        ${hasArmor(st) ? `<div class="bar armor"><i id="shbar" style="width:${armorPct(st, this._armPeak)}%"></i></div>` : ''}</div>
       ${st.powerup ? `<div class="puhint" id="puhint" role="status">${this._puHint(st)}</div>` : ''}
       <div class="ammo">${outOfAmmo ? `<span class="reload out solid"><span class="unskew">${energy ? 'OUT OF ENERGY' : 'OUT OF AMMO'}</span></span>`
           : overheating ? `<span class="reload hot solid"><span class="unskew">OVERHEAT</span></span>`
@@ -1595,17 +1601,14 @@ export class Hud {
       if (mode === 'kitted' || mode === 'over' || (mode === 'lobby' && !st.kitOpen && !st.ready)) setHtml('readynote', this._readyNote(st, mode));
     }
     if (st.phase === 'live') {
-      set('clock', mmss(st.clockMs)); set('hp', st.hp); set('sh', st.armor); set('shield', shieldBase(st)); set('mag', magText(st)); setHtml('res', this._resText(st));
-      const shield = q('shield'); if (shield) shield.classList.toggle('zero', shieldBase(st) === 0);
+      set('clock', mmss(st.clockMs)); set('hp', st.hp); set('sh', st.armor); set('mag', magText(st)); setHtml('res', this._resText(st));
       set('batt', st.battery != null ? st.battery + '%' : '—');
       setHtml('fxbar', this._fx(st));                   // S16: the poison countdown
       setHtml('aimfx', this._aimFx(st));                // S53: the smoke countdown (the slot itself is structural)
       setHtml('stunfx', this._stunFx(st));              // F15: the stun countdown
       const hb = q('hpbar'); if (hb) hb.style.width = `${Math.round(100 * st.hp / st.maxHp)}%`;
-      const sb = q('shbar'); if (sb) sb.style.width = `${armorPct(st)}%`;
-      const shieldb = q('shieldbar'); if (shieldb) shieldb.style.width = `${shieldPct(st)}%`;
-      const ob = q('obar'); if (ob) ob.style.width = `${oshieldPct(st)}%`;   // A56: the overshield block drains first
-      if (st.powerup && st.powerup.overshield) set('oval', `+${st.powerup.overshield.left}`);
+      const sb = q('shbar'); if (sb) sb.style.width = `${armorPct(st, this._armPeak)}%`;
+      SV.patchMeter(this.hudEl, st, this._svFx);   // the shield meter (the overshield drains first, on the same strip)
       if (st.powerup) { const hh = this._puHint(st); setHtml('puhint', hh); setHtml('puheld', this._puHeld(st));
         const nl = this.hudEl.querySelector('.nightlab'); if (nl) nl.classList.toggle('pu', !!hh);
         // polish r2: the item ran dry in hand; an ACTIVE card still up from the swap would sit over SWITCH WEAPON
@@ -1653,7 +1656,13 @@ export class Hud {
     // quick drops in a row, one steady line says the likely cause, whether the link is up this second or not.
     // Game day 2026-09-19: after 3 flaps in a row the phone stops reconnecting for 30 s (BrxLink's quiet
     // period). The line says what fixes it; RECONNECT NOW ends the quiet period at once. It shows in every phase.
-    if (st.gunFlapping && st.gunFlapping.quiet) pills.push(`<span class="pill bad" data-flap="${st.gunFlapping.count}" data-quiet="1"><span class="unskew">${down ? 'POWER-CYCLE THE HEADSET' : 'GUN KEEPS DROPPING. POWER-CYCLE THE HEADSET, THEN THE GUN RECONNECTS.'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
+    // F293 (bench 2026-09-24): the phone reads the headset state from `$VERSION` on every connect. While it reads `?`
+    // the headset is still joining the gun and the phone waits; after 60 s it stops and waits for RECONNECT NOW. Both
+    // lines show in every phase, in place of the flap lines and GUN LINK LOST (the link is down on purpose).
+    const hj = st.headsetJoin && st.headsetJoin.state;
+    if (hj === 'not_joined') pills.push(`<span class="pill bad" data-headset="not_joined"><span class="unskew">${down ? 'HEADSET NOT JOINED' : 'HEADSET NOT JOINED · POWER-CYCLE THE HEADSET'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
+    else if (hj === 'joining' && !st.bleUp) pills.push(`<span class="pill warn" data-headset="joining"><span class="unskew">HEADSET JOINING</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
+    else if (st.gunFlapping && st.gunFlapping.quiet) pills.push(`<span class="pill bad" data-flap="${st.gunFlapping.count}" data-quiet="1"><span class="unskew">${down ? 'POWER-CYCLE THE HEADSET' : 'GUN KEEPS DROPPING. POWER-CYCLE THE HEADSET, THEN THE GUN RECONNECTS.'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
     else if (st.phase !== 'idle' && st.gunFlapping) pills.push(`<span class="pill warn" data-flap="${st.gunFlapping.count}"><span class="unskew">${down ? 'HEADSET OFF? TURN IT ON' : 'HEADSET OFF? TURN THE HEADSET ON.'}</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
     // QA-02: on the live HUD this is a solid, steady bar (16 px, no blink): the frozen numbers below depend on it.
     else if (st.phase !== 'idle' && !st.bleUp) pills.push(`<button class="pill bad${st.phase === 'live' && !down ? ' gunlost' : ''}" data-act="onReconnectGun"><span class="unskew">GUN LINK LOST — TAP TO RECONNECT</span></button>`);
@@ -2013,6 +2022,8 @@ export class Hud {
   // one mapping across the gun strip and the HUD (poolgauge.py: shield teal, armour purple, health green).
   _gain(st, m) {
     const d = (m.data) || {};
+    // The shield meter shows every shield gain (a recharge is a dozen of them), so no toast on top of it.
+    if (d.pool === 'shield' && SV.meterShown(st)) return;
     const el = document.createElement('div');
     el.className = `mo gain ${esc(d.pool)}`;
     const label = d.pool === 'armor' ? 'ARMOUR' : d.pool === 'shield' ? 'SHIELD' : 'HEALTH';
@@ -2074,7 +2085,7 @@ export class Hud {
     const lo = st.loadout || {};
     const ki = (k, it) => !it ? '' : `<span class="ki">${it.kind === 'perk' ? `<span class="th">${perkGlyph(it.perk_id)}</span>` : `<span class="th">${weaponArt(it.weapon_id)}</span>`}<span><span class="kk">${k}</span><br><span class="kn">${esc(it.name).toUpperCase()}</span></span></span>`;
     el.innerHTML = `<div class="wipe"></div><div class="slash"></div><div class="beam"></div>
-      <div class="r"><span class="t">REDEPLOYED</span>${this._redeployLine(st)}<span class="s">${st.maxHp} HP · ${st.maxArmor} ARMOR · MAG FULL</span>
+      <div class="r"><span class="t">REDEPLOYED</span>${this._redeployLine(st)}<span class="s">${st.maxHp} HP${st.maxArmor > 0 ? ` · ${st.maxArmor} ARMOR` : ''} · MAG FULL</span>
         <div class="kit">${ki('PRIMARY', lo.primary)}${ki('SECONDARY', lo.secondary)}${ki('PERK', lo.perk)}</div></div>
       <div class="l"><span class="cs">${esc(st.callsign)}</span><span class="sq">${esc(st.teamName)} SQUAD</span></div>`;
     this._flash();

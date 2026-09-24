@@ -591,3 +591,48 @@ def test_a_late_taken_report_dates_by_age_ms_and_never_takes_the_next_spawn():
     # CONTROL: a fresh report (age 0) of THIS spawn is taken
     _action(s, clock, "u1", 5, "taken", player_num=p0["player_num"], age_ms=0)
     assert s._station_view("u1")["item_available"] is False
+
+
+def test_an_invalid_restored_item_is_dropped_with_a_log_line_not_ticked():
+    """F331: an item restored from a session snapshot is re-validated. `spawn_every_s: 0` divided by zero (or,
+    before the first spawn, hung the catch-up loop) and a missing key raised on every tick; both are dropped."""
+    import logging
+    for bad in ({"spawn_every_s": 0}, {"first_at_s": None}, {"drop": "spawn_every_s"}, {"name": 7}):
+        s, clock = _sess()
+        _station(s, "u1", 5, "overshield")
+        _station(s, "u2", 6, "rockets")                      # CONTROL: a valid item beside it keeps working
+        a = s.stations["u1"]["assigned"]
+        if "drop" in bad:
+            del a["item"][bad["drop"]]
+        else:
+            a["item"].update(bad)
+        records: list[logging.LogRecord] = []
+        h = logging.Handler(); h.emit = records.append   # type: ignore[method-assign]
+        logging.getLogger("brx.mc").addHandler(h)
+        try:
+            go = _live(s, clock)
+            clock.t = go + 200_000
+            s.tick(); s.tick()
+        finally:
+            logging.getLogger("brx.mc").removeHandler(h)
+        assert "item" not in s.stations["u1"]["assigned"], bad
+        assert "u1" not in s._pu_sched["st"] and "u2" in s._pu_sched["st"], bad
+        assert s._station_view("u2")["item_available"] is True
+        msgs = [r.getMessage() for r in records if "invalid" in r.getMessage()]
+        assert len(msgs) == 1 and "#5" in msgs[0], msgs
+
+
+def test_the_hit_plan_carrier_is_the_compilers_own():
+    """Polish leftover: `_hit_plan` built the pickup carrier inline, a copy of `Compiler._pickup_carrier`.
+    It now calls the compiler's method, so the two cannot drift."""
+    s, _clock = _sess()
+    _station(s, "u1", 5, "rockets")
+    seen = []
+    orig = Compiler._pickup_carrier
+    Compiler._pickup_carrier = staticmethod(lambda pickups: seen.append(list(pickups)) or orig(pickups))  # type: ignore[method-assign]
+    try:
+        s._pinned_hit_plan = None
+        s._hit_plan()
+    finally:
+        Compiler._pickup_carrier = staticmethod(orig)  # type: ignore[method-assign]
+    assert seen == [[{"weapon_id": "rocket_launcher", "slot": 2}]], seen

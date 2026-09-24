@@ -74,6 +74,62 @@ struct StationAssignment {
   int game = 0;         // per-match byte; 0 = "any" (v1, unscoped)
   std::vector<int> valid_ids;
   StationItem item;  // A56, additive: absent on an older MC or a non-powerup kind
+  int lock_s = 0;    // A58, additive: seconds to lock the operator controls from receipt; 0/absent = unlocked
+};
+
+// ---- A58 (the match lock, additive) --------------------------------------------------------------
+// `station_config.lock_s?: int` locks the Stick's OWN operator controls (the B-hold RESET and the
+// state-changing serial commands; station_ui.h's `serial_command_allowed_while_locked`) for that many
+// seconds from receipt, so a curious player cannot reset a station mid-match. Clamped to 0..7200 (two
+// hours: longer than any match, short enough that a wrong value cannot strand a station for a day).
+// Absent means 0. A LATER station_config REPLACES the running lock outright, including a same-game
+// re-push (MC re-sends the current config mid-match as the lock's carrier), and lock_s 0 unlocks at
+// once. The lock lives in RAM only: every boot starts unlocked, so a crash or a forced restart can
+// never brick a station behind a lock it cannot see the end of. A+B held 7 s (ForceRestart,
+// station_ui.h) restarts the Stick whether it is locked or not.
+constexpr int MATCH_LOCK_MAX_S = 7200;
+
+inline int clamp_lock_s(long v) {
+  if (v < 0) return 0;
+  if (v > MATCH_LOCK_MAX_S) return MATCH_LOCK_MAX_S;
+  return (int)v;
+}
+
+class MatchLock {
+ public:
+  // Replaces whatever lock was running (never extends or merges it): the newest config is the truth.
+  void start(int lock_s, uint32_t now_ms) {
+    lock_s = clamp_lock_s(lock_s);
+    if (lock_s == 0) { active_ = false; return; }
+    active_ = true;
+    until_ms_ = now_ms + (uint32_t)lock_s * 1000u;
+  }
+  void clear() { active_ = false; }
+
+  // Wrap-safe (the same signed-subtraction idiom as PowerupSchedule::tick): 7200 s is far inside
+  // int32's ~24.8 days, so a lock that straddles a millis() wrap still ends on time.
+  bool locked(uint32_t now_ms) const { return active_ && (int32_t)(now_ms - until_ms_) < 0; }
+
+  // Whole seconds left, rounded UP (never reads 0 while still locked); 0 when unlocked.
+  uint32_t remaining_s(uint32_t now_ms) const {
+    if (!locked(now_ms)) return 0;
+    uint32_t ms = until_ms_ - now_ms;
+    return (ms + 999u) / 1000u;
+  }
+
+  // Call every loop(): returns true the one call that auto-unlocks at zero, so the caller can log,
+  // repaint and release the PMIC side-button lock once.
+  bool poll(uint32_t now_ms) {
+    if (active_ && (int32_t)(now_ms - until_ms_) >= 0) {
+      active_ = false;
+      return true;
+    }
+    return false;
+  }
+
+ private:
+  bool active_ = false;  // RAM only, by design: a boot always starts here, unlocked
+  uint32_t until_ms_ = 0;
 };
 
 // A56: `station_update {id, available, next_spawn_in_ms?}`. MC sends it on a pickup and at every
@@ -129,6 +185,14 @@ struct StatusFields {
   int control_owner = 255;
   int control_progress = 0;
   bool control_contested = false;
+  // A58 (additive; left unset, the body is byte-identical to the pre-A58 shape and its goldens):
+  // MC detects a restart when `uptime_s` goes backwards or `boot_count` moves, and reads the
+  // association mode so it knows whether a mid-match re-push can reach this Stick at all.
+  bool has_health = false;
+  uint32_t uptime_s = 0;     // millis() / 1000
+  uint32_t boot_count = 0;   // Preferences counter, incremented once per boot
+  std::string assoc;         // "muster" | "held"
+  long lock_s = -1;          // seconds left on the match lock (0 = unlocked); -1 = absent
 };
 
 inline std::string build_status_body(const StatusFields& f) {
@@ -151,6 +215,12 @@ inline std::string build_status_body(const StatusFields& f) {
          ",\"progress\":" + std::to_string(f.control_progress) +
          ",\"contested\":" + std::string(f.control_contested ? "true" : "false") + "}";
   }
+  if (f.has_health) {
+    j += ",\"uptime_s\":" + std::to_string(f.uptime_s);
+    j += ",\"boot_count\":" + std::to_string(f.boot_count);
+    j += ",\"assoc\":" + json::quote(f.assoc);
+  }
+  if (f.lock_s >= 0) j += ",\"lock_s\":" + std::to_string(f.lock_s);
   j += "}";
   return j;
 }
@@ -211,8 +281,117 @@ inline StationAssignment parse_station_config(const json::Value& body) {
     for (const auto& x : ids.arr) a.valid_ids.push_back((int)x.as_int());
   }
   a.item = parse_item(body.get("item"));
+  // Clamp as a double first: a (long) cast of an out-of-range number is undefined and could come out 0,
+  // which would turn a garbage lock into an unlock. Anything above the cap locks for the cap.
+  {
+    const json::Value& v = body.get("lock_s");
+    double d = v.type == json::Value::Type::Number ? v.num : 0.0;
+    a.lock_s = d >= (double)MATCH_LOCK_MAX_S ? MATCH_LOCK_MAX_S : clamp_lock_s((long)(d > 0 ? d : 0));
+  }
   return a;
 }
+
+// ---- the saved assignment (Tony, 2026-09-24: a restart mid-match comes straight back) -----------
+// A Stick that restarts mid-match (a crash, the side button, the A+B force restart) must come back
+// as the same station: under MUSTER it is off Wi-Fi for the whole match, so without a saved copy a
+// restarted pickup station stayed dead until the next muster. The glue saves the last APPLIED
+// station_config in Preferences ("brxmc"/"station_cfg") and applies it again at boot.
+//
+// The stored copy is this canonical re-serialisation of the PARSED assignment, not the raw frame:
+// a fixed key order makes "is it the same config?" a plain string compare, and it can never carry a
+// field this firmware does not read. It deliberately has NO lock_s: MC re-sends the same config
+// mid-match as the lock's carrier (A58), and a lock must never survive a boot. So a same-config
+// re-push with a new lock_s serialises to the same string and costs no flash write. `threshold` is
+// the resolved value (never 0), so it parses back unchanged.
+inline std::string station_config_storage_body(const StationAssignment& a) {
+  std::string j = "{";
+  j += "\"kind\":" + json::quote(a.kind);
+  j += ",\"team\":" + std::to_string(a.team);
+  j += ",\"id\":" + std::to_string(a.id);
+  j += ",\"threshold\":" + std::to_string(a.threshold);
+  j += ",\"game\":" + std::to_string(a.game);
+  j += ",\"valid_ids\":[";
+  for (size_t i = 0; i < a.valid_ids.size(); i++) {
+    if (i) j += ",";
+    j += std::to_string(a.valid_ids[i]);
+  }
+  j += "]";
+  if (a.item.present) {
+    const StationItem& it = a.item;
+    j += ",\"item\":{\"kind\":" + json::quote(it.kind);
+    j += ",\"weapon_id\":" + json::quote(it.weapon_id);
+    j += ",\"charges\":" + std::to_string(it.charges);
+    j += ",\"amount\":" + std::to_string(it.amount);
+    j += ",\"spawn_every_s\":" + std::to_string(it.spawn_every_s);
+    j += ",\"first_at_s\":" + std::to_string(it.first_at_s);
+    j += ",\"name\":" + json::quote(it.name);
+    j += ",\"color\":" + json::quote(it.color) + "}";
+  }
+  j += "}";
+  return j;
+}
+
+// A mirror of what is in flash, so the glue writes only when the stored copy would change. It owns
+// no I/O: `note_applied`/`note_released` return true when the glue must write (or erase) the key.
+class SavedStationConfig {
+ public:
+  // At boot, with whatever Preferences held ("" = nothing saved). `session_id` is the WELCOME
+  // session the config was saved in ("" on a copy saved before session ids were stored: stale).
+  void loaded(const std::string& body, const std::string& session_id = "") {
+    stored_ = body;
+    session_id_ = body.empty() ? "" : session_id;
+  }
+  const std::string& stored() const { return stored_; }
+  const std::string& session_id() const { return session_id_; }
+  bool has() const { return !stored_.empty(); }
+
+  // After apply_station_config accepted `a`, in WELCOME session `session_id`. True = write
+  // `stored()` AND `session_id()` to flash now. A same-config re-push in the same session writes
+  // nothing; the same config in a NEW session (MC restarted) rewrites once, so the copy is not
+  // judged stale on the next WELCOME of that session.
+  bool note_applied(const StationAssignment& a, const std::string& session_id) {
+    if (!a.present) return false;
+    std::string body = station_config_storage_body(a);
+    if (body == stored_ && session_id == session_id_) return false;
+    stored_ = body;
+    session_id_ = session_id;
+    return true;
+  }
+
+  // After control release_utility, or a stale copy found on WELCOME. True = erase both keys now
+  // (false when nothing was stored).
+  bool note_released() {
+    if (stored_.empty()) return false;
+    stored_.clear();
+    session_id_.clear();
+    return true;
+  }
+
+  // Review round 1 (HIGH): a copy saved in another MC session is a stale assignment from an old
+  // match. A copy with no session id counts as stale too. Nothing saved is never stale.
+  // A WELCOME with no session id says nothing about staleness (MC always sends one; envelope.py), so
+  // it never erases: otherwise every reconnect would churn NVS and drop a restored station.
+  bool stale_for(const std::string& welcome_session_id) const {
+    if (welcome_session_id.empty()) return false;
+    return has() && (session_id_.empty() || session_id_ != welcome_session_id);
+  }
+
+  // The saved assignment, or one with present == false (nothing saved, or a body that no longer
+  // parses; the glue erases a bad one). Never carries a lock, whatever the body says.
+  StationAssignment restore() const {
+    if (stored_.empty()) return StationAssignment();
+    bool ok = false;
+    json::Value v = json::parse(stored_, &ok);
+    if (!ok) return StationAssignment();
+    StationAssignment a = parse_station_config(v);
+    a.lock_s = 0;
+    return a;
+  }
+
+ private:
+  std::string stored_;
+  std::string session_id_;
+};
 
 inline StationUpdateMsg parse_station_update(const json::Value& body) {
   StationUpdateMsg u;
@@ -479,6 +658,9 @@ class PendingActionQueue {
   std::vector<PendingTakenReport> entries_;
 };
 
+// How long a MUSTER drop after a restore waits for MC's re-anchoring station_update (review round 1).
+constexpr uint32_t MUSTER_DROP_DEFER_MS = 2000;
+
 // ---- the link state machine ------------------------------------------------------------------
 // Owns no I/O: the .ino drives every transition from a real Wi-Fi/socket event and reads back what
 // to do next. §5g.4's whole point lives in one method here (`should_drop_link_at_match_start`): the
@@ -488,7 +670,10 @@ class StationLink {
   LinkState state() const { return state_; }
   AssocMode mode() const { return mode_; }
   // Switching to HELD clears a muster drop: a held station must never sit behind a latch it cannot see (round 3).
-  void set_mode(AssocMode m) { mode_ = m; if (m == AssocMode::HELD) dropped_for_match_ = false; }
+  void set_mode(AssocMode m) {
+    mode_ = m;
+    if (m == AssocMode::HELD) { dropped_for_match_ = false; drop_pending_ = false; }
+  }
 
   const StationIdentity& identity() const { return identity_; }
   void set_identity(const StationIdentity& id) { identity_ = id; }
@@ -543,6 +728,7 @@ class StationLink {
   void apply_welcome(const WelcomeMsg& w) {
     if (!w.ok) return;
     if (!w.node_key.empty()) identity_.node_key = w.node_key;
+    session_id_ = w.session_id;
     state_ = LinkState::WELCOMED;
     backoff_.reset();
   }
@@ -554,10 +740,24 @@ class StationLink {
   // read by the glue instead of re-deriving it from link state.
   bool has_powerup_assignment() const { return assignment_.present && assignment_.kind == "powerup"; }
 
+  // A58: the operator-control lock (MatchLock, above). Read-only for the glue and the screen.
+  const MatchLock& lock() const { return lock_; }
+  bool poll_lock(uint32_t now_ms) { return lock_.poll(now_ms); }
+
   // Returns true when a field that changes the advert actually moved, so the caller republishes
   // only when it must (mirrors `AdvertPolicy::due`'s "first/state/progress" distinction upstream).
-  bool apply_station_config(const StationAssignment& a) {
+  // `received_at_ms` is millis() at receipt (A58): the lock counts from then. The glue must pass it;
+  // the default exists only so the many older host tests that never look at the lock stay short.
+  bool apply_station_config(const StationAssignment& a, uint32_t received_at_ms = 0) {
     if (!a.present) return false;
+    // A58: every station_config REPLACES the running lock, before and independent of the kind/id/game
+    // logic below -- a same-game re-push (MC's mid-match lock carrier) must change the lock and
+    // nothing else, and lock_s 0 (or absent) unlocks at once.
+    lock_.start(a.lock_s, received_at_ms);
+    // Restart survival: the first MC config after a boot-time restore is MC's answer to "I am back".
+    // It replaces the restored copy (with the current lock), and from here on `restored()` is false.
+    bool after_restore = restored_;
+    restored_ = false;
     // Polish round 1: a kind or id change is a NEW station identity, whatever it used to be --
     // powerup(8) -> control(8) -> powerup(8) must start clean, not resume the first powerup's
     // available/taker/anchor state. Team/game alone changing (the same station re-armed) does not
@@ -589,9 +789,79 @@ class StationLink {
     // so mcLoop's reconnect logic can respect it. It stays latched until the operator's explicit
     // `clear_dropped_for_match()` -- there is no wire signal a station could use to notice "the match
     // is over" on its own (§5g.2: no facts, no ring, no `result`/`control{end}` routed to it).
-    if (game_changed && should_drop_link_at_match_start()) dropped_for_match_ = true;
+    //
+    // After a restore, the first MC config latches the MUSTER drop too, even for the SAME game: it is
+    // the first arm this boot, exactly as the first-ever arm after a clean boot is. (The schedule
+    // above still resets only on a kind/id/game change, so the restored station keeps playing.)
+    //
+    // Review round 1 (MEDIUM): after a restore, dropping the radio at once would lose MC's re-anchor
+    // (the station_update MC sends right after the config), and under MUSTER nothing else could ever
+    // re-anchor the restored schedule. So that one drop is DEFERRED: `take_muster_drop()` answers
+    // true only once the next station_update is applied or MUSTER_DROP_DEFER_MS has passed. Every
+    // other drop is due at once, as before.
+    if ((game_changed || after_restore) && should_drop_link_at_match_start()) {
+      dropped_for_match_ = true;
+      drop_pending_ = true;
+      drop_deferred_ = after_restore;
+      drop_latched_at_ms_ = received_at_ms;
+    }
     return changed;
   }
+
+  // The glue calls this after every station_config, after every station_update, and every loop().
+  // True exactly once per latched drop, when the radio should actually go down.
+  bool take_muster_drop(uint32_t now_ms) {
+    if (!drop_pending_ || !dropped_for_match_) return false;
+    if (drop_deferred_ && (uint32_t)(now_ms - drop_latched_at_ms_) < MUSTER_DROP_DEFER_MS) return false;
+    drop_pending_ = false;
+    drop_deferred_ = false;
+    return true;
+  }
+  bool muster_drop_pending() const { return drop_pending_ && dropped_for_match_; }
+
+  // Restart survival (Tony, 2026-09-24): apply the assignment SavedStationConfig kept in flash, at
+  // boot, before the link comes up, so the station plays at once. What differs from a live config:
+  //   - no lock, ever: the lock is RAM-only and every boot starts unlocked (A58);
+  //   - a fresh schedule (available, no anchor, no taker), as on any new arm; if MC can reach the
+  //     Stick, the station_update it sends after its config re-anchors it (under MUSTER the radio
+  //     stays up for that update, or MUSTER_DROP_DEFER_MS, before it drops: take_muster_drop);
+  //   - the link state is left alone: MC has not armed this Stick THIS boot, so status says
+  //     armed=false until it does (the screen and the advert read the assignment, not the state);
+  //   - it NEVER sets dropped_for_match. A restored muster station cannot know whether the match is
+  //     still running, so it tries to rejoin Wi-Fi. If MC answers, its current config (with the
+  //     remaining lock) replaces the restore, and that config latches the drop as the first arm of
+  //     this boot. If MC does not answer (out of range mid-match), the station keeps playing the
+  //     restored assignment and keeps retrying, which is the price of never going dark.
+  bool restore_station_config(StationAssignment a) {
+    if (!a.present) return false;
+    a.lock_s = 0;
+    lock_.clear();
+    powerup_ = PowerupSchedule();
+    claims_ = ClaimGate();
+    pending_actions_.clear();
+    last_update_ = StationUpdateMsg();
+    assignment_ = a;
+    if (a.kind == "powerup") {
+      powerup_.apply_item(a.item);
+      claims_.configure(a.id, a.game);
+    }
+    restored_ = true;
+    return true;
+  }
+
+  // True while the current assignment came from flash and MC has not sent a config since boot.
+  bool restored() const { return restored_; }
+
+  // Review round 1 (HIGH): a WELCOME from a different MC session means a restored assignment is left
+  // over from an old match. Drops it back to UNASSIGNED only while restored() is true: a config MC
+  // sent THIS boot is never touched. Returns true when it dropped something.
+  bool drop_restored_assignment() {
+    if (!restored_) return false;
+    apply_release();
+    return true;
+  }
+
+  const std::string& session_id() const { return session_id_; }
 
   // A56: applies only when it names the currently-assigned station id (a stray update for an id
   // this Stick was reassigned away from is dropped, silently -- the same discipline `on_word`'s
@@ -601,6 +871,7 @@ class StationLink {
     last_update_ = u;
     last_update_at_ms_ = received_at_ms;
     powerup_.apply_update(u, received_at_ms);
+    drop_deferred_ = false;  // the re-anchor landed: a deferred MUSTER drop is due now
     return true;
   }
 
@@ -627,7 +898,11 @@ class StationLink {
   // control{cmd:"release_utility"} (§5g.7): drop to UNASSIGNED -- the nearest true equivalent of a
   // phone's BACK TO HUD, since a Stick has no HUD to return to. The Wi-Fi/MC link itself is
   // untouched: this is an arming change, not a connectivity one.
+  // A58: a release also lifts the lock -- an unarmed station has nothing left to protect, and a
+  // released Stick locked for up to two hours would only strand the operator.
   void apply_release() {
+    lock_.clear();
+    restored_ = false;
     assignment_ = StationAssignment();
     last_update_ = StationUpdateMsg();
     powerup_ = PowerupSchedule();
@@ -644,7 +919,7 @@ class StationLink {
   // (documented as `LINK RECONNECT`, README "Mission Control link (H8)") -- there is no automatic
   // "match over" signal this station could observe instead.
   bool dropped_for_match() const { return dropped_for_match_; }
-  void clear_dropped_for_match() { dropped_for_match_ = false; }
+  void clear_dropped_for_match() { dropped_for_match_ = false; drop_pending_ = false; }
 
  private:
   LinkState state_ = LinkState::NOT_CONFIGURED;
@@ -657,8 +932,23 @@ class StationLink {
   ClaimGate claims_;
   PendingActionQueue pending_actions_;
   Backoff backoff_;
-  bool actions_enabled_ = false;
+  bool actions_enabled_ = true;   // MC accepts station_action since A56 landed (f3fe3cf6); `ACTIONS OFF` for an older MC
   bool dropped_for_match_ = false;
+  MatchLock lock_;  // A58, RAM only
+  bool restored_ = false;  // the assignment came from flash this boot (restore_station_config)
+  std::string session_id_;  // the last WELCOME's session_id ("" before any)
+  bool drop_pending_ = false;   // a latched MUSTER drop the glue has not performed yet
+  bool drop_deferred_ = false;  // ...and it waits for the re-anchor (first config after a restore)
+  uint32_t drop_latched_at_ms_ = 0;
 };
+
+// Review round 1 (HIGH): what a WELCOME means for the saved copy. A copy from another session (or
+// with no session id) is erased, and a restored assignment still standing is dropped to UNASSIGNED.
+// Call after apply_welcome(). Returns true when the glue must erase the saved keys.
+inline bool apply_welcome_to_saved(StationLink& link, SavedStationConfig& saved, const std::string& session_id) {
+  if (!saved.stale_for(session_id)) return false;
+  link.drop_restored_assignment();
+  return saved.note_released();
+}
 
 }  // namespace brx

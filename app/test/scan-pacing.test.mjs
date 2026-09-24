@@ -79,6 +79,7 @@ test('app.js: SET MY GUN ends a background reconnect before it scans, so the pic
   const end = src.indexOf('await link.scan(d => picker.observe(d));', start);
   assert.ok(start >= 0 && end > start, 'openPicker must still call link.scan(...) with the picker.observe callback');
   const body = src.slice(start, end);
-  assert.match(body, /if \(link\.connecting\)/, 'openPicker must check for a background reconnect holding the radio');
+  assert.match(body, /if \(link\.connecting( \|\| link\._reconnecting)?\)/,   // F293 round 2 adds the loop between dials
+    'openPicker must check for a background reconnect holding the radio');
   assert.match(body, /await link\.disconnect\(\)/, 'openPicker must end it before scanning (brxlink.test.mjs pins the BrxLink half)');
 });

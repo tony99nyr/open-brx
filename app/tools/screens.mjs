@@ -456,6 +456,21 @@ for (const view of VIEWS) {
     const done = await read(); await pg.close();
     must(!done.box && done.none, 'the picker did not return to its list after the connect state cleared: ' + JSON.stringify(done));
   });
+  // F293 polish (M3): a first pick while the headset still boots waits up to 60 s. The block says why.
+  await step(`${view.name} headset-join-4 picker: a pick waiting on the headset says so, then says it did not join`, async () => {
+    const pg = await open(view, 'idle-noisy');
+    const read = () => pg.evaluate(() => { const c = document.querySelector('.idle .list .connecting');
+      return { head: (c && c.querySelector('.cn') || {}).textContent || '', line: (c && c.querySelector('.cst') || {}).textContent || '', rescan: !!document.querySelector('.idle .list .rescan') && getComputedStyle(document.querySelector('.idle .list .rescan')).display !== 'none' }; });
+    await pg.evaluate(() => window.brxDemo.pickerConnecting(1, false, 'joining')); await pg.waitForTimeout(200);
+    const joining = await read();
+    await pg.screenshot({ path: `${OUT}/${view.name}-picker-headset-joining.png` });
+    must(joining.head === 'Connecting to GUN-A-3D4F…' && joining.line === 'Headset joining the gun, about 15 s', JSON.stringify(joining));
+    let bad = await invariants(pg); must(bad.length === 0, bad.join(';'));
+    await pg.evaluate(() => window.brxDemo.pickerConnecting(5, true, 'not_joined')); await pg.waitForTimeout(200);
+    const nj = await read(); bad = await invariants(pg); await pg.close();
+    must(nj.head === 'Headset not joined to GUN-A-3D4F' && nj.line === 'Power-cycle the headset, then tap Scan again.' && nj.rescan, JSON.stringify(nj));
+    must(bad.length === 0, bad.join(';'));
+  });
   await step(`${view.name} F258 idle-assigned: the gun MC assigned to this player is offered first`, async () => {
     const pg = await open(view, 'idle-assigned');
     const first = await pg.evaluate(() => (document.querySelector('.taggers .tagrow .nm') || {}).textContent || '');
@@ -592,6 +607,34 @@ for (const view of VIEWS) {
     await pg.click('.chipbar [data-act="onReconnectNow"]'); await pg.waitForTimeout(400);
     const after = await read(); await pg.close();
     must(!after.some(t => /GUN KEEPS DROPPING/.test(t)), 'RECONNECT NOW left the quiet line up: ' + JSON.stringify(after));
+  });
+  // F293 (bench 2026-09-24): the phone probes `$VERSION` on every connect. While token 2 reads `?` the HUD says the
+  // headset is joining; after 60 s it says what fixes it and waits for RECONNECT NOW; the first `hds.N` clears the lines.
+  const chipPills = pg => pg.evaluate(() => Array.from(document.querySelectorAll('.chipbar .pill')).map(p => p.textContent.trim()));
+  await step(`${view.name} headset-join-1 joining: HEADSET JOINING, and no link-lost or headset-off line beside it`, async () => {
+    const pg = await open(view, 'kitted-headset-joining'); const pills = await chipPills(pg);
+    await pg.screenshot({ path: `${OUT}/${view.name}-headset-joining.png` });
+    const bad = await invariants(pg); await pg.close();
+    must(pills.includes('HEADSET JOINING') && pills.includes('RECONNECT NOW'), 'no HEADSET JOINING line with RECONNECT NOW: ' + JSON.stringify(pills));
+    must(!pills.some(t => /GUN LINK LOST|HEADSET OFF\?|GUN KEEPS DROPPING/.test(t)), 'one line only: ' + JSON.stringify(pills));
+    must(bad.length === 0, bad.join(';'));
+  });
+  await step(`${view.name} headset-join-2 not joined: the power-cycle line and RECONNECT NOW, and the tap clears it`, async () => {
+    const pg = await open(view, 'kitted-headset-not-joined'); const pills = await chipPills(pg);
+    await pg.screenshot({ path: `${OUT}/${view.name}-headset-not-joined.png` });
+    must(pills.includes('HEADSET NOT JOINED · POWER-CYCLE THE HEADSET') && pills.includes('RECONNECT NOW'), JSON.stringify(pills));
+    must(!pills.some(t => /GUN LINK LOST|HEADSET JOINING|HEADSET OFF\?/.test(t)), 'one line only: ' + JSON.stringify(pills));
+    const bad = await invariants(pg); must(bad.length === 0, bad.join(';'));
+    await pg.click('.chipbar [data-act="onReconnectNow"]'); await pg.waitForTimeout(400);
+    const after = await chipPills(pg); await pg.close();
+    must(!after.some(t => /HEADSET NOT JOINED/.test(t)), 'RECONNECT NOW left the line up: ' + JSON.stringify(after));
+  });
+  await step(`${view.name} headset-join-3 the first hds.N reading clears HEADSET OFF? at once`, async () => {
+    const pg = await open(view, 'kitted-headset-off');
+    must((await chipPills(pg)).includes('HEADSET OFF? TURN THE HEADSET ON.'), 'the stage has no headset-off line to clear');
+    await pg.evaluate(() => window.brxDemo.headsetJoin('joined')); await pg.waitForTimeout(300);
+    const after = await chipPills(pg); await pg.close();
+    must(!after.some(t => /HEADSET OFF\?|GUN KEEPS DROPPING|HEADSET JOINING|GUN LINK LOST/.test(t)), 'a warning outlived the hds.N reading: ' + JSON.stringify(after));
   });
   await step(`${view.name} #32 live off MC range: amber dot, no pill; tapping MC shows the detail`, async () => {
     const pg = await open(view, 'live-mclost'); const read = () => pg.evaluate(() => ({ dot: document.querySelector('#mcdot').className, pills: Array.from(document.querySelectorAll('.chipbar .pill')).map(p => p.textContent.trim()) }));
@@ -2117,8 +2160,15 @@ await step('polish-3 diag-live: the two-tap hint is an assertive live region', a
 // button state comes from `link.relinking` through app.js's diag push, exactly as on the phone.
 const fakeGunPlugin = pg => pg.evaluate(() => {
   const l = window.brx.link, w = window.__ble = { disconnects: 0, connects: 0, release: null };
-  l.ble = { initialize: async () => {}, disconnect: async () => { w.disconnects++; }, startNotifications: async () => {}, writeWithoutResponse: async () => {},
+  // F293: every connect now probes `$VERSION` before the link counts as up, so the fake answers as a real gun with a
+  // headset linked does. The link's writes go through `writeChunk` (the direct plugin path), not `ble`, so that is faked too.
+  let notify = null;
+  l.ble = { initialize: async () => {}, disconnect: async () => { w.disconnects++; }, startNotifications: async (id, s, c, cb) => { notify = cb; }, writeWithoutResponse: async () => {},
     connect: () => { w.connects++; return new Promise(res => { w.release = res; }); } };
+  l.writeChunk = async (id, dv) => {
+    const f = new TextDecoder().decode(new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength));
+    if (f === '$VERSION,*' && notify) { const n = notify; setTimeout(() => n(new DataView(new TextEncoder().encode('$VERSION,v4.32,hds.59,4,,devhost.03,*').buffer)), 20); }
+  };
   l.deviceId = 'A'; l.connected = true; l.advert = { name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' };
 });
 const relinkView = pg => pg.evaluate(() => { const b = document.querySelector('#diag [data-act="onReconnectGun"]'), h = document.getElementById('dg-gunhint'), d = document.getElementById('diag');
@@ -4252,7 +4302,7 @@ const puRead = pg => pg.evaluate(() => {
   const ring = hint && hint.querySelector('.puring');
   const chip = document.querySelector('#puheld .puchip');
   const co = document.querySelector('#overlay .mo.co');
-  const ob = document.querySelector('.bar.oshield');
+  const ob = document.querySelector('#svm[data-os] .svos');   // the overshield: the lime layer on the shield meter (the Visor)
   return {
     hint: hint && vis(hint) ? { kind: hint.dataset.kind, act: pua ? pua.textContent.trim() : '', lab: pul ? pul.textContent.trim() : '',
       actPx: pua ? parseFloat(getComputedStyle(pua).fontSize) : 0, labPx: pul ? parseFloat(getComputedStyle(pul).fontSize) : 99,
@@ -4260,21 +4310,19 @@ const puRead = pg => pg.evaluate(() => {
     chip: chip && vis(chip) ? { text: chip.innerText.replace(/\s+/g, ' ').trim(), box: box(chip), px: parseFloat(getComputedStyle(chip.querySelector('.nm')).fontSize) } : null,
     card: co && vis(co) ? { kind: co.dataset.kind, name: (co.querySelector('.nm') || {}).textContent, sub: ((co.querySelector('.by') || {}).textContent || '').trim(),
       px: parseFloat(getComputedStyle(co.querySelector('.nm')).fontSize), box: box(co.querySelector('.cob') || co) } : null,
-    obar: ob && vis(ob) ? { val: (ob.querySelector('b') || {}).textContent, w: ob.querySelector('i').getBoundingClientRect().width, shieldNum: (document.getElementById('shield') || {}).textContent } : null,
+    obar: ob && vis(ob) ? { left: (window.brx.engine.state().powerup.overshield || {}).left, w: ob.getBoundingClientRect().width, text: document.getElementById('svm').textContent.trim() } : null,
     wn: (document.querySelector('.ammo .wn') || {}).innerText, vitals: box(document.querySelector('.vitals')), ammo: box(document.querySelector('.ammo')),
     frame: { l: fr.left, r: fr.right, t: fr.top, b: fr.bottom }, puDom: !!document.querySelector('#puhint, #puheld'),
     // polish r1 (UX M2): the vitals' own PARTS, since a wide night row overflows the fixed-width .vitals box
     vparts: [...document.querySelectorAll('.vitals .nums > *, .vitals .bar')].filter(vis).map(box),
     hw: (e => e && vis(e) ? box(e) : null)(document.querySelector('#overlay .hitwpn .hw')),
     ringPx: ring && vis(ring) ? ring.getBoundingClientRect().width / (fr.width / 844) : null,
-    shieldLabel: vis(document.querySelector('.vitals .shieldlabel')),
     // polish r2: the numbers each bar sits under, and the bars' painted widths (frame px)
-    shieldNum: (document.getElementById('shield') || {}).textContent, ovalPx: (e => e ? parseFloat(getComputedStyle(e).fontSize) : null)(document.getElementById('oval')),
     armorBarW: (e => e ? e.getBoundingClientRect().width : null)(document.getElementById('shbar')),
     switchedUp: !!document.querySelector('#overlay .mo.switched'), ammoText: (document.getElementById('mag') || {}).textContent,
     hintLines: hint && vis(hint) ? [pua, pul].filter(Boolean).map(e => { const r = document.createRange(); r.selectNodeContents(e); return new Set([...r.getClientRects()].filter(x => x.width > 1).map(x => Math.round(x.top / 4))).size; }) : null,
     // every colour the powerup pieces paint (text, fill, border), for the night check: no green, no white
-    paints: [...document.querySelectorAll('#puhint *, #puheld *, .bar.oshield, .bar.oshield *, #overlay .mo.co[data-tone="item"], #overlay .mo.co[data-tone="item"] *')].filter(vis)
+    paints: [...document.querySelectorAll('#puhint *, #puheld *, #svm, #svm *, #overlay .mo.co[data-tone="item"], #overlay .mo.co[data-tone="item"] *')].filter(vis)
       .flatMap(e => { const c = getComputedStyle(e); return [c.color, c.backgroundColor, c.borderTopColor].map(v => [e.className || e.tagName, v]); }),
   };
 });
@@ -4339,14 +4387,14 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(r.card && r.card.name === 'OVERSHIELD AVAILABLE', `the card: ${JSON.stringify(r.card)}`);
     must(r.card.px >= 18 && inside(r.card.box, r.frame) && vclear(r.card.box, r) && apart(r.card.box, r.ammo), `the card: ${JSON.stringify(r.card)}`);
   });
-  await step(`${tag}: the overshield is its own block on the shield bar (+75), drained first by a hit`, async () => {
+  await step(`${tag}: the overshield is a layer on the shield meter, drained first by a hit`, async () => {
     let pg = await open(view, 'live-pu-overshield', N, 3000);
     const r = await puWait(pg, r => r.obar, 2500); await shot(pg, 'overshield'); await puClose(pg, night);
-    must(r.obar && r.obar.val === '+75' && r.obar.shieldNum === undefined && r.obar.w > 20, `the overshield block, and no unlabelled duplicate shield number on a Standard game: ${JSON.stringify(r.obar)}`);
+    must(r.obar && r.obar.left === 75 && r.obar.text === '' && r.obar.w > 20, `the overshield layer, with no number on the meter: ${JSON.stringify(r.obar)}`);
     must(r.hint && r.hint.act === 'OVERSHIELD' && r.hint.lab === 'PICKED UP', `the overshield keeps PICKED UP: ${JSON.stringify(r.hint)}`);
     pg = await open(view, 'live-pu-overshield-hit', N, 4000);
-    const h = await puWait(pg, r => r.obar && r.obar.val === '+45', 2500); await puClose(pg, night);
-    must(h.obar && h.obar.val === '+45' && h.obar.w < r.obar.w, `after a 30-damage hit: ${JSON.stringify(h.obar)} (was ${JSON.stringify(r.obar)})`);
+    const h = await puWait(pg, r => r.obar && r.obar.left === 45, 2500); await pg.waitForTimeout(400); const h2 = await puRead(pg); await puClose(pg, night);
+    must(h.obar && h2.obar && h2.obar.left === 45 && h2.obar.w < r.obar.w, `after a 30-damage hit: ${JSON.stringify(h2.obar)} (was ${JSON.stringify(r.obar)})`);
   });
   await step(`${tag}: another player won it: TAKEN BY VIPER, with the countdown to the next spawn`, async () => {
     const pg = await open(view, 'live-pu-taken-by', N, 3300); const r = await puWait(pg, r => r.hint && r.hint.kind === 'taken_by', 2000); await shot(pg, 'taken-by'); await puClose(pg, night);
@@ -4382,15 +4430,12 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(r.hw && r.hint, `setup: the weapon line and the hint are both up: ${JSON.stringify({ hw: r.hw, hint: r.hint && r.hint.box })}`);
     must(r.hint.box.t - r.hw.b >= 4 || r.hw.t - r.hint.box.b >= 4 || !(r.hint.box.l < r.hw.r && r.hint.box.r > r.hw.l), `the weapon line ${JSON.stringify(r.hw)} sits within 4 px of the hint ${JSON.stringify(r.hint.box)}`);
   });
-  await step(`${tag}: the widest row (3-digit pools, a 175 overshield) stays clear of the hint, and at night drops the SHIELD word (UX M2)`, async () => {
+  await step(`${tag}: the widest row (3-digit pools, a 175 overshield) stays clear of the hint (UX M2)`, async () => {
     const pg = await open(view, 'live-pu-overshield-wide', N, 3000);
     const r = await puWait(pg, r => r.obar && r.hint, 2500); await shot(pg, 'wide'); await puClose(pg, night);
     must(r.obar && r.hint, 'setup: overshield and hint up');
     must(vclear(r.hint.box, r), `a vitals number or label runs into the hint: hint ${JSON.stringify(r.hint.box)} parts ${JSON.stringify(r.vparts)}`);
-    if (night) must(!r.shieldLabel, 'night with an overshield: the SHIELD word is dropped');
-    must(r.shieldNum === '0', `polish r2 M1: the shield number is the BASE pool (0 here), +175 names the extra: ${r.shieldNum}`);
     must(r.armorBarW == null || r.armorBarW < 1, `polish r2 M2: max_armor 0 paints no armour bar (was width:NaN%, full): ${r.armorBarW}`);
-    must(r.ovalPx >= 15, `the +N reads at 15 px: ${r.ovalPx}`);
   });
   await step(`${tag}: an Easy Reload player at a weapon station: EASY RELOAD / NO ROCKETS, one line each, type floors (UX M4)`, async () => {
     const pg = await open(view, 'live-pu-easy-reload', N, 2700);
@@ -4438,6 +4483,238 @@ await step('utility A56 a powerup station from an MC with no item (the flag off,
   await pg.waitForTimeout(400); const r = await puStation(pg); await pg.close();
   must(!r.pup && r.kind === 'POWERUP' && r.advert.state === 1, `no item: ${JSON.stringify(r)}`);
 });
+
+// ---- The shield meter (Visor, Tony 2026-09-24: "C but maybe a hair taller", "doesnt fade. only hits"). The shield is a
+// long strip on the top edge in any game with a shield, or while an overshield is held. No text and no number in it: the
+// bar tells the story. Every state below is the REAL engine on the stage (`live-shields*`), its S29 recharge on the real
+// clock. Night (spec B4): red only, so the pixels the meter and the red tint paint are scanned for green, teal and blue.
+const svRead = pg => pg.evaluate(() => {
+  const vis = e => { if (!e) return null; const c = getComputedStyle(e); if (c.display === 'none' || c.visibility === 'hidden') return null;
+    const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 ? { l: r.left, t: r.top, r: r.right, b: r.bottom } : null; };
+  const frame = document.getElementById('frame'), fr = frame.getBoundingClientRect(), k = fr.width / 844;
+  const m = document.getElementById('svm'), bar = m && m.querySelector('.svbar'), w = sel => { const e = m && m.querySelector(sel); return e ? e.getBoundingClientRect().width / k : 0; };
+  const tint = document.querySelector('.alive .svtint'), st = window.brx.engine.state();
+  return { m: !!m && !!vis(m), s: m && m.dataset.s, wait: !!(m && m.hasAttribute('data-wait')), os: !!(m && m.hasAttribute('data-os')), text: m ? m.textContent.trim() : null,
+    barH: bar ? bar.getBoundingClientRect().height / k : 0, anim: bar ? getComputedStyle(bar).animationName : '', fl: w('.svfl'), osw: w('.svos'), dly: w('.svdly'),
+    sweep: m ? getComputedStyle(m.querySelector('.svfl'), '::after').animationName : '',
+    tint: !!document.querySelector('.alive.sv-down') && !!tint && +getComputedStyle(tint).opacity > 0.9,
+    parts: [bar].map(vis).filter(Boolean), frame: vis(frame), k,
+    hpInMeter: !!(document.getElementById('hp') && document.getElementById('hp').closest('#svm')), hpShown: !!document.getElementById('hp'),
+    others: Object.fromEntries(Object.entries({ clock: '.alive .clockplate', ident: '.alive .ident', topright: '.alive .topright', chips: '#chips .pill', ammo: '.alive .ammo', callout: '#overlay .co .cob', puhint: '#puhint .pu' })
+      .map(([n, sel]) => [n, [...document.querySelectorAll(sel)].map(vis).filter(Boolean)])),
+    toast: !!document.querySelector('#overlay .mo.gain.shield'),
+    aria: m ? { now: m.getAttribute('aria-valuenow'), min: m.getAttribute('aria-valuemin'), max: m.getAttribute('aria-valuemax') } : null,
+    // every running animation on the meter or the tint, pseudo-elements included (an idle meter must be still)
+    anims: document.getAnimations().filter(a => a.playState === 'running' && a.effect && a.effect.target && (a.effect.target.closest('#svm') || a.effect.target.classList.contains('svtint')))
+      .map(a => `${a.effect.target.className}${a.effect.pseudoElement || ''}:${a.animationName || a.transitionProperty || '?'}`),
+    shield: st.shield, max: st.maxShield, os: st.powerup && st.powerup.overshield ? st.powerup.overshield.left : null,
+    charging: !!(st.shieldRegen && st.shieldRegen.charging) };
+});
+const svApart = (a, c) => a.r <= c.l + 0.5 || c.r <= a.l + 0.5 || a.b <= c.t + 0.5 || c.b <= a.t + 0.5;
+const svClear = r => { const out = []; for (const p of r.parts) for (const [n, bs] of Object.entries(r.others)) for (const x of bs) if (!svApart(p, x)) out.push(`${n} ${JSON.stringify(x)} vs ${JSON.stringify(p)}`); return out; };
+/** Night: the meter's parts and the frame's outer 44 frame-px band (the red tint), visible green or teal/blue pixels. */
+const svNightPixels = async (pg, r) => {
+  const buf = await pg.screenshot(); const F = r.frame, band = 44 * r.k, pad = 6;
+  const zones = [...r.parts.map(p => ({ l: p.l - pad, t: p.t - pad, r: p.r + pad, b: p.b + pad })),
+    { l: F.l, t: F.t, r: F.r, b: F.t + band }, { l: F.l, t: F.b - band, r: F.r, b: F.b }, { l: F.l, t: F.t, r: F.l + band, b: F.b }, { l: F.r - band, t: F.t, r: F.r, b: F.b }];
+  const q = await b.newPage();
+  const n = await q.evaluate(async ([b64, zones]) => { const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height).data; let bad = 0, at = null;
+    for (let i = 0; i < d.length; i += 4) { const p = i / 4, X = p % c.width, Y = Math.floor(p / c.width);
+      if (!zones.some(z => X >= z.l && X <= z.r && Y >= z.t && Y <= z.b)) continue;
+      const R = d[i], G = d[i + 1], B = d[i + 2];
+      if ((G >= 70 && G > R + 24) || (B >= 70 && B > R + 24)) { bad++; at = at || [X, Y, R, G, B]; } }
+    return { bad, at }; }, [buf.toString('base64'), zones]);
+  await q.close(); return n;
+};
+const svWait = async (pg, ok, ms) => { let r = null; for (let t = 0; t < ms; t += 100) { r = await svRead(pg); if (ok(r)) return r; await pg.waitForTimeout(100); } return r; };
+for (const view of VIEWS) for (const night of [false, true]) {
+  const N = night ? '&night' : '', tag = `${view.name} shield meter ${night ? 'night' : 'day'}`;
+  await step(`${tag}: the Shields preset draws the visor, about 16 px tall, with no health on it, clear of the clock, the identity block, the link status and the chips, with no text or number`, async () => {
+    const pg = await open(view, 'live-shields-full', N, 3600);
+    const r = await svWait(pg, r => r.m && r.shield >= 105, 2500); await pg.close();
+    must(r.m, `no shield meter on a Shields game: ${JSON.stringify({ m: r.m, shield: r.shield, max: r.max })}`);
+    must(r.barH >= 15 && r.barH <= 17, `the strip is about 16 px, between the 11 px candidate and 21 (Tony: "something in between"): ${r.barH}`);
+    must(r.hpShown && !r.hpInMeter, `health lives bottom left only, never in the visor (Tony: "why do we have health displayed in two places?"): ${JSON.stringify({ shown: r.hpShown, inMeter: r.hpInMeter })}`);
+    must(r.text === '', `the meter carries no text or number (Tony: "just the bar"): "${r.text}"`);
+    must(r.s === 'ok' && r.fl > 400, `full: state ${r.s}, fill ${r.fl}`);
+    const hits = svClear(r); must(hits.length === 0, `the meter overlaps: ${hits.join(' ; ')}`);
+  });
+  await step(`${tag}: shield broken: the empty track pulses red and the frame is tinted red`, async () => {
+    const pg = await open(view, 'live-shields-broken', N, 3500);
+    const r = await svWait(pg, r => r.s === 'down', 2500); await pg.waitForTimeout(400); const r2 = await svRead(pg);
+    const px = night ? await svNightPixels(pg, r2) : null; await pg.close();
+    must(r.m && r.s === 'down', `the meter must say the shield is broken: ${JSON.stringify({ m: r.m, s: r.s, shield: r.shield })}`);
+    must(/^svdown/.test(r2.anim), `the broken track pulses: animation "${r2.anim}"`);
+    must(r2.tint, 'the frame is tinted red while unshielded');
+    must(!night || px.bad === 0, `night: green, teal or blue paint on the meter or the tint: ${JSON.stringify(px)}`);
+  });
+  await step(`${tag}: the recharge, over time through the real engine: broken, the delay fill creeps, then the refill sweeps, then full; no SHIELD toast`, async () => {
+    const pg = await open(view, 'live-shields-broken', N, 3300);
+    const seen = []; let brokeAt = null, chargeAt = null, dly = [], sweep = '', toast = false, last = null;
+    for (let t = 0; t < 13000; t += 150) {
+      const r = await svRead(pg); last = r; toast = toast || r.toast;
+      if (r.s === 'down' && brokeAt == null) brokeAt = Date.now();
+      if (r.s === 'down' && r.wait) dly.push(r.dly);
+      if (r.s === 'charge' && chargeAt == null) { chargeAt = Date.now(); sweep = r.sweep; }
+      if (!seen.length || seen[seen.length - 1] !== r.s) seen.push(r.s);
+      if (chargeAt && r.s === 'ok' && r.shield >= 105) break;
+      await pg.waitForTimeout(150);
+    }
+    await pg.close();
+    must(seen.join('>').includes('down>charge>ok'), `the states in order: ${seen.join('>')}`);
+    must(brokeAt && chargeAt && chargeAt - brokeAt >= 5800, `the refill waits for the engine's 6.5 s: ${chargeAt && brokeAt ? chargeAt - brokeAt : 'never'} ms`);
+    must(dly.length > 5 && dly[dly.length - 1] > dly[0] + 100, `the delay fill creeps along the track: ${dly.slice(0, 3)} ... ${dly.slice(-3)}`);
+    must(night ? sweep === 'none' || sweep === '' : sweep === 'svsweep', `the refill ${night ? 'has no sweep at night' : 'sweeps'}: "${sweep}"`);
+    must(last && last.s === 'ok' && last.shield >= 105, `full again: ${JSON.stringify({ s: last && last.s, shield: last && last.shield })}`);
+    must(!toast, 'no teal "+N SHIELD" toast over the meter during a recharge');
+  });
+  await step(`${tag}: the overshield is a layer over the shield, drained first by hits, and only hits remove it`, async () => {
+    const pg = await open(view, 'live-shields-os', N, 3200);
+    const a = await svWait(pg, r => r.os && r.osw > 400, 3000);
+    await pg.waitForTimeout(2500); const still = await svRead(pg);   // no decay: 2.5 s later it is as full as it was
+    await pg.evaluate(() => window.brxDemo.shieldHit(37)); const h = await svWait(pg, r => r.os === 38, 2000); await pg.waitForTimeout(500); const h2 = await svRead(pg);
+    const px = night ? await svNightPixels(pg, h2) : null;
+    await pg.evaluate(() => window.brxDemo.shieldHit(40)); const g = await svWait(pg, r => !r.os && r.shield <= 105, 2500); await pg.waitForTimeout(500); const g2 = await svRead(pg);
+    await pg.close();
+    must(a.os && a.osw > 400 && a.text === '', `held: ${JSON.stringify({ os: a.os, w: a.osw, text: a.text })}`);
+    must(still.os && Math.abs(still.osw - a.osw) < 2 && still.shield === a.shield, `no decay: ${a.osw} -> ${still.osw}, shield ${a.shield} -> ${still.shield}`);
+    must(h2.os && h2.osw < a.osw * 0.65 && h2.osw > a.osw * 0.35 && h2.fl > 400, `a 37 hit halves the overshield and leaves the shield: ${JSON.stringify({ osw: h2.osw, fl: h2.fl })}`);
+    must(!g2.os && g2.osw < 1 && g2.fl < h2.fl, `the next hit ends it and then eats the shield: ${JSON.stringify({ os: g2.os, osw: g2.osw, fl: g2.fl })}`);
+    must(!night || px.bad === 0, `night: green, teal or blue paint on the meter: ${JSON.stringify(px)}`);
+  });
+  await step(`${tag}: armor (armour) shows only in a game with armour: Standard has the number and the bar, a no-armour game has neither`, async () => {
+    const arm = pg => pg.evaluate(() => { const vis = e => !!e && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().width > 0;
+      return { num: vis(document.getElementById('sh')), lab: vis(document.querySelector('.vitals .armorlabel')), bar: vis(document.querySelector('.vitals .bar.armor')), max: window.brx.engine.state().maxArmor }; });
+    let pg = await open(view, 'live', N, 3000); const std = await arm(pg); await pg.close();
+    pg = await open(view, 'live-shields-full', N, 3000); const none = await arm(pg); await pg.close();
+    must(std.max > 0 && std.num && std.bar && (!night || std.lab), `Standard (armour ${std.max}): the number and the bar, as today (the ARMOR word is a night-only label): ${JSON.stringify(std)}`);
+    must(none.max === 0 && !none.num && !none.lab && !none.bar, `no armour in the game: no 0, no label, no empty bar (Tony): ${JSON.stringify(none)}`);
+  });
+  await step(`${tag}: a full shield is still: nothing on the meter animates at rest (polish M1), and it says its value to a screen reader only`, async () => {
+    const pg = await open(view, 'live-shields-full', N, 3600);
+    const r = await svWait(pg, r => r.m && r.shield >= 105, 2500); await pg.waitForTimeout(1200); const r2 = await svRead(pg); await pg.close();
+    must(r2.anims.length === 0, `animations at rest: ${r2.anims.join(', ')}`);
+    must(r2.aria && r2.aria.now === '105' && r2.aria.min === '0' && r2.aria.max === '105' && r2.text === '', `aria-valuenow/min/max, no visible number: ${JSON.stringify(r2.aria)} "${r2.text}"`);
+  });
+  await step(`${tag}: reduced motion stops the sweeps too, pseudo-elements included (polish M2)`, async () => {
+    const pg = await b.newPage({ viewport: { width: view.width, height: view.height }, reducedMotion: 'reduce' });
+    await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=live-shields-broken${N}`);
+    await svWait(pg, r => r.s === 'down' && r.wait, 5000); await pg.waitForTimeout(600); const w = await svRead(pg);
+    const c = await svWait(pg, r => r.s === 'charge', 9000); const c2 = await svRead(pg); await pg.close();
+    must(w.anims.length === 0, `reduced motion, the delay: ${w.anims.join(', ')}`);
+    must(c.s === 'charge' && c2.anims.filter(a => !/transition|width|--w/.test(a)).length === 0, `reduced motion, the refill: ${c2.anims.join(', ')}`);
+  });
+  await step(`${tag}: a hit mid-refill restarts the delay: the creep starts again from nothing (polish M3)`, async () => {
+    const pg = await open(view, 'live-shields-broken', N, 3300);
+    const c = await svWait(pg, r => r.s === 'charge' && r.shield >= 30, 10000);
+    await pg.evaluate(() => window.brxDemo.shieldHit(10)); const w = await svWait(pg, r => r.s !== 'charge' && r.wait, 1500); await pg.close();
+    must(c.s === 'charge', `setup: the refill ran: ${c.s}`);
+    must(w.s !== 'charge' && w.wait && w.dly < 60, `after the hit: back to the delay, the creep near 0: ${JSON.stringify({ s: w.s, wait: w.wait, dly: w.dly })}`);
+  });
+  await step(`${tag}: a death clears the red tint, and a respawn starts unshielded but not broken: no red pulse, no tint, the creep runs (polish M3)`, async () => {
+    const pg = await open(view, 'live-shields-broken', N, 3300);
+    const d0 = await svWait(pg, r => r.tint, 2000);
+    await pg.evaluate(() => window.brxDemo.die()); await pg.waitForTimeout(700);
+    const dead = await pg.evaluate(() => ({ tint: !!document.querySelector('.alive.sv-down'), alive: window.brx.engine.state().alive }));
+    await pg.evaluate(() => window.brxDemo.respawn()); const back = await svWait(pg, r => r.m && r.shield === 0 && r.wait, 4000); await pg.waitForTimeout(300); const b2 = await svRead(pg);
+    await pg.close();
+    must(d0.tint, 'setup: broken, tinted');
+    must(!dead.alive && !dead.tint, `dead: no tint: ${JSON.stringify(dead)}`);
+    must(b2.m && b2.s !== 'down' && !b2.tint && b2.wait, `respawned: a fresh life at 0 has not broken: ${JSON.stringify({ s: b2.s, tint: b2.tint, wait: b2.wait })}`);
+  });
+  await step(`${tag}: no tint while shielded, with the shield or an overshield alone (polish M3)`, async () => {
+    let pg = await open(view, 'live-shields-hit', N, 3600); const h = await svWait(pg, r => r.m && r.shield > 0 && r.shield < 105, 2000); await pg.close();
+    pg = await open(view, 'live-pu-overshield', N, 3000); const o = await svWait(pg, r => r.m && r.os, 2500); await pg.close();
+    must(!h.tint && h.s !== 'down', `a hit shield: ${JSON.stringify({ s: h.s, tint: h.tint })}`);
+    must(!o.tint && o.s !== 'down', `an overshield on a Standard game: ${JSON.stringify({ s: o.s, tint: o.tint })}`);
+  });
+  await step(`${tag}: after a partial hit the delay creep still shows, over the fill (polish Low)`, async () => {
+    const pg = await open(view, 'live-shields-hit', N, 3600); const r = await svWait(pg, r => r.wait && r.dly > 60, 4000);
+    // paint order: positioned siblings with no z-index paint in DOM order, so the creep must come after the fill and the
+    // overshield, and cross the fill (the meter is pointer-events:none, so elementsFromPoint cannot see it)
+    const top = await pg.evaluate(() => { const d = document.querySelector('#svm .svdly'), f = document.querySelector('#svm .svfl'); if (!d || !f) return null;
+      const dr = d.getBoundingClientRect(), fr = f.getBoundingClientRect(), z = e => getComputedStyle(e).zIndex;
+      return { after: !!(f.compareDocumentPosition(d) & Node.DOCUMENT_POSITION_FOLLOWING) && !!(document.querySelector('#svm .svos').compareDocumentPosition(d) & Node.DOCUMENT_POSITION_FOLLOWING),
+        z: [z(d), z(f)], crosses: dr.left < fr.right && dr.right > fr.left && dr.height > 0 }; });
+    await pg.close();
+    must(r.wait && r.dly > 60, `setup: the delay running under a part-full shield: ${JSON.stringify({ wait: r.wait, dly: r.dly, shield: r.shield })}`);
+    must(top && top.after && top.z[0] === top.z[1] && top.crosses, `the creep is drawn above the fill: ${JSON.stringify(top)}`);
+  });
+  await step(`${tag}: armor (armour) granted in a no-armour game shows its number and bar (polish r2 M1)`, async () => {
+    const pg = await open(view, 'live-shields-full', N, 3300);
+    await pg.evaluate(() => window.brx.engine.feedFrame('$HP,45,30,105,*')); await pg.waitForTimeout(600);
+    const r = await pg.evaluate(() => { const vis = e => !!e && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().width > 0;
+      const bar = document.querySelector('.vitals .bar.armor i');
+      return { max: window.brx.engine.state().maxArmor, armor: window.brx.engine.state().armor, num: vis(document.getElementById('sh')) && document.getElementById('sh').textContent, bar: vis(bar) }; });
+    await pg.close();
+    must(r.max === 0 && r.armor === 30, `setup: armour 30 in a max-0 game: ${JSON.stringify(r)}`);
+    must(r.num === '30' && r.bar, `the granted armour shows (Tony: "if we have armor then the number and bar show"): ${JSON.stringify(r)}`);
+  });
+  await step(`${tag}: armor (armour): no "0 ARMOR" on the pre-game line, the briefing or REDEPLOYED in a no-armour game (polish r2 Low)`, async () => {
+    let pg = await open(view, 'lobby-shields', N, 2000); const lobby = await pg.evaluate(() => (document.querySelector('.hpar') || {}).textContent || null); await pg.close();
+    pg = await open(view, 'briefing', N + '&locked&brief', 1600); const brief = await pg.evaluate(() => document.getElementById('hud').innerText); await pg.close();
+    pg = await open(view, 'redeploy-shields', N, 2600);
+    const red = await pg.waitForSelector('#overlay .redeploy .s', { timeout: 3000 }).then(e => e.textContent()).catch(() => null); await pg.close();
+    must(lobby && /HP 45/.test(lobby) && !/ARMOR/.test(lobby), `the pre-game line: ${lobby}`);
+    must(/45 HP/.test(brief) && !/0 ARMOR/.test(brief), `the briefing: ${(brief.match(/.{0,20}HP.{0,30}/) || [''])[0]}`);
+    must(night ? red === null : red && /45 HP/.test(red) && !/ARMOR/.test(red), `REDEPLOYED${night ? ' (no card at night)' : ''}: ${red}`);
+  });
+  if (night) await step(`${tag}: the delay creep rail reads against the fill beside it (pixels, polish r2 M2)`, async () => {
+    const pg = await open(view, 'live-shields-hit', N, 3600); const w0 = await svWait(pg, r => r.wait && r.dly > 120, 5000);
+    must(w0.wait && w0.dly < w0.fl - 40, `setup: the creep shorter than the fill, so the fill shows beside it on the same rows: ${JSON.stringify({ dly: w0.dly, fl: w0.fl })}`);
+    await pg.evaluate(() => document.getAnimations().forEach(a => a.pause()));
+    const box = await pg.evaluate(() => { const d = document.querySelector('#svm .svdly').getBoundingClientRect(), f = document.querySelector('#svm .svfl').getBoundingClientRect();
+      // the rail, and the fill on the SAME rows just past the rail's end (the creep grows from the centre, the fill is wider)
+      return { rail: { l: d.left + 6, r: d.right - 6, t: d.top + 1, b: d.bottom - 1 }, fill: { l: d.right + 3, r: Math.min(f.right - 3, d.right + 30), t: d.top + 1, b: d.bottom - 1 } }; });
+    const buf = await pg.screenshot(); await pg.close();
+    const q = await b.newPage();
+    const lum = await q.evaluate(async ([b64, box]) => { const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+      const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+      const L = v => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; };
+      const mean = z => { let s = 0, n = 0; const d = x.getImageData(Math.round(z.l), Math.round(z.t), Math.max(1, Math.round(z.r - z.l)), Math.max(1, Math.round(z.b - z.t))).data;
+        for (let i = 0; i < d.length; i += 4) { s += .2126 * L(d[i]) + .7152 * L(d[i + 1]) + .0722 * L(d[i + 2]); n++; } return s / n; };
+      return { rail: mean(box.rail), fill: mean(box.fill) }; }, [buf.toString('base64'), box]);
+    await q.close();
+    const ratio = (Math.max(lum.rail, lum.fill) + .05) / (Math.min(lum.rail, lum.fill) + .05);
+    // S59: today's night colour measures 1.74-1.75:1 here on both views, so the gate holds it at 1.7 (it was 1.5).
+    // A brighter night creep is Tony's call (night dark adaptation).
+    must(ratio >= 1.7, `the rail against the fill: ${ratio.toFixed(2)}:1 ${JSON.stringify(lum)}`);
+  });
+  await step(`${tag}: a stun during the delay freezes the creep where it was (polish r2 Low)`, async () => {
+    const pg = await open(view, 'live-shields-broken', N, 3300); const w = await svWait(pg, r => r.wait && r.dly > 100, 6000);
+    await pg.evaluate(() => window.brxDemo.stun()); await pg.waitForTimeout(500); const a = await svRead(pg); await pg.waitForTimeout(1200); const c = await svRead(pg);
+    const stunned = await pg.evaluate(() => !!window.brx.engine.state().stunned); await pg.close();
+    must(w.wait && stunned, `setup: waiting, then stunned: ${JSON.stringify({ wait: w.wait, stunned })}`);
+    must(a.dly > 60 && Math.abs(c.dly - a.dly) < 2, `the creep holds its width while the refill stands down: ${a.dly} -> ${c.dly}`);
+  });
+  await step(`${tag}: a hit during the stun restarts the delay: the frozen creep drops to nothing (S59 Low)`, async () => {
+    const pg = await open(view, 'live-shields-hit', N, 3600); const w = await svWait(pg, r => r.wait && r.dly > 100, 6000);
+    await pg.evaluate(() => window.brxDemo.stun()); await pg.waitForTimeout(500); const a = await svRead(pg);
+    const q0 = await pg.evaluate(() => window.brx.engine.state().shieldRegen.quietAt);
+    await pg.evaluate(() => window.brxDemo.shieldHit(10)); await pg.waitForTimeout(500); const c = await svRead(pg);
+    const after = await pg.evaluate(() => ({ stunned: !!window.brx.engine.state().stunned, quietAt: window.brx.engine.state().shieldRegen.quietAt })); await pg.close();
+    must(w.wait && a.dly > 60 && after.stunned && after.quietAt > q0, `setup: frozen mid-delay, then hit while still stunned: ${JSON.stringify({ wait: w.wait, dly: a.dly, ...after, q0 })}`);
+    must(c.dly < 10, `the creep starts over, not stale at its old width: ${a.dly} -> ${c.dly}`);
+  });
+  await step(`${tag}: the Standard preset draws no meter, until it holds an overshield`, async () => {
+    let pg = await open(view, 'live', N, 3000); const r = await svRead(pg);
+    // a shield grant with no meter up (a perk grant in a game with no shield): the "+N SHIELD" toast is the only word of
+    // it, and at night it must be red, never the old teal
+    await pg.evaluate(() => window.brx.engine.feedFrame('$HP,45,70,20,*'));
+    const toast = await pg.waitForSelector('#overlay .mo.gain.shield .amt', { timeout: 2000 }).then(e => e.evaluate(n => getComputedStyle(n).color)).catch(() => null);
+    await pg.close();
+    must(!r.m && r.max === 0, `Standard: no shield meter: ${JSON.stringify({ m: r.m, max: r.max })}`);
+    const tc = (toast || '').match(/\d+/g) || [];
+    must(toast && (!night || (+tc[1] <= +tc[0] + 12 && +tc[2] <= +tc[0] + 12)), `the shield toast with no meter up${night ? ', red at night' : ''}: ${toast}`);
+    pg = await open(view, 'live-pu-overshield', N, 3000); const o = await svWait(pg, r => r.m && r.os, 2500);
+    const px = night ? await svNightPixels(pg, o) : null; await pg.close();
+    must(o.m && o.os && o.text === '', `Standard + overshield: the meter shows the layer alone: ${JSON.stringify({ m: o.m, os: o.os, text: o.text })}`);
+    const hits = svClear(o); must(hits.length === 0, `the meter overlaps: ${hits.join(' ; ')}`);
+    must(!night || px.bad === 0, `night: green, teal or blue paint on the meter: ${JSON.stringify(px)}`);
+  });
+}
 
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;

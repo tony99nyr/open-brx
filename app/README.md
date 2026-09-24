@@ -27,6 +27,47 @@ www/index.html       the holo-theme CSS + #frame stage (design brief: docs/spec/
 when it drifts from the source. Never hand-edit `contract.gen.js`; `envelope.js` imports its tables
 and re-exports them under the names it already exported.
 
+## Supported phones
+
+**Android 7.0+ (`minSdk` 24) with Android System WebView 111+.** **iOS 16.2+.**
+
+Android System WebView updates from the Play Store on its own, separately from the Android OS
+version — it is not tied to an OS release the way Safari is tied to an iOS release. A phone on
+Android 7 (2016) can still be running a current WebView as long as Google still serves it updates and
+the owner has ever let the Play Store update apps, so `minSdk` 24 and a WebView floor of 111 are not a
+contradiction: the OS floor is about API availability, the WebView floor is about what ships inside
+that WebView, and the two update on entirely different schedules.
+
+The WebView floor is enforced by Capacitor itself, not by app code: `capacitor.config.json` sets
+`android.minWebViewVersion` to 111, so `Bridge.isMinimumWebViewInstalled()` redirects a WebView below
+it to `server.errorPath` (`www/webview-too-old.html`, a plain static page with an UPDATE WEBVIEW
+button) before `index.html`/`app.js` ever load. `scripts/build.mjs`'s esbuild `target` is kept at the
+same `chrome111` so the bundle never ships syntax that floor cannot parse.
+
+111, not Capacitor's own documented minimum of 60 and not the 87 this first raised to (2026-09-24),
+because two rounds of field testing on a factory Pixel 5 (Android 11, WebView 83) found the CSS needs
+it, twice over:
+- The `inset` shorthand (`position:absolute;inset:0`) for every full-bleed HUD overlay layer — Chrome
+  87 / Safari 14.1. Below it the declaration is invalid, the layer keeps its static position, and the
+  HUD renders "shifted left and off screen" instead of covering the frame. Flexbox `gap` (~116 rules,
+  Chrome 84) is the same class of bug at a lower version.
+- `color-mix()` (Chrome 111 / Safari 16.2, ~33 uses) — not cosmetic, as first assessed: 17 uses are a
+  `background` with no fallback colour, and several of those ARE a meter's fill (the `.reloading`/
+  `.switching`/`.down .near` progress bars). Below 111 the whole `background` declaration is invalid,
+  so the fill is not a worse colour, it is gone — no reload/weapon-switch/spawn-protection countdown
+  at all, a silent loss of information mid-match, not just a look.
+
+Nothing else in the CSS or in this app's own JS needs more than 111 to lay out, inform or run
+correctly (re-audited at this floor: `:has()`, Chrome 105, three purely presentational rules — a
+chip-bar position, a hidden pill, a countdown offset — now sits BELOW the floor). The JS runtime APIs
+this app calls that landed after Chrome 60 (`globalThis` 71, `Object.fromEntries` 73,
+`Promise.prototype.finally` 63) are all comfortably below 111 too, so there is no polyfill file.
+
+**iOS 16.2**, because `color-mix()` needs Safari 16.2 — one version above Capacitor 8's own default
+deployment target (15.0), which is why `scripts/ios-setup.sh` now raises `IPHONEOS_DEPLOYMENT_TARGET`
+(`ios/App/App.xcodeproj/project.pbxproj`) and `CapApp-SPM/Package.swift`'s `platforms` to 16.2 itself:
+nothing in Capacitor's own CLI does it for us (it only ever reads that value back, never writes it).
+
 ## Run it
 
 ```bash

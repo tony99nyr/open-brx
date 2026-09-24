@@ -685,6 +685,7 @@ export class Engine {
     this.gun = null;                // {name, tail, fw?}
     this.bleUp = false; this.wsState = 'offline';
     this.gunFlapping = null;        // bench 2026-09-17: {count, next_retry_at} while the gun keeps dropping the link (BrxLink.flapping)
+    this.headsetJoin = null;        // F293: {state: 'joining'|'not_joined'|'joined', since} from BrxLink's `$VERSION` probe (BrxLink.headsetJoin)
     this.player = null; this.team = null; this.roster = []; this.config = null; this.frames = null;
     this.start = null;              // {match_id, go_live_t, seq, countdown_s}
     this.matchId = null;
@@ -1301,8 +1302,20 @@ export class Engine {
   armState() { return this.phase; }
 
   // ---------- BLE link ----------
-  onBleConnected(gun) {
+  /** F293: the frames BrxLink sends as its connect probe, before it tells us the link is up. A connect that the
+   *  engine's own first-connect probe (`_probe`) would answer keeps that order (`$STOP`, `$PHONE`, `$VERSION`);
+   *  every other connect sends `$PHONE`, `$VERSION`: `$STOP` disarms IR reception, and a relink mid-match must never. */
+  linkProbeFrames() {
+    const pend = this._pendingPhase;
+    const p = this.phase !== 'idle' ? this.phase : (pend && pend !== 'idle' && this.player ? pend : (this.player ? 'kitted' : 'connected'));
+    return !this.probeSent && (p === 'connected' || p === 'kitted') ? [...PROBE_FW] : ['$PHONE,*', '$VERSION,*'];
+  }
+  /** `probe` (F293): what BrxLink's connect probe already sent and read ({probed, frames, fw, headset}). The engine
+   *  then sends no probe of its own: no second `$PHONE`, and no `_probe()` when the link sent `$STOP`. */
+  onBleConnected(gun, probe = null) {
     const first = !this.bleUp && !this.gun;
+    const probed = !!(probe && probe.probed);
+    if (probed && probe.fw) this.fw = probe.fw;
     this.gun = gun || this.gun; this.bleUp = true;
     this.lastGunFrameAt = this.now();   // B4: the watchdog's clock restarts at the moment of (re)link, not from whatever it was before the drop
     // B4: a RELINK (not the very first connect, which `_probe()` below covers with the full ritual) may
@@ -1312,7 +1325,8 @@ export class Engine {
     // alone wakes it") and carries no $STOP, so it never touches game/audio state. Without this a link
     // that drops and relinks mid-game could sit at `bleUp:true` while the gun stays mute — no $HIR, no
     // $BUT, no $VOLTS — until something else notices (field 2026-09-12, B4).
-    if (this.probeSent) this._write(['$PHONE,*'], 'reopen event tap on relink');
+    if (this.probeSent && !probed) this._write(['$PHONE,*'], 'reopen event tap on relink');
+    if (probed && Array.isArray(probe.frames) && probe.frames.includes('$STOP,*')) this.probeSent = true;   // the link sent PROBE_FW
     if (this.phase === 'idle') {
       // Re-derive the phase from persisted context (§3.7 / §3.11).
       const p = this._pendingPhase; this._pendingPhase = null;
@@ -1345,6 +1359,16 @@ export class Engine {
     const next = f && f.count >= 2 ? { count: f.count, next_retry_at: f.next_retry_at ?? null, ...(f.quiet ? { quiet: true } : {}) } : null;
     if (JSON.stringify(next) === JSON.stringify(this.gunFlapping)) return;
     this.gunFlapping = next; this._changed();
+  }
+  /** F293: BrxLink's headset state. The first `joined` reading clears the flap warnings at once: the headset
+   *  answered, so HEADSET OFF? is no longer true (it used to wait out the link's 30 s hold timer). */
+  setHeadsetJoin(h) {
+    const next = h && h.state ? { state: h.state, since: h.since ?? null } : null;
+    const same = JSON.stringify(next) === JSON.stringify(this.headsetJoin);
+    if (same && !(next && next.state === 'joined' && this.gunFlapping)) return;
+    this.headsetJoin = next;
+    if (next && next.state === 'joined') this.gunFlapping = null;
+    this._changed();
   }
   onBleDropped() {
     const pendingResync = this._operatorResyncPending;
@@ -4854,7 +4878,13 @@ export class Engine {
     const ok = this.phase === 'live' && this.alive && this.bleUp && !this.resync && !this.reconciling && !this.gunLocked && !this.tutorial;
     // Polish M2: a STUNNED gun is disarmed and `_stunRestore` rewrites its ammo, which would erase a weapon grant. The claim
     // is not dropped: the ready latch is kept warm, so the station's answer is taken the moment the stun ends.
-    if (ok && this.stunned) { if (this._puReadyFor) this._puReadyFor.at = now; return; }
+    // F331: but only while the player stays in range; walking out drops the claim, so no claim_ready goes out.
+    if (ok && this.stunned) {
+      const cl = this._puClaim, st = cl ? this._puStation(items) : null;
+      const held = st && st.id === cl.station && Number.isFinite(this._puMedian(st)) && this._puMedian(st) >= this._puThreshold(st) - POWERUP_EXIT_DB;
+      if (!held) { this._puClaim = null; this._puReadyFor = null; } else if (this._puReadyFor) this._puReadyFor.at = now;
+      return;
+    }
     if (!ok) { this._puClaim = null; this._puReadyFor = null; return; }
     this._puTakerCheck(items, now);
     const st = this._puStation(items);
@@ -6203,12 +6233,18 @@ export class Engine {
     const now = this.now();
     const r = this.respawnDelayMs;
     return {
-      phase: this.phase, bleUp: this.bleUp, gunFlapping: this.gunFlapping, wsState: this.wsState, wsReason: this.wsReason || null, gun: this.gun, night: this.night,   // QA-08: the HUD reads MC's refusal reason (the chip and the READY note both asked for it and got undefined)
+      phase: this.phase, bleUp: this.bleUp, gunFlapping: this.gunFlapping, headsetJoin: this.headsetJoin, wsState: this.wsState, wsReason: this.wsReason || null, gun: this.gun, night: this.night,   // QA-08: the HUD reads MC's refusal reason (the chip and the READY note both asked for it and got undefined)
       nightOps: !!(this.config && this.config.night),
       player: this.player, team: this.team, teamKey: this.teamKey, teamName: this.team ? (this.team.name || TEAM_NAME[this.team.tid] || '').toUpperCase() : '',
       callsign: this.player ? this.player.display : '', playerNum: this.player ? this.player.player_num : null,
       mode: this.config ? String(this.config.mode || '').toUpperCase() : '', weapon: this.weaponName,
       hp: this.hp, armor: this.armor, shield: this.shield, maxHp: this.maxHp, maxArmor: this.maxArmor, maxShield: this.maxShield, ammo: this.ammo, reserve: this.reserve, mag: (this._puHeld && this.activeSlot === this._puHeld.slot ? this._puHeld.charges : (this._ammoBySlot()[this.activeSlot] ?? this.mag)),   // A56: a held item's denominator is its charges
+      // S29 shield meter (2026-09-24): a READ-ONLY view of the recharge so the phone can draw the engine's real
+      // timing (the delay since `quietAt`). null in a game with no shield. It changes no rule.
+      // `down` = the shield BROKE this life (a spawn at 0 has not); `paused` = `_shieldTick`'s own stand-down, when no refill runs.
+      shieldRegen: this.maxShield > 0 ? { on: this.shieldRegenOn, delayMs: SHIELD_REGEN_DELAY_MS, quietAt: this._shieldQuietAt || 0,
+        charging: !!this._shieldRegen, down: !!this._shieldDown, gaveUp: !!this._shieldGaveUp,
+        paused: !!this._standDown(['phase', 'spawned', 'ble', 'alive', 'reconciling', 'resync', 'tutorial', 'stunned']) } : null,
       // Bench 2026-09-17: `heat` is the active slot's last $ALCD heat token, null until one has been seen
       // this life (a non-heat weapon never sends a non-zero one).
       heat: this.heatBySlot[this.activeSlot] != null ? this.heatBySlot[this.activeSlot] : null,

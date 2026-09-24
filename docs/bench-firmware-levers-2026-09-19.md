@@ -118,6 +118,17 @@ MC can check every gun's team after arming.
 
 ## 2. Melee (K4, 10 min)
 
+**CLOSED 2026-09-24 (K4).** Steps 1-4 ran on the bench (Tactix-FE30 vs Tactix-9498, shipped melee frames in
+slots 7 and 4): the control (step 1) gave no reply to `$MELEE,255,*` or `$XYZZY,255,*` (the old `$MELEE` note was
+a coincidence); a swing in slot 7 and in slot 4 (steps 2-3) both gave `$BUT,8` plus an isolated `$ALCD`; two
+swings landed `$HIR,4,13,5,1,90,0,1,*` on the victim and killed a Standard 115 pool. A hand-covered emitter A/B
+(a lighter version of step 4/6, no rig) found the shot leaves the SHOOTER'S HEADSET: one hit with the barrel
+covered, none in two swings with the headset domes covered (small n, and the shooter was not BLE-connected
+during that A/B, so it is Tony's report, not a wire confirmation of `$BUT,8`). Melee WORKS in our compiled game
+on v4.32; see `archive/followups-closed.md` (K4) and `manual/dev.md`. Steps 5 and 7 (the `$BHIT` event-path and
+`$FIREX` arity controls) did not run and are now optional: they would explain WHY melee failed on 2026-08-26,
+not whether it works today.
+
 Three facts from the new material:
 - The 2018 BC app puts melee in `$WEAP` **slot 7** and binds the swing with `$BMAP,8,7`. We use slot 4 and `$BMAP,8,4`.
 - V4_30 has **no `$MELEE` command**. Our note that `$MELEE,255` returned `$BUT,4,0` may be a coincidence.

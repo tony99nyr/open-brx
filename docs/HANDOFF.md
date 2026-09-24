@@ -80,18 +80,39 @@ Recoil counts rounds per trigger pull by calibre (S54, `aa7b08b9`). F291 is clos
 - **Next bench task:** **F308** and **F292** in [`bench-2026-09-24.md`](bench-2026-09-24.md), then sitting 2 steps 1-4,
   then sitting 3 (§26 groups A and B).
 - **Blocked:** Extended Mags on `$TMP` (S50) and F281 on sitting 2; **F275** on outdoor space (runbook Block 5).
-## Lane: BLE reliability (desk half)
-On `main` 2026-09-23: the desk halves of **F297** (`connect-metrics`), **F269** (`raw-bytes`) and **F270**
-(write-with-response off). All three stay open for the bench; the rows hold the detail.
-- **Next bench task:** the ordered runbook [`bench-2026-09-24.md`](bench-2026-09-24.md). **Blocked:** F270 on A8.
-- **F315 (2026-09-23):** hits resolve by IR cell, then magnitude; `--distinct-weapon-cells` (off) waits on bench 4.10.
+## Lane: BLE reliability (brx2)
+2026-09-24 bench, Blocks 0-1, 1.4 and 3.1-3.3 of [`bench-2026-09-24.md`](bench-2026-09-24.md) done, plus a
+melee side-run. **F297**: laptop control 10/10 first-attempt, median link 1.37 s; the phone run's tooling bug is
+fixed (`9b94e318`). **F293**: brx5's `HEADSET_JOIN_MODE 'disconnect'` fix (`ffbc987c`) VERIFIED except the
+mid-match step (needs MC), so the row stays OPEN. F334 (filed by this lane) closed: WebView floor 111
+(`d373c1ae`). **F308** 3.1-3.2 PASS; the Burst Rifle's between-burst gap needs the rig. **S58** 3.3 items 1-8
+all PASS or read as planned, `spec/powerups.md` corrected (the overshield clamps to `$PSET` max; a heavy
+pickup equips straight onto the trigger). **K4 CLOSED 2026-09-24**: melee works in our compiled game (two
+guns, two confirmed hits), and the shot leaves the shooter's headset, not the barrel (`archive/followups-closed.md`,
+`manual/dev.md`).
+- **Next bench task:** Block 4 onward of [`bench-2026-09-24.md`](bench-2026-09-24.md); F293 step 5 and 4.11's
+  RSSI pickup-range calibration land there.
+- **Next desk task:** none open for this lane.
+- **Blocked:** F270 on A8.
 ## Lane: Mission Control console honesty
 2026-09-24: 0.4.6 published; F318, F108, F325, F133, F52, K8 closed. **Next:** bench F309/F311/F312; 0.4.7 cut on brx1's word.
 
 ## Lane: S57, B21, StickS3 (brx4)
-2026-09-23: **S57 built** (docs/ir-callouts.md); Block 7 of `bench-2026-09-24.md` settles it, F312 first. **B21:** key made and 0.4.6 built; its one blocker is above. **StickS3 (H7):** BLE and IR TX work; IR RX is F314. Start the next Stick session with `.claude/skills/m5stick-bench` and `hardware/m5sticks3/README.md`: `stick.py flash`, then `SELFTEST`, then the sheet's rerun.
+2026-09-24 afternoon bench (Stick COM10, rig RX COM7, rig TX COM8, no gun on BLE, Tony fired a gun by hand): IR
+transmit is CONFIRMED clean at 5 cm, 30 cm, 1 m and 3 m (`bench-sticks3-2026-09-23.md` Results). Found and fixed a
+standalone-beacon bug that hit every field station: an ESP32-S3 HWCDC TX-timeout stalled `loop()` with no USB host
+attached (`fc8c3db4`); closed same-day as **F335**. Receive still fails at every distance and source tried (gun,
+rig emitter, a fresh-boot BRIDGE control); the Stick's own receiver does loop back its own transmitter at
+millimetre range, so the conclusion is the receiver hardware itself, not our firmware or the gun's carrier; **F314
+stays open**. The intermittent receiver "noise" is resolved as the idle-dim backlight PWM, fixed by `2a836bce`
+(F314's ranked cause 3, not the missing decode); two earlier readings (a floating-pin claim, a front-of-word
+decoder bug) are retracted. F332 and F333 are untouched today, both stay open. The bench hold from brx1 is still
+in effect; do not flash until it lifts.
+**Next:** the second Stick with the emitter at 5 cm, then an external 38 kHz receiver (Seeed Grove IR receiver or
+M5 Unit IR); F332 (datasheet or bench) and F333. The MC half of A58 (`station_config.lock_s` compile + console) is
+brx3's lane, not this one.
 ## Lane: powerups and the shield HUD (brx5)
-2026-09-24: S58 powerups built behind MC `--powerups`, off until bench Sitting A 3.3 (items 1-8) and 4.11 pass; three polish rounds. Next: S59 Halo shield variants await Tony's pick (branch `shield-halo`), F331 Lows.
+2026-09-24: S58 powerups built behind MC `--powerups`, off until bench Sitting A 3.3 (items 1-8) and 4.11 pass; three polish rounds. S59 Halo shield meter pushed. F293 fix pushed: a headset probe on every connect (release and wait 15 s on `?`), awaiting bench step 1.4. F331/S59 Lows done (open for Tony: night creep brightness, station display name). SELECT pickup branch `pu-select` HELD: bench 3.3 changed the button and overshield mechanisms, decisions with Tony.
 
 ## Start here
 

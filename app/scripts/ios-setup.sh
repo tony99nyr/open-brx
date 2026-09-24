@@ -31,6 +31,20 @@ set_bool() {  # key, true|false — add or overwrite, idempotent
   $PB -c "Set :$1 $2" "$PLIST" 2>/dev/null || $PB -c "Add :$1 bool $2" "$PLIST"
 }
 
+# --- Deployment target: color-mix() needs Safari 16.2 (app README, "Supported phones") ------------
+# Capacitor's own CLI never writes this from capacitor.config.json — it only READS it, for its own
+# compatibility checks (@capacitor/cli's ios/common.js getMajoriOSVersion() scans project.pbxproj for
+# this same literal string). The SPM template ships `IPHONEOS_DEPLOYMENT_TARGET = 15.0` (four build
+# configs in project.pbxproj) and Package.swift's `platforms: [.iOS(.v15)]`, and nothing else in
+# Capacitor ever raises either one, so this script is the only place that can.
+echo "==> raising the iOS deployment target to 16.2"
+PBXPROJ="ios/App/App.xcodeproj/project.pbxproj"
+sed -i '' -E 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]+;/IPHONEOS_DEPLOYMENT_TARGET = 16.2;/g' "$PBXPROJ"
+SPM_PACKAGE="ios/App/CapApp-SPM/Package.swift"
+# .v16 (the named enum case) is "the latest 16.x SDK", not "16.2 minimum" — the string form pins the
+# actual minor version PackageDescription requires for a precise floor.
+sed -i '' -E 's/platforms: \[\.iOS\([^)]*\)\]/platforms: [.iOS("16.2")]/' "$SPM_PACKAGE"
+
 echo "==> patching $PLIST"
 
 # --- Fullscreen HUD: no status bar ---------------------------------------------
@@ -103,4 +117,6 @@ for k in NSBluetoothAlwaysUsageDescription NSCameraUsageDescription NSLocalNetwo
          ITSAppUsesNonExemptEncryption; do
   printf '   %s = ' "$k"; $PB -c "Print :$k" "$PLIST"
 done
+printf '   IPHONEOS_DEPLOYMENT_TARGET = '; grep -m1 -o 'IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*' "$PBXPROJ" | sed 's/.*= //'
+printf '   Package.swift platforms = '; grep -o 'platforms: \[[^]]*\]' "$SPM_PACKAGE"
 echo "==> done. Open with: npx cap open ios   (needs full Xcode)"

@@ -2711,7 +2711,13 @@ class Session:
         if not self.powerups_enabled or not a or a.get("kind") != "powerup":
             return None
         item = a.get("item")
-        if not isinstance(item, dict) or item.get("kind") not in ("weapon", "overshield"):
+        if item is None:
+            return None
+        if (why := _pu.invalid_reason(item)) is not None:
+            # F331: a restored item never passed `expand`; drop it once, loudly, rather than hang or raise per tick
+            a.pop("item", None)
+            import logging
+            logging.getLogger("brx.mc").warning("dropped an invalid item on powerup station #%s: %s", a.get("id"), why)
             return None
         return cast(StationItem, item)
 
@@ -3067,9 +3073,9 @@ class Session:
     def _after_station_change(self, slots_before: list[PowerupSlot]) -> None:
         """Re-arm every station and re-push the players' allow-list -- or, when the pickup weapons moved (A56),
         a fresh head for the whole roster, because the spare slots are in the FRAMES, not only the config.
-        Never in play: `_repush_stations_to_players` is lobby-only, and a moved slot set can only happen in
-        the lobby (`set_station`/`clear_station` refuse in play, and `release_station` keeps the item's slot
-        until the next push rather than re-arming a live gun)."""
+        Never in play: `_repush_stations_to_players` is lobby-only. `set_station`/`clear_station` refuse in
+        play, but `release_station` does not: in play it drops the item's slot from `_powerup_slots()` at once,
+        and the guns already armed keep the slot in their frames because nothing re-pushes a live gun here."""
         if self._powerup_slots() != slots_before and self.lobby_pushed and not self.in_play():
             self._fresh_head_repush()              # re-arms the stations too
             return
@@ -5897,8 +5903,7 @@ class Session:
             # Breacher/Toxin rows never reached any head and A17 stopped the push. The compiler needs
             # the authoritative Player records.
             # A56: the pickup weapons ride as a stand-in carrier, so every gun's `$SIR` covers their cells.
-            carrier = [cast(Player, {"player_id": "_powerups", "loadout": {"weapons": [
-                {"weapon_id": pu["weapon_id"]} for pu in slots]}})] if (slots := self._powerup_slots()) else []
+            carrier = _compile.Compiler._pickup_carrier(self._powerup_slots())
             self._pinned_hit_plan = fn(list(self.players.values()) + carrier,
                                        rekey=bool(self.config.get("hit_audio_rekey", False)))
         return self._pinned_hit_plan

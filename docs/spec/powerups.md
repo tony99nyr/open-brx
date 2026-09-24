@@ -38,13 +38,42 @@ costs the player their secondary while the item lasts.
 5. With the item slot out of the cycle and an empty magazine, confirm it cannot fire by any button.
 6. After a death and `$SPAWN`, does the pickup slot's magazine come back? (If it does, the phone zeroes it.)
 7. Overshield: on a Standard-preset gun (shield max 0) and a Shields-preset gun, write the shield to its current
-   value plus 75 with `$LIFE` token 4 = 2 (set past max). Pass: `$HP` reads the new shield; the next hits take the
-   shield first; nothing refills it; a death clears it. Also: the same write to a gun at `$HP,0` must not revive it
-   (mode 1 with health above 0 is a proven revive; mode 2 is unmeasured).
+   value plus 75 with `$LIFE` token 4 = 2 (set past max). **Bench 2026-09-24, measured: the raw write does NOT
+   stick past the `$PSET` shield max; `$HP` clamps back to the max within about 0.75 s.** A grant above the
+   preset max holds only once a mid-life `$PSET` re-send raises the shield max first. A death clears it. Also:
+   the same write to a gun at `$HP,0` must not revive it (mode 1 with health above 0 is a proven revive; mode 2
+   is unmeasured).
 8. Pickup range calibration (brx2's runbook): the RSSI median at 15, 30, 60 and 100 cm for each phone (Pixel,
    iPhone) against each station type (phone station, StickS3). It sets `POWERUP_RSSI_DBM` per station kind and
    decides whether a per-phone offset is needed. It also measures the claim latency (in range to TAKEN on the
    station).
+
+## Bench 2026-09-24, Sitting A 3.3 (brx2, Tactix-FE30): what it changed
+
+Measured on one gun, raw MCP writes (not the app). They overturn parts of the mechanism above; the build stays
+behind the flag until the design catches up (open for Tony, S58).
+- **Overshield set past max does NOT stick.** `$LIFE,45,70,75,2,*` echoes 75, then reads back 70 (the `$PSET` shield
+  max) within 0.75 s; 60 holds. A mid-life `$PSET` re-send raising shield max 70 → 145 (nothing else changed) then
+  holds 145 for over 100 s, and the gun still fires and ALT still cycles. Untested: being hit, and `spawned` across a
+  hit and a death. Death clears it (145 → 0; the respawn gives 45/70/0).
+- **`$BMAP,<btn>,<slot>,,,,,*` FIRES that slot on each press and does not move the trigger's weapon** (the trigger
+  kept firing slot 1 after SELECT fired slot 2; the same for slot 3, outside the cycle). It fires even with the
+  trigger blocked (`$BMAP,0,98`). `$BMAP,<btn>,100,<slot>,99,99,99` does NOT select a slot. Button ids: SELECT 3,
+  left 4, right 5. The ALT cycle `$BMAP,1,100,0,1,2,99` goes 0 → 1 → 2, and a new `$BMAP` restarts it at the list start.
+- **A respawn refills EVERY slot, item slots included**, so item slots must be re-emptied after each `$SPAWN`
+  (compile's spawn and revive already write `$AMMO,<slot>,0,0,1` after `$SPAWN`). An empty slot cannot fire.
+- **An empty slot stays in the ALT cycle** (ALT went 1 → 2, clicking empty, → 0): an ALT-cycle design must drop an
+  empty item slot from the list, or keep item slots out of ALT.
+- A mid-life `$AMMO` for another slot did not move the trigger's weapon (after `$AMMO,2,0,0,1` the trigger fired
+  slot 1). OPEN: once, after the right button fired slot 2, the reload handle reloaded slot 2; whether reload targets
+  the last slot fired needs a disassembly read.
+- **Heavies straight on the trigger (Tony wants this; bench the same day, frames from `compile.resolve`).** A mid-life
+  `$WEAP,<slot>,…` for a heavy makes it the trigger's weapon at once: rockets in slot 2 (`$WEAP` then `$AMMO`) and the
+  rail in slot 3 (`$WEAP` only) both fired from the trigger; the rail keeps its charge behaviour. `$AMMO` alone never
+  switches weapons. When the heavy runs dry, ALT goes to the NEXT slot in its own cycle (the pistol, not the AR). The
+  switch-back works: re-send the primary's `$WEAP,0,…` (it equips and refills), then `$AMMO,0,<saved mag>,<saved
+  reserve>,1,*`, and the trigger fires the AR with its real count. Untested: whether a `$WEAP` re-send resets
+  per-weapon state beyond ammo (heat, the swap delay).
 
 ## Contract (A56, additive)
 
@@ -107,18 +136,25 @@ swap and you would only have 1."
 - **Weapon pickups** (Rockets, Rail Gun, later the other heavies) share ONE pickup-weapon holding. Taking a second
   weapon SWAPS: the new one replaces the old, which is gone (not dropped for someone else; that is an idea for
   later). On the gun: zero the old slot's `$AMMO`, write the ALT cycle with the new slot, `$AMMO` the new slot with
-  its charges. The HUD says it on the callout card: RAIL GUN replaces ROCKETS.
+  its charges. The HUD says it on the callout card: RAIL GUN replaces ROCKETS. **Bench 2026-09-24, measured: the
+  pickup equips straight onto the trigger, with no extra write.** A mid-life `$WEAP,<slot>,…` for the new weapon
+  plus its `$AMMO` write, sent in that order, fires it on the very next trigger pull; a mid-life `$WEAP` write
+  alone, with no `$AMMO` sent, also equips the weapon on the trigger. `$AMMO` alone never switches the trigger's
+  weapon. Switching back to the primary needs both writes in the same order: re-send its `$WEAP`, then its saved
+  `$AMMO`. Reading: a re-armed slot's ALT position holds where it last was, not slot 0. Untested: whether a
+  mid-life `$WEAP` re-send resets other per-weapon state, such as heat or swap delay.
 - **Non-weapon powerups** (first: Overshield) stack alongside a held weapon pickup: Rockets and an Overshield
   together is fine.
 
 **Overshield mechanics.** A positive `$BUMP` clamps at the `$PSET` maximum (protocol.md, the `$BUMP` row), so it
 cannot put shield above max. The grant is `$LIFE` with token 4 = 2 (set past max) on the shield pool: current +
-`OVERSHIELD_AMOUNT` (75). It takes hits first (the gun's cascade drains shield before armour and HP), does not
-regenerate (`OVERSHIELD_REGEN` off), does not decay (`OVERSHIELD_DECAY_PER_S` 0), and is gone at death. In the Shields
-preset the node's own recharge (S29, `$BUMP` refills) must never write while the shield is above the preset max, so
-a clamping refill cannot cut the overshield down. Bench (Bench gate item 7): the shield set past max sticks; hits
-drain it first; a `$BUMP` shield refill on a gun already above max does not lower it (so the recharge rule is
-belt-and-braces, not load-bearing).
+`OVERSHIELD_AMOUNT` (75). Design: it takes hits first (the gun's cascade drains shield before armour and HP), does
+not regenerate (`OVERSHIELD_REGEN` off), does not decay (`OVERSHIELD_DECAY_PER_S` 0), and is gone at death. **Bench
+2026-09-24 (Bench gate item 7), measured: the raw `$LIFE` write does NOT stick past the `$PSET` shield max; `$HP`
+clamps back to the max within about 0.75 s.** The grant must pair a mid-life `$PSET` re-send that raises the shield
+max, and only then does the `$LIFE` write hold. A death clears it. Untested: hits draining the shield first, and a
+`$BUMP` refill on a gun already holding a raised max, so the recharge-rule design above remains a design intent,
+not a bench-confirmed guard.
 
 ## Station powerup modes (Tony, 2026-09-24: "future variations wanted")
 

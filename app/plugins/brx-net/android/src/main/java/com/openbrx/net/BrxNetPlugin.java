@@ -126,8 +126,13 @@ public class BrxNetPlugin extends Plugin {
             .build();
     }
 
+    // Every event goes out on the plugin thread, the thread that runs addListener/removeListener. OkHttp calls
+    // back on its own threads, and Capacitor's listener list is not thread-safe: a socket failing while the JS side
+    // swapped listeners hit a null PluginCall inside notifyListeners and killed the app (bench 2026-09-24, an MC
+    // reconnect loop). Bridge.execute keeps the order of the events.
     private void emit(String event, JSObject payload) {
-        if (!destroyed) notifyListeners(event, payload);
+        if (destroyed) return;
+        getBridge().execute(() -> { if (!destroyed) notifyListeners(event, payload); });
     }
 
     private void finish(SocketRecord record, int code, String reason) {

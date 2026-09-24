@@ -42,9 +42,17 @@ superseded). See `docs/experiment-log/2026-09.md` (2026-09-19 pre-game entry) fo
 
 ### Next sitting: [`bench-2026-09-24.md`](bench-2026-09-24.md) (MUST: about 4 h 30 min in three setups)
 
-One ordered runbook for the next sitting: F297/F293 connect reliability, the screamers transport steps A4, A7,
-A7b, A7c and A8 with `raw-bytes` (F269/F270), the native kill word and the R4 readings (Block 2b: F320-F322), F308,
-S56, F292, F298, F296, F309, F275
+**Block 0 (preflight), Block 1 (F297/F293 connect reliability), Block 1.4 (the F293 fix re-check, PASS except
+step 5), and Block 3.1-3.3 (F308: release order, fire intervals; S58: pickup slots, buttons, overshield) are
+DONE, 2026-09-24** (see the experiment log's 2026-09-24 bench entry). Step 1.3 was not needed as a planned step:
+the loop was reproduced on demand, without a btsnoop capture. Step 1.4's step 5 (a headset power-cycle
+mid-match) did not run, since it needs MC; it moves into Block 4 below. **The next sitting starts at Block 4.**
+S58's 3.3 open items: 4.11's RSSI pickup-range calibration (not run), item 7's untested hits-draining-the-shield
+and dead-gun `$LIFE` mode-2 cases, item 4's reload-targets-last-slot-fired confounder, and item 8's `$BMAP,0,0`
+weapon-reset confounder, both needing a disassembly read rather than a bench re-run. What remains otherwise: the
+rest of F308's bench items in `docs/weapon-design.md`'s Balance rules table, the screamers transport steps A4,
+A7, A7b, A7c and A8 with `raw-bytes` (F269/F270), the native kill word and the R4 readings (Block 2b:
+F320-F322), S56, F292, F298, F296, F309, F293's step 5 (the mid-match headset power-cycle), F275
 outdoors, S48's super-indoor grid in Tony's house, and S57's IR callout bus, with the 0.4.6 loop (Block 4.0).
 Its sitting plan orders them: MUST sittings A-C, a stop point, then LATER by setup.
 
@@ -65,7 +73,7 @@ A3 repeats A1 on other channels and can lock the gun: power-cycle and re-arm bef
    prove the missing-row default sound, then write two distinct ids and identify which one plays (15 min). **F285**.
 6. Levers §12 step 2 (does `$STOP` gate the trigger?), then §4 step 2 (a `$SIR` p5 stun on hit) (10 min). **U11′**.
 7. **F262**: the shield-hit sound by sensor, ten shots at the headset and ten at the gun body (10 min, ears).
-8. Levers §2, melee (15 min; `$BMAP,8,7` and `$BMAP,8,4`; step 4 needs the rig). **K4**.
+8. ~~Levers §2, melee.~~ **K4** closed 2026-09-24: melee works in our compiled game (bench 2026-09-24 entry, `archive/followups-closed.md`). Steps 5 and 7 (the `$BHIT`/`$FIREX` controls) stay optional, not blocking.
 9. Levers §16 step 6.3: does `$CLEAR` stop a headset `$IRTX` loop? (5 min, the rig). **S57**, **B23**.
 10. **F282**: the compiled Suppressor against the compiled AR in a dark room: does either flash, and which is quieter?
    Then `$WEAP` t25/t26 at 0 and at a large value on one weapon (10 min; eyes, ears; method in the row).

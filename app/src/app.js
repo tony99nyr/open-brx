@@ -98,11 +98,14 @@ let transport = null;
 const link = new BrxLink({
   log, onFrame: f => engine.feedFrame(f),
   onDrop: () => { engine.onBleDropped(); haptic('down'); },
-  onUp: advert => {
+  onUp: (advert, probe) => {
     // F211 fix: a link that just came up (fresh connect, or the forever-reconnect loop's own success)
     // must close the picker if it is somehow still open, so the beacon scan (scanwatch.js) is free again.
     if (scanning) { scanning = false; stopPickerPaint(); hud.setScan([]); link.stopScan().catch(() => {}); }
-    engine.onBleConnected(advert);
+    engine.onBleConnected(advert, probe);   // F293: `probe` = what BrxLink's connect probe sent and read
+    // F293 polish (H1): a first pick can end at the headset cap with no MC link started; a later RECONNECT NOW
+    // then links the gun here, so this is where the MC link starts when none runs.
+    if (settings.mcUrl && !transport) connectMc(settings.mcUrl);
     if (transport) {
       transport.gun = { name: advert.name, tail: advert.tail, fw: engine.fw || undefined };
       if (transport.state === 'bound') { try { transport.bind({ player_id: engine.player && engine.player.player_id, gun: engine.gun ? { name: engine.gun.name, tail: engine.gun.tail, fw: engine.fw || undefined } : undefined }); } catch (_) { /* best-effort */ } }
@@ -110,6 +113,14 @@ const link = new BrxLink({
   },
   unbounded: () => engine.phase === 'armed' || engine.phase === 'live',
   onFlap: f => engine.setGunFlapping(f),
+  // F293: every connect probes `$VERSION` before the link counts as up; the engine picks the probe frames (no `$STOP`
+  // on a relink) and shows HEADSET JOINING / HEADSET NOT JOINED from the link's headset state.
+  probeFrames: () => engine.linkProbeFrames(),
+  onHeadset: h => {
+    engine.setHeadsetJoin(h);
+    // F293 polish (M3): the picker's "Connecting to <gun>" block says the headset is joining, not "keep the gun close"
+    if (hud.connecting && !hud.connecting.failed) { hud.setConnecting({ ...hud.connecting, headset: h ? h.state : null }); scheduleRender(); }
+  },
   onRelink: () => scheduleRender(),   // RELINK GUN reads RELINKING… and is disabled while a relink runs (bench 2026-09-17)
 });
 const engine = new Engine({
@@ -227,10 +238,10 @@ async function syncPlayerAdvert() {
       log(`advertising as player ${num} team ${tid}${st.alive ? '' : ' (down)'}${claim.bits ? ` · ${st.powerupClaim.ready ? 'CLAIM READY' : 'claiming'} station ${claim.value}` : ''}`, 'li');
     } else { await plugins.beacon.stop(); playerAdvertGate.stopped(); }
   } catch (e) {
-    // ⚠ The gate records nothing for a failed call, so the next tick retries. The one that matters is the start that
+    // ⚠ The gate records nothing for a failed call, so retried after ADVERT_FAIL_BACKOFF_MS. The one that matters is the start that
     // clears the alive bit on death: a dead player whose advert still says alive=1 goes on converting a control point
     // for the whole death window, silently.
-    playerAdvertGate.failed(action);
+    playerAdvertGate.failed(action, Date.now());
     log('player advert failed — the phone may still be broadcasting the previous one; retrying: ' + (e && e.message || e), 'le');
   } finally { playerAdvertBusy = false; }
 }
@@ -398,7 +409,8 @@ async function openPicker({ auto = false } = {}) {
     // Review 2026-09-19: a background reconnect loop (a remembered gun that is off) also holds the radio --
     // `link.scan()` throws "a gun connect is in flight" and the picker showed "No guns found" with no scan
     // ever having run. End that loop first, the smallest safe option: SET MY GUN is meant to override it.
-    if (link.connecting) { log('gun scan: ending the background reconnect so the picker can use the radio', 'li'); await link.disconnect(); }
+    // F293 round 2: also between dials (a headset settle wait), or the loop dials again under the picker's scan.
+    if (link.connecting || link._reconnecting) { log('gun scan: ending the background reconnect so the picker can use the radio', 'li'); await link.disconnect(); }
     scanning = true;       // claim the radio first, so no beacon tick reopens its scan while this one stops it
     try {
       await stopAnyScan();   // tap = (re)start a fresh scan, never leave the picker idle (bench 2026-08-25); the beacon watch yields to the picker
@@ -462,18 +474,21 @@ Object.assign(hud.h, {
     hud.setScan([]); hud.setConnecting({ name, attempt: 1, of: 5, failed: false }); scheduleRender();
     stopPickerPaint();
     log(`connecting to ${name}…`);
-    let failed = false;
+    let failed = false, notJoined = false;
     try {
       await link.stopScan();
       // `connect` waits for the stop to complete plus SCAN_SETTLE_MS before its first attempt (brxlink.js)
       // `of: null` once unbounded() -- never a stale "Retrying (7 of 5)…" (review 2026-09-19)
-      const up = await link.connect(deviceId, d.name, { onAttempt: (i, of) => { hud.setConnecting({ name, attempt: i, of: link.unbounded() ? null : of, failed: false }); scheduleRender(); } });
-      if (up !== false && settings.mcUrl && !transport) connectMc(settings.mcUrl);
+      const hs = () => (link.headsetJoin ? link.headsetJoin.state : null);
+      const up = await link.connect(deviceId, d.name, { onAttempt: (i, of) => { hud.setConnecting({ name, attempt: i, of: link.unbounded() ? null : of, failed: false, headset: hs() }); scheduleRender(); } });
+      // F293 polish (H1): a pick that ended at the headset cap still chose this gun (BrxLink keeps it for RECONNECT NOW)
+      if ((up !== false || link.deviceId === deviceId) && settings.mcUrl && !transport) connectMc(settings.mcUrl);
+      if (up === false && link.deviceId === deviceId && hs() === 'not_joined') notJoined = true;
     }
     catch (e) { failed = true; log('connect failed: ' + (e && e.message || e), 'le'); }
     finally { picking = false; scanning = false; }
     // a failed connect keeps the gun's name on screen with a plain message and SCAN AGAIN (onScanAgain)
-    hud.setConnecting(failed ? { name, attempt: 5, of: 5, failed: true } : null);
+    hud.setConnecting(failed ? { name, attempt: 5, of: 5, failed: true } : notJoined ? { name, failed: true, headset: 'not_joined' } : null);
     scheduleRender();
   },
   onUtility: () => switchRole('utility'),   // the HUD's way into utility mode (brx-hud adds the control; 7 taps on the stage also work)
@@ -533,7 +548,8 @@ Object.assign(hud.h, {
   // A link that is down: cut the backoff short. A link the app believes is up: really cycle it (playtest
   // 2026-09-13, RELINK GUN did nothing there). The relink path re-writes the head only where that is safe.
   // HEADSET OFF? RECONNECT NOW: start the flap backoff again and dial at once (a link that is up is left alone).
-  onReconnectNow: () => { link.resetFlap(); engine.setGunFlapping(null); if (link.deviceId && !link.connected) link.retryNow(); },
+  // F293: it also ends HEADSET NOT JOINED and starts the 60 s headset cap again.
+  onReconnectNow: () => { link.resetFlap(); engine.setGunFlapping(null); link.resetHeadset(); engine.setHeadsetJoin(link.headsetJoin); if (link.deviceId && !link.connected) link.retryNow(); },
   onReconnectGun: () => { if (link.deviceId) link.relink().catch(e => log('relink: ' + (e && e.message || e), 'le')); },
   onReconnectMc: () => {
     const url = settings.mcUrl || lastMcUrl;
@@ -597,7 +613,9 @@ Object.assign(hud.h, {
 });
 async function rejoinGun() {
   const want = engine.gun && engine.gun.name; if (!want) return;
-  log(`match in progress — reconnecting to ${want}…`, 'lk');
+  // F293: say "match in progress" only when one is (the phase restores as IDLE until the relink, so read the pending one)
+  const p = engine.phase !== 'idle' ? engine.phase : engine._pendingPhase;
+  log(p === 'armed' || p === 'live' ? `match in progress — reconnecting to ${want}…` : `reconnecting to your gun ${want}…`, 'lk');
   let done = false;
   scanning = true;   // claim the radio before the first await (the beacon watch yields to it)
   await stopAnyScan();

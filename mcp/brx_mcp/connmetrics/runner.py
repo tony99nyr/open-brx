@@ -18,7 +18,10 @@ Gun facts this module leans on (docs/FOLLOWUPS.md F297):
   * A gun whose headset link is bad drops the BLE link itself within seconds (about every 4-12 s). A
     headset drop therefore shows as EITHER token 2 turning `?` OR the BLE link dropping -- both are
     recorded, separately, as `headset_lost_s` and `ble_drop_s`.
-  * Only `$PING,*` and `$VERSION,*` are ever sent: neither changes gun state.
+  * A just-booted gun ignores a bare `$VERSION,*` until `$PHONE,*` wakes it (brx-protocol.md, "Waking a
+    gun"), so after the `$PONG` this sends the app's own probe first: `$STOP,*` then `$PHONE,*`
+    (engine.js PROBE_FW). Without it every run read "no_reply" (bench 2026-09-24). Otherwise only
+    `$PING,*` and `$VERSION,*` are sent; none of these arms or changes a game.
   * Connect establishment is intermittent (see `ble.py ConnectionManager.connect`'s own docstring), so
     the FIRST attempt's result is the metric that matters. This runs `mgr.connect(..., attempts=1)`
     inside its own attempt loop so each attempt is timed and its error recorded individually, rather
@@ -379,6 +382,11 @@ async def _run_one(mgr: Any, address: str, alias: str, k: int, n: int, *, cold: 
 
                 seen_linked = False
                 if run.ble_drop_s is None:
+                    try:   # the app's wake: a just-booted gun answers no `$VERSION` before `$PHONE`
+                        for wake in ("$STOP,*", "$PHONE,*"):
+                            await mgr.send(alias, wake, reply_window_ms=0)
+                    except Exception:
+                        pass   # a drop here shows up as no reply or ble_drop_s just below
                     _, version_ev, drop_s = await _time_reply_or_drop(mgr, alias, "$VERSION,*",
                                                                        "$VERSION", clock, link_time)
                     if drop_s is not None:

@@ -628,7 +628,7 @@ def decode_word(bits: str) -> dict:
 | Respawn station: beacon | proto 15, player 0, team = owner, magnitude 6 | Every ~2.5 s; revives a dead, armed gun of that team (4/4; wrong team 0/1). Does not arm a running game |
 | Respawn station: button | proto 15, team = owner, magnitude 6, crit 1 | The beacon with the crit bit set; arms a tagger mid-game. All three were replayed from our ESP32 emitter with the grenade out of the building (2026-09-04); host-driven games ignore them |
 
-> **Headset emission cannot be forced over BLE.** `$IRTX`, `$HFIRE`, `$MELEE` and `$BHIT` produced zero IR with a receiver control passing before and after. The headset emits only for a physical melee swing in a native game and for the Sentinel death-nova.
+> **Headset emission cannot be forced over BLE.** `$IRTX`, `$HFIRE`, `$MELEE` and `$BHIT` produced zero IR with a receiver control passing before and after. The headset emits only for a physical melee swing and for the Sentinel death-nova. A physical melee swing works in a compiled, host-driven game too, with the shipped `$WEAP,4` melee frame and `$SIR,13,*` rows (bench-confirmed 2026-09-24, two guns, two hits): it is not native-game-only. An emitter A/B (bench 2026-09-24, small n) confirms the swing itself leaves the shooter's headset, not the barrel: covering the barrel by hand still landed a hit, and covering the headset domes landed none in two swings.
 
 ### Do I need a victim gun to test an emitter?
 

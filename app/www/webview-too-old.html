@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="color-scheme" content="dark">
+<title>BRX Combat HUD</title>
+</head>
+<body style="margin:0;min-height:100vh;background:#04060a;color:#e8eef5;font-family:ui-monospace,Menlo,Consolas,monospace">
+  <!-- Capacitor's own gate loads this page INSTEAD of index.html/app.js when the WebView fails
+       android.minWebViewVersion (capacitor.config.json) — Bridge.isMinimumWebViewInstalled() picks
+       server.errorPath before the app ever gets a chance to run, so this page cannot assume anything
+       app.js provides: no bundle, no fonts, plain HTML/CSS/ES5 only, same as the app's own oldest
+       supported WebView would need. Keep the floor comment in scripts/build.mjs, capacitor.config.json
+       and test/build-target.test.mjs in step with this page's tone if the wording ever changes. -->
+  <!-- top/right/bottom/left, not the `inset` shorthand (Chrome 87): this page targets a WebView BELOW
+       our floor, so it cannot use the very feature that set the floor. Same for flexbox `gap` (Chrome
+       84) below, replaced with margins on the button. -->
+  <div style="position:fixed;top:0;right:0;bottom:0;left:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;box-sizing:border-box">
+    <div style="font-weight:600;font-size:14px;letter-spacing:.14em;max-width:320px">THIS PHONE'S ANDROID SYSTEM WEBVIEW IS TOO OLD TO RUN THIS APP</div>
+    <div style="color:#8fa3bd;font-size:11px;letter-spacing:.18em;max-width:280px;margin-top:16px">UPDATE IT FROM THE PLAY STORE, THEN REOPEN THE APP</div>
+    <button id="wvUpdate" style="min-height:48px;padding:14px 40px;background:#131b26;color:#e8eef5;border:1px solid #2c3a4e;font:700 12px ui-monospace,monospace;letter-spacing:.24em;margin-top:16px">UPDATE WEBVIEW</button>
+  </div>
+  <script>
+  // Plain ES5: this page IS the fallback for a WebView too old for anything esbuild ships.
+  document.getElementById('wvUpdate').onclick = function () {
+    window.location.href = 'market://details?id=com.google.android.webview';
+    setTimeout(function () {
+      if (!document.hidden) window.location.href = 'https://play.google.com/store/apps/details?id=com.google.android.webview';
+    }, 1200);
+  };
+  </script>
+</body>
+</html>

@@ -33,9 +33,9 @@ static void test_station_action_body_is_pinned() {
            std::string("{\"id\":9,\"action\":\"taken\",\"player_num\":5,\"age_ms\":250,\"t\":1700000000000}"));
 }
 
-// Polish round 1 (2026-09-24): MC does not accept `station_action` yet, so nothing may be BUILT,
-// let alone sent, while ACTIONS is off (the default).
-static void test_actions_disabled_by_default_builds_nothing() {
+// ACTIONS is ON by default since MC accepts station_action (A56, f3fe3cf6). `ACTIONS OFF` (for an older MC, which
+// would count the kind toward its malformed-frame quarantine) must still build nothing.
+static void test_actions_on_by_default_and_off_builds_nothing() {
   StationLink link;
   StationAssignment a;
   a.present = true;
@@ -43,7 +43,8 @@ static void test_actions_disabled_by_default_builds_nothing() {
   a.id = 9;
   link.apply_station_config(a);
   PendingTakenReport rep{9, 5, 0, 1000};
-  CHECK(!link.actions_enabled());
+  CHECK(link.actions_enabled());
+  link.set_actions_enabled(false);
   CHECK(maybe_build_reset_action(link, 1000).empty());
   CHECK(maybe_build_taken_action(link, rep, 1400).empty());
   link.set_actions_enabled(true);
@@ -140,9 +141,100 @@ static void test_link_state_label_covers_every_state() {
   }
 }
 
+// --- A58: the A + B force restart ------------------------------------------------------------------
+
+static void test_force_restart_fires_once_at_7_s() {
+  ForceRestart f;
+  CHECK(!f.update(true, true, 1000));
+  CHECK(!f.update(true, true, 1000 + FORCE_RESTART_HOLD_MS - 1));
+  CHECK(f.update(true, true, 1000 + FORCE_RESTART_HOLD_MS));   // fires
+  CHECK(!f.update(true, true, 1000 + FORCE_RESTART_HOLD_MS + 500));  // never twice for one hold
+}
+
+static void test_force_restart_release_at_6_9_s_cancels() {
+  ForceRestart f;
+  f.update(true, true, 0);
+  CHECK(!f.update(true, true, 6900));
+  CHECK(!f.update(true, false, 6901));  // B up: cancelled
+  CHECK(!f.joint_active());
+  CHECK_EQ(f.countdown_s(), 0u);
+  CHECK(!f.update(true, true, 7000));   // pressed again: the 7 s starts over
+  CHECK(!f.update(true, true, 13999));
+  CHECK(f.update(true, true, 14000));
+}
+
+static void test_force_restart_countdown_shows_only_after_2_s() {
+  ForceRestart f;
+  f.update(true, true, 0);
+  CHECK_EQ(f.countdown_s(), 0u);
+  f.update(true, true, FORCE_RESTART_SHOW_MS - 1);
+  CHECK_EQ(f.countdown_s(), 0u);
+  f.update(true, true, FORCE_RESTART_SHOW_MS);
+  CHECK_EQ(f.countdown_s(), 5u);  // "RESTART IN 5"
+  f.update(true, true, 6500);
+  CHECK_EQ(f.countdown_s(), 1u);
+  f.update(false, true, 6600);
+  CHECK_EQ(f.countdown_s(), 0u);  // released: the countdown leaves the screen
+}
+
+static void test_force_restart_suppresses_single_button_holds() {
+  ForceRestart f;
+  CHECK(!f.update(true, false, 0));
+  CHECK(!f.suppress_single());          // A alone: its own click/hold handlers run
+  f.update(true, true, 300);
+  CHECK(f.suppress_single());           // both down: A's 1 s home and B's 2 s arm are swallowed
+  f.update(true, true, 2500);
+  CHECK(f.suppress_single());
+  f.update(true, false, 2600);
+  CHECK(f.suppress_single());           // one still down
+  f.update(false, false, 2700);
+  CHECK(f.suppress_single());           // the release loop swallows the release-edge click too
+  f.update(false, false, 2702);
+  CHECK(!f.suppress_single());          // one loop later, single presses work again
+  f.update(false, true, 3000);
+  CHECK(!f.suppress_single());
+}
+
+static void test_serial_allow_list_while_locked_is_default_deny() {
+  for (const char* ok : {"PING", "STATUS", "RAW ON", "RAW OFF", "AUTO", "AUTO OFF"}) {
+    CHECK(serial_command_allowed_while_locked(ok));
+  }
+  for (const char* no : {"RESET", "MODE HILL", "ID 3", "GAME 2", "TXPIN 9", "WIFI a b", "MC ws://h:1/ws",
+                         "LINK HELD", "LINK RECONNECT", "LINK OFF", "ACTIONS OFF", "SELFTEST", "TX 0101",
+                         "TXN 3 0101", "AUTO 0101", "SOMETHING NEW"}) {
+    CHECK(!serial_command_allowed_while_locked(no));
+  }
+}
+
+static void test_a_button_held_at_boot_is_ignored_until_released_once() {
+  BootHeldButtons b;
+  b.update(true, true);  // both still held from the force restart
+  CHECK(b.a_masked());
+  CHECK(b.b_masked());
+  CHECK(!b.a_down());
+  CHECK(!b.b_down());
+  b.update(true, true);
+  CHECK(!b.a_down());
+  b.update(false, true);  // A comes up: that loop still swallows A's release edge
+  CHECK(b.a_masked());
+  b.update(false, true);  // one full loop up: A is live again, B is still masked
+  CHECK(!b.a_masked());
+  CHECK(b.b_masked());
+  b.update(true, true);   // a fresh A press counts; B, never released, still does not
+  CHECK(b.a_down());
+  CHECK(!b.b_down());
+  // A button up at boot is never masked.
+  BootHeldButtons c;
+  c.update(false, false);
+  c.update(true, false);
+  CHECK(c.a_down());
+  CHECK(!c.a_masked());
+}
+
 int main() {
   test_station_action_body_is_pinned();
-  test_actions_disabled_by_default_builds_nothing();
+  test_a_button_held_at_boot_is_ignored_until_released_once();
+  test_actions_on_by_default_and_off_builds_nothing();
   test_actions_gate_with_no_assignment_builds_nothing_even_when_enabled();
   test_taken_age_is_computed_at_send_time_and_wrap_safe();
   test_short_press_pages_through_every_page_and_wraps();
@@ -151,6 +243,11 @@ int main() {
   test_a_short_press_while_armed_cancels_not_confirms();
   test_poll_timeout_cancels_an_abandoned_confirm_exactly_once();
   test_link_state_label_covers_every_state();
+  test_force_restart_fires_once_at_7_s();
+  test_force_restart_release_at_6_9_s_cancels();
+  test_force_restart_countdown_shows_only_after_2_s();
+  test_force_restart_suppresses_single_button_holds();
+  test_serial_allow_list_while_locked_is_default_deny();
   if (failures) {
     std::printf("%d check(s) failed\n", failures);
     return 1;
