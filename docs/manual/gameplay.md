@@ -1,5 +1,5 @@
 # Gameplay
-Last verified: 2026-09-12
+Last verified: 2026-09-24
 
 This page covers every weapon the BRX can fire, how health and damage work, every native game mode and its settings, the classes and perks the Callsign app models, and the Smart Grenade's objective modes.
 
@@ -21,7 +21,7 @@ The BRX runs games three ways. You can play from the gun's own menu, with no pho
 - Classes, factions, perks and killstreaks: Nexus/Resistance/Vanguard, the 9+ characters, the perk row, the streak rewards.
 - The grenade's game modes: Frag, Assault, Hill, Respawn, CTF, and how each one really behaves.
 
-> **Three arsenals, one gun.** The gun-menu weapons (M-4, SMG-X3, MG-7, SR-100, TAC-87 and others) are presets the firmware carries for play without a phone. The Callsign app's 19 weapons get sent to the gun over Bluetooth when the game starts. Open BRX sends a third set, its own catalogue, the same way. All three fill the same 6 weapon slots with different numbers, so a gun is only ever running one of them. This page covers the Callsign 19 in full, because we captured every one of them on the wire (20 frames). The five gun-menu weapons are listed from Battle Company's manual. Open BRX's own numbers are balance choices rather than captures, and they live in `docs/reference/weapons.md` and the platform pages, not here.
+> **Three arsenals, one gun.** The gun-menu weapons (M-4, SMG-X3, MG-7, SR-100, TAC-87 and others) are presets the firmware carries for play without a phone. The Callsign app's 19 weapons get sent to the gun over Bluetooth when the game starts. Open BRX sends a third set, its own catalogue, the same way. All three fill the same 6 weapon slots with different numbers, so a gun is only ever running one of them. This page covers the Callsign 19 in full, because we captured every one of them on the wire (20 frames). The five gun-menu weapons are listed from Battle Company's manual. Open BRX's own numbers are balance choices rather than captures, and they live on [the arsenal page](/arsenal) and [Modes and setup](/docs/modes), not here.
 
 ## The complete Callsign arsenal
 
@@ -48,7 +48,7 @@ weapons
 
 19 weapons come out of 20 captured frames. The 20th frame is the app's unnamed default secondary (`T01`, 45 dmg, 6-round clip, 4 mags, 0.4 s shell reload). That is the Shotgun itself, slotted as your sidearm before you pick one.
 
-> **Range is not what the app's bar shows.** The app draws a different range bar for each weapon, but the range field in the frames it sends reads the same value (75) on all 18 guns. Melee reads 20. A separate "extra headset range" value shows up on three weapons: 30 on the Shotgun and the Rocket Launcher, 40 on the Plasma Sniper. A garden test on 2026-09-17 found that this range field does nothing outdoors. The other range token, which Callsign also sets to the same value (100) on every gun, turns out not to be a distance control either. It sets the emitter's carrier frequency, and a low value simply detunes the beam until the receiver can no longer hear it. Range in this system is a matter of whether the receiver is listening on your frequency, not of how hard you shout.
+> **Range is not what the app's bar shows.** The app draws a different range bar for each weapon, but the range field in the frames it sends reads the same value (75) on all 18 guns. Melee reads 20. A separate "extra headset range" value shows up on three weapons: 30 on the Shotgun and the Rocket Launcher, 40 on the Plasma Sniper. A garden test on 2026-09-17 found that this range field does nothing outdoors. The other range token, which Callsign sets to the same value (100) on every gun, is the one that matters outdoors, and it does not behave like a distance. In the same garden test a value of 5 landed no shots even muzzle to dome, there was a sharp change between 13 and 26, and every value from about 31 to 100 behaved alike at every distance we could pace.
 
 > **Stock Callsign hits soft and fast.** The standard-damage automatics deal 8 to 15 per hit every 75 to 120 ms. They need 8 to 15 hits, which is about a second of landed fire. The Rocket Launcher, Rail Gun, Laser Cannon and Ion Sniper deal 115: that drops a full-health player in one shot. The two snipers deal 80 every 225 to 300 ms and kill in two hits, in 0.23 to 0.30 s.
 
