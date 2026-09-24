@@ -4293,6 +4293,9 @@ for (const view of VIEWS) await step(`${view.name} QA-17 idle night: nothing on 
 // The engine plays one sound for the pair, so the HUD gives one flash and one buzz, not two.
 for (const view of VIEWS) await step(`${view.name} QA-05 one kill, one buzz: MC's card after the IR card neither flashes nor buzzes again`, async () => {
   const pg = await open(view, 'live-callout-kill', '', 2700);
+  // The IR card must be ON SCREEN before MC's twin is sent: under load the stage's IR word can land late, and an MC card
+  // that beats the IR card's render is correctly the kill's one flash, which this step would then miscount.
+  await pg.waitForSelector('#overlay .mo.co[data-src="ir"]', { timeout: 4000 });
   const r = await pg.evaluate(async () => { const h = window.brx.hud; let buzz = 0, flash = 0; const oh = h.h.onHaptic, of = h._flash.bind(h);
     h.h.onHaptic = k => { if (k === 'kill') buzz++; }; h._flash = () => { flash++; of(); };
     window.brxDemo.killConfirm('VIPER'); await new Promise(r => setTimeout(r, 600));

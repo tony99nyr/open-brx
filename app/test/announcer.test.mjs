@@ -496,3 +496,19 @@ test('M4: a double kill with medals: the second kill starts after the first kill
   assert.ok(second && second.t >= lastEnd, `the second kill waits for the first kill's last clip (${second && second.t - lastEnd} ms)`);
   assert.equal(h.writes.filter(w => w.f === PLAYX && w.t > t0 && w.t < lastEnd).length, 0, 'no stop over my own kill audio');
 });
+
+// ---------- the double buzz (screens.mjs "one kill, one buzz", seen once under load) ----------
+
+test('one kill, one buzz: MC\'s card names the EXACT IR card it paired with, even when the clock moves between reads', () => {
+  // hud.js silences MC's card only when `ir_at` equals the IR card's own `callout.at`. Both were read from the
+  // synced clock at different instants; a millisecond tick between the two reads made them differ, and the one kill
+  // flashed and buzzed twice. This clock moves 1 ms on every read, as a busy phone's does.
+  const h = harness().live();
+  const base = h.eng.now; let drift = 0;
+  h.eng.now = () => base() + (drift += 1);
+  h.irWord(7, IR_CALLOUT.DOWN_BY + 2);
+  const irAt = h.eng.state().callout.at;
+  h.kill();
+  assert.equal(h.eng.state().card.data.ir_paired, true);
+  assert.equal(h.eng.state().card.data.ir_at, irAt, 'the pairing names the card the HUD saw');
+});

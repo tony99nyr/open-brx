@@ -2986,7 +2986,7 @@ export class Engine {
       callout: { kind, name: isDownBy ? null : this.nameOf(player), team: TEAM_KEY[victimTeam] || null, at: now, ...(by ? { by } : {}) },
       ok: () => this.alive && this.phase === 'live',
       play: ({ muted }, self) => {
-        this.callout = self.shown = { ...self.callout, at: this.now() };
+        this.callout = self.shown = { ...self.callout, at: self.startedAt };   // the SAME instant the queue stamped (MC's `ir_at` names it): never a second clock read
         if (line && !muted) this._write([line], 'S57 ENEMY DOWN');
         this._changed();
       } });
@@ -3029,7 +3029,7 @@ export class Engine {
         ok: () => this._lightGen === lg,
         onDrop: () => { this._irKillOpen = this._irKillOpen.filter(x => x !== entry); },   // unheard: MC's twin must speak for itself
         play: ({ muted }, self) => {
-          this.callout = self.shown = { ...self.callout, at: this.now() };
+          this.callout = self.shown = { ...self.callout, at: self.startedAt };   // the SAME instant the queue stamped (MC's `ir_at` names it): never a second clock read
           if (pick.frame && !muted) this.delay(120, () => { if (this._lightGen === lg) this._sayMust(pick.frame, `S57 IR kill confirmed cue${pick.tag}`); });
           this._changed();
         } });
