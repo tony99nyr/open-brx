@@ -136,8 +136,17 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .puring{--p:0;flex:none;width:40px;height:40px;border-radius:50%;background:conic-gradient(var(--item) calc(var(--p) * 360deg),rgba(255,255,255,.12) 0);display:grid;place-items:center}
 .puring i{width:29px;height:29px;border-radius:50%;background:#04070c}
 /* ---- Shield HUD pass (2026-09-24, `?shieldv=a|b|c`, src/hud/shieldmeter.js). Nothing here matches without the parameter.
-   Day: Halo blue shield, a lime overshield layer on top of it (the health green is a different, mint green and a thin bar),
-   red when low or down. Night (spec B4): red only; the overshield is a brighter, double-railed layer; no flash, no sweep. ---- */
+   No text, no numbers: the bar tells it. Day: Halo blue shield, a lime overshield layer on top (health is a thin mint bar),
+   red when low; broken = the empty track pulses red; the delay = a faint fill creeping along the track; the refill = a rising
+   sweep. Night (spec B4): red only; the overshield is brighter and double-railed; the only motion is a slow red pulse. ---- */
+.svbar > i.svdly{background:linear-gradient(90deg,color-mix(in srgb,var(--svc2) 10%,transparent),color-mix(in srgb,var(--svc2) 42%,transparent));transition:width .25s linear;overflow:hidden}
+.svbar > i.svdly::after{content:"";position:absolute;top:0;bottom:0;width:40px;left:-40px;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--svc2) 70%,transparent),transparent);animation:svsweep 1.6s linear infinite}
+.sv-c .svbar > i.svdly{background:color-mix(in srgb,var(--svc2) 32%,transparent)}
+.svm[data-s="down"] .svbar{animation:svdown 1.1s ease-in-out infinite alternate}
+@keyframes svdown{from{background:color-mix(in srgb,var(--svbad) 12%,var(--svtrk));box-shadow:0 0 6px -2px var(--svbad)}to{background:color-mix(in srgb,var(--svbad) 55%,var(--svtrk));box-shadow:0 0 18px 0 var(--svbad)}}
+.svarc .dl{stroke:var(--svc2);stroke-opacity:.35;stroke-width:12;transition:stroke-dasharray .25s linear}
+.sv-b[data-s="down"] .svarc .trk{animation:svdownS 1.1s ease-in-out infinite alternate}
+@keyframes svdownS{from{stroke:color-mix(in srgb,var(--svbad) 15%,var(--svtrk))}to{stroke:color-mix(in srgb,var(--svbad) 60%,var(--svtrk))}}
 .svm{--svc:#3cb6ff;--svc2:#b3e8ff;--svos:#b8ff3a;--svbad:#ff4848;--svtrk:rgba(3,10,22,.9);--svedge:#2f5f86;--svh:var(--health);
   position:absolute;left:50%;transform:translateX(-50%);pointer-events:none;z-index:2}
 .svtint{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .25s;box-shadow:inset 0 0 130px -30px rgba(255,40,40,.62),inset 0 0 0 2px rgba(255,72,72,.5)}
@@ -156,29 +165,14 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .svm[data-s="down"] .svbar{border-color:var(--svbad);background:color-mix(in srgb,var(--svbad) 20%,var(--svtrk));box-shadow:0 0 14px -2px var(--svbad)}
 .svm.hit .svbar{animation:svflick .36s linear}
 .svm.hit .svfl,.svm.hit .svos{animation:svflash .4s ease-out}
-.svm.brk .svbar{animation:svbrk .6s ease-out 2}
 @keyframes svflick{0%,40%,80%{border-color:var(--svc2)}20%,60%,100%{border-color:var(--svedge)}}
 @keyframes svflash{0%{filter:brightness(2.2) saturate(.5)}100%{filter:none}}
-@keyframes svbrk{0%{background:color-mix(in srgb,var(--svbad) 85%,transparent);border-color:var(--svbad)}100%{background:color-mix(in srgb,var(--svbad) 20%,var(--svtrk))}}
-.svdl{position:absolute;height:3px;background:rgba(255,255,255,.07);display:none}
-.svm[data-wait] .svdl{display:block}
-.svdl > i{display:block;height:100%;width:var(--w);background:var(--svc2);transition:width .25s linear}
-.svm[data-s="down"] .svdl > i{background:var(--svbad)}
 .svhp{position:absolute;height:6px;transform:skewX(-18deg);background:var(--svtrk);border:1px solid var(--svedge);padding:1px}
 .svhp > i{display:block;height:100%;width:var(--w);background:repeating-linear-gradient(90deg,var(--svh) 0 14px,transparent 14px 17px);transition:width .15s}
-.svn{position:absolute;font-family:var(--fd);font-weight:700;font-size:20px;line-height:1;color:var(--svc)}
-.svo{position:absolute;font-family:var(--fd);font-style:italic;font-weight:700;font-size:20px;line-height:1;color:var(--svos);text-shadow:0 0 12px color-mix(in srgb,var(--svos) 60%,transparent)}
-.svlab{position:absolute;font-size:12px;font-weight:700;letter-spacing:.16em;color:var(--svc2);white-space:nowrap}
-.svm[data-s="down"] .svlab,.svm[data-s="down"] .svn{color:var(--svbad)}
-.svm[data-only-os] .svn{display:none}
 /* A · CROWN: a thick, flat, left-anchored bar of 10 segments over a thin health bar; the clock drops under the meter */
 .sv-a{top:8px;width:300px;height:44px}
 .sv-a .svbar{left:0;right:0;top:0;height:20px;transform:skewX(-18deg)}
-.sv-a .svdl{left:4px;right:4px;top:24px}
 .sv-a .svhp{left:6px;width:176px;top:29px;height:10px}
-.sv-a .svn{left:calc(100% + 12px);top:0}
-.sv-a .svo{right:calc(100% + 12px);top:1px}
-.sv-a .svlab{right:0;top:30px}
 #frame .alive.sv-a .clockplate{top:52px;padding:2px 22px}
 #frame .alive.sv-b .clockplate{top:57px;padding:2px 22px}
 #frame .alive.sv-a .clockplate .t,#frame .alive.sv-b .clockplate .t{font-size:24px}
@@ -197,42 +191,33 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .sv-b[data-s="charge"] .svarc .sw{opacity:.85;animation:svarcsw .8s linear infinite}
 @keyframes svarcsw{from{stroke-dashoffset:100}to{stroke-dashoffset:0}}
 .sv-b[data-s="low"] .svarc .fl{stroke:var(--svbad);filter:drop-shadow(0 0 4px var(--svbad))}
-.sv-b[data-s="down"] .svarc .trk{stroke:color-mix(in srgb,var(--svbad) 30%,var(--svtrk))}
 .sv-b.hit .svarc .trk{animation:svflickS .36s linear}
 .sv-b.hit .svarc .fl,.sv-b.hit .svarc .os{animation:svflash .4s ease-out}
-.sv-b.brk .svarc .trk{animation:svbrkS .6s ease-out 2}
 @keyframes svflickS{0%,40%,80%{stroke:color-mix(in srgb,var(--svc2) 45%,var(--svtrk))}20%,60%,100%{stroke:var(--svtrk)}}
-@keyframes svbrkS{0%{stroke:var(--svbad)}100%{stroke:color-mix(in srgb,var(--svbad) 30%,var(--svtrk))}}
-.sv-b .svdl{display:none!important}
-.svarc .dl{stroke:var(--svc2);stroke-width:3;opacity:0;transition:stroke-dasharray .25s linear}
-.sv-b[data-wait] .svarc .dl{opacity:.9}
-.sv-b[data-s="down"] .svarc .dl{stroke:var(--svbad)}
-.sv-b .svn{left:calc(100% + 4px);top:4px}
-.sv-b .svo{right:calc(100% + 4px);top:4px}
-.sv-b .svlab{left:-12px;top:44px;letter-spacing:.1em}
 /* C · VISOR: a long, thin, 5-cell strip along the top edge, draining from both ends to the centre; the clock stays put */
 .sv-c{top:3px;width:520px;height:60px}
 .sv-c .svbar{left:0;right:0;top:0;height:11px;clip-path:polygon(0 0,100% 0,calc(100% - 10px) 100%,10px 100%)}
 .sv-c .svbar > i{left:50%;transform:translateX(-50%)}
 .sv-c .svbar > i.svseg{left:0;transform:none;background:repeating-linear-gradient(90deg,transparent 0 calc(20% - 4px),var(--svtrk) calc(20% - 4px) 20%)}
-.sv-c .svdl{left:160px;right:160px;top:12px}
 .sv-c .svhp{left:160px;right:160px;top:16px;height:6px;padding:0;transform:none}
 .sv-c .svhp > i{margin:0 auto}
-.sv-c .svn{left:calc(50% + 100px);top:27px}
-.sv-c .svo{right:calc(50% + 100px);top:27px}
-.sv-c .svlab{left:calc(50% + 100px);top:50px}
 /* night: the same shapes in red; the overshield is brighter and double-railed; nothing flashes or sweeps */
 [data-env="night"] .svm{--svc:#9c3434;--svc2:#c9484a;--svos:#f06a5c;--svbad:#e0524c;--svtrk:#0c0303;--svedge:#3a1414;--svh:var(--health)}
 [data-env="night"] .svm *,[data-env="night"] .svm{animation:none!important}
+/* the one night motion: the broken track's slow red brightness pulse (2.4 s a cycle, red on red, never white) */
+[data-env="night"] .svm[data-s="down"] .svbar{animation:svdownN 1.2s ease-in-out infinite alternate!important;box-shadow:none}
+[data-env="night"] .sv-b[data-s="down"] .svarc .trk{animation:svdownNS 1.2s ease-in-out infinite alternate!important}
+@keyframes svdownN{from{background:#140404}to{background:#4a1414}}
+@keyframes svdownNS{from{stroke:#140404}to{stroke:#4a1414}}
+[data-env="night"] .svbar > i.svdly{background:#3a1212}
+[data-env="night"] .svbar > i.svdly::after{display:none}
+[data-env="night"] .svarc .dl{stroke:#6e2424;stroke-opacity:1}
 [data-env="night"] .svfl,[data-env="night"] .svm[data-s="low"] .svfl{box-shadow:none}
 [data-env="night"] .svgh{opacity:.35}
-[data-env="night"] .svos{background:transparent;border-top:3px solid var(--svos);border-bottom:3px solid var(--svos);box-shadow:none}
 [data-env="night"] .svarc .fl,[data-env="night"] .svarc .os,[data-env="night"] .sv-b[data-s="low"] .svarc .fl{filter:none}
 [data-env="night"] .svarc .os2{display:inline}
 [data-env="night"] .svarc .sw,[data-env="night"] .svm .svfl::after{display:none}
-[data-env="night"] .svm[data-s="down"] .svbar{box-shadow:none;background:var(--svtrk)}
 [data-env="night"] .svm.hit .svbar{border-color:var(--svc2)}
-[data-env="night"] .svo{text-shadow:none;font-style:normal}
 [data-env="night"] .svtint{transition:none;box-shadow:inset 0 0 0 3px #6e1f1f}
 /* the held item sits ABOVE the ammo column, out of its flow, so the column never grows up into the callout band */
 .puheld{position:absolute;right:0;bottom:calc(100% + 8px)}

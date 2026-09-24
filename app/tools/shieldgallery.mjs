@@ -7,8 +7,7 @@
 //   cd app && npm run build && node tools/shieldgallery.mjs [outDir]      (default outDir: /tmp/claude-1000/shield-gallery)
 //
 // Checks (exit 1 on any failure): the meter renders in every state; it never overlaps the ammo, the callout card, the
-// powerup hint, the clock, the identity block, the link status or a chip; labels >= 11 px and numbers >= 14 px (frame
-// px); at night no green, teal or blue pixel anywhere in the frame; with no shield (Standard) and no overshield there
+// powerup hint, the clock, the identity block, the link status or a chip; the meter carries no text or number; at night no visible green, teal or blue pixel on the meter or in the tint band; with no shield (Standard) and no overshield there
 // is no meter at all; with no `shieldv` there is no meter either.
 import http from 'http'; import fs from 'fs'; import path from 'path';
 import { fileURLToPath } from 'node:url';
@@ -34,7 +33,7 @@ const VARIANTS = [
 ];
 const VIEWS = [{ w: 891, h: 411 }, { w: 667, h: 375 }];
 const STATES = [
-  ['full', 'Full'], ['hit', 'Hit: flash + drain'], ['broken', 'SHIELD DOWN: red flash, red tint'], ['waiting', 'Down, 3 s into the 6.5 s delay'],
+  ['full', 'Full'], ['hit', 'Hit: flash + drain'], ['broken', 'Broken: red pulse, red tint'], ['waiting', 'Broken, 3 s into the 6.5 s delay (the creeping fill)'],
   ['recharge', 'Recharging, mid-sweep'], ['os', 'Overshield full'], ['oshalf', 'Overshield half drained'], ['stdos', 'Standard preset + overshield (health and overshield together)'],
 ];
 const fails = []; const must = (ok, msg) => { if (!ok) fails.push(msg); };
@@ -46,14 +45,13 @@ const READ = () => {
     const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 ? { l: r.left, t: r.top, r: r.right, b: r.bottom } : null; };
   const frame = document.getElementById('frame'), fr = frame.getBoundingClientRect(), scale = fr.width / frame.offsetWidth;
   const svm = document.getElementById('svm');
-  const parts = svm ? [svm.querySelector('.svbar, .svarc'), svm.querySelector('.svhp'), ...[...svm.querySelectorAll('.svn, .svo, .svlab')].filter(e => e.textContent !== '')].filter(Boolean) : [];
-  const px = e => parseFloat(getComputedStyle(e).fontSize);   // CSS px inside the frame = frame px
+  const parts = svm ? [svm.querySelector('.svbar, .svarc'), svm.querySelector('.svhp')].filter(Boolean) : [];
   const others = { ammo: '.alive .ammo', callout: '#overlay .co .cob', puhint: '#puhint .pu', clock: '.alive .clockplate', ident: '.alive .ident', topright: '.alive .topright', stats: '.alive .stats' };
   const o = {}; for (const [k, sel] of Object.entries(others)) o[k] = [...document.querySelectorAll(sel)].map(vis).filter(Boolean);
   o.chips = [...document.querySelectorAll('#chips .pill')].map(vis).filter(Boolean);
   const st = window.brx.engine.state();
   return { svm: !!svm && !!vis(svm), parts: parts.map(e => ({ cls: String(e.className.baseVal != null ? e.className.baseVal : e.className), box: vis(e) })).filter(p => p.box),
-    others: o, fonts: svm ? [...svm.querySelectorAll('.svlab')].filter(e => e.textContent).map(e => ['label', px(e)]).concat([...svm.querySelectorAll('.svn, .svo')].filter(e => e.textContent).map(e => ['number', px(e)])) : [],
+    others: o, text: svm ? svm.textContent.trim() : '',
     s: svm && svm.dataset.s, tint: !!document.querySelector('.alive.sv-down'), shield: st.shield, max: st.maxShield, charging: !!(st.shieldRegen && st.shieldRegen.charging),
     os: st.powerup && st.powerup.overshield ? st.powerup.overshield.left : null, scale, frame: vis(frame) };
 };
@@ -62,7 +60,7 @@ function checkLayout(r, tag) {
   must(r.svm, `${tag}: the meter must render`);
   for (const p of r.parts) for (const [k, boxes] of Object.entries(r.others)) for (const bx of boxes)
     must(apart(p.box, bx), `${tag}: meter part ${p.cls} overlaps ${k} ${JSON.stringify({ part: p.box, [k]: bx })}`);
-  for (const [kind, f] of r.fonts) must(kind === 'label' ? f >= 11 : f >= 14, `${tag}: ${kind} at ${f} px is under the floor`);
+  must(r.text === '', `${tag}: the meter must carry no text or number (Tony: "just the bar"): "${r.text}"`);
 }
 // Night: every pixel of the frame, decoded in a blank page. Green or teal/blue = a visible channel (>= 70) clearly over red
 // (by 24). Today's night HUD already has ~170 near-black bluish anti-aliasing pixels (luminance ~30) around the system-font
@@ -161,6 +159,37 @@ async function sequence(v, view, night) {
   return shots;
 }
 
+// The motion Tony asked for, broken -> delay -> refill, as a looping sprite: the top of the frame sampled every STEP ms
+// from the break until the refill is done, on the real engine clock.
+const STEP = 400, STRIP_H = 150;
+async function strip(v, night) {
+  const view = { w: 891, h: 411 };
+  const pg = await b.newPage({ viewport: { width: view.w, height: view.h } });
+  await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=live-shields-full&shieldv=${v}${night ? '&night' : ''}`);
+  await waitFor(pg, `${stateOf} && window.brx.engine.state().shield >= 105`); await pg.waitForTimeout(1500);
+  const frames = []; const t0 = Date.now(); let doneAt = null;
+  await pg.evaluate(() => window.brxDemo.shieldBreak());
+  for (let i = 0; i < 60; i++) {
+    const wait = t0 + i * STEP - Date.now(); if (wait > 0) await pg.waitForTimeout(wait);
+    frames.push((await pg.screenshot({ clip: { x: 0, y: 0, width: view.w, height: STRIP_H } })).toString('base64'));
+    const st = await pg.evaluate(() => { const s = window.brx.engine.state(); return { full: s.shield >= 105, charging: !!(s.shieldRegen && s.shieldRegen.charging) }; });
+    if (st.full && !st.charging && doneAt == null) doneAt = i;
+    if (doneAt != null && i >= doneAt + 3) break;
+  }
+  await pg.close();
+  const sp = await b.newPage();
+  const png = await sp.evaluate(async ([fr, w, h]) => {
+    const c = document.createElement('canvas'); c.width = w; c.height = h * fr.length; const x = c.getContext('2d');
+    for (let i = 0; i < fr.length; i++) { const img = new Image(); img.src = 'data:image/png;base64,' + fr[i]; await img.decode(); x.drawImage(img, 0, i * h); }
+    return c.toDataURL('image/png').split(',')[1];
+  }, [frames, view.w, STRIP_H]);
+  await sp.close();
+  const file = `${v}-motion${night ? '-night' : ''}.png`;
+  fs.writeFileSync(path.join(SHOTS, file), Buffer.from(png, 'base64'));
+  return { file, n: frames.length };
+}
+const strips = {};
+
 // today's HUD is untouched without the parameter
 { const pg = await b.newPage({ viewport: { width: 891, height: 411 } });
   await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=live-shields-full`); await waitFor(pg, `${stateOf}.shield >= 105`); await pg.waitForTimeout(500);
@@ -177,12 +206,16 @@ const LANES = 6; let next = 0;
 await Promise.all(Array.from({ length: LANES }, async () => { while (next < jobs.length) { const j = jobs[next++];
   try { results[`${j.v}-${j.view.w}-${j.night ? 'n' : 'd'}`] = await sequence(j.v, j.view, j.night); }
   catch (e) { fails.push(`${j.v} ${j.view.w}${j.night ? ' night' : ''}: ${e.message.split('\n')[0]}`); } } }));
+for (const { v } of VARIANTS) for (const night of [false, true]) {
+  try { strips[`${v}${night ? 'n' : 'd'}`] = await strip(v, night); } catch (e) { fails.push(`${v} motion strip${night ? ' night' : ''}: ${e.message.split('\n')[0]}`); } }
 await b.close(); server.close();
 
 // ---- the gallery ----
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const cell = (f, cap) => fs.existsSync(path.join(SHOTS, f)) ? `<figure><a href="shots/${f}"><img src="shots/${f}" loading="lazy" alt="${esc(cap)}"></a><figcaption>${esc(cap)}</figcaption></figure>` : `<figure class="miss"><figcaption>${esc(cap)}: missing</figcaption></figure>`;
 const sections = VARIANTS.map(({ v, name, idea }) => `<section><h2>${esc(name)}</h2><p class="idea">${esc(idea)}</p>
+  <h3>Motion: shield breaks, the 6.5 s delay, the refill (the real engine, sampled every ${STEP} ms, looping)</h3><div class="row">${['d', 'n'].map(t => { const m = strips[`${v}${t}`];
+    return m ? `<figure><div class="motion" style="--n:${m.n};background-image:url(shots/${m.file});animation-duration:${m.n * STEP}ms;animation-timing-function:steps(${m.n})"></div><figcaption>${t === 'd' ? 'day' : 'night'} 891×411, top ${STRIP_H} px</figcaption></figure>` : ''; }).join('')}</div>
   ${STATES.map(([k, label]) => `<h3>${esc(label)}</h3><div class="row">${VIEWS.map(vw => cell(`${v}-${k}-${vw.w}.png`, `day ${vw.w}×${vw.h}`)).join('')}${VIEWS.map(vw => cell(`${v}-${k}-${vw.w}-night.png`, `night ${vw.w}×${vw.h}`)).join('')}</div>`).join('\n  ')}</section>`).join('\n');
 const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Shield HUD variants</title>
@@ -195,19 +228,22 @@ ul{margin:6px 0 0;padding-left:20px}li{margin:3px 0}.q{margin-top:10px;padding:8
 figure{margin:0;flex:0 0 auto}figure img{display:block;height:206px;width:auto;border:1px solid var(--edge)}figcaption{font-size:12px;color:var(--mut)}
 .miss{width:200px;height:206px;border:1px dashed #a33;display:flex;align-items:center;justify-content:center}
 .fail{color:#ff8080}
+.motion{width:891px;height:${STRIP_H}px;background-size:891px auto;background-repeat:no-repeat;border:1px solid var(--edge);animation-name:motion;animation-iteration-count:infinite}
+@keyframes motion{from{background-position:0 0}to{background-position:0 calc(var(--n) * -${STRIP_H}px)}}
 </style></head><body><header>
 <h1>Shield HUD variants: pick one</h1>
 <ul>
 ${VARIANTS.map(x => `<li><b>${esc(x.name)}</b>: ${esc(x.idea)}</li>`).join('\n')}
-<li><b>Overshield, day</b> (every variant): a lime-green layer drawn over the blue shield, drained first by hits, then the blue shows again. Health stays a thin mint-green bar under the shield, so the two greens differ in shade, size and place, and the overshield carries a "+N" count.</li>
-<li><b>Overshield, night</b> (every variant): no green and no blue at night, so the overshield is a brighter red, double-railed layer (two bright rails with a dark core) over the dim red shield: shape and brightness only.</li>
-<li><b>Engine timing</b> (engine.js S29, unchanged): the recharge starts <b>6.5 s</b> after the last damage, then +10 every 300 ms, so 0 to 105 takes about <b>3.3 s</b>. Every hit restarts the 6.5 s. The meter draws that delay as a thin line that fills under the shield, with the seconds left.</li>
+<li><b>No words, no numbers</b> (Tony): the bar tells it. A hit flashes it; broken, the empty track pulses red and the frame is tinted red; during the delay a faint fill creeps along the empty track; the refill rises with a sweep.</li>
+<li><b>Overshield, day</b> (every variant): a lime-green layer drawn over the blue shield, drained first by hits, then the blue shows again. Health stays a thin mint-green bar under the shield, so the two greens differ in shade, size and place.</li>
+<li><b>Overshield, night</b> (every variant): no green and no blue at night, so the overshield is a brighter red, double-railed layer (two bright rails with a dark core) over the dim red shield: shape and brightness only. At night the only motion is the broken track's slow red pulse; the delay fill is a static dim red, and there is no sweep and no white.</li>
+<li><b>Engine timing</b> (engine.js S29, unchanged): the recharge starts <b>6.5 s</b> after the last damage, then +10 every 300 ms, so 0 to 105 takes about <b>3.3 s</b>. Every hit restarts the 6.5 s. The meter draws the delay as the faint fill creeping along the empty track, with no number.</li>
 <li><b>Sounds</b>: already on the gun, no new files. The break plays N101 "(Halo) Shields Down" and the first recharge grant plays N102 "(Halo) Shields Recharge" (engine events <code>shield_down</code> and <code>shield_charging</code>).</li>
 <li><b>Gun LEDs</b>: shield + overshield shown as one teal pool (Tony); the phone is Halo blue/green on purpose.</li>
 <li>Try it live: the stage harness (<code>npm run ui:stage</code>), "shield HUD" select, stages <code>live-shields*</code>, or <code>/hud/?demo&amp;stage=live-shields&amp;shieldv=a</code>. Without <code>shieldv</code> the HUD is today's.</li>
 </ul>
 <p class="q"><b>Question:</b> Should the overshield decay over time? (today: no, only hits remove it)</p>
-${fails.length ? `<p class="fail">Checks failed: ${fails.length}</p><ul class="fail">${fails.slice(0, 30).map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : `<p>Checks: every state rendered; no overlap with the ammo, the callout card, the powerup hint, the clock, the identity block, the link status or the chips; labels ≥ 11 px, numbers ≥ 14 px; no green, teal or blue pixel at night; no meter in Standard without an overshield.</p>`}
+${fails.length ? `<p class="fail">Checks failed: ${fails.length}</p><ul class="fail">${fails.slice(0, 30).map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : `<p>Checks: every state rendered; no overlap with the ammo, the callout card, the powerup hint, the clock, the identity block, the link status or the chips; no text or number on the meter; no green, teal or blue pixel at night; no meter in Standard without an overshield.</p>`}
 <h2>Today, for reference</h2><div class="row">${cell('today-full-891.png', 'today · Shields preset, full')}${cell('today-stdos-891.png', 'today · Standard + overshield')}</div>
 </header>
 ${sections}
@@ -215,4 +251,4 @@ ${sections}
 fs.writeFileSync(path.join(OUT, 'index.html'), html);
 console.log(`gallery -> ${OUT}/index.html (${fs.readdirSync(SHOTS).length} shots)`);
 if (fails.length) { console.log(`FAIL ${fails.length}:\n` + fails.join('\n')); process.exit(1); }
-console.log('PASS: every shield state rendered, no overlap, type floors held, night has no green/teal/blue');
+console.log('PASS: every shield state rendered, no overlap, no text on the meter, night has no green/teal/blue');
