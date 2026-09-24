@@ -157,6 +157,7 @@ export function createHttpApi(): Api {
     setOptions: opts => j('/api/options', { method: 'PUT', body: JSON.stringify(opts) }),
     pullLog: id => post(`/api/nodes/${encodeURIComponent(id)}/pull_log`),
     setTunnel: on => post('/api/tunnel', { on }),
+    getPowerups: () => j('/api/powerups'),
     putStation: (id, a) => j(`/api/stations/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(a) }),
     deleteStation: async id => { await j(`/api/stations/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
     armStations: () => post('/api/stations/arm'),

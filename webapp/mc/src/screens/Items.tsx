@@ -6,11 +6,11 @@
 // every snapshot as `stations`): what was ASSIGNED, what the phone was last ARMED with, what the phone
 // itself REPORTS, and the attention flags the server derives from the three disagreeing. Until
 // 2026-09-11 none of this existed, so no station was ever armed in the field.
-import { useState } from 'react';
-import type { StationKind, StationView } from '../api/types';
+import { useEffect, useState } from 'react';
+import type { PowerupPreset, PowerupsView, StationItem, StationKind, StationView } from '../api/types';
 import { STATION_KINDS } from '../api/types';
 import { useStore } from '../store';
-import { CHAMFER, F, T, fmtAge, teamColor } from '../tokens';
+import { CHAMFER, F, T, fmtAge, fmtDuration, teamColor } from '../tokens';
 import { GhostButton, Micro, SectionRule, Seg, SwitchConfirm, Tag, ValueBox } from '../ui';
 
 const KIND_LABEL: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACTION', bomb: 'BOMB SITE', control: 'CONTROL POINT' };
@@ -18,9 +18,23 @@ const KIND_LABEL: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: '
 const KIND_SHORT: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACT', bomb: 'BOMB', control: 'CONTROL' };
 const TID_NAME: Record<number, string> = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN', 255: 'ANY' };
 
+/** A56 (S58, docs/spec/powerups.md): what `GET /api/powerups` said. `old` = the route 404s (an MC that
+ *  predates powerups); `err` = any other failure, shown in the card, never swallowed. */
+type PowerupsState = { s: 'loading' } | { s: 'ok'; v: PowerupsView } | { s: 'old' } | { s: 'err'; msg: string };
+
 export function Items() {
-  const { state } = useStore();
+  const { state, api, connected } = useStore();
   const stations = state?.stations ?? [];
+  const [pu, setPu] = useState<PowerupsState>({ s: 'loading' });
+  // Read once per connection: the flag is an MC start switch, so it changes only across an MC restart,
+  // which drops and reopens /ui-ws (`connected`).
+  useEffect(() => {
+    let alive = true;
+    api.getPowerups().then(
+      v => { if (alive) setPu({ s: 'ok', v }); },
+      (e: Error & { status?: number }) => { if (alive) setPu(e?.status === 404 ? { s: 'old' } : { s: 'err', msg: e?.message ?? String(e) }); });
+    return () => { alive = false; };
+  }, [api, connected]);
   if (!state || !stations.length) return null;
   const nArmed = stations.filter(s => s.assigned && s.armed && !s.attention.length).length;
   return (
@@ -34,13 +48,19 @@ export function Items() {
             the operator's draft and `busy` (F104 follow-up). So an unassigned card mounted at hello keeps
             the default draft even after the report fills in: PHONE SAYS shows the phone's own state on the
             same card, and the operator has to assign anyway. */}
-        {stations.map(s => <StationCard key={`${s.node_id}|${s.assigned?.at ?? ''}`} s={s} />)}
+        {stations.map(s => <StationCard key={`${s.node_id}|${s.assigned?.at ?? ''}`} s={s} pu={pu} />)}
       </div>
     </div>
   );
 }
 
-function StationCard({ s }: { s: StationView }) {
+/** The preset an assignment's item came from. The assignment stores only the expanded item (A56), so the
+ *  match is on what makes an item THAT item: its kind and weapon, never its name or colour. */
+const presetOf = (item: StationItem | undefined, presets: PowerupPreset[] | null) =>
+  !item || !presets ? null
+    : presets.find(p => p.item.kind === item.kind && (p.item.weapon_id ?? null) === (item.weapon_id ?? null))?.preset ?? null;
+
+function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
   const { state, run, api } = useStore();
   const teams = state?.teams ?? [];
   const a = s.assigned;
@@ -60,6 +80,15 @@ function StationCard({ s }: { s: StationView }) {
   // `Games.tsx` uses before it moves the roster (`SwitchConfirm`), not just matching CLEAR's look.
   const [confirmRelease, setConfirmRelease] = useState(false);
   const control = kind === 'control';
+  // A56: the powerup item. `itemPick` is the operator's draft; null = whatever the assignment already has.
+  const [itemPick, setItemPick] = useState<string | null>(null);
+  const presets = pu.s === 'ok' && pu.v.enabled ? pu.v.presets : null;
+  const picking = kind === 'powerup' && !!presets;
+  const assignedPreset = a?.kind === 'powerup' ? presetOf(a.item, presets) : null;
+  const chosen = itemPick ?? assignedPreset;
+  const needsPick = picking && !chosen;
+  // items are locked for the match: MC refuses any station PUT while it is armed or live
+  const locked = state?.phase === 'armed' || state?.phase === 'live';
   // 2026-09-19: `s.online` is now the server's own STALE_AFTER_MS judgement (state.py `_station_view`),
   // not the old 10-minute "has this record left the field" line -- so a phone that reopened elsewhere
   // under a new node_id reads OFFLINE within seconds, not minutes, instead of sitting there as an
@@ -75,11 +104,12 @@ function StationCard({ s }: { s: StationView }) {
   // while the match is armed/live (it would re-push config to every HUD), whereas arming touches only the
   // stations and is allowed in any phase — and a station that reboots mid-match is exactly this case.
   const needsRearm = s.arm_pending || s.attention.some(t => t.startsWith('PHONE ') || t.startsWith('ARMED FOR'));
-  const dirty = !a || a.kind !== kind || a.team !== (control ? 255 : team) || a.id !== id || a.threshold !== threshold;
+  const dirty = !a || a.kind !== kind || a.team !== (control ? 255 : team) || a.id !== id || a.threshold !== threshold
+    || (picking && chosen !== assignedPreset);
   const apply = async () => {
     setBusy(true);
     try {
-      if (dirty) await run(() => api.putStation(s.node_id, { kind, team: control ? 255 : team, id, threshold }));
+      if (dirty) await run(() => api.putStation(s.node_id, { kind, team: control ? 255 : team, id, threshold, ...(picking && chosen ? { item_preset: chosen } : {}) }));
       else await run(() => api.armStations());
     } finally { setBusy(false); }
   };
@@ -87,7 +117,7 @@ function StationCard({ s }: { s: StationView }) {
   const age = s.last_seen_ms;
   const teamOptions = [...teams.map(t => ({ value: String(t.tid), label: t.name.toUpperCase().replace(/ TEAM$/, '') })), { value: '255', label: 'ANY' }];
   return (
-    <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${color}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 11, clipPath: CHAMFER.tr12 }}>
+    <div data-station-card={s.node_id} style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${color}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 11, clipPath: CHAMFER.tr12 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
         <span style={{ font: F.osw(700, 18), letterSpacing: '.08em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {a ? `${KIND_SHORT[a.kind]} ${a.id}` : 'UTILITY PHONE'}
@@ -115,6 +145,7 @@ function StationCard({ s }: { s: StationView }) {
             <Val color={T.dim}>{Object.entries(rep.control.hold_ms).map(([tid, ms]) => `${TID_NAME[Number(tid)] ?? tid} ${Math.round(ms / 1000)}s`).join(' · ')}</Val>
           </>)}
         </>)}
+        {a?.item && (<><Micro>ITEM</Micro><ItemState s={s} item={a.item} /></>)}
         {rep.battery != null && (<><Micro>BATTERY</Micro><Val color={rep.battery < 30 ? T.bad : T.dim}>{rep.battery}%</Val></>)}
       </div>
       {s.attention.length > 0 && (
@@ -132,6 +163,7 @@ function StationCard({ s }: { s: StationView }) {
         <Seg label={`kind for ${s.node_id}`} value={kind} size={11} pad="5px 8px" wrap
           options={STATION_KINDS.map(k => ({ value: k, label: KIND_SHORT[k] }))} titles={Object.fromEntries(STATION_KINDS.map(k => [k, KIND_LABEL[k]]))}
           onChange={k => { setKind(k); if (k === 'control') setTeam(255); }} />
+        {kind === 'powerup' && <ItemPicker node={s.node_id} pu={pu} chosen={chosen} locked={locked} onPick={setItemPick} />}
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* a control point starts NEUTRAL and is taken by presence (§5d): the team control is moot for it */}
           {!control && <Seg label={`team for ${s.node_id}`} value={String(team)} size={11} pad="5px 8px" wrap options={teamOptions} onChange={v => setTeam(Number(v))} />}
@@ -151,8 +183,9 @@ function StationCard({ s }: { s: StationView }) {
           {/* 2026-09-19: an offline phone (stale link, server-judged) cannot be assigned or armed --
               the push would just fail against a dead socket, which used to be the operator's first
               sign anything was wrong. */}
-          <button type="button" className={dirty ? 'hov-accbg' : ''} disabled={busy || !s.online || (!dirty && !needsRearm)} onClick={apply}
-            title={!s.online ? 'this phone has not been heard from recently -- it cannot be assigned or armed until it reconnects' : undefined}
+          <button type="button" className={dirty ? 'hov-accbg' : ''} disabled={busy || !s.online || (!dirty && !needsRearm) || (dirty && needsPick)} onClick={apply}
+            title={!s.online ? 'this phone has not been heard from recently -- it cannot be assigned or armed until it reconnects'
+              : dirty && needsPick ? 'pick an item for this powerup station first' : undefined}
             style={{ font: F.osw(700, 15), letterSpacing: '.18em', padding: '8px 18px', whiteSpace: 'nowrap',
               background: dirty || needsRearm ? T.acc : T.panelAlt, color: dirty || needsRearm ? T.accInk : T.dim,
               border: `1px solid ${dirty || needsRearm ? T.acc : T.line}`, clipPath: CHAMFER.tl14, cursor: busy ? 'wait' : dirty || needsRearm ? 'pointer' : 'default', minHeight: 40 }}>
@@ -185,6 +218,7 @@ function StationCard({ s }: { s: StationView }) {
           </GhostButton>
           {confirmRelease && <GhostButton size={11} onClick={() => setConfirmRelease(false)} title="back out — nothing was sent">CANCEL</GhostButton>}
           {released != null && <Tag color={released ? T.ok : T.warn} ink={T.ink}>{released ? 'SENT' : 'NO SOCKET'}</Tag>}
+          {dirty && needsPick && <span style={{ font: F.chk(700, 11), letterSpacing: '.1em', color: T.warn }}>▲ PICK AN ITEM ABOVE</span>}
           {a && <span style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: teamColor(TID_NAME[a.team]?.toLowerCase() ?? 'any') }}>{TID_NAME[a.team] ?? a.team}</span>}
         </div>
       </div>
@@ -194,4 +228,72 @@ function StationCard({ s }: { s: StationView }) {
 
 function Val({ children, color }: { children: React.ReactNode; color: string }) {
   return <span style={{ font: F.chk(600, 12), letterSpacing: '.08em', color }}>{children}</span>;
+}
+
+/** "every 2:00, first at 2:00": the item's spawn schedule on the match clock (A56). */
+const schedule = (it: StationItem) => `EVERY ${fmtDuration(it.spawn_every_s)}, FIRST AT ${fmtDuration(it.first_at_s)}`;
+const itemDetail = (it: StationItem) => it.kind === 'overshield' ? `+${it.amount ?? '?'} SHIELD` : `${it.charges ?? '?'} CHARGE${it.charges === 1 ? '' : 'S'}`;
+/** a countdown: floors (never shows a time that has not arrived), minutes unpadded */
+const countdown = (ms: number) => { const v = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`; };
+
+function Swatch({ color }: { color: string }) {
+  return <span data-swatch aria-hidden style={{ display: 'inline-block', width: 10, height: 10, flex: '0 0 auto', background: color, border: `1px solid ${T.line}` }} />;
+}
+
+/** A56: the host picks ONE item per powerup station at setup; it is locked once the match is armed. Absent
+ *  (with a one-line reason) when MC has powerups off or predates them. */
+function ItemPicker({ node, pu, chosen, locked, onPick }:
+  { node: string; pu: PowerupsState; chosen: string | null; locked: boolean; onPick: (p: string) => void }) {
+  const note = (text: string, color: string = T.micro) => (
+    <div data-testid="item-note" style={{ font: F.chk(600, 11), letterSpacing: '.06em', color }}>{text}</div>);
+  if (pu.s === 'loading') return note('READING THE ITEM LIST…');
+  if (pu.s === 'old') return note('THIS MC PREDATES POWERUPS: NO ITEM PICKER. UPDATE AND RESTART IT (./start.sh) TO GIVE A STATION AN ITEM.', T.warn);
+  if (pu.s === 'err') return note(`COULD NOT READ THE ITEM LIST: ${pu.msg}`, T.warn);
+  if (!pu.v.enabled) return note('POWERUPS ARE OFF ON THIS MC (START IT WITH --powerups): THIS STATION ARMS WITH NO ITEM.');
+  return (
+    <div data-testid="item-picker" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <Micro>ITEM · ONE PER STATION</Micro>
+      <div role="group" aria-label={`item for ${node}`} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(118px,1fr))', gap: 6 }}>
+        {pu.v.presets.map(({ preset, item }) => {
+          const on = chosen === preset;
+          return (
+            <button key={preset} type="button" data-testid={`item-pick-${preset}`} aria-pressed={on} disabled={locked}
+              onClick={() => onPick(preset)}
+              title={locked ? 'items are locked for the match: RECALL or END it to change this station' : `${item.name}: ${itemDetail(item)}, ${schedule(item).toLowerCase()}`}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3, padding: '7px 9px', minHeight: 44, textAlign: 'left',
+                background: on ? T.panelAlt : 'transparent', color: on ? T.ink : T.dim,
+                borderTop: `1px solid ${on ? item.color : T.line}`, borderRight: `1px solid ${on ? item.color : T.line}`,
+                borderBottom: `1px solid ${on ? item.color : T.line}`, borderLeft: `3px solid ${item.color}`,
+                cursor: locked ? 'not-allowed' : 'pointer', opacity: locked && !on ? 0.55 : 1 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, font: F.osw(700, 14), letterSpacing: '.08em' }}><Swatch color={item.color} />{item.name}</span>
+              <span style={{ font: F.chk(600, 11), letterSpacing: '.04em', color: T.micro }}>{itemDetail(item)}</span>
+              <span style={{ font: F.chk(600, 11), letterSpacing: '.04em', color: T.micro }}>{schedule(item)}</span>
+            </button>
+          );
+        })}
+      </div>
+      {locked && <div data-testid="item-locked" style={{ font: F.chk(700, 11), letterSpacing: '.06em', color: T.warn }}>▲ LOCKED FOR THE MATCH: RECALL OR END IT TO CHANGE THIS STATION'S ITEM</div>}
+    </div>
+  );
+}
+
+/** A56: the station row's item and live state, from `StationView.item_available` / `next_spawn_at_ms`.
+ *  An MC that does not send them (older, or no match running) gets the schedule instead of a guess. */
+function ItemState({ s, item }: { s: StationView; item: StationItem }) {
+  const { serverNow } = useStore();
+  const next = s.item_available === false ? s.next_spawn_at_ms ?? null : null;
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (next == null) return;
+    const h = setInterval(() => tick(n => n + 1), 1000);
+    return () => clearInterval(h);
+  }, [next]);
+  const live = s.item_available === true ? <Tag color={T.ok} ink={T.accInk}>AVAILABLE</Tag>
+    : s.item_available === false ? <span style={{ color: T.warn }}>{next != null ? `NEXT ${countdown(next - serverNow())}` : 'TAKEN'}</span>
+    : <span style={{ color: T.micro }}>{schedule(item)}</span>;
+  return (
+    <span data-testid="station-item" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', font: F.chk(600, 12), letterSpacing: '.08em', color: T.dim }}>
+      <Swatch color={item.color} /><span style={{ color: item.color }}>{item.name}</span>{live}
+    </span>
+  );
 }

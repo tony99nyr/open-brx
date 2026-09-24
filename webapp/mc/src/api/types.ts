@@ -36,7 +36,7 @@ export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, NEVER_SEEN_MS, STALE_AFTER_MS, STAT
 import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LogView, Phase, Player,
   PerkView, ScanRow, StationKind, StationView, VoiceList, PhaseRefusalBody, ModeInfo,
   WeaponView, SavedGame, LanPublic, MatchHistoryRow, PresentationView, RecapView, State,
-  OperatorActionResult, OperatorCmd } from './contract.gen';
+  OperatorActionResult, OperatorCmd, PowerupsView } from './contract.gen';
 
 export type TunnelProvider = import('./contract.gen').TunnelProviderValue | null;
 
@@ -114,7 +114,11 @@ export interface Api {
    *  server's `error` text is the whole point of the rejection, never swallow it. */
   setTunnel(on: boolean): Promise<LanPublic>;
   /** A13.5: assign a utility phone (kind / team / id / threshold); MC pushes `station_config` at once. 400 in the operator's voice. */
-  putStation(node_id: string, a: { kind: StationKind; team: number | string; id: number; threshold?: number }): Promise<StationView>;
+  putStation(node_id: string, a: { kind: StationKind; team: number | string; id: number; threshold?: number;
+    /** A56: a `powerup` station's item, one of `getPowerups().presets[].preset`. Refused when MC's powerups flag is off. */
+    item_preset?: string }): Promise<StationView>;
+  /** A56: `GET /api/powerups` -- MC's powerups flag and the item presets. Rejects with status 404 on an MC that predates powerups. */
+  getPowerups(): Promise<PowerupsView>;
   deleteStation(node_id: string): Promise<void>;
   armStations(): Promise<{ ok: boolean; armed: number; pending: string[] }>;
   /** A41: the cure for a phone stuck in utility mode. Pushes `control{cmd:"release_utility"}` to ONE

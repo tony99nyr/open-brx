@@ -40,6 +40,7 @@ reach — each one exists because a screen was unverifiable by eye without it.
 | `?mock&laststale=1` | a node that WAS reached over the internet tunnel and has since gone dark (F155) |
 | `?mock&nossid=1` | MC could not read the phone's Wi-Fi name — the REACH block must print `LAN · ip:port` |
 | `?mock&restored=1` | a persisted session silently restored, two ghost players with no phone ever bound (F142) |
+| `?mock&powerups=off` / `=old` | A56 powerups: MC started without `--powerups` (the ITEMS picker is replaced by a one-line note, and an `item_preset` is refused), or an MC that predates `GET /api/powerups` (404). With neither, the demo has powerups ON |
 | `?mock&tunnelfail=1` | the next TURN ON of the tunnel fails instead of coming up (A28) |
 
 ## Verifying it in a real browser — there is nothing to build
