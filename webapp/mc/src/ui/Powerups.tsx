@@ -30,7 +30,7 @@ export function ItemState({ s, item }: { s: StationView; item: StationItem }) {
     return () => clearInterval(h);
   }, [next]);
   const live = s.item_available === true ? <Tag color={T.ok} ink={T.accInk}>AVAILABLE</Tag>
-    : s.item_available === false ? <span style={{ color: T.dim }}>{next != null ? `NEXT ${countdown(next - serverNow())}` : 'TAKEN'}{takenBy && <span style={{ color: T.dim }}> · TAKEN BY {takenBy.toUpperCase()}</span>}</span>
+    : s.item_available === false ? <span style={{ color: T.dim }}>{next != null ? `NEXT ${countdown(next - serverNow())}` : 'TAKEN'}{takenBy && <span> · TAKEN BY {takenBy.toUpperCase()}</span>}</span>
     : <span style={{ color: T.micro }}>{schedule(item)}</span>;
   return (
     <span data-testid="station-item" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', font: F.chk(600, 12), letterSpacing: '.08em', color: T.dim }}>
@@ -82,12 +82,13 @@ export function ItemStationRow({ s, item, canReset }: { s: StationView; item: St
   );
 }
 
-/** M3: the compact powerup rows on ARMED and LIVE. Present only when a powerup station holds an item. */
+/** M3: the compact powerup rows on ARMED and LIVE. Present only when a powerup station holds an item, and
+ *  (F331) never when MC says the flag is off: a restored item is inert then, and MC schedules nothing for it. */
 export function PowerupStrip() {
   const { state } = useStore();
   const pu = usePowerups();
   const rows = (state?.stations ?? []).filter(s => s.assigned?.kind === 'powerup' && s.assigned.item);
-  if (!state || !rows.length) return null;
+  if (!state || !rows.length || (pu.s === 'ok' && !pu.v.enabled)) return null;
   const inPlay = state.phase === 'armed' || state.phase === 'live';
   const enabled = pu.s === 'ok' && pu.v.enabled;
   return (

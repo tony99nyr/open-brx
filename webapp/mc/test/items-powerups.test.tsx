@@ -335,6 +335,21 @@ describe('M3: the powerup strip on the ARMED and LIVE screens', () => {
     }
   });
 
+  it('F331: is absent when GET /api/powerups says the flag is off, even with a restored item on a station', async () => {
+    const { m, strip, state } = await onScreen('live', { over: { getPowerups: async () => ({ enabled: false, presets: [] }) } });
+    expect(state.stations!.some(s => s.assigned?.item), 'setup: a station still holds an item').toBe(true);
+    expect(strip()).toBeUndefined();
+    m.unmount();
+  });
+
+  it('polish: TAKEN BY inherits the dim colour from its parent, no second T.dim', async () => {
+    const { m, strip } = await onScreen('live', { station: { item_available: false, next_spawn_at_ms: Date.now() + 40_000, taken_by: 2 } });
+    const span = Array.from(strip().querySelectorAll('span')).find(e => /^ · TAKEN BY /.test(e.textContent ?? ''));
+    expect(span, 'setup: the TAKEN BY span').toBeTruthy();
+    expect(span!.getAttribute('style')).toBeNull();
+    m.unmount();
+  });
+
   it('is absent when no powerup station holds an item', async () => {
     const { m, strip } = await onScreen('live', { item: false });
     expect(strip()).toBeUndefined();
