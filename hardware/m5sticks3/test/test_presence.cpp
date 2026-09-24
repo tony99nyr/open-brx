@@ -417,6 +417,23 @@ static void test_reset_keeps_the_tuning() {
 
 // ---- ReviveCounter --------------------------------------------------------------------------------
 
+// F344 (brx5, beacon.js countRevives): a revive counts when the player is NEAR (median of the last 3 raw
+// readings >= threshold - 10 dB), with NO dwell: a walk-in revive never reached `present`.
+static void test_revive_counts_a_walk_in_without_dwell() {
+  PlayerPresence pr;
+  pr.default_threshold = -60;  // the Stick's platform default (Tony: 3 m)
+  ReviveCounter rc;
+  pr.observe(player(1, 0, false), -68, 0);  // down, 8 dB under the threshold: near, never present
+  pr.observe(player(2, 0, false), -75, 0);  // down, beyond the margin
+  pr.tick(0);
+  CHECK_EQ(rc.update(pr), 0u);
+  pr.observe(player(1, 0, true), -67, 200);  // up 200 ms later: no dwell needed
+  pr.observe(player(2, 0, true), -74, 200);
+  pr.tick(200);
+  CHECK(!pr.get(1)->present);
+  CHECK_EQ(rc.update(pr), 1u);  // only player 1
+}
+
 static void test_revives_count_a_present_players_alive_edge_only() {
   PlayerPresence pr;
   ReviveCounter rc;
@@ -480,6 +497,8 @@ static void test_sighting_ring_is_fifo_drops_the_newest_when_full_and_clears() {
 static void test_which_kinds_scan_for_players() {
   CHECK(station_needs_player_scan("control", false));
   CHECK(station_needs_player_scan("respawn", false));
+  CHECK_EQ((int)scan_window_units("respawn"), 15);  // Block 9 S7: light, so it cannot starve the advert
+  CHECK_EQ((int)scan_window_units("control"), 50);
   CHECK(station_needs_player_scan("powerup", true));
   CHECK(!station_needs_player_scan("powerup", false));  // unchanged: no claim scan while taken
   CHECK(!station_needs_player_scan("extraction", true));
@@ -517,6 +536,7 @@ int main() {
   test_a_long_gap_is_clamped_for_conversion_but_not_for_possession();
   test_progress_republishes_at_most_once_a_second_and_state_at_once();
   test_reset_keeps_the_tuning();
+  test_revive_counts_a_walk_in_without_dwell();
   test_revives_count_a_present_players_alive_edge_only();
   test_sighting_ring_is_fifo_drops_the_newest_when_full_and_clears();
   test_which_kinds_scan_for_players();

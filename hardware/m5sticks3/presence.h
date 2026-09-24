@@ -31,7 +31,10 @@ constexpr uint32_t PRESENCE_DWELL_MS = 800;          // utility.js DEFAULTS.dwel
 constexpr int PRESENCE_HYSTERESIS_DB = 6;            // beacon.js Presence hysteresisDb
 constexpr uint32_t PRESENCE_EXPIRY_MS = 4000;        // beacon.js Presence expiryMs
 constexpr double PRESENCE_ALPHA = 0.35;              // beacon.js Presence alpha (utility.js passes 0.35 too)
-constexpr int PRESENCE_DEFAULT_THRESHOLD_DBM = -74;  // utility.js DEFAULTS.threshold
+constexpr int PRESENCE_DEFAULT_THRESHOLD_DBM = -74;  // utility.js DEFAULTS.threshold (the port's own default;
+                                                     // a Stick station passes STICK_DEFAULT_THRESHOLD_DBM, -60)
+constexpr size_t MEDIAN_SAMPLES = 3;                 // beacon.js MEDIAN_SAMPLES
+constexpr int REVIVE_MARGIN_DB = 10;                 // beacon.js REVIVE_MARGIN_DB (F344)
 constexpr uint32_t STATION_TICK_MS = 250;            // utility.js `setInterval(tick, 250)`
 constexpr int HILL_CAPTURE_S = 10;                   // control.js DEFAULT_CAPTURE_S
 constexpr int HILL_NET_CAP = 3;                      // control.js DEFAULT_NET_CAP
@@ -47,14 +50,24 @@ constexpr size_t PRESENCE_MAX_PLAYERS = 64;
 // refused (F82: a NEUTRAL grenade hill broadcasts team 2, so tid 2 can never name an owner).
 inline bool hill_claimable(int tid) { return tid == 0 || tid == 1 || tid == 3; }
 
-// Which assigned kinds run the shared player scan. `control` and `respawn` read PlayerPresence all the
-// time; `powerup` reads only its CLAIM gate, and only while the item is available, exactly as the
+// Which assigned kinds run the shared player scan. `control` reads PlayerPresence all the time; `powerup` reads only its CLAIM gate, and only while the item is available, exactly as the
 // pickup scan always has (so a taken item keeps the radio as quiet as before). Every other kind
 // (extraction, bomb) runs no player-side rule on a Stick yet.
+// `respawn` scans at a LIGHT duty (scan_window_units): at the hill's 50/100 the scan starved the Stick's
+// own advert (bench 2026-09-24, Block 9 S7: a phone 3 m away saw the station go "left" at -54 dBm every
+// few seconds). It still scans because Tony wants the Stick to count revives and flash REDEPLOY.
 inline bool station_needs_player_scan(const std::string& kind, bool powerup_available) {
   if (kind == "control" || kind == "respawn") return true;
   if (kind == "powerup") return powerup_available;
   return false;
+}
+
+// The scan window per kind, in 0.625 ms units of a 100-unit interval. Only the hill needs a heavy scan
+// (its capture rate depends on seeing every player); a respawn only has to catch an alive bit flip.
+constexpr uint16_t SCAN_WINDOW_HILL_UNITS = 50;
+constexpr uint16_t SCAN_WINDOW_LIGHT_UNITS = 15;
+inline uint16_t scan_window_units(const std::string& kind) {
+  return kind == "control" ? SCAN_WINDOW_HILL_UNITS : SCAN_WINDOW_LIGHT_UNITS;
 }
 
 // ---- PlayerPresence (beacon.js Presence, players only) -------------------------------------------
@@ -69,6 +82,8 @@ struct PlayerEntry {
   int threshold = 0;  // a player advert's byte 14; 0 = use the station's default
   double rssi = 0;    // the EMA
   int raw = 0;        // the last raw sample
+  int samples[MEDIAN_SAMPLES] = {};  // the last MEDIAN_SAMPLES raw samples, oldest first (beacon.js e.samples)
+  size_t n_samples = 0;
   uint32_t seen_at = 0;
   uint32_t age_ms = 0;
   bool present = false;
@@ -102,14 +117,29 @@ class PlayerPresence {
       copy(*e, d);
       e->rssi = rssi;  // beacon.js: a new entry starts its EMA AT the first sample
       e->raw = rssi;
+      push_sample(*e, (int)rssi);
       e->seen_at = now;
       return e;
     }
     copy(*e, d);
     e->raw = rssi;
+    push_sample(*e, (int)rssi);
     e->seen_at = now;
     e->rssi = e->rssi + alpha * (rssi - e->rssi);
     return e;
+  }
+
+  static void push_sample(PlayerEntry& e, int v) {
+    if (e.n_samples < MEDIAN_SAMPLES) { e.samples[e.n_samples++] = v; return; }
+    for (size_t i = 1; i < MEDIAN_SAMPLES; i++) e.samples[i - 1] = e.samples[i];
+    e.samples[MEDIAN_SAMPLES - 1] = v;
+  }
+  // beacon.js medianOf(): the lower middle of the sorted samples.
+  static int median_of(const PlayerEntry& e) {
+    int a[MEDIAN_SAMPLES];
+    for (size_t i = 0; i < e.n_samples; i++) a[i] = e.samples[i];
+    std::sort(a, a + e.n_samples);
+    return e.n_samples ? a[(e.n_samples - 1) / 2] : e.raw;
   }
 
   // beacon.js thresholdFor(): `e.threshold || this.defaultThreshold`.
@@ -398,8 +428,13 @@ class ReviveCounter {
       if (!p.used) continue;
       const bool alive = (p.state & PLAYER_ALIVE) != 0;
       Known* k = find(p.id);
-      // utility.js: `if (was === false && alive && p.present && settings.kind === 'respawn') revives++`
-      if (k && !k->alive && alive && p.present) { revives++; n++; }
+      // beacon.js countRevives (F344, brx5): a revive counts when the player is NEAR, not `present`: the
+      // median of the last MEDIAN_SAMPLES readings at or above the threshold minus REVIVE_MARGIN_DB, with no
+      // dwell. The station hears the player's medium-TX advert ~8 dB weaker, and a walk-in revive never
+      // reached `present` (the Stick missed a real revive at 20:51:00Z on 2026-09-24).
+      const bool fresh = p.age_ms <= players.expiry_ms;
+      const bool near = fresh && PlayerPresence::median_of(p) >= players.threshold_for(p) - REVIVE_MARGIN_DB;
+      if (k && !k->alive && alive && near) { revives++; n++; }
       if (!k) k = add(p.id);
       if (k) { k->alive = alive; seen[k - known_] = true; }
     }
