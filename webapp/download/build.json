@@ -1,14 +1,14 @@
 {
- "file": "brx-companion-0.4.9-android-release.apk",
- "version": "0.4.9",
+ "file": "brx-companion-0.4.10-android-release.apk",
+ "version": "0.4.10",
  "variant": "release",
  "minSdk": 24,
  "targetSdk": 36,
- "built": "2026-09-24T16:32:58.926Z",
- "bytes": 5074396,
- "sha256": "e0cad0146aabe0bd697b9c4eae61205424242cc5701561b0b7aa57bda791f073",
- "git": "7e59e455",
+ "built": "2026-09-24T18:19:08.765Z",
+ "bytes": 5074704,
+ "sha256": "3c08a89978e28fe2756d849110c2fe8ba4cd7f31da73bfb714d86742e3361648",
+ "git": "85c98553",
  "dirty": false,
- "url": "https://github.com/tony99nyr/open-brx/releases/download/app-v0.4.9/brx-companion-0.4.9-android-release.apk",
- "release": "app-v0.4.9"
+ "url": "https://github.com/tony99nyr/open-brx/releases/download/app-v0.4.10/brx-companion-0.4.10-android-release.apk",
+ "release": "app-v0.4.10"
 }
