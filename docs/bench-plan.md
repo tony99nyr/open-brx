@@ -40,7 +40,7 @@ superseded). See `docs/experiment-log/2026-09.md` (2026-09-19 pre-game entry) fo
 
 ## Sittings, in priority order
 
-### Next sitting: [`bench-2026-09-24.md`](bench-2026-09-24.md) (MUST: about 4 h 30 min in three setups)
+### Next sitting: [`bench-2026-09-24.md`](bench-2026-09-24.md) (MUST: about 4 h in three remaining setups, B-D)
 
 **Block 0 (preflight), Block 1 (F297/F293 connect reliability), Block 1.4 (the F293 fix re-check, PASS except
 step 5), and Block 3.1-3.3 (F308: release order, fire intervals; S58: pickup slots, buttons, overshield) are
@@ -53,8 +53,11 @@ weapon-reset confounder, both needing a disassembly read rather than a bench re-
 rest of F308's bench items in `docs/weapon-design.md`'s Balance rules table, the screamers transport steps A4,
 A7, A7b, A7c and A8 with `raw-bytes` (F269/F270), the native kill word and the R4 readings (Block 2b:
 F320-F322), S56, F292, F298, F296, F309, F293's step 5 (the mid-match headset power-cycle), F275
-outdoors, S48's super-indoor grid in Tony's house, and S57's IR callout bus, with the 0.4.6 loop (Block 4.0).
-Its sitting plan orders them: MUST sittings A-C, a stop point, then LATER by setup.
+outdoors, S48's super-indoor grid in Tony's house, S57's IR callout bus, the release loop (Block 4.0), the
+Bluetooth KOTH hill by phone (F70, F338; Block 4.13, needs 0.4.11), and the Stick over BLE (Block 9, MUST for the
+Stick MVP). **F338 (Tony, 2026-09-24): the grenade hill and Stick IR receive are POST-MVP**, so their steps moved
+to LATER in the runbook. Its sitting plan orders the rest: Sitting A already ran and closed 2026-09-24; MUST
+sittings B-D remain, a stop point, then LATER by setup.
 
 ### Sitting 1: screamers Phase A, transport half (about 55 min; 1 gun, a laptop)
 
