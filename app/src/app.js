@@ -197,7 +197,7 @@ const stationWas = new Map();
 const beaconWatch = new BeaconWatch({ link, log, native: isNative, onHit: hit => presence.observe(hit.uuids, hit.rssi, Date.now()) });
 setInterval(() => {
   const st = engine.state();
-  presence.game = configGameByte(st.config);   // scope presence to this game (best-effort; §utility)
+  presence.game = configGameByte(engine.config);   // scope presence to this game (best-effort; §utility)
   beaconWatch.tick(st, { pickerOpen: scanning || link.connecting, config: engine.config });   // no stations: no scan (bench 2026-09-17 flood); app 0.4.2: none while a connect is in flight
 }, 1000);
 async function stopAnyScan() {   // the picker owns the radio from here: `scanning` is already set, so the watch will not reopen
@@ -226,7 +226,7 @@ async function syncPlayerAdvert() {
   // Only a utility station reads a player advert, so a game with no stations advertises nothing: every
   // other phone's scan would carry it over its own bridge for no reader (bench 2026-09-17 flood).
   const want = (num != null && tid != null && st.phase !== 'idle' && stationsInPlay(engine.config))
-    ? encodeUuid({ role: 'player', id: num, team: tid, state: (st.alive ? 1 : 0) | claim.bits, value: claim.value, game: configGameByte(st.config) }) : null;
+    ? encodeUuid({ role: 'player', id: num, team: tid, state: (st.alive ? 1 : 0) | claim.bits, value: claim.value, game: configGameByte(engine.config) }) : null;
   const action = playerAdvertGate.due(want, Date.now());
   if (!action) return;
   playerAdvertBusy = true;

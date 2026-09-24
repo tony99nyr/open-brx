@@ -6252,6 +6252,7 @@ class Session:
         self._stations_unlocked = False        # A58: the LOAD lock (`_station_lock_s` reads the phase set above)
         self.arm_stations()                    # A13.5: every assigned station learns this game's number
         self._changed()
+        self.persist_now()                     # A59: a crash in the snapshot debounce must not lose the game_no bump
         return {"ok": True, "acks": self.acks, "repushed": False,
                 "config_id": self.config["config_id"]}
 

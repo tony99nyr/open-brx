@@ -50,7 +50,17 @@ test('CONTROL: without game_byte (an older MC) the phone uses 0 = any game, neve
 
 test('app.js takes presence.game and its own advert from the one helper', () => {
   const src = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
-  assert.match(src, /presence\.game = configGameByte\(st\.config\)/, 'presence scope');
-  assert.match(src, /game: configGameByte\(st\.config\)/, 'the player advert');
+  // engine.state() carries NO config key (review 2026-09-24): reading st.config made both sides 0 forever
+  assert.match(src, /presence\.game = configGameByte\(engine\.config\)/, 'presence scope');
+  assert.match(src, /game: configGameByte\(engine\.config\)/, 'the player advert');
+  assert.doesNotMatch(src, /configGameByte\(st\.config\)/, 'never the state snapshot');
   assert.doesNotMatch(src, /gameByte\(st\.config\.config_id\)/, 'the config_id hash is gone');
+});
+
+test('the engine holds MC\'s config (with game_byte) where app.js reads it, and state() does not', async () => {
+  const { Engine } = await import('../src/engine.js');
+  const e = new Engine({ writer() {}, emit() {}, report() {}, now: () => 0, synced: () => true, log() {}, delay: (ms, f) => f() });
+  e.onMcMessage({ kind: 'config', body: { config: { config_id: 'c1', game_byte: 3, mode: 'tdm', teams: [] }, frames: {} } });
+  assert.equal(configGameByte(e.config), 3, 'engine.config carries the byte');
+  assert.equal(e.state().config, undefined, 'state() has no config: app.js must not read st.config');
 });
