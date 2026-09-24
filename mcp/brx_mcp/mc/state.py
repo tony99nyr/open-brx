@@ -2706,7 +2706,13 @@ class Session:
         if not self.powerups_enabled or not a or a.get("kind") != "powerup":
             return None
         item = a.get("item")
-        if not isinstance(item, dict) or item.get("kind") not in ("weapon", "overshield"):
+        if item is None:
+            return None
+        if (why := _pu.invalid_reason(item)) is not None:
+            # F331: a restored item never passed `expand`; drop it once, loudly, rather than hang or raise per tick
+            a.pop("item", None)
+            import logging
+            logging.getLogger("brx.mc").warning("dropped an invalid item on powerup station #%s: %s", a.get("id"), why)
             return None
         return cast(StationItem, item)
 

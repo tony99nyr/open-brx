@@ -91,6 +91,27 @@ def weapon_slots(items: Iterable[StationItem]) -> list[PowerupSlot]:
     return out
 
 
+def invalid_reason(item: object) -> str | None:
+    """Why a stored item cannot be scheduled, or None when it can. F331: an item restored from a session
+    snapshot never passed `expand`; `spawn_every_s: 0` would hang the schedule's catch-up loop and a missing
+    key raises on every tick."""
+    if not isinstance(item, dict):
+        return "not an object"
+    if item.get("kind") not in ("weapon", "overshield"):
+        return f"kind {item.get('kind')!r}"
+    for key in ("spawn_every_s", "first_at_s"):
+        v = item.get(key)
+        if not isinstance(v, int) or isinstance(v, bool) or not (1 if key == "spawn_every_s" else 0) <= v <= 255:
+            return f"{key} {v!r} (an integer, 1-255)" if key == "spawn_every_s" else f"{key} {v!r} (an integer, 0-255)"
+    if not isinstance(item.get("name"), str) or not isinstance(item.get("color"), str):
+        return "name or color missing"
+    if item["kind"] == "weapon" and (not isinstance(item.get("weapon_id"), str) or not isinstance(item.get("charges"), int)):
+        return "weapon_id or charges missing"
+    if item["kind"] == "overshield" and not isinstance(item.get("amount"), int):
+        return "amount missing"
+    return None
+
+
 # ---------------------------------------------------------------------- the schedule (match clock, ms)
 def spawn_at(item: StationItem, go_live_t: int, k: int) -> int:
     """The k-th spawn time (k = 0 is the first)."""
