@@ -6,11 +6,13 @@
 // every snapshot as `stations`): what was ASSIGNED, what the phone was last ARMED with, what the phone
 // itself REPORTS, and the attention flags the server derives from the three disagreeing. Until
 // 2026-09-11 none of this existed, so no station was ever armed in the field.
-import { useEffect, useState } from 'react';
-import type { PowerupPreset, PowerupsView, StationItem, StationKind, StationView, StationViewLive } from '../api/types';
+import { useState } from 'react';
+import type { PowerupPreset, StationItem, StationKind, StationView } from '../api/types';
 import { STATION_KINDS } from '../api/types';
 import { useStore } from '../store';
-import { CHAMFER, F, T, fmtAge, fmtDuration, teamColor } from '../tokens';
+import { CHAMFER, F, T, fmtAge, teamColor } from '../tokens';
+import { ItemStationRow, Swatch } from '../ui/Powerups';
+import { POWERUPS_RESTART, type PowerupsState, itemDetail, schedule, usePowerups } from '../ui/powerupData';
 import { GhostButton, Micro, SectionRule, Seg, SwitchConfirm, Tag, ValueBox } from '../ui';
 
 const KIND_LABEL: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACTION', bomb: 'BOMB SITE', control: 'CONTROL POINT' };
@@ -18,23 +20,10 @@ const KIND_LABEL: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: '
 const KIND_SHORT: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACT', bomb: 'BOMB', control: 'CONTROL' };
 const TID_NAME: Record<number, string> = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN', 255: 'ANY' };
 
-/** A56 (S58, docs/spec/powerups.md): what `GET /api/powerups` said. `old` = the route 404s (an MC that
- *  predates powerups); `err` = any other failure, shown in the card, never swallowed. */
-type PowerupsState = { s: 'loading' } | { s: 'ok'; v: PowerupsView } | { s: 'old' } | { s: 'err'; msg: string };
-
 export function Items() {
-  const { state, api, connected } = useStore();
+  const { state } = useStore();
   const stations = state?.stations ?? [];
-  const [pu, setPu] = useState<PowerupsState>({ s: 'loading' });
-  // Read once per connection: the flag is an MC start switch, so it changes only across an MC restart,
-  // which drops and reopens /ui-ws (`connected`).
-  useEffect(() => {
-    let alive = true;
-    api.getPowerups().then(
-      v => { if (alive) setPu({ s: 'ok', v }); },
-      (e: Error & { status?: number }) => { if (alive) setPu(e?.status === 404 ? { s: 'old' } : { s: 'err', msg: e?.message ?? String(e) }); });
-    return () => { alive = false; };
-  }, [api, connected]);
+  const pu = usePowerups();   // A56
   if (!state || !stations.length) return null;
   const nArmed = stations.filter(s => s.assigned && s.armed && !s.attention.length).length;
   return (
@@ -89,10 +78,8 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
   const needsPick = picking && !chosen;
   // items are locked for the match: MC refuses any station PUT while it is armed or live
   const locked = state?.phase === 'armed' || state?.phase === 'live';
-  // A56 round 2: RESET makes the item available now, off its schedule. Only in play, only with the flag on,
-  // and behind the same tap-again confirm as RELEASE: it hands out a heavy weapon mid-match.
+  // A56 round 2: RESET makes the item available now, off its schedule. Only in play, only with the flag on.
   const canReset = locked && !!presets && a?.kind === 'powerup' && !!a.item;
-  const [confirmReset, setConfirmReset] = useState(false);
   // 2026-09-19: `s.online` is now the server's own STALE_AFTER_MS judgement (state.py `_station_view`),
   // not the old 10-minute "has this record left the field" line -- so a phone that reopened elsewhere
   // under a new node_id reads OFFLINE within seconds, not minutes, instead of sitting there as an
@@ -110,6 +97,8 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
   const needsRearm = s.arm_pending || s.attention.some(t => t.startsWith('PHONE ') || t.startsWith('ARMED FOR'));
   const dirty = !a || a.kind !== kind || a.team !== (control ? 255 : team) || a.id !== id || a.threshold !== threshold
     || (picking && chosen !== assignedPreset);
+  // a powerup station still waiting for its item pick is not a live button, so it must not look like one
+  const lit = (dirty || needsRearm) && !(dirty && needsPick);
   const apply = async () => {
     setBusy(true);
     try {
@@ -149,7 +138,7 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
             <Val color={T.dim}>{Object.entries(rep.control.hold_ms).map(([tid, ms]) => `${TID_NAME[Number(tid)] ?? tid} ${Math.round(ms / 1000)}s`).join(' · ')}</Val>
           </>)}
         </>)}
-        {a?.item && (<><Micro>ITEM</Micro><ItemState s={s} item={a.item} /></>)}
+        {a?.item && (<><Micro>ITEM</Micro><ItemStationRow s={s} item={a.item} canReset={canReset} /></>)}
         {rep.battery != null && (<><Micro>BATTERY</Micro><Val color={rep.battery < 30 ? T.bad : T.dim}>{rep.battery}%</Val></>)}
       </div>
       {s.attention.length > 0 && (
@@ -178,11 +167,6 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
         {/* the confirm sits ABOVE the row it guards, same placement `Games.tsx` uses for `SwitchConfirm`
             under a card it's about to switch away from -- read there before it's acted on, not buried
             beside the button that triggers it. */}
-        {confirmReset && canReset && (
-          <SwitchConfirm dropsDraft={false}
-            split={`RESET PUTS THE ${a!.item!.name} BACK ON THIS STATION NOW, OFF ITS SCHEDULE, FOR THE FIRST PLAYER TO REACH IT.`}
-            action="TAP RESET ITEM AGAIN TO SEND IT" />
-        )}
         {confirmRelease && (
           <SwitchConfirm dropsDraft={false}
             split={`RELEASE SENDS THIS PHONE BACK TO ITS OWN HUD RIGHT NOW, EVEN LIVE — ONCE IT LEAVES, NOTHING ON THIS CONSOLE CAN REACH IT AGAIN. THE ONLY WAY BACK IS WALKING TO IT AND DOING THE SEVEN-TAP GESTURE.`}
@@ -192,12 +176,12 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
           {/* 2026-09-19: an offline phone (stale link, server-judged) cannot be assigned or armed --
               the push would just fail against a dead socket, which used to be the operator's first
               sign anything was wrong. */}
-          <button type="button" className={dirty ? 'hov-accbg' : ''} disabled={busy || !s.online || (!dirty && !needsRearm) || (dirty && needsPick)} onClick={apply}
+          <button type="button" className={lit ? 'hov-accbg' : ''} disabled={busy || !s.online || (!dirty && !needsRearm) || (dirty && needsPick)} onClick={apply}
             title={!s.online ? 'this phone has not been heard from recently -- it cannot be assigned or armed until it reconnects'
               : dirty && needsPick ? 'pick an item for this powerup station first' : undefined}
             style={{ font: F.osw(700, 15), letterSpacing: '.18em', padding: '8px 18px', whiteSpace: 'nowrap',
-              background: dirty || needsRearm ? T.acc : T.panelAlt, color: dirty || needsRearm ? T.accInk : T.dim,
-              border: `1px solid ${dirty || needsRearm ? T.acc : T.line}`, clipPath: CHAMFER.tl14, cursor: busy ? 'wait' : dirty || needsRearm ? 'pointer' : 'default', minHeight: 40 }}>
+              background: lit ? T.acc : T.panelAlt, color: lit ? T.accInk : T.dim,
+              border: `1px solid ${lit ? T.acc : T.line}`, clipPath: CHAMFER.tl14, cursor: busy ? 'wait' : dirty && needsPick ? 'not-allowed' : lit ? 'pointer' : 'default', minHeight: 40 }}>
             {a ? (dirty ? 'ARM WITH CHANGES' : needsRearm ? 'RE-ARM' : 'ARMED') : 'ASSIGN + ARM'}
           </button>
           {a && <GhostButton onClick={async () => { await run(() => api.deleteStation(s.node_id)); }} title="drop the assignment; the phone keeps advertising whatever it was last armed with">CLEAR</GhostButton>}
@@ -226,21 +210,6 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
             RELEASE ▸ HUD
           </GhostButton>
           {confirmRelease && <GhostButton size={11} onClick={() => setConfirmRelease(false)} title="back out — nothing was sent">CANCEL</GhostButton>}
-          {canReset && (
-            <span data-testid="item-reset" style={{ display: 'contents' }}>
-              <GhostButton
-                onClick={async () => {
-                  if (!confirmReset) { setConfirmReset(true); return; }
-                  setConfirmReset(false);
-                  await run(() => api.resetStation(s.node_id));
-                }}
-                color={confirmReset ? T.warn : undefined} border={confirmReset ? T.warn : undefined}
-                title={confirmReset ? 'tap again to confirm: the item becomes available at this station now' : 'make this station\'s item available now, off its schedule'}>
-                RESET ITEM
-              </GhostButton>
-              {confirmReset && <GhostButton size={11} onClick={() => setConfirmReset(false)} title="back out: nothing was sent">CANCEL</GhostButton>}
-            </span>
-          )}
           {released != null && <Tag color={released ? T.ok : T.warn} ink={T.ink}>{released ? 'SENT' : 'NO SOCKET'}</Tag>}
           {dirty && needsPick && <span style={{ font: F.chk(700, 11), letterSpacing: '.1em', color: T.warn }}>▲ PICK AN ITEM ABOVE</span>}
           {a && <span style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: teamColor(TID_NAME[a.team]?.toLowerCase() ?? 'any') }}>{TID_NAME[a.team] ?? a.team}</span>}
@@ -254,15 +223,6 @@ function Val({ children, color }: { children: React.ReactNode; color: string }) 
   return <span style={{ font: F.chk(600, 12), letterSpacing: '.08em', color }}>{children}</span>;
 }
 
-/** "every 2:00, first at 2:00": the item's spawn schedule on the match clock (A56). */
-const schedule = (it: StationItem) => `EVERY ${fmtDuration(it.spawn_every_s)}, FIRST AT ${fmtDuration(it.first_at_s)}`;
-const itemDetail = (it: StationItem) => it.kind === 'overshield' ? `+${it.amount ?? '?'} SHIELD` : `${it.charges ?? '?'} CHARGE${it.charges === 1 ? '' : 'S'}`;
-/** a countdown: floors (never shows a time that has not arrived), minutes unpadded */
-const countdown = (ms: number) => { const v = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`; };
-
-function Swatch({ color }: { color: string }) {
-  return <span data-swatch aria-hidden style={{ display: 'inline-block', width: 10, height: 10, flex: '0 0 auto', background: color, border: `1px solid ${T.line}` }} />;
-}
 
 /** A56: the host picks ONE item per powerup station at setup; it is locked once the match is armed. Absent
  *  (with a one-line reason) when MC has powerups off or predates them. */
@@ -273,7 +233,7 @@ function ItemPicker({ node, pu, chosen, locked, onPick }:
   if (pu.s === 'loading') return note('READING THE ITEM LIST…');
   if (pu.s === 'old') return note('THIS MC PREDATES POWERUPS: NO ITEM PICKER. UPDATE AND RESTART IT (./start.sh) TO GIVE A STATION AN ITEM.', T.warn);
   if (pu.s === 'err') return note(`COULD NOT READ THE ITEM LIST: ${pu.msg}`, T.warn);
-  if (!pu.v.enabled) return note('POWERUPS ARE OFF ON THIS MC (START IT WITH --powerups): THIS STATION ARMS WITH NO ITEM.');
+  if (!pu.v.enabled) return note(`POWERUPS ARE OFF ON THIS MC: THIS STATION ARMS WITH NO ITEM. TO GIVE IT ONE, RESTART MC WITH ${POWERUPS_RESTART}`);
   return (
     <div data-testid="item-picker" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <Micro>ITEM · ONE PER STATION</Micro>
@@ -301,26 +261,3 @@ function ItemPicker({ node, pu, chosen, locked, onPick }:
   );
 }
 
-/** A56: the station row's item and live state, from `StationView.item_available` / `next_spawn_at_ms`.
- *  An MC that does not send them (older, or no match running) gets the schedule instead of a guess. */
-function ItemState({ s, item }: { s: StationViewLive; item: StationItem }) {
-  const { serverNow, state } = useStore();
-  // who took it (A56 round 2), by roster display; absent field = nothing extra
-  const takenBy = s.item_available === false && s.taken_by != null
-    ? (state?.players.find(p => p.player_num === s.taken_by)?.display ?? `#${s.taken_by}`) : null;
-  const next = s.item_available === false ? s.next_spawn_at_ms ?? null : null;
-  const [, tick] = useState(0);
-  useEffect(() => {
-    if (next == null) return;
-    const h = setInterval(() => tick(n => n + 1), 1000);
-    return () => clearInterval(h);
-  }, [next]);
-  const live = s.item_available === true ? <Tag color={T.ok} ink={T.accInk}>AVAILABLE</Tag>
-    : s.item_available === false ? <span style={{ color: T.warn }}>{next != null ? `NEXT ${countdown(next - serverNow())}` : 'TAKEN'}{takenBy && <span style={{ color: T.dim }}> · TAKEN BY {takenBy.toUpperCase()}</span>}</span>
-    : <span style={{ color: T.micro }}>{schedule(item)}</span>;
-  return (
-    <span data-testid="station-item" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', font: F.chk(600, 12), letterSpacing: '.08em', color: T.dim }}>
-      <Swatch color={item.color} /><span style={{ color: item.color }}>{item.name}</span>{live}
-    </span>
-  );
-}

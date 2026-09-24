@@ -51,6 +51,8 @@ describe('the client only calls routes the server actually serves', () => {
     ['setPhase', (a: ReturnType<typeof createHttpApi>) => a.setPhase('lobby', true), 'POST', '/api/phase'],
     ['standbyPlayer', (a: ReturnType<typeof createHttpApi>) => a.standbyPlayer('p1'), 'POST', '/api/players/p1/standby'],
     ['reinstatePlayer', (a: ReturnType<typeof createHttpApi>) => a.reinstatePlayer('p1'), 'DELETE', '/api/players/p1/standby'],
+    ['getPowerups', (a: ReturnType<typeof createHttpApi>) => a.getPowerups(), 'GET', '/api/powerups'],
+    ['resetStation', (a: ReturnType<typeof createHttpApi>) => a.resetStation('util-1'), 'POST', '/api/stations/util-1/reset'],
   ])('%s calls %s %s, and it is a real route', async (_name, call, method, path) => {
     const seen: { url: string; method: string; body?: string }[] = [];
     const real = globalThis.fetch;
@@ -161,8 +163,7 @@ describe('makeReport posts to /api/report and reads version skew plainly', () =>
 });
 
 
-// A56 (powerups): the two new routes. The server lane adds them in parallel, so these pin the path and
-// method only; the route-table check joins the list above once `api.py` serves them.
+// A56 (powerups): the two new routes (also in the route-table list above), and the reset route's 404 rule.
 describe('A56 powerup routes', () => {
   const call = async (status: number, body: string, type: string, fn: (a: ReturnType<typeof createHttpApi>) => Promise<unknown>) => {
     const seen: { url: string; method: string }[] = [];

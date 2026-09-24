@@ -36,12 +36,8 @@ export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, NEVER_SEEN_MS, STALE_AFTER_MS, STAT
 import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LogView, Phase, Player,
   PerkView, ScanRow, StationKind, StationView, VoiceList, PhaseRefusalBody, ModeInfo,
   WeaponView, SavedGame, LanPublic, MatchHistoryRow, PresentationView, RecapView, State,
-  OperatorActionResult, OperatorCmd, PowerupsView, StationView as GenStationView } from './contract.gen';
+  OperatorActionResult, OperatorCmd, PowerupsView } from './contract.gen';
 
-/** A56 round 2: `StationView.taken_by` (the player_num who took the item, while it is not available) is
- *  NOT in the generated contract yet: the MC lane adds it to `types.py` and regenerates. Until then the
- *  console reads it through this widening; drop it once `contract.gen.ts` carries the field. */
-export type StationViewLive = GenStationView & { taken_by?: number | null };
 
 export type TunnelProvider = import('./contract.gen').TunnelProviderValue | null;
 

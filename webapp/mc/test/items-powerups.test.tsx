@@ -4,6 +4,8 @@
 // the row's AVAILABLE / NEXT m:ss countdown.
 import { describe, expect, it } from 'vitest';
 import { Armory } from '../src/screens/Armory';
+import { Armed } from '../src/screens/Armed';
+import { Live } from '../src/screens/Live';
 import { MockBackend } from '../src/mock/backend';
 import { StoreCtx } from '../src/store';
 import { makeStore, mount } from './harness';
@@ -281,18 +283,119 @@ describe('ITEMS — the ?mock backend: reset and taken_by', () => {
   it('a pickup records who took it; RESET makes it available again and clears taken_by; refused outside play', async () => {
     const api = new MockBackend();
     await api.putStation(NODE, { kind: 'powerup', team: 'any', id: 4, item_preset: 'overshield' });
-    await expect(api.resetStation(NODE)).rejects.toThrow(/ARMED or LIVE/);
+    await expect(api.resetStation(NODE)).rejects.toThrow(/armed or live/);
     const mb = api as unknown as { phase: string; start_: { go_live_t: number } };
     mb.phase = 'live'; mb.start_ = { go_live_t: Date.now() - 61_000 } as never;
     const v0 = (await api.getState()).stations!.find(s => s.node_id === NODE)!;
     expect(v0.item_available).toBe(true);
     api.pickupStation(NODE, 3);
-    const v1 = (await api.getState()).stations!.find(s => s.node_id === NODE)! as StationView & { taken_by?: number };
+    const v1 = (await api.getState()).stations!.find(s => s.node_id === NODE)!;
     expect(v1.item_available).toBe(false);
     expect(v1.taken_by).toBe(3);
     await api.resetStation(NODE);
-    const v2 = (await api.getState()).stations!.find(s => s.node_id === NODE)! as StationView & { taken_by?: number };
+    const v2 = (await api.getState()).stations!.find(s => s.node_id === NODE)!;
     expect(v2.item_available).toBe(true);
     expect(v2.taken_by).toBeUndefined();
+  });
+});
+
+// Polish round 1 (brx5 lead): the store follows the phase, so while a match is ARMED or LIVE the
+// operator is on those screens, never on ARMORY. M3: the item state and RESET ITEM must be there too.
+
+describe('M3: the powerup strip on the ARMED and LIVE screens', () => {
+  /** A mock match in `phase` with the first utility phone a powerup station holding OVERSHIELD. */
+  async function onScreen(phase: 'armed' | 'live', opts: { item?: boolean; over?: Partial<Api>; station?: Partial<StationView> } = {}) {
+    const api = new MockBackend();
+    if (opts.item !== false) await api.putStation(NODE, { kind: 'powerup', team: 'any', id: 4, item_preset: 'overshield' });
+    await api.pushLobby(true);
+    await api.start(30, true);
+    if (phase === 'live') (api as unknown as { goLive(): void }).goLive();
+    Object.assign(api, opts.over ?? {});
+    const base = await api.getState();
+    const state: State = { ...base, stations: base.stations!.map(s => s.node_id === NODE ? { ...s, ...(opts.station ?? {}) } : s) };
+    let error: string | null = null;
+    const run: <T,>(fn: () => Promise<T>) => Promise<T | undefined> = async fn => {
+      try { error = null; return await fn(); } catch (e) { error = (e as Error).message; return undefined; }
+    };
+    const node = () => <StoreCtx.Provider value={makeStore({ state, view: phase }, { api, run })}>{phase === 'armed' ? <Armed /> : <Live />}</StoreCtx.Provider>;
+    const m = await mount(node());
+    await m.update(node());
+    const strip = () => m.find('[data-testid="powerup-strip"]')[0];
+    return { m, strip, error: () => error, state };
+  }
+
+  it('shows each item station on ARMED and LIVE, with its state', async () => {
+    for (const phase of ['armed', 'live'] as const) {
+      const { m, strip } = await onScreen(phase, { station: { item_available: false, next_spawn_at_ms: Date.now() + 40_000, taken_by: 2 } });
+      expect(strip(), `${phase}: no powerup strip`).toBeTruthy();
+      expect(strip().textContent).toMatch(/OVERSHIELD/);
+      expect(strip().textContent).toMatch(/NEXT 0:[34]\d/);
+      expect(strip().textContent).toMatch(/TAKEN BY /);
+      m.unmount();
+    }
+  });
+
+  it('is absent when no powerup station holds an item', async () => {
+    const { m, strip } = await onScreen('live', { item: false });
+    expect(strip()).toBeUndefined();
+    m.unmount();
+  });
+
+  it('RESET ITEM on LIVE: two taps call reset; a refusal shows inline on the row AND in the banner', async () => {
+    const MSG = "'util-a1b2c3' is not a powerup station with an item in this match";
+    const calls: string[] = [];
+    const { m, strip, error } = await onScreen('live', {
+      station: { item_available: false, next_spawn_at_ms: Date.now() + 40_000 },
+      over: { resetStation: async (n: string) => { calls.push(n); throw new Error(MSG); } } as Partial<Api> });
+    await m.click('RESET ITEM');
+    expect(calls).toEqual([]);
+    expect(strip().textContent).toMatch(/TAP RESET ITEM AGAIN/);
+    await m.click('RESET ITEM');
+    expect(calls).toEqual([NODE]);
+    expect(error()).toBe(MSG);
+    expect(strip().querySelector('[data-testid="item-reset-error"]')?.textContent).toContain(MSG);
+    m.unmount();
+  });
+
+  it('no RESET ITEM while the item is AVAILABLE (there is nothing to reset)', async () => {
+    const { m, strip } = await onScreen('live', { station: { item_available: true, next_spawn_at_ms: Date.now() + 40_000 } });
+    expect(strip().textContent).toMatch(/AVAILABLE/);
+    expect(strip().querySelector('[data-testid="item-reset"]')).toBeNull();
+    m.unmount();
+  });
+});
+
+describe('polish round 1: the lows on the ITEMS card', () => {
+  it('no RESET ITEM on the card while the item is AVAILABLE', async () => {
+    const api = new MockBackend();
+    await api.putStation(NODE, { kind: 'powerup', team: 'any', id: 4, item_preset: 'overshield' });
+    const base = await api.getState();
+    const state: State = { ...base, phase: 'live', stations: base.stations!.map(s => s.node_id === NODE ? { ...s, item_available: true } : s) };
+    const node = <StoreCtx.Provider value={makeStore({ state, view: 'muster' }, { api })}><Armory /></StoreCtx.Provider>;
+    const m = await mount(node); await m.update(node);
+    expect(m.find(`[data-station-card="${NODE}"] [data-testid="item-station-row"]`).length, 'the item row is there').toBe(1);
+    expect(m.find(`[data-station-card="${NODE}"] [data-testid="item-reset"]`).length).toBe(0);
+    m.unmount();
+  });
+
+  it('ASSIGN + ARM looks disabled while it needs a pick', async () => {
+    const { m } = await muster();
+    await m.click('POWERUP');
+    const btn = m.find(`[data-station-card="${NODE}"] button`).find(b => b.textContent?.includes('ASSIGN + ARM')) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(btn.style.cursor).toBe('not-allowed');
+    expect(btn.style.background).not.toBe('rgb(56, 182, 255)');
+    const lit = getComputedStyle(btn).color;
+    await m.click(/^ROCKETS/);
+    expect(btn.disabled).toBe(false);
+    expect(getComputedStyle(btn).color, 'the live button reads differently from the dead one').not.toBe(lit);
+    m.unmount();
+  });
+
+  it('the powerups-off note gives the one restart hint', async () => {
+    const { m } = await muster({ getPowerups: async () => ({ enabled: false, presets: [] }) });
+    await m.click('POWERUP');
+    expect(m.find('[data-testid="item-note"]')[0].textContent).toContain('./start.sh -- --powerups');
+    m.unmount();
   });
 });

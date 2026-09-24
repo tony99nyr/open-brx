@@ -6,6 +6,7 @@ import { EvictButton } from '../ui/EvictButton';
 import { F, T, fmtAge, fmtClock } from '../tokens';
 import { Brackets, GhostButton, HazardButton, Num, ScreenHeader, Tag, shortCoverageLine, coverageColor } from '../ui';
 import { SetupSteps } from '../ui/SetupSteps';
+import { PowerupStrip } from '../ui/Powerups';
 
 
 export function Armed() {
@@ -90,6 +91,7 @@ export function Armed() {
       {/* Match reminders: still actionable during the runway (the grenade is placed while the
           players walk), plus A31's standing "this win is settled at MC" line */}
       <SetupSteps style={{ marginBottom: 12 }} />
+      <PowerupStrip />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 10 }}>
         {nodes.map(({ p, n, nv }) => {
           const ack = n?.arm_state === 'armed' || n?.arm_state === 'live';

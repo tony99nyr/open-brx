@@ -118,7 +118,7 @@ export class MockBackend implements Api {
   /** A56: a powerup station's live item state on the match clock (`StationView.item_available` /
    *  `next_spawn_at_ms`): spawns at `first_at_s`, then every `spawn_every_s`; an item stays until taken and a
    *  spawn never stacks. Only while a match is armed or live; outside one the fields are absent. */
-  private itemState(st: { assigned: StationAssignment | null; takenAt?: number; takenBy?: number; resetAt?: number }): Partial<StationView> & { taken_by?: number } {
+  private itemState(st: { assigned: StationAssignment | null; takenAt?: number; takenBy?: number; resetAt?: number }): Partial<StationView> {
     const it = st.assigned?.item;
     const t0 = this.live_?.go_live_t ?? this.start_?.go_live_t;
     if (!it || t0 == null || !['armed', 'live'].includes(this.phase)) return {};
@@ -135,9 +135,9 @@ export class MockBackend implements Api {
   pickupStation(node_id: string, player_num?: number) { const st = this.stations[node_id]; if (st) { st.takenAt = now(); st.takenBy = player_num; this.emit(); } }
   async resetStation(node_id: string): Promise<{ ok: boolean }> {
     const st = this.stations[node_id]; if (!st) throw Object.assign(new Error('no such station'), { status: 404, body: { error: 'no such station' } });
-    if (mockPowerups() !== 'on') throw new Error('powerups are off on this MC: there is no item to reset');
+    if (mockPowerups() !== 'on') throw new Error('powerups are OFF: start Mission Control with --powerups to give a station an item (it stays off until the bench proves the spare weapon slots, powerups.md Sitting A)');
     if (!st.assigned?.item) throw new Error('this station has no item to reset');
-    if (!['armed', 'live'].includes(this.phase)) throw new Error(`an item reset needs a match ARMED or LIVE (MC is at ${this.phase.toUpperCase()})`);
+    if (!['armed', 'live'].includes(this.phase)) throw new Error(`the match is ${this.phase.toUpperCase()}: an item can be reset only while a match is armed or live`);   // state.py reset_station
     st.resetAt = now(); st.takenAt = undefined; st.takenBy = undefined; this.emit();
     return { ok: true };
   }
@@ -227,7 +227,7 @@ export class MockBackend implements Api {
     if (!STATION_KINDS.includes(a.kind)) throw new Error(`kind must be one of ${STATION_KINDS.join(', ')}`);
     let item: StationAssignment['item'];
     if (a.item_preset != null) {
-      if (mockPowerups() !== 'on') throw new Error('powerups are off on this MC: start it with --powerups to give a station an item');
+      if (mockPowerups() !== 'on') throw new Error('powerups are OFF: start Mission Control with --powerups to give a station an item (it stays off until the bench proves the spare weapon slots, powerups.md Sitting A)');   // powerups.py REFUSED_FLAG_OFF
       if (a.kind !== 'powerup') throw new Error(`item_preset is only for a powerup station, not ${a.kind}`);
       const p = POWERUP_PRESETS.find(x => x.preset === a.item_preset);
       if (!p) throw new Error(`unknown item_preset '${a.item_preset}': one of ${POWERUP_PRESETS.map(x => x.preset).join(', ')}`);
