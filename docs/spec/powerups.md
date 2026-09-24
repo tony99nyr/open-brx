@@ -201,7 +201,11 @@ Bench items (step 3.5 of `docs/bench-2026-09-24.md`): a hit on the raised max dr
 survives a hit and a death after a mid-life `$PSET`; spawn protection covers the grant (a hit inside the window does
 nothing); and the burst order: does `$TMP` t8 = -100 sent BEFORE the `$PSET` survive it, or does a mid-life `$PSET`
 reset `$TMP` the way `$SPAWN` does? (If it does, protection goes after the `$PSET`.) The heat reset on a `$WEAP`
-re-send is Bench gate item 9a.
+re-send is Bench gate item 9a. Two more: does a `$PSET` that lowers the shield max below the current
+shield clamp the shield down at once (the drain restore assumes nothing is above the preset max by then)? And at a
+death with no `pset_pool` in the revive, the preset `$PSET` goes out while the gun is dead: does it take, or does the
+revive's `$SPAWN` refill the shield to the raised max? (Today's bundles all carry a `pset_pool`, so this is the older
+bundle's case.)
 
 ## Station powerup modes (Tony, 2026-09-24: "future variations wanted")
 

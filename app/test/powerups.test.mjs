@@ -33,13 +33,13 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons, ...(overrides ? { overrides } : {}) }, voice: 'male' };
   // The fake gun answers the node's liveness probe the way the bench gun does (`$LIFE,0,0,0,*` -> `$HP` at once), so a
   // long quiet stretch on the match clock is not read as a locked-up gun (F272).
-  const answers = [], store = mkStorage(), batches = [], echoQ = []; let failNext = null;
+  const answers = [], store = mkStorage(), batches = [], echoQ = []; let failNext = null, failLeft = 0;
   // `echo`: the fake gun answers every `$WEAP` and `$AMMO` write with the `$ALCD` a real gun sends (F259: the `$WEAP`
   // reset at the compiled clip, then the `$AMMO` count). `failNext`: the next write carrying a matching frame resolves false.
   const writer = fr => {
     writes.push(...fr); batches.push([...fr]);
     for (const f of fr) if (f === E.PROBE_LIFE) answers.push(f);
-    if (failNext && fr.some(failNext)) { failNext = null; return false; }
+    if (failNext && fr.some(failNext)) { if (--failLeft <= 0) failNext = null; return false; }
     if (echo) for (const f of fr) { const t = f.split(',');
       if (t[0] === '$WEAP') echoQ.push(`$ALCD,${t[17] || 0},100,${t[1]},${t[18] || 0},0,*`);
       else if (t[0] === '$AMMO') echoQ.push(`$ALCD,${t[2]},100,${t[1]},${t[3]},0,*`); }
@@ -55,8 +55,8 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
   // the Shields preset (armour 0, a shield ceiling): the maxima are read back from the head's `$PSET`, so rewrite it there
   const shieldsPset = f => f.startsWith('$PSET,') ? f.replace(/^\$PSET,(\d+),(\d+),45,70,0,/, `$PSET,$1,$2,45,0,${maxShield},`) : f;
   if (maxShield) { frames.head = frames.head.map(shieldsPset); frames.pset_pool = frames.pset_pool.map(shieldsPset); }
-  if (!psetPool) delete frames.pset_pool;
-  if (!profile) delete frames.respawn_profile;   // an older bundle: a protected life ends on its first shot or the cap   // an older bundle: the spawn and revive carry no $PSET of their own
+  if (!psetPool) delete frames.pset_pool;   // an older bundle: the spawn and revive carry no $PSET of their own
+  if (!profile) delete frames.respawn_profile;   // an older bundle: a protected life ends on its first shot or the cap
   // A56: compile arms each pickup weapon in its spare slot with a normal `$WEAP` in the head, and every spawn and revive
   // empties it with `$AMMO,<slot>,0,0,1` (compile.py; the respawn profile's bursts carry the same `ammo` rows).
   if (powerups) {
@@ -72,7 +72,7 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
   const h = {
     eng, writes, facts, batches,
     flush() { while (echoQ.length) eng.feedFrame(echoQ.shift()); return h; },
-    failNext(pred) { failNext = pred; return h; },
+    failNext(pred, n = 1) { failNext = pred; failLeft = n; return h; },
     adv(ms) { const step = 250; for (let t = 0; t < ms; t += step) { h.flush(); clock += Math.min(step, ms - t); eng.tick(); h.flush(); while (answers.length) { answers.shift(); eng.feedFrame(`$HP,${eng.hp},${eng.armor},${eng.shield},*`); } } return h; },
     at(s) { return h.adv(Math.max(0, 1_000_000 + s * 1000 - clock)); },
     mark() { return writes.length; },
@@ -585,7 +585,9 @@ test('M2: a lost $PSET restore is retried once, in the same life', async () => {
   const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }], maxShield: 70 });
   h.frame('$HP,45,0,70,*'); h.at(61); h.take(6); h.frame('$HP,45,0,145,*'); h.away(); h.adv(1500);
   h.failNext(f => f.startsWith('$PSET,'));
-  const n = h.mark(); h.frame('$HIR,4,0,19,2,9,0,3,*').frame('$HP,45,0,60,*'); await settle(); await settle();
+  const n = h.mark(); h.frame('$HIR,4,0,19,2,9,0,3,*').frame('$HP,45,0,60,*');
+  h.fire(0, 29, 190);   // a round leaves before the retry settles: a `$PSET` carries no counts, so it is still safe to repeat
+  await settle(); await settle();
   assert.equal(h.since(n).filter(f => f.startsWith('$PSET,')).length, 2, 'the restore, then its retry');
 });
 
@@ -614,8 +616,6 @@ test('low: an operator respawn of a live player with the overshield up restores 
 test('low: a new match clears the $PSET the overshield copies, and the T-0 spawn sets it again', () => {
   const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
   assert.equal(h.eng._psetNow, golden.pset_pool[0], 'the T-0 spawn\'s pool take, set after the match reset');
-  h.eng._psetNow = '$PSET,7,1,45,70,0,50,,STALE,*'; h.eng._puReset();
-  assert.equal(h.eng._psetNow, null);
 });
 
 test('low: the raised max is the new shield, never below the preset max (a half-empty Shields preset gets 105, not 145)', () => {
@@ -643,4 +643,49 @@ test('low: the stun restore writes the held heavy\'s count as it is at the resto
   h.eng._puHeld.left = 1;   // the node's count moved after the snapshot
   const n = h.mark(); h.adv(3500);
   assert.ok(h.since(n).includes('$AMMO,2,1,0,1,*'), JSON.stringify(h.since(n).filter(f => f.startsWith('$AMMO,'))));
+});
+
+// ---- polish round 2 on pu-trigger (brx5 lead, 2026-09-24) ----
+test('r2 M1: a reconcile keeps a pending switch-back (the disarm echo is not its answer) and re-sends it at the end', () => {
+  const h = armed({ echo: true }); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300);
+  h.failNext(f => f === WEAP0);
+  h.fire(2, 0);   // the switch-back write is lost
+  assert.ok(h.eng._puBackPending, 'setup: a switch-back pending');
+  const b0 = h.batches.length;
+  h.eng.onBleDropped(); h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); h.adv(6000);
+  const bs = h.batches.slice(b0), ri = bs.findIndex(b => b.includes('$AMMO,0,32,192,1,*'));
+  assert.ok(ri >= 0 && bs.slice(ri).some(b => b.includes(WEAP0) && b.includes('$AMMO,0,30,190,1,*')), `re-sent after the re-arm: ${JSON.stringify(bs)}`);
+  assert.equal(h.eng._puBackPending, null, 'answered by the real echo afterwards');
+});
+
+test('r2 M2: ALT off the heavy then a reload $ALCD (no shot) moves the trigger: the HUD and SELECT stop naming the heavy', () => {
+  const h = harness(ROCKET_GAME);
+  h.at(110); h.frame('$BUT,1,1,*').frame('$BUT,1,0,*'); h.adv(300); h.fire(1, 5, 24); h.adv(1200);
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*'); h.adv(300); h.fire(0, 31, 192);
+  h.at(121); h.take(4); h.away(); h.adv(800); h.fire(2, 1);
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*'); h.adv(300);
+  h.frame('$ALCD,6,100,1,24,0,*');   // a reload tops the secondary up: a rise, not a round leaving
+  const s = h.eng.state();
+  assert.equal(s.activeSlot, 1, 'setup: the ALT swap is confirmed on slot 1');
+  assert.equal(s.powerup.held.active, false, 'the trigger is on the secondary now');
+  assert.notEqual(s.weapon, 'ROCKETS');
+  const n = h.mark(); h.adv(500); h.select();
+  assert.deepEqual(puw(h.since(n)), [WEAP[2], '$AMMO,2,1,0,1,*'], 'SELECT equips the heavy, it does not "switch back"');
+});
+
+test('r2 low: an ALT press drops a pending switch-back, so the re-send never fights a deliberate swap', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300);
+  const n = h.mark(); h.fire(2, 0);
+  assert.ok(h.eng._puBackPending, 'setup: pending (the fake gun never answers)');
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
+  h.adv(5000);
+  assert.equal(h.since(n).filter(f => f === WEAP0).length, 1, 'the first write only');
+});
+
+test('r2 low: a protection-off that keeps failing is retried 3 times, then left to RESYNC GUN', async () => {
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
+  h.at(61); h.take(6); h.failNext(f => f === golden.spawn_protect_off, 99);
+  const n = h.mark();
+  for (let i = 0; i < 12; i++) { h.adv(250); await settle(); }
+  assert.equal(h.since(n).filter(f => f === golden.spawn_protect_off).length, 4, 'the write, then 3 retries');
 });

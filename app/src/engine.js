@@ -562,6 +562,7 @@ export const PU_ADVERT_STALE_MS = 8000;     // an advert older than this says no
 export const OVERSHIELD_GRANT_MS = 1000;
 export const OVERSHIELD_HIR_WAIT_MS = 1000;  // polish M1: a `$HIR` with no `$HP` after it holds the grant this long at most (a lethal hit in flight)
 export const PU_BACK_RETRY_MS = 1500;       // polish M3: a switch-back the gun has not answered with an `$ALCD` for that slot is re-sent after this
+export const OVERSHIELD_OFF_RETRIES = 3;   // r2: a protection-off that keeps failing is retried this often, then left to RESYNC GUN
 export const PU_BACK_TRIES = 3;             // ...at most this many times
 export const OVERSHIELD_ECHO_MS = 1500;     // a pre-grant `$HP` still in flight must not read as the overshield breaking
 /** The spawn index at `elapsedMs` on the match clock (0 = the first spawn at `first_at_s`), or -1 before the first. PURE. */
@@ -4978,7 +4979,8 @@ export class Engine {
     // write would otherwise leave the player unhittable for the life.
     Promise.resolve(r).then(ok => {
       if (ok !== false || this._lifeSeq !== life || !this.alive || this.phase !== 'live' || this.ended || this._osProtectUntil) return;
-      this.log('overshield: spawn protection off was lost, retrying', 'le');
+      if ((this._osOffTries = (this._osOffTries || 0) + 1) > OVERSHIELD_OFF_RETRIES) { this.log('*** overshield: spawn protection off failed 4 times -- the player may be unhittable (RESYNC GUN) ***', 'le'); return; }
+      this.log(`overshield: spawn protection off was lost, retrying (${this._osOffTries}/${OVERSHIELD_OFF_RETRIES})`, 'le');
       this._osProtectUntil = this.now();
     });
   }
@@ -5065,7 +5067,7 @@ export class Engine {
     const pset = this._osPset(max), pf = this._armPending ? null : this._osProtectFrames();   // a life still protected keeps its own
     this._write([...(pf ? [pf.on] : []), ...(pset ? [pset] : []), `$LIFE,${this.hp},${this.armor},${to},2,*`],
       `powerup: ${item.name} +${amount} (shield ${this.shield} -> ${to}, max ${this.maxShield} -> ${max}${pf ? ', protected' : ''})`);
-    if (pf) this._osProtectUntil = now + OVERSHIELD_GRANT_MS;
+    if (pf) { this._osProtectUntil = now + OVERSHIELD_GRANT_MS; this._osOffTries = 0; }
     this.shield = to; this._prevShield = to;
     this._shieldRegen = null;   // S29: no refill may be in flight under it
     const name = String(item.name || 'OVERSHIELD').toUpperCase();
@@ -5082,7 +5084,9 @@ export class Engine {
    *  slot is only our own zeroing echo). The heavy's own magazine reaching 0 ends the item. */
   _puAmmo(slot, mag, prev) {
     const bp = this._puBackPending;
-    if (bp && slot === bp.slot) this._puBackPending = null;   // polish M3: the gun answered the switch-back
+    // Polish M3: the gun answered the switch-back. Never the reconcile disarm's echo (r2 M1): `_endReconcile` re-sends it.
+    // A real round from a loadout slot means the player is shooting something else by choice: stop re-sending (r2 low).
+    if (bp && !this.reconciling && (slot === bp.slot || (slot < 2 && prev != null && mag < prev))) this._puBackPending = null;
     const h = this._puHeld; if (!h || slot === 4 || (slot >= 2 && slot !== h.slot) || this.reconciling) return null;   // polish H1: the disarm's echo is not a shot
     // Only a round leaving (or a slot's first report) says which weapon is on the trigger: the echo of our own `$AMMO`
     // for another slot is not the trigger moving (bench: `$AMMO` alone never switches).
@@ -5631,6 +5635,7 @@ export class Engine {
     // slot's magazine stops moving and no further $ALCD can reconcile the takeover. Left running it would
     // sit on the chip bar to its deadline (`reloadUp` outranks `switchUp` in hud.js) and hide SWITCHING.
     if (this.reloading) this._endReload('swapped');
+    this._puBackPending = null;   // A56 r2: a deliberate ALT is the player's own swap; a pending switch-back re-send must not fight it
     this.switching = { at: this.now(), from: this.activeSlot };
     this._changed();
   }
@@ -5815,6 +5820,7 @@ export class Engine {
       // OLD slot, which is the opposite of what the line below says it does. The assignment after the block
       // is now a no-op on this path and still does the work on every other.
       this.activeSlot = slot;
+      if (this._puHeld) this._puHeld.trig = slot;   // A56 r2 M2: ALT took the trigger off the heavy, as the assumed-swap path says
       this._recoilArm('swap (confirmed)');   // S42: the new slot's weapon gets its own profile, at its ceiling
     }
     this._prevAmmo[slot] = mag;
@@ -6220,6 +6226,7 @@ export class Engine {
       const ammo = this._puRearmRows(((this.frames && this.frames.spawn) || []).filter(f => f.startsWith('$AMMO,')));   // A56: a held heavy keeps its charges
       if (ammo.length) {
         this._write(ammo, 'reconcile: re-arm');
+        if (this._puBackPending) this._puBackResend(this.now(), 'after the reconcile');   // A56 r2 M1: the re-arm is not the switch-back
         // S42 (merge 2026-09-17): the reconcile re-arms COARSELY, with the frame's spawn counts. The accuracy
         // writer's `$AMMO` restore carries the node's magazine account, which is still the pre-drop live
         // counts, so a write here would put the old magazine straight back over the re-arm. Re-arm the model
