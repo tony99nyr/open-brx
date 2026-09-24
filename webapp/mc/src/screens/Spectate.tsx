@@ -85,7 +85,7 @@ function useViewport() {
 export const FIT_MIN_W = 1024;
 const isProjector = (vp: { w: number; h: number }) => vp.w >= FIT_MIN_W && vp.h >= 500;
 /** A row's floor under the fit rule: its tallest type (the K cell) plus its own padding. */
-export const rowMin = (SZ: SZ) => Math.round(SZ.rowK * 1.3) + 2 * SZ.pad;
+export const rowMin = (SZ: SZ) => Math.round(SZ.rowK * 1.2);   // one line of the row's numbers: the fit layout may squeeze padding, never the text
 
 export function Spectate() {
   const { state, feed, serverNow, connected, wantedView } = useStore();

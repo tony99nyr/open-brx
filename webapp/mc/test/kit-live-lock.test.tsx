@@ -35,7 +35,8 @@ describe('KIT locks in ARMED and LIVE', () => {
       expect(m.find('[data-continue="kit"]').length, 'no CONTINUE').toBe(0);
       expect(labels.some(l => l === 'ADD'), 'no ADD').toBe(false);
       expect(m.find('[aria-label="new operator callsign"]').length, 'no ADD field').toBe(0);
-      expect(labels.some(l => l.includes('EVICT')), 'no EVICT').toBe(false);
+      // A30: EVICT is the one node action allowed in every phase (a stranger holding a gun's name), so it stays.
+      expect(labels.some(l => l.includes('EVICT')), 'EVICT kept (A30)').toBe(true);
       expect(m.find('[data-stand-down]').length, 'no STAND DOWN').toBe(0);
       expect(m.find('[data-slot-clear]').length, 'no CLEAR on a slot').toBe(0);
       expect(m.text(), 'no slot offers an override').not.toContain('YOU CAN OVERRIDE');

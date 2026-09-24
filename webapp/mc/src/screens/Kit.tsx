@@ -603,7 +603,7 @@ export function Kit() {
                   })}
                 </select>
                 <span style={{ font: F.mono(500, 11), letterSpacing: '.06em', color: node ? T.ok : sp.gun_id ? T.bad : T.micro }}>{node ? `LINKED ${fmtAge(node.last_seen_ms)}` : sp.gun_id ? 'NO NODE' : 'PICK A GUN'}</span>
-                {node && !locked && <EvictButton nodeId={node.node_id} />}
+                {node && <EvictButton nodeId={node.node_id} />}   {/* A30: EVICT works in every phase (a stranger holding a gun's name) */}
               </div>
             </div>
 

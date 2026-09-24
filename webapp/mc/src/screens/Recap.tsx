@@ -112,10 +112,12 @@ export function Recap() {
   // heat has no team to name) and TEAM ids everywhere else — `teamLabel` on a player id falls through
   // to the raw hex id ("TIE — 7F3A2B1C / 4D8E90AB"), since no team in `state.teams` ever matches one.
   const tieLabel = (id: string) => ((past ? past.mode : state.config.mode) === 'ffa' ? name(id) : teamLabel(id));
+  const inPlay = !past && (state.phase === 'live' || state.phase === 'armed');   // polish round 2: decided before the wording
+  const wins = inPlay ? ' LEADS' : ' WINS';
   const winnerBlock = w.tie?.length ? { text: `TIE — ${w.tie.map(tieLabel).join(' / ')}`, tail: '' }
     : w.undecided ? { text: `UNDECIDED — ${w.undecided.toUpperCase()}`, tail: ' · HOST DECIDES' }
-    : w.player_id ? { text: name(w.player_id), tail: ' WINS' }
-    : w.team_id ? { text: teamLabel(w.team_id), tail: ' WINS' }
+    : w.player_id ? { text: name(w.player_id), tail: wins }
+    : w.team_id ? { text: teamLabel(w.team_id), tail: wins }
     : { text: 'NO RESULT', tail: '' };
   const scores = Object.entries(rc.score);
   const rows = [...rc.rows].sort((a, b) => b.kills - a.kills);
@@ -126,7 +128,7 @@ export function Recap() {
   const csvName = past ? `brx-recap-${past.match_id}.csv` : 'brx-recap.csv';
   // A42: whether the END reached every HUD. `state.end_delivery` is about the match MC has in hand, so an
   // ARCHIVED recap gets none of it — the phone it would name was put away hours ago. The ok-case sentence
-  // is `endDeliveryLine`'s, the same string LIVE shows, so the two screens cannot word it differently.
+  // is `recapDeliveryOkText` (recapDelivery.ts), worded to agree with LIVE's `endDeliveryLine`.
   const edv = past ? null : state.end_delivery;
   const edLine = endDeliveryLine(edv);
   const edStragglers = edv?.unconfirmed ?? [];
@@ -143,7 +145,6 @@ export function Recap() {
     : null;
   // Polish 2026-09-23: RECAP can be reached by URL while a match is still being played. It said MATCH
   // COMPLETE and offered NEXT MATCH, which the server refuses (409) until the match is over.
-  const inPlay = !past && (state.phase === 'live' || state.phase === 'armed');
   // H2 for RECAP (polish 2026-09-23): a hill match is won on held time, so that is the headline, as on
   // LIVE and SPECTATE (the same `objective.ts` helper decides it on all three). With no held time
   // reported the numbers are still the kill score, and are labelled KILLS so nobody reads them as held.

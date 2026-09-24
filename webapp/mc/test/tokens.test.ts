@@ -40,3 +40,19 @@ describe('CLASS_TAG is its own muted palette', () => {
     }
   });
 });
+
+
+// The site build parses ROLE's literal colours (site/lib/facts.mjs), so ROLE cannot reference
+// CLASS_TAG by name; this pins the two together instead (MC visual QA M14, polish round 2).
+import { describe as describeRole, expect as expectRole, it as itRole } from 'vitest';
+import { CLASS_TAG as CT, ROLE as RL } from '../src/tokens';
+describeRole('ROLE colours are the CLASS_TAG colours', () => {
+  itRole('one class, one colour', () => {
+    expectRole(RL.assault.color).toBe(CT.assault);
+    expectRole(RL.cqb.color).toBe(CT.cqb);
+    expectRole(RL.marksman.color).toBe(CT.sniper);
+    expectRole(RL.support.color).toBe(CT.support);
+    expectRole(RL.power.color).toBe(CT.heavy);
+    expectRole(RL.sidearm.color).toBe(CT.sidearm);
+  });
+});

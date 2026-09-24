@@ -55,6 +55,8 @@ const freePort = () => new Promise((res, rej) => {
 // start helper's process.exit(3) (which skips the finally below) cannot leave an MC or vite running.
 const spawned = new Set();
 process.on('exit', () => { for (const p of spawned) { try { process.kill(-p.pid, 'SIGKILL'); } catch { /* gone */ } } });
+// Node skips 'exit' handlers on a signal, and test-all SIGTERMs a job that times out: turn it into an exit.
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => process.exit(1));
 const killGroup = proc => new Promise(done => {
   let settled = false; const finish = () => { if (!settled) { settled = true; done(); } };
   if (proc.exitCode != null) return finish();

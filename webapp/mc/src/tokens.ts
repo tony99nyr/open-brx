@@ -29,10 +29,12 @@ export const CLS_COLOR: Record<string, string> = {
   AR: CLASS_TAG.assault, SMG: CLASS_TAG.cqb, SNIPER: CLASS_TAG.sniper, SHOTGUN: CLASS_TAG.cqb, HEAVY: CLASS_TAG.heavy, LMG: CLASS_TAG.support,
 };
 /** weapons.json `role` → the human class label + colour (review round 3: no raw class ids on screen) */
+// Literal hex on purpose: the site build reads these labels and colours out of this file as text
+// (site/lib/facts.mjs). tokens.test.ts pins each colour to CLASS_TAG, so one class keeps one colour.
 export const ROLE: Record<string, { label: string; color: string }> = {
-  assault: { label: 'ASSAULT', color: CLASS_TAG.assault }, cqb: { label: 'CLOSE RANGE', color: CLASS_TAG.cqb }, marksman: { label: 'SNIPER', color: CLASS_TAG.sniper },
-  support: { label: 'SUPPORT', color: CLASS_TAG.support }, power: { label: 'HEAVY', color: CLASS_TAG.heavy }, melee: { label: 'MELEE', color: T.dim },
-  sidearm: { label: 'SIDEARM', color: CLASS_TAG.sidearm },   // the pistols (2026-09-04) — a slot-2 backup class
+  assault: { label: 'ASSAULT', color: '#8d9db4' }, cqb: { label: 'CLOSE RANGE', color: '#b88f8a' }, marksman: { label: 'SNIPER', color: '#86b0a8' },
+  support: { label: 'SUPPORT', color: '#98a880' }, power: { label: 'HEAVY', color: '#b8a07e' }, melee: { label: 'MELEE', color: '#8aa0b4' },
+  sidearm: { label: 'SIDEARM', color: '#bdb8b0' },   // the pistols (2026-09-04) — a slot-2 backup class
 };
 /** older MC (no `role`): no label at all rather than a raw class id (review round 3: no protocol ids on screen) */
 export const roleOf = (role?: string, cls?: string) => ROLE[role ?? ''] ?? { label: CLS_COLOR[cls ?? ''] ? (cls ?? '').toUpperCase() : '', color: CLS_COLOR[cls ?? ''] ?? T.dim };

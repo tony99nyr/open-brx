@@ -159,9 +159,7 @@ export function Designer() {
       //  - not loaded (F188): PLAY means LOAD. LOAD announces the applied game to every connected
       //    phone without writing a gun; the later LOBBY push remains the first head write.
       const wasLoaded = !!state.game?.loaded || !!state.lobby?.pushed;
-      if (wasLoaded) {
-        if (state.phase === 'lobby' || state.phase === 'kit') { setView(state.phase); return; }
-      } else if (await run(() => api.loadGame()) === undefined) return;
+      if (!wasLoaded && await run(() => api.loadGame()) === undefined) return;
       // Polish round 1: a LOAD from LOBBY or KIT (no game loaded, nothing pushed) must not move the field back.
       if (state.phase === 'lobby' || state.phase === 'kit') { setView(state.phase); return; }
       if (await run(() => api.setPhase('kit')) !== undefined) setView('kit');

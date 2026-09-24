@@ -150,7 +150,7 @@ describe('3 · SPECTATE rows stay readable', () => {
     for (const r of rows) {
       const min = parseFloat(r.style.minHeight);
       const k = parseFloat(getComputedStyle(r.children[1] as HTMLElement).fontSize);
-      expect(min, `row min-height ${r.style.minHeight} vs K type ${k}px`).toBeGreaterThanOrEqual(k * 1.3);
+      expect(min, `row min-height ${r.style.minHeight} vs K type ${k}px`).toBeGreaterThanOrEqual(k);   // at least one line of the K type
     }
     m.unmount();
   });
