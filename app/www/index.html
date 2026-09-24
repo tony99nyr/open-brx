@@ -326,20 +326,20 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .chip .unskew{display:inline-block;transform:skewX(12deg)}
 .tminus .r .s{font-size:12px;letter-spacing:.2em;color:var(--mut);font-weight:600;text-align:center;white-space:nowrap}
 .whiteout{position:absolute;inset:0;background:#fff;animation:whiteout .08s linear forwards}
-.kill{background:radial-gradient(circle at 50% 42%,rgba(22,38,74,.9) 0%,rgba(6,10,20,.94) 55%,rgba(3,4,8,.97) 100%);animation:killin .18s ease-out;pointer-events:none}
-.kill .rays{position:absolute;left:50%;top:44%;width:700px;height:700px;transform:translate(-50%,-50%);background:repeating-conic-gradient(from 0deg,color-mix(in srgb,var(--glow) 13%,transparent) 0deg 6deg,transparent 6deg 16deg);-webkit-mask-image:radial-gradient(circle,#000 0%,transparent 60%);mask-image:radial-gradient(circle,#000 0%,transparent 60%);animation:raysspin 30s linear infinite,burst .5s ease-out}
-.kill .ring1{position:absolute;left:50%;top:44%;width:220px;height:220px;transform:translate(-50%,-50%);border:2px solid color-mix(in srgb,var(--glow) 60%,transparent);border-radius:50%;animation:ringpulse 2.4s ease-in-out infinite,ringgrow .6s ease-out}
-.kill .ring2{position:absolute;left:50%;top:44%;width:340px;height:340px;transform:translate(-50%,-50%);border:1px solid color-mix(in srgb,var(--glow) 25%,transparent);border-radius:50%}
-.kill .c{position:absolute;top:44%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px}
-.kill .elim{background:var(--warn);color:#1a1200;font-family:var(--fd);font-weight:700;font-size:15px;letter-spacing:.26em;padding:3px 20px;transform:skewX(-12deg)}
-.kill .k{font-family:var(--fd);font-style:italic;font-weight:700;font-size:96px;line-height:.82;letter-spacing:.04em;text-shadow:0 0 70px var(--glow),0 0 18px color-mix(in srgb,var(--glow) 70%,transparent);animation:slam .35s cubic-bezier(.2,1.4,.4,1),shimmer 1.2s .4s ease-in-out}
-.kill .cf{font-family:var(--fd);font-weight:700;font-size:38px;letter-spacing:.52em;text-indent:.52em;color:var(--glow);text-shadow:0 0 30px var(--glow)}
-.kill .bars{display:flex;gap:8px;margin-top:8px}
-.kill .bars i{height:5px;transform:skewX(-24deg);display:block}
-.kill .foot{position:absolute;bottom:40px;left:0;right:0;display:flex;justify-content:center;align-items:center;gap:16px}
-.kill .vt{color:#1a1400;font-family:var(--fd);font-weight:700;font-size:14px;letter-spacing:.14em;padding:3px 14px;transform:skewX(-12deg)}
-.kill .by{font-size:10px;letter-spacing:.26em;color:var(--mut);font-weight:600}
-.kill.out{animation:hitout .3s ease-in forwards}
+/* QA-05: the CALLOUT CARD, one component for MC's kill, the S57 IR words (KILL CONFIRMED / ENEMY DOWN / TEAMMATE
+   DOWN) and HILL CAPTURED / HILL LOST (hud.js `_co`). A short band under the clock, clear of the vitals and the ammo,
+   so the live HUD stays readable behind it. The name is the headline; --co says who went down. */
+.co{pointer-events:none}
+.co[data-tone="enemy"]{--co:var(--ok)}.co[data-tone="mate"]{--co:var(--warn)}.co[data-tone="ours"]{--co:var(--team)}.co[data-tone="theirs"]{--co:var(--bad)}
+.co .cob{position:absolute;top:130px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 34px 9px;white-space:nowrap;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--co) 20%,#04070c) 12%,color-mix(in srgb,var(--co) 20%,#04070c) 88%,transparent);border-top:1px solid color-mix(in srgb,var(--co) 65%,transparent);border-bottom:1px solid color-mix(in srgb,var(--co) 65%,transparent);animation:coin .18s ease-out}
+.co .row{display:flex;align-items:center;gap:12px}
+.co .tag{font-family:var(--fd);font-weight:700;font-size:14px;letter-spacing:.2em;color:var(--co);padding:2px 10px;border:1px solid var(--co);transform:skewX(-10deg)}
+.co .tag .unskew{display:inline-block;transform:skewX(10deg)}
+.co .sw{display:block;flex:none;width:8px;height:28px;transform:skewX(-12deg)}
+.co .nm{font-family:var(--fd);font-style:italic;font-weight:700;font-size:36px;line-height:1;letter-spacing:.06em;color:var(--num);text-shadow:0 0 22px color-mix(in srgb,var(--co) 55%,transparent);max-width:400px;overflow:hidden;text-overflow:ellipsis;padding-right:4px}
+.co .by{font-size:11px;letter-spacing:.24em;color:var(--mut);font-weight:600}
+.co.out{animation:hitout .3s ease-in forwards}
+@keyframes coin{from{opacity:0;transform:translate(-50%,-6px)}to{opacity:1;transform:translateX(-50%)}}
 .down{background:radial-gradient(ellipse 120% 90% at 50% 45%,#160709 0%,#0b0305 60%,#040102 100%);animation:redflood .3s ease-out}
 .down .wash{position:absolute;inset:0;box-shadow:inset 0 0 180px -30px rgba(255,40,40,.5)}
 .down .ghost{display:none}
@@ -465,13 +465,13 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .alert.out{animation:hitout .35s ease-in forwards}
 @keyframes bandin{from{transform:scaleX(.6);opacity:0}to{transform:none;opacity:1}}
 [data-env="night"] .alert .band{background:#120505;border-color:#3a1414;animation:none}[data-env="night"] .alert .t{color:var(--num);text-shadow:none}[data-env="night"] .alert .k{color:var(--mut);border-color:var(--mut)}
-/* A11.4 medal stack on the KILL takeover: badges land one at a time, 2 s apart, with the announcer lines */
-.kill .medals{display:flex;gap:10px;margin-top:14px;min-height:30px}
-.kill .medal{font-family:var(--fd);font-weight:700;font-size:16px;letter-spacing:.18em;padding:4px 16px;transform:skewX(-12deg);background:var(--glow);color:#04121e;box-shadow:0 0 24px -6px var(--glow);animation:medalin .35s cubic-bezier(.2,1.4,.4,1) both}   /* base opacity 1: under reduced motion every badge simply shows */
+/* A11.4 medal stack on the kill card (QA-05): badges land one at a time, 2 s apart, with the announcer lines */
+.co .medals{display:flex;gap:10px;margin-top:4px;min-height:26px}
+.co .medal{font-family:var(--fd);font-weight:700;font-size:16px;letter-spacing:.18em;padding:4px 16px;transform:skewX(-12deg);background:var(--glow);color:#04121e;box-shadow:0 0 24px -6px var(--glow);animation:medalin .35s cubic-bezier(.2,1.4,.4,1) both}   /* base opacity 1: under reduced motion every badge simply shows */
 @keyframes medalin{from{opacity:0;transform:skewX(-12deg) scale(1.8)}60%{opacity:1;transform:skewX(-12deg) scale(.96)}to{opacity:1;transform:skewX(-12deg) scale(1)}}
-.kill .medal .unskew{display:inline-block;transform:skewX(12deg)}
-.kill .medal.first_blood{background:var(--bad);color:#fff;box-shadow:0 0 24px -6px var(--bad)}
-.kill .medal.killing_spree,.kill .medal.unstoppable{background:var(--warn);color:#1a1200;box-shadow:0 0 24px -6px var(--warn)}
+.co .medal .unskew{display:inline-block;transform:skewX(12deg)}
+.co .medal.first_blood{background:var(--bad);color:#fff;box-shadow:0 0 24px -6px var(--bad)}
+.co .medal.killing_spree,.co .medal.unstoppable{background:var(--warn);color:#1a1200;box-shadow:0 0 24px -6px var(--warn)}
 /* HIT TAKEN -- one fade in, one fade out. NEVER a repeating flash: this feedback lives on the
    phone precisely because holding the gun's LEDs needs ~30Hz repaints that strobe, and flicker in
    the 10-25Hz band is the photosensitive-epilepsy trigger range (experiment-log 2026-09-02). */
@@ -510,7 +510,12 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 [data-env="night"] .gain.armor .amt{color:#7a5aa8}
 [data-env="night"] .gain.shield .amt{color:#3a8f96}
 [data-env="night"] .mo{animation:none!important}
-[data-env="night"] .kill,[data-env="night"] .whiteout{display:none}
+[data-env="night"] .whiteout{display:none}
+/* QA-05 night: the same callout card, dim red on black, no glow, no motion, no green (spec B4). */
+[data-env="night"] .co[data-tone="enemy"],[data-env="night"] .co[data-tone="ours"]{--co:#c9484a}[data-env="night"] .co[data-tone="mate"],[data-env="night"] .co[data-tone="theirs"]{--co:#a8782a}
+[data-env="night"] .co .cob{background:#120505;border-color:#3a1414;animation:none}
+[data-env="night"] .co .nm{color:var(--num);text-shadow:none}[data-env="night"] .co .sw{background:#5a2222!important}
+[data-env="night"] .co .medal{background:#2a0d0d!important;color:#ff8a8a!important;box-shadow:none!important}
 [data-env="night"] .down{background:#000}[data-env="night"] .down .wash,[data-env="night"] .down .ghost{display:none}
 [data-env="night"] .tminus{background:#000}[data-env="night"] .tminus .hz,[data-env="night"] .tminus .glow{display:none}
 [data-env="night"] .redeploy .wipe,[data-env="night"] .redeploy .slash{display:none}
@@ -776,14 +781,9 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 /* ============ keyframes ============ */
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
 @keyframes hudglow{0%,100%{filter:brightness(1)}50%{filter:brightness(1.25)}}
-@keyframes raysspin{to{transform:translate(-50%,-50%) rotate(360deg)}}
-@keyframes ringpulse{0%,100%{transform:translate(-50%,-50%) scale(1);opacity:.5}50%{transform:translate(-50%,-50%) scale(1.06);opacity:.3}}
 @keyframes hzin{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 @keyframes punch{from{transform:scale(1.15)}to{transform:scale(1)}}
 @keyframes whiteout{from{opacity:1}to{opacity:0}}
-@keyframes killin{from{opacity:0}to{opacity:1}}
-@keyframes burst{from{transform:translate(-50%,-50%) scale(.2)}to{transform:translate(-50%,-50%) scale(1)}}
-@keyframes ringgrow{from{transform:translate(-50%,-50%) scale(.3)}to{transform:translate(-50%,-50%) scale(1)}}
 @keyframes slam{0%{transform:scale(1.8);opacity:0}60%{transform:scale(.96) translate(2px,-1px);opacity:1}80%{transform:scale(1.02) translate(-2px,1px)}100%{transform:scale(1)}}
 @keyframes shimmer{0%{filter:brightness(1)}40%{filter:brightness(1.6) hue-rotate(20deg)}100%{filter:brightness(1)}}
 @keyframes collapse{to{transform:scale(.05);opacity:0}}

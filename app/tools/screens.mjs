@@ -1249,9 +1249,9 @@ for (const view of VIEWS) {
     await pg.waitForTimeout(2200); const gone = await pg.evaluate(() => !document.querySelector('.mo.reloading')); await pg.close();
     must(r, 'no RELOADING overlay'); must(r.t === 'RELOADING' && /^ASSAULT RIFLE$/.test(r.s), JSON.stringify(r)); must(r.w > 5 && r.w < 100 && /S$/.test(r.n), 'progress ' + r.w + ' ' + r.n); must(r.big >= 60, 'too small'); must(gone, 'takeover did not clear once the mag was back');
   });
-  await step(`${view.name} #19 KILL CONFIRMED is a takeover, not a sticker`, async () => {
-    const pg = await open(view, 'live-kill', '', 3000); const r = await pg.evaluate(() => { const k = document.querySelector('.mo.kill'); if (!k) return null; const c = k.querySelector('.c').getBoundingClientRect(), f = k.getBoundingClientRect(); return { mid: (c.top + c.height / 2 - f.top) / f.height, big: parseFloat(getComputedStyle(k.querySelector('.k')).fontSize), bg: getComputedStyle(k).backgroundImage }; }); await pg.close();
-    must(r, 'no kill overlay'); must(r.mid > .3 && r.mid < .6, 'not centred: ' + r.mid); must(r.big >= 90, 'KILL ' + r.big + 'px'); must(/0\.9/.test(r.bg), 'HUD not dimmed behind it');
+  await step(`${view.name} #19 KILL CONFIRMED is the callout card (QA-05): centred, named large, the live HUD still readable behind it`, async () => {
+    const pg = await open(view, 'live-kill', '', 3000); const r = await pg.evaluate(() => { const k = document.querySelector('.mo.kill'); if (!k) return null; const c = k.querySelector('.cob').getBoundingClientRect(), f = document.getElementById('frame').getBoundingClientRect(); return { mid: (c.left + c.width / 2 - f.left) / f.width, big: parseFloat(getComputedStyle(k.querySelector('.nm')).fontSize), bg: getComputedStyle(k).backgroundImage }; }); await pg.close();
+    must(r, 'no kill card'); must(r.mid > .45 && r.mid < .55, 'not centred: ' + r.mid); must(r.big >= 30, 'the name is ' + r.big + 'px'); must(r.bg === 'none', 'the whole HUD is dimmed behind it: ' + r.bg);
   });
   await step(`${view.name} kill-name KILL CONFIRMED names the victim by gamertag, never by player_id (field 2026-09-17)`, async () => {
     // MC's wire: `victim` is a player_id. The banner resolves it; a bare id on screen is the bug.
@@ -3752,6 +3752,60 @@ await step('utility landscape fit: portrait is unchanged (.side keeps the origin
   must(Math.round(parseFloat(r.gap)) === 14, `#side must keep the page's own 14px gap in portrait: ${JSON.stringify(r)}`);
   must(Math.abs(r.heroToPlayers - 14) <= 1, `hero-to-players gap drifted from the original 14px in portrait: ${r.heroToPlayers}`);
 });
+
+// QA lane C (2026-09-23)
+// QA-05: one callout card for every "someone went down" and "the hill changed hands" moment, whichever path it
+// came by (S57 IR word, MC's kill feedback, the engine's own hill transition). Each case: the card is on screen,
+// names someone (or the objective) at >= 18 frame px, sits clear of the vitals and the ammo block, carries the
+// tone of who went down, and is gone again within its hold. Night: the same card, dim red, no green, no whiteout.
+const CO_CASES = [
+  // [stage, kind, the name the card must print, tone, ms from load to give up waiting, the hold it must clear within]
+  ['live-callout-kill', 'kill_confirmed', 'YELLOW', 'enemy', 3400, 2600],
+  ['live-callout-enemy', 'enemy_down', 'VIPER', 'enemy', 3400, 2600],
+  ['live-callout-teammate', 'teammate_down', 'MAVERICK', 'mate', 3400, 2600],
+  ['live-kill', 'kill', 'VIPER', 'enemy', 3400, 2600],
+  ['live-hill-captured', 'hill_captured', 'HILL CAPTURED', 'ours', 3600, 2800],
+  ['live-hill-lost', 'hill_lost', 'HILL LOST', 'theirs', 3600, 2800],
+];
+const coRead = pg => pg.evaluate(() => {
+  const el = document.querySelector('#overlay .mo.co'); if (!el) return null;
+  const cs = getComputedStyle(el), nm = el.querySelector('.nm');
+  const box = e => { const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
+  const rgb = s => (s.match(/\d+(\.\d+)?/g) || []).slice(0, 3).map(Number);
+  const green = [el, ...el.querySelectorAll('*')].some(e => { const c = getComputedStyle(e); return [c.color, c.backgroundColor, c.borderTopColor].some(v => { const [r, g, b2] = rgb(v); const a = /rgba/.test(v) ? Number(v.split(',')[3]) : 1; return a > 0.05 && g > r + 12 && g > b2 - 8 && g > 40; }); });
+  return { kind: el.dataset.kind, tone: el.dataset.tone, vis: cs.display !== 'none' && cs.visibility !== 'hidden' && Number(cs.opacity) > 0.5 && el.getBoundingClientRect().width > 0,
+    name: nm ? nm.textContent.trim() : '', px: nm ? parseFloat(getComputedStyle(nm).fontSize) : 0, accent: cs.getPropertyValue('--co').trim(),
+    card: box(el.querySelector('.cob') || el), vitals: box(document.querySelector('.vitals')), ammo: box(document.querySelector('.ammo')),
+    green, whiteout: !!document.querySelector('#overlay .whiteout'), at: performance.now() };
+});
+for (const view of VIEWS) for (const night of [false, true]) for (const [stage, kind, name, tone, waitMs, holdMs] of CO_CASES) {
+  await step(`${view.name} QA-05 callout ${stage} ${night ? 'night' : 'day'}: one card, named, >= 18 px, clear of vitals/ammo, gone within its hold`, async () => {
+    const pg = await open(view, stage, night ? '&night' : '', 1200);
+    let r = null; for (let t = 0; t < waitMs && !((r = await coRead(pg)) && r.kind === kind); t += 50) await pg.waitForTimeout(50);
+    await pg.screenshot({ path: `${OUT}/${view.name}-qa05-${stage}${night ? '-night' : ''}.png` });
+    must(r, `no callout card on screen (want ${kind})`);
+    must(r.kind === kind && r.vis, `card: ${JSON.stringify(r)}`);
+    must(r.name.toUpperCase().includes(name), `the card names ${JSON.stringify(r.name)}, want ${name}`);
+    must(r.px >= 18, `the name is ${r.px}px, the floor is 18`);
+    must(r.tone === tone && r.accent, `tone ${r.tone} accent ${r.accent}, want ${tone}`);
+    must(apart(r.card, r.vitals) && apart(r.card, r.ammo), `the card covers the vitals or the ammo: ${JSON.stringify({ card: r.card, vitals: r.vitals, ammo: r.ammo })}`);
+    if (night) must(!r.green && !r.whiteout, `night: green ${r.green} whiteout ${r.whiteout}`);
+    const t0 = r.at; let gone = false; for (let t = 0; t < holdMs + 1500 && !gone; t += 100) { await pg.waitForTimeout(100); gone = await pg.evaluate(() => !document.querySelector('#overlay .mo.co')); }
+    const took = await pg.evaluate(t => performance.now() - t, t0); await pg.close();
+    must(gone && took <= holdMs + 150, `the card was still up ${Math.round(took)} ms after it appeared (hold ${holdMs})`);
+  });
+}
+for (const view of VIEWS) for (const night of [false, true]) {
+  await step(`${view.name} QA-05 callout ${night ? 'night' : 'day'}: an enemy down and a teammate down do not share a colour`, async () => {
+    const accent = {};
+    for (const [stage, kind, tone] of [['live-callout-enemy', 'enemy_down', 'enemy'], ['live-callout-teammate', 'teammate_down', 'mate']]) {
+      const pg = await open(view, stage, night ? '&night' : '', 1200);
+      let r = null; for (let t = 0; t < 3400 && !((r = await coRead(pg)) && r.kind === kind); t += 50) await pg.waitForTimeout(50);
+      await pg.close(); must(r && r.tone === tone, `${stage}: ${JSON.stringify(r)}`); accent[tone] = r.accent;
+    }
+    must(accent.enemy && accent.mate && accent.enemy !== accent.mate, JSON.stringify(accent));
+  });
+}
 
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;

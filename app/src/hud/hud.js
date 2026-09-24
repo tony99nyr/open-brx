@@ -1565,14 +1565,10 @@ export class Hud {
     else if (st.phase !== 'idle' && !st.bleUp) pills.push(`<button class="pill bad" data-act="onReconnectGun"><span class="unskew">GUN LINK LOST — TAP TO RECONNECT</span></button>`);
     if (st.moment && st.moment.kind === 'go' && st.phase === 'live' && st.bleUp) pills.push(`<span class="pill ok"><span class="unskew">WEAPONS HOT</span></span>`);   // never 'hot' while the gun link is down
     const prompt = st.resync ? `<div class="prompt"><span class="unskew"><span class="pl">GUN RELINKED</span><span class="pi">${esc(st.resync.prompt).toUpperCase()}</span></span></div>` : '';
-    // S57: the IR callout bus. One word from a victim's gun, heard by this one: KILL CONFIRMED when it names me as the
-    // killer, else ENEMY or TEAMMATE DOWN (the victim's name when the word named them). Live and alive only: a dead gun
-    // hears nothing, and the down screen owns the dead phone.
-    const co = st.callout;
-    if (co && st.phase === 'live' && st.alive) {
-      const lab = co.kind === 'kill_confirmed' ? 'KILL CONFIRMED' : co.kind === 'teammate_down' ? 'TEAMMATE DOWN' : 'ENEMY DOWN';
-      pills.push(`<span class="pill ${co.kind === 'teammate_down' ? 'warn' : 'ok'} callout" data-callout="${esc(co.kind)}"><span class="unskew">${lab}${co.name ? ' · ' + esc(String(co.name).toUpperCase()) : ''}</span></span>`);
-    }
+    // S57 / QA-05: the IR callout bus and the hill transitions render as the callout CARD (`_co`), the same
+    // component MC's kill uses, never as a pill here. `_coSync` only watches for a new event (a unit test drives
+    // `_chips` on a bare object, hence the guard).
+    if (this._coSync) this._coSync(st);
     const html = `<div class="chipbar">${pills.join('')}</div>${prompt}`;
     if (this.chips.innerHTML !== html) this.chips.innerHTML = html;
   }
@@ -1778,22 +1774,65 @@ export class Hud {
     if (this.frame.dataset.env === 'night') return;
     const now = Date.now(); if (this._flashAt && now - this._flashAt < 500) return; this._flashAt = now;   // ≤2 flashes/s whatever the event burst (WCAG 2.3.1)
     const w = document.createElement('div'); w.className = 'whiteout'; this.overlay.appendChild(w); setTimeout(() => w.remove(), 120); }
-  _kill(st, m) {
-    if (this.frame.dataset.env === 'night') return;
-    const vt = (m.data && m.data.victim_team) || 'yellow'; const vk = String(vt).toLowerCase();
+  // ---------- QA-05: the callout card ----------
+  // ONE component for every "someone went down" and "the hill changed hands" moment, whichever path it came by:
+  // MC's kill feedback (`moment.kind === 'kill'`), an S57 IR word (`state().callout`) or the engine's own hill
+  // transition (`state().hillCallout`). A short card in the band under the clock, clear of the vitals and the
+  // ammo, so the live HUD stays readable behind it. The name is the headline (>= 18 px); the accent says who went
+  // down (enemy vs teammate, ours vs theirs). Night: the same card in dim red, no whiteout, no motion.
+  // One node for every kind (`_swap('co')`): the newest event replaces the card in place, it never stacks.
+  _co(st, spec) {
+    const tk = spec.team && TEAM_COLOR[spec.team] ? spec.team : null;
     const el = document.createElement('div');
-    el.className = 'mo kill';
-    el.innerHTML = `<div class="rays"></div><div class="ring1"></div><div class="ring2"></div>
-      <div class="c"><span class="elim"><span class="unskew">+1 ELIMINATION</span></span><span class="k">KILL</span><span class="cf">CONFIRMED</span>
-      <div class="bars"><i style="width:90px;background:var(--warn)"></i><i style="width:34px;background:var(--glow)"></i><i style="width:12px;background:var(--glow);opacity:.5"></i></div></div>
-      <div class="foot"><span class="vt" style="background:${TEAM_COLOR[vk] || 'var(--team-yellow)'};color:${TEAM_INK[vk] || '#1a1400'}"><span class="unskew">${esc((m.data && m.data.victim) || (vk.toUpperCase() + ' OPERATIVE'))} DOWN</span></span>
-      <span class="by">K ${st.kills != null ? st.kills : ''} · CONFIRMED BY MISSION CONTROL</span></div>`;
-    const medals = (m.data && Array.isArray(m.data.medals) ? m.data.medals : []).filter(k => MEDAL_LABEL[k]);
-    if (medals.length) el.querySelector('.c').insertAdjacentHTML('beforeend', `<div class="medals">${medals.map((k, i) => `<span class="medal ${esc(k)}" style="animation-delay:${.12 + i * 2}s"><span class="unskew">${MEDAL_LABEL[k]}</span></span>`).join('')}</div>`);
-    this._flash();
-    const hold = 1800 + Math.max(0, medals.length - 1) * 2000;   // each medal line plays 2 s after the last (engine MEDAL_GAP_MS)
-    this._swap('kill', el, hold, hold + 400);   // three confirms 300ms apart used to stack three banners
-    this.h.onHaptic && this.h.onHaptic('kill');
+    el.className = 'mo co' + (spec.kill ? ' kill' : '');
+    el.dataset.kind = spec.kind; el.dataset.tone = spec.tone; el.dataset.src = spec.src;
+    const medals = (spec.medals || []).filter(k => MEDAL_LABEL[k]);
+    el.innerHTML = `<div class="cob"><div class="row"><span class="tag"><span class="unskew">${esc(spec.tag)}</span></span>`
+      + `${tk ? `<i class="sw" style="background:${TEAM_COLOR[tk]}"></i>` : ''}<span class="nm vt">${esc(String(spec.name).toUpperCase())}</span></div>`
+      + `${spec.sub ? `<span class="by">${esc(spec.sub)}</span>` : ''}`
+      + `${medals.length ? `<div class="medals">${medals.map((k, i) => `<span class="medal ${esc(k)}" style="animation-delay:${.12 + i * 2}s"><span class="unskew">${MEDAL_LABEL[k]}</span></span>`).join('')}</div>` : ''}</div>`;
+    if (spec.kill) { this._flash(); this.h.onHaptic && this.h.onHaptic('kill'); }   // `_flash` is a no-op at night
+    const hold = spec.hold + Math.max(0, medals.length - 1) * 2000;   // each medal line plays 2 s after the last (engine MEDAL_GAP_MS)
+    const node = this._swap('co', el, hold, hold + 300);
+    Object.assign(node.dataset, { kind: spec.kind, tone: spec.tone, src: spec.src });   // a reused node keeps its old data-* otherwise
+    return hold;
+  }
+  /** The IR and hill halves: fire the card once per NEW event (keyed on its `at`), and take any card down the
+   *  moment the player is no longer live and alive (the down screen owns the dead phone). */
+  _coSync(st) {
+    if (!(st.phase === 'live' && st.alive)) {
+      const rec = this._overlays && this._overlays.co;
+      if (rec) { clearTimeout(rec.t1); clearTimeout(rec.t2); rec.el.remove(); delete this._overlays.co; }
+      return;
+    }
+    const co = st.callout;
+    if (co && co.at !== this._coIrAt) {
+      this._coIrAt = co.at;
+      const team = co.team ? String(co.team).toLowerCase() : null, op = `${team ? team.toUpperCase() : 'ENEMY'} OPERATIVE`;
+      // The IR word cannot carry the victim (docs/ir-callouts.md): a KILL CONFIRMED names the team. When MC's own
+      // named card for the same kill is already up it is richer, so the IR word leaves it alone.
+      if (co.kind === 'kill_confirmed') {
+        if (!(this._coMcUntil > Date.now())) this._co(st, { kind: 'kill_confirmed', src: 'ir', tone: 'enemy', kill: true, tag: 'KILL CONFIRMED', name: op, team, sub: 'CONFIRMED BY THEIR GUN · MC KEEPS THE SCORE', hold: 2000 });
+      } else {
+        const mate = co.kind === 'teammate_down';
+        this._co(st, { kind: co.kind, src: 'ir', tone: mate ? 'mate' : 'enemy', tag: mate ? 'TEAMMATE DOWN' : 'ENEMY DOWN',
+          name: co.name || (mate ? `${team ? team.toUpperCase() + ' ' : ''}TEAMMATE` : op), team, sub: co.by ? `BY ${String(co.by).toUpperCase()}` : '', hold: 2000 });
+      }
+    }
+    const hc = st.hillCallout;
+    if (hc && hc.at !== this._coHillAt) {
+      this._coHillAt = hc.at;
+      const ours = hc.kind === 'hill_captured';
+      this._co(st, { kind: hc.kind, src: 'hill', tone: ours ? 'ours' : 'theirs', tag: 'OBJECTIVE', name: ours ? 'HILL CAPTURED' : 'HILL LOST',
+        team: ours ? st.teamKey : null, sub: ours ? 'YOUR TEAM HOLDS THE POINT' : 'THE POINT IS NOT YOURS', hold: 2200 });
+    }
+  }
+  /** MC's kill feedback: the same card, named from MC's `victim_display` (else "<TEAM> OPERATIVE"), with the medals. */
+  _kill(st, m) {
+    const d = m.data || {}; const vk = String(d.victim_team || 'yellow').toLowerCase();
+    const hold = this._co(st, { kind: 'kill', src: 'mc', tone: 'enemy', kill: true, tag: 'KILL CONFIRMED', name: d.victim || (vk.toUpperCase() + ' OPERATIVE'), team: vk,
+      sub: `+1 ELIMINATION · K ${st.kills != null ? st.kills : ''} · MISSION CONTROL`, medals: Array.isArray(d.medals) ? d.medals : [], hold: 1800 });
+    this._coMcUntil = Date.now() + hold;
   }
   /** The death screen's callouts (deathscreen.js): damage taken and dealt, kills, time alive. */
   _dsLive(st) {

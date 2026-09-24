@@ -398,6 +398,8 @@ export function startDemo({ engine, log }) {
       dieFrom: (num, mag, sensor = 4) => { armor = 0; hp = 0; engine.feedFrame(`$HIR,${sensor},0,${num},${foe.tid},${mag},0,3,*`); engine.feedFrame('$HP,0,0,0,*'); },
       dealtTo: (victim, num, dmg, weapon_id = 'assault_rifle') => engine.onMcMessage({ kind: 'feedback', body: { player_id: 'p-demo', kind: 'hit', t: Date.now(), victim: 'p-' + victim.toLowerCase(), victim_num: num, victim_display: victim, dmg, weapon_id } }),
       beacon: (tid = 1) => engine.feedFrame(`$HIR,4,15,0,${tid},8,0,0,*`),   // a grenade hill's IR beacon: owner tid, magnitude 8
+      hillTaken: (tid = 1) => engine.feedFrame(`$HIR,4,15,0,${tid},50,0,0,*`),   // QA-05: the grenade's capture word (magnitude 50) naming the new owner
+      addMate: () => { if (!roster.some(r => r.player_num === 23)) roster.push({ player_id: 'p-4', player_num: 23, display: 'MAVERICK', team_id: teamKey }); },   // QA-05: a teammate the roster can name
     });
     // A full life: two sources, two victims, rounds fired and a confirmed kill, then VIPER's rifle finishes it.
     const fullLife = [[2000, () => { ev.fire(7); ev.hitFrom(19, 9, 20); ev.hitFrom(21, 8, 12); ev.hitFrom(21, 8, 12); }],
@@ -463,7 +465,7 @@ export function startDemo({ engine, log }) {
       // S57: one IR callout word from a victim's gun, as this gun reports it ($HIR, protocol 15; see docs/ir-callouts.md)
       'live-callout-kill':     [...live, [2300, () => engine.feedFrame(`$HIR,4,15,7,3,${21 + foe.tid},0,0,*`)]],    // DOWN_BY naming me: KILL CONFIRMED
       'live-callout-enemy':    [...live, [2300, () => engine.feedFrame(`$HIR,4,15,19,3,${25 + foe.tid},0,0,*`)]],   // DOWN naming VIPER: ENEMY DOWN
-      'live-callout-teammate': [...live, [2300, () => engine.feedFrame(`$HIR,4,15,23,3,${25 + team.tid},0,0,*`)]],  // DOWN on my team: TEAMMATE DOWN
+      'live-callout-teammate': [[0, () => ev.addMate()], ...live, [2300, () => engine.feedFrame(`$HIR,4,15,23,3,${25 + team.tid},0,0,*`)]],  // DOWN naming MAVERICK (my team): TEAMMATE DOWN (QA-05: a teammate the roster can name)
       'live-lowhp':        [...live, [2300, 'lowHp']],
       'live-poison':       [[0, () => { bundle.dot = DEMO_DOT; }], ...live, [2300, () => ev.poison()]],          // S16: POISONED, counting down, health draining
       'live-smoke':        [...live, [2300, 'smoke']],                     // S53: SMOKED, where the reticle was
@@ -529,6 +531,12 @@ export function startDemo({ engine, log }) {
       // case where the pre-join screen's own copy (same #mcurl id) would otherwise coexist with it.
       'idle-diag':         [[0, 'scan'], [400, () => ev.diag(true)]],
       'connected-diag':    [...[[0, 'linkGun']], [400, () => ev.diag(true)]],
+      // ---- QA lane C (2026-09-23), QA-05: the callout card. The hill stages drive the REAL engine's hill logic with the
+      // grenade's own IR words: a beacon (magnitude 8), then the capture word (magnitude 50) naming the new owner. Default team
+      // only: on yellow (tid 2, the neutral sentinel) the engine refuses to decide ownership (F82) and stays silent. ----
+      'live-callout-by':    [[0, () => ev.addMate()], ...live, [2300, () => engine.feedFrame(`$HIR,4,15,23,3,${21 + foe.tid},0,0,*`)]],   // DOWN_BY naming MAVERICK: ENEMY DOWN · BY MAVERICK
+      'live-hill-captured': [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.beacon(2)], [2400, () => ev.hillTaken(team.tid)]],
+      'live-hill-lost':     [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.beacon(team.tid)], [2400, () => ev.hillTaken(team.tid === 0 ? 3 : 0)]],   // we hold it (adopted silently), then an enemy's capture word
     };
     const steps = STAGES[stageName];
     if (!steps) log(`stage "${stageName}" unknown — one of: ${Object.keys(STAGES).join(' ')}`, 'le');
