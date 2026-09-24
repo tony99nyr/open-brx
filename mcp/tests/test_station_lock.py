@@ -247,3 +247,16 @@ def test_a_late_heartbeat_with_the_same_boot_count_is_not_a_reboot():
     clock.t += 30_000
     _beat(s, clock, uptime_s=40 + 30 - 8, boot_count=3)      # 8 s late: the boot instant moved, the count did not
     assert not any("RESTARTED" in f for f in _flags(s))
+
+
+def test_kit_auto_advancing_back_to_a_pushed_lobby_locks_again():
+    s, clock = _sess(600)
+    s.push_config(force=True)
+    s.set_phase("kit")
+    assert _lock(s) == 0
+    for p in s.players.values():
+        p["ready"] = False
+    for pid in list(s.players):
+        s._on_ready(pid, True)                               # the last READY advances KIT -> LOBBY
+    assert s.phase == "lobby"
+    assert _lock(s) == 600 + STATION_LOCK_LOBBY_S + STATION_LOCK_MARGIN_S

@@ -95,7 +95,7 @@ guns, two confirmed hits), and the shot leaves the shooter's headset, not the ba
 - **Next desk task:** none open for this lane.
 - **Blocked:** F270 on A8.
 ## Lane: Mission Control console honesty
-2026-09-24: 0.4.6 published; F318, F108, F325, F133, F52, K8 closed. **Next:** bench F309/F311/F312; 0.4.7 cut on brx1's word.
+2026-09-24: APKs 0.4.7, 0.4.8 and 0.4.9 published (each on green CI); A58's MC half (station tamper lock, restart flags) on main, Lows are F337. **Next:** 0.4.10 cut with A58; bench F309/F311/F312.
 
 ## Lane: S57, B21, StickS3 (brx4)
 2026-09-24 afternoon bench (Stick COM10, rig RX COM7, rig TX COM8, no gun on BLE, Tony fired a gun by hand): IR

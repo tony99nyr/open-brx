@@ -62,9 +62,9 @@ export function StationAlerts({ showUnlock = false }: { showUnlock?: boolean }) 
   return (
     <div data-testid="station-alerts" style={{ margin: '0 0 14px' }}>
       <SectionRule label="STATION ALERTS" />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div role="status" aria-live="polite" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {lines.map(({ key, t }) => (
-          <div key={key} role="status" aria-live="polite" style={{ display: 'flex', gap: 8, padding: '7px 10px', background: 'rgba(255,176,32,.08)', borderLeft: `2px solid ${T.warn}` }}>
+          <div key={key} style={{ display: 'flex', gap: 8, padding: '7px 10px', background: 'rgba(255,176,32,.08)', borderLeft: `2px solid ${T.warn}` }}>
             <span style={{ font: F.chk(700, 11), color: T.warn }}>▲</span>
             <span style={{ font: F.chk(700, 11.5), letterSpacing: '.06em', color: T.warn }}>{t}</span>
           </div>

@@ -1602,6 +1602,8 @@ class Session:
                 self.tryout(pid, None)
         if self.phase == "kit" and ready and self._all_ready():
             self.phase = "lobby"
+            if self.lobby_pushed:
+                self.arm_stations(relock=True)     # A58: back in a pushed LOBBY, the LOAD lock again (as set_phase)
 
     # ---------- roster ----------
     def _next_num(self) -> int:
