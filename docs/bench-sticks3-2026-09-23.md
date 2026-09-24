@@ -208,5 +208,8 @@ No gun, no BLE use, USB on COM10, plus a temporary serial log of button DOWN/HOL
 - **Gap, standalone bench mode: HILL and BRIDGE show the same home screen.** Serial logged `MODE HILL`; the
   screen did not change. Filed against F333.
 - **Decision:** persist the last `station_config` in NVS so a restart comes back as the same station; the
-  operator lock (`lock_s`) stays RAM-only by design. Being built now.
+  operator lock (`lock_s`) stays RAM-only by design. Built and pushed as `37a2b064`.
+- **Buttons held through a force restart are ignored at boot (`37a2b064`). CONFIRMED.** A+B held about 12 s:
+  `FORCE RESTART` at 7 s, ready 1.25 s later, then no BTN edge, no second restart and no RESET while Tony kept
+  holding. The restore itself is untested: it needs Wi-Fi and a config from MC.
 
