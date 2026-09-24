@@ -67,6 +67,13 @@ behind the flag until the design catches up (open for Tony, S58).
 - A mid-life `$AMMO` for another slot did not move the trigger's weapon (after `$AMMO,2,0,0,1` the trigger fired
   slot 1). OPEN: once, after the right button fired slot 2, the reload handle reloaded slot 2; whether reload targets
   the last slot fired needs a disassembly read.
+- **Heavies straight on the trigger (Tony wants this; bench the same day, frames from `compile.resolve`).** A mid-life
+  `$WEAP,<slot>,…` for a heavy makes it the trigger's weapon at once: rockets in slot 2 (`$WEAP` then `$AMMO`) and the
+  rail in slot 3 (`$WEAP` only) both fired from the trigger; the rail keeps its charge behaviour. `$AMMO` alone never
+  switches weapons. When the heavy runs dry, ALT goes to the NEXT slot in its own cycle (the pistol, not the AR). The
+  switch-back works: re-send the primary's `$WEAP,0,…` (it equips and refills), then `$AMMO,0,<saved mag>,<saved
+  reserve>,1,*`, and the trigger fires the AR with its real count. Untested: whether a `$WEAP` re-send resets
+  per-weapon state beyond ammo (heat, the swap delay).
 
 ## Contract (A56, additive)
 
