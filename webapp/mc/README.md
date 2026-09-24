@@ -22,6 +22,7 @@ npm run e2e:m2             # S24/S25/A25/A27/A29/A31: the live board, the specta
                            #   chips and log sync. ONLY=measure|mock|phone|real|refusal|stale;
                            #   shots land in ~/brx-scratch/m2ui
 npm run e2e:game-edit      # B3: editing the loaded game inline on KIT/LOBBY, against a mock AND a real MC
+npm run e2e:frame          # the console frame against `?mock`: one-row bar, WSL note, PANIC, report focus
 npm run lint               # oxlint
 ```
 

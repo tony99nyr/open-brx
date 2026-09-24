@@ -7,7 +7,8 @@
 import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ReportResult, State } from '../src/api/types';
-import { CommandBar, clock24, panicReceipt, splitWarning } from '../src/frame/CommandBar';
+import { CommandBar } from '../src/frame/CommandBar';
+import { clock24, panicReceipt, splitWarning } from '../src/frame/frameText';
 import { clearNotice, setNotice } from '../src/notice';
 import { Armory } from '../src/screens/Armory';
 import { StoreCtx } from '../src/store';

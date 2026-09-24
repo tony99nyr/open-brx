@@ -19,7 +19,8 @@
     "e2e:standby": "node test/e2e/standby.mjs",
     "e2e:m2": "node test/e2e/m2-ui.mjs",
     "e2e:game-edit": "node test/e2e/game-edit.mjs",
-    "e2e:report": "node test/e2e/report.mjs"
+    "e2e:report": "node test/e2e/report.mjs",
+    "e2e:frame": "node test/e2e/frame.mjs"
   },
   "dependencies": {
     "qrcode": "^1.5.4",

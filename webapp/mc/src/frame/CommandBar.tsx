@@ -5,6 +5,7 @@ import { clearNotice, useNotice } from '../notice';
 import { F, T } from '../tokens';
 import { HazardButton, GhostButton, InfoIcon } from '../ui';
 import { ReportPanel } from '../ui/ReportPanel';
+import { panicReceipt, splitWarning } from './frameText';
 
 // LIVE and RECAP are one tab. Tony, 2026-09-02: "one or the other is useful at a time, there is a lot
 // of overlap" — a match is either running or finished, never both, and the two screens shared their
@@ -14,30 +15,6 @@ const PH: [Phase, string][] = [['muster', 'ARMORY'], ['build', 'GAMES'], ['kit',
 const viewIdx = (p: View) => (p === 'armed' ? 3 : p === 'designer' ? 1 : p === 'recap' ? 4 : PH.findIndex(x => x[0] === p));
 // Views that are not phases need their own label: viewIdx() returns -1 for them, and `PH[-1][1]`
 // threw, blanking the whole console (the WEAPONS tab rendered a black page, 2026-08-31).
-
-/** A wall-clock time for a receipt, always 24-hour (M21: `toLocaleTimeString()` printed "9:36:27 PM"
- *  on a US-locale laptop, and every other clock in this console is 24-hour). */
-export const clock24 = (d: Date) => [d.getHours(), d.getMinutes(), d.getSeconds()].map(n => String(n).padStart(2, '0')).join(':');
-
-/** PANIC's receipt. `reached`/`nodes` are the server's own count of nodes that took the control
- *  frame (API.md `POST /api/control`); an older MC answers without them, and then no count is shown
- *  rather than an invented one. A partial reach is not "safed", so it says how far it got instead. */
-export function panicReceipt(r: { ok?: boolean; reached?: number; nodes?: number; error?: string } | null | undefined, at: Date): { text: string; bad: boolean } {
-  if (!r) return { text: 'PANIC FAILED — CHECK THE SERVER', bad: true };
-  if (r.ok === false) return { text: `PANIC REFUSED — ${r.error || 'no reason given'}`, bad: true };
-  const t = clock24(at);
-  if (r.nodes == null || r.reached == null) return { text: `FLEET SAFED (${t}) — RE-ARM BEFORE PLAY`, bad: true };
-  if (r.reached >= r.nodes) return { text: `FLEET SAFED · ${r.reached} OF ${r.nodes} NODES (${t}) — RE-ARM BEFORE PLAY`, bad: true };
-  return { text: `PANIC REACHED ${r.reached} OF ${r.nodes} NODES (${t}) — THE REST ARE STILL LIVE`, bad: true };
-}
-
-/** M10: the server's LAN warning is one string (`netinfo.py WSL_UNREACHABLE_WARNING`): a headline, an
- *  em dash, then the how-to. The headline is the compact line; the how-to sits behind DETAILS. A
- *  string with no dash is all headline. */
-export function splitWarning(w: string): { head: string; rest: string } {
-  const i = w.indexOf(' — ');
-  return i < 0 ? { head: w, rest: '' } : { head: w.slice(0, i), rest: w.slice(i + 3) };
-}
 
 export function CommandBar() {
   const notice = useNotice();   // survives the screen that raised it (see notice.ts)
@@ -75,8 +52,8 @@ export function CommandBar() {
   // M13: "PHONES FELL BACK TO WI-FI" is only true of a tunnel that was up. The server's `lan.public`
   // carries no history, so this tab remembers whether it has seen the tunnel UP; without that, the
   // banner says what is true either way.
-  const tunnelSeenUp = useRef(false);
-  if (state?.lan.public?.status === 'up') tunnelSeenUp.current = true;
+  const [tunnelSeenUp, setTunnelSeenUp] = useState(false);
+  if (state?.lan.public?.status === 'up' && !tunnelSeenUp) setTunnelSeenUp(true);   // React's "store information from previous renders" pattern
 
   return (
     <header style={{ background: T.inset, borderBottom: `1px solid ${T.line2}` }}>
@@ -99,7 +76,7 @@ export function CommandBar() {
           greyscale screen (never colour-only). */}
       {state?.lan.public?.status === 'error' && (
         <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 20px', background: 'rgba(255,82,82,.12)', borderBottom: `1px solid ${T.bad}`, font: F.chk(700, 12), letterSpacing: '.14em', color: T.bad }}>
-          ▲ INTERNET TUNNEL DOWN — {tunnelSeenUp.current ? 'PHONES FELL BACK TO WI-FI' : 'NOT RUNNING, SO PHONES CAN JOIN OVER WI-FI ONLY'}
+          ▲ INTERNET TUNNEL DOWN — {tunnelSeenUp ? 'PHONES FELL BACK TO WI-FI' : 'NOT RUNNING, SO PHONES CAN JOIN OVER WI-FI ONLY'}
           <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.dim }}>{state.lan.public.error || 'no reason given by the tunnel process'}</span>
         </div>
       )}
