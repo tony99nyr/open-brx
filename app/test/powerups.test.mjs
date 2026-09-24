@@ -673,19 +673,54 @@ test('r2 M2: ALT off the heavy then a reload $ALCD (no shot) moves the trigger: 
   assert.deepEqual(puw(h.since(n)), [WEAP[2], '$AMMO,2,1,0,1,*'], 'SELECT equips the heavy, it does not "switch back"');
 });
 
-test('r2 low: an ALT press drops a pending switch-back, so the re-send never fights a deliberate swap', () => {
-  const h = armed(); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300);
-  const n = h.mark(); h.fire(2, 0);
-  assert.ok(h.eng._puBackPending, 'setup: pending (the fake gun never answers)');
-  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
-  h.adv(5000);
-  assert.equal(h.since(n).filter(f => f === WEAP0).length, 1, 'the first write only');
-});
-
 test('r2 low: a protection-off that keeps failing is retried 3 times, then left to RESYNC GUN', async () => {
   const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
   h.at(61); h.take(6); h.failNext(f => f === golden.spawn_protect_off, 99);
   const n = h.mark();
   for (let i = 0; i < 12; i++) { h.adv(250); await settle(); }
   assert.equal(h.since(n).filter(f => f === golden.spawn_protect_off).length, 4, 'the write, then 3 retries');
+});
+
+// ---- final review (round 3) on pu-trigger (brx5 lead, 2026-09-24) ----
+/** A rocket game where slot 1 has reported once (so its next rise or drop has a baseline), the rockets taken and
+ *  fired dry, and the (fake) gun never answering the switch-back: a switch-back pending. */
+function pendingBack() {
+  const h = harness(ROCKET_GAME);
+  h.at(110); h.frame('$BUT,1,1,*').frame('$BUT,1,0,*'); h.adv(300); h.fire(1, 5, 24); h.adv(1200);
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*'); h.adv(300); h.fire(0, 31, 192);
+  h.at(121); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300);
+  const n = h.mark(); h.fire(2, 0);
+  assert.ok(h.eng._puBackPending, 'setup: a switch-back pending');
+  return { h, n, backs: () => h.since(n).filter(f => f === WEAP0).length };
+}
+
+test('r3 M1: an ALT press does not drop a pending switch-back: no re-send while the swap runs, and SELECT still recovers it', () => {
+  const { h, backs } = pendingBack();
+  h.adv(1400); h.frame('$BUT,1,1,*').frame('$BUT,1,0,*'); h.adv(300);
+  assert.equal(backs(), 1, 'no re-send while the ALT swap is in flight');
+  h.adv(700); const c = backs(); h.select();
+  assert.equal(backs(), c + 1, 'SELECT re-sends the switch-back');
+});
+
+test('r3 M1: a CONFIRMED ALT swap clears the pending switch-back', () => {
+  const { h, backs } = pendingBack();
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*'); h.adv(300);
+  h.frame('$ALCD,6,100,1,24,0,*');   // the swap confirmed on slot 1 by a rise (a reload), not a round leaving
+  assert.equal(h.eng.state().activeSlot, 1, 'setup: confirmed');
+  h.adv(5000);
+  assert.equal(backs(), 1, 'the player chose the secondary: nothing re-sent');
+});
+
+test('r3 low: a round from slot 1 clears a pending switch-back', () => {
+  const { h, backs } = pendingBack();
+  h.fire(1, 4, 24); h.adv(5000);
+  assert.equal(backs(), 1);
+  assert.equal(h.eng._puBackPending, null);
+});
+
+test('r3 M2: a protection-off that failed every retry books the life as write-lost, so MC offers RESYNC GUN', async () => {
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
+  h.at(61); h.take(6); h.failNext(f => f === golden.spawn_protect_off, 99);
+  for (let i = 0; i < 12; i++) { h.adv(250); await settle(); }
+  assert.equal(h.eng._writeLost, h.eng._lifeSeq);
 });

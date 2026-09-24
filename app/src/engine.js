@@ -4979,7 +4979,10 @@ export class Engine {
     // write would otherwise leave the player unhittable for the life.
     Promise.resolve(r).then(ok => {
       if (ok !== false || this._lifeSeq !== life || !this.alive || this.phase !== 'live' || this.ended || this._osProtectUntil) return;
-      if ((this._osOffTries = (this._osOffTries || 0) + 1) > OVERSHIELD_OFF_RETRIES) { this.log('*** overshield: spawn protection off failed 4 times -- the player may be unhittable (RESYNC GUN) ***', 'le'); return; }
+      if ((this._osOffTries = (this._osOffTries || 0) + 1) > OVERSHIELD_OFF_RETRIES) {
+        this._writeLost = life;   // r3: as `_writeLife` does, so the pool reads `write_lost` and MC offers RESYNC GUN
+        this.log(`*** overshield: spawn protection off failed ${OVERSHIELD_OFF_RETRIES + 1} times -- the player may be unhittable (RESYNC GUN) ***`, 'le'); return;
+      }
       this.log(`overshield: spawn protection off was lost, retrying (${this._osOffTries}/${OVERSHIELD_OFF_RETRIES})`, 'le');
       this._osProtectUntil = this.now();
     });
@@ -5135,7 +5138,7 @@ export class Engine {
   _puBackTick(now) {
     const bp = this._puBackPending; if (!bp || now - bp.at < PU_BACK_RETRY_MS) return;
     if (this.phase !== 'live' || !this.alive) { this._puBackPending = null; return; }
-    if (!this.bleUp || this.stunned || this.reconciling) return;
+    if (!this.bleUp || this.stunned || this.reconciling || this.switching) return;   // r3: never fight an ALT swap in flight
     this._puBackResend(now, 'no answer');
   }
   /** The end of a weapon item. Empty: the saved weapon back on the trigger with its saved counts (`$WEAP` then `$AMMO`),
@@ -5635,7 +5638,6 @@ export class Engine {
     // slot's magazine stops moving and no further $ALCD can reconcile the takeover. Left running it would
     // sit on the chip bar to its deadline (`reloadUp` outranks `switchUp` in hud.js) and hide SWITCHING.
     if (this.reloading) this._endReload('swapped');
-    this._puBackPending = null;   // A56 r2: a deliberate ALT is the player's own swap; a pending switch-back re-send must not fight it
     this.switching = { at: this.now(), from: this.activeSlot };
     this._changed();
   }
@@ -5821,6 +5823,7 @@ export class Engine {
       // is now a no-op on this path and still does the work on every other.
       this.activeSlot = slot;
       if (this._puHeld) this._puHeld.trig = slot;   // A56 r2 M2: ALT took the trigger off the heavy, as the assumed-swap path says
+      this._puBackPending = null;   // A56 r3: the player's own confirmed swap supersedes a pending switch-back
       this._recoilArm('swap (confirmed)');   // S42: the new slot's weapon gets its own profile, at its ceiling
     }
     this._prevAmmo[slot] = mag;
@@ -6226,7 +6229,7 @@ export class Engine {
       const ammo = this._puRearmRows(((this.frames && this.frames.spawn) || []).filter(f => f.startsWith('$AMMO,')));   // A56: a held heavy keeps its charges
       if (ammo.length) {
         this._write(ammo, 'reconcile: re-arm');
-        if (this._puBackPending) this._puBackResend(this.now(), 'after the reconcile');   // A56 r2 M1: the re-arm is not the switch-back
+        if (this._puBackPending) { this._puBackPending.tries = 0; this._puBackResend(this.now(), 'after the reconcile'); }   // A56 r2 M1: the re-arm is not the switch-back
         // S42 (merge 2026-09-17): the reconcile re-arms COARSELY, with the frame's spawn counts. The accuracy
         // writer's `$AMMO` restore carries the node's magazine account, which is still the pre-drop live
         // counts, so a write here would put the old magazine straight back over the re-arm. Re-arm the model
