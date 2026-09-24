@@ -119,6 +119,7 @@ enum class ScreenKind : uint8_t {
   SCR_SETTINGS,
   SCR_ASSIGNED,
   SCR_JOINING,
+  SCR_LINKED_WAITING,  // welcomed by MC, no station assigned yet: "LINKED / ASSIGN ME IN MC"
   SCR_LOW_BATTERY,
   SCR_STATS,
   SCR_RESET_CONFIRM,
@@ -446,6 +447,12 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
   if (s.assignment_present) {
     spec.kind = ScreenKind::SCR_ASSIGNED;
     spec.assigned_role = s.stats_kind_label;
+    return spec;
+  }
+  // Linked but not assigned (bench 2026-09-24: the screen said LOOKING FOR MISSION CONTROL while MC
+  // already listed the Stick). Only the states before the welcome are "looking".
+  if (s.link_state == LinkState::WELCOMED) {
+    spec.kind = ScreenKind::SCR_LINKED_WAITING;
     return spec;
   }
   spec.kind = ScreenKind::SCR_JOINING;

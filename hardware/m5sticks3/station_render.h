@@ -340,6 +340,12 @@ inline void drawSystem(M5Canvas& c, const ScreenSpec& s) {
       fitCenterText(c, SCREEN_W / 2, 100, "BY MISSION CONTROL", SCREEN_W - 20, {&fonts::FreeSansBold9pt7b}, COL_MUT);
       break;
     }
+    case ScreenKind::SCR_LINKED_WAITING:
+      drawKicker(c, "SYSTEM");
+      fitCenterText(c, SCREEN_W / 2, 52, "LINKED", SCREEN_W - 20,
+                    {&fonts::FreeSansBold24pt7b, &fonts::FreeSansBold18pt7b}, COL_NUM);
+      fitCenterText(c, SCREEN_W / 2, 96, "ASSIGN ME IN MC", SCREEN_W - 20, {&fonts::FreeSansBold9pt7b}, COL_MUT);
+      break;
     case ScreenKind::SCR_JOINING: {
       drawKicker(c, "SYSTEM");
       fitCenterText(c, SCREEN_W / 2, 46, "LOOKING FOR", SCREEN_W - 20, {&fonts::FreeSansBold18pt7b}, COL_NUM);

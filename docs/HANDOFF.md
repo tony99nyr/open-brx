@@ -81,17 +81,17 @@ Recoil counts rounds per trigger pull by calibre (S54, `aa7b08b9`). F291 is clos
   then sitting 3 (§26 groups A and B).
 - **Blocked:** Extended Mags on `$TMP` (S50) and F281 on sitting 2; **F275** on outdoor space (runbook Block 5).
 ## Lane: BLE reliability (brx2)
-2026-09-24 bench, Blocks 0-1, 1.4 and 3.1-3.3 of [`bench-2026-09-24.md`](bench-2026-09-24.md) done, plus a
-melee side-run. **F297**: laptop control 10/10 first-attempt, median link 1.37 s; the phone run's tooling bug is
-fixed (`9b94e318`). **F293**: brx5's `HEADSET_JOIN_MODE 'disconnect'` fix (`ffbc987c`) VERIFIED except the
-mid-match step (needs MC), so the row stays OPEN. F334 (filed by this lane) closed: WebView floor 111
-(`d373c1ae`). **F308** 3.1-3.2 PASS; the Burst Rifle's between-burst gap needs the rig. **S58** 3.3 items 1-8
-all PASS or read as planned, `spec/powerups.md` corrected (the overshield clamps to `$PSET` max; a heavy
-pickup equips straight onto the trigger). **K4 CLOSED 2026-09-24**: melee works in our compiled game (two
-guns, two confirmed hits), and the shot leaves the shooter's headset, not the barrel (`archive/followups-closed.md`,
-`manual/dev.md`).
-- **Next bench task:** Block 4 onward of [`bench-2026-09-24.md`](bench-2026-09-24.md); F293 step 5 and 4.11's
-  RSSI pickup-range calibration land there.
+2026-09-24, day sitting: Blocks 0-1, 1.4 and 3.1-3.3 of [`bench-2026-09-24.md`](bench-2026-09-24.md) done, plus
+a melee side-run (K4 CLOSED: melee works in our compiled game, the shot leaves the shooter's headset) and F336
+(melee `$HIR` carries no front/back direction, a design question only, not build-blocking). **F297**: laptop
+control 10/10, median link 1.37 s. **F308** 3.1-3.2 PASS. **S58** 3.3 items 1-8 PASS,
+`spec/powerups.md` corrected. Evening, Block 4 setup (0.4.11+f366156e, `--powerups`): **F293** stays OPEN, still pending its mid-match step,
+and now carries a NEW flap shape under load too (Tactix-FE30, 3 relinks with a 4-12 s headset loss each,
+`hds.N`-confirmed not the old relink-before-join shape); scanners (Stick, phone station) alone did not
+reproduce it; a second phone's SCAN AGAIN mid-join is the leading reading, follow-up is Block 1 step 1.5.
+**F340** (Android ≤11, location off = empty scan) confirmed on the bench, routed to brx1.
+- **Next bench task:** Block 1 step 1.5 (the SCAN AGAIN A/B/A), then Block 4 onward of
+  [`bench-2026-09-24.md`](bench-2026-09-24.md); F293's own mid-match step and 4.11's RSSI calibration land there.
 - **Next desk task:** none open for this lane.
 - **Blocked:** F270 on A8.
 ## Lane: Mission Control console honesty
