@@ -141,3 +141,40 @@ Sheet corrections from this session are folded into gates 1 and 2 above: the dow
 Stick's small side button, held only for the first flash after factory firmware; the Stick's cable must carry
 data; and the IR receiver needs `M5.Power.setExtOutput(true, m5::ext_none)`, which our firmware lacked until
 this session's fix.
+
+## Rerun: gates 2, 4 and 5 (next session, F314)
+
+What the desk established (2026-09-23): the Stick's receiver DOES deliver gun words at 1 ft, as bursts of the right
+length, but its output is distorted. The 2 ms sync arrives split (for example 118 + 463 + 908 us), a 0 mark comes out as
+150-490 us and a 1 mark as 700-990 us, so the strict decoder rejects every word. A tolerant re-read is **unsafe**: on
+real bursts it produced wrong words that passed both parity checks, so it is not in the firmware. RMT only records
+edges, so no RMT setting explains stretched marks. Ranked causes to separate at the bench:
+
+1. **Overdrive at close range.** M5's StickS3 page: sender and receiver at least 30 cm apart, closer "can cause bad
+   reception"; a gun is far brighter than M5's own LED. The only clean-length bursts came at 1 ft.
+2. **Aim.** At 3-6 ft hand-held shots missed even the rig's receiver (0 bursts); at 1 ft the rig decoded 2 of 3.
+3. **Ambient disturbance.** A ~650 Hz stream of 144 us pulses came and went (source unproven); it lowers a receiver's
+   gain and fuses with words inside the 20 ms idle window.
+4. Buffer (96 symbols) and the 20 ms idle threshold: they cut or fuse long bursts, but a single word fits.
+5. Polarity: ruled out (the rig's own word arrived with correct bit order at 6 in).
+
+**Setup.** Rest the gun on something fixed (a box or a tripod), barrel level with the target and pointed straight at
+it. Mark 1, 2, 4 and 6 ft on the floor. Put the rig receiver and the Stick's top-end window at the same height, one at
+a time, on the same spot.
+
+**Diagnostics first.** The Stick with RAW on (`sercmd.py COM<n> <secs> r c`), analysed with
+`hardware/m5sticks3/tools/rawscan.py`; the rig with `mcp/tools/native_capture.py` (it turns RAW off itself).
+
+1. **Control, per distance.** 3 shots at the rig receiver. Pass: at least 2 whole words, and note the word.
+2. **The Stick, same distance, same mount.** 3 shots. Log the Stick's `SHOT` lines (strict decode) and rawscan's
+   CANDIDATE per burst against the rig's word. Walk 1, 2, 4, 6 ft.
+   **Gate 2 passes** when the strict decoder reads at least 2 of 3 at some distance of 2 ft or more.
+3. **Gate 4 without receive.** The Stick's `TX` command sends the capture word
+   (`TX 1111000000010011001000010`, from `irbridge.encode_word(proto=15, team=1, damage=50)`); a gun armed on
+   MCP with `$SIR,15,0,,28,0,0,1,,*` reports it as `$HIR,<sensor>,15,0,1,50,...`. This half needs no receive fix.
+4. **Gates 4 and 5 in full** (after gate 2 passes): HILL mode, a decoded shot flips it, the rig sees ONE magnitude-50
+   word per flip, none for a non-flip shot.
+
+If no distance decodes, the next step is a receiver swap test: the Grove IR receiver or a VS1838B on a Grove pin, with
+the same firmware.
+

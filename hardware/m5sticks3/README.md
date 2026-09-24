@@ -66,6 +66,16 @@ first flash needs download mode: hold the Stick's small side button (also the po
 USB, then replug without the button. Later flashes do not need it. The USB-C cable must carry data: a
 charge-only cable drops the Stick from the port list while its screen stays on.
 
+## Bench helpers (`tools/`)
+
+Run with Windows Python from WSL (`/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe`); USB does not reach WSL.
+
+| script | does |
+|---|---|
+| `sercmd.py COM<n> <secs> [cmd ...]` | opens the port with DTR/RTS low (the S3's USB serial resets on them), sends each command, prints every line for `secs` |
+| `blescan.py [secs]` | lists every advertised 128-bit service UUID, to check the kind-5 advert against `STATUS` |
+| `rawscan.py < capture.txt` | a DIAGNOSTIC summary of RAW bursts (F314): mark and space ranges, sync-region length, a labelled 25-mark CANDIDATE. Never a decoder: a tolerant re-read produced wrong parity-valid words on real bursts |
+
 ## Serial (115200)
 
 The capture and emit formats are the DevKitC rig's, so the existing tools work unchanged.
