@@ -47,6 +47,17 @@ export function appVer(run = gitIn()) { return `${pkg.version}+${gitStamp(run)}`
 
 const ENTRIES = [['src/app.js', 'www/app.js'], ['src/utility.js', 'www/utility.js']];
 
+// The syntax floor. Capacitor's own docs (capacitorjs.com/docs/android, "Requirements") say Capacitor
+// requires an Android WebView with Chrome 60 or later; `minSdkVersion` 24 (Android 7) can ship an
+// Android System WebView older than that, so Capacitor's floor, not the SDK floor, is the real one.
+// Nothing in this app's own source needs more: the one feature above Chrome 60 in use, the `||=` in
+// `src/brxlink.js` (Chrome 85), is ordinary logical-assignment sugar and esbuild lowers it for us.
+// With no target esbuild ships esnext syntax untouched — a factory WebView below the syntax it used
+// (for example Chrome 83, one short of `||=`'s Chrome 85) then throws "Unexpected token" on load and
+// the whole app is a blank screen. Keep this in step with the guard script in index.html (below) and
+// with `test/build-target.test.mjs`, which fails if this floor is ever removed.
+export const TARGET = 'chrome60';
+
 export async function build() {
   const APP_VER = appVer();
   await Promise.all(ENTRIES.map(([entry, out]) => esbuild.build({
@@ -54,6 +65,7 @@ export async function build() {
     outfile: path.join(ROOT, out),
     bundle: true,
     format: 'iife',
+    target: TARGET,
     define: { __APP_VER__: JSON.stringify(APP_VER) },
     logLevel: 'warning',
   })));

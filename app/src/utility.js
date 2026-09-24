@@ -3,6 +3,7 @@
 // the brx-beacon plugin, shows what it is full-screen, and watches player adverts so the operator can
 // calibrate the radius by standing where "at the station" should be and pressing SET.
 // No gun, no engine: the revive itself happens on the player's phone (engine.js _triggerPulled).
+import './polyfills.js';   // FIRST: globalThis/Object.fromEntries/Promise#finally on a Chrome 60-72 WebView
 import { BrxLink } from './brxlink.js';
 import { ScanGuard, SCAN_MODES, stationScanStep } from './scanwatch.js';   // the BLE flood guard (bench 2026-09-17)
 import { Presence, encodeUuid, KIND, TEAM_ANY, PLAYER_STATE } from './beacon.js';

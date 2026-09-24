@@ -1,3 +1,4 @@
+import './polyfills.js';   // FIRST: globalThis/Object.fromEntries/Promise#finally on a Chrome 60-72 WebView
 import jsQR from 'jsqr';
 // OS-level landscape lock: the HUD is a fixed 844x390 landscape stage — in portrait it scales to a
 // postage stamp (Tony, 2026-08-26: 'the label wraps on my screen'). Boxed import (thenable trap).
