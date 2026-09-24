@@ -243,21 +243,34 @@ static void mcRestoreSavedConfig(StationLink& link) {
 // `m5pm1_i2c_addr`), `M5.Power.M5pm1` is public on an ESP32-S3 build, and it inherits I2C_Device's
 // public read-modify-write `bitOn(reg, mask)` / `bitOff(reg, mask)` (utility/I2C_Class.hpp). What it
 // does NOT confirm: its register table (utility/power/M5PM1_Class.cpp) stops at 0x45 (IRQ_MASK3);
-// 0x49 and 0x4A are not named anywhere in M5Unified or M5GFX. So nothing here writes the PM1.
+// 0x49 and 0x4A are not named anywhere in M5Unified or M5GFX, so they are written by raw I2C below.
 //
-// TODO(A58, bench + M5PM1 datasheet): once 0x49/0x4A are confirmed from the datasheet, the body is
-//   locked ? M5.Power.M5pm1.bitOn(0x49, 0x01) && M5.Power.M5pm1.bitOn(0x4A, 0x01)
-//          : M5.Power.M5pm1.bitOff(0x49, 0x01) && M5.Power.M5pm1.bitOff(0x4A, 0x01)
-// guarded by `M5.Power.getType() == m5::Power_Class::pmic_m5pm1`. NEVER touch bit7 of 0x49 (the
-// download-mode lock) or any other bit or register. The call sites below (a lock starting or ending,
-// and unconditionally clear at boot) are already in place, so enabling it is this one body.
-// Until then a player CAN restart a locked Stick with the side button; the restart drops the lock,
-// and MC sees it as a moved `boot_count`.
-bool pmicSideButtonLocked = false;  // what the PMIC was last asked for (today: only what we WOULD ask)
+// CONFIRMED 2026-09-24 from the M5PM1 Chip User Manual v1.9 (pp. 23-24,
+// m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/M5PM1_Datasheet_EN.pdf) and m5stack/M5PM1's driver:
+// BTN_CFG_1 0x49 (default 0x2A) bit0 SINGLE_RESET_DIS; BTN_CFG_2 0x4A (default 0x00) bit0
+// DOUBLE_POWEROFF_DIS. Neither register is cleared by a reset or a power-off (the manual's
+// Reset/Power-off columns are blank), so a lock left set would survive a crash: that is why the boot
+// path clears both unconditionally. 0x49 bit7 is DL_LOCK (download mode lock, no software way back
+// documented): NEVER touched. Only bit0 of each register is ever written, by read-modify-write.
+constexpr uint8_t PM1_ADDR = 0x6E;
+constexpr uint8_t PM1_BTN_CFG_1 = 0x49;  // bit0 SINGLE_RESET_DIS (bit7 DL_LOCK: never)
+constexpr uint8_t PM1_BTN_CFG_2 = 0x4A;  // bit0 DOUBLE_POWEROFF_DIS
+constexpr uint8_t PM1_BIT0 = 0x01;
+constexpr uint32_t PM1_I2C_HZ = 100000;
+bool pmicSideButtonLocked = false;  // what the PMIC was last asked for
 static void pmicSetSideButtonLock(bool locked) {
+  if (M5.getBoard() != m5::board_t::board_M5StickS3) {
+    Serial.println("# PMIC side-button lock skipped: not a StickS3");
+    return;
+  }
+  bool ok = locked ? (M5.In_I2C.bitOn(PM1_ADDR, PM1_BTN_CFG_1, PM1_BIT0, PM1_I2C_HZ) &&
+                      M5.In_I2C.bitOn(PM1_ADDR, PM1_BTN_CFG_2, PM1_BIT0, PM1_I2C_HZ))
+                   : (M5.In_I2C.bitOff(PM1_ADDR, PM1_BTN_CFG_1, PM1_BIT0, PM1_I2C_HZ) &&
+                      M5.In_I2C.bitOff(PM1_ADDR, PM1_BTN_CFG_2, PM1_BIT0, PM1_I2C_HZ));
   pmicSideButtonLocked = locked;
-  Serial.printf("# PMIC side-button lock %s (TODO: not written, register map unconfirmed)\n",
-                locked ? "ON" : "OFF");
+  Serial.printf("# PMIC side-button lock %s%s (0x49=%02x 0x4A=%02x)\n", locked ? "ON" : "OFF", ok ? "" : " FAILED",
+                M5.In_I2C.readRegister8(PM1_ADDR, PM1_BTN_CFG_1, PM1_I2C_HZ),
+                M5.In_I2C.readRegister8(PM1_ADDR, PM1_BTN_CFG_2, PM1_I2C_HZ));
 }
 
 // ---- the typed floor: `MC <ws-url>` (never persisted across reboots, §5g.3) ---------------------
