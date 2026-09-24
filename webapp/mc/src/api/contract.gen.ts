@@ -1735,6 +1735,7 @@ export const EVENT_REQUIRED: Record<string, readonly string[]> = {
   team_change: ['tid'],
   possession: ['hold_ms'],
   operator_result: ['cmd', 'ok'],
+  pickup: ['station_id', 'item_kind'],
 };
 export const ACCEPT_MIN: Record<string, readonly string[]> = {
   result: ['match_id'],

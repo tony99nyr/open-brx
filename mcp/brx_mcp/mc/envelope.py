@@ -108,6 +108,8 @@ EVENT_REQUIRED: dict[str, tuple[str, ...]] = {
     "possession": ("hold_ms",),
     # A47: `why` is optional (present on a refusal). `cmd` and `ok` are the fact itself.
     "operator_result": ("cmd", "ok"),
+    # A56 (S58): a player took a powerup station's item. `weapon_id` is optional (an overshield has none).
+    "pickup": ("station_id", "item_kind"),
 }
 
 

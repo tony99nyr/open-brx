@@ -219,6 +219,7 @@ export const EVENT_REQUIRED = {
   team_change: ['tid'],
   possession: ['hold_ms'],
   operator_result: ['cmd', 'ok'],
+  pickup: ['station_id', 'item_kind'],
 };
 export const ACCEPT_MIN = {
   result: ['match_id'],

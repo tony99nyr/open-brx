@@ -582,7 +582,7 @@ as the game working:
 |---|---|---|
 | 1 respawn | yes | **shipped** — the scanner respawn, §4, unit-tested and field-proven 2026-09-04 |
 | 5 control | yes | **shipped** — §5d, `control.js` + `engine.js _onControlAdvert()` |
-| 2 powerup | yes | **not built** — roadmap K3 |
+| 2 powerup | yes | **in build behind `--powerups`** (docs/spec/powerups.md, A56): MC stores the item, compiles the pickup slots, runs the spawn schedule and sends `station_update`; the flag stays off until bench Sitting A passes |
 | 3 extraction | yes | **not built** — roadmap K2 |
 | 4 bomb | yes | **not built** — roadmap K4 |
 

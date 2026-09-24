@@ -170,6 +170,8 @@ def build(args):
     # T3-A / field 2026-09-12: WSL2's own NAT address advertised in the QR/mDNS looked identical to a
     # real LAN address, so no phone could connect and MC never said why. LOUD on purpose -- this is the
     # one line an operator glancing at a scrolling boot log must not be able to miss.
+    # A56 (S58): the powerups flag. Off, MC refuses an item preset, compiles no spare slot and sends no item.
+    session.powerups_enabled = bool(getattr(args, "powerups", False))
     lan_warning = session.lan.get("warning")
     if lan_warning:
         _rule = "!" * 78
@@ -423,6 +425,9 @@ def parser() -> argparse.ArgumentParser:
                          "match moves to a free cell of its own protocol (today <0,2>) with a plain-damage $SIR "
                          "row, so a victim's phone can name it. Not for a real game until a bench step proves a "
                          "<0,2> word registers")
+    ap.add_argument("--powerups", action="store_true",
+                    help="A56 (S58): let powerup stations carry an item (Rockets, Rail Gun, Overshield). OFF until "
+                         "bench Sitting A passes (docs/spec/powerups.md)")
     ap.add_argument("-v", "--verbose", action="store_true")
     return ap
 
@@ -454,6 +459,8 @@ def main(argv=None):
         print(_rule, flush=True)
         print("  DISTINCT WEAPON CELLS: same-cell, same-magnitude weapons move to a free cell (F315). Not for a real game", flush=True)
         print(_rule, flush=True)
+    if args.powerups:
+        print("  POWERUPS ON (--powerups): powerup stations may carry an item; not bench-proven yet (powerups.md)", flush=True)
     if not inspect.iscoroutinefunction(getattr(net, "start", None)):
         # sync/fake net is already bound → its ws_url is real now. The async NetServer prints the nodes
         # line from _start_net once it binds (avoids the stale ws://<ip>:0 placeholder before the bind).

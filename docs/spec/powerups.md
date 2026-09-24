@@ -58,6 +58,22 @@ costs the player their secondary while the item lasts.
   at 255). On a reconnect MC re-sends the current state and the station re-anchors on arrival. An older Stick
   ignores `item`.
 
+## Mission Control side (built 2026-09-24, behind `--powerups`)
+
+- **The flag:** `python -m brx_mcp.mc --powerups`. Off (the default), MC refuses an `item_preset`, compiles no spare
+  slot, sends no `item` and runs no schedule; an item restored from an old session is inert.
+- **Defaults** live in one place, `mcp/brx_mcp/mc/powerups.py`: the three presets, the intervals, `OVERSHIELD_AMOUNT`,
+  and the rules the phone mirrors (`LOST_AT_DEATH`, `WEAPON_PICKUP_SWAPS`, `OVERSHIELD_DECAY_PER_S`,
+  `OVERSHIELD_REGEN`). Those rules are constants, not item fields.
+- **Compile:** each distinct pickup weapon, ordered by station id, goes into slot 2 then 3 with its normal `$WEAP`
+  tokens, and every spawn and revive writes `$AMMO,<slot>,0,0,1` for it. The ALT `$BMAP` row is not touched. The
+  pickup weapons join the match's hit plan, so every gun's `$SIR` table covers their cells. A slot change after the
+  lobby push re-pushes a fresh head to the whole roster.
+- **Schedule:** MC's own tick, from `go_live_t`. At arm time each item station is told "taken, first spawn in N ms";
+  at each spawn time "available"; on a `pickup` fact that took the item "taken, next spawn in N ms"; and the current
+  state again when the station reconnects. The API is in `mcp/brx_mcp/mc/API.md` (`GET /api/powerups`, the
+  station PUT, `StationView.item_available`/`next_spawn_at_ms`).
+
 ## The schedule (Tony, 2026-09-24: "like Halo")
 
 Items spawn at fixed times on the match clock: at `first_at_s`, then every `spawn_every_s`. An item is available

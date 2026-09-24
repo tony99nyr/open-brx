@@ -357,6 +357,10 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
     async def stations_list(_):
         return JSONResponse({"stations": s.stations_view(), "game": s._game_byte()})
 
+    async def powerups_view(_):
+        """A56 (S58): `PowerupsView` -- MC's powerups flag and the item presets, expanded from its defaults."""
+        return JSONResponse(s.powerups_view())
+
     async def put_station(req):
         nid = req.path_params["nid"]
         try:
@@ -850,6 +854,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/nodes/{nid}/pull_log", node_pull_log, methods=["POST"]),
         Route("/api/options", get_options),
         Route("/api/options", put_options, methods=["PUT"]),
+        Route("/api/powerups", powerups_view),
         Route("/api/stations", stations_list),
         Route("/api/stations/arm", arm_stations, methods=["POST"]),
         Route("/api/stations/{nid}", put_station, methods=["PUT"]),
