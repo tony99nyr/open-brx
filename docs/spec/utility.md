@@ -83,7 +83,20 @@ The HUD shows the live reading against the threshold on the DOWN screen (§4.3),
 `expiryMs` (4 s) with no advert. Pinned by tests: dwell, hysteresis band, expiry, a dip restarting the dwell,
 the advertised threshold overriding the default, neutral admitting every team, other games ignored.
 
-**Bench-tuned defaults 2026-09-04:** threshold **-74 dBm** at **high** TX, dwell **0.8 s** — get in range, a brief pause, green; about a 10 ft radius. -74 + 0.8 s is the shipped default in `app/src/app.js` (player presence) and `utility.js` (station). Phone-to-phone RSSI falls off fast up close, so at 3 in it reads ~-53: the bubble is genuinely small, which is what a respawn point wants.
+**Respawn range: 3 m at most (Tony, 2026-09-24; F345).** Measured at 3 m on the player phone: a phone station reads
+-63 to -68 dBm, a StickS3 -53 to -58 (the Stick transmits hotter). So the default is **per platform**, like the powerup
+claim's: a phone station **-66 dBm**, a StickS3 **-60 dBm** (`beacon.js RESPAWN_RSSI_DBM`; the Stick's copy is
+`hardware/m5sticks3/station_link.h STICK_DEFAULT_THRESHOLD_DBM`). The other kinds on a phone station keep the
+2026-09-04 bench value, -74 dBm at high TX (about 10 ft). MC's `StationAssignment.threshold` still overrides; **0**
+(or absent) means the station's own default, which it resolves and advertises in byte 14. A player phone falls
+back to its own `Presence` default (-74, `app.js`) only for an advert whose byte 14 is 0; an MC-armed station never
+sends that. Dwell stays **0.8 s** on both sides.
+
+**The revive count (F344).** A respawn station counts a revive when a player's alive bit goes 0 → 1 while the
+station hears them **near**: the median of the last 3 readings at or above its threshold minus
+`REVIVE_MARGIN_DB` (10). It does not use `present`. The player decides the revive on the station's HIGH-TX advert,
+and the station hears the player's MEDIUM-TX advert, about 8 dB weaker; `present` also adds a dwell behind the EMA.
+Field 2026-09-24: a phone station at -74 counted neither of two revives at it.
 
 **Scan reliability (Android):** a BLE scan left running goes silently deaf — `scanning` stays true but callbacks stop (hardware 2026-09-04: a down player at the station saw "find a respawn station" until a fresh scan was forced). `app.js` fights this: scan at low-latency, kick a fresh scan the instant the player goes DOWN, and restart every **7 s** while hunting a station (slower otherwise). 7 s keeps the death-kick + steady restarts under Android's ~5-starts-per-30 s throttle; a scan that dies mid-match is restarted on the next tick (the intent flag `beaconWanted`), so a single failed start can't freeze presence for the game.
 

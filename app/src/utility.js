@@ -5,7 +5,7 @@
 // No gun, no engine: the revive itself happens on the player's phone (engine.js _triggerPulled).
 import { BrxLink } from './brxlink.js';
 import { ScanGuard, SCAN_MODES, stationScanStep } from './scanwatch.js';   // the BLE flood guard (bench 2026-09-17)
-import { Presence, encodeUuid, KIND, TEAM_ANY, PLAYER_STATE } from './beacon.js';
+import { Presence, encodeUuid, KIND, TEAM_ANY, PLAYER_STATE, countRevives, phoneStationThreshold, STATION_THRESHOLD_DBM } from './beacon.js';
 import { ControlPoint, ControlAdvertiser, CONTROL_STATE, NEUTRAL as CONTROL_NEUTRAL, claimable, DEFAULT_CAPTURE_S, DEFAULT_NET_CAP } from './control.js';   // kind 5: the control point (utility.md §5, K1)
 import { PowerupStation } from './powerup.js';   // kind 2: the powerup station decides who took its item (A56, docs/spec/powerups.md)
 import { Transport } from './transport/transport.js';   // utility.md §5b/§5c: the phone joins MC at muster to be ARMED (contracts A13.5)
@@ -35,13 +35,19 @@ function log(msg, cls = 'li') {
 }
 
 // ---------- settings (persisted; the station survives an app restart the way it was) ----------
-// mcArmed: {game, at, valid_ids} once MC pushed station_config. -74 threshold + 0.8 s dwell = arm's length,
-// brief pause, green (bench-tuned 2026-09-04). captureS/netCap belong to kind 5 (§5d.1): seconds ONE net
+// mcArmed: {game, at, valid_ids} once MC pushed station_config. threshold 0 = this platform's own default for the
+// kind (beacon.js phoneStationThreshold: a respawn station -66, about 3 m, F345; every other kind -74); anything
+// else is the operator's or MC's override. 0.8 s dwell = get in range, brief pause, green (bench-tuned 2026-09-04). captureS/netCap belong to kind 5 (§5d.1): seconds ONE net
 // player needs for ONE phase, and the clamp on how much a rush can stack.
-const DEFAULTS = { kind: 'respawn', team: 1, id: 1, tx: 'high', threshold: -74, dwell: 800, game: 0, mcArmed: null, mc: '', mc_auto: false,
+const DEFAULTS = { kind: 'respawn', team: 1, id: 1, tx: 'high', threshold: 0, thrV: 2, dwell: 800, game: 0, mcArmed: null, mc: '', mc_auto: false,
   captureS: DEFAULT_CAPTURE_S, netCap: DEFAULT_NET_CAP };
 const DEMO = /[?&](stage|demo)\b/.test(typeof location !== 'undefined' ? location.search : '');   // the stage harness: no radio, fake players
 const settings = (() => { try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem('brx.utility') || '{}') }; } catch (_) { return { ...DEFAULTS }; } })();
+// F345: before thrV 2 every station saved the old -74 default as if the operator had chosen it. Read that as
+// "the platform default" once, so a respawn station picks up -66; a SET or slider value stays as it was.
+if (settings.thrV !== 2) { if (settings.threshold === STATION_THRESHOLD_DBM) settings.threshold = 0; settings.thrV = 2; }
+/** The threshold this station advertises (byte 14) and measures players by: the override, else the platform default. */
+const thr = () => settings.threshold || phoneStationThreshold(settings.kind);
 function save() { try { localStorage.setItem('brx.utility', JSON.stringify(settings)); } catch (_) { /* ignore */ } }
 
 // ---------- plugins ----------
@@ -95,7 +101,7 @@ const link = new BrxLink({ log });
 // point, must not count as a body. The player side already assigns this every second (`app.js` presenceTick);
 // the station never did, so `beacon.js`'s filter was dead code here. It only bites once MC arms a non-zero
 // game (v1 manual stations stay at 0 = any), which is exactly when two games share a field.
-const presence = new Presence({ defaultThreshold: settings.threshold, dwellMs: settings.dwell, alpha: 0.35, game: settings.game });
+const presence = new Presence({ defaultThreshold: thr(), dwellMs: settings.dwell, alpha: 0.35, game: settings.game });
 const wasAlive = new Map();          // player id → alive bit, to count revives that happened here
 let revives = 0, scanning = false, _lastScanRestart = 0, _scanBusy = false, _twin = 0;
 const scanGuard = new ScanGuard(); let _scanModeIdx = 0, _scanModeSince = 0;   // a crowded field drops the player watch to balanced (scanwatch.js)
@@ -112,7 +118,7 @@ function advertFields() {
 }
 function stationUuid() {
   const f = advertFields();
-  return encodeUuid({ role: 'station', id: settings.id, kind: settings.kind, team: f.team, state: f.state, value: f.value, seq: advert.seq, game: settings.game, threshold: settings.threshold, taker: f.taker || 0 });
+  return encodeUuid({ role: 'station', id: settings.id, kind: settings.kind, team: f.team, state: f.state, value: f.value, seq: advert.seq, game: settings.game, threshold: thr(), taker: f.taker || 0 });
 }
 /** `quiet` is the control point's once-a-second progress republish: it re-keys the advert but says nothing
  *  new, and logging it would bury a whole match's real events under a wall of UUIDs. */
@@ -133,7 +139,7 @@ async function startAdvert(quiet = false) {
     const r = await plugins.beacon.start({ uuid, name, txPower: settings.tx, mode: 'lowLatency', includeTxPower: true });
     advertising = !!(r && r.advertising);
     settings.live = advertising; save();   // a reload mid-game comes back advertising (the settings stay behind the ⓘ gate)
-    if (!quiet) log(`advertising ${name} as ${TEAM_NAMES[settings.team]} · tx ${r && r.txPowerControl ? settings.tx : 'platform default'} · threshold ${settings.threshold} dBm · ${uuid}`, 'lk');
+    if (!quiet) log(`advertising ${name} as ${TEAM_NAMES[settings.team]} · tx ${r && r.txPowerControl ? settings.tx : 'platform default'} · threshold ${thr()} dBm · ${uuid}`, 'lk');
   } catch (e) { advertising = false; settings.live = false; save(); log('advertise failed: ' + (e && e.message || e), 'le'); }
   finally { advertisingPending = Math.max(0, advertisingPending - 1); }
   render();
@@ -148,7 +154,8 @@ async function applyStationConfig(body) {
   if (body.kind && KIND_LABEL[body.kind]) settings.kind = body.kind;
   if (body.team != null) settings.team = typeof body.team === 'number' ? body.team : (TEAM_ID_TO_TID[String(body.team).toLowerCase()] ?? settings.team);
   if (Number.isFinite(+body.id) && +body.id >= 1) settings.id = Math.min(65535, Math.round(+body.id));
-  if (Number.isFinite(+body.threshold)) settings.threshold = Math.max(-100, Math.min(-30, Math.round(+body.threshold)));
+  // 0 (or absent) = this platform's own default (F345); it used to clamp 0 to -30, a bubble of a few centimetres.
+  if (Number.isFinite(+body.threshold)) settings.threshold = +body.threshold === 0 ? 0 : Math.max(-100, Math.min(-30, Math.round(+body.threshold)));
   const wasGame = settings.game;
   settings.game = Number.isFinite(+body.game) ? (+body.game & 0xff) : 0;   // absent = 0 (any game), v1
   // A NEW game must not resume the last one's owner with the last one's possession seconds in the tally.
@@ -162,12 +169,12 @@ async function applyStationConfig(body) {
   if (settings.game !== wasGame) { pu.available = null; pu.nextAt = null; pu.taker = 0; pu.ringAt = null; pu.unsent = []; pu.awardedNext = null; savePowerup(); }
   settings.mcArmed = { game: settings.game, at: Date.now(), valid_ids: Array.isArray(body.valid_ids) ? body.valid_ids.slice(0, 32) : null };
   save();
-  log(`MC armed this phone: ${KIND_LABEL[settings.kind]} · ${TEAM_NAMES[settings.team] || settings.team} · station ${settings.id} · threshold ${settings.threshold} dBm · game ${settings.game}`, 'lk');
+  log(`MC armed this phone: ${KIND_LABEL[settings.kind]} · ${TEAM_NAMES[settings.team] || settings.team} · station ${settings.id} · threshold ${thr()} dBm · game ${settings.game}`, 'lk');
   if (window.brxUtilityGate) window.brxUtilityGate.close();   // the operator armed it: the drawer has no business being open
   await startAdvert();
 }
 function utilityStatusBody() {
-  return { role: 'utility', kind: settings.kind, team: settings.team, station_id: settings.id, threshold: settings.threshold, live: advertising, revives, armed: !!settings.mcArmed,
+  return { role: 'utility', kind: settings.kind, team: settings.team, station_id: settings.id, threshold: thr(), live: advertising, revives, armed: !!settings.mcArmed,
     app_ver: UTIL_VER, ...(lastBattery != null ? { battery: lastBattery } : {}),   // roadmap A3: the heartbeat, not just the hello, so MC's ITEMS panel stays current without a reconnect
     // §5c: the station is self-authoritative and reports at recap. For a control point that report is the
     // owner, the conversion progress and who held it for how long — MC is not live mid-match and cannot
@@ -326,17 +333,14 @@ function tick() {
       if (step.restart || now - _lastScanRestart >= SCAN_RESTART_MS) refreshScan().catch(() => {});
     }
   }
-  presence.defaultThreshold = settings.threshold;
+  presence.defaultThreshold = thr();
   presence.game = settings.game;
   presence.tick(now);
-  const seen = new Set();
-  for (const p of presence.players()) {
-    seen.add(p.id);
-    const alive = !!(p.state & PLAYER_STATE.alive); const was = wasAlive.get(p.id);
-    if (was === false && alive && p.present && settings.kind === 'respawn') { revives++; log(`player ${p.id} (${TEAM_NAMES[p.team] || p.team}) revived here`, 'lk'); }
-    wasAlive.set(p.id, alive);
+  // F344: a revive counts on the player being NEAR, not `present` (beacon.js countRevives says why).
+  for (const p of countRevives(presence, wasAlive)) {
+    if (settings.kind !== 'respawn') continue;
+    revives++; log(`player ${p.id} (${TEAM_NAMES[p.team] || p.team}) revived here at ${Math.round(Number.isFinite(p.median) ? p.median : p.rssi)} dBm`, 'lk');
   }
-  for (const id of wasAlive.keys()) if (!seen.has(id)) wasAlive.delete(id);   // don't grow unbounded over a long session
   if (settings.kind === 'control') controlTick(now);
   if (settings.kind === 'powerup') powerupTick(now);
   // Two control points on the same station id are ONE presence entry on every player phone (`beacon.js` keys
@@ -475,7 +479,7 @@ function render() {
   $('status').className = 'status ' + (advertising ? 'on' : 'off');
   $('revives').textContent = settings.kind === 'respawn' ? `${revives} REVIVED HERE` : '';
   $('txhint').textContent = support.txPowerControl ? (TX_HINT[settings.tx] || '') : 'no transmit-power control on this platform · radius = threshold only';
-  $('thr').textContent = `${settings.threshold} dBm`; $('thrRange').value = settings.threshold;
+  $('thr').textContent = `${thr()} dBm${settings.threshold ? '' : ' · default'}`; $('thrRange').value = thr();
   $('dwell').textContent = `${(settings.dwell / 1000).toFixed(1)} s`;
   $('btnStart').textContent = advertising ? 'STOP' : 'START';
   const armed = settings.mcArmed;

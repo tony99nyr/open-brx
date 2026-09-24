@@ -2980,9 +2980,11 @@ class Session:
         clash = next((n for n, st in self.stations.items() if n != nid and (st.get("assigned") or {}).get("id") == sid), None)
         if clash:
             raise ValueError(f"station id {sid} is already assigned to {clash}; ids must be unique on the field")
-        thr = a.get("threshold", -74)
-        if not (isinstance(thr, int) and not isinstance(thr, bool) and -100 <= thr <= -30):
-            raise ValueError("threshold must be an integer dBm in -100..-30 (the presence bubble; -74 ≈ 10 ft at high TX)")
+        # F345: 0 (and absent) = the station's own PLATFORM default, which it advertises in byte 14 (a respawn
+        # station: a phone -66, a StickS3 -60, both about 3 m). Any other value is the operator's override.
+        thr = a.get("threshold", 0)
+        if not (isinstance(thr, int) and not isinstance(thr, bool) and (thr == 0 or -100 <= thr <= -30)):
+            raise ValueError("threshold must be 0 (the station's own default) or an integer dBm in -100..-30 (the presence bubble)")
         # Only a phone that said hello as a UTILITY node can be a station. A player's HUD ignores
         # `station_config`, and assigning it would advertise a station id to every player that nothing
         # on the field emits (review 2026-09-11).

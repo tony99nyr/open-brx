@@ -223,6 +223,25 @@ def test_assigning_a_station_pushes_station_config_with_game_and_the_allow_list(
         E.validate(E.make_envelope("station_config", b), direction="mc")
 
 
+def test_threshold_0_or_absent_means_the_stations_own_platform_default():
+    """F345: a respawn station's default range is per platform (a phone -66, a StickS3 -60, about 3 m). MC must
+    not stamp one number over both: absent or 0 goes out as 0, and the station advertises its own default."""
+    s = _sess()
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 3})
+    assert _pushed(s, "station_config", "util-1")[-1]["threshold"] == 0
+    s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 3, "threshold": 0})
+    assert _pushed(s, "station_config", "util-1")[-1]["threshold"] == 0
+    s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 3, "threshold": -58})   # the override stays
+    assert _pushed(s, "station_config", "util-1")[-1]["threshold"] == -58
+    for bad in (-1, -29, -101):
+        try:
+            s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 3, "threshold": bad})
+            raise AssertionError(f"accepted threshold {bad}")
+        except ValueError as e:
+            assert "threshold" in str(e)
+
+
 def test_the_assignment_is_validated_in_the_operators_voice():
     s = _sess()
     s.net.simulate_utility_hello("util-1")

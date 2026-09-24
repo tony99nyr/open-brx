@@ -146,6 +146,45 @@ export class Presence {
   }
 }
 
+/**
+ * The "at me" threshold a station advertises in byte 14 when MC sent 0 (or nothing): its own PLATFORM default
+ * (F345, Tony 2026-09-24: a respawn station reaches 3 m at most). Measured at 3 m on the player phone: a phone
+ * station -63 to -68 dBm, a StickS3 -53 to -58. The StickS3's value lives in its firmware
+ * (`hardware/m5sticks3/station_link.h` STICK_DEFAULT_THRESHOLD_DBM); this table is the record both sides follow.
+ * Same shape as the powerup claim's per-platform default (docs/spec/powerups.md "Threshold").
+ */
+export const RESPAWN_RSSI_DBM = Object.freeze({ phone: -66, sticks3: -60 });
+/** Every other kind on a phone station keeps the 2026-09-04 bench value (about 10 ft at high TX). */
+export const STATION_THRESHOLD_DBM = -74;
+/** A phone station's own default for `kind` (utility.js, when `settings.threshold` is 0). */
+export function phoneStationThreshold(kind) { return kind === 'respawn' ? RESPAWN_RSSI_DBM.phone : STATION_THRESHOLD_DBM; }
+
+/**
+ * A respawn station's revive count (utility.js tick; F344). A revive is a player whose alive bit went 0 -> 1 while
+ * the station heard them NEAR: the median of their last MEDIAN_SAMPLES readings at or above the station's
+ * threshold minus REVIVE_MARGIN_DB. It is deliberately NOT `present`. The player decides the revive on the
+ * station's HIGH-TX advert; the station hears the player's MEDIUM-TX advert, about 8 dB weaker at the same
+ * distance, and `present` adds a 0.8 s dwell behind an EMA. A player who walked in, pulled the trigger and left
+ * was never present on the station side (field 2026-09-24: a phone station at -74 counted neither of two
+ * revives). The margin covers the TX gap plus 2 dB. `wasAlive` (player id -> alive bit) is the caller's memory;
+ * a player Presence has forgotten is forgotten here too. Returns the players counted on this call.
+ * The StickS3 copies the old rule (`hardware/m5sticks3/presence.h` ReviveCounter) and needs the same change.
+ */
+export const REVIVE_MARGIN_DB = 10;
+export function countRevives(presence, wasAlive) {
+  const revived = [], seen = new Set();
+  for (const p of presence.players()) {
+    seen.add(p.id);
+    const alive = !!(p.state & PLAYER_STATE.alive);
+    const level = Number.isFinite(p.median) ? p.median : p.rssi;
+    const near = p.ageMs == null || p.ageMs <= presence.expiryMs ? level >= presence.thresholdFor(p) - REVIVE_MARGIN_DB : false;
+    if (wasAlive.get(p.id) === false && alive && near) revived.push(p);
+    wasAlive.set(p.id, alive);
+  }
+  for (const id of wasAlive.keys()) if (!seen.has(id)) wasAlive.delete(id);
+  return revived;
+}
+
 /** A plain snapshot of a station entry for engine state / diagnostics. */
 export function stationView(e) {
   if (!e) return null;
