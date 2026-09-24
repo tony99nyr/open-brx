@@ -636,7 +636,7 @@ export function startDemo({ engine, log }) {
       'live-pu-rockets':     [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)]],                           // the station named me: ROCKETS, 2 charges beside the ammo
       'live-pu-swap':        [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [3900, () => ev.puTake(5)]],   // RAIL GUN replaces ROCKETS
       'live-pu-overshield':  [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(6)]],                           // +75 on the shield bar
-      'live-pu-overshield-hit': [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(6)], [3900, () => ev.hit(30)]],   // hits take the overshield first
+      'live-pu-overshield-hit': [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(6)], [4800, () => ev.hit(30)]],   // hits take the overshield first (after the 1 s protected grant)
       'live-pu-select':      [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [6300, 'puSelect']],       // SELECT: the AR back on the trigger, the rockets kept
       'live-pu-empty':       [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [4700, 'puFire'], [4800, 'puFire']],   // both rockets fired: the AR back on the trigger
       'down-pu-held':        [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [3900, 'die']],           // a death with an item held: it is gone

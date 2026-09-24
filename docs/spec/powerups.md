@@ -61,7 +61,7 @@ heavy was on the trigger. Tony's SELECT decision dropped the block: ALT keeps it
    stick past the `$PSET` shield max; `$HP` clamps back to the max within about 0.75 s.** A grant above the
    preset max holds only once a mid-life `$PSET` re-send raises the shield max first. A death clears it. Also:
    the same write to a gun at `$HP,0` must not revive it (mode 1 with health above 0 is a proven revive; mode 2
-   is unmeasured).
+   is unmeasured). Built 2026-09-24 as the grant burst in "Overshield mechanics" below; its open checks are there.
 8. Pickup range calibration (brx2's runbook): the RSSI median at 15, 30, 60 and 100 cm for each phone (Pixel,
    iPhone) against each station type (phone station, StickS3). It sets `POWERUP_RSSI_DBM` per station kind and
    decides whether a per-phone offset is needed. It also measures the claim latency (in range to TAKEN on the
@@ -170,15 +170,32 @@ swap and you would only have 1."
 - **Non-weapon powerups** (first: Overshield) stack alongside a held weapon pickup: Rockets and an Overshield
   together is fine.
 
-**Overshield mechanics.** A positive `$BUMP` clamps at the `$PSET` maximum (protocol.md, the `$BUMP` row), so it
-cannot put shield above max. The grant is `$LIFE` with token 4 = 2 (set past max) on the shield pool: current +
-`OVERSHIELD_AMOUNT` (75). Design: it takes hits first (the gun's cascade drains shield before armour and HP), does
-not regenerate (`OVERSHIELD_REGEN` off), does not decay (`OVERSHIELD_DECAY_PER_S` 0), and is gone at death. **Bench
-2026-09-24 (Bench gate item 7), measured: the raw `$LIFE` write does NOT stick past the `$PSET` shield max; `$HP`
-clamps back to the max within about 0.75 s.** The grant must pair a mid-life `$PSET` re-send that raises the shield
-max, and only then does the `$LIFE` write hold. A death clears it. Untested: hits draining the shield first, and a
-`$BUMP` refill on a gun already holding a raised max, so the recharge-rule design above remains a design intent,
-not a bench-confirmed guard.
+**Overshield mechanics (Tony, 2026-09-24: "in halo if you get hit while you are getting overshield the damage is
+ignored").** A positive `$BUMP` clamps at the `$PSET` maximum, and the bench showed a raw `$LIFE` set past the max
+clamps back within 0.75 s. A mid-life `$PSET` re-send that raises ONLY the shield max (70 → 145) then holds a
+`$LIFE,…,145,2` for over 100 s, and the gun still fires and cycles ALT. So the grant is one burst, in this order:
+
+1. spawn protection on (`$TMP` t8 = -100, the frame compile's spawn and revive use);
+2. the node's current `$PSET` (the life's `pset_pool` take, else the head's) with only the shield max changed, to the
+   preset max plus the amount (the Standard preset, shield max 0, gets 75);
+3. `$LIFE,<hp>,<armour>,<current shield + amount>,2,*`, at the pools as they stood when the station named the player.
+
+`OVERSHIELD_GRANT_MS` (1000) later the phone writes `spawn_protect_off`. A hit inside the window does no damage, and a
+hit in flight before it is overwritten by the absolute `$LIFE`: the damage is ignored. A lower `$HP` inside the window
+is a pre-grant hit reported late, so it does not end the overshield. The phone never grants to a gun at 0 health (an
+absolute `$LIFE` there could revive it). A life still inside its own spawn protection keeps it: the grant writes no
+`$TMP` then.
+
+The overshield takes hits first (the gun's cascade drains shield before armour and HP), does not regenerate
+(`OVERSHIELD_REGEN` off; the S29 recharge writes nothing while it is up), and does not decay
+(`OVERSHIELD_DECAY_PER_S` 0). When it is gone, drained back to its base, the phone re-sends the `$PSET` at the preset
+shield max, so a later refill or spawn cannot fill to the raised one. At a death the revive burst's own `pset_pool`
+`$PSET` lands before its `$SPAWN` at the preset max; an older bundle without one gets the preset `$PSET` at the death.
+Everything is behind the powerups flag.
+
+Bench items (step 3.5 of `docs/bench-2026-09-24.md`): a hit on the raised max drains the overshield first; `spawned`
+survives a hit and a death after a mid-life `$PSET`; spawn protection covers the grant (a hit inside the window does
+nothing).
 
 ## Station powerup modes (Tony, 2026-09-24: "future variations wanted")
 

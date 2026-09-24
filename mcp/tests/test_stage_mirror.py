@@ -1498,11 +1498,14 @@ KNOWN_UNMIRRORED = {
     # part to port, as a hand-driven stage button, once Sitting A has proved the spare slot and the `$BMAP` cycle.
     "_puReset", "_puItems", "_puElapsed", "_puAdvertOf", "_puClaimable", "_puNextInMs", "_puMedian", "_puThreshold",
     "_puStation", "_altCycle", "_nextAltSlot", "_puObserve", "_puClaimTick",
-    "_puTakerCheck", "_puPoolsMoving", "_puTick", "_puGrantWeapon", "_puGrantShield", "_puAmmo", "_puEnd", "_puShieldFrame", "_puDeath",
+    "_puTakerCheck", "_puTick", "_puGrantWeapon", "_puGrantShield", "_puAmmo", "_puEnd", "_puShieldFrame", "_puDeath",
     # Tony 2026-09-24, "straight to trigger" + "select should equip it": the heavy goes onto the trigger with its head
     # `$WEAP` re-sent, SELECT toggles it, and the empty magazine / a death / a reconcile hand the trigger back. All of it
     # hangs off a held item, which only a powerup station's grant (above) creates, so it is unportable for the same reason.
     "_puHeadWeap", "_puOnHeavy", "_puLoadoutSlot", "_puCounts", "_puEquip", "_puSelectPressed", "_puRevive", "_puReconciled",
+    # Tony 2026-09-24, the overshield: the grant burst (spawn protection, the raised `$PSET`, the `$LIFE`), its protection
+    # end, and the `$PSET` restore. They hang off a granted overshield, which only the station grant above creates.
+    "_osPset", "_osProtectFrames", "_osTick", "_osRestore",
     "powerupView",
     # S42 (2026-09-17): node-driven recoil. Every one of these reads `weaponRow(id).recoil` off the
     # CATALOG (`_activeWeaponId` -> `this.catalog`) -- and `weaponRow`/`catalog` are already pinned

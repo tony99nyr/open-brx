@@ -24,7 +24,7 @@ const WEAP0 = golden.head.find(f => f.startsWith("$WEAP,0,"));
 function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 /** A live TDM with `stations` on the config (and `powerups` slots for the weapon items), past T-0. */
-function harness({ stations = [], powerups = undefined, maxShield = 0, weapons = [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], overrides = undefined, stun = undefined } = {}) {
+function harness({ stations = [], powerups = undefined, maxShield = 0, weapons = [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], overrides = undefined, stun = undefined, psetPool = true } = {}) {
   const writes = []; const facts = []; let clock = 1_000_000;
   const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
   const config = { config_id: golden.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 900,
@@ -42,7 +42,9 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
   eng.onMcMessage({ kind: 'assign', body: { player, team: teams[0], roster } });
   const frames = { ...golden, player_id: 'p1' };
   // the Shields preset (armour 0, a shield ceiling): the maxima are read back from the head's `$PSET`, so rewrite it there
-  if (maxShield) frames.head = frames.head.map(f => f.startsWith('$PSET,') ? f.replace(/^\$PSET,(\d+),(\d+),45,70,0,/, `$PSET,$1,$2,45,0,${maxShield},`) : f);
+  const shieldsPset = f => f.startsWith('$PSET,') ? f.replace(/^\$PSET,(\d+),(\d+),45,70,0,/, `$PSET,$1,$2,45,0,${maxShield},`) : f;
+  if (maxShield) { frames.head = frames.head.map(shieldsPset); frames.pset_pool = frames.pset_pool.map(shieldsPset); }
+  if (!psetPool) delete frames.pset_pool;   // an older bundle: the spawn and revive carry no $PSET of their own
   // A56: compile arms each pickup weapon in its spare slot with a normal `$WEAP` in the head, and every spawn and revive
   // empties it with `$AMMO,<slot>,0,0,1` (compile.py; the respawn profile's bursts carry the same `ammo` rows).
   if (powerups) {
@@ -273,36 +275,6 @@ test('F331: a STUNNED player who walks out of range drops the claim (no claim_re
   }
 });
 
-test('M3: the overshield waits while a $HP arrived in the last 300 ms, then writes the FRESH pools', () => {
-  assert.equal(E.OVERSHIELD_POOL_QUIET_MS, 300);
-  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
-  h.at(61); h.near(6); h.adv(1100);
-  h.frame('$HIR,4,0,19,2,9,0,3,*').frame('$HP,45,61,0,*');   // a hit lands in the same breath as the station's answer
-  const n = h.mark(); h.near(6, { state: 0, value: 58, taker: 7 });
-  assert.deepEqual(h.since(n).filter(f => f.startsWith('$LIFE,') && !E.isPoolProbe(f)), [], 'deferred: the pools just moved');
-  h.adv(400); h.near(6, { state: 0, value: 58, taker: 7 });
-  assert.deepEqual(h.since(n).filter(f => f.startsWith('$LIFE,') && !E.isPoolProbe(f)), ['$LIFE,45,61,75,2,*'], 'then granted on the pools the gun reported');
-});
-
-test('M3: the overshield waits while a poison tick is unechoed (an absolute set would undo it)', () => {
-  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
-  h.at(61); h.near(6); h.adv(1100);
-  h.eng._dotEcho = { at: h.eng.now(), pool: 'health', n: 4 };   // the node's own tick write, its `$HP` echo not back yet
-  const n = h.mark(); h.near(6, { state: 0, value: 58, taker: 7 });
-  assert.deepEqual(h.since(n).filter(f => f.startsWith('$LIFE,') && !E.isPoolProbe(f)), []);
-  h.eng._dotEcho = null; h.adv(250); h.near(6, { state: 0, value: 58, taker: 7 });
-  assert.equal(h.since(n).filter(f => f.startsWith('$LIFE,') && !E.isPoolProbe(f)).length, 1, 'granted once the echo is in');
-});
-
-test('polish r2: a poison echo that never matched stops blocking the overshield after DOT_ECHO_MS', () => {
-  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
-  h.at(61); h.near(6); h.adv(1100);
-  h.eng._dotEcho = { at: h.eng.now(), pool: 'health', n: 4 };   // its echo merged into a hit's $HP: never consumed
-  const n = h.mark(); h.near(6, { state: 0, value: 58, taker: 7 });
-  h.adv(E.DOT_ECHO_MS + 250); h.near(6, { state: 0, value: 57, taker: 7 });
-  assert.equal(h.since(n).filter(f => f.startsWith('$LIFE,') && !E.isPoolProbe(f)).length, 1, 'granted once the echo window passed');
-});
-
 // ---- Tony, 2026-09-24: "straight to trigger. id prefer trigger fires it" + "select should equip it if possible". ----
 // Bench (Tactix-FE30, powerups.md "Sitting A 3.3"): a mid-life `$WEAP,<slot>,…` makes that slot the trigger's weapon at
 // once; `$AMMO` alone never switches; the switch-back is the saved weapon's `$WEAP` then its saved `$AMMO`.
@@ -467,4 +439,85 @@ test('ALT off the heavy keeps its charges, and SELECT brings it back with them',
   assert.deepEqual(puw(h.since(n)), [WEAP[2], '$AMMO,2,1,0,1,*']);
   s = h.eng.state();
   assert.deepEqual(s.powerup.held.back, { slot: 1, mag: 5, res: 24 }, 'the switch-back target is now the secondary the trigger was on');
+});
+
+// ---- Tony, 2026-09-24, the overshield: "in halo if you get hit while you are getting overshield the damage is ignored". ----
+// Bench: a shield set past the `$PSET` max clamps back within 0.75 s; a mid-life `$PSET` raising ONLY the shield max then
+// holds the `$LIFE` set. So the grant is one burst: spawn protection on, the raised `$PSET`, the absolute `$LIFE`; then,
+// OVERSHIELD_GRANT_MS later, protection off. The `$PSET` goes back to the preset max when the overshield is gone.
+const PROTECT_ON = '$TMP,,,,,,,,-100,,,,*';
+const psetT5 = f => +f.split(',')[5];
+const osw = w => w.filter(f => /^\$(TMP|PSET|LIFE),/.test(f) && !E.isPoolProbe(f));
+
+test('overshield grant burst: protection on, the $PSET with shield max raised by the amount, the absolute $LIFE; protection off 1 s later', () => {
+  assert.equal(E.OVERSHIELD_GRANT_MS, 1000);
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
+  h.at(61); h.frame('$HP,40,55,0,*'); const n = h.mark(); h.take(6);
+  const w = osw(h.since(n));
+  assert.equal(w.length, 3, JSON.stringify(w));
+  assert.equal(w[0], PROTECT_ON, 'spawn protection first: a hit during the grant does no damage');
+  assert.ok(w[1].startsWith('$PSET,'), JSON.stringify(w));
+  assert.equal(psetT5(w[1]), 75, 'the Standard preset (shield max 0) gets max 75');
+  assert.deepEqual(w[1].split(',').filter((_, i) => i !== 5), golden.pset_pool[0].split(',').filter((_, i) => i !== 5), 'only the shield max changes');
+  assert.equal(w[2], '$LIFE,40,55,75,2,*');
+  const m = h.mark(); h.adv(900);
+  assert.deepEqual(osw(h.since(m)), [], 'protection holds for the whole grant window');
+  h.adv(200);
+  assert.deepEqual(osw(h.since(m)), [golden.spawn_protect_off], 'then spawn protection off');
+});
+
+test('overshield on the Shields preset: the $PSET max is the preset max plus the amount', () => {
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }], maxShield: 70 });
+  h.frame('$HP,45,0,70,*'); h.at(61); const n = h.mark(); h.take(6);
+  const w = osw(h.since(n));
+  assert.equal(psetT5(w.find(f => f.startsWith('$PSET,'))), 145);
+  assert.ok(w.includes('$LIFE,45,0,145,2,*'));
+});
+
+test('a hit during the grant is ignored: no deferral, the $LIFE carries the pools as they stood, and a stale lower $HP does not end it', () => {
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }], maxShield: 70 });
+  h.frame('$HP,45,0,70,*'); h.at(61); h.near(6); h.adv(1100);
+  h.frame('$HIR,4,0,19,2,9,0,3,*').frame('$HP,45,0,61,*');   // a hit lands in the same breath as the station's answer
+  const n = h.mark(); h.near(6, { state: 0, value: 58, taker: 7 });
+  assert.deepEqual(osw(h.since(n)).filter(f => f.startsWith('$LIFE,') && !E.isPoolProbe(f)), ['$LIFE,45,0,136,2,*'], 'granted at once, on the pools the gun last reported');
+  h.adv(200); h.frame('$HIR,4,0,19,2,9,0,3,*').frame('$HP,45,0,52,*');   // a hit from before protection, reported late
+  assert.ok(h.eng.state().powerup.overshield, 'inside the grant window a lower $HP is the gun catching up, not the overshield breaking');
+  h.frame('$HP,45,0,136,*');
+  assert.equal(h.eng.state().powerup.overshield.left, 75);
+});
+
+test('no overshield grant to a dead gun', () => {
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
+  h.at(61); h.near(6); h.adv(1100);
+  h.eng.hp = 0;   // the gun reported 0 health and the death is still being processed
+  const n = h.mark(); h.near(6, { state: 0, value: 58, taker: 7 });
+  assert.deepEqual(osw(h.since(n)), []);
+  h.eng.hp = 45; h.adv(250); h.near(6, { state: 0, value: 57, taker: 7 });
+  assert.ok(osw(h.since(n)).includes('$LIFE,45,70,75,2,*'), 'CONTROL: granted once the gun is alive again, the latch still warm');
+});
+
+test('the $PSET goes back to the preset max once the overshield has drained', () => {
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }], maxShield: 70 });
+  h.frame('$HP,45,0,70,*'); h.at(61); h.take(6); h.frame('$HP,45,0,145,*'); h.away(); h.adv(1500);
+  let n = h.mark(); h.frame('$HIR,4,0,19,2,9,0,3,*').frame('$HP,45,0,100,*');
+  assert.deepEqual(osw(h.since(n)).filter(f => f.startsWith('$PSET,')), [], 'still up: the raised max stays');
+  n = h.mark(); h.frame('$HIR,4,0,19,2,9,0,3,*').frame('$HP,45,0,60,*');
+  assert.equal(h.eng.state().powerup.overshield, null);
+  const ps = osw(h.since(n)).filter(f => f.startsWith('$PSET,'));
+  assert.equal(ps.length, 1, 'one $PSET restore'); assert.equal(psetT5(ps[0]), 70, 'the preset shield max');
+});
+
+test('a death with the overshield up: the revive burst\'s own $PSET restores the max; an older bundle without one gets it at the death', () => {
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
+  h.at(61); h.take(6); h.frame('$HP,45,70,75,*'); h.adv(1500);
+  let n = h.mark(); h.die();
+  assert.deepEqual(osw(h.since(n)).filter(f => f.startsWith('$PSET,')), [], 'the revive writes the pool $PSET before its $SPAWN');
+  h.adv(9000);
+  const w = h.since(n), p = w.findIndex(f => f.startsWith('$PSET,')), sp = w.indexOf('$SPAWN,,*');
+  assert.ok(p >= 0 && p < sp && psetT5(w[p]) === 0, `the preset $PSET lands before the $SPAWN refills: ${JSON.stringify(w.slice(0, 6))}`);
+  const o = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }], psetPool: false });
+  o.at(61); o.take(6); o.frame('$HP,45,70,75,*'); o.adv(1500);
+  n = o.mark(); o.die();
+  const ps = osw(o.since(n)).filter(f => f.startsWith('$PSET,'));
+  assert.equal(ps.length, 1, 'no pool $PSET in the revive: restored at the death'); assert.equal(psetT5(ps[0]), 0);
 });
