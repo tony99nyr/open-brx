@@ -191,7 +191,7 @@ function connectMc(url, { wsFactory, trusted = true, pub, secret } = {}) {
     else if (m.kind === 'station_update') applyStationUpdate(m.body);
     else if (m.kind === 'control' && m.body && m.body.cmd === 'release_utility') { log('Mission Control released this phone back to HUD', 'lk'); exitToHud(); }
   });
-  transport.onState(s => { mcState = s; log(`MC ${s}${transport.rejected ? ' — ' + transport.rejected.reason : ''}`, s === 'bound' ? 'lk' : 'li'); render(); });
+  transport.onState(s => { mcState = s; if (s === 'bound' && flushTaken()) savePowerup(); log(`MC ${s}${transport.rejected ? ' — ' + transport.rejected.reason : ''}`, s === 'bound' ? 'lk' : 'li'); render(); });
   transport.connect({ url, trusted, pub, secret }).then(() => {
     // An automatically discovered endpoint becomes the remembered fallback only after MC proves itself
     // with a welcome. Until then another mDNS result may replace a stale or non-MC websocket.
@@ -357,19 +357,31 @@ function applyStationUpdate(body) {
   if (settings.live) startAdvert();
   render();
 }
+/** Polish M1: send every queued `taken` report MC has not had (`station_action`, the MC lane's kind). A report stays
+ *  queued until the socket takes it, so MC cannot re-open an item it never heard was given away. `t` is re-based from
+ *  this phone's clock onto the synced one. True when something left the queue. */
+let _takenFailAt = 0;
+function flushTaken() {
+  if (!pu.unsent.length || !transport || transport.state !== 'bound' || Date.now() - _takenFailAt < 5000) return false;
+  const n = pu.drain(b => {
+    try { if (transport.report('station_action', { ...b, t: transport.syncedNow() - (Date.now() - b.t) })) return true; }
+    catch (err) { log('station_action refused: ' + (err && err.message || err), 'le'); }
+    _takenFailAt = Date.now(); return false;   // retried in 5 s, not every tick
+  });
+  if (n) log(`MC told: ${n} item${n === 1 ? '' : 's'} taken`, 'li');
+  return n > 0;
+}
 /** One step: the self-spawn, then the claims. The station, not the phones, decides who took the item. */
 function powerupTick(now) {
   if (!pu.item) return;
-  const { changed, events } = pu.tick(presence.players(), now);
+  let { changed, events } = pu.tick(presence.players(), now);
   for (const e of events) {
     if (e.type === 'spawned') { log(`${pu.item.name} SPAWNED`, 'lk'); flash(`${String(pu.item.name).toUpperCase()} AVAILABLE`, 'any'); }
     else if (e.type === 'taken') {
       log(`${pu.item.name} TAKEN by player ${e.player_num}`, 'lk'); flash(`TAKEN · P${e.player_num}`, 'any');
-      // MC's relay (the MC lane adds the kind): best-effort, like every station message; the advert is the truth.
-      try { if (transport && !transport.report('station_action', { id: settings.id, action: 'taken', player_num: e.player_num, t: transport.syncedNow() })) log('station_action not sent (MC not bound): the advert still names the taker', 'li'); }
-      catch (err) { log('station_action refused: ' + (err && err.message || err), 'le'); }
     }
   }
+  if (flushTaken()) changed = true;   // polish M1: queued, so a report lost to a dead link goes out on re-bind
   if (changed || events.length) savePowerup();
   if (!settings.live) return;
   if (!advertising) { if (now - _advertRetryAt >= 1000) { _advertRetryAt = now; startAdvert(); } return; }

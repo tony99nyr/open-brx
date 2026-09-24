@@ -20,12 +20,12 @@ const OVERSHIELD = { kind: 'overshield', amount: 75, spawn_every_s: 60, first_at
 function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 /** A live TDM with `stations` on the config (and `powerups` slots for the weapon items), past T-0. */
-function harness({ stations = [], powerups = undefined, maxShield = 0, weapons = [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], overrides = undefined } = {}) {
+function harness({ stations = [], powerups = undefined, maxShield = 0, weapons = [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], overrides = undefined, stun = undefined } = {}) {
   const writes = []; const facts = []; let clock = 1_000_000;
   const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
   const config = { config_id: golden.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 900,
     respawn: { type: 'auto', delay_s: 8 }, scoring: { frag_limit: 25, win_by: 'kills' }, health: maxShield ? { max_hp: 45, max_armor: 0, max_shield: maxShield } : { max_hp: 45, max_armor: 70, max_shield: 0 }, teams,
-    ...(stations.length ? { stations } : {}), ...(powerups ? { powerups } : {}) };
+    ...(stations.length ? { stations } : {}), ...(powerups ? { powerups } : {}), ...(stun ? { stun } : {}) };
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons, ...(overrides ? { overrides } : {}) }, voice: 'male' };
   // The fake gun answers the node's liveness probe the way the bench gun does (`$LIFE,0,0,0,*` -> `$HP` at once), so a
   // long quiet stretch on the match clock is not read as a locked-up gun (F272).
@@ -292,4 +292,37 @@ test('Easy Reload keeps ALT: an Easy Reload player does not claim a WEAPON item 
   assert.deepEqual(bmap1(h.since(n)), [], 'ALT is never rewritten');
   h.take(6);
   assert.equal(h.facts.filter(f => f.type === 'pickup' && f.item_kind === 'overshield').length, 1, 'an overshield touches no button, so it is still taken');
+});
+
+test('M2: no grant while STUNNED (the stun restore would erase it); the ready claim waits and is granted once the stun ends', () => {
+  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }], stun: { duration_s: 3 } });
+  h.at(121); h.near(4); h.adv(1100); h.near(4);
+  h.frame('$HIR,4,8,19,2,8,0,0,*');   // an EMP word: the gun is disarmed for 3 s
+  assert.ok(h.eng.stunned, 'setup: stunned');
+  const n = h.mark(); h.near(4, { state: 0, value: 110, taker: 7 }); h.adv(500); h.near(4, { state: 0, value: 110, taker: 7 });
+  assert.deepEqual(grants(h.since(n)).filter(f => /^\$(AMMO,2|BMAP,1)/.test(f)), [], 'nothing granted inside the stun');
+  h.adv(3000); h.near(4, { state: 0, value: 106, taker: 7 });
+  assert.equal(h.eng.stunned, null, 'setup: the stun is over');
+  assert.ok(h.since(n).includes('$AMMO,2,2,0,1,*'), 'granted once the stun ended');
+});
+
+test('M3: the overshield waits while a $HP arrived in the last 300 ms, then writes the FRESH pools', () => {
+  assert.equal(E.OVERSHIELD_POOL_QUIET_MS, 300);
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
+  h.at(61); h.near(6); h.adv(1100);
+  h.frame('$HIR,4,0,19,2,9,0,3,*').frame('$HP,45,61,0,*');   // a hit lands in the same breath as the station's answer
+  const n = h.mark(); h.near(6, { state: 0, value: 58, taker: 7 });
+  assert.deepEqual(h.since(n).filter(f => f.startsWith('$LIFE,') && !E.isPoolProbe(f)), [], 'deferred: the pools just moved');
+  h.adv(400); h.near(6, { state: 0, value: 58, taker: 7 });
+  assert.deepEqual(h.since(n).filter(f => f.startsWith('$LIFE,') && !E.isPoolProbe(f)), ['$LIFE,45,61,75,2,*'], 'then granted on the pools the gun reported');
+});
+
+test('M3: the overshield waits while a poison tick is unechoed (an absolute set would undo it)', () => {
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
+  h.at(61); h.near(6); h.adv(1100);
+  h.eng._dotEcho = { at: h.eng.now(), pool: 'health', n: 4 };   // the node's own tick write, its `$HP` echo not back yet
+  const n = h.mark(); h.near(6, { state: 0, value: 58, taker: 7 });
+  assert.deepEqual(h.since(n).filter(f => f.startsWith('$LIFE,') && !E.isPoolProbe(f)), []);
+  h.eng._dotEcho = null; h.adv(250); h.near(6, { state: 0, value: 58, taker: 7 });
+  assert.equal(h.since(n).filter(f => f.startsWith('$LIFE,') && !E.isPoolProbe(f)).length, 1, 'granted once the echo is in');
 });

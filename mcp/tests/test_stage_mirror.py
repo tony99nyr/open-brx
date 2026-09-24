@@ -1483,7 +1483,7 @@ KNOWN_UNMIRRORED = {
     # part to port, as a hand-driven stage button, once Sitting A has proved the spare slot and the `$BMAP` cycle.
     "_puReset", "_puItems", "_puElapsed", "_puAdvertOf", "_puClaimable", "_puNextInMs", "_puMedian", "_puThreshold",
     "_puStation", "_puAltRestore", "_puAltWith", "_altCycle", "_nextAltSlot", "_puObserve", "_puClaimTick",
-    "_puTakerCheck", "_puTick", "_puGrantWeapon", "_puGrantShield", "_puAmmo", "_puEnd", "_puShieldFrame", "_puDeath",
+    "_puTakerCheck", "_puPoolsMoving", "_puTick", "_puGrantWeapon", "_puGrantShield", "_puAmmo", "_puEnd", "_puShieldFrame", "_puDeath",
     "powerupView",
     # S42 (2026-09-17): node-driven recoil. Every one of these reads `weaponRow(id).recoil` off the
     # CATALOG (`_activeWeaponId` -> `this.catalog`) -- and `weaponRow`/`catalog` are already pinned

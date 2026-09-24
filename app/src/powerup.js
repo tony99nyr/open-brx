@@ -32,23 +32,41 @@ export class PowerupStation {
     this.taker = 0;          // the player_num the last item went to; cleared at the next spawn
     this.ringAt = null;      // the first `claiming` advert heard for the item that is here (the screen's 1 s ring)
     this.log = [];           // [{t, type, player_num?}], the station's own recap
+    this.awardedNext = null; // polish M1: the next-spawn instant when the item was awarded (that spawn is given away)
+    this.unsent = [];        // polish M1: `station_action` taken reports MC has not had yet, sent on (re-)bind
   }
   get everyMs() { const s = Number(this.item && this.item.spawn_every_s); return s > 0 ? s * 1000 : 0; }
   /** MC's `station_update {available, next_spawn_in_ms}`: the time REMAINING, re-anchored on arrival. */
   update(body, now) {
     if (!body || typeof body !== 'object') return;
+    const hasNext = body.next_spawn_in_ms != null && Number.isFinite(+body.next_spawn_in_ms) && +body.next_spawn_in_ms >= 0;
+    const next = hasNext ? now + Math.round(+body.next_spawn_in_ms) : null;
+    // Polish M1: MC re-opening the spawn this station already AWARDED means MC never heard `taken` (a lost report, a
+    // reconnect re-send, a restarted MC). A LATER spawn instant (about one interval on) is a new item and is accepted.
+    // ⚠ An operator RESET arrives as the same plain `available: true` with the same next spawn, so it is refused too:
+    // the item then reappears at the station's own next spawn, never twice. An optional `reset: true` would tell them apart.
+    if (body.available === true && this.available === false && this.taker && this.awardedNext != null) {
+      const half = this.everyMs > 0 ? this.everyMs / 2 : 1000;
+      if (next == null || next < this.awardedNext + half) return;
+    }
     if (typeof body.available === 'boolean') {
-      if (body.available && this.available !== true) this.taker = 0;
+      if (body.available && this.available !== true) { this.taker = 0; this.awardedNext = null; }
       this.available = body.available;
     }
-    if (Number.isFinite(+body.next_spawn_in_ms) && +body.next_spawn_in_ms >= 0) this.nextAt = now + Math.round(+body.next_spawn_in_ms);
+    if (hasNext) this.nextAt = next;
+  }
+  /** Polish M1: hand every queued `taken` report to `send(body) -> boolean` (true = it left); the rest stay queued. */
+  drain(send) {
+    let n = 0;
+    while (this.unsent.length) { if (!send(this.unsent[0])) break; this.unsent.shift(); n++; }
+    return n;
   }
   /** One step: the self-spawn on its own countdown, then the claims heard since the last step. `players` are
    *  beacon.js Presence entries (role player) with `raw` (the last sample) and `ageMs`. */
   tick(players, now) {
     const events = []; let changed = false;
     if (this.nextAt != null && now >= this.nextAt) {
-      if (this.available !== true) { this.available = true; this.taker = 0; events.push({ type: 'spawned' }); changed = true; }
+      if (this.available !== true) { this.available = true; this.taker = 0; this.awardedNext = null; events.push({ type: 'spawned' }); changed = true; }
       const every = this.everyMs;
       if (every > 0) { while (this.nextAt <= now) this.nextAt += every; } else this.nextAt = null;
     }
@@ -58,8 +76,9 @@ export class PowerupStation {
     if (this.available === true) {
       const ready = mine.filter(p => p.state & PLAYER_STATE.claim_ready).sort((a, b) => a.id - b.id);
       if (ready.length) {
-        this.available = false; this.taker = ready[0].id; this.ringAt = null;
+        this.available = false; this.taker = ready[0].id; this.ringAt = null; this.awardedNext = this.nextAt;
         events.push({ type: 'taken', player_num: this.taker }); changed = true;
+        this.unsent.push({ id: this.id, action: 'taken', player_num: this.taker, t: now }); if (this.unsent.length > 16) this.unsent.shift();
         this.log.push({ t: now, type: 'taken', player_num: this.taker }); if (this.log.length > 64) this.log.shift();
       } else if (mine.some(p => p.state & PLAYER_STATE.claiming)) { if (this.ringAt == null) { this.ringAt = now; changed = true; } }
       else if (this.ringAt != null) { this.ringAt = null; changed = true; }
@@ -72,13 +91,15 @@ export class PowerupStation {
     return { available: this.available, taker: this.taker, ringAt: this.ringAt,
       nextInMs: this.nextAt == null ? null : Math.max(0, this.nextAt - now) };
   }
-  snapshot() { return { available: this.available, nextAt: this.nextAt, taker: this.taker, log: this.log.slice(-32) }; }
+  snapshot() { return { available: this.available, nextAt: this.nextAt, taker: this.taker, awardedNext: this.awardedNext, unsent: this.unsent.slice(), log: this.log.slice(-32) }; }
   restore(s) {
     if (!s || typeof s !== 'object') return this;
     if (s.available === true || s.available === false) this.available = s.available;
     if (Number.isFinite(s.nextAt)) this.nextAt = s.nextAt;
     if (Number.isFinite(s.taker)) this.taker = s.taker;
     if (Array.isArray(s.log)) this.log = s.log;
+    if (Number.isFinite(s.awardedNext)) this.awardedNext = s.awardedNext;
+    if (Array.isArray(s.unsent)) this.unsent = s.unsent.slice(-16);
     return this;
   }
 }
