@@ -35,8 +35,10 @@ A mid-match config re-push to a live gun clears `spawned` and silences it for th
 7. **A death with the heavy held.** The item is lost (`LOST_AT_DEATH`). Compile's revive re-empties the pickup slot.
    The trigger's slot after `$SPAWN` is unproven, so after the revive burst the phone re-sends slot 0's head `$WEAP`
    and the burst's own `$AMMO,0,…` row (a safe re-equip). An operator respawn of a live player does the same.
-8. **A reconcile** (a BLE relink) re-arms from the spawn `$AMMO` rows, which empty the pickup slot, so the phone then
-   writes the held heavy's charges back.
+8. **A reconcile** (a BLE relink) disarms the held heavy's slot with slots 0 and 1, and the re-arm carries the heavy's
+   charges in place of its spawn zero row, in the same write (a separate write let the gun's echo of 0 end the item).
+   A switch-back the gun does not answer with an `$ALCD` for that slot is re-sent every 1.5 s (3 times at most), and
+   SELECT re-sends it at once.
 9. **Persisted:** the held item, its saved switch-back slot and counts, the trigger's slot, and a pending slot-0
    re-equip. An app restart mid-item still switches back correctly.
 
@@ -177,14 +179,16 @@ clamps back within 0.75 s. A mid-life `$PSET` re-send that raises ONLY the shiel
 
 1. spawn protection on (`$TMP` t8 = -100, the frame compile's spawn and revive use);
 2. the node's current `$PSET` (the life's `pset_pool` take, else the head's) with only the shield max changed, to the
-   preset max plus the amount (the Standard preset, shield max 0, gets 75);
+   new shield, never below the preset max (the Standard preset at shield 0 gets 75);
 3. `$LIFE,<hp>,<armour>,<current shield + amount>,2,*`, at the pools as they stood when the station named the player.
 
 `OVERSHIELD_GRANT_MS` (1000) later the phone writes `spawn_protect_off`. A hit inside the window does no damage, and a
 hit in flight before it is overwritten by the absolute `$LIFE`: the damage is ignored. A lower `$HP` inside the window
 is a pre-grant hit reported late, so it does not end the overshield. The phone never grants to a gun at 0 health (an
-absolute `$LIFE` there could revive it). A life still inside its own spawn protection keeps it: the grant writes no
-`$TMP` then.
+absolute `$LIFE` there could revive it), nor while a `$HIR` has arrived with no `$HP` after it (up to 1 s: a lethal
+hit in flight must stand); the claim stays warm and the grant goes out once the `$HP` is in. A life still inside its
+own spawn protection keeps it: the grant writes no `$TMP` then. A lost protection-off write is retried on the next
+tick, and MC's status reads `protected` for the whole window (F289). The `$PSET` restore is retried once.
 
 The overshield takes hits first (the gun's cascade drains shield before armour and HP), does not regenerate
 (`OVERSHIELD_REGEN` off; the S29 recharge writes nothing while it is up), and does not decay
@@ -195,7 +199,9 @@ Everything is behind the powerups flag.
 
 Bench items (step 3.5 of `docs/bench-2026-09-24.md`): a hit on the raised max drains the overshield first; `spawned`
 survives a hit and a death after a mid-life `$PSET`; spawn protection covers the grant (a hit inside the window does
-nothing).
+nothing); and the burst order: does `$TMP` t8 = -100 sent BEFORE the `$PSET` survive it, or does a mid-life `$PSET`
+reset `$TMP` the way `$SPAWN` does? (If it does, protection goes after the `$PSET`.) The heat reset on a `$WEAP`
+re-send is Bench gate item 9a.
 
 ## Station powerup modes (Tony, 2026-09-24: "future variations wanted")
 

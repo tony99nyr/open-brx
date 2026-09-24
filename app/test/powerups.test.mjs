@@ -24,7 +24,7 @@ const WEAP0 = golden.head.find(f => f.startsWith("$WEAP,0,"));
 function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
 /** A live TDM with `stations` on the config (and `powerups` slots for the weapon items), past T-0. */
-function harness({ stations = [], powerups = undefined, maxShield = 0, weapons = [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], overrides = undefined, stun = undefined, psetPool = true } = {}) {
+function harness({ stations = [], powerups = undefined, maxShield = 0, weapons = [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], overrides = undefined, stun = undefined, psetPool = true, echo = false, profile = true } = {}) {
   const writes = []; const facts = []; let clock = 1_000_000;
   const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
   const config = { config_id: golden.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 900,
@@ -33,8 +33,19 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons, ...(overrides ? { overrides } : {}) }, voice: 'male' };
   // The fake gun answers the node's liveness probe the way the bench gun does (`$LIFE,0,0,0,*` -> `$HP` at once), so a
   // long quiet stretch on the match clock is not read as a locked-up gun (F272).
-  const answers = [], store = mkStorage();
-  const mk = () => new Engine({ writer: fr => { writes.push(...fr); for (const f of fr) if (f === E.PROBE_LIFE) answers.push(f); }, emit: f => facts.push(f), report: () => {}, now: () => clock,
+  const answers = [], store = mkStorage(), batches = [], echoQ = []; let failNext = null;
+  // `echo`: the fake gun answers every `$WEAP` and `$AMMO` write with the `$ALCD` a real gun sends (F259: the `$WEAP`
+  // reset at the compiled clip, then the `$AMMO` count). `failNext`: the next write carrying a matching frame resolves false.
+  const writer = fr => {
+    writes.push(...fr); batches.push([...fr]);
+    for (const f of fr) if (f === E.PROBE_LIFE) answers.push(f);
+    if (failNext && fr.some(failNext)) { failNext = null; return false; }
+    if (echo) for (const f of fr) { const t = f.split(',');
+      if (t[0] === '$WEAP') echoQ.push(`$ALCD,${t[17] || 0},100,${t[1]},${t[18] || 0},0,*`);
+      else if (t[0] === '$AMMO') echoQ.push(`$ALCD,${t[2]},100,${t[1]},${t[3]},0,*`); }
+    return undefined;
+  };
+  const mk = () => new Engine({ writer, emit: f => facts.push(f), report: () => {}, now: () => clock,
     synced: () => true, storage: store, log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
   let eng = mk();
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
@@ -44,7 +55,8 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
   // the Shields preset (armour 0, a shield ceiling): the maxima are read back from the head's `$PSET`, so rewrite it there
   const shieldsPset = f => f.startsWith('$PSET,') ? f.replace(/^\$PSET,(\d+),(\d+),45,70,0,/, `$PSET,$1,$2,45,0,${maxShield},`) : f;
   if (maxShield) { frames.head = frames.head.map(shieldsPset); frames.pset_pool = frames.pset_pool.map(shieldsPset); }
-  if (!psetPool) delete frames.pset_pool;   // an older bundle: the spawn and revive carry no $PSET of their own
+  if (!psetPool) delete frames.pset_pool;
+  if (!profile) delete frames.respawn_profile;   // an older bundle: a protected life ends on its first shot or the cap   // an older bundle: the spawn and revive carry no $PSET of their own
   // A56: compile arms each pickup weapon in its spare slot with a normal `$WEAP` in the head, and every spawn and revive
   // empties it with `$AMMO,<slot>,0,0,1` (compile.py; the respawn profile's bursts carry the same `ammo` rows).
   if (powerups) {
@@ -58,8 +70,10 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
   eng.feedFrame('$LCD,0,0,0,0,0,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
   const h = {
-    eng, writes, facts,
-    adv(ms) { const step = 250; for (let t = 0; t < ms; t += step) { clock += Math.min(step, ms - t); eng.tick(); while (answers.length) { answers.shift(); eng.feedFrame(`$HP,${eng.hp},${eng.armor},${eng.shield},*`); } } return h; },
+    eng, writes, facts, batches,
+    flush() { while (echoQ.length) eng.feedFrame(echoQ.shift()); return h; },
+    failNext(pred) { failNext = pred; return h; },
+    adv(ms) { const step = 250; for (let t = 0; t < ms; t += step) { h.flush(); clock += Math.min(step, ms - t); eng.tick(); h.flush(); while (answers.length) { answers.shift(); eng.feedFrame(`$HP,${eng.hp},${eng.armor},${eng.shield},*`); } } return h; },
     at(s) { return h.adv(Math.max(0, 1_000_000 + s * 1000 - clock)); },
     mark() { return writes.length; },
     since(n) { return writes.slice(n); },
@@ -520,4 +534,113 @@ test('a death with the overshield up: the revive burst\'s own $PSET restores the
   n = o.mark(); o.die();
   const ps = osw(o.since(n)).filter(f => f.startsWith('$PSET,'));
   assert.equal(ps.length, 1, 'no pool $PSET in the revive: restored at the death'); assert.equal(psetT5(ps[0]), 0);
+});
+
+// ---- polish round 1 on pu-trigger (brx5 lead, 2026-09-24) ----
+const settle = () => new Promise(r => setImmediate(r));   // a false write resolve reaches its `.then` a microtask later
+
+test('H1: a reconcile keeps a held heavy: the disarm zeroes its slot, and the re-arm writes its charges in the SAME write (a real gun echoes)', () => {
+  const h = armed({ echo: true }); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300);
+  assert.equal(h.eng.state().powerup.held.left, 1, 'setup: one rocket left');
+  const b0 = h.batches.length;
+  h.eng.onBleDropped(); h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); h.adv(6000);
+  const bs = h.batches.slice(b0);
+  const disarm = bs.find(b => b.includes('$AMMO,0,0,0,1,*'));
+  assert.ok(disarm && disarm.includes('$AMMO,2,0,0,1,*'), `the disarm zeroes the heavy too, or it fires while disarmed: ${JSON.stringify(disarm)}`);
+  const rearm = bs.find(b => b.includes('$AMMO,0,32,192,1,*'));
+  assert.ok(rearm && rearm.includes('$AMMO,2,1,0,1,*') && !rearm.includes('$AMMO,2,0,0,1,*'), `one re-arm write, the heavy's charge in it: ${JSON.stringify(rearm)}`);
+  const s = h.eng.state().powerup;
+  assert.ok(s.held, 'the item survived the reconcile and its echoes'); assert.equal(s.held.left, 1); assert.equal(s.held.active, true);
+});
+
+test('H2: a lost overshield protection-off is retried, and the window counts as protection owed (F289)', async () => {
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
+  h.at(61); h.take(6);
+  assert.equal(h.eng.statusBody().protected, true, 'MC must know the player is protected during the grant');
+  h.failNext(f => f === golden.spawn_protect_off);
+  const n = h.mark(); h.adv(1100); await settle();
+  assert.equal(h.since(n).filter(f => f === golden.spawn_protect_off).length, 1, 'setup: the first off write, lost');
+  h.adv(500);
+  assert.equal(h.since(n).filter(f => f === golden.spawn_protect_off).length, 2, 'retried, or the player is unhittable for the life');
+  assert.ok(!h.eng.statusBody().protected, 'owed nothing once it landed');
+});
+
+test('M1: a $HIR with no $HP after it holds the overshield grant; a lethal one is never revived by the absolute $LIFE', () => {
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
+  h.at(61); h.near(6); h.adv(1100);
+  h.frame('$HIR,4,0,19,2,9,0,3,*');   // the hit is in; its $HP is still in flight
+  const n = h.mark(); h.near(6, { state: 0, value: 58, taker: 7 });
+  assert.deepEqual(osw(h.since(n)).filter(f => f.startsWith('$LIFE,') && !E.isPoolProbe(f)), [], 'held: the pools are moving');
+  h.frame('$HP,45,61,0,*'); h.adv(250); h.near(6, { state: 0, value: 58, taker: 7 });
+  assert.ok(osw(h.since(n)).includes('$LIFE,45,61,75,2,*'), 'granted on the pools the $HP brought, the latch still warm');
+  const d = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
+  d.at(61); d.near(6); d.adv(1100);
+  d.frame('$HIR,4,0,19,2,9,0,3,*');
+  const m = d.mark(); d.near(6, { state: 0, value: 58, taker: 7 }); d.frame('$HP,0,0,0,*'); d.adv(500); d.near(6, { state: 0, value: 58, taker: 7 });
+  assert.deepEqual(osw(d.since(m)).filter(f => f.startsWith('$LIFE,') && !E.isPoolProbe(f) && f.endsWith(',2,*')), [], 'the lethal hit stands');
+  assert.equal(d.eng.alive, false);
+});
+
+test('M2: a lost $PSET restore is retried once, in the same life', async () => {
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }], maxShield: 70 });
+  h.frame('$HP,45,0,70,*'); h.at(61); h.take(6); h.frame('$HP,45,0,145,*'); h.away(); h.adv(1500);
+  h.failNext(f => f.startsWith('$PSET,'));
+  const n = h.mark(); h.frame('$HIR,4,0,19,2,9,0,3,*').frame('$HP,45,0,60,*'); await settle(); await settle();
+  assert.equal(h.since(n).filter(f => f.startsWith('$PSET,')).length, 2, 'the restore, then its retry');
+});
+
+test('M3: a lost switch-back write is re-sent until the back slot\'s $ALCD arrives, and SELECT re-sends it at once', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300);
+  let n = h.mark(); h.fire(2, 0);   // the switch-back goes out, and the (fake) gun never answers it
+  assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,30,190,1,*']);
+  h.adv(2000);
+  assert.equal(h.since(n).filter(f => f === WEAP0).length, 2, 're-sent: the trigger must not stay on an empty heavy');
+  n = h.mark(); h.adv(100); h.select();
+  assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,30,190,1,*'], 'SELECT re-sends the pending switch-back');
+  h.frame('$ALCD,30,100,0,190,0,*');
+  n = h.mark(); h.adv(5000); h.select();
+  assert.deepEqual(puw(h.since(n)), [], 'the gun answered for slot 0: nothing pending');
+});
+
+test('low: an operator respawn of a live player with the overshield up restores the $PSET before the $SPAWN and ends it', () => {
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }], psetPool: false });
+  h.at(61); h.take(6); h.frame('$HP,45,70,75,*'); h.adv(1500);
+  const n = h.mark(); h.eng._revive(false, null, true);
+  const w = h.since(n), p = w.findIndex(f => f.startsWith('$PSET,')), sp = w.indexOf('$SPAWN,,*');
+  assert.ok(p >= 0 && p < sp && psetT5(w[p]) === 0, `the preset $PSET before the $SPAWN refills: ${JSON.stringify(w.slice(0, 5))}`);
+  assert.equal(h.eng.state().powerup.overshield, null);
+});
+
+test('low: a new match clears the $PSET the overshield copies, and the T-0 spawn sets it again', () => {
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
+  assert.equal(h.eng._psetNow, golden.pset_pool[0], 'the T-0 spawn\'s pool take, set after the match reset');
+  h.eng._psetNow = '$PSET,7,1,45,70,0,50,,STALE,*'; h.eng._puReset();
+  assert.equal(h.eng._psetNow, null);
+});
+
+test('low: the raised max is the new shield, never below the preset max (a half-empty Shields preset gets 105, not 145)', () => {
+  const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }], maxShield: 70 });
+  h.frame('$HP,45,0,30,*'); h.at(61); const n = h.mark(); h.take(6);
+  const w = osw(h.since(n));
+  assert.equal(psetT5(w.find(f => f.startsWith('$PSET,'))), 105);
+  assert.ok(w.includes('$LIFE,45,0,105,2,*'));
+});
+
+test('low: a shot from the heavy ends spawn protection on a bundle whose protection ends on the first shot', () => {
+  const h = harness({ ...ROCKET_GAME, profile: false });
+  h.at(112); h.die(); h.adv(8300);
+  assert.ok(h.eng.alive && h.eng._armPending && h.eng._armPending.shotEnds, 'setup: revived, protected until the first shot');
+  h.take(4);
+  assert.ok(h.eng.state().powerup.held, 'setup: rockets on the trigger');
+  const n = h.mark(); h.fire(2, 1);
+  assert.ok(h.since(n).includes(golden.spawn_protect_off), 'the heavy\'s shot is the gun\'s proof it can fire');
+});
+
+test('low: the stun restore writes the held heavy\'s count as it is at the restore, not the snapshot\'s', () => {
+  const h = armed({ stun: { duration_s: 3 } }); h.take(4); h.away(); h.adv(800);
+  h.frame('$HIR,4,8,19,2,8,0,0,*');
+  assert.ok(h.eng.stunned, 'setup: stunned');
+  h.eng._puHeld.left = 1;   // the node's count moved after the snapshot
+  const n = h.mark(); h.adv(3500);
+  assert.ok(h.since(n).includes('$AMMO,2,1,0,1,*'), JSON.stringify(h.since(n).filter(f => f.startsWith('$AMMO,'))));
 });
