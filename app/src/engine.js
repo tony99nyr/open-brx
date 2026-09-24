@@ -248,6 +248,17 @@ export function isPoolProbe(frame) {
 /** F264: how long after a spawn/revive the read-back probe waits. The burst is 17 frames and the bench measured
  *  30-90 ms a frame, so ~1.5 s to land; 2500 ms leaves the echo room to come back before we ask again. */
 const SPAWN_PROBE_MS = 2500;
+/** F341 (field 2026-09-24): the spawn read-back only asked whether an answer came. The gun answered `$HP,4545,7070,0`
+ *  (a `$PSET` whose re-send was appended to a partial copy, brxlink `PARSER_RESET`), the read-back was satisfied, and
+ *  the player was unkillable for the match. Now every pool the gun reports is CHECKED against the ceilings the compiled
+ *  `$PSET` arms (`maxHp`/`maxArmor`/`maxShield`, the one reading of that frame). A pool above its ceiling is repaired
+ *  with `$*`, the life's own `$PSET` and a clamped `$LIFE` set, then read back; POOL_REPAIR_TRIES repairs that do not
+ *  hold, or a read-back that goes unanswered, become `pool_stale: 'pool_wrong'` on the operator's board. */
+export const POOL_REPAIR_TRIES = 2;
+/** How long after a repair write the node asks the gun again: the write is 3-4 frames, well inside this. */
+export const POOL_REPAIR_READ_MS = 1500;
+/** The gun's parser reset (brxlink `PARSER_RESET`: v4.32 code read, screamers A4 is its pending bench proof), sent in front of a repair. */
+const PARSER_RESET = '$*';
 /** S16 (spec/node.md §3.17): the poison tick clock the node runs. A tick is one `$LIFE` write the node makes itself, and
  *  the gun answers a non-lethal one with `$HP` (bench 2026-09-09). That `$HP` is the TICK, not a hit: it must never
  *  become a `hit_taken` fact (MC would count a hit nobody fired) or a hit flash. This is how long after a tick write
@@ -877,6 +888,9 @@ export class Engine {
     this._shieldRegen = null; this._shieldQuietAt = 0; this._shieldLoopAt = 0; this._shieldDown = false; this._shieldGaveUp = false;
     this._actSeq = 0;               // pl4: shots and hits seen, so `_writeMust` can tell the life moved on
     this._writeLost = null;         // pl4: the `_lifeSeq` whose spawn/revive write resolved false (pool `write_lost`)
+    this._poolCheck = null;         // F341: {life} while the spawn read-back's answer is owed a pool comparison
+    this._poolRepair = null;        // F341: {life, attempts, dueAt, readAt, wrote} while the node repairs pools above their ceilings
+    this.poolWrong = null;          // F341: {life, at, hp, armor, shield} once POOL_REPAIR_TRIES repairs did not hold (pool `pool_wrong`)
     this.hurtFired = false;         // low-health alert already sent this life
     this._pendingHurtWrite = false; // ...and whether that alert is still sitting in its debounce window
     this.poison = null;             // S16: {proto, per, tickMs, at, until, nextAt, by:{num,team}, ticks} while a poison stack ticks (spec/node.md §3.17)
@@ -1822,7 +1836,7 @@ export class Engine {
     // match -- a bumped seq, a resumed schedule -- must never reset a down-warning level already earned)
     if (newMatch) { this.score = null; this.scoreAt = null; this.result = null; this.resultAt = 0; this.endedAt = 0; this._downWarn = 1; this._timedLifeAt = null; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this.gunLocked = null; }
     this.matchId = body.match_id; this.cuesFired = new Set(); this.shots = 0; this.deaths = 0; this.ended = false; this._resyncRevive = false;
-    this._cure = null; this._queryAt = 0; this._cureLife = null; this._cureAt = 0; this._pollAt = 0; this._probedLife = null; this.cure = null;   // F264: a new match owes the last one's gun nothing
+    this._cure = null; this._queryAt = 0; this._cureLife = null; this._cureAt = 0; this._pollAt = 0; this._probedLife = null; this.cure = null; this._poolCheck = null; this._poolRepair = null; this.poolWrong = null;   // F341   // F264: a new match owes the last one's gun nothing
     this.kitLocked = false;             // A27: the lock notice is spent the moment the countdown starts — it must never lead the NEXT lobby
     // A NEW match supersedes any in-flight reconnect resync of the OLD one. Without this the resync
     // stays set, the T-0 spawn (guarded on `!this.resync`) never runs, and the gun sits alive-with-0-hp
@@ -3319,6 +3333,7 @@ export class Engine {
       this._cureTick(now);     // F264: and once `no_fire` is concluded, ASK the gun, then act on the answer
       this._pollTick(now);     // F264: ...and ask it every QUERY_POLL_MS anyway, so nobody has to pull a dead trigger first
       this._spawnProbeTick(now);   // F264: ...and once a life, read back the biggest write of that life
+      this._poolRepairTick(now);   // F341: ...and when the pools it read back are wrong, repair them and read again
       // B5's settle window HOLDS an unattributed zero-HP frame rather than manufacturing a phantom death
       // out of a stale echo. A REAL death inside that window with no latch — grenade or station damage
       // (neither carries an $HIR to latch onto), or an $HIR simply lost — was then dropped forever:
@@ -4609,7 +4624,7 @@ export class Engine {
       if (this.cure) { this.log(`cure verdict '${this.cure.verdict}' cleared — the gun is reporting again`, 'li'); this.cure = null; }
     }
     switch (cmd) {
-      case 'HP': this._onHp(+t[1] || 0, +t[2] || 0, t[3] !== undefined && t[3] !== '' ? (+t[3] || 0) : this.shield, solicited); if (solicited || this._operatorResyncPending) this._operatorResyncAnswer('HP', t, solicited); if (solicited) this._cureAnswer('HP', t); break;
+      case 'HP': this._onHp(+t[1] || 0, +t[2] || 0, t[3] !== undefined && t[3] !== '' ? (+t[3] || 0) : this.shield, solicited); this._poolVerify(this.hp, this.armor, this.shield, solicited); if (solicited || this._operatorResyncPending) this._operatorResyncAnswer('HP', t, solicited); if (solicited) this._cureAnswer('HP', t); break;
       case 'LCD': {
         this.hp = +t[1] || 0; this.armor = +t[2] || 0;
         this.poolSrc = 'gun';            // R2-3: the pool in the next heartbeat is the GUN's, not our model's
@@ -4629,6 +4644,7 @@ export class Engine {
         // third way in and wants folding into the spec.)
         if (this.phase === 'live' && this.hp === 0 && this.alive && !this._deathPending()) this._death(wasResync || solicited);
         if (solicited) this._cureAnswer('LCD', t);
+        this._poolVerify(this.hp, this.armor, this.shield, false);   // F341: a `$SPAWN`'s own `$LCD` carries the pools it armed
         break;
       }
       case 'ALCD': {
@@ -5477,7 +5493,109 @@ export class Engine {
     if (this._standDown(['phase', 'spawned', 'bundle', 'ble', 'alive', 'tutorial'], now)) return;   // reading is allowed inside a reconcile/resync; see `_askGun`
     this._probedLife = this._lifeSeq || 0;
     this._pollAt = now;                          // the read-back IS this cadence's poll: do not send two in a breath
+    this._poolCheck = { life: this._lifeSeq || 0 };   // F341: the answer is COMPARED, not just awaited (`_poolVerify`)
     this._askGun('spawn read-back: did the gun take the burst?');
+  }
+  /** F341: the pool ceilings this life armed: the compiled `$PSET`'s hp and armour (`maxHp`/`maxArmor`), and its shield
+   *  max, raised while an overshield holds (A56 writes a `$PSET` with a higher t5). PURE. */
+  _poolCeilings() {
+    const os = this._overshield && Number.isFinite(+this._overshield.max) ? +this._overshield.max : 0;
+    return { hp: this.maxHp, armor: this.maxArmor, shield: Math.max(this.maxShield, os) };
+  }
+  /** F341: is a pool report ABOVE the armed ceilings? Armour counts only in a game that arms some: armour granted in a
+   *  no-armour game is a state the HUD shows (Visor polish r2 M1), and a doubled `$PSET` doubles the hp anyway. PURE. */
+  _poolsOver(hp, armor, shield, c = this._poolCeilings()) {
+    return hp > c.hp || (c.armor > 0 && armor > c.armor) || shield > c.shield;
+  }
+  /** F341: does a pool report fit what this life armed? Called with every `$HP` and `$LCD` in a live life.
+   *  - A pool ABOVE its ceiling is always wrong: the gun clamps every grant at its `$PSET`, so only a `$PSET` the gun
+   *    misread gets one there. That starts a repair (`_poolRepair`), and only that does.
+   *  - The spawn read-back's answer (`_poolCheck`) BELOW the spawn pools with no `$HIR` since the spawn is logged, never
+   *    repaired: grenade and station damage carry no `$HIR`, and a hit's `$HP` can beat its `$HIR`, so a write there
+   *    could heal real damage (polish review 2026-09-24).
+   *  - The answer to a repair's own read-back confirms it, or schedules the next attempt.
+   *  Never writes: the tick does, outside the stand-downs. */
+  _poolVerify(hp, armor, shield, solicited) {
+    if (this.phase !== 'live' || !this.spawned || !this.alive || this.tutorial || !(hp > 0)) return;
+    const life = this._lifeSeq || 0, now = this.now();
+    if (this.poolWrong && this.poolWrong.life === life) return;   // the verdict stands: the operator's FORCE RESPAWN, not a loop
+    const c = this._poolCeilings();
+    const over = this._poolsOver(hp, armor, shield, c);
+    if (solicited && this._poolCheck && this._poolCheck.life === life) {
+      this._poolCheck = null;
+      const hit = !!(this.latch && this._spawnAt && this.latch.at >= this._spawnAt);
+      if (!over && !hit && (hp !== c.hp || armor !== c.armor)) {
+        this.log(`spawn read-back: the gun reads ${hp}/${armor}/${shield}, not the spawn pools ${c.hp}/${c.armor}, with no $HIR since the spawn `
+          + '(a grenade, a station or a lost $HIR can do that; nothing is written) (F341)', 'le');
+      }
+    }
+    const rp = this._poolRepair && this._poolRepair.life === life ? this._poolRepair : null;
+    if (rp && rp.readAt && solicited) {
+      rp.readAt = 0;
+      if (!over) {
+        this.log(`pool repair held: the gun reads ${hp}/${armor}/${shield} (attempt ${rp.attempts} of ${POOL_REPAIR_TRIES})`, 'lk');
+        this._poolRepair = null; this._changed();
+        return;
+      }
+      rp.dueAt = now;   // it did not hold: the next attempt, or the verdict, on the next tick
+    }
+    if (!over || rp) return;
+    this.log(`*** gun pools ${hp}/${armor}/${shield} are above the armed ceiling ${c.hp}/${c.armor}/${c.shield} -- repairing ($*, the life's $PSET, $LIFE set) (F341) ***`, 'le');
+    this._poolRepair = { life, attempts: 0, dueAt: now, readAt: 0, wrote: false };
+  }
+  /** F341: one repair step per tick. Waits out a reconcile, a resync, a dropped link, and any other probe in flight (the
+   *  cure, an operator resync, the F272 liveness probe: they share the one reply window). Drops the repair on a new
+   *  life or a death (the next `$SPAWN` burst carries its own `$PSET`).
+   *  A write is `$*` (the parser reset), the life's `$PSET` verbatim (`_osPset`, with the shield max it holds now;
+   *  `_write` puts the `$TID` behind it, F206), then `$LIFE,<hp>,<armor>,<shield>,1,*`: an absolute set clamped at the
+   *  new maxima (mode 1), at the gun's LATEST pools clamped to the ceilings, so a hit taken meanwhile is kept. The model
+   *  takes those numbers at once, so the `$HP` the set echoes reads as no damage.
+   *  ⚠ A mode-1 `$LIFE` revives a dead gun. So a write needs a live answer: a read-back that goes unanswered is the
+   *  verdict (`pool_wrong`), never another write (the F264 rule: no action on no evidence). */
+  _poolRepairTick(now) {
+    const rp = this._poolRepair;
+    if (!rp) return;
+    if (rp.life !== (this._lifeSeq || 0) || !this.alive || this.phase !== 'live') { this._poolRepair = null; return; }
+    const held = this._standDown(['spawned', 'bundle', 'ble', 'alive', 'reconciling', 'resync', 'tutorial'], now)
+      || this._cure || this._operatorResyncPending || this._gunProbe;
+    if (held) {   // a read-back in flight cannot be answered through a drop or another probe: ask again afterwards, never a verdict
+      if (rp.readAt) { rp.readAt = 0; rp.wrote = true; rp.dueAt = now; }
+      return;
+    }
+    if (this._armPending && !rp.wrote && !rp.readAt) return;   // spawn protection is still up: a `$PSET` mid-window is untested (powerups.md)
+    const verdict = why => {
+      this._poolRepair = null;
+      this.poolWrong = { life: rp.life, at: now, hp: this.hp, armor: this.armor, shield: this.shield };
+      this.log(`*** gun pools still wrong (${why}): the player may be unkillable. Operator: FORCE RESPAWN (F341) ***`, 'le');
+      this._changed();
+    };
+    if (rp.readAt) {
+      if (now - rp.readAt < QUERY_REPLY_MS) return;
+      verdict(`the read-back after repair ${rp.attempts} went unanswered`);
+      return;
+    }
+    if (now < rp.dueAt) return;
+    if (rp.wrote) {   // the repair has had POOL_REPAIR_READ_MS to land: ask
+      rp.wrote = false; rp.readAt = now;
+      this._askGun(`pool repair read-back ${rp.attempts}/${POOL_REPAIR_TRIES}`);
+      return;
+    }
+    const c = this._poolCeilings();
+    if (!this._poolsOver(this.hp, this.armor, this.shield, c)) {   // the gun's latest word is in range again
+      this.log(`pool repair not needed: the gun now reads ${this.hp}/${this.armor}/${this.shield}`, 'li');
+      this._poolRepair = null;
+      return;
+    }
+    if (rp.attempts >= POOL_REPAIR_TRIES) { verdict(`${POOL_REPAIR_TRIES} repairs did not hold, it reads ${this.hp}/${this.armor}/${this.shield}`); return; }
+    rp.attempts++;
+    const t = { hp: Math.min(this.hp, c.hp), armor: Math.min(this.armor, c.armor), shield: Math.min(this.shield, c.shield) };
+    const pset = this._osPset(c.shield);
+    this._write([PARSER_RESET, ...(pset ? [pset] : []), `$LIFE,${t.hp},${t.armor},${t.shield},1,*`],
+      `pool repair ${rp.attempts}/${POOL_REPAIR_TRIES}: ${this.hp}/${this.armor}/${this.shield} above ${c.hp}/${c.armor}/${c.shield} -> ${t.hp}/${t.armor}/${t.shield}`);
+    this.hp = t.hp; this.armor = t.armor; this.shield = t.shield;
+    this._prevHp = t.hp; this._prevArmor = t.armor; this._prevShield = t.shield;
+    rp.wrote = true; rp.dueAt = now + POOL_REPAIR_READ_MS;
+    this._changed();
   }
   /** F208: is the pool on the HUD still the gun's word? null when fresh, else `{why, ms}`. `why`: 'silent' (no frame
    *  of any kind for GUN_QUIET_STALE_MS) or 'no_fire' (NO_FIRE_PULLS unanswered pulls in a row) or 'write_lost' (pl4: this life's spawn/revive write
@@ -5488,6 +5606,7 @@ export class Engine {
     const ms = this.lastPoolAt ? now - this.lastPoolAt : null;
     if (this.lastGunFrameAt && now - this.lastGunFrameAt >= GUN_QUIET_STALE_MS) return { why: 'silent', ms };
     if (this.alive && this._noFirePulls >= NO_FIRE_PULLS) return { why: 'no_fire', ms };
+    if (this.alive && this.poolWrong && this.poolWrong.life === this._lifeSeq) return { why: 'pool_wrong', ms };   // F341: the gun's pools are not the armed ones
     if (this.alive && this._writeLost != null && this._writeLost === this._lifeSeq) return { why: 'write_lost', ms };   // pl4: a spawn/revive write was lost
     return null;
   }

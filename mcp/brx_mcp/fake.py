@@ -111,6 +111,15 @@ class FakeTagger:
         # docs/bench-firmware-levers-2026-09-19.md §22 both still say the OPPOSITE (silence) and want
         # correcting; `dead_gun_answers_life = False` keeps that reading selectable for a test.
         self.dead_gun_answers_life = True
+        # F341 fault knob (field 2026-09-24): the gun's own serial parser, byte for byte
+        # (transport-hardening.md §1.3, v4.32 code read): a `$` resets token 0 and the index ONLY; tokens
+        # 1..59 keep their text until a `*` dispatches the frame and the common return path clears them.
+        # A frame that lost its `*` therefore puts its text in front of the NEXT frame's tokens. `feed_bytes`
+        # drives it directly (a partial chunk); `write` goes through it while a partial frame is open, and
+        # for the reset `$*` (v4.32 code read; screamers A4 is its pending bench proof). Otherwise `write` dispatches the frame as before.
+        self._rx_tok: list[str] = [""] * 60
+        self._rx_idx = 0
+        self._rx_open = False
 
     def go_dead_chatty(self) -> None:
         """F264 (bench 2026-09-18, docs/FOLLOWUPS.md F264): simulate the fault -- the gun dies on its own
@@ -146,9 +155,35 @@ class FakeTagger:
             return
         self.sir[(proto, sub)] = fn
 
+    def feed_bytes(self, raw: str) -> None:
+        """F341: bytes as the gun's parser sees them (see `_rx_tok` in `__init__`). A partial frame stays
+        open until a `*` arrives, whatever comes in between; `$*` is the reset."""
+        if not self.listening:
+            return
+        for c in raw:
+            if c == "$":
+                self._rx_tok[0], self._rx_idx, self._rx_open = "", 0, True
+            elif c == ",":
+                self._rx_idx = 1 if self._rx_idx >= 59 else self._rx_idx + 1
+            elif c == "*":
+                toks, n = self._rx_tok, len(self._rx_tok)
+                while n > 1 and toks[n - 1] == "":
+                    n -= 1
+                frame = "$" + ",".join(toks[:max(n, self._rx_idx + 1)]) + ",*"
+                self._rx_tok, self._rx_idx, self._rx_open = [""] * 60, 0, False
+                self._dispatch(frame)
+            else:
+                self._rx_tok[self._rx_idx] += c
+
     def write(self, frame: str) -> None:
         if not self.listening:
             return                                  # Q18: connected, not listening -- the write is lost
+        if self._rx_open or frame.strip() == "$*":
+            self.feed_bytes(frame)                  # F341: a partial frame is open, or this is the reset
+            return
+        self._dispatch(frame)
+
+    def _dispatch(self, frame: str) -> None:
         t = _toks(frame)
         cmd = t[0] if t else ""
         if cmd == "CLEAR":
@@ -233,6 +268,17 @@ class FakeTagger:
             #      an `$HP` carrying its unchanged `self.shield` -- so a node granting shield was told, on the
             #      wire, that nothing happened. S29's recharge cannot be rehearsed against a gun like that,
             #      which is the failure mode this handler's own comment warns about.
+            # F341: token 4 is a MODE (protocol `$LIFE` row, `[disasm]`, bench-used on 2026-09-18/19): 1 = an
+            # absolute set clamped at the `$PSET` maxima, 2 = an absolute set with no clamp. Either one revives a
+            # dead gun. The node's pool repair sends mode 1 right behind a fresh `$PSET`.
+            mode = _int(t[4]) if len(t) > 4 else None
+            if mode in (1, 2):
+                vals = [_int(t[i]) if len(t) > i else None for i in (1, 2, 3)]
+                caps = (self.cfg_hp, self.cfg_armor, self.cfg_shield) if mode == 1 else (10 ** 6,) * 3
+                self.hp, self.armor, self.shield = (max(0, min(cap, v or 0)) for v, cap in zip(vals, caps))
+                self.alive = self.hp > 0
+                self._out.append(f"$HP,{self.hp},{self.armor},{self.shield},*" if self.alive else "$LCD,0,0,0,0,0,0,*")
+                return
             clamp = lambda cur, cap, d: max(0, min(cap, cur + d))
             self.hp = clamp(self.hp, self.cfg_hp, _int(t[1] if len(t) > 1 else None) or 0)
             self.armor = clamp(self.armor, self.cfg_armor, _int(t[2] if len(t) > 2 else None) or 0)

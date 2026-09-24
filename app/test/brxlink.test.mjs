@@ -3,7 +3,7 @@
 // entirely and the TAP TO RECONNECT pill was inert. Found by review, and pinned here.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BrxLink, flapDelay, directWriter, NUS, RX } from '../src/brxlink.js';
+import { BrxLink, flapDelay, directWriter, NUS, RX, PARSER_RESET } from '../src/brxlink.js';
 
 function rig() {
   const attempts = { A: 0, B: 0 }, subs = [], cb = {}, ups = [], drops = [], disconnects = [];
@@ -557,7 +557,16 @@ test('pl3 2026-09-17: a late error from batch N never cuts batch N+1 -- every fr
   await settle(2500);
   assert.equal(await first, true, 'batch N already resolved before its late error');
   const writes = r.calls.filter(c => c.kind === 'write');
-  assert.deepEqual(writes.map(w => w.value), [hexOf('$PLAYX,0,*'), ...chunksOf(SPAWN)], 'batch N+1 went whole, once, in order');
+  // F341: batch N's lost chunk (its last frame) may have left a partial frame in the gun's parser, and batch N+1's
+  // first frame was appended to it. So N+1 sends `$*` at its next frame boundary and sends again from frame 0. It is
+  // never cut: every frame goes, whole and in order.
+  const f = framesSent(writes);
+  const at = f.indexOf(PARSER_RESET);
+  assert.ok(at > 1 && f.lastIndexOf(PARSER_RESET) === at, 'one parser reset, inside batch N+1');
+  assert.equal(f[0], '$PLAYX,0,*');
+  const pass1 = f.slice(1, at), pass2 = f.slice(at + 1);
+  assert.deepEqual(pass1, SPAWN.slice(0, pass1.length), 'batch N+1 in order up to the reset');
+  assert.deepEqual(pass2, SPAWN, 'then the whole batch again from its first frame, the one that was damaged');
   assert.equal(await second, true, 'the late error was not batch N+1\'s');
   assert.equal(r.link.lateLost, 1, 'counted against the batch that owned it');
   assert.match(r.logs.join('\n'), /write err \(after the answer cap\): Writing characteristic failed. -- its batch had already been sent/);
@@ -585,9 +594,13 @@ test('pl3 2026-09-17: a late error inside its own batch sends again from the sta
   const done = r.link.write(SPAWN);
   await settle(3000);
   assert.equal(await done, true, 'the re-send landed');
-  const sent = framesSent(r.calls.filter(c => c.kind === 'write'));
+  const all = framesSent(r.calls.filter(c => c.kind === 'write'));
+  const cut = all.indexOf(PARSER_RESET);
+  assert.ok(cut > 0 && all.lastIndexOf(PARSER_RESET) === cut, 'F341: exactly one parser reset, at the boundary');
+  const sent = all.filter(f => f !== PARSER_RESET);
   const k = sent.length - SPAWN.length;
   assert.ok(k > 0 && k < SPAWN.length, `some frames went before the loss was known (${k})`);
+  assert.equal(cut, k, 'F341: the reset goes between the first pass and the re-send');
   assert.deepEqual(sent.slice(0, k), SPAWN.slice(0, k), 'the first pass, in order, up to the boundary');
   assert.deepEqual(sent.slice(k), SPAWN, 'then the whole batch again from frame 0: nothing dropped, nothing reordered');
   assert.match(r.logs.join('\n'), /a chunk of frame 1 of 8 was lost -- sending again from that frame/);
@@ -600,12 +613,107 @@ test('pl3 2026-09-17: a batch whose re-sends keep failing still sends every fram
   const done = r.link.write(SPAWN);
   await settle(8000);
   assert.equal(await done, false, 'a batch that never landed cleanly reports failure');
-  const sent = framesSent(r.calls.filter(c => c.kind === 'write'));
+  const sent = framesSent(r.calls.filter(c => c.kind === 'write')).filter(f => f !== PARSER_RESET);
   assert.deepEqual(sent.slice(-SPAWN.length), SPAWN, 'the last pass still sent every frame through to the end');
   assert.match(r.logs.join('\n'), /still lost after 2 re-send\(s\)/);
   const again = r.link.write('$PING,*');
   await settle(300);
   assert.equal(await again, true, 'the next batch is not tainted by the old one');
+});
+
+// F341 (field 2026-09-24, 0.4.11, Pixel 5, Tactix-FE30): `$HP,4545,7070,0` on every read for the rest of a match. The last
+// chunk of the spawn burst's `$PSET` (the one with the `*`) failed with status 201, and the loop sent the `$PSET` again
+// from its first byte. The gun's parser keeps tokens 1..59 across a `$` (transport-hardening.md §1.3), so the second copy
+// was appended to the first: hp "45"+"45", armour "70"+"70". `gunParser` models that parser byte for byte, and `$*`
+// (screamers A4) as the reset that clears it.
+function gunParser() {
+  let tok = new Array(60).fill(''), idx = 0;
+  const out = [];
+  return {
+    out,
+    feed(text) {
+      for (const c of text) {
+        if (c === '$') { tok[0] = ''; idx = 0; }
+        else if (c === ',') idx = idx >= 59 ? 1 : idx + 1;
+        else if (c === '*') {
+          let n = tok.length; while (n > 1 && tok[n - 1] === '') n--;
+          out.push(tok.slice(0, Math.max(n, idx + 1)));
+          tok = new Array(60).fill(''); idx = 0;   // the common return path clears every token
+        } else tok[idx] += c;
+      }
+    },
+  };
+}
+const PSET = '$PSET,0,1,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*';
+const LIFE_BURST = [PSET, '$SPAWN,,*', '$TID,1,*', '$AMMO,0,30,90,1,*'];
+const textOf = w => w.value.match(/../g).map(h => String.fromCharCode(parseInt(h, 16))).join('');
+
+test('the gun parser model reproduces 4545/7070 from a partial $PSET followed by a whole one', () => {
+  const g = gunParser();
+  g.feed(PSET.slice(0, 80)); g.feed(PSET);             // the incident: the `*` chunk never arrived
+  assert.deepEqual(g.out[0].slice(0, 6), ['PSET', '00', '11', '4545', '7070', '7070']);
+  const h = gunParser();
+  h.feed(PSET.slice(0, 80)); h.feed(PARSER_RESET); h.feed(PSET);   // the cure: `$*` between them
+  assert.deepEqual(h.out.at(-1).slice(0, 6), ['PSET', '0', '1', '45', '70', '70']);
+});
+
+for (const delivered of [false, true]) {
+  test(`F341: after an uncertain chunk (${delivered ? 'it did reach the gun' : 'status 201, it never went'}) the re-send goes only after $*, and the gun reads 45/70`, async ctx => {
+    const settle = useClock(ctx);
+    const last = chunksOf([PSET]).length - 1;             // the chunk with the `*`
+    // 60 ms: past the 50 ms cap, so the loop has moved on, but inside the frame gap: the loss is known at the
+    // boundary right after the `$PSET`, which is exactly when the old loop re-sent it onto the partial frame.
+    const r = slowBridgeRig({ answerMs: 60, failAt: last });
+    await r.link.connect('A', 'GUN-A-1111');
+    const done = r.link.write(LIFE_BURST, 'spawn');
+    await settle(3000);
+    assert.equal(await done, true, 'the re-send landed');
+    const writes = r.calls.filter(c => c.kind === 'write');
+    const texts = writes.map(textOf);
+    const resetAt = texts.indexOf(PARSER_RESET);
+    assert.ok(resetAt > last, 'a $* went out after the failed chunk');
+    assert.equal(texts.slice(last + 1, resetAt).join('').includes('$PSET'), false, 'no re-send of the $PSET started before the reset');
+    assert.equal(texts.slice(resetAt + 1).join('').startsWith('$PSET,'), true, 'the re-send starts right after the reset');
+    const g = gunParser();
+    writes.forEach((w, i) => { if (delivered || i !== last) g.feed(texts[i]); });
+    const psets = g.out.filter(t => t[0] === 'PSET');
+    assert.ok(psets.length >= 1);
+    for (const t of psets) assert.deepEqual(t.slice(3, 5), ['45', '70'], `the gun never holds a doubled pool: ${t.slice(0, 6).join(',')}`);
+    assert.match(r.logs.join('\n'), /sent \$\* first to clear the gun's parser/);
+    assert.equal(r.link.parserResets, 1);
+  });
+}
+
+test('F341: a chunk error that lands after its batch resolved makes the NEXT write start with $*', async ctx => {
+  const settle = useClock(ctx);
+  const r = slowBridgeRig({ answerMs: 200, failAt: 0 });
+  await r.link.connect('A', 'GUN-A-1111');
+  const first = r.link.write('$PLAYX,0,*');
+  await settle(400);                                     // the batch resolves, then its late rejection lands with the queue idle
+  assert.equal(await first, true);
+  assert.equal(r.link.lateLost, 1);
+  const next = r.link.write('$LIFE,0,0,0,*', 'poll');
+  await settle(400);
+  assert.equal(await next, true);
+  const texts = r.calls.filter(c => c.kind === 'write').map(textOf);
+  assert.deepEqual(texts.slice(1), [PARSER_RESET, '$LIFE,0,0,0,*'], 'the reset goes first, then the frame, once');
+  const again = r.link.write('$PING,*');
+  await settle(400);
+  assert.equal(await again, true);
+  assert.equal(r.calls.filter(c => c.kind === 'write').map(textOf).at(-1), '$PING,*', 'one reset per loss, not one per write');
+  assert.equal(r.link.parserResets, 1);
+});
+
+test('F341: a chunk error inside the cap stops the batch, and the next write starts with $*', async ctx => {
+  const settle = useClock(ctx);
+  const r = slowBridgeRig({ answerMs: 5, failAt: 1 });  // the second chunk of the $PSET fails at once
+  await r.link.connect('A', 'GUN-A-1111');
+  assert.equal(await Promise.race([r.link.write([PSET]), settle(300).then(() => 'hung')]), false);
+  const next = r.link.write('$SPAWN,,*');
+  await settle(300);
+  assert.equal(await next, true);
+  const texts = r.calls.filter(c => c.kind === 'write').map(textOf);
+  assert.deepEqual(texts.slice(-2), [PARSER_RESET, '$SPAWN,,*']);
 });
 
 test('the real plugin gets the direct writer; the web build is sent the DataView', () => {

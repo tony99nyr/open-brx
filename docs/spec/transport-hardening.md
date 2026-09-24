@@ -29,6 +29,9 @@ their V4_30/V4_31 code-read status.
    old text until a handler finishes and clears them. So when the `*` of frame A is lost, frame B's `$` starts a
    new frame whose tokens 1..n are frame A's tokens with frame B's text appended. Both frames are wrong, and
    nothing tells the sender.
+   Field 2026-09-24 (F341): the phone re-sent a `$PSET` whose `*` chunk was lost, and the gun armed
+   `$HP,4545,7070,0` (hp "45"+"45", armour "70"+"70"). Since then brxlink sends `$*` (screamers A4) before the
+   next frame after ANY chunk error, and the node checks the pools it reads back against the armed `$PSET`.
 4. **Six audio waits block the loop.** `[v4.32 code: the reachable $DPLAY wait only]` Six places were identified in
    V4_30/V4_31; the v4.32 trace confirms that `$DPLAY` waits for an audio channel to finish with `delay(10)`, no
    timeout and no serial read, and can be sent over BLE.

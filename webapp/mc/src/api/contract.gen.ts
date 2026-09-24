@@ -914,7 +914,7 @@ export interface NodeView {
   reach?: 'lan' | 'backhaul';
   last_reach?: 'lan' | 'backhaul';
   /** F208: the node's last `status.pool_stale` / `pool_stale_ms`. Absent = not stale, or an older app. */
-  pool_stale?: 'silent' | 'no_fire' | 'write_lost';
+  pool_stale?: 'silent' | 'no_fire' | 'write_lost' | 'pool_wrong';
   pool_stale_ms?: number;
   /** F264: what the node ITSELF did about a `pool_stale` claim, so the board reads more than "stale".
    *  `asking` = a $QUERY/$LIFE probe is out; `dead` = the gun answered health 0 and the death is booked;
@@ -1007,9 +1007,11 @@ export interface Event {
   /** F208: the pool this status reports is STALE, and why. A gun that died kept a byte-identical status
    *  for 105 s and looked like a healthy idle player. `"silent"` = no gun frame for 185 s; `"no_fire"` =
    *  three trigger presses in a row got no shot back; `"write_lost"` = this life's spawn or revive write was
-   *  lost and the phone did not repeat it (pl4: RESYNC GUN clears it). `pool_stale_ms` = ms since the gun last reported a
+   *  lost and the phone did not repeat it (pl4: RESYNC GUN clears it); `"pool_wrong"` = the gun reports pools above (or,
+   *  at the spawn read-back, other than) the ones its `$PSET` armed, and two repairs did not hold (F341: FORCE RESPAWN).
+   *  `pool_stale_ms` = ms since the gun last reported a
    *  pool. Absent = not stale, or an older app: MC then shows no cue at all. */
-  pool_stale?: 'silent' | 'no_fire' | 'write_lost';
+  pool_stale?: 'silent' | 'no_fire' | 'write_lost' | 'pool_wrong';
   pool_stale_ms?: number;
   /** F264: what the node ITSELF did about a `pool_stale` claim, so the board reads more than "stale".
    *  `asking` = a $QUERY/$LIFE probe is out; `dead` = the gun answered health 0 and the death is booked;
@@ -1099,7 +1101,7 @@ export interface LiveRow {
   sync_age_ms: number;
   respawn_in_s: number | null;
   /** F208: the bound node's `pool_stale` / `pool_stale_ms`, as NodeView. Absent = not stale. */
-  pool_stale?: 'silent' | 'no_fire' | 'write_lost';
+  pool_stale?: 'silent' | 'no_fire' | 'write_lost' | 'pool_wrong';
   pool_stale_ms?: number;
   /** F264: what the node ITSELF did about a `pool_stale` claim, so the board reads more than "stale".
    *  `asking` = a $QUERY/$LIFE probe is out; `dead` = the gun answered health 0 and the death is booked;
@@ -1521,7 +1523,7 @@ export interface ReadinessRow {
    *  it is true. An older server omits it, so a reader treats a missing key as false. */
   gun_flapping?: boolean;
   /** F208: `status.pool_stale`; None = not stale or not reported */
-  pool_stale: 'silent' | 'no_fire' | 'write_lost' | null;
+  pool_stale: 'silent' | 'no_fire' | 'write_lost' | 'pool_wrong' | null;
   /** F208: `status.pool_stale_ms`; None = not reported */
   pool_stale_ms: number | null;
   /** F264: the node's own outcome; None = it has not acted */

@@ -59,7 +59,12 @@ function harness({ dot = DOT, stun } = {}) {
       eng.feedFrame(gun.hp === 0 ? '$LCD,0,0,0,0,30,90,*' : `$HP,${gun.hp},${gun.armor},${gun.shield},*`);
       return h;
     },
-    setPools(hp, armor, shield) { gun.hp = hp; gun.armor = armor; gun.shield = shield; eng.feedFrame(`$HP,${hp},${armor},${shield},*`); return h; },
+    // F341: the node now repairs a pool above the armed `$PSET` ceiling, so a shield injected on a no-shield head lifts the
+    // head's t5 with it (a real gun cannot hold a shield its `$PSET` does not allow).
+    setPools(hp, armor, shield) {
+      if (shield > eng.maxShield) eng.frames.head = eng.frames.head.map(f => f.startsWith('$PSET,') ? f.split(',').map((t, i) => (i === 5 ? String(shield) : t)).join(',') : f);
+      gun.hp = hp; gun.armor = armor; gun.shield = shield; eng.feedFrame(`$HP,${hp},${armor},${shield},*`); return h;
+    },
     ticks() { return writes.filter(f => /^\$LIFE,/.test(f) && !isPoolProbe(f) && f.includes('-')); },
     cues(id) { return writes.filter(f => f.startsWith('$PLAY') && f.includes(id)); },
     get clock() { return clock; },

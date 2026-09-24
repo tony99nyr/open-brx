@@ -283,11 +283,14 @@ export function sentenceCase(t: string): string {
  *
  *  The phone decides (`status.pool_stale`): `silent` = no gun frame for a long time, `no_fire` = trigger
  *  presses with no shot back. `write_lost` = the phone lost this life's spawn or revive write (RESYNC GUN
- *  clears it). No claim means no cue: an older app is not evidence of a dead gun. The cue
- *  is grey information, never a warning (Tony wants fewer warnings). */
-export function poolStaleLabel(reason: 'silent' | 'no_fire' | 'write_lost' | null | undefined, ms?: number | null): string | null {
+ *  clears it). `pool_wrong` = the gun reports pools the phone never armed and two repairs did not hold (F341:
+ *  the player may be unkillable, FORCE RESPAWN re-arms the life). No claim means no cue: an older app is not
+ *  evidence of a dead gun. The cue is grey information, never a warning (Tony wants fewer warnings), except
+ *  `pool_wrong`, which the Live board shows in the warning colour, as it does the cure's `no_answer`. */
+export function poolStaleLabel(reason: 'silent' | 'no_fire' | 'write_lost' | 'pool_wrong' | null | undefined, ms?: number | null): string | null {
   if (reason === 'no_fire') return 'GUN NOT FIRING';
   if (reason === 'write_lost') return 'GUN WRITE LOST';
+  if (reason === 'pool_wrong') return 'GUN POOLS WRONG - FORCE RESPAWN';
   if (reason !== 'silent') return null;
   return typeof ms === 'number' && Number.isFinite(ms) && ms >= 0 ? `GUN SILENT ${fmtAge(ms)}` : 'GUN SILENT';
 }

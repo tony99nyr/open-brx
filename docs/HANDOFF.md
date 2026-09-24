@@ -99,6 +99,10 @@ simulator and scenario suite for it. **F341** (unkillable-gun frame corruption) 
   [`bench-2026-09-24.md`](bench-2026-09-24.md); 4.11's RSSI calibration lands there.
 - **Next desk task:** the audio-FIFO simulator and scenario suite for F347.
 - **Blocked:** F270 on A8.
+## Lane: F341 transport and pool repair
+2026-09-24: F341 (the `$HP,4545,7070,0` unkillable player) fixed on the desk: `$*` before the next frame after a chunk error or a drop, and the node repairs pools above the armed `$PSET`. F342: respawn-only station games scan only while down.
+- **Next bench task:** Block 2 step 4 (A4) then step 6 of [`bench-2026-09-24.md`](bench-2026-09-24.md). ⚠ `$*` is a code read until A4 passes.
+- **Next desk task:** F342's open half (powerup and control-point games still flood).
 ## Lane: Mission Control console honesty
 2026-09-24: APKs 0.4.7-0.4.11 published (each on green CI). On main: A58 station lock, KOTH phone-hill default (F338), utility sweep, the console-port ws guard, the chaos kill-cue invariant, and A60 MC auto-join (Lows and Tony's first-contact decision: F346). **Next:** 0.4.12 cut on brx1's word; bench F309/F311/F312.
 
