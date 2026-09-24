@@ -456,6 +456,13 @@ static void pollAdvert(uint32_t now) {
   }
   if (advertRetryAt && (int32_t)(now - advertRetryAt) < 0) { brx_glue::mcSetLive(advertising); return; }
   advertRetryAt = 0;
+  {  // stamp the identity publishAdvert puts on the wire, so a change of it republishes (AdvertPolicy)
+    const StationAssignment& a = brx_glue::link.assignment();
+    v.kind = a.present ? station_kind_byte(a.kind) : KIND_CONTROL;
+    v.id = a.present ? (uint16_t)a.id : settings.id;
+    v.game = a.present ? (uint8_t)a.game : settings.game;
+    v.threshold = a.present ? a.threshold : 0;
+  }
   if (policy.due(v, now)) publishAdvert(v, now);
   // H8 (polish round 1): status.live must say whether the advert is ACTUALLY up, not merely that MC
   // armed this station -- publishAdvert() may have just failed (ERR advert start) and left

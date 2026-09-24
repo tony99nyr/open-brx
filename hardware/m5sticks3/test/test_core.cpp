@@ -231,6 +231,16 @@ static void test_withdrawn_advert_republishes_as_first_with_seq_intact() {
   CHECK_EQ((uint8_t)(s2 - s1), 1);  // seq keeps counting across a withdrawal; a scanner never sees it go back
   p.seq = 255;
   CHECK_EQ(p.published(v, 30), 0);  // and wraps at 8 bits like beacon.js (seq & 0xff)
+  {  // an identity change (game, id, kind, threshold) republishes at once, whatever the value timer says
+    AdvertPolicy q;
+    AdvertView a; a.game = 32; a.id = 1; a.kind = 1;
+    q.published(a, 0);
+    AdvertView b = a; b.game = 33;
+    CHECK(q.due(b, 1) != nullptr);
+    AdvertView c = a; c.id = 2;
+    CHECK(q.due(c, 1) != nullptr);
+    CHECK(q.due(a, 1) == nullptr);
+  }
 }
 
 static void test_equal_parity_pair_is_invalid() {
