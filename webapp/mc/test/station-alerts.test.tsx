@@ -237,3 +237,48 @@ describe('ITEMS — a StickS3 is named as one, not as a phone', () => {
     m.unmount();
   });
 });
+
+describe('ITEMS — the ASSIGN + ARM form (Block 9, brx4)', () => {
+  async function itemsWith(stations: StationView[], over: Partial<Api> = {}) {
+    const api = new MockBackend();
+    Object.assign(api, over);
+    const base = await api.getState();
+    const state: State = { ...base, stations };
+    let error: string | null = null;
+    const run: <T,>(fn: () => Promise<T>) => Promise<T | undefined> = async fn => {
+      try { error = null; return await fn(); } catch (e) { error = (e as Error).message; return undefined; }
+    };
+    const node = () => <StoreCtx.Provider value={makeStore({ state, view: 'muster' }, { api, run })}><Items /></StoreCtx.Provider>;
+    const m = await mount(node());
+    await m.update(node());
+    return { m, error: () => error };
+  }
+  const unarmed = (id: string, over: Partial<StationView> = {}) => station(id, {
+    assigned: null, armed: null, platform: 'esp32',
+    report: { kind: 'respawn', team: 255, station_id: 0, threshold: -74, live: false, armed: false }, ...over });
+
+  it('a station reporting id 0 pre-fills the next free id, never 0 (the API refuses 0)', async () => {
+    const sent: number[] = [];
+    const { m } = await itemsWith([
+      station('taken', { assigned: { kind: 'respawn', team: 255, id: 1, threshold: -74, at: 0 } }),
+      unarmed('stick-1'),
+    ], { putStation: async (_n: string, a: { id: number }) => { sent.push(a.id); return station('stick-1'); } } as unknown as Partial<Api>);
+    const box = m.find('input[aria-label="station id for stick-1"]')[0] as HTMLInputElement;
+    expect(box.value).toBe('2');
+    const card = m.find('[data-station-card="stick-1"]')[0] as HTMLElement;
+    const btn = [...card.querySelectorAll('button')].find(b => b.textContent === 'ASSIGN + ARM') as HTMLButtonElement;
+    await act(async () => { btn.click(); });
+    expect(sent).toEqual([2]);
+    m.unmount();
+  });
+
+  it('a write the server refuses for auth says the operator link expired, on the card itself', async () => {
+    const { AuthError } = await import('../src/api/client');
+    const { m } = await itemsWith([unarmed('stick-1')], { putStation: async () => { throw new AuthError(); } } as unknown as Partial<Api>);
+    const card = () => m.find('[data-station-card="stick-1"]')[0] as HTMLElement;
+    const btn = [...card().querySelectorAll('button')].find(b => b.textContent === 'ASSIGN + ARM') as HTMLButtonElement;
+    await act(async () => { btn.click(); });
+    expect(card().textContent).toMatch(/OPERATOR LINK EXPIRED/);
+    m.unmount();
+  });
+});

@@ -1037,7 +1037,7 @@ static void test_status_body_carries_health_fields_only_when_set() {
   CHECK_EQ(build_status_body(f),
            std::string("{\"node_id\":\"s\",\"arm_state\":\"connected\",\"synced\":false,"
                        "\"role\":\"utility\",\"kind\":\"respawn\",\"team\":255,\"station_id\":0,"
-                       "\"threshold\":-74,\"live\":false,\"armed\":false,\"app_ver\":\"v\","
+                       "\"threshold\":-60,\"live\":false,\"armed\":false,\"app_ver\":\"v\","
                        "\"platform\":\"esp32\",\"uptime_s\":1234,\"boot_count\":7,\"assoc\":\"held\",\"lock_s\":42}"));
   StatusFields plain;
   plain.node_id = "s";
@@ -1380,9 +1380,9 @@ static void test_presence_threshold_is_the_phone_default_when_mc_sends_none() {
   StationAssignment a = parse_station_config(v);
   CHECK(a.threshold_defaulted);
   CHECK_EQ(a.threshold, STICK_DEFAULT_THRESHOLD_DBM);  // the advertised byte keeps the Stick's own
-  CHECK_EQ(presence_threshold_dbm(a), -74);            // players are measured like a phone station does
+  CHECK_EQ(presence_threshold_dbm(a), -60);            // players are measured like a phone station does
   v = json::parse(R"({"kind":"control","team":255,"id":9})", &ok);
-  CHECK_EQ(presence_threshold_dbm(parse_station_config(v)), -74);
+  CHECK_EQ(presence_threshold_dbm(parse_station_config(v)), -60);
   v = json::parse(R"({"kind":"control","team":255,"id":9,"threshold":-66})", &ok);
   StationAssignment m = parse_station_config(v);
   CHECK(!m.threshold_defaulted);
@@ -1392,7 +1392,7 @@ static void test_presence_threshold_is_the_phone_default_when_mc_sends_none() {
   CHECK(saved.note_applied(a, "s1"));
   StationAssignment r = saved.restore();
   CHECK(r.threshold_defaulted);
-  CHECK_EQ(presence_threshold_dbm(r), -74);
+  CHECK_EQ(presence_threshold_dbm(r), -60);
   SavedStationConfig saved2;
   saved2.note_applied(m, "s1");
   CHECK_EQ(presence_threshold_dbm(saved2.restore()), -66);
