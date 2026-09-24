@@ -61,11 +61,13 @@ inline std::string maybe_build_reset_action(const StationLink& link, int64_t t_m
 // Polish round 2: takes the whole queued report, not a bare player_num -- `station_id` is the one
 // captured at the moment of the award (PendingTakenReport, station_link.h), never the station's
 // CURRENT assignment, which may have moved on by the time this is flushed.
-inline std::string maybe_build_taken_action(const StationLink& link, const PendingTakenReport& rep, uint32_t now_ms) {
+// `epoch_offset_ms` turns the award's millis() into wall-clock ms for the body `t` (McClock, station_link.h).
+inline std::string maybe_build_taken_action(const StationLink& link, const PendingTakenReport& rep, uint32_t now_ms,
+                                            int64_t epoch_offset_ms = 0) {
   if (!link.actions_enabled()) return std::string();
   // unsigned subtraction: correct across a millis() wrap, as long as the report is under ~49 days old
   uint32_t age = now_ms - (uint32_t)rep.t_ms;
-  return build_station_action_taken_body(rep.station_id, rep.player_num, rep.t_ms, age);
+  return build_station_action_taken_body(rep.station_id, rep.player_num, rep.t_ms + epoch_offset_ms, age);
 }
 
 // The stats pages a short press cycles through ("view stats, local only"): station kind, who took

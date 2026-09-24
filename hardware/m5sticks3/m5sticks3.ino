@@ -891,6 +891,10 @@ void setup() {
     canvas.setPsram(false);  // a build without PSRAM: fall back to internal DRAM rather than a dark screen
     if (!canvas.createSprite(240, 135)) Serial.println("ERR display sprite alloc (no screen)");
   }
+  // A 4 KB TX buffer: with the zero TX timeout below, a burst (STATUS prints ~600 bytes) would
+  // otherwise overflow the small default buffer and lose bytes even with a host reading (bench
+  // 2026-09-24: STATUS's LINK line arrived cut short).
+  Serial.setTxBufferSize(4096);
   Serial.begin(115200);
   // USB CDC with no host attached (every field station) must never stall loop(): with the default TX
   // timeout each print waits for a reader, which froze the HILL beacon (bench 2026-09-24: beacons

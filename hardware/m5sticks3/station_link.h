@@ -248,6 +248,27 @@ inline std::string build_status_body(const StatusFields& f) {
   return j;
 }
 
+// The envelope `t` (and a station_action body `t`) must be wall-clock ms since 1970: MC's envelope.py
+// rejects anything outside 2017..2096 as `bad_t` and closes the socket (1008, "bad hello: bad_t").
+// A Stick has no clock, so it borrows MC's: every MC frame carries MC's own `t`, and the Stick keeps
+// the offset between that and its millis(). Before the first MC frame (the hello itself) it uses a
+// fixed plausible base; MC dates a station's boots from uptime_s/boot_count, never from `t`
+// (bench 2026-09-24: every Stick hello was refused until this).
+constexpr int64_t CLOCK_BASE_MS = 1'790'000'000'000LL;     // 2026-09, inside MC's accepted range
+constexpr int64_t CLOCK_T_MIN_MS = 1'500'000'000'000LL;    // envelope.py T_MIN_MS
+constexpr int64_t CLOCK_T_MAX_MS = 4'000'000'000'000LL;    // envelope.py T_MAX_MS
+struct McClock {
+  int64_t offset_ms = CLOCK_BASE_MS;  // epoch ms = offset + millis()
+  bool synced = false;
+  // Feed every received MC envelope's `t`; an out-of-range value is ignored.
+  void observe(int64_t mc_t_ms, uint32_t now_ms) {
+    if (mc_t_ms < CLOCK_T_MIN_MS || mc_t_ms > CLOCK_T_MAX_MS) return;
+    offset_ms = mc_t_ms - (int64_t)now_ms;
+    synced = true;
+  }
+  int64_t epoch(uint32_t millis_value) const { return offset_ms + (int64_t)millis_value; }
+};
+
 inline std::string make_envelope(const std::string& kind, const std::string& body_json,
                                   const std::string& env_id, int64_t t_ms) {
   return "{\"v\":1,\"kind\":" + json::quote(kind) + ",\"id\":" + json::quote(env_id) +

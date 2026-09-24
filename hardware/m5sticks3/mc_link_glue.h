@@ -481,11 +481,15 @@ static void mcTickPlayers(uint32_t now) {
 }
 
 // ---- WebSocket event handling ------------------------------------------------------------------
+McClock mcClock;  // wall-clock `t` for every frame this Stick sends (station_link.h)
+static const uint32_t WIFI_KICK_MS = 10000;  // at most one WiFi.begin retry per 10 s while joining
+static uint32_t lastWifiKickMs = 0;
+
 static void mcSendHello() {
   String body = String(build_hello_body(link.identity(), 0).c_str());
   char envId[13];
   snprintf(envId, sizeof envId, "%08lx%02x", (unsigned long)millis(), (unsigned)esp_random() & 0xff);
-  String env = String(make_envelope("hello", body.c_str(), envId, (int64_t)millis()).c_str());
+  String env = String(make_envelope("hello", body.c_str(), envId, mcClock.epoch(millis())).c_str());
   ws.sendTXT(env);
   link.ws_open_hello_sent();
 }
@@ -506,6 +510,7 @@ static void mcHandleFrame(const String& text) {
   bool ok = false;
   json::Value env = json::parse(std::string(text.c_str()), &ok);
   if (!ok || !env.is_object()) return;
+  mcClock.observe(env.get("t").as_int64(0), millis());  // borrow MC's wall clock for our own `t`
   std::string kind = env.get("kind").as_string();
   const json::Value& body = env.get("body");
   if (kind == "welcome") {
@@ -685,8 +690,12 @@ static void mcLoop(uint32_t now) {
     // very next tick's kick re-associated Wi-Fi immediately, undoing the drop `mcHandleFrame` just
     // performed -- the whole point of MUSTER. `LINK RECONNECT` (below) is the only way past it.
     if (!link.dropped_for_match() && link.state() == LinkState::JOINING_WIFI && wifiSsid.length() &&
-        WiFi.status() != WL_IDLE_STATUS) {
-      WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());  // (re)kick the association; cheap if already trying
+        WiFi.status() != WL_IDLE_STATUS && now - lastWifiKickMs >= WIFI_KICK_MS) {
+      // Not cheap: while the driver is still connecting, each call is refused ("sta is connecting,
+      // cannot set config") and logged, hundreds of times a second (bench 2026-09-24). Kick at most
+      // once per WIFI_KICK_MS.
+      lastWifiKickMs = now;
+      WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
     }
     return;
   }
@@ -751,7 +760,7 @@ static void mcLoop(uint32_t now) {
     String body = String(build_status_body(f).c_str());
     char envId[13];
     snprintf(envId, sizeof envId, "%08lx%02x", (unsigned long)now, (unsigned)esp_random() & 0xff);
-    String env = String(make_envelope("status", body.c_str(), envId, (int64_t)now).c_str());
+    String env = String(make_envelope("status", body.c_str(), envId, mcClock.epoch(now)).c_str());
     ws.sendTXT(env);
   }
 
@@ -762,9 +771,9 @@ static void mcLoop(uint32_t now) {
   if (ws.isConnected()) {
     PendingTakenReport rep;
     while (link.pop_pending_action(rep)) {
-      std::string body = maybe_build_taken_action(link, rep, now);   // age_ms computed now, at send time
+      std::string body = maybe_build_taken_action(link, rep, now, mcClock.offset_ms);   // age_ms computed now, at send time
       if (!body.empty()) {
-        std::string env = make_envelope("station_action", body, mcNextActionId().c_str(), rep.t_ms);
+        std::string env = make_envelope("station_action", body, mcNextActionId().c_str(), mcClock.epoch(now));
         String envArduino(env.c_str());
         ws.sendTXT(envArduino);
       }
@@ -836,9 +845,9 @@ static bool mcHandleLine(const String& lineIn) {
 // ACTIONS is off), which the caller turns into "RESET NEEDS MISSION CONTROL" on the screen -- with
 // ACTIONS off that is the honest answer too: this Stick is not telling MC anything either way.
 static bool mcSendResetAction() {
-  std::string body = maybe_build_reset_action(link, (int64_t)millis());
+  std::string body = maybe_build_reset_action(link, mcClock.epoch(millis()));
   if (body.empty() || !ws.isConnected()) return false;
-  std::string env = make_envelope("station_action", body, mcNextActionId().c_str(), (int64_t)millis());
+  std::string env = make_envelope("station_action", body, mcNextActionId().c_str(), mcClock.epoch(millis()));
   String envArduino(env.c_str());
   return ws.sendTXT(envArduino);
 }
