@@ -329,8 +329,39 @@ test('S57 names: a lone DOWN (its DOWN_BY lost) is still a named callout; a DOWN
   assert.equal(h.cues('VB8').length, 3, 'the late DOWN is its own event');
 });
 
-test('S57 names: no second word for an unknown killer, a gun recovery or an infection flip', () => {
+test('S57 names: an unknown killer sends one word (DOWN, already naming me); a gun recovery sends none', () => {
   const h = harness(); h.live();
-  h.frame('$HP,0,0,0,*');                       // unknown killer: DOWN only, already naming me
+  h.frame('$HP,0,0,0,*');                       // unknown killer: DOWN only
   assert.equal(h.irtx().length, 1);
+  const g = harness(); g.live();
+  g.eng.latch = { shooter_num: 19, shooter_team: 2, at: g.now(), ir_proto: 0, ir_subtype: 3, crit: 0, sensor: 4, mag: 9 };
+  g.eng._death(false, 'gun_recovery');
+  assert.equal(g.irtx().length, 0, 'a power-cycle is not a kill');
 });
+
+test('S57 names: a panic inside the 250 ms gap stops the second word', () => {
+  const h = harness(); const queued = []; h.eng.delay = (ms, fn) => { if (ms === 250) queued.push(fn); else fn(); }; h.live();
+  h.lethal(19, 2);
+  assert.equal(h.irtx().length, 1, 'DOWN_BY went out at once');
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'panic' } });
+  queued.forEach(fn => fn());
+  assert.equal(h.irtx().length, 1, 'no DOWN after the panic');
+});
+
+test('S57 names: a DOWN too soon after a DOWN_BY (an earlier death, its DOWN_BY lost) does not claim it', () => {
+  const h = harness(); h.live();
+  h.irWord(20, IR_CALLOUT.DOWN_BY + 2); h.adv(50);   // B's DOWN_BY
+  h.irWord(19, IR_CALLOUT.DOWN + 2);                  // A's DOWN, 50 ms later: A's own DOWN_BY was lost
+  assert.equal(h.eng.state().callout.kind, 'enemy_down'); assert.equal(h.eng.state().callout.name, 'VIPER', 'A is its own callout');
+  h.adv(250); h.irWord(33, IR_CALLOUT.DOWN + 2);     // B's DOWN pairs with B's DOWN_BY
+  assert.equal(h.cues('VB8').length, 2, 'two deaths, two cues, no third');
+});
+
+test('S57 names: a same-killer double kill inside the dedupe gives the killer no ENEMY DOWN', () => {
+  const h = harness(); h.live();
+  h.irWord(7, IR_CALLOUT.DOWN_BY + 2); h.adv(250); h.irWord(19, IR_CALLOUT.DOWN + 2);   // kill 1, named
+  h.adv(150); h.irWord(7, IR_CALLOUT.DOWN_BY + 2);                                        // kill 2, 400 ms later: deduped as a callout
+  h.adv(250); h.irWord(33, IR_CALLOUT.DOWN + 2);                                          // its victim's DOWN
+  assert.equal(h.cues('VB8').length, 0, 'no ENEMY DOWN on the killer\'s phone');
+});
+

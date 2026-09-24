@@ -37,7 +37,10 @@ victim's name as well:
 All magnitudes sit in the bench-silent range 1 to 39, clear of 2, 6, 8 and 10. The word is protocol 15, subtype 0,
 direction 100 (all domes), fired once (`$IRTX` field 9 = 1), from the victim's phone right after its death is booked.
 With a known killer, a `DOWN` naming the victim follows 250 ms later (`CALLOUT_NAME_GAP_MS`, clear of the headset's
-199 ms single-shot guard), through the normal write path and never retried. A gun-recovery DOWN (the player power-cycled a locked gun)
+199 ms single-shot guard), through the normal write path and never retried. Every phone in a match must run a build with this pairing (the first build
+after app 0.4.5): an older phone reads the second word as a second death, plays ENEMY DOWN on top of a kill cue, and
+shows two callouts. The pairing accepts a `DOWN` 150 to 600 ms after its `DOWN_BY`; two same-team deaths inside that
+window whose first `DOWN_BY` is lost can still swap names, which is presentation only. A gun-recovery DOWN (the player power-cycled a locked gun)
 is not a kill, so it sends nothing; neither does an infection flip.
 
 The word's team field is `frames.callout_team`: a team id that no player in this match holds, compiled by MC. With

@@ -4226,14 +4226,16 @@ for (const view of VIEWS) await step(`${view.name} QA-05 kill buzz: an MC-only k
 for (const view of VIEWS) for (const skin of ['', '&night']) await step(`${view.name}${skin ? ' night' : ''} S57 names: the victim's DOWN word names the kill card in place`, async () => {
   const pg = await open(view, 'live-callout-named', skin, 2000);
   const r = await pg.evaluate(async () => { const h = window.brx.hud; let buzz = 0; const oh = h.h.onHaptic; h.h.onHaptic = k => { if (k === 'kill') buzz++; };
-    const wait = ms => new Promise(r => setTimeout(r, ms)); const seen = [];
-    for (let i = 0; i < 14; i++) { const c = document.querySelectorAll('.mo.co'); seen.push([c.length, c[0] ? c[0].querySelector('.nm').textContent : null, c[0] ? c[0].dataset.kind : null]); await wait(100); }
-    h.h.onHaptic = oh; return { seen, buzz }; });
+    const wait = ms => new Promise(r => setTimeout(r, ms)); const seen = []; let first = null, same = true;
+    for (let i = 0; i < 14; i++) { const c = document.querySelectorAll('.mo.co'); if (c[0] && !first) first = c[0]; if (c[0] && first && c[0] !== first) same = false;
+      seen.push([c.length, c[0] ? c[0].querySelector('.nm').textContent : null, c[0] ? c[0].dataset.kind : null]); await wait(100); }
+    h.h.onHaptic = oh; return { seen, buzz, same }; });
   await pg.screenshot({ path: `${OUT}/${view.name}-s57-named${skin ? '-night' : ''}.png` }); await pg.close();
   const names = r.seen.map(x => x[1]).filter(Boolean);
   must(r.seen.every(x => x[0] <= 1), 'the paired DOWN must not add a second card: ' + JSON.stringify(r.seen));
   must(names.includes('VIPER') && names[names.length - 1] === 'VIPER', 'the card must end up naming the victim: ' + JSON.stringify(names));
   must(r.seen.filter(x => x[2]).every(x => x[2] === 'kill_confirmed'), 'the name must land on the KILL CONFIRMED card, not a new ENEMY DOWN card: ' + JSON.stringify(r.seen));
+  must(r.same, 'the SAME card element must be renamed, not replaced');
   must(r.buzz === 1, 'one kill, one buzz: the name arrives with no second one: ' + r.buzz);
 });
 

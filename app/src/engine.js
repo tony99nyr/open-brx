@@ -527,7 +527,8 @@ export const IR_CALLOUT = {
   ENEMY_DOWN_CUE: 'VB8',   // "Target down." (sound_catalog.json: 1.014 s)
 };
 const CALLOUT_DEDUPE_MS = 600;   // one physical word lands on several sensors ~14 ms apart (F85); short enough that a real double kill still counts twice a second or so later
-const CALLOUT_PAIR_MS = 1000;    // S57 names (Tony 2026-09-24): a DOWN pairs with a DOWN_BY for the same victim team inside this window
+const CALLOUT_PAIR_MIN_MS = 150; // S57 names (Tony 2026-09-24): a DOWN pairs with a DOWN_BY for the same victim team only this long
+const CALLOUT_PAIR_MS = 600;     // ...to this long after it: the sender spaces them 250 ms, so an earlier death's DOWN cannot claim a newer DOWN_BY
 const CALLOUT_NAME_GAP_MS = 250; // the victim's DOWN word goes out this long after its DOWN_BY: clear of the headset's 199 ms single-shot guard
 const CALLOUT_WINDOW_MS = 3000;  // kill-confirm first-to-arrive (Tony), and how long `state().callout` stays lit
 
@@ -2682,7 +2683,15 @@ export class Engine {
     if (!this.alive || this.phase !== 'live') return;    // a dead gun would not report it anyway (the doc), and callouts are a live-match thing only
     if (Number.isNaN(player) || Number.isNaN(magnitude)) return;
     const key = `${magnitude}:${player}`;
-    if (this._calloutSeen && this._calloutSeen.has(key) && now - this._calloutSeen.get(key) < CALLOUT_DEDUPE_MS) return;
+    if (this._calloutSeen && this._calloutSeen.has(key) && now - this._calloutSeen.get(key) < CALLOUT_DEDUPE_MS) {
+      // A same-killer double kill of one team inside the dedupe: the second DOWN_BY is not a new callout, but its
+      // victim's DOWN is coming, so it still opens a pairing slot (sensor copies, ~14 ms apart, do not).
+      if (magnitude < IR_CALLOUT.DOWN && now - this._calloutSeen.get(key) >= CALLOUT_PAIR_MIN_MS) {
+        (this._downByOpen || (this._downByOpen = [])).push({ at: now, team: magnitude - IR_CALLOUT.DOWN_BY, quiet: true });
+        this._calloutSeen.set(key, now);
+      }
+      return;
+    }
     (this._calloutSeen || (this._calloutSeen = new Map())).set(key, now);
     const isDownBy = magnitude < IR_CALLOUT.DOWN;
     const victimTeam = magnitude - (isDownBy ? IR_CALLOUT.DOWN_BY : IR_CALLOUT.DOWN);
@@ -2694,7 +2703,7 @@ export class Engine {
     this._downByOpen = (this._downByOpen || []).filter(e => now - e.at <= CALLOUT_PAIR_MS);
     if (isDownBy) this._downByOpen.push({ at: now, team: victimTeam });
     else {
-      const i = this._downByOpen.findIndex(e => e.team === victimTeam);
+      const i = this._downByOpen.findIndex(e => e.team === victimTeam && now - e.at >= CALLOUT_PAIR_MIN_MS);
       if (i >= 0) {
         const open = this._downByOpen.splice(i, 1)[0];
         if (this.callout && this.callout.at === open.at && player !== myNum) { this.callout = { ...this.callout, victim: this.nameOf(player) }; this._changed(); }
@@ -5635,7 +5644,8 @@ export class Engine {
         // for every receiver to pair (see `_onIrCallout`). Once, through the normal write path, never retried.
         if (!selfOrUnknown) {
           const down = `$IRTX,${IR_CALLOUT.DIRECTION},${IR_CALLOUT.PROTO},${myNum},${calloutTeam},${IR_CALLOUT.DOWN + myTid},0,${IR_CALLOUT.SUBTYPE},100,1,,0,*`;
-          this.delay(CALLOUT_NAME_GAP_MS, () => { if (this.phase === 'live' && this.bleUp) this._write([down], 'S57 IR callout: the victim\'s name'); });
+          const lg = this._lightGen;
+          this.delay(CALLOUT_NAME_GAP_MS, () => { if (this._lightGen === lg && this.phase === 'live' && this.bleUp) this._write([down], 'S57 IR callout: the victim\'s name'); });
         }
       }
     }
