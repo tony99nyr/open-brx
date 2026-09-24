@@ -287,6 +287,9 @@ export class Hud {
     // F211: adapter-off state, app.js-owned (like `mcUrl`/`discovered` below) — the picker's own concern,
     // never round-tripped through the engine. `platform` gates the Android-only enable/settings buttons.
     this.bluetoothOn = true; this.platform = 'web';
+    // F340: Location services, app.js-owned like `bluetoothOn`. False only on Android 11 and older with Location
+    // off, where a BLE scan finds nothing (location.js). Android 12+, iOS and the web never set it false.
+    this.locationOn = true;
     this.discovered = null;   // {url, at} a LAN-sweep hit MC never auto-joined — null once bound or nothing found
     this._joinConfirm = null; // {act, at} the armed/live two-tap guard on CONNECT / SCAN QR (below)
     this._gunConfirm = null;  // {at} the LIVE two-tap guard on RELINK GUN (bench 2026-09-17, below)
@@ -477,7 +480,7 @@ export class Hud {
       // F258: `this.scan.length` used to sit here, so every scan hit that added a device rebuilt the
       // whole screen. The picker's rows, its empty placeholder and its fold are all patched in place
       // by `_patchScan` now, so nothing about the scan is structure any more.
-      st.kills > 0, st.deaths > 0, st.assists > 0, accShown(st) != null, st.reserve != null, st.bleUp, st.ended, this.bluetoothOn,
+      st.kills > 0, st.deaths > 0, st.assists > 0, accShown(st) != null, st.reserve != null, st.bleUp, st.ended, this.bluetoothOn, this.locationOn,
       this.discovered && this.discovered.url,   // Polish-loop pass 1: the discovered-MC row on the pre-join screen (`_joinConfirm` only touches the diag panel, patched directly, not here)
       st.rejoin, !!st.pendingTeardown, this.sync && this.sync.bound, this.sync && this.sync.pending,
       // F137 (field 2026-09-12, found verifying the fix below): the pre-kit CONNECTED screen swaps a whole
@@ -646,6 +649,16 @@ export class Hud {
       <div class="help">The list fills in on its own once Bluetooth is back on.</div>`;
   }
 
+  // F340 (bench 2026-09-24, Android 11): with Location services off the scan found nothing and the list said
+  // "No guns found". This names the cause and the one fix. app.js re-checks on the App resume event and every
+  // few seconds, and starts the scan on its own once Location is on, so there is no SCAN AGAIN here.
+  _idleLocOff() {
+    return `<div class="locoff"><div class="sc bad"><i></i>TURN ON LOCATION TO FIND YOUR TAGGER</div>
+      <div class="locwhy">Android 11 and older need Location on for Bluetooth scanning.</div>
+      <button class="bigbtn locbtn" data-act="onOpenLocationSettings"><span class="unskew">OPEN LOCATION SETTINGS</span></button>
+      <div class="help">The list fills in on its own once Location is on.</div></div>`;
+  }
+
   // F258: the picker's list is now a FIXED structure that `_patchScan` writes into — four boxes that
   // never come and go, so a row node survives every re-render and a tap can land on it.
   _scanList() {
@@ -664,7 +677,7 @@ export class Hud {
         <button class="bigbtn" data-act="onSetGun"><span class="unskew">SET MY GUN ▸</span></button>
         <button class="bigbtn ghost" data-act="onDemo"><span class="unskew">DESKTOP DEMO</span></button>
         <button class="bigbtn ghost util" data-act="onUtility"><span class="unskew">▣ UTILITY MODE</span></button></div>
-      <div class="r">${this.bluetoothOn === false ? this._idleBtOff() :
+      <div class="r">${this.bluetoothOn === false ? this._idleBtOff() : this.locationOn === false ? this._idleLocOff() :
         `<div class="sc"><i></i>SCANNING FOR TAGGERS</div>${this._scanList()}
         <div class="help">Tagger not listed? Power-cycle it — it'll appear within a couple seconds.</div>`}</div></div>`;
   }

@@ -20,7 +20,8 @@ import { LogSync, chunkByBytes, DEFAULT_CHUNK_BYTES } from './logsync.js';   // 
 import { APP_VER, platformName } from './build.js';                  // the REAL build id (contracts A29)
 import { applyResult, HISTORY_MAX } from './history.js';             // per-match history + the A24 result patch
 import { LogRing } from './logring.js';                              // T1-B: a match's own lines must survive to the recap pull
-import { installTapHoldDoor } from './tapgate.js';                   // T2-B: taps AND a hold on the last, for the hidden utility-mode door
+import { installTapHoldDoor } from './tapgate.js';
+import { locationCheck, LOCATION_MAX_SDK } from './location.js';     // F340: Android 11 and older scan nothing with Location off                   // T2-B: taps AND a hold on the last, for the hidden utility-mode door
 
 const $ = id => document.getElementById(id);
 // T1-B (field 2026-09-12): a flat 400-line ring rolled a whole failing match's early lines out
@@ -377,6 +378,37 @@ let scanning = false, picking = false, pickerScanSeq = 0;
 const pacer = new ScanPacer();   // app 0.4.2: picker scan starts are debounced; automatic ones back off
 const picker = new GunPicker({ coalesceMs: COALESCE_MS });   // game day 2026-09-19: a flood of repeat hits is coalesced
 let paintTimer = null;
+// F340 (bench 2026-09-24, the grey Pixel 5 on Android 11): with Location services off the scan found nothing and
+// the picker said "No guns found". `androidSdk` comes from Device.getInfo() at boot; null (web, iOS, an old plugin)
+// means the check never runs. The check itself is location.js, shared with the stage (demo.js).
+let androidSdk = null;
+const runLocationCheck = locationCheck({ platform: platformName, sdk: () => androidSdk, probe: () => link.isLocationEnabled(), hud, log });
+async function checkLocation() {
+  const was = hud.locationOn;
+  const r = await runLocationCheck();
+  if (r.blocked) hud.setScan([]);   // the picker shows the Location message, never a stale list
+  if (hud.locationOn !== was) {
+    log(r.blocked ? 'location services are off: Android 11 and older scan nothing, showing TURN ON LOCATION' : 'location services back on', r.blocked ? 'le' : 'lk');
+    scheduleRender();
+  }
+  return r;
+}
+/** F340: re-checks Location while the picker is on screen with nothing listed (every LOCATION_POLL_MS) and on the
+ *  App `resume` event, so a player who turned Location on in Settings comes back to a running scan. Android 11
+ *  and older only; a no-op everywhere else. */
+const LOCATION_POLL_MS = 3000;
+let locationTicking = false;
+async function locationTick() {
+  if (locationTicking || !isNative() || platformName() !== 'android' || typeof androidSdk !== 'number' || androidSdk > LOCATION_MAX_SDK) return;
+  if (engine.phase !== 'idle' || link.connected || picking || hud.connecting || hud.bluetoothOn === false) return;
+  if (hud.locationOn !== false && hud.scan.some(d => !d.other)) return;   // a list with guns on it is proof enough
+  locationTicking = true;
+  try {
+    const r = await checkLocation();
+    if (r.blocked && scanning) { scanning = false; pickerScanSeq++; stopPickerPaint(); hud.setScan([]); link.stopScan().catch(() => {}); scheduleRender(); }
+    else if (r.cleared) openPicker().catch(e => log('scan after location on: ' + (e && e.message || e), 'le'));
+  } finally { locationTicking = false; }
+}
 /** Paints the picker at PAINT_MS, and only when something a player would see actually changed. A scan
  *  hit itself never paints: on the bench the list churned so fast that no tap and no scroll landed. */
 function startPickerPaint() {
@@ -405,6 +437,7 @@ async function openPicker({ auto = false } = {}) {
     // Bluetooth comes back on, so the operator never has to tap SET MY GUN a second time.
     if (!setBluetoothOn(await link.isEnabled())) { hud.setScan([]); scheduleRender(); return; }
     if (picking || link.connected) return;   // re-check: isEnabled() waited in the plugin queue behind a connect
+    if ((await checkLocation()).blocked || picking || link.connected) return;   // F340: Android <= 11, Location off; locationTick resumes
     // Review 2026-09-19: a background reconnect loop (a remembered gun that is off) also holds the radio --
     // `link.scan()` throws "a gun connect is in flight" and the picker showed "No guns found" with no scan
     // ever having run. End that loop first, the smallest safe option: SET MY GUN is meant to override it.
@@ -459,6 +492,8 @@ Object.assign(hud.h, {
   // F211: Android only (the plugin has no iOS equivalent — Apple gives apps no Bluetooth toggle).
   // `watchEnabled` (boot, below) notices the change and re-opens the picker; no need to poll here.
   onEnableBluetooth: async () => { const ok = await link.requestEnable(); if (!ok) log('this phone/build has no Bluetooth enable prompt — use BLUETOOTH SETTINGS', 'li'); },
+  // F340: Android only. `locationTick` notices Location coming on (resume, or the poll) and starts the scan.
+  onOpenLocationSettings: async () => { const ok = await link.openLocationSettings(); log(ok ? 'opened Location settings' : 'this phone/build has no Location settings shortcut', 'li'); },
   onOpenBluetoothSettings: async () => { const ok = await link.openBluetoothSettings(); if (!ok) log('this phone/build has no Bluetooth settings shortcut', 'li'); },
   // F258 (bench 2026-09-18): picking a gun froze the screen for about three seconds before the tagger
   // said "phone connected" — the scan was still running across the connect and contending with it on
@@ -827,6 +862,10 @@ async function sweepForMc() {
   await loadPlugins();
   await lockLandscape(); await keepAwake(true);
   try { if (plugins.app) plugins.app.addListener('appStateChange', ({ isActive }) => onForeground(!!isActive)); } catch (_) { /* ignore */ }
+  // F340: the Android API level decides whether Location gates a scan. Read it before the first picker scan.
+  try { if (plugins.device) { const i = await plugins.device.getInfo(); if (i && typeof i.androidSDKVersion === 'number') androidSdk = i.androidSDKVersion; } } catch (e) { log('device info: ' + (e && e.message || e), 'le'); }
+  try { if (plugins.app) plugins.app.addListener('resume', () => { locationTick().catch(e => log('location re-check: ' + (e && e.message || e), 'le')); }); } catch (e) { log('resume listener: ' + (e && e.message || e), 'li'); }
+  setInterval(() => { locationTick().catch(e => log('location re-check: ' + (e && e.message || e), 'le')); }, LOCATION_POLL_MS);
   // F153c: the radio came back (mobile data restored, Wi-Fi rejoined, the hotspot came up). Whatever the
   // transport is sitting on was started while there was no route: a backoff counting down, or a dial
   // hanging on an address nothing could reach. Dial from the top of the ladder NOW. Field cost of not
