@@ -1964,7 +1964,7 @@ async def shield_run(st, mgr, clock, seconds: float) -> None:
         await settle(st)
 
 
-SHIELD_STEP = 10   # S.SHIELD_REGEN_STEP, spelled out so a change to it fails this file loudly
+SHIELD_GRANTS = 4   # S.SHIELD_REGEN_GRANTS (F345: a full pool in this many grants), spelled out so a change fails loudly
 SHIELD_LOOP_S_TEST = S.SHIELD_LOOP_S   # the heartbeat period the ordering test makes due by hand
 
 
@@ -2038,14 +2038,36 @@ def test_f344_the_spawn_fill_switch_matches_the_phone():
     assert f"const SHIELD_FILL_ECHO_MS = {int(S.SHIELD_FILL_ECHO_S * 1000)};" in js
 
 
+def test_f345_a_recharge_writes_a_few_large_grants_and_no_readout_like_the_phone():
+    """F345 (field 2026-09-24): a 105 recharge was 11 grants with a readout step or blink behind each, and SHIELDS
+    ONLINE queued behind them. The stage writes what the phone does: SHIELD_REGEN_GRANTS grants and no readout
+    write on the gun while the recharge runs."""
+    async def go():
+        st, mgr, clock = mk_shields()
+        await shielded(st, mgr, clock)
+        n = mark(mgr)
+        clock.advance(1.0)
+        gun_says(st, "$HP,30,0,0,*"); await settle(st)
+        await shield_run(st, mgr, clock, S.SHIELD_REGEN_DELAY_S + 5.0)
+        w = since(mgr, n)
+        online = st.bundle["cues"]["shield_online"]
+        assert online in w, f"SHIELDS ONLINE: {[f for f in w if 'VA6Y' in f]}"
+        c = w.index(st.bundle["cues"]["shield_charging"])
+        during = w[c:w.index(online) + 1]
+        assert len(during) <= S.SHIELD_REGEN_GRANTS + 2, during
+        assert not [f for f in during if f.startswith("$GLED,")], f"no readout write during the recharge: {during}"
+        assert st.shield == st.max_shield
+    asyncio.run(go())
+
+
 def test_the_recharge_constants_match_the_phone():
     js = _ENGINE_JS.read_text(encoding="utf-8")
     assert f"const SHIELD_REGEN_DELAY_MS = {int(S.SHIELD_REGEN_DELAY_S * 1000)};" in js
-    assert f"const SHIELD_REGEN_STEP = {S.SHIELD_REGEN_STEP};" in js
+    assert f"const SHIELD_REGEN_GRANTS = {S.SHIELD_REGEN_GRANTS};" in js
     assert f"const SHIELD_REGEN_STEP_MS = {int(S.SHIELD_REGEN_STEP_S * 1000)};" in js
     assert f"const SHIELD_REGEN_MAX_GRANTS_SLACK = {S.SHIELD_REGEN_MAX_GRANTS_SLACK};" in js
     assert f"const SHIELD_LOOP_MS = {int(S.SHIELD_LOOP_S * 1000)};" in js
-    assert S.SHIELD_REGEN_STEP == SHIELD_STEP
+    assert S.SHIELD_REGEN_GRANTS == SHIELD_GRANTS
 
 
 def test_break_heartbeat_refill_online_is_the_whole_cycle():
@@ -2082,7 +2104,7 @@ def test_break_heartbeat_refill_online_is_the_whole_cycle():
         # CEILING, not floor division (S45: the Shields preset's 105 is not a multiple of the 10-point
         # step) -- the last grant overshoots and the firmware clamps at the $PSET ceiling, so a pool
         # that does not divide evenly still needs one more grant than a floor would count.
-        assert grants(mgr, n) == math.ceil(st.max_shield / SHIELD_STEP), "exactly the grants a full pool needs"
+        assert grants(mgr, n) == SHIELD_GRANTS, "exactly the grants a full pool needs"
         n2 = mark(mgr)
         await shield_run(st, mgr, clock, 4.0)
         assert grants(mgr, n2) == 0 and c["shield_online"] not in since(mgr, n2), "and it stops once the gun says full"
@@ -2249,7 +2271,7 @@ def test_a_gun_that_never_reports_full_is_granted_at_a_capped_number_of_times():
         # The gun's OWN ceiling is 0, so every grant lands and the pool still never reaches the 70 the head
         # says it has. That is the cap's second case verbatim: the ceiling is not what the head said.
         mgr.taggers[GUN].cfg_shield = 0
-        cap = math.ceil(st.max_shield / SHIELD_STEP) + S.SHIELD_REGEN_MAX_GRANTS_SLACK
+        cap = SHIELD_GRANTS + S.SHIELD_REGEN_MAX_GRANTS_SLACK
         await shield_run(st, mgr, clock, S.SHIELD_REGEN_DELAY_S + 20.0)
         assert grants(mgr, n) == cap, f"a full pool of grants plus the slack, then it gives up ({cap})"
         n2 = mark(mgr)

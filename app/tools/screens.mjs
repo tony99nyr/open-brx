@@ -4615,6 +4615,26 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(last && last.s === 'ok' && last.shield >= 105, `full again: ${JSON.stringify({ s: last && last.s, shield: last && last.shield })}`);
     must(!toast, 'no teal "+N SHIELD" toast over the meter during a recharge');
   });
+  await step(`${tag}: the refill grows smoothly: sampled every 100 ms, the fill never stands still while it charges and never jumps a grant (F345)`, async () => {
+    const pg = await open(view, 'live-shields-broken', N, 3300);
+    const ws = []; let chargeSeen = false;
+    for (let t = 0; t < 14000; t += 100) {
+      const r = await svRead(pg);
+      if (r.s === 'charge') { chargeSeen = true; ws.push(r.fl); }
+      else if (chargeSeen) break;
+      await pg.waitForTimeout(100);
+    }
+    await pg.close();
+    let still = 0, longest = 0, jump = 0;
+    for (let i = 1; i < ws.length; i++) {
+      still = Math.abs(ws[i] - ws[i - 1]) < 0.5 ? still + 1 : 0; longest = Math.max(longest, still);
+      jump = Math.max(jump, ws[i] - ws[i - 1]);
+    }
+    must(ws.length >= 10, `setup: the refill was sampled (${ws.length} samples)`);
+    must(ws.every((w, i) => i === 0 || w >= ws[i - 1] - 0.5), `the fill only rises: ${ws.map(Math.round).join(' ')}`);
+    must(longest <= (night ? 3 : 2), `the fill stood still for ${longest} samples in a row (a grant-by-grant step): ${ws.map(Math.round).join(' ')}`);
+    must(jump < 0.2 * 844, `the largest move between two samples is ${Math.round(jump)} px, a grant-sized jump: ${ws.map(Math.round).join(' ')}`);
+  });
   await step(`${tag}: the overshield is a layer over the shield, drained first by hits, and only hits remove it`, async () => {
     const pg = await open(view, 'live-shields-os', N, 3200);
     const a = await svWait(pg, r => r.os && r.osw > 400, 3000);
@@ -4658,16 +4678,16 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(c.s === 'charge', `setup: the refill ran: ${c.s}`);
     must(w.s !== 'charge' && w.wait && w.dly < 60, `after the hit: back to the delay, the creep near 0: ${JSON.stringify({ s: w.s, wait: w.wait, dly: w.dly })}`);
   });
-  await step(`${tag}: a death clears the red tint, and a respawn starts unshielded but not broken: no red pulse, no tint, the creep runs (polish M3)`, async () => {
+  await step(`${tag}: a death clears the red tint, and a respawn starts at FULL shield (F344): no red pulse, no tint, no creep (polish M3)`, async () => {
     const pg = await open(view, 'live-shields-broken', N, 3300);
     const d0 = await svWait(pg, r => r.tint, 2000);
     await pg.evaluate(() => window.brxDemo.die()); await pg.waitForTimeout(700);
     const dead = await pg.evaluate(() => ({ tint: !!document.querySelector('.alive.sv-down'), alive: window.brx.engine.state().alive }));
-    await pg.evaluate(() => window.brxDemo.respawn()); const back = await svWait(pg, r => r.m && r.shield === 0 && r.wait, 4000); await pg.waitForTimeout(300); const b2 = await svRead(pg);
+    await pg.evaluate(() => window.brxDemo.respawn()); const back = await svWait(pg, r => r.m && r.shield >= 105, 4000); await pg.waitForTimeout(300); const b2 = await svRead(pg);
     await pg.close();
     must(d0.tint, 'setup: broken, tinted');
     must(!dead.alive && !dead.tint, `dead: no tint: ${JSON.stringify(dead)}`);
-    must(b2.m && b2.s !== 'down' && !b2.tint && b2.wait, `respawned: a fresh life at 0 has not broken: ${JSON.stringify({ s: b2.s, tint: b2.tint, wait: b2.wait })}`);
+    must(b2.m && b2.s === 'ok' && b2.shield >= 105 && !b2.tint && !b2.wait, `respawned: a fresh Shields life starts full (F344): ${JSON.stringify({ s: b2.s, shield: b2.shield, tint: b2.tint, wait: b2.wait })}`);
   });
   await step(`${tag}: no tint while shielded, with the shield or an overshield alone (polish M3)`, async () => {
     let pg = await open(view, 'live-shields-hit', N, 3600); const h = await svWait(pg, r => r.m && r.shield > 0 && r.shield < 105, 2000); await pg.close();

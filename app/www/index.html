@@ -145,6 +145,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .svm[data-wait] .svbar > i.svdly::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent 40%,#fff 50%,transparent 60%);animation:svsweep 1.6s linear infinite}
 .svgh{background:var(--svc2);opacity:.6;transition:width .5s ease-in .25s}
 .svfl{background:linear-gradient(180deg,var(--svc2),var(--svc) 48%);box-shadow:0 0 10px var(--svc);transition:width .28s linear;overflow:hidden}
+.svm[data-raf] .svfl,.svm[data-raf] .svgh{transition:none}   /* F345: the refill moves every frame (shieldmeter.js fillFrame) */
 .svos{background:linear-gradient(180deg,#eeffc2,var(--svos) 52%);box-shadow:0 0 12px var(--svos);transition:width .2s linear}
 .svm[data-s="charge"] .svfl::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent 35%,rgba(255,255,255,.85) 50%,transparent 65%);animation:svsweep .7s linear infinite}
 @keyframes svsweep{from{transform:translateX(-100%)}to{transform:translateX(100%)}}   /* transform, not left: no layout per frame */

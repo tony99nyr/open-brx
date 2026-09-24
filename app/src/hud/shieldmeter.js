@@ -14,6 +14,10 @@
 //   no white and no sweep; the one motion is the broken track's slow red brightness pulse.
 // - The timing is the engine's: `st.shieldRegen` (engine.js S29) gives the delay and the grant cadence. The sounds
 //   are the engine's too: `shield_down` (N101) and `shield_charging` (N102) already play on the gun. No phone audio.
+// - F345 (Tony, field 2026-09-24: "the hud animation is kinda chunky it doesn't grow smoothly"): the refill is drawn
+//   from the engine's own recharge clock (`shieldRegen.startedAt/from/fullAt`), a straight line from where it started
+//   to full, and never more than one grant ahead of the pool the gun reported. By day it moves at frame rate
+//   (`requestAnimationFrame`); at night and under reduced motion it moves only with the HUD's own patch.
 const clamp01 = x => (x > 1 ? 1 : x > 0 ? x : 0);
 const osOf = st => (st.powerup && st.powerup.overshield) || null;
 
@@ -40,9 +44,19 @@ export function meterModel(st, now = Date.now()) {
   const pct = max > 0 ? clamp01(base / max) : 0;
   const state = down ? 'down' : charging ? 'charge' : pct > 0 && pct <= 0.25 ? 'low' : 'ok';
   return {
-    base, max, pct, os: !!os, osLeft, osAmount: os ? os.amount || 0 : 0, osPct: os && os.amount > 0 ? clamp01(osLeft / os.amount) : 0, onlyOs: !!os && max <= 0,
+    base, max, pct, fill: fillPct(st, sr, charging, base, max, pct, now), os: !!os, osLeft, osAmount: os ? os.amount || 0 : 0, osPct: os && os.amount > 0 ? clamp01(osLeft / os.amount) : 0, onlyOs: !!os && max <= 0,
     state, down, charging, waiting, frozen, delayPct, alive,
   };
+}
+
+/** F345: the fill the meter draws. At rest it is the pool. During a recharge it is a straight line from `from` at
+ *  `startedAt` to the max at `fullAt` (the engine's own grant clock), capped at one grant above the pool the gun has
+ *  reported, so a slow link holds the bar back instead of drawing a full shield the gun does not have. PURE. */
+function fillPct(st, sr, charging, base, max, pct, now) {
+  if (!charging || !(max > 0) || !sr || sr.startedAt == null || sr.fullAt == null) return pct;
+  const from = sr.from || 0, span = Math.max(1, sr.fullAt - sr.startedAt);
+  const line = from + (max - from) * clamp01((now - sr.startedAt) / span);
+  return clamp01(Math.min(line, base + (sr.step || 0)) / max);
 }
 
 // A stun freezes the delay creep where it stood (`fx.dl`), stamped with the `quietAt` it was measured from (`fx.dlq`).
@@ -66,7 +80,7 @@ export function meterHtml(st, fx = {}, now) {
   const m = meterModel(st, now);
   if (frozenAt(m, st, fx)) m.delayPct = fx.dl;   // a rebuild during a stun keeps the creep where it stood
   return `<div class="svm" id="svm" data-s="${m.state}"${m.os ? ' data-os=""' : ''}${m.onlyOs ? ' data-only-os=""' : ''}${m.waiting ? ' data-wait=""' : ''} role="meter" aria-label="shield" ${aria(m)}>`
-    + `<div class="svbar"><i class="svgh" data-k="gh" style="--w:${pctStr(m.pct)}"></i><i class="svfl" data-k="fl" style="--w:${pctStr(m.pct)}"></i>`
+    + `<div class="svbar"><i class="svgh" data-k="gh" style="--w:${pctStr(m.fill)}"></i><i class="svfl" data-k="fl" style="--w:${pctStr(m.fill)}"></i>`
     // the delay creep comes AFTER the fill and the overshield, so it paints over a part-full shield too
     + `<i class="svos" data-k="os" style="--w:${pctStr(m.osPct)}"></i><i class="svdly" data-k="dl" style="--w:${pctStr(m.delayPct)}"></i><i class="svseg"></i></div></div><div class="svtint" aria-hidden="true"></div>`;
 }
@@ -81,7 +95,7 @@ export function patchMeter(hudEl, st, fx, now = Date.now()) {
   for (const [k, v] of Object.entries(ariaVals(m))) if (el.getAttribute(k) !== v) el.setAttribute(k, v);
   if (alive) alive.classList.toggle('sv-down', m.down);
   if (frozenAt(m, st, fx)) m.delayPct = fx.dl; else { fx.dl = m.delayPct; fx.dlq = quietOf(st); }
-  const vals = { gh: m.pct, fl: m.pct, os: m.osPct, dl: m.delayPct };
+  const vals = { gh: m.fill, fl: m.fill, os: m.osPct, dl: m.delayPct };
   for (const n of el.querySelectorAll('[data-k]')) {
     const x = vals[n.dataset.k]; if (x == null) continue;
     const w = pctStr(x); if (n.style.getPropertyValue('--w') !== w) n.style.setProperty('--w', w);
@@ -93,6 +107,21 @@ export function patchMeter(hudEl, st, fx, now = Date.now()) {
     if (total < fx.shield && !m.down) pulse(el, 'hit', 450);   // the break has its own steady pulse (data-s="down")
   }
   fx.shield = total;
+  fx.st = st;   // F345: the frame-rate fill reads the latest state
+  const smooth = m.charging && !reducedMotion() && !el.closest('[data-env="night"]') && typeof requestAnimationFrame === 'function';
+  el.toggleAttribute('data-raf', smooth);   // CSS: no width transition while the fill moves every frame
+  if (smooth && !fx.raf) fx.raf = requestAnimationFrame(() => fillFrame(hudEl, fx));
+}
+const reducedMotion = () => { try { return !!(typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (_) { return false; } };
+/** F345: one animation frame of the refill. Stops itself when the recharge ends or the meter is gone. */
+function fillFrame(hudEl, fx) {
+  fx.raf = 0;
+  const el = hudEl && hudEl.querySelector('#svm'); if (!el || !fx.st) return;
+  const m = meterModel(fx.st, Date.now());
+  if (!m.charging || !el.hasAttribute('data-raf')) return;
+  const w = pctStr(m.fill);
+  for (const n of el.querySelectorAll('[data-k="fl"], [data-k="gh"]')) if (n.style.getPropertyValue('--w') !== w) n.style.setProperty('--w', w);
+  fx.raf = requestAnimationFrame(() => fillFrame(hudEl, fx));
 }
 function pulse(el, cls, ms) {
   el.classList.remove('hit'); void el.offsetWidth; el.classList.add(cls);

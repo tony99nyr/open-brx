@@ -243,8 +243,8 @@ RELOAD_NAG_FIRST, RELOAD_NAG_EVERY = 5, 3   # engine.js RELOAD_NAG_FIRST / RELOA
 # S29 the shield recharge (engine.js SHIELD_REGEN_*): quiet since the last damage, the `$LIFE` grant and its
 # cadence, the grant cap, and the period the shield-down heartbeat replays on. SECONDS here, ms on the phone.
 SHIELD_REGEN_DELAY_S = 6.5          # engine.js SHIELD_REGEN_DELAY_MS -- Callsign's own 6.2-6.6 s (capture 2026-09-18)
-SHIELD_REGEN_STEP = 10              # engine.js SHIELD_REGEN_STEP -- `$LIFE,0,0,10,*`
-SHIELD_REGEN_STEP_S = 0.3           # engine.js SHIELD_REGEN_STEP_MS -- 0 -> 120 in 4.1 s (bench 2026-09-17)
+SHIELD_REGEN_GRANTS = 4             # engine.js SHIELD_REGEN_GRANTS (F345) -- a full pool in this many `$LIFE,0,0,<step>,*`
+SHIELD_REGEN_STEP_S = 1.0           # engine.js SHIELD_REGEN_STEP_MS -- one grant a second: 0 -> full in about 3 s
 SHIELD_REGEN_MAX_GRANTS_SLACK = 3   # engine.js SHIELD_REGEN_MAX_GRANTS_SLACK
 # F344 (engine.js SPAWN_SHIELD_FULL / SHIELD_FILL_ECHO_MS): a shields life starts at FULL shield. `$SPAWN` leaves the
 # pool at 0 on hardware, so every spawn and revive burst ends with one additive `$LIFE,0,0,<max>,*`; the gun's `$HP`
@@ -2656,14 +2656,15 @@ class GunStage:
                 self._shield_loop_tick(now)
             return
         if not self._shield_regen:
-            self._shield_regen = {"started_at": now, "next_at": now, "grants": 0}
+            step = self._shield_regen_step()
+            self._shield_regen = {"started_at": now, "next_at": now, "grants": 0, "from": self.shield, "step": step}
             self._log(f"shield recharge: {self.shield}/{self.max_shield} after "
                       f"{now - self._shield_quiet_at:.1f}s without damage", "info")
             self._event_now("shield_charging")
         r = self._shield_regen
         if now < r["next_at"]:
             return
-        if r["grants"] >= math.ceil(self.max_shield / SHIELD_REGEN_STEP) + SHIELD_REGEN_MAX_GRANTS_SLACK:
+        if r["grants"] >= SHIELD_REGEN_GRANTS + SHIELD_REGEN_MAX_GRANTS_SLACK:
             # A full pool's worth of grants and the gun still does not report full: stop rather than write at
             # it forever. Either the echoes are lost, or the ceiling is not what the head said.
             # `_shield_gave_up` is what makes it STICK: clearing `_shield_regen` alone put the next tick
@@ -2676,7 +2677,11 @@ class GunStage:
             return
         r["grants"] += 1
         r["next_at"] = now + SHIELD_REGEN_STEP_S
-        self._spawn_task(self.write([f"$LIFE,0,0,{SHIELD_REGEN_STEP},*"], f"shield regen grant {r['grants']}", gap_ms=0))
+        self._spawn_task(self.write([f"$LIFE,0,0,{r['step']},*"], f"shield regen grant {r['grants']}", gap_ms=0))
+
+    def _shield_regen_step(self) -> int:
+        """engine.js `_shieldRegenStep` (F345): one grant, so a full pool takes SHIELD_REGEN_GRANTS writes."""
+        return max(1, math.ceil((self.max_shield or 0) / SHIELD_REGEN_GRANTS))
 
     def _spawn_shield_fill(self) -> list[str]:
         """engine.js `_spawnShieldFill` (F344): the pool write that makes a shields life start at full shield, one
@@ -3379,7 +3384,7 @@ class GunStage:
             elif before > 0 and gains:
                 pool, amount = gains[0]
                 # S45 (engine.js `_onHp`): the grant that FILLS the shield says SHIELDS ONLINE instead of
-                # the per-grant `shield_up` line -- a refill is a dozen `$LIFE` grants 300 ms apart and the gun
+                # the per-grant `shield_up` line -- a refill is several `$LIFE` grants (F345: 4, a second apart) and the gun
                 # plays one clip at a time, so the two would cut each other off on the frame the news lands
                 # (F57's rule: two cues, one speaker, the rarer one wins). What makes it an EDGE is this branch,
                 # not a comparison of its own: it runs only when a pool actually ROSE, so a frame reporting a
@@ -3413,7 +3418,9 @@ class GunStage:
             return
         readout = g.get("readout")
         if readout and readout.get("pools"):
-            if pool:
+            # F345 (engine.js `_gunReadoutPaint`): no readout animation while a recharge runs; the grant that fills
+            # the pool ends the recharge first (`_shield_charged`), so full is painted.
+            if pool and not (pool == "shield" and self._shield_regen):
                 self._readout_paint(pool)
             return
         if g.get("in_play") == "health":
@@ -4314,8 +4321,8 @@ class GunStage:
                 add("shield_cycle", "SHIELD BREAK AND RECHARGE (shoot it off, then wait)",
                     f"sound: the break cue, then the heartbeat every {SHIELD_LOOP_S:g}s while the shield is gone · "
                     f"after {SHIELD_REGEN_DELAY_S:g}s with NO further hits the heartbeat stops and the charge cue plays, "
-                    f"then {SHIELD_REGEN_STEP}-point `$LIFE` grants every {SHIELD_REGEN_STEP_S:g}s refill the pool "
-                    f"({self.max_shield} in about {self.max_shield / SHIELD_REGEN_STEP * SHIELD_REGEN_STEP_S:.1f}s) and "
+                    f"then {self._shield_regen_step()}-point `$LIFE` grants every {SHIELD_REGEN_STEP_S:g}s refill the pool "
+                    f"({self.max_shield} in about {(SHIELD_REGEN_GRANTS - 1) * SHIELD_REGEN_STEP_S:.1f}s) and "
                     "the ONLINE line plays at full. Any hit in the wait restarts the whole delay",
                     "ir", {"kind": "shot", "repeat": max(1, math.ceil(self.max_shield / 20))}, needs_ir=True)
             add("death", "DEATH (emitter kills you)",

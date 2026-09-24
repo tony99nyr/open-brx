@@ -15,17 +15,19 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Engine, PROBE_LIFE, isPoolProbe } from '../src/engine.js';
+import { Engine, PROBE_LIFE, isPoolProbe, SHIELD_REGEN_WRITE_BUDGET } from '../src/engine.js';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 const NAG = golden.cues.reload_nag;             // $PLAY,,4,6,VX73,* -- "Reload"
 const ONLINE = golden.cues.shield_online;       // $PLAY,,4,6,VA6Y,* -- "Shields Online"
 const UP = golden.cues.shield_up;               // $PLAY,,4,6,VA8C,* -- "SHIELD ONLINE", the per-grant line
+const GRANTS = SHIELD_REGEN_WRITE_BUDGET - 2;   // F345: a full pool in this many grants (engine.js SHIELD_REGEN_GRANTS)
 const MAX_SHIELD = 70;                          // `harness()`'s own default shield ceiling (S45: a real
                                                  // `health.max_shield` field now; the golden bundle's OWN
                                                  // default is 0, Standard's shape -- see `shieldCeiling`)
 
-const FILL = `$LIFE,0,0,${MAX_SHIELD},*`;   // F344: the spawn fill a shields life ends its burst with
+const FILL = `$LIFE,0,0,${MAX_SHIELD},*`;
+const STEP = Math.ceil(MAX_SHIELD / GRANTS);   // F345: one recharge grant   // F344: the spawn fill a shields life ends its burst with
 
 function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }; }
 
@@ -67,14 +69,16 @@ function harness({ shields = false, shieldCeiling = MAX_SHIELD } = {}) {
     /** Advance time the way a real gun would answer: every `$LIFE` the node writes comes back as the `$HP`
      *  echo it earned, clamped at the ceiling. Without this the node is granting into a void and the cap
      *  (rightly) stops it, so a test of the refill must play the gun's side. */
-    run(ms, { echo = true, hp = 30, armor = 0 } = {}) {
+    run(ms, { echo = true, hp = 30, armor = 0, probes = false } = {}) {
       const end = clock + ms;
-      let seen = h.grants();
+      let seen = h.grants(), asked = writes.filter(isPoolProbe).length;
       while (clock < end) {
         clock = Math.min(end, clock + 50); eng.tick();
+        // `probes`: a live gun that ignores the grants still answers the liveness probe (F272), with its unchanged pool
+        if (probes && writes.filter(isPoolProbe).length > asked) { asked = writes.filter(isPoolProbe).length; h.f(`$HP,${hp},${armor},${eng.shield},*`); }
         if (echo && h.grants() > seen) {
           seen = h.grants();
-          h.f(`$HP,${hp},${armor},${Math.min(MAX_SHIELD, seen * 10)},*`);
+          h.f(`$HP,${hp},${armor},${Math.min(MAX_SHIELD, seen * STEP)},*`);
         }
       }
       return h;
@@ -228,9 +232,9 @@ test('S29: break, heartbeat, refill, online -- the whole cycle', () => {
   assert.equal(h.eng.shield, MAX_SHIELD, 'the pool came back');
   assert.equal(h.count(ONLINE), 1, 'and says so, once');
   assert.equal(h.count(UP), 0, 'never the per-grant line: twelve of those would cut each other off');
-  assert.equal(h.grants(), MAX_SHIELD / 10, 'exactly the grants a full pool needs');
+  assert.equal(h.grants(), GRANTS, 'exactly the grants a full pool needs');
   h.run(4000);
-  assert.equal(h.grants(), MAX_SHIELD / 10, 'and it stops granting once the gun says full');
+  assert.equal(h.grants(), GRANTS, 'and it stops granting once the gun says full');
   assert.equal(h.count(ONLINE), 1, 'no second announcement');
 });
 
@@ -303,10 +307,10 @@ test('S29: a dead gun is not refilled, and a fresh life does not heartbeat', () 
 test('S29: a gun that never reports full is granted at a capped number of times, not forever', () => {
   const h = shielded();
   h.f('$HP,30,0,0,*');
-  h.run(DELAY + 30000, { echo: false });          // the gun says nothing back, ever
-  assert.equal(h.grants(), Math.ceil(MAX_SHIELD / 10) + 3, 'a full pool of grants plus the slack, then it gives up');
-  h.run(30000, { echo: false });
-  assert.equal(h.grants(), Math.ceil(MAX_SHIELD / 10) + 3, 'and it does not start again on its own');
+  h.run(DELAY + 30000, { echo: false, probes: true });   // the gun never answers a grant (F345: 7 s of grants outlast F272's probe pair, so it answers those)
+  assert.equal(h.grants(), GRANTS + 3, 'a full pool of grants plus the slack, then it gives up');
+  h.run(30000, { echo: false, probes: true });
+  assert.equal(h.grants(), GRANTS + 3, 'and it does not start again on its own');
 });
 
 test('S29: a stand-down mid-refill re-earns the delay, and never announces the refill twice', () => {
@@ -335,10 +339,10 @@ test('S29: a stand-down mid-refill re-earns the delay, and never announces the r
 test('S29: a gun that never answers stops the heartbeat too, not just the grants', () => {
   const h = shielded();
   h.f('$HP,30,0,0,*');
-  h.run(DELAY + 30000, { echo: false });
+  h.run(DELAY + 30000, { echo: false, probes: true });
   assert.equal(h.eng._shieldGaveUp, true, 'setup: the cap gave up on a gun that never reports full');
   const loops = h.count(LOOP);
-  h.run(20000, { echo: false });
+  h.run(20000, { echo: false, probes: true });
   assert.equal(h.count(LOOP), loops,
     'N74 must not replay every 1.94 s for the rest of the life on a gun nothing can fix');
 });

@@ -108,8 +108,13 @@ const RELOAD_NAG_FIRST = 5, RELOAD_NAG_EVERY = 3;
 // ⚠ Not ear-tuned. Halo's own numbers are 5 s and 4 s; Callsign's measured 6.4 s and 2.5 s. These are the
 // measured ones, and they are a named constant precisely so the bench can move them.
 const SHIELD_REGEN_DELAY_MS = 6500;   // quiet since the last damage before a refill may start
-const SHIELD_REGEN_STEP = 10;         // `$LIFE,0,0,10,*` -- the grant the bench refilled with
-const SHIELD_REGEN_STEP_MS = 300;     // one grant per this: 0 -> 120 in 4.1 s
+// F345 (Tony, live match 2026-09-24: "the hud animation is kinda chunky" and SHIELDS ONLINE 3-4 s late): 10 every
+// 300 ms was 11 writes for a 105 pool, each with a readout step or blink behind it, and in the field the BLE queue
+// stretched the planned 3.3 s to 5.1 s. Now a full pool is SHIELD_REGEN_GRANTS writes, one a second (about the same
+// 3 s), and the readout is not animated while a recharge runs. The phone draws the fill smoothly from `shieldRegen`.
+const SHIELD_REGEN_GRANTS = 4;        // a full pool in this many `$LIFE,0,0,<step>,*` grants (step = ceil(max / this): 27 for 105; 10-30 are bench-proven)
+const SHIELD_REGEN_STEP_MS = 1000;    // one grant per this: 0 -> full in about 3 s
+export const SHIELD_REGEN_WRITE_BUDGET = SHIELD_REGEN_GRANTS + 2;   // one recharge, `shield_charging` to `shield_online` inclusive
 // F344 (Tony, live match 2026-09-24: "you can die from a couple hits right after spawn"): a Shields life starts at
 // FULL shield, Halo's rule. `$SPAWN` leaves the shield POOL at 0 on hardware ($PSET t5 is a ceiling), so every
 // spawn and revive burst ends with one additive `$LIFE,0,0,<max>,*` that the gun clamps at t5. The gun answers it
@@ -2012,6 +2017,9 @@ export class Engine {
    *  it — a one-shot delayed callback cannot be un-scheduled. */
   _gunReadoutPaint(pool) {
     if (this.phase !== 'live' || !this.alive || !this.spawned || !this._gunTaken) return;
+    // F345: no readout animation while a recharge runs: each grant's step and blink sat in the BLE queue in front of
+    // SHIELDS ONLINE. The grant that fills the pool ends the recharge first (`_shieldCharged`), so full is painted.
+    if (pool === 'shield' && this._shieldRegen) return;
     const g = this.frames.gun, readout = g.readout;
     const entry = readout.pools.find(p => p.pool === pool); if (!entry) return;
     // A16.3: a `levels` entry (the 7-level bar + drop/gain animation) is a completely separate path; a
@@ -2217,7 +2225,7 @@ export class Engine {
     }
     // The partial-level blink, tick()-polled (see `_readoutSettle`) -- runs only while `_roBlinkAt` is
     // armed, and stops on its own the instant the hold above expires.
-    if (this._roBlinkAt && this._roPool != null) {
+    if (this._roBlinkAt && this._roPool != null && !(this._roPool === 'shield' && this._shieldRegen)) {   // F345: no blink during a recharge
       const entry = readout.pools.find(p => p.pool === this._roPool);
       const pair = entry && Array.isArray(entry.levels) ? entry.levels[this._roLevel] : null;
       if (pair && pair[1]) {
@@ -3122,13 +3130,15 @@ export class Engine {
       return;
     }
     if (!this._shieldRegen) {
-      this._shieldRegen = { startedAt: now, nextAt: now, grants: 0 };
+      const step = this._shieldRegenStep(), need = Math.max(1, Math.ceil((this.maxShield - this.shield) / step));
+      // `from`/`step`/`fullAt` are published (`state().shieldRegen`) so the phone draws the fill from them (F345)
+      this._shieldRegen = { startedAt: now, nextAt: now, grants: 0, from: this.shield, step, fullAt: now + (need - 1) * SHIELD_REGEN_STEP_MS };
       this.log(`shield recharge: ${this.shield}/${this.maxShield} after ${Math.round((now - this._shieldQuietAt) / 1000)}s without damage`, 'lk');
       this._event('shield_charging');
     }
     const r = this._shieldRegen;
     if (now < r.nextAt) return;
-    if (r.grants >= Math.ceil(this.maxShield / SHIELD_REGEN_STEP) + SHIELD_REGEN_MAX_GRANTS_SLACK) {
+    if (r.grants >= SHIELD_REGEN_GRANTS + SHIELD_REGEN_MAX_GRANTS_SLACK) {
       // The gun has taken a full pool's worth of grants and still does not report full. Stop rather than
       // write at it forever: either the echoes are lost (the pool is fine and the next `$HP` will say so) or
       // the ceiling is not what the head said, and neither is fixed by more writes.
@@ -3142,8 +3152,10 @@ export class Engine {
       return;
     }
     r.grants++; r.nextAt = now + SHIELD_REGEN_STEP_MS;
-    this._write([`$LIFE,0,0,${SHIELD_REGEN_STEP},*`], `shield regen grant ${r.grants}`);
+    this._write([`$LIFE,0,0,${r.step},*`], `shield regen grant ${r.grants}`);
   }
+  /** F345: one recharge grant, so a full pool takes SHIELD_REGEN_GRANTS writes. The gun clamps the last at t5. */
+  _shieldRegenStep() { return Math.max(1, Math.ceil((this.maxShield || 0) / SHIELD_REGEN_GRANTS)); }
   /** S45: the heartbeat, replayed for as long as the shield is down and the recharge has not started. A LOOP
    *  the node drives, because the gun has no looping `$PLAY` -- the same shape as the hill possession tick,
    *  and for the same reason: a clip relaunched faster than it runs stacks and drifts (F74). The period is
@@ -6059,7 +6071,7 @@ export class Engine {
           gains.sort((a, b) => b[1] - a[1]);
           this.moment = { kind: 'gain', at: this.now(),
             data: { pool: gains[0][0], amount: gains[0][1], hp, armor, shield } };
-          // S29/S45: a RECHARGE is a dozen `$LIFE` grants 300 ms apart and the gun plays one clip at a time,
+          // S29/S45: a RECHARGE is several `$LIFE` grants (F345: 4, a second apart) and the gun plays one clip at a time,
           // so the per-grant `shield_up` line cannot be allowed to fire twelve times over the top of it. The
           // recharge owns its own audio: `shield_charging` when `_shieldTick` writes the first grant, then
           // silence, then `shield_online` on the grant that reaches the ceiling (F57's rule -- two cues, one
@@ -6453,6 +6465,8 @@ export class Engine {
       // `down` = the shield BROKE this life (a spawn at 0 has not); `paused` = `_shieldTick`'s own stand-down, when no refill runs.
       shieldRegen: this.maxShield > 0 ? { on: this.shieldRegenOn, delayMs: SHIELD_REGEN_DELAY_MS, quietAt: this._shieldQuietAt || 0,
         charging: !!this._shieldRegen, down: !!this._shieldDown, gaveUp: !!this._shieldGaveUp,
+        // F345: the running recharge's clock, so the meter fills smoothly: `from` at `startedAt`, max at `fullAt`
+        ...(this._shieldRegen ? { startedAt: this._shieldRegen.startedAt, from: this._shieldRegen.from, step: this._shieldRegen.step, fullAt: this._shieldRegen.fullAt } : {}),
         paused: !!this._standDown(['phase', 'spawned', 'ble', 'alive', 'reconciling', 'resync', 'tutorial', 'stunned']) } : null,
       // Bench 2026-09-17: `heat` is the active slot's last $ALCD heat token, null until one has been seen
       // this life (a non-heat weapon never sends a non-zero one).
