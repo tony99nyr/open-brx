@@ -189,14 +189,39 @@ def test_first_blood_is_a_medal_and_a_kill_can_stack_a_multi_and_a_spree():
     # fixture: player_num = index + 1, so shooter_num 1 is p0 (blue); p1/p3 are yellow
     death(sc, "n1", "p1", 1, T0 + 1000)
     assert fb[-1][1]["medals"] == ["first_blood"] and feed[-1]["tag"] == "FIRST BLOOD"
-    # four more kills inside the multi window: kills 2,3,4,5 -> double, triple, killtacular, killtacular+killing_spree
+    # four more kills inside the multi window: kills 2,3,4,5 -> double, triple, killtacular, killtrocity+killing_spree
+    # (Tony's ear-confirmed ladder, 2026-09-24: every kill from 2 to 8 voiced)
     death(sc, "n3", "p3", 1, T0 + 1500); assert fb[-1][1]["medals"] == ["double_kill"]
     death(sc, "n1", "p1", 1, T0 + 1800); assert fb[-1][1]["medals"] == ["triple_kill"]
     death(sc, "n3", "p3", 1, T0 + 1900); assert fb[-1][1]["medals"] == ["killtacular"]
     death(sc, "n1", "p1", 1, T0 + 1950)
-    assert fb[-1][1]["medals"] == ["killtacular", "killing_spree"], fb[-1][1]
+    assert fb[-1][1]["medals"] == ["killtrocity", "killing_spree"], fb[-1][1]
     assert fb[-1][1]["kind"] == "kill"
-    assert feed[-1]["tag"] == "KILLTACULAR + KILLING SPREE"
+    assert feed[-1]["tag"] == "KILLTROCITY + KILLING SPREE"
+
+
+def test_the_halo_3_multi_kill_ladder_by_chain_length_and_its_4_s_window():
+    """Tony 2026-09-24 ("Killamanjaro ... its my favorite one"): Halo 3's multi-kill medals, each kill within
+    MULTI_KILL_MS of the previous one. The ladder is ONE table (types.MEDALS) so the counts move in one place."""
+    from brx_mcp.mc.types import MEDALS, MULTI_KILL_MS
+    MULTI_KILL_LADDER = [(m["count"], m["key"]) for m in MEDALS if m["kind"] == "multi"]
+    assert [m for _, m in MULTI_KILL_LADDER] == ["double_kill", "triple_kill", "killtacular", "killtrocity",
+                                                  "killamanjaro", "killtastrophe", "killionaire"]
+    assert all(m["clip"] for m in MEDALS), "Tony: a sound bite on every kill -- no silent tier"
+    sc, fb, feed, alerts = mk_alerts()
+    multis = []
+    for i in range(11):                                   # 11 kills, each 300 ms after the last
+        death(sc, "n1" if i % 2 == 0 else "n3", "p1" if i % 2 == 0 else "p3", 1, T0 + 1000 + i * 300)
+        multis.append([m for m in fb[-1][1]["medals"] if m not in ("first_blood", "killing_spree", "unstoppable")])
+    assert multis == [[], ["double_kill"], ["triple_kill"], ["killtacular"], ["killtrocity"], ["killamanjaro"],
+                      ["killtastrophe"], ["killionaire"], ["killionaire"], ["killionaire"], ["killionaire"]], multis
+    assert "unstoppable" in fb[-2][1]["medals"]           # the 10th kill: the streak ladder is unchanged
+    # the window: a kill MORE than MULTI_KILL_MS after the last starts a new chain
+    last = T0 + 1000 + 10 * 300
+    death(sc, "n1", "p1", 1, last + MULTI_KILL_MS + 1)
+    assert not [m for m in fb[-1][1]["medals"] if m in dict((b, a) for a, b in MULTI_KILL_LADDER)], fb[-1][1]
+    death(sc, "n3", "p3", 1, last + MULTI_KILL_MS + 1 + MULTI_KILL_MS)   # exactly on the window edge still chains
+    assert "double_kill" in fb[-1][1]["medals"], fb[-1][1]
 
 
 def test_lead_alerts_go_to_the_teams_they_concern_and_next_kill_wins_fires_once():

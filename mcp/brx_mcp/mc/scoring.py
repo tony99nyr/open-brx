@@ -8,7 +8,7 @@ import csv
 import io
 from typing import Any, Callable, Literal, Mapping, Sequence
 
-from .types import (ACC_MIN_SHOTS, ASSIST_WINDOW_MS, FEEDBACK_MAX_AGE_MS, MULTI_KILL_MS,
+from .types import (ACC_MIN_SHOTS, ASSIST_WINDOW_MS, FEEDBACK_MAX_AGE_MS, MEDALS, MULTI_KILL_MS,
                     NEVER_SEEN_MS, STALE_AFTER_MS, AfterEndPlayer, AfterEndView, Event, Honor, LiveRow, Player,
                     PossessionView, RecapStationRow, RecapView, ScoreRow, Team, WinBy, WinnerView, parse_win_by)
 
@@ -26,13 +26,16 @@ CSV_COLUMNS = ["operator", "team", "kills", "deaths", "assists", "kd", "accuracy
 # award -- and honors need 3+ players by design (a 1-player recap once crowned itself MVP), so every
 # 1v1 showed an empty medals column all match. The labels are deliberately a local map, not an import
 # of `presentation.TEXT`: that is the HUD's banner copy and it answers to a different audience.
-MEDAL_LABEL = {"first_blood": "FIRST BLOOD", "double_kill": "DOUBLE KILL", "triple_kill": "TRIPLE KILL",
-               "killtacular": "KILLTACULAR", "killing_spree": "KILLING SPREE", "unstoppable": "UNSTOPPABLE"}
+MEDAL_LABEL = {m["key"]: m["label"] for m in MEDALS}   # types.MEDALS order is the recap's canonical chip order
 # The per-kill label an `honors()` award ALREADY stands for. FIRST BLOOD is the same word in both lists
 # and needs no entry; the multi-kill honor is called MULTIKILL and is awarded for a double/triple, so
 # without this a 3+ player row printed `MULTIKILL` and `DOUBLE KILL ×2` as two separate chips for one
 # thing (polish review 2026-09-12). Base labels only -- the `×N` suffix is stripped before the lookup.
-HONOR_ALIAS = {"DOUBLE KILL": "MULTIKILL", "TRIPLE KILL": "MULTIKILL", "KILLTACULAR": "MULTIKILL"}
+HONOR_ALIAS = {m["label"]: "MULTIKILL" for m in MEDALS if m["kind"] == "multi"}
+# Halo 3's multi-kill ladder, highest count first: a chain earns the biggest medal whose count it has reached
+# (killionaire at 10 and beyond). The streak medals fire at their exact count, as before.
+_MULTI_LADDER = sorted(((m["count"], m["key"]) for m in MEDALS if m["kind"] == "multi"), reverse=True)
+_STREAK_AT = {m["count"]: m["key"] for m in MEDALS if m["kind"] == "streak"}
 
 
 def _stands(label: str, honors: set[str]) -> bool:
@@ -435,16 +438,10 @@ class Scorer:
                 if self.first_blood is None:
                     self.first_blood = killer
                     medals.append("first_blood")
-                if kill["multi"] == 2:
-                    medals.append("double_kill")
-                elif kill["multi"] == 3:
-                    medals.append("triple_kill")
-                elif kill["multi"] >= 4:
-                    medals.append("killtacular")
-                if ks.streak == 5:
-                    medals.append("killing_spree")
-                elif ks.streak == 10:
-                    medals.append("unstoppable")
+                if kill["multi"] >= 2:
+                    medals.append(next(key for count, key in _MULTI_LADDER if kill["multi"] >= count))
+                if (streak_medal := _STREAK_AT.get(ks.streak)) is not None:
+                    medals.append(streak_medal)
                 kill["medals"] = medals
                 if medals:
                     tag = " + ".join(m.replace("_", " ").upper() for m in medals)

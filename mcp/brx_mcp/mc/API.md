@@ -266,7 +266,7 @@ ScoreRow { player_id, display, team_id: string|null, kills, deaths, assists, sho
            best_streak: number,     // F116: the LONGEST streak this match. SHOW THIS ONE. `streak` is the
                                     // CURRENT streak and is 0 for whoever died last, which is how a 9-kill
                                     // row read "streak 0" — it stays only so an older UI keeps working
-           multi_best: number,      // biggest multi-kill (2 double · 3 triple · 4+ killtacular; 0 = none)
+           multi_best: number,      // longest multi-kill chain (2 double · 3 triple · 4 killtacular · 5 killtrocity · 6 killamanjaro · 7 killtastrophe · 8+ killionaire, types.MEDALS; 0 = none)
            first_blood: boolean,    // this player drew first blood
            acc_provisional: boolean,// F119: `accuracy` is NOT settled — render it as settling, not as fact
            // --- additive 2026-09-12 (A24/M2). UNOFFICIAL: what this player picked up AFTER the whistle

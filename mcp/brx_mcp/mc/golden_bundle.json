@@ -96,7 +96,7 @@
     "first_blood": "$PLAY,,4,6,VA7H,,,,*",
     "double_kill": "$PLAY,,4,6,VA7E,,,,*",
     "triple_kill": "$PLAY,,4,6,VA7Q,,,,*",
-    "killtacular": "$PLAY,,4,6,V124,,,,*",
+    "killtacular": "$PLAY,,4,6,VA7M,,,,*",
     "killing_spree": "$PLAY,,4,6,VA7K,,,,*",
     "unstoppable": "$PLAY,,4,6,VX0U,,,,*",
     "lead_taken": "$PLAY,,4,6,VA6D,,,,*",
@@ -121,7 +121,11 @@
     "extraction_alert": "$PLAY,,4,6,VA1S,,,,*",
     "loot_picked": "$PLAY,,4,6,VA1Q,,,,*",
     "raid_ending": "$PLAY,,4,6,VA3U,,,,*",
-    "raid_over": "$PLAY,X20,4,6,,,,,*"
+    "raid_over": "$PLAY,X20,4,6,,,,,*",
+    "killtrocity": "$PLAY,,4,6,VA7O,,,,*",
+    "killamanjaro": "$PLAY,,4,6,VA7J,,,,*",
+    "killtastrophe": "$PLAY,,4,6,VA7N,,,,*",
+    "killionaire": "$PLAY,,4,6,VA7L,,,,*"
   },
   "swap_ms": 850,
   "callout_team": 0,
@@ -622,6 +626,30 @@
       ],
       [
         "$GLED,1,1,1,0,1,,*",
+        0.0
+      ]
+    ],
+    "killtrocity": [
+      [
+        "$LED,9,1,1,1,*",
+        0.0
+      ]
+    ],
+    "killamanjaro": [
+      [
+        "$LED,9,1,1,1,*",
+        0.0
+      ]
+    ],
+    "killtastrophe": [
+      [
+        "$LED,9,1,1,1,*",
+        0.0
+      ]
+    ],
+    "killionaire": [
+      [
+        "$LED,9,1,1,1,*",
         0.0
       ]
     ]

@@ -223,7 +223,7 @@ test('S57 kill confirm: MC\'s medal cues play even when IR already confirmed the
   const h = harness(); h.live();
   h.irWord(7, IR_CALLOUT.DOWN_BY + 2);
   h.feedback({ kind: 'kill', victim_team: 'yellow', medals: ['killtacular'] });
-  assert.equal(h.cues('V124').length, 1, 'the medal line (killtacular = V124 in the golden bundle) is never suppressed');
+  assert.equal(h.cues('VA7M').length, 1, 'the medal line (killtacular = VA7M in the golden bundle) is never suppressed');
 });
 
 // ---------- polish round 1 (2026-09-23) ----------

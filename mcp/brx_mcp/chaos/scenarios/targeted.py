@@ -3,9 +3,11 @@
 * trade-cap-tie: two players kill each other on the same tick, and each kill is the frag cap.
 * scale-20: twenty nodes through a whole match; every fact arrives, and MC keeps up.
 * clock-hostile: phone clocks jump by minutes (both ways) and jitter, and the time limit ends it.
+* multi-kill-ladder: one killer's 11-kill chain, 300 ms apart, a gap over MULTI_KILL_MS, then a new chain.
 """
 from __future__ import annotations
 
+from ...mc.types import MEDALS, MULTI_KILL_MS
 from ..registry import InvariantError, Scenario, scenario
 from ..world import World
 from .mixed import FFA_TEAMS, MIX
@@ -57,4 +59,61 @@ scenario(Scenario(
     weights={**MIX, "clock_jump": 6, "clock_jitter": 6, "mc_restart": 0.3},
     config={"scoring": {"frag_limit": 30, "win_by": "kills"}},
     ci_seeds=(1,),
+))
+
+
+LADDER_CHAIN_1 = 11          # kills 300 ms apart: past the top of the ladder, so the top medal repeats
+LADDER_CHAIN_2 = 3           # after a gap over MULTI_KILL_MS: a new chain from 1
+LADDER_STEP_MS = 300
+LADDER_GAP_MS = MULTI_KILL_MS + 500
+
+
+def _ladder_want() -> list[tuple[str, ...]]:
+    """The medals of each of the killer's kills, from types.MEDALS: first blood on kill 1, the highest
+    multi medal whose count the chain has reached, and a streak medal at its exact count."""
+    out = []
+    chains = list(range(1, LADDER_CHAIN_1 + 1)) + list(range(1, LADDER_CHAIN_2 + 1))
+    for i, c in enumerate(chains, start=1):
+        m = [x["key"] for x in MEDALS if x["kind"] == "first"] if i == 1 else []
+        multi = [x for x in MEDALS if x["kind"] == "multi" and x["count"] <= c]
+        if multi:
+            m.append(max(multi, key=lambda x: x["count"])["key"])
+        m += [x["key"] for x in MEDALS if x["kind"] == "streak" and x["count"] == i]
+        out.append(tuple(m))
+    return out
+
+
+def _ladder_script() -> list[dict]:
+    steps, at = [], 0
+    for v in range(1, LADDER_CHAIN_1 + LADDER_CHAIN_2 + 1):
+        if v == LADDER_CHAIN_1 + 1:
+            at += LADDER_GAP_MS - LADDER_STEP_MS
+        steps.append({"name": "timed_kill", "params": {"victim": v, "shooter": 0, "at_ms": at}})
+        at += LADDER_STEP_MS
+    return steps + [{"name": "end", "params": {}}]
+
+
+def _ladder_pinned(world: World) -> None:
+    sc = world.session.scorer
+    killer = world.players[0]["player_id"]
+    want = _ladder_want()
+    have = [tuple(k.get("medals") or ()) for k in (sc.kills if sc else []) if k["killer"] == killer]
+    if have != want:
+        raise InvariantError("multi_kill_ladder", f"P00's kills carry {have}, the ladder says {want}")
+    cues = [(fb.get("t"), tuple(fb.get("medals") or ())) for fb in world.nodes[0].feedback if fb.get("kind") == "kill"]
+    if len(cues) != len(want):      # every kill here is fresh, synced and connected: each one is cued
+        raise InvariantError("multi_kill_ladder", f"P00 got {len(cues)} kill cues for {len(want)} kills")
+    if [m for _t, m in sorted(cues)] != want:
+        raise InvariantError("multi_kill_ladder", f"P00's kill cues carry {[m for _t, m in sorted(cues)]}, "
+                                                  f"the ladder says {want}")
+
+
+scenario(Scenario(
+    name="multi-kill-ladder", mode="ffa", nodes=LADDER_CHAIN_1 + LADDER_CHAIN_2 + 1, finish="end",
+    doc="Halo 3's multi-kill ladder (Tony 2026-09-24): one killer's 11-kill chain 300 ms apart climbs the "
+        "whole ladder and repeats its top medal, a gap over MULTI_KILL_MS starts a new chain, and the "
+        "streak medals fire at their exact counts across both chains.",
+    config={"teams": FFA_TEAMS, "scoring": {"frag_limit": 30, "win_by": "kills"}},
+    script=_ladder_script(),
+    checks=(_ladder_pinned,), ci_seeds=(1,),
 ))

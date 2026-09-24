@@ -20,7 +20,9 @@ from typing import Any
 
 from ..mc import envelope as E
 from ..mc.mock_node import MockNode
+from ..mc.scoring import Scorer
 from ..mc.state import Session
+from ..mc.types import Event
 from .registry import Scenario
 from .stack import ChaosStack, until
 
@@ -126,6 +128,44 @@ class Ledger:
         return out
 
 
+# ---------------------------------------------------------------------------- the scorer's input tap
+# `medals_track_credited_kills` needs what MC's scorer was FED, in the order it was fed: medals are
+# order-sensitive (a chain, a streak, first blood), and a drop, a flush, a reorder or a restart's replay
+# all change the order in which MC takes the facts. The tap records each call's INPUTS (the node, the
+# seq, the fact, t_recv, the batch re-base, the caller's suppress flag and the node's A5.7 sync state at
+# that moment) plus MC's verdict ("scored", "dup", "post_end", ...). It records no medal, streak or
+# chain: the invariant derives those itself. It wraps the class method, so the replays that build a
+# scorer inside `Session._build_scorer` and `Session._replay` are recorded too.
+_TAPPED: list["World"] = []
+_ORIG_INGEST = Scorer.ingest
+
+
+def _tapped_ingest(self: Scorer, node_id: str, ev: Event, t_recv: int, *, rebase: int | None = None,
+                   suppress_awards: bool = False, seq: int | None = None) -> str:
+    entry = {"node_id": node_id, "seq": seq, "ev": dict(ev),
+             "t_recv": t_recv, "rebase": rebase, "suppress": suppress_awards,
+             "synced": bool(self.synced_at_lobby.get(node_id, False))}
+    entry["result"] = _ORIG_INGEST(self, node_id, ev, t_recv, rebase=rebase, suppress_awards=suppress_awards, seq=seq)
+    for w in _TAPPED:
+        w.scorers.setdefault(id(self), self)          # held, so an id is never reused inside a run
+        w.ingests.setdefault(id(self), []).append(entry)
+    return entry["result"]
+
+
+def _tap_on(world: "World") -> None:
+    if not _TAPPED:
+        setattr(Scorer, "ingest", _tapped_ingest)
+    assert not _TAPPED, "the ingest tap observes ONE World at a time (it broadcasts to every tapped World)"
+    _TAPPED.append(world)
+
+
+def _tap_off(world: "World") -> None:
+    if world in _TAPPED:
+        _TAPPED.remove(world)
+    if not _TAPPED:
+        setattr(Scorer, "ingest", _ORIG_INGEST)
+
+
 class World:
     def __init__(self, sc: Scenario, seed: int, workdir: pathlib.Path, *, nodes: int | None = None):
         self.scenario = sc
@@ -155,6 +195,9 @@ class World:
         self.stale_facts: list[tuple[str, int, int]] = []   # (node_id, seq, MC generation at emit)
         self._tick_task: asyncio.Task | None = None
         self.possession: dict[int, dict[int, int]] = {}   # node index -> tid -> cumulative ms sent
+        self.scorers: dict[int, Scorer] = {}                # id -> every Scorer the tap saw fed
+        self.ingests: dict[int, list[dict]] = {}            # id -> that Scorer's inputs, in order
+        self.timeline_t0: int | None = None                 # `timed_kill`'s zero, set by its first use
 
     # ------------------------------------------------------------------ setup / teardown
     @property
@@ -171,6 +214,7 @@ class World:
 
     async def setup(self) -> None:
         sc = self.scenario
+        _tap_on(self)
         self.stack = ChaosStack(sc.mode, sc.time_limit_s, self.workdir, **sc.config)
         self.stack.node_cls = ChaosNode
         await self.stack.__aenter__()
@@ -222,6 +266,7 @@ class World:
             await asyncio.sleep(0.05)
 
     async def teardown(self) -> None:
+        _tap_off(self)
         if self._tick_task:
             self._tick_task.cancel()
             try:

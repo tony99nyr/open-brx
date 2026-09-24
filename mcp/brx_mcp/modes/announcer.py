@@ -46,13 +46,13 @@ MULTIKILL_WINDOW_S = 4.0  # data/medals.json Key 14 "Double Kill" (window_s)
 
 # announcer sound ids -- read off the gun's own audio 2026-09-03 (Whisper transcripts in
 # data/sound_catalog.json): VA7H "First Blood" · VA7E "Double Kill" · VA7Q "Triple Kill!" ·
-# V124 "KILL TACULAR!" · VA7K "Killing spree". No "unstoppable" line exists in the bank, so the
-# 10-streak stays Callout-only (None => no PlaySound).
+# VA7M "Killtacular" (Tony by ear 2026-09-24, over V124) · VA7K "Killing spree". This CLI keeps its own short
+# ladder; the shipping one (every tier to killionaire, and VX0U for unstoppable) is `mc.types.MEDALS`.
 DEFAULT_SOUNDS: dict[str, str | None] = {
     "first_blood": "VA7H",
     "double_kill": "VA7E",
     "triple_kill": "VA7Q",
-    "killtacular": "V124",   # 4+ in a window
+    "killtacular": "VA7M",   # 4+ in a window
     "streak_5": "VA7K",      # killing spree
     "streak_10": None,       # "unstoppable": not in the bank
 }

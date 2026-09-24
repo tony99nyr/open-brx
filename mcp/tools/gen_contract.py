@@ -308,6 +308,34 @@ def _typeddict_classes(mod, tree: ast.Module) -> list[tuple[ast.ClassDef, type]]
     return out
 
 
+def _is_record_list(value: Any) -> bool:
+    """A table constant (types.MEDALS): a non-empty list of flat dicts with the same keys, each value a
+    str, a non-bool int, or None. Emitted as frozen JSON so the phone reads the same rows MC scores by."""
+    if not isinstance(value, list) or not value or not all(isinstance(r, dict) for r in value):
+        return False
+    keys = list(value[0])
+    return all(list(r) == keys and all(v is None or isinstance(v, str) or (isinstance(v, int) and not isinstance(v, bool))
+                                        for v in r.values()) for r in value)
+
+
+def _record_type(value: list) -> str:
+    """The TS element type of a record list: each field the union of the types it takes."""
+    fields = []
+    for k in value[0]:
+        kinds = []
+        for r in value:
+            t = "null" if r[k] is None else "string" if isinstance(r[k], str) else "number"
+            if t not in kinds:
+                kinds.append(t)
+        fields.append(f"readonly {k}: {' | '.join(kinds)}")
+    return "{ " + "; ".join(fields) + " }"
+
+
+def _record_json(value: list) -> str:
+    import json
+    return json.dumps(value, ensure_ascii=False)
+
+
 def _module_constants(mod, tree: ast.Module) -> list[tuple[str, Any, ast.AST]]:
     """`(name, value, ast node)` for every module-level UPPER_CASE int/float/str constant, minus
     the deny-list, in module (source) order."""
@@ -316,7 +344,7 @@ def _module_constants(mod, tree: ast.Module) -> list[tuple[str, Any, ast.AST]]:
     for name, value in vars(mod).items():
         if name in _CONST_DENY or not _UPPER_NAME.match(name):
             continue
-        if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        if isinstance(value, bool) or not (isinstance(value, (int, float, str)) or _is_record_list(value)):
             continue
         node = nodes_by_name.get(name)
         if node is None:
@@ -423,7 +451,8 @@ def _render_ts(model: "_Model") -> str:
         jd = _jsdoc(doc)
         if jd:
             out.append(jd)
-        out.append(f"export const {name} = {_ts_lit(value)};")
+        out.append(f"export const {name} = {_ts_lit(value)};" if not _is_record_list(value)
+                   else f"export const {name}: readonly {_record_type(value)}[] = {_record_json(value)};")
     out.append("")
 
     out.extend(_render_literal_aliases(model))
@@ -479,7 +508,8 @@ def _render_dts(model: "_Model") -> str:
         jd = _jsdoc(doc)
         if jd:
             out.append(jd)
-        out.append(f"export declare const {name}: {_ts_lit(value)};")
+        out.append(f"export declare const {name}: {_ts_lit(value)};" if not _is_record_list(value)
+                   else f"export declare const {name}: readonly {_record_type(value)}[];")
     out.append("")
 
     out.extend(_render_literal_aliases(model))
@@ -546,7 +576,8 @@ def _render_js(model: "_Model") -> str:
         jd = _jsdoc(doc)
         if jd:
             out.append(jd)
-        out.append(f"export const {name} = {_js_lit(value)};")
+        out.append(f"export const {name} = {_js_lit(value)};" if not _is_record_list(value)
+                   else f"export const {name} = Object.freeze({_record_json(value)}.map(r => Object.freeze(r)));")
     out.append("")
 
     out.append("// ---- kind vocabularies ----")

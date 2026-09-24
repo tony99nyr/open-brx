@@ -105,6 +105,22 @@ async def trade(world: World, a: int, b: int) -> None:
     nb.die_at(num_a, tid_a, t)
 
 
+def _pick_timed_kill(world: World, rng: random.Random):
+    return None       # script-only: a random pick has no timeline to place the kill on
+
+
+@action("timed_kill", pick=_pick_timed_kill)
+async def timed_kill(world: World, victim: int, shooter: int, at_ms: int) -> None:
+    """The victim dies to the shooter at a SCRIPTED time: `at_ms` after the run's timeline zero (the
+    victim's clock at the first `timed_kill`). For a script that needs exact gaps between kills (a
+    multi-kill chain), which the real time a step takes cannot give."""
+    n = world.nodes[victim]
+    if world.timeline_t0 is None:
+        world.timeline_t0 = n.synced_now()
+    num, tid = _shooter(world, shooter)
+    n.die_at(num, tid, world.timeline_t0 + at_ms)
+
+
 def _pick_unknown_shooter(world: World, rng: random.Random):
     alive = world.alive_nodes()
     if not alive:

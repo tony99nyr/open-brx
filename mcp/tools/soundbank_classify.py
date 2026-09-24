@@ -149,6 +149,14 @@ KNOWN_USES = {
     "VA21": "HEARD 2026-09-10, transcript accurate. Male Control Point set",
     "VA22": "HEARD 2026-09-10, transcript accurate. Male Control Point set",
     "VA93": "HEARD 2026-09-10, transcript accurate. Usable as a KotH mode intro",
+    "VA7E": "Double Kill; Open BRX multi-kill 2 medal line (Tony, by ear 2026-09-24)",
+    "VA7Q": "Triple Kill; Open BRX multi-kill 3 medal line (Tony, by ear 2026-09-24)",
+    "VA7M": "Killtacular; Open BRX multi-kill 4 (preferred over V124) medal line (Tony, by ear 2026-09-24)",
+    "VA7O": "Killtrocity; Open BRX multi-kill 5 medal line (Tony, by ear 2026-09-24)",
+    "VA7J": "Killamanjaro; Open BRX multi-kill 6 medal line (Tony, by ear 2026-09-24)",
+    "VA7N": "Killtastrophe; Open BRX multi-kill 7 medal line (Tony, by ear 2026-09-24)",
+    "VA7L": "Killionaire; Open BRX multi-kill 8 and beyond medal line (Tony, by ear 2026-09-24)",
+    "VA7K": "Killing Spree; Open BRX killing spree, 5 without dying medal line (Tony, by ear 2026-09-24)",
 }
 
 # These meanings came from a person listening at the bench, rather than only a capture, field table
@@ -159,6 +167,7 @@ VERIFIED_BY_EAR = {
     "N74", "N75", "N25", "H18", "JAW", "JAX", "P09", "P16", "Q04", "X14", "D08", "D07",
     "D06", "D11", "D122", "C19", "A34", "VA6Y", "VX73", "N101", "N102", "U100", "U104",
     "V8Q", "V116", "VA21", "VA22", "VA23", "VA93", "VB0Q",
+    "VA7E", "VA7Q", "VA7M", "VA7O", "VA7J", "VA7N", "VA7L", "VA7K",
 }
 
 # A row can be reviewed without its machine transcript being checked (VA2 was identified as a gas-
@@ -166,6 +175,7 @@ VERIFIED_BY_EAR = {
 TRANSCRIPT_VERIFIED_BY_EAR = {
     "V8Q", "V116", "VA21", "VA22", "VA23", "VA33", "VA93", "VA1G", "VA6Y", "VA8C",
     "VB0N", "VB0O", "VB0P", "VB0Q", "VS7", "VSF", "VX73",
+    "VA7E", "VA7Q", "VA7M", "VA7O", "VA7J", "VA7N", "VA7L", "VA7K",
 }
 
 # --------------------------------------------------------------------------- #
@@ -185,6 +195,16 @@ BY_EAR_CORRECTIONS = {
     # id: (heard transcript, corrected category)
     "V8Q": ("Kill Confirmed", "voice:kill_confirm"),
     "V116": ("gained the lead", "voice:line"),
+    # Halo 3's multi-kill ladder, heard by Tony at volume 69 on 2026-09-24 (Whisper had "Kill them in Juro!",
+    # "Killian Air", "GO TACULAR!", "Joltastrophe", "CULTURUSITY" and filed three under the wrong category)
+    "VA7E": ("Double Kill", "voice:medal"),
+    "VA7Q": ("Triple Kill", "voice:medal"),
+    "VA7M": ("Killtacular", "voice:medal"),
+    "VA7O": ("Killtrocity", "voice:medal"),
+    "VA7J": ("Killamanjaro", "voice:medal"),
+    "VA7N": ("Killtastrophe", "voice:medal"),
+    "VA7L": ("Killionaire", "voice:medal"),
+    "VA7K": ("Killing Spree", "voice:medal"),
 }
 
 

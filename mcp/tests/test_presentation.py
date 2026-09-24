@@ -301,7 +301,7 @@ def test_medal_events_each_have_their_own_verified_line_and_alerts_carry_text():
     assert b["cues"]["first_blood"] == "$PLAY,,4,6,VA7H,,,,*"
     assert b["cues"]["double_kill"] == "$PLAY,,4,6,VA7E,,,,*"
     assert b["cues"]["triple_kill"] == "$PLAY,,4,6,VA7Q,,,,*"
-    assert b["cues"]["killtacular"] == "$PLAY,,4,6,V124,,,,*"
+    assert b["cues"]["killtacular"] == "$PLAY,,4,6,VA7M,,,,*"   # ear-confirmed 2026-09-24 over V124
     assert b["cues"]["killing_spree"] == "$PLAY,,4,6,VA7K,,,,*"
     # ear-confirmed 2026-09-11 (Tony): VX0U "Domination." -- the only streak-shaped bank line
     assert b["cues"]["unstoppable"] == "$PLAY,,4,6,VX0U,,,,*"
@@ -309,6 +309,23 @@ def test_medal_events_each_have_their_own_verified_line_and_alerts_carry_text():
     assert b["cues"]["time_60"] == "$PLAY,,4,6,V113,,,,*"
     assert P.alert_body("bomb_planted") == {"kind": "bomb_planted", "text": "BOMB PLANTED"}
     assert P.alert_body("last_survivor", {"player_id": "p0"})["player_id_subject"] == "p0"   # the subject, not the recipient
+
+
+def test_every_halo_3_medal_has_its_own_line_or_is_deliberately_silent():
+    """Tony 2026-09-24, ear-confirmed: every medal compiles its own gun line (a medal given a null clip would
+    compile NO cue, so the phone skips the voice and shows the text). Every EVENTS sound agrees with its
+    types.MEDALS clip, the spelled-out ones too."""
+    from brx_mcp.mc.types import MEDALS
+    b = golden_bundle()
+    for m in MEDALS:
+        assert P.EVENTS[m["key"]]["sound"] == m["clip"], m
+        assert P.TEXT[m["key"]] == m["label"], m
+        if m["clip"]:
+            assert b["cues"][m["key"]] == f"$PLAY,,4,6,{m['clip']},,,,*", m
+        else:
+            assert not b["cues"].get(m["key"]), (m, b["cues"].get(m["key"]))
+    assert b["cues"]["killamanjaro"] == "$PLAY,,4,6,VA7J,,,,*" and b["cues"]["killionaire"] == "$PLAY,,4,6,VA7L,,,,*"
+    assert b["cues"]["killtrocity"] == "$PLAY,,4,6,VA7O,,,,*" and b["cues"]["killtastrophe"] == "$PLAY,,4,6,VA7N,,,,*"
 
 
 def test_extraction_preset_follows_the_genre_loop_and_last_stand_has_no_last_survivor_by_default():
