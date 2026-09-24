@@ -81,17 +81,20 @@ Recoil counts rounds per trigger pull by calibre (S54, `aa7b08b9`). F291 is clos
   then sitting 3 (§26 groups A and B).
 - **Blocked:** Extended Mags on `$TMP` (S50) and F281 on sitting 2; **F275** on outdoor space (runbook Block 5).
 ## Lane: BLE reliability (brx2)
-2026-09-24 bench, Blocks 0-1 and 3.1-3.2 of [`bench-2026-09-24.md`](bench-2026-09-24.md) done. **F297** has real
-numbers (laptop control 10/10 first-attempt, median link 1.37 s, p90 2.41 s; the phone run was confounded by a
-tooling bug, now fixed, `9b94e318`). **F293**'s loop was reproduced on demand, without btsnoop: an early phone
-reconnect while the headset is still joining can block it (1 of 2 A runs); a fix is proposed on the row. Step
-1.3 was not needed. **F334** filed: 0.4.7's chrome60 syntax fix (`e01b26c3`, not on `main`) boots on the factory
-WebView 83 but the CSS layout there is unusable. **F308** 3.1 PASSES (release order confirmed, no lost or
-reordered `$BUT,0,0`); 3.2 the Shotgun and Desert Eagle PASS on the median fire gap (both read about 20 ms over
-`fire_ms`); the Burst Rifle's between-burst gap is INCONCLUSIVE, a hand pull cannot separate the true `t23` gap
-from its own cadence, so `bench-2026-09-24.md` 3.2 now calls for a fixed-rhythm rig pull.
-- **Next bench task:** Block 3.3 onward of [`bench-2026-09-24.md`](bench-2026-09-24.md).
-- **Next desk task:** brx5 builds F293's fix (disconnect-and-wait on `?`); re-measure it with step 1.4. F334 closed: the WebView floor is 111 (`d373c1ae`).
+2026-09-24 bench, Blocks 0-1, 1.4 and 3.1-3.2 of [`bench-2026-09-24.md`](bench-2026-09-24.md) done. **F297** has
+real numbers (laptop control 10/10 first-attempt, median link 1.37 s, p90 2.41 s; the phone run was confounded
+by a tooling bug, now fixed, `9b94e318`). **F293**'s loop reproduced on demand, without btsnoop, then brx5's
+`HEADSET_JOIN_MODE 'disconnect'` fix (`ffbc987c`) VERIFIED at the bench (build `main` + a local, BLE-unrelated
+`c63876ac`): no loop in 3 A runs, the A headset-join time (12 s) sits within 3 s of the B control median (15 s),
+warnings clear at relink. Step 5 (mid-match power-cycle) did not run, needs MC, so the row stays OPEN, not
+closed. F334 (filed by this lane) is closed: the WebView floor is 111 (`d373c1ae`). **F308** 3.1 PASSES (release
+order confirmed, no lost or reordered `$BUT,0,0`); 3.2 the Shotgun and Desert Eagle PASS on the median fire gap
+(both read about 20 ms over `fire_ms`); the Burst Rifle's between-burst gap is INCONCLUSIVE, a hand pull cannot
+separate the true `t23` gap from its own cadence, so `bench-2026-09-24.md` 3.2 now calls for a fixed-rhythm rig
+pull.
+- **Next bench task:** Block 3.3 onward of [`bench-2026-09-24.md`](bench-2026-09-24.md); F293 step 5 (mid-match
+  headset power-cycle) moves into Block 4.
+- **Next desk task:** none open for this lane.
 - **Blocked:** F270 on A8.
 ## Lane: Mission Control console honesty
 2026-09-24: 0.4.6 published; F318, F108, F325, F133, F52, K8 closed. **Next:** bench F309/F311/F312; 0.4.7 cut on brx1's word.
