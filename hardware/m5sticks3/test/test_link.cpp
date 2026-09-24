@@ -907,6 +907,138 @@ static void test_backoff_doubles_and_caps_and_resets_on_welcome() {
   CHECK_EQ(link.backoff().attempt, 0u);  // A28.3 / transport.js: resets on welcome
 }
 
+// --- A58: the match lock ---------------------------------------------------------------------------
+
+static void test_parse_station_config_lock_s_is_clamped_and_absent_means_zero() {
+  bool ok = false;
+  json::Value v = json::parse("{\"kind\":\"powerup\",\"team\":255,\"id\":8}", &ok);
+  CHECK(ok);
+  CHECK_EQ(parse_station_config(v).lock_s, 0);
+  v = json::parse("{\"kind\":\"powerup\",\"team\":255,\"id\":8,\"lock_s\":600}", &ok);
+  CHECK_EQ(parse_station_config(v).lock_s, 600);
+  v = json::parse("{\"kind\":\"powerup\",\"team\":255,\"id\":8,\"lock_s\":99999}", &ok);
+  CHECK_EQ(parse_station_config(v).lock_s, MATCH_LOCK_MAX_S);
+  v = json::parse("{\"kind\":\"powerup\",\"team\":255,\"id\":8,\"lock_s\":-5}", &ok);
+  CHECK_EQ(parse_station_config(v).lock_s, 0);
+  // Far out of a 32-bit long's range: must lock for the cap, never wrap to an unlock.
+  v = json::parse("{\"kind\":\"powerup\",\"team\":255,\"id\":8,\"lock_s\":3e12}", &ok);
+  CHECK_EQ(parse_station_config(v).lock_s, MATCH_LOCK_MAX_S);
+}
+
+static void test_match_lock_counts_down_and_auto_unlocks_once() {
+  MatchLock l;
+  CHECK(!l.locked(0));  // a boot starts unlocked
+  l.start(10, 1000);
+  CHECK(l.locked(1000));
+  CHECK_EQ(l.remaining_s(1000), 10u);
+  CHECK_EQ(l.remaining_s(10999), 1u);  // rounded up: never reads 0 while still locked
+  CHECK(!l.poll(10999));
+  CHECK(l.locked(10999));
+  CHECK(l.poll(11000));   // the unlock edge, exactly once
+  CHECK(!l.poll(11001));
+  CHECK(!l.locked(11001));
+  CHECK_EQ(l.remaining_s(11001), 0u);
+}
+
+static void test_match_lock_is_wrap_safe() {
+  MatchLock l;
+  uint32_t near_wrap = 0xFFFFFFFFu - 2000u;
+  l.start(5, near_wrap);  // ends ~3000 ms after millis() wraps
+  CHECK(l.locked(near_wrap + 4000u));  // wrapped, still locked
+  CHECK(!l.poll(near_wrap + 4000u));
+  CHECK(l.poll(near_wrap + 5000u));
+}
+
+static void test_match_lock_is_replaced_not_extended_and_zero_unlocks() {
+  MatchLock l;
+  l.start(600, 0);
+  l.start(5, 1000);  // a later config REPLACES the running lock, even with a shorter one
+  CHECK_EQ(l.remaining_s(1000), 5u);
+  CHECK(!l.locked(6000));
+  l.start(600, 7000);
+  l.start(0, 8000);  // lock_s 0 unlocks at once
+  CHECK(!l.locked(8000));
+  CHECK(!l.poll(8000));  // an explicit unlock is not a countdown edge
+}
+
+// A same-game re-push is MC's mid-match lock carrier: it must replace the lock and keep the schedule,
+// the claim batch in flight and the muster latch exactly as they were.
+static void test_a_same_game_repush_replaces_the_lock_and_keeps_everything_else() {
+  StationLink link;  // MUSTER, the default
+  StationAssignment a;
+  a.present = true;
+  a.kind = "powerup";
+  a.id = 8;
+  a.game = 3;
+  a.lock_s = 0;
+  link.apply_station_config(a, 0);
+  CHECK(link.dropped_for_match());
+  CHECK(!link.lock().locked(0));
+  StationUpdateMsg u;
+  u.present = true;
+  u.id = 8;
+  u.available = false;
+  u.next_spawn_in_ms = 1000;
+  link.apply_station_update(u, 0);
+  link.powerup().tick(1000);
+  link.powerup().mark_taken(3, 1000);
+  uint32_t anchor_before = link.powerup().anchor_ms();
+  link.claims().observe(/*player_num=*/4, /*target=*/8, /*game=*/3, true, true, -60);  // a batch in flight
+
+  StationAssignment again = a;
+  again.lock_s = 900;
+  CHECK(!link.apply_station_config(again, 2000));   // no advert field moved
+  CHECK(link.lock().locked(2000));                  // the lock was replaced ...
+  CHECK_EQ(link.lock().remaining_s(2000), 900u);
+  CHECK_EQ(link.powerup().taker(), (uint8_t)3);     // ... and the schedule kept
+  CHECK(!link.powerup().available());
+  CHECK_EQ(link.powerup().anchor_ms(), anchor_before);
+  CHECK(link.dropped_for_match());                  // the muster latch kept
+  ClaimWinner w = link.claims().resolve_batch();    // the claim batch kept
+  CHECK(w.won);
+  CHECK_EQ(w.player_num, (uint8_t)4);
+
+  StationAssignment unlock = a;
+  unlock.lock_s = 0;
+  link.apply_station_config(unlock, 3000);
+  CHECK(!link.lock().locked(3000));
+  CHECK_EQ(link.powerup().taker(), (uint8_t)3);
+}
+
+static void test_release_lifts_the_lock() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true;
+  a.kind = "control";
+  a.id = 2;
+  a.lock_s = 600;
+  link.apply_station_config(a, 0);
+  CHECK(link.lock().locked(1000));
+  link.apply_release();
+  CHECK(!link.lock().locked(1000));
+}
+
+static void test_status_body_carries_health_fields_only_when_set() {
+  StatusFields f;
+  f.node_id = "s";
+  f.app_ver = "v";
+  f.has_health = true;
+  f.uptime_s = 1234;
+  f.boot_count = 7;
+  f.assoc = "held";
+  f.lock_s = 42;
+  CHECK_EQ(build_status_body(f),
+           std::string("{\"node_id\":\"s\",\"arm_state\":\"connected\",\"synced\":false,"
+                       "\"role\":\"utility\",\"kind\":\"respawn\",\"team\":255,\"station_id\":0,"
+                       "\"threshold\":-74,\"live\":false,\"armed\":false,\"app_ver\":\"v\","
+                       "\"platform\":\"esp32\",\"uptime_s\":1234,\"boot_count\":7,\"assoc\":\"held\",\"lock_s\":42}"));
+  StatusFields plain;
+  plain.node_id = "s";
+  plain.app_ver = "v";
+  std::string b = build_status_body(plain);
+  CHECK(b.find("uptime_s") == std::string::npos && b.find("lock_s") == std::string::npos);
+}
+
 int main(int argc, char** argv) {
   if (argc > 1) {
     // Golden-dump mode for mcp/tests/test_utility_esp32.py: write the exact envelope strings this
@@ -1006,6 +1138,13 @@ int main(int argc, char** argv) {
   test_reset_true_is_always_accepted_regardless_of_timing();
   test_should_accept_available_with_nothing_awarded_always_accepts();
   test_backoff_doubles_and_caps_and_resets_on_welcome();
+  test_parse_station_config_lock_s_is_clamped_and_absent_means_zero();
+  test_match_lock_counts_down_and_auto_unlocks_once();
+  test_match_lock_is_wrap_safe();
+  test_match_lock_is_replaced_not_extended_and_zero_unlocks();
+  test_a_same_game_repush_replaces_the_lock_and_keeps_everything_else();
+  test_release_lifts_the_lock();
+  test_status_body_carries_health_fields_only_when_set();
   if (failures) {
     std::printf("%d check(s) failed\n", failures);
     return 1;

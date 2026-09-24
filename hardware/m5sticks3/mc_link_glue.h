@@ -49,6 +49,16 @@ Preferences mcPrefs;
 String wifiSsid, wifiPass;
 String stationAppVer = "h8-0.1";  // bumped by hand; no build-time git sha injection in this sketch yet
 bool actionsEnabled = false;      // mirrors link.actions_enabled(); persisted so ACTIONS survives a reboot
+uint32_t bootCount = 0;           // A58: incremented once per boot in mcSetup(); rides on every status
+
+// A58: count this boot. MC reads `boot_count` (with `uptime_s`) off the status heartbeat to notice
+// that a Stick restarted mid-match -- the one event that silently drops its RAM-only match lock.
+static void mcCountBoot() {
+  mcPrefs.begin("brxmc", false);
+  bootCount = mcPrefs.getUInt("boots", 0) + 1;
+  mcPrefs.putUInt("boots", bootCount);
+  mcPrefs.end();
+}
 
 static void mcLoadPrefs(StationLink& link) {
   mcPrefs.begin("brxmc", true);
@@ -106,6 +116,32 @@ static void mcSaveActionsEnabled(bool on) {
   mcPrefs.begin("brxmc", false);
   mcPrefs.putBool("actions", on);
   mcPrefs.end();
+}
+
+// ---- A58: the PMIC side-button lock (TODO, deliberately NOT written) -------------------------------
+// The StickS3's small side button is wired to the M5PM1 PMIC, not the ESP32: a single click resets
+// the Stick and a double click powers it off, whatever the firmware says. The brief for A58 names
+// M5PM1 register 0x49 bit0 (disable the single-click reset) and register 0x4A bit0 (disable the
+// double-click power-off). What the installed M5Unified 0.2.21 source DOES confirm: the PM1 sits at
+// I2C 0x6E (`M5PM1_Class::DEFAULT_ADDRESS`, utility/power/M5PM1_Class.hpp; also M5GFX.cpp's
+// `m5pm1_i2c_addr`), `M5.Power.M5pm1` is public on an ESP32-S3 build, and it inherits I2C_Device's
+// public read-modify-write `bitOn(reg, mask)` / `bitOff(reg, mask)` (utility/I2C_Class.hpp). What it
+// does NOT confirm: its register table (utility/power/M5PM1_Class.cpp) stops at 0x45 (IRQ_MASK3);
+// 0x49 and 0x4A are not named anywhere in M5Unified or M5GFX. So nothing here writes the PM1.
+//
+// TODO(A58, bench + M5PM1 datasheet): once 0x49/0x4A are confirmed from the datasheet, the body is
+//   locked ? M5.Power.M5pm1.bitOn(0x49, 0x01) && M5.Power.M5pm1.bitOn(0x4A, 0x01)
+//          : M5.Power.M5pm1.bitOff(0x49, 0x01) && M5.Power.M5pm1.bitOff(0x4A, 0x01)
+// guarded by `M5.Power.getType() == m5::Power_Class::pmic_m5pm1`. NEVER touch bit7 of 0x49 (the
+// download-mode lock) or any other bit or register. The call sites below (a lock starting or ending,
+// and unconditionally clear at boot) are already in place, so enabling it is this one body.
+// Until then a player CAN restart a locked Stick with the side button; the restart drops the lock,
+// and MC sees it as a moved `boot_count`.
+bool pmicSideButtonLocked = false;  // what the PMIC was last asked for (today: only what we WOULD ask)
+static void pmicSetSideButtonLock(bool locked) {
+  pmicSideButtonLocked = locked;
+  Serial.printf("# PMIC side-button lock %s (TODO: not written, register map unconfirmed)\n",
+                locked ? "ON" : "OFF");
 }
 
 // ---- the typed floor: `MC <ws-url>` (never persisted across reboots, §5g.3) ---------------------
@@ -252,10 +288,11 @@ static void mcHandleFrame(const String& text) {
       // §5g.4 + polish round 2: apply_station_config() decides AND latches `dropped_for_match()`
       // (a game-byte edge under MUSTER, including the very first arm after boot) -- this is only the
       // radio action the glue owns; the decision itself is pure and tested in station_link.h.
-      link.apply_station_config(a);
+      uint32_t rx = millis();
+      link.apply_station_config(a, rx);  // A58: also REPLACES the match lock, counted from `rx`
       mcScreenWake = true;
-      Serial.printf("MC-ARMED kind=%s team=%d id=%d game=%d threshold=%d\n", a.kind.c_str(), a.team,
-                    a.id, a.game, a.threshold);
+      Serial.printf("MC-ARMED kind=%s team=%d id=%d game=%d threshold=%d lock_s=%d\n", a.kind.c_str(), a.team,
+                    a.id, a.game, a.threshold, a.lock_s);
       if (link.dropped_for_match()) {
         Serial.println("MUSTER: dropping the Wi-Fi association for the match (LINK RECONNECT to rejoin)");
         ws.disconnect();
@@ -328,6 +365,15 @@ static void mcLoop(uint32_t now) {
     if (link.tick_powerup(now)) mcScreenWake = true;  // a SELF-SPAWN: the item is back
     mcPollClaimScan(now);
   }
+  // A58: the match lock counts down on millis() whatever the link is doing (MUSTER is off Wi-Fi for
+  // the whole match) and auto-unlocks at zero. The PMIC follows the lock on every edge: a start, a
+  // replacement by a later config, lock_s 0, a release, or the countdown running out.
+  if (link.poll_lock(now)) {
+    mcScreenWake = true;
+    Serial.println("UNLOCKED (match lock ran out)");
+  }
+  bool wantPmicLock = link.lock().locked(now);
+  if (wantPmicLock != pmicSideButtonLocked) pmicSetSideButtonLock(wantPmicLock);
   // Wi-Fi association.
   bool wifiUp = WiFi.status() == WL_CONNECTED;
   if (wifiUp && link.state() == LinkState::JOINING_WIFI) link.wifi_up();
@@ -387,6 +433,11 @@ static void mcLoop(uint32_t now) {
     f.threshold = a.present ? a.threshold : STICK_DEFAULT_THRESHOLD_DBM;
     f.live = stationLive;  // the real BLE advert state, not merely "MC armed us" (polish round 1)
     f.armed = link.state() == LinkState::ASSIGNED;
+    f.has_health = true;  // A58
+    f.uptime_s = now / 1000;
+    f.boot_count = bootCount;
+    f.assoc = link.mode() == AssocMode::HELD ? "held" : "muster";
+    f.lock_s = (long)link.lock().remaining_s(now);
     String body = String(build_status_body(f).c_str());
     char envId[13];
     snprintf(envId, sizeof envId, "%08lx%02x", (unsigned long)now, (unsigned)esp_random() & 0xff);
@@ -485,6 +536,8 @@ static bool mcSendResetAction() {
 // ---- setup ------------------------------------------------------------------------------------- //
 static void mcSetup() {
   mcLoadPrefs(link);
+  mcCountBoot();                   // A58
+  pmicSetSideButtonLock(false);    // A58: every boot starts unlocked, the PMIC included
   bootRandomPrefix = esp_random();  // the fixed half of every station_action envelope id this boot
   WiFi.mode(WIFI_STA);
   if (wifiSsid.length()) WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());

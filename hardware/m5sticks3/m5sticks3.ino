@@ -104,6 +104,9 @@ uint32_t heldSinceMs = 0;
 uint32_t confirmArmedAtMs = 0;  // mirrors station_ui.h's own armed_at_ms_ (no getter there; see pollButtons())
 bool resetOutcomeActive = false;  // a RESET was just confirmed; show its outcome briefly, then clear
 bool resetOutcomeOk = false;      // true = sent to MC; false = RESET NEEDS MISSION CONTROL
+bool resetOutcomeLocked = false;  // A58: the RESET was refused by the match lock (shows LOCKED)
+ForceRestart forceRestart;        // A58: A + B held 7 s restarts the Stick, locked or not
+uint32_t lastRestartCountdown = 0;
 uint32_t resetOutcomeAtMs = 0;
 constexpr uint32_t RESET_OUTCOME_SHOW_MS = 2500;
 
@@ -494,6 +497,10 @@ static StickState buildStickState(uint32_t now) {
   st.confirm_armed_at_ms = confirmArmedAtMs;
   st.reset_outcome_active = resetOutcomeActive;
   st.reset_outcome_ok = resetOutcomeOk;
+  st.reset_outcome_locked = resetOutcomeLocked;
+  st.locked = link.lock().locked(now);
+  st.lock_remaining_s = link.lock().remaining_s(now);
+  st.force_restart_countdown_s = forceRestart.countdown_s();
   st.at_home = homeNav.at_home();
   return st;
 }
@@ -522,6 +529,9 @@ static void printStatus() {
                 link.identity().node_id.c_str(), brx_glue::wifiSsid.c_str(), a.present ? a.kind.c_str() : "-",
                 a.present ? a.team : -1, a.present ? a.id : -1, a.present ? a.game : -1,
                 a.present ? a.threshold : 0);
+  Serial.printf(" locked=%d lock_s=%lu boots=%lu uptime_s=%lu", link.lock().locked(millis()) ? 1 : 0,
+                (unsigned long)link.lock().remaining_s(millis()), (unsigned long)brx_glue::bootCount,
+                (unsigned long)(millis() / 1000));
   if (a.present && a.kind == "powerup") {
     Serial.printf(" powerup_available=%d taker=%u pending_actions=%u", link.powerup().available() ? 1 : 0,
                   link.powerup().taker(), (unsigned)link.pending_action_count());
@@ -543,6 +553,12 @@ static void handleLine(String line) {
   if (!line.length()) return;
   if (line == "PING") { Serial.println("PONG"); return; }
   if (line == "STATUS") { printStatus(); return; }
+  // A58: while the match lock is on, only the read-only commands run (station_ui.h's allow-list,
+  // host-tested; default deny). Checked before mcHandleLine so WIFI/MC/LINK/ACTIONS are refused too.
+  if (brx_glue::link.lock().locked(millis()) && !serial_command_allowed_while_locked(std::string(line.c_str()))) {
+    Serial.printf("ERR locked (%lu s left)\n", (unsigned long)brx_glue::link.lock().remaining_s(millis()));
+    return;
+  }
   // H8: WIFI / MC / LINK MUSTER|HELD / LINK OFF / ACTIONS ON|OFF (docs/spec/utility.md §5g.3/§5g.4).
   // Checked before everything below so a typo like "WIFI" with no args still lands here, not in the
   // ERR unknown at the bottom.
@@ -648,9 +664,27 @@ static void pollSerial() {
 // field must not flip the point"), so the new home gesture lives only in the operator branch below;
 // standalone's short press is a simple home/diagnostics TOGGLE instead (it has no hold to spare), and
 // the 20 s idle timeout still applies either way.
+//
+// A58: holding A AND B together for 7 s restarts the Stick (ForceRestart, station_ui.h), in either
+// branch and whether the match lock is on or not. While both are down (and for one loop after both
+// come up) every single-button click and hold below is swallowed, so the joint hold never also goes
+// home, arms a RESET, resets the point or flips the mode. While the match lock is on, B's hold is
+// refused with a LOCKED transient; A (stats paging, the 1 s home) still works, read-only.
 static void pollButtons() {
   using brx_glue::link;
   uint32_t now = millis();
+  if (forceRestart.update(M5.BtnA.isPressed(), M5.BtnB.isPressed(), now)) {
+    Serial.println("FORCE RESTART (A + B held 7 s)");
+    Serial.flush();
+    ESP.restart();
+  }
+  uint32_t countdown = forceRestart.countdown_s();
+  if (countdown != lastRestartCountdown) { lastRestartCountdown = countdown; displayDirty = true; }
+  if (forceRestart.suppress_single()) {
+    homeNav.note_activity(now);
+    if (brx_glue::buttons.poll_timeout(now)) displayDirty = true;
+    return;
+  }
   if (link.state() == LinkState::NOT_CONFIGURED) {
     // Long presses only: a knock on the field must not flip the point or its mode.
     if (M5.BtnA.wasHold()) { point.reset(); Serial.println("RESET neutral (button)"); displayDirty = true; }
@@ -674,10 +708,25 @@ static void pollButtons() {
     homeNav.go_home(now);
     displayDirty = true;
   }
-  if (M5.BtnB.wasHold()) {
+  bool locked = link.lock().locked(now);
+  // A58: a confirm left open when a lock arrives must not sit on screen offering a RESET it will refuse.
+  if (locked && brx_glue::buttons.phase() == ButtonPhase::CONFIRM_ARMED) {
+    brx_glue::buttons.on_short_press();  // the same cancel path A's short press uses
+    displayDirty = true;
+  }
+  if (M5.BtnB.wasHold() && locked) {
+    resetOutcomeActive = true;  // reuse the reset-outcome transient, as LOCKED
+    resetOutcomeLocked = true;
+    resetOutcomeOk = false;
+    resetOutcomeAtMs = now;
+    Serial.printf("RESET refused: station locked (%lu s left)\n", (unsigned long)link.lock().remaining_s(now));
+    homeNav.note_activity(now);
+    displayDirty = true;
+  } else if (M5.BtnB.wasHold()) {
     if (brx_glue::buttons.on_long_press(now)) {
       bool sent = brx_glue::mcSendResetAction();
       resetOutcomeActive = true;
+      resetOutcomeLocked = false;
       resetOutcomeOk = sent;
       resetOutcomeAtMs = now;
       Serial.println(sent ? "RESET sent to Mission Control" : "RESET NEEDS MISSION CONTROL");
@@ -726,6 +775,7 @@ void setup() {
                 settings.game, settings.txpin);
   Serial.println("# Commands: SELFTEST [bits] | RAW ON|OFF | TX <bits> | TXN <n> <bits> | AUTO <bits>|OFF | PING | STATUS | MODE BRIDGE|HILL | ID <n> | GAME <n> | TXPIN 46|9|10 | RESET | r s c");
   Serial.println("# H8: WIFI <ssid> <pass> | MC <ws://host:port/path> | LINK MUSTER|HELD|OFF|RECONNECT | ACTIONS ON|OFF");
+  Serial.println("# A58: while MC's match lock is on, state-changing commands answer ERR locked; A+B held 7 s restarts");
   if (!initRx()) Serial.println("ERR rx init (RMT)");
   if (!initTx(settings.txpin)) Serial.println("ERR tx init (RMT)");
   initBle();

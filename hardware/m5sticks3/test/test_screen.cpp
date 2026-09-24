@@ -219,11 +219,43 @@ static void test_long_press_a_cancels_an_open_confirm_and_goes_home() {
   CHECK(nav.at_home());
 }
 
+// ---- A58: the match lock and the force restart ------------------------------------------------
+static void test_a_locked_reset_shows_locked_and_the_strip_shows_the_padlock() {
+  StickState s;
+  s.locked = true;
+  s.lock_remaining_s = 125;
+  ScreenSpec home = compute_screen(s);
+  CHECK(home.strip.locked);
+  CHECK_EQ(home.hint, std::string(LOCKED_HINT));
+  s.reset_outcome_active = true;
+  s.reset_outcome_locked = true;
+  ScreenSpec refused = compute_screen(s);
+  CHECK(refused.kind == ScreenKind::SCR_RESET_LOCKED);
+  CHECK_EQ(refused.lock_remaining, std::string("2:05"));
+  s.locked = false;
+  s.reset_outcome_active = false;
+  CHECK(!compute_screen(s).strip.locked);
+}
+
+static void test_force_restart_countdown_beats_everything() {
+  StickState s;
+  s.battery_pct = 5;  // would be LOW BATTERY
+  s.button_phase = ButtonPhase::CONFIRM_ARMED;
+  s.force_restart_countdown_s = 4;
+  ScreenSpec spec = compute_screen(s);
+  CHECK(spec.kind == ScreenKind::SCR_FORCE_RESTART);
+  CHECK_EQ(spec.restart_in_s, 4u);
+  s.force_restart_countdown_s = 0;
+  CHECK(compute_screen(s).kind == ScreenKind::SCR_LOW_BATTERY);
+}
+
 int main() {
   test_format_mmss();
   test_pickup_ready_vs_taken();
   test_reset_confirm_timeout_and_hint();
   test_reset_outcome_offline_vs_sent();
+  test_a_locked_reset_shows_locked_and_the_strip_shows_the_padlock();
+  test_force_restart_countdown_beats_everything();
   test_low_battery_takes_priority();
   test_home_vs_stats_and_default_hint();
   test_unassigned_link_shows_joining();

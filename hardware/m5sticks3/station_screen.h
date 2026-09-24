@@ -77,6 +77,9 @@ constexpr int LOW_BATTERY_PCT = 12;
 // The hint bar's default copy, ported verbatim from render.py's DEFAULT_HINT.
 constexpr const char* DEFAULT_HINT = "A: STATS   HOLD B: RESET";
 constexpr const char* RESET_CONFIRM_HINT = "A: CANCEL";  // render.py's reset_confirm scene override
+// A58: while the match lock is on, B's hold does nothing but say LOCKED, so the hint stops offering it.
+constexpr const char* LOCKED_HINT = "A: STATS   LOCKED";
+constexpr const char* FORCE_RESTART_HINT = "RELEASE TO CANCEL";
 
 // m:ss, minutes unpadded, seconds zero-padded to 2 -- render.py's own scene literals use this shape
 // ("1:40") for a countdown; render.py never defines the formatter itself (its state dicts hardcode
@@ -115,6 +118,8 @@ enum class ScreenKind : uint8_t {
   SCR_RESET_CONFIRM,
   SCR_RESET_SENT,
   SCR_RESET_NEEDS_MC,
+  SCR_RESET_LOCKED,   // A58: a B-hold RESET refused by the match lock (the reset-outcome transient)
+  SCR_FORCE_RESTART,  // A58: A+B held past FORCE_RESTART_SHOW_MS, "RESTART IN n"
 };
 
 // The top status strip's own flags (render.py's draw_status_strip). `station_id` -1 = not shown.
@@ -124,6 +129,7 @@ struct StatusStripSpec {
   bool ir_active = false;
   int battery_pct = -1;  // -1 = absent, no glyph
   int station_id = -1;   // -1 = absent, no "#n"
+  bool locked = false;   // A58: a small padlock glyph while the match lock is on
 };
 
 // What to draw. One flat struct, not a tagged union: only the fields for `kind` are meaningful, the
@@ -178,6 +184,10 @@ struct ScreenSpec {
   // SYSTEM: reset_confirm
   int reset_timeout_pct = 100;    // counts down 100 -> 0 over RESET_CONFIRM_TIMEOUT_MS
   int station_id_for_reset = -1;
+
+  // A58: SCR_RESET_LOCKED's "UNLOCKS IN m:ss" and SCR_FORCE_RESTART's "RESTART IN n"
+  std::string lock_remaining;
+  uint32_t restart_in_s = 0;
 
   // Shared chrome
   std::string hint = DEFAULT_HINT;
@@ -243,6 +253,12 @@ struct StickState {
   // own to read, since MC's answer -- or its absence -- is not part of that state machine)
   bool reset_outcome_active = false;
   bool reset_outcome_ok = false;  // true = sent to MC; false = RESET NEEDS MISSION CONTROL
+  bool reset_outcome_locked = false;  // A58: the RESET was refused by the match lock (beats _ok)
+
+  // A58: the match lock (station_link.h's MatchLock) and the A+B force restart (station_ui.h)
+  bool locked = false;
+  uint32_t lock_remaining_s = 0;
+  uint32_t force_restart_countdown_s = 0;  // 0 = no countdown on screen
 
   // home navigation (HomeNav, above), polled once per paint by the .ino
   bool at_home = true;
@@ -266,6 +282,17 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
   spec.strip.ir_active = s.ir_active;
   spec.strip.battery_pct = s.battery_pct;
   spec.strip.station_id = s.assignment_present ? s.assignment_id : -1;
+  spec.strip.locked = s.locked;
+  if (s.locked) spec.hint = LOCKED_HINT;
+
+  // A58: an operator mid-way through the A+B force restart beats everything, even a flat battery:
+  // they are holding two buttons on purpose and must see the countdown to know it is working.
+  if (s.force_restart_countdown_s > 0) {
+    spec.kind = ScreenKind::SCR_FORCE_RESTART;
+    spec.restart_in_s = s.force_restart_countdown_s;
+    spec.hint = FORCE_RESTART_HINT;
+    return spec;
+  }
 
   if (s.battery_pct >= 0 && s.battery_pct <= LOW_BATTERY_PCT) {
     spec.kind = ScreenKind::SCR_LOW_BATTERY;
@@ -283,6 +310,11 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
     return spec;
   }
   if (s.reset_outcome_active) {
+    if (s.reset_outcome_locked) {
+      spec.kind = ScreenKind::SCR_RESET_LOCKED;
+      spec.lock_remaining = format_mmss(s.lock_remaining_s);
+      return spec;
+    }
     spec.kind = s.reset_outcome_ok ? ScreenKind::SCR_RESET_SENT : ScreenKind::SCR_RESET_NEEDS_MC;
     return spec;
   }

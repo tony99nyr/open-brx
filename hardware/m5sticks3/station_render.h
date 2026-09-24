@@ -135,6 +135,12 @@ inline void drawStatusStrip(M5Canvas& c, const StatusStripSpec& strip) {
   x += 7;
   c.setTextColor(strip.ir_active ? COL_WARN : COL_MUT);
   c.drawString("IR", x, y);
+  if (strip.locked) {
+    // A58: a small padlock (shackle arc over a filled body) while the match lock is on.
+    x += c.textWidth("IR") + 9;
+    c.drawCircle(x + 3, y - 2, 3, COL_WARN);
+    c.fillRect(x - 1, y - 1, 9, 6, COL_WARN);
+  }
 
   int rx = SCREEN_W - 4;
   c.setTextDatum(textdatum_t::middle_right);
@@ -374,6 +380,20 @@ inline void drawSystem(M5Canvas& c, const ScreenSpec& s) {
       fitCenterText(c, SCREEN_W / 2, 48, "RESET NEEDS", SCREEN_W - 20, {&fonts::FreeSansBold18pt7b}, COL_BAD);
       fitCenterText(c, SCREEN_W / 2, 74, "MISSION CONTROL", SCREEN_W - 20, {&fonts::FreeSansBold18pt7b, &fonts::FreeSansBold12pt7b}, COL_BAD);
       fitCenterText(c, SCREEN_W / 2, 102, "MC OFFLINE - TRY AGAIN LATER", SCREEN_W - 20, {&fonts::FreeSansBold9pt7b}, COL_MUT);
+      break;
+    }
+    case ScreenKind::SCR_RESET_LOCKED: {
+      drawKicker(c, "RESET");
+      fitCenterText(c, SCREEN_W / 2, 48, "LOCKED", SCREEN_W - 20, {&fonts::FreeSansBold18pt7b}, COL_WARN);
+      fitCenterText(c, SCREEN_W / 2, 76, "MATCH IN PROGRESS", SCREEN_W - 20, {&fonts::FreeSansBold12pt7b}, COL_MUT);
+      fitCenterText(c, SCREEN_W / 2, 100, "UNLOCKS IN " + s.lock_remaining, SCREEN_W - 20, {&fonts::FreeSansBold9pt7b}, COL_MUT);
+      break;
+    }
+    case ScreenKind::SCR_FORCE_RESTART: {
+      drawKicker(c, "SYSTEM");
+      fitCenterText(c, SCREEN_W / 2, 56, "RESTART IN " + std::to_string(s.restart_in_s), SCREEN_W - 20,
+                    {&fonts::FreeSansBold18pt7b, &fonts::FreeSansBold12pt7b}, COL_BAD);
+      fitCenterText(c, SCREEN_W / 2, 90, "KEEP HOLDING A + B", SCREEN_W - 20, {&fonts::FreeSansBold9pt7b}, COL_MUT);
       break;
     }
     default:

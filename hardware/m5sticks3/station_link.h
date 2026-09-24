@@ -74,6 +74,62 @@ struct StationAssignment {
   int game = 0;         // per-match byte; 0 = "any" (v1, unscoped)
   std::vector<int> valid_ids;
   StationItem item;  // A56, additive: absent on an older MC or a non-powerup kind
+  int lock_s = 0;    // A58, additive: seconds to lock the operator controls from receipt; 0/absent = unlocked
+};
+
+// ---- A58 (the match lock, additive) --------------------------------------------------------------
+// `station_config.lock_s?: int` locks the Stick's OWN operator controls (the B-hold RESET and the
+// state-changing serial commands; station_ui.h's `serial_command_allowed_while_locked`) for that many
+// seconds from receipt, so a curious player cannot reset a station mid-match. Clamped to 0..7200 (two
+// hours: longer than any match, short enough that a wrong value cannot strand a station for a day).
+// Absent means 0. A LATER station_config REPLACES the running lock outright, including a same-game
+// re-push (MC re-sends the current config mid-match as the lock's carrier), and lock_s 0 unlocks at
+// once. The lock lives in RAM only: every boot starts unlocked, so a crash or a forced restart can
+// never brick a station behind a lock it cannot see the end of. A+B held 7 s (ForceRestart,
+// station_ui.h) restarts the Stick whether it is locked or not.
+constexpr int MATCH_LOCK_MAX_S = 7200;
+
+inline int clamp_lock_s(long v) {
+  if (v < 0) return 0;
+  if (v > MATCH_LOCK_MAX_S) return MATCH_LOCK_MAX_S;
+  return (int)v;
+}
+
+class MatchLock {
+ public:
+  // Replaces whatever lock was running (never extends or merges it): the newest config is the truth.
+  void start(int lock_s, uint32_t now_ms) {
+    lock_s = clamp_lock_s(lock_s);
+    if (lock_s == 0) { active_ = false; return; }
+    active_ = true;
+    until_ms_ = now_ms + (uint32_t)lock_s * 1000u;
+  }
+  void clear() { active_ = false; }
+
+  // Wrap-safe (the same signed-subtraction idiom as PowerupSchedule::tick): 7200 s is far inside
+  // int32's ~24.8 days, so a lock that straddles a millis() wrap still ends on time.
+  bool locked(uint32_t now_ms) const { return active_ && (int32_t)(now_ms - until_ms_) < 0; }
+
+  // Whole seconds left, rounded UP (never reads 0 while still locked); 0 when unlocked.
+  uint32_t remaining_s(uint32_t now_ms) const {
+    if (!locked(now_ms)) return 0;
+    uint32_t ms = until_ms_ - now_ms;
+    return (ms + 999u) / 1000u;
+  }
+
+  // Call every loop(): returns true the one call that auto-unlocks at zero, so the caller can log,
+  // repaint and release the PMIC side-button lock once.
+  bool poll(uint32_t now_ms) {
+    if (active_ && (int32_t)(now_ms - until_ms_) >= 0) {
+      active_ = false;
+      return true;
+    }
+    return false;
+  }
+
+ private:
+  bool active_ = false;  // RAM only, by design: a boot always starts here, unlocked
+  uint32_t until_ms_ = 0;
 };
 
 // A56: `station_update {id, available, next_spawn_in_ms?}`. MC sends it on a pickup and at every
@@ -129,6 +185,14 @@ struct StatusFields {
   int control_owner = 255;
   int control_progress = 0;
   bool control_contested = false;
+  // A58 (additive; left unset, the body is byte-identical to the pre-A58 shape and its goldens):
+  // MC detects a restart when `uptime_s` goes backwards or `boot_count` moves, and reads the
+  // association mode so it knows whether a mid-match re-push can reach this Stick at all.
+  bool has_health = false;
+  uint32_t uptime_s = 0;     // millis() / 1000
+  uint32_t boot_count = 0;   // Preferences counter, incremented once per boot
+  std::string assoc;         // "muster" | "held"
+  long lock_s = -1;          // seconds left on the match lock (0 = unlocked); -1 = absent
 };
 
 inline std::string build_status_body(const StatusFields& f) {
@@ -151,6 +215,12 @@ inline std::string build_status_body(const StatusFields& f) {
          ",\"progress\":" + std::to_string(f.control_progress) +
          ",\"contested\":" + std::string(f.control_contested ? "true" : "false") + "}";
   }
+  if (f.has_health) {
+    j += ",\"uptime_s\":" + std::to_string(f.uptime_s);
+    j += ",\"boot_count\":" + std::to_string(f.boot_count);
+    j += ",\"assoc\":" + json::quote(f.assoc);
+  }
+  if (f.lock_s >= 0) j += ",\"lock_s\":" + std::to_string(f.lock_s);
   j += "}";
   return j;
 }
@@ -211,6 +281,13 @@ inline StationAssignment parse_station_config(const json::Value& body) {
     for (const auto& x : ids.arr) a.valid_ids.push_back((int)x.as_int());
   }
   a.item = parse_item(body.get("item"));
+  // Clamp as a double first: a (long) cast of an out-of-range number is undefined and could come out 0,
+  // which would turn a garbage lock into an unlock. Anything above the cap locks for the cap.
+  {
+    const json::Value& v = body.get("lock_s");
+    double d = v.type == json::Value::Type::Number ? v.num : 0.0;
+    a.lock_s = d >= (double)MATCH_LOCK_MAX_S ? MATCH_LOCK_MAX_S : clamp_lock_s((long)(d > 0 ? d : 0));
+  }
   return a;
 }
 
@@ -554,10 +631,20 @@ class StationLink {
   // read by the glue instead of re-deriving it from link state.
   bool has_powerup_assignment() const { return assignment_.present && assignment_.kind == "powerup"; }
 
+  // A58: the operator-control lock (MatchLock, above). Read-only for the glue and the screen.
+  const MatchLock& lock() const { return lock_; }
+  bool poll_lock(uint32_t now_ms) { return lock_.poll(now_ms); }
+
   // Returns true when a field that changes the advert actually moved, so the caller republishes
   // only when it must (mirrors `AdvertPolicy::due`'s "first/state/progress" distinction upstream).
-  bool apply_station_config(const StationAssignment& a) {
+  // `received_at_ms` is millis() at receipt (A58): the lock counts from then. The glue must pass it;
+  // the default exists only so the many older host tests that never look at the lock stay short.
+  bool apply_station_config(const StationAssignment& a, uint32_t received_at_ms = 0) {
     if (!a.present) return false;
+    // A58: every station_config REPLACES the running lock, before and independent of the kind/id/game
+    // logic below -- a same-game re-push (MC's mid-match lock carrier) must change the lock and
+    // nothing else, and lock_s 0 (or absent) unlocks at once.
+    lock_.start(a.lock_s, received_at_ms);
     // Polish round 1: a kind or id change is a NEW station identity, whatever it used to be --
     // powerup(8) -> control(8) -> powerup(8) must start clean, not resume the first powerup's
     // available/taker/anchor state. Team/game alone changing (the same station re-armed) does not
@@ -627,7 +714,10 @@ class StationLink {
   // control{cmd:"release_utility"} (§5g.7): drop to UNASSIGNED -- the nearest true equivalent of a
   // phone's BACK TO HUD, since a Stick has no HUD to return to. The Wi-Fi/MC link itself is
   // untouched: this is an arming change, not a connectivity one.
+  // A58: a release also lifts the lock -- an unarmed station has nothing left to protect, and a
+  // released Stick locked for up to two hours would only strand the operator.
   void apply_release() {
+    lock_.clear();
     assignment_ = StationAssignment();
     last_update_ = StationUpdateMsg();
     powerup_ = PowerupSchedule();
@@ -659,6 +749,7 @@ class StationLink {
   Backoff backoff_;
   bool actions_enabled_ = true;   // MC accepts station_action since A56 landed (f3fe3cf6); `ACTIONS OFF` for an older MC
   bool dropped_for_match_ = false;
+  MatchLock lock_;  // A58, RAM only
 };
 
 }  // namespace brx

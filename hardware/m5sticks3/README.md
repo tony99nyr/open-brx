@@ -436,6 +436,7 @@ RESET / MODE toggle) documented there.
 | A | short press | next page: leaves the home/gameplay screen for STATS (standalone bench mode: toggles DIAGNOSTICS) |
 | A | hold ~1 s | HOME: back to the live gameplay screen from anywhere, cancelling an open RESET confirm on the way. Changes no station state (`station_screen.h`'s `HomeNav`, host-tested) |
 | B | hold 2 s, then hold again within 5 s | RESET: the second hold sends `station_action{action:"reset"}` to Mission Control |
+| A + B | hold together 7 s | FORCE RESTART, locked or not (see "Match lock" below) |
 | small side button | single click | power on, or restart if the Stick is already on |
 | small side button | double click | POWER OFF (**bench to confirm:** whether this fires while the Stick is on USB power, as it always is at the bench) |
 | small side button | held while plugging in USB | download mode (first flash over factory firmware only): the screen stays dark and the internal green LED flashes, matching our own bring-up |
@@ -443,6 +444,33 @@ RESET / MODE toggle) documented there.
 Source: docs.m5stack.com/en/core/StickS3, "Button Operation Instructions". **Bench to confirm:** the
 mapping assumed above of `M5.BtnA`/`M5.BtnB` to the Stick's two physical keys -- BtnA the front M5
 logo key, BtnB the larger side key -- since this firmware's button code has never been seen lit.
+
+### Match lock (A58)
+
+Mission Control can lock the operator controls for a match: `station_config.lock_s` (0 to 7200 s,
+absent means 0) locks them for that many seconds from receipt. A later `station_config` replaces the
+running lock, and `lock_s: 0` unlocks at once. A `control{cmd:"release_utility"}` also unlocks, since a
+released Stick is UNASSIGNED and has nothing to protect. The lock counts down on the Stick's own clock and
+unlocks itself at zero. While it is on, a padlock shows in the status strip and:
+
+- the B-hold RESET is refused and shows LOCKED with the time left;
+- A still pages the stats and goes home (read-only);
+- the serial commands that change station state or transmit IR answer `ERR locked` (RESET, MODE,
+  ID, GAME, TXPIN, WIFI, MC, LINK, ACTIONS, SELFTEST, TX, TXN, AUTO with bits). PING, STATUS,
+  RAW ON|OFF and AUTO OFF still work.
+
+**Force restart:** hold A and B together for 7 s. After 2 s the screen counts down (RESTART IN 5);
+releasing either button cancels. It works whether the Stick is locked or not, and the joint hold
+never also triggers A's home or B's RESET.
+
+The lock lives in RAM only, so every boot starts unlocked and a crash can never leave a station
+locked. MC detects a restart from the status heartbeat: `uptime_s` goes back to near zero and
+`boot_count` goes up. The heartbeat also carries `assoc` (`muster` or `held`) and `lock_s`, the
+seconds left on the lock.
+
+The side button still restarts or powers off a locked Stick. The M5PM1 PMIC can disable both, but
+the register map is not in the installed M5Unified source, so the firmware does not write it yet
+(the TODO is in `mc_link_glue.h`, `pmicSetSideButtonLock`).
 
 ## Diagnostics
 

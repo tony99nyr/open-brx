@@ -139,6 +139,87 @@ class StationButtons {
   uint32_t armed_at_ms_ = 0;
 };
 
+// ---- A58: the force restart (A + B held together) -------------------------------------------------
+// Holding A AND B together for FORCE_RESTART_HOLD_MS restarts the Stick (ESP.restart() in the .ino),
+// whether the match lock is on or not: the lock is RAM-only, so a restart is also the operator's way
+// out of a lock set by mistake. After FORCE_RESTART_SHOW_MS of the joint hold the screen shows a
+// countdown ("RESTART IN 5"), so nobody restarts a station by accident; releasing EITHER button
+// cancels, and the next joint press starts the full 7 s again.
+//
+// The joint hold must not ALSO fire A's 1 s home or B's 2 s reset arm, so `suppress_single()` is
+// true from the moment both are down until one full loop() AFTER both are up again: the button
+// library reports a click or a hold on the release edge, and the loop in which the last button comes
+// up must still swallow it. (A single-button hold that reached its own threshold BEFORE the second
+// button went down has already fired by then; both of those are harmless -- home changes no state,
+// and a reset arm still needs a second, separate hold to confirm.)
+//
+// The .ino calls `update()` once per loop() with the button library's own `isPressed()` levels, never its
+// edge events, so this struct owns the whole gesture and is host-tested on its own.
+constexpr uint32_t FORCE_RESTART_HOLD_MS = 7000;
+constexpr uint32_t FORCE_RESTART_SHOW_MS = 2000;
+
+class ForceRestart {
+ public:
+  // Returns true exactly once per joint hold: the call on which it reaches FORCE_RESTART_HOLD_MS.
+  bool update(bool a_down, bool b_down, uint32_t now_ms) {
+    bool both = a_down && b_down;
+    bool any = a_down || b_down;
+    bool fire = false;
+    if (both) {
+      if (!joint_) {
+        joint_ = true;
+        fired_ = false;
+        start_ms_ = now_ms;
+      }
+      suppress_ = true;
+      if (!fired_ && now_ms - start_ms_ >= FORCE_RESTART_HOLD_MS) {
+        fired_ = true;
+        fire = true;
+      }
+    } else {
+      joint_ = false;  // either button up cancels the countdown
+      // Lift the suppression only on the SECOND consecutive all-up call (see the class comment).
+      if (!any && !prev_any_) suppress_ = false;
+    }
+    prev_any_ = any;
+    now_ms_ = now_ms;
+    return fire;
+  }
+
+  bool joint_active() const { return joint_; }
+  bool suppress_single() const { return suppress_; }
+
+  // 0 = no countdown on screen; otherwise the whole seconds left, rounded up ("RESTART IN 5" at 2 s).
+  uint32_t countdown_s() const {
+    if (!joint_ || fired_) return 0;
+    uint32_t held = now_ms_ - start_ms_;
+    if (held < FORCE_RESTART_SHOW_MS) return 0;
+    if (held >= FORCE_RESTART_HOLD_MS) return 0;
+    return (FORCE_RESTART_HOLD_MS - held + 999u) / 1000u;
+  }
+
+ private:
+  bool joint_ = false;
+  bool fired_ = false;
+  bool suppress_ = false;
+  bool prev_any_ = false;
+  uint32_t start_ms_ = 0;
+  uint32_t now_ms_ = 0;
+};
+
+// ---- A58: which serial commands still run while the match lock is on ------------------------------
+// Default DENY: anything not named here answers "ERR locked" while locked, so a command added later
+// is locked until someone decides otherwise. Allowed: the read-only ones (PING, STATUS), the RAW dump
+// toggle (it changes only what this Stick prints), and AUTO OFF (it only STOPS a transmit). Refused:
+// everything that changes station state or puts IR on the field -- RESET, MODE, ID, GAME, TXPIN, the
+// H8 link commands (WIFI, MC, LINK ..., ACTIONS), SELFTEST (it transmits), TX, TXN and AUTO <bits>.
+// The single-key r/s/c commands are handled before any line is parsed and are left as they are:
+// they toggle the RAW dump, print the frame count, and zero that counter, none of which is play.
+inline bool serial_command_allowed_while_locked(const std::string& line) {
+  return line == "PING" || line == "STATUS" || line == "RAW ON" || line == "RAW OFF" || line == "AUTO" ||
+         line == "AUTO OFF";
+}
+
 // A short, arm's-length label for the LINK stats page and the screen's status line.
 inline const char* link_state_label(LinkState s) {
   switch (s) {

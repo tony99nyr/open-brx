@@ -623,7 +623,7 @@ in the operator's voice.** Nothing here asks for that to change.
   utility mode by sending it back to its HUD; a Stick has no HUD to return to. A Stick MUST NOT ignore the
   message silently — the operator pressed a button and deserves an effect — so it should drop to UNASSIGNED
   (advert off, screen says NOT ARMED BY MISSION CONTROL), which is the nearest true equivalent: stop being an
-  item on the field.
+  item on the field. It also lifts any A58 match lock, so MC must clear its own lock state for that station.
 
 ### 5g.8 What `held` is FOR: roaming hills, and what the firmware must not preclude
 
