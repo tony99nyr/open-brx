@@ -105,6 +105,24 @@ async def trade(world: World, a: int, b: int) -> None:
     nb.die_at(num_a, tid_a, t)
 
 
+def _pick_unknown_shooter(world: World, rng: random.Random):
+    alive = world.alive_nodes()
+    if not alive:
+        return None
+    rostered = set(world.num_to_pid())
+    free = [n for n in (11, 42, 63) if n not in rostered]
+    return {"victim": rng.choice(alive).index, "shooter_num": rng.choice(free)} if free else None
+
+
+@action("unknown_shooter_death", pick=_pick_unknown_shooter)
+async def unknown_shooter_death(world: World, victim: int, shooter_num: int) -> None:
+    """The victim dies to a `shooter_num` no rostered player holds (field 2026-09-24: shooter 11 in a
+    match with no player 11). The death counts; nobody is credited the kill, so nobody gets its feedback."""
+    n = world.nodes[victim]
+    if n.alive:
+        n.die_at(shooter_num, 0, n.synced_now())
+
+
 def _pick_respawn(world: World, rng: random.Random):
     dead = world.dead_nodes()
     return {"node": rng.choice(dead).index} if dead else None
@@ -162,6 +180,28 @@ async def duplicate(world: World, node: int, seq: int, as_batch: bool) -> None:
     ev = world.ledger.facts.get((n.node_id, seq))
     if ev is not None:
         n.resend(seq, ev, as_batch)
+
+
+def _pick_resend_death(world: World, rng: random.Random):
+    up = [n for n in world.nodes if n.link_up and not n._paused and _last_death(world, n) is not None]
+    return {"node": rng.choice(up).index, "as_batch": rng.random() < 0.5} if up else None
+
+
+def _last_death(world: World, n) -> int | None:
+    pending = {q for q, _ in n.ring}
+    seqs = [s for (nid, s) in world.ledger.order if nid == n.node_id and s not in pending
+            and world.ledger.facts[(nid, s)].get("type") == "death"]
+    return seqs[-1] if seqs else None
+
+
+@action("resend_death", pick=_pick_resend_death)
+async def resend_death(world: World, node: int, as_batch: bool) -> None:
+    """Send the node's last acknowledged DEATH again (a resend after a lost ack). Unlike `duplicate`, a
+    script can aim it at a kill without knowing the fact's seq."""
+    n = world.nodes[node]
+    seq = _last_death(world, n)
+    if seq is not None:
+        n.resend(seq, world.ledger.facts[(n.node_id, seq)], as_batch)
 
 
 def _pick_reorder(world: World, rng: random.Random):
