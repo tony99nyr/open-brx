@@ -36,8 +36,8 @@ Screamers remain P0. Phase A has run A1 and A2. The current order is in
 [`bench-plan.md`](bench-plan.md); the next runbook is [`bench-2026-09-24.md`](bench-2026-09-24.md).
 F269's `raw-bytes` helper is built for A4/A7/A7b/A7c/A8.
 
-- **Next bench task:** run the runbook's screamer transport block (Block 2), then Block 2b, the native kill
-  capture and the R4 checks (F320-F322); its hosted trials ride on Block 4.2. Do not send `$AS,1`.
+- **Next bench task:** the sitting plan at the top of [`bench-2026-09-24.md`](bench-2026-09-24.md) (MUST sittings A-C);
+  Block 2 and Block 2b (F320-F322, the R4 readings) come after its stop point. Do not send `$AS,1`.
 - **Next desk task:** prepare F293 GPIO logging and S48 carrier/duty measurement from the
   [R4 research plan](firmware-image-research-plan.md). R4/T5 read-only research is authorised; flashing remains
   decision first.

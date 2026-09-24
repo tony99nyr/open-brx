@@ -40,13 +40,13 @@ superseded). See `docs/experiment-log/2026-09.md` (2026-09-19 pre-game entry) fo
 
 ## Sittings, in priority order
 
-### Next sitting: [`bench-2026-09-24.md`](bench-2026-09-24.md) (about four and a quarter hours indoor, plus 60 min outdoor)
+### Next sitting: [`bench-2026-09-24.md`](bench-2026-09-24.md) (MUST: about 3 h 45 min in three setups)
 
 One ordered runbook for the next sitting: F297/F293 connect reliability, the screamers transport steps A4, A7,
 A7b, A7c and A8 with `raw-bytes` (F269/F270), the native kill word and the R4 readings (Block 2b: F320-F322), F308,
 S56, F292, F298, F296, F309, F275
-outdoors, S48's super-indoor grid in Tony's house, and S57's IR callout bus.
-It includes the 0.4.5 field check, on a build from `main` (S56 and F309 are newer than 0.4.5).
+outdoors, S48's super-indoor grid in Tony's house, and S57's IR callout bus, with the 0.4.6 loop (Block 4.0).
+Its sitting plan orders them: MUST sittings A-C, a stop point, then LATER by setup.
 
 ### Sitting 1: screamers Phase A, transport half (about 55 min; 1 gun, a laptop)
 
