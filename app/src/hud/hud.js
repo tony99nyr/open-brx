@@ -1846,13 +1846,19 @@ export class Hud {
 
     this._redeployTick(st);   // 2026-09-19: ACTIVATING WEAPON SYSTEMS… turns to WEAPONS HOT when the trigger goes live
     // transient moments
+    // C2 (docs/announcer.md): the kill card and the alert banner come from `st.card`, which only the engine's announcer
+    // queue writes, so a hit or a stun landing in the same render cannot swallow them. `st.moment` keeps the rest.
+    const cd = st.card !== undefined ? st.card : (st.moment && (st.moment.kind === 'kill' || st.moment.kind === 'alert') ? st.moment : null);   // an older engine has no `card`
+    if (cd && cd.at !== this._cardAt) {
+      this._cardAt = cd.at;
+      if (cd.kind === 'kill') this._kill(st, cd); else if (cd.kind === 'alert') this._alert(st, cd);
+    }
     const m = st.moment;
     if (m && m.at !== this._momentAt) {
       this._momentAt = m.at;
-      if (m.kind === 'kill') this._kill(st, m);
+      if (m.kind === 'kill' || m.kind === 'alert') { /* drawn from `st.card` above */ }
       else if (m.kind === 'redeploy') this._redeploy(st);
       else if (m.kind === 'switched') { const held = st.powerup && st.powerup.held; if (!(held && st.ammo === 0 && st.activeSlot === held.slot && st.activeSlot === (m.data && m.data.slot))) this._switched(st, m); }   // polish r2/r3: no ACTIVE card for an EMPTY PICKUP slot (a loadout swap keeps it)
-      else if (m.kind === 'alert') this._alert(st, m);
       else if (m.kind === 'hit') this._hit(st, m);
       else if (m.kind === 'gain') this._gain(st, m);
       else if (m.kind === 'go') this._flash();
@@ -1912,12 +1918,18 @@ export class Hud {
       + `${spec.sub ? `<span class="by">${esc(spec.sub)}</span>` : ''}`
       + `${medals.length ? `<div class="medals">${medals.map((k, i) => `<span class="medal ${esc(k)}" style="animation-delay:${.12 + i * 2}s"><span class="unskew">${MEDAL_LABEL[k]}</span></span>`).join('')}</div>` : ''}</div>`;
     if (spec.kill) { this._flash(); this.h.onHaptic && this.h.onHaptic('kill'); }   // `_flash` is a no-op at night
-    const hold = spec.hold + Math.max(0, medals.length - 1) * 2000;   // each medal line plays 2 s after the last (engine MEDAL_GAP_MS)
+    // Each medal line plays 2 s after the last (engine MEDAL_GAP_MS). docs/announcer.md: the card also stays up while its
+    // line sounds (`st.announcer.ms`, the slot the engine's queue gave it), and fades before the next item's slot opens.
+    const hold = Math.max(spec.hold + Math.max(0, medals.length - 1) * 2000, this._annHold(st, 300));
     const node = this._swap('co', el, hold, hold + 300);
     Object.assign(node.dataset, { kind: spec.kind, tone: spec.tone, src: spec.src });   // a reused node keeps its old data-* otherwise
     if (spec.color) node.style.setProperty('--item', itemColor(spec.color)); else node.style.removeProperty('--item');
     return hold;
   }
+  /** docs/announcer.md: the engine's announcer queue hands out one slot at a time, and `st.announcer.ms` is the slot on
+   *  air. A card or banner that the slot is for holds at least that long less its own fade, so it shows while its line
+   *  plays and is gone before the next one. 0 when nothing is on air (an older engine, the stage's static states). */
+  _annHold(st, fade) { const a = st && st.announcer; return a && a.ms > fade ? a.ms - fade : 0; }
   /** The IR and hill halves: fire the card once per NEW event (keyed on its `at`), and take any card down the
    *  moment the player is no longer live and alive (the down screen owns the dead phone). */
   _coSync(st) {
@@ -1934,7 +1946,7 @@ export class Hud {
       // when the victim's own DOWN word pairs with it (below). When MC's named card for the same kill is already up
       // it is richer, so the IR word leaves it alone.
       if (co.kind === 'kill_confirmed') {
-        if (!(this._coMcUntil > Date.now())) (this._coIrKills = this._coIrKills || []).push(Date.now());
+        if (!(this._coMcUntil > Date.now())) (this._coIrKills = this._coIrKills || []).push(co.at);   // the card's own engine `at`: MC's twin names it (`ir_at`)
         if (!(this._coMcUntil > Date.now())) this._co(st, { kind: 'kill_confirmed', src: 'ir', tone: 'enemy', kill: true, tag: 'KILL CONFIRMED', name: op, team, sub: 'CONFIRMED BY THEIR GUN · MC KEEPS THE SCORE', hold: 2000 });
       } else {
         const mate = co.kind === 'teammate_down';
@@ -1958,10 +1970,10 @@ export class Hud {
       this._coPuAt = ps.at;
       this._co(st, { kind: 'powerup_spawn', src: 'powerup', tone: 'item', tag: 'POWERUP', name: `${ps.name} AVAILABLE`, color: ps.color, sub: '', hold: 2200 });
     }
-    const pg = st.powerupGrant;
+    const pg = st.powerupSwap;   // docs/announcer.md: set by the engine's queue when the swap card's turn comes (not at the grant)
     if (pg && pg.at !== this._coPgAt) {
       this._coPgAt = pg.at;
-      if (pg.replaced) this._co(st, { kind: 'powerup_swap', src: 'powerup', tone: 'item', tag: 'PICKUP', name: pg.name, color: pg.color, sub: `REPLACES ${String(pg.replaced).toUpperCase()}`, hold: 2200 });
+      this._co(st, { kind: 'powerup_swap', src: 'powerup', tone: 'item', tag: 'PICKUP', name: pg.name, color: pg.color, sub: `REPLACES ${String(pg.replaced).toUpperCase()}`, hold: 2200 });
     }
     const hc = st.hillCallout;
     if (hc && hc.at !== this._coHillAt) {
@@ -1979,9 +1991,12 @@ export class Hud {
     // is used once, so a kill whose IR card was held back behind another card still buzzes on its MC card.
     // Polish round 3: a QUEUE of IR cards still waiting for their MC twin, not one mark, so IR1 IR2 MC1 MC2 is two
     // buzzes as surely as IR1 MC1 IR2 MC2. Entries older than the pairing window are dropped unmatched.
-    const now = Date.now(); this._coIrKills = (this._coIrKills || []).filter(t => now - t < 3000);
-    const irFirst = !!d.ir_paired && this._coIrKills.length > 0;
-    if (irFirst) this._coIrKills.shift();
+    // docs/announcer.md: the engine names the exact IR card it paired this confirm with (`ir_at`, that card's `callout.at`),
+    // so only that card, if it really showed, silences this one. An IR card whose MC twin never came matches nothing.
+    this._coIrKills = (this._coIrKills || []).slice(-8);
+    const i = d.ir_paired && d.ir_at != null ? this._coIrKills.indexOf(d.ir_at) : -1;
+    const irFirst = i >= 0;
+    if (irFirst) this._coIrKills.splice(i, 1);
     const hold = this._co(st, { kind: 'kill', src: 'mc', tone: 'enemy', kill: !irFirst, killStyle: true, tag: 'KILL CONFIRMED', name: d.victim || (vk.toUpperCase() + ' OPERATIVE'), team: vk,
       sub: `+1 ELIMINATION · K ${st.kills != null ? st.kills : ''} · MISSION CONTROL`, medals: Array.isArray(d.medals) ? d.medals : [], hold: 1800 });
     this._coMcUntil = Date.now() + hold;
@@ -2077,7 +2092,8 @@ export class Hud {
     const d = (m.data) || {}; const fam = ALERT_FAMILY[d.kind] || 'info';
     const el = document.createElement('div'); el.className = `mo alert ${fam}`;
     el.innerHTML = `<div class="band"><span class="k">${fam === 'objective' ? 'OBJECTIVE' : fam === 'clock' ? 'CLOCK' : fam === 'danger' ? 'ALERT' : 'MATCH'}</span><span class="t">${esc(String(d.text || d.kind || '').toUpperCase())}</span></div>`;
-    this._swap('alert', el, 2200, 2600);
+    const out = Math.max(2200, this._annHold(st, 400));   // docs/announcer.md: up while its line plays (a lead-lost line is 2.7 s)
+    this._swap('alert', el, out, out + 400);
     this.h.onHaptic && this.h.onHaptic('tap');
   }
 

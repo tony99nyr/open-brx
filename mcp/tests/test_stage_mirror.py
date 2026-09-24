@@ -1457,6 +1457,14 @@ KNOWN_UNMIRRORED = {
     # It never books a death/kill/score (MC's own facts already did that), only a HUD chip and a locally-picked
     # cue; the stage has no HUD and no cue picker to mirror either half against.
     "_onIrCallout", "_irKillConfirmed", "_takeKillMatch",
+    # 2026-09-24 (docs/announcer.md): an MC alert or the node's clock warning as one announcer-queue item. The stage has
+    # no MC and no HUD; its only announcer lines are the hill callouts, whose queue behaviour alone (the later hill word
+    # preempts, the tick waits out the clip) is what `_hill_busy_until` already mirrors.
+    "_announceAlert", "_announceStatus", "_card",
+    # 2026-09-24 (docs/announcer.md, "The gun's audio FIFO"): the phone's model of the gun's audio queue and the
+    # must-hear $PLAYX flush. NOT yet ported: the stage's own writes do not model the FIFO, and its heartbeat does not
+    # skip a beat that would sound over the refill. A stage/phone divergence on audio timing only, no game rule.
+    "_audioWrite", "_clipLen", "_sayMust", "_audioSync", "_audioHit", "_shieldLoopPeriod",   # the pool voice lines, the same queue; the stage speaks them at once
     # bench 2026-09-17: the phone's day/night HUD skin and its per-MC-session pick; HUD chrome, no LED or game rule
     "setNight", "ownNightChoice", "_autoNight", "_loadNight", "_storeNight",
     # bench 2026-09-17: the ammo gauge's shot-ready cue ($WEAP token 14 timed from $ALCD); HUD display only, no game rule

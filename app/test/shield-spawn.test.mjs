@@ -140,7 +140,7 @@ test('F348 control: the Standard preset (no shield) spawns and revives exactly a
   assert.equal(h.eng.shield, 0);
 });
 
-test('F348 control: a shield broken in play still recharges the old way, and says SHIELDS ONLINE at the top', () => {
+test('F348 control: a shield broken in play still recharges the old way (and, Tony 2026-09-24, says no SHIELDS ONLINE)', () => {
   const h = harness();
   h.adv(3000);
   h.gun.shield = 0; h.frame('$HIR,4,0,19,2,105,0,3,*'); h.frame('$HP,45,0,0,*');
@@ -149,5 +149,5 @@ test('F348 control: a shield broken in play still recharges the old way, and say
   h.adv(15000);
   assert.equal(h.eng.shield, 105, 'the recharge refilled it');
   assert.equal(h.cues(n, 'shield_charging'), 1);
-  assert.equal(h.cues(n, 'shield_online'), 1);
+  assert.equal(h.cues(n, 'shield_online'), 0, 'the shields-online line is gone (docs/announcer.md)');
 });

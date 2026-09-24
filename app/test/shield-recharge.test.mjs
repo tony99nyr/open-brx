@@ -101,8 +101,10 @@ test('F349: a full recharge stays inside its BLE write budget: a few large grant
   const n = h.mark();
   h.adv(14000);
   const w = h.since(n);
-  const c = w.indexOf(golden.cues.shield_charging), o = w.findIndex(f => f.includes('VA6Y'));
-  assert.ok(c >= 0 && o > c, `setup: the recharge ran, charging then online: ${JSON.stringify(w)}`);
+  // Tony 2026-09-24: no SHIELDS ONLINE line (docs/announcer.md), so the recharge's writes run to its last grant.
+  const g = h.grants(n);   // the grants, as this file reads them (never a bare `$LIFE` match: F264)
+  const c = w.indexOf(golden.cues.shield_charging), o = g.length ? w.lastIndexOf(g[g.length - 1]) : -1;
+  assert.ok(c >= 0 && o > c, `setup: the recharge ran, charging then its grants: ${JSON.stringify(w)}`);
   const during = w.slice(c, o + 1);
   const budget = E.SHIELD_REGEN_WRITE_BUDGET ?? 6;
   assert.ok(during.length <= budget, `the recharge wrote ${during.length} frames (budget ${budget}): ${JSON.stringify(during)}`);

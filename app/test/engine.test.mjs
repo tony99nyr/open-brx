@@ -216,7 +216,8 @@ const HILL_CONTESTED_F = '$PLAY,,4,6,VB0O,,,,*';  // VB0O "Hill Contested", 2.07
 const nWrites = (h, f) => h.writes.filter(x => x === f).length;
 /** Advance the clock in ~250 ms steps, ticking the engine like the app does. */
 function run(h, ms, step = 250) { const n = Math.round(ms / step); for (let i = 0; i < n; i++) { h.adv(step); h.eng.tick(); } }
-function koth() { const h = harness({ mode: 'koth' }).kit().config_().echo().start(0); h.adv(10); h.eng.tick(); return h; }
+// docs/announcer.md: go-live puts the klaxon and the spawn line on the gun's audio FIFO; hill tests start once it is quiet
+function koth() { const h = harness({ mode: 'koth' }).kit().config_().echo().start(0); h.adv(10); h.eng.tick(); h.adv(3000); h.eng.tick(); return h; }
 
 test('hill: a lone mag=53 with no point already known does NOT invent a phantom', () => {
   // It used to write {owner: null, at: now, from_neutral: true}, holding a 12 s presence window open for a
@@ -237,7 +238,7 @@ test('hill: cue_ms of 0 means "do not suppress the tick", not "use the default l
   // `(cm && cm[kind]) || def.ms` treated a deliberate 0 as absent and silently restored 1924 ms.
   const h = harness({ mode: 'koth' }).kit().config_().echo().start(0);
   h.eng.frames.cue_ms = { hill_captured: 0 };
-  h.adv(10); h.eng.tick();
+  h.adv(10); h.eng.tick(); h.adv(3000); h.eng.tick();   // past the go-live audio on the gun's FIFO (docs/announcer.md)
   h.frame('$HIR,4,15,0,2,8,0,0,*');
   h.adv(50);
   h.frame('$HIR,4,15,0,1,50,0,0,*');            // we capture: the callout plays
@@ -249,7 +250,7 @@ test('hill: cue_ms of 0 means "do not suppress the tick", not "use the default l
 test('hill CONTROL: a real cue_ms length DOES suppress the tick, so the zero case is not vacuous', () => {
   const h = harness({ mode: 'koth' }).kit().config_().echo().start(0);
   h.eng.frames.cue_ms = { hill_captured: 3000 };
-  h.adv(10); h.eng.tick();
+  h.adv(10); h.eng.tick(); h.adv(3000); h.eng.tick();   // the same start as the case above
   h.frame('$HIR,4,15,0,2,8,0,0,*');
   h.adv(50);
   h.frame('$HIR,4,15,0,1,50,0,0,*');
@@ -789,6 +790,7 @@ test('control point: the transition lines have a repeat floor, so a shared stati
   control(slow, { team: 1, state: HELD, value: 100 });
   runControl(slow, 4000, { team: 1, state: HELD, value: 100 });
   control(slow, { team: 255, state: 0, value: 0 });
+  slow.adv(200); slow.eng.tick();   // docs/announcer.md: a line never starts under the 0.11 s possession tick; it waits it out
   assert.equal(nWrites(slow, HILL_CAPTURED_F), 1);
   assert.equal(nWrites(slow, HILL_LOST_F), 1, 'a real second transition is not swallowed by the floor');
 });
@@ -806,6 +808,7 @@ test('control point: a handover that happens while you are DOWN is told to you o
   h.adv(8000); h.eng.tick();                                  // revived by the auto respawn (delay_s 8), the real path
   assert.equal(h.eng.alive, true);
   control(h, { team: 255, state: 0, value: 0 });
+  runControl(h, 2500, { team: 255, state: 0, value: 0 });   // docs/announcer.md: it waits out the revive's spawn line on the gun
   assert.equal(nWrites(h, HILL_LOST_F), 1, 'and the first advert after revive says what happened');
   control(h, { team: 255, state: 0, value: 0 });
   assert.equal(nWrites(h, HILL_LOST_F), 1, 'exactly once');
@@ -1032,7 +1035,9 @@ test('hill: nothing plays before go-live or while down', () => {
   assert.equal(nWrites(h, HILL_TICK_F), 0, 'armed is not live');
   h.adv(17000); h.eng.tick();                   // T-0 -> live
   h.frame('$HIR,4,15,0,1,8,0,0,*');
-  run(h, 2000);
+  // docs/announcer.md: the tick never queues behind a clip on the gun, and the runway lines, the countdown, the klaxon and
+  // the spawn line hold its FIFO for ~15 s after go-live here. The beacon keeps coming meanwhile.
+  for (let i = 0; i < 5; i++) { run(h, 4000); h.frame('$HIR,4,15,0,1,8,0,0,*'); }
   assert.ok(nWrites(h, HILL_TICK_F) >= 2, 'live and holding: ticking');
   const live = nWrites(h, HILL_TICK_F);
   h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame('$HP,0,0,0,*');   // killed
@@ -1667,7 +1672,7 @@ test('ARMED + BLE reconnect re-writes the head and still spawns at T-0', () => {
 });
 
 // ---------- polish iteration 2 regressions ----------
-function goLive(h) { h.kit().config_().echo().start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*'); return h; }
+function goLive(h) { h.kit().config_().echo().start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*'); h.adv(3000); h.eng.tick(); return h; }   // + the go-live audio's 3 s (docs/announcer.md)
 
 test('head re-write mid-match: the $LCD,0,… echo adds 0 shots', () => {
   const h = goLive(harness());
@@ -4284,10 +4289,13 @@ test('a kill feedback with medals plays each medal cue instead of the plain kill
   const h = goLive(harness());
   h.writes.length = 0;
   h.eng.feedback({ kind: 'kill', player_id: 'p1', t: h.eng.now(), medals: ['killtacular', 'killing_spree'] }, h.eng.now());
-  const plays = h.writes.filter(f => f.startsWith('$PLAY'));
+  // '$PLAY,' not '$PLAY': this harness runs delays inline on a frozen clock, so the second line's must-hear flush sees
+  // the first still sounding and stops it; on a real clock it goes out after the first has ended (announcer.test.mjs).
+  const plays = h.writes.filter(f => f.startsWith('$PLAY,'));
   assert.deepEqual(plays, [golden.cues.killtacular, golden.cues.killing_spree], 'medals in order (harness delays run inline)');
   assert.ok(!plays.includes(golden.cues.kill), 'no plain kill line under a medal');
   assert.deepEqual(h.eng.state().moment.data.medals, ['killtacular', 'killing_spree']);
+  h.adv(5000); h.eng.tick();   // docs/announcer.md: the next kill's line waits for the medal lines to finish
   h.writes.length = 0;
   h.eng.feedback({ kind: 'kill', player_id: 'p1', t: h.eng.now(), medals: [] }, h.eng.now());
   const plain = h.writes.filter(f => f.startsWith('$PLAY'));
@@ -4561,6 +4569,7 @@ test('polish: an event\'s static headset paint is dropped while down — the out
 test('polish: the player who turned ignores MC\'s infected alert naming themself; everyone else plays it', () => {
   const h = harness({ mode: 'infection' }).kit().config_().echo().start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
   h.eng._turned = true;
+  h.adv(3000); h.eng.tick();   // docs/announcer.md: past the go-live audio on the gun's FIFO
   h.writes.length = 0; h.eng.moment = null;
   h.eng.onMcMessage({ kind: 'alert', body: { kind: 'infected', text: 'INFECTED', player_id: 'p1', player_id_subject: 'p1', t: h.eng.now() }, t: h.eng.now() });
   assert.ok(!h.writes.includes(golden.cues.infected) && h.eng.moment === null, 'no second play for the one who turned');
@@ -4934,9 +4943,11 @@ test('cue pools: a seeded rng picks the expected take, no pool falls back to cue
   const plays = k.writes.filter(w => w.startsWith('$PLAY'));
   assert.ok(k.writes.includes('$SFLASH,*') && plays.length === 1 && POOL.includes(plays[0]) && k.writes.indexOf('$SFLASH,*') < k.writes.indexOf(plays[0]), 'flash, then a pool take: ' + k.writes.join(' '));
   assert.equal(plays[0], POOL[3], 'rng 0.7 -> pool[3]');
-  // MC's explicit `cue` on the body still wins (older MC / a specific line), and medal stacks are untouched
-  k.writes.length = 0; k.eng.onMcMessage({ kind: 'feedback', body: { player_id: 'p1', kind: 'kill', t: k.eng.now(), cue: golden.cues.kill } });
-  assert.deepEqual(k.writes.filter(w => w.startsWith('$PLAY')), [golden.cues.kill]);
+  // MC's explicit `cue` on the body still wins (older MC / a specific line), and medal stacks are untouched. A fresh
+  // engine: this one's clock is frozen, so a second kill would wait behind the first forever (docs/announcer.md).
+  const k2 = mk(0.7); k2.eng.onMcMessage({ kind: 'start', body: { t0: k2.eng.now(), config_id: golden.config_id } }); k2.writes.length = 0;
+  k2.eng.onMcMessage({ kind: 'feedback', body: { player_id: 'p1', kind: 'kill', t: k2.eng.now(), cue: golden.cues.kill } });
+  assert.deepEqual(k2.writes.filter(w => w.startsWith('$PLAY')), [golden.cues.kill]);
 });
 
 // ---- A15.2: the spawn line is OURS (Tony 2026-09-06, bench: an empty $PSET cry field silences the firmware; $SPAWN then

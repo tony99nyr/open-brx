@@ -30,12 +30,15 @@ function harness({ mode = 'tdm', calloutTeam = 0, teamFlip, teams = [{ team_id: 
   const h = {
     eng, writes, facts, now: () => clock,
     adv(ms) { clock += ms; eng.tick(); return h; },
+    // docs/announcer.md: callouts and kill lines play one at a time, so a test that counts what was SAID lets the queue drain
+    drain(ms = 8000) { for (let t = 0; t < ms; t += 100) { clock += 100; eng.tick(); } return h; },
     frame(f) { eng.feedFrame(f); return h; },
     kit() { eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); eng.onMcMessage({ kind: 'assign', body: { player, team: teams[0], roster } }); return h; },
     config_() { eng.onMcMessage({ kind: 'config', body: { config, frames: bundle, roster } }); return h; },
     echo() { eng.feedFrame('$LCD,0,0,0,0,0,0,*'); return h; },
     start(runwayMs = 0) { eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock + runwayMs, config_id: golden.config_id, seq: 1, countdown_s: Math.round(runwayMs / 1000) } }); return h; },
-    live() { h.kit().config_().echo().start(0); h.adv(10); eng.feedFrame('$LCD,45,70,0,0,30,90,*'); writes.length = 0; facts.length = 0; return h; },   // clean slate: past the arm+spawn write burst (head, $AMMO, spawn's own $SFLASH)
+    // docs/announcer.md: go-live puts the klaxon and the spawn line on the gun's audio FIFO; the tests start once it is quiet
+    live() { h.kit().config_().echo().start(0); h.adv(10); eng.feedFrame('$LCD,45,70,0,0,30,90,*'); for (let i = 0; i < 30; i++) h.adv(100); writes.length = 0; facts.length = 0; return h; },   // clean slate: past the arm+spawn write burst (head, $AMMO, spawn's own $SFLASH)
     // one lethal hit as the gun reports it: `$HIR` (names the killer), then `$HP` at zero.
     lethal(shooterNum, shooterTeam) { eng.feedFrame(`$HIR,4,0,${shooterNum},${shooterTeam},9,0,3,*`); eng.feedFrame('$HP,0,0,0,*'); return h; },
     // an incoming IR callout word from another gun: `$HIR,<sensor>,15,<player>,<team>,<magnitude>,0,0,*`.
@@ -58,10 +61,10 @@ test('S57 sender: a known killer sends DOWN_BY naming them, then DOWN naming me 
   assert.deepEqual(h.irtx(), [`$IRTX,100,15,19,0,${IR_CALLOUT.DOWN_BY + 1},0,0,100,1,,0,*`, `$IRTX,100,15,7,0,${IR_CALLOUT.DOWN + 1},0,0,100,1,,0,*`]);
 });
 
-test('S57 sender: the victim\'s DOWN word waits 250 ms (the headset\'s single-shot guard is 199 ms)', () => {
+test('S57 sender: the victim\'s DOWN word waits 300 ms (the headset\'s single-shot guard is 199 ms)', () => {
   const h = harness(); const waits = []; h.eng.delay = (ms, fn) => { waits.push(ms); fn(); }; h.live();
   h.lethal(19, 2);
-  assert.ok(waits.includes(250), 'the second word is delayed 250 ms: ' + JSON.stringify(waits));
+  assert.ok(waits.includes(300), 'the second word is delayed 300 ms: ' + JSON.stringify(waits));
 });
 
 test('S57 sender: an unknown killer sends DOWN naming ME, magnitude = 25 + my own team', () => {
@@ -223,6 +226,7 @@ test('S57 kill confirm: MC\'s medal cues play even when IR already confirmed the
   const h = harness(); h.live();
   h.irWord(7, IR_CALLOUT.DOWN_BY + 2);
   h.feedback({ kind: 'kill', victim_team: 'yellow', medals: ['killtacular'] });
+  h.drain();   // the medal line follows the IR kill line; it never plays on top of it
   assert.equal(h.cues('V124').length, 1, 'the medal line (killtacular = V124 in the golden bundle) is never suppressed');
 });
 
@@ -234,12 +238,14 @@ test('S57 kill confirm: a double kill where only ONE IR word lands still plays M
   h.feedback({ kind: 'kill', victim_team: 'yellow' });     // MC confirms kill 1: pairs with the IR confirm, no second line
   h.adv(700);
   h.feedback({ kind: 'kill', victim_team: 'yellow' });     // MC confirms kill 2, whose IR word never arrived
+  h.drain();
   assert.equal(h.cues('VAA').length, 2, 'one line per kill: IR for the first, MC for the second');
 });
 test('S57 kill confirm: confirms pair by victim team, so another team\'s MC kill is not swallowed', () => {
   const h = harness(); h.live();
   h.irWord(7, IR_CALLOUT.DOWN_BY + 2);                     // IR: I killed someone on tid 2 (yellow)
   h.feedback({ kind: 'kill', victim_team: 'blue' });       // MC: a different kill, a victim on tid 1
+  h.drain();
   assert.equal(h.cues('VAA').length, 2, 'different victims, two lines');
 });
 test('S57 sender: a gun-recovery DOWN (a power-cycle, not a kill) sends no callout', () => {
@@ -309,12 +315,15 @@ test('S57 names: a bystander gets one ENEMY DOWN naming the victim and the kille
 
 test('S57 names: two victims of one team within a second pair oldest first', () => {
   const h = harness(); h.live();
-  h.irWord(20, IR_CALLOUT.DOWN_BY + 2); h.adv(100);
-  h.irWord(33, IR_CALLOUT.DOWN_BY + 2); const second = h.now(); h.adv(150);
-  h.irWord(19, IR_CALLOUT.DOWN + 2);            // pairs with the first DOWN_BY, which is no longer the shown callout
-  assert.equal(h.eng.state().callout.at, second); assert.equal(h.eng.state().callout.victim, undefined, 'the newer callout is not misnamed');
-  h.adv(100); h.irWord(21, IR_CALLOUT.DOWN + 2);   // pairs with the second
-  assert.equal(h.eng.state().callout.victim, h.eng.nameOf(21));
+  // docs/announcer.md: the second death's callout waits for the first's "Target down." to finish, then plays named.
+  h.irWord(20, IR_CALLOUT.DOWN_BY + 2); const first = h.now(); h.adv(100);
+  h.irWord(33, IR_CALLOUT.DOWN_BY + 2); h.adv(150);
+  h.irWord(19, IR_CALLOUT.DOWN + 2);            // pairs with the first DOWN_BY, the callout on air: named in place
+  assert.equal(h.eng.state().callout.at, first); assert.equal(h.eng.state().callout.victim, 'VIPER');
+  h.adv(100); h.irWord(21, IR_CALLOUT.DOWN + 2);   // pairs with the second, still queued
+  assert.equal(h.eng.state().callout.victim, 'VIPER', 'the callout on air is not renamed by the newer death');
+  h.drain(1500);
+  assert.ok(h.eng.state().callout.at > first); assert.equal(h.eng.state().callout.victim, h.eng.nameOf(21), 'the second callout plays named');
   assert.equal(h.cues('VB8').length, 2, 'two deaths, two ENEMY DOWNs, no extra for the DOWN words');
 });
 
@@ -339,8 +348,8 @@ test('S57 names: an unknown killer sends one word (DOWN, already naming me); a g
   assert.equal(g.irtx().length, 0, 'a power-cycle is not a kill');
 });
 
-test('S57 names: a panic inside the 250 ms gap stops the second word', () => {
-  const h = harness(); const queued = []; h.eng.delay = (ms, fn) => { if (ms === 250) queued.push(fn); else fn(); }; h.live();
+test('S57 names: a panic inside the 300 ms gap stops the second word', () => {
+  const h = harness(); const queued = []; h.eng.delay = (ms, fn) => { if (ms === 300) queued.push(fn); else fn(); }; h.live();
   h.lethal(19, 2);
   assert.equal(h.irtx().length, 1, 'DOWN_BY went out at once');
   h.eng.onMcMessage({ kind: 'control', body: { cmd: 'panic' } });
@@ -352,8 +361,10 @@ test('S57 names: a DOWN too soon after a DOWN_BY (an earlier death, its DOWN_BY 
   const h = harness(); h.live();
   h.irWord(20, IR_CALLOUT.DOWN_BY + 2); h.adv(50);   // B's DOWN_BY
   h.irWord(19, IR_CALLOUT.DOWN + 2);                  // A's DOWN, 50 ms later: A's own DOWN_BY was lost
-  assert.equal(h.eng.state().callout.kind, 'enemy_down'); assert.equal(h.eng.state().callout.name, 'VIPER', 'A is its own callout');
   h.adv(250); h.irWord(33, IR_CALLOUT.DOWN + 2);     // B's DOWN pairs with B's DOWN_BY
+  assert.equal(h.eng.state().callout.victim, h.eng.nameOf(33), 'B\'s callout (on air) takes B\'s name');
+  h.drain(1500);                                      // docs/announcer.md: A's callout waited its turn
+  assert.equal(h.eng.state().callout.kind, 'enemy_down'); assert.equal(h.eng.state().callout.name, 'VIPER', 'A is its own callout');
   assert.equal(h.cues('VB8').length, 2, 'two deaths, two cues, no third');
 });
 
@@ -365,3 +376,29 @@ test('S57 names: a same-killer double kill inside the dedupe gives the killer no
   assert.equal(h.cues('VB8').length, 0, 'no ENEMY DOWN on the killer\'s phone');
 });
 
+
+test('S57 sender: the name word goes out >= 300 ms after the kill word was WRITTEN, however late that write lands', async () => {
+  // Bench 2026-09-24: the two $IRTX writes were 186 ms apart on the wire, inside the headset's 199 ms one-shot guard.
+  // Here the link holds the first word back 400 ms (the death burst ahead of it); the gap must run from its write.
+  const h = harness(); h.live();
+  const wire = []; let release = null; const timers = [];
+  h.eng.writer = frames => {
+    if (frames.some(f => f.startsWith('$IRTX,')) && !release) return new Promise(r => { release = () => { wire.push({ f: frames[0], t: h.now() }); r(true); }; });
+    frames.filter(f => f.startsWith('$IRTX,')).forEach(f => wire.push({ f, t: h.now() }));
+    return Promise.resolve(true);
+  };
+  h.eng.delay = (ms, fn) => timers.push({ at: h.now() + ms, fn });
+  const step = async ms => { for (let t = 0; t < ms; t += 10) { h.adv(10); for (const x of timers.filter(x => x.at <= h.now())) { timers.splice(timers.indexOf(x), 1); x.fn(); } await Promise.resolve(); } };
+  h.lethal(19, 2);                          // VIPER kills me: DOWN_BY is queued on the link
+  await step(400); release(); await Promise.resolve(); await Promise.resolve();   // ...and reaches the wire 400 ms later
+  await step(600);
+  assert.equal(wire.length, 2, 'both words went out: ' + JSON.stringify(wire));
+  assert.ok(wire[1].t - wire[0].t >= 300, `the name word is >= 300 ms behind the kill word on the wire (${wire[1].t - wire[0].t} ms)`);
+});
+
+test('S57 receiver: a name word 750 ms after its kill word still pairs (the window is 150-800 ms)', () => {
+  const h = harness(); h.live();
+  h.irWord(20, IR_CALLOUT.DOWN_BY + 2); h.adv(750);
+  h.irWord(19, IR_CALLOUT.DOWN + 2);
+  assert.equal(h.eng.state().callout.victim, 'VIPER'); assert.equal(h.cues('VB8').length, 1, 'one death, one ENEMY DOWN');
+});

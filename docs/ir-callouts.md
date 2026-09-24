@@ -36,10 +36,12 @@ victim's name as well:
 
 All magnitudes sit in the bench-silent range 1 to 39, clear of 2, 6, 8 and 10. The word is protocol 15, subtype 0,
 direction 100 (all domes), fired once (`$IRTX` field 9 = 1), from the victim's phone right after its death is booked.
-With a known killer, a `DOWN` naming the victim follows 250 ms later (`CALLOUT_NAME_GAP_MS`, clear of the headset's
-199 ms single-shot guard), through the normal write path and never retried. Every phone in a match must run a build with this pairing (the first build
+With a known killer, a `DOWN` naming the victim follows 300 ms after the first word was actually written to the gun
+(`CALLOUT_NAME_GAP_MS`, clear of the headset's 199 ms single-shot guard with margin; bench 2026-09-24: a 250 ms gap timed
+from the queue call left 186 ms on the wire, and the name word was lost), through the normal write path and never retried. Every phone in a match must run a build with this pairing (the first build
 after app 0.4.5): an older phone reads the second word as a second death, plays ENEMY DOWN on top of a kill cue, and
-shows two callouts. The pairing accepts a `DOWN` 150 to 600 ms after its `DOWN_BY`; two same-team deaths inside that
+shows two callouts. The pairing accepts a `DOWN` 250 to 800 ms after its `DOWN_BY` (`CALLOUT_PAIR_MIN_MS`, `CALLOUT_PAIR_MS`; widened from 150-600 ms
+with the longer gap) and takes the open `DOWN_BY` whose age is closest to 300 ms; two same-team deaths inside that
 window whose first `DOWN_BY` is lost can still swap names, which is presentation only. A gun-recovery DOWN (the player power-cycled a locked gun)
 is not a kill, so it sends nothing; neither does an infection flip.
 
@@ -55,10 +57,13 @@ not.
 | `DOWN_BY` | the player id is mine | KILL CONFIRMED: the kill cue (`_pickCue('kill')`) and the kill banner, with no victim name |
 | `DOWN_BY` or `DOWN` | the victim's team is mine (not FFA) | TEAMMATE DOWN: a HUD chip only, no sound (**Tony**: no suitable line exists) |
 | `DOWN_BY` or `DOWN` | the victim's team is another, or FFA | ENEMY DOWN: "Target down." (`VB8`) and a HUD chip |
-| `DOWN` | the player id is mine | nothing (my own phone already knows) |
-| `DOWN` | pairs with the oldest open `DOWN_BY` for the same victim team inside 1 s (`CALLOUT_PAIR_MS`) | the SAME death: the victim's name is added to that callout (`state().callout.victim`); no second callout, no cue. An unpaired `DOWN_BY` is dropped after the window; a lone `DOWN` is a callout as above |
+| `DOWN` | the player id is mine | nothing but one log line, `S57: DOWN naming me, magnitude N, ignored` (my own phone already knows; the line makes a mis-decoded word visible) |
+| `DOWN` | pairs with the oldest open `DOWN_BY` for the same victim team 250 to 800 ms after it, the one aged closest to 300 ms (`CALLOUT_PAIR_MIN_MS`, `CALLOUT_PAIR_MS`) | the SAME death: the victim's name is added to that callout (`state().callout.victim`); no second callout, no cue. An unpaired `DOWN_BY` is dropped after the window; a lone `DOWN` is a callout as above |
 
 The first matching row wins, so the killer hears KILL CONFIRMED and not ENEMY DOWN as well.
+
+Every callout above plays through the phone's ONE announcer queue ([announcer.md](announcer.md)): a callout that lands
+while another line or banner is on air waits its turn, and a paired `DOWN` names a callout that is still waiting too.
 
 **Kill confirm, first to arrive, once (Tony).** An IR `DOWN_BY` naming me and MC's `feedback{kind:"kill"}` both mean the same
 thing. Whichever arrives first plays the kill cue, and the other is suppressed. The two channels pair ONE-TO-ONE

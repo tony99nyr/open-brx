@@ -45,7 +45,10 @@ function harness({ shields = false, shieldCeiling = MAX_SHIELD } = {}) {
   // harness that moved only the config would arm a 45/70 gun and read every shields frame as damage.
   const frames = { ...golden, player_id: 'p1' };
   frames.head = frames.head.map(f => (f.startsWith('$PSET,')
-    ? f.split(',').map((tok, i) => (i === 3 ? String(health.max_hp) : i === 4 ? String(health.max_armor) : i === 5 ? String(shieldCeiling) : tok)).join(',') : f));
+    ? f.split(',').map((tok, i) => (i === 3 ? String(health.max_hp) : i === 4 ? String(health.max_armor) : i === 5 ? String(shieldCeiling) : i === 23 ? '' : tok)).join(',') : f));
+  if (Array.isArray(frames.pset_pool)) frames.pset_pool = frames.pset_pool.map(f => f.split(',').map((tok, i) => (i === 23 ? '' : tok)).join(','));
+  // t23 (`energyShieldLoop`) is emptied, as MC's compile now ships it: a looping clip blocks the gun's whole audio FIFO
+  // while the shield is up (docs/announcer.md), which these cue tests do not set out to measure; announcer.test.mjs does.
   const config = { config_id: golden.config_id, mode: 'ffa', environment: 'outdoor', night: false, time_limit_s: 1800,
     respawn: { type: 'auto', delay_s: 15 }, scoring: { frag_limit: 25, win_by: 'kills' }, health, teams };
   const player = { player_id: 'p1', player_num: 7, display: 'ROCCO', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
@@ -55,6 +58,7 @@ function harness({ shields = false, shieldCeiling = MAX_SHIELD } = {}) {
   eng.onMcMessage({ kind: 'assign', body: { player, team: teams[0], roster: [] } });
   eng.onMcMessage({ kind: 'config', body: { config, frames, roster: [] } });
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
+  eng._gun.clear();   // docs/announcer.md: the cue tests start on a quiet gun (the go-live klaxon and spawn line are not what they measure)
   const h = {
     eng, writes,
     adv(ms, step = 250) { const end = clock + ms; while (clock < end) { clock = Math.min(end, clock + step); eng.tick(); } return h; },
@@ -155,7 +159,9 @@ test('a stunned gun is silent, and the stun does not carry a count into the next
 
 // ---------- shields online ----------
 
-test('the grant that fills the shield says SHIELDS ONLINE, once', () => {
+// Tony 2026-09-24: "remove the shields-online callout". The grant that fills the shield is still an edge (its LEDs, the
+// end of the refill), but it says nothing; the per-grant `shield_up` line is unchanged.
+test('the grant that fills the shield says nothing (no SHIELDS ONLINE line), and not the per-grant line either', () => {
   const h = harness();
   assert.equal(h.eng.maxShield, MAX_SHIELD, 'setup: the head arms a shield ceiling');
   assert.equal(h.count(ONLINE), 0, 'a spawn is not a recharge: the shield starts at 0');
@@ -165,19 +171,19 @@ test('the grant that fills the shield says SHIELDS ONLINE, once', () => {
   assert.equal(h.count(UP), 1, 'a grant on the way up is the ordinary shield_up line');
   assert.equal(h.count(ONLINE), 0, 'not full yet');
   h.f(`$HP,45,70,${MAX_SHIELD},*`);
-  assert.equal(h.count(ONLINE), 1, 'the grant that reached the ceiling speaks');
-  assert.equal(h.count(UP), 1, 'and it did NOT also play the per-grant line (one speaker, the rarer cue wins)');
+  assert.equal(h.count(ONLINE), 0, 'the grant that reached the ceiling says nothing (Tony 2026-09-24)');
+  assert.equal(h.count(UP), 1, 'and it did NOT play the per-grant line instead');
   h.f(`$HP,45,70,${MAX_SHIELD},*`).f(`$HP,45,70,${MAX_SHIELD},*`);
-  assert.equal(h.count(ONLINE), 1, 'the frames that merely report a full shield are silent');
+  assert.equal(h.count(ONLINE), 0, 'the frames that merely report a full shield are silent too');
 });
 
-test('a shield broken and recharged speaks again', () => {
+test('a shield broken and recharged never says SHIELDS ONLINE either', () => {
   const h = harness();
   h.f(`$HP,45,70,${MAX_SHIELD},*`);
-  assert.equal(h.count(ONLINE), 1, 'setup: charged once');
   h.f('$HP,45,70,20,*');                          // shot: the shield takes it first
   h.f(`$HP,45,70,${MAX_SHIELD},*`);
-  assert.equal(h.count(ONLINE), 2, 'the next refill is its own piece of news');
+  assert.equal(h.eng.shield, MAX_SHIELD, 'setup: charged again');
+  assert.equal(h.count(ONLINE), 0, 'no line for it, however often it comes back');
 });
 
 test('with no shield ceiling a grant is a grant, not a full charge', () => {
@@ -214,8 +220,8 @@ test('S29: break, heartbeat, refill, online -- the whole cycle', () => {
   h.f('$HP,30,0,0,*');                            // the shield takes a hit all the way through
   assert.equal(h.count(DOWN), 1, 'the break speaks');
   assert.equal(h.count(LOOP), 0, 'the heartbeat does not land under the break cue');
-  h.run(2100, { echo: false });
-  assert.equal(h.count(LOOP), 1, 'one heartbeat, a clip-length after the break');
+  h.run(2700, { echo: false });   // docs/announcer.md: the first beat waits for the break cue (N101, 2.57 s) to leave the gun
+  assert.equal(h.count(LOOP), 1, 'one heartbeat, once the break cue has finished');
   h.run(2000, { echo: false });
   assert.equal(h.count(LOOP), 2, 'and it keeps time');
   assert.equal(h.grants(), 0, 'nothing granted before the delay is up');
@@ -228,14 +234,15 @@ test('S29: break, heartbeat, refill, online -- the whole cycle', () => {
   assert.equal(after.includes(LOOP), false, 'the heartbeat stops the moment the recharge starts');
   // EXACTLY the beats the timing predicts, not 'at least': `>=` would let a heartbeat written in the SAME
   // tick as `shield_charging` pass, because it lands just before it in the stream and the slice cannot see it.
-  assert.equal(h.count(LOOP), Math.floor(DELAY / 1940), 'and it kept time all the way to it, and no further');
+  // Beats at ~2.6 s and ~4.5 s; a third (6.5 s) would still be sounding when the refill starts, so it is not begun.
+  assert.equal(h.count(LOOP), 2, 'and it kept time up to the refill, and began no beat that would sound over it');
   assert.equal(h.eng.shield, MAX_SHIELD, 'the pool came back');
-  assert.equal(h.count(ONLINE), 1, 'and says so, once');
+  assert.equal(h.count(ONLINE), 0, 'and says nothing about it (Tony 2026-09-24: no SHIELDS ONLINE line)');
   assert.equal(h.count(UP), 0, 'never the per-grant line: twelve of those would cut each other off');
   assert.equal(h.grants(), GRANTS, 'exactly the grants a full pool needs');
   h.run(4000);
   assert.equal(h.grants(), GRANTS, 'and it stops granting once the gun says full');
-  assert.equal(h.count(ONLINE), 1, 'no second announcement');
+  assert.equal(h.count(ONLINE), 0, 'still nothing');
 });
 
 test('S29: damage restarts the clock -- the shield comes back only when you break contact', () => {
@@ -253,7 +260,7 @@ test('S29: damage restarts the clock -- the shield comes back only when you brea
 test('S29: a hit MID-refill abandons it, and the next one announces itself again', () => {
   const h = shielded();
   h.f('$HP,30,0,0,*');
-  h.run(DELAY + 600);
+  h.run(DELAY + 1400);   // C3: "Shields charging" waits out the heartbeat clip already sounding (up to 1.94 s)
   assert.equal(h.count(CHARGING), 1, 'setup: a refill is running');
   const mid = h.grants();
   assert.ok(mid > 0 && h.eng.shield < MAX_SHIELD, 'setup: part way up');
@@ -320,7 +327,7 @@ test('S29: a stand-down mid-refill re-earns the delay, and never announces the r
   // a resync, a reconcile or a BLE blip are all ordinary mid-match events, so this is reachable every game.
   const h = shielded();
   h.f('$HP,30,0,0,*');
-  h.run(DELAY + 600);
+  h.run(DELAY + 1400);   // C3: "Shields charging" waits out the heartbeat clip already sounding (up to 1.94 s)
   assert.equal(h.count(CHARGING), 1, 'setup: a refill is running');
   const mid = h.grants();
   assert.ok(mid > 0 && h.eng.shield < MAX_SHIELD, 'setup: part way up');
@@ -333,6 +340,8 @@ test('S29: a stand-down mid-refill re-earns the delay, and never announces the r
   assert.equal(h.grants(), mid, 'the refill must serve a fresh quiet window, not resume on the next tick');
   assert.equal(h.count(CHARGING), 1, 'one refill is one piece of news, however many stand-downs interrupt it');
   h.run(DELAY + 3000);
+  assert.equal(h.eng.shield, MAX_SHIELD, 'the refill after the new quiet window ran');
+  // F349's cadence (a grant a second): the rest of this pool is three grants, 3 s, so C4 lets it speak
   assert.equal(h.count(CHARGING), 2, 'and the refill after the new quiet window is its own news');
 });
 
@@ -380,6 +389,7 @@ test('S29: no heartbeat is written in the same tick the recharge starts', () => 
   h.eng._shieldQuietAt = now - DELAY;             // the refill is due NOW
   h.eng._shieldLoopAt = now - 1940;               // ...and so is a heartbeat
   const n = h.writes.length;
+  h.eng._gun.clear();   // the break cue finished long ago in the story this test tells; it pins only the ordering
   h.eng._shieldTick(now);
   const wrote = h.writes.slice(n);
   assert.ok(wrote.includes(CHARGING), 'the refill starts');
@@ -389,7 +399,22 @@ test('S29: no heartbeat is written in the same tick the recharge starts', () => 
   g.f('$HP,30,0,0,*');
   const now2 = g.eng.now();
   g.eng._shieldLoopAt = now2 - 1940;
+  g.eng._gun.clear();   // the break cue has finished (as above): only the ordering is pinned
   const m = g.writes.length;
   g.eng._shieldTick(now2);
   assert.ok(g.writes.slice(m).includes(LOOP), 'control: a heartbeat alone is written');
+});
+
+test('C4: a refill shorter than 1 s is not announced; a longer one is', () => {
+  const h = shielded();
+  h.f(`$HP,30,0,${MAX_SHIELD - 10},*`);             // a graze: one 300 ms grant puts it back
+  const g0 = h.grants();
+  h.run(DELAY + 200, { echo: false });
+  assert.equal(h.grants() - g0, 1, 'setup: the refill started (one grant)');
+  h.f(`$HP,30,0,${MAX_SHIELD},*`);                   // ...and the gun reports it full
+  h.run(1500);
+  assert.equal(h.count(CHARGING), 0, '"Shields charging" would outlast the refill it announces');
+  h.f('$HP,30,0,0,*');                               // broken: 7 grants, 2.1 s
+  h.run(DELAY + 5000);
+  assert.equal(h.count(CHARGING), 1, 'the control: a long refill still announces itself');
 });
