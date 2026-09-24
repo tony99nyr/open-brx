@@ -446,7 +446,12 @@ export class BrxLink {
           if (!this._hsSince) throw new Error('the gun dropped the link during the headset probe');
           break;
         }
-        if (r === true) { this._setHeadset('joined'); return 'up'; }
+        if (r === true) {
+          // field 2026-09-24: log the joined reading too, so a loop log tells `hds.N` from a probe that never ran
+          const hs = String(this._lastVersion || '').split(',')[2] || 'hds';
+          this._log(`headset probe: ${hs} (joined)`, 'li');
+          this._setHeadset('joined'); return 'up';
+        }
         // Round 2: the backstop fired, so the probe never left the write queue. That says nothing about the headset.
         if (r === 'stalled') { stalled = true; break; }
         // Polish (M2): in armed or live one `?` or timeout would cost at least 15 s with the gun down, so read once more.
