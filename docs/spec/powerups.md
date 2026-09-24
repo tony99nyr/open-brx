@@ -66,6 +66,13 @@ took simply stays; a spawn time never stacks a second one. Every phone and stati
 the match clock; MC's `pickup` relay tells the station (and so every phone, through the station's advert) that an
 item was taken early.
 
+## The spawn announcement (Tony, 2026-09-24)
+
+At each spawn time every player's phone shows a HUD event on the callout card (QA-05's component): the item's name
+and AVAILABLE, for example OVERSHIELD AVAILABLE, in the item's colour. It fires from the phone's own copy of the
+schedule and the match clock, so it needs neither MC nor the station. It is skipped when the phone knows the item is
+still sitting there untaken since the last spawn (the station's advert said available). Presentation only.
+
 ## The grant on the phone
 
 Presence (the existing `Presence` tracker, the station's own threshold byte), then the trigger: the same gate as a
