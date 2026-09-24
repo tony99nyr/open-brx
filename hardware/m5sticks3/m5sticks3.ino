@@ -11,8 +11,14 @@
  * IR protocol: LaserTagMods (JEDGE/JBOX) discovery, bench-verified 2026-08-26; see
  * protocol/brx-ir-protocol.md. Advert: docs/spec/utility.md section 2.
  *
+ * MC-armed stations are Bluetooth-only for the MVP (Tony, 2026-09-24): a `control` Stick is the
+ * presence hill in presence.h (players standing at it, as a phone station counts them), a `respawn`
+ * Stick advertises "ready" and counts revives, a `powerup` Stick awards claims. IR RECEIVE drives only
+ * the bench HILL/BRIDGE (F314: the onboard receiver cannot hear BRX shots); IR TRANSMIT stays for
+ * the hill beacon and the S57 capture word.
+ *
  * Board: m5stack:esp32:m5stack_sticks3 (M5Stack board package) + M5Unified >= 0.2.21.
- * The pure logic is in brx_ir.h / brx_advert.h / control_point.h (host-tested).
+ * The pure logic is in brx_ir.h / brx_advert.h / control_point.h / presence.h (host-tested).
  */
 
 #include <Arduino.h>
@@ -25,6 +31,7 @@
 #include "brx_advert.h"
 #include "brx_ir.h"
 #include "control_point.h"
+#include "presence.h"       // the Bluetooth hill + revive count an MC-armed station runs
 #include "mc_link_glue.h"   // H8: Wi-Fi/mDNS/WebSocket to Mission Control (docs/spec/utility.md §5g)
 #include "station_render.h" // the M5GFX renderer for a ScreenSpec (Arduino-only)
 #include "station_screen.h" // the pure screen MODEL: state -> ScreenSpec (host-tested)
@@ -101,6 +108,22 @@ uint32_t lastWordAt = 0;
 uint32_t sentWordCount = 0;  // every sendFrame() call, for the DIAGNOSTICS/STATS "IR SENT" row
 bool displayDirty = true;
 String lastSelfTestResult = "-";  // "-" | "PASS" | "FAIL", for the DIAGNOSTICS screen
+
+// An MC-armed `control` station runs the Bluetooth hill (StationLink::hill(), presence.h), and the IR
+// point above is then bench-only: IR words no longer move it and it sends no beacon or capture word.
+// Gated on the persisted assignment, like every other play path (see currentAdvertView).
+static bool bleHillActive() { return brx_glue::link.has_control_assignment(); }
+
+// The operator's point RESET (serial RESET, the bench A hold): the IR point, and the Bluetooth hill with
+// its saved owner when a control station is assigned (utility.js btnPointReset). Both callers are
+// already refused while the A58 lock is on (the serial allow-list; the A hold only runs unconfigured).
+static void resetPoints() {
+  point.reset();
+  if (brx_glue::link.reset_hill()) {
+    if (brx_glue::savedHill.clear()) brx_glue::mcEraseSavedHill();
+    Serial.println("# Bluetooth hill reset to NEUTRAL");
+  }
+}
 
 // ---- screen model/render (station_screen.h / station_render.h) ------------------------------- //
 M5Canvas canvas(&M5.Display);   // one off-screen sprite, pushed once per paint: no flicker
@@ -222,7 +245,7 @@ static void pollRx() {
     wordCount++;
     lastWord = r.word;
     lastWordAt = millis();
-    if (point.on_word(r.word, millis())) {
+    if (!bleHillActive() && point.on_word(r.word, millis())) {
       Serial.printf("OWNER team=%d captures=%lu\n", point.owner == TEAM_ANY ? -1 : point.owner,
                     (unsigned long)point.captures);
       // S57: a HILL flip happened HERE, so this Stick sends the one capture word, once (never in BRIDGE). sendFrame()
@@ -325,12 +348,13 @@ static void sendFrame(const String& bits) {
 // ---- BLE advert ------------------------------------------------------------------------------ //
 // H8: once Mission Control has ARMED this Stick (`brx_glue::link.state() == ASSIGNED`), the advert's
 // id/kind/game/threshold come from that assignment, not the serial ID/GAME/MODE bench settings --
-// mirrors utility.js's own applyStationConfig(). Team/state/value/active still come from whichever
-// engine actually knows them: control_point.h for kind "control" (IR-driven, unchanged), the
-// powerup schedule for kind "powerup" (self-spawn + CLAIM, station_link.h), or a flat "nothing to
-// report yet" for a kind this firmware cannot run (respawn/extraction/bomb, §5g.5: "shown and
-// reported, not faked"). With no MC assignment at all this is exactly the pre-H8 standalone bench
-// behaviour (control_point.h only), unchanged.
+// mirrors utility.js's own applyStationConfig(). Team/state/value/active come from whichever engine
+// actually knows them: the Bluetooth hill for kind "control" (presence.h, control.js's three bytes),
+// "ready" (state 1, value 0) for kind "respawn" exactly as utility.js advertises it, the powerup
+// schedule for kind "powerup" (self-spawn + CLAIM, station_link.h), or a flat "nothing to report
+// yet" for a kind this firmware cannot run (extraction/bomb, §5g.5: "shown and reported, not
+// faked"). With no MC assignment at all this is exactly the pre-H8 standalone bench behaviour
+// (control_point.h only), unchanged.
 // Gated on the PERSISTED assignment, never the link state (the has_powerup_assignment() rule): a
 // MUSTER drop puts the state back at JOINING WI-FI for the whole match, and a boot-time restore never
 // reaches ASSIGNED until MC answers, yet both must keep advertising the assigned station.
@@ -338,7 +362,7 @@ static AdvertView currentAdvertView(uint32_t now) {
   using brx_glue::link;
   if (!link.assignment().present) return point.view(now);
   const StationAssignment& a = link.assignment();
-  if (a.kind == "control") return point.view(now);
+  if (a.kind == "control") return link.hill().advert();
   if (a.kind == "powerup") {
     PowerupAdvertView p = link.powerup().view(now);
     AdvertView v;
@@ -349,13 +373,13 @@ static AdvertView currentAdvertView(uint32_t now) {
     v.active = true;
     return v;
   }
-  // respawn / extraction / bomb: armed and advertised, but this firmware has no player-side rule
-  // for any of them yet, so it says nothing beyond "here I am, on this team, doing nothing".
   AdvertView v;
   v.team = (uint8_t)a.team;
-  v.state = 0;
   v.value = 0;
   v.active = true;
+  // respawn: state 1, "ready", as utility.js advertises it (phones skip a respawn advert with state 0).
+  // extraction / bomb: 0, "here I am, on this team, doing nothing". station_link.h, host-tested.
+  v.state = station_static_state(a.kind);
   return v;
 }
 
@@ -469,14 +493,33 @@ static StickState buildStickState(uint32_t now) {
   st.bridge_mode = standalone && point.mode == Mode::BRIDGE;
   st.bridge_beacon_live = st.bridge_mode && advertising;  // pollAdvert withdraws it when the grenade goes quiet
   if (st.control_present) {
-    st.control_owner = point.owner;
-    st.control_progress_pct = point.progress();
-    if (point.owner != lastControlOwner) {
-      heldSinceMs = now;
-      lastControlOwner = point.owner;
+    // The Bluetooth hill when MC armed a control station, else the bench IR point.
+    const bool ble = bleHillActive();
+    const uint8_t owner = ble ? (uint8_t)link.hill().owner : point.owner;
+    st.control_owner = owner;
+    if (ble) {
+      const BleControlPoint& h = link.hill();
+      const AdvertView hv = h.advert();
+      st.control_ble = true;
+      st.control_progress_pct = hv.value;
+      st.control_bar_team = hv.team == TEAM_ANY ? -1 : (int)hv.team;
+      st.control_contested = h.contested;
+      st.control_dir = h.dir;
+    } else {
+      st.control_progress_pct = point.progress();
     }
-    uint32_t heldMs = (point.owner == TEAM_ANY) ? 0 : (now - heldSinceMs);
+    if (owner != lastControlOwner) {
+      heldSinceMs = now;
+      lastControlOwner = owner;
+    }
+    uint32_t heldMs = (owner == TEAM_ANY) ? 0 : (now - heldSinceMs);
     st.control_hold_time = format_mmss(heldMs / 1000);
+  }
+  if (link.has_respawn_assignment()) {
+    st.respawn_present = true;
+    st.respawn_team = a.team;
+    st.respawn_revives = link.revives().revives;
+    st.respawn_live = advertising;
   }
 
   if (a.present && a.kind == "powerup") {
@@ -563,6 +606,21 @@ static void printStatus() {
                   link.powerup().taker(), (unsigned)link.pending_action_count());
   }
   Serial.println();
+  // The Bluetooth stations (presence.h), on their own line for the same reason as LINK.
+  if (link.has_control_assignment() || link.has_respawn_assignment()) {
+    const brx::BleControlPoint& h = link.hill();
+    Serial.printf("PLAY players=%u present=%u dropped=%lu seen_overflow=%lu", (unsigned)brx_glue::presence.count(),
+                  (unsigned)brx_glue::presence.present_count(), (unsigned long)brx_glue::presence.dropped(),
+                  (unsigned long)brx_glue::seenOverflow());
+    if (link.has_control_assignment()) {
+      Serial.printf(" hill_owner=%d capturing=%d progress=%ld dir=%d contested=%d net=%d captures=%lu", h.owner == TEAM_ANY ? -1 : h.owner,
+                    h.capturing, brx::BleControlPoint::js_round(h.progress), h.dir, h.contested ? 1 : 0, h.net,
+                    (unsigned long)h.captures);
+    } else {
+      Serial.printf(" revives=%lu", (unsigned long)link.revives().revives);
+    }
+    Serial.println();
+  }
 }
 
 static void setMode(Mode m) {
@@ -609,7 +667,7 @@ static void handleLine(String line) {
     selfTest(bits);
     return;
   }
-  if (line == "RESET") { point.reset(); Serial.println("RESET neutral"); displayDirty = true; return; }
+  if (line == "RESET") { resetPoints(); Serial.println("RESET neutral"); displayDirty = true; return; }
   if (line.startsWith("TX ")) {
     String bits = line.substring(3); bits.trim();
     sendFrame(bits);
@@ -754,7 +812,7 @@ static void pollButtons() {
   }
   if (link.state() == LinkState::NOT_CONFIGURED) {
     // Long presses only: a knock on the field must not flip the point or its mode.
-    if (aHold) { point.reset(); Serial.println("RESET neutral (button)"); displayDirty = true; }
+    if (aHold) { resetPoints(); Serial.println("RESET neutral (button)"); displayDirty = true; }
     if (aClicked) {
       if (homeNav.at_home()) homeNav.leave_home(now); else homeNav.go_home(now);
       displayDirty = true;
@@ -865,9 +923,20 @@ void loop() {
   pollAdvert(now);
   brx_glue::mcLoop(now);  // H8: Wi-Fi/mDNS/WebSocket to Mission Control; never blocks
   if (brx_glue::mcScreenWake) { brx_glue::mcScreenWake = false; displayDirty = true; }
-  if (point.mode == Mode::HILL && now - lastBeaconTxMs >= BEACON_PERIOD_MS) {
+  // S57: a Bluetooth hill that just changed hands sends the grenade's capture word once (magnitude 50,
+  // the new owner's team), as control_point.h's IR HILL does. Only a CAPTURE sends it: a point drained
+  // to neutral has no new owner, and a stock grenade never emits a neutral capture word.
+  if (brx_glue::pendingCaptureTeam >= 0) {
+    int team = brx_glue::pendingCaptureTeam;
+    brx_glue::pendingCaptureTeam = -1;
+    if (bleHillActive()) sendFrame(String(encode(hill_capture_word(team)).c_str()));
+  }
+  // The hill beacon (proto 15 mag 8) every 5 s: the Bluetooth hill's owner when MC armed a control
+  // station, else the bench IR HILL's (BRIDGE never beacons: the grenade it follows already does).
+  if ((bleHillActive() || point.mode == Mode::HILL) && now - lastBeaconTxMs >= BEACON_PERIOD_MS) {
     lastBeaconTxMs = now;
-    sendFrame(String(encode(point.beacon_word()).c_str()));
+    const Word w = bleHillActive() ? hill_beacon_word(brx_glue::link.hill().owner) : point.beacon_word();
+    sendFrame(String(encode(w).c_str()));
   }
   if (autoBits.length() && now - lastAutoMs >= AUTO_TX_INTERVAL_MS) {
     lastAutoMs = now;

@@ -41,7 +41,7 @@ describe('KING OF THE HILL — GAMES', () => {
     m.unmount();
   });
 
-  it('is in the stock shelf, and picking it shows the objective source and the grenade setup step', async () => {
+  it('is in the stock shelf, and picking it shows the objective source and the station setup step', async () => {
     const g = await games();
     expect(g.modes.map(x => x.mode)).toContain('koth');
     expect(g.m.text()).toContain('KING OF THE HILL');
@@ -54,12 +54,13 @@ describe('KING OF THE HILL — GAMES', () => {
     const t = g.m.text();
     // the rail's own rows: how it is won, and what is emitting the point (F88: exactly one)
     expect(t).toContain('POSSESSION TIME');
-    expect(t).toMatch(/GRENADE HILL · ONE POINT/);
-    // the field step nothing in software can do for the operator
-    expect(t).toMatch(/POWER-CYCLE THE GRENADE/i);
-    expect(t).toMatch(/NEUTRAL/i);
-    expect(t).toMatch(/HILL MODE/i);
-    expect(t).toMatch(/F88/);
+    // Tony 2026-09-24: the stock hill is a Bluetooth station (grenade is post-MVP), so the rail names it
+    // and the field steps are the station's: arm it, and assign one in ITEMS.
+    expect(t).toMatch(/BLUETOOTH HILL · PHONE · PRESENCE/);
+    expect(t).not.toMatch(/GRENADE HILL/);
+    expect(t).toMatch(/control point is a Bluetooth station/i);
+    expect(t).toMatch(/No control station is assigned/i);
+    expect(t).not.toMatch(/POWER-CYCLE THE GRENADE/i);
     g.m.unmount();
   });
 
@@ -71,7 +72,7 @@ describe('KING OF THE HILL — GAMES', () => {
     const koth = g.modes.find(x => x.mode === 'koth')!;
     expect(koth.defaults.teams.map(x => x.tid).sort()).toEqual([1, 3]);
     expect(koth.defaults.teams.some(x => x.tid === 2)).toBe(false);
-    expect(koth.defaults.station_source).toBe('grenade');
+    expect(koth.defaults.station_source).toBe('phone');
     // CONTROL: tid 2 is an ordinary team in a mode with no hill, and TDM still ships it.
     expect(g.modes.find(x => x.mode === 'tdm')!.defaults.teams.some(x => x.tid === 2)).toBe(true);
     g.m.unmount();
@@ -107,7 +108,7 @@ describe('KING OF THE HILL — GAMES', () => {
     expect((await api.getState()).config_errors.join(' ')).toMatch(/needs a station\/objective source/);
   });
 
-  it('drops the grenade step when the operator switches to a mode with no hill', async () => {
+  it('drops the hill step when the operator switches to a mode with no hill', async () => {
     // CONTROL for the first test, and a real trap: the rail is fed from the CONFIG, so a stale
     // `station_source` left over from the previous game would keep telling a TDM operator to
     // power-cycle a grenade that is not in play.
@@ -116,13 +117,13 @@ describe('KING OF THE HILL — GAMES', () => {
     await g.m.click('KING OF THE HILL');
     await g.m.click('KING OF THE HILL');
     await g.settle();
-    expect(g.m.text()).toMatch(/POWER-CYCLE THE GRENADE/i);
+    expect(g.m.text()).toMatch(/control point is a Bluetooth station/i);
     await g.m.click('TEAM DEATHMATCH');
     await g.m.click('TEAM DEATHMATCH');
     await g.settle();
     const t = g.m.text();
-    expect(t).not.toMatch(/POWER-CYCLE THE GRENADE/i);
-    expect(t).not.toMatch(/GRENADE HILL/);
+    expect(t).not.toMatch(/control point is a Bluetooth station/i);
+    expect(t).not.toMatch(/BLUETOOTH HILL/);
     expect(t).toContain('TIME ONLY');
     expect(t).not.toContain('SCORE CAP / TIME');
     g.m.unmount();

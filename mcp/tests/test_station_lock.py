@@ -260,3 +260,49 @@ def test_kit_auto_advancing_back_to_a_pushed_lobby_locks_again():
         s._on_ready(pid, True)                               # the last READY advances KIT -> LOBBY
     assert s.phase == "lobby"
     assert _lock(s) == 600 + STATION_LOCK_LOBBY_S + STATION_LOCK_MARGIN_S
+
+
+def _ctl_beat(s, clock, hold, revives=None, **fields):
+    body = {"role": "utility", "kind": "control", "team": 255, "station_id": 3,
+            "control": {"owner": 1, "progress": 100, "contested": False, "hold_ms": hold}, **fields}
+    if revives is not None:
+        body["revives"] = revives
+    s.net.simulate_status("stick-1", body, clock.t)
+
+
+def _report(s):
+    return next(v for v in s.stations_view() if v["node_id"] == "stick-1")["report"]
+
+
+def test_a_station_restart_cannot_shrink_its_tally_within_one_game():
+    """brx4 (2026-09-24): a restarted Stick resumes its hold time from the tally saved at its last capture, so
+    its report can DROP mid-match. The station is self-authoritative for its count, and a count within one game
+    only grows, so MC keeps the per-team maximum (and the largest revive count) until a new game is armed."""
+    s, clock = _sess(600)
+    s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
+    s.push_config(force=True)
+    clock.t += 10_000
+    _ctl_beat(s, clock, {"1": 90_000, "3": 20_000}, revives=5)
+    clock.t += 2_000
+    _ctl_beat(s, clock, {"1": 60_000, "3": 25_000}, revives=2, uptime_s=1)   # rebooted: blue's tally went back
+    rep = _report(s)
+    assert rep["control"]["hold_ms"] == {"1": 90_000, "3": 25_000}, rep
+    assert rep["revives"] == 5, rep
+    s.start(runway_s=30, force=True)
+    s.control("end")
+    s.push_config(force=True)                                # a NEW game: the station resets, and so does MC
+    clock.t += 5_000
+    _ctl_beat(s, clock, {"1": 1_000})
+    assert _report(s)["control"]["hold_ms"] == {"1": 1_000}
+
+
+def test_a_reassigned_station_starts_a_fresh_tally_in_the_same_game():
+    s, clock = _sess(600)
+    s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
+    s.push_config(force=True)
+    clock.t += 10_000
+    _ctl_beat(s, clock, {"1": 90_000})
+    s.set_station("stick-1", {"kind": "control", "team": "any", "id": 4})   # fixed at setup: a new point
+    clock.t += 5_000
+    _ctl_beat(s, clock, {"1": 2_000}, station_id=4)
+    assert _report(s)["control"]["hold_ms"] == {"1": 2_000}, _report(s)

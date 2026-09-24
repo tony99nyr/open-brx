@@ -206,7 +206,7 @@ The phone applies it to its advert, sets MC-ARMED, and locks the config drawer. 
 the allow-list echoed for the station's own display; the authoritative allow-list players enforce is
 `config.stations` in the game bundle. Absent `game` = 0 (any). This is a **contracts A13.5** addition.
 
-**One game byte per match (A59, F338).** `game` is MC's match counter (1..255, bumped by the first push after a
+**One game byte per match (A59, F339).** `game` is MC's match counter (1..255, bumped by the first push after a
 match has started). Every player `config` MC sends carries the same number as `config.game_byte`, so a player
 phone scopes presence and its own advert by the byte its stations advertise (`beacon.js configGameByte`). A
 config without it (an older MC) reads 0, any game. Before A59 the player hashed its `config_id`, and every
@@ -619,12 +619,11 @@ in the operator's voice.** Nothing here asks for that to change.
 
 ### 5g.7 Two loose ends this section does not close
 
-- **`STATION_SOURCES` has no value for a Stick.** The vocabulary is `grenade` · `ir_station` ("a BRX station /
-  Utility Box emitting `$CAPTURE` objective events (unproven on our bench)") · `phone` (capture by presence,
-  §5d). A Stick is `ir_station` when it captures by being shot (`control_point.h`'s HILL mode) and behaves like
-  `phone` when it counts player adverts — and it can be built to do either. The value names the SOURCE's
-  mechanism, not its chassis, so the honest fix is probably a fourth value rather than overloading one; it is a
-  `decision`, filed under H8, and nothing blocks on it until a Stick can actually be armed.
+- **`STATION_SOURCES` value for a Stick control point: DECIDED (2026-09-24, Tony).** `phone`, with no fourth
+  value: a Stick control point uses `station_source: "phone"`, the same as a phone, because the advert and the
+  capture rules (presence, §5d) are the same whether the advertiser is a phone or a Stick. Not yet bench-proven:
+  brx4's port of presence capture to a StickS3 lands today but needs a reflash and a hardware run before it
+  counts as working.
 - **`control{cmd:"release_utility"}` (§5c.1) has no meaning on a Stick.** It exists to free a PHONE stuck in
   utility mode by sending it back to its HUD; a Stick has no HUD to return to. A Stick MUST NOT ignore the
   message silently — the operator pressed a button and deserves an effect — so it should drop to UNASSIGNED

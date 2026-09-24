@@ -33,7 +33,7 @@ from .tunnel import TunnelError
 from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS,
                     OBJECTIVE_MODES, OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_KINDS, STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S,
-                    STATION_LOCK_MAX_S, STATION_REBOOT_SLACK_MS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, Event,
+                    STATION_LOCK_MAX_S, STATION_REBOOT_SLACK_MS, STATUS_HEARTBEAT_MS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, Event,
                     ConfigView, Coverage, EndDeliveryRow, EndDeliveryView, FrameBundle, GameAnnouncementView, GameConfig,
                     KitView, LanPublic, LanView, LobbyAck, LobbyView, Loadout, LoadoutOverrides, LoadoutPolicy,
                     LoadoutPool, McConfidence, NoticesView, OperatorActionResult, OperatorCmd, PerkView, ModeInfo, Phase, PhaseRefusalBody, Player,
@@ -178,7 +178,9 @@ MODES: list[ModeRow] = [
     # F70 (bench-proven end to end 2026-09-10): the hill is a BRX Smart Grenade in hill mode. It
     # broadcasts protocol-15 beacons carrying its OWNER's team, `hillbeacon.py` reads them and
     # `DominationEngine` scores possession, so the mode needs no station hardware at all -- hence
-    # `station_source: "grenade"` on the row (the operator can change it, `_CONFIG_KEYS`).
+    # `station_source: "phone"` on the row (Tony 2026-09-24: the MVP hill is a Bluetooth control point, a phone
+    # station today and a StickS3 once its presence capture is bench-proven; the grenade hill is POST-MVP but
+    # stays selectable, `_CONFIG_KEYS`).
     # 🔴 `teams` is BLUE + GREEN, tids 1 and 3, and the choice is load-bearing: YELLOW is tid 2,
     # which is the team a NEUTRAL hill broadcasts, so a yellow roster would read every uncaptured
     # point as its own and take no hill damage (F82). `assign_teams` defaults the same 1/3 pair, and
@@ -187,7 +189,7 @@ MODES: list[ModeRow] = [
     # objective scorer, so `scoring.py` reports the winner as `undecided` rather than inventing one
     # from kills, and the UI renders that as "UNDECIDED — OBJECTIVE · HOST DECIDES" (Recap.tsx).
     {"mode": "koth", "name": "KING OF THE HILL", "abbr": "KOTH", "desc": "Hold the hill; possession scores",
-     "brief": "One hill, and it is a real grenade on the field. Shoot the point and it flips to your team; every second your side holds it banks possession. A point your team does not own damages anyone standing on it, so taking one is a fight, and a defended hill costs an attacker exactly what the defenders put into it. Most possession time when the clock runs out takes the match.",
+     "brief": "One hill: a Bluetooth control point on the field, a spare phone in the utility role. Stand on the point to take it. An enemy point drains to neutral before it builds up for you, and the side with more living players on it moves it. Every second your side holds it banks possession. Most possession time when the clock runs out takes the match.",
      # `win_text` says HOST CALL on purpose, and it is the honest label until the phones report.
      # MC ingests a `possession` fact and names the winner from it the moment one arrives (API.md /
      # `scoring._possession`) -- but nothing on `app/src` sends one yet, so a card reading plain
@@ -195,7 +197,7 @@ MODES: list[ModeRow] = [
      # (operator review 2026-09-10). ➡ Drop "· HOST CALL" when the phone ships the fact.
      "teams_text": "2 TEAMS", "win_text": "POSSESSION TIME · HOST CALL", "respawn_text": "ON · TIMED",
      "teams": ["blue", "green"], "win_by": "objective", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
-     "preset": "standard", "station_source": "grenade", "proven": True},
+     "preset": "standard", "station_source": "phone", "proven": True},
 ]
 
 
@@ -2916,14 +2918,14 @@ class Session:
         src = self.config.get("station_source")
         if src == "phone" and "control" not in kinds:
             out.append("SETUP: NO CONTROL STATION IS ASSIGNED — this game's objective is a Bluetooth control point "
-                       "(station_source phone); assign a StickS3 or a utility phone as CONTROL in ITEMS and arm it, "
+                       "(station_source phone); assign a utility phone as CONTROL in ITEMS and arm it, "
                        "or nothing on the field is the hill")
         # Stick hills (2026-09-24): a CONTROL station advertises the same kind-5 point a phone does, and every
         # phone drops it unless the source is "phone" (`engine.js _hillSourceAllowed`). Say so; never switch.
         if src in ("grenade", "ir_station") and "control" in kinds:
             what = "THE GRENADE" if src == "grenade" else "AN IR STATION"
             out.append(f"SETUP: A CONTROL STATION IS ASSIGNED BUT THIS GAME'S OBJECTIVE IS {what} — every phone "
-                       "ignores the station's hill; set OBJECTIVE SOURCE to PHONE (a StickS3 or phone station), "
+                       "ignores the station's hill; set OBJECTIVE SOURCE to PHONE (a phone station), "
                        "or clear the CONTROL station in ITEMS")
         if (self.config.get("respawn") or {}).get("type") == "scanner" and "respawn" not in kinds:
             out.append("SETUP: NO RESPAWN STATION IS ASSIGNED — respawn is SCANNER, so a downed player can only come "
@@ -3074,7 +3076,7 @@ class Session:
                     self._departed_match_stations[nid] = rec
             slots_before = self._powerup_slots()
             st["assigned"], st["armed"], st["arm_pending"] = None, None, False
-            for k in ("lock", "lock_game", "locked_since", "unlocked_at", "restarts"):
+            for k in ("lock", "lock_game", "locked_since", "unlocked_at", "restarts", "tally"):
                 st.pop(k, None)                # A58: a release unlocks the Stick too (utility.md)
             self._after_station_change(slots_before)   # the survivors' valid_ids shrink
             self._validate()                       # ...and the SETUP warnings tell the truth again
@@ -3199,6 +3201,33 @@ class Session:
         when = boot_at if boot_at is not None else t_recv
         if new and since is not None and when >= since and (until is None or when <= until):
             st["restarts"] = st.get("restarts", 0) + new
+
+    def _keep_station_tally(self, st: dict, t_recv: int) -> None:
+        """A58 (brx4): a restarted Stick resumes its tally from the one saved at its last capture, so a report can
+        DROP mid-match. A station's count within one game only grows, so MC keeps the per-team maximum of
+        `control.hold_ms` and the largest `revives` for the game the station is armed with, and writes them back
+        into the report. A new game or a new assignment starts clean; a beat within one heartbeat of that arming may
+        still carry the old tally, so it passes through without seeding the new one (a beat later than that, from a
+        station slow to apply the arming, can still seed it: a small race the self-authoritative design accepts)."""
+        armed = st.get("armed") or {}
+        game, rep = armed.get("game"), st["report"]
+        if game is None or t_recv < (armed.get("at") or 0) + STATUS_HEARTBEAT_MS:
+            return
+        key = [game, armed.get("kind"), armed.get("id")]   # a re-assigned station is a new tally, same game or not
+        tally = st.get("tally")
+        if not tally or tally.get("key") != key:
+            tally = st["tally"] = {"key": key, "hold_ms": {}, "revives": None}
+        control = rep.get("control")
+        hold = control.get("hold_ms") if isinstance(control, dict) else None
+        if isinstance(hold, dict):
+            for tid, ms in hold.items():
+                if isinstance(ms, int) and not isinstance(ms, bool) and ms > tally["hold_ms"].get(tid, -1):
+                    tally["hold_ms"][tid] = ms
+            rep["control"] = {**control, "hold_ms": {**hold, **tally["hold_ms"]}}
+        rv = rep.get("revives")
+        if isinstance(rv, int) and not isinstance(rv, bool):
+            tally["revives"] = max(rv, tally["revives"] or 0)
+            rep["revives"] = tally["revives"]
 
     def unlock_stations(self) -> dict:
         """A58 `POST /api/stations/unlock`: `lock_s: 0` to every assigned station now. A muster station out of
@@ -3986,6 +4015,7 @@ class Session:
                                                      "armed", "control", "battery", "uptime_s", "boot_count", "assoc")
                             if k in body}
             self._note_station_boot(st, body, t_recv)   # A58: before last_seen moves, a restart is judged on this beat
+            self._keep_station_tally(st, t_recv)
             st["last_seen_ms"] = t_recv
             if body.get("app_ver"):                # roadmap A3: the heartbeat, not just the hello, keeps this fresh
                 st["app_ver"] = body["app_ver"]

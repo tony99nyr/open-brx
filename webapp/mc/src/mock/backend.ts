@@ -53,8 +53,8 @@ const DEMO_LOADOUTS: (() => Loadout)[] = [
 // that an `ir_station` game is NOT silent about being a source we have never had on a bench.
 const SETUP_WARNING: Record<string, string> = {
   grenade: 'SETUP: POWER-CYCLE THE GRENADE SO IT STARTS NEUTRAL, SET IT TO HILL MODE, AND PLACE IT — a hill that starts already owned skews the whole match, and only a power cycle guarantees neutral. ONE POINT ONLY (F88: a beacon carries no station id)',
-  ir_station: 'SETUP: PLACE AND POWER THE IR STATION, AND CHECK IT READS NEUTRAL BEFORE THE WHISTLE — ⚠ UNPROVEN: we have never had one on the bench, so nothing confirms it speaks the protocol our nodes read. Run the grenade if you want a hill we have measured',
-  phone: 'SETUP: THE CONTROL POINT IS A BLUETOOTH STATION — a StickS3, or a phone in the UTILITY role, kind CONTROL; confirm it shows MC-ARMED for THIS game (arming resets the point; do NOT power-cycle it), keep it awake on the point, and check its battery. Players must be advertising (the HUD does this) or the point counts nobody',
+  ir_station: 'SETUP: PLACE AND POWER THE IR STATION, AND CHECK IT READS NEUTRAL BEFORE THE WHISTLE — ⚠ UNPROVEN: we have never had one on the bench, so nothing confirms it speaks the protocol our nodes read. Use OBJECTIVE SOURCE PHONE for the MVP hill',
+  phone: 'SETUP: THE CONTROL POINT IS A BLUETOOTH STATION — a phone in the UTILITY role, kind CONTROL; confirm it shows MC-ARMED for THIS game (arming resets the point; do NOT power-cycle it), keep it awake on the point, and check its battery. Players must be advertising (the HUD does this) or the point counts nobody',
 };
 // The refusal wording, mirroring `STATION_SOURCES` in mcp/brx_mcp/mc/types.py. The IDS are not mirrored:
 // they come from the generated `STATION_SOURCE_IDS`, and the map is keyed by `StationSourceId`, so a source
@@ -719,10 +719,10 @@ export class MockBackend implements Api {
         ...(SETUP_WARNING[this.config.station_source ?? ''] ? [SETUP_WARNING[this.config.station_source ?? '']] : []),
         // mirrors Session._station_warnings(): a station-gated rule with nothing assigned in ITEMS
         ...(this.config.station_source === 'phone' && !Object.values(this.stations).some(s => s.assigned?.kind === 'control')
-          ? ["SETUP: NO CONTROL STATION IS ASSIGNED — this game's objective is a Bluetooth control point (station_source phone); assign a StickS3 or a utility phone as CONTROL in ITEMS and arm it, or nothing on the field is the hill"] : []),
+          ? ["SETUP: NO CONTROL STATION IS ASSIGNED — this game's objective is a Bluetooth control point (station_source phone); assign a utility phone as CONTROL in ITEMS and arm it, or nothing on the field is the hill"] : []),
         ...((this.config.station_source === 'grenade' || this.config.station_source === 'ir_station')
           && Object.values(this.stations).some(s => s.assigned?.kind === 'control')
-          ? [`SETUP: A CONTROL STATION IS ASSIGNED BUT THIS GAME'S OBJECTIVE IS ${this.config.station_source === 'grenade' ? 'THE GRENADE' : 'AN IR STATION'} — every phone ignores the station's hill; set OBJECTIVE SOURCE to PHONE (a StickS3 or phone station), or clear the CONTROL station in ITEMS`] : []),
+          ? [`SETUP: A CONTROL STATION IS ASSIGNED BUT THIS GAME'S OBJECTIVE IS ${this.config.station_source === 'grenade' ? 'THE GRENADE' : 'AN IR STATION'} — every phone ignores the station's hill; set OBJECTIVE SOURCE to PHONE (a phone station), or clear the CONTROL station in ITEMS`] : []),
         ...(this.config.respawn.type === 'scanner' && !Object.values(this.stations).some(s => s.assigned?.kind === 'respawn')
           ? ['SETUP: NO RESPAWN STATION IS ASSIGNED — respawn is SCANNER, so a downed player can only come back at a station; assign a utility phone as RESPAWN in ITEMS and arm it'] : []),
       ],

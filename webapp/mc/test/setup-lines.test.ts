@@ -6,7 +6,7 @@ import { friendlySetupLine } from '../src/ui/SetupSteps';
 
 const reverse = (what: string) =>
   `SETUP: A CONTROL STATION IS ASSIGNED BUT THIS GAME'S OBJECTIVE IS ${what} — every phone ignores the station's hill; ` +
-  'set OBJECTIVE SOURCE to PHONE (a StickS3 or phone station), or clear the CONTROL station in ITEMS';
+  'set OBJECTIVE SOURCE to PHONE (a phone station), or clear the CONTROL station in ITEMS';
 
 describe('friendlySetupLine: the control-station lines', () => {
   it('maps the reverse warning, under either source, to its own line', () => {
@@ -19,7 +19,7 @@ describe('friendlySetupLine: the control-station lines', () => {
   it('maps the no-station and the station-point lines to station wording', () => {
     expect(friendlySetupLine("SETUP: NO CONTROL STATION IS ASSIGNED — this game's objective is a Bluetooth control point"))
       .toMatch(/^No control station is assigned/);
-    expect(friendlySetupLine('SETUP: THE CONTROL POINT IS A BLUETOOTH STATION — a StickS3, or a phone'))
+    expect(friendlySetupLine('SETUP: THE CONTROL POINT IS A BLUETOOTH STATION — a phone in the UTILITY role'))
       .toMatch(/^The control point is a Bluetooth station/);
   });
 });

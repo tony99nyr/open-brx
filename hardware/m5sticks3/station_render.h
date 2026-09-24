@@ -199,8 +199,9 @@ inline void drawHill(M5Canvas& c, const ScreenSpec& s) {
     drawKicker(c, s.hill_kicker);
     fitCenterText(c, SCREEN_W / 2, 62, "NEUTRAL", SCREEN_W - 20,
                   {&fonts::FreeSansBold24pt7b, &fonts::FreeSansBold18pt7b}, COL_NUM);
-    fitCenterText(c, SCREEN_W / 2, 106, s.hill_kicker == "BRIDGE" ? "GRENADE IS NEUTRAL" : "SHOOT TO CAPTURE",
-                  SCREEN_W - 20, {&fonts::FreeSansBold9pt7b}, COL_MUT);
+    std::string note = !s.hill_note.empty() ? s.hill_note
+                       : (s.hill_kicker == "BRIDGE" ? "GRENADE IS NEUTRAL" : "SHOOT TO CAPTURE");
+    fitCenterText(c, SCREEN_W / 2, 106, note, SCREEN_W - 20, {&fonts::FreeSansBold9pt7b}, COL_MUT);
   } else if (s.kind == ScreenKind::HILL_HELD) {
     uint16_t bg = teamColor(s.hill_team), ink = teamInk(s.hill_team);
     fillMain(c, bg);
@@ -214,7 +215,7 @@ inline void drawHill(M5Canvas& c, const ScreenSpec& s) {
   } else if (s.kind == ScreenKind::HILL_CAPTURING) {
     drawKicker(c, s.hill_kicker);
     uint16_t tc = teamColor(s.hill_team);
-    std::string label = std::string(TEAM_LETTER[s.hill_team >= 0 && s.hill_team <= 3 ? s.hill_team : 0]) + " CAPTURING";
+    std::string label = std::string(TEAM_LETTER[s.hill_team >= 0 && s.hill_team <= 3 ? s.hill_team : 0]) + " " + s.hill_verb;
     fitCenterText(c, SCREEN_W / 2, 52, label, SCREEN_W - 20, {&fonts::FreeSansBold18pt7b, &fonts::FreeSansBold12pt7b}, tc);
     int bx0 = 20, bx1 = SCREEN_W - 20, by0 = 84, by1 = 96;
     c.drawRect(bx0, by0, bx1 - bx0, by1 - by0, COL_EDGE);
@@ -226,7 +227,8 @@ inline void drawHill(M5Canvas& c, const ScreenSpec& s) {
     drawKicker(c, s.hill_kicker);
     drawWarnStripes(c, rgb(40, 26, 4));
     fitCenterText(c, SCREEN_W / 2, 66, "CONTESTED", SCREEN_W - 20, {&fonts::FreeSansBold24pt7b, &fonts::FreeSansBold18pt7b}, COL_WARN);
-    fitCenterText(c, SCREEN_W / 2, 106, "BOTH TEAMS FIRING", SCREEN_W - 20, {&fonts::FreeSansBold9pt7b}, COL_MUT);
+    fitCenterText(c, SCREEN_W / 2, 106, s.hill_note.empty() ? std::string("BOTH TEAMS FIRING") : s.hill_note,
+                  SCREEN_W - 20, {&fonts::FreeSansBold9pt7b}, COL_MUT);
   }
 }
 
@@ -262,13 +264,16 @@ inline void drawRespawn(M5Canvas& c, const ScreenSpec& s) {
     c.setTextDatum(textdatum_t::top_left);
     c.setTextColor(ink);
     c.drawString("RESPAWN", 10, MAIN_TOP + 4);
-    std::string label = std::string(TEAM_LETTER[s.respawn_team >= 0 && s.respawn_team <= 3 ? s.respawn_team : 0]) + " RESPAWN";
+    // respawn_team -1 is a station for any team (advert team 255): neutral colour, no team named.
+    std::string label = (s.respawn_team >= 0 && s.respawn_team <= 3)
+                            ? std::string(TEAM_LETTER[s.respawn_team]) + " RESPAWN" : std::string("ANY TEAM");
     fitCenterText(c, SCREEN_W / 2, 58, label, SCREEN_W - 20, {&fonts::FreeSansBold18pt7b, &fonts::FreeSansBold12pt7b}, ink);
     fitCenterText(c, SCREEN_W / 2, 102, "REVIVES " + std::to_string(s.revives), SCREEN_W - 20, {&fonts::FreeSansBold12pt7b}, ink);
   } else {  // RESPAWN_IDLE
     drawKicker(c, "RESPAWN");
     fitCenterText(c, SCREEN_W / 2, 60, "IDLE", SCREEN_W - 20, {&fonts::FreeSansBold24pt7b}, COL_MUT);
-    fitCenterText(c, SCREEN_W / 2, 104, "AWAITING ASSIGNMENT", SCREEN_W - 20, {&fonts::FreeSansBold9pt7b}, COL_MUT);
+    fitCenterText(c, SCREEN_W / 2, 104, s.respawn_note.empty() ? std::string("AWAITING ASSIGNMENT") : s.respawn_note,
+                  SCREEN_W - 20, {&fonts::FreeSansBold9pt7b}, COL_MUT);
   }
 }
 
@@ -407,6 +412,12 @@ inline void drawSystem(M5Canvas& c, const ScreenSpec& s) {
 inline void renderScreen(M5Canvas& canvas, const ScreenSpec& spec) {
   canvas.fillScreen(COL_BG);
   switch (spec.kind) {
+    case ScreenKind::SCR_NO_WIFI:
+      drawKicker(canvas, "SETUP");
+      fitCenterText(canvas, SCREEN_W / 2, 58, "NO WI-FI", SCREEN_W - 20,
+                    {&fonts::FreeSansBold24pt7b, &fonts::FreeSansBold18pt7b}, COL_NUM);
+      fitCenterText(canvas, SCREEN_W / 2, 100, "SET IT OVER USB", SCREEN_W - 20, {&fonts::FreeSansBold9pt7b}, COL_MUT);
+      break;
     case ScreenKind::BRIDGE_WAITING:
       drawKicker(canvas, "BRIDGE");
       fitCenterText(canvas, SCREEN_W / 2, 58, "NO BEACON", SCREEN_W - 20,

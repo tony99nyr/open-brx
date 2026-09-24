@@ -19,9 +19,9 @@ const KNOWN_SETUP_LINES: Array<{ test: RegExp; line: string }> = [
   // First: this body names the grenade or an IR station too, and must not read as either one's field step.
   { test: /A CONTROL STATION IS ASSIGNED BUT/i, line: "A control station is assigned, but this game's objective is not a station, so every phone ignores its hill. Set OBJECTIVE SOURCE to PHONE, or clear the CONTROL station in ITEMS." },
   { test: /POWER-CYCLE THE GRENADE/i, line: 'Power-cycle the grenade so it starts neutral, then set it to hill mode and place it. This mode supports one point only.' },
-  { test: /IR STATION/i, line: 'Place and power the IR station, and check it reads neutral before the whistle. This source is unproven on our bench, so use the grenade if you want a hill we have measured.' },
-  { test: /CONTROL POINT IS A BLUETOOTH STATION/i, line: 'The control point is a Bluetooth station: a StickS3, or a phone in the utility role as CONTROL. Confirm it shows MC-armed for this game, keep it awake, and check its battery. Do not power-cycle it once armed.' },
-  { test: /NO CONTROL STATION IS ASSIGNED/i, line: "No control station is assigned. This game's objective is a Bluetooth control point, so assign a StickS3 or a utility phone as CONTROL in ITEMS and arm it, or nothing on the field is the hill." },
+  { test: /IR STATION/i, line: 'Place and power the IR station, and check it reads neutral before the whistle. This source is unproven on our bench; the MVP hill is OBJECTIVE SOURCE PHONE.' },
+  { test: /CONTROL POINT IS A BLUETOOTH STATION/i, line: 'The control point is a Bluetooth station: a phone in the utility role as CONTROL. Confirm it shows MC-armed for this game, keep it awake, and check its battery. Do not power-cycle it once armed.' },
+  { test: /NO CONTROL STATION IS ASSIGNED/i, line: "No control station is assigned. This game's objective is a Bluetooth control point, so assign a utility phone as CONTROL in ITEMS and arm it, or nothing on the field is the hill." },
   { test: /NO RESPAWN STATION/i, line: 'No respawn station is assigned. Respawn is set to scanner, so a downed player can only come back at a station. Assign a utility phone as RESPAWN in ITEMS and arm it.' },
   { test: /SCANNER RESPAWN HAS NO STATION FOR\s+(.+?)\s+—/i, line: 'Scanner respawn has no station for $1. Those players use timed AUTO respawn; assign another RESPAWN station if you want station respawn for both teams.' },
 ];

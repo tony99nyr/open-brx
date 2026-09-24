@@ -233,6 +233,13 @@ static void test_station_kind_byte_maps_every_kind() {
   CHECK_EQ(station_kind_byte("control"), KIND_CONTROL);
 }
 
+// A phone uses a respawn station only when its advert state is not 0 (engine.js _respawnStation).
+static void test_a_respawn_station_advertises_ready_not_disabled() {
+  CHECK_EQ(station_static_state("respawn"), (uint8_t)1);
+  CHECK_EQ(station_static_state("extraction"), (uint8_t)0);
+  CHECK_EQ(station_static_state("bomb"), (uint8_t)0);
+}
+
 static void test_threshold_zero_or_absent_means_the_sticks_own_default() {
   bool ok = false;
   json::Value v = json::parse(R"({"kind":"respawn","team":1,"id":1,"threshold":0})", &ok);
@@ -1251,6 +1258,273 @@ static void test_the_muster_drop_after_a_restore_waits_for_the_re_anchor_or_2_s(
   CHECK(l3.take_muster_drop(100));
 }
 
+// ---- the Bluetooth stations (presence.h), carried by StationLink --------------------------------
+static PlayerPresence red_on_the_point(uint32_t t) {
+  PlayerPresence pr;
+  pr.dwell_ms = 0;
+  Advert a;
+  a.role = ROLE_PLAYER;
+  a.id = 4;
+  a.team = 0;
+  a.state = PLAYER_ALIVE;
+  pr.observe(a, -50, t);
+  pr.tick(t);
+  return pr;
+}
+
+static StationAssignment control_config(int game) {
+  StationAssignment c;
+  c.present = true;
+  c.kind = "control";
+  c.id = 9;
+  c.team = 255;
+  c.game = game;
+  return c;
+}
+
+// A new game byte resets the point; a same-game re-push (MC's lock carrier) keeps it, as it keeps a
+// powerup's schedule.
+static void test_a_new_game_resets_the_hill_and_a_same_game_repush_keeps_it() {
+  StationLink link;
+  link.apply_station_config(control_config(7), 0);
+  CHECK(link.has_control_assignment());
+  PlayerPresence pr = red_on_the_point(0);
+  link.tick_players(pr, 0);
+  HillUpdate u;
+  for (uint32_t t = 250; t <= 10000; t += 250) {
+    pr = red_on_the_point(t);
+    HillUpdate step = link.tick_players(pr, t);
+    if (step.captured) u = step;
+  }
+  CHECK(u.captured);
+  CHECK_EQ(link.hill().owner, 0);
+  StationAssignment again = control_config(7);
+  again.lock_s = 60;  // the lock carrier: same config, a lock added
+  link.apply_station_config(again, 10000);
+  CHECK_EQ(link.hill().owner, 0);
+  CHECK(link.hill().progress > 99.99);
+  link.apply_station_config(control_config(8), 11000);
+  CHECK_EQ(link.hill().owner, (int)HILL_NEUTRAL);
+  CHECK_EQ(link.hill().progress, 0.0);
+  // A release drops the point too.
+  link.apply_station_config(control_config(8), 12000);
+  link.hill().owner = 1;
+  link.apply_release();
+  CHECK_EQ(link.hill().owner, (int)HILL_NEUTRAL);
+}
+
+static void test_a_respawn_assignment_counts_revives_and_a_new_game_zeroes_them() {
+  StationLink link;
+  StationAssignment r;
+  r.present = true;
+  r.kind = "respawn";
+  r.id = 3;
+  r.team = 1;
+  r.game = 5;
+  link.apply_station_config(r, 0);
+  CHECK(link.has_respawn_assignment());
+  CHECK(!link.has_control_assignment());
+  PlayerPresence pr;
+  pr.dwell_ms = 0;
+  Advert a;
+  a.role = ROLE_PLAYER;
+  a.id = 2;
+  a.team = 1;
+  a.state = 0;  // down
+  pr.observe(a, -50, 0);
+  pr.tick(0);
+  link.tick_players(pr, 0);
+  a.state = PLAYER_ALIVE;
+  pr.observe(a, -50, 250);
+  pr.tick(250);
+  HillUpdate u = link.tick_players(pr, 250);
+  CHECK(!u.changed);  // a respawn station runs no hill
+  CHECK_EQ(link.revives().revives, 1u);
+  link.apply_station_config(r, 500);  // same game: kept
+  CHECK_EQ(link.revives().revives, 1u);
+  r.game = 6;
+  link.apply_station_config(r, 600);
+  CHECK_EQ(link.revives().revives, 0u);
+}
+
+static void test_status_carries_revives_and_hold_ms_additively() {
+  StatusFields f;
+  f.node_id = "n";
+  f.app_ver = "v";
+  f.kind = "respawn";
+  f.has_revives = true;
+  f.revives = 4;
+  CHECK(build_status_body(f).find(",\"revives\":4}") != std::string::npos);
+  StatusFields c;
+  c.node_id = "n";
+  c.app_ver = "v";
+  c.kind = "control";
+  c.has_control = true;
+  c.control_owner = 3;
+  c.control_progress = 100;
+  c.control_has_hold = true;
+  c.control_hold_ms[0] = 1200;
+  c.control_hold_ms[3] = 34000;
+  CHECK(build_status_body(c).find(
+            "\"control\":{\"owner\":3,\"progress\":100,\"contested\":false,\"hold_ms\":{\"0\":1200,\"3\":34000}}") !=
+        std::string::npos);
+  c.control_hold_ms[0] = 0;
+  c.control_hold_ms[3] = 0;
+  CHECK(build_status_body(c).find("\"hold_ms\":{}") != std::string::npos);  // nobody has held it yet
+}
+
+// ---- the presence threshold default and the saved hill owner (F332) ------------------------------
+static void test_presence_threshold_is_the_phone_default_when_mc_sends_none() {
+  bool ok = false;
+  json::Value v = json::parse(R"({"kind":"control","team":255,"id":9,"threshold":0})", &ok);
+  StationAssignment a = parse_station_config(v);
+  CHECK(a.threshold_defaulted);
+  CHECK_EQ(a.threshold, STICK_DEFAULT_THRESHOLD_DBM);  // the advertised byte keeps the Stick's own
+  CHECK_EQ(presence_threshold_dbm(a), -74);            // players are measured like a phone station does
+  v = json::parse(R"({"kind":"control","team":255,"id":9})", &ok);
+  CHECK_EQ(presence_threshold_dbm(parse_station_config(v)), -74);
+  v = json::parse(R"({"kind":"control","team":255,"id":9,"threshold":-66})", &ok);
+  StationAssignment m = parse_station_config(v);
+  CHECK(!m.threshold_defaulted);
+  CHECK_EQ(presence_threshold_dbm(m), -66);
+  // A restored copy still knows MC asked for the default.
+  SavedStationConfig saved;
+  CHECK(saved.note_applied(a, "s1"));
+  StationAssignment r = saved.restore();
+  CHECK(r.threshold_defaulted);
+  CHECK_EQ(presence_threshold_dbm(r), -74);
+  SavedStationConfig saved2;
+  saved2.note_applied(m, "s1");
+  CHECK_EQ(presence_threshold_dbm(saved2.restore()), -66);
+  CHECK(saved2.stored().find("threshold_default") == std::string::npos);  // additive: absent unless defaulted
+}
+
+static BleControlPoint held_by(int owner, uint32_t hold0 = 0, uint32_t hold3 = 0) {
+  BleControlPoint h;
+  h.owner = owner;
+  h.progress = owner == HILL_NEUTRAL ? 0 : 100;
+  h.hold_ms[0] = hold0;
+  h.hold_ms[3] = hold3;
+  return h;
+}
+
+static void test_saved_hill_round_trips_owner_and_tally_and_restores_the_hold() {
+  StationAssignment a = control_config(7);
+  SavedHill mem;
+  CHECK(!mem.note_owner(a, "s1", held_by(HILL_NEUTRAL)));  // nothing held, nothing saved
+  CHECK(mem.note_owner(a, "s1", held_by(1, 4000, 9000)));   // blue captured it: write, with the tally
+  // "Flash" -> a new boot.
+  SavedHill boot;
+  boot.loaded(mem.has(), mem.owner(), mem.game(), mem.id(), mem.session_id(), mem.hold_ms());
+  CHECK(!boot.note_config(a, "s1"));  // same game + id + session: kept
+  CHECK_EQ(boot.restore_owner(a, "s1"), 1);
+  StationLink link;
+  link.restore_station_config(a);
+  CHECK(boot.restore_into(a, "s1", link.hill()));
+  CHECK_EQ(link.hill().owner, 1);
+  CHECK_EQ(link.hill().hold_ms[0], 4000u);  // MC's possession tally survives the restart
+  CHECK_EQ(link.hill().hold_ms[3], 9000u);
+  CHECK_EQ(link.hill().advert().state, (uint8_t)CONTROL_HELD);
+  CHECK_EQ(link.hill().advert().value, (uint8_t)100);
+  link.apply_station_config(a, 0);  // MC answers with the same config after the restart: kept
+  CHECK_EQ(link.hill().owner, 1);
+  BleControlPoint cp;  // tid 2 or a colour can never come back as an owner
+  cp.restore_held(2);
+  CHECK_EQ(cp.owner, (int)HILL_NEUTRAL);
+}
+
+static void test_saved_hill_writes_only_on_an_owner_change() {
+  StationLink link;
+  StationAssignment a = control_config(7);
+  link.apply_station_config(a, 0);
+  SavedHill saved;
+  int writes = 0;
+  for (uint32_t t = 0; t <= 15000; t += 250) {  // red builds, captures, then holds: 60 ticks
+    PlayerPresence pr = red_on_the_point(t);
+    link.tick_players(pr, t);
+    if (saved.note_owner(a, "s1", link.hill())) writes++;
+  }
+  CHECK_EQ(link.hill().owner, 0);
+  CHECK(link.hill().hold_ms[0] > 0u);  // the tally grew on every held tick...
+  CHECK_EQ(writes, 1);                 // ...and none of those ticks wrote: the capture only
+  // An untagged save (no session yet) must not look changed on every tick either.
+  SavedHill untagged;
+  CHECK(untagged.note_owner(a, "", link.hill()));
+  CHECK(!untagged.note_owner(a, "", link.hill()));
+  CHECK_EQ(untagged.restore_owner(a, ""), (int)HILL_NEUTRAL);  // and it never restores
+  CHECK(saved.note_owner(a, "s1", held_by(HILL_NEUTRAL)));  // drained to neutral: written
+  CHECK_EQ(saved.restore_owner(a, "s1"), (int)HILL_NEUTRAL);
+}
+
+static void test_saved_hill_tag_mismatch_is_neutral_and_new_game_session_or_release_clears() {
+  StationAssignment a = control_config(7);
+  SavedHill saved;
+  saved.note_owner(a, "s1", held_by(3));
+  CHECK_EQ(saved.restore_owner(control_config(8), "s1"), (int)HILL_NEUTRAL);  // another game
+  StationAssignment other_id = control_config(7);
+  other_id.id = 10;
+  CHECK_EQ(saved.restore_owner(other_id, "s1"), (int)HILL_NEUTRAL);  // another station
+  StationAssignment pu = control_config(7);
+  pu.kind = "powerup";
+  CHECK_EQ(saved.restore_owner(pu, "s1"), (int)HILL_NEUTRAL);  // no longer a hill
+  // A new MC session numbers its games from 1 again: game 7 of session s2 is not s1's game 7.
+  CHECK_EQ(saved.restore_owner(a, "s2"), (int)HILL_NEUTRAL);
+  BleControlPoint untouched = held_by(HILL_NEUTRAL);
+  CHECK(!saved.restore_into(a, "s2", untouched));
+  CHECK_EQ(untouched.owner, (int)HILL_NEUTRAL);
+  CHECK_EQ(saved.restore_owner(a, "s1"), 3);
+  CHECK(!saved.note_config(a, "s1"));             // same tag: keep
+  CHECK(!saved.note_welcome("s1"));               // a WELCOME from the same session: keep
+  CHECK(!saved.note_welcome(""));                 // a WELCOME with no session says nothing
+  CHECK(saved.note_welcome("s2"));                // another session: erase
+  CHECK(!saved.has());
+  saved.note_owner(a, "s1", held_by(3));
+  CHECK(saved.note_config(control_config(8), "s1"));  // a new game: erase
+  CHECK(!saved.note_config(control_config(8), "s1"));  // nothing left to erase
+  saved.note_owner(a, "s1", held_by(3));
+  CHECK(saved.note_config(a, "s2"));  // the same config re-pushed in a new session: erase
+  saved.note_owner(a, "s1", held_by(3));
+  CHECK(saved.clear());  // release_utility / the operator RESET
+  CHECK_EQ(saved.restore_owner(a, "s1"), (int)HILL_NEUTRAL);
+  CHECK(!saved.clear());
+}
+
+// The operator's point RESET (utility.js btnPointReset) reaches the Bluetooth hill only on a control station.
+static void test_reset_hill_neutralises_only_an_assigned_control_point() {
+  StationLink link;
+  CHECK(!link.reset_hill());  // nothing assigned
+  link.apply_station_config(control_config(7), 0);
+  link.hill().restore_held(0);
+  CHECK(link.reset_hill());
+  CHECK_EQ(link.hill().owner, (int)HILL_NEUTRAL);
+  CHECK_EQ(link.hill().progress, 0.0);
+  StationAssignment r = control_config(7);
+  r.kind = "respawn";
+  link.apply_station_config(r, 0);
+  CHECK(!link.reset_hill());
+}
+
+// The glue empties its sighting ring when the epoch moves: a different station, never a re-push.
+static void test_assignment_epoch_moves_on_a_new_station_only() {
+  StationLink link;
+  uint32_t e = link.assignment_epoch();
+  link.apply_station_config(control_config(7), 0);
+  CHECK(link.assignment_epoch() != e);
+  e = link.assignment_epoch();
+  StationAssignment again = control_config(7);
+  again.lock_s = 30;
+  link.apply_station_config(again, 0);  // same game re-push (the lock carrier)
+  CHECK_EQ(link.assignment_epoch(), e);
+  link.apply_station_config(control_config(8), 0);  // a new game
+  CHECK(link.assignment_epoch() != e);
+  e = link.assignment_epoch();
+  link.apply_release();
+  CHECK(link.assignment_epoch() != e);
+  e = link.assignment_epoch();
+  link.restore_station_config(control_config(8));
+  CHECK(link.assignment_epoch() != e);
+}
+
 int main(int argc, char** argv) {
   if (argc > 1) {
     // Golden-dump mode for mcp/tests/test_utility_esp32.py: write the exact envelope strings this
@@ -1307,6 +1581,7 @@ int main(int argc, char** argv) {
   test_parse_station_update();
   test_parse_control_cmd();
   test_station_kind_byte_maps_every_kind();
+  test_a_respawn_station_advertises_ready_not_disabled();
   test_threshold_zero_or_absent_means_the_sticks_own_default();
   test_powerup_schedule_defaults_to_available_with_no_report_yet();
   test_powerup_schedule_taken_counts_down_locally_from_the_last_update();
@@ -1365,6 +1640,15 @@ int main(int argc, char** argv) {
   test_a_welcome_from_another_session_erases_the_saved_config_and_drops_the_restore();
   test_a_new_session_never_touches_a_config_mc_sent_this_boot();
   test_the_muster_drop_after_a_restore_waits_for_the_re_anchor_or_2_s();
+  test_a_new_game_resets_the_hill_and_a_same_game_repush_keeps_it();
+  test_a_respawn_assignment_counts_revives_and_a_new_game_zeroes_them();
+  test_status_carries_revives_and_hold_ms_additively();
+  test_presence_threshold_is_the_phone_default_when_mc_sends_none();
+  test_saved_hill_round_trips_owner_and_tally_and_restores_the_hold();
+  test_saved_hill_writes_only_on_an_owner_change();
+  test_saved_hill_tag_mismatch_is_neutral_and_new_game_session_or_release_clears();
+  test_reset_hill_neutralises_only_an_assigned_control_point();
+  test_assignment_epoch_moves_on_a_new_station_only();
   if (failures) {
     std::printf("%d check(s) failed\n", failures);
     return 1;

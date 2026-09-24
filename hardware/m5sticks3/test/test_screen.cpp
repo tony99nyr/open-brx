@@ -154,6 +154,12 @@ static void test_home_vs_stats_and_default_hint() {
   CHECK(diag.kind == ScreenKind::SCR_DIAGNOSTICS);
   // The bench hint names the bench gestures and the current mode, never the operator's HOLD B: RESET.
   bench.bench_mode_label = "HILL";
+  {
+    StickState home = bench;
+    home.at_home = true;
+    home.control_present = true;  // the bench IR hill must not claim "shoot to capture" (post-MVP)
+    CHECK(compute_screen(home).kind == ScreenKind::SCR_NO_WIFI);
+  }
   CHECK_EQ(compute_screen(bench).hint, std::string("HILL   A: DIAG   HOLD B: MODE"));
 
   // Bench BRIDGE is not a hill: with no grenade beacon it says so, and a live one shows under BRIDGE.
@@ -180,15 +186,110 @@ static void test_unassigned_link_shows_joining() {
   CHECK(spec.kind == ScreenKind::SCR_JOINING);
 }
 
-// ---- a respawn/extraction/bomb assignment is shown and reported, not faked ------------------
+// ---- an extraction/bomb assignment is shown and reported, not faked --------------------------
 static void test_unrun_kind_shows_assigned_not_fake_gameplay() {
   StickState s;
   s.at_home = true;
   s.assignment_present = true;
-  s.stats_kind_label = "RESPAWN #1";
+  s.stats_kind_label = "EXTRACTION #1";
   ScreenSpec spec = compute_screen(s);
   CHECK(spec.kind == ScreenKind::SCR_ASSIGNED);
-  CHECK_EQ(spec.assigned_role, std::string("RESPAWN #1"));
+  CHECK_EQ(spec.assigned_role, std::string("EXTRACTION #1"));
+}
+
+// ---- the Bluetooth hill (presence.h): every state the advert can carry has its own screen ------
+static StickState ble_hill() {
+  StickState s;
+  s.link_state = LinkState::ASSIGNED;
+  s.at_home = true;
+  s.assignment_present = true;
+  s.control_present = true;
+  s.control_ble = true;
+  return s;
+}
+
+static void test_ble_hill_picks_neutral_capturing_losing_stalled_contested_and_held() {
+  StickState s = ble_hill();
+  ScreenSpec n = compute_screen(s);
+  CHECK(n.kind == ScreenKind::HILL_NEUTRAL);
+  CHECK_EQ(n.hill_note, std::string("STAND HERE TO CAPTURE"));
+
+  s.control_bar_team = 1;  // blue building a neutral point
+  s.control_dir = 1;
+  s.control_progress_pct = 40;
+  ScreenSpec cap = compute_screen(s);
+  CHECK(cap.kind == ScreenKind::HILL_CAPTURING);
+  CHECK_EQ(cap.hill_team, 1);
+  CHECK_EQ(cap.hill_pct, 40);
+  CHECK_EQ(cap.hill_verb, std::string("CAPTURING"));
+
+  s.control_dir = 0;  // blue walked off at 40%
+  CHECK_EQ(compute_screen(s).hill_verb, std::string("STALLED"));
+  s.control_dir = -1;  // red is draining blue's bar
+  CHECK_EQ(compute_screen(s).hill_verb, std::string("LOSING"));
+
+  s.control_contested = true;
+  ScreenSpec con = compute_screen(s);
+  CHECK(con.kind == ScreenKind::HILL_CONTESTED);
+  CHECK_EQ(con.hill_note, std::string("TEAMS ON THE POINT"));
+  s.control_contested = false;
+
+  s.control_owner = 0;  // red holds it
+  s.control_bar_team = 0;
+  s.control_dir = 0;
+  s.control_progress_pct = 100;
+  s.control_hold_time = "0:42";
+  ScreenSpec held = compute_screen(s);
+  CHECK(held.kind == ScreenKind::HILL_HELD);
+  CHECK_EQ(held.hill_team, 0);
+  CHECK_EQ(held.hold_time, std::string("0:42"));
+  s.control_dir = 1;  // red topping its own bar back up: still HELD
+  CHECK(compute_screen(s).kind == ScreenKind::HILL_HELD);
+  s.control_dir = -1;  // blue draining red's point: red is LOSING it, bar in red
+  s.control_progress_pct = 60;
+  ScreenSpec losing = compute_screen(s);
+  CHECK(losing.kind == ScreenKind::HILL_CAPTURING);
+  CHECK_EQ(losing.hill_team, 0);
+  CHECK_EQ(losing.hill_verb, std::string("LOSING"));
+  CHECK_EQ(losing.hill_pct, 60);
+}
+
+static void test_bench_hill_is_unchanged_by_the_bluetooth_hill() {
+  StickState s;
+  s.link_state = LinkState::NOT_CONFIGURED;
+  s.at_home = true;
+  s.control_present = true;  // bench HILL (control_point.h), control_ble false
+  s.control_dir = -1;        // ignored: the IR hill has no direction
+  s.control_contested = true;
+  ScreenSpec n = compute_screen(s);
+  CHECK(n.kind == ScreenKind::HILL_NEUTRAL);
+  CHECK_EQ(n.hill_note, std::string(""));  // the renderer keeps "SHOOT TO CAPTURE"
+  s.control_owner = 3;
+  CHECK(compute_screen(s).kind == ScreenKind::HILL_HELD);
+  s.bridge_mode = true;
+  s.bridge_beacon_live = false;
+  CHECK(compute_screen(s).kind == ScreenKind::BRIDGE_WAITING);
+}
+
+static void test_respawn_shows_owned_with_revives_or_idle_when_the_advert_is_down() {
+  StickState s;
+  s.link_state = LinkState::ASSIGNED;
+  s.at_home = true;
+  s.assignment_present = true;
+  s.respawn_present = true;
+  s.respawn_team = 1;
+  s.respawn_revives = 7;
+  s.respawn_live = true;
+  ScreenSpec owned = compute_screen(s);
+  CHECK(owned.kind == ScreenKind::RESPAWN_OWNED);
+  CHECK_EQ(owned.respawn_team, 1);
+  CHECK_EQ(owned.revives, 7);
+  s.respawn_team = 255;  // a station for any team: no team named
+  CHECK_EQ(compute_screen(s).respawn_team, -1);
+  s.respawn_live = false;
+  ScreenSpec idle = compute_screen(s);
+  CHECK(idle.kind == ScreenKind::RESPAWN_IDLE);
+  CHECK_EQ(idle.respawn_note, std::string("ADVERT DOWN"));
 }
 
 // ---- HomeNav: idle timeout, explicit go_home, and note_activity -----------------------------
@@ -277,6 +378,9 @@ int main() {
   test_home_vs_stats_and_default_hint();
   test_unassigned_link_shows_joining();
   test_unrun_kind_shows_assigned_not_fake_gameplay();
+  test_ble_hill_picks_neutral_capturing_losing_stalled_contested_and_held();
+  test_bench_hill_is_unchanged_by_the_bluetooth_hill();
+  test_respawn_shows_owned_with_revives_or_idle_when_the_advert_is_down();
   test_home_nav_idle_timeout_returns_home_after_20s();
   test_home_nav_activity_resets_the_idle_clock();
   test_home_nav_go_home_is_immediate();

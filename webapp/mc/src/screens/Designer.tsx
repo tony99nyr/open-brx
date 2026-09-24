@@ -250,7 +250,7 @@ export function Designer() {
                   never a text field: a typo used to ship a hill match with nothing emitting a hill. */}
               {stationGated && (
                 <Row label={<>OBJECTIVE SOURCE <Hint>What is on the field emitting the objective</Hint></>}>
-                  <Seg label="objective source" value={cfg.station_source ?? 'grenade'} pad="5px 11px"
+                  <Seg label="objective source" value={cfg.station_source ?? 'phone'} pad="5px 11px"
                     options={STATION_SOURCES.map(s => ({ value: s.value, label: s.label }))}
                     titles={Object.fromEntries(STATION_SOURCES.map(s => [s.value, s.hint]))}
                     onChange={v => put({ station_source: v })} />
@@ -259,7 +259,7 @@ export function Designer() {
             </div>
             {stationGated && (
               <div style={{ font: F.chk(500, 12), letterSpacing: '.02em', color: T.micro, marginTop: 8 }}>
-                {STATION_SOURCES.find(s => s.value === (cfg.station_source ?? 'grenade'))?.hint}
+                {STATION_SOURCES.find(s => s.value === (cfg.station_source ?? 'phone'))?.hint}
               </div>
             )}
             <div style={{ font: F.chk(500, 12), letterSpacing: '.02em', color: T.micro, marginTop: 8 }}>Venue (indoor / outdoor, night ops) is set on the Games page each time — it is not part of the game.</div>
