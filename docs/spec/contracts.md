@@ -525,6 +525,7 @@ Event =
  |   // protect_ms? [F289, A53]: on both, the ms of spawn protection the phone still owes the write that ends;
  |   // absent = none owed. Rule and MC's reading: the F289 paragraph under §5's Node → MC table.
  | { type:"operator_result", t, match_id, node_id, player_id, cmd:"resync"|"respawn"|"relink", ok, why? } // A47: what the phone did with an operator action; `why` on a refusal. Never scored
+ | { type:"pickup", t, match_id, station_id, item_kind:"weapon"|"overshield", weapon_id? } // A56: this player took a station's item (the grant is on the gun). Never scored; MC dedupes it against the station's `station_action taken`
  | { type:"status",      t, match_id?, node_id, player_id?, hp, armor, ammo, alive, shots, deadline_s?, battery?, fw?,
                          arm_state, t_minus_ms?, synced, dropped?, preflight?, protected?, transport? }
  |   // protected? [F289]: true only while the phone owes the write that ends spawn protection; absence clears it.
@@ -649,7 +650,7 @@ for idempotent replay. `status` carries no `seq`.
 | `ready` | `{ node_id, player_id, ready:boolean }` | ready-up toggle in **KITTED** (phase 4) [A1]; **all-ready gates the `config` push**; a player's `ready` ENDS their try-out [A10.4] |
 | `loadout_request` | `{ node_id, player_id, slot:"primary"\|"secondary"\|"perk", kind:"weapon"\|"perk"\|"none", id?, try?:boolean }` | A10.3: phone self-serve pick (loadout.md §4.2). MC validates vs `loadout_policy`, applies, re-sends `assign`, optionally starts the try-out, and ALWAYS answers `loadout_ack` |
 | `loadout_browse` | `{ node_id, player_id, open:boolean }` | A10.3: HUD opened/closed its loadout browser → MC roster shows "PICKING…" (60 s server expiry) |
-| `station_action` | `{ id, action, player_num?, t }` | **[A56]** a **powerup** station → MC, live-only. `reset`: the operator asks for the item now (a Stick long press or its screen); the station applies nothing until MC's `station_update {available: true}` answers, and MC logs it. `taken`: the station awarded the item to `player_num` (first ready claim heard); MC records it and dedupes it against the player's `pickup` fact by station and spawn. Behind the powerups flag. |
+| `station_action` | `{ id, action, player_num?, t? }` | **[A56]** a **powerup** station → MC, live-only. `reset`: the operator asks for the item now (a Stick long press or its screen); the station applies nothing until MC's `station_update {available: true}` answers, and MC logs it. `taken`: the station awarded the item to `player_num` (first ready claim heard); MC records it and dedupes it against the player's `pickup` fact by station and spawn. Behind the powerups flag. |
 
 F289 (2026-09-23): a `respawn` or infection `team_change` fact carries **`protect_ms?: int`** when the phone owes the
 write that ends spawn protection, and **`status.protected?: true`** is restated on every heartbeat while that write is
