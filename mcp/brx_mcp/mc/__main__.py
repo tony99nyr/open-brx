@@ -107,10 +107,13 @@ def build(args):
 
     bench_volume = getattr(args, "bench_volume", None)
     capture_row_fn = getattr(args, "bench_capture_row", None)   # F312
-    compiler = FakeCompiler(bench_volume=bench_volume, capture_row_fn=capture_row_fn)
+    distinct_cells = bool(getattr(args, "distinct_weapon_cells", False))   # F315
+    compiler = FakeCompiler(bench_volume=bench_volume, capture_row_fn=capture_row_fn,
+                            distinct_weapon_cells=distinct_cells)
     try:
         from .compile import Compiler as RealCompiler  # M-MODES lane
-        compiler = RealCompiler(bench_volume=bench_volume, capture_row_fn=capture_row_fn)
+        compiler = RealCompiler(bench_volume=bench_volume, capture_row_fn=capture_row_fn,
+                                distinct_weapon_cells=distinct_cells)
         log.info("compiler: real M-MODES compiler")
     except Exception as e:
         log.warning("compiler: FAKE (M-MODES compile.py not available: %s)", e)
@@ -415,6 +418,11 @@ def parser() -> argparse.ArgumentParser:
                     help="bench run (F312): the $SIR <15,0> row's function in every live table. 34 is the "
                          "team-blind candidate under bench test (bench-2026-09-24 Block 7 step 8); 28 is the "
                          "shipped row. Not for a real game until the bench confirms it")
+    ap.add_argument("--distinct-weapon-cells", action="store_true",
+                    help="bench run (F315): a weapon that shares an IR cell and a magnitude with another in the "
+                         "match moves to a free cell of its own protocol (today <0,2>) with a plain-damage $SIR "
+                         "row, so a victim's phone can name it. Not for a real game until a bench step proves a "
+                         "<0,2> word registers")
     ap.add_argument("-v", "--verbose", action="store_true")
     return ap
 
@@ -440,6 +448,11 @@ def main(argv=None):
         _rule = "!" * 78
         print(_rule, flush=True)
         print(f"  BENCH CAPTURE ROW fn {args.bench_capture_row}: the <15,0> row every gun gets (F312). Not for a real game", flush=True)
+        print(_rule, flush=True)
+    if args.distinct_weapon_cells:
+        _rule = "!" * 78
+        print(_rule, flush=True)
+        print("  DISTINCT WEAPON CELLS: same-cell, same-magnitude weapons move to a free cell (F315). Not for a real game", flush=True)
         print(_rule, flush=True)
     if not inspect.iscoroutinefunction(getattr(net, "start", None)):
         # sync/fake net is already bound → its ws_url is real now. The async NetServer prints the nodes

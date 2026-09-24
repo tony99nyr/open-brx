@@ -195,6 +195,15 @@ class Player(TypedDict):
     voice_slots: NotRequired[dict[str, str]]
 
 
+class HirCell(TypedDict):
+    """F315: one `$HIR` word a weapon can put on the wire -- the IR protocol (`$WEAP` t3, the `$HIR` token 2
+    the victim reads), the subtype (t4) and the magnitude (t5, t12 or t37). Every word of one `$WEAP` frame
+    rides the frame's own t3/t4, the headset word included, so a weapon's entries share one cell."""
+    proto: int
+    subtype: int
+    mag: int
+
+
 class RosterWeapon(TypedDict):
     """S56: one weapon a roster player carries, so a victim's phone can name what hit it."""
     weapon_id: str
@@ -202,6 +211,10 @@ class RosterWeapon(TypedDict):
     # read from THIS player's compiled frame when MC holds one (a perk such as Armour Piercing changes them),
     # else the catalogue's base values. Sorted, unique.
     hir: list[int]
+    # F315: the same words with the cell each one rides, from the same compiled frame (after any re-key:
+    # Armour Piercing, `--distinct-weapon-cells`), one entry per `hir` magnitude, sorted by it. The phone
+    # matches cell + magnitude first. Absent = an older MC; the phone then matches `hir` alone.
+    cells: NotRequired[list[HirCell]]
 
 
 class RosterEntry(TypedDict):
@@ -701,6 +714,7 @@ class WeaponView(TypedDict):
     rounds_per_charge: NotRequired[int]  # A48: rounds of the cell one FULL charge spends -- the HUD's NOT ENOUGH ENERGY line reads this, never a hard-coded cost. `views.weapon_view()` resolves the catalogue's absent-means-1 row, so a real WeaponView always carries this; NotRequired only for a hand-built fixture that skips it
     crit_pct: NotRequired[int]      # F62 (2026-09-18): $WEAP t6 primaryCritChance, 0-100; absent = never crits
     hir: NotRequired[list[int]]     # S56: the base `$HIR` t5 magnitudes this weapon can emit (t5, t12, t37 when > 0), sorted, unique -- the phone's pickup fallback when a hit matches no roster weapon
+    cells: NotRequired[list[HirCell]]  # F315: the same magnitudes with the catalogue frame's own cell (t3/t4), one entry per `hir` value -- a match's `--distinct-weapon-cells` move is in the roster's `cells`, never here
 
 
 class SavedGame(TypedDict):

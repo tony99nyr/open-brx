@@ -39,6 +39,13 @@ export const DEMO_WEAPONS = [
     "hir": [
       21
     ],
+    "cells": [
+      {
+        "proto": 0,
+        "subtype": 3,
+        "mag": 21
+      }
+    ],
     "ammo_total": 70,
     "bars": {
       "power": 56,
@@ -84,6 +91,13 @@ export const DEMO_WEAPONS = [
     "hir": [
       9
     ],
+    "cells": [
+      {
+        "proto": 0,
+        "subtype": 0,
+        "mag": 9
+      }
+    ],
     "ammo_total": 224,
     "bars": {
       "power": 38,
@@ -126,6 +140,13 @@ export const DEMO_WEAPONS = [
     "crit_pct": 40,
     "hir": [
       10
+    ],
+    "cells": [
+      {
+        "proto": 0,
+        "subtype": 3,
+        "mag": 10
+      }
     ],
     "ammo_total": 252,
     "bars": {
@@ -171,6 +192,18 @@ export const DEMO_WEAPONS = [
       16,
       70
     ],
+    "cells": [
+      {
+        "proto": 8,
+        "subtype": 0,
+        "mag": 16
+      },
+      {
+        "proto": 8,
+        "subtype": 0,
+        "mag": 70
+      }
+    ],
     "ammo_total": 120,
     "bars": {
       "power": 91,
@@ -213,6 +246,13 @@ export const DEMO_WEAPONS = [
     },
     "hir": [
       26
+    ],
+    "cells": [
+      {
+        "proto": 0,
+        "subtype": 3,
+        "mag": 26
+      }
     ],
     "ammo_total": 55,
     "bars": {
@@ -257,6 +297,13 @@ export const DEMO_WEAPONS = [
     "hir": [
       9
     ],
+    "cells": [
+      {
+        "proto": 0,
+        "subtype": 0,
+        "mag": 9
+      }
+    ],
     "ammo_total": 900,
     "bars": {
       "power": 38,
@@ -300,6 +347,13 @@ export const DEMO_WEAPONS = [
     },
     "hir": [
       149
+    ],
+    "cells": [
+      {
+        "proto": 6,
+        "subtype": 0,
+        "mag": 149
+      }
     ],
     "ammo_total": 4,
     "bars": {
@@ -346,6 +400,18 @@ export const DEMO_WEAPONS = [
       35,
       115
     ],
+    "cells": [
+      {
+        "proto": 10,
+        "subtype": 0,
+        "mag": 35
+      },
+      {
+        "proto": 10,
+        "subtype": 0,
+        "mag": 115
+      }
+    ],
     "ammo_total": 4,
     "bars": {
       "power": 100,
@@ -387,6 +453,13 @@ export const DEMO_WEAPONS = [
     },
     "hir": [
       20
+    ],
+    "cells": [
+      {
+        "proto": 0,
+        "subtype": 0,
+        "mag": 20
+      }
     ],
     "ammo_total": 30,
     "bars": {
@@ -430,6 +503,18 @@ export const DEMO_WEAPONS = [
     "hir": [
       2,
       7
+    ],
+    "cells": [
+      {
+        "proto": 0,
+        "subtype": 0,
+        "mag": 2
+      },
+      {
+        "proto": 0,
+        "subtype": 0,
+        "mag": 7
+      }
     ],
     "ammo_total": 270,
     "bars": {
@@ -475,6 +560,13 @@ export const DEMO_WEAPONS = [
     "hir": [
       6
     ],
+    "cells": [
+      {
+        "proto": 7,
+        "subtype": 0,
+        "mag": 6
+      }
+    ],
     "ammo_total": 32,
     "bars": {
       "power": 20,
@@ -517,6 +609,13 @@ export const DEMO_WEAPONS = [
     },
     "hir": [
       60
+    ],
+    "cells": [
+      {
+        "proto": 0,
+        "subtype": 1,
+        "mag": 60
+      }
     ],
     "ammo_total": 28,
     "bars": {
@@ -561,6 +660,13 @@ export const DEMO_WEAPONS = [
     "hir": [
       9
     ],
+    "cells": [
+      {
+        "proto": 5,
+        "subtype": 0,
+        "mag": 9
+      }
+    ],
     "ammo_total": 160,
     "bars": {
       "power": 20,
@@ -604,6 +710,13 @@ export const DEMO_WEAPONS = [
     "hir": [
       8
     ],
+    "cells": [
+      {
+        "proto": 0,
+        "subtype": 0,
+        "mag": 8
+      }
+    ],
     "ammo_total": 459,
     "bars": {
       "power": 29,
@@ -645,6 +758,13 @@ export const DEMO_WEAPONS = [
     },
     "hir": [
       8
+    ],
+    "cells": [
+      {
+        "proto": 11,
+        "subtype": 0,
+        "mag": 8
+      }
     ],
     "ammo_total": 210,
     "bars": {
@@ -688,6 +808,13 @@ export const DEMO_WEAPONS = [
     },
     "hir": [
       9
+    ],
+    "cells": [
+      {
+        "proto": 0,
+        "subtype": 3,
+        "mag": 9
+      }
     ],
     "ammo_total": 132,
     "bars": {

@@ -212,6 +212,15 @@ export interface Player {
   voice_slots?: Record<string, string>;
 }
 
+/** F315: one `$HIR` word a weapon can put on the wire -- the IR protocol (`$WEAP` t3, the `$HIR` token 2
+ *  the victim reads), the subtype (t4) and the magnitude (t5, t12 or t37). Every word of one `$WEAP` frame
+ *  rides the frame's own t3/t4, the headset word included, so a weapon's entries share one cell. */
+export interface HirCell {
+  proto: number;
+  subtype: number;
+  mag: number;
+}
+
 /** S56: one weapon a roster player carries, so a victim's phone can name what hit it. */
 export interface RosterWeapon {
   weapon_id: string;
@@ -219,6 +228,10 @@ export interface RosterWeapon {
    *  read from THIS player's compiled frame when MC holds one (a perk such as Armour Piercing changes them),
    *  else the catalogue's base values. Sorted, unique. */
   hir: number[];
+  /** F315: the same words with the cell each one rides, from the same compiled frame (after any re-key:
+   *  Armour Piercing, `--distinct-weapon-cells`), one entry per `hir` magnitude, sorted by it. The phone
+   *  matches cell + magnitude first. Absent = an older MC; the phone then matches `hir` alone. */
+  cells?: HirCell[];
 }
 
 export interface RosterEntry {
@@ -743,6 +756,8 @@ export interface WeaponView {
   crit_pct?: number;
   /** S56: the base `$HIR` t5 magnitudes this weapon can emit (t5, t12, t37 when > 0), sorted, unique -- the phone's pickup fallback when a hit matches no roster weapon */
   hir?: number[];
+  /** F315: the same magnitudes with the catalogue frame's own cell (t3/t4), one entry per `hir` value -- a match's `--distinct-weapon-cells` move is in the roster's `cells`, never here */
+  cells?: HirCell[];
 }
 
 /** A sanitized whole-game preset stored on the Mission Control host. */

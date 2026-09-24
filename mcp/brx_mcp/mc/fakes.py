@@ -75,10 +75,12 @@ def weapon_views() -> list[WeaponView]:
 class FakeCompiler:
     """Trivial but shape-correct: $PSET carries player_num, head has no $SPAWN, spawn has one."""
 
-    def __init__(self, bench_volume: int | None = None, capture_row_fn: int | None = None) -> None:
+    def __init__(self, bench_volume: int | None = None, capture_row_fn: int | None = None,
+                 distinct_weapon_cells: bool = False) -> None:
         self.bench_volume = None if bench_volume is None else check_volume(bench_volume)   # `--bench-volume`, as Compiler
         # F312 `--bench-capture-row`, validated as Compiler does; the fake ships no $SIR, so it changes nothing here.
         self.capture_row_fn = None if capture_row_fn is None else check_capture_row_fn(capture_row_fn)
+        self.distinct_weapon_cells = bool(distinct_weapon_cells)   # F315, as Compiler (the fake ships no $SIR and moves no cell)
 
     def compile(self, config: GameConfig, player: Player, teams: list[Team], roll=None,
                 plan=None) -> FrameBundle:

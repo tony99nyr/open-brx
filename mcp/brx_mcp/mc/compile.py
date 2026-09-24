@@ -9,6 +9,7 @@ A6: `cues(voice)` returns **pre-composed `$PLAY` frames** (not bare ids); `valid
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 import pathlib
@@ -24,7 +25,7 @@ from .perks import PerkCatalog
 from .policy import SIDEARM_TAG          # F146: one vocabulary for "this is a backup weapon"
 from .types import (MAX_PLAYERS, OBJECTIVE_MODES, STATION_PROTECT_S_DEFAULT, STATION_SOURCES, TIMED_PROTECT_S_DEFAULT,
                     TRIGGER_AFTER_PROTECT_MS, WEAPON_DELAY_MS_DEFAULT, DotSpec, FrameBundle, GameConfig, Health,
-                    HealthPreset, PerkEffectsResolved, PerkView, Player, RespawnProfile, StationProtectS, Team,
+                    HealthPreset, HirCell, PerkEffectsResolved, PerkView, Player, RespawnProfile, StationProtectS, Team,
                     TimedProtectS, ValuePair, VoiceOption, WeaponDelayMs, Weapon, parse_app_ver, parse_win_by)
 from . import presentation as _pres
 from .. import poolgauge as pg
@@ -1713,17 +1714,50 @@ def hir_from_weap(frame: str) -> list[int]:
     return sorted(vals)
 
 
+def cells_from_weap(frame: str) -> list[HirCell]:
+    """F315: `hir_from_weap()`'s magnitudes, each with the cell it rides (`HirCell`), from the same frame.
+
+    Every word one `$WEAP` frame puts on the wire (t5, the headset word t12, the charge tap t37) rides that
+    frame's own t3/t4: the dual-emitter shape `compile()` sends the victim keys one cell per weapon for the
+    same reason. So each entry carries the frame's t3/t4, read AFTER any re-key (Armour Piercing's
+    `_AP_CELL`, a `--distinct-weapon-cells` move), which is why this takes the compiled frame and never a
+    catalogue cell."""
+    p = frame.split(",")
+    T = WeaponCatalog._T
+
+    def tok(key: str) -> int:
+        idx = T[key] + 1
+        try:
+            return int(p[idx] or 0) if idx < len(p) else 0
+        except ValueError:
+            return 0
+    proto, subtype = tok("proto"), tok("subtype")
+    return [HirCell(proto=proto, subtype=subtype, mag=m) for m in hir_from_weap(frame)]
+
+
+# F315 (`--distinct-weapon-cells`): the cells a same-cell, same-magnitude weapon may move to. A free cell
+# UNDER THE WEAPON'S OWN PROTOCOL only: the protocol is what the victim reads first (the poison tick, the
+# melee pain line, the EMP cell all key on it), so a move within one protocol changes nothing but the
+# subtype. Today that is `<0,2>` alone. `hitaudio.RESERVED_CELLS` is subtracted again at use, as a belt.
+DISTINCT_CELL_CANDIDATES: tuple[tuple[str, str], ...] = tuple(
+    c for c in _ha.FREE_CELLS if c[0] == "0" and c not in _ha.RESERVED_CELLS)
+
+
 class Compiler:
     """Implements interfaces.Compiler."""
 
     def __init__(self, catalog: WeaponCatalog | None = None, perks: PerkCatalog | None = None,
-                 bench_volume: int | None = None, capture_row_fn: int | None = None) -> None:
+                 bench_volume: int | None = None, capture_row_fn: int | None = None,
+                 distinct_weapon_cells: bool = False) -> None:
         self.catalog = catalog or WeaponCatalog()
         self.perks = perks or PerkCatalog()
         # None = the venue volume. A number = `--bench-volume`: every $VOL this compiler writes.
         self.bench_volume = None if bench_volume is None else check_volume(bench_volume)
         # F312: None = the shipped fn-28 row. A number = `--bench-capture-row`: the `<15,0>` row's function.
         self.capture_row_fn = None if capture_row_fn is None else check_capture_row_fn(capture_row_fn)
+        # F315: False = every weapon keys its catalogue cell. True = `--distinct-weapon-cells`: `hit_plan()`
+        # moves a weapon that shares a cell AND a magnitude with another onto a free cell (bench-gated).
+        self.distinct_weapon_cells = bool(distinct_weapon_cells)
 
     def capture_row(self) -> str:
         """The `<15,0>` row this compiler ships in every live table (S57, F312)."""
@@ -1946,8 +1980,66 @@ class Compiler:
         if not entries:
             return _ha.Plan()
         if not rekey:
+            if self.distinct_weapon_cells:
+                entries = self._distinct_cells(entries)   # F315: moves happen HERE, so every plan reader agrees
             return _ha.plan_in_place(entries)
         return _ha.plan(entries, base_cells=_sir_cells(_SIR_TABLE))
+
+    def _distinct_cells(self, entries: list) -> list:
+        """F315 (`--distinct-weapon-cells`): `entries` with every weapon that shares a cell AND a `$HIR`
+        magnitude with an earlier one moved onto a free cell, so a victim's phone can tell the two apart.
+
+        "Earlier" is catalogue order, never roster order, so the same pair always moves the same weapon
+        (the Assault Rifle stays, the Energy Rifle moves). Only a plain-damage weapon moves, and only
+        within its own protocol (`DISTINCT_CELL_CANDIDATES`), onto a cell no stock row, reserved cell or
+        other weapon in the match keys. It keeps its `Entry.fn`, so `sir_table()` adds the new cell's row
+        with the SAME function the old cell carried (`_sir_row` copies that row's tail): no balance
+        change. With no candidate left the weapon stays where it is, and the phone names the hit "A / B".
+        Called only on the in-place plan: `hit_audio_rekey` allocates cells by class and is not composed."""
+        order = {wid: i for i, wid in enumerate(self.catalog._by_id)}
+        taken = ({e.cell for e in entries} | set(_sir_cells(_SIR_TABLE)) | set(_ha.RESERVED_CELLS)
+                 | {_STUN_CELL, ("15", "0"), _AP_CELL})
+        out = list(entries)
+        claimed: dict[tuple[str, str], set[int]] = {}      # cell -> magnitudes an earlier weapon already sends on it
+        for i in sorted(range(len(out)), key=lambda i: (order.get(out[i].weapon_id, len(order)), out[i].weapon_id)):
+            e = out[i]
+            mags = set(self.catalog.hir_magnitudes(e.weapon_id))
+            if claimed.get(e.cell, set()) & mags and e.fn in _SIR_PLAIN_DAMAGE:
+                free = next((c for c in DISTINCT_CELL_CANDIDATES if c[0] == e.cell[0] and c not in taken), None)
+                if free is not None:
+                    out[i] = e = dataclasses.replace(e, cell=free)
+                    taken.add(free)
+            claimed.setdefault(e.cell, set()).update(mags)
+        return out
+
+    def _validate_distinct_cells(self, config, roster, plan, warnings: list[str]) -> None:
+        """F315: say what `--distinct-weapon-cells` did to this roster, and what it could not do."""
+        if not self.distinct_weapon_cells:
+            return
+        if config.get("hit_audio_rekey"):
+            warnings.append("--distinct-weapon-cells is SKIPPED in this game: hit_audio_rekey allocates the cells by "
+                            "weapon family, and the two do not compose. Same-magnitude weapons on one cell keep "
+                            "sharing it, and a phone names such a hit \"A / B\" (F315)")
+            return
+        moved = sorted(w for w, c in plan.cells.items() if c != self._weapon_cell(w))
+        if moved:
+            warnings.append("--distinct-weapon-cells moved " + ", ".join(
+                f"{w} to <{plan.cells[w][0]},{plan.cells[w][1]}>" for w in moved)
+                + " with a plain-damage $SIR row of the same function (F315, bench-gated)")
+        by_cell: dict[tuple[str, str], list[str]] = {}
+        for w, c in plan.cells.items():
+            by_cell.setdefault(c, []).append(w)
+        for c, wids in sorted(by_cell.items()):
+            mags = {w: set(self.catalog.hir_magnitudes(w)) for w in wids}
+            clash = sorted(w for w in wids if any(o != w and mags[o] & mags[w] for o in wids))
+            if clash:
+                warnings.append(f"{' and '.join(clash)} share IR cell <{c[0]},{c[1]}> and a magnitude, and the flag could not "
+                                f"move one (no free cell under that protocol, or not a plain-damage row): a phone names such a hit \"A / B\" (F315)")
+        rows = len(self._with_capture_row(self.sir_table(plan, None, stun=stun_enabled(config))))
+        if rows > _ha.MAX_SIR_ROWS:
+            warnings.append(f"the $SIR table is {rows} rows, over the {_ha.MAX_SIR_ROWS}-row community ceiling "
+                            f"(hitaudio.MAX_SIR_ROWS, never measured: F39); --distinct-weapon-cells adds one row "
+                            f"per moved weapon (F315)")
 
     def plan_gaps(self, plan, player) -> list[str]:
         """The weapons in `player`'s loadout that `plan` cannot carry for them: a hot joiner is compiled against
@@ -2985,6 +3077,7 @@ class Compiler:
             sir = _sir_index(self.sir_table(plan, None))
         except ValueError:
             plan, sir = _ha.Plan(), _sir_index(_SIR_TABLE)
+        self._validate_distinct_cells(config, roster, plan, warnings)   # F315 (own hunk: the flag's moves and its budget)
         T = self.catalog._T
         # KeyError here is a CODE bug, not bad data — raise loudly rather than letting every
         # weapon `continue` and silently turn the whole guard into a no-op.

@@ -6,18 +6,24 @@ carry the shooter's REAL, currently-compiled magnitudes (a perk such as Armour P
 and it must be kept fresh: a kit change made by one player must reach every OTHER player's next
 roster too, not just the player who made it.
 """
-from brx_mcp.mc.compile import Compiler
+from brx_mcp.mc.compile import Compiler, cells_from_weap
 
 from test_mc_loadout import mk, online
 
 C = Compiler()
 
 
+def _cells(weapon_id: str) -> list[dict]:
+    """F315: the catalogue frame's `cells`, the roster's value before any compile or re-key."""
+    return cells_from_weap(C.catalog.resolve(weapon_id, 0))
+
+
 def test_roster_carries_the_catalogue_magnitude_before_any_compile():
     s, net, clock, ps = mk(2, compiler=Compiler())
     pid = ps[0]["player_id"]
     entry = next(r for r in s.roster() if r["player_id"] == pid)
-    assert entry["weapons"] == [{"weapon_id": "assault_rifle", "hir": C.catalog.hir_magnitudes("assault_rifle")}]
+    assert entry["weapons"] == [{"weapon_id": "assault_rifle", "hir": C.catalog.hir_magnitudes("assault_rifle"),
+                                 "cells": _cells("assault_rifle")}]
 
 
 def test_roster_picks_up_armour_piercing_once_compiled():
@@ -29,12 +35,15 @@ def test_roster_picks_up_armour_piercing_once_compiled():
     pid = ps[0]["player_id"]
     s.push_config()
     base = next(r for r in s.roster() if r["player_id"] == pid)
-    assert base["weapons"] == [{"weapon_id": "assault_rifle", "hir": [C.catalog.damage("assault_rifle")]}]
+    assert base["weapons"] == [{"weapon_id": "assault_rifle", "hir": [C.catalog.damage("assault_rifle")],
+                                "cells": _cells("assault_rifle")}]
 
     s.patch_player(pid, loadout={"weapons": [{"weapon_id": "assault_rifle"}], "perk": "armor_piercing"})
     ap_dmg = C.catalog._row("assault_rifle")["ap_dmg"]
     after = next(r for r in s.roster() if r["player_id"] == pid)
-    assert after["weapons"] == [{"weapon_id": "assault_rifle", "hir": [ap_dmg]}]
+    # F315: the cell follows the compiled frame too -- Armour Piercing re-keys the primary onto <4,0>
+    assert after["weapons"] == [{"weapon_id": "assault_rifle", "hir": [ap_dmg],
+                                 "cells": [{"proto": 4, "subtype": 0, "mag": ap_dmg}]}]
     assert ap_dmg != C.catalog.damage("assault_rifle")   # the perk actually moved the number
 
 
@@ -61,7 +70,8 @@ def test_a_kit_change_reaches_the_other_players_next_roster_too():
     # p0's OWN next assign carries p1's new pick too (roster is embedded in every assign/config body).
     body0 = net.pushes("config", "node0")[-1][2]
     entry = next(r for r in body0["roster"] if r["player_id"] == p1)
-    assert entry["weapons"] == [{"weapon_id": "shotgun", "hir": C.catalog.hir_magnitudes("shotgun")}]
+    assert entry["weapons"] == [{"weapon_id": "shotgun", "hir": C.catalog.hir_magnitudes("shotgun"),
+                                 "cells": _cells("shotgun")}]
 
     # and p1's own node was told the same thing about itself
     body1 = net.pushes("config", "node1")[-1][2]

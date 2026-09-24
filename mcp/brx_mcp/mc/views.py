@@ -5,7 +5,7 @@ import math
 
 from typing import Sequence
 
-from .compile import CHARGE_TAP_CADENCE_MS, DEFAULT_POOL, hir_from_weap
+from .compile import CHARGE_TAP_CADENCE_MS, DEFAULT_POOL, cells_from_weap, hir_from_weap
 from .types import Weapon, WeaponView
 
 # The pool one hit is measured against when the caller does not say: 45 HP + 70 armour (GameConfig
@@ -150,6 +150,9 @@ def weapon_view(w: Weapon, pool: int = DEFAULT_POOL) -> WeaponView:
     # never raise -- it runs on every hydrate and bind with no fallback behind it.
     frame = w.get("weap_frame")
     view["hir"] = hir_from_weap(frame) if isinstance(frame, str) else []
+    # F315: the same words with the catalogue frame's own cell. A match's `--distinct-weapon-cells` move is
+    # a property of that match's plan, which a catalogue row cannot know: the roster's `cells` carry it.
+    view["cells"] = cells_from_weap(frame) if isinstance(frame, str) else []
     return view
 
 

@@ -2019,8 +2019,16 @@ class Session:
             if frame is None:
                 row = catalog_by_id.get(weapon_id)
                 frame = row.get("weap_frame") if row else None
+                # F315: with no bundle yet, a weapon the match's PINNED plan moved (`--distinct-weapon-cells`)
+                # still reports the cell its frame will carry. Read the pin, never derive one: `_hit_plan()`
+                # pins only once the lobby is pushed, and a roster read must not pin it early.
+                cell = self._pinned_hit_plan.cell_for(weapon_id) if self._pinned_hit_plan is not None else None
+                if isinstance(frame, str) and cell is not None:
+                    frame = _compile.Compiler._rekey(frame, cell)
             hir = _compile.hir_from_weap(frame) if isinstance(frame, str) else []
-            out.append({"weapon_id": weapon_id, "hir": hir})
+            # F315: the cell each magnitude rides, from the same frame as `hir` (so the two never disagree).
+            cells = _compile.cells_from_weap(frame) if isinstance(frame, str) else []
+            out.append({"weapon_id": weapon_id, "hir": hir, "cells": cells})
         return out
 
     def set_ready(self, pid: str, ready: bool, host_override: bool = False) -> Player:
