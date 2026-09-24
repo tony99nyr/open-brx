@@ -106,6 +106,7 @@ inline std::string format_mmss(uint32_t total_seconds) {
 // README's "could not match" note).
 enum class ScreenKind : uint8_t {
   HILL_NEUTRAL,
+  BRIDGE_WAITING,  // bench BRIDGE mode with no live grenade beacon: nothing to repeat yet
   HILL_HELD,
   HILL_CAPTURING,
   HILL_CONTESTED,
@@ -196,6 +197,7 @@ struct ScreenSpec {
 
   // Shared chrome
   std::string hint = DEFAULT_HINT;
+  std::string hill_kicker = "HILL POINT";  // "BRIDGE" when the owner shown is a repeated grenade's
   StatusStripSpec strip;
 };
 
@@ -225,6 +227,8 @@ struct StickState {
   // the point (control_point.h, EITHER a standalone bench HILL/BRIDGE with no MC at all, or an
   // MC-armed "control" kind -- the .ino decides which and sets this the same way either time)
   bool control_present = false;
+  bool bridge_mode = false;         // bench BRIDGE: the Stick repeats a grenade's beacon, it is not a hill itself
+  bool bridge_beacon_live = false;  // BRIDGE only: a grenade beacon was heard recently (the advert is up)
   uint8_t control_owner = 255;  // TEAM_ANY
   int control_progress_pct = 0;
   std::string control_hold_time;  // "M:SS", pre-formatted by the .ino (it tracks "held since")
@@ -346,6 +350,13 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
 
   // at_home: the live gameplay screen.
   if (s.control_present) {
+    if (s.bridge_mode) {
+      spec.hill_kicker = "BRIDGE";
+      if (!s.bridge_beacon_live) {
+        spec.kind = ScreenKind::BRIDGE_WAITING;
+        return spec;
+      }
+    }
     if (s.control_owner == TEAM_ANY) {
       spec.kind = ScreenKind::HILL_NEUTRAL;
     } else {

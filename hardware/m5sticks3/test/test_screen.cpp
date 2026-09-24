@@ -155,6 +155,20 @@ static void test_home_vs_stats_and_default_hint() {
   // The bench hint names the bench gestures and the current mode, never the operator's HOLD B: RESET.
   bench.bench_mode_label = "HILL";
   CHECK_EQ(compute_screen(bench).hint, std::string("HILL   A: DIAG   HOLD B: MODE"));
+
+  // Bench BRIDGE is not a hill: with no grenade beacon it says so, and a live one shows under BRIDGE.
+  StickState br;
+  br.at_home = true;
+  br.control_present = true;
+  br.control_owner = TEAM_ANY;
+  br.bridge_mode = true;
+  CHECK(compute_screen(br).kind == ScreenKind::BRIDGE_WAITING);
+  br.bridge_beacon_live = true;
+  ScreenSpec live = compute_screen(br);
+  CHECK(live.kind == ScreenKind::HILL_NEUTRAL);
+  CHECK_EQ(live.hill_kicker, std::string("BRIDGE"));
+  br.bridge_mode = false;
+  CHECK_EQ(compute_screen(br).hill_kicker, std::string("HILL POINT"));
 }
 
 // ---- an unassigned, unarmed link shows JOINING while at home ---------------------------------

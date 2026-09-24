@@ -215,4 +215,7 @@ No gun, no BLE use, USB on COM10, plus a temporary serial log of button DOWN/HOL
 - **Bench-mode hint fixed and CONFIRMED.** The hint bar showed the operator's "HOLD B: RESET" in bench mode,
   where B flips HILL/BRIDGE. It now reads "<MODE>   A: DIAG   HOLD B: MODE"; a B hold changed it to BRIDGE on
   screen. This closes the HILL/BRIDGE look-alike gap filed against F333.
+- **Bench BRIDGE home fixed and CONFIRMED.** BRIDGE showed the HILL "NEUTRAL, SHOOT TO CAPTURE" screen, which is
+  untrue: a BRIDGE only repeats a grenade. With no beacon it now shows "BRIDGE / NO BEACON / MOVE NEAR A GRENADE"
+  (Tony read it in full on the Stick); a live beacon shows the owner under a BRIDGE heading (host-tested only).
 

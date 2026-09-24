@@ -61,7 +61,7 @@ rig's word arrived at 6 in with the right bit order and mark widths (about 1020 
 | G42 | IR receiver | RMT only. M5's own IR example uses this pin (docs.m5stack.com/en/arduino/m5sticks3/ir_nec) and warns the speaker amplifier must be off or reception fails. The sketch never brings the speaker up |
 | G46 | onboard IR LED | default transmit pin |
 | G9 / G10 | Grove port (SDA / SCL) | the yellow-wire question: M5's own StickS3 pinout page (docs.m5stack.com/en/core/StickS3) says the yellow wire is SDA = G9. An earlier firmware comment guessed the opposite (SCL = G10 on the yellow wire, from M5Unified's port mapping, not the pinout page). The firmware accepts either as a Grove emitter pin (`TXPIN 9` or `TXPIN 10`), so this is safe to leave open until the bench settles which one lights the emitter |
-| G11 / G12 | buttons A / B | hold A: reset the point to neutral. Hold B: toggle BRIDGE / HILL. A click does nothing on either, so a knock cannot flip a point |
+| G11 / G12 | buttons A / B | bench mode (no Wi-Fi set): hold A 1 s resets the point to neutral, hold B 2 s toggles BRIDGE / HILL, an A click shows DIAGNOSTICS. Only a hold changes state, so a knock cannot flip a point. With Wi-Fi set, see "Buttons and power" |
 | small side button | power, and download mode | this is the Stick's power button. Held while plugging in USB, it puts the board into download mode (needed once, on the first flash over factory firmware only) |
 | HAT header | EXT_5V, GND, G1-G8, G10, G43, G44 | where a ring or an external emitter goes when the Grove port is busy |
 

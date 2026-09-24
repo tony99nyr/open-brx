@@ -450,6 +450,8 @@ static StickState buildStickState(uint32_t now) {
 
   bool standalone = (link.state() == LinkState::NOT_CONFIGURED);
   st.control_present = standalone || (a.present && a.kind == "control");
+  st.bridge_mode = standalone && point.mode == Mode::BRIDGE;
+  st.bridge_beacon_live = st.bridge_mode && advertising;  // pollAdvert withdraws it when the grenade goes quiet
   if (st.control_present) {
     st.control_owner = point.owner;
     st.control_progress_pct = point.progress();

@@ -196,22 +196,23 @@ inline void drawWarnStripes(M5Canvas& c, uint16_t stripeColor) {
 
 inline void drawHill(M5Canvas& c, const ScreenSpec& s) {
   if (s.kind == ScreenKind::HILL_NEUTRAL) {
-    drawKicker(c, "HILL POINT");
+    drawKicker(c, s.hill_kicker);
     fitCenterText(c, SCREEN_W / 2, 62, "NEUTRAL", SCREEN_W - 20,
                   {&fonts::FreeSansBold24pt7b, &fonts::FreeSansBold18pt7b}, COL_NUM);
-    fitCenterText(c, SCREEN_W / 2, 106, "SHOOT TO CAPTURE", SCREEN_W - 20, {&fonts::FreeSansBold9pt7b}, COL_MUT);
+    fitCenterText(c, SCREEN_W / 2, 106, s.hill_kicker == "BRIDGE" ? "GRENADE IS NEUTRAL" : "SHOOT TO CAPTURE",
+                  SCREEN_W - 20, {&fonts::FreeSansBold9pt7b}, COL_MUT);
   } else if (s.kind == ScreenKind::HILL_HELD) {
     uint16_t bg = teamColor(s.hill_team), ink = teamInk(s.hill_team);
     fillMain(c, bg);
     c.setFont(&fonts::Font0);
     c.setTextDatum(textdatum_t::top_left);
     c.setTextColor(ink);
-    c.drawString("HILL POINT", 10, MAIN_TOP + 4);
+    c.drawString(s.hill_kicker.c_str(), 10, MAIN_TOP + 4);
     std::string label = std::string(TEAM_LETTER[s.hill_team >= 0 && s.hill_team <= 3 ? s.hill_team : 0]) + " HOLDS";
     fitCenterText(c, SCREEN_W / 2, 60, label, SCREEN_W - 20, {&fonts::FreeSansBold18pt7b, &fonts::FreeSansBold12pt7b}, ink);
     fitCenterText(c, SCREEN_W / 2, 104, "HELD " + s.hold_time, SCREEN_W - 20, {&fonts::FreeSansBold12pt7b}, ink);
   } else if (s.kind == ScreenKind::HILL_CAPTURING) {
-    drawKicker(c, "HILL POINT");
+    drawKicker(c, s.hill_kicker);
     uint16_t tc = teamColor(s.hill_team);
     std::string label = std::string(TEAM_LETTER[s.hill_team >= 0 && s.hill_team <= 3 ? s.hill_team : 0]) + " CAPTURING";
     fitCenterText(c, SCREEN_W / 2, 52, label, SCREEN_W - 20, {&fonts::FreeSansBold18pt7b, &fonts::FreeSansBold12pt7b}, tc);
@@ -222,7 +223,7 @@ inline void drawHill(M5Canvas& c, const ScreenSpec& s) {
     if (fillX > bx0 + 1) c.fillRect(bx0 + 1, by0 + 1, fillX - bx0 - 1, by1 - by0 - 2, tc);
     fitCenterText(c, SCREEN_W / 2, 112, std::to_string(s.hill_pct) + "%", SCREEN_W - 20, {&fonts::FreeSansBold12pt7b}, COL_NUM);
   } else {  // HILL_CONTESTED
-    drawKicker(c, "HILL POINT");
+    drawKicker(c, s.hill_kicker);
     drawWarnStripes(c, rgb(40, 26, 4));
     fitCenterText(c, SCREEN_W / 2, 66, "CONTESTED", SCREEN_W - 20, {&fonts::FreeSansBold24pt7b, &fonts::FreeSansBold18pt7b}, COL_WARN);
     fitCenterText(c, SCREEN_W / 2, 106, "BOTH TEAMS FIRING", SCREEN_W - 20, {&fonts::FreeSansBold9pt7b}, COL_MUT);
@@ -406,6 +407,13 @@ inline void drawSystem(M5Canvas& c, const ScreenSpec& s) {
 inline void renderScreen(M5Canvas& canvas, const ScreenSpec& spec) {
   canvas.fillScreen(COL_BG);
   switch (spec.kind) {
+    case ScreenKind::BRIDGE_WAITING:
+      drawKicker(canvas, "BRIDGE");
+      fitCenterText(canvas, SCREEN_W / 2, 58, "NO BEACON", SCREEN_W - 20,
+                    {&fonts::FreeSansBold24pt7b, &fonts::FreeSansBold18pt7b}, COL_NUM);
+      fitCenterText(canvas, SCREEN_W / 2, 100, "MOVE NEAR A GRENADE", SCREEN_W - 20,
+                    {&fonts::FreeSansBold9pt7b}, COL_MUT);
+      break;
     case ScreenKind::HILL_NEUTRAL:
     case ScreenKind::HILL_HELD:
     case ScreenKind::HILL_CAPTURING:
