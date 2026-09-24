@@ -544,8 +544,9 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 /* QA-05 night: the same callout card, dim red on black, no glow, no motion, no green (spec B4). */
 [data-env="night"] .co[data-tone="enemy"],[data-env="night"] .co[data-tone="ours"]{--co:#c9484a}[data-env="night"] .co[data-tone="mate"],[data-env="night"] .co[data-tone="theirs"]{--co:#a8782a}
 [data-env="night"] .co .cob{background:#120505;border-color:#3a1414;animation:none}
+[data-env="night"] .co *{animation:none!important}   /* night is still (B4): the medal lines show at once instead of arriving one by one */
 [data-env="night"] .co .nm{color:var(--num);text-shadow:none}[data-env="night"] .co .sw{background:#5a2222!important}
-[data-env="night"] .co .medal{background:#2a0d0d!important;color:#ff8a8a!important;box-shadow:none!important}
+[data-env="night"] .co .medal{background:#2a0c0c!important;color:#ef6868!important;box-shadow:none!important;border:1px solid #5a1c1c}
 /* ---- QA lane B (2026-09-23): the live HUD at night. Red and amber on black, no green, no flash, no strobe (spec B4). ---- */
 /* QA-22/QA-02: the link status stays at night; the NO GUN dot is the brightest red on the screen, steady */
 [data-env="night"] .topright{color:var(--num)}
