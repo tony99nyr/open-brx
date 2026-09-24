@@ -37,23 +37,34 @@ costs the player their secondary while the item lasts.
    selects a slot directly (a "select" key to the item).
 5. With the item slot out of the cycle and an empty magazine, confirm it cannot fire by any button.
 6. After a death and `$SPAWN`, does the pickup slot's magazine come back? (If it does, the phone zeroes it.)
+7. Overshield: on a Standard-preset gun (shield max 0) and a Shields-preset gun, write the shield to its current
+   value plus 75 with `$LIFE` token 4 = 2 (set past max). Pass: `$HP` reads the new shield; the next hits take the
+   shield first; nothing refills it; a death clears it.
 
 ## Contract (A56, additive)
 
-- **`StationAssignment.item?`** for kind `powerup`: `{weapon_id, charges, cooldown_s, name, color}`.
-  `charges` is the magazine granted; `cooldown_s` (1-255, so the advert's one-byte `value` can count it down) is how
-  long this station stays depleted after a grant; `name` is at most 12 characters (a Stick may marquee it); `color`
-  is `#rrggbb`, the item's own colour, not a team.
-  The same object rides in the player's `config.stations[]` entry for that station (`{id, kind, item?}`), so a
-  player's phone knows what a station grants without MC.
-- **`GameConfig.powerups?`**: `[{weapon_id, slot}]`, the pickup weapons MC armed and where (compile's output;
-  at most two, slots 2 and 3).
-- **New fact `pickup`** from the player phone: `{match_id, station_id, weapon_id, t}`. MC relays a
-  `station_update {id, depleted_for_ms, depleted_until?}` to the station: the time REMAINING (a Stick has no synced
-  clock), with the epoch as an optional extra. The station advertises state 0 (depleted) and the seconds left in
-  `value`, then state 1 again. On a reconnect MC re-sends the current state and the station re-anchors on arrival.
-- The Stick (H8) takes the same `station_config` and `station_update`; brx4 builds its client on this payload
-  (agreed 2026-09-24). An older Stick ignores `item`.
+- **`StationAssignment.item?`** for kind `powerup`:
+  `{kind: "weapon" | "overshield", weapon_id?, charges?, amount?, spawn_every_s, first_at_s, name, color}`.
+  A weapon item grants `charges` rounds (the magazine) of `weapon_id`; an overshield grants `amount` shield.
+  `spawn_every_s` (1-255) and `first_at_s` set the schedule on the match clock (below); `name` is at most 12
+  characters (a Stick may marquee it); `color` is `#rrggbb`, the item's own colour, not a team. The same object rides
+  in the player's `config.stations[]` entry (`{id, kind, item?}`), so a player's phone knows the schedule without MC.
+- **`GameConfig.powerups?`**: `[{weapon_id, slot}]`, the pickup WEAPONS MC armed and where (compile's output; at
+  most two, slots 2 and 3). An overshield needs no slot.
+- **New fact `pickup`** from the player phone: `{match_id, station_id, item_kind, weapon_id?, t}`.
+- **`station_update {id, available, next_spawn_in_ms?}`** from MC to the station, on a pickup and at each spawn
+  time: the time REMAINING, since a Stick has no synced clock (agreed with brx4 for H8, 2026-09-24). The station
+  advertises state 1 (available) or 0 (taken) and, while taken, the seconds to the next spawn in `value` (capped
+  at 255). On a reconnect MC re-sends the current state and the station re-anchors on arrival. An older Stick
+  ignores `item`.
+
+## The schedule (Tony, 2026-09-24: "like Halo")
+
+Items spawn at fixed times on the match clock: at `first_at_s`, then every `spawn_every_s`. An item is available
+from its spawn time until a player takes it; then the station is empty until the next spawn time. An item nobody
+took simply stays; a spawn time never stacks a second one. Every phone and station can compute the schedule from
+the match clock; MC's `pickup` relay tells the station (and so every phone, through the station's advert) that an
+item was taken early.
 
 ## The grant on the phone
 
@@ -63,10 +74,17 @@ GET CLOSER → PULL THE TRIGGER FOR <ITEM> → <ITEM> READY, and the item then s
 A depleted station shows its cooldown. Offline (no MC relay), the phone keeps its own per-station cooldown for
 this player.
 
-## Defaults for Tony to confirm (game rules)
+## Items and defaults (Tony, 2026-09-24)
 
-- **Items:** the `pickup_only` heavies (rocket launcher, rail gun, and so on); one item per powerup station.
-- **Charges:** the item's own magazine (rockets: 2), no reserve.
-- **Cooldown:** 60 s per station after a grant.
-- **Lost at death:** yes; unused charges do not carry into the next life.
-- **One item at a time per player:** a second grant while holding one is refused.
+Decided:
+- **Items:** Rockets (rocket_launcher), Rail Gun (rail_gun), and Overshield.
+- **Schedule:** Overshield every 60 s, the heavies every 120 s, each first spawning after one interval (1:00 and
+  2:00), on the match clock.
+- **Overshield:** +75 shield on top of whatever the player has, taking hits first, no regeneration, gone at death
+  (`$LIFE` shield add past the preset's max, bench step below). In the Shields preset the regenerating shield only
+  refills up to its own max, so it never tops the overshield back up.
+
+Defaults still to confirm (named constants, easy to change):
+- **Charges:** a weapon item's own magazine (Rockets: 2), no reserve.
+- **Lost at death:** a weapon item's unused charges do not carry into the next life.
+- **One weapon item at a time:** a second weapon grant while holding one is refused; an overshield is separate.
