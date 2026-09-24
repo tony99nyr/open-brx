@@ -98,19 +98,21 @@ guns, two confirmed hits), and the shot leaves the shooter's headset, not the ba
 2026-09-24: APKs 0.4.7, 0.4.8 and 0.4.9 published (each on green CI); A58's MC half (station tamper lock, restart flags) on main, Lows are F337. **Next:** 0.4.10 cut with A58; bench F309/F311/F312.
 
 ## Lane: S57, B21, StickS3 (brx4)
-2026-09-24 afternoon bench (Stick COM10, rig RX COM7, rig TX COM8, no gun on BLE, Tony fired a gun by hand): IR
-transmit is CONFIRMED clean at 5 cm, 30 cm, 1 m and 3 m (`bench-sticks3-2026-09-23.md` Results). Found and fixed a
-standalone-beacon bug that hit every field station: an ESP32-S3 HWCDC TX-timeout stalled `loop()` with no USB host
-attached (`fc8c3db4`); closed same-day as **F335**. Receive still fails at every distance and source tried (gun,
-rig emitter, a fresh-boot BRIDGE control); the Stick's own receiver does loop back its own transmitter at
-millimetre range, so the conclusion is the receiver hardware itself, not our firmware or the gun's carrier; **F314
-stays open**. The intermittent receiver "noise" is resolved as the idle-dim backlight PWM, fixed by `2a836bce`
-(F314's ranked cause 3, not the missing decode); two earlier readings (a floating-pin claim, a front-of-word
-decoder bug) are retracted. F332 and F333 are untouched today, both stay open. The bench hold from brx1 is still
-in effect; do not flash until it lifts.
-**Next:** the second Stick with the emitter at 5 cm, then an external 38 kHz receiver (Seeed Grove IR receiver or
-M5 Unit IR); F332 (datasheet or bench) and F333. The MC half of A58 (`station_config.lock_s` compile + console) is
-brx3's lane, not this one.
+2026-09-24, late afternoon bench (after `383885ee`; Stick COM10, rig RX COM7, rig TX COM8): **F314's root cause is
+found and a workaround is proven.** A Sony TV remote decodes cleanly on the onboard receiver (G42) at 1 m, so the
+receiver's optics and RMT path work; a same-distance A/B shows it simply does not pick up BRX-style IR, gun or
+emitter (remote: 2 headers from 3 presses; the rig's 38 kHz emitter: 0 syncs from 3 words). M5's own docs and an
+April-2026 forum report of the identical symptom back this: the onboard receiver hardware is the limit, not our
+firmware or the gun's carrier. Workaround: an external VS1838B, shared with the rig's receiver and wired to the
+Stick's Grove G9 with an internal pull-up (`RXPIN 9`, `0f50605e`), decoded 3 of 3 real gun shots at 1 m as whole
+25-bit words, cleaner than the rig it shared power with. Firmware also gained `BL <n>` (screen brightness,
+bench-only) from the earlier `2a836bce` backlight-noise fix. **F314 stays open**: not yet built is a standalone
+wiring (VS1838B powered from G10, not borrowed from the rig) and a HILL capture test with real shots on a
+standalone Stick. F332 and F333 are untouched, both stay open. The bench hold from brx1 is still in effect; do not
+flash until it lifts.
+**Next:** the standalone G10-powered VS1838B wiring, then a HILL capture test with shots on a standalone Stick to
+close F314; the second Stick with the emitter at 5 cm; F332 (datasheet or bench) and F333. The MC half of A58
+(`station_config.lock_s` compile + console) is brx3's lane, not this one.
 ## Lane: powerups and the shield HUD (brx5)
 2026-09-24: S58 powerups built behind MC `--powerups`, off until bench Sitting A 3.3 (items 1-8) and 4.11 pass; three polish rounds. S59 Halo shield meter pushed. F293 fix pushed: a headset probe on every connect (release and wait 15 s on `?`), awaiting bench step 1.4. F331/S59 Lows done (open for Tony: night creep brightness, station display name). SELECT pickup branch `pu-select` HELD: bench 3.3 changed the button and overshield mechanisms, decisions with Tony.
 
