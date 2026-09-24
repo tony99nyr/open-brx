@@ -254,6 +254,9 @@ class Respawn(TypedDict):
     protect_s: NotRequired[TimedProtectS]            # absent = TIMED_PROTECT_S_DEFAULT
     weapon_delay_ms: NotRequired[WeaponDelayMs]      # absent = WEAPON_DELAY_MS_DEFAULT
     station_protect_s: NotRequired[StationProtectS]  # absent = STATION_PROTECT_S_DEFAULT
+    # F325: scanner respawn only (contracts §3, A13.1): "trigger" = at the station AND pull the trigger (the
+    # node's default when absent), "presence" = being at the station is enough. The node ignores it otherwise.
+    gate: NotRequired[Literal["trigger", "presence"]]
 
 
 class RespawnProfile(TypedDict):

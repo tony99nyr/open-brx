@@ -256,6 +256,9 @@ export interface Respawn {
   weapon_delay_ms?: WeaponDelayMs;
   /** absent = STATION_PROTECT_S_DEFAULT */
   station_protect_s?: StationProtectS;
+  /** F325: scanner respawn only (contracts §3, A13.1): "trigger" = at the station AND pull the trigger (the
+   *  node's default when absent), "presence" = being at the station is enough. The node ignores it otherwise. */
+  gate?: 'trigger' | 'presence';
 }
 
 /** The node's respawn frames (2026-09-19). Absent on an older bundle: the node keeps the legacy path

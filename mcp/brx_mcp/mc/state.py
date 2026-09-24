@@ -2400,6 +2400,13 @@ class Session:
                         respawn["weapon_delay_ms"] = merged["weapon_delay_ms"]
                     if "station_protect_s" in merged:
                         respawn["station_protect_s"] = merged["station_protect_s"]
+                    # F325: the scanner gate (contracts §3 `respawn.gate`, A13.1). The node already reads it;
+                    # MC used to drop it here, so no path could choose the presence gate. `null` clears it.
+                    g = merged.get("gate")
+                    if g is not None:
+                        if g not in ("trigger", "presence"):
+                            raise ValueError("respawn.gate must be trigger|presence (scanner respawn only)")
+                        respawn["gate"] = g
                     cfg["respawn"] = respawn
                 if k == "scoring":
                     fl = merged.get("frag_limit")
