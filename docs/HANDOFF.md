@@ -105,8 +105,8 @@ On `main` 2026-09-23: the desk half of F297, F269 and F270. All three stay open 
 ## Lane: Mission Control console honesty
 F178, F256, F251, F289 closed; F309, brx-net, F312's gated row and the shared APK sidecar writer built 2026-09-23. **Next:** bench F309/F311/F312; APK 0.4.6 held in `~/brx3-release`.
 
-## Lane: S56, S57, B21 (brx4)
-2026-09-23: **S57 built**, deaths, kills and objectives (docs/ir-callouts.md); Block 7 of `bench-2026-09-24.md` settles it, F312 first. S56 built. **B21:** key made; the signed cut waits for the desk fixes. **StickS3 bring-up (H7):** BLE and IR TX work, IR RX broken (F314); rerun gates 2, 4, 5 next.
+## Lane: S57, B21, StickS3 (brx4)
+2026-09-23: **S57 built** (docs/ir-callouts.md); Block 7 of `bench-2026-09-24.md` settles it, F312 first. **B21:** key made; the signed cut waits for the desk fixes. **StickS3 (H7):** BLE and IR TX work; IR RX is F314. Start the next Stick session with `.claude/skills/m5stick-bench` and `hardware/m5sticks3/README.md`: `stick.py flash`, then `SELFTEST`, then the sheet's rerun.
 ## Lane: F293, death screen, integration pass (brx5)
 2026-09-23: btlink; death screen with Tony; pre-APK integration pass done (F316 Lows). Next: bench 1.3 captures, F313.
 
