@@ -4678,7 +4678,9 @@ for (const view of VIEWS) for (const night of [false, true]) {
       return { rail: mean(box.rail), fill: mean(box.fill) }; }, [buf.toString('base64'), box]);
     await q.close();
     const ratio = (Math.max(lum.rail, lum.fill) + .05) / (Math.min(lum.rail, lum.fill) + .05);
-    must(ratio >= 1.5, `the rail against the fill: ${ratio.toFixed(2)}:1 ${JSON.stringify(lum)}`);
+    // S59: today's night colour measures 1.74-1.75:1 here on both views, so the gate holds it at 1.7 (it was 1.5).
+    // A brighter night creep is Tony's call (night dark adaptation).
+    must(ratio >= 1.7, `the rail against the fill: ${ratio.toFixed(2)}:1 ${JSON.stringify(lum)}`);
   });
   await step(`${tag}: a stun during the delay freezes the creep where it was (polish r2 Low)`, async () => {
     const pg = await open(view, 'live-shields-broken', N, 3300); const w = await svWait(pg, r => r.wait && r.dly > 100, 6000);
@@ -4686,6 +4688,15 @@ for (const view of VIEWS) for (const night of [false, true]) {
     const stunned = await pg.evaluate(() => !!window.brx.engine.state().stunned); await pg.close();
     must(w.wait && stunned, `setup: waiting, then stunned: ${JSON.stringify({ wait: w.wait, stunned })}`);
     must(a.dly > 60 && Math.abs(c.dly - a.dly) < 2, `the creep holds its width while the refill stands down: ${a.dly} -> ${c.dly}`);
+  });
+  await step(`${tag}: a hit during the stun restarts the delay: the frozen creep drops to nothing (S59 Low)`, async () => {
+    const pg = await open(view, 'live-shields-hit', N, 3600); const w = await svWait(pg, r => r.wait && r.dly > 100, 6000);
+    await pg.evaluate(() => window.brxDemo.stun()); await pg.waitForTimeout(500); const a = await svRead(pg);
+    const q0 = await pg.evaluate(() => window.brx.engine.state().shieldRegen.quietAt);
+    await pg.evaluate(() => window.brxDemo.shieldHit(10)); await pg.waitForTimeout(500); const c = await svRead(pg);
+    const after = await pg.evaluate(() => ({ stunned: !!window.brx.engine.state().stunned, quietAt: window.brx.engine.state().shieldRegen.quietAt })); await pg.close();
+    must(w.wait && a.dly > 60 && after.stunned && after.quietAt > q0, `setup: frozen mid-delay, then hit while still stunned: ${JSON.stringify({ wait: w.wait, dly: a.dly, ...after, q0 })}`);
+    must(c.dly < 10, `the creep starts over, not stale at its old width: ${a.dly} -> ${c.dly}`);
   });
   await step(`${tag}: the Standard preset draws no meter, until it holds an overshield`, async () => {
     let pg = await open(view, 'live', N, 3000); const r = await svRead(pg);

@@ -45,6 +45,15 @@ export function meterModel(st, now = Date.now()) {
   };
 }
 
+// A stun freezes the delay creep where it stood (`fx.dl`), stamped with the `quietAt` it was measured from (`fx.dlq`).
+// A hit during the stun restamps `quietAt`: the delay starts over, so the old width is stale and the freeze is cleared.
+const quietOf = st => (st.shieldRegen && st.shieldRegen.quietAt) || 0;
+function frozenAt(m, st, fx) {
+  if (!m.frozen || fx.dl == null) return false;
+  if (fx.dlq === quietOf(st)) return true;
+  fx.dl = m.delayPct; fx.dlq = quietOf(st); return false;
+}
+
 // ---- markup ----
 const pctStr = x => `${Math.round(x * 1000) / 10}%`;
 /** For a screen reader only: the meter shows no number (Tony: "just the bar"). The overshield counts on top of the max. */
@@ -55,7 +64,7 @@ const aria = m => Object.entries(ariaVals(m)).map(([k, v]) => `${k}="${v}"`).joi
  *  from both ends to the centre, so every layer is centred (CSS). */
 export function meterHtml(st, fx = {}, now) {
   const m = meterModel(st, now);
-  if (m.frozen && fx.dl != null) m.delayPct = fx.dl;   // a rebuild during a stun keeps the creep where it stood
+  if (frozenAt(m, st, fx)) m.delayPct = fx.dl;   // a rebuild during a stun keeps the creep where it stood
   return `<div class="svm" id="svm" data-s="${m.state}"${m.os ? ' data-os=""' : ''}${m.onlyOs ? ' data-only-os=""' : ''}${m.waiting ? ' data-wait=""' : ''} role="meter" aria-label="shield" ${aria(m)}>`
     + `<div class="svbar"><i class="svgh" data-k="gh" style="--w:${pctStr(m.pct)}"></i><i class="svfl" data-k="fl" style="--w:${pctStr(m.pct)}"></i>`
     // the delay creep comes AFTER the fill and the overshield, so it paints over a part-full shield too
@@ -71,7 +80,7 @@ export function patchMeter(hudEl, st, fx, now = Date.now()) {
   el.toggleAttribute('data-wait', m.waiting);
   for (const [k, v] of Object.entries(ariaVals(m))) if (el.getAttribute(k) !== v) el.setAttribute(k, v);
   if (alive) alive.classList.toggle('sv-down', m.down);
-  if (m.frozen && fx.dl != null) m.delayPct = fx.dl; else fx.dl = m.delayPct;
+  if (frozenAt(m, st, fx)) m.delayPct = fx.dl; else { fx.dl = m.delayPct; fx.dlq = quietOf(st); }
   const vals = { gh: m.pct, fl: m.pct, os: m.osPct, dl: m.delayPct };
   for (const n of el.querySelectorAll('[data-k]')) {
     const x = vals[n.dataset.k]; if (x == null) continue;
