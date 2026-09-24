@@ -80,11 +80,16 @@ Recoil counts rounds per trigger pull by calibre (S54, `aa7b08b9`). F291 is clos
 - **Next bench task:** **F308** and **F292** in [`bench-2026-09-24.md`](bench-2026-09-24.md), then sitting 2 steps 1-4,
   then sitting 3 (§26 groups A and B).
 - **Blocked:** Extended Mags on `$TMP` (S50) and F281 on sitting 2; **F275** on outdoor space (runbook Block 5).
-## Lane: BLE reliability (desk half)
-On `main` 2026-09-23: the desk halves of **F297** (`connect-metrics`), **F269** (`raw-bytes`) and **F270**
-(write-with-response off). All three stay open for the bench; the rows hold the detail.
-- **Next bench task:** the ordered runbook [`bench-2026-09-24.md`](bench-2026-09-24.md). **Blocked:** F270 on A8.
-- **F315 (2026-09-23):** hits resolve by IR cell, then magnitude; `--distinct-weapon-cells` (off) waits on bench 4.10.
+## Lane: BLE reliability (brx2)
+2026-09-24 bench, Blocks 0-1 of [`bench-2026-09-24.md`](bench-2026-09-24.md) done. **F297** has real numbers
+(laptop control 10/10 first-attempt, median link 1.37 s, p90 2.41 s; the phone run was confounded by a tooling
+bug, now fixed, `9b94e318`). **F293**'s loop was reproduced on demand, without btsnoop: an early phone reconnect
+while the headset is still joining can block it (1 of 2 A runs); a fix is proposed on the row. Step 1.3 was not
+needed. **F334** filed: 0.4.7's chrome60 syntax fix (`e01b26c3`, not on `main`) boots on the factory WebView 83
+but the CSS layout there is unusable.
+- **Next bench task:** Block 3 onward of [`bench-2026-09-24.md`](bench-2026-09-24.md).
+- **Next desk task:** build F293's proposed fix and re-measure; find what breaks the CSS at WebView 83 (F334).
+- **Blocked:** F270 on A8.
 ## Lane: Mission Control console honesty
 2026-09-24: 0.4.6 published; F318, F108, F325, F133, F52, K8 closed. **Next:** bench F309/F311/F312; 0.4.7 cut on brx1's word.
 
