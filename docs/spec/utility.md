@@ -85,7 +85,8 @@ the advertised threshold overriding the default, neutral admitting every team, o
 
 **Respawn range: 3 m at most (Tony, 2026-09-24; F345).** Measured at 3 m on the player phone: a phone station reads
 -63 to -68 dBm, a StickS3 -53 to -58 (the Stick transmits hotter). So the default is **per platform**, like the powerup
-claim's: a phone station **-66 dBm**, a StickS3 **-60 dBm** (`beacon.js RESPAWN_RSSI_DBM`; the Stick's copy is
+claim's. Tony then walked both stations at 3-5 m and set the defaults (2026-09-24, "the stick actually works
+better"): a phone station **-70 dBm**, a StickS3 **-57 dBm** (`beacon.js RESPAWN_RSSI_DBM`; the Stick's copy is
 `hardware/m5sticks3/station_link.h STICK_DEFAULT_THRESHOLD_DBM`, **pending**: it still resolves 0 to -74). The other kinds on a phone station keep the
 2026-09-04 bench value, -74 dBm at high TX (about 10 ft). MC's `StationAssignment.threshold` still overrides; **0**
 (or absent) means the station's own default, which it resolves and advertises in byte 14. A phone app older than
