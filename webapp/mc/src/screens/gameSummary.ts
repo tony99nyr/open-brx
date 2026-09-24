@@ -216,9 +216,9 @@ export function withHealthPreset(h: Partial<Health> | undefined | null): Health 
 // arrives in a config still renders (see `objectiveLine`) rather than vanishing — a field we cannot
 // show is a field nobody can fix.
 const SOURCE_COPY: Record<StationSourceId, { label: string; hint: string }> = {
-  grenade: { label: 'GRENADE', hint: 'A BRX Smart Grenade in hill mode. Bench-proven 2026-09-10; drives exactly ONE point (F88).' },
+  grenade: { label: 'GRENADE · POST-MVP', hint: 'POST-MVP: the MVP hill is a Bluetooth station (PHONE). A BRX Smart Grenade in hill mode, bench-proven 2026-09-10; drives exactly ONE point (F88).' },
   ir_station: { label: 'IR STATION', hint: 'A BRX station / Utility Box speaking $CAPTURE. UNPROVEN — we have never had one on the bench.' },
-  phone: { label: 'PHONE', hint: 'A Bluetooth control point: a StickS3 station, or a spare phone in the UTILITY role. Capture by presence, armed by MC at muster. Announces contested; can name its point (several are possible).' },
+  phone: { label: 'PHONE', hint: 'A Bluetooth control point: a spare phone in the UTILITY role (the MVP hill). Capture by presence, armed by MC at muster. Announces contested; can name its point (several are possible).' },
 };
 export const STATION_SOURCES: { value: StationSourceId; label: string; hint: string }[] =
   STATION_SOURCE_IDS.map(value => ({ value, ...SOURCE_COPY[value] }));
@@ -226,8 +226,8 @@ export const STATION_SOURCES: { value: StationSourceId; label: string; hint: str
 export const objectiveLine = (cfg: GameConfig): string | null => {
   const src = cfg.station_source;
   if (!src) return null;
-  if (src === 'grenade') return 'GRENADE HILL · ONE POINT';
-  if (src === 'phone') return 'PHONE CONTROL POINT · PRESENCE';
+  if (src === 'grenade') return 'GRENADE HILL · ONE POINT · POST-MVP';
+  if (src === 'phone') return 'BLUETOOTH HILL · PHONE · PRESENCE';
   return (STATION_SOURCES.find(s => s.value === src)?.label ?? src.toUpperCase());
 };
 

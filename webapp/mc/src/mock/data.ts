@@ -1043,7 +1043,7 @@ const MODE_TEXT: Record<string, Omit<ModeInfo, 'params' | 'defaults'>> = {
     "name": "KING OF THE HILL",
     "abbr": "KOTH",
     "desc": "Hold the hill; possession scores",
-    "brief": "One hill, and it is a real grenade on the field. Shoot the point and it flips to your team; every second your side holds it banks possession. A point your team does not own damages anyone standing on it, so taking one is a fight, and a defended hill costs an attacker exactly what the defenders put into it. Most possession time when the clock runs out takes the match.",
+    "brief": "One hill: a Bluetooth control point on the field, a spare phone in the utility role. Stand on the point to take it. An enemy point drains to neutral before it builds up for you, and the side with more living players on it moves it. Every second your side holds it banks possession. Most possession time when the clock runs out takes the match.",
     "teams_text": "2 TEAMS",
     "win_text": "POSSESSION TIME · HOST CALL",
     "respawn_text": "ON · TIMED"
@@ -1065,7 +1065,7 @@ export const MODES: ModeInfo[] = [
   // F82: BLUE + GREEN (tids 1 and 3). Yellow is tid 2, which is what a NEUTRAL hill broadcasts, so a
   // yellow roster would read every uncaptured point as its own — the server refuses it outright.
   { ...MODE_TEXT.koth, params: KOTH_PARAMS,
-    defaults: base('koth', { teams: [TEAMS[0], TEAMS[3]], scoring: { frag_limit: null, win_by: 'objective' }, station_source: 'grenade',
+    defaults: base('koth', { teams: [TEAMS[0], TEAMS[3]], scoring: { frag_limit: null, win_by: 'objective' }, station_source: 'phone',
       mode_params: { score_target: 0, points_per_s: 1.0 } }) },
 ];
 

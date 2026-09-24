@@ -95,7 +95,7 @@ guns, two confirmed hits), and the shot leaves the shooter's headset, not the ba
 - **Next desk task:** none open for this lane.
 - **Blocked:** F270 on A8.
 ## Lane: Mission Control console honesty
-2026-09-24: APKs 0.4.7, 0.4.8 and 0.4.9 published (each on green CI); A58's MC half (station tamper lock, restart flags) on main, Lows are F337. **Next:** 0.4.10 cut with A58; bench F309/F311/F312.
+2026-09-24: APKs 0.4.7, 0.4.8 and 0.4.9 published (each on green CI); A58's MC half on main (Lows F337); 0.4.10 published with it. KOTH's stock hill is now a Bluetooth station (`station_source` phone); the grenade hill and Stick IR receive are POST-MVP (F338). **Next:** bench F309/F311/F312.
 
 ## Lane: S57, B21, StickS3 (brx4)
 2026-09-24, late afternoon bench (after `383885ee`; Stick COM10, rig RX COM7, rig TX COM8): **F314's root cause is

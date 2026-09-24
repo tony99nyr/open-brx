@@ -178,7 +178,9 @@ MODES: list[ModeRow] = [
     # F70 (bench-proven end to end 2026-09-10): the hill is a BRX Smart Grenade in hill mode. It
     # broadcasts protocol-15 beacons carrying its OWNER's team, `hillbeacon.py` reads them and
     # `DominationEngine` scores possession, so the mode needs no station hardware at all -- hence
-    # `station_source: "grenade"` on the row (the operator can change it, `_CONFIG_KEYS`).
+    # `station_source: "phone"` on the row (Tony 2026-09-24: the MVP hill is a Bluetooth control point, a phone
+    # station today and a StickS3 once its presence capture is bench-proven; the grenade hill is POST-MVP but
+    # stays selectable, `_CONFIG_KEYS`).
     # 🔴 `teams` is BLUE + GREEN, tids 1 and 3, and the choice is load-bearing: YELLOW is tid 2,
     # which is the team a NEUTRAL hill broadcasts, so a yellow roster would read every uncaptured
     # point as its own and take no hill damage (F82). `assign_teams` defaults the same 1/3 pair, and
@@ -187,7 +189,7 @@ MODES: list[ModeRow] = [
     # objective scorer, so `scoring.py` reports the winner as `undecided` rather than inventing one
     # from kills, and the UI renders that as "UNDECIDED — OBJECTIVE · HOST DECIDES" (Recap.tsx).
     {"mode": "koth", "name": "KING OF THE HILL", "abbr": "KOTH", "desc": "Hold the hill; possession scores",
-     "brief": "One hill, and it is a real grenade on the field. Shoot the point and it flips to your team; every second your side holds it banks possession. A point your team does not own damages anyone standing on it, so taking one is a fight, and a defended hill costs an attacker exactly what the defenders put into it. Most possession time when the clock runs out takes the match.",
+     "brief": "One hill: a Bluetooth control point on the field, a spare phone in the utility role. Stand on the point to take it. An enemy point drains to neutral before it builds up for you, and the side with more living players on it moves it. Every second your side holds it banks possession. Most possession time when the clock runs out takes the match.",
      # `win_text` says HOST CALL on purpose, and it is the honest label until the phones report.
      # MC ingests a `possession` fact and names the winner from it the moment one arrives (API.md /
      # `scoring._possession`) -- but nothing on `app/src` sends one yet, so a card reading plain
@@ -195,7 +197,7 @@ MODES: list[ModeRow] = [
      # (operator review 2026-09-10). ➡ Drop "· HOST CALL" when the phone ships the fact.
      "teams_text": "2 TEAMS", "win_text": "POSSESSION TIME · HOST CALL", "respawn_text": "ON · TIMED",
      "teams": ["blue", "green"], "win_by": "objective", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
-     "preset": "standard", "station_source": "grenade", "proven": True},
+     "preset": "standard", "station_source": "phone", "proven": True},
 ]
 
 
@@ -2916,14 +2918,14 @@ class Session:
         src = self.config.get("station_source")
         if src == "phone" and "control" not in kinds:
             out.append("SETUP: NO CONTROL STATION IS ASSIGNED — this game's objective is a Bluetooth control point "
-                       "(station_source phone); assign a StickS3 or a utility phone as CONTROL in ITEMS and arm it, "
+                       "(station_source phone); assign a utility phone as CONTROL in ITEMS and arm it, "
                        "or nothing on the field is the hill")
         # Stick hills (2026-09-24): a CONTROL station advertises the same kind-5 point a phone does, and every
         # phone drops it unless the source is "phone" (`engine.js _hillSourceAllowed`). Say so; never switch.
         if src in ("grenade", "ir_station") and "control" in kinds:
             what = "THE GRENADE" if src == "grenade" else "AN IR STATION"
             out.append(f"SETUP: A CONTROL STATION IS ASSIGNED BUT THIS GAME'S OBJECTIVE IS {what} — every phone "
-                       "ignores the station's hill; set OBJECTIVE SOURCE to PHONE (a StickS3 or phone station), "
+                       "ignores the station's hill; set OBJECTIVE SOURCE to PHONE (a phone station), "
                        "or clear the CONTROL station in ITEMS")
         if (self.config.get("respawn") or {}).get("type") == "scanner" and "respawn" not in kinds:
             out.append("SETUP: NO RESPAWN STATION IS ASSIGNED — respawn is SCANNER, so a downed player can only come "
