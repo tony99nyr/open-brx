@@ -212,7 +212,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const reseed = reseedFeed.current && hasFeed;   // an older MC sends no feed: keep what this tab has
         if (hasFeed) reseedFeed.current = false;
         const applySeed = () => { seedMemoRef.current = seedMemo(seed, Date.now()); setFeed(seed.slice(0, FEED_MAX)); };
-        if (mid !== feedMatch.current) { feedMatch.current = mid; if (mid) applySeed(); }
+        if (mid !== feedMatch.current) { feedMatch.current = mid; if (mid) applySeed(); else seedMemoRef.current = null; }
         else if (mid && reseed) applySeed();
         else if (mid && seed.length) setFeed(f => { if (f.length) return f; seedMemoRef.current = seedMemo(seed, Date.now()); return seed.slice(0, FEED_MAX); });
         setState(s);

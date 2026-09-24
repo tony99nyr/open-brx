@@ -790,6 +790,13 @@ class Session:
                 self.teams = snap["teams"]
             if snap.get("config"):
                 self.config = snap["config"]
+                # K8 (polish round 2): a hand-edited volume outside the range is dropped at load (the venue
+                # default), rather than raising later, inside a compile.
+                try:
+                    if _compile.check_game_volume(self.config.get("volume")) is None:
+                        self.config.pop("volume", None)
+                except ValueError:
+                    self.config.pop("volume", None)
             self.active_preset_id = snap.get("active_preset_id")
             # S5(a): a restored station comes back UNARMED -- `armed=None, arm_pending=True` -- because the
             # phone itself remembers nothing about MC across a restart; the existing "re-arm on next hello"
@@ -2210,6 +2217,10 @@ class Session:
                 cfg["environment"] = self.config["environment"]
             if "night" not in patch and "night" in self.config:
                 cfg["night"] = self.config["night"]
+            # K8 (polish round 2): the host sets the volume for the site, like the venue, so a mode switch
+            # keeps it; the game editor already carried it, and the two now agree.
+            if "volume" not in patch and self.config.get("volume") is not None:
+                cfg["volume"] = self.config["volume"]
             if "coverage" not in patch and (cov := self.config.get("coverage")) is not None:
                 cfg["coverage"] = cov
         cfg = self._merge_config(cfg, patch, mode)

@@ -142,3 +142,13 @@ def test_a_saved_game_keeps_the_knob_and_an_old_one_is_the_venue_default():
     bad = json.loads(json.dumps(old)); bad.update(name="Bad", preset_id="bad1"); bad["config"]["volume"] = 20
     rows.append(bad); path.write_text(json.dumps(raw))
     assert "Bad" not in [r["name"] for r in PresetStore(path, s.sanitize_config, default_config, P.merge, now_ms=s.now_ms).list()]
+
+
+def test_polish_round_2_a_mode_switch_keeps_the_knob():
+    from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
+    from brx_mcp.mc.state import Session
+    s = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
+    s.set_config({"volume": 70})
+    other = "ffa" if s.config["mode"] != "ffa" else "tdm"
+    s.set_config({"mode": other})
+    assert s.config.get("volume") == 70, "the host set the volume for the site, as the venue"

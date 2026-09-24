@@ -216,7 +216,7 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
                   <Seg label="mode" value={shown.mode} wrap options={modes.map(m => ({ value: m.mode, label: m.abbr }))}
                     titles={Object.fromEntries(modes.map(m => [m.mode, m.name]))}
                     onChange={pickMode} />
-                  <div style={{ font: F.chk(500, 11.5), color: T.micro, marginTop: 6 }}>Switching mode replaces time limit, respawn, health and weapon rules with that mode's defaults, and moves players onto that mode's teams. Venue (day/night) stays. Nothing is sent until {saveLabel.replace(' ▸', '')}.</div>
+                  <div style={{ font: F.chk(500, 11.5), color: T.micro, marginTop: 6 }}>Switching mode replaces time limit, respawn, health and weapon rules with that mode's defaults, and moves players onto that mode's teams. Venue (day/night) and volume stay. Nothing is sent until {saveLabel.replace(' ▸', '')}.</div>
                 </>
               ) : (
                 <span style={{ font: F.chk(600, 12), color: T.micro }}>{shown.mode.toUpperCase()} — mode list unavailable (server predates this UI?)</span>

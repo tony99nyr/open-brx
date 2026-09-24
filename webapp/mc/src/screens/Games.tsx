@@ -155,7 +155,7 @@ export function Games() {
     const r = await run(() => api.applyPreset(g.preset_id));
     if (r) await run(() => api.putConfig(venue));   // the venue is tonight's, never the saved game's
   });
-  const playStock = (m: ModeInfo) => guarded(m.mode, m.defaults.teams, async () => { await run(() => api.putConfig({ ...m.defaults, ...venue, config_id: cfg.config_id })); });
+  const playStock = (m: ModeInfo) => guarded(m.mode, m.defaults.teams, async () => { await run(() => api.putConfig({ ...m.defaults, ...venue, volume: null, config_id: cfg.config_id })); });   // K8: a stock game plays at the venue volume
   // COPY / MAKE MY OWN open the designer as an UNSAVED draft named after the source — nothing is written until SAVE (review #23)
   const copyOf = (g: SavedGame) => openDesigner({ game: g, copy: true });
   const remove = async (g: SavedGame) => { await run(() => api.deletePreset(g.preset_id)); setConfirmDel(null); await reload(); };
