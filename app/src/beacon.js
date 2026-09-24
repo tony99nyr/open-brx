@@ -142,3 +142,31 @@ export function stationView(e) {
     ...(e.taker ? { taker: e.taker } : {}), ...(Number.isFinite(e.median) ? { median: Math.round(e.median) } : {}),
     ...(Number.isFinite(e.ageMs) ? { ageMs: Math.round(e.ageMs) } : {}) };
 }
+
+/** Polish H1: the fewest ms between two restarts that change ONLY the advert's `value` byte (a claim's station id). */
+export const ADVERT_VALUE_MIN_MS = 1000;
+/**
+ * The player advert's restart gate (polish H1). It compares the WHOLE UUID, so a new game byte, player id, team or
+ * state always goes out, and it records a start only once the plugin says it worked:
+ *   due(want, now) -> 'start' | 'stop' | null     what to do this tick (`want` = the UUID, or null = advertise nothing)
+ *   started(uuid, now) / stopped()                 after the plugin call succeeded
+ *   failed(action)                                 after it threw: a failed start is retried, a failed stop too
+ * Only a change of the `value` byte alone is rate-limited, to ADVERT_VALUE_MIN_MS (Android throttles restarts).
+ */
+export class AdvertGate {
+  constructor({ minValueMs = ADVERT_VALUE_MIN_MS } = {}) { this.minValueMs = minValueMs; this.last = null; this.lastAt = 0; }
+  due(want, now) {
+    if (!want) return this.last ? 'stop' : null;
+    if (want === this.last) return null;
+    if (this.last && valueless(want) === valueless(this.last) && now - this.lastAt < this.minValueMs) return null;
+    return 'start';
+  }
+  started(uuid, now) { this.last = uuid; this.lastAt = now; }
+  stopped() { this.last = null; }
+  // A failed start leaves the radio in an unknown state (maybe still the previous advert): any start is due again, and
+  // so is a stop. A failed stop keeps `last`, so the stop is due again.
+  failed(action) { if (action === 'start') { this.last = UNKNOWN; this.lastAt = 0; } }
+}
+const UNKNOWN = '?';   // AdvertGate: the radio's state after a failed start
+/** The UUID with its `value` byte (byte 11) blanked. */
+function valueless(uuid) { const h = String(uuid).replace(/-/g, ''); return h.slice(0, 22) + '00' + h.slice(24); }

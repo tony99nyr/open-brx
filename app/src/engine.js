@@ -554,6 +554,7 @@ export const POWERUP_DWELL_MS = 1000;           // continuously in range this lo
 export const POWERUP_NO_ANSWER_MS = 3000;       // ready this long and the station still says available: STATION NOT ANSWERING
 export const POWERUP_READY_LATCH_MS = 10000;    // a `taker` advert still counts this long after the phone was last ready
 export const PU_ADVERT_STALE_MS = 8000;     // an advert older than this says nothing about the item
+export const OVERSHIELD_POOL_QUIET_MS = 300;   // polish M3: the absolute `$LIFE` waits this long after any `$HIR`/`$HP`, so it cannot undo a hit in flight
 export const OVERSHIELD_ECHO_MS = 1500;     // a pre-grant `$HP` still in flight must not read as the overshield breaking
 /** The spawn index at `elapsedMs` on the match clock (0 = the first spawn at `first_at_s`), or -1 before the first. PURE. */
 export function puSpawnIndex(item, elapsedMs) {
@@ -960,8 +961,8 @@ export class Engine {
         // kit screen that lets them browse/ready while MC still thinks they are parked.
         standby: this.standby,
         // A56: an app restart mid-match must still end a held item (its death / empty write) and keep the overshield out of
-        // the S29 refill's way; `granted` keeps a station's taker advert from granting twice across the restart.
-        pu: this._puHeld || this._overshield || Object.keys(this._puGranted).length ? { held: this._puHeld, overshield: this._overshield, granted: this._puGranted, seen: this._puSeen } : null,
+        // the S29 refill's way.
+        pu: this._puHeld || this._overshield ? { held: this._puHeld, overshield: this._overshield, seen: this._puSeen } : null,
       }));
     } catch (_) { /* ignore */ }
   }
@@ -979,7 +980,7 @@ export class Engine {
         catalog: s.catalog || null, policy: s.policy || null, game: s.game || null, briefSeen: !!s.briefSeen,
         probeSent: !!s.probeSent, standby: !!s.standby,
         gunLocked: s.gunLocked && s.gunLocked.match_id === s.matchId && s.phase === 'live' ? s.gunLocked : null });
-      if (s.pu && typeof s.pu === 'object') { this._puHeld = s.pu.held || null; this._overshield = s.pu.overshield || null; this._puGranted = s.pu.granted || {}; this._puSeen = s.pu.seen || {}; }   // A56
+      if (s.pu && typeof s.pu === 'object') { this._puHeld = s.pu.held || null; this._overshield = s.pu.overshield || null; this._puSeen = s.pu.seen || {}; }   // A56
       // Phase is re-derived when the gun reconnects (resumeSchedule); until then we are idle.
       this._pendingPhase = s.phase;
     } catch (_) { /* ignore */ }
@@ -4746,7 +4747,7 @@ export class Engine {
     this._overshield = null;    // {station, base, amount, name, color, at}: the shield at the grant is `base`
     this._puClaim = null;       // {station, since, readyAt}: standing in range of a station whose item is there
     this._puReadyFor = null;    // {station, at}: the last station this phone was claim_ready for (the grant needs it)
-    this._puGranted = {};       // station id -> true once granted, until that station advertises available again
+    this._puPoolAt = 0;         // now() of the last `$HP`: the overshield's absolute set waits OVERSHIELD_POOL_QUIET_MS past it
     this._puAdvert = {};        // station id -> {state, value, taker, at}: the station's own last advert
     this._puSeen = {};          // station id -> the last spawn index the announcer has dealt with
     this._puQueue = [];         // announcements that landed together, one card at a time
@@ -4831,6 +4832,9 @@ export class Engine {
   _puClaimTick(now) {
     const items = this._puItems(); if (!items) { this._puClaim = null; return; }
     const ok = this.phase === 'live' && this.alive && this.bleUp && !this.resync && !this.reconciling && !this.gunLocked && !this.tutorial;
+    // Polish M2: a STUNNED gun is disarmed and `_stunRestore` rewrites its ammo, which would erase a weapon grant. The claim
+    // is not dropped: the ready latch is kept warm, so the station's answer is taken the moment the stun ends.
+    if (ok && this.stunned) { if (this._puReadyFor) this._puReadyFor.at = now; return; }
     if (!ok) { this._puClaim = null; this._puReadyFor = null; return; }
     this._puTakerCheck(items, now);
     const st = this._puStation(items);
@@ -4844,17 +4848,24 @@ export class Engine {
     if (cl.readyAt == null && now - cl.since >= POWERUP_DWELL_MS) { cl.readyAt = now; this.log(`powerup: claim ready at station ${st.id}`, 'li'); }
     if (cl.readyAt != null) this._puReadyFor = { station: st.id, at: now };
   }
+  /** Polish M3: the overshield is an ABSOLUTE `$LIFE` set, so it must not land on pools that are still moving: an unechoed
+   *  poison tick (`_dotEcho`), a `$HIR` or `$HP` in the last OVERSHIELD_POOL_QUIET_MS, or a gun already at 0 health. */
+  _puPoolsMoving(now) {
+    if (this._dotEcho || this.hp <= 0) return true;
+    if (this.latch && now - this.latch.at < OVERSHIELD_POOL_QUIET_MS) return true;
+    return now - this._puPoolAt < OVERSHIELD_POOL_QUIET_MS;
+  }
   /** The grant happens only when a station's advert names THIS player as `taker` and this phone was claim_ready for it. */
   _puTakerCheck(items, now) {
     const me = this.player ? this.player.player_num : null;
     for (const id of Object.keys(items)) {
       const a = this._puAdvert[id]; if (!a || now - a.at > PU_ADVERT_STALE_MS) continue;
-      if (a.state === 1) { delete this._puGranted[id]; continue; }
-      if (a.state !== 0 || !a.taker || a.taker !== me || this._puGranted[id]) continue;
-      const r = this._puReadyFor;
+      if (a.state !== 0 || !a.taker || a.taker !== me) continue;
+      const r = this._puReadyFor;   // cleared by the grant: one ready claim, one grant
       if (!r || String(r.station) !== String(id) || now - r.at > POWERUP_READY_LATCH_MS) continue;
-      this._puGranted[id] = true; this._puReadyFor = null; this._puClaim = null;
       const item = items[id];
+      if (item.kind === 'overshield' && this._puPoolsMoving(now)) continue;   // polish M3: retried on the next tick, the latch still warm
+      this._puReadyFor = null; this._puClaim = null;
       const granted = item.kind === 'weapon' ? this._puGrantWeapon(+id, item, now) : this._puGrantShield(+id, item, now);
       if (!granted) continue;
       this.emitFact({ type: 'pickup', match_id: this.matchId, station_id: +id, item_kind: item.kind, ...(item.kind === 'weapon' ? { weapon_id: item.weapon_id } : {}) });
@@ -5607,6 +5618,7 @@ export class Engine {
     const movedPool = hp !== this._prevHp ? 'health' : armor !== this._prevArmor ? 'armor' : shield !== this._prevShield ? 'shield' : null;
     this.hp = hp; this.armor = armor; this.shield = shield;
     this._puShieldFrame(shield);   // A56: the overshield ends when the shield is back to where it started
+    this._puPoolAt = this.now();   // A56 polish M3: the overshield's absolute set waits for the pools to settle
     const dmg = Math.max(0, before - (hp + armor + shield));
     if (dmg > 0) this._actSeq++;   // pl4: nor past a hit
     // S16: the `$HP` that answers our own poison tick is the TICK, not a hit -- no `hit_taken` fact (MC would score a

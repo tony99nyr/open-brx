@@ -113,3 +113,31 @@ test('the player advert while claiming: the claim bits, the station id in value,
   assert.deepEqual(playerClaimAdvert({ station: 4, claiming: true, ready: false }), { bits: 16, value: 4, mode: 'lowLatency' });
   assert.deepEqual(playerClaimAdvert({ station: 4, claiming: true, ready: true }), { bits: 48, value: 4, mode: 'lowLatency' });
 });
+
+test('M1: MC cannot re-open the spawn the station already gave away (its taken report was lost)', () => {
+  const s = new PowerupStation({ id: 4, item: ROCKETS });
+  s.update({ available: true, next_spawn_in_ms: 100_000 }, 0);   // next spawn instant: 100 000
+  s.tick([player(7, READY, 4)], 1000);
+  assert.equal(s.taker, 7);
+  // MC never heard `taken`: a reconnect re-send says available, with the SAME next spawn instant
+  s.update({ available: true, next_spawn_in_ms: 89_000 }, 11_000);
+  assert.equal(s.available, false, 'refused: that spawn was awarded');
+  assert.equal(s.taker, 7);
+  // a LATER spawn instant (about one interval on) is a new item: accepted
+  s.update({ available: true, next_spawn_in_ms: 119_000 }, 101_000);
+  assert.equal(s.available, true); assert.equal(s.taker, 0);
+});
+
+test('M1: an unsent `taken` report waits in the queue and goes out on re-bind', () => {
+  const s = new PowerupStation({ id: 4, item: ROCKETS });
+  s.update({ available: true, next_spawn_in_ms: 100_000 }, 0);
+  s.tick([player(7, READY, 4)], 1000);
+  assert.deepEqual(s.unsent, [{ id: 4, action: 'taken', player_num: 7, t: 1000 }]);
+  let sent = [];
+  assert.equal(s.drain(() => false), 0, 'MC not bound: nothing leaves the queue');
+  assert.equal(s.unsent.length, 1);
+  assert.equal(s.drain(b => { sent.push(b); return true; }), 1);
+  assert.deepEqual(sent, [{ id: 4, action: 'taken', player_num: 7, t: 1000 }]);
+  assert.deepEqual(s.unsent, []);
+  assert.deepEqual(new PowerupStation({ id: 4, item: ROCKETS }).restore({ ...s.snapshot(), unsent: [{ id: 4, action: 'taken', player_num: 7, t: 1 }] }).unsent.length, 1, 'the queue survives a station restart');
+});
