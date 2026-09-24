@@ -32,7 +32,8 @@ static const int IR_RX_PIN = 42;     // onboard 38 kHz receiver; RMT only, and t
 static const int IR_TX_ONBOARD = 46; // onboard IR LED
 // The Grove port is G9 and G10. M5Unified maps it as SCL = G10, SDA = G9, and M5's colour code puts
 // SCL on the yellow wire, which is where a Seeed Grove module's SIG (pin 1) sits: so G10 first. M5's
-// StickS3 web page reads the other way, hence both are accepted and the bench settles it.
+// StickS3 pinout (docs.m5stack.com/en/core/StickS3) puts the yellow wire on G9/SDA instead, so both are accepted
+// and the bench settles it (a Grove emitter that stays dark on `TXPIN 10` wants `TXPIN 9`).
 static const int IR_TX_GROVE = 10;
 static const int IR_TX_GROVE_ALT = 9;
 static const uint32_t RMT_TICK_HZ = 1000000;  // 1 tick = 1 us, so durations print as microseconds
@@ -42,7 +43,7 @@ static const uint16_t RX_IDLE_US = 20000;     // a frame ends after this much si
 // above 3 makes rmt_receive fail with INVALID_ARG and the receiver never arms. Real glitch
 // handling is fold_glitches() in brx_ir.h (MARK_MIN_US); this only strips sub-microsecond noise.
 static const uint8_t RX_FILTER_US = 3;
-static const size_t RX_SYMBOLS = 96;          // a 25-bit word is 26 symbols
+static const size_t RX_SYMBOLS = 128;         // a 25-bit word is 26 symbols; 128 = M5's own StickS3 IR example (mem_block_symbols)
 
 // ---- persisted settings ---------------------------------------------------------------------- //
 Preferences prefs;
@@ -105,7 +106,7 @@ static void armRx() {
 }
 
 static bool initRx() {
-  if (!rmtInit(IR_RX_PIN, RMT_RX_MODE, RMT_MEM_NUM_BLOCKS_2, RMT_TICK_HZ)) return false;
+  if (!rmtInit(IR_RX_PIN, RMT_RX_MODE, RMT_MEM_NUM_BLOCKS_3, RMT_TICK_HZ)) return false;   // 3 x 48 = 144 >= RX_SYMBOLS
   rmtSetRxMinThreshold(IR_RX_PIN, RX_FILTER_US);
   rmtSetRxMaxThreshold(IR_RX_PIN, RX_IDLE_US);
   armRx();
@@ -203,23 +204,69 @@ static bool initTx(int pin) {
   return true;
 }
 
-static void sendFrame(const String& bits) {
-  if (txPinActive < 0 && !initTx(settings.txpin)) { Serial.println("ERR tx init"); return; }
-  pollRx();  // a word that finished before this transmit must not be thrown away with our echo
+// One BRX word as RMT TX symbols (mark = carrier on, space = off), shared by sendFrame() and selfTest().
+static size_t buildSymbols(const String& bits, rmt_data_t* sym, size_t cap) {
   std::vector<uint32_t> p = to_pulses(std::string(bits.c_str()));
-  static rmt_data_t sym[64];
   size_t n = 0;
-  for (size_t i = 0; i + 1 < p.size() && n < 64; i += 2) {
+  for (size_t i = 0; i + 1 < p.size() && n < cap; i += 2) {
     sym[n].level0 = 1; sym[n].duration0 = p[i];
     sym[n].level1 = 0; sym[n].duration1 = p[i + 1];
     n++;
   }
+  return n;
+}
+
+// SELFTEST (F314 diagnostic): the current TX pin into the Stick's own receiver (G46, the onboard LED, sits a few
+// millimetres from it; a Grove emitter on 9/10 needs aiming). It arms a fresh
+// read, sends one word, waits for the burst, prints it RAW with its decode, and says PASS when the decode is the word
+// sent. It never feeds ownership and never counts as a heard word. BENCH TO CONFIRM what a PASS means: M5 asks for
+// 30 cm between sender and receiver, so a FAIL here may be overdrive, not a fault; aim a mirror or card for a bounce.
+static void selfTest(const String& bits) {
+  if (txPinActive < 0 && !initTx(settings.txpin)) { Serial.println("SELFTEST FAIL tx init"); return; }
+  pollRx();  // a real word that finished just before this must be read, not discarded with the rebuilt channel
+  rmtDeinit(IR_RX_PIN);
+  if (!initRx()) { Serial.println("SELFTEST FAIL rx init"); return; }
+  static rmt_data_t sym[64];
+  size_t n = buildSymbols(bits, sym, 64);
+  if (!rmtWrite(txPinActive, sym, n, 200)) {
+    Serial.println("SELFTEST FAIL tx write");
+    rmtDeinit(IR_RX_PIN);
+    if (!initRx()) Serial.println("ERR rx re-init after selftest");
+    return;
+  }
+  uint32_t t0 = millis();
+  while (!rmtReceiveCompleted(IR_RX_PIN) && millis() - t0 < 150) delay(1);
+  if (!rmtReceiveCompleted(IR_RX_PIN)) {
+    Serial.printf("SELFTEST FAIL txpin=%d no burst within 150 ms of the transmit\n", txPinActive);
+  } else {
+    static std::vector<uint32_t> d;
+    size_t got = rxCount;
+    symbolsToDurations(rxBuf, got, d);
+    Decoded r = decode(d);
+    bool raw = rawEnabled;
+    rawEnabled = true;  // the point of a self-test is to see what arrived
+    printFrame(d, r, got >= RX_SYMBOLS);
+    rawEnabled = raw;
+    bool pass = r.complete && r.bits == bits.c_str();
+    // the pin says what was tested: G46 is the onboard LED; 9/10 is a Grove emitter, where aim and distance decide
+    Serial.printf("SELFTEST %s txpin=%d sent=%s got=%s\n", pass ? "PASS" : "FAIL", txPinActive, bits.c_str(), r.bits.c_str());
+  }
+  rmtDeinit(IR_RX_PIN);
+  if (!initRx()) Serial.println("ERR rx re-init after selftest");
+}
+
+static void sendFrame(const String& bits) {
+  if (txPinActive < 0 && !initTx(settings.txpin)) { Serial.println("ERR tx init"); return; }
+  pollRx();  // a word that finished before this transmit must not be thrown away with our echo
+  static rmt_data_t sym[64];
+  size_t n = buildSymbols(bits, sym, 64);
   if (!rmtWrite(txPinActive, sym, n, 200)) Serial.println("ERR tx write");  // blocking; ~40 ms per word
   lastTxDoneMs = millis();
   lastTxBits = bits;
   // Whatever the receiver caught of our own word is thrown away. A bare re-arm here failed on the first bring-up
   // (2026-09-23): the driver logged `rmt_receive(401): channel not in enable state` after every transmit, because the
   // echo left a reception in flight. Rebuild the RX channel instead, so every transmit ends with a clean, armed read.
+  // This is an open ESP-IDF issue on the S3 (github.com/espressif/esp-idf/issues/17811), so it is worked around here.
   delay(2);
   rmtDeinit(IR_RX_PIN);
   if (!initRx()) Serial.println("ERR rx re-init after tx");
@@ -365,6 +412,12 @@ static void handleLine(String line) {
   if (!line.length()) return;
   if (line == "PING") { Serial.println("PONG"); return; }
   if (line == "STATUS") { printStatus(); return; }
+  if (line == "SELFTEST" || line.startsWith("SELFTEST ")) {
+    String bits = line.length() > 8 ? line.substring(9) : String(encode(point.beacon_word()).c_str());
+    bits.trim();
+    selfTest(bits);
+    return;
+  }
   if (line == "RESET") { point.reset(); Serial.println("RESET neutral"); displayDirty = true; return; }
   if (line.startsWith("TX ")) {
     String bits = line.substring(3); bits.trim();
@@ -463,7 +516,7 @@ void setup() {
   Serial.println("# BRX StickS3 station ready (RX G42 via RMT, speaker off).");
   Serial.printf("# mode=%s id=%u game=%u txpin=%u\n", point.mode == Mode::HILL ? "HILL" : "BRIDGE", settings.id,
                 settings.game, settings.txpin);
-  Serial.println("# Commands: TX <bits> | TXN <n> <bits> | AUTO <bits>|OFF | PING | STATUS | MODE BRIDGE|HILL | ID <n> | GAME <n> | TXPIN 46|9|10 | RESET | r s c");
+  Serial.println("# Commands: SELFTEST [bits] | TX <bits> | TXN <n> <bits> | AUTO <bits>|OFF | PING | STATUS | MODE BRIDGE|HILL | ID <n> | GAME <n> | TXPIN 46|9|10 | RESET | r s c");
   if (!initRx()) Serial.println("ERR rx init (RMT)");
   if (!initTx(settings.txpin)) Serial.println("ERR tx init (RMT)");
   initBle();
