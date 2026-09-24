@@ -153,7 +153,7 @@ export class Presence {
  * (`hardware/m5sticks3/station_link.h` STICK_DEFAULT_THRESHOLD_DBM); this table is the record both sides follow.
  * Same shape as the powerup claim's per-platform default (docs/spec/powerups.md "Threshold").
  */
-export const RESPAWN_RSSI_DBM = Object.freeze({ phone: -66, sticks3: -60 });
+export const RESPAWN_RSSI_DBM = Object.freeze({ phone: -70, sticks3: -57 });   // Tony 2026-09-24, walked at 3-5 m
 /** Every other kind on a phone station keeps the 2026-09-04 bench value (about 10 ft at high TX). */
 export const STATION_THRESHOLD_DBM = -74;
 /** A phone station's own default for `kind` (utility.js, when `settings.threshold` is 0). */

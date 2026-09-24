@@ -502,7 +502,7 @@ def is_station_kind(value: object) -> TypeGuard[StationKind]:
     return value in STATION_KINDS
 # F345: a phone station's own threshold defaults (app/src/beacon.js RESPAWN_RSSI_DBM.phone, STATION_THRESHOLD_DBM),
 # sent explicitly instead of 0 to a phone app older than PHONE_THRESHOLD_ZERO_APP (which clamps 0 to -30 dBm).
-PHONE_RESPAWN_THRESHOLD_DBM = -66
+PHONE_RESPAWN_THRESHOLD_DBM = -70
 PHONE_STATION_THRESHOLD_DBM = -74
 PHONE_THRESHOLD_ZERO_APP = (0, 4, 12)
 STATION_TEAM_ANY = 255        # advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral

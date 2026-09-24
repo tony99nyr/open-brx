@@ -247,7 +247,7 @@ def test_threshold_0_goes_out_explicit_to_a_phone_app_that_clamps_it():
     revive is possible. Such a phone (or one whose version MC cannot parse) gets the explicit old value: -66 for a
     respawn station (the new phone default), -74 for any other kind. 0.4.12 and later, and a StickS3, get 0."""
     s = _sess()
-    for nid, ver, kind, team, sid, want in (("util-old", "0.4.11+f366156e", "respawn", "blue", 3, -66),
+    for nid, ver, kind, team, sid, want in (("util-old", "0.4.11+f366156e", "respawn", "blue", 3, -70),
                                             ("util-unk", "utility", "control", "any", 4, -74),
                                             ("util-new", "0.4.12+abc", "respawn", "blue", 5, 0)):
         s.net.simulate_utility_hello(nid, app_ver=ver)
