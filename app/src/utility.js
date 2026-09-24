@@ -13,6 +13,8 @@ import { makeEnvelope, encode } from './transport/envelope.js';   // stage harne
 import { APP_VER } from './build.js';   // A29: the REAL build, baked by scripts/build.mjs
 import jsQR from 'jsqr';
 import { parseMcJoin } from './mcurl.js';
+import { startUtilitySweep, resolveTypedMc } from './transport/utility-join.js';   // bench 2026-09-24: the LAN sweep fallback + typed-address parsing
+import { makeWsFactory } from './transport/netsocket.js';   // the sweep probes the way app.js does (F311: the Wi-Fi network on Android)
 
 // A29 (2026-09-12): "utility phones report the same way" -- the same "<version>+<sha>[-dirty]" a player
 // node sends, so MC's muster rollup can compare a station phone with the field. It was 'utility-0.2', a
@@ -179,7 +181,11 @@ function connectMc(url, { wsFactory, trusted = true, pub, secret } = {}) {
   if (!url) return;
   if (trusted) { settings.mc = url; settings.mc_auto = false; save(); }
   if (transport) { try { transport.close(); } catch (_) { /* ignore */ } }
-  transport = new Transport({ node: { node_type: 'utility', app_ver: UTIL_VER }, gun: null, keyPrefix: 'brxu', ...(wsFactory ? { wsFactory } : {}) });   // its own node id: never the HUD's
+  // Block 9: the same Wi-Fi-bound socket the HUD dials with (F311, BrxNet on Android), so a no-internet game
+  // Wi-Fi the sweep just found MC on is the network the connect uses too. The stage passes its own factory.
+  let ws = wsFactory;
+  if (!ws) { try { ws = makeWsFactory(); } catch (_) { ws = undefined; } }
+  transport = new Transport({ node: { node_type: 'utility', app_ver: UTIL_VER }, gun: null, keyPrefix: 'brxu', ...(ws ? { wsFactory: ws } : {}) });   // its own node id: never the HUD's
   transport.armedOrLive = true;                            // keep dialling — at muster the operator is waiting on this
   transport.setStatusProvider(utilityStatusBody);
   // A41: the operator's MC-side release for a phone stuck in utility mode -- makes the ⓘ gesture's own
@@ -191,7 +197,9 @@ function connectMc(url, { wsFactory, trusted = true, pub, secret } = {}) {
     else if (m.kind === 'station_update') applyStationUpdate(m.body);
     else if (m.kind === 'control' && m.body && m.body.cmd === 'release_utility') { log('Mission Control released this phone back to HUD', 'lk'); exitToHud(); }
   });
-  transport.onState(s => { mcState = s; if (s === 'bound' && flushTaken()) savePowerup(); log(`MC ${s}${transport.rejected ? ' — ' + transport.rejected.reason : ''}`, s === 'bound' ? 'lk' : 'li'); render(); });
+  transport.onState(s => { const was = mcState; mcState = s; if (s === 'bound' && flushTaken()) savePowerup();
+    // a discovered MC that drops (a restart on a new IP) is searched for again, not left to mDNS alone
+    if (was === 'bound' && s !== 'bound' && settings.mc_auto && isNative()) setTimeout(startUtilityLanSweep, 0); log(`MC ${s}${transport.rejected ? ' — ' + transport.rejected.reason : ''}`, s === 'bound' ? 'lk' : 'li'); render(); });
   transport.connect({ url, trusted, pub, secret }).then(() => {
     // An automatically discovered endpoint becomes the remembered fallback only after MC proves itself
     // with a welcome. Until then another mDNS result may replace a stale or non-MC websocket.
@@ -201,8 +209,11 @@ function connectMc(url, { wsFactory, trusted = true, pub, secret } = {}) {
 // Utility mode is an explicit operator choice, so it may auto-join the MC service on this LAN. A utility
 // phone has no player takeover key and cannot silently change a player's binding; discovery therefore skips
 // the player's tap-to-join rule. A typed `?mc=`/remembered URL still wins and remains the offline fallback.
+let _sweeper = null;
 function startUtilityDiscovery() {
-  if (!plugins.zeroconf || !isNative() || (mcUrl() && !settings.mc_auto)) return;
+  if (!isNative() || (mcUrl() && !settings.mc_auto)) return;
+  startUtilityLanSweep();
+  if (!plugins.zeroconf) return;
   try {
     plugins.zeroconf.watch({ type: '_openbrx._tcp.', domain: 'local.' }, res => {
       if (mcState === 'bound' || !res || (res.action !== 'resolved' && res.action !== 'added')) return;
@@ -215,6 +226,29 @@ function startUtilityDiscovery() {
       if (!transport || transport.url !== url) connectMc(url, { trusted: false });
     }).catch(e => log('MC discovery: ' + (e && e.message || e)));
   } catch (e) { log('MC discovery: ' + (e && e.message || e)); }
+}
+// Bench 2026-09-24: mDNS alone never found an MC in WSL behind a Windows portproxy (its mDNS never reaches
+// the LAN); the player screen's sweep did. Same sweep here (transport/utility-join.js), same guard as above:
+// only while unbound and with no operator-named URL. A hit auto-joins untrusted, exactly like an mDNS hit.
+function startUtilityLanSweep() {
+  if (_sweeper && !_sweeper.stopped) return;
+  let wsFactory; try { wsFactory = makeWsFactory(); } catch (e) { log('MC sweep: ' + (e && e.message || e)); return; }
+  _sweeper = startUtilitySweep({
+    isBound: () => mcState === 'bound',
+    operatorUrl: () => !!(mcUrl() && !settings.mc_auto),
+    // the mDNS path's own rule, and never over a connect already in flight (an mDNS hit on another address)
+    connect: (url, opts) => { if (mcState === 'connecting' || mcState === 'open') return; if (!transport || transport.url !== url) connectMc(url, opts); },
+    log, wsFactory,
+    isOnline: () => !(typeof navigator !== 'undefined' && navigator.onLine === false),
+  });
+}
+/** The typed-address buttons: the HUD's parse (join code → url + pub + secret), and a pasted console address
+ *  (`http://<host>:8765/`) dials MC's node port rather than being saved and redialled as typed. */
+function connectTypedMc(text) {
+  const r = resolveTypedMc(text);
+  if (!r) return;
+  if (r.note) log(r.note, 'li');
+  connectMc(r.url, r.join ? { trusted: true, pub: r.pub, secret: r.secret } : { trusted: true });   // a bare address keeps the held pub/secret, as before
 }
 async function scanUtilityQr() {
   if (!navigator.mediaDevices?.getUserMedia) { log('QR scan unavailable — enter the MC address below', 'le'); return; }
@@ -601,8 +635,8 @@ function renderControl(isControl, v, heldBy) {
 
 function wire() {
   $('btnStart').onclick = () => (advertising ? stopAdvert() : startAdvert());
-  $('btnMc').onclick = () => connectMc($('mcUrl').value.trim());
-  if ($('btnMcMain')) $('btnMcMain').onclick = () => connectMc($('mcUrlMain').value.trim());
+  $('btnMc').onclick = () => connectTypedMc($('mcUrl').value);
+  if ($('btnMcMain')) $('btnMcMain').onclick = () => connectTypedMc($('mcUrlMain').value);
   if ($('btnQrMain')) $('btnQrMain').onclick = () => scanUtilityQr();
   $('btnHud').onclick = exitToHud;
   for (const b of document.querySelectorAll('[data-kind]')) b.onclick = () => { settings.kind = b.dataset.kind; save(); restartIfLive(); };

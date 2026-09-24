@@ -6,7 +6,7 @@
 // every snapshot as `stations`): what was ASSIGNED, what the phone was last ARMED with, what the phone
 // itself REPORTS, and the attention flags the server derives from the three disagreeing. Until
 // 2026-09-11 none of this existed, so no station was ever armed in the field.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { PowerupPreset, StationItem, StationKind, StationView } from '../api/types';
 import { STATION_KINDS } from '../api/types';
 import { useStore } from '../store';
@@ -65,6 +65,7 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
     let n = 1; while (used.has(n)) n += 1; return n; };
   const [id, setId] = useState<number>(() => a?.id ?? ((s.report.station_id ?? 0) >= 1 ? s.report.station_id! : freeId()));
   const [applyErr, setApplyErr] = useState<string | null>(null);   // a refused write, on THIS card (the header may be off-screen)
+  useEffect(() => { setApplyErr(null); }, [s.armed?.at]);          // armed since (here or by a server re-arm): the refusal is stale
   const [threshold, setThreshold] = useState<number>(a?.threshold ?? s.report.threshold ?? -74);
   const [busy, setBusy] = useState(false);
   const [released, setReleased] = useState<boolean | null>(null);   // A41: last RELEASE result, this card only
