@@ -473,6 +473,8 @@ export function startDemo({ engine, log }) {
       'live-hit':          [...live, [2300, () => { ev.hit(); ev.hit(); ev.hit(); }]],
       // S57: one IR callout word from a victim's gun, as this gun reports it ($HIR, protocol 15; see docs/ir-callouts.md)
       'live-callout-kill':     [...live, [2300, () => engine.feedFrame(`$HIR,4,15,7,3,${21 + foe.tid},0,0,*`)]],    // DOWN_BY naming me: KILL CONFIRMED
+      // S57 names (Tony 2026-09-24): the victim's phone sends DOWN_BY (me) and, 250 ms later, DOWN (VIPER): the card names VIPER
+      'live-callout-named':    [...live, [2300, () => engine.feedFrame(`$HIR,4,15,7,3,${21 + foe.tid},0,0,*`)], [2550, () => engine.feedFrame(`$HIR,4,15,19,3,${25 + foe.tid},0,0,*`)]],
       'live-callout-enemy':    [...live, [2300, () => engine.feedFrame(`$HIR,4,15,19,3,${25 + foe.tid},0,0,*`)]],   // DOWN naming VIPER: ENEMY DOWN
       'live-callout-teammate': [[0, () => ev.addMate()], ...live, [2300, () => engine.feedFrame(`$HIR,4,15,23,3,${25 + team.tid},0,0,*`)]],  // DOWN naming MAVERICK (my team): TEAMMATE DOWN (QA-05: a teammate the roster can name)
       'live-lowhp':        [...live, [2300, 'lowHp']],

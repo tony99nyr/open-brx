@@ -52,10 +52,16 @@ function harness({ mode = 'tdm', calloutTeam = 0, teamFlip, teams = [{ team_id: 
 
 // ---------- sender ----------
 
-test('S57 sender: a known killer sends DOWN_BY naming them, magnitude = 21 + my own team', () => {
+test('S57 sender: a known killer sends DOWN_BY naming them, then DOWN naming me (Tony 2026-09-24: the victim\'s name)', () => {
   const h = harness(); h.live();
   h.lethal(19, 2);   // VIPER kills me
-  assert.deepEqual(h.irtx(), [`$IRTX,100,15,19,0,${IR_CALLOUT.DOWN_BY + 1},0,0,100,1,,0,*`]);
+  assert.deepEqual(h.irtx(), [`$IRTX,100,15,19,0,${IR_CALLOUT.DOWN_BY + 1},0,0,100,1,,0,*`, `$IRTX,100,15,7,0,${IR_CALLOUT.DOWN + 1},0,0,100,1,,0,*`]);
+});
+
+test('S57 sender: the victim\'s DOWN word waits 250 ms (the headset\'s single-shot guard is 199 ms)', () => {
+  const h = harness(); const waits = []; h.eng.delay = (ms, fn) => { waits.push(ms); fn(); }; h.live();
+  h.lethal(19, 2);
+  assert.ok(waits.includes(250), 'the second word is delayed 250 ms: ' + JSON.stringify(waits));
 });
 
 test('S57 sender: an unknown killer sends DOWN naming ME, magnitude = 25 + my own team', () => {
@@ -71,13 +77,13 @@ test('S57 sender: a DOT death (S16) sends DOWN_BY for the poisoner, same as any 
   h.eng._dotKill = { at: h.now(), num: 33, team: 2 };
   h.eng._death(false);
   assert.equal(h.eng.killedBy.dot, true, 'setup: this really is a DOT death');
-  assert.deepEqual(h.irtx(), [`$IRTX,100,15,33,0,${IR_CALLOUT.DOWN_BY + 1},0,0,100,1,,0,*`]);
+  assert.deepEqual(h.irtx(), [`$IRTX,100,15,33,0,${IR_CALLOUT.DOWN_BY + 1},0,0,100,1,,0,*`, `$IRTX,100,15,7,0,${IR_CALLOUT.DOWN + 1},0,0,100,1,,0,*`]);
 });
 
 test('S57 sender: callout_team null falls back to my own team, not an unused id', () => {
   const h = harness({ calloutTeam: null }); h.live();
   h.lethal(19, 2);
-  assert.deepEqual(h.irtx(), [`$IRTX,100,15,19,1,${IR_CALLOUT.DOWN_BY + 1},0,0,100,1,,0,*`]);   // team field = my own tid (1), not 0
+  assert.deepEqual(h.irtx(), [`$IRTX,100,15,19,1,${IR_CALLOUT.DOWN_BY + 1},0,0,100,1,,0,*`, `$IRTX,100,15,7,1,${IR_CALLOUT.DOWN + 1},0,0,100,1,,0,*`]);   // team field = my own tid (1), not 0, on both words
 });
 
 test('S57 sender: nothing is sent with the link down', () => {
@@ -277,4 +283,54 @@ test('QA-05: a hill changing hands sets state().hillCallout on the same decision
   h.adv(3100);
   assert.equal(h.eng.state().hillCallout, null, 'cleared after the callout window, like state().callout');
   assert.equal(h.eng.score, null, 'no score, no rule: the hill tally is untouched by this field');
+});
+
+// ---------- S57 names (Tony 2026-09-24): DOWN_BY then DOWN from the victim, paired by victim team ----------
+
+test('S57 names: on the killer\'s phone the paired DOWN adds the victim\'s name, with no ENEMY DOWN and one kill confirm', () => {
+  const h = harness(); h.live();
+  h.irWord(7, IR_CALLOUT.DOWN_BY + 2);          // I killed someone on team 2
+  const at = h.now(); h.adv(250);
+  h.irWord(19, IR_CALLOUT.DOWN + 2);            // ...and it was VIPER
+  const co = h.eng.state().callout;
+  assert.equal(co.kind, 'kill_confirmed'); assert.equal(co.victim, 'VIPER'); assert.equal(co.at, at, 'the same callout, named in place');
+  assert.equal(h.cues('VAA').length, 1, 'one kill cue'); assert.equal(h.cues('VB8').length, 0, 'no ENEMY DOWN on top');
+  assert.equal(h.eng._irKillOpen.length, 1, 'exactly one IR kill confirm waits for MC\'s twin');
+});
+
+test('S57 names: a bystander gets one ENEMY DOWN naming the victim and the killer', () => {
+  const h = harness(); h.live();
+  h.irWord(20, IR_CALLOUT.DOWN_BY + 2);         // GHOST killed someone on team 2
+  h.adv(250); h.irWord(19, IR_CALLOUT.DOWN + 2); // VIPER
+  const co = h.eng.state().callout;
+  assert.equal(co.kind, 'enemy_down'); assert.equal(co.victim, 'VIPER'); assert.equal(co.by, 'GHOST');
+  assert.equal(h.cues('VB8').length, 1, 'one ENEMY DOWN, not two');
+});
+
+test('S57 names: two victims of one team within a second pair oldest first', () => {
+  const h = harness(); h.live();
+  h.irWord(20, IR_CALLOUT.DOWN_BY + 2); h.adv(100);
+  h.irWord(33, IR_CALLOUT.DOWN_BY + 2); const second = h.now(); h.adv(150);
+  h.irWord(19, IR_CALLOUT.DOWN + 2);            // pairs with the first DOWN_BY, which is no longer the shown callout
+  assert.equal(h.eng.state().callout.at, second); assert.equal(h.eng.state().callout.victim, undefined, 'the newer callout is not misnamed');
+  h.adv(100); h.irWord(21, IR_CALLOUT.DOWN + 2);   // pairs with the second
+  assert.equal(h.eng.state().callout.victim, h.eng.nameOf(21));
+  assert.equal(h.cues('VB8').length, 2, 'two deaths, two ENEMY DOWNs, no extra for the DOWN words');
+});
+
+test('S57 names: a lone DOWN (its DOWN_BY lost) is still a named callout; a DOWN after the window is too', () => {
+  const h = harness(); h.live();
+  h.irWord(19, IR_CALLOUT.DOWN + 2);
+  assert.equal(h.eng.state().callout.name, 'VIPER'); assert.equal(h.cues('VB8').length, 1);
+  h.adv(3500);
+  h.irWord(20, IR_CALLOUT.DOWN_BY + 2); h.adv(1200);   // past CALLOUT_PAIR_MS: the DOWN_BY is dropped unpaired
+  h.irWord(21, IR_CALLOUT.DOWN + 2);
+  assert.equal(h.eng.state().callout.kind, 'enemy_down'); assert.equal(h.eng.state().callout.name, h.eng.nameOf(21));
+  assert.equal(h.cues('VB8').length, 3, 'the late DOWN is its own event');
+});
+
+test('S57 names: no second word for an unknown killer, a gun recovery or an infection flip', () => {
+  const h = harness(); h.live();
+  h.frame('$HP,0,0,0,*');                       // unknown killer: DOWN only, already naming me
+  assert.equal(h.irtx().length, 1);
 });
