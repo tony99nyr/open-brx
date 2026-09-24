@@ -156,6 +156,10 @@ const discoveredRow = d => { if (!d) return '';
 // Polish-loop pass 1+2: every join control that redials/drops the live MC link needs the armed/live
 // two-tap guard (`_click` below) — `onJoinDiscovered` (an address the player never typed) and
 // `onReconnectMc` (the same teardown, same button row) joined `onSetUrl`/`onScanQr` in pass 2.
+// QA-08 (2026-09-23): MC's refusal (`roster_full (4003)`) in words: `roster full`. The close code stays in the diag log.
+const refusalWords = r => r ? String(r).replace(/\s*\(\d+\)\s*$/, '').replace(/_/g, ' ').toLowerCase() : '';
+// QA-13: the old placeholder (ws://mission-control-ip:8766/ws) was cut off in the pre-join field.
+const MC_URL_HINT = 'ws://HOST-IP:8766/ws';
 const JOIN_GATED_ACTS = new Set(['onSetUrl', 'onScanQr', 'onJoinDiscovered', 'onReconnectMc']);
 const JOIN_ACT_VERB = { onScanQr: 'SCAN A NEW QR', onJoinDiscovered: 'JOIN THAT ADDRESS', onReconnectMc: 'RECONNECT', onSetUrl: 'RECONNECT' };
 // A10: human labels for catalog rows (never the raw $WEAP class id — design review round 3)
@@ -255,6 +259,8 @@ export class Hud {
     this.frame = root.querySelector('#frame'); this.hudEl = root.querySelector('#hud');
     this.overlay = root.querySelector('#overlay'); this.chips = root.querySelector('#chips');
     this.diag = root.querySelector('#diag'); this.info = root.querySelector('#info');
+    // QA-28 (2026-09-23): U+24D8 renders as an empty box where the font lacks it (headless Chromium did); draw it.
+    if (this.info && !this.info.querySelector('svg')) this.info.innerHTML = INFO_SVG;
     this.skin = root.querySelector('#skin');   // the day/night skin switch (a sibling of #hud, so it needs its own listener)
     if (this.skin) this.skin.addEventListener('click', e => this._click(e));
     this.sig = null; this.scan = []; this.link = {}; this.diagData = {}; this.mcUrl = '';
@@ -722,7 +728,8 @@ export class Hud {
 
   _lobby(st, mode) {
     const [nm, tail] = splitGun(st.gun);
-    const cs = esc(st.callsign || (mode === 'connected' ? 'LINKED' : 'OPERATOR'));
+    // QA-13 (2026-09-23): LINKED read as "joined" beside a CONNECTING… line. Before MC binds, the gun is set and nothing more.
+    const cs = esc(st.callsign || (mode === 'connected' ? (st.wsState === 'bound' ? 'LINKED' : 'GUN SET') : 'OPERATOR'));
     const team = st.teamName ? `<span class="chip"><span class="unskew">${esc(st.teamName)} SQUAD</span></span>` : '';
     const tw = this._tryoutShown(st) ? st.tutorialWeapon : null;
     // MC pushes a WeaponView here (it carries the ranked `bars`), which names the magazine `clip`;
@@ -753,6 +760,8 @@ export class Hud {
     const lead = (mode === 'kitted' || mode === 'lobby') && (refusal || st.kitLocked)
       ? `<div class="kitlock">${refusal ? esc(refusal.toUpperCase()) : 'THE HOST LOCKED KITS — you play what you had'}</div>` : '';
     let foot, status;
+    // QA-08 (2026-09-23): MC turned this phone away. A READY UP that MC will never hear is disabled; the note says why.
+    const refused = st.wsState === 'rejected' ? ' disabled aria-disabled="true"' : '';
     // F156/F135 (field 2026-09-12): the join controls now also live in the ⓘ panel (`_diagShell`), reachable
     // from every phase — same `#mcurl` id, so this copy steps aside rather than duplicate it while that
     // panel is open (`onSetUrl` reads the input by id; app.js is another lane, so there can only be one).
@@ -764,7 +773,7 @@ export class Hud {
         ? `<div class="note join">Connecting from the ⓘ panel, top right — it's already open.</div>`
         // Polish-loop pass 2: mDNS no longer auto-joins (app.js review pass 2 — a phone must never hand its
         // takeover key/join secret to whoever answers first), so "it connects by itself" was now FALSE.
-        : `${discoveredRow(this.discovered)}<div class="mcin"><input id="mcurl" value="${esc(this.mcUrl)}" placeholder="ws://mission-control-ip:8766/ws" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div><button class="qrbtn" data-act="onScanQr">▣ SCAN QR</button><div class="note join">On the same Wi-Fi it appears here: tap JOIN. Otherwise scan the QR or type its address.</div>`;
+        : `${discoveredRow(this.discovered)}<div class="mcin"><input id="mcurl" value="${esc(this.mcUrl)}" placeholder="${MC_URL_HINT}" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div><button class="qrbtn" data-act="onScanQr">▣ SCAN QR</button><div class="note join">Scan the host's QR, or type its address and tap CONNECT. On the same Wi-Fi the host can also show up here: tap JOIN.</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     } else if (mode === 'setup') {
       // §4.1: calm, not an error — the host hasn't picked the game yet
@@ -779,7 +788,7 @@ export class Hud {
       // only sets it once `setReady` clears the standby/phase/clock-sync guards, engine.js), so the
       // green treatment below tracks the same flag; `aria-pressed` says so explicitly, for a11y and so
       // a test can read the confirmed state without parsing a colour.
-      foot = `${lead}<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady" aria-pressed="${!!st.ready}"><span class="unskew">${st.ready ? 'READY ✓' : 'READY UP'}</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
+      foot = `${lead}<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady" aria-pressed="${!!st.ready}"${refused}><span class="unskew">${st.ready ? 'READY ✓' : 'READY UP'}</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>${st.game ? '<button class="briefbtn" data-act="onBriefing"><span class="unskew">▤ BRIEFING</span></button>' : ''}`;
     } else if (mode === 'over') {
       // F117: this is the one control gating the next match and it read as a status line — declarative label,
@@ -800,7 +809,7 @@ export class Hud {
       // player whose kit-out window ended (a push or re-push that landed) before they ever hit READY
       // UP, this is the only door left. Same control, same note the kitted screen uses; a player who
       // is already `ready` still reads STANDING BY below, unchanged.
-      foot = `${lead}<button class="ready off" data-act="onReady" aria-pressed="false"><span class="unskew">READY UP</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
+      foot = `${lead}<button class="ready off" data-act="onReady" aria-pressed="false"${refused}><span class="unskew">READY UP</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     } else {
       // Bench 2026-09-16: a READY player in the lobby fell through to this grey STANDING BY button, so readying
@@ -1459,8 +1468,12 @@ export class Hud {
   // ---------- per-tick patch ----------
   _statusLine(st, mode) {
     // Player-facing wording; the raw wsState / synced / headEcho / arm_state stay in the diag panel (LINK/ENGINE).
-    const mc = st.wsState === 'bound' ? '<b>HOST ✓</b>' : '<span class="bad">CONNECTING…</span>';
-    const clock = st.synced ? '<b>IN SYNC ✓</b>' : '<span class="bad">SYNCING…</span>';
+    // QA-08/QA-13 (2026-09-23): a refusal is NOT JOINED (red) and nothing else — no clock claim beside it; a link
+    // still in progress is amber, not the error red; a pre-join phone with no address yet is not "connecting".
+    const ws = st.wsState;
+    if (ws === 'rejected') return mode === 'connected' ? 'GUN <b>CONNECTED ✓</b> · <span class="bad">NOT JOINED</span>' : '<span class="bad">NOT JOINED</span>';
+    const mc = ws === 'bound' ? '<b>HOST ✓</b>' : mode === 'connected' && !this.mcUrl ? '<span class="prog">NOT JOINED YET</span>' : '<span class="prog">CONNECTING…</span>';
+    const clock = st.synced ? '<b>IN SYNC ✓</b>' : '<span class="prog">SYNCING…</span>';
     if (mode === 'connected') return `GUN <b>CONNECTED ✓</b> · ${mc}`;
     if (mode === 'lobby') return `<b>LOCKED IN ✓</b>${st.headEcho ? '' : ' · <span class="bad">GUN NOT ANSWERING — CHECK HEADSET</span>'} · ${clock}`;
     return `${st.tutorial ? '<span style="color:var(--warn)">TRY-OUT ARMED — FIRE A FEW ROUNDS</span><br>' : ''}${mc} · ${clock}`;
@@ -1468,6 +1481,10 @@ export class Hud {
   /** The line under the READY button. The UNSYNCED case is shared by both screens because `engine.setReady`
    *  refuses the tap until the clock is synced — on either of them, and silently. */
   _readyNote(st, mode) {
+    if (st.wsState === 'rejected' && mode !== 'over') {
+      const why = refusalWords(st.wsReason);
+      return `Mission Control turned this phone away${why ? ': ' + why : ''}. Ask the host, then rejoin from the i button, top right.`;
+    }
     if (!st.synced && !st.ready) return 'Syncing clock with Mission Control… you can ready up in a moment.';
     // NOT "the host cannot start until everyone has": `_all_ready` gates KIT -> LOBBY only, so after a
     // match the host pushes the next one whenever they like. Promising a veto the player does not have is
@@ -1529,7 +1546,7 @@ export class Hud {
       pills.push('<span class="pill ok easyreload"><span class="unskew">ALT = RELOAD</span></span>');
     }
     if (st.wsState === 'bound') this.mcPill = false;   // the opt-in range pill is per outage, not forever
-    if (st.wsState === 'rejected') pills.push(`<span class="pill bad"><span class="unskew">ASK THE HOST — COULDN'T JOIN${st.wsReason ? ' (' + esc(String(st.wsReason)).toUpperCase() + ')' : ''}</span></span>`);
+    if (st.wsState === 'rejected') pills.push(`<span class="pill bad"><span class="unskew">ASK THE HOST — COULDN'T JOIN${refusalWords(st.wsReason) ? ' (' + esc(refusalWords(st.wsReason)).toUpperCase() + ')' : ''}</span></span>`);
     // Playing out of MC range is the NORMAL case mid-match (Tony, review 2026-09-03 #32): live shows it as the amber MC
     // dot only; a tap on the MC label shows the detail pill. Before the match (kitted/lobby) MC is required, so the pill stays.
     // (night hides the header dots, so there the dim pill is the only off-range signal)
@@ -1914,10 +1931,11 @@ export class Hud {
     const mcjoin = `<div class="mcjoin"><div class="mcjoinnote" id="dg-mcjoinnote">MISSION CONTROL</div>
         <div id="dg-discovered"></div>
         <div class="mcjoinhint" id="dg-mcjoinhint" role="status" aria-live="assertive"></div>
-        <div class="mcin"><input class="mcurlfield" value="${esc(this.mcUrl)}" placeholder="ws://mission-control-ip:8766/ws" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div>
+        <div class="mcin"><input class="mcurlfield" value="${esc(this.mcUrl)}" placeholder="${MC_URL_HINT}" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div>
         <button class="qrbtn" data-act="onScanQr">▣ SCAN QR</button></div>`;
     const changeGun = !this.diagData.engine || ['idle', 'connected'].includes(this.diagData.engine.phase);
-    this.diag.innerHTML = `<button class="close" data-act="onCloseDiag">✕</button>${mcjoin}
+    // QA-24 (2026-09-23): ONE close control. The top ✕ duplicated CLOSE in the action row and cost the join block 30px.
+    this.diag.innerHTML = `${mcjoin}
       <div class="dbody" id="dbody">
         ${sec('PREFLIGHT', 'dg-pf')}${sec('LINK', 'dg-link')}${sec('ENGINE', 'dg-eng')}${sec('TIMINGS', 'dg-tim')}
         ${sec('LAST FRAMES', 'dg-frames', true)}${sec('HISTORY', 'dg-hist')}${sec('LOG', 'dg-log', true)}

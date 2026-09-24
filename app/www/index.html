@@ -527,11 +527,17 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .idle .sc{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--glow);font-weight:600;letter-spacing:.14em}
 .idle .sc i{width:8px;height:8px;background:var(--glow);border-radius:50%;animation:blink 1.2s infinite}
 .idle .sc.bad{color:var(--bad)}
+/* QA-12 (2026-09-23): night turned --glow transparent and took the MAC tails and the SCANNING line with it, so two
+   guns with one name looked identical (B1 needs the tail). The tail is part of the row a player taps: full --num.
+   The header is a label: dim --mut, and its dot holds still (no blink at night). */
+[data-env="night"] .tagrow .nm b,[data-env="night"] .tagrow .sig b{color:var(--num)}
+[data-env="night"] .idle .sc:not(.bad){color:var(--mut)}
+[data-env="night"] .idle .sc:not(.bad) i{background:var(--mut);animation:none}
 .idle .sc[hidden]{display:none}   /* game day 2026-09-19: no SCANNING line while no picker scan runs */
 .idle .sc.bad i{background:var(--bad);animation:blink .9s infinite}
 .idle .small.bad{color:var(--bad)}
 .idle .r .bigbtn.ghost{width:auto;align-self:flex-start;padding:0 18px}
-.tagrow{display:flex;justify-content:space-between;align-items:center;background:var(--plate);border:1px solid var(--edge);padding:12px 16px;transform:skewX(-6deg);pointer-events:auto;min-height:46px}
+.tagrow{display:flex;justify-content:space-between;align-items:center;background:var(--plate);border:1px solid var(--edge);padding:12px 16px;transform:skewX(-6deg);pointer-events:auto;min-height:56px}
 .tagrow.used{opacity:.55}
 .tagrow .nm{display:inline-block;transform:skewX(6deg);font-family:ui-monospace,monospace;font-size:16px;font-weight:700}
 .tagrow .nm b{color:var(--glow);font-weight:700}
@@ -581,6 +587,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .ready{flex:1;height:60px;background:var(--ok);color:#04120a;font-family:var(--fd);font-style:italic;font-weight:700;font-size:26px;white-space:nowrap;letter-spacing:.2em;transform:skewX(-10deg);box-shadow:0 0 40px -8px var(--ok)}
 .ready .unskew{display:inline-block;transform:skewX(10deg)}
 .ready.off{background:var(--plate);color:var(--num);border:1px solid var(--edge);box-shadow:none}
+.ready:disabled{opacity:.45;cursor:default}   /* QA-08: READY UP while MC refuses this phone */
 .ready.wait{background:var(--plate);color:var(--mut);border:1px solid var(--edge);box-shadow:none;font-size:20px;cursor:default}   /* F117: `.wait` is now the INERT button only (STANDING BY). A real control never wears it. */
 .ready.wait.on{background:var(--ok);color:#04120a;border:none;box-shadow:0 0 40px -8px var(--ok)}
 .lobby .note{font-size:13px;color:var(--mut);font-weight:600;max-width:200px;line-height:1.5}
@@ -592,11 +599,19 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .lobby .status{font-size:11px;letter-spacing:.2em;color:var(--mut);font-weight:600;text-align:right;white-space:nowrap}
 .lobby .status b{color:var(--ok)}
 .lobby .status .bad{color:var(--bad)}
+.lobby .status .prog{color:var(--warn)}   /* QA-13: in progress (CONNECTING…, SYNCING…) is amber; red is kept for a real failure */
 .mcin{display:flex;gap:6px;align-items:center;pointer-events:auto}
-.mcin input{width:236px;height:34px;background:var(--plate2);border:1px solid var(--edge);color:var(--num);font:14px ui-monospace,monospace;padding:0 10px}
-.qrbtn{white-space:nowrap;width:auto;align-self:center;margin-top:0;height:34px;padding:0 14px;background:#131b26;color:#ffc947;border:1px solid #3a4a61;font:700 11px ui-monospace,monospace;letter-spacing:.22em}
-.mcin button{height:34px;padding:0 12px;background:var(--glow);color:#04121e;font-size:13px;letter-spacing:.14em;font-weight:700;position:relative}
-.mcin button::after,.qrbtn::after{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:44px}   /* 44px tap rows on a 34px visual */
+.mcin input{width:236px;height:56px;background:var(--plate2);border:1px solid var(--edge);color:var(--num);font:14px ui-monospace,monospace;padding:0 10px}
+.qrbtn{white-space:nowrap;width:auto;align-self:center;margin-top:0;height:56px;padding:0 14px;background:#131b26;color:#ffc947;border:1px solid #3a4a61;font:700 14px ui-monospace,monospace;letter-spacing:.12em}
+.mcin button{height:56px;padding:0 14px;background:var(--glow);color:#04121e;font-size:14px;letter-spacing:.14em;font-weight:700;position:relative}
+/* QA-11 (2026-09-23): the address field, CONNECT and SCAN QR are 56px tall (44px on screen at the SE's 0.79 scale).
+   The old 34px visual + 44px ::after measured 27px (visual) and 35px (hit) on an SE. */
+/* QA-01 (2026-09-23): night paints --glow transparent, so a filled accent button lost its fill AND kept dark ink:
+   SET MY GUN and CONNECT measured 1.1:1. At night they wear the BUILD MY KIT treatment: red outline, red text. */
+[data-env="night"] .bigbtn:not(.ghost),[data-env="night"] .mcin button{background:transparent;color:var(--num);border:1px solid var(--num)}
+[data-env="night"] .bigbtn.ghost,[data-env="night"] .qrbtn{color:var(--num)}
+[data-env="night"] .qrbtn{background:transparent;border-color:var(--num)}
+[data-env="night"] .mcin input::placeholder{color:var(--num);opacity:1}
 .qrbtn{position:relative}
 .overbtn{position:absolute;pointer-events:auto}
 .small{font-size:11px;letter-spacing:.16em;color:var(--mut);font-weight:600}
@@ -643,35 +658,46 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .prompt .pl{font-family:var(--fl);font-size:11px;letter-spacing:.3em;font-weight:700;opacity:.8}
 .prompt .pi{font-size:26px;letter-spacing:.14em}
 .infobtn{position:absolute;top:2px;right:2px;width:36px;height:36px;border:1px solid var(--edge);color:var(--mut);font:600 13px var(--fl);display:flex;align-items:center;justify-content:center;pointer-events:auto;z-index:5}
-/* ≥44px tap area; the ⓘ visual stays 26px */
-.infobtn::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:44px;height:44px}
-[data-env="night"] .infobtn{color:var(--mut);border-color:var(--edge)}
+/* QA-11 (2026-09-23): a 56px tap area (44px on screen on an SE) on a 36px visual. The frame clips anything above its
+   top edge (an SE letterboxes it), so the ⓘ's area hangs from the frame top (0-56) and #skin sits below it (top 66, not
+   42: its area is 56-112). The two areas meet and never overlap. */
+.infobtn::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:56px;height:56px}
+#info::after{top:-2px;transform:translateX(-50%)}
+#info .infog{width:20px;height:20px;display:block;pointer-events:none}   /* QA-28: drawn, not the U+24D8 glyph */
+[data-env="night"] .infobtn{color:var(--num);border-color:var(--edge)}   /* QA-01: --mut was 2.7:1 */
 
 /* ============ diagnostics ============ */
-#diag{position:absolute;top:0;right:0;bottom:0;width:60%;background:rgba(4,8,14,.96);border-left:1px solid var(--edge);overflow:hidden;font:11px/1.5 ui-monospace,monospace;color:var(--mut);display:none;flex-direction:column;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+#diag{position:absolute;top:0;right:0;bottom:0;width:60%;background:#04080e;border-left:1px solid var(--edge);overflow:hidden;font:11px/1.5 ui-monospace,monospace;color:var(--mut);display:none;flex-direction:column;-webkit-text-size-adjust:100%;text-size-adjust:100%}
 #diag.open{display:flex}
 #diag .dbody{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:20px 24px 10px;-webkit-overflow-scrolling:touch}   /* F122: the readouts scroll, the actions do not */
 #diag h3{margin:12px 0 4px;font:700 11px var(--fl);letter-spacing:.2em;color:var(--glow)}
 #diag .kv{display:grid;grid-template-columns:150px 1fr;gap:2px 10px}
 #diag .ok{color:var(--ok)}#diag .bad{color:var(--bad)}
-#diag .btns{flex:0 0 auto;display:flex;gap:6px;flex-wrap:nowrap;padding:5px 20px calc(5px + env(safe-area-inset-bottom,0px));background:rgba(2,5,9,.98);border-top:1px solid var(--edge)}   /* ONE row: wrapped it ran to 117px — 30% of a 390px panel — and pushed the log it sits under out of sight */   /* F122: SHARE LOG is the only way to flush the BLE frame ring and it sat BELOW a growing log — it is now always on screen */
+#diag .btns{flex:0 0 auto;display:flex;gap:6px;flex-wrap:nowrap;padding:5px 20px calc(5px + env(safe-area-inset-bottom,0px));background:#02050a;border-top:1px solid var(--edge)}   /* ONE row: wrapped it ran to 117px — 30% of a 390px panel — and pushed the log it sits under out of sight */   /* F122: SHARE LOG is the only way to flush the BLE frame ring and it sat BELOW a growing log — it is now always on screen */
 #diag .btns button{flex:0 1 auto;min-width:0;white-space:nowrap;font:700 11px var(--fl);letter-spacing:.06em;padding:8px 10px;border:1px solid var(--edge);color:var(--num);min-height:44px;background:rgba(12,28,44,.85)}   /* one-handed, in the dark: the repo's upper tap-target bound, not its lower one */
 #diag .btns button.danger{border-color:var(--bad);color:var(--bad)}
 #diag pre{white-space:pre-wrap;word-break:break-all;margin:0;max-height:160px;overflow:auto;background:#000;padding:6px}
-#diag .close{position:absolute;top:14px;right:16px;font:700 14px var(--fl);color:var(--num);padding:6px 10px;border:1px solid var(--edge)}
 /* F156/F135 (field 2026-09-12): SCAN QR + the typed address, reachable from every phase — fixed at the top of
    the panel (never scrolls away with the readouts below it), the same way SHARE LOG is fixed at the bottom. */
-#diag .mcjoin{flex:0 0 auto;display:flex;flex-direction:column;gap:8px;padding:44px 24px 14px;border-bottom:1px solid var(--edge)}
+/* QA-24 (2026-09-23): the ✕ is gone (CLOSE in the action row is the one close), so the block starts at the top, and
+   SCAN QR shares the address row: the readouts below get back ~70px. */
+#diag .mcjoin{flex:0 0 auto;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:16px 24px 12px;border-bottom:1px solid var(--edge)}
+#diag .mcjoin>*{grid-column:1/-1}#diag .mcjoin>.mcin{grid-column:1}#diag .mcjoin>.qrbtn{grid-column:2}
+#diag .mcjoin>#dg-discovered:empty,#diag .mcjoin>#dg-mcjoinhint:empty{display:none}
 #diag .mcjoinnote{font:700 11px var(--fl);letter-spacing:.14em;color:var(--glow)}
 #diag .mcjoin .mcin input{width:auto;flex:1 1 auto;min-width:0}
-#diag .mcjoin .qrbtn{align-self:flex-start}
+#diag .mcjoin .qrbtn{align-self:center}
 /* Polish-loop pass 1 (2026-09-12): what CONNECT/SCAN QR are for, normally — or, armed/live only, the
    two-tap warning (`.warn`) `hud.js`'s `_click` swaps it for. Empty when there is nothing to say (put()
    never touches an unchanged section, so an empty string here collapses it to no visible gap). */
 #diag .mcjoinhint{font:11px/1.4 ui-monospace,monospace;color:var(--mut)}
 #diag .mcjoinhint .warn{color:var(--warn);font-weight:700}
 /* Bench 2026-09-17: RELINK GUN's LIVE confirm line, just above the button row. Empty = no gap. */
-#diag .gunhint{flex:0 0 auto;padding:6px 20px 0;font:11px/1.4 ui-monospace,monospace;background:rgba(2,5,9,.98);border-top:1px solid var(--edge)}
+#diag .gunhint{flex:0 0 auto;padding:6px 20px 0;font:11px/1.4 ui-monospace,monospace;background:#02050a;border-top:1px solid var(--edge)}
+/* QA-01/QA-24 night: red on black. The day panel's blue-black fills dropped the action row to 3.7:1, and --glow
+   (transparent at night) hid the PREFLIGHT headings and the MISSION CONTROL line. */
+[data-env="night"] #diag,[data-env="night"] #diag .btns,[data-env="night"] #diag .gunhint,[data-env="night"] #diag .btns button{background:#000}
+[data-env="night"] #diag h3,[data-env="night"] #diag .mcjoinnote{color:var(--num)}
 #diag .gunhint:empty{display:none}
 #diag .gunhint .warn{color:var(--warn);font-weight:700}
 #diag .btns button:disabled{opacity:.55}
@@ -1146,7 +1172,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 [data-env="night"] .briefbtn{border-color:var(--mut);color:var(--num)}
 #info{min-width:36px;min-height:36px;font-size:15px}   /* the 44px ::after is the tap target; the visual sits in the corner gutter */
 /* the player's day/night skin (bench 2026-09-17): its own box under the ⓘ, on every screen, so it is never behind the diag panel */
-#skin{top:42px}#skin svg{display:block;pointer-events:none}
+#skin{top:66px}#skin svg{display:block;pointer-events:none}
 .result .rbody{padding-right:40px;box-sizing:border-box}   /* the results and history tables clear the day/night switch in the right gutter */
 </style>
 </head>

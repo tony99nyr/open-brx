@@ -2076,7 +2076,7 @@ await step('F156 connected-diag: only ONE #mcurl exists — the pre-join screen 
 });
 await step('F156 connected: closing the ⓘ panel restores the pre-join screen\'s own copy', async () => {
   const pg = await open(VIEWS[0], 'connected-diag');
-  await pg.click('[data-act="onCloseDiag"].close');   // the panel sits ABOVE #info (z-index 6 vs 5) while open, so this is the real close path
+  await pg.click('[data-act="onCloseDiag"].closex');   // the panel sits ABOVE #info (z-index 6 vs 5) while open, so this is the real close path (QA-24: CLOSE in the action row is the only one)
   await pg.waitForTimeout(150);
   const r = await pg.evaluate(() => { const d = document.getElementById('diag'); return { open: d.classList.contains('open'), count: document.querySelectorAll('#mcurl').length, outsideDiag: !!(document.getElementById('mcurl') && !d.contains(document.getElementById('mcurl'))) }; });
   await pg.close();
@@ -3577,6 +3577,129 @@ await step('S16 lethal tick: DOWN says POISONED BY and names the applier', async
   const r = await pg.evaluate(() => ({ kb: (document.querySelector('.mo.down .kb') || {}).innerText || '', alive: window.brx.engine.state().alive }));
   await pg.screenshot({ path: `${OUT}/se-down-poisoned.png` }); await pg.close();
   must(!r.alive && /^POISONED BY/.test(r.kb.trim()) && /VIPER/.test(r.kb), `the down screen tells the player the poison did it: ${JSON.stringify(r)}`);
+});
+
+// QA lane A (2026-09-23) ---------- the first-launch path: gun picker, connected, mc-rejected, the ⓘ diag panel ----------
+// Every check reads computed colours and on-screen rects, never engine state. Contrast is WCAG 2.x: the text colour
+// (with the element's effective opacity and the colour's alpha blended in) against the first opaque background up
+// the tree, or the frame's own background when a control is border-only.
+const qaA = {
+  contrastOf: () => {
+    const rgba = c => { const m = String(c).match(/[\d.]+/g); if (!m) return null; return { r: +m[0], g: +m[1], b: +m[2], a: m.length > 3 ? +m[3] : 1 }; };
+    const lum = ({ r, g, b }) => { const f = x => { x /= 255; return x <= .03928 ? x / 12.92 : ((x + .055) / 1.055) ** 2.4; }; return .2126 * f(r) + .7152 * f(g) + .0722 * f(b); };
+    const frameBg = () => { const f = document.getElementById('frame'); const c = rgba(getComputedStyle(f).backgroundColor); if (c && c.a > .5) return c;
+      const m = getComputedStyle(f).backgroundImage.match(/rgba?\([^)]*\)|#[0-9a-f]{3,6}/i); return m ? rgba(m[0]) || { r: 0, g: 0, b: 0, a: 1 } : { r: 3, g: 4, b: 7, a: 1 }; };
+    const bgOf = e => { for (let n = e; n && n.id !== 'frame'; n = n.parentElement) { const c = rgba(getComputedStyle(n).backgroundColor); if (c && c.a > .5) return c; } return frameBg(); };
+    const opac = e => { let o = 1; for (let n = e; n; n = n.parentElement) o *= +getComputedStyle(n).opacity; return o; };
+    const mix = (fg, bg, a) => ({ r: fg.r * a + bg.r * (1 - a), g: fg.g * a + bg.g * (1 - a), b: fg.b * a + bg.b * (1 - a) });
+    return (e, colour) => { const bg = bgOf(e), fg = rgba(colour || getComputedStyle(e).color); const eff = mix(fg, bg, fg.a * opac(e));
+      const L1 = lum(eff), L2 = lum(bg); return (Math.max(L1, L2) + .05) / (Math.min(L1, L2) + .05); };
+  },
+};
+for (const stage of ['idle', 'connected', 'idle-diag', 'connected-diag']) {
+  await step(`QA-01 ${stage} night: every control on the first-launch path reads at >= 4.5:1`, async () => {
+    const pg = await open(VIEWS[1], stage, '&night');
+    const bad = await pg.evaluate(`(${qaA.contrastOf.toString()})()`).then(() => pg.evaluate(src => {
+      const ratio = eval(src)();
+      const vis = e => { const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden') return false; const r = e.getBoundingClientRect(); return r.width > 1 && r.height > 1; };
+      const diag = document.getElementById('diag'), roots = [document.getElementById('hud'), document.getElementById('info'), document.getElementById('skin')];
+      if (diag.classList.contains('open')) roots.push(diag);
+      const out = [], seen = new Set();
+      for (const root of roots) for (const c of [root, ...root.querySelectorAll('button, input, [data-act]')]) {
+        if (!c.matches('button, input, [data-act]') || seen.has(c) || !vis(c) || c.disabled || c.getAttribute('aria-disabled') === 'true') continue;
+        if (c.closest('.tagrow.used')) continue;   // a gun another player holds is dimmed on purpose; it is not the way forward
+        seen.add(c);
+        const name = (c.id ? '#' + c.id : '') + '.' + String(c.className).split(' ')[0] + ' "' + (c.value || c.textContent || c.getAttribute('aria-label') || '').trim().slice(0, 24) + '"';
+        if (c.tagName === 'INPUT') { const col = c.value ? null : getComputedStyle(c, '::placeholder').color; const r = ratio(c, col); if (r < 4.5) out.push(`${name} ${r.toFixed(2)}:1`); continue; }
+        const texts = [c, ...c.querySelectorAll('*')].filter(e => vis(e) && [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()));
+        const svgs = texts.length ? [] : [...c.querySelectorAll('svg')].filter(vis);
+        for (const e of [...texts, ...svgs]) { const r = ratio(e); if (r < 4.5) out.push(`${name} ${e === c ? '' : '<' + e.tagName.toLowerCase() + '> '}${r.toFixed(2)}:1`); }
+      }
+      return out;
+    }, qaA.contrastOf.toString()));
+    await pg.screenshot({ path: `${OUT}/qa-a-night-${stage}.png` }); await pg.close();
+    must(bad.length === 0, 'below 4.5:1 at night: ' + bad.join(' ; '));
+  });
+}
+await step('QA-12 idle night: the MAC tails and the SCANNING header stay visible', async () => {
+  const pg = await open(VIEWS[1], 'idle', '&night');
+  const r = await pg.evaluate(src => { const ratio = eval(src)();
+    const sc = document.querySelector('.idle .sc'), tails = [...document.querySelectorAll('.tagrow:not(.used) .nm b')];
+    return { sc: sc ? +ratio(sc).toFixed(2) : null, dot: sc && sc.querySelector('i') ? getComputedStyle(sc.querySelector('i')).backgroundColor : null, tails: tails.map(t => [t.textContent, +ratio(t).toFixed(2)]) };
+  }, qaA.contrastOf.toString());
+  await pg.close();
+  must(r.sc != null && r.sc >= 2.5, 'the SCANNING header is gone at night: ' + JSON.stringify(r));
+  must(r.tails.length >= 2 && r.tails.every(([, c]) => c >= 4.5), 'a MAC tail is unreadable at night (guns with one name look identical): ' + JSON.stringify(r.tails));
+});
+await step('QA-08 mc-rejected: NOT JOINED, READY UP disabled with MC\'s reason, no IN SYNC', async () => {
+  const pg = await open(VIEWS[1], 'mc-rejected', '', 3000);
+  const r = await pg.evaluate(() => { const b = document.querySelector('.lobby button.ready'), st = document.getElementById('mcstatus'), n = document.getElementById('readynote');
+    return { status: st ? st.textContent : '', btn: b ? { dis: b.disabled || b.getAttribute('aria-disabled') === 'true', t: b.textContent } : null, note: n ? n.textContent : '', ws: window.brx.engine.state().wsState, ready: window.brx.engine.state().ready }; });
+  await pg.click('.lobby button.ready', { force: true }).catch(() => {});
+  await pg.waitForTimeout(150);
+  const after = await pg.evaluate(() => window.brx.engine.state().ready);
+  await pg.close();
+  must(r.ws === 'rejected', 'stage did not reach rejected: ' + r.ws);
+  must(/NOT JOINED/.test(r.status) && !/IN SYNC|CONNECTING/.test(r.status), 'the status line contradicts the rejection: ' + r.status);
+  must(r.btn && r.btn.dis, 'READY UP stays enabled after Mission Control turned this phone away: ' + JSON.stringify(r.btn));
+  must(/roster|full/i.test(r.note) && /host/i.test(r.note), 'the note under READY UP does not give MC\'s reason: ' + r.note);
+  must(!after, 'a tap on the disabled READY UP still readied the player');
+});
+await step('QA-13 connected: the copy names CONNECT, the title is not LINKED, in-progress is amber, the placeholder fits', async () => {
+  const pg = await open(VIEWS[1], 'connected');
+  const r = await pg.evaluate(() => { const note = (document.querySelector('.lobby .note.join') || {}).textContent || '', cs = (document.querySelector('.lobby .cs') || {}).textContent || '';
+    const i = document.getElementById('mcurl'), cv = document.createElement('canvas').getContext('2d');
+    const ics = getComputedStyle(i); cv.font = `${ics.fontSize} ${ics.fontFamily}`;
+    const need = cv.measureText(i.placeholder).width, have = i.clientWidth - parseFloat(ics.paddingLeft) - parseFloat(ics.paddingRight);
+    const prog = document.querySelector('#mcstatus .prog'), bad = document.querySelector('#mcstatus .bad');
+    return { note, cs, ph: i.placeholder, need, have, status: document.getElementById('mcstatus').textContent, prog: prog ? getComputedStyle(prog).color : null, bad: bad ? bad.textContent : null, warn: getComputedStyle(document.getElementById('frame')).getPropertyValue('--warn').trim() };
+  });
+  await pg.close();
+  must(/CONNECT\b/.test(r.note), 'the join copy does not name the CONNECT button: ' + r.note);
+  must(r.cs.trim() !== 'LINKED', 'the title says LINKED while Mission Control is not joined');
+  must(!r.bad, 'an in-progress state is painted as an error (red): ' + r.bad);
+  must(r.need <= r.have + 1, `the placeholder is truncated: needs ${r.need.toFixed(0)}px, has ${r.have.toFixed(0)}px (${r.ph})`);
+});
+for (const skin of ['', '&night']) await step(`QA-24 idle-diag${skin}: the ⓘ panel is opaque, has ONE close control, and its last row scrolls fully into view`, async () => {
+  const pg = await open(VIEWS[1], 'idle-diag', skin);
+  const r = await pg.evaluate(async () => { const d = document.getElementById('diag'), body = document.getElementById('dbody');
+    const bg = getComputedStyle(d).backgroundColor, a = (bg.match(/[\d.]+/g) || []).length > 3 ? +bg.match(/[\d.]+/g)[3] : 1;
+    const closes = [...d.querySelectorAll('[data-act="onCloseDiag"]')].filter(e => getComputedStyle(e).display !== 'none').length;
+    body.scrollTop = body.scrollHeight; await new Promise(res => setTimeout(res, 50));
+    const last = body.lastElementChild.getBoundingClientRect(), box = body.getBoundingClientRect();
+    return { a, closes, lastBottom: last.bottom, boxBottom: box.bottom };
+  });
+  await pg.close();
+  must(r.a === 1, 'the panel is translucent (alpha ' + r.a + '): the screen behind bleeds through');
+  must(r.closes === 1, `the panel has ${r.closes} close controls`);
+  must(r.lastBottom <= r.boxBottom + 1, `the last row is clipped at the bottom when scrolled fully: ${JSON.stringify(r)}`);
+});
+for (const stage of ['connected', 'idle-diag']) await step(`QA-11 ${stage} SE: the corner buttons and the join controls take a >= 44px tap on screen`, async () => {
+  const pg = await open(VIEWS[1], stage);
+  const bad = await pg.evaluate(() => {
+    const d = document.getElementById('diag'), open = d.classList.contains('open'), scope = open ? d : document.getElementById('hud');
+    const out = [], ctl = open ? [] : [document.getElementById('info'), document.getElementById('skin')];   // the open panel sits above the corner buttons
+    ctl.push(scope.querySelector('#mcurl'), scope.querySelector('[data-act="onSetUrl"]'), scope.querySelector('[data-act="onScanQr"]'));
+    for (const c of ctl) { if (!c) { out.push('missing control'); continue; }
+      const r = c.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      // A 44px square centred on the control: its four edge midpoints must all land on the control.
+      const pts = [[cx - 21.5, cy], [cx + 21.5, cy], [cx, cy - 21.5], [cx, cy + 21.5]];
+      const miss = pts.filter(([x, y]) => { const hit = document.elementFromPoint(Math.max(0, x), Math.max(0, y)); return !(hit && (hit === c || c.contains(hit))); });
+      // a point outside the frame is outside the app (glass or the SE's letterbox band): nothing there can be tapped
+      const fr = document.getElementById('frame').getBoundingClientRect();
+      const edge = miss.filter(([x, y]) => y >= fr.top && y <= fr.bottom && x >= fr.left && x <= fr.right);
+      if (edge.length) out.push(`${c.id || c.className || c.dataset.act} ${Math.round(r.width)}x${Math.round(r.height)} misses ${JSON.stringify(edge.map(p => p.map(Math.round)))}`);
+    }
+    return out;
+  });
+  await pg.close();
+  must(bad.length === 0, 'tap target under 44px on screen: ' + bad.join(' ; '));
+});
+await step('QA-28 the ⓘ is drawn, not a font glyph', async () => {
+  const pg = await open(VIEWS[1], 'idle');
+  const r = await pg.evaluate(() => { const i = document.getElementById('info'); return { svg: !!i.querySelector('svg'), label: i.getAttribute('aria-label') }; });
+  await pg.close();
+  must(r.svg && r.label, 'the ⓘ is still a text glyph (an empty box where the font lacks U+24D8): ' + JSON.stringify(r));
 });
 
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {

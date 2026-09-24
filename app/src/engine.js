@@ -5833,7 +5833,7 @@ export class Engine {
     const now = this.now();
     const r = this.respawnDelayMs;
     return {
-      phase: this.phase, bleUp: this.bleUp, gunFlapping: this.gunFlapping, wsState: this.wsState, gun: this.gun, night: this.night,
+      phase: this.phase, bleUp: this.bleUp, gunFlapping: this.gunFlapping, wsState: this.wsState, wsReason: this.wsReason || null, gun: this.gun, night: this.night,   // QA-08: the HUD reads MC's refusal reason (the chip and the READY note both asked for it and got undefined)
       nightOps: !!(this.config && this.config.night),
       player: this.player, team: this.team, teamKey: this.teamKey, teamName: this.team ? (this.team.name || TEAM_NAME[this.team.tid] || '').toUpperCase() : '',
       callsign: this.player ? this.player.display : '', playerNum: this.player ? this.player.player_num : null,
