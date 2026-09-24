@@ -68,14 +68,17 @@ def test_a_hang_prone_frame_needs_both_flags_on_send_and_never_goes_in_a_batch()
         assert result["error"].startswith("refused, confirm or not:") and result["command"] == "$DPLAY,A10,4,*"
 
 
-def test_the_newly_understood_commands_are_known_with_arity_and_marked_unproven():
+def test_the_newly_understood_commands_are_known_with_arity_and_the_right_proof_flag():
     expect = {"STUN": 1, "BUMP": 5, "LIFE": 4, "TMP": 11,
               "DIE": 0, "TEAM": 1, "PID": 1, "IRTX": 11, "RADSK": 0, "UP": 3, "KK": 1}
     for name, tokens in expect.items():
         info = protocol.KNOWN_COMMANDS[name]
         assert info.tokens == tokens, (name, info)
     unproven = {n for n, i in protocol.KNOWN_COMMANDS.items() if not i.proven}
-    assert {"STUN", "BUMP", "TMP", "DIE", "TEAM", "PID", "IRTX", "RADSK"} <= unproven
+    assert {"DIE", "TEAM", "PID", "RADSK"} <= unproven
+    # bench-proven since (2026-09-18): the caveat on every send would now be false
+    for name in ("STUN", "BUMP", "TMP", "IRTX"):
+        assert protocol.KNOWN_COMMANDS[name].proven, name
     assert set(protocol.CONFIRM_REQUIRED_COMMANDS) == {"PRES", "INVU", "BHIT", "FIREX"}
     assert protocol.KNOWN_COMMANDS["SPAWN"].tokens is None  # v4.30 shield arg vs corrected v4.32 no-arg path
     # the bench-proven core is still marked proven (a regression here would nag every bench call)
@@ -100,10 +103,11 @@ def test_deny_reason_names_the_word_and_catches_the_radio_control_frames():
 
 def test_unproven_and_arity_notes():
     assert protocol.unproven_note("$PING,*") is None
-    n = protocol.unproven_note("$STUN,3000,*")
-    assert n and "NOT bench-proven" in n and "STUN" in n
-    assert protocol.arity_note("$STUN,3000,*") is None
-    a = protocol.arity_note("$STUN,3000,1,2,*")
+    n = protocol.unproven_note("$TEAM,2,*")
+    assert n and "NOT bench-proven" in n and "TEAM" in n
+    assert protocol.unproven_note("$STUN,3000,*") is None, "bench-proven since 2026-09-18: no caveat"
+    assert protocol.arity_note("$TEAM,2,*") is None
+    a = protocol.arity_note("$TEAM,2,1,2,*")
     assert a and "carries 3 tokens" in a and "reads 1" in a
     assert protocol.arity_note("$FOOBAR,1,2,3,*") is None, "unknown commands have no counted arity"
 
@@ -141,12 +145,12 @@ def test_send_batch_refuses_the_whole_batch_on_one_denied_command_even_with_conf
 def test_send_lets_an_unproven_known_command_through_and_says_so():
     with _fake_manager([FakeTagger("AA:1")]) as mgr:
         run(mgr.connect("AA:1", "t1"))
-        result = run(server.send("t1", "$STUN,3000,*"))          # no confirm needed: it is KNOWN
-        assert result["sent"] == "$STUN,3000,*" and "NOT bench-proven" in result["note"], result
+        result = run(server.send("t1", "$TEAM,2,*"))             # no confirm needed: it is KNOWN
+        assert result["sent"] == "$TEAM,2,*" and "NOT bench-proven" in result["note"], result
         result = run(server.send("t1", "$PING,*"))
         assert "note" not in result, "a proven command carries no caveat"
-        result = run(server.send_batch("t1", ["$PING,*", "$BUMP,-20,1,1,1,,*"]))
-        assert result["sent_count"] == 2 and "BUMP" in result["note"], result
+        result = run(server.send_batch("t1", ["$PING,*", "$PID,5,*"]))
+        assert result["sent_count"] == 2 and "PID" in result["note"], result
 
 
 def test_the_deny_gate_runs_before_the_confirm_gate_and_is_load_bearing():

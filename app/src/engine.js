@@ -2728,8 +2728,8 @@ export class Engine {
    *  same kill does. Whichever lands first plays the cue; `feedback()` reads `_irKillCueAt` back to skip its
    *  own plain kill line within CALLOUT_WINDOW_MS (medal cues still play — they carry information this word
    *  does not). The IR word never touches the score: only MC's feedback does that. No victim name is ever
-   *  known here — read `victimName`'s comment: the `kill` moment's HUD banner is hard-wired "CONFIRMED BY
-   *  MISSION CONTROL" (hud.js `_kill`), which would be a lie for a pure IR confirm, so this uses
+   *  known here — read `victimName`'s comment: the `kill` moment's HUD banner names Mission Control as
+   *  its source (hud.js `_kill`), which would be a lie for a pure IR confirm, so this uses
    *  `state().callout` instead of that moment. */
   /** S57 polish: pair the two kill-confirm channels ONE-TO-ONE, never by a bare timestamp. `open` is the other channel's
    *  list of unmatched confirms; the oldest one inside CALLOUT_WINDOW_MS whose victim team agrees (or is unknown on
