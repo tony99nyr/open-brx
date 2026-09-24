@@ -162,19 +162,25 @@ edges, so no RMT setting explains stretched marks. Ranked causes to separate at 
 it. Mark 1, 2, 4 and 6 ft on the floor. Put the rig receiver and the Stick's top-end window at the same height, one at
 a time, on the same spot.
 
-**Diagnostics first.** The Stick with RAW on (`sercmd.py COM<n> <secs> r c`), analysed with
-`hardware/m5sticks3/tools/rawscan.py`; the rig with `mcp/tools/native_capture.py` (it turns RAW off itself).
+**Diagnostics first.** Run `stick.py cmd <secs> SELFTEST` first on the Stick alone (no gun, no grenade): it loops the
+Stick's own LED into its own receiver and prints PASS or FAIL. It runs at millimetre range, and M5 asks for 30 cm
+between sender and receiver, so a FAIL here may be overdrive, not proof the receiver is dead; note it and move on to
+the gun tests either way. Then RAW: `stick.py raw <secs>` turns RAW on, captures, and summarises with
+`hardware/m5sticks3/tools/rawscan.py` in one step; the rig side still uses `mcp/tools/native_capture.py` (it turns RAW
+off itself).
 
 1. **Control, per distance.** 3 shots at the rig receiver. Pass: at least 2 whole words, and note the word.
 2. **The Stick, same distance, same mount.** 3 shots. Log the Stick's `SHOT` lines (strict decode) and rawscan's
    CANDIDATE per burst against the rig's word. Walk 1, 2, 4, 6 ft.
    **Gate 2 passes** when the strict decoder reads at least 2 of 3 at some distance of 2 ft or more.
-3. **Gate 4 without receive.** The Stick's `TX` command sends the capture word
-   (`TX 1111000000010011001000010`, from `irbridge.encode_word(proto=15, team=1, damage=50)`); a gun armed on
-   MCP with `$SIR,15,0,,28,0,0,1,,*` reports it as `$HIR,<sensor>,15,0,1,50,...`. This half needs no receive fix.
+3. **Gate 4 without receive.** `stick.py cmd <secs> "TX 1111000000010011001000010"` sends the capture word
+   (from `irbridge.encode_word(proto=15, team=1, damage=50)`); a gun armed on MCP with `$SIR,15,0,,28,0,0,1,,*`
+   reports it as `$HIR,<sensor>,15,0,1,50,...`. This half needs no receive fix.
 4. **Gates 4 and 5 in full** (after gate 2 passes): HILL mode, a decoded shot flips it, the rig sees ONE magnitude-50
    word per flip, none for a non-flip shot.
-
-If no distance decodes, the next step is a receiver swap test: the Grove IR receiver or a VS1838B on a Grove pin, with
-the same firmware.
+5. **Fallback: swap the receiver.** If no distance decodes cleanly, wire a Seeed Grove IR receiver (Vishay TSOP382
+   family, per the research cited in `hardware/m5sticks3/README.md`'s "Known pitfalls") to G9 or G10, and repeat step 2
+   against it instead of the onboard receiver. The firmware today only reads G42 for receive, so this test needs a
+   small firmware change first to read a Grove pin instead, and **that change is not built**. Write it before the
+   swap session, not during it.
 
