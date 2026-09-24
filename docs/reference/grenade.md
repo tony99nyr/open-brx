@@ -306,8 +306,10 @@ shooter's team colour; likely needs a team/flag assignment first — pull Jay's 
 `$GREN` for a *paired thrown* grenade's blast type (untested — needs the install-accessory pairing).
 The **KotH charge/progress level** is not in the beacon (it's a per-gun local timer); decoding a charge
 value needs a `$SIR`-passthrough rig that lets the gun fire *and* surface grenade IR (exp-log #38) —
-**that rig now exists**: `$SIR,15,<sub>,,24,0,0,1,,*` (FF on) surfaces protocol-15 words as `$HIR` with no
-pool change (proven 2026-09-04). **Respawn mode is fully decoded and replayable** (banner above).
+**that rig now exists**: `$SIR,15,<sub>,,28,0,0,1,,*` (FF on) surfaces protocol-15 words as `$HIR` with no
+pool change and no side effects. ⚠ Do not use fn 24 here, although the rig was first proven with it
+(2026-09-04): fn 24 leaves the victim gun replaying a fake hit every ~5 s until `$SPAWN` (P18, 2026-09-18;
+the fn 24-27 row in `../../protocol/brx-protocol.md` §5). **Respawn mode is fully decoded and replayable** (banner above).
 
 ## Replay words (for `ir-emit` one-liners; moved here from `docs/bench-grenade.md` 2026-09-06)
 

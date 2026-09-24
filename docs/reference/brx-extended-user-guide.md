@@ -2,7 +2,8 @@
 
 Source: **"BRX Extended User Guide" (8-24-2018), Laser Tag Pro / Battle Company**, shared in the
 community. An authoritative primary source, and far richer than the V7 quick manual
-(`brx-manual-notes.md`). Where it conflicts with our inferences, it wins.
+(`brx-manual-notes.md`). Where it conflicts with an inference of ours, it is the better source; a bench measurement on our v4.32 guns
+beats both (`protocol/brx-protocol.md`, evidence levels).
 
 **Absorbed into the manual on 2026-09-12.** Every fact this file carried is now published in
 `../manual/hardware.md` (anatomy, ports, IR laser specs, battery, accessories),
