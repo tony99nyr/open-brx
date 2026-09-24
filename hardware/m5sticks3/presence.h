@@ -32,7 +32,7 @@ constexpr int PRESENCE_HYSTERESIS_DB = 6;            // beacon.js Presence hyste
 constexpr uint32_t PRESENCE_EXPIRY_MS = 4000;        // beacon.js Presence expiryMs
 constexpr double PRESENCE_ALPHA = 0.35;              // beacon.js Presence alpha (utility.js passes 0.35 too)
 constexpr int PRESENCE_DEFAULT_THRESHOLD_DBM = -74;  // utility.js DEFAULTS.threshold (the port's own default;
-                                                     // a Stick station passes STICK_DEFAULT_THRESHOLD_DBM, -60)
+                                                     // a Stick station passes STICK_DEFAULT_THRESHOLD_DBM, -57)
 constexpr size_t MEDIAN_SAMPLES = 3;                 // beacon.js MEDIAN_SAMPLES
 constexpr int REVIVE_MARGIN_DB = 10;                 // beacon.js REVIVE_MARGIN_DB (F344)
 constexpr uint32_t STATION_TICK_MS = 250;            // utility.js `setInterval(tick, 250)`
