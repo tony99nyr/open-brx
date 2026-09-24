@@ -32,7 +32,10 @@
 using namespace brx;
 
 // ---- pins (docs.m5stack.com StickS3 pin map) ------------------------------------------------ //
-static const int IR_RX_PIN = 42;     // onboard 38 kHz receiver; RMT only, and the speaker amp must be OFF
+static const int IR_RX_ONBOARD = 42;  // onboard 38 kHz receiver; RMT only, and the speaker amp must be OFF
+// The receive pin in use: G42 (onboard) or a Grove pin (G9/G10) with an external receiver such as a
+// VS1838B (bench 2026-09-24: the onboard receiver hears a TV remote but no BRX-style IR; F314).
+int IR_RX_PIN = IR_RX_ONBOARD;
 static const int IR_TX_ONBOARD = 46; // onboard IR LED
 // The Grove port is G9 and G10. M5Unified maps it as SCL = G10, SDA = G9, and M5's colour code puts
 // SCL on the yellow wire, which is where a Seeed Grove module's SIG (pin 1) sits: so G10 first. M5's
@@ -56,6 +59,7 @@ struct Settings {
   uint16_t id = 1;
   uint8_t game = 0;
   uint8_t txpin = IR_TX_ONBOARD;
+  uint8_t rxpin = IR_RX_ONBOARD;
 } settings;
 
 static void loadSettings() {
@@ -64,6 +68,7 @@ static void loadSettings() {
   settings.id = prefs.getUShort("id", settings.id);
   settings.game = prefs.getUChar("game", settings.game);
   settings.txpin = prefs.getUChar("txpin", settings.txpin);
+  settings.rxpin = prefs.getUChar("rxpin", settings.rxpin);
   prefs.end();
 }
 static void saveSettings() {
@@ -72,6 +77,7 @@ static void saveSettings() {
   prefs.putUShort("id", settings.id);
   prefs.putUChar("game", settings.game);
   prefs.putUChar("txpin", settings.txpin);
+  prefs.putUChar("rxpin", settings.rxpin);
   prefs.end();
 }
 
@@ -145,6 +151,10 @@ static bool initRx() {
   if (!rmtInit(IR_RX_PIN, RMT_RX_MODE, RMT_MEM_NUM_BLOCKS_3, RMT_TICK_HZ)) return false;   // 3 x 48 = 144 >= RX_SYMBOLS
   rmtSetRxMinThreshold(IR_RX_PIN, RX_FILTER_US);
   rmtSetRxMaxThreshold(IR_RX_PIN, RX_IDLE_US);
+  // An external receiver on a Grove pin (a VS1838B) drives its output through a weak internal pull-up;
+  // hold the pin up too, so the Stick never drags a shared line low (bench 2026-09-24: on G9 the line
+  // went dead for both boards). The onboard receiver on G42 drives its pin itself and needs nothing.
+  if (IR_RX_PIN != IR_RX_ONBOARD) gpio_pullup_en((gpio_num_t)IR_RX_PIN);
   armRx();
   return true;
 }
@@ -532,7 +542,7 @@ static void printStatus() {
                 (unsigned long)point.charge[3], (unsigned long)point.captures, policy.seq,
                 (unsigned long)advertCount, (unsigned long)wordCount, settings.id, settings.game, settings.txpin,
                 currentUuid.c_str());
-  Serial.printf("RX armed=%d arm_age_ms=%lu frames=%lu\n", rxArmed ? 1 : 0, (unsigned long)(millis() - lastRxArmMs),
+  Serial.printf("RX pin=%d armed=%d arm_age_ms=%lu frames=%lu\n", IR_RX_PIN, rxArmed ? 1 : 0, (unsigned long)(millis() - lastRxArmMs),
                 (unsigned long)frameCount);
   // H8: the MC link state, on its own line so a pre-H8 tool that parses STATUS's key=value pairs
   // (mcp/tools/stick.py `parse_status`) keeps working unchanged.
@@ -644,9 +654,22 @@ static void handleLine(String line) {
   if (line.startsWith("TXPIN ")) {
     int p = line.substring(6).toInt();
     if (p != IR_TX_ONBOARD && p != IR_TX_GROVE && p != IR_TX_GROVE_ALT) { Serial.println("ERR TXPIN 46|9|10"); return; }
+    if (p == IR_RX_PIN) { Serial.println("ERR TXPIN is the RX pin; RXPIN elsewhere first"); return; }
     settings.txpin = (uint8_t)p;
     saveSettings();
     Serial.printf("TXPIN %u %s\n", settings.txpin, initTx(settings.txpin) ? "ok" : "ERR");
+    displayDirty = true;
+    return;
+  }
+  if (line.startsWith("RXPIN ")) {
+    int p = line.substring(6).toInt();
+    if (p != IR_RX_ONBOARD && p != IR_TX_GROVE && p != IR_TX_GROVE_ALT) { Serial.println("ERR RXPIN 42|9|10"); return; }
+    if (p == txPinActive) { Serial.println("ERR RXPIN is the TX pin; TXPIN elsewhere first"); return; }
+    rmtDeinit(IR_RX_PIN);
+    settings.rxpin = (uint8_t)p;
+    IR_RX_PIN = p;
+    saveSettings();
+    Serial.printf("RXPIN %u %s\n", settings.rxpin, initRx() ? "ok" : "ERR");
     displayDirty = true;
     return;
   }
@@ -821,9 +844,11 @@ void setup() {
   Serial.println("# BRX StickS3 station ready (RX G42 via RMT, speaker off).");
   Serial.printf("# mode=%s id=%u game=%u txpin=%u\n", point.mode == Mode::HILL ? "HILL" : "BRIDGE", settings.id,
                 settings.game, settings.txpin);
-  Serial.println("# Commands: SELFTEST [bits] | RAW ON|OFF | TX <bits> | TXN <n> <bits> | AUTO <bits>|OFF | PING | STATUS | MODE BRIDGE|HILL | ID <n> | GAME <n> | TXPIN 46|9|10 | RESET | r s c");
+  Serial.println("# Commands: SELFTEST [bits] | RAW ON|OFF | TX <bits> | TXN <n> <bits> | AUTO <bits>|OFF | PING | STATUS | MODE BRIDGE|HILL | ID <n> | GAME <n> | TXPIN 46|9|10 | RXPIN 42|9|10 | BL <n> | RESET | r s c");
   Serial.println("# H8: WIFI <ssid> <pass> | MC <ws://host:port/path> | LINK MUSTER|HELD|OFF|RECONNECT | ACTIONS ON|OFF");
   Serial.println("# A58: while MC's match lock is on, state-changing commands answer ERR locked; A+B held 7 s restarts");
+  IR_RX_PIN = (settings.rxpin == IR_TX_GROVE || settings.rxpin == IR_TX_GROVE_ALT) ? settings.rxpin : IR_RX_ONBOARD;
+  if (IR_RX_PIN == settings.txpin) IR_RX_PIN = IR_RX_ONBOARD;  // never receive on the transmit pin
   if (!initRx()) Serial.println("ERR rx init (RMT)");
   if (!initTx(settings.txpin)) Serial.println("ERR tx init (RMT)");
   initBle();
