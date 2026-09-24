@@ -795,6 +795,10 @@ void setup() {
     if (!canvas.createSprite(240, 135)) Serial.println("ERR display sprite alloc (no screen)");
   }
   Serial.begin(115200);
+  // USB CDC with no host attached (every field station) must never stall loop(): with the default TX
+  // timeout each print waits for a reader, which froze the HILL beacon (bench 2026-09-24: beacons
+  // arrived only while a PC held the serial port open). A dropped diagnostic line costs nothing.
+  Serial.setTxTimeoutMs(0);
   delay(300);
   loadSettings();
   point.mode = (Mode)settings.mode;
