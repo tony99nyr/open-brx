@@ -9,8 +9,10 @@ IR protocol credit: **LaserTagMods** (JEDGE/JBOX) decoded the BRX tag; `protocol
 our bench-verified copy. The advert is `docs/spec/utility.md` section 2. The grenade facts this leans on
 are the 2026-09-10 bench (`docs/experiment-log/2026-09.md`).
 
-Status 2026-09-11: **compiles for the board, host tests green, never run on a Stick.** The hardware is
-inbound. Everything under "Unverified" below is exactly that.
+Status 2026-09-23: **first bring-up on a real Stick** (`docs/bench-sticks3-2026-09-23.md`). BLE advert (gate 3)
+and IR transmit (gate 4) work; IR receive (gate 2) is broken (F314): the receiver does not re-arm after a
+transmit, and a gun shot never decodes even in BRIDGE mode. Everything under "Unverified" below still applies
+except where it now says otherwise.
 
 ## Files
 
@@ -41,19 +43,28 @@ Nothing needs wiring for the first bench gate.
 
 ## Build and flash
 
+On Windows, use the Arduino IDE's own bundled `arduino-cli.exe` (pass the M5 board URL per command so it does
+not rewrite Tony's Arduino config), and stage the sketch outside the WSL mount first: the Windows arduino-cli
+cannot build from a `\\wsl.localhost` path.
+
 ```
-arduino-cli config add board_manager.additional_urls https://static-cdn.m5stack.com/resource/arduino/package_m5stack_index.json
-arduino-cli core update-index
-arduino-cli core install m5stack:esp32          # 3.3.9 has the m5stack_sticks3 board
-arduino-cli lib install M5Unified               # 0.2.21 knows the StickS3 (pulls M5GFX)
-cd hardware/m5sticks3
-arduino-cli compile --fqbn m5stack:esp32:m5stack_sticks3:PartitionScheme=default_8MB .
-arduino-cli upload  --fqbn m5stack:esp32:m5stack_sticks3:PartitionScheme=default_8MB -p <port> .
+CLI="/mnt/c/Users/Tony/AppData/Local/Programs/Arduino IDE/resources/app/lib/backend/resources/arduino-cli.exe"
+URL=https://static-cdn.m5stack.com/resource/arduino/package_m5stack_index.json
+"$CLI" core install m5stack:esp32 --additional-urls $URL   # 3.3.9 has the m5stack_sticks3 board
+"$CLI" lib install M5Unified                                # 0.2.21 knows the StickS3 (pulls M5GFX)
+mkdir -p /mnt/c/Users/Tony/brx-sticks3/m5sticks3 && cp hardware/m5sticks3/*.ino hardware/m5sticks3/*.h /mnt/c/Users/Tony/brx-sticks3/m5sticks3/
+FQBN="m5stack:esp32:m5stack_sticks3:PartitionScheme=default_8MB,CDCOnBoot=cdc"
+cd /mnt/c && "$CLI" compile --fqbn "$FQBN" --additional-urls $URL 'C:\Users\Tony\brx-sticks3\m5sticks3'
+"$CLI" upload --fqbn "$FQBN" -p COM<n> --additional-urls $URL 'C:\Users\Tony\brx-sticks3\m5sticks3'
 ```
 
-`default_8MB` gives a 3 MB app partition; BLE plus M5Unified does not fit the 1.2 MB default. On
-Windows the port is a `COM` number, on the Mac `/dev/cu.usbmodem*`. WSL cannot see USB, so flash from
-Windows Python or the Mac (the same rule as the DevKitC rig).
+`default_8MB` gives a 3 MB app partition; BLE plus M5Unified does not fit the 1.2 MB default. `CDCOnBoot=cdc`
+is required or the upload cannot find the port. On Windows the port is a `COM` number (find the Stick by its
+vendor id `0x303a`, not by number), on the Mac `/dev/cu.usbmodem*`. WSL cannot see USB, so flash from Windows
+Python or the Mac (the same rule as the DevKitC rig). The factory firmware ignores a software reset, so the
+first flash needs download mode: hold the Stick's small side button (also the power button) while plugging in
+USB, then replug without the button. Later flashes do not need it. The USB-C cable must carry data: a
+charge-only cable drops the Stick from the port list while its screen stays on.
 
 ## Serial (115200)
 
@@ -128,6 +139,15 @@ owner or state change and at most once a second on a value-only change.
 
 ## Unverified
 
+- **The IR circuit needs its own power rail.** The receiver and the onboard LED both run off the
+  M5PM1 EXT_5V rail, which M5Unified leaves off by default. The firmware calls
+  `M5.Power.setExtOutput(true, m5::ext_none)` to turn it on; without this call the receiver hears
+  nothing. Confirmed 2026-09-23 after the first bring-up found no IR activity at all.
+- **The receiver does not decode a real word: open under F314.** With EXT_5V on, a HILL Stick's own
+  transmit works (the rig decodes it), but every transmit leaves the receiver un-armed
+  (`rmt: rmt_receive(401): channel not in enable state`), and in BRIDGE mode gun shots at 3-6 ft never
+  decode. One 6 in burst showed correct bit timing but a short sync that fused to noise, so the
+  hardware can receive at very short range but the decode is not yet robust. `F314` tracks the fix.
 - **The receiver part on G42 is undocumented.** M5's NEC example runs at 38 kHz, so it is a
   demodulating receiver, but its bandwidth at our 500 us marks and its sensitivity to a 980 nm gun
   are unmeasured. Step 2 above is the test.
@@ -140,9 +160,10 @@ owner or state change and at most once a second on a value-only change.
 - **Self-hearing.** The onboard LED and receiver are millimetres apart. The sketch re-arms the read
   after every transmit and drops a word that matches what it just sent within 150 ms. If the hill's
   own beacon still shows up as `SHOT`, that filter needs widening, not the receiver.
-- **BLE UUID byte order.** The sketch feeds the UUID string to `BLEUUID`, which stores it reversed,
-  so the phone reads back the same string `encodeUuid` produces. That is how the ESP32 library is
-  written (`BLEUUID.cpp` fills `[15 - n]`); it is not yet seen on a phone screen.
+- **BLE UUID byte order: CONFIRMED 2026-09-23.** The sketch feeds the UUID string to `BLEUUID`, which
+  stores it reversed, so the phone reads back the same string `encodeUuid` produces. A laptop `bleak`
+  scan heard the Stick's printed UUID byte for byte, and `brx_mcp.beacon.decode` read it correctly.
+  Still not seen on a phone screen.
 - **A non-connectable, non-discoverable advert** (NimBLE `BLE_GAP_CONN_MODE_NON` with no scan
   response drops the discoverable flag). Android and iOS scanners still report it when they filter by
   service UUID, which the HUD does; if a phone never sees the Stick, try `setScanResponse(true)`.

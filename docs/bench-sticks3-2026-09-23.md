@@ -7,7 +7,7 @@ This is our ESP32 code, so flashing the Stick is fine. **Never flash or modify a
 | gate | what | pass | kit |
 |---|---|---|---|
 | 0 | toolchain and compile | the sketch compiles for `m5stack_sticks3` | laptop only |
-| 1 | flash, boot, serial | `# BRX StickS3 station ready` and a `mode=` line | Stick, USB-C cable |
+| 1 | flash, boot, serial | `# BRX StickS3 station ready` and a `mode=` line | Stick, USB-C data cable (not charge-only) |
 | 2 | IR receive | a grenade beacon decodes as `proto=15 team=2 dmg=8`, genuine | + grenade (or the rig's emitter as control) |
 | 3 | BLE advert, kind 5 | the laptop scan (or a HUD) reads the UUID the Stick prints | + laptop BLE or a phone |
 | 4 | IR transmit | a HILL flip sends ONE magnitude-50 word that the rig and a stock gun both report | + 1 gun on MCP, the rig's receiver |
@@ -43,14 +43,20 @@ cd /mnt/c && "$CLI" compile --fqbn "m5stack:esp32:m5stack_sticks3:PartitionSchem
 ## Gate 1: flash, boot, serial
 
 1. Tony plugs the Stick into the laptop by USB-C and powers it on. The agent lists ports and picks the `0x303a` one.
-2. The agent flashes: `"$CLI" upload --fqbn <as gate 0> -p COM<n> 'C:\Users\Tony\brx-sticks3\m5sticks3'`. If the
-   upload cannot connect, Tony holds the Stick's download button (or power button, per M5's sheet) while plugging in.
+2. The agent flashes: `"$CLI" upload --fqbn <as gate 0> -p COM<n> 'C:\Users\Tony\brx-sticks3\m5sticks3'`. The
+   factory firmware ignores a software reset, so the first flash needs download mode: Tony holds the Stick's
+   SMALL side button (this is also the power button) while plugging in USB, then replugs without the button.
+   Later flashes worked without it. The Stick's USB-C cable must carry data: a charge-only cable makes it
+   vanish from the port list while its screen stays on.
 3. The agent opens the port for 5 s and sends `STATUS`.
 
 **Pass:** `# BRX StickS3 station ready (RX G42 via RMT, speaker off).`, a `# mode=` line, a `STATUS` reply, and the
 screen painted. **Log:** the COM port, the mode, id and game from `STATUS`, and the live UUID.
 
 ## Gate 2: IR receive (the grenade beacon)
+
+The IR circuit runs off the M5PM1 EXT_5V rail, which M5Unified leaves off by default: the firmware must call
+`M5.Power.setExtOutput(true, m5::ext_none)` or the receiver hears nothing.
 
 Control first: the rig's emitter (COM8) sends one known beacon word, `proto 15, team 2, magnitude 8`, at the Stick's
 receiver from 1 ft. Then the real thing.
@@ -108,3 +114,30 @@ time with a gun as witness. The bare-LED rig cliffed at 8 to 10 ft.
 
 Re-arm the gun stock (`armgen.py <team> <id> ar volume=65`) and power-cycle it and its headset. Leave the Stick in
 `MODE BRIDGE`. Record every gate in the experiment log, and update H7, H8 and F312 from what the gates showed.
+
+## Results (2026-09-23)
+
+- **Gate 0 PASS.** The Arduino IDE's bundled arduino-cli built the sketch with the M5Stack core 3.3.9 and
+  M5Unified 0.2.21 (M5GFX 0.2.28), staged in `C:\Users\Tony\brx-sticks3\m5sticks3`. Sketch size 835 KB of the
+  3.3 MB app partition.
+- **Gate 1 PASS.** The Stick enumerated as vendor `0x303a` (factory firmware pid `0x832b`, COM9; after our
+  flash pid `0x1001`, COM10). `STATUS` replied and the screen read "BRIDGE 1 NEUTRAL no beacon yet".
+- **Gate 2 FAIL (IR receive).** The rig's own emitter word decoded on the rig's own receiver at 1 ft, but the
+  Stick decoded nothing at 2 ft. One burst at 6 in with the room lights off carried correct bit timing (marks
+  about 1020/520 us, spaces 480 us) but a short sync (627/895 us) fused it to noise, so no decode; at 3 in the
+  widths were garbled. Gun shots at 3 and 6 ft, at the top end and the front face, never decoded. A noise
+  stream of about 4 bursts a second of 144 us pulses on a roughly 1.53 ms grid came and went (a thumb over the
+  window stopped it); A/B/A tests on the Grove IR emitter and on the rig emitter's aim were inconclusive.
+- **Gate 3 PASS (BLE advert).** A laptop `bleak` scan heard the Stick's printed UUID byte for byte at -42 dBm,
+  and `brx_mcp.beacon.decode` gave role station, id 1, kind control, team 255 (neutral), state 0, value 0, seq
+  1, game 0. The "BLE UUID byte order" item below is now CONFIRMED.
+- **Gate 4 HALF PASS (IR transmit).** After the EXT_5V fix, the rig decoded the Stick's HILL beacon twice,
+  clean and genuine. But every transmit is followed by `rmt: rmt_receive(401): channel not in enable state`:
+  the receiver does not re-arm after a transmit, so HILL mode goes deaf after its first beacon (F314). The
+  gun-decode half of gate 4 was NOT RUN.
+- **Gates 5 and 6 NOT RUN.** Tony stopped the session to let the receiver be fixed at the desk.
+
+Sheet corrections from this session are folded into gates 1 and 2 above: the download-mode step needs the
+Stick's small side button, held only for the first flash after factory firmware; the Stick's cable must carry
+data; and the IR receiver needs `M5.Power.setExtOutput(true, m5::ext_none)`, which our firmware lacked until
+this session's fix.
