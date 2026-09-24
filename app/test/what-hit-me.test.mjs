@@ -1,5 +1,6 @@
 // S56 "what hit me" (2026-09-23): the phone-side half -- resolving the shooter's weapon off the wire contract's
-// `RosterEntry.weapons[].hir` (the loadout) / `WeaponView.hir` (the wider catalogue, a pickup) magnitude tables,
+// `RosterEntry.weapons[].hir` (the loadout) / `WeaponView.hir` (the wider catalogue, a pickup) magnitude tables
+// (F315: and their `cells`, the (proto, subtype, mag) each weapon puts on the wire),
 // and a per-life ledger of damage taken and dealt for the HUD. HUD information only, never a game rule: MC's
 // own scoring never reads any of it, so there is nothing here for `mcp/brx_mcp/stage/stage.py` to mirror (see
 // `KNOWN_UNMIRRORED` in mcp/tests/test_stage_mirror.py).
@@ -306,4 +307,88 @@ test('death screen: the final hit of a two-word shot carries both words\' damage
   const fh = h.eng.state().life.finalHit;
   assert.equal(fh.dmg, 9, 'the pair is one final hit: 8 + 1');
   assert.equal(fh.sensor, 4, 'the first word\'s sensor');
+});
+
+// F315: tell same-magnitude weapons apart by IR cell (proto, subtype). The Assault Rifle and the USP-S both
+// send magnitude 9, on cells (0,0) and (0,3); the Energy Rifle shares the AR's (0,0) and its magnitude.
+const AR = { weapon_id: 'assault_rifle', hir: [9], cells: [{ proto: 0, subtype: 0, mag: 9 }] };
+const USP = { weapon_id: 'usp_s', hir: [9], cells: [{ proto: 0, subtype: 3, mag: 9 }] };
+const ENERGY = { weapon_id: 'energy_rifle', hir: [9], cells: [{ proto: 0, subtype: 0, mag: 9 }] };
+const resolveOn = (h, proto, mag, subtype) => { h.hir(4, proto, mag, 0, subtype); return h.eng._resolveHitWeapon(h.eng.latch); };
+
+test('F315 tier 1: two magnitude-9 weapons on different cells each resolve by cell + magnitude', () => {
+  const h = harness({ shooter: { ...SHOOTER, weapons: [AR, USP] } }); h.live();
+  h.hir(4, 0, 9, 0, 0); h.frame('$HP,45,61,0,*');
+  assert.equal(h.facts.find(f => f.type === 'hit_taken').weapon_id, 'assault_rifle', 'a (0,0) hit names the AR end to end');
+  h.adv(2000);
+  assert.equal(resolveOn(h, 0, 9, 3).weapon_id, 'usp_s', 'a (0,3) hit names the USP-S');
+  assert.equal(resolveOn(h, 0, 9, 0).source, 'loadout');
+});
+
+test('F315 fallback: two weapons on the SAME cell and magnitude stay ambiguous', () => {
+  const h = harness({ shooter: { ...SHOOTER, weapons: [AR, ENERGY] } }); h.live();
+  const r = resolveOn(h, 0, 9, 0);
+  assert.equal(r.ambiguous, true);
+  assert.equal(r.weapon_id, null);
+  assert.deepEqual(r.candidates, ['assault_rifle', 'energy_rifle']);
+});
+
+test('F315 tier 2: a crit (a magnitude no cell lists) on a unique cell names the weapon', () => {
+  const h = harness({ shooter: { ...SHOOTER, weapons: [AR, USP] } }); h.live();
+  const r = resolveOn(h, 0, 15, 3);
+  assert.equal(r.weapon_id, 'usp_s');
+  assert.equal(r.ambiguous, false);
+});
+
+test('F315 tier 2: an overkill-clamped killing blow (magnitude below the weapon\'s) on a unique cell names it', () => {
+  const h = harness({ shooter: { ...SHOOTER, weapons: [AR, USP] } }); h.live();
+  assert.equal(resolveOn(h, 0, 4, 0).weapon_id, 'assault_rifle');
+});
+
+test('F315 tier 1 beats tier 2: a cell shared at a different magnitude does not make a cell + magnitude match ambiguous', () => {
+  const charge = { weapon_id: 'charge_rifle', hir: [16, 70], cells: [{ proto: 0, subtype: 0, mag: 16 }, { proto: 0, subtype: 0, mag: 70 }] };
+  const h = harness({ shooter: { ...SHOOTER, weapons: [AR, charge] } }); h.live();
+  assert.equal(resolveOn(h, 0, 9, 0).weapon_id, 'assault_rifle');
+  assert.equal(resolveOn(h, 0, 70, 0).weapon_id, 'charge_rifle');
+  assert.equal(resolveOn(h, 0, 30, 0).ambiguous, true, 'tier 2 on a shared cell is ambiguous, not a guess');
+});
+
+test('F315 tier 3: a roster with no `cells` (an older MC) resolves exactly as before, by magnitude alone', () => {
+  const h = harness({ shooter: { ...SHOOTER, weapons: [{ weapon_id: 'assault_rifle', hir: [9] }, { weapon_id: 'usp_s', hir: [9] }] } }); h.live();
+  assert.deepEqual(resolveOn(h, 0, 9, 3), { weapon_id: null, name: null, source: null, ambiguous: true, candidates: ['assault_rifle', 'usp_s'] });
+  assert.equal(resolveOn(h, 0, 15, 3).ambiguous, false, 'a crit magnitude with no cells is unknown');
+  assert.equal(resolveOn(h, 0, 15, 3).weapon_id, null);
+});
+
+test('F315: a latch with no proto or subtype (older data) skips the cell tiers', () => {
+  const h = harness({ shooter: { ...SHOOTER, weapons: [AR, USP] } }); h.live();
+  const r = h.eng._resolveHitWeapon({ shooter_num: SHOOTER.player_num, mag: 9, ir_proto: NaN, ir_subtype: NaN });
+  assert.equal(r.ambiguous, true, 'magnitude alone cannot split them');
+  assert.equal(h.eng._resolveHitWeapon({ shooter_num: SHOOTER.player_num, mag: 15, ir_proto: NaN, ir_subtype: NaN }).weapon_id, null);
+});
+
+test('F315: the catalogue fallback runs the same tiers, and still excludes the loadout\'s ids', () => {
+  const catalog = { weapons: [
+    { ...AR, name: 'ASSAULT RIFLE' }, { ...USP, name: 'USP-S' },
+    { weapon_id: 'breacher', name: 'BREACHER', hir: [9], cells: [{ proto: 0, subtype: 1, mag: 9 }] },
+  ] };
+  // The loadout carries nothing at magnitude 9 or on cells (0,1)/(0,3), so those hits fall through to the catalogue.
+  const shotgun = { weapon_id: 'shotgun', hir: [20], cells: [{ proto: 0, subtype: 2, mag: 20 }] };
+  const h = harness({ shooter: { ...SHOOTER, weapons: [shotgun] }, catalog }); h.live();
+  assert.deepEqual(resolveOn(h, 0, 9, 3), { weapon_id: 'usp_s', name: 'USP-S', source: 'catalog', ambiguous: false, candidates: [] }, 'tier 1 in the catalogue');
+  assert.equal(resolveOn(h, 0, 15, 1).weapon_id, 'breacher', 'tier 2 in the catalogue');
+  assert.deepEqual(resolveOn(h, 0, 9, 7).candidates, ['assault_rifle', 'usp_s', 'breacher'], 'an unlisted cell falls to tier 3 in the catalogue');
+  // With the AR in the loadout, the catalogue's AR is excluded: a tier-3 fallback no longer lists it.
+  const h2 = harness({ shooter: { ...SHOOTER, weapons: [shotgun, AR] }, catalog }); h2.live();
+  assert.equal(resolveOn(h2, 0, 9, 0).source, 'loadout', 'the loadout AR wins its own cell');
+  assert.deepEqual(resolveOn(h2, 0, 15, 1), { weapon_id: 'breacher', name: 'BREACHER', source: 'catalog', ambiguous: false, candidates: [] }, 'a catalogue cell the loadout lacks');
+});
+
+test('F315: a picked-up weapon on its own cell beats a loadout weapon that only shares its magnitude', () => {
+  // The shooter carries the AR (0,0) mag 9 and picks up a USP-S (0,3) mag 9. The USP-S hit must not fall to the
+  // loadout's tier-3 magnitude match: every tier tries the loadout, then the catalogue, before the next one.
+  const catalog = { weapons: [{ ...AR, name: 'ASSAULT RIFLE' }, { ...USP, name: 'USP-S' }] };
+  const h = harness({ shooter: { ...SHOOTER, weapons: [AR] }, catalog }); h.live();
+  assert.deepEqual(resolveOn(h, 0, 9, 3), { weapon_id: 'usp_s', name: 'USP-S', source: 'catalog', ambiguous: false, candidates: [] });
+  assert.equal(resolveOn(h, 0, 9, 0).weapon_id, 'assault_rifle', 'the AR still names its own cell');
 });

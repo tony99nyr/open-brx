@@ -1189,38 +1189,51 @@ export class Engine {
   }
   weaponRow(id) { const c = this.catalog; return (c && c.weapons && c.weapons.find(w => w.weapon_id === id)) || null; }
   perkRow(id) { const c = this.catalog; return (c && c.perks && c.perks.find(w => w.perk_id === id)) || null; }
-  /** S56 "what hit me": name the weapon behind a latched `$HIR` from its `mag` (token 5). NEVER guesses --
-   *  two candidates that share a magnitude come back `ambiguous`, with `weapon_id: null`, rather than a
-   *  coin-flip pick that could name the wrong gun. Returns `null` (no claim at all, not even "unknown") when
-   *  there is nothing to resolve against: no latch, or the shooter's roster entry predates `RosterEntry.weapons`
-   *  (an older MC). Otherwise `{weapon_id, name, source: 'loadout'|'catalog'|null, ambiguous, candidates}`:
-   *  the shooter's OWN loadout is tried first (one match -> 'loadout'); with none, the wider catalogue is
-   *  tried as a pickup, excluding the loadout's own ids so a pickup can never be misread as a loadout weapon
-   *  under a magnitude they happen to share; a magnitude nothing declares comes back `{weapon_id: null,
-   *  ambiguous: false, candidates: []}` -- unknown, but still a claim (nothing was skipped). HUD information
-   *  only: MC's own scoring never reads this. */
+  /** S56 "what hit me": name the weapon behind a latched `$HIR`. NEVER guesses -- two candidates that the
+   *  latch cannot tell apart come back `ambiguous`, with `weapon_id: null`, rather than a coin-flip pick that
+   *  could name the wrong gun. Returns `null` (no claim at all, not even "unknown") when there is nothing to
+   *  resolve against: no latch, or the shooter's roster entry predates `RosterEntry.weapons` (an older MC).
+   *  Otherwise `{weapon_id, name, source: 'loadout'|'catalog'|null, ambiguous, candidates}`: the shooter's OWN
+   *  loadout is tried first (one match -> 'loadout'); with none, the wider catalogue is tried as a pickup,
+   *  excluding the loadout's own ids so a pickup can never be misread as a loadout weapon; nothing matched
+   *  comes back `{weapon_id: null, ambiguous: false, candidates: []}` -- unknown, but still a claim.
+   *  F315: each source is matched in three tiers, and the first tier that finds ANY match decides (one match
+   *  names the weapon, two or more are ambiguous):
+   *    1. cell + magnitude: a `cells` entry on the latch's (ir_proto, ir_subtype) AND its `mag`;
+   *    2. cell alone: a `cells` entry on that (proto, subtype) -- names a crit, or an overkill-clamped
+   *       killing blow, whose magnitude no table lists, when only one weapon fires that cell;
+   *    3. magnitude alone, off `hir` (the S56 rule, and the only tier an older MC's roster supports).
+   *  A latch with no proto or subtype (older data) skips tiers 1 and 2. HUD information only: MC's own
+   *  scoring never reads this. */
   _resolveHitWeapon(latch) {
     if (!latch) return null;
     const shooter = this.roster.find(r => r.player_num === latch.shooter_num);
     if (!shooter || !Array.isArray(shooter.weapons)) return null;   // no claim: older MC, or the shooter is not on the roster
-    const mag = latch.mag;
+    const { mag, ir_proto: proto, ir_subtype: subtype } = latch;
+    const hasCell = Number.isInteger(proto) && Number.isInteger(subtype);
+    const onCell = c => c && Number(c.proto) === proto && Number(c.subtype) === subtype;
+    const tiers = [
+      w => hasCell && Array.isArray(w.cells) && w.cells.some(c => onCell(c) && Number(c.mag) === mag),   // 1. cell + magnitude
+      w => hasCell && Array.isArray(w.cells) && w.cells.some(onCell),                                    // 2. cell alone
+      w => Array.isArray(w.hir) && w.hir.includes(mag),                                                   // 3. magnitude alone
+    ];
     const nameFor = id => { const row = this.weaponRow(id); return (row && row.name) || id; };
-    const loadoutMatches = shooter.weapons.filter(w => Array.isArray(w.hir) && w.hir.includes(mag));
-    if (loadoutMatches.length === 1) {
-      const id = loadoutMatches[0].weapon_id;
-      return { weapon_id: id, name: nameFor(id), source: 'loadout', ambiguous: false, candidates: [] };
-    }
-    if (loadoutMatches.length > 1) return { weapon_id: null, name: null, source: null, ambiguous: true, candidates: loadoutMatches.map(w => w.weapon_id) };
-    // No loadout match: a pickup, not the shooter's own kit. The catalogue is the whole visible arsenal
-    // (`this.catalog.weapons`); the shooter's own ids are excluded so a shared magnitude cannot be misread.
+    const verdict = (ms, source) => ms.length === 1
+      ? { weapon_id: ms[0].weapon_id, name: nameFor(ms[0].weapon_id), source, ambiguous: false, candidates: [] }
+      : { weapon_id: null, name: null, source: null, ambiguous: true, candidates: ms.map(w => w.weapon_id) };
+    // A pickup is the catalogue (`this.catalog.weapons`, the whole visible arsenal) less the shooter's own ids, so a
+    // shared cell or magnitude cannot be misread. Each tier tries the loadout, then the catalogue, before the next
+    // looser tier: a picked-up USP-S (0,3) hit on a shooter who carries a magnitude-9 AR names the USP-S at tier 1,
+    // not the AR at tier 3.
     const loadoutIds = new Set(shooter.weapons.map(w => w.weapon_id));
-    const catalogMatches = ((this.catalog && this.catalog.weapons) || []).filter(w => !loadoutIds.has(w.weapon_id) && Array.isArray(w.hir) && w.hir.includes(mag));
-    if (catalogMatches.length === 1) {
-      const id = catalogMatches[0].weapon_id;
-      return { weapon_id: id, name: nameFor(id), source: 'catalog', ambiguous: false, candidates: [] };
+    const pickups = ((this.catalog && this.catalog.weapons) || []).filter(w => !loadoutIds.has(w.weapon_id));
+    for (const t of tiers) {
+      const own = shooter.weapons.filter(t);
+      if (own.length) return verdict(own, 'loadout');
+      const other = pickups.filter(t);
+      if (other.length) return verdict(other, 'catalog');
     }
-    if (catalogMatches.length > 1) return { weapon_id: null, name: null, source: null, ambiguous: true, candidates: catalogMatches.map(w => w.weapon_id) };
-    return { weapon_id: null, name: null, source: null, ambiguous: false, candidates: [] };   // unknown magnitude
+    return { weapon_id: null, name: null, source: null, ambiguous: false, candidates: [] };   // nothing claims it
   }
   armState() { return this.phase; }
 
