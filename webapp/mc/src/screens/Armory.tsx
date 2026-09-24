@@ -683,7 +683,15 @@ function JoinPanel() {
   return (
     <div style={{ flex: '1 1 320px', maxWidth: 380, background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderTop: `2px solid ${T.acc}`, padding: 18, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
       <div style={{ alignSelf: 'stretch', font: F.chk(700, 11), letterSpacing: '.28em', color: T.acc }}>▸ JOIN THE NET</div>
-      <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.dim, textAlign: 'center', lineHeight: 1.8 }}>PHONES ON THIS WI-FI FIND MC <span style={{ color: T.ink }}>AUTOMATICALLY</span> — OPEN BRX COMPANION AND WAIT A BEAT</div>
+      {/* M11 (visual QA 2026-09-23): "find MC automatically" sat beside the "cannot reach" note. The claim
+          is made only when MC has no reason to doubt its own address. */}
+      <div data-testid="join-hint" style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.dim, textAlign: 'center', lineHeight: 1.8 }}>
+        {state?.lan.warning
+          ? <>PHONES WILL <span style={{ color: T.ink }}>NOT</span> FIND MC ON THIS WI-FI UNTIL THE ADDRESS NOTE AT THE TOP IS FIXED{pub?.status === 'up' ? ' — THE INTERNET JOIN IN THE QR STILL WORKS' : ''}</>
+          : !isRoutableLanIp(state?.lan.ip)
+            ? <>MC IS NOT ON A NETWORK PHONES CAN REACH, SO PHONES WILL <span style={{ color: T.ink }}>NOT</span> FIND IT ON THEIR OWN</>
+            : <>PHONES ON THIS WI-FI FIND MC <span style={{ color: T.ink }}>AUTOMATICALLY</span> — OPEN BRX COMPANION AND WAIT A BEAT</>}
+      </div>
       <div style={{ font: F.mono(600, 12), letterSpacing: '.04em', color: T.ink, textAlign: 'center', wordBreak: 'break-all' }}>{state?.lan.ws_url}</div>
       <button onClick={() => setShowQr(v => !v)} style={{ minHeight: 36,  alignSelf: 'stretch', background: showQr ? T.panelAlt : 'transparent', border: `1px solid ${T.line2}`, color: T.dim, font: F.chk(700, 11), letterSpacing: '.2em', padding: '9px 0', cursor: 'pointer' }}>
         {showQr ? '▴ HIDE QR CODES' : '▾ SHOW QR CODES'}

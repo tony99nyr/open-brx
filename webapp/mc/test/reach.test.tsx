@@ -186,7 +186,9 @@ describe('CommandBar: the tunnel-down banner rides on every screen, not just Arm
     expect(alert, 'a role=alert banner names the tunnel outage').toBeTruthy();
     const txt = (alert!.textContent ?? '');
     expect(txt).toContain('INTERNET TUNNEL DOWN');
-    expect(txt).toContain('PHONES FELL BACK TO WI-FI');
+    // M13: this tab never saw the tunnel UP, so it must not claim phones "fell back" from it
+    expect(txt).not.toContain('FELL BACK');
+    expect(txt).toContain('PHONES CAN JOIN OVER WI-FI ONLY');
     expect(txt).toContain('cloudflared exited: bad gateway');
     // ▲ carries the same meaning as the colour — never colour-only
     expect(txt.trim().startsWith('▲')).toBe(true);
@@ -230,14 +232,17 @@ describe('CommandBar: the WSL LAN-reachability warning (T3-A)', () => {
     }
   });
 
-  it('lan.warning renders as a persistent, non-colour-only banner naming the fix', async () => {
+  it('lan.warning renders as a persistent, non-colour-only line naming the fix behind HOW TO FIX', async () => {
     const d = await demo();
     const state: State = { ...d.state, lan: { ...d.state.lan, warning: 'PHONES CANNOT REACH THIS ADDRESS — pass --advertise <windows-lan-ip>.' } };
     const m = await mountScreen(<CommandBar />, { ...d, state });
-    const alert = m.find('[role="alert"]').find(el => /PHONES CANNOT REACH THIS ADDRESS/.test(el.textContent ?? ''));
-    expect(alert, 'a role=alert banner names the reachability warning').toBeTruthy();
-    // ▲ carries the same meaning as the colour — never colour-only (same rule as the tunnel banner)
-    expect((alert!.textContent ?? '').trim().startsWith('▲')).toBe(true);
+    const line = m.find('[data-testid="lan-warning"]')[0];
+    expect(line, 'a banner names the reachability warning').toBeTruthy();
+    expect(line.textContent).toContain('PHONES CANNOT REACH THIS ADDRESS');
+    // never colour-only: an info mark leads the line (M10 replaced the red ▲ with a neutral one)
+    expect(line.querySelector('svg[data-icon="info"]'), 'the info mark').toBeTruthy();
+    await m.click('HOW TO FIX');
+    expect(line.textContent).toContain('--advertise <windows-lan-ip>');
     m.unmount();
   });
 
@@ -246,7 +251,8 @@ describe('CommandBar: the WSL LAN-reachability warning (T3-A)', () => {
       const d = await demo();
       const state: State = { ...d.state, lan: { ...d.state.lan, warning } };
       const m = await mountScreen(<CommandBar />, { ...d, state });
-      expect(m.find('[role="alert"]').some(el => /PHONES CANNOT REACH/.test(el.textContent ?? ''))).toBe(false);
+      expect(m.find('[data-testid="lan-warning"]').length).toBe(0);
+      expect(m.text()).not.toMatch(/PHONES CANNOT REACH/);
       m.unmount();
     }
   });

@@ -16,6 +16,8 @@ import type { GameConfig, ModeInfo, PerkView, Player, WeaponView } from '../api/
 import { isKillScored, objectiveLine, rulesLine, winLine } from '../screens/gameSummary';
 import { F, T, TAB } from '../tokens';
 import { Blink } from './index';
+import { useContext } from 'react';
+import { StoreCtx } from '../store';
 
 export type SettingRow = [label: string, value: string];
 
@@ -120,7 +122,9 @@ export function GameSentStatus({ sent, total, recent, testid = 'game-sent-status
  *  is: how many guns are actually caught up. */
 export function LoadStatus({ pushed, acked, total, recent, testid = 'game-edit-repush' }:
   { pushed: boolean; acked: number; total: number; recent: boolean; testid?: string }) {
-  if (!pushed) return <span data-testid={testid} style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>GUNS NOT CONFIGURED YET — push config in LOBBY after kitting</span>;
+  // Visual QA 2026-09-23: "push config in LOBBY" was printed ON LOBBY. Say where the push is from here.
+  const onLobby = useContext(StoreCtx)?.view === 'lobby';
+  if (!pushed) return <span data-testid={testid} style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>GUNS NOT CONFIGURED YET — {onLobby ? 'push config below' : 'push config in LOBBY after kitting'}</span>;
   // A CLAIM MUST NEVER OUTRUN THE NUMBER BESIDE IT. This used to be handed the server's `all_acked`,
   // which walks the roster the way `start()` does and SKIPS every player with no node bound -- so with
   // nobody's phone up yet it is vacuously true, and this line read "ALL GUNS ON THIS CONFIG (0/8)"

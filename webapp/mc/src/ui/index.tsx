@@ -31,6 +31,19 @@ export function useNarrow(px = 480): boolean {
   return narrow;
 }
 
+/** An "information" mark drawn inline. The ⓘ glyph (U+24D8) is in neither bundled face, so it fell
+ *  back to a font without it and rendered as an empty box (visual QA 2026-09-23). Decorative: the
+ *  control or line it sits in carries the words. */
+export function InfoIcon({ size = 16, color = 'currentColor' }: { size?: number; color?: string }) {
+  return (
+    <svg data-icon="info" aria-hidden="true" focusable="false" width={size} height={size} viewBox="0 0 16 16" style={{ flexShrink: 0, display: 'block' }}>
+      <circle cx="8" cy="8" r="7" fill="none" stroke={color} strokeWidth="1.5" />
+      <rect x="7.25" y="6.75" width="1.5" height="5" fill={color} />
+      <rect x="7.25" y="4" width="1.5" height="1.5" fill={color} />
+    </svg>
+  );
+}
+
 /** Screen header: mono accent kicker over a 30px Oswald title, with optional right-side content. */
 export function ScreenHeader({ kicker, title, right }: { kicker: string; title: string; right?: ReactNode }) {
   return (

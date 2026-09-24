@@ -36,7 +36,7 @@ function Screen() {
   if (!state) {
     return authRequired
       ? <div style={{ font: F.mono(500, 10), letterSpacing: '.2em', color: T.warn, padding: 40 }}>OPERATOR TOKEN REQUIRED — open the <code>#tok=…</code> link printed by the MC server, or paste the token above.</div>
-      : <div style={{ font: F.mono(500, 10), letterSpacing: '.2em', color: T.micro, padding: 40 }}>CONNECTING TO MISSION CONTROL… (append <code>?mock</code> for the in-browser demo)</div>;
+      : <div style={{ font: F.mono(500, 10), letterSpacing: '.2em', color: T.micro, padding: 40 }}>CONNECTING TO MISSION CONTROL… IF THIS DOES NOT CLEAR, CHECK THAT THE MC SERVER IS RUNNING.</div>;
   }
   switch (view) {
     case 'muster': return <Armory />;

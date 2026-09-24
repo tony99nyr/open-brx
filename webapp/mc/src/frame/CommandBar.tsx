@@ -1,10 +1,11 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Phase } from '../api/types';
 import { useStore, type View } from '../store';
 import { clearNotice, useNotice } from '../notice';
 import { F, T } from '../tokens';
-import { HazardButton, GhostButton } from '../ui';
+import { HazardButton, GhostButton, InfoIcon } from '../ui';
 import { ReportPanel } from '../ui/ReportPanel';
+import { panicReceipt, splitWarning } from './frameText';
 
 // LIVE and RECAP are one tab. Tony, 2026-09-02: "one or the other is useful at a time, there is a lot
 // of overlap" — a match is either running or finished, never both, and the two screens shared their
@@ -25,6 +26,34 @@ export function CommandBar() {
   const menuBtnRef = useRef<HTMLButtonElement | null>(null);
   const offline = !mock && !connected && !authRequired;   // the token prompt owns the copy while auth is pending
   const cur = viewIdx(view);
+  const [lanDetails, setLanDetails] = useState(false);
+
+  // H6: a notice belongs to the stretch of the session that raised it. "MATCH ENDED · REACHED 8 OF 8
+  // NODES" has to outlive the unmount of LIVE (that is why notice.ts exists), but not the whole next
+  // match: it sat beside ● LIVE in the following game. So the notice remembers the phase it was
+  // raised in, and a match arming or going live clears it unless it was raised in the phase just left
+  // (LOBBY's own notice survives the move to ARMED; an adopted match's RESUMED survives BUILD → LIVE).
+  // A notice from a finished match (raised in LIVE or RECAP) never carries into a new one.
+  const phase = state?.phase;
+  const noticePhase = useRef<string | undefined>(undefined);
+  const prevPhase = useRef<string | undefined>(phase);
+  // `prevPhase` is still the OLD phase here when the notice and the phase change in one render, so a
+  // notice raised by the very press that moved the phase counts as raised before the move.
+  useEffect(() => { noticePhase.current = notice ? prevPhase.current : undefined; }, [notice]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const prev = prevPhase.current;
+    prevPhase.current = phase;
+    if (prev === undefined || prev === phase || (phase !== 'armed' && phase !== 'live')) return;
+    setPanicked(null);   // a PANIC receipt is about the guns before they were re-armed
+    const raised = noticePhase.current;
+    if (notice && (raised !== prev || raised === 'live' || raised === 'recap')) clearNotice();
+  }, [phase]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // M13: "PHONES FELL BACK TO WI-FI" is only true of a tunnel that was up. The server's `lan.public`
+  // carries no history, so this tab remembers whether it has seen the tunnel UP; without that, the
+  // banner says what is true either way.
+  const [tunnelSeenUp, setTunnelSeenUp] = useState(false);
+  if (state?.lan.public?.status === 'up' && !tunnelSeenUp) setTunnelSeenUp(true);   // React's "store information from previous renders" pattern
 
   return (
     <header style={{ background: T.inset, borderBottom: `1px solid ${T.line2}` }}>
@@ -47,7 +76,7 @@ export function CommandBar() {
           greyscale screen (never colour-only). */}
       {state?.lan.public?.status === 'error' && (
         <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 20px', background: 'rgba(255,82,82,.12)', borderBottom: `1px solid ${T.bad}`, font: F.chk(700, 12), letterSpacing: '.14em', color: T.bad }}>
-          ▲ INTERNET TUNNEL DOWN — PHONES FELL BACK TO WI-FI
+          ▲ INTERNET TUNNEL DOWN — {tunnelSeenUp ? 'PHONES FELL BACK TO WI-FI' : 'NOT RUNNING, SO PHONES CAN JOIN OVER WI-FI ONLY'}
           <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.dim }}>{state.lan.public.error || 'no reason given by the tunnel process'}</span>
         </div>
       )}
@@ -57,29 +86,53 @@ export function CommandBar() {
           readiness board) reads this, not just the one screen with a network control on it.
           F191 (Tony 2026-09-23): it stands for the whole session on a WSL host, so it goes LAST: a real alert
           above it always wins the operator's eye, and it never replaces one. */}
-      {state?.lan.warning && (
-        <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 20px', background: 'rgba(255,82,82,.12)', borderBottom: `1px solid ${T.bad}`, font: F.chk(700, 12), letterSpacing: '.14em', color: T.bad }}>
-          ▲ {state.lan.warning}
-        </div>
-      )}
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 26px', padding: '12px 20px 10px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 230 }}>
+      {/* M10 (visual QA 2026-09-23): it was a 3-5 line red role=alert on every screen, all session. It is
+          advice about the address MC advertises, not an alarm, so it is one neutral line (a status, not
+          an alert) with the how-to behind DETAILS. It is never dismissable: the address stays wrong until
+          the operator fixes it. */}
+      {state?.lan.warning && (() => {
+        const { head, rest } = splitWarning(state.lan.warning);
+        return (
+          <div role="status" data-testid="lan-warning" style={{ background: T.panelAlt, borderBottom: `1px solid ${T.line2}`, padding: '5px 20px', color: T.dim }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 28 }}>
+              <InfoIcon size={14} color={T.acc} />
+              <span style={{ font: F.chk(700, 11), letterSpacing: '.14em', color: T.body, flex: '0 1 auto', minWidth: 0 }}>{head}</span>
+              {rest && (
+                <button type="button" aria-expanded={lanDetails} aria-controls="lan-warning-details" onClick={() => setLanDetails(v => !v)}
+                  className="hov-acc"
+                  style={{ background: 'transparent', border: `1px solid ${T.line2}`, color: T.dim, font: F.chk(700, 11), letterSpacing: '.16em', padding: '4px 10px', minHeight: 28, cursor: 'pointer', flexShrink: 0 }}>
+                  {lanDetails ? 'HIDE ▴' : 'HOW TO FIX ▾'}
+                </button>
+              )}
+            </div>
+            {rest && lanDetails && (
+              <div id="lan-warning-details" style={{ font: F.mono(500, 11), lineHeight: 1.6, letterSpacing: '.02em', color: T.dim, padding: '4px 0 6px 24px', overflowWrap: 'anywhere' }}>{rest}</div>
+            )}
+          </div>
+        );
+      })()}
+      {/* M9 (visual QA 2026-09-23): the bar wrapped to three rows at 900 px, and at 1440 px an error
+          squeezed in between the tabs and the menu. `.cb-row` holds one row from 900 px up by folding
+          the less important parts (the brand words, the tab padding, the long token label; see
+          styles.css), and the toasts and errors have a strip of their own under it. */}
+      <div className="cb-row">
+        <div className="cb-brand" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ width: 26, height: 26, background: T.acc, clipPath: 'polygon(0 0,100% 0,100% 65%,65% 100%,0 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', font: F.chk(700, 12), color: T.accInk }}>B</div>
-          <div>
+          <div className="cb-brand-text">
             <div style={{ font: F.chk(700, 11), letterSpacing: '.34em', color: T.acc }}>OPEN BRX</div>
             <div style={{ font: F.osw(600, 18), letterSpacing: '.12em' }}>MISSION CONTROL</div>
           </div>
         </div>
-        <nav style={{ display: 'flex', gap: 2, flexWrap: 'wrap', flex: 1, minWidth: 340 }}>
+        <nav className="cb-nav" style={{ display: 'flex', gap: 2, flex: 1 }}>
           {PH.map(([id, label], i) => {
             const active = i === cur;
             return (
-              <button key={id} onClick={() => setView(
+              <button key={id} className="cb-tab" onClick={() => setView(
                 id === 'lobby' && state?.phase === 'armed' ? 'armed'
                   : id === 'live' && (state?.phase === 'recap' || (!state?.live && state?.recap)) ? 'recap'
                   : id)}
                 style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3, fontFamily: "'Chakra Petch'", background: active ? '#0c1420' : 'transparent',
-                  border: 'none', borderBottom: `2px solid ${active ? T.acc : 'transparent'}`, padding: '8px 16px 7px', cursor: 'pointer', color: active ? T.ink : T.dim, minHeight: 44 }}>
+                  border: 'none', borderBottom: `2px solid ${active ? T.acc : 'transparent'}`, cursor: 'pointer', color: active ? T.ink : T.dim, minHeight: 44, whiteSpace: 'nowrap' }}>
                 <span style={{ font: F.mono(600, 9), letterSpacing: '.2em', color: active ? T.acc : 'rgba(92,113,134,.7)' }}>0{i + 1}</span>
                 <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.22em' }}>{label}{id === 'build' && view === 'designer' ? <span style={{ color: T.acc }}> ▸ DESIGNER</span> : ''}
                   {/* Bench 2026-09-17: phones are in a match this MC did not start. Only while that is true. */}
@@ -91,52 +144,21 @@ export function CommandBar() {
             );
           })}
         </nav>
-        {/* THE TOASTS, in a row of their own. They used to share the nowrap row below with the phase
-            tag and the menu, so at 393px a notice took the width and squeezed a primary button onto
-            three lines — measured (round-2 review 2026-09-12; the squeezed control at the time was
-            the command bar's own NEW SESSION, cut 2026-09-17). `.cb-notices` keeps them inline on a
-            desk and gives them a full-width row under the bar on a phone; the controls beside them
-            wrap rather than compress. */}
-        <div className="cb-notices">
-          {/* an action that failed must still say so somewhere immediate */}
-          {error && (
-            // This was one `nowrap` line clipped at 420px with `title="dismiss"`, so the server's most
-            // useful refusals were unreadable: a rejected `station_source` answers with the whole legal
-            // vocabulary (~250 chars) and the operator saw "▲ station_source must be null or one of: gre…"
-            // — a message that names the valid values, with the valid values cut off. It wraps now (up to
-            // four lines, then scrolls) and carries the full text as its tooltip.
-            <button type="button" role="alert" onClick={clearError} title={error}
-              style={{ background: 'rgba(255,82,82,.12)', border: `1px solid ${T.bad}`, color: T.bad,
-                       font: F.chk(600, 12), lineHeight: 1.35, padding: '6px 12px', cursor: 'pointer',
-                       maxWidth: 520, textAlign: 'left', whiteSpace: 'normal', overflowWrap: 'anywhere',
-                       maxHeight: '8em', overflowY: 'auto' }}>▲ {error} ✕</button>
-          )}
-          {notice && (
-            <button type="button" onClick={clearNotice} title="dismiss"
-              style={{ background: notice.bad ? 'rgba(255,82,82,.12)' : 'transparent', border: `1px solid ${notice.bad ? T.bad : T.line2}`,
-                       color: notice.bad ? T.bad : T.dim, font: F.chk(600, 12), padding: '6px 12px', cursor: 'pointer' }}>
-              {notice.bad ? '▲ ' : ''}{notice.text} ✕
-            </button>
-          )}
-          {panicked && (
-            <button type="button" onClick={() => setPanicked(null)} title="dismiss"
-              style={{ background: 'rgba(255,82,82,.12)', border: `1px solid ${T.bad}`, color: T.bad, font: F.chk(600, 12), padding: '6px 12px', cursor: 'pointer' }}>▲ {panicked} ✕</button>
-          )}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div className="cb-right" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           {/* Auth is the one thing that must stay in the header: nothing works without it. */}
           {authRequired && <button type="button" onClick={() => setView('debug')}
-            style={{ background: 'transparent', border: `1px solid ${T.warn}`, color: T.warn, font: F.chk(700, 12), padding: '7px 12px', cursor: 'pointer', minHeight: 40 }}>
-            Operator token needed ▸</button>}
+            aria-label="Operator token needed"
+            style={{ background: 'transparent', border: `1px solid ${T.warn}`, color: T.warn, font: F.chk(700, 12), padding: '7px 12px', cursor: 'pointer', minHeight: 40, whiteSpace: 'nowrap' }}>
+            <span className="cb-long">Operator token needed ▸</span><span className="cb-short">Token ▸</span></button>}
 
-          <span style={{ font: F.chk(700, 12), letterSpacing: '.16em',
+          <span style={{ font: F.chk(700, 12), letterSpacing: '.16em', whiteSpace: 'nowrap',
                          color: state?.phase === 'live' ? T.bad : state?.phase === 'armed' ? T.warn : state?.phase === 'recap' ? T.ok : T.dim }}>
             {state?.phase === 'live' ? '● LIVE' : state?.phase === 'armed' ? '▲ ARMED' : state?.phase === 'recap' ? '■ MATCH OVER' : '◇ SETUP'}
           </span>
           {/* `--bench-volume N`: every gun plays at N, not the venue level. Say it where nobody can miss it. */}
           {state?.bench_volume != null && (
             <span data-testid="bench-volume" title={`MC was started with --bench-volume ${state.bench_volume}: every gun plays at ${state.bench_volume}, not the venue level. Not for a real game.`}
-              style={{ font: F.chk(700, 12), letterSpacing: '.16em', color: T.warn, border: `1px solid ${T.warn}`, padding: '5px 10px' }}>
+              style={{ font: F.chk(700, 12), letterSpacing: '.16em', color: T.warn, border: `1px solid ${T.warn}`, padding: '5px 10px', whiteSpace: 'nowrap' }}>
               BENCH VOL {state.bench_volume}
             </span>
           )}
@@ -144,7 +166,7 @@ export function CommandBar() {
           {/* One button instead of a red hazard control and a wall of telemetry (Tony, 2026-09-02):
               "the header should be cleaner and simpler. less intimidating and less confusing." */}
           <div style={{ position: 'relative' }}>
-            <button ref={menuBtnRef} type="button" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(m => !m)} title="Menu"
+            <button ref={menuBtnRef} type="button" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(m => !m)} title="Menu" aria-label="Menu"
               style={{ background: menu ? T.panelAlt : 'transparent', border: `1px solid ${T.line2}`, color: T.dim,
                        font: F.osw(700, 18), padding: '6px 14px', cursor: 'pointer', minHeight: 44, minWidth: 48 }}>☰</button>
             {menu && (
@@ -161,8 +183,10 @@ export function CommandBar() {
                 {panic ? (
                   <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <span style={{ font: F.chk(600, 12), color: T.bad, lineHeight: 1.4 }}>Safe every node in range? This clears and stops every gun.</span>
+                    {/* M21 + CLAUDE.md's panic rule: `$CLEAR` leaves a gun with no `$SIR` table, so nothing can hit it until it is re-armed. */}
+                    <span data-testid="panic-warning" style={{ font: F.chk(600, 12), color: T.ink, lineHeight: 1.4 }}>Afterwards no gun can be hit until you re-arm it with PUSH CONFIG in LOBBY.</span>
                     <span style={{ display: 'flex', gap: 8 }}>
-                      <HazardButton size={11} onClick={async () => { setPanic(false); setMenu(false); const r = await run(() => api.control('panic', true)); setPanicked(r ? `FLEET SAFED (${new Date().toLocaleTimeString()})` : 'PANIC FAILED — CHECK THE SERVER'); }}>CONFIRM</HazardButton>
+                      <HazardButton size={11} onClick={async () => { setPanic(false); setMenu(false); const r = await run(() => api.control('panic', true)); setPanicked(panicReceipt(r, new Date()).text); }}>CONFIRM</HazardButton>
                       <GhostButton onClick={() => setPanic(false)}>Cancel</GhostButton>
                     </span>
                   </div>
@@ -173,6 +197,37 @@ export function CommandBar() {
             )}
           </div>
         </div>
+      </div>
+        {/* THE TOASTS AND ERRORS, in a strip of their own under the bar. At 393px a notice once shared a
+          nowrap row with the menu and squeezed a primary button onto three lines (round-2 review
+          2026-09-12), and at 1440px a long server refusal squeezed in between the tabs and the menu
+          (M9, visual QA 2026-09-23). Under the bar they wrap freely and nothing beside them compresses.
+          The strip collapses to nothing when it is empty (styles.css). */}
+      <div className="cb-notices" data-testid="cb-notices">
+        {/* an action that failed must still say so somewhere immediate */}
+        {error && (
+          // This was one `nowrap` line clipped at 420px with `title="dismiss"`, so the server's most
+          // useful refusals were unreadable: a rejected `station_source` answers with the whole legal
+          // vocabulary (~250 chars) and the operator saw "▲ station_source must be null or one of: gre…"
+          // — a message that names the valid values, with the valid values cut off. It wraps now (up to
+          // four lines, then scrolls) and carries the full text as its tooltip.
+          <button type="button" role="alert" onClick={clearError} title={error}
+            style={{ background: 'rgba(255,82,82,.12)', border: `1px solid ${T.bad}`, color: T.bad,
+                     font: F.chk(600, 12), lineHeight: 1.35, padding: '6px 12px', cursor: 'pointer',
+                     maxWidth: 520, textAlign: 'left', whiteSpace: 'normal', overflowWrap: 'anywhere',
+                     maxHeight: '8em', overflowY: 'auto' }}>▲ {error} ✕</button>
+        )}
+        {notice && (
+          <button type="button" onClick={clearNotice} title="dismiss"
+            style={{ background: notice.bad ? 'rgba(255,82,82,.12)' : 'transparent', border: `1px solid ${notice.bad ? T.bad : T.line2}`,
+                     color: notice.bad ? T.bad : T.dim, font: F.chk(600, 12), padding: '6px 12px', cursor: 'pointer' }}>
+            {notice.bad ? '▲ ' : ''}{notice.text} ✕
+          </button>
+        )}
+        {panicked && (
+          <button type="button" onClick={() => setPanicked(null)} title="dismiss"
+            style={{ background: 'rgba(255,82,82,.12)', border: `1px solid ${T.bad}`, color: T.bad, font: F.chk(600, 12), padding: '6px 12px', cursor: 'pointer' }}>▲ {panicked} ✕</button>
+        )}
       </div>
       {report && <ReportPanel onClose={() => { setReport(false); menuBtnRef.current?.focus(); }} />}
     </header>

@@ -54,7 +54,8 @@ describe('the command bar labels every view', () => {
     const lan = { ...d.state.lan, warning: 'PHONES CANNOT REACH THIS ADDRESS (WSL2)', public: { ...(d.state.lan.public ?? {}), status: 'error', error: 'tunnel exited' } };
     const state = { ...d.state, lan } as State;
     const m = await mountScreen(<CommandBar />, { ...d, state, view: 'lobby' });
-    const alerts = m.find('[role="alert"]').map(e => (e.textContent ?? '').toUpperCase());
+    // M10: the WSL line is a role=status now (advice, not an alarm), so order the two by DOM position
+    const alerts = m.find('[role="alert"], [data-testid="lan-warning"]').map(e => (e.textContent ?? '').toUpperCase());
     const wsl = alerts.findIndex(t => t.includes('WSL2')), tunnel = alerts.findIndex(t => t.includes('INTERNET TUNNEL DOWN'));
     expect(tunnel, 'the tunnel alert must render beside the WSL banner').toBeGreaterThanOrEqual(0);
     expect(wsl, 'the WSL banner still renders').toBeGreaterThanOrEqual(0);
