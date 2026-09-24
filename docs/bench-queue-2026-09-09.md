@@ -230,27 +230,10 @@ found). Commands are already written in [`bench-grenade.md`](bench-grenade.md) �
 | **P15** the alarm id | a candidate shortlist. There is no "alarm" category in the catalog; the only repo hit is `deathAlarm`, a different thing. This is a data search before it is a bench item |
 | **A10c** Extended Mags HUD max | nothing — but it is not bench work either. `loadout.md` defines `verified` as "effect proven on hardware", which the ×2 mag/reserve is; whether the **HUD's** max matches the `$AMMO,0` we write is a HUD-vs-bundle check the stage harness can do with no gun |
 
-## Decisions — keyboard, no gun, ~10 minutes for the seven still open
+## Decisions
 
-These sit in §9 today but none of them needs hardware.
-
-1. **Energy Launcher deals zero damage in every shipped game** (`$SIR,9,3,,24` is a status row):
-   flatten `_SIR_TABLE`, or retune five weapons?
-2. **F60**: does a heal/grant row belong in the compiled table at all, or is shield permanently
-   node-granted? (Saying "no medic words in a hosted game" is a valid answer — but say it, because
-   today the gap is silent and reads as a bug from the bench.)
-3. **Q12′**: should `hit_taken` carry the shield delta as its own field? Both prior sessions said yes.
-4. **Q13**: friendly fire is invisible on the wire. Run FF on and score teamkills as policy, or
-   accept no teamkill feedback? Decide before any mode advertises it.
-5. **F5**: the AR at 140 ms / reserve 192 (balance), or 100 / 384 (stock feel, which deletes
-   `test_ttk_band_and_no_strictly_dominant_weapon`)?
-6. **F20**: kill confirm during a reload deferred until the takeover ends (~2 s) — keep?
-7. **F25**: the kill strip says "CONFIRMED BY MISSION CONTROL" — keep, or "ELIMINATION"?
-8. ~~The single-hue 4-state bar.~~ **Decided 2026-09-09, do not re-open** (`HANDOFF.md` next-action 3,
-   recorded in `led-language.md`): a partial level KEEPS its loop-blink, because on a single-hue pool
-   that blink is the only thing separating adjacent levels — dropping it would collapse armour and
-   shield from seven levels to four. Healing also gets no opening beat: a gain steps up immediately,
-   and that asymmetry against a hit is the signal. Seven decisions remain.
+The open decisions are in [`FOLLOWUPS.md`](FOLLOWUPS.md) §9 "Decisions". The single-hue 4-state bar is decided
+(2026-09-09, `led-language.md`): do not re-open it.
 
 ## Answered rungs — kept for the LESSON each one cost, not for re-running
 

@@ -48,7 +48,7 @@ different rungs: **B0** (geometry) is not **B** (the missing hill words), and **
 |---|---|---|---|
 | **B0** | geometry: the receiver must see the GRENADE, not the shooter | ⬜ **do first** — gates B and F75 | free |
 | **X** | settle the capture currency: a high-magnitude word from a non-`t1=2` weapon | ⬜ settles **F70** and **F76** | 15 min, one gun |
-| **C** | both instruments on ONE window: is the hill's `proto=0` damage continuous or conditional? | ⬜ the named missing control for **F69** (🔴, still kills players) | 10 min, board A + BLE |
+| **C** | both instruments on ONE window: is the hill's `proto=0` damage continuous or conditional? | ✅ answered 2026-09-11 with F69 (closed, refuted): there is no `proto=0` word; the gun's own fn 24 row makes the chip damage. Do not run | none |
 | **Z1 / Z2 / Z3** | the hosted rate-of-fire boost: the t14 floor, an ammo-preserving push/revert, fire it off a real beacon | ⬜ blocks **F87** | 25 min |
 | **D** | the contest with TWO guns, and the shield grant test (fn 11/18 on `<15,0>`) | ⬜ the rate-of-fire half is ANSWERED (a clean null); **shield is untested** | 20 min, two guns |
 | **F75** | does a non-capturing hit emit anything? | ⬜ gated on **B0** | native game |
