@@ -97,11 +97,14 @@ from its own cadence, so `bench-2026-09-24.md` 3.2 now calls for a fixed-rhythm 
 2026-09-24: 0.4.6 published; F318, F108, F325, F133, F52, K8 closed. **Next:** bench F309/F311/F312; 0.4.7 cut on brx1's word.
 
 ## Lane: S57, B21, StickS3 (brx4)
-2026-09-24: the StickS3 station screens (`7d3aab31`, two polish rounds `25ed6096`/`764dffd3`) and the A58 match
-lock (`7f6765b9`) are on `main`; both are unproven on hardware. `F332` is filed: the side button's PM1 lock is a
-documented TODO (registers 0x49/0x4A unconfirmed), so a locked Stick can still be restarted or powered off by
-hand. `F333` is filed: five screens (hill capturing/contested, the respawn revive count, an empty pickup, the
-settings flow) are not yet wired. The bench hold from brx1 is still in effect; do not flash until it lifts.
+2026-09-24 bench (firmware `96fb1868`, Stick only, no gun, no BLE): the round-1 `setHoldThresh` fix, the A+B joint-
+hold suppression and the A+B 10 s force restart all CONFIRMED clean on hardware (`bench-sticks3-2026-09-23.md`
+Results). SELFTEST still fails with the known F314 close-range distortion (no new gate). The side button (small
+power button) still restarts/powers off a locked Stick on USB power regardless of firmware state, confirming
+F332's row; F332 stays open, the PM1 register write is still unconfirmed. New gap found: standalone bench mode
+shows the same home screen for HILL and BRIDGE (filed against F333). Tony decided: persist the last
+`station_config` in NVS so a restart comes back as the same station; the operator lock (`lock_s`) stays RAM-only
+by design; being built now. The bench hold from brx1 is still in effect; do not flash until it lifts.
 **Next:** F314's distance ladder (`bench-sticks3-2026-09-23.md` Rerun), then F332 (datasheet or bench) and F333.
 The MC half of A58 (`station_config.lock_s` compile + console) is brx3's lane, not this one.
 ## Lane: powerups and the shield HUD (brx5)

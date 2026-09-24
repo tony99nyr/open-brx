@@ -186,3 +186,27 @@ off itself).
    small firmware change first to read a Grove pin instead, and **that change is not built**. Write it before the
    swap session, not during it.
 
+## Results (2026-09-24, Stick only, firmware `96fb1868`)
+
+No gun, no BLE use, USB on COM10, plus a temporary serial log of button DOWN/HOLD/UP edges with the hold threshold.
+
+- **SELFTEST: still FAIL, same F314 distortion.** 25 bits sent (`1111000000100000100000010`), 23 decoded
+  (`00100000010000100000010`); the first mark read 2069 us, then distorted. Consistent with F314; not a new gate.
+- **A click opens DIAGNOSTICS, 20 s idle returns home. CONFIRMED.**
+- **`setHoldThresh` fix (round 1, `25ed6096`). CONFIRMED.** Serial: B's DOWN at 702.432 s, HOLD at 704.432 s,
+  exactly 2.000 s against `thresh=2000`; A's threshold read 1000. The earlier "B fires at 1 s" reading is now
+  explained as confounded, not refuted: Tony's "1 s" presses ran about 3.5 s, and a 30 s no-touch control logged
+  nothing, so that run proved nothing either way. **INCONCLUSIVE**, superseded by this clean reading.
+- **A+B joint-hold suppression. CONFIRMED.** Releasing at 2.5 s and 4.5 s fired the single-button holds inside the
+  library but produced no RESET and no MODE change.
+- **A+B force restart at 10 s. CONFIRMED.** Countdown shown, log `FORCE RESTART (A + B held 7 s)`, ready again
+  1.25 s later, boot count rose. New finding: buttons still held at boot logged a "BTN A hold" on the fresh boot
+  (harmless; being fixed).
+- **Side button (small power button, green LED), on USB power. CONFIRMED.** Single click restarts (screen off
+  then on); double click powers off even on USB; a further single click powers it back on. Boot count rose 4 -> 9
+  across these presses. F332's lock must block both gestures; F332 stays open (the PM1 write is unconfirmed).
+- **Gap, standalone bench mode: HILL and BRIDGE show the same home screen.** Serial logged `MODE HILL`; the
+  screen did not change. Filed against F333.
+- **Decision:** persist the last `station_config` in NVS so a restart comes back as the same station; the
+  operator lock (`lock_s`) stays RAM-only by design. Being built now.
+
