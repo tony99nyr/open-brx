@@ -39,7 +39,8 @@ costs the player their secondary while the item lasts.
 6. After a death and `$SPAWN`, does the pickup slot's magazine come back? (If it does, the phone zeroes it.)
 7. Overshield: on a Standard-preset gun (shield max 0) and a Shields-preset gun, write the shield to its current
    value plus 75 with `$LIFE` token 4 = 2 (set past max). Pass: `$HP` reads the new shield; the next hits take the
-   shield first; nothing refills it; a death clears it.
+   shield first; nothing refills it; a death clears it. Also: the same write to a gun at `$HP,0` must not revive it
+   (mode 1 with health above 0 is a proven revive; mode 2 is unmeasured).
 8. Pickup range calibration (brx2's runbook): the RSSI median at 15, 30, 60 and 100 cm for each phone (Pixel,
    iPhone) against each station type (phone station, StickS3). It sets `POWERUP_RSSI_DBM` per station kind and
    decides whether a per-phone offset is needed. It also measures the claim latency (in range to TAKEN on the
