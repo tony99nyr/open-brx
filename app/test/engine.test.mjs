@@ -4235,7 +4235,7 @@ test('a silenced bundle (no leds, empty announcer cues, no gun readout) plays no
   // — and before A15.3 the FIRMWARE played this grunt from the $PSET under a silenced preset too, so muting
   // it here would be a regression.
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,44,0,0,*');   // strips the armour and trips the once-per-life alert
-  h.writes.length = 0; h.adv(700);                              // past PAIN_GAP_MS, so the next grunt is not rate-dropped
+  h.writes.length = 0; h.adv(3000);                             // past PAIN_GAP_MS and the alert's own clip, so the next grunt is neither rate-dropped nor stale (PAIN_STALE_MS)
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,36,0,0,*');
   const painTakes = golden.cue_pools.pain_short;
   assert.equal(h.writes.filter(f => f.startsWith('$PLAY')).length, 1, 'the hit grunts');
@@ -5567,11 +5567,29 @@ test('F57: the hit that crosses the low-health threshold plays the warning and N
   h.frame('$HIR,4,0,19,2,2,0,0,*'); h.frame('$HP,6,0,0,*');
   assert.equal(pains().length, 0, 'inside the pain gap of the warning: no grunt');
 
-  // CONTROL: the next hit under the threshold, past the gap, grunts again -- and the warning stays once per life
-  h.adv(700); h.writes.length = 0;
+  // CONTROL: the next hit under the threshold, past the gap, grunts again -- and the warning stays once per life. Past the
+  // warning's own clip too (VA86, 1.98 s): a grunt that would wait behind it for more than 500 ms is stale and dropped
+  // (docs/announcer.md, PAIN_STALE_MS).
+  h.adv(1700); h.writes.length = 0;
   h.frame('$HIR,4,0,19,2,2,0,0,*'); h.frame('$HP,4,0,0,*');
   assert.equal(pains().length, 1, 'CONTROL: the next hit below the threshold grunts again');
   assert.equal(hurt().length, 0, 'the warning fired once this life');
+});
+
+test('B4 (docs/announcer.md): a pain grunt that would wait more than 500 ms on the gun is dropped, not queued', () => {
+  // docs/audio-queue-scenarios.md finding B4: the grunt went into the gun's FIFO behind the shield-break line of the same
+  // hit and played 2.6 s after the hit. A grunt is stale after about 500 ms (PAIN_STALE_MS).
+  const h = goLive(harness());
+  const pains = () => h.writes.filter(f => golden.cue_pools.pain_short.includes(f) || golden.cue_pools.pain_long.includes(f));
+  h.frame('$HIR,4,0,19,2,70,0,0,*'); h.frame('$HP,45,0,0,*');   // armour gone, silently (equipment, A17)
+  h.adv(700);
+  h.eng._write(['$PLAY,,4,6,VA7,,,,*'], 'test: a 2.1 s line on the gun');
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,36,0,0,*');
+  assert.equal(pains().length, 0, 'the gun is busy for 2.1 s: the grunt is dropped');
+  h.adv(2200); h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,27,0,0,*');
+  assert.equal(pains().length, 1, 'CONTROL: the gun is quiet, the grunt plays');
 });
 
 // ── F15: the host-driven stun (EMP) ─────────────────────────────────────────────────────────────

@@ -4,25 +4,26 @@
 //   1. the simulator reproduces the bench facts (2026-09-24: FIFO, $PLAYX, the shield hum; 2026-09-11: the token-1
 //      interrupt slot), and every ASSUMPTION in GUN_RULES is a live lever (changing it changes an outcome);
 //   2. under (A), the app on main, the scenarios reproduce what Tony heard, frame for frame with engine.js;
-//   3. under (B), the 0.4.12 rule, the scenarios assert the outcomes we want. This is the acceptance harness for
-//      brx4's announcer queue. An outcome B does NOT yet deliver is a `todo` test: it runs and reports, and it does
-//      not fail the suite. Turn it into a plain test once B delivers it.
+//   3. under (B), the 0.4.12 rule, the scenarios assert the outcomes we want. B runs the REAL announcer queue and gun
+//      model (app/src/announcer.js). An outcome B does NOT yet deliver is a `todo` test: it runs and reports, and it
+//      does not fail the suite. Turn it into a plain test once B delivers it.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { simulateGun, GUN_RULES, CLIP_MS, PLAYX, play, playNow } from '../tools/gun-audio-sim.mjs';
 import { SCENARIOS, runScenario, WANT, MUST_HEAR, ANNOUNCE_AUDIO_LATE_DEFAULT_MS, ANNOUNCE_PRIORITY, ENGINE_MIRROR, ENGINE_TICK_MS,
-  SPAWN_HEAD } from '../tools/audio-scenarios.mjs';
+  SPAWN_HEAD, OBJECTIVE } from '../tools/audio-scenarios.mjs';
+import * as announcer from '../src/announcer.js';
 
 const sc = id => SCENARIOS.find(s => s.id === id);
 const clipsOf = (run, cue) => run.gun.clips.filter(c => c.cue === cue);
 const one = (run, cue) => { const c = clipsOf(run, cue); assert.equal(c.length, 1, `${run.scenario}/${run.policy}: expected one ${cue} clip, got ${c.length}`); return c[0]; };
 const heardInFull = c => c.status === 'full';
 const MUST_LATENCY_MS = 300;
+const FLASH_GAP_MS = 120;   // the kill item's flash-to-line gap: the item is on air from the flash
 const rules = patch => ({ ...GUN_RULES, ...patch });
-/** Body sounds are exempt from the announcer queue in B (docs/announcer.md). The pain grunt is the one that still
- *  queues: it goes in behind the shield-break line of the same hit. Held out of the invariants and asserted by its own
- *  `todo` test (finding B4). */
+/** Body sounds are exempt from the announcer queue in B (docs/announcer.md). The pain grunts are held out of the
+ *  invariants and asserted by their own test (finding B4: a grunt stale by more than 500 ms is dropped). */
 const BODY = new Set(['pain_short', 'pain_long']);
 /** The body sounds B writes outside the announcer queue (docs/announcer.md, "Exempt"): the one-outstanding rule is the
  *  queue's, so it is asserted for the queue's lines only. */
@@ -155,10 +156,13 @@ test('the scenarios mirror engine.js and app.js on main (numbers, tick, spawn wr
   assert.equal(SPAWN_HEAD[0], find(golden, 'pset_pool')[0], 'the life\'s $PSET take (t23 = A10)');
 });
 
-test('the harness mirrors brx4\'s priority order (TODO: import it once brx4/announcer-queue lands)', () => {
-  assert.deepEqual(ANNOUNCE_PRIORITY, ['kill_confirmed', 'lead_taken', 'lead_lost', 'hill_captured', 'hill_lost', 'powerup_swap',
-    'alert', 'teammate_down', 'enemy_down', 'powerup_spawn', 'status']);
-  assert.deepEqual([...MUST_HEAR].sort(), ['kill_confirmed', 'lead_lost', 'lead_taken']);
+test('the harness runs announcer.js\'s own tables, not a copy; a lead change outranks the medal lines', () => {
+  assert.equal(ANNOUNCE_PRIORITY, announcer.ANNOUNCE_PRIORITY, 'the same array, imported');
+  assert.equal(MUST_HEAR, announcer.MUST_HEAR);
+  assert.equal(OBJECTIVE, announcer.OBJECTIVE);
+  assert.deepEqual(ANNOUNCE_PRIORITY.slice(0, 4), ['kill_confirmed', 'lead_taken', 'lead_lost', 'medal']);
+  assert.deepEqual([...MUST_HEAR].sort(), ['kill_confirmed', 'lead_lost', 'lead_taken', 'medal']);
+  assert.deepEqual([...OBJECTIVE].sort(), ['enemy_down', 'hill_captured', 'hill_lost']);
 });
 
 for (const s of SCENARIOS) for (const p of ['A', 'B']) {
@@ -260,14 +264,23 @@ test('B teammate-down-firefight: the shield break is heard; the teammate card is
   assert.ok(ed.length === 0 ? b.dropped.some(d => d.cue === 'enemy_down') : ed[0].latency <= ANNOUNCE_AUDIO_LATE_DEFAULT_MS);
 });
 
-test('B koth-capture-kill-lead: the kill confirm first, then the lead change, both in full', () => {
+test('B koth-capture-kill-lead: the kill confirm, then the lead change, both in full; the kill waits only for the hill line on air', () => {
+  // The hill line cuts the hum and is on air when the kill lands 300 ms later. A lower item that still sounds is never
+  // cut (docs/announcer.md, Pre-emption 1): the kill follows it at once, then the lead change.
   const b = B['koth-capture-kill-lead'];
-  const k = one(b, 'kill'), l = one(b, 'lead_taken');
+  const hc = one(b, 'hill_captured'), k = one(b, 'kill'), l = one(b, 'lead_taken');
   assert.ok(heardInFull(k) && heardInFull(l) && k.start < l.start);
-  assert.ok(k.latency <= MUST_LATENCY_MS && l.latency <= 2500, `kill ${k.latency} ms, lead ${l.latency} ms`);
+  assert.ok(k.start >= hc.end && k.start - hc.end <= MUST_LATENCY_MS, `the kill ${k.start - hc.end} ms after the hill line`);
 });
-test('B koth-capture-kill-lead: "Hill Captured" is heard', { todo: 'B drops every non-must line while the hum blocks (docs/audio-queue-scenarios.md, finding B2)' }, () => {
-  assert.ok(heardInFull(one(B['koth-capture-kill-lead'], 'hill_captured')));
+test('B koth-capture-kill-lead: "Hill Captured" is heard at once, through the hum (finding B2)', () => {
+  const hc = one(B['koth-capture-kill-lead'], 'hill_captured');
+  assert.ok(heardInFull(hc) && hc.latency <= 50, `${hc.status}, ${hc.latency} ms`);
+});
+test('B koth-hum-objectives: under the hum, both hill lines and "Target down" are heard; the ambient alert is not', () => {
+  const b = B['koth-hum-objectives'];
+  for (const cue of ['hill_captured', 'hill_lost', 'enemy_down']) assert.ok(heardInFull(one(b, cue)), cue);
+  assert.equal(clipsOf(b, 'next_kill_wins').length, 0, 'an ambient line stays droppable while the hum blocks');
+  assert.ok(b.dropped.some(d => d.cue === 'next_kill_wins'));
 });
 
 test('B first-blood-lead: the kill line, the first-blood medal and the lead change are heard in full', () => {
@@ -276,6 +289,8 @@ test('B first-blood-lead: the kill line, the first-blood medal and the lead chan
   assert.ok(heardInFull(one(b, 'first_blood')));
   assert.ok(heardInFull(one(b, 'lead_taken')), 'with the lines back to back the lead fits inside its 4 s TTL here');
 });
+// Left `todo`: it waits on the bench (bench-2026-09-24.md Block 10 step 1, audio steps 1 and 4.3): how soon the hum starts
+// after the fill, and restarts after a stop, decides whether moving the line ahead of the fill is enough.
 test('B first-blood-lead: the spawn line on a Shields spawn is heard', { todo: 'F348 fills the shield 20 ms ahead of the spawn line in one write; the hum buries it (finding B8)' }, () => {
   const sp = one(B['first-blood-lead'], 'spawn');
   assert.ok(heardInFull(sp) && sp.latency <= ANNOUNCE_AUDIO_LATE_DEFAULT_MS, `${sp.status}, ${sp.latency} ms`);
@@ -284,6 +299,9 @@ test('B first-blood-lead: the spawn line on a Shields spawn is heard', { todo: '
 test('B death-with-kill-queued: the low-health line never plays after the death', () => {
   for (const c of clipsOf(B['death-with-kill-queued'], 'low_health')) assert.ok(c.end <= 2000);
 });
+// Left `todo` for Tony's choice (F149, finding B3). Option 1: the kill line finishes, and the death stop waits for it (up to
+// about 1 s), then goes out only if the low-health line is still on the gun. Option 2: the death is instant, the stop goes
+// out at once, and my kill line is dropped (this test then asserts the kill clip is dropped, not heard).
 test('B death-with-kill-queued: my kill confirm is not cut by my own death', { todo: 'the F149 death $PLAYX stops whatever plays, here the kill line (finding B3)' }, () => {
   assert.ok(heardInFull(one(B['death-with-kill-queued'], 'kill')));
 });
@@ -295,19 +313,39 @@ test('B koth-flap-standard: the kill line is heard in full, the stale "Hill Capt
   assert.ok(heardInFull(one(b, 'hill_lost')));
 });
 
-test('B standard-control: kill, first blood, double kill and the hill capture are all heard in full', () => {
+test('B standard-control: kill, lead, double kill and the hill capture are all heard in full; first blood folds into the double kill', () => {
   const b = B['standard-control'];
-  for (const cue of ['kill', 'first_blood', 'double_kill', 'hill_captured']) for (const c of clipsOf(b, cue)) assert.ok(heardInFull(c), cue);
+  for (const cue of ['kill', 'lead_taken', 'double_kill', 'hill_captured']) assert.ok(heardInFull(one(b, cue)), cue);
   assert.equal(clipsOf(b, 'kill').length, 1, 'the second kill is confirmed by its double-kill line, which replaces the plain line');
+  // The first-blood line waits behind the lead change (the `medal` rank); the second kill's MC item then folds it (the
+  // spree rule: the newest medal line only).
+  assert.ok(b.dropped.some(d => d.cue === 'first_blood' && /folded/.test(d.why)));
 });
-test('B standard-control: "Your team takes the lead" is heard', { todo: 'expires behind two kill items (finding B1)' }, () => {
-  assert.ok(heardInFull(one(B['standard-control'], 'lead_taken')));
+test('B standard-control: "Your team takes the lead" is heard (finding B1: it expired behind two kill items)', () => {
+  const l = one(B['standard-control'], 'lead_taken');
+  assert.ok(heardInFull(l), `${l.status}`);
+});
+test('B first-blood-lead: the lead change plays before the medal line of the kill it came with (the `medal` rank)', () => {
+  const b = B['first-blood-lead'];
+  assert.ok(one(b, 'kill').start < one(b, 'lead_taken').start && one(b, 'lead_taken').start < one(b, 'first_blood').start);
+});
+test('B koth-hold-medals: no possession tick while my kill or its medal lines are on air (it is a token-1 clip)', () => {
+  const b = B['koth-hold-medals'];
+  assert.equal(b.mustPendingHeartbeats, 0);
+  const ticks = clipsOf(b, 'hill_tick');
+  assert.ok(ticks.length >= 2, 'the tick runs while we hold the point');
+  const own = b.gun.clips.filter(c => c.must);
+  const first = Math.min(...own.map(c => c.sentAt)) - FLASH_GAP_MS, last = Math.max(...own.map(c => c.end));
+  const inside = ticks.filter(c => c.sentAt >= first && c.sentAt < last);
+  assert.deepEqual(inside.map(c => c.sentAt), [], 'a tick inside the kill\'s audio');
 });
 
-test('B: a pain grunt in the same hit as the shield break is not queued behind it', { todo: 'body sounds skip the one-outstanding rule; the grunt starts 2.6 s late (finding B4)' }, () => {
+test('B: a pain grunt in the same hit as the shield break is not queued behind it (finding B4)', () => {
   for (const id of ['halo-heartbeat-kill', 'teammate-down-firefight', 'death-with-kill-queued']) {
-    for (const c of B[id].gun.clips.filter(x => BODY.has(x.cue) && x.start != null)) assert.ok(c.latency <= ANNOUNCE_AUDIO_LATE_DEFAULT_MS, `${id}: ${c.cue} ${c.latency} ms`);
+    for (const c of B[id].gun.clips.filter(x => BODY.has(x.cue) && x.start != null)) assert.ok(c.latency <= 550, `${id}: ${c.cue} ${c.latency} ms`);
   }
+  assert.ok(['halo-heartbeat-kill', 'teammate-down-firefight', 'death-with-kill-queued'].some(id => B[id].dropped.some(d => BODY.has(d.cue))),
+    'at least one grunt was stale and dropped (the check above is not vacuous)');
 });
 
 // ---------- sensitivity: what B depends on that the bench has not measured ----------

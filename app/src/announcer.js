@@ -9,12 +9,14 @@
 // its own tick. There is no timer in here, so a test drives it by moving the clock.
 
 /** Priority, highest first. One kind per rank; the engine maps every MC alert that is not a lead change to
- *  `alert`. The player's OWN kill confirmation leads (Tony), then the lead change, then what the player can
- *  act on (the objective, their own pickup), then match news, then other players' deaths, then item spawns. */
+ *  `alert`. The player's OWN kill confirmation leads (Tony), then the lead change, then the medal lines of a kill
+ *  already confirmed, then what the player can act on (the objective, their own pickup), then match news, then other
+ *  players' deaths, then item spawns. */
 export const ANNOUNCE_PRIORITY = [
   'kill_confirmed',   // my own kill: the IR KILL CONFIRMED, MC's kill feedback, and its medal / multikill lines
   'lead_taken',       // MC alert: my team (or I) took the lead
   'lead_lost',        // MC alert: my team (or I) lost it
+  'medal',            // my own kill's medal lines once its kill line was said (the IR word said it): after the lead change
   'hill_captured',    // the engine's own hill transition
   'hill_lost',
   'powerup_swap',     // "<NEW> REPLACES <OLD>": my own pickup
@@ -29,7 +31,8 @@ export const ANNOUNCE_PRIORITY = [
  *  A lead change is a statement about the score NOW: said three seconds late it can be false. */
 export const ANNOUNCE_TTL_MS = {
   kill_confirmed: Infinity,   // Tony: my own kill confirm leads and is never lost, however long a medal stack ahead of it runs
-  lead_taken: 4000, lead_lost: 4000,
+  lead_taken: Infinity, lead_lost: Infinity,   // must-hear: it waits, never expires. A newer lead state REPLACES it (key 'lead')
+  medal: Infinity,      // must-hear, like the kill line it follows
   hill_captured: 3000, hill_lost: 3000,
   powerup_swap: 4000,
   alert: 6000,          // match news (next kill wins, the clock) still holds a few seconds on; it waits behind a kill AND a lead line
@@ -41,21 +44,28 @@ export const ANNOUNCE_TTL_MS = {
 /** A line that would START later than this after its event is not said (the card still shows, if the item has one).
  *  Tony's match 2026-09-24: lines landing 10-15 s late inside the gun are worse than silence. Must-hear lines (my own
  *  kill confirm, the lead change) get longer: the kill's own TTL is Infinity, its VOICE stops mattering after 6 s. */
-export const ANNOUNCE_AUDIO_LATE_MS = { kill_confirmed: 6000, lead_taken: Infinity, lead_lost: Infinity };
+export const ANNOUNCE_AUDIO_LATE_MS = { kill_confirmed: 6000, medal: 6000, lead_taken: Infinity, lead_lost: Infinity };
 export const ANNOUNCE_AUDIO_LATE_DEFAULT_MS = 2000;
-export const MUST_HEAR = new Set(['kill_confirmed', 'lead_taken', 'lead_lost']);
+export const MUST_HEAR = new Set(['kill_confirmed', 'medal', 'lead_taken', 'lead_lost']);
+/** My own kill: its item holds its full slot, and nothing must-hear flushes over it while it still sounds. */
+export const OWN_KILL = new Set(['kill_confirmed', 'medal']);
+/** Objective lines: not must-hear (they wait for a silent gun, and go stale), but the shield loop never mutes them. While
+ *  the loop blocks the gun, the item plays with `flush: true` and the owner says it like a must-hear line (the stops,
+ *  then the line). Stopping the loop cuts nothing anyone wants to hear, and it resumes by itself. Ambient lines (the
+ *  alerts, the pool lines) stay droppable. */
+export const OBJECTIVE = new Set(['hill_captured', 'hill_lost', 'enemy_down']);
 
 /** The shortest slot each kind holds: its banner's hold in hud.js, so the NEXT item's banner never lands on a
  *  card still showing. The slot is the longer of this and the clip (plus ANNOUNCE_GAP_MS). */
 export const ANNOUNCE_BANNER_MS = {
-  kill_confirmed: 1800, lead_taken: 2200, lead_lost: 2200, hill_captured: 2200, hill_lost: 2200,
+  kill_confirmed: 1800, medal: 1800, lead_taken: 2200, lead_lost: 2200, hill_captured: 2200, hill_lost: 2200,
   powerup_swap: 2200, alert: 2200, teammate_down: 2000, enemy_down: 2000, powerup_spawn: 2400, status: 0,
 };
 
 /** Which HUD surface a kind draws on. Two items on the SAME surface replace each other in place (hud.js
  *  `_swap`), so the next one may start once the current one's audio is over, without waiting out the card. */
 export const ANNOUNCE_SURFACE = {
-  kill_confirmed: 'co', hill_captured: 'co', hill_lost: 'co', powerup_swap: 'co', teammate_down: 'co',
+  kill_confirmed: 'co', medal: 'co', hill_captured: 'co', hill_lost: 'co', powerup_swap: 'co', teammate_down: 'co',
   enemy_down: 'co', powerup_spawn: 'co', lead_taken: 'alert', lead_lost: 'alert', alert: 'alert',
 };
 
@@ -95,7 +105,9 @@ const rank = kind => { const i = ANNOUNCE_PRIORITY.indexOf(kind); return i < 0 ?
 
 /**
  * An item: `{kind, key?, audioMs, bannerMs?, play(ctx), ok?(), data?}`.
- * - `play({preempted, waited, muted}, item)`: `muted` = say nothing (the line would start too late, ANNOUNCE_AUDIO_LATE_MS); does the write(s) and sets the HUD field; it runs once, when the item starts.
+ * - `play({preempted, waited, muted, flush}, item)`: `muted` = say nothing (the line would start too late, ANNOUNCE_AUDIO_LATE_MS);
+ *   `flush` = an OBJECTIVE line while the shield loop blocks the gun: say it like a must-hear line (the stops, then the line).
+ *   It does the write(s) and sets the HUD field; it runs once, when the item starts.
  *   `item` is the queue's own copy, so a caller can keep a reference to it (and `push` returns the same object).
  * - `audioMs` is how long its sound runs (0 = silent). The slot is max(audioMs + gap, bannerMs).
  * - `key` collapses duplicates: the same key and kind already queued or playing drops the new one; the same
@@ -182,7 +194,7 @@ export class Announcer {
     if (this.sync) this.sync(now);
     const cur = this.current;
     // Round 3 M4: never flush over my own kill. A must-hear item waits while the kill on air still has a clip on the gun.
-    if (cur && cur.kind === 'kill_confirmed' && this.gun && this.gun.playingUntil(now) > now) {
+    if (cur && OWN_KILL.has(cur.kind) && this.gun && this.gun.playingUntil(now) > now) {
       const nx = this._peek(now);
       if (nx && MUST_HEAR.has(nx.kind)) return null;
     }
@@ -190,7 +202,7 @@ export class Announcer {
       // Same-surface handover: once a line has finished, an item of EQUAL or higher priority may replace its card in
       // place. Never a kill confirm's card (it holds its full slot, and `extend` lengthens it), never a silent card.
       const next = this._peek(now);
-      const handover = next && cur.audioMs > 0 && now >= cur.audioUntil && cur.kind !== 'kill_confirmed' && next.rank <= cur.rank
+      const handover = next && cur.audioMs > 0 && now >= cur.audioUntil && !OWN_KILL.has(cur.kind) && next.rank <= cur.rank
         && ANNOUNCE_SURFACE[next.kind] && ANNOUNCE_SURFACE[next.kind] === ANNOUNCE_SURFACE[cur.kind];
       if (now < cur.until && !handover) return null;
       this.current = null;
@@ -199,10 +211,15 @@ export class Announcer {
     if (!next) return null;
     // P1: a line that is not must-hear never goes to a gun that still holds a clip (one outstanding at most): it waits,
     // and once it is past ANNOUNCE_AUDIO_LATE_MS (or the shield loop blocks the gun) it shows its card without its line.
+    // An OBJECTIVE line is the exception to the loop: it cuts the loop instead (`flush`), so a hill word or "Target down"
+    // is still heard with the shield up.
     if (next.audioMs > 0 && !MUST_HEAR.has(next.kind) && this.gun && this.gun.outstanding(now) > 0) {
       const late = ANNOUNCE_AUDIO_LATE_MS[next.kind] != null ? ANNOUNCE_AUDIO_LATE_MS[next.kind] : ANNOUNCE_AUDIO_LATE_DEFAULT_MS;
-      if (!this.gun.blocked && now - next.at <= late) return null;
-      next.forceMute = true;
+      if (this.gun.blocked && OBJECTIVE.has(next.kind) && now - next.at <= late) next.flush = true;
+      else {
+        if (!this.gun.blocked && now - next.at <= late) return null;
+        next.forceMute = true;
+      }
     }
     this.remove(next);
     this._start(next, now, false);
@@ -234,7 +251,7 @@ export class Announcer {
     }
     it.startedAt = now; it.audioUntil = now + it.audioMs; it.until = now + it.slotMs; it.muted = muted;
     this.current = it;
-    it.play({ preempted, waited, muted }, it);
+    it.play({ preempted, waited, muted, flush: !muted && !!it.flush }, it);
   }
 
   /** For `state()`: what is on air, and how many wait behind it. */

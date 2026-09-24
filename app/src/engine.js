@@ -79,6 +79,7 @@ const RESULT_SETTLE_MS = 30000;     // A24/node.md §3.13: after the whistle the
                                     // then, and only with MC unreachable, does it say MC NOT REACHED. It NEVER says lost.
 const READOUT_COALESCE_MS = 300;    // A16 §3.1/§5: a change within this of the last READOUT WRITE only restarts the hold, it does not write again
 const PAIN_GAP_MS = 600;            // A15.3: at most one pain grunt per 600 ms (drop, never queue)
+const PAIN_STALE_MS = 500;          // docs/announcer.md: a grunt that would start later than this after its hit is dropped
 const TRYOUT_ARM_MAX_MS = 3000;     // F147: past this with no confirming $ALCD/$LCD, assume the write took anyway — same
                                      // "the real duration has never been timed" precedent as `switchWindowMs()`, so SWITCHING… never hangs forever
 // A17.2: HP below which the once-per-life low-health alert fires (Tony, bench 2026-09-07). ABSOLUTE, not
@@ -2659,6 +2660,10 @@ export class Engine {
     if (!((f.cues && f.cues[kind]) || (f.cue_pools && f.cue_pools[kind]))) return;   // pre-A15.3 bundle: the firmware's own pains
     const now = this.now();
     if (this._lastPainAt != null && now - this._lastPainAt < PAIN_GAP_MS) return;   // drop, never queue
+    // docs/announcer.md: a grunt is stale PAIN_STALE_MS after its hit. One that would wait longer than that in the gun's
+    // FIFO (behind the shield-break line of the same hit, say) is dropped, not queued. While the loop blocks, never.
+    this._audioSync(now);   // the shield as it stands NOW: the hit may just have broken it
+    if (this._gun.freeAt(now) - now > PAIN_STALE_MS) { this.log(`pain ${kind.slice(5)} dropped: the gun is busy for ${this._gun.freeAt(now) - now} ms`, 'li'); return; }
     this._lastPainAt = now;
     const pick = this._pickCue(kind);
     if (pick.frame) this._write([pick.frame], `pain ${kind.slice(5)} (${(pick.frame.split(',')[4] || '').trim()}${pick.tag}) ${dmg} dmg into ${pool || 'pools'}`);
@@ -2850,10 +2855,12 @@ export class Engine {
     if (!cue.frame && !card) return;
     this._ann.push({ kind: card ? kind : 'alert', key: 'hill', preemptKey: true, stopsOwn: true, audioMs: cue.frame ? cue.ms : 0, ...(card ? {} : { bannerMs: 0 }),
       ok: () => this._hillAudioOn(),
-      play: ({ preempted, muted }) => {
+      play: ({ preempted, muted, flush }) => {
         // QA-05: the HUD's HILL CAPTURED / HILL LOST card reads this, set when the line starts (a muted line still shows).
         if (card) this.hillCallout = { kind, at: this.now() };
-        if (cue.frame && !muted) this._write(preempted ? [PLAYX, cue.frame] : [cue.frame], `hill ${kind}${preempted ? ' (preempting the line still playing)' : ''} — ${why}`);
+        // docs/announcer.md: an objective line cuts the shield loop (`flush`) rather than being muted by it
+        if (cue.frame && !muted && flush) this._sayMust(cue.frame, `hill ${kind} (through the shield loop) — ${why}`);
+        else if (cue.frame && !muted) this._write(preempted ? [PLAYX, cue.frame] : [cue.frame], `hill ${kind}${preempted ? ' (preempting the line still playing)' : ''} — ${why}`);
         this._changed();
       } });
   }
@@ -2985,9 +2992,10 @@ export class Engine {
     const it = this._ann.push({ kind, src: 'ir', audioMs: line ? clipMs(line) : 0,
       callout: { kind, name: isDownBy ? null : this.nameOf(player), team: TEAM_KEY[victimTeam] || null, at: now, ...(by ? { by } : {}) },
       ok: () => this.alive && this.phase === 'live',
-      play: ({ muted }, self) => {
+      play: ({ muted, flush }, self) => {
         this.callout = self.shown = { ...self.callout, at: self.startedAt };   // the SAME instant the queue stamped (MC's `ir_at` names it): never a second clock read
-        if (line && !muted) this._write([line], 'S57 ENEMY DOWN');
+        if (line && !muted && flush) this._sayMust(line, 'S57 ENEMY DOWN (through the shield loop)');   // an objective line (docs/announcer.md)
+        else if (line && !muted) this._write([line], 'S57 ENEMY DOWN');
         this._changed();
       } });
     if (entry) entry.item = it;
@@ -3245,7 +3253,10 @@ export class Engine {
     }
     this._accrueHold(h, now);   // the CLOCK runs whatever the audio does: possession is a fact about the point
     if (!this._hillAudioOn() || !this._hillMine()) return;
-    if (this._gun.outstanding(now) > 0 || this._ann.queue.length) return;   // docs/announcer.md: the tick never queues behind a clip on the gun, nor jumps a waiting line
+    // docs/announcer.md: the tick never queues behind a clip on the gun, nor jumps a waiting line, nor sounds while the item on
+    // air still has audio due (the gaps inside a kill item: the 120 ms flash-to-line gap, the gap between medal lines). It is
+    // a token-1 clip, the gun's interrupt slot: written there, it cuts whatever plays.
+    if (this._gun.outstanding(now) > 0 || this._ann.queue.length || this._ann.audioBusy(now)) return;
     // D: OUR point draining doubles the cadence. Nothing else is audible before "Hill Lost!", which arrives
     // when it is already too late — the defender hears an unchanged 1 s tick right up to the moment they
     // have lost it. `falling` comes off the advert, so this costs a comparison.
@@ -4795,7 +4806,7 @@ export class Engine {
       // Round 2 M1, a spree: older MC kills still WAITING fold into this one item, so the queue never stacks a line per
       // kill. The newest medal line only (a triple supersedes the double), the newest card. The folded items leave
       // WITHOUT `onDrop`: their pairing entries stay, marked as said, so their IR twins do not speak for them either.
-      const waiting = this._ann.queue.filter(q => q.kind === 'kill_confirmed' && q.src === 'mc');
+      const waiting = this._ann.queue.filter(q => (q.kind === 'kill_confirmed' || q.kind === 'medal') && q.src === 'mc');
       if (waiting.length) {
         waiting.forEach(q => { this._ann.remove(q); if (q.entry) q.entry.killLine = true; });
         const older = waiting.map(q => q.medals).filter(m => m && m.length).pop();
@@ -4815,7 +4826,10 @@ export class Engine {
     const lens = lines.map((x, i) => clipMs(x.f, cm ? cm[medals.length ? medals[i].m : body.kind] : undefined));
     const at = []; lens.reduce((t, ms, i) => { at[i] = t; return t + ms + ANNOUNCE_GAP_MS; }, 120);
     const audioMs = lines.length ? at[lines.length - 1] + lens[lines.length - 1] : 0;
-    const item = this._ann.push({ kind: isKill ? 'kill_confirmed' : 'alert', src: 'mc', key: isKill ? null : `fb:${body.kind}`, audioMs, entry: mcEntry, medals,
+    // docs/announcer.md: once this kill's line was said (its IR twin started and was not muted), what is left to say is
+    // medal lines only. They rank `medal`, after a lead change, so the lead MC sent with this kill is not held behind them.
+    const killSaid = isKill && medals.length > 0 && irAt != null && !(irMatch && irMatch.item && irMatch.item.muted);
+    const item = this._ann.push({ kind: isKill ? (killSaid ? 'medal' : 'kill_confirmed') : 'alert', src: 'mc', key: isKill ? null : `fb:${body.kind}`, audioMs, entry: mcEntry, medals,
       bannerMs: isKill ? Math.max(KILL_CARD_MS, audioMs) : 0,
       ok: () => this._lightGen === lg,
       onDrop: () => { if (mcEntry) this._mcKillOpen = this._mcKillOpen.filter(x => x !== mcEntry); },   // unheard: no IR twin may pair with it

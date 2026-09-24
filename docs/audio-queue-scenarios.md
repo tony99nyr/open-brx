@@ -1,15 +1,16 @@
 # Audio queue scenarios: what the gun plays, under the app on main and under the 0.4.12 rule
 
-2026-09-24. A deterministic simulator of the gun's audio channel, built from the bench, and eight game situations run
-through it twice: (A) the app on main (`app/src/engine.js`: 0.4.11 plus F348's spawn at full shield and F349's
-four-grant recharge) and (B) the planned 0.4.12 rule (brx4's announcer queue, `docs/announcer.md` on branch
-`brx4/announcer-queue`). B's rule lives in the harness as a spec, so brx4's code can be checked against it.
+2026-09-24. A deterministic simulator of the gun's audio channel, built from the bench, and ten game situations run
+through it twice: (A) the app before the announcer queue (0.4.11 plus F348's spawn at full shield and F349's
+four-grant recharge) and (B) the 0.4.12 rule (`docs/announcer.md`). B runs the REAL `Announcer` and `GunAudio` from
+`app/src/announcer.js`, with the engine's glue around them mirrored, so the spec cannot drift from the queue's code.
 
 - Simulator: `app/tools/gun-audio-sim.mjs` (pure; every rule is a named constant in `GUN_RULES`, marked MEASURED
   with its date or ASSUMPTION).
 - Policies A and B, the game model and the scenarios: `app/tools/audio-scenarios.mjs`.
   `node app/tools/audio-scenarios.mjs` prints every table below.
-- Tests: `app/test/audio-queue.test.mjs` (76 pass, 5 `todo`). A `todo` test is an outcome we want that B does not
+- Tests: `app/test/audio-queue.test.mjs` (94 pass, 2 `todo`). The engine side of each fix has its own test on the
+  real engine in `app/test/announcer.test.mjs` and `app/test/engine.test.mjs`. A `todo` test is an outcome we want that B does not
   deliver yet. It runs and reports, and it does not fail the suite. Make it a plain test once B delivers it.
 - The last section is the bench plan that settles the assumptions the fix depends on.
 
@@ -121,8 +122,9 @@ lines after it never play. With `humYield` = `never`, all seven never play.
 | shield charging (7.5 s) | 3677 ms, full | 0 ms, full |
 | shields online (10.5 s) | 2775 ms, full | removed |
 
-A plays the pain grunt 2.6 s late behind the break line, then heartbeats, then the kill. B plays the grunt 2.6 s late
-as well (finding B4). B's heartbeat stops in time for the refill, so "shields charging" is heard.
+A plays the pain grunt 2.6 s late behind the break line, then heartbeats, then the kill. B drops the grunt: it would
+start 2.6 s after its hit, past its 500 ms limit (finding B4, fixed). B's heartbeat stops in time for the refill, so
+"shields charging" is heard.
 
 ### 3. A teammate down during a firefight (hits break the shield)
 
@@ -130,7 +132,7 @@ as well (finding B4). B's heartbeat stops in time for the refill, so "shields ch
 |---|---|---|
 | shield down (1.8 s) | 0 ms, full | 0 ms, full |
 | teammate down (2.0 s) | card only, no sound | card only, no sound |
-| "Target down" (2.6 s) | 3021 ms, full | dropped: would start 2.15 s late |
+| "Target down" (2.6 s) | 3021 ms, full | 1900 ms, full (the stale grunts no longer hold the gun) |
 | shield charging (9.0 s) | 3455 ms, full | 0 ms, full |
 | shields online (12.0 s) | 2553 ms, full | removed |
 
@@ -138,10 +140,13 @@ as well (finding B4). B's heartbeat stops in time for the refill, so "shields ch
 
 | Cue (event) | A | B |
 |---|---|---|
-| hill captured (1.0 s) | 13952 ms (end of the first A10 play) | dropped: the hum blocks |
-| kill (1.3 s) | never | 130 ms, full |
-| lead taken (1.6 s) | never | 1910 ms, full |
+| hill captured (1.0 s) | 13952 ms (end of the first A10 play) | 10 ms, full (it cuts the hum) |
+| kill (1.3 s) | never | 1830 ms, full (it waits for the hill line on air) |
+| lead taken (1.6 s) | never | 3410 ms, full |
 | possession ticks | played over the hum (token 1, assumption `mix`) | not sent (the hum blocks) |
+
+A kill that lands while a lower line still sounds waits for it (`docs/announcer.md`, Pre-emption 1). Before the
+objective rule the hill line was muted, so its card was silent and the kill took it over at once.
 
 ### 5. Match start (a Shields spawn at full shield, F348): first blood, lead taken and the kill confirm at once
 
@@ -149,8 +154,8 @@ as well (finding B4). B's heartbeat stops in time for the refill, so "shields ch
 |---|---|---|
 | spawn line (0 s) | 15032 ms (behind the first A10 play) | stuck, then cut after 10 ms by the kill's flush |
 | kill (12.2 s) | 4618 ms | 140 ms, full |
-| first blood (12.5 s) | 6897 ms | 630 ms, full |
-| lead taken (12.5 s) | 4954 ms | 3260 ms, full |
+| first blood (12.5 s) | 6897 ms | 2880 ms, full |
+| lead taken (12.5 s) | 4954 ms | 510 ms, full (before the medal line: the `medal` rank) |
 
 The spawn line loses a 20 ms race with the fill (bench step 4). Under B the phone's model marks the line as stuck when
 the shield rises, so the kill's flush spends two stops and the stuck line leaves a 10 ms fragment: the "stuck VAA"
@@ -162,7 +167,7 @@ of 2026-09-24 in another form.
 |---|---|---|
 | shield down (0.5 s) | cut at 2.0 s by the death stop | cut at 1.6 s by the kill's flush |
 | low health (1.1 s) | 2150 ms, full, AFTER the death | cut after 10 ms by the kill's flush |
-| kill (1.5 s) | 3734 ms, full, after the death | 150 ms, then CUT after 350 of 636 ms by the death stop |
+| kill (1.5 s) | 3734 ms, full, after the death | 140 ms, then CUT after 360 of 636 ms by the death stop |
 
 ### 7. Standard: a kill confirm, then the hill captured and lost 300 ms apart
 
@@ -177,11 +182,35 @@ of 2026-09-24 in another form.
 | Cue (event) | A | B |
 |---|---|---|
 | kill (1.2 s) | 120 ms, full | 120 ms, full |
-| lead taken (1.5 s) | 456 ms, full | dropped: expired after 4.25 s in the queue |
-| first blood (1.5 s) | 2399 ms, full | 620 ms, full |
+| lead taken (1.5 s) | 456 ms, full | 500 ms, full |
+| first blood (1.5 s) | 2399 ms, full | folded into the double kill (the spree rule: the newest medal line only) |
 | kill (3.2 s) | 3155 ms, full | not said: the double-kill line replaces it |
-| double kill (3.5 s) | 3491 ms, then CUT after 1009 ms by the possession tick | 1370 ms, full |
-| hill captured (6.0 s) | 2114 ms, full | 1000 ms, full |
+| double kill (3.5 s) | 3491 ms, then CUT after 1009 ms by the possession tick | 870 ms, full |
+| hill captured (6.0 s) | 2114 ms, full | 500 ms, full |
+
+The lead change no longer expires (finding B1). It now plays before the first-blood line, which then waits long
+enough for the second kill's item to fold it.
+
+### 9. KOTH, shield up (hum): hill captured, "Target down", an ambient alert, then hill lost
+
+| Cue (event) | A | B |
+|---|---|---|
+| hill captured (1.0 s) | 13952 ms (end of the first A10 play) | 10 ms, full (it cuts the hum) |
+| "Target down" (4.0 s) | never | 10 ms, full (it cuts the hum) |
+| next kill wins (6.5 s) | never | card only: an ambient line stays muted while the hum blocks |
+| hill lost (8.0 s) | never | 760 ms, full |
+
+### 10. Standard, holding the hill (the possession tick runs): a kill with two medal lines
+
+| Cue (event) | A | B |
+|---|---|---|
+| kill (3.2 s) | 120 ms, CUT after 180 ms by the possession tick | 120 ms, full |
+| double kill (3.5 s) | 120 ms, CUT after 880 ms by the possession tick | 620 ms, full |
+| killing spree (3.5 s) | 2120 ms, CUT after 880 ms by the possession tick | 2560 ms, full |
+| possession ticks | every second, over everything | none from the kill's flash to the end of its last medal line |
+
+Before the gate, the tick (a token-1 clip) went out in the 120 ms flash-to-line gap and in the 150 ms gap between the
+two medal lines, because the gun model was empty there.
 
 ## Findings under A (main)
 
@@ -201,17 +230,20 @@ of 2026-09-24 in another form.
 ## Findings under B
 
 B fixes findings 1 to 4 for every must-hear line: each plays in full, at once, with the hum up or down, and under all
-three hum models. What B still loses:
+three hum models. The gaps the first B run found, and what became of them (2026-09-24, branch `audio-gaps`):
 
-- Finding B1: the lead change can expire. Back-to-back medal lines (brx4's round 3) fixed it in scenario 5 (heard,
-  3.3 s late). In scenario 8 it still waits behind two kill items and expires at 4.25 s.
-- Finding B2: with the shield up, no line that is not must-hear is ever said: "Hill Captured", "Hill Lost", "Target
-  down", "next kill wins", the clock warnings and the possession tick (scenario 4).
-- Finding B3: my own death cuts my kill line. The F149 death stop still goes out and stops whatever plays (scenario 6).
-- Finding B4: body sounds skip the one-outstanding rule. A pain grunt in the same hit as the shield break queues 2.6 s
-  behind it (scenarios 2, 3, 6).
-- Finding B5: "Target down" is lost behind the break line. N101 runs 2.6 s, past the callout's 2 s late limit.
-- Finding B8: on a Shields spawn the spawn line is lost (scenario 5; the same fix as A finding 5).
+- Finding B1, FIXED: the lead change expired (4 s TTL) behind two kill items (scenario 8). It is must-hear, so its TTL
+  is now Infinity; a newer lead state still replaces it. It also outranks the medal lines now (the `medal` rank).
+- Finding B2, FIXED for the objective lines: with the shield up, no line that is not must-hear was said. Hill captured,
+  hill lost and "Target down" are now OBJECTIVE lines: while the hum blocks, each cuts it with a stop and plays
+  (scenarios 4 and 9). The ambient lines ("next kill wins", the clock warnings, the pool lines) stay muted.
+- Finding B3, OPEN (Tony's choice, F149): my own death cuts my kill line (scenario 6). Option 1: the kill line
+  finishes, and the death stop waits up to about 1 s. Option 2: the death is instant, and the kill line is dropped.
+- Finding B4, FIXED: a pain grunt queued 2.6 s behind the shield-break line of the same hit. A grunt that would start
+  more than 500 ms after its hit (`PAIN_STALE_MS`) is now dropped (scenarios 2, 3, 6).
+- Finding B5, FIXED with B4: "Target down" was lost behind the break line and the grunts behind it (scenario 3).
+- Finding B8, OPEN (bench): on a Shields spawn the spawn line is lost (scenario 5; the same fix as A finding 5).
+- A finding 4, FIXED: the possession tick now waits while the item on air still has audio due (scenario 10).
 - B depends on bench step 1 (the hum's restart delay). B writes the stops first and the line last. If the hum
   restarts inside the 10 ms before the line arrives, every must-hear line under the hum sticks (sensitivity test).
 
@@ -236,29 +268,31 @@ working tree. What was wrong, and is fixed:
   the case. It now counts heartbeats and ticks written while a must-hear line is due.
 
 Not yet covered by any test (breaking them changes no outcome in these scenarios): the stop cap of 4, brx4's round 3
-hold, and B's drop of an exempt `$PLAY` while the hum blocks. brx4's model also counts the `$SIR` hit sounds and
-folds a spree of waiting kills; the harness does neither.
+hold, and B's drop of an exempt `$PLAY` while the hum blocks. The engine's model also counts the `$SIR` hit sounds;
+the harness does not. (The harness now mirrors the spree fold, 2026-09-24.)
 
 ## Which cues must be heard
 
 - **Must hear (never dropped, flushes the gun):** my kill line, the medal lines, and the lead change. These are the
   news the player cannot get any other way mid-fight, and a medal is a kill confirm (it replaces the plain line).
-- **Worth hearing while still true (droppable when stale):** hill captured and lost, "Target down", shield down, low
-  health, "next kill wins", the clock warnings, shields charging, the spawn line. Each describes a state that can
-  change within seconds, so a late line can be false.
+- **Objective (droppable when stale, never muted by the hum):** hill captured and lost, "Target down". While the hum
+  blocks the gun, each cuts it with a stop, like a must-hear line. Otherwise each waits for a silent gun.
+- **Worth hearing while still true (droppable when stale):** shield down, low health, "next kill wins", the clock
+  warnings, shields charging, the spawn line. Each describes a state that can change within seconds, so a late line
+  can be false.
 - **Filler (cut or drop freely):** the heartbeat, the possession tick, the pain grunts. They repeat, or they echo
   what the player already felt.
 
 ## Proposed changes
 
-The order of record is `ANNOUNCE_PRIORITY` in `app/src/announcer.js` (brx4). The harness mirrors it with a TODO to
-import it. Against that list:
+DONE on branch `audio-gaps` (2026-09-24), except items 2 and 4 below. The order of record is `ANNOUNCE_PRIORITY` in
+`app/src/announcer.js`; the harness imports it. The change to that list:
 
 ```diff
  kill_confirmed      (my kill line only)
  lead_taken
  lead_lost
-+medal               (the medal lines, split out of kill_confirmed; must-hear, TTL Infinity, late limit 6 s)
++medal               (the medal lines of a kill whose kill line was said; must-hear, TTL Infinity, late limit 6 s)
  hill_captured
  hill_lost
  powerup_swap
@@ -269,15 +303,17 @@ import it. Against that list:
  status
 ```
 
-This fixes what is left of B1. With it:
+With it and the lead change's TTL at Infinity, B1 is fixed. Also:
 
-1. **For B2:** when the hum is the ONLY thing the gun holds, a line that is not must-hear may stop it with one `$PLAYX`
-   and play. Stopping the hum cuts nothing anyone wants to hear, and it resumes by itself. Or set t23 EMPTY (bench
-   step 2), which removes the block at its source.
-2. **For B3:** send the F149 death stop only when the model says the low-health line is the clip on air.
-3. **For B4:** apply the one-outstanding rule to the pain grunts (drop a grunt while the gun holds a clip).
-4. **For B8 and A5:** in the spawn write, put the spawn line before F348's `$LIFE` fill.
-5. **For A4:** gate the possession tick on the whole FIFO (brx4 already does), since it is a token-1 clip.
+1. **For B2 (done, objective lines only):** while the hum blocks, an objective line stops it and plays. Stopping the
+   hum cuts nothing anyone wants to hear, and it resumes by itself. Setting t23 EMPTY (bench step 2) would remove the
+   block at its source.
+2. **For B3 (open, Tony):** send the F149 death stop only when the model says the low-health line is the clip on air,
+   or wait for the kill line (option 1), or drop the kill line (option 2).
+3. **For B4 (done):** a grunt that would start more than 500 ms after its hit is dropped.
+4. **For B8 and A5 (open, bench):** in the spawn write, put the spawn line before F348's `$LIFE` fill.
+5. **For A4 (done):** the possession tick waits on the whole FIFO and on the item on air (`audioBusy`), since it is a
+   token-1 clip.
 
 ## Bench plan
 

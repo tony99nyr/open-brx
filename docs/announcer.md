@@ -12,6 +12,7 @@ constants in that file; change them there.
 |---|---|---|---|
 | `kill_confirmed` | MC `feedback{kind:"kill"}` (`feedback`), an S57 `DOWN_BY` naming me (`_irKillConfirmed`) | the kill pool, or the medal lines | the kill card |
 | `lead_taken`, `lead_lost` | MC `alert` (`_announceAlert`) | `VA6D`, `VA6E` | the alert banner |
+| `medal` | MC `feedback{kind:"kill"}` with medals, when the kill's IR word already said its kill line | the medal lines | the kill card |
 | `hill_captured`, `hill_lost` | the engine's hill transition (`_hillSay`) | `VB0N`, `VB0P` | the hill card |
 | `powerup_swap` | a second weapon pickup (`_puGrantWeapon`) | none | "NEW · REPLACES OLD" |
 | `alert` | every other MC alert, the clock warnings, `victory` feedback, "Hill Contested" | the bundle's cue | the alert banner (if any) |
@@ -27,12 +28,15 @@ A kill confirm plays only for MC `feedback{kind:"kill"}` or an S57 `DOWN_BY` nam
 named `kill` is refused.
 
 **Exempt, by design** (they answer the player's own body or trigger at once, or play before go-live when nothing
-else is on air): the pain grunts (`pain_short`, `pain_long`, `pain_melee`), `hit_taken`, `died`, the low-health
+else is on air): the pain grunts (`pain_short`, `pain_long`, `pain_melee`; a grunt that would start more than 500 ms
+after its hit, `PAIN_STALE_MS`, is dropped: behind the shield-break line of the same hit it would play 2.6 s late), `hit_taken`, `died`, the low-health
 loop (`hurt`), `shield_down` and its heartbeat (`shield_loop`), `stunned`, `stun_over`, `poisoned`, `poison_tick`,
 `smoked`, `reload_nag`, the spawn line (`spawn`, `respawned`), `countdown`, `klaxon`, `runway_30/20/10`, the whistle's
 `game_over` and `survivors_win` (written at match end, after the queue is cleared), and the gun's sight flash `$SFLASH`. The hill possession tick (`hill_tick`, 0.11 s) and the shield heartbeat (`shield_loop`)
 are not items either, but they never start while the gun still holds a clip or while any item waits, and a heartbeat
-beat that would still sound when the refill starts is not begun. Exempt means "not queued": every one of them is still
+beat that would still sound when the refill starts is not begun. The possession tick also waits while the item on air
+still has audio due (`audioBusy`): the tick is a token-1 clip, the gun's interrupt slot, so in the 120 ms flash-to-line
+gap of a kill or the gap between two medal lines it would cut the next line. Exempt means "not queued": every one of them is still
 a clip in the gun's audio model below, so a must-hear line stops it.
 
 ## The gun's audio FIFO (`GunAudio`)
@@ -54,7 +58,7 @@ Rules:
 1. **At most one clip outstanding for anything not must-hear.** A non-must-hear item waits while the gun holds a clip,
    and past `ANNOUNCE_AUDIO_LATE_MS` it shows its card without its line. The pool lines' pre-emption waits for a silent
    gun too, so they no longer overlap.
-2. **Must-hear flush** (`_sayMust`): my own kill line and a lead change send one `$PLAYX,0,*` per clip the model says
+2. **Must-hear flush** (`_sayMust`): my own kill line, its medal lines and a lead change send one `$PLAYX,0,*` per clip the model says
    the gun holds, in the same write, then the line, capped at 4 stops (`MUST_HEAR_MAX_STOPS`: the loop plus 3). No
    stop when nothing is outstanding. Every line of my kill is must-hear, and each medal line goes out after the one
    before it has ENDED, so its flush never cuts my own audio. The kill item's sound is the sum of its clips, and a
@@ -62,7 +66,11 @@ Rules:
 3. **The shield loop blocks the FIFO.** `$PSET` t23 `energyShieldLoop` (our arm sends `A10`) is a real loop that plays
    while the shield is above 0. With it running, a queued line never plays (60+ s at the bench). So while it runs,
    the phone writes NO `$PLAY` that is not must-hear (it would all play late, at once, when the loop stops), and a
-   must-hear line sends one stop for the loop plus one per clip stuck behind it (within the cap). While the loop
+   must-hear line sends one stop for the loop plus one per clip stuck behind it (within the cap). The **objective
+   lines** (`OBJECTIVE`: hill captured, hill lost, "Target down") are the exception: while the loop blocks, the queue
+   starts them with `flush`, and the engine says them like a must-hear line. Stopping the loop cuts nothing anyone
+   wants to hear. They still wait for a silent gun when the loop is not running, and still go stale. The ambient
+   lines (every other alert, the pool lines) are still muted while the loop blocks. While the loop
    blocks, the model keeps at most one pending clip per sound id, so twenty hits under a shield count as one hit
    sound, not twenty. **The loop resumes on its own after
    `$PLAYX,0` (bench 2026-09-24, shield still up)**, so every must-hear line in that state gets its own stop. MC's
@@ -79,10 +87,15 @@ audio, which the model now defers or mutes.
 
 ## Priority (`ANNOUNCE_PRIORITY`)
 
-Highest first: `kill_confirmed`, `lead_taken`, `lead_lost`, `hill_captured`, `hill_lost`, `powerup_swap`, `alert`,
-`teammate_down`, `enemy_down`, `powerup_spawn`, `status`. The player's own kill leads, then the lead change (**Tony**), then
-what the player can act on, then match news, then other players' deaths, then item spawns. Equal rank plays first in,
-first out.
+Highest first: `kill_confirmed`, `lead_taken`, `lead_lost`, `medal`, `hill_captured`, `hill_lost`, `powerup_swap`,
+`alert`, `teammate_down`, `enemy_down`, `powerup_spawn`, `status`. The player's own kill leads, then the lead change
+(**Tony**), then the medal lines of a kill already confirmed, then what the player can act on, then match news, then
+other players' deaths, then item spawns. Equal rank plays first in, first out.
+
+`medal` is its own rank so that a lead change MC sends with a kill is not held behind that kill's medal lines. It
+applies once the kill line was said (the IR word said it): the medal lines left are a `medal` item. When MC names the
+kill first, a medal replaces the plain kill line and IS the confirmation, so that item stays `kill_confirmed`. A
+`medal` item is must-hear, holds its full slot like a kill, and no must-hear line flushes over it while it sounds.
 
 ## Timing
 
@@ -100,7 +113,7 @@ while any announcer line sounds.
 
 Tony's match (2026-09-24) heard lines 10 to 15 s late: the phone wrote each on time, and the gun queued them behind
 audio already playing. So a line that would START more than 2 s after its event is not said; its card still shows,
-silently. The must-hear lines get longer: my kill confirm 6 s, a lead change its whole TTL.
+silently. The must-hear lines get longer: my kill confirm and its medal lines 6 s, a lead change no limit.
 
 **Spree.** When a new MC kill arrives while older MC kills still wait, they fold into ONE item: the newest medal line
 only (a triple supersedes the double) and the newest card. Five kills 1 s apart never queue more than about 4 s of
@@ -108,9 +121,11 @@ voice. The folded kills keep their pairing, marked as said, so their IR twins st
 
 ## Stale items and duplicates (`ANNOUNCE_TTL_MS`)
 
-An item that waits longer than its TTL is dropped, never played late: lead change 4 s, hill 3 s, swap 4 s, alert 6 s,
-teammate and enemy down 3 s, spawn 5 s (`PU_ANNOUNCE_LATE_MS`), pool lines 1.5 s. My own kill confirm has no TTL
-(**Tony**: first, and never lost): behind a four-medal stack it waits about 8 s and still plays. An item that leaves
+An item that waits longer than its TTL is dropped, never played late: hill 3 s, swap 4 s, alert 6 s, teammate and
+enemy down 3 s, spawn 5 s (`PU_ANNOUNCE_LATE_MS`), pool lines 1.5 s. My own kill confirm and its medal lines have no
+TTL (**Tony**: first, and never lost): behind a four-medal stack a kill waits about 8 s and still plays. A lead change
+has no TTL either: it is must-hear, so it waits (behind two kill items it expired at 4.25 s before). It cannot go
+stale, because a newer lead state replaces it (key `lead`). An item that leaves
 the queue unplayed runs its `onDrop`, which undoes its kill-confirm pairing, so a twin never stays silent for a
 confirm nobody heard. Items with the same key collapse.
 The same kind already playing or waiting is dropped. A different kind with the same key that is still waiting is
@@ -138,7 +153,7 @@ air, its card takes the name in place. If it is waiting, or is a card a kill dis
 never flashes twice:
 
 - IR first, MC second, IR on air: MC's named card replaces the IR card in place, with no second line or flash. With
-  medals, the medal lines follow the IR line.
+  medals, the medal lines follow the IR line as a `medal` item, after any lead change that waits.
 - IR first, still waiting, MC second: MC's item replaces the waiting IR item and speaks the kill once.
 - MC first, IR second: the IR word adds no line when MC's item says the kill line. If MC's item says only a medal (a
   medal replaces MC's plain line) or said nothing, the IR word says the kill line itself, voice only, with no card.

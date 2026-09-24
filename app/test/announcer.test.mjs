@@ -94,13 +94,29 @@ test('announcer: a line still playing is never cut, and no $PLAYX is written for
 
 // ---------- expiry and dedupe ----------
 
-test('announcer: a lead change that waited past its TTL is dropped, not played late', () => {
+test('announcer: a lead change is must-hear: behind 6 s of medal lines it waits and plays, it never expires (gap B1)', () => {
   const h = harness().live();
-  h.kill({ medals: ['killtacular', 'killing_spree', 'double_kill'] });   // ~6 s of medal lines on air
+  const medals = ['killtacular', 'killing_spree', 'double_kill'];
+  h.kill({ medals });   // ~6 s of medal lines on air (no IR word: this item is the kill confirm)
   h.alert('lead_taken');
   h.adv(9000);
-  assert.equal(h.plays(LEAD).length, 0, `a lead change ${ANNOUNCE_TTL_MS.lead_taken} ms stale is news of the past`);
-  assert.notEqual(h.eng.moment && h.eng.moment.kind === 'alert' && h.eng.moment.data.kind, 'lead_taken', 'and its banner never shows');
+  assert.equal(ANNOUNCE_TTL_MS.lead_taken, Infinity);
+  assert.equal(h.plays(LEAD).length, 1, 'the lead change waited out the kill and played');
+  const lastId = golden.cues[medals[2]].split(',')[4], last = h.plays(lastId)[0];
+  assert.ok(h.plays(LEAD)[0].t >= last.t + CLIP_MS[lastId], 'after the last medal line ended');
+});
+
+test('announcer: IR said my kill, then MC\'s medals and the lead change: the lead change plays before the medal lines', () => {
+  const h = harness().live();
+  h.irWord(7, IR_CALLOUT.DOWN_BY + 2); h.adv(300);                // IR first: the kill line is said
+  h.kill({ medals: ['double_kill', 'killing_spree'] });           // MC: two medal lines left to say (a `medal` item)
+  h.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD');
+  h.adv(12000);
+  const ids = ['double_kill', 'killing_spree'].map(m => golden.cues[m].split(',')[4]);
+  const lead = h.plays(LEAD)[0], m1 = h.plays(ids[0])[0], m2 = h.plays(ids[1])[0];
+  assert.ok(lead && m1 && m2, 'all three said');
+  assert.ok(killLines(h).length === 1 && killLines(h)[0].t < lead.t, 'the kill line first');
+  assert.ok(lead.t < m1.t && m1.t < m2.t, `then the lead change, then the medals (${lead.t - m1.t} ms)`);
 });
 
 test('announcer: duplicates collapse, and a newer lead state replaces the queued older one', () => {
@@ -434,18 +450,54 @@ test('shield loop: shield 105, kill confirm: $PLAYX,0 then VAA at once', () => {
   assert.deepEqual(tail(h, m), ['X', 'VAA'], 'the loop resumed, so the next must-hear line gets its own stop');
 });
 
-test('shield loop: a clip stuck behind it before the kill: two stops then the line; nothing non-must-hear is written while it blocks', () => {
+test('shield loop: a clip stuck behind it before the kill: two stops then the line; nothing ambient is written while it blocks', () => {
   const h = harness({ shieldMax: 125 }).live();
   h.eng._write(['$PLAY,,4,6,VA8C,,,,*'], 'test: a body clip');         // written just before the shield came up
   shieldUp(h);
   const n = h.writes.length;
-  h.irWord(20, IR_CALLOUT.DOWN_BY + 2); h.alert('next_kill_wins');   // an ENEMY DOWN and an alert: not must-hear
+  h.alert('next_kill_wins');                                           // an ambient alert: not must-hear, not objective
   h.eng._write(['$PLAY,,4,6,VA7,,,,*'], 'test: a body sound while blocked');
   h.adv(3000);
-  assert.deepEqual(tail(h, n), [], 'no sound-bearing write while the loop blocks: it would all play late at once');
-  assert.equal(h.eng.state().callout.kind, 'enemy_down', 'the card still shows');
+  assert.deepEqual(tail(h, n), [], 'no ambient write while the loop blocks: it would all play late at once');
+  assert.equal(h.eng.state().card.data.kind, 'next_kill_wins', 'the banner still shows');
   h.kill(); h.adv(150);
   assert.deepEqual(tail(h, n), ['X', 'X', 'VAA'], 'one stop for the loop, one for the stuck clip, then the kill line');
+});
+
+test('shield loop: "Target down" is an objective line: it cuts the loop (a stop, then VB8), it is not muted (gap B2)', () => {
+  const h = shieldUp(harness({ shieldMax: 125 }).live());
+  const n = h.writes.length;
+  h.irWord(20, IR_CALLOUT.DOWN_BY + 2); h.adv(200);
+  assert.deepEqual(tail(h, n), ['X', ENEMY_DOWN]);
+  assert.equal(h.eng.state().callout.kind, 'enemy_down');
+});
+
+test('shield loop: the hill lines are objective lines: each cuts the loop and is said (gap B2)', () => {
+  const h = shieldUp(harness({ mode: 'koth', shieldMax: 125 }).live());
+  h.eng.feedFrame('$HIR,4,15,0,2,8,0,0,*'); h.adv(50);                // the point, neutral
+  const n = h.writes.length;
+  h.eng.feedFrame('$HIR,4,15,0,1,50,0,0,*'); h.adv(200);              // BLUE (us) captures it
+  assert.deepEqual(tail(h, n), ['X', 'VB0N'], 'Hill Captured, through the loop');
+  h.adv(5000); const m = h.writes.length;
+  h.eng.feedFrame('$HIR,4,15,0,0,50,0,0,*'); h.adv(200);              // RED takes it off us
+  assert.deepEqual(tail(h, m), ['X', 'VB0P'], 'Hill Lost, through the loop');
+});
+
+test('the possession tick never sounds while my kill or its medal lines are on air (a token-1 clip cuts them)', () => {
+  const h = harness({ mode: 'koth' }).live();
+  const beacon = () => h.eng.feedFrame('$HIR,4,15,0,1,8,0,0,*');   // BLUE (us) holds the point
+  beacon(); h.adv(2000);
+  assert.ok(h.writes.some(w => w.f === '$PLAY,U100,4,6,,,,,*'), 'setup: the tick runs');
+  const medals = ['double_kill', 'killing_spree'], ids = medals.map(m => golden.cues[m].split(',')[4]);
+  const t0 = h.now();
+  h.irWord(7, IR_CALLOUT.DOWN_BY + 2); h.adv(300); h.kill({ medals });
+  for (let i = 0; i < 20; i++) { h.adv(400); if (i % 8 === 0) beacon(); }   // the point stays fresh
+  const m2 = h.plays(ids[1])[0];
+  assert.ok(m2, 'both medal lines said');
+  const end = m2.t + CLIP_MS[ids[1]];
+  const ticks = h.writes.filter(w => w.f === '$PLAY,U100,4,6,,,,,*' && w.t >= t0 && w.t < end).map(w => w.t - t0);
+  assert.deepEqual(ticks, [], 'no tick from the kill\'s flash to the end of its last medal line');
+  assert.ok(h.writes.some(w => w.f === '$PLAY,U100,4,6,,,,,*' && w.t >= end), 'and the tick resumes after');
 });
 
 

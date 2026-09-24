@@ -1,6 +1,6 @@
 // Audio queue scenarios (docs/audio-queue-scenarios.md): each game situation, run through the phone's cue sending
 // under (A) the app on main (app/src/engine.js: 0.4.11 plus F348's spawn at full shield and F349's four-grant
-// recharge) and (B) the planned 0.4.12 rule (brx4's announcer queue plus the gun FIFO model), then through the gun
+// recharge) and (B) the 0.4.12 rule (the real announcer queue and gun FIFO model in app/src/announcer.js), then through the gun
 // model (gun-audio-sim.mjs). Pure and deterministic.
 //
 //   node app/tools/audio-scenarios.mjs            prints the per-scenario tables the doc carries
@@ -9,6 +9,8 @@
 // bundle's (mcp/brx_mcp/mc/golden_bundle.json), first take of every pool, so a run never depends on a random pick.
 
 import { simulateGun, GUN_RULES, CLIP_MS, PLAYX, play } from './gun-audio-sim.mjs';
+import { Announcer, GunAudio, ANNOUNCE_PRIORITY, ANNOUNCE_AUDIO_LATE_MS, ANNOUNCE_AUDIO_LATE_DEFAULT_MS, ANNOUNCE_GAP_MS, MUST_HEAR, OBJECTIVE }
+  from '../src/announcer.js';
 
 // ---------- engine.js numbers (main), mirrored; audio-queue.test.mjs reads engine.js and checks each one ----------
 export const STEP_MS = 10;
@@ -18,6 +20,7 @@ const MEDAL_GAP_MS = 2000;         // medal lines 120 + i * 2000 ms after the fe
 const CALLOUT_WINDOW_MS = 3000;    // S57: IR and MC kill confirms pair inside this
 const HURT_DEBOUNCE_MS = 400;      // the low-health line waits this long; a death inside it cancels it
 const PAIN_GAP_MS = 600;
+const PAIN_STALE_MS = 500;         // a grunt that would start later than this after its hit is dropped (B)
 const PAIN_LONG_MIN = 40;
 const LOW_HEALTH_HP = 15;
 const MAX_HP = 45;
@@ -32,7 +35,7 @@ const KILL_CARD_MS = 1800;             // B only: brx4 engine.js, MC's kill card
 const IR_KILL_BANNER_MS = 2000;        // B only: brx4 engine.js, the IR KILL CONFIRMED card
 const MUST_HEAR_MAX_STOPS = 4;         // B only: brx4 engine.js, round 3 H1 (the loop + 3 clips)
 /** The engine numbers the test checks against app/src/engine.js, by name. */
-export const ENGINE_MIRROR = Object.freeze({ PAIN_GAP_MS, LOW_HEALTH_HP, HURT_DEBOUNCE_MS, SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS,
+export const ENGINE_MIRROR = Object.freeze({ PAIN_GAP_MS, PAIN_STALE_MS, LOW_HEALTH_HP, HURT_DEBOUNCE_MS, SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS,
   SHIELD_REGEN_STEP_MS, SPAWN_SHIELD_FULL, SHIELD_LOOP_MS, HILL_TICK_MS, MEDAL_GAP_MS, CALLOUT_WINDOW_MS });
 
 /** The cue each kind plays (golden bundle, first take). */
@@ -253,77 +256,42 @@ function take(open, t) {
 }
 
 // ============================================================================================================
-// (B) THE 0.4.12 RULE: THE SPEC. brx4 implements it in app/src/announcer.js + engine.js (branch
-// brx4/announcer-queue). The tables and the two classes below MIRROR that branch; they are the acceptance spec.
-// TODO(brx4/announcer-queue): once that branch lands, import ANNOUNCE_PRIORITY, ANNOUNCE_TTL_MS,
-// ANNOUNCE_AUDIO_LATE_MS, MUST_HEAR, ANNOUNCE_BANNER_MS, ANNOUNCE_SURFACE, ANNOUNCE_GAP_MS and GunAudio from
-// app/src/announcer.js instead of repeating them here, so the spec cannot drift from the code.
+// (B) THE 0.4.12 RULE, AS SHIPPED: app/src/announcer.js + engine.js. The queue and the phone's model of the gun are the
+// REAL `Announcer` and `GunAudio` (imported above), so the spec cannot drift from the code. What is mirrored here is
+// only the engine's glue around them (which write each item makes, and when): `_audioWrite`, `_sayMust`, `feedback`,
+// `_irKillConfirmed`, `_hillSay`, `_pain`, `_shieldTick` and `_hillTick`.
 //
-// The rule, as brx4 stated it (2026-09-24):
-//  1. The phone models the gun's FIFO with clip lengths (PhoneGunModel = brx4's GunAudio).
+// The rule:
+//  1. The phone models the gun's FIFO with clip lengths (`GunAudio`).
 //  2. At most one non-must-hear clip outstanding: a non-must-hear line waits while the model holds any clip.
 //  3. A non-must-hear line is dropped (its card still shows) when it is more than ~2 s stale, or while the shield loop
-//     blocks the gun. Every non-must `$PLAY` written while the loop blocks is dropped, body sounds included.
+//     blocks the gun. Every non-must `$PLAY` written while the loop blocks is dropped, body sounds included. The
+//     exception: an OBJECTIVE line (hill captured / lost, "Target down") cuts the loop like a must-hear line.
 //  4. Before a must-hear line: one `$PLAYX,0` per outstanding clip, PLUS one for the hum loop when shield > 0 and
 //     `$PSET` t23 is non-empty, sent tightly in the same write, then the line.
 //  5. The shield-online line is removed. The heartbeat (N74) never starts while the model holds a clip or any item
-//     waits; `shield_charging` only for a refill longer than 1 s.
-// Also mirrored from brx4's working tree (read 2026-09-24): at most MUST_HEAR_MAX_STOPS stops; a kill item's lines go
-// back to back (ANNOUNCE_GAP_MS after the previous one ENDS, not on the 2 s medal grid); MC's kill card holds
-// max(1800 ms, its audio), the IR card 2000 ms; a must-hear item waits while my kill on air still sounds (round 3
-// M4); no heartbeat that would outlast the refill delay; the native death scream joins the phone's model; the hill
-// item stops only its own line (`stopsOwn`); the pool line is key 'status' with `preemptKey`.
-// NOT mirrored: the spree fold (older waiting MC kills fold into the newest), the `$SIR` hit sounds brx4 adds to its
-// model on every `$HIR`, the bundle's `cue_ms` overrides, and the `phase === 'live'` gate on the loop.
+//     waits; `shield_charging` only for a refill longer than 1 s. The possession tick also waits while the item on air
+//     still has audio due.
+//  6. A pain grunt that would start more than PAIN_STALE_MS after its hit is dropped.
+// Also mirrored: at most MUST_HEAR_MAX_STOPS stops; a kill item's lines go back to back (ANNOUNCE_GAP_MS after the
+// previous one ENDS); MC's kill card holds max(1800 ms, its audio), the IR card 2000 ms; the native death scream joins
+// the phone's model; the hill item stops only its own line (`stopsOwn`); the pool line is key 'status' with
+// `preemptKey`; the medal lines of a kill whose IR line was already said are a `medal` item.
+// Also the spree fold: older MC kills still waiting fold into the newest (the newest medal line only).
+// NOT mirrored: the `$SIR` hit sounds the engine adds to its model on every `$HIR`, the bundle's `cue_ms` overrides, and the `phase === 'live'` gate on the loop.
 // ============================================================================================================
-export const ANNOUNCE_PRIORITY = ['kill_confirmed', 'lead_taken', 'lead_lost', 'hill_captured', 'hill_lost', 'powerup_swap',
-  'alert', 'teammate_down', 'enemy_down', 'powerup_spawn', 'status'];
-export const ANNOUNCE_TTL_MS = { kill_confirmed: Infinity, lead_taken: 4000, lead_lost: 4000, hill_captured: 3000, hill_lost: 3000,
-  powerup_swap: 4000, alert: 6000, teammate_down: 3000, enemy_down: 3000, powerup_spawn: 5000, status: 1500 };
-export const ANNOUNCE_AUDIO_LATE_MS = { kill_confirmed: 6000, lead_taken: Infinity, lead_lost: Infinity };
-export const ANNOUNCE_AUDIO_LATE_DEFAULT_MS = 2000;
-export const MUST_HEAR = new Set(['kill_confirmed', 'lead_taken', 'lead_lost']);
-export const ANNOUNCE_BANNER_MS = { kill_confirmed: 1800, lead_taken: 2200, lead_lost: 2200, hill_captured: 2200, hill_lost: 2200,
-  powerup_swap: 2200, alert: 2200, teammate_down: 2000, enemy_down: 2000, powerup_spawn: 2400, status: 0 };
-export const ANNOUNCE_SURFACE = { kill_confirmed: 'co', hill_captured: 'co', hill_lost: 'co', powerup_swap: 'co', teammate_down: 'co',
-  enemy_down: 'co', powerup_spawn: 'co', lead_taken: 'alert', lead_lost: 'alert', alert: 'alert' };
-export const ANNOUNCE_GAP_MS = 150;
+export { ANNOUNCE_PRIORITY, ANNOUNCE_AUDIO_LATE_DEFAULT_MS, MUST_HEAR, OBJECTIVE };
 const lateOf = kind => ANNOUNCE_AUDIO_LATE_MS[kind] != null ? ANNOUNCE_AUDIO_LATE_MS[kind] : ANNOUNCE_AUDIO_LATE_DEFAULT_MS;
-const rankOf = kind => { const i = ANNOUNCE_PRIORITY.indexOf(kind); return i < 0 ? ANNOUNCE_PRIORITY.length : i; };
-
-/** brx4's GunAudio: what the PHONE believes the gun holds. It is not the gun: the gun is gun-audio-sim.mjs. */
-export class PhoneGunModel {
-  constructor() { this.clips = []; this.blocked = false; }
-  add(ms, now, id = null) {
-    if (!(ms > 0)) return;
-    this._prune(now);
-    // brx4 round 3 H1: while the loop blocks, one pending clip per sound id
-    if (this.blocked && id && this.clips.some(c => c.id === id && c.start === Infinity)) return;
-    const tail = this.clips.length ? this.clips[this.clips.length - 1].end : now;
-    const start = this.blocked ? Infinity : Math.max(now, tail);
-    this.clips.push({ ms, start, end: start + ms, id });
-  }
-  setBlocked(on, now) {
-    if (on === this.blocked) return;
-    this._prune(now);
-    if (on) for (const c of this.clips) { c.left = c.end - Math.max(c.start, now); c.start = c.end = Infinity; }
-    else { let t = now; for (const c of this.clips) { const ms = c.left != null ? c.left : c.ms; c.start = t; c.end = t + ms; t = c.end; delete c.left; } }
-    this.blocked = on;
-  }
-  outstanding(now) { this._prune(now); return this.clips.length + (this.blocked ? 1 : 0); }
-  playingUntil(now) { this._prune(now); return this.clips.reduce((t, c) => (Number.isFinite(c.end) ? Math.max(t, c.end) : t), now); }
-  flushed(now, ms) { this.clips = [{ ms, start: now, end: now + ms }]; }
-  _prune(now) { this.clips = this.clips.filter(c => c.end > now); }
-}
 const idOf = f => { const t = f.split(','); return (t[4] || t[1] || '').trim(); };
 
 class PolicyB {
   constructor(ctx) {
-    this.ctx = ctx; this.model = new PhoneGunModel();
-    this.queue = []; this.cur = null; this.seq = 0;
+    this.ctx = ctx; this.model = new GunAudio();
+    this.ann = new Announcer(() => this.ctx.t, m => { this.lastLog = String(m).replace(/^announcer: /, ''); });
+    this.ann.gun = this.model; this.ann.sync = () => this._sync();
     this.loopAt = 0; this.lastPainAt = null; this.pendingHurt = false; this.hillMine = false; this.hillTickAt = 0;
     this.irOpen = []; this.mcOpen = [];
-    this.mustPendingHeartbeats = 0;   // heartbeats written while a must-hear line was queued or due within its 120 ms flash gap
+    this.mustPendingHeartbeats = 0;   // heartbeats and ticks written while a must-hear line was queued or due within its gaps
     this.mustDue = 0;                  // must-hear lines scheduled (`delay`) and not yet written
   }
   // ----- the gun model's inputs -----
@@ -341,7 +309,7 @@ class PolicyB {
       if (rest.length) c.write(rest, why);
       return;
     }
-    for (const p of plays) this.model.add(CLIP_MS[idOf(p.f)] || 2500, c.t, idOf(p.f));
+    for (const p of plays) this.model.add(CLIP_MS[idOf(p.f)] || 2500, why, c.t, idOf(p.f));
     c.write(frames, why);
   }
   /** engine.js `_sayMust`: k stops (the hum counts as one while it blocks; at most MUST_HEAR_MAX_STOPS), then the
@@ -350,106 +318,43 @@ class PolicyB {
     const c = this.ctx; this._sync();
     const k = Math.min(this.model.outstanding(c.t), MUST_HEAR_MAX_STOPS);
     c.write([...Array(k).fill(PLAYX), line], k ? `${why} (after ${k} x $PLAYX)` : why);
-    this.model.flushed(c.t, CLIP_MS[CUE[line.cue]]);
+    this.model.flushed(c.t, { ms: CLIP_MS[CUE[line.cue]], why });
   }
   /** A must-hear line said `ms` from now (the kill item's flash-to-line gap, the next medal line). */
   _mustLater(ms, line, why) { this.mustDue++; this.ctx.delay(ms, () => { this.mustDue--; this._sayMust(line, why); }); }
-  // ----- the announcer queue (brx4 Announcer, condensed) -----
+  // ----- the announcer queue: the real one -----
   push(item) {
-    const t = this.ctx.t;
-    this._sync();
-    const it = { ...item, at: t, n: ++this.seq, rank: rankOf(item.kind) };
-    it.audioMs = it.audioMs || 0;
-    it.slotMs = Math.max(it.audioMs ? it.audioMs + ANNOUNCE_GAP_MS : 0, it.bannerMs != null ? it.bannerMs : ANNOUNCE_BANNER_MS[it.kind] || 0);
-    if (it.key != null) {
-      const cur = this.cur;
-      if (cur && cur.key === it.key && t < cur.until) {
-        if (cur.kind === it.kind && !it.preemptKey) return null;
-        if (it.preemptKey && !this.queue.some(q => q.rank < it.rank) && !this.model.blocked
-          && (it.stopsOwn || this.model.outstanding(t) === 0)) {
-          this.queue = this.queue.filter(q => { if (q.key !== it.key) return true; this._dropItem(q, `replaced by the newer ${it.kind}`); return false; });
-          this._start(it, t, t < cur.audioUntil); return it;
-        }
-      }
-      const i = this.queue.findIndex(q => q.key === it.key);
-      if (i >= 0) {
-        if (this.queue[i].kind === it.kind) return null;
-        const old = this.queue.splice(i, 1)[0]; this._dropItem(old, `replaced by the newer ${it.kind}`);
-      }
-    }
-    const cur = this.cur;
-    if (cur && t < cur.until && it.kind === 'kill_confirmed' && it.rank < cur.rank && !cur.audioMs) {
-      this.queue.push(cur); this._start(it, t, false); return it;
-    }
-    this.queue.push(it);
-    this._tickQueue(t);
+    const it = this.ann.push({ ...item, onDrop: () => this._dropItem(it || item, this.lastLog || 'dropped by the queue') });
     return it;
   }
-  _dropItem(it, why) { if (it.droppedOnce) return; it.droppedOnce = true; (it.lines || []).forEach(l => this.ctx.drop(l.cue, l.eventT, why)); }
-  _peek(t) {
-    for (;;) {
-      if (!this.queue.length) return null;
-      let best = null;
-      for (const q of this.queue) if (!best || q.rank < best.rank || (q.rank === best.rank && q.n < best.n)) best = q;
-      const ttl = ANNOUNCE_TTL_MS[best.kind] != null ? ANNOUNCE_TTL_MS[best.kind] : 4000;
-      if (t - best.at > ttl) { this.queue.splice(this.queue.indexOf(best), 1); this._dropItem(best, `expired after ${t - best.at} ms in the queue`); continue; }
-      if (best.ok && !best.ok()) { this.queue.splice(this.queue.indexOf(best), 1); this._dropItem(best, 'no longer applies'); continue; }
-      return best;
-    }
+  _dropItem(it, why) { if (!it || it.droppedOnce) return; it.droppedOnce = true; (it.lines || []).forEach(l => this.ctx.drop(l.cue, l.eventT, why)); }
+  /** A muted start: the queue shows the card and says nothing. */
+  _muted(it, waited) {
+    this._dropItem(it, it.forceMute && waited <= lateOf(it.kind) ? 'the shield loop blocks the gun (card only)' : `would start ${waited} ms late (card only)`);
   }
-  _tickQueue(t) {
-    this._sync();
-    const cur = this.cur;
-    // brx4 round 3 M4: a must-hear item waits while the kill on air still has a clip on the gun
-    if (cur && cur.kind === 'kill_confirmed' && this.model.playingUntil(t) > t) {
-      const nx = this._peek(t);
-      if (nx && MUST_HEAR.has(nx.kind)) return;
-    }
-    if (cur) {
-      const next = this._peek(t);
-      const handover = next && cur.audioMs > 0 && t >= cur.audioUntil && cur.kind !== 'kill_confirmed' && next.rank <= cur.rank
-        && ANNOUNCE_SURFACE[next.kind] && ANNOUNCE_SURFACE[next.kind] === ANNOUNCE_SURFACE[cur.kind];
-      if (t < cur.until && !handover) return;
-      this.cur = null;
-    }
-    const next = this._peek(t);
-    if (!next) return;
-    if (next.audioMs > 0 && !MUST_HEAR.has(next.kind) && this.model.outstanding(t) > 0) {
-      if (!this.model.blocked && t - next.at <= lateOf(next.kind)) return;
-      next.forceMute = true;
-    }
-    this.queue.splice(this.queue.indexOf(next), 1);
-    this._start(next, t, false);
-  }
-  _start(it, t, preempted) {
-    const waited = t - it.at;
-    const muted = it.audioMs > 0 && (waited > lateOf(it.kind) || !!it.forceMute);
-    if (muted) {
-      this._dropItem(it, it.forceMute && waited <= lateOf(it.kind) ? 'the shield loop blocks the gun (card only)' : `would start ${waited} ms late (card only)`);
-      it.audioMs = 0; it.slotMs = it.bannerMs != null ? it.bannerMs : ANNOUNCE_BANNER_MS[it.kind] || 0;
-    }
-    it.startedAt = t; it.audioUntil = t + it.audioMs; it.until = t + it.slotMs;
-    this.cur = it;
-    if (!muted) it.play(preempted);
-  }
-  /** brx4 `feedback` / `_irKillConfirmed`: the flash, then the lines back to back (each starts ANNOUNCE_GAP_MS after the
-   *  one before it ENDS, round 3 M4), each a must-hear line. `bannerMs` null = MC's card, max(KILL_CARD_MS, audio). */
-  _killItem(lines, bannerMs, why) {
+  /** engine.js `feedback` / `_irKillConfirmed`: the flash, then the lines back to back (each starts ANNOUNCE_GAP_MS after
+   *  the one before it ENDS, round 3 M4), each a must-hear line. `bannerMs` null = MC's card, max(KILL_CARD_MS, audio). */
+  _killItem(lines, bannerMs, why, kind = 'kill_confirmed', src = null) {
     const at = []; const lens = lines.map(l => CLIP_MS[CUE[l.cue]]);
     lens.reduce((t, ms, i) => { at[i] = t; return t + ms + ANNOUNCE_GAP_MS; }, FLASH_TO_LINE_MS);
     const audioMs = lines.length ? at[lines.length - 1] + lens[lines.length - 1] : 0;
-    const item = { kind: 'kill_confirmed', lines, audioMs, bannerMs: bannerMs != null ? bannerMs : Math.max(KILL_CARD_MS, audioMs), play: () => {
-      this._write(['$SFLASH,*'], why);
-      lines.forEach((l, i) => this._mustLater(at[i], l, `${why}: ${l.cue}`));
-    } };
-    return this.push(item);
+    return this.push({ kind, src, medals: lines.filter(l => MEDALS.has(l.cue)).map(l => l.cue), lines, audioMs, bannerMs: bannerMs != null ? bannerMs : Math.max(KILL_CARD_MS, audioMs),
+      play: ({ muted, waited }, self) => {
+        if (muted) { this._muted(self, waited); return; }
+        this._write(['$SFLASH,*'], why);
+        lines.forEach((l, i) => this._mustLater(at[i], l, `${why}: ${l.cue}`));
+      } });
   }
   _line(kind, eventT, extra = {}) {
     const c = this.ctx, l = c.line(kind, eventT);
-    const must = MUST_HEAR.has(extra.itemKind || kind);
-    return this.push({ kind: extra.itemKind || kind, key: extra.key, preemptKey: extra.preemptKey, stopsOwn: extra.stopsOwn, ok: extra.ok, lines: [l],
+    const itemKind = extra.itemKind || kind;
+    return this.push({ kind: itemKind, key: extra.key, preemptKey: extra.preemptKey, stopsOwn: extra.stopsOwn, ok: extra.ok, lines: [l],
       audioMs: CLIP_MS[CUE[kind]], bannerMs: extra.bannerMs,
-      play: preempted => must ? this._sayMust(l, kind) : this._write(preempted ? [PLAYX, l] : [l], kind) });
+      play: ({ preempted, muted, waited, flush }, self) => {
+        if (muted) { this._muted(self, waited); return; }
+        if (MUST_HEAR.has(itemKind) || flush) this._sayMust(l, kind);
+        else this._write(preempted ? [PLAYX, l] : [l], kind);
+      } });
   }
   onEvent(ev) {
     const c = this.ctx, t = c.t, g = c.game;
@@ -465,22 +370,33 @@ class PolicyB {
       const item = this._killItem([c.line('kill', t)], IR_KILL_BANNER_MS, 'S57 IR kill confirmed');
       this.irOpen.push({ at: t, item });
     } else if (ev.type === 'mc_kill') {
-      const medals = (ev.medals || []).filter(m => MEDALS.has(m));
+      let medals = (ev.medals || []).filter(m => MEDALS.has(m));
       const ir = this.irOpen.find(x => t - x.at <= CALLOUT_WINDOW_MS);
+      if (ir) this.irOpen.splice(this.irOpen.indexOf(ir), 1);
+      if (ir && ir.item && !this.ann.queue.includes(ir.item) && !medals.length) {   // IR on air or done: the named card, in place
+        this.ann.extend(ir.item, t + KILL_CARD_MS);
+        return;
+      }
+      // engine.js round 2 M1, the spree fold: older MC kills still WAITING fold into this one; the newest medal line only
+      const waiting = this.ann.queue.filter(q => q.src === 'mc' && (q.kind === 'kill_confirmed' || q.kind === 'medal'));
+      if (waiting.length) {
+        waiting.forEach(q => { this.ann.remove(q); this._dropItem(q, 'folded into the newer kill (spree)'); });
+        const older = waiting.map(q => q.medals).filter(m => m && m.length).pop();
+        if (medals.length) medals = [medals[0]];
+        else if (older) medals = [older[0]];
+      }
       if (ir) {
-        this.irOpen.splice(this.irOpen.indexOf(ir), 1);
-        const waiting = this.queue.includes(ir.item);
-        if (waiting) {   // IR still waiting: MC's item replaces it and speaks the kill once
-          this.queue.splice(this.queue.indexOf(ir.item), 1);
-          this._killItem(medals.length ? medals.map(m => c.line(m, t)) : [c.line('kill', ir.item.at)], null, 'feedback kill');
-        } else if (medals.length) {   // IR on air: release its card once its line ends; the medal lines follow it
-          if (this.cur === ir.item) this.cur.until = Math.max(t, this.cur.audioUntil);
-          this._killItem(medals.map(m => c.line(m, t)), null, 'feedback medals');
-        } else if (this.cur === ir.item) this.cur.until = Math.max(this.cur.until, t + KILL_CARD_MS);   // the named card, in place
+        if (ir.item && this.ann.queue.includes(ir.item)) {   // IR still waiting: MC's item replaces it and speaks the kill once
+          this.ann.remove(ir.item);
+          this._killItem(medals.length ? medals.map(m => c.line(m, t)) : [c.line('kill', ir.item.at)], null, 'feedback kill', 'kill_confirmed', 'mc');
+        } else {   // IR on air or done: its line was said, so what is left is a `medal` item
+          if (ir.item) this.ann.release(ir.item);
+          this._killItem(medals.map(m => c.line(m, t)), null, 'feedback medals', ir.item && ir.item.muted ? 'kill_confirmed' : 'medal', 'mc');
+        }
         return;
       }
       const lines = medals.length ? medals.map(m => c.line(m, t)) : [c.line('kill', t)];
-      this._killItem(lines, null, 'feedback kill');
+      this._killItem(lines, null, 'feedback kill', 'kill_confirmed', 'mc');
       this.mcOpen.push({ at: t, saidKill: !medals.length });
     } else if (ev.type === 'mc_alert') {
       const lead = ev.kind === 'lead_taken' || ev.kind === 'lead_lost';
@@ -502,36 +418,41 @@ class PolicyB {
       if (m.kind === 'shield_down') { this.loopAt = t; this._write([c.line('shield_down', t)], 'shield_down (exempt)'); }
       else if (m.kind === 'pain') {
         if (this.lastPainAt != null && t - this.lastPainAt < PAIN_GAP_MS) continue;
-        this.lastPainAt = t; const k = m.dmg >= PAIN_LONG_MIN ? 'pain_long' : 'pain_short';
+        const k = m.dmg >= PAIN_LONG_MIN ? 'pain_long' : 'pain_short';
+        if (this.model.freeAt(t) - t > PAIN_STALE_MS) { c.drop(k, t, `stale: the gun is busy for ${this.model.freeAt(t) - t} ms`); continue; }
+        this.lastPainAt = t;
         this._write([c.line(k, t)], k);
       } else if (m.kind === 'low_health') {
         this.pendingHurt = true; this.lastPainAt = t;
         c.delay(HURT_DEBOUNCE_MS, () => { if (!this.pendingHurt) return; this.pendingHurt = false; if (c.game.alive) this._write([c.line('low_health', t), '$HLED,7,4,90,90,10,15,*'], 'low health'); });
       } else if (m.kind === 'death') {
         this.hillMine = false;
-        // brx4 `_death`: the native scream ($PSET t10, VA3 in SPAWN_HEAD's take) joins the phone's model first
-        this.model.add(1271, t, 'VA3');
+        // engine.js `_death`: the native scream ($PSET t10, VA3 in SPAWN_HEAD's take) joins the phone's model first
+        this.model.add(CLIP_MS.VA3, 'death scream', t, 'VA3');
         if (this.pendingHurt) this.pendingHurt = false;
+        // F149 (gap B3, waiting on Tony): this stop cuts whatever plays, my own kill line included. See the todo test.
         else if (m.hurtFired) this._write([PLAYX], 'death: stop the low-health loop (F149)');
       } else if (m.kind === 'spawn') { this._write(spawnWrite(m.fill, c.line('spawn', t)), 'spawn'); this.loopAt = 0; }
       else if (m.kind === 'shield_charging') {
         if (m.refillMs > SHIELD_CHARGING_MIN_MS) this._line('shield_charging', t, { itemKind: 'status', key: 'status', preemptKey: true });
       }
-      // shield_full: no line (rule 5; brx4 keeps its LED burst only)
+      // shield_full: no line (rule 5; the engine keeps its LED burst only)
     }
   }
   tick(t) {
     const c = this.ctx, g = c.game;
     this._sync();
-    this._tickQueue(t);
-    // brx4 `_shieldTick`: no heartbeat that would still be playing when the refill is due
+    this.ann.tick(t);
+    // engine.js `_shieldTick`: no heartbeat that would still be playing when the refill is due
     if (g.heartbeatWanted(t) && (!this.loopAt || t - this.loopAt >= SHIELD_LOOP_MS) && !(t + SHIELD_LOOP_MS > g.quietAt + SHIELD_REGEN_DELAY_MS)) {
-      if (this.model.outstanding(t) === 0 && !this.queue.length) {
+      if (this.model.outstanding(t) === 0 && !this.ann.queue.length) {
         if (this.mustDue > 0) this.mustPendingHeartbeats++;
         this.loopAt = t; this._write([c.line('shield_loop', t)], 'shield down heartbeat');
       }
     }
-    if (this.hillMine && g.alive && this.model.outstanding(t) === 0 && !this.queue.length
+    // engine.js `_hillTick`: a token-1 clip, so never while the gun holds a clip, an item waits, or the item on air still
+    // has audio due (the flash-to-line gap, the gaps between medal lines)
+    if (this.hillMine && g.alive && this.model.outstanding(t) === 0 && !this.ann.queue.length && !this.ann.audioBusy(t)
       && (!this.hillTickAt || t - this.hillTickAt >= HILL_TICK_MS)) {
       if (this.mustDue > 0) this.mustPendingHeartbeats++;
       this.hillTickAt = t; this._write([c.line('hill_tick', t)], 'hill possession tick');
@@ -601,6 +522,19 @@ export const SCENARIOS = [
     title: 'Standard preset (no shield, no hum), control: first blood + lead, a double kill, a hill capture',
     preset: 'standard', horizonMs: 20000,
     events: [...kill(1000, ['first_blood'], ['lead_taken']), ...kill(3000, ['double_kill']), { t: 6000, type: 'hill', kind: 'hill_captured' }, { t: 9000, type: 'hill_hold_end' }],
+  },
+  {
+    id: 'koth-hum-objectives',
+    title: 'KOTH, shield up (hum): hill captured, "Target down", an ambient alert, then hill lost',
+    preset: 'halo', startShield: 105, horizonMs: 15000,
+    events: [{ t: 1000, type: 'hill', kind: 'hill_captured' }, { t: 4000, type: 'enemy_down' },
+      { t: 6500, type: 'mc_alert', kind: 'next_kill_wins' }, { t: 8000, type: 'hill', kind: 'hill_lost' }],
+  },
+  {
+    id: 'koth-hold-medals',
+    title: 'Standard, holding the hill (the possession tick runs): a kill with two medal lines',
+    preset: 'standard', horizonMs: 14000,
+    events: [{ t: 500, type: 'hill', kind: 'hill_captured' }, ...kill(3000, ['double_kill', 'killing_spree']), { t: 12000, type: 'hill_hold_end' }],
   },
 ];
 
