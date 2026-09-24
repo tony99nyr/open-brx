@@ -79,6 +79,11 @@ constexpr const char* DEFAULT_HINT = "A: STATS   HOLD B: RESET";
 constexpr const char* RESET_CONFIRM_HINT = "A: CANCEL";  // render.py's reset_confirm scene override
 // A58: while the match lock is on, B's hold does nothing but say LOCKED, so the hint stops offering it.
 constexpr const char* LOCKED_HINT = "A: STATS   LOCKED";
+// Bench mode (no Wi-Fi set): A pages DIAGNOSTICS, a B hold flips HILL/BRIDGE. The hint names the current
+// mode, since both modes share one home screen (bench 2026-09-24: the flip was invisible otherwise).
+inline std::string bench_hint(const std::string& mode_label) {
+  return (mode_label.empty() ? std::string("BENCH") : mode_label) + "   A: DIAG   HOLD B: MODE";
+}
 constexpr const char* FORCE_RESTART_HINT = "RELEASE TO CANCEL";
 
 // m:ss, minutes unpadded, seconds zero-padded to 2 -- render.py's own scene literals use this shape
@@ -213,6 +218,7 @@ struct StickState {
 
   // link / assignment (station_link.h)
   LinkState link_state = LinkState::NOT_CONFIGURED;
+  std::string bench_mode_label;  // "HILL" | "BRIDGE" in bench mode (no Wi-Fi set); shown in the hint
   bool assignment_present = false;
   int assignment_id = -1;
 
@@ -283,6 +289,7 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
   spec.strip.battery_pct = s.battery_pct;
   spec.strip.station_id = s.assignment_present ? s.assignment_id : -1;
   spec.strip.locked = s.locked;
+  if (s.link_state == LinkState::NOT_CONFIGURED) spec.hint = bench_hint(s.bench_mode_label);
   if (s.locked) spec.hint = LOCKED_HINT;
 
   // A58: an operator mid-way through the A+B force restart beats everything, even a flat battery:

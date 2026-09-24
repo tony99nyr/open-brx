@@ -491,6 +491,7 @@ static StickState buildStickState(uint32_t now) {
         ? "P" + std::to_string(link.powerup().taker()) : std::string("-");
   } else if (standalone) {
     st.stats_kind_label = point.mode == Mode::HILL ? "HILL (BENCH)" : "BRIDGE (BENCH)";
+    st.bench_mode_label = point.mode == Mode::HILL ? "HILL" : "BRIDGE";
     st.stats_last_taken = "-";
   } else {
     st.stats_kind_label = "-";

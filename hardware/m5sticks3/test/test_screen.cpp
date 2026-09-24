@@ -152,6 +152,9 @@ static void test_home_vs_stats_and_default_hint() {
   bench.link_state = LinkState::NOT_CONFIGURED;
   ScreenSpec diag = compute_screen(bench);
   CHECK(diag.kind == ScreenKind::SCR_DIAGNOSTICS);
+  // The bench hint names the bench gestures and the current mode, never the operator's HOLD B: RESET.
+  bench.bench_mode_label = "HILL";
+  CHECK_EQ(compute_screen(bench).hint, std::string("HILL   A: DIAG   HOLD B: MODE"));
 }
 
 // ---- an unassigned, unarmed link shows JOINING while at home ---------------------------------

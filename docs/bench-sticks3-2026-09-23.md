@@ -212,4 +212,7 @@ No gun, no BLE use, USB on COM10, plus a temporary serial log of button DOWN/HOL
 - **Buttons held through a force restart are ignored at boot (`37a2b064`). CONFIRMED.** A+B held about 12 s:
   `FORCE RESTART` at 7 s, ready 1.25 s later, then no BTN edge, no second restart and no RESET while Tony kept
   holding. The restore itself is untested: it needs Wi-Fi and a config from MC.
+- **Bench-mode hint fixed and CONFIRMED.** The hint bar showed the operator's "HOLD B: RESET" in bench mode,
+  where B flips HILL/BRIDGE. It now reads "<MODE>   A: DIAG   HOLD B: MODE"; a B hold changed it to BRIDGE on
+  screen. This closes the HILL/BRIDGE look-alike gap filed against F333.
 
