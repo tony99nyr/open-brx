@@ -48,11 +48,11 @@ inline std::string build_station_action_taken_body(int station_id, int player_nu
   return j;
 }
 
-// Polish round 1 (2026-09-24): MC does not accept `station_action` yet (it is not in `NODE_KINDS`),
-// so sending one today is a malformed frame counted toward MC's per-socket quarantine. These two
-// gates are the ONLY place either body gets built: with `StationLink::actions_enabled()` false
-// (the default) they return an empty string, so nothing is built, let alone sent -- the caller's
-// job is just "non-empty and a live socket? send it. otherwise don't."
+// MC accepts `station_action` since A56 (f3fe3cf6); `ACTIONS OFF` is for an older MC, which would count
+// each one as a malformed frame toward its per-socket quarantine. These two gates are the ONLY place
+// either body gets built: with `StationLink::actions_enabled()` false they return an empty string, so
+// nothing is built, let alone sent -- the caller's job is just "non-empty and a live socket? send it.
+// otherwise don't."
 inline std::string maybe_build_reset_action(const StationLink& link, int64_t t_ms) {
   if (!link.actions_enabled() || !link.assignment().present) return std::string();
   return build_station_action_body(link.assignment().id, "reset", t_ms);

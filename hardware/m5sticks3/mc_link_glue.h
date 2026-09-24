@@ -1,6 +1,7 @@
 // mc_link_glue.h - the Arduino plumbing for H8 (docs/spec/utility.md §5g): Wi-Fi, mDNS discovery,
-// the WebSocket to Mission Control, BLE scanning for a powerup CLAIM, and Preferences. Everything
-// that DECIDES anything lives in station_link.h / station_ui.h (host-tested); this file only drives
+// the WebSocket to Mission Control, the one shared BLE player scan (a powerup CLAIM, and the player
+// presence a Bluetooth hill or respawn station runs on), and Preferences. Everything that DECIDES
+// anything lives in station_link.h / station_ui.h / presence.h (host-tested); this file only drives
 // real hardware from those decisions and is never built on the host.
 //
 // Libraries: WiFi.h + ESPmDNS.h + Preferences.h (bundled with the esp32/m5stack Arduino core) and
@@ -20,6 +21,7 @@
 #include <BLEDevice.h>
 #include <BLEScan.h>
 #include <ESPmDNS.h>
+#include <mdns.h>  // the ESP-IDF component under ESPmDNS: its async query (mcPollMdns)
 #include <Preferences.h>
 #include <WebSocketsClient.h>
 #include <WiFi.h>
@@ -27,6 +29,7 @@
 
 #include "brx_advert.h"
 #include "json_lite.h"
+#include "presence.h"
 #include "station_link.h"
 #include "station_ui.h"
 
@@ -37,12 +40,19 @@ using namespace brx;
 // ---- tunables (bench to confirm all of them) ---------------------------------------------------
 constexpr uint32_t STATUS_HEARTBEAT_MS = 2000;   // utility.md §5g.2
 constexpr uint32_t MDNS_RETRY_MS = 4000;         // how often to re-browse _openbrx._tcp
-constexpr uint32_t CLAIM_SCAN_WINDOW_S = 1;      // BLEScan duration per window (async, non-blocking)
-// Polish round 1 (2026-09-24): this MUST stay longer than CLAIM_SCAN_WINDOW_S's 1000 ms, or a new
-// window is requested while the last one is still running -- `mcPollClaimScan` also guards with
+constexpr uint32_t SCAN_WINDOW_S = 1;      // BLEScan duration per window (async, non-blocking)
+// Polish round 1 (2026-09-24): this MUST stay longer than SCAN_WINDOW_S's 1000 ms, or a new window
+// is requested while the last one is still running -- `mcPollPlayerScan` also guards with
 // `isScanning()` below, but a period shorter than the window would still mean back-to-back windows
-// with no gap, never letting `onClaimScanComplete` (and its `resolve_batch()`) run in between.
-constexpr uint32_t CLAIM_SCAN_PERIOD_MS = 1200;
+// with no gap, never letting `onPlayerScanComplete` (and its `resolve_batch()`) run in between.
+// The same 1 s every 1.2 s serves presence: the 200 ms gap is far inside beacon.js's 4 s expiry.
+constexpr uint32_t SCAN_PERIOD_MS = 1200;
+// Scan duty inside a window, in BLE units of 0.625 ms (BLEScan::setInterval/setWindow). Polish round 1
+// (MEDIUM): the claim scan used 99 of 100, and nothing in the code shows the full window is safe once it
+// runs all match beside the advert and (HELD) Wi-Fi on one radio, so it is 50 of 100. BENCH TO CONFIRM
+// (README): a phone's advert every ~100-250 ms still lands several times per 1 s window at 50%.
+constexpr uint16_t SCAN_INTERVAL_UNITS = 100;
+constexpr uint16_t SCAN_WINDOW_UNITS = 50;
 
 // ---- persisted state (Preferences, namespace "brxmc" -- separate from "brx"'s bench settings) --
 Preferences mcPrefs;
@@ -98,6 +108,11 @@ static void mcSaveWifi(const String& ssid, const String& pass) {
   // A new network means a new event: a station config saved at the last one must not come back.
   mcPrefs.remove("station_cfg");
   mcPrefs.remove("station_sid");
+  mcPrefs.remove("hill_owner");
+  mcPrefs.remove("hill_game");
+  mcPrefs.remove("hill_id");
+  mcPrefs.remove("hill_sid");
+  mcPrefs.remove("hill_hold");
   mcPrefs.end();
   wifiSsid = ssid;
   wifiPass = pass;
@@ -142,6 +157,45 @@ static void mcEraseSavedConfig() {
   Serial.println("# saved station_config erased");
 }
 
+// ---- restart survival: the Bluetooth hill's owner ("hill_owner"/"hill_game"/"hill_id"/"hill_sid"/"hill_hold")
+// SavedHill (station_link.h, host-tested) decides WHEN: only on an owner change, never a progress tick.
+SavedHill savedHill;
+
+static void mcLoadSavedHill() {
+  mcPrefs.begin("brxmc", true);
+  bool has = mcPrefs.isKey("hill_owner");
+  int owner = mcPrefs.getUChar("hill_owner", 255);
+  int game = mcPrefs.getUChar("hill_game", 0);
+  int id = mcPrefs.getUShort("hill_id", 0);
+  String sid = mcPrefs.getString("hill_sid", "");
+  uint32_t hold[4] = {0, 0, 0, 0};
+  bool haveHold = mcPrefs.getBytes("hill_hold", hold, sizeof hold) == sizeof hold;
+  mcPrefs.end();
+  savedHill.loaded(has, owner, game, id, sid.c_str(), haveHold ? hold : nullptr);
+}
+
+static void mcWriteSavedHill() {
+  mcPrefs.begin("brxmc", false);
+  mcPrefs.putUChar("hill_owner", (uint8_t)savedHill.owner());
+  mcPrefs.putUChar("hill_game", (uint8_t)savedHill.game());
+  mcPrefs.putUShort("hill_id", (uint16_t)savedHill.id());
+  mcPrefs.putString("hill_sid", savedHill.session_id().c_str());
+  mcPrefs.putBytes("hill_hold", savedHill.hold_ms(), 4 * sizeof(uint32_t));
+  mcPrefs.end();
+  Serial.printf("# hill owner saved: %d (game %d, id %d)\n", savedHill.owner(), savedHill.game(), savedHill.id());
+}
+
+static void mcEraseSavedHill() {
+  mcPrefs.begin("brxmc", false);
+  mcPrefs.remove("hill_owner");
+  mcPrefs.remove("hill_game");
+  mcPrefs.remove("hill_id");
+  mcPrefs.remove("hill_sid");
+  mcPrefs.remove("hill_hold");
+  mcPrefs.end();
+  Serial.println("# saved hill owner erased");
+}
+
 // At boot, before Wi-Fi: play the saved station at once (see restore_station_config's comment for
 // why this never latches the MUSTER drop and never carries a lock).
 static void mcRestoreSavedConfig(StationLink& link) {
@@ -150,7 +204,10 @@ static void mcRestoreSavedConfig(StationLink& link) {
   String sid = mcPrefs.getString("station_sid", "");
   mcPrefs.end();
   savedConfig.loaded(body.c_str(), sid.c_str());
-  if (!savedConfig.has()) return;
+  if (!savedConfig.has()) {
+    if (savedHill.clear()) mcEraseSavedHill();  // a hill save with no station to restore is an orphan
+    return;
+  }
   // Review round 1: bench mode (no Wi-Fi SSID set) never restores; the saved copy is left alone.
   if (wifiSsid.length() == 0) {
     Serial.println("# saved station_config kept but not restored (no Wi-Fi set: bench mode)");
@@ -160,10 +217,17 @@ static void mcRestoreSavedConfig(StationLink& link) {
   if (!link.restore_station_config(a)) {
     Serial.println("# saved station_config does not parse; erasing it");
     if (savedConfig.note_released()) mcEraseSavedConfig();
+    if (savedHill.clear()) mcEraseSavedHill();
     return;
   }
   Serial.printf("RESTORED kind=%s team=%d id=%d game=%d (from flash; unlocked)\n", a.kind.c_str(), a.team,
                 a.id, a.game);
+  // F332: a restarted hill comes back held by the owner it had, when the save is this config's.
+  // The tag must match this config AND the session it was saved in (a new MC session restarts game numbers).
+  if (savedHill.note_config(a, savedConfig.session_id())) mcEraseSavedHill();
+  if (savedHill.restore_into(a, savedConfig.session_id(), link.hill())) {
+    Serial.printf("RESTORED hill owner=%d (held at 100 if a team)\n", link.hill().owner == HILL_NEUTRAL ? -1 : link.hill().owner);
+  }
 }
 
 // ---- A58: the PMIC side-button lock (TODO, deliberately NOT written) -------------------------------
@@ -225,7 +289,7 @@ WsAddress pendingTypedMc;    // set by `MC <url>`; consumed once and then forgot
 bool haveTypedMc = false;
 uint32_t lastMdnsTryMs = 0;
 uint32_t lastHeartbeatMs = 0;
-uint32_t lastClaimScanMs = 0;
+uint32_t lastScanMs = 0;
 bool wsWantOpen = false;     // true once we have picked an address and should be socket-connected
 // Polish round 1: `status.live` must say whether the BLE advert is actually up, not merely that MC
 // armed us -- an advert can fail to start (ERR advert start, m5sticks3.ino publishAdvert()) or a
@@ -237,8 +301,8 @@ uint32_t bootRandomPrefix = 0;  // set once in mcSetup(); the fixed half of ever
 uint32_t actionSeq = 0;         // the counter half; together they make every envelope id unique per send
 
 // Polish round 1 (2026-09-24): a literal envelope id ("claim", "reset-btn") is the same id on every
-// send, which is wrong on general principle even though MC does not check it today (station_action
-// itself is not yet in NODE_KINDS -- see the ACTIONS gate below). One call site for both senders.
+// send, which is wrong on general principle even though MC does not check it today. One call site
+// for both senders.
 static String mcNextActionId() {
   char buf[16];
   snprintf(buf, sizeof buf, "%08lx%04x", (unsigned long)bootRandomPrefix, (unsigned)(actionSeq++ & 0xffff));
@@ -249,8 +313,52 @@ static String mcNextActionId() {
 // ASSIGNED; before that a Stick standing alone keeps whatever the existing `settings`/`point`
 // bench mode already does -- see m5sticks3.ino's own ID/GAME/MODE commands, untouched by H8).
 
-// ---- BLE claim scan (A56) -------------------------------------------------------------------- //
-class ClaimScanCallbacks : public BLEAdvertisedDeviceCallbacks {
+// ---- the shared BLE player scan (A56 claims + presence.h) ------------------------------------ //
+// ONE passive scanner for every assigned kind that reads players (presence.h
+// station_needs_player_scan): `control` and `respawn` all the time, `powerup` only while its item is
+// available (exactly the old claim scan, so a pickup's radio behaviour and its awards are unchanged).
+// It runs in 1 s windows every SCAN_PERIOD_MS. The BLE stack is NimBLE: the m5stack esp32 3.3.9 core's
+// esp32s3 sdkconfig sets CONFIG_BT_NIMBLE_ENABLED=y (Bluedroid is not built), and the Arduino BLE
+// library's BLEScan/BLEAdvertising sit on it. There a scan (GAP discovery) and the advert are separate
+// procedures: publishAdvert() stops and starts only the advertiser, and a window starts and ends only
+// the scanner. Their sharing of the one radio is the controller's; BENCH TO CONFIRM under Wi-Fi.
+//
+// The scan callback runs on the BLE host task, not loop(). It therefore never reads the assignment
+// (std::string) or touches the hill: the two `scanFeeds*` flags are set by loop() when a window
+// opens, a claim goes to ClaimGate exactly as before, and a presence sighting is copied into a small
+// ring that loop() drains on its own 250 ms tick (mcTickPlayers).
+SightingRing<128> seenRing;  // presence.h; ~5 s of adverts from a dozen phones. Guarded by seenMux
+portMUX_TYPE seenMux = portMUX_INITIALIZER_UNLOCKED;
+volatile bool scanFeedsClaims = false;
+volatile bool scanFeedsPresence = false;
+
+static void seenPush(const Advert& a, int rssi) {
+  portENTER_CRITICAL(&seenMux);
+  seenRing.push(a, rssi);
+  portEXIT_CRITICAL(&seenMux);
+}
+
+static bool seenPop(Sighting& out) {
+  portENTER_CRITICAL(&seenMux);
+  bool got = seenRing.pop(out);
+  portEXIT_CRITICAL(&seenMux);
+  return got;
+}
+
+static void seenClear() {
+  portENTER_CRITICAL(&seenMux);
+  seenRing.clear();
+  portEXIT_CRITICAL(&seenMux);
+}
+
+static uint32_t seenOverflow() {
+  portENTER_CRITICAL(&seenMux);
+  uint32_t n = seenRing.overflow();
+  portEXIT_CRITICAL(&seenMux);
+  return n;
+}
+
+class PlayerScanCallbacks : public BLEAdvertisedDeviceCallbacks {
  public:
   void onResult(BLEAdvertisedDevice advertisedDevice) override {
     if (!advertisedDevice.haveServiceUUID()) return;
@@ -258,54 +366,118 @@ class ClaimScanCallbacks : public BLEAdvertisedDeviceCallbacks {
     String uuidStr = advertisedDevice.getServiceUUID().toString();  // BLEUUID::toString() -> Arduino String
     if (!decode_advert(std::string(uuidStr.c_str()), a)) return;
     if (a.role != ROLE_PLAYER) return;
+    const int rssi = advertisedDevice.getRSSI();
+    if (scanFeedsPresence) seenPush(a, rssi);
+    if (!scanFeedsClaims) return;
     bool claiming = (a.state & PLAYER_CLAIMING) != 0;
     bool ready = (a.state & PLAYER_CLAIM_READY) != 0;
     if (!claiming && !ready) return;
     link.claims().observe(/*player_num=*/a.id, /*target_station_id=*/a.value, a.game, claiming,
-                           ready, advertisedDevice.getRSSI());
+                           ready, rssi);
   }
 };
-ClaimScanCallbacks claimScanCallbacks;
-bool claimScanConfigured = false;
+PlayerScanCallbacks playerScanCallbacks;
+bool playerScanConfigured = false;
 
-// Set when something the operator should see changed: an MC frame, a self-spawn, a claim, a link change.
-// The .ino reads and clears it, and treats it like a button press: repaint AND wake the backlight.
-static volatile bool mcScreenWake = false;  // volatile: the claim-scan callback sets it too
+// Set when something the operator should see changed: an MC frame, a self-spawn, a claim, a link change,
+// a hill capture or a revive. The .ino reads and clears it, and treats it like a button press: repaint
+// AND wake the backlight.
+static volatile bool mcScreenWake = false;  // volatile: the scan callback sets it too
 
 // Polish round 2 (HIGH): this callback must NEVER touch the WebSocket -- it runs off the BLE scan's
 // own completion, not mcLoop, and the library is not written to be called from there (nor does any
 // other I/O belong in a callback). `award_claim` only enqueues the report (station_link.h); mcLoop is
 // the sole place anything is ever sent, and it drains the queue every tick.
-static void onClaimScanComplete(BLEScanResults /*results*/) {
-  ClaimWinner w = link.claims().resolve_batch();
-  if (link.award_claim(w, millis())) {
-    mcScreenWake = true;  // the player at the station just took it: show TAKEN BY at once
-    Serial.printf("CLAIM station=%d taker=%u (queued for MC)\n", link.assignment().id, w.player_num);
+static void onPlayerScanComplete(BLEScanResults /*results*/) {
+  if (scanFeedsClaims) {
+    ClaimWinner w = link.claims().resolve_batch();
+    if (link.award_claim(w, millis())) {
+      mcScreenWake = true;  // the player at the station just took it: show TAKEN BY at once
+      Serial.printf("CLAIM station=%d taker=%u (queued for MC)\n", link.assignment().id, w.player_num);
+    }
   }
   BLEDevice::getScan()->clearResults();
 }
 
-static void mcPollClaimScan(uint32_t now) {
+static void mcPollPlayerScan(uint32_t now) {
   // Polish round 1 (CRITICAL): gated on the PERSISTED assignment, never link state -- see
-  // `has_powerup_assignment()`'s own comment in station_link.h.
-  if (!link.has_powerup_assignment()) return;
-  if (!link.powerup().available()) return;  // nothing to claim while taken
-  if (now - lastClaimScanMs < CLAIM_SCAN_PERIOD_MS) return;
+  // `has_powerup_assignment()`'s own comment in station_link.h. A MUSTER station scans with Wi-Fi down.
+  const StationAssignment& a = link.assignment();
+  if (!a.present) return;
+  const bool powerupAvailable = link.has_powerup_assignment() && link.powerup().available();
+  if (!station_needs_player_scan(a.kind, powerupAvailable)) return;
+  if (now - lastScanMs < SCAN_PERIOD_MS) return;
   BLEScan* scan = BLEDevice::getScan();
   // Polish round 1: a batch already running must finish (and call resolve_batch() in
-  // onClaimScanComplete) before a new one starts, or a batch can be aborted mid-window and its
-  // candidates lost. `lastClaimScanMs` is only advanced once a window actually opens, so a busy
+  // onPlayerScanComplete) before a new one starts, or a batch can be aborted mid-window and its
+  // candidates lost. `lastScanMs` is only advanced once a window actually opens, so a busy
   // scanner just tries again next loop() instead of silently missing a whole period.
   if (scan->isScanning()) return;
-  lastClaimScanMs = now;
-  if (!claimScanConfigured) {
-    scan->setAdvertisedDeviceCallbacks(&claimScanCallbacks, /*wantDuplicates=*/true);
+  lastScanMs = now;
+  if (!playerScanConfigured) {
+    scan->setAdvertisedDeviceCallbacks(&playerScanCallbacks, /*wantDuplicates=*/true);
     scan->setActiveScan(false);  // passive: we only read the advert, never need a scan response
-    scan->setInterval(100);
-    scan->setWindow(99);
-    claimScanConfigured = true;
+    scan->setInterval(SCAN_INTERVAL_UNITS);
+    scan->setWindow(SCAN_WINDOW_UNITS);
+    playerScanConfigured = true;
   }
-  scan->start(CLAIM_SCAN_WINDOW_S, onClaimScanComplete, false);
+  scanFeedsClaims = link.has_powerup_assignment();
+  scanFeedsPresence = link.has_control_assignment() || link.has_respawn_assignment();
+  scan->start(SCAN_WINDOW_S, onPlayerScanComplete, false);
+}
+
+// ---- the Bluetooth hill and the respawn count (presence.h), one STATION_TICK_MS step ------------- //
+// utility.js tick() on a phone station, on the Stick: drain the sightings into Presence, tick it,
+// then run the assigned kind's rule (StationLink::tick_players). Gated on the persisted assignment
+// like the scan, so a MUSTER hill keeps converting with Wi-Fi down.
+PlayerPresence presence;
+uint32_t lastPlayTickMs = 0;
+// An S57 capture word the .ino owes the field (it owns the IR transmitter): the new owner's tid, or -1.
+int pendingCaptureTeam = -1;
+
+static void mcTickPlayers(uint32_t now) {
+  if (!link.has_control_assignment() && !link.has_respawn_assignment()) return;
+  if (now - lastPlayTickMs < STATION_TICK_MS) return;
+  lastPlayTickMs = now;
+  const StationAssignment& a = link.assignment();
+  // utility.js: `presence.defaultThreshold = settings.threshold; presence.game = settings.game`, every
+  // tick. The threshold is MC's, or the phone station's -74 default when MC sent none.
+  presence.default_threshold = presence_threshold_dbm(a);  // -74 when MC sent 0, as on a phone
+  presence.game = (uint8_t)a.game;
+  // A different station now (new kind/id/game, a restore, a release): the old station's sightings and
+  // presence belong to it, not to this one.
+  static uint32_t lastEpoch = link.assignment_epoch();
+  if (link.assignment_epoch() != lastEpoch) {
+    lastEpoch = link.assignment_epoch();
+    seenClear();
+    presence.clear();
+  }
+  Sighting sp;
+  while (seenPop(sp)) presence.observe(sp.advert, sp.rssi, now);
+  presence.tick(now);
+  const uint32_t revivesBefore = link.revives().revives;
+  HillUpdate u = link.tick_players(presence, now);
+  if (link.has_control_assignment() && savedHill.note_owner(a, savedConfig.session_id(), link.hill())) mcWriteSavedHill();
+  if (u.captured) {
+    pendingCaptureTeam = u.captured_team;
+    mcScreenWake = true;
+    Serial.printf("HILL CAPTURED team=%d from=%d\n", u.captured_team, u.captured_from);
+  }
+  if (u.neutralised) {
+    mcScreenWake = true;
+    Serial.printf("HILL NEUTRAL (team %d lost it to team %d)\n", u.neutralised_team, u.neutralised_by);
+  }
+  if (u.contested_edge || u.uncontested_edge) {
+    mcScreenWake = true;
+    Serial.println(u.contested_edge ? "HILL CONTESTED" : "HILL no longer contested");
+  }
+  if (u.refused) {
+    Serial.println("# F82: a player on tid 2 is on the point; tid 2 can never hold a hill (use 0, 1, 3)");
+  }
+  if (link.revives().revives != revivesBefore) {
+    mcScreenWake = true;
+    Serial.printf("REVIVE count=%lu\n", (unsigned long)link.revives().revives);
+  }
 }
 
 // ---- WebSocket event handling ------------------------------------------------------------------
@@ -320,12 +492,14 @@ static void mcSendHello() {
 
 // The MUSTER drop's radio action. WHEN is station_link.h's decision (take_muster_drop, host-tested);
 // this only performs it, from mcHandleFrame or mcLoop.
+static void mcStopMdns();  // below, beside the mDNS search
 static void mcPerformMusterDrop() {
   Serial.println("MUSTER: dropping the Wi-Fi association for the match (LINK RECONNECT to rejoin)");
   ws.disconnect();
   WiFi.disconnect();
   wsWantOpen = false;
   link.wifi_down();
+  mcStopMdns();
 }
 
 static void mcHandleFrame(const String& text) {
@@ -347,6 +521,7 @@ static void mcHandleFrame(const String& text) {
       mcEraseSavedConfig();
       if (wasRestored && !link.restored()) Serial.println("STALE restored config (new MC session): UNASSIGNED");
     }
+    if (w.ok && savedHill.note_welcome(w.session_id)) mcEraseSavedHill();  // another session's hold
   } else if (kind == "station_config") {
     StationAssignment a = parse_station_config(body);
     if (a.present) {
@@ -357,6 +532,7 @@ static void mcHandleFrame(const String& text) {
       link.apply_station_config(a, rx);  // A58: also REPLACES the match lock, counted from `rx`
       // Only when it differs (lock_s excluded) or the session is new.
       if (savedConfig.note_applied(a, link.session_id())) mcWriteSavedConfig();
+      if (savedHill.note_config(link.assignment(), savedConfig.session_id())) mcEraseSavedHill();  // new game/id/session
       mcScreenWake = true;
       Serial.printf("MC-ARMED kind=%s team=%d id=%d game=%d threshold=%d lock_s=%d\n", a.kind.c_str(), a.team,
                     a.id, a.game, a.threshold, a.lock_s);
@@ -378,6 +554,7 @@ static void mcHandleFrame(const String& text) {
     if (cmd == "release_utility") {
       link.apply_release();
       if (savedConfig.note_released()) mcEraseSavedConfig();  // a released Stick must not come back armed
+      if (savedHill.clear()) mcEraseSavedHill();
       mcScreenWake = true;
       Serial.println("RELEASED (control.release_utility): back to UNASSIGNED");
     }
@@ -409,28 +586,78 @@ static void mcWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
   }
 }
 
-// ---- mDNS discovery -------------------------------------------------------------------------- //
-static bool mcTryMdns(WsAddress& out) {
-  int n = MDNS.queryService("openbrx", "tcp");
-  if (n <= 0) return false;
-  out.host = MDNS.address(0).toString();
-  out.port = MDNS.port(0);
-  String path = MDNS.txt(0, "ws_path");
-  out.path = path.length() ? path : "/ws";
-  out.valid = true;
-  return true;
+// ---- mDNS discovery (non-blocking) ------------------------------------------------------------ //
+// Polish round 1 (HIGH): `MDNS.queryService` blocks loop() for its whole 3 s query, every retry, which
+// stalled the hill's 250 ms tick (its conversion clamps to 1 s a step, so the point ran slow) and could
+// overflow the sighting ring. The ESP-IDF mdns component in this core (m5stack esp32 3.3.9) has an async
+// query: start it, poll it with a 0 ms timeout each loop(), read the result when it is done. Same PTR
+// query and the same result reading as ESPmDNS's queryService/address/port/txt, so discovery for a fresh
+// Stick is unchanged. mdns_init() (via MDNS.begin) was never called before, and a query needs it.
+bool mdnsStarted = false;
+mdns_search_once_t* mdnsSearch = nullptr;
+
+static bool mcReadMdnsResult(mdns_result_t* r, WsAddress& out) {
+  for (; r; r = r->next) {
+    if (!r->port) continue;
+    for (mdns_ip_addr_t* ip = r->addr; ip; ip = ip->next) {
+      if (ip->addr.type != MDNS_IP_PROTOCOL_V4) continue;
+      out.host = IPAddress(ip->addr.u_addr.ip4.addr).toString();
+      out.port = r->port;
+      out.path = "/ws";
+      for (size_t i = 0; i < r->txt_count; i++) {
+        if (r->txt[i].key && r->txt[i].value && strcmp(r->txt[i].key, "ws_path") == 0 && r->txt[i].value[0]) {
+          out.path = r->txt[i].value;
+        }
+      }
+      out.valid = true;
+      return true;
+    }
+  }
+  return false;
+}
+
+// A search left running when the link leaves LOOKING_FOR_MC (a typed address, a Wi-Fi drop) must not
+// answer the NEXT search with an old address (§5g.3: a reconnect never dials a cached address).
+static void mcCancelMdns() {
+  if (mdnsSearch) { mdns_query_async_delete(mdnsSearch); mdnsSearch = nullptr; }
+}
+// Wi-Fi went down: stop mDNS as well, so the next association re-begins it on the new interface
+// (LINK OFF turns the station interface off in core 3.x).
+static void mcStopMdns() {
+  mcCancelMdns();
+  if (mdnsStarted) { MDNS.end(); mdnsStarted = false; }
+}
+
+// Call every loop() while LOOKING_FOR_MC. Never waits: true once a query has answered with an address.
+static bool mcPollMdns(uint32_t now, WsAddress& out) {
+  if (!mdnsSearch) {
+    if (now - lastMdnsTryMs < MDNS_RETRY_MS) return false;
+    lastMdnsTryMs = now;
+    if (!mdnsStarted) mdnsStarted = MDNS.begin(link.identity().node_id.c_str());
+    if (!mdnsStarted) return false;
+    mdnsSearch = mdns_query_async_new(nullptr, "_openbrx", "_tcp", MDNS_TYPE_PTR, 3000, 4, nullptr);
+    return false;
+  }
+  mdns_result_t* results = nullptr;
+  if (!mdns_query_async_get_results(mdnsSearch, 0, &results, nullptr)) return false;  // still asking
+  mdns_query_async_delete(mdnsSearch);
+  mdnsSearch = nullptr;
+  bool found = mcReadMdnsResult(results, out);
+  if (results) mdns_query_results_free(results);
+  return found;
 }
 
 // ---- the main poll, called every loop() with the current millis() ------------------------------
 static void mcLoop(uint32_t now) {
   // The station's own play runs FIRST, before any Wi-Fi or WebSocket handling, because MUSTER keeps Wi-Fi down for
-  // the whole match: SELF-SPAWN and the CLAIM scan are gated on the PERSISTED assignment
-  // (`has_powerup_assignment()`), never on link state. (Polish round 3: they used to sit after the `!wifiUp` early
+  // the whole match: SELF-SPAWN, the player scan and the hill/revive tick are gated on the PERSISTED
+  // assignment (`has_*_assignment()`), never on link state. (Polish round 3: they used to sit after the `!wifiUp` early
   // return below, so a muster station never spawned or awarded during play.)
   if (link.has_powerup_assignment()) {
     if (link.tick_powerup(now)) mcScreenWake = true;  // a SELF-SPAWN: the item is back
-    mcPollClaimScan(now);
   }
+  mcPollPlayerScan(now);  // every kind that reads players; itself gated on the persisted assignment
+  mcTickPlayers(now);
   // A58: the match lock counts down on millis() whatever the link is doing (MUSTER is off Wi-Fi for
   // the whole match) and auto-unlocks at zero. The PMIC follows the lock on every edge: a start, a
   // replacement by a later config, lock_s 0, a release, or the countdown running out.
@@ -447,10 +674,12 @@ static void mcLoop(uint32_t now) {
   if (wifiUp && link.state() == LinkState::JOINING_WIFI) link.wifi_up();
   if (!wifiUp && link.state() != LinkState::NOT_CONFIGURED && link.state() != LinkState::JOINING_WIFI) {
     link.wifi_down();
+    mcStopMdns();
   }
   // Any link state change (Wi-Fi lost, MC found, joined, closed) is an event the operator should see.
   static LinkState lastLinkState = link.state();
   if (link.state() != lastLinkState) { lastLinkState = link.state(); mcScreenWake = true; }
+  if (link.state() != LinkState::LOOKING_FOR_MC) mcCancelMdns();  // no stale answer for the next search
   if (!wifiUp) {
     // Polish round 2 (CRITICAL): a deliberate MUSTER drop must STAY dropped. Without this guard the
     // very next tick's kick re-associated Wi-Fi immediately, undoing the drop `mcHandleFrame` just
@@ -469,10 +698,9 @@ static void mcLoop(uint32_t now) {
       ws.begin(pendingTypedMc.host.c_str(), pendingTypedMc.port, pendingTypedMc.path.c_str());
       wsWantOpen = true;
       haveTypedMc = false;
-    } else if (now - lastMdnsTryMs >= MDNS_RETRY_MS) {
-      lastMdnsTryMs = now;
+    } else {
       WsAddress found;
-      if (mcTryMdns(found)) {
+      if (mcPollMdns(now, found)) {
         link.mc_address_known();
         ws.begin(found.host.c_str(), found.port, found.path.c_str());
         wsWantOpen = true;
@@ -506,6 +734,20 @@ static void mcLoop(uint32_t now) {
     f.boot_count = bootCount;
     f.assoc = link.mode() == AssocMode::HELD ? "held" : "muster";
     f.lock_s = (long)link.lock().remaining_s(now);
+    if (link.has_control_assignment()) {
+      // §5c: the station is self-authoritative, so it reports the point, as utility.js's status does.
+      const BleControlPoint& h = link.hill();
+      f.has_control = true;
+      f.control_owner = h.owner;
+      f.control_progress = (int)BleControlPoint::js_round(h.progress);
+      f.control_contested = h.contested;
+      f.control_has_hold = true;
+      for (int t = 0; t < 4; t++) f.control_hold_ms[t] = h.hold_ms[t];
+    }
+    if (link.has_respawn_assignment()) {
+      f.has_revives = true;
+      f.revives = link.revives().revives;
+    }
     String body = String(build_status_body(f).c_str());
     char envId[13];
     snprintf(envId, sizeof envId, "%08lx%02x", (unsigned long)now, (unsigned)esp_random() & 0xff);
@@ -605,6 +847,7 @@ static bool mcSendResetAction() {
 static void mcSetup() {
   mcLoadPrefs(link);
   mcCountBoot();                   // A58
+  mcLoadSavedHill();               // before the restore, which may bring the hill back held
   mcRestoreSavedConfig(link);      // restart survival: before WiFi.begin, so the station plays at once
   pmicSetSideButtonLock(false);    // A58: every boot starts unlocked, the PMIC included
   bootRandomPrefix = esp_random();  // the fixed half of every station_action envelope id this boot
