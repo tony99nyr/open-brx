@@ -14,3 +14,5 @@ living file says so at the point of absorption.
 Subdirectories: `hardware/` (plans that ran or were superseded), `design/` (the mc/hud design exports),
 `site/` (superseded site-build plans).
 `followups-closed.md` and `pre-2026-09-06-followups-snapshot.md` are aggregates, not moved files.
+`followups-closed.md` opens with the followup id history, then runs by close date, oldest first, so the newest
+closure is last.

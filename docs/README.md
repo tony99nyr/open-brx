@@ -15,7 +15,7 @@ specified. Then **[`manual/`](manual/)**, the confirmed-facts manual the public 
 
 ## Status — three living files, one job each
 - **[HANDOFF.md](HANDOFF.md)** — **one screen**: what is true today, what changed, the next three actions,
-  machine roles. Overwritten each session, never stacked.
+  machine roles. Each session overwrites only its own lane section, never another lane's, never stacked.
 - **[FOLLOWUPS.md](FOLLOWUPS.md)** — **every open item and nothing else**, with a "Needs Tony at the bench"
   section (the bench queue) and "System proofs" (needs players / space). Ids are permanent. The rows are
   the only index.
@@ -37,6 +37,7 @@ historical context; the running order is always [`bench-plan.md`](bench-plan.md)
 | [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md) | live: verifies the firmware findings on v4.32 (claims 1-27) |
 | [`bench-2026-09-24.md`](bench-2026-09-24.md) | live: the next sitting's ordered runbook (connect reliability, screamers transport, the native kill word in Block 2b, one match, F275 outdoors, S48 in the house) |
 | [`bench-native-firmware-2026-09-23.md`](bench-native-firmware-2026-09-23.md) | moved: a pointer to Block 2b of the runbook (the native fatal-hit capture and the R4 checks) |
+| [`bench-sticks3-2026-09-23.md`](bench-sticks3-2026-09-23.md) | live: the M5StickS3 first-bring-up gate sheet (F314, IR receive after transmit) |
 | [`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md) | live, P0: reproduce and prevent the screamer lock-up (Phases A-E) |
 | [`bench-perks-2026-09-18.md`](bench-perks-2026-09-18.md) | history: every section answered on 2026-09-18 (the log's perks bench entry, items 5-8) |
 | [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md) | superseded by the plan; history |
@@ -106,11 +107,12 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 | Serial command reference (framing, tables, `$SIR`, `$WEAP`, safe testing) | [`../protocol/brx-protocol.md`](../protocol/brx-protocol.md) |
 | Stock firmware `$` vocabulary by tagger/headset version (code-derived, not bench proof) | [`reference/firmware-commands.md`](reference/firmware-commands.md) |
 | Dated session findings + retracted readings (2026-08) | [`../protocol/session-findings-2026-08.md`](../protocol/session-findings-2026-08.md) |
+| Stock firmware image research (R4): decompile plan, status, findings | [`firmware-image-research-plan.md`](firmware-image-research-plan.md) |
 | IR shot protocol + station words | [`../protocol/brx-ir-protocol.md`](../protocol/brx-ir-protocol.md) |
 | `$GSET`/`$WEAP`/`$PSET` field maps, modes, grenade (APK teardown) | [`../protocol/callsign-extract/`](../protocol/callsign-extract/) |
 | The 2477 sounds on the gun, with meanings | [`reference/sound-catalog.md`](reference/sound-catalog.md) (generated from `mcp/brx_mcp/data/sound_catalog.json`) |
 | Every confirmed BRX fact, for people | [`manual/`](manual/) (+ [`manual/README.md`](manual/README.md): how a fact gets in) |
-| The evidence the manual cites | [`reference/`](reference/) (manual notes, community posts, JEDGE, grenade, weapons data, print-file survey, iOS BLE notes) |
+| The evidence the manual cites | [`reference/`](reference/) (manual notes, community posts, JEDGE, grenade, weapons data, print-file survey, iOS BLE notes, the time-to-kill model, Jay's DIY ecosystem, the extended user guide, the firmware audio-pack diff) |
 | Decoded transcripts + raw btsnoop traces | [`../protocol/captures/`](../protocol/captures/) |
 | Node↔MC wire + game data model | [`spec/contracts.md`](spec/contracts.md) |
 | Open work | [`FOLLOWUPS.md`](FOLLOWUPS.md) |
@@ -133,6 +135,8 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
   `manual/dev.md`.
 - **[../mcp/brx_mcp/mc/README.md](../mcp/brx_mcp/mc/README.md)** — the Mission Control server: how to start it, every flag, the UI it serves.
 - **[../webapp/mc/README.md](../webapp/mc/README.md)** — the Mission Control web UI.
+  [`mc-warning-audit-2026-09-16.md`](mc-warning-audit-2026-09-16.md) is the full audit of its amber/red
+  warnings, with Tony's keep/quieter/remove call against each.
 - **[manual/README.md](manual/README.md)** — the public site: how a fact gets in. **[site/README.md](site/README.md)**
   (how to run the build + gate) and **[site/FORMAT.md](site/FORMAT.md)** (the page contract).
 

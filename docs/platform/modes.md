@@ -1,5 +1,5 @@
 # Modes and game setup
-Last verified: 2026-09-19
+Last verified: 2026-09-24
 
 This page covers the modes Open BRX itself runs, and the pieces you choose when you build a game.
 The stock on-tagger and Callsign modes are a separate thing and live on the [gameplay page](/manual/gameplay).
@@ -45,7 +45,7 @@ a game you can save and run again.
 | Time limit | The clock. It is the only ending every player sees, because each phone counts it down locally and stops on its own even with nothing in range. |
 | Frag or score limit | An early end. Mission Control decides it from the events it has and tells the phones. Players in range stop; players out of range keep playing until the clock runs out. |
 | Respawn | Timed (the phone counts a delay and re-arms the tagger), station (walk back to a respawn station and it re-arms you), or none (Last Man Standing lives). |
-| Health pool | 45 health and 70 armor by default. Armor soaks first. You can raise or lower it per player, which is how you handicap a strong player or help a small one. |
+| Health pool | One of three presets: Standard (45 health, 70 armour, the default), Shields (45 health, 105 shield) or Hardcore (45 health only). Shield soaks first, then armour. You can raise or lower it per player, which is how you handicap a strong player or help a small one. |
 | Loadout policy | Who picks the weapons: the operator, the players, or nobody (see below). |
 | Venue | Indoor or outdoor sets the tagger's IR range profile and the game volume (80 indoors, 90 outdoors). Night dims the LEDs instead of lighting the field up. |
 | Friendly fire and critical hits | Both are tagger settings, both are per game. Free-for-all forces friendly fire on, since everyone is an enemy. |
@@ -60,7 +60,7 @@ Every player carries three slots.
 | Slot | Holds | Notes |
 |---|---|---|
 | Primary | Any weapon | Required. Never empty. |
-| Secondary | Any weapon, including the three pistols | Optional. |
+| Secondary | Any weapon, including the two pistols | Optional. |
 | Perk | One perk | Optional, and it rides beside the secondary. An assault rifle, a pistol and a perk is a legal kit. |
 
 Five perks are offered today, and every one of them costs something. Body Armor gives 25 extra armour and

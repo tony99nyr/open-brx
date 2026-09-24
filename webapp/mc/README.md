@@ -22,6 +22,8 @@ npm run e2e:m2             # S24/S25/A25/A27/A29/A31: the live board, the specta
                            #   chips and log sync. ONLY=measure|mock|phone|real|refusal|stale;
                            #   shots land in ~/brx-scratch/m2ui
 npm run e2e:game-edit      # B3: editing the loaded game inline on KIT/LOBBY, against a mock AND a real MC
+npm run e2e:report         # "Report a problem" against a real MC: the real zip, the token-gated
+                           #   download, the GitHub issue link; ONLY=real|stale
 npm run e2e:frame          # the console frame against `?mock`: one-row bar, WSL note, PANIC, report focus
 npm run lint               # oxlint
 ```
@@ -106,7 +108,7 @@ client) · `src/mock/` (stateful in-browser backend with the design's demo data 
 
 **Where `src/api/contract.gen.ts` comes from.** It is not hand-kept: `mcp/tools/gen_contract.py`
 renders it from `mcp/brx_mcp/mc/types.py` + `envelope.py` (the node↔MC wire's constants, kind
-vocabularies, required-field tables and the 18 shared shapes), and `mcp/tests/test_contract_generated.py`
+vocabularies, required-field tables and the shared shapes), and `mcp/tests/test_contract_generated.py`
 fails CI when it drifts from the source. Regenerate with `python3 mcp/tools/gen_contract.py` from the
 repo root after touching either Python module. **Never hand-edit `contract.gen.ts`** — `types.ts`
 re-exports from it and adds only the UI-only view types (`State`, `NodeView`, `LiveView`, …) that have
@@ -130,5 +132,5 @@ holds no button, link or input at all — `test/spectate.test.tsx` asserts exact
 point of a separate route is that a stranger can touch the screen and change nothing. It is the
 legible v1; the broadcast treatment Tony asked for is a later pass on top of it.
 
-Fonts load from Google Fonts for now — self-host Oswald + Chakra Petch before a field deployment (the
-field LAN has no internet).
+Fonts (Oswald, Chakra Petch) are self-hosted under `public/fonts/` and loaded with `@font-face` in
+`index.html` — no internet dependency, which matters because the field LAN has none.

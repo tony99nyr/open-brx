@@ -59,7 +59,7 @@ dispersed** match, tracks a live board and produces a recap. Each player carries
 | M-NODE | `node.md`, `design/phone-hud.md` | `app/src/engine.js`, `app/src/hud/` | the per-gun engine and HUD |
 | M-START | `start-sequence.md` | `app/src/engine.js` (`startAt`, `resumeSchedule`) | the dispersed timed start and end |
 | M-UTILITY | `utility.md`, `docs/utility-roadmap.md` | `app/src/beacon.js`, `app/src/utility.js`, `app/plugins/brx-beacon` | phones as stations |
-| M-TRANSPORT | `transport-hardening.md` | `app/src/brxlink.js`, `mcp/brx_mcp/protocol.py` (`DENIED_COMMANDS`), `mcp/brx_mcp/ble.py` | the gun-side write budget, pacing, the deny list, read-back and the lock-up detector (design; §3 and §4 built) |
+| M-TRANSPORT | `transport-hardening.md` | `app/src/brxlink.js`, `mcp/brx_mcp/protocol.py` (`DENIED_COMMANDS`), `mcp/brx_mcp/ble.py` | the gun-side write budget, pacing, the deny list, read-back and the lock-up detector (status: the file's own header) |
 
 Coordination rules: bind to the wire in `contracts.md` and the Interface section of any module you depend on,
 never another module's internals; a gap is an amendment, not a fork; every module ships with its own fakes;
@@ -80,7 +80,7 @@ live with config intact (5-min run still owed); the head write is silent; headse
 echo is the headset proof; an unspawned gun ignores IR; a live `$TID` write flips hit resolution immediately.
 
 Still open (tracked in `docs/FOLLOWUPS.md`): the `$VOLTS` % token; the 5-min hold; a 20-min two-node soak;
-iOS locked-phone BLE; the third (shield) pool in the node (node.md Q12).
+iOS locked-phone BLE; the shield in the `status` body (node.md Q12, FOLLOWUPS Q12′).
 
 ## 6. Product qualities every module honours
 

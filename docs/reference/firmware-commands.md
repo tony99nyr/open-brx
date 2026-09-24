@@ -7,7 +7,7 @@ Battle Company has not licensed the images for redistribution, so the default re
 
 The byte-level scan fixes the first `strings` pass: its four-character floor reported 103 v4.32 names but omitted
 short real commands such as `$AS` and `$SP`. The bounded scan finds 111 command-shaped names in v4.32 and 128
-across all seven images. “Present” means a bounded ASCII `$WORD` exists in the image; it does **not** prove the
+across all seven images (a different corpus from the ten gun images behind the protocol reference's count of 145). “Present” means a bounded ASCII `$WORD` exists in the image; it does **not** prove the
 word is an inbound dispatcher entry or that it is safe to send.
 
 ## Sources and integrity
@@ -40,7 +40,9 @@ The separate v5-to-v6 audio ZIP hashes to
   four explicit version conflicts plus names otherwise unknown to the safe rail.
 - **Bench:** `proven` means our v4.32 hardware showed the effect; `claimed` means a source or inconclusive send
   exists; `never sent` means we have not intentionally sent the exact shape. This column is an evidence ledger,
-  not the stale `CommandInfo.proven` flag alone: `$STUN` and `$TMP` are bench-proven despite that old flag.
+  not the `CommandInfo.proven` flag alone. A send
+  with no observable reply counts as `claimed`. Each command's current status and its evidence live in the protocol
+  reference; where this column and a protocol row disagree, the protocol row wins.
 - **Needs firmware** is a vocabulary gate over the seven sampled images. “2.02c+ sampled” means first present in
   2.02c and present in every later image we hold; “4.32 only sampled” does not prove the exact introduction was
   4.32. Legacy and headset labels are explicit because upgrading a gun does not restore a removed word or turn a
@@ -75,7 +77,7 @@ not an older-firmware substitute. First use on real older hardware remains a ben
 | `$CHASE` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32, H1.27, H1.34 | yes | known-safe | claimed | all sampled taggers/headsets |
 | `$CLEAR` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | known-safe | proven | all sampled taggers |
 | `$CLEARDEVICE` | 2.02c, 2.02e, 2.08b, 4.32 | **no** | denied | never sent | tagger 2.02c+ sampled |
-| `$CONNECT` | 2.08b, 4.32 | yes | known-safe | proven | tagger 2.08b+ sampled |
+| `$CONNECT` | 2.08b, 4.32 | yes | known-safe | claimed | tagger 2.08b+ sampled |
 | `$DDFU` | 2.02c, 2.02e, 2.08b | yes | denied | never sent | legacy: tagger 2.02c-2.08b |
 | `$DEV` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | denied | never sent | all sampled taggers |
 | `$DIE` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | known-safe | claimed | all sampled taggers |
@@ -97,7 +99,7 @@ not an older-firmware substitute. First use on real older hardware remains a ben
 | `$GPAIR` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | denied | never sent | all sampled taggers |
 | `$GPAIRX` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | denied | never sent | all sampled taggers |
 | `$GPING` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32, H1.27, H1.34 | yes | confirm-required | never sent | all sampled taggers/headsets |
-| `$GREN` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | known-safe | proven | all sampled taggers |
+| `$GREN` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | known-safe | claimed | all sampled taggers |
 | `$GSET` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | known-safe | proven | all sampled taggers |
 | `$HADSK` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32, H1.27, H1.34 | yes | confirm-required | never sent | all sampled taggers/headsets |
 | `$HEADDFU` | 2.02c, 2.02e, 2.08b, 4.32 | yes | denied | never sent | tagger 2.02c+ sampled |
@@ -108,7 +110,7 @@ not an older-firmware substitute. First use on real older hardware remains a ben
 | `$IF` | 4.32 | yes | confirm-required | never sent | tagger 4.32 only sampled |
 | `$IK` | 4.32 | yes | confirm-required | never sent | tagger 4.32 only sampled |
 | `$INDOOR` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32, H1.27, H1.34 | yes | confirm-required | never sent | all sampled taggers/headsets |
-| `$INIT` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32, H1.27, H1.34 | yes | known-safe | proven | all sampled taggers/headsets |
+| `$INIT` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32, H1.27, H1.34 | yes | known-safe | claimed | all sampled taggers/headsets |
 | `$INQ` | 4.32 | yes | denied | never sent | tagger 4.32 only sampled |
 | `$INVU` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | confirm-required | claimed | all sampled taggers |
 | `$IRG` | 2.01U | yes | confirm-required | never sent | legacy: tagger 2.01U only |

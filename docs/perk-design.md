@@ -82,11 +82,11 @@ to the player's own gun, which the 2026-09-09 bench proved.
 **Motion Tracker is information, not power,** which is exactly why it belongs in the set: it is the
 only pick that changes how a player moves rather than how hard they hit. The phone already decodes
 every nearby phone's `{id, team, alive}` into `Presence` (`app/src/beacon.js`), and every player's
-phone already advertises that triple (`app/src/app.js:228`). Only the utility role reads it today.
+phone already advertises that triple (`app/src/app.js` `syncPlayerAdvert`). Only the utility role reads it today.
 
 **Know what the tracker can actually see.** `Presence` is RSSI and nothing else: no bearing, no
 distance. The app builds it at a -74 dBm threshold with a 0.8 s dwell and a 4 s expiry
-(`app/src/app.js:162`, tuned on hardware for stations in 2026-09-04). So a contact appears about a
+(the `presence` constructor in `app/src/app.js`, tuned on hardware for stations in 2026-09-04). So a contact appears about a
 second after someone comes inside the bubble and disappears about four seconds after they leave, and
 the player learns "someone is near", never where. Two things follow. The bubble was tuned for walking
 up to a station, not for a fight, so the threshold needs its own tuning pass before this ships. And if
@@ -102,10 +102,10 @@ These are designed, not deferred for lack of interest. Each names the one thing 
 | **Stim Pack** | hold a button to patch yourself up over a few seconds, on a 3-minute match-clock cooldown | a bench pass on the unused button ids (3, 4 and 5 reach the node with no handler), and the write-during-reload question in [`bench-perks-2026-09-18.md`](bench-perks-2026-09-18.md) §5 |
 | **Overclock** | hold a button to fire faster for a few seconds, then revert | the same button bench, plus S42's write discipline (a `$WEAP` write resets the magazine, so the revert has to restore it) |
 | **Medic Beam** | your primary heals a teammate and hurts an enemy, from one `$SIR` row | per-player `$SIR` keys, and a decision about whether a support weapon belongs in the perk slot or the weapon slot |
-| **Bubble Shield** | a short personal shield you trigger yourself | the Shields preset shipping, then the same button bench |
+| **Bubble Shield** | a short personal shield you trigger yourself | the same button bench (the Shields preset ships, so `$LIFE,0,0,<n>` grants land) |
 | **Ghost** | your gun runs quiet and flashless (`$WEAP` t25 and t26, the Suppressor's pair) | one bench confirmation that the pair moves flash and loudness independently of the weapon it came from |
 | **Threat Direction** | after you are hit, a short cue shows where it came from | F228: the sensor field read differently covered and uncovered at close range, so the direction is not trustworthy yet |
-| **Overcharge Shield** | your shield returns faster | the Shields preset shipping |
+| **Overcharge Shield** | your shield returns faster | a per-player knob on the node's S29 recharge (the Shields preset ships) |
 | **Adrenaline Rush** | a kill speeds you up for a few seconds | it needs MC to tell the node about the kill, so it is the one pick that quietly does nothing out of coverage. Ship it only if we accept that |
 | **EMP Resistance** | you recover from a stun faster than most | one new effect key and one new per-player bundle field, the same pattern the accessibility overrides already use |
 
@@ -140,20 +140,25 @@ negatives, so a poison or burn effect is a node tick clock, not a missing firmwa
 is in [`weapon-design.md`](weapon-design.md) §6.3b and the open work is S16. It belongs to a weapon
 first, the Toxin Rifle; a "your rounds burn" perk is the same mechanism in the third slot.
 
-**Blocked on hardware or a fact we do not have.** Lucky Shot, a crit chance on your primary (`$WEAP`
-t6 reads 0 on every stock weapon, and tomorrow's bench measures whether a tagger will roll it: F62).
-Alt-Fire Mode (t7 to t11 are a dormant secondary-fire block on all 20 captured frames, never tested).
+**Now buildable.** Lucky Shot, a crit chance on your primary: F62 closed 2026-09-18 (`$WEAP` t6 is a
+percentage the gun rolls), and `crit_pct` already ships on the Burst Rifle and the AMR. It must never
+ride with Armour Piercing (`weapon-design.md` §7.5).
+
+**Blocked on hardware or a fact we do not have.** Alt-Fire Mode (t7 to t11 are empty on all 20 captured
+frames; a 2026-09-18 code read says they are a live chance-based alt-fire, `weapon-design.md` §6.3f,
+code read, not bench-proven).
 Emitter Selection (two source documents disagree about what t4 does). Regional Quiet Mode (`$GSET` t3,
 decoded from the app, never exercised). Death Nova (the native Sentinel emits a real IR word from the
 headset on death; we do not know whether any field controls it). Armour Cache and Ammo Depot (the
-powerup station, K3, is designed and not built). Bomb-objective perks (the bomb site, K4, likewise).
+powerup station, roadmap K3, is designed and not built). Bomb-objective perks (the bomb site, roadmap K4, likewise).
 Killstreaks and Vengeance (the node cannot see its own kills at all; with MC they degrade to
-best-effort, which makes them a different, weaker idea).
+best-effort, which makes them a different, weaker idea). Martyrdom and C4 (moved here from Rejected: a
+host `$IRTX` word does reach other guns, even from a dead gun, S57 `ir-callouts.md`; whether a host word
+can land damage on a damage row is not benched).
 
 **Rejected, with the reason, so nobody spends a session on them.** Movement and speed perks of every
 kind, because no phone motion sensor is wired anywhere in the app. Shooting through cover, because IR
-is line of sight and the wire has no penetration concept. Martyrdom and C4, because no host command
-puts an IR word in the air: only a real trigger pull, a real melee swing and the native death nova do.
+is line of sight and the wire has no penetration concept.
 Defibrillators, ammo bags and any perk where one player writes another player's gun, because no such
 wire command exists. Smoke, because software cannot fog a real room. Turrets, deployables and wall
 breaching, because they need hardware or geometry we do not have. Flat damage resistance, because it
@@ -169,8 +174,8 @@ stations, because station adverts are already broadcast openly to every phone.
    `$HP`, so the node books the death with no attribution.
 3. **Pick rates.** Nothing aggregates perk choice across matches today. The store already logs each
    match's config, so the data exists; the query does not. Worth adding once real sessions run.
-4. **`max_armor_add` going negative** (Quick Switch): `armed_armor()` caps at 255 and does not floor at
-   0. One line, plus a bench check that `$PSET` accepts the result cleanly.
+4. **`max_armor_add` going negative** (Quick Switch): closed. `armed_armor()` now floors at 0 as well as
+   capping at 255 (item 6).
 5. **How big is the Motion Tracker's bubble?** The RSSI threshold was tuned for walking up to a
    station, not for a fight. Measure it between two phones before the perk ships, and retune the
    threshold and the dwell for players. If the bubble is small, the perk is a trap pick.
@@ -207,7 +212,7 @@ sweep of 2026-09-17, which ran in a session scratchpad and is **not in the repo*
 | Body Armor (reworked) | Extra armour, at the cost of a slower reload. | CORRECTED: `max_armor_add: 25`, not the 50 this sweep proposed (see §2). Adds `reload_mult: 1.25` on the primary. | Reload takes 25% longer. | S50-perk-balance-report §4 |
 | Extended Mags (reworked) | Bigger magazine and reserve, but a slower draw. | Keeps `ammo_mult: 2` (primary only). Adds `switch_mult: 1.3`. | Weapon swap is 30% slower. | S50-perk-balance-report §4 |
 | Quick Hands (reworked) | Faster reloads, smaller magazine. | Keeps `reload_mult: 0.5`. Adds `ammo_mult: 0.8`. | Magazine and reserve cut by 20%. | S50-perk-balance-report §4 |
-| Quick Switch (reworked) | Faster weapon draw, lighter armour. | Keeps `switch_mult: 0.5` (all slots, gun enforces the larger value). Adds `max_armor_add: -20`. | 20 less armour. Needs `armed_armor()` floored at 0 (one-line compiler fix). | S50-perk-balance-report §4 |
+| Quick Switch (reworked) | Faster weapon draw, lighter armour. | Keeps `switch_mult: 0.5` (all slots, gun enforces the larger value). Adds `max_armor_add: -20`. | 20 less armour. `armed_armor()` floors at 0 (done, §5 item 6). | S50-perk-balance-report §4 |
 | Armour Piercing Rounds | Your primary ignores armour and shields. | Rekeys the primary's `$WEAP` t3/t4 to a new, permanently shipped `$SIR` cell keyed to fn 2 (armour piercing); `dmg_mult` cuts t5. | CORRECTED: about 60% less raw damage, not the 20% this sweep proposed. Bypassing armour already cuts the pool from 115 to 45 (see §2). direct counter to Body Armor and the Shields preset. | S50-perk-balance-report §5, report-11 (AP mechanism) §1-6 |
 | Heavy Barrel | Hits harder, cycles slower. | `$WEAP` t5 +25%, t14 +20%, baked at arming. | Fewer, bigger hits; worse against fast weapons in close exchanges. | S50-perk-balance-report §5 |
 | Overcharged Rounds | Every hit lands harder, but you carry fewer rounds. | `$WEAP` t5 up (flat damage buff, CoD Stopping Power pattern). `ammo_mult` on t16/t39 cut to compensate. | Smaller magazine; no cycle-time change (distinct from Heavy Barrel). | report-03 (Stopping Power) + report-07 (`ammo_mult`/`dmg` levers) |
@@ -240,10 +245,10 @@ sweep of 2026-09-17, which ran in a session scratchpad and is **not in the repo*
 
 | Idea | Player-facing line | Mechanism | Blocker | What unblocks it | Evidence anchor |
 |---|---|---|---|---|---|
-| Personal EMP | Your primary's hits jam the enemy's gun for a few seconds. | A per-player `$SIR` cell keyed to the stun function the game-wide `config.stun` toggle already uses. | MOVED HERE ON REVIEW: it is not compile-time buildable. A `$SIR` table is game-wide, so keying one player's weapon to a stun function stuns for everyone who carries that key. | True per-player `$SIR` keys, the same blocker Medic Beam has. ⚠️ Read the fn 24 delayed-blast caution first. | report-07, report-08 §4 |
+| Personal EMP | Your primary's hits jam the enemy's gun for a few seconds. | A per-player `$SIR` cell keyed to the stun function the game-wide `config.stun` toggle already uses. | MOVED HERE ON REVIEW: it is not compile-time buildable. A `$SIR` table is game-wide, so keying one player's weapon to a stun function stuns for everyone who carries that key. | True per-player `$SIR` keys, the same blocker Medic Beam has. ⚠️ The stun cell is fn 23 (F253); fn 24 ships a phantom hit every 5 s and must never be keyed. | report-07, report-08 §4 |
 | Killstreak / Vengeance | A run of kills earns a reward, fully offline. | Would need the node to detect its own kills locally. | The gun never learns it hit someone; the node cannot see its own kills at all (ADR-0001). | Nothing short of a firmware change (disallowed), or accepting MC's best-effort `score`/`feedback` push, which moves the idea into Group C instead. | report-10 §13 (hard limit 1) |
-| Lucky Shot | A rare shot crits for extra damage. | `$WEAP` t6 (`primaryCritChance`). | Untested: reads 0 on every stock weapon, and the `$HIR` crit bit read 0 on all 15 measured headset hits. No confirmed damage effect. | A bench run that sets t6 non-zero and checks whether the emitted crit bit, or applied damage, actually changes. | report-08 §1 (t6, F62) |
-| Alt-Fire Mode | Your weapon carries a second, different attack. | `$WEAP` t7-t11 (secondary fire block: chance, damage type, power type, damage, crit chance). | Dormant and empty on all 20 captured stock frames; entirely untested. | A bench flip of t7-t11 on a live weapon to see if a secondary fire mode actually fires. | report-08 §1 (t7-t11) |
+| Lucky Shot | A rare shot crits for extra damage. | `$WEAP` t6 (`primaryCritChance`). | NONE NOW: F62 closed 2026-09-18. t6 is a percentage the gun rolls; a crit lands ×1.5 and sets `$HIR` token 6. `crit_pct` ships on the Burst Rifle and the AMR. | Buildable as a perk; never beside Armour Piercing (`weapon-design.md` §7.5). | report-08 §1 (t6), F62 |
+| Alt-Fire Mode | Your weapon carries a second, different attack. | `$WEAP` t7-t11 (secondary fire block: chance, damage type, power type, damage, crit chance). | Empty on all 20 captured stock frames. A 2026-09-18 code read says t7 is a chance and t8-t11 the rolled key, damage and crit (`weapon-design.md` §6.3f); code read, not bench-proven. | A bench flip of t7-t11 on a live weapon to see if a secondary fire mode actually fires. | report-08 §1 (t7-t11), weapon-design §6.3f |
 | Emitter Selection | Your weapon fires from the headset only, or from both emitters. | `$WEAP` t4, read either as IR subtype or as `primaryPowerType` (which emitter fires). | The two source documents contradict each other on what t4 does; neither reading is bench-flipped. | A bench test that isolates t4 from t3 and checks which reading holds. | report-08 §1 and §11 (t3/t4 contradiction) |
 | Regional Quiet Mode | Your weapon runs on reduced power for indoor play. | `$GSET` t3 (`gunLaserRegion`), described as a legal power-region control. | APK-decoded only, never exercised on the bench. | A bench sweep of t3 values with a range ladder, the same method used to prove t2. | report-08 §3 (t3), report-09 (t3 "written, NOT RUN") |
 | Death Nova | Your death damages anyone standing close. | The native Sentinel death-nova already emits real IR (proto 10, magnitude 125) from the headset at death. | We do not know whether this is a settable weapon trait or fixed to one gun model; it cannot be forced or assigned by MC or the node. | Bench research into what triggers the death-nova, and whether any `$WEAP`/`$PSET` field controls it. | report-08 §6 |
@@ -260,9 +265,9 @@ sweep of 2026-09-17, which ran in a session scratchpad and is **not in the repo*
 | Juggernaut / Kevlar+Helmet (flat damage resistance) | Duplicates Body Armor exactly; same lever, same effect. | report-03, report-04 |
 | Deep Impact (shoot through cover) | Impossible: IR is line-of-sight only, and the wire has no penetration concept. | report-08 §6 (IR word) |
 | Marathon / Lightweight / double jump / rocket jump / grapple (movement or speed perks) | Impossible: the phone has no accelerometer, gyroscope or compass wired anywhere in `app/src`. | report-10 §4, §13 (hard limit 4) |
-| Martyrdom (drop a live grenade on death) | Impossible: no host-driven command emits IR (`$IRTX`, `$HFIRE`, `$BHIT`, `$MELEE` all proven inert). Only a real trigger pull, a real melee swing, or the native Sentinel death-nova puts a word in the air. | report-08 §6, §9 |
+| Martyrdom (drop a live grenade on death) | ⚠ REASON SUPERSEDED: host `$IRTX` does reach other guns, even from a dead gun (S57, `ir-callouts.md`). Blocked, not impossible, until a host word is shown to land damage (§4). | report-08 §6, §9; ir-callouts.md |
 | Defibrillator / Ammo Bag / Repair Tool / Doc's Stim Pistol (heal or resupply a teammate directly) | Impossible: no wire command lets one node write another node's gun. | report-10 §8 ("no wire command that lets one node write another node's gun") |
-| C4 / remote detonation | Impossible: no host-driven IR emission exists to trigger anything remotely. | report-08 §9, §10 |
+| C4 / remote detonation | ⚠ REASON SUPERSEDED: host `$IRTX` emission exists (S57). Blocked, not impossible, until a host word is shown to land damage (§4). | report-08 §9, §10; ir-callouts.md |
 | Jäger's ADS (auto-intercept an incoming shot) | Impossible: no projectile object model and no defensive-emission mechanism exists. | report-04 |
 | Engineer buildings (sentry, dispenser, teleporter) | Needs new hardware beyond the planned stations; out of scope for a software perk. | report-04 |
 | Bandit / Mute (disable another player's equipment) | No player-carried equipment concept exists to disable. | report-04 |

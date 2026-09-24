@@ -108,6 +108,10 @@ produced them (carried in from the 2026-09-03 session sheet when it was archived
    `--wait` or watch board A before you believe the room is quiet.
 
 And never end a run on a bare `$CLEAR` (it wipes the `$SIR` table, under Sending commands below).
+State the shooter team for every IR test (see "Check the SHOOTER TEAM" below). Never advance an
+operator-in-the-loop sweep on a timer. Run the tools from the Windows venv
+(`/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp …`). The rig is board A = receiver COM7 and
+board B = emitter COM8, and Windows COM ports are exclusive.
 
 
 **🔴 A STALE `brx_mcp` SERVER SILENTLY OWNS A GUN — it looks like broken hardware (2026-09-02)**

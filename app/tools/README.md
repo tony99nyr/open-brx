@@ -1,6 +1,6 @@
 # app/tools — browser test rig (no hardware)
 
-One-time: `cd app && npm i --no-save playwright && npx playwright install chromium`.
+One-time: `cd app && npx playwright install chromium` (`playwright` is a devDependency; `npm ci`/`npm install` already pulls it in).
 
 - **`rig.mjs`** — full stack in two headless pages: the REAL MC server + MC web UI (page A) and the REAL
   HUD joined via `?mc=<ws>&gun=<name>` with a **fake gun** (`src/fakegun.js`: answers head/spawn writes with
@@ -8,6 +8,10 @@ One-time: `cd app && npm i --no-save playwright && npx playwright install chromi
   join → kit → ready → push → start → live → down → redeploy → end → result → over — and screenshots BOTH
   pages per phase into `app/shots/`. Start MC first: `cd mcp && ../.venv/bin/python -m brx_mcp.mc --demo --no-auth`,
   then `MC=http://<ip>:8765 node tools/rig.mjs`.
+- **`scenarios.mjs`** — `npm run ui:scenarios`: edge-state visual QA against a real MC (`MC`/`WS` env vars,
+  same as `rig.mjs`) — states `rig.mjs`'s happy path skips: abort during the countdown, a BLE drop and
+  relink mid-live (the §3.10 RECONCILE path, not the retired trigger-first resync prompt), and a host
+  PANIC. Screenshots land in `app/shots/` (`SHOTS_DIR=<dir>` to write elsewhere).
 - **`shots.mjs`** — HUD-only screenshot sweep over `?demo` (no MC server needed): every screen state at a
   phone-landscape viewport. `node tools/shots.mjs`.
 - **`stage.mjs`** — `npm run ui:stage` → http://localhost:4190/ : the STAGE harness for visual review. The real HUD in
@@ -23,10 +27,15 @@ One-time: `cd app && npm i --no-save playwright && npx playwright install chromi
   `SCREENS_SHARDS` child processes (default half the cores, at most 16, and at most a quarter of the free memory at ~240 MB a shard; `1` is serial), each with its own browser
   and a free port: about 100 s instead of 22 min. Every step opens its own browser context, so no step may depend
   on an earlier one.
+- **`moments.mjs`** — `npm run ui:moments`: screen-truth for the HUD's transient MOMENTS (hit taken, pool
+  gain, kill confirm, death, redeploy) over `?demo`. Every assertion is what a person sees — the rendered
+  overlay and its visible text, never engine state — and hits are fed through `engine.feedFrame(...)`, the
+  real gun path, not the demo's `hit()` helper. Refuses to run on a stale bundle. `ONLY=<substring>` runs
+  one step. Shots land in `app/shots/moments/`.
 - **`logsync-gate.mjs`** — `npm run ui:logsync`: the gate for background log sync (A25) and the baked build
   version (A29), 17 PASS/FAIL checks, exit 1 on any failure. It starts everything itself — its own real
   NetServer on an ephemeral port (`test/mc_server.py`, WSL `.venv` python) and a static server for `www/` on
-  4181 — then drives the real HUD with a fake gun. It hooks `WebSocket.prototype.send` before the app loads,
+  another ephemeral port — then drives the real HUD with a fake gun. It hooks `WebSocket.prototype.send` before the app loads,
   so the `hello`/`status` assertions are made against the frames that actually went down the wire, not
   against the app's own idea of them. The A25 half is the part worth keeping: a `pull_log` arriving with an
   unacked fact in the ring must send NOT ONE log frame, and the parked request must then be served on its own

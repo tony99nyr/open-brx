@@ -273,7 +273,8 @@ without exception:
 | M92 (melee) | 1 | 0 | 1 | 0 |
 
 So `t17`/`t40` are the same quantity in different units (or one is derived on send) — **do not treat
-them as two independent knobs.** Likewise `t39 == t16` in every frame (clip starts full).
+them as two independent knobs.** ⚠ Bench 2026-09-18 settled which is which: `t17` is the reserve the player
+carries and `t40` is a transient; see `../brx-protocol.md` §6 (the `16 / 39 / 40 / 17` row). Likewise `t39 == t16` in every frame (clip starts full).
 
 ✅ **`t5` (`primaryDamage`) — RESOLVED (bench exp 2, 2026-08-26; refined that night).** `t5` is the
 weapon's **raw magnitude** — the number it puts in the IR word. Exp-2 read `$HIR` token 5 == `t5` on four
@@ -309,7 +310,7 @@ Cross-validated: the 38-member metadata field list aligned against the two known
 | 17 | 32768 | 32768 | maxAmmo / unlimited flag | ~ (identical in both frames — a 2-frame diff can't validate a position that doesn't change) |
 | 18 | 1400 | 2500 | reloadSpeed (ms) | ~ |
 | 19 | 0 | 0 | reloadType (Magazine/Quiver/Shells…) | ~ |
-| 20 | 0 | 14 | ~~(secondary/overheat)~~ **FIRE MODE — bench-proven 2026-08-26** (0 auto/7 single/9 burst/2·3·14 charge/13 melee; overheat is t24+t35 gated by t37/t38; refuted guess kept for provenance) | ~ |
+| 20 | 0 | 14 | ~~(secondary/overheat)~~ **FIRE MODE — bench-proven 2026-08-26** (0 auto/7 single/9 burst/2·3·14 charge/13 melee; overheat is t24 gated by t38 (F229, see `../brx-protocol.md` §6); refuted guess kept for provenance) | ~ |
 | 21 | 100 | 100 | maxAccuracy | ~ |
 | 22 | 100 | 100 | singleShotAccuracy | ~ |
 | 24 | 0 | 14 | overheat | ~ |
@@ -322,7 +323,7 @@ Cross-validated: the 38-member metadata field list aligned against the two known
 | 33 | D02 | D37 | reloadPart3_SoundName | ✓ |
 | 34 | D18 | A73 | noAmmo_SoundName | ~ |
 | 35–36 | — | C19,C04 | weaponFeatureA/B sounds | ~ |
-| 37–38 | — | 20,150 | **overheat enable/params** — populated ONLY on the stock Charge Rifle; t24/t35 are INERT without them (SMG transplant enabled its dead heat gauge — bench 2026-08-26); t37-vs-t38 semantics unmapped | ✅ gate proven | ⭐ **2026-09-18 (V4_31 trace, LaserTagMods session): the meaning depends on `t1`, which resolves the apparent conflict with our bench.** When **t1 is 1 or 2** the gun emits a headset word and **t37 is its DIRECTION, t38 its REPEAT** (loop = max(1, t38), interval t23 clamped to at least 200 ms; 100 repeats until stopped). When **t1 is 0 or 3 neither reaches IR at all** — the Charge Rifle's case, since its t1 is empty. So the 2026-09-17 bench measuring **t37 as the charge weapon's TAP DAMAGE** stands: the two readings are different branches of the same token, not a contradiction.
+| 37–38 | — | 20,150 | **t37 = a charge weapon's tap damage, t38 = the overheat enable** (bench F229, 2026-09-17). Populated only on the stock Charge Rifle. The one current verdict, with the `[disasm]` headset direction/repeat branch for t1 = 1 or 2, is in `../brx-protocol.md` §6 (the `24 / 35 / 37 / 38` and `37 / 38` rows) | ✅ |
 | 39 | 32 | 100 | clipStartingAmmo (= maxClip here) | ~ |
 | 40 | 9999999 | 9999999 | ammoReserv (unlimited) | ~ (identical in both frames — not discriminable by the diff) |
 | 41 | 75 | 75 | `gunRangeIndoor` — ⚠️ **PROVEN INERT OUTDOORS** (F231, 2026-09-17): identical on every gun and changing it moved nothing at any distance, so it is NOT the range lever the name suggests and `resolve()` never writes it. **The V4_31 trace explains why** (2026-09-18): the firmware reads `t41` ONLY when the gun is indoors AND `t41` is itself non-zero. Outdoors it is never read, and indoors with `t41` = 0 the gun falls back to `t2`. The same rule makes `t42` replace `t13` indoors. Indoor behaviour is still untested, so the captured value ships unchanged | ✅ inert outdoors |
@@ -354,11 +355,11 @@ positional sound set — each slot is a named game-event sound. Note fields are 
 | **BMAP** | buttonNumber, function, swapSlot0..3 | button remap + 4 weapon-swap slots |
 | **AMMO** | metadata fields = `clip, functionToApply` (partial parse) | **Wire form is `$AMMO,<slot>,<clip>,<reserve>,<flag>,*` — hardware-verified** from the iOS capture (`../session-findings-2026-08.md` §7e) that ran a live game (e.g. `$AMMO,0,36,108,1,*`). The metadata field list is incomplete (missing the leading slot and the reserve); trust the captured wire form. |
 | **GLED** | mid, effect, optionA, optionB | gun LED — **not** r,g,b. ⚠️ **These field names are WRONG on the wire** (the teardown recovers names in declaration order, with no types). Bench truth: `$GLED,<led1>,<led2>,<led3>,<apply-gate>,<brightness>` — three independently addressable body LEDs, each a palette index 0-8 (0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal · 6 white · 7 pink · 8 orange). **Token 4 is an apply gate, not an `effect` enum**: 0/6/7/8/9/10 apply the frame's colours at full brightness, 5 applies them at ~1/3 brightness, 1/2/3/4 are no-ops that leave the previous colour lit; nothing animates, so the `LedEffect` enum below does not describe it. `$GLED,,,,5,,,*` blanks a gun because its colour tokens are **empty** and t4=5 applies them. Token 5 is brightness: 0 off · 1 dim · >=2 full. Colour is **not** only team-derived. See `protocol/brx-protocol.md` §command table. |
-| **GREN** | iRType, crit, modifier, indoorMode, operationMode, channel, (GrenadeType, MaxCount) | **Smart Grenade config** — a whole command we hadn't mapped |
-| **HFIRE** | Range, CountIRPulses, RateOfFire, FlashLED | "hyper/heavy fire" IR burst |
-| **IRTX** | iRPower, soundOnHit, rangeOutdoor, rangeIndoor | raw IR transmit |
+| **GREN** | iRType, crit, modifier, indoorMode, operationMode, channel, (GrenadeType, MaxCount) | **Smart Grenade config**. Bench status (it does not set the grenade's mode): `../brx-protocol.md` §3 |
+| **HFIRE** | Range, CountIRPulses, RateOfFire, FlashLED | ⚠ **Partial and wrong on the wire.** The real shape has 11 fields: `Direction, BulletType, PlayerId, Team, Damage, IsCriticalShot, PowerLevel, Range, CountIRPulses, RateOfFire, FlashLED`; this 4-field guess emitted zero IR. Status: `../brx-protocol.md` §3 |
+| **IRTX** | iRPower, soundOnHit, rangeOutdoor, rangeIndoor | ⚠ **Wrong on the wire.** This 4-field shape emitted zero IR. The real shape has 11 fields: `Direction, BulletType, PlayerId, ImmuneTeamColor, Damage, IsCriticalShot, PowerLevel, IrRange, ToggleIRLoop, TimeFireLoop, FlashLED`, bench-proven 2026-09-18. Status and fields: `../brx-protocol.md` §3 |
 | **LIFE** | addedHP, addedArmor, addedShields | grant health/armor/shields |
-| **BHIT** | damage, isCriticalShot, powerLevel | apply a hit to the gun (host-inflicted damage!) |
+| **BHIT** | damage, isCriticalShot, powerLevel | version-conflicted: v4.32 reads only one event byte, so no shape is promoted. Status: `../brx-protocol.md` §3 |
 | **BUMP** | hP, armor, shields | adjust current pools. ⚠️ **Field order is WRONG on the wire**: Callsign sends `$BUMP,12,,1,,,*` to add 12 armour (cap30, 2026-09-18) |
 | **MELEE** | intensity | melee event |
 | **VIB** | isEnableVibration | haptics toggle |

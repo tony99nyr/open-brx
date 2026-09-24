@@ -6,8 +6,8 @@ the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](
 This file holds the ORDER only. Each step points to the sheet section or the FOLLOWUPS row that holds the procedure.
 Do not copy a procedure into this file. When a sitting ends, strike its steps here (the skill's close, step 4).
 
-Rules for every sitting: the preflight in [`gotchas.md`](gotchas.md) ("Before a bench session"), `$VOL,65`, and never
-end on a bare `$CLEAR` (F11). Run `loopback.py COM8 COM7 6` before any sitting that uses the IR rig. Close every
+Rules for every sitting: the preflight in [`gotchas.md`](gotchas.md) ("Before a bench session", which holds the rig
+check), `$VOL,65`, and never end on a bare `$CLEAR` (F11). Close every
 sitting with the three writes in [`README.md`](README.md) ("Session close is three writes").
 
 ## Equipment key
@@ -40,7 +40,7 @@ superseded). See `docs/experiment-log/2026-09.md` (2026-09-19 pre-game entry) fo
 
 ## Sittings, in priority order
 
-### Next sitting: [`bench-2026-09-24.md`](bench-2026-09-24.md) (MUST: about 4 h 5 min in three setups)
+### Next sitting: [`bench-2026-09-24.md`](bench-2026-09-24.md) (MUST: about 4 h 30 min in three setups)
 
 One ordered runbook for the next sitting: F297/F293 connect reliability, the screamers transport steps A4, A7,
 A7b, A7c and A8 with `raw-bytes` (F269/F270), the native kill word and the R4 readings (Block 2b: F320-F322), F308,
@@ -50,7 +50,7 @@ Its sitting plan orders them: MUST sittings A-C, a stop point, then LATER by set
 
 ### Sitting 1: screamers Phase A, transport half (about 55 min; 1 gun, a laptop)
 
-Screamers are P0. Screamers A3, A5, A6, A11, A12; A4, A7, A7b, A7c and A8 run in the runbook's Block 2. A7 and A8 give the block-pacing
+Screamers are P0. Screamers A1c (the nonblocking loop control, **F272**), A3, A5, A6, A11, A12; A4, A7, A7b, A7c and A8 run in the runbook's Block 2. A7 and A8 give the block-pacing
 numbers (**F269**, **F270**); a lock-up feeds **F272**. Keep the block pause off until A7 and A8 give a number.
 A3 repeats A1 on other channels and can lock the gun: power-cycle and re-arm before the next step.
 
@@ -136,7 +136,9 @@ headset-word row was F254 before its renumber and is F275 now.
 
 ### Backlog (no fixed order; pick by setup)
 
-- [`bench-grenade.md`](bench-grenade.md) "Still to run": B0 first, then X, C, Z1-Z3, D, B, E, F.
+- [`bench-sticks3-2026-09-23.md`](bench-sticks3-2026-09-23.md): the M5StickS3 gates, gate 2 (IR receive, **F314**) first.
+  Kit: a Stick, the rig, a laptop, one gun for gates 4 and 5.
+- [`bench-grenade.md`](bench-grenade.md) "Still to run": B0 first, then X, Z1-Z3, D, B, E, F (C is answered).
 - The unrun rungs of [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) that the table below does not mark as
   moved. Do not run BQ-A2 (`$AS,1`): it starts a native game, a screamer path.
 - FOLLOWUPS §9 rows with their own method and no sheet: F164, F167, F168, F169, F183, F232.
@@ -172,6 +174,7 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 | [`bench-native-firmware-2026-09-23.md`](bench-native-firmware-2026-09-23.md) | moved | a pointer to Block 2b of the runbook, which owns the native fatal-hit capture |
 | [`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md) | live, P0 | the screamers: Phases A-E (A1, A2 done) |
 | [`bench-perks-2026-09-18.md`](bench-perks-2026-09-18.md) | history | every section answered 2026-09-18 |
+| [`bench-sticks3-2026-09-23.md`](bench-sticks3-2026-09-23.md) | live | the M5StickS3 bring-up gates (**F314**, H7); run with the `m5stick-bench` skill, no fixed sitting |
 | [`bench-grenade.md`](bench-grenade.md) | open, backlog | the grenade and hill rungs |
 | [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) | superseded as the order | the method of its unrun rungs. Moved: BQ-C2 answered (perks §1); BQ-C3 is levers §24; BQ-D2 is levers §2; BQ-D6 is levers §10; BQ-C8 is levers §19 step 11 |
 | [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md) | superseded | BC-A2 is levers §21 step 16 (done) plus grenade Z1; BC-B3 is grenade X; BC-C1 is levers §6; BC-C2 is answered (perks §2) |

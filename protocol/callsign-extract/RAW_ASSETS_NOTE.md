@@ -22,7 +22,7 @@ award-window seconds), each file's header records what it was derived from, when
 script.
 
 **If a maintainer needs to regenerate the derived files** (a newer Callsign build, say): pull a
-fresh raw config per `apk-harvest.md` "Reproduce" into a **local, gitignored** path —
+fresh raw config per `README.md` "Reproduce" into a **local, gitignored** path —
 `protocol/callsign-extract/.raw-assets/` (see `.gitignore`) — then run
 `mcp/tools/derive_callsign_data.py` against it. That script documents the exact shape of both
 outputs. **Never commit a raw asset file to this repo again**, under this directory or anywhere

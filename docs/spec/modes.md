@@ -113,28 +113,28 @@ Notes that shape the schema:
 - **Respawn** (`respawn.type`): `auto` = node timer (`delay_s`) → writes `revive`; `scanner` = revive at a
   utility-phone station (BLE advert presence + the `gate`, utility.md §4; A13.1); `none` = LMS. No gun token
   exists — the node owns the delay.
-- **Objective modes, and the engines MC cannot reach.** `modes/registry.py` maps eleven mode names onto six
-  engine classes; MC's catalog offers the six in `state.MODES`. The rest — `survival` (an alias of `infection`),
-  `cs` / `bomb`, `domination` and `ctf` — are **CLI-only engines**: `python -m brx_mcp play <mode>` and the sim
+- **Objective modes, and the engines MC cannot reach.** `modes/registry.py` maps eleven mode names onto seven
+  engine classes; MC's catalog offers six mode names in `state.MODES`. The rest (`survival`, an alias of `infection`;
+  `cs` / `bomb`; `domination`; `ctf`) are **CLI-only engines**: `python -m brx_mcp play <mode>` and the sim
   build them, `state.MODES` does not list them, so `PUT /api/config` refuses them and no operator can select one.
   Lighting one up from a single registration is **E2**. `koth` is the one that made the crossing (F70, a grenade
   hill), and `compile._STATION_GATED_MODES` (`domination`, `koth`, `ctf`, `cs`, `bomb`) refuses any of them
   without a `station_source`.
 - **Health variants.** *Regen* is still a `gameconfig.py` boolean on the laptop-BLE path only: a host-driven
   `$LIFE` write that reaches a node via **`apply{frames}`** (A6.4), so it works in a coverage zone and nowhere
-  else. **Syphon is being moved off that route (S14).** It is a **node-side** event, because MC already tells the
-  killer's node it scored in the same `feedback` body that carries medals, so the node writes the heal to its own
-  gun and needs no coverage at the instant of the kill.
+  else. **Syphon: design, not built (S14).** Neither `compile.py` nor `engine.js` has a siphon today. The design
+  makes it a **node-side** event, because MC already tells the killer's node it scored in the same `feedback` body
+  that carries medals, so the node can write the heal to its own gun and needs no coverage at the instant of the kill.
 
-  **Shape.** `config.siphon = {hp, armor}` (absent or `{0,0}` = off) is compiled into the bundle with the
+  **Proposed shape.** `config.siphon = {hp, armor}` (absent or `{0,0}` = off) would compile into the bundle with the
   precompiled `$LIFE` frame, so the node holds everything it needs offline. On a kill the node writes it, plays
   the profile's existing **`healed`** event (no new cue: a silenced game stays silent) and shows the gain on the
   KILL CONFIRMED takeover as another entry in the medal stack.
 
   **Two rules that are easy to get wrong.** `$LIFE` is additive **and clamped at the pool ceiling**, so a kill at
   full health grants the full amount and gains nothing: the node must report `min(grant, max - current)`, what was
-  *gained*, never what was granted. And there is **no shield**: that pool is IR-only (P16), so a shield number
-  here would be written and silently do nothing.
+  *gained*, never what was granted. A shield grant is possible: `$LIFE,0,0,<n>,*` fills the shield over BLE
+  (F109, bench 2026-09-11; contracts §3), so a shield term can join the shape if a mode wants one.
 
 ### 2.1 Mode parameters — `GameConfig.mode_params` [A18, E1]
 
@@ -175,12 +175,12 @@ block naming only the balance tokens we overwrite, optional declared `overrides`
 - `spawnAmmo(weapon_id) → (mag, reserve)` drives the `$AMMO` frames in `spawn`/`revive`; perks scale it.
 - **Melee** is always loaded to slot 4; hidden from the picker.
 - **Provenance discipline:** `verified: true` only where the shipped row equals the capture byte for byte
-  (Burst Rifle, Bolt Rifle, Melee); the byte-diff pinning test (`test_mc_compile.py`) blocks every change outside
+  (Bolt Rifle, Melee); the byte-diff pinning test (`test_mc_compile.py`) blocks every change outside
   the balance tokens and declared overrides.
 - ⚠ **Damage is a property of the (weapon, `$SIR` table) pair.** `Compiler.validate()` cross-checks each
-  weapon's `<t3,t4>` against the table MC pushes and warns on: no row (hits silently dropped), a no-pool function
-  (the Energy Launcher lands 0 — a live bug, weapon-design.md §6.2), a multiplier function (×1.25/×2 lands more
-  than `t5`). Warning-only until the Energy Launcher fix; promote the first two to errors in that commit.
+  weapon's `<t3,t4>` against the table MC pushes. Two cases are errors (since 2026-09-12): no row (hits silently
+  dropped) and a no-pool function (a hit that moves nothing). A weapon whose compiled damage is 0 on a damage row
+  is the third. The Energy Launcher's `<9,3>` cell is fn 1 since 2026-09-18 (weapon-design.md §6.2).
 
 ## 4. Tutorial arming (phase 3a) — private try-out, compiled by MC
 
@@ -315,8 +315,6 @@ presentation.resolve(config)     -> rows for GET /api/presentation (A11.5)
 ## 8. Open questions
 
 - **Range** — `t41` reads 75 on every gun and was PROVEN INERT outdoors (F231, 2026-09-17): the firmware reads it only indoors, and only when it is itself non-zero. The lever we write is `t2` `gunRangeOutdoor`, fed by `wire.range_outdoor_pct` and written outdoors only, with a floor of 13. ⚠️ `t2` sets the emitter's CARRIER FREQUENCY, not its power (2026-09-18, `../../protocol/brx-protocol.md`), so the shipped values are uncalibrated. See `../weapon-design.md` §4.2.
-- **`$SIR` table: flatten to fn 1 or retune the five multiplied weapons** — `../weapon-design.md` §6.2, Tony's
-  call; the Energy Launcher bug is fixed either way in the same commit.
 - **Voice per-slot map** beyond HEAVY — by ear or the `voice-profiles` endpoint (apk-harvest).
 - The revive-vs-`$HLOOP` and runway-lines questions are FOLLOWUPS row F131; the other open questions in this section stay here until they earn an id.
 - **E2 and E3** — the catalog / preset / scorer halves of `register_mode`, and one config schema.

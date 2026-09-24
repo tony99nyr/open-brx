@@ -165,7 +165,7 @@ resets `prev`. `shots` resets to 0 at `startAt()` and rides `status`; MC diffs i
   same millisecond as `$HP,0` (§7q), so an older latch means the death had another cause → `shooter_num: 0`.
   Emit `death`, HUD flips to DOWN (§4.5). The killed-by line resolves `shooter_num` through `roster` to a
   display name; 0 or an unknown number falls back to the team or "DOWN". **No frame is written to the gun on
-  death** — the firmware handles its own down-state; the node only *observes* it, then paints the headset
+  death**, except one `$PLAYX` that stops the low-health loop when it played this life (F149). The firmware handles its own down-state; the node only *observes* it, then paints the headset
   out-blink from `bundle.headset.death` (A11.6). A dead gun cannot fire (§7q), so the HUD's DOWN state is
   physically true.
 - **Infection (`config.mode == "infection"`):** a killed human, on death, writes
@@ -173,7 +173,7 @@ resets `prev`. `shots` resets to 0 at `startAt()` and rides `status`; MC diffs i
   chip to the infected team and plays its own `infected` cue (A11.4), then runs the normal respawn timer →
   `frames.revive`. Node-local; works offline. A mid-match `$TID` write **flips hit resolution immediately**
   (bench 2026-08-25 §7r; the LED repaints at respawn).
-- **respawn:** the 500 ms tick. `respawn.type=="auto"`: when `now − deadAt ≥ delay_s`, write **`frames.revive`**
+- **respawn:** the 250 ms tick (`app.js`). `respawn.type=="auto"`: when `now − deadAt ≥ delay_s`, write **`frames.revive`**
   verbatim (`$SPAWN,,` + loadout-correct `$AMMO`), set `alive=true`, refill HUD caps, emit `respawn`.
   `type=="scanner"`: revive only when the player's team **respawn station** is present (utility.md §4.1) and the
   gate (`trigger` = a pull on the dead gun's `$BUT,0,1`; `presence` = dwell) is met; the DOWN screen walks the
@@ -369,9 +369,10 @@ webview's JS still freezes**. Therefore:
 
 ### 3.12 Host-driven stun (EMP) — the node disarms, the node restores (F15, contracts A20)
 
-The gun does not stun itself. The chain the bench proved: a **proto-8 IR word** → the victim's `$SIR,8,0,,24` row
-(fn 24 is a **status** function: `$HIR,…,8,…` fires, no pool moves, **no `$HP` follows**) → the node writes
-`$AMMO,<slot>,0,0,1,*` for every live slot → the node restores when its timer runs out. MC ships the fn-24 row only
+The gun does not stun itself. The chain the bench proved: a **proto-8 IR word** → the victim's `$SIR,8,0,,23` row
+(fn 23 is a **status** function: `$HIR,…,8,…` fires, no pool moves, **no `$HP` follows**, and the victim's shots miss
+until the gun recovers by itself; F253 replaced fn 24, which left a phantom `$HIR` every 5 s) → the node writes
+`$AMMO,<slot>,0,0,1,*` for every live slot → the node restores when its timer runs out. MC ships the fn-23 row only
 under **`config.stun`** (`{duration_s?}`, default 10 s); without it the stock `<8,0>` row is the **charge rifle's
 plain damage**, so the node's rule is gated on the config too — a plain charge-rifle hit must disarm nobody.
 
@@ -714,8 +715,8 @@ which is where open work lives; closed questions are in git history.
 - **Q2 — the third pool on the wire (`$HIR` from a station).** With scanner respawn built over BLE adverts
   (utility.md §4), the remaining question is whether a grenade/IR station beacon (`$HIR` tok2 = 15) should also
   be a presence source (FOLLOWUPS B23).
-- **Q3 — dmg accounting.** `hit_taken.dmg` = hp+armor delta; a single `$HIR` spanning two pools is one
-  `hit_taken` with the summed delta. ⚠ **Superseded in part by Q12:** the definition is blind to the shield pool.
+- **Q3: dmg accounting.** `hit_taken.dmg` = the total pool delta, shield included (`engine.js _onHp`); a single
+  `$HIR` spanning two pools is one `hit_taken` with the summed delta.
 - **Q4 — `$VOLTS` token map.** Seed reads token 3 as pack %; the lab log leans token 4 = cell-voltage
   SoC. A controlled discharge sweep settles which token the HUD/readiness shows.
 - **Q5 — cached-context rejoin (§3.7).** How much of a prior game may a power-cycled phone re-arm from
@@ -727,11 +728,7 @@ which is where open work lives; closed questions are in git history.
   to catch a gap-death (§3.10 known limitation).
 - **Q10 — iOS queued BLE notifications on resume.** With `bluetooth-central` background mode, are
   notifications received while the JS was frozen delivered on resume, or dropped?
-- **Q12 — the third pool (2026-08-26, blocking any shield-granting station).** The wire has three pools; the
-  engine now stores `shield` but `status` does not carry it, the HUD does not show it, and `hit_taken` is
-  defined as "a `$HIR` that drops hp+armor", so a hit a shield fully absorbs produces **no event** (no assist
-  attribution, nothing in the outbox). It fails *open*, which is why nothing has surfaced. **Decision needed:**
-  (a) add `shield` to `status`; (b) redefine `hit_taken.dmg` as the **total** pool delta including shields, so a
-  hit that landed always produces an event — and specifically *include* the shield delta rather than emitting
-  `dmg: 0`, because a zero invites `if dmg:` guards downstream to drop the event again. The IR bench's
-  recommendation, and this spec's author's, is **both**.
+- **Q12: the third pool.** Built: `hit_taken.dmg` counts the shield delta (`engine.js _onHp`), so a hit the
+  shield fully absorbs still produces an event, and the HUD shows SHIELD when the game has one. Still open: the
+  `status` body carries no `shield`, and whether `hit_taken` also carries the shield delta as its own field is
+  FOLLOWUPS **Q12′**.

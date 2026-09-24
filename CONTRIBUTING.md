@@ -17,10 +17,9 @@ Two things that follow from this:
 - The MCP server refuses malformed frames and requires `confirm=true` for any command outside the
   known-safe list enforced in `mcp/brx_mcp/protocol.py`. If you're adding a new command, add it there
   deliberately, don't bypass the guard.
-- The panic sequence (`$CLEAR,*` then `$SP,99,*`) stops and silences a gun immediately, but it leaves
-  it with **no `$SIR` table**, so the gun cannot register a hit until it's re-armed or power-cycled.
-  That's correct for an emergency stop and wrong for anything else. Never end a bench session on a bare
-  `$CLEAR`; always re-arm or power-cycle before walking away.
+- The panic sequence stops and silences a gun immediately but leaves it unhittable until it's
+  re-armed or power-cycled: see `CLAUDE.md` → Hard rules and `protocol/brx-protocol.md` §3. Never end
+  a bench session on a bare `$CLEAR`.
 
 If a change you're proposing could brick a tagger, weaken that guard, or leave a gun in a state where
 it can't be hit, it needs to be justified explicitly in the PR, not just tested.
@@ -33,7 +32,10 @@ the Python `.venv`, and builds the Mission Control console. It stops after setup
 Mission Control. See `README.md` → *Quickstart: run Mission Control* for the full one-command path, and
 the per-piece sections below for what each test suite needs beyond that.
 
-The repo has several independently-testable pieces. Run the one you touched before opening a PR.
+The repo has several independently-testable pieces, useful while you iterate on one of them (see each
+piece's own command below). **Before opening a PR, run `pnpm run test:all`** (plus `-- --ui` if you
+touched `app/src`, `webapp/mc/src`, a UI gate or an e2e script): that is the final check, not any one
+suite on its own.
 
 **Everything at once:** `pnpm run test:all` from the repo root runs the unit gates of all four pieces in parallel
 (about 30 s). `pnpm run test:all -- --ui` adds the browser gates: `app` screens, moments, logsync and e2e, and every
@@ -140,8 +142,8 @@ files (see [`docs/README.md`](docs/README.md)):
 2. **`docs/FOLLOWUPS.md`** — every open item and nothing else. Strike or add rows as a diff, not prose.
    A closed item moves to `docs/archive/followups-closed.md` as one dated line with a link to the log
    entry. **Ids are permanent**: never renumbered, never reused, even after an item closes.
-3. **`docs/HANDOFF.md`** — one screen: what's true today, what changed, the next few actions. It's
-   overwritten each session, not stacked.
+3. **`docs/HANDOFF.md`** — one screen: what's true today, what changed, the next few actions. Each
+   session overwrites only its own lane section, never another lane's, never stacked.
 
 A new confirmed fact goes into `protocol/` or `docs/manual/` in the same commit that introduces it, or
 gets a FOLLOWUPS row saying "promote X" if it isn't ready yet.
@@ -191,8 +193,8 @@ cold:
 - What the gun actually did (LEDs, sound, `$HP`/`$SIR` state) versus what you expected.
 - Whether the result was one-off or repeatable, and under what conditions.
 
-For a **software** PR, run the relevant test suite above first and say which one you ran (and its
-result) in the PR description. If you added or changed a fact in `docs/manual/`, link the supporting
+For a **software** PR, run `pnpm run test:all` (plus `-- --ui` for a UI change) first and say the
+result in the PR description. If you added or changed a fact in `docs/manual/`, link the supporting
 experiment-log or followup evidence in the PR body; manual pages intentionally do not carry per-sentence
 `src:` lines.
 

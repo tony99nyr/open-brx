@@ -757,28 +757,9 @@ to poison", "chance to TASE") need no node logic.
 
 ## 25. The `$*` parser reset (screamers A4, 10 min, session 3)
 
-**CODE-READ, NOT BENCH-PROVEN (v4.32, 2026-09-21):** the parser resets only token 0 and the token index when it
-reads `$`; tokens 1..59 remain. On `*` it snapshots the working set, dispatches, and the common return path clears
-all 60 working tokens. A bare `$*` therefore dispatches an unmatched empty command and reaches that full cleanup.
-There is no inter-byte timeout. So a frame that loses its `*` leaves stale tokens behind, and the next frame, even a
-resend of the same frame, lands on them unless `$*` closes and cleans the partial frame. The old
-screamers A4 used `$QUERY`, which ignores its tokens, so it could not see this. This section replaces it, on one gun
-armed with the bench AR.
-
-1. **Control.** Send `$AMMO,0,10,50,1,*`, then `$AMMO,0,23,50,1,*`. Read the magazine from the next `$ALCD` (fire one
-   round if the gun sends none, and add one back). Expect 23.
-Steps 2 and 3 are blocked until F269's raw-byte helper records each chunk after the GATT write completes. The
-stage's current TX log records intent before connection/write admission and is not transport proof.
-
-2. **No reset.** Send `$AMMO,0,10,50,1,*`. With that helper, write `$AMMO,0,17,50,1` and require its post-write
-   chunk record, then send `$AMMO,0,23,50,1,*` normally and read the magazine. V4_30 predicts a BAD FRAME: not 23.
-3. **With the reset.** Repeat step 2, then use a separate helper write for `$*` before the complete 23-round frame.
-   Require post-write chunk records for the incomplete write and `$*` in that order. Expect 23.
-
-Run steps 2 and 3 three times each (the screamers sheet's rule for a result that counts).
-
-**Reading.** If step 2 fails and step 3 passes, the link sends `$*` (2 B) before each burst and before every resend in
-`brxlink.write`, and a lost packet costs one frame, not two. This becomes a Phase B rule in the screamers sheet.
+Moved. The procedure, the control and the command lines are screamers A4 in
+[`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md) (Phase A and its `raw-bytes` table), with the
+code read beside them. That table is canonical; it runs in Block 2 of [`bench-2026-09-24.md`](bench-2026-09-24.md).
 
 ## Close
 
