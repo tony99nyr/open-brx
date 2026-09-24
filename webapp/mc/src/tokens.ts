@@ -16,25 +16,27 @@ export const TEAM: Record<string, string> = {
 };
 export const teamColor = (id: string | null | undefined) => (id ? TEAM[id] ?? TEAM.ffa : TEAM.ffa);
 
-export const CLS_COLOR: Record<string, string> = {
-  AR: '#39b4ff', SMG: '#7fd0ff', SNIPER: '#ffd23f', SHOTGUN: '#ff8c42', HEAVY: '#ff5252', LMG: '#2ecc71',
-};
-/** weapons.json `role` → the human class label + colour (review round 3: no raw class ids on screen) */
-export const ROLE: Record<string, { label: string; color: string }> = {
-  assault: { label: 'ASSAULT', color: '#39b4ff' }, cqb: { label: 'CLOSE RANGE', color: '#ff8c42' }, marksman: { label: 'SNIPER', color: '#ffd23f' },
-  support: { label: 'SUPPORT', color: '#2ecc71' }, power: { label: 'HEAVY', color: '#ff5252' }, melee: { label: 'MELEE', color: '#8aa0b4' },
-  sidearm: { label: 'SIDEARM', color: '#ffb5d2' },   // the pistols (2026-09-04) — a slot-2 backup class
-};
-/** older MC (no `role`): no label at all rather than a raw class id (review round 3: no protocol ids on screen) */
-export const roleOf = (role?: string, cls?: string) => ROLE[role ?? ''] ?? { label: CLS_COLOR[cls ?? ''] ? (cls ?? '').toUpperCase() : '', color: CLS_COLOR[cls ?? ''] ?? '#8aa0b4' };
-export const PERK_COLOR = '#c48bff';
-/** M14 (visual QA 2026-09-23): weapon CLASS tints, a muted set of their own. The ROLE colours above
- *  are the team blue, yellow and green and the alarm red, so a SUPPORT tag read as "green team" and a
+/** M14 (visual QA 2026-09-23): weapon CLASS tints, a muted set of their own. The class colours used
+ *  to be the team blue, yellow and green and the alarm red, so a SUPPORT tag read as "green team" and a
  *  HEAVY tag as a fault. These stay low in saturation and away from every TEAM and alarm hue
- *  (`test/tokens.test.ts` checks both). */
+ *  (`test/tokens.test.ts` checks both). `ROLE` and `CLS_COLOR` below read from this table, so one
+ *  class has one colour on every screen (KIT, GAMES, CATALOGUE and the DESIGNER chips). */
 export const CLASS_TAG: Record<'heavy' | 'sniper' | 'assault' | 'cqb' | 'support' | 'sidearm', string> = {
   heavy: '#b8a07e', sniper: '#86b0a8', assault: '#8d9db4', cqb: '#b88f8a', support: '#98a880', sidearm: '#bdb8b0',
 };
+
+export const CLS_COLOR: Record<string, string> = {
+  AR: CLASS_TAG.assault, SMG: CLASS_TAG.cqb, SNIPER: CLASS_TAG.sniper, SHOTGUN: CLASS_TAG.cqb, HEAVY: CLASS_TAG.heavy, LMG: CLASS_TAG.support,
+};
+/** weapons.json `role` → the human class label + colour (review round 3: no raw class ids on screen) */
+export const ROLE: Record<string, { label: string; color: string }> = {
+  assault: { label: 'ASSAULT', color: CLASS_TAG.assault }, cqb: { label: 'CLOSE RANGE', color: CLASS_TAG.cqb }, marksman: { label: 'SNIPER', color: CLASS_TAG.sniper },
+  support: { label: 'SUPPORT', color: CLASS_TAG.support }, power: { label: 'HEAVY', color: CLASS_TAG.heavy }, melee: { label: 'MELEE', color: T.dim },
+  sidearm: { label: 'SIDEARM', color: CLASS_TAG.sidearm },   // the pistols (2026-09-04) — a slot-2 backup class
+};
+/** older MC (no `role`): no label at all rather than a raw class id (review round 3: no protocol ids on screen) */
+export const roleOf = (role?: string, cls?: string) => ROLE[role ?? ''] ?? { label: CLS_COLOR[cls ?? ''] ? (cls ?? '').toUpperCase() : '', color: CLS_COLOR[cls ?? ''] ?? T.dim };
+export const PERK_COLOR = '#c48bff';
 
 // font shorthands (React accepts the CSS `font` shorthand as a string)
 export const F = {

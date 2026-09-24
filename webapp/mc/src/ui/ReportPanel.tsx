@@ -143,7 +143,7 @@ export function ReportPanel({ onClose }: { onClose: () => void }) {
               )}
               {removedList.length > 0 && (
                 <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>
-                  Removed: {removedList.map(([k, n]) => `${n} ${k.replace(/_/g, ' ')}`).join(' · ')}
+                  Removed: {removedList.map(([k, n]) => `${n} ${k.replace(/_/g, ' ')}${n === 1 || /s$/.test(k) ? '' : 's'}`).join(' · ')}
                 </div>
               )}
               {downloadErr && (

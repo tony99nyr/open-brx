@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react';
-import type { MatchHistoryRow, RecapStationRow, RecapView, ScoreRow } from '../api/types';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { MatchHistoryRow, RecapStationRow, RecapView, ScoreRow, State } from '../api/types';
 import { endDeliveryLine } from '../api/derive';
-import { recapDeliveryText } from './recapDelivery';
+import { recapDeliveryText, recapDeliveryOkText } from './recapDelivery';
 import { useStore } from '../store';
 import { CHAMFER, F, T, fmtDuration, teamColor } from '../tokens';
 import { BTN_RESET, Brackets, Num, SectionRule, PrimaryButton } from '../ui';
 import { OrphanMatch } from '../ui/OrphanMatch';
-import { bestStreak } from './Live';
+import { TEAM_KILL_NOTE, bestStreak } from './Live';
+import { isObjectiveScored, objectiveWord } from './objective';
 import { columnEdges, type Column } from './columns';
 
 // S24: the same treatment as the live board — wider columns, an 11 px header, and the numeric run
@@ -40,6 +41,16 @@ export function Recap() {
   const [sel, setSel] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [csvErr, setCsvErr] = useState<string | null>(null);
+  // Polish 2026-09-23: RECAP inherited LIVE's scroll position (the console scrolls <main>, not the
+  // window), so it opened part-way down the board. Every scrolled ancestor goes back to the top once,
+  // on mount. A layout effect, so the first painted frame is already at the top.
+  const top = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    for (let el = top.current?.parentElement ?? null; el; el = el.parentElement) {
+      if (el.scrollTop) el.scrollTop = 0;
+    }
+    if (document.scrollingElement?.scrollTop) document.scrollingElement.scrollTop = 0;
+  }, []);
   const live = state?.recap ?? null;
   // Keyed on the match id, NOT the recap object: `live` is a fresh object on every poll, which
   // refetched the history several times a second (review 2026-08-31).
@@ -78,7 +89,7 @@ export function Recap() {
     </div>
   ) : null;
   if (!rc) return (
-    <div className="screen">
+    <div className="screen" ref={top}>
       <OrphanMatch />
       {picker}
       <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro }}>
@@ -130,13 +141,24 @@ export function Recap() {
   const playedS = !past && state.live && typeof rc.since_end_ms === 'number' && typeof state.t === 'number'
     ? Math.min(limitS || Infinity, Math.max(0, Math.round((state.t - rc.since_end_ms - state.live.go_live_t) / 1000)))
     : null;
+  // Polish 2026-09-23: RECAP can be reached by URL while a match is still being played. It said MATCH
+  // COMPLETE and offered NEXT MATCH, which the server refuses (409) until the match is over.
+  const inPlay = !past && (state.phase === 'live' || state.phase === 'armed');
+  // H2 for RECAP (polish 2026-09-23): a hill match is won on held time, so that is the headline, as on
+  // LIVE and SPECTATE (the same `objective.ts` helper decides it on all three). With no held time
+  // reported the numbers are still the kill score, and are labelled KILLS so nobody reads them as held.
+  const scoring = past ? (past.config?.scoring as State['config']['scoring'] | undefined) : state.config.scoring;
+  const mode = past ? past.mode : state.config.mode;
+  const objective = !!scoring && isObjectiveScored({ scoring }) && scores.length >= 2;
+  const heldBy = objective && rc.possession ? rc.possession.by_team : null;
+  const anyTeamKill = rows.some(r => r.kills < 0);
   const lengthLabel = past ? ''
     : playedS == null ? (limitS ? ` · LIMIT ${fmtDuration(limitS)}` : '')
     : limitS && playedS < limitS ? ` · ${fmtDuration(playedS)} OF ${fmtDuration(limitS)}`
     : ` · ${fmtDuration(playedS)}`;
 
   return (
-    <div className="screen">
+    <div className="screen" ref={top}>
       <OrphanMatch />
       {picker}
       {(past ?? history.find(h => h.match_id === liveId))?.config && <MatchConfig row={(past ?? history.find(h => h.match_id === liveId))!} />}
@@ -193,7 +215,7 @@ export function Recap() {
             borderLeft: `3px solid ${edLine.ok ? T.ok : edv.retrying ? T.warn : T.bad}`,
             background: edLine.ok ? undefined : edv.retrying ? 'rgba(255,176,32,.08)' : 'rgba(255,82,82,.07)',
             font: F.mono(500, 11), letterSpacing: '.1em', color: edLine.ok ? T.dim : edv.retrying ? T.warn : T.bad, lineHeight: 1.5 }}>
-          {edLine.ok ? `✓ ${edLine.text}` : `▲ ${edText}`}
+          {edLine.ok ? `✓ ${recapDeliveryOkText(edv)}` : `▲ ${edText}`}
         </div>
       )}
       {/* an ARCHIVED match must be described by ITS OWN mode, not the config the host is drafting
@@ -201,21 +223,35 @@ export function Recap() {
       {/* the match length is a DURATION (a fixed span, over before this screen shows), not a clock still
           counting down, so it prints unpadded like every other span on this screen (fmtClock would pad
           it to "10:00" beside unpadded possession spans such as "7:21") */}
-      <div style={{ font: F.mono(500, 11), letterSpacing: '.22em', color: T.dim, marginBottom: 8 }}>[ A8 // MATCH COMPLETE · {(past ? past.mode : state.config.mode).toUpperCase()}<span data-testid="recap-length">{lengthLabel}</span> ]</div>
+      <div style={{ font: F.mono(500, 11), letterSpacing: '.22em', color: T.dim, marginBottom: 8 }}>[ A8 // <span data-testid="recap-status">{inPlay ? 'IN PLAY · PROVISIONAL' : 'MATCH COMPLETE'}</span> · {mode.toUpperCase()}<span data-testid="recap-length">{lengthLabel}</span> ]</div>
       <Brackets color="#ffd23f" size={18} style={{ background: `linear-gradient(90deg,rgba(255,210,63,.1),transparent 60%),linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, padding: '22px 26px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '18px 44px', marginBottom: 18 }}>
         <div>
           <div style={{ font: F.osw(700, 46), letterSpacing: '.08em', lineHeight: 1.15 }}>
             <span style={{ background: winColor, color: T.accInk, padding: '0 12px' }}>{winnerBlock.text}</span>{winnerBlock.tail}
           </div>
         </div>
-        {scores.length >= 2 ? (
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+        {heldBy ? (
+          <div data-testid="recap-headline" data-headline="held" style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+            <span style={{ font: F.chk(600, 12), letterSpacing: '.16em', color: T.micro }}>{objectiveWord(mode)} TIME</span>
+            {scores.map(([id]) => [id, heldBy[id] ?? 0] as const).sort((a, b) => b[1] - a[1]).map(([id, secs], i) => (
+              <span key={id} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 12 }}>
+                {i > 0 && <span style={{ font: F.osw(600, 20), color: T.micro }}>—</span>}
+                <span data-headline-team={id} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <span style={{ font: F.osw(700, 44), color: teamColor(id) }}><Num value={fmtDuration(secs)} /></span>
+                  <span style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: T.micro }}>KILLS {rc.score[id] ?? 0}</span>
+                </span>
+              </span>
+            ))}
+          </div>
+        ) : scores.length >= 2 ? (
+          <div data-testid="recap-headline" data-headline="kills" style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
             {scores.sort((a, b) => b[1] - a[1]).map(([id, s], i) => (
               <span key={id} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 12 }}>
                 {i > 0 && <span style={{ font: F.osw(600, 20), color: T.micro }}>—</span>}
-                <span style={{ font: F.osw(700, 44), color: teamColor(id) }}><Num value={s} /></span>
+                <span data-headline-team={id} style={{ font: F.osw(700, 44), color: teamColor(id) }}><Num value={s} /></span>
               </span>
             ))}
+            {objective && <span style={{ font: F.chk(600, 12), letterSpacing: '.16em', color: T.micro }}>KILLS</span>}
           </div>
         ) : (
           <span style={{ font: F.osw(700, 44), color: T.ink }}><Num value={rows[0]?.kills ?? 0} /> <span style={{ font: F.chk(600, 12), color: T.micro }}>KILLS</span></span>
@@ -265,7 +301,7 @@ export function Recap() {
               bar's separate NEW SESSION control was cut — picking a game and pressing LOAD already
               starts the next one (A43), and this button covers the one-tap case. Disabled in flight: a
               double-tap on a slow LAN fired twice. */}
-          {!past && (
+          {!past && !inPlay && (
             <span data-testid="recap-next-match">
               <PrimaryButton size={13} disabled={starting} onClick={async () => {
                 if (starting) return;
@@ -342,6 +378,11 @@ export function Recap() {
           </div>
         </div>
       </div>
+      {anyTeamKill && (
+        <div data-testid="team-kill-note" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.warn, marginTop: 8 }}>
+          K BELOW ZERO: {TEAM_KILL_NOTE}
+        </div>
+      )}
     </div>
   );
 }
@@ -504,7 +545,7 @@ function Possession({ p, label }: { p: NonNullable<RecapView['possession']>; lab
   const thin = p.of_s != null && p.observed_s < p.of_s * 0.75;
   return (
     <div data-testid="possession" style={{ marginBottom: 18, border: `1px solid ${T.line}`, background: T.panelDeep }}>
-      <SectionRule label="POSSESSION // HOW THE HILL WAS HELD" hint={`${p.sites} POINT${p.sites === 1 ? '' : 'S'} · ${p.reports} PHONE${p.reports === 1 ? '' : 'S'} REPORTED`} />
+      <SectionRule label="POSSESSION // HOW THE HILL WAS HELD" hint={`${p.sites} POINT${p.sites === 1 ? '' : 'S'} · ${p.reports} NODE${p.reports === 1 ? '' : 'S'} REPORTED`} />
       <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
         {held.map(([id, secs]) => (
           <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

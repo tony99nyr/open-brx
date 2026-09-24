@@ -51,6 +51,10 @@ const freePort = () => new Promise((res, rej) => {
   const s = net.createServer(); s.on('error', rej);
   s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); });
 });
+// Polish round 1 (2026-09-23): every child is tracked and its process group killed on ANY exit, so a
+// start helper's process.exit(3) (which skips the finally below) cannot leave an MC or vite running.
+const spawned = new Set();
+process.on('exit', () => { for (const p of spawned) { try { process.kill(-p.pid, 'SIGKILL'); } catch { /* gone */ } } });
 const killGroup = proc => new Promise(done => {
   let settled = false; const finish = () => { if (!settled) { settled = true; done(); } };
   if (proc.exitCode != null) return finish();
@@ -72,6 +76,7 @@ async function startMC(port, wsPort) {
     cwd: path.join(REPO, 'mcp'), stdio: ['ignore', 'pipe', 'pipe'], detached: true,
     env: { ...process.env, PYTHONPATH: [path.join(REPO, 'mcp'), process.env.PYTHONPATH || ''].filter(Boolean).join(path.delimiter) },
   });
+  spawned.add(proc);
   let log = ''; proc.stdout.on('data', d => { log += d; }); proc.stderr.on('data', d => { log += d; });
   const base = `http://127.0.0.1:${port}`;
   for (let i = 0; i < 200; i++) {
@@ -89,6 +94,7 @@ async function startMC(port, wsPort) {
 async function startVite(port, mcPort) {
   const proc = spawn(process.execPath, [path.join(MC_DIR, 'node_modules/vite/bin/vite.js'), '--config', path.join(HERE, 'vite.proxy.config.mjs'), '--port', String(port), '--strictPort'],
     { cwd: MC_DIR, stdio: ['ignore', 'pipe', 'pipe'], detached: true, env: { ...process.env, MC_PROXY_PORT: String(mcPort) } });
+  spawned.add(proc);
   let log = ''; proc.stdout.on('data', d => { log += d; }); proc.stderr.on('data', d => { log += d; });
   const base = `http://localhost:${port}`;
   for (let i = 0; i < 300; i++) {

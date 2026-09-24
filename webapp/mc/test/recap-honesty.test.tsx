@@ -43,7 +43,7 @@ describe('M1 · RECAP says one consistent thing about the END', () => {
     const el = m.find('[data-testid="end-delivery-recap"]')[0];
     const t = strip(el.textContent ?? '');
     expect(t).not.toContain('NEVER');
-    expect(t).toContain('2 OF 2 HUDS HAVE NOT CONFIRMED THE END YET (ALPHA, BRAVO)');
+    expect(t).toContain('2 OF 2 NODES HAVE NOT CONFIRMED THE END YET (ALPHA, BRAVO)');
     expect(t).toContain('STILL RE-DELIVERING');
     expect(el.getAttribute('data-end-state')).toBe('retrying');
     expect(el.getAttribute('role'), 'a retry in progress is a status, not an alarm').toBe('status');
@@ -52,16 +52,16 @@ describe('M1 · RECAP says one consistent thing about the END', () => {
   it('separates REACHED (the link took it) from CONFIRMED (the HUD answered)', async () => {
     const m = await recap({ end_delivery: EARLY });
     const t = strip(m.find('[data-testid="end-delivery-recap"]')[0].textContent ?? '');
-    expect(t).toContain('THE END REACHED 2 OF THOSE 2 PHONES, AND REACHING A PHONE IS NOT A CONFIRMATION');
+    expect(t).toContain('THE END REACHED 2 OF THOSE 2 NODES, AND REACHING A NODE IS NOT A CONFIRMATION');
   });
 
   it('says NEVER, red, only once the ladder is spent', async () => {
     const m = await recap({ end_delivery: SPENT });
     const el = m.find('[data-testid="end-delivery-recap"]')[0];
     const t = strip(el.textContent ?? '');
-    expect(t).toContain('1 OF 2 HUDS NEVER CONFIRMED THE END (BRAVO)');
+    expect(t).toContain('1 OF 2 NODES NEVER CONFIRMED THE END (BRAVO)');
     expect(t).toContain('TOLD IT 7 TIMES AND HAS STOPPED');
-    expect(t).toContain('THE END HAS NOT REACHED THAT PHONE');
+    expect(t).toContain('THE END HAS NOT REACHED THAT NODE');
     expect(el.getAttribute('role')).toBe('alert');
   });
 

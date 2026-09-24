@@ -17,7 +17,7 @@
 //   ONLY=stale node test/e2e/live-board.mjs        # one step (every step self-navigates)
 //   MC_PORT=… MC_WS_PORT=… VITE_PORT=… MC_PY=…     # move the ports / pick the interpreter
 //
-// Its OWN default ports (8813/8814/5213); `scripts/test-all.mjs` passes free ones.
+// Ports come from the env (`scripts/test-all.mjs` passes free ones), else free ones of its own.
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -25,15 +25,21 @@ import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
+import net from 'node:net';
 import { findPython } from './python-path.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MC_DIR = path.resolve(HERE, '../..');
 const REPO = path.resolve(MC_DIR, '../..');
 const SHOTS = path.join(HERE, 'shots', 'live-board');   // one folder per script
-const MC_PORT = Number(process.env.MC_PORT || 8813);
-const MC_WS_PORT = Number(process.env.MC_WS_PORT || 8814);
-const VITE_PORT = Number(process.env.VITE_PORT || 5213);
+// test-all passes free ports; a manual run picks its own, never a literal (polish round 1)
+const freePort = () => new Promise((resolve, reject) => {
+  const srv = net.createServer(); srv.unref(); srv.on('error', reject);
+  srv.listen(0, '127.0.0.1', () => { const { port } = srv.address(); srv.close(() => resolve(port)); });
+});
+const MC_PORT = Number(process.env.MC_PORT || await freePort());
+const MC_WS_PORT = Number(process.env.MC_WS_PORT || await freePort());
+const VITE_PORT = Number(process.env.VITE_PORT || await freePort());
 const ONLY = process.env.ONLY || '';
 // A test run never writes into the operator's real `~/.brx-mcp`: one temp home per run, removed at the end.
 const MC_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'brx-live-board-home-'));
@@ -297,13 +303,16 @@ try {
     const target = before[before.length - 1];
     const who = m.s.players.find(p => p.player_id === target);
     await pg.locator(`[data-live-row="${target}"] [data-cell="acc"]`).hover();
+    const kBefore = await pg.locator(`[data-live-row="${target}"] [data-cell="k"]`).textContent();
     // the player on the last row gets a kill: a phone on the OTHER team reports dying to them (a
     // same-team death would be a team kill, which costs a kill instead)
     const victim = who.team_id === reaper.team_id ? 'GUN-B' : 'GUN-A';
     await nodes.cmd(`die ${victim} ${who.player_num} ${tid[who.team_id]}`);
     const scored = await until(async () => (await api(mc.base).get('/api/state')).live.rows[0].player_id === target, 8000);
     expect(scored, `control: MC now ranks ${who.display} first`);
-    await pg.waitForTimeout(1500);   // two snapshots: long enough for a re-sort to have happened
+    // wait for the PAGE to have the new snapshot (the target's own K moved on screen), not a fixed time
+    expect(await until(async () => (await pg.locator(`[data-live-row="${target}"] [data-cell="k"]`).textContent()) !== kBefore, 8000),
+      'control: the board received the kill');
     expect(JSON.stringify(await order()) === JSON.stringify(before), 'with the pointer on the board, the rows did not move');
     expect(await pg.getByTestId('order-held').isVisible().catch(() => false), 'and the board says the order is held');
     await shot(pg, 'order-held-1280');

@@ -15,7 +15,30 @@ import { ARM_TIMEOUT_MS } from './OperatorMenu';
 /** H5 (visual QA 2026-09-23): the phases the server refuses every LOBBY write in. `push_config`
  *  (`_refuse_push_in_play`), `ready_all` and a re-team all refuse in ARMED and LIVE, so LOBBY there is
  *  a read-only view of the teams with the reason and the screen that is in charge now. */
-const lobbyReadOnly = (phase: string | undefined): boolean => phase === 'armed' || phase === 'live';
+export const matchInPlay = (phase: string | undefined): phase is 'armed' | 'live' => phase === 'armed' || phase === 'live';
+const lobbyReadOnly = matchInPlay;
+
+/** The ARMED/LIVE banner LOBBY and KIT share: why this screen is read-only, and the way to the screen
+ *  that is in charge now. `screen` names the data attributes (`data-<screen>-readonly`,
+ *  `data-<screen>-goto`) the tests and the e2e walks read. */
+export function InPlayBanner({ screen, phase, headline, why, onGo }:
+  { screen: string; phase: 'armed' | 'live'; headline: string; why: string; onGo: () => void }) {
+  return (
+    <div role="status" {...{ [`data-${screen}-readonly`]: phase }} style={{ marginBottom: 12, display: 'flex', flexWrap: 'wrap', gap: '8px 16px', alignItems: 'center',
+      background: T.panelAlt, border: `1px solid ${T.line2}`, borderLeft: `3px solid ${T.acc}`, padding: '12px 16px' }}>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 320px' }}>
+        <span style={{ font: F.chk(700, 13), letterSpacing: '.12em', color: T.ink }}>
+          {phase === 'live' ? 'THE MATCH IS LIVE.' : 'THE COUNTDOWN IS RUNNING.'} {headline}
+        </span>
+        <span style={{ font: F.chk(500, 12), color: T.dim, lineHeight: 1.5 }}>{why}</span>
+      </span>
+      <button type="button" {...{ [`data-${screen}-goto`]: phase }} className="hov-acc" onClick={onGo}
+        style={{ ...BTN_RESET, font: F.chk(700, 12), letterSpacing: '.16em', color: T.acc, border: `1px solid ${T.acc}`, padding: '10px 16px', minHeight: 44 }}>
+        GO TO {phase.toUpperCase()} ▸
+      </button>
+    </div>
+  );
+}
 
 /** M2: the rows a host has to chase come first. Not ready before ready; the server's order inside each. */
 const notReadyFirst = (ps: Player[]): Player[] =>
@@ -223,22 +246,10 @@ export function Lobby() {
           )}
         </>
       } />
-      {readOnly && (
-        <div role="status" data-lobby-readonly={state.phase} style={{ marginBottom: 12, display: 'flex', flexWrap: 'wrap', gap: '8px 16px', alignItems: 'center',
-          background: T.panelAlt, border: `1px solid ${T.line2}`, borderLeft: `3px solid ${T.acc}`, padding: '12px 16px' }}>
-          <span style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 320px' }}>
-            <span style={{ font: F.chk(700, 13), letterSpacing: '.12em', color: T.ink }}>
-              {state.phase === 'live' ? 'THE MATCH IS LIVE.' : 'THE COUNTDOWN IS RUNNING.'} THIS LOBBY IS READ-ONLY.
-            </span>
-            <span style={{ font: F.chk(500, 12), color: T.dim, lineHeight: 1.5 }}>
-              Every gun already holds this match's config, and MC refuses a push, a READY change or a team move until the match ends.
-            </span>
-          </span>
-          <button type="button" data-lobby-goto={state.phase} className="hov-acc" onClick={() => setView(state.phase)}
-            style={{ ...BTN_RESET, font: F.chk(700, 12), letterSpacing: '.16em', color: T.acc, border: `1px solid ${T.acc}`, padding: '10px 16px', minHeight: 44 }}>
-            GO TO {state.phase.toUpperCase()} ▸
-          </button>
-        </div>
+      {matchInPlay(state.phase) && (
+        <InPlayBanner screen="lobby" phase={state.phase} onGo={() => setView(state.phase)}
+          headline="THIS LOBBY IS READ-ONLY."
+          why="Every gun already holds this match's config, and MC refuses a push, a READY change or a team move until the match ends." />
       )}
       {rosterFault && (
         <div role="alert" data-testid="roster-fault" style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6,
@@ -469,7 +480,7 @@ export function Lobby() {
         <div data-mark-ready="1" style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', font: F.mono(500, 11), letterSpacing: '.14em', color: T.dim }}>
           <span style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: T.micro, marginRight: 4 }}>MARK READY</span>
           {players.filter(p => !p.ready).map(p => (
-            <button key={p.player_id} type="button" className="hov-acc-ink hit44" style={{ ...BTN_RESET, cursor: 'pointer', color: T.dim, minHeight: 28 }} onClick={() => run(() => api.setReady(p.player_id, true))}>{p.display} ▸</button>
+            <button key={p.player_id} type="button" data-mark-ready-player={p.player_id} className="hov-acc-ink hit44" style={{ ...BTN_RESET, cursor: 'pointer', color: T.dim, minHeight: 36, padding: '0 6px', display: 'inline-flex', alignItems: 'center' }} onClick={() => run(() => api.setReady(p.player_id, true))}>{p.display} ▸</button>
           ))}
         </div>
       )}
@@ -512,7 +523,7 @@ function MemberRow({ p, teamIds, reach, noPhone, readOnly, onDragStart, onMove }
           // text -- the floor this same file states at :339 -- and these chips NAME the team a tap
           // moves a player onto. One `moveChips` const feeds both the wide row and the compact 393px
           // one, so this is the single place it is set; 11px also matches `StandDownChip` beside it.
-          style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.14em', padding: '4px 8px', color: teamColor(t), border: `1px solid ${T.line}`, minHeight: 28, display: 'inline-flex', alignItems: 'center' }}>
+          style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.14em', padding: '4px 10px', color: teamColor(t), border: `1px solid ${T.line}`, minHeight: 36, display: 'inline-flex', alignItems: 'center' }}>
           ▸ {t.toUpperCase()}
         </button>
       ))}

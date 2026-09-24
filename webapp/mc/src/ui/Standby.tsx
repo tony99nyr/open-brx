@@ -43,7 +43,7 @@ export function StandDownChip({ p, style }: { p: Player; style?: React.CSSProper
       <span aria-hidden style={{ width: 1, height: 22, background: T.line2 }} />
       <button type="button" className="hit44" data-standby={p.player_id} onClick={e => { e.stopPropagation(); guardedOnce(p.player_id, () => run(() => api.standbyPlayer(p.player_id))); }}
         title={`Pull ${p.display} out of the lobby — kept on STANDBY, PLAY puts them back`}
-        style={{ ...BTN_RESET, font: F.chk(600, 11), letterSpacing: '.14em', padding: '4px 8px', color: T.micro, border: `1px dashed ${T.line2}`, background: 'transparent', minHeight: 28, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
+        style={{ ...BTN_RESET, font: F.chk(600, 11), letterSpacing: '.14em', padding: '4px 8px', color: T.micro, border: `1px dashed ${T.line2}`, background: 'transparent', minHeight: 36, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
         ▸ STAND DOWN
       </button>
     </span>

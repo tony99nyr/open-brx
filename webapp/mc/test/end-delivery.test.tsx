@@ -126,7 +126,7 @@ describe('A42 · RECAP names it as a delivery fact, never as a score', () => {
   it('confirms a clean end', async () => {
     const m = await recapWith(ALL_IN);
     expect(strip(m.find('[data-testid="end-delivery-recap"]')[0].textContent ?? ''))
-      .toContain('ALL 2 HUDS CONFIRMED THE END');
+      .toContain('ALL 2 NODES CONFIRMED THE END');
   });
 
   it('renders nothing against a server that does not send it', async () => {

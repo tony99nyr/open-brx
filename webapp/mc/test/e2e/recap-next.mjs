@@ -80,7 +80,7 @@ try {
       c.expect(/STILL RE-DELIVERING/.test(t), 'it says MC is still re-delivering');
       c.expect(await block.getAttribute('data-end-state') === 'retrying', 'the block is in its retrying (amber) state');
     }
-    c.expect(/REACHING A PHONE IS NOT A CONFIRMATION/.test(t), 'it keeps REACHED apart from CONFIRMED');
+    c.expect(/REACHING A NODE IS NOT A CONFIRMATION/.test(t), 'it keeps REACHED apart from CONFIRMED');
     const unconfirmed = new Set((ed?.unconfirmed ?? []).map(u => u.player_id));
     const chips = await pg.locator('[data-sync-chip]').evaluateAll(els => els.map(e => [e.getAttribute('data-sync-chip'), (e.textContent || '').toUpperCase()]));
     c.expect(chips.length > 0, `the DATA SYNC chips render (${chips.length})`);

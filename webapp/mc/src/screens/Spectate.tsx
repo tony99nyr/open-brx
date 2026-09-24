@@ -29,13 +29,18 @@
 // legibility test measuring nothing at all while still passing.
 //
 // A phone is not a projector — it scrolls, and clipping it at one viewport would hide the feed — so
-// the fit rule applies only from 900×500 up, and below that the board grows and the page scrolls.
+// the fit rule applies only from 1024×500 up, and below that the board grows and the page scrolls.
+//
+// Why 1024 and not 900 (polish 2026-09-23): the fit layout only works while the board and the feed
+// sit side by side. At 900 px they stack, the two share one viewport's height, and eight rows came out
+// about 20 px tall. Below 1024 the page scrolls instead, and under the fit rule every row keeps a
+// readable minimum height (`rowMin`) rather than shrinking past its own text.
 import { useEffect, useState } from 'react';
 import type { LiveRow, ScoreRow } from '../api/types';
 import { useStore } from '../store';
 import { F, T, fmtClock, fmtDuration, teamColor } from '../tokens';
 import { Num, ScrollX } from '../ui';
-import { bestStreak } from './Live';
+import { TEAM_KILL_NOTE, bestStreak } from './Live';
 import { isKillScored } from './gameSummary';
 import { heldSeconds, hillOwner, isObjectiveScored, objectiveWord } from './objective';
 
@@ -75,8 +80,12 @@ function useViewport() {
   }, []);
   return vp;
 }
-/** big enough to be pointed at a room: below this the page scrolls like any other page */
-const isProjector = (vp: { w: number; h: number }) => vp.w >= 900 && vp.h >= 500;
+/** big enough to be pointed at a room: below this the page scrolls like any other page. The width is
+ *  the narrowest frame that still holds the board (620 px) and the feed (300 px) side by side. */
+export const FIT_MIN_W = 1024;
+const isProjector = (vp: { w: number; h: number }) => vp.w >= FIT_MIN_W && vp.h >= 500;
+/** A row's floor under the fit rule: its tallest type (the K cell) plus its own padding. */
+export const rowMin = (SZ: SZ) => Math.round(SZ.rowK * 1.3) + 2 * SZ.pad;
 
 export function Spectate() {
   const { state, feed, serverNow, connected, wantedView } = useStore();
@@ -160,7 +169,7 @@ export function Spectate() {
         <div style={{ flex: '2 1 620px', minWidth: 0, display: 'flex', flexDirection: 'column', ...(fit ? { minHeight: 0 } : null) }}>
           <Board rows={rows} SZ={SZ} fit={fit} />
         </div>
-        <div style={{ flex: '1 1 320px', minWidth: 0, display: 'flex', flexDirection: 'column', ...(fit ? { minHeight: 0 } : null) }}>
+        <div style={{ flex: '1 1 300px', minWidth: 0, display: 'flex', flexDirection: 'column', ...(fit ? { minHeight: 0 } : null) }}>
           <Feed entries={feed} SZ={SZ} fit={fit} />
         </div>
       </div>
@@ -258,6 +267,7 @@ function Board({ rows, SZ, fit }: { rows: (LiveRow | ScoreRow)[]; SZ: SZ; fit: b
   // hint, and only while there is more to the right — so a projector, which never overflows, shows
   // neither. Its hint carries the board's own type size: nothing on this screen goes under 16 px.
   return (
+    <>
     <ScrollX hint="▸ SCROLL FOR D · A · STK" hintSize={SZ.label} hintStyle={{ letterSpacing: '.18em', padding: '0 0 6px 18px' }}
       style={{ ...(fit ? { overflowY: 'hidden', flex: '1 1 0px', minHeight: 0, display: 'flex', flexDirection: 'column' } : null) }}>
     <div style={{ minWidth: 540, ...(fit ? { flex: '1 1 0px', minHeight: 0, display: 'flex', flexDirection: 'column' } : null) }}>
@@ -279,9 +289,9 @@ function Board({ rows, SZ, fit }: { rows: (LiveRow | ScoreRow)[]; SZ: SZ; fit: b
           return (
             <div key={r.player_id} data-spectate="row"
               style={{ display: 'grid', gridTemplateColumns: BOARD_COLS, gap: '0 16px', alignItems: 'center', padding: `${SZ.pad}px 18px`,
-                       // a roster longer than the wall is tall shrinks its rows rather than running off
-                       // the bottom of it; the type is already at its 16 px floor by then
-                       ...(fit ? { flex: '0 1 auto', minHeight: 0, overflow: 'hidden' } : null),
+                       // a roster longer than the wall is tall shrinks its rows, but never past the
+                       // height of their own text (polish 2026-09-23: 20 px rows at 900 px wide)
+                       ...(fit ? { flex: '0 1 auto', minHeight: rowMin(SZ), overflow: 'hidden' } : null),
                        background: T.panel, border: `1px solid ${T.row}`, borderLeft: `5px solid ${teamColor(r.team_id)}`, opacity: down ? .55 : 1 }}>
               <span data-spectate="name" title={r.display} style={{ ...chk(700, SZ.row), letterSpacing: '.1em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.display}</span>
               <span style={{ textAlign: 'right', ...osw(700, SZ.rowK) }}><Num value={r.kills} /></span>
@@ -294,6 +304,12 @@ function Board({ rows, SZ, fit }: { rows: (LiveRow | ScoreRow)[]; SZ: SZ; fit: b
       </div>
     </div>
     </ScrollX>
+    {rows.some(r => r.kills < 0) && (
+      <div data-spectate="team-kill-note" style={{ ...chk(600, SZ.label), letterSpacing: '.12em', color: T.warn, marginTop: 8, flex: 'none' }}>
+        K BELOW ZERO: {TEAM_KILL_NOTE}
+      </div>
+    )}
+    </>
   );
 }
 

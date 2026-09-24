@@ -9,6 +9,7 @@ import { UNPLAYABLE_IDS, takesAlt } from './gameSummary';
 import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, ScrollX, SectionRule, Seg, SegBar, StripedSlot, Tag, ValueBox, onKey } from '../ui';
 import { GameEditPanel } from '../ui/GameEditPanel';
 import { UnrosteredPhonesBanner } from '../ui/UnrosteredPhones';
+import { InPlayBanner, matchInPlay } from './Lobby';
 
 type Slot = 'primary' | 'secondary' | 'perk';   // A14: the perk is its own slot
 
@@ -273,6 +274,15 @@ export function Kit() {
     && state.nodes.some(n => n.player_id === p.player_id)).length;
   const gate = kitGate(players);            // F127: who CONTINUE would take the kit screen away from
   const node = sp ? state.nodes.find(n => n.player_id === sp.player_id) : undefined;
+  // Fix-1 (polish 2026-09-23): THE KIT LOCKS AT START (A30). In ARMED/LIVE the server refuses every
+  // field that is compiled to the gun (loadout, voice, voice_slots, player_num, gun_id: 409), a team
+  // change (B1: the gun's $TID is in the head), a phase move (so CONTINUE) and a roster removal. KIT
+  // then shows LOBBY's banner and offers none of those. Kept: the callsign (`display` rides in
+  // `assign` and never reaches the gun, and the server still takes it), picking which player to look
+  // at, and the slot focus. ADD is hidden too: the server takes a late joiner, but one added here has
+  // no gun and the gun picker is locked, so it would be a record that can never play. A late joiner
+  // comes in through ARMORY, which claims a gun in the same call.
+  const locked = matchInPlay(state.phase);
 
   // Gun options = the armory registry PLUS any connected node whose gun is not registered.
   // The armory (`~/.brx-mcp/armory.json`) is built by cabling a tagger over USB, so a field Mac that
@@ -421,7 +431,7 @@ export function Kit() {
               does not echo) would have read as a refusal and stranded the operator on KIT with no error
               strip to explain it. Return the sentinel from INSIDE `run`, so the only refusal is a throw
               (review 2026-09-12). */}
-          <ContinueToLobby gate={gate} onGo={async force => {
+          {!locked && <ContinueToLobby gate={gate} onGo={async force => {
             // A27: a 409 is a REFUSAL, not a failure — it is caught here so it never reaches the red
             // strip, and handed back so the button can turn into the confirm that carries `force`.
             let refusal: PhaseRefusal | undefined;
@@ -439,12 +449,19 @@ export function Kit() {
             if (!ok) return { ok: false };        // threw: the error strip says why, stay on KIT
             setView('lobby');
             return { ok: true };
-          }} />
+          }} />}
         </span>} />
+      {matchInPlay(state.phase) && (
+        <InPlayBanner screen="kit" phase={state.phase} onGo={() => setView(state.phase)}
+          headline="THE KIT IS LOCKED."
+          why="Every gun already holds this match's loadouts. MC refuses a weapon, perk, pool, voice, gun, number or team change until the match ends. A callsign can still be renamed." />
+      )}
       {/* F-3/A39: a connected phone with nobody in the roster claiming it — last night's "4 guns
           connected, only 2 in lobby" confusion, made visible where the operator is actually looking. */}
       <UnrosteredPhonesBanner style={{ marginBottom: 12 }} />
       {/* B3: mode/night/health/weapon-pool, editable right here — no stepper, no recall needed pre-arm */}
+      {/* Kept in ARMED/LIVE: the panel locks itself there (one disabled <fieldset>, and its open body
+          says RECALL first), and test/game-edit-panel.test.tsx proves that lock through KIT. */}
       <GameEditPanel style={{ marginBottom: 16 }} />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, alignItems: 'flex-start' }}>
         {/* roster */}
@@ -509,12 +526,12 @@ export function Kit() {
                 </div>
               );
             })}
-            <form onSubmit={e => { e.preventDefault(); if (newName.trim()) { run(() => api.addPlayer({ display: newName.trim() })); setNewName(''); } }}
+            {!locked && <form onSubmit={e => { e.preventDefault(); if (newName.trim()) { run(() => api.addPlayer({ display: newName.trim() })); setNewName(''); } }}
               style={{ display: 'flex', gap: 6, padding: '6px 4px 2px' }}>
               <input className="textbox" value={newName} onChange={e => setNewName(e.target.value)} placeholder="+ ADD OPERATOR" aria-label="new operator callsign"
                 style={{ flex: 1, font: F.chk(600, 12), letterSpacing: '.1em', borderBottomColor: T.line, minHeight: 44 }} />
               <GhostButton size={11} pad="4px 10px">ADD</GhostButton>
-            </form>
+            </form>}
           </div>
           </ScrollX>
           {/* STANDBY (2026-09-12): parked players, with PLAY. Nothing on an older server. */}
@@ -530,7 +547,7 @@ export function Kit() {
                 <span style={{ width: 6, height: 46, background: teamColor(sp.team_id) }} />
                 <div>
                   <div style={{ font: F.mono(500, 11), letterSpacing: '.26em', color: T.micro }}>OPERATOR
-                    <span style={{ marginLeft: 10, color: T.acc }}>#<PlayerNum key={sp.player_id} value={sp.player_num} onCommit={n => patch({ player_num: n })} /></span>
+                    <span style={{ marginLeft: 10, color: T.acc }}>#<PlayerNum key={sp.player_id} value={sp.player_num} disabled={locked} onCommit={n => patch({ player_num: n })} /></span>
                   </div>
                   <DraftText key={sp.player_id} value={sp.display} ariaLabel="operator callsign" transform={s => s.toUpperCase()} onCommit={v => patch({ display: v })}
                     style={{ font: F.osw(700, 32), letterSpacing: '.1em', width: `${Math.max(6, sp.display.length + 1)}ch`, minHeight: 44 }} />
@@ -551,8 +568,9 @@ export function Kit() {
                     const on = sp.team_id === t;
                     const col = state.teams.find(tm => tm.team_id === t)?.color ?? teamColor(t);
                     return (
-                      <button key={t} type="button" className="hit44" onClick={() => patch({ team_id: t })} aria-pressed={on}
-                        style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.14em', padding: '8px 14px', background: on ? col : 'transparent', color: on ? T.accInk : col, border: `1px solid ${on ? col : T.line}`, cursor: 'pointer', minHeight: 36, display: 'inline-flex', alignItems: 'center' }}>
+                      <button key={t} type="button" className="hit44" onClick={() => { if (!locked) patch({ team_id: t }); }} aria-pressed={on} disabled={locked}
+                        title={locked ? 'Teams are locked while the match is in play' : undefined}
+                        style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.14em', padding: '8px 14px', background: on ? col : 'transparent', color: on ? T.accInk : col, border: `1px solid ${on ? col : T.line}`, cursor: locked ? 'default' : 'pointer', minHeight: 36, display: 'inline-flex', alignItems: 'center', opacity: locked && !on ? 0.4 : 1 }}>
                         {t.toUpperCase()}
                       </button>
                     );
@@ -562,7 +580,7 @@ export function Kit() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ font: F.mono(500, 11), letterSpacing: '.22em', color: T.micro }}>VOICE</span>
                 {voices.length > 2 ? (
-                  <select aria-label={`voice for ${sp.display}`} value={sp.voice ?? 'male'} onChange={e => patch({ voice: e.target.value })}
+                  <select aria-label={`voice for ${sp.display}`} disabled={locked} value={sp.voice ?? 'male'} onChange={e => patch({ voice: e.target.value })}
                     style={{ background: T.inset, color: T.ink, border: `1px solid ${T.line2}`, font: F.mono(600, 11), letterSpacing: '.06em', padding: '6px 8px', minHeight: 36, cursor: 'pointer' }}>
                     {/* No "unverified" marker here. A bare `·` in a native <select> has no legend and
                         no tooltip — Tony asked what it meant, which is the answer. Whether a pack has
@@ -571,12 +589,12 @@ export function Kit() {
                     {voices.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
                   </select>
                 ) : (
-                  <Seg value={sp.voice === 'female' ? 'female' : 'male'} options={[{ value: 'male', label: 'MALE' }, { value: 'female', label: 'FEMALE' }]} onChange={v => patch({ voice: v })} pad="4px 12px" />
+                  locked ? <span style={{ font: F.mono(600, 11), letterSpacing: '.06em', color: T.dim }}>{(sp.voice ?? 'male').toUpperCase()}</span> : <Seg value={sp.voice === 'female' ? 'female' : 'male'} options={[{ value: 'male', label: 'MALE' }, { value: 'female', label: 'FEMALE' }]} onChange={v => patch({ voice: v })} pad="4px 12px" />
                 )}
               </div>
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: T.inset, border: `1px solid ${T.line}` }}>
                 <Blink color={node ? T.ok : T.bad} />
-                <select aria-label={`gun for ${sp.display}`} value={selectedGun} onChange={e => patch({ gun_id: e.target.value || null })}
+                <select aria-label={`gun for ${sp.display}`} disabled={locked} value={selectedGun} onChange={e => patch({ gun_id: e.target.value || null })}
                   style={{ background: T.inset, color: T.ink, border: `1px solid ${T.line2}`, font: F.mono(600, 11), letterSpacing: '.06em', padding: '6px 8px', minHeight: 36, cursor: 'pointer' }}>
                   <option value="">— NO GUN —</option>
                   {gunOptions.map(o => {
@@ -585,27 +603,27 @@ export function Kit() {
                   })}
                 </select>
                 <span style={{ font: F.mono(500, 11), letterSpacing: '.06em', color: node ? T.ok : sp.gun_id ? T.bad : T.micro }}>{node ? `LINKED ${fmtAge(node.last_seen_ms)}` : sp.gun_id ? 'NO NODE' : 'PICK A GUN'}</span>
-                {node && <EvictButton nodeId={node.node_id} />}
+                {node && !locked && <EvictButton nodeId={node.node_id} />}
               </div>
             </div>
 
             {/* loadout rail + hero */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'stretch' }}>
               <div className="kit-rail" style={{ flex: '1 1 280px', maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <SlotCard label="PRIMARY" slot="primary" active={slot === 'primary'} onClick={() => setSlot('primary')} rule={primRule} item={primary} kind="weapon" required
-                  overridden={overridden('primary')} onReapply={reapply} />
-                <SlotCard label="SECONDARY" slot="secondary" active={slot === 'secondary'} onClick={() => setSlot('secondary')} rule={secRule}
+                <SlotCard matchLocked={locked} label="PRIMARY" slot="primary" active={slot === 'primary'} onClick={() => setSlot('primary')} rule={primRule} item={primary} kind="weapon" required
+                  overridden={locked ? null : overridden('primary')} onReapply={reapply} />
+                <SlotCard matchLocked={locked} label="SECONDARY" slot="secondary" active={slot === 'secondary'} onClick={() => setSlot('secondary')} rule={secRule}
                   item={secondaryW} kind={secondaryW ? 'weapon' : 'none'}
-                  overridden={overridden('secondary')} onReapply={reapply}
-                  onClear={secondaryW && !slotLocked('secondary') ? clearSecondary : undefined} />
-                <SlotCard label="PERK" slot="perk" active={slot === 'perk'} onClick={() => setSlot('perk')} rule={perkRule}
+                  overridden={locked ? null : overridden('secondary')} onReapply={reapply}
+                  onClear={secondaryW && !slotLocked('secondary') && !locked ? clearSecondary : undefined} />
+                <SlotCard matchLocked={locked} label="PERK" slot="perk" active={slot === 'perk'} onClick={() => setSlot('perk')} rule={perkRule}
                   item={perk} kind={perk ? 'perk' : 'none'}
-                  overridden={overridden('perk')} onReapply={reapply}
-                  onClear={perk && !slotLocked('perk') ? clearPerk : undefined} />
-                <PoolCard hp={gameHp} armor={gameAr} pool={playerPool} onSet={patchPool} onClear={clearPool} name={sp.display}
+                  overridden={locked ? null : overridden('perk')} onReapply={reapply}
+                  onClear={perk && !slotLocked('perk') && !locked ? clearPerk : undefined} />
+                <PoolCard locked={locked} hp={gameHp} armor={gameAr} pool={playerPool} onSet={patchPool} onClear={clearPool} name={sp.display}
                   easy={!!lo.overrides?.easy_reload} onEasy={setEasyReload} easyAsk={confirmFor('easy_reload')} />
                 <div style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: T.micro, padding: '2px 4px' }}>
-                  {pol?.hud_select ? '▲ PLAYERS PICK ON THEIR PHONE — ANYTHING YOU SET HERE OVERRIDES IT AND SHOWS ON THEIR SCREEN' : '▲ PHONE PICKS ARE OFF — YOU KIT EVERY PLAYER HERE'}
+                  {locked ? '▲ THE KIT LOCKED AT THE START OF THE MATCH. CHANGE IT AFTER THE WHISTLE.' : pol?.hud_select ? '▲ PLAYERS PICK ON THEIR PHONE — ANYTHING YOU SET HERE OVERRIDES IT AND SHOWS ON THEIR SCREEN' : '▲ PHONE PICKS ARE OFF — YOU KIT EVERY PLAYER HERE'}
                 </div>
               </div>
 
@@ -625,7 +643,7 @@ export function Kit() {
                     </div>
                   </div>
                 ) : 'weapon_id' in focusItem ? (
-                  <WeaponHero w={focusItem} slot={slot} sp={sp} tryingId={trying[sp.player_id]} pushed={state.lobby.pushed} verdicts={verdicts} setVerdicts={setVerdicts} />
+                  <WeaponHero w={focusItem} slot={slot} sp={sp} tryingId={locked ? undefined : trying[sp.player_id]} pushed={state.lobby.pushed} verdicts={verdicts} setVerdicts={setVerdicts} />
                 ) : (
                   <PerkHero k={focusItem} />
                 )}
@@ -635,7 +653,7 @@ export function Kit() {
             {/* arsenal for the focused slot */}
             <div>
               <ArsenalHeader slot={slot} rule={ruleOf(slot)} pool={pool} weapons={weapons} preset={pol?.preset}
-                onClear={slot === 'secondary' && secondaryW && !slotLocked('secondary') ? clearSecondary : slot === 'perk' && perk && !slotLocked('perk') ? clearPerk : undefined} onBuild={() => setView('build')} />
+                onClear={locked ? undefined : slot === 'secondary' && secondaryW && !slotLocked('secondary') ? clearSecondary : slot === 'perk' && perk && !slotLocked('perk') ? clearPerk : undefined} onBuild={() => setView('build')} />
               {ruleOf(slot)?.choice === 'off' ? null : showKind === 'weapon' ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(152px,1fr))', gap: 8 }}>
                   {/* MERGE-5 (round-3 fix pass, 2026-09-13): the rack is FILTERED through
@@ -648,13 +666,13 @@ export function Kit() {
                     const allowed = (slot === 'primary' ? pool.primary : pool.secondary_weapons).includes(w.weapon_id);
                     const on = slot === 'primary' ? w.weapon_id === primary?.weapon_id : w.weapon_id === secondaryW?.weapon_id;
                     const fixed = ruleOf(slot)?.choice === 'fixed';
-                    const dis = !allowed || (fixed && !on);
+                    const dis = locked || !allowed || (fixed && !on);
                     const role = roleOf(w.role, w.cls);
                     const ask = slot === 'secondary' ? confirmFor(`weapon:${w.weapon_id}`) : null;
                     return (
                       <div key={w.weapon_id} className={dis ? undefined : 'hov-acc'} role="button" tabIndex={dis ? -1 : 0} aria-pressed={on} aria-disabled={dis || undefined}
-                        aria-label={`${w.name}, ${role.label}, magazine ${w.clip}${dis ? ', not allowed by the rules' : ''}`}
-                        title={!allowed ? 'Not allowed by this game’s rules' : fixed ? 'Fixed by the ruleset' : undefined}
+                        aria-label={`${w.name}, ${role.label}, magazine ${w.clip}${locked ? ', locked while the match is in play' : dis ? ', not allowed by the rules' : ''}`}
+                        title={locked ? 'The kit is locked while the match is in play' : !allowed ? 'Not allowed by this game’s rules' : fixed ? 'Fixed by the ruleset' : undefined}
                         onClick={() => { if (!dis) (slot === 'primary' ? pickPrimary : pickSecondary)(w); }} onKeyDown={onKey(() => { if (!dis) (slot === 'primary' ? pickPrimary : pickSecondary)(w); })}
                         style={{ background: on ? 'rgba(57,180,255,.08)' : dis ? T.panelDeep : T.panel, border: `1px solid ${ask ? T.warn : on ? T.acc : T.line}`, padding: 8, cursor: dis ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', gap: 7, minHeight: 44 }}>
                         {ask && <span role="alert" style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: T.warn }}>▲ {ask}</span>}
@@ -682,11 +700,11 @@ export function Kit() {
                     const allowed = pool.perks.includes(k.perk_id);
                     const on = k.perk_id === perk?.perk_id;
                     const fixed = perkRule?.choice === 'fixed';
-                    const dis = !allowed || (fixed && !on);
+                    const dis = locked || !allowed || (fixed && !on);
                     const ask = confirmFor(`perk:${k.perk_id}`);
                     return (
                       <div key={k.perk_id} className={dis ? undefined : 'hov-acc'} role="button" tabIndex={dis ? -1 : 0} aria-pressed={on} aria-disabled={dis || undefined}
-                        aria-label={`${k.name} perk${dis ? ', not allowed by the rules' : ''}`} title={!allowed ? 'Not allowed by this game’s rules' : takesAlt(k) && secondaryW ? `Takes the ALT button — drops their ${secondaryW.name}` : undefined}
+                        aria-label={`${k.name} perk${locked ? ', locked while the match is in play' : dis ? ', not allowed by the rules' : ''}`} title={locked ? 'The kit is locked while the match is in play' : !allowed ? 'Not allowed by this game’s rules' : takesAlt(k) && secondaryW ? `Takes the ALT button — drops their ${secondaryW.name}` : undefined}
                         onClick={() => { if (!dis) pickPerk(k); }} onKeyDown={onKey(() => { if (!dis) pickPerk(k); })}
                         style={{ background: on ? 'rgba(196,139,255,.08)' : T.panel, border: `1px solid ${ask ? T.warn : on ? PERK_COLOR : T.line}`, padding: 10, cursor: dis ? 'not-allowed' : 'pointer', display: 'flex', gap: 12, alignItems: 'center', minHeight: 44, opacity: dis ? .32 : 1, flexWrap: 'wrap' }}>
                         {ask && <span role="alert" style={{ flex: '1 0 100%', font: F.chk(700, 11), letterSpacing: '.12em', color: T.warn }}>▲ {ask}</span>}
@@ -713,12 +731,12 @@ export function Kit() {
 
 /* ---------- pieces ---------- */
 
-function SlotCard({ label, slot, active, onClick, rule, item, kind, required, onClear, overridden, onReapply }:
-  { label: string; slot: Slot; active: boolean; onClick: () => void; rule?: { choice: string } | null; item?: WeaponView | PerkView; kind: 'weapon' | 'perk' | 'none'; required?: boolean; onClear?: () => void;
+function SlotCard({ label, slot, active, onClick, rule, item, kind, required, onClear, overridden, onReapply, matchLocked }:
+  { matchLocked?: boolean; label: string; slot: Slot; active: boolean; onClick: () => void; rule?: { choice: string } | null; item?: WeaponView | PerkView; kind: 'weapon' | 'perk' | 'none'; required?: boolean; onClear?: () => void;
     overridden?: { slot: Slot; id: string | null; label: string } | null; onReapply?: (h: { slot: Slot; id: string | null }) => void }) {
   const choice = rule?.choice ?? 'player';
-  const locked = choice === 'fixed' || choice === 'off';
-  const right = choice === 'fixed' ? 'FIXED BY THE GAME' : choice === 'off' ? 'OFF FOR THIS GAME' : choice === 'host' ? 'HOST PICKS' : 'PLAYER PICKS · YOU CAN OVERRIDE';
+  const locked = matchLocked || choice === 'fixed' || choice === 'off';
+  const right = matchLocked ? 'LOCKED FOR THIS MATCH' : choice === 'fixed' ? 'FIXED BY THE GAME' : choice === 'off' ? 'OFF FOR THIS GAME' : choice === 'host' ? 'HOST PICKS' : 'PLAYER PICKS · YOU CAN OVERRIDE';
   const isPerk = kind === 'perk' && item && 'perk_id' in item;
   const color = isPerk ? PERK_COLOR : T.acc;
   const empty = kind === 'none';
@@ -743,7 +761,7 @@ function SlotCard({ label, slot, active, onClick, rule, item, kind, required, on
           <span style={{ width: 64, height: 44, flex: 'none', border: `1px dashed ${T.line2}`, display: 'grid', placeItems: 'center', font: F.osw(700, 20), color: T.faint }}>—</span>
           <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span style={{ font: F.osw(700, 18), letterSpacing: '.06em', color: T.dim }}>{choice === 'off' ? 'OFF' : slot === 'perk' ? 'NO PERK' : 'EMPTY'}</span>
-            <span style={{ font: F.chk(500, 11), color: T.micro }}>{choice === 'off' ? (slot === 'perk' ? 'This game has no perks — change it in GAMES' : 'This game has no slot 2 — change it in GAMES') : slot === 'perk' ? 'Rides beside the weapons · tap to pick' : 'Alt-fire does nothing · tap to pick'}</span>
+            <span style={{ font: F.chk(500, 11), color: T.micro }}>{choice === 'off' ? (slot === 'perk' ? 'This game has no perks — change it in GAMES' : 'This game has no slot 2 — change it in GAMES') : matchLocked ? (slot === 'perk' ? 'Rides beside the weapons' : 'Alt-fire does nothing') : slot === 'perk' ? 'Rides beside the weapons · tap to pick' : 'Alt-fire does nothing · tap to pick'}</span>
           </span>
         </div>
       ) : item && 'weapon_id' in item ? (
@@ -958,7 +976,7 @@ function PerkTrade({ k, style }: { k: PerkView; style?: CSSProperties }) {
 const shortName = (n: string) => n.replace(/ Rifle$/i, '').replace(/ Launcher$/i, ' LNCHR').toUpperCase();
 
 /** Player number 1–63, draft-then-commit (see ValueBox). */
-function PlayerNum({ value, onCommit }: { value: number; onCommit: (n: number) => void }) {
+function PlayerNum({ value, onCommit, disabled }: { value: number; onCommit: (n: number) => void; disabled?: boolean }) {
   const [draft, setDraft] = useState(String(value));
   const [invalid, setInvalid] = useState(false);
   const focused = useRef(false), pending = useRef<number | null>(null), latest = useRef(value);
@@ -973,7 +991,7 @@ function PlayerNum({ value, onCommit }: { value: number; onCommit: (n: number) =
   const setFocused = (f: boolean) => { focused.current = f; };
   return (
     <>
-      <input className="numbox" type="number" min={1} max={63} value={draft} aria-label="player number (1–63)" aria-invalid={invalid || undefined}
+      <input className="numbox" type="number" min={1} max={63} value={draft} disabled={disabled} aria-label="player number (1–63)" aria-invalid={invalid || undefined}
         style={{ width: '2.6em', font: F.mono(600, 11), color: invalid ? T.bad : T.acc, textAlign: 'left', minHeight: 32, borderBottom: invalid ? `1px solid ${T.bad}` : undefined }}
         onFocus={() => { setFocused(true); setInvalid(false); }} onBlur={() => { setFocused(false); commit(); }} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
         onChange={e => setDraft(e.target.value)} />
@@ -1003,8 +1021,8 @@ function StatRow({ label, pct }: { label: string; pct: number }) {
  *  2026-09-17: a younger player takes both, a left-handed player takes Easy Reload and no extra
  *  health). Easy Reload reads in the ACCENT colour rather than the pool's amber, because it is a
  *  setting and not a caution: it gives the player nothing an able player would want. */
-function PoolCard({ hp, armor, pool, onSet, onClear, name, easy, onEasy, easyAsk }: {
-  hp: number; armor: number; name: string;
+function PoolCard({ hp, armor, pool, onSet, onClear, name, easy, onEasy, easyAsk, locked }: {
+  hp: number; armor: number; name: string; locked?: boolean;
   pool: ReturnType<typeof poolOf>;
   onSet: (k: 'max_hp' | 'max_armor', v: number) => void; onClear: () => void;
   easy: boolean; onEasy: (on: boolean) => void; easyAsk: string | null;
@@ -1013,7 +1031,10 @@ function PoolCard({ hp, armor, pool, onSet, onClear, name, easy, onEasy, easyAsk
   const mult = pool.mult.toFixed(pool.mult % 1 === 0 ? 0 : 1);
   const who = name.toUpperCase();
   return (
-    <div data-pool-card style={{ border: `1px solid ${on ? T.warn : T.line}`, background: T.panelDeep, padding: '8px 10px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+    // Fix-1: in ARMED/LIVE a disabled <fieldset> turns off every button and input inside it at once
+    // (Seg's options, both ValueBoxes, MATCH THE GAME POOL), so the card still SAYS the player's
+    // setup without offering a write the server refuses.
+    <fieldset data-pool-card disabled={locked || undefined} style={{ margin: 0, minWidth: 0, border: `1px solid ${on ? T.warn : T.line}`, background: T.panelDeep, padding: '8px 10px 10px', display: 'flex', flexDirection: 'column', gap: 8, opacity: locked ? 0.7 : 1 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
         <span style={{ font: F.chk(700, 11), letterSpacing: '.18em', color: easy ? T.acc : T.dim }}>EASY RELOAD</span>
         <Seg value={easy ? 'on' : 'off'} onChange={v => onEasy(v === 'on')} size={11} pad="4px 12px"
@@ -1052,7 +1073,7 @@ function PoolCard({ hp, armor, pool, onSet, onClear, name, easy, onEasy, easyAsk
           ? `\u25b2 ON PURPOSE: ${name.toUpperCase()} IS ARMED AT ${pool.hp} HP / ${pool.armor} AR. EVERY OTHER PLAYER USES THE GAME POOL.`
           : '\u25b2 SET A DIFFERENT POOL FOR THIS ONE PLAYER (A HANDICAP: A YOUNGER PLAYER, OR THE SOLO SIDE OF A 2v1).'}
       </div>
-      {on && <GhostButton onClick={onClear} color={T.warn} border={T.warn} size={11} pad="7px 12px">MATCH THE GAME POOL</GhostButton>}
-    </div>
+      {on && !locked && <GhostButton onClick={onClear} color={T.warn} border={T.warn} size={11} pad="7px 12px">MATCH THE GAME POOL</GhostButton>}
+    </fieldset>
   );
 }
