@@ -150,6 +150,12 @@ static void test_glitch_and_short_frames() {
   auto sp = to_pulses(bits);
   sp.insert(sp.begin(), 500u);
   CHECK(!decode(sp).sync_ok);
+  // Noise glued onto the front of a real word (a short mark and a gap under the idle threshold) must
+  // not cost the word: fold_glitches finds the sync at any even index (pinned 2026-09-24).
+  auto glued = to_pulses(bits);
+  glued.insert(glued.begin(), {145u, 13600u});
+  Decoded g = decode(glued);
+  CHECK(g.sync_ok && g.complete && g.parity_ok);
   auto shortd = to_pulses(bits.substr(0, 20));
   Decoded s = decode(shortd);
   CHECK(s.sync_ok);

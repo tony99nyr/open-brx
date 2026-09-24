@@ -115,7 +115,10 @@ constexpr uint32_t RESET_OUTCOME_SHOW_MS = 2500;
 // change (anything that already sets `displayDirty`, e.g. a pickup or a capture) -- never on the
 // routine ~4 Hz countdown repaint below, or the backlight would never dim during a live countdown.
 constexpr uint8_t BACKLIGHT_BRIGHT = 120;  // matches setup()'s existing setBrightness(120)
-constexpr uint8_t BACKLIGHT_DIM = 25;
+// Never below 60: at 25 (and at 0) the backlight's PWM couples into the IR receiver as ~660 Hz pulses,
+// about 20 bursts per 15 s, which buried every gun shot (bench 2026-09-24, A/B/A: 25 and 0 noisy;
+// 60, 120 and 255 silent). BL <n> over serial repeats the test.
+constexpr uint8_t BACKLIGHT_DIM = 60;
 constexpr uint32_t BACKLIGHT_IDLE_MS = 30000;
 uint32_t lastWakeMs = 0;
 bool backlightDimmed = false;
@@ -129,9 +132,12 @@ uint32_t rxArmFailures = 0;
 // Re-arming while a reception is still in flight is refused by the driver (the channel is not
 // idle); the frame in flight still completes into rxBuf, so a failed arm is retried from pollRx
 // only AFTER any completed frame has been read, never instead of reading it.
+uint32_t lastRxArmMs = 0;  // STATUS prints its age: a receiver that never re-arms shows up as a growing number
+
 static void armRx() {
   rxCount = RX_SYMBOLS;
   rxArmed = rmtReadAsync(IR_RX_PIN, rxBuf, (size_t*)&rxCount);
+  if (rxArmed) lastRxArmMs = millis();
   if (!rxArmed && ++rxArmFailures == 1) Serial.println("# rx arm refused once (reception in flight); retrying");
 }
 
@@ -526,6 +532,8 @@ static void printStatus() {
                 (unsigned long)point.charge[3], (unsigned long)point.captures, policy.seq,
                 (unsigned long)advertCount, (unsigned long)wordCount, settings.id, settings.game, settings.txpin,
                 currentUuid.c_str());
+  Serial.printf("RX armed=%d arm_age_ms=%lu frames=%lu\n", rxArmed ? 1 : 0, (unsigned long)(millis() - lastRxArmMs),
+                (unsigned long)frameCount);
   // H8: the MC link state, on its own line so a pre-H8 tool that parses STATUS's key=value pairs
   // (mcp/tools/stick.py `parse_status`) keeps working unchanged.
   const brx::StationLink& link = brx_glue::link;
@@ -560,6 +568,14 @@ static void handleLine(String line) {
   line.trim();
   if (!line.length()) return;
   if (line == "PING") { Serial.println("PONG"); return; }
+  // Bench diagnostic: A/B the receiver noise against the backlight (below 60 it makes IR noise).
+  // BL 0 = off; the next wake or dim restores the normal levels.
+  if (line.startsWith("BL ")) {
+    int v = line.substring(3).toInt();
+    M5.Display.setBrightness((uint8_t)constrain(v, 0, 255));
+    Serial.printf("BL %d\n", v);
+    return;
+  }
   if (line == "STATUS") { printStatus(); return; }
   // A58: while the match lock is on, only the read-only commands run (station_ui.h's allow-list,
   // host-tested; default deny). Checked before mcHandleLine so WIFI/MC/LINK/ACTIONS are refused too.
