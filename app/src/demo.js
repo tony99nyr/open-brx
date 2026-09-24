@@ -110,7 +110,7 @@ export function startDemo({ engine, log }) {
     scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams: [team, foe] };
   const bundle = { ...golden, player_id: 'p-demo' };
   // the host-locked Silenced Sniper is a no-armour game (its briefing says so): its config and its $PSET must agree
-  if (locked) { config.health = { max_hp: 45, max_armor: 0 }; bundle.head = bundle.head.map(f => f.startsWith('$PSET,') ? f.replace(/^(\$PSET,\d+,\d+,)\d+,\d+,/, '$145,0,') : f); }
+  if (locked) { config.health = { max_hp: 45, max_armor: 0 }; bundle.head = bundle.head.map(f => f.startsWith('$PSET,') ? f.replace(/^(\$PSET,\d+,\d+,)\d+,\d+,/, (_, head) => `${head}45,0,`) : f); }
   // A24 `result.rows`: EVERY player's ScoreRow, which is what makes a leaderboard possible on the phone.
   // Four players over two teams, one of them with `acc_provisional` (dimmed ACC) and one with no medals.
   const RESULT_ROWS = [
@@ -454,12 +454,12 @@ export function startDemo({ engine, log }) {
       puAway: () => { puList.clear(); puFeed(); },
       // the Shields preset at 3-digit pools with a 175 overshield: the widest vitals row a powerup game can draw
       widePools: () => { config.health = { max_hp: 100, max_armor: 0, max_shield: 100 };
-        bundle.head = bundle.head.map(f => f.startsWith('$PSET,') ? f.replace(/^(\$PSET,\d+,\d+,)\d+,\d+,\d+,/, '$1100,0,100,') : f);
+        bundle.head = bundle.head.map(f => f.startsWith('$PSET,') ? f.replace(/^(\$PSET,\d+,\d+,)\d+,\d+,\d+,/, (_, head) => `${head}100,0,100,`) : f);
         config.stations = config.stations.map(x => x.id === 6 ? { ...x, item: { ...x.item, amount: 175 } } : x); },
       // The shield meter (2026-09-24): the Shields preset exactly as compile.HEALTH_PRESETS ships it (45 HP, 0 armour, 105
       // shield), so the engine's own S29 recharge runs. Everything below feeds frames the gun would send.
       shieldsPreset: () => { config.health = { max_hp: 45, max_armor: 0, max_shield: 105 };
-        bundle.head = bundle.head.map(f => f.startsWith('$PSET,') ? f.replace(/^(\$PSET,\d+,\d+,)\d+,\d+,\d+,/, '$145,0,105,') : f); },
+        bundle.head = bundle.head.map(f => f.startsWith('$PSET,') ? f.replace(/^(\$PSET,\d+,\d+,)\d+,\d+,\d+,/, (_, head) => `${head}45,0,105,`) : f); },
       // the gun reports a full shield, as it does at the end of a refill
       shieldFill: () => { shield = engine.maxShield; engine.feedFrame(`$HP,${hp},${armor},${shield},*`); },
       // one hit the shield (or the overshield on top of it) absorbs
