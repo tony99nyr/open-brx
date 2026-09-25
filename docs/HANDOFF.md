@@ -2,8 +2,8 @@
 **State as of 2026-09-24 (night, after the doc-rot pass).** This is the current truth; history is `git log -p -- docs/HANDOFF.md`.
 The bench order lives in [`bench-plan.md`](bench-plan.md) and every open item in [`FOLLOWUPS.md`](FOLLOWUPS.md). Update only the lane you worked.
 ## State of main (2026-09-24)
-**App 0.4.11 is published** (`app-v0.4.11`, release-signed; 0.4.6 was the first release-signed build, so every
-player uninstalled the debug build once). Main is ahead of 0.4.11 with: the announcer queue and the gun audio-queue
+**App 0.4.11 is published** (`app-v0.4.11`, release-signed; 0.4.6 was the first release-signed build, so a phone on
+a debug build must uninstall once). Main is ahead of 0.4.11 with: the announcer queue and the gun audio-queue
 model (F351, F347), a Shields spawn at full shield and a lighter recharge (F348, part of F349), the Android 11 Location gate
 (F340), the pool repair after a lost chunk (F341), the station scan and revive fixes (F342, F344, F345), A60 MC
 auto-join, the A61 medal ladder and the A62 melee medal, the S57 name-word gap, and F308's eased AR ladder.
@@ -42,8 +42,8 @@ felt too harsh; R7 has its own 55% bar, R3 and R6 hold 65%.
 2026-09-24: Blocks 0, 1, 1.4 (all five steps), 3.1-3.3, 4.3 and 7.11 ran; the log has each result. **F297**: laptop
 control 10/10, median 1.37 s. **F293** is open for a new flap under load, not the fixed relink-before-join shape.
 The gun audio simulator and its scenarios are built ([`audio-queue-scenarios.md`](audio-queue-scenarios.md)).
-- **Next bench task:** Block 1 step 1.5 (a second phone's SCAN AGAIN mid-join, A/B/A), then Block 10's gun
-  audio-queue steps (F347: the hum's yield model and t23 EMPTY).
+- **Next bench task:** Block 10's gun audio-queue steps (F347) in sitting A of
+  [`bench-2026-09-25.md`](bench-2026-09-25.md); Block 1 step 1.5 (F293's new flap) is LATER there.
 - **Next desk task:** none open.
 - **Blocked:** F270 on A8.
 ## Lane: F341 transport and pool repair
@@ -62,15 +62,15 @@ post-MVP (F338). On main: `presence.h` ports the phone's Presence, ControlPoint 
 side-button lock writes the M5PM1 registers (F332, `8a8bcae9`); a revive counts from player state bit 6, no RSSI
 (`169157eb`); a pickup claim is awarded at any strength (`e879b9db`); the announcer queue (F351) and the 300 ms S57
 name-word gap. B21's Android half shipped; `webContentsDebuggingEnabled` and iOS remain.
-- **Next bench task:** Blocks 9 and 10 of [`bench-2026-09-24.md`](bench-2026-09-24.md) (the Stick over BLE; the lock,
-  the pickup and the audio queue).
+- **Next bench task:** sitting B of [`bench-2026-09-25.md`](bench-2026-09-25.md) (the Stick over BLE: the lock, the
+  pickup, its hearing, the hill and a restart).
 - **Next desk task:** F333's unwired screens, F353 (advert gaps), F352 (the kill-confirm design pass for Tony).
 - **Blocked:** the Stick's advert-bit revive on the phone half of F344 (brx5).
 ## Lane: powerups and the shield HUD (brx5)
 S58 is on main behind MC's `--powerups` flag: the heavy goes straight onto the trigger (SELECT toggles), and the
 overshield raises the `$PSET` shield max under 1 s of spawn protection. F348 is fixed and F349 in part (the cue side waits on F347); S59's Visor meter is built.
-- **Next bench task:** steps 3.4-3.5, 4.11, 4.18 and 4.19 of [`bench-2026-09-24.md`](bench-2026-09-24.md); then Tony
-  decides the flag.
+- **Next bench task:** 4.19 parts 1-3 (sitting A), then 3.4, 3.5 and 4.18 (sitting C) of
+  [`bench-2026-09-25.md`](bench-2026-09-25.md); then Tony decides the flag. 4.11 is not scheduled yet.
 - **Next desk task:** the phone half of F344 (set state bit 6 for about 5 s after a station revive); S58's pickup
   threshold (a code read: no station advertises 0, so the -55 default never applies); F350's shield-hit audition.
 
