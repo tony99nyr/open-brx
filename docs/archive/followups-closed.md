@@ -721,3 +721,4 @@ block's *internal* statuses were true when it closed and may since have been sup
   so it is Tony's report of the swing, not a `$BUT,8` wire confirmation). Matches the `$WEAP` t1 = 1 "headset only"
   code reading. Why it failed on 2026-08-26 is unknown. Reading: melee at 90 damage kills a full Standard pool in
   two swings.
+- 2026-09-24 **F330** fixed (chaos testing): a replay or MC restart credited an assist the live board never gave. After a backward clock jump, a hit from the victim's NEXT life sorted by `t` before the death. `Scorer._death` now skips a hit the victim's node sent after that death (a higher seq on the same node); with no seq, or from another node, the old t-window rule stands. clock-back-assist passes (xfail removed), crash-mixed 5023 and seven more seeds pass, plus 400 explored seeds.

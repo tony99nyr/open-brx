@@ -41,7 +41,7 @@ so 300 seeds is about 10 minutes. Bound it: never loop explore without a seed co
 4. **Claim an id** before the work: the FOLLOWUPS "Next free" bump plus the row (or the closed line),
    committed and pushed on its own.
 5. **Fix** if the fix is small, local and clearly correct. Otherwise give the regression scenario
-   `xfail="F<id>: <reason>"` and `xfail_invariant="<the invariant it breaks>"` (see `clock-back-assist`),
+   `xfail="F<id>: <reason>"` and `xfail_invariant="<the invariant it breaks>"` (`clock-back-assist` had them until F330's fix),
    or wrap a focused test in `xfail` from `tests/_skip.py`, and leave the row open. CI then fails on a
    pass, and on any other invariant.
 6. **Never weaken an invariant** to go green. A real design limit goes in the scenario's
