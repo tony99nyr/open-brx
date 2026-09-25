@@ -306,8 +306,10 @@ export function Live() {
               // a different KIND of line from a kill, and it has to look like one. WITHHELD is the
               // one mc_confidence refused to push: it must not read as a call the players heard.
               const withheld = ev.tag === 'WITHHELD';
+              // F357: an AFTER WHISTLE kill counts for nothing; it is drawn like a WITHHELD line (dashed, dim), not a medal.
+              const late = ev.tag === 'AFTER WHISTLE';
               const alert = ev.kind === 'alert';
-              const color = withheld ? T.micro
+              const color = withheld || late ? T.micro
                 : ev.tag === 'FIRST BLOOD' || ev.tag === 'TEAM KILL' ? T.bad
                 : alert ? T.acc : ev.tag ? T.warn : ev.kind === 'sync' ? T.acc : T.line;
               return (
@@ -315,12 +317,12 @@ export function Live() {
                   style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
                     background: alert && !withheld ? 'rgba(57,180,255,.07)' : T.panel,
                     borderLeft: `${alert ? 3 : 2}px solid ${color}`,
-                    borderTop: withheld ? `1px dashed ${T.line2}` : undefined,
-                    borderBottom: withheld ? `1px dashed ${T.line2}` : undefined }}>
+                    borderTop: withheld || late ? `1px dashed ${T.line2}` : undefined,
+                    borderBottom: withheld || late ? `1px dashed ${T.line2}` : undefined }}>
                   <span style={{ font: F.mono(500, 11), color: T.micro }}><Num value={fmtClock(ev.t_match_s)} /></span>
                   {/* M8 (visual QA 2026-09-24): a 24-character name is one unbreakable word, and it pushed the medal
                       tag past the panel edge. The text may shrink and breaks anywhere; the tag keeps its size. */}
-                  <span data-feed-text="1" style={{ flex: '1 1 auto', minWidth: 0, overflowWrap: 'anywhere', font: F.chk(alert ? 700 : 600, 12), letterSpacing: '.04em', color: withheld ? T.dim : alert ? T.ink : T.body }}>{ev.text}</span>
+                  <span data-feed-text="1" style={{ flex: '1 1 auto', minWidth: 0, overflowWrap: 'anywhere', font: F.chk(alert ? 700 : 600, 12), letterSpacing: '.04em', color: withheld || late ? T.dim : alert ? T.ink : T.body }}>{ev.text}</span>
                   {ev.tag && ev.kind !== 'sync' && <Tag data-feed-medal="1" color={color} ink={withheld ? T.page : undefined} size={11} style={{ flex: 'none', letterSpacing: '.14em', padding: '2px 7px' }}>{ev.tag}</Tag>}
                 </div>
               );
@@ -330,6 +332,11 @@ export function Live() {
             {feed.some(e => e.tag === 'WITHHELD') && (
               <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro, padding: '6px 10px', lineHeight: 1.5 }}>
                 WITHHELD = MC RECORDED IT BUT DID NOT CALL IT TO THE PLAYERS.
+              </div>
+            )}
+            {feed.some(e => e.tag === 'AFTER WHISTLE') && (
+              <div data-testid="feed-after-whistle-note" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro, padding: '6px 10px', lineHeight: 1.5 }}>
+                AFTER WHISTLE = A KILL AFTER THE END. IT IS NOT IN THE SCORE, THE RESULTS, THE AWARDS OR THE MEDALS.
               </div>
             )}
           </div>

@@ -53,7 +53,8 @@ MAIN_TOP, MAIN_BOTTOM = STRIP_H, SCREEN_H - HINT_H
 SIDE_MARGIN = 8  # fitCenterText's widest box is SCREEN_W - 16: main-block ink stays 8 px off each side
 
 GROUPS = [("bench", "Bench mode (no Wi-Fi set)"), ("link", "Joining and linked"), ("hill", "Hill"),
-          ("pickup", "Pickup"), ("respawn", "Respawn"), ("operator", "Operator: reset, lock, restart, battery")]
+          ("pickup", "Pickup"), ("respawn", "Respawn"), ("operator", "Operator: reset, lock, restart, battery"),
+          ("range", "Range editor (F365): radius and strength, on the station")]
 
 # scenario -> expected kind, strings that must be drawn (`has`), strings that must not (`lacks`), and
 # `same_as`: another scenario it may be pixel-identical to. Any other two scenarios must differ.
@@ -111,6 +112,18 @@ EXPECT: dict[str, dict] = {
     "battery_ok_strip": {"kind": "PICKUP_READY", "has": ["76%", "#4"]},
     "hill_stats": {"kind": "SCR_STATS", "has": ["CONTROL #3"]},
     "stats_idle_home": {"kind": "HILL_NEUTRAL", "same_as": "hill_neutral"},
+    "stats_range_cue": {"kind": "SCR_STATS", "has": ["HOLD FOR RANGE", "CONTROL #3"]},
+    "range_radius_default": {"kind": "SCR_RANGE", "has": ["RADIUS", "STRENGTH", "-57", "~3 M", "HIGH", "+9 dBm",
+                                                          "A CLOSER  B FARTHER", "HOLD B: DONE"], "lacks": ["EDITED"]},
+    "range_radius_closer": {"kind": "SCR_RANGE", "has": ["-54", "~2 M", "EDITED"]},
+    "range_radius_farther": {"kind": "SCR_RANGE", "has": ["-66", "~8 M", "EDITED"]},
+    "range_strength": {"kind": "SCR_RANGE", "has": ["MEDIUM", "0 dBm", "A WEAKER  B STRONGER"]},
+    "range_strength_ultra_low": {"kind": "SCR_RANGE", "has": ["ULTRA LOW", "-18 dBm"]},
+    "range_locked": {"kind": "SCR_RANGE", "has": ["-60", "EDITED"]},
+    "range_mc_value": {"kind": "SCR_RANGE", "has": ["-66", "LOW", "-9 dBm"], "lacks": ["EDITED"]},
+    "range_refused_during_confirm": {"kind": "HILL_NEUTRAL", "lacks": ["RADIUS", "HOLD B AGAIN"], "same_as": "hill_neutral"},
+    "range_released": {"kind": "SCR_STATS", "has": ["STATS"], "lacks": ["RADIUS"]},
+    "range_idle_exit": {"kind": "SCR_STATS", "has": ["STATS"], "lacks": ["HOLD FOR RANGE"], "same_as": "hill_stats"},
 }
 
 # The same table with revive feedback ON (-DBRX_REVIVE_FEEDBACK=1, post-MVP): only the respawn rows differ.

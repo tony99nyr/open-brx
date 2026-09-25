@@ -136,6 +136,27 @@ def _expected(world: World, sc, facts):
     return kills, deaths, hits, kill_pairs
 
 
+def _credit_team(world: World, ev: dict, victim: str) -> str | None:
+    """A65 (F354), by the ledger's rule: a `credit: "team"` death with no player behind it, in a team mode, credits
+    the rostered team its `shooter_team` names, unless that is the victim's own team."""
+    if ev.get("type") != "death" or ev.get("credit") != "team" or world.scenario.mode == "ffa":
+        return None
+    if int(ev.get("shooter_num", 0) or 0) != 0:
+        return None
+    team = next((t["team_id"] for t in world.session.teams if int(t["tid"]) == int(ev.get("shooter_team", -1))), None)
+    return team if team is not None and team != world.team_of(victim) else None
+
+
+def _team_credits(world: World, sc, facts) -> Counter:
+    """A65: the team-only kills the delivered facts give each team (after-the-whistle facts give none)."""
+    post = _post_end_keys(sc)
+    out: Counter = Counter()
+    for nid, seq, ev in facts:
+        if (nid, seq) not in post and (team := _credit_team(world, ev, str(ev.get("player_id")))) is not None:
+            out[team] += 1
+    return out
+
+
 @invariant("kills_credited_once")
 def kills_credited_once(world: World) -> None:
     """Every delivered death is credited exactly once: it is either on the board or parked as an
@@ -163,6 +184,76 @@ def scores_equal_facts(world: World) -> None:
         have = (r["kills"], r["deaths"], r["hits"])
         if want != have:
             _fail("scores_equal_facts", f"{r['display']}: board (kills, deaths, hits)={have}, facts say {want}")
+
+
+@invariant("team_score_equals_facts")
+def team_score_equals_facts(world: World) -> None:
+    """A65 (F354): each team's score is its players' credited kills (a team kill is -1) plus its team-only kills, and
+    a team-only kill adds to no player's row (`scores_equal_facts` checks the rows without them)."""
+    sc, facts = _current(world)
+    if sc is None or sc.mode == "ffa":
+        return
+    kills, _d, _h, _p = _expected(world, sc, facts)
+    want: Counter = _team_credits(world, sc, facts)
+    for pid, k in kills.items():
+        want[world.team_of(pid)] += k
+    have = sc.team_scores()
+    if any(have.get(t, 0) != want.get(t, 0) for t in set(have) | set(want)):
+        _fail("team_score_equals_facts", f"team scores {have}, the facts say {dict(want)} "
+                                         f"(team-only kills {dict(_team_credits(world, sc, facts))})")
+
+
+@invariant("no_kill_cue_after_end")
+def no_kill_cue_after_end(world: World) -> None:
+    """F357 (Tony 2026-09-25): MC sends no kill cue (and so no medal cue) for a kill it processes after the whistle,
+    whatever ended the match. Every kill cue for this match left MC before the match finished, before the time
+    limit ran out, before a frag cap froze the match (a same-batch cue after the cap leaves before the finish),
+    and never in RECAP."""
+    sc = world.session.scorer
+    if sc is None or world.match_id is None:
+        return
+    fin = next((f.get("at_ms") for f in world.finishes if f["match_id"] == world.match_id), None)
+    buzzer = sc.go_live_t + sc.time_limit_s * 1000 if sc.time_limit_s else None
+    for c in world.kill_cues:
+        if c["match_id"] != world.match_id:
+            continue
+        late = [why for why, bad in (("in RECAP", c["phase"] == "recap"),
+                                     ("after the finish", fin is not None and c["sent_ms"] > fin),
+                                     ("after the time limit", buzzer is not None and c["sent_ms"] > buzzer),
+                                     # the cap as it stood WHEN the cue left: a moved-back end makes the final
+                                     # `limit_reached_t` earlier than cues that were legitimate at the time
+                                     ("after the frag cap froze the match", c.get("cap_t") is not None)) if bad]
+        if late:
+            _fail("no_kill_cue_after_end", f"a kill cue left MC {', '.join(late)}: {c} (finish {fin}, buzzer {buzzer})")
+
+
+@invariant("after_whistle_kept_not_counted", when="end")
+def after_whistle_kept_not_counted(world: World) -> None:
+    """F357: a kill stamped after the end is kept and shown (the recap's `after_end`, by player) and counted in
+    nothing (`kills_credited_once` and `scores_equal_facts` keep it off the board; this checks it is shown)."""
+    s = world.session
+    sc = s.scorer
+    if sc is None:
+        return
+    want: dict[str, dict[str, int]] = {}
+    for f in taken_facts(world, sc):
+        if f["status"] != "after_end" or f["kind"] != "death":
+            continue
+        want.setdefault(f["pid"], {"kills": 0, "deaths": 0})["deaths"] += 1
+        if f["killer"] and not _friendly(world, f["killer"], f["pid"]):
+            want.setdefault(f["killer"], {"kills": 0, "deaths": 0})["kills"] += 1
+    have = (sc.after_end() or {}).get("by_player", {})
+    if {k: dict(v) for k, v in have.items()} != want:
+        _fail("after_whistle_kept_not_counted", f"after-whistle block {have}, the facts after the end say {want}")
+    recap = s.last_recap or {}
+    rows = {r["player_id"]: r for r in recap.get("rows") or []}
+    for pid, v in want.items():
+        r = rows.get(pid)
+        if r is not None and (r.get("after_end_kills", 0), r.get("after_end_deaths", 0)) != (v["kills"], v["deaths"]):
+            # the stored recap is taken at the finish; a fact after it re-runs `recap()`, so compare the live view
+            live = next((x for x in sc.rows() if x["player_id"] == pid), {})
+            if (live.get("after_end_kills", 0), live.get("after_end_deaths", 0)) != (v["kills"], v["deaths"]):
+                _fail("after_whistle_kept_not_counted", f"{pid}'s row shows after-whistle {live}, the facts say {v}")
 
 
 @invariant("no_fact_double_counted")
@@ -816,11 +907,12 @@ def ends_exactly_once(world: World) -> None:
         _fail("ends_exactly_once", f"the run ended in {world.session.phase.upper()}, not RECAP")
 
 
-def _top_score(world: World, sc, kills: Counter) -> int:
-    """The top team (or FFA player) score. Teams come from the roster: chaos has no team-change action."""
+def _top_score(world: World, sc, kills: Counter, credits: Counter | None = None) -> int:
+    """The top team (or FFA player) score. Teams come from the roster: chaos has no team-change action.
+    `credits`: A65 team-only kills per team."""
     if sc.mode == "ffa":
         return max(kills.values(), default=0)
-    per_team: Counter = Counter()
+    per_team: Counter = Counter(credits or {})
     for pid, k in kills.items():
         per_team[world.team_of(pid)] += k
     return max(per_team.values(), default=0)
@@ -832,15 +924,21 @@ def _arrival_crossing(world: World, match_id: str, keys: set, cap: int) -> int |
     do. A replay after a restart re-takes old facts in `t` order, so only a key's first taking counts."""
     seen: set = set()
     kills: Counter = Counter()
+    credits: Counter = Counter()
     for s in _scorers_of(world, match_id):
         for f in taken_facts(world, s):
             if f["key"] in seen:
                 continue
             seen.add(f["key"])            # the FIRST taking decides, even when it did not score
-            if f["key"] not in keys or f["status"] != "scored" or f["kind"] != "death" or not f["killer"]:
+            if f["key"] not in keys or f["status"] != "scored" or f["kind"] != "death":
                 continue
-            kills[f["killer"]] += -1 if _friendly(world, f["killer"], f["pid"]) else 1
-            top = _top_score(world, s, kills)
+            if not f["killer"]:
+                if (team := _credit_team(world, f["ev"], f["pid"])) is None:
+                    continue
+                credits[team] += 1        # A65: a team-only kill
+            else:
+                kills[f["killer"]] += -1 if _friendly(world, f["killer"], f["pid"]) else 1
+            top = _top_score(world, s, kills, credits)
             if top >= cap:
                 return top
     return None
@@ -857,7 +955,7 @@ def cap_ends_live_match(world: World) -> None:
     if sc is None or s.phase != "live" or not cap or sc.win_by != "kills" or s.is_adopted():
         return
     kills, _d, _h, _p = _expected(world, sc, facts)
-    top = _top_score(world, sc, kills)
+    top = _top_score(world, sc, kills, _team_credits(world, sc, facts))
     if top >= cap:
         _fail("cap_ends_live_match", f"the credited facts reach the cap ({top} >= {cap}) and the match is still live")
 
@@ -893,7 +991,7 @@ def frag_cap_ends_match(world: World) -> None:
         _sc, facts = _current(world)
         held = [f for f in facts if (f[0], f[1]) in world.end_delivered]
         kills, _d, _h, _p = _expected(world, sc, held)
-        top_then = _top_score(world, sc, kills)
+        top_then = _top_score(world, sc, kills, _team_credits(world, sc, held))
         if top_then >= cap:
             _fail("frag_cap_ends_match", f"the board held at the end reached the cap ({top_then} >= {cap}) "
                                          f"but the match ended by {reason!r}")

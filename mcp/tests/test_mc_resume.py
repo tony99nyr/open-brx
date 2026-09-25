@@ -463,6 +463,20 @@ def test_an_adopted_match_never_ends_early_on_mcs_current_draft_frag_limit():
     assert s.phase == "recap"
 
 
+def test_an_adopted_match_past_the_draft_frag_limit_still_confirms_later_kills():
+    """F357 polish r1: the draft's cap sets `limit_reached_t` in an adopted match but ends nothing, so it is not a
+    whistle. Kills after it are still confirmed."""
+    s, net, clock, ps, before = _fresh_mc_with_phones_in(2, ["m-old", "m-old"])
+    s.set_config({"scoring": {"frag_limit": 1}})
+    s.adopt_orphan("m-old")
+    _death(net, clock, ps, 0, 1, "m-old", seq=1)   # reaches the DRAFT's cap of 1: the match plays on
+    assert s.phase == "live" and s.scorer.limit_reached_t is not None, "control: the draft cap was reached"
+    cues = lambda: [b for n, k, b in net.pushed if k == "feedback" and b.get("kind") == "kill" and n == "node1"]
+    n0 = len(cues())
+    _death(net, clock, ps, 1, 0, "m-old", seq=1)
+    assert len(cues()) == n0 + 1, "a kill after a draft cap that ended nothing lost its confirm"
+
+
 def test_adopting_notes_but_does_not_end_a_draft_cap_the_replayed_facts_already_reach():
     s, net, clock, ps, before = _fresh_mc_with_phones_in(2, ["m-old", "m-old"])
     _death(net, clock, ps, 0, 1, "m-old", seq=1)   # logged before MC adopts the match

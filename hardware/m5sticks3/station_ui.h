@@ -266,6 +266,108 @@ inline bool serial_command_allowed_while_locked(const std::string& line) {
          line == "AUTO OFF";
 }
 
+// ---- F365: the A button's hold, and the RANGE editor (Tony, 2026-09-25) ------------------------------
+// ENTER RANGE by holding A for 5 s on the STATS page. A's 1 s "home" must not collide with it, so A is
+// one gesture read from its level every loop(): released under 1 s it is a CLICK, released between 1 s
+// and 5 s it is HOME (on the release, never at 1 s), and reaching 5 s where RANGE is allowed enters RANGE
+// at once (nothing else fires on that release). From 1 s the screen shows a filling "HOLD FOR RANGE"
+// cue. Where RANGE is not allowed a long hold is simply HOME on release.
+constexpr uint32_t A_HOME_HOLD_MS = 1000;
+constexpr uint32_t RANGE_ENTER_HOLD_MS = 5000;
+constexpr uint32_t RANGE_IDLE_EXIT_MS = 10000;
+
+enum class AHoldEvent : uint8_t { NONE, CLICK, HOME, RANGE };
+
+class AHoldGesture {
+ public:
+  AHoldEvent update(bool a_down, uint32_t now_ms, bool range_allowed) {
+    now_ms_ = now_ms;
+    range_allowed_ = range_allowed;
+    if (a_down && !down_) {
+      down_ = true;
+      since_ms_ = now_ms;
+      range_fired_ = false;
+      return AHoldEvent::NONE;
+    }
+    if (a_down) {
+      if (range_allowed && !range_fired_ && now_ms - since_ms_ >= RANGE_ENTER_HOLD_MS) {
+        range_fired_ = true;
+        return AHoldEvent::RANGE;
+      }
+      return AHoldEvent::NONE;
+    }
+    if (!down_) return AHoldEvent::NONE;
+    down_ = false;
+    if (range_fired_ || cancelled_) {
+      cancelled_ = false;
+      return AHoldEvent::NONE;
+    }
+    return (now_ms - since_ms_ < A_HOME_HOLD_MS) ? AHoldEvent::CLICK : AHoldEvent::HOME;
+  }
+  // The A+B force restart owns this press: its release fires nothing.
+  void cancel() {
+    if (down_) cancelled_ = true;
+  }
+  // 0..100 while the "HOLD FOR RANGE" cue shows (A held 1 s or more where RANGE is allowed), else -1.
+  int range_cue_pct() const {
+    if (!down_ || range_fired_ || cancelled_ || !range_allowed_) return -1;
+    const uint32_t held = now_ms_ - since_ms_;
+    if (held < A_HOME_HOLD_MS) return -1;
+    return (int)((held - A_HOME_HOLD_MS) * 100 / (RANGE_ENTER_HOLD_MS - A_HOME_HOLD_MS));
+  }
+
+ private:
+  bool down_ = false;
+  bool range_fired_ = false;
+  bool cancelled_ = false;
+  bool range_allowed_ = false;
+  uint32_t since_ms_ = 0;
+  uint32_t now_ms_ = 0;
+};
+
+// Which setting the RANGE screen edits: RADIUS (the threshold) or STRENGTH (the advertising power).
+// In RANGE: A click = CLOSER / WEAKER, B click = FARTHER / STRONGER, A hold (released after 1 s) switches
+// the field, B hold (2 s) or 10 s idle saves and exits. Each step applies at once (StationLink edits).
+enum class RangeField : uint8_t { RADIUS = 0, STRENGTH = 1 };
+
+class RangeEditor {
+ public:
+  bool active() const { return active_; }
+  RangeField field() const { return field_; }
+  void open(uint32_t now_ms) {
+    active_ = true;
+    field_ = RangeField::RADIUS;
+    last_ms_ = now_ms;
+  }
+  void close() { active_ = false; }
+  void touch(uint32_t now_ms) { last_ms_ = now_ms; }
+  void switch_field(uint32_t now_ms) {
+    field_ = field_ == RangeField::RADIUS ? RangeField::STRENGTH : RangeField::RADIUS;
+    last_ms_ = now_ms;
+  }
+  // The step for a click: A = -1 (closer / weaker), B = +1 (farther / stronger), in the field's own unit.
+  // Returns the threshold change in dB (RADIUS) or the power change in levels (STRENGTH).
+  static int step_for(RangeField f, bool a_click) {
+    if (f == RangeField::RADIUS) return a_click ? +RANGE_STEP_DB : -RANGE_STEP_DB;  // closer = higher dBm
+    return a_click ? -1 : +1;
+  }
+  // Call every loop(): true the one call that closes it after RANGE_IDLE_EXIT_MS without a press. A button
+  // still held counts as activity, so it never closes mid-hold (and then reads the release as HOME).
+  bool poll_idle(uint32_t now_ms, bool button_down = false) {
+    if (active_ && button_down) last_ms_ = now_ms;
+    if (active_ && now_ms - last_ms_ >= RANGE_IDLE_EXIT_MS) {
+      active_ = false;
+      return true;
+    }
+    return false;
+  }
+
+ private:
+  bool active_ = false;
+  RangeField field_ = RangeField::RADIUS;
+  uint32_t last_ms_ = 0;
+};
+
 // ---- when a queued station_action report may be sent (polish 2026-09-24, M3) ------------------------
 // Only on a live socket that MC has WELCOMED (or armed): at HELLO_SENT MC has not accepted this node
 // yet and would count the frame against it. And only once McClock has MC's time: the report's `t` and

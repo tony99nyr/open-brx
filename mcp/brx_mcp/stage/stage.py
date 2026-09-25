@@ -636,6 +636,11 @@ class GunStage:
         self._last_pain_at: float | None = None    # A15.3: the 600 ms pain gate (PAIN_GAP_S)
         self._last_hir_proto: int | None = None    # A15.3: the ir protocol of the last $HIR (melee = 13), read on the next $HP/$LCD
         self._dmg_hir: tuple[int, float] | None = None   # F354 (engine.js `_dmgLatch`): (proto, at) of the last word whose cell can do damage
+        # A65 (engine.js `latch` / `_lastHitFact.noPool`): the last registered word {num, team, at, no_pool}, and the word
+        # the last booked hit was credited to (the damaging word while fresh, else the raw latch). `_death` reads both.
+        self._hir_word: dict | None = None
+        self._hit_word: dict | None = None
+        self.team_credit_tid: int | None = None   # A65: the team the last death credited with no player, else None
         self._sir_fns_for: object = None           # F354: `_sir_fns()`'s cache, keyed on the bundle object (engine.js `_sirFnsFor`)
         self._sir_fns_map: dict[str, int] | None = None
         # F72/F85 + the hill: the phone's proto-15 model, field for field (engine.js `beacon`/`_lastBeacon*`/`hill`…)
@@ -2945,6 +2950,9 @@ class GunStage:
                 if proto is not None and _tok_int(t, 4) is not None and not self._non_damaging(proto, _tok_int(t, 7)):
                     self._dmg_hir = (proto, now)
                 if _tok_int(t, 4) is not None:
+                    self._hir_word = {"num": _tok_int(t, 3) or 0, "team": _tok_int(t, 4), "at": now,
+                                      "no_pool": self._non_damaging(proto, _tok_int(t, 7))}
+                if _tok_int(t, 4) is not None:
                     self._shield_reassert()      # 2026-09-19 (engine.js: a registered hit, shooter team parsed)
                 if len(t) > 2 and t[2] == "8":
                     self._stun()             # F15: an EMP word (proto 8) -- a no-op unless config.stun is on; a status row, so no $HP follows
@@ -3408,6 +3416,11 @@ class GunStage:
             self._dot_echo = None
         if dmg > 0 and not dot_echo and self._last_hir_at is not None and self.now() - self._last_hir_at <= 1.0:
             self._last_dmg_hit_at = self.now()   # engine.js: `_lastHitFact` is stamped only by a hit that moved a pool
+            # A65 (engine.js `hl`): the hit is the damaging word's while it is fresh, else the raw latch's (which may be a
+            # no-pool word: its damaging word was lost)
+            fresh_dmg = self._dmg_hir is not None and self.now() - self._dmg_hir[1] <= DEATH_LATCH_MS / 1000
+            self._hit_word = {"at": self.now(), "no_pool": not fresh_dmg and bool(self._hir_word and self._hir_word["no_pool"]),
+                              "num": (self._hir_word or {}).get("num", 0), "team": (self._hir_word or {}).get("team")}
         cues = self.bundle.get("cues", {})
         hs = self.bundle.get("headset") or {}
         # S29 (engine.js `_onHp`): damage RESTARTS the recharge clock and abandons a refill already running --
@@ -3448,8 +3461,12 @@ class GunStage:
             # bookkeeping to make from the fact it receives) -- so this is a log line naming the applier, not a
             # fabricated facts mechanism.
             dk = self._dot_kill
-            if dk and self.now() - dk["at"] <= DOT_KILL_S and (self._last_dmg_hit_at is None or self._last_dmg_hit_at < dk["at"]):
+            dk = dk if dk and self.now() - dk["at"] <= DOT_KILL_S and (self._last_dmg_hit_at is None or self._last_dmg_hit_at < dk["at"]) else None
+            if dk:
                 self._log(f"☠ poison kill credited to #{dk['num']} (team {dk['team']})", "info")
+            self.team_credit_tid = None if dk else self._team_credit()
+            if self.team_credit_tid is not None:
+                self._log(f"☠ killed by team {self.team_credit_tid}, no player (A65: the damaging hit was lost, a no-pool word is fresh)", "info")
             self._dot_kill = None; self._dot_echo = None
             self._poison_clear("died")             # S16: a stack never survives a life (Tony, 2026-09-18)
             self._moment = ("down", self.now())    # engine.js `_death`: the rarer moment (gates a pool rise for RARE_GUARD_S)
@@ -3862,6 +3879,25 @@ class GunStage:
         if self._dmg_hir is not None and self.now() - self._dmg_hir[1] <= DEATH_LATCH_MS / 1000:
             return self._dmg_hir[0]
         return self._last_hir_proto
+
+    def _team_credit(self) -> int | None:
+        """A65 (F354, engine.js `_death` `teamCredit`): the team a death credits with no player, or None. The damaging
+        hit was lost: no damaging word is newer than the last hit and fresh, and the killing source (the last hit while
+        fresh, else the raw latch) is a no-pool word. Our own team's word, or FFA, credits nobody."""
+        now, latch = self.now(), DEATH_LATCH_MS / 1000
+        hw, lw = self._hit_word, self._hir_word
+        dl_fresh = self._dmg_hir is not None and now - self._dmg_hir[1] <= latch and (hw is None or self._dmg_hir[1] > hw["at"])
+        if dl_fresh:
+            return None
+        src = hw if hw is not None and now - hw["at"] <= latch else (lw if lw is not None and now - lw["at"] <= latch else None)
+        if src is None or not src.get("no_pool") or not src.get("num") or src.get("team") is None:
+            return None
+        if self.profile.get("mode") == "ffa" or src["team"] == int(self.profile.get("tid", -1)):
+            return None
+        teams = ((getattr(self, "config", None) or {}).get("teams")) or []
+        if not any(int(t.get("tid", -1)) == int(src["team"]) for t in teams):
+            return None                         # engine.js `rosterTeam`: only a team on this match's roster
+        return int(src["team"])
 
     def _non_damaging(self, proto: int | None, subtype: int | None) -> bool:
         """F354 (engine.js `_nonDamaging`): this word's cell moves no pool or grants one (`_SIR_NO_POOL`, `_SIR_GRANT`).
