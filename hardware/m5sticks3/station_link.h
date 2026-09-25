@@ -549,7 +549,7 @@ inline uint8_t station_kind_byte(const std::string& kind) {
 
 // ---- the presence threshold (hill + respawn) -------------------------------------------------------
 // The threshold a Bluetooth station measures PLAYERS against. MC's value when it sent one; when it sent
-// 0/absent, the StickS3's own default for that kind (-78 dBm for control, -57 otherwise). A defaulted
+// 0/absent, the StickS3's own default for that kind (-75 dBm for control, -57 otherwise). A defaulted
 // control advert keeps byte 14 at -57 for phone-side presence because the radio paths are asymmetric.
 // The pickup claim has no RSSI floor at all (ClaimGate): the phone's own
 // claim_ready already proves the player stood at the station.

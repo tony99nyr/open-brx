@@ -598,7 +598,7 @@ without hearing START starts counting as before; it has no go-live or deadline i
 hill waits. An adopted match pushes nothing to stations, so its Stick hill gets no go-live or deadline and
 counts as before.
 
-For a Stick `control` station, threshold 0 or absent selects the separate -78 dBm hill default
+For a Stick `control` station, threshold 0 or absent selects the separate -75 dBm hill default (Tony, 2026-09-25, UNPROVEN)
 (`STICK_HILL_DEFAULT_THRESHOLD_DBM`, UNPROVEN, pending a 3, 5 and 7 m walk test). Other Stick kinds keep
 -57 dBm (`STICK_DEFAULT_THRESHOLD_DBM`). A defaulted hill advertises -57 in byte 14 for phone-side presence:
 the phone hears the Stick about 25 dB louder than the Stick hears the phone. An explicit MC threshold

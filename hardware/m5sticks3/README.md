@@ -343,10 +343,10 @@ state. `LINK OFF` only drops the current socket and association.
 
 **THRESHOLD.** `0` in `station_config.threshold` (or the key absent) means the Stick default for that kind.
 Every kind except `control` uses -57 dBm (`STICK_DEFAULT_THRESHOLD_DBM`). A `control` hill uses
--78 dBm (`STICK_HILL_DEFAULT_THRESHOLD_DBM`, UNPROVEN): sitting B, 2026-09-25, Stick-side PLAYERS STREAM
+-75 dBm (`STICK_HILL_DEFAULT_THRESHOLD_DBM`, Tony 2026-09-25, UNPROVEN): sitting B, 2026-09-25, Stick-side PLAYERS STREAM
 medians were -43 touching, -64 at arm's length, -77/-81 at about 5 m (two phones), and -78 to -87 down the
-hall, still present at -80. Since -80 reached past 7 m, -78 is a first guess for the 5-7 m edge. Walk-test
-at 3, 5 and 7 m. MC's nonzero value overrides the Stick default. A defaulted control hill still advertises
+hall, still present at -80. -80 reached past 7 m, so Tony set -75 for a 5-7 m target. Take clean 3 m
+and 7 m readings. MC's nonzero value overrides the Stick default. A defaulted control hill still advertises
 -57 in byte 14 because phones measure the Stick about 25 dB louder than it measures them.
 An explicit MC threshold or the first on-station RADIUS edit also sets byte 14 to that threshold.
 The separate -57 advert value applies only while the hill uses its unedited default.
@@ -581,7 +581,7 @@ to edit it. if within wifi range sync with MC on the change." Two decisions of h
   republishes at once, and a new power restarts the advert at it.
 - **Distances are rough**, and the screen says so: `station_range.h RANGE_DISTANCE_TABLE`, anchored on
   Tony's measurement (-57 dBm is about 3 m from a Stick), 6 dB per doubling of distance from there. The
-  control hill uses its separate, unproven label table: -78 dBm is about 5-7 m.
+  control hill uses its separate, unproven label table: -75 dBm is about 5-7 m.
 - **Sync (A67).** Every status beat carries `threshold` (applied now), `threshold_src` ("station" |
   "mc") and, only while "station", `threshold_edit_age_ms`; the same three for `tx_power`; and
   `range_edits`, the last 8 edits (seq, field, from, to, locked, age_ms), restated every beat (MC

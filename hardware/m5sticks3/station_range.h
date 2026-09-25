@@ -33,9 +33,9 @@ namespace brx {
 constexpr int STICK_DEFAULT_THRESHOLD_DBM = -57;
 // UNPROVEN hill default. Sitting B, 2026-09-25, Stick-side PLAYERS STREAM medians: touching -43,
 // arm's length -64, about 5 m indoors -77/-81 (two phones), down the hall -78 to -87 still present
-// at -80. Since -80 reached past 7 m, -78 is a first guess for the 5-7 m edge. Walk-test at 3, 5,
-// and 7 m before treating this value as settled.
-constexpr int STICK_HILL_DEFAULT_THRESHOLD_DBM = -78;
+// at -80. Tony set -75 for MVP (2026-09-25, a 5-7 m target); clean 3 m and 7 m readings
+// settle it at the bench.
+constexpr int STICK_HILL_DEFAULT_THRESHOLD_DBM = -75;
 
 // The on-station radius edit: 3 dB a click, clamped. Closer = a smaller radius = a higher (less
 // negative) threshold.

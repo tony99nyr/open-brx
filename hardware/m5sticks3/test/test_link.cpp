@@ -2089,9 +2089,9 @@ static void test_presence_threshold_is_the_phone_default_when_mc_sends_none() {
   StationAssignment a = parse_station_config(v);
   CHECK(a.threshold_defaulted);
   CHECK_EQ(a.threshold, STICK_DEFAULT_THRESHOLD_DBM);  // the advertised byte keeps the Stick's own
-  CHECK_EQ(presence_threshold_dbm(a), -78);            // hill radius default
+  CHECK_EQ(presence_threshold_dbm(a), -75);            // hill radius default
   v = json::parse(R"({"kind":"control","team":255,"id":9})", &ok);
-  CHECK_EQ(presence_threshold_dbm(parse_station_config(v)), -78);
+  CHECK_EQ(presence_threshold_dbm(parse_station_config(v)), -75);
   v = json::parse(R"({"kind":"control","team":255,"id":9,"threshold":-66})", &ok);
   StationAssignment m = parse_station_config(v);
   CHECK(!m.threshold_defaulted);
@@ -2101,7 +2101,7 @@ static void test_presence_threshold_is_the_phone_default_when_mc_sends_none() {
   CHECK(saved.note_applied(a, "s1"));
   StationAssignment r = saved.restore();
   CHECK(r.threshold_defaulted);
-  CHECK_EQ(presence_threshold_dbm(r), -78);
+  CHECK_EQ(presence_threshold_dbm(r), -75);
   SavedStationConfig saved2;
   saved2.note_applied(m, "s1");
   CHECK_EQ(presence_threshold_dbm(saved2.restore()), -66);
