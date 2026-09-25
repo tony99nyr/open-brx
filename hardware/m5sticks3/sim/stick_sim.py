@@ -105,6 +105,7 @@ EXPECT: dict[str, dict] = {
     "hill_losing_blue": {"kind": "HILL_CAPTURING", "has": ["BLUE LOSING"]},
     "hill_locked": {"kind": "HILL_HELD", "has": ["RED HOLDS", "LOCKED"]},
     "hill_restored": {"kind": "HILL_NEUTRAL", "has": ["NEUTRAL", "WAITING FOR START"]},
+    "hill_restored_locked": {"kind": "HILL_NEUTRAL", "has": ["NEUTRAL", "LOCKED", "A+B 7S: RESTART"]},
     "reset_confirm": {"kind": "SCR_RESET_CONFIRM", "has": ["HOLD B AGAIN", "TO RESET STATION #4"]},
     "reset_confirm_unassigned": {"kind": "SCR_LINKED_WAITING", "lacks": ["#-1", "HOLD B AGAIN", "RESET"],
                                  "same_as": "welcomed_unassigned"},

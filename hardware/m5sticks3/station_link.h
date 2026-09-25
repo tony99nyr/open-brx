@@ -1306,7 +1306,7 @@ class StationLink {
   // Restart survival (Tony, 2026-09-24): apply the assignment SavedStationConfig kept in flash, at
   // boot, before the link comes up. A timed hill stays frozen until MC gives it a fresh clock.
   // What differs from a live config:
-  //   - no lock, ever: the lock is RAM-only and every boot starts unlocked (A58);
+  //   - no lock in the saved config: the glue restores a game-bound NVS snapshot, capped at 120 s;
   //   - a schedule assumed available (no anchor, no taker; F374: a fresh arm starts unknown instead); if
   //     MC can reach the Stick, the station_update it sends after its config re-anchors it (under
   //     MUSTER the radio stays up for that update before it drops: MUSTER_DROP_DEFER_MS, or for a

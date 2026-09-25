@@ -811,9 +811,10 @@ static void pollButtons() {
   if (bReleased) Serial.println("BTN B up");
   if (forceRestart.update(bootHeld.a_down(), bootHeld.b_down(), now)) {
     Serial.println("FORCE RESTART (A + B held 7 s)");
-    brx_glue::mcClearSavedLock();
-    Serial.flush();
-    ESP.restart();
+    if (brx_glue::mcClearSavedLock()) {
+      Serial.flush();
+      ESP.restart();
+    } else Serial.println("ERR force restart needs NVS lock clear; release and retry");
   }
   uint32_t countdown = forceRestart.countdown_s();
   if (countdown != lastRestartCountdown) { lastRestartCountdown = countdown; displayDirty = true; }

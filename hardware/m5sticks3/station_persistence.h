@@ -1,7 +1,34 @@
 #pragma once
+#include <cstdint>
 #include <string>
 
 namespace brx {
+
+// Keep a typed address first, then let LAN discovery recover from a moved MC.
+class TypedMcFallback {
+ public:
+  bool prefer_typed(uint32_t now_ms = 0) const {
+    return failures_ < 3 || (uint32_t)(now_ms - fallback_since_ms_) >= 60000;
+  }
+  void new_url() { failures_ = 0; dialling_typed_ = false; }
+  void dial_started(bool typed) { dialling_typed_ = typed; }
+  void dial_failed(uint32_t now_ms = 0) {
+    if (dialling_typed_) {
+      if (failures_ < 3) ++failures_;
+      if (failures_ == 3) fallback_since_ms_ = now_ms;
+    }
+    dialling_typed_ = false;
+  }
+  void dial_succeeded() {
+    if (dialling_typed_) failures_ = 0;
+    dialling_typed_ = false;
+  }
+
+ private:
+  unsigned failures_ = 0;
+  bool dialling_typed_ = false;
+  uint32_t fallback_since_ms_ = 0;
+};
 
 // Pure storage policy shared by the host gates and Preferences glue.
 inline unsigned long lock_snapshot_seconds(unsigned long remaining_s) { return remaining_s; }

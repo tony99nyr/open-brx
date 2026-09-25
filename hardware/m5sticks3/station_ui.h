@@ -161,8 +161,8 @@ class StationButtons {
 
 // ---- A58: the force restart (A + B held together) -------------------------------------------------
 // Holding A AND B together for FORCE_RESTART_HOLD_MS restarts the Stick (ESP.restart() in the .ino),
-// whether the match lock is on or not: the lock is RAM-only, so a restart is also the operator's way
-// out of a lock set by mistake. After FORCE_RESTART_SHOW_MS of the joint hold the screen shows a
+// whether the match lock is on or not: the caller clears the saved lock before restarting.
+// After FORCE_RESTART_SHOW_MS of the joint hold the screen shows a
 // countdown ("RESTART IN 5"), so nobody restarts a station by accident; releasing EITHER button
 // cancels, and the next joint press starts the full 7 s again.
 //

@@ -73,7 +73,41 @@ static void test_f390_timed_powerup_rejoins_at_whistle_not_short_lock_expiry() {
   CHECK(link.automatic_rejoin_due(11000));
 }
 
-static void test_f391_lock_snapshot_never_grows_and_saves_once_a_minute() {
+static void test_f390_deadline_rejoin_for_each_station_kind() {
+  for (const char* kind : {"control", "powerup", "respawn", "extraction", "bomb"}) {
+    StationLink link;
+    StationAssignment a;
+    a.present = true;
+    a.kind = kind;
+    a.id = 8;
+    a.game = 1;
+    a.starts_known = true;
+    a.ends_in_ms = 4000;
+    link.apply_station_config(a, 1000);
+    if (a.kind == "powerup") {
+      StationUpdateMsg u;
+      u.present = true;
+      u.id = 8;
+      u.available = false;
+      link.apply_station_update(u, 1100);
+    }
+    CHECK(link.take_muster_drop(1200));
+    CHECK(!link.automatic_rejoin_due(4999));
+    CHECK(link.automatic_rejoin_due(5000));
+    CHECK(!link.automatic_rejoin_due(5000, true));
+  }
+  StationLink untimed;
+  StationAssignment a;
+  a.present = true;
+  a.kind = "respawn";
+  a.id = 8;
+  a.game = 1;
+  untimed.apply_station_config(a, 1000);
+  CHECK(untimed.take_muster_drop(1000));
+  CHECK(!untimed.automatic_rejoin_due(9000000));
+}
+
+static void test_f391_lock_snapshot_never_grows_and_saves_once_five_minutes() {
   CHECK_EQ(lock_restore_remaining_s(90), 90u);
   CHECK_EQ(lock_restore_remaining_s(8000), 120u);
   CHECK(!lock_save_due(30, 1000, 300999));
@@ -90,6 +124,27 @@ static void test_f397_typed_mc_url_storage_policy() {
   CHECK(!saved_mc_url_usable("ws://host:abc/ws"));
   CHECK(!saved_mc_url_usable("ws://host:8766/ws?token=x"));
   CHECK(!saved_mc_url_usable("ws://host:999999999999999999999999/ws"));
+}
+
+static void test_f397_typed_url_falls_back_after_failed_dials() {
+  TypedMcFallback fallback;
+  CHECK(fallback.prefer_typed());
+  fallback.dial_started(true);
+  fallback.dial_failed(1000);
+  CHECK(fallback.prefer_typed());
+  fallback.dial_started(true);
+  fallback.dial_failed(2000);
+  CHECK(fallback.prefer_typed());
+  fallback.dial_started(true);
+  fallback.dial_failed(3000);
+  CHECK(!fallback.prefer_typed(3000));
+  CHECK(!fallback.prefer_typed(62999));
+  CHECK(fallback.prefer_typed(63000));
+  fallback.dial_started(false);
+  fallback.dial_succeeded();
+  CHECK(!fallback.prefer_typed(3000));
+  fallback.new_url();
+  CHECK(fallback.prefer_typed());
 }
 
 // --- json_lite ------------------------------------------------------------------------------
@@ -2269,10 +2324,12 @@ static void test_assignment_epoch_moves_on_a_new_station_only() {
 
 int main(int argc, char** argv) {
   test_f390_timed_powerup_rejoins_at_whistle_not_short_lock_expiry();
+  test_f390_deadline_rejoin_for_each_station_kind();
   test_f389_every_dial_path_respects_link_stops();
   test_f390_rejoin_waits_for_a_known_deadline();
-  test_f391_lock_snapshot_never_grows_and_saves_once_a_minute();
+  test_f391_lock_snapshot_never_grows_and_saves_once_five_minutes();
   test_f397_typed_mc_url_storage_policy();
+  test_f397_typed_url_falls_back_after_failed_dials();
   if (argc > 1) {
     // Golden-dump mode for mcp/tests/test_utility_esp32.py: write the exact envelope strings this
     // header builds, so the MC-side test drives Session with what the firmware would actually send.

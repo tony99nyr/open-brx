@@ -608,6 +608,13 @@ static std::vector<Scenario> scenarios() {
     s.link.hill().restore_held(0);
     s.advance(500);
   }});
+  v.push_back({"hill_restored_locked", "hill", "Ordinary restart restores a bounded lock while MC is offline.", [](SimStick& s) {
+    s.wifi_set();
+    StationAssignment a = parse_station_config(json::parse(cfg("control", 255, 3)));
+    s.link.restore_station_config(a);
+    s.link.restore_lock(120, s.now);
+    s.advance(500);
+  }});
   // ---------------- operator: reset, lock, restart, battery ----------------
   v.push_back({"reset_confirm", "operator", "Pickup #4, B held once: the confirm prompt, 1 s in.", [](SimStick& s) {
     linked(s, true); s.frame("station_config", cfg("powerup", 255, 4, ROCKETS));

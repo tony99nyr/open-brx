@@ -251,7 +251,7 @@ Preferences) is `mc_link_glue.h`.
 
 **Discovery.** mDNS (`_openbrx._tcp`, an async query polled each loop so the station's play never waits;
 `MDNS.begin` once Wi-Fi is up, stopped when Wi-Fi drops; bench to confirm on a real Stick) is the intended path; the
-mandatory floor is the serial console, since a Stick has no camera to scan MC's QR (§5g.3). A typed MC address is saved beside the Wi-Fi credentials in Preferences and is retried after reboot. mDNS remains the discovery path when no typed address is saved. **Both paths are LAN-only**: mDNS never crosses a router, and a typed `MC <ws-url>`
+mandatory floor is the serial console, since a Stick has no camera to scan MC's QR (§5g.3). A typed MC address is saved beside the Wi-Fi credentials in Preferences and is retried after reboot. It takes precedence for three failed dials, then the Stick browses mDNS for a moved MC. It retries the typed address after 60 s if discovery has not connected. A new `MC <ws-url>` command gives the typed address priority again. **Both paths are LAN-only**: mDNS never crosses a router, and a typed `MC <ws-url>`
 means the MC's LAN address (`ws://<lan-ip>:<port>/ws`, from the console or the QR). Pointing it at
 A28's public backhaul URL will not work: that tunnel enforces a join secret
 (`envelope.py`'s `via`/`secret`, contracts.md §5), and this firmware never sends one -- it only ever
@@ -476,7 +476,7 @@ canvas and pushed once, never straight to the panel, so drawing never competes w
 is hardware-buffered) or the Wi-Fi/BLE loop.
 
 **Screen brightness.** `m5sticks3.ino`'s `loop()` (not the pure model) drops
-`M5.Display.setBrightness()` from 120 to 25 after 30 s with no real event (a button press or a state
+`M5.Display.setBrightness()` from 120 to 60 after 30 s with no real event (a button press or a state
 change such as a pickup or a capture), and wakes back to 120 on the next one.
 
 **Home.** The operator can always get back to the live gameplay screen without a restart

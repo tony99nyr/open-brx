@@ -63,6 +63,7 @@ constexpr uint16_t SCAN_WINDOW_UNITS = 50;
 Preferences mcPrefs;
 String wifiSsid, wifiPass;
 String savedMcUrl;
+TypedMcFallback typedMcFallback;
 uint32_t lockLastSavedMs = 0;
 uint32_t lockLastSavedSeconds = 0;
 uint8_t lockLastSavedGame = 255;
@@ -135,6 +136,7 @@ static void mcSaveTypedMcUrl(const String& url) {
   mcPrefs.putString("mc_url", clean.c_str());
   mcPrefs.end();
   savedMcUrl = clean.c_str();
+  typedMcFallback.new_url();
 }
 
 
@@ -439,23 +441,41 @@ uint32_t lastHeartbeatMs = 0;
 uint32_t lastScanMs = 0;
 bool wsWantOpen = false;     // true once we have picked an address and should be socket-connected
 bool linkOff = false;         // explicit LINK OFF; only WIFI, MC or LINK RECONNECT clears it
+bool lockClearPending = false;
+bool lockSavePending = false;
 
-static void mcClearSavedLock() {
-  mcPrefs.begin("brxmc", false);
-  mcPrefs.remove("lock_s");
-  mcPrefs.remove("lock_game");
+static bool lockSnapshotWritten(uint32_t seconds, uint8_t game) {
+  if (!mcPrefs.begin("brxmc", false)) return false;
+  bool ok = mcPrefs.putUInt("lock_s", seconds) == sizeof(uint32_t) &&
+            mcPrefs.putUChar("lock_game", game) == sizeof(uint8_t);
   mcPrefs.end();
+  if (!ok) Serial.println("ERR NVS lock snapshot write failed; retrying");
+  return ok;
+}
+
+static bool mcClearSavedLock() {
+  lockClearPending = true;
+  if (!mcPrefs.begin("brxmc", false)) return false;
+  bool ok = (!mcPrefs.isKey("lock_s") || mcPrefs.remove("lock_s")) &&
+            (!mcPrefs.isKey("lock_game") || mcPrefs.remove("lock_game"));
+  mcPrefs.end();
+  if (!ok) { Serial.println("ERR NVS lock clear failed; retrying"); return false; }
+  lockClearPending = false;
+  lockSavePending = false;
   lockLastSavedSeconds = 0;
   lockLastSavedGame = 255;
+  return true;
 }
 
 static void mcSaveLockIfDue(uint32_t now) {
   uint32_t remaining = link.lock().remaining_s(now);
-  if (!lock_save_due(remaining, lockLastSavedMs, now) || remaining == lockLastSavedSeconds) return;
-  mcPrefs.begin("brxmc", false);
-  mcPrefs.putUInt("lock_s", lock_snapshot_seconds(remaining));
-  mcPrefs.putUChar("lock_game", (uint8_t)link.assignment().game);
-  mcPrefs.end();
+  if ((!lockSavePending && !lock_save_due(remaining, lockLastSavedMs, now)) ||
+      (remaining == lockLastSavedSeconds && !lockSavePending)) return;
+  if (!lockSnapshotWritten(lock_snapshot_seconds(remaining), (uint8_t)link.assignment().game)) {
+    lockSavePending = true;
+    return;
+  }
+  lockSavePending = false;
   lockLastSavedMs = now;
   lockLastSavedSeconds = remaining;
   lockLastSavedGame = (uint8_t)link.assignment().game;
@@ -717,6 +737,7 @@ static void mcHandleFrame(const String& text) {
   if (kind == "welcome") {
     WelcomeMsg w = parse_welcome(body);
     link.apply_welcome(w);
+    if (w.ok) typedMcFallback.dial_succeeded();
     mcScreenWake = true;
     if (!w.node_key.empty()) mcSaveNodeKey(w.node_key.c_str());
     Serial.printf("WELCOME session=%s\n", w.session_id.c_str());
@@ -726,6 +747,7 @@ static void mcHandleFrame(const String& text) {
     if (w.ok && wasRestored && savedConfig.stale_for(w.session_id)) mcPauseClaimFeed();
     if (w.ok && apply_welcome_to_saved(link, savedConfig, w.session_id)) {
       mcEraseSavedConfig();
+      mcClearSavedLock();
       if (wasRestored && !link.restored()) Serial.println("STALE restored config (new MC session): UNASSIGNED");
     }
     if (w.ok && savedHill.note_welcome(w.session_id)) mcEraseSavedHill();  // another session's hold
@@ -740,15 +762,17 @@ static void mcHandleFrame(const String& text) {
       uint32_t rx = millis();
       link.apply_station_config(a, rx);  // A58: also REPLACES the match lock, counted from `rx`
       if (a.lock_s > 0) {
-        if (lockLastSavedSeconds != (uint32_t)a.lock_s || lockLastSavedGame != (uint8_t)a.game) {
-          mcPrefs.begin("brxmc", false);
-          mcPrefs.putUInt("lock_s", lock_snapshot_seconds((uint32_t)a.lock_s));
-          mcPrefs.putUChar("lock_game", (uint8_t)a.game);
-          mcPrefs.end();
+        bool clearWasPending = lockClearPending;
+        lockClearPending = false;
+        if (clearWasPending || lockSavePending || lockLastSavedSeconds != (uint32_t)a.lock_s ||
+            lockLastSavedGame != (uint8_t)a.game) {
+          lockSavePending = !lockSnapshotWritten(lock_snapshot_seconds((uint32_t)a.lock_s), (uint8_t)a.game);
         }
-        lockLastSavedMs = rx;
-        lockLastSavedSeconds = (uint32_t)a.lock_s;
-        lockLastSavedGame = (uint8_t)a.game;
+        if (!lockSavePending) {
+          lockLastSavedMs = rx;
+          lockLastSavedSeconds = (uint32_t)a.lock_s;
+          lockLastSavedGame = (uint8_t)a.game;
+        }
       } else mcClearSavedLock();
       if (preserveClaim) mcResumeClaimFeed(wasFeeding);
       mcSaveRangeIfChanged(link);            // A67: MC's value may have replaced an on-station edit
@@ -794,6 +818,7 @@ static void mcWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
       break;
     case WStype_DISCONNECTED: {
       Serial.println("WS disconnected");
+      typedMcFallback.dial_failed(millis());
       link.ws_closed();
       // Polish round 1: drive the library's own retry cadence from station_link.h's Backoff
       // (base 500 ms, x2, cap 10 s, +-20% jitter, tested in test_link.cpp) instead of leaving it at
@@ -892,6 +917,7 @@ static void mcLoop(uint32_t now) {
     mcScreenWake = true;
     Serial.println("UNLOCKED (match lock ran out)");
   }
+  if (lockClearPending) mcClearSavedLock();
   mcSaveLockIfDue(now);
   if (link.automatic_rejoin_due(now, linkOff)) {
     link.clear_dropped_for_match();
@@ -941,13 +967,14 @@ static void mcLoop(uint32_t now) {
   }
 
   // Address discovery: a typed `MC <url>` wins immediately; otherwise browse mDNS periodically.
-  if (link.state() == LinkState::LOOKING_FOR_MC && mc_dial_allowed(wifiUp, link.dropped_for_match(), linkOff)) {
-    if (!haveTypedMc && saved_mc_url_usable(savedMcUrl.c_str())) {
+  if (link.state() == LinkState::LOOKING_FOR_MC && mc_dial_allowed(wifiUp, link.radio_down_for_match(), linkOff)) {
+    if (!haveTypedMc && typedMcFallback.prefer_typed(now) && saved_mc_url_usable(savedMcUrl.c_str())) {
       pendingTypedMc = mcParseWsUrl(savedMcUrl);
       haveTypedMc = pendingTypedMc.valid;
     }
-    if (haveTypedMc) {
+    if (haveTypedMc && typedMcFallback.prefer_typed(now)) {
       link.mc_address_known();
+      typedMcFallback.dial_started(true);
       ws.begin(pendingTypedMc.host.c_str(), pendingTypedMc.port, pendingTypedMc.path.c_str());
       wsWantOpen = true;
       haveTypedMc = false;
@@ -955,13 +982,14 @@ static void mcLoop(uint32_t now) {
       WsAddress found;
       if (mcPollMdns(now, found)) {
         link.mc_address_known();
+        typedMcFallback.dial_started(false);
         ws.begin(found.host.c_str(), found.port, found.path.c_str());
         wsWantOpen = true;
       }
     }
   }
 
-  if (wsWantOpen && mc_dial_allowed(wifiUp, link.dropped_for_match(), linkOff)) ws.loop();
+  if (wsWantOpen && mc_dial_allowed(wifiUp, link.radio_down_for_match(), linkOff)) ws.loop();
 
   // A `held` reconnect after a drop needs nothing extra here: `ws_closed()` already put the link
   // back at LOOKING_FOR_MC, and the discovery block above re-dials as soon as an address is found
