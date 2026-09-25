@@ -61,14 +61,15 @@ describe('StationAlerts — the STATION #N attention lines', () => {
     m.unmount();
   });
 
-  it('lists every matching line, from more than one station, and ignores a non-STATION attention flag', async () => {
+  // M5 (visual QA 2026-09-24): every attention line of an assigned station now reaches this strip, BATTERY LOW included.
+  it('lists every attention line, from more than one station, a non-STATION flag included', async () => {
     const { m } = await alerts([
       station('a', { attention: ['STATION #1 RESTARTED', 'BATTERY LOW'] }),
       station('b', { attention: ['STATION #2 OFFLINE'] }),
     ]);
     expect(m.text()).toContain('STATION #1 RESTARTED');
     expect(m.text()).toContain('STATION #2 OFFLINE');
-    expect(m.text()).not.toContain('BATTERY LOW');
+    expect(m.text()).toContain('BATTERY LOW');
     m.unmount();
   });
 
@@ -100,9 +101,9 @@ describe('StationAlerts — UNLOCK STATIONS', () => {
     m.unmount();
   });
 
-  it('without showUnlock (LOBBY), an active lock alone shows nothing -- no header, no button', async () => {
+  it('without showUnlock, an active lock alone shows nothing -- no header, no button', async () => {
     const { m } = await alerts([station('a', { lock_until_ms: Date.now() + 60_000 })]);
-    expect(m.find('[data-testid="station-alerts"]').length, 'LOBBY shows no strip for a lock alone').toBe(0);
+    expect(m.find('[data-testid="station-alerts"]').length, 'no strip for a lock alone').toBe(0);
     m.unmount();
   });
 

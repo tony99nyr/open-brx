@@ -222,6 +222,21 @@ const SOURCE_COPY: Record<StationSourceId, { label: string; hint: string }> = {
 };
 export const STATION_SOURCES: { value: StationSourceId; label: string; hint: string }[] =
   STATION_SOURCE_IDS.map(value => ({ value, ...SOURCE_COPY[value] }));
+/** M10 (visual QA 2026-09-24): the lead of each source's hill, for a mode brief written for the stock
+ *  source (the server's KOTH brief describes a phone control point). */
+const SOURCE_LEAD: Record<StationSourceId, string> = {
+  phone: 'a Bluetooth control point on the field, a spare phone in the utility role',
+  grenade: 'a BRX Smart Grenade in hill mode, placed on the field',
+  ir_station: 'a BRX IR station on the field',
+};
+/** The mode's brief with its hill described by the PICKED source. A brief with no phone-point lead, or a
+ *  config with no source, comes back as it is. */
+export const sourceBrief = (brief: string, src: string | null | undefined): string => {
+  if (!src || src === 'phone' || !(src in SOURCE_LEAD)) return brief;   // an unknown source keeps the brief it came with
+  return brief.replace(/a Bluetooth control point on the field, a spare phone in the utility role/i, SOURCE_LEAD[src as StationSourceId])
+    .replace(/ Stand on the point to take it\./, src === 'grenade' ? ' Stand by the grenade to take it.' : ' Stand at the station to take it.');
+};
+
 /** the OBJECTIVE row shown on GAMES and in the designer rail, or null for a mode with no station source */
 export const objectiveLine = (cfg: GameConfig): string | null => {
   const src = cfg.station_source;

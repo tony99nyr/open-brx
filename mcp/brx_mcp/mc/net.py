@@ -767,7 +767,8 @@ class NetServer:
             if valid_challenge(challenge):
                 welcome["mc_proof"] = self.trust.proof(node_id, str(challenge), self.session_id)
             if body.get("mc_enroll") is True:
-                key = self.trust.enroll(node_id, _peer_host(ws))   # validated id, rate-limited per address
+                # validated id, rate-limited per address; the nonce lets a lost welcome be re-issued (F346 a)
+                key = self.trust.enroll(node_id, _peer_host(ws), body.get("mc_enroll_nonce"))
                 if key:
                     welcome["mc_trust"] = {"key": key}
         try:
@@ -813,6 +814,10 @@ class NetServer:
             r = self._call(cb, info)
             if isinstance(r, str):            # Session returns the player it bound (keeps the record truthful after a bind)
                 self._set_player(rec, r)
+        # F346 (b): an id that bound a player with a gun is a real phone, so its enrolment counts toward
+        # the trust cap and is never dropped from the pool of ids that never bound.
+        if rec.player_id and (rec.gun_name or rec.gun_tail) and rec.node_type != "utility":
+            self.trust.confirm(rec.node_id)
 
     def _dispatch(self, rec: NodeRecord, env: dict, t_recv: int) -> None:
         # Only reachable from a live socket's message loop, i.e. after `start()` has set `_loop`.

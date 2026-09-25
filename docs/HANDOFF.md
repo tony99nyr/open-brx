@@ -61,7 +61,7 @@ a pool above the armed `$PSET` or shows GUN POOLS WRONG. F342's respawn-only gam
 APKs 0.4.7-0.4.11 published, each on green CI. On main: A58 station lock, KOTH's phone-hill default (F338), the utility
 sweep, the console-port ws guard, the chaos kill-cue invariant and A60 auto-join.
 - **Next:** cut 0.4.12 once sitting A of `bench-2026-09-25.md` passes; bench F309, F311 and F312. Tony decides F346 (d): trust on first use, or one
-  JOIN tap on first contact. Lows: F337, F343, F346.
+  JOIN tap on first contact. Lows: F343, F346.
 ## Lane: S57, B21, StickS3 (brx4)
 Tony's MVP scope: Stick stations are Bluetooth-only (hill, pickup, respawn); Stick IR receive and the grenade hill
 stay post-MVP (F338). Revive counting and the REDEPLOY animation are also post-MVP: `REVIVE_FEEDBACK_ENABLED` is

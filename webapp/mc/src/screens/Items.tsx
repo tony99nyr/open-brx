@@ -9,27 +9,43 @@
 import { useEffect, useState } from 'react';
 import type { PowerupPreset, StationItem, StationKind, StationView } from '../api/types';
 import { STATION_KINDS } from '../api/types';
+import { PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM } from '../api/contract.gen';
 import { useStore } from '../store';
 import { CHAMFER, F, T, fmtAge, teamColor } from '../tokens';
 import { ItemStationRow, Swatch } from '../ui/Powerups';
 import { POWERUPS_RESTART, type PowerupsState, itemDetail, schedule, usePowerups } from '../ui/powerupData';
 import { GhostButton, Micro, SectionRule, Seg, SwitchConfirm, Tag, ValueBox } from '../ui';
+import { CONTROL_CONFLICT, friendlySetupLine, setupLines } from '../ui/SetupSteps';
 
 const KIND_LABEL: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACTION', bomb: 'BOMB SITE', control: 'CONTROL POINT' };
 /** the picker's labels: short enough for five in a card row */
 const KIND_SHORT: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACT', bomb: 'BOMB', control: 'CONTROL' };
 const TID_NAME: Record<number, string> = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN', 255: 'ANY' };
+/** H1: what threshold 0 resolves to, as the server resolves it (state.py `_wire_threshold`, F345) and the phone
+ *  applies it (app/src/beacon.js `phoneStationThreshold`): a phone respawn station -70, any other phone kind
+ *  -74, a StickS3 its own. `start` is where an edit begins: that number, or for a Stick its respawn default
+ *  (-57, the F345 note in state.py) and the phone value otherwise. */
+export function bubbleDefault(kind: StationKind, stick: boolean): { label: string; start: number } {
+  const phone = kind === 'respawn' ? PHONE_RESPAWN_THRESHOLD_DBM : PHONE_STATION_THRESHOLD_DBM;
+  return stick ? { label: "DEFAULT (the Stick's own)", start: kind === 'respawn' ? STICK_RESPAWN_DBM : phone }
+    : { label: `DEFAULT (${phone}, phone)`, start: phone };
+}
+const STICK_RESPAWN_DBM = -57;
 
 export function Items() {
   const { state } = useStore();
   const stations = state?.stations ?? [];
   const pu = usePowerups();   // A56
   if (!state || !stations.length) return null;
-  const nArmed = stations.filter(s => s.assigned && s.armed && !s.attention.length).length;
+  // M2 (visual QA 2026-09-24): ARMED is what each card's status says (MC-ARMED), counted apart from the
+  // stations with an attention line. A BATTERY LOW used to drop an armed station out of the count, so
+  // "1/3 ARMED" sat above three cards that all read MC-ARMED.
+  const nArmed = stations.filter(s => s.assigned && s.armed && !s.arm_pending).length;
+  const nAttention = stations.filter(s => s.assigned && s.attention.length).length;
   return (
     <div style={{ marginTop: 20 }} data-testid="items-panel">
       <SectionRule label={`ITEMS // ${stations.length} STATION${stations.length === 1 ? '' : 'S'}`}
-        hint={<>{nArmed}/{stations.length} ARMED · GAME {state.game_no ?? '—'} · ASSIGN, THEN PLACE — A STATION NEEDS NO WI-FI ONCE ARMED</>} />
+        hint={<>{nArmed}/{stations.length} ARMED{nAttention > 0 && <span data-items-attention style={{ color: T.warn }}> · {nAttention} NEED ATTENTION</span>} · GAME {state.game_no ?? '—'} · ASSIGN, THEN PLACE — A STATION NEEDS NO WI-FI ONCE ARMED</>} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 12 }}>
         {/* keyed on the node and the assignment ONLY. The phone's `report` (kind/team/id/threshold/…) is
             deliberately NOT in the key: it starts empty and fills in on the first heartbeat (~2s after
@@ -66,7 +82,11 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
   const [id, setId] = useState<number>(() => a?.id ?? ((s.report.station_id ?? 0) >= 1 ? s.report.station_id! : freeId()));
   const [applyErr, setApplyErr] = useState<string | null>(null);   // a refused write, on THIS card (the header may be off-screen)
   useEffect(() => { setApplyErr(null); }, [s.armed?.at]);          // armed since (here or by a server re-arm): the refusal is stale
-  const [threshold, setThreshold] = useState<number>(a?.threshold ?? s.report.threshold ?? -74);
+  // H1 (visual QA 2026-09-24): 0 is "the station's own default" (F345: MC sends a phone respawn station -70, a
+  // StickS3 keeps its own). The draft starts there, NOT from the phone's report: its advertised bubble IS
+  // that default, and copying it here turned every ASSIGN + ARM into an explicit override. A number is
+  // sent only once the host opens the BUBBLE and edits it.
+  const [threshold, setThreshold] = useState<number>(a?.threshold ?? 0);
   const [busy, setBusy] = useState(false);
   const [released, setReleased] = useState<boolean | null>(null);   // A41: last RELEASE result, this card only
   // HIGH (review, 2026-09-13): RELEASE used to fire on a single tap, styled identically to CLEAR right
@@ -97,7 +117,11 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
   // ARM PENDING / MC-ARMED wording -- that is a real, expected field state, not the ghost this fix is
   // about -- and the LINK row below still says OUT OF WI-FI either way.
   const status = !a ? (s.online ? 'NOT ASSIGNED' : 'OFFLINE') : s.arm_pending ? 'ARM PENDING' : s.armed ? `MC-ARMED · GAME ${s.armed.game}` : 'ASSIGNED';
-  const color = !a ? T.micro : s.attention.length || s.arm_pending ? T.warn : T.ok;
+  // H2 (visual QA 2026-09-24): a CONTROL station under a grenade or IR-station objective is ignored by every
+  // phone. The server says so in `config_warnings`; the card carries the same line and is not green.
+  const setupConflict = a?.kind === 'control'
+    ? setupLines(state?.config_warnings).find(w => CONTROL_CONFLICT.test(w)) ?? null : null;
+  const color = !a ? T.micro : s.attention.length || s.arm_pending || setupConflict ? T.warn : T.ok;
   // A58: a live tamper lock, while it is still in the future -- `lock_until_ms` is MC's clock, so the
   // comparison runs through `serverNow()`, not the browser's own clock (`ItemState`'s countdown above does the same).
   const stick = deviceOf(s) === 'STICKS3';
@@ -126,13 +150,15 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
   const teamOptions = [...teams.map(t => ({ value: String(t.tid), label: t.name.toUpperCase().replace(/ TEAM$/, '') })), { value: '255', label: 'ANY' }];
   return (
     <div data-station-card={s.node_id} style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${color}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 11, clipPath: CHAMFER.tr12 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-        <span style={{ font: F.osw(700, 18), letterSpacing: '.08em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      {/* M3 (visual QA 2026-09-24): the name owns its row. With LOCKED and the status beside it, the name was
+          cut to "RESP…" and the station id was lost, so the tags wrap on a row of their own. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <span data-station-title={s.node_id} style={{ font: F.osw(700, 18), letterSpacing: '.08em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {a ? `${KIND_SHORT[a.kind]} ${a.id}` : stick ? 'STICKS3' : 'UTILITY PHONE'}
         </span>
-        <span style={{ display: 'flex', gap: 6, flex: 'none' }}>
-          {tamperLocked && <Tag data-testid="station-locked" color={T.line2} ink={T.dim}>LOCKED</Tag>}
+        <span data-station-tags={s.node_id} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <Tag color={color} ink={a ? T.accInk : T.ink}>{status}</Tag>
+          {tamperLocked && <Tag data-testid="station-locked" color={T.line2} ink={T.dim}>LOCKED</Tag>}
         </span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '82px 1fr', gap: '6px 10px', alignItems: 'center' }}>
@@ -159,6 +185,15 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
         {a?.item && (<><Micro>ITEM</Micro><ItemStationRow s={s} item={a.item} canReset={canReset} /></>)}
         {rep.battery != null && (<><Micro>BATTERY</Micro><Val color={rep.battery < 30 ? T.bad : T.dim}>{rep.battery}%</Val></>)}
       </div>
+      {/* a standing fact, so a status region that is always mounted (it announces when the line arrives) */}
+      <div role="status" data-station-setup-region={s.node_id} style={{ display: 'contents' }}>
+        {setupConflict && (
+          <div data-testid="station-setup-conflict" style={{ display: 'flex', gap: 8, padding: '7px 10px', background: 'rgba(255,176,32,.08)', borderLeft: `2px solid ${T.warn}` }}>
+            <span style={{ font: F.chk(700, 11), color: T.warn }}>▲</span>
+            <span style={{ font: F.chk(600, 12), letterSpacing: '.02em', lineHeight: 1.45, color: T.warn }}>{friendlySetupLine(setupConflict)}</span>
+          </div>
+        )}
+      </div>
       {s.attention.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }} data-testid="station-attention">
           {s.attention.map(t => (
@@ -180,7 +215,15 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
           {!control && <Seg label={`team for ${s.node_id}`} value={String(team)} size={11} pad="5px 8px" wrap options={teamOptions} onChange={v => setTeam(Number(v))} />}
           {control && <span style={{ font: F.chk(600, 11), letterSpacing: '.06em', color: T.micro }}>STARTS NEUTRAL — TAKEN BY PRESENCE</span>}
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Micro>ID</Micro><ValueBox value={id} min={1} max={65535} label={`station id for ${s.node_id}`} onChange={setId} /></span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Micro>BUBBLE</Micro><ValueBox value={threshold} unit="dBm" min={-100} max={-30} label={`threshold for ${s.node_id}`} onChange={setThreshold} /></span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}><Micro>BUBBLE</Micro>
+            {threshold === 0
+              ? <GhostButton data-bubble-edit={s.node_id} size={11} onClick={() => setThreshold(bubbleDefault(kind, stick).start)}
+                  title="The station uses its own presence bubble. Tap to set a number instead.">{bubbleDefault(kind, stick).label}</GhostButton>
+              : <>
+                  <ValueBox value={threshold} unit="dBm" min={-100} max={-30} label={`threshold for ${s.node_id}`} onChange={setThreshold} />
+                  <GhostButton data-bubble-default={s.node_id} size={11} onClick={() => setThreshold(0)} title="Go back to the station's own bubble">DEFAULT</GhostButton>
+                </>}
+          </span>
         </div>
         {/* the confirm sits ABOVE the row it guards, same placement `Games.tsx` uses for `SwitchConfirm`
             under a card it's about to switch away from -- read there before it's acted on, not buried

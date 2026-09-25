@@ -9,6 +9,7 @@ import { UNPLAYABLE_IDS, takesAlt } from './gameSummary';
 import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, ScrollX, SectionRule, Seg, SegBar, StripedSlot, Tag, ValueBox, onKey } from '../ui';
 import { GameEditPanel } from '../ui/GameEditPanel';
 import { UnrosteredPhonesBanner } from '../ui/UnrosteredPhones';
+import { StationAlerts } from '../ui/StationAlerts';
 import { InPlayBanner, matchInPlay } from './Lobby';
 
 type Slot = 'primary' | 'secondary' | 'perk';   // A14: the perk is its own slot
@@ -458,6 +459,7 @@ export function Kit() {
       )}
       {/* F-3/A39: a connected phone with nobody in the roster claiming it — last night's "4 guns
           connected, only 2 in lobby" confusion, made visible where the operator is actually looking. */}
+      <StationAlerts unlockOnly />
       <UnrosteredPhonesBanner style={{ marginBottom: 12 }} />
       {/* B3: mode/night/health/weapon-pool, editable right here — no stepper, no recall needed pre-arm */}
       {/* Kept in ARMED/LIVE: the panel locks itself there (one disabled <fieldset>, and its open body
