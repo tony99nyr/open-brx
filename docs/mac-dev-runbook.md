@@ -175,7 +175,7 @@ txt = ''.join(json.loads(b)['chunk'] for b, in c.execute(
 | Every open MVP issue reported from a live session | [`FOLLOWUPS.md`](FOLLOWUPS.md) |
 | Shipped-but-unconfirmed fixes, with what would prove/disprove each | [`FOLLOWUPS.md`](FOLLOWUPS.md) MVP BENCH, and [`post-mvp.md`](post-mvp.md) → *System proofs* |
 | The lab notebook — append after every session | [`experiment-log.md`](experiment-log.md) |
-| Open work, all of it (Mac-only capture jobs: `capture-runbook.md`) | [`FOLLOWUPS.md`](FOLLOWUPS.md) |
+| Open work (Mac-only capture jobs: `capture-runbook.md`) | [`FOLLOWUPS.md`](FOLLOWUPS.md) (MVP), [`post-mvp.md`](post-mvp.md) (the rest) |
 
 **Record a refuted theory as loudly as a confirmed one.** In one session `outdoorMode`, daylight, gun
 uptime and a whole-session "the domes never fired" were each proposed and then killed by the

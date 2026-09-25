@@ -103,7 +103,7 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
   its costs, the next wave and what gates each one, and every rejected idea with its reason.
 - **[utility-roadmap.md](utility-roadmap.md)** — the objective-station work in order, the grenade-as-control-point
   evidence, and two designs (roaming hills, Territories) that are specified but not built. What it costs an
-  outsider to add a mode is `post-mvp.md` §1 (E2-E7).
+  outsider to add a mode is `post-mvp.md` (E2, E3, E4, E6 and E7 in §1, E5 in §4).
 - **[led-language.md](led-language.md)** — the LED language (gun body, headset RGB, headset flash): the design of
   record for contracts A16, amended as the bench moves it; the open build items are S10.
 - **[announcer.md](announcer.md)**: the phone's one announcer queue: every voice line and HUD banner in priority

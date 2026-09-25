@@ -116,7 +116,7 @@ BLE, the IR word) ✅ → M4 Pilot game (per-player node + Mission Control + liv
 software** (`cd mcp && python3 run_tests.py`, incl. the full-stack e2e suite in `test_mc_e2e.py`) and **run on hardware**:
 two whole two-phone matches outdoors (2026-08-30, 2026-09-01); a dispersed start, more than two phones and the
 20-minute soak are still owed (`docs/field-runbook-mc.md`) → M5 Arena (objectives, items) → M6 Companion + scale. Spec of record:
-**`docs/spec/`**; decisions: `docs/adr/`; open work: `docs/FOLLOWUPS.md`.
+**`docs/spec/`**; decisions: `docs/adr/`; open MVP work: `docs/FOLLOWUPS.md`; the roadmap: `docs/post-mvp.md`.
 
 ## Contributing
 
