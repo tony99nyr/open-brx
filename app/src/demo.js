@@ -767,7 +767,7 @@ export function startDemo({ engine, log }) {
       'live-pu-empty':       [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [4700, 'puFire'], [4800, 'puFire']],   // both rockets fired: the AR back on the trigger
       'down-pu-held':        [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4)], [3900, 'die']],           // a death with an item held: it is gone
       'live-pu-taken-by':    [[0, () => ev.powerups()], ...live, [2300, () => ev.puTake(4, 19)]],                      // VIPER won it: TAKEN BY VIPER
-      'live-pu-no-answer':   [[0, () => ev.powerups()], ...live, [2300, () => ev.puAt(4)]],                             // ready, and the station never answers
+      'live-pu-no-answer':   [[0, () => ev.powerups()], ...live, [2300, () => ev.puAt(4)], [8300, () => { ev.puAt(4); engine.feedFrame('$BUT,0,0,*'); }], [14300, () => { ev.puAt(4); engine.feedFrame('$BUT,0,0,*'); }]],   // ready, and the station never answers: F380's 15 s needs the advert re-heard (PU_ADVERT_STALE_MS) and the gun heard (F272 liveness lock)
       'live-pu-taken':       [[0, () => ev.powerups()], ...live, [2300, () => ev.puAt(4, { state: 0, value: 110, median: -60 })]],   // taken: the countdown to the next spawn
       // polish r1 (UX): a hit while standing at a station (the QA-04 weapon line must not cover the hint), the widest
       // night row (Shields preset, 3-digit pools, a 175 overshield) and an Easy Reload player at a weapon station

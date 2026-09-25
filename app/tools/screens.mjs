@@ -5448,8 +5448,8 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(r.hint.actPx >= 14 && r.hint.labPx >= 11, `type floors: ${r.hint.actPx}/${r.hint.labPx}`);
     must(inside(r.hint.box, r.frame) && vclear(r.hint.box, r) && apart(r.hint.box, r.ammo), `a long line wraps, it never reaches the vitals: ${JSON.stringify(r.hint.box)} vitals ${JSON.stringify(r.vitals)}`);
   });
-  await step(`${tag}: ready for 3 s and the station never answers: STATION NOT ANSWERING`, async () => {
-    const pg = await open(view, 'live-pu-no-answer', N, 5600); const r = await puWait(pg, r => r.hint && r.hint.kind === 'no_answer', 2500); await shot(pg, 'no-answer'); await puClose(pg, night);
+  await step(`${tag}: ready for 15 s (F380) and the station never answers: STATION NOT ANSWERING`, async () => {
+    const pg = await open(view, 'live-pu-no-answer', N, 17600); const r = await puWait(pg, r => r.hint && r.hint.kind === 'no_answer', 2500); await shot(pg, 'no-answer'); await puClose(pg, night);
     must(r.hint && r.hint.act === 'NOT ANSWERING' && r.hint.lab === 'ROCKETS STATION' && r.hint.actPx >= 14, `the hint: ${JSON.stringify(r.hint)}`);
     must(inside(r.hint.box, r.frame) && vclear(r.hint.box, r) && apart(r.hint.box, r.ammo), `the widest hint must still fit: ${JSON.stringify(r.hint.box)}`);
   });
