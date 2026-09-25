@@ -493,7 +493,7 @@ nine of these eleven were root-caused without touching a gun.
 - **F32 🟢** (was G7) the perks menu on the phone is too small and hard to find. `build` (check `hud-review-2026-09-03.md` first).
 - **Q13 🟡 decision** friendly fire is invisible on the wire (a team-blocked shot emits no `$HIR`). Either run FF on and
   score teamkills as policy, or accept no teamkill feedback. Decide before any mode advertises it. **→ 2026-09-18:** with the F206 fix in, friendly fire off works in team games;
-  a blocked shot still emits no `$HIR`, so the choice stands. `decision`.
+  a blocked shot still emits no `$HIR`, so the choice stands. `decision`. **→ Tony 2026-09-25, decided:** team modes ship with friendly fire OFF, and same-team damage is never enabled ("you could shoot yourself and be annoying team killing. do not enable same team damage"). No teamkill feedback is needed for MVP. Check that compile keeps friendly fire off in every team mode (`$GSET` and `$TID`), and that nothing lets a player damage their own team or themselves. `build` (verify).
 - **Q15 🔴 → THE RANGE LEVER IS REAL, BUT IT IS `$WEAP` t2 `gunRangeOutdoor`, NOT t41 (garden, 2026-09-17).**
   ⚠️ **Corrects the first write-up of this same session**, which recorded the finding against t41: the two commits on
   2026-09-17 16:01/16:04 describe our t41 A/B setup but report the t2 result. What was actually measured, mag-counted:
