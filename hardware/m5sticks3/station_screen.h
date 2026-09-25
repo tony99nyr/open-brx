@@ -28,7 +28,7 @@ namespace brx {
 // get back to the station's home (live gameplay) screen without a restart, without either gesture
 // changing any station state -- only which screen is drawn.
 constexpr uint32_t HOME_IDLE_TIMEOUT_MS = 20000;  // (a) 20 s with no button press returns home
-constexpr uint32_t HOME_LONG_PRESS_MS = 1000;     // (b) a 1 s hold of A goes home from anywhere
+constexpr uint32_t HOME_LONG_PRESS_MS = A_HOME_HOLD_MS;  // (b) a 1 s hold of A goes home (on release, F365)
 
 class HomeNav {
  public:
@@ -74,6 +74,12 @@ class HomeNav {
 // fires until it is.
 constexpr int LOW_BATTERY_PCT = 12;
 
+// F365: the RANGE editor must close (never edit invisibly) when no station is assigned any more (a
+// release_utility, a re-assignment to none) or when the low-battery screen takes over.
+inline bool range_must_close(bool assignment_present, int battery_pct) {
+  return !assignment_present || (battery_pct >= 0 && battery_pct <= LOW_BATTERY_PCT);
+}
+
 // The hint bar's default copy, ported verbatim from render.py's DEFAULT_HINT.
 constexpr const char* DEFAULT_HINT = "A: STATS   HOLD B: RESET";
 constexpr const char* RESET_CONFIRM_HINT = "A: CANCEL";  // render.py's reset_confirm scene override
@@ -88,6 +94,10 @@ inline std::string bench_hint(const std::string& mode_label) {
   return (mode_label.empty() ? std::string("BENCH") : mode_label) + "   A: DIAG   HOLD B: MODE";
 }
 constexpr const char* FORCE_RESTART_HINT = "RELEASE TO CANCEL";
+// F365: the RANGE screen's hints (A click / B click / A hold) per field, and the STATS page's hold cue.
+constexpr const char* RANGE_RADIUS_HINT = "A CLOSER  B FARTHER  HOLD A: STRENGTH";
+constexpr const char* RANGE_STRENGTH_HINT = "A WEAKER  B STRONGER  HOLD A: RADIUS";
+constexpr const char* RANGE_CUE_HINT = "HOLD FOR RANGE";
 
 // m:ss, minutes unpadded, seconds zero-padded to 2 -- render.py's own scene literals use this shape
 // ("1:40") for a countdown; render.py never defines the formatter itself (its state dicts hardcode
@@ -131,6 +141,7 @@ enum class ScreenKind : uint8_t {
   SCR_RESET_NEEDS_MC,
   SCR_RESET_LOCKED,   // A58: a B-hold RESET refused by the match lock (the reset-outcome transient)
   SCR_FORCE_RESTART,  // A58: A+B held past FORCE_RESTART_SHOW_MS, "RESTART IN n"
+  SCR_RANGE,          // F365: the on-station range editor (RADIUS and STRENGTH), from STATS by a 5 s A hold
 };
 
 // The top status strip's own flags (render.py's draw_status_strip). `station_id` -1 = not shown.
@@ -207,6 +218,15 @@ struct ScreenSpec {
   // A58: SCR_RESET_LOCKED's "UNLOCKS IN m:ss" and SCR_FORCE_RESTART's "RESTART IN n"
   std::string lock_remaining;
   uint32_t restart_in_s = 0;
+
+  // F365: SCR_RANGE. The radius (dBm, its rough distance, where it came from) and the strength (level),
+  // and which one A/B edit. On SCR_STATS, range_cue_pct >= 0 draws the "HOLD FOR RANGE" bar.
+  int range_threshold_dbm = STICK_DEFAULT_THRESHOLD_DBM;
+  bool range_threshold_edited = false;
+  int range_tx_level = TX_POWER_DEFAULT;
+  bool range_tx_edited = false;
+  bool range_edit_strength = false;  // false = RADIUS is the active field
+  int range_cue_pct = -1;
 
   // Shared chrome
   std::string hint = DEFAULT_HINT;
@@ -300,6 +320,15 @@ struct StickState {
   // home navigation (HomeNav, above), polled once per paint by the .ino
   bool at_home = true;
 
+  // F365: the RANGE editor (station_ui.h RangeEditor) and the link's applied range values
+  bool range_active = false;
+  bool range_edit_strength = false;
+  int range_threshold_dbm = STICK_DEFAULT_THRESHOLD_DBM;
+  bool range_threshold_edited = false;
+  int range_tx_level = TX_POWER_DEFAULT;
+  bool range_tx_edited = false;
+  int range_cue_pct = -1;  // the A hold's "HOLD FOR RANGE" progress on STATS, -1 = none
+
   // status strip
   bool ble_on = true;
   bool mc_connected = false;
@@ -358,6 +387,19 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
     return spec;
   }
 
+  // F365: the RANGE editor (entered from STATS; a station must be assigned). It edits during play and
+  // under the A58 lock, so the padlock and the lock stay as they are.
+  if (s.range_active && s.assignment_present) {
+    spec.kind = ScreenKind::SCR_RANGE;
+    spec.range_threshold_dbm = s.range_threshold_dbm;
+    spec.range_threshold_edited = s.range_threshold_edited;
+    spec.range_tx_level = s.range_tx_level;
+    spec.range_tx_edited = s.range_tx_edited;
+    spec.range_edit_strength = s.range_edit_strength;
+    spec.hint = s.range_edit_strength ? RANGE_STRENGTH_HINT : RANGE_RADIUS_HINT;
+    return spec;
+  }
+
   if (!s.at_home) {
     spec.kind = (s.link_state == LinkState::NOT_CONFIGURED) ? ScreenKind::SCR_DIAGNOSTICS : ScreenKind::SCR_STATS;
     spec.ir_heard = s.ir_heard;
@@ -373,6 +415,10 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
     spec.stats_mc_link = link_state_label(s.link_state);
     spec.stats_ir_words = std::to_string(s.ir_heard) + "/" + std::to_string(s.ir_sent);
     spec.stats_battery = s.battery_pct >= 0 ? std::to_string(s.battery_pct) + "%" : std::string("-");
+    if (spec.kind == ScreenKind::SCR_STATS && s.range_cue_pct >= 0) {
+      spec.range_cue_pct = s.range_cue_pct > 100 ? 100 : s.range_cue_pct;
+      spec.hint = RANGE_CUE_HINT;
+    }
     return spec;
   }
 
