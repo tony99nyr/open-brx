@@ -61,8 +61,8 @@ a pool above the armed `$PSET` or shows GUN POOLS WRONG. F342's respawn-only gam
 APKs 0.4.7-0.4.11 published, each on green CI. On main since 0.4.11: A60 auto-join (with first-contact join, F346 d),
 A61-A63 the medals and awards, A64/A65 no kill cue after any whistle and team-only credit, A66 MC-assigned station
 ids, A67 the MC half of the station range sync, and MC visual QA round 2. Each was polish-looped and test:all --ui green.
-- **Next:** cut 0.4.12 once sitting A of `bench-2026-09-25.md` passes; bench F365 (all three halves built), F309, F311, F312.
-- **Tony decides:** F361 (the KILLJOY gun flash); the MAX_TAG_LEN number (brx5 asks, brx3 builds the MC refusal).
+- **Next:** cut 0.4.12 once Tony's bench passes A4 and F347; bench F365 (all three halves built), F309, F311, F312.
+- **Tony decides:** the MAX_TAG_LEN number (brx5 asks, brx3 builds the MC refusal).
 - **Build:** F355 (VQA2 Lows), F360 (F356 edge cases).
 ## Lane: S57, B21, StickS3, F365 (brx4)
 Tony's MVP scope: Stick stations are Bluetooth-only (hill, pickup, respawn); Stick IR receive and the grenade hill
