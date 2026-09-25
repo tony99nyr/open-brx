@@ -231,7 +231,88 @@ static void test_a_button_held_at_boot_is_ignored_until_released_once() {
   CHECK(!c.a_masked());
 }
 
+// ---- F332 polish (H1, M1): the PMIC write never touches bit7, and only a read-back confirms ---------
+static void test_pm1_write_value_sets_bit0_and_never_bit7() {
+  uint8_t out = 0;
+  CHECK(pm1_bit0_write_value(0x2A, true, out));  // BTN_CFG_1's documented default
+  CHECK_EQ((int)out, 0x2B);
+  CHECK(pm1_bit0_write_value(0x2B, false, out));
+  CHECK_EQ((int)out, 0x2A);
+  CHECK(pm1_bit0_write_value(0x00, true, out));
+  CHECK_EQ((int)out, 0x01);
+  out = 0x55;
+  CHECK(!pm1_bit0_write_value(0x80, true, out));  // bit7 read as set: refuse, write nothing
+  CHECK(!pm1_bit0_write_value(0xAB, false, out));
+  CHECK_EQ((int)out, 0x55);  // untouched
+  for (int v = 0; v < 0x80; v++) {  // no input can ever produce a write with bit7 set
+    CHECK(pm1_bit0_write_value((uint8_t)v, true, out));
+    CHECK((out & 0x80) == 0);
+  }
+}
+
+static void test_pm1_readback_must_match_both_registers() {
+  CHECK(pm1_bit0s_match(0x2B, 0x01, true));
+  CHECK(!pm1_bit0s_match(0x2B, 0x00, true));  // the second write failed
+  CHECK(!pm1_bit0s_match(0x2A, 0x01, true));  // the first write failed
+  CHECK(pm1_bit0s_match(0x2A, 0x00, false));
+}
+
+static void test_side_button_lock_sync_retries_until_confirmed() {
+  SideButtonLockSync s;
+  CHECK(s.due(false, 0));  // boot: always one attempt (the boot clear)
+  s.attempted(false, 0);   // the I2C failed
+  CHECK(!s.confirmed());
+  CHECK(!s.due(false, 500));  // not before PMIC_RETRY_MS
+  CHECK(s.due(false, 1000));  // retried every second until the read-back matches
+  s.attempted(true, 1000);
+  CHECK(s.confirmed());
+  CHECK(!s.due(false, 5000));  // confirmed: nothing more to do
+  CHECK(s.due(true, 5001));    // the lock starts: at once, whatever the retry clock says
+  CHECK(!s.confirmed());
+  s.attempted(false, 5001);
+  CHECK(!s.due(true, 5500));
+  CHECK(s.due(true, 6001));
+  s.attempted(true, 6001);
+  CHECK(s.confirmed());
+  CHECK(s.want());
+}
+
+static void test_actions_flush_only_when_welcomed_and_synced() {
+  CHECK(action_flush_allowed(true, LinkState::WELCOMED, true));
+  CHECK(action_flush_allowed(true, LinkState::ASSIGNED, true));
+  CHECK(!action_flush_allowed(true, LinkState::HELLO_SENT, true));  // MC has not accepted us yet
+  CHECK(!action_flush_allowed(true, LinkState::ASSIGNED, false));   // no MC time for `t` yet
+  CHECK(!action_flush_allowed(false, LinkState::ASSIGNED, true));   // no socket
+}
+
+static void test_side_button_lock_sync_backs_off_after_ten_failures() {
+  SideButtonLockSync s;
+  uint32_t t = 0;
+  CHECK(s.due(true, t));
+  for (uint32_t i = 0; i < PMIC_BACKOFF_AFTER; i++) {  // ten failures, a second apart
+    s.attempted(false, t);
+    t += PMIC_RETRY_MS;
+    if (i + 1 < PMIC_BACKOFF_AFTER) CHECK(s.due(true, t));
+  }
+  CHECK(s.backing_off());
+  CHECK_EQ(s.failures(), PMIC_BACKOFF_AFTER);
+  uint32_t last = t - PMIC_RETRY_MS;
+  CHECK(!s.due(true, last + PMIC_RETRY_MS));        // no longer every second
+  CHECK(!s.due(true, last + PMIC_BACKOFF_MS - 1));
+  CHECK(s.due(true, last + PMIC_BACKOFF_MS));       // every 30 s instead
+  s.attempted(true, last + PMIC_BACKOFF_MS);        // it finally took
+  CHECK(!s.backing_off());
+  CHECK(s.confirmed());
+  CHECK(s.due(false, last + PMIC_BACKOFF_MS + 1));  // a new wanted state: at once, fresh count
+  CHECK_EQ(s.failures(), 0u);
+}
+
 int main() {
+  test_side_button_lock_sync_backs_off_after_ten_failures();
+  test_actions_flush_only_when_welcomed_and_synced();
+  test_pm1_write_value_sets_bit0_and_never_bit7();
+  test_pm1_readback_must_match_both_registers();
+  test_side_button_lock_sync_retries_until_confirmed();
   test_station_action_body_is_pinned();
   test_a_button_held_at_boot_is_ignored_until_released_once();
   test_actions_on_by_default_and_off_builds_nothing();

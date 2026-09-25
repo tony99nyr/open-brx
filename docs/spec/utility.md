@@ -86,7 +86,7 @@ the advertised threshold overriding the default, neutral admitting every team, o
 **Respawn range: 3 m at most (Tony, 2026-09-24; F345).** Measured at 3 m on the player phone: a phone station reads
 -63 to -68 dBm, a StickS3 -53 to -58 (the Stick transmits hotter). So the default is **per platform**. Tony then walked both stations at 3-5 m and set the defaults (2026-09-24, "the stick actually works
 better"): a phone station **-70 dBm**, a StickS3 **-57 dBm** (`beacon.js RESPAWN_RSSI_DBM`; the Stick's copy is
-`hardware/m5sticks3/station_link.h STICK_DEFAULT_THRESHOLD_DBM`, since `8d5e6d13`). The other kinds on a phone station keep the
+`hardware/m5sticks3/station_link.h STICK_DEFAULT_THRESHOLD_DBM`, since `8d5e6d13`: a Stick resolves 0 to -57 and advertises -57). The other kinds on a phone station keep the
 2026-09-04 bench value, -74 dBm at high TX (about 10 ft). MC's `StationAssignment.threshold` still overrides; **0**
 (or absent) means the station's own default, which it resolves and advertises in byte 14. A phone app older than
 0.4.12 clamped 0 to -30, so MC sends such a phone the explicit value (`state.py _wire_threshold`). A player phone falls
@@ -502,7 +502,9 @@ they are built.
 
 ## 5g. A NON-PHONE utility node: the M5StickS3 armed over Wi-Fi (H8)
 
-**Status: built 2026-09-24, DESK-VERIFIED ONLY (never flashed).** `hardware/m5sticks3/station_link.h`
+**Status: built 2026-09-24, flashed and bench-run the same day** (the Stick runbook's pickup, hill and respawn
+blocks; `docs/experiment-log/`). What the bench has not yet exercised is marked "bench to confirm" where it is
+described. `hardware/m5sticks3/station_link.h`
 (+ `json_lite.h`, `station_ui.h`) implement §5g.2's minimum client: hello/welcome/station_config,
 the two association modes below, and the powerup schedule and CLAIM award (A56, `docs/spec/powerups.md`),
 host-tested in `hardware/m5sticks3/test/`. An MC-side test (`mcp/tests/test_utility_esp32.py`)

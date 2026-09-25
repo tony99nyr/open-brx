@@ -126,7 +126,9 @@ struct AdvertPolicy {
     if (!have_last) return "first";
     if (last.kind != v.kind || last.id != v.id || last.game != v.game || last.threshold != v.threshold)
       return "identity";
-    if (last.team != v.team || last.state != v.state) return "state";
+    // taker: a pickup's holder changes the advert even when state and value do not (a new claim of the
+    // same spawn after an MC correction), so it republishes like a state change.
+    if (last.team != v.team || last.state != v.state || last.taker != v.taker) return "state";
     if (last.value != v.value && (now - last_at) >= min_interval_ms) return "progress";
     return nullptr;
   }

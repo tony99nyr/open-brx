@@ -239,6 +239,12 @@ static void test_withdrawn_advert_republishes_as_first_with_seq_intact() {
     CHECK(q.due(b, 1) != nullptr);
     AdvertView c = a; c.id = 2;
     CHECK(q.due(c, 1) != nullptr);
+    AdvertView d = a; d.kind = 3;
+    CHECK_EQ(due_s(q.due(d, 1)), std::string("identity"));
+    AdvertView e = a; e.threshold = -60;
+    CHECK_EQ(due_s(q.due(e, 1)), std::string("identity"));
+    AdvertView f = a; f.taker = 7;  // a new pickup holder republishes at once too
+    CHECK_EQ(due_s(q.due(f, 1)), std::string("state"));
     CHECK(q.due(a, 1) == nullptr);
   }
 }

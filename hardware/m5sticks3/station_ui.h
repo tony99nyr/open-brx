@@ -255,7 +255,8 @@ class BootHeldButtons {
 // ---- A58: which serial commands still run while the match lock is on ------------------------------
 // Default DENY: anything not named here answers "ERR locked" while locked, so a command added later
 // is locked until someone decides otherwise. Allowed: the read-only ones (PING, STATUS), the RAW dump
-// toggle (it changes only what this Stick prints), and AUTO OFF (it only STOPS a transmit). Refused:
+// toggle (it changes only what this Stick prints), PLAYERS / PLAYERS STREAM / PMIC (read-only), and
+// AUTO OFF or bare AUTO (both only STOP a transmit). Refused:
 // everything that changes station state or puts IR on the field -- RESET, MODE, ID, GAME, TXPIN, the
 // H8 link commands (WIFI, MC, LINK ..., ACTIONS), SELFTEST (it transmits), TX, TXN and AUTO <bits>.
 // The single-key r/s/c commands are handled before any line is parsed and are left as they are:
@@ -264,6 +265,76 @@ inline bool serial_command_allowed_while_locked(const std::string& line) {
   return line == "PING" || line == "STATUS" || line == "PLAYERS" || line == "PMIC" || line.rfind("PLAYERS STREAM", 0) == 0 || line == "RAW ON" || line == "RAW OFF" || line == "AUTO" ||
          line == "AUTO OFF";
 }
+
+// ---- when a queued station_action report may be sent (polish 2026-09-24, M3) ------------------------
+// Only on a live socket that MC has WELCOMED (or armed): at HELLO_SENT MC has not accepted this node
+// yet and would count the frame against it. And only once McClock has MC's time: the report's `t` and
+// the claim's age are wall-clock values, meaningless on the Stick's unsynced guess.
+inline bool action_flush_allowed(bool socket_open, LinkState state, bool clock_synced) {
+  return socket_open && clock_synced && (state == LinkState::WELCOMED || state == LinkState::ASSIGNED);
+}
+
+// ---- F332: the PMIC side-button lock, the pure half (mc_link_glue.h does the I2C) ------------------
+// M5PM1 BTN_CFG_1 0x49 bit0 disables the side button's single-click reset, BTN_CFG_2 0x4A bit0 its
+// double-click power-off; 0x49 bit7 is DL_LOCK (the download-mode lock, with no documented way back),
+// so it is NEVER written. The glue reads a register, asks pm1_bit0_write_value() for the byte to write,
+// writes it, then reads BOTH registers back. Only a read-back matching the wanted state counts: until
+// then SideButtonLockSync keeps asking for another attempt every PMIC_RETRY_MS.
+constexpr uint8_t PM1_BIT0_MASK = 0x01;
+constexpr uint8_t PM1_DL_LOCK_MASK = 0x80;
+constexpr uint32_t PMIC_RETRY_MS = 1000;
+// A PMIC that keeps failing (a dead I2C bus) is not hammered every second for the whole match: after
+// PMIC_BACKOFF_AFTER failed attempts in a row the retry drops to every PMIC_BACKOFF_MS.
+constexpr uint32_t PMIC_BACKOFF_AFTER = 10;
+constexpr uint32_t PMIC_BACKOFF_MS = 30000;
+
+// The byte to write so bit0 = `on`, from the register's current value. False (write nothing) when the
+// read shows bit7 set: something is wrong with that read or that chip, and bit7 must never be written.
+inline bool pm1_bit0_write_value(uint8_t read, bool on, uint8_t& out) {
+  if (read & PM1_DL_LOCK_MASK) return false;
+  out = (uint8_t)((read & 0x7F & ~PM1_BIT0_MASK) | (on ? PM1_BIT0_MASK : 0));
+  return true;
+}
+
+// Both registers read back with bit0 equal to `want`.
+inline bool pm1_bit0s_match(uint8_t btn_cfg_1, uint8_t btn_cfg_2, bool want) {
+  return ((btn_cfg_1 & PM1_BIT0_MASK) != 0) == want && ((btn_cfg_2 & PM1_BIT0_MASK) != 0) == want;
+}
+
+class SideButtonLockSync {
+ public:
+  // Call every loop() with the state the PMIC should be in. True when an attempt is due now: the
+  // wanted state changed, or the last attempt was not confirmed and PMIC_RETRY_MS has passed.
+  bool due(bool want, uint32_t now_ms) {
+    if (!tried_ || want != want_) {
+      want_ = want;
+      confirmed_ = false;
+      tried_ = false;
+      failures_ = 0;
+      return true;
+    }
+    return !confirmed_ && (uint32_t)(now_ms - last_ms_) >= retry_ms();
+  }
+  // The result of the attempt due() asked for: confirmed = the read-back matched.
+  void attempted(bool confirmed, uint32_t now_ms) {
+    tried_ = true;
+    confirmed_ = confirmed;
+    last_ms_ = now_ms;
+    failures_ = confirmed ? 0 : failures_ + 1;
+  }
+  uint32_t failures() const { return failures_; }  // failed attempts in a row
+  bool backing_off() const { return failures_ >= PMIC_BACKOFF_AFTER; }
+  uint32_t retry_ms() const { return backing_off() ? PMIC_BACKOFF_MS : PMIC_RETRY_MS; }
+  bool want() const { return want_; }
+  bool confirmed() const { return tried_ && confirmed_; }
+
+ private:
+  bool want_ = false;
+  bool tried_ = false;
+  bool confirmed_ = false;
+  uint32_t last_ms_ = 0;
+  uint32_t failures_ = 0;
+};
 
 // A short, arm's-length label for the LINK stats page and the screen's status line.
 inline const char* link_state_label(LinkState s) {
