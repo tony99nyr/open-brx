@@ -4791,6 +4791,36 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(r.anims === 0 && !r.whiteout, `night: no motion, no flash: ${r.anims} running, whiteout ${r.whiteout}`);
   });
 }
+// docs/announcer.md "Aim tells and the lanes" (Tony 2026-09-25: "what about recoil screen in the alerts? ... That might
+// overlap"). The aim tell owns the centre; a kill card during it is ONE row above it; nothing covers the ammo or the
+// vitals. Each stage drives the REAL engine: a held burst (RECOIL), a Haze word (SMOKED), an EMP word (STUNNED) or the
+// charge rifle's own heat (OVERHEAT), then two kills with a medal chain on top of it.
+const AIM_KILL = [['recoil', 'live-recoil-kill', /RECOIL/, /RELEASE TO STEADY/], ['smoke', 'live-smoke-kill', /SMOKED/, /MISS/],
+  ['stun', 'live-stun-kill', /STUNNED/, /DISARMED/], ['overheat', 'live-overheat-kill', /OVERHEAT/, null]];
+for (const view of VIEWS) for (const night of [false, true]) for (const [tell, stage, word, sub] of AIM_KILL) {
+  const N = night ? '&night' : '', tag = `${view.name} aim tells ${night ? 'night' : 'day'}`;
+  await step(`${tag}: a kill card during ${tell.toUpperCase()} rides one row above the tell, which stays legible (>= 11 px on screen); nothing covers the ammo or vitals`, async () => {
+    const pg = await open(view, stage, N, 2400);
+    const r = await lnWait(pg, x => x.hero && x.hero.n >= 2 && x.env.tells.length, 4000);
+    const t = await pg.evaluate(() => {
+      const sc = document.getElementById('frame').getBoundingClientRect().width / 844;   // the #frame is scaled: "on screen" is layout px x scale
+      const shown = e => { for (let n = e; n && n.id !== 'frame'; n = n.parentElement) { const c = getComputedStyle(n); if (c.display === 'none' || c.visibility === 'hidden' || +c.opacity < .6) return false; } const b = e.getBoundingClientRect(); return b.width > 0 && b.height > 0; };
+      const els = [...document.querySelectorAll('.alive .aimfx, .alive .heatword')].filter(shown);
+      const texts = els.flatMap(e => e.classList.contains('heatword') ? [e] : [...e.querySelectorAll('.k, .s, .t')]).filter(x => shown(x) && x.textContent.trim());
+      return { text: els.map(e => e.innerText.replace(/\s+/g, ' ')).join(' | '), px: texts.map(x => [x.textContent.trim(), +(parseFloat(getComputedStyle(x).fontSize) * sc).toFixed(1)]),
+        tight: !!document.querySelector('#lanes .lh.tight'), boxes: els.map(e => { const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; }) };
+    });
+    await pg.screenshot({ path: `${OUT}/${view.name}-aimkill-${tell}${night ? '-night' : ''}.png` }); await pg.close();
+    must(r && r.hero && r.hero.n >= 2 && r.env.tells.length, `pre-condition: two kills on screen while the tell is up: ${JSON.stringify({ hero: r && r.hero, tells: r && r.env.tells })}`);
+    must(word.test(t.text) && (!sub || sub.test(t.text)), `the tell says what it is${sub ? ' and what to do' : ''}: ${JSON.stringify(t.text)}`);
+    must(t.tight && r.hero.medal === 'KILLING SPREE', `the hero is one row (KILL x2, the newest medal): ${JSON.stringify({ tight: t.tight, medal: r.hero.medal })}`);
+    must(lnCovers(r).length === 0, lnCovers(r).join(' | '));   // the hero vs the tells, the ammo, the vitals and the top bar
+    const under = t.px.filter(([, v]) => v < 11);
+    must(under.length === 0, `tell text under 11 px on screen: ${JSON.stringify(under)}`);
+    const guard = [...r.env.ammo, ...r.env.vparts];   // the vitals' painted parts (the HP and armour numbers, their bars); the `.vitals` box itself is wider than its ink
+    must(t.boxes.every(x => guard.every(g => apart(x, g))), `the tell covers the ammo or the vitals: ${JSON.stringify({ tell: t.boxes, guard })}`);
+  });
+}
 // End-of-match AWARDS (A63): MC's honours from the result push, one row per tied holder. Mine first (with a star and
 // YOU, not colour alone), then grouped in types.AWARDS order; nothing capped or hidden; no duplicate HONORS strip.
 for (const view of VIEWS) for (const night of [false, true]) await step(`${view.name} lanes ${night ? 'night' : 'day'}: the AWARDS tab shows every A63 honour, mine first, clear of the corner buttons`, async () => {

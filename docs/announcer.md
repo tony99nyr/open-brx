@@ -164,6 +164,23 @@ every honour, mine first (a star and YOU), then in `types.AWARDS` order, SHARED 
 holder, and MC's stat string on its own line. Nothing is capped. The HONORS strip is hidden
 while the tab is on.
 
+### Aim tells and the lanes
+
+Tony, 2026-09-25: "what about recoil screen in the alerts? ... That might overlap". The aim tells are the accuracy
+pill (`.aimfx`: RECOIL · RELEASE TO STEADY, SMOKED, STUNNED or DISARMED), the OVERHEAT word (`.heatword`), TAKING
+FIRE and a hit's number. The rule:
+
+- The aim tell OWNS the centre. It says what to do now ("release to steady"), and a kill card does not.
+- While a tell is up, the HERO collapses to one row above it: KILL ×N and the newest medal. When the tell clears, the
+  HERO grows back to its full card if it is still up.
+- The medal chain keeps its voice. The tell changes only what the HERO draws, never what the queue says.
+- Nothing covers the ammo count or the vitals: not the HERO, not the tell.
+- The tell's text stays at 11 px or more on screen at both gate widths, day and night.
+
+Stages: `live-recoil-kill` (one held pull, two kills mid-burst, then the release), `live-smoke-kill`, `live-stun-kill`
+and `live-overheat-kill` (the charge rifle). `app/tools/screens.mjs` checks each at both widths, day and night
+(`aim tells` steps).
+
 ## Late lines (`ANNOUNCE_AUDIO_LATE_MS`)
 
 Tony's match (2026-09-24) heard lines 10 to 15 s late: the phone wrote each on time, and the gun queued them behind

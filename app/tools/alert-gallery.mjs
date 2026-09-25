@@ -52,6 +52,33 @@ for (const skin of SKINS) for (const view of VIEWS) {
   story.push({ skin: skin.name, view, frames, voice }); console.log('story', skin.name, view.name);
   await pg.close();
 }
+// ---- aim tells x lanes (docs/announcer.md "Aim tells and the lanes"): a frame every 250 ms from the tell's first frame ----
+const AIM = [['recoil', 'RECOIL: full auto, two kills mid-burst (FIRST BLOOD, then DOUBLE KILL and KILLING SPREE), then the release', 'live-recoil-kill'],
+  ['smoke', 'SMOKED, then the same two kills', 'live-smoke-kill'], ['stun', 'STUNNED, then the same two kills', 'live-stun-kill'],
+  ['overheat', 'OVERHEAT on the charge rifle, then the same two kills', 'live-overheat-kill']];
+const AIM_STEP = 250, AIM_FRAMES = 15;
+const aimSeqs = [];
+for (const [id, label, stage] of AIM) {
+  const runs = [];
+  for (const skin of SKINS) for (const view of VIEWS) {
+    const pg = await openPg(view, stage, skin);
+    await pg.waitForFunction(() => document.querySelector('.alive .aimfx, .alive .heatword'), null, { timeout: 15000 });
+    const t0 = await pg.evaluate(() => Date.now()), frames = [];
+    for (let i = 0; i < AIM_FRAMES; i++) {
+      const wait = t0 + i * AIM_STEP - (await pg.evaluate(() => Date.now()));
+      if (wait > 0) await pg.waitForTimeout(wait);
+      const what = await pg.evaluate(t0 => { const tells = [...document.querySelectorAll('.alive .aimfx, .alive .heatword')].map(e => e.innerText.replace(/\s+/g, ' ').trim());
+        const h = document.querySelector('#lanes .lh:not(.out)'); return { t: Date.now() - t0, tells, hero: h ? { n: +h.dataset.n, one: h.classList.contains('tight') } : null }; }, t0);
+      const f = `aim-${id}-${skin.name}-${view.name}-${String(i).padStart(2, '0')}.png`;
+      await pg.screenshot({ path: path.join(OUT, f) });
+      frames.push({ f, cap: `<b>t ${(what.t / 1000).toFixed(2)} s</b> ${esc(what.tells.join(' + ') || 'no tell')}${what.hero ? ` · KILL ×${what.hero.n}${what.hero.one ? ' (one row)' : ' (full card)'}` : ''}` });
+    }
+    const voice = await said(pg, t0);
+    if (pg.__err.length) throw new Error(`aim ${id}: ${pg.__err.join(' | ')}`);
+    runs.push({ skin: skin.name, view, frames, voice }); await pg.close();
+  }
+  aimSeqs.push({ id, label, runs }); console.log('aim', id);
+}
 // ---- single moments: [id, label, stage, ms after load, an action to run first] ----
 const ONE = [
   ['kill', 'My kill (MC names the victim)', 'live-kill', 3000],
@@ -83,6 +110,7 @@ await b.close(); srv.close();
 
 // Tony's notes on the kill-card gallery (2026-09-24), verbatim, and where this gallery answers each one.
 const CHANGED = [
+  ['New', 'what about recoil screen in the alerts? not seeing that here in the designs. That might overlap', 'Aim tells (RECOIL, SMOKED, STUNNED, OVERHEAT) own the centre; the kill card rides above them. See "Aim tells and the kill card": a frame every 250 ms.'],
   ['Earlier', 'kill confirm goes away a little too fast, we need to work on that UI a bit', 'the HERO holds 2.5 s after the last kill, and longer while that kill\'s line still plays (every storyboard frame).'],
   ['1', 'hmm its a mix. this doesnt really work. the your team takes the lead event can occur at the same time as the kill screen. we have no examples of that', 'the storyboard at t 0.3 s and the single moment "My kill, the lead and a hill capture at the same moment": the lead badge shows beside the kill from the first frame.'],
   ['2', 'events can overlay on top , they dont have to fit into the standard UI. The +1 elmination K1 is not needed that is assumed. I like seeing the source small underneath MC or IR 15 I guess?', 'the HERO overlays the centre of the HUD; "+1 ELIMINATION" and "K 1" are gone; every item has a small source line (MC, IR 15, or BLE for a station).'],
@@ -104,6 +132,7 @@ const fig = (f, cap) => `<figure><img src="${f}" alt="${esc(cap)}" loading="lazy
 const storyHtml = SKINS.map(skin => VIEWS.map(view => { const s = story.find(x => x.skin === skin.name && x.view === view);
   return `<h3>${skin.name === 'day' ? 'Day' : 'Night'} · ${view.label}</h3><div class="strip">${s.frames.map(fr => fig(fr.f, `<b>t ${fr.t} s</b> ${esc(fr.label)}`)).join('')}</div>`
     + `<p class="note-s">What the voice said: ${esc(s.voice.join(' · ') || 'nothing')}.</p>`; }).join('')).join('');
+const aimHtml = aimSeqs.map(a => `<section><h3>${esc(a.label)}</h3>${a.runs.map(r => `<h3 class="mut">${r.skin === 'day' ? 'Day' : 'Night'} · ${r.view.label}</h3><div class="strip">${r.frames.map(fr => fig(fr.f, fr.cap)).join('')}</div><p class="note-s">What the voice said: ${esc(r.voice.join(' · ') || 'nothing')}.</p>`).join('')}</section>`).join('');
 const oneHtml = singles.map(s => `<section><h3>${esc(s.label)}</h3><div class="grid">${s.cells.map(c => fig(c.f, `${c.skin} · ${c.view.label}`)).join('')}</div></section>`).join('');
 fs.writeFileSync(path.join(OUT, 'index.html'), `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>HUD alert lanes</title>
 <style>:root{color-scheme:dark;--bg:#0b0e12;--fg:#e8edf2;--mut:#8a96a3;--edge:#262d36}body{margin:0;padding:16px;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,sans-serif}
@@ -126,6 +155,9 @@ ul{margin:4px 0 10px;padding-left:20px;max-width:1000px}</style></head><body><ma
 <h2>Storyboard: a six-kill spree with the lead, the hill and a teammate down inside it</h2>
 <p class="mut">Kills 1 s apart from t 0, on MC's medal ladder.</p>
 ${storyHtml}
+<h2>Aim tells and the kill card</h2>
+<p class="mut">The aim tell owns the centre, because it says what to do now ("release to steady"). While one is up the kill card is one row above it (KILL ×N and the newest medal); it grows back to the full card when the tell clears. The medal lines still play. Nothing covers the ammo or the vitals. Time 0 is the tell's first frame.</p>
+${aimHtml}
 <h2>Single moments</h2>
 ${oneHtml}
 </main></body></html>`);

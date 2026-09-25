@@ -291,7 +291,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
    A grey haze plate, never a bright flash: the S53 row names it SMOKE, not a flashbang. */
 .aimfx{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 18px 9px;background:rgba(150,160,170,.28);border:1px solid rgba(220,228,236,.55);pointer-events:none;white-space:nowrap}
 .aimfx .k{font-family:var(--fd);font-style:italic;font-weight:700;font-size:30px;letter-spacing:.3em;text-indent:.3em;color:#eef3f7;line-height:1}
-.aimfx .s{font-size:12px;letter-spacing:.2em;font-weight:700;color:#d6dde3}
+.aimfx .s{font-size:14px;letter-spacing:.12em;font-weight:700;color:#d6dde3}   /* aim tells x lanes (2026-09-25): 14 px, so the remedy line ("RELEASE TO STEADY") is >= 11 px on the SE screen (scale ~0.79); it was 12 (9.5 on screen) */
 .aimfx .t{font-family:var(--fd);font-weight:700;font-size:20px;color:#eef3f7}
 /* `.tight`: hud.js adds this alongside the reticle-slot tell whenever OVERHEAT is also showing (`_live()`'s
    `overheating`). The two full-screen takeovers share the same vertical lane, so the sub-line goes (the
