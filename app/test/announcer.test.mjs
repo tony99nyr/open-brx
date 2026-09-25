@@ -819,3 +819,38 @@ test('M3: a hill change while I am dead is queued and said after the scream', ()
   const hc = h.plays('VB0N')[0];
   assert.ok(hc && hc.t >= dAt + 1271, 'Hill Captured, after the scream');
 });
+
+// ---------- round 2 review of death-wins ----------
+test('H-A unit: after the respawn my kept KC waits only for real clips, not for the shield loop (F348: a life starts at full shield)', () => {
+  const r = deadRig();
+  r.gun.add(7000, 'the scream and a long line', 0);
+  r.die(true); r.a.push(r.item('kill_confirmed', 756));
+  r.at(5000); r.die(false); r.a.respawn(5000, false);
+  r.gun.clips = []; r.gun.setBlocked(true, 5000);           // the new life's shield loop, nothing else on the gun
+  for (let t = 5050; t < 6000; t += 50) { r.at(t); r.a.tick(t); }
+  assert.deepEqual(r.log.map(x => x[0]), ['kill_confirmed'], 'said: the loop is cut by its own must-hear flush');
+});
+
+test('M-A: a medal stack cut at my death, then folded into my next kill, never says first blood twice', () => {
+  const h = harness().live();
+  const ids = ['first_blood', 'double_kill'].map(m => golden.cues[m].split(',')[4]);
+  h.kill({ medals: ['first_blood', 'double_kill'] });
+  h.adv(120 + CLIP_MS[ids[0]] + 150 + 500);                 // double kill is playing
+  die(h); h.adv(200);
+  h.kill({ medals: ['triple_kill'], victim: 'p4', victim_display: 'SABLE' });   // my next kill lands while the cut rest waits
+  h.adv(12000);
+  assert.equal(h.plays(ids[0]).length, 1, 'first blood once');
+});
+
+test('M-B: my kill line ending inside the slack is neither stopped nor said again; the stop waits for it and takes the clip behind', () => {
+  const h = harness().live();
+  h.kill(); h.adv(120);                                     // VAA from +120
+  h.eng._write(['$PLAY,,4,6,VA7,,,,*'], 'test: a 2.1 s clip behind my kill line');
+  const vaaEnd = h.plays(KILL)[0].t + CLIP_MS[KILL];
+  h.adv(CLIP_MS[KILL] - 80);                                // my line ends in about 80 ms
+  const n = h.writes.length;
+  die(h); h.adv(9000);
+  assert.equal(killLines(h).length, 1, 'said once');
+  const st = h.writes.slice(n).filter(w => w.f === '$PLAYX,0,*');
+  assert.ok(st.length >= 1 && st[0].t >= vaaEnd, `the stop goes after my line ended (${st.length ? st[0].t - vaaEnd : 'none'} ms)`);
+});

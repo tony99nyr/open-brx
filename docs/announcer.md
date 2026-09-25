@@ -200,12 +200,15 @@ can listen to the queue of KCs and game alerts".
    the gun holds truly AHEAD of the native scream (the low-health line, my own kill line), and none for the scream
    itself. Not counted: the lethal hit's own `$SIR` row sound (the gun may play none on a lethal hit, or the scream
    may interrupt it: F158), and a clip that ends within `DEATH_STOP_SLACK_MS` (150 ms), since a stop that arrives
-   after it lands on the scream. An extra stop here is not harmless. An ordinary death with a quiet gun sends no stop.
+   after it lands on the scream. An extra stop here is not harmless. If such a spared clip is still playing at the
+   front of the gun's queue, the stops wait until it ends, so none lands on it. Exactly the stopped clips leave the
+   model. An ordinary death with a quiet gun sends no stop.
    With no scream id known, F149's one stop for the low-health line stays.
-2. **A line the death stop cut is said again, and only what was not said.** Only when a stop went out and an item was
-   on air is it cut (`Announcer.death`): its pending lines check `cut` and do not go out, and a copy holding the lines
+2. **A line the death stop cut is said again, and only what was not said.** Only when one of the item's OWN clips is
+   among the stopped ones is it cut (`Announcer.death`; a must-hear or hill clip carries its item): its pending lines check `cut` and do not go out, and a copy holding the lines
    not yet finished goes back in the queue (`resume`). A medal stack cut on its second line says that line again, not
-   the kill line or the first medal. It plays after the scream.
+   the kill line or the first medal. The copy's medals and owed kill line are trimmed the same way, so a later spree
+   fold does not say them again. It plays after the scream.
 3. **While dead, everything queues.** Every KC, medal, lead and hill line waits for a SILENT gun and plays in priority
    order. Nothing flushes: no `$PLAYX` goes out for a must-hear or objective line while dead (X4). There is no streak
    silence. The death screen owns the view, so a card's hold does not pace the queue: the next line follows as soon
@@ -214,12 +217,14 @@ can listen to the queue of KCs and game alerts".
    (10 s), and may start that late with its line: the scream (1.27 s in the golden take, about 1.5 s at most), my kill
    line with its flash (0.76 s), two medal lines (up to 2.5 s each) and a lead line (2.7 s) come to about 10 s.
 5. **The respawn ends it** (`Announcer.respawn`). What is left of the dead queue keeps only my kill confirm and the
-   lead change (`KEEP_AT_RESPAWN`), with normal TTLs from the respawn, and each waits for a silent gun, so nothing
-   flushes over the spawn line. The line on air is cut there too (its pending lines would flush the spawn line): a
+   lead change (`KEEP_AT_RESPAWN`), with normal TTLs from the respawn, and each waits for the gun's real clips to end
+   (the spawn line), so nothing flushes over it. The new life's shield loop does not count (F348 starts a Shields life
+   at full shield); the must-hear flush cuts the loop as usual. The line on air is cut there too (its pending lines would flush the spawn line): a
    kill or lead item keeps its unsaid lines, anything else is dropped. Then the normal rules resume, the streak
    silence included.
 6. **A match end inside the scream** keeps the dead rules until the scream has ended (`_screamUntil`).
-7. **A hill change while I am dead** is queued too (Tony's "game alerts"), and said after the scream. Before this, a
+7. **A hill preempt while dead** goes through `_sayMust`'s guard: no raw `$PLAYX`.
+8. **A hill change while I am dead** is queued too (Tony's "game alerts"), and said after the scream. Before this, a
    control-point handover while down was said on the revive; now it is said while down, once.
 
 "Target down" (`enemy_down`) is not in Tony's list: it is still dropped while I am dead.

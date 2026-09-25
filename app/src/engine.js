@@ -1230,8 +1230,9 @@ export class Engine {
     this._mustWrite = true;
     try { this._write([...Array(k).fill(PLAYX), frame], k ? `${why} (after ${k} × $PLAYX: the gun held ${k} clip${k > 1 ? 's' : ''}${this._gun.blocked ? ', the shield loop among them' : ''})` : why); }
     finally { this._mustWrite = false; }
-    if (held) this._gun.add(this._clipLen(frame), why, now, clipId(frame));   // nothing was stopped: it queues behind the scream
-    else this._gun.flushed(now, { ms: this._clipLen(frame), why });
+    const clip = held ? this._gun.add(this._clipLen(frame), why, now, clipId(frame))   // nothing was stopped: it queues behind the scream
+      : this._gun.flushed(now, { ms: this._clipLen(frame), why });
+    if (clip) clip.item = this._ann.current;   // whose line this is: `_death` requeues an item only when one of ITS clips was stopped
   }
   /** Is the `$PSET` t23 shield loop playing? It runs while a loop is armed and the shield is above 0. A spawn fill the
    *  gun has not answered yet counts as a full shield (X3): the pool rises on the gun at the fill, not at its echo. */
@@ -1245,6 +1246,7 @@ export class Engine {
   }
   /** A hit the gun registered (`$HIR`): the gun plays the `$SIR` row's sound for it, into the same FIFO. */
   _audioHit(proto, subtype, now) {
+    this._lastHitClip = null;   // per hit: only THIS hit's own row sound is the lethal one's
     const id = this._sirSound[`${proto}:${subtype}`];
     const ms = id ? CLIP_MS[id] : undefined;
     if (!(ms > 0)) {
@@ -2935,12 +2937,14 @@ export class Engine {
     if (!cue.frame && !card) return;
     this._ann.push({ kind: card ? kind : 'alert', key: 'hill', preemptKey: true, stopsOwn: true, audioMs: cue.frame ? cue.ms : 0, ...(card ? {} : { bannerMs: 0 }),
       ok: () => this._hillAudioOn(true),   // Tony 2026-09-25: a hill line already queued is still said while I am dead
-      play: ({ preempted, muted, flush }) => {
+      play: ({ preempted, muted, flush }, self) => {
         // QA-05: the HUD's HILL CAPTURED / HILL LOST card reads this, set when the line starts (a muted line still shows).
         if (card) this.hillCallout = { kind, at: this.now() };
         // docs/announcer.md: an objective line cuts the shield loop (`flush`) rather than being muted by it
         if (cue.frame && !muted && flush) this._sayMust(cue.frame, `hill ${kind} (through the shield loop) — ${why}`);
+        else if (cue.frame && !muted && preempted && this._ann.dead()) this._sayMust(cue.frame, `hill ${kind} (preempting, while dead: no stop) — ${why}`);   // X4
         else if (cue.frame && !muted) this._write(preempted ? [PLAYX, cue.frame] : [cue.frame], `hill ${kind}${preempted ? ' (preempting the line still playing)' : ''} — ${why}`);
+        if (cue.frame && !muted && !flush) { const c = this._gun.clips[this._gun.clips.length - 1]; if (c && c.id === clipId(cue.frame)) c.item = self; }   // whose line: see `_death`
         this._changed();
       } });
   }
@@ -4971,7 +4975,9 @@ export class Engine {
       const from0 = it.from || 0, t0 = timing(from0), el = now - it.startedAt;
       const i = t0.at.findIndex((a, j) => (startedSaid ? a : a + lens[from0 + j]) > el);
       if (i < 0) return null;
-      return { from: from0 + i, audioMs: timing(from0 + i).audioMs };
+      // the copy owes only its unsaid lines: a later spree fold must not say again what this one already said
+      const rest = lines.slice(from0 + i);
+      return { from: from0 + i, audioMs: timing(from0 + i).audioMs, medals: (it.medals || []).filter(x => rest.some(l => l.k === x.m)), killF: rest.some(l => l.kill) ? it.killF : null };
     };
     const item = this._ann.push({ kind: isKill ? (killSaid ? 'medal' : 'kill_confirmed') : 'alert', src: 'mc', key: isKill ? null : `fb:${body.kind}`, audioMs, entry: mcEntry, medals, medalList, killF, resume,
       bannerMs: isKill ? Math.max(KILL_CARD_MS, audioMs) : 0,
@@ -6696,12 +6702,15 @@ export class Engine {
     this._armPending = null; this._triggerPending = null;   // F209: never arm a dead gun; the revive protects and arms again
     // The gun screams on its own: it joins the FIFO. `screamAhead` = the clips the model says the gun holds ahead of it.
     // The scream joins the model below, right after the stops that take off what is ahead of it.
-    let screamAhead = null;
+    let screamAhead = null, aheadClips = [], stopWait = 0;
     const screamId = this._psetSounds && (this._psetSounds[10] || '').trim();
     { const now = this.now(); this._audioSync(now); this._gun._prune(now);
       // Truly ahead: not the lethal hit's own row sound (the gun may play none on a lethal hit, or the scream may interrupt
       // it; F158 is unbenched), and not a clip that ends within DEATH_STOP_SLACK_MS (the stop would arrive after it).
-      if (screamId && CLIP_MS[screamId]) screamAhead = this._gun.clips.filter(c => c !== this._lastHitClip && c.end - now > DEATH_STOP_SLACK_MS).length; }
+      if (screamId && CLIP_MS[screamId]) { aheadClips = this._gun.clips.filter(c => c !== this._lastHitClip && c.end - now > DEATH_STOP_SLACK_MS); screamAhead = aheadClips.length; }
+      // a clip the slack spared that is still playing at the FRONT: the stops wait for it to end, so none lands on it
+      const front = this._gun.clips[0];
+      if (screamAhead && front && !aheadClips.includes(front) && front.end > now) stopWait = front.end - now + 10; }
     // 2026-09-19: killed this soon after a timed respawn = spawn-killed; the down-screen warning gets louder (never quieter).
     if (this._timedLifeAt != null && this.now() - this._timedLifeAt <= SPAWN_KILL_WINDOW_MS && this._downWarn < DOWN_WARN_MAX) { this._downWarn++; this.log(`killed ${Math.round((this.now() - this._timedLifeAt) / 100) / 10}s after a timed respawn: down warning level ${this._downWarn}`, 'li'); }
     this._timedLifeAt = null;
@@ -6756,8 +6765,18 @@ export class Engine {
     // scream (the low-health line, my own kill line) and never the scream itself; an announcer line it cut is said again
     // after the scream (`_ann.death`). With no scream known, F149's one stop for the low-health line stays.
     const stops = screamAhead != null ? Math.min(screamAhead, MUST_HEAR_MAX_STOPS) : (this.hurtFired ? 1 : 0);
-    this._ann.death(this.now(), stops > 0);   // a line on air is cut, and its unsaid rest requeued, only when a stop went out
-    if (stops) this._write(Array(stops).fill(PLAYX), `death: ${stops} stop(s) for what the gun held ahead of the scream${this.hurtFired ? ' (the low-health line, F149)' : ''}`);
+    // A line on air is cut, and its unsaid rest requeued, only when one of ITS clips is among the stopped ones.
+    const cur = this._ann.current, stopped = aheadClips.slice(0, stops);
+    this._ann.death(this.now(), stops > 0 && (screamAhead == null || (!!cur && stopped.some(c => c.item === cur))));
+    const sendStops = () => {
+      if (!stops) return;
+      this._mustWrite = true;   // the model is kept here: exactly the stopped clips leave it
+      try { this._write(Array(stops).fill(PLAYX), `death: ${stops} stop(s) for what the gun held ahead of the scream${this.hurtFired ? ' (the low-health line, F149)' : ''}${stopWait ? `, after the ${stopWait} ms the clip the slack spared still had` : ''}`); }
+      finally { this._mustWrite = false; }
+      if (screamAhead != null) this._gun.clips = this._gun.clips.filter(c => !stopped.includes(c));
+      else this._gun.clips.splice(0, stops);
+    };
+    if (stopWait) { const lg = this._lightGen; this.delay(stopWait, () => { if (this._lightGen === lg) sendStops(); }); } else sendStops();
     if (screamAhead != null) { this._gun.add(CLIP_MS[screamId], `native death scream ${screamId}`, this.now(), screamId); this._screamUntil = this.now() + CLIP_MS[screamId]; }
     this._stunRestore('died');   // F15: death cancels the stun -- no restore write; the revive's own $AMMO re-arms the next life
     this._puDeath();             // A56: a weapon item's charges are lost and the overshield is gone

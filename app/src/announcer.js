@@ -291,7 +291,9 @@ export class Announcer {
     // An OBJECTIVE line is the exception to the loop: it cuts the loop instead (`flush`), so a hill word or "Target down"
     // is still heard with the shield up.
     // Dead (Tony 2026-09-25): every line waits for a silent gun, must-hear and objective ones too: nothing flushes the scream.
-    if (next.audioMs > 0 && this.gun && this.gun.outstanding(now) > 0 && (this._isDead() || next.waitQuiet)) return null;
+    // Kept past the respawn (`waitQuiet`): it waits for real clips only. The new life's shield loop is not one (F348 starts a
+    // Shields life at full shield); the must-hear flush cuts the loop as usual.
+    if (next.audioMs > 0 && this.gun && ((this._isDead() && this.gun.outstanding(now) > 0) || (next.waitQuiet && this.gun.playingUntil(now) > now))) return null;
     if (next.audioMs > 0 && !MUST_HEAR.has(next.kind) && this.gun && this.gun.outstanding(now) > 0) {
       const late0 = ANNOUNCE_AUDIO_LATE_MS[next.kind] != null ? ANNOUNCE_AUDIO_LATE_MS[next.kind] : ANNOUNCE_AUDIO_LATE_DEFAULT_MS;
       const late = next.deadQueued ? Math.max(late0, DEAD_QUEUE_TTL_MS) : late0;
@@ -374,7 +376,7 @@ export class GunAudio {
     if (this.blocked && id && this.clips.some(c => c.id === id && c.start === Infinity)) return;
     const tail = this.clips.length ? this.clips[this.clips.length - 1].end : now;
     const start = this.blocked ? Infinity : Math.max(now, tail);
-    const c = { ms, why, start, end: start + ms, id };
+    const c = { ms, why, start, end: start + ms, id, at: now };
     this.clips.push(c);
     return c;
   }
@@ -406,7 +408,10 @@ export class GunAudio {
    *  written right behind the stops: that line plays, and anything after it is stuck again. */
   flushed(now, line) {
     this.clips = [];
-    if (line) this.clips.push({ ms: line.ms, why: line.why, start: now, end: now + line.ms });
+    if (!line) return null;
+    const c = { ms: line.ms, why: line.why, start: now, end: now + line.ms, at: now };
+    this.clips.push(c);
+    return c;
   }
   _prune(now) { this.clips = this.clips.filter(c => c.end > now); }
 }

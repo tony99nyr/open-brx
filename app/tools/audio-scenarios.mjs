@@ -343,8 +343,8 @@ class PolicyB {
     const held = k > 0 && !c.game.alive;   // X4: no stop while dead
     if (held) k = 0;
     c.write([...Array(k).fill(PLAYX), line], k ? `${why} (after ${k} x $PLAYX)` : why);
-    if (held) this.model.add(CLIP_MS[CUE[line.cue]], why, c.t, CUE[line.cue]);
-    else this.model.flushed(c.t, { ms: CLIP_MS[CUE[line.cue]], why });
+    const clip = held ? this.model.add(CLIP_MS[CUE[line.cue]], why, c.t, CUE[line.cue]) : this.model.flushed(c.t, { ms: CLIP_MS[CUE[line.cue]], why });
+    if (clip) clip.item = this.ann.current;   // engine.js: whose line this is
   }
   /** A must-hear line said `ms` from now (the kill item's flash-to-line gap, the next medal line). */
   _mustLater(ms, line, why, item = null) { this.mustDue++; this.ctx.delay(ms, () => { this.mustDue--; if (!(item && item.cut)) this._sayMust(line, why); }); }
@@ -368,7 +368,9 @@ class PolicyB {
     const resume = (now, it, startedSaid) => {
       const from0 = it.from || 0, t0 = timing(from0), el = now - it.startedAt;
       const i = t0.at.findIndex((a, j) => (startedSaid ? a : a + lens[from0 + j]) > el);
-      return i < 0 ? null : { from: from0 + i, audioMs: timing(from0 + i).audioMs, lines: lines.slice(from0 + i) };
+      if (i < 0) return null;
+      const rest = lines.slice(from0 + i);   // engine.js: the copy owes only its unsaid lines
+      return { from: from0 + i, audioMs: timing(from0 + i).audioMs, lines: rest, medals: (it.medals || []).filter(m => rest.some(l => l.cue === m)) };
     };
     const audioMs = timing(0).audioMs;
     return this.push({ kind, src, medals: lines.filter(l => MEDALS.has(l.cue)).map(l => l.cue), lines, audioMs, resume, bannerMs: bannerMs != null ? bannerMs : Math.max(KILL_CARD_MS, audioMs),
@@ -465,14 +467,21 @@ class PolicyB {
         this.hillMine = false; this.wasDead = true;
         // engine.js `_death`: the native scream ($PSET t10, VA3 in SPAWN_HEAD's take) joins the gun and the phone's model
         this._sync(); this.model._prune(t);
-        const ahead = this.model.clips.filter(x => x.end - t > DEATH_STOP_SLACK_MS).length;   // truly ahead (engine.js)
+        const aheadClips = this.model.clips.filter(x => x.end - t > DEATH_STOP_SLACK_MS), ahead = aheadClips.length;   // truly ahead (engine.js)
+        const front = this.model.clips[0], stopWait = ahead && front && !aheadClips.includes(front) && front.end > t ? front.end - t + 10 : 0;
         c.scream();
         if (this.pendingHurt) this.pendingHurt = false;
         // Tony 2026-09-25 (F149 / F351 / X4), "your death wins": the stops take off what the gun holds AHEAD of the scream
         // (the low-health line, my kill line), never the scream; an announcer line cut here is said again after it.
         const stops = Math.min(ahead, MUST_HEAR_MAX_STOPS);
-        this.ann.death(t, stops > 0);
-        if (stops) this._write(Array(stops).fill(PLAYX), `death: ${stops} stop(s) ahead of the scream${m.hurtFired ? ' (F149)' : ''}`);
+        const cur = this.ann.current, stopped = aheadClips.slice(0, stops);
+        this.ann.death(t, stops > 0 && !!cur && stopped.some(x => x.item === cur));
+        const send = () => {
+          if (!stops) return;
+          c.write(Array(stops).fill(PLAYX), `death: ${stops} stop(s) ahead of the scream${m.hurtFired ? ' (F149)' : ''}`);
+          this.model.clips = this.model.clips.filter(x => !stopped.includes(x));
+        };
+        if (stopWait) c.delay(stopWait, send); else send();
         this.model.add(CLIP_MS.VA3, 'death scream', t, 'VA3');
       } else if (m.kind === 'spawn') {   // engine.js `_spawn`: the T-0 klaxon rides the spawn write, before the fill (X3)
         if (this.wasDead) this.ann.respawn(t, true);   // engine.js `_revive`: the dead queue ends; the spawn write opens with $PLAYX
