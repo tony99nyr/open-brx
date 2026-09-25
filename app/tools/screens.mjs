@@ -4887,6 +4887,29 @@ for (const view of VIEWS) for (const night of [false, true]) {
   });
 }
 
+
+/** R2-05/R2-09: the 44 px square centred on a control, hit-tested on screen: which of its four edge midpoints miss it. */
+r2.tap44 = (pg, sel) => pg.evaluate(sel => [...document.querySelectorAll(sel)].filter(c => { const cs = getComputedStyle(c), r = c.getBoundingClientRect(); return cs.display !== 'none' && cs.visibility !== 'hidden' && r.width > 1 && r.height > 1; }).map(c => {
+  const r = c.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2, fr = document.getElementById('frame').getBoundingClientRect();
+  const miss = [[cx - 21.5, cy], [cx + 21.5, cy], [cx, cy - 21.5], [cx, cy + 21.5]].filter(([x, y]) => y >= fr.top && y <= fr.bottom && x >= fr.left && x <= fr.right)
+    .filter(([x, y]) => { const h = document.elementFromPoint(x, y); return !(h && (h === c || c.contains(h))); });
+  return { name: (c.textContent || c.getAttribute('aria-label') || c.id).trim().slice(0, 24), w: Math.round(r.width), h: Math.round(r.height), miss: miss.map(p => p.map(Math.round)) }; }), sel);
+r2.contrast = (pg, sel) => pg.evaluate(([src, sel]) => { const ratio = eval(src)(); return [...document.querySelectorAll(sel)].map(e => ({ text: e.textContent.trim().slice(0, 30), cr: Math.round(ratio(e) * 100) / 100, anim: getComputedStyle(e).animationName })); }, [qaA.contrastOf.toString(), sel]);
+for (const night of [false, true]) {
+  const skin = night ? 'night' : 'day';
+  await step(`se R2-05 headset not joined ${skin}: RECONNECT NOW takes a 44 px tap at >= 11 px, the warning reads, READY UP says why`, async () => {
+    const pg = await open(VIEWS[1], 'kitted-headset-not-joined', night ? '&night' : '', 3000);
+    const r = { tap: await r2.tap44(pg, '.chipbar [data-act="onReconnectNow"]'), btn: (await r2.looks(pg, '.chipbar [data-act="onReconnectNow"] .unskew'))[0],
+      warn: (await r2.looks(pg, '.chipbar [data-headset="not_joined"] .unskew'))[0], cr: await r2.contrast(pg, '.chipbar [data-headset="not_joined"], .chipbar [data-act="onReconnectNow"]'),
+      note: (await r2.looks(pg, '#readynote'))[0] };
+    await pg.screenshot({ path: `${OUT}/se-r2-05-headset-${skin}.png` }); await pg.close();
+    must(r.tap.length === 1 && r.tap[0].miss.length === 0, `RECONNECT NOW must take a 44 px tap on screen: ${JSON.stringify(r.tap)}`);
+    must(r.btn && r.btn.px >= 11 && r.warn && r.warn.px >= 11, `the chip text must be >= 11 px on screen: ${JSON.stringify([r.btn, r.warn])}`);
+    if (night) must(r.cr.every(c => c.cr >= 4.5 && c.anim === 'none'), `night: the headset chips must read at >= 4.5:1 and hold still: ${JSON.stringify(r.cr)}`);
+    must(r.note && /headset/i.test(r.note.text) && /RECONNECT/i.test(r.note.text), `READY UP must give the reason while the headset is not joined: ${JSON.stringify(r.note)}`);
+  });
+}
+
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;
 }

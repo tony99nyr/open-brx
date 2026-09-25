@@ -796,7 +796,10 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 #frame:has(.lobby.result) .pill.mcr{display:none}
 #frame[data-screen="lo"] .pill,#frame[data-screen="panel"] .pill{font-size:11px;letter-spacing:.14em;padding:5px 12px}
 #frame[data-screen="lobby"] .pill{font-size:11px;letter-spacing:.14em;padding:5px 12px}
-#frame[data-screen="lobby"] button.pill{min-height:0;position:relative}#frame[data-screen="lobby"] button.pill::after{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:44px}
+#frame[data-screen="lobby"] button.pill{min-height:0;position:relative}#frame[data-screen="lobby"] button.pill::after{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:56px}   /* HUD QA R2-05: 56 frame px = 44 px on the SE */
+#frame[data-screen="lobby"] button.pill,#frame[data-screen="lobby"] .pill[data-headset]{font-size:14px;letter-spacing:.08em}   /* R2-05/R2-07: 11 px on the SE screen, not 8.7 */
+.lobby .note .warnnote{color:var(--warn);font-weight:700}
+[data-env="night"] .pill.bad[data-headset],[data-env="night"] .chipbar button.pill.warn{animation:none;border-color:#ef6868;color:#ef6868}   /* R2-05: the bright night red, and no blink at night */
 .pill{font-size:11px;letter-spacing:.2em;font-weight:700;padding:4px 14px;transform:skewX(-10deg);background:var(--plate);border:1px solid var(--edge);color:var(--mut)}
 .pill .unskew{display:inline-block;transform:skewX(10deg)}
 /* a pill that is also a control: same look, real tap target (min 44px per the tap audit) */

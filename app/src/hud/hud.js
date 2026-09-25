@@ -1607,6 +1607,10 @@ export class Hud {
       return `Mission Control turned this phone away${why ? ': ' + why : ''}. Ask the host, then rejoin from the i button, top right.`;
     }
     if (!st.synced && !st.ready) return 'Syncing clock with Mission Control… you can ready up in a moment.';
+    // HUD QA R2-05: READY UP stays live (a headset that never joins must not strand a player out of the match), but
+    // the note says what it costs and what fixes it, beside the button the player is about to tap.
+    if (st.headsetJoin && st.headsetJoin.state === 'not_joined' && mode !== 'over')
+      return '<span class="warnnote">Headset not joined: you cannot be hit until it joins.</span> Power-cycle it, then tap RECONNECT NOW.';
     // NOT "the host cannot start until everyone has": `_all_ready` gates KIT -> LOBBY only, so after a
     // match the host pushes the next one whenever they like. Promising a veto the player does not have is
     // how someone sits out a round waiting to be waited for (review 2026-09-12).
