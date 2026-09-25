@@ -956,6 +956,8 @@ export interface Event {
   /** S16: the death came from the node's own poison tick (a `$LIFE` write), not from a hit. `shooter_num` and
    *  `shooter_team` then name the player who last applied the poison, which is who gets the kill. */
   dot?: boolean;
+  /** Tony 2026-09-24 (death): the killing $HIR was the melee proto (13) -- the melee medal. Absent on an older phone. */
+  melee?: boolean;
   /** S56 (hit_taken): the weapon the victim's phone resolved from the shooter's roster loadout; absent = unresolved or ambiguous. */
   weapon_id?: string;
   /** respawn */

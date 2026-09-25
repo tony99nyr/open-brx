@@ -440,6 +440,8 @@ class Scorer:
                     medals.append("first_blood")
                 if kill["multi"] >= 2:
                     medals.append(next(key for count, key in _MULTI_LADDER if kill["multi"] >= count))
+                if ev.get("melee") is True:
+                    medals.append("melee_kill")     # Tony 2026-09-24: stacks with the chain medal
                 if (streak_medal := _STREAK_AT.get(ks.streak)) is not None:
                     medals.append(streak_medal)
                 kill["medals"] = medals

@@ -6565,7 +6565,12 @@ export class Engine {
       ? { num: 0, team: null, name: null, teamName: null, teamKey: null, unknown: true }
       : { num: shooter_num, team: shooter_team, name: this.nameOf(shooter_num), teamName: TEAM_NAME[shooter_team] || `TEAM ${shooter_team}`, teamKey: TEAM_KEY[shooter_team] || 'red' };
     if (dk) this.killedBy.dot = true;   // S16: the DOWN screen says POISONED BY
-    this.emitFact({ type: 'death', match_id: this.matchId, shooter_num, shooter_team, ...(desync ? { desync: true } : {}), ...(dk ? { dot: true } : {}) });
+    // Tony 2026-09-24: "melee kills should be a medal". The killing blow is the last DAMAGING hit (`_lastHitFact`,
+    // stamped only when a hit moved a pool), not the raw latch: a smoke or EMP word landing between the melee blow and
+    // the `$HP,0` re-latches without doing damage (the same trap `dk` avoids above). Proto 13 is melee.
+    const lh = this._lastHitFact;
+    const melee = !dk && fresh && !!lh && lh.ir_proto === 13 && lh.shooter_num === shooter_num && this.now() - lh.at <= C.DEATH_LATCH_MS;
+    this.emitFact({ type: 'death', match_id: this.matchId, shooter_num, shooter_team, ...(desync ? { desync: true } : {}), ...(dk ? { dot: true } : {}), ...(melee ? { melee: true } : {}) });
     const flipTable = (this._respawnProfile() && this._respawnProfile().team_flip) || (this.frames && this.frames.team_flip);   // 2026-09-19: the timed-profile bursts
     let irFlip = false;   // S57: true once this death turns out to BE an infection flip, not a real death (see below)
     if (this.config && this.config.mode === 'infection' && flipTable) {

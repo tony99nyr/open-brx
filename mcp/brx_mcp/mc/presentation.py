@@ -169,7 +169,8 @@ EVENTS: dict[str, dict] = {
 # is compiled, so the phone shows the text and the voice stays silent. `test_presentation` pins every medal's
 # sound to its MEDALS clip, the spelled-out ones included.
 for _m in MEDALS:
-    EVENTS.setdefault(_m["key"], dict(source="mc", group="announcer", desc=f"{_m['count']} kills in a chain (Halo 3)",
+    EVENTS.setdefault(_m["key"], dict(source="mc", group="announcer",
+                                      desc="a melee killing blow" if _m["kind"] == "melee" else f"{_m['count']} kills in a chain",
                                       sound=_m["clip"], gun_led=None, headset=None, flash="green"))
 # MC-driven events that assert something about the WHOLE match. Sent only while MC is confident (A11.5).
 GLOBAL_STATE_EVENTS = {"lead_taken", "lead_lost", "next_kill_wins", "last_survivor"}
