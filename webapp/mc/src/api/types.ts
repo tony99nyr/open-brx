@@ -64,7 +64,9 @@ export type FeedTag = 'DOUBLE KILL' | 'TRIPLE KILL' | `STREAK ×${number}` | 'FI
   | 'TEAM CREDIT'
   /** A67 (F365): a station's on-station range/strength edit. */
   | 'STATION'
-  | 'CONFIG' | 'END' | 'POWERUP' | 'RESCORED';
+  | 'CONFIG' | 'END' | 'POWERUP' | 'RESCORED'
+  /** A kill's medals, upper-case, joined by " + " (`scoring.py`): `KILLING SPREE`, `FIRST BLOOD + DOUBLE KILL`. */
+  | (string & {});
 export interface FeedEntry { t_match_s: number; text: string; tag?: FeedTag; kind: 'kill' | 'sync' | 'info' | 'alert' }
 
 /** loadout.md §3.2 (server pass 2, 2026-09-12) — why a slot's pool came out EMPTY. A closed

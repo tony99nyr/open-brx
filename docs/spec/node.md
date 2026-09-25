@@ -642,8 +642,8 @@ rail-mounted) and the shipping `app/src/hud/`; this section is the requirements 
 ### 4.5 Takeovers and moments (built 2026-09-03/04; the review log is `docs/hud-review-2026-09-03.md`)
 
 Two kinds of overlay sit on the LIVE screen. **Takeovers** are persistent and own the screen while a state
-holds (the chip bar hides under them); **moments** are transient and never draw over a takeover, and a
-due kill card waits for it to end.
+holds (the chip bar hides under them); **moments** are transient and stack above whatever is up (HIT and GAIN
+show during RELOADING). The kill card is a lane, and a due one waits for the takeover to end.
 
 | overlay | kind | trigger | copy / what it shows | ends |
 |---|---|---|---|---|

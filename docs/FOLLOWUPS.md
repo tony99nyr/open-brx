@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-09-25 (F375 filed; F164 and F161 closed; F342 to the bench).
+Updated: 2026-09-25 (F375 filed; F164 and F161 closed; F342 to the bench; B21 Android half built; F221 to DECISION).
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -9,10 +9,10 @@ Updated: 2026-09-25 (F375 filed; F164 and F161 closed; F342 to the bench).
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 56.** Desk 8 · bench 48 · decision 0.
+**MVP open: 56.** Desk 7 · bench 48 · decision 1.
 
-**MVP DESK (8),** a keyboard is enough:
-- 🟠 **B21** · **F372** · **F221** · **F374**
+**MVP DESK (7),** a keyboard is enough:
+- 🟠 **B21** · **F372** · **F374**
 - 🟡 **Q13** · **F333** · **S32** · **F319**
 
 **MVP BENCH (48),** needs a gun, a Stick, phones or a field (the order is the bench plan):
@@ -21,7 +21,8 @@ changes its id. The evidence behind every row is in [`experiment-log/`](experime
 - 🟡 **F350** · **H8** · **F353** · **F298** · **F342** · **F3** · **F21** · **F270** · **F322** · **F309** · **F292** · **F296** · **F294**
 - 🟢 **F339**
 
-**MVP DECISION (0),** awaiting Tony:
+**MVP DECISION (1),** awaiting Tony:
+- 🟠 **F221**
 
 The index lists are guarded (`test_docs_hygiene`): every row is listed once, under its own group, with its own
 marker. If a list disagrees with a row, the ROW is right.
@@ -68,8 +69,6 @@ A keyboard is enough. Highest value first.
 
 - **F319 🟡 MISSION CONTROL QA DECISIONS (Tony, 2026-09-24).** Decided: (a) infection: the survivors get an alert, the zombies do not; (b) extraction: a phone HUD event, no audio; (c) PANIC stays in the ☰ menu; (d) keep the event feed across an MC restart if it is simple, else accept losing it; (e) hills lean on phone or M5 hills, or an M5 translating a grenade's IR, which know both teams and can say HILL LOST; a grenade-only hill may have no announcements, and MC setup must make each combination clear; (f) LOBBY keeps the push in BUILD, KIT and RECAP. Still open, small server fields: a recap `played_s`, and a `lan.public` "was ever up". Build (a), (b) and (e) on the phone and in MC setup; (d) in MC. `build`.
 
-- **F221 🟠 MC warning colours: BUILT 2026-09-25, Tony to review the gallery.** Tony 2026-09-25 approved the audit and the conventions ("alert audit is thorough looks good"). **→ 2026-09-25 built:** one catalogue (`webapp/mc/src/alerts/`) gives every alert its severity and `<Alert>` (`webapp/mc/src/ui/Alert.tsx`) draws it; MC's own lines follow `WHAT: DO` (`state.py`); `test/alert-severity.test.ts` pins all 350 audit rows and `mcp/tests/test_mc_alert_wording.py` joins MC's lines to the console's heads. Battery: under 30 % is AMBER for gun, phone and station. The after column is in `C:\Users\Tony\brx-mc-alerts\index.html`. Left: Tony's look. `build`.
- **→ Tony 2026-09-25, decided a RULE instead of row-by-row marks** ("this was sorely needed the amber and red color use is all over the place"): RED = act now, or the game is wrong (MC offline/stale board, GUN POOLS WRONG, the KOTH grenade-vs-control conflict, a gun link lost DURING a match, a tunnel down while phones depend on it, a console crash). AMBER = fix before the next match (battery under 30%, a restored roster, an MC server older than the UI, an older config acked, a phone waiting for its gun, a station attention line, a gun link lost in the LOBBY). NEUTRAL (no colour) = status only (BENCH VOL, SENDING/HOLDING, a -dirty build stamp, the operator-token prompt, a single NO SOCKET). Two-tap hazard buttons and drop-your-draft confirms are not warnings and stay as they are. Build: one severity helper in webapp/mc (a colour by severity, not by caller), re-audit EVERY current amber/red call site against the rule (the 2026-09-16 audit is stale after the VQA passes), apply it, and add a test that pins each warning's severity. `build`. The conventions gallery (`C:\Users\Tony\brx-mc-alerts\index.html`) is the approved source of truth.
 
 
 
@@ -321,6 +320,9 @@ sheets that [`bench-plan.md`](bench-plan.md) names; the order of the next sittin
 ## MVP DECISION: awaiting Tony
 
 Tony's call. Each row says what the answer unblocks.
+
+- **F221 🟠 MC warning colours: BUILT 2026-09-25, Tony to review the gallery.** Tony 2026-09-25 approved the audit and the conventions ("alert audit is thorough looks good"). **→ 2026-09-25 built:** one catalogue (`webapp/mc/src/alerts/`) gives every alert its severity and `<Alert>` (`webapp/mc/src/ui/Alert.tsx`) draws it; MC's own lines follow `WHAT: DO` (`state.py`); `test/alert-severity.test.ts` pins all 350 audit rows and `mcp/tests/test_mc_alert_wording.py` joins MC's lines to the console's heads. Battery: under 30 % is AMBER for gun, phone and station. The after column is in `C:\Users\Tony\brx-mc-alerts\index.html`. Left: Tony's look at the gallery; his yes closes the row, a no names the alerts to re-colour. `decision`.
+ **→ Tony 2026-09-25, decided a RULE instead of row-by-row marks** ("this was sorely needed the amber and red color use is all over the place"): RED = act now, or the game is wrong (MC offline/stale board, GUN POOLS WRONG, the KOTH grenade-vs-control conflict, a gun link lost DURING a match, a tunnel down while phones depend on it, a console crash). AMBER = fix before the next match (battery under 30%, a restored roster, an MC server older than the UI, an older config acked, a phone waiting for its gun, a station attention line, a gun link lost in the LOBBY). NEUTRAL (no colour) = status only (BENCH VOL, SENDING/HOLDING, a -dirty build stamp, the operator-token prompt, a single NO SOCKET). Two-tap hazard buttons and drop-your-draft confirms are not warnings and stay as they are. Build: one severity helper in webapp/mc (a colour by severity, not by caller), re-audit EVERY current amber/red call site against the rule (the 2026-09-16 audit is stale after the VQA passes), apply it, and add a test that pins each warning's severity. `build`. The conventions gallery (`C:\Users\Tony\brx-mc-alerts\index.html`) is the approved source of truth.
 
 
 
