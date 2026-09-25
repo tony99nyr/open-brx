@@ -51,10 +51,9 @@ the native shield hum blocks the gun's audio queue). Off the plan the same day: 
 
 ## Sittings, in priority order
 
-### Next sitting
+### Next sitting: [`bench-2026-09-25.md`](bench-2026-09-25.md)
 
-The next sitting's sheet is written separately and is linked here when it lands. What is left of the 2026-09-24
-runbook is in that runbook's own sitting plan; do not re-run its done steps (above).
+That sheet orders what is left of the 2026-09-24 runbook; do not re-run the runbook's done steps (above).
 
 ### Sitting 1: screamers Phase A, transport half (about 55 min; 1 gun, a laptop)
 

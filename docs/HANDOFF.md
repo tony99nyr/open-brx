@@ -6,9 +6,9 @@ The bench order lives in [`bench-plan.md`](bench-plan.md) and every open item in
 player uninstalled the debug build once). Main is ahead of 0.4.11 with: the announcer queue and the gun audio-queue
 model (F351, F347), a Shields spawn at full shield and a lighter recharge (F348, F349), the Android 11 Location gate
 (F340), the pool repair after a lost chunk (F341), the station scan and revive fixes (F342, F344, F345), A60 MC
-auto-join, the A61 medal ladder, the S57 name-word gap, and F308's eased AR ladder. **0.4.12 waits on screamers A4**
-(Block 2 step 4 of [`bench-2026-09-24.md`](bench-2026-09-24.md)): F341's `$*` reset is a v4.32 code read until A4
-passes. Still P0: the link loop's new load-triggered flap (**F293**) and BLE setup metrics (**F297**). Every firmware
+auto-join, the A61 medal ladder and A62 melee medal, the S57 name-word gap, and F308's eased AR ladder. **0.4.12 waits on sitting A of
+[`bench-2026-09-25.md`](bench-2026-09-25.md)**: screamers A4 (F341's `$*` reset is a v4.32 code read until it
+passes) and F347's two answers (the hum's restart delay, and the `$PSET` t23 value that stops the hum blocking cues). Still P0: the link loop's new load-triggered flap (**F293**) and BLE setup metrics (**F297**). Every firmware
 fact from the drive is a disassembly reading until a bench proves it on v4.32; the claim checklist is
 [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md), and proven facts live in
 [`protocol/brx-protocol.md`](../protocol/brx-protocol.md) and [`manual/dev.md`](manual/dev.md).
@@ -77,8 +77,8 @@ overshield raises the `$PSET` shield max under 1 s of spawn protection. F348 and
 
 Use this priority stack; do not spend Tony's bench time on desk work:
 
-1. **Next sitting:** the sheet [`bench-plan.md`](bench-plan.md) links under "Next sitting"; record evidence and
-   promote or close each row from the result.
+1. **Next sitting:** [`bench-2026-09-25.md`](bench-2026-09-25.md), sitting A first (it gates 0.4.12); record
+   evidence and promote or close each row from the result.
 2. **Screamer transport:** Block 2 (A4 first, it gates 0.4.12), then A8b; capture F269/F270/F272, then F274's soaks.
 3. **Decisions for Tony:** F346 (d) first contact; F351's B3 (the kill line at my own death); F350's shield-hit
    sound; F352's kill confirm; the powerups flag after 3.4-3.5.
