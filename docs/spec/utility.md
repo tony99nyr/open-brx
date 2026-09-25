@@ -56,7 +56,8 @@ byte  0-3   4F 42 52 58   'OBRX'
       9     team           0..3 = the gun's $TID team · 255 = neutral / any
       10    state          kind-specific (respawn 1 ready/0 disabled · bomb 0 idle 1 planted 2 defused 3 detonated ·
                             player: bit0 alive, bit1 planting, bit2 defusing, bit3 extracting,
-                            bit4 claiming, bit5 claim_ready (A56, powerups.md))
+                            bit4 claiming, bit5 claim_ready (A56, powerups.md),
+                            bit6 revived: "revived at the station in `value`", read by the StickS3, post-MVP (F344))
       11    value          kind-specific small number (seconds left, cooldown, progress %; a claiming player: the station id)
       12    seq            bumps on every state change (a scanner tells fresh from stale)
       13    game           the match's game byte from MC (station_config.game = config.game_byte, A59) · 0 = any game
@@ -98,7 +99,11 @@ station hears them **near**: the median of the last 3 readings at or above its t
 `REVIVE_MARGIN_DB` (10). It does not use `present`. It counts only a player of its own team (any player at a
 neutral station), and only after it has seen that player die this game, so go-live and a resync never count. The player decides the revive on the station's HIGH-TX advert,
 and the station hears the player's MEDIUM-TX advert, about 8 dB weaker; `present` also adds a dwell behind the EMA.
-Field 2026-09-24: a phone station at -74 counted neither of two revives at it.
+Field 2026-09-24: a phone station at -74 counted neither of two revives at it. The StickS3 (`presence.h
+ReviveCounter`) also counts, with no RSSI, on the rising edge of the player's state bit 6 `PLAYER_REVIVED` with
+`value` = its own id, and uses only that rule for a phone that has ever set the bit. No phone on main sets it: the
+phone half is parked on `origin/revive-bit`, and the Stick's revive feedback is off (`REVIVE_FEEDBACK_ENABLED`).
+Revive counting is post-MVP (F344).
 
 **Scan reliability (Android):** a BLE scan left running goes silently deaf — `scanning` stays true but callbacks stop (hardware 2026-09-04: a down player at the station saw "find a respawn station" until a fresh scan was forced). `app.js` fights this: scan at low-latency, kick a fresh scan the instant the player goes DOWN, and restart every **7 s** while hunting a station (slower otherwise). 7 s keeps the death-kick + steady restarts under Android's ~5-starts-per-30 s throttle; a scan that dies mid-match is restarted on the next tick (the intent flag `beaconWanted`), so a single failed start can't freeze presence for the game.
 

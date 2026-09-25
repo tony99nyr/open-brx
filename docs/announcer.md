@@ -108,8 +108,8 @@ item is on air or waiting is voice-silent. Its line is dropped, not held for lat
 log says `<kind> silent: kill streak on air`. An item that was muted stays muted if a kill displaces it. Outside a streak these lines play as usual: a lead change waits behind an ordinary line, and the
 newest lead state wins.
 
-Open question for Tony: "Hill Contested" (`hill_contested`, queued as an `alert`) is not in `STREAK_SILENT`, so it
-still speaks mid-streak, after my kill and medal lines.
+"Hill Contested" (`hill_contested`, queued as an `alert`) is not in `STREAK_SILENT`, so it still speaks mid-streak,
+after my kill and medal lines. Whether to silence it too is F370.
 
 `medal` is its own rank so that the banner of a lead change MC sends with a kill is not held behind that kill's medal
 lines. It
@@ -140,18 +140,20 @@ queue, so the screen can show more than the voice says. The timings are in `app/
 |---|---|---|---|
 | HERO | centre, over the HUD | my kill: KILL, the victim's name, my newest medal. A spree adds a ×N count and a ladder of the earlier medals, newest first, fading | 2.5 s after the last kill (`LANE_HERO_MS`), or longer while that kill's slot is on air |
 | OBJECTIVE | right, under the K/D stats | one badge for the lead and one for the hill | until the next badge of the same key replaces it; it dims after 4 s |
-| FEED | left, under the identity block | teammate down, enemy down, a powerup spawn or swap, every other MC alert (BOMB PLANTED, ONE MINUTE LEFT) | 4 s a row (`LANE_FEED_MS`), the newest three |
+| FEED | left, under the identity block | teammate down, enemy down, a powerup spawn or swap, every other MC alert (BOMB PLANTED, ONE MINUTE LEFT; no full-width banner, Tony to confirm: F371) | 4 s a row (`LANE_FEED_MS`), the newest three |
 
 Rules:
 
 - A kill, a lead change and a hill capture at the same moment are all on screen at once.
-- Every item has a small source line: `MC`, `IR` (the S57 word) or `BLE` (a station). An MC confirm and the IR word
+- An item has a small source line: `MC`, `IR` (the S57 word or a grenade hill) or `BLE` (a station, including a
+  station hill and a powerup swap). A powerup spawn has none: it comes from the phone's own schedule. An MC confirm and the IR word
   for the same kill are one HERO row, with one flash and one buzz. Its tag names both in arrival order: `MC · IR` when MC
   confirmed first, `IR · MC` when the IR word came first.
 - The HERO shows no weapon and no "+1 ELIMINATION" or K count.
-- The medal labels come from `contract.gen` `MEDALS`. BEAT DOWN (`beat_down`, a melee kill) and KILLJOY (`killjoy`, an
-  enemy's spree ended) have local labels in `hud.js` `MEDAL_FALLBACK` until MC sends them (TODO: contract). Neither has
-  a voice line yet.
+- The medal labels and clips come from `contract.gen` `MEDALS` (`types.py`). BEAT DOWN (`melee_kill`, a melee kill)
+  says VA7F "Fatality" (Tony's pick, A62). KILLJOY (`killjoy`, an enemy's spree ended) has no clip, so it is text and
+  the green flash only (F361). `hud.js` `MEDAL_FALLBACK` keeps both labels only for an older MC that omits them.
+- The lanes draw no medal icons. The icons (style B, `app/src/hud/medalicons.js`) are on the recap only.
 - Nothing covers the ammo count, the powerup hint or held chip, the vitals, the clock, the identity block or the stats.
 - A centre tell (STUNNED or DISARMED, SMOKED, RECOIL, overheat, TAKING FIRE, a hit's number) is never covered: while
   one is up the HERO is one row above it (KILL ×N and the newest medal).
@@ -159,11 +161,13 @@ Rules:
 - Night: red and amber on black only, with no white flash, no strobe and no motion.
 - A dead player sees no lanes: the down screen owns the phone.
 
-The end-of-match AWARDS tab on the results screen uses the same language. It shows MC's A63 honours from the result
-push (`honors[] = {medal, key, player_id, display, stat}`, one row per tied holder): my awards as HERO medals, then
-every honour, mine first (a star and YOU), then in `types.AWARDS` order, SHARED on an award with more than one
-holder, and MC's stat string on its own line. Nothing is capped. The HONORS strip is hidden
-while the tab is on.
+The end-of-match AWARDS tab on the results screen shows MC's A63 honours from the result push
+(`honors[] = {medal, key, player_id, display, stat}`, one row per tied holder): mine first (a star and YOU), then in
+`types.AWARDS` order, SHARED on an award with more than one holder, and MC's stat string on its own line. Nothing is
+capped. The HONORS strip is hidden while the tab is on. The tab is icon-first: each award draws its style B icon
+(`medalicons.js`), with the name on a long press and in the accessible label. The PLAYERS tab's medal column and MC's
+recap draw the same icons with a legend (MC reads a generated copy, `app/scripts/gen-medalicons.mjs`). BEAT DOWN and
+IRON MAN draw a placeholder initial until Tony picks their icons (F367).
 
 ### Aim tells and the lanes
 
@@ -248,7 +252,7 @@ Rules:
 - **The top bar keeps its signals:** NO GUN, the MC dot and the low-battery line stay where they are.
 - **The medal chain keeps its voice** in every case.
 
-Open questions for Tony:
+Open questions for Tony (F368 holds the decision):
 
 - The rail and the powerup hint (bottom centre, powerup games only) want the same place. Proposal: the hint moves
   above the rail while a warning is up.

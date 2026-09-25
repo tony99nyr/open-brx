@@ -277,8 +277,8 @@ The HUD walks GET CLOSER → HOLD STILL (the ring) → <ITEM> READY, and the ite
 charges. An unavailable station shows its countdown.
 
 **Security posture** is unchanged from `utility.md` §3: adverts are unauthenticated. A second phone advertising
-`claim_ready` could take an item from across the field if the station hears it above the floor. That is the same
-casual-threat trade-off as the respawn station.
+`claim_ready` could take an item from anywhere the station can hear it, since the claim has no RSSI floor (item 5).
+That is the same casual-threat trade-off as the respawn station.
 
 ## Operator reset (Tony, 2026-09-24)
 

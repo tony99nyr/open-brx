@@ -93,8 +93,9 @@ floor; a phone powerup station advertises -55); S59 Visor; F348/F349; the announ
 during a kill streak); HUD VQA round 2 (POOLS WRONG, F359 Lows); the three-lane alerts (HERO/OBJECTIVE/FEED, medals from
 contract MEDALS, AWARDS tab on A63), gallery `C:\Users\Tony\brx-alerts\index.html`.
 - **Next bench task:** the t23 shield-loop A/B (F347, docs/audio-queue-scenarios.md step 2), then 3.4, 3.5, 4.18, 4.19.
-- **Next desk task:** F347's compile change once the bench picks a silent t23; Beat Down's voice (VA7F or VA7G) and
-  F149 (kill vs death stop) wait on Tony. The revive bit6 is parked on `origin/revive-bit` (post-MVP).
+- **Next desk task:** F347's compile change once the bench picks a silent t23. Death-wins and the style B recap
+  icons are on main. Tony decides F367-F371 (icons, HUD layering, Halo names, Hill Contested, FEED alerts). The revive
+  bit6 is parked on `origin/revive-bit` (post-MVP).
 
 ## Start here
 
@@ -103,8 +104,8 @@ Use this priority stack; do not spend Tony's bench time on desk work:
 1. **Next sitting:** [`bench-2026-09-25.md`](bench-2026-09-25.md), sitting A first (it gates 0.4.12); record
    evidence and promote or close each row from the result.
 2. **Screamer transport:** Block 2 (A4 first, it gates 0.4.12), then A8b; capture F269/F270/F272, then F274's soaks.
-3. **Decisions for Tony:** F351's B3 (the kill line at my own death); F350's shield-hit
-   sound; F352's kill confirm; the powerups flag after 3.4-3.5.
+3. **Decisions for Tony:** F350's shield-hit sound; F352's kill confirm; F367-F371 (brx5's HUD and
+   medal questions); the powerups flag after 3.4-3.5.
 4. **Only after reliability:** E2/E3/E4, B17, K6 and the remaining feature rows are roadmap work.
 
 If Tony is not at the bench, prepare the decision packet and read the exact FOLLOWUPS methods; do not invent a new

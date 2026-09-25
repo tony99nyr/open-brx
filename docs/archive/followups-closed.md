@@ -734,3 +734,8 @@ block's *internal* statuses were true when it closed and may since have been sup
 - 2026-09-25 **F358** answered by Tony through F365 (A67): an operator may edit a station's radius and strength on the
   station during play (a 1.5 s hold, a 5 s hold under an A58 lock), and the edit syncs to MC, last edit wins. Phone
   half `c980a681`, MC half `1420057b`.
+- 2026-09-25 **F351** fixed (brx4, brx5): one announcer queue on main (`2c3ebb68`, `2f21877a`), the lead change
+  must-hear, and Tony's trade decision ("your death wins") built and merged from `death-wins`. The rules are in
+  `docs/announcer.md`.
+- 2026-09-25 **F361** decided (Tony): KILLJOY keeps the green gun flash, like every medal;
+  `test_mc_awards.py::test_killjoy_keeps_its_gun_flash_like_every_medal` guards it.

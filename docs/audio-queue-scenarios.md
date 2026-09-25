@@ -10,7 +10,7 @@ four-grant recharge) and (B) the announcer queue, on main since `2c3ebb68` and d
   with its date or ASSUMPTION).
 - Policies A and B, the game model and the scenarios: `app/tools/audio-scenarios.mjs`.
   `node app/tools/audio-scenarios.mjs` prints every table below.
-- Tests: `app/test/audio-queue.test.mjs` (94 pass, 2 `todo`). The engine side of each fix has its own test on the
+- Tests: `app/test/audio-queue.test.mjs` (no `todo` test is left, 2026-09-25). The engine side of each fix has its own test on the
   real engine in `app/test/announcer.test.mjs` and `app/test/engine.test.mjs`. A `todo` test is an outcome we want that B does not
   deliver yet. It runs and reports, and it does not fail the suite. Make it a plain test once B delivers it.
 - The last section is the bench plan that settles the assumptions the fix depends on.
@@ -293,7 +293,7 @@ the harness does not. (The harness now mirrors the spree fold, 2026-09-24.)
 
 ## Proposed changes
 
-DONE on main (`2f21877a`, 2026-09-24), except items 2 and 4 below. The order of record is `ANNOUNCE_PRIORITY` in
+DONE on main (`2f21877a`, 2026-09-24; item 2 on 2026-09-25). Item 4 is built, and the bench still has to confirm `humWaitsForQueue`. The order of record is `ANNOUNCE_PRIORITY` in
 `app/src/announcer.js`; the harness imports it. The change to that list:
 
 ```diff
@@ -316,8 +316,8 @@ With it and the lead change's TTL at Infinity, B1 is fixed. Also:
 1. **For B2 (done, objective lines only):** while the hum blocks, an objective line stops it and plays. Stopping the
    hum cuts nothing anyone wants to hear, and it resumes by itself. Setting t23 EMPTY (bench step 2) would remove the
    block at its source.
-2. **For B3 (open, Tony):** send the F149 death stop only when the model says the low-health line is the clip on air,
-   or wait for the kill line (option 1), or drop the kill line (option 2).
+2. **For B3 (done, Tony 2026-09-25, "your death wins"):** the death stop cuts only what is ahead of the scream, and
+   a cut line is said again after it. The rules are in `docs/announcer.md` → *My death wins*.
 3. **For B4 (done):** a grunt that would start more than 500 ms after its hit is dropped.
 4. **For B8 and A5 (done, X3; bench confirms `humWaitsForQueue`):** the spawn write puts the spawn line and the klaxon before F348's `$LIFE` fill.
 5. **For A4 (done):** the possession tick waits on the whole FIFO and on the item on air (`audioBusy`), since it is a
