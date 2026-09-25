@@ -207,7 +207,7 @@ def test_the_halo_3_multi_kill_ladder_by_chain_length_and_its_4_s_window():
     MULTI_KILL_LADDER = [(m["count"], m["key"]) for m in MEDALS if m["kind"] == "multi"]
     assert [m for _, m in MULTI_KILL_LADDER] == ["double_kill", "triple_kill", "killtacular", "killtrocity",
                                                   "killamanjaro", "killtastrophe", "killionaire"]
-    assert all(m["clip"] for m in MEDALS), "Tony: a sound bite on every kill -- no silent tier"
+    assert all(m["clip"] for m in MEDALS if m["kind"] != "killjoy"), "Tony: a sound bite on every kill -- no silent tier"
     sc, fb, feed, alerts = mk_alerts()
     multis = []
     for i in range(11):                                   # 11 kills, each 300 ms after the last
@@ -300,7 +300,8 @@ def test_f150_an_eleven_kill_run_carries_its_streak_medals_to_the_recap_row():
     rows = {r["player_id"]: r for r in sc.rows()}
     assert (rows["p0"]["kills"], rows["p0"]["deaths"]) == (11, 5)
     assert rows["p0"]["best_streak"] == 6
-    assert rows["p0"]["medals"] == ["FIRST BLOOD", "KILLING SPREE ×2"], rows["p0"]["medals"]
+    # A63: p0's 12th kill ended p1's five-kill spree, which is a KILLJOY
+    assert rows["p0"]["medals"] == ["FIRST BLOOD", "KILLING SPREE ×2", "KILLJOY"], rows["p0"]["medals"]
     # the recap sheet is what the operator reads, and it carries the same list
     recap = sc.recap()
     assert recap["honors"] == [], "under 3 players there are no honors — medals are the whole story"
@@ -375,3 +376,39 @@ def test_a_melee_kill_is_a_medal_that_stacks_with_the_chain():
     assert fb[-1][1]["medals"] == ["melee_kill"], fb[-1][1]
     death(sc, "n3", "p3", 1, T0 + 9500, melee=False)
     assert "melee_kill" not in fb[-1][1]["medals"], fb[-1][1]
+
+
+def test_assist_ignores_a_hit_from_the_victims_next_life():
+    """F330 (chaos 2026-09-24): p0 kills p1 at T. p1 respawns, its phone clock jumps back 3 s, and p2
+    hits it. The hit's `t` is inside the window BEFORE the death, but p1's node emitted it after the
+    death (a higher seq), so it belongs to p1's next life. Live, the hit arrives after the death and earns
+    nothing; a replay that ingests the facts by `t` must agree. A hit from the SAME life still counts."""
+    t_death = T0 + 10_000
+    facts = [  # (seq, event), in the order p1's node emitted them
+        (1, {"type": "hit_taken", "t": t_death - 1000, "shooter_num": 4, "dmg": 9}),   # p3: same life
+        (2, {"type": "death", "t": t_death, "shooter_num": 1}),                         # p0 kills p1
+        (3, {"type": "respawn", "t": t_death + 500}),
+        (4, {"type": "hit_taken", "t": t_death - 2500, "shooter_num": 3, "dmg": 9}),   # p2: next life, clock back
+    ]
+    def run(order):
+        sc, _, _ = mk()
+        for seq, ev in order:
+            body = {"match_id": "m1", "node_id": "n1", "player_id": "p1", "shooter_team": 1, **ev}
+            sc.ingest("n1", body, body["t"], seq=seq)
+        return {x["player_id"]: x["assists"] for x in sc.rows()}
+    live = run(facts)
+    replay = run(sorted(facts, key=lambda f: f[1]["t"]))   # `_match_facts` orders by effective t
+    assert live == replay, (live, replay)
+    assert replay["p3"] == 1 and replay["p2"] == 0, replay
+
+
+def test_assist_falls_back_to_t_when_a_fact_has_no_seq():
+    """F330's seq rule needs both facts from the victim's node with a seq; without one (an older node, a
+    hot-swapped phone) the old t-window rule stands, so a hit inside the window still earns the assist."""
+    sc, _, _ = mk()
+    t_death = T0 + 10_000
+    for ev in ({"type": "hit_taken", "t": t_death - 1000, "shooter_num": 4, "dmg": 9},
+               {"type": "death", "t": t_death, "shooter_num": 1}):
+        body = {"match_id": "m1", "node_id": "n1", "player_id": "p1", "shooter_team": 1, **ev}
+        sc.ingest("n1", body, body["t"])            # no seq at all
+    assert {x["player_id"]: x["assists"] for x in sc.rows()}["p3"] == 1

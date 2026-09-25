@@ -20,6 +20,7 @@ const clipsOf = (run, cue) => run.gun.clips.filter(c => c.cue === cue);
 const one = (run, cue) => { const c = clipsOf(run, cue); assert.equal(c.length, 1, `${run.scenario}/${run.policy}: expected one ${cue} clip, got ${c.length}`); return c[0]; };
 const heardInFull = c => c.status === 'full';
 const MUST_LATENCY_MS = 300;
+const silent = (b, cue) => b.dropped.some(d => d.cue === cue && /silent: kill streak on air/.test(d.why));
 const FLASH_GAP_MS = 120;   // the kill item's flash-to-line gap: the item is on air from the flash
 const rules = patch => ({ ...GUN_RULES, ...patch });
 /** Body sounds are exempt from the announcer queue in B (docs/announcer.md). The pain grunts are held out of the
@@ -264,15 +265,17 @@ test('B teammate-down-firefight: the shield break is heard; the teammate card is
   assert.ok(ed.length === 0 ? b.dropped.some(d => d.cue === 'enemy_down') : ed[0].latency <= ANNOUNCE_AUDIO_LATE_DEFAULT_MS);
 });
 
-test('B koth-capture-kill-lead: the kill confirm, then the lead change, both in full; the kill waits only for the hill line on air', () => {
+test('B koth-capture-kill-lead: the kill waits only for the hill line on air; the lead change is voice-silent in the streak (Tony)', () => {
   // The hill line cuts the hum and is on air when the kill lands 300 ms later. A lower item that still sounds is never
-  // cut (docs/announcer.md, Pre-emption 1): the kill follows it at once, then the lead change.
+  // cut (docs/announcer.md, Pre-emption 1): the kill follows it at once. The lead change meets my kill on air, so its
+  // line is dropped and its banner shows.
   const b = B['koth-capture-kill-lead'];
-  const hc = one(b, 'hill_captured'), k = one(b, 'kill'), l = one(b, 'lead_taken');
-  assert.ok(heardInFull(k) && heardInFull(l) && k.start < l.start);
+  const hc = one(b, 'hill_captured'), k = one(b, 'kill');
+  assert.ok(heardInFull(k));
   assert.ok(k.start >= hc.end && k.start - hc.end <= MUST_LATENCY_MS, `the kill ${k.start - hc.end} ms after the hill line`);
   assert.ok(k.latency <= hc.ms + MUST_LATENCY_MS, `kill ${k.latency} ms: at most the hill line on air, plus ${MUST_LATENCY_MS} ms`);
-  assert.ok(l.latency <= hc.ms + 2000 + 2 * MUST_LATENCY_MS, `lead ${l.latency} ms: the hill line, then the IR kill card's 2 s`);
+  assert.equal(clipsOf(b, 'lead_taken').length, 0);
+  assert.ok(silent(b, 'lead_taken'));
 });
 test('B koth-capture-kill-lead: "Hill Captured" is heard at once, through the hum (finding B2)', () => {
   const hc = one(B['koth-capture-kill-lead'], 'hill_captured');
@@ -295,11 +298,12 @@ test('B koth-hum-objectives: under the hum, both hill lines and "Target down" ar
   assert.ok(b.dropped.some(d => d.cue === 'next_kill_wins'));
 });
 
-test('B first-blood-lead: the kill line, the first-blood medal and the lead change are heard in full', () => {
+test('B first-blood-lead: the kill line and the first-blood medal are heard in full; the lead change is voice-silent in the streak', () => {
   const b = B['first-blood-lead'];
   assert.ok(heardInFull(one(b, 'kill')) && one(b, 'kill').latency <= MUST_LATENCY_MS);
   assert.ok(heardInFull(one(b, 'first_blood')));
-  assert.ok(heardInFull(one(b, 'lead_taken')), 'with the lines back to back the lead fits inside its 4 s TTL here');
+  assert.equal(clipsOf(b, 'lead_taken').length, 0);
+  assert.ok(silent(b, 'lead_taken'));
 });
 // Left `todo`: it waits on the bench (bench-2026-09-24.md Block 10 step 1, audio steps 1 and 4.3): how soon the hum starts
 // after the fill, and restarts after a stop, decides whether moving the line ahead of the fill is enough.
@@ -318,32 +322,25 @@ test('B death-with-kill-queued: my kill confirm is not cut by my own death', { t
   assert.ok(heardInFull(one(B['death-with-kill-queued'], 'kill')));
 });
 
-test('B koth-flap-standard: the kill line is heard in full, the stale "Hill Captured" is never said, "Hill Lost" is', () => {
+test('B koth-flap-standard: the kill line is heard in full; neither hill line is said (the stale one is replaced, the newest meets the streak)', () => {
   const b = B['koth-flap-standard'];
   assert.ok(heardInFull(one(b, 'kill')));
   assert.equal(clipsOf(b, 'hill_captured').length, 0);
-  assert.ok(heardInFull(one(b, 'hill_lost')));
+  assert.equal(clipsOf(b, 'hill_lost').length, 0);
+  assert.ok(silent(b, 'hill_lost'), '"Hill Lost" is voice-silent: my kill is on air (Tony)');
 });
 
-test('B standard-control: kill, lead, first blood and double kill are all heard in full, in that order', () => {
+test('B standard-control: both kill lines, first blood and the double kill are heard in full, in that order; the lead change is voice-silent', () => {
+  // Tony 2026-09-24: "i think that is right. they go silent when kill streaks are showing." The lead change meets my
+  // kill on air: its line is dropped, its banner shows. The second kill then takes over that silent banner at once, and
+  // MC's second item folds first blood with the double kill: first blood is never folded away (review H1).
   const b = B['standard-control'];
-  const order = ['kill', 'lead_taken', 'first_blood', 'double_kill'].map(cue => one(b, cue));
-  // The hill capture at 6 s lands behind 4.2 s of medal voice: it would start 3 s late, past its 2 s limit, so its card
-  // shows without its line (docs/announcer.md, Late lines).
-  assert.ok(b.dropped.some(d => d.cue === 'hill_captured' && /card only/.test(d.why)));
-  order.forEach(c => assert.ok(heardInFull(c), c.cue));
+  const kills = clipsOf(b, 'kill');
+  const order = [kills[0], kills[1], one(b, 'first_blood'), one(b, 'double_kill')];
+  order.forEach(c => assert.ok(c && heardInFull(c), c && c.cue));
   for (let i = 1; i < order.length; i++) assert.ok(order[i - 1].start < order[i].start, `${order[i - 1].cue} before ${order[i].cue}`);
-  // The first-blood line waits behind the lead change (the `medal` rank), and the second kill's MC item folds it: the
-  // spree fold never drops first blood (review H1), it says it and then the newest tier.
-  assert.equal(clipsOf(b, 'kill').length, 1, 'the second kill is confirmed by its double-kill line, which replaces the plain line');
-});
-test('B standard-control: "Your team takes the lead" is heard (finding B1: it expired behind two kill items)', () => {
-  const l = one(B['standard-control'], 'lead_taken');
-  assert.ok(heardInFull(l), `${l.status}`);
-});
-test('B first-blood-lead: the lead change plays before the medal line of the kill it came with (the `medal` rank)', () => {
-  const b = B['first-blood-lead'];
-  assert.ok(one(b, 'kill').start < one(b, 'lead_taken').start && one(b, 'lead_taken').start < one(b, 'first_blood').start);
+  assert.equal(clipsOf(b, 'lead_taken').length, 0);
+  assert.ok(silent(b, 'lead_taken'));
 });
 test('B koth-hold-medals: no possession tick while my kill or its medal lines are on air (it is a token-1 clip)', () => {
   const b = B['koth-hold-medals'];

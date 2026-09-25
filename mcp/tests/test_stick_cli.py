@@ -68,6 +68,14 @@ def test_compile_argv_shape():
     assert "--fqbn" in argv and argv[argv.index("--fqbn") + 1] == "FQBN"
     assert "--additional-urls" in argv and argv[argv.index("--additional-urls") + 1] == "URL"
     assert argv[-1] == "WINPATH"
+    assert "--build-property" not in argv  # the default build: revive feedback off
+
+
+def test_compile_argv_revive_on_passes_the_define_as_a_build_property():
+    argv = stick.compile_argv(cli_exe="ARDUINO_CLI", fqbn="FQBN", board_url="URL", win_path="WINPATH", revive_on=True)
+    i = argv.index("--build-property")
+    assert argv[i + 1] == "compiler.cpp.extra_flags=-DBRX_REVIVE_FEEDBACK=1"
+    assert argv[-1] == "WINPATH"
 
 
 def test_upload_argv_includes_port():

@@ -84,10 +84,9 @@ The HUD shows the live reading against the threshold on the DOWN screen (§4.3),
 the advertised threshold overriding the default, neutral admitting every team, other games ignored.
 
 **Respawn range: 3 m at most (Tony, 2026-09-24; F345).** Measured at 3 m on the player phone: a phone station reads
--63 to -68 dBm, a StickS3 -53 to -58 (the Stick transmits hotter). So the default is **per platform**, like the powerup
-claim's. Tony then walked both stations at 3-5 m and set the defaults (2026-09-24, "the stick actually works
+-63 to -68 dBm, a StickS3 -53 to -58 (the Stick transmits hotter). So the default is **per platform**. Tony then walked both stations at 3-5 m and set the defaults (2026-09-24, "the stick actually works
 better"): a phone station **-70 dBm**, a StickS3 **-57 dBm** (`beacon.js RESPAWN_RSSI_DBM`; the Stick's copy is
-`hardware/m5sticks3/station_link.h STICK_DEFAULT_THRESHOLD_DBM`, **pending**: it still resolves 0 to -74). The other kinds on a phone station keep the
+`hardware/m5sticks3/station_link.h STICK_DEFAULT_THRESHOLD_DBM`, since `8d5e6d13`: a Stick resolves 0 to -57 and advertises -57). The other kinds on a phone station keep the
 2026-09-04 bench value, -74 dBm at high TX (about 10 ft). MC's `StationAssignment.threshold` still overrides; **0**
 (or absent) means the station's own default, which it resolves and advertises in byte 14. A phone app older than
 0.4.12 clamped 0 to -30, so MC sends such a phone the explicit value (`state.py _wire_threshold`). A player phone falls
@@ -194,7 +193,7 @@ passive beacon: it needs **no** MC contact for the rest of the game (same island
 
 1. **Assign at muster (WiFi).** MC's KIT/muster gains an **ITEMS** panel beside the roster: the operator
    sets each utility phone's **kind / team / station id / threshold**. MC pushes **`station_config`** to the
-   phone (M-NET, §5c); the phone applies it, shows **MC-ARMED · game N**, and **locks its controls**
+   phone (M-NET, §5c); the phone applies it, shows **MC ✓ GAME N**, and **locks its controls**
    (the on-device 7-tap gate stays only as a no-WiFi/field-fix fallback). The game bundle carries
    `config.stations` = the allow-list of ids MC handed out, so a player phone only honours those ids.
 2. **Placement BEFORE start, not inside the countdown.** Stations advertise from the moment MC arms them;
@@ -209,8 +208,10 @@ passive beacon: it needs **no** MC contact for the rest of the game (same island
    new game number, which needs MC contact. So **v1 keeps station adverts at `game 0` (any game) and
    relies on the id allow-list**: same ids, same stations, no walk-back. Per-match `game` scoping arrives
    with `station_config` carrying the game number (a station in WiFi range at each start picks it up).
-4. **Station status copy:** **"NOT ARMED BY MISSION CONTROL"** until the push lands; **"MC-ARMED · game N"**
-   after. The 7-tap manual path stays for a WiFi-less field.
+4. **Station status copy** (quiet unless it matters, Tony 2026-09-24): **"MC ✓ GAME N"** once the push lands;
+   linked but not yet armed, **"WAITING FOR MC TO ARM IT"**; linked and on the air WITHOUT the push, the warning
+   **"SET BY HAND · PLAYERS MAY IGNORE IT"** (player phones check the game byte the push sets); no MC at all, nothing
+   (a hand-set station on its own is valid). The 7-tap manual path stays for a WiFi-less field.
 
 ## 5c. `station_config` (M-NET, MC → utility phone) — the arming message
 
@@ -376,15 +377,21 @@ F93's note about byte 15 being the cheap spare for relaying grenade-hill ownersh
 Static numbers are not enough: **a defender must be able to tell "you are losing this, get help" at a glance.**
 The screen builds on what `utility.js` already renders.
 
+Round 3 (Tony, 2026-09-24: "the animation should explain what's happening. less labels and icons"): the bar and its
+sentences are gone. ONE ring around ONE big word carries the meaning; the only other text is the % line.
+
 | element | what it does |
 |---|---|
-| **owner colour** | the page already themes itself from the station's team (`utility.js`'s `render()` sets `document.documentElement.dataset.team` from the live owner). `kind 5` drives it from the **live owner**, and **neutral is its own look** (grey/unlit), never a team colour |
-| **progress bar** | one bar for `value` 0-100, animated between advert updates (CSS transition, not a jumping number). It is **two-toned across the phases**: draining shows the owner's colour retreating, building shows the claimant's colour advancing from neutral |
-| **direction and rate** | an arrow on the moving edge pointing the way the point is going, plus the rate as a multiplier (`→ RED ×2`) from its own `net` (the station reads its own state, not the byte it emits), and **`timeToChange()`** as the seconds until the point actually flips, which is the number a defender reads to decide whether to run. At net 0 the arrow is replaced by **STALLED** |
-| **the transition** | a one-shot full-width flash and a large word at each crossing: **NEUTRAL** when the drain completes, **CAPTURED BY <team>** when the build completes. The moment must be unmistakable from across a room |
-| **contested** | a persistent band when the contested bit is set, so "both teams are here" reads even at net 0 (which is otherwise indistinguishable from an empty point by the bar alone) |
-| **who is contributing** | the existing roster (`utility.js`'s roster render, P-id · team · RSSI · ALIVE/DOWN · AT STATION / ON POINT) gains a **counts / does not count** marker per row: living + present = counted and shown in team colour; **DOWN** = struck through; in range but not present = dimmed. Under it, the net line: `RED 2 · BLU 1 → +1 RED` |
-| **the tally** | possession seconds per team, persisted (§5d.6), so the screen is also the recap sheet if nobody ever collects it |
+| **owner colour** | the page themes itself from the **live owner** (`render()` sets `document.documentElement.dataset.team`); **neutral is its own look** (grey), never a team colour. The big word in the ring is the owner, or NEUTRAL |
+| **the ring's fill** | the HOLDER's colour fills the ring to `value` (the claimant while it builds, the owner while it drains: whoever byte 9 names), and the rival's colour creeps into the rest while it drains or is contested |
+| **direction and rate** | a bright sweep runs round the ring the way the point is moving: clockwise while it gains, anticlockwise while it drains; its speed follows the station's own `net` |
+| **stalled / contested** | the fill freezes, the sweep stops, and the two teams' colours pulse against each other at the frontier (where the fill stopped) |
+| **neutral / held** | neutral: a dim ring turning slowly. Held: the full ring in the owner's colour, breathing |
+| **the transition** | a one-shot burst of the new owner's colour over the whole screen, and a word inside the ring in place of the % line: **NEUTRAL** when the drain completes, **CAPTURED BY <team>** when the build completes |
+| **the % line** | the one small line under the word, readable from 2 m. The seconds-to-flip sentence, the arrow, the rate and the CONTESTED band are retired (the ring shows each of them) |
+| **who is contributing** | the roster (P-id · team · RSSI · ALIVE/DOWN · ON POINT), folded away by default behind SHOW PLAYERS: living + present = counted, team colour; **DOWN** = struck through; in range but not present = dimmed; tid 2 = CAN'T HOLD |
+| **the tally** | possession seconds per team, persisted (§5d.6), at the foot of the roster, so the screen is still the recap sheet |
+| **motion rules** | transform and opacity only (compositor work, no per-frame JS); `prefers-reduced-motion` gets a static glow |
 
 ### 5d.5 The guns say the right thing per team — and this needs NO LAN
 
@@ -503,7 +510,9 @@ they are built.
 
 ## 5g. A NON-PHONE utility node: the M5StickS3 armed over Wi-Fi (H8)
 
-**Status: built 2026-09-24, DESK-VERIFIED ONLY (never flashed).** `hardware/m5sticks3/station_link.h`
+**Status: built 2026-09-24, flashed and bench-run the same day** (the Stick runbook's pickup, hill and respawn
+blocks; `docs/experiment-log/`). What the bench has not yet exercised is marked "bench to confirm" where it is
+described. `hardware/m5sticks3/station_link.h`
 (+ `json_lite.h`, `station_ui.h`) implement §5g.2's minimum client: hello/welcome/station_config,
 the two association modes below, and the powerup schedule and CLAIM award (A56, `docs/spec/powerups.md`),
 host-tested in `hardware/m5sticks3/test/`. An MC-side test (`mcp/tests/test_utility_esp32.py`)
@@ -547,7 +556,7 @@ writes a gun head, and owns no store-and-forward ring — MC already refuses a l
 |---|---|---|
 | → MC | `hello` | `{node_id, node_type:"utility", app_ver, platform:"esp32", seq_next:0}`. `node_id` is stable across reboots (Preferences), or MC sees a new item every power cycle |
 | ← MC | `welcome` | keep `node_key` and present it on the next `hello` (A8.2) or a re-claim of a still-live id is refused `4003 in_use` |
-| ← MC | `station_config` | `{kind, team, id, threshold?, game?, valid_ids?}` → the advert, persisted, screen shows MC-ARMED · game N |
+| ← MC | `station_config` | `{kind, team, id, threshold?, game?, valid_ids?}` → the advert, persisted, screen shows MC ✓ GAME N |
 | → MC | `status` | every `STATUS_HEARTBEAT_MS` (2000 ms) while connected; stale at `STALE_AFTER_MS` (8000 ms). Live-only, never queued, no `seq` |
 
 `seq_next: 0` forever is honest: a station emits no persisted facts, so there is no seq to advance and nothing
@@ -638,8 +647,8 @@ in the operator's voice.** Nothing here asks for that to change.
 - **`STATION_SOURCES` value for a Stick control point: DECIDED (2026-09-24, Tony).** `phone`, with no fourth
   value: a Stick control point uses `station_source: "phone"`, the same as a phone, because the advert and the
   capture rules (presence, §5d) are the same whether the advertiser is a phone or a Stick. Not yet bench-proven:
-  brx4's port of presence capture to a StickS3 lands today but needs a reflash and a hardware run before it
-  counts as working.
+  the StickS3 port of presence capture landed in `e65aea17` and needs a hardware run (H9, Block 9 of
+  `bench-2026-09-24.md`) before it counts as working.
 - **`control{cmd:"release_utility"}` (§5c.1) has no meaning on a Stick.** It exists to free a PHONE stuck in
   utility mode by sending it back to its HUD; a Stick has no HUD to return to. A Stick MUST NOT ignore the
   message silently — the operator pressed a button and deserves an effect — so it should drop to UNASSIGNED

@@ -38,6 +38,8 @@ class M5Canvas : public lgfx::LGFX_Sprite {
   static constexpr int PAD = 160;  // scratch margin around the screen, wider than any 24pt word overrun
 
   std::vector<SimTextRecord> texts;
+  std::vector<std::string> logical;  // whole texts the fitter drew (a two-line block's full text too)
+  std::vector<std::string> cuts;     // texts the fitter had to cut to width: the gate fails on any
 
   size_t drawString(const char* s, int32_t x, int32_t y) {
     record(s, x, y);
@@ -87,3 +89,7 @@ class M5Canvas : public lgfx::LGFX_Sprite {
 
   lgfx::LGFX_Sprite scratch_;
 };
+
+// station_render.h's simulator hooks (it defines them as no-ops only when these are not defined).
+#define BRX_RENDER_NOTE_TEXT(canvas, text) ((canvas).logical.push_back(text))
+#define BRX_RENDER_NOTE_CUT(canvas, text) ((canvas).cuts.push_back(text))

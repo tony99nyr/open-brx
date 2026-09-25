@@ -191,7 +191,7 @@ struct SimStick {
     }
   }
   void tick_players() {  // mcTickPlayers
-    if (!link.has_control_assignment() && !link.has_respawn_assignment()) return;
+    if (!link.has_control_assignment() && !(REVIVE_FEEDBACK_ENABLED && link.has_respawn_assignment())) return;
     const StationAssignment& a = link.assignment();
     presence.default_threshold = presence_threshold_dbm(a);
     presence.game = (uint8_t)a.game;
@@ -244,6 +244,10 @@ struct SimStick {
     if (locked && buttons.phase() == ButtonPhase::CONFIRM_ARMED) buttons.on_short_press();
     if (locked) {
       ro_active = true; ro_locked = true; ro_ok = false; ro_at = now;
+      home.note_activity(now);
+      return;
+    }
+    if (!link.assignment().present) {  // no station assigned: nothing to reset
       home.note_activity(now);
       return;
     }
@@ -365,19 +369,16 @@ static std::vector<Scenario> scenarios() {
   v.push_back({"respawn_yellow", "respawn", "Armed as team 2's (YELLOW) respawn.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("respawn", 2, 2));
   }});
-  v.push_back({"respawn_red_redeploy", "respawn", "Red respawn: a down player walks in and comes up alive.", [](SimStick& s) {
+  v.push_back({"respawn_red", "respawn", "Armed as team 0's (RED) respawn.", [](SimStick& s) {
+    linked(s); s.frame("station_config", cfg("respawn", 0, 1));
+  }});
+  v.push_back({"respawn_red_player_revived", "respawn", "Red respawn: a down player walks in and comes up alive "
+               "(revive feedback is post-MVP: no count, no REDEPLOY flash).", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("respawn", 0, 1));
     s.arrive(7, 0, false);
     s.advance(1500);
     s.set_alive(7, true);
     s.advance(300);
-  }});
-  v.push_back({"respawn_red_after_flash", "respawn", "The same station 2 s after the REDEPLOY flash.", [](SimStick& s) {
-    linked(s); s.frame("station_config", cfg("respawn", 0, 1));
-    s.arrive(7, 0, false);
-    s.advance(1500);
-    s.set_alive(7, true);
-    s.advance(2300);
   }});
   v.push_back({"respawn_advert_down", "respawn", "Armed respawn whose BLE advert failed to start.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("respawn", 1, 1));
@@ -410,6 +411,10 @@ static std::vector<Scenario> scenarios() {
     ClaimWinner w; w.won = true; w.player_num = 7;
     s.link.award_claim(w, s.now);
     s.advance(91000);
+  }});
+  v.push_back({"pickup_stats_long_name", "pickup", "A 12-character item on the STATS page.", [](SimStick& s) {
+    linked(s); s.frame("station_config", cfg("powerup", 255, 8, LONGNAME));
+    s.a_click();
   }});
   v.push_back({"pickup_stats", "pickup", "Pickup taken, A pressed: the STATS page.", [](SimStick& s) {
     linked(s); s.frame("station_config", cfg("powerup", 255, 4, ROCKETS));
@@ -474,7 +479,7 @@ static std::vector<Scenario> scenarios() {
     linked(s, true); s.frame("station_config", cfg("powerup", 255, 4, ROCKETS));
     s.b_hold(); s.advance(1000);
   }});
-  v.push_back({"reset_confirm_unassigned", "operator", "Welcomed but unassigned, B held once.", [](SimStick& s) {
+  v.push_back({"reset_confirm_unassigned", "operator", "Welcomed but unassigned, B held once: nothing to reset, no prompt.", [](SimStick& s) {
     linked(s); s.b_hold(); s.advance(500);
   }});
   v.push_back({"reset_sent", "operator", "Held-mode pickup, B held twice with MC connected.", [](SimStick& s) {
@@ -519,7 +524,8 @@ int main(int argc, char** argv) {
     sc.run(s);
     StickState st = s.state();
     ScreenSpec spec = compute_screen(st);
-    std::string line = "{\"name\":" + jstr(sc.name) + ",\"group\":" + jstr(sc.group) + ",\"story\":" + jstr(sc.story) +
+    std::string line = "{\"revive_feedback\":" + std::string(REVIVE_FEEDBACK_ENABLED ? "true" : "false") +
+                       ",\"name\":" + jstr(sc.name) + ",\"group\":" + jstr(sc.group) + ",\"story\":" + jstr(sc.story) +
                        ",\"link_state\":" + jstr(link_state_label(st.link_state)) + ",\"spec\":" + spec_json(spec);
 #ifdef BRX_SIM_RENDER
     M5Canvas canvas;
@@ -535,6 +541,10 @@ int main(int argc, char** argv) {
               ",\"box\":[" + std::to_string(t.x0) + "," + std::to_string(t.y0) + "," + std::to_string(t.x1) + "," +
               std::to_string(t.y1) + "]}";
     }
+    line += "],\"logical\":[";
+    for (size_t i = 0; i < canvas.logical.size(); i++) line += (i ? "," : "") + jstr(canvas.logical[i]);
+    line += "],\"cuts\":[";
+    for (size_t i = 0; i < canvas.cuts.size(); i++) line += (i ? "," : "") + jstr(canvas.cuts[i]);
     line += "]";
     // FNV-1a over the raw pixels: two scenarios that look identical have the same hash.
     const uint8_t* px = (const uint8_t*)canvas.getBuffer();

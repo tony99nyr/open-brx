@@ -3,8 +3,8 @@
 Updated: 2026-09-24.
 
 Chaos testing plays whole matches on the real Mission Control (MC) stack under hard, random conditions,
-and checks a set of rules after every step. On its first day it found four MC bugs, now fixed (F326 to
-F329), and one open limit (F330).
+and checks a set of rules after every step. On its first day it found five MC bugs, now fixed (F326 to
+F330).
 
 A chaos run stands up the real Session, NetServer, Compiler and session store in one process. The field is
 2 to 20 MockNodes on the real WebSocket. The run plays a match through a seeded sequence of actions:
@@ -113,7 +113,7 @@ MC is not checked against its own bookkeeping.
 4. Fix the bug if the fix is small, local and clearly correct. Otherwise set the scenario's
    `xfail="F<id>: <reason>"` (or wrap a focused test in `xfail(...)` from `tests/_skip.py`) and file the
    FOLLOWUPS row (claim the id first). CI then expects the run to fail, and a pass fails CI until you
-   remove the marker. `clock-back-assist` (F330) is the example.
+   remove the marker. `clock-back-assist` (F330) carried the marker until its fix.
 5. Never weaken an invariant to get a green run. A documented design limit goes in the scenario's
    `skip_invariants` with the reason.
 

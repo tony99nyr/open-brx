@@ -22,116 +22,212 @@
 [data-team="blue"]{--team:var(--team-blue);--team-ink:#04121e}[data-team="yellow"]{--team:var(--team-yellow);--team-ink:#1a1400}
 [data-team="red"]{--team:var(--team-red);--team-ink:#1a0404}[data-team="green"]{--team:var(--team-green);--team-ink:#041a0c}[data-team="any"]{--team:var(--team-any);--team-ink:#0a0f14}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;min-height:100%;background:#02040a;color:var(--num);font-family:var(--fl);overscroll-behavior:none}
+html,body{margin:0;min-height:100%;background:#02040a;color:var(--num);font-family:var(--fl);overscroll-behavior:none;overflow-x:clip}   /* H1: a glow or a hit target must never pan a propped-up phone sideways */
 body{background:var(--bg);padding:max(14px,env(safe-area-inset-top)) 16px max(20px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px;min-height:100vh}
 button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:none;padding:0;user-select:none}
-.skew{transform:skewX(-8deg)}.unskew{display:inline-block;transform:skewX(8deg)}
+/* No slant on this page (Tony, 2026-09-24: "just do regular untilted"): every box, button, badge and bar is a plain
+   rectangle, and nothing is skewed, so a slanted edge can never cross a straight border. The HUD keeps its own slant.
+   .unskew is only the label span inside a button now (utility.js writes START/STOP into it); it transforms nothing. */
+.unskew{display:inline-block}
 
 /* ---- header: wordmark + the ⓘ (single taps do nothing; seven within 3 s open the config) ---- */
 .top{display:flex;align-items:center;justify-content:space-between}
-.wm{font-family:var(--fd);font-style:italic;font-weight:700;font-size:22px;letter-spacing:.14em}.wm b{color:var(--glow)}
+.wm{font-family:var(--fd);font-weight:700;font-size:22px;letter-spacing:.14em}.wm b{color:var(--glow)}
 .wm small{font-family:var(--fl);font-style:normal;font-size:10px;letter-spacing:.34em;color:var(--mut);margin-left:10px;vertical-align:middle}
 .infobtn{width:40px;height:40px;border:1px solid var(--edge);color:var(--mut);font:600 15px var(--fl);display:flex;align-items:center;justify-content:center;position:relative}
-.infobtn::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:56px;height:56px}   /* the tap target */
+.infobtn svg{width:20px;height:20px}   /* drawn, not the U+24D8 glyph: a font without it shows an empty box (the HUD's QA-28) */
+.infobtn::after{content:"";position:absolute;right:0;top:50%;transform:translateY(-50%);width:56px;height:56px}   /* the tap target, grown leftwards so it stays on screen at the right edge */
 /* the ⓘ gesture is 7 taps in 3 s with ZERO feedback on any single tap (field 2026-09-12) -- this is the
    ONLY feedback: a small count that appears on tap 1 and fades on timeout or on the drawer opening. */
-.infoprog{position:absolute;right:-6px;top:-6px;min-width:16px;height:16px;padding:0 3px;border-radius:8px;background:var(--glow);color:var(--team-ink,#04121e);font:700 10px var(--m);display:flex;align-items:center;justify-content:center;pointer-events:none}
+.infoprog{position:absolute;right:calc(100% + 8px);top:50%;transform:translateY(-50%);   /* beside the box, clear of its border */
+  min-width:16px;height:16px;padding:0 3px;border-radius:8px;background:var(--glow);color:var(--team-ink,#04121e);font:700 10px var(--m);display:flex;align-items:center;justify-content:center;pointer-events:none}
 .infoprog[hidden]{display:none}
 
 /* ---- a second, discoverable exit: HOLD to leave utility mode, no drawer, no settings touched.
    Visible only while nobody has claimed this phone as a field item (utility.js render(), `mcArmed`
    gates `hidden`); a deployed station stays behind the ⓘ gate, unchanged. HELD, not tapped, so a bag
    jostle cannot cross it and a passerby needs a deliberate ~1.2 s press, same order as the entry gate. ---- */
-.exitbtn{position:relative;overflow:hidden;align-self:center;margin-top:2px;padding:12px 18px;min-height:38px;box-sizing:border-box;border:1px solid var(--edge);color:var(--mut);font:600 11px var(--fl);letter-spacing:.16em;background:var(--plate2);-webkit-user-select:none;user-select:none;touch-action:none}
+.exitbtn{position:relative;overflow:hidden;align-self:center;padding:12px 18px;min-height:44px;box-sizing:border-box;border:1px solid var(--edge);color:var(--mut);font:600 11px var(--fl);letter-spacing:.16em;background:var(--plate2);-webkit-user-select:none;user-select:none;touch-action:none}
 .exitbtn[hidden]{display:none}
+/* first in its column in both orientations: the escape must be on screen without scrolling (the ring made the hero taller) */
+#exitHud{order:-1}
 .exitbtn .fill{position:absolute;inset:0;left:0;width:0;background:color-mix(in srgb, var(--warn) 34%, transparent)}
 .exitbtn .lbl{position:relative}
+.exitbtn.holding .lbl{color:var(--num)}   /* --mut on the amber fill measured 3.4:1 */
 
 /* ---- the status display ---- */
-.hero{position:relative;border:1px solid var(--team);background:linear-gradient(180deg,color-mix(in srgb,var(--team) 26%,#04070c) 0%,var(--plate2) 100%);padding:22px 18px 18px;text-align:center;transform:skewX(-4deg);box-shadow:0 0 60px -20px var(--team)}
-.hero > *{transform:skewX(4deg)}
+.hero{position:relative;overflow:clip;border:1px solid var(--team);background:linear-gradient(180deg,color-mix(in srgb,var(--team) 26%,#04070c) 0%,var(--plate2) 100%);padding:22px 18px 18px;text-align:center;box-shadow:0 0 60px -20px var(--team)}
+/* The hero is a plain box, like the panels under it (a skewed hero ran off the 16px gutter and into the landscape side column). */
 .hero .kind{font-family:var(--fd);font-weight:700;font-size:clamp(22px,6vw,34px);letter-spacing:.18em;color:var(--num)}
-.hero .team{font-family:var(--fd);font-style:italic;font-weight:700;font-size:clamp(64px,22vw,120px);line-height:.9;letter-spacing:.04em;color:var(--team);text-shadow:0 0 40px color-mix(in srgb,var(--team) 60%,transparent);margin:4px 0 6px}
 .hero .sid{font-family:var(--m);color:var(--mut);letter-spacing:.24em;font-size:13px}
-.hero .status{display:inline-block;margin-top:12px;padding:6px 16px;font:700 12px var(--fl);letter-spacing:.24em;border:1px solid var(--edge);color:var(--mut);transform:skewX(-10deg)}
+.hero .status{display:inline-block;margin-top:12px;padding:6px 16px;font:700 12px var(--fl);letter-spacing:.24em;border:1px solid var(--edge);color:var(--mut)}
 .hero .status.on{background:var(--ok);color:#03140a;border-color:var(--ok);box-shadow:0 0 30px -8px var(--ok)}
-.hero .revives{margin-top:12px;font-family:var(--fd);font-weight:700;font-size:20px;letter-spacing:.1em;color:var(--ok);min-height:1em}
-.hero .armed{margin-top:10px;font:700 11px var(--fl);letter-spacing:.24em;color:var(--mut)}.hero .armed.on{color:var(--glow)}
+.hint.diag{font:600 11px var(--m);letter-spacing:.08em}.hint.diag:empty{display:none}
+.hero .armed{margin-top:10px;font:700 11px var(--fl);letter-spacing:.2em;color:var(--mut)}.hero .armed:empty{display:none}
+.hero .armed.on{color:var(--mut);font-weight:600}
+.hero .armed.warn{display:inline-block;align-self:center;color:var(--warn);border:1px solid var(--warn);padding:6px 10px;letter-spacing:.12em;text-wrap:balance}
 .hero .ids{margin-top:4px;font:600 10px var(--m);letter-spacing:.1em;color:var(--mut);min-height:1em}
 
-/* ---- kind 5: the control point. The screen has to say, from across the field and at a glance, WHO owns it,
-   WHICH WAY it is going and HOW FAST -- a defender must be able to read "we are losing this, get help".
-   Ownership is the frame colour (data-team on <html> follows the owner); direction and speed are the sliding
-   stripes; the contest is the amber pulse. data-cstate on <html> is the whole animation switch. ---- */
-.control{margin-top:14px}
-.control[hidden]{display:none}
-.control .cowner{font-family:var(--fd);font-weight:700;font-size:clamp(15px,4.4vw,22px);letter-spacing:.18em;color:var(--num);min-height:1em}
-.cbar{position:relative;height:40px;margin:8px 0 6px;border:1px solid var(--edge);background:#03080e;overflow:hidden;transform:skewX(-8deg)}
-.cbar i{position:absolute;left:0;top:0;bottom:0;width:0;background:linear-gradient(180deg,color-mix(in srgb,var(--bar,var(--team)) 88%,#fff) 0%,color-mix(in srgb,var(--bar,var(--team)) 55%,#04070c) 100%);box-shadow:0 0 30px -6px var(--bar,var(--team));transition:width .3s linear}
-.cbar b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--fd);font-weight:700;font-size:17px;letter-spacing:.22em;color:var(--num);text-shadow:0 1px 4px #000,0 0 10px #000;transform:skewX(8deg)}
-/* the moving stripes: present only while the bar is actually changing, reversed when it drains, and their
-   period is --cspd, which utility.js sets from the NET player count -- speed is information here */
-.cbar .cchev{position:absolute;inset:0;opacity:0;background-image:repeating-linear-gradient(100deg,transparent 0 12px,rgba(255,255,255,.22) 12px 20px,transparent 20px 32px);background-size:32px 100%}
-[data-cstate="rising"] .cbar .cchev,[data-cstate="falling"] .cbar .cchev,[data-cstate="contested"] .cbar .cchev{opacity:1;animation:cchev var(--cspd,1.2s) linear infinite}
-[data-cstate="falling"] .cbar .cchev{animation-direction:reverse}
-@keyframes cchev{from{background-position:0 0}to{background-position:32px 0}}
-[data-cstate="contested"] .cbar{border-color:var(--warn);animation:cpulse 1s ease-in-out infinite}
-@keyframes cpulse{0%,100%{box-shadow:none}50%{box-shadow:0 0 30px -6px var(--warn),inset 0 0 24px -8px var(--warn)}}
-[data-cstate="held"] .cbar i{animation:chold 2.6s ease-in-out infinite}
-@keyframes chold{0%,100%{filter:brightness(1)}50%{filter:brightness(1.18)}}
-/* the arrow rides ON the moving edge (§5d.4) */
-.cbar u{position:absolute;top:50%;transform:translate(-50%,-50%) skewX(8deg);font:16px/1 var(--fl);color:var(--num);text-shadow:0 0 8px #000;transition:left .3s linear;pointer-events:none}
-.cbar u[hidden]{display:none}
-.control .crate{font-family:var(--fd);font-weight:700;font-size:15px;letter-spacing:.16em;color:var(--glow);min-height:1em}
-.control .cnet{font:12px var(--m);color:var(--mut);letter-spacing:.08em;min-height:1.2em}
-.control .ctally{font:11px var(--m);color:var(--mut);letter-spacing:.1em;min-height:1.2em;margin-top:4px}
-.control .ceta{font-family:var(--fd);font-weight:700;font-size:clamp(18px,5.6vw,28px);letter-spacing:.12em;color:var(--num);min-height:1em;margin-top:4px}
-[data-cstate="falling"] .control .ceta{color:var(--bad)}
-[data-cstate="rising"] .control .ceta{color:var(--ok)}
-.control .cbanner{font:700 13px var(--fl);letter-spacing:.34em;color:var(--warn);min-height:1.2em;margin-top:4px}
-[data-cstate="contested"] .control .cbanner{animation:cblink 1s steps(1,end) infinite}
-@keyframes cblink{0%,49%{opacity:1}50%,100%{opacity:.25}}
-.control .cwarn{font:600 11px/1.4 var(--fl);letter-spacing:.06em;color:var(--bad);margin-top:6px}
-/* §5d.4 the transition: one full-width flash and a large word at each crossing — unmistakable from across a
-   room, and the one thing the gun cannot show (a callout is a single 2 s clip). */
-/* The wash is the across-the-room half and covers the whole screen; the WORD sits in the top band, over the
-   hero's own team name, because the bar and the LOST IN n S countdown below it are what a defender reads
-   while the flash is still running -- a contest a second after a capture is the normal case, not an edge one. */
-.cflash{position:fixed;inset:0;z-index:5;display:flex;align-items:flex-start;justify-content:center;pointer-events:none;
-  background:color-mix(in srgb,var(--fc,var(--num)) 30%,transparent)}
-.cflash span{display:block;max-width:100%;margin-top:9vh;padding:0 10px;overflow-wrap:anywhere;
-  font-family:var(--fd);font-style:italic;font-weight:700;font-size:clamp(28px,10vw,84px);line-height:.95;letter-spacing:.06em;text-align:center;
-  color:var(--fc,var(--num));text-shadow:0 0 40px #000,0 2px 10px #000}
+/* ---- the CORE: one big word inside a glowing ring that says, from across the field, that this phone is ON and what
+   it is doing (Tony, 2026-09-24: "a glowing cool animation that kind of gives life to the utility mode"). Every
+   moving part animates transform or opacity only (compositor work, no layout, no per-frame JS); utility.js sets a
+   few custom properties at its 4 Hz render. The ring's meaning, by state (data-aura / data-cstate on <html>):
+     ready     a slow breathe          live       a steady pulse and a ripple
+     powerup   bright while available, a claim ring while a player holds still, dim while taken
+     control   the holder's colour fills the ring to the capture progress (--p); a sweep runs round it the way the
+               point is moving (clockwise gaining, anticlockwise draining, the rival's colour creeping into the rest);
+               stalled or contested, the fill freezes and both colours pulse against each other at the frontier;
+               neutral is a dim slow turn; held is the full ring, breathing; a capture is a burst over the screen. ---- */
+.core{position:relative;flex:none;width:min(100%,300px);aspect-ratio:1;margin:16px auto 12px;container-type:size}
+.aura{position:absolute;inset:0;pointer-events:none;--aura-a:var(--team);--hold:var(--aura-a);--rival:transparent;--p:1;--cspd:1.6s}
+[data-kind-item] .aura{--aura-a:var(--item)}
+.aura i{position:absolute;inset:0;border-radius:50%;will-change:transform,opacity}
+.aura i[hidden]{display:none}
+.aura .aglow,.aura .aglow2{inset:-6%;background:radial-gradient(closest-side,color-mix(in srgb,var(--aura-a) 50%,transparent) 0%,color-mix(in srgb,var(--aura-a) 18%,transparent) 55%,transparent 100%);opacity:.45;animation:abreathe 6s ease-in-out infinite}
+.aura .aglow2{background:radial-gradient(closest-side,color-mix(in srgb,var(--rival) 50%,transparent) 0%,transparent 100%);opacity:0;animation:none}
+/* the ring itself: a 10px band masked out of a disc, so the fills below are plain conic gradients */
+.aura .atrack,.aura .aprog,.aura .arest,.aura .asweep,.aura .aripple,.aura .aclaim{
+  -webkit-mask:radial-gradient(closest-side,transparent calc(100% - 13px),#000 calc(100% - 12px) calc(100% - 3px),transparent calc(100% - 2px));
+          mask:radial-gradient(closest-side,transparent calc(100% - 13px),#000 calc(100% - 12px) calc(100% - 3px),transparent calc(100% - 2px))}
+.aura .atrack{background:rgba(255,255,255,.07)}
+.aura .aprog{background:conic-gradient(var(--hold) calc(var(--p) * 1turn),transparent 0);opacity:.55;filter:drop-shadow(0 0 6px var(--hold))}
+.aura .arest{background:conic-gradient(transparent calc(var(--p) * 1turn),var(--rival) 0);opacity:0}
+.aura .asweep{opacity:0;--arc:conic-gradient(#000 calc(var(--p) * 1turn),transparent 0)}
+[data-cstate="falling"] .aura .asweep{--arc:conic-gradient(transparent calc(var(--p) * 1turn),#000 0)}
+.aura .asweep{-webkit-mask:radial-gradient(closest-side,transparent calc(100% - 13px),#000 calc(100% - 12px) calc(100% - 3px),transparent calc(100% - 2px)),var(--arc);-webkit-mask-composite:source-in;
+                      mask:radial-gradient(closest-side,transparent calc(100% - 13px),#000 calc(100% - 12px) calc(100% - 3px),transparent calc(100% - 2px)),var(--arc);mask-composite:intersect}
+.aura .asweep s{position:absolute;inset:0;border-radius:50%;background:conic-gradient(transparent 0 72%,color-mix(in srgb,var(--sweep,var(--hold)) 90%,#fff) 100%)}
+.aura .aripple{background:var(--aura-a);opacity:0}
+.aura .aclaim{inset:16px;background:conic-gradient(var(--item,var(--glow)) calc(var(--p,0) * 1turn),rgba(255,255,255,.08) 0)}
+.aura .aburst{inset:-10%;background:radial-gradient(closest-side,color-mix(in srgb,var(--fc,var(--aura-a)) 80%,#fff) 0%,transparent 70%);opacity:0}
+.aura .aburst.go{animation:aburst 1.3s ease-out}
+/* the frontier of a stalled fight: two dots, holder and rival, pulsing against each other where the fill stopped */
+.aura .afront{opacity:0;background:none}
+.aura .afront b{position:absolute;left:50%;top:0;width:22px;height:22px;margin-left:-11px;border-radius:50%;background:var(--hold);box-shadow:0 0 16px var(--hold);animation:aflip .8s ease-in-out infinite}
+.aura .afront b + b{background:var(--rival);box-shadow:0 0 16px var(--rival);animation-delay:-.4s}
+@keyframes abreathe{0%,100%{transform:scale(.9);opacity:.3}50%{transform:scale(1.03);opacity:.6}}
+@keyframes apulse{0%,100%{transform:scale(.95);opacity:.5}50%{transform:scale(1.05);opacity:.9}}
+@keyframes aripple{0%{transform:scale(1);opacity:.55}100%{transform:scale(1.08);opacity:0}}   /* 1.08: the ripple stays clear of the words above and below the ring */
+@keyframes aspin{to{transform:rotate(1turn)}}
+@keyframes aflip{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.15;transform:scale(.7)}}
+@keyframes aheld{0%,100%{opacity:.8}50%{opacity:1}}
+@keyframes aburst{0%{transform:scale(.5);opacity:1}100%{transform:scale(1.7);opacity:0}}
+/* not live (H2): grey and still, so it never reads as "use me" */
+[data-aura="ready"] .aura{--aura-a:var(--team-any);opacity:.45}
+[data-onair="0"] .aura{opacity:.45}[data-onair="0"] .aura i,[data-onair="0"] .aura i s,[data-onair="0"] .aura .afront b{animation:none!important}
+[data-aura="ready"] .aura .aglow{animation:none;opacity:.25}
+/* live (respawn, extraction, bomb, a powerup with no item) */
+[data-aura="live"] .aura .aprog,[data-aura="available"] .aura .aprog,[data-aura="claiming"] .aura .aprog{opacity:.9}
+[data-aura="live"] .aura .aglow,[data-aura="available"] .aura .aglow{animation:apulse 2.4s ease-in-out infinite}
+[data-aura="live"] .aura .aripple,[data-aura="available"] .aura .aripple{animation:aripple 2.4s ease-out infinite}
+[data-aura="claiming"] .aura .aglow{animation:apulse .9s ease-in-out infinite}
+[data-aura="taken"] .aura,[data-aura="unknown"] .aura{opacity:.35}
+/* control */
+[data-aura="control"] .aura .aprog{opacity:1}
+[data-cstate="idle"] .aura .aglow{opacity:.25;animation-duration:9s}
+[data-cstate="idle"] .aura .asweep{--sweep:#9aa8b8;opacity:.35;--arc:conic-gradient(#000 0 1turn)}
+[data-cstate="idle"] .aura .asweep s{animation:aspin 14s linear infinite}
+[data-cstate="rising"] .aura .asweep,[data-cstate="falling"] .aura .asweep{opacity:1}
+[data-cstate="rising"] .aura .asweep s,[data-cstate="falling"] .aura .asweep s{animation:aspin var(--cspd) linear infinite}
+[data-cstate="falling"] .aura .asweep{--sweep:var(--rival)}
+[data-cstate="falling"] .aura .asweep s{animation-direction:reverse}
+[data-cstate="rising"] .aura .aglow,[data-cstate="falling"] .aura .aglow{animation:apulse 2s ease-in-out infinite}
+[data-cstate="falling"] .aura .arest,[data-cstate="contested"] .aura .arest{opacity:.45}
+[data-cstate="contested"] .aura .aglow{animation:aflip 1.6s ease-in-out infinite}
+[data-cstate="contested"] .aura .aglow2{opacity:.25;animation:aflip 1.6s ease-in-out -.8s infinite}
+[data-cstate="contested"] .aura .afront{opacity:1}
+[data-cstate="held"] .aura .aprog{animation:aheld 3s ease-in-out infinite}
+[data-cstate="held"] .aura .aglow{animation:apulse 3s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){.aura i,.aura i s,.aura .afront b,.cburst,.cflash{animation:none!important}.aura .aglow{opacity:.5}
+  [data-cstate="rising"] .aura .afront,[data-cstate="falling"] .aura .afront{opacity:1}[data-cstate="rising"] .aura .afront b + b,[data-cstate="falling"] .aura .afront b + b{display:none}}
+/* the words inside the ring: ONE big word (owner, team or item) and ONE small line (the %, or the flash word) */
+.coretext{position:absolute;inset:14%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center}
+.hero .team{font-family:var(--fd);font-weight:700;font-size:min(19cqw,calc(118cqw / var(--len,4)));line-height:.92;letter-spacing:.03em;color:var(--wordc,var(--team));text-shadow:0 0 30px color-mix(in srgb,var(--wordc,var(--team)) 60%,transparent);white-space:normal;text-wrap:balance;overflow-wrap:anywhere;max-width:100%}
+.cline{display:flex;align-items:center;justify-content:center}
+[data-aura="control"] .cline{min-height:12cqw}   /* the % line keeps its place, so the word above never jumps */
+.cpct{font-family:var(--fd);font-weight:700;font-size:max(20px,11cqw);line-height:1;letter-spacing:.06em;color:var(--num);font-variant-numeric:tabular-nums}
+.cpct:empty,.cpct[hidden]{display:none}
+.cflash{display:block}
 .cflash[hidden]{display:none}
-.cflash[data-fteam="red"]{--fc:var(--team-red)}.cflash[data-fteam="blue"]{--fc:var(--team-blue)}
-.cflash[data-fteam="green"]{--fc:var(--team-green)}.cflash[data-fteam="yellow"]{--fc:var(--team-yellow)}.cflash[data-fteam="any"]{--fc:#cfe3f5}
+.cflash span{display:block;white-space:nowrap;font-family:var(--fd);font-weight:700;font-size:7.5cqw;letter-spacing:.06em;color:var(--fc,var(--num));text-shadow:0 0 18px color-mix(in srgb,var(--fc,var(--num)) 60%,transparent)}
+.cflash[data-fteam="red"],.cburst[data-fteam="red"],.aura[data-fteam="red"]{--fc:var(--team-red)}
+.cflash[data-fteam="blue"],.cburst[data-fteam="blue"],.aura[data-fteam="blue"]{--fc:var(--team-blue)}
+.cflash[data-fteam="green"],.cburst[data-fteam="green"],.aura[data-fteam="green"]{--fc:var(--team-green)}
+.cflash[data-fteam="yellow"],.cburst[data-fteam="yellow"],.aura[data-fteam="yellow"]{--fc:var(--team-yellow)}
+.cflash[data-fteam="any"],.cburst[data-fteam="any"],.aura[data-fteam="any"]{--fc:#cfe3f5}
+.cburst[data-fteam="item"],.aura[data-fteam="item"]{--fc:var(--item,var(--glow))}
 .cflash.go{animation:cflash 2.6s ease-out forwards}
-@keyframes cflash{0%{opacity:0;transform:scale(1.3)}8%{opacity:1;transform:scale(1)}70%{opacity:1}100%{opacity:0}}
+@keyframes cflash{0%{opacity:0;transform:scale(1.25)}8%{opacity:1;transform:scale(1)}75%{opacity:1}100%{opacity:0}}
+/* §5d.4 the crossing: a burst of the new owner's colour over the WHOLE screen (the across-the-room half; the one
+   thing the gun cannot show), with the word inside the ring where no other text is. The burst is light only:
+   pointer-events none, no text, gone in 1.4 s. */
+.cburst{position:fixed;inset:0;z-index:4;pointer-events:none;opacity:0;background:radial-gradient(circle at 50% 38%,color-mix(in srgb,var(--fc,var(--num)) 55%,transparent) 0%,color-mix(in srgb,var(--fc,var(--num)) 18%,transparent) 45%,transparent 75%)}
+.cburst.go{animation:cburst 1.4s ease-out}
+@keyframes cburst{0%{opacity:0}10%{opacity:1}100%{opacity:0}}
+.control{margin-top:4px}
+.control[hidden]{display:none}
+.control .cwarn{font:600 11px/1.4 var(--fl);letter-spacing:.06em;color:var(--bad);margin-top:6px}
+.control .cwarn:empty{display:none}
+.players .ctally{font:11px var(--m);color:var(--mut);letter-spacing:.1em;margin-top:6px}
+.players .ctally:empty{display:none}
 /* the roster marks (§5d.4): counted, DOWN, or in range but off the point */
 .players .row.dead{text-decoration:line-through;opacity:.75}
-.players .row.far{opacity:.45}
+/* the raw reading is an inline-block so it draws its OWN strike: inherited from the 20px reading, the line landed under
+   the 11px text and read as an underline */
+.players .rssi small{display:inline-block}.players .row.dead .rssi small{text-decoration:line-through}
+.players .row.far{opacity:.62}
 /* F82: present and alive, but its team can never hold a point — not a contributor, and not merely absent */
 .players .row.refused{opacity:.7}
 .players .pres.no{color:var(--bad)}
-@media (prefers-reduced-motion:reduce){.cbar .cchev,.cbar i,.cbar u,.control .cbanner,.cflash.go{animation:none!important;transition:none!important}}
 
 /* ---- players in range: a read-only readout (the host glances; players learn nothing they can use) ---- */
 .panel{background:var(--plate);border:1px solid var(--edge);padding:12px 14px}
 .panel h3{margin:0 0 8px;font:700 11px var(--fl);letter-spacing:.26em;color:var(--mut)}
-.players .row{display:grid;grid-template-columns:34px 56px 1fr 46px 74px;gap:6px;align-items:center;padding:8px 6px;border-bottom:1px solid #101a26;font-family:var(--m);font-size:13px;white-space:nowrap}
+/* every row carries the same 4px left border (transparent unless .claim colours it), so the columns line up row to row;
+   the rssi column is right-aligned with tabular digits, so the state column never shifts */
+.players .row{display:grid;grid-template-columns:30px 50px minmax(0,120px) 44px 74px;gap:4px;align-items:center;padding:8px 6px;border-bottom:1px solid #101a26;border-left:4px solid transparent;font-variant-numeric:tabular-nums;font-family:var(--m);font-size:13px;white-space:nowrap}
 .players .state.alive{color:var(--ok)}.players .state.down{color:var(--bad)}
 .players .row.near{background:color-mix(in srgb,var(--team) 22%,transparent)}
 /* on a control point: this body is CONVERTING the point, in its own team's colour (a down player on the
    point, or a live one just outside the bubble, deliberately has no bar) */
 .players .row.claim{border-left:4px solid var(--rowteam,var(--team))}
-.players .row.empty{color:var(--mut);grid-template-columns:1fr;font-family:var(--fl);letter-spacing:.1em}
+.players .row.empty{color:var(--mut);grid-template-columns:1fr;border-left:0;font-family:var(--fl);letter-spacing:.1em}
 .players .pteam.blue{color:var(--team-blue)}.players .pteam.yellow{color:var(--team-yellow)}.players .pteam.red{color:var(--team-red)}.players .pteam.green{color:var(--team-green)}
-.players .rssi{font-family:var(--fd);font-weight:700;font-size:20px}.players .rssi small{font:11px var(--m);color:var(--mut);margin-left:4px}.players .pres{color:var(--ok);font-weight:700;text-align:right;font-size:11px;letter-spacing:.04em;overflow:hidden}
+.players .rssi{font-family:var(--fd);font-weight:700;font-size:20px;text-align:right;padding-right:4px;white-space:nowrap}.players .rssi small{font:11px var(--m);color:var(--mut);margin-left:4px}.players .pres{color:var(--ok);font-weight:700;text-align:right;font-size:11px;letter-spacing:.04em;overflow:hidden}
 .foot{text-align:center;font-size:10px;letter-spacing:.3em;color:var(--mut);margin-top:auto}
 /* Portrait's `.side` wrapper (QA-23, below) must be invisible to portrait's own rhythm: same flex column,
    same 14px gap `body` already used between these four sections, so wrapping them for the landscape grid
    changes nothing here. */
 .side{display:flex;flex-direction:column;gap:14px}
+/* RANGE on the main screen (Tony, 2026-09-24: "i like being able to set the radius and strength right there"). Editable while
+   the station is being set up; locked once it is armed or on the air (the anti-cheat line of 2026-09-04: no controls on a
+   deployed station), where it stays as a readout. The dBm field takes a positive number behind a fixed minus. */
+.range .rrow{display:flex;flex-direction:column;align-items:flex-start;gap:6px;margin-top:10px}
+.range .rrow .rctl{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.range .rlab{font:700 11px var(--fl);letter-spacing:.2em;color:var(--mut);min-width:78px}
+.range .seg{gap:6px}
+.range .seg button{min-height:44px;padding:0 10px;font-size:12px}
+/* locked: dashed, dimmed, and the chosen power greyed rather than lit in the team colour, so nothing looks editable */
+.range.locked .seg button,.range.locked .thrbox input{opacity:.5;border-style:dashed;cursor:not-allowed;background:transparent}
+.range.locked .seg button.sel{background:rgba(255,255,255,.12);color:var(--num);border-color:var(--mut);border-style:dashed}
+.range.locked .rhint{display:none}
+.thrbox{display:inline-flex;align-items:center;gap:4px;font:700 22px var(--fd);color:var(--num)}
+.thrbox .neg{min-width:12px;text-align:right}
+.thrbox input{width:64px;height:44px;background:var(--plate2);border:1px solid var(--edge);color:var(--num);font:700 22px var(--fd);text-align:center;letter-spacing:.04em;padding:0}
+.thrbox input:focus-visible{outline:2px solid var(--glow);outline-offset:1px}
+.thrbox input[aria-invalid="true"]{border-color:var(--bad)}.thrbox input[aria-invalid="true"]:focus-visible{outline-color:var(--bad)}
+.thrbox .unit{font:600 12px var(--fl);letter-spacing:.14em;color:var(--mut)}
+.range .rhint{font:700 11px var(--fl);letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}.range .rhint.bad{color:var(--bad)}
+.range .rctl.stack{flex-direction:column;align-items:flex-start;gap:4px}
+.range h3 .rlock{margin-left:8px;color:var(--mut);letter-spacing:.14em}
+.ptoggle{align-self:flex-start;min-height:44px;padding:0 12px;font:700 11px var(--fl);letter-spacing:.2em;color:var(--mut);border:1px solid var(--edge);background:var(--plate2)}
+.players[hidden]{display:none}
+/* the MC panel, folded while linked: one line, the status and CHANGE */
+.mcline{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.mcchg{min-height:44px;padding:0 14px;font-size:12px;flex:none}.mcchg[hidden]{display:none}
+.mcform{margin-top:8px}   /* clear of CHANGE/HIDE above it */
+.mcjoin.linked h3,.mcjoin.linked .mcform{display:none}
+.mcjoin.linked #mcstateMain{color:var(--ok);font-weight:700;letter-spacing:.08em}
 
 /* ---- QA-23 (2026-09-23): landscape fit. Propped-up-sideways is a normal way to leave this phone on the
    field, and the portrait flow above ran 900-1130px tall at 844x390 / 667x375 -- the capture bar sat below
@@ -153,94 +249,71 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
   .infobtn{width:28px;height:28px;font-size:11px}
   .exitbtn[hidden]{display:none}
   .hero{grid-area:hero;min-height:0;min-width:0;overflow-y:auto;display:flex;flex-direction:column;
-    justify-content:center;padding:8px 10px 6px;margin:0}
+    justify-content:safe center;padding:8px 10px 6px;margin:0}
   /* Type floor (decided): a label is >= 11px, whatever the vertical squeeze -- clamp()s below are bounded
      at 11px, and every fixed size on this list is 11px or more. */
-  .hero .kind{font-size:clamp(11px,4vh,15px);letter-spacing:.1em}
-  .hero .team{font-size:clamp(24px,13vh,44px);line-height:.95;margin:2px 0 3px}
-  .hero .sid{font-size:11px}
-  .hero .status{margin-top:4px;padding:2px 8px;font-size:11px}
-  .hero .revives{margin-top:4px;font-size:12px;min-height:0}
-  .hero .revives:empty{margin-top:0}
-  .control{margin-top:5px}
-  .control .cowner{font-size:clamp(11px,3.6vh,15px);min-height:0}
-  .cbar{height:24px;margin:3px 0 3px}
-  .cbar b{font-size:11px}
-  .cbar u{font-size:12px}
-  .control .crate{font-size:11px;min-height:0}
-  .control .cnet{font-size:11px;min-height:0}
-  .control .ceta{font-size:clamp(12px,4.2vh,18px);margin-top:2px;min-height:0}
-  /* the badge reads as a distinct chip, not a plain line the ETA sentence above it runs into -- and it
-     takes no space at all when it has nothing to say (idle/held, no contest). */
-  .control .cbanner{font-size:11px;margin-top:2px;padding:2px 7px;border:1px solid var(--warn);
-    display:inline-block;min-height:0}
-  .control .cbanner:empty{display:none;padding:0;border:0;margin:0}
-  .control .ctally{font-size:11px;margin-top:2px;min-height:0}
-  .control .ctally:empty{margin-top:0}
-  .control .cwarn{font-size:11px;margin-top:3px;min-height:0}
-  .control .cwarn:empty{margin-top:0}
-  .pup{margin-top:4px;gap:2px}
-  .pup .pstate{font-size:clamp(13px,5vh,20px)}
-  .pup .pnext{font-size:clamp(18px,8vh,32px)}
-  .pup .ptaker{font-size:11px}
-  .pring{width:56px;height:56px}.pring i{width:44px;height:44px}
-  .hero .armed{margin-top:4px;font-size:11px}
+  .hero .kind{font-size:clamp(15px,6vh,24px);letter-spacing:.1em}
+  .hero .sid{font-size:13px}
+  .hero .status{margin-top:4px;padding:3px 10px;font-size:14px}
+  .core{width:min(100%,50vh);margin:4px auto 2px}
+  /* an operator warning (twin ids, F82) takes room: the ring gives it up, so nothing is pushed out of the column */
+  .hero:has(.cwarn:not(:empty)) .core,.hero:has(.armed.warn) .core{width:min(100%,44vh)}
+  .hero > *{flex-shrink:0}   /* nothing in the column may be squeezed under its own text; the ring gives up room instead */
+  .control .cwarn{font-size:11px;margin-top:3px}
+  .hero .armed{margin-top:4px;font-size:12px}
   .hero .ids{font-size:11px;min-height:0}
   .hero .ids:empty{margin-top:0}
 
   .side{grid-area:side;display:flex;flex-direction:column;gap:6px;min-height:0;min-width:0;overflow-y:auto}
-  /* visible first (when it is shown at all): the one control that lets an accidentally-armed phone escape
-     without hunting through the player list and the MC panel below it. Tap-target floor (decided, #58's
-     own 36px gate): height stays >= 36px, only the padding that made room for the fold-warning below
-     goes away. */
-  #exitHud{order:-1;margin:0;padding:8px 12px;min-height:36px;font-size:11px}
+  /* visible first (when it is shown at all, `#exitHud{order:-1}` above): the one control that lets an accidentally-armed
+     phone escape without hunting through the column. Tap-target floor: 44px (the round-3 utility gate). */
+  #exitHud{margin:0;padding:8px 12px;min-height:44px;font-size:11px}
   .side .panel{padding:7px 9px}
   .side .panel h3{font-size:11px;margin-bottom:4px}
-  .players .row{grid-template-columns:24px 42px 1fr 40px 62px;gap:4px;padding:4px;font-size:11px}
+  .range .rrow{flex-direction:row;align-items:flex-start;margin-top:4px}
+  .range .rlab{line-height:44px}   /* level with the 44px controls beside it */
+  .players .row{grid-template-columns:24px 42px minmax(0,112px) 40px 74px;gap:4px;padding:4px;font-size:11px}
   .players .rssi{font-size:15px}
   /* branding only, no field meaning -- dropped here rather than shrunk under the label floor */
   .side .foot{display:none}
-  .mcjoin .rowc input,.mcjoin .rowc .btn{min-height:36px;height:36px}
+  .mcjoin .rowc input,.mcjoin .rowc .btn{min-height:44px;height:44px}
   .mcjoin .hint{font-size:11px}
 }
 
 /* ---- the config drawer: hidden until the ⓘ is tapped seven times ---- */
-#cfg{position:fixed;inset:0;z-index:10;background:rgba(2,4,10,.96);overflow:auto;padding:max(14px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px}
+#cfg{position:fixed;inset:0;z-index:10;background:#02040a;overflow:auto;padding:max(14px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px}
 #cfg[hidden]{display:none}
 .cfghead{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.cfghead .t{font-family:var(--fd);font-style:italic;font-weight:700;font-size:24px;letter-spacing:.12em}
+.cfghead .t{font-family:var(--fd);font-weight:700;font-size:24px;letter-spacing:.12em}
+.cfghead .btn{flex:none;white-space:nowrap}   /* CLOSE ✕ on one line */
 .cfghead .s{font-size:11px;letter-spacing:.24em;color:var(--warn);font-weight:700}
-.btn{min-height:48px;padding:0 16px;background:var(--plate2);color:var(--num);border:1px solid var(--edge);font:700 14px var(--fd);letter-spacing:.14em;transform:skewX(-8deg)}
-.btn .unskew{display:inline-block;transform:skewX(8deg)}
+.btn{min-height:48px;min-width:44px;padding:0 16px;background:var(--plate2);color:var(--num);border:1px solid var(--edge);font:700 14px var(--fd);letter-spacing:.14em}
 .btn.primary{background:var(--team);color:var(--team-ink);border-color:var(--team)}
 .btn.ghost{color:var(--mut)}
 .actions{display:flex;gap:10px}.actions .btn{flex:1;min-height:60px;font-size:18px}
 .seg{display:flex;flex-wrap:wrap;gap:8px}
-.seg button{position:relative;min-height:46px;padding:0 16px;background:var(--plate2);color:var(--ink);border:1px solid var(--edge);font:700 13px var(--fd);letter-spacing:.14em;transform:skewX(-8deg)}
-.seg button > span{display:inline-block;transform:skewX(8deg)}
+.seg button{position:relative;min-height:46px;padding:0 16px;background:var(--plate2);color:var(--ink);border:1px solid var(--edge);font:700 13px var(--fd);letter-spacing:.14em}
+.seg button > span{display:inline-block}
 .seg button.sel{background:var(--team);color:var(--team-ink);border-color:var(--team)}
 .seg button.blue.sel{background:var(--team-blue);color:#04121e}.seg button.yellow.sel{background:var(--team-yellow);color:#1a1400}.seg button.red.sel{background:var(--team-red);color:#1a0404}.seg button.green.sel{background:var(--team-green);color:#041a0c}.seg button.any.sel{background:var(--team-any);color:#0a0f14}
-.def{font:600 8px var(--fl);letter-spacing:.2em;color:var(--warn);border:1px solid var(--warn);padding:1px 4px;margin-left:6px;vertical-align:middle}   /* the DEFAULT badge */
+.def{font:600 11px var(--fl);letter-spacing:.2em;color:var(--warn);border:1px solid var(--warn);padding:1px 4px;margin-left:6px;vertical-align:middle}   /* the DEFAULT badge */
 .seg button.sel .def{color:inherit;border-color:currentColor;opacity:.8}
 .rowc{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .hint{font:12px/1.4 var(--fl);color:var(--mut)}
-label.hint{display:block;margin-top:12px}
-input[type=range]{width:100%;height:44px;accent-color:var(--team);margin:0}   /* 44px: this slider IS the calibration control */
+label.hint{display:block;margin:12px 0 8px}
+input[type=range]{width:100%;height:44px;accent-color:var(--team);margin:8px 0 0}   /* 44px: this slider IS the calibration control */
 .big{font:700 24px var(--fd);letter-spacing:.06em;min-width:64px;text-align:center}
 /* ---- kind 2: the powerup station (A56). The item's own colour (`--item`, set by utility.js) carries the name and the
    ring; AVAILABLE is the item colour, TAKEN is muted, and the countdown is the one number a player reads from afar. ---- */
-.pup{margin-top:10px;display:flex;flex-direction:column;align-items:center;gap:4px}
+.pup{display:flex;flex-direction:column;align-items:center;gap:2px}
 .pup[hidden]{display:none}
 [data-kind-item] .hero .team{color:var(--item);text-shadow:0 0 40px color-mix(in srgb,var(--item) 55%,transparent)}
-.pup .pstate{font-family:var(--fd);font-weight:700;font-size:clamp(20px,6vw,32px);letter-spacing:.2em;color:var(--item,var(--glow))}
+.pup .pstate{font-family:var(--fd);font-weight:700;font-size:7cqw;letter-spacing:.2em;color:var(--item,var(--glow))}
 .pup[data-pstate="taken"] .pstate{color:var(--mut)}
-.pup[data-pstate="unknown"] .pstate{font-size:clamp(13px,3.6vw,16px);color:var(--mut)}
-.pup .pnext{font-family:var(--fd);font-style:italic;font-weight:700;font-size:clamp(28px,9vw,52px);line-height:1;color:var(--num);min-height:0}
-.pup .ptaker{font:700 12px var(--fl);letter-spacing:.24em;color:var(--mut)}
+.pup[data-pstate="unknown"] .pstate{font-size:max(11px,4.4cqw);letter-spacing:.08em;color:var(--mut)}
+.pup .pnext{font-family:var(--fd);font-weight:700;font-size:11cqw;line-height:1;color:var(--num);min-height:0}
+.pup .ptaker{font:700 max(11px,4cqw) var(--fl);letter-spacing:.24em;color:var(--mut)}
 .pup .pnext:empty,.pup .ptaker:empty{display:none}
-.pring{--p:0;width:92px;height:92px;border-radius:50%;background:conic-gradient(var(--item,var(--glow)) calc(var(--p) * 360deg),rgba(255,255,255,.08) 0);display:grid;place-items:center}
-.pring i{width:74px;height:74px;border-radius:50%;background:#04070c}
-.pring[hidden]{display:none}
 #log{font:11px/1.45 var(--m);color:var(--mut);white-space:pre-wrap;max-height:160px;overflow:auto;margin:0}
 .danger{border-color:var(--bad);color:var(--bad)}
 </style>
@@ -248,52 +321,63 @@ input[type=range]{width:100%;height:44px;accent-color:var(--team);margin:0}   /*
 <body>
   <div class="top">
     <span class="wm">BRX<b>/</b><small>UTILITY</small></span>
-    <button id="info" class="infobtn" aria-label="station settings (tap seven times)">ⓘ<span class="infoprog" id="infoProg" hidden aria-hidden="true"></span></button>
+    <button id="info" class="infobtn" aria-label="station settings (tap seven times)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10" cy="10" r="7.6"/><path d="M10 8.8v5.4" stroke-linecap="round"/><circle cx="10" cy="6.1" r="1" fill="currentColor" stroke="none"/></svg><span class="infoprog" id="infoProg" hidden aria-hidden="true"></span></button>
   </div>
 
   <section class="hero">
     <div class="kind" id="kind"></div>
-    <div class="team" id="team"></div>
+    <!-- the CORE (round 3, 2026-09-24): the ring says the station is on and what it is doing; ONE big word inside it and
+         ONE small line under the word (the capture %, or the flash word while a crossing plays). -->
+    <div class="core" id="core">
+      <div class="aura" id="aura" aria-hidden="true"><i class="aglow"></i><i class="aglow2"></i><i class="atrack"></i><i class="arest"></i><i class="aprog"></i><i class="asweep"><s></s></i><i class="aripple"></i><i class="aclaim" id="pring" hidden></i><i class="aburst" id="aburst"></i><i class="afront" id="afront"><b></b><b></b></i></div>
+      <div class="coretext">
+        <div class="team" id="team"></div>
+        <div class="cline"><span class="cpct" id="cpct"></span><span class="cflash" id="cflash" hidden><span id="cflashw"></span></span></div>
+        <!-- A56 (docs/spec/powerups.md): kind 2 with an item. The big name is the item's; this says whether it is here, and
+             TAKEN with the countdown to the next spawn. The 1 s claim ring is #pring, inside the core's ring. -->
+        <section class="pup" id="pup" hidden aria-live="polite">
+          <div class="pstate" id="pstate"></div>
+          <div class="pnext" id="pnext"></div>
+          <div class="ptaker" id="ptaker"></div>
+        </section>
+      </div>
+    </div>
     <div class="sid" id="sid"></div>
     <div><span class="status off" id="status"></span></div>
-    <div class="revives" id="revives"></div>
     <section class="control" id="control" hidden aria-live="polite">
-      <div class="cowner" id="cowner"></div>
-      <div class="cbar" id="cbar" role="progressbar" aria-label="capture progress" aria-valuemin="0" aria-valuemax="100"><i id="cfill"></i><span class="cchev" aria-hidden="true"></span><u id="carrow" aria-hidden="true" hidden></u><b id="cpct"></b></div>
-      <div class="crate" id="crate"></div>
-      <div class="cnet" id="cnet"></div>
-      <div class="ceta" id="ceta"></div>
-      <div class="cbanner" id="cbanner"></div>
-      <div class="ctally" id="ctally"></div>
       <div class="cwarn" id="cwarn"></div>
     </section>
-    <!-- A56 (docs/spec/powerups.md): kind 2 with an item. The big name above is the item's; this says whether it is
-         here, the 1 s ring while a player stands at the station, and TAKEN with the countdown to the next spawn. -->
-    <section class="pup" id="pup" hidden aria-live="polite">
-      <div class="pring" id="pring" role="progressbar" aria-label="claim" aria-valuemin="0" aria-valuemax="100" hidden><i></i></div>
-      <div class="pstate" id="pstate"></div>
-      <div class="pnext" id="pnext"></div>
-      <div class="ptaker" id="ptaker"></div>
-    </section>
     <div class="armed" id="armed"></div>
-    <div class="ids" id="ids"></div>
   </section>
 
   <!-- QA-23 (2026-09-23): grouped so the landscape layout below can put this whole cluster in ONE
        scrollable secondary column beside `.hero`, without touching portrait (unchanged, unwrapped
        flow) or any element id utility.js drives. -->
   <div class="side" id="side">
-    <section class="panel players">
+    <section class="panel range" id="range" aria-label="station range">
+      <h3>RANGE<span class="rlock" id="rangeLock"></span></h3>
+      <div class="rrow"><span class="rlab">STRENGTH</span><div class="seg rctl" role="group" aria-label="transmit strength"><button data-tx="ultraLow"><span>ULTRA LOW</span></button><button data-tx="low"><span>LOW</span></button><button data-tx="medium"><span>MEDIUM</span></button><button data-tx="high"><span>HIGH</span></button></div></div>
+      <div class="rrow"><label class="rlab" for="thrNum">RADIUS</label><span class="rctl stack"><span class="thrbox"><span class="neg" aria-hidden="true">−</span><input id="thrNum" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" autocomplete="off" aria-label="at-the-station edge in minus dBm: type 70 for −70 dBm"><span class="unit">dBm</span></span><span class="rhint" id="rhint" aria-live="polite">35 = TIGHT · 95 = WIDE</span></span></div>
+    </section>
+
+    <!-- the roster is for debugging, so it is folded away by default (Tony, 2026-09-24); the choice sticks per phone -->
+    <button class="ptoggle" id="btnPlayers" aria-expanded="false" aria-controls="playersPanel">SHOW PLAYERS</button>
+    <section class="panel players" id="playersPanel" hidden>
       <h3 id="ptitle">PLAYER PHONES IN RANGE</h3>
       <div id="players"></div>
+      <div class="ctally" id="ctally"></div>
     </section>
 
     <section class="panel mcjoin" id="mcjoin">
       <h3>MISSION CONTROL CONNECTION</h3>
-      <div class="hint" id="mcstateMain">AUTO-CONNECTING ON THIS WI-FI…</div>
+      <!-- Linked, the panel folds to this one line (Tony, 2026-09-24: the address and QR controls stayed up after
+           LINKED). CHANGE unfolds it; losing the link unfolds it by itself. utility.js render() sets .linked. -->
+      <div class="mcline"><div class="hint" id="mcstateMain">AUTO-CONNECTING ON THIS WI-FI…</div><button class="btn mcchg" id="btnMcChange" hidden aria-expanded="false"><span class="unskew">CHANGE</span></button></div>
+      <div class="mcform" id="mcform">
       <div class="rowc"><input id="mcUrlMain" placeholder="ws://mission-control-ip:8766/ws" inputmode="url" aria-label="Mission Control address" style="flex:1;min-width:180px;height:44px;background:var(--plate2);border:1px solid var(--edge);color:var(--num);font:14px var(--m);padding:0 10px"><button class="btn" id="btnMcMain"><span class="unskew">CONNECT</span></button><button class="btn" id="btnQrMain"><span class="unskew">SCAN QR</span></button></div>
-      <div id="qrPanel" hidden><video id="qrVideo" playsinline></video><button class="btn" id="btnQrCancel">CANCEL SCAN</button></div>
-      <div class="hint">If automatic discovery cannot find MC, enter its address here. Station setup remains available from ⓘ.</div>
+      <div id="qrPanel" hidden><video id="qrVideo" playsinline></video><button class="btn" id="btnQrCancel"><span class="unskew">CANCEL SCAN</span></button></div>
+      <div class="hint">MC not found on this Wi-Fi? Enter its address or scan its QR.</div>
+      </div>
     </section>
 
     <!-- A41 / field 2026-09-12, tightened field-safety fix 2026-09-13: leaving utility mode is NOT the
@@ -307,11 +391,9 @@ input[type=range]{width:100%;height:44px;accent-color:var(--team);margin:0}   /*
     <div class="foot">OPEN BRX · UTILITY ITEM</div>
   </div>
 
-  <!-- §5d.4's crossing flash, OUTSIDE .hero on purpose. `.hero` is `transform: skewX(-4deg)`, and a
-       transformed element is the containing block for its `position:fixed` descendants — nested in there,
-       `inset:0` resolved to the hero box: a skewed patch sitting on the capture bar and the LOST IN n S
-       countdown, for the full 2.6 s, exactly when a contest starts. -->
-  <div class="cflash" id="cflash" hidden aria-hidden="true"><span id="cflashw"></span></div>
+  <!-- §5d.4: the crossing's burst of light over the whole screen (the word is inside the ring, #cflash). -->
+  <div class="cburst" id="cburst" aria-hidden="true"></div>
+  <!-- .cburst is position:fixed, so it stays OUTSIDE .hero: a transformed ancestor would make the hero its containing block. -->
 
   <!-- the configuration: seven taps on ⓘ within 3 s. Everything in here keeps the ids utility.js drives. -->
   <section id="cfg" hidden aria-label="station settings">
@@ -325,6 +407,9 @@ input[type=range]{width:100%;height:44px;accent-color:var(--team);margin:0}   /*
     <section class="panel">
       <h3>MISSION CONTROL</h3>
       <div class="hint" id="mcstate"></div>
+      <!-- operator facts that are not for players (round 3: "fewer labels"): the arming allow-list and the revive count -->
+      <div class="hint diag" id="ids"></div>
+      <div class="hint diag" id="revives"></div>
       <div class="hint">At muster the host arms this phone from Mission Control (kind, team, id, threshold) over Wi-Fi. Once armed it needs no Wi-Fi to play. The address is the one the HUD joined with; the HUD's SCAN QR fills it in.</div>
       <div class="rowc" style="margin-top:8px"><input id="mcUrl" placeholder="ws://mission-control-ip:8766/ws" inputmode="url" aria-label="Mission Control address" style="flex:1;min-width:180px;height:44px;background:var(--plate2);border:1px solid var(--edge);color:var(--num);font:14px var(--m);padding:0 10px"><button class="btn" id="btnMc"><span class="unskew">CONNECT</span></button></div>
     </section>

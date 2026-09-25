@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from ..mc.types import CLOCK_TIE_MS, MEDALS, MULTI_KILL_MS
+from ..mc.types import AWARDS, CLOCK_TIE_MS, MEDALS, MULTI_KILL_MS
 from .registry import InvariantError, invariant
 from .world import World
 
@@ -356,6 +356,7 @@ def kill_feedback_matches_credit(world: World) -> None:
 _MULTI_COUNTS = sorted((m["count"], m["key"]) for m in MEDALS if m["kind"] == "multi")
 _STREAK_COUNTS = {m["count"]: m["key"] for m in MEDALS if m["kind"] == "streak"}
 _FIRST_KEY = next(m["key"] for m in MEDALS if m["kind"] == "first")
+_KILLJOY_AT = next(m["count"] for m in MEDALS if m["kind"] == "killjoy")
 
 
 def multi_medal_for(chain: int) -> str | None:
@@ -384,6 +385,7 @@ def expected_medals(world: World, entries: list[dict]) -> list[tuple[str, str, i
       multi 1 and leaves the chain as it was, but it still moves the killer's previous-kill time.
     * first blood: the first credited enemy kill this scorer took.
     * a streak medal at its exact count of enemy kills without a death or a (non-operator) respawn.
+    * killjoy (A63): the VICTIM's streak, before this death resets it, is at least the killjoy count.
     """
     num_pid = world.num_to_pid()
     streak: Counter = Counter()
@@ -410,6 +412,7 @@ def expected_medals(world: World, entries: list[dict]) -> list[tuple[str, str, i
         else:
             t = int(e["t_recv"])
         suppressed = e["suppress"] or not e["synced"]
+        victim_streak = streak[pid]
         streak[pid] = 0
         killer = num_pid.get(int(ev.get("shooter_num", 0) or 0))
         if killer is None or killer == pid:
@@ -432,6 +435,8 @@ def expected_medals(world: World, entries: list[dict]) -> list[tuple[str, str, i
             medals.append(m)
         if ev.get("melee") is True:            # A62: the melee medal, from the death fact's own flag
             medals.append("melee_kill")
+        if victim_streak >= _KILLJOY_AT:
+            medals.append("killjoy")
         if (m := _STREAK_COUNTS.get(streak[killer])) is not None:
             medals.append(m)
         last_t[killer] = t
@@ -484,6 +489,50 @@ def medals_track_credited_kills(world: World) -> None:
 
 
 # ------------------------------------------------------------------------------ end of the run
+@invariant("honors_from_ledger", when="end")
+def honors_from_ledger(world: World) -> None:
+    """A63: the recap's awards name only rostered players under their AWARDS key and label, none under 3
+    scored players, and the simple ones agree with the ledger: MOST KILLS is the top credited kill count,
+    IRON MAN the fewest delivered deaths among reporting players who were there from go-live (never a hot joiner),
+    and WINGMAN the top assist count on the board."""
+    s = world.session
+    sc = s.scorer
+    if sc is None or s.last_recap is None:
+        return
+    honors = s.last_recap.get("honors") or []
+    labels = {a["key"]: a["label"] for a in AWARDS}
+    rostered = {p["player_id"] for p in world.players}
+    for h in honors:
+        if h.get("player_id") not in rostered or labels.get(str(h.get("key"))) != h.get("award"):
+            _fail("honors_from_ledger", f"an honor names no rostered player or no AWARDS row: {h}")
+    if len(sc.stats) < 3:
+        if honors:
+            _fail("honors_from_ledger", f"{len(sc.stats)} scored player(s), yet honors {honors}")
+        return
+    kills, deaths, _h, _p = _expected(world, sc, world.ledger.delivered(world.nodes, sc.match_id))
+    def holders(key: str) -> set[str]:
+        return {h["player_id"] for h in honors if h.get("key") == key}
+    top_k = max((kills.get(pid, 0) for pid in sc.stats), default=0)
+    want = {pid for pid in sc.stats if kills.get(pid, 0) == top_k} if top_k > 0 else set()
+    if holders("most_kills") != want:
+        _fail("honors_from_ledger", f"MOST KILLS went to {sorted(holders('most_kills'))}; the ledger's top "
+                                    f"({top_k} kills) is {sorted(want)}")
+    im = holders("iron_man")
+    if im & world.late_pids:
+        _fail("honors_from_ledger", f"IRON MAN went to a hot joiner: {sorted(im & world.late_pids)}")
+    silent = set(s.last_recap.get("missing") or [])       # no fact reached MC: not eligible (A63 polish)
+    full = [pid for pid in sc.stats if pid not in world.late_pids and pid not in silent]
+    fewest = min((deaths.get(pid, 0) for pid in full), default=0)
+    if any(deaths.get(pid, 0) != fewest for pid in im):
+        _fail("honors_from_ledger", f"IRON MAN went to {sorted(im)}; the fewest delivered deaths is {fewest}")
+    assists = {r["player_id"]: r["assists"] for r in s.last_recap.get("rows") or []}
+    top_a = max(assists.values(), default=0)
+    want = {pid for pid, a in assists.items() if a == top_a} if top_a > 0 else set()
+    if holders("wingman") != want:
+        _fail("honors_from_ledger", f"WINGMAN went to {sorted(holders('wingman'))}; the top assists "
+                                    f"({top_a}) are {sorted(want)}")
+
+
 @invariant("ends_exactly_once", when="end")
 def ends_exactly_once(world: World) -> None:
     """The match ended, and it ended exactly once, however many ENDs, ticks and late facts followed."""

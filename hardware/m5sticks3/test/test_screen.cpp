@@ -69,6 +69,9 @@ static void test_pickup_ready_vs_taken() {
 // ---- reset confirm and its draining timeout -------------------------------------------------
 static void test_reset_confirm_timeout_and_hint() {
   StickState s;
+  s.link_state = LinkState::ASSIGNED;
+  s.assignment_present = true;
+  s.assignment_id = 4;
   s.button_phase = ButtonPhase::CONFIRM_ARMED;
   s.confirm_armed_at_ms = 1000;
   s.now_ms = 1000;  // just armed
@@ -84,6 +87,35 @@ static void test_reset_confirm_timeout_and_hint() {
   s.now_ms = 1000 + RESET_CONFIRM_TIMEOUT_MS;
   ScreenSpec done = compute_screen(s);
   CHECK_EQ(done.reset_timeout_pct, 0);
+}
+
+// ---- no station, nothing to reset; and never WI-FI CONNECTED before it is (gate 2026-09-24) ----
+static void test_no_reset_offer_without_an_assignment() {
+  StickState s;
+  s.link_state = LinkState::WELCOMED;
+  s.button_phase = ButtonPhase::CONFIRM_ARMED;  // even if a confirm were somehow open
+  ScreenSpec spec = compute_screen(s);
+  CHECK(spec.kind == ScreenKind::SCR_LINKED_WAITING);
+  CHECK_EQ(spec.station_id_for_reset, -1);
+  CHECK_EQ(spec.hint, std::string(NO_STATION_HINT));
+  s.link_state = LinkState::LOOKING_FOR_MC;
+  CHECK_EQ(compute_screen(s).hint, std::string(NO_STATION_HINT));
+  s.assignment_present = true;  // a restored station still offers its reset
+  s.assignment_id = 2;
+  s.button_phase = ButtonPhase::NORMAL;
+  CHECK_EQ(compute_screen(s).hint, std::string(DEFAULT_HINT));
+}
+
+static void test_joining_says_wifi_connected_only_once_it_is() {
+  StickState s;
+  s.link_state = LinkState::JOINING_WIFI;
+  ScreenSpec joining = compute_screen(s);
+  CHECK(joining.kind == ScreenKind::SCR_JOINING);
+  CHECK(!joining.wifi_joined);
+  s.link_state = LinkState::LOOKING_FOR_MC;
+  CHECK(compute_screen(s).wifi_joined);
+  s.link_state = LinkState::HELLO_SENT;
+  CHECK(compute_screen(s).wifi_joined);
 }
 
 // ---- RESET NEEDS MISSION CONTROL when offline, RESET SENT when not -------------------------
@@ -189,8 +221,13 @@ static void test_respawn_redeploy_flash() {
   CHECK(compute_screen(s).kind == ScreenKind::RESPAWN_OWNED);
   s.respawn_redeploy = true;  // a revive just happened: the green flash, carrying the new count
   ScreenSpec f = compute_screen(s);
-  CHECK(f.kind == ScreenKind::RESPAWN_REDEPLOY);
-  CHECK_EQ(f.revives, 3);
+  if (REVIVE_FEEDBACK_ENABLED) {
+    CHECK(f.kind == ScreenKind::RESPAWN_REDEPLOY);
+    CHECK_EQ(f.revives, 3);
+  } else {  // post-MVP (presence.h): no flash and no count, whatever the state says
+    CHECK(f.kind == ScreenKind::RESPAWN_OWNED);
+    CHECK_EQ(f.revives, 0);
+  }
 }
 
 static void test_welcomed_unassigned_shows_linked_waiting() {
@@ -307,7 +344,7 @@ static void test_respawn_shows_owned_with_revives_or_idle_when_the_advert_is_dow
   ScreenSpec owned = compute_screen(s);
   CHECK(owned.kind == ScreenKind::RESPAWN_OWNED);
   CHECK_EQ(owned.respawn_team, 1);
-  CHECK_EQ(owned.revives, 7);
+  CHECK_EQ(owned.revives, REVIVE_FEEDBACK_ENABLED ? 7 : 0);
   s.respawn_team = 255;  // a station for any team: no team named
   CHECK_EQ(compute_screen(s).respawn_team, -1);
   s.respawn_live = false;
@@ -395,6 +432,8 @@ int main() {
   test_format_mmss();
   test_pickup_ready_vs_taken();
   test_reset_confirm_timeout_and_hint();
+  test_no_reset_offer_without_an_assignment();
+  test_joining_says_wifi_connected_only_once_it_is();
   test_reset_outcome_offline_vs_sent();
   test_a_locked_reset_shows_locked_and_the_strip_shows_the_padlock();
   test_force_restart_countdown_beats_everything();
