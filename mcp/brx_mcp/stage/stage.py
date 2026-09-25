@@ -693,7 +693,7 @@ class GunStage:
         self.reserve: int | None = None
         self.active_slot = 0
         self._alt_ptr = 0                 # the gun's BMAP position is separate from the trigger slot
-        self._alt_evidence_pending = False
+        self._alt_evidence_pending = None
         self._prev_ammo: dict[int, int] = {}       # per weapon slot ($ALCD token 3): last mag seen
         self._shot_acct: dict[int, dict] = {}   # F259: per slot, the node's OWN magazine account -- see `_acct_live`
         self._last_spent: int = 0       # F259: rounds the LAST $ALCD actually cost, off the account (`_acct_spent`)
@@ -2257,7 +2257,7 @@ class GunStage:
         self._cure = None; self._query_at = 0.0; self._cure_life = None; self._cure_at = 0.0; self._poll_at = 0.0   # F264: a new match owes the last one's gun nothing
         self._probed_life = None; self.cure = None
         self._pool_check = None; self._pool_repair = None; self.pool_wrong = None; self._pset_now = None   # F341
-        self._prev_ammo = {}; self._prev_reserve = {}; self._shot_acct = {}; self.active_slot = 0; self._alt_ptr = 0; self._alt_evidence_pending = False; self._recoil_slot = 0; self.reloading = None   # engine.js `_writeHead`
+        self._prev_ammo = {}; self._prev_reserve = {}; self._shot_acct = {}; self.active_slot = 0; self._alt_ptr = 0; self._alt_evidence_pending = None; self._recoil_slot = 0; self.reloading = None   # engine.js `_writeHead`
         hs = self.bundle.get("headset") or {}
         if hs.get("pregame"):
             await self.write(hs["pregame"], "headset pregame")
@@ -2489,7 +2489,7 @@ class GunStage:
         # in and never inside the spawn write.
         self._shield_regen = None; self._shield_down = False; self._shield_loop_at = 0.0
         self._shield_gave_up = False; self._shield_quiet_at = self.now()
-        self._prev_ammo = {}; self._prev_reserve = {}; self._shot_acct = {}; self.active_slot = 0; self._alt_ptr = 0; self._alt_evidence_pending = False; self._recoil_slot = 0    # engine.js: a spawn/revive puts the gun back on slot 0; both ammo maps reset (stun snapshot, polish 2026-09-11)
+        self._prev_ammo = {}; self._prev_reserve = {}; self._shot_acct = {}; self.active_slot = 0; self._alt_ptr = 0; self._alt_evidence_pending = None; self._recoil_slot = 0    # engine.js: a spawn/revive puts the gun back on slot 0; both ammo maps reset (stun snapshot, polish 2026-09-11)
         self.heat_by_slot = {}; self._heat_at = {}                            # engine.js `_afterSpawn`/`_revive`: a fresh life starts cool
         # engine.js `_afterSpawn`/`_revive` clear all THREE: a takeover from the last life, the verdict it
         # left behind, and any button still down. Clearing only `reloading` left the previous life's
@@ -3915,9 +3915,9 @@ class GunStage:
             self._log(f"slot {slot} confirmed the swap {self.last_switch_s:g}s after ALT (incl. reaction)", "info")
         self._prev_ammo[slot] = mag
         self.active_slot = slot
-        if slot < 2 and self._alt_evidence_pending and ((prev is not None and mag < prev) or slot == self._alt_evidence_pending):
+        if slot < 2 and self._alt_evidence_pending is not None and ((prev is not None and mag < prev) or slot == self._alt_evidence_pending):
             self._alt_ptr = slot
-            self._alt_evidence_pending = False
+            self._alt_evidence_pending = None
         if reserve is not None:
             self._prev_reserve[slot] = reserve
         self._publish_ammo(slot, mag, reserve)
@@ -4242,7 +4242,9 @@ class GunStage:
             self._dot_kill = {"at": now, "num": p["by"]["num"], "team": p["by"]["team"]}
         p["ticks"] += 1
         self._spawn_task(self.write([frame], f"poison tick {p['ticks']}: -{n} {pool}" + (" (lethal)" if lethal else "")))
-        if not lethal and now >= max(self._hill_busy_until, getattr(self, "_gun_busy_until", 0.0)) and not getattr(self, "_ann_queue", []):
+        # engine.js also waits for a quiet gun and an empty announcer queue (F393); the stage models neither, so it
+        # gates on the one callout it does model, the hill's.
+        if not lethal and now >= self._hill_busy_until:
             self._event_now("poison_tick")
 
     def _poison_clear(self, why: str) -> None:

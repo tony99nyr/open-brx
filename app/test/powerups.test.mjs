@@ -390,7 +390,7 @@ test('F379: a delayed old-slot report cannot settle ALT evidence, and reconcile 
   h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
   h.frame('$ALCD,30,190,0,0,0,*');
   assert.equal(h.eng._altPtr, 1);
-  assert.ok(h.eng._altEvidencePending);
+  assert.notEqual(h.eng._altEvidencePending, null);
   h.eng._endReconcile();
   assert.equal(h.eng._altPtr, 1);
 });
@@ -404,7 +404,7 @@ test('head rewrite resets ALT pointer and pending evidence', () => {
   const h = armed(); h.eng._altPtr = 1; h.eng._altEvidencePending = 1;
   h.eng._writeHead('test head');
   assert.equal(h.eng._altPtr, 0);
-  assert.equal(h.eng._altEvidencePending, false);
+  assert.equal(h.eng._altEvidencePending, null);
 });
 
 test('a weapon grant clears a pending switch-back retry', () => {
@@ -830,6 +830,23 @@ test('r3 low: a round from slot 1 clears a pending switch-back', () => {
   h.fire(1, 4, 24); h.adv(5000);
   assert.equal(backs(), 1);
   assert.equal(h.eng._puBackPending, null);
+});
+
+test('F379 r2 M: an ALT target of slot 0 is settled by the gun (0 is a real slot, not "nothing pending")', () => {
+  const h = armed(); h.eng._altPtr = 1;
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
+  assert.equal(h.eng._altEvidencePending, 0, 'setup: the pointer went 1 -> 0');
+  h.frame('$ALCD,30,190,0,0,0,*');
+  assert.equal(h.eng._altEvidencePending, null);
+  assert.equal(h.eng._altPtr, 0);
+});
+
+test('F379 r2 M: a phone equip ends the ALT evidence window', () => {
+  const h = armed();
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
+  assert.equal(h.eng._altEvidencePending, 1, 'setup: ALT pressed');
+  h.take(4);
+  assert.equal(h.eng._altEvidencePending, null, 'the heavy on the trigger is no ALT answer');
 });
 
 test('r3 M2: a protection-off that failed every retry books the life as write-lost, so MC offers RESYNC GUN', async () => {
