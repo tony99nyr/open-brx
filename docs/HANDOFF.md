@@ -16,17 +16,16 @@ sitting C's powerup setup passes. Still P0: the link loop under load (**F293**) 
 Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32; proven facts live in
 [`protocol/brx-protocol.md`](../protocol/brx-protocol.md) and [`manual/dev.md`](manual/dev.md).
 ## Lane: brx1, orchestration
-The 2026-09-25 final docs pass is done: FOLLOWUPS holds 62 open MVP rows (desk 12, bench 46, decision 4); 167
-post-MVP ids live in `post-mvp.md` (165 moved unchanged, plus F317 and the new F373); the pass closed 14 rows.
-Decided 2026-09-25 and recorded (do not re-ask): F346 d auto-join, F354 team-only credit, F357 no cue after any
-whistle, F364 station ids, F365 the range edit, F361 keep the Killjoy flash, F149/F351 death first, A63 surprise
-medals, F231 ranges, S58 powerups are MVP, Q13 TEAM DAMAGE OFF, B21 WebView debugging as a toggle (default on), F221
-the colour rule and alert audit (approved; brx1's agent builds it), F350 fix after F347 then audition, F369 the medal
-names (named after the gun's own lines; we rename on objection), F308 heavy 45, F366 the gamertag (hard 16, soft 12;
-brx3 builds and closes it), the recap icons (IRON MAN I2b, built; BEAT DOWN B6, brx5 wires it), F317 the daylight theme is post-MVP.
-- **Next:** run [`bench-2026-09-25.md`](bench-2026-09-25.md) with Tony. Route sitting A's results to brx5 (the t23
-  value, rule B, F350's pick) and brx3 (the 0.4.12 cut); sitting B's to brx4; sitting C's powerup result to F372.
-- **Awaiting Tony:** none in the MVP DECISION group (F368, F370, F371 decided and built 2026-09-25).
+2026-09-25 close: every session lane is pushed with CI green (main 93cc339a, run 36152678385). FOLLOWUPS holds 56
+open MVP rows (desk 3, bench 51, decision 2). Built today after the docs pass: F368/F370/F371 alert layering, F221 MC
+alert colours, F366 gamertag limit, D5 pistol Extended Mags (+50%), B6 and I2b recap icons, F375 no critical line after
+the death scream, F374 a pickup Stick waits for START, F164 reconcile ammo, F319, Q13's solo-game fix, B21's Android
+switch. Decided and recorded (do not re-ask): everything in the FOLLOWUPS rows, plus D5, F366 and F317 (post-MVP).
+- **Next:** run [`bench-2026-09-25.md`](bench-2026-09-25.md) with Tony. Route sitting A's results to the t23 value,
+  rule B and F350's pick, then cut 0.4.12 (RELEASING.md); sitting C's powerup result goes to F372.
+- **Desk:** F377 (solo LMS picks no winner), B21's iOS half (needs the MacBook), F372 after the bench.
+- **Awaiting Tony:** F221 (look at `C:\Users\Tony\brx-mc-alerts\index.html`) and S32 (the koth and melee art).
+- **Parked, not merged:** `pu-select` 1fb1aec9 (brx5, SELECT swap; later powerup work on main likely supersedes it).
 ## Lane: brx2, bench, audio, utility and docs
 2026-09-24 bench: Blocks 0, 1, 1.4, 3.1-3.3, 4.3 and 7.11 ran (F297 laptop control 10/10, median 1.37 s). Built:
 the gun-audio FIFO simulator ([`audio-queue-scenarios.md`](audio-queue-scenarios.md)), the utility-screen rebuild,
