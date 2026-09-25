@@ -240,8 +240,8 @@ first_blood · one multi-kill medal, double_kill 2 up to killionaire 8+ (A61, `t
 unstoppable at 10) with their own
 cues; KILLJOY (A63) is a kill medal too: ending an enemy's streak of 5 or more, HUD text only (no gun line).
 **Names** (Tony, 2026-09-25): each kill medal is named after the voice line the Battle Company tagger plays for it
-from its own built-in sound bank (BEAT DOWN plays "Fatality"; KILLJOY has no line). Open BRX ships no audio. If a
-rights holder objects to a name, we will rename it.
+from its own built-in sound bank, except BEAT DOWN (Halo's name, over the gun's "Fatality" line) and KILLJOY (no
+line). Open BRX ships no audio. If a rights holder objects to a name, we will rename it.
 Recap honors are `scoring.honors()` over the one table `types.AWARDS` (A63), where each row names its rule and its
 tie-break. The awards, in recap order:
 

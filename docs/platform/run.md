@@ -169,9 +169,9 @@ kills, deaths, accuracy and medals. The recap stays **provisional** until every 
 flushed its events, so a player still walking back can still change a number.
 
 The kill medals (First Blood, Double Kill up to Killionaire, Killing Spree, Unstoppable) are named after the
-voice lines built into the Battle Company tagger's own sound bank, and each one is named after the line the gun
-plays. Beat Down plays the gun's "Fatality" line, and Killjoy is text only. Open BRX ships no audio. If a rights
-holder objects to a name, we will rename it.
+voice lines built into the Battle Company tagger's own sound bank, except Beat Down (Halo's name, over the gun's
+"Fatality" line) and Killjoy (text only, no line). Open BRX ships no audio. If a rights holder objects to a name,
+we will rename it.
 
 Before anyone closes the app, have each player hit **Share log**. The HUD keeps its log and the last
 60 raw Bluetooth frames in memory only, and closing the app loses them. The launch folder

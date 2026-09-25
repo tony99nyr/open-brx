@@ -101,9 +101,8 @@ neutral station), and only after it has seen that player die this game, so go-li
 and the station hears the player's MEDIUM-TX advert, about 8 dB weaker; `present` also adds a dwell behind the EMA.
 Field 2026-09-24: a phone station at -74 counted neither of two revives at it. The StickS3 (`presence.h
 ReviveCounter`) also counts, with no RSSI, on the rising edge of the player's state bit 6 `PLAYER_REVIVED` with
-`value` = its own id, and uses only that rule for a phone that has ever set the bit. No phone on main sets it: the
-phone half is parked on `origin/revive-bit`, and the Stick's revive feedback is off (`REVIVE_FEEDBACK_ENABLED`).
-Revive counting is post-MVP (F344).
+`value` = its own id, and uses only that rule for a phone that has ever set the bit. No phone on main sets it, and
+the Stick's revive feedback is off (`REVIVE_FEEDBACK_ENABLED`).
 
 **Scan reliability (Android):** a BLE scan left running goes silently deaf — `scanning` stays true but callbacks stop (hardware 2026-09-04: a down player at the station saw "find a respawn station" until a fresh scan was forced). `app.js` fights this: scan at low-latency, kick a fresh scan the instant the player goes DOWN, and restart every **7 s** while hunting a station (slower otherwise). 7 s keeps the death-kick + steady restarts under Android's ~5-starts-per-30 s throttle; a scan that dies mid-match is restarted on the next tick (the intent flag `beaconWanted`), so a single failed start can't freeze presence for the game.
 
@@ -232,7 +231,8 @@ the allow-list echoed for the station's own display; the authoritative allow-lis
 
 **Range edited on the station, last edit wins (A67, F365).** An operator can change a station's RANGE (threshold)
 and STRENGTH (`tx_power`: `ultra_low`, `low`, `medium`, `high`) on the station itself behind a long hold, during
-play. The station applies it at once and reports it on every heartbeat: `threshold`/`tx_power` (applied now),
+play. The station applies it at once and reports it on every heartbeat: `threshold`/`tx_power` (applied now; a phone
+that cannot set its power, iOS, sends no `tx_power` and records no STRENGTH edit),
 `<field>_src` (`station` or `mc`), `<field>_edit_age_ms` (src station only) and `range_edits` (the last 8 edits,
 `seq` persisted across a reboot). MC keeps who set each value and when. A station edit newer than MC's value is
 adopted; an operator edit in the ITEMS card after it wins and re-arms the station. `station_config` carries

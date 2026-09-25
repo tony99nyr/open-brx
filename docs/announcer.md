@@ -140,7 +140,7 @@ queue, so the screen can show more than the voice says. The timings are in `app/
 |---|---|---|---|
 | HERO | centre, over the HUD | my kill: KILL, the victim's name, my newest medal. A spree adds a ×N count and a ladder of the earlier medals, newest first, fading | 2.5 s after the last kill (`LANE_HERO_MS`), or longer while that kill's slot is on air |
 | OBJECTIVE | right, under the K/D stats | one badge for the lead and one for the hill | until the next badge of the same key replaces it; it dims after 4 s |
-| FEED | left, under the identity block | teammate down, enemy down, a powerup spawn or swap, every other MC alert (BOMB PLANTED, ONE MINUTE LEFT; no full-width banner, Tony to confirm: F371) | 4 s a row (`LANE_FEED_MS`), the newest three |
+| FEED | left, under the identity block | teammate down, enemy down, a powerup spawn or swap, every other MC alert (BOMB PLANTED, ONE MINUTE LEFT; no full-width banner (F371)) | 4 s a row (`LANE_FEED_MS`), the newest three |
 
 Rules:
 
@@ -166,8 +166,7 @@ The end-of-match AWARDS tab on the results screen shows MC's A63 honours from th
 `types.AWARDS` order, SHARED on an award with more than one holder, and MC's stat string on its own line. Nothing is
 capped. The HONORS strip is hidden while the tab is on. The tab is icon-first: each award draws its style B icon
 (`medalicons.js`), with the name on a long press and in the accessible label. The PLAYERS tab's medal column and MC's
-recap draw the same icons with a legend (MC reads a generated copy, `app/scripts/gen-medalicons.mjs`). BEAT DOWN and
-IRON MAN draw a placeholder initial until Tony picks their icons (F367).
+recap draw the same icons with a legend (MC reads a generated copy, `app/scripts/gen-medalicons.mjs`).
 
 ### Aim tells and the lanes
 

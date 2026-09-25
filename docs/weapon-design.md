@@ -709,8 +709,8 @@ at 55 and up (now including the Rail Gun) all sit inside the receiver's pass-ban
 alike; the Shotgun (30) sits on the knee, where the effect is not "shorter range" but "the receiver
 drops words"; and the SMG and Rocket Launcher (both 40, since 2026-09-25) sit just above the knee,
 unmeasured at that value. Keep the numbers until S49 measures the receiver's response curve; do not
-read this table as a calibrated metre ladder. **The real reach at 40/100 outdoors is still unmeasured
-(bench Block 5, F231 open).**
+read this table as a calibrated metre ladder. **The real reach at 40/100 outdoors is unmeasured;
+bench Block 5.**
 
 A weapon with no `wire.range_outdoor_pct` (every hidden/cut weapon, the sidearms, melee) keeps its
 captured `t2` unchanged at every venue. **Indoor stays honest**: no venue has an indoor range value.

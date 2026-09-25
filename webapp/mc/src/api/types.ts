@@ -61,7 +61,10 @@ export type FeedTag = 'DOUBLE KILL' | 'TRIPLE KILL' | `STREAK ×${number}` | 'FI
    *  and counted in nothing: not the score, the rows, the awards or the medals. */
   | 'AFTER WHISTLE'
   /** A65 (F354): a kill credited to a TEAM and no player (the victim's phone lost the damaging hit). */
-  | 'TEAM CREDIT';
+  | 'TEAM CREDIT'
+  /** A67 (F365): a station's on-station range/strength edit. */
+  | 'STATION'
+  | 'CONFIG' | 'END' | 'POWERUP' | 'RESCORED';
 export interface FeedEntry { t_match_s: number; text: string; tag?: FeedTag; kind: 'kill' | 'sync' | 'info' | 'alert' }
 
 /** loadout.md §3.2 (server pass 2, 2026-09-12) — why a slot's pool came out EMPTY. A closed
