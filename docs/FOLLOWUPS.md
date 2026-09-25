@@ -9,16 +9,16 @@ Updated: 2026-09-25 (F384 and F385 built, bench checks left; F382 Stick half, F3
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 73.** Desk 4 · bench 66 · decision 3.
+**MVP open: 74.** Desk 4 · bench 67 · decision 3.
 
 **MVP DESK (4),** a keyboard is enough:
 - 🟠 **B21** · **F372** · **F400**
 - 🟡 **F377**
 
-**MVP BENCH (66),** needs a gun, a Stick, phones or a field (the order is the bench plan):
+**MVP BENCH (67),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F348** · **B26** · **F232** · **F293** · **F297** · **F264** · **F275** · **Q15** · **F231** · **F198** · **S10** · **F379**
 - 🟠 **F349** · **F308** · **F374** · **S58** · **F365** · **S57** · **F269** · **F272** · **F274** · **F277** · **F226** · **F158** · **F50** · **F237** · **F219** · **F152** · **F340** · **F345** · **F311** · **F375** · **F376** · **F380** · **F382** · **F383** · **F384** · **F385** · **F387** · **F388** · **F389** · **F391** · **F393** · **F394** · **F399**
-- 🟡 **Q13** · **H8** · **F353** · **F298** · **F342** · **F3** · **F21** · **F270** · **F322** · **F309** · **F292** · **F296** · **F294** · **F381** · **F386** · **F392** · **F395** · **F396** · **F397** · **F398**
+- 🟡 **Q13** · **F333** · **H8** · **F353** · **F298** · **F342** · **F3** · **F21** · **F270** · **F322** · **F309** · **F292** · **F296** · **F294** · **F381** · **F386** · **F392** · **F395** · **F396** · **F397** · **F398**
 - 🟢 **F339**
 
 **MVP DECISION (3),** awaiting Tony:
@@ -120,6 +120,7 @@ sheets that [`bench-plan.md`](bench-plan.md) names; the order of the next sittin
 
 - **F397 🟡 THE STICK FORGETS ITS TYPED MC ADDRESS ON RESTART.** MC was restarted from `main` this sitting (`6408a3db`); the Stick had to be re-typed with the `MC ws://…` fallback afterwards rather than keeping the last-typed address (Wi-Fi credentials do survive a reflash, `bench-2026-09-24.md` Block 8 step 1, but the typed MC dial did not survive this restart). Save the typed MC URL to NVS alongside the Wi-Fi credentials. `bench` + `build`.
 
+- **F333 🟡 WALK EVERY STICK SCREEN ON THE LIT PANEL AT ARM'S LENGTH.** Reopened 2026-09-25 by Tony: sitting B saw the pickup and hill screens in passing (and found F398), not in a deliberate walk. Walk EMPTY, countdown, READY, TAKEN, CAPTURING, HELD, CONTESTED, LOSING and MATCH OVER at arm's length at the next bench. `bench` + `eyes`.
 - **F398 🟡 THE STICK'S LOBBY COUNTDOWN SCREEN OVERLAPS ITS OWN TEXT.** Sitting B, 2026-09-25 (F333's bench walk): the loading indicator on the countdown screen overlaps the word SPAWN. Shift the indicator up. `eyes` + `build`.
 
 ### Sitting C: two guns, both phones, powerups and a real fight

@@ -55,7 +55,7 @@ the native shield hum blocks the gun's audio queue). Off the plan the same day: 
 **The 2026-09-25 sitting, [`bench-2026-09-25.md`](bench-2026-09-25.md), sittings A and B and stop point 2.**
 Sitting A closed the 0.4.12 gate: A4, F341, F347 (t23 ships EMPTY, no restart delay needed), and F350 (H21 picked,
 playtest confirmation left to sitting C's 11.1(c)); 4.19 parts 2-3 and the Burst Rifle gap stayed INCONCLUSIVE.
-Sitting B closed F332, the Stick pickup online and offline (S58, found F380 and F381), F333 (closed, F398 filed),
+Sitting B closed F332, the Stick pickup online and offline (S58, found F380 and F381), F333 (reopened by Tony for a deliberate walk; F398 filed),
 and Block 9 steps 3 and 4 (H9, H8, found F383-F386); it left F374's carry-out A/B/A un-run, F353 not logged, and
 F365's Stick half PARTIAL (RADIUS/STRENGTH confirmed, the 5 s gesture REFUTED as F387, F388 filed; the phone
 station half, 11.4, did not run). **Stop point 2 is DONE**: all three Pixels are on app 0.4.12; the grey Pixel
@@ -73,7 +73,7 @@ already), the `$PLAY` spacing check, 11.8 (**F158**, **F3**, **F21**, and step 6
 Shields fight (**F298**) for the announcer and medal audio plus 11.1(c) (F350's clip, closed already) and the
 **S57** magnitude watch.
 
-Carry into sitting C: **F374**'s carry-out A/B/A; **F353** (log the phone's Stick-advert arrivals during a
+Carry into sitting C: **F333** (walk every Stick screen at arm's length); **F374**'s carry-out A/B/A; **F353** (log the phone's Stick-advert arrivals during a
 hill); a hill hold of 2+ minutes then a kill, listening for the kill-confirm delay against the hill tick's
 outstanding model (**F382**); capture pickup timings with the phone log on, claim-ready vs the Stick's taker
 advert (**F380**); re-test the RANGE hold with the Stick serial log running (**F387**); a clean 3 m and 7 m
