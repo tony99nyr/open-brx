@@ -965,7 +965,7 @@ sound (O01 ships; alternates O05 O02 O04 O06 O03; its zero damage is fixed, F165
 - IR range of real guns vs our emitter, outdoor mode / weapon / angle (`docs/archive/hardware/range-experiment.md`); the grenade beacon's ~18–20 ft.
 - **P15** BLE link count on the target phone. **Q18** gun absent at start joining a running match.
 
-**Grenade:** 3.2 the Hill BUFF word (a gun in the hill, receiver on its headset); 3.5 **G9**; 3.6 **G10**; the captures in §8.
+**Grenade:** 3.2 the Hill BUFF word (a gun in the hill, receiver on its headset); 3.5 **G9**; 3.6 **G10**; the grenade captures in §2.
 
 **Capture (Mac + iPhone, batch for a Mac day):** **P8** leftovers (the numeric weapon stat values), **P3** (set a squad
 voice in Callsign, re-host; WireGuard mode, not the HTTP proxy), **G3**; re-scrape the FB group with comments expanded
