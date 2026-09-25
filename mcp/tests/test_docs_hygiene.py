@@ -251,6 +251,64 @@ def test_no_headset_sticker_id_in_tracked_files():
     assert not hits, "headset sticker ids in the repo (use Tactix-XXXX or an alias): " + ", ".join(hits[:20])
 
 
+# A merge resolved by hand can leave `<<<<<<<`/`=======`/`>>>>>>>` lines behind — the 2026-09 log notes
+# one such fix in the archive. A bare `=======` line is ALSO a markdown setext heading underline, so it
+# is a marker only between an open `<<<<<<<` and its `>>>>>>>`; elsewhere it is ordinary prose.
+_CONFLICT_START = re.compile(r"^<<<<<<<(?: .*)?$")
+_CONFLICT_END = re.compile(r"^>>>>>>>(?: .*)?$")
+
+
+def _conflict_marker_hits(text: str) -> list[int]:
+    """1-based line numbers of every merge-conflict marker in `text`."""
+    hits: list[int] = []
+    open_at: int | None = None
+    for n, line in enumerate(text.split("\n"), 1):
+        if _CONFLICT_START.match(line):
+            hits.append(n)
+            open_at = n
+        elif _CONFLICT_END.match(line):
+            hits.append(n)
+            open_at = None
+        elif open_at is not None and line == "=======":
+            hits.append(n)
+    return hits
+
+
+def _docs_markdown_files() -> list[pathlib.Path]:
+    listing = _git("ls-files", "docs")
+    if listing is None:
+        raise Skipped("git")
+    return [REPO / p for p in listing.split("\n") if p.endswith(".md")]
+
+
+def test_no_merge_conflict_markers_in_docs():
+    """An unresolved conflict marker committed to docs/ (including docs/archive/) is either a broken
+    page or a fact nobody actually reconciled. Both `docs/archive/followups-closed.md` and every living
+    page are in scope: the archive is unmaintained history, not unreviewable — a marker there is still a
+    marker."""
+    hits = []
+    for f in _docs_markdown_files():
+        if not f.is_file():
+            continue
+        text = f.read_text(encoding="utf-8", errors="ignore")
+        for n in _conflict_marker_hits(text):
+            hits.append(f"{f.relative_to(REPO)}:{n}")
+    assert not hits, "unresolved merge-conflict markers in docs/: " + ", ".join(hits[:20])
+
+
+def test_the_conflict_marker_check_can_actually_fail():
+    text = "before\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> feature\nafter\n"
+    assert _conflict_marker_hits(text) == [2, 4, 6]
+    # bare markers with nothing after the sigil must still count
+    assert _conflict_marker_hits("<<<<<<<\n=======\n>>>>>>>\n") == [1, 2, 3]
+
+
+def test_a_setext_heading_underline_is_not_a_conflict_marker():
+    """`=======` is also how markdown underlines a level-1 setext heading. Only a bare `=======` that
+    sits between an open `<<<<<<<` and its `>>>>>>>` is a conflict marker; one on its own is prose."""
+    assert _conflict_marker_hits("Heading\n=======\n\nSome text.\n") == []
+
+
 def _stamp(path: pathlib.Path) -> _dt.date:
     head = path.read_text(encoding="utf-8")[:2000]
     m = re.search(r"Updated[^0-9]{0,20}(\d{4}-\d{2}-\d{2})", head)

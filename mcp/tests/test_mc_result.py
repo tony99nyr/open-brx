@@ -429,8 +429,12 @@ def test_a_late_fact_after_a_reconcile_still_reaches_the_operator_s_feed():
 def test_the_replay_reads_facts_not_heartbeats():
     """`_match_facts` used to read EVERY envelope of the match back and `json.loads` each one, twice per
     late death (a probe pass and a frozen pass), only to throw the heartbeats away. A ten-minute match
-    is mostly heartbeats. The filter is SQL now, so the heartbeats never leave the database."""
-    import time
+    is mostly heartbeats. The filter is SQL now, so the heartbeats never leave the database.
+
+    The test counts rows, not seconds: a wall-clock bound flaked on CI (2.1 s against 2.0 s, 2026-09-25).
+    A spy on `store.events` records the `kinds` filter and the row count of every call while 200 late
+    facts reconcile. A regression to a full read shows up as a call with no filter and thousands of rows.
+    """
     s, net, clock, ps, info, g, late = _late_cap_scenario()
     mid = info["match_id"]
     # A realistic match's worth of status heartbeats around the handful of facts.
@@ -440,15 +444,34 @@ def test_the_replay_reads_facts_not_heartbeats():
     rows = s.store.events(match_id=mid, kinds=s._FACT_KINDS)
     assert rows and not [r for r in rows if r["kind"] == "status"], "the query still returned heartbeats"
     assert {r["kind"] for r in rows} <= set(s._FACT_KINDS)
-    # and the reconcile stays cheap: 200 late facts on that match, each re-deriving the whole recap.
-    t0 = time.monotonic()
-    for n in range(200):
-        clock["t"] = g + 300_000 + n
-        net.simulate_node_message("node3", "event_batch", {"events": [
-            {"type": "death", "t": g + 800, "match_id": mid, "player_id": ps[3]["player_id"],
-             "shooter_num": ps[1]["player_num"], "shooter_team": 2, "seq": 500 + n}]}, clock["t"])
-    took = time.monotonic() - t0
-    assert took < 2.0, f"200 late facts on a 5000-envelope match took {took:.1f}s"
+    # and the reconcile stays cheap: 200 late facts on that match, each re-deriving the whole recap --
+    # spy on every `store.events` call made along the way instead of timing the loop.
+    calls = []
+    real_events = s.store.events
+
+    def spying_events(*args, **kwargs):
+        result = real_events(*args, **kwargs)
+        calls.append({"kinds": kwargs.get("kinds"), "n": len(result)})
+        return result
+
+    s.store.events = spying_events
+    try:
+        for n in range(200):
+            clock["t"] = g + 300_000 + n
+            net.simulate_node_message("node3", "event_batch", {"events": [
+                {"type": "death", "t": g + 800, "match_id": mid, "player_id": ps[3]["player_id"],
+                 "shooter_num": ps[1]["player_num"], "shooter_team": 2, "seq": 500 + n}]}, clock["t"])
+    finally:
+        s.store.events = real_events
+    assert calls, "200 late facts triggered no store.events call at all -- the scenario stopped reconciling"
+    # Every reconcile's read must be `kind`-filtered to the fact kinds, never a bare/unfiltered scan --
+    # that filter is what keeps the 5000 `status` heartbeats out of the result set entirely.
+    assert all(c["kinds"] is not None and set(c["kinds"]) <= set(s._FACT_KINDS) for c in calls), \
+        f"a reconcile read without the kind filter: {[c['kinds'] for c in calls if c['kinds'] is None or not set(c['kinds']) <= set(s._FACT_KINDS)]}"
+    # And the rows returned track the handful of persisted facts (well under a hundred here), nowhere
+    # near the 5000-row heartbeat table a full scan would return.
+    worst = max(c["n"] for c in calls)
+    assert worst < 500, f"a reconcile read {worst} rows back -- that is heartbeat-table territory, not facts"
 
 
 def test_the_venue_survives_a_mode_change():
