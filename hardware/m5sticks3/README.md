@@ -470,14 +470,37 @@ gesture changes any station state -- see "Buttons and power" below.
   available/taken.
 - SETTINGS: not wired to any button flow yet (`ID`/`GAME`/`TXPIN` stay serial-only); the renderer
   exists, `compute_screen()` never produces it.
-- A welcomed-but-not-yet-armed link (MC found, no `station_config` applied yet) reuses the JOINING
-  screen's "LOOKING FOR MISSION CONTROL" copy, which undersells it once MC is actually found;
-  render.py has no separate screen for that state.
+- A welcomed-but-not-yet-armed link (MC found, no `station_config` applied yet) shows LINKED /
+  ASSIGN ME IN MC (`SCR_LINKED_WAITING`); render.py has no screen for that state.
 - `hold_time`/`next_spawn` both go through one canonical m:ss formatter (`format_mmss`: minutes
   unpadded, seconds zero-padded); render.py's own scene literals hardcode "04:12" vs "1:40"
   inconsistently, since render.py never defines the formatter itself.
 
 **Bench to confirm:** colours and legibility on the real panel -- none of this has been seen lit.
+
+### Screen simulator
+
+**Rule: review the gallery before you flash any screen change.** The simulator shows which screen
+the Stick picks in every state, and what that screen says, without a Stick:
+
+```
+python3 hardware/m5sticks3/sim/stick_sim.py --copy-to /mnt/c/Users/Tony/brx-stick-sim
+```
+
+Then open `C:\Users\Tony\brx-stick-sim\index.html` (or `hardware/m5sticks3/sim/out/index.html`).
+Each scenario drives the real `StationLink`, `ControlPoint`, `PlayerPresence` and button state
+machines with real MC messages. It maps the result through the firmware's own `build_stick_state()`
+(`stick_state.h`, shared with the .ino) and `compute_screen()`. It then draws the screen with the
+real `station_render.h`, compiled on the host against the installed M5GFX's sprite code, so each PNG
+is pixel-exact. `sim/shim/M5Unified.h` stands in for the Arduino header. The glue's frame handling
+and `pollButtons()` are Arduino-only, so `sim/stick_sim.cpp` copies their sequencing.
+
+The gate is `mcp/tests/test_sticks3_screens.py` (`cd mcp && python3 run_tests.py sticks3`). It fails
+when a scenario shows the wrong kind or copy (`EXPECT` in `stick_sim.py`), or when text leaves the
+screen, its band or its box, or lands on other text. It also fails when two different states draw
+the same picture. `KNOWN` lists the screens that the gate flagged on its first run that are still
+open. A new screen or state gets a scenario and an `EXPECT` row. M5GFX is found in the Arduino
+libraries folder or `$M5GFX_SRC`; without it only the screen kinds are checked.
 
 ## Buttons and power
 
