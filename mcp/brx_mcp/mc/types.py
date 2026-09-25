@@ -32,6 +32,36 @@ MEDALS = [
     # (the killing $HIR was the melee proto, 13), and it stacks with the chain medal. Label BEAT DOWN (Halo's name;
     # the bank has no such line) over VA7F "Fatality", Tony's pick 2026-09-24 ("ha that works").
     {"key": "melee_kill",    "kind": "melee",  "count": 1,  "label": "BEAT DOWN",     "clip": "VA7F", "clip_ms": 1924},
+    # Tony 2026-09-24 (A63): KILLJOY, for killing an enemy whose CURRENT streak (read before the death resets it)
+    # is at least `count`, the killing_spree threshold. It stacks with the other medals and goes only to a
+    # credited enemy kill. The bank has no Killjoy line, so it is HUD text only: a null clip compiles no cue.
+    {"key": "killjoy",       "kind": "killjoy", "count": 5, "label": "KILLJOY",       "clip": None,   "clip_ms": None},
+]
+# A63 (Tony 2026-09-24): the END-OF-MATCH awards, in recap order. `scoring.Scorer.honors()` awards them; every
+# Honor row carries its `key`, and `award` stays the label for older consumers. None is awarded under 3 scored
+# players. `rule` and `tie` are the rule as built, in words, for the docs and the console. A tie that survives
+# the tie-break is SHARED: every tied player gets their own Honor row for that award.
+AWARDS = [
+    {"key": "mvp",            "label": "MVP",                "rule": "top kills minus deaths; needs 1+ kill",
+     "tie": "then K/D, then kills; still level = shared"},
+    {"key": "most_kills",     "label": "MOST KILLS",         "rule": "most kills; needs 1+ kill",
+     "tie": "shared"},
+    {"key": "best_kd",        "label": "BEST K/D · NON-MVP", "rule": "best K/D among players who are not MVP; needs 1+ kill",
+     "tie": "then kills; still level = shared"},
+    {"key": "sharpshooter",   "label": "SHARPSHOOTER",       "rule": "best accuracy (hits per shot_group) with ACC_MIN_SHOTS+ shots; needs above 0 %",
+     "tie": "shared, to the whole percent shown"},
+    {"key": "survivor",       "label": "SURVIVOR",           "rule": "the longest single life: go-live (or join, or a respawn) to a death or the match end; not for a silent player or one with a fact from an unsynced node",
+     "tie": "shared, to the whole second; not awarded when every player ties"},
+    {"key": "iron_man",       "label": "IRON MAN",           "rule": "fewest deaths among players who played the whole match (no hot-join) and whose phone reported; must be fewer than the most",
+     "tie": "then kills; still level = shared"},
+    {"key": "first_blood",    "label": "FIRST BLOOD",        "rule": "the match's first credited enemy kill",
+     "tie": "none: one kill is first"},
+    {"key": "multikill",      "label": "MULTIKILL",          "rule": "the longest multi-kill chain (2+), shown with its MEDALS ladder label",
+     "tie": "then the number of 2+ chains; still level = shared"},
+    {"key": "wingman",        "label": "WINGMAN",            "rule": "most assists; needs 1+ assist",
+     "tie": "shared"},
+    {"key": "objective_hero", "label": "OBJECTIVE HERO",     "rule": "koth/domination only: most seconds the player's own phone reported their team holding a point while in range (IR for a grenade, BLE for a station); needs 1+ s",
+     "tie": "shared, to the whole second"},
 ]
 FEEDBACK_MAX_AGE_MS = 3000
 STATUS_HEARTBEAT_MS = 2000
@@ -1128,9 +1158,12 @@ class ModeInfo(TypedDict):
 
 
 class Honor(TypedDict):
-    award: str
+    award: str             # the award's LABEL (types.AWARDS), kept for older consumers
     player_id: str
     stat: str
+    # A63: the AWARDS key. NotRequired, not merely new: `honors()` fills it on every row, but a recap PERSISTED
+    # before A63 replays honors without it. Read it with a fallback to `award`.
+    key: NotRequired[str]
 
 
 class StationAssignment(TypedDict):

@@ -189,6 +189,7 @@ class World:
         self.step = 0
         self.shot_group = 0
         self.late_joins = 0
+        self.late_pids: set[str] = set()         # A63: hot joiners, who may not hold IRON MAN
         self.timings: list[tuple[str, float]] = []           # (action, seconds incl. settle)
         self.tick_errors: list[str] = []                   # Session.tick() exceptions, for an invariant
         self._resuming = False
@@ -250,6 +251,7 @@ class World:
         i = len(self.players)
         teams = self.team_ids()
         self._add_player(i, teams[i % len(teams)])
+        self.late_pids.add(self.players[-1]["player_id"])
         node = await self._connect(i)
         self.nodes.append(node)
         await until(lambda: node.arm_state == "live" and node.alive, 4.0)

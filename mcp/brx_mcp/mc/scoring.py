@@ -8,8 +8,8 @@ import csv
 import io
 from typing import Any, Callable, Literal, Mapping, Sequence
 
-from .types import (ACC_MIN_SHOTS, ASSIST_WINDOW_MS, FEEDBACK_MAX_AGE_MS, MEDALS, MULTI_KILL_MS,
-                    NEVER_SEEN_MS, STALE_AFTER_MS, AfterEndPlayer, AfterEndView, Event, Honor, LiveRow, Player,
+from .types import (ACC_MIN_SHOTS, ASSIST_WINDOW_MS, AWARDS, FEEDBACK_MAX_AGE_MS, MEDALS, MULTI_KILL_MS,
+                    NEVER_SEEN_MS, OBJECTIVE_MODES, STALE_AFTER_MS, AfterEndPlayer, AfterEndView, Event, Honor, LiveRow, Player,
                     PossessionView, RecapStationRow, RecapView, ScoreRow, Team, WinBy, WinnerView, parse_win_by)
 
 Feed = dict
@@ -36,6 +36,19 @@ HONOR_ALIAS = {m["label"]: "MULTIKILL" for m in MEDALS if m["kind"] == "multi"}
 # (killionaire at 10 and beyond). The streak medals fire at their exact count, as before.
 _MULTI_LADDER = sorted(((m["count"], m["key"]) for m in MEDALS if m["kind"] == "multi"), reverse=True)
 _STREAK_AT = {m["count"]: m["key"] for m in MEDALS if m["kind"] == "streak"}
+# A63: KILLJOY fires when the VICTIM's current streak is at least this (the killing_spree count, types.MEDALS).
+_KILLJOY_AT = next(m["count"] for m in MEDALS if m["kind"] == "killjoy")
+AWARD_LABEL = {a["key"]: a["label"] for a in AWARDS}
+
+
+def _chain_key(n: int) -> str | None:
+    """The MEDALS ladder key a chain of `n` kills earns (the highest tier reached), or None below 2."""
+    return next((key for count, key in _MULTI_LADDER if n >= count), None)
+
+
+def _mmss(ms: int) -> str:
+    s = max(0, ms) // 1000
+    return f"{s // 60}:{s % 60:02d}"
 
 
 def _stands(label: str, honors: set[str]) -> bool:
@@ -77,7 +90,8 @@ def rows_csv(rows) -> str:
 class _P:
     __slots__ = ("kills", "deaths", "assists", "hits", "friendly_kills", "streak", "best_streak",
                  "multi_best", "multis", "last_kill_t", "last_hit_t", "shots", "shots_t", "alive",
-                 "deadline_s", "hp", "armor", "last_status_t", "flushed", "team_id", "shots_baseline")
+                 "deadline_s", "hp", "armor", "last_status_t", "flushed", "team_id", "shots_baseline",
+                 "life_marks")
 
     def __init__(self, team_id: str | None):
         self.kills = self.deaths = self.assists = self.hits = self.friendly_kills = 0
@@ -97,6 +111,9 @@ class _P:
         self.last_status_t: int | None = None
         self.flushed = False
         self.team_id = team_id
+        # A63 SURVIVOR: (t, "d" | "r") for every SCORED death and every respawn/revive, in arrival order.
+        # `honors()` sorts them, so a fact that arrives out of order still measures the right life.
+        self.life_marks: list[tuple[int, str]] = []
 
 
 class Scorer:
@@ -158,6 +175,16 @@ class Scorer:
         # player_ids in FFA). Set by the Session at the finish via `check_cap_tie`; `winner()` reports it
         # as a tie rather than letting MC's arrival order pick between two kills it cannot order.
         self.cap_tie: list[str] | None = None
+        # A63 IRON MAN: player_id -> ms a HOT JOINER was registered (A5.6), only for a join AFTER go-live.
+        # Such a player did not play the whole match, so IRON MAN skips them, and their first life starts
+        # here, not at go-live. A replay or a resume carries it over (`state._replay`, the match snapshot),
+        # because the stored facts cannot say when somebody joined.
+        self.joined_t: dict[str, int] = {}
+        # A63 OBJECTIVE HERO: node_id -> the player it was bound to when its possession tally arrived.
+        self.possession_pid: dict[str, str] = {}
+        # A63 SURVIVOR: players with a scored fact from a node MC never saw synced. Such a fact is timed by
+        # when MC RECEIVED it (`_eff_t`), so a life measured from it is a guess, and SURVIVOR skips them.
+        self.unsynced_pids: set[str] = set()
 
     def set_end(self, end_t: int) -> None:
         """Freeze scoring at end_t (control{end}); later facts park as post_end (A6.1)."""
@@ -240,13 +267,17 @@ class Scorer:
         st = self.stats[pid]
         return st.shots_baseline + st.shots
 
-    def register_player(self, pid: str, player: Player) -> None:
-        """A5.6 late joiner: make a mid-match arrival scorable (stats + num map + players)."""
+    def register_player(self, pid: str, player: Player, t: int | None = None) -> None:
+        """A5.6 late joiner: make a mid-match arrival scorable (stats + num map + players). A join after
+        go-live is recorded in `joined_t` (A63): that player did not play the whole match."""
         if pid in self.stats:
             return
         self.players[pid] = player
         self.stats[pid] = _P(player.get("team_id"))
         self.num_to_pid[player["player_num"]] = pid
+        t = self.now_ms() if t is None else t
+        if t > self.go_live_t:
+            self.joined_t[pid] = t
 
     def rebind_node(self, pid: str) -> None:
         """A NEW node_id bound this player (hot-swap): fold the old session's shots into the baseline (A6.2)."""
@@ -342,6 +373,7 @@ class Scorer:
             pid0 = self._pid(node_id, ev)
             if pid0 in self.stats:
                 self.stats[pid0].flushed = True
+                self.possession_pid[node_id] = pid0
             return self._possession(node_id, ev)
         pid = self._pid(node_id, ev)
         if not pid or pid not in self.stats:
@@ -355,6 +387,8 @@ class Scorer:
             self.post_end.append((node_id, ev, t_recv))
             return "post_end"
         kind = ev.get("type")
+        if kind in ("hit_taken", "death", "respawn", "team_change") and not self.synced_at_lobby.get(node_id, False):
+            self.unsynced_pids.add(pid)
         if kind in self.wire0 and int(ev.get("shooter_num", 0) or 0) == 0:
             self.wire0[kind] += 1
         if kind == "hit_taken":
@@ -377,9 +411,11 @@ class Scorer:
             if not ev.get("operator"):   # A47: the operator's FORCE RESPAWN is not a new life after a death
                 st.streak = 0
             st.alive = True
+            st.life_marks.append((t, "r"))   # a respawn while alive starts nothing (`_longest_life`)
             return "scored"
         if kind == "team_change":
             tid = int(ev.get("tid", -1))
+            st.life_marks.append((t, "r"))       # infection: a turned human is revived on the new team
             for team in self.teams.values():
                 if team["tid"] == tid:
                     st.team_id = team["team_id"]
@@ -395,7 +431,9 @@ class Scorer:
         vs = self.stats[victim]
         vs.deaths += 1
         vs.alive = False
+        victim_streak = vs.streak          # A63 KILLJOY: the victim's streak AT the death, read before it resets
         vs.streak = 0
+        vs.life_marks.append((t, "d"))
         killer = self.num_to_pid.get(int(ev.get("shooter_num", 0) or 0))
         if killer == victim:
             killer = None
@@ -442,6 +480,10 @@ class Scorer:
                     medals.append(next(key for count, key in _MULTI_LADDER if kill["multi"] >= count))
                 if ev.get("melee") is True:
                     medals.append("melee_kill")     # Tony 2026-09-24: stacks with the chain medal
+                if victim_streak >= _KILLJOY_AT:
+                    # A63: ended an enemy's killing spree. A count, like the streak medal, so the A5.7
+                    # clock suppression does not touch it; a team kill or a self-kill never reaches here.
+                    medals.append("killjoy")
                 if (streak_medal := _STREAK_AT.get(ks.streak)) is not None:
                     medals.append(streak_medal)
                 kill["medals"] = medals
@@ -795,43 +837,114 @@ class Scorer:
             out.setdefault(h["player_id"], []).append(h["award"])
         return out
 
+    def _longest_life(self, pid: str) -> int:
+        """A63 SURVIVOR: this player's longest single life in ms. A life runs from go-live (a hot joiner:
+        their join) or a respawn to a death or the match end. The marks are sorted by time; a respawn while
+        alive starts nothing, and a death while already down (its respawn fact was lost) measures nothing,
+        so a missing fact can shorten a life, never invent a longer one."""
+        st = self.stats[pid]
+        start: int | None = max(self.go_live_t, self.joined_t.get(pid, self.go_live_t))
+        end = self.end_t if self.end_t is not None else self.now_ms()
+        best = 0
+        for t, kind in sorted(st.life_marks):
+            if kind == "d":
+                if start is not None:
+                    best = max(best, t - start)
+                start = None
+            elif start is None:
+                start = t
+        if start is not None:
+            best = max(best, end - start)
+        return max(0, best)
+
+    def objective_s(self, pid: str) -> int:
+        """A63 OBJECTIVE HERO: the seconds this player's own phone REPORTED their team holding a point while
+        it was in range of it, summed over sites (the best of the player's nodes per site), from the
+        `possession` tally the phone accrues for KOTH scoring. In range means IR range of a grenade beacon, or
+        BLE range of a station. It is not proof the player stood on the point or captured it: MC holds no
+        per-player capture log. A station's own report, a team-less player and neutral time count for nobody."""
+        st = self.stats.get(pid)
+        team = self.teams.get(st.team_id) if st and st.team_id else None
+        if team is None:
+            return 0
+        nodes = {n for n, p in self.possession_pid.items() if p == pid}
+        total = 0
+        for sites in self.possession_ms.values():
+            per_node = sites.get(team["tid"]) or {}
+            total += max((ms for n, ms in per_node.items() if n in nodes), default=0)
+        return round(total / 1000)
+
     def honors(self) -> list[Honor]:
+        """A63: the end-of-match awards, one pass per `types.AWARDS` row, in its order. Each row names its
+        rule and tie-break; a tie that survives the tie-break is SHARED (one Honor row per tied player)."""
         # honors need an audience (design review 2026-08-26 #3): a 1-player recap crowned itself
         # MVP · 0 K · 0.0 K/D + SURVIVOR · 1 DEATHS. Under 3 scored players there are no honors.
         if len(self.stats) < 3:
             return []
         items = list(self.stats.items())
-        def add(award: str, pid: str | None, stat: str) -> None:
-            if pid: out.append({"award": award, "player_id": pid, "stat": stat})
         out: list[Honor] = []
-        mvp = max(items, key=lambda kv: (kv[1].kills - kv[1].deaths, kv[1].kills / max(kv[1].deaths, 1), kv[1].kills))[0]
-        m = self.stats[mvp]
-        if m.kills > 0:                                   # a zero-kill MVP is noise
-            add("MVP", mvp, f"{m.kills} K · {m.kills / max(m.deaths,1):.1f} K/D · ×{m.best_streak} STREAK")
-        mk = max(items, key=lambda kv: kv[1].kills)[0]
-        if self.stats[mk].kills > 0:
-            add("MOST KILLS", mk, f"{self.stats[mk].kills} ELIMINATIONS")
-        non = [kv for kv in items if kv[0] != mvp]
-        if non:
-            bk = max(non, key=lambda kv: (kv[1].kills / max(kv[1].deaths, 1), kv[1].kills))[0]
-            b = self.stats[bk]
-            add("BEST K/D · NON-MVP", bk, f"K/D {b.kills / max(b.deaths,1):.1f} · {b.kills} K")
-        shooters = [(pid, acc) for pid, st in items
-                    if (st.shots_baseline + st.shots) >= ACC_MIN_SHOTS
-                    and (acc := self._accuracy(st)) is not None]
-        if shooters:
-            ss = max(shooters, key=lambda x: x[1])
-            add("SHARPSHOOTER", ss[0], f"{ss[1]:.0f}% ACCURACY")
-        sv = min(items, key=lambda kv: (kv[1].deaths, -kv[1].kills))[0]
-        if self.stats[sv].deaths < max(kv[1].deaths for kv in items):   # someone must actually have outlived the field
-            add("SURVIVOR", sv, f"FEWEST DEATHS · {self.stats[sv].deaths}")
-        if self.first_blood:
-            fb = next((k for k in self.kills if k["killer"] == self.first_blood), None)
-            add("FIRST BLOOD", self.first_blood, f"AT {self._match_t(fb['t']) if fb else '--:--'}")
-        multis = [(pid, st.multi_best, sum(1 for x in st.multis if x >= 2)) for pid, st in items if st.multi_best >= 2]
-        if multis:
-            mm = max(multis, key=lambda x: (x[1], x[2]))
-            add("MULTIKILL", mm[0], f"{'DOUBLE' if mm[1] == 2 else 'TRIPLE'} KILL ×{mm[2]}")
+        def kd(st: _P) -> float:
+            return st.kills / max(st.deaths, 1)
+        def top(pool, rank) -> list[str]:
+            """Every player whose `rank` equals the best (highest) in `pool`: the shared tie."""
+            ranked = [(pid, rank(pid, st)) for pid, st in pool]
+            if not ranked:
+                return []
+            best = max(r for _p, r in ranked)
+            return [pid for pid, r in ranked if r == best]
+        def add(key: str, pids: Sequence[str], stat: Callable[[str], str]) -> None:
+            for pid in pids:
+                out.append({"award": AWARD_LABEL[key], "player_id": pid, "stat": stat(pid), "key": key})
+        by: dict[str, list[str]] = {}
+        mvp = top(items, lambda _p, st: (st.kills - st.deaths, kd(st), st.kills))
+        by["mvp"] = [p for p in mvp if self.stats[p].kills > 0]          # a zero-kill MVP is noise
+        mk = top(items, lambda _p, st: st.kills)
+        by["most_kills"] = [p for p in mk if self.stats[p].kills > 0]
+        # M1 (visual QA 2026-09-24): a zero-kill BEST K/D and a 0 % SHARPSHOOTER are noise, like a zero-kill MVP
+        by["best_kd"] = top([kv for kv in items if kv[0] not in mvp and kv[1].kills > 0], lambda _p, st: (kd(st), st.kills))
+        acc = {pid: a for pid, st in items
+               if (st.shots_baseline + st.shots) >= ACC_MIN_SHOTS and (a := self._accuracy(st)) is not None and a > 0}
+        by["sharpshooter"] = top([kv for kv in items if kv[0] in acc], lambda p, _st: round(acc[p]))
+        life = {pid: self._longest_life(pid) for pid, _st in items}
+        # A63 polish: a silent player (no fact ever reached MC) has no deaths MC could see, so neither
+        # SURVIVOR nor IRON MAN may go to them; an unsynced node's life is timed by arrival, not by its clock.
+        silent = set(self.missing())
+        lives = [kv for kv in items if kv[0] not in silent and kv[0] not in self.unsynced_pids]
+        sv = top(lives, lambda p, _st: life[p] // 1000)
+        by["survivor"] = sv if sv and len(sv) < len(lives) and life[sv[0]] > 0 else []
+        full = [kv for kv in items if kv[0] not in self.joined_t and kv[0] not in silent]
+        im = top(full, lambda _p, st: (-st.deaths, st.kills))
+        most = max((st.deaths for _p, st in full), default=0)   # someone must actually have died more
+        by["iron_man"] = [p for p in im if self.stats[p].deaths < most]
+        by["first_blood"] = [self.first_blood] if self.first_blood in self.stats else []
+        mm = top([kv for kv in items if kv[1].multi_best >= 2],
+                 lambda _p, st: (st.multi_best, sum(1 for x in st.multis if x >= 2)))
+        by["multikill"] = mm
+        wm = top(items, lambda _p, st: st.assists)
+        by["wingman"] = [p for p in wm if self.stats[p].assists > 0]
+        obj = {pid: self.objective_s(pid) for pid, _st in items} if self.mode in OBJECTIVE_MODES else {}
+        oh = top([kv for kv in items if obj.get(kv[0], 0) > 0], lambda p, _st: obj[p])
+        by["objective_hero"] = oh
+        fb = next((k for k in self.kills if k["killer"] == self.first_blood), None)
+        def multi_stat(pid: str) -> str:
+            st = self.stats[pid]
+            best = _chain_key(st.multi_best)
+            n = sum(1 for x in st.multis if _chain_key(x) == best)
+            return f"{MEDAL_LABEL.get(best or '', 'MULTIKILL')} ×{max(n, 1)}"
+        stats: dict[str, Callable[[str], str]] = {
+            "mvp": lambda p: f"{self.stats[p].kills} K · {kd(self.stats[p]):.1f} K/D · ×{self.stats[p].best_streak} STREAK",
+            "most_kills": lambda p: f"{self.stats[p].kills} ELIMINATIONS",
+            "best_kd": lambda p: f"K/D {kd(self.stats[p]):.1f} · {self.stats[p].kills} K",
+            "sharpshooter": lambda p: f"{acc[p]:.0f}% ACCURACY",
+            "survivor": lambda p: f"LONGEST LIFE {_mmss(life[p])}",
+            "iron_man": lambda p: f"FEWEST DEATHS · {self.stats[p].deaths}",
+            "first_blood": lambda p: f"AT {self._match_t(fb['t']) if fb else '--:--'}",
+            "multikill": multi_stat,
+            "wingman": lambda p: f"{self.stats[p].assists} ASSISTS",
+            "objective_hero": lambda p: f"IN RANGE · {_mmss(obj[p] * 1000)}",
+        }
+        for a in AWARDS:
+            add(a["key"], by.get(a["key"], []), stats[a["key"]])
         return out
 
     def missing(self) -> list[str]:

@@ -276,7 +276,10 @@ ScoreRow { player_id, display, team_id: string|null, kills, deaths, assists, sho
            after_end_kills: number, after_end_deaths: number
          }
 RecapView { winner: Winner, score: { [team_id]: number }, rows: ScoreRow[],
-            honors: { award: string, player_id: string, stat: string }[], provisional: boolean, missing: string[],
+            honors: { award: string, player_id: string, stat: string, key?: string }[], provisional: boolean, missing: string[],
+                                       // A63: `key` = the `types.AWARDS` row (contract.gen `AWARDS`: key, label, rule, tie);
+                                       // `award` stays its label. A tie is SHARED: one row per tied player, so key React
+                                       // lists by (key, player_id). A recap stored before A63 has no `key`.
             post_end_facts: number,    // A6.1: facts after end_t, recorded but not scored
             after_end?: { facts: number, by_player: { [player_id]: { kills: number, deaths: number } } },
                                        // A24/M2 (2026-09-12): the same facts, BROKEN DOWN. Absent when nothing
@@ -542,7 +545,7 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
 - **The match RESULT reaches every node (A24, 2026-09-11).** At `_finish()` MC pushes `result` to every
   BOUND player node — losers included — with `outcome` ("win"/"lose"/"draw"/"undecided") computed PER
   RECIPIENT from `winner`, plus `mode`, `win_by`, `team_scores` (`[]` in FFA: `rows` is the leaderboard),
-  EVERY player's `rows`, the recipient's own `my`, `honors` (`{medal, player_id, display, stat}` —
+  EVERY player's `rows`, the recipient's own `my`, `honors` (`{medal, key, player_id, display, stat}`, `key` the AWARDS row (A63) —
   `display` is the PLAYER's name, so the phone needs no roster), `possession?`, `after_end?` and
   `provisional`. It is re-sent whenever the recap moves (de-duplicated on the body minus `t`) and the
   current one rides `welcome.node.result` while the phase is `recap`, so a phone that comes back into
