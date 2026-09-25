@@ -113,6 +113,7 @@ for (const [id, label, stage, ready] of CLASH) {
     cells.push({ skin: skin.name, view, today, prop }); await pg.close();
   }
   clashes.push({ id, label, cells }); console.log('clash', id);
+}
 // ---- the death-first sequence (Tony 2026-09-25, F351: "your death wins") ----
 // My kill line starts, I die 300 ms later (the trade), then MC's next kill with a medal and the lead lost land while I
 // am down. The scream goes first; the queue then plays while I am dead. [t s after my kill, label]
