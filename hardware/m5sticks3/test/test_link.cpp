@@ -388,11 +388,12 @@ static void test_claim_gate_awards_the_first_ready_advert_for_its_own_id() {
   ClaimGate g;
   g.configure(/*station_id=*/8, /*game=*/3);
   g.observe(/*player_num=*/5, /*target_station_id=*/9, /*game=*/3, false, true, -50);  // wrong station
-  g.observe(5, 8, 3, false, true, -90);   // right station, too weak (below -80 dBm floor)
   g.observe(5, 8, 9, false, true, -50);   // right station, wrong game
   ClaimWinner none = g.resolve_batch();
   CHECK(!none.won);
-  g.observe(5, 8, 3, false, true, -80);   // exactly at the floor: strong enough
+  // No RSSI floor (Tony, 2026-09-24: pickups must work; the Stick hears phones at -75 to -91 even
+  // nearby): the phone's claim_ready already proves it is at the station. A weak reading still wins.
+  g.observe(5, 8, 3, false, true, -92);
   ClaimWinner w = g.resolve_batch();
   CHECK(w.won);
   CHECK_EQ(w.player_num, (uint8_t)5);

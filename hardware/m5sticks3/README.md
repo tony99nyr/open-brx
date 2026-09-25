@@ -47,7 +47,7 @@ scan, 1 s windows every 1.2 s, beside its own advert. The rules are ports of the
 - **Pickup**: unchanged.
 
 Hill and respawn presence use MC's threshold, or the Stick's -57 dBm (Tony, 2026-09-24) when MC sends none (the pickup
-claim keeps its -80 dBm floor). A hill's owner is saved in NVS on each change of hands (never on a
+claim has no RSSI floor: the phone's claim_ready proves proximity). A hill's owner is saved in NVS on each change of hands (never on a
 progress tick), tagged with the game and station id, so a Stick restarted from its restored config
 comes back held by that owner with the possession tally saved at that change (F332). The save is
 tagged with the MC session too, so a new session, a new game, another id, `release_utility` or the
@@ -290,7 +290,7 @@ un-claim an item a player is legitimately holding.
 
 CLAIM (`ClaimGate`) scans for a player phone's own advert (role 2, state bit 4 `claiming`, bit 5
 `claim_ready`, `value` = the target station id, `id` = the claimant's player_num) and awards the
-first `claim_ready` heard for its own id, at -80 dBm or stronger, ties going to the lower player_num
+first `claim_ready` heard for its own id, at any signal strength (no floor since 2026-09-24: the Stick hears phones weakly), ties going to the lower player_num
 -- the Stick counts no dwell of its own, only the phone's. The advert then carries `state 0` (taken),
 `value` = seconds to the next spawn (capped 255), and the new byte 15 `taker` (the winner's
 player_num, 0 = none); `state 1` (available) is always `value 0`. A won claim is reported
