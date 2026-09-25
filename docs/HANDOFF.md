@@ -6,10 +6,11 @@ The bench order lives in [`bench-plan.md`](bench-plan.md) and every open item in
 player uninstalled the debug build once). Main is ahead of 0.4.11 with: the announcer queue and the gun audio-queue
 model (F351, F347), a Shields spawn at full shield and a lighter recharge (F348, F349), the Android 11 Location gate
 (F340), the pool repair after a lost chunk (F341), the station scan and revive fixes (F342, F344, F345), A60 MC
-auto-join, the A61 medal ladder and A62 melee medal, the S57 name-word gap, and F308's eased AR ladder. **0.4.12 waits on sitting A of
-[`bench-2026-09-25.md`](bench-2026-09-25.md)**: screamers A4 (F341's `$*` reset is a v4.32 code read until it
-passes) and F347's two answers (the hum's restart delay, and the `$PSET` t23 value that stops the hum blocking cues). Still P0: the link loop's new load-triggered flap (**F293**) and BLE setup metrics (**F297**). Every firmware
-fact from the drive is a disassembly reading until a bench proves it on v4.32; the claim checklist is
+auto-join, the A61 medal ladder and the A62 melee medal, the S57 name-word gap, and F308's eased AR ladder.
+**0.4.12 waits on sitting A of [`bench-2026-09-25.md`](bench-2026-09-25.md)**: screamers A4 (F341's `$*` reset
+is a v4.32 code read until it passes) and F347's two answers (the hum's restart delay, and the `$PSET` t23 value
+that stops the hum blocking cues). Still P0: the link loop's new flap under load (**F293**) and BLE setup metrics
+(**F297**). Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32; the claim checklist is
 [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md), and proven facts live in
 [`protocol/brx-protocol.md`](../protocol/brx-protocol.md) and [`manual/dev.md`](manual/dev.md).
 ## Lane: levers and screamers
@@ -53,7 +54,7 @@ a pool above the armed `$PSET` or shows GUN POOLS WRONG. F342's respawn-only gam
 ## Lane: Mission Control console honesty
 APKs 0.4.7-0.4.11 published, each on green CI. On main: A58 station lock, KOTH's phone-hill default (F338), the utility
 sweep, the console-port ws guard, the chaos kill-cue invariant and A60 auto-join.
-- **Next:** cut 0.4.12 once A4 passes; bench F309, F311 and F312. Tony decides F346 (d): trust on first use, or one
+- **Next:** cut 0.4.12 once sitting A of `bench-2026-09-25.md` passes; bench F309, F311 and F312. Tony decides F346 (d): trust on first use, or one
   JOIN tap on first contact. Lows: F337, F343, F346.
 ## Lane: S57, B21, StickS3 (brx4)
 Tony's MVP scope: Stick stations are Bluetooth-only (hill, pickup, respawn); Stick IR receive and the grenade hill are
