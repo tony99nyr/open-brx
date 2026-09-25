@@ -6,7 +6,7 @@
 // every snapshot as `stations`): what was ASSIGNED, what the phone was last ARMED with, what the phone
 // itself REPORTS, and the attention flags the server derives from the three disagreeing. Until
 // 2026-09-11 none of this existed, so no station was ever armed in the field.
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PowerupPreset, StationItem, StationKind, StationView } from '../api/types';
 import { STATION_KINDS } from '../api/types';
 import { PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM } from '../api/contract.gen';
@@ -36,6 +36,11 @@ export function Items() {
   const { state } = useStore();
   const stations = state?.stations ?? [];
   const pu = usePowerups();   // A56
+  const handed = useRef<Map<string, number>>(new Map());   // F343(a): the ids already handed out, kept stable
+  // derived in useMemo (recomputed only when the stations change) and committed to the ref in an effect, so a
+  // render React throws away can never leave a half-applied hand-out behind
+  const ids = useMemo(() => draftIds(stations, handed.current), [stations]);
+  useEffect(() => { handed.current = ids; }, [ids]);
   if (!state || !stations.length) return null;
   // M2 (visual QA 2026-09-24): ARMED is what each card's status says (MC-ARMED), counted apart from the
   // stations with an attention line. A BATTERY LOW used to drop an armed station out of the count, so
@@ -52,8 +57,9 @@ export function Items() {
             hello) or changes on a phone reboot, and either would remount the card mid-edit, throwing away
             the operator's draft and `busy` (F104 follow-up). So an unassigned card mounted at hello keeps
             the default draft even after the report fills in: PHONE SAYS shows the phone's own state on the
-            same card, and the operator has to assign anyway. */}
-        {stations.map(s => <StationCard key={`${s.node_id}|${s.assigned?.at ?? ''}`} s={s} pu={pu} />)}
+            same card, and the operator has to assign anyway. (The ID box is the exception: until the host
+            edits it, it follows `draftIds`, F343.) */}
+        {stations.map(s => <StationCard key={`${s.node_id}|${s.assigned?.at ?? ''}`} s={s} pu={pu} freeId={ids.get(s.node_id) ?? 1} />)}
       </div>
     </div>
   );
@@ -68,7 +74,32 @@ const presetOf = (item: StationItem | undefined, presets: PowerupPreset[] | null
 /** What the station IS: a StickS3 says hello with platform `esp32` (hardware/m5sticks3), a phone with its OS. */
 const deviceOf = (s: StationView) => (s.platform === 'esp32' ? 'STICKS3' : 'PHONE');
 
-function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
+/** F343(a): the id each station's draft starts from, for the stations with no id of their own (not assigned,
+ *  reporting 0). Stable: a station keeps the id it was handed (`prev`) while no other station assigns or
+ *  reports it, so a station joining or leaving never moves another card's number. A newcomer takes the
+ *  lowest id that no station holds, reports or was handed, in list order. */
+export function draftIds(stations: StationView[], prev: ReadonlyMap<string, number>): Map<string, number> {
+  const own = (o: StationView) => o.assigned?.id ?? ((o.report.station_id ?? 0) >= 1 ? o.report.station_id! : null);
+  const used = new Set<number>();
+  for (const o of stations) {
+    if (o.assigned) used.add(o.assigned.id);
+    if ((o.report.station_id ?? 0) >= 1) used.add(o.report.station_id!);
+  }
+  const needy = stations.filter(o => own(o) == null);
+  const out = new Map<string, number>();
+  for (const o of needy) {
+    const kept = prev.get(o.node_id);
+    if (kept != null && !used.has(kept)) { out.set(o.node_id, kept); used.add(kept); }
+  }
+  for (const o of needy) {
+    if (out.has(o.node_id)) continue;
+    let n = 1; while (used.has(n)) n += 1;
+    out.set(o.node_id, n); used.add(n);
+  }
+  return out;
+}
+
+function StationCard({ s, pu, freeId }: { s: StationView; pu: PowerupsState; freeId: number }) {
   const { state, run, api, serverNow } = useStore();
   const teams = state?.teams ?? [];
   const a = s.assigned;
@@ -76,10 +107,11 @@ function StationCard({ s, pu }: { s: StationView; pu: PowerupsState }) {
   const [kind, setKind] = useState<StationKind>(a?.kind ?? s.report.kind ?? 'respawn');
   const [team, setTeam] = useState<number>(a?.team ?? s.report.team ?? 255);
   // Block 9 (brx4): an unarmed station reports station_id 0, and the API refuses 0, so ASSIGN + ARM did nothing.
-  // Start from the next id no other assigned station holds.
-  const freeId = () => { const used = new Set((state?.stations ?? []).flatMap(o => (o.assigned ? [o.assigned.id] : [])));
-    let n = 1; while (used.has(n)) n += 1; return n; };
-  const [id, setId] = useState<number>(() => a?.id ?? ((s.report.station_id ?? 0) >= 1 ? s.report.station_id! : freeId()));
+  // F343(a): until the host edits it, the draft follows the assignment, the report, or `freeId` (`draftIds`),
+  // so a station that takes this id after the card mounted moves the pre-fill on. The edit is this card's only.
+  const [idEdit, setId] = useState<number | null>(null);
+  const reported = (s.report.station_id ?? 0) >= 1 ? s.report.station_id! : null;
+  const id = idEdit ?? a?.id ?? reported ?? freeId;
   const [applyErr, setApplyErr] = useState<string | null>(null);   // a refused write, on THIS card (the header may be off-screen)
   useEffect(() => { setApplyErr(null); }, [s.armed?.at]);          // armed since (here or by a server re-arm): the refusal is stale
   // H1 (visual QA 2026-09-24): 0 is "the station's own default" (F345: MC sends a phone respawn station -70, a
