@@ -88,6 +88,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .topright .dot{width:9px;height:9px;background:var(--ok);border-radius:50%;box-shadow:0 0 8px var(--ok)}
 .topright .dot.off{background:var(--bad);box-shadow:0 0 8px var(--bad);animation:blink .7s infinite}
 .topright .dot.ws{background:var(--warn);box-shadow:0 0 8px var(--warn)}
+.topright .dot.warn{background:var(--warn);box-shadow:0 0 8px var(--warn)}   /* HUD QA R2-02: the link is up, the gun's pools are wrong (F341) */
 .batt{display:flex;align-items:center;gap:5px}
 .batt .shell{width:24px;height:11px;border:1.5px solid var(--mut);border-radius:2px;position:relative;display:inline-block}
 .batt .fill{position:absolute;inset:2px;background:var(--ok)}
@@ -309,6 +310,10 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .staletag{align-self:center;font-family:var(--fl);font-style:normal;font-size:14px;font-weight:700;letter-spacing:.2em;padding:2px 8px;border:1.5px solid var(--bad);color:var(--bad);line-height:1.1;white-space:nowrap}
 .gunstale .vitals .hp,.gunstale .vitals .sh,.gunstale .svm,.gunstale .vitals .bar,.gunstale .ammo .mag,.gunstale .ammo .res,.gunstale .ammo .pips,.gunstale .ammo .heat{opacity:.35;text-shadow:none;filter:grayscale(.6)}
 .mcstale #st-K,.mcstale #st-A,.mcstale #st-ACC{opacity:.45}   /* only what MC feeds: D is this phone's own count (polish round 1) */
+.pooltag{align-self:flex-start;font-family:var(--fl);font-size:14px;font-weight:700;letter-spacing:.14em;padding:3px 9px;border:1.5px solid var(--warn);color:var(--warn);background:rgba(20,12,0,.75);white-space:nowrap}   /* HUD QA R2-02 (F341): the gun cannot be killed; the host must FORCE RESPAWN */
+.poolwrong .vitals .hp,.poolwrong .vitals .sh{color:var(--warn);text-shadow:none}
+[data-env="night"] .pooltag{border-color:#c98a2e;color:#c98a2e;background:#000}
+[data-env="night"] .poolwrong .vitals .hp,[data-env="night"] .poolwrong .vitals .sh{color:#c98a2e}
 .stats .staletag{font-size:11px;padding:1px 6px}
 /* the link-lost bar on the live HUD: solid red, 16 px, steady (hud.js `_chips`, `.gunlost`) */
 .pill.bad.gunlost{animation:none;font-size:16px;letter-spacing:.16em;padding:8px 22px;background:var(--bad);border-color:var(--bad);color:#1a0404;position:relative}
@@ -619,6 +624,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 [data-env="night"] .topright .dot{background:#5a2222;box-shadow:none}
 [data-env="night"] .topright .dot.off{background:#ff5a5a;box-shadow:none;animation:none;width:12px;height:12px}
 [data-env="night"] .topright .dot.ws{background:var(--warn);box-shadow:none}
+[data-env="night"] .topright .dot.warn{background:#c98a2e;box-shadow:none;width:12px;height:12px}
 [data-env="night"] .batt .shell{border-color:var(--num)}[data-env="night"] .batt .fill{background:var(--num)}
 /* QA-17: no green on the live HUD at night (WEAPONS HOT, ALT = RELOAD, CONFIRMED BY YOUR GUN) */
 #frame[data-env="night"][data-screen="live"] .chipbar .pill.ok:not(.callout){border-color:var(--num);color:var(--num)}

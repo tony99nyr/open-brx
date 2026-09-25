@@ -4840,6 +4840,53 @@ for (const view of VIEWS) for (const night of [false, true]) {
   });
 }
 
+
+// HUD visual QA round 2 (2026-09-24, qa-shots/hud2/FINDINGS.md) ---------- R2-02 .. R2-21, the gates it listed as missing ----------
+// Every check reads what a person sees on screen: rects after the #frame scale, computed colours, hit-testing.
+const r2 = {
+  /** The on-screen box, font px AFTER the frame scale, colour and whether it shows, for every match of `sel`. */
+  looks: (pg, sel) => pg.evaluate(sel => { const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth;
+    return [...document.querySelectorAll(sel)].map(e => { const c = getComputedStyle(e), r = e.getBoundingClientRect(); let shown = r.width > 0 && r.height > 0;
+      for (let n = e; n && n !== f; n = n.parentElement) { const cs = getComputedStyle(n); if (cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity === 0) shown = false; }
+      return { text: (e.innerText || e.textContent || '').replace(/\s+/g, ' ').trim(), px: Math.round(parseFloat(c.fontSize) * k * 10) / 10, color: c.color, bg: c.backgroundColor,
+        l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width, h: r.height, shown }; }); }, sel),
+  rgb: css => (/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/.exec(css || '') || []).slice(1).map(Number),
+  /** amber: red and green both lit, green clearly under red, blue low (never the green of a healthy dot) */
+  amber: css => { const [R, G, B] = r2.rgb(css); return R > 150 && G > 80 && G < R - 30 && B < G - 20; },
+  green: css => { const [R, G, B] = r2.rgb(css); return G > R + 30 && G > B; },
+};
+for (const view of VIEWS) for (const night of [false, true]) {
+  const skin = night ? 'night' : 'day', N = night ? '&night' : '';
+  await step(`${view.name} R2-02 F341 pool_wrong ${skin}: the vitals say GUN POOLS WRONG, the GUN dot is amber, no gain float`, async () => {
+    const pg = await open(view, 'live-pool-wrong', N, 1500);
+    await pg.evaluate(() => { window.__gains = []; new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1 && n.matches('.mo.gain')) window.__gains.push(n.textContent.replace(/\s+/g, ' ').trim()); })
+      .observe(document.getElementById('overlay') || document.body, { childList: true, subtree: true }); });
+    let tag = []; for (let t = 0; t < 9000 && !(tag = await r2.looks(pg, '.vitals .pooltag')).length; t += 200) await pg.waitForTimeout(200);
+    const r = { tag: tag[0] || null, dot: (await r2.looks(pg, '#linkdot'))[0], gains: await pg.evaluate(() => window.__gains), why: await pg.evaluate(() => (window.brx.engine.state().poolStale || {}).why) };
+    await pg.screenshot({ path: `${OUT}/${view.name}-r2-02-pool-wrong-${skin}.png` });
+    const bad = await invariants(pg); await pg.close();
+    must(r.why === 'pool_wrong', `pre-condition: the REAL engine reached its verdict: ${r.why}`);
+    must(r.tag && r.tag.shown && /GUN POOLS WRONG/.test(r.tag.text) && /SEE HOST/.test(r.tag.text) && r.tag.px >= 11, `the vitals must say GUN POOLS WRONG · SEE HOST at >= 11 px on screen: ${JSON.stringify(r.tag)}`);
+    must(r.dot && r2.amber(r.dot.bg), `the GUN dot must be amber: ${r.dot && r.dot.bg}`);
+    must(r.gains.length === 0, `a gain above the armed maximum floated: ${JSON.stringify(r.gains)}`);
+    must(bad.length === 0, bad.join(' ; '));
+  });
+}
+
+
+for (const view of VIEWS) for (const night of [false, true]) {
+  const skin = night ? 'night' : 'day', N = night ? '&night' : '';
+  await step(`${view.name} R2-04 shield delay ${skin}: the creep never reads as a pool (<= 30% of the track while the shield is 0)`, async () => {
+    const pg = await open(view, 'live-shields-broken', N, 3000);
+    const seen = []; for (let t = 0; t < 7000; t += 150) { const r = await svRead(pg); if (r.m && r.wait && r.shield === 0 && r.parts[0]) seen.push(r.dly / ((r.parts[0].r - r.parts[0].l) / r.k)); await pg.waitForTimeout(150); }
+    await pg.close();
+    must(seen.length > 5, `pre-condition: the delay ran on an empty shield (${seen.length} samples)`);
+    const top = Math.max(...seen);
+    must(top <= 0.31, `the delay creep drew ${Math.round(top * 100)}% of the track on an empty shield`);
+    must(top >= 0.15, `CONTROL: the creep still moves (${Math.round(top * 100)}%)`);
+  });
+}
+
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;
 }

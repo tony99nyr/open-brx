@@ -22,7 +22,15 @@ const digits = n => pad2(Math.min(99, Math.max(0, Math.floor(n)))).split('').map
 const mmss = ms => { const s = Math.max(0, Math.round(ms / 1000)); return `${pad2(s / 60)}:${pad2(s % 60)}`; };
 const mmssS = s => mmss(Math.max(0, Number(s) || 0) * 1000);   // the wire carries possession in SECONDS
 /** Polish r2 M2: `max_armor: 0` (Silenced Sniper, the Shields preset) painted `width:NaN%`, which draws FULL. */
-const armorPct = (st, peak = 0) => { const top = Math.max(st.maxArmor || 0, peak); return top > 0 ? Math.max(0, Math.min(100, Math.round(100 * st.armor / top))) : 0; };
+// HUD QA R2-02: the peak stands in only for a game that arms no armour (a granted pool has no max). A game with a max
+// keeps it: a misread 7070 once drew a full 70 as a 1% bar.
+/** F341 x HUD QA R2-02: the gun's pools are not the ones this life armed, and two repairs did not hold. */
+const poolWrong = st => !!(st.poolStale && st.poolStale.why === 'pool_wrong');
+/** The GUN dot: red when the link is down, amber when the link is up but the gun's pools are wrong (R2-02). */
+const gunDot = st => 'dot ' + (!st.bleUp ? 'off' : poolWrong(st) ? 'warn' : '');
+/** The health bar never draws past its track (a misread 4545 of 45 was a 10100% bar). */
+const hpPct = st => (st.maxHp > 0 ? Math.max(0, Math.min(100, Math.round(100 * st.hp / st.maxHp))) : 0);
+const armorPct = (st, peak = 0) => { const top = st.maxArmor > 0 ? st.maxArmor : peak; return top > 0 ? Math.max(0, Math.min(100, Math.round(100 * st.armor / top))) : 0; };
 /** Tony 2026-09-24: "If there is no armor we dont need the 0 or the empty armor bar. If we have armor then the number and
  *  bar show." A game with armour, or armour granted in a game without it (a perk, a pickup). */
 const hasArmor = st => st.maxArmor > 0 || st.armor > 0;
@@ -1300,12 +1308,12 @@ export class Hud {
     const staleTag = '<span class="staletag" aria-label="stale value">STALE</span>';
     const puActive = !!(st.powerup && st.powerup.held && st.powerup.held.active);
     const sv = SV.meterShown(st);   // the shield meter: a shield game, or an overshield held
-    return `<div class="alive${gunStale ? ' gunstale' : ''}${mcStale ? ' mcstale' : ''}${sv ? ' sv' : ''}"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
+    return `<div class="alive${gunStale ? ' gunstale' : ''}${mcStale ? ' mcstale' : ''}${sv ? ' sv' : ''}${poolWrong(st) && !gunStale ? ' poolwrong' : ''}"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
       ${low ? '<div class="firevig"></div>' : ''}
       ${overheating ? '<div class="heatvig"></div><div class="heatword">OVERHEAT</div>' : ''}
       <div class="clockplate" data-act="onBoard" data-arg="team" role="button" aria-label="Team scores"><div class="in"><span class="t tab" id="clock">${mmss(st.clockMs)}</span><span class="m">${esc(st.mode)}</span></div></div>
       <div class="ident" data-act="onBoard" data-arg="player" role="button" aria-label="Player scores"><span class="arrow"></span><span class="cs">${esc(st.callsign || nm)}</span><span class="sq">${esc(st.teamName)} SQUAD</span></div>
-      <div class="topright"><span class="link"><span id="linkdot" class="dot ${st.bleUp ? '' : 'off'}"></span><span id="linklab">${st.bleUp ? 'GUN' : 'NO GUN'}</span></span><button class="link mclink" data-act="onToggleMcPill" aria-label="Mission Control link"><span id="mcdot" class="dot ${st.wsState === 'bound' ? '' : 'ws'}"></span>MC</button>
+      <div class="topright"><span class="link"><span id="linkdot" class="${gunDot(st)}"></span><span id="linklab">${st.bleUp ? 'GUN' : 'NO GUN'}</span></span><button class="link mclink" data-act="onToggleMcPill" aria-label="Mission Control link"><span id="mcdot" class="dot ${st.wsState === 'bound' ? '' : 'ws'}"></span>MC</button>
         <span class="batt tab"><span class="shell"><span class="fill" id="battfill" style="right:${100 - (st.battery || 0)}%"></span></span><span id="batt">${st.battery != null ? st.battery + '%' : '—'}</span></span></div>
       ${st.battery != null && st.battery <= 15 ? `<div class="battwarn">GUN BATT ${st.battery}% — CHARGE SOON</div>` : ''}
       ${this._gunHealthWarning(st)}
@@ -1315,8 +1323,8 @@ export class Hud {
         : st.alive && st.shielded ? '<div class="spawnshield" role="status"><span class="k">SPAWN SHIELD</span><span class="s">YOU CANNOT BE HIT</span></div>'
         : st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>'}
       <div class="fxbar" id="fxbar">${this._fx(st)}</div>${sv ? SV.meterHtml(st, this._svFx) : ''}
-      <div class="vitals"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span>${low ? '<span class="lowtag">LOW</span>' : ''}${gunStale ? staleTag : ''}${hasArmor(st) ? `<span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>` : ''}</div>
-        <div class="bar ${low ? 'low' : ''}"><i id="hpbar" style="width:${Math.round(100 * st.hp / st.maxHp)}%"></i></div>
+      <div class="vitals">${poolWrong(st) && !gunStale ? '<div class="pooltag" role="alert">GUN POOLS WRONG · SEE HOST</div>' : ''}<div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span>${low ? '<span class="lowtag">LOW</span>' : ''}${gunStale ? staleTag : ''}${hasArmor(st) ? `<span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span><span class="hplab armorlabel">ARMOR</span>` : ''}</div>
+        <div class="bar ${low ? 'low' : ''}"><i id="hpbar" style="width:${hpPct(st)}%"></i></div>
         ${hasArmor(st) ? `<div class="bar armor"><i id="shbar" style="width:${armorPct(st, this._armPeak)}%"></i></div>` : ''}</div>
       ${st.powerup ? `<div class="puhint" id="puhint" role="status">${this._puHint(st)}</div>` : ''}
       <div class="ammo">${outOfAmmo ? `<span class="reload out solid"><span class="unskew">${energy ? 'OUT OF ENERGY' : 'OUT OF AMMO'}</span></span>`
@@ -1628,7 +1636,7 @@ export class Hud {
       setHtml('fxbar', this._fx(st));                   // S16: the poison countdown
       setHtml('aimfx', this._aimFx(st));                // S53: the smoke countdown (the slot itself is structural)
       setHtml('stunfx', this._stunFx(st));              // F15: the stun countdown
-      const hb = q('hpbar'); if (hb) hb.style.width = `${Math.round(100 * st.hp / st.maxHp)}%`;
+      const hb = q('hpbar'); if (hb) hb.style.width = `${hpPct(st)}%`;
       const sb = q('shbar'); if (sb) sb.style.width = `${armorPct(st, this._armPeak)}%`;
       SV.patchMeter(this.hudEl, st, this._svFx);   // the shield meter (the overshield drains first, on the same strip)
       if (st.powerup) { const hh = this._puHint(st); setHtml('puhint', hh); setHtml('puheld', this._puHeld(st));
@@ -1642,7 +1650,7 @@ export class Hud {
         const cls = 'heat' + (st.overheatShown ? ' hot' : ''); if (heat.className !== cls) heat.className = cls;   // the DISPLAY window, same as `_heatBar`/`_live`
       }
       set('st-K', st.kills == null ? '—' : st.kills); set('st-D', st.deaths); set('st-A', st.assists == null ? '—' : st.assists); if (accShown(st) != null) set('st-ACC', accShown(st) + '%');
-      const dot = q('linkdot'); if (dot) { const cls = 'dot ' + (st.bleUp ? '' : 'off'); if (dot.className !== cls) dot.className = cls; }
+      const dot = q('linkdot'); if (dot) { const cls = gunDot(st); if (dot.className !== cls) dot.className = cls; }
       set('linklab', st.bleUp ? 'GUN' : 'NO GUN');
       if (this.board) { set('bdage', this._boardAge(st)); const ag = q('bdage'); if (ag) ag.classList.toggle('stale', this._boardStale(st)); }
       const md = q('mcdot'); if (md) { const cls = 'dot ' + (st.wsState === 'bound' ? '' : 'ws'); if (md.className !== cls) md.className = cls; }
@@ -2059,6 +2067,8 @@ export class Hud {
     const d = (m.data) || {};
     // The shield meter shows every shield gain (a recharge is a dozen of them), so no toast on top of it.
     if (d.pool === 'shield' && SV.meterShown(st)) return;
+    // HUD QA R2-02 (F341): a pool above the armed maximum is a misread `$PSET`, never a pickup. The engine drops it; so does this.
+    if (d.hp > st.maxHp || (st.maxArmor > 0 && d.armor > st.maxArmor)) return;
     const el = document.createElement('div');
     el.className = `mo gain ${esc(d.pool)}`;
     const label = d.pool === 'armor' ? 'ARMOUR' : d.pool === 'shield' ? 'SHIELD' : 'HEALTH';

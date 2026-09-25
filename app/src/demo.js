@@ -123,6 +123,7 @@ export function startDemo({ engine, log }) {
 
   let hp = 45, armor = 70, mag = 32, reserve = 384;
   let shield = 0;   // A56: only an OVERSHIELD grant fills it on the demo gun (a `$LIFE` mode-2 set past the max); hits take it first
+  let misread = false;   // F341 x HUD QA R2-02: the gun misread its `$PSET` (4545/7070) and never takes a repair
   let acc = 100;   // S53: the gun's live accuracy ($ALCD token 2). A smoke holds it at 0 for SMOKE_MS, like the bench gun
   const lcd = () => engine.feedFrame(`$LCD,${hp},${armor},0,0,${mag},${reserve},*`);
   // S54 (2026-09-23): one continuous trigger pull for the whole burst, not a press-shot-release per
@@ -160,6 +161,9 @@ export function startDemo({ engine, log }) {
           engine.feedFrame(`$ALCD,${live.ammo ?? mag},${acc},${engine.activeSlot || slot},${live.reserve ?? reserve},0,*`);
         }, 40);
       }
+      // F341: a gun whose parser appended a re-sent `$PSET` to a partial one answers every pool read and every repair with
+      // the doubled pools, so the REAL engine walks its two repairs and reaches its own `pool_wrong` verdict
+      if (misread && (f === '$LIFE,0,0,0,*' || /^\$LIFE,\d+,\d+,\d+,1,\*$/.test(f))) { setTimeout(() => engine.feedFrame(`$HP,${hp},${armor},${shield},*`), 40); continue; }
       if (f.startsWith('$SPAWN,')) { acc = 100; shield = 0; }   // hardware clears every `$TMP` token on spawn, and the spawn shield is 0
       // A56: `$LIFE` mode 2 is an ABSOLUTE set with no clamp (the overshield grant); the gun answers `$HP` with the new pools
       const set = /^\$LIFE,(\d+),(\d+),(\d+),2,\*$/.exec(f);
@@ -390,6 +394,7 @@ export function startDemo({ engine, log }) {
       respawn: () => { if (engine.alive) return; engine._revive(false); hp = engine.maxHp; armor = engine.maxArmor; setTimeout(lcd, 250); },
       heal: (n = 15) => { hp = Math.min(engine.maxHp, hp + n); engine.feedFrame(`$HP,${hp},${armor},0,*`); },
       armorUp: (n = 30) => { armor = Math.min(engine.maxArmor, armor + n); engine.feedFrame(`$HP,${hp},${armor},0,*`); },
+      poolsDoubled: () => { misread = true; hp = 4545; armor = 7070; engine.feedFrame(`$HP,${hp},${armor},0,*`); },   // F341: the field's `$HP,4545,7070,0`
       lowHp: () => { armor = 0; hp = 8; engine.feedFrame(`$HIR,4,0,19,${foe.tid},9,0,3,*`); engine.feedFrame(`$HP,${hp},${armor},0,*`); },
       // S16: a Toxin Rifle hit (protocol 11) as the gun reports it, with the game's poison table on the bundle.
       poison: (shooter = 19) => { bundle.dot = DEMO_DOT; if (engine.frames && !engine.frames.dot) engine.frames.dot = DEMO_DOT; if (armor > 0) armor = Math.max(0, armor - 8); else hp = Math.max(0, hp - 8); engine.feedFrame(`$HIR,0,11,${shooter},${foe.tid},8,0,0,*`); engine.feedFrame(hp === 0 ? `$LCD,0,0,0,0,${mag},${reserve},*` : `$HP,${hp},${armor},0,*`); },
@@ -553,6 +558,7 @@ export function startDemo({ engine, log }) {
       'aborted':           [...lobby, [900, () => ev.start(30)], [1600, 'abort']],
       'live':              live,
       'live-gun-no-answer': [...live, [2300, 'gunNoAnswer']],             // F288: phone-visible, actionable health verdict
+      'live-pool-wrong':   [...live, [2300, 'poolsDoubled']],             // F341 x HUD QA R2-02: two repairs do not hold, the engine says pool_wrong
       'live-gun-locked':   [...live, [2300, 'gunLocked']],               // F272: power-cycle takeover + real drop/relink recovery
       'live-fired':        [...live, [2300, () => ev.fire(7)]],
       'live-hit':          [...live, [2300, () => { ev.hit(); ev.hit(); ev.hit(); }]],

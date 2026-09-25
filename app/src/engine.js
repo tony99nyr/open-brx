@@ -5799,6 +5799,11 @@ export class Engine {
   _poolsOver(hp, armor, shield, c = this._poolCeilings()) {
     return hp > c.hp || (c.armor > 0 && armor > c.armor) || shield > c.shield;
   }
+  /** HUD QA R2-02: is a RISE above what this life armed? `_poolsOver`, except a shield counts only in a game that arms
+   *  one: a shield grant in a no-shield game is a state the HUD shows (an IR or host grant), not a misread `$PSET`. PURE. */
+  _gainOverCeiling(hp, armor, shield, c = this._poolCeilings()) {
+    return hp > c.hp || (c.armor > 0 && armor > c.armor) || (c.shield > 0 && shield > c.shield);
+  }
   /** F341: does a pool report fit what this life armed? Called with every `$HP` and `$LCD` in a live life.
    *  - A pool ABOVE its ceiling is always wrong: the gun clamps every grant at its `$PSET`, so only a `$PSET` the gun
    *    misread gets one there. That starts a repair (`_poolRepair`), and only that does.
@@ -6447,6 +6452,10 @@ export class Engine {
         if (fillEcho) {
           if (shield >= this.maxShield) { this._shieldFillAt = 0; this._shieldCharged(); }
           this.log(`spawn shield fill: ${shield}/${this.maxShield}`, 'li');
+        } else if (gains.length && this._gainOverCeiling(hp, armor, shield)) {
+          // F341 x HUD QA R2-02: a pool ABOVE the armed ceiling is a misread `$PSET` (`$HP,4545,7070`), never a pickup.
+          // No "+7000 ARMOUR" float and no "armour up" line: `_poolVerify` repairs it, and the HUD marks the vitals.
+          this.log(`pool rise to ${hp}/${armor}/${shield} is above the armed ceiling: no gain moment, no voice line (F341)`, 'li');
         } else if (gains.length) {
           gains.sort((a, b) => b[1] - a[1]);
           this.moment = { kind: 'gain', at: this.now(),
