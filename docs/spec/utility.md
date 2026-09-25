@@ -192,7 +192,9 @@ bits) — no connection.
 passive beacon: it needs **no** MC contact for the rest of the game (same island rule as a player node).
 
 1. **Assign at muster (WiFi).** MC's KIT/muster gains an **ITEMS** panel beside the roster: the operator
-   sets each utility phone's **kind / team / station id / threshold**. MC pushes **`station_config`** to the
+   sets each utility phone's **kind / team / threshold**, and MC gives it a **station id** (A66: the next free id,
+   unique across phones and Sticks, kept for that node_id across its restart, a relink and an MC restart; the
+   console shows it read-only). MC pushes **`station_config`** to the
    phone (M-NET, §5c); the phone applies it, shows **MC ✓ GAME N**, and **locks its controls**
    (the on-device 7-tap gate stays only as a no-WiFi/field-fix fallback). The game bundle carries
    `config.stations` = the allow-list of ids MC handed out, so a player phone only honours those ids.

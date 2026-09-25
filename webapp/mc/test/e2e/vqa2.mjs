@@ -4,6 +4,8 @@
 //
 //   items        ITEMS: ASSIGN + ARM leaves the BUBBLE at the station's default (H1: it sent -74), the
 //                header counts ARMED apart from NEED ATTENTION (M2), the name is not cut (M3)
+//   station-ids  F364: every card shows the station id read-only (no id input), MC assigns 1 and 2 across two
+//                stations, and a cleared station gets its own id back on the next ASSIGN + ARM
 //   koth-source  KOTH on a grenade objective with a CONTROL station assigned: an amber conflict on LOBBY
 //                and the same line on the CONTROL card on ITEMS (H2)
 //   unlock       LOBBY after the push: the lock runs, UNLOCK STATIONS is there, two taps clear it (M4)
@@ -171,6 +173,36 @@ try {
     await pg.setViewportSize({ width: 900, height: 900 });
     const cut900 = await title.evaluate(el => el.scrollWidth > el.clientWidth + 1).catch(() => true);
     expect(!cut900, 'at 900 px the name is still whole');
+    await pg.context().close();
+  });
+
+  await runStep('station-ids', 'ITEMS: MC assigns the station id and the card shows it read-only (F364)', async () => {
+    await reset();
+    const pg = await page(browser, { width: 1440, height: 900 });
+    await go(pg, 'ARMORY');
+    const card = n => pg.locator(`[data-station-card="${n}"]`);
+    const idOf = n => pg.locator(`[data-station-id="${n}"]`);
+    const apiId = async n => (await get('/api/stations')).stations.find(s => s.node_id === n)?.assigned?.id;
+    expect(await until(() => card(STATION2).isVisible(), 8000, 'the second card'), 'both station stand-ins have a card');
+    expect(await pg.locator('input[aria-label^="station id for"]').count() === 0, 'no card has a station id input');
+    expect((await idOf(STATION2).innerText()).trim() === 'SET BY MC AT ARM', 'an unassigned card says MC sets the id');
+    const arm = async n => {
+      await card(n).getByRole('button', { name: 'ASSIGN + ARM' }).click();
+      return until(async () => (await get('/api/stations')).stations.find(s => s.node_id === n)?.armed, 8000, `${n} armed`);
+    };
+    expect(await arm(STATION), 'the first station arms');
+    expect(await arm(STATION2), 'the second station arms');
+    const [a, b] = [await apiId(STATION), await apiId(STATION2)];
+    expect(a >= 1 && b >= 1 && a !== b, `MC gave the two stations distinct ids (${a}, ${b})`);
+    expect(await until(async () => (await idOf(STATION2).innerText()).trim() === String(b), 6000, 'the id on the card'),
+      `the card shows the MC-assigned id ${b} read-only`);
+    expect(await pg.locator('input[aria-label^="station id for"]').count() === 0, 'still no id input once assigned');
+    await shot(pg, 'station-ids-1440');
+    await must('DELETE', `/api/stations/${STATION}`);
+    expect(await until(() => card(STATION).getByRole('button', { name: 'ASSIGN + ARM' }).isVisible(), 6000, 'the cleared card'), 'the cleared card offers ASSIGN + ARM');
+    expect(await arm(STATION), 'the cleared station arms again');
+    expect(await apiId(STATION) === a, `a cleared station gets its own id ${a} back (got ${await apiId(STATION)})`);
+    expect(await until(async () => (await idOf(STATION).innerText()).trim() === String(a), 6000, 'the kept id'), 'and its card shows it');
     await pg.context().close();
   });
 

@@ -115,8 +115,9 @@ export interface Api {
   /** A28.1: `POST /api/tunnel {on}` → `lan.public`. 409 (available:false / provider:"manual") — the
    *  server's `error` text is the whole point of the rejection, never swallow it. */
   setTunnel(on: boolean): Promise<LanPublic>;
-  /** A13.5: assign a utility phone (kind / team / id / threshold); MC pushes `station_config` at once. 400 in the operator's voice. */
-  putStation(node_id: string, a: { kind: StationKind; team: number | string; id: number; threshold?: number;
+  /** A13.5: assign a utility phone (kind / team / threshold); MC pushes `station_config` at once. 400 in the operator's voice.
+   *  F364: MC assigns the station id when `id` is absent (this console never sends one); an explicit id is still validated. */
+  putStation(node_id: string, a: { kind: StationKind; team: number | string; id?: number; threshold?: number;
     /** A56: a `powerup` station's item, one of `getPowerups().presets[].preset`. Refused when MC's powerups flag is off. */
     item_preset?: string }): Promise<StationView>;
   /** A56: `GET /api/powerups` -- MC's powerups flag and the item presets. Rejects with status 404 on an MC that predates powerups. */
