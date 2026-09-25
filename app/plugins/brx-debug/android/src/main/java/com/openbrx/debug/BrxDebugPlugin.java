@@ -2,6 +2,7 @@ package com.openbrx.debug;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.pm.ApplicationInfo;
 import android.webkit.WebView;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -31,9 +32,15 @@ public class BrxDebugPlugin extends Plugin {
         getActivity().runOnUiThread(() -> WebView.setWebContentsDebuggingEnabled(on));
     }
 
+    /** A debuggable APK (the `android:apk` debug build) is always inspectable: Chromium ignores OFF there. */
+    private boolean forced() {
+        return (getContext().getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+    }
+
     private JSObject state() {
         JSObject out = new JSObject();
-        out.put("enabled", stored());
+        out.put("enabled", forced() || stored());
+        out.put("forced", forced());
         out.put("defaultOn", DEFAULT_ON);
         return out;
     }

@@ -2314,7 +2314,7 @@ export class Hud {
     this.diag.innerHTML = `${mcjoin}
       <div class="dbody" id="dbody">
         <h3>WARNINGS</h3><div class="dgwarn" id="dg-warn">${this._warnHtml || '<span class="mut">NONE</span>'}</div>${sec('PREFLIGHT', 'dg-pf')}${sec('LINK', 'dg-link')}
-        <div class="dgdev" id="dg-dev" hidden><h3>DEVELOPER</h3><div class="devrow"><span id="dg-webdebug-state"></span><button data-act="onToggleWebDebug" id="dg-webdebug"></button></div></div>${sec('ENGINE', 'dg-eng')}${sec('TIMINGS', 'dg-tim')}
+        <div class="dgdev" id="dg-dev" hidden><h3>DEVELOPER</h3><div class="devrow"><span id="dg-webdebug-state" role="status" aria-live="polite"></span><button data-act="onToggleWebDebug" id="dg-webdebug" aria-describedby="dg-webdebug-state"></button></div></div>${sec('ENGINE', 'dg-eng')}${sec('TIMINGS', 'dg-tim')}
         ${sec('LAST FRAMES', 'dg-frames', true)}${sec('HISTORY', 'dg-hist')}${sec('LOG', 'dg-log', true)}
       </div>
       <div class="gunhint" id="dg-gunhint" role="status" aria-live="assertive"></div>
@@ -2365,15 +2365,17 @@ export class Hud {
     put('dg-pf', kv(pf));
     put('dg-link', kv(d.link || {}));
     // B21: the WebView debugging switch. `webDebug` is null where there is no switch (iOS, the browser stage), so the
-    // section stays hidden. The button is a permanent node and only its label changes (F122: a rebuilt button eats a tap).
+    // section stays hidden; 'forced' is a debuggable APK, which Chromium keeps inspectable, so the button is disabled. The button is a permanent node and only its label changes (F122: a rebuilt button eats a tap).
     const dev = this.diag.querySelector('#dg-dev'), wd = d.webDebug;
     if (dev) {
-      const show = wd === true || wd === false;
+      const show = wd === true || wd === false || wd === 'forced';
       if (dev.hidden === show) dev.hidden = !show;
       if (show) {
-        put('dg-webdebug-state', wd ? 'WEBVIEW DEBUGGING <span class="ok">ON</span>' : 'WEBVIEW DEBUGGING <span class="mut">OFF</span>');
-        const wb = this.diag.querySelector('#dg-webdebug'), label = wd ? 'TURN OFF' : 'TURN ON';
+        put('dg-webdebug-state', wd === 'forced' ? 'WEBVIEW DEBUGGING <span class="ok">ALWAYS ON (DEBUG BUILD)</span>'
+          : wd ? 'WEBVIEW DEBUGGING <span class="ok">ON</span>' : 'WEBVIEW DEBUGGING <span class="mut">OFF</span>');
+        const wb = this.diag.querySelector('#dg-webdebug'), label = wd === false ? 'TURN ON' : 'TURN OFF', off = wd === 'forced';
         if (wb && wb.textContent !== label) wb.textContent = label;
+        if (wb && wb.disabled !== off) wb.disabled = off;
       }
     }
     put('dg-eng', kv(d.engine || {}));

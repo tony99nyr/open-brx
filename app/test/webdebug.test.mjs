@@ -48,6 +48,15 @@ test('B21: a second tap while the first is in flight sends one write', async () 
   assert.equal(await first, false);
 });
 
+test('B21: a debuggable APK reports forced ON and the switch writes nothing', async () => {
+  const plugin = { sets: [], get: async () => ({ enabled: true, forced: true }), async set(o) { this.sets.push(o.enabled); return { enabled: true, forced: true }; } };
+  const wd = new WebDebug({ capacitor: cap('android'), plugin });
+  assert.equal(await wd.load(), true);
+  assert.equal(wd.forced, true);
+  assert.equal(await wd.toggle(), true);
+  assert.deepEqual(plugin.sets, []);
+});
+
 test('B21: the native default is ON and the plugin is a declared dependency', () => {
   const java = readFileSync(new URL('../plugins/brx-debug/android/src/main/java/com/openbrx/debug/BrxDebugPlugin.java', import.meta.url), 'utf8');
   assert.match(java, /static final boolean DEFAULT_ON = true;/);

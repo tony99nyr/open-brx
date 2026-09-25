@@ -755,7 +755,7 @@ function renderNow() {
     timings: { offset_ms: transport ? Math.round(transport.clock.offset || 0) : 0, synced: st.synced, queue: transport ? transport.ring.pending().length : 0, t_minus_ms: st.tMinusMs, clock_ms: st.clockMs },
     frames: link.frames.slice(-14), log: logLines.slice(-30),
     stations: presence.stations().map(stationView),
-    webDebug: webDebug.state,
+    webDebug: webDebug.forced ? 'forced' : webDebug.state,
   });
 }
 setInterval(() => { presenceTick(); engine.tick(); syncPlayerAdvert().catch(() => {}); scheduleRender(); }, 250);

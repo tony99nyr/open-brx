@@ -909,7 +909,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 #diag .devrow button{font:700 11px var(--fl);letter-spacing:.06em;padding:8px 10px;border:1px solid var(--edge);color:var(--num);min-height:44px;background:rgba(12,28,44,.85)}
 [data-env="night"] #diag .devrow button{background:#000}
 #diag .gunhint .warn{color:var(--warn);font-weight:700}
-#diag .btns button:disabled{opacity:.55}
+#diag .btns button:disabled,#diag .devrow button:disabled{opacity:.55}
 /* Polish-loop pass 1: a LAN-sweep hit MC, offered rather than auto-joined — one tap accepts it. Same row
    in the pre-join screen (`.lobby .discoveredrow`, glow-styled like the rest of that screen) and the ⓘ
    panel (dark/monospace, `#diag .discoveredrow`) — absent (not merely empty) when nothing was found, so it
@@ -1505,6 +1505,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .othertog{font-size:14px;letter-spacing:.1em;min-height:56px;padding-top:0;padding-bottom:0}   /* inside the scrolling list, which clips an ::after */
 #diag .btns{gap:4px;padding:3px 10px calc(3px + env(safe-area-inset-bottom,0px))}   /* F122: the row stays <= 56 design px */
 #diag .btns button{min-height:48px;font-size:14px;letter-spacing:0;padding:6px 5px;position:relative}
+#diag .devrow button{min-height:48px;font-size:14px}   /* B21: the same size as the action row on the small screen */
 #diag .btns button::after{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:58px}   /* 56 px of the row and the log's last 2 px: 44 on the SE screen */
 .infobtn::after{left:auto;right:-2px;transform:translateY(-50%)}
 #info::after{top:-2px;height:60px;transform:none}   /* 58 px of the frame below its top edge: 46 px on the SE screen */

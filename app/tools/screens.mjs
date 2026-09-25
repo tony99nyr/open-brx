@@ -1426,7 +1426,8 @@ for (const view of VIEWS) {
   await step(`${view.name} B21 diag: the WebView debugging switch shows its state and a tap flips it`, async () => {
     const pg = await open(view, 'diag-live', '', 5200);
     const read = () => pg.evaluate(() => { const s = document.getElementById('dg-dev'), b = document.getElementById('dg-webdebug');
-      return { shown: !!s && !s.hidden && s.getBoundingClientRect().height > 0, state: (document.getElementById('dg-webdebug-state') || {}).textContent || '', label: b ? b.textContent : null }; });
+      const sc = parseFloat(getComputedStyle(document.getElementById('frame')).transform.split(',')[3] || 1) || 1;
+      return { shown: !!s && !s.hidden && s.getBoundingClientRect().height > 0, state: (document.getElementById('dg-webdebug-state') || {}).textContent || '', label: b ? b.textContent : null, desc: b ? (document.getElementById(b.getAttribute('aria-describedby') || '') || {}).textContent || '' : '', h: b ? b.getBoundingClientRect().height / sc : 0 }; });
     const none = await read();
     must(!none.shown, 'the stage has no BrxDebug plugin, so the switch must stay hidden: ' + JSON.stringify(none));
     // Stand in for the Android plugin, so the tap goes through app.js's real handler and the real render loop.
@@ -1434,11 +1435,20 @@ for (const view of VIEWS) {
       wd.plugin = { get: async () => ({ enabled: true }), set: async ({ enabled }) => { window.__sets.push(enabled); return { enabled }; } }; return wd.load(); });
     await pg.waitForTimeout(400);   // app.js pushes fresh diag data every 250 ms
     const on = await read();
-    must(on.shown && /ON$/.test(on.state) && on.label === 'TURN OFF', 'the switch does not show ON: ' + JSON.stringify(on));
+    must(on.shown && /ON$/.test(on.state) && on.label === 'TURN OFF' && on.desc === on.state, 'the switch does not show ON: ' + JSON.stringify(on));
+    must(on.h >= 43.5, 'tap target ' + on.h.toFixed(1) + 'px (design px)');
     await pg.locator('#dg-webdebug').scrollIntoViewIfNeeded(); await pg.click('#dg-webdebug'); await pg.waitForTimeout(400);
-    const off = await read(); const sets = await pg.evaluate(() => window.__sets); await pg.close();
+    const off = await read(); const sets = await pg.evaluate(() => window.__sets);
+    // A debuggable APK: Chromium keeps inspection on, so the panel says so and the button cannot write.
+    await pg.evaluate(() => { window.brx.webDebug.plugin.get = async () => ({ enabled: true, forced: true }); return window.brx.webDebug.load(); });
+    await pg.waitForTimeout(400);
+    const forced = await read(); const dis = await pg.evaluate(() => document.getElementById('dg-webdebug').disabled);
+    await pg.click('#dg-webdebug', { force: true }); await pg.waitForTimeout(300);
+    const after = await pg.evaluate(() => window.__sets); await pg.close();
     must(JSON.stringify(sets) === '[false]', 'the tap did not write OFF once: ' + JSON.stringify(sets));
-    must(/OFF$/.test(off.state) && off.label === 'TURN ON', 'the panel still shows the old state: ' + JSON.stringify(off));
+    must(/OFF$/.test(off.state) && off.label === 'TURN ON' && off.desc === off.state, 'the panel still shows the old state: ' + JSON.stringify(off));
+    must(/ALWAYS ON/.test(forced.state) && dis, 'a debuggable build does not show ALWAYS ON with a disabled button: ' + JSON.stringify(forced));
+    must(JSON.stringify(after) === '[false]', 'a tap on the forced switch wrote to the phone: ' + JSON.stringify(after));
   });
   await step(`${view.name} F122 diag: the reader's scroll position survives the render churn`, async () => {
     const pg = await open(view, 'diag-live', '', 5200);
