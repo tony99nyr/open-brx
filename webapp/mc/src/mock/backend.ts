@@ -957,13 +957,13 @@ export class MockBackend implements Api {
     const surv = [...rows].sort((a, b) => a.deaths - b.deaths)[0];
     const first = rows[2] ?? top, multi = [...rows].sort((a, b) => b.streak - a.streak)[0];
     const honors = [
-      { award: 'MVP', player_id: mvp.player_id, stat: `${mvp.kills} K · ${mvp.kd.toFixed(1)} K/D · ×${mvp.streak} STREAK` },
-      { award: 'MOST KILLS', player_id: top.player_id, stat: `${top.kills} ELIMINATIONS` },
-      { award: 'BEST K/D · NON-MVP', player_id: bestKd.player_id, stat: `K/D ${bestKd.kd.toFixed(1)} · ${bestKd.kills} K` },
-      { award: 'SHARPSHOOTER', player_id: sharp.player_id, stat: `${sharp.accuracy}% ACCURACY` },
-      { award: 'SURVIVOR', player_id: surv.player_id, stat: 'LONGEST TIME ALIVE' },
-      { award: 'FIRST BLOOD', player_id: first.player_id, stat: 'AT 00:14' },
-      { award: 'MULTIKILL', player_id: multi.player_id, stat: `DOUBLE KILL ×${Math.max(1, Math.floor(multi.streak / 2))}` },
+      { key: 'mvp', award: 'MVP', player_id: mvp.player_id, stat: `${mvp.kills} K · ${mvp.kd.toFixed(1)} K/D · ×${mvp.streak} STREAK` },
+      { key: 'most_kills', award: 'MOST KILLS', player_id: top.player_id, stat: `${top.kills} ELIMINATIONS` },
+      { key: 'best_kd', award: 'BEST K/D · NON-MVP', player_id: bestKd.player_id, stat: `K/D ${bestKd.kd.toFixed(1)} · ${bestKd.kills} K` },
+      { key: 'sharpshooter', award: 'SHARPSHOOTER', player_id: sharp.player_id, stat: `${sharp.accuracy}% ACCURACY` },
+      { key: 'survivor', award: 'SURVIVOR', player_id: surv.player_id, stat: 'LONGEST LIFE 3:42' },
+      { key: 'first_blood', award: 'FIRST BLOOD', player_id: first.player_id, stat: 'AT 00:14' },
+      { key: 'multikill', award: 'MULTIKILL', player_id: multi.player_id, stat: `DOUBLE KILL ×${Math.max(1, Math.floor(multi.streak / 2))}` },
     ];
     for (const h of honors) rows.find(r => r.player_id === h.player_id)?.medals.push(h.award.replace(' · NON-MVP', ''));
     const missing = l.rows.filter(r => r.status === 'stale').map(r => r.player_id);

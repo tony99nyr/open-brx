@@ -29,7 +29,9 @@ const COLUMNS: Column[] = [
  *  places with nothing to fail. LIVE was fixed first; this is the same defect one file over
  *  (review 2026-09-12). Header and row now read the one lookup. */
 const edge = columnEdges(COLUMNS);
-const AWARD_COLOR: Record<string, string> = { MVP: '#ffd23f', 'FIRST BLOOD': T.bad, MULTIKILL: T.warn };
+// A63: keyed by the AWARDS `key`; a recap stored before A63 has only the label, so it maps through AWARD_KEY.
+const AWARD_COLOR: Record<string, string> = { mvp: '#ffd23f', first_blood: T.bad, multikill: T.warn, iron_man: T.ink, wingman: T.ok, objective_hero: T.accHover };
+const AWARD_KEY: Record<string, string> = { MVP: 'mvp', 'FIRST BLOOD': 'first_blood', MULTIKILL: 'multikill' };
 const STATION_KIND_LABEL: Record<string, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACTION', bomb: 'BOMB SITE', control: 'CONTROL POINT' };
 const STATION_TID_NAME: Record<number, string> = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN', 255: 'ANY' };
 
@@ -121,7 +123,8 @@ export function Recap() {
     : { text: 'NO RESULT', tail: '' };
   const scores = Object.entries(rc.score);
   const rows = [...rc.rows].sort((a, b) => b.kills - a.kills);
-  const mvpId = rc.honors.find(h => h.award === 'MVP')?.player_id;
+  // A63: a level MVP is SHARED, so every holder's row is marked (`key` is absent on a pre-A63 recap).
+  const mvpIds = new Set(rc.honors.filter(h => (h.key ?? (h.award === 'MVP' ? 'mvp' : '')) === 'mvp').map(h => h.player_id));
   // W1/F6: `/api/recap.csv` only ever serves the LIVE scorer, so an archived match used to hide its
   // export button rather than hand the operator the wrong game. It has its own endpoint now.
   const csv = past ? api.matchCsvUrl(past.match_id) : api.recapCsvUrl();
@@ -321,9 +324,9 @@ export function Recap() {
       <SectionRule label="HONORS" />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(168px,1fr))', gap: 8, marginBottom: 22 }}>
         {rc.honors.map(h => {
-          const c = AWARD_COLOR[h.award] ?? T.acc;
+          const c = AWARD_COLOR[h.key ?? AWARD_KEY[h.award] ?? ''] ?? T.acc;
           return (
-            <div key={h.award} style={{ background: T.panel, border: `1px solid ${T.line}`, borderTop: `2px solid ${c}`, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 4, clipPath: CHAMFER.br8 }}>
+            <div key={`${h.key ?? h.award}:${h.player_id}`} style={{ background: T.panel, border: `1px solid ${T.line}`, borderTop: `2px solid ${c}`, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 4, clipPath: CHAMFER.br8 }}>
               <span style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: c }}>{h.award}</span>
               <span style={{ font: F.osw(700, 19), letterSpacing: '.08em' }}>{name(h.player_id)}</span>
               <span style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>{h.stat}</span>
@@ -375,7 +378,7 @@ export function Recap() {
             ))}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
-            {rows.map(r => <Row key={r.player_id} r={r} mvp={r.player_id === mvpId} />)}
+            {rows.map(r => <Row key={r.player_id} r={r} mvp={mvpIds.has(r.player_id)} />)}
           </div>
         </div>
       </div>
