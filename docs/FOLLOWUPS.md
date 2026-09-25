@@ -9,10 +9,10 @@ Updated: 2026-09-25 (the final docs pass: open MVP work only; post-MVP rows move
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 63.** Desk 9 · bench 46 · decision 8.
+**MVP open: 63.** Desk 10 · bench 46 · decision 7.
 
-**MVP DESK (9),** a keyboard is enough:
-- 🟠 **F164** · **B21** · **F372**
+**MVP DESK (10),** a keyboard is enough:
+- 🟠 **F164** · **B21** · **F372** · **F221**
 - 🟡 **F342** · **Q13** · **F333** · **S32** · **F319** · **F161**
 
 **MVP BENCH (46),** needs a gun, a Stick, phones or a field (the order is the bench plan):
@@ -21,8 +21,7 @@ changes its id. The evidence behind every row is in [`experiment-log/`](experime
 - 🟡 **F350** · **H8** · **F353** · **F298** · **F3** · **F21** · **F270** · **F322** · **F309** · **F292** · **F296** · **F294**
 - 🟢 **F339**
 
-**MVP DECISION (8),** awaiting Tony:
-- 🟠 **F221**
+**MVP DECISION (7),** awaiting Tony:
 - 🟡 **F366** · **F367** · **F368** · **F370** · **F371** · **F317**
 - ⬜ **D5**
 
@@ -79,6 +78,9 @@ A keyboard is enough. Highest value first.
 - **S32 🟡 MODE ART FOR koth (MC + phone) AND MELEE WEAPON ART.** `state.py` MODES has six modes; `webapp/mc/public/assets/modes/` and `app/www/assets/modes/` have five images. `hud.js` builds the art path with no fallback; MC's GAMES rail shows the placeholder caption (`webapp/mc/src/modeArt.ts` names the gap). `melee` is in `weapons.json` with no `melee.jpg` in either tree. With it, decide the D7 duplication from the doc-rot ledger: the two asset trees are byte-identical (720 KB); make one the source and copy at build, or genuinely downscale for the phone. `build`.
 
 - **F319 🟡 MISSION CONTROL QA DECISIONS (Tony, 2026-09-24).** Decided: (a) infection: the survivors get an alert, the zombies do not; (b) extraction: a phone HUD event, no audio; (c) PANIC stays in the ☰ menu; (d) keep the event feed across an MC restart if it is simple, else accept losing it; (e) hills lean on phone or M5 hills, or an M5 translating a grenade's IR, which know both teams and can say HILL LOST; a grenade-only hill may have no announcements, and MC setup must make each combination clear; (f) LOBBY keeps the push in BUILD, KIT and RECAP. Still open, small server fields: a recap `played_s`, and a `lan.public` "was ever up". Build (a), (b) and (e) on the phone and in MC setup; (d) in MC. `build`.
+
+- **F221 🟠 MC warning colours: DECIDED; build in progress (brx1's agent).** Tony 2026-09-25 approved the audit and the conventions ("alert audit is thorough looks good"). Apply Tony's rule (below) instead of marking each item of `docs/mc-warning-audit-2026-09-16.md`. `build`.
+ **→ Tony 2026-09-25, decided a RULE instead of row-by-row marks** ("this was sorely needed the amber and red color use is all over the place"): RED = act now, or the game is wrong (MC offline/stale board, GUN POOLS WRONG, the KOTH grenade-vs-control conflict, a gun link lost DURING a match, a tunnel down while phones depend on it, a console crash). AMBER = fix before the next match (battery under 30%, a restored roster, an MC server older than the UI, an older config acked, a phone waiting for its gun, a station attention line, a gun link lost in the LOBBY). NEUTRAL (no colour) = status only (BENCH VOL, SENDING/HOLDING, a -dirty build stamp, the operator-token prompt, a single NO SOCKET). Two-tap hazard buttons and drop-your-draft confirms are not warnings and stay as they are. Build: one severity helper in webapp/mc (a colour by severity, not by caller), re-audit EVERY current amber/red call site against the rule (the 2026-09-16 audit is stale after the VQA passes), apply it, and add a test that pins each warning's severity. `build`. The conventions gallery (`C:\Users\Tony\brx-mc-alerts\index.html`) is the approved source of truth.
 
 - **F161 🟡** HUD gun picker does not refresh live: a gun powered on while the list is open updates the RSSI bars but never appears until "Set my gun" is tapped again (field 2026-09-12). `build`.
 
@@ -327,12 +329,9 @@ sheets that [`bench-plan.md`](bench-plan.md) names; the order of the next sittin
 
 Tony's call. Each row says what the answer unblocks.
 
-- **F221 🟠 MC warning colours: apply Tony's rule.** Mark each item in `docs/mc-warning-audit-2026-09-16.md` keep, quieter or remove. `decision`.
- **→ Tony 2026-09-25, decided a RULE instead of row-by-row marks** ("this was sorely needed the amber and red color use is all over the place"): RED = act now, or the game is wrong (MC offline/stale board, GUN POOLS WRONG, the KOTH grenade-vs-control conflict, a gun link lost DURING a match, a tunnel down while phones depend on it, a console crash). AMBER = fix before the next match (battery under 30%, a restored roster, an MC server older than the UI, an older config acked, a phone waiting for its gun, a station attention line, a gun link lost in the LOBBY). NEUTRAL (no colour) = status only (BENCH VOL, SENDING/HOLDING, a -dirty build stamp, the operator-token prompt, a single NO SOCKET). Two-tap hazard buttons and drop-your-draft confirms are not warnings and stay as they are. Build: one severity helper in webapp/mc (a colour by severity, not by caller), re-audit EVERY current amber/red call site against the rule (the 2026-09-16 audit is stale after the VQA passes), apply it, and add a test that pins each warning's severity. `build`. **→ 2026-09-25:** the conventions gallery (`C:\Users\Tony\brx-mc-alerts\index.html`) awaits Tony's OK before the build starts.
-
 - **F366 🟡 DECISION FOR TONY: A GAMERTAG LENGTH LIMIT.** Tony 2026-09-25: "Is there a preferred gamer tag length? ... in the armory we should warn or prevent long gamer tags". Today MC silently cuts `display` at 24 (`mc/api.py` ~312). Measured 2026-09-25 (brx5; widest W/M name · a realistic one like xX_SNIPER_Xx, most characters that fit whole): the phone HERO kill lane 8 · 13, identity block 9 · 14, feed 10 · 16, results rows 14 · 21, awards 15 · 24; MC kit roster chip at 900 px 6 · 8 (the detail card shows the whole name), live board 13 · 17 (900) / 11 · 14 (1280), recap honours 12 · 16 / 9 · 13. No length keeps an all-W/M name whole everywhere, so the ellipsis stays. **Proposal:** a HARD maximum of 16 (MC refuses a new or edited longer tag with a clear 400; stored longer names keep working with a rename warning via a `display_too_long` flag), and a SOFT 12 (past it, "may be shortened on some screens"). One constant (`MAX_TAG_LEN`) in `types.py` through the generated contract. Build owners once Tony says yes: brx3 = the MC side (the constant, the refusal, the tests); brx5 = the ARMORY and player add/edit UI (a live counter, a warning past 12, a block at 16) and the HUD rename warning. Scripts and screenshots: `/tmp/claude-1000/tagmeasure/` (not kept). `decision`.
 
-- **F367 🟡 DECISION FOR TONY: THE BEAT DOWN AND IRON MAN RECAP ICONS.** Filed 2026-09-25 (brx5). The recap icons are style B (`app/src/hud/medalicons.js`); BEAT DOWN (`melee_kill`) and IRON MAN draw a placeholder initial. Tony picks B1 hammer, B2 takedown or B3 glove, and I1 riveted plate, I2 iron heart or I3 endless loop, from the gallery `C:\Users\Tony\brx-medals\index.html`. `decision`.
+- **F367 🟡 DECISION FOR TONY: THE BEAT DOWN AND IRON MAN RECAP ICONS.** Filed 2026-09-25 (brx5). The recap icons are style B (`app/src/hud/medalicons.js`); BEAT DOWN (`melee_kill`) and IRON MAN draw a placeholder initial. Tony picks B1 hammer, B2 takedown or B3 glove, and I1 riveted plate, I2 iron heart or I3 endless loop, from the gallery `C:\Users\Tony\brx-medals\index.html`. **→ 2026-09-25 (brx1):** the open choice is now B3a, B3b or B3c for BEAT DOWN and I2a, I2b or I2c for IRON MAN. `decision`.
 
 - **F368 🟡 DECISION FOR TONY: THE PHONE HUD LAYERING MODEL.** Filed 2026-09-25 (brx5). [`announcer.md`](announcer.md) "Layering and priority on the phone HUD (PROPOSED)" is not built. Tony picks the model and answers its three questions: the status rail against the powerup hint; the rail hiding the NIGHT label; a warning's full sentence in the rail or only in the ⓘ panel. The CLASH storyboard is in `C:\Users\Tony\brx-alerts\index.html`. `decision`.
 

@@ -16,16 +16,16 @@ sitting C's powerup setup passes. Still P0: the link loop under load (**F293**) 
 Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32; proven facts live in
 [`protocol/brx-protocol.md`](../protocol/brx-protocol.md) and [`manual/dev.md`](manual/dev.md).
 ## Lane: brx1, orchestration
-The 2026-09-25 final docs pass is done: FOLLOWUPS holds 63 open MVP rows (desk 9, bench 46, decision 8); 165 post-MVP
+The 2026-09-25 final docs pass is done: FOLLOWUPS holds 63 open MVP rows (desk 10, bench 46, decision 7); 165 post-MVP
 ids moved to `post-mvp.md` unchanged; the pass closed 14 rows. Decided 2026-09-25 and recorded (do not re-ask):
 F346 d auto-join, F354 team-only credit, F357 no cue after any whistle, F364 station ids, F365 the range edit, F361
 keep the Killjoy flash, F149/F351 death first, A63 surprise medals, F231 ranges, S58 powerups are MVP, Q13 TEAM
-DAMAGE OFF, B21 WebView debugging as a toggle (default on), F221's colour rule, F350 fix after F347 then audition,
+DAMAGE OFF, B21 WebView debugging as a toggle (default on), F221's colour rule and alert audit (approved; brx1's agent builds it), F350 fix after F347 then audition,
 F369 the medal names (named after the gun's own lines; we rename on objection), F308 heavy 45.
 - **Next:** run [`bench-2026-09-25.md`](bench-2026-09-25.md) with Tony. Route sitting A's results to brx5 (the t23
   value, rule B, F350's pick) and brx3 (the 0.4.12 cut); sitting B's to brx4; sitting C's powerup result to F372.
-- **Awaiting Tony:** the MVP DECISION group: F221's alert gallery (`C:\Users\Tony\brx-mc-alerts\index.html`), F366
-  the gamertag limit, F367 the Beat Down and Iron Man icons, F368, F370, F371, F317, D5.
+- **Awaiting Tony:** the MVP DECISION group: F366
+  the gamertag limit, F367 the Beat Down (B3a/b/c) and Iron Man (I2a/b/c) icons, F368, F370, F371, F317, D5.
 ## Lane: brx2, bench, audio, utility and docs
 2026-09-24 bench: Blocks 0, 1, 1.4, 3.1-3.3, 4.3 and 7.11 ran (F297 laptop control 10/10, median 1.37 s). Built:
 the gun-audio FIFO simulator ([`audio-queue-scenarios.md`](audio-queue-scenarios.md)), the utility-screen rebuild,
@@ -41,8 +41,7 @@ APKs 0.4.7-0.4.11 published, each on green CI. The MC halves of A60-A67 are on m
 `test:all --ui` green.
 - **Next:** cut 0.4.12 once sitting A passes A4 and F347 (and brx5's t23 fix lands).
 - **Desk (MVP):** Q13 (check compile keeps team damage off everywhere; label it TEAM DAMAGE: OFF), B21 (the WebView
-  debugging toggle, default on; release-sign stays at each cut), F319 (d) and (e), S32 (the KOTH art), F221's build
-  once Tony OKs the gallery, the MC half of F372.
+  debugging toggle, default on; release-sign stays at each cut), F319 (d) and (e), S32 (the KOTH art), the MC half of F372.
 ## Lane: brx4, the StickS3
 Stick stations are Bluetooth-only for MVP (hill, pickup, respawn); Stick IR receive, the grenade hill and revive
 counting are post-MVP (F338, F314, F344). On main: F365 on the Stick (`e9e81efc`, hold A 5 s on STATS), the side-button
