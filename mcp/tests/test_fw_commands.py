@@ -127,7 +127,8 @@ def test_the_published_inventory_is_sorted_complete_and_routes_every_protocol_ga
     assert all(row[4] in {"proven", "claimed", "never sent"} for row in rows)
     gaps = {row[0][2:-1] for row in rows if row[2] == "**no**"}
     assert gaps == {"CLEARDEVICE", "FREE", "IRH", "IRL", "IRS", "SER"}
-    followups = (REPO / "docs/FOLLOWUPS.md").read_text(encoding="utf-8")
+    # The gap rows (F301-F306) are post-MVP research: since 2026-09-25 they live in docs/post-mvp.md.
+    followups = "\n".join((REPO / "docs" / name).read_text(encoding="utf-8") for name in ("FOLLOWUPS.md", "post-mvp.md"))
     assert all(f"`${command}`" in followups for command in gaps), gaps
     bench = {row[0][2:-1]: row[4] for row in rows}
     assert all(bench[command] == "proven" for command in {"BUMP", "DPLAY", "IRTX", "STUN", "TMP"})
