@@ -94,7 +94,7 @@ const invariants = pg => pg.evaluate(() => {
   const out = []; const info = document.getElementById('info').getBoundingClientRect();
   const skinEl = document.getElementById('skin'), skin = skinEl ? skinEl.getBoundingClientRect() : null;   // the day/night switch under the ⓘ (bench 2026-09-17)
   const hit = (a, b) => a.left < b.right - 2 && a.right > b.left + 2 && a.top < b.bottom - 2 && a.bottom > b.top + 2;
-  for (const e of document.querySelectorAll('#hud *, #overlay *, #chips *')) {
+  for (const e of document.querySelectorAll('#hud *, #overlay *, #chips *, #lanes *')) {
     const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden') continue;
     if (cs.overflowX !== 'visible' && e.scrollWidth > e.clientWidth + 1 && !e.classList.contains('sr')) out.push(`sideways overflow: .${e.className} ${e.scrollWidth}>${e.clientWidth}`);   // .sr: a screen-reader label, clipped on purpose
     const txt = e.childElementCount === 0 && (e.textContent || '').trim(); if (!txt) continue;
@@ -797,19 +797,19 @@ for (const view of VIEWS) {
     must(r, 'no SWITCHING overlay'); must(r.t === 'SWITCHING' && r.from === 'ASSAULT RIFLE' && r.to === 'SMG' && r.w > 0 && r.chips === '0', JSON.stringify(r));
     must(!r2.sw && r2.on === 'SMG' && /ACTIVE/.test(r2.lab) && /SMG/.test(r2.corner) && r2.chips === '1', JSON.stringify(r2));
   });
-  await step(`${view.name} #41 game-event alert banner: text, family colour, one line, gone by ~5 s`, async () => {
-    const pg = await open(view, 'live-alert', '', 2900); const r = await pg.evaluate(() => { const a = document.querySelector('.mo.alert'); if (!a) return null; const t = a.querySelector('.t'); const rg = document.createRange(); rg.selectNodeContents(t); return { txt: t.textContent, fam: a.className, lines: rg.getClientRects().length, col: getComputedStyle(a.querySelector('.k')).color, w: a.querySelector('.band').getBoundingClientRect().width, fw: document.getElementById('frame').getBoundingClientRect().width }; });
-    await pg.waitForTimeout(2500); const gone = await pg.evaluate(() => !document.querySelector('.mo.alert')); await pg.close();
-    must(r, 'no alert banner'); must(r.txt === 'BOMB PLANTED' && /danger/.test(r.fam) && r.lines === 1 && r.w >= r.fw - 2, JSON.stringify(r)); must(gone, 'alert still up after 5.4 s');
+  await step(`${view.name} #41 game-event alert: a FEED row with its text and family colour, one line, gone by ~5 s`, async () => {
+    // docs/announcer.md "The three lanes": the lead and the hill are badges on the right; every other alert is a feed row
+    const pg = await open(view, 'live-alert', '', 3000); const r = await pg.evaluate(() => { const a = document.querySelector('#lanes .lf[data-kind="alert"]'); if (!a) return null; const t = a.querySelector('.lfm'); const rg = document.createRange(); rg.selectNodeContents(t); return { txt: t.textContent, fam: a.dataset.fam, sub: a.querySelector('.lsrc').textContent, lines: rg.getClientRects().length, lc: getComputedStyle(a).getPropertyValue('--lc').trim(), px: parseFloat(getComputedStyle(t).fontSize) }; });
+    await pg.waitForTimeout(4400); const gone = await pg.evaluate(() => !document.querySelector('#lanes .lf[data-kind="alert"]')); await pg.close();
+    must(r, 'no alert row'); must(r.txt === 'BOMB PLANTED' && r.fam === 'danger' && r.sub === 'ALERT · MC' && r.lc === '#ff5252' && r.lines === 1 && r.px >= 15, JSON.stringify(r)); must(gone, 'alert still up after ~6.9 s');
   });
   await step(`${view.name} #41b alert at night still shows (dim)`, async () => {
-    const pg = await open(view, 'live-alert', '&night', 2900); const r = await pg.evaluate(() => { const a = document.querySelector('.mo.alert'); return a ? { vis: getComputedStyle(a).display !== 'none', txt: a.querySelector('.t').textContent } : null; }); await pg.close(); must(r && r.vis && r.txt === 'BOMB PLANTED', JSON.stringify(r));
+    const pg = await open(view, 'live-alert', '&night', 3000); const r = await pg.evaluate(() => { const a = document.querySelector('#lanes .lf[data-kind="alert"]'); return a ? { vis: getComputedStyle(a).display !== 'none' && +getComputedStyle(a).opacity > .5, txt: a.querySelector('.lfm').textContent } : null; }); await pg.close(); must(r && r.vis && r.txt === 'BOMB PLANTED', JSON.stringify(r));
   });
-  await step(`${view.name} #42 kill with medals: badges stack and the takeover holds for the announcer lines`, async () => {
-    const pg = await open(view, 'live-medals', '', 3000); const r = await pg.evaluate(() => { const k = document.querySelector('.mo.kill'); if (!k) return null; return { badges: Array.from(k.querySelectorAll('.medal')).map(b => [b.textContent.trim(), getComputedStyle(b).opacity]) }; });
-    await pg.waitForTimeout(2300); const r2 = await pg.evaluate(() => { const k = document.querySelector('.mo.kill'); return { up: !!k, second: k ? getComputedStyle(k.querySelectorAll('.medal')[1]).opacity : null }; }); await pg.close();
-    must(r && r.badges.length === 2 && r.badges[0][0] === 'DOUBLE KILL' && r.badges[1][0] === 'KILLING SPREE', JSON.stringify(r)); must(+r.badges[0][1] === 1 && +r.badges[1][1] === 0, 'first badge up, second waiting: ' + JSON.stringify(r));
-    must(r2.up && +r2.second === 1, 'second badge should land at +2 s while the takeover holds: ' + JSON.stringify(r2));
+  await step(`${view.name} #42 kill with medals: the newest medal big on the hero, the earlier one on its ladder`, async () => {
+    const pg = await open(view, 'live-medals', '', 3000); const r = await pg.evaluate(() => { const k = document.querySelector('#lanes .lh'); if (!k) return null; return { big: (k.querySelector('.lhm .medal') || {}).textContent, ladder: Array.from(k.querySelectorAll('.lhl .lm')).map(b => b.textContent.trim()) }; });
+    await pg.waitForTimeout(1800); const r2 = await pg.evaluate(() => !!document.querySelector('#lanes .lh:not(.out)')); await pg.close();
+    must(r && r.big === 'KILLING SPREE' && JSON.stringify(r.ladder) === '["DOUBLE KILL"]', JSON.stringify(r)); must(r2, 'the hero must still be up while its medal lines play');
   });
   await step(`${view.name} #43 Quick Switch perk halves the swap window (425 ms, then ACTIVE · READY)`, async () => {
     const pg = await open(view, 'live-switch-perk', '', 2950); const r = await pg.evaluate(() => ({ win: window.brx.engine.state().switchWindowMs, up: !!document.querySelector('.mo.switching') }));
@@ -1324,17 +1324,13 @@ for (const view of VIEWS) {
     await pg.waitForTimeout(2200); const gone = await pg.evaluate(() => !document.querySelector('.mo.reloading')); await pg.close();
     must(r, 'no RELOADING overlay'); must(r.t === 'RELOADING' && /^ASSAULT RIFLE$/.test(r.s), JSON.stringify(r)); must(r.w > 5 && r.w < 100 && /S$/.test(r.n), 'progress ' + r.w + ' ' + r.n); must(r.big >= 60, 'too small'); must(gone, 'takeover did not clear once the mag was back');
   });
-  await step(`${view.name} #19 KILL CONFIRMED is the callout card (QA-05): centred, named large, the live HUD still readable behind it`, async () => {
-    const pg = await open(view, 'live-kill', '', 3000); const r = await pg.evaluate(() => { const k = document.querySelector('.mo.kill'); if (!k) return null; const c = k.querySelector('.cob').getBoundingClientRect(), f = document.getElementById('frame').getBoundingClientRect(); return { mid: (c.left + c.width / 2 - f.left) / f.width, big: parseFloat(getComputedStyle(k.querySelector('.nm')).fontSize), bg: getComputedStyle(k).backgroundImage }; }); await pg.close();
-    must(r, 'no kill card'); must(r.mid > .45 && r.mid < .55, 'not centred: ' + r.mid); must(r.big >= 30, 'the name is ' + r.big + 'px'); must(r.bg === 'none', 'the whole HUD is dimmed behind it: ' + r.bg);
-  });
   await step(`${view.name} kill-name KILL CONFIRMED names the victim by gamertag, never by player_id (field 2026-09-17)`, async () => {
     // MC's wire: `victim` is a player_id. The banner resolves it; a bare id on screen is the bug.
     const pg = await open(view, 'live', '', 3000);
     const r = await pg.evaluate(async () => { const e = window.brx.engine; const foe = e.roster.find(x => x.player_id !== (e.player && e.player.player_id));
       e.onMcMessage({ kind: 'feedback', body: { player_id: e.player.player_id, kind: 'kill', t: Date.now(), victim: foe.player_id, victim_team: foe.team_id } });
-      for (let i = 0; i < 30 && !document.querySelector('.mo.kill .vt'); i++) await new Promise(res => setTimeout(res, 50));
-      const vt = document.querySelector('.mo.kill .vt'); return { txt: vt ? vt.textContent.trim() : null, id: foe.player_id, display: foe.display }; });
+      for (let i = 0; i < 30 && !document.querySelector('#lanes .lh .vt'); i++) await new Promise(res => setTimeout(res, 50));
+      const vt = document.querySelector('#lanes .lh .vt'); return { txt: vt ? vt.textContent.trim() : null, id: foe.player_id, display: foe.display }; });
     await pg.close();
     must(r.txt, 'no kill banner'); must(r.txt.includes(r.display.toUpperCase()), `banner says ${JSON.stringify(r.txt)}, not ${r.display}`); must(!r.txt.includes(r.id), `banner shows the player_id: ${r.txt}`);
   });
@@ -3868,57 +3864,95 @@ await step('utility landscape fit: portrait is unchanged (.side keeps the origin
 });
 
 // QA lane C (2026-09-23)
-// QA-05: one callout card for every "someone went down" and "the hill changed hands" moment, whichever path it
-// came by (S57 IR word, MC's kill feedback, the engine's own hill transition). Each case: the card is on screen,
-// names someone (or the objective) at >= 18 frame px, sits clear of the vitals and the ammo block, carries the
-// tone of who went down, and is gone again within its hold. Night: the same card, dim red, no green, no whiteout.
-const CO_CASES = [
-  // [stage, kind, the name the card must print, tone, ms from load to give up waiting, the hold it must clear within]
-  ['live-callout-kill', 'kill_confirmed', 'YELLOW', 'enemy', 3400, 2600],
-  ['live-callout-enemy', 'enemy_down', 'VIPER', 'enemy', 3400, 2600],
-  ['live-callout-teammate', 'teammate_down', 'MAVERICK', 'mate', 3400, 2600],
-  ['live-kill', 'kill', 'VIPER', 'enemy', 3400, 2600],
-  ['live-hill-captured', 'hill_captured', 'HILL CAPTURED', 'ours', 3600, 2800],
-  // docs/announcer.md: a card stays up while its line plays, and "Hill Lost!" (VB0P) is 2.976 s: its slot is 3.126 s, the card fades from 2.826 s
-  ['live-hill-lost', 'hill_lost', 'HILL LOST', 'theirs', 3600, 3300],
-];
-const coRead = pg => pg.evaluate(() => {
-  const el = document.querySelector('#overlay .mo.co'); if (!el) return null;
-  const cs = getComputedStyle(el), nm = el.querySelector('.nm');
+const lnRead = pg => pg.evaluate(() => {
+  const fr = document.getElementById('frame').getBoundingClientRect();
+  const vis = e => { if (!e) return false; for (let n = e; n && n.id !== 'frame'; n = n.parentElement) { const c = getComputedStyle(n); if (c.display === 'none' || c.visibility === 'hidden' || +c.opacity < .3) return false; } const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
   const box = e => { const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
-  const rgb = s => (s.match(/\d+(\.\d+)?/g) || []).slice(0, 3).map(Number);
-  const green = [el, ...el.querySelectorAll('*')].some(e => { const c = getComputedStyle(e); return [c.color, c.backgroundColor, c.borderTopColor].some(v => { const [r, g, b2] = rgb(v); const a = /rgba/.test(v) ? Number(v.split(',')[3]) : 1; return a > 0.05 && g > r + 12 && g > b2 - 8 && g > 40; }); });
-  return { kind: el.dataset.kind, tone: el.dataset.tone, vis: cs.display !== 'none' && cs.visibility !== 'hidden' && Number(cs.opacity) > 0.5 && el.getBoundingClientRect().width > 0,
-    name: nm ? nm.textContent.trim() : '', px: nm ? parseFloat(getComputedStyle(nm).fontSize) : 0, accent: cs.getPropertyValue('--co').trim(),
-    card: box(el.querySelector('.cob') || el), vitals: box(document.querySelector('.vitals')), ammo: box(document.querySelector('.ammo')),
-    green, whiteout: !!document.querySelector('#overlay .whiteout'), at: performance.now() };
+  const txt = e => e ? e.textContent.replace(/\s+/g, ' ').trim() : null;
+  const px = e => e ? parseFloat(getComputedStyle(e).fontSize) : 0;
+  const h = document.querySelector('#lanes .lh');
+  const hero = h && vis(h) ? { id: h.dataset.id, n: +h.dataset.n, text: txt(h), name: txt(h.querySelector('.vt')), kill: txt(h.querySelector('.lhk > span')), count: txt(h.querySelector('.lhx')),
+    medal: txt(h.querySelector('.lhm .medal')), ladder: [...h.querySelectorAll('.lhl .lm')].map(txt), ladderOp: [...h.querySelectorAll('.lhl .lm:not(.more)')].map(e => +getComputedStyle(e).opacity),
+    src: txt(h.querySelector(':scope > .lsrc')), namePx: px(h.querySelector('.vt')), srcPx: px(h.querySelector(':scope > .lsrc')), ladderPx: Math.min(99, ...[...h.querySelectorAll('.lhl .lm')].map(px)),
+    parts: [...h.querySelectorAll(':scope > *')].filter(vis).map(box), mid: (h.getBoundingClientRect().left + h.getBoundingClientRect().width / 2 - fr.left) / fr.width, out: h.classList.contains('out') } : null;
+  const obj = [...document.querySelectorAll('#lanes .lo')].filter(vis).map(o => ({ key: o.dataset.key, kind: o.dataset.kind, kick: txt(o.querySelector('.lok > span')), text: txt(o.querySelector('.low')), src: txt(o.querySelector('.lsrc')),
+    box: box(o), px: px(o.querySelector('.low')), kickPx: px(o.querySelector('.lok')), lc: getComputedStyle(o).getPropertyValue('--lc').trim(), x: (o.getBoundingClientRect().left - fr.left) / fr.width }));
+  const feed = [...document.querySelectorAll('#lanes .lf')].filter(vis).map(f => ({ kind: f.dataset.kind, alert: f.dataset.alert || null, fam: f.dataset.fam || null, text: txt(f.querySelector('.lfm')), sub: txt(f.querySelector('.lsrc')),
+    box: box(f), px: px(f.querySelector('.lfm')), subPx: px(f.querySelector('.lsrc')), lc: getComputedStyle(f).getPropertyValue('--lc').trim(), x: (f.getBoundingClientRect().right - fr.left) / fr.width, out: f.classList.contains('out'),
+    lines: (() => { const r = document.createRange(); r.selectNodeContents(f.querySelector('.lfm')); return new Set([...r.getClientRects()].filter(x => x.width > 1).map(x => Math.round(x.top / 4))).size; })() }));
+  const q = s => [...document.querySelectorAll(s)].filter(vis).map(box);
+  const env = { ammo: q('.alive .ammo'), hint: q('#puhint .pu'), chip: q('#puheld .puchip'), vitals: q('.vitals'), vparts: q('.vitals .nums > *, .vitals .bar'), clock: q('.alive .clockplate'), ident: q('.alive .ident'),
+    stats: q('.alive .stats'), topright: q('.alive .topright'), svm: q('#svm') };
+  const lanes = document.getElementById('lanes');
+  const all = lanes ? [lanes, ...lanes.querySelectorAll('*')].filter(e => e === lanes || vis(e)) : [];
+  const paints = all.flatMap(e => { const c = getComputedStyle(e); return [c.color, c.backgroundColor, c.borderTopColor, c.borderLeftColor, e.closest('svg') ? c.fill : null].filter(Boolean).map(v => [e.getAttribute('class') || e.tagName, v]); });
+  const anims = document.getAnimations().filter(a => a.playState === 'running' && a.effect && a.effect.target && a.effect.target.closest && a.effect.target.closest('#lanes')).length;
+  return { hero, obj, feed, env, paints, anims, whiteout: !!document.querySelector('#overlay .whiteout'), scrim: lanes ? getComputedStyle(lanes).backgroundImage + getComputedStyle(lanes).backgroundColor : '',
+    weapon: txt(document.querySelector('.alive .ammo .wn')), frame: box(document.getElementById('frame')), now: performance.now() };
 });
-for (const view of VIEWS) for (const night of [false, true]) for (const [stage, kind, name, tone, waitMs, holdMs] of CO_CASES) {
-  await step(`${view.name} QA-05 callout ${stage} ${night ? 'night' : 'day'}: one card, named, >= 18 px, clear of vitals/ammo, gone within its hold`, async () => {
+const lnWait = async (pg, ok, ms) => { let r = null; for (let t = 0; t <= ms; t += 50) { r = await lnRead(pg); if (ok(r)) return r; await pg.waitForTimeout(50); } return r; };
+/** Every box the lanes draw: the hero's parts, the badges, the feed rows. */
+const lnBoxes = r => [...(r.hero ? r.hero.parts.map(b => ['hero', b]) : []), ...r.obj.map(o => [`badge ${o.key}`, o.box]), ...r.feed.map(f => [`feed ${f.kind}`, f.box])];
+/** What the lanes must never cover: the ammo count, the powerup hint and chip, the vitals, the clock, the identity, the stats, the link status. */
+const lnCovers = r => { const out = [];
+  for (const [n, b] of lnBoxes(r)) for (const [k, list] of Object.entries(r.env)) for (const x of list) if (!apart(b, x)) out.push(`${n} covers ${k}: ${JSON.stringify(b)} vs ${JSON.stringify(x)}`);
+  return out; };
+const lnApart = r => { const bs = lnBoxes(r), out = []; for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) if (bs[i][0].split(' ')[0] !== bs[j][0].split(' ')[0] && !apart(bs[i][1], bs[j][1])) out.push(`${bs[i][0]} vs ${bs[j][0]}`); return out; };
+/** Night (spec B4): every colour the lanes paint is red, amber or black. Nothing white, green or blue. */
+const lnNightBad = r => r.paints.filter(([, v]) => { const m = (v.match(/[\d.]+/g) || []).map(Number); if (m.length < 3) return false;
+  const a = /rgba/.test(v) ? m[3] : 1; if (!(a > 0.05)) return false; const [R, G, B] = m;
+  if (Math.max(R, G, B) <= 24) return false;   // black
+  return !(R >= G && R >= B && G <= R * 0.85 && B <= R * 0.6); });
+/** Night: the screenshot's pixels inside the lanes' boxes: nothing green, blue or near-white. */
+const lnNightPixels = async (pg, r) => {
+  const buf = await pg.screenshot(), zones = lnBoxes(r).map(([, z]) => z), q = await b.newPage();
+  const n = await q.evaluate(async ([b64, zones]) => { const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height).data; let bad = 0, at = null;
+    for (const z of zones) for (let Y = Math.max(0, Math.floor(z.t)); Y < Math.min(c.height, Math.ceil(z.b)); Y++) for (let X = Math.max(0, Math.floor(z.l)); X < Math.min(c.width, Math.ceil(z.r)); X++) {
+      const i = (Y * c.width + X) * 4, R = d[i], G = d[i + 1], B = d[i + 2];
+      if ((G >= 70 && G > R + 24) || (B >= 70 && B > R + 24) || (R > 200 && G > 200 && B > 200)) { bad++; at = at || [X, Y, R, G, B]; } }
+    return { bad, at }; }, [buf.toString('base64'), zones]);
+  await q.close(); return n;
+};
+// QA-05, as the three lanes (docs/announcer.md): every "someone went down" and "the hill changed hands" moment, whichever
+// path it came by (S57 IR word, MC's kill feedback, the engine's own hill transition), lands in its lane: my kill on the
+// HERO, a down on the FEED, the hill on an OBJECTIVE badge. Each case: on screen, names someone (or the objective) at
+// its lane's size, clear of the vitals and the ammo, and gone again within its hold (a hill badge STAYS). Night: no
+// green, no whiteout.
+const CO_CASES = [
+  // [stage, lane, kind, the name it must print, px floor, ms from load to give up waiting, the hold it must clear within (null: it stays)]
+  ['live-callout-kill', 'hero', 'kill', 'YELLOW', 30, 3400, 2900],
+  ['live-callout-enemy', 'feed', 'enemy_down', 'VIPER', 15, 3400, 4500],
+  ['live-callout-teammate', 'feed', 'teammate_down', 'MAVERICK', 15, 3400, 4500],
+  ['live-kill', 'hero', 'kill', 'VIPER', 30, 3400, 2900],
+  ['live-hill-captured', 'obj', 'hill_captured', 'HILL CAPTURED', 15, 3600, null],
+  ['live-hill-lost', 'obj', 'hill_lost', 'HILL LOST', 15, 3600, null],
+];
+const coRead = (pg, lane, kind) => lnRead(pg).then(r => {
+  const it = lane === 'hero' ? (r.hero ? { name: r.hero.name, px: r.hero.namePx, boxes: r.hero.parts } : null)
+    : lane === 'feed' ? (f => f ? { name: f.text, px: f.px, boxes: [f.box] } : null)(r.feed.find(f => f.kind === kind))
+    : (o => o ? { name: o.text, px: o.px, boxes: [o.box] } : null)(r.obj.find(o => o.kind === kind));
+  const rgb = v => (v.match(/[\d.]+/g) || []).map(Number);
+  const green = r.paints.some(([, v]) => { const [R, G, B, A = 1] = rgb(v); return A > 0.05 && G > R + 12 && G > B - 8 && G > 40; });
+  return it && { ...it, vitals: r.env.vitals[0], ammo: r.env.ammo[0], green, whiteout: r.whiteout, at: r.now };
+});
+for (const view of VIEWS) for (const night of [false, true]) for (const [stage, lane, kind, name, floor, waitMs, holdMs] of CO_CASES) {
+  await step(`${view.name} QA-05 callout ${stage} ${night ? 'night' : 'day'}: in its lane (${lane}), named, clear of vitals/ammo, ${holdMs ? 'gone within its hold' : 'still up until replaced'}`, async () => {
     const pg = await open(view, stage, night ? '&night' : '', 1200);
-    let r = null; for (let t = 0; t < waitMs && !((r = await coRead(pg)) && r.kind === kind); t += 50) await pg.waitForTimeout(50);
+    let r = null; for (let t = 0; t < waitMs && !(r = await coRead(pg, lane, kind)); t += 50) await pg.waitForTimeout(50);
     await pg.screenshot({ path: `${OUT}/${view.name}-qa05-${stage}${night ? '-night' : ''}.png` });
-    must(r, `no callout card on screen (want ${kind})`);
-    must(r.kind === kind && r.vis, `card: ${JSON.stringify(r)}`);
-    must(r.name.toUpperCase().includes(name), `the card names ${JSON.stringify(r.name)}, want ${name}`);
-    must(r.px >= 18, `the name is ${r.px}px, the floor is 18`);
-    must(r.tone === tone && r.accent, `tone ${r.tone} accent ${r.accent}, want ${tone}`);
-    must(apart(r.card, r.vitals) && apart(r.card, r.ammo), `the card covers the vitals or the ammo: ${JSON.stringify({ card: r.card, vitals: r.vitals, ammo: r.ammo })}`);
+    must(r, `nothing in the ${lane} lane (want ${kind})`);
+    must(r.name.toUpperCase().includes(name), `it names ${JSON.stringify(r.name)}, want ${name}`);
+    must(r.px >= floor, `the name is ${r.px}px, the floor is ${floor}`);
+    must(r.boxes.every(x => apart(x, r.vitals) && apart(x, r.ammo)), `it covers the vitals or the ammo: ${JSON.stringify({ boxes: r.boxes, vitals: r.vitals, ammo: r.ammo })}`);
     if (night) must(!r.green && !r.whiteout, `night: green ${r.green} whiteout ${r.whiteout}`);
-    const t0 = r.at; let gone = false; for (let t = 0; t < holdMs + 1500 && !gone; t += 100) { await pg.waitForTimeout(100); gone = await pg.evaluate(() => !document.querySelector('#overlay .mo.co')); }
+    const t0 = r.at; let gone = false;
+    if (holdMs) { for (let t = 0; t < holdMs + 1500 && !gone; t += 100) { await pg.waitForTimeout(100); gone = !(await coRead(pg, lane, kind)); } }
+    else { await pg.waitForTimeout(5000); gone = !(await coRead(pg, lane, kind)); }
     const took = await pg.evaluate(t => performance.now() - t, t0); await pg.close();
-    must(gone && took <= holdMs + 150, `the card was still up ${Math.round(took)} ms after it appeared (hold ${holdMs})`);
-  });
-}
-for (const view of VIEWS) for (const night of [false, true]) {
-  await step(`${view.name} QA-05 callout ${night ? 'night' : 'day'}: an enemy down and a teammate down do not share a colour`, async () => {
-    const accent = {};
-    for (const [stage, kind, tone] of [['live-callout-enemy', 'enemy_down', 'enemy'], ['live-callout-teammate', 'teammate_down', 'mate']]) {
-      const pg = await open(view, stage, night ? '&night' : '', 1200);
-      let r = null; for (let t = 0; t < 3400 && !((r = await coRead(pg)) && r.kind === kind); t += 50) await pg.waitForTimeout(50);
-      await pg.close(); must(r && r.tone === tone, `${stage}: ${JSON.stringify(r)}`); accent[tone] = r.accent;
-    }
-    must(accent.enemy && accent.mate && accent.enemy !== accent.mate, JSON.stringify(accent));
+    if (holdMs) must(gone && took <= holdMs + 150, `still up ${Math.round(took)} ms after it appeared (hold ${holdMs})`);
+    else must(!gone, `the ${kind} badge left after ${Math.round(took)} ms; it stays until the next one replaces it`);
   });
 }
 
@@ -4002,16 +4036,16 @@ for (const view of VIEWS) for (const night of [false, true]) {
       must(r.vig && r.vig.shown, `the low-HP vignette must show${night ? ' at night (dim, still)' : ''}: ${JSON.stringify(r.vig)}`);
       if (night) must(r.vig.anim === 'none', `night: no pulse: ${r.vig.anim}`);
     });
-    await step(`${view.name} QA-06 kill + medals ${skin}: the banner shows${night ? ', dim and still' : ''}`, async () => {
+    await step(`${view.name} QA-06 kill + medals ${skin}: the hero shows${night ? ', dim and still' : ''}`, async () => {
       const pg = await open(view, 'live', N);
       await pg.evaluate(() => window.brxDemo.killMedals(['double_kill', 'killing_spree'])); await pg.waitForTimeout(400);
-      const r = await pg.evaluate(() => { const k = document.querySelector('.mo.kill'); if (!k) return null; const all = [k, ...k.querySelectorAll('*')];
+      const r = await pg.evaluate(() => { const k = document.querySelector('#lanes .lh'); if (!k) return null; const all = [k, ...k.querySelectorAll('*')];
         return { shown: getComputedStyle(k).display !== 'none' && k.getBoundingClientRect().width > 0, text: k.innerText.replace(/\s+/g, ' '),
           anims: all.filter(n => getComputedStyle(n).animationName !== 'none' && getComputedStyle(n).display !== 'none').length,
           colors: all.filter(n => getComputedStyle(n).display !== 'none').flatMap(n => [getComputedStyle(n).color, getComputedStyle(n).backgroundColor]),
           white: !!document.querySelector('.whiteout') && getComputedStyle(document.querySelector('.whiteout')).display !== 'none' }; });
       await pg.screenshot({ path: `${OUT}/${view.name}-qa06-medals-${skin}.png` }); await pg.close();
-      must(r && r.shown && /KILL/.test(r.text) && /DOUBLE KILL/.test(r.text), `the kill banner and its medals must show: ${JSON.stringify(r && r.text)}`);
+      must(r && r.shown && /KILL/.test(r.text) && /DOUBLE KILL/.test(r.text) && /KILLING SPREE/.test(r.text), `the kill hero and its medals must show: ${JSON.stringify(r && r.text)}`);
       if (night) {
         must(r.anims === 0 && !r.white, `night: no animation, no whiteout: ${r.anims} ${r.white}`);
         must(!r.colors.some(c => green(c)) && !r.colors.some(c => bright(c, 150)), `night: nothing green or bright: ${r.colors.filter(c => green(c) || bright(c, 150))}`);
@@ -4291,19 +4325,19 @@ for (const view of VIEWS) await step(`${view.name} QA-17 idle night: nothing on 
 
 // QA polish round 1 (2026-09-23): the IR KILL CONFIRMED card usually lands first, then MC's named card for the SAME kill.
 // The engine plays one sound for the pair, so the HUD gives one flash and one buzz, not two.
-for (const view of VIEWS) await step(`${view.name} QA-05 one kill, one buzz: MC's card after the IR card neither flashes nor buzzes again`, async () => {
+for (const view of VIEWS) await step(`${view.name} QA-05 one kill, one buzz: MC's confirm after the IR word neither flashes nor buzzes again`, async () => {
   const pg = await open(view, 'live-callout-kill', '', 2700);
-  // The IR card must be ON SCREEN before MC's twin is sent: under load the stage's IR word can land late, and an MC card
-  // that beats the IR card's render is correctly the kill's one flash, which this step would then miscount.
-  await pg.waitForSelector('#overlay .mo.co[data-src="ir"]', { timeout: 4000 });
+  // The IR word's hero must be ON SCREEN before MC's twin is sent: under load the stage's IR word can land late, and an MC
+  // confirm that beats it is correctly the kill's one flash, which this step would then miscount.
+  await pg.waitForSelector('#lanes .lh', { timeout: 4000 });
   const r = await pg.evaluate(async () => { const h = window.brx.hud; let buzz = 0, flash = 0; const oh = h.h.onHaptic, of = h._flash.bind(h);
     h.h.onHaptic = k => { if (k === 'kill') buzz++; }; h._flash = () => { flash++; of(); };
     window.brxDemo.killConfirm('VIPER'); await new Promise(r => setTimeout(r, 600));
-    const card = document.querySelector('.mo.co'); h.h.onHaptic = oh;
-    return { buzz, flash, name: card ? card.querySelector('.nm').textContent : null }; });
+    const hero = document.querySelectorAll('#lanes .lh'); h.h.onHaptic = oh;
+    return { buzz, flash, heroes: hero.length, n: hero[0] ? +hero[0].dataset.n : 0, name: hero[0] ? hero[0].querySelector('.vt').textContent : null }; });
   await pg.close();
-  must(r.name === 'VIPER', `MC's card must name the victim: ${JSON.stringify(r)}`);
-  must(r.buzz === 0 && r.flash === 0, `the second card for the same kill buzzed or flashed again: ${JSON.stringify(r)}`);
+  must(r.name === 'VIPER' && r.heroes === 1 && r.n === 1, `MC's confirm must name the IR word's kill, one kill on the hero: ${JSON.stringify(r)}`);
+  must(r.buzz === 0 && r.flash === 0, `MC's confirm for the same kill buzzed or flashed again: ${JSON.stringify(r)}`);
 });
 
 // QA polish round 1 (2026-09-23): QA-19 at night. READY UP was a dim outline no stronger than the slot plates.
@@ -4339,45 +4373,176 @@ for (const view of VIEWS) await step(`${view.name} QA-05 kill buzz: an MC-only k
   must(r.double === 2, `two kills must buzz twice, however their cards overlap: ${JSON.stringify(r)}`);
 });
 
-// docs/announcer.md (field 2026-09-24, Tony: "the hud alert for takes the lead and the kill confirmation both played on top
-// of each other"). Stage `live-announcer` sends MC's kill feedback and its lead alert on the same tick. Sampled every 50 ms:
-// the kill card comes first, the lead banner second, and the two are never both up at full strength (a card fading out,
-// `.out`, may still be leaving as the next one arrives).
-for (const view of VIEWS) await step(`${view.name} announcer queue: KILL CONFIRMED, then TAKES THE LEAD, never on screen together`, async () => {
-  const pg = await open(view, 'live-announcer', '', 2150);
-  const r = await pg.evaluate(async () => { const wait = ms => new Promise(r => setTimeout(r, ms)); const seen = [];
-    for (let i = 0; i < 90; i++) {
-      const co = document.querySelector('#overlay .mo.co'), al = document.querySelector('#overlay .mo.alert');
-      seen.push({ t: i * 50, co: co && !co.classList.contains('out') ? co.dataset.kind : null, al: al && !al.classList.contains('out') ? al.querySelector('.t').textContent : null,
-        q: (window.brx.engine.state().announcer || {}).queued || [] });
-      await wait(50);
-    }
-    return seen; });
-  await pg.screenshot({ path: `${OUT}/${view.name}-announcer-after.png` }); await pg.close();
-  const firstCo = r.findIndex(x => x.co === 'kill'), firstAl = r.findIndex(x => x.al === 'YOUR TEAM TAKES THE LEAD');
-  must(firstCo >= 0, 'no KILL CONFIRMED card: ' + JSON.stringify(r.slice(0, 6)));
-  must(firstAl > firstCo, `the lead banner must follow the kill card (card at ${firstCo * 50} ms, banner at ${firstAl * 50} ms)`);
-  must(r.some(x => x.co === 'kill' && x.q.includes('lead_taken')), 'the stage must SHOW two items: the lead change waiting while the kill card is up');
-  const both = r.filter(x => x.co && x.al);
-  must(both.length === 0, 'the kill card and the lead banner were both up at once: ' + JSON.stringify(both.slice(0, 3)));
-});
-
-// S57 names (Tony 2026-09-24): KILL CONFIRMED opens with the victim's team; the victim's own DOWN word, 250 ms later,
-// names them on the SAME card, with no second card, flash or buzz.
-for (const view of VIEWS) for (const skin of ['', '&night']) await step(`${view.name}${skin ? ' night' : ''} S57 names: the victim's DOWN word names the kill card in place`, async () => {
+// S57 names (Tony 2026-09-24): my IR kill opens the hero with the victim's team; the victim's own DOWN word, 250 ms later,
+// names them on the SAME hero (its spree id unchanged), with no second kill, flash or buzz.
+for (const view of VIEWS) for (const skin of ['', '&night']) await step(`${view.name}${skin ? ' night' : ''} S57 names: the victim's DOWN word names the kill hero in place`, async () => {
   const pg = await open(view, 'live-callout-named', skin, 2000);
   const r = await pg.evaluate(async () => { const h = window.brx.hud; let buzz = 0; const oh = h.h.onHaptic; h.h.onHaptic = k => { if (k === 'kill') buzz++; };
     const wait = ms => new Promise(r => setTimeout(r, ms)); const seen = []; let first = null, same = true;
-    for (let i = 0; i < 14; i++) { const c = document.querySelectorAll('.mo.co'); if (c[0] && !first) first = c[0]; if (c[0] && first && c[0] !== first) same = false;
-      seen.push([c.length, c[0] ? c[0].querySelector('.nm').textContent : null, c[0] ? c[0].dataset.kind : null]); await wait(100); }
+    for (let i = 0; i < 14; i++) { const c = document.querySelectorAll('#lanes .lh'); if (c[0] && !first) first = c[0].dataset.id; if (c[0] && first && c[0].dataset.id !== first) same = false;
+      seen.push([c.length, c[0] ? c[0].querySelector('.vt').textContent : null, c[0] ? +c[0].dataset.n : 0, document.querySelectorAll('#lanes .lf').length]); await wait(100); }
     h.h.onHaptic = oh; return { seen, buzz, same }; });
   await pg.screenshot({ path: `${OUT}/${view.name}-s57-named${skin ? '-night' : ''}.png` }); await pg.close();
   const names = r.seen.map(x => x[1]).filter(Boolean);
-  must(r.seen.every(x => x[0] <= 1), 'the paired DOWN must not add a second card: ' + JSON.stringify(r.seen));
-  must(names.includes('VIPER') && names[names.length - 1] === 'VIPER', 'the card must end up naming the victim: ' + JSON.stringify(names));
-  must(r.seen.filter(x => x[2]).every(x => x[2] === 'kill_confirmed'), 'the name must land on the KILL CONFIRMED card, not a new ENEMY DOWN card: ' + JSON.stringify(r.seen));
-  must(r.same, 'the SAME card element must be renamed, not replaced');
+  must(r.seen.every(x => x[0] <= 1 && x[2] <= 1), 'the paired DOWN must not add a second kill: ' + JSON.stringify(r.seen));
+  must(names.includes('VIPER') && names[names.length - 1] === 'VIPER', 'the hero must end up naming the victim: ' + JSON.stringify(names));
+  must(r.seen.every(x => x[3] === 0), 'the name must land on the kill hero, not a new ENEMY DOWN feed row: ' + JSON.stringify(r.seen));
+  must(r.same, 'the SAME hero must be renamed, not a new one');
   must(r.buzz === 1, 'one kill, one buzz: the name arrives with no second one: ' + r.buzz);
+});
+
+// docs/announcer.md "The three lanes" (F351/F352, Tony 2026-09-24: "I like the 3 lanes. The separate alerts on the
+// right."). HERO (centre): my kill and my newest medal, a spree as a ladder with a ×N count, up 2.5 s after the last
+// kill. OBJECTIVE (right): the lead and hill badges, each up until the next one of its key replaces it. FEED (left):
+// downs, pickups and every other alert. Each shows when its event ARRIVES, so a kill, the lead and the hill at the same
+// moment are all on screen at once. Every step drives the REAL engine through a demo stage and reads what a person sees.
+for (const view of VIEWS) for (const night of [false, true]) {
+  const N = night ? '&night' : '', tag = `${view.name} lanes ${night ? 'night' : 'day'}`;
+  const shot = (pg, name) => pg.screenshot({ path: `${OUT}/${view.name}-lanes-${name}${night ? '-night' : ''}.png` });
+  await step(`${tag}: the HERO shows my kill, centred and named large, with a source line and no weapon, no "+1", no K`, async () => {
+    const pg = await open(view, 'live-kill', N, 2500);
+    const r = await lnWait(pg, r => r.hero && r.hero.name === 'VIPER', 2500); await shot(pg, 'hero'); await pg.close();
+    must(r.hero, 'no hero on screen for my kill');
+    must(r.hero.name === 'VIPER' && r.hero.kill === 'KILL' && !r.hero.count && !r.hero.medal, `the hero: ${JSON.stringify(r.hero)}`);
+    must(r.hero.src === 'MC' && r.hero.srcPx >= 11, `the source line (MC / IR 15 / BLE, >= 11 px): ${JSON.stringify([r.hero.src, r.hero.srcPx])}`);
+    must(r.weapon && !r.hero.text.includes(r.weapon.toUpperCase()) && !/\+1|ELIMINATION|\bK ?\d/.test(r.hero.text), `no weapon (${r.weapon}), no "+1 ELIMINATION", no K: ${JSON.stringify(r.hero.text)}`);
+    must(r.hero.mid > .45 && r.hero.mid < .55 && r.hero.namePx >= 30, `centred, the name >= 30 px: ${JSON.stringify([r.hero.mid, r.hero.namePx])}`);
+    must(!/gradient|rgba?\((?!0, 0, 0, 0\))/.test(r.scrim), `the whole HUD is not dimmed behind it: ${r.scrim}`);
+    must(lnCovers(r).length === 0, lnCovers(r).join(' | '));
+  });
+  await step(`${tag}: a spree builds a ladder with a ×N count, the newest medal big, the earlier ones fading, up 2.5 s after the last kill`, async () => {
+    const pg = await open(view, 'live-spree', N, 2500);
+    const five = await lnWait(pg, r => r.hero && r.hero.n >= 5, 8000); await shot(pg, 'spree-5');
+    const six = await lnWait(pg, r => r.hero && r.hero.n >= 6, 2500); const t6 = six && six.now;
+    const at22 = await lnWait(pg, r => r.now - t6 >= 2200, 2600);
+    const gone = await lnWait(pg, r => !r.hero, 5000); await pg.close();
+    must(five && five.hero && five.hero.count === '×5' && five.hero.medal === 'KILLING SPREE', `kill 5: ${JSON.stringify(five && five.hero)}`);
+    must(JSON.stringify(five.hero.ladder) === JSON.stringify(['KILLTROCITY', 'KILLTACULAR', '+3']), `the ladder, newest first: ${JSON.stringify(five.hero.ladder)}`);
+    must(five.hero.ladderOp.length === 2 && five.hero.ladderOp[0] > five.hero.ladderOp[1], `the earlier medals fade: ${JSON.stringify(five.hero.ladderOp)}`);
+    must(five.hero.ladderPx >= 11, `ladder labels ${five.hero.ladderPx} px, the floor is 11`);
+    must(six.hero.count === '×6' && six.hero.medal === 'KILLAMANJARO' && six.hero.ladder[0] === 'KILLING SPREE', `kill 6: ${JSON.stringify(six.hero)}`);
+    must(at22.hero && !at22.hero.out && at22.hero.id === six.hero.id, `the hero must hold 2.5 s after the last kill: ${JSON.stringify(at22.hero)}`);
+    must(gone && !gone.hero, 'the hero never left');
+    must(lnCovers(five).length === 0 && lnApart(five).length === 0, [...lnCovers(five), ...lnApart(five)].join(' | '));
+  });
+  await step(`${tag}: the OBJECTIVE badges sit on the right and stay until the next one of their key replaces them`, async () => {
+    let pg = await open(view, 'live-lead-alone', N, 2500);
+    const a = await lnWait(pg, r => r.obj.some(o => o.key === 'lead'), 2000); await shot(pg, 'lead');
+    await pg.waitForTimeout(6000); const b2 = await lnRead(pg);
+    await pg.evaluate(() => window.brxDemo.alert('lead_lost', 'YOUR TEAM LOST THE LEAD')); const c = await lnWait(pg, r => r.obj.some(o => o.kind === 'lead_lost'), 1500); await pg.close();
+    const la = a.obj.find(o => o.key === 'lead');
+    must(la && la.kick === 'BLUE' && la.text === 'TAKES THE LEAD' && la.src === 'MC', `the lead badge: ${JSON.stringify(la)}`);
+    must(la.x >= .7 && la.px >= 15 && la.kickPx >= 11, `on the right, type floors: ${JSON.stringify(la)}`);
+    must(b2.obj.some(o => o.key === 'lead' && o.kind === 'lead_taken'), `the lead badge must still be up 6 s later: ${JSON.stringify(b2.obj)}`);
+    must(c.obj.filter(o => o.key === 'lead').length === 1 && c.obj.find(o => o.key === 'lead').text === 'LOST THE LEAD', `replaced, not stacked: ${JSON.stringify(c.obj)}`);
+    pg = await open(view, 'live-hill-captured', N, 2600);
+    const h = await lnWait(pg, r => r.obj.some(o => o.key === 'hill'), 2000);
+    await pg.waitForTimeout(6000); const h2 = await lnRead(pg);
+    await pg.evaluate(() => window.brxDemo.hillTaken(window.brx.engine.teamTid === 2 ? 1 : 2)); const h3 = await lnWait(pg, r => r.obj.some(o => o.kind === 'hill_lost'), 2000); await shot(pg, 'hill'); await pg.close();
+    const hb = h.obj.find(o => o.key === 'hill');
+    must(hb && hb.text === 'HILL CAPTURED' && hb.src === 'IR 15' && hb.x >= .7, `the hill badge: ${JSON.stringify(hb)}`);
+    must(h2.obj.some(o => o.kind === 'hill_captured'), `the hill badge must still be up 6 s later: ${JSON.stringify(h2.obj)}`);
+    must(h3.obj.filter(o => o.key === 'hill').length === 1 && h3.obj.find(o => o.key === 'hill').text === 'HILL LOST', `replaced by HILL LOST: ${JSON.stringify(h3.obj)}`);
+  });
+  await step(`${tag}: my kill, the lead change and a hill capture at the same moment are all on screen at once, none over another`, async () => {
+    const pg = await open(view, 'live-kill-lead-hill', N, 2450);
+    const r = await lnWait(pg, r => r.hero && r.obj.some(o => o.key === 'lead') && r.obj.some(o => o.key === 'hill'), 2500); await shot(pg, 'together'); await pg.close();
+    must(r.hero && r.hero.name === 'VIPER' && r.hero.medal === 'FIRST BLOOD' && !r.hero.out, `the hero: ${JSON.stringify(r.hero)}`);
+    must(r.obj.some(o => o.key === 'lead' && o.text === 'TAKES THE LEAD') && r.obj.some(o => o.key === 'hill' && o.text === 'HILL CAPTURED'), `the badges: ${JSON.stringify(r.obj)}`);
+    must(lnApart(r).length === 0, 'lanes over each other: ' + lnApart(r).join(' | '));
+    must(lnCovers(r).length === 0, lnCovers(r).join(' | '));
+  });
+  await step(`${tag}: the FEED ticker on the left: a down with its source line, gone after 4 s; enemy and teammate differ in colour`, async () => {
+    let pg = await open(view, 'live-callout-teammate', N, 2350);
+    const r = await lnWait(pg, r => r.feed.some(f => f.kind === 'teammate_down'), 2000); await shot(pg, 'feed');
+    const t0 = r.now; const at3 = await lnWait(pg, x => x.now - t0 >= 3000, 3500);
+    const gone = await lnWait(pg, x => !x.feed.some(f => f.kind === 'teammate_down'), 3000); await pg.close();
+    const f = r.feed.find(x => x.kind === 'teammate_down');
+    must(f && f.text === 'MAVERICK DOWN' && /IR 15/.test(f.sub), `the row: ${JSON.stringify(f)}`);
+    must(f.x <= .35 && f.px >= 15 && f.subPx >= 11 && f.lines === 1, `left, small, one line, type floors: ${JSON.stringify(f)}`);
+    must(at3.feed.some(x => x.kind === 'teammate_down'), 'the row must still be up 3 s later');
+    must(!gone.feed.some(x => x.kind === 'teammate_down') && gone.now - t0 <= 4300 + 400, `the row must leave by about 4.3 s: ${Math.round(gone.now - t0)} ms`);
+    pg = await open(view, 'live-callout-enemy', N, 2350);
+    const e = await lnWait(pg, r => r.feed.some(f => f.kind === 'enemy_down'), 2000); await pg.close();
+    const ef = e.feed.find(x => x.kind === 'enemy_down');
+    must(ef && ef.text === 'VIPER DOWN' && ef.lc && ef.lc !== f.lc, `an enemy down and a teammate down must not share a colour: ${JSON.stringify([ef, f.lc])}`);
+    must(lnCovers(r).length === 0, lnCovers(r).join(' | '));
+  });
+  await step(`${tag}: a teammate's kill (ENEMY DOWN · BY a teammate) is a FEED row, never my KILL hero, and never buzzes (HUD QA R2-22)`, async () => {
+    const pg = await open(view, 'live-callout-by', N, 2000);
+    const r = await pg.evaluate(async () => { const h = window.brx.hud; let buzz = 0; const oh = h.h.onHaptic; h.h.onHaptic = k => { if (k === 'kill') buzz++; };
+      let hero = 0, row = null; for (let i = 0; i < 30; i++) { if (document.querySelector('#lanes .lh')) hero++; const f = document.querySelector('#lanes .lf[data-kind="enemy_down"]'); if (f && !row) row = f.textContent.replace(/\s+/g, ' ').trim(); await new Promise(res => setTimeout(res, 50)); }
+      h.h.onHaptic = oh; return { hero, row, buzz }; });
+    await pg.close();
+    must(r.row && /DOWN/.test(r.row) && /BY MAVERICK/.test(r.row), `the feed row: ${JSON.stringify(r)}`);
+    must(r.hero === 0 && r.buzz === 0, `a teammate's kill drew my KILL hero or buzzed: ${JSON.stringify(r)}`);
+  });
+  await step(`${tag}: in a spree, every medal line the voice says is on screen as it starts, the streak included (HUD QA R2-01, R2-11)`, async () => {
+    const pg = await open(view, 'live-spree', N, 2500);
+    const r = await pg.evaluate(async () => { const e = window.brx.engine, said = []; let last = null;
+      const shown = () => { const h = document.querySelector('#lanes .lh'); return h ? [...h.querySelectorAll('.lhm .medal, .lhl .lm:not(.more)')].map(x => x.textContent.trim()) : []; };
+      for (let i = 0; i < 260; i++) { const c = e._ann.current;
+        if (c && c !== last) { last = c; if ((c.medals || []).length) { await new Promise(res => setTimeout(res, 60)); said.push({ said: c.medals.map(x => x.m), shown: shown() }); } }
+        await new Promise(res => setTimeout(res, 30)); }
+      return said; });
+    await pg.close();
+    const LABEL = { first_blood: 'FIRST BLOOD', double_kill: 'DOUBLE KILL', triple_kill: 'TRIPLE KILL', killtacular: 'KILLTACULAR', killtrocity: 'KILLTROCITY', killing_spree: 'KILLING SPREE', killamanjaro: 'KILLAMANJARO' };
+    must(r.length >= 3, 'the voice said fewer than three medal items: ' + JSON.stringify(r));
+    const miss = r.filter(x => x.said.some(m => !x.shown.includes(LABEL[m])));
+    must(miss.length === 0, 'a medal the voice says is not on screen: ' + JSON.stringify(miss));
+    must(r.some(x => x.said.includes('killing_spree')), 'KILLING SPREE is never voiced: ' + JSON.stringify(r.map(x => x.said)));
+  });
+  await step(`${tag}: with every lane full, nothing covers the ammo count, the powerup hint and chip, the vitals or the top bar`, async () => {
+    const pg = await open(view, 'live-pu-rockets', N, 3000);
+    await lnWait(pg, r => r.env.hint.length && r.env.chip.length, 2500);
+    await pg.evaluate(() => { const d = window.brxDemo, e = window.brx.engine;
+      d.killMedals(['first_blood', 'killtastrophe', 'killing_spree', 'unstoppable'], 'KILLAMANJARO');   /* HUD QA R2-03: four medals, a long name */ d.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD'); d.alert('hill_captured', 'HILL CAPTURED'); d.alert('bomb_planted', 'EXTRACTION CLOSING SOON');
+      e.feedFrame('$HIR,4,15,19,3,25,0,0,*'); });
+    const r = await lnWait(pg, r => r.hero && r.obj.length === 2 && r.feed.length >= 2 && r.env.hint.length && r.env.chip.length, 2500); await shot(pg, 'full'); await pg.close();
+    must(r.hero && r.obj.length === 2 && r.feed.length >= 2, `every lane must be up: ${JSON.stringify({ hero: !!r.hero, obj: r.obj.length, feed: r.feed.length })}`);
+    must(r.env.hint.length && r.env.chip.length && r.env.ammo.length, `the hint, the chip and the ammo must be on screen: ${JSON.stringify(r.env)}`);
+    must(lnCovers(r).length === 0, lnCovers(r).join(' | '));
+    must(lnApart(r).length === 0, 'lanes over each other: ' + lnApart(r).join(' | '));
+    must(lnBoxes(r).every(([, x]) => x.l >= r.frame.l - 1 && x.r <= r.frame.r + 1 && x.t >= r.frame.t - 1 && x.b <= r.frame.b + 1), 'a lane runs off the frame');
+  });
+  if (night) await step(`${tag}: red and amber only: nothing white, green or blue, no flash, no motion`, async () => {
+    const pg = await open(view, 'live-spree', N, 2500);
+    const r = await lnWait(pg, r => r.hero && r.hero.n >= 5 && r.feed.length && r.obj.length === 2, 8000);
+    const px = await lnNightPixels(pg, r); await shot(pg, 'night'); await pg.close();
+    must(r.hero && r.obj.length === 2 && r.feed.length, `every lane must be up: ${JSON.stringify({ hero: !!r.hero, obj: r.obj.length, feed: r.feed.length })}`);
+    const bad = lnNightBad(r);
+    must(bad.length === 0, 'night paints outside red/amber: ' + JSON.stringify(bad.slice(0, 4)));
+    must(px.bad === 0, `night pixels green, blue or white in the lanes: ${px.bad} (first ${JSON.stringify(px.at)})`);
+    must(r.anims === 0 && !r.whiteout, `night: no motion, no flash: ${r.anims} running, whiteout ${r.whiteout}`);
+  });
+}
+// End-of-match AWARDS (brx5 lead 2026-09-24; PROVISIONAL mock recap until brx3's shape lands): my awards on top, then one
+// badge per award naming its winner, mine lit. Day and night, both widths.
+for (const view of VIEWS) for (const night of [false, true]) await step(`${view.name} lanes ${night ? 'night' : 'day'}: the AWARDS tab shows my awards and every award's winner, clear of the corner buttons`, async () => {
+  const pg = await open(view, 'result-awards', night ? '&night' : '', 4200);
+  const r = await pg.evaluate(() => { const vis = e => e && e.getBoundingClientRect().width > 0 && e.getBoundingClientRect().bottom <= document.querySelector('.result .rbody').getBoundingClientRect().bottom + 1;
+    return { tab: (document.querySelector('.rseg .sg.on') || {}).textContent, mine: [...document.querySelectorAll('.awm .medal')].map(e => e.textContent.trim()),
+      rows: [...document.querySelectorAll('.result .aw')].map(e => ({ k: e.querySelector('.awk').textContent.trim(), n: e.querySelector('.awn').textContent.trim(), me: e.classList.contains('me'), vis: vis(e),
+        kpx: parseFloat(getComputedStyle(e.querySelector('.awk')).fontSize), clip: e.querySelector('.awk').scrollWidth > e.querySelector('.awk').clientWidth + 1 })) }; });
+  const inv = await invariants(pg); await pg.close();
+  must(r.tab && r.tab.trim() === 'AWARDS' && JSON.stringify(r.mine) === '["SURVIVOR","IRON MAN"]', `my awards: ${JSON.stringify(r)}`);
+  must(r.rows.length === 5 && r.rows.every(x => x.vis && !x.clip && x.kpx >= 11), `every award on screen, whole, >= 11 px: ${JSON.stringify(r.rows)}`);
+  must(r.rows.filter(x => x.me).map(x => x.k).join() === 'SURVIVOR,IRON MAN' && r.rows.find(x => x.k === 'OBJECTIVE HERO').n === 'HAVOC', `winners: ${JSON.stringify(r.rows)}`);
+  must(inv.length === 0, 'invariants: ' + inv.join(' | '));
+});
+// The announcer queue is unchanged (docs/announcer.md): MC's kill feedback and its lead alert on the same tick still SAY the
+// kill first and the lead after it. Only the screen changed: both are drawn at once, from the first frame.
+for (const view of VIEWS) await step(`${view.name} lanes: kill and lead on one tick: both drawn at once, the voice still queues the lead behind the kill`, async () => {
+  const pg = await open(view, 'live-announcer', '', 2150);
+  const r = await pg.evaluate(async () => { const wait = ms => new Promise(r => setTimeout(r, ms)); const seen = [];
+    for (let i = 0; i < 60; i++) { const h = document.querySelector('#lanes .lh'), l = document.querySelector('#lanes .lo[data-key="lead"]'), a = window.brx.engine.state().announcer || {};
+      seen.push({ t: i * 50, hero: !!h && !h.classList.contains('out'), lead: !!l, on: a.kind || null, q: a.queued || [] }); await wait(50); }
+    return seen; });
+  await pg.close();
+  const first = r.findIndex(x => x.hero || x.lead);
+  must(first >= 0, 'nothing drawn: ' + JSON.stringify(r.slice(0, 4)));
+  must(r[first].hero && r[first].lead, `the kill and the lead must appear together: ${JSON.stringify(r[first])}`);
+  must(r.some(x => x.on === 'kill_confirmed' && x.q.includes('lead_taken')), 'the voice must still say the kill first, the lead waiting behind it');
 });
 
 // A56 powerups (docs/spec/powerups.md; the claim is Tony's 2026-09-24 change via the brx5 lead). Every stage drives the
@@ -4392,7 +4557,7 @@ const puRead = pg => pg.evaluate(() => {
   const hint = document.querySelector('#puhint .pu'), pua = hint && hint.querySelector('.pua'), pul = hint && hint.querySelector('.pul');
   const ring = hint && hint.querySelector('.puring');
   const chip = document.querySelector('#puheld .puchip');
-  const co = document.querySelector('#overlay .mo.co');
+  const co = [...document.querySelectorAll('#lanes .lf[data-kind^="powerup"]')].find(vis);   // docs/announcer.md: a pickup is a FEED row
   const ob = document.querySelector('#svm[data-os] .svos');   // the overshield: the lime layer on the shield meter (the Visor)
   return {
     hint: hint && vis(hint) ? { kind: hint.dataset.kind, act: pua ? pua.textContent.trim() : '', lab: pul ? pul.textContent.trim() : '',
@@ -4402,8 +4567,8 @@ const puRead = pg => pg.evaluate(() => {
       // one line: the name, the count and SELECT share one row (their vertical centres within 6 px of each other)
       rows: new Set([...chip.querySelectorAll('.nm, b, .sel')].map(e => { const b = e.getBoundingClientRect(); return Math.round((b.top + b.bottom) / 12); })).size,
       selPx: chip.querySelector('.sel') ? parseFloat(getComputedStyle(chip.querySelector('.sel')).fontSize) : 0 } : null,
-    card: co && vis(co) ? { kind: co.dataset.kind, name: (co.querySelector('.nm') || {}).textContent, sub: ((co.querySelector('.by') || {}).textContent || '').trim(),
-      px: parseFloat(getComputedStyle(co.querySelector('.nm')).fontSize), box: box(co.querySelector('.cob') || co) } : null,
+    card: co ? { kind: co.dataset.kind, name: co.querySelector('.lfm').textContent, sub: co.querySelector('.lsrc').textContent.trim(),
+      px: parseFloat(getComputedStyle(co.querySelector('.lfm')).fontSize), box: box(co), lc: getComputedStyle(co).getPropertyValue('--lc').trim() } : null,
     obar: ob && vis(ob) ? { left: (window.brx.engine.state().powerup.overshield || {}).left, w: ob.getBoundingClientRect().width, text: document.getElementById('svm').textContent.trim() } : null,
     wn: (document.querySelector('.ammo .wn') || {}).innerText, vitals: box(document.querySelector('.vitals')), ammo: box(document.querySelector('.ammo')),
     frame: { l: fr.left, r: fr.right, t: fr.top, b: fr.bottom }, puDom: !!document.querySelector('#puhint, #puheld'),
@@ -4416,7 +4581,7 @@ const puRead = pg => pg.evaluate(() => {
     switchedUp: !!document.querySelector('#overlay .mo.switched'), ammoText: (document.getElementById('mag') || {}).textContent,
     hintLines: hint && vis(hint) ? [pua, pul].filter(Boolean).map(e => { const r = document.createRange(); r.selectNodeContents(e); return new Set([...r.getClientRects()].filter(x => x.width > 1).map(x => Math.round(x.top / 4))).size; }) : null,
     // every colour the powerup pieces paint (text, fill, border), for the night check: no green, no white
-    paints: [...document.querySelectorAll('#puhint *, #puheld *, #svm, #svm *, #overlay .mo.co[data-tone="item"], #overlay .mo.co[data-tone="item"] *')].filter(vis)
+    paints: [...document.querySelectorAll('#puhint *, #puheld *, #svm, #svm *, #lanes .lf[data-kind^="powerup"], #lanes .lf[data-kind^="powerup"] *')].filter(vis)
       .flatMap(e => { const c = getComputedStyle(e); return [c.color, c.backgroundColor, c.borderTopColor].map(v => [e.className || e.tagName, v]); }),
   };
 });
@@ -4471,21 +4636,21 @@ for (const view of VIEWS) for (const night of [false, true]) {
     // may run left over empty frame, never into the hint or the vitals (a skewed box leans a few px right)
     must(r.chip.box.r <= r.ammo.r + 8 && r.chip.box.r >= r.ammo.r - 24 && r.chip.box.b <= r.ammo.t + 1 && apart(r.chip.box, r.hint.box), `the chip sits over the ammo column, clear of the hint: chip ${JSON.stringify(r.chip.box)} ammo ${JSON.stringify(r.ammo)} hint ${JSON.stringify(r.hint.box)}`);
   });
-  await step(`${tag}: a second weapon pickup swaps: the card says RAIL GUN, REPLACES ROCKETS, and the chip follows`, async () => {
+  await step(`${tag}: a second weapon pickup swaps: the feed row says RAIL GUN, REPLACES ROCKETS, and the chip follows`, async () => {
     const pg = await open(view, 'live-pu-swap', N, 4300);
     const r = await puWait(pg, r => r.card && r.card.kind === 'powerup_swap', 2500); await shot(pg, 'swap');
     const after = await puWait(pg, x => x.chip && x.chip.text === 'RAIL GUN 2 SELECT', 1000); await puClose(pg, night);
-    must(r.card && r.card.kind === 'powerup_swap' && r.card.name === 'RAIL GUN' && r.card.sub === 'REPLACES ROCKETS', `the card: ${JSON.stringify(r.card)}`);
-    must(r.card.px >= 18 && vclear(r.card.box, r) && apart(r.card.box, r.ammo), `the card: ${JSON.stringify(r.card)}`);
+    must(r.card && r.card.kind === 'powerup_swap' && r.card.name === 'RAIL GUN' && r.card.sub === 'REPLACES ROCKETS · BLE', `the row: ${JSON.stringify(r.card)}`);
+    must(r.card.px >= 15 && vclear(r.card.box, r) && apart(r.card.box, r.ammo) && apart(r.card.box, r.hint.box), `the row: ${JSON.stringify(r.card)}`);
     must(after.chip && after.chip.text === 'RAIL GUN 2 SELECT' && after.chip.on && after.chip.rows === 1, `the chip: ${JSON.stringify(after.chip)}`);
     must(r.hint && r.hint.act === 'RAIL GUN ON TRIGGER' && r.hint.lab === '2 SHOTS', `the card says the swap, the hint says it is on the trigger: ${JSON.stringify(r.hint)}`);
     must(inside(r.hint.box, r.frame) && vclear(r.hint.box, r) && apart(r.hint.box, r.ammo), `the longest ON TRIGGER hint still fits: ${JSON.stringify(r.hint.box)}`);
   });
-  await step(`${tag}: a spawn announces <ITEM> AVAILABLE on the callout card in the item's colour, clear of the vitals and the ammo`, async () => {
+  await step(`${tag}: a spawn announces <ITEM> AVAILABLE on a feed row in the item's colour, clear of the vitals and the ammo`, async () => {
     const pg = await open(view, 'live-pu-spawn', N, 2000);
     const r = await puWait(pg, r => r.card && r.card.kind === 'powerup_spawn', 3000); await shot(pg, 'spawn'); await puClose(pg, night);
-    must(r.card && r.card.name === 'OVERSHIELD AVAILABLE', `the card: ${JSON.stringify(r.card)}`);
-    must(r.card.px >= 18 && inside(r.card.box, r.frame) && vclear(r.card.box, r) && apart(r.card.box, r.ammo), `the card: ${JSON.stringify(r.card)}`);
+    must(r.card && r.card.name === 'OVERSHIELD AVAILABLE' && (night || /^#/.test(r.card.lc)), `the row, in the item's colour: ${JSON.stringify(r.card)}`);
+    must(r.card.px >= 15 && inside(r.card.box, r.frame) && vclear(r.card.box, r) && apart(r.card.box, r.ammo), `the row: ${JSON.stringify(r.card)}`);
   });
   await step(`${tag}: the overshield is a layer on the shield meter, drained first by a hit`, async () => {
     let pg = await open(view, 'live-pu-overshield', N, 3000);
@@ -4604,7 +4769,7 @@ const svRead = pg => pg.evaluate(() => {
     tint: !!document.querySelector('.alive.sv-down') && !!tint && +getComputedStyle(tint).opacity > 0.9,
     parts: [bar].map(vis).filter(Boolean), frame: vis(frame), k,
     hpInMeter: !!(document.getElementById('hp') && document.getElementById('hp').closest('#svm')), hpShown: !!document.getElementById('hp'),
-    others: Object.fromEntries(Object.entries({ clock: '.alive .clockplate', ident: '.alive .ident', topright: '.alive .topright', chips: '#chips .pill', ammo: '.alive .ammo', callout: '#overlay .co .cob', puhint: '#puhint .pu' })
+    others: Object.fromEntries(Object.entries({ clock: '.alive .clockplate', ident: '.alive .ident', topright: '.alive .topright', chips: '#chips .pill', ammo: '.alive .ammo', lanes: '#lanes .lh > *, #lanes .lo, #lanes .lf', puhint: '#puhint .pu' })
       .map(([n, sel]) => [n, [...document.querySelectorAll(sel)].map(vis).filter(Boolean)])),
     toast: !!document.querySelector('#overlay .mo.gain.shield'),
     aria: m ? { now: m.getAttribute('aria-valuenow'), min: m.getAttribute('aria-valuemin'), max: m.getAttribute('aria-valuemax') } : null,

@@ -415,19 +415,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .chip .unskew{display:inline-block;transform:skewX(12deg)}
 .tminus .r .s{font-size:12px;letter-spacing:.2em;color:var(--mut);font-weight:600;text-align:center;white-space:nowrap}
 .whiteout{position:absolute;inset:0;background:#fff;animation:whiteout .08s linear forwards}
-/* QA-05: the CALLOUT CARD, one component for MC's kill, the S57 IR words (KILL CONFIRMED / ENEMY DOWN / TEAMMATE
-   DOWN) and HILL CAPTURED / HILL LOST (hud.js `_co`). A short band under the clock, clear of the vitals and the ammo,
-   so the live HUD stays readable behind it. The name is the headline; --co says who went down. */
 .co{pointer-events:none}
-.co[data-tone="enemy"]{--co:var(--ok)}.co[data-tone="mate"]{--co:var(--warn)}.co[data-tone="ours"]{--co:var(--team)}.co[data-tone="theirs"]{--co:var(--bad)}.co[data-tone="item"]{--co:var(--item,var(--glow))}
-.co .cob{position:absolute;top:130px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 34px 9px;white-space:nowrap;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--co) 20%,#04070c) 12%,color-mix(in srgb,var(--co) 20%,#04070c) 88%,transparent);border-top:1px solid color-mix(in srgb,var(--co) 65%,transparent);border-bottom:1px solid color-mix(in srgb,var(--co) 65%,transparent);animation:coin .18s ease-out}
-.co .row{display:flex;align-items:center;gap:12px}
-.co .tag{font-family:var(--fd);font-weight:700;font-size:14px;letter-spacing:.2em;color:var(--co);padding:2px 10px;border:1px solid var(--co);transform:skewX(-10deg)}
-.co .tag .unskew{display:inline-block;transform:skewX(10deg)}
-.co .sw{display:block;flex:none;width:8px;height:28px;transform:skewX(-12deg)}
-.co .nm{font-family:var(--fd);font-style:italic;font-weight:700;font-size:36px;line-height:1;letter-spacing:.06em;color:var(--num);text-shadow:0 0 22px color-mix(in srgb,var(--co) 55%,transparent);max-width:400px;overflow:hidden;text-overflow:ellipsis;padding-right:4px}
-.co .by{font-size:11px;letter-spacing:.24em;color:var(--mut);font-weight:600}
-.co.out{animation:hitout .3s ease-in forwards}
 @keyframes coin{from{opacity:0;transform:translate(-50%,-6px)}to{opacity:1;transform:translateX(-50%)}}
 .down{background:radial-gradient(ellipse 120% 90% at 50% 45%,#160709 0%,#0b0305 60%,#040102 100%);animation:redflood .3s ease-out}
 .down .wash{position:absolute;inset:0;box-shadow:inset 0 0 180px -30px rgba(255,40,40,.5)}
@@ -545,22 +533,55 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 [data-env="night"] .switching,[data-env="night"] .switched{background:#000}[data-env="night"] .switching .t{color:var(--num);text-shadow:none}
 [data-env="night"] .wt .th{background-image:none!important;background:#000}[data-env="night"] .wt .th .wpic,[data-env="night"] .wt .th .wpicfb{display:none!important}[data-env="night"] .wt.to,[data-env="night"] .wt.on{box-shadow:none;border-color:var(--num)}
 [data-env="night"] .switching .track i{background:var(--num)}
-/* A11.4 ALERT banner: full width, one fade in / one fade out, colour by family */
-.alert{pointer-events:none;animation:hitin .14s ease-out}
-.alert .band{position:absolute;left:0;right:0;top:132px;height:58px;display:flex;align-items:center;justify-content:center;gap:18px;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--al) 22%,#04070c) 18%,color-mix(in srgb,var(--al) 22%,#04070c) 82%,transparent);border-top:1px solid color-mix(in srgb,var(--al) 60%,transparent);border-bottom:1px solid color-mix(in srgb,var(--al) 60%,transparent);animation:bandin .22s cubic-bezier(.2,.9,.2,1)}
-.alert .k{font-size:11px;letter-spacing:.34em;color:var(--al);font-weight:700;padding:3px 10px;border:1px solid var(--al);transform:skewX(-10deg)}
-.alert .t{font-family:var(--fd);font-style:italic;font-weight:700;font-size:40px;letter-spacing:.12em;color:var(--num);text-shadow:0 0 30px color-mix(in srgb,var(--al) 60%,transparent);white-space:nowrap}
-.alert.objective{--al:var(--team)}.alert.clock{--al:var(--warn)}.alert.danger{--al:var(--bad)}.alert.info{--al:var(--glow)}
-.alert.out{animation:hitout .35s ease-in forwards}
-@keyframes bandin{from{transform:scaleX(.6);opacity:0}to{transform:none;opacity:1}}
-[data-env="night"] .alert .band{background:#120505;border-color:#3a1414;animation:none}[data-env="night"] .alert .t{color:var(--num);text-shadow:none}[data-env="night"] .alert .k{color:var(--mut);border-color:var(--mut)}
-/* A11.4 medal stack on the kill card (QA-05): badges land one at a time, 2 s apart, with the announcer lines */
-.co .medals{display:flex;gap:10px;margin-top:4px;min-height:26px}
-.co .medal{font-family:var(--fd);font-weight:700;font-size:16px;letter-spacing:.18em;padding:4px 16px;transform:skewX(-12deg);background:var(--glow);color:#04121e;box-shadow:0 0 24px -6px var(--glow);animation:medalin .35s cubic-bezier(.2,1.4,.4,1) both}   /* base opacity 1: under reduced motion every badge simply shows */
 @keyframes medalin{from{opacity:0;transform:skewX(-12deg) scale(1.8)}60%{opacity:1;transform:skewX(-12deg) scale(.96)}to{opacity:1;transform:skewX(-12deg) scale(1)}}
-.co .medal .unskew{display:inline-block;transform:skewX(12deg)}
-.co .medal.first_blood{background:var(--bad);color:#fff;box-shadow:0 0 24px -6px var(--bad)}
-.co .medal.killing_spree,.co .medal.unstoppable{background:var(--warn);color:#1a1200;box-shadow:0 0 24px -6px var(--warn)}
+/* docs/announcer.md "The three lanes" (F351/F352, Tony 2026-09-24). HERO (centre): my kill and my newest medal, a spree
+   as a ladder with a ×N count. OBJECTIVE (right): the lead and hill badges, each up until replaced. FEED (left): downs,
+   pickups and every other alert. Each shows when its event ARRIVES, so a kill, the lead and the
+   hill at the same moment are all on screen at once. Placed in FRAME px clear of the clock, the identity block, the
+   stats, the ammo column (and the held-item chip over it) and the powerup hint; the hero may cover the centre of the HUD. */
+#lanes{position:absolute;inset:0;pointer-events:none;z-index:5;--lk:var(--ok);--ln-bg:rgba(4,7,12,.9)}
+#frame[data-board] #lanes{opacity:0}
+@keyframes lanein{from{opacity:0}to{opacity:1}}
+#lanes .lh{position:absolute;left:50%;top:86px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:3px;animation:lanein .15s ease-out;transition:opacity .3s}
+#lanes .lh.out{opacity:0}
+#lanes .lhp{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 40px;max-width:400px;background:linear-gradient(90deg,transparent,var(--ln-bg) 14%,var(--ln-bg) 86%,transparent)}
+#lanes .lhk{display:flex;align-items:center;gap:8px;color:var(--lk);font-family:var(--fd);font-weight:700;font-size:26px;line-height:.92;letter-spacing:.16em}
+#lanes .lhk svg{width:22px;height:22px;fill:currentColor}
+#lanes .lhx{font-size:26px;color:var(--num);letter-spacing:.04em;margin-left:2px}
+#lanes .lhn{display:flex;align-items:center;gap:10px;max-width:320px;font-family:var(--fd);font-style:italic;font-weight:700;font-size:46px;line-height:1;letter-spacing:.05em;color:var(--num);white-space:nowrap}
+#lanes .lhn i{display:block;width:9px;height:38px;transform:skewX(-12deg);flex:none}
+#lanes .lhn .vt{overflow:hidden;text-overflow:ellipsis;padding-right:4px}
+#lanes .lhm .medal{display:block;white-space:nowrap;font-family:var(--fd);font-weight:700;font-size:22px;line-height:1.1;letter-spacing:.14em;padding:2px 18px;transform:skewX(-12deg);background:var(--glow);color:#04121e;animation:medalin .35s cubic-bezier(.2,1.4,.4,1) both}
+#lanes .lhm .medal .unskew{display:inline-block;transform:skewX(12deg)}
+#lanes .medal[data-k="first"]{background:var(--bad);color:#fff}#lanes .medal[data-k="streak"]{background:var(--warn);color:#1a1200}#lanes .medal[data-k="special"]{background:var(--num);color:#04121e}
+#lanes .lhl{display:flex;gap:5px;max-width:290px;overflow:hidden;padding:2px 4px;background:var(--ln-bg)}
+#lanes .lm{flex:none;white-space:nowrap;font-family:var(--fd);font-weight:700;font-size:12px;letter-spacing:.14em;padding:1px 6px;border:1px solid var(--glow);color:var(--glow)}
+#lanes .lm[data-k="first"]{border-color:var(--bad);color:var(--bad)}#lanes .lm[data-k="streak"]{border-color:var(--warn);color:var(--warn)}#lanes .lm[data-k="special"]{border-color:var(--num);color:var(--num)}
+#lanes .lsrc{font-family:var(--fl);font-size:11px;line-height:1.1;letter-spacing:.2em;color:var(--mut);font-weight:600;white-space:nowrap}
+#lanes .lh>.lsrc{padding:1px 8px;background:var(--ln-bg)}
+#lanes .los{position:absolute;left:616px;top:103px;width:180px;display:flex;flex-direction:column;gap:3px}   /* under the K/D stats (top 64-99), over the held-item chip (top 177) */
+#lanes .lo{display:flex;align-items:center;gap:8px;padding:2px 8px;background:color-mix(in srgb,var(--lc) 18%,var(--ln-bg));border-left:4px solid var(--lc);animation:lanein .2s ease-out;transition:opacity .3s}
+#lanes .lo svg{width:20px;height:20px;fill:var(--lc);flex:none}
+#lanes .lot{display:flex;flex-direction:column;line-height:1.05;flex:1;min-width:0}
+#lanes .lok{display:flex;justify-content:space-between;gap:6px;font-family:var(--fl);font-size:11px;letter-spacing:.2em;color:var(--lc);font-weight:700}
+#lanes .low{font-family:var(--fd);font-weight:700;font-size:17px;line-height:1.05;letter-spacing:.06em;color:var(--num);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#lanes .lo.settled{opacity:.75}
+#lanes .lfs{position:absolute;left:34px;top:68px;width:192px;display:flex;flex-direction:column;gap:3px}
+#lanes .lf{display:flex;align-items:stretch;gap:7px;padding:2px 7px 2px 0;background:var(--ln-bg);transition:opacity .3s;animation:lanein .2s ease-out}
+#lanes .lf>i{display:block;width:5px;background:var(--lc);flex:none}
+#lanes .lft{display:flex;flex-direction:column;min-width:0;line-height:1.1}
+#lanes .lfm{font-family:var(--fd);font-weight:700;font-size:15px;letter-spacing:.08em;color:var(--num);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#lanes .lf.out{opacity:0}
+/* Night (spec B4): red and amber on black only. No white, no green, no glow, no flash (hud.js `_flash` is a no-op at
+   night), no motion. The medal kinds keep their order by weight: first blood and the streaks brighter, the rest dim. */
+[data-env="night"] #lanes{--lk:#c9484a;--ln-bg:#120505}
+[data-env="night"] #lanes *{animation:none!important;transition:none!important}
+[data-env="night"] #lanes .lhn i{background:#5a2222!important}
+[data-env="night"] #lanes .lhm .medal{background:#2a0c0c!important;color:#ef6868!important;border:1px solid #5a1c1c}
+[data-env="night"] #lanes .lhm .medal[data-k="streak"],[data-env="night"] #lanes .lhm .medal[data-k="first"]{color:#b58432!important}
+[data-env="night"] #lanes .lm{border-color:#5a1c1c!important;color:#ef6868!important}
+[data-env="night"] #lanes .lo,[data-env="night"] #lanes .lf{--lc:#c9484a!important;background:#120505}
+[data-env="night"] #lanes .lf[data-kind="teammate_down"],[data-env="night"] #lanes .lo.lost{--lc:#a8782a!important}
 /* HIT TAKEN -- one fade in, one fade out. NEVER a repeating flash: this feedback lives on the
    phone precisely because holding the gun's LEDs needs ~30Hz repaints that strobe, and flicker in
    the 10-25Hz band is the photosensitive-epilepsy trigger range (experiment-log 2026-09-02). */
@@ -607,77 +628,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 [data-env="night"] .gain.shield .amt{color:var(--num);text-shadow:none}[data-env="night"] .gain.shield .gv{box-shadow:none}   /* was teal #3a8f96 (spec B4); the toast now shows only where no shield meter is up, e.g. a perk grant in a game with no shield */
 [data-env="night"] .mo{animation:none!important}
 [data-env="night"] .whiteout{display:none}
-/* QA-05 night: the same callout card, dim red on black, no glow, no motion, no green (spec B4). */
-[data-env="night"] .co[data-tone="enemy"],[data-env="night"] .co[data-tone="ours"],[data-env="night"] .co[data-tone="item"]{--co:#c9484a}[data-env="night"] .co[data-tone="mate"],[data-env="night"] .co[data-tone="theirs"]{--co:#a8782a}
-[data-env="night"] .co .cob{background:#120505;border-color:#3a1414;animation:none}
-[data-env="night"] .co *{animation:none!important}   /* night is still (B4): the medal lines show at once instead of arriving one by one */
-[data-env="night"] .co .nm{color:var(--num);text-shadow:none}[data-env="night"] .co .sw{background:#5a2222!important}
-[data-env="night"] .co .medal{background:#2a0c0c!important;color:#ef6868!important;box-shadow:none!important;border:1px solid #5a1c1c}
-/* F352 kill card variants (stage only, &kc=a|b|c). A: today's card, heavier. B/C: readable at arm's length on the rail. */
-.co.kc-a .cob{padding:10px 40px 11px;border-width:2px 0;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--co) 30%,#04070c) 10%,color-mix(in srgb,var(--co) 30%,#04070c) 90%,transparent)}
-.co.kc-a .tag{font-size:17px;border-width:2px;padding:3px 12px}
-.co.kc-a .nm{font-size:46px;-webkit-text-stroke:1.2px var(--num)}
-.co.kc-a .by{font-size:12px;color:var(--num);opacity:.8}
-.co.kc-b .cob,.co.kc-c .cob,.co.kc-l1 .cob,.co.kc-l2 .cob{top:96px;gap:2px;padding:10px 56px 12px;border-width:2px 0;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--co) 26%,#04070c) 9%,color-mix(in srgb,var(--co) 26%,#04070c) 91%,transparent)}
-.co.kc .kx{display:flex;align-items:center;gap:10px;color:var(--co)}
-.co.kc .kx .ki svg{display:block;width:40px;height:40px}
-.co.kc .kw{font-family:var(--fd);font-weight:700;font-size:52px;line-height:.9;letter-spacing:.14em;-webkit-text-stroke:1px currentColor}
-.co.kc .nm{text-shadow:none}
-.co.kc-b .nm,.co.kc-c .nm,.co.kc-l1 .nm,.co.kc-l2 .nm{font-size:58px;-webkit-text-stroke:1.4px var(--num);max-width:560px}
-.co.kc .sw{height:44px;width:11px}
-.co.kc .wp{display:flex;align-items:center;gap:10px;margin-top:2px}
-.co.kc .wa{display:block;width:74px;height:30px;overflow:hidden}.co.kc .wa .wpic{width:100%;height:100%;object-fit:contain}.co.kc .wa .wpicfb{display:none}
-.co.kc .wn{font-family:var(--fd);font-weight:700;font-size:24px;letter-spacing:.14em;color:var(--num);opacity:.9}
-.co.kc-c .medals,.co.kc-l1 .medals,.co.kc-l2 .medals{margin-top:6px}.co.kc-c .medal,.co.kc-l1 .medal,.co.kc-l2 .medal{font-size:24px;padding:4px 20px}
-/* F352 L1: the lead change as a team-coloured strip on the kill card. L2: a compact lead badge beside it. */
-/* F352 L1/L2 are full overlays (Tony: "events can overlay on top"): a scrim over the HUD, the moment centred in the space. */
-.co.kc-l1,.co.kc-l2{background:rgba(3,5,9,.78)}
-[data-env="night"] .co.kc-l1,[data-env="night"] .co.kc-l2{background:rgba(0,0,0,.86)}
-@keyframes kcin{from{opacity:0}to{opacity:1}}
-.co.kc-l1 .cob,.co.kc-l2 .cob{top:50%;transform:translate(-50%,-50%);animation:kcin .15s ease-out;background:none;border:0;padding:0;gap:4px}
-.co.kc-l1 .kw,.co.kc-l2 .kw{font-size:64px}.co.kc-l1 .kx .ki svg,.co.kc-l2 .kx .ki svg{width:50px;height:50px}
-.co.kc-l1 .nm{font-size:76px;max-width:760px}.co.kc-l1 .sw{height:58px;width:13px}
-.co.kc .lstrip{display:flex;align-items:center;gap:12px;justify-content:center;margin:0 0 10px;padding:6px 34px;background:var(--lc);color:var(--li);font-family:var(--fd);font-weight:700;font-size:30px;letter-spacing:.14em;line-height:1.1;transform:skewX(-10deg)}
-.co.kc .lstrip .unskew{display:inline-block;transform:skewX(10deg)}.co.kc .la{width:24px;height:24px;fill:currentColor;flex:none}
-.co.kc-l1.leadonly .lstrip{margin:0;font-size:44px;padding:12px 44px}.co.kc-l1.leadonly .la{width:34px;height:34px}
-.co.kc-l2.haslead .cob{left:32%}.co.kc-l2 .nm{font-size:62px;max-width:470px}
-.co.kc-l2.haslead::after{content:'';position:absolute;top:40px;bottom:40px;left:64%;width:2px;background:color-mix(in srgb,var(--num) 22%,transparent)}
-.co.kc .lbadge{position:absolute;top:50%;left:82%;transform:translate(-50%,-50%);width:220px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:16px 10px 18px;background:color-mix(in srgb,var(--lc) 20%,#04070c);border:2px solid var(--lc);color:var(--num);font-family:var(--fd);font-weight:700;animation:kcin .15s ease-out}
-.co.kc .lbadge .lt{font-size:16px;letter-spacing:.3em;color:var(--lc)}.co.kc .lbadge .la{width:46px;height:46px;fill:var(--lc)}.co.kc .lbadge .lw{font-size:52px;line-height:1;letter-spacing:.1em}.co.kc .lbadge .lw2{font-size:22px;letter-spacing:.2em}
-.co.kc-l2.leadonly .lbadge{left:50%;width:280px}
-.co.kc .src{font-size:11px;letter-spacing:.28em;color:var(--mut);font-weight:600;margin-top:4px;opacity:.85}
-[data-env="night"] .co.kc .lstrip{background:#2a0c0c;color:#ef6868;border:1px solid #5a1c1c}[data-env="night"] .co.kc .lbadge{background:#120505;border-color:#5a1c1c}[data-env="night"] .co.kc .lbadge .lt{color:#ef6868}[data-env="night"] .co.kc .lbadge .la{fill:#ef6868}[data-env="night"] .co.kc .lbadge .lw,[data-env="night"] .co.kc .lbadge .lw2{color:var(--num)}[data-env="night"] .co.kc-l1 .cob,[data-env="night"] .co.kc-l2 .cob{background:none;border:0}
-/* F352 three-lane proposal (stage only, &kc=ln): HERO centre, OBJECTIVE badges right, FEED ticker left */
-#lanes{position:absolute;inset:0;pointer-events:none;z-index:40}
-#lanes .lhs{position:absolute;inset:0;background:radial-gradient(ellipse 300px 190px at 50% 52%,rgba(3,5,9,.86),rgba(3,5,9,.55) 70%,transparent)}
-#lanes .lh{position:absolute;left:50%;top:56%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px;animation:kcin .15s ease-out;transition:opacity .3s}
-#lanes .lh.out{opacity:0}
-#lanes .lhk{display:flex;align-items:center;gap:8px;color:var(--ok);font-family:var(--fd);font-weight:700;font-size:34px;line-height:.9;letter-spacing:.16em}
-#lanes .lhk svg{width:28px;height:28px}#lanes .lhx{font-size:26px;color:var(--num);letter-spacing:.04em;margin-left:4px}
-#lanes .lhn{display:flex;align-items:center;gap:10px;font-family:var(--fd);font-style:italic;font-weight:700;font-size:56px;line-height:1;letter-spacing:.05em;color:var(--num);white-space:nowrap;max-width:400px}
-#lanes .lhn i{display:block;width:11px;height:46px;transform:skewX(-12deg);flex:none}#lanes .lhn .vt{overflow:hidden;text-overflow:ellipsis;padding-right:4px}
-#lanes .lhm{display:flex;gap:10px;margin-top:4px}
-#lanes .lhm .medal{white-space:nowrap;font-family:var(--fd);font-weight:700;font-size:30px;letter-spacing:.14em;padding:5px 22px;transform:skewX(-12deg);background:var(--glow);color:#04121e;box-shadow:0 0 28px -6px var(--glow);animation:medalin .35s cubic-bezier(.2,1.4,.4,1) both}
-#lanes .lhm .medal .unskew{display:inline-block;transform:skewX(12deg)}
-#lanes .medal.first_blood{background:var(--bad);color:#fff}#lanes .medal.killing_spree,#lanes .medal.unstoppable,#lanes .medal.killamanjaro{background:var(--warn);color:#1a1200}
-#lanes .lhl{display:flex;gap:6px;margin-top:2px}
-#lanes .lm{white-space:nowrap;font-family:var(--fd);font-weight:700;font-size:13px;letter-spacing:.16em;padding:2px 8px;border:1px solid var(--glow);color:var(--glow)}
-#lanes .lm.first_blood{border-color:var(--bad);color:var(--bad)}#lanes .lm.killing_spree,#lanes .lm.killamanjaro{border-color:var(--warn);color:var(--warn)}
-#lanes .lsrc{display:block;font-family:var(--fl,sans-serif);font-size:10px;letter-spacing:.26em;color:var(--mut);font-weight:600;opacity:.85;margin-top:2px}
-#lanes .los{position:absolute;right:58px;top:100px;width:196px;display:flex;flex-direction:column;gap:6px}
-#lanes .lo{display:flex;align-items:center;gap:8px;padding:4px 10px;background:color-mix(in srgb,var(--lc) 18%,rgba(4,7,12,.92));border-left:4px solid var(--lc);animation:kcin .2s ease-out;transition:opacity .3s}
-#lanes .lo svg{width:24px;height:24px;fill:var(--lc);flex:none}
-#lanes .lot{display:flex;flex-direction:column;line-height:1.05;flex:1;min-width:0}#lanes .lok{display:flex;justify-content:space-between}#lanes .lo .lsrc{margin:0;font-size:9px;letter-spacing:.2em}
-#lanes .lok{font-size:10px;letter-spacing:.28em;color:var(--lc);font-weight:700}#lanes .low{font-family:var(--fd);font-weight:700;font-size:19px;letter-spacing:.06em;color:var(--num);white-space:nowrap}
-#lanes .lo.settled{opacity:.72}#lanes .lo.settled .low{font-size:15px}
-#lanes .lfs{position:absolute;left:30px;top:84px;width:250px;display:flex;flex-direction:column;gap:4px}
-#lanes .lf{display:flex;align-items:center;gap:7px;padding:3px 8px;background:rgba(4,7,12,.8);transition:opacity .3s;animation:kcin .2s ease-out}
-#lanes .lf i{display:block;width:6px;height:16px;background:var(--lc);flex:none}#lanes .lft{font-family:var(--fd);font-weight:700;font-size:15px;letter-spacing:.1em;color:var(--num);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#lanes .lf .lsrc{margin:0 0 0 auto;font-size:9px}#lanes .lf.out{opacity:0}
-[data-env="night"] #lanes *{animation:none!important}[data-env="night"] #lanes .lhs{background:radial-gradient(ellipse 300px 190px at 50% 52%,rgba(0,0,0,.92),rgba(0,0,0,.7) 70%,transparent)}
-[data-env="night"] #lanes .lhk{color:#c9484a}[data-env="night"] #lanes .lhm .medal{background:#2a0c0c!important;color:#ef6868!important;box-shadow:none;border:1px solid #5a1c1c}[data-env="night"] #lanes .lm{border-color:#5a1c1c!important;color:#ef6868!important}
-[data-env="night"] #lanes .lo{--lc:#c9484a!important;background:#120505}[data-env="night"] #lanes .lf{background:#120505}[data-env="night"] #lanes .lf i{background:#a8782a}[data-env="night"] #lanes .lhn i{background:#5a2222!important}
-[data-env="night"] .co.kc .nm,[data-env="night"] .co.kc .kw{-webkit-text-stroke:0}[data-env="night"] .co.kc .wa{display:none}[data-env="night"] .co.kc .cob{background:#120505;border-color:#3a1414}
+[data-env="night"] .co *{animation:none!important}   /* night is still (B4) */
 /* ---- QA lane B (2026-09-23): the live HUD at night. Red and amber on black, no green, no flash, no strobe (spec B4). ---- */
 /* QA-22/QA-02: the link status stays at night; the NO GUN dot is the brightest red on the screen, steady */
 [data-env="night"] .topright{color:var(--num)}
@@ -1018,6 +969,26 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .result .rseg .sg .unskew{display:inline-block;transform:skewX(8deg)}
 .result .rseg .sg.on{background:var(--team);color:var(--team-ink);border-color:var(--team)}
 .result .rbody{flex:1 1 auto;min-height:0;overflow:hidden}
+/* The end-of-match AWARDS tab (brx5 lead 2026-09-24): the three lanes' language. My awards as HERO medals on the left,
+   one OBJECTIVE-style badge per award on the right naming its winner, mine lit. */
+.result .awards{display:grid;grid-template-columns:minmax(0,4fr) minmax(0,9fr);gap:12px;padding-right:40px;height:100%;min-height:0;align-items:start}
+.result .awme{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 6px;background:linear-gradient(90deg,transparent,rgba(4,7,12,.9) 12%,rgba(4,7,12,.9) 88%,transparent)}
+.result .awh{font-family:var(--fd);font-weight:700;font-size:20px;letter-spacing:.2em;color:var(--ok)}
+.result .awm{display:flex;flex-direction:column;align-items:center;gap:6px}
+.result .awm .medal{white-space:nowrap;font-family:var(--fd);font-weight:700;font-size:20px;line-height:1.1;letter-spacing:.14em;padding:2px 18px;transform:skewX(-12deg);background:var(--warn);color:#1a1200}
+.result .awm .medal .unskew{display:inline-block;transform:skewX(12deg)}
+.result .awnone{font-family:var(--fd);font-weight:700;font-size:16px;letter-spacing:.14em;color:var(--mut)}
+.result .awards .lsrc{font-family:var(--fl);font-size:11px;letter-spacing:.2em;color:var(--mut);font-weight:600;white-space:nowrap}
+.result .awl{display:grid;grid-template-columns:1fr 1fr;gap:4px;min-height:0;align-content:start}
+.result .aw{display:flex;align-items:center;gap:10px;padding:3px 10px;background:color-mix(in srgb,var(--lc) 14%,rgba(4,7,12,.9));border-left:4px solid var(--lc)}
+.result .aw.me{box-shadow:inset 0 0 0 1px var(--warn);background:color-mix(in srgb,var(--warn) 16%,rgba(4,7,12,.9))}
+.result .awt{display:flex;flex-direction:column;flex:1;min-width:0;line-height:1.1}
+.result .awk{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--fl);font-size:11px;letter-spacing:.2em;color:var(--lc);font-weight:700}
+.result .awn{font-family:var(--fd);font-weight:700;font-size:16px;letter-spacing:.06em;color:var(--num);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.result .awn b{color:var(--warn)}.result .aws{font-family:var(--fd);font-weight:700;font-size:15px;color:var(--num);white-space:nowrap}
+[data-env="night"] .result .awme{background:#120505}[data-env="night"] .result .awh,[data-env="night"] .result .awn b{color:#b58432}
+[data-env="night"] .result .awm .medal{background:#2a0c0c;color:#b58432;border:1px solid #5a1c1c}
+[data-env="night"] .result .aw{--lc:#c9484a!important;background:#120505}[data-env="night"] .result .aw.me{box-shadow:inset 0 0 0 1px #a8782a}
 /* --- waiting for the push: what the screen knows, and never an outcome --- */
 .result .rwait{display:flex;flex-direction:column;justify-content:center;gap:8px;height:100%;border-left:3px solid var(--warn);padding:6px 16px}   /* QA-14: no dashed empty panel; the words sit in the middle of the body on one amber rule */
 .result .rwait .wl{font-size:15px;line-height:1.45;color:var(--num);max-width:660px}

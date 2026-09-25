@@ -27,7 +27,6 @@ export function startDemo({ engine, log }) {
   const q = (typeof location !== 'undefined') ? new URLSearchParams(location.search) : new URLSearchParams('');
   const kitOnly = q.has('kit'), locked = q.has('locked'), reject = q.has('reject'), setup = q.has('setup'), brief = q.has('brief');
   if (q.has('night')) engine.night = true;
-  if (['a', 'b', 'c', 'l1', 'l2', 'ln'].includes(q.get('kc'))) engine.killCard = q.get('kc');   // F352: &kc=a|b|c, a kill card variant under review
   const TEAMS = { blue: { team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, yellow: { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 },
     red: { team_id: 'red', name: 'RED', color: 'red', tid: 0 }, green: { team_id: 'green', name: 'GREEN', color: 'green', tid: 3 } };   // tids as MC's TEAM_DEFS / engine TEAM_KEY
   const teamKey = TEAMS[q.get('team')] ? q.get('team') : 'blue', foeKey = teamKey === 'yellow' ? 'blue' : 'yellow';
@@ -334,6 +333,10 @@ export function startDemo({ engine, log }) {
         after_end: { facts: 4, by_player: { 'p-2': { kills: 2, deaths: 0 }, 'p-demo': { kills: 0, deaths: 1 }, 'p-ghost': { kills: 1, deaths: 0 } } },
         provisional: false, t: Date.now(), ...extra } }),
       // FFA: no team totals at all, so the screen has no TEAM view to offer and never renders an empty one.
+      // PROVISIONAL mock (brx5 lead 2026-09-24; TODO: brx3's recap shape): MC's end-of-match awards. I (p-demo) won two.
+      resultAwards: () => ev.result('win', { awards: [{ key: 'survivor', player_id: 'p-demo', display: 'REAPER', stat: '4:12' },
+        { key: 'wingman', player_id: 'p-2', display: 'VIPER', stat: '6 ASSISTS' }, { key: 'iron_man', player_id: 'p-demo', display: 'REAPER', stat: '1 DEATH' },
+        { key: 'sharpshooter', player_id: 'p-2', display: 'VIPER', stat: '41%' }, { key: 'objective_hero', player_id: 'p-3', stat: '2:48 ON THE HILL' }] }),
       resultFfa: (outcome = 'lose') => engine.onMcMessage({ kind: 'result', body: {
         match_id: engine.matchId, outcome, winner: { player_id: 'p-2' }, mode: 'ffa', win_by: 'kills',
         team_scores: [], rows: RESULT_ROWS.map(r => ({ ...r, team_id: null })), my: { ...RESULT_ROWS[0], team_id: null },
@@ -566,21 +569,25 @@ export function startDemo({ engine, log }) {
       // docs/announcer.md (field 2026-09-24, Tony: the lead banner and the kill confirm overlapped): MC's kill feedback and
       // its lead alert on the SAME tick. The announcer queue shows KILL CONFIRMED first, then the lead banner once its slot ends.
       'live-announcer':        [...live, [2300, () => { ev.killConfirm('VIPER'); ev.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD'); }]],
-      // F352: the kill card variants (&kc=a|b|c). A medal kill and the lead change on the same tick: the card, then the lead banner.
+      // docs/announcer.md "The three lanes" (F351/F352). Each drives the REAL engine: MC's kill feedback, its lead alert
+      // and the grenade's capture word, as they arrive in a match. The lanes draw each one when it ARRIVES.
       'live-announcer-medal':  [...live, [2300, () => { ev.killMedals(['double_kill'], 'VIPER'); ev.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD'); }]],
       'live-kill-first-blood': [...live, [2300, () => ev.killMedals(['first_blood'], 'VIPER')]],
       'live-announcer-fb':     [...live, [2300, () => { ev.killMedals(['first_blood'], 'VIPER'); ev.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD'); }]],
-      // F352 storyboard: a six-kill spree, 1 s apart, with the lead change, a hill capture and a teammate down landing inside it.
-      // KILLAMANJARO is not an MC medal yet (MC stops at killtacular / killing spree / unstoppable): that last frame is a proposal.
+      // my kill, the lead change and a hill capture at the same moment: all three on screen at once
+      'live-kill-lead-hill':   [[0, () => { config.mode = 'koth'; }], ...live, [2200, () => ev.beacon(2)],
+        [2400, () => { ev.killMedals(['first_blood'], 'VIPER'); ev.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD'); ev.hillTaken(team.tid); }]],
+      // The storyboard: a six-kill spree, 1 s apart, on MC's ladder (contract.gen MEDALS: a medal on every kill from 2,
+      // killing spree at a streak of 5), with the lead change on kill 1, a hill capture and a teammate down inside it.
       'live-spree':            [[0, () => { config.mode = 'koth'; ev.addMate(); }], ...live, [2200, () => ev.beacon(2)],
         [3000, () => { ev.killMedals(['first_blood'], 'VIPER'); ev.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD'); }],
         [4000, () => ev.killMedals(['double_kill'], 'GHOST')],
-        [5000, () => ev.hillTaken(team.tid)],
-        [5200, () => engine.feedFrame(`$HIR,4,15,23,3,${25 + team.tid},0,0,*`)],
-        [5500, () => ev.killMedals(['triple_kill'], 'SABLE')],
-        [6500, () => ev.killMedals(['killtacular'], 'HAVOC')],
-        [7500, () => ev.killMedals(['killtacular', 'killing_spree'], 'VIPER')],
-        [8500, () => ev.killMedals(['killamanjaro'], 'GHOST')]],
+        [4600, () => ev.hillTaken(team.tid)],
+        [4800, () => engine.feedFrame(`$HIR,4,15,23,3,${25 + team.tid},0,0,*`)],
+        [5000, () => ev.killMedals(['triple_kill'], 'SABLE')],
+        [6000, () => ev.killMedals(['killtacular'], 'HAVOC')],
+        [7000, () => ev.killMedals(['killtrocity', 'killing_spree'], 'VIPER')],
+        [8000, () => ev.killMedals(['killamanjaro'], 'GHOST')]],
       'live-lead-alone':       [...live, [2300, () => ev.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD')]],   // a teammate's kill: the lead changes, I did nothing
       'live-lowhp':        [...live, [2300, 'lowHp']],
       'live-poison':       [[0, () => { bundle.dot = DEMO_DOT; }], ...live, [2300, () => ev.poison()]],          // S16: POISONED, counting down, health draining
@@ -639,6 +646,10 @@ export function startDemo({ engine, log }) {
       'result-lose-ffa':   [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.resultFfa('lose')]],
       'result-draw':       [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('draw')]],
       'result-undecided':  [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('undecided')]],
+      'result-awards':     [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.resultAwards()], [2700, () => ev.rtab('awards')]],   // PROVISIONAL (TODO: brx3)
+      // the two medals Tony added on 2026-09-24 (TODO: contract): BEAT DOWN (a melee kill) and KILLJOY (ending an enemy's spree)
+      'live-kill-beat-down': [...live, [2300, () => ev.killMedals(['beat_down'], 'VIPER')]],
+      'live-kill-killjoy':   [...live, [2300, () => ev.killMedals(['double_kill', 'killjoy'], 'HAVOC')]],
       'result-players':    [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win')], [2700, () => ev.rtab('player')]],
       'history':           [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win')], [2700, 'seedHistory'], [2800, () => ev.view('history')]],
       'down-at-cap-offline': [...live, [2300, 'capBoard'], [2400, 'mcLost'], [2500, 'die']],                                                  // A31: one off the cap with no MC link

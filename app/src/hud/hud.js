@@ -4,6 +4,7 @@
 // #overlay so they animate independently of the base HUD.
 import * as DS from './deathscreen.js';   // the DOWN screen's recap: THIS LIFE and THE GAME NOW
 import * as SV from './shieldmeter.js';
+import { LANE_FEED_MS, LANE_SETTLE_MS } from '../lanes.js';   // docs/announcer.md "The three lanes"
 import { MEDALS } from '../transport/contract.gen.js';   // the medal ladder: key, label, clip   // the shield meter (the Visor, Tony 2026-09-24): the strip on the top edge
 
 const TEAM_COLOR = { blue: 'var(--team-blue)', yellow: 'var(--team-yellow)', red: 'var(--team-red)', green: 'var(--team-green)' };
@@ -48,7 +49,13 @@ const ALERT_FAMILY = { objective_taken: 'objective', objective_scored: 'objectiv
 const OUTCOME_WORD = { win: 'WIN', lose: 'LOSE', draw: 'DRAW', undecided: 'UNDECIDED' };
 // Every medal in MC's ladder (contract.gen MEDALS, generated from types.py; Tony's final list 2026-09-24). A key missing
 // here was filtered out of the kill card, so the map is built from the contract, never hand-kept.
-export const MEDAL_LABEL = Object.freeze(Object.fromEntries(MEDALS.map(m => [m.key, m.label])));
+// TODO: contract. Two medals Tony added on 2026-09-24 that MC will send once brx3 adds them to MEDALS: BEAT DOWN (a
+// melee kill; its voice waits on Tony's pick of VA7F or VA7G) and KILLJOY (ending an enemy's killing spree; HUD text
+// only). Until then the HUD labels them from here; a contract row of the same key wins. Neither has a clip, so the
+// engine plays no voice for either (its medal lines come from the bundle's cues only).
+export const MEDAL_FALLBACK = Object.freeze([{ key: 'beat_down', kind: 'special', label: 'BEAT DOWN' }, { key: 'killjoy', kind: 'special', label: 'KILLJOY' }]);
+const MEDAL_ROWS = [...MEDALS, ...MEDAL_FALLBACK.filter(f => !MEDALS.some(m => m.key === f.key))];
+export const MEDAL_LABEL = Object.freeze(Object.fromEntries(MEDAL_ROWS.map(m => [m.key, m.label])));
 /** App 0.4.2: the words of the picker's "Connecting to <gun>" block, from `hud.connecting`. */
 export function connectingText(conn) {
   const nm = String((conn && conn.name) || 'your gun');
@@ -427,7 +434,7 @@ export class Hud {
       if (act === 'onShowResults') this.view = 'result';
       else if (act === 'onShowHistory') this.view = 'history';
       else if (act === 'onCloseView') this.view = null;
-      else this.rtab = arg === 'player' ? 'player' : 'team';
+      else this.rtab = arg === 'player' || arg === 'awards' ? arg : 'team';
       this.sig = null; if (this._lastSt) this.render(this._lastSt);
       return;
     }
@@ -1099,6 +1106,23 @@ export class Hud {
    *  Everything else is mode-aware from `result.mode` / `result.win_by` and the fields that are actually present:
    *  the tiles are built from a list (never five hard-coded cells), the TEAM view appears only when MC sent team
    *  totals, and possession / AFTER THE WHISTLE appear only when their fields do. */
+  /** The end-of-match AWARDS, in the three lanes' language: my own awards as HERO medals on top, then one OBJECTIVE-style
+   *  badge per award naming its winner (mine lit). MC computes them; the phone only prints them. PROVISIONAL shape
+   *  (TODO: brx3): `{key, label?, player_id, display?, stat?}`; the label and the "what earned it" line fall back to AWARD. */
+  _awards(awards, rows, myId) {
+    const AWARD = { survivor: ['SURVIVOR', 'LONGEST LIFE'], wingman: ['WINGMAN', 'MOST ASSISTS'], iron_man: ['IRON MAN', 'FEWEST DEATHS'],
+      sharpshooter: ['SHARPSHOOTER', 'BEST ACCURACY'], objective_hero: ['OBJECTIVE HERO', 'MOST OBJECTIVE'] };
+    const label = a => String(a.label || (AWARD[a.key] || [])[0] || String(a.key).replace(/_/g, ' ')).toUpperCase();
+    const mine = awards.filter(a => myId && a.player_id === myId);
+    const who = a => { const r = rows.find(x => x.player_id === a.player_id); return { name: String(a.display || (r && r.display) || a.player_id || '—').toUpperCase(), tk: r && TEAM_COLOR[String(r.team_id || '').toLowerCase()] ? String(r.team_id).toLowerCase() : null }; };
+    const me = `<div class="awme"><span class="awh">YOUR AWARDS</span>${mine.length
+      ? `<div class="awm">${mine.map(a => `<span class="medal" data-award="${esc(a.key || '')}"><span class="unskew">${esc(label(a))}</span></span>`).join('')}</div>`
+      : '<span class="awnone">NONE THIS MATCH</span>'}<span class="lsrc">MC</span></div>`;
+    const list = awards.map(a => { const w = who(a), m = myId && a.player_id === myId;
+      return `<div class="aw${m ? ' me' : ''}" data-award="${esc(a.key || '')}" title="${esc((AWARD[a.key] || [])[1] || '')}" style="--lc:${w.tk ? TEAM_COLOR[w.tk] : 'var(--glow)'}"><span class="awt"><span class="awk">${esc(label(a))}</span>`
+        + `<span class="awn">${esc(w.name)}${m ? ' <b>· YOU</b>' : ''}</span></span>${a.stat != null && a.stat !== '' ? `<b class="aws tab">${esc(String(a.stat))}</b>` : ''}</div>`; }).join('');
+    return `<div class="awards">${me}<div class="awl">${list}</div></div>`;
+  }
   _result(st) {
     const R = (st.result && typeof st.result === 'object') ? st.result : null;
     const wait = st.resultWait || (R ? 'in' : 'pending');
@@ -1106,7 +1130,10 @@ export class Hud {
     const rows = this._resultRows(R);
     const teams = (R && Array.isArray(R.team_scores)) ? R.team_scores.filter(t => t && typeof t === 'object' && (t.team_id != null || t.name)) : [];
     const hasTeam = teams.length > 0;
-    const tab = hasTeam ? (this.rtab === 'player' ? 'player' : 'team') : 'player';
+    // The end-of-match AWARDS (brx5 lead 2026-09-24, computed by MC). PROVISIONAL shape, TODO: brx3's recap payload:
+    // `result.awards = [{key, label?, player_id, display?, stat?}]`. A result without it shows no AWARDS tab at all.
+    const awards = (R && Array.isArray(R.awards)) ? R.awards.filter(a => a && typeof a === 'object' && (a.key || a.label)) : [];
+    const tab = this.rtab === 'awards' && awards.length ? 'awards' : hasTeam ? (this.rtab === 'player' ? 'player' : 'team') : 'player';
     const hold = this._resultHold(R);
     const my = (R && R.my && typeof R.my === 'object') ? R.my : null;
     const myId = (my && my.player_id) || (st.player && st.player.player_id) || null;
@@ -1120,9 +1147,9 @@ export class Hud {
     const meta = [modeName || null,
       (R && R.win_by) ? 'WIN BY ' + String(R.win_by).toUpperCase().replace(/_/g, ' ') : null,
       (R && R.provisional) ? 'PROVISIONAL · SCORES STILL ARRIVING' : null].filter(Boolean).join(' · ');
-    const seg = hasTeam ? `<div class="rseg" role="group">
-      <button class="sg ${tab === 'team' ? 'on' : ''}" aria-pressed="${tab === 'team'}" data-act="onResultTab" data-arg="team"><span class="unskew">TEAMS</span></button>
-      <button class="sg ${tab === 'player' ? 'on' : ''}" aria-pressed="${tab === 'player'}" data-act="onResultTab" data-arg="player"><span class="unskew">PLAYERS</span></button></div>` : '';
+    const sgb = (k, label) => `<button class="sg ${tab === k ? 'on' : ''}" aria-pressed="${tab === k}" data-act="onResultTab" data-arg="${k}"><span class="unskew">${label}</span></button>`;
+    const seg = hasTeam || awards.length ? `<div class="rseg" role="group">
+      ${hasTeam ? sgb('team', 'TEAMS') : ''}${sgb('player', 'PLAYERS')}${awards.length ? sgb('awards', 'AWARDS') : ''}</div>` : '';
 
     // --- body ---
     let body;
@@ -1133,6 +1160,8 @@ export class Hud {
         ? 'Your phone never reached Mission Control after the whistle. The host has the scores: read the result there.'
         : 'Mission Control decides how the match ended and sends the result here.'}</div>
         <div class="wl dim">The line below is what this phone counted. It is not the result.</div></div>`;
+    } else if (tab === 'awards') {
+      body = this._awards(awards, rows, myId);
     } else if (tab === 'team') {
       body = `<div class="rteams" style="grid-template-columns:repeat(${Math.min(4, teams.length)},minmax(0,1fr))">${teams.map(t => {
         const k = String(t.team_id == null ? '' : t.team_id).toLowerCase();
@@ -1688,10 +1717,7 @@ export class Hud {
     else if (st.phase !== 'idle' && !st.bleUp) pills.push(`<button class="pill bad${st.phase === 'live' && !down ? ' gunlost' : ''}" data-act="onReconnectGun"><span class="unskew">GUN LINK LOST — TAP TO RECONNECT</span></button>`);
     if (st.moment && st.moment.kind === 'go' && st.phase === 'live' && st.bleUp) pills.push(`<span class="pill ok"><span class="unskew">WEAPONS HOT</span></span>`);   // never 'hot' while the gun link is down
     const prompt = st.resync ? `<div class="prompt"><span class="unskew"><span class="pl">GUN RELINKED</span><span class="pi">${esc(st.resync.prompt).toUpperCase()}</span></span></div>` : '';
-    // S57 / QA-05: the IR callout bus and the hill transitions render as the callout CARD (`_co`), the same
-    // component MC's kill uses, never as a pill here. `_coSync` only watches for a new event (a unit test drives
-    // `_chips` on a bare object, hence the guard).
-    if (this._coSync) this._coSync(st);
+    // S57 / QA-05: the IR callouts and the hill transitions are never a pill here: they are lanes (`_lanes`).
     const html = `<div class="chipbar">${pills.join('')}</div>${prompt}`;
     if (this.chips.innerHTML !== html) this.chips.innerHTML = html;
   }
@@ -1851,16 +1877,13 @@ export class Hud {
     // transient moments
     // C2 (docs/announcer.md): the kill card and the alert banner come from `st.card`, which only the engine's announcer
     // queue writes, so a hit or a stun landing in the same render cannot swallow them. `st.moment` keeps the rest.
-    if (st.killCard === 'ln') this._lanes(st);   // F352 three-lane proposal (stage only)
-    const cd = st.card !== undefined ? st.card : (st.moment && (st.moment.kind === 'kill' || st.moment.kind === 'alert') ? st.moment : null);   // an older engine has no `card`
-    if (cd && cd.at !== this._cardAt) {
-      this._cardAt = cd.at;
-      if (cd.kind === 'kill') this._kill(st, cd); else if (cd.kind === 'alert') this._alert(st, cd);
-    }
+    // docs/announcer.md "The three lanes": the kill, the medals, the lead, the hill, the downs and the pickups. The engine's
+    // `st.card` (the announcer queue's own card) still paces the voice; the screen draws each event when it arrives.
+    this._lanes(st);
     const m = st.moment;
     if (m && m.at !== this._momentAt) {
       this._momentAt = m.at;
-      if (m.kind === 'kill' || m.kind === 'alert') { /* drawn from `st.card` above */ }
+      if (m.kind === 'kill' || m.kind === 'alert') { /* drawn by the lanes (`_lanes`) */ }
       else if (m.kind === 'redeploy') this._redeploy(st);
       else if (m.kind === 'switched') { const held = st.powerup && st.powerup.held; if (!(held && st.ammo === 0 && st.activeSlot === held.slot && st.activeSlot === (m.data && m.data.slot))) this._switched(st, m); }   // polish r2/r3: no ACTIVE card for an EMPTY PICKUP slot (a loadout swap keeps it)
       else if (m.kind === 'hit') this._hit(st, m);
@@ -1903,239 +1926,76 @@ export class Hud {
     if (this.frame.dataset.env === 'night') return;
     const now = Date.now(); if (this._flashAt && now - this._flashAt < 500) return; this._flashAt = now;   // ≤2 flashes/s whatever the event burst (WCAG 2.3.1)
     const w = document.createElement('div'); w.className = 'whiteout'; this.overlay.appendChild(w); setTimeout(() => w.remove(), 120); }
-  // ---------- QA-05: the callout card ----------
-  // ONE component for every "someone went down" and "the hill changed hands" moment, whichever path it came by:
-  // MC's kill feedback (`moment.kind === 'kill'`), an S57 IR word (`state().callout`) or the engine's own hill
-  // transition (`state().hillCallout`). A short card in the band under the clock, clear of the vitals and the
-  // ammo, so the live HUD stays readable behind it. The name is the headline (>= 18 px); the accent says who went
-  // down (enemy vs teammate, ours vs theirs). Night: the same card in dim red, no whiteout, no motion.
-  // One node for every kind (`_swap('co')`): the newest event replaces the card in place, it never stacks.
-  _co(st, spec) {
-    if (st.killCard === 'ln') return 0;   // F352 three lanes: every card is drawn by `_lanes`
-    if (spec.kc) return this._coKc(st, spec);   // F352: a kill card variant under review (stage only)
-    const tk = spec.team && TEAM_COLOR[spec.team] ? spec.team : null;
-    const el = document.createElement('div');
-    el.className = 'mo co' + (spec.kill || spec.killStyle ? ' kill' : '');
-    el.dataset.kind = spec.kind; el.dataset.tone = spec.tone; el.dataset.src = spec.src;
-    if (spec.color) el.style.setProperty('--item', itemColor(spec.color));   // A56: a powerup card is the ITEM's colour, not a team's
-    const medals = (spec.medals || []).filter(k => MEDAL_LABEL[k]);
-    el.innerHTML = `<div class="cob"><div class="row"><span class="tag"><span class="unskew">${esc(spec.tag)}</span></span>`
-      + `${tk ? `<i class="sw" style="background:${TEAM_COLOR[tk]}"></i>` : spec.color ? `<i class="sw" style="background:${itemColor(spec.color)}"></i>` : ''}<span class="nm vt">${esc(String(spec.name).toUpperCase())}</span></div>`
-      + `${spec.sub ? `<span class="by">${esc(spec.sub)}</span>` : ''}`
-      + `${medals.length ? `<div class="medals">${medals.map((k, i) => `<span class="medal ${esc(k)}" style="animation-delay:${.12 + i * 2}s"><span class="unskew">${MEDAL_LABEL[k]}</span></span>`).join('')}</div>` : ''}</div>`;
-    if (spec.kill) { this._flash(); this.h.onHaptic && this.h.onHaptic('kill'); }   // `_flash` is a no-op at night
-    // Each medal line plays 2 s after the last (engine MEDAL_GAP_MS). docs/announcer.md: the card also stays up while its
-    // line sounds (`st.announcer.ms`, the slot the engine's queue gave it), and fades before the next item's slot opens.
-    const hold = Math.max(spec.hold + Math.max(0, medals.length - 1) * 2000, this._annHold(st, 300));
-    const node = this._swap('co', el, hold, hold + 300);
-    Object.assign(node.dataset, { kind: spec.kind, tone: spec.tone, src: spec.src });   // a reused node keeps its old data-* otherwise
-    if (spec.color) node.style.setProperty('--item', itemColor(spec.color)); else node.style.removeProperty('--item');
-    return hold;
-  }
-  /** F352 (design pass, stage only; `st.killCard`): the kill card variants Tony reviews before one ships.
-   *  A: today's card, heavier, held 2.5 s. B: a card readable at arm's length (the phone rides the gun's rail): a large
-   *  KILL mark and the victim's name (no weapon: Tony, "we know it as the player"), held 2.5 s. C: B plus the medal line, held 3.5 s. The engine's slot is
-   *  the same number (`KILL_CARD_VARIANT_MS`), so the card fades inside its slot and the next banner never shares the
-   *  screen with it. An empty value (no weapon, no medal) draws nothing; the running kill count stays in the corner. */
-  _coKc(st, spec) {
-    const kc = spec.kc, big = kc !== 'a', combo = kc === 'l1' || kc === 'l2';
-    const tk = spec.team && TEAM_COLOR[spec.team] ? spec.team : null;
-    const el = document.createElement('div');
-    el.className = `mo co kill kc kc-${kc}`;
-    el.dataset.kind = spec.kind; el.dataset.tone = spec.tone; el.dataset.src = spec.src;
-    const sw = tk ? `<i class="sw" style="background:${TEAM_COLOR[tk]}"></i>` : '';
-    const nm = `<span class="nm vt">${esc(String(spec.name).toUpperCase())}</span>`;
-    // Tony 2026-09-24: no "+1 ELIMINATION · K 1" (that is assumed); a small line naming the channel that confirmed it.
-    const src = `<span class="src">${spec.src === 'ir' ? 'IR 15' : spec.irPaired ? 'IR 15 · MC' : 'MC'}</span>`;
-    const medals = kc === 'c' || combo ? (spec.medals || []).filter(k => MEDAL_LABEL[k]) : [];
-    if (!big) {
-      el.innerHTML = `<div class="cob"><div class="row"><span class="tag"><span class="unskew">${esc(spec.tag)}</span></span>${sw}${nm}</div>`
-        + `${src}</div>`;
-    } else {
-      el.innerHTML = `<div class="cob"><div class="kx"><span class="ki">${DS.ICON.kill}</span><span class="kw">KILL</span></div>`
-        + `<div class="row">${sw}${nm}</div>`
-        + `${medals.length ? `<div class="medals">${medals.map(m => `<span class="medal ${esc(m)}"><span class="unskew">${MEDAL_LABEL[m]}</span></span>`).join('')}</div>` : ''}${src}</div>`;
-      if (combo && st.killCardLead) this._kcLeadInto(el, st, st.killCardLead);
-    }
-    if (spec.kill) { this._flash(); this.h.onHaptic && this.h.onHaptic('kill'); }
-    // The slot (`st.announcer.ms`) is the card's whole life: full for slot - 300, then a 300 ms fade that ends as the slot does.
-    const slot = { a: 2500, b: 2500, c: 3500, l1: 2500, l2: 2500 }[kc];
-    // L1/L2 with a lead change waiting: the card stays through the lead line too (`_kcLead` sets the real end when the lead's
-    // slot opens); the fallback end covers a lead item the queue drops unplayed.
-    const hold = Math.max(slot - 300, this._annHold(st, 300)) + (combo && st.killCardLead ? 2500 : 0);
-    const node = this._swap('co', el, hold, hold + 300);
-    Object.assign(node.dataset, { kind: spec.kind, tone: spec.tone, src: spec.src, kcHold: String(hold + 300) });
-    node.style.removeProperty('--item');
-    return hold + 300;
-  }
-  /** F352 three-lane proposal (stage only). HERO: my kill and my newest medal, big and centred over the HUD; a spree
-   *  builds (the newest medal big, the earlier ones as a fading ladder) and holds 2.5 s after the last kill. OBJECTIVE:
-   *  one badge per key (lead, hill) on the right, up until the next one of its key replaces it. FEED: a small ticker on the
-   *  left for everything else, 4 s a row. Every item has its source line. Drawn when each event ARRIVES; the voice
-   *  still says one line at a time through the announcer queue. */
+  // ---------- docs/announcer.md "The three lanes" (F351/F352, Tony 2026-09-24) ----------
+  /** Every alert the live HUD draws, from `st.lanes` (the engine writes each lane the moment its event ARRIVES; the
+   *  announcer queue still says one line at a time). HERO, over the centre: my kill and my newest medal; a spree builds,
+   *  the newest medal big, the earlier ones as a fading ladder, with a ×N count; up until `heroUntil` (2.5 s after the
+   *  last kill, or longer while that kill's own announcer slot is on air). OBJECTIVE, on the right: the lead and the hill,
+   *  each up until the next one of its key replaces it. FEED, on the left: downs, pickups and every other alert (BOMB
+   *  PLANTED, ONE MINUTE LEFT), 4 s a row. Each item carries a small source line (MC, IR 15, BLE); no weapon, no "+1". The down screen
+   *  owns a dead phone, so nothing here draws unless the player is live and alive. */
   _lanes(st) {
-    const L = st.lanes; let root = this.frame.querySelector('#lanes');
+    let root = this.frame.querySelector('#lanes');
     if (!root) { root = document.createElement('div'); root.id = 'lanes'; this.frame.appendChild(root); }
-    if (!L || !(st.phase === 'live')) { root.innerHTML = ''; return; }
-    const now = Date.now(), HOLD = 2500, FEED = 4000;
-    const ML = { ...MEDAL_LABEL, killamanjaro: 'KILLAMANJARO' };
+    const L = st.lanes;
+    clearTimeout(this._lanesT);
+    if (!L || st.phase !== 'live' || !st.alive) { if (this._lanesHtml) { root.innerHTML = ''; this._lanesHtml = ''; } return; }
+    const now = Date.now(), FADE = 300;
     const srcl = t => t ? `<span class="lsrc">${esc(t)}</span>` : '';
+    const kindOf = k => { const m = MEDAL_ROWS.find(x => x.key === k); return m ? m.kind : 'multi'; };
+    // HERO
+    const h = L.hero, heroUntil = L.heroUntil || 0;
     let hero = '';
-    const h = L.hero;
-    if (h && now - h.lastAt < HOLD + 300) {
-      const last = h.kills[h.kills.length - 1];
-      const lastM = (last.medals || []).filter(m => ML[m]), big = lastM.slice(-1);   // the newest medal big; the rest go on the ladder
-      const ladder = [...h.kills.slice(0, -1).flatMap(k => (k.medals || []).filter(m => ML[m])), ...lastM.slice(0, -1)].reverse();
-      const older = ladder.slice(0, 3), more = ladder.length - older.length;
-      const tk = last.team && TEAM_COLOR[last.team] ? last.team : null;
+    if (h && h.kills.length && now < heroUntil + FADE) {
+      const last = h.kills[h.kills.length - 1], n = h.kills.length;
+      const all = h.kills.flatMap(k => (k.medals || []).filter(m => MEDAL_LABEL[m]));
+      const big = all.length ? all[all.length - 1] : null, ladder = all.slice(0, -1).reverse(), shown = ladder.slice(0, 2), more = ladder.length - shown.length;
+      const vk = last.team ? String(last.team).toLowerCase() : null, tk = vk && TEAM_COLOR[vk] ? vk : null;
       const name = last.victim || `${tk ? tk.toUpperCase() : 'ENEMY'} OPERATIVE`;
-      hero = `<div class="lh${now - h.lastAt >= HOLD ? ' out' : ''}" data-n="${h.kills.length}"><div class="lhk">${DS.ICON.kill}<span>KILL</span>${h.kills.length > 1 ? `<span class="lhx tab">×${h.kills.length}</span>` : ''}</div>`
+      hero = `<div class="lh${now >= heroUntil ? ' out' : ''}" data-id="${h.id}" data-n="${n}"><div class="lhp">`
+        + `<div class="lhk">${DS.ICON.kill}<span>KILL</span>${n > 1 ? `<span class="lhx tab">×${n}</span>` : ''}</div>`
         + `<div class="lhn">${tk ? `<i style="background:${TEAM_COLOR[tk]}"></i>` : ''}<span class="vt">${esc(String(name).toUpperCase())}</span></div>`
-        + (big.length ? `<div class="lhm">${big.map(m => `<span class="medal ${esc(m)}" data-at="${last.at}"><span class="unskew">${ML[m]}</span></span>`).join('')}</div>` : '')
-        + (older.length ? `<div class="lhl">${older.map((m, i) => `<span class="lm ${esc(m)}" style="opacity:${(1 - i * .2).toFixed(2)}">${ML[m]}</span>`).join('')}${more > 0 ? `<span class="lm more">+${more}</span>` : ''}</div>` : '')
+        + (big ? `<div class="lhm"><span class="medal" data-m="${esc(big)}" data-k="${kindOf(big)}"><span class="unskew">${MEDAL_LABEL[big]}</span></span></div>` : '')
+        + '</div>'
+        + (shown.length ? `<div class="lhl">${shown.map((m, i) => `<span class="lm" data-m="${esc(m)}" data-k="${kindOf(m)}" style="opacity:${(1 - i * .3).toFixed(2)}">${MEDAL_LABEL[m]}</span>`).join('')}${more > 0 ? `<span class="lm more">+${more}</span>` : ''}</div>` : '')
         + srcl(last.src) + '</div>';
     }
-    const tk = st.teamKey && TEAM_COLOR[st.teamKey] ? st.teamKey : null;
-    const obj = ['lead', 'hill'].map(k => L.obj && L.obj[k]).filter(Boolean).map(o => {
-      const lost = o.kind === 'lead_lost' || o.kind === 'hill_lost', lead = o.kind.startsWith('lead');
-      const col = lost ? 'var(--bad)' : (tk ? TEAM_COLOR[tk] : 'var(--glow)');
-      const icon = lead ? `<svg viewBox="0 0 16 16"><path d="${lost ? 'M2 5h12L8 13z' : 'M2 11h12L8 3z'}"/></svg>` : `<svg viewBox="0 0 16 16"><path d="M4 1h1.6v14H4zM5.6 2h8l-2.2 3.2 2.2 3.2h-8z"/></svg>`;
-      const top = lead ? (lost ? 'LOST THE LEAD' : 'TAKES THE LEAD') : (lost ? 'HILL LOST' : 'HILL CAPTURED');
-      return `<div class="lo${now - o.at > 4000 ? ' settled' : ''}${lost ? ' lost' : ''}" style="--lc:${col}">${icon}<span class="lot"><span class="lok"><span>${lead ? (tk ? tk.toUpperCase() : 'YOUR TEAM') : 'OBJECTIVE'}</span>${srcl(o.src)}</span><span class="low">${top}</span></span></div>`;
+    // OBJECTIVE
+    const tk = st.teamKey && TEAM_COLOR[st.teamKey] ? st.teamKey : null, O = L.obj || {}, ours = tk ? TEAM_COLOR[tk] : 'var(--glow)';
+    const ICON = { lead: lost => `<svg viewBox="0 0 16 16"><path d="${lost ? 'M2 5h12L8 13z' : 'M2 11h12L8 3z'}"/></svg>`,
+      hill: () => '<svg viewBox="0 0 16 16"><path d="M4 1h1.6v14H4zM5.6 2h8l-2.2 3.2 2.2 3.2h-8z"/></svg>' };
+    const obj = ['lead', 'hill'].filter(key => O[key]).map(key => {
+      const o = O[key], lead = key === 'lead', lost = o.kind === 'lead_lost' || o.kind === 'hill_lost';
+      const kick = lead ? (tk ? tk.toUpperCase() : 'YOU') : 'OBJECTIVE', text = lead ? (lost ? 'LOST THE LEAD' : 'TAKES THE LEAD') : (lost ? 'HILL LOST' : 'HILL CAPTURED');
+      return `<div class="lo${now - o.at > LANE_SETTLE_MS ? ' settled' : ''}${lost ? ' lost' : ''}" data-key="${key}" data-kind="${esc(o.kind)}" style="--lc:${lost ? 'var(--bad)' : ours}">${ICON[key](lost)}<span class="lot"><span class="lok"><span>${esc(kick)}</span>${srcl(o.src)}</span><span class="low">${esc(text)}</span></span></div>`;
     }).join('');
-    const feed = (L.feed || []).filter(f => now - f.at < FEED + 300).slice(0, 3).map(f => {
-      const txt = f.kind === 'alert' ? f.text : `${f.name || `${f.team ? f.team.toUpperCase() : ''} ${f.kind === 'teammate_down' ? 'TEAMMATE' : 'OPERATIVE'}`} DOWN${f.by ? ' · BY ' + f.by : ''}`;
-      const col = f.kind === 'teammate_down' ? 'var(--warn)' : f.kind === 'enemy_down' ? 'var(--ok)' : 'var(--glow)';
-      return `<div class="lf${now - f.at >= FEED ? ' out' : ''}" style="--lc:${col}"><i></i><span class="lft">${esc(String(txt).toUpperCase())}</span>${srcl(f.src)}</div>`;
+    // FEED (an alert's family names its colour and its kicker, as the old banner did)
+    const FAM = { objective: ['OBJECTIVE', ours], clock: ['CLOCK', 'var(--warn)'], danger: ['ALERT', 'var(--bad)'], info: ['MATCH', 'var(--glow)'] };
+    const feed = (L.feed || []).filter(f => now - f.at < LANE_FEED_MS + FADE).slice(0, 3).map(f => {
+      const mate = f.kind === 'teammate_down', down = mate || f.kind === 'enemy_down', fam = f.kind === 'alert' ? FAM[ALERT_FAMILY[f.alert] || 'info'] : null;
+      const main = down ? `${f.name || `${f.team ? String(f.team).toUpperCase() + ' ' : ''}${mate ? 'TEAMMATE' : 'OPERATIVE'}`} DOWN` : f.text || f.kind;
+      const sub = [down && f.by ? `BY ${f.by}` : fam ? fam[0] : f.sub || null, f.src].filter(Boolean).join(' · ');
+      const col = mate ? 'var(--warn)' : down ? 'var(--ok)' : fam ? fam[1] : itemColor(f.color);
+      return `<div class="lf${now - f.at >= LANE_FEED_MS ? ' out' : ''}" data-kind="${esc(f.kind)}"${fam ? ` data-alert="${esc(f.alert)}" data-fam="${esc(ALERT_FAMILY[f.alert] || 'info')}"` : ''} style="--lc:${col}"><i></i><span class="lft"><span class="lfm">${esc(String(main).toUpperCase())}</span>${srcl(String(sub).toUpperCase())}</span></div>`;
     }).join('');
-    const html = `${hero ? `<div class="lhs">${hero}</div>` : ''}<div class="los">${obj}</div><div class="lfs">${feed}</div>`;
-    if (html !== this._lanesHtml) {
-      const heroKey = h ? `${h.id}:${h.kills.length}` : '';
-      root.innerHTML = html; this._lanesHtml = html;
-      if (heroKey && heroKey !== this._lanesHero) { this._lanesHero = heroKey; if (h && h.kills.length) { this._flash(); this.h.onHaptic && this.h.onHaptic('kill'); } }
+    const html = `${hero}<div class="los">${obj}</div><div class="lfs">${feed}</div>`;
+    if (html !== this._lanesHtml) { root.innerHTML = html; this._lanesHtml = html; }
+    // One flash and one buzz per NEW kill: an MC confirm that names the IR word's row adds no row, so it adds no buzz.
+    // A new badge taps, as the banner did.
+    const seen = this._laneSeen || (this._laneSeen = { hero: null, n: 0, obj: {} });
+    if (h && h.kills.length && now < heroUntil) {
+      if (seen.hero !== h.id) { seen.hero = h.id; seen.n = 0; }
+      if (h.kills.length > seen.n) { seen.n = h.kills.length; this._flash(); this.h.onHaptic && this.h.onHaptic('kill'); }
     }
-    // re-render at the next expiry (hero fade, feed row, badge settling)
-    const due = [h ? h.lastAt + HOLD : 0, h ? h.lastAt + HOLD + 300 : 0, ...(L.feed || []).flatMap(f => [f.at + FEED, f.at + FEED + 300]), ...Object.values(L.obj || {}).map(o => o.at + 4000)].filter(t => t > now);
-    clearTimeout(this._lanesT);
+    for (const key of ['lead', 'hill']) {
+      const o = O[key]; if (!o || seen.obj[key] === o.at) continue;
+      seen.obj[key] = o.at;
+      if (now - o.at < 1000) this.h.onHaptic && this.h.onHaptic('tap');
+    }
+    // draw again at the next change (the hero fading and gone, a feed row leaving, a badge settling or leaving)
+    const due = [heroUntil, heroUntil + FADE, ...(L.feed || []).flatMap(f => [f.at + LANE_FEED_MS, f.at + LANE_FEED_MS + FADE]),
+      ...Object.values(O).map(o => o.at + LANE_SETTLE_MS)].filter(t => t > now);
     if (due.length) this._lanesT = setTimeout(() => this._lanes(this._lastSt || st), Math.min(...due) - now + 10);
-  }
-  /** F352 L1/L2: the lead change drawn WITH the kill. L1: a team-coloured strip inside the kill card. L2: a compact
-   *  badge on the right beside it. Both show from the kill's first frame; the lead LINE still plays after the kill line. */
-  _kcLeadHtml(st, lead, kc) {
-    const tk = st.teamKey && TEAM_COLOR[st.teamKey] ? st.teamKey : null, lost = lead.kind === 'lead_lost';
-    const col = tk ? TEAM_COLOR[tk] : 'var(--glow)', ink = tk ? TEAM_INK[tk] : '#04121e';
-    const arrow = `<svg viewBox="0 0 16 16" class="la"><path d="${lost ? 'M2 5h12L8 13z' : 'M2 11h12L8 3z'}"/></svg>`;
-    if (kc === 'l1') return `<div class="lstrip${lost ? ' lost' : ''}" style="--lc:${col};--li:${ink}">${arrow}<span class="unskew">${esc(String(lead.text).toUpperCase())}</span></div>`;
-    return `<div class="lbadge${lost ? ' lost' : ''}" style="--lc:${col};--li:${ink}"><span class="lt">${tk ? esc(tk.toUpperCase()) : 'YOUR TEAM'}</span>${arrow}<span class="lw">${lost ? 'LOST' : 'TAKES'}</span><span class="lw2">THE LEAD</span></div>`;
-  }
-  _kcLeadInto(el, st, lead) {
-    if (el.querySelector('.lstrip,.lbadge')) return;
-    const kc = el.classList.contains('kc-l1') ? 'l1' : 'l2', html = this._kcLeadHtml(st, lead, kc);
-    if (kc === 'l1') { const kx = el.querySelector('.cob .kx'); if (kx) kx.insertAdjacentHTML('beforebegin', html); else el.querySelector('.cob').insertAdjacentHTML('afterbegin', html); }
-    else el.insertAdjacentHTML('beforeend', html);
-    el.classList.add('haslead');
-  }
-  /** F352 L1/L2: the lead change's own turn in the queue. With the kill card still up it draws no second banner: the
-   *  card (which already shows the lead) holds on through the lead line. Alone (a teammate's kill), it draws the lead in
-   *  the layout's own style. Returns false when the variant does not apply. */
-  _kcLead(st, d) {
-    const kc = st.killCard;
-    if (!(kc === 'l1' || kc === 'l2') || !(d.kind === 'lead_taken' || d.kind === 'lead_lost')) return false;
-    const lead = { kind: d.kind, text: d.text || d.kind };
-    const hold = Math.max(2200 - 300, this._annHold(st, 300));
-    const rec = this._overlays && this._overlays.co;
-    if (rec && rec.el.isConnected && rec.el.classList.contains('kc') && !rec.el.classList.contains('out')) {
-      this._kcLeadInto(rec.el, st, lead);
-      clearTimeout(rec.t1); clearTimeout(rec.t2);
-      rec.t1 = setTimeout(() => rec.el.classList.add('out'), hold);
-      rec.t2 = setTimeout(() => { rec.el.remove(); if (this._overlays.co === rec) delete this._overlays.co; }, hold + 300);
-      rec.el.dataset.kcLeadHold = String(hold + 300);
-      return true;
-    }
-    const el = document.createElement('div');
-    el.className = `mo co kc kc-${kc} leadonly`; el.dataset.kind = d.kind; el.dataset.tone = 'ours'; el.dataset.src = 'mc';
-    el.innerHTML = kc === 'l1' ? `<div class="cob">${this._kcLeadHtml(st, lead, 'l1')}<span class="src">MC</span></div>` : this._kcLeadHtml(st, lead, 'l2').replace(/<\/div>$/, '<span class="src">MC</span></div>');
-    const node = this._swap('co', el, hold, hold + 300);
-    Object.assign(node.dataset, { kind: d.kind, tone: 'ours', src: 'mc' });
-    this.h.onHaptic && this.h.onHaptic('tap');
-    return true;
-  }
-  /** docs/announcer.md: the engine's announcer queue hands out one slot at a time, and `st.announcer.ms` is the slot on
-   *  air. A card or banner that the slot is for holds at least that long less its own fade, so it shows while its line
-   *  plays and is gone before the next one. 0 when nothing is on air (an older engine, the stage's static states). */
-  _annHold(st, fade) { const a = st && st.announcer; return a && a.ms > fade ? a.ms - fade : 0; }
-  /** The IR and hill halves: fire the card once per NEW event (keyed on its `at`), and take any card down the
-   *  moment the player is no longer live and alive (the down screen owns the dead phone). */
-  _coSync(st) {
-    if (!(st.phase === 'live' && st.alive)) {
-      const rec = this._overlays && this._overlays.co;
-      if (rec) { clearTimeout(rec.t1); clearTimeout(rec.t2); rec.el.remove(); delete this._overlays.co; }
-      return;
-    }
-    const co = st.callout;
-    if (co && co.at !== this._coIrAt) {
-      this._coIrAt = co.at;
-      const team = co.team ? String(co.team).toLowerCase() : null, op = `${team ? team.toUpperCase() : 'ENEMY'} OPERATIVE`;
-      // A DOWN_BY word names the killer, not the victim: the card opens with the victim's team and takes the name
-      // when the victim's own DOWN word pairs with it (below). When MC's named card for the same kill is already up
-      // it is richer, so the IR word leaves it alone.
-      if (co.kind === 'kill_confirmed') {
-        if (!(this._coMcUntil > Date.now())) (this._coIrKills = this._coIrKills || []).push(co.at);   // the card's own engine `at`: MC's twin names it (`ir_at`)
-        if (!(this._coMcUntil > Date.now())) this._co(st, { kind: 'kill_confirmed', src: 'ir', tone: 'enemy', kill: true, tag: 'KILL CONFIRMED', name: op, team, sub: 'CONFIRMED BY THEIR GUN · MC KEEPS THE SCORE', hold: 2000,
-          ...(st.killCard ? { kc: st.killCard, weapon: st.weapon || null, weaponId: st.weaponId || null } : {}) });
-      } else {
-        const mate = co.kind === 'teammate_down';
-        this._co(st, { kind: co.kind, src: 'ir', tone: mate ? 'mate' : 'enemy', tag: mate ? 'TEAMMATE DOWN' : 'ENEMY DOWN',
-          name: co.name || (mate ? `${team ? team.toUpperCase() + ' ' : ''}TEAMMATE` : op), team, sub: co.by ? `BY ${String(co.by).toUpperCase()}` : '', hold: 2000 });
-      }
-      this._coIrVictim = null;
-    }
-    // S57 names (Tony 2026-09-24): the victim's DOWN word lands ~250 ms after its DOWN_BY and names the victim. The card
-    // for that same callout takes the name in place, with no new card, flash or buzz. MC's named card, if it is up
-    // already, keeps its own name.
-    if (co && co.at === this._coIrAt && co.victim && co.victim !== this._coIrVictim) {
-      this._coIrVictim = co.victim;
-      const rec = this._overlays && this._overlays.co;
-      if (rec && rec.el.dataset.src === 'ir') { const nm = rec.el.querySelector('.nm'); if (nm) nm.textContent = String(co.victim).toUpperCase(); }
-    }
-    // A56: "<ITEM> AVAILABLE" at each spawn time (every phone, from its own schedule), and a pickup that SWAPS one
-    // weapon item for another ("RAIL GUN · REPLACES ROCKETS", lead 2026-09-24). Both in the item's colour.
-    const ps = st.powerupSpawn;
-    if (ps && ps.at !== this._coPuAt) {
-      this._coPuAt = ps.at;
-      this._co(st, { kind: 'powerup_spawn', src: 'powerup', tone: 'item', tag: 'POWERUP', name: `${ps.name} AVAILABLE`, color: ps.color, sub: '', hold: 2200 });
-    }
-    const pg = st.powerupSwap;   // docs/announcer.md: set by the engine's queue when the swap card's turn comes (not at the grant)
-    if (pg && pg.at !== this._coPgAt) {
-      this._coPgAt = pg.at;
-      this._co(st, { kind: 'powerup_swap', src: 'powerup', tone: 'item', tag: 'PICKUP', name: pg.name, color: pg.color, sub: `REPLACES ${String(pg.replaced).toUpperCase()}`, hold: 2200 });
-    }
-    const hc = st.hillCallout;
-    if (hc && hc.at !== this._coHillAt) {
-      this._coHillAt = hc.at;
-      const ours = hc.kind === 'hill_captured';
-      this._co(st, { kind: hc.kind, src: 'hill', tone: ours ? 'ours' : 'theirs', tag: 'OBJECTIVE', name: ours ? 'HILL CAPTURED' : 'HILL LOST',
-        team: ours ? st.teamKey : null, sub: ours ? 'YOUR TEAM HOLDS THE POINT' : 'THE POINT IS NOT YOURS', hold: 2200 });
-    }
-  }
-  /** MC's kill feedback: the same card, named from MC's `victim_display` (else "<TEAM> OPERATIVE"), with the medals. */
-  _kill(st, m) {
-    const d = m.data || {}; const vk = String(d.victim_team || 'yellow').toLowerCase();
-    // Polish rounds 1-3: MC's named card stays quiet (no second flash or buzz) only when the engine paired this confirm
-    // with an IR KILL CONFIRMED (`ir_paired`) AND an IR card really showed for it, flash and all. Each shown IR card
-    // is used once, so a kill whose IR card was held back behind another card still buzzes on its MC card.
-    // Polish round 3: a QUEUE of IR cards still waiting for their MC twin, not one mark, so IR1 IR2 MC1 MC2 is two
-    // buzzes as surely as IR1 MC1 IR2 MC2. Entries older than the pairing window are dropped unmatched.
-    // docs/announcer.md: the engine names the exact IR card it paired this confirm with (`ir_at`, that card's `callout.at`),
-    // so only that card, if it really showed, silences this one. An IR card whose MC twin never came matches nothing.
-    this._coIrKills = (this._coIrKills || []).slice(-8);
-    const i = d.ir_paired && d.ir_at != null ? this._coIrKills.indexOf(d.ir_at) : -1;
-    const irFirst = i >= 0;
-    if (irFirst) this._coIrKills.splice(i, 1);
-    const hold = this._co(st, { kind: 'kill', src: 'mc', tone: 'enemy', kill: !irFirst, killStyle: true, tag: 'KILL CONFIRMED', name: d.victim || (vk.toUpperCase() + ' OPERATIVE'), team: vk,
-      sub: `+1 ELIMINATION · K ${st.kills != null ? st.kills : ''} · MISSION CONTROL`, medals: Array.isArray(d.medals) ? d.medals : [], hold: 1800,
-      ...(st.killCard ? { kc: st.killCard, weapon: d.weapon || null, weaponId: d.weapon_id || null, irPaired: !!d.ir_paired } : {}) });
-    this._coMcUntil = Date.now() + hold;
   }
   /** The death screen's callouts (deathscreen.js): damage taken and dealt, kills, time alive. */
   _dsLive(st) {
@@ -2221,18 +2081,6 @@ export class Hud {
     const el = document.createElement('div'); el.className = 'mo switched';
     el.innerHTML = `<div class="c"><div class="in">${this._wtile(it, 'ACTIVE ✓', 'to on')}<span class="s">${m.data && m.data.assumed ? 'READY' : 'CONFIRMED BY YOUR GUN'}</span></div></div>`;
     this._swap('switched', el, 900, 1200);
-  }
-
-  /** A11.4 game-event alert: a full-width banner, stronger than a hit, weaker than KILL / DOWN, ~2.5 s. Renders at night too (dim). */
-  _alert(st, m) {
-    const d = (m.data) || {}; const fam = ALERT_FAMILY[d.kind] || 'info';
-    if (st.killCard === 'ln') return;   // F352 three lanes: the lead is an objective badge, the rest is the feed
-    if (st.killCard && this._kcLead(st, d)) return;   // F352 L1/L2 (stage only)
-    const el = document.createElement('div'); el.className = `mo alert ${fam}`;
-    el.innerHTML = `<div class="band"><span class="k">${fam === 'objective' ? 'OBJECTIVE' : fam === 'clock' ? 'CLOCK' : fam === 'danger' ? 'ALERT' : 'MATCH'}</span><span class="t">${esc(String(d.text || d.kind || '').toUpperCase())}</span></div>`;
-    const out = Math.max(2200, this._annHold(st, 400));   // docs/announcer.md: up while its line plays (a lead-lost line is 2.7 s)
-    this._swap('alert', el, out, out + 400);
-    this.h.onHaptic && this.h.onHaptic('tap');
   }
 
   /** The REDEPLOYED sub-line (2026-09-19): arming while a timed respawn holds the trigger, the shield on a station

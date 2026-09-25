@@ -2,22 +2,23 @@
 
 Design of record, 2026-09-24. The field report (Tony, app 0.4.11): "the hud alert for takes the lead and the kill
 confirmation both played on top of each other. they should not overlap". The phone now has ONE announcer queue
-(`app/src/announcer.js`, owned by the engine as `_ann`). Every announcer voice line and every HUD banner or callout
-card that goes with it passes through the queue, so two never play or show at once. The tables below are single
-constants in that file; change them there.
+(`app/src/announcer.js`, owned by the engine as `_ann`). Every announcer voice line passes through the queue, so two
+never play at once. The HUD no longer waits for the queue: since 2026-09-24 it draws every alert in three lanes, at
+the moment its event arrives (see *The three lanes* below). The tables below are single constants in that file; change
+them there.
 
 ## What goes through it
 
-| Kind | Source (`app/src/engine.js`) | Sound | HUD |
+| Kind | Source (`app/src/engine.js`) | Sound | HUD lane |
 |---|---|---|---|
-| `kill_confirmed` | MC `feedback{kind:"kill"}` (`feedback`), an S57 `DOWN_BY` naming me (`_irKillConfirmed`) | the kill pool, or the medal lines | the kill card |
-| `lead_taken`, `lead_lost` | MC `alert` (`_announceAlert`) | `VA6D`, `VA6E` | the alert banner |
-| `medal` | MC `feedback{kind:"kill"}` with medals, when the kill's IR word already said its kill line | the medal lines | the kill card |
-| `hill_captured`, `hill_lost` | the engine's hill transition (`_hillSay`) | `VB0N`, `VB0P` | the hill card |
-| `powerup_swap` | a second weapon pickup (`_puGrantWeapon`) | none | "NEW · REPLACES OLD" |
-| `alert` | every other MC alert, the clock warnings, `victory` feedback, "Hill Contested" | the bundle's cue | the alert banner (if any) |
-| `teammate_down`, `enemy_down` | an S57 word (`_onIrCallout`) | none, `VB8` | the callout card |
-| `powerup_spawn` | the spawn schedule (`_puTick`) | none | "ITEM AVAILABLE" |
+| `kill_confirmed` | MC `feedback{kind:"kill"}` (`feedback`), an S57 `DOWN_BY` naming me (`_irKillConfirmed`) | the kill pool, or the medal lines | HERO |
+| `lead_taken`, `lead_lost` | MC `alert` (`_announceAlert`) | `VA6D`, `VA6E` | OBJECTIVE (lead badge) |
+| `medal` | MC `feedback{kind:"kill"}` with medals, when the kill's IR word already said its kill line | the medal lines | HERO |
+| `hill_captured`, `hill_lost` | the engine's hill transition (`_hillSay`) | `VB0N`, `VB0P` | OBJECTIVE (hill badge) |
+| `powerup_swap` | a second weapon pickup (`_puGrantWeapon`) | none | FEED ("NEW", "REPLACES OLD") |
+| `alert` | every other MC alert, the clock warnings, `victory` feedback, "Hill Contested" | the bundle's cue | FEED (if any) |
+| `teammate_down`, `enemy_down` | an S57 word (`_onIrCallout`) | none, `VB8` | FEED |
+| `powerup_spawn` | the spawn schedule (`_puTick`) | none | FEED ("ITEM AVAILABLE") |
 | `status` | a pool rising (`_onHp`), the shield recharge starting (`_shieldTick`) | `shield_up`, `shield_charging` (only for a refill longer than 1 s, `SHIELD_CHARGING_MIN_MS`), `healed`, `armour_up` | none |
 
 `shield_online` has no voice line (**Tony**, 2026-09-24): the shield coming back full keeps its LEDs and says nothing.
@@ -107,8 +108,37 @@ An item holds a **slot**: the longer of its clip plus 150 ms (`ANNOUNCE_GAP_MS`)
 ends. Two items on the SAME surface (`ANNOUNCE_SURFACE`: the callout card or the alert banner) replace each other in
 place, so an item of equal or higher priority may start as soon as the current LINE has finished. A kill confirm's card
 and a silent card always hold their full slot. The HUD holds a card or banner for at least
-its slot less its fade (`st.announcer.ms`), so the banner shows while its line plays. The hill possession tick waits
-while any announcer line sounds.
+its slot less its fade (`st.announcer.ms`). The HERO lane uses the same slot: it stays while its kill's line is on
+air. The hill possession tick waits while any announcer line sounds.
+
+## The three lanes (HUD)
+
+Design of record, 2026-09-24 (F351, F352). Tony picked it from the kill-card gallery: "I like the 3 lanes. The separate
+alerts on the right." The engine writes each lane when its event ARRIVES (`state().lanes`, `_laneKill`, `_laneObj`,
+`_laneFeed`). The HUD draws them in `app/src/hud/hud.js` `_lanes`. The voice still says one line at a time through the
+queue, so the screen can show more than the voice says. The timings are in `app/src/lanes.js`.
+
+| Lane | Where | What | How long |
+|---|---|---|---|
+| HERO | centre, over the HUD | my kill: KILL, the victim's name, my newest medal. A spree adds a ×N count and a ladder of the earlier medals, newest first, fading | 2.5 s after the last kill (`LANE_HERO_MS`), or longer while that kill's slot is on air |
+| OBJECTIVE | right, under the K/D stats | one badge for the lead and one for the hill | until the next badge of the same key replaces it; it dims after 4 s |
+| FEED | left, under the identity block | teammate down, enemy down, a powerup spawn or swap, every other MC alert (BOMB PLANTED, ONE MINUTE LEFT) | 4 s a row (`LANE_FEED_MS`), the newest three |
+
+Rules:
+
+- A kill, a lead change and a hill capture at the same moment are all on screen at once.
+- Every item has a small source line: `MC`, `IR 15` (the S57 word) or `BLE` (a station). An MC confirm and the IR word
+  for the same kill are one HERO row (`IR 15 · MC`), with one flash and one buzz.
+- The HERO shows no weapon and no "+1 ELIMINATION" or K count.
+- The medal labels come from `contract.gen` `MEDALS`. BEAT DOWN (`beat_down`, a melee kill) and KILLJOY (`killjoy`, an
+  enemy's spree ended) have local labels in `hud.js` `MEDAL_FALLBACK` until MC sends them (TODO: contract). Neither has
+  a voice line yet.
+- Nothing covers the ammo count, the powerup hint or held chip, the vitals, the clock, the identity block or the stats.
+- Night: red and amber on black only, with no white flash, no strobe and no motion.
+- A dead player sees no lanes: the down screen owns the phone.
+
+The end-of-match AWARDS tab on the results screen uses the same language (PROVISIONAL, the recap shape is brx3's):
+my awards as HERO medals, then one badge per award naming its winner.
 
 ## Late lines (`ANNOUNCE_AUDIO_LATE_MS`)
 
@@ -116,10 +146,12 @@ Tony's match (2026-09-24) heard lines 10 to 15 s late: the phone wrote each on t
 audio already playing. So a line that would START more than 2 s after its event is not said; its card still shows,
 silently. The must-hear lines get longer: my kill confirm and its medal lines 6 s, a lead change no limit.
 
-**Spree.** When a new MC kill arrives while older MC kills still wait, they fold into ONE item: the newest medal line
-only (a triple supersedes the double) and the newest card. Five kills 1 s apart never queue more than about 4 s of
-voice. First blood is never folded: the item says it first, then the newest tier, and the kill card lists every
-folded medal. The folded kills keep their pairing, marked as said, so their IR twins stay silent.
+**Spree.** When a new MC kill arrives while older MC kills still wait, they fold into ONE item. A medal folds only
+into a newer medal of its own kind (`MEDALS` `kind`, HUD QA R2-11): the item says first blood (never folded), then
+the newest multi-kill (a triple supersedes the double), then the newest streak (KILLING SPREE is not a multi-kill).
+The HERO lane shows every medal as it arrives, so a
+line the voice says is always on screen when it starts. The folded kills keep their pairing, marked as said, so
+their IR twins stay silent.
 
 ## Stale items and duplicates (`ANNOUNCE_TTL_MS`)
 
@@ -171,6 +203,9 @@ IR card whose MC twin never came can never silence a later kill's flash.
 
 ## Stage
 
-`npm run ui:stage` → **Callouts (S57)** → *announcer queue*: MC's kill feedback and its lead alert on one tick. KILL
-CONFIRMED shows first, and TAKES THE LEAD follows when the kill card's slot ends. `app/tools/screens.mjs` checks that
-the two are never on screen together.
+`npm run ui:stage` → **Callouts (S57)** → *announcer queue*: MC's kill feedback and its lead alert on one tick. The
+voice says the kill first and the lead after it. The screen shows the kill HERO and the lead badge together, from the
+first frame. More stages: `live-kill-lead-hill` (all three at once), `live-spree` (the storyboard: six kills on MC's
+ladder with the lead, the hill and a teammate down inside it), `live-kill-beat-down`, `live-kill-killjoy` and
+`result-awards`. `app/tools/screens.mjs` checks each lane (`lanes` steps). `app/tools/alert-gallery.mjs` renders the
+storyboard as a static gallery.
