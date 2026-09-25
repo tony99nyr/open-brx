@@ -431,6 +431,18 @@ test('control: possession time is tallied per team for the station’s own recap
   assert.ok((new ControlPoint().restore(pt.snapshot()).holdMs[RED] || 0) > 0, 'and the tally survives a restart');
 });
 
+test('control: the station hold tally pauses while contested and resumes when clear', () => {
+  const pt = new ControlPoint({ captureS: 10 }).restore({ owner: RED, progress: 100 });
+  run(pt, [P(RED)], 2000);
+  const held = pt.holdMs[RED];
+  run(pt, [P(RED), P(BLUE)], 3000);
+  assert.equal(pt.contested, true);
+  assert.equal(pt.holdMs[RED], held, 'contested time is not credited');
+  run(pt, [P(RED)], 2000);
+  assert.equal(pt.contested, false);
+  assert.ok(pt.holdMs[RED] >= held + 1750, 'uncontested possession accrues again');
+});
+
 // ---------- F103: possession is elapsed time; the F82 banner follows the player ----------
 
 test('control: F103 — possession is credited in ELAPSED time, while conversion stays clamped per tick', () => {

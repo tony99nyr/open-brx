@@ -321,13 +321,12 @@ test('hill CONTROL: a plain beacon that changes nothing keeps from_neutral, so t
   assert.equal(h.eng.state().hill.from_neutral, true, 'an unchanged owner keeps what we already knew');
 });
 
-test('hill: the possession tick plays once a second while MY team holds a fresh point', () => {
+test('hill: the possession tick plays every three seconds while MY team holds a fresh point', () => {
   const h = koth();
   h.frame('$HIR,4,15,0,1,8,0,0,*');            // blue (us) holds it
-  run(h, 3000);
-  // The first poll after the beacon ticks (+250 ms), then +1250 and +2250: three ticks in three seconds,
-  // on the node's clock. One beacon arrived; a per-beacon design would have played exactly one.
-  assert.equal(nWrites(h, HILL_TICK_F), 3, 'one tick per second, on the node clock — not one per 5 s beacon');
+  run(h, 9000);
+  // One beacon arrived; the tick remains on the node's clock, not the beacon's 5 s period.
+  assert.equal(nWrites(h, HILL_TICK_F), 3, 'one tick per three seconds, on the node clock');
   assert.equal(h.eng.state().hill.owner, 1);
 });
 
@@ -387,8 +386,8 @@ test('hill CONTROL: a callout SUPPRESSES the possession tick for its own real le
   assert.equal(nWrites(h, HILL_TICK_F), 0, 'the 0.11 s tick must not play under a 1.92 s callout');
   run(h, 500);                                  // now past 1.924 s
   assert.equal(nWrites(h, HILL_TICK_F), 1, 'the tick resumes the moment the callout has actually finished');
-  run(h, 1000);
-  assert.equal(nWrites(h, HILL_TICK_F), 2, 'and then keeps its 1 s cadence');
+  run(h, 3000);
+  assert.equal(nWrites(h, HILL_TICK_F), 2, 'and then keeps its 3 s cadence');
 });
 
 test('hill: two callouts never overlap — the later one preempts the line still playing', () => {
@@ -419,7 +418,7 @@ test('hill: presence survives ONE missed beacon and expires on two (>= 12 s)', (
   run(h, 10000);                                // one beacon missed at +5 s
   assert.ok(h.eng.state().hill, 'one missed beacon must not expire the point');
   const ticks = nWrites(h, HILL_TICK_F);
-  assert.ok(ticks >= 10, `the tick keeps running through a single miss (got ${ticks})`);
+  assert.ok(ticks >= 3, `the tick keeps running through a single miss (got ${ticks})`);
   run(h, 2500);                                 // now past 12 s with no beacon
   assert.equal(h.eng.state().hill, null, 'two missed beacons expires presence');
   const after = nWrites(h, HILL_TICK_F);
@@ -451,7 +450,7 @@ test('hill: the late mag=53 confirmation must never overwrite the new owner', ()
   assert.equal(h.eng.state().hill.from_neutral, true, 'and we know it was taken from neutral');
   const ticks = nWrites(h, HILL_TICK_F);
   run(h, 3000);
-  assert.equal(nWrites(h, HILL_TICK_F), ticks + 3, 'the tick runs straight through the late confirmation');
+  assert.equal(nWrites(h, HILL_TICK_F), ticks + 1, 'the tick runs straight through the late confirmation');
   assert.equal(nWrites(h, HILL_LOST_F), 0, 'and mag=53 announces nothing at all');
 });
 
@@ -623,14 +622,14 @@ test('control point: a two-phase steal says Hill Lost the moment it goes neutral
 
 test('control point: the possession tick runs while WE hold it and stops the moment it goes neutral', () => {
   const h = koth();
-  runControl(h, 3000, { team: 1, state: HELD, value: 100 });
+  runControl(h, 9000, { team: 1, state: HELD, value: 100 });
   const mine = nWrites(h, HILL_TICK_F);
   assert.ok(mine >= 3, `the tick runs on our own point (got ${mine})`);
   runControl(h, 3000, { team: 0, state: 0, value: 0 });     // neutral now
   assert.equal(nWrites(h, HILL_TICK_F), mine, 'a neutral point does not tick');
   runControl(h, 3000, { team: 0, state: HELD, value: 100 });
   assert.equal(nWrites(h, HILL_TICK_F), mine, 'nor an enemy-held one');
-  runControl(h, 3000, { team: 1, state: HELD, value: 100 });
+  runControl(h, 6000, { team: 1, state: HELD, value: 100 });
   assert.ok(nWrites(h, HILL_TICK_F) > mine, 'and it comes back when we take it — the zeros above are real');
 });
 
@@ -642,9 +641,9 @@ test('control point: a bar being BUILT for us at 40% is not ownership — the he
   assert.equal(h.eng.state().hill.progress, 40);
   assert.equal(nWrites(h, HILL_TICK_F), 0, 'so there is no possession tick');
   assert.equal(nWrites(h, HILL_CAPTURED_F), 0, 'and no capture callout');
-  runControl(h, 6000, { team: 1, state: HELD, value: 100 });
+  runControl(h, 9000, { team: 1, state: HELD, value: 100 });
   assert.equal(nWrites(h, HILL_CAPTURED_F), 1, 'reaching 100 is the capture');
-  assert.ok(nWrites(h, HILL_TICK_F) >= 3, 'and the tick starts then (after the 1.924 s callout it waits on)');
+  assert.ok(nWrites(h, HILL_TICK_F) >= 2, 'and the tick starts after the capture callout');
 });
 
 test('control point: Hill Contested IS announced — it is measured here, not inferred (F75 applies to IR only)', () => {
@@ -656,6 +655,32 @@ test('control point: Hill Contested IS announced — it is measured here, not in
   assert.equal(h.eng.state().hill.contested, true, 'and it is in state for the HUD');
   control(h, { team: 1, state: HELD | CONTESTED, value: 94 });
   assert.equal(nWrites(h, HILL_CONTESTED_F), 1, 'the edge, not every advert');
+});
+
+test('control point F382: the possession tick stops while contested and resumes at the 3 s cadence', () => {
+  const h = koth();
+  control(h, { team: 1, state: HELD, value: 100 });
+  runControl(h, 9000, { team: 1, state: HELD, value: 100 });
+  const held = nWrites(h, HILL_TICK_F);
+  assert.equal(held, 3, 'an uncontested owner ticks every 3 s');
+  runControl(h, 6000, { team: 1, state: HELD | CONTESTED, value: 95 });
+  assert.equal(nWrites(h, HILL_TICK_F), held, 'no score tick lands while contested');
+  runControl(h, 9000, { team: 1, state: HELD, value: 95 });
+  assert.equal(nWrites(h, HILL_TICK_F), held + 3, 'the tick resumes when contest clears');
+  const beforeLosing = nWrites(h, HILL_TICK_F);
+  runControl(h, 9000, { team: 1, state: HELD | CONTROL_STATE.falling, value: 60 });
+  assert.equal(nWrites(h, HILL_TICK_F) - beforeLosing, 6, 'a draining hill ticks every 1.5 s');
+});
+
+test('control point F382 (Tony, Q1): the possession clock pauses while contested, like the Stick', () => {
+  const h = koth();
+  runControl(h, 6000, { team: 1, state: HELD, value: 100 });
+  const held = (h.eng.hold['11'] || {})[1] || 0;
+  assert.ok(held >= 5000, `an uncontested hold accrues (${held} ms)`);
+  runControl(h, 6000, { team: 1, state: HELD | CONTESTED, value: 95 });
+  assert.equal((h.eng.hold['11'] || {})[1], held, 'no hold time accrues while contested');
+  runControl(h, 3000, { team: 1, state: HELD, value: 95 });
+  assert.ok(h.eng.hold['11'][1] >= held + 2500, 'the clock resumes when the contest clears');
 });
 
 test('control point: contested reaches a defender whose point it is, and a player standing on it, and nobody else', () => {
@@ -735,11 +760,11 @@ test('control point: F82 — a tid-2 player is told why, once, and hears nothing
   control(ok, { team: 0, state: HELD, value: 100 });
   control(ok, { team: 2, state: 0, value: 0 });
   control(ok, { team: 1, state: HELD, value: 100 });
-  runControl(ok, 6000, { team: 1, state: HELD | CONTESTED, value: 90 });
+  runControl(ok, 9000, { team: 1, state: HELD | CONTESTED, value: 90 });
   assert.ok(!okLogs.some(m => m.includes('F82')), 'a tid-1 roster has nothing to warn about');
   assert.equal(nWrites(ok, HILL_CAPTURED_F), 1, 'it hears the capture');
   assert.equal(nWrites(ok, HILL_CONTESTED_F), 1, 'and the contest');
-  assert.ok(nWrites(ok, HILL_TICK_F) >= 3, 'and the possession tick');
+  assert.equal(nWrites(ok, HILL_TICK_F), 0, 'the valid owner has no score tick while contested');
 });
 
 test('control point: a held advert claiming team 2 is read as NEUTRAL, never as an owner', () => {
@@ -751,7 +776,7 @@ test('control point: a held advert claiming team 2 is read as NEUTRAL, never as 
   runControl(h, 3000, { team: 2, state: HELD, value: 100 });
   assert.equal(nWrites(h, HILL_TICK_F), 0, 'so it never ticks for anyone');
   runControl(h, 6000, { team: 1, state: HELD, value: 100 });
-  assert.ok(nWrites(h, HILL_TICK_F) >= 3, 'and a real owner still does (after its capture callout)');
+  assert.ok(nWrites(h, HILL_TICK_F) >= 2, 'and a real owner still does (after its capture callout)');
 });
 
 test('control point: freshness is measured on the ADVERT`s clock, not the node`s — and it is the 4 s rule', () => {
@@ -924,17 +949,17 @@ test('control point: nothing is owed on revive when the point did not change han
 
 test('control point: the possession tick DOUBLES while our own point is draining (item D)', () => {
   const h = koth();
-  runControl(h, 4000, { team: 1, state: HELD, value: 100 });
+  runControl(h, 12000, { team: 1, state: HELD, value: 100 });
   const steady = nWrites(h, HILL_TICK_F);
-  assert.ok(steady >= 3 && steady <= 5, `~1 per second while it is safe, got ${steady} in 4 s`);
-  runControl(h, 4000, { team: 1, state: HELD | CONTROL_STATE.falling, value: 60 });
+  assert.equal(steady, 4, `3 s cadence while it is safe, got ${steady} in 12 s`);
+  runControl(h, 12000, { team: 1, state: HELD | CONTROL_STATE.falling, value: 60 });
   const losing = nWrites(h, HILL_TICK_F) - steady;
-  assert.ok(losing >= 2 * steady - 2, `about twice as many while it drains: ${losing} vs ${steady}`);
+  assert.equal(losing, 8, `1.5 s cadence while it drains, got ${losing} in 12 s`);
   // The positive half for the other direction: it goes back to the slow cadence when the drain stops, so
   // "doubled" is a response to `falling` and not just a faster tick everywhere.
-  runControl(h, 4000, { team: 1, state: HELD, value: 60 });
+  runControl(h, 12000, { team: 1, state: HELD, value: 60 });
   const after = nWrites(h, HILL_TICK_F) - steady - losing;
-  assert.ok(after <= steady + 1, `and back to ~1 per second, got ${after}`);
+  assert.equal(after, 4, `back to the 3 s cadence, got ${after}`);
 });
 
 test('possession: time is counted from ELAPSED time, per point and per team, and reported to MC', () => {
@@ -1148,7 +1173,7 @@ test('hill (F85): one transmission heard on two sensors does not double the tick
   h.adv(14); h.frame('$HIR,0,15,0,1,50,0,0,*');   // the SAME transmission on the headset sensor
   assert.equal(nWrites(h, HILL_CAPTURED_F), 1, 'one physical capture, one callout');
   run(h, 3000);
-  assert.equal(nWrites(h, HILL_TICK_F), 2, 'and the tick keeps a 1 s cadence, not a doubled one');
+  assert.equal(nWrites(h, HILL_TICK_F), 1, 'and one duplicate sensor cannot double the 3 s cadence');
 });
 
 test('hill (F82): a roster sitting on tid 2 never announces, because neutral IS team 2', () => {

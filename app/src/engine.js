@@ -495,7 +495,7 @@ const HILL_MAG = 8;                 // $HIR magnitude 8 = a control point / hill
 const HILL_CAPTURE_MAG = 50;        // the capture word, carrying the NEW owner in the team field; lands ~50 ms after the shot
 const HILL_WAS_NEUTRAL_MAG = 53;    // "the state being LEFT was neutral" — arrives ~5 s LATER, and only when it was neutral (n=2)
 const HILL_NEUTRAL_TEAM = 2;        // a NEUTRAL point broadcasts team 2 (bench 2026-09-10; F82: a hill roster must not use tid 2)
-const HILL_TICK_MS = 1000;          // the possession tick's cadence — the node's own clock, never the beacon's
+const HILL_TICK_MS = 3000;          // the possession tick's cadence — the node's own clock, never the beacon's
 // Presence expires on >= 2 MISSED beacons, not one: the beacon is clean at desk range (20+ consecutive at a
 // flat 5.0 s) but goes intermittent at the edge of range (rung R), so a single miss is normal reception, not
 // "left the hill". Only a magnitude-8 hill beacon refreshes this — F84: a respawn station's ~2.5 s period
@@ -524,7 +524,7 @@ const HILL_CALLOUT_MIN_MS = 3000;
 // D: while OUR point is draining, the possession tick doubles. That is the "you are losing this, get help"
 // signal, delivered by audio rather than by a screen the defender is not looking at -- and it is the only
 // audible warning before "Hill Lost!", which arrives when it is already too late to matter.
-const HILL_TICK_LOSING_MS = 500;
+const HILL_TICK_LOSING_MS = 1500;
 // A duration must never be measured across a clock STEP: `now()` is `Date.now()` plus an MC offset that
 // updates as the sync converges, so one delta can jump. Clamp each accrual to a tick's worth of time.
 const HOLD_STEP_MAX_MS = 1000;
@@ -2962,7 +2962,7 @@ export class Engine {
   // The architecture, and it is the whole point of this block: **beacons update STATE, a node timer sets the
   // CADENCE.** F74 measured a gun replaying a latched IR event every 5.07 s forever, so a multi-second
   // sequence launched per beacon stacks three deep and drifts; the possession tick is therefore a 0.11 s
-  // clip fired by `_hillTick` off our own ~1 s clock while state says we hold a fresh point, and NOTHING
+  // clip fired by `_hillTick` off our own 3 s clock while state says we hold a fresh point, and NOTHING
   // in this file plays audio directly from a beacon except a one-shot transition callout.
 
   /** The bundle's cue for a hill sound, else the literal fallback above, plus its real length in ms.
@@ -2983,7 +2983,7 @@ export class Engine {
   }
   /** True while hill audio should be audible at all: live, on our feet, and not a mode whose points we
    *  cannot tell apart. Death is deliberately silent — A16 makes the DOWN window hands-off and the death
-   *  scream owns the announcer; a player who respawns learns the current owner from the tick within 1 s. */
+   *  scream owns the announcer; a player who respawns learns the current owner on the 3 s tick cadence. */
   _hillAudioOn(evenDead = false) {
     return this.phase === 'live' && (this.alive || evenDead)
       && !(this.config && HILL_AUDIO_EXCLUDED_MODES.has(this.config.mode));
@@ -3433,7 +3433,8 @@ export class Engine {
     const site = h.site != null ? String(h.site) : '';
     this._holdSource = h.source === 'station' ? 'station' : 'beacon';
     this.observed[site] = (this.observed[site] || 0) + dt;
-    if (h.owner != null) {
+    // F382 (Tony, 2026-09-25): the hill scores continuous hold time and PAUSES while contested, as the Stick does.
+    if (h.owner != null && !h.contested) {
       const by = this.hold[site] || (this.hold[site] = {});
       by[h.owner] = (by[h.owner] || 0) + dt;   // tid 2 included: MC credits it to nobody as `neutral_s`
     }
@@ -3497,13 +3498,14 @@ export class Engine {
         this._controlSpokenOwner = { site: pending.site, owner: pending.to };
       }
     }
+    if (h.contested) { this._hillTickAt = now; return; } // contested ownership earns no audible score tick
     if (!this._hillAudioOn() || !this._hillMine()) return;
     // docs/announcer.md: the tick never queues behind a clip on the gun, nor jumps a waiting line, nor sounds while the item on
     // air still has audio due (the gaps inside a kill item: the 120 ms flash-to-line gap, the gap between medal lines). It is
     // a token-1 clip, the gun's interrupt slot: written there, it cuts whatever plays.
     if (this._gun.outstanding(now) > 0 || this._ann.queue.length || this._ann.audioBusy(now)) return;
     // D: OUR point draining doubles the cadence. Nothing else is audible before "Hill Lost!", which arrives
-    // when it is already too late — the defender hears an unchanged 1 s tick right up to the moment they
+    // when it is already too late — the defender hears an unchanged 3 s tick right up to the moment they
     // have lost it. `falling` comes off the advert, so this costs a comparison.
     const period = h.falling ? HILL_TICK_LOSING_MS : HILL_TICK_MS;
     if (this._hillTickAt && now - this._hillTickAt < period) return;
@@ -3846,7 +3848,7 @@ export class Engine {
       this._puClaimTick(now);          // A56: the claim's dwell runs on the clock too, not only on a fresh advert
       this._osTick(now);               // A56: the overshield grant's spawn protection ends OVERSHIELD_GRANT_MS after it
       this._puBackTick(now);           // A56 polish M3: a switch-back the gun never answered is re-sent
-      this._hillTick(now);             // the possession tick on OUR ~1 s clock, and the >= 2-missed-beacon presence expiry
+      this._hillTick(now);             // the possession tick on OUR 3 s clock, and the >= 2-missed-beacon presence expiry
       this._reportPossession(now);     // and the possession CLOCK, which is what the mode is scored on
       if (this.moment && now - this.moment.at > 4000) { this.moment = null; }
       if (this.card && now - this.card.at > 4000) { this.card = null; }

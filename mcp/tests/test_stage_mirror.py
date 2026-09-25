@@ -123,7 +123,7 @@ def test_a_phone_point_capture_is_announced_and_ticks_on_our_clock_and_the_sourc
         assert audio(mgr, n) == [CAPTURED], audio(mgr, n)
         assert st.hill["owner"] == 1 and st.hill["from_neutral"] is True and st.hill["site"] == 1
         n = mark(mgr)
-        times = await ticks(st, clock, 3.2)
+        times = await ticks(st, clock, 9.2)
         assert len(times) >= 2 and all(abs(g - S.HILL_TICK_S) < 0.11 for g in gaps(times)), (times, gaps(times))
         assert audio(mgr, n) and set(audio(mgr, n)) == {TICK}, "only the tick after the callout finished"
 
@@ -149,6 +149,33 @@ def test_a_phone_point_capture_is_announced_and_ticks_on_our_clock_and_the_sourc
         await adv(t, id=1, team=None, value=0, present=True)
         await adv(t, id=1, team=1, held=True, value=100, present=True)
         assert audio(tm, n) == [CAPTURED]
+    asyncio.run(go())
+
+
+def test_f382_contested_suppresses_hill_ticks_and_cadence_matches_phone():
+    async def go():
+        st, mgr, clock = mk_point(tid=1)
+        await in_play(st)
+        await adv(st, id=1, team=1, held=True, value=100, present=True)
+        n = mark(mgr)
+        await ticks(st, clock, 12.1)
+        before = audio(mgr, n).count(TICK)
+        assert before == 3, before
+        n = mark(mgr)
+        await adv(st, id=1, team=1, held=True, contested=True, value=95, present=True)
+        await ticks(st, clock, 6.0)
+        contested = audio(mgr, n).count(TICK)
+        assert contested == 0, "the score tick must stop during a contest"
+        n = mark(mgr)
+        await adv(st, id=1, team=1, held=True, value=95, present=True)
+        await ticks(st, clock, 9.1)
+        resumed = audio(mgr, n).count(TICK)
+        assert resumed == 3, resumed
+        n = mark(mgr)
+        await adv(st, id=1, team=1, held=True, falling=True, value=60, present=True)
+        await ticks(st, clock, 10.1)
+        losing = audio(mgr, n).count(TICK)
+        assert losing == 6, losing
     asyncio.run(go())
 
 
@@ -249,15 +276,17 @@ def test_rising_and_falling_together_read_as_direction_unknown_and_falling_alone
         both = S.CONTROL_STATE["held"] | S.CONTROL_STATE["rising"] | S.CONTROL_STATE["falling"]
         await adv(st, id=1, team=1, flags=both, value=60, present=True)
         assert st.hill["rising"] is False and st.hill["falling"] is False, "both bits = unknown, not either"
-        times = await ticks(st, clock, 3.0)
+        times = await ticks(st, clock, 6.1)
+        assert len(times) >= 2
         assert all(abs(g - S.HILL_TICK_S) < 0.11 for g in gaps(times)), gaps(times)
         await adv(st, id=1, team=1, held=True, falling=True, value=50, present=True)
         assert st.hill["falling"] is True
-        times = await ticks(st, clock, 3.0)
-        assert len(times) >= 4 and all(abs(g - S.HILL_TICK_LOSING_S) < 0.11 for g in gaps(times)), gaps(times)
+        times = await ticks(st, clock, 6.1)
+        assert len(times) >= 3 and all(abs(g - S.HILL_TICK_LOSING_S) < 0.11 for g in gaps(times)), gaps(times)
         # CONTROL: held + rising (our point being reinforced) is the ordinary cadence
         await adv(st, id=1, team=1, held=True, rising=True, value=70, present=True)
-        times = await ticks(st, clock, 3.0)
+        times = await ticks(st, clock, 6.1)
+        assert len(times) >= 2
         assert all(abs(g - S.HILL_TICK_S) < 0.11 for g in gaps(times)), gaps(times)
     asyncio.run(go())
 

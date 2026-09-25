@@ -274,7 +274,7 @@ HILL_MAG = 8                   # $HIR magnitude 8 = a control point / hill (6 = 
 HILL_CAPTURE_MAG = 50          # the capture word, carrying the NEW owner in the team field; lands ~50 ms after the shot
 HILL_WAS_NEUTRAL_MAG = 53      # "the state being LEFT was neutral" -- arrives ~5 s LATER, and only when it was neutral (n=2)
 HILL_NEUTRAL_TEAM = 2          # a NEUTRAL point broadcasts team 2 (bench 2026-09-10; F82: a hill roster must not use tid 2)
-HILL_TICK_S = 1.0              # engine.js HILL_TICK_MS 1000: the possession tick's cadence -- OUR clock, never the beacon's
+HILL_TICK_S = 3.0              # engine.js HILL_TICK_MS 3000: the possession tick's cadence -- OUR clock, never the beacon's
 # Presence expires on >= 2 MISSED beacons, not one: the beacon is clean at desk range (20+ consecutive at a flat
 # 5.0 s) but goes intermittent at the edge of range (rung R), so a single miss is normal reception. Only a
 # magnitude-8 hill beacon refreshes it -- F84: a respawn station's ~2.5 s period would otherwise keep a 12 s
@@ -289,7 +289,7 @@ CONTROL_STALE_S = 4.0          # engine.js CONTROL_STALE_MS 4000
 CONTROL_RECONNECT_S = 30.0     # engine.js CONTROL_RECONNECT_MS: remember an owner from the last advert for 30 s
 HILL_CONTESTED_MIN_S = 10.0    # engine.js HILL_CONTESTED_MIN_MS: a floor between "Hill Contested" repeats (2 v 2 flaps)
 HILL_CALLOUT_MIN_S = 3.0       # engine.js HILL_CALLOUT_MIN_MS: a floor between the transition lines (two phones on one id)
-HILL_TICK_LOSING_S = 0.5       # engine.js HILL_TICK_LOSING_MS: OUR point draining doubles the possession tick
+HILL_TICK_LOSING_S = 1.5       # engine.js HILL_TICK_LOSING_MS 1500: OUR point draining is quicker than the ordinary tick
 RARE_GUARD_S = 0.25            # engine.js RARE_GUARD_MS: a pool RISE inside this of a kill/redeploy/down/match_over moment is dropped
 STUN_DEFAULT_S = 10.0          # engine.js STUN_DEFAULT_S (already seconds): an EMP's disarm when config.stun names no duration (F15)
 RARE_MOMENTS = ("kill", "redeploy", "down", "match_over")
@@ -2833,7 +2833,7 @@ class GunStage:
         #
         # ⚠ GRANULARITY: `poll()` is NOT the phone's own ~250 ms `tick()`; whatever cadence its caller uses
         # becomes this tick's real resolution. The caller is `stage/server.py`'s `poller()` at
-        # `create_app(poll_s=0.2)` -- 200 ms, comfortably under HILL_TICK_S, so the 1 s cadence the operator
+        # `create_app(poll_s=0.2)` -- 200 ms, comfortably under HILL_TICK_S, so the 3 s cadence the operator
         # hears is the engine's rule and not the harness's period. If that default ever rises above
         # HILL_TICK_S the cadence silently stretches and a bench cadence check would be measuring the poller;
         # `test_the_stages_poller_is_faster_than_the_hill_tick_it_has_to_carry` fails if it does. The hill
@@ -3102,7 +3102,7 @@ class GunStage:
     # The architecture, and it is the whole point of this block: **beacons update STATE, a node timer sets the
     # CADENCE.** F74 measured a gun replaying a latched IR event every 5.07 s forever, so a multi-second
     # sequence launched per beacon stacks three deep and drifts; the possession tick is therefore a 0.114 s
-    # clip fired by `_hill_tick` off our own ~1 s clock while state says we hold a fresh point, and nothing
+    # clip fired by `_hill_tick` off our own 3 s clock while state says we hold a fresh point, and nothing
     # here plays audio straight off a beacon except a one-shot transition callout.
 
     def _hill_cue(self, kind: str) -> tuple[str | None, float]:
@@ -3301,6 +3301,9 @@ class GunStage:
                 self._hill_said_at = now
                 self._hill_say(pending["kind"], f"control point {pending['site']}: team {pending['from']} -> {pending['to']} (deferred by callout floor)")
                 self._control_spoken_owner = {"site": pending["site"], "owner": pending["to"]}
+        if h.get("contested"):
+            self._hill_tick_at = now
+            return                         # contested ownership earns no score tick
         if not self._hill_audio_on() or not self._hill_mine():
             return
         if now < self._hill_busy_until:
@@ -4790,10 +4793,10 @@ class GunStage:
                 "no sound: a point we were not reading is adopted silently · log: control point 1 NEUTRAL", "station_advert",
                 {"id": 1, "team": None, "value": 0, "present": True})
             add("cp_captured", "CONTROL POINT CAPTURED (built to 100 for us)",
-                "sound: Hill Captured (VB0N), then the possession tick (U100) once per second while we hold it", "station_advert",
+                "sound: Hill Captured (VB0N), then the possession tick (U100) every 3 s, or 1.5 s while losing", "station_advert",
                 {"id": 1, "team": mine, "held": True, "value": 100, "present": True})
             add("cp_contested", "CONTROL POINT CONTESTED (an enemy on our point, draining it)",
-                "sound: Hill Contested (VB0O) once (10 s floor) · the tick DOUBLES to every 0.5 s while it falls", "station_advert",
+                "sound: Hill Contested (VB0O) once (10 s floor) · the score tick stops while contested", "station_advert",
                 {"id": 1, "team": mine, "held": True, "contested": True, "falling": True, "value": 60, "present": True})
             add("cp_lost", "CONTROL POINT LOST (drained to 0: neutral again)",
                 "sound: Hill Lost! (VB0P) · the tick stops", "station_advert",

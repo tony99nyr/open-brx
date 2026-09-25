@@ -184,7 +184,7 @@ export class ControlPoint {
     if (contested !== this.contested) { this.contested = contested; events.push({ type: contested ? 'contested' : 'uncontested', counts: { ...counts } }); }
 
     // ---- possession time, for the station's own recap (it is self-authoritative, §5c) ----
-    if (this.owner !== NEUTRAL && elapsedMs) this.holdMs[this.owner] = (this.holdMs[this.owner] || 0) + elapsedMs;
+    if (this.owner !== NEUTRAL && !this.contested && elapsedMs) this.holdMs[this.owner] = (this.holdMs[this.owner] || 0) + elapsedMs;
 
     // ---- the two phases ----
     // `holder` is whose progress the bar shows: the owner while held, else the team building it up. The

@@ -73,8 +73,8 @@ is tied to the exact profile. A silenced preset has no sound steps; night has no
    phone's own byte layout (`beacon.js`: team byte 9, flags byte 10, value byte 11) before the hill model reads
    them, and the station keeps advertising (refreshed every poll, like a real one at ~4 Hz) until **STOP
    ADVERTISING**. The model only announces a CHANGE of hands, so rehearse as a sequence: neutral (adopted silently)
-   -> held by me (Hill Captured, then the possession tick once per second) -> contested + falling (Hill Contested
-   once, 10 s floor; the tick doubles to every 0.5 s) -> neutral (Hill Lost!) -> STOP (silence; the point expires on
+   -> held by me (Hill Captured, then the possession tick every 3 s, or 1.5 s while losing) -> contested + falling (Hill Contested
+   once, 10 s floor; the tick stops while contested) -> neutral (Hill Lost!) -> STOP (silence; the point expires on
    the 4 s presence rule, applied twice as on the phone: the entry stops being read after 4 s and the model expires
    4 s after that; a grenade point keeps its 12 s / two-missed-beacons window). The F70 gate is mirrored: section
    2's **OBJECTIVE SOURCE** (blank = as the config says; koth's row says grenade) decides which wire the phone

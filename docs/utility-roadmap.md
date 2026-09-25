@@ -365,7 +365,7 @@ non-empty `$SIR` `<soundID>` overrides the `$PSET` pool sound on the row that fi
 **So the four team-aware callouts (`VB0N` Hill Captured, `VB0O` Hill Contested, `VB0P` Hill Lost, `U100` the
 possession tick) are phone work, not gun work** — they need to distinguish four+ states from one wire fact
 (owner) that changes over time, and a single `$SIR` cell cannot hold four sounds. **The node algorithm is now
-normative in [`spec/utility.md`](spec/utility.md) §5d.7** (`hill_owner` / `last_beacon_at`, the separate ~1 s
+normative in [`spec/utility.md`](spec/utility.md) §5d.7** (`hill_owner` / `last_beacon_at`, the separate 3 s
 tick, presence expiring on two missed beacons, announcing on `mag=50` alone, the listener's team choosing the
 callout, and the ban on queueing anything off a beacon). `engine.js:_hillCallout` implements it.
 

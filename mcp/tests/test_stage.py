@@ -1682,7 +1682,7 @@ def test_the_hill_constants_and_cues_are_engine_js_converted_to_seconds():
     assert S.HILL_TICK_S == num("HILL_TICK_MS") / 1000.0, "the possession tick's cadence is SECONDS here"
     assert S.HILL_PRESENCE_S == num("HILL_PRESENCE_MS") / 1000.0, "the presence window is SECONDS here"
     # …and they are the numbers the bench actually measured, so a matching pair of wrong constants still fails
-    assert (S.HILL_TICK_S, S.HILL_PRESENCE_S) == (1.0, 12.0)
+    assert (S.HILL_TICK_S, S.HILL_PRESENCE_S) == (3.0, 12.0)
 
     m = re.search(r"\(now - this\._lastBeaconAt\) < (\d+)", src)
     assert m and S.BEACON_DEDUPE_S == int(m.group(1)) / 1000.0, "the F85 identity window must match engine.js"
@@ -1727,7 +1727,7 @@ def test_the_control_point_constants_the_advert_layout_and_the_source_gate_are_t
     assert S.HILL_CALLOUT_MIN_S == num("HILL_CALLOUT_MIN_MS") / 1000.0
     assert S.HILL_TICK_LOSING_S == num("HILL_TICK_LOSING_MS") / 1000.0
     assert S.RARE_GUARD_S == num("RARE_GUARD_MS") / 1000.0, "F58(b): the pool-rise guard is SECONDS here"
-    assert (S.CONTROL_STALE_S, S.HILL_TICK_LOSING_S) == (4.0, 0.5)
+    assert (S.CONTROL_STALE_S, S.HILL_TICK_LOSING_S) == (4.0, 1.5)
     assert S.CONTROL_STALE_S != S.HILL_PRESENCE_S, "the two sources' windows are different ON PURPOSE"
     # the rule that picks the window, and the rule that gates the source, as engine.js writes them
     assert re.search(r"h\.source === 'station' \? CONTROL_STALE_MS : HILL_PRESENCE_MS", src), "engine.js `_hillTick` no longer keys the window on hill.source"
@@ -2000,8 +2000,7 @@ def test_one_missed_beacon_keeps_ticking_and_two_expire_presence_with_no_lost_ca
 
 
 def test_a_callout_suppresses_the_tick_for_the_clips_real_length():
-    """The tick is 0.114 s and "Hill Captured" is 1.924 s: the tick must WAIT for the announcer rather
-    than play underneath it. The control is the same clock with no callout in front of it."""
+    """The 0.114 s tick waits for the 1.924 s callout, then keeps its 3 s cadence."""
     async def go():
         st, mgr, clock = mk_hill(tid=1)
         await in_play(st)
@@ -2012,10 +2011,10 @@ def test_a_callout_suppresses_the_tick_for_the_clips_real_length():
         assert await run_clock(st, clock, 1.9) == [], "the tick must not play under a callout"
         assert len(await run_clock(st, clock, 0.2)) == 1, "…and it must play the moment the clip ends"
 
-        # control: the identical 2.1 s with the announcer free ticks all the way through
-        times = await run_clock(st, clock, 2.1)
-        assert len(times) >= 2, times
-        assert_cadence(times, 2.1)
+        # The next tick follows 3 s after the first tick, even with the announcer free.
+        times = await run_clock(st, clock, 3.1)
+        assert len(times) == 1, times
+        assert_cadence(times, 3.1)
     asyncio.run(go())
 
 
@@ -2205,16 +2204,15 @@ def test_the_hill_tick_runs_on_a_poll_that_drained_no_frames():
         await feed(st, mgr, clock, NEUTRAL_TO_BLUE[:2])
         await run_clock(st, clock, 2.0)                                  # past the 1.924 s callout
         n = mark(mgr)
-        clock.advance(1.0)
+        clock.advance(S.HILL_TICK_S + 0.2)
         assert st.poll() == [], "no frames were waiting"
         await settle(st)
-        assert hill_audio(mgr, n) == [TICK], hill_audio(mgr, n)
+        assert hill_audio(mgr, n) == [TICK], (hill_audio(mgr, n), clock.t, st._hill_tick_at, st.hill, st._hill_busy_until)
     asyncio.run(go())
 
 
 def test_hill_audio_stops_while_we_are_down():
-    """A16 makes the DOWN window hands-off and the death scream owns the announcer; a player who
-    respawns learns the current owner from the tick within a second."""
+    """A16 makes the DOWN window hands-off; after a respawn, the current owner ticks on the 3 s cadence."""
     async def go():
         st, mgr, clock = mk_hill(tid=1)
         await in_play(st)

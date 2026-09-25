@@ -394,7 +394,7 @@ F93's note about byte 15 being the cheap spare for relaying grenade-hill ownersh
 | fact | where it lives |
 |---|---|
 | **who** is contributing (ids, teams, alive) | the station's own screen only (§5d.4). The station knows it from player adverts; it cannot fan a per-player list out in 16 bytes, and no player phone needs it |
-| **hold time / possession seconds** | each node's own clock, exactly as the grenade hill does it (`utility-roadmap.md` "presence is a heartbeat, and timing is node-side"). The old K1 sketch put "seconds held" in `value`; `value` is progress now, permanently, and hold time never rides in the advert |
+| **hold time / possession seconds** | each node's own clock, exactly as the grenade hill does it (`utility-roadmap.md` "presence is a heartbeat, and timing is node-side"); the station and every player phone pause the tally while contested (F382, Tony 2026-09-25). The old K1 sketch put "seconds held" in `value`; `value` is progress now, permanently, and hold time never rides in the advert |
 | **a running score** across several points, and **points-to-win** | nowhere offline. This is the whole reason the roaming-hill variant exists (`utility-roadmap.md` §8 5e) |
 
 ### 5d.4 The station screen ANIMATES the contest and the transition
@@ -447,7 +447,7 @@ Captured" the moment someone walked on.
 | decoded owner: nobody → mine, or an enemy tid → mine | the new owner | **`VB0N` "Hill Captured"** (1.92 s) |
 | decoded owner: mine → nobody (the drain completed) | the team that just lost it | **`VB0P` "Hill Lost!"** (2.98 s) |
 | contested bit 0 → 1 with my team involved | both sides | **`VB0O` "Hill Contested"** (2.08 s) |
-| `team` == my team, on the node's own ~1 s timer | the holder | **`U100`** possession tick (0.11 s) |
+| `team` == my team, on the node's own 3 s timer (1.5 s while losing, paused while contested) | the holder | **`U100`** possession tick (0.11 s) |
 | a capture between two **other** teams | everyone else | **silence** — not this player's event |
 | the hot point moves (**roaming hills only**) | everyone | **`VB0Q` "Hill Moved"** (2.42 s) |
 
@@ -469,12 +469,12 @@ which the cue has a truthful caller. That is a reason to build the phone point e
   on a `seq` change only, with a floor between repeats of the same line (**proposed 10 s** for contested, which can
   otherwise oscillate at net 0).
 - **The scheduling rule is the phone's, it already exists, and the animated screen does not replace it.** These are
-  1.9-3.0 s clips against a 1 s tick cadence, so: a callout **owns the announcer for the clip's real length** and
+  1.9-3.0 s clips against a 1.5-3 s tick cadence, so: a callout **owns the announcer for the clip's real length** and
   the tick **waits** rather than playing underneath it (`engine.js`'s `_hillBusyUntil`, set in `_hillSay()` and honoured in `_hillTick()`), and a later
   callout **preempts outright — it never queues** (`_hillSay` sends `$PLAYX,0,*` in the same write, and only ever
   cuts off our own in-flight hill line). Both are implemented, commit `4348721`. A queued "Hill Captured" landing
   three seconds after the point was already lost would state something false; the newest word is always the true
-  one. `U100` is safe at 1 s only because it is 0.11 s long and yields to every callout. §5d.4's animation is
+  one. `U100` is safe at 3 s because it is 0.11 s long and yields to every callout. §5d.4's animation is
   **additive to this**: the screen can show a transition continuously, the gun cannot.
 - **The callout's reach is the advert's radio reach**, which is neither the 10 ft presence bubble nor the whole
   field — roughly tens of metres, body-blocked and uneven. So a capture is heard by whoever is near the fight, not
@@ -507,8 +507,9 @@ Hill Lost, `VB0O` Hill Contested and the `U100` possession tick — are played b
 
 - **A beacon updates state, it never plays.** Every `$HIR,<sensor>,15,0,<owner>,<mode>,0,0` sets two fields,
   **`hill_owner`** and **`last_beacon_at`**. Nothing sounds here.
-- **A separate ~1 s timer plays the tick.** It fires `U100` while `hill_owner == my_team` and the beacon is
-  fresh. This is the only source of the possession tick; it cannot ride the beacon, which arrives once per ~5 s.
+- **A separate 3 s timer plays the tick, or 1.5 s while the owner's point is draining.** It fires `U100` while
+  `hill_owner == my_team`, the point is fresh and uncontested. This is the only source of the possession tick;
+  it cannot ride the beacon, which arrives once per ~5 s.
 - **Presence expires on ≥ 2 missed beacons (~12 s), never one.** The beacon goes intermittent at the edge of
   range, so a single miss is normal reception, not "left the hill".
 - **Announce a capture on `mag=50` alone.** Never wait for `mag=53`: on an enemy-to-enemy capture it never
@@ -523,7 +524,7 @@ Hill Lost, `VB0O` Hill Contested and the `U100` possession tick — are played b
   cannot be detected, only guessed, and a guess cannot tell a hit from a miss.
 - ⚠ **Never queue a multi-second sequence off a beacon.** A beacon repeats every ~5 s, and this gun really does
   replay long events (F74): a 15 s clip fired on three consecutive beacons stacks three deep. `U100` is chosen
-  because it is ~0.1 s and cannot overlap its own 1 s cadence; a capture callout is one-shot per transition.
+  because it is ~0.1 s and cannot overlap its own 3 s cadence; a capture callout is one-shot per transition.
 
 ## 5e / 5f. Roaming hills and TERRITORIES — designed, not built
 
