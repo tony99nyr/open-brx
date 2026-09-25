@@ -62,7 +62,7 @@ APKs 0.4.7-0.4.11 published, each on green CI. On main since 0.4.11: A60 auto-jo
 Down, A63 Killjoy and the AWARDS table, A64 the frag-cap freeze, MC visual QA round 2 (mc-vqa2 gate), and fixes
 F330, F343, F337, F354, F356. Each was polish-looped and test:all --ui green.
 - **Next:** cut 0.4.12 once sitting A of `bench-2026-09-25.md` passes; bench F309, F311 and F312.
-- **Tony decides:** F346 (d) first contact (trust on first use, or one JOIN tap); F354 a lost damaging word (credit
+- **Tony decides:** F354 a lost damaging word (credit
   the smoke/EMP shooter or only the team); F357 kill confirms after a frag-cap whistle; F361 the KILLJOY gun flash.
 - **Build:** F355 (VQA2 Lows), F360 (F356 edge cases).
 ## Lane: S57, B21, StickS3 (brx4)
@@ -102,7 +102,7 @@ Use this priority stack; do not spend Tony's bench time on desk work:
 1. **Next sitting:** [`bench-2026-09-25.md`](bench-2026-09-25.md), sitting A first (it gates 0.4.12); record
    evidence and promote or close each row from the result.
 2. **Screamer transport:** Block 2 (A4 first, it gates 0.4.12), then A8b; capture F269/F270/F272, then F274's soaks.
-3. **Decisions for Tony:** F346 (d) first contact; F351's B3 (the kill line at my own death); F350's shield-hit
+3. **Decisions for Tony:** F351's B3 (the kill line at my own death); F350's shield-hit
    sound; F352's kill confirm; the powerups flag after 3.4-3.5.
 4. **Only after reliability:** E2/E3/E4, B17, K6 and the remaining feature rows are roadmap work.
 

@@ -331,7 +331,7 @@ async function exitToHud() {
     // its takeover key to the HUD so MC can authenticate the physical role transition, consume the old
     // ITEMS row, then acknowledge that consumption. A node that was never welcomed has no proof to hand on.
     if (transport && transport.nodeId && transport.nodeKey) {
-      localStorage.setItem(PRIOR_UTILITY_KEY, JSON.stringify({ node_id: transport.nodeId, node_key: transport.nodeKey }));
+      localStorage.setItem(PRIOR_UTILITY_KEY, JSON.stringify({ node_id: transport.nodeId, node_key: transport.nodeKey, mc_url: transport.url }));
     }
     localStorage.setItem('brx.role', 'hud');
   } catch (_) { /* ignore */ }
