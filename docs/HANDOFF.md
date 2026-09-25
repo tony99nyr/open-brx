@@ -58,11 +58,11 @@ a pool above the armed `$PSET` or shows GUN POOLS WRONG. F342's respawn-only gam
 - **Next bench task:** Block 2 step 4 (A4), then step 6 (2.6) of [`bench-2026-09-24.md`](bench-2026-09-24.md).
 - **Next desk task:** F342's open half (a powerup or control-point game still floods the scan).
 ## Lane: Mission Control console honesty
-APKs 0.4.7-0.4.11 published, each on green CI. On main since 0.4.11: A60 auto-join, A61 multi-kill ladder, A62 Beat
-Down, A63 Killjoy and the AWARDS table, A64 the frag-cap freeze, MC visual QA round 2 (mc-vqa2 gate), and fixes
-F330, F343, F337, F354, F356. Each was polish-looped and test:all --ui green.
-- **Next:** cut 0.4.12 once sitting A of `bench-2026-09-25.md` passes; bench F309, F311 and F312.
-- **Tony decides:** F361 (the KILLJOY gun flash).
+APKs 0.4.7-0.4.11 published, each on green CI. On main since 0.4.11: A60 auto-join (with first-contact join, F346 d),
+A61-A63 the medals and awards, A64/A65 no kill cue after any whistle and team-only credit, A66 MC-assigned station
+ids, A67 the MC half of the station range sync, and MC visual QA round 2. Each was polish-looped and test:all --ui green.
+- **Next:** cut 0.4.12 once sitting A of `bench-2026-09-25.md` passes; bench F365 (all three halves built), F309, F311, F312.
+- **Tony decides:** F361 (the KILLJOY gun flash); the MAX_TAG_LEN number (brx5 asks, brx3 builds the MC refusal).
 - **Build:** F355 (VQA2 Lows), F360 (F356 edge cases).
 ## Lane: S57, B21, StickS3, F365 (brx4)
 Tony's MVP scope: Stick stations are Bluetooth-only (hill, pickup, respawn); Stick IR receive and the grenade hill
