@@ -1,7 +1,7 @@
 {
-  "taken": "2026-09-25T14:52:52.396Z",
+  "taken": "2026-09-25T15:12:32.982Z",
   "mc_src": "365276a0fd02a206c10020eade5bd9c94359f128",
-  "hud_src": "d4ed238773a03cee90f0dc2fe33347f16f0b0bcd",
+  "hud_src": "3db2b5855aaec0a5205c18e5cd19447bc9a8cb2f",
   "mc_shell": "9ea5c65bbafd244cb934229dd67dd1de33c5c2a6",
   "hud_shell": "6a9d3e7c490ef6f57b7734364718ae73de605430",
   "files": {
@@ -28,7 +28,7 @@
     "hud-armed.jpg": {
       "w": 891,
       "h": 411,
-      "bytes": 66168
+      "bytes": 66244
     },
     "hud-live.jpg": {
       "w": 891,
