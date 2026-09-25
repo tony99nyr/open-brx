@@ -166,6 +166,33 @@ def _assert_fields_match(shape: str, ts_fields, py_fields, ts_loc: str, py_loc: 
     assert not msgs, "; ".join(msgs)
 
 
+def test_ui_art_coverage_and_weapon_tree_parity():
+    """Every shipped mode and weapon has host art, with only recorded gaps allowed."""
+    app = REPO / "app" / "www" / "assets"
+    mc = REPO / "webapp" / "mc" / "public" / "assets"
+    state = (REPO / "mcp" / "brx_mcp" / "mc" / "state.py").read_text(encoding="utf-8")
+    mode_block = state.split("MODES: list[ModeRow] = [", 1)[1].split("\n]", 1)[0]
+    modes = set(re.findall(r'\{"mode":\s*"([a-z0-9_]+)"', mode_block))
+    assert modes, "MODES list changed shape; update the asset coverage guard"
+    weapons = json.loads(WEAPONS_JSON.read_text(encoding="utf-8"))["weapons"]
+    mode_gaps = {"koth"}
+    weapon_gaps = {"melee"}
+    for mode in sorted(modes - mode_gaps):
+        assert (app / "modes" / f"{mode}.jpg").is_file(), f"app missing mode art: {mode}"
+        assert (mc / "modes" / f"{mode}.jpg").is_file(), f"MC missing mode art: {mode}"
+    for mode in sorted(modes & mode_gaps):
+        assert not (app / "modes" / f"{mode}.jpg").is_file() and not (mc / "modes" / f"{mode}.jpg").is_file(), f"resolved mode gap: {mode}"
+    ids = {w["weapon_id"] for w in weapons}
+    for weapon in sorted(ids - weapon_gaps):
+        assert (app / "weapons" / f"{weapon}.jpg").is_file(), f"app missing weapon art: {weapon}"
+        assert (mc / "weapons" / f"{weapon}.jpg").is_file(), f"MC missing weapon art: {weapon}"
+    for weapon in sorted(ids & weapon_gaps):
+        assert not (app / "weapons" / f"{weapon}.jpg").is_file() and not (mc / "weapons" / f"{weapon}.jpg").is_file(), f"resolved weapon gap: {weapon}"
+    app_weapons = {p.name: p.read_bytes() for p in (app / "weapons").glob("*.jpg")}
+    mc_weapons = {p.name: p.read_bytes() for p in (mc / "weapons").glob("*.jpg")}
+    assert app_weapons == mc_weapons, "app/www and MC weapon art differ"
+
+
 def test_types_ts_re_exports_the_generated_shapes_and_declares_none_of_them():
     """`types.ts` is a RE-EXPORT of `contract.gen.ts`, never a second copy of it.
 

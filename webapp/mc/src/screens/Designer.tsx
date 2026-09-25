@@ -315,7 +315,7 @@ export function Designer() {
           <div style={{ padding: '12px 18px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.acc, lineHeight: 1.6 }}>{rulesLine(cfg, weapons, perks)}</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 4 }}>
-              {[['BASE', mode?.name ?? cfg.mode], ['TIME', `${Math.round((cfg.time_limit_s ?? 0) / 60)} MIN`], ['WIN', winLine(cfg, mode)],
+              {[['BASE', mode?.name ?? cfg.mode], ...(cfg.mode === 'ffa' ? [] : [['TEAM DAMAGE', 'OFF']]), ['TIME', `${Math.round((cfg.time_limit_s ?? 0) / 60)} MIN`], ['WIN', winLine(cfg, mode)],
                 ['RESPAWN', cfg.respawn.type === 'none' ? 'OFF' : `${cfg.respawn.type.toUpperCase()} · ${cfg.respawn.delay_s} S`],
                 ['LIFE', healthPresetOf(cfg.health) === 'custom'
                   ? `HP ${cfg.health.max_hp} · AR ${cfg.health.max_armor}${cfg.health.max_shield ? ` · SH ${cfg.health.max_shield}` : ''}`

@@ -1398,6 +1398,12 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .lotab,.lobtn,.result .rseg .sg,.result .rfoot .ready{position:relative}
 .bf{overflow:hidden}
 .bf .bfart{position:absolute;inset:0;background-size:cover;background-position:center;opacity:.55;animation:bfart 1.2s ease-out both}
+/* S32: the art is an <img> so a missing file (koth today) falls back to a glyph, as weapon art does */
+.bf .bfart img{width:100%;height:100%;object-fit:cover;display:block}
+.bf .bfart .bfartfb{display:none;position:absolute;inset:0;align-items:center;justify-content:center;color:rgba(80,220,255,.35);font-size:100px;font-weight:700}
+/* Q13: team modes add a TEAM DAMAGE cell, a seventh rule, so the body tightens to keep its 268 px */
+.bf .bfbody.dense{gap:2px}
+.bf .bfbody.dense .bfrules .cell{padding:0 9px}
 .bf .bfveil{position:absolute;inset:0;background:linear-gradient(90deg,rgba(3,4,7,.96) 0%,rgba(3,4,7,.86) 46%,rgba(3,4,7,.35) 100%),linear-gradient(0deg,rgba(3,4,7,.95) 0%,transparent 45%)}
 .bf .bfbody{position:absolute;top:26px;left:36px;right:36px;bottom:96px;display:flex;flex-direction:column;gap:6px;max-width:560px;overflow:hidden}   /* F110 (review): the rows are flex:0 0 auto, so the body became purely ADDITIVE — a two-line name over a wrapped loadout line ran straight into .bffoot. The rows below are each clamped to fit this 268px box; this is the backstop. */
 .bf .r{flex:0 0 auto;min-height:0;animation:bfin .45s cubic-bezier(.2,.8,.2,1) both}   /* F110: flex items SHRINK by default, so .bfname/.bfdesc were sized below their own content and their overflow:hidden sheared the text. The box never overflowed, which is why no overflow check caught it. Every row now keeps its content height and the type below is sized to the 268px box. */

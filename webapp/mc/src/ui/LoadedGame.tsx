@@ -36,6 +36,7 @@ export function gameSettingRows(
 ): SettingRow[] {
   const rows: SettingRow[] = [
     ['TEAMS', mode?.teams_text ?? cfg.teams.map(t => t.team_id.toUpperCase()).join(' V ') ?? '—'],
+    ...(cfg.mode === 'ffa' ? [] : [['TEAM DAMAGE', 'OFF'] as SettingRow]),
     ['WIN', winLine(cfg, mode)],
     ['RESPAWN', cfg.respawn.type === 'none' ? 'OFF · LIVES' : `${cfg.respawn.type.toUpperCase()} · ${cfg.respawn.delay_s} S`],
     ['TIME', cfg.time_limit_s ? `${Math.round(cfg.time_limit_s / 60)} MIN` : '—'],

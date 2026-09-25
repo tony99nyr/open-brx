@@ -906,8 +906,9 @@ export class MockBackend implements Api {
     const l = this.live_!; const alive = l.rows.filter(r => r.status === 'alive');
     if (alive.length < 2) return;
     const k = alive.find(r => r.player_id === killerId) ?? alive[Math.floor(Math.random() * alive.length)];
-    let v = alive[Math.floor(Math.random() * alive.length)];
-    if (v === k) v = alive[(alive.indexOf(k) + 1) % alive.length];
+    const targets = alive.filter(r => r !== k && (this.config.mode === 'ffa' || !k.team_id || r.team_id !== k.team_id));
+    if (!targets.length) return;
+    const v = targets[Math.floor(Math.random() * targets.length)];
     for (const x of [k, v]) { delete x.pool_stale; delete x.pool_stale_ms; delete x.possibly_protected; } k.kills++; k.streak++; k.hits += 3; k.shots += 6; v.deaths++; v.streak = 0; v.status = 'down'; v.respawn_in_s = this.config.respawn.delay_s;
     // F116: `best_streak` is the longest of the match and NEVER resets — `streak` is 0 for whoever
     // died last, which is what made a 9-kill row read "streak 0" on the field.

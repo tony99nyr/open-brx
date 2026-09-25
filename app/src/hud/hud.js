@@ -963,7 +963,7 @@ export class Hud {
     const rs = g.respawn ? (g.respawn.type === 'none' ? 'NONE · LIVES' : `${g.respawn.type === 'scanner' ? 'AT A SCANNER' : 'AUTO'} · ${g.respawn.delay_s}s`) : (g.respawn_text || '—');
     const hp = g.health ? `${g.health.max_hp} HP${g.health.max_armor > 0 ? ` · ${g.health.max_armor} ARMOR` : ''}${g.health.max_shield > 0 ? ` · ${g.health.max_shield} SHIELD` : ''}` : '—';
     const venue = [g.environment ? String(g.environment).toUpperCase() : null, g.night ? 'NIGHT OPS' : null].filter(Boolean).join(' · ') || '—';
-    const rows = [['TEAMS', g.teams_text || '—'], ['WIN', g.win_text || '—'], ['RESPAWN', rs], ['TIME', mins ? `${mins} MIN` : '—'], ['LIFE', hp], ['VENUE', venue]];
+    const rows = [['TEAMS', g.teams_text || '—'], ...(mode === 'ffa' ? [] : [['TEAM DAMAGE', 'OFF']]), ['WIN', g.win_text || '—'], ['RESPAWN', rs], ['TIME', mins ? `${mins} MIN` : '—'], ['LIFE', hp], ['VENUE', venue]];
     const locked = !st.canPickPrimary && !st.canPickSecondary && !st.canPickPerk;
     const cta = locked ? 'SEE MY KIT ▸' : 'BUILD MY KIT ▸';
     const sub = locked ? 'Your kit is set by the host — take a look.' : 'Pick your weapons when you are ready.';
@@ -975,9 +975,9 @@ export class Hud {
         ${g.loadout_line ? `<div class="mk">LOADOUT</div><div class="mv">${esc(g.loadout_line)}</div>` : ''}</div>` : '';
     const moreBtn = (g.desc || g.loadout_line || g.ruleset) ? `<button class="bfmorebtn" data-act="onBriefMore" aria-expanded="${!!this.bfMore}" ${this.bfMore ? '' : 'hidden'}><span class="unskew">${this.bfMore ? 'CLOSE NOTES ▴' : 'FULL NOTES ▸'}</span></button>` : '';
     return `<div class="lobby bf ${this.bfMore ? 'more' : ''}" data-mode="${esc(mode)}"><div class="scan"></div><div class="edgeglow"></div>
-      <div class="bfart" style="background-image:url('assets/modes/${esc(mode)}.jpg')"></div><div class="bfveil"></div>
+      <div class="bfart"><img src="assets/modes/${esc(mode)}.jpg" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="bfartfb" data-art="fallback" aria-hidden="true">◆</span></div><div class="bfveil"></div>
       ${moreBtn}${more}
-      <div class="bfbody">
+      <div class="bfbody${rows.length > 6 ? ' dense' : ''}">
         <div class="bfk r r0">${g.abbr ? `<span class="chip"><span class="unskew">${esc(g.abbr)}</span></span>` : ''}<span class="lab">GAME BRIEFING${g.ruleset ? ' · ' + esc(g.ruleset) : ''}</span></div>
         <div class="bfname r r1">${esc(String(name).toUpperCase())}</div>
         ${g.desc ? `<div class="bfdesc r r2">${esc(g.desc)}</div>` : ''}

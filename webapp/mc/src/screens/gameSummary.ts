@@ -218,9 +218,9 @@ export function withHealthPreset(h: Partial<Health> | undefined | null): Health 
 // arrives in a config still renders (see `objectiveLine`) rather than vanishing — a field we cannot
 // show is a field nobody can fix.
 const SOURCE_COPY: Record<StationSourceId, { label: string; hint: string }> = {
-  grenade: { label: 'GRENADE · POST-MVP', hint: 'POST-MVP: the MVP hill is a Bluetooth station (PHONE). A BRX Smart Grenade in hill mode, bench-proven 2026-09-10; drives exactly ONE point (F88).' },
-  ir_station: { label: 'IR STATION', hint: 'A BRX station / Utility Box speaking $CAPTURE. UNPROVEN — we have never had one on the bench.' },
-  phone: { label: 'PHONE', hint: 'A Bluetooth control point: a spare phone in the UTILITY role (the MVP hill). Capture by presence, armed by MC at muster. Announces contested; can name its point (several are possible).' },
+  grenade: { label: 'GRENADE · POST-MVP', hint: 'POST-MVP: a BRX Smart Grenade in hill mode drives exactly ONE point (F88). Phones say HILL CAPTURED and HILL LOST from its beacon, never HILL CONTESTED, and a capture call can be missed.' },
+  ir_station: { label: 'IR STATION', hint: 'A BRX station / Utility Box speaking $CAPTURE. It is unproven, so its announcement behaviour is unknown.' },
+  phone: { label: 'PHONE', hint: 'The MVP hill: a spare phone in the UTILITY role, or a StickS3, captured by presence and armed by MC at muster. Phones say HILL CAPTURED, HILL LOST and HILL CONTESTED; it can name its point.' },
 };
 export const STATION_SOURCES: { value: StationSourceId; label: string; hint: string }[] =
   STATION_SOURCE_IDS.map(value => ({ value, ...SOURCE_COPY[value] }));
