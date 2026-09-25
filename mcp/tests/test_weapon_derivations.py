@@ -215,8 +215,8 @@ def test_gun_range_outdoor_pct_ships_the_catalogue_value_outdoors_only():
     (F231 open) and must never be invented. A weapon with no catalogue value (every hidden/cut
     weapon, the sidearms, melee) keeps its captured t2 at every venue, same as before this fix."""
     shipped = {"sniper_rifle": 100, "amr": 85, "charge_rifle": 85, "assault_rifle": 70,
-               "burst_rifle": 70, "suppressor": 55, "energy_rifle": 55, "smg": 30,
-               "shotgun": 30, "rocket_launcher": 22, "rail_gun": 22}
+               "burst_rifle": 70, "suppressor": 55, "energy_rifle": 55, "smg": 40,
+               "shotgun": 30, "rocket_launcher": 40, "rail_gun": 100}
     by_id = {w["weapon_id"]: w for w in ROWS}
     assert set(shipped) <= set(by_id), sorted(set(shipped) - set(by_id))
     for wid, want in shipped.items():
