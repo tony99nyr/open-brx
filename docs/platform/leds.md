@@ -118,8 +118,7 @@ Standard and Hardcore presets grant no shield, so the tagger reports 0 on every 
 writable over Bluetooth: on 2026-09-11 the bench filled it with `$LIFE,0,0,20,*` and emptied it
 again with a negative. A painted teal segment has been seen on a spawned tagger. The Shields preset
 first ran in a real match on 2026-09-24, where every spawn started with an empty shield; the fix is
-in the code and has not yet been checked on a tagger. Everything else on this page has been watched on real
-hardware.
+in the code and has not yet been checked on a tagger.
 
 Teams paint red (team 0), blue (team 1), yellow (team 2) and purple (team 3). Team 3 fights as green
 on the wire and paints purple, because green is what a headset flashes on a hit and out. Free-for-all

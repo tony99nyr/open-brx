@@ -255,7 +255,7 @@ button, and the gun's buttons play no part.
    awards the item to the **first** player advert it hears with `claim_ready` for its own id while the item is
    available. A tie inside one scan batch goes to the lower `player_num` (a phone station and a StickS3 alike).
    **No RSSI floor** (Tony, 2026-09-24, pickups placed outside Wi-Fi range must work offline): the phone's
-   `claim_ready` already proves it stood about 1 ft from the station for 1 s by its own reading of the station's
+   `claim_ready` already proves it met the station's advertised threshold for 1 s by its own reading of the station's
    strong advert, while a station hears player adverts 20-30 dB weaker and sparsely (the StickS3 bench), so the old
    -80 dBm floor refused legitimate claims. Its screen shows a 1 s ring from the first
    `claiming` advert, for display only.

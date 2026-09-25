@@ -234,7 +234,7 @@ cells above that say "silent in the kill streak" follow that rule; the rest of t
 
 ## Findings under B
 
-B fixes findings 1 to 4 for every must-hear line: each plays in full, at once, with the hum up or down, and under all
+B fixes findings 1 to 4 for every must-hear line that stays audible (a kill streak can silence a lead line, `STREAK_SILENT` in `docs/announcer.md`): each plays in full, at once, with the hum up or down, and under all
 three hum models. The gaps the first B run found, and what became of them (2026-09-24, `2f21877a`, on main):
 
 - Finding B1, FIXED: the lead change expired (4 s TTL) behind two kill items (scenario 8). It is must-hear, so its TTL
