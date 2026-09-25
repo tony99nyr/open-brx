@@ -89,7 +89,7 @@ happened to), and the magnitude names the event and the team it concerns.
 | Event | Where it happens | The one broadcast | Phone side | Status |
 |---|---|---|---|---|
 | Grenade hill captured / lost | the grenade | its native capture word, protocol 15 magnitude 50, new owner in the team bits | `_onHillBeacon` plays HILL CAPTURED (VB0N) to the new owner, HILL LOST (VB0P) to the old | built; F312 |
-| Stick hill captured / lost | the M5Stick station | the same magnitude-50 word, sent once on a HILL-mode flip (`capture_word()`) | as a grenade, no new phone code, when the game's `station_source` is `grenade` (the phone drops beacon words under `ir_station`; which value a Stick carries is open under H8) | built, host-tested; the Stick is unproven on hardware |
+| Stick hill captured / lost | the M5Stick station | MVP (Tony, 2026-09-24): its BLE advert (kind 5), like a phone control point; an MC-armed control Stick still sends the magnitude-50 word once on a flip (`capture_word()`) | `_onControlAdvert`, as for a phone control point; the IR word only matters under `station_source: grenade` | built (`e65aea17`), host-tested; unproven on hardware (bench Block 9) |
 | Phone control point captured / lost / contested | the utility phone, which has no gun | its BLE advert (kind 5), republished on every change | `_onControlAdvert` plays VB0N / VB0P / VB0O | built; no IR word needed |
 | Hill contested | nowhere on a grenade | none: the grenade sends no such signal (F75) | not wired | no sender exists |
 | Hill moved | Mission Control, not a device | none on IR: no gun is where it happened | VB0Q has no caller | not an IR event |
@@ -112,7 +112,12 @@ codes 29-36 hold room for CTF.
   words.
 - `callout_team` in the frame bundle, as above.
 
-## Open questions for the bench (brx5)
+## Open questions for the bench
+
+The status of each lives on S57 in `FOLLOWUPS.md` and in Block 7 of `bench-2026-09-24.md`. Step 7.11
+(2026-09-24) sent magnitude 22 ten times at about 2 m and all ten arrived as 22; the victim-name word was lost at a
+250 ms gap, which set `CALLOUT_NAME_GAP_MS` above.
+
 
 1. Does the sender's own gun report its own host `$IRTX` (the self-hit reject), and does a dead gun really emit it?
 2. With friendly fire off, does a word carrying an unused team id reach players on every team?

@@ -30,7 +30,7 @@ from ..modes.registry import default_params as _default_params, params_schema_js
     validate_mode_params as _validate_mode_params, \
     requires_coverage as _requires_coverage                        # A18: the mode's own rules, engine-declared
 from .tunnel import TunnelError
-from .types import (PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM, PHONE_THRESHOLD_ZERO_APP, CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS,
+from .types import (PHONE_RESPAWN_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM, PHONE_THRESHOLD_ZERO_APP, CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS,
                     OBJECTIVE_MODES, OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_KINDS, STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S,
                     STATION_LOCK_MAX_S, STATION_REBOOT_SLACK_MS, STATUS_HEARTBEAT_MS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, Event,
@@ -659,6 +659,9 @@ class Session:
                 "node_player": {nid: pid for nid, pid in {**self._match_nodes, **self.node_player}.items()
                                 if pid in players},
                 "synced_at_lobby": dict(self.synced_at_lobby),
+                # A63: who hot-joined after go-live, and when. The stored facts cannot say it, and IRON MAN
+                # and SURVIVOR both read it, so a resumed scorer must be handed it.
+                "joined_t": dict(self.scorer.joined_t),
                 # An accepted LIVE release removes the active row, but its frozen tally still belongs
                 # to this match and must survive an MC restart before the whistle.
                 "departed_stations": [dict(row) for row in sorted(
@@ -3135,7 +3138,9 @@ class Session:
         v = parse_app_ver(st.get("app_ver"))
         if v is not None and v >= PHONE_THRESHOLD_ZERO_APP:
             return 0
-        return PHONE_RESPAWN_THRESHOLD_DBM if a["kind"] == "respawn" else PHONE_STATION_THRESHOLD_DBM
+        if a["kind"] == "respawn":
+            return PHONE_RESPAWN_THRESHOLD_DBM
+        return PHONE_POWERUP_THRESHOLD_DBM if a["kind"] == "powerup" else PHONE_STATION_THRESHOLD_DBM
 
     def _arm_station(self, nid: str, relock: bool = False) -> bool:
         """Push `station_config` to one assigned station. Best-effort: an offline phone is flagged
@@ -4331,7 +4336,8 @@ class Session:
     # account for). A crash, a laptop lid or a restart can all do this on the field, so the snapshot now
     # carries the running match and the new process picks it up (`resume_match`). With no snapshot the
     # phones' heartbeats are the only record, and the operator decides (`orphan_match_view`).
-    def _build_scorer(self, match_id: str, go_live_t: int, node_player: dict[str, str]) -> Scorer:
+    def _build_scorer(self, match_id: str, go_live_t: int, node_player: dict[str, str],
+                      joined_t: dict[str, int] | None = None) -> Scorer:
         """A scorer for a match this process did not schedule, replayed from the stored facts.
 
         The replay runs with no callbacks (no cue re-fires at a player), and with the ARMED node map merged
@@ -4341,6 +4347,7 @@ class Session:
         sc = Scorer(match_id, go_live_t, self.config.get("time_limit_s"), self.config["mode"], self.players,
                     self.teams, {**node_player, **self.node_player}, self.synced_at_lobby, now_ms=self.now_ms,
                     frag_limit=scoring.get("frag_limit"), win_by=scoring.get("win_by"))
+        sc.joined_t = dict(joined_t or {})       # A63: the snapshot's hot joiners (not in any stored fact)
         for r in self._match_facts(match_id):
             body: Event = r["body"]
             sc.ingest(r["node_id"], body.copy(), r.get("t_recv") or 0, seq=r.get("seq"))
@@ -4447,7 +4454,9 @@ class Session:
         self._match_players = {pid: cast(Player, dict(p)) for pid, p in players.items() if isinstance(p, dict)} or \
             {pid: p.copy() for pid, p in self.players.items()}
         self._end_delivery, self._end_delivery_told = {}, None
-        self.scorer = self._build_scorer(mid, go, node_player)
+        joined = {p: t for p, t in (m.get("joined_t") or {}).items()
+                  if isinstance(p, str) and isinstance(t, int) and not isinstance(t, bool)}
+        self.scorer = self._build_scorer(mid, go, node_player, joined)
         if self.store:
             try:
                 snap = dict(self.config)
@@ -5151,7 +5160,7 @@ class Session:
             "rows": rows,
             "my": next((r for r in rows if r["player_id"] == p["player_id"]), None),
             # `display` is the PLAYER's name, so a phone can render the honours roll without the roster.
-            "honors": [{"medal": h.get("award"), "player_id": h.get("player_id"),
+            "honors": [{"medal": h.get("award"), "key": h.get("key"), "player_id": h.get("player_id"),
                         "display": display.get(h.get("player_id")) or h.get("player_id"), "stat": h.get("stat")}
                        for h in (recap.get("honors") or [])],
             "provisional": bool(recap.get("provisional")),
@@ -5243,6 +5252,7 @@ class Session:
                     now_ms=self.now_ms, win_by=old.win_by, frag_limit=old.frag_limit)
         if freeze_at is not None:
             sc.set_end(freeze_at)
+        sc.joined_t = dict(old.joined_t)         # A63: a hot join is not a fact the replay can re-derive
         for r in facts:
             body: Event = r["body"]
             sc.ingest(r["node_id"], body.copy(), r.get("t_recv") or 0, seq=r.get("seq"))

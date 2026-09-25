@@ -26,9 +26,9 @@ from ..gameconfig import VOICE_PACKS
 from ..irbridge import encode_word
 from ..mc import frames as _mc_frames
 from ..mc import presentation as _pres
-from ..mc.compile import HEALTH_PRESETS, Compiler, resolve_health_preset
+from ..mc.compile import _SIR_GRANT, _SIR_NO_POOL, HEALTH_PRESETS, Compiler, resolve_health_preset
 from ..mc.state import default_config
-from ..mc.types import FrameBundle, GameConfig, Player, RespawnProfile, SPAWN_KILL_WINDOW_MS, STATION_SOURCES
+from ..mc.types import DEATH_LATCH_MS, FrameBundle, GameConfig, Player, RespawnProfile, SPAWN_KILL_WINDOW_MS, STATION_SOURCES
 
 
 class Advert(TypedDict):
@@ -635,6 +635,9 @@ class GunStage:
         self.refused = 0                            # frames dropped by the deny list in `write` (mirrors engine.refused)
         self._last_pain_at: float | None = None    # A15.3: the 600 ms pain gate (PAIN_GAP_S)
         self._last_hir_proto: int | None = None    # A15.3: the ir protocol of the last $HIR (melee = 13), read on the next $HP/$LCD
+        self._dmg_hir: tuple[int, float] | None = None   # F354 (engine.js `_dmgLatch`): (proto, at) of the last word whose cell can do damage
+        self._sir_fns_for: object = None           # F354: `_sir_fns()`'s cache, keyed on the bundle object (engine.js `_sirFnsFor`)
+        self._sir_fns_map: dict[str, int] | None = None
         # F72/F85 + the hill: the phone's proto-15 model, field for field (engine.js `beacon`/`_lastBeacon*`/`hill`…)
         self.beacon: dict | None = None            # F72: {owner_team, magnitude, sensor, at} -- the last grenade/station beacon
         self._last_beacon_key: str | None = None   # F85: `<owner_team>:<magnitude>` of the last beacon ACCEPTED (not merely seen)
@@ -2913,7 +2916,12 @@ class GunStage:
                             self._on_hill_beacon(owner_team, magnitude, now)
                     return
                 # $HIR,<sensor>,<irProto>,<shooterId>,<shooterTeam>,<magnitude>,<crit>,<subtype>,* -- proto 13 = melee
-                self._last_hir_proto = int(t[2]) if len(t) > 2 and t[2] != "" else None
+                proto = int(t[2]) if len(t) > 2 and t[2] != "" else None
+                self._last_hir_proto = proto
+                # F354 (engine.js `_dmgLatch`): a word whose `$SIR` cell moves no pool or grants one (the Haze, the stun
+                # EMP, a med kit) is not the damage behind the next `$HP`; only a word that CAN do damage is kept here.
+                if proto is not None and _tok_int(t, 4) is not None and not self._non_damaging(proto, _tok_int(t, 7)):
+                    self._dmg_hir = (proto, now)
                 if _tok_int(t, 4) is not None:
                     self._shield_reassert()      # 2026-09-19 (engine.js: a registered hit, shooter team parsed)
                 if len(t) > 2 and t[2] == "8":
@@ -2923,7 +2931,7 @@ class GunStage:
                 team = _tok_int(t, 4)
                 if team is not None:
                     self._last_hir_at = now
-                    self._poison_hit(self._last_hir_proto, _tok_int(t, 3) or 0, team)
+                    self._poison_hit(proto, _tok_int(t, 3) or 0, team)   # the RAW protocol, as engine.js `_poisonHit(parseInt(t[2]))`
             elif cmd == "ALCD" and len(t) > 4:
                 self.tele["mag"], self.tele["reserve"] = int(t[1] or 0), int(t[4] or 0)
                 # engine.js `feedFrame` ALCD: `_onAmmo(+t[1] || 0, t[4] !== undefined ? +t[4] : null, t[3] || 0, heat)`
@@ -3462,7 +3470,7 @@ class GunStage:
                 self._last_pain_at = self.now()
                 self._log("pain: not played -- this hit armed the low-health alert (F57); the gap starts now", "info")
             elif not dot_echo:
-                self._pain(dmg, self._last_hir_proto, moved)   # A15.3: pain by damage; A17: only when it reached HEALTH -- never on a death (that returned above)
+                self._pain(dmg, self._pain_proto(), moved)   # A15.3: pain by damage; A17: only when it reached HEALTH -- never on a death (that returned above)
             if hs and not hurt_now and not dot_echo:
                 # A16 §3.3: whatever role is held (carrier/infected/vip/beacon/extracted) survives the
                 # hit -- the native flash wipes the headset on every registered hit, so re-assert it.
@@ -3795,6 +3803,46 @@ class GunStage:
         self.switching = None
         self.active_slot = to; self._recoil_slot = to
         self._log(f"swap to slot {to} assumed after {self._switch_window_s():g}s (no shot yet)", "info")
+
+    def _sir_fns(self) -> dict[str, int] | None:
+        """F354 (engine.js `_sirFns`): `proto:subtype` -> the `$SIR` row function of this bundle's table (the head rows,
+        then the first `sir_pool` take; the last row for a cell wins), or None when the bundle has no `$SIR` row."""
+        b = getattr(self, "bundle", None)
+        if self._sir_fns_for is b and b is not None:
+            return self._sir_fns_map
+        out: dict[str, int] | None = None
+        pool = (b or {}).get("sir_pool") or []
+        for rows in ((b or {}).get("head"), pool[0] if pool else None):
+            for row in rows or []:
+                if not isinstance(row, str) or not row.startswith("$SIR,"):
+                    continue
+                t = row.split(",")
+                try:
+                    fn, key = int(t[4]), f"{int(t[1])}:{int(t[2])}"
+                except (ValueError, IndexError):
+                    continue
+                out = out or {}
+                out[key] = fn
+        self._sir_fns_for, self._sir_fns_map = b, out
+        return out
+
+    def _pain_proto(self) -> int | None:
+        """F354 (engine.js `_onHp`'s `hl`): the damaging word's protocol while it is inside DEATH_LATCH_MS, else the raw
+        last `$HIR`'s (a lost damaging word: the latch fallback)."""
+        if self._dmg_hir is not None and self.now() - self._dmg_hir[1] <= DEATH_LATCH_MS / 1000:
+            return self._dmg_hir[0]
+        return self._last_hir_proto
+
+    def _non_damaging(self, proto: int | None, subtype: int | None) -> bool:
+        """F354 (engine.js `_nonDamaging`): this word's cell moves no pool or grants one (`_SIR_NO_POOL`, `_SIR_GRANT`).
+        With no rows, only the EMP while stun is on."""
+        if proto is None:
+            return False
+        fns = self._sir_fns()
+        if fns is not None:
+            fn = fns.get(f"{proto}:{subtype}")
+            return fn is not None and (fn in _SIR_NO_POOL or fn in _SIR_GRANT)
+        return proto == 8 and self.stun_enabled
 
     # ---- F15 / A20: the host-driven STUN (EMP), a faithful port of engine.js `_stun` / `_stunRestore` ------------
     @property

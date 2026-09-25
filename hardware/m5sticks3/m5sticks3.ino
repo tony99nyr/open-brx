@@ -546,7 +546,7 @@ static void printStatus() {
       Serial.printf(" hill_owner=%d capturing=%d progress=%ld dir=%d contested=%d net=%d captures=%lu", h.owner == TEAM_ANY ? -1 : h.owner,
                     h.capturing, brx::BleControlPoint::js_round(h.progress), h.dir, h.contested ? 1 : 0, h.net,
                     (unsigned long)h.captures);
-    } else {
+    } else if (brx::REVIVE_FEEDBACK_ENABLED) {  // post-MVP (presence.h)
       Serial.printf(" revives=%lu", (unsigned long)link.revives().revives);
     }
     Serial.println();
@@ -590,11 +590,12 @@ static void handleLine(String line) {
   if (line == "PMIC") {  // read-only: the side-button lock bits (M5PM1 0x49/0x4A bit0; bit7 of 0x49 is never written)
     uint8_t c1 = M5.In_I2C.readRegister8(brx_glue::PM1_ADDR, brx_glue::PM1_BTN_CFG_1, brx_glue::PM1_I2C_HZ);
     uint8_t c2 = M5.In_I2C.readRegister8(brx_glue::PM1_ADDR, brx_glue::PM1_BTN_CFG_2, brx_glue::PM1_I2C_HZ);
-    Serial.printf("PMIC 0x49=%02x 0x4A=%02x single_reset_disabled=%u double_off_disabled=%u dl_lock=%u want_lock=%u\n",
-                  c1, c2, c1 & 1, c2 & 1, (c1 >> 7) & 1, brx_glue::pmicSideButtonLocked ? 1 : 0);
+    Serial.printf("PMIC 0x49=%02x 0x4A=%02x single_reset_disabled=%u double_off_disabled=%u dl_lock=%u want_lock=%u confirmed=%u\n",
+                  c1, c2, c1 & 1, c2 & 1, (c1 >> 7) & 1, brx_glue::pmicLock.want() ? 1 : 0,
+                  brx_glue::pmicLock.confirmed() ? 1 : 0);
     return;
   }
-  if (line == "REDEPLOY") {  // bench: show the revive flash now, without a revive (the count is not touched)
+  if (brx::REVIVE_FEEDBACK_ENABLED && line == "REDEPLOY") {  // bench: show the revive flash now (post-MVP, presence.h)
     brx_glue::reviveFlashUntilMs = millis() + brx_glue::REVIVE_FLASH_MS;
     displayDirty = true;
     Serial.println("REDEPLOY flash (test)");
@@ -820,6 +821,10 @@ static void pollButtons() {
     Serial.printf("RESET refused: station locked (%lu s left)\n", (unsigned long)link.lock().remaining_s(now));
     homeNav.note_activity(now);
     displayDirty = true;
+  } else if (bHold && !link.assignment().present) {
+    // No station assigned: nothing to reset, so the hold arms no confirm (the hint does not offer it).
+    Serial.println("RESET: no station assigned, nothing to reset");
+    homeNav.note_activity(now);
   } else if (bHold) {
     if (brx_glue::buttons.on_long_press(now)) {
       bool sent = brx_glue::mcSendResetAction();
@@ -845,6 +850,9 @@ void setup() {
   cfg.internal_spk = false;  // the amp interferes with the IR receiver (M5 docs); never bring it up
   cfg.internal_mic = false;
   M5.begin(cfg);
+  // F332: give the side button back FIRST. A lock left set by a crashed boot survives the reset (the
+  // PMIC keeps it), so this runs before anything else that could crash-loop (mc_link_glue.h).
+  brx_glue::pmicSync(false, millis());
   M5.Speaker.end();
   // The IR receiver (G42) and transmitter (G46) run off the M5PM1 EXT_5V rail, which M5Unified leaves OFF by default
   // (docs.m5stack.com/en/arduino/m5sticks3/m5pm1). Without it the receiver is unpowered: bench 2026-09-23 saw only

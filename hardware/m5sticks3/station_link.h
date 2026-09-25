@@ -474,7 +474,8 @@ inline uint8_t station_kind_byte(const std::string& kind) {
 // The threshold a Bluetooth station measures PLAYERS against. MC's value when it sent one; when it sent
 // 0/absent, the StickS3's own platform default (-57 dBm, Tony), measured and advertised alike.
 // The advertised byte 14 is the same -57
-// (STICK_DEFAULT_THRESHOLD_DBM), and the pickup claim keeps its -80 floor (ClaimGate).
+// (STICK_DEFAULT_THRESHOLD_DBM). The pickup claim has no RSSI floor at all (ClaimGate): the phone's own
+// claim_ready already proves the player stood at the station.
 inline int presence_threshold_dbm(const StationAssignment& a) {
   return a.threshold_defaulted ? STICK_DEFAULT_THRESHOLD_DBM : a.threshold;
 }
@@ -722,10 +723,14 @@ class ClaimGate {
   // Feed every player advert seen in the current scan batch. `player_num` is the claimant (1..63,
   // the advert's own `id` field), `target_station_id` is that advert's `value`. A game of 0 is
   // unscoped, matching every other game-byte check in this codebase (state.py `_game_byte`).
-  void observe(int player_num, int target_station_id, int game, bool claiming, bool claim_ready,
+  // `alive` is the advert's alive bit (state bit0): a DOWN player's claim_ready (or a stale one left
+  // over from before they went down) is ignored, as the phone station does (app/src/powerup.js).
+  // player_num 0 is "no player" on the wire (the advert's taker byte uses it so), never a claimant.
+  void observe(int player_num, int target_station_id, int game, bool claiming, bool claim_ready, bool alive,
                int rssi_dbm) {
     if (claiming) any_claiming_ = true;
-    if (!claim_ready) return;
+    if (!claim_ready || !alive) return;
+    if (player_num < 1 || player_num > 63) return;
     if (target_station_id != station_id_) return;
     if (game != 0 && game_ != 0 && game != game_) return;
     (void)rssi_dbm;  // kept in the signature for a future tie-break; no floor
@@ -934,7 +939,7 @@ class StationLink {
   HillUpdate tick_players(const PlayerPresence& players, uint32_t now_ms) {
     HillUpdate u;
     if (has_control_assignment()) u = hill_.update(players, now_ms);
-    else if (has_respawn_assignment()) revives_.update(players, assignment_.id);
+    else if (REVIVE_FEEDBACK_ENABLED && has_respawn_assignment()) revives_.update(players, assignment_.id);
     return u;
   }
 
@@ -1089,7 +1094,7 @@ class StationLink {
   // ENQUEUED here, never sent -- the BLE scan-complete callback that calls this must not touch the
   // socket. `mcLoop` (or a test) drains it with `pop_pending_action`.
   bool award_claim(const ClaimWinner& w, uint32_t now_ms) {
-    if (!w.won || !powerup_.available()) return false;
+    if (!w.won || w.player_num == 0 || !powerup_.available()) return false;
     uint32_t spawn_instant = powerup_.mark_taken(w.player_num, now_ms);
     pending_actions_.push(assignment_.id, w.player_num, spawn_instant, (int64_t)now_ms);
     return true;

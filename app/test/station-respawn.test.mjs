@@ -74,6 +74,9 @@ test('the respawn threshold default is per platform: phone -70, StickS3 -57 (Ton
   assert.ok(Object.isFrozen(RESPAWN_RSSI_DBM));
   assert.equal(phoneStationThreshold('respawn'), -70);
   for (const kind of ['control', 'extraction', 'bomb']) assert.equal(phoneStationThreshold(kind), STATION_THRESHOLD_DBM, kind);
+  // S58 (doc-rot 2026-09-24): a powerup station advertises its OWN ~1 ft default (the claim range), never the 3 m -74
+  assert.equal(phoneStationThreshold('powerup'), -55);
+  assert.equal(stationThreshold({ threshold: 0, kind: 'powerup' }), -55);
   assert.equal(STATION_THRESHOLD_DBM, -74, 'the other kinds keep the 2026-09-04 bench value');
 });
 

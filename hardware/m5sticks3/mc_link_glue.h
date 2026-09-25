@@ -26,6 +26,7 @@
 #include <WebSocketsClient.h>
 #include <WiFi.h>
 #include <esp_random.h>
+#include <esp_task_wdt.h>  // the loop watchdog while the match lock is on (pmicWatchLoop)
 
 #include "brx_advert.h"
 #include "json_lite.h"
@@ -234,43 +235,113 @@ static void mcRestoreSavedConfig(StationLink& link) {
   }
 }
 
-// ---- A58: the PMIC side-button lock (TODO, deliberately NOT written) -------------------------------
+// ---- A58 / F332: the PMIC side-button lock ---------------------------------------------------------
 // The StickS3's small side button is wired to the M5PM1 PMIC, not the ESP32: a single click resets
-// the Stick and a double click powers it off, whatever the firmware says. The brief for A58 names
-// M5PM1 register 0x49 bit0 (disable the single-click reset) and register 0x4A bit0 (disable the
-// double-click power-off). What the installed M5Unified 0.2.21 source DOES confirm: the PM1 sits at
-// I2C 0x6E (`M5PM1_Class::DEFAULT_ADDRESS`, utility/power/M5PM1_Class.hpp; also M5GFX.cpp's
-// `m5pm1_i2c_addr`), `M5.Power.M5pm1` is public on an ESP32-S3 build, and it inherits I2C_Device's
-// public read-modify-write `bitOn(reg, mask)` / `bitOff(reg, mask)` (utility/I2C_Class.hpp). What it
-// does NOT confirm: its register table (utility/power/M5PM1_Class.cpp) stops at 0x45 (IRQ_MASK3);
-// 0x49 and 0x4A are not named anywhere in M5Unified or M5GFX, so they are written by raw I2C below.
+// the Stick and a double click powers it off, whatever the firmware says. While MC's match lock is on,
+// both are disabled here; the rest of the time they are enabled.
 //
 // CONFIRMED 2026-09-24 from the M5PM1 Chip User Manual v1.9 (pp. 23-24,
 // m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/M5PM1_Datasheet_EN.pdf) and m5stack/M5PM1's driver:
-// BTN_CFG_1 0x49 (default 0x2A) bit0 SINGLE_RESET_DIS; BTN_CFG_2 0x4A (default 0x00) bit0
-// DOUBLE_POWEROFF_DIS. Neither register is cleared by a reset or a power-off (the manual's
-// Reset/Power-off columns are blank), so a lock left set would survive a crash: that is why the boot
-// path clears both unconditionally. 0x49 bit7 is DL_LOCK (download mode lock, no software way back
-// documented): NEVER touched. Only bit0 of each register is ever written, by read-modify-write.
+// the PM1 sits at I2C 0x6E; BTN_CFG_1 0x49 (default 0x2A) bit0 SINGLE_RESET_DIS; BTN_CFG_2 0x4A
+// (default 0x00) bit0 DOUBLE_POWEROFF_DIS. M5Unified's own register table stops at 0x45, so these are
+// raw I2C. Neither register is cleared by a reset or a power-off, so a lock left set survives a crash:
+// setup() clears both FIRST, right after M5.begin(), before anything that could crash-loop.
+// 0x49 bit7 is DL_LOCK (download-mode lock, no documented way back): NEVER written. Each write is a
+// manual read-modify-write that refuses to write at all when the read shows bit7 set
+// (station_ui.h pm1_bit0_write_value, host-tested).
+//
+// Robustness (polish 2026-09-24): both registers are always attempted, and only a read-back of both
+// bit0s matching the wanted state counts as done (SideButtonLockSync, host-tested); anything else is
+// retried every PMIC_RETRY_MS from mcLoop (every PMIC_BACKOFF_MS after PMIC_BACKOFF_AFTER failures in a
+// row). While locked, the loop task watchdog is on, at 20 s (pmicWatchLoop):
+// a hang in loop() would otherwise leave the button disabled forever, since the RAM lock countdown
+// and the A+B restart both need loop() to run. The watchdog resets the chip instead, and the boot
+// clear gives the button back.
 constexpr uint8_t PM1_ADDR = 0x6E;
 constexpr uint8_t PM1_BTN_CFG_1 = 0x49;  // bit0 SINGLE_RESET_DIS (bit7 DL_LOCK: never)
 constexpr uint8_t PM1_BTN_CFG_2 = 0x4A;  // bit0 DOUBLE_POWEROFF_DIS
-constexpr uint8_t PM1_BIT0 = 0x01;
 constexpr uint32_t PM1_I2C_HZ = 100000;
-bool pmicSideButtonLocked = false;  // what the PMIC was last asked for
-static void pmicSetSideButtonLock(bool locked) {
+SideButtonLockSync pmicLock;
+
+static bool pm1ReadReg(uint8_t reg, uint8_t& v) { return M5.In_I2C.readRegister(PM1_ADDR, reg, &v, 1, PM1_I2C_HZ); }
+
+static bool pm1WriteBit0(uint8_t reg, bool on) {
+  uint8_t v = 0;
+  if (!pm1ReadReg(reg, v)) {
+    Serial.printf("ERR PMIC read 0x%02x failed\n", reg);
+    return false;
+  }
+  uint8_t out = 0;
+  if (!pm1_bit0_write_value(v, on, out)) {
+    Serial.printf("ERR PMIC 0x%02x reads %02x (bit7 set): refusing to write\n", reg, v);
+    return false;
+  }
+  return out == v || M5.In_I2C.writeRegister8(PM1_ADDR, reg, out, PM1_I2C_HZ);
+}
+
+// Call every loop() (and once first thing in setup()) with the wanted lock state.
+static void pmicSync(bool locked, uint32_t now) {
+  if (!pmicLock.due(locked, now)) return;
   if (M5.getBoard() != m5::board_t::board_M5StickS3) {
+    pmicLock.attempted(true, now);  // nothing to lock on this board: settled, so this never repeats
     Serial.println("# PMIC side-button lock skipped: not a StickS3");
     return;
   }
-  bool ok = locked ? (M5.In_I2C.bitOn(PM1_ADDR, PM1_BTN_CFG_1, PM1_BIT0, PM1_I2C_HZ) &&
-                      M5.In_I2C.bitOn(PM1_ADDR, PM1_BTN_CFG_2, PM1_BIT0, PM1_I2C_HZ))
-                   : (M5.In_I2C.bitOff(PM1_ADDR, PM1_BTN_CFG_1, PM1_BIT0, PM1_I2C_HZ) &&
-                      M5.In_I2C.bitOff(PM1_ADDR, PM1_BTN_CFG_2, PM1_BIT0, PM1_I2C_HZ));
-  pmicSideButtonLocked = locked;
-  Serial.printf("# PMIC side-button lock %s%s (0x49=%02x 0x4A=%02x)\n", locked ? "ON" : "OFF", ok ? "" : " FAILED",
-                M5.In_I2C.readRegister8(PM1_ADDR, PM1_BTN_CFG_1, PM1_I2C_HZ),
-                M5.In_I2C.readRegister8(PM1_ADDR, PM1_BTN_CFG_2, PM1_I2C_HZ));
+  const bool w1 = pm1WriteBit0(PM1_BTN_CFG_1, locked);  // both attempted, whatever the first did
+  const bool w2 = pm1WriteBit0(PM1_BTN_CFG_2, locked);
+  uint8_t r1 = 0, r2 = 0;
+  const bool rd1 = pm1ReadReg(PM1_BTN_CFG_1, r1);
+  const bool rd2 = pm1ReadReg(PM1_BTN_CFG_2, r2);
+  const bool ok = rd1 && rd2 && pm1_bit0s_match(r1, r2, locked);
+  pmicLock.attempted(ok, now);
+  // One line per attempt: every second at first, then (backing off) once per PMIC_BACKOFF_MS.
+  Serial.printf("# PMIC side-button lock %s %s (0x49=%02x 0x4A=%02x writes=%d%d)%s\n", locked ? "ON" : "OFF",
+                ok ? "confirmed" : "NOT confirmed", r1, r2, w1 ? 1 : 0, w2 ? 1 : 0,
+                ok ? "" : (pmicLock.backing_off() ? ", backing off: retrying every 30 s" : ", retrying in 1 s"));
+}
+
+// The loop watchdog follows the match lock (see above): on while locked, off otherwise. loop() is NOT
+// free of blocking calls: WebSockets 2.7.2's ws.loop() can block for up to WEBSOCKETS_TCP_TIMEOUT
+// (5000 ms) on a connect or a stalled read, exactly when MC has gone away mid-match. The core's task
+// watchdog is also 5 s (CONFIG_ESP_TASK_WDT_TIMEOUT_S), which would reset a healthy locked Stick. So on
+// lock the task watchdog is reconfigured to LOCKED_LOOP_WDT_MS (four times the socket's worst case)
+// before the loop task subscribes, and on unlock the loop task leaves and the startup config comes back.
+// The IDF has no getter for the running config and nothing in this sketch or the core changes it after
+// startup, so "the existing config" is the sdkconfig's: the same idle-core mask and panic setting.
+constexpr uint32_t LOCKED_LOOP_WDT_MS = 20000;
+static esp_task_wdt_config_t taskWdtConfig(uint32_t timeout_ms) {
+  esp_task_wdt_config_t c = {};
+  c.timeout_ms = timeout_ms;
+  c.idle_core_mask = 0;
+#if defined(CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0) && CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0
+  c.idle_core_mask |= 1u << 0;
+#endif
+#if defined(CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1) && CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1
+  c.idle_core_mask |= 1u << 1;
+#endif
+#if defined(CONFIG_ESP_TASK_WDT_PANIC) && CONFIG_ESP_TASK_WDT_PANIC
+  c.trigger_panic = true;
+#else
+  c.trigger_panic = false;
+#endif
+  return c;
+}
+bool loopWatchdogOn = false;
+static void pmicWatchLoop(bool locked) {
+  if (locked == loopWatchdogOn) return;
+  if (locked) {
+    esp_task_wdt_config_t c = taskWdtConfig(LOCKED_LOOP_WDT_MS);
+    esp_err_t err = esp_task_wdt_reconfigure(&c);
+    if (err != ESP_OK) Serial.printf("ERR task watchdog reconfigure to %lu ms: %d\n", (unsigned long)LOCKED_LOOP_WDT_MS, (int)err);
+    enableLoopWDT();
+  } else {
+    disableLoopWDT();
+    esp_task_wdt_config_t c = taskWdtConfig((uint32_t)CONFIG_ESP_TASK_WDT_TIMEOUT_S * 1000u);
+    esp_err_t err = esp_task_wdt_reconfigure(&c);
+    if (err != ESP_OK) Serial.printf("ERR task watchdog restore: %d\n", (int)err);
+  }
+  loopWatchdogOn = locked;
+  Serial.printf("# loop watchdog %s\n", locked ? "ON, 20 s (match lock)" : "OFF (task watchdog back to its default)");
 }
 
 // ---- the typed floor: `MC <ws-url>` (never persisted across reboots, §5g.3) ---------------------
@@ -390,7 +461,7 @@ class PlayerScanCallbacks : public BLEAdvertisedDeviceCallbacks {
     bool ready = (a.state & PLAYER_CLAIM_READY) != 0;
     if (!claiming && !ready) return;
     link.claims().observe(/*player_num=*/a.id, /*target_station_id=*/a.value, a.game, claiming,
-                           ready, rssi);
+                           ready, /*alive=*/(a.state & PLAYER_ALIVE) != 0, rssi);
   }
 };
 PlayerScanCallbacks playerScanCallbacks;
@@ -439,7 +510,7 @@ static void mcPollPlayerScan(uint32_t now) {
   }
   scan->setWindow(scan_window_units(link.assignment().kind));  // per kind: heavy for a hill only
   scanFeedsClaims = link.has_powerup_assignment();
-  scanFeedsPresence = link.has_control_assignment() || link.has_respawn_assignment();
+  scanFeedsPresence = link.has_control_assignment() || (REVIVE_FEEDBACK_ENABLED && link.has_respawn_assignment());
   scan->start(SCAN_WINDOW_S, onPlayerScanComplete, false);
 }
 
@@ -453,13 +524,14 @@ uint32_t lastPlayTickMs = 0;
 int pendingCaptureTeam = -1;
 
 static void mcTickPlayers(uint32_t now) {
-  if (!link.has_control_assignment() && !link.has_respawn_assignment()) return;
+  // A respawn station ticks players only for the post-MVP revive feedback (presence.h); by default it only advertises.
+  if (!link.has_control_assignment() && !(REVIVE_FEEDBACK_ENABLED && link.has_respawn_assignment())) return;
   if (now - lastPlayTickMs < STATION_TICK_MS) return;
   lastPlayTickMs = now;
   const StationAssignment& a = link.assignment();
   // utility.js: `presence.defaultThreshold = settings.threshold; presence.game = settings.game`, every
-  // tick. The threshold is MC's, or the phone station's -74 default when MC sent none.
-  presence.default_threshold = presence_threshold_dbm(a);  // -74 when MC sent 0, as on a phone
+  // tick. The threshold is MC's, or the Stick's own -57 default (STICK_DEFAULT_THRESHOLD_DBM) when MC sent none.
+  presence.default_threshold = presence_threshold_dbm(a);  // -57 when MC sent 0: the Stick's platform default
   presence.game = (uint8_t)a.game;
   // A different station now (new kind/id/game, a restore, a release): the old station's sightings and
   // presence belong to it, not to this one.
@@ -690,8 +762,9 @@ static void mcLoop(uint32_t now) {
   }
   // A deferred MUSTER drop whose 2 s ran out with no station_update (review round 1).
   if (link.take_muster_drop(now)) mcPerformMusterDrop();
-  bool wantPmicLock = link.lock().locked(now);
-  if (wantPmicLock != pmicSideButtonLocked) pmicSetSideButtonLock(wantPmicLock);
+  const bool wantPmicLock = link.lock().locked(now);
+  pmicSync(wantPmicLock, now);  // retries every second until the PMIC reads back what we want
+  pmicWatchLoop(wantPmicLock);
   // Wi-Fi association.
   bool wifiUp = WiFi.status() == WL_CONNECTED;
   if (wifiUp && link.state() == LinkState::JOINING_WIFI) link.wifi_up();
@@ -771,7 +844,7 @@ static void mcLoop(uint32_t now) {
       f.control_has_hold = true;
       for (int t = 0; t < 4; t++) f.control_hold_ms[t] = h.hold_ms[t];
     }
-    if (link.has_respawn_assignment()) {
+    if (REVIVE_FEEDBACK_ENABLED && link.has_respawn_assignment()) {  // post-MVP (presence.h): off by default
       f.has_revives = true;
       f.revives = link.revives().revives;
     }
@@ -783,10 +856,10 @@ static void mcLoop(uint32_t now) {
   }
 
   // Polish round 2 (HIGH): the ONLY place a queued CLAIM report is ever sent -- never from the BLE
-  // scan callback that enqueued it. Best-effort, like every other send here: drained while a socket
-  // is live, left queued otherwise (bounded, station_link.h's PendingActionQueue). `ACTIONS` gates
+  // scan callback that enqueued it. Best-effort, like every other send here: drained while MC has
+  // welcomed this socket and the clock is synced (action_flush_allowed, station_ui.h), left queued otherwise (bounded, station_link.h's PendingActionQueue). `ACTIONS` gates
   // `maybe_build_taken_action` itself, so a report is simply dropped, never built, while it is off.
-  if (ws.isConnected()) {
+  if (action_flush_allowed(ws.isConnected(), link.state(), mcClock.synced)) {  // welcomed, clock synced (M3)
     PendingTakenReport rep;
     while (link.pop_pending_action(rep)) {
       std::string body = maybe_build_taken_action(link, rep, now, mcClock.offset_ms);   // age_ms computed now, at send time
@@ -876,7 +949,7 @@ static void mcSetup() {
   mcCountBoot();                   // A58
   mcLoadSavedHill();               // before the restore, which may bring the hill back held
   mcRestoreSavedConfig(link);      // restart survival: before WiFi.begin, so the station plays at once
-  pmicSetSideButtonLock(false);    // A58: every boot starts unlocked, the PMIC included
+  // A58: every boot starts unlocked, the PMIC included: setup() already cleared it, first thing (F332).
   bootRandomPrefix = esp_random();  // the fixed half of every station_action envelope id this boot
   WiFi.mode(WIFI_STA);
   if (wifiSsid.length()) WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());

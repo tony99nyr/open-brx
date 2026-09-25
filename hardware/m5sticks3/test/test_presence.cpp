@@ -527,7 +527,8 @@ static void test_sighting_ring_is_fifo_drops_the_newest_when_full_and_clears() {
 
 static void test_which_kinds_scan_for_players() {
   CHECK(station_needs_player_scan("control", false));
-  CHECK(station_needs_player_scan("respawn", false));
+  // Post-MVP (presence.h): by default a respawn station only advertises, it never scans.
+  CHECK_EQ(station_needs_player_scan("respawn", false), REVIVE_FEEDBACK_ENABLED);
   CHECK_EQ((int)scan_window_units("respawn"), 15);  // Block 9 S7: light, so it cannot starve the advert
   CHECK_EQ((int)scan_window_units("control"), 50);
   CHECK(station_needs_player_scan("powerup", true));

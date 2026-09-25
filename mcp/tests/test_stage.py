@@ -1993,6 +1993,28 @@ def test_a_hill_beacon_never_latches_a_hit_or_touches_the_melee_tracker():
     asyncio.run(go())
 
 
+def test_f354_the_pain_protocol_is_the_damaging_words_the_way_engine_js_hl_picks_it():
+    """F354 (engine.js `_onHp`'s `hl`, `_nonDamaging`): the pain grunt reads the protocol of the last DAMAGING word while
+    it is inside DEATH_LATCH_MS, else the raw last word's. A no-pool cell (the stun's fn-23 EMP on <8,0>) or a grant
+    cell (a med kit, `_SIR_GRANT`) is never that word; the stock fn-1 <8,0> row (the Charge Rifle) is damage."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=1)
+        await in_play(st)
+        rx = lambda f: mgr.sessions["stage"].record("rx", f)
+        assert not st._non_damaging(8, 0), "the stock <8,0> row is fn 1 damage"
+        rx("$HIR,0,8,5,2,70,0,0,*"); st.poll(); await settle(st)
+        assert st._pain_proto() == 8, "the Charge Rifle's word is the damage"
+        emp, grant = "$SIR,8,0,,23,0,0,1,,*", "$SIR,12,0,,10,0,0,1,,*"   # compile.py `_with_stun_row`, and a med-kit row
+        st.bundle = {**st.bundle, "head": [*st.bundle["head"], emp, grant],
+                     "sir_pool": [[*take, emp, grant] for take in (st.bundle.get("sir_pool") or [])]}
+        assert st._non_damaging(8, 0) and st._non_damaging(12, 0)
+        rx("$HIR,4,13,7,0,25,0,0,*"); st.poll(); await settle(st)      # a melee hit
+        rx("$HIR,0,8,5,2,0,0,0,*"); rx("$HIR,0,12,6,1,20,0,0,*"); st.poll(); await settle(st)
+        assert st._last_hir_proto == 12, "the raw tracker still follows every word"
+        assert st._pain_proto() == 13, "neither the EMP nor the med kit takes the damaging word's place"
+    asyncio.run(go())
+
+
 def test_a_ble_drop_clears_the_hill_so_a_reconnect_cannot_tick_for_a_stale_point():
     """`poll()` RETURNS on a drop, so no expiry runs there -- a hill left standing would survive the
     reconnect and tick for a point nothing has been watching for minutes."""

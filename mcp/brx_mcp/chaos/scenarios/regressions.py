@@ -92,8 +92,9 @@ scenario(Scenario(
 
 scenario(Scenario(
     name="clock-back-assist", mode="tdm", nodes=4,
-    doc="Chaos 2026-09-24 (F330, OPEN): after a backward clock jump, a hit from the victim's NEXT life sorts before "
-        "its death, and a replay credits an assist the live board never gave.",
+    doc="Chaos 2026-09-24 (F330): after a backward clock jump, a hit from the victim's NEXT life sorts before "
+        "its death, and a replay credited an assist the live board never gave. The assist now skips a hit "
+        "whose seq on the victim's node is after the death's.",
     script=[
         # nodes 0 and 2 are blue, 1 and 3 are yellow
         {"name": "kill", "params": {"victim": 0, "shooter": 1}},
@@ -103,8 +104,6 @@ scenario(Scenario(
         {"name": "mc_restart", "params": {}},
         {"name": "end", "params": {}},
     ],
-    xfail="F330: a replay credits an assist from the victim's next life after a backward clock jump",
-    xfail_invariant="snapshot_survives_restart",
     ci_seeds=(1,),
 ))
 
@@ -151,3 +150,31 @@ scenario(Scenario(
     checks=(every_kill_cued,),
     ci_seeds=(1,),
 ))
+
+scenario(Scenario(
+    name="frag-cap-team-kill-live", mode="tdm", nodes=12,
+    doc="Chaos 2026-09-24 (delegated agent, tdm-frag-race seed 10057, OPEN, FOLLOWUPS id pending): with a "
+        "team kill in the mix, MC ends the match on the frag cap while the credited top score is still "
+        "one BELOW the cap. No restart involved: the live (non-replay) cap check disagrees with the "
+        "netted score it reports.",
+    config={"scoring": {"frag_limit": 5, "win_by": "kills"}},
+    script=[
+        {"name": "kill", "params": {"victim": 3, "shooter": 10}},
+        {"name": "drop", "params": {"node": 10}},
+        {"name": "kill", "params": {"victim": 5, "shooter": 2}},
+        {"name": "kill", "params": {"victim": 9, "shooter": 8}},
+        {"name": "team_kill", "params": {"victim": 10, "shooter": 4}},
+        {"name": "kill", "params": {"victim": 1, "shooter": 2}},
+        {"name": "kill", "params": {"victim": 11, "shooter": 4}},
+    ],
+    xfail="chaos 2026-09-24 (FOLLOWUPS id pending): frag_cap_ends_match fires on the raw kill-event "
+          "count, one ahead of the team-kill-netted score it reports as the top score",
+    xfail_invariant="frag_cap_ends_match",
+    ci_seeds=(1,),
+))
+
+# NOT pinned: a kill_feedback_matches_credit mismatch also turned up on tdm-frag-race seed 10095 (a kill
+# chain through nodes dropped mid-match and never reconnected), but replaying its minimal trace twice
+# more, under lower machine load, PASSED both times. That points to a wall-clock/timing dependency (the
+# FEEDBACK_MAX_AGE_MS window against real async delay under load), not a seed-deterministic bug, so it is
+# not safe to pin as a fixed CI regression. See the chaos exploration report, 2026-09-24, for the trace.

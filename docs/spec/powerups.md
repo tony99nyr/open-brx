@@ -1,7 +1,7 @@
 # Powerups: a station grants an item (design, 2026-09-24)
 
-Status: **DESIGN, built behind a flag that stays off until bench Sitting A passes** (the slot and button checks
-below). Tony's model: a station (a utility phone or an M5Stick) is assigned a kind and its data by Mission Control
+Status: **DESIGN, built behind MC's `--powerups` flag.** Sitting A's slot and button checks ran on 2026-09-24
+(bench 3.3, below). The flag stays off until steps 3.4, 3.5 and 4.11 pass and Tony decides (S58). Tony's model: a station (a utility phone or an M5Stick) is assigned a kind and its data by Mission Control
 (MC) per game. A powerup station grants an item, for example a pickup-only heavy (rockets). Contract row: A56.
 Roadmap entry it replaces: K3 in `docs/utility-roadmap.md`; the station half of S46.
 
@@ -49,7 +49,10 @@ powerups flag. The overshield is unchanged by this section.
 **Decided by the lead, 2026-09-24, then overridden the same day:** a first draft blocked ALT (`$BMAP,1,98`) while the
 heavy was on the trigger. Tony's SELECT decision dropped the block: ALT keeps its normal job.
 
-## Bench gate (Sitting A, MUST, before the flag turns on)
+## Bench gate (before the flag turns on)
+
+Items 1 to 6 ran at bench 3.3 on 2026-09-24 (the next section), and so did item 7's clamp and death checks. Open:
+item 7's hit and dead-gun cases, item 8 (`bench-2026-09-24.md` step 4.11) and item 9 (steps 3.4 and 3.5).
 
 1. A `$WEAP` in slot 2 and 3 at arm time; `$ALCD` reports each slot; each fires and takes its own `$AMMO`.
 2. Slots 4 and 5: does a `$WEAP` take (Jay: "about 5 weapons")? Slot 4 is melee today.
@@ -64,8 +67,8 @@ heavy was on the trigger. Tony's SELECT decision dropped the block: ALT keeps it
    preset max holds only once a mid-life `$PSET` re-send raises the shield max first. A death clears it. Also:
    the same write to a gun at `$HP,0` must not revive it (mode 1 with health above 0 is a proven revive; mode 2
    is unmeasured). Built 2026-09-24 as the grant burst in "Overshield mechanics" below; its open checks are there.
-8. Pickup range calibration (brx2's runbook): the RSSI median at 15, 30, 60 and 100 cm for each phone (Pixel,
-   iPhone) against each station type (phone station, StickS3). It sets `POWERUP_RSSI_DBM` per station kind and
+8. Pickup range calibration (`bench-2026-09-24.md` step 4.11): the RSSI median at 15, 30, 60 and 100 cm for each
+   phone (Pixel, iPhone) against each station type (phone station, StickS3). It sets the pickup threshold per station kind and
    decides whether a per-phone offset is needed. It also measures the claim latency (in range to TAKEN on the
    station).
 9. **The trigger flow (Tony, 2026-09-24):** (a) does a mid-life `$WEAP` re-send reset per-weapon state beyond ammo
@@ -236,10 +239,14 @@ button, and the gun's buttons play no part.
    (the scan samples each device at 4/s), so one wild packet neither grants nor blocks. In range means the median is
    at or above the station's threshold (advert byte 14). Out of range means below the threshold minus 3 dB. The respawn
    path keeps its EMA.
-2. **Threshold.** RSSI differs by phone and by station hardware, so there are three layers. Each station kind has
-   its own default (`POWERUP_RSSI_DBM`: a phone station -55, a StickS3 -58, both placeholders until the calibration
-   step below). MC can override it (`StationAssignment.threshold`, 0 = the station's default). The station advertises
-   the result in byte 14. If the calibration shows phones differing by more than 4 dB, the app gains a
+2. **Threshold.** RSSI differs by phone and by station hardware, so there are three layers. The player phone
+   judges a pickup against the station's byte 14, and falls back to `POWERUP_THRESHOLD_DEFAULT` (-55, `engine.js`, a
+   placeholder until the calibration step) only when that byte is 0. MC can override the station's value
+   (`StationAssignment.threshold`, 0 = the station's own default). A powerup PHONE station at threshold 0 advertises
+   its own claim default, -55 (`beacon.js POWERUP_RSSI_DBM.phone`; fixed 2026-09-24, it used to advertise the -74 of
+   other kinds), and MC sends -55 explicitly to a phone app older than 0.4.12. A StickS3 still advertises its one
+   station default, -57, which is close. The HUD's "near" hints (GET CLOSER, TAKEN, the countdown) start
+   `PU_NEAR_DB` (10) under the threshold, so at -55 they show within about 1-2 m. If the calibration shows phones differing by more than 4 dB, the app gains a
    per-model offset table.
 3. **Dwell.** In range continuously for `POWERUP_DWELL_MS` (1000). Leaving range resets it. The HUD shows a
    1 s progress ring and HOLD STILL.
@@ -250,7 +257,7 @@ button, and the gun's buttons play no part.
    awards the item to the **first** player advert it hears with `claim_ready` for its own id while the item is
    available. A tie inside one scan batch goes to the lower `player_num` (a phone station and a StickS3 alike).
    **No RSSI floor** (Tony, 2026-09-24, pickups placed outside Wi-Fi range must work offline): the phone's
-   `claim_ready` already proves it stood about 1 ft from the station for 1 s by its own reading of the station's
+   `claim_ready` already proves it met the station's advertised threshold for 1 s by its own reading of the station's
    strong advert, while a station hears player adverts 20-30 dB weaker and sparsely (the StickS3 bench), so the old
    -80 dBm floor refused legitimate claims. Its screen shows a 1 s ring from the first
    `claiming` advert, for display only.
@@ -290,7 +297,7 @@ Decided:
 - **Schedule:** Overshield every 60 s, the heavies every 120 s, each first spawning after one interval (1:00 and
   2:00), on the match clock.
 - **Overshield:** +75 shield on top of whatever the player has, taking hits first, no regeneration, gone at death
-  (`$LIFE` shield add past the preset's max, bench step below). In the Shields preset the regenerating shield only
+  (the grant burst in "Overshield mechanics" above; a raw `$LIFE` past the preset's max clamps back, bench 3.3). In the Shields preset the regenerating shield only
   refills up to its own max, so it never tops the overshield back up.
 
 Defaults still to confirm (named constants, easy to change):

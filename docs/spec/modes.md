@@ -238,9 +238,28 @@ the tagger speak a sample when the host changes a voice.
 Medals are awarded per player from exact attribution (A4.1). Kill-moment medals ride `feedback.medals` (A11.4:
 first_blood · one multi-kill medal, double_kill 2 up to killionaire 8+ (A61, `types.MEDALS`) · killing_spree at 5 ·
 unstoppable at 10) with their own
-cues; recap honors (`scoring.honors()` + `compile.award_medals`): MVP (top `kills − deaths`, tie → K/D), Top Gun
-(most kills), Highest K/D, Sharp Shooter (accuracy above a min-shots threshold), Survivalist (fewest deaths),
-First Blood, multi-kills, Assistant. No honors under 3 scored players; MVP and Top Gun require kills > 0.
+cues; KILLJOY (A63) is a kill medal too: ending an enemy's streak of 5 or more, HUD text only (no gun line).
+Recap honors are `scoring.honors()` over the one table `types.AWARDS` (A63), where each row names its rule and its
+tie-break. The awards, in recap order:
+
+- MVP: the top `kills − deaths`, then K/D, then kills. It needs 1+ kill.
+- MOST KILLS: the most kills. It needs 1+ kill.
+- BEST K/D · NON-MVP: the best K/D, then kills, among players who are not MVP. It needs 1+ kill.
+- SHARPSHOOTER: the best accuracy (a shot_group counts once), with `ACC_MIN_SHOTS`+ shots and above 0 %.
+- SURVIVOR: the longest single life, from go-live, a join or a respawn to a death or the match end
+  ("LONGEST LIFE 3:42"). It is not awarded when every player ties. A player with a fact from an unsynced node is
+  not eligible, because MC times that fact by its arrival.
+- IRON MAN: the fewest deaths, then kills, among players who played the whole match (a hot joiner is not
+  eligible). It must be fewer than the most. A silent player (their phone never reported) is eligible for
+  neither IRON MAN nor SURVIVOR.
+- FIRST BLOOD: the first credited enemy kill.
+- MULTIKILL: the longest chain, then the number of chains, named by its ladder label ("KILLAMANJARO ×1").
+- WINGMAN: the most assists. It needs 1+.
+- OBJECTIVE HERO: koth and domination only. The most seconds the player's own phone reported their team holding a
+  point while in range of it (IR range for a grenade, BLE range for a station), "IN RANGE · 1:42". It needs 1+ s.
+
+A tie that survives the tie-break is shared, one honor row per tied player. Each row carries its AWARDS `key`, and
+`award` stays the label. There are no honors under 3 scored players.
 Names track the stock BRX set (`mcp/brx_mcp/data/medals.json`, restated from the app's own
 game-medals-config.json; the raw file is not in the repo — `protocol/callsign-extract/RAW_ASSETS_NOTE.md`).
 

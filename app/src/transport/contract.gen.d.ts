@@ -10,7 +10,12 @@ export declare const MULTI_KILL_MS: 4000;
  *  beyond); streak = kills without dying; first = the match's first kill. `clip` is the gun's voice line (null
  *  = no line: the HUD shows the text and the voice stays silent), `clip_ms` its length from the sound catalogue.
  *  The phone reads labels and clips from here (contract.gen MEDALS). */
-export declare const MEDALS: readonly { readonly key: string; readonly kind: string; readonly count: number; readonly label: string; readonly clip: string; readonly clip_ms: number }[];
+export declare const MEDALS: readonly { readonly key: string; readonly kind: string; readonly count: number; readonly label: string; readonly clip: string | null; readonly clip_ms: number | null }[];
+/** A63 (Tony 2026-09-24): the END-OF-MATCH awards, in recap order. `scoring.Scorer.honors()` awards them; every
+ *  Honor row carries its `key`, and `award` stays the label for older consumers. None is awarded under 3 scored
+ *  players. `rule` and `tie` are the rule as built, in words, for the docs and the console. A tie that survives
+ *  the tie-break is SHARED: every tied player gets their own Honor row for that award. */
+export declare const AWARDS: readonly { readonly key: string; readonly label: string; readonly rule: string; readonly tie: string }[];
 export declare const FEEDBACK_MAX_AGE_MS: 3000;
 export declare const STATUS_HEARTBEAT_MS: 2000;
 export declare const STALE_AFTER_MS: 8000;
@@ -92,6 +97,8 @@ export declare const SPAWN_KILL_WINDOW_MS: 10000;
  *  sent explicitly instead of 0 to a phone app older than PHONE_THRESHOLD_ZERO_APP (which clamps 0 to -30 dBm). */
 export declare const PHONE_RESPAWN_THRESHOLD_DBM: -70;
 export declare const PHONE_STATION_THRESHOLD_DBM: -74;
+/** S58: a powerup station's ~1 ft claim range (placeholder until bench 4.11) */
+export declare const PHONE_POWERUP_THRESHOLD_DBM: -55;
 /** advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral */
 export declare const STATION_TEAM_ANY: 255;
 /** net.md §8 size cap */
@@ -1186,9 +1193,13 @@ export interface ModeInfo {
 }
 
 export interface Honor {
+  /** the award's LABEL (types.AWARDS), kept for older consumers */
   award: string;
   player_id: string;
   stat: string;
+  /** A63: the AWARDS key. NotRequired, not merely new: `honors()` fills it on every row, but a recap PERSISTED
+   *  before A63 replays honors without it. Read it with a fallback to `award`. */
+  key?: string;
 }
 
 export interface StationAssignment {

@@ -9,7 +9,9 @@ argv, never an environment variable -- WSL -> Windows env vars do not cross and 
 
 Subcommands:
   ports                    list COM ports with vid/pid/serial, label the Stick and the rig boards
-  compile                  stage the sketch and run arduino-cli compile, print the size line
+  compile [--revive-on]    stage the sketch and run arduino-cli compile, print the size line
+                           (--revive-on: with the post-MVP revive feedback on, BRX_REVIVE_FEEDBACK=1;
+                           a compile check only, `flash` always builds the default)
   flash [--port COMn]      stage + compile + upload to the auto-detected Stick port
   cmd <secs> [cmd ...]     send serial commands, print every line for secs (delegates to sercmd.py)
   raw <secs>               toggle RAW on, capture for secs, summarise with rawscan.py
@@ -94,9 +96,15 @@ def ports_argv(win_python: str = WIN_PYTHON) -> list[str]:
     return [win_python, "-c", _PORT_PROBE_SRC]
 
 
+# The post-MVP revive feedback switch (presence.h BRX_REVIVE_FEEDBACK), as an arduino-cli build property:
+# the esp32 platform puts compiler.cpp.extra_flags on every C++ compile line.
+REVIVE_ON_PROPERTY = "compiler.cpp.extra_flags=-DBRX_REVIVE_FEEDBACK=1"
+
+
 def compile_argv(cli_exe: str = CLI_EXE, fqbn: str = FQBN, board_url: str = BOARD_URL,
-                  win_path: str = STAGE_DIR_WIN) -> list[str]:
-    return [cli_exe, "compile", "--fqbn", fqbn, "--additional-urls", board_url, win_path]
+                  win_path: str = STAGE_DIR_WIN, revive_on: bool = False) -> list[str]:
+    extra = ["--build-property", REVIVE_ON_PROPERTY] if revive_on else []
+    return [cli_exe, "compile", "--fqbn", fqbn, "--additional-urls", board_url, *extra, win_path]
 
 
 def upload_argv(port: str, cli_exe: str = CLI_EXE, fqbn: str = FQBN, board_url: str = BOARD_URL,
@@ -201,10 +209,13 @@ def do_ports(_args) -> None:
         print(f"{p['device']}  vid={vid:#06x} pid={pid:#06x} serial={serial}  {label}")
 
 
-def do_compile(_args) -> None:
+def do_compile(args) -> None:
     copied = stage(SKETCH_DIR, STAGE_DIR_WSL)
     print(f"staged {len(copied)} files to {STAGE_DIR_WSL}")
-    proc = _run(compile_argv(), timeout=300, cwd=STAGE_CWD)
+    revive_on = bool(getattr(args, "revive_on", False))
+    if revive_on:
+        print("building with revive feedback ON (BRX_REVIVE_FEEDBACK=1): a compile check, not for flashing")
+    proc = _run(compile_argv(revive_on=revive_on), timeout=600, cwd=STAGE_CWD)
     if proc.returncode != 0:
         print(proc.stdout)
         print(proc.stderr, file=sys.stderr)
@@ -300,6 +311,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(func=do_ports)
 
     sp = sub.add_parser("compile", help="stage the sketch and compile it")
+    sp.add_argument("--revive-on", action="store_true",
+                    help="compile with the post-MVP revive feedback on (BRX_REVIVE_FEEDBACK=1)")
     sp.set_defaults(func=do_compile)
 
     sp = sub.add_parser("flash", help="stage + compile + upload to the Stick")
