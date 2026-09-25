@@ -271,6 +271,7 @@ struct StickState {
   // owner and its progress then.
   bool control_ble = false;
   bool control_ended = false;
+  bool control_waiting = false;
   int control_bar_team = -1;  // advert byte 9 when not 255: the owner while held, else the team building it
   bool control_contested = false;
   int control_dir = 0;        // +1 rising, -1 falling, 0 static
@@ -437,7 +438,20 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
     // defender needs); then a held point shows HELD unless its bar is draining; a neutral one shows
     // the team building it, or NEUTRAL when nobody is.
     spec.hill_pct = s.control_progress_pct;
-    if (s.control_contested) {
+    if (s.control_waiting) {
+      spec.kind = ScreenKind::HILL_NEUTRAL;
+      spec.hill_pct = 0;
+      spec.hill_note = "WAITING FOR START";
+    } else if (s.control_ended) {
+      if (s.control_owner != TEAM_ANY) {
+        spec.kind = ScreenKind::HILL_HELD;
+        spec.hill_team = (int)s.control_owner;
+        spec.hold_time = s.control_hold_time;
+      } else {
+        spec.kind = ScreenKind::HILL_NEUTRAL;
+      }
+      spec.hill_note = "MATCH OVER";
+    } else if (s.control_contested) {
       spec.kind = ScreenKind::HILL_CONTESTED;
       spec.hill_note = "TEAMS ON THE POINT";
     } else if (s.control_owner != TEAM_ANY && s.control_dir >= 0) {

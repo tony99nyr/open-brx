@@ -258,7 +258,7 @@ button, and the gun's buttons play no part.
    `claiming` is set the phone advertises in low-latency mode (about 100 ms on Android), otherwise balanced.
 5. **The station decides.** It is the one party that hears every claimant (a phone station and a Stick alike). It
    awards the item to the **first** player advert it hears with `claim_ready` for its own id while the item is
-   available. A tie inside one scan batch goes to the lower `player_num` (a phone station and a StickS3 alike).
+   available. A phone station breaks claims in one tick by lower `player_num`. A StickS3 awards the first ready advert it hears and breaks equal-millisecond ties by lower `player_num`.
    **No RSSI floor** (Tony, 2026-09-24, pickups placed outside Wi-Fi range must work offline): the phone's
    `claim_ready` already proves it met the station's advertised threshold for 1 s by its own reading of the station's
    strong advert, while a station hears player adverts 20-30 dB weaker and sparsely (the StickS3 bench), so the old

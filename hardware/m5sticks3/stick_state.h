@@ -92,6 +92,7 @@ inline StickState build_stick_state(const StickInputs& in, HeldClock& held) {
       const AdvertView hv = h.advert();
       st.control_ble = true;
       st.control_ended = link.hill_ended();
+      st.control_waiting = link.hill_waiting(now);
       st.control_progress_pct = hv.value;
       st.control_bar_team = hv.team == TEAM_ANY ? -1 : (int)hv.team;
       st.control_contested = h.contested;

@@ -168,10 +168,7 @@ struct SimStick {
         link.discard_claim_batch();
       if (link.apply_station_update(u, now) && link.take_muster_drop(now)) muster_drop();
     } else if (kind == "control") {
-      if (parse_control_cmd(body) == "abort_start") {
-        link.cancel_hill_deadline();
-        if (link.has_control_assignment()) saved.note_applied(link.assignment(), link.session_id());
-      } else if (parse_control_cmd(body) == "release_utility") {
+      if (parse_control_cmd(body) == "release_utility") {
         link.discard_claim_batch();
         link.apply_release();
         saved.note_released();
@@ -391,7 +388,12 @@ static std::string spawn_update(int id) {
   return "{\"id\":" + std::to_string(id) + ",\"available\":true}";
 }
 static void start_hill(SimStick& s) {
-  s.frame("station_update", R"({"id":3,"available":false})");
+  const int64_t end = s.link.assignment().ends_in_ms;
+  const int lock = s.link.assignment().lock_s;
+  const std::string times = ",\"starts_in_ms\":0" +
+      (end >= 0 ? ",\"ends_in_ms\":" + std::to_string(end) : std::string()) +
+      (lock > 0 ? ",\"lock_s\":" + std::to_string(lock) : std::string());
+  s.frame("station_config", cfg("control", 255, 3, times));
 }
 static const char* ROCKETS = R"(,"item":{"kind":"weapon","weapon_id":"rockets","spawn_every_s":90,"first_at_s":0,"name":"Rockets","color":"#ff7a1a"})";
 static const char* SHIELD = R"(,"item":{"kind":"overshield","amount":50,"spawn_every_s":60,"first_at_s":0,"name":"Overshield","color":""})";

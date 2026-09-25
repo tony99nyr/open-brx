@@ -461,10 +461,19 @@ volatile bool scanFeedsPresence = false;
 
 // Stop callbacks before the loop changes ClaimGate's station identity or spawn. A callback that
 // already holds claimMux finishes first; later callbacks see false until a new scan starts.
-static void mcPauseClaimFeed() {
+static bool mcPauseClaimFeed(bool discard = true) {
   portENTER_CRITICAL(&claimMux);
+  const bool wasFeeding = scanFeedsClaims;
   scanFeedsClaims = false;
-  link.discard_claim_batch();
+  if (discard) link.discard_claim_batch();
+  portEXIT_CRITICAL(&claimMux);
+  return wasFeeding;
+}
+
+static void mcResumeClaimFeed(bool wasFeeding) {
+  if (!wasFeeding) return;
+  portENTER_CRITICAL(&claimMux);
+  scanFeedsClaims = true;
   portEXIT_CRITICAL(&claimMux);
 }
 
@@ -681,12 +690,14 @@ static void mcHandleFrame(const String& text) {
   } else if (kind == "station_config") {
     StationAssignment a = parse_station_config(body);
     if (a.present) {
-      mcPauseClaimFeed();
+      const bool preserveClaim = same_powerup_claim_scope(link.assignment(), a);
+      const bool wasFeeding = mcPauseClaimFeed(!preserveClaim);
       // §5g.4 + polish round 2: apply_station_config() decides AND latches `dropped_for_match()`
       // (a game-byte edge under MUSTER, including the very first arm after boot) -- this is only the
       // radio action the glue owns; the decision itself is pure and tested in station_link.h.
       uint32_t rx = millis();
       link.apply_station_config(a, rx);  // A58: also REPLACES the match lock, counted from `rx`
+      if (preserveClaim) mcResumeClaimFeed(wasFeeding);
       mcSaveRangeIfChanged(link);            // A67: MC's value may have replaced an on-station edit
       // Only when it differs (lock_s excluded) or the session is new.
       if (savedConfig.note_applied(link.assignment(), link.session_id())) mcWriteSavedConfig();
@@ -694,10 +705,9 @@ static void mcHandleFrame(const String& text) {
       mcScreenWake = true;
       Serial.printf("MC-ARMED kind=%s team=%d id=%d game=%d threshold=%d lock_s=%d\n", a.kind.c_str(), a.team,
                     a.id, a.game, a.threshold, a.lock_s);
-      // Due now, except the first config after a restore: that drop waits for MC's re-anchoring
-      // station_update, or MUSTER_DROP_DEFER_MS (review round 1); mcLoop and the update path retry.
+      // A hill with a START clock can leave Wi-Fi now, even when the match is untimed.
       if (link.take_muster_drop(rx)) mcPerformMusterDrop();
-      else if (link.muster_drop_pending()) Serial.println("MUSTER: drop deferred until MC's station_update");
+      else if (link.muster_drop_pending()) Serial.println("MUSTER: waiting for START or offline fallback");
     }
   } else if (kind == "station_update") {
     StationUpdateMsg u = parse_station_update(body);
@@ -710,13 +720,7 @@ static void mcHandleFrame(const String& text) {
     }
   } else if (kind == "control") {
     std::string cmd = parse_control_cmd(body);
-    if (cmd == "abort_start") {
-      link.cancel_hill_deadline();
-      if (link.has_control_assignment() && savedConfig.note_applied(link.assignment(), link.session_id()))
-        mcWriteSavedConfig();
-      mcScreenWake = true;
-      Serial.println("HILL deadline cancelled (control.abort_start)");
-    } else if (cmd == "release_utility") {
+    if (cmd == "release_utility") {
       mcPauseClaimFeed();
       link.apply_release();
       mcSaveRangeIfChanged(link);  // A67: the edited values go with the station (the log and its seq stay)

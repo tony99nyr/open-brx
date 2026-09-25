@@ -291,6 +291,20 @@ static void test_ble_hill_picks_neutral_capturing_losing_stalled_contested_and_h
   ScreenSpec n = compute_screen(s);
   CHECK(n.kind == ScreenKind::HILL_NEUTRAL);
   CHECK_EQ(n.hill_note, std::string("STAND HERE TO CAPTURE"));
+  s.control_waiting = true;
+  s.control_owner = 1;
+  s.control_progress_pct = 100;
+  CHECK(compute_screen(s).kind == ScreenKind::HILL_NEUTRAL);
+  CHECK_EQ(compute_screen(s).hill_note, std::string("WAITING FOR START"));
+  CHECK_EQ(compute_screen(s).hill_pct, 0);
+  s.control_waiting = false;
+  s.control_owner = TEAM_ANY;
+  s.control_ended = true;
+  CHECK_EQ(compute_screen(s).hill_note, std::string("MATCH OVER"));
+  s.control_contested = true;
+  CHECK_EQ(compute_screen(s).hill_note, std::string("MATCH OVER"));
+  s.control_contested = false;
+  s.control_ended = false;
 
   s.control_bar_team = 1;  // blue building a neutral point
   s.control_dir = 1;

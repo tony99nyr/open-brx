@@ -36,10 +36,13 @@ REGISTERS = (FOLLOWUPS, POST_MVP)
 HANDOFF = DOCS / "HANDOFF.md"
 
 
-def test_a68_station_config_has_one_deadline_rule():
+def test_a68_station_config_names_each_clock_once():
     contracts = (DOCS / "spec" / "contracts.md").read_text(encoding="utf-8")
     station_config = next(line for line in contracts.splitlines() if line.startswith("| `station_config` |"))
-    assert station_config.count("**[A68] `ends_in_ms`**") == 1, "A68 deadline rule is repeated in station_config"
+    assert station_config.count("**[A68]**") == 1
+    rule = station_config.split("**[A68]**", 1)[1]
+    assert rule.count("`starts_in_ms`") == 1
+    assert rule.count("`ends_in_ms`") == 1
 
 
 def _register_text() -> str:

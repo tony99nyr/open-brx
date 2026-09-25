@@ -78,7 +78,9 @@ struct StationAssignment {
   std::vector<int> valid_ids;
   StationItem item;  // A56, additive: absent on an older MC or a non-powerup kind
   int lock_s = 0;    // A58, additive: seconds to lock the operator controls from receipt; 0/absent = unlocked
-  int64_t ends_in_ms = -1; // A68: -1 unknown; otherwise local hill deadline duration from receipt
+  int64_t ends_in_ms = -1; // A68: -1 unknown; otherwise MC duration anchored on local receipt
+  bool starts_known = false; // A68: a START config supplied the go-live offset
+  int64_t starts_in_ms = 0; // MC offset anchored on local receipt; may be negative after go-live
   bool timed_hill = false; // flash marker: a restored timed hill waits for a fresh MC clock
   // A67 (additive): how long ago MC's threshold was last set (-1 = absent, an older MC: apply as today),
   // and MC's advertising power for this station (-1 = absent: keep the Stick's own) with its age.
@@ -86,6 +88,16 @@ struct StationAssignment {
   int tx_power = -1;
   int64_t tx_power_age_ms = -1;
 };
+
+inline bool same_powerup_claim_scope(const StationAssignment& before, const StationAssignment& after) {
+  if (!before.present || !after.present || before.kind != "powerup" || after.kind != "powerup" ||
+      before.id != after.id || before.game != after.game) return false;
+  const StationItem& a = before.item;
+  const StationItem& b = after.item;
+  return a.present == b.present && a.kind == b.kind && a.weapon_id == b.weapon_id &&
+         a.charges == b.charges && a.amount == b.amount && a.spawn_every_s == b.spawn_every_s &&
+         a.first_at_s == b.first_at_s && a.name == b.name && a.color == b.color;
+}
 
 // ---- A58 (the match lock, additive) --------------------------------------------------------------
 // `station_config.lock_s?: int` locks the Stick's OWN operator controls (the B-hold RESET and the
@@ -365,6 +377,15 @@ inline StationAssignment parse_station_config(const json::Value& body) {
     const json::Value& end = body.get("ends_in_ms");
     const double d = end.type == json::Value::Type::Number ? end.num : -1.0;
     a.ends_in_ms = d < 0 ? -1 : (d > 2147483647.0 ? 2147483647 : (int64_t)d);
+  }
+  if (body.has("starts_in_ms")) {
+    const json::Value& start = body.get("starts_in_ms");
+    if (start.type == json::Value::Type::Number) {
+      const double d = start.num;
+      a.starts_known = true;
+      a.starts_in_ms = d < -2147483647.0 ? -2147483647 :
+                       (d > 2147483647.0 ? 2147483647 : (int64_t)d);
+    }
   }
   a.timed_hill = body.get("timed_hill").as_bool(false);
   // A67: ages are relative to receipt, so they are never saved (station_config_storage_body leaves them out).
@@ -759,9 +780,9 @@ class PowerupSchedule {
 // ---- the CLAIM award (A56, confirmed 2026-09-24) -------------------------------------------------
 // A claiming player's OWN advert sets PLAYER_CLAIMING once it is in range, and PLAYER_CLAIM_READY
 // only after ITS OWN 1 s dwell timer -- the Stick counts no dwell of its own; it awards the FIRST
-// `claim_ready` it hears for its id, while available, at ANY signal strength. Ties
-// inside the 100 ms arbitration window go to the lower player_num. The decision runs in loop(),
-// after the BLE callback has collected that short batch.
+// `claim_ready` it hears for its id, while available, at ANY signal strength. The 100 ms window
+// lets the loop collect simultaneous adverts; a later ready advert cannot displace the first.
+// Equal timestamp ties go to the lower player_num.
 // No RSSI floor (Tony, 2026-09-24): the phone's claim_ready already proves it is at the station (its own
 // 1 s dwell on the station's strong advert), while the Stick hears player adverts weakly (bench: -75 to
 // -91 even nearby), so a -80 floor refused real claims. A pickup may sit outside Wi-Fi, so this award
@@ -793,7 +814,8 @@ class ClaimGate {
     if (game != 0 && game_ != 0 && game != game_) return;
     (void)rssi_dbm;  // kept in the signature for a future tie-break; no floor
     if (!candidate_seen_) first_ready_at_ms_ = now_ms;
-    if (!candidate_seen_ || player_num < candidate_player_num_) {
+    // A later ready advert cannot displace the first claimant. Break only simultaneous ties by id.
+    if (!candidate_seen_ || (now_ms == first_ready_at_ms_ && player_num < candidate_player_num_)) {
       candidate_seen_ = true;
       candidate_player_num_ = player_num;
     }
@@ -1008,7 +1030,10 @@ class StationLink {
   HillUpdate tick_players(const PlayerPresence& players, uint32_t now_ms) {
     HillUpdate u;
     if (has_control_assignment()) {
-      if (!hill_live_ && state_ == LinkState::JOINING_WIFI) {
+      if (starts_known_ && !hill_live_ && (int32_t)(now_ms - hill_starts_ms_) >= 0 && !hill_.frozen) {
+        hill_live_ = true;
+        hill_.update(players, hill_starts_ms_);
+      } else if (!starts_known_ && !heard_start_ && !hill_live_ && state_ == LinkState::JOINING_WIFI) {
         if (!hill_offline_waiting_) { hill_offline_waiting_ = true; hill_offline_since_ms_ = now_ms; }
         if ((uint32_t)(now_ms - hill_offline_since_ms_) >= MUSTER_WAIT_OFFLINE_MS) hill_live_ = true;
       } else if (state_ != LinkState::JOINING_WIFI) {
@@ -1027,21 +1052,13 @@ class StationLink {
     return u;
   }
   bool hill_ended() const { return has_control_assignment() && hill_.frozen; }
+  bool hill_waiting(uint32_t now_ms) const {
+    return has_control_assignment() && !hill_.frozen && !hill_live_ &&
+           (!starts_known_ || (int32_t)(now_ms - hill_starts_ms_) < 0);
+  }
   void enforce_restored_hill_freeze() {
     if (restored_ && has_control_assignment() && assignment_.timed_hill) hill_.freeze();
   }
-  // MC sends control.abort_start before its same-game re-arm. Omission of A68 on an ordinary
-  // re-push is ambiguous, so only this explicit control cancels an existing local clock.
-  void cancel_hill_deadline() {
-    if (!has_control_assignment()) return;
-    deadline_known_ = false;
-    assignment_.ends_in_ms = -1;
-    assignment_.timed_hill = false;
-    hill_.frozen = false;
-    hill_live_ = false;
-    hill_restore_guard_ = false;
-  }
-
   // ---- F365 / A67: the station's range, as applied NOW (MC's value, or a younger on-station edit) ----
   int threshold_dbm() const { return threshold_.applied(); }
   // Byte 14 drives the phone's own presence decision. Keep the prior value for an unedited hill
@@ -1140,17 +1157,33 @@ class StationLink {
       hill_.reset();
       revives_.reset();
       hill_live_ = false;
+      starts_known_ = false;
+      heard_start_ = false;
       hill_offline_waiting_ = false;
       hill_restore_guard_ = false;
       epoch_++;
     }
-    if (kind_or_id_changed || game_changed || a.ends_in_ms >= 0) {
+    if (a.kind == "control" && a.starts_known) {
+      if (a.starts_in_ms > 0 && hill_live_) hill_.reset();
+      heard_start_ = true;
+      starts_known_ = true;
+      hill_starts_ms_ = received_at_ms + (uint32_t)(int32_t)a.starts_in_ms;
+      hill_live_ = a.starts_in_ms <= 0;
+      hill_offline_waiting_ = false;
+    } else if (a.kind == "control" && a.ends_in_ms != 0) {
+      // A same-game LOBBY or abort re-send has no match clock.
+      starts_known_ = false;
+      hill_live_ = false;
+      hill_offline_waiting_ = false;
+      if (!hill_restore_guard_) hill_.frozen = false;
+    }
+    if (kind_or_id_changed || game_changed || a.ends_in_ms >= 0 || !a.starts_known) {
       deadline_known_ = a.ends_in_ms >= 0;
       if (deadline_known_) hill_deadline_ms_ = received_at_ms + (uint32_t)a.ends_in_ms;
     }
-    if (after_restore && a.ends_in_ms >= 0) {
+    if (hill_restore_guard_ && a.starts_known) {
       hill_restore_guard_ = false;
-      if (a.ends_in_ms > 0) hill_.frozen = false;
+      if (a.ends_in_ms != 0) hill_.frozen = false;
     }
     if (a.ends_in_ms == 0) hill_.freeze();
     // F365: a new station (kind or id) starts from MC's values (the log stays). A new GAME alone is the
@@ -1194,13 +1227,15 @@ class StationLink {
       // update is the only go-live anchor a MUSTER Stick ever gets; without it the Stick would offer its item from
       // arming, not at first_at_s. After a restore too: a reboot in LOBBY must not skip START's anchor. Once MC is
       // out of reach, take_muster_drop's offline rule below takes over.
-      drop_wait_for_update_ = a.kind == "powerup" || a.kind == "control";
+      // A hill waits for the START config instead. Either kind uses the same offline fallback.
+      drop_wait_for_update_ = a.kind == "powerup" || (a.kind == "control" && !a.starts_known);
       wait_offline_ = false;
       drop_latched_at_ms_ = received_at_ms;
     }
     if (a.kind != "powerup" && a.kind != "control") {
       drop_wait_for_update_ = false;
     }
+    if (a.kind == "control" && a.starts_known) drop_wait_for_update_ = false;
     return changed;
   }
 
@@ -1217,14 +1252,14 @@ class StationLink {
       // laptop asleep) falls back but keeps waiting, so START can still anchor the schedule.
       const bool mc_live = state_ == LinkState::WELCOMED || state_ == LinkState::ASSIGNED;
       if (mc_live) { wait_offline_ = false; return false; }
-      powerup_.assume_available_if_unknown();
+      if (has_powerup_assignment()) powerup_.assume_available_if_unknown();
       if (state_ != LinkState::JOINING_WIFI) { wait_offline_ = false; return false; }
       if (!wait_offline_) {
         wait_offline_ = true;
         wait_offline_since_ms_ = now_ms;
       }
       if ((uint32_t)(now_ms - wait_offline_since_ms_) < MUSTER_WAIT_OFFLINE_MS) return false;
-      if (has_control_assignment()) hill_live_ = true;
+      if (has_control_assignment() && !heard_start_) hill_live_ = true;
     } else if (drop_deferred_ && (uint32_t)(now_ms - drop_latched_at_ms_) < MUSTER_DROP_DEFER_MS) {
       return false;
     }
@@ -1262,6 +1297,8 @@ class StationLink {
     pending_actions_.clear();
     last_update_ = StationUpdateMsg();
     deadline_known_ = false;  // millis() deadlines cannot survive a reboot
+    starts_known_ = false;
+    heard_start_ = false;
     hill_live_ = false;
     hill_offline_waiting_ = false;
     hill_restore_guard_ = a.kind == "control" && a.timed_hill;
@@ -1300,19 +1337,10 @@ class StationLink {
   // this Stick was reassigned away from is dropped, silently -- the same discipline `on_word`'s
   // parity gate uses for a bad IR frame).
   bool apply_station_update(const StationUpdateMsg& u, uint32_t received_at_ms) {
-    if (!u.present || !assignment_.present || u.id != assignment_.id) return false;
+    if (!u.present || !has_powerup_assignment() || u.id != assignment_.id) return false;
     last_update_ = u;
     last_update_at_ms_ = received_at_ms;
-    if (has_powerup_assignment()) powerup_.apply_update(u, received_at_ms);
-    if (has_control_assignment()) {
-      if (hill_restore_guard_) {
-        hill_.frozen = false;
-        assignment_.timed_hill = false;
-        hill_restore_guard_ = false;
-      }
-      hill_live_ = true;
-      hill_offline_waiting_ = false;
-    }
+    powerup_.apply_update(u, received_at_ms);
     drop_deferred_ = false;  // the re-anchor landed: a deferred MUSTER drop is due now
     drop_wait_for_update_ = false;
     return true;
@@ -1360,6 +1388,8 @@ class StationLink {
     restored_ = false;
     assignment_ = StationAssignment();
     deadline_known_ = false;
+    starts_known_ = false;
+    heard_start_ = false;
     last_update_ = StationUpdateMsg();
     powerup_ = PowerupSchedule();
     hill_.reset();
@@ -1413,6 +1443,9 @@ class StationLink {
   MatchLock lock_;  // A58, RAM only
   bool deadline_known_ = false;
   uint32_t hill_deadline_ms_ = 0;
+  bool starts_known_ = false;
+  bool heard_start_ = false;
+  uint32_t hill_starts_ms_ = 0;
   bool hill_live_ = false;
   bool hill_restore_guard_ = false;
   bool hill_offline_waiting_ = false;

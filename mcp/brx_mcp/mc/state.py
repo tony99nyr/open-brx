@@ -2888,22 +2888,10 @@ class Session:
 
     def _push_station_update(self, nid: str, reset: bool = False) -> None:
         body = self._pu_update_body(nid)
-        if body is None and self.phase == "live":
-            st = self.stations.get(nid) or {}
-            a = st.get("assigned") or {}
-            if a.get("kind") == "control" and st.get("platform") == "esp32":
-                # Every Stick hill waits for the LIVE edge, including one with a deadline.
-                # A reconnect sends the same marker after the station's config.
-                body = {"id": a["id"], "available": False}
         if body is not None:
             if reset:
                 body["reset"] = True   # the station tells an operator reset from a re-send of a spawn it awarded
             self.net.push(nid, "station_update", body)
-
-    def _push_hill_go_live_markers(self) -> None:
-        for nid, st in self.stations.items():
-            if (st.get("assigned") or {}).get("kind") == "control":
-                self._push_station_update(nid)
 
     def _powerup_tick(self, now: int) -> None:
         """A56: the Halo schedule on MC's match clock. Items spawn at `first_at_s`, then every `spawn_every_s`
@@ -3500,8 +3488,10 @@ class Session:
         # An aborted countdown clears _game_no_started, so its same-game re-start stays possible.
         if self.phase == "recap" or (not self.in_play() and self._game_no_started and not self.lobby_pushed):
             body["ends_in_ms"] = 0
-        elif self.phase in ("armed", "live") and self.start_info and self.config.get("time_limit_s") and not self.is_adopted():
-            body["ends_in_ms"] = max(0, self.start_info["go_live_t"] + self.config["time_limit_s"] * 1000 - now)
+        elif self.phase in ("armed", "live") and self.start_info and not self.is_adopted():
+            body["starts_in_ms"] = self.start_info["go_live_t"] - now
+            if self.config.get("time_limit_s"):
+                body["ends_in_ms"] = max(0, self.start_info["go_live_t"] + self.config["time_limit_s"] * 1000 - now)
         if lock == 0 and st.get("locked_since") is not None and st.get("unlocked_at") is None:
             st["unlocked_at"] = self.now_ms()  # the window closes at the unlock, heard or not
         elif lock > 0 and st.get("lock_game") == body["game"]:
@@ -4969,8 +4959,7 @@ class Session:
 
         MC holds no config for it, so the current draft config scores it; the go-live time is the phones'
         countdown when they are ARMED, else the earliest stored fact for it, else now. MC therefore never
-        ends it EARLIER than the phones do. Player phones get no config, frames or `start`;
-        assigned Stick hills get their station config and, once LIVE, a go-live marker."""
+        ends it EARLIER than the phones do. Nothing is pushed: no config, no frames and no `start`."""
         nids = self._fresh_orphans(match_id)
         if not nids:
             raise ConflictError("no phone reports that match any more")
@@ -5016,13 +5005,6 @@ class Session:
             except Exception:
                 pass
         self._promote_phase(go, now)
-        # Adoption has no scheduled START push. Re-arm only assigned Stick hills on the
-        # adopted game byte; a LIVE hill then needs the same marker as a timed tick edge.
-        for nid, st in self.stations.items():
-            if (st.get("assigned") or {}).get("kind") == "control" and st.get("platform") == "esp32":
-                self._arm_station(nid, relock=True)
-        if self.phase == "live":
-            self._push_hill_go_live_markers()
         self._orphans = {n: o for n, o in self._orphans.items() if o["match_id"] != match_id}
         self._on_feed({"t_match_s": max(0, (now - go) // 1000), "tag": "RESUMED", "kind": "alert",
                        "text": f"RESUMED A MATCH THIS MC DID NOT START ({len(nids)} PHONE"
@@ -7032,10 +7014,9 @@ class Session:
         now = self.now_ms()
         reached = [pid for nid, pid in self.node_player.items() if now - self.nodes.get(nid, {}).get("last_seen_ms", 0) <= STALE_AFTER_MS]
         unreachable = [p["player_id"] for p in self.players.values() if p["player_id"] not in reached]
-        # A utility phone never held this start. A Stick hill did take START's deadline,
-        # so tell it to cancel that deadline before its same-game station_config re-arm.
+        # A utility station takes no player start. The same-game station_config clears a Stick hill clock.
         for nid, nv in list(self.nodes.items()):
-            if nv.get("node_type") != "utility" or nv.get("platform") == "esp32":
+            if nv.get("node_type") != "utility":
                 self.net.push(nid, "control", {"cmd": "abort_start", "seq": self.start_info["seq"]})
         self._record_ended(self.start_info.get("match_id"), None, self._match_players)   # A34: a node that missed the abort
         self.start_info = None
@@ -7502,7 +7483,6 @@ class Session:
             return
         now = self.now_ms()
         if self.phase == "armed" and self._promote_phase(self.start_info["go_live_t"], now) == "live":
-            self._push_hill_go_live_markers()  # Stick hills count only after go-live
             self._changed()
         self._push_due_roles(now)
         self._powerup_tick(now)                     # A56: the item spawn schedule (a no-op with the flag off)

@@ -227,7 +227,7 @@ passive beacon: it needs **no** MC contact for the rest of the game (same island
 **"phone" here is the first client, not a requirement.** A non-phone utility node (the M5StickS3) takes the
 same message over the same wire with no amendment: **§5g**.
 
-`{ kind, team, id, threshold?, game?, valid_ids?, lock_s?, ends_in_ms? }` — MC → the utility node at muster (and on any re-arm).
+`{ kind, team, id, threshold?, game?, valid_ids?, lock_s?, starts_in_ms?, ends_in_ms? }` — MC → the utility node at muster (and on any re-arm).
 The phone applies it to its advert, sets MC-ARMED, and locks the config drawer. `valid_ids` (optional) is
 the allow-list echoed for the station's own display; the authoritative allow-list players enforce is
 `config.stations` in the game bundle. Absent `game` = 0 (any). This is a **contracts A13.5** addition.
@@ -244,7 +244,7 @@ Stick cannot know the edit's time, so it reports a large age and MC's value wins
 change: they read the station's advert. Each new edit is a feed line and an attention line on the ITEMS card.
 
 
-**Match end deadline (A68, Stick hill).** When the match has a time limit, MC sends `ends_in_ms` in ARMED/LIVE station configs: time remaining until `go_live_t + time_limit_s * 1000`, floored at 0. Adopted matches and matches without a time limit omit the field. At the match end, RECALL or PANIC, MC sends `ends_in_ms: 0` to connected stations and on reconnect. MC sends `control.abort_start` before the same-game config after an aborted countdown, which clears the local deadline. A Stick turns the duration into a local `millis()` deadline. The Bluetooth hill then keeps its owner, bar and possession tally unchanged and shows MATCH OVER. A hill stays neutral through LOAD and ARMED. At go-live, MC sends `station_update{id, available:false}` to an ESP32 control station, including after a LIVE reconnect or direct adoption. That marker starts counting and lets a MUSTER hill drop Wi-Fi. After 60 s without Wi-Fi, the fallback starts the hill and drops Wi-Fi. Without a deadline, a carried-out hill cannot stop at the whistle. An early score cap or operator END reaches only a Stick still in Wi-Fi.
+**Hill timing (A68, Stick hill).** MC sends `starts_in_ms` and `ends_in_ms` in the same station config whenever it knows those times. Each value is relative to MC send time; `starts_in_ms` can be negative after go-live. A future or unknown go-live keeps a same-game hill waiting, neutral and without accrual. MUSTER releases that wait on a config with `starts_in_ms`, including an untimed START. A same-game config without either time means no match is running. The hill counts only from local go-live to its local deadline, then freezes its owner, bar and possession tally and shows MATCH OVER. At match end, RECALL or PANIC, MC sends `ends_in_ms: 0` to connected stations and on reconnect. After abort, the same-game config omits both times and returns the hill to waiting. MC sends no `station_update` for a hill. A MUSTER Stick that takes F374's 60 s offline fallback without hearing START starts counting as before; it cannot know go-live or enforce the deadline. An early score cap or operator END reaches only a Stick still in Wi-Fi. An adopted match pushes nothing to stations, so its Stick hill receives no go-live or deadline and counts as before.
 
 **One game byte per match (A59, F339).** `game` is MC's match counter (1..255, bumped by the first push after a
 match has started). Every player `config` MC sends carries the same number as `config.game_byte`, so a player
@@ -579,12 +579,22 @@ writes a gun head, and owns no store-and-forward ring — MC already refuses a l
 |---|---|---|
 | → MC | `hello` | `{node_id, node_type:"utility", app_ver, platform:"esp32", seq_next:0}`. `node_id` is stable across reboots (Preferences), or MC sees a new item every power cycle |
 | ← MC | `welcome` | keep `node_key` and present it on the next `hello` (A8.2) or a re-claim of a still-live id is refused `4003 in_use` |
-| ← MC | `station_config` | `{kind, team, id, threshold?, game?, valid_ids?, lock_s?, ends_in_ms?}` → advert and screen; persist the assignment; `ends_in_ms` freezes a hill at the deadline (A68) |
-| ← MC | `station_update` | `{id, available:false}` at go-live starts a Bluetooth hill; a matching LIVE reconnect repeats it. A pickup receives its own schedule updates (A56). |
+| ← MC | `station_config` | `{kind, team, id, threshold?, game?, valid_ids?, lock_s?, starts_in_ms?, ends_in_ms?}` → advert and screen; persist the assignment; A68 hill timing uses both fields |
+| ← MC | `station_update` | Pickup schedule updates only (A56); MC sends no hill update |
 | → MC | `status` | every `STATUS_HEARTBEAT_MS` (2000 ms) while connected; stale at `STALE_AFTER_MS` (8000 ms). Live-only, never queued, no `seq` |
 
 `seq_next: 0` forever is honest: a station emits no persisted facts, so there is no seq to advance and nothing
 for `welcome.seq_hi` to reconcile.
+
+**Hill timing (A68).** MC puts `starts_in_ms` and `ends_in_ms` in the same `station_config` whenever it knows
+the respective go-live or end time. Each value is relative to MC send time; a start can be negative after go-live.
+A future start keeps a hill neutral and waiting. A same-game config in LOBBY without a start also keeps it
+waiting. MUSTER releases this wait when the config carries a start, including an untimed START. The hill counts
+only from its local go-live to its local deadline. A MUSTER Stick that takes F374's 60 s offline fallback
+without hearing START starts counting as before; it has no go-live or deadline information. MC sends no
+`station_update` for a hill. A same-game config without either timing field means no match is running, so the
+hill waits. An adopted match pushes nothing to stations, so its Stick hill gets no go-live or deadline and
+counts as before.
 
 For a Stick `control` station, threshold 0 or absent selects the separate -78 dBm hill default
 (`STICK_HILL_DEFAULT_THRESHOLD_DBM`, UNPROVEN, pending a 3, 5 and 7 m walk test). Other Stick kinds keep

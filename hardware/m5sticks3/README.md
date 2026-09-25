@@ -312,7 +312,7 @@ limit:** a Stick that leaves Wi-Fi before START, or restarts offline mid-match, 
 **CLAIM** (`ClaimGate`) scans for a player phone's own advert (role 2, state bit 4 `claiming`, bit 5
 `claim_ready`, `value` = the target station id, `id` = the claimant's player_num). A ready claim
 can arrive at any signal strength. The Stick waits 100 ms after the first ready advert, then awards
-the lowest player_num heard in that window. The phone counts the player's dwell. The advert then
+the first ready player it heard. Only adverts received in the same millisecond tie by lower player_num. The phone counts the player's dwell. The advert then
 carries `state 0` (taken),
 `value` = seconds to the next spawn (capped 255), and the new byte 15 `taker` (the winner's
 player_num, 0 = none); `state 1` (available) is always `value 0`. A won claim is reported
@@ -734,4 +734,6 @@ the register map is not in the installed M5Unified source, so the firmware does 
   and the M5Unified port mapping disagree; see "Hardware and pins" above.
 
 
-**Match end:** MC sends `ends_in_ms` for a timed match. A Bluetooth hill freezes its owner and possession tally at that deadline and shows MATCH OVER. RESET after the whistle cannot restart the tally. The hill stays neutral through LOAD and ARMED. MC sends a `station_update` at go-live to start it; under MUSTER, the Stick keeps Wi-Fi until that marker arrives. If Wi-Fi is lost, the 60 s fallback starts the hill and drops Wi-Fi. A restored timed hill stays frozen until MC sends a fresh deadline and live marker because `millis()` cannot measure time while powered off. Without a deadline, a hill carried out before START cannot stop at the whistle. An early end reaches only a Stick still in Wi-Fi.
+**Hill timing (A68):** MC sends `starts_in_ms` and `ends_in_ms` in the same `station_config` whenever it knows the times. Both are relative to MC send time; the start can be negative after go-live. A future start keeps the hill neutral, waiting, and accrual-free. A same-game config in LOBBY without a start also keeps it waiting. The MUSTER wait ends on any config with `starts_in_ms`, including an untimed START. The hill counts only from its local go-live to its local deadline, then freezes its owner and possession tally and shows MATCH OVER. A same-game config with neither time means no match is running and the hill waits. MC sends no `station_update` for a hill. A restored timed hill stays frozen until a fresh config provides timing, because `millis()` cannot measure time while powered off. After an abort, the same-game config omits both times and returns the hill to waiting. An early end reaches only a Stick still in Wi-Fi.
+
+**Offline limit:** F374's 60 s MUSTER fallback still starts the hill if the Stick loses Wi-Fi before hearing START, then drops Wi-Fi. That hill counts as before because it has no go-live or deadline. An adopted match pushes nothing to stations, so an adopted match gives a Stick hill no go-live or deadline and it counts as before.
