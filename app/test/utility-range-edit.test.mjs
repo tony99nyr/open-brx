@@ -142,11 +142,15 @@ test('A67 (brx3): a phone with no TX power control (iOS) ignores MC\'s tx_power 
     await api.applyStationConfig({ ...arm, threshold: -64, threshold_age_ms: 60_000, tx_power: 'low', tx_power_age_ms: 0 });
     assert.equal(api.settings.tx, tx0, 'MC\'s tx_power is ignored');
     const st = api.statusBody();
-    assert.equal(st.tx_power, 'high');
-    assert.equal('tx_power_src' in st, false);
-    assert.equal('tx_power_edit_age_ms' in st, false);
-    const n = api.range.st.seq; api.stationEdit('threshold', -65);
+    for (const k of ['tx_power', 'tx_power_src', 'tx_power_edit_age_ms']) assert.equal(k in st, false, `no ${k} from a phone that cannot set its power`);
+    assert.equal((st.range_edits || []).some(e => e.field === 'tx_power'), false, 'no strength entry in the edit list');
+    const n = api.range.st.seq;
+    api.stationEdit('tx_power', 'low');
+    assert.equal(api.range.st.seq, n, 'a strength edit is not recorded');
+    assert.equal(api.settings.tx, tx0);
+    api.stationEdit('threshold', -65);
     assert.equal(api.range.st.seq, n + 1, 'the radius still edits and syncs');
+    assert.equal(api.statusBody().range_edits.at(-1).field, 'threshold');
   } finally { api.setSupport({ txPowerControl: true }); }
 });
 
