@@ -137,6 +137,7 @@ bool resetOutcomeActive = false;  // a RESET was just confirmed; show its outcom
 bool resetOutcomeOk = false;      // true = sent to MC; false = RESET NEEDS MISSION CONTROL
 bool resetOutcomeLocked = false;  // A58: the RESET was refused by the match lock (shows LOCKED)
 ForceRestart forceRestart;        // A58: A + B held 7 s restarts the Stick, locked or not
+RejoinGesture rejoinGesture;      // F390: three B clicks force a MUSTER rejoin
 BootHeldButtons bootHeld;         // a button still down from before this boot is ignored until released
 uint32_t lastRestartCountdown = 0;
 uint32_t resetOutcomeAtMs = 0;
@@ -810,8 +811,10 @@ static void pollButtons() {
   if (bReleased) Serial.println("BTN B up");
   if (forceRestart.update(bootHeld.a_down(), bootHeld.b_down(), now)) {
     Serial.println("FORCE RESTART (A + B held 7 s)");
-    Serial.flush();
-    ESP.restart();
+    if (brx_glue::mcClearSavedLock()) {
+      Serial.flush();
+      ESP.restart();
+    } else Serial.println("ERR force restart needs NVS lock clear; release and retry");
   }
   uint32_t countdown = forceRestart.countdown_s();
   if (countdown != lastRestartCountdown) { lastRestartCountdown = countdown; displayDirty = true; }
@@ -828,6 +831,7 @@ static void pollButtons() {
   const int cue = aHoldGesture.range_cue_pct();
   if (cue != lastRangeCue) { lastRangeCue = cue; displayDirty = true; }
   if (forceRestart.suppress_single()) {
+    rejoinGesture.cancel();
     aHoldGesture.cancel();  // the joint hold owns this press
     homeNav.note_activity(now);
     if (brx_glue::buttons.poll_timeout(now)) displayDirty = true;
@@ -864,6 +868,7 @@ static void pollButtons() {
     displayDirty = true;
   }
   if (rangeEd.active()) {
+    rejoinGesture.cancel();
     bool edited = false;
     if (aEvent == AHoldEvent::CLICK || bClicked) {
       const int step = RangeEditor::step_for(rangeEd.field(), aEvent == AHoldEvent::CLICK);
@@ -887,6 +892,16 @@ static void pollButtons() {
     if (homeNav.poll_idle(now)) displayDirty = true;
     displayDirty = true;
     return;  // B's RESET is not reachable from RANGE
+  }
+  if (stationLocked || !link.dropped_for_match() || brx_glue::linkOff ||
+      brx_glue::buttons.phase() == ButtonPhase::CONFIRM_ARMED) rejoinGesture.cancel();
+  if (bClicked && stationLocked && link.dropped_for_match()) Serial.println("REJOIN refused: station locked");
+  if (bClicked && !brx_glue::linkOff && brx_glue::buttons.phase() == ButtonPhase::NORMAL &&
+      rejoinGesture.click(now, stationLocked) && link.dropped_for_match()) {
+    link.clear_dropped_for_match();
+    brx_glue::linkOff = false;
+    Serial.println("REJOIN: operator gesture (B clicked three times)");
+    WiFi.begin(brx_glue::wifiSsid.c_str(), brx_glue::wifiPass.c_str());
   }
   if (aEvent == AHoldEvent::RANGE) {
     if (stationLocked) {

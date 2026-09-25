@@ -13,6 +13,7 @@
 
 #include "json_lite.h"
 #include "station_link.h"
+#include "station_persistence.h"
 
 static int failures = 0;
 #define CHECK(cond)                                                    \
@@ -33,6 +34,118 @@ static int failures = 0;
   } while (0)
 
 using namespace brx;
+
+static void test_f389_every_dial_path_respects_link_stops() {
+  CHECK(!mc_dial_allowed(false, true, true));
+  CHECK(!mc_dial_allowed(true, false, true));
+  CHECK(!mc_dial_allowed(true, true, false));
+  CHECK(mc_dial_allowed(true, false, false));
+}
+
+static void test_f390_rejoin_waits_for_a_known_deadline() {
+  CHECK(!muster_rejoin_due(true, false, -1, 0));
+  CHECK(!muster_rejoin_due(false, true, 0, 0));
+  CHECK(muster_rejoin_due(true, false, 0, 45));
+  CHECK(!muster_rejoin_due(true, true, -1, 0)); // A short lock can expire during play.
+  CHECK(!muster_rejoin_due(true, false, 0, 0, true)); // LINK OFF must stay off.
+}
+
+static void test_f390_timed_powerup_rejoins_at_whistle_not_short_lock_expiry() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true;
+  a.kind = "powerup";
+  a.id = 8;
+  a.game = 1;
+  a.lock_s = 2;
+  a.starts_known = true;
+  a.starts_in_ms = 0;
+  a.ends_in_ms = 10000;
+  link.apply_station_config(a, 1000);
+  StationUpdateMsg u;
+  u.present = true;
+  u.id = 8;
+  u.available = false;
+  u.next_spawn_in_ms = 30000;
+  CHECK(link.apply_station_update(u, 1100));
+  CHECK(link.take_muster_drop(1100));
+  CHECK(!link.automatic_rejoin_due(3100));
+  CHECK(link.automatic_rejoin_due(11000));
+}
+
+static void test_f390_deadline_rejoin_for_each_station_kind() {
+  for (const char* kind : {"control", "powerup", "respawn", "extraction", "bomb"}) {
+    StationLink link;
+    StationAssignment a;
+    a.present = true;
+    a.kind = kind;
+    a.id = 8;
+    a.game = 1;
+    a.starts_known = true;
+    a.ends_in_ms = 4000;
+    link.apply_station_config(a, 1000);
+    if (a.kind == "powerup") {
+      StationUpdateMsg u;
+      u.present = true;
+      u.id = 8;
+      u.available = false;
+      link.apply_station_update(u, 1100);
+    }
+    CHECK(link.take_muster_drop(1200));
+    CHECK(!link.automatic_rejoin_due(4999));
+    CHECK(link.automatic_rejoin_due(5000));
+    CHECK(!link.automatic_rejoin_due(5000, true));
+  }
+  StationLink untimed;
+  StationAssignment a;
+  a.present = true;
+  a.kind = "respawn";
+  a.id = 8;
+  a.game = 1;
+  untimed.apply_station_config(a, 1000);
+  CHECK(untimed.take_muster_drop(1000));
+  CHECK(!untimed.automatic_rejoin_due(9000000));
+}
+
+static void test_f391_lock_snapshot_never_grows_and_saves_once_five_minutes() {
+  CHECK_EQ(lock_restore_remaining_s(90), 90u);
+  CHECK_EQ(lock_restore_remaining_s(8000), 120u);
+  CHECK(!lock_save_due(30, 1000, 300999));
+  CHECK(lock_save_due(30, 1000, 301000));
+  CHECK(!lock_save_due(0, 1000, 301000));
+  CHECK_EQ(lock_restore_remaining_s(7200), 120u); // No clock runs while power is off.
+}
+
+static void test_f397_typed_mc_url_storage_policy() {
+  CHECK(saved_mc_url_usable("ws://192.168.1.5:8766/ws"));
+  CHECK(!saved_mc_url_usable("http://192.168.1.5:8766/ws"));
+  CHECK(normalise_saved_mc_url(std::string(193, 'x')).empty());
+  CHECK(!saved_mc_url_usable("ws://host:70000/ws"));
+  CHECK(!saved_mc_url_usable("ws://host:abc/ws"));
+  CHECK(!saved_mc_url_usable("ws://host:8766/ws?token=x"));
+  CHECK(!saved_mc_url_usable("ws://host:999999999999999999999999/ws"));
+}
+
+static void test_f397_typed_url_falls_back_after_failed_dials() {
+  TypedMcFallback fallback;
+  CHECK(fallback.prefer_typed());
+  fallback.dial_started(true);
+  fallback.dial_failed(1000);
+  CHECK(fallback.prefer_typed());
+  fallback.dial_started(true);
+  fallback.dial_failed(2000);
+  CHECK(fallback.prefer_typed());
+  fallback.dial_started(true);
+  fallback.dial_failed(3000);
+  CHECK(!fallback.prefer_typed(3000));
+  CHECK(!fallback.prefer_typed(62999));
+  CHECK(fallback.prefer_typed(63000));
+  fallback.dial_started(false);
+  fallback.dial_succeeded();
+  CHECK(!fallback.prefer_typed(3000));
+  fallback.new_url();
+  CHECK(fallback.prefer_typed());
+}
 
 // --- json_lite ------------------------------------------------------------------------------
 
@@ -2031,9 +2144,9 @@ static void test_presence_threshold_is_the_phone_default_when_mc_sends_none() {
   StationAssignment a = parse_station_config(v);
   CHECK(a.threshold_defaulted);
   CHECK_EQ(a.threshold, STICK_DEFAULT_THRESHOLD_DBM);  // the advertised byte keeps the Stick's own
-  CHECK_EQ(presence_threshold_dbm(a), -78);            // hill radius default
+  CHECK_EQ(presence_threshold_dbm(a), -75);            // hill radius default
   v = json::parse(R"({"kind":"control","team":255,"id":9})", &ok);
-  CHECK_EQ(presence_threshold_dbm(parse_station_config(v)), -78);
+  CHECK_EQ(presence_threshold_dbm(parse_station_config(v)), -75);
   v = json::parse(R"({"kind":"control","team":255,"id":9,"threshold":-66})", &ok);
   StationAssignment m = parse_station_config(v);
   CHECK(!m.threshold_defaulted);
@@ -2043,7 +2156,7 @@ static void test_presence_threshold_is_the_phone_default_when_mc_sends_none() {
   CHECK(saved.note_applied(a, "s1"));
   StationAssignment r = saved.restore();
   CHECK(r.threshold_defaulted);
-  CHECK_EQ(presence_threshold_dbm(r), -78);
+  CHECK_EQ(presence_threshold_dbm(r), -75);
   SavedStationConfig saved2;
   saved2.note_applied(m, "s1");
   CHECK_EQ(presence_threshold_dbm(saved2.restore()), -66);
@@ -2210,6 +2323,13 @@ static void test_assignment_epoch_moves_on_a_new_station_only() {
 }
 
 int main(int argc, char** argv) {
+  test_f390_timed_powerup_rejoins_at_whistle_not_short_lock_expiry();
+  test_f390_deadline_rejoin_for_each_station_kind();
+  test_f389_every_dial_path_respects_link_stops();
+  test_f390_rejoin_waits_for_a_known_deadline();
+  test_f391_lock_snapshot_never_grows_and_saves_once_five_minutes();
+  test_f397_typed_mc_url_storage_policy();
+  test_f397_typed_url_falls_back_after_failed_dials();
   if (argc > 1) {
     // Golden-dump mode for mcp/tests/test_utility_esp32.py: write the exact envelope strings this
     // header builds, so the MC-side test drives Session with what the firmware would actually send.

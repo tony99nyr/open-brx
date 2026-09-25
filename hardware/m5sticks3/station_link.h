@@ -41,6 +41,11 @@ enum class LinkState : uint8_t {
   ASSIGNED = 6,        // a station_config has been applied
 };
 
+// Every address source, typed or discovered, must honour both operator and match stops.
+inline bool mc_dial_allowed(bool wifi_up, bool dropped_for_match, bool link_off) {
+  return wifi_up && !dropped_for_match && !link_off;
+}
+
 // ---- identity (persisted in Preferences by the .ino; §5g.2/§5g.3) -------------------------------
 struct StationIdentity {
   std::string node_id;    // stable across reboots, or MC sees a new item every power cycle
@@ -106,15 +111,24 @@ inline bool same_powerup_claim_scope(const StationAssignment& before, const Stat
 // hours: longer than any match, short enough that a wrong value cannot strand a station for a day).
 // Absent means 0. A LATER station_config REPLACES the running lock outright, including a same-game
 // re-push (MC re-sends the current config mid-match as the lock's carrier), and lock_s 0 unlocks at
-// once. The lock lives in RAM only: every boot starts unlocked, so a crash or a forced restart can
-// never brick a station behind a lock it cannot see the end of. A+B held 7 s (ForceRestart,
-// station_ui.h) restarts the Stick whether it is locked or not.
+// once. The state machine is in RAM, while F391 snapshots its remaining time to NVS. An ordinary
+// restart restores that snapshot. A+B held 7 s clears the saved lock before the forced restart.
 constexpr int MATCH_LOCK_MAX_S = 7200;
 
 inline int clamp_lock_s(long v) {
   if (v < 0) return 0;
   if (v > MATCH_LOCK_MAX_S) return MATCH_LOCK_MAX_S;
   return (int)v;
+}
+
+// F391: flash stores a remaining-time snapshot, refreshed at most once per five minutes.
+constexpr uint32_t MATCH_LOCK_SAVE_INTERVAL_MS = 300000;
+constexpr uint32_t MATCH_LOCK_RESTORE_MAX_S = 120;
+inline uint32_t lock_restore_remaining_s(uint32_t saved_s) {
+  return saved_s > MATCH_LOCK_RESTORE_MAX_S ? MATCH_LOCK_RESTORE_MAX_S : saved_s;
+}
+inline bool lock_save_due(uint32_t remaining_s, uint32_t last_saved_ms, uint32_t now_ms) {
+  return remaining_s > 0 && (uint32_t)(now_ms - last_saved_ms) >= MATCH_LOCK_SAVE_INTERVAL_MS;
 }
 
 class MatchLock {
@@ -126,6 +140,7 @@ class MatchLock {
     active_ = true;
     until_ms_ = now_ms + (uint32_t)lock_s * 1000u;
   }
+  void restore(uint32_t lock_s, uint32_t now_ms) { start((int)lock_s, now_ms); }
   void clear() { active_ = false; }
 
   // Wrap-safe (the same signed-subtraction idiom as PowerupSchedule::tick): 7200 s is far inside
@@ -150,7 +165,7 @@ class MatchLock {
   }
 
  private:
-  bool active_ = false;  // RAM only, by design: a boot always starts here, unlocked
+  bool active_ = false;  // the glue may restore a bounded NVS snapshot during boot
   uint32_t until_ms_ = 0;
 };
 
@@ -534,7 +549,7 @@ inline uint8_t station_kind_byte(const std::string& kind) {
 
 // ---- the presence threshold (hill + respawn) -------------------------------------------------------
 // The threshold a Bluetooth station measures PLAYERS against. MC's value when it sent one; when it sent
-// 0/absent, the StickS3's own default for that kind (-78 dBm for control, -57 otherwise). A defaulted
+// 0/absent, the StickS3's own default for that kind (-75 dBm for control, -57 otherwise). A defaulted
 // control advert keeps byte 14 at -57 for phone-side presence because the radio paths are asymmetric.
 // The pickup claim has no RSSI floor at all (ClaimGate): the phone's own
 // claim_ready already proves the player stood at the station.
@@ -920,6 +935,14 @@ constexpr uint32_t MUSTER_DROP_DEFER_MS = 2000;
 // reach (a blip, or the operator carrying it out to the field), before it takes the MUSTER drop.
 constexpr uint32_t MUSTER_WAIT_OFFLINE_MS = 60000;
 
+// F390: rejoin when the station's own match deadline or lock ends, whichever is known first.
+inline bool muster_rejoin_due(bool dropped, bool lock_known, int64_t hill_ends_in_ms, uint32_t lock_remaining_s,
+                              bool link_off = false) {
+  (void)lock_known;
+  (void)lock_remaining_s;
+  return dropped && !link_off && hill_ends_in_ms == 0;
+}
+
 // ---- the link state machine ------------------------------------------------------------------
 // Owns no I/O: the .ino drives every transition from a real Wi-Fi/socket event and reads back what
 // to do next. §5g.4's whole point lives in one method here (`should_drop_link_at_match_start`): the
@@ -958,6 +981,11 @@ class StationLink {
   // ---- transitions ----
   void wifi_configured() {
     if (state_ == LinkState::NOT_CONFIGURED) state_ = LinkState::JOINING_WIFI;
+  }
+  void wifi_cleared() {
+    state_ = LinkState::NOT_CONFIGURED;
+    dropped_for_match_ = false;
+    drop_pending_ = false;
   }
   void wifi_up() {
     if (state_ == LinkState::NOT_CONFIGURED || state_ == LinkState::JOINING_WIFI) {
@@ -1121,6 +1149,10 @@ class StationLink {
   // A58: the operator-control lock (MatchLock, above). Read-only for the glue and the screen.
   const MatchLock& lock() const { return lock_; }
   bool poll_lock(uint32_t now_ms) { return lock_.poll(now_ms); }
+  void restore_lock(uint32_t seconds, uint32_t now_ms) {
+    lock_deadline_known_ = seconds > 0;
+    lock_.restore(seconds, now_ms);
+  }
 
   // Returns true when a field that changes the advert actually moved, so the caller republishes
   // only when it must (mirrors `AdvertPolicy::due`'s "first/state/progress" distinction upstream).
@@ -1178,7 +1210,7 @@ class StationLink {
       if (!hill_restore_guard_) hill_.frozen = false;
     }
     if (kind_or_id_changed || game_changed || a.ends_in_ms >= 0 || !a.starts_known) {
-      deadline_known_ = a.ends_in_ms >= 0;
+      deadline_known_ = a.starts_known && a.ends_in_ms >= 0;
       if (deadline_known_) hill_deadline_ms_ = received_at_ms + (uint32_t)a.ends_in_ms;
     }
     if (hill_restore_guard_ && a.starts_known) {
@@ -1196,6 +1228,7 @@ class StationLink {
     // A56 (brx5): unsent `taken` reports belong to the game they were awarded in; a new game drops them.
     if (game_changed) pending_actions_.clear();
     assignment_ = a;
+    lock_deadline_known_ = a.lock_s > 0;
     assignment_.timed_hill = a.kind == "control" && (deadline_known_ || hill_.frozen);
     state_ = LinkState::ASSIGNED;
     // A67: MC's range values, each through the keep-the-younger-edit rule (station_range.h).
@@ -1273,7 +1306,7 @@ class StationLink {
   // Restart survival (Tony, 2026-09-24): apply the assignment SavedStationConfig kept in flash, at
   // boot, before the link comes up. A timed hill stays frozen until MC gives it a fresh clock.
   // What differs from a live config:
-  //   - no lock, ever: the lock is RAM-only and every boot starts unlocked (A58);
+  //   - no lock in the saved config: the glue restores a game-bound NVS snapshot, capped at 120 s;
   //   - a schedule assumed available (no anchor, no taker; F374: a fresh arm starts unknown instead); if
   //     MC can reach the Stick, the station_update it sends after its config re-anchors it (under
   //     MUSTER the radio stays up for that update before it drops: MUSTER_DROP_DEFER_MS, or for a
@@ -1423,6 +1456,11 @@ class StationLink {
   // for MC's station_update keeps rejoining Wi-Fi after a blip, or it could never hear that update.
   bool radio_down_for_match() const { return dropped_for_match_ && !drop_pending_; }
   void clear_dropped_for_match() { dropped_for_match_ = false; drop_pending_ = false; }
+  bool automatic_rejoin_due(uint32_t now_ms, bool link_off = false) const {
+    const bool hill_end = deadline_known_ && (int32_t)(now_ms - hill_deadline_ms_) >= 0;
+    return muster_rejoin_due(radio_down_for_match(), lock_deadline_known_, hill_end ? 0 : -1,
+                             lock_.remaining_s(now_ms), link_off);
+  }
 
  private:
   LinkState state_ = LinkState::NOT_CONFIGURED;
@@ -1440,7 +1478,8 @@ class StationLink {
   Backoff backoff_;
   bool actions_enabled_ = true;   // MC accepts station_action since A56 landed (f3fe3cf6); `ACTIONS OFF` for an older MC
   bool dropped_for_match_ = false;
-  MatchLock lock_;  // A58, RAM only
+  bool lock_deadline_known_ = false;
+  MatchLock lock_;  // A58, the glue restores this from NVS at boot
   bool deadline_known_ = false;
   uint32_t hill_deadline_ms_ = 0;
   bool starts_known_ = false;

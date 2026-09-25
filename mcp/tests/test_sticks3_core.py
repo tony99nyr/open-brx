@@ -11,6 +11,7 @@ link state machine. It is built and run the same way as `test_core.cpp` below. A
 under `test/` belongs in `TEST_FILES` here, or it never runs anywhere (`mcp/tests/test_utility_esp32.py`
 also builds `test_link.cpp` directly, in its own golden-dump mode -- see that file's docstring)."""
 import pathlib
+import re
 import shutil
 import subprocess
 import tempfile
@@ -65,3 +66,36 @@ def test_sticks3_headers_have_no_arduino_dependency():
                  "station_ui.h", "station_screen.h", "presence.h", "stick_state.h", "station_range.h"):
         text = (CORE / name).read_text(encoding="utf-8")
         assert "Arduino.h" not in text and "M5Unified" not in text, f"{name} includes Arduino"
+
+
+def test_f391_lock_restore_contract_matches_firmware():
+    link = (CORE / "station_link.h").read_text(encoding="utf-8")
+    interval_ms = int(re.search(r"MATCH_LOCK_SAVE_INTERVAL_MS = (\d+)", link).group(1))
+    cap_s = int(re.search(r"MATCH_LOCK_RESTORE_MAX_S = (\d+)", link).group(1))
+    assert interval_ms == 300000 and cap_s == 120
+    contracts = (ROOT / "docs/spec/contracts.md").read_text(encoding="utf-8")
+    a58 = next(line for line in contracts.splitlines() if line.startswith("| A58 |"))
+    utility = (ROOT / "docs/spec/utility.md").read_text(encoding="utf-8")
+    assert "at most once per five minutes" in a58
+    assert "at most 120 seconds" in a58 and "saved game byte" in a58
+    assert "at most once per five minutes" in utility
+    assert "at most 120 seconds" in utility and "saved game byte" in utility
+
+
+def test_stick_readme_idle_brightness_matches_firmware():
+    firmware = (CORE / "m5sticks3.ino").read_text(encoding="utf-8")
+    dim = int(re.search(r"BACKLIGHT_DIM = (\d+)", firmware).group(1))
+    readme = (CORE / "README.md").read_text(encoding="utf-8")
+    assert f"from 120 to {dim}" in readme
+
+
+def test_f389_pending_muster_drop_keeps_socket_polling():
+    glue = (CORE / "mc_link_glue.h").read_text(encoding="utf-8")
+    assert "mc_dial_allowed(wifiUp, link.radio_down_for_match(), linkOff)" in glue
+    assert "mc_dial_allowed(wifiUp, link.dropped_for_match(), linkOff)" not in glue
+
+
+def test_f391_lock_snapshot_checks_nvs_result():
+    glue = (CORE / "mc_link_glue.h").read_text(encoding="utf-8")
+    assert "lockSnapshotWritten" in glue
+    assert "lockClearPending" in glue

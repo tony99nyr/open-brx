@@ -17,6 +17,7 @@ Review the gallery (`python3 hardware/m5sticks3/sim/stick_sim.py`) before flashi
 import importlib.util
 import pathlib
 import shutil
+import re
 
 from _skip import needs
 
@@ -80,3 +81,12 @@ def test_known_stick_findings_still_reproduce():
     needs(rendered, "M5GFX (set M5GFX_SRC)")
     fixed = sorted(k for k in sim.KNOWN if k not in probs)
     assert not fixed, f"fixed, remove from KNOWN in stick_sim.py: {fixed}"
+
+
+def test_f398_countdown_ring_geometry_clears_next_spawn_label():
+    render = (ROOT / "hardware/m5sticks3/station_render.h").read_text(encoding="utf-8")
+    model = (ROOT / "hardware/m5sticks3/station_screen.h").read_text(encoding="utf-8")
+    y = int(re.search(r"PICKUP_COUNTDOWN_INDICATOR_Y\s*=\s*(\d+)", model).group(1))
+    assert "cy = PICKUP_COUNTDOWN_INDICATOR_Y, r = 12" in render
+    assert y - 12 >= 66, f"countdown ring reaches {y - 12}, too close to TAKEN BY text"
+    assert y + 12 < 99, f"countdown ring reaches {y + 12}, too close to NEXT SPAWN text"
