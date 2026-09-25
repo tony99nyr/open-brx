@@ -1487,7 +1487,7 @@ KNOWN_UNMIRRORED = {
     "_announceAlert", "_announceStatus", "_card",
     # 2026-09-24 (docs/announcer.md, "The three lanes"): the HUD's alert lanes, written as each event arrives. Presentation
     # only: they write no gun frame, say no line and move no score, and the stage has no HUD to draw them on.
-    "_lanesOf", "_heroUntil", "_laneKill", "_laneUpdate", "_laneName", "_laneObj", "_laneFeed",
+    "_lanesOf", "_heroUntil", "_laneTakeover", "_laneKill", "_laneUpdate", "_laneName", "_laneObj", "_laneFeed",
     # 2026-09-24 (docs/announcer.md, "The gun's audio FIFO"): the phone's model of the gun's audio queue and the
     # must-hear $PLAYX flush. NOT yet ported: the stage's own writes do not model the FIFO, and its heartbeat does not
     # skip a beat that would sound over the refill. A stage/phone divergence on audio timing only, no game rule.

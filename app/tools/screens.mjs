@@ -340,7 +340,7 @@ for (const view of VIEWS) {
       visualFont: parseFloat(getComputedStyle(s).fontSize) * f.getBoundingClientRect().width / f.offsetWidth,
     } : null; });
     await pg.close();
-    must(r && r.color === 'rgb(239, 104, 104)' && r.background === 'rgba(8, 3, 3, 0.96)' && r.visualFont >= 11, JSON.stringify(r));
+    must(r && r.color === 'rgb(239, 104, 104)' && r.background === 'rgb(42, 12, 12)' && r.visualFont >= 11, JSON.stringify(r));   // F368 review M2: the GUN LINK LOST night treatment (#ef6868 on #2a0c0c, about 6:1)
   });
   await step(`${view.name} demo ignores a real session persisted on the same origin (correctness review)`, async () => {
     const pg = await b.newPage({ viewport: { width: view.width, height: view.height } });
@@ -3490,12 +3490,13 @@ await step('scores overlay: a hidden pill under the tab row cannot intercept the
     const overlaps = b.left < h.right && b.right > h.left && b.top < h.bottom && b.bottom > h.top;
     const x = (Math.max(b.left, h.left) + Math.min(b.right, h.right)) / 2, y = (Math.max(b.top, h.top) + Math.min(b.bottom, h.bottom)) / 2;
     const el = document.elementFromPoint(x, y);
-    return { overlaps, hitsHead: !!(el && (el === head || head.contains(el))), btnPE: getComputedStyle(btn).pointerEvents,
+    const c = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);   // review: the pill's own centre never takes the tap
+    return { overlaps, hitsHead: !!(el && (el === head || head.contains(el))), btnPE: getComputedStyle(btn).pointerEvents, centreIsPill: !!(c && (c === btn || btn.contains(c))),
       chipsPE: getComputedStyle(document.getElementById('chips')).pointerEvents };
   });
   // F368: the pill now lives in the bottom-centre status rail, clear of the panel head, so the two may no longer overlap.
   // The guard that matters in every layout is that the hidden pill takes no taps; where they do overlap, the head wins.
-  must(r.btnPE === 'none', `the hidden pill button must not stay tappable while the board is open: ${JSON.stringify(r)}`);
+  must(r.btnPE === 'none' && !r.centreIsPill, `the hidden pill button must not stay tappable while the board is open: ${JSON.stringify(r)}`);
   if (r.overlaps) must(r.hitsHead, `a tap where the pill overlaps the panel head must reach the panel, not the hidden pill underneath: ${JSON.stringify(r)}`);
   await pg.click('.bdseg .sg[data-arg="player"]'); await pg.waitForTimeout(200);
   const s = await boardState(pg); await pg.close();
@@ -4953,8 +4954,9 @@ for (const view of VIEWS) for (const night of [false, true]) for (const [tell, s
 // the REAL engine (docs/announcer.md; the gallery's CLASH section renders the same five).
 const railRead = pg => pg.evaluate(() => {
   const fr = document.getElementById('frame').getBoundingClientRect(), sc = fr.width / 844;
-  const shown = e => { for (let n = e; n && n.id !== 'frame'; n = n.parentElement) { const c = getComputedStyle(n); if (c.display === 'none' || c.visibility === 'hidden' || +c.opacity < .3) return false; } const b = e.getBoundingClientRect(); return b.width > 0 && b.height > 0; };
-  return [...document.querySelectorAll('#chips .chipbar > *')].filter(shown).map(e => { const u = e.querySelector('.unskew') || e, a = getComputedStyle(u, '::after'), b = e.getBoundingClientRect(), cs = getComputedStyle(e);
+  // a blinking pill (`.pill.bad`, day) dips in opacity by design: its own opacity is not read, only its ancestors'
+  const shown = e => { for (let n = e; n && n.id !== 'frame'; n = n.parentElement) { const c = getComputedStyle(n); if (c.display === 'none' || c.visibility === 'hidden' || (n !== e && +c.opacity < .3)) return false; } const b = e.getBoundingClientRect(); return b.width > 0 && b.height > 0; };
+  return [...document.querySelectorAll('#chips .chipbar > *, .alive .gunwarn')].filter(shown).map(e => { const u = e.querySelector('.unskew') || e, a = getComputedStyle(u, '::after'), b = e.getBoundingClientRect(), cs = getComputedStyle(e);
     const short = a.content && a.content !== 'none' && a.content !== 'normal' ? a.content.replace(/^"|"$/g, '') : null;
     return { text: short || u.textContent.trim(), short: !!short, hasShort: u.hasAttribute('data-short'), px: +((short ? parseFloat(a.fontSize) : parseFloat(getComputedStyle(u).fontSize)) * sc).toFixed(2),
       box: { l: b.left, r: b.right, t: b.top, b: b.bottom }, midY: (b.top + b.height / 2 - fr.top) / fr.height, midX: (b.left + b.width / 2 - fr.left) / fr.width,
@@ -4964,10 +4966,11 @@ const CLASHES = [
   ['kill + GUN LINK LOST', 'clash-kc-gunlost', () => document.querySelector('#lanes .lh:not(.out)') && /GUN LINK LOST/.test(document.getElementById('chips').textContent), /GUN LINK LOST/],
   ['medals + MC offline', 'clash-medals-mc', () => { const h = document.querySelector('#lanes .lh:not(.out)'); return h && +h.dataset.n >= 2 && window.brx.engine.state().wsState !== 'bound'; }, null],
   ['kill while STALE', 'clash-kc-stale', () => document.querySelector('#lanes .lh:not(.out)') && document.querySelector('.alive .staletag'), /GUN LINK LOST/],
+  ['kill while GUN NOT ANSWERING', 'clash-kc-gunwarn', () => document.querySelector('#lanes .lh:not(.out)') && document.querySelector('.alive .gunwarn'), /GUN NOT ANSWERING/],
   ['kill while HEADSET NOT JOINED', 'clash-kc-headset', () => document.querySelector('#lanes .lh:not(.out)') && document.querySelector('#chips [data-headset="not_joined"]'), /HEADSET NOT JOINED/],
 ];
 for (const view of VIEWS) for (const night of [false, true]) {
-  const N = night ? '&night' : '', tag = `${view.name} layering ${night ? 'night' : 'day'}`;
+  const N = night ? '&night' : '', tag = `${view.name} layering clash ${night ? 'night' : 'day'}`;
   for (const [what, stage, ready, want] of CLASHES) {
     await step(`${tag}: ${what}: the warning sits in the bottom-centre rail as a short headline, clear of the kill card, the ammo and the vitals`, async () => {
       const pg = await open(view, stage, N, 2200);
@@ -4980,7 +4983,8 @@ for (const view of VIEWS) for (const night of [false, true]) {
       must(rail.every(x => x.midY > .7 && Math.abs(x.midX - .5) < .05), `every warning sits in the rail at the bottom centre: ${JSON.stringify(rail.map(x => [x.text, x.midX.toFixed(2), x.midY.toFixed(2)]))}`);
       must(rail.every(x => x.short || !x.hasShort), `a kill card is up, so each warning shows its short headline: ${JSON.stringify(rail.map(x => [x.text, x.short]))}`);
       must(rail.every(x => x.px >= 11), `rail text under 11 px on screen: ${JSON.stringify(rail.map(x => [x.text, x.px]))}`);
-      const others = [...r.hero.parts.map(b => ['kill card', b]), ...r.env.ammo.map(b => ['ammo', b]), ...r.env.vparts.map(b => ['vitals', b]), ...r.env.tells.map(b => ['tell', b])];
+      const others = [...r.hero.parts.map(b => ['kill card', b]), ...r.env.ammo.map(b => ['ammo', b]), ...r.env.vparts.map(b => ['vitals', b]), ...r.env.tells.map(b => ['tell', b]),
+        ...r.env.hint.map(b => ['powerup hint', b]), ...r.env.chip.map(b => ['held chip', b])];   // review M4
       const clash = rail.flatMap(x => others.filter(([, o]) => !apart(x.box, o)).map(([n]) => `${x.text} over ${n}`));
       must(clash.length === 0, clash.join(' | '));
       must(lnCovers(r).length === 0, lnCovers(r).join(' | '));
@@ -5004,6 +5008,66 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(lnCovers(after).length === 0, lnCovers(after).join(' | '));
   });
 }
+// review H1/M2/M3 (F368): the powerup hint rides above the rail at the rail's REAL height, with every warning, the full
+// sentence (no kill card) and the short headline (a kill card up); GUN NOT ANSWERING at the 16 px link-bar size; the ⓘ
+// panel lists every warning's full sentence.
+const RAIL_WARN = [['GUN LINK LOST', () => window.brxDemo.dropGun(), /GUN LINK LOST/], ['HEADSET NOT JOINED', () => window.brxDemo.headsetJoin('not_joined'), /HEADSET NOT JOINED/],
+  ['HEADSET JOINING', () => window.brxDemo.headsetJoin('joining'), /HEADSET JOINING/], ['MC out of range', () => { window.brxDemo.mcLost(); window.brx.hud.mcPill = true; window.brx.engine._changed(); }, /MISSION CONTROL|MC OUT/],
+  ['GUN NOT ANSWERING', () => window.brxDemo.gunNoAnswer(), /GUN NOT ANSWERING/], ['GUN NOT REPORTING SHOTS', () => window.brxDemo.gunNoFire(), /NOT REPORTING SHOTS/]];
+for (const view of VIEWS) for (const night of [false, true]) for (const [what, act, want] of RAIL_WARN) for (const kc of [false, true]) {
+  await step(`${view.name} layering clash rail ${night ? 'night' : 'day'}: the powerup hint and ${what}${kc ? ' under a kill card' : ''} never overlap; nothing covers the ammo or vitals`, async () => {
+    const pg = await open(view, 'live-pu-rockets', night ? '&night' : '', 3000);
+    await lnWait(pg, r => r.env.hint.length, 2500);
+    await pg.evaluate(act); if (kc) await pg.evaluate(() => window.brxDemo.killMedals(['first_blood'], 'VIPER'));
+    await pg.waitForTimeout(500);
+    const r = await lnRead(pg), rail = await railRead(pg);
+    await pg.screenshot({ path: `${OUT}/${view.name}-rail-hint-${what.replace(/\W+/g, '-')}${kc ? '-kc' : ''}${night ? '-night' : ''}.png` }); await pg.close();
+    must(rail.some(x => want.test(x.text)) || (kc && rail.length), `the warning must be in the rail: ${JSON.stringify(rail.map(x => x.text))}`);
+    must(r.env.hint.length, 'pre-condition: the powerup hint is on screen');
+    const boxes = [...rail.map(x => [x.text, x.box]), ...r.env.hint.map(b => ['powerup hint', b]), ...r.env.chip.map(b => ['held chip', b])];
+    const guard = [...r.env.ammo.map(b => ['ammo', b]), ...r.env.vparts.map(b => ['vitals', b]), ...(r.hero ? r.hero.parts.map(b => ['kill card', b]) : [])];
+    const clash = [];
+    for (let i = 0; i < boxes.length; i++) { for (let j = i + 1; j < boxes.length; j++) if (!apart(boxes[i][1], boxes[j][1]) && !(boxes[i][0] === 'powerup hint' && boxes[j][0] === 'held chip')) clash.push(`${boxes[i][0]} vs ${boxes[j][0]}`);
+      for (const [n, g] of guard) if (!apart(boxes[i][1], g)) clash.push(`${boxes[i][0]} ${JSON.stringify(boxes[i][1])} over ${n} ${JSON.stringify(g)}`); }
+    must(clash.length === 0, clash.join(' | '));
+    must(rail.every(x => x.px >= 11), `rail text under 11 px on screen: ${JSON.stringify(rail.map(x => [x.text, x.px]))}`);
+  });
+}
+for (const view of VIEWS) await step(`${view.name} layering clash: GUN NOT ANSWERING reads at the link bar's size (16 frame px), in a box at least 160 px wide`, async () => {
+  const pg = await open(view, 'live', '', 2600); await pg.evaluate(() => window.brxDemo.gunNoAnswer()); await pg.waitForTimeout(300);
+  const r = await pg.evaluate(() => { const w = document.querySelector('.alive .gunwarn'), b = w && w.querySelector('b'); return w ? { px: parseFloat(getComputedStyle(b).fontSize), w: w.offsetWidth } : null; }); await pg.close();
+  must(r && r.px >= 16 && r.w >= 160, `GUN NOT ANSWERING: ${JSON.stringify(r)}`);
+});
+await step('F368 layering clash: the ⓘ WARNINGS section lists every warning in full, even on the down screen', async () => {
+  const got = {};
+  for (const [what, act, want] of RAIL_WARN) {   // each on its own page: the gun-health verdicts latch per life
+    const pg = await open(VIEWS[0], 'live', '', 2600);
+    await pg.evaluate(() => window.brxDemo.diag(true)); await pg.evaluate(act);
+    got[what] = await pg.waitForFunction(src => new RegExp(src).test((document.getElementById('dg-warn') || {}).textContent || ''), want.source, { timeout: 2500 }).then(() => true, () => false);
+    await pg.close();
+  }
+  const pg = await open(VIEWS[0], 'live', '', 2600);
+  await pg.evaluate(() => { window.brxDemo.diag(true); window.brxDemo.headsetJoin('not_joined'); window.brxDemo.die(); }); await pg.waitForTimeout(400);
+  const down = await pg.evaluate(() => ({ panel: (document.getElementById('dg-warn') || {}).textContent || '', alive: window.brx.engine.state().alive })); await pg.close();
+  must(Object.values(got).every(Boolean), `missing from the panel: ${JSON.stringify(got)}`);
+  must(!down.alive && /HEADSET NOT JOINED · POWER-CYCLE THE HEADSET/.test(down.panel), `down: the panel keeps the full sentence: ${JSON.stringify(down)}`);
+});
+// review H2: a takeover longer than LANE_HERO_MS (SYNCING, 3 s) with two kills: the second JOINS the waiting card
+await step('F368 layering clash: a second kill during a long takeover joins the waiting card (x2, the first kept)', async () => {
+  const pg = await open(VIEWS[1], 'clash-kc-long-two', '', 2200);
+  await pg.waitForFunction(() => document.getElementById('frame').dataset.takeover === 'gun_locked', null, { timeout: 5000 });
+  await pg.waitForFunction(() => !document.getElementById('frame').dataset.takeover, null, { timeout: 8000 });
+  const r = await lnWait(pg, x => x.hero, 500); const L = await pg.evaluate(() => window.brx.engine.state().lanes.hero); await pg.close();
+  must(r.hero && r.hero.n === 2 && r.hero.count === '×2' && L.kills.map(k => k.victim).join(',') === 'VIPER,GHOST', `the card after SYNCING: ${JSON.stringify({ hero: r.hero && { n: r.hero.n, count: r.hero.count, name: r.hero.name }, kills: L && L.kills.map(k => k.victim) })}`);
+});
+// review M1: the lanes' own timer ends a feed row on time, with no other render to help it
+await step('F368 layering clash: a feed row leaves on time with no other render', async () => {
+  const pg = await open(VIEWS[0], 'live-callout-teammate', '', 2350);
+  const r = await lnWait(pg, x => x.feed.some(f => f.kind === 'teammate_down'), 2000); const t0 = r.now;
+  await pg.evaluate(() => { window.brx.hud.render = () => {}; });   // no render from here: only the lanes' own timer
+  const gone = await lnWait(pg, x => !x.feed.some(f => f.kind === 'teammate_down'), 6000); await pg.close();
+  must(!gone.feed.some(f => f.kind === 'teammate_down') && gone.now - t0 <= 4300 + 500, `the row must leave by about 4.3 s without a render: ${Math.round(gone.now - t0)} ms`);
+});
 await step('F368: the voice says a kill under RELOADING on time (the card waits, the line does not)', async () => {
   const pg = await open(VIEWS[1], 'clash-kc-reload', '', 2200);
   const r = await pg.evaluate(async () => { const e = window.brx.engine; for (let i = 0; i < 60; i++) { const c = e._ann.current; if (c && c.kind === 'kill_confirmed') return { said: true, reload: document.getElementById('frame').dataset.takeover === 'reload' }; await new Promise(res => setTimeout(res, 50)); } return { said: false }; });

@@ -279,12 +279,14 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 #frame[data-gun-health] #chips{display:none}   /* this fault replaces WEAPONS HOT / link pills in their lane */
 /* F368: the fault replaces the pills IN THE RAIL, at the bottom centre, never in the kill card's band. Its headline
    (<b>) always shows; its instruction hides while a kill card is up. */
-#frame[data-screen="live"] .gunwarn{top:auto;bottom:6px;width:150px;min-width:0;max-width:none;flex-direction:column;gap:3px;padding:4px 6px;white-space:normal;box-sizing:border-box}
-#frame[data-screen="live"] .gunwarn b{font-size:15px;letter-spacing:.08em;line-height:1.1}
+#frame[data-screen="live"] .gunwarn{top:auto;bottom:6px;width:160px;min-width:0;max-width:none;flex-direction:column;gap:3px;padding:4px 6px;white-space:normal;box-sizing:border-box}
+#frame[data-screen="live"] .gunwarn b{font-size:16px;letter-spacing:.08em;line-height:1.1}
+/* review M2: GUN NOT ANSWERING is the most severe fault: the GUN LINK LOST treatment, a solid red box and 16 px */
+#frame[data-screen="live"] .gunwarn.danger{background:var(--bad);border-color:var(--bad);color:#1a0404;box-shadow:none}
+[data-env="night"] #frame[data-screen="live"] .gunwarn.danger,#frame[data-env="night"][data-screen="live"] .gunwarn.danger{background:#2a0c0c;border-color:#ef6868;color:#ef6868}
 #frame[data-screen="live"] .gunwarn span{font-size:14px;letter-spacing:.04em;line-height:1.1}
 #frame[data-screen="live"][data-hero] .gunwarn span{display:none}
 #frame[data-screen="live"]:has(.gunwarn) .nightlab{display:none!important}
-#frame[data-screen="live"]:has(.gunwarn) .puhint{bottom:104px}
 /* S16: the poison pill sits just above the health it drains. Chartreuse, not the health green, and it names itself in
    words with a glyph, so colour is never the only signal. A plain fade-free fill: no pulse, no flash. */
 .fxbar{position:absolute;left:36px;bottom:150px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;pointer-events:none}
@@ -1455,21 +1457,24 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 #frame[data-screen="live"] .chipbar .pill{font-size:14px;letter-spacing:.14em}
 #frame[data-screen="live"] .chipbar .pill.bad.gunlost{font-size:16px;letter-spacing:.16em}   /* QA-02: the link bar stays 16 px */
 /* F368 (Tony 2026-09-25, "ship it"; docs/announcer.md "Layering and priority on the phone HUD"): on the live HUD the pill
-   bar is the STATUS RAIL at the bottom centre, between the vitals (their bars end x 338) and the ammo (x 569), 150 px wide (x 347-497), never in
+   bar is the STATUS RAIL at the bottom centre, between the vitals (their bars end x 338) and the ammo (x 569), 150 px wide (x 347-497; .gunwarn 160, x 342-502), never in
    the kill card's band. While a kill card is up (`#frame[data-hero]`) each warning shows its short headline
    (`data-short`); the full sentence is in the rail otherwise, and always in the ⓘ panel's WARNINGS. */
 #frame[data-screen="live"]:not([data-down]) .chipbar{top:auto;bottom:6px;width:150px;flex-direction:column;gap:4px;white-space:normal}
 #frame[data-screen="live"]:not([data-down]) .chipbar>*{min-height:40px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:14px;line-height:1.1;padding:3px 8px;letter-spacing:.08em;width:100%;box-sizing:border-box}
 #frame[data-screen="live"]:not([data-down]) .chipbar .pill.bad.gunlost{font-size:16px;letter-spacing:.08em;padding:3px 8px}
+#frame[data-screen="live"]:not([data-down]) .chipbar>*,#frame[data-screen="live"]:not([data-down]) .chipbar .unskew{transform:none}   /* a skewed pill of 3-5 lines leans ~18 px wider than its column: the rail keeps them upright */
 #frame[data-screen="live"]:not([data-down]) .chipbar .unskew{white-space:normal}
 #frame[data-screen="live"][data-hero]:not([data-down]) .chipbar .unskew[data-short]{font-size:0;letter-spacing:0}
 #frame[data-screen="live"][data-hero]:not([data-down]) .chipbar .unskew[data-short]::after{content:attr(data-short);font-size:14px;letter-spacing:.08em}
 #frame[data-screen="live"][data-hero]:not([data-down]) .chipbar .gunlost .unskew[data-short]::after{font-size:16px}
 /* the rail's neighbours: the NIGHT label gives way, the powerup hint rides above it */
-#frame[data-screen="live"]:not([data-down]):has(#chips .chipbar > *) .nightlab{bottom:54px}   /* a chip (WEAPONS HOT): the label rides above the rail */
 #frame[data-screen="live"]:not([data-down]):has(#chips .chipbar > :is(.bad, .warn)) .nightlab{display:none!important}   /* a warning: it hides */
-#frame[data-screen="live"]:not([data-down]):has(#chips .chipbar > *) .puhint{bottom:54px}
-#frame[data-screen="live"]:not([data-down]):has(#chips .chipbar > :nth-child(2)) .puhint{bottom:104px}
+/* review H1: the hint and the label ride above the rail at its REAL height (`--rail`, hud.js `_railFit`: the pills, or
+   .gunwarn in their place, plus the rail's own 6 px) with a 12 px gap; with no rail the var is unset and nothing moves */
+#frame[data-screen="live"]:not([data-down]) .puhint{bottom:calc(12px + var(--rail, 0px))}
+#frame[data-screen="live"]:not([data-down]) .nightlab{bottom:calc(34px + var(--rail, 0px))}
+#frame[data-screen="live"][style*="--rail"] .puhint .pu{max-width:160px}   /* above the rail it stays in the rail's column, clear of the vitals' bars */
 #diag .dgwarn{display:flex;flex-direction:column;gap:2px;font-size:13px;letter-spacing:.06em;color:var(--warn);font-weight:700}
 [data-env="night"] .hplab,[data-env="night"] .stats,.nightlab{font-size:14px}
 [data-env="night"] .hplab{letter-spacing:.16em}[data-env="night"] .stats{letter-spacing:.16em}

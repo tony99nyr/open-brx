@@ -573,6 +573,7 @@ export class Hud {
     // F368: after `_moments`, so a takeover opened on this render (RELOADING, SWITCHING, SYNCING, REDEPLOYED, GUN STOPPED)
     // is already known to the lanes, and a takeover branch that returns early can no longer skip them.
     this._lanes(st);
+    this._railFit();
     this._fitBriefing();
     this._fitMcLinked();
     this._fitLoDetailName();
@@ -1772,8 +1773,20 @@ export class Hud {
     // F368 (docs/announcer.md "Layering and priority on the phone HUD"): on the live HUD the pills are the status rail at
     // the bottom centre. While a kill card is up each shows its short headline (`data-short`, drawn by CSS); the ⓘ
     // panel's WARNINGS section always has every warning's full sentence.
-    const full = [...html.matchAll(/data-short="[^"]*">([^<]*)</g)].map(x => x[1].trim());   // the full sentences, already escaped (no DOM query: the unit tests fake #chips)
-    const warn = full.length ? full.map(t => `<span>${t}</span>`).join('') : '<span class="mut">NONE</span>';
+    // review M3: EVERY warning's full sentence, whatever the rail shows (a pill only on a tap, the down screen's short copy)
+    const full = [];
+    if (st.wsState === 'rejected') full.push(`ASK THE HOST — COULDN'T JOIN${refusalWords(st.wsReason) ? ' (' + String(refusalWords(st.wsReason)).toUpperCase() + ')' : ''}`);
+    else if (st.phase !== 'idle' && st.phase !== 'connected' && st.wsState !== 'bound') full.push(st.phase === 'live' ? 'OUT OF MISSION CONTROL RANGE — SCORES SYNC WHEN YOU ARE BACK' : 'RECONNECTING TO MISSION CONTROL…');
+    if (hj === 'not_joined') full.push('HEADSET NOT JOINED · POWER-CYCLE THE HEADSET');
+    else if (hj === 'joining' && !st.bleUp) full.push('HEADSET JOINING · THE PHONE WAITS FOR IT');
+    else if (st.gunFlapping && st.gunFlapping.quiet) full.push('GUN KEEPS DROPPING. POWER-CYCLE THE HEADSET, THEN THE GUN RECONNECTS.');
+    else if (st.phase !== 'idle' && st.gunFlapping) full.push('HEADSET OFF? TURN THE HEADSET ON.');
+    else if (st.phase !== 'idle' && !st.bleUp) full.push('GUN LINK LOST — TAP TO RECONNECT');
+    if (typeof this._gunHealthActive === 'function' && this._gunHealthActive(st)) {
+      if (st.cure && st.cure.verdict === 'no_answer') full.push('GUN NOT ANSWERING · HOST: FORCE RESPAWN OR RELINK');
+      else if (st.poolStale && st.poolStale.why === 'no_fire') full.push('GUN NOT REPORTING SHOTS · PULL TRIGGER AGAIN · THEN TELL HOST');
+    }
+    const warn = full.length ? full.map(t => `<span>${esc(t)}</span>`).join('') : '<span class="mut">NONE</span>';
     if (this._warnHtml !== warn) { this._warnHtml = warn; const w = this.diag && this.diag.querySelector('#dg-warn'); if (w) w.innerHTML = warn; }
   }
 
@@ -2007,6 +2020,16 @@ export class Hud {
     });
     for (const n of have.values()) n.remove();
   }
+  /** F368 (review H1): the status rail's REAL height (the pills, or `.gunwarn` in their place) as `--rail` on the frame,
+   *  so the powerup hint and the NIGHT label ride above it however many lines its sentences wrap to. Layout px, so the
+   *  frame's scale does not enter it. */
+  _railFit() {
+    const f = this.frame; if (!f || typeof f.querySelectorAll !== 'function' || !f.style) return;
+    const els = [...f.querySelectorAll('#chips .chipbar, .alive .gunwarn')].filter(e => e.offsetParent !== null && e.offsetHeight > 0 && (e.classList.contains('gunwarn') || e.children.length));
+    const h = els.length ? Math.max(...els.map(e => e.offsetHeight + (parseFloat(getComputedStyle(e).bottom) || 0))) : 0;
+    const v = h ? `${Math.ceil(h)}px` : '';
+    if (f.style.getPropertyValue('--rail') !== v) { if (v) f.style.setProperty('--rail', v); else f.style.removeProperty('--rail'); }
+  }
   _lanes(st) {
     let root = this.frame.querySelector('#lanes');
     if (!root) { root = document.createElement('div'); root.id = 'lanes'; this.frame.appendChild(root); }
@@ -2023,7 +2046,9 @@ export class Hud {
     const kindOf = k => { const m = MEDAL_ROWS.find(x => x.key === k); return m ? m.kind : 'multi'; };
     // HERO
     const h = L.hero;
-    const w = this._heroWait && h && this._heroWait.id === h.id ? this._heroWait : null;
+    // a wait for a card that is gone, or whose hold has run out, is dropped (review Low)
+    if (this._heroWait && (!h || this._heroWait.id !== h.id || (this._heroWait.until && now > this._heroWait.until + FADE))) this._heroWait = null;
+    const w = this._heroWait;
     if (h && h.kills.length && takeover && (w || now < (L.heroUntil || 0))) this._heroWait = { id: h.id, until: 0 };   // due under a takeover: wait
     else if (w && !takeover && !w.until) w.until = now + LANE_HERO_MS;                                                  // the takeover ended: draw now, full hold
     const hw = this._heroWait && h && this._heroWait.id === h.id ? this._heroWait : null;
@@ -2070,7 +2095,7 @@ export class Hud {
     // its entrance animation never re-runs; only a NEW item animates in.
     if (!root.querySelector(':scope > .los')) root.innerHTML = '<div class="lhs"></div><div class="los"></div><div class="lfs"></div>';
     this._laneSync(root.querySelector(':scope > .lhs'), hero ? [hero] : []);
-    if (!!hero !== !!this.frame.dataset.hero) { if (hero) this.frame.dataset.hero = '1'; else delete this.frame.dataset.hero; }   // F368: the rail shows short headlines while a kill card is up
+    if (!!hero !== !!this.frame.dataset.hero) { if (hero) this.frame.dataset.hero = '1'; else delete this.frame.dataset.hero; this._railFit(); }   // F368: the rail shows short headlines while a kill card is up
     this._laneSync(root.querySelector(':scope > .los'), obj);
     this._laneSync(root.querySelector(':scope > .lfs'), feed);
     // One flash and one buzz per NEW kill: an MC confirm that names the IR word's row adds no row, so it adds no buzz.
@@ -2088,7 +2113,9 @@ export class Hud {
       if (now - o.at < 1000) this.h.onHaptic && this.h.onHaptic('tap');
     }
     // draw again at the next change (the hero fading and gone, a feed row leaving, a badge settling or leaving)
-    const due = [heroUntil, heroUntil + FADE, this._laneTellUntil || 0, takeover && this._heroWait ? now + 200 : 0,   // F368: REDEPLOYED ends on a timer, not a state change ...(L.feed || []).flatMap(f => [f.at + LANE_FEED_MS, f.at + LANE_FEED_MS + FADE]),
+    const due = [heroUntil, heroUntil + FADE, this._laneTellUntil || 0,
+      takeover && this._heroWait ? now + 200 : 0,   // F368: REDEPLOYED ends on a timer, not a state change
+      ...(L.feed || []).flatMap(f => [f.at + LANE_FEED_MS, f.at + LANE_FEED_MS + FADE]),
       ...Object.values(O).map(o => o.at + LANE_SETTLE_MS)].filter(t => t > now);
     if (due.length) this._lanesT = setTimeout(() => this._lanes(this._lastSt || st), Math.min(...due) - now + 10);
   }

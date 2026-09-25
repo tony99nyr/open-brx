@@ -209,6 +209,8 @@ Rules:
 - **A kill card never draws under a takeover** (`hud.js` `_lanes`, `_heroWait`). While a takeover is up, the HERO is
   not drawn. A kill that is due waits, and draws when the takeover ends, with a full `LANE_HERO_MS` hold from then.
   Nothing is lost. The voice line, the medal lines and the kill buzz stay on time; only the card and its flash wait.
+  While it waits, and for `LANE_HERO_MS` after, the card stays open in the engine (`_heroUntil`, `_laneTakeover`): a
+  new kill JOINS it (×2, the first kept) and never opens a new card over a kill nobody has seen yet.
   The OBJECTIVE and FEED lanes keep drawing at the sides, and the hit number still shows.
 - **The warnings live in a status rail** at the bottom centre, 150 px wide (x 347-497), between the vitals and the
   ammo, never in the kill card's band: GUN LINK LOST, HEADSET NOT JOINED or JOINING, HEADSET OFF?, GUN KEEPS DROPPING,
@@ -217,14 +219,19 @@ Rules:
   (GUN LINK LOST 16 px), 11 px or more on screen.
 - **Short headline while a kill card is up.** Each warning carries a short headline (`data-short`: GUN LINK LOST · TAP,
   HEADSET NOT JOINED, MC OUT OF RANGE, and so on). While the HERO is up (`#frame[data-hero]`), the rail shows it.
-  Otherwise the rail shows the full sentence. The ⓘ panel's WARNINGS section always lists every full sentence.
-- **The rail's neighbours:** the NIGHT label hides while the rail holds a pill, and the powerup hint moves up above the
-  rail (to bottom 54 px for one pill, 104 px for two).
+  Otherwise the rail shows the full sentence. The ⓘ panel's WARNINGS section always lists every warning's full
+  sentence, the gun-health faults and HEADSET JOINING included, even when the rail shows none or the down screen's
+  short copy.
+- **The rail's neighbours:** the NIGHT label hides while the rail holds a warning. The powerup hint (and the label,
+  above a plain chip) rides 12 px above the rail at the rail's REAL height (`hud.js` `_railFit`, `--rail`), however
+  many lines its sentences wrap to, and keeps to the rail's column. The rail's pills stand upright (no skew): a
+  skewed pill of several lines leans wider than its column.
 - **The medal chain keeps its voice** in every case.
 - The death screen keeps its own pill band (`#frame[data-down]`), outside the rail.
 
-`.gunwarn` (GUN NOT ANSWERING, GUN NOT REPORTING SHOTS) replaces the pills in the rail. Its headline always shows;
-its instruction hides while a kill card is up.
+`.gunwarn` (GUN NOT ANSWERING, GUN NOT REPORTING SHOTS) replaces the pills in the rail, 160 px wide, its headline at
+16 px. Its headline always shows; its instruction hides while a kill card is up. GUN NOT ANSWERING, the most severe
+fault, has the GUN LINK LOST treatment: a solid red box by day, `#ef6868` on `#2a0c0c` at night.
 
 Stages: `clash-kc-gunlost`, `clash-medals-mc`, `clash-kc-reload`, `clash-kc-stale`, `clash-kc-headset`.
 `app/tools/screens.mjs` checks each at both widths, day and night (`layering` and `F368` steps), and the gallery's

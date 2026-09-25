@@ -646,6 +646,12 @@ export function startDemo({ engine, log }) {
       'clash-medals-mc':   [...live, [2300, () => ev.killMedals(['first_blood'], 'VIPER')], [2900, () => ev.killMedals(['double_kill', 'killing_spree'], 'GHOST')], [3100, 'mcLost']],
       'clash-kc-reload':   [...live, [2200, () => ev.fire(12)], [2400, 'reloadCycle'], [2700, () => ev.killMedals(['first_blood'], 'VIPER')]],
       'clash-kc-stale':    [...live, [2300, 'dropGun'], [3300, () => ev.killMedals(['first_blood'], 'VIPER')]],                 // the vitals already STALE
+      // review H2: GUN STOPPED for 4 s (longer than LANE_HERO_MS and the kill's own voice slot) with a kill at its start
+      // and one 3.3 s later. The second kill must JOIN the waiting card (x2, the first kept), never open a new one.
+      'clash-kc-long-two': [...live, [2300, 'gunLocked'], [2500, () => ev.killMedals(['first_blood'], 'VIPER')], [5800, () => ev.killMedals(['double_kill'], 'GHOST')],
+        [6300, () => { engine.gunLocked = null; engine._changed(); }]],
+      // review M4: GUN NOT ANSWERING (the rail's most severe fault) under a kill card
+      'clash-kc-gunwarn':  [...live, [2300, 'gunNoAnswer'], [2700, () => ev.killMedals(['first_blood'], 'VIPER')]],
       'clash-kc-headset':  [...live, [2300, () => ev.headsetJoin('not_joined')], [3300, () => ev.killMedals(['first_blood'], 'VIPER')]],
       // one kill confirmed twice, in each order: the HERO row's source tag reads `MC · IR` or `IR · MC` (docs/announcer.md)
       'live-kill-mc-ir':   [...live, [2300, () => ev.killConfirm()], [2500, () => engine.feedFrame(`$HIR,4,15,7,3,${21 + foe.tid},0,0,*`)]],

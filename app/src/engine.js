@@ -3627,6 +3627,7 @@ export class Engine {
     }
     if (this.phase === 'live') {
       if (this.endT && now >= this.endT) { this._endLocal('time-expiry'); return; }
+      this._heroUntil(now);   // F368: keeps a kill card that waits behind a takeover open (GUN STOPPED returns below), so a new kill joins it
       // F272 recovery is a hard gameplay stand-down. The model intentionally stays alive until the replacement
       // head is confirmed, but no poison/shield/recoil/poll/death clock may run behind that instruction.
       if (this.gunLocked) return;
@@ -4373,7 +4374,21 @@ export class Engine {
   _heroUntil(now = this.now()) {
     const h = this._lanes && this._lanes.hero; if (!h) return 0;
     const a = this._ann.current, onAir = a && now < a.until && (a.kind === 'kill_confirmed' || a.kind === 'medal') && a.startedAt >= h.t0 ? a.until : 0;
-    return Math.max(h.lastAt + LANE_HERO_MS, onAir);
+    const until = Math.max(h.lastAt + LANE_HERO_MS, onAir, h.heldTo || 0);
+    // F368 (review H2): a card still due when a takeover is up WAITS behind it (hud.js `_lanes`), and is drawn with a
+    // full hold once the takeover ends. So while it waits, and for LANE_HERO_MS after, the card stays open: a new kill
+    // JOINS it (x2, the first kill kept) instead of opening a new card over a kill nobody has seen yet.
+    if (now < until && this._laneTakeover(now)) { h.heldTo = now + LANE_HERO_MS; return h.heldTo; }
+    return until;
+  }
+  /** F368: a play-blocking takeover the HUD draws over the centre (GUN STOPPED, SYNCING, RELOADING, SWITCHING, REDEPLOYED).
+   *  Mirrors hud.js `_moments`; REDEPLOYED is the HUD's own overlay, held at least 2.1 s (or the weapon delay + 0.8 s). */
+  _laneTakeover(now = this.now()) {
+    if (this.phase !== 'live') return false;
+    if (this.gunLocked || this.reconciling) return true;
+    if (this.alive && this.bleUp && (this.reloading || this.switchingMs() != null)) return true;
+    const m = this.moment, arm = this._triggerPending ? Math.max(0, this._triggerPending.due - (m ? m.at : now)) : 0;
+    return !!(m && m.kind === 'redeploy' && now - m.at < Math.max(2100, arm + 800));
   }
   _laneKill(k) {
     const L = this._lanesOf(), now = this.now();
