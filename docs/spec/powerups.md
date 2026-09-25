@@ -165,8 +165,9 @@ stations with the same weapon share its slot.
 "You could pickup rockets and pickup overshield. You can't pickup the railgun and the rockets, if you tried it would
 swap and you would only have 1."
 
-- **Weapon pickups** (Rockets, Rail Gun, later the other heavies) share ONE pickup-weapon holding. Taking a second
-  weapon SWAPS: the new one replaces the old, which is gone (not dropped for someone else; that is an idea for
+- **Weapon pickups** (Rockets, Rail Gun, later the other heavies) share ONE pickup-weapon holding. Taking the same
+  weapon adds its charges to the charges left and puts it back on the trigger, with no replacement card; no cap is set.
+  Taking a different weapon SWAPS: the new one replaces the old, which is gone (not dropped for someone else; that is an idea for
   later). On the gun: zero the old slot's `$AMMO`, then the new slot's head `$WEAP` and its `$AMMO` with the charges
   (the mechanism above). The HUD says it on the callout card: RAIL GUN replaces ROCKETS. **Bench 2026-09-24, measured: the
   pickup equips straight onto the trigger, with no extra write.** A mid-life `$WEAP,<slot>,…` for the new weapon
@@ -306,4 +307,4 @@ Decided:
 Defaults still to confirm (named constants, easy to change):
 - **Charges:** `item.charges` is the rounds granted to the player who takes it (the magazine, no reserve), never a count of pickups left: a station holds at most one item. MC decides it per game, in the item it sends. The default is the weapon's own magazine (Rockets: 2) until a balance decision (Tony, 2026-09-24: "2 rockets, or 4 shots"); an operator control to change it is later. The Stick shows no charges count.
 - **Lost at death:** a weapon item's unused charges do not carry into the next life.
-- *(decided, see below: a second weapon SWAPS.)*
+- *(decided, see above: the same weapon adds charges; a different weapon SWAPS.)*

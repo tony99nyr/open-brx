@@ -1261,6 +1261,39 @@ def test_an_alt_swap_abandons_the_takeover_on_the_same_frame():
     asyncio.run(go())
 
 
+def test_f379_alt_target_uses_the_gun_pointer_after_a_trigger_only_equip():
+    """engine.js `_nextAltSlot`: a pickup moves the trigger slot, not the gun's BMAP pointer."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st._alt_ptr = 1
+        st.active_slot = 2  # A `$WEAP` pickup equips slot 2 without changing the gun's ALT pointer.
+        st._on_rx("$BUT,1,1,*")
+        assert st.switching["from"] == 1 and st.switching["to"] == 0
+        clock.advance(st._switch_window_s() + 0.1); st.poll(); await settle(st)
+        assert st.active_slot == 0 and st._alt_ptr == 0, (st.active_slot, st._alt_ptr)
+    asyncio.run(go())
+
+
+def test_f393_poison_damage_ignores_the_audio_gate_but_its_sound_waits():
+    """engine.js `_poisonStrike`: `$LIFE` is gameplay; a poison `$PLAY` waits behind must-hear audio."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        p = {"per": 4, "by": {"num": 3, "team": 2}, "ticks": 0}
+        st._hill_busy_until = clock() + 5
+        before = mark(mgr)
+        st._poison_strike(p, clock()); await settle(st)
+        sent = since(mgr, before)
+        assert any(f.startswith("$LIFE,") and "-" in f for f in sent), sent
+        assert not any(f.startswith("$PLAY") for f in sent), sent
+        st._hill_busy_until = 0
+        before = mark(mgr)
+        st._poison_strike(p, clock()); await settle(st)
+        assert any(f.startswith("$PLAY") for f in since(mgr, before)), since(mgr, before)
+    asyncio.run(go())
+
+
 def test_a_ble_drop_also_lets_go_of_every_button():
     """engine.js `onBleDropped` clears `held`: `_on_button` keeps the FIRST edge, so a press whose release
     never arrived before the drop would read as held for the rest of the life. The reconnect does not reset
@@ -1589,7 +1622,7 @@ KNOWN_UNMIRRORED = {
     # below), and the stage models neither. The gun-facing writes (`_puGrantWeapon`/`_puGrantShield`/`_puEnd`) are the
     # part to port, as a hand-driven stage button, once Sitting A has proved the spare slot and the `$BMAP` cycle.
     "_puReset", "_puItems", "_puElapsed", "_puAdvertOf", "_puClaimable", "_puNextInMs", "_puMedian", "_puThreshold",
-    "_puStation", "_altCycle", "_nextAltSlot", "_puObserve", "_puClaimTick",
+    "_puStation", "_puObserve", "_puClaimTick",
     "_puTakerCheck", "_puTick", "_puGrantWeapon", "_puGrantShield", "_puAmmo", "_puEnd", "_puShieldFrame", "_puDeath",
     # Tony 2026-09-24, "straight to trigger" + "select should equip it": the heavy goes onto the trigger with its head
     # `$WEAP` re-sent, SELECT toggles it, and the empty magazine / a death / a reconcile hand the trigger back. All of it

@@ -249,6 +249,15 @@ test('S16: a LETHAL tick books the death to the applier, flagged dot:true, and p
   assert.equal(h.ticks().length, 1, 'no ticks on a dead gun');
 });
 
+test('F393: a poison tick keeps its damage write but drops sound while an announcer line waits', () => {
+  const busy = harness(); busy.toxin(); busy.eng._ann.push({ kind: 'kill_confirmed', key: 'test', audioMs: 5000, play: () => {} });
+  const before = busy.cues('V4G').length; busy.adv(1000);
+  assert.deepEqual(busy.ticks(), ['$LIFE,0,-4,0,*']);
+  assert.equal(busy.cues('V4G').length, before, 'the poison sound does not mask the waiting line');
+  const quiet = harness(); quiet.toxin(); quiet.eng._gun.clear(); const quietBefore = quiet.cues('V4G').length; quiet.adv(1000);
+  assert.equal(quiet.cues('V4G').length, quietBefore + 1, 'control: the quiet gun plays the tick cue');
+});
+
 test('S16 × S56: the lethal tick, answered by $LCD and never $HP, is still booked as the final tick on the death screen', () => {
   const h = harness();
   h.setPools(4, 0, 0);
@@ -623,4 +632,3 @@ test('F354: a stale damaging hit falls back to the latch, or to an unknown kille
   assert.equal(d.length, 1);
   assert.equal(d[0].shooter_num, 5);
 });
-

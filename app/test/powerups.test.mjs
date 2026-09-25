@@ -2,7 +2,7 @@
 // powerup items: the spawn schedule on the match clock, the "<ITEM> AVAILABLE" announcement, the CLAIM (stand about a
 // foot from the station for 1 s, no button), the grant once the station names this player as `taker`, the end of a
 // weapon item (empty magazine or death) and the overshield.
-// Tony 2026-09-24 (via the lead): a second WEAPON pickup SWAPS the first out; an overshield stacks beside a weapon;
+// Tony 2026-09-24: a different WEAPON pickup SWAPS the first out, while the same weapon adds charges;
 // the station, not the phone, decides who took the item (no offline cooldown on the phone).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -162,6 +162,22 @@ test('the claim: in range is the median at or above the threshold (0 = the defau
   assert.ok(h.eng.state().powerupClaim, "the station's own threshold byte wins over the default");
 });
 
+test('F380: a 13 second Stick confirmation is still claiming, while 15 seconds without an answer expires', () => {
+  assert.equal(E.POWERUP_NO_ANSWER_MS, 15_000);
+  assert.ok(E.POWERUP_READY_LATCH_MS >= 15_000);
+  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
+  h.at(121); h.near(4); h.adv(1100);
+  h.adv(13_000);
+  assert.equal(h.eng.state().powerupClaim.ready, true);
+  assert.equal(h.eng.state().powerup.hint.kind, 'claiming');
+  assert.notEqual(h.eng.state().powerup.hint.kind, 'no_answer');
+  h.near(4, { state: 0, value: 108, taker: 7 });
+  assert.ok(h.eng.state().powerup.held, 'the late grant lands');
+  const x = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
+  x.at(121); x.near(4); x.adv(1100); x.adv(15_000);
+  assert.equal(x.eng.state().powerup.hint.kind, 'no_answer');
+});
+
 test('F374: an advert that says available before the first spawn is not claimable (a Stick carried out before START)', () => {
   const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
   h.at(30);
@@ -187,12 +203,12 @@ test('no grant when the station names me but this phone was never claim_ready fo
   assert.deepEqual(grants(h.since(n)), []);
 });
 
-test('STATION NOT ANSWERING: claim_ready for 3 s and the advert still says available', () => {
-  assert.equal(E.POWERUP_NO_ANSWER_MS, 3000);
+test('STATION NOT ANSWERING: claim_ready for 15 s and the advert still says available', () => {
+  assert.equal(E.POWERUP_NO_ANSWER_MS, 15_000);
   const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
   h.at(121); h.near(4); h.adv(1100); h.near(4);
   assert.equal(h.eng.state().powerup.hint.kind, 'claiming');
-  h.adv(3100); h.near(4);
+  h.adv(15_100); h.near(4);
   assert.equal(h.eng.state().powerup.hint.kind, 'no_answer');
 });
 
@@ -328,6 +344,36 @@ test('trigger grant: save the trigger slot and its counts, re-send the pickup sl
   const m = h.mark(); h.adv(1000); h.near(4, { state: 0, value: 108, taker: 7 }); h.adv(1000);
   assert.deepEqual(puw(h.since(m)), [], 'the same taker advert heard again grants nothing more');
   assert.equal(h.facts.filter(x => x.type === 'pickup').length, 1);
+});
+
+test('F379: after ALT to the secondary and a rocket switch-back, the next ALT follows the gun pointer', () => {
+  const h = armed();
+  h.eng.switchWindowMs = () => 10_000;
+  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
+  assert.equal(h.eng.activeSlot, 0, 'setup: the phone waits for an assumed swap');
+  assert.equal(h.eng._altPtr, 1, 'the accepted ALT press moves the gun pointer');
+  assert.equal(h.eng.state().switchTo, 1, 'SWITCHING shows the pointer target');
+  h.take(4); h.away(); h.eng._puHeld.left = 1; h.fire(2, 0);
+  assert.equal(h.eng.activeSlot, 0, 'the empty rocket switched the trigger back to the primary');
+  h.frame('$BUT,1,1,*');
+  assert.equal(h.eng.state().switchTo, 0, 'BMAP advanced from slot 1 to slot 0 despite the trigger switch-back');
+});
+
+test('F381: a repeat pickup of the same weapon adds charges without a replacement card', () => {
+  assert.equal(E.PU_STACK_CAP, Infinity);
+  const h = armed(); h.take(4); h.eng._puHeld.left = 1;
+  const n = h.mark();
+  h.eng._puGrantWeapon(4, { ...ROCKETS, charges: 2 }, h.eng.now());
+  assert.equal(h.eng.state().powerup.held.left, 3);
+  assert.equal(h.eng.state().powerupGrant.replaced, undefined);
+  assert.deepEqual(h.since(n).filter(f => f.startsWith('$AMMO,2,')), ['$AMMO,2,3,0,1,*']);
+});
+
+test('F379: a switch-back resend reads the current magazine and reserve', () => {
+  const h = armed(); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.fire(2, 0);
+  h.eng._acctWrote(0, 29, 189); h.eng._prevReserve[0] = 189;
+  const n = h.mark(); h.adv(E.PU_BACK_RETRY_MS + 100);
+  assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,29,189,1,*']);
 });
 
 test('trigger grant: no SELECT write and no ALT cycle write, ever (no $BMAP at all)', () => {
@@ -601,14 +647,16 @@ test('M2: a lost $PSET restore is retried once, in the same life', async () => {
   assert.equal(h.since(n).filter(f => f.startsWith('$PSET,')).length, 2, 'the restore, then its retry');
 });
 
-test('M3: a lost switch-back write is re-sent until the back slot\'s $ALCD arrives, and SELECT re-sends it at once', () => {
+test('M3: a lost switch-back write is re-sent until back-slot evidence or a player SELECT press', () => {
   const h = armed(); h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300);
   let n = h.mark(); h.fire(2, 0);   // the switch-back goes out, and the (fake) gun never answers it
   assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,30,190,1,*']);
   h.adv(2000);
   assert.equal(h.since(n).filter(f => f === WEAP0).length, 2, 're-sent: the trigger must not stay on an empty heavy');
   n = h.mark(); h.adv(100); h.select();
-  assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,30,190,1,*'], 'SELECT re-sends the pending switch-back');
+  assert.deepEqual(puw(h.since(n)), [], 'SELECT cancels the stale retry without another write');
+  h.adv(2000);
+  assert.equal(h.eng._puBackPending, null, 'the player choice cleared the retry');
   h.frame('$ALCD,30,100,0,190,0,*');
   n = h.mark(); h.adv(5000); h.select();
   assert.deepEqual(puw(h.since(n)), [], 'the gun answered for slot 0: nothing pending');
@@ -715,12 +763,12 @@ function pendingBack() {
   return { h, n, backs: () => h.since(n).filter(f => f === WEAP0).length };
 }
 
-test('r3 M1: an ALT press does not drop a pending switch-back: no re-send while the swap runs, and SELECT still recovers it', () => {
+test('F379: a player ALT press cancels the pending switch-back re-send', () => {
   const { h, backs } = pendingBack();
   h.adv(1400); h.frame('$BUT,1,1,*').frame('$BUT,1,0,*'); h.adv(300);
   assert.equal(backs(), 1, 'no re-send while the ALT swap is in flight');
   h.adv(700); const c = backs(); h.select();
-  assert.equal(backs(), c + 1, 'SELECT re-sends the switch-back');
+  assert.equal(backs(), c, 'the player chose ALT, so no stale switch-back is sent later');
 });
 
 test('r3 M1: a CONFIRMED ALT swap clears the pending switch-back', () => {

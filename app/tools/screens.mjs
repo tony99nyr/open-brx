@@ -5330,7 +5330,7 @@ const puRead = pg => pg.evaluate(() => {
   const co = [...document.querySelectorAll('#lanes .lf[data-kind^="powerup"]')].find(vis);   // docs/announcer.md: a pickup is a FEED row
   const ob = document.querySelector('#svm[data-os] .svos');   // the overshield: the lime layer on the shield meter (the Visor)
   return {
-    hint: hint && vis(hint) ? { kind: hint.dataset.kind, act: pua ? pua.textContent.trim() : '', lab: pul ? pul.textContent.trim() : '',
+    hint: hint && vis(hint) ? { kind: hint.dataset.kind, ready: hint.dataset.ready === '1', act: pua ? pua.textContent.trim() : '', lab: pul ? pul.textContent.trim() : '',
       actPx: pua ? parseFloat(getComputedStyle(pua).fontSize) : 0, labPx: pul ? parseFloat(getComputedStyle(pul).fontSize) : 99,
       ring: ring && vis(ring) ? parseFloat(getComputedStyle(ring).getPropertyValue('--p')) : null, box: box(hint), color: getComputedStyle(pua).color } : null,
     chip: chip && vis(chip) ? { text: chip.innerText.replace(/\s+/g, ' ').trim(), box: box(chip), px: parseFloat(getComputedStyle(chip.querySelector('.nm')).fontSize), on: chip.classList.contains('on'),
@@ -5387,6 +5387,11 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(a.hint.ring != null && b2.hint && b2.hint.ring > a.hint.ring, `the ring must fill: ${a.hint.ring} then ${b2.hint && b2.hint.ring}`);
     must(a.ringPx >= 40, `the ring is ${a.ringPx} frame px, the floor is 40`);
     must(inside(a.hint.box, a.frame) && vclear(a.hint.box, a) && apart(a.hint.box, a.ammo), `the hint box ${JSON.stringify(a.hint.box)} vs vitals ${JSON.stringify(a.vitals)} ammo ${JSON.stringify(a.ammo)}`);
+  });
+  await step(`${tag}: after the ring fills, the hint says CONFIRMING while the station responds`, async () => {
+    const pg = await open(view, 'live-pu-claim', N, 4500); const r = await puRead(pg); await shot(pg, 'confirming'); await puClose(pg, night);
+    must(r.hint && r.hint.kind === 'claiming' && r.hint.ready && r.hint.act === 'CONFIRMING' && r.hint.lab === 'ROCKETS', `the ready hint: ${JSON.stringify(r.hint)}`);
+    must(r.hint.ring === 1, `the ready ring is ${r.hint && r.hint.ring}`);
   });
   await step(`${tag}: heard but not at it, the hint says GET CLOSER`, async () => {
     const pg = await open(view, 'live-pu-approach', N, 2700); const r = await puWait(pg, r => r.hint, 1500); await puClose(pg, night);

@@ -1442,9 +1442,9 @@ export class Hud {
     const h = st.powerup && st.powerup.hint; if (!h) return '';
     const name = esc(h.name || ''), c = itemColor(h.color);
     const ring = p => `<span class="puring" style="--p:${Math.max(0, Math.min(1, p)).toFixed(3)}" aria-hidden="true"><i></i></span>`;
-    const line = (act, lab, extra = '') => `<span class="pu" data-kind="${esc(h.kind)}" style="--item:${c}">${extra}<span class="put"><span class="pua">${act}</span>${lab ? `<span class="pul">${lab}</span>` : ''}</span></span>`;
+    const line = (act, lab, extra = '', ready = false) => `<span class="pu" data-kind="${esc(h.kind)}"${ready ? ' data-ready="1"' : ''} style="--item:${c}">${extra}<span class="put"><span class="pua">${act}</span>${lab ? `<span class="pul">${lab}</span>` : ''}</span></span>`;
     switch (h.kind) {
-      case 'claiming': return line('HOLD STILL', name, ring(h.progress || 0));
+      case 'claiming': return h.ready ? line('CONFIRMING', name, ring(1), true) : line('HOLD STILL', name, ring(h.progress || 0));
       case 'no_answer': return line('NOT ANSWERING', `${name} STATION`);   // no ring: nothing is filling any more; two short lines, never four
       // Tony 2026-09-24, "straight to trigger": a weapon item is already on the trigger, so the hint says so and how many
       // shots it holds (the callout card already said any swap); the overshield just is

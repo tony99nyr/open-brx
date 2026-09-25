@@ -131,6 +131,8 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .puhint .pu[data-kind="granted"] .pua{color:var(--item);font-style:italic;font-size:20px}
 .puring{--p:0;flex:none;width:40px;height:40px;border-radius:50%;background:conic-gradient(var(--item) calc(var(--p) * 360deg),rgba(255,255,255,.12) 0);display:grid;place-items:center}
 .puring i{width:29px;height:29px;border-radius:50%;background:#04070c}
+@keyframes pu-wait{50%{filter:brightness(1.35)}}
+.puhint .pu[data-ready="1"] .puring{animation:pu-wait 1.2s ease-in-out infinite}
 /* ---- The shield meter: the Visor (Tony 2026-09-24; src/hud/shieldmeter.js). A long strip on the top edge, draining from both
    ends to the centre; health is not on it (it stays bottom left); the clock, the identity block and the chips stay put. No text, no numbers:
    the bar tells it. Day: Halo blue shield, a lime overshield layer on top, red when low;

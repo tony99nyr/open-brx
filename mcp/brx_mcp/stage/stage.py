@@ -686,6 +686,8 @@ class GunStage:
         self.ammo: int | None = None
         self.reserve: int | None = None
         self.active_slot = 0
+        self._alt_ptr = 0                 # the gun's BMAP position is separate from the trigger slot
+        self._alt_evidence_pending = False
         self._prev_ammo: dict[int, int] = {}       # per weapon slot ($ALCD token 3): last mag seen
         self._shot_acct: dict[int, dict] = {}   # F259: per slot, the node's OWN magazine account -- see `_acct_live`
         self._last_spent: int = 0       # F259: rounds the LAST $ALCD actually cost, off the account (`_acct_spent`)
@@ -2249,7 +2251,7 @@ class GunStage:
         self._cure = None; self._query_at = 0.0; self._cure_life = None; self._cure_at = 0.0; self._poll_at = 0.0   # F264: a new match owes the last one's gun nothing
         self._probed_life = None; self.cure = None
         self._pool_check = None; self._pool_repair = None; self.pool_wrong = None; self._pset_now = None   # F341
-        self._prev_ammo = {}; self._prev_reserve = {}; self._shot_acct = {}; self.active_slot = 0; self._recoil_slot = 0; self.reloading = None   # engine.js `_writeHead`
+        self._prev_ammo = {}; self._prev_reserve = {}; self._shot_acct = {}; self.active_slot = 0; self._alt_ptr = 0; self._alt_evidence_pending = False; self._recoil_slot = 0; self.reloading = None   # engine.js `_writeHead`
         hs = self.bundle.get("headset") or {}
         if hs.get("pregame"):
             await self.write(hs["pregame"], "headset pregame")
@@ -2481,7 +2483,7 @@ class GunStage:
         # in and never inside the spawn write.
         self._shield_regen = None; self._shield_down = False; self._shield_loop_at = 0.0
         self._shield_gave_up = False; self._shield_quiet_at = self.now()
-        self._prev_ammo = {}; self._prev_reserve = {}; self._shot_acct = {}; self.active_slot = 0; self._recoil_slot = 0    # engine.js: a spawn/revive puts the gun back on slot 0; both ammo maps reset (stun snapshot, polish 2026-09-11)
+        self._prev_ammo = {}; self._prev_reserve = {}; self._shot_acct = {}; self.active_slot = 0; self._alt_ptr = 0; self._alt_evidence_pending = False; self._recoil_slot = 0    # engine.js: a spawn/revive puts the gun back on slot 0; both ammo maps reset (stun snapshot, polish 2026-09-11)
         self.heat_by_slot = {}; self._heat_at = {}                            # engine.js `_afterSpawn`/`_revive`: a fresh life starts cool
         # engine.js `_afterSpawn`/`_revive` clear all THREE: a takeover from the last life, the verdict it
         # left behind, and any button still down. Clearing only `reloading` left the previous life's
@@ -3856,6 +3858,9 @@ class GunStage:
             self._log(f"slot {slot} confirmed the swap {self.last_switch_s:g}s after ALT (incl. reaction)", "info")
         self._prev_ammo[slot] = mag
         self.active_slot = slot
+        if slot < 2 and self._alt_evidence_pending:
+            self._alt_ptr = slot
+            self._alt_evidence_pending = False
         if reserve is not None:
             self._prev_reserve[slot] = reserve
         self._publish_ammo(slot, mag, reserve)
@@ -3927,8 +3932,22 @@ class GunStage:
             return
         if self.reloading:
             self._end_reload("swapped")
-        self.switching = {"at": self.now(), "from": self.active_slot}
+        source = self._alt_ptr
+        target = self._next_alt_slot()
+        self._alt_ptr = target
+        self._alt_evidence_pending = True
+        self.switching = {"at": self.now(), "from": source, "to": target}
         self._log(f"swap: ALT pressed on slot {self.active_slot}", "info")
+
+    def _alt_cycle(self) -> list[int]:
+        """engine.js `_altCycle`: pickup slots stay outside the loadout ALT cycle."""
+        return [0, 1] if self._slot_count() >= 2 else [0]
+
+    def _next_alt_slot(self) -> int:
+        """engine.js `_nextAltSlot`: advance from the gun's BMAP pointer, not its trigger slot."""
+        cycle = self._alt_cycle()
+        index = cycle.index(self._alt_ptr) if self._alt_ptr in cycle else -1
+        return cycle[0] if index < 0 else cycle[(index + 1) % len(cycle)]
 
     def _switch_window_s(self) -> float:
         """engine.js `switchWindowMs()`, in SECONDS: the bundle's real `$WEAP` tok15 when it carries one,
@@ -3947,9 +3966,9 @@ class GunStage:
         sw = self.switching
         if not sw or self.now() - sw["at"] <= self._switch_window_s():
             return
-        to = 1 if sw["from"] == 0 else 0
+        to = sw.get("to", self._next_alt_slot())
         self.switching = None
-        self.active_slot = to; self._recoil_slot = to
+        self.active_slot = to; self._alt_ptr = to; self._recoil_slot = to
         self._log(f"swap to slot {to} assumed after {self._switch_window_s():g}s (no shot yet)", "info")
 
     def _sir_fns(self) -> dict[str, int] | None:
@@ -4166,7 +4185,7 @@ class GunStage:
             self._dot_kill = {"at": now, "num": p["by"]["num"], "team": p["by"]["team"]}
         p["ticks"] += 1
         self._spawn_task(self.write([frame], f"poison tick {p['ticks']}: -{n} {pool}" + (" (lethal)" if lethal else "")))
-        if not lethal:
+        if not lethal and now >= self._hill_busy_until:
             self._event_now("poison_tick")
 
     def _poison_clear(self, why: str) -> None:
