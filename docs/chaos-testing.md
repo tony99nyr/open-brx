@@ -85,6 +85,14 @@ They are in `invariants.py`. Each one applies to every scenario.
   The fact content comes from the ledger. The invariant takes MC's verdict on whether a fact scored, and
   models the A5.7 suppression: a kill on a never-synced victim node earns no multi medal. The scenario
   `multi-kill-ladder` pins one 11-kill chain, a gap and a new chain.
+- `multi_chain_monotonic` (integration review 2026-09-25): a kill flushed late (its `t` before the killer's
+  newest kill) never extends a chain, and the chain clock never moves back. The `late_flush` action drives it.
+- `frozen_team_kill_keeps_victim_death`: a team kill frozen out after a frag-cap whistle (F356) still counts
+  the victim's death. Only the killer's -1 is frozen. The oracle does not read `post_end`.
+- `recap_medals_equal_live_cues`: the recap's medals equal the medal cues sent live. It skips a match whose
+  scorer a replay replaced, because a replay judges streak medals in `t` order (A63).
+- `honors_full_ledger`: MVP, IRON MAN, MULTIKILL and SURVIVOR, computed from the ledger, equal MC's honours.
+  The `melee_kill` action makes BEAT DOWN fire.
 - At the end: `ends_exactly_once`, `frag_cap_ends_match` and `recap_equals_board`.
 - The runner adds `field_settles`: every connected node has its facts acknowledged after each step.
 

@@ -334,6 +334,20 @@ def test_a_sent_welcome_is_re_issued_to_the_matching_nonce_too():
     assert w2["mc_trust"]["key"] == w["mc_trust"]["key"]
 
 
+def test_a_phone_with_a_gun_that_lost_its_enrolling_welcome_gets_the_key_after_the_bind():
+    """F346 (a): the hello that enrols a phone with a gun also binds it, so the re-issue must survive the bind."""
+    net = NetServer()
+    net.hydrate(lambda body: {"player": {"player_id": "p1"}} if body.get("gun") else None)
+    gun = {"name": "R0XX-AB12", "tail": "AB12"}
+    w = _hello(net, mc_enroll=True, mc_enroll_nonce=NONCE, gun=gun)    # sent, but the phone never saw it
+    assert "mc_trust" in w and net.trust.bound == {"node-a"}
+    _stale(net)
+    w2 = _hello(net, mc_enroll=True, mc_enroll_nonce=NONCE, gun=gun)
+    assert w2.get("mc_trust", {}).get("key") == net.trust.key_for("node-a")
+    _stale(net)
+    assert "mc_trust" not in _hello(net, mc_enroll=True, mc_enroll_nonce=b64url(bytes(16)), gun=gun)
+
+
 def test_with_no_nonce_the_key_is_issued_once_only():
     net = NetServer()
     w = _hello(net, mc_enroll=True)                                    # an older phone: no nonce
@@ -343,7 +357,7 @@ def test_with_no_nonce_the_key_is_issued_once_only():
         "a nonce MC never stored opens nothing"
 
 
-def test_the_nonce_re_issue_closes_after_the_window_and_at_a_bind_and_survives_an_mc_restart():
+def test_the_nonce_re_issue_closes_after_the_window_and_survives_a_bind_and_an_mc_restart():
     root = _tmp()
     try:
         wall = [1_000_000.0]
@@ -357,7 +371,14 @@ def test_the_nonce_re_issue_closes_after_the_window_and_at_a_bind_and_survives_a
         assert again.enroll("node-r1", "a", NONCE) is None, "outside the 60 s window"
         assert again.enroll("node-r2", "a", NONCE)
         again.confirm("node-r2")
-        assert again.enroll("node-r2", "a", NONCE) is None, "an id that bound never gets a re-issue"
+        assert again.enroll("node-r2", "a", b64url(bytes(16))) is None, "a bound id: a wrong nonce gets nothing"
+        assert again.enroll("node-r2", "a") is None, "a bound id: no nonce gets nothing"
+        wall[0] += 30
+        third = TrustRegistry(root, wall=lambda: wall[0])              # a restart after the bind
+        assert third.enroll("node-r2", "a", NONCE) == third.key_for("node-r2"), \
+            "a bound id keeps its re-issue window (F346 a): the lost welcome came before the bind"
+        wall[0] += 31
+        assert third.enroll("node-r2", "a", NONCE) is None, "a bound id: outside the 60 s window"
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -404,3 +425,74 @@ def test_the_pool_reads_back_across_a_restart():
         assert again.enroll("node-k4", "a") is None, "the pool is full after the restart too"
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+# ---------------- enrolment hygiene: log volume, table size, tunnel buckets ----------------
+
+class _Count(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.lines: list[str] = []
+
+    def emit(self, record):
+        self.lines.append(record.getMessage())
+
+
+def test_a_full_pool_logs_once_a_minute_not_once_per_hello():
+    t = [0.0]
+    reg = TrustRegistry(None, pool_cap=1, now=lambda: t[0])
+    assert reg.enroll("node-p0", "a")
+    h = _Count()
+    logging.getLogger("brx.mc.mcid").addHandler(h)
+    try:
+        for i in range(50):
+            assert reg.enroll(f"node-x{i}", f"10.0.{i}.1") is None
+        assert len([x for x in h.lines if "pool full" in x]) == 1, h.lines
+        t[0] += mcid.REFUSAL_LOG_EVERY_S + 1
+        assert reg.enroll("node-late", "10.9.9.9") is None
+        pool = [x for x in h.lines if "pool full" in x]
+        assert len(pool) == 2 and "49 more" in pool[-1], pool
+    finally:
+        logging.getLogger("brx.mc.mcid").removeHandler(h)
+
+
+def test_the_per_peer_table_is_capped_and_drops_idle_addresses_first():
+    t = [0.0]
+    old = mcid.PEER_TABLE_CAP
+    mcid.PEER_TABLE_CAP = 3
+    try:
+        reg = TrustRegistry(None, now=lambda: t[0])
+        for i in range(3):
+            assert reg.enroll(f"node-c{i}", f"10.0.0.{i}")
+        assert reg.enroll("node-c3", "10.0.0.3") is None, "a full table of active addresses refuses a new one"
+        assert len(reg._by_peer) == 3
+        t[0] += mcid.ENROL_WINDOW_S + 1
+        assert reg.enroll("node-c4", "10.0.0.4"), "idle addresses are dropped to make room"
+        assert len(reg._by_peer) <= 3
+    finally:
+        mcid.PEER_TABLE_CAP = old
+
+
+class _Headers:
+    def __init__(self, items):
+        self._items = items
+
+    def items(self):
+        return list(self._items)
+
+
+class _TunnelWS(_FakeWS):
+    remote_address = ("127.0.0.1", 51000)
+
+    def __init__(self, cf: str | None):
+        super().__init__()
+        self.request_headers = _Headers([("Cf-Connecting-Ip", cf)] if cf else [])
+
+
+def test_tunnel_phones_get_a_rate_bucket_each_not_one_for_the_loopback_address():
+    net = NetServer()
+    net._armed = True                                     # the tunnel is routing
+    assert net._enrol_peer(_TunnelWS("203.0.113.7")) != net._enrol_peer(_TunnelWS("198.51.100.9"))
+    assert net._enrol_peer(_FakeWS()) == "192.168.1.50", "a LAN phone keeps its address"
+    net._armed = False
+    assert net._enrol_peer(_TunnelWS("203.0.113.7")) == "127.0.0.1", "no tunnel: the header means nothing"

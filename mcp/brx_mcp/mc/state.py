@@ -322,7 +322,8 @@ def default_config(mode: str = "tdm") -> GameConfig:
 
 
 # F337 (a): the per-station lock bookkeeping the session snapshot carries across an MC restart.
-_STATION_LOCK_KEYS = ("lock", "lock_game", "locked_since", "unlocked_at", "restarts", "boot")
+_STATION_LOCK_KEYS = ("lock", "lock_game", "locked_since", "unlocked_at", "restarts", "boot",
+                      "tally")   # integration review (Low): the self-authoritative count only grows within a game
 
 class Session:
     def __init__(self, compiler: CompilerPort, net, armory, store=None, now_ms: Callable[[], int] | None = None,
@@ -2837,8 +2838,8 @@ class Session:
         station until its next spawn time on the schedule and tells the station. A second report of an item
         already taken (the station's own `taken`, or another pickup), or a late fact about an item that has
         spawned or been reset since, changes nothing."""
-        if parked or not self._pu_sched or ev.get("match_id") != self._pu_sched.get("match_id"):
-            return
+        if parked or not self.in_play() or not self._pu_sched or ev.get("match_id") != self._pu_sched.get("match_id"):
+            return   # integration review (Low): a pickup flushed in RECAP or LOBBY changes nothing
         sid = ev.get("station_id")
         nid = next((n for n, st in self.stations.items()
                     if (st.get("assigned") or {}).get("id") == sid and n in self._pu_sched["st"]), None)
@@ -5205,7 +5206,8 @@ class Session:
             "rows": rows,
             "my": next((r for r in rows if r["player_id"] == p["player_id"]), None),
             # `display` is the PLAYER's name, so a phone can render the honours roll without the roster.
-            "honors": [{"medal": h.get("award"), "key": h.get("key"), "player_id": h.get("player_id"),
+            # integration review (Low): a pre-A63 recap has no `key`; `Honor.key` is NotRequired, so it is left out
+            "honors": [{"medal": h.get("award"), **({"key": k} if (k := h.get("key")) else {}), "player_id": h.get("player_id"),
                         "display": display.get(h.get("player_id")) or h.get("player_id"), "stat": h.get("stat")}
                        for h in (recap.get("honors") or [])],
             "provisional": bool(recap.get("provisional")),
@@ -5257,6 +5259,10 @@ class Session:
         `offset = t_recv - t_newest`) and the store keeps no batch grouping, so on replay those facts
         fall back to `t_recv` — the same approximation the live path makes for a single event from such
         a node. Their window awards are suppressed either way.
+
+        Integration review 2026-09-25 (A63): the live path judges streak medals and KILLJOY in ARRIVAL order,
+        this replay in `t` order (the cap move needs it), so a re-scored recap can differ from the medals
+        heard live. A63's text says so; replaying in arrival order would move the frag-cap end.
         """
         if not self.store:
             return []

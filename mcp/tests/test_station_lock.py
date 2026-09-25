@@ -394,3 +394,20 @@ def test_f337d_an_invalid_edit_that_drops_the_push_unlocks_the_stations():
     res = s.set_config({"time_limit_s": None})               # invalid (A4.8): the push is dropped, not re-sent
     assert res["ok"] is False and s.lobby_pushed is False, res
     assert _lock(s) == 0, "no pushed game any more: the stations are told so"
+
+
+def test_review_the_tally_survives_an_mc_restart_mid_match():
+    """Integration review 2026-09-25 (Low): the station snapshot left the tally out, so after an MC restart a
+    restarted Stick's lower count was taken as the truth and the hold time shrank mid-match."""
+    s, clock = _sess(600)
+    s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
+    s.push_config(force=True)
+    s.start(runway_s=30, force=True)
+    clock.t += 60_000
+    _ctl_beat(s, clock, {"1": 90_000}, revives=5)
+    s2 = _restart(s, clock)
+    s2.net.simulate_utility_hello("stick-1")
+    clock.t += 5_000
+    _ctl_beat(s2, clock, {"1": 60_000}, revives=2, uptime_s=1)   # the Stick rebooted too: its count went back
+    rep = _report(s2)
+    assert rep["control"]["hold_ms"] == {"1": 90_000}, rep

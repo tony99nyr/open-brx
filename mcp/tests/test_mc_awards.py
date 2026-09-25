@@ -133,6 +133,33 @@ def test_most_kills_tie_is_shared():
     assert honors(sc, "most_kills") == ["p0"]
 
 
+# ── integration review 2026-09-25: a late flush and a frozen team kill ───────────────────────────
+def test_review1_a_late_flushed_kill_never_counts_as_a_multi_kill():
+    sc = mk(n=6, mode="ffa")
+    kill(sc, 0, 1, T0 + 100_000)
+    kill(sc, 0, 2, T0 + 10_000)                           # flushed late: 90 s older than the newest kill
+    assert "double_kill" not in sc.kills[-1]["medals"], sc.kills[-1]
+    kill(sc, 0, 3, T0 + 99_000)                           # late by 1 s, inside the window: still no chain
+    assert "double_kill" not in sc.kills[-1]["medals"], sc.kills[-1]
+    assert sc.stats["p0"].last_kill_t == T0 + 100_000, "the chain clock never moves back"
+    kill(sc, 0, 4, T0 + 101_000)                          # a fresh kill 1 s after the newest: a double
+    assert sc.kills[-1]["medals"] == ["double_kill"], sc.kills[-1]
+    assert sc.stats["p0"].multi_best == 2
+
+
+def test_review2_a_frozen_team_kill_keeps_the_victims_death():
+    sc = mk()
+    kill(sc, 0, 1, T0 + 10_000)
+    sc.cap_recv = T0 + 20_000                             # the frag-cap whistle
+    kills_before = sc.stats["p2"].kills
+    r = sc.ingest("n0", {"type": "death", "t": T0 + 15_000, "match_id": "m1", "player_id": "p0",
+                         "shooter_num": 3, "shooter_team": 1}, T0 + 25_000)   # p2 team-kills p0, flushed after it
+    assert r == "scored"
+    assert sc.stats["p2"].kills == kills_before, "the killer's -1 stays frozen (F356)"
+    assert sc.stats["p0"].deaths == 1 and sc.stats["p0"].streak == 0, "the death happened to the victim"
+    assert sc.kills[-1].get("frozen") is True
+
+
 def test_multikill_names_the_ladder_label_of_the_best_chain():
     sc = mk(n=8, mode="ffa")
     for i in range(6):                                    # six kills 300 ms apart: KILLAMANJARO

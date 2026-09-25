@@ -676,7 +676,7 @@ export function startDemo({ engine, log }) {
       'result-undecided':  [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('undecided')]],
       'result-awards':     [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.resultAwards()], [2700, () => ev.rtab('awards')]],   // PROVISIONAL (TODO: brx3)
       // the two medals Tony added on 2026-09-24 (TODO: contract): BEAT DOWN (a melee kill) and KILLJOY (ending an enemy's spree)
-      'live-kill-beat-down': [...live, [2300, () => ev.killMedals(['beat_down'], 'VIPER')]],
+      'live-kill-beat-down': [...live, [2300, () => ev.killMedals(['melee_kill'], 'VIPER')]],
       'live-kill-killjoy':   [...live, [2300, () => ev.killMedals(['double_kill', 'killjoy'], 'HAVOC')]],
       'result-players':    [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win')], [2700, () => ev.rtab('player')]],
       'history':           [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win')], [2700, 'seedHistory'], [2800, () => ev.view('history')]],

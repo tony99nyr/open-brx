@@ -556,6 +556,23 @@ def test_a_station_reconnecting_after_the_match_gets_no_update():
     assert _pushed(s, "station_update", "u1") == [] and "OPERATOR RESET · STATION #5" not in _feed(s)
 
 
+def test_review_a_pickup_fact_flushed_after_the_match_changes_nothing():
+    """Integration review 2026-09-25 (Low): `_on_pickup` had no in-play guard, so a pickup a phone flushed in
+    RECAP emptied the station and wrote a TOOK line for a match that was over."""
+    s, clock = _sess()
+    _station(s, "u1", 5, "overshield")
+    go = _live(s, clock)
+    clock.t = go + 61_000; s.tick()
+    mid = s.start_info["match_id"]
+    s.control("end")
+    s.net.pushed.clear()
+    p = s.players[s.node_player["phone-0"]]
+    s.net.simulate_event("phone-0", {"type": "pickup", "t": clock.t - 1000, "match_id": mid, "node_id": "phone-0",
+                                     "player_id": p["player_id"], "station_id": 5, "item_kind": "overshield",
+                                     "seq": 9}, clock.t)
+    assert _pushed(s, "station_update", "u1") == [] and not any("TOOK" in t for t in _feed(s))
+
+
 def test_a_station_action_naming_another_stations_id_is_refused():
     s, clock = _sess()
     _station(s, "u1", 5, "overshield")

@@ -57,11 +57,10 @@ const ALERT_FAMILY = { objective_taken: 'objective', objective_scored: 'objectiv
 const OUTCOME_WORD = { win: 'WIN', lose: 'LOSE', draw: 'DRAW', undecided: 'UNDECIDED' };
 // Every medal in MC's ladder (contract.gen MEDALS, generated from types.py; Tony's final list 2026-09-24). A key missing
 // here was filtered out of the kill card, so the map is built from the contract, never hand-kept.
-// TODO: contract. Two medals Tony added on 2026-09-24 that MC will send once brx3 adds them to MEDALS: BEAT DOWN (a
-// melee kill; its voice waits on Tony's pick of VA7F or VA7G) and KILLJOY (ending an enemy's killing spree; HUD text
-// only). Until then the HUD labels them from here; a contract row of the same key wins. Neither has a clip, so the
-// engine plays no voice for either (its medal lines come from the bundle's cues only).
-export const MEDAL_FALLBACK = Object.freeze([{ key: 'beat_down', kind: 'special', label: 'BEAT DOWN' }, { key: 'killjoy', kind: 'special', label: 'KILLJOY' }]);
+// The fallback labels the two medals Tony added on 2026-09-24 for an older contract that lacks them: BEAT DOWN (MC's key
+// is `melee_kill`) and KILLJOY (ending an enemy's killing spree). A contract row of the same key wins. The keys must be
+// the ones MC sends: `beat_down` here labelled a key that never arrived (medal-labels.test.mjs).
+export const MEDAL_FALLBACK = Object.freeze([{ key: 'melee_kill', kind: 'melee', label: 'BEAT DOWN' }, { key: 'killjoy', kind: 'killjoy', label: 'KILLJOY' }]);
 const MEDAL_ROWS = [...MEDALS, ...MEDAL_FALLBACK.filter(f => !MEDALS.some(m => m.key === f.key))];
 export const MEDAL_LABEL = Object.freeze(Object.fromEntries(MEDAL_ROWS.map(m => [m.key, m.label])));
 /** App 0.4.2: the words of the picker's "Connecting to <gun>" block, from `hud.connecting`. */

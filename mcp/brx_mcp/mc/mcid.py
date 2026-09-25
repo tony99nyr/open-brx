@@ -52,6 +52,11 @@ ENROLLED_CAP = 5000          # a hello flood cannot grow the file without bound;
 # whole field enrolling at once must fit: do not go lower than 30 a minute.
 ENROL_PER_PEER = 30
 ENROL_WINDOW_S = 60.0
+# The per-peer rate table holds at most this many addresses. Idle ones are dropped first; a table full of
+# active addresses refuses a NEW address (no key, the phone taps JOIN) rather than grow without bound.
+PEER_TABLE_CAP = 1024
+# A refusal that repeats (a full pool, a full registry, a rate limit) logs at most once per this many seconds.
+REFUSAL_LOG_EVERY_S = 60.0
 # F346 (b): enrolments that never bound a player with a gun live in a separate pool of POOL_CAP. A full
 # pool refuses NEW ids; an issued id is never dropped, because a dropped id could enrol again and collect
 # the same key. Only bound ids count toward ENROLLED_CAP.
@@ -166,7 +171,8 @@ class TrustRegistry:
     * **Re-issue (F346 a).** The phone sends a random `mc_enroll_nonce` with `mc_enroll`, and keeps it until
       a trust key arrives. MC stores the nonce's SHA-256 in the `u` record. A later hello for that id gets
       the same key again only when its nonce matches, within `REISSUE_WINDOW_S` (60 s) of the first issue,
-      and only while the id has not bound. That covers a welcome that never went out, one lost in the
+      whether or not the id has bound since. A phone with a gun binds on the same hello that enrols it, so
+      a lost welcome is always followed by a bind. That covers a welcome that never went out, one lost in the
       socket buffer, and an MC restart in the gap. No nonce, or a wrong one, gets nothing: an older phone
       keeps the A60 once-only rule.
     """
@@ -182,9 +188,14 @@ class TrustRegistry:
         self.bound: set[str] = set()
         # id -> [issued_epoch, nonce_sha256_hex or "-"]
         self.unbound: dict[str, list] = {}
+        # id -> [issued_epoch, nonce_sha256_hex]: a BOUND id's issue record, kept so the F346 (a) re-issue
+        # window stays open after the bind. Only records inside REISSUE_WINDOW_S are used.
+        self.bound_issue: dict[str, list] = {}
         self._lines = 0
         self.closed_reason: str | None = None
         self._by_peer: dict[str, deque] = {}
+        self._last_log: dict[str, float] = {}
+        self._quiet: dict[str, int] = {}
         if install_secret is not None:
             self.secret, created = install_secret, self.data_dir is None
         else:
@@ -215,6 +226,7 @@ class TrustRegistry:
                 return
         for ln in text.splitlines():
             self._replay(ln)
+        self._prune_bound_issue()
         if self._lines > 2 * (len(self.bound) + len(self.unbound)) + COMPACT_SLACK:
             self._compact()
 
@@ -232,7 +244,9 @@ class TrustRegistry:
         if rest and rest[0] == "u" and len(rest) == 3 and rest[1].isdigit() and nid not in self.bound:
             self.unbound[nid] = [int(rest[1]), rest[2]]
         else:                                      # a bare id, `b`, or anything unparsable: BOUND
-            self.unbound.pop(nid, None)
+            issue = self.unbound.pop(nid, None)
+            if issue is not None and rest == ["b"]:
+                self.bound_issue[nid] = issue
             self.bound.add(nid)
 
     def _append(self, line: str) -> bool:
@@ -256,6 +270,9 @@ class TrustRegistry:
         if self.data_dir is None:
             return
         out = [*sorted(self.bound)]
+        for nid, (t, nonce_h) in self.bound_issue.items():
+            if nid in self.bound and self._in_window(t):   # keep a bound id's open re-issue window
+                out += [f"{nid} u {t} {nonce_h}", f"{nid} b"]
         for nid, (t, nonce_h) in self.unbound.items():
             out.append(f"{nid} u {t} {nonce_h}")
         try:
@@ -278,15 +295,44 @@ class TrustRegistry:
     def proof(self, node_id: str, challenge: str, session_id: str) -> str:
         return mc_proof(self.key_for(node_id), challenge, session_id)
 
-    def _rate_ok(self, peer: str | None) -> bool:
-        q = self._by_peer.setdefault(peer or "?", deque())
+    def _warn_limited(self, what: str, msg: str, *args) -> None:
+        """One warning per `what` per REFUSAL_LOG_EVERY_S; the next one says how many were not logged."""
         t = self.now()
+        last = self._last_log.get(what)
+        if last is not None and t - last < REFUSAL_LOG_EVERY_S:
+            self._quiet[what] = self._quiet.get(what, 0) + 1
+            return
+        self._last_log[what] = t
+        n = self._quiet.pop(what, 0)
+        log.warning(msg + (f" ({n} more like this not logged)" if n else ""), *args)
+
+    def _rate_ok(self, peer: str | None) -> bool:
+        key, t = peer or "?", self.now()
+        if key not in self._by_peer and len(self._by_peer) >= PEER_TABLE_CAP:
+            for k in [k for k, q in self._by_peer.items() if not q or t - q[-1] > ENROL_WINDOW_S]:
+                del self._by_peer[k]
+            if len(self._by_peer) >= PEER_TABLE_CAP:
+                self._warn_limited("peers", "trust key rate table full (%d active addresses); a new address gets none",
+                                   PEER_TABLE_CAP)
+                return False
+        q = self._by_peer.setdefault(key, deque())
         while q and t - q[0] > ENROL_WINDOW_S:
             q.popleft()
         if len(q) >= ENROL_PER_PEER:
             return False
         q.append(t)
         return True
+
+    def _prune_bound_issue(self) -> None:
+        self.bound_issue = {k: v for k, v in self.bound_issue.items() if v[1] != "-" and self._in_window(v[0])}
+
+    def _in_window(self, t: float) -> bool:
+        return 0 <= self.wall() - t <= REISSUE_WINDOW_S
+
+    def _reissue_ok(self, entry: list, nonce_h: str | None, peer: str | None) -> bool:
+        t, first_h = entry
+        return (nonce_h is not None and first_h != "-" and hmac.compare_digest(nonce_h, first_h)
+                and self._in_window(t) and self._rate_ok(peer))
 
     @staticmethod
     def _nonce_hash(nonce: object) -> str | None:
@@ -299,25 +345,30 @@ class TrustRegistry:
         `nonce` = the hello's `mc_enroll_nonce`; a matching one inside the window gets the key again (F346 a)."""
         if not valid_node_id(node_id) or self.closed_reason:
             return None
-        if node_id in self.bound:
-            return None
         nonce_h = self._nonce_hash(nonce)
+        if node_id in self.bound:
+            # F346 (a): a phone with a gun binds on the hello that enrols it, so a lost welcome must still
+            # be re-issued after the bind, inside the same window and to the same nonce only.
+            issue = self.bound_issue.get(node_id)
+            if issue is None or not self._reissue_ok(issue, nonce_h, peer):
+                return None
+            log.info("node %s: re-issued its trust key to the hello that holds the enrol nonce", node_id)
+            return self.key_for(node_id)
         if node_id in self.unbound:
-            t, first_h = self.unbound[node_id]
-            if (nonce_h is None or first_h == "-" or not hmac.compare_digest(nonce_h, first_h)
-                    or not 0 <= self.wall() - t <= REISSUE_WINDOW_S or not self._rate_ok(peer)):
+            if not self._reissue_ok(self.unbound[node_id], nonce_h, peer):
                 return None
             log.info("node %s: re-issued its trust key to the hello that holds the enrol nonce", node_id)
             return self.key_for(node_id)
         if len(self.bound) >= self.cap:
-            log.warning("trust registry full (%d bound), so node %s gets no trust key", self.cap, node_id)
+            self._warn_limited("cap", "trust registry full (%d bound), so node %s gets no trust key", self.cap, node_id)
             return None
         if len(self.unbound) >= self.pool_cap:
-            log.warning("trust pool full (%d ids that never bound), so node %s gets no trust key", self.pool_cap, node_id)
+            self._warn_limited("pool", "trust pool full (%d ids that never bound), so node %s gets no trust key",
+                               self.pool_cap, node_id)
             return None
         if not self._rate_ok(peer):
-            log.warning("trust key rate limit (%d per %ds) hit for peer %s; node %s gets none",
-                        ENROL_PER_PEER, ENROL_WINDOW_S, peer, node_id)
+            self._warn_limited("rate", "trust key rate limit (%d per %ds) hit for peer %s; node %s gets none",
+                               ENROL_PER_PEER, ENROL_WINDOW_S, peer, node_id)
             return None
         t = int(self.wall())
         if not self._append(f"{node_id} u {t} {nonce_h or '-'}"):
@@ -331,8 +382,11 @@ class TrustRegistry:
         if node_id not in self.unbound or self.closed_reason:
             return
         if self._append(f"{node_id} b"):
-            del self.unbound[node_id]
+            issue = self.unbound.pop(node_id)
             self.bound.add(node_id)
+            self._prune_bound_issue()
+            if issue[1] != "-" and self._in_window(issue[0]):
+                self.bound_issue[node_id] = issue
 
     def secret_values(self, node_ids) -> list[str]:
         """What the bug-report guard must never find: the secret and every trust key it can name."""

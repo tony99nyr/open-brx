@@ -352,6 +352,18 @@ class NetServer:
     def _has_cf_header(self, ws) -> bool:
         return any(k.lower() == "cf-connecting-ip" for k, _v in _request_headers(ws))
 
+    def _enrol_peer(self, ws) -> str | None:
+        """The rate-limit key for an enrolment. Every tunnel phone reaches MC from cloudflared on loopback, so
+        one address would put the whole remote field in one bucket. A loopback socket that came through the
+        tunnel is keyed by its `Cf-Connecting-Ip` instead (Cloudflare sets that header; a LAN peer is never
+        loopback). Any other socket is keyed by its address."""
+        host = _peer_host(ws)
+        if peer_class(host) == "loopback" and self.through_backhaul(ws):
+            cf = next((v.strip() for k, v in _request_headers(ws) if k.lower() == "cf-connecting-ip" and v.strip()), None)
+            if cf:
+                return "cf:" + cf[:64]
+        return host
+
     def through_backhaul(self, ws) -> bool:
         """Did this socket come in over a public path (A28.2/A28.3)? One predicate, two jobs: it decides
         whether the join secret is required AND it is what stamps `reach`, because those are the same
@@ -768,7 +780,7 @@ class NetServer:
                 welcome["mc_proof"] = self.trust.proof(node_id, str(challenge), self.session_id)
             if body.get("mc_enroll") is True:
                 # validated id, rate-limited per address; the nonce lets a lost welcome be re-issued (F346 a)
-                key = self.trust.enroll(node_id, _peer_host(ws), body.get("mc_enroll_nonce"))
+                key = self.trust.enroll(node_id, self._enrol_peer(ws), body.get("mc_enroll_nonce"))
                 if key:
                     welcome["mc_trust"] = {"key": key}
         try:

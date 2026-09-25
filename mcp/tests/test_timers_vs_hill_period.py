@@ -19,6 +19,10 @@ PERIOD_S = hb.BEACON_PERIOD_S
 
 # name -> why a 5 s emitter cannot keep it from firing (or why it is not a fuse at all)
 JUDGED = {
+    "LATE_FLUSH_AGES_MS": "Integration review (2026-09-25): the chaos harness's `late_flush` action back-dates a kill\n"
+                          "fact by this much. It is a test input, not a timer; no beacon reaches the harness",
+    "REFUSAL_LOG_EVERY_S": "Integration review (2026-09-25): the enrolment refusal log line is written at most this\n"
+                           "often. It paces a log line only; no IR frame or beacon reaches it",
     "SHIELD_FILL_ECHO_S": "F348 (2026-09-24): how long after a spawn fill a shield rise counts as that fill's echo, not a\n                             grant. A hill beacon moves no pool, so it can neither end nor extend the window",
     "ENROL_WINDOW_S": "A60 (2026-09-24): the window of the per-peer trust-key enrolment rate limit in MC's\n"
                       "net layer. It counts hellos that ask for a key; no IR frame reaches it, so a beacon cannot touch it",

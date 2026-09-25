@@ -168,7 +168,11 @@ def test_a_late_team_kill_before_the_capping_kill_cannot_take_the_winner_below_t
     assert scores[team_a] == 2, f"the late team kill took the winner below the cap it won on: {scores}"
     assert scores[ps[1]["team_id"]] == 1, f"a late enemy kill inside the window still scores: {scores}"
     r = s.recap()
-    assert r["winner"]["team_id"] == team_a and r["post_end"] == 1, r
+    assert r["winner"]["team_id"] == team_a, r
+    # Integration review 2: only the killer's -1 is frozen. The death happened to the victim, so it counts
+    # (SURVIVOR and IRON MAN read it), and the fact is scored, not parked.
+    victim = next(row for row in r["rows"] if row["player_id"] == ps[2]["player_id"])
+    assert victim["deaths"] == 1 and r["post_end"] == 0, r
 
 
 def test_a_kill_flushed_after_the_whistle_scores_but_gets_no_kill_confirm():
@@ -643,3 +647,18 @@ def test_a_deferred_cap_is_finished_by_a_tick():
     s.tick()
     assert s.phase == "recap", f"a deferred cap survived a tick: phase {s.phase}"
     assert s._pending_limit_t is None
+
+
+def test_review_a_pre_a63_recap_sends_no_null_honour_key():
+    """Integration review 2026-09-25 (Low): a recap stored before A63 has honours with no `key`. The result push
+    left `"key": null` on each; `Honor.key` is NotRequired, so the key is left out instead."""
+    s, net, clock, ps, info = go_live(4, "tdm", {"scoring": {"frag_limit": 2, "win_by": "kills"}})
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    kill(s, net, clock, ps, 2, 3, info, seq=2)
+    recap = dict(s.recap())
+    assert recap["honors"], "setup: there are honours"
+    recap["honors"] = [{k: v for k, v in h.items() if k != "key"} for h in recap["honors"]]
+    body = s._result_body(recap, s.players[ps[0]["player_id"]])
+    assert all("key" not in h for h in body["honors"]), body["honors"]
+    control = s._result_body(s.recap(), s.players[ps[0]["player_id"]])
+    assert all(h.get("key") for h in control["honors"]), "control: a current recap keeps its keys"

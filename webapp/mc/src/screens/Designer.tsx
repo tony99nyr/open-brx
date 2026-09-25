@@ -250,7 +250,8 @@ export function Designer() {
                   never a text field: a typo used to ship a hill match with nothing emitting a hill. */}
               {stationGated && (
                 <Row full label={<>OBJECTIVE SOURCE <Hint>What is on the field emitting the objective</Hint></>}>
-                  <Seg label="objective source" value={cfg.station_source ?? 'phone'} pad="5px 11px"
+                  {/* no source = no option picked: the server refuses the mode without one, so PHONE must not look chosen */}
+                  <Seg label="objective source" value={cfg.station_source ?? ''} pad="5px 11px"
                     options={STATION_SOURCES.map(s => ({ value: s.value, label: s.label }))}
                     titles={Object.fromEntries(STATION_SOURCES.map(s => [s.value, s.hint]))}
                     onChange={v => put({ station_source: v })} />
@@ -259,7 +260,8 @@ export function Designer() {
             </div>
             {stationGated && (
               <div style={{ font: F.chk(500, 12), letterSpacing: '.02em', color: T.micro, marginTop: 8 }}>
-                {STATION_SOURCES.find(s => s.value === (cfg.station_source ?? 'phone'))?.hint}
+                {STATION_SOURCES.find(s => s.value === cfg.station_source)?.hint
+                  ?? <span style={{ color: T.warn }}>PICK AN OBJECTIVE SOURCE: the server refuses this mode without one.</span>}
               </div>
             )}
             <div style={{ font: F.chk(500, 12), letterSpacing: '.02em', color: T.micro, marginTop: 8 }}>Venue (indoor / outdoor, night ops) is set on the Games page each time — it is not part of the game.</div>

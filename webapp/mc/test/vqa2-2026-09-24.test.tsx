@@ -335,10 +335,10 @@ describe('polish round 1 (2026-09-24)', () => {
     const { m } = await screen(<Items />, { phase: 'muster', stations: [mk('ph-r', 'respawn', 'android'), mk('ph-pu', 'powerup', 'android'), mk('stk-r', 'respawn', 'esp32')] });
     const card = (id: string) => m.find(`[data-station-card="${id}"]`)[0].textContent ?? '';
     expect(card('ph-r')).toContain('DEFAULT (-70, phone)');
-    expect(card('ph-pu')).toContain('DEFAULT (-74, phone)');
+    expect(card('ph-pu')).toContain('DEFAULT (-55, phone)');
     expect(card('stk-r')).toContain("DEFAULT (the Stick's own)");
     await act(async () => { m.find('[data-bubble-edit="ph-pu"]')[0].click(); });
-    expect((m.find('input[aria-label="threshold for ph-pu"]')[0] as HTMLInputElement).value, 'a phone powerup edit starts at -74').toBe('-74');
+    expect((m.find('input[aria-label="threshold for ph-pu"]')[0] as HTMLInputElement).value, 'a phone powerup edit starts at -55 (S58)').toBe('-55');
     m.unmount();
   });
 

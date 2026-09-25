@@ -410,7 +410,7 @@ class Scorer:
         if not self.synced_at_lobby.get(node_id, False):
             suppress_awards = True                  # A5.7: never-synced node → no window awards on the live path either
         kind = ev.get("type")
-        if (self.end_t is not None and t > self.end_t) or (kind == "death" and self._frozen_out(node_id, ev, t_recv)):
+        if self.end_t is not None and t > self.end_t:
             self.post_end.append((node_id, ev, t_recv))
             return "post_end"
         if kind in ("hit_taken", "death", "respawn", "team_change") and not self.synced_at_lobby.get(node_id, False):
@@ -433,7 +433,11 @@ class Scorer:
                     ss.last_hit_t = t if ss.last_hit_t is None else max(ss.last_hit_t, t)
             return "scored"
         if kind == "death":
-            return self._death(pid, ev, t, suppress_awards, src=(node_id, seq))
+            # Integration review 2: a team kill frozen out after the frag-cap whistle (F356) still happened to
+            # the VICTIM (a death, a streak reset, a life mark: SURVIVOR and IRON MAN read them). Only the
+            # killer's -1 is frozen, so the capping team's board stays what the field heard.
+            return self._death(pid, ev, t, suppress_awards, src=(node_id, seq),
+                               freeze_killer=self._frozen_out(node_id, ev, t_recv))
         if kind == "respawn":
             if not ev.get("operator"):   # A47: the operator's FORCE RESPAWN is not a new life after a death
                 st.streak = 0
@@ -455,7 +459,7 @@ class Scorer:
         return "ignored"
 
     def _death(self, victim: str, ev: Event, t: int, suppress: bool,
-               src: tuple[str, int | None] = ("", None)) -> str:
+               src: tuple[str, int | None] = ("", None), freeze_killer: bool = False) -> str:
         vs = self.stats[victim]
         vs.deaths += 1
         vs.alive = False
@@ -468,8 +472,12 @@ class Scorer:
         friendly = self._friendly(killer, victim)
         kill = {"t": t, "match_id": self.match_id, "victim": victim, "killer": killer,
                 "team": vs.team_id, "friendly": friendly, "multi": 1, "desync": bool(ev.get("desync"))}
+        if freeze_killer:
+            kill["frozen"] = True           # review 2: the killer's -1 is frozen out (F356); the death stands
         tag = None
-        if killer:
+        if killer and freeze_killer:
+            tag = "TEAM KILL (after the whistle)"
+        elif killer:
             ks = self.stats[killer]
             if friendly:
                 ks.friendly_kills += 1
@@ -488,7 +496,13 @@ class Scorer:
                 # is a COUNT of consecutive kills and first blood is an ORDERING — neither reads a
                 # timestamp, so neither has any business being decided by the victim's clock.
                 if not suppress:
-                    if ks.last_kill_t is not None and t - ks.last_kill_t <= MULTI_KILL_MS:
+                    # Integration review 1: a kill flushed late (`t` before the killer's newest kill) never joins
+                    # a chain, however close it is, and never moves the chain clock back. It is a chain of one,
+                    # kept BEHIND the running chain so the next fresh kill still extends the right one.
+                    late = ks.last_kill_t is not None and t < ks.last_kill_t
+                    if late:
+                        ks.multis.insert(max(0, len(ks.multis) - 1), 1)
+                    elif ks.last_kill_t is not None and 0 <= t - ks.last_kill_t <= MULTI_KILL_MS:
                         if ks.multis:
                             ks.multis[-1] += 1
                         else:
@@ -519,7 +533,7 @@ class Scorer:
                     tag = " + ".join(m.replace("_", " ").upper() for m in medals)
                 elif ks.streak >= 3:
                     tag = f"STREAK ×{ks.streak}"
-                ks.last_kill_t = t
+                ks.last_kill_t = t if ks.last_kill_t is None else max(ks.last_kill_t, t)   # never back (review 1)
                 # assists: other players who damaged the victim inside the window
                 # assists: each OTHER player who damaged the victim inside the window gets exactly one
                 assisters: list[str] = []
@@ -551,7 +565,7 @@ class Scorer:
                     self.on_feedback(killer, body)
         # Polish 2026-09-04: alerts after EVERY scored death, not only enemy kills -- a team kill (kills -= 1)
         # can flip the lead, and a death with no known shooter still leaves a last survivor.
-        if not suppress:
+        if not suppress and not freeze_killer:   # a frozen death lands after the whistle: no new alert
             self._match_state_alerts(t)
         self.kills.append(kill)
         if killer:

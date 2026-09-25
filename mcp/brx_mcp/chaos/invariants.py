@@ -42,24 +42,85 @@ def _post_end_keys(sc) -> set[tuple[str, int]]:
     return {(nid, int(ev.get("seq"))) for nid, ev, _t in sc.post_end if ev.get("seq") is not None}
 
 
+def _eff_t(e: dict, ev: dict) -> int:
+    """The time a tapped fact is scored at (contracts §7/A4.7): a re-based batch, a synced node's own `t`,
+    else the time MC received it."""
+    if e["rebase"] is not None:
+        return int(ev.get("t", e["t_recv"])) + e["rebase"]
+    if e["synced"]:
+        return int(ev.get("t", e["t_recv"]))
+    return int(e["t_recv"])
+
+
+def _friendly(world: World, killer: str | None, victim: str) -> bool:
+    return (killer is not None and world.scenario.mode != "ffa"
+            and world.team_of(killer) == world.team_of(victim))
+
+
+def taken_facts(world: World, sc) -> list[dict]:
+    """The facts ONE scorer took, in the order it took them, each judged by the ledger and the tap alone
+    (never by MC's `post_end` list): {key, ev, kind, pid, killer, t, synced, suppress, status}.
+
+    `status` is "after_end" (its effective t is past the scorer's end_t at that call), "frozen" (a team
+    kill that reached MC after the frag-cap whistle, F356: the victim's death stands, the killer's -1 does
+    not) or "scored". A duplicate, a stale-match fact and a fact MC could not bind (`ignored`) are left out:
+    those verdicts are dedup and binding, which other invariants check."""
+    num_pid = world.num_to_pid()
+    out: list[dict] = []
+    for e in world.ingests.get(id(sc), []):
+        if e["result"] in ("dup", "parked", "ignored") or not isinstance(e["ev"], dict):
+            continue
+        key = (e["node_id"], e["seq"])
+        ev = world.ledger.facts.get(key, e["ev"]) if e["seq"] is not None else e["ev"]
+        kind = ev.get("type")
+        if kind == "possession":
+            continue
+        pid = str(ev.get("player_id"))
+        killer = num_pid.get(int(ev.get("shooter_num", 0) or 0)) if kind == "death" else None
+        if killer == pid:
+            killer = None
+        t = _eff_t(e, ev)
+        if e.get("end_t") is not None and t > e["end_t"]:
+            status = "after_end"
+        elif (kind == "death" and _friendly(world, killer, pid) and e.get("cap_recv") is not None
+              and e["t_recv"] > e["cap_recv"]):
+            status = "frozen"
+        else:
+            status = "scored"
+        out.append({"key": key, "ev": ev, "kind": kind, "pid": pid, "killer": killer, "t": t,
+                    "synced": e["synced"], "suppress": e["suppress"] or not e["synced"], "status": status})
+    return out
+
+
+def _frozen_keys(world: World, sc) -> set[tuple[str, int]]:
+    return {f["key"] for f in taken_facts(world, sc) if f["status"] == "frozen"}
+
+
 def _expected(world: World, sc, facts):
-    """What the credited facts add up to, player by player, by the ledger's account."""
+    """What the credited facts add up to, player by player, by the ledger's account.
+
+    A team kill frozen out after the frag-cap whistle (F356, integration review 2) is still the victim's
+    death: it counts as a death and as a (victim, killer) kill record, but the killer's -1 does not count."""
     num_pid = world.num_to_pid()
     post = _post_end_keys(sc)
+    frozen = _frozen_keys(world, sc)
     kills: Counter = Counter()
     deaths: Counter = Counter()
     kill_pairs: Counter = Counter()
     groups: dict[str, set] = {}
     ungrouped: Counter = Counter()
     for nid, seq, ev in facts:
-        if (nid, seq) in post:
-            continue
         victim = ev.get("player_id")
         shooter = num_pid.get(int(ev.get("shooter_num", 0) or 0))
         if shooter == victim:
             shooter = None
-        friendly = (shooter is not None and world.scenario.mode != "ffa"
-                    and world.team_of(shooter) == world.team_of(victim))
+        if (nid, seq) in frozen and ev.get("type") == "death":
+            deaths[victim] += 1
+            kill_pairs[(victim, shooter)] += 1
+            continue
+        if (nid, seq) in post:
+            continue
+        friendly = _friendly(world, shooter, victim)
         if ev.get("type") == "death":
             deaths[victim] += 1
             kill_pairs[(victim, shooter)] += 1
@@ -369,6 +430,11 @@ def multi_medal_for(chain: int) -> str | None:
 
 
 def expected_medals(world: World, entries: list[dict]) -> list[tuple[str, str, int, tuple[str, ...]]]:
+    """The medals each credited enemy kill must carry: (killer, victim, t, medals). See `medal_stream`."""
+    return [(k, v, t, m) for k, v, t, m, _multi in medal_stream(world, entries)]
+
+
+def medal_stream(world: World, entries: list[dict]) -> list[tuple[str, str, int, tuple[str, ...], int]]:
     """The medals each credited enemy kill must carry, derived from ONE scorer's input stream (the
     World's tap), as (killer, victim, t, medals) in the order the scorer took them.
 
@@ -378,11 +444,13 @@ def expected_medals(world: World, entries: list[dict]) -> list[tuple[str, str, i
     ("scored" or not) is taken as given: dedup, the stale-match park and the end freeze are the other
     invariants' business. The rules, from scoring.py and types.MEDALS:
 
-    * the chain: an enemy kill within MULTI_KILL_MS of the killer's previous enemy kill (by the scored
-      time, which may be EARLIER after a reorder) extends it; a bigger gap starts a new chain of 1. The
+    * the chain: an enemy kill 0 to MULTI_KILL_MS AFTER the killer's newest enemy kill so far (by the scored
+      time) extends it; a bigger gap starts a new chain of 1. A LATE kill (a flush or a reorder whose t is
+      before the newest kill) is a chain of 1 on its own: it never joins the running chain and never moves
+      the newest-kill time back, and the running chain goes on (integration review 1, 2026-09-25). The
       killer's own death does NOT reset the chain (only the streak).
     * A5.7 suppression (the VICTIM's node never synced, or its batch was re-based): the kill scores
-      multi 1 and leaves the chain as it was, but it still moves the killer's previous-kill time.
+      multi 1 and leaves the chain as it was, but it still moves the killer's newest-kill time forward.
     * first blood: the first credited enemy kill this scorer took.
     * a streak medal at its exact count of enemy kills without a death or a (non-operator) respawn.
     * killjoy (A63): the VICTIM's streak, before this death resets it, is at least the killjoy count.
@@ -422,7 +490,10 @@ def expected_medals(world: World, entries: list[dict]) -> list[tuple[str, str, i
         streak[killer] += 1
         multi = 1
         if not suppressed:
-            if killer in last_t and t - last_t[killer] <= MULTI_KILL_MS:
+            gap = t - last_t[killer] if killer in last_t else None
+            if gap is not None and gap < 0:
+                pass                        # a late kill: a chain of 1, the running chain untouched
+            elif gap is not None and gap <= MULTI_KILL_MS:
                 chain[killer] = chain.get(killer, 1) + 1
                 multi = chain[killer]
             else:
@@ -439,8 +510,8 @@ def expected_medals(world: World, entries: list[dict]) -> list[tuple[str, str, i
             medals.append("killjoy")
         if (m := _STREAK_COUNTS.get(streak[killer])) is not None:
             medals.append(m)
-        last_t[killer] = t
-        out.append((killer, pid, t, tuple(medals)))
+        last_t[killer] = max(last_t.get(killer, t), t)
+        out.append((killer, pid, t, tuple(medals), multi))
     return out
 
 
@@ -488,7 +559,209 @@ def medals_track_credited_kills(world: World) -> None:
                       f"imply {sorted(allowed[key])}")
 
 
+@invariant("frozen_team_kill_keeps_victim_death")
+def frozen_team_kill_keeps_victim_death(world: World) -> None:
+    """Integration review 2 (2026-09-25): a team kill that reaches MC after the frag-cap whistle (F356) is
+    still the VICTIM's death. Only the killer's -1 is frozen. The oracle reads the scorer's input stream and
+    the ledger, never MC's `post_end` list: every scored or frozen death is a death on the board, resets the
+    victim's streak, and leaves a death mark in the victim's lives (SURVIVOR and IRON MAN read them)."""
+    sc = world.session.scorer
+    if sc is None:
+        return
+    taken = taken_facts(world, sc)
+    deaths: Counter = Counter()
+    streak: Counter = Counter()
+    frozen = []
+    for f in taken:
+        if f["status"] == "after_end":
+            continue
+        pid, killer = f["pid"], f["killer"]
+        if f["kind"] == "respawn" and not f["ev"].get("operator"):
+            streak[pid] = 0
+        elif f["kind"] == "death":
+            deaths[pid] += 1
+            streak[pid] = 0
+            if f["status"] == "frozen":
+                frozen.append(f)
+            elif killer is not None and not _friendly(world, killer, pid):
+                streak[killer] += 1
+    for f in frozen:
+        st = sc.stats.get(f["pid"])
+        if st is not None and (f["t"], "d") not in st.life_marks:
+            _fail("frozen_team_kill_keeps_victim_death",
+                  f"the team kill {f['key']} on {f['pid']} landed after the whistle; its death mark at "
+                  f"t={f['t']} is missing from the victim's lives")
+    for pid, st in sc.stats.items():
+        if (st.deaths, st.streak) != (deaths.get(pid, 0), streak.get(pid, 0)):
+            _fail("frozen_team_kill_keeps_victim_death",
+                  f"{pid}: MC holds (deaths, streak)=({st.deaths}, {st.streak}), the facts it took say "
+                  f"({deaths.get(pid, 0)}, {streak.get(pid, 0)}); team kills after the whistle: "
+                  f"{[(f['key'], f['pid'], f['killer']) for f in frozen]}")
+
+
+@invariant("multi_chain_monotonic")
+def multi_chain_monotonic(world: World) -> None:
+    """Integration review 1 (2026-09-25): a multi-kill chain only moves forward in time. A kill that
+    carries a chain count of 2 or more is 0 to MULTI_KILL_MS after the killer's newest earlier enemy kill,
+    and extends the chain by one. A late kill (a flush whose t is older than that newest kill) is never
+    part of a chain, however old it is. Read off MC's own kill list, in the order MC took the kills."""
+    sc = world.session.scorer
+    if sc is None:
+        return
+    newest: dict[str, int] = {}
+    for i, k in enumerate(sc.kills):
+        killer = k.get("killer")
+        if not killer or k.get("friendly") or k.get("frozen"):
+            continue
+        t, multi = int(k["t"]), int(k.get("multi", 1))
+        if multi >= 2:
+            last = newest.get(killer)
+            if last is None or not 0 <= t - last <= MULTI_KILL_MS:
+                _fail("multi_chain_monotonic",
+                      f"kill #{i + 1} ({killer} on {k['victim']} at t={t}) carries chain {multi}, but the killer's "
+                      f"newest earlier kill is at {last} (gap {None if last is None else t - last} ms, "
+                      f"window 0..{MULTI_KILL_MS})")
+        newest[killer] = t if killer not in newest else max(newest[killer], t)
+
+
+def _scorers_of(world: World, match_id: str) -> list:
+    return [s for sid, s in world.scorers.items() if getattr(s, "match_id", None) == match_id and world.ingests.get(sid)]
+
+
 # ------------------------------------------------------------------------------ end of the run
+@invariant("recap_medals_equal_live_cues", when="end")
+def recap_medals_equal_live_cues(world: World) -> None:
+    """Integration review 3 (2026-09-25): the recap shows the medals the players heard. Every kill cue a node
+    received carries the same medals as that kill in the final scorer, and the player's recap row shows each
+    cued medal at least as often as it was cued (or an honour that stands for it).
+
+    Only for a match whose scorer was never replaced by a replay (a reconcile, a resume or a frag-cap move):
+    the replay judges streak medals in t order, the live path in arrival order, and A63 lets a re-scored
+    recap differ from what was heard (the parent's decision on MEDIUM 3). One-way, as the other cue
+    invariants: MC skips a cue by design, and a cued kill a late fact parked is not in the recap."""
+    s = world.session
+    sc = s.scorer
+    if sc is None or s.last_recap is None or len(_scorers_of(world, sc.match_id)) > 1:
+        return
+    final: dict[tuple[str, str, int], list[tuple[str, ...]]] = {}
+    for k in sc.kills:
+        if k.get("killer") and "medals" in k:
+            final.setdefault((k["killer"], k["victim"], int(k["t"])), []).append(tuple(k["medals"]))
+    labels = {m["key"]: m["label"] for m in MEDALS}
+    alias = {m["label"]: "MULTIKILL" for m in MEDALS if m["kind"] == "multi"}
+    rows = {r["player_id"]: r.get("medals") or [] for r in s.last_recap.get("rows") or []}
+    for n in world.nodes:
+        heard: Counter = Counter()
+        for fb in n.feedback:
+            if fb.get("kind") != "kill" or fb.get("player_id") is None:
+                continue
+            key = (str(fb["player_id"]), str(fb.get("victim")), int(fb.get("t", 0) or 0))
+            if key not in final:
+                continue
+            got = tuple(fb.get("medals") or ())
+            if got not in final[key]:
+                _fail("recap_medals_equal_live_cues",
+                      f"node {n.index} heard {list(got)} for {key}; the recap's kill carries {final[key]}")
+            heard.update(got)
+        pid = world.players[n.index]["player_id"]
+        chips: dict[str, int] = {}
+        for chip in rows.get(pid, []):
+            base, _x, cnt = str(chip).partition(" ×")
+            chips[base] = max(chips.get(base, 0), int(cnt) if cnt.isdigit() else 1)
+        for key, count in heard.items():
+            label = labels.get(key)
+            if label is None or alias.get(label) in chips:
+                continue
+            if chips.get(label, 0) < count:
+                _fail("recap_medals_equal_live_cues",
+                      f"{pid} heard {label} {count} time(s); the recap row shows {rows.get(pid)}")
+
+
+@invariant("honors_full_ledger", when="end")
+def honors_full_ledger(world: World) -> None:
+    """A63: MVP, SURVIVOR, IRON MAN and MULTIKILL recomputed from the facts the final scorer took (the tap
+    and the ledger, never MC's rows or `post_end`), and compared with the recap's honours.
+
+    * MVP: the top (kills - deaths, K/D, kills), with 1+ kill.
+    * IRON MAN: among players who were there from go-live and whose phone reported, the fewest deaths, then
+      the most kills; fewer deaths than the most.
+    * MULTIKILL: the best chain (2+), then the number of chains of 2+.
+    * SURVIVOR: the longest single life to the whole second (go-live, the join, a respawn or a team change to a
+      death or the end), not for a silent player or one with a fact from an unsynced node, and not when
+      every player ties."""
+    s = world.session
+    sc = s.scorer
+    if sc is None or s.last_recap is None or len(sc.stats) < 3:
+        return
+    honors = s.last_recap.get("honors") or []
+    taken = [f for f in taken_facts(world, sc) if f["status"] != "after_end"]
+    kills: Counter = Counter()
+    deaths: Counter = Counter()
+    marks: dict[str, list[tuple[int, str]]] = {}
+    unsynced: set[str] = set()
+    for f in taken:
+        pid, killer = f["pid"], f["killer"]
+        if f["kind"] in ("hit_taken", "death", "respawn", "team_change") and not f["synced"]:
+            unsynced.add(pid)
+        if f["kind"] == "death":
+            deaths[pid] += 1
+            marks.setdefault(pid, []).append((f["t"], "d"))
+            if killer is not None and f["status"] != "frozen":
+                kills[killer] += -1 if _friendly(world, killer, pid) else 1
+        elif f["kind"] in ("respawn", "team_change"):
+            marks.setdefault(pid, []).append((f["t"], "r"))
+    multis: dict[str, list[int]] = {}
+    for killer, _v, _t, _m, multi in medal_stream(world, world.ingests.get(id(sc), [])):
+        if multi >= 2:
+            multis.setdefault(killer, []).append(multi)
+    pids = list(sc.stats)
+    silent = set(s.last_recap.get("missing") or [])
+
+    def top(pool, rank) -> set[str]:
+        ranked = [(p, rank(p)) for p in pool]
+        if not ranked:
+            return set()
+        best = max(r for _p, r in ranked)
+        return {p for p, r in ranked if r == best}
+
+    def kd(p: str) -> float:
+        return kills[p] / max(deaths[p], 1)
+
+    want: dict[str, set[str]] = {}
+    want["mvp"] = {p for p in top(pids, lambda p: (kills[p] - deaths[p], kd(p), kills[p])) if kills[p] > 0}
+    full = [p for p in pids if p not in world.late_pids and p not in silent]
+    most = max((deaths[p] for p in full), default=0)
+    want["iron_man"] = {p for p in top(full, lambda p: (-deaths[p], kills[p])) if deaths[p] < most}
+    # a chain's length is its count when it reached 2 or more; a chain of n shows as multis 2..n
+    best = {p: max(ms) for p, ms in multis.items()}
+    n_chains = {p: sum(1 for m in ms if m == 2) for p, ms in multis.items()}
+    want["multikill"] = top([p for p in pids if best.get(p, 0) >= 2], lambda p: (best[p], n_chains[p]))
+    end = sc.end_t if sc.end_t is not None else sc.now_ms()
+
+    def longest(p: str) -> int:
+        start: int | None = max(sc.go_live_t, sc.joined_t.get(p, sc.go_live_t))
+        life = 0
+        for t, kind in sorted(marks.get(p, [])):
+            if kind == "d":
+                if start is not None:
+                    life = max(life, t - start)
+                start = None
+            elif start is None:
+                start = t
+        if start is not None:
+            life = max(life, end - start)
+        return max(0, life)
+    lives = [p for p in pids if p not in silent and p not in unsynced]
+    life = {p: longest(p) for p in lives}
+    sv = top(lives, lambda p: life[p] // 1000)
+    want["survivor"] = sv if sv and len(sv) < len(lives) and life[next(iter(sv))] > 0 else set()
+    for key, pids_want in want.items():
+        have = {h["player_id"] for h in honors if h.get("key") == key}
+        if have != pids_want:
+            _fail("honors_full_ledger", f"{key.upper()} went to {sorted(have)}; the facts say {sorted(pids_want)} "
+                                        f"(kills {dict(kills)}, deaths {dict(deaths)}, chains {multis})")
+
+
 @invariant("honors_from_ledger", when="end")
 def honors_from_ledger(world: World) -> None:
     """A63: the recap's awards name only rostered players under their AWARDS key and label, none under 3

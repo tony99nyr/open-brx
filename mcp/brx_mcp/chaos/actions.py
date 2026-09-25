@@ -121,6 +121,60 @@ async def timed_kill(world: World, victim: int, shooter: int, at_ms: int) -> Non
     n.die_at(num, tid, world.timeline_t0 + at_ms)
 
 
+LATE_FLUSH_AGES_MS = (5_000, 9_000, 20_000)
+
+
+def _recent_killers(world: World) -> list[int]:
+    """Node indices of players the ledger shows with an enemy kill (the killers a late kill can wrongly chain)."""
+    num_idx = {p["player_num"]: i for i, p in enumerate(world.players)}
+    out = []
+    for (_nid, _s), ev in world.ledger.facts.items():
+        i = num_idx.get(int(ev.get("shooter_num", 0) or 0))
+        if ev.get("type") == "death" and i is not None and i < len(world.nodes) and i not in out:
+            out.append(i)
+    return out
+
+
+def _pick_late_flush(world: World, rng: random.Random):
+    alive = world.alive_nodes()
+    killers = [i for i in _recent_killers(world) if world.nodes[i].arm_state == "live"]
+    rng.shuffle(killers)
+    for k in killers:
+        kt = world.players[k]["team_id"]
+        victims = [n for n in alive if n.index != k
+                   and (world.scenario.mode == "ffa" or world.players[n.index]["team_id"] != kt)]
+        if victims:
+            return {"victim": rng.choice(victims).index, "shooter": k, "age_ms": rng.choice(LATE_FLUSH_AGES_MS)}
+    return None
+
+
+@action("late_flush", pick=_pick_late_flush)
+async def late_flush(world: World, victim: int, shooter: int, age_ms: int) -> None:
+    """A node flushes a kill it held: the death reaches MC now, stamped `age_ms` in the past (a phone that
+    was out of coverage, or a batch that waited on a slow link). Its t is BEFORE the shooter's newest kill,
+    so it must never join or restart that killer's multi-kill chain (integration review 1)."""
+    n = world.nodes[victim]
+    num, tid = _shooter(world, shooter)
+    n.die_at(num, tid, n.synced_now() - age_ms)
+
+
+def _pick_melee_kill(world: World, rng: random.Random):
+    return _pick_kill(world, rng)
+
+
+@action("melee_kill", pick=_pick_melee_kill)
+async def melee_kill(world: World, victim: int, shooter: int) -> None:
+    """An enemy kill by melee: the death fact carries `melee: true`, so MC awards BEAT DOWN (`melee_kill`),
+    stacked with any chain or streak medal."""
+    n = world.nodes[victim]
+    if not n.alive:
+        return
+    num, tid = _shooter(world, shooter)
+    n.alive = False
+    n.hp = 0
+    n.emit({"type": "death", "shooter_num": num, "shooter_team": tid, "melee": True})
+
+
 def _pick_unknown_shooter(world: World, rng: random.Random):
     alive = world.alive_nodes()
     if not alive:

@@ -9,6 +9,10 @@ import { CLIP_MS } from '../src/announcer.js';
 test('every ladder medal has the HUD label the contract gives it', () => {
   for (const m of MEDALS) assert.equal(MEDAL_LABEL[m.key], m.label, m.key);
 });
+test('the HUD labels no medal key that MC never sends (MC sends melee_kill, not beat_down)', () => {
+  const sent = new Set(MEDALS.map(m => m.key));
+  for (const key of Object.keys(MEDAL_LABEL)) assert.ok(sent.has(key), key);
+});
 test('every voiced ladder medal has its clip length in the announcer', () => {
   for (const m of MEDALS) if (m.clip) assert.equal(CLIP_MS[m.clip], m.clip_ms, m.clip);
 });
