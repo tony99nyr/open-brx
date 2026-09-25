@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-09-25 (F375 filed).
+Updated: 2026-09-25 (F375 filed; F164 and F161 closed; F342 to the bench).
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -9,16 +9,16 @@ Updated: 2026-09-25 (F375 filed).
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 58.** Desk 11 · bench 47 · decision 0.
+**MVP open: 56.** Desk 8 · bench 48 · decision 0.
 
-**MVP DESK (11),** a keyboard is enough:
-- 🟠 **F164** · **B21** · **F372** · **F221** · **F374**
-- 🟡 **F342** · **Q13** · **F333** · **S32** · **F319** · **F161**
+**MVP DESK (8),** a keyboard is enough:
+- 🟠 **B21** · **F372** · **F221** · **F374**
+- 🟡 **Q13** · **F333** · **S32** · **F319**
 
-**MVP BENCH (47),** needs a gun, a Stick, phones or a field (the order is the bench plan):
+**MVP BENCH (48),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F341** · **F347** · **F348** · **B26** · **F232** · **F293** · **F297** · **F264** · **F275** · **Q15** · **F231** · **F198** · **S10**
 - 🟠 **F349** · **F308** · **F332** · **H9** · **S58** · **F365** · **S57** · **F269** · **F272** · **F274** · **F277** · **F226** · **F158** · **F50** · **F237** · **F219** · **F152** · **F340** · **F345** · **F311** · **F375**
-- 🟡 **F350** · **H8** · **F353** · **F298** · **F3** · **F21** · **F270** · **F322** · **F309** · **F292** · **F296** · **F294**
+- 🟡 **F350** · **H8** · **F353** · **F298** · **F342** · **F3** · **F21** · **F270** · **F322** · **F309** · **F292** · **F296** · **F294**
 - 🟢 **F339**
 
 **MVP DECISION (0),** awaiting Tony:
@@ -51,17 +51,6 @@ every relative link in `docs/` resolves. `~/.brx-mcp/armory.json`, `device-backu
 
 A keyboard is enough. Highest value first.
 
-- **F164 🟠 A reconcile hands out a FREE FULL MAGAZINE, on any reconcile.** `engine.js` `_endReconcile()`
-  re-arms both slots from `frames.spawn`'s `$AMMO` — the SPAWN magazine plus the spawn reserve — whatever
-  the reconcile was. So even a genuine BLE drop mid-firefight (and F163's watchdog, if it is ever turned
-  on) refills a player who was one round from empty: exactly the resume-gap cheat `RESUME_GAP_MS` exists
-  to deny, arriving through the door beside it. It should re-arm from the LAST-KNOWN LIVE counts (the
-  `$ALCD`/`$LCD` the phone already tracks) and fall back to the spawn frame only when it has never seen a
-  count this life. Pre-existing S7.1 behaviour, found by the round-2 review of the 2026-09-12 field
-  branch; separate from F163 and not fixed in that pass.
-
-- **F342 🟡 THE BEACON SCAN FLOODS THE BRIDGE IN A STATION GAME.** Field 2026-09-24 (Pixel 5): 60 results/s (budget 25) about 2 s after phase armed, during the T-3 hit table and the T-0 spawn burst, and 78 results/s at the lowest scan mode (scanMode 0) at 21:07, from station, Stick and player adverts. Fixed 2026-09-24: in a respawn-only station game the scan is open only while the player is down (only a down player reads a respawn station), and a gun reconnect inside the match no longer resets the guard's lowered mode. Open: a game with a powerup station or a phone control point still scans while alive and still floods at the floor. The plugin cannot filter natively (one 128-bit UUID whose low bytes carry state, no mask). Candidates: a slower Stick advert (`setMinInterval(0x50)`, 50 ms, in `hardware/m5sticks3`), or a native filter. `build` `decision`.
-
 - **Q13 🟡 DECIDED, TEAM DAMAGE: OFF; verify and label it.** Friendly fire is invisible on the wire (a team-blocked shot emits no `$HIR`). Either run FF on and
   score teamkills as policy, or accept no teamkill feedback. Decide before any mode advertises it. **→ 2026-09-18:** with the F206 fix in, friendly fire off works in team games;
   a blocked shot still emits no `$HIR`, so the choice stands. `decision`. **→ Tony 2026-09-25, decided:** team modes ship with friendly fire OFF, and same-team damage is never enabled ("you could shoot yourself and be annoying team killing. do not enable same team damage"). No teamkill feedback is needed for MVP. Check that compile keeps friendly fire off in every team mode (`$GSET` and `$TID`), and that nothing lets a player damage their own team or themselves. `build` (verify). Wording (Tony 2026-09-25: "you should not be able to hit or damage your teammates or yourself"): label the setting by behaviour on every host surface ("TEAM DAMAGE: OFF"), not "friendly fire on/off", which reads both ways.
@@ -83,8 +72,6 @@ A keyboard is enough. Highest value first.
  **→ Tony 2026-09-25, decided a RULE instead of row-by-row marks** ("this was sorely needed the amber and red color use is all over the place"): RED = act now, or the game is wrong (MC offline/stale board, GUN POOLS WRONG, the KOTH grenade-vs-control conflict, a gun link lost DURING a match, a tunnel down while phones depend on it, a console crash). AMBER = fix before the next match (battery under 30%, a restored roster, an MC server older than the UI, an older config acked, a phone waiting for its gun, a station attention line, a gun link lost in the LOBBY). NEUTRAL (no colour) = status only (BENCH VOL, SENDING/HOLDING, a -dirty build stamp, the operator-token prompt, a single NO SOCKET). Two-tap hazard buttons and drop-your-draft confirms are not warnings and stay as they are. Build: one severity helper in webapp/mc (a colour by severity, not by caller), re-audit EVERY current amber/red call site against the rule (the 2026-09-16 audit is stale after the VQA passes), apply it, and add a test that pins each warning's severity. `build`. The conventions gallery (`C:\Users\Tony\brx-mc-alerts\index.html`) is the approved source of truth.
 
 
-
-- **F161 🟡** HUD gun picker does not refresh live: a gun powered on while the list is open updates the RSSI bars but never appears until "Set my gun" is tapped again (field 2026-09-12). `build`.
 
 ## MVP BENCH
 
@@ -146,6 +133,8 @@ sheets that [`bench-plan.md`](bench-plan.md) names; the order of the next sittin
 - **S57 🟠 THE IR CALLOUT BUS: GAME-STATE CALLOUTS GUN TO GUN, WITH NO NETWORK.** Tony 2026-09-23: a priority. When someone dies, a hill is captured, and so on, the phone that knows the event has its gun broadcast one `$IRTX` word (Direction 100, protocol 15, magnitude = event code, player id = who). Every gun in IR range reports it as a silent `$HIR` with no pool change (bench 2026-09-18, magnitudes 1-39), and each receiving phone plays the local callout (ENEMY DOWN, TEAMMATE DOWN, HILL CAPTURED, KILL CONFIRMED for the shooter). A dead gun still forwards a host `$IRTX` through its headset, so the victim's phone can send its own death. Presentation only: scoring stays with the victims' reports and MC (S56's relay). Design first: the event-code table, dedupe (a word can arrive twice), team gating, and how it sits beside the S56 relay. Supersedes B31's BLE-advert design. Firmware question for the dig (brx5): how protocol 15 is handled, and what `VB0Q` "Hill Moved" is. **→ 2026-09-23 (desk, from the 2026-09-18 bench log):** already proven: a dead gun forwards a host `$IRTX` through its headset; magnitudes 1-39 on a `<15,0>` fn 28 row register as a silent `$HIR` with no pool change (player 0, team 3); fn 28 does not register an ally with `$GSET` t1 = 0; and a DEAD receiver ignores fn 28, so a dead player's gun hears no callout on that row. Open, and on `bench-2026-09-24.md`: the sender's own self-report, team gating for field 4 = 0-3, `$HIR` duplicates and their spacing (the 600 ms dedupe), the exact 21-28 frame with a non-zero player, dead-receiver fn 34, and range against a live shot. **→ 2026-09-23: BUILT (A54), deaths and kills only (Tony).** One word per death (A55 added a second, naming the victim, when the killer is known), sent once from the victim's own gun, never relayed (Tony: every event is one word from the gun where it happened; hill 29-32 and flag 33-36 captures are reserved). `DOWN_BY` 21 + victim tid names the killer; `DOWN` 25 + victim tid names the victim. Receivers: KILL CONFIRMED (first to arrive, once, against MC's feedback, paired one-to-one), ENEMY DOWN ("Target down." VB8), TEAMMATE DOWN (chip only, Tony). MC ships the silent `<15,0>` row in every mode and `callout_team`. Do: run the `bench-2026-09-24.md` S57 steps; if team 2 is a true broadcast team, `callout_team` becomes a constant 2; if fn 34 on `<15,0>` keeps a dead gun dead, dead players can hear callouts too. **→ 2026-09-23, objective events:** a grenade hill already follows the rule (its magnitude-50 capture word is the one broadcast); an M5Stick hill now sends that same word once on a flip, so phones need no new code (under `station_source: grenade`; the Stick's value is H8); a phone control point's BLE advert is its one broadcast; 29-36 are reserved for CTF (not built). F312: with friendly fire off the capturing team may not hear its own capture; Block 7 step 8. `bench`. **→ 2026-09-24 evening (bench 7.11):** measured, `$IRTX,100,15,2,0,22,…` ×10 at about 2 m, all received as 22. The victim-name word 26 registered 5/5 alone, but is LOST IN PLAY, because it is sent 186 ms after the 22, inside the headset's 199 ms rate guard; brx4 is fixing it in 0.4.12 (300 ms, measured from the actual send). Tonight's match saw one 22→28 sequence, which stays unexplained. Reading: a collision in play. **→ 2026-09-24, the fix is on main:** `CALLOUT_NAME_GAP_MS` 300 ms after the first word is written, and receivers pair a `DOWN` 250 to 800 ms after its `DOWN_BY` (`docs/ir-callouts.md`, A55). Open: the rest of Block 7 on a build that carries it.
 
 - **F375 🟠 THE "HEALTH CRITICAL" LINE PLAYS AFTER THE DEATH SCREAM.** Field 2026-09-24, Tony, seen several times: the low-health line (VA86) followed the scream. His rule: a critical-health sound is useless while the player is down, so it never plays after a death, and a death that is coming clears it. The same symptom as the closed F149 and post-MVP F214. Two mechanisms, from the code and the gun simulator, neither proven on a gun: (1) on 0.4.11 the line queued behind another clip, and F149's one `$PLAYX` stopped that clip instead (`audio-queue-scenarios.md` scenario 6; X4 on 2026-09-25 counts the clips ahead); (2) the gun screams on the lethal `$HP,0` before the phone hears it, so a line written in that gap queues behind the scream, and the death stop cuts the scream (reproduced in `announcer.test.mjs`). **→ 2026-09-25 fixed in code:** the line now waits until no damaging `$HP` for 400 ms and a quiet gun model (at most 3 s), and a death, a heal or a match end drops it (`engine.js` `_onHp`, mirrored in `stage.py` and `audio-scenarios.mjs`). A lethal hit right after a pause of about 400 ms can still meet the gap (about one BLE delay wide). `bench`: runbook step 11.8 step 6.
+
+- **F342 🟡 THE BEACON SCAN FLOODS THE BRIDGE IN A STATION GAME.** Field 2026-09-24 (Pixel 5): 60 results/s (budget 25) about 2 s after phase armed, during the T-3 hit table and the T-0 spawn burst, and 78 results/s at the lowest scan mode (scanMode 0) at 21:07, from station, Stick and player adverts. Fixed 2026-09-24: in a respawn-only station game the scan is open only while the player is down (only a down player reads a respawn station), and a gun reconnect inside the match no longer resets the guard's lowered mode. Open: a game with a powerup station or a phone control point still scans while alive and still floods at the floor. The plugin cannot filter natively (one 128-bit UUID whose low bytes carry state, no mask). No phone desk work is left (checked 2026-09-25). Candidates: a slower Stick advert (today `setMinInterval(0x50)`, 50 ms, in `hardware/m5sticks3`; owner brx4), or a native filter. Measure the flood in a powerup game at the bench first. `bench` `decision`.
 
 - **F3 🟡** empty-mag / reload prompt never appeared on sustained full-auto. Gun and engine are eliminated from captures;
   what is left is the phone transport/render layer. Needs the phone's BLE frame ring (Share log before closing the app). `capture`. **→ 2026-09-25:** a quick check in sitting C (runbook step 11.8) before any capture work.

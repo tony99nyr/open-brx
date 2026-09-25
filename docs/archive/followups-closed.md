@@ -739,7 +739,6 @@ block's *internal* statuses were true when it closed and may since have been sup
   `docs/announcer.md`.
 - 2026-09-25 **F361** decided (Tony): KILLJOY keeps the green gun flash, like every medal;
   `test_mc_awards.py::test_killjoy_keeps_its_gun_flash_like_every_medal` guards it.
-<<<<<<< HEAD
 - 2026-09-25 **F368** decided and built (Tony: "the brx-alerts are very thorough. ship it"): the phone HUD layering
   model, `docs/announcer.md` "Layering and priority on the phone HUD". Warnings in a bottom-centre status rail, a kill
   card that waits for a takeover; gates `layering` and `F368` in `app/tools/screens.mjs`.
@@ -747,7 +746,6 @@ block's *internal* statuses were true when it closed and may since have been sup
   Tony can revisit.
 - 2026-09-25 **F371** decided as shown (Tony, from the gallery): the other MC alerts stay in the left FEED lane, not
   a full-width banner. Tony can revisit.
-=======
 
 # Closed 2026-09-25: the final docs pass (the MVP split)
 
@@ -786,4 +784,9 @@ closed in the same pass, each checked against the code, the git log or the exper
   bevelled iron heart, in `app/src/hud/medalicons.js` (style B); `app/test/medal-icons.test.mjs` fails on either placeholder.
 - 2026-09-25 **F366** decided and built (Tony: "366 sounds good", brx3): a gamertag is at most 16 characters (`MAX_TAG_LEN`), and MC refuses a longer one with a 400 instead of cutting it at 24. From 13 to 16 (`SOFT_TAG_LEN` 12) the ARMORY claim and the KIT add and rename fields warn that the phone HUD may shorten it. Both numbers are in the generated contract. A stored longer tag keeps working and shows the refusal on its rename field. **→ 2026-09-25, the HUD rename note is built**: the pre-game/lobby/kit screen nudges a player past `MAX_TAG_LEN` ("YOUR TAG IS OVER 16 LETTERS · ASK THE HOST TO SHORTEN IT"), never in a match — `app/src/hud/hud.js` (`tagTooLong`, `_lobby`), `app/test/gamertag-length.test.mjs`, `app/tools/screens.mjs` "F366 lobby-long-tag"/"F366 live-long-tag".
 - D5 2026-09-25: Deagle kept; Extended Mags +50% on pistols, x2 elsewhere (Tony).
->>>>>>> origin/main
+- 2026-09-25 **F164** fixed (brx2): a reconcile re-arms each slot to the live counts snapshotted at `_beginReconcile`
+  (the spawn row only for a slot never counted this life), the counts survive an app restart, and the disarm echo
+  books no shots. Rounds fired while the link was down still come back (a bounded refund). Three F164 tests in
+  `engine.test.mjs`; `docs/spec/node.md` updated.
+- 2026-09-25 **F161** already fixed by the F258 picker rewrite (2026-09-18): a gun that appears while the list is open
+  gets its row at the next paint. `app/test/gunpicker-live.test.mjs` guards it on the real `_idle()` markup.

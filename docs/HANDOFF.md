@@ -35,6 +35,8 @@ auto-join, death first) plus a rewritten 4.11 (the claim calibration, phone stat
 - **Next bench task:** [`bench-2026-09-25.md`](bench-2026-09-25.md), sitting A first (it gates 0.4.12); Block 10
   step 4 settles F347's `$PSET` t23 value, do not ship a t23 change before it. Then the LATER list, by setup:
   screamers A7/A8 (F269, F270), A1c/A13 (F272, F274), sitting 5 (F264, F277, F237).
+2026-09-25 desk (for brx1): F164 fixed (a reconcile re-arms the live counts, also after an app restart); F161 was
+already fixed by F258, now guarded by a test; F342 has no phone desk work left and moved to bench sitting C.
 - **Next desk task:** none open. R4/T5 read-only research is authorised; flashing stays decision first.
 - **Blocked:** F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
 ## Lane: brx3, releases and Mission Control
@@ -59,8 +61,7 @@ lock (F332), a pickup claim at any strength (`e879b9db`), `presence.h`, the host
 On main: S58 powerups behind `--powerups` (the heavy on the trigger, SELECT toggles, the protected overshield, no
 claim RSSI floor, a phone powerup station advertises -55); S59 Visor; F348/F349; death first (`7173d400`); the
 three-lane alerts and the style B recap icons.
-- **Next desk task:** F347's compile change once sitting A picks a silent t23; BEAT DOWN's B6 icon; F350's clip once Tony picks it; F164
-  (a reconcile re-arms from the last-known counts, not the spawn magazine); F161 (the gun picker refreshes live);
+- **Next desk task:** F347's compile change once sitting A picks a silent t23; BEAT DOWN's B6 icon; F350's clip once Tony picks it;
   F372 (powerups on by default, after sitting C) with the calibrated claim thresholds.
 - **Next bench task:** sitting C's powerup setup (11.3) and 11.8.
 
@@ -68,7 +69,7 @@ three-lane alerts and the style B recap icons.
 
 1. **Next sitting:** [`bench-2026-09-25.md`](bench-2026-09-25.md), sitting A first (it gates 0.4.12); record
    evidence and promote or close each row from the result.
-2. **Desk:** the FOLLOWUPS MVP DESK group, highest value first (F164, F342, Q13, B21, F372).
+2. **Desk:** the FOLLOWUPS MVP DESK group, highest value first (B21, F372, Q13).
 3. **Decisions for Tony:** the FOLLOWUPS MVP DECISION group.
 4. **Only after MVP:** [`post-mvp.md`](post-mvp.md) is the roadmap; nothing there is scheduled.
 
