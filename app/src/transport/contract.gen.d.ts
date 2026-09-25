@@ -425,7 +425,11 @@ export interface PerkEffects {
   /** floored at 0 (`compile.armed_armor`/`armed_shield`)
    *  scales the clip/reserve the head writes */
   ammo_mult?: number;
-  /** scales the weapon's reload time */
+  /** D5 (2026-09-25, docs/perk-design.md §2): extended_mags' override for a */
+  ammo_mult_pistol?: number;
+  /** pistol primary (role `sidearm` or the `pistol` tag) -- read instead of
+   *  `ammo_mult`, and rounded DOWN (`compile.py` `WeaponCatalog._ammo`)
+   *  scales the weapon's reload time */
   reload_mult?: number;
   /** unused by any current row (S50: easy_reload moved to */
   alt_reload?: boolean;

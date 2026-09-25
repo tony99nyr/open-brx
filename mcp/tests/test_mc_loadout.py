@@ -372,6 +372,39 @@ def test_compile_perk_effects():
     assert any(f == "$AMMO,0,32,192,1,*" for f in tut)
 
 
+def test_extended_mags_is_half_price_on_a_pistol_primary():
+    """D5 (2026-09-25, docs/perk-design.md §2): Tony kept the Deagle as shipped and ruled that Extended
+    Mags still applies to a pistol carried as the primary, but at +50% magazine and reserve (rounded
+    down), not the usual ×2 -- a rifle-sized magazine strapped to a pistol frame does not fit. The rule
+    is data (`perks.json` extended_mags.effects.ammo_mult_pistol), read in the one place the compiler
+    applies `ammo_mult` (`WeaponCatalog._ammo`), so it can never drift between the compiled frame and
+    the phone's own `$AMMO` report.
+    """
+    # USP-S: mag 12 -> 18, reserve 120 -> 180 (both exact at +50%, no rounding to prove).
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "usp"}], "perk": "extended_mags"}), _TEAMS)
+    f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
+    assert _tok(f, 16) == _tok(f, 39) == "18"
+    assert _tok(f, 17) == "180" and _tok(f, 40) == "90"
+    assert "$AMMO,0,18,180,1,*" in b["spawn"] and "$AMMO,0,18,180,1,*" in b["revive"]
+
+    # Desert Eagle: mag 7 -> 10 (7 * 1.5 = 10.5, ROUNDED DOWN, not to 11), reserve 48 -> 72.
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "deagle"}], "perk": "extended_mags"}), _TEAMS)
+    f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
+    assert _tok(f, 16) == _tok(f, 39) == "10"
+    assert _tok(f, 17) == "72" and _tok(f, 40) == "36"
+    assert "$AMMO,0,10,72,1,*" in b["spawn"]
+
+    # Deagle's own damage and cadence are UNCHANGED by D5 -- Tony kept it as shipped.
+    deagle_row = next(r for r in ROWS if r["weapon_id"] == "deagle")
+    assert deagle_row["wire"]["dmg"] == 26 and deagle_row["wire"]["fire_ms"] == 700
+    assert int(_tok(f, 5)) == 26 and int(_tok(f, 14)) == 700
+
+    # A non-pistol primary (the Assault Rifle) keeps the plain ×2 -- the D5 rule never touches it.
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "extended_mags"}), _TEAMS)
+    f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
+    assert _tok(f, 16) == _tok(f, 39) == "64"                            # 32 * 2, not 32 * 1.5
+
+
 def test_armour_piercing_is_priced_fairly_on_every_weapon_that_carries_it():
     """The triangle, as a test (weapon-design.md §7.2, §7.7).
 

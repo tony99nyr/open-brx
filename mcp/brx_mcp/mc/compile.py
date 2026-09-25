@@ -1246,14 +1246,28 @@ class WeaponCatalog:
         return max(0, int(round(base * sm)))
 
     @staticmethod
-    def _mods(mods: dict | None, mag: int, reserve: int, reload_ms: int) -> tuple[int, int, int]:
+    def _is_pistol(w: dict) -> bool:
+        """D5 (2026-09-25, docs/perk-design.md §2): a pistol-class weapon -- role `sidearm` or the
+        `pistol` tag (today the same three rows, usp/deagle/glock, but a future row need only carry
+        one of the two to qualify). The one place `_ammo` asks whether extended_mags' cheaper
+        `ammo_mult_pistol` applies instead of the plain `ammo_mult`."""
+        return w.get("role") == "sidearm" or "pistol" in (w.get("tags") or [])
+
+    @staticmethod
+    def _mods(mods: dict | None, mag: int, reserve: int, reload_ms: int, *, floor: bool = False) -> tuple[int, int, int]:
         """Apply passive-perk knobs (loadout.md §2): `ammo_mult` scales mag + reserve, `reload_mult`
-        scales reload_ms. Integers, never below 1 round / 0 ms."""
+        scales reload_ms. Integers, never below 1 round / 0 ms.
+
+        `floor` (D5, 2026-09-25): the pistol-class `ammo_mult_pistol` substitution rounds mag/reserve
+        DOWN, never to the nearest -- Tony's rule for the +50% pistol case, deliberately not the
+        round-to-nearest every other `ammo_mult` use keeps (`_ammo` sets it only for that
+        substitution)."""
         if not mods:
             return mag, reserve, reload_ms
         am = float(mods.get("ammo_mult") or 1)
         rm = float(mods.get("reload_mult") or 1)
-        return (max(1, int(round(mag * am))), int(round(reserve * am)),
+        rnd = (lambda v: int(v)) if floor else (lambda v: int(round(v)))
+        return (max(1, rnd(mag * am)), rnd(reserve * am),
                 max(0, int(round(reload_ms * rm))))
 
     def _ammo(self, weapon_id: str, mods: dict | None) -> tuple[int, int, int]:
@@ -1267,9 +1281,17 @@ class WeaponCatalog:
         The rounding follows the INVARIANT, not the code path: only a captured frame carries the
         tok40 mirror, so a legacy-template row (synthetic test catalogs, no `capture`) writes its
         reserve straight to tok41 and must keep an odd one intact (review 2026-09-01).
+
+        D5 (2026-09-25): a perk's `ammo_mult_pistol` (extended_mags' only user today) replaces
+        `ammo_mult` when this weapon is a pistol (`_is_pistol`), rounded down. This is the ONE place
+        that substitution happens, so `resolve()`, `spawn_ammo()` and `perk_effects_resolved()` (every
+        caller of `_ammo`) apply it identically; nothing downstream re-derives it.
         """
         w = self._row(weapon_id)
-        mag, reserve, reload_ms = self._mods(mods, int(w["mag"]), int(w["reserve"]), int(w["reload_ms"]))
+        pistol_mult = mods.get("ammo_mult_pistol") if mods and self._is_pistol(w) else None
+        eff_mods = {**mods, "ammo_mult": pistol_mult} if pistol_mult and mods else mods
+        mag, reserve, reload_ms = self._mods(eff_mods, int(w["mag"]), int(w["reserve"]), int(w["reload_ms"]),
+                                              floor=bool(pistol_mult))
         if (w.get("capture") or {}).get("frame"):
             reserve = (reserve // 2) * 2
         return mag, reserve, reload_ms
@@ -2348,7 +2370,7 @@ class Compiler:
                 "damage. Move the player to tid 0, 1 or 3.")
         w0, w1 = self._weapon_ids(player)
         fx = self.perk_effects(player)                    # ammo/reload knobs act on the PRIMARY only …
-        mods = {k: fx[k] for k in ("ammo_mult", "reload_mult", "switch_mult") if fx.get(k)}
+        mods = {k: fx[k] for k in ("ammo_mult", "ammo_mult_pistol", "reload_mult", "switch_mult") if fx.get(k)}
         swap_mods = {k: mods[k] for k in ("switch_mult",) if k in mods}   # … the swap delay must scale on EVERY slot (the gun takes the larger)
         # S50 (Armour Piercing perk): PRIMARY ONLY. `_refuse_if_ap_ineligible` raises before anything
         # is written for a weapon whose damage key is already special (a charge weapon, or a stock

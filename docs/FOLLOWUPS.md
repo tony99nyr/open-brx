@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-09-25 (the final docs pass: open MVP work only; post-MVP rows moved to `post-mvp.md`, 14 rows closed).
+Updated: 2026-09-25 (D5 closed).
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -9,7 +9,7 @@ Updated: 2026-09-25 (the final docs pass: open MVP work only; post-MVP rows move
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 60.** Desk 10 · bench 46 · decision 4.
+**MVP open: 59.** Desk 10 · bench 46 · decision 3.
 
 **MVP DESK (10),** a keyboard is enough:
 - 🟠 **F164** · **B21** · **F372** · **F221**
@@ -21,9 +21,8 @@ changes its id. The evidence behind every row is in [`experiment-log/`](experime
 - 🟡 **F350** · **H8** · **F353** · **F298** · **F3** · **F21** · **F270** · **F322** · **F309** · **F292** · **F296** · **F294**
 - 🟢 **F339**
 
-**MVP DECISION (4),** awaiting Tony:
+**MVP DECISION (3),** awaiting Tony:
 - 🟡 **F368** · **F370** · **F371**
-- ⬜ **D5**
 
 The index lists are guarded (`test_docs_hygiene`): every row is listed once, under its own group, with its own
 marker. If a list disagrees with a row, the ROW is right.
@@ -336,5 +335,3 @@ Tony's call. Each row says what the answer unblocks.
 - **F370 🟡 DECISION FOR TONY: SILENCE "HILL CONTESTED" DURING A KILL STREAK?** Filed 2026-09-25 (brx5). `hill_contested` is queued as an `alert`, not in `STREAK_SILENT` (`app/src/announcer.js`), so it still speaks after my kill and medal lines, while the lead and hill lines go silent ([`announcer.md`](announcer.md) "Silent during a kill streak"). `decision`.
 
 - **F371 🟡 DECISION FOR TONY: OTHER MC ALERTS IN THE LEFT FEED, NOT A FULL-WIDTH BANNER.** Filed 2026-09-25 (brx5). The three lanes put every other MC alert (BOMB PLANTED, ONE MINUTE LEFT) in the FEED lane on the left ([`announcer.md`](announcer.md) "The three lanes"). Tony confirms, or asks for a banner back. `decision`.
-
-- **D5 ⬜** PISTOL BALANCE (Tony, field 2026-09-12): a Deagle killed in 3 hits (check the headset x2 row before touching damage) and Extended Mags takes the USP to 40. Tony: the perk SHOULD apply to a pistol carried as the primary; the numbers are the question — sidearm base mags, or a fixed count / smaller multiplier for sidearms instead of x2. `decision`.

@@ -177,8 +177,8 @@ def test_node_view_and_brief_carry_the_perk_rule():
 def test_every_effect_key_is_handled_by_gain_cost_lines():
     """A new key in `EFFECT_KEYS` with no matching branch in `gain_cost_lines` must fail here, not ship
     a perk whose gain/cost line is silently blank."""
-    sample = {"max_armor_add": 25, "ammo_mult": 2.0, "reload_mult": 0.5, "alt_reload": True,
-              "switch_mult": 0.5, "armor_piercing": True, "crit_pct_add": 10}
+    sample = {"max_armor_add": 25, "ammo_mult": 2.0, "ammo_mult_pistol": 1.5, "reload_mult": 0.5,
+              "alt_reload": True, "switch_mult": 0.5, "armor_piercing": True, "crit_pct_add": 10}
     assert set(sample) == EFFECT_KEYS, "this test's sample has drifted from perks.EFFECT_KEYS"
     gain, cost = gain_cost_lines("test", sample)
     # every key above is on the gain side EXCEPT armor_piercing, which always carries its own

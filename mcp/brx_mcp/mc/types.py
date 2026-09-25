@@ -470,6 +470,9 @@ class PerkEffects(TypedDict, total=False):
     max_armor_add: int      # added to $PSET armour (or, base armour 0: $PSET shield) -- capped at 255,
                             # floored at 0 (`compile.armed_armor`/`armed_shield`)
     ammo_mult: float        # scales the clip/reserve the head writes
+    ammo_mult_pistol: float # D5 (2026-09-25, docs/perk-design.md §2): extended_mags' override for a
+                            # pistol primary (role `sidearm` or the `pistol` tag) -- read instead of
+                            # `ammo_mult`, and rounded DOWN (`compile.py` `WeaponCatalog._ammo`)
     reload_mult: float      # scales the weapon's reload time
     alt_reload: bool        # unused by any current row (S50: easy_reload moved to
                             # `loadout.overrides.easy_reload`) -- kept for a future ALT-button perk
