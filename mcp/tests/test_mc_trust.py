@@ -400,6 +400,29 @@ def test_polish_a_compaction_keeps_a_bound_ids_open_re_issue_window():
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_polish_an_append_that_trips_compaction_keeps_the_record_it_appended():
+    """Polish r2: compaction ran inside `_append`, BEFORE `enroll` or `confirm` changed memory, so the rewrite
+    dropped the record just appended. After a restart the id was unknown and could enrol again."""
+    root = _tmp()
+    old = mcid.COMPACT_SLACK
+    try:
+        mcid.COMPACT_SLACK = 0
+        wall = [1_000_000.0]
+        reg = TrustRegistry(root, wall=lambda: wall[0])
+        reg._lines = 10**6                                   # the next append trips compaction
+        key = reg.enroll("node-k1", "a", NONCE)
+        assert key
+        again = TrustRegistry(root, wall=lambda: wall[0])
+        assert "node-k1" in again.unbound, "enroll's record survived the compaction it tripped"
+        again._lines = 10**6
+        again.confirm("node-k1")
+        third = TrustRegistry(root, wall=lambda: wall[0])
+        assert "node-k1" in third.bound, "confirm's record survived the compaction it tripped"
+    finally:
+        mcid.COMPACT_SLACK = old
+        shutil.rmtree(root, ignore_errors=True)
+
+
 # ---------------- F346 (b): only ids that bind count toward the cap; a full pool never drops ----------------
 
 def test_a_flood_of_ids_that_never_bind_denies_enrolment_but_never_frees_an_issued_id():
