@@ -1671,7 +1671,7 @@ for (const view of VIEWS) {
   await step(`${view.name} A24 result: the TEAMS/PLAYERS toggle actually changes the screen`, async () => {
     const pg = await open(view, 'result-win-team');
     const seg = await pg.evaluate(() => Array.from(document.querySelectorAll('.result .rseg .sg')).map(b => ({ t: b.textContent.trim(), on: b.getAttribute('aria-pressed'), h: b.getBoundingClientRect().height / parseFloat(getComputedStyle(document.getElementById('frame')).transform.split(',')[3] || 1) })));
-    must(seg.length === 2 && seg[0].t === 'TEAMS' && seg[1].t === 'PLAYERS', 'segments: ' + JSON.stringify(seg));
+    must(seg.length === 3 && seg[0].t === 'TEAMS' && seg[1].t === 'PLAYERS' && seg[2].t === 'AWARDS', 'segments (A63: MC sent honours, so AWARDS is a third tab): ' + JSON.stringify(seg));
     must(seg[0].on === 'true' && seg[1].on === 'false', 'a team game does not open on the team view: ' + JSON.stringify(seg));
     must(seg.every(x => x.h >= 36), 'segment tap targets under 36px: ' + JSON.stringify(seg.map(x => x.h)));
     const before = await pg.evaluate(() => ({ teams: document.querySelectorAll('.result .rteam').length, board: document.querySelectorAll('.result .lbr').length }));
@@ -1718,7 +1718,7 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} A24 result-lose-ffa: no TEAM view is offered when MC sent no team totals`, async () => {
     const pg = await open(view, 'result-lose-ffa');
-    const r = await pg.evaluate(() => ({ seg: document.querySelectorAll('.result .rseg .sg').length, teams: document.querySelectorAll('.result .rteam').length,
+    const r = await pg.evaluate(() => ({ seg: document.querySelectorAll('.result .rseg .sg[data-arg="team"]').length, teams: document.querySelectorAll('.result .rteam').length,
       rows: document.querySelectorAll('.result .lbr').length, head: document.querySelector('.result .rh1').textContent.trim(),
       meta: (document.querySelector('.result .rmeta') || {}).textContent || '' }));
     await pg.close();
@@ -3882,7 +3882,9 @@ const lnRead = pg => pg.evaluate(() => {
     lines: (() => { const r = document.createRange(); r.selectNodeContents(f.querySelector('.lfm')); return new Set([...r.getClientRects()].filter(x => x.width > 1).map(x => Math.round(x.top / 4))).size; })() }));
   const q = s => [...document.querySelectorAll(s)].filter(vis).map(box);
   const env = { ammo: q('.alive .ammo'), hint: q('#puhint .pu'), chip: q('#puheld .puchip'), vitals: q('.vitals'), vparts: q('.vitals .nums > *, .vitals .bar'), clock: q('.alive .clockplate'), ident: q('.alive .ident'),
-    stats: q('.alive .stats'), topright: q('.alive .topright'), svm: q('#svm') };
+    stats: q('.alive .stats'), topright: q('.alive .topright'), svm: q('#svm'),
+    // lanes VQA M2: the centre tells a player must always see (STUNNED / DISARMED, SMOKED, RECOIL, overheat, TAKING FIRE, a hit's number)
+    tells: q('.alive .aimfx, .alive .takingfire, #overlay .mo.hit .hc') };
   const lanes = document.getElementById('lanes');
   const all = lanes ? [lanes, ...lanes.querySelectorAll('*')].filter(e => e === lanes || vis(e)) : [];
   const paints = all.flatMap(e => { const c = getComputedStyle(e); return [c.color, c.backgroundColor, c.borderTopColor, c.borderLeftColor, e.closest('svg') ? c.fill : null].filter(Boolean).map(v => [e.getAttribute('class') || e.tagName, v]); });
@@ -4516,19 +4518,54 @@ for (const view of VIEWS) for (const night of [false, true]) {
     must(r.anims === 0 && !r.whiteout, `night: no motion, no flash: ${r.anims} running, whiteout ${r.whiteout}`);
   });
 }
-// End-of-match AWARDS (brx5 lead 2026-09-24; PROVISIONAL mock recap until brx3's shape lands): my awards on top, then one
-// badge per award naming its winner, mine lit. Day and night, both widths.
-for (const view of VIEWS) for (const night of [false, true]) await step(`${view.name} lanes ${night ? 'night' : 'day'}: the AWARDS tab shows my awards and every award's winner, clear of the corner buttons`, async () => {
+// End-of-match AWARDS (A63): MC's honours from the result push, one row per tied holder. Mine first (with a star and
+// YOU, not colour alone), then grouped in types.AWARDS order; nothing capped or hidden; no duplicate HONORS strip.
+for (const view of VIEWS) for (const night of [false, true]) await step(`${view.name} lanes ${night ? 'night' : 'day'}: the AWARDS tab shows every A63 honour, mine first, clear of the corner buttons`, async () => {
   const pg = await open(view, 'result-awards', night ? '&night' : '', 4200);
-  const r = await pg.evaluate(() => { const vis = e => e && e.getBoundingClientRect().width > 0 && e.getBoundingClientRect().bottom <= document.querySelector('.result .rbody').getBoundingClientRect().bottom + 1;
-    return { tab: (document.querySelector('.rseg .sg.on') || {}).textContent, mine: [...document.querySelectorAll('.awm .medal')].map(e => e.textContent.trim()),
-      rows: [...document.querySelectorAll('.result .aw')].map(e => ({ k: e.querySelector('.awk').textContent.trim(), n: e.querySelector('.awn').textContent.trim(), me: e.classList.contains('me'), vis: vis(e),
-        kpx: parseFloat(getComputedStyle(e.querySelector('.awk')).fontSize), clip: e.querySelector('.awk').scrollWidth > e.querySelector('.awk').clientWidth + 1 })) }; });
+  const r = await pg.evaluate(() => { const body = document.querySelector('.result .rbody').getBoundingClientRect(); const vis = e => { const b = e.getBoundingClientRect(); return b.width > 0 && b.top >= body.top - 1 && b.bottom <= body.bottom + 1; };
+    return { tab: (document.querySelector('.rseg .sg.on') || {}).textContent, mine: [...document.querySelectorAll('.awm .medal')].map(e => e.textContent.trim()), strip: !!document.querySelector('.rstrip.hon'),
+      rows: [...document.querySelectorAll('.result .aw')].map(e => ({ k: e.dataset.award, l: e.querySelector('.awk').textContent.trim(), n: e.querySelector('.awn').textContent.trim(), me: e.classList.contains('me'), vis: vis(e),
+        kpx: parseFloat(getComputedStyle(e.querySelector('.awk')).fontSize), clip: [e.querySelector('.awk'), e.querySelector('.awn')].some(x => x.scrollWidth > x.clientWidth + 1) })) }; });
   const inv = await invariants(pg); await pg.close();
-  must(r.tab && r.tab.trim() === 'AWARDS' && JSON.stringify(r.mine) === '["SURVIVOR","IRON MAN"]', `my awards: ${JSON.stringify(r)}`);
-  must(r.rows.length === 5 && r.rows.every(x => x.vis && !x.clip && x.kpx >= 11), `every award on screen, whole, >= 11 px: ${JSON.stringify(r.rows)}`);
-  must(r.rows.filter(x => x.me).map(x => x.k).join() === 'SURVIVOR,IRON MAN' && r.rows.find(x => x.k === 'OBJECTIVE HERO').n === 'HAVOC', `winners: ${JSON.stringify(r.rows)}`);
+  const ORDER = ['mvp', 'most_kills', 'best_kd', 'sharpshooter', 'survivor', 'iron_man', 'first_blood', 'multikill', 'wingman', 'objective_hero'];
+  must(r.tab && r.tab.trim() === 'AWARDS' && JSON.stringify(r.mine) === '["★ MVP","★ MOST KILLS","★ SURVIVOR"]', `my awards: ${JSON.stringify(r)}`);
+  must(r.rows.length === 11 && r.rows.every(x => x.vis && !x.clip && x.kpx >= 11), `every honour on screen, whole, >= 11 px: ${JSON.stringify(r.rows)}`);
+  const firstOther = r.rows.findIndex(x => !x.me);
+  must(r.rows.slice(0, firstOther).length === 3 && r.rows.slice(firstOther).every(x => !x.me) && r.rows.filter(x => x.me).every(x => /^★/.test(x.l) && /YOU/.test(x.n)), `mine first, marked: ${JSON.stringify(r.rows)}`);
+  const rest = r.rows.slice(firstOther).map(x => ORDER.indexOf(x.k));
+  must(rest.every((v, i) => i === 0 || v >= rest[i - 1]), `the others grouped in AWARDS order: ${JSON.stringify(r.rows.map(x => x.k))}`);
+  must(!r.strip, 'the HONORS strip repeats the AWARDS tab');
   must(inv.length === 0, 'invariants: ' + inv.join(' | '));
+});
+// lanes VQA H1: a kill hero must never hide a centre tell. Each tell is up, then my kill lands (a medal, so the hero has
+// every row it can have): the hero collapses to one row above the tell. Day and night, both widths.
+for (const view of VIEWS) for (const night of [false, true]) for (const [stage, wait, what] of [['live-stunned', 2600, 'STUNNED'], ['live-smoke', 2600, 'SMOKED'], ['live-overheat', 2600, 'OVERHEAT'], ['live-hit', 2350, 'a hit']]) {
+  await step(`${view.name} lanes ${night ? 'night' : 'day'}: my kill during ${what} never covers the centre tell (lanes VQA H1)`, async () => {
+    const pg = await open(view, stage, night ? '&night' : '', wait);
+    if (stage === 'live-hit') await pg.evaluate(() => { window.brxDemo.hit(); window.brxDemo.killMedals(['double_kill', 'killing_spree'], 'KILLAMANJARO'); });
+    else await pg.evaluate(() => window.brxDemo.killMedals(['double_kill', 'killing_spree'], 'KILLAMANJARO'));
+    const r = await lnWait(pg, r => r.hero && r.env.tells.length, 1500); await pg.screenshot({ path: `${OUT}/${view.name}-lanes-tell-${stage}${night ? '-night' : ''}.png` }); await pg.close();
+    must(r.hero && r.env.tells.length, `the hero and the tell must both be up: ${JSON.stringify({ hero: !!r.hero, tells: r.env.tells })}`);
+    must(r.hero.medal === 'KILLING SPREE' && /KILL/.test(r.hero.kill), `the one row keeps KILL and the medal: ${JSON.stringify(r.hero)}`);
+    const bad = lnCovers(r).filter(x => /covers tells/.test(x));
+    must(bad.length === 0, bad.join(' | '));
+  });
+}
+// lanes VQA H2: the lanes sync by key. A persistent badge keeps its DOM node (and so never re-runs its entrance) while the
+// spree adds kills, the hero changes, and feed rows come and go. A sequence, by day, where the entrance animation runs.
+for (const view of VIEWS) await step(`${view.name} lanes day: the lead and hill badges keep their DOM node through a spree (no blink, lanes VQA H2)`, async () => {
+  const pg = await open(view, 'live-spree', '', 2500);
+  await lnWait(pg, r => r.obj.some(o => o.key === 'lead'), 2000);
+  const r = await pg.evaluate(async () => { const wait = ms => new Promise(res => setTimeout(res, ms));
+    const lead = document.querySelector('#lanes .lo[data-key="lead"]'); let hill = null, added = 0, heroes = new Set();
+    const mo = new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => { if (n.classList && n.classList.contains('lo')) added++; }))); mo.observe(document.getElementById('lanes'), { childList: true, subtree: true });
+    for (let i = 0; i < 70; i++) { hill = hill || document.querySelector('#lanes .lo[data-key="hill"]'); const h = document.querySelector('#lanes .lh'); if (h) heroes.add(h.dataset.n); await wait(100); }
+    mo.disconnect();
+    return { leadSame: document.querySelector('#lanes .lo[data-key="lead"]') === lead, hillSame: !!hill && document.querySelector('#lanes .lo[data-key="hill"]') === hill, added, kills: [...heroes] }; });
+  await pg.close();
+  must(r.kills.length >= 4, `the spree must have run on: ${JSON.stringify(r)}`);
+  must(r.leadSame && r.hillSame, `a badge was replaced while the spree ran: ${JSON.stringify(r)}`);
+  must(r.added === 1, `only the hill badge may be added after the lead (the one new item): ${JSON.stringify(r)}`);
 });
 // The announcer queue is unchanged (docs/announcer.md): MC's kill feedback and its lead alert on the same tick still SAY the
 // kill first and the lead after it. Only the screen changed: both are drawn at once, from the first frame.

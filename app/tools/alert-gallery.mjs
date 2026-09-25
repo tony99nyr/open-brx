@@ -63,13 +63,16 @@ const ONE = [
   ['pickup', 'Feed: a powerup spawn, beside the powerup hint', 'live-pu-spawn', 3600],
   ['beatdown', 'BEAT DOWN, a melee kill (new medal; label only, no voice yet)', 'live-kill-beat-down', 3000],
   ['killjoy', 'KILLJOY, an enemy\'s spree ended (new medal; HUD text only)', 'live-kill-killjoy', 3000],
-  ['awards', 'End of match: the AWARDS tab (PROVISIONAL mock recap)', 'result-awards', 4200],
+  ['stunned', 'My kill while STUNNED: the hero is one row, the tell stays readable', 'live-stunned', 2600, "window.brxDemo.killMedals(['double_kill', 'killing_spree'], 'VIPER')", 300],
+  ['hitkill', 'My kill while taking a hit: the hero is one row above TAKING FIRE and the damage number', 'live-hit', 2350, "window.brxDemo.hit(); window.brxDemo.killMedals(['double_kill'], 'VIPER')", 250],
+  ['awards', 'End of match: the AWARDS tab (A63 honours: every row, mine first)', 'result-awards', 4200],
 ];
 const singles = [];
-for (const [id, label, stage, ms] of ONE) {
+for (const [id, label, stage, ms, act, after] of ONE) {
   const cells = [];
   for (const skin of SKINS) for (const view of VIEWS) {
     const pg = await openPg(view, stage, skin); await pg.waitForTimeout(ms);
+    if (act) { await pg.evaluate(act); await pg.waitForTimeout(after || 300); }
     const f = `one-${id}-${skin.name}-${view.name}.png`; await pg.screenshot({ path: path.join(OUT, f) });
     if (pg.__err.length) throw new Error(`${id}: ${pg.__err.join(' | ')}`);
     cells.push({ f, skin: skin.name, view }); await pg.close();
@@ -90,7 +93,10 @@ const CHANGED = [
   ['7', 'is my favoriate one! (Killamanjaro)', 'KILLAMANJARO is kill 6 of the storyboard (t 5.3 s).'],
   ['8', 'the sound docs have several of those kill spree sounds, lets use em', 'the voice uses MC\'s ladder, a voiced medal on every kill from 2 to 8 (A61, already on main); a spree now voices the streak line too (KILLING SPREE was folded away before). The lines the voice said are printed under each storyboard.'],
   ['9', 'I like the 3 lanes. The separate alerts on the right.', 'this is now the only design: the lead and hill badges on the right, each until replaced.'],
-  ['10', 'they go silent when kill streaks are showing.', 'voice only, built in a separate lane (the announcer); not in this build yet, so the lead and hill badges show here and the voice lines under the storyboard are this build\'s.'],
+  ['10', 'they go silent when kill streaks are showing.', 'merged from main: a lead or hill line during a kill streak is dropped; its badge still shows at once. The voice lines under each storyboard are what this build said.'],
+  ['VQA', 'the kill hero hid STUNNED / DISARMED, TAKING FIRE, SMOKED and RECOIL', 'while a centre tell is up the hero is one row above it (KILL ×N and the medal): see "My kill while STUNNED" and "My kill while taking a hit".'],
+  ['VQA', 'by day every badge blinked on each redraw', 'the lanes now keep each item\'s node; only a new item fades in.'],
+  ['VQA', 'awards', 'the AWARDS tab shows MC\'s real end-of-match honours (A63): every one, mine first with a star and YOU, then in award order; the HONORS strip is hidden on that tab.'],
 ];
 const fig = (f, cap) => `<figure><img src="${f}" alt="${esc(cap)}" loading="lazy"><figcaption>${cap}</figcaption></figure>`;
 const storyHtml = SKINS.map(skin => VIEWS.map(view => { const s = story.find(x => x.skin === skin.name && x.view === view);

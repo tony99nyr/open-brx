@@ -147,11 +147,16 @@ Rules:
   enemy's spree ended) have local labels in `hud.js` `MEDAL_FALLBACK` until MC sends them (TODO: contract). Neither has
   a voice line yet.
 - Nothing covers the ammo count, the powerup hint or held chip, the vitals, the clock, the identity block or the stats.
+- A centre tell (STUNNED or DISARMED, SMOKED, RECOIL, overheat, TAKING FIRE, a hit's number) is never covered: while
+  one is up the HERO is one row above it (KILL ×N and the newest medal).
+- The lanes sync by key: an item that stays keeps its DOM node, so only a new item animates in.
 - Night: red and amber on black only, with no white flash, no strobe and no motion.
 - A dead player sees no lanes: the down screen owns the phone.
 
-The end-of-match AWARDS tab on the results screen uses the same language (PROVISIONAL, the recap shape is brx3's):
-my awards as HERO medals, then one badge per award naming its winner.
+The end-of-match AWARDS tab on the results screen uses the same language. It shows MC's A63 honours from the result
+push (`honors[] = {medal, key, player_id, display, stat}`, one row per tied holder): my awards as HERO medals, then
+every honour, mine first (a star and YOU), then in `types.AWARDS` order. Nothing is capped. The HONORS strip is hidden
+while the tab is on.
 
 ## Late lines (`ANNOUNCE_AUDIO_LATE_MS`)
 

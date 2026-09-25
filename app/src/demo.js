@@ -333,10 +333,20 @@ export function startDemo({ engine, log }) {
         after_end: { facts: 4, by_player: { 'p-2': { kills: 2, deaths: 0 }, 'p-demo': { kills: 0, deaths: 1 }, 'p-ghost': { kills: 1, deaths: 0 } } },
         provisional: false, t: Date.now(), ...extra } }),
       // FFA: no team totals at all, so the screen has no TEAM view to offer and never renders an empty one.
-      // PROVISIONAL mock (brx5 lead 2026-09-24; TODO: brx3's recap shape): MC's end-of-match awards. I (p-demo) won two.
-      resultAwards: () => ev.result('win', { awards: [{ key: 'survivor', player_id: 'p-demo', display: 'REAPER', stat: '4:12' },
-        { key: 'wingman', player_id: 'p-2', display: 'VIPER', stat: '6 ASSISTS' }, { key: 'iron_man', player_id: 'p-demo', display: 'REAPER', stat: '1 DEATH' },
-        { key: 'sharpshooter', player_id: 'p-2', display: 'VIPER', stat: '41%' }, { key: 'objective_hero', player_id: 'p-3', stat: '2:48 ON THE HILL' }] }),
+      // A63: the result push's honours as MC sends them (`state.py`: {medal (the label), key, player_id, display, stat}),
+      // one row per tied holder, keys in types.AWARDS order. I (p-demo) hold three, one of them shared with VIPER.
+      resultAwards: () => ev.result('win', { honors: [
+        { medal: 'MVP', key: 'mvp', player_id: 'p-demo', display: 'REAPER', stat: '11 K · 2.8 K/D' },
+        { medal: 'MOST KILLS', key: 'most_kills', player_id: 'p-demo', display: 'REAPER', stat: '11 K' },
+        { medal: 'MOST KILLS', key: 'most_kills', player_id: 'p-2', display: 'VIPER', stat: '11 K' },
+        { medal: 'BEST K/D · NON-MVP', key: 'best_kd', player_id: 'p-2', display: 'VIPER', stat: '2.2 K/D' },
+        { medal: 'SHARPSHOOTER', key: 'sharpshooter', player_id: 'p-2', display: 'VIPER', stat: '41%' },
+        { medal: 'SURVIVOR', key: 'survivor', player_id: 'p-demo', display: 'REAPER', stat: '4:12' },
+        { medal: 'IRON MAN', key: 'iron_man', player_id: 'p-3', display: 'HAVOC', stat: '1 DEATH' },
+        { medal: 'FIRST BLOOD', key: 'first_blood', player_id: 'p-2', display: 'VIPER', stat: 'AT 01:12' },
+        { medal: 'MULTIKILL', key: 'multikill', player_id: 'p-3', display: 'HAVOC', stat: 'TRIPLE KILL' },
+        { medal: 'WINGMAN', key: 'wingman', player_id: 'p-3', display: 'HAVOC', stat: '6 ASSISTS' },
+        { medal: 'OBJECTIVE HERO', key: 'objective_hero', player_id: 'p-2', display: 'VIPER', stat: '2:48' }] }),
       resultFfa: (outcome = 'lose') => engine.onMcMessage({ kind: 'result', body: {
         match_id: engine.matchId, outcome, winner: { player_id: 'p-2' }, mode: 'ffa', win_by: 'kills',
         team_scores: [], rows: RESULT_ROWS.map(r => ({ ...r, team_id: null })), my: { ...RESULT_ROWS[0], team_id: null },

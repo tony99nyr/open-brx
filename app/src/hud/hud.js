@@ -5,7 +5,7 @@
 import * as DS from './deathscreen.js';   // the DOWN screen's recap: THIS LIFE and THE GAME NOW
 import * as SV from './shieldmeter.js';
 import { LANE_FEED_MS, LANE_SETTLE_MS } from '../lanes.js';   // docs/announcer.md "The three lanes"
-import { MEDALS } from '../transport/contract.gen.js';   // the medal ladder: key, label, clip   // the shield meter (the Visor, Tony 2026-09-24): the strip on the top edge
+import { MEDALS, AWARDS } from '../transport/contract.gen.js';   // the medal ladder: key, label, clip   // the shield meter (the Visor, Tony 2026-09-24): the strip on the top edge
 
 const TEAM_COLOR = { blue: 'var(--team-blue)', yellow: 'var(--team-yellow)', red: 'var(--team-red)', green: 'var(--team-green)' };
 const TEAM_INK = { blue: '#04121e', yellow: '#1a1400', red: '#1a0404', green: '#041a0c' };
@@ -1106,21 +1106,25 @@ export class Hud {
    *  Everything else is mode-aware from `result.mode` / `result.win_by` and the fields that are actually present:
    *  the tiles are built from a list (never five hard-coded cells), the TEAM view appears only when MC sent team
    *  totals, and possession / AFTER THE WHISTLE appear only when their fields do. */
-  /** The end-of-match AWARDS, in the three lanes' language: my own awards as HERO medals on top, then one OBJECTIVE-style
-   *  badge per award naming its winner (mine lit). MC computes them; the phone only prints them. PROVISIONAL shape
-   *  (TODO: brx3): `{key, label?, player_id, display?, stat?}`; the label and the "what earned it" line fall back to AWARD. */
-  _awards(awards, rows, myId) {
-    const AWARD = { survivor: ['SURVIVOR', 'LONGEST LIFE'], wingman: ['WINGMAN', 'MOST ASSISTS'], iron_man: ['IRON MAN', 'FEWEST DEATHS'],
-      sharpshooter: ['SHARPSHOOTER', 'BEST ACCURACY'], objective_hero: ['OBJECTIVE HERO', 'MOST OBJECTIVE'] };
-    const label = a => String(a.label || (AWARD[a.key] || [])[0] || String(a.key).replace(/_/g, ' ')).toUpperCase();
-    const mine = awards.filter(a => myId && a.player_id === myId);
-    const who = a => { const r = rows.find(x => x.player_id === a.player_id); return { name: String(a.display || (r && r.display) || a.player_id || '—').toUpperCase(), tk: r && TEAM_COLOR[String(r.team_id || '').toLowerCase()] ? String(r.team_id).toLowerCase() : null }; };
+  /** The end-of-match AWARDS (A63), in the three lanes' language: my own awards as HERO medals on the left, then one
+   *  OBJECTIVE-style badge per honour naming its holder. MC computes them (`scoring.py honors()`, one row per tied
+   *  holder, keys in `types.AWARDS` order) and the result push carries them as `honors[] = {medal (the label), key,
+   *  player_id, display, stat}`. Mine first, then grouped by key in AWARDS order; nothing is capped. A pre-A63 row with
+   *  no `key` is placed by its label. Mine carry a star and "YOU", not only a colour. */
+  _awards(honors, rows, myId) {
+    const order = k => { const i = AWARDS.findIndex(a => a.key === k); return i < 0 ? AWARDS.length : i; };
+    const keyOf = h => h.key || (AWARDS.find(a => a.label === h.medal) || {}).key || null;
+    const label = h => String((AWARDS.find(a => a.key === keyOf(h)) || {}).label || h.medal || String(h.key || '').replace(/_/g, ' ')).toUpperCase();
+    const isMe = h => !!myId && h.player_id === myId;
+    const sorted = honors.map((h, i) => ({ h, i })).sort((a, b) => (isMe(b.h) - isMe(a.h)) || (order(keyOf(a.h)) - order(keyOf(b.h))) || (a.i - b.i)).map(x => x.h);
+    const mine = sorted.filter(isMe);
+    const who = h => { const r = rows.find(x => x.player_id === h.player_id); return { name: String(h.display || (r && r.display) || h.player_id || '—').toUpperCase(), tk: r && TEAM_COLOR[String(r.team_id || '').toLowerCase()] ? String(r.team_id).toLowerCase() : null }; };
     const me = `<div class="awme"><span class="awh">YOUR AWARDS</span>${mine.length
-      ? `<div class="awm">${mine.map(a => `<span class="medal" data-award="${esc(a.key || '')}"><span class="unskew">${esc(label(a))}</span></span>`).join('')}</div>`
+      ? `<div class="awm">${mine.map(h => `<span class="medal" data-award="${esc(keyOf(h) || '')}"><span class="unskew">★ ${esc(label(h))}</span></span>`).join('')}</div>`
       : '<span class="awnone">NONE THIS MATCH</span>'}<span class="lsrc">MC</span></div>`;
-    const list = awards.map(a => { const w = who(a), m = myId && a.player_id === myId;
-      return `<div class="aw${m ? ' me' : ''}" data-award="${esc(a.key || '')}" title="${esc((AWARD[a.key] || [])[1] || '')}" style="--lc:${w.tk ? TEAM_COLOR[w.tk] : 'var(--glow)'}"><span class="awt"><span class="awk">${esc(label(a))}</span>`
-        + `<span class="awn">${esc(w.name)}${m ? ' <b>· YOU</b>' : ''}</span></span>${a.stat != null && a.stat !== '' ? `<b class="aws tab">${esc(String(a.stat))}</b>` : ''}</div>`; }).join('');
+    const list = sorted.map(h => { const w = who(h), m = isMe(h);
+      return `<div class="aw${m ? ' me' : ''}" data-award="${esc(keyOf(h) || '')}" style="--lc:${w.tk ? TEAM_COLOR[w.tk] : 'var(--glow)'}"><span class="awt"><span class="awk">${m ? '★ ' : ''}${esc(label(h))}</span>`
+        + `<span class="awr"><span class="awn">${esc(w.name)}${m ? ' <b>· YOU</b>' : ''}</span>${h.stat != null && h.stat !== '' ? `<b class="aws tab">${esc(String(h.stat))}</b>` : ''}</span></span></div>`; }).join('');
     return `<div class="awards">${me}<div class="awl">${list}</div></div>`;
   }
   _result(st) {
@@ -1130,9 +1134,8 @@ export class Hud {
     const rows = this._resultRows(R);
     const teams = (R && Array.isArray(R.team_scores)) ? R.team_scores.filter(t => t && typeof t === 'object' && (t.team_id != null || t.name)) : [];
     const hasTeam = teams.length > 0;
-    // The end-of-match AWARDS (brx5 lead 2026-09-24, computed by MC). PROVISIONAL shape, TODO: brx3's recap payload:
-    // `result.awards = [{key, label?, player_id, display?, stat?}]`. A result without it shows no AWARDS tab at all.
-    const awards = (R && Array.isArray(R.awards)) ? R.awards.filter(a => a && typeof a === 'object' && (a.key || a.label)) : [];
+    // A63: MC's end-of-match honours (the result push's `honors`) are the AWARDS tab; a result without any has no tab.
+    const awards = (R && Array.isArray(R.honors)) ? R.honors.filter(h => h && typeof h === 'object' && (h.key || h.medal) && h.player_id) : [];
     const tab = this.rtab === 'awards' && awards.length ? 'awards' : hasTeam ? (this.rtab === 'player' ? 'player' : 'team') : 'player';
     const hold = this._resultHold(R);
     const my = (R && R.my && typeof R.my === 'object') ? R.my : null;
@@ -1200,7 +1203,7 @@ export class Hud {
     // ELIMINATIONS", "AT 01:12". The old guard was `num(h.stat) != null`, which is false for every string MC
     // has ever sent, so the stat never reached a real phone; only the demo (which sent integers) ever showed
     // one, and the stage shot of it was fiction. Anything non-empty is printed as MC wrote it.
-    const honorStrip = honors.length ? `<div class="rstrip hon"><span class="k">HONORS</span><span class="v">${honors.slice(0, 6).map(h =>
+    const honorStrip = honors.length && tab !== 'awards' ? `<div class="rstrip hon"><span class="k">HONORS</span><span class="v">${honors.map(h =>
       `<span class="ch">${esc(MEDAL_LABEL[h.medal] || String(h.medal).toUpperCase().replace(/_/g, ' '))} <b>${esc(String(h.display || h.player_id || '').toUpperCase())}</b>${h.stat != null && h.stat !== '' ? ` <b class="tab">${esc(String(h.stat))}</b>` : ''}</span>`).join('')}</span></div>` : '';
     const ae = this._afterEnd(R, rows);
     // A6.1: facts after the whistle are RECORDED, not scored. Shown so a player who kept shooting can see where
@@ -1233,7 +1236,7 @@ export class Hud {
     return `<div class="lobby result rv"><div class="scan"></div><div class="edgeglow"></div>
       <div class="rhead"><span class="rkick">FINAL RESULTS</span>${head}<span class="rmeta">${esc(meta)}</span>${seg}</div>
       <div class="rbody">${body}</div>
-      ${holdStrip}${honorStrip}${afterStrip}
+      ${tab === 'awards' ? '' : holdStrip + honorStrip + afterStrip}
       <div class="rstats" style="grid-template-columns:repeat(${tiles.n},minmax(0,1fr))">${tiles.html}</div>
       <div class="rfoot foot"><div class="fl">${ret}${mcv}${syncShown}${sess}</div>
         <button class="ready ${reopened ? 'ghost' : ''}" data-act="${reopened ? 'onCloseView' : 'onEndOk'}"><span class="unskew">${reopened ? 'CLOSE' : 'OK'}</span></button></div></div>`;
@@ -1934,12 +1937,30 @@ export class Hud {
    *  each up until the next one of its key replaces it. FEED, on the left: downs, pickups and every other alert (BOMB
    *  PLANTED, ONE MINUTE LEFT), 4 s a row. Each item carries a small source line (MC, IR 15, BLE); no weapon, no "+1". The down screen
    *  owns a dead phone, so nothing here draws unless the player is live and alive. */
+  /** Keyed sync for one lane: each item is one element's HTML carrying `data-lk`. A kept node takes the new class,
+   *  style, data and content in place (so its own entrance animation does not re-run); a new key is inserted; a gone
+   *  key is removed. Content is rewritten only when it changed. */
+  _laneSync(box, items) {
+    const tpl = document.createElement('template'); tpl.innerHTML = items.join('');
+    const want = [...tpl.content.children], have = new Map([...box.children].map(n => [n.dataset.lk, n]));
+    want.forEach((w, i) => {
+      let n = have.get(w.dataset.lk);
+      if (n) {
+        have.delete(w.dataset.lk);
+        for (const a of [...n.attributes]) if (!w.hasAttribute(a.name)) n.removeAttribute(a.name);
+        for (const a of [...w.attributes]) if (n.getAttribute(a.name) !== a.value) n.setAttribute(a.name, a.value);
+        if (n.innerHTML !== w.innerHTML) n.innerHTML = w.innerHTML;
+      } else n = w;
+      if (box.children[i] !== n) box.insertBefore(n, box.children[i] || null);
+    });
+    for (const n of have.values()) n.remove();
+  }
   _lanes(st) {
     let root = this.frame.querySelector('#lanes');
     if (!root) { root = document.createElement('div'); root.id = 'lanes'; this.frame.appendChild(root); }
     const L = st.lanes;
     clearTimeout(this._lanesT);
-    if (!L || st.phase !== 'live' || !st.alive) { if (this._lanesHtml) { root.innerHTML = ''; this._lanesHtml = ''; } return; }
+    if (!L || st.phase !== 'live' || !st.alive) { if (root.firstChild) root.innerHTML = ''; return; }
     const now = Date.now(), FADE = 300;
     const srcl = t => t ? `<span class="lsrc">${esc(t)}</span>` : '';
     const kindOf = k => { const m = MEDAL_ROWS.find(x => x.key === k); return m ? m.kind : 'multi'; };
@@ -1952,7 +1973,12 @@ export class Hud {
       const big = all.length ? all[all.length - 1] : null, ladder = all.slice(0, -1).reverse(), shown = ladder.slice(0, 2), more = ladder.length - shown.length;
       const vk = last.team ? String(last.team).toLowerCase() : null, tk = vk && TEAM_COLOR[vk] ? vk : null;
       const name = last.victim || `${tk ? tk.toUpperCase() : 'ENEMY'} OPERATIVE`;
-      hero = `<div class="lh${now >= heroUntil ? ' out' : ''}" data-id="${h.id}" data-n="${n}"><div class="lhp">`
+      // lanes VQA H1: a centre tell (STUNNED / DISARMED, SMOKED, RECOIL, overheat, TAKING FIRE, a hit's number) is never
+      // hidden. While one is up the hero collapses to ONE row above it: KILL ×N and the newest medal.
+      const hit = st.moment && st.moment.kind === 'hit' && now - st.moment.at < 700;
+      const tell = st.stunned || (st.aim && AIM_REASON[st.aim.reason]) || st.underFire || hit;
+      if (hit) this._laneTellUntil = st.moment.at + 710;
+      hero = `<div class="lh${tell ? ' tight' : ''}${now >= heroUntil ? ' out' : ''}" data-lk="${h.id}" data-id="${h.id}" data-n="${n}"><div class="lhp">`
         + `<div class="lhk">${DS.ICON.kill}<span>KILL</span>${n > 1 ? `<span class="lhx tab">×${n}</span>` : ''}</div>`
         + `<div class="lhn">${tk ? `<i style="background:${TEAM_COLOR[tk]}"></i>` : ''}<span class="vt">${esc(String(name).toUpperCase())}</span></div>`
         + (big ? `<div class="lhm"><span class="medal" data-m="${esc(big)}" data-k="${kindOf(big)}"><span class="unskew">${MEDAL_LABEL[big]}</span></span></div>` : '')
@@ -1967,8 +1993,8 @@ export class Hud {
     const obj = ['lead', 'hill'].filter(key => O[key]).map(key => {
       const o = O[key], lead = key === 'lead', lost = o.kind === 'lead_lost' || o.kind === 'hill_lost';
       const kick = lead ? (tk ? tk.toUpperCase() : 'YOU') : 'OBJECTIVE', text = lead ? (lost ? 'LOST THE LEAD' : 'TAKES THE LEAD') : (lost ? 'HILL LOST' : 'HILL CAPTURED');
-      return `<div class="lo${now - o.at > LANE_SETTLE_MS ? ' settled' : ''}${lost ? ' lost' : ''}" data-key="${key}" data-kind="${esc(o.kind)}" style="--lc:${lost ? 'var(--bad)' : ours}">${ICON[key](lost)}<span class="lot"><span class="lok"><span>${esc(kick)}</span>${srcl(o.src)}</span><span class="low">${esc(text)}</span></span></div>`;
-    }).join('');
+      return `<div class="lo${now - o.at > LANE_SETTLE_MS ? ' settled' : ''}${lost ? ' lost' : ''}" data-lk="${key}:${o.at}" data-key="${key}" data-kind="${esc(o.kind)}" style="--lc:${lost ? 'var(--bad)' : ours}">${ICON[key](lost)}<span class="lot"><span class="lok"><span>${esc(kick)}</span>${srcl(o.src)}</span><span class="low">${esc(text)}</span></span></div>`;
+    });
     // FEED (an alert's family names its colour and its kicker, as the old banner did)
     const FAM = { objective: ['OBJECTIVE', ours], clock: ['CLOCK', 'var(--warn)'], danger: ['ALERT', 'var(--bad)'], info: ['MATCH', 'var(--glow)'] };
     const feed = (L.feed || []).filter(f => now - f.at < LANE_FEED_MS + FADE).slice(0, 3).map(f => {
@@ -1976,10 +2002,14 @@ export class Hud {
       const main = down ? `${f.name || `${f.team ? String(f.team).toUpperCase() + ' ' : ''}${mate ? 'TEAMMATE' : 'OPERATIVE'}`} DOWN` : f.text || f.kind;
       const sub = [down && f.by ? `BY ${f.by}` : fam ? fam[0] : f.sub || null, f.src].filter(Boolean).join(' · ');
       const col = mate ? 'var(--warn)' : down ? 'var(--ok)' : fam ? fam[1] : itemColor(f.color);
-      return `<div class="lf${now - f.at >= LANE_FEED_MS ? ' out' : ''}" data-kind="${esc(f.kind)}"${fam ? ` data-alert="${esc(f.alert)}" data-fam="${esc(ALERT_FAMILY[f.alert] || 'info')}"` : ''} style="--lc:${col}"><i></i><span class="lft"><span class="lfm">${esc(String(main).toUpperCase())}</span>${srcl(String(sub).toUpperCase())}</span></div>`;
-    }).join('');
-    const html = `${hero}<div class="los">${obj}</div><div class="lfs">${feed}</div>`;
-    if (html !== this._lanesHtml) { root.innerHTML = html; this._lanesHtml = html; }
+      return `<div class="lf${now - f.at >= LANE_FEED_MS ? ' out' : ''}" data-lk="${f.at}:${esc(f.kind)}" data-kind="${esc(f.kind)}"${fam ? ` data-alert="${esc(f.alert)}" data-fam="${esc(ALERT_FAMILY[f.alert] || 'info')}"` : ''} style="--lc:${col}"><i></i><span class="lft"><span class="lfm">${esc(String(main).toUpperCase())}</span>${srcl(String(sub).toUpperCase())}</span></div>`;
+    });
+    // lanes VQA H2: sync by key (`data-lk`), never a whole innerHTML rewrite. A node that stays keeps its DOM node, so
+    // its entrance animation never re-runs; only a NEW item animates in.
+    if (!root.querySelector(':scope > .los')) root.innerHTML = '<div class="lhs"></div><div class="los"></div><div class="lfs"></div>';
+    this._laneSync(root.querySelector(':scope > .lhs'), hero ? [hero] : []);
+    this._laneSync(root.querySelector(':scope > .los'), obj);
+    this._laneSync(root.querySelector(':scope > .lfs'), feed);
     // One flash and one buzz per NEW kill: an MC confirm that names the IR word's row adds no row, so it adds no buzz.
     // A new badge taps, as the banner did.
     const seen = this._laneSeen || (this._laneSeen = { hero: null, n: 0, obj: {} });
@@ -1993,7 +2023,7 @@ export class Hud {
       if (now - o.at < 1000) this.h.onHaptic && this.h.onHaptic('tap');
     }
     // draw again at the next change (the hero fading and gone, a feed row leaving, a badge settling or leaving)
-    const due = [heroUntil, heroUntil + FADE, ...(L.feed || []).flatMap(f => [f.at + LANE_FEED_MS, f.at + LANE_FEED_MS + FADE]),
+    const due = [heroUntil, heroUntil + FADE, this._laneTellUntil || 0, ...(L.feed || []).flatMap(f => [f.at + LANE_FEED_MS, f.at + LANE_FEED_MS + FADE]),
       ...Object.values(O).map(o => o.at + LANE_SETTLE_MS)].filter(t => t > now);
     if (due.length) this._lanesT = setTimeout(() => this._lanes(this._lastSt || st), Math.min(...due) - now + 10);
   }
