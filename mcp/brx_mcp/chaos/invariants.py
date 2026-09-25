@@ -816,6 +816,31 @@ def ends_exactly_once(world: World) -> None:
         _fail("ends_exactly_once", f"the run ended in {world.session.phase.upper()}, not RECAP")
 
 
+def _top_score(world: World, sc, kills: Counter) -> int:
+    if sc.mode == "ffa":
+        return max(kills.values(), default=0)
+    per_team: Counter = Counter()
+    for pid, k in kills.items():
+        per_team[world.team_of(pid)] += k
+    return max(per_team.values(), default=0)
+
+
+@invariant("cap_ends_live_match")
+def cap_ends_live_match(world: World) -> None:
+    """A match still LIVE after a step holds fewer credited kills than the frag cap, by the ledger's account.
+    The end check alone cannot see a cap MC held in play but never ended on, when a team kill later took the
+    board back below it (polish review 2026-09-25, beside F362 l)."""
+    s = world.session
+    sc, facts = _current(world)
+    cap = (s.config.get("scoring") or {}).get("frag_limit")
+    if sc is None or s.phase != "live" or not cap or sc.win_by != "kills":
+        return
+    kills, _d, _h, _p = _expected(world, sc, facts)
+    top = _top_score(world, sc, kills)
+    if top >= cap:
+        _fail("cap_ends_live_match", f"the credited facts reach the cap ({top} >= {cap}) and the match is still live")
+
+
 @invariant("frag_cap_ends_match", when="end")
 def frag_cap_ends_match(world: World) -> None:
     """A frag cap reached by the credited facts ends the match at the capping kill, and a match whose
@@ -842,14 +867,8 @@ def frag_cap_ends_match(world: World) -> None:
             _sc, facts = _current(world)
             held = [f for f in facts if (f[0], f[1]) in world.end_delivered]
             kills, _d, _h, _p = _expected(world, sc, held)
-            if sc.mode == "ffa":
-                top_then = max(kills.values(), default=0)
-            else:
-                per_team: Counter = Counter()
-                for pid, k in kills.items():
-                    per_team[world.team_of(pid)] += k
-                top_then = max(per_team.values(), default=0)
-            if top_then < cap:
+            top_then = _top_score(world, sc, kills)
+            if top_then < cap:     # a cap held in play and then lost again is `cap_ends_live_match`'s
                 return
             _fail("frag_cap_ends_match", f"the board held at the end reached the cap ({top_then} >= {cap}) "
                                          f"but the match ended by {reason!r}")

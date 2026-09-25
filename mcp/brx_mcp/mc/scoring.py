@@ -627,6 +627,16 @@ class Scorer:
         if self.frag_limit and best >= self.frag_limit - 1:
             self._announced.add("next_kill_wins")
 
+    def restore_match_state_alerts(self, alerts: dict) -> None:
+        """F362 (k): take the lead and the once-per-match alerts the field was told from a match snapshot.
+        A value MC cannot read is skipped, and `frag_limit` is never taken (the cap is judged on the facts)."""
+        leader = alerts.get("leader")
+        known = set(self.teams) if self.mode != "ffa" else set(self.stats)
+        self._leader = leader if isinstance(leader, str) and leader in known else None
+        announced = alerts.get("announced")
+        if isinstance(announced, list):
+            self._announced |= {a for a in announced if a in ("next_kill_wins", "last_survivor")}
+
     def _match_state_alerts(self, t: int) -> None:
         """A11.4: lead changes, next-kill-wins and the last survivor, to the nodes they concern.
 

@@ -615,6 +615,40 @@ def test_a_restart_from_a_live_snapshot_keeps_a_late_team_kill_frozen_out():
     assert s2.last_recap["winner"]["team_id"] == team_a
 
 
+def test_a_resume_ignores_a_cap_only_the_t_order_replay_passes_and_a_real_cap_still_ends_it():
+    """F363: the live board (arrival order) never reached the cap, but the `t`-order replay passes it for a
+    moment before a team kill takes it back. The resume must keep the match live, and a real cap after it
+    must still end the match."""
+    s, net, clock, ps, info = go_live(4, "tdm", {"scoring": {"frag_limit": 2, "win_by": "kills"}})
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    t0, mid = clock["t"], info["match_id"]
+
+    def death(killer, victim, t, seq):
+        clock["t"] += 100
+        net.simulate_event(f"node{victim}", {"type": "death", "t": t, "match_id": mid,
+                                             "player_id": ps[victim]["player_id"],
+                                             "shooter_num": ps[killer]["player_num"], "shooter_team": 1},
+                           clock["t"], seq=seq)
+    death(0, 2, t0 + 3000, 1)       # the team kill arrives first, stamped last
+    death(0, 1, t0 + 1000, 1)       # team A: -1, then 0, then 1 in arrival order
+    death(2, 3, t0 + 2000, 1)       # ...but 1, 2 (the cap), 1 in t order
+    team_a = s.scorer.stats[ps[0]["player_id"]].team_id
+    assert s.phase == "live" and s.scorer.team_scores()[team_a] == 1, "control: live never reached the cap"
+    clock["t"] += 5_000
+    s2, net2 = _restart(s, clock)
+    assert s2.resume_match() == "live", f"the resume ended the match: {s2.phase} {s2.end_reason}"
+    for i in range(4):
+        tail = demo_armory()[i]["ble"]["tail"]
+        net2.simulate_hello(f"node{i}", f"GUN-{chr(65 + i)}-{tail}")
+        _status(net2, clock, i, "live", mid)
+    clock["t"] += 1000
+    net2.simulate_event("node3", {"type": "death", "t": clock["t"], "match_id": mid,
+                                  "player_id": ps[3]["player_id"], "shooter_num": ps[0]["player_num"],
+                                  "shooter_team": 1}, clock["t"], seq=2)
+    assert s2.phase == "recap" and s2.end_reason == "frag_limit", \
+        f"a real cap after the resume ends the match: {s2.phase} {s2.scorer.team_scores()} {s2.scorer.limit_reached_t}"
+
+
 def test_a_resume_does_not_tell_the_field_the_lead_and_next_kill_wins_again():
     """F362 (k): the resume replay runs with no callbacks, and `_match_state_alerts` skips a fact older
     than FEEDBACK_MAX_AGE_MS, so the replay left `_leader` empty and `next_kill_wins` unannounced. The

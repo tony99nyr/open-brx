@@ -250,6 +250,7 @@ class TrustRegistry:
             self.bound.add(nid)
 
     def _append(self, line: str) -> bool:
+        """Append one record, durably. A missing list refuses (no key), as a missing list at start fails closed."""
         if self.data_dir is None:
             return True
         path = self.data_dir / ENROLLED_FILE

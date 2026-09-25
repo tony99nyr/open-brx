@@ -684,6 +684,10 @@ class Session:
                 # F356: when the frag cap's whistle blew, an arrival fact (`Scorer.cap_recv`). None in every
                 # LIVE snapshot today (`_finish` rewrites the snapshot without the match), carried anyway.
                 "cap_recv": self.scorer.cap_recv,
+                # F362 (k): what the field was already told (the lead, cap - 1, the last survivor), so a
+                # resume does not tell them again and still tells them what they never heard.
+                "alerts": {"leader": self.scorer._leader,
+                           "announced": sorted(self.scorer._announced - {"frag_limit"})},
                 # An accepted LIVE release removes the active row, but its frozen tally still belongs
                 # to this match and must survive an MC restart before the whistle.
                 "departed_stations": [dict(row) for row in sorted(
@@ -4376,7 +4380,7 @@ class Session:
     # phones' heartbeats are the only record, and the operator decides (`orphan_match_view`).
     def _build_scorer(self, match_id: str, go_live_t: int, node_player: dict[str, str],
                       joined_t: dict[str, int] | None = None, *, cap_recv: int | None = None,
-                      derive_cap: bool = False) -> Scorer:
+                      derive_cap: bool = False, alerts: dict | None = None) -> Scorer:
         """A scorer for a match this process did not schedule, replayed from the stored facts.
 
         The replay runs with no callbacks (no cue re-fires at a player), and with the ARMED node map merged
@@ -4393,7 +4397,7 @@ class Session:
         # (its post-whistle write was lost), find it the way the live scorer did, in arrival order.
         sc.cap_recv = cap_recv
         if sc.cap_recv is None and derive_cap:
-            sc.cap_recv = self._arrival_cap_recv(sc, facts)
+            sc.cap_recv = self._arrival_cap_recv(sc, self._match_facts(match_id, arrival=True))
         for r in facts:
             body: Event = r["body"]
             sc.ingest(r["node_id"], body.copy(), r.get("t_recv") or 0, seq=r.get("seq"))
@@ -4405,7 +4409,12 @@ class Session:
             # later must still end the match.
             sc.limit_reached_t = None
             sc._announced.discard("frag_limit")
-        sc.prime_match_state_alerts()            # F362 (k): the field already heard the lead and cap - 1
+        # F362 (k): the replay skips the match-state alerts of every stale fact, so take what the field was
+        # already told from the snapshot. An older snapshot without it: take it from the board.
+        if isinstance(alerts, dict):
+            sc.restore_match_state_alerts(alerts)
+        else:
+            sc.prime_match_state_alerts()
         sc.node_player = self.node_player
         sc.on_feed = self._on_feed
         sc.on_alert = self._alert
@@ -4514,7 +4523,8 @@ class Session:
         cap_recv = m.get("cap_recv")
         cap_recv = cap_recv if isinstance(cap_recv, int) and not isinstance(cap_recv, bool) else None
         self.scorer = self._build_scorer(mid, go, node_player, joined, cap_recv=cap_recv,
-                                         derive_cap=not m.get("adopted"))
+                                         derive_cap=not m.get("adopted"),
+                                         alerts=m.get("alerts") if isinstance(m.get("alerts"), dict) else None)
         if self.store:
             try:
                 snap = dict(self.config)
@@ -5273,10 +5283,11 @@ class Session:
     # ---------- A24/M2: the recap as a REPLAY of the stored facts ----------
     _FACT_KINDS = ("hit_taken", "death", "respawn", "team_change", "possession")
 
-    def _match_facts(self, match_id: str) -> list[dict]:
+    def _match_facts(self, match_id: str, *, arrival: bool = False) -> list[dict]:
         """Every persisted fact for this match, in EFFECTIVE-t order (the order it should have been
         scored in, not the order it arrived in). `store.events` returns insertion order, and the sort
-        is stable, so two facts on the same millisecond keep their arrival order.
+        is stable, so two facts on the same millisecond keep their arrival order. `arrival=True` skips
+        the sort and returns insertion order (the order MC received them), for `_arrival_cap_recv`.
 
         ⚠ Known gap: an `event_batch` from a NEVER-SYNCED node is re-based once per flush (A5.7,
         `offset = t_recv - t_newest`) and the store keeps no batch grouping, so on replay those facts
@@ -5300,6 +5311,8 @@ class Session:
             logging.getLogger("brx.mc").exception("store read failed (recap left as scored live)")
             return []
         facts = [r for r in rows if r.get("kind") in self._FACT_KINDS and isinstance(r.get("body"), dict)]
+        if arrival:
+            return facts      # polish r1: store insertion order, which is the order MC received them
         def eff(r):
             t, tr = r.get("t"), r.get("t_recv") or 0
             return t if (t is not None and self.synced_at_lobby.get(r.get("node_id"), False)) else tr
@@ -5315,6 +5328,8 @@ class Session:
                        list(like.teams.values()), like.node_player, like.synced_at_lobby, now_ms=self.now_ms,
                        win_by=like.win_by, frag_limit=like.frag_limit)
         probe.joined_t = dict(like.joined_t)
+        # `facts` come in store insertion order (`_match_facts(arrival=True)`), and the sort is stable, so two
+        # facts on the same `t_recv` millisecond keep the order MC received them in (polish r1).
         for r in sorted(facts, key=lambda r: r.get("t_recv") or 0):
             probe.ingest(r["node_id"], cast(Event, dict(r["body"])), r.get("t_recv") or 0, seq=r.get("seq"))
             if probe.limit_reached_t is not None:
