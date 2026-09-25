@@ -958,3 +958,13 @@ def test_a_control_station_under_a_grenade_objective_is_named_not_silently_ignor
     t.net.simulate_utility_hello("util-1")
     t.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 4})
     assert not any("A CONTROL STATION IS ASSIGNED" in w for w in t.config_warnings), t.config_warnings
+
+
+def test_an_old_phone_powerup_station_gets_the_1ft_claim_default_not_the_3m_one():
+    """S58 (doc-rot 2026-09-24): a powerup station's own default is the ~1 ft claim range (-55, a placeholder until
+    bench 4.11), so an old phone that clamps 0 gets -55 explicitly, never the -74 of the other kinds."""
+    from brx_mcp.mc.state import Session
+    from brx_mcp.mc.types import PHONE_POWERUP_THRESHOLD_DBM
+    assert PHONE_POWERUP_THRESHOLD_DBM == -55
+    got = Session._wire_threshold("util-old", {"app_ver": "0.4.11+f366156e"}, {"threshold": 0, "kind": "powerup", "team": 255, "id": 9})
+    assert got == -55, got

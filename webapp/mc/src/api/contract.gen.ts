@@ -10,7 +10,12 @@ export const MULTI_KILL_MS = 4000;
  *  beyond); streak = kills without dying; first = the match's first kill. `clip` is the gun's voice line (null
  *  = no line: the HUD shows the text and the voice stays silent), `clip_ms` its length from the sound catalogue.
  *  The phone reads labels and clips from here (contract.gen MEDALS). */
-export const MEDALS: readonly { readonly key: string; readonly kind: string; readonly count: number; readonly label: string; readonly clip: string; readonly clip_ms: number }[] = [{"key": "first_blood", "kind": "first", "count": 1, "label": "FIRST BLOOD", "clip": "VA7H", "clip_ms": 2456}, {"key": "double_kill", "kind": "multi", "count": 2, "label": "DOUBLE KILL", "clip": "VA7E", "clip_ms": 1787}, {"key": "triple_kill", "kind": "multi", "count": 3, "label": "TRIPLE KILL", "clip": "VA7Q", "clip_ms": 1904}, {"key": "killtacular", "kind": "multi", "count": 4, "label": "KILLTACULAR", "clip": "VA7M", "clip_ms": 1924}, {"key": "killtrocity", "kind": "multi", "count": 5, "label": "KILLTROCITY", "clip": "VA7O", "clip_ms": 1924}, {"key": "killamanjaro", "kind": "multi", "count": 6, "label": "KILLAMANJARO", "clip": "VA7J", "clip_ms": 1927}, {"key": "killtastrophe", "kind": "multi", "count": 7, "label": "KILLTASTROPHE", "clip": "VA7N", "clip_ms": 1924}, {"key": "killionaire", "kind": "multi", "count": 8, "label": "KILLIONAIRE", "clip": "VA7L", "clip_ms": 1924}, {"key": "killing_spree", "kind": "streak", "count": 5, "label": "KILLING SPREE", "clip": "VA7K", "clip_ms": 1924}, {"key": "unstoppable", "kind": "streak", "count": 10, "label": "UNSTOPPABLE", "clip": "VX0U", "clip_ms": 1175}];
+export const MEDALS: readonly { readonly key: string; readonly kind: string; readonly count: number; readonly label: string; readonly clip: string | null; readonly clip_ms: number | null }[] = [{"key": "first_blood", "kind": "first", "count": 1, "label": "FIRST BLOOD", "clip": "VA7H", "clip_ms": 2456}, {"key": "double_kill", "kind": "multi", "count": 2, "label": "DOUBLE KILL", "clip": "VA7E", "clip_ms": 1787}, {"key": "triple_kill", "kind": "multi", "count": 3, "label": "TRIPLE KILL", "clip": "VA7Q", "clip_ms": 1904}, {"key": "killtacular", "kind": "multi", "count": 4, "label": "KILLTACULAR", "clip": "VA7M", "clip_ms": 1924}, {"key": "killtrocity", "kind": "multi", "count": 5, "label": "KILLTROCITY", "clip": "VA7O", "clip_ms": 1924}, {"key": "killamanjaro", "kind": "multi", "count": 6, "label": "KILLAMANJARO", "clip": "VA7J", "clip_ms": 1927}, {"key": "killtastrophe", "kind": "multi", "count": 7, "label": "KILLTASTROPHE", "clip": "VA7N", "clip_ms": 1924}, {"key": "killionaire", "kind": "multi", "count": 8, "label": "KILLIONAIRE", "clip": "VA7L", "clip_ms": 1924}, {"key": "killing_spree", "kind": "streak", "count": 5, "label": "KILLING SPREE", "clip": "VA7K", "clip_ms": 1924}, {"key": "unstoppable", "kind": "streak", "count": 10, "label": "UNSTOPPABLE", "clip": "VX0U", "clip_ms": 1175}, {"key": "melee_kill", "kind": "melee", "count": 1, "label": "BEAT DOWN", "clip": "VA7F", "clip_ms": 1924}, {"key": "killjoy", "kind": "killjoy", "count": 5, "label": "KILLJOY", "clip": null, "clip_ms": null}];
+/** A63 (Tony 2026-09-24): the END-OF-MATCH awards, in recap order. `scoring.Scorer.honors()` awards them; every
+ *  Honor row carries its `key`, and `award` stays the label for older consumers. None is awarded under 3 scored
+ *  players. `rule` and `tie` are the rule as built, in words, for the docs and the console. A tie that survives
+ *  the tie-break is SHARED: every tied player gets their own Honor row for that award. */
+export const AWARDS: readonly { readonly key: string; readonly label: string; readonly rule: string; readonly tie: string }[] = [{"key": "mvp", "label": "MVP", "rule": "top kills minus deaths; needs 1+ kill", "tie": "then K/D, then kills; still level = shared"}, {"key": "most_kills", "label": "MOST KILLS", "rule": "most kills; needs 1+ kill", "tie": "shared"}, {"key": "best_kd", "label": "BEST K/D · NON-MVP", "rule": "best K/D among players who are not MVP; needs 1+ kill", "tie": "then kills; still level = shared"}, {"key": "sharpshooter", "label": "SHARPSHOOTER", "rule": "best accuracy (hits per shot_group) with ACC_MIN_SHOTS+ shots; needs above 0 %", "tie": "shared, to the whole percent shown"}, {"key": "survivor", "label": "SURVIVOR", "rule": "the longest single life: go-live (or join, or a respawn) to a death or the match end; not for a silent player or one with a fact from an unsynced node", "tie": "shared, to the whole second; not awarded when every player ties"}, {"key": "iron_man", "label": "IRON MAN", "rule": "fewest deaths among players who played the whole match (no hot-join) and whose phone reported; must be fewer than the most", "tie": "then kills; still level = shared"}, {"key": "first_blood", "label": "FIRST BLOOD", "rule": "the match's first credited enemy kill", "tie": "none: one kill is first"}, {"key": "multikill", "label": "MULTIKILL", "rule": "the longest multi-kill chain (2+), shown with its MEDALS ladder label", "tie": "then the number of 2+ chains; still level = shared"}, {"key": "wingman", "label": "WINGMAN", "rule": "most assists; needs 1+ assist", "tie": "shared"}, {"key": "objective_hero", "label": "OBJECTIVE HERO", "rule": "koth/domination only: most seconds the player's own phone reported their team holding a point while in range (IR for a grenade, BLE for a station); needs 1+ s", "tie": "shared, to the whole second"}];
 export const FEEDBACK_MAX_AGE_MS = 3000;
 export const STATUS_HEARTBEAT_MS = 2000;
 export const STALE_AFTER_MS = 8000;
@@ -92,6 +97,8 @@ export const SPAWN_KILL_WINDOW_MS = 10000;
  *  sent explicitly instead of 0 to a phone app older than PHONE_THRESHOLD_ZERO_APP (which clamps 0 to -30 dBm). */
 export const PHONE_RESPAWN_THRESHOLD_DBM = -70;
 export const PHONE_STATION_THRESHOLD_DBM = -74;
+/** S58: a powerup station's ~1 ft claim range (placeholder until bench 4.11) */
+export const PHONE_POWERUP_THRESHOLD_DBM = -55;
 /** advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral */
 export const STATION_TEAM_ANY = 255;
 /** net.md §8 size cap */
@@ -956,6 +963,8 @@ export interface Event {
   /** S16: the death came from the node's own poison tick (a `$LIFE` write), not from a hit. `shooter_num` and
    *  `shooter_team` then name the player who last applied the poison, which is who gets the kill. */
   dot?: boolean;
+  /** Tony 2026-09-24 (death): the killing $HIR was the melee proto (13) -- the melee medal. Absent on an older phone. */
+  melee?: boolean;
   /** S56 (hit_taken): the weapon the victim's phone resolved from the shooter's roster loadout; absent = unresolved or ambiguous. */
   weapon_id?: string;
   /** respawn */
@@ -1184,9 +1193,13 @@ export interface ModeInfo {
 }
 
 export interface Honor {
+  /** the award's LABEL (types.AWARDS), kept for older consumers */
   award: string;
   player_id: string;
   stat: string;
+  /** A63: the AWARDS key. NotRequired, not merely new: `honors()` fills it on every row, but a recap PERSISTED
+   *  before A63 replays honors without it. Read it with a fallback to `award`. */
+  key?: string;
 }
 
 export interface StationAssignment {

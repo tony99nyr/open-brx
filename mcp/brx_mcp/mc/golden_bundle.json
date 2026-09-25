@@ -125,7 +125,8 @@
     "killtrocity": "$PLAY,,4,6,VA7O,,,,*",
     "killamanjaro": "$PLAY,,4,6,VA7J,,,,*",
     "killtastrophe": "$PLAY,,4,6,VA7N,,,,*",
-    "killionaire": "$PLAY,,4,6,VA7L,,,,*"
+    "killionaire": "$PLAY,,4,6,VA7L,,,,*",
+    "melee_kill": "$PLAY,,4,6,VA7F,,,,*"
   },
   "swap_ms": 850,
   "callout_team": 0,
@@ -648,6 +649,18 @@
       ]
     ],
     "killionaire": [
+      [
+        "$LED,9,1,1,1,*",
+        0.0
+      ]
+    ],
+    "melee_kill": [
+      [
+        "$LED,9,1,1,1,*",
+        0.0
+      ]
+    ],
+    "killjoy": [
       [
         "$LED,9,1,1,1,*",
         0.0

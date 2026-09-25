@@ -3,6 +3,8 @@
 Updated: 2026-09-24. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
+**The next sitting (2026-09-25): [`bench-2026-09-25.md`](bench-2026-09-25.md)**, three setups, MUST first, 0.4.12 cut after sitting A.
+
 This file holds the ORDER only. Each step points to the sheet section or the FOLLOWUPS row that holds the procedure.
 Do not copy a procedure into this file. When a sitting ends, strike its steps here (the skill's close, step 4).
 
@@ -38,31 +40,20 @@ other hits cleanly. That result, plus a shooter seeing a protected player flash 
 respawner firing while still protected, drove the 0.4.3 respawn-profile rebuild the same day (F121/F209 closed,
 superseded). See `docs/experiment-log/2026-09.md` (2026-09-19 pre-game entry) for the full write-up.
 
+**The 2026-09-24 runbook, [`bench-2026-09-24.md`](bench-2026-09-24.md)** (the experiment log's 2026-09-24 bench
+entries). Done: Block 0; Block 1 (F297's laptop control, 10/10 at a median of 1.37 s; F293's loop reproduced on
+demand, so step 1.3's capture was not needed); Block 1.4 including step 5 (a mid-match headset power-cycle
+reconnected in 2 s with no loop); Block 3.1-3.3 (F308's release order and fire intervals; S58's pickup slots,
+button map and overshield clamp); Block 4.3 (the AR ladder passed the spec but felt too harsh, so the balance lane
+eased `heavy` 40 to 45 and the Burst Rifle gap 550 to 540 ms, F308); Block 7 step 11 (S57: the victim-name word was
+lost inside the headset's rate guard, and the wider gap is on main); and the evening audio A/B/A on one gun (F347:
+the native shield hum blocks the gun's audio queue). Off the plan the same day: melee (K4, closed) and F336.
+
 ## Sittings, in priority order
 
-### Next sitting: [`bench-2026-09-24.md`](bench-2026-09-24.md) (MUST: about 4 h in three remaining setups, B-D)
+### Next sitting: [`bench-2026-09-25.md`](bench-2026-09-25.md)
 
-**Block 0 (preflight), Block 1 (F297/F293 connect reliability), Block 1.4 (the F293 fix re-check, PASS except
-step 5), and Block 3.1-3.3 (F308: release order, fire intervals; S58: pickup slots, buttons, overshield) are
-DONE, 2026-09-24** (see the experiment log's 2026-09-24 bench entry). Step 1.3 was not needed as a planned step:
-the loop was reproduced on demand, without a btsnoop capture. **Step 1.4's step 5 (a headset power-cycle
-mid-match) ran in the 2026-09-24 evening sitting and PASSES** (no loop, a 2 s reconnect); 1.4 is fully done.
-Also done that evening, against MC: **Block 4.3 PASSES** (the AR's recoil ladder, though Tony calls it too
-harsh at point blank, so the shipped ladder moves to 100/70/55, F308) and **Block 7 step 11 PASSES** (the
-victim-name word registers alone but collides in play inside the headset's rate guard, S57). **The next
-sitting starts at Block 4** (the remaining items, below).
-S58's 3.3 open items: 4.11's RSSI pickup-range calibration (not run), item 7's untested hits-draining-the-shield
-and dead-gun `$LIFE` mode-2 cases, item 4's reload-targets-last-slot-fired confounder, and item 8's `$BMAP,0,0`
-weapon-reset confounder, both needing a disassembly read rather than a bench re-run. What remains otherwise: the
-rest of F308's bench items in `docs/weapon-design.md`'s Balance rules table, the screamers transport steps A4,
-A7, A7b, A7c and A8 with `raw-bytes` (F269/F270), the native kill word and the R4 readings (Block 2b:
-F320-F322), S56, F292, F298, F296, F309, F275
-outdoors, S48's super-indoor grid in Tony's house, S57's IR callout bus (the rest of its steps; step 11 is
-done), the release loop (Block 4.0), the
-Bluetooth KOTH hill by phone (F70, F338; Block 4.13, needs 0.4.11), and the Stick over BLE (Block 9, MUST for the
-Stick MVP). **F338 (Tony, 2026-09-24): the grenade hill and Stick IR receive are POST-MVP**, so their steps moved
-to LATER in the runbook. Its sitting plan orders the rest: Sitting A already ran and closed 2026-09-24; MUST
-sittings B-D remain, a stop point, then LATER by setup.
+That sheet orders what is left of the 2026-09-24 runbook; do not re-run the runbook's done steps (above).
 
 ### Sitting 1: screamers Phase A, transport half (about 55 min; 1 gun, a laptop)
 
@@ -152,7 +143,8 @@ headset-word row was F254 before its renumber and is F275 now.
 
 ### Backlog (no fixed order; pick by setup)
 
-- [`bench-sticks3-2026-09-23.md`](bench-sticks3-2026-09-23.md): the M5StickS3 gates, gate 2 (IR receive, **F314**) first.
+- [`bench-sticks3-2026-09-23.md`](bench-sticks3-2026-09-23.md): the M5StickS3 gates. Gate 2 (IR receive, **F314**) is
+  post-MVP (**F338**, Tony 2026-09-24); the Stick MVP runs over Bluetooth, Block 9 of the runbook.
   Kit: a Stick, the rig, a laptop, one gun for gates 4 and 5.
 - [`bench-grenade.md`](bench-grenade.md) "Still to run": B0 first, then X, Z1-Z3, D, B, E, F (C is answered).
 - The unrun rungs of [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) that the table below does not mark as

@@ -35,6 +35,7 @@
 #include "mc_link_glue.h"   // H8: Wi-Fi/mDNS/WebSocket to Mission Control (docs/spec/utility.md §5g)
 #include "station_render.h" // the M5GFX renderer for a ScreenSpec (Arduino-only)
 #include "station_screen.h" // the pure screen MODEL: state -> ScreenSpec (host-tested)
+#include "stick_state.h"    // the pure mapping: the Stick's real state -> StickState (host-tested, sim/)
 
 using namespace brx;
 
@@ -128,8 +129,6 @@ static void resetPoints() {
 // ---- screen model/render (station_screen.h / station_render.h) ------------------------------- //
 M5Canvas canvas(&M5.Display);   // one off-screen sprite, pushed once per paint: no flicker
 HomeNav homeNav;                // Tony, 2026-09-24: idle timeout + A-long-press "go home"
-uint8_t lastControlOwner = TEAM_ANY;  // tracks a HILL/BRIDGE owner change, to time "HELD m:ss"
-uint32_t heldSinceMs = 0;
 uint32_t confirmArmedAtMs = 0;  // mirrors station_ui.h's own armed_at_ms_ (no getter there; see pollButtons())
 bool resetOutcomeActive = false;  // a RESET was just confirmed; show its outcome briefly, then clear
 bool resetOutcomeOk = false;      // true = sent to MC; false = RESET NEEDS MISSION CONTROL
@@ -475,108 +474,31 @@ static void pollAdvert(uint32_t now) {
 // station_render.h are its two halves (README's "Screens" section). This replaces the old paint()/
 // paintOperator() pair: one model, one renderer, for both standalone bench use (control_point.h with
 // no Wi-Fi at all) and an MC-armed station.
-static std::string toUpperStd(const std::string& in) {
-  std::string out = in;
-  for (auto& ch : out) ch = (char)toupper((unsigned char)ch);
-  return out;
-}
+// The mapping itself is pure and lives in stick_state.h, so the screen simulator (sim/) runs the
+// exact same code on the host; this only gathers the globals it reads.
+HeldClock heldClock;  // times "HELD m:ss" across paints
 
 static StickState buildStickState(uint32_t now) {
-  using brx_glue::link;
-  StickState st;
-  st.now_ms = now;
-  st.link_state = link.state();
-  st.ble_on = true;
-  st.mc_connected = (link.state() == LinkState::WELCOMED || link.state() == LinkState::ASSIGNED);
-  st.ir_active = lastWordAt != 0 && (now - lastWordAt) < 300;
-  st.battery_pct = -1;  // bench to confirm: no on-device battery reading wired up yet (README)
-
-  const StationAssignment& a = link.assignment();
-  st.assignment_present = a.present;
-  st.assignment_id = a.present ? a.id : -1;
-
-  bool standalone = (link.state() == LinkState::NOT_CONFIGURED);
-  st.control_present = standalone || (a.present && a.kind == "control");
-  st.bridge_mode = standalone && point.mode == Mode::BRIDGE;
-  st.bridge_beacon_live = st.bridge_mode && advertising;  // pollAdvert withdraws it when the grenade goes quiet
-  if (st.control_present) {
-    // The Bluetooth hill when MC armed a control station, else the bench IR point.
-    const bool ble = bleHillActive();
-    const uint8_t owner = ble ? (uint8_t)link.hill().owner : point.owner;
-    st.control_owner = owner;
-    if (ble) {
-      const BleControlPoint& h = link.hill();
-      const AdvertView hv = h.advert();
-      st.control_ble = true;
-      st.control_progress_pct = hv.value;
-      st.control_bar_team = hv.team == TEAM_ANY ? -1 : (int)hv.team;
-      st.control_contested = h.contested;
-      st.control_dir = h.dir;
-    } else {
-      st.control_progress_pct = point.progress();
-    }
-    if (owner != lastControlOwner) {
-      heldSinceMs = now;
-      lastControlOwner = owner;
-    }
-    uint32_t heldMs = (owner == TEAM_ANY) ? 0 : (now - heldSinceMs);
-    st.control_hold_time = format_mmss(heldMs / 1000);
-  }
-  if (link.has_respawn_assignment()) {
-    st.respawn_present = true;
-    st.respawn_team = a.team;
-    st.respawn_revives = link.revives().revives;
-    st.respawn_redeploy = (int32_t)(brx_glue::reviveFlashUntilMs - now) > 0;
-    st.respawn_live = advertising;
-  }
-
-  if (a.present && a.kind == "powerup") {
-    st.powerup_present = true;
-    st.powerup_available = link.powerup().available();
-    st.powerup_taker = link.powerup().taker();
-    PowerupAdvertView pv = link.powerup().view(now);
-    st.powerup_remaining_s = pv.value;
-    st.powerup_period_s = a.item.spawn_every_s > 0 ? (uint32_t)a.item.spawn_every_s : 60;
-    st.item_name = toUpperStd(a.item.name);
-    st.item_color_hex = a.item.color;
-    st.item_is_special = a.item.kind != "weapon";
-  }
-
-  st.ir_heard = wordCount;
-  st.ir_sent = sentWordCount;
-  if (lastWordAt) {
-    char buf[32];
-    snprintf(buf, sizeof buf, "P%d T%d M%d OK", lastWord.player, lastWord.team, lastWord.mag);
-    st.last_word = buf;
-  }
-  st.selftest_result = std::string(lastSelfTestResult.c_str());
-  st.tx_pin = settings.txpin;
-
-  if (a.present) {
-    st.stats_kind_label = (a.kind == "powerup")
-        ? "PICKUP - " + (a.item.name.empty() ? std::string("?") : toUpperStd(a.item.name))
-        : toUpperStd(a.kind) + " #" + std::to_string(a.id);
-    st.stats_last_taken = (a.kind == "powerup" && link.powerup().taker())
-        ? "P" + std::to_string(link.powerup().taker()) : std::string("-");
-  } else if (standalone) {
-    st.stats_kind_label = point.mode == Mode::HILL ? "HILL (BENCH)" : "BRIDGE (BENCH)";
-    st.bench_mode_label = point.mode == Mode::HILL ? "HILL" : "BRIDGE";
-    st.stats_last_taken = "-";
-  } else {
-    st.stats_kind_label = "-";
-    st.stats_last_taken = "-";
-  }
-
-  st.button_phase = brx_glue::buttons.phase();
-  st.confirm_armed_at_ms = confirmArmedAtMs;
-  st.reset_outcome_active = resetOutcomeActive;
-  st.reset_outcome_ok = resetOutcomeOk;
-  st.reset_outcome_locked = resetOutcomeLocked;
-  st.locked = link.lock().locked(now);
-  st.lock_remaining_s = link.lock().remaining_s(now);
-  st.force_restart_countdown_s = forceRestart.countdown_s();
-  st.at_home = homeNav.at_home();
-  return st;
+  StickInputs in;
+  in.now_ms = now;
+  in.link = &brx_glue::link;
+  in.point = &point;
+  in.advertising = advertising;
+  in.revive_flash_until_ms = brx_glue::reviveFlashUntilMs;
+  in.last_word_at_ms = lastWordAt;
+  in.last_word = lastWord;
+  in.word_count = wordCount;
+  in.sent_word_count = sentWordCount;
+  in.selftest_result = std::string(lastSelfTestResult.c_str());
+  in.tx_pin = settings.txpin;
+  in.button_phase = brx_glue::buttons.phase();
+  in.confirm_armed_at_ms = confirmArmedAtMs;
+  in.reset_outcome_active = resetOutcomeActive;
+  in.reset_outcome_ok = resetOutcomeOk;
+  in.reset_outcome_locked = resetOutcomeLocked;
+  in.force_restart_countdown_s = forceRestart.countdown_s();
+  in.at_home = homeNav.at_home();
+  return build_stick_state(in, heldClock);
 }
 
 static void paintFromModel(uint32_t now) {
@@ -624,7 +546,7 @@ static void printStatus() {
       Serial.printf(" hill_owner=%d capturing=%d progress=%ld dir=%d contested=%d net=%d captures=%lu", h.owner == TEAM_ANY ? -1 : h.owner,
                     h.capturing, brx::BleControlPoint::js_round(h.progress), h.dir, h.contested ? 1 : 0, h.net,
                     (unsigned long)h.captures);
-    } else {
+    } else if (brx::REVIVE_FEEDBACK_ENABLED) {  // post-MVP (presence.h)
       Serial.printf(" revives=%lu", (unsigned long)link.revives().revives);
     }
     Serial.println();
@@ -668,8 +590,15 @@ static void handleLine(String line) {
   if (line == "PMIC") {  // read-only: the side-button lock bits (M5PM1 0x49/0x4A bit0; bit7 of 0x49 is never written)
     uint8_t c1 = M5.In_I2C.readRegister8(brx_glue::PM1_ADDR, brx_glue::PM1_BTN_CFG_1, brx_glue::PM1_I2C_HZ);
     uint8_t c2 = M5.In_I2C.readRegister8(brx_glue::PM1_ADDR, brx_glue::PM1_BTN_CFG_2, brx_glue::PM1_I2C_HZ);
-    Serial.printf("PMIC 0x49=%02x 0x4A=%02x single_reset_disabled=%u double_off_disabled=%u dl_lock=%u want_lock=%u\n",
-                  c1, c2, c1 & 1, c2 & 1, (c1 >> 7) & 1, brx_glue::pmicSideButtonLocked ? 1 : 0);
+    Serial.printf("PMIC 0x49=%02x 0x4A=%02x single_reset_disabled=%u double_off_disabled=%u dl_lock=%u want_lock=%u confirmed=%u\n",
+                  c1, c2, c1 & 1, c2 & 1, (c1 >> 7) & 1, brx_glue::pmicLock.want() ? 1 : 0,
+                  brx_glue::pmicLock.confirmed() ? 1 : 0);
+    return;
+  }
+  if (brx::REVIVE_FEEDBACK_ENABLED && line == "REDEPLOY") {  // bench: show the revive flash now (post-MVP, presence.h)
+    brx_glue::reviveFlashUntilMs = millis() + brx_glue::REVIVE_FLASH_MS;
+    displayDirty = true;
+    Serial.println("REDEPLOY flash (test)");
     return;
   }
   if (line == "PLAYERS") { printPlayers(); return; }
@@ -892,6 +821,10 @@ static void pollButtons() {
     Serial.printf("RESET refused: station locked (%lu s left)\n", (unsigned long)link.lock().remaining_s(now));
     homeNav.note_activity(now);
     displayDirty = true;
+  } else if (bHold && !link.assignment().present) {
+    // No station assigned: nothing to reset, so the hold arms no confirm (the hint does not offer it).
+    Serial.println("RESET: no station assigned, nothing to reset");
+    homeNav.note_activity(now);
   } else if (bHold) {
     if (brx_glue::buttons.on_long_press(now)) {
       bool sent = brx_glue::mcSendResetAction();
@@ -917,6 +850,9 @@ void setup() {
   cfg.internal_spk = false;  // the amp interferes with the IR receiver (M5 docs); never bring it up
   cfg.internal_mic = false;
   M5.begin(cfg);
+  // F332: give the side button back FIRST. A lock left set by a crashed boot survives the reset (the
+  // PMIC keeps it), so this runs before anything else that could crash-loop (mc_link_glue.h).
+  brx_glue::pmicSync(false, millis());
   M5.Speaker.end();
   // The IR receiver (G42) and transmitter (G46) run off the M5PM1 EXT_5V rail, which M5Unified leaves OFF by default
   // (docs.m5stack.com/en/arduino/m5sticks3/m5pm1). Without it the receiver is unpowered: bench 2026-09-23 saw only

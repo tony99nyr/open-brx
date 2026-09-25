@@ -75,8 +75,9 @@ Rules:
    lines (every other alert, the pool lines) are still muted while the loop blocks. While the loop
    blocks, the model keeps at most one pending clip per sound id, so twenty hits under a shield count as one hit
    sound, not twenty. **The loop resumes on its own after
-   `$PLAYX,0` (bench 2026-09-24, shield still up)**, so every must-hear line in that state gets its own stop. MC's
-   compile is to stop shipping the loop; until then this is what keeps a kill confirm on time.
+   `$PLAYX,0` (bench 2026-09-24, shield still up)**, so every must-hear line in that state gets its own stop. Whether MC
+   stops shipping the loop (t23 EMPTY, `audio-queue-scenarios.md` bench step 2) is open under F347; until then this
+   is what keeps a kill confirm on time.
 
 **Not modelled** (assumed not to use the announcer FIFO, unconfirmed): the gun's own fire, reload, empty-click and
 weapon-swap sounds, and whatever the native `$SPAWN` plays. If any of them do queue there, the flush count is low by
@@ -94,7 +95,19 @@ Highest first: `kill_confirmed`, `lead_taken`, `lead_lost`, `medal`, `hill_captu
 (**Tony**), then the medal lines of a kill already confirmed, then what the player can act on, then match news, then
 other players' deaths, then item spawns. Equal rank plays first in, first out.
 
-`medal` is its own rank so that a lead change MC sends with a kill is not held behind that kill's medal lines. It
+## Silent during a kill streak (`STREAK_SILENT`)
+
+**Tony**, 2026-09-24: "i think that is right. they go silent when kill streaks are showing." A lead change ("takes the
+lead", "lost the lead") or a hill line ("Hill Captured", "Hill Lost") that is queued or starts while my kill or medal
+item is on air or waiting is voice-silent. Its line is dropped, not held for later. Its OBJECTIVE badge still shows, at once (the lanes draw on arrival). The
+log says `<kind> silent: kill streak on air`. An item that was muted stays muted if a kill displaces it. Outside a streak these lines play as usual: a lead change waits behind an ordinary line, and the
+newest lead state wins.
+
+Open question for Tony: "Hill Contested" (`hill_contested`, queued as an `alert`) is not in `STREAK_SILENT`, so it
+still speaks mid-streak, after my kill and medal lines.
+
+`medal` is its own rank so that the banner of a lead change MC sends with a kill is not held behind that kill's medal
+lines. It
 applies once the kill line was said (the IR word said it): the medal lines left are a `medal` item. When MC names the
 kill first, a medal replaces the plain kill line and IS the confirmation, so that item stays `kill_confirmed`. A
 `medal` item is must-hear, holds its full slot like a kill, and no must-hear line flushes over it while it sounds.
@@ -158,8 +171,8 @@ their IR twins stay silent.
 An item that waits longer than its TTL is dropped, never played late: hill 3 s, swap 4 s, alert 6 s, teammate and
 enemy down 3 s, spawn 5 s (`PU_ANNOUNCE_LATE_MS`), pool lines 1.5 s. My own kill confirm and its medal lines have no
 TTL (**Tony**: first, and never lost): behind a four-medal stack a kill waits about 8 s and still plays. A lead change
-has no TTL either: it is must-hear, so it waits (behind two kill items it expired at 4.25 s before). It cannot go
-stale, because a newer lead state replaces it (key `lead`). An item that leaves
+has no TTL either: outside a kill streak it waits behind ordinary lines, and it cannot go stale, because a newer lead
+state replaces it (key `lead`). Inside a streak its line is dropped (above). An item that leaves
 the queue unplayed runs its `onDrop`, which undoes its kill-confirm pairing, so a twin never stays silent for a
 confirm nobody heard. Items with the same key collapse.
 The same kind already playing or waiting is dropped. A different kind with the same key that is still waiting is
@@ -189,7 +202,8 @@ air, its card takes the name in place. If it is waiting, or is a card a kill dis
 never flashes twice:
 
 - IR first, MC second, IR on air: MC's named card replaces the IR card in place, with no second line or flash. With
-  medals, the medal lines follow the IR line as a `medal` item, after any lead change that waits.
+  medals, the medal lines follow the IR line as a `medal` item, after the banner of any lead change that waits (its
+  line is silent in the streak).
 - IR first, still waiting, MC second: MC's item replaces the waiting IR item and speaks the kill once.
 - MC first, IR second: the IR word adds no line when MC's item says the kill line. If MC's item says only a medal (a
   medal replaces MC's plain line) or said nothing, the IR word says the kill line itself, voice only, with no card.
@@ -204,7 +218,7 @@ IR card whose MC twin never came can never silence a later kill's flash.
 ## Stage
 
 `npm run ui:stage` → **Callouts (S57)** → *announcer queue*: MC's kill feedback and its lead alert on one tick. The
-voice says the kill first and the lead after it. The screen shows the kill HERO and the lead badge together, from the
+voice says the kill first and the lead after it (the lead line is silent during a kill streak). The screen shows the kill HERO and the lead badge together, from the
 first frame. More stages: `live-kill-lead-hill` (all three at once), `live-spree` (the storyboard: six kills on MC's
 ladder with the lead, the hill and a teammate down inside it), `live-kill-beat-down`, `live-kill-killjoy` and
 `result-awards`. `app/tools/screens.mjs` checks each lane (`lanes` steps). `app/tools/alert-gallery.mjs` renders the

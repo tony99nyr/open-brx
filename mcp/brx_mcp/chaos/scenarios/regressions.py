@@ -92,8 +92,9 @@ scenario(Scenario(
 
 scenario(Scenario(
     name="clock-back-assist", mode="tdm", nodes=4,
-    doc="Chaos 2026-09-24 (F330, OPEN): after a backward clock jump, a hit from the victim's NEXT life sorts before "
-        "its death, and a replay credits an assist the live board never gave.",
+    doc="Chaos 2026-09-24 (F330): after a backward clock jump, a hit from the victim's NEXT life sorts before "
+        "its death, and a replay credited an assist the live board never gave. The assist now skips a hit "
+        "whose seq on the victim's node is after the death's.",
     script=[
         # nodes 0 and 2 are blue, 1 and 3 are yellow
         {"name": "kill", "params": {"victim": 0, "shooter": 1}},
@@ -103,8 +104,6 @@ scenario(Scenario(
         {"name": "mc_restart", "params": {}},
         {"name": "end", "params": {}},
     ],
-    xfail="F330: a replay credits an assist from the victim's next life after a backward clock jump",
-    xfail_invariant="snapshot_survives_restart",
     ci_seeds=(1,),
 ))
 

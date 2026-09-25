@@ -42,17 +42,23 @@ scan, 1 s windows every 1.2 s, beside its own advert. The rules are ports of the
   An enemy-held point drains to neutral before it builds. Ticked every 250 ms; the advert republishes
   a state change at once and progress at most once a second. A capture also sends the S57 IR capture
   word once, and the hill beacon still goes out every 5 s.
-- **Respawn**: advertises state 1 ("ready"; phones ignore a respawn advert with state 0), and
-  counts revives (a present player's alive bit going 0 to 1), reported as `revives` in the status.
+- **Respawn**: advertises state 1 ("ready"; phones ignore a respawn advert with state 0), and does
+  nothing else for the MVP. Revive feedback is post-MVP (Tony, 2026-09-24): behind one switch,
+  `REVIVE_FEEDBACK_ENABLED` in `presence.h` (off; build with `-DBRX_REVIVE_FEEDBACK=1` to turn it on),
+  a respawn Stick scans for players, counts revives (a present player's alive bit going 0 to 1),
+  shows the count and a green REDEPLOY flash, takes the `REDEPLOY` serial command, and reports
+  `revives` in the status. Off, it runs no scan at all, which also ends the scan-vs-advert flicker
+  seen at the bench. The host tests build both ways.
 - **Pickup**: unchanged.
 
 Hill and respawn presence use MC's threshold, or the Stick's -57 dBm (Tony, 2026-09-24) when MC sends none (the pickup
-claim keeps its -80 dBm floor). A hill's owner is saved in NVS on each change of hands (never on a
+claim has no RSSI floor: the phone's claim_ready proves proximity). A hill's owner is saved in NVS on each change of hands (never on a
 progress tick), tagged with the game and station id, so a Stick restarted from its restored config
 comes back held by that owner with the possession tally saved at that change (F332). The save is
 tagged with the MC session too, so a new session, a new game, another id, `release_utility` or the
-operator's point RESET clears it. The player scan runs at 50% duty (window 50 of interval 100,
-`SCAN_WINDOW_UNITS`), down from the claim scan's 99; bench to confirm it still hears every phone.
+operator's point RESET clears it. The hill's player scan runs at 50% duty (window 50 of interval 100,
+`SCAN_WINDOW_HILL_UNITS`), down from the claim scan's 99; bench to confirm it still hears every phone. A
+respawn Stick runs no player scan at all while revive feedback is off (the default, `presence.h`).
 mDNS discovery is asynchronous, so the hill never waits on it.
 
 **Arm hill Sticks with `station_source` `phone`, or leave it absent.** A phone follows a control
@@ -161,7 +167,7 @@ BLE). `stick.py ports` is the only subcommand safe to run without a Stick plugge
 | command | does |
 |---|---|
 | `stick.py ports` | list COM ports with vid/pid/serial; labels the Stick and the two IR-rig boards |
-| `stick.py compile` | stage the sketch and run `arduino-cli compile`; prints the size line |
+| `stick.py compile [--revive-on]` | stage the sketch and run `arduino-cli compile`; prints the size line. `--revive-on` builds with the post-MVP revive feedback on (`BRX_REVIVE_FEEDBACK=1`, a build property): a compile check, `flash` always builds the default |
 | `stick.py flash [--port COMn]` | stage, compile, and upload to the auto-detected Stick port |
 | `stick.py cmd <secs> [cmd ...]` | send serial commands, print every line for `secs` |
 | `stick.py status` | send `STATUS`, print its fields parsed out |
@@ -193,6 +199,10 @@ The capture and emit line formats are the DevKitC rig's, so `mcp/tools/native_ca
 | `RXPIN 42\|9\|10` | onboard receiver or either Grove pin, persisted; refuses to double as the TX pin. An internal pull-up is enabled on a Grove pin (see "External IR receiver" below). The `STATUS` RX line names the active pin |
 | `BL <n>` | screen brightness 0-255, not persisted; bench-only, for A/B-ing the backlight-PWM noise against the receiver (`BACKLIGHT_DIM 60` is the shipped idle level) |
 | `RESET` | neutral, charges cleared |
+| `PLAYERS` | read-only: every player the station hears (RSSI raw/median/EMA, threshold, near/present, age) and the revive count |
+| `PLAYERS STREAM <s>` | read-only: repeat `PLAYERS` every 250 ms for `s` seconds (max 120), from loop(), non-blocking |
+| `PMIC` | read-only: the side-button lock registers (0x49/0x4A bit0, 0x49 bit7 DL_LOCK), the wanted lock and whether the read-back confirmed it |
+| `REDEPLOY` | bench: show the green REDEPLOY flash now. Only with revive feedback on (post-MVP, `presence.h`); off, the command does not exist |
 
 Every received burst except the Stick's own echo prints `RAW n edges=.. us=[...]`, `DECODE bits=..
 val=...`, and on a complete word (exactly 25 bits; a 26-bit frame is discarded, because an inserted
@@ -290,7 +300,7 @@ un-claim an item a player is legitimately holding.
 
 CLAIM (`ClaimGate`) scans for a player phone's own advert (role 2, state bit 4 `claiming`, bit 5
 `claim_ready`, `value` = the target station id, `id` = the claimant's player_num) and awards the
-first `claim_ready` heard for its own id, at -80 dBm or stronger, ties going to the lower player_num
+first `claim_ready` heard for its own id, at any signal strength (no floor since 2026-09-24: the Stick hears phones weakly), ties going to the lower player_num
 -- the Stick counts no dwell of its own, only the phone's. The advert then carries `state 0` (taken),
 `value` = seconds to the next spawn (capped 255), and the new byte 15 `taker` (the winner's
 player_num, 0 = none); `state 1` (available) is always `value 0`. A won claim is reported
@@ -437,7 +447,12 @@ way every other pure header here is. `station_render.h` is the other half, Ardui
 
 **Fonts.** M5GFX ships no condensed bold font; the closest built-ins are the Adafruit-GFX
 "FreeSansBold" family at four fixed sizes (9/12/18/24 pt) -- bold, but not condensed, so a long word
-sits wider on the Stick than in the mockup. Converting the repo's own Saira Condensed TTF to a VLW or
+sits wider on the Stick than in the mockup. So `fitCenterText` never draws text wider than its box:
+at each size (the caller's, then smaller ones down to 9 pt) it tries one line, then two lines where
+the layout gives it the height, then a documented short form ("MC" for "MISSION CONTROL"), and last
+cuts the text to the width (the screen gate fails on any cut). A stats value that would reach its
+label drops to the small label font first, so it stays whole ("PICKUP - PLASMA RIFLE"), and only
+then shortens to the part after a comma ("NOT ARMED"). Converting the repo's own Saira Condensed TTF to a VLW or
 u8g2 font is a follow-up, not done here.
 
 **Redraw policy.** `loop()` redraws on a real change (`displayDirty`, the same flag every other
@@ -462,22 +477,47 @@ gesture changes any station state -- see "Buttons and power" below.
   draining) or STALLED (part built, nobody on it). A held point whose owner tops it back up stays
   HELD. The small lines under NEUTRAL and CONTESTED say STAND HERE TO CAPTURE and TEAMS ON THE POINT,
   since this hill counts bodies, not shots. The bench IR hill still never emits either screen.
-- RESPAWN: OWNED shows the team and the revive count; a station for any team (team 255) shows ANY
-  TEAM in the neutral colour. IDLE is shown only when the advert is down, and says ADVERT DOWN
+- RESPAWN: OWNED shows the team and RESPAWN on the team colour, with no kicker (the revive count
+  and REDEPLOY flash are post-MVP, see "Bluetooth stations"); a station for any team (team 255) shows ANY TEAM in the neutral colour. IDLE is shown only when the advert is down, and says ADVERT DOWN
   rather than render.py's AWAITING ASSIGNMENT. An extraction/bomb assignment shows the generic
   ASSIGNED screen.
 - PICKUP_EMPTY: nothing in `StationItem`/`PowerupSchedule` tracks a globally-exhausted item, only
   available/taken.
 - SETTINGS: not wired to any button flow yet (`ID`/`GAME`/`TXPIN` stay serial-only); the renderer
   exists, `compute_screen()` never produces it.
-- A welcomed-but-not-yet-armed link (MC found, no `station_config` applied yet) reuses the JOINING
-  screen's "LOOKING FOR MISSION CONTROL" copy, which undersells it once MC is actually found;
-  render.py has no separate screen for that state.
+- A welcomed-but-not-yet-armed link (MC found, no `station_config` applied yet) shows LINKED /
+  ASSIGN ME IN MC (`SCR_LINKED_WAITING`); render.py has no screen for that state.
 - `hold_time`/`next_spawn` both go through one canonical m:ss formatter (`format_mmss`: minutes
   unpadded, seconds zero-padded); render.py's own scene literals hardcode "04:12" vs "1:40"
   inconsistently, since render.py never defines the formatter itself.
 
 **Bench to confirm:** colours and legibility on the real panel -- none of this has been seen lit.
+
+### Screen simulator
+
+**Rule: review the gallery before you flash any screen change.** The simulator shows which screen
+the Stick picks in every state, and what that screen says, without a Stick:
+
+```
+python3 hardware/m5sticks3/sim/stick_sim.py --copy-to /mnt/c/Users/Tony/brx-stick-sim
+```
+
+Then open `C:\Users\Tony\brx-stick-sim\index.html` (or `hardware/m5sticks3/sim/out/index.html`).
+Each scenario drives the real `StationLink`, `ControlPoint`, `PlayerPresence` and button state
+machines with real MC messages. It maps the result through the firmware's own `build_stick_state()`
+(`stick_state.h`, shared with the .ino) and `compute_screen()`. It then draws the screen with the
+real `station_render.h`, compiled on the host against the installed M5GFX's sprite code, so each PNG
+is pixel-exact. `sim/shim/M5Unified.h` stands in for the Arduino header. The glue's frame handling
+and `pollButtons()` are Arduino-only, so `sim/stick_sim.cpp` copies their sequencing.
+
+The gate is `mcp/tests/test_sticks3_screens.py` (`cd mcp && python3 run_tests.py sticks3`). It fails
+when a scenario shows the wrong kind or copy (`EXPECT` in `stick_sim.py`), or when text leaves the
+screen, its band or its box, or lands on other text. It also fails when two different states draw
+the same picture, or when two strings sit closer than 2 px. `KNOWN` lists accepted exceptions, each
+with its reason; it is empty (the 14 screens the first run flagged are fixed). A new screen or state gets a scenario and an `EXPECT` row. M5GFX is found in the Arduino
+libraries folder or `$M5GFX_SRC`; without it only the screen kinds are checked. The simulator and the
+gate also build with revive feedback on (`EXPECT_REVIVE_ON`), so the post-MVP respawn screens stay
+checked; the gallery shows them in their own section. Any text the fitter had to cut fails the gate.
 
 ## Buttons and power
 
@@ -489,7 +529,7 @@ RESET / MODE toggle) documented there.
 |---|---|---|
 | A | short press | next page: leaves the home/gameplay screen for STATS (standalone bench mode: toggles DIAGNOSTICS) |
 | A | hold ~1 s | HOME: back to the live gameplay screen from anywhere, cancelling an open RESET confirm on the way. Changes no station state (`station_screen.h`'s `HomeNav`, host-tested) |
-| B | hold 2 s, then hold again within 5 s | RESET: the second hold sends `station_action{action:"reset"}` to Mission Control |
+| B | hold 2 s, then hold again within 5 s | RESET: the second hold sends `station_action{action:"reset"}` to Mission Control. Only with a station assigned: an unassigned Stick has nothing to reset, so the hold does nothing and the hint bar shows only `A: STATS` |
 | A + B | hold together 7 s | FORCE RESTART, locked or not (see "Match lock" below) |
 | small side button | single click | power on, or restart if the Stick is already on |
 | small side button | double click | POWER OFF (**bench to confirm:** whether this fires while the Stick is on USB power, as it always is at the bench) |
@@ -510,8 +550,15 @@ unlocks itself at zero. While it is on, a padlock shows in the status strip and:
 - the B-hold RESET is refused and shows LOCKED with the time left;
 - A still pages the stats and goes home (read-only);
 - the serial commands that change station state or transmit IR answer `ERR locked` (RESET, MODE,
-  ID, GAME, TXPIN, WIFI, MC, LINK, ACTIONS, SELFTEST, TX, TXN, AUTO with bits). PING, STATUS,
-  RAW ON|OFF and AUTO OFF still work.
+  ID, GAME, TXPIN, WIFI, MC, LINK, ACTIONS, SELFTEST, TX, TXN, AUTO with bits). These still work:
+  the read-only PING, STATUS, PLAYERS, PLAYERS STREAM and PMIC; RAW ON|OFF (it changes only what
+  the Stick prints); and bare AUTO and AUTO OFF (both only stop a transmit)
+  (`serial_command_allowed_while_locked`, `station_ui.h`).
+- the side button's single-click reset and double-click power-off are disabled in the PMIC (F332).
+  Both registers are read back after every write and the write is retried each second until they
+  match (every 30 s after ten failures in a row). setup() clears them first thing on every boot, and
+  while locked the loop watchdog is on at 20 s (the WebSocket library can block loop() for up to 5 s
+  when MC goes away), so a real hang resets the Stick and the boot clear gives the button back.
 
 **Force restart:** hold A and B together for 7 s. After 2 s the screen counts down (RESTART IN 5);
 releasing either button cancels. It works whether the Stick is locked or not, and the joint hold

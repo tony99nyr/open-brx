@@ -387,12 +387,13 @@ static void test_item_configures_the_schedules_spawn_period() {
 static void test_claim_gate_awards_the_first_ready_advert_for_its_own_id() {
   ClaimGate g;
   g.configure(/*station_id=*/8, /*game=*/3);
-  g.observe(/*player_num=*/5, /*target_station_id=*/9, /*game=*/3, false, true, -50);  // wrong station
-  g.observe(5, 8, 3, false, true, -90);   // right station, too weak (below -80 dBm floor)
-  g.observe(5, 8, 9, false, true, -50);   // right station, wrong game
+  g.observe(/*player_num=*/5, /*target_station_id=*/9, /*game=*/3, false, true, true, -50);  // wrong station
+  g.observe(5, 8, 9, false, true, true, -50);   // right station, wrong game
   ClaimWinner none = g.resolve_batch();
   CHECK(!none.won);
-  g.observe(5, 8, 3, false, true, -80);   // exactly at the floor: strong enough
+  // No RSSI floor (Tony, 2026-09-24: pickups must work; the Stick hears phones at -75 to -91 even
+  // nearby): the phone's claim_ready already proves it is at the station. A weak reading still wins.
+  g.observe(5, 8, 3, false, true, true, -92);
   ClaimWinner w = g.resolve_batch();
   CHECK(w.won);
   CHECK_EQ(w.player_num, (uint8_t)5);
@@ -401,9 +402,9 @@ static void test_claim_gate_awards_the_first_ready_advert_for_its_own_id() {
 static void test_claim_gate_ties_in_one_batch_go_to_the_lower_player_num() {
   ClaimGate g;
   g.configure(8, 0);
-  g.observe(9, 8, 0, false, true, -50);
-  g.observe(3, 8, 0, false, true, -50);
-  g.observe(20, 8, 0, false, true, -50);
+  g.observe(9, 8, 0, false, true, true, -50);
+  g.observe(3, 8, 0, false, true, true, -50);
+  g.observe(20, 8, 0, false, true, true, -50);
   ClaimWinner w = g.resolve_batch();
   CHECK(w.won);
   CHECK_EQ(w.player_num, (uint8_t)3);
@@ -412,17 +413,41 @@ static void test_claim_gate_ties_in_one_batch_go_to_the_lower_player_num() {
 static void test_claim_gate_a_batch_with_no_ready_advert_awards_nothing() {
   ClaimGate g;
   g.configure(8, 0);
-  g.observe(5, 8, 0, /*claiming=*/true, /*claim_ready=*/false, -50);  // dwelling, not ready yet
+  g.observe(5, 8, 0, /*claiming=*/true, /*claim_ready=*/false, true, -50);  // dwelling, not ready yet
   CHECK(g.any_claiming_this_batch());
   ClaimWinner w = g.resolve_batch();
   CHECK(!w.won);
   CHECK(!g.any_claiming_this_batch());  // resolve_batch clears it for the next batch
 }
 
+// M2 (polish 2026-09-24): a DOWN claimant's claim_ready is ignored, as on the phone station
+// (powerup.js), and player 0 ("nobody" on the wire) never wins.
+static void test_claim_gate_ignores_a_dead_claimant_and_player_zero() {
+  ClaimGate g;
+  g.configure(8, 0);
+  g.observe(/*player_num=*/4, 8, 0, true, /*claim_ready=*/true, /*alive=*/false, -50);  // dead: ignored
+  g.observe(0, 8, 0, true, true, true, -50);                                          // player 0: ignored
+  CHECK(!g.resolve_batch().won);
+  g.observe(4, 8, 0, true, true, /*alive=*/true, -50);
+  ClaimWinner w = g.resolve_batch();
+  CHECK(w.won);
+  CHECK_EQ((int)w.player_num, 4);
+  StationLink link;
+  StationAssignment a;
+  a.present = true;
+  a.kind = "powerup";
+  a.id = 8;
+  link.apply_station_config(a, 0);
+  ClaimWinner zero;
+  zero.won = true;  // a winner with no player is not an award
+  CHECK(!link.award_claim(zero, 100));
+  CHECK(link.powerup().available());
+}
+
 static void test_claim_gate_unscoped_game_zero_matches_anything() {
   ClaimGate g;
   g.configure(8, 0);  // this station's own game byte is 0 (unscoped)
-  g.observe(5, 8, 7, false, true, -50);  // the claimant's game is scoped; still matches
+  g.observe(5, 8, 7, false, true, true, -50);  // the claimant's game is scoped; still matches
   CHECK(g.resolve_batch().won);
 }
 
@@ -990,7 +1015,7 @@ static void test_a_same_game_repush_replaces_the_lock_and_keeps_everything_else(
   link.powerup().tick(1000);
   link.powerup().mark_taken(3, 1000);
   uint32_t anchor_before = link.powerup().anchor_ms();
-  link.claims().observe(/*player_num=*/4, /*target=*/8, /*game=*/3, true, true, -60);  // a batch in flight
+  link.claims().observe(/*player_num=*/4, /*target=*/8, /*game=*/3, true, true, true, -60);  // a batch in flight
 
   StationAssignment again = a;
   again.lock_s = 900;
@@ -1339,9 +1364,11 @@ static void test_a_respawn_assignment_counts_revives_and_a_new_game_zeroes_them(
   pr.tick(250);
   HillUpdate u = link.tick_players(pr, 250);
   CHECK(!u.changed);  // a respawn station runs no hill
-  CHECK_EQ(link.revives().revives, 1u);
+  // Revive feedback is post-MVP (presence.h): off, a respawn station counts nothing.
+  const uint32_t one = REVIVE_FEEDBACK_ENABLED ? 1u : 0u;
+  CHECK_EQ(link.revives().revives, one);
   link.apply_station_config(r, 500);  // same game: kept
-  CHECK_EQ(link.revives().revives, 1u);
+  CHECK_EQ(link.revives().revives, one);
   r.game = 6;
   link.apply_station_config(r, 600);
   CHECK_EQ(link.revives().revives, 0u);
@@ -1594,6 +1621,7 @@ int main(int argc, char** argv) {
   test_claim_gate_awards_the_first_ready_advert_for_its_own_id();
   test_claim_gate_ties_in_one_batch_go_to_the_lower_player_num();
   test_claim_gate_a_batch_with_no_ready_advert_awards_nothing();
+  test_claim_gate_ignores_a_dead_claimant_and_player_zero();
   test_claim_gate_unscoped_game_zero_matches_anything();
   test_switching_away_and_back_to_powerup_resets_the_schedule();
   test_reassigning_a_powerup_to_a_new_id_resets_the_schedule();

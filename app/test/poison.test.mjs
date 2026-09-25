@@ -403,3 +403,37 @@ test('integration 2026-09-23: a smoke word between the lethal tick and its $LCD 
   assert.equal(d[0].dot, true);
   assert.equal(h.eng.state().lastLife.finalHit.dot, true, 'the lethal tick is still the final hit');
 });
+
+// Tony 2026-09-24: "melee kills should be a medal". The death fact says `melee: true` when the killing $HIR was the
+// melee proto (13), so MC can award the melee medal; any other killing blow, or no fresh latch, sends nothing.
+test('melee medal: a death whose killing $HIR is proto 13 is flagged melee; a gun kill is not', () => {
+  const h = harness();
+  h.eng.feedFrame('$HIR,4,13,3,2,45,0,0,*');           // the melee word (sensor 4 = the gun body, F336)
+  h.eng.feedFrame('$HP,0,0,0,*');
+  const d = h.kind('death');
+  assert.equal(d.length, 1);
+  assert.equal(d[0].melee, true, 'a melee killing blow is flagged');
+  assert.equal(d[0].shooter_num, 3);
+  const g = harness();
+  g.eng.feedFrame('$HIR,0,1,3,2,45,0,0,*');            // an ordinary gun word
+  g.eng.feedFrame('$HP,0,0,0,*');
+  assert.equal(g.kind('death')[0].melee, undefined, 'a gun kill carries no melee flag');
+});
+
+test('melee medal: a non-damaging word between the melee blow and the death does not change the flag', () => {
+  // melee (proto 13) kills, then a bystander's smoke word (proto 7) re-latches before the $HP,0 lands
+  const h = harness();
+  h.eng.feedFrame('$HIR,4,13,3,2,45,0,0,*');
+  h.eng.feedFrame('$HIR,0,7,5,2,0,0,0,*');
+  h.eng.feedFrame('$HP,0,0,0,*');
+  const d = h.kind('death');
+  assert.equal(d.length, 1);
+  if (d[0].shooter_num === 3) assert.equal(d[0].melee, true, 'the melee blow killed');
+  else assert.equal(d[0].melee, undefined, 'the credited shooter did not melee, so no melee flag');
+  // a gun blow, then a bystander's melee-proto word that did no damage: never a melee kill
+  const g = harness();
+  g.eng.feedFrame('$HIR,0,1,3,2,45,0,0,*');
+  g.eng.feedFrame('$HP,0,0,0,*');
+  assert.equal(g.kind('death')[0].melee, undefined);
+});
+

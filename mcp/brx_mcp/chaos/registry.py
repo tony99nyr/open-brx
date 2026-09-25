@@ -102,7 +102,7 @@ class Scenario:
     # Checks for THIS scenario only, run once at the end beside the "end" invariants: (world) -> None,
     # raising InvariantError. For what only one scenario sets up (a same-tick cap tie, a latency bound).
     checks: tuple[Callable[..., None], ...] = ()
-    # A KNOWN, FILED bug this scenario pins: "F330: <reason>". CI expects the run to FAIL (an xfail), and a
+    # A KNOWN, FILED bug this scenario pins: "F<id>: <reason>". CI expects the run to FAIL (an xfail), and a
     # pass fails CI, so the marker cannot outlive the fix. Remove it when the bug is fixed.
     xfail: str | None = None
     # ...and the invariant that bug breaks. Any OTHER failure of an xfail scenario is a real failure.

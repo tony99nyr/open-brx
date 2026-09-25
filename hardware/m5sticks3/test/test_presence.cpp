@@ -419,6 +419,37 @@ static void test_reset_keeps_the_tuning() {
 
 // F344 (brx5, beacon.js countRevives): a revive counts when the player is NEAR (median of the last 3 raw
 // readings >= threshold - 10 dB), with NO dwell: a walk-in revive never reached `present`.
+// Tony (2026-09-24): the explicit signal. A player advert with PLAYER_REVIVED (bit6) and value == this
+// station's id counts once per rising edge, with NO RSSI (the Stick hears phones weakly and sparsely).
+static void test_revive_counts_on_the_advert_bit_without_rssi() {
+  PlayerPresence pr;
+  pr.default_threshold = -57;
+  ReviveCounter rc;
+  auto adv = [](uint8_t state, uint8_t value) { Advert d; d.role = 2; d.id = 2; d.team = 2; d.state = state; d.value = value; return d; };
+  pr.observe(adv(0, 0), -88, 0);  // dead, far below any near floor
+  pr.tick(0);
+  CHECK_EQ(rc.update(pr, 1), 0u);
+  pr.observe(adv(PLAYER_ALIVE | PLAYER_REVIVED, 1), -86, 300);  // revived at station 1, still "far" by RSSI
+  pr.tick(300);
+  CHECK_EQ(rc.update(pr, 1), 1u);
+  pr.observe(adv(PLAYER_ALIVE | PLAYER_REVIVED, 1), -85, 1300);  // the 5 s hold: the same edge, not a second revive
+  pr.tick(1300);
+  CHECK_EQ(rc.update(pr, 1), 0u);
+  pr.observe(adv(PLAYER_ALIVE | PLAYER_REVIVED, 3), -85, 1600);  // revived at ANOTHER station: not ours
+  pr.tick(1600);
+  CHECK_EQ(rc.update(pr, 1), 0u);
+  pr.observe(adv(PLAYER_ALIVE, 0), -60, 6000);  // bit cleared; an alive edge near by RSSI must NOT double count
+  pr.tick(6000);
+  CHECK_EQ(rc.update(pr, 1), 0u);
+  pr.observe(adv(0, 0), -60, 7000);
+  pr.tick(7000);
+  rc.update(pr, 1);
+  pr.observe(adv(PLAYER_ALIVE | PLAYER_REVIVED, 1), -90, 7500);  // a second revive here
+  pr.tick(7500);
+  CHECK_EQ(rc.update(pr, 1), 1u);
+  CHECK_EQ(rc.revives, 2u);
+}
+
 static void test_revive_counts_a_walk_in_without_dwell() {
   PlayerPresence pr;
   pr.default_threshold = -60;  // the Stick's platform default (Tony: 3 m)
@@ -496,7 +527,8 @@ static void test_sighting_ring_is_fifo_drops_the_newest_when_full_and_clears() {
 
 static void test_which_kinds_scan_for_players() {
   CHECK(station_needs_player_scan("control", false));
-  CHECK(station_needs_player_scan("respawn", false));
+  // Post-MVP (presence.h): by default a respawn station only advertises, it never scans.
+  CHECK_EQ(station_needs_player_scan("respawn", false), REVIVE_FEEDBACK_ENABLED);
   CHECK_EQ((int)scan_window_units("respawn"), 15);  // Block 9 S7: light, so it cannot starve the advert
   CHECK_EQ((int)scan_window_units("control"), 50);
   CHECK(station_needs_player_scan("powerup", true));
@@ -536,6 +568,7 @@ int main() {
   test_a_long_gap_is_clamped_for_conversion_but_not_for_possession();
   test_progress_republishes_at_most_once_a_second_and_state_at_once();
   test_reset_keeps_the_tuning();
+  test_revive_counts_on_the_advert_bit_without_rssi();
   test_revive_counts_a_walk_in_without_dwell();
   test_revives_count_a_present_players_alive_edge_only();
   test_sighting_ring_is_fifo_drops_the_newest_when_full_and_clears();

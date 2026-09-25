@@ -20,21 +20,24 @@ from _skip import needs
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CORE = ROOT / "hardware" / "m5sticks3"
 TEST_FILES = ("test_core.cpp", "test_link.cpp", "test_ui.cpp", "test_screen.cpp", "test_presence.cpp")
+# Revive feedback is post-MVP and off by default (presence.h REVIVE_FEEDBACK_ENABLED). These files test
+# both sides of that switch, so they are also built with it on: the post-MVP path cannot rot.
+REVIVE_ON_FILES = ("test_link.cpp", "test_screen.cpp", "test_presence.cpp")
 GXX = shutil.which("g++")
 
 
-def _build_and_run(name: str):
+def _build_and_run(name: str, defines: tuple = ()):
     src = CORE / "test" / name
     assert src.exists(), f"{src} is missing"
     with tempfile.TemporaryDirectory() as td:
         exe = pathlib.Path(td) / src.stem
         build = subprocess.run(
-            [GXX, "-std=c++17", "-Wall", "-Wextra", "-Werror", f"-I{CORE}", str(src), "-o", str(exe)],
+            [GXX, "-std=c++17", "-Wall", "-Wextra", "-Werror", *defines, f"-I{CORE}", str(src), "-o", str(exe)],
             capture_output=True, text=True, timeout=120,
         )
-        assert build.returncode == 0, f"g++ failed on {name}:\n{build.stdout}\n{build.stderr}"
+        assert build.returncode == 0, f"g++ failed on {name} {defines}:\n{build.stdout}\n{build.stderr}"
         run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=60)
-        assert run.returncode == 0, f"{name} failed:\n{run.stdout}\n{run.stderr}"
+        assert run.returncode == 0, f"{name} {defines} failed:\n{run.stdout}\n{run.stderr}"
         assert "all checks passed" in run.stdout, run.stdout
 
 
@@ -44,9 +47,15 @@ def test_sticks3_core_host_tests_pass():
         _build_and_run(name)
 
 
+def test_sticks3_host_tests_pass_with_revive_feedback_on():
+    needs(GXX, "g++")
+    for name in REVIVE_ON_FILES:
+        _build_and_run(name, ("-DBRX_REVIVE_FEEDBACK=1",))
+
+
 def test_sticks3_headers_have_no_arduino_dependency():
     """The core must stay host-testable: nothing in these headers may pull in Arduino."""
     for name in ("brx_ir.h", "brx_advert.h", "control_point.h", "station_link.h", "json_lite.h",
-                 "station_ui.h", "station_screen.h", "presence.h"):
+                 "station_ui.h", "station_screen.h", "presence.h", "stick_state.h"):
         text = (CORE / name).read_text(encoding="utf-8")
         assert "Arduino.h" not in text and "M5Unified" not in text, f"{name} includes Arduino"

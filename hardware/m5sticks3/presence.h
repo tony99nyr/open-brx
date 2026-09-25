@@ -26,6 +26,19 @@
 
 namespace brx {
 
+// ---- revive feedback: POST-MVP, off (Tony, 2026-09-24: "lets remove the revive count for now and we can
+// add those post mvp") ---------------------------------------------------------------------------------
+// The ONE switch. Off (the default build): a respawn Stick only advertises. It runs no player scan (which
+// also ends the scan-vs-advert flicker seen at the bench, Block 9 S7), counts no revives, shows no count and
+// no REDEPLOY flash, has no REDEPLOY serial command, and sends no `revives` in its status. On: all of that
+// comes back unchanged. The counting code (ReviveCounter) is always compiled, and the host tests build
+// once each way (mcp/tests/test_sticks3_core.py), so the post-MVP path cannot rot. Build it on with
+// -DBRX_REVIVE_FEEDBACK=1.
+#ifndef BRX_REVIVE_FEEDBACK
+#define BRX_REVIVE_FEEDBACK 0
+#endif
+constexpr bool REVIVE_FEEDBACK_ENABLED = BRX_REVIVE_FEEDBACK != 0;
+
 // ---- the phone station's numbers ------------------------------------------------------------
 constexpr uint32_t PRESENCE_DWELL_MS = 800;          // utility.js DEFAULTS.dwell (arm's length, with -74)
 constexpr int PRESENCE_HYSTERESIS_DB = 6;            // beacon.js Presence hysteresisDb
@@ -55,9 +68,11 @@ inline bool hill_claimable(int tid) { return tid == 0 || tid == 1 || tid == 3; }
 // (extraction, bomb) runs no player-side rule on a Stick yet.
 // `respawn` scans at a LIGHT duty (scan_window_units): at the hill's 50/100 the scan starved the Stick's
 // own advert (bench 2026-09-24, Block 9 S7: a phone 3 m away saw the station go "left" at -54 dBm every
-// few seconds). It still scans because Tony wants the Stick to count revives and flash REDEPLOY.
+// few seconds). It scans only with REVIVE_FEEDBACK_ENABLED: the scan exists to count revives and flash
+// REDEPLOY, both post-MVP, so by default a respawn Stick only advertises.
 inline bool station_needs_player_scan(const std::string& kind, bool powerup_available) {
-  if (kind == "control" || kind == "respawn") return true;
+  if (kind == "control") return true;
+  if (kind == "respawn") return REVIVE_FEEDBACK_ENABLED;
   if (kind == "powerup") return powerup_available;
   return false;
 }
@@ -420,7 +435,10 @@ class ReviveCounter {
   uint32_t revives = 0;
 
   // Call after PlayerPresence::tick. Returns how many revives this step counted.
-  uint32_t update(const PlayerPresence& players) {
+  // `station_id` (this station's id, -1 = unknown) enables the explicit signal: a player advert with
+  // PLAYER_REVIVED set and value == station_id counts once per rising edge of that bit. A phone that has ever
+  // shown the bit is counted ONLY that way (no double count); older phones fall back to the F344 near rule.
+  uint32_t update(const PlayerPresence& players, int station_id = -1) {
     uint32_t n = 0;
     bool seen[PRESENCE_MAX_PLAYERS] = {};
     for (size_t i = 0; i < players.capacity(); i++) {
@@ -434,9 +452,20 @@ class ReviveCounter {
       // reached `present` (the Stick missed a real revive at 20:51:00Z on 2026-09-24).
       const bool fresh = p.age_ms <= players.expiry_ms;
       const bool near = fresh && PlayerPresence::median_of(p) >= players.threshold_for(p) - REVIVE_MARGIN_DB;
-      if (k && !k->alive && alive && near) { revives++; n++; }
+      const bool revived_here = station_id >= 0 && (p.state & PLAYER_REVIVED) && p.value == (uint8_t)station_id;
+      const bool uses_bit = (p.state & PLAYER_REVIVED) != 0 || (k && k->uses_bit);
+      if (uses_bit) {
+        if (revived_here && !(k && k->revived)) { revives++; n++; }
+      } else if (k && !k->alive && alive && near) {
+        revives++; n++;
+      }
       if (!k) k = add(p.id);
-      if (k) { k->alive = alive; seen[k - known_] = true; }
+      if (k) {
+        k->alive = alive;
+        k->revived = revived_here;
+        k->uses_bit = uses_bit;
+        seen[k - known_] = true;
+      }
     }
     // utility.js: `for (const id of wasAlive.keys()) if (!seen.has(id)) wasAlive.delete(id)`
     for (size_t i = 0; i < PRESENCE_MAX_PLAYERS; i++) if (known_[i].used && !seen[i]) known_[i] = Known();
@@ -453,6 +482,8 @@ class ReviveCounter {
     bool used = false;
     uint16_t id = 0;
     bool alive = false;
+    bool revived = false;   // PLAYER_REVIVED with our id, last time we saw this player
+    bool uses_bit = false;  // this phone speaks PLAYER_REVIVED: count only on it
   };
   Known* find(uint16_t id) {
     for (auto& k : known_) if (k.used && k.id == id) return &k;
