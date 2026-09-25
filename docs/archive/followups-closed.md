@@ -733,7 +733,7 @@ block's *internal* statuses were true when it closed and may since have been sup
 - 2026-09-25 **F354** fixed (Tony, brx3, A65): kill credit follows the last damaging hit; when only a no-pool word (smoke, EMP) is fresh, the TEAM gets the kill (credit "team", KILLED BY <TEAM>): it counts for the team score and cap, and no player gets the K, a medal, a chain, first blood, an assist or a confirm. Own-team words, FFA and a tid off the roster credit nobody. Phone, stage and MC agree.
 - 2026-09-25 **F358** answered by Tony through F365 (A67): an operator may edit a station's radius and strength on the
   station during play (a 1.5 s hold, a 5 s hold under an A58 lock), and the edit syncs to MC, last edit wins. Phone
-  half `c980a681`, MC half `1420057b`.
+  half `f22ebe66`, MC half `2e472dad`.
 - 2026-09-25 **F351** fixed (brx4, brx5): one announcer queue on main (`2c3ebb68`, `2f21877a`), the lead change
   must-hear, and Tony's trade decision ("your death wins") built and merged from `death-wins`. The rules are in
   `docs/announcer.md`.
@@ -783,7 +783,7 @@ closed in the same pass, each checked against the code, the git log or the exper
 - 2026-09-25 **F367** decided and built (Tony): BEAT DOWN is B6, the fist and impact, and IRON MAN is I2b, the
   bevelled iron heart, in `app/src/hud/medalicons.js` (style B); `app/test/medal-icons.test.mjs` fails on either placeholder.
 - 2026-09-25 **F366** decided and built (Tony: "366 sounds good", brx3): a gamertag is at most 16 characters (`MAX_TAG_LEN`), and MC refuses a longer one with a 400 instead of cutting it at 24. From 13 to 16 (`SOFT_TAG_LEN` 12) the ARMORY claim and the KIT add and rename fields warn that the phone HUD may shorten it. Both numbers are in the generated contract. A stored longer tag keeps working and shows the refusal on its rename field. **→ 2026-09-25, the HUD rename note is built**: the pre-game/lobby/kit screen nudges a player past `MAX_TAG_LEN` ("YOUR TAG IS OVER 16 LETTERS · ASK THE HOST TO SHORTEN IT"), never in a match — `app/src/hud/hud.js` (`tagTooLong`, `_lobby`), `app/test/gamertag-length.test.mjs`, `app/tools/screens.mjs` "F366 lobby-long-tag"/"F366 live-long-tag".
-- D5 2026-09-25: Deagle kept; Extended Mags +50% on pistols, x2 elsewhere (Tony).
+- 2026-09-25 **D5** decided (Tony): the Deagle stays; Extended Mags +50% on pistols, x2 elsewhere (`66ddadb8`).
 - 2026-09-25 **F164** fixed (brx2): a reconcile re-arms each slot to the live counts snapshotted at `_beginReconcile`
   (the spawn row only for a slot never counted this life), the counts survive an app restart, and the disarm echo
   books no shots. Rounds fired while the link was down still come back (a bounded refund). Three F164 tests in

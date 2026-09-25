@@ -529,6 +529,35 @@ _SLUG = re.compile(r"\[\[[a-z0-9][a-z0-9-]{2,}\]\]")
 _SLUG_RESIDUE = {"docs/FOLLOWUPS.md"}
 
 
+# 2026-09-25: a merge committed its conflict markers into docs/archive/followups-closed.md and every
+# other guard stayed green. `=======` alone is also a setext heading underline, so the guard looks for the
+# opening and closing markers only.
+_CONFLICT_OPEN = re.compile(r"^<{7}(?: |$)", re.M)
+_CONFLICT_CLOSE = re.compile(r"^>{7}(?: |$)", re.M)
+
+
+def _conflict_marker_lines(text: str) -> list[int]:
+    return [text.count("\n", 0, m.start()) + 1 for rx in (_CONFLICT_OPEN, _CONFLICT_CLOSE) for m in rx.finditer(text)]
+
+
+def test_no_conflict_markers_in_tracked_text():
+    hits = []
+    for f in _tracked_files():
+        if not f.is_file():
+            continue
+        try:
+            text = f.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        hits += [f"{f.relative_to(REPO)}:{n}" for n in _conflict_marker_lines(text)]
+    assert not hits, "merge conflict markers committed: " + ", ".join(hits[:10])
+
+
+def test_the_conflict_marker_check_can_actually_fail():
+    text = "a\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> origin/main\nTitle\n=======\n"
+    assert _conflict_marker_lines(text) == [2, 6]
+
+
 def test_no_memory_slugs_in_tracked_markdown():
     hits = []
     for f in _tracked_files():
