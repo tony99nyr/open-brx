@@ -15,7 +15,7 @@ The reference generator is `app/tools/alert-gallery.mjs` (the HUD alert lanes). 
 
 - Phone HUD: build the app (`cd app && npm run build`), serve `app/www` on a free port, and open
   `/?demo&stage=<stage>` in Playwright Chromium. The stages are the ones `npm run ui:stage` jumps to
-  (`app/tools/stage.mjs`). Drive events with the page's demo hooks (`window.brxDemo.*`).
+  (defined in `app/src/demo.js`; `app/tools/stage.mjs` serves them). Drive events with the page's demo hooks (`window.brxDemo.*`).
 - Mission Control: the demo MC (`cd mcp && ../.venv/bin/python -m brx_mcp.mc --demo --fake-net --no-auth
   --ephemeral`) on a free port, or the console's `?mock` for states the demo cannot reach.
 - A proposal that is not built yet goes behind a stage or a flag, so the gallery still renders real code.
