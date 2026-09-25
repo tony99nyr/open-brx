@@ -45,7 +45,7 @@ describe('ITEMS — a station range edited on the station (A67)', () => {
     const { act } = await import('react');
     await act(async () => { high.click(); });
     await m.click('ARM WITH CHANGES');
-    expect(puts).toEqual([{ kind: 'respawn', team: 1, id: 3, threshold: -60, tx_power: 'high' }]);
+    expect(puts).toEqual([{ kind: 'respawn', team: 1, threshold: -60, tx_power: 'high' }]);
     m.unmount();
   });
 
