@@ -9,10 +9,10 @@ Updated: 2026-09-25 (D5 closed).
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 56.** Desk 10 · bench 46 · decision 0.
+**MVP open: 57.** Desk 11 · bench 46 · decision 0.
 
-**MVP DESK (10),** a keyboard is enough:
-- 🟠 **F164** · **B21** · **F372** · **F221**
+**MVP DESK (11),** a keyboard is enough:
+- 🟠 **F164** · **B21** · **F372** · **F221** · **F374**
 - 🟡 **F342** · **Q13** · **F333** · **S32** · **F319** · **F161**
 
 **MVP BENCH (46),** needs a gun, a Stick, phones or a field (the order is the bench plan):
@@ -29,7 +29,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F374 · G11 · H10 · K9 · P19 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F375 · G11 · H10 · K9 · P19 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -70,6 +70,8 @@ A keyboard is enough. Highest value first.
   `assembleRelease`, version bump per build; iOS = TestFlight or source build). `build`. **→ Tony 2026-09-23:** release-sign at the NEXT APK cut, and cut only after the open desk fixes land. Testers uninstall once at that cut. `build`. **→ 2026-09-23: Tony created the release key outside the repo (`~/.brx/`, private, backed up).** The next cut is `npm run android:release` once the open desk fixes land. **→ 2026-09-24, the Android half shipped:** 0.4.6 was the first release-signed build (its release notes tell players to uninstall once), and 0.4.7 to 0.4.11 followed, each published as an `app-v<version>` release (`webapp/download/build.json` names 0.4.11). Open: `webContentsDebuggingEnabled` is still `true` in `app/capacitor.config.json`, and iOS has no distribution path yet. **→ Tony 2026-09-25, decided:** WebView debugging becomes a TOGGLE, not a removal ("can be a toggle to help dev and debugging. we may need that on as we build features"). Build: a runtime switch (the Android WebView `setWebContentsDebuggingEnabled`, called from a small native hook) in the app's ⓘ diag panel, persisted, defaulting ON while MVP features are still being built; the release build keeps the ability; the diag panel shows the current state. Flip the default to OFF for a public release later (a note on the row). `build`.
 
 - **F372 🟠 TURN POWERUPS ON BY DEFAULT ONCE THE POWERUP BENCH PASSES.** Tony 2026-09-25: "yes powerups an mvp feature, lets bench it". Today MC grants items only with `--powerups` (`mc/__main__.py`), and the banner says "not bench-proven yet". Gate: every step of the powerups setup in [`bench-2026-09-25.md`](bench-2026-09-25.md) passes (3.4, 3.5, 11.2 and 4.11 for the phone station and the Stick). Then: make powerups the default (keep a way to switch them off), replace the -55 claim placeholder (`POWERUP_THRESHOLD_DEFAULT`, `beacon.js POWERUP_RSSI_DBM`) and the Stick's -57 with the calibrated values, and update [`spec/powerups.md`](spec/powerups.md) "Bench gate". `build`.
+
+- **F374 🟠 A MUSTER PICKUP STICK OFFERS ITS ITEM BEFORE THE FIRST SPAWN.** Under MUSTER (the default) the Stick drops Wi-Fi when it is armed, so it never hears MC's first `station_update`. Its schedule starts available, so it offers the item from arming, not at `first_at_s` after go-live as the phones compute it. Stub: brx4 fixing it (2026-09-25). `build`.
 
 - **F333 🟡 STICK STATION SCREENS: SOME STATES STILL NOT WIRED.** `station_screen.h`/`station_render.h` follow the approved mockups for the screens they cover. The respawn revive-count screen is built (`482ffbf5`, `169157eb`): a green REDEPLOY flash and a count that follows F344's advert-bit rule (`REDEPLOY` also shows it over serial); revive counting itself is currently post-MVP and off by default (`REVIVE_FEEDBACK_ENABLED`, see F344 and the hardware README). Still unwired: hill capturing/contested, an empty pickup, and the settings flow (`ID`/`GAME`/`TXPIN` stay serial-only). `build`.
 
