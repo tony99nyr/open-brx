@@ -248,8 +248,11 @@ button, and the gun's buttons play no part.
    `claiming` is set the phone advertises in low-latency mode (about 100 ms on Android), otherwise balanced.
 5. **The station decides.** It is the one party that hears every claimant (a phone station and a Stick alike). It
    awards the item to the **first** player advert it hears with `claim_ready` for its own id while the item is
-   available. A tie inside one scan batch goes to the lower `player_num`. It ignores a claim it hears below
-   `CLAIM_FLOOR_DBM` (-80), which limits cross-talk and a cheap spoof. Its screen shows a 1 s ring from the first
+   available. A tie inside one scan batch goes to the lower `player_num` (a phone station and a StickS3 alike).
+   **No RSSI floor** (Tony, 2026-09-24, pickups placed outside Wi-Fi range must work offline): the phone's
+   `claim_ready` already proves it stood about 1 ft from the station for 1 s by its own reading of the station's
+   strong advert, while a station hears player adverts 20-30 dB weaker and sparsely (the StickS3 bench), so the old
+   -80 dBm floor refused legitimate claims. Its screen shows a 1 s ring from the first
    `claiming` advert, for display only.
 6. **Taken.** The station advertises state 0, `value` = the seconds to the next spawn (capped at 255), and byte 15
    `taker` = the winner's `player_num` (1..63, 0 = none) until the next spawn. It reports

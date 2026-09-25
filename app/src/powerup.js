@@ -9,7 +9,6 @@
 // owns taken and untaken; MC's `station_update` only re-anchors its countdown.
 import { PLAYER_STATE } from './beacon.js';
 
-export const CLAIM_MIN_RSSI = -80;       // a claim heard weaker than this is somebody across the field, not at the station
 export const CLAIM_FRESH_MS = 1500;      // a player advert older than this says nothing about who is standing here now
 export const VALUE_MAX_S = 255;          // the advert's one-byte countdown
 
@@ -71,7 +70,7 @@ export class PowerupStation {
       if (every > 0) { while (this.nextAt <= now) this.nextAt += every; } else this.nextAt = null;
     }
     const mine = (players || []).filter(p => p && p.role === 'player' && p.value === (this.id & 0xff)
-      && Number.isFinite(p.raw) && p.raw >= CLAIM_MIN_RSSI && !(Number.isFinite(p.ageMs) && p.ageMs > CLAIM_FRESH_MS)
+      && !(Number.isFinite(p.ageMs) && p.ageMs > CLAIM_FRESH_MS)
       && (p.state & PLAYER_STATE.alive));
     if (this.available === true) {
       const ready = mine.filter(p => p.state & PLAYER_STATE.claim_ready).sort((a, b) => a.id - b.id);

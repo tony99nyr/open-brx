@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { encodeUuid, decodeUuid, Presence, PLAYER_STATE, medianOf } from '../src/beacon.js';
-import { PowerupStation, CLAIM_MIN_RSSI, stationItemAdvert } from '../src/powerup.js';
+import { PowerupStation, stationItemAdvert } from '../src/powerup.js';
 
 const ROCKETS = { kind: 'weapon', weapon_id: 'rocket_launcher', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'ROCKETS', color: '#ff7a1a' };
 const READY = PLAYER_STATE.alive | PLAYER_STATE.claiming | PLAYER_STATE.claim_ready;
@@ -74,18 +74,18 @@ test('station: a tie inside one batch goes to the lower player_num', () => {
   assert.equal(s.taker, 7);
 });
 
-test('station: a claim heard below -80 dBm, a claim for another station and a stale advert are all ignored', () => {
-  assert.equal(CLAIM_MIN_RSSI, -80);
+test('station: NO RSSI floor on a claim (Tony 2026-09-24, offline pickups): a claim_ready heard weakly still wins; another station id and a stale advert are ignored', () => {
+  // The phone's claim_ready already proves it stood ~1 ft from the station for 1 s (its own reading of the station's
+  // strong advert); the station hears player adverts 20-30 dB weaker and sparsely (StickS3 bench), so a floor refused
+  // legitimate claims.
   const s = new PowerupStation({ id: 4, item: ROCKETS });
   s.update({ available: true, next_spawn_in_ms: 120_000 }, 0);
-  s.tick([player(7, READY, 4, -81)], 1000);
-  assert.equal(s.available, true, 'below -80: ignored');
   s.tick([player(7, READY, 5)], 1100);
   assert.equal(s.available, true, 'another station id: ignored');
   s.tick([player(7, READY, 4, -50, 5000)], 1200);
   assert.equal(s.available, true, 'a stale advert: ignored');
-  s.tick([player(7, READY, 4, -80)], 1300);
-  assert.equal(s.taker, 7, 'CONTROL: at -80 it counts');
+  s.tick([player(7, READY, 4, -95)], 1300);
+  assert.equal(s.taker, 7, 'a claim heard at -95 dBm wins');
 });
 
 test('station: nothing is taken while the item is not there, and the screen ring starts at the first claiming advert', () => {
