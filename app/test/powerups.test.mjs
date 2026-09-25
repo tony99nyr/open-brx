@@ -162,6 +162,16 @@ test('the claim: in range is the median at or above the threshold (0 = the defau
   assert.ok(h.eng.state().powerupClaim, "the station's own threshold byte wins over the default");
 });
 
+test('F374: an advert that says available before the first spawn is not claimable (a Stick carried out before START)', () => {
+  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
+  h.at(30);
+  h.near(4, { median: -50, state: 1 }); h.adv(1100); h.near(4, { median: -50, state: 1 });
+  assert.equal(h.eng.state().powerupClaim, null, 'first_at_s is 120: the station cannot have the item at 0:30');
+  h.at(121);
+  h.near(4, { median: -50, state: 1 });
+  assert.ok(h.eng.state().powerupClaim, 'CONTROL: the same advert after the first spawn starts the claim');
+});
+
 test('no grant without taker == me: the station named another player, so the HUD says who', () => {
   const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
   h.at(121); const n = h.mark(); h.take(4, 19);

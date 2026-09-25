@@ -5351,7 +5351,7 @@ export class Engine {
   _puClaimable(id, item, now) {
     const el = this._puElapsed(now); if (el == null) return false;
     const a = this._puAdvertOf(id, now);
-    if (a) return a.state === 1;
+    if (a) return a.state === 1 && puSpawnIndex(item, el) >= 0;   // F374: never before the first spawn, whatever a station says
     return puSpawnIndex(item, el) >= 0;
   }
   /** ms until the next spawn at station `id` on the phone's own schedule, or null. */
