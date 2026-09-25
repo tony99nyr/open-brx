@@ -4,7 +4,7 @@ The bench order lives in [`bench-plan.md`](bench-plan.md) and every open item in
 ## State of main (2026-09-24)
 **App 0.4.11 is published** (`app-v0.4.11`, release-signed; 0.4.6 was the first release-signed build, so every
 player uninstalled the debug build once). Main is ahead of 0.4.11 with: the announcer queue and the gun audio-queue
-model (F351, F347), a Shields spawn at full shield and a lighter recharge (F348, F349), the Android 11 Location gate
+model (F351, F347), a Shields spawn at full shield and a lighter recharge (F348, part of F349), the Android 11 Location gate
 (F340), the pool repair after a lost chunk (F341), the station scan and revive fixes (F342, F344, F345), A60 MC
 auto-join, the A61 medal ladder and the A62 melee medal, the S57 name-word gap, and F308's eased AR ladder.
 **0.4.12 waits on sitting A of [`bench-2026-09-25.md`](bench-2026-09-25.md)**: screamers A4 (F341's `$*` reset
@@ -68,7 +68,7 @@ name-word gap. B21's Android half shipped; `webContentsDebuggingEnabled` and iOS
 - **Blocked:** the Stick's advert-bit revive on the phone half of F344 (brx5).
 ## Lane: powerups and the shield HUD (brx5)
 S58 is on main behind MC's `--powerups` flag: the heavy goes straight onto the trigger (SELECT toggles), and the
-overshield raises the `$PSET` shield max under 1 s of spawn protection. F348 and F349 are fixed; S59's Visor meter is built.
+overshield raises the `$PSET` shield max under 1 s of spawn protection. F348 is fixed and F349 in part (the cue side waits on F347); S59's Visor meter is built.
 - **Next bench task:** steps 3.4-3.5, 4.11, 4.18 and 4.19 of [`bench-2026-09-24.md`](bench-2026-09-24.md); then Tony
   decides the flag.
 - **Next desk task:** the phone half of F344 (set state bit 6 for about 5 s after a station revive); S58's pickup
