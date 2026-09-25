@@ -767,6 +767,11 @@ export class MockBackend implements Api {
           ? [`SETUP: A CONTROL STATION IS ASSIGNED BUT THIS GAME'S OBJECTIVE IS ${this.config.station_source === 'grenade' ? 'THE GRENADE' : 'AN IR STATION'} (EVERY PHONE IGNORES THE STATION'S HILL): SET OBJECTIVE SOURCE TO PHONE, OR CLEAR THE CONTROL STATION IN ITEMS`] : []),
         ...(this.config.respawn.type === 'scanner' && !Object.values(this.stations).some(s => s.assigned?.kind === 'respawn')
           ? ['SETUP: NO RESPAWN STATION IS ASSIGNED (RESPAWN IS SCANNER, SO A DOWNED PLAYER CAN ONLY COME BACK AT A STATION): ASSIGN A STATION AS RESPAWN IN ITEMS AND ARM IT'] : []),
+        // F401: mirrors Session._station_sync_warnings() -- any station of the LAST FINISHED match MC
+        // has not heard from since that match's whistle. `util-d4e5f6` demos this by default (F106(i):
+        // seeded 20 min stale), so `?mock` shows the LOAD warning with no operator action needed.
+        ...((this.lastMatchStations ?? []).filter(r => r.synced === false)
+          .map(r => `${r.kind.toUpperCase()} ${r.id} HAS NOT SYNCED THE LAST MATCH: BRING IT INTO WI-FI BEFORE YOU LOAD, OR ITS RESULT IS LOST`)),
       ],
       players: clone(this.players), teams: clone(TEAMS),
       standby: clone(this.standby),
@@ -810,6 +815,11 @@ export class MockBackend implements Api {
   /** when the whistle blew (`endedAt`), so `tries`/`retrying` are DERIVED the way the server derives
    *  them rather than frozen at the spent end of the ladder. */
   private endedAt?: number;
+  /** F401: mirrors `Session._match_stations` -- the LAST FINISHED match's frozen station rows (each
+   *  already carrying its own `synced`), kept across `newSession()` (a roll forward, or a fresh
+   *  session) so the Games/LOAD warning still shows an unsynced station after the operator moves on,
+   *  the same as the real server. */
+  private lastMatchStations?: RecapStationRow[];
 
   private orphanView() {
     const o = this.orphan_;
@@ -1018,8 +1028,13 @@ export class MockBackend implements Api {
       const row: RecapStationRow = { node_id: s.node_id, kind: a.kind, id: a.id, team: a.team, heard };
       if (a.kind === 'respawn') row.revives = s.report.revives ?? null;
       else if (a.kind === 'control' && s.report.control) { row.hold_ms = s.report.control.hold_ms ?? null; row.owner = s.report.control.owner ?? null; }
+      // F401: mirrors `Session._scorer_recap` -- synced once the station's own `seen` is at or after
+      // the whistle. `util-d4e5f6` is seeded 20 min stale (F106(i): OUT OF WI-FI), so `?mock` shows a
+      // real unsynced station in RECAP and the LOAD warning below with no operator action needed.
+      row.synced = this.endedAt !== undefined && this.stations[s.node_id].seen >= this.endedAt;
       return row;
     });
+    this.lastMatchStations = stationRows;   // F401: survives `newSession()`, unlike `recap_`
     // A6.1: two kills landed after the whistle. They are REAL and they do NOT count — the demo carries
     // them so the "recorded, not counted" block can be seen (and tested) without a match on the field.
     const late = rows.slice(0, 2);

@@ -38,6 +38,11 @@ export const RECAP_ALERTS: Record<string, AlertDef> = {
   'recap-settling-banner': { sev: 'amber',
     text: '{n} NODE(S) HAVE NOT REPORTED SINCE THE WHISTLE ({names}) · {s}S AGO: THESE TOTALS CAN STILL CHANGE.' },
   'recap-station-never-heard': { sev: 'amber', text: 'NEVER HEARD FROM: CHECK THE STATION ON SITE.' },
+  // F401: a HELD station (e.g. a StickS3) can end a timed match on its own clock while out of Wi-Fi
+  // range; MC only gets its result once it is heard again. Shown only for a station that DID report
+  // (`heard`) but not since the whistle -- a station never heard from at all keeps its own, stronger
+  // `recap-station-never-heard` alert instead of carrying both.
+  'recap-station-not-synced': { sev: 'amber', text: '{STATION} NEEDS SYNC: BRING IT INTO WI-FI' },
   'recap-status-inplay': { sev: 'neutral', text: 'IN PLAY · PROVISIONAL' },
   // SENDING/HOLDING is a NEUTRAL family (F221 rule): a node still delivering its own data is routine.
   'recap-sync-awaiting': { sev: 'neutral', why: 'SENDING/HOLDING family', text: 'CONNECTED: AWAITING DATA' },

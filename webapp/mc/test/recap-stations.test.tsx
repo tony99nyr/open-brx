@@ -84,4 +84,55 @@ describe('RECAP — the stations row (roadmap A6)', () => {
     expect(block.textContent).not.toMatch(/NEVER HEARD FROM/);
     m.unmount();
   });
+
+  // F401: a HELD station (e.g. a StickS3) can end a timed match on its own clock while out of Wi-Fi
+  // range, so MC only gets its result once it is heard again.
+  it('a station heard before the whistle but not since says it needs sync', async () => {
+    const d = await demo();
+    const state: State = { ...d.state, phase: 'recap',
+      recap: recapWith([{ node_id: 'util-a1b2c3', kind: 'respawn', id: 3, team: 1, heard: true, revives: 5, synced: false }]) };
+    const m = await mountScreen(<Recap />, { ...d, state, view: 'recap' });
+    const block = m.find('[data-testid="recap-stations"]')[0];
+    expect(block.textContent).toMatch(/RESPAWN 3/);
+    expect(block.textContent).toMatch(/5 REVIVES/);
+    expect(block.textContent).toMatch(/NEEDS SYNC/);
+    m.unmount();
+  });
+
+  it('a station heard again since the whistle shows no sync alert', async () => {
+    const d = await demo();
+    const state: State = { ...d.state, phase: 'recap',
+      recap: recapWith([{ node_id: 'util-a1b2c3', kind: 'respawn', id: 3, team: 1, heard: true, revives: 5, synced: true }]) };
+    const m = await mountScreen(<Recap />, { ...d, state, view: 'recap' });
+    const block = m.find('[data-testid="recap-stations"]')[0];
+    expect(block.textContent).not.toMatch(/NEEDS SYNC/);
+    m.unmount();
+  });
+
+  // A station never heard from at all already carries its own, stronger NEVER HEARD FROM alert:
+  // showing NEEDS SYNC too would say the same thing twice.
+  it('a station never heard from does not also show NEEDS SYNC', async () => {
+    const d = await demo();
+    const state: State = { ...d.state, phase: 'recap',
+      recap: recapWith([{ node_id: 'util-a1b2c3', kind: 'respawn', id: 3, team: 1, heard: false, revives: null, synced: false }]) };
+    const m = await mountScreen(<Recap />, { ...d, state, view: 'recap' });
+    const block = m.find('[data-testid="recap-stations"]')[0];
+    expect(block.textContent).toMatch(/NEVER HEARD FROM/);
+    expect(block.textContent).not.toMatch(/NEEDS SYNC/);
+    m.unmount();
+  });
+
+  // An older MC sends no `synced` field at all (still mid-match, or before this field existed):
+  // the screen must render with no sync alert and no crash.
+  it('renders with no sync alert when an older server sends no synced field', async () => {
+    const d = await demo();
+    const state: State = { ...d.state, phase: 'recap',
+      recap: recapWith([{ node_id: 'util-a1b2c3', kind: 'respawn', id: 3, team: 1, heard: true, revives: 5 }]) };
+    const m = await mountScreen(<Recap />, { ...d, state, view: 'recap' });
+    const block = m.find('[data-testid="recap-stations"]')[0];
+    expect(block, `expected the stations block, saw: ${m.text()}`).toBeTruthy();
+    expect(block.textContent).toMatch(/5 REVIVES/);
+    expect(block.textContent).not.toMatch(/NEEDS SYNC/);
+    m.unmount();
+  });
 });

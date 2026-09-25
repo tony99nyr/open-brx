@@ -610,6 +610,13 @@ class Session:
         self._match_nodes: dict[str, str] = {}
         # F206: the station rows frozen at `_finish` for the match that just ended (see `_scorer_recap`).
         self._match_stations: list[RecapStationRow] | None = None
+        # F401: that match's end time, kept alongside the frozen rows so LOAD can still say whether a
+        # station has synced long after the operator has rolled forward (`_station_sync_warnings`).
+        self._match_end_t: int | None = None
+        # F401: the station nodes of that match not heard since its whistle; a heartbeat removes its node and
+        # re-validates ONCE, so LOAD's warning clears without re-running `_validate` on every heartbeat.
+        # Persisted (`_persist`), so an MC restart between matches, the usual routine, keeps the warning.
+        self._sync_pending: dict[str, str] = {}      # node_id -> the station's label, e.g. "STICK 1"
         # F184: a station may become a HUD before the whistle. It leaves ITEMS/allow-lists immediately,
         # but its last self-authoritative report still belongs on this match's recap.
         self._departed_match_stations: dict[str, RecapStationRow] = {}
@@ -716,6 +723,8 @@ class Session:
                     "teams": self.teams, "config": self.config, "active_preset_id": self.active_preset_id,
                     "stations": stations, "game_no": self.game_no, "game_no_started": self._game_no_started,
                     "feed": [dict(row) for row in self.feed[:200] if isinstance(row, dict)],
+                    # F401: the stations the last match still waits to hear from, and its whistle time.
+                    "sync_pending": {"end_t": self._match_end_t, "nodes": dict(self._sync_pending)},
                     # F364: every id MC handed out, so a restarted MC gives a cleared station its old number back.
                     "station_ids": dict(self._station_id_of),
                     # F337 (a): the lock bookkeeping, so a restarted MC keeps an UNLOCK and every restart it counted.
@@ -903,6 +912,10 @@ class Session:
                     "demo" if self.demo_session else "real", len(snap.get("players") or []))
                 return 0
             self.players = {p["player_id"]: p for p in snap.get("players", [])}
+            sp = snap.get("sync_pending")
+            if isinstance(sp, dict) and isinstance(sp.get("end_t"), int) and isinstance(sp.get("nodes"), dict):
+                self._match_end_t = sp["end_t"]
+                self._sync_pending = {str(k): str(v) for k, v in sp["nodes"].items()}
             rows = snap.get("feed")
             self.feed = [dict(row) for row in rows if isinstance(row, dict)][:200] if isinstance(rows, list) else []
             # a snapshot from before STANDBY existed has no such list; a hand-edited one may hold junk rows
@@ -2806,6 +2819,7 @@ class Session:
             import logging; logging.getLogger("brx.mc").exception("loadout pool check failed")
         self.config_warnings = list(res.get("warnings", []))
         self.config_warnings.extend(self._station_warnings())
+        self.config_warnings.extend(self._station_sync_warnings())   # F401
         if notice := self._unplayable_primary_notice():
             self.config_warnings.append(notice)          # round-3 MERGE-4: never a silent re-fit
         if self._policy_notice:
@@ -3073,6 +3087,20 @@ class Session:
                                + " (THOSE PLAYERS USE TIMED AUTO RESPAWN): ASSIGN ANOTHER RESPAWN STATION FOR "
                                "STATION RESPAWN ON BOTH TEAMS")
         return out
+
+    def _station_sync_warnings(self) -> list[str]:
+        """F401: a HELD station (e.g. a StickS3) can end a timed match on its own clock while out of
+        Wi-Fi range, so MC gets its result only once it is brought back. Warn at LOAD -- on the Games
+        screen the operator sees before the next START -- for any station of the LAST FINISHED match
+        MC has not heard since that match's whistle. Say the consequence, not just the fact: the next
+        LOAD's new game byte resets a station's own tally (`_arm_station`), so a station still out of
+        range at LOAD loses that result for good. Advisory, like `_station_warnings()` beside it: it
+        never blocks LOAD or START, and it clears the moment the station's node is heard again."""
+        if self._match_end_t is None:
+            return []
+        return [f"{label} HAS NOT SYNCED THE LAST MATCH: BRING IT INTO WI-FI BEFORE YOU LOAD, OR ITS RESULT IS LOST"
+                for nid, label in self._sync_pending.items()
+                if self.nodes.get(nid, {}).get("last_seen_ms", 0) < self._match_end_t]
 
     def set_station(self, nid: str, a: dict) -> StationView:
         """The operator's ITEMS assignment for one utility phone: kind / team / id / threshold. Validated in
@@ -3746,6 +3774,16 @@ class Session:
         # to its own clock arithmetic rather than show a length that keeps growing.
         if sc.end_t is not None and sc.go_live_t is not None and (self.phase == "recap" or sc.end_t <= self.now_ms()):
             recap["played_s"] = max(0, round((sc.end_t - sc.go_live_t) / 1000))   # rounded, as the console always did
+        # F401: once the match has ended, say whether MC has heard each station's node SINCE the whistle
+        # -- a HELD station can end a timed match on its own clock while out of Wi-Fi range, and MC only
+        # gets its result once it is heard again (`settling()` is the same idea for players). Computed
+        # LIVE off `self.nodes`, never frozen onto the row: the node may come back into range long after
+        # `_finish` ran, even carrying a NEW assignment for the next match, and that reconnection is what
+        # `synced` reports -- independent of whose count `heard`/`revives` still belong to.
+        if sc.end_t is not None and self.now_ms() >= sc.end_t:   # `end_t` is a DEADLINE until it has passed
+            end_t = sc.end_t
+            for row in recap.get("stations") or []:
+                row["synced"] = self.nodes.get(row["node_id"], {}).get("last_seen_ms", 0) >= end_t
         return recap
 
     def _recap_stations(self) -> list[RecapStationRow]:
@@ -4420,6 +4458,13 @@ class Session:
                 report = self._station_view(nid)["report"]
                 self._merge_station_recap_report(departed, report)
             self._late_station_report(nid)   # F206 addendum: a station back in range during RECAP
+            # F401: this heartbeat is what proves the node itself is back in Wi-Fi range, whichever match
+            # it is now assigned to -- `_late_station_report`'s own guard (RECAP only, same assignment)
+            # must not also gate LOAD's sync warning, which has to clear after a roll forward too.
+            if nid in self._sync_pending and self._match_end_t is not None \
+                    and self.nodes.get(nid, {}).get("last_seen_ms", 0) >= self._match_end_t:
+                self._sync_pending.pop(nid, None)
+                self._validate()
         # A8: the server's binding is authoritative — a status body's player_id never rebinds a node.
         if self.phase in ("kit", "lobby", "armed") and body.get("synced"):
             self.synced_at_lobby[nid] = True   # any node synced before it goes live keeps its own t (A5.7)
@@ -7433,6 +7478,9 @@ class Session:
         # against what the stations reported at end of match, not whatever the NEXT match's stations
         # say by the time that late fact lands (`_ingest_retired`).
         self._match_stations = self._recap_stations() if self.scorer else None
+        self._match_end_t = self.scorer.end_t if self.scorer else None   # F401
+        self._sync_pending = {r["node_id"]: f"{r['kind'].upper()} {r['id']}"
+                              for r in self._match_stations or [] if r.get("node_id")}
         self.last_recap = self._scorer_recap(self.scorer, self._match_stations) if self.scorer else None
         self._record_ended(self._log_match, self.last_recap, self._match_players)   # A34: what a late phone is told
         # A42: watch for every bound HUD to confirm this end. Here rather than only in `_broadcast_control`
@@ -7471,6 +7519,7 @@ class Session:
         for p in self.players.values():
             p["ready"] = False
         self.arm_stations(relock=True)               # A58: lock_s 0 to every station still connected
+        self._validate()                  # F401: config_warnings must carry the fresh sync warning at once
         self._changed()
         self.persist_now()                # the snapshot must stop naming a match that ended
 

@@ -1385,6 +1385,12 @@ export interface RecapStationRow {
   revives?: number | null;
   hold_ms?: Record<string, number> | null;
   owner?: number | null;
+  /** F401: absent while the match has not ended (sync is not a question yet); once it has, whether MC
+   *  has heard this station's node since the whistle. A HELD station (e.g. a StickS3) can end a timed
+   *  match on its own clock while out of Wi-Fi range, and MC only gets its result once it is heard
+   *  again -- recomputed live from `last_seen_ms`, not frozen, so a station that comes back into range
+   *  flips this true even long after `_finish` (see `Session._scorer_recap`). */
+  synced?: boolean;
 }
 
 export interface EndDeliveryRow {
