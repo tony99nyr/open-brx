@@ -5167,6 +5167,23 @@ for (const view of VIEWS) await step(`${view.name} C1 live patch: a lone $HP mov
   must(r.want[0] === '38' && r.hp === r.want[0] && r.sh === r.want[1], `the vitals lag the engine: ${JSON.stringify(r)}`);
 });
 
+
+// Review (night no-green): the alert lane found green pixels at (170,322) frame px, the anti-alias fringes of the night
+// armour number (#sh) in an amber whose green channel was high. A pixel sample of the whole night live frame: no green.
+for (const view of VIEWS) for (const stage of ['live', 'live-pool-wrong']) await step(`${view.name} night no-green ${stage}: not one green pixel in the frame, #sh included`, async () => {
+  const pg = await open(view, stage, '&night', stage === 'live-pool-wrong' ? 8000 : undefined);
+  const buf = await pg.screenshot();
+  const r = await pg.evaluate(async b64 => { const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height).data, f = document.getElementById('frame').getBoundingClientRect(), k = f.width / 844, out = [];
+    for (let i = 0; i < d.length; i += 4) { const p = i / 4, X = p % c.width, Y = Math.floor(p / c.width), R = d[i], G = d[i + 1], B = d[i + 2];
+      if (X < f.left || X >= f.right || Y < f.top || Y >= f.bottom) continue;
+      if ((G >= 70 && G > R + 24) || (G > R + 12 && G > 40)) { const el = document.elementFromPoint(X, Y); out.push(`(${Math.round((X - f.left) / k)},${Math.round((Y - f.top) / k)}) rgb(${R},${G},${B}) ${el ? el.id || el.className : ''}`); } }
+    return { n: out.length, first: out.slice(0, 4) }; }, buf.toString('base64'));
+  await pg.close();
+  must(r.n === 0, `night: ${r.n} green pixels, e.g. ${r.first.join(' ; ')}`);
+});
+
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;
 }
