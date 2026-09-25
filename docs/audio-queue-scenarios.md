@@ -1,8 +1,9 @@
-# Audio queue scenarios: what the gun plays, under the app on main and under the 0.4.12 rule
+# Audio queue scenarios: what the gun plays before and after the announcer queue
 
 2026-09-24. A deterministic simulator of the gun's audio channel, built from the bench, and ten game situations run
 through it twice: (A) the app before the announcer queue (0.4.11 plus F348's spawn at full shield and F349's
-four-grant recharge) and (B) the 0.4.12 rule (`docs/announcer.md`). B runs the REAL `Announcer` and `GunAudio` from
+four-grant recharge) and (B) the announcer queue, on main since `2c3ebb68` and due in 0.4.12
+(`docs/announcer.md`). B runs the REAL `Announcer` and `GunAudio` from
 `app/src/announcer.js`, with the engine's glue around them mirrored, so the spec cannot drift from the queue's code.
 
 - Simulator: `app/tools/gun-audio-sim.mjs` (pure; every rule is a named constant in `GUN_RULES`, marked MEASURED
@@ -64,9 +65,9 @@ lines stop the hum and play at once under all three (a test checks this).
 SILENTLY, which is worse than A10. EMPTY is the safe choice if an empty t23 plays no loop at all (bench step 2 checks
 it).
 
-## How the phone sends audio on main (A)
+## How the phone sent audio before the announcer queue (A)
 
-Read against `app/src/engine.js` and `app/src/app.js` on main. The harness checks the mirrored numbers and the spawn
+Read against `app/src/engine.js` and `app/src/app.js` before `2c3ebb68`. The harness checks the mirrored numbers and the spawn
 frames against the source and the golden bundle.
 
 - **The engine tick is 250 ms** (`app.js`). The heartbeat, the hill tick, the recharge and brx4's announcer tick run on
@@ -142,7 +143,7 @@ start 2.6 s after its hit, past its 500 ms limit (finding B4, fixed). B's heartb
 |---|---|---|
 | hill captured (1.0 s) | 13952 ms (end of the first A10 play) | 10 ms, full (it cuts the hum) |
 | kill (1.3 s) | never | 1830 ms, full (it waits for the hill line on air) |
-| lead taken (1.6 s) | never | 3410 ms, full |
+| lead taken (1.6 s) | never | banner only: silent in the kill streak (Tony) |
 | possession ticks | played over the hum (token 1, assumption `mix`) | not sent (the hum blocks) |
 
 A kill that lands while a lower line still sounds waits for it (`docs/announcer.md`, Pre-emption 1). Before the
@@ -155,7 +156,7 @@ objective rule the hill line was muted, so its card was silent and the kill took
 | spawn line (0 s) | 15032 ms (behind the first A10 play) | stuck, then cut after 10 ms by the kill's flush |
 | kill (12.2 s) | 4618 ms | 140 ms, full |
 | first blood (12.5 s) | 6897 ms | 2880 ms, full |
-| lead taken (12.5 s) | 4954 ms | 510 ms, full (before the medal line: the `medal` rank) |
+| lead taken (12.5 s) | 4954 ms | banner only, before the medal line: silent in the kill streak (Tony) |
 
 The spawn line loses a 20 ms race with the fill (bench step 4). Under B the phone's model marks the line as stuck when
 the shield rises, so the kill's flush spends two stops and the stuck line leaves a 10 ms fragment: the "stuck VAA"
@@ -175,14 +176,14 @@ of 2026-09-24 in another form.
 |---|---|---|
 | kill (0.8 s) | 120 ms, CUT after 380 ms by the hill preempt | 120 ms, full |
 | hill captured (1.0 s) | 300 ms, full (stale: the hill is already lost) | never said (replaced by the newer word) |
-| hill lost (1.3 s) | 1924 ms, full | 1700 ms, full |
+| hill lost (1.3 s) | 1924 ms, full | card only: silent in the kill streak (Tony) |
 
 ### 8. Standard preset (no shield, no hum), control
 
 | Cue (event) | A | B |
 |---|---|---|
 | kill (1.2 s) | 120 ms, full | 120 ms, full |
-| lead taken (1.5 s) | 456 ms, full | 500 ms, full |
+| lead taken (1.5 s) | 456 ms, full | banner only: silent in the kill streak (Tony) |
 | first blood (1.5 s) | 2399 ms, full | folded into the double kill (the spree rule: the newest medal line only) |
 | kill (3.2 s) | 3155 ms, full | not said: the double-kill line replaces it |
 | double kill (3.5 s) | 3491 ms, then CUT after 1009 ms by the possession tick | 870 ms, full |
@@ -212,6 +213,10 @@ enough for the second kill's item to fold it.
 Before the gate, the tick (a token-1 clip) went out in the 120 ms flash-to-line gap and in the 150 ms gap between the
 two medal lines, because the gun model was empty there.
 
+**Tony, 2026-09-24:** "i think that is right. they go silent when kill streaks are showing." From then on, a lead
+change or hill line that meets my kill or medal item on air or waiting is voice-silent (`docs/announcer.md`). The B
+cells above that say "silent in the kill streak" follow that rule; the rest of the tables predate it.
+
 ## Findings under A (main)
 
 1. **With the shield up, the lines are 4 to 15 s late or never play.** The hum holds the channel. Under the default
@@ -229,8 +234,8 @@ two medal lines, because the gun model was empty there.
 
 ## Findings under B
 
-B fixes findings 1 to 4 for every must-hear line: each plays in full, at once, with the hum up or down, and under all
-three hum models. The gaps the first B run found, and what became of them (2026-09-24, branch `audio-gaps`):
+B fixes findings 1 to 4 for every must-hear line that stays audible (a kill streak can silence a lead line, `STREAK_SILENT` in `docs/announcer.md`): each plays in full, at once, with the hum up or down, and under all
+three hum models. The gaps the first B run found, and what became of them (2026-09-24, `2f21877a`, on main):
 
 - Finding B1, FIXED: the lead change expired (4 s TTL) behind two kill items (scenario 8). It is must-hear, so its TTL
   is now Infinity; a newer lead state still replaces it. It also outranks the medal lines now (the `medal` rank).
@@ -285,7 +290,7 @@ the harness does not. (The harness now mirrors the spree fold, 2026-09-24.)
 
 ## Proposed changes
 
-DONE on branch `audio-gaps` (2026-09-24), except items 2 and 4 below. The order of record is `ANNOUNCE_PRIORITY` in
+DONE on main (`2f21877a`, 2026-09-24), except items 2 and 4 below. The order of record is `ANNOUNCE_PRIORITY` in
 `app/src/announcer.js`; the harness imports it. The change to that list:
 
 ```diff

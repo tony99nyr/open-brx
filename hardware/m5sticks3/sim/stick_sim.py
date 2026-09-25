@@ -11,9 +11,10 @@ still runs every scenario through the real state machines and compute_screen(), 
 the screen kinds, but it draws nothing and cannot check text boxes.
 
 The gate (mcp/tests/test_sticks3_screens.py) calls run() and check(). EXPECT below is the table of
-what each scenario must show; KNOWN lists screens the gate flags on the current firmware that are
-still open (a review finding, not a regression). A KNOWN entry that stops failing fails the gate, so
-the table is updated when the screen is fixed.
+what each scenario must show in the default build; EXPECT_REVIVE_ON the same with the post-MVP revive
+feedback switched on (presence.h), which is built and checked too so those screens cannot rot. A
+last-resort cut of any text fails the gate. KNOWN lists accepted design exceptions, each with its
+reason (none today); an entry that stops failing fails the gate, so the table follows the screen.
 """
 from __future__ import annotations
 
@@ -62,18 +63,19 @@ EXPECT: dict[str, dict] = {
     "bench_hill_shot": {"kind": "SCR_NO_WIFI", "has": ["HILL"]},
     "bench_bridge_beacon": {"kind": "SCR_NO_WIFI", "has": ["BRIDGE"], "same_as": "bench_bridge"},
     "bench_diagnostics": {"kind": "SCR_DIAGNOSTICS", "has": ["DIAGNOSTICS", "PASS", "P5 T1 M12 OK"]},
-    "wifi_joining": {"kind": "SCR_JOINING", "lacks": ["WI-FI CONNECTED"]},
-    "looking_for_mc": {"kind": "SCR_JOINING", "has": ["LOOKING FOR", "MISSION CONTROL", "WI-FI CONNECTED"]},
-    "hello_sent": {"kind": "SCR_JOINING", "has": ["LOOKING FOR"]},
+    "wifi_joining": {"kind": "SCR_JOINING", "has": ["JOINING WI-FI"],
+                     "lacks": ["WI-FI CONNECTED", "LOOKING", "HOLD B"]},
+    "looking_for_mc": {"kind": "SCR_JOINING", "has": ["LOOKING FOR MC", "WI-FI CONNECTED"], "lacks": ["HOLD B"]},
+    "hello_sent": {"kind": "SCR_JOINING", "has": ["LOOKING FOR MC"]},
     "welcomed_unassigned": {"kind": "SCR_LINKED_WAITING", "has": ["LINKED", "ASSIGN ME IN MC"],
-                            "lacks": ["LOOKING FOR"]},
-    "welcomed_stats": {"kind": "SCR_STATS", "has": ["STATS", "LINKED, NOT ARMED"]},
+                            "lacks": ["LOOKING", "HOLD B"]},
+    "welcomed_stats": {"kind": "SCR_STATS", "has": ["STATS", "LINKED, NOT ARMED"], "lacks": ["HOLD B"]},
     "released": {"kind": "SCR_LINKED_WAITING", "has": ["LINKED"], "same_as": "welcomed_unassigned"},
     "assigned_extraction": {"kind": "SCR_ASSIGNED", "has": ["EXTRACTION #5", "#5"]},
-    "respawn_any": {"kind": "RESPAWN_OWNED", "has": ["ANY TEAM", "REVIVES 0"]},
-    "respawn_yellow": {"kind": "RESPAWN_OWNED", "has": ["YELLOW RESPAWN"]},
-    "respawn_red_redeploy": {"kind": "RESPAWN_REDEPLOY", "has": ["REDEPLOY", "REVIVES 1"]},
-    "respawn_red_after_flash": {"kind": "RESPAWN_OWNED", "has": ["RED RESPAWN", "REVIVES 1"]},
+    "respawn_any": {"kind": "RESPAWN_OWNED", "has": ["ANY TEAM", "RESPAWN"], "lacks": ["REVIVES"], "once": ["RESPAWN"]},
+    "respawn_yellow": {"kind": "RESPAWN_OWNED", "has": ["YELLOW", "RESPAWN"], "lacks": ["REVIVES"], "once": ["RESPAWN"]},
+    "respawn_red": {"kind": "RESPAWN_OWNED", "has": ["RED", "RESPAWN"], "lacks": ["REVIVES"]},
+    "respawn_red_player_revived": {"kind": "RESPAWN_OWNED", "lacks": ["REDEPLOY", "REVIVES"], "same_as": "respawn_red"},
     "respawn_advert_down": {"kind": "RESPAWN_IDLE", "has": ["ADVERT DOWN"]},
     "pickup_ready": {"kind": "PICKUP_READY", "has": ["ROCKETS", "STAND HERE TO TAKE"]},
     "pickup_ready_shield": {"kind": "PICKUP_READY", "has": ["OVERSHIELD"]},
@@ -82,7 +84,9 @@ EXPECT: dict[str, dict] = {
     "pickup_countdown": {"kind": "PICKUP_TAKEN", "has": ["NEXT SPAWN 0:30"]},
     "pickup_respawned": {"kind": "PICKUP_READY", "has": ["ROCKETS"], "same_as": "pickup_ready"},
     "pickup_stats": {"kind": "SCR_STATS", "has": ["PICKUP - ROCKETS", "P7"]},
+    "pickup_stats_long_name": {"kind": "SCR_STATS", "has": ["PICKUP - PLASMA RIFLE"]},
     "hill_neutral": {"kind": "HILL_NEUTRAL", "has": ["NEUTRAL", "STAND HERE TO CAPTURE"],
+                     "lines": ["STAND HERE", "TO CAPTURE"],  # the 9 pt two-line block (maxH 34) is live
                      "lacks": ["SHOOT TO CAPTURE"]},
     "hill_capturing_blue": {"kind": "HILL_CAPTURING", "has": ["BLUE CAPTURING"]},
     "hill_stalled_blue": {"kind": "HILL_CAPTURING", "has": ["BLUE STALLED"]},
@@ -96,10 +100,12 @@ EXPECT: dict[str, dict] = {
     "hill_locked": {"kind": "HILL_HELD", "has": ["RED HOLDS", "LOCKED"]},
     "hill_restored": {"kind": "HILL_HELD", "has": ["RED HOLDS", "HELD 0:00"]},
     "reset_confirm": {"kind": "SCR_RESET_CONFIRM", "has": ["HOLD B AGAIN", "TO RESET STATION #4"]},
-    "reset_confirm_unassigned": {"kind": "SCR_RESET_CONFIRM", "lacks": ["#-1"]},
-    "reset_sent": {"kind": "SCR_RESET_SENT", "has": ["RESET SENT"]},
-    "reset_needs_mc": {"kind": "SCR_RESET_NEEDS_MC", "has": ["RESET NEEDS"]},
-    "reset_refused_locked": {"kind": "SCR_RESET_LOCKED", "has": ["LOCKED", "UNLOCKS IN 9:59"]},
+    "reset_confirm_unassigned": {"kind": "SCR_LINKED_WAITING", "lacks": ["#-1", "HOLD B AGAIN", "RESET"],
+                                 "same_as": "welcomed_unassigned"},
+    "reset_sent": {"kind": "SCR_RESET_SENT", "has": ["RESET SENT", "WAITING FOR MC"]},
+    "reset_needs_mc": {"kind": "SCR_RESET_NEEDS_MC", "has": ["RESET NEEDS MC", "MC OFFLINE - TRY AGAIN LATER"],
+                       "lines": ["RESET", "NEEDS MC", "MC OFFLINE", "TRY AGAIN LATER"]},
+    "reset_refused_locked": {"kind": "SCR_RESET_LOCKED", "has": ["LOCKED", "MATCH IN PROGRESS", "UNLOCKS IN 9:59"]},
     "force_restart": {"kind": "SCR_FORCE_RESTART", "has": ["RESTART IN 4", "KEEP HOLDING A + B"]},
     "low_battery": {"kind": "SCR_LOW_BATTERY", "has": ["LOW BATTERY", "9%"]},
     "battery_ok_strip": {"kind": "PICKUP_READY", "has": ["76%", "#4"]},
@@ -107,26 +113,18 @@ EXPECT: dict[str, dict] = {
     "stats_idle_home": {"kind": "HILL_NEUTRAL", "same_as": "hill_neutral"},
 }
 
-# Screens the gate flags on the current firmware, still open. Each value says what is wrong.
-# Found by the first run of this gate (2026-09-24); none is fixed here, so each is Tony's call.
-_OFF = "runs off the screen: fitCenterText has no smaller font to fall back to, so it draws anyway"
-KNOWN: dict[str, str] = {
-    "wifi_joining": "says WI-FI CONNECTED while the Stick is still joining Wi-Fi (JOINING_WIFI shares SCR_JOINING); "
-                    "LOOKING FOR " + _OFF,
-    "looking_for_mc": "LOOKING FOR " + _OFF + "; MISSION CONTROL (12 pt) is wider than its 220 px box",
-    "hello_sent": "the same LOOKING FOR / MISSION CONTROL overrun as looking_for_mc",
-    "welcomed_stats": "the MC LINK value LINKED, NOT ARMED is drawn over its own MC LINK label",
-    "respawn_yellow": "YELLOW RESPAWN (12 pt) is wider than its box, 4 px from the screen edge",
-    "hill_neutral": "STAND HERE TO CAPTURE touches both screen edges",
-    "hill_yellow_refused": "the same STAND HERE TO CAPTURE overrun as hill_neutral",
-    "stats_idle_home": "the same STAND HERE TO CAPTURE overrun as hill_neutral",
-    "reset_confirm": "HOLD B AGAIN " + _OFF,
-    "reset_confirm_unassigned": "an unassigned Stick offers TO RESET STATION #-1 (and HOLD B AGAIN " + _OFF + ")",
-    "reset_sent": "MISSION CONTROL (12 pt) is wider than its 220 px box",
-    "reset_needs_mc": "RESET NEEDS and MC OFFLINE - TRY AGAIN LATER both run off the screen (the second loses ~28 px a side)",
-    "reset_refused_locked": "MATCH IN PROGRESS " + _OFF,
-    "low_battery": "LOW BATTERY " + _OFF,
+# The same table with revive feedback ON (-DBRX_REVIVE_FEEDBACK=1, post-MVP): only the respawn rows differ.
+EXPECT_REVIVE_ON: dict[str, dict] = {
+    **EXPECT,
+    "respawn_any": {"kind": "RESPAWN_OWNED", "has": ["ANY TEAM", "REVIVES 0"]},
+    "respawn_yellow": {"kind": "RESPAWN_OWNED", "has": ["YELLOW RESPAWN", "REVIVES 0"]},
+    "respawn_red": {"kind": "RESPAWN_OWNED", "has": ["RED RESPAWN", "REVIVES 0"]},
+    "respawn_red_player_revived": {"kind": "RESPAWN_REDEPLOY", "has": ["REDEPLOY", "REVIVES 1"]},
 }
+
+# Screens the gate flags that are accepted as they are (a design exception, each with its reason).
+# The 14 found on 2026-09-24 are fixed, so this is empty; a new entry needs a reason Tony agreed to.
+KNOWN: dict[str, str] = {}
 
 
 # ---- locating M5GFX and building -----------------------------------------------------------------
@@ -183,8 +181,10 @@ def _lgfx_lib(src: pathlib.Path) -> pathlib.Path:
     return lib
 
 
-def build(render: bool | None = None) -> tuple[pathlib.Path, bool]:
-    """Build the simulator. Returns (binary, rendering?). Rebuilds only when a source changed."""
+def build(render: bool | None = None, revive_on: bool = False) -> tuple[pathlib.Path, bool]:
+    """Build the simulator. Returns (binary, rendering?). Rebuilds only when a source changed.
+
+    revive_on builds it with the post-MVP revive feedback switched on (presence.h)."""
     src = find_m5gfx() if render is not False else None
     if render and src is None:
         raise RuntimeError("M5GFX not found: set M5GFX_SRC to the library's src folder")
@@ -194,27 +194,31 @@ def build(render: bool | None = None) -> tuple[pathlib.Path, bool]:
     for p in inputs:
         h.update(p.name.encode())
         h.update(p.read_bytes())
-    exe = BUILD / f"stick_sim-{'render' if rendering else 'model'}-{h.hexdigest()[:12]}"
+    variant = ("render" if rendering else "model") + ("-reviveon" if revive_on else "")
+    exe = BUILD / f"stick_sim-{variant}-{h.hexdigest()[:12]}"
     if exe.exists():
         return exe, rendering
     BUILD.mkdir(parents=True, exist_ok=True)
     tmp = exe.with_name(f"{exe.name}.{os.getpid()}.tmp")
     argv = ["g++", "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", f"-I{CORE}", str(SIM / "stick_sim.cpp"), "-o", str(tmp)]
+    if revive_on:
+        argv.insert(1, "-DBRX_REVIVE_FEEDBACK=1")
     if rendering:
         lib = _lgfx_lib(src)
         argv[4:4] = [f"-I{SIM / 'shim'}", "-isystem", str(src), "-DLGFX_LINUX_FB", "-DBRX_SIM_RENDER"]
         argv += [str(lib), "-lpthread"]
     _run(argv, "building the simulator")
-    for stale in BUILD.glob(f"stick_sim-{'render' if rendering else 'model'}-*"):
-        if stale.suffix != ".tmp" and stale != exe:
+    for stale in BUILD.glob(f"stick_sim-{variant}-*"):
+        if stale.suffix != ".tmp" and stale != exe and ("-reviveon-" in stale.name) == revive_on:
             stale.unlink(missing_ok=True)
     os.replace(tmp, exe)
     return exe, rendering
 
 
-def run(out_dir: pathlib.Path | None = None, render: bool | None = None) -> tuple[list[dict], bool]:
+def run(out_dir: pathlib.Path | None = None, render: bool | None = None,
+        revive_on: bool = False) -> tuple[list[dict], bool]:
     """Run every scenario. With out_dir (and rendering) the PNGs land there. Returns (results, rendered?)."""
-    exe, rendering = build(render)
+    exe, rendering = build(render, revive_on)
     argv = [str(exe)]
     if out_dir is not None and rendering:
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -228,8 +232,12 @@ def run(out_dir: pathlib.Path | None = None, render: bool | None = None) -> tupl
 
 
 # ---- the gate ---------------------------------------------------------------------------------------
+MIN_GAP = 2  # px of background between two strings' ink; less and they read as one smudge
+
+
 def _overlap(a, b) -> bool:
-    return not (a[2] < b[0] or b[2] < a[0] or a[3] < b[1] or b[3] < a[1])
+    g = MIN_GAP
+    return not (a[2] + g < b[0] or b[2] + g < a[0] or a[3] + g < b[1] or b[3] + g < a[1])
 
 
 def text_problems(res: dict) -> list[str]:
@@ -256,12 +264,13 @@ def text_problems(res: dict) -> list[str]:
     for i in range(len(inked)):
         for j in range(i + 1, len(inked)):
             if _overlap(inked[i]["box"], inked[j]["box"]):
-                out.append(f"'{inked[i]['text']}' and '{inked[j]['text']}' overlap")
+                out.append(f"'{inked[i]['text']}' and '{inked[j]['text']}' overlap or touch (< {MIN_GAP} px apart)")
     return out
 
 
-def check(results: list[dict], rendered: bool) -> dict[str, list[str]]:
+def check(results: list[dict], rendered: bool, expect: dict[str, dict] | None = None) -> dict[str, list[str]]:
     """Problems per scenario ({} = clean). Without rendering only the kinds and the table are checked."""
+    EXPECT = expect if expect is not None else globals()["EXPECT"]  # noqa: N806 (the table in use)
     probs: dict[str, list[str]] = {}
     names = [r["name"] for r in results]
     for n in sorted(set(names) - set(EXPECT)):
@@ -277,13 +286,24 @@ def check(results: list[dict], rendered: bool) -> dict[str, list[str]]:
         if r["spec"]["kind"] != exp["kind"]:
             p.append(f"shows {r['spec']['kind']}, expected {exp['kind']}")
         if rendered:
-            drawn = " | ".join(t["text"] for t in r["texts"])
+            # Every string drawn, plus each fitter's whole text (a two-line block reads as one line here).
+            strings = [t["text"] for t in r["texts"]] + r.get("logical", [])
+            drawn = " | ".join(strings)
             for s in exp.get("has", []):
                 if s not in drawn:
                     p.append(f"does not draw '{s}' (drew: {drawn})")
             for s in exp.get("lacks", []):
                 if s in drawn:
                     p.append(f"draws '{s}', which is wrong in this state")
+            for s in exp.get("lines", []):  # exact strings: proves a block really wrapped, not cut
+                if s not in [t["text"] for t in r["texts"]]:
+                    p.append(f"does not draw the line '{s}' on its own")
+            for s in exp.get("once", []):
+                n = sum(1 for t in r["texts"] if s in t["text"])
+                if n != 1:
+                    p.append(f"draws '{s}' {n} times (expected once)")
+            for cut in r.get("cuts", []):
+                p.append(f"'{cut}' did not fit even at 9 pt and was cut: give it a short form or room to wrap")
             p.extend(text_problems(r))
             by_pixels.setdefault(r["pixels"], []).append(r["name"])
     def root(n: str) -> str:  # follow same_as to the scenario a look-alike group is declared against
@@ -301,7 +321,8 @@ def check(results: list[dict], rendered: bool) -> dict[str, list[str]]:
 
 
 # ---- the gallery ------------------------------------------------------------------------------------
-def gallery(results: list[dict], probs: dict[str, list[str]], out_dir: pathlib.Path, scale: int = 3) -> pathlib.Path:
+def gallery(results: list[dict], probs: dict[str, list[str]], out_dir: pathlib.Path, scale: int = 3,
+            revive_on: tuple[list[dict], dict[str, list[str]]] | None = None) -> pathlib.Path:
     by_group: dict[str, list[dict]] = {}
     for r in results:
         by_group.setdefault(r["group"], []).append(r)
@@ -322,8 +343,14 @@ h1 {{ font-size:20px; margin:0 0 4px; }} h2 {{ font-size:16px; margin:28px 0 10p
 </style></head><body><h1>M5StickS3 station screens</h1>
 <p class="sum">{len(results)} scenarios, drawn by the real station_render.h at {scale}x. {flagged} flagged by the gate.
 Review this page before flashing any screen change.</p>"""]
-    for key, title in GROUPS:
-        rows = by_group.get(key, [])
+    sections = [(title, by_group.get(key, []), probs) for key, title in GROUPS]
+    if revive_on:
+        on_results, on_probs = revive_on
+        sections.append(("Respawn with revive feedback ON (post-MVP build, -DBRX_REVIVE_FEEDBACK=1)",
+                         [r for r in on_results if r["group"] == "respawn"], on_probs))
+        flagged += sum(1 for r in on_results if on_probs.get(r["name"]))
+        parts[0] = parts[0].replace(" flagged by the gate.", " flagged by the gate (both builds).")
+    for title, rows, probs in sections:
         if not rows:
             continue
         parts.append(f"<h2>{html.escape(title)}</h2><div class='grid'>")
@@ -353,22 +380,31 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     results, rendered = run(args.out)
     probs = check(results, rendered)
+    on_dir = args.out / "revive-on"
+    on_results, _ = run(on_dir, revive_on=True)
+    for r in on_results:
+        if r.get("png"):
+            r["png"] = f"revive-on/{r['png']}"
+    on_probs = check(on_results, rendered, EXPECT_REVIVE_ON)
     if not rendered:
         print("M5GFX not found: ran the model only (no PNGs, no text checks). Set M5GFX_SRC.")
-    page = gallery(results, probs, args.out)
-    for name, p in probs.items():
-        tag = "KNOWN" if name in KNOWN else "FLAG"
-        for line in p:
-            print(f"{tag} {name}: {line}")
+    page = gallery(results, probs, args.out, revive_on=(on_results, on_probs))
+    for label, pr in (("", probs), ("[revive on] ", on_probs)):
+        for name, p in pr.items():
+            tag = "KNOWN" if name in KNOWN else "FLAG"
+            for line in p:
+                print(f"{tag} {label}{name}: {line}")
     if args.copy_to:
-        args.copy_to.mkdir(parents=True, exist_ok=True)
-        for old in args.copy_to.glob("*.png"):
-            old.unlink()
-        for f in args.out.iterdir():
-            if f.suffix in (".png", ".html"):
-                shutil.copyfile(f, args.copy_to / f.name)
+        for sub in ("", "revive-on"):
+            dst = args.copy_to / sub
+            dst.mkdir(parents=True, exist_ok=True)
+            for old in dst.glob("*.png"):
+                old.unlink()
+            for f in (args.out / sub).iterdir():
+                if f.suffix in (".png", ".html"):
+                    shutil.copyfile(f, dst / f.name)
         print(f"copied to {args.copy_to}")
-    print(f"{len(results)} scenarios, {len(probs)} flagged. Gallery: {page}")
+    print(f"{len(results)} scenarios x 2 builds, {len(probs) + len(on_probs)} flagged. Gallery: {page}")
     return 0
 
 

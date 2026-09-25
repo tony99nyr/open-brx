@@ -104,8 +104,10 @@ inline StickState build_stick_state(const StickInputs& in, HeldClock& held) {
   if (link.has_respawn_assignment()) {
     st.respawn_present = true;
     st.respawn_team = a.team;
-    st.respawn_revives = link.revives().revives;
-    st.respawn_redeploy = (int32_t)(in.revive_flash_until_ms - now) > 0;
+    if (REVIVE_FEEDBACK_ENABLED) {  // post-MVP (presence.h): no count and no REDEPLOY flash by default
+      st.respawn_revives = link.revives().revives;
+      st.respawn_redeploy = (int32_t)(in.revive_flash_until_ms - now) > 0;
+    }
     st.respawn_live = in.advertising;
   }
 

@@ -151,6 +151,9 @@ class Scorer:
         self.stats: dict[str, _P] = {pid: _P(p.get("team_id")) for pid, p in players.items()}
         self.num_to_pid = {p["player_num"]: pid for pid, p in players.items()}
         self.hits_log: list[tuple[int, str, str, int]] = []   # (t, shooter_pid, victim_pid, dmg)
+        # F330: (victim node_id, seq) per `hits_log` entry, same index. A node numbers its facts in the order
+        # it emitted them, so a hit with a higher seq than a death on the same node came from a LATER life.
+        self._hit_src: list[tuple[str, int | None]] = []
         # A dual-emitter trigger pull can arrive as two hit_taken facts. The node assigns
         # both facts the same shot_group; accuracy counts the physical pull once while the
         # damage log still retains both landed words for assists and replay diagnostics.
@@ -395,6 +398,7 @@ class Scorer:
             shooter = self.num_to_pid.get(int(ev.get("shooter_num", 0) or 0))
             if shooter and shooter != pid:
                 self.hits_log.append((t, shooter, pid, int(ev.get("dmg", 0) or 0)))
+                self._hit_src.append((node_id, seq))
                 if not self._friendly(shooter, pid):
                     group = ev.get("shot_group")
                     group_key = (pid, str(group)) if isinstance(group, (int, str)) and not isinstance(group, bool) else None
@@ -406,7 +410,7 @@ class Scorer:
                     ss.last_hit_t = t if ss.last_hit_t is None else max(ss.last_hit_t, t)
             return "scored"
         if kind == "death":
-            return self._death(pid, ev, t, suppress_awards)
+            return self._death(pid, ev, t, suppress_awards, src=(node_id, seq))
         if kind == "respawn":
             if not ev.get("operator"):   # A47: the operator's FORCE RESPAWN is not a new life after a death
                 st.streak = 0
@@ -427,7 +431,8 @@ class Scorer:
             return "scored"
         return "ignored"
 
-    def _death(self, victim: str, ev: Event, t: int, suppress: bool) -> str:
+    def _death(self, victim: str, ev: Event, t: int, suppress: bool,
+               src: tuple[str, int | None] = ("", None)) -> str:
         vs = self.stats[victim]
         vs.deaths += 1
         vs.alive = False
@@ -495,7 +500,12 @@ class Scorer:
                 # assists: other players who damaged the victim inside the window
                 # assists: each OTHER player who damaged the victim inside the window gets exactly one
                 assisters: list[str] = []
-                for ht, shooter, v, _dmg in self.hits_log:
+                # F330: `t` alone cannot say which life a hit belongs to (a phone clock can jump back), and a
+                # replay ingests by `t`, so a hit the victim's node emitted AFTER this death (a higher seq on
+                # the same node) is never this death's assist, whatever order it arrives or replays in.
+                for (ht, shooter, v, _dmg), (hnode, hseq) in zip(self.hits_log, self._hit_src):
+                    if hseq is not None and src[1] is not None and hnode == src[0] and hseq > src[1]:
+                        continue
                     if v == victim and shooter not in (killer, victim) and t - ASSIST_WINDOW_MS <= ht <= t and shooter not in assisters:
                         assisters.append(shooter)
                 for a in assisters:

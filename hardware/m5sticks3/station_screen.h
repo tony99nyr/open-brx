@@ -77,6 +77,9 @@ constexpr int LOW_BATTERY_PCT = 12;
 // The hint bar's default copy, ported verbatim from render.py's DEFAULT_HINT.
 constexpr const char* DEFAULT_HINT = "A: STATS   HOLD B: RESET";
 constexpr const char* RESET_CONFIRM_HINT = "A: CANCEL";  // render.py's reset_confirm scene override
+// Linked (or joining) but no station assigned: there is nothing to reset, so B's hold is not offered
+// (gate finding 2026-09-24: an unassigned Stick offered TO RESET STATION #-1).
+constexpr const char* NO_STATION_HINT = "A: STATS";
 // A58: while the match lock is on, B's hold does nothing but say LOCKED, so the hint stops offering it.
 constexpr const char* LOCKED_HINT = "A: STATS   LOCKED";
 // Bench mode (no Wi-Fi set): A pages DIAGNOSTICS, a B hold flips HILL/BRIDGE. The hint names the current
@@ -187,6 +190,7 @@ struct ScreenSpec {
 
   // SYSTEM: joining
   int dot_phase = 1;  // 1..3
+  bool wifi_joined = true;  // false while the Wi-Fi association itself is still coming up (JOINING WI-FI)
 
   // SYSTEM: stats (the operator's one combined kv table -- render.py's `stats` page)
   std::string stats_kind;        // e.g. "PICKUP - ROCKETS", "HILL #3", "-"
@@ -317,6 +321,7 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
   spec.strip.station_id = s.assignment_present ? s.assignment_id : -1;
   spec.strip.locked = s.locked;
   if (s.link_state == LinkState::NOT_CONFIGURED) spec.hint = bench_hint(s.bench_mode_label);
+  else if (!s.assignment_present) spec.hint = NO_STATION_HINT;
   if (s.locked) spec.hint = LOCKED_HINT;
 
   // A58: an operator mid-way through the A+B force restart beats everything, even a flat battery:
@@ -333,7 +338,7 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
     return spec;
   }
 
-  if (s.button_phase == ButtonPhase::CONFIRM_ARMED) {
+  if (s.button_phase == ButtonPhase::CONFIRM_ARMED && s.assignment_present) {  // no station, nothing to confirm
     spec.kind = ScreenKind::SCR_RESET_CONFIRM;
     spec.station_id_for_reset = s.assignment_id;
     uint32_t elapsed = s.now_ms - s.confirm_armed_at_ms;  // wrap-safe: both are millis()
@@ -442,8 +447,10 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
     } else {
       spec.kind = ScreenKind::RESPAWN_OWNED;
       spec.respawn_team = (s.respawn_team >= 0 && s.respawn_team <= 3) ? s.respawn_team : -1;
-      spec.revives = (int)s.respawn_revives;
-      if (s.respawn_redeploy) spec.kind = ScreenKind::RESPAWN_REDEPLOY;
+      if (REVIVE_FEEDBACK_ENABLED) {  // post-MVP (presence.h): no count and no REDEPLOY flash by default
+        spec.revives = (int)s.respawn_revives;
+        if (s.respawn_redeploy) spec.kind = ScreenKind::RESPAWN_REDEPLOY;
+      }
     }
     return spec;
   }
@@ -460,6 +467,7 @@ inline ScreenSpec compute_screen(const StickState& s, const PlayerNameLookup& na
   }
   spec.kind = ScreenKind::SCR_JOINING;
   spec.dot_phase = (int)((s.now_ms / 500) % 3) + 1;
+  spec.wifi_joined = s.link_state != LinkState::JOINING_WIFI;  // never claim WI-FI CONNECTED before it is
   return spec;
 }
 
