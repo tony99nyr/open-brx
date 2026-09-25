@@ -1,9 +1,11 @@
 # Bench plan: every open bench step, and the desk work that gates it
 
-Updated: 2026-09-24. **Open this file first at the bench.** How a live bench run works with Tony (who drives
+Updated: 2026-09-25. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
-**The next sitting (2026-09-25): [`bench-2026-09-25.md`](bench-2026-09-25.md)**, three setups, MUST first, 0.4.12 cut after sitting A.
+**The next sitting (2026-09-25): [`bench-2026-09-25.md`](bench-2026-09-25.md)**, three setups, MUST first, 0.4.12 cut after sitting A;
+sitting C's powerup setup gates powerups on by default (F372). Its LATER list places every other row of the FOLLOWUPS
+**MVP BENCH** group by setup.
 
 This file holds the ORDER only. Each step points to the sheet section or the FOLLOWUPS row that holds the procedure.
 Do not copy a procedure into this file. When a sitting ends, strike its steps here (the skill's close, step 4).
@@ -73,7 +75,7 @@ A3 repeats A1 on other channels and can lock the gun: power-cycle and re-arm bef
 6. Levers §12 step 2 (does `$STOP` gate the trigger?), then §4 step 2 (a `$SIR` p5 stun on hit) (10 min). **U11′**.
 7. **F262**: the shield-hit sound by sensor, ten shots at the headset and ten at the gun body (10 min, ears).
 8. ~~Levers §2, melee.~~ **K4** closed 2026-09-24: melee works in our compiled game (bench 2026-09-24 entry, `archive/followups-closed.md`). Steps 5 and 7 (the `$BHIT`/`$FIREX` controls) stay optional, not blocking.
-9. Levers §16 step 6.3: does `$CLEAR` stop a headset `$IRTX` loop? (5 min, the rig). **S57**, **B23**.
+9. Levers §16 step 6.3: does `$CLEAR` stop a headset `$IRTX` loop? (5 min, the rig). **S57**.
 10. **F282**: the compiled Suppressor against the compiled AR in a dark room: does either flash, and which is quieter?
    Then `$WEAP` t25/t26 at 0 and at a large value on one weapon (10 min; eyes, ears; method in the row).
 
@@ -102,18 +104,18 @@ Levers §1 run f (F206's proof) **already ran and passed**, 2026-09-19; do not r
    and watch for a trigger answer. The row holds the gate.
 2. Levers §22 step 7: reproduce the timed-out partial reload on the Energy Rifle. **F277**.
 3. **F237** (a slow Pixel 5 re-pick): the row holds its repro.
-4. The stun cue: hit a player with the EMP and listen for `X17` on the victim's gun (commit `273e949a`; FOLLOWUPS §9).
-5. The shield recharge cues on the Shields preset (**S29**: `N101`, `N102`, `VA6Y`, `N74`). If the runbook's Block 4.6
-   already ran the Shields preset in a match, do not re-run it here; note the result instead.
+4. The stun cue: hit a player with the EMP and listen for `X17` on the victim's gun (commit `273e949a`; the row is **U11′** in [`post-mvp.md`](post-mvp.md)).
+5. The shield recharge cues on the Shields preset (**F349**: `N101`, `N102`, `VA6Y`, `N74`). If the runbook's 4.19
+   already ran them, do not re-run them here; note the result instead.
 
 ### Sitting 6: levers session 2 (two sittings; 2 guns, the rig for §9 step 5)
 
-- 6a (about 50 min): §3 `$BHIT`, §6 steps 1-3 (**S29**), §7 (**S50**), §8 the fuse; use the levers sheet as the procedure source.
+- 6a (about 50 min): §3 `$BHIT`, §6 steps 1-3 (the shield levers), §7 (**S50**), §8 the fuse; use the levers sheet as the procedure source.
 - 6b (about 40 min): §9 the crit bonus (**S50**), §10 fn 35, 38, 30, 33, 50-52 (**U11′**), §15 a headless gun (**B26**).
 
 ### Sitting 7: levers session 4, the IR rig (two sittings; 2 guns, the rig)
 
-- 7a (about 50 min): §11 splash, §16 step 4 (field 4 = 1) (**B23**), §17 station words (**B23**).
+- 7a (about 50 min): §11 splash, §16 step 4 (field 4 = 1), §17 station words (research: the MVP respawn station runs over Bluetooth).
 - 7b (about 45 min): §20 indoor half (**S48**, **Q15**), §24 the proc block (**F63**). §13 steps 2 and 3
   (magnitudes 40-63) are optional now (**S57**).
 
@@ -149,7 +151,8 @@ headset-word row was F254 before its renumber and is F275 now.
 - [`bench-grenade.md`](bench-grenade.md) "Still to run": B0 first, then X, Z1-Z3, D, B, E, F (C is answered).
 - The unrun rungs of [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) that the table below does not mark as
   moved. Do not run BQ-A2 (`$AS,1`): it starts a native game, a screamer path.
-- FOLLOWUPS §9 rows with their own method and no sheet: F164, F167, F168, F169, F183, F232.
+- Rows whose method is in the row itself: **F232** and the other "Later" rows of the FOLLOWUPS MVP BENCH group
+  that no sheet names yet, and the post-MVP **F167**, **F168** and **F169**.
 
 ## Desk work (no gun)
 
@@ -187,7 +190,7 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 | the 2026-09-05 flash-control, 2026-09-07 super-indoor and 2026-09-11 critical sheets | history | archived 2026-09-24: grep only. Critical: BC-A2 is levers §21 step 16 (done) plus grenade Z1; BC-B3 is grenade X; BC-C1 is levers §6; BC-C2 is answered (perks §2). Super-indoor: Q15; Tony defined S48 on 2026-09-23, and its sweep is Block 6 of the runbook. Flash-control: L1-L9 answered; BQ-D8 cites its rungs 9-10 |
 | [`capture-runbook.md`](capture-runbook.md) | method | how to take a capture; no status |
 | the 2026-09-13 runbook and the 2026-09-17 weapons sheet | history | already archived: grep only, open no step from them |
-| [`FOLLOWUPS.md`](FOLLOWUPS.md) §9 | register | the ids; this plan is the order |
+| [`FOLLOWUPS.md`](FOLLOWUPS.md) MVP BENCH, and [`post-mvp.md`](post-mvp.md) | register | the ids (MVP, then post-MVP); this plan is the order |
 
 ## Decisions for Tony
 

@@ -172,8 +172,8 @@ txt = ''.join(json.loads(b)['chunk'] for b, in c.execute(
 
 | what | where |
 |---|---|
-| Every open issue reported from a live session | [`FOLLOWUPS.md`](FOLLOWUPS.md) §6 |
-| Shipped-but-unconfirmed fixes, with what would prove/disprove each | [`FOLLOWUPS.md`](FOLLOWUPS.md) §10 |
+| Every open MVP issue reported from a live session | [`FOLLOWUPS.md`](FOLLOWUPS.md) |
+| Shipped-but-unconfirmed fixes, with what would prove/disprove each | [`FOLLOWUPS.md`](FOLLOWUPS.md) MVP BENCH, and [`post-mvp.md`](post-mvp.md) → *System proofs* |
 | The lab notebook — append after every session | [`experiment-log.md`](experiment-log.md) |
 | Open work, all of it (Mac-only capture jobs: `capture-runbook.md`) | [`FOLLOWUPS.md`](FOLLOWUPS.md) |
 

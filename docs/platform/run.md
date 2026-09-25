@@ -168,6 +168,11 @@ At the time limit, or when you end the match, Mission Control works out the winn
 kills, deaths, accuracy and medals. The recap stays **provisional** until every player's phone has
 flushed its events, so a player still walking back can still change a number.
 
+The kill medals (First Blood, Double Kill up to Killionaire, Killing Spree, Unstoppable) are named after the
+voice lines built into the Battle Company tagger's own sound bank, and each one is named after the line the gun
+plays. Beat Down plays the gun's "Fatality" line, and Killjoy is text only. Open BRX ships no audio. If a rights
+holder objects to a name, we will rename it.
+
 Before anyone closes the app, have each player hit **Share log**. The HUD keeps its log and the last
 60 raw Bluetooth frames in memory only, and closing the app loses them. The launch folder
 `~/.brx-mcp/sessions/<launch-id>/` already holds the session database (`session.sqlite`) and the

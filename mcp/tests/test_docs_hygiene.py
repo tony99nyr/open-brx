@@ -4,7 +4,8 @@ Added 2026-09-06 with the docs triage. Each check guards a rule that was broken 
 
 * headset sticker ids (the headset serial/PIN) never enter the repo (gotchas.md);
 * FOLLOWUPS.md's "Updated" stamp moves when the file does (it sat on 09-01 through 09-05);
-* an id is one H2 in FOLLOWUPS.md, never two (F15/F16 each named two items);
+* an id is defined once across FOLLOWUPS.md, post-mvp.md and the archive (F15/F16 each named two items);
+* FOLLOWUPS.md's index lists every open MVP row once, under its own group, with its own marker;
 * HANDOFF.md is one screen, not a stack of banners (it reached 836 lines);
 * a relative link in docs/ points at a file that exists;
 * a closed id does not still fly an open marker, in either glyph family and either word order;
@@ -27,7 +28,17 @@ from _skip import Skipped
 REPO = pathlib.Path(__file__).resolve().parents[2]
 DOCS = REPO / "docs"
 FOLLOWUPS = DOCS / "FOLLOWUPS.md"
+# 2026-09-25: the register is three files. FOLLOWUPS.md = open MVP work only; post-mvp.md = the ideas and roadmap
+# rows (ids unchanged); archive/followups-closed.md = one dated line per closed row. A row is DEFINED in exactly one
+# of the first two, and a defined id has no dated closure in the third.
+POST_MVP = DOCS / "post-mvp.md"
+REGISTERS = (FOLLOWUPS, POST_MVP)
 HANDOFF = DOCS / "HANDOFF.md"
+
+
+def _register_text() -> str:
+    """FOLLOWUPS.md and post-mvp.md together: every open row, MVP or not."""
+    return "\n".join(f.read_text(encoding="utf-8") for f in REGISTERS)
 
 # The headset sticker ids all share this shape; the letters are assembled at runtime so the
 # pattern itself is not a hit.
@@ -180,7 +191,7 @@ def test_r4_t2_untested_levers_keep_eight_code_reads_and_bench_boundaries_visibl
 def test_r4_t4_audio_pack_reports_hash_facts_without_claiming_audio_meaning():
     plan = (DOCS / "firmware-image-research-plan.md").read_text(encoding="utf-8")
     log = (DOCS / "experiment-log" / "2026-09.md").read_text(encoding="utf-8")
-    followups = (DOCS / "FOLLOWUPS.md").read_text(encoding="utf-8")
+    followups = _register_text()     # R4 moved to post-mvp.md on 2026-09-25
     handoff = (DOCS / "HANDOFF.md").read_text(encoding="utf-8")
     report = json.loads((DOCS / "reference" / "firmware-audio-pack-v5-v6.json").read_text(encoding="utf-8"))
     catalog = json.loads((REPO / "mcp" / "brx_mcp" / "data" / "sound_catalog.json").read_text(encoding="utf-8"))
@@ -248,21 +259,23 @@ def _stamp(path: pathlib.Path) -> _dt.date:
 
 
 def test_followups_stamp_moves_with_the_file():
-    stamp = _stamp(FOLLOWUPS)
-    rel = str(FOLLOWUPS.relative_to(REPO))
-    dirty = _git("status", "--porcelain", "--", rel)
-    if dirty is None:
-        raise Skipped("git")
-    if dirty.strip():
-        assert stamp == _dt.date.today(), (
-            f"FOLLOWUPS.md is edited but its Updated stamp says {stamp}; set it to today"
-        )
-        return
-    last = _git("log", "-1", "--format=%cs", "--", rel)
-    if not last or not last.strip():
-        raise Skipped("git history")
-    committed = _dt.date.fromisoformat(last.strip())
-    assert stamp >= committed, f"FOLLOWUPS.md was committed {committed} but its Updated stamp says {stamp}"
+    """Both register files carry an `Updated:` stamp that moves with the file."""
+    for path in REGISTERS:
+        stamp = _stamp(path)
+        rel = str(path.relative_to(REPO))
+        dirty = _git("status", "--porcelain", "--", rel)
+        if dirty is None:
+            raise Skipped("git")
+        if dirty.strip():
+            assert stamp == _dt.date.today(), (
+                f"{path.name} is edited but its Updated stamp says {stamp}; set it to today"
+            )
+            continue
+        last = _git("log", "-1", "--format=%cs", "--", rel)
+        if not last or not last.strip():
+            continue                     # never committed: nothing to compare against yet
+        committed = _dt.date.fromisoformat(last.strip())
+        assert stamp >= committed, f"{path.name} was committed {committed} but its Updated stamp says {stamp}"
 
 
 # A followup id is DEFINED by a row that carries a status marker (`- **F42 🟡** ...`); the same id may
@@ -290,10 +303,48 @@ def test_followups_ids_are_defined_exactly_once():
     Same shape as the bench-teardown scan that only read `finally:` blocks and the clear-safety sweep
     that only read named constants — a guard correct for the place it looked, and blind everywhere else.
     """
-    dupes = {k: v for k, v in _followup_definitions(FOLLOWUPS.read_text(encoding="utf-8")).items()
-             if len(v) > 1}
-    assert not dupes, ("an id defines more than one item in FOLLOWUPS.md (ids are never reused — "
-                       "claim the next one in the header FIRST, then write the row): " + str(dupes))
+    for path in REGISTERS:
+        dupes = {k: v for k, v in _followup_definitions(path.read_text(encoding="utf-8")).items()
+                 if len(v) > 1}
+        assert not dupes, (f"an id defines more than one item in {path.name} (ids are never reused — "
+                           "claim the next one in the FOLLOWUPS header FIRST, then write the row): " + str(dupes))
+
+
+def _exactly_closed_ids() -> set[str]:
+    """Ids with a dated closure line whose bold is the bare id (`- 2026-09-25 **F43** ...`). A partial closure
+    (`**F362 (k), (l)**`, `**F42.10**`) closes a sub-item, not the row, so it does not count."""
+    text = (DOCS / "archive" / "followups-closed.md").read_text(encoding="utf-8")
+    out: set[str] = set()
+    for m in re.finditer(r"^- \d{4}-\d{2}-\d{2} ((?:\*\*[A-Z]\d{1,3}\*\*(?:,| and)?\s*)+)", text, re.M):
+        out |= set(re.findall(r"\*\*([A-Z]\d{1,3})\*\*", m.group(1)))
+    return out
+
+
+def _three_file_id_problems(followups: str, post_mvp: str, closed: set[str]) -> list[str]:
+    """An id defined in both FOLLOWUPS and post-mvp, or defined in either while the archive closes it."""
+    mvp, post = set(_followup_definitions(followups)), set(_followup_definitions(post_mvp))
+    problems = [f"{i} is a row in both FOLLOWUPS.md and post-mvp.md" for i in sorted(mvp & post)]
+    problems += [f"{i} is an open row in {name} but the archive closes it"
+                 for name, ids in (("FOLLOWUPS.md", mvp), ("post-mvp.md", post)) for i in sorted(ids & closed)]
+    return problems
+
+
+def test_ids_are_unique_across_the_three_files():
+    """2026-09-25 split: a row lives in ONE of FOLLOWUPS.md (open MVP), post-mvp.md (roadmap) or the archive
+    (closed). A row copied instead of moved is two truths about one id, and the next session trusts the wrong one.
+    ⚠ Blind spot: a partial closure (`**F362 (k)**`) is not read as closing its row, on purpose, because the parent
+    row stays open; and a closed row that was never given a dated line is invisible here."""
+    problems = _three_file_id_problems(FOLLOWUPS.read_text(encoding="utf-8"),
+                                       POST_MVP.read_text(encoding="utf-8"), _exactly_closed_ids())
+    assert not problems, "an id lives in more than one of the three register files:\n" + "\n".join(problems)
+
+
+def test_the_three_file_check_can_actually_fail():
+    problems = _three_file_id_problems("- **Z9 🟡** a row\n", "- **Z9 🟢** the same id\n- **Z8 🟡** x\n", {"Z8"})
+    assert problems == ["Z9 is a row in both FOLLOWUPS.md and post-mvp.md",
+                        "Z8 is an open row in post-mvp.md but the archive closes it"], problems
+    assert len(_exactly_closed_ids()) > 100, "the archive's dated closure lines stopped parsing"
+    assert len(_followup_definitions(POST_MVP.read_text(encoding="utf-8"))) > 100, "post-mvp.md rows stopped parsing"
 
 
 def test_the_id_check_sees_the_ids_that_actually_exist():
@@ -315,7 +366,7 @@ def test_the_next_free_ids_are_actually_free():
     """The collision's root cause: three sessions trusted the header and it was already stale. An id
     advertised as free that is in use is worse than no header at all."""
     text = FOLLOWUPS.read_text(encoding="utf-8")
-    defined = set(_followup_definitions(text))
+    defined = set(_followup_definitions(_register_text()))
     m = re.search(r"\*\*Next free:([^*]+)\*\*", text)
     assert m, "FOLLOWUPS.md no longer advertises a 'Next free:' list"
     claimed = set(re.findall(r"\b([A-Z]\d{1,3})\b", m.group(1)))
@@ -606,7 +657,7 @@ _CITED_ID_ALLOW: set = {
 
 def _known_ids() -> set[str]:
     text = FOLLOWUPS.read_text(encoding="utf-8")
-    known = set(_followup_definitions(text))
+    known = set(_followup_definitions(_register_text()))
     known |= set(re.findall(r"\*\*([A-Z]\d{1,3})\b", (DOCS / "archive" / "followups-closed.md").read_text(encoding="utf-8")))
     snap = DOCS / "archive" / "pre-2026-09-06-followups-snapshot.md"
     if snap.is_file():
@@ -702,7 +753,7 @@ def _ids_a_forward_pointer_may_land_on() -> set[str]:
     """A row in FOLLOWUPS.md, or an id that is itself closed. Deliberately NOT "any id the archive
     mentions": that would make every pointer self-resolving, because the pointer IS an archive mention.
     Sub-ids count (`F42.14` is a sub-row of F42, not its own bullet)."""
-    known = set(re.findall(r"\*\*(" + _SUB_ID + r")\b", FOLLOWUPS.read_text(encoding="utf-8")))
+    known = set(re.findall(r"\*\*(" + _SUB_ID + r")\b", _register_text()))
     known |= {m.group(2) for m in
               (_CLOSURE_HEAD.match(line) for line in ARCHIVE.read_text(encoding="utf-8").split("\n"))
               if m}
@@ -748,7 +799,7 @@ def test_the_forward_pointer_scan_is_not_vacuous():
 # scanned, and not link checked. The fix is always to promote the fact and keep the archive as
 # provenance only. `followups-closed.md` is the one archive file everything may cite — it is the
 # sanctioned record of a closure, named as such in CLAUDE.md.
-_ARCHIVE_INDEX_FILES = ("docs/README.md", "docs/FOLLOWUPS.md", "docs/experiment-log.md")
+_ARCHIVE_INDEX_FILES = ("docs/README.md", "docs/FOLLOWUPS.md", "docs/post-mvp.md", "docs/experiment-log.md")
 # The lab notebook is history by construction: every entry is dated and cites the sheet that session
 # ran from, so a link into the archive there IS the provenance this rule asks for, not a fact hidden
 # out of reach. A month file may never be the only home of a live fact anyway -- the living pages are.
@@ -828,7 +879,7 @@ def _open_rows() -> list[tuple[str, str]]:
     A row may be defined mid-line (`**G9 🟠**`), so any bold id followed by a live marker counts: prose that bolds
     a closed id beside a live marker would hide it from the routing guard. Keep markers out of such prose."""
     out = []
-    for line in FOLLOWUPS.read_text(encoding="utf-8").split("\n"):
+    for line in _register_text().split("\n"):     # a row is open whether it is MVP or post-MVP
         if re.match(rf"- ({_MARK}) \*\*", line):
             continue   # an index list, not a row
         for m in re.finditer(r"\*\*([A-Z](?:-[A-Z])?\d{1,3}′?)(?: [a-z]+){0,3} ?(🔴|🟠|🟡|🟢)", line):
@@ -925,3 +976,87 @@ def test_the_index_check_can_actually_fail():
         "FOLLOWUPS.md:2 indexes Z9 as 🟠; its row says 🟡",
         "FOLLOWUPS.md:2 indexes Z8, which has no open row",
     ]
+
+
+# --- 2026-09-25: FOLLOWUPS is open MVP work only, in three groups, and its index is COMPLETE ---
+# Before the split the index was guarded for markers only ("its completeness is not"), and it drifted. The file is
+# now small enough to hold the index to the rows exactly: every row once, under its own group, and the counts true.
+# ⚠ Blind spot: a row written without a status marker after its id (`- **F42** text`) is not a row to any check here.
+
+_GROUPS = ("DESK", "BENCH", "DECISION")
+_GROUP_LABEL = re.compile(r"^\*\*MVP (DESK|BENCH|DECISION) \((\d+)\),?\*\*")
+_GROUP_H2 = re.compile(r"^## MVP (DESK|BENCH|DECISION)\b")
+
+
+def _mvp_group_problems(text: str) -> list[str]:
+    indexed: dict[str, list[str]] = {}
+    labelled: dict[str, int] = {}
+    rows: dict[str, str] = {}
+    group = section = None
+    for line in text.split("\n"):
+        lab = _GROUP_LABEL.match(line)
+        if lab:
+            group = lab.group(1)
+            labelled[group] = int(lab.group(2))
+            continue
+        if line.startswith("## "):
+            group = None
+            h2 = _GROUP_H2.match(line)
+            section = h2.group(1) if h2 else None
+            continue
+        if group and re.match(rf"- ({_MARK}) ", line):
+            for ident in re.findall(r"\*\*([A-Z](?:-[A-Z])?\d{1,3}′?)\*\*", line):
+                indexed.setdefault(ident, []).append(group)
+            continue
+        group = None
+        m = _ROW.match(line)
+        if m and any(s in m.group(2)[:12] for s in _STATUS):
+            rows[m.group(1)] = section or "OUTSIDE"
+    problems = []
+    for ident, where in sorted(rows.items()):
+        if where == "OUTSIDE":
+            problems.append(f"{ident} is a row outside the three MVP sections")
+        elif ident not in indexed:
+            problems.append(f"{ident} is a row under MVP {where} but no index list names it")
+        elif indexed[ident] != [where]:
+            problems.append(f"{ident} is a row under MVP {where} but the index lists it under {indexed[ident]}")
+    for ident in sorted(set(indexed) - set(rows)):
+        problems.append(f"the index lists {ident}, which has no row in FOLLOWUPS.md")
+    for g in _GROUPS:
+        n = sum(1 for w in rows.values() if w == g)
+        if g not in labelled:
+            problems.append(f"no **MVP {g} (n)** index label")
+        elif labelled[g] != n:
+            problems.append(f"the MVP {g} label says {labelled[g]} but the section holds {n} rows")
+    total = re.search(r"\*\*MVP open: (\d+)\.\*\*", text)
+    if not total or int(total.group(1)) != len(rows):
+        problems.append(f"the 'MVP open' total does not match the {len(rows)} rows")
+    return problems
+
+
+def test_followups_index_is_complete_and_grouped():
+    problems = _mvp_group_problems(FOLLOWUPS.read_text(encoding="utf-8"))
+    assert not problems, "the FOLLOWUPS MVP index disagrees with its rows (the ROW is right):\n" + "\n".join(problems)
+
+
+def test_the_group_check_can_actually_fail():
+    text = ("**MVP open: 3.**\n**MVP DESK (1),** x:\n- 🟡 **Z1** · **Z2**\n**MVP BENCH (2),** y:\n- 🟠 **Z3**\n"
+            "**MVP DECISION (0),** z:\n\n## MVP DESK\n\n- **Z1 🟡** a\n\n## MVP BENCH\n\n- **Z2 🟡** b\n- **Z4 🟠** c\n"
+            "\n## MVP DECISION: awaiting Tony\n")
+    assert _mvp_group_problems(text) == [
+        "Z2 is a row under MVP BENCH but the index lists it under ['DESK']",
+        "Z4 is a row under MVP BENCH but no index list names it",
+        "the index lists Z3, which has no row in FOLLOWUPS.md",
+    ], _mvp_group_problems(text)
+    assert _mvp_group_problems("## Somewhere\n\n- **Z5 🟡** x\n")[0] == "Z5 is a row outside the three MVP sections"
+
+
+def test_the_routing_rule_reads_post_mvp_rows_as_open():
+    """The routing guard's "closed" set is the archive minus every open row. Since 2026-09-25 an open row may live in
+    post-mvp.md, so a bench-plan line that routes to a post-MVP row (F285, S50) must not read as routing to a
+    closed one, and the open set must see that file at all."""
+    post = set(_followup_definitions(POST_MVP.read_text(encoding="utf-8")))
+    live = {i for i, _ in _open_rows()}
+    assert {"S14", "F285", "S50"} <= post, "the post-MVP probe ids moved: pick three rows that live in post-mvp.md"
+    assert {"S14", "F285", "S50"} <= live, "the routing guard's open rows do not read post-mvp.md"
+    assert not (post & _closed_ids()), "a post-MVP row reads as closed to the routing guard"

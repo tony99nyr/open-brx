@@ -1,6 +1,6 @@
 // The medal icon gallery (Tony 2026-09-25): style B (the roundel), Tony's pick, day and night at 24, 32 and 48 px; the
-// multi-kill escalation strip; the "pick one" options for the two icons he asked to redo (BEAT DOWN and IRON MAN, which
-// draw a placeholder initial until he picks); and the real HUD's recap (AWARDS and PLAYERS tabs) with the icons in.
+// multi-kill escalation strip; Beat Down round 3 with Tony's pick marked (B6; IRON MAN is I2b); and the real HUD's
+// recap (AWARDS and PLAYERS tabs) with the icons in.
 // It asserts nothing (app/tools/screens.mjs is the gate). Run from app/ after `npm run build`:
 //   node tools/medal-gallery.mjs [out-dir]
 // The default out-dir is C:\Users\Tony\brx-medals (WSL: /mnt/c/Users/Tony/brx-medals). Nothing here goes in the repo.
@@ -23,29 +23,33 @@ const SKINS = ['day', 'night'], SIZES = [24, 32, 48];
 const icon = (k, skin, size) => medalIcon(k, { night: skin === 'night', size, label: LABEL[k] });
 
 // ---- the fresh options for the two icons Tony called weak. ORIGINAL designs, drawn in the same 32-unit box. ----
+// Beat Down, round 3 (Tony 2026-09-25): "B3c is closest but still looks weird. maybe try a different kind of fist or
+// glove?" Four new directions, with B3c (from round 2) beside them as the reference. ORIGINAL designs.
+const GLOVE = 'M10.6 17.6V11.2c0-3.6 2.6-5.8 6.2-5.8 3.9 0 6.6 2.6 6.6 6.4v4.9c0 2.1-1.3 3.6-3.4 3.9h-7.6c-1.1 0-1.8-.8-1.8-1.9z';
+const B3C = (c, a, gap) => `<g transform="rotate(62 16 16)"><path d="${GLOVE}" fill="${c}"/>`
+  + `<path d="M12.4 11.8c2.6 1.3 6.9 1.3 9.6-.4" fill="none" stroke="${gap}" stroke-width="1.4" stroke-linecap="round"/>`
+  + `<path d="M11.2 13c-2.2 0-3.3 1.4-3.3 2.9 0 1.9 1.5 3.3 3.8 3.3h3c1 0 1.7-.7 1.7-1.6s-.7-1.6-1.7-1.6h-2.2z" fill="${c}" stroke="${gap}" stroke-width="1.5" paint-order="stroke"/>`
+  + `<rect x="11.6" y="21" width="10.6" height="5.4" rx="1.1" fill="${a}"/><path d="M14.6 21.8l4.6 3.8M19.2 21.8l-4.6 3.8" stroke="${gap}" stroke-width="1.3" stroke-linecap="round"/></g>`;
+// A clenched fist seen from the front: four knuckles across the top, the thumb folded across under them, the wrist below.
+const FINGERS = [8.4, 12.2, 16, 19.8];
+const fist = (c, a, gap, { tips = 'solid', band = true } = {}) =>
+  `<rect x="8.6" y="12" width="14.8" height="9.4" rx="2.4" fill="${c}"/>`
+  + FINGERS.map(x => tips === 'open'
+    ? `<rect x="${x + 0.5}" y="7.6" width="2.8" height="6" rx="1.4" fill="none" stroke="${c}" stroke-width="1.4"/>`
+    : `<rect x="${x}" y="7" width="3.8" height="8.6" rx="1.9" fill="${c}" stroke="${gap}" stroke-width="1.1" paint-order="stroke"/>`).join('')
+  + `<rect x="8" y="15.4" width="11.4" height="3.8" rx="1.9" fill="${c}" stroke="${gap}" stroke-width="1.5" paint-order="stroke"/>`
+  + `<path d="M11 21.4h10v4.2H11z" fill="${c}"/>` + (band ? `<rect x="10.6" y="22" width="10.8" height="2" rx=".6" fill="${a}"/>` : '');
 const PICK = {
-  melee_kill: { title: 'BEAT DOWN (a melee finish)', opts: [
-    ['B1 · Hammer blow', 'a war hammer mid-swing, with amber impact lines', (c, a) =>
-      `<g transform="rotate(-38 16 16)"><rect x="9" y="6.4" width="14" height="6.4" rx="1.2" fill="${c}"/><rect x="14.9" y="12.4" width="2.2" height="13.6" rx=".9" fill="${c}"/></g>`
-      + `<path d="M6.4 20.6h3.4M7.2 24l2.6-1.8M10.4 26.2l1-2.8" stroke="${a}" stroke-width="1.8" stroke-linecap="round"/>`],
-    ['B2 · Takedown', 'a heavy downward strike cracking the ground', (c, a) =>
-      `<path d="M13.4 6.2h5.2v7.6h3.8L16 20.6l-6.4-6.8h3.8z" fill="${c}"/><rect x="7" y="22.4" width="18" height="2.4" rx="1" fill="${a}"/>`
-      + `<path d="M11 22.4 9.4 19.6M21 22.4l1.6-2.8" stroke="${a}" stroke-width="1.6" stroke-linecap="round"/>`],
-    ['B3 · Glove', 'a padded fighting glove, side on, with an amber cuff', (c, a) =>
-      `<path d="M11.4 9.6c0-2 1.8-3.2 4-3.2h3.2c3.2 0 5 2.4 5 5.8v4.2c0 2.4-1.5 3.9-3.6 3.9h-6.8c-1.1 0-1.8-.8-1.8-1.9z" fill="${c}"/>`
-      + `<path d="M11.4 12.6c-2.2 0-3.2 1.4-3.2 2.8 0 1.5 1.2 2.6 3.2 2.6" fill="none" stroke="${c}" stroke-width="2.2" stroke-linecap="round"/>`
-      + `<rect x="12.2" y="21.4" width="10.4" height="4" rx="1" fill="${a}"/>`],
-  ] },
-  iron_man: { title: 'IRON MAN (fewest deaths, endurance)', opts: [
-    ['I1 · Riveted plate', 'a slab of armour plate with four amber rivets', (c, a, gap) =>
-      `<path d="M9 8.4h14l1.6 3v10.4L16 25.8l-8.6-4V11.4z" fill="${c}"/><path d="M16 9.6v14.8" stroke="${gap}" stroke-width="1.4"/>`
-      + [[11.2, 12], [20.8, 12], [11.2, 19.4], [20.8, 19.4]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.4" fill="${a}"/>`).join('')],
-    ['I2 · Iron heart', 'a heart with a band of plate across it: the one who keeps going', (c, a, gap) =>
-      `<path d="M16 25C9.6 20.4 7.4 17 7.4 13.4a4.3 4.3 0 0 1 8.6-1.6 4.3 4.3 0 0 1 8.6 1.6c0 3.6-2.2 7-8.6 11.6z" fill="${c}"/>`
-      + `<path d="M8.2 16.6h15.6" stroke="${gap}" stroke-width="2.6"/><path d="M9.6 16.6h12.8" stroke="${a}" stroke-width="1.2"/>`],
-    ['I3 · Unbroken loop', 'an endless loop: a whole match without falling', (c, a) =>
-      `<path d="M16 16c-2.6-3.8-7.2-3.8-7.2 0s4.6 3.8 7.2 0 7.2-3.8 7.2 0-4.6 3.8-7.2 0z" fill="none" stroke="${c}" stroke-width="2.8" stroke-linejoin="round"/>`
-      + `<circle cx="16" cy="16" r="1.6" fill="${a}"/>`],
+  melee_kill: { title: 'Beat Down, round 3: picked: B6', opts: [
+    ['B3c · Glove, mid-punch (round 2, the reference)', 'the laced glove turned side-on: closest so far, but it reads oddly', B3C],
+    ['B4 · Bare fist', 'a clenched fist from the front: four knuckles, the thumb folded across, an amber wrist wrap', (c, a, gap) => fist(c, a, gap)],
+    ['B5 · Gauntlet', 'an armoured fist: a knuckle plate, a finger plate and a flared cuff, with bolts', (c, a, gap) =>
+      `<path d="M9 10.2 11.8 7h8.4l2.8 3.2v3.2H9z" fill="${c}"/>` + [12.2, 16, 19.8].map(x => `<circle cx="${x}" cy="10.4" r="1.1" fill="${gap}"/>`).join('')
+      + `<path d="M9 14.6h14v3.6l-2 1.8H11l-2-1.8z" fill="${c}"/><path d="M10.8 21.2h10.4l2 4.8H8.8z" fill="${c}"/><rect x="10.8" y="21.2" width="10.4" height="1.3" fill="${a}"/>`],
+    ['B6 · Fist and impact · PICKED', 'Tony\'s pick, now the BEAT DOWN icon: the bare fist, smaller, with an amber impact burst at its knuckles', (c, a, gap) =>
+      `<g transform="translate(-2.2 2.4) scale(.84) translate(3 3)">${fist(c, a, gap, { band: false })}</g>`
+      + `<path d="M21.6 8.6l2.4-2.6M23.2 11.4l3.2-.8M19.6 7.2l.4-3.2" stroke="${a}" stroke-width="1.8" stroke-linecap="round"/>`],
+    ['B7 · Fingerless glove', 'a tactical glove on a fist: bare fingertips drawn open, the padded glove below, an amber strap', (c, a, gap) => fist(c, a, gap, { tips: 'open' })],
   ] },
 };
 
@@ -75,10 +79,10 @@ for (const m of MOCKS) for (const view of VIEWS) for (const skin of SKINS) {
 await b.close(); srv.close();
 
 // ---- the page ----
-const cell = (k, skin) => `<div class="cell"><div class="row">${SIZES.map(s => icon(k, skin, s)).join('')}</div><div class="k">${esc(LABEL[k] || k)}<small>${esc(k)}${k === 'melee_kill' || k === 'iron_man' ? ' · placeholder' : ''}</small></div></div>`;
+const cell = (k, skin) => `<div class="cell"><div class="row">${SIZES.map(s => icon(k, skin, s)).join('')}</div><div class="k">${esc(LABEL[k] || k)}<small>${esc(k)}</small></div></div>`;
 const grid = (keys, skin) => `<div class="grid">${keys.map(k => cell(k, skin)).join('')}</div>`;
 const pick = key => { const p = PICK[key];
-  return `<div class="pick"><h3>${esc(p.title)}: pick one</h3><div class="opts">${p.opts.map(([name, what, g]) => `<div class="opt"><b>${esc(name)}</b><span>${esc(what)}</span>
+  return `<div class="pick"><h3>${esc(p.title)}</h3><div class="opts">${p.opts.map(([name, what, g]) => `<div class="opt"><b>${esc(name)}</b><span>${esc(what)}</span>
     ${SKINS.map(skin => `<div class="plate ${skin} row">${SIZES.map(s => roundelIcon(g, { key, night: skin === 'night', size: s, label: name })).join('')}</div>`).join('')}</div>`).join('')}</div></div>`; };
 const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Medal Icons</title><style>
@@ -96,8 +100,8 @@ figure{margin:10px 0}figure img{max-width:100%;height:auto;border:1px solid #223
 <h1>Open BRX medal and award icons: style B (roundel)</h1>
 <p class="legal">Original designs, not Halo's art. No shape, layout or colour scheme is copied from Bungie's medals. Every icon is inline SVG with no fonts or external files.</p>
 <p>Only the recap uses the icons: the phone's AWARDS and PLAYERS tabs, and Mission Control's recap (with its words kept beside them). The in-game kill card and alerts keep their words.</p>
-<p class="q">Pick one BEAT DOWN and one IRON MAN (for example "B2, I1"). Until then both draw a placeholder initial.</p></header>
-<section id="pick"><h2>Pick one</h2>${pick('melee_kill')}${pick('iron_man')}</section>
+<p class="q">Both are picked and built: BEAT DOWN is B6 (the fist and impact), IRON MAN is I2b (the bevelled iron heart).</p></header>
+<section id="pick"><h2>Beat Down, round 3: picked: B6</h2>${pick('melee_kill')}</section>
 <section id="set"><h2>The set</h2>
 ${SKINS.map(skin => `<div class="plate ${skin}"><h3>${skin === 'day' ? 'Day' : 'Night (red and amber only, on #120505)'}</h3>
   <h4>Escalation strip: double kill to killionaire</h4>

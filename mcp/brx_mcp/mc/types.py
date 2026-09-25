@@ -17,6 +17,9 @@ MULTI_KILL_MS = 4000
 # beyond); streak = kills without dying; first = the match's first kill. `clip` is the gun's voice line (null
 # = no line: the HUD shows the text and the voice stays silent), `clip_ms` its length from the sound catalogue.
 # The phone reads labels and clips from here (contract.gen MEDALS).
+# Names (Tony 2026-09-25): each label is named after the voice line the Battle Company tagger plays for it from its
+# own built-in sound bank. BEAT DOWN plays the bank's "Fatality" line and KILLJOY has no line (text only). Open BRX
+# ships no audio. If a rights holder objects to a name, we will rename it.
 MEDALS = [
     {"key": "first_blood",   "kind": "first",  "count": 1,  "label": "FIRST BLOOD",   "clip": "VA7H", "clip_ms": 2456},
     {"key": "double_kill",   "kind": "multi",  "count": 2,  "label": "DOUBLE KILL",   "clip": "VA7E", "clip_ms": 1787},

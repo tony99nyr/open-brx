@@ -210,7 +210,7 @@ the zero-cost alternative for weapon-pickup / flag props where a powered box is 
 
 - **3D-printed enclosure** — Mini fits a tiny box (IR window + LED diffuser + USB pigtail); Base adds
   an OLED window + button; Tower is an ABS-pipe upright. Publish STLs in `hardware/` and index them in
-  `hardware/print-files.md` (the community print-file gap is tracked in `docs/FOLLOWUPS.md` §Hardware).
+  `hardware/print-files.md` (the community print-file gap is tracked in `docs/post-mvp.md`, H1-H6).
 - **IR window:** use IR-pass (or clear) material in front of the emitter/receiver; keep the emitter's
   cone aimed where players approach.
 - **Power:** Mini = any USB power bank (the community's proven pattern); Base = internal LiPo + TP4056.

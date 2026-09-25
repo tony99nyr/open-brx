@@ -638,7 +638,9 @@ ScoreRow { player_id, display, team_id, kills, deaths, assists, shots, hits, acc
   (`contract.gen` `MEDALS`: key, kind, count, label, clip, clip_ms); `kind` stays `"kill"` so older nodes still play their kill
   line, while a current node plays the medal cues back to back INSTEAD of it, each after the one before has ended
   (`docs/announcer.md`). The old `multi`/`medal`
-  kinds are legacy. The scorer also emits lead changes (team modes by team totals, FFA by player), `next_kill_wins`
+  kinds are legacy. **[A63] A re-scored recap** (a reconcile, a resume, a frag-cap end that moves earlier) scores the
+  stored facts in effective-`t` order, so the final recap may list a streak medal, KILLJOY or a longer chain that
+  nobody heard live, or leave one out; Tony accepted this on 2026-09-25. The scorer also emits lead changes (team modes by team totals, FFA by player), `next_kill_wins`
   once at cap-1, `last_survivor` once in lms/infection, `infected` on a team_change in infection (the turned node
   skips MC's copy), evaluated after EVERY scored death, team kills included; mode engines emit the objective/VIP
   kinds. **Clock callouts are the node's** (`time_60`/`time_30`/`time_10`, edge-triggered from its synced end).

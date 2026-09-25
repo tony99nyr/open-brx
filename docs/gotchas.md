@@ -715,7 +715,31 @@ the wrong reason looks exactly like a test that passes. So the practice is not "
 tests", it is **break the behaviour and watch the named test fail** -- and when a break comes back
 UNCAUGHT, suspect the harness before the code, because two of the three here were the harness.
 
+## Two lessons that are not tasks (moved from FOLLOWUPS F40 and F43, 2026-09-25)
+
+**Absence reports as health (F40).** A probe that can return "nothing" reads as a pass. Nine instances, 2026-09-07:
+`run_tests.py` aborted on one import error and ~30 files never ran while the totals looked plausible; an unmatched
+`$SIR` cell is silently ignored, so a mis-keyed hit sound is inaudible, not an error; `$HLED,,6` disabled the death
+flash for a whole life with nothing reporting it; five bench tools ended on a bare `$CLEAR` (F11) and
+`test_bench_teardown.py` missed them because it scanned `finally:` blocks only; `diag/cases.py`, the tool that asks
+"can this gun be hit?", shipped five of ten `$SIR` rows; the live F11 fault was `diag/runner.py`'s inline teardown
+while a dead constant sat on the guard's allowlist; `FakeCompiler` played the win sting at every `--demo` whistle,
+a VALID frame wrong only in relation to the real table; the sticker guard read tracked files only, so a new file
+leaked; a known defect had no owner; and a clean-worktree check without `app/node_modules` reported a Python result
+as a full one. **Make the nothing loud:** a runner names a file that did not run, a compiler asserts its `$SIR`
+cells cover the weapons, and every review finding carries an owner or an id. **A guard states its own blind spot**
+in its docstring, and asserts an invariant rather than a value.
+
+**Sound picks by acoustic shape are untrustworthy (F43).** Not one of the first `hitaudio.py` picks, chosen from
+`sound_catalog.json` by envelope, flatness, centroid and duration, survived a listen on 2026-09-07. Signal features
+separate tonal from noisy; they cannot separate metal from electronic (`H14`), an impact from a near-miss
+(`H07`/`H09`), a player from a creature (`H33`, `Z06`, `Z07`), or a clean clip from one with a cough tail (`H03`).
+A rapid audition hides tails: confirm every candidate SOLO. The catalogue's `speech_untrusted` transcripts are wrong
+too (`V116` is catalogued "Can't believe!"; on the gun it says "gained the lead"). No test can catch a pick that is
+wrong only against a bench result, so write the reason next to the code (`hitaudio.MATERIAL_POOLS` keeps its
+rejections inline).
+
 ## See also
-`docs/FOLLOWUPS.md` (**"Needs Tony at the bench"** is the bench queue; one dated run sheet at a time) ·
+`docs/FOLLOWUPS.md` (open MVP work; the **MVP BENCH** group is the bench queue; one dated run sheet at a time) ·
 `hardware/esp32-ir-bridge/README.md` (board identities and wiring) · `docs/field-process.md` (muster) ·
 `docs/HANDOFF.md` (state as of the last session).
