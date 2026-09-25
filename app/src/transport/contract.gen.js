@@ -9,7 +9,10 @@ export const MULTI_KILL_MS = 4000;
  *  chain, each within MULTI_KILL_MS of the last (the HIGHEST count reached is the medal, killionaire at 8 and
  *  beyond); streak = kills without dying; first = the match's first kill. `clip` is the gun's voice line (null
  *  = no line: the HUD shows the text and the voice stays silent), `clip_ms` its length from the sound catalogue.
- *  The phone reads labels and clips from here (contract.gen MEDALS). */
+ *  The phone reads labels and clips from here (contract.gen MEDALS).
+ *  Names (Tony 2026-09-25): each label is named after the voice line the Battle Company tagger plays for it from its
+ *  own built-in sound bank. BEAT DOWN plays the bank's "Fatality" line and KILLJOY has no line (text only). Open BRX
+ *  ships no audio. If a rights holder objects to a name, we will rename it. */
 export const MEDALS = Object.freeze([{"key": "first_blood", "kind": "first", "count": 1, "label": "FIRST BLOOD", "clip": "VA7H", "clip_ms": 2456}, {"key": "double_kill", "kind": "multi", "count": 2, "label": "DOUBLE KILL", "clip": "VA7E", "clip_ms": 1787}, {"key": "triple_kill", "kind": "multi", "count": 3, "label": "TRIPLE KILL", "clip": "VA7Q", "clip_ms": 1904}, {"key": "killtacular", "kind": "multi", "count": 4, "label": "KILLTACULAR", "clip": "VA7M", "clip_ms": 1924}, {"key": "killtrocity", "kind": "multi", "count": 5, "label": "KILLTROCITY", "clip": "VA7O", "clip_ms": 1924}, {"key": "killamanjaro", "kind": "multi", "count": 6, "label": "KILLAMANJARO", "clip": "VA7J", "clip_ms": 1927}, {"key": "killtastrophe", "kind": "multi", "count": 7, "label": "KILLTASTROPHE", "clip": "VA7N", "clip_ms": 1924}, {"key": "killionaire", "kind": "multi", "count": 8, "label": "KILLIONAIRE", "clip": "VA7L", "clip_ms": 1924}, {"key": "killing_spree", "kind": "streak", "count": 5, "label": "KILLING SPREE", "clip": "VA7K", "clip_ms": 1924}, {"key": "unstoppable", "kind": "streak", "count": 10, "label": "UNSTOPPABLE", "clip": "VX0U", "clip_ms": 1175}, {"key": "melee_kill", "kind": "melee", "count": 1, "label": "BEAT DOWN", "clip": "VA7F", "clip_ms": 1924}, {"key": "killjoy", "kind": "killjoy", "count": 5, "label": "KILLJOY", "clip": null, "clip_ms": null}].map(r => Object.freeze(r)));
 /** A63 (Tony 2026-09-24): the END-OF-MATCH awards, in recap order. `scoring.Scorer.honors()` awards them; every
  *  Honor row carries its `key`, and `award` stays the label for older consumers. None is awarded under 3 scored
@@ -59,6 +62,10 @@ export const LATE_ARM_GRACE_MS = 8000;
 export const CONFIG_TTL_MS = 1800000;
 /** wire ids 1..63; 0 reserved (tutorial / unknown shooter) */
 export const MAX_PLAYERS = 63;
+/** F366 (Tony 2026-09-25): a gamertag is at most MAX_TAG_LEN characters after trim + upper-case; MC refuses a
+ *  longer one (never a silent cut). Past SOFT_TAG_LEN the console warns that the phone HUD may shorten it. */
+export const MAX_TAG_LEN = 16;
+export const SOFT_TAG_LEN = 12;
 export const DEATH_LATCH_MS = 2000;
 /** A34: a phone still LIVE in a match MC has retired is told `control{end}` from its status heartbeat; this
  *  is how long MC waits before telling the SAME phone about the SAME match again (the first end normally lands). */

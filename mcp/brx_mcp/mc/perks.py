@@ -25,8 +25,12 @@ _HERE = pathlib.Path(__file__).resolve().parent
 # perk exists. `compile.py`'s `_refuse_if_crit_perk_ineligible` refuses it at RUNTIME on a weapon
 # declaring `wire.headset_dmg`, the same combination the catalogue-time guard
 # `test_a_two_word_weapon_never_also_carries_a_crit_chance` already refuses on the row itself.
-EFFECT_KEYS = frozenset({"max_armor_add", "ammo_mult", "reload_mult", "alt_reload", "switch_mult",
-                        "armor_piercing", "crit_pct_add"})   # switch_mult: scales $WEAP tok15, the gun's swap delay (bench 2026-09-04)
+# `ammo_mult_pistol` (D5, 2026-09-25, docs/perk-design.md §2): extended_mags' per-class override for a
+# pistol carried as the primary (role `sidearm` or the `pistol` tag) -- `compile.py`
+# `WeaponCatalog._ammo` is the one place that reads it instead of the plain `ammo_mult`, rounding the
+# result DOWN (Tony's rule), never the round-to-nearest every other `ammo_mult` use gets.
+EFFECT_KEYS = frozenset({"max_armor_add", "ammo_mult", "ammo_mult_pistol", "reload_mult", "alt_reload",
+                        "switch_mult", "armor_piercing", "crit_pct_add"})   # switch_mult: scales $WEAP tok15, the gun's swap delay (bench 2026-09-04)
 
 # S50 gain/cost lines (2026-09-19, F-desc): the phone (`app/src/hud/hud.js` `perkEffect`) and the console
 # (`webapp/mc/src/screens/Kit.tsx` `effectLine`) each used to derive their own "gain · cost" line from
@@ -43,8 +47,8 @@ _NODE_LOCAL_GAIN = {
     "motion_tracker": "ENEMIES ON YOUR HUD",
     "second_wind": "SURVIVE ONE NEAR-KILL",
 }
-_HANDLED_KEYS = frozenset({"max_armor_add", "ammo_mult", "reload_mult", "switch_mult", "alt_reload",
-                          "armor_piercing", "crit_pct_add"})
+_HANDLED_KEYS = frozenset({"max_armor_add", "ammo_mult", "ammo_mult_pistol", "reload_mult",
+                          "switch_mult", "alt_reload", "armor_piercing", "crit_pct_add"})
 
 
 def _rate(m: float) -> str:
@@ -74,6 +78,12 @@ def gain_cost_lines(perk_id: str, effects: PerkEffects) -> tuple[list[str], list
     if "ammo_mult" in effects:
         m = effects["ammo_mult"]
         (gain if m > 1 else cost).append(f"×{m:g} AMMO")
+    if "ammo_mult_pistol" in effects:
+        # D5 (2026-09-25): a per-class override, not a second player-facing line -- the catalogue's
+        # "×N AMMO" line above already names the general case, and the true resolved number for a
+        # pistol primary reaches the player through `PerkEffectsResolved.mag` (the actual before/after
+        # magazine), not through a second guess printed here.
+        pass
     if "reload_mult" in effects:
         m = effects["reload_mult"]
         (gain if m < 1 else cost).append(f"RELOADS {_rate(m)}× {'FASTER' if m < 1 else 'SLOWER'}")
@@ -125,6 +135,8 @@ class PerkCatalog:
             effects["max_armor_add"] = raw_effects["max_armor_add"]
         if "ammo_mult" in raw_effects:
             effects["ammo_mult"] = raw_effects["ammo_mult"]
+        if "ammo_mult_pistol" in raw_effects:
+            effects["ammo_mult_pistol"] = raw_effects["ammo_mult_pistol"]
         if "reload_mult" in raw_effects:
             effects["reload_mult"] = raw_effects["reload_mult"]
         if "alt_reload" in raw_effects:

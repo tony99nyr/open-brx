@@ -9,7 +9,10 @@ export declare const MULTI_KILL_MS: 4000;
  *  chain, each within MULTI_KILL_MS of the last (the HIGHEST count reached is the medal, killionaire at 8 and
  *  beyond); streak = kills without dying; first = the match's first kill. `clip` is the gun's voice line (null
  *  = no line: the HUD shows the text and the voice stays silent), `clip_ms` its length from the sound catalogue.
- *  The phone reads labels and clips from here (contract.gen MEDALS). */
+ *  The phone reads labels and clips from here (contract.gen MEDALS).
+ *  Names (Tony 2026-09-25): each label is named after the voice line the Battle Company tagger plays for it from its
+ *  own built-in sound bank. BEAT DOWN plays the bank's "Fatality" line and KILLJOY has no line (text only). Open BRX
+ *  ships no audio. If a rights holder objects to a name, we will rename it. */
 export declare const MEDALS: readonly { readonly key: string; readonly kind: string; readonly count: number; readonly label: string; readonly clip: string | null; readonly clip_ms: number | null }[];
 /** A63 (Tony 2026-09-24): the END-OF-MATCH awards, in recap order. `scoring.Scorer.honors()` awards them; every
  *  Honor row carries its `key`, and `award` stays the label for older consumers. None is awarded under 3 scored
@@ -59,6 +62,10 @@ export declare const LATE_ARM_GRACE_MS: 8000;
 export declare const CONFIG_TTL_MS: 1800000;
 /** wire ids 1..63; 0 reserved (tutorial / unknown shooter) */
 export declare const MAX_PLAYERS: 63;
+/** F366 (Tony 2026-09-25): a gamertag is at most MAX_TAG_LEN characters after trim + upper-case; MC refuses a
+ *  longer one (never a silent cut). Past SOFT_TAG_LEN the console warns that the phone HUD may shorten it. */
+export declare const MAX_TAG_LEN: 16;
+export declare const SOFT_TAG_LEN: 12;
 export declare const DEATH_LATCH_MS: 2000;
 /** A34: a phone still LIVE in a match MC has retired is told `control{end}` from its status heartbeat; this
  *  is how long MC waits before telling the SAME phone about the SAME match again (the first end normally lands). */
@@ -418,7 +425,11 @@ export interface PerkEffects {
   /** floored at 0 (`compile.armed_armor`/`armed_shield`)
    *  scales the clip/reserve the head writes */
   ammo_mult?: number;
-  /** scales the weapon's reload time */
+  /** D5 (2026-09-25, docs/perk-design.md §2): extended_mags' override for a */
+  ammo_mult_pistol?: number;
+  /** pistol primary (role `sidearm` or the `pistol` tag) -- read instead of
+   *  `ammo_mult`, and rounded DOWN (`compile.py` `WeaponCatalog._ammo`)
+   *  scales the weapon's reload time */
   reload_mult?: number;
   /** unused by any current row (S50: easy_reload moved to */
   alt_reload?: boolean;

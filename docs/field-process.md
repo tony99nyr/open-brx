@@ -3,7 +3,7 @@
 The two recommended Open BRX operator processes, from "a box of identical taggers" to "a game running."
 Names are the **current naming** (Tony, 2026-08-25). Both lean on the existing `brx-mcp` CLI. This page is
 the procedure only; build state (what is confirmed on hardware versus still to check) lives in
-`FOLLOWUPS.md` under **System proofs**, not here.
+`post-mvp.md` under **System proofs**, not here.
 
 - **Armory Setup** — the **one-time, per-tagger** enrollment that builds a permanent
   gun ↔ headset ↔ BLE-MAC map (plus a physical label). Do it once per tagger (re-run only if you
@@ -153,4 +153,4 @@ every station assigned, armed and placed.
 - `reference/grenade.md` — grenade modes, on-grenade programming, Respawn Station mechanics + the timing reconciliation.
 - `mcp/brx_mcp/mc/API.md`, `docs/spec/design/mission-control.md` — the operator console (roster, readiness, gamertag display layer).
 - `FOLLOWUPS.md` — B10 (config-all-then-spawn barrier), B12 (host-vs-grenade respawn), B7/P2 (USB SETUP writes), B8 (grenade state display).
-- `FOLLOWUPS.md` → **System proofs** — what is confirmed on hardware and what still needs a bench session, for Armory Setup, Muster, and Station-Arming persistence.
+- `post-mvp.md` → **System proofs** — what is confirmed on hardware and what still needs a bench session, for Armory Setup, Muster, and Station-Arming persistence.

@@ -292,14 +292,19 @@ export function ValueBox({ value, unit, onChange, min = 0, max = 9999, step = 1,
 }
 
 /** Text input that drafts locally and commits on blur / Enter (see ValueBox). */
-export function DraftText({ value, onCommit, className = 'textbox', style, transform, ariaLabel, maxLength = 24 }:
-  { value: string; onCommit: (v: string) => void; className?: string; style?: Sx; transform?: (s: string) => string; ariaLabel?: string; maxLength?: number }) {
-  const [draft, setDraft] = useState(value);
+export function DraftText({ value, onCommit, className = 'textbox', style, transform, ariaLabel, maxLength = 24, canCommit, onDraft }:
+  { value: string; onCommit: (v: string) => void; className?: string; style?: Sx; transform?: (s: string) => string; ariaLabel?: string; maxLength?: number;
+    /** F366: false keeps the draft on screen uncommitted (the caller shows why) instead of sending a refused value */
+    canCommit?: (v: string) => boolean; onDraft?: (v: string) => void }) {
+  const [draft, setDraftState] = useState(value);
+  // every draft change, including the reset to `value` on a (re)mount below, reaches `onDraft`
+  const setDraft = (v: string) => { setDraftState(v); onDraft?.(v); };
   const focused = useRef(false), pending = useRef<string | null>(null), latest = useRef(value);
   latest.current = value;
   useEffect(() => { if (pending.current != null && value === pending.current) pending.current = null; if (!focused.current && pending.current == null) setDraft(value); }, [value]);
   const commit = () => {
     const v = (transform ? transform(draft) : draft).trim();
+    if (v && v !== value && canCommit && !canCommit(v)) return;
     if (v && v !== value) { pending.current = v; onCommit(v); setTimeout(() => { if (pending.current != null) { pending.current = null; setDraft(latest.current); } }, 1500); }
     else setDraft(value);
   };

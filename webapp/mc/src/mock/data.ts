@@ -866,7 +866,7 @@ export const PERKS: PerkView[] = [
   {
     "perk_id": "extended_mags",
     "name": "Extended Mags",
-    "desc": "Double the magazine and double the reserve on your primary. Fewer reloads, longer fights, more rounds to burn -- but the bulkier magazine slows your draw: switching to your other weapon takes 30% longer.",
+    "desc": "Double the magazine and double the reserve on your primary; +50% on a pistol carried as the primary, rounded down (D5, 2026-09-25: a rifle-sized magazine does not fit a pistol frame). Fewer reloads, longer fights, more rounds to burn -- but the bulkier magazine slows your draw: switching to your other weapon takes 30% longer.",
     "tags": [
       "passive",
       "ammo"
@@ -874,6 +874,7 @@ export const PERKS: PerkView[] = [
     "mechanism": "passive",
     "effects": {
       "ammo_mult": 2,
+      "ammo_mult_pistol": 1.5,
       "switch_mult": 1.3
     },
     "gain": [

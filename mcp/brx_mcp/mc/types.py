@@ -17,6 +17,9 @@ MULTI_KILL_MS = 4000
 # beyond); streak = kills without dying; first = the match's first kill. `clip` is the gun's voice line (null
 # = no line: the HUD shows the text and the voice stays silent), `clip_ms` its length from the sound catalogue.
 # The phone reads labels and clips from here (contract.gen MEDALS).
+# Names (Tony 2026-09-25): each label is named after the voice line the Battle Company tagger plays for it from its
+# own built-in sound bank. BEAT DOWN plays the bank's "Fatality" line and KILLJOY has no line (text only). Open BRX
+# ships no audio. If a rights holder objects to a name, we will rename it.
 MEDALS = [
     {"key": "first_blood",   "kind": "first",  "count": 1,  "label": "FIRST BLOOD",   "clip": "VA7H", "clip_ms": 2456},
     {"key": "double_kill",   "kind": "multi",  "count": 2,  "label": "DOUBLE KILL",   "clip": "VA7E", "clip_ms": 1787},
@@ -105,6 +108,10 @@ HEADSET_LINK_PROOF_MS = 10_000
 LATE_ARM_GRACE_MS = 8000
 CONFIG_TTL_MS = 1_800_000
 MAX_PLAYERS = 63          # wire ids 1..63; 0 reserved (tutorial / unknown shooter)
+# F366 (Tony 2026-09-25): a gamertag is at most MAX_TAG_LEN characters after trim + upper-case; MC refuses a
+# longer one (never a silent cut). Past SOFT_TAG_LEN the console warns that the phone HUD may shorten it.
+MAX_TAG_LEN = 16
+SOFT_TAG_LEN = 12
 DEATH_LATCH_MS = 2000
 # A34: a phone still LIVE in a match MC has retired is told `control{end}` from its status heartbeat; this
 # is how long MC waits before telling the SAME phone about the SAME match again (the first end normally lands).
@@ -463,6 +470,9 @@ class PerkEffects(TypedDict, total=False):
     max_armor_add: int      # added to $PSET armour (or, base armour 0: $PSET shield) -- capped at 255,
                             # floored at 0 (`compile.armed_armor`/`armed_shield`)
     ammo_mult: float        # scales the clip/reserve the head writes
+    ammo_mult_pistol: float # D5 (2026-09-25, docs/perk-design.md §2): extended_mags' override for a
+                            # pistol primary (role `sidearm` or the `pistol` tag) -- read instead of
+                            # `ammo_mult`, and rounded DOWN (`compile.py` `WeaponCatalog._ammo`)
     reload_mult: float      # scales the weapon's reload time
     alt_reload: bool        # unused by any current row (S50: easy_reload moved to
                             # `loadout.overrides.easy_reload`) -- kept for a future ALT-button perk

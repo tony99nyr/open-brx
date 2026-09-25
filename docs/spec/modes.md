@@ -239,6 +239,9 @@ Medals are awarded per player from exact attribution (A4.1). Kill-moment medals 
 first_blood · one multi-kill medal, double_kill 2 up to killionaire 8+ (A61, `types.MEDALS`) · killing_spree at 5 ·
 unstoppable at 10) with their own
 cues; KILLJOY (A63) is a kill medal too: ending an enemy's streak of 5 or more, HUD text only (no gun line).
+**Names** (Tony, 2026-09-25): each kill medal is named after the voice line the Battle Company tagger plays for it
+from its own built-in sound bank (BEAT DOWN plays "Fatality"; KILLJOY has no line). Open BRX ships no audio. If a
+rights holder objects to a name, we will rename it.
 Recap honors are `scoring.honors()` over the one table `types.AWARDS` (A63), where each row names its rule and its
 tie-break. The awards, in recap order:
 

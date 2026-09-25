@@ -30,7 +30,7 @@ from ..modes.registry import default_params as _default_params, params_schema_js
     validate_mode_params as _validate_mode_params, \
     requires_coverage as _requires_coverage                        # A18: the mode's own rules, engine-declared
 from .tunnel import TunnelError
-from .types import (PHONE_RESPAWN_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM, PHONE_THRESHOLD_ZERO_APP, CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS,
+from .types import (PHONE_RESPAWN_THRESHOLD_DBM, PHONE_POWERUP_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM, PHONE_THRESHOLD_ZERO_APP, CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS, MAX_TAG_LEN,
                     OBJECTIVE_MODES, OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, ADOPT_SLACK_MS, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS, STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S,
                     STATION_LOCK_MAX_S, STATION_REBOOT_SLACK_MS, STATUS_HEARTBEAT_MS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, TX_POWERS, Event,
@@ -362,6 +362,14 @@ def _tally_ok(t) -> bool:
         return False
     r = t.get("revives")
     return r is None or (isinstance(r, int) and not isinstance(r, bool))
+
+
+def _check_tag(raw: str) -> str:
+    """F366: the stored gamertag (trimmed, upper-cased). Longer than MAX_TAG_LEN is refused, never cut."""
+    d = raw.strip().upper()
+    if len(d) > MAX_TAG_LEN:
+        raise ValueError(f"the gamertag is {len(d)} characters: {MAX_TAG_LEN} is the most")
+    return d
 
 
 class Session:
@@ -1743,7 +1751,7 @@ class Session:
             team_id = min(counts, key=lambda k: (counts[k], list(counts).index(k)))
         lo: Loadout = self._check_loadout(loadout) if loadout else {"weapons": [{"weapon_id": "assault_rifle"}]}
         lo = _policy.apply(self.policy(), self.loadout_pool(), lo, *self._catalog_rows())   # §3.3: a new player obeys the ruleset
-        p: Player = {"player_id": pid, "player_num": self._next_num(), "display": display.strip().upper() or f"OPERATOR {pid[:4]}",
+        p: Player = {"player_id": pid, "player_num": self._next_num(), "display": _check_tag(display) or f"OPERATOR {pid[:4]}",
                      "team_id": team_id, "node_id": None, "gun_id": gun_id,
                      "loadout": lo, "voice": voice, "ready": False}
         if voice_slots:
@@ -1831,7 +1839,7 @@ class Session:
         if "ready" in fields and fields["ready"] is not None and not isinstance(fields["ready"], bool):
             raise ValueError("ready must be a boolean")
         if "display" in fields and fields["display"] is not None:
-            d = str(fields["display"]).strip().upper()[:24]
+            d = _check_tag(str(fields["display"]))
             if not d:
                 raise ValueError("display must not be empty")
             fields["display"] = d

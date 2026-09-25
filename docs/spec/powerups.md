@@ -52,7 +52,10 @@ heavy was on the trigger. Tony's SELECT decision dropped the block: ALT keeps it
 ## Bench gate (before the flag turns on)
 
 Items 1 to 6 ran at bench 3.3 on 2026-09-24 (the next section), and so did item 7's clamp and death checks. Open:
-item 7's hit and dead-gun cases, item 8 (`bench-2026-09-24.md` step 4.11) and item 9 (steps 3.4 and 3.5).
+item 7's hit and dead-gun cases, item 8 (`bench-2026-09-24.md` step 4.11, the claim calibration for a phone station
+and the Stick) and item 9 (steps 3.4 and 3.5), plus the claim race and the respawn (step 11.2). Step 11.3 gives the
+order. **Powerups are MVP** (Tony, 2026-09-25): when those steps pass, the flag turns on by default and the
+calibrated thresholds replace the placeholders (FOLLOWUPS F372).
 
 1. A `$WEAP` in slot 2 and 3 at arm time; `$ALCD` reports each slot; each fires and takes its own `$AMMO`.
 2. Slots 4 and 5: does a `$WEAP` take (Jay: "about 5 weapons")? Slot 4 is melee today.

@@ -7,26 +7,28 @@ specified. Then **[`manual/`](manual/)**, the confirmed-facts manual the public 
 | You are… | Read |
 |---|---|
 | **A BRX owner wondering if you can use this** | [`architecture-topology.md`](architecture-topology.md) §3 · [`platform/index.md`](platform/index.md) · the [root README](../README.md) |
-| **Running a match today** | [`field-runbook-mc.md`](field-runbook-mc.md) · [`field-process.md`](field-process.md) · [`FOLLOWUPS.md`](FOLLOWUPS.md) §6 and §10 (field bugs and the checks for the next match) |
+| **Running a match today** | [`field-runbook-mc.md`](field-runbook-mc.md) · [`field-process.md`](field-process.md) · [`FOLLOWUPS.md`](FOLLOWUPS.md) (open MVP work, including the field bugs) and [`post-mvp.md`](post-mvp.md) → *System proofs* (the checks that need players and space) |
 | **Starting Mission Control on the dev box** (no hardware, no phones) | [`../mcp/brx_mcp/mc/README.md`](../mcp/brx_mcp/mc/README.md) → *Start it*: the one command, what it prints, the busy-port trap, served vs dev UI |
 | **Trying LEDs, sounds and events on ONE gun at the bench** | [`gun-stage.md`](gun-stage.md) (`python -m brx_mcp stage`) |
 | **Checking that MC survives hard matches** (drops, restarts, clock jumps, trades) | [`chaos-testing.md`](chaos-testing.md) (`python -m brx_mcp.chaos`) |
-| **Changing the code** | [`spec/README.md`](spec/README.md) → [`spec/contracts.md`](spec/contracts.md) · [`adding-weapons.md`](adding-weapons.md) for the end-to-end weapon workflow · [`adr/`](adr/) · remaining F42 cleanup is tracked in [`FOLLOWUPS.md`](FOLLOWUPS.md) |
+| **Changing the code** | [`spec/README.md`](spec/README.md) → [`spec/contracts.md`](spec/contracts.md) · [`adding-weapons.md`](adding-weapons.md) for the end-to-end weapon workflow · [`adr/`](adr/) · remaining F42 cleanup is tracked in [`post-mvp.md`](post-mvp.md) |
 | **An AI agent working on this repo** | `../CLAUDE.md` for hard rules + environment, then [`HANDOFF.md`](HANDOFF.md) |
 
 ## Status — three living files, one job each
 - **[HANDOFF.md](HANDOFF.md)** — **one screen**: what is true today, what changed, the next three actions,
   machine roles. Each session overwrites only its own lane section, never another lane's, never stacked.
-- **[FOLLOWUPS.md](FOLLOWUPS.md)** — **every open item and nothing else**, with a "Needs Tony at the bench"
-  section (the bench queue) and "System proofs" (needs players / space). Ids are permanent. The rows are
-  the only index.
+- **[FOLLOWUPS.md](FOLLOWUPS.md)** — **open MVP work and nothing else**, in three groups: MVP DESK, MVP BENCH
+  (the bench queue) and MVP DECISION (awaiting Tony), with the count per group at the top. Ids are permanent.
+  - **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row.
+  - **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged), with the system
+    proofs and the low ledgers.
 - **[experiment-log/](experiment-log/)** — the append-only lab notebook, one file per month;
   [`experiment-log.md`](experiment-log.md) is its index. **Append after every session.** Nobody reads it
   for orientation; grep it.
 
 Around them: **[`gotchas.md`](gotchas.md)** (field lore by symptom, plus the bench pre-flight). The old field
-issue register, `field-issues.md`, was archived on 2026-09-24: a field issue is a FOLLOWUPS row (§6), and a check for
-the next match is a §10 bullet.
+issue register, `field-issues.md`, was archived on 2026-09-24: a field issue is a FOLLOWUPS row, and a check that needs players
+and space is a bullet in `post-mvp.md` → *System proofs*.
 
 **The bench sheets, and which one to open** (completed sheets are retained in place when they remain useful
 historical context; the running order is always [`bench-plan.md`](bench-plan.md)):
@@ -42,7 +44,7 @@ historical context; the running order is always [`bench-plan.md`](bench-plan.md)
 | [`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md) | live, P0: reproduce and prevent the screamer lock-up (Phases A-E) |
 | [`bench-perks-2026-09-18.md`](bench-perks-2026-09-18.md) | history: every section answered on 2026-09-18 (the log's perks bench entry, items 5-8) |
 | [`archive/bench-critical-2026-09-11.md`](archive/bench-critical-2026-09-11.md) | archived 2026-09-24: superseded by the plan; history |
-| [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) | superseded as the running order; keeps the method of its unrun rungs. FOLLOWUPS §9 is the register (ids) |
+| [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) | superseded as the running order; keeps the method of its unrun rungs. FOLLOWUPS (MVP BENCH) and `post-mvp.md` are the register (ids) |
 | [`bench-grenade.md`](bench-grenade.md) | the grenade/hill rungs. Read its *What is answered* table first, then *Still to run* |
 | [`archive/bench-super-indoor-2026-09-07.md`](archive/bench-super-indoor-2026-09-07.md) | archived 2026-09-24: Q15. Tony defined S48 on 2026-09-23; its sweep is Block 6 of the runbook |
 | [`archive/bench-flash-control-2026-09-05.md`](archive/bench-flash-control-2026-09-05.md) | archived 2026-09-24. History: the flash ladder, answered; the queue CITES it rather than re-deriving it. The t6/t21/t22/F23 designs are in [`archive/bench-weap-tokens-discovery-2026-09-04.md`](archive/bench-weap-tokens-discovery-2026-09-04.md), cited from the queue's BQ-D1 row |
@@ -50,7 +52,8 @@ historical context; the running order is always [`bench-plan.md`](bench-plan.md)
 ### Session close is three writes
 1. One entry in the current month's experiment log (the evidence).
 2. One FOLLOWUPS diff: strike or add rows, no prose. A closed item becomes one dated line in
-   [`archive/followups-closed.md`](archive/followups-closed.md) with a link to the log anchor.
+   [`archive/followups-closed.md`](archive/followups-closed.md) with a link to the log anchor. A row that is not
+   for MVP moves to [`post-mvp.md`](post-mvp.md) with its id.
 3. One HANDOFF replacement. When several sessions close together, each one overwrites only its own lane section
    of `HANDOFF.md`, never another lane's.
 
@@ -100,7 +103,7 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
   its costs, the next wave and what gates each one, and every rejected idea with its reason.
 - **[utility-roadmap.md](utility-roadmap.md)** — the objective-station work in order, the grenade-as-control-point
   evidence, and two designs (roaming hills, Territories) that are specified but not built. What it costs an
-  outsider to add a mode is FOLLOWUPS §2 (E1-E7).
+  outsider to add a mode is `post-mvp.md` §1 (E2-E7).
 - **[led-language.md](led-language.md)** — the LED language (gun body, headset RGB, headset flash): the design of
   record for contracts A16, amended as the bench moves it; the open build items are S10.
 - **[announcer.md](announcer.md)**: the phone's one announcer queue: every voice line and HUD banner in priority
@@ -125,7 +128,9 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 | The evidence the manual cites | [`reference/`](reference/) (manual notes, community posts, JEDGE, grenade, weapons data, print-file survey, iOS BLE notes, the time-to-kill model, Jay's DIY ecosystem, the extended user guide, the firmware audio-pack diff) |
 | Decoded transcripts + raw btsnoop traces | [`../protocol/captures/`](../protocol/captures/) |
 | Node↔MC wire + game data model | [`spec/contracts.md`](spec/contracts.md) |
-| Open work | [`FOLLOWUPS.md`](FOLLOWUPS.md) |
+| Open MVP work | [`FOLLOWUPS.md`](FOLLOWUPS.md) |
+| What's done | [`archive/followups-closed.md`](archive/followups-closed.md) |
+| Ideas and the roadmap (post-MVP) | [`post-mvp.md`](post-mvp.md) |
 
 ## Hardware
 - **[../hardware/inventory.md](../hardware/inventory.md)** — what the bench owns, what is on order, what is planned.

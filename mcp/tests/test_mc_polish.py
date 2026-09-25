@@ -153,10 +153,10 @@ def test_player_num_base_honoured():
         pass
 
 
-def test_patch_team_mid_match_is_refused_and_display_is_still_capped():
+def test_patch_team_mid_match_is_refused_and_display_is_still_limited():
     # B1 (2026-09-12): a mid-match re-team is REFUSED — the gun's $TID lives in the A30-locked head, so
     # moving the roster team would leave combat resolving on the old team. display/ready still ride in
-    # `assign` mid-match, and the 24-char display cap still applies.
+    # `assign` mid-match, and the F366 16-character limit still applies (a refusal, not a cut).
     s = _sess()
     a = s.add_player("A", team_id="blue"); b = s.add_player("B", team_id="yellow")
     s.set_config({"time_limit_s": 60})
@@ -176,8 +176,12 @@ def test_patch_team_mid_match_is_refused_and_display_is_still_capped():
         assert "RECALL" in str(e), str(e)
     assert s.scorer.stats[a["player_id"]].team_id == "blue", "the refused re-team leaves the scorer put"
     assert s.players[a["player_id"]]["display"] == "A", "nothing in the refused patch is applied"
-    s.patch_player(a["player_id"], display="x" * 40)          # display alone still goes, still capped
-    assert len(s.players[a["player_id"]]["display"]) == 24
+    s.patch_player(a["player_id"], display="x" * 16)          # display alone still goes mid-match
+    assert s.players[a["player_id"]]["display"] == "X" * 16
+    try:
+        s.patch_player(a["player_id"], display="x" * 40); assert False
+    except ValueError as e:
+        assert "16" in str(e), str(e)
     try:
         s.patch_player(a["player_id"], display="   "); assert False
     except ValueError:

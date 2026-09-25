@@ -94,7 +94,11 @@ PerkView {
                                     // `is_shields_preset`), the grant compiles into the SHIELD ceiling
                                     // instead of armour — adding an armour layer to a preset built with
                                     // none would defeat its design.
-    ammo_mult?: number,            // extended_mags: ×2 mag + reserve on the PRIMARY ($AMMO,0 + t16/t39/t17/t40); quick_hands: ×0.8 (the cost of a faster reload)
+    ammo_mult?: number,            // extended_mags: ×2 mag + reserve on the PRIMARY ($AMMO,0 + t16/t39/t17/t40), UNLESS the primary is a
+                                    // pistol (see ammo_mult_pistol below); quick_hands: ×0.8 (the cost of a faster reload)
+    ammo_mult_pistol?: number,     // D5 (2026-09-25, docs/perk-design.md §2): extended_mags' override, read INSTEAD of ammo_mult when
+                                    // the primary is a pistol (role "sidearm" or the "pistol" tag): ×1.5, rounded DOWN, not ×2. USP
+                                    // 12→18, Deagle 7→10. `mc/compile.py` `WeaponCatalog._ammo` is the one place this is applied.
     reload_mult?: number,          // quick_hands: ×0.5 reload_ms on the PRIMARY (t18); body_armor: ×1.25 (armour is heavier in the hands)
     alt_reload?: boolean,          // unused by any current row (S50: moved to `overrides.easy_reload`, §2) — kept for a future ALT-button perk
     switch_mult?: number,          // quick_switch (2026-09-04): ×0.5 the gun's weapon-swap delay — $WEAP tok15 on EVERY slot (the gun takes the larger of slots 0/1; bench-proven, linear, no floor). MC puts the resolved value in FrameBundle.swap_ms for the HUD's SWITCHING takeover. extended_mags: ×1.3 (a bulkier magazine draws slower)
@@ -347,7 +351,7 @@ and the catalog in `assign`, all-ready advance, ready-ends-tryout. UI rig: Kit t
 phone browser at 844×390 (+ short viewport), FFA hides heavies on BOTH UIs, snipers preset locks both, phone
 TRY IT → MC roster shows TRYING → READY → MC shows READY.
 
-## 7. Bench items (docs/FOLLOWUPS.md, "Needs Tony at the bench", A10a-e)
+## 7. Bench items (A10a-e; `docs/post-mvp.md` → *Old bench rungs*)
 Body Armor: push head with $PSET armor +50 → `$LCD` shows it → a hit absorbs. Extended Mags: HUD max matches
 `$AMMO`. Easy Reload: ALT reloads. Empty slot 1: ALT press → reload, no crash. Quick Hands: reload chain timing.
 

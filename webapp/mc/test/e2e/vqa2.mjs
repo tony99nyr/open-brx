@@ -12,7 +12,7 @@
 //   pools        LIVE: a phone that says GUN POOLS WRONG reads POOLS WRONG in amber, first on the board (M6)
 //   menu-fold    LIVE at 1440×900 with a station alert: the board starts high, and the operator menu of
 //                the LAST row opens in view (M7); BATTERY LOW reaches the strip with its step (M5)
-//   long-names   a 24-character name: the feed's medal tag stays inside the panel (M8), and on RECAP at
+//   long-names   a 16-character name (F366 MAX_TAG_LEN): the feed's medal tag stays inside the panel (M8), and on RECAP at
 //                900 px the name stops before K and inside its honours card (M8)
 //
 //   node test/e2e/vqa2.mjs
@@ -28,7 +28,7 @@ import { E2E_DIR, REPO, chromium, checker, devPython, killGroup, ports, shot as 
 const SHOTS = path.join(E2E_DIR, 'shots', 'vqa2');
 const ONLY = process.env.ONLY || '';
 const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'brx-vqa2-home-'));
-const LONG = 'W'.repeat(24);   // 24 characters (the most the server allows), the widest glyph, no break point
+const LONG = 'W'.repeat(16);   // 16 characters (F366 MAX_TAG_LEN, the most the server allows), the widest glyph, no break point
 const STATION = 'util-e2e-vqa2';
 const STATION2 = 'util-e2e-vqa2-pu';   // a second station, for the powerup strip on LIVE
 const AMBER = 'rgb(255, 176, 32)', GREEN = 'rgb(46, 204, 113)';
@@ -344,7 +344,7 @@ try {
     await pg.context().close();
   });
 
-  await runStep('long-names', 'a 24-character name in the feed and on RECAP', async () => {
+  await runStep('long-names', 'a 16-character name in the feed and on RECAP', async () => {
     await reset();
     let s = await get('/api/state');
     const a = s.players.find(x => x.gun_id === 'GUN-A'), b = s.players.find(x => x.gun_id === 'GUN-B');

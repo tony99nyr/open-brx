@@ -51,7 +51,7 @@ ladder, and every pick has a named enemy.
 | **Body Armor** | +25 armour, about 20% more pool | reloads take 25% longer | Armour Piercing, and anything that ticks |
 | **Armour Piercing** | your primary ignores armour and shields, straight to health | heavier rounds: less damage AND a slower cycle, set per weapon (§7.7) | a bare-pool opponent, who takes the damage cut for free |
 | **Quick Hands** | reload in half the time | magazine and reserve cut by 20% | Extended Mags, in a long fight |
-| **Extended Mags** | double magazine and reserve | weapon swap 30% slower | Quick Switch, at close range |
+| **Extended Mags** | double magazine and reserve (+50% on a pistol primary, below) | weapon swap 30% slower | Quick Switch, at close range |
 | **Quick Switch** | draw your second weapon in half the time | 20 less armour | Body Armor, in a straight exchange |
 | **Motion Tracker** | nearby enemies appear on your HUD as a list, with no bearing and no range | the slot itself: you carry information instead of power | anyone who accepts being seen and shoots first |
 | **Second Wind** | once a life, the hit that would nearly finish you leaves you standing | the condition: it pays nothing in a fight you win, and nothing at all against a weapon that kills through it | a weapon that kills through it in one hit |
@@ -69,6 +69,15 @@ heavier rounds, fewer of them, slower. `weapon-design.md` §7.7 has the pairs an
 largest swing in the arsenal and lands on the weapon most players pick anyway. At +25 it is about two
 extra hits on a fast weapon and one on a slow one: still felt, no longer decisive. Tony, 2026-09-17:
 "maybe 50 is too much armor and it should be 25".
+
+**Extended Mags is half-price on a pistol primary.** D5 (2026-09-25): Tony kept the Deagle as shipped
+(no change to its damage or cadence) and ruled that Extended Mags still applies when a pistol is
+carried as the primary, but at +50% magazine and reserve, rounded down, not the usual double -- a
+rifle-sized magazine does not fit a pistol frame. The USP goes 12 to 18; the Deagle goes 7 to 10 (7 x
+1.5 = 10.5, rounded down). Every other primary keeps the plain double. This is data, not a special
+case: `perks.json`'s extended_mags row carries `ammo_mult_pistol` beside `ammo_mult`, and
+`compile.py`'s `WeaponCatalog._ammo` is the one place either number is applied, for the compiled
+`$WEAP`/`$AMMO` frame and the phone's own resolved-perk report alike.
 
 **Body Armor must be preset-aware.** Under the Shields preset (45 HP + 105 shield + **no** armour), the
 compiler adds `max_armor_add` on top of the preset's base armour and reintroduces a whole armour layer
@@ -210,7 +219,7 @@ sweep of 2026-09-17, which ran in a session scratchpad and is **not in the repo*
 | Idea | Player-facing line | Mechanism | Cost or trade-off | Evidence anchor |
 |---|---|---|---|---|
 | Body Armor (reworked) | Extra armour, at the cost of a slower reload. | CORRECTED: `max_armor_add: 25`, not the 50 this sweep proposed (see §2). Adds `reload_mult: 1.25` on the primary. | Reload takes 25% longer. | S50-perk-balance-report §4 |
-| Extended Mags (reworked) | Bigger magazine and reserve, but a slower draw. | Keeps `ammo_mult: 2` (primary only). Adds `switch_mult: 1.3`. | Weapon swap is 30% slower. | S50-perk-balance-report §4 |
+| Extended Mags (reworked) | Bigger magazine and reserve, but a slower draw. | Keeps `ammo_mult: 2` (primary only; +50% on a pistol primary, D5, see §2). Adds `switch_mult: 1.3`. | Weapon swap is 30% slower. | S50-perk-balance-report §4 |
 | Quick Hands (reworked) | Faster reloads, smaller magazine. | Keeps `reload_mult: 0.5`. Adds `ammo_mult: 0.8`. | Magazine and reserve cut by 20%. | S50-perk-balance-report §4 |
 | Quick Switch (reworked) | Faster weapon draw, lighter armour. | Keeps `switch_mult: 0.5` (all slots, gun enforces the larger value). Adds `max_armor_add: -20`. | 20 less armour. `armed_armor()` floors at 0 (done, §5 item 6). | S50-perk-balance-report §4 |
 | Armour Piercing Rounds | Your primary ignores armour and shields. | Rekeys the primary's `$WEAP` t3/t4 to a new, permanently shipped `$SIR` cell keyed to fn 2 (armour piercing); `dmg_mult` cuts t5. | CORRECTED: about 60% less raw damage, not the 20% this sweep proposed. Bypassing armour already cuts the pool from 115 to 45 (see §2). direct counter to Body Armor and the Shields preset. | S50-perk-balance-report §5, report-11 (AP mechanism) §1-6 |
