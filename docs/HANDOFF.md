@@ -46,10 +46,10 @@ Stick lock/link bugs F387-F392, F397; **F390** (MUSTER's no-way-back) to DECISIO
   authorised; flashing stays decision first.
 - **Blocked:** F270 on A8; F274 on its three 2-hour soaks; F275 on outdoor space.
 ## Lane: brx3, releases and Mission Control
-APKs 0.4.7-0.4.11 published, each on green CI. 2026-09-25: F319 built and closed; Q13's desk half built (one
-team-damage rule, `compile.team_damage_on`, which also fixed solo LMS: no hit could register); S32's fallback shipped.
-- **Next:** cut 0.4.12 once sitting A passes A4 and brx5's t23 fix is on main. Its notes add the infection, extraction and feed fixes, and TEAM DAMAGE: OFF.
-- **Desk (MVP):** F377 (solo LMS picks no winner), the MC half of F372 after sitting C. S32 waits on Tony's two renders.
+APK 0.4.12 published 2026-09-25 (`app-v0.4.12`), release-signed, WebView debugging on. F319 closed, Q13 and S32 moved
+on; the stage flakes fixed; F384 and F385 built (bench checks left).
+- **Next:** the phone half of F382 (the hill tick pauses while contested; 3 s holding, 1.5 s losing), then F377.
+- **Desk (MVP):** the MC half of F372 after sitting C. S32 waits on Tony's two renders.
 ## Lane: brx4, the StickS3
 Stick stations are Bluetooth-only for MVP (hill, pickup, respawn); Stick IR receive, the grenade hill, revive
 counting and the SETTINGS screen are post-MVP (F338, F314, F344). 2026-09-25: sitting B's Stick rows are built on main
