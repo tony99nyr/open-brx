@@ -57,15 +57,26 @@ sweep, the console-port ws guard, the chaos kill-cue invariant and A60 auto-join
 - **Next:** cut 0.4.12 once sitting A of `bench-2026-09-25.md` passes; bench F309, F311 and F312. Tony decides F346 (d): trust on first use, or one
   JOIN tap on first contact. Lows: F337, F343, F346.
 ## Lane: S57, B21, StickS3 (brx4)
-Tony's MVP scope: Stick stations are Bluetooth-only (hill, pickup, respawn); Stick IR receive and the grenade hill are
-post-MVP (F338). On main: `presence.h` ports the phone's Presence, ControlPoint and revive count (`e65aea17`); the
-side-button lock writes the M5PM1 registers (F332, `8a8bcae9`); a revive counts from player state bit 6, no RSSI
-(`169157eb`); a pickup claim is awarded at any strength (`e879b9db`); the announcer queue (F351) and the 300 ms S57
-name-word gap. B21's Android half shipped; `webContentsDebuggingEnabled` and iOS remain.
-- **Next bench task:** sitting B of [`bench-2026-09-25.md`](bench-2026-09-25.md) (the Stick over BLE: the lock, the
-  pickup, its hearing, the hill and a restart).
-- **Next desk task:** F333's unwired screens, F353 (advert gaps), F352 (the kill-confirm design pass for Tony).
-- **Blocked:** the Stick's advert-bit revive on the phone half of F344 (brx5).
+Tony's MVP scope: Stick stations are Bluetooth-only (hill, pickup, respawn); Stick IR receive and the grenade hill
+stay post-MVP (F338). Revive counting and the REDEPLOY animation are also post-MVP: `REVIVE_FEEDBACK_ENABLED` is
+off, a respawn Stick only advertises, and the phone's bit6 signal sits parked on branch `revive-bit`. On main:
+`presence.h` ports the phone's Presence, ControlPoint and revive logic (`e65aea17`); the side-button lock writes the
+M5PM1 registers (F332, `8a8bcae9`, `e17efa66`); a revive counts from player state bit 6, no RSSI (`169157eb`); a
+pickup claim is awarded at any strength (`e879b9db`); a host screen simulator (`edef75c9`, `e17efa66`) drives
+`station_render.h` through 46 scenarios and found 14 wrong screens, all fixed; `hardware/player-sim` (`03c21273`)
+simulates a player advert for bench-free proof. Overnight, unattended: mDNS discovery, status reporting, the A58
+lock round trip on real PM1 registers, and an offline pickup award (with a dead player's claim refused), all against
+a simulated player. F353's desk half is done: the Stick's own advert gaps are fine (median 106 ms, max under 1 s);
+the phones' "left" flips are phone-side, and a laptop Wi-Fi scanner cannot measure BLE advert timing. B21's Android
+half shipped; `webContentsDebuggingEnabled` and iOS remain.
+- **Next bench task:** sitting B of [`bench-2026-09-25.md`](bench-2026-09-25.md): a real-phone pickup and hill are
+  still unproven over the air (H9); also the physical side-button click test while locked.
+- **Next desk task:** F333's remaining unwired screens (hill capturing/contested, an empty pickup, settings); F353's
+  phone-side half (a phone log of Stick advert arrivals); F352 (the kill-confirm design pass for Tony).
+- **Blocked:** none.
+- **Resume:** worktree `/home/tony/brx4-l3` on `main`; tools are `stick.py`/`sim.py`/`stick_sim.py`. Windows MC:
+  `cd mcp && /mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp.mc --host 0.0.0.0 --port 8785 --ws-port
+  8786 --ephemeral --powerups`.
 ## Lane: powerups and the shield HUD (brx5)
 S58 is on main behind MC's `--powerups` flag: the heavy goes straight onto the trigger (SELECT toggles), and the
 overshield raises the `$PSET` shield max under 1 s of spawn protection. F348 is fixed and F349 in part (the cue side waits on F347); S59's Visor meter is built.
