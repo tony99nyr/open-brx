@@ -11,10 +11,10 @@ from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.stage.stage import GunStage
 
 
-def _client():
+def _client(**stage_options):
     from brx_mcp.stage.server import create_app
     mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1)])
-    return TestClient(create_app(GunStage(mgr, None)))
+    return TestClient(create_app(GunStage(mgr, None, **stage_options)))
 
 
 def test_page_state_and_actions():
@@ -64,7 +64,7 @@ def test_action_json_boundary_rejects_non_objects_and_bad_tags():
 def test_the_control_point_reload_and_ammo_actions_through_the_api():
     """F102 / F54: the injectors are whitelisted actions with the validator's message on a bad value."""
     needs(HAVE, "starlette + httpx")
-    with _client() as c:
+    with _client(now=lambda: 1000.0) as c:
         c.post("/api/do", json={"action": "connect", "address": "FA:KE:00:00:00:01"})
         r = c.post("/api/do", json={"action": "set_profile", "mode": "koth"}).json()
         assert r["station_source"] == "phone" and "grenade" in r["station_sources"], "koth's own source is a station"

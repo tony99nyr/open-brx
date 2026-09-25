@@ -546,6 +546,19 @@ def mk_reload():
     return st, mgr, clock
 
 
+async def flush_fake_ammo(st, mgr):
+    """Drain delayed `$ALCD` replies before a test injects a newer gun report."""
+    tagger = mgr.taggers[GUN]
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 5.0
+    while tagger._pending and loop.time() < deadline:
+        await st.write(["$VOLTS,*"], "flush delayed fake ammo", gap_ms=0)
+        st.poll()
+        if tagger._pending:
+            await asyncio.sleep(0.01)
+    assert not tagger._pending, "the fake gun's delayed ammo replies did not drain"
+
+
 # ======================================================================================================
 # F259 -- the node's own magazine account, mirrored from engine.js `_acctLive` / `_acctPress` / `_acctAmmo`
 # ======================================================================================================
@@ -812,6 +825,7 @@ def test_a_real_reload_is_but_2_1_the_release_and_a_two_slot_alt_are_not_and_dea
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
         st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the kill below lands
         st._on_rx("$ALCD,10,100,0,20,0,*")
         st._on_rx("$BUT,2,0,*")
@@ -823,7 +837,8 @@ def test_a_real_reload_is_but_2_1_the_release_and_a_two_slot_alt_are_not_and_dea
         await st.ir("kill"); st.poll(); await settle(st)
         assert not st.alive and st.reloading is None, "the gun stops the reload when you drop; so does the model"
         await st.revive(); await settle(st)
-        assert st.reloading is None and st.reserve == 20, "revive clears the slot memory, not what the gun reported"
+        assert st.reloading is None and st._prev_ammo == {} and st._prev_reserve == {}, "revive clears slot memory"
+        assert st.reserve == 20, "revive keeps the last reserve the gun reported"
         # a full mag with reserve: the gun ignores the pull
         st._on_rx("$ALCD,30,100,0,20,0,*")
         st.bundle["spawn"] = [f for f in st.bundle["spawn"]] + ["$AMMO,0,30,20,1,*"]
