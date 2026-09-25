@@ -1315,7 +1315,7 @@ export class Hud {
     return `<div class="alive${gunStale ? ' gunstale' : ''}${mcStale ? ' mcstale' : ''}${sv ? ' sv' : ''}${poolWrong(st) && !gunStale ? ' poolwrong' : ''}"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
       ${low ? '<div class="firevig"></div>' : ''}
       ${overheating ? '<div class="heatvig"></div><div class="heatword">OVERHEAT</div>' : ''}
-      <div class="clockplate" data-act="onBoard" data-arg="team" role="button" aria-label="Team scores"><div class="in"><span class="t tab" id="clock">${mmss(st.clockMs)}</span><span class="m">${esc(st.mode)}</span></div></div>
+      <div class="clockplate" data-act="onBoard" data-arg="team" role="button" aria-label="Team scores"><div class="in"><span class="t tab" id="clock">${mmss(st.clockMs)}</span><span class="m">${esc(st.mode)}</span>${DS.hillOf(st) ? `<span class="hillnow" id="hillnow" data-owner="${esc((DS.hillOf(st).key) || 'none')}" role="status" aria-label="hill">${DS.hillChip(st)}</span>` : ''}</div></div>
       <div class="ident" data-act="onBoard" data-arg="player" role="button" aria-label="Player scores"><span class="arrow"></span><span class="cs">${esc(st.callsign || nm)}</span><span class="sq">${esc(st.teamName)} SQUAD</span></div>
       <div class="topright"><span class="link"><span id="linkdot" class="${gunDot(st)}"></span><span id="linklab">${st.bleUp ? 'GUN' : 'NO GUN'}</span></span><button class="link mclink" data-act="onToggleMcPill" aria-label="Mission Control link"><span id="mcdot" class="dot ${st.wsState === 'bound' ? '' : 'ws'}"></span>MC</button>
         <span class="batt tab"><span class="shell"><span class="fill" id="battfill" style="right:${100 - (st.battery || 0)}%"></span></span><span id="batt">${st.battery != null ? st.battery + '%' : '—'}</span></span></div>
@@ -1639,7 +1639,8 @@ export class Hud {
       if (mode === 'kitted' || mode === 'over' || (mode === 'lobby' && !st.kitOpen && !st.ready)) setHtml('readynote', this._readyNote(st, mode));
     }
     if (st.phase === 'live') {
-      set('clock', mmss(st.clockMs)); set('hp', st.hp); set('sh', st.armor); set('mag', magText(st)); setHtml('res', this._resText(st));
+      set('clock', mmss(st.clockMs));
+      { const hn = q('hillnow'), h = DS.hillOf(st); if (hn && h) { const html = DS.hillChip(st), own = h.key || 'none'; if (hn.innerHTML !== html) hn.innerHTML = html; if (hn.dataset.owner !== own) hn.dataset.owner = own; } }   // the persistent hill chip set('hp', st.hp); set('sh', st.armor); set('mag', magText(st)); setHtml('res', this._resText(st));
       set('batt', st.battery != null ? st.battery + '%' : '—');
       setHtml('fxbar', this._fx(st));                   // S16: the poison countdown
       setHtml('aimfx', this._aimFx(st));                // S53: the smoke countdown (the slot itself is structural)

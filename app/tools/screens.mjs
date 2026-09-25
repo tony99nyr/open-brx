@@ -4969,6 +4969,70 @@ for (const view of VIEWS) for (const stage of R2_NIGHT) await step(`${view.name}
   must(bad.length === 0, 'night text under 14 px below 4.5:1 or blinking: ' + bad.join(' ; '));
 });
 
+
+// R2-07 (QA-21 again): the SE type floor is ON SCREEN. Every painted text leaf of the in-game screens is >= 11 px after the
+// SE's 0.79 frame scale (14 frame px). Out of scope: the kill/callout card (the alert redesign owns it) and screen-reader text.
+const R2_TYPE = [['live', ''], ['live', '&night'], ['live-nogun', ''], ['live-pu-rockets', ''], ['live-pu-taken', ''], ['live-pu-taken-by', ''], ['live-shields-os', ''],
+  ['live-hill-captured', ''], ['down-recap', ''], ['down-full', ''], ['down-find', ''], ['down-hill', ''], ['down-pu-held', ''], ['live-pool-wrong', '']];
+for (const [stage, N] of R2_TYPE) await step(`se R2-07 type floor ${stage}${N ? ' night' : ''}: every in-game label is >= 11 px on the SE screen`, async () => {
+  const pg = await open(VIEWS[1], stage, N, stage === 'live-pool-wrong' ? 8000 : undefined);
+  const small = await pg.evaluate(() => { const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth; const out = [];
+    for (const e of document.querySelectorAll('#hud *, #chips *')) {
+      if (![...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) continue;
+      if (e.closest('.co, .sr, #diag, .mo')) continue;
+      const r = e.getBoundingClientRect(); if (!(r.width > 1 && r.height > 1)) continue;
+      let shown = true; for (let n = e; n && n !== f; n = n.parentElement) { const c = getComputedStyle(n); if (c.display === 'none' || c.visibility === 'hidden' || +c.opacity === 0) shown = false; }
+      if (!shown) continue;
+      const px = parseFloat(getComputedStyle(e).fontSize) * k; if (px < 10.95) out.push(`"${e.textContent.trim().slice(0, 24)}" ${px.toFixed(1)}px`);
+    }
+    return out; });
+  await pg.screenshot({ path: `${OUT}/se-r2-07-${stage}${N ? '-night' : ''}.png` });
+  const bad = await invariants(pg); await pg.close();
+  must(small.length === 0, 'in-game text under 11 px on the SE screen: ' + small.join(' ; '));
+  must(bad.length === 0, bad.join(' ; '));
+});
+// R2-08: the redeploy instruction is 14 px on screen and never olive at night; the hill tile carries the score chips' weight
+for (const [stage, night] of [['down-full', false], ['down-full', true], ['down-recap', false], ['down-recap', true]]) await step(`se R2-08 ${stage} ${night ? 'night' : 'day'}: GET TO SAFE SPACE is >= 14 px on screen${night ? ', the bright night red, still' : ''}`, async () => {
+  const pg = await open(VIEWS[1], stage, night ? '&night' : '');
+  const r = (await r2.looks(pg, '.down .safe span'))[0], anim = await pg.evaluate(() => { const e = document.querySelector('.down .safe'); return e ? [getComputedStyle(e).animationName, getComputedStyle(e.querySelector('span')).animationName] : null; });
+  await pg.close();
+  must(r && r.shown && /SAFE SPACE/.test(r.text) && r.px >= 14, `the instruction must be >= 14 px on screen: ${JSON.stringify(r)}`);
+  if (night) { const [R, G] = r2.rgb(r.color); must(R >= 200 && G < 130 && anim.every(a => a === 'none'), `night: bright red and still, not olive: ${r.color} ${JSON.stringify(anim)}`); }
+});
+for (const night of [false, true]) await step(`se R2-08 down-hill ${night ? 'night' : 'day'}: the hill tile's owner is as big as the score chips' numbers`, async () => {
+  const pg = await open(VIEWS[1], 'down-hill', night ? '&night' : '');
+  const r = await pg.evaluate(() => { const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth; const px = e => e ? parseFloat(getComputedStyle(e).fontSize) * k : 0;
+    const hill = document.querySelector('.down .recap .rc.hill'), chip = document.querySelector('.down .recap .tms .tm b');
+    const own = hill && [...hill.querySelectorAll('*')].filter(e => /[A-Z]{3,}/.test(e.textContent) && ![...e.children].length).pop();
+    return { owner: own ? own.textContent.trim() : null, ownerPx: px(own), chipPx: px(chip) }; });
+  await pg.close();
+  must(r.owner && r.chipPx && r.ownerPx >= r.chipPx - 0.5 && r.ownerPx >= 11, `the hill owner is lighter than the score chips: ${JSON.stringify(r)}`);
+});
+// R2-20: by day the armour number carries its label
+for (const view of VIEWS) await step(`${view.name} R2-20 live day: the armour number is labelled ARMOR, >= 11 px on screen, 4.5:1`, async () => {
+  const pg = await open(view, 'live');
+  const r = { lab: (await r2.looks(pg, '.vitals .armorlabel'))[0], sh: (await r2.looks(pg, '.vitals #sh'))[0], cr: await r2.contrast(pg, '.vitals .armorlabel') };
+  await pg.close();
+  must(r.lab && r.lab.shown && r.lab.text === 'ARMOR' && r.lab.px >= 11, `no visible ARMOR label: ${JSON.stringify(r.lab)}`);
+  must(r.sh && Math.abs(r.lab.l - r.sh.r) < 40 && r.lab.t < r.sh.b && r.lab.b > r.sh.t, `the label sits beside the armour number: ${JSON.stringify(r)}`);
+  must(r.cr[0].cr >= 4.5, `the label reads below 4.5:1: ${JSON.stringify(r.cr)}`);
+});
+// The gate FINDINGS listed as missing: a persistent KOTH hill state on the live HUD. The callout card says the hill changed
+// hands; after it has gone, the live HUD still says who holds it, and follows the next change.
+for (const view of VIEWS) for (const night of [false, true]) await step(`${view.name} R2 KOTH live ${night ? 'night' : 'day'}: who holds the hill stays on the live HUD after the card`, async () => {
+  const pg = await open(view, 'live-hill-captured', night ? '&night' : '', 2600);
+  await pg.waitForFunction(() => !!document.querySelector('#overlay .mo.co'), null, { timeout: 4000, polling: 50 }).catch(() => {});   // HILL CAPTURED...
+  await pg.waitForFunction(() => !document.querySelector('#overlay .mo.co'), null, { timeout: 8000, polling: 100 }).catch(() => {});   // ...and gone
+  const a = { chip: (await r2.looks(pg, '#hillnow'))[0], card: await pg.evaluate(() => !!document.querySelector('#overlay .mo.co')) };
+  await pg.evaluate(() => window.brxDemo.hillTaken(0)); await pg.waitForTimeout(500);
+  const b2 = (await r2.looks(pg, '#hillnow'))[0];
+  await pg.screenshot({ path: `${OUT}/${view.name}-r2-hill-live-${night ? 'night' : 'day'}.png` }); await pg.close();
+  must(!a.card, 'pre-condition: the callout card has gone');
+  must(a.chip && a.chip.shown && a.chip.text === 'BLUE' && a.chip.px >= 11, `the live HUD must still say BLUE holds the hill: ${JSON.stringify(a.chip)}`);
+  must(b2 && b2.text === 'RED', `the chip follows the next capture: ${JSON.stringify(b2)}`);
+  if (night) must(!r2.green(a.chip.color) && !r2.green(b2.color), `night: the hill chip is green: ${a.chip.color}`);
+});
+
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;
 }

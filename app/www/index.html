@@ -8,10 +8,6 @@
 <style>
 @font-face{font-family:'Saira Condensed';font-style:normal;font-weight:600;font-display:swap;src:url('fonts/saira-condensed-600.ttf') format('truetype')}
 @font-face{font-family:'Saira Condensed';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/saira-condensed-700.ttf') format('truetype')}
-
-/* HUD QA R2-12 (2026-09-24): at night, text under 14 px reads at >= 4.5:1 and nothing blinks (spec B4: no strobe). */
-[data-env="night"] .puchip .sel,[data-env="night"] .prompt .pl{opacity:1}
-[data-env="night"] .pill.bad,[data-env="night"] .result .retmc{animation:none}
 </style>
 <style>
 /* ============ tokens (Phone HUD v2 holo theme) ============ */
@@ -1373,6 +1369,36 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 /* the player's day/night skin (bench 2026-09-17): its own box under the ⓘ, on every screen, so it is never behind the diag panel */
 #skin{top:66px}#skin svg{display:block;pointer-events:none}
 .result .rbody{padding-right:40px;box-sizing:border-box}   /* the results and history tables clear the day/night switch in the right gutter */
+/* HUD QA R2-12 (2026-09-24): at night, text under 14 px reads at >= 4.5:1 and nothing blinks (spec B4: no strobe). */
+[data-env="night"] .puchip .sel,[data-env="night"] .prompt .pl{opacity:1}
+[data-env="night"] .pill.bad,[data-env="night"] .result .retmc{animation:none}
+
+/* HUD QA R2-07 (2026-09-24, QA-21 again): the in-game labels were 11 frame px, which is 8.7 px on the SE's 0.79 frame. The
+   floor is 11 px ON SCREEN, so 14 frame px: the identity and clock labels, the link cluster, the slot word, the stats, the
+   powerup hint and chip, the death screen's columns and recap, and the live pills. Letter-spacing gives back the width. */
+.clockplate .m,.ident .sq,.ammo .wn .slot,.puchip .sel,.puhint .pul,.topright,.stats,.stats .staletag{font-size:14px}
+.ident .sq,.clockplate .m{letter-spacing:.14em}.ammo .wn .slot{letter-spacing:.14em}.puhint .pul{letter-spacing:.08em}
+.down .co .cl,.down .lab,.down .recap .rl,.down .recap .rv,.down .recap .tm,.down .recap .ld,.down .recap .ag,.down .recap .capwarn{font-size:14px}
+.down .co .cl{letter-spacing:.14em}.down .lab{letter-spacing:.2em}.down .recap .rl{letter-spacing:.16em}
+#frame[data-screen="live"] .chipbar .pill{font-size:14px;letter-spacing:.14em}
+[data-env="night"] .hplab,[data-env="night"] .stats,.nightlab{font-size:14px}
+[data-env="night"] .hplab{letter-spacing:.16em}[data-env="night"] .stats{letter-spacing:.16em}
+/* HUD QA gate "a persistent KOTH hill state on the live HUD": the hill chip rides in the clock plate, in the owner's colour, day
+   and night. The callout card says the hill changed hands; this says who holds it now. */
+.clockplate .hillnow{display:inline-flex;align-items:center;gap:5px;font-family:var(--fd);font-weight:700;font-size:18px;letter-spacing:.08em;color:var(--mut)}
+.clockplate .hillnow .ic{width:15px;height:15px}
+.clockplate .hillnow[data-owner="blue"]{color:var(--team-blue)}.clockplate .hillnow[data-owner="red"]{color:var(--team-red)}
+.clockplate .hillnow[data-owner="yellow"]{color:var(--team-yellow)}.clockplate .hillnow[data-owner="green"]{color:var(--team-green)}
+[data-env="night"] .clockplate .hillnow{color:var(--num)!important}
+.down .recap .tm b{font-size:18px}
+/* HUD QA R2-08: the redeploy instruction is 14 px on the SE screen (18 frame px), and at night the bright night red, still */
+.down .safe.w1 span{font-size:18px}
+[data-env="night"] .down .safe span{color:#ef6868}
+[data-env="night"] .down .safe.w2 span,[data-env="night"] .down .safe.w3{animation:none}
+/* HUD QA R2-20: by day the armour number sat unlabelled beside the health number. Its label shows by day too (the HP label
+   stays a night-only aid: the big number is health by its size and colour). */
+.vitals .hplab.armorlabel{display:inline;font-size:14px;letter-spacing:.16em;color:var(--armor);font-weight:700;opacity:.85}
+[data-env="night"] .vitals .hplab.armorlabel{opacity:1;color:var(--mut);font-weight:600}
 </style>
 </head>
 <body>
