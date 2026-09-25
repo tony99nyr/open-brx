@@ -124,6 +124,12 @@ test('announcer: a hill line during my kill streak is voice-silent; its card sti
   assert.equal(h.plays('VB0N').length, 0, 'no Hill Captured line');
   assert.ok(shown, 'the hill card shows');
   assert.ok(h.logs.some(l => /hill_captured silent: kill streak on air/.test(l)));
+  // CONTROL, no streak: RED takes it off us with nothing of mine on air: the line is said AND the card shows
+  h.adv(3000); let lost = false;
+  h.eng.feedFrame('$HIR,4,15,0,0,50,0,0,*');
+  for (let i = 0; i < 60; i++) { h.adv(50); if (h.eng.state().hillCallout && h.eng.state().hillCallout.kind === 'hill_lost') lost = true; }
+  assert.equal(h.plays('VB0P').length, 1, 'Hill Lost is said');
+  assert.ok(lost, 'and its card shows');
 });
 
 test('announcer: IR said my kill, then MC\'s medals and the lead change: the lead banner shows before the medals, voice-silent', () => {
