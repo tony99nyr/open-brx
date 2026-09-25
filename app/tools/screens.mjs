@@ -5017,21 +5017,9 @@ for (const view of VIEWS) await step(`${view.name} R2-20 live day: the armour nu
   must(r.sh && Math.abs(r.lab.l - r.sh.r) < 40 && r.lab.t < r.sh.b && r.lab.b > r.sh.t, `the label sits beside the armour number: ${JSON.stringify(r)}`);
   must(r.cr[0].cr >= 4.5, `the label reads below 4.5:1: ${JSON.stringify(r.cr)}`);
 });
-// The gate FINDINGS listed as missing: a persistent KOTH hill state on the live HUD. The callout card says the hill changed
-// hands; after it has gone, the live HUD still says who holds it, and follows the next change.
-for (const view of VIEWS) for (const night of [false, true]) await step(`${view.name} R2 KOTH live ${night ? 'night' : 'day'}: who holds the hill stays on the live HUD after the card`, async () => {
-  const pg = await open(view, 'live-hill-captured', night ? '&night' : '', 2600);
-  await pg.waitForFunction(() => !!document.querySelector('#overlay .mo.co'), null, { timeout: 4000, polling: 50 }).catch(() => {});   // HILL CAPTURED...
-  await pg.waitForFunction(() => !document.querySelector('#overlay .mo.co'), null, { timeout: 8000, polling: 100 }).catch(() => {});   // ...and gone
-  const a = { chip: (await r2.looks(pg, '#hillnow'))[0], card: await pg.evaluate(() => !!document.querySelector('#overlay .mo.co')) };
-  await pg.evaluate(() => window.brxDemo.hillTaken(0)); await pg.waitForTimeout(500);
-  const b2 = (await r2.looks(pg, '#hillnow'))[0];
-  await pg.screenshot({ path: `${OUT}/${view.name}-r2-hill-live-${night ? 'night' : 'day'}.png` }); await pg.close();
-  must(!a.card, 'pre-condition: the callout card has gone');
-  must(a.chip && a.chip.shown && a.chip.text === 'BLUE' && a.chip.px >= 11, `the live HUD must still say BLUE holds the hill: ${JSON.stringify(a.chip)}`);
-  must(b2 && b2.text === 'RED', `the chip follows the next capture: ${JSON.stringify(b2)}`);
-  if (night) must(!r2.green(a.chip.color) && !r2.green(b2.color), `night: the hill chip is green: ${a.chip.color}`);
-});
+// The gate FINDINGS listed as missing, "a persistent KOTH hill state on the live HUD", is OWNED by the three-lane alert
+// redesign: its right-side hill badge (alert lanes, Tony: "the separate alerts on the right"). Its gate lands with it; a
+// second hill indicator here would disagree with it.
 
 
 // R2-09: the controls FINDINGS measured under 44 px on screen. Each takes a 44 px square centred on it, hit-tested.
@@ -5163,6 +5151,20 @@ for (const view of VIEWS) await step(`${view.name} R2-21 live-pu-overshield-wide
   const r = await pg.evaluate(() => ({ gains: window.__gains, os: !!(window.brx.engine.state().powerup || {}).overshield })); await pg.close();
   must(r.os, 'pre-condition: the overshield was granted');
   must(!r.gains.some(g => /HEALTH|ARMOUR/.test(g)), `the grant floated a pool it does not touch: ${JSON.stringify(r.gains)}`);
+});
+
+
+// Review C1/H1 (hud-vqa2): the live PATCH (not a full render) moves the vitals. A lone `$HP` must reach #hp and #sh within
+// 300 ms; a stray `//` once swallowed the patch's set('hp')/set('sh')/set('mag')/setHtml('res') calls.
+for (const view of VIEWS) await step(`${view.name} C1 live patch: a lone $HP moves #hp and #sh within 300 ms`, async () => {
+  const pg = await open(view, 'live');
+  await pg.evaluate(() => window.brx.engine.feedFrame('$HP,45,61,0,*')); await pg.waitForTimeout(400);
+  await pg.evaluate(() => window.brx.engine.feedFrame('$HP,38,0,0,*'));
+  let r = null; for (let t = 0; t < 300; t += 50) { await pg.waitForTimeout(50);
+    r = await pg.evaluate(() => { const s = window.brx.engine.state(); return { hp: document.getElementById('hp').textContent, sh: document.getElementById('sh').textContent, want: [String(s.hp), String(s.armor)] }; });
+    if (r.hp === r.want[0] && r.sh === r.want[1]) break; }
+  await pg.close();
+  must(r.want[0] === '38' && r.hp === r.want[0] && r.sh === r.want[1], `the vitals lag the engine: ${JSON.stringify(r)}`);
 });
 
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {

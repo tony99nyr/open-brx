@@ -82,18 +82,13 @@ export function callouts(st) {
 /** The game strip: the clock, the race for the mode (team chips out of the cap, or your FFA place), the hill, and
  *  your kills and deaths. An old board keeps its numbers with a short age tag, never passing as current. */
 /** Who holds the hill: `{key}` a team, `{label: 'NEUTRAL'}` nobody, `{label: '–', stale}` a KOTH game with no beacon heard,
- *  null when the game has no hill. One reading for the DOWN strip and the live HUD's hill chip (HUD QA gate). PURE. */
+ *  null when the game has no hill. The DOWN strip's reading. PURE. */
 export function hillOf(st) {
   if (st.hill && num(st.hill.owner) != null) {
     const o = st.hill.owner, k = TID_KEY[o];
     return o === HILL_NEUTRAL_TID || !k ? { key: null, label: 'NEUTRAL' } : { key: k, label: up(k) };
   }
   return st.mode === 'KOTH' ? { key: null, label: '–', stale: true } : null;
-}
-/** The live HUD's persistent hill chip (inside the clock plate): the flag and the owner, in the owner's colour. */
-export function hillChip(st) {
-  const h = hillOf(st); if (!h) return '';
-  return `${ICON.flag}<b>${h.label}</b>`;
 }
 export function gameNow(st, { stale, age, resultRows }) {
   const tile = (val, cls = '', said = '') => `<span class="rc ${cls}"${said ? ` role="img" aria-label="${esc(said)}"` : ''}><span class="rv">${val}</span></span>`;

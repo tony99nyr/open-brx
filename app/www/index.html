@@ -1386,13 +1386,6 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 #frame[data-screen="live"] .chipbar .pill.bad.gunlost{font-size:16px;letter-spacing:.16em}   /* QA-02: the link bar stays 16 px */
 [data-env="night"] .hplab,[data-env="night"] .stats,.nightlab{font-size:14px}
 [data-env="night"] .hplab{letter-spacing:.16em}[data-env="night"] .stats{letter-spacing:.16em}
-/* HUD QA gate "a persistent KOTH hill state on the live HUD": the hill chip rides in the clock plate, in the owner's colour, day
-   and night. The callout card says the hill changed hands; this says who holds it now. */
-.clockplate .hillnow{display:inline-flex;align-items:center;gap:5px;font-family:var(--fd);font-weight:700;font-size:18px;letter-spacing:.08em;color:var(--mut)}
-.clockplate .hillnow .ic{width:15px;height:15px}
-.clockplate .hillnow[data-owner="blue"]{color:var(--team-blue)}.clockplate .hillnow[data-owner="red"]{color:var(--team-red)}
-.clockplate .hillnow[data-owner="yellow"]{color:var(--team-yellow)}.clockplate .hillnow[data-owner="green"]{color:var(--team-green)}
-[data-env="night"] .clockplate .hillnow{color:var(--num)!important}
 .down .recap .tm b{font-size:18px}
 /* HUD QA R2-08: the redeploy instruction is 14 px on the SE screen (18 frame px), and at night the bright night red, still */
 .down .safe.w1 span{font-size:18px}
