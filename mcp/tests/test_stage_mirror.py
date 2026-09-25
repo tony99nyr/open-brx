@@ -1542,6 +1542,8 @@ KNOWN_UNMIRRORED = {
     "_beginResync", "_resyncButton", "_resyncDone", "_resyncEvidence", "_resyncNotLive", "_resyncTick",
     # persistence + config application (the stage is configured directly, not by a pushed bundle)
     "_save", "_load", "_set", "_changed", "clearPersisted", "_applyConfig", "_assign", "_write",
+    "_savedAmmo", "_restoreAmmo",   # F164: the live counts a reconcile re-arms survive an app restart; the stage never restarts
+
     "_writeHead", "_writeTeardown", "feedFrame", "reset",
     # B1 (2026-09-12): catches an MC `assign` that re-teams the roster without a config re-push rewriting
     # the gun's $TID. It reads the head `_writeHead` wrote and fires only off `_assign` — both of which
