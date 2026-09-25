@@ -3492,6 +3492,8 @@ class Session:
             body["starts_in_ms"] = self.start_info["go_live_t"] - now
             if tl_s := self.config.get("time_limit_s"):
                 body["ends_in_ms"] = max(0, self.start_info["go_live_t"] + tl_s * 1000 - now)
+        if not self.is_adopted() and (self.lobby_pushed or self.phase in ("armed", "live")) and (tl_s := self.config.get("time_limit_s")):
+            body["duration_ms"] = tl_s * 1000
         if lock == 0 and st.get("locked_since") is not None and st.get("unlocked_at") is None:
             st["unlocked_at"] = self.now_ms()  # the window closes at the unlock, heard or not
         elif lock > 0 and st.get("lock_game") == body["game"]:

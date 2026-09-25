@@ -523,7 +523,7 @@ static void test_revives_count_a_present_players_alive_edge_only() {
 
 static void test_sighting_ring_is_fifo_drops_the_newest_when_full_and_clears() {
   SightingRing<4> ring;  // holds 3 (one slot tells full from empty)
-  CHECK(ring.push(player(1, 0), -50));
+  CHECK(ring.push(player(1, 0), -50, 1234));
   CHECK(ring.push(player(2, 0), -51));
   CHECK(ring.push(player(3, 0), -52));
   CHECK(!ring.push(player(4, 0), -53));  // full: the newest is dropped and counted
@@ -532,6 +532,7 @@ static void test_sighting_ring_is_fifo_drops_the_newest_when_full_and_clears() {
   CHECK(ring.pop(s));
   CHECK_EQ(s.advert.id, (uint16_t)1);
   CHECK_EQ(s.rssi, -50);
+  CHECK_EQ(s.seen_at, 1234u);
   CHECK(ring.push(player(5, 0), -54));  // wraps
   CHECK_EQ(ring.size(), (size_t)3);
   ring.clear();  // the assignment changed: an old station's sightings go

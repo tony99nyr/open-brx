@@ -86,6 +86,7 @@ struct StationAssignment {
   int64_t ends_in_ms = -1; // A68: -1 unknown; otherwise MC duration anchored on local receipt
   bool starts_known = false; // A68: a START config supplied the go-live offset
   int64_t starts_in_ms = 0; // MC offset anchored on local receipt; may be negative after go-live
+  int64_t duration_ms = 0; // A68 extension: timed fallback duration from first alive game advert
   bool timed_hill = false; // flash marker: a restored timed hill waits for a fresh MC clock
   // A67 (additive): how long ago MC's threshold was last set (-1 = absent, an older MC: apply as today),
   // and MC's advertising power for this station (-1 = absent: keep the Stick's own) with its age.
@@ -402,6 +403,11 @@ inline StationAssignment parse_station_config(const json::Value& body) {
                        (d > 2147483647.0 ? 2147483647 : (int64_t)d);
     }
   }
+  if (body.has("duration_ms")) {
+    const json::Value& duration = body.get("duration_ms");
+    const double d = duration.type == json::Value::Type::Number ? duration.num : 0.0;
+    a.duration_ms = d < 0 ? 0 : (d > 2147483647.0 ? 2147483647 : (int64_t)d);
+  }
   a.timed_hill = body.get("timed_hill").as_bool(false);
   // A67: ages are relative to receipt, so they are never saved (station_config_storage_body leaves them out).
   if (body.has("threshold_age_ms")) a.threshold_age_ms = body.get("threshold_age_ms").as_int64(-1);
@@ -437,8 +443,9 @@ inline std::string station_config_storage_body(const StationAssignment& a) {
   j += ",\"threshold\":" + std::to_string(a.threshold);
   if (a.threshold_defaulted) j += ",\"threshold_default\":true";
   if (a.tx_power >= 0) j += ",\"tx_power\":" + json::quote(tx_power_name(a.tx_power));
+  if (a.duration_ms > 0) j += ",\"duration_ms\":" + std::to_string(a.duration_ms);
   j += ",\"game\":" + std::to_string(a.game);
-  if (a.kind == "control" && (a.ends_in_ms >= 0 || a.timed_hill)) j += ",\"timed_hill\":true";
+  if (a.kind == "control" && (a.ends_in_ms >= 0 || a.duration_ms > 0 || a.timed_hill)) j += ",\"timed_hill\":true";
   j += ",\"valid_ids\":[";
   for (size_t i = 0; i < a.valid_ids.size(); i++) {
     if (i) j += ",";
@@ -1079,10 +1086,27 @@ class StationLink {
     else if (REVIVE_FEEDBACK_ENABLED && has_respawn_assignment()) revives_.update(players, assignment_.id);
     return u;
   }
-  bool hill_ended() const { return has_control_assignment() && hill_.frozen; }
+  bool anchor_hill_on_advert(const Advert& d, uint32_t now_ms) {
+    if (!has_control_assignment() || assignment_.duration_ms <= 0 || mc_start_known_ || duration_anchor_known_ ||
+        d.role != ROLE_PLAYER || !(d.state & PLAYER_ALIVE) ||
+        d.game != assignment_.game) return false;
+    if (hill_restore_guard_) {
+      hill_restore_guard_ = false;
+      duration_restore_wait_ = false;
+      hill_.frozen = false;
+    }
+    duration_anchor_known_ = true;
+    starts_known_ = true;
+    hill_live_ = true;
+    hill_starts_ms_ = now_ms;
+    deadline_known_ = true;
+    hill_deadline_ms_ = now_ms + (uint32_t)assignment_.duration_ms;
+    return true;
+  }
+  bool hill_ended() const { return has_control_assignment() && hill_.frozen && !duration_restore_wait_; }
   bool hill_waiting(uint32_t now_ms) const {
-    return has_control_assignment() && !hill_.frozen && !hill_live_ &&
-           (!starts_known_ || (int32_t)(now_ms - hill_starts_ms_) < 0);
+    return has_control_assignment() && !hill_live_ &&
+           (duration_restore_wait_ || (!hill_.frozen && (!starts_known_ || (int32_t)(now_ms - hill_starts_ms_) < 0)));
   }
   void enforce_restored_hill_freeze() {
     if (restored_ && has_control_assignment() && assignment_.timed_hill) hill_.freeze();
@@ -1193,23 +1217,37 @@ class StationLink {
       heard_start_ = false;
       hill_offline_waiting_ = false;
       hill_restore_guard_ = false;
+      duration_anchor_known_ = false;
+      mc_start_known_ = false;
+      duration_restore_wait_ = false;
       epoch_++;
     }
     if (a.kind == "control" && a.starts_known) {
       if (a.starts_in_ms > 0 && hill_live_) hill_.reset();
       heard_start_ = true;
+      mc_start_known_ = true;
+      duration_anchor_known_ = false;
+      duration_restore_wait_ = false;
       starts_known_ = true;
       hill_starts_ms_ = received_at_ms + (uint32_t)(int32_t)a.starts_in_ms;
       hill_live_ = a.starts_in_ms <= 0;
       hill_offline_waiting_ = false;
-    } else if (a.kind == "control" && a.ends_in_ms != 0) {
+    } else if (a.kind == "control" && a.ends_in_ms != 0 && a.duration_ms <= 0) {
       // A same-game LOBBY or abort re-send has no match clock.
       starts_known_ = false;
       hill_live_ = false;
       hill_offline_waiting_ = false;
       if (!hill_restore_guard_) hill_.frozen = false;
+    } else if (a.kind == "control" && a.duration_ms > 0 && !duration_anchor_known_) {
+      mc_start_known_ = false;
+      starts_known_ = false;
+      hill_live_ = false;
+      hill_offline_waiting_ = false;
+      if (!hill_restore_guard_) hill_.frozen = false;
     }
-    if (kind_or_id_changed || game_changed || a.ends_in_ms >= 0 || !a.starts_known) {
+    if (kind_or_id_changed || game_changed || a.ends_in_ms >= 0 || a.starts_known ||
+        (!a.starts_known && a.duration_ms <= 0) ||
+        (a.duration_ms > 0 && !duration_anchor_known_)) {
       deadline_known_ = a.starts_known && a.ends_in_ms >= 0;
       if (deadline_known_) hill_deadline_ms_ = received_at_ms + (uint32_t)a.ends_in_ms;
     }
@@ -1229,7 +1267,7 @@ class StationLink {
     if (game_changed) pending_actions_.clear();
     assignment_ = a;
     lock_deadline_known_ = a.lock_s > 0;
-    assignment_.timed_hill = a.kind == "control" && (deadline_known_ || hill_.frozen);
+    assignment_.timed_hill = a.kind == "control" && (deadline_known_ || hill_.frozen || a.duration_ms > 0);
     state_ = LinkState::ASSIGNED;
     // A67: MC's range values, each through the keep-the-younger-edit rule (station_range.h).
     threshold_.apply_mc(presence_threshold_dbm(a), a.threshold_age_ms, received_at_ms);
@@ -1335,6 +1373,7 @@ class StationLink {
     hill_live_ = false;
     hill_offline_waiting_ = false;
     hill_restore_guard_ = a.kind == "control" && a.timed_hill;
+    duration_restore_wait_ = hill_restore_guard_ && a.duration_ms > 0;
     assignment_ = a;
     if (a.kind == "control" && a.timed_hill) hill_.freeze();
     // A67: MC's saved values come back as MC's; an on-station edit is restored after this, from its own
@@ -1487,6 +1526,9 @@ class StationLink {
   uint32_t hill_starts_ms_ = 0;
   bool hill_live_ = false;
   bool hill_restore_guard_ = false;
+  bool duration_anchor_known_ = false;
+  bool mc_start_known_ = false;
+  bool duration_restore_wait_ = false;
   bool hill_offline_waiting_ = false;
   uint32_t hill_offline_since_ms_ = 0;
   SyncedSetting threshold_{STICK_DEFAULT_THRESHOLD_DBM};  // A67

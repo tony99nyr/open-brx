@@ -1251,6 +1251,8 @@ export interface StationAssignment {
   ends_in_ms?: number;
   /** A68: station_config go-live relative to receipt (negative once live); absent = no match running */
   starts_in_ms?: number;
+  /** A68 extension: timed-match duration from first alive player advert when START was missed */
+  duration_ms?: number;
 }
 
 /** A56: MC -> a powerup station, on a pickup and at each spawn time. `next_spawn_in_ms` is time REMAINING

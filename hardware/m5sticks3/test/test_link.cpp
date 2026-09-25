@@ -1986,6 +1986,67 @@ static void test_hill_starts_only_at_config_go_live_and_stops_at_deadline() {
   CHECK_EQ(link.hill().hold_ms[1], 2000u);
 }
 
+static void test_timed_hill_anchors_on_first_alive_same_game_advert_without_rssi_gate() {
+  StationLink link;
+  StationAssignment a = control_config(7);
+  a.duration_ms = 120000;
+  link.apply_station_config(a, 100);
+  SavedStationConfig saved;
+  CHECK(saved.note_applied(a, "s1"));
+  CHECK(saved.stored().find("\"duration_ms\":120000") != std::string::npos);
+  CHECK(link.hill_waiting(100));
+  Advert down; down.role = ROLE_PLAYER; down.game = 7; down.state = 0;
+  CHECK(!link.anchor_hill_on_advert(down, 1000));
+  Advert wrong_game = down; wrong_game.state = PLAYER_ALIVE; wrong_game.game = 8;
+  CHECK(!link.anchor_hill_on_advert(wrong_game, 1000));
+  Advert unscoped = down; unscoped.state = PLAYER_ALIVE; unscoped.game = 0;
+  CHECK(!link.anchor_hill_on_advert(unscoped, 1000));
+  Advert alive = down; alive.state = PLAYER_ALIVE;
+  CHECK(link.anchor_hill_on_advert(alive, 5000));
+  PlayerPresence p;
+  link.hill().owner = 1; link.hill().progress = 100;
+  CHECK(!link.hill_waiting(5000));
+  link.tick_players(p, 5000);
+  link.tick_players(p, 6000);
+  CHECK_EQ(link.hill().hold_ms[1], 1000u);
+  link.tick_players(p, 125000);
+  CHECK(link.hill_ended());
+  CHECK_EQ(link.hill().hold_ms[1], 120000u);
+
+  StationLink rebooted;
+  CHECK(rebooted.restore_station_config(saved.restore()));
+  CHECK(!rebooted.hill_ended());  // saved timed tally stays frozen while the hill shows WAITING
+  CHECK(rebooted.hill_waiting(10));
+  CHECK(rebooted.anchor_hill_on_advert(alive, 20));
+  CHECK(!rebooted.hill_ended());
+
+  StationLink corrected;
+  corrected.apply_station_config(a, 0);
+  CHECK(corrected.anchor_hill_on_advert(alive, 1000));
+  a.starts_known = true; a.starts_in_ms = 2000; a.ends_in_ms = 4000;
+  corrected.apply_station_config(a, 1100);  // MC's START clock replaces the advert fallback
+  corrected.hill().owner = 1; corrected.hill().progress = 100;
+  CHECK(corrected.hill_waiting(3099));
+  corrected.tick_players(p, 3100);
+  corrected.tick_players(p, 4100);
+  corrected.tick_players(p, 5100);
+  CHECK(corrected.hill_ended());
+  CHECK_EQ(corrected.hill().hold_ms[1], 2000u);
+
+  StationLink next_game;
+  StationAssignment current = control_config(7);
+  current.duration_ms = 120000;
+  next_game.apply_station_config(current, 0);
+  CHECK(next_game.anchor_hill_on_advert(alive, 1000));
+  StationAssignment next = control_config(8);
+  next.duration_ms = 60000;
+  next_game.apply_station_config(next, 2000);
+  CHECK(next_game.hill_waiting(2000));
+  CHECK(!next_game.anchor_hill_on_advert(alive, 3000));  // old game advert cannot anchor the new game
+  Advert next_alive = alive; next_alive.game = 8;
+  CHECK(next_game.anchor_hill_on_advert(next_alive, 4000));
+}
+
 static void test_parse_signed_go_live_offset() {
   bool ok = false;
   StationAssignment a = parse_station_config(json::parse(
@@ -2470,6 +2531,7 @@ int main(int argc, char** argv) {
     test_status_carries_revives_and_hold_ms_additively();
   test_hill_stops_accruing_when_deadline_freezes_it();
   test_hill_starts_only_at_config_go_live_and_stops_at_deadline();
+  test_timed_hill_anchors_on_first_alive_same_game_advert_without_rssi_gate();
   test_parse_signed_go_live_offset();
   test_same_game_config_without_times_cancels_a_pending_start();
   test_late_start_discards_offline_fallback_capture();

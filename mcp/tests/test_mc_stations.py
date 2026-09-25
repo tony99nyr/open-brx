@@ -233,6 +233,7 @@ def test_station_config_carries_match_end_deadline_when_known_and_zero_after_end
     s.start_info = {"go_live_t": s.now_ms() - 1000}
     s.config["time_limit_s"] = 600
     s._arm_station("stick-1")
+    assert _pushed(s, "station_config", "stick-1")[-1].get("duration_ms") == 600000
     assert _pushed(s, "station_config", "stick-1")[-1].get("ends_in_ms") == 599000
     assert _pushed(s, "station_config", "stick-1")[-1].get("starts_in_ms") == -1000
     s.phase = "recap"
@@ -241,12 +242,14 @@ def test_station_config_carries_match_end_deadline_when_known_and_zero_after_end
     s.phase = "live"
     s.start_info["adopted"] = True
     s._arm_station("stick-1")
+    assert "duration_ms" not in _pushed(s, "station_config", "stick-1")[-1]
     assert "ends_in_ms" not in _pushed(s, "station_config", "stick-1")[-1]
     assert "starts_in_ms" not in _pushed(s, "station_config", "stick-1")[-1]
     s.start_info["adopted"] = False
     s.config["time_limit_s"] = None
     s._arm_station("stick-1")
     assert "ends_in_ms" not in _pushed(s, "station_config", "stick-1")[-1]
+    assert "duration_ms" not in _pushed(s, "station_config", "stick-1")[-1]
 
 
 def test_station_config_carries_match_end_deadline_when_known():

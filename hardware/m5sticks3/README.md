@@ -65,6 +65,10 @@ mDNS discovery is asynchronous, so the hill never waits on it.
 advert only then (`engine.js _hillSourceAllowed`); under `grenade` it follows the IR beacon instead.
 **IR receive is post-MVP (F314):** it drives only the bench HILL/BRIDGE below.
 
+## Timed HELD hills (A68)
+
+MC sends `duration_ms` for a timed game from LOAD onward. A HELD hill that leaves Wi-Fi before START waits for the first alive player advert whose game byte matches its assignment. RSSI does not gate this anchor. The hill then counts to its local deadline and freezes its owner and hold tally at MATCH OVER. START timing overrides the fallback if the Stick hears it. A new game byte clears the anchor. An offline restart does not retain the fallback anchor, so the hill waits for the next alive advert and re-anchors. The start error is the delay until that advert arrives. Untimed matches and operator or objective ends cannot reach an offline Stick. HELD is the MVP mode; MUSTER is post-MVP.
+
 ## Status
 
 **2026-09-24, late afternoon: F314's root cause is found, and a workaround is proven.** The onboard receiver

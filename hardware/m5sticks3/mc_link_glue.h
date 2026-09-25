@@ -539,9 +539,9 @@ static void mcResumeClaimFeed(bool wasFeeding) {
   portEXIT_CRITICAL(&claimMux);
 }
 
-static void seenPush(const Advert& a, int rssi) {
+static void seenPush(const Advert& a, int rssi, uint32_t seen_at) {
   portENTER_CRITICAL(&seenMux);
-  seenRing.push(a, rssi);
+  seenRing.push(a, rssi, seen_at);
   portEXIT_CRITICAL(&seenMux);
 }
 
@@ -574,7 +574,7 @@ class PlayerScanCallbacks : public BLEAdvertisedDeviceCallbacks {
     if (!decode_advert(std::string(uuidStr.c_str()), a)) return;
     if (a.role != ROLE_PLAYER) return;
     const int rssi = advertisedDevice.getRSSI();
-    if (scanFeedsPresence) seenPush(a, rssi);
+    if (scanFeedsPresence) seenPush(a, rssi, millis());
     bool claiming = (a.state & PLAYER_CLAIMING) != 0;
     bool ready = (a.state & PLAYER_CLAIM_READY) != 0;
     if (!claiming && !ready) return;
@@ -673,7 +673,10 @@ static void mcTickPlayers(uint32_t now) {
     presence.clear();
   }
   Sighting sp;
-  while (seenPop(sp)) presence.observe(sp.advert, sp.rssi, now);
+  while (seenPop(sp)) {
+    link.anchor_hill_on_advert(sp.advert, sp.seen_at);  // A68 fallback: first alive advert, independent of RSSI
+    presence.observe(sp.advert, sp.rssi, now);
+  }
   presence.tick(now);
   const uint32_t revivesBefore = link.revives().revives;
   HillUpdate u = link.tick_players(presence, now);

@@ -1214,6 +1214,7 @@ class StationAssignment(TypedDict):
     item: NotRequired[StationItem]   # A56 (S58): a powerup station's item and spawn schedule
     ends_in_ms: NotRequired[int]     # A68: station_config match-end duration from receipt; absent means unknown
     starts_in_ms: NotRequired[int]   # A68: station_config go-live relative to receipt (negative once live); absent = no match running
+    duration_ms: NotRequired[int]    # A68 extension: timed-match duration from first alive player advert when START was missed
 
 
 class StationUpdate(TypedDict):

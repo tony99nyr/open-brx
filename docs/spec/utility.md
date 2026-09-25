@@ -582,22 +582,16 @@ writes a gun head, and owns no store-and-forward ring — MC already refuses a l
 |---|---|---|
 | → MC | `hello` | `{node_id, node_type:"utility", app_ver, platform:"esp32", seq_next:0}`. `node_id` is stable across reboots (Preferences), or MC sees a new item every power cycle |
 | ← MC | `welcome` | keep `node_key` and present it on the next `hello` (A8.2) or a re-claim of a still-live id is refused `4003 in_use` |
-| ← MC | `station_config` | `{kind, team, id, threshold?, game?, valid_ids?, lock_s?, starts_in_ms?, ends_in_ms?}` → advert and screen; persist the assignment; A68 hill timing uses both fields |
+| ← MC | `station_config` | `{kind, team, id, threshold?, game?, valid_ids?, lock_s?, starts_in_ms?, ends_in_ms?}` → advert and screen; persist the assignment; A68 hill timing uses these fields |
 | ← MC | `station_update` | Pickup schedule updates only (A56); MC sends no hill update |
 | → MC | `status` | every `STATUS_HEARTBEAT_MS` (2000 ms) while connected; stale at `STALE_AFTER_MS` (8000 ms). Live-only, never queued, no `seq` |
 
 `seq_next: 0` forever is honest: a station emits no persisted facts, so there is no seq to advance and nothing
 for `welcome.seq_hi` to reconcile.
 
-**Hill timing (A68).** MC puts `starts_in_ms` and `ends_in_ms` in the same `station_config` whenever it knows
-the respective go-live or end time. Each value is relative to MC send time; a start can be negative after go-live.
-A future start keeps a hill neutral and waiting. A same-game config in LOBBY without a start also keeps it
-waiting. MUSTER releases this wait when the config carries a start, including an untimed START. The hill counts
-only from its local go-live to its local deadline. A MUSTER Stick that takes F374's 60 s offline fallback
-without hearing START starts counting as before; it has no go-live or deadline information. MC sends no
-`station_update` for a hill. A same-game config without either timing field means no match is running, so the
-hill waits. An adopted match pushes nothing to stations, so its Stick hill gets no go-live or deadline and
-counts as before.
+**Hill timing (A68).** MC sends `duration_ms` from LOAD onward and in ARMED/LIVE when the game has a time limit. Adopted matches omit it. A duration lets a HELD Stick carried out of Wi-Fi before START wait for the first alive player advert with its exact game byte, at any RSSI. That advert anchors go-live and the hill's local deadline. The hill counts only from that anchor, then freezes its owner and hold tally at the whistle. A START config overrides the fallback when heard. A new game byte clears the anchor. A restart does not save the anchor: an offline Stick waits for the next alive advert and re-anchors. The start error is the delay until it first hears a spawned player. Untimed games and operator or objective ends cannot reach an offline Stick. MUSTER's existing 60 s fallback remains for configs without duration. MC sends no `station_update` for a hill.
+
+A68 also retains `starts_in_ms` and `ends_in_ms` as MC's known clock offsets. MC sends known values in ARMED/LIVE, including a start for an untimed match. End 0 freezes after match end, RECALL or PANIC; abort omits both clock offsets so the same game can start again. A same-game lobby config keeps the hill waiting. An adopted match sends no station config timing.
 
 For a Stick `control` station, threshold 0 or absent selects the separate -75 dBm hill default (Tony, 2026-09-25, UNPROVEN)
 (`STICK_HILL_DEFAULT_THRESHOLD_DBM`, UNPROVEN, pending a 3, 5 and 7 m walk test). Other Stick kinds keep
@@ -636,10 +630,10 @@ modes**, chosen per game, and the firmware must carry both from the first versio
 
 | mode | the Wi-Fi association | for |
 |---|---|---|
-| **`muster`** (default) | joins at muster, takes `station_config`, **drops the association for the match** | §5d on a field. Nothing about the match then depends on coverage — A4.8 as written |
-| **`held`** | joins at muster and **stays linked for the whole match**, reconnecting per contracts §5 backoff | §5e roaming hills, and any house game where the AP genuinely covers every point |
+| **`held`** (MVP) | joins at MC and **stays linked for the whole match**, reconnecting per contracts §5 backoff | A timed hill can receive a START correction while in coverage |
+| **`muster`** (post-MVP) | joins at muster, takes `station_config`, then drops the association | Field stations that rely on offline fallback |
 
-`muster` is the default because §5b's rule ("Setup needs WiFi; play does not") is what makes a station robust:
+`held` is the MVP mode because its timed hill must receive MC timing when coverage allows:
 a §5d point out of range is still a fully correct point. `held` is not a tuning knob on that — it buys a
 feature that is impossible without it (§5g.8), and it is selected by the MODE, not by an operator's mood.
 
