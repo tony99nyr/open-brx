@@ -1399,6 +1399,17 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
    stays a night-only aid: the big number is health by its size and colour). */
 .vitals .hplab.armorlabel{display:inline;font-size:14px;letter-spacing:.16em;color:var(--armor);font-weight:700;opacity:.85}
 [data-env="night"] .vitals .hplab.armorlabel{opacity:1;color:var(--mut);font-weight:600}
+/* HUD QA R2-09: every control takes a 44 px tap on the SE screen (56 frame px). The picker's ghost buttons and the OTHER
+   DEVICES fold get a 56 px ::after; the diag panel's buttons are 56 px tall; the corner buttons' areas hang INTO the
+   frame from its right edge, since the frame clips anything past it (they measured 38 wide on screen). */
+.bigbtn.ghost,.othertog{position:relative}
+.bigbtn.ghost::after,.othertog::after{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:56px}
+.othertog{font-size:14px;letter-spacing:.1em;min-height:56px;padding-top:0;padding-bottom:0}   /* inside the scrolling list, which clips an ::after */
+#diag .btns{gap:4px;padding-left:10px;padding-right:10px}
+#diag .btns button{min-height:56px;font-size:14px;letter-spacing:0;padding:8px 5px}
+.infobtn::after{left:auto;right:-2px;transform:translateY(-50%)}
+#info::after{top:-2px;height:60px;transform:none}   /* 58 px of the frame below its top edge: 46 px on the SE screen */
+#skin{top:70px}   /* its area (60-116) starts where the ⓘ area ends */
 </style>
 </head>
 <body>

@@ -5033,6 +5033,37 @@ for (const view of VIEWS) for (const night of [false, true]) await step(`${view.
   if (night) must(!r2.green(a.chip.color) && !r2.green(b2.color), `night: the hill chip is green: ${a.chip.color}`);
 });
 
+
+// R2-09: the controls FINDINGS measured under 44 px on screen. Each takes a 44 px square centred on it, hit-tested.
+const R2_TAPS = [['idle', '[data-act="onDemo"], [data-act="onUtility"], #info, #skin'], ['idle-noisy', '[data-act="onScanOther"]'], ['picker-location-off', '[data-act="onDemo"], [data-act="onUtility"]'],
+  ['connected', '#info, #skin'], ['live', '#info, #skin'], ['diag', '#diag .btns button:not([disabled])'], ['idle-diag', '#diag .btns button:not([disabled])']];
+for (const view of VIEWS) for (const [stage, sel] of R2_TAPS) await step(`${view.name} R2-09 ${stage}: every control FINDINGS named takes a 44 px tap on screen`, async () => {
+  const pg = await open(view, stage);
+  const r = await r2.tap44(pg, sel); await pg.close();
+  must(r.length >= 1, `no control matched ${sel}`);
+  const bad = r.filter(c => c.miss.length);
+  must(bad.length === 0, 'under 44 px on screen: ' + bad.map(c => `${c.name} ${c.w}x${c.h} misses ${JSON.stringify(c.miss)}`).join(' ; '));
+});
+// The corner buttons sit at the frame edge, where a 44 px square centred on the visual runs off the screen. So measure what
+// a finger can actually hit ON the screen: the box of every on-frame point, 1 px apart, that lands on the control.
+for (const view of VIEWS) for (const stage of ['idle', 'live']) await step(`${view.name} R2-09 ${stage}: the corner buttons take 44 x 44 px of the screen`, async () => {
+  const pg = await open(view, stage);
+  const r = await pg.evaluate(() => ['info', 'skin'].map(id => { const c = document.getElementById(id), b = c.getBoundingClientRect(), fr = document.getElementById('frame').getBoundingClientRect();
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (let x = Math.max(fr.left, b.left - 40); x <= Math.min(fr.right - 0.5, b.right + 40); x++) for (let y = Math.max(fr.top, b.top - 40); y <= Math.min(fr.bottom - 0.5, b.bottom + 40); y++) {
+      const h = document.elementFromPoint(x, y); if (h && (h === c || c.contains(h))) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); } }
+    return { id, w: x1 - x0 + 1, h: y1 - y0 + 1 }; }));
+  await pg.close();
+  must(r.every(c => c.w >= 44 && c.h >= 44), `a corner button takes under 44 x 44 px of the screen: ${JSON.stringify(r)}`);
+});
+for (const stage of ['diag', 'idle-diag']) await step(`se R2-09 ${stage}: the 56 px diag buttons still fit their labels at >= 11 px on screen`, async () => {
+  const pg = await open(VIEWS[1], stage);
+  const r = await pg.evaluate(() => { const f = document.getElementById('frame'), k = f.getBoundingClientRect().width / f.offsetWidth;
+    return [...document.querySelectorAll('#diag .btns button')].filter(b => getComputedStyle(b).display !== 'none').map(b => ({ t: b.textContent.trim(), clip: b.scrollWidth > b.clientWidth + 1, px: parseFloat(getComputedStyle(b).fontSize) * k })); });
+  await pg.close();
+  must(r.length && r.every(b => !b.clip && b.px >= 11), `a diag button clips or is under 11 px: ${JSON.stringify(r)}`);
+});
+
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;
 }
