@@ -79,6 +79,41 @@ for (const [id, label, stage] of AIM) {
   }
   aimSeqs.push({ id, label, runs }); console.log('aim', id);
 }
+// ---- CLASH (docs/announcer.md "Layering and priority on the phone HUD", PROPOSED): a kill card against each system
+// warning or takeover. TODAY is the real build. PROPOSED is a MOCK: MOCK_PROPOSED restyles the same page (not built). ----
+const MOCK_PROPOSED = `(() => {
+  const css = \`#frame[data-screen="live"]:not([data-down]) .chipbar{top:auto;bottom:6px;width:160px;flex-direction:column;gap:4px;white-space:normal}
+#frame[data-screen="live"]:not([data-down]) .chipbar>*{min-height:40px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:14px;line-height:1.1;padding:3px 8px;letter-spacing:.08em;width:100%;box-sizing:border-box}
+#frame[data-screen="live"]:not([data-down]) .chipbar .unskew{white-space:normal}
+#frame[data-screen="live"] .nightlab{display:none!important}
+#frame[data-takeover] #lanes .lhs{visibility:hidden}\`;
+  const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+  const SHORT = [[/^GUN LINK LOST.*/, 'GUN LINK LOST · TAP'], [/^HEADSET NOT JOINED.*/, 'HEADSET NOT JOINED'], [/^OUT OF MISSION CONTROL RANGE.*/, 'MC OUT OF RANGE']];
+  const fix = () => { for (const u of document.querySelectorAll('#chips .chipbar .unskew')) for (const [re, t] of SHORT) if (re.test(u.textContent) && u.textContent !== t) u.textContent = t; };
+  new MutationObserver(fix).observe(document.getElementById('chips'), { subtree: true, childList: true, characterData: true }); fix();
+})();
+`;
+const CLASH = [
+  ['gunlost', 'A kill card, then GUN LINK LOST fires', 'clash-kc-gunlost', () => document.querySelector('#lanes .lh:not(.out)') && /GUN LINK LOST/.test(document.getElementById('chips').textContent)],
+  ['medals-mc', 'A medal chain (FIRST BLOOD, then DOUBLE KILL and KILLING SPREE), then MC goes offline', 'clash-medals-mc', () => { const h = document.querySelector('#lanes .lh:not(.out)'); return h && +h.dataset.n >= 2 && window.brx.engine.state().wsState !== 'bound'; }],
+  ['reload', 'A kill during RELOADING (PROPOSED: the kill card waits and draws when the reload ends; the mock only hides it)', 'clash-kc-reload', () => document.querySelector('#lanes .lh:not(.out)') && document.getElementById('frame').dataset.takeover === 'reload'],
+  ['stale', 'A kill while the vitals read STALE (the gun link has been down for a second)', 'clash-kc-stale', () => document.querySelector('#lanes .lh:not(.out)') && document.querySelector('.alive .staletag')],
+  ['headset', 'A kill while HEADSET NOT JOINED', 'clash-kc-headset', () => document.querySelector('#lanes .lh:not(.out)') && document.querySelector('#chips [data-headset="not_joined"]')],
+];
+const clashes = [];
+for (const [id, label, stage, ready] of CLASH) {
+  const cells = [];
+  for (const skin of SKINS) for (const view of VIEWS) {
+    const pg = await openPg(view, stage, skin);
+    await pg.waitForFunction(ready, null, { timeout: 15000 }); await pg.waitForTimeout(250);   // past the kill's 120 ms flash
+    const today = `clash-${id}-${skin.name}-${view.name}-today.png`; await pg.screenshot({ path: path.join(OUT, today) });
+    await pg.evaluate(MOCK_PROPOSED); await pg.waitForTimeout(120);
+    const prop = `clash-${id}-${skin.name}-${view.name}-proposed.png`; await pg.screenshot({ path: path.join(OUT, prop) });
+    if (pg.__err.length) throw new Error(`clash ${id}: ${pg.__err.join(' | ')}`);
+    cells.push({ skin: skin.name, view, today, prop }); await pg.close();
+  }
+  clashes.push({ id, label, cells }); console.log('clash', id);
+}
 // ---- single moments: [id, label, stage, ms after load, an action to run first] ----
 const ONE = [
   ['kill', 'My kill (MC names the victim)', 'live-kill', 3000],
@@ -111,6 +146,7 @@ await b.close(); srv.close();
 // Tony's notes on the kill-card gallery (2026-09-24), verbatim, and where this gallery answers each one.
 const CHANGED = [
   ['New', 'what about recoil screen in the alerts? not seeing that here in the designs. That might overlap', 'Aim tells (RECOIL, SMOKED, STUNNED, OVERHEAT) own the centre; the kill card rides above them. See "Aim tells and the kill card": a frame every 250 ms.'],
+  ['New', 'how do KCs and hud event alerts and any warnings errors work? Does the UI clash? does the errors have an overlay on top of the KCs?', 'yes, two clashes today: a warning pill (GUN LINK LOST, HEADSET NOT JOINED) shares the kill card\'s band, and a kill card draws over RELOADING. See "CLASH": today beside a PROPOSED layering (a mock, for your pick).'],
   ['New', 'instead of \'IR 15\' lets shorten to just \'IR\' and \'MC\'. They can be a hair smaller on the alerts especially on the team/objective alerts.', 'the source tag says IR or MC, with no protocol number. Every lane\'s tag (HERO, OBJECTIVE, FEED) is 14 px in the frame, 11 px on the small screen: that is the type floor, so it cannot go smaller.'],
   ['Earlier', 'kill confirm goes away a little too fast, we need to work on that UI a bit', 'the HERO holds 2.5 s after the last kill, and longer while that kill\'s line still plays (every storyboard frame).'],
   ['1', 'hmm its a mix. this doesnt really work. the your team takes the lead event can occur at the same time as the kill screen. we have no examples of that', 'the storyboard at t 0.3 s and the single moment "My kill, the lead and a hill capture at the same moment": the lead badge shows beside the kill from the first frame.'],
@@ -134,6 +170,7 @@ const storyHtml = SKINS.map(skin => VIEWS.map(view => { const s = story.find(x =
   return `<h3>${skin.name === 'day' ? 'Day' : 'Night'} · ${view.label}</h3><div class="strip">${s.frames.map(fr => fig(fr.f, `<b>t ${fr.t} s</b> ${esc(fr.label)}`)).join('')}</div>`
     + `<p class="note-s">What the voice said: ${esc(s.voice.join(' · ') || 'nothing')}.</p>`; }).join('')).join('');
 const aimHtml = aimSeqs.map(a => `<section><h3>${esc(a.label)}</h3>${a.runs.map(r => `<h3 class="mut">${r.skin === 'day' ? 'Day' : 'Night'} · ${r.view.label}</h3><div class="strip">${r.frames.map(fr => fig(fr.f, fr.cap)).join('')}</div><p class="note-s">What the voice said: ${esc(r.voice.join(' · ') || 'nothing')}.</p>`).join('')}</section>`).join('');
+const clashHtml = clashes.map(c => `<section><h3>${esc(c.label)}</h3><div class="grid2">${c.cells.map(x => `<div class="pair"><p class="note-s"><b>${x.skin} · ${x.view.label}</b></p><div class="two">${fig(x.today, 'TODAY')}${fig(x.prop, 'PROPOSED (mock)')}</div></div>`).join('')}</div></section>`).join('');
 const oneHtml = singles.map(s => `<section><h3>${esc(s.label)}</h3><div class="grid">${s.cells.map(c => fig(c.f, `${c.skin} · ${c.view.label}`)).join('')}</div></section>`).join('');
 fs.writeFileSync(path.join(OUT, 'index.html'), `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>HUD alert lanes</title>
 <style>:root{color-scheme:dark;--bg:#0b0e12;--fg:#e8edf2;--mut:#8a96a3;--edge:#262d36}body{margin:0;padding:16px;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,sans-serif}
@@ -141,6 +178,7 @@ main{max-width:1500px;margin:0 auto}h1{font-size:22px;margin:0 0 6px}h2{font-siz
 p{margin:0 0 10px;max-width:1000px}.mut,.note-s{color:var(--mut)}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px}
 .strip{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px}.strip figure{flex:0 0 360px}figure{margin:0}img{width:100%;height:auto;display:block;border:1px solid var(--edge)}
 figcaption{font-size:12px;color:var(--mut);margin-top:3px}figcaption b{color:var(--fg)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(620px,1fr));gap:14px}.two{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .changed{border:1px dashed #b58432;background:#15130c;padding:10px 14px;margin:12px 0 18px;max-width:1000px}.changed h2{border:0;margin:0 0 4px;padding:0;font-size:16px}
 ul{margin:4px 0 10px;padding-left:20px;max-width:1000px}</style></head><body><main>
 <h1>HUD alert lanes</h1>
@@ -159,6 +197,9 @@ ${storyHtml}
 <h2>Aim tells and the kill card</h2>
 <p class="mut">The aim tell owns the centre, because it says what to do now ("release to steady"). While one is up the kill card is one row above it (KILL ×N and the newest medal); it grows back to the full card when the tell clears. The medal lines still play. Nothing covers the ammo or the vitals. Time 0 is the tell's first frame.</p>
 ${aimHtml}
+<h2>CLASH: the kill card against warnings and takeovers</h2>
+<p class="mut">Today and the PROPOSED layering (docs/announcer.md, for your pick) side by side. TODAY is the real build. PROPOSED is a mock on the same page, not built. It moves the warning pills from the kill card's band to a status rail at the bottom centre, as short headlines. A takeover (RELOADING, SWITCHING, SYNCING, REDEPLOYED, GUN STOPPED) wins the centre, and a kill that lands under it waits and draws after it. The voice is unchanged in both.</p>
+${clashHtml}
 <h2>Single moments</h2>
 ${oneHtml}
 </main></body></html>`);

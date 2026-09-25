@@ -640,6 +640,13 @@ export function startDemo({ engine, log }) {
       'live-charge-low':   [[0, 'chargeRifle'], ...live, [2300, () => ev.chargeAmmo(9)]],
       'live-charge-ok':    [[0, 'chargeRifle'], ...live, [2300, () => ev.chargeAmmo(10)]],
       'live-kill':         [...live, [2300, () => ev.killConfirm()]],
+      // docs/announcer.md "Layering (PROPOSED)": today's clashes between the kill card and the system warnings and takeovers.
+      // Each is the REAL engine: MC's kill feedback plus the link, the MC socket, the reload lever or the headset state.
+      'clash-kc-gunlost':  [...live, [2300, () => ev.killMedals(['first_blood'], 'VIPER')], [2700, 'dropGun']],                 // GUN LINK LOST fires under a kill card
+      'clash-medals-mc':   [...live, [2300, () => ev.killMedals(['first_blood'], 'VIPER')], [2900, () => ev.killMedals(['double_kill', 'killing_spree'], 'GHOST')], [3100, 'mcLost']],
+      'clash-kc-reload':   [...live, [2200, () => ev.fire(12)], [2400, 'reloadCycle'], [2700, () => ev.killMedals(['first_blood'], 'VIPER')]],
+      'clash-kc-stale':    [...live, [2300, 'dropGun'], [3300, () => ev.killMedals(['first_blood'], 'VIPER')]],                 // the vitals already STALE
+      'clash-kc-headset':  [...live, [2300, () => ev.headsetJoin('not_joined')], [3300, () => ev.killMedals(['first_blood'], 'VIPER')]],
       // one kill confirmed twice, in each order: the HERO row's source tag reads `MC · IR` or `IR · MC` (docs/announcer.md)
       'live-kill-mc-ir':   [...live, [2300, () => ev.killConfirm()], [2500, () => engine.feedFrame(`$HIR,4,15,7,3,${21 + foe.tid},0,0,*`)]],
       'live-kill-ir-mc':   [...live, [2300, () => engine.feedFrame(`$HIR,4,15,7,3,${21 + foe.tid},0,0,*`)], [2500, () => ev.killConfirm()]],
