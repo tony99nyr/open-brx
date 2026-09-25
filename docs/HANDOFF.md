@@ -52,11 +52,11 @@ on; the stage flakes fixed; F384 and F385 built (bench checks left).
 - **Desk (MVP):** the MC half of F372 after sitting C. S32 waits on Tony's two renders.
 ## Lane: brx4, the StickS3
 Stick stations are Bluetooth-only for MVP (hill, pickup, respawn); Stick IR receive, the grenade hill, revive
-counting and the SETTINGS screen are post-MVP (F338, F314, F344). 2026-09-25: sitting B's Stick rows are built on main
-(A68: the hill counts from go-live to the whistle; a locked Stick refuses RANGE; the hill tally pauses while contested;
-a -78 dBm UNPROVEN hill default; the RANGE hold timer; a faster pickup award). The Stick is flashed from main, unlocked.
-- **Next bench task:** sitting C or later: F386, F387 (serial log on, read `RANGE opened after <N> ms`), F388, the F383
-  walk at 3, 5 and 7 m, and F399's nine-claim latency re-run.
+counting and the SETTINGS screen are post-MVP (F338, F314, F344). HELD is the MVP mode and the boot default (Tony,
+2026-09-25). On main: A68 (the hill counts from go-live to the whistle; `duration_ms` ends a Stick carried out of Wi-Fi
+before START), the -75 dBm hill default, the locked-RANGE refusal, and F389-F392, F397, F398. Flashed from main, unlocked.
+- **Next bench task:** sitting C: the carried-out timed hill, F386-F388, the F383 3 m and 7 m readings, F399's claim
+  latency, F391's restart, F392's repro with the serial log, F397's MC restart.
 - **Next desk task:** F342 (a powerup or control-point game still floods the scan: a slower advert or a native filter).
 - **Resume:** a fresh worktree off `origin/main` (the old `/home/tony/brx4-l3` and `/home/tony/brx4-f333` are
   disposable). Native Windows MC for mDNS:
