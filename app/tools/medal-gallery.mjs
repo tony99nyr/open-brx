@@ -23,29 +23,31 @@ const SKINS = ['day', 'night'], SIZES = [24, 32, 48];
 const icon = (k, skin, size) => medalIcon(k, { night: skin === 'night', size, label: LABEL[k] });
 
 // ---- the fresh options for the two icons Tony called weak. ORIGINAL designs, drawn in the same 32-unit box. ----
+// Round 2 (Tony 2026-09-25): B3 the glove "looks a little fake", so a truer boxing glove: a full knuckle pad, the thumb
+// tucked along the side, a laced cuff. I2 the iron heart, but "not the line through it": three other ways to read as metal.
+const GLOVE = 'M10.6 17.6V11.2c0-3.6 2.6-5.8 6.2-5.8 3.9 0 6.6 2.6 6.6 6.4v4.9c0 2.1-1.3 3.6-3.4 3.9h-7.6c-1.1 0-1.8-.8-1.8-1.9z';
+const THUMB = gap => `stroke="${gap}" stroke-width="1.5" paint-order="stroke"`;
+const glove = ({ crease = true, laces = false, thumbBig = false }) => (c, a, gap) =>
+  `<path d="${GLOVE}" fill="${c}"/>`
+  + (crease ? `<path d="M12.4 11.8c2.6 1.3 6.9 1.3 9.6-.4" fill="none" stroke="${gap}" stroke-width="1.4" stroke-linecap="round"/>` : '')
+  + `<path d="${thumbBig ? 'M11.2 12.2c-2.6 0-3.9 1.6-3.9 3.4 0 2.2 1.8 3.8 4.4 3.8h3.6c1.2 0 2-.8 2-1.9s-.8-1.9-2-1.9h-2.6' : 'M11.2 13c-2.2 0-3.3 1.4-3.3 2.9 0 1.9 1.5 3.3 3.8 3.3h3c1 0 1.7-.7 1.7-1.6s-.7-1.6-1.7-1.6h-2.2'}z" fill="${c}" ${THUMB(gap)}/>`
+  + `<rect x="11.6" y="21" width="10.6" height="5.4" rx="1.1" fill="${a}"/>`
+  + (laces ? `<path d="M14.6 21.8l4.6 3.8M19.2 21.8l-4.6 3.8" stroke="${gap}" stroke-width="1.3" stroke-linecap="round"/>` : `<rect x="11.6" y="21" width="10.6" height="1.3" fill="${gap}" fill-opacity=".55"/>`);
+const HEART = 'M16 25.4C9.4 20.7 7 17.2 7 13.4a4.5 4.5 0 0 1 9-1.8 4.5 4.5 0 0 1 9 1.8c0 3.8-2.4 7.3-9 12z';
 const PICK = {
-  melee_kill: { title: 'BEAT DOWN (a melee finish)', opts: [
-    ['B1 · Hammer blow', 'a war hammer mid-swing, with amber impact lines', (c, a) =>
-      `<g transform="rotate(-38 16 16)"><rect x="9" y="6.4" width="14" height="6.4" rx="1.2" fill="${c}"/><rect x="14.9" y="12.4" width="2.2" height="13.6" rx=".9" fill="${c}"/></g>`
-      + `<path d="M6.4 20.6h3.4M7.2 24l2.6-1.8M10.4 26.2l1-2.8" stroke="${a}" stroke-width="1.8" stroke-linecap="round"/>`],
-    ['B2 · Takedown', 'a heavy downward strike cracking the ground', (c, a) =>
-      `<path d="M13.4 6.2h5.2v7.6h3.8L16 20.6l-6.4-6.8h3.8z" fill="${c}"/><rect x="7" y="22.4" width="18" height="2.4" rx="1" fill="${a}"/>`
-      + `<path d="M11 22.4 9.4 19.6M21 22.4l1.6-2.8" stroke="${a}" stroke-width="1.6" stroke-linecap="round"/>`],
-    ['B3 · Glove', 'a padded fighting glove, side on, with an amber cuff', (c, a) =>
-      `<path d="M11.4 9.6c0-2 1.8-3.2 4-3.2h3.2c3.2 0 5 2.4 5 5.8v4.2c0 2.4-1.5 3.9-3.6 3.9h-6.8c-1.1 0-1.8-.8-1.8-1.9z" fill="${c}"/>`
-      + `<path d="M11.4 12.6c-2.2 0-3.2 1.4-3.2 2.8 0 1.5 1.2 2.6 3.2 2.6" fill="none" stroke="${c}" stroke-width="2.2" stroke-linecap="round"/>`
-      + `<rect x="12.2" y="21.4" width="10.4" height="4" rx="1" fill="${a}"/>`],
+  melee_kill: { title: 'BEAT DOWN (a melee finish): the glove, round 2', opts: [
+    ['B3a · Glove, knuckle pad', 'upright glove: a knuckle crease across the pad, the thumb tucked along the side, a plain amber cuff', glove({})],
+    ['B3b · Glove, laced cuff', 'the same glove with a crossed lace on the cuff and no crease: the fewest lines at 24 px', glove({ crease: false, laces: true, thumbBig: true })],
+    ['B3c · Glove, mid-punch', 'the laced glove turned side-on, punching forward', (c, a, gap) => `<g transform="rotate(62 16 16)">${glove({ laces: true })(c, a, gap)}</g>`],
   ] },
-  iron_man: { title: 'IRON MAN (fewest deaths, endurance)', opts: [
-    ['I1 · Riveted plate', 'a slab of armour plate with four amber rivets', (c, a, gap) =>
-      `<path d="M9 8.4h14l1.6 3v10.4L16 25.8l-8.6-4V11.4z" fill="${c}"/><path d="M16 9.6v14.8" stroke="${gap}" stroke-width="1.4"/>`
-      + [[11.2, 12], [20.8, 12], [11.2, 19.4], [20.8, 19.4]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.4" fill="${a}"/>`).join('')],
-    ['I2 · Iron heart', 'a heart with a band of plate across it: the one who keeps going', (c, a, gap) =>
-      `<path d="M16 25C9.6 20.4 7.4 17 7.4 13.4a4.3 4.3 0 0 1 8.6-1.6 4.3 4.3 0 0 1 8.6 1.6c0 3.6-2.2 7-8.6 11.6z" fill="${c}"/>`
-      + `<path d="M8.2 16.6h15.6" stroke="${gap}" stroke-width="2.6"/><path d="M9.6 16.6h12.8" stroke="${a}" stroke-width="1.2"/>`],
-    ['I3 · Unbroken loop', 'an endless loop: a whole match without falling', (c, a) =>
-      `<path d="M16 16c-2.6-3.8-7.2-3.8-7.2 0s4.6 3.8 7.2 0 7.2-3.8 7.2 0-4.6 3.8-7.2 0z" fill="none" stroke="${c}" stroke-width="2.8" stroke-linejoin="round"/>`
-      + `<circle cx="16" cy="16" r="1.6" fill="${a}"/>`],
+  iron_man: { title: 'IRON MAN (fewest deaths): the iron heart, round 2, no line through it', opts: [
+    ['I2a · Bolted heart', 'a solid heart with six bolts set round its edge', (c, a, gap) => `<path d="${HEART}" fill="${c}"/>`
+      + [[10.6, 13.4], [13.6, 10.6], [18.4, 10.6], [21.4, 13.4], [12.8, 19], [19.2, 19]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.35" fill="${gap}"/>`).join('')],
+    ['I2b · Bevelled heart', 'a heart plate with an inner outline following its shape, and an amber highlight on the left lobe', (c, a, gap) => `<path d="${HEART}" fill="${c}"/>`
+      + `<path d="${HEART}" transform="translate(16 16.6) scale(.68) translate(-16 -16.6)" fill="none" stroke="${gap}" stroke-width="1.9"/>`
+      + `<path d="M8.9 13.2c0-2 1.4-3.4 3.2-3.4" fill="none" stroke="${a}" stroke-width="1.6" stroke-linecap="round"/>`],
+    ['I2c · Two-tone sheen', 'a solid heart with an amber sheen across the upper left, like light on polished metal', (c, a) => `<path d="${HEART}" fill="${c}"/>`
+      + `<path d="M8.4 12.2c.6-2 2.4-3.1 4.3-3 1.2.1 2.2.6 2.9 1.5l-6.6 6.6c-.6-1.2-.8-2.3-.6-3.4z" fill="${a}"/><path d="M11.3 18.1l6.8-6.8" stroke="${a}" stroke-width="1.1" stroke-linecap="round"/>`],
   ] },
 };
 
@@ -96,8 +98,8 @@ figure{margin:10px 0}figure img{max-width:100%;height:auto;border:1px solid #223
 <h1>Open BRX medal and award icons: style B (roundel)</h1>
 <p class="legal">Original designs, not Halo's art. No shape, layout or colour scheme is copied from Bungie's medals. Every icon is inline SVG with no fonts or external files.</p>
 <p>Only the recap uses the icons: the phone's AWARDS and PLAYERS tabs, and Mission Control's recap (with its words kept beside them). The in-game kill card and alerts keep their words.</p>
-<p class="q">Pick one BEAT DOWN and one IRON MAN (for example "B2, I1"). Until then both draw a placeholder initial.</p></header>
-<section id="pick"><h2>Pick one</h2>${pick('melee_kill')}${pick('iron_man')}</section>
+<p class="q">Round 2: pick one BEAT DOWN glove and one IRON MAN heart (for example "B3b, I2a"). Until then both draw a placeholder initial.</p></header>
+<section id="pick"><h2>Pick one (round 2)</h2>${pick('melee_kill')}${pick('iron_man')}</section>
 <section id="set"><h2>The set</h2>
 ${SKINS.map(skin => `<div class="plate ${skin}"><h3>${skin === 'day' ? 'Day' : 'Night (red and amber only, on #120505)'}</h3>
   <h4>Escalation strip: double kill to killionaire</h4>
