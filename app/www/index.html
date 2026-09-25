@@ -117,7 +117,15 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
    inline by hud.js); night overrides it to the dim red below. Type floors: labels 11 px, actions 14 px. ---- */
 /* bottom 12 (polish r1 UX M1, r2: at least 4 px clear): below the QA-04 hit weapon line (.hitwpn, top 296) and the hit tag above it, so a hit taken
    at a station never covers the hint; at night the NIGHT OPS label steps aside for it (hud.js). */
-.puhint{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);pointer-events:none}
+/* F396 (bench 2026-09-25): `bottom` tracks `--rail` (hud.js `_railFit`), which is the CURRENT warning-pill rail height --
+   volatile right after a spawn while the gun link/headset/MC pills are still settling (GUN LINK LOST is a taller pill
+   than WEAPONS HOT). `bottom` itself stays a snap, never a slide: a slide would drag the hint's own box THROUGH the
+   QA-04 hit-weapon line's fixed band on the way past it (UX M1's own no-overlap rule), so the fix is `.repin`, a brief
+   opacity dip hud.js triggers only when `--rail` actually changes value under an already-shown hint (never on the
+   hint's first appearance). The hint re-settles already in its new, correct spot rather than sliding through one.
+   The NIGHT OPS label (`.nightlab`, below) rides the same `--rail` and gets the identical `.repin` treatment. */
+.puhint{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);pointer-events:none;transition:opacity .12s ease}
+.puhint.repin,.nightlab.repin{opacity:0}
 .nightlab.pu{display:none!important}
 .puhint:empty{display:none}
 /* The band between the vitals (right edge 336) and the frame's centre is 86 px, so the hint is at most 166 px wide and
@@ -412,7 +420,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 [data-env="night"] .ammo .mag{font-style:normal;font-size:76px;text-shadow:none;color:var(--num)}
 [data-env="night"] .ammo .res{font-size:20px;color:var(--num)}   /* QA-22: "/384" was --mut, 2.7:1 */
 [data-env="night"] .stats{display:flex;top:30px;left:36px;right:auto;bottom:auto;font-size:11px;letter-spacing:.24em}   /* was stacked on .ammo's corner (brx-opus night audit 2026-08-26) */
-.nightlab{display:none;position:absolute;bottom:34px;left:50%;transform:translateX(-50%);font-size:11px;letter-spacing:.34em;color:var(--mut);font-weight:600}
+.nightlab{display:none;position:absolute;bottom:34px;left:50%;transform:translateX(-50%);font-size:11px;letter-spacing:.34em;color:var(--mut);font-weight:600;transition:opacity .12s ease}
 [data-env="night"] .nightlab{display:block}
 [data-env="night"] .hplab{display:inline;font-size:11px;letter-spacing:.24em;color:var(--mut);font-weight:600}
 .hplab{display:none}
