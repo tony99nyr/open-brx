@@ -316,6 +316,9 @@ const MIN_RESPAWN_S = 3;
 const MEDAL_GAP_MS = 2000;       // A11.4: medal lines are 1.5-2.5 s; play them back to back, not on top of each other   // A11: no two LED bursts inside a second (three flashes per second is the ceiling)
 const MUST_HEAR_MAX_STOPS = 4;  // round 3 H1: at most this many `$PLAYX,0` before a must-hear line (the shield loop + 3 clips)
 const KILL_CARD_MS = 1800;      // hud.js `_kill`'s card hold: MC's kill card owns the announcer slot at least this long
+// F352 (design pass, stage only): the kill card variants under review, and the slot each holds. `engine.killCard` is null
+// in a real match, so the shipped card and its 1.8 s / 2.0 s slots are unchanged until Tony picks one.
+export const KILL_CARD_VARIANT_MS = { a: 2500, b: 2500, c: 3500, l1: 2500, l2: 2500, ln: 2500 };
 const ECHO_WINDOW_MS = 1500;     // how long after the last head frame is written the node waits for the gun's echo
 const HEAD_WRITE_CAP_MS = 20000; // a head write that has not settled by now acks `no_echo` anyway
 const CONFIG_QUERY_MS = 2600;    // v4.32 can trail the `$QUERY` status body by about 2 s
@@ -868,6 +871,7 @@ export class Engine {
     this.rewriteHeadAtT10 = false;  // start-sequence §3 fallback (bench-gated)
     this._headRewritten = false;
     this.moment = null;             // transient HUD moment: {kind, at, data}
+    this.killCard = null;           // F352: a kill card variant under review ('a' | 'b' | 'c'), set by the stage only; null = the shipped card
     this.card = null;               // C2: the announcer's own card ({kind: 'kill'|'alert', at, data}); only `_card` writes it (docs/announcer.md)
     this.probeSent = false;
     this.night = false;             // the HUD skin on screen (true = night). The player's, not the venue's: see setNight
@@ -2424,14 +2428,16 @@ export class Engine {
   /** docs/announcer.md: an MC alert (or the node's own clock warning) as ONE announcer item: its cue, its LED burst
    *  and its HUD banner start together when the queue reaches it, never on top of another line. A lead change is
    *  its own kind (it outranks every other alert, Tony); every other alert is `alert`. */
-  _announceAlert(evKind, text, { hud = true, subject = null } = {}) {
+  _announceAlert(evKind, text, { hud = true, subject = null, src = 'PHONE' } = {}) {
+    if (evKind === 'lead_taken' || evKind === 'lead_lost') this._laneObj('lead', { kind: evKind, text: text || evKind, src });
+    else if (evKind !== 'kill' && hud) this._laneFeed({ kind: 'alert', text: text || evKind, src });
     // A kill line is said for exactly two sources: MC's `feedback{kind:'kill'}` and an S57 DOWN_BY naming this player.
     // An alert that names `kill` is neither, so it must not borrow the kill pool.
     if (evKind === 'kill') { this.log('alert kill ignored: a kill confirm comes only from MC feedback or an S57 DOWN_BY naming me', 'li'); return null; }
     const kind = evKind === 'lead_taken' || evKind === 'lead_lost' ? evKind : 'alert';
     const pick = this._pickCue(evKind), cm = this.frames && this.frames.cue_ms;
     const lg = (this._lightGen = this._lightGen || 0);
-    return this._ann.push({ kind, key: kind === 'alert' ? `alert:${evKind}` : 'lead', audioMs: clipMs(pick.frame, cm ? cm[evKind] : undefined),
+    return this._ann.push({ kind, key: kind === 'alert' ? `alert:${evKind}` : 'lead', text: text || evKind, audioMs: clipMs(pick.frame, cm ? cm[evKind] : undefined),
       ...(hud ? {} : { bannerMs: 0 }),
       ok: () => this._lightGen === lg,
       play: ({ muted }) => {
@@ -2852,6 +2858,7 @@ export class Engine {
     // cuts our own hill callout. Behind any other item (a kill confirm, a lead change) it waits like everything else.
     const cue = this._hillCue(kind);
     const card = kind === 'hill_captured' || kind === 'hill_lost';
+    if (card) this._laneObj('hill', { kind, src: /control point/.test(why) ? 'BLE' : 'IR 15' });
     if (!cue.frame && !card) return;
     this._ann.push({ kind: card ? kind : 'alert', key: 'hill', preemptKey: true, stopsOwn: true, audioMs: cue.frame ? cue.ms : 0, ...(card ? {} : { bannerMs: 0 }),
       ok: () => this._hillAudioOn(),
@@ -2988,6 +2995,7 @@ export class Engine {
     // ("YELLOW DOWN · BY GHOST"). Read-only presentation, present only when the word named a killer.
     const by = isDownBy ? this.nameOf(player) : null;
     const kind = teammate ? 'teammate_down' : 'enemy_down';
+    this._laneFeed({ kind, name: isDownBy ? null : this.nameOf(player), team: TEAM_KEY[victimTeam] || null, by, src: 'IR 15' });
     const line = teammate ? null : `$PLAY,,4,6,${IR_CALLOUT.ENEMY_DOWN_CUE},,,,*`;   // row 3: a teammate gets the HUD chip only, no sound
     const it = this._ann.push({ kind, src: 'ir', audioMs: line ? clipMs(line) : 0,
       callout: { kind, name: isDownBy ? null : this.nameOf(player), team: TEAM_KEY[victimTeam] || null, at: now, ...(by ? { by } : {}) },
@@ -3026,14 +3034,17 @@ export class Engine {
     const tid = Number.isInteger(victimTeam) ? victimTeam : null;   // pair on the numeric tid: MC's team_id is not a colour key
     const mcAlreadyConfirmed = this._takeKillMatch(this._mcKillOpen, tid, now);
     let it = null;
+    if (this.killCard === 'ln') {
+      if (mcAlreadyConfirmed && mcAlreadyConfirmed.lane) this._laneUpdate(mcAlreadyConfirmed.lane, { src: 'MC · IR 15' });
+    }
     if (!mcAlreadyConfirmed) {
-      const entry = { at: now, team: tid };
+      const entry = { at: now, team: tid, lane: this._laneKill({ victim: null, team: callout.team, src: 'IR 15' }) };
       this._irKillOpen.push(entry);
       const pick = this._pickCue('kill');
       const lg = (this._lightGen = this._lightGen || 0);
       this._write([SFLASH], 'S57 IR kill confirmed');   // the sight flash is the gun's light: at once
       // docs/announcer.md: the line and the KILL CONFIRMED card are one top-priority announcer item
-      it = this._ann.push({ kind: 'kill_confirmed', src: 'ir', audioMs: pick.frame ? 120 + clipMs(pick.frame) : 0, bannerMs: 2000, callout,
+      it = this._ann.push({ kind: 'kill_confirmed', src: 'ir', audioMs: pick.frame ? 120 + clipMs(pick.frame) : 0, bannerMs: this._killCardMs(2000), callout,
         ok: () => this._lightGen === lg,
         onDrop: () => { this._irKillOpen = this._irKillOpen.filter(x => x !== entry); },   // unheard: MC's twin must speak for itself
         play: ({ muted }, self) => {
@@ -4270,6 +4281,26 @@ export class Engine {
     const w = ws && (ws[this.activeSlot] || ws[0]);
     return w ? w.weapon_id : null;
   }
+  /** F352: the kill card's slot (ms). The shipped value unless the stage picked a variant. */
+  _killCardMs(shipped = KILL_CARD_MS) { return KILL_CARD_VARIANT_MS[this.killCard] || shipped; }
+  /** F352: the variant card's extra data. MC's `feedback{kind:'kill'}` names no weapon, so the variant shows the weapon
+   *  this gun holds when the confirm arrives (a proxy: a swap between the killing shot and the confirm names the wrong one). */
+  /** F352 three-lane proposal (`killCard === 'ln'`, stage only): what the HUD shows at the moment each event ARRIVES,
+   *  apart from the announcer queue, which still says one line at a time. hero = my kills in a spree (a kill within
+   *  LANE_HERO_MS of the last one extends it); obj = the persistent badges, one per key (lead, hill), the newest wins;
+   *  feed = everything else, newest first. Presentation only: nothing here writes the gun or touches the score. */
+  _laneKill(k) {
+    if (this.killCard !== 'ln') return null;
+    const L = this._lanes || (this._lanes = { hero: null, obj: {}, feed: [] }), now = this.now();
+    if (!L.hero || now - L.hero.lastAt > 2500) L.hero = { id: now, kills: [], lastAt: now };
+    const row = { victim: k.victim || null, team: k.team || null, medals: (k.medals || []).slice(), src: k.src, at: now };
+    L.hero = { ...L.hero, kills: [...L.hero.kills, row], lastAt: now };
+    this._changed(); return row;
+  }
+  _laneUpdate(row, patch) { if (!row || !this._lanes || !this._lanes.hero) return; Object.assign(row, patch); this._lanes.hero = { ...this._lanes.hero }; this._changed(); }
+  _laneObj(key, v) { if (this.killCard !== 'ln') return; const L = this._lanes || (this._lanes = { hero: null, obj: {}, feed: [] }); L.obj = { ...L.obj, [key]: { ...v, at: this.now() } }; this._changed(); }
+  _laneFeed(v) { if (this.killCard !== 'ln') return; const L = this._lanes || (this._lanes = { hero: null, obj: {}, feed: [] }); L.feed = [{ ...v, at: this.now() }, ...L.feed].slice(0, 6); this._changed(); }
+  _killCardExtra() { return this.killCard ? { weapon: this.weaponName || null, weapon_id: this._puOnHeavy() ? this._puHeld.weapon_id : this._activeWeaponId() } : {}; }
   /** S42 × A44/A47/F15: stand the accuracy writer down while a write that carries its own `$AMMO` is in
    *  flight (spawn, revive, operator RESYNC GUN, stun disarm, stun restore, reconcile re-arm). Any verify
    *  still open is DROPPED here -- an `$ALCD` answering THAT write proves nothing about ours -- and ONLY
@@ -4772,12 +4803,17 @@ export class Engine {
     const vt = vtRow && Number.isInteger(vtRow.tid) ? vtRow.tid : null;
     const irMatch = body.kind === 'kill' ? this._takeKillMatch(this._irKillOpen, vt, this.now()) : null;
     const irAlreadyConfirmed = !!irMatch;
+    let laneRow = null;
+    if (body.kind === 'kill' && this.killCard === 'ln') {
+      if (irMatch && irMatch.lane) this._laneUpdate(laneRow = irMatch.lane, { victim: this.victimName(body), medals: Array.isArray(body.medals) ? body.medals.slice() : [], src: 'IR 15 · MC' });
+      else laneRow = this._laneKill({ victim: this.victimName(body), team: body.victim_team, medals: Array.isArray(body.medals) ? body.medals : [], src: 'MC' });
+    }
     let mcEntry = null;
     if (body.kind === 'kill') {
       if (this.score) this.score = { ...this.score, kills: (this.score.kills || 0) + 1 };
       else this.score = { kills: 1 };
       this.scoreAt = this.now();
-      if (!irAlreadyConfirmed) this._mcKillOpen.push(mcEntry = { at: this.now(), team: vt });   // an unmatched MC confirm waits for its IR twin
+      if (!irAlreadyConfirmed) this._mcKillOpen.push(mcEntry = { at: this.now(), team: vt, lane: laneRow });   // an unmatched MC confirm waits for its IR twin
     } else if (!cue) { this._eventLeds(body.kind); this._changed(); return; }
     // docs/announcer.md: the lines, the LED burst and the kill card are ONE announcer item (`kill_confirmed`, the top
     // priority), so a lead change or anything else MC sends with this kill waits for it instead of playing on top.
@@ -4792,8 +4828,8 @@ export class Engine {
     } else if (ir && !medalCues.length) {
       // The IR confirm is ON AIR: MC's named card replaces its card in place (no second line, no second flash), and
       // holds the slot for the card's own hold. Nothing new to say, so nothing waits.
-      this._card({ kind: 'kill', at: this.now(), data: { victim_team: body.victim_team, victim: this.victimName(body), medals: [], ir_paired: true, ir_at: irAt } });
-      this._ann.extend(ir, this.now() + KILL_CARD_MS);
+      this._card({ kind: 'kill', at: this.now(), data: { victim_team: body.victim_team, victim: this.victimName(body), medals: [], ir_paired: true, ir_at: irAt, ...this._killCardExtra() } });
+      this._ann.extend(ir, this.now() + this._killCardMs());
       this._eventLeds(body.kind);
       this._changed();
       return;
@@ -4848,7 +4884,7 @@ export class Engine {
         // `ir_paired` (presentation only): an IR KILL CONFIRMED card already flashed for this kill, so the HUD must not
         // flash and buzz a second time for it (QA polish round 2). `ir_at` is that card's own `callout.at`, so the HUD
         // matches the exact card and an IR card whose MC twin never came can never stand in for it.
-        if (isKill) this._card({ kind: 'kill', at: this.now(), data: { victim_team: body.victim_team, victim: this.victimName(body), medals: medalList, ir_paired: irAt != null, ir_at: irAt } });
+        if (isKill) this._card({ kind: 'kill', at: this.now(), data: { victim_team: body.victim_team, victim: this.victimName(body), medals: medalList, ir_paired: irAt != null, ir_at: irAt, ...this._killCardExtra() } });
         this._changed();
       } });
     if (mcEntry) mcEntry.item = item;
@@ -4866,7 +4902,7 @@ export class Engine {
     const me = this.player && this.player.player_id;
     if (body.kind === 'infected' && this._turned && body.player_id_subject && body.player_id_subject === me) return;   // already played on the flip (HUD-driven); MC's copy is for the others
     // docs/announcer.md: the cue, the LED burst and the banner are one announcer item; the state below is not
-    this._announceAlert(body.kind, body.text, { hud: body.hud !== false, subject: body.player_id_subject || null });
+    this._announceAlert(body.kind, body.text, { hud: body.hud !== false, subject: body.player_id_subject || null, src: 'MC' });
     // A11.6 carrier blink: MC names who holds it (`carrier`) and whose flag it is (`flag_tid`)
     if (body.kind === 'objective_taken' && me && body.carrier === me) this._carrier(true, body.flag_tid != null ? body.flag_tid : (this.team ? this.team.tid : 0));
     if ((body.kind === 'objective_scored' || body.kind === 'flag_returned') && this.carrying != null && (!body.carrier || body.carrier === me)) this._carrier(false);
@@ -6893,6 +6929,10 @@ export class Engine {
       beacon: this.beacon || null,
       callout: this.callout || null,   // S57: {kind: 'kill_confirmed'|'enemy_down'|'teammate_down', name, team, at, by?, victim?} — `victim` arrives with the paired DOWN word — cleared in tick() above; `by` = the killer a DOWN_BY word named (QA-05)
       hillCallout: this.hillCallout || null,
+      killCard: this.killCard || null,   // F352: the stage's kill card variant (null in a real match)
+      // F352 L1/L2: the lead change on air or waiting behind the kill, so the combined card can show both at once
+      lanes: this.killCard === 'ln' && this._lanes ? this._lanes : null,   // F352 three-lane proposal
+      killCardLead: this.killCard === 'l1' || this.killCard === 'l2' ? (() => { const it = this._ann.find(x => x.kind === 'lead_taken' || x.kind === 'lead_lost'); return it ? { kind: it.kind, text: it.text || it.kind } : null; })() : null,
       announcer: this._ann.view(now),   // docs/announcer.md: {kind, at, ms, queued: [kind…]}: what is on air and what waits (null when idle)
       // A56 (docs/spec/powerups.md): null unless the config carries powerup items. `powerup` = {hint, held, overshield};
       // `powerupSpawn` = {name, color, at} for the "<ITEM> AVAILABLE" card; `powerupGrant` = {name, color, kind, at, replaced?};

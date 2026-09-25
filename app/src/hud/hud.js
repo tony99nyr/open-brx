@@ -1851,6 +1851,7 @@ export class Hud {
     // transient moments
     // C2 (docs/announcer.md): the kill card and the alert banner come from `st.card`, which only the engine's announcer
     // queue writes, so a hit or a stun landing in the same render cannot swallow them. `st.moment` keeps the rest.
+    if (st.killCard === 'ln') this._lanes(st);   // F352 three-lane proposal (stage only)
     const cd = st.card !== undefined ? st.card : (st.moment && (st.moment.kind === 'kill' || st.moment.kind === 'alert') ? st.moment : null);   // an older engine has no `card`
     if (cd && cd.at !== this._cardAt) {
       this._cardAt = cd.at;
@@ -1910,6 +1911,8 @@ export class Hud {
   // down (enemy vs teammate, ours vs theirs). Night: the same card in dim red, no whiteout, no motion.
   // One node for every kind (`_swap('co')`): the newest event replaces the card in place, it never stacks.
   _co(st, spec) {
+    if (st.killCard === 'ln') return 0;   // F352 three lanes: every card is drawn by `_lanes`
+    if (spec.kc) return this._coKc(st, spec);   // F352: a kill card variant under review (stage only)
     const tk = spec.team && TEAM_COLOR[spec.team] ? spec.team : null;
     const el = document.createElement('div');
     el.className = 'mo co' + (spec.kill || spec.killStyle ? ' kill' : '');
@@ -1928,6 +1931,134 @@ export class Hud {
     Object.assign(node.dataset, { kind: spec.kind, tone: spec.tone, src: spec.src });   // a reused node keeps its old data-* otherwise
     if (spec.color) node.style.setProperty('--item', itemColor(spec.color)); else node.style.removeProperty('--item');
     return hold;
+  }
+  /** F352 (design pass, stage only; `st.killCard`): the kill card variants Tony reviews before one ships.
+   *  A: today's card, heavier, held 2.5 s. B: a card readable at arm's length (the phone rides the gun's rail): a large
+   *  KILL mark and the victim's name (no weapon: Tony, "we know it as the player"), held 2.5 s. C: B plus the medal line, held 3.5 s. The engine's slot is
+   *  the same number (`KILL_CARD_VARIANT_MS`), so the card fades inside its slot and the next banner never shares the
+   *  screen with it. An empty value (no weapon, no medal) draws nothing; the running kill count stays in the corner. */
+  _coKc(st, spec) {
+    const kc = spec.kc, big = kc !== 'a', combo = kc === 'l1' || kc === 'l2';
+    const tk = spec.team && TEAM_COLOR[spec.team] ? spec.team : null;
+    const el = document.createElement('div');
+    el.className = `mo co kill kc kc-${kc}`;
+    el.dataset.kind = spec.kind; el.dataset.tone = spec.tone; el.dataset.src = spec.src;
+    const sw = tk ? `<i class="sw" style="background:${TEAM_COLOR[tk]}"></i>` : '';
+    const nm = `<span class="nm vt">${esc(String(spec.name).toUpperCase())}</span>`;
+    // Tony 2026-09-24: no "+1 ELIMINATION · K 1" (that is assumed); a small line naming the channel that confirmed it.
+    const src = `<span class="src">${spec.src === 'ir' ? 'IR 15' : spec.irPaired ? 'IR 15 · MC' : 'MC'}</span>`;
+    const medals = kc === 'c' || combo ? (spec.medals || []).filter(k => MEDAL_LABEL[k]) : [];
+    if (!big) {
+      el.innerHTML = `<div class="cob"><div class="row"><span class="tag"><span class="unskew">${esc(spec.tag)}</span></span>${sw}${nm}</div>`
+        + `${src}</div>`;
+    } else {
+      el.innerHTML = `<div class="cob"><div class="kx"><span class="ki">${DS.ICON.kill}</span><span class="kw">KILL</span></div>`
+        + `<div class="row">${sw}${nm}</div>`
+        + `${medals.length ? `<div class="medals">${medals.map(m => `<span class="medal ${esc(m)}"><span class="unskew">${MEDAL_LABEL[m]}</span></span>`).join('')}</div>` : ''}${src}</div>`;
+      if (combo && st.killCardLead) this._kcLeadInto(el, st, st.killCardLead);
+    }
+    if (spec.kill) { this._flash(); this.h.onHaptic && this.h.onHaptic('kill'); }
+    // The slot (`st.announcer.ms`) is the card's whole life: full for slot - 300, then a 300 ms fade that ends as the slot does.
+    const slot = { a: 2500, b: 2500, c: 3500, l1: 2500, l2: 2500 }[kc];
+    // L1/L2 with a lead change waiting: the card stays through the lead line too (`_kcLead` sets the real end when the lead's
+    // slot opens); the fallback end covers a lead item the queue drops unplayed.
+    const hold = Math.max(slot - 300, this._annHold(st, 300)) + (combo && st.killCardLead ? 2500 : 0);
+    const node = this._swap('co', el, hold, hold + 300);
+    Object.assign(node.dataset, { kind: spec.kind, tone: spec.tone, src: spec.src, kcHold: String(hold + 300) });
+    node.style.removeProperty('--item');
+    return hold + 300;
+  }
+  /** F352 three-lane proposal (stage only). HERO: my kill and my newest medal, big and centred over the HUD; a spree
+   *  builds (the newest medal big, the earlier ones as a fading ladder) and holds 2.5 s after the last kill. OBJECTIVE:
+   *  one badge per key (lead, hill) on the right, up until the next one of its key replaces it. FEED: a small ticker on the
+   *  left for everything else, 4 s a row. Every item has its source line. Drawn when each event ARRIVES; the voice
+   *  still says one line at a time through the announcer queue. */
+  _lanes(st) {
+    const L = st.lanes; let root = this.frame.querySelector('#lanes');
+    if (!root) { root = document.createElement('div'); root.id = 'lanes'; this.frame.appendChild(root); }
+    if (!L || !(st.phase === 'live')) { root.innerHTML = ''; return; }
+    const now = Date.now(), HOLD = 2500, FEED = 4000;
+    const ML = { ...MEDAL_LABEL, killamanjaro: 'KILLAMANJARO' };
+    const srcl = t => t ? `<span class="lsrc">${esc(t)}</span>` : '';
+    let hero = '';
+    const h = L.hero;
+    if (h && now - h.lastAt < HOLD + 300) {
+      const last = h.kills[h.kills.length - 1];
+      const lastM = (last.medals || []).filter(m => ML[m]), big = lastM.slice(-1);   // the newest medal big; the rest go on the ladder
+      const ladder = [...h.kills.slice(0, -1).flatMap(k => (k.medals || []).filter(m => ML[m])), ...lastM.slice(0, -1)].reverse();
+      const older = ladder.slice(0, 3), more = ladder.length - older.length;
+      const tk = last.team && TEAM_COLOR[last.team] ? last.team : null;
+      const name = last.victim || `${tk ? tk.toUpperCase() : 'ENEMY'} OPERATIVE`;
+      hero = `<div class="lh${now - h.lastAt >= HOLD ? ' out' : ''}" data-n="${h.kills.length}"><div class="lhk">${DS.ICON.kill}<span>KILL</span>${h.kills.length > 1 ? `<span class="lhx tab">×${h.kills.length}</span>` : ''}</div>`
+        + `<div class="lhn">${tk ? `<i style="background:${TEAM_COLOR[tk]}"></i>` : ''}<span class="vt">${esc(String(name).toUpperCase())}</span></div>`
+        + (big.length ? `<div class="lhm">${big.map(m => `<span class="medal ${esc(m)}" data-at="${last.at}"><span class="unskew">${ML[m]}</span></span>`).join('')}</div>` : '')
+        + (older.length ? `<div class="lhl">${older.map((m, i) => `<span class="lm ${esc(m)}" style="opacity:${(1 - i * .2).toFixed(2)}">${ML[m]}</span>`).join('')}${more > 0 ? `<span class="lm more">+${more}</span>` : ''}</div>` : '')
+        + srcl(last.src) + '</div>';
+    }
+    const tk = st.teamKey && TEAM_COLOR[st.teamKey] ? st.teamKey : null;
+    const obj = ['lead', 'hill'].map(k => L.obj && L.obj[k]).filter(Boolean).map(o => {
+      const lost = o.kind === 'lead_lost' || o.kind === 'hill_lost', lead = o.kind.startsWith('lead');
+      const col = lost ? 'var(--bad)' : (tk ? TEAM_COLOR[tk] : 'var(--glow)');
+      const icon = lead ? `<svg viewBox="0 0 16 16"><path d="${lost ? 'M2 5h12L8 13z' : 'M2 11h12L8 3z'}"/></svg>` : `<svg viewBox="0 0 16 16"><path d="M4 1h1.6v14H4zM5.6 2h8l-2.2 3.2 2.2 3.2h-8z"/></svg>`;
+      const top = lead ? (lost ? 'LOST THE LEAD' : 'TAKES THE LEAD') : (lost ? 'HILL LOST' : 'HILL CAPTURED');
+      return `<div class="lo${now - o.at > 4000 ? ' settled' : ''}${lost ? ' lost' : ''}" style="--lc:${col}">${icon}<span class="lot"><span class="lok"><span>${lead ? (tk ? tk.toUpperCase() : 'YOUR TEAM') : 'OBJECTIVE'}</span>${srcl(o.src)}</span><span class="low">${top}</span></span></div>`;
+    }).join('');
+    const feed = (L.feed || []).filter(f => now - f.at < FEED + 300).slice(0, 3).map(f => {
+      const txt = f.kind === 'alert' ? f.text : `${f.name || `${f.team ? f.team.toUpperCase() : ''} ${f.kind === 'teammate_down' ? 'TEAMMATE' : 'OPERATIVE'}`} DOWN${f.by ? ' · BY ' + f.by : ''}`;
+      const col = f.kind === 'teammate_down' ? 'var(--warn)' : f.kind === 'enemy_down' ? 'var(--ok)' : 'var(--glow)';
+      return `<div class="lf${now - f.at >= FEED ? ' out' : ''}" style="--lc:${col}"><i></i><span class="lft">${esc(String(txt).toUpperCase())}</span>${srcl(f.src)}</div>`;
+    }).join('');
+    const html = `${hero ? `<div class="lhs">${hero}</div>` : ''}<div class="los">${obj}</div><div class="lfs">${feed}</div>`;
+    if (html !== this._lanesHtml) {
+      const heroKey = h ? `${h.id}:${h.kills.length}` : '';
+      root.innerHTML = html; this._lanesHtml = html;
+      if (heroKey && heroKey !== this._lanesHero) { this._lanesHero = heroKey; if (h && h.kills.length) { this._flash(); this.h.onHaptic && this.h.onHaptic('kill'); } }
+    }
+    // re-render at the next expiry (hero fade, feed row, badge settling)
+    const due = [h ? h.lastAt + HOLD : 0, h ? h.lastAt + HOLD + 300 : 0, ...(L.feed || []).flatMap(f => [f.at + FEED, f.at + FEED + 300]), ...Object.values(L.obj || {}).map(o => o.at + 4000)].filter(t => t > now);
+    clearTimeout(this._lanesT);
+    if (due.length) this._lanesT = setTimeout(() => this._lanes(this._lastSt || st), Math.min(...due) - now + 10);
+  }
+  /** F352 L1/L2: the lead change drawn WITH the kill. L1: a team-coloured strip inside the kill card. L2: a compact
+   *  badge on the right beside it. Both show from the kill's first frame; the lead LINE still plays after the kill line. */
+  _kcLeadHtml(st, lead, kc) {
+    const tk = st.teamKey && TEAM_COLOR[st.teamKey] ? st.teamKey : null, lost = lead.kind === 'lead_lost';
+    const col = tk ? TEAM_COLOR[tk] : 'var(--glow)', ink = tk ? TEAM_INK[tk] : '#04121e';
+    const arrow = `<svg viewBox="0 0 16 16" class="la"><path d="${lost ? 'M2 5h12L8 13z' : 'M2 11h12L8 3z'}"/></svg>`;
+    if (kc === 'l1') return `<div class="lstrip${lost ? ' lost' : ''}" style="--lc:${col};--li:${ink}">${arrow}<span class="unskew">${esc(String(lead.text).toUpperCase())}</span></div>`;
+    return `<div class="lbadge${lost ? ' lost' : ''}" style="--lc:${col};--li:${ink}"><span class="lt">${tk ? esc(tk.toUpperCase()) : 'YOUR TEAM'}</span>${arrow}<span class="lw">${lost ? 'LOST' : 'TAKES'}</span><span class="lw2">THE LEAD</span></div>`;
+  }
+  _kcLeadInto(el, st, lead) {
+    if (el.querySelector('.lstrip,.lbadge')) return;
+    const kc = el.classList.contains('kc-l1') ? 'l1' : 'l2', html = this._kcLeadHtml(st, lead, kc);
+    if (kc === 'l1') { const kx = el.querySelector('.cob .kx'); if (kx) kx.insertAdjacentHTML('beforebegin', html); else el.querySelector('.cob').insertAdjacentHTML('afterbegin', html); }
+    else el.insertAdjacentHTML('beforeend', html);
+    el.classList.add('haslead');
+  }
+  /** F352 L1/L2: the lead change's own turn in the queue. With the kill card still up it draws no second banner: the
+   *  card (which already shows the lead) holds on through the lead line. Alone (a teammate's kill), it draws the lead in
+   *  the layout's own style. Returns false when the variant does not apply. */
+  _kcLead(st, d) {
+    const kc = st.killCard;
+    if (!(kc === 'l1' || kc === 'l2') || !(d.kind === 'lead_taken' || d.kind === 'lead_lost')) return false;
+    const lead = { kind: d.kind, text: d.text || d.kind };
+    const hold = Math.max(2200 - 300, this._annHold(st, 300));
+    const rec = this._overlays && this._overlays.co;
+    if (rec && rec.el.isConnected && rec.el.classList.contains('kc') && !rec.el.classList.contains('out')) {
+      this._kcLeadInto(rec.el, st, lead);
+      clearTimeout(rec.t1); clearTimeout(rec.t2);
+      rec.t1 = setTimeout(() => rec.el.classList.add('out'), hold);
+      rec.t2 = setTimeout(() => { rec.el.remove(); if (this._overlays.co === rec) delete this._overlays.co; }, hold + 300);
+      rec.el.dataset.kcLeadHold = String(hold + 300);
+      return true;
+    }
+    const el = document.createElement('div');
+    el.className = `mo co kc kc-${kc} leadonly`; el.dataset.kind = d.kind; el.dataset.tone = 'ours'; el.dataset.src = 'mc';
+    el.innerHTML = kc === 'l1' ? `<div class="cob">${this._kcLeadHtml(st, lead, 'l1')}<span class="src">MC</span></div>` : this._kcLeadHtml(st, lead, 'l2').replace(/<\/div>$/, '<span class="src">MC</span></div>');
+    const node = this._swap('co', el, hold, hold + 300);
+    Object.assign(node.dataset, { kind: d.kind, tone: 'ours', src: 'mc' });
+    this.h.onHaptic && this.h.onHaptic('tap');
+    return true;
   }
   /** docs/announcer.md: the engine's announcer queue hands out one slot at a time, and `st.announcer.ms` is the slot on
    *  air. A card or banner that the slot is for holds at least that long less its own fade, so it shows while its line
@@ -1950,7 +2081,8 @@ export class Hud {
       // it is richer, so the IR word leaves it alone.
       if (co.kind === 'kill_confirmed') {
         if (!(this._coMcUntil > Date.now())) (this._coIrKills = this._coIrKills || []).push(co.at);   // the card's own engine `at`: MC's twin names it (`ir_at`)
-        if (!(this._coMcUntil > Date.now())) this._co(st, { kind: 'kill_confirmed', src: 'ir', tone: 'enemy', kill: true, tag: 'KILL CONFIRMED', name: op, team, sub: 'CONFIRMED BY THEIR GUN · MC KEEPS THE SCORE', hold: 2000 });
+        if (!(this._coMcUntil > Date.now())) this._co(st, { kind: 'kill_confirmed', src: 'ir', tone: 'enemy', kill: true, tag: 'KILL CONFIRMED', name: op, team, sub: 'CONFIRMED BY THEIR GUN · MC KEEPS THE SCORE', hold: 2000,
+          ...(st.killCard ? { kc: st.killCard, weapon: st.weapon || null, weaponId: st.weaponId || null } : {}) });
       } else {
         const mate = co.kind === 'teammate_down';
         this._co(st, { kind: co.kind, src: 'ir', tone: mate ? 'mate' : 'enemy', tag: mate ? 'TEAMMATE DOWN' : 'ENEMY DOWN',
@@ -2001,7 +2133,8 @@ export class Hud {
     const irFirst = i >= 0;
     if (irFirst) this._coIrKills.splice(i, 1);
     const hold = this._co(st, { kind: 'kill', src: 'mc', tone: 'enemy', kill: !irFirst, killStyle: true, tag: 'KILL CONFIRMED', name: d.victim || (vk.toUpperCase() + ' OPERATIVE'), team: vk,
-      sub: `+1 ELIMINATION · K ${st.kills != null ? st.kills : ''} · MISSION CONTROL`, medals: Array.isArray(d.medals) ? d.medals : [], hold: 1800 });
+      sub: `+1 ELIMINATION · K ${st.kills != null ? st.kills : ''} · MISSION CONTROL`, medals: Array.isArray(d.medals) ? d.medals : [], hold: 1800,
+      ...(st.killCard ? { kc: st.killCard, weapon: d.weapon || null, weaponId: d.weapon_id || null, irPaired: !!d.ir_paired } : {}) });
     this._coMcUntil = Date.now() + hold;
   }
   /** The death screen's callouts (deathscreen.js): damage taken and dealt, kills, time alive. */
@@ -2093,6 +2226,8 @@ export class Hud {
   /** A11.4 game-event alert: a full-width banner, stronger than a hit, weaker than KILL / DOWN, ~2.5 s. Renders at night too (dim). */
   _alert(st, m) {
     const d = (m.data) || {}; const fam = ALERT_FAMILY[d.kind] || 'info';
+    if (st.killCard === 'ln') return;   // F352 three lanes: the lead is an objective badge, the rest is the feed
+    if (st.killCard && this._kcLead(st, d)) return;   // F352 L1/L2 (stage only)
     const el = document.createElement('div'); el.className = `mo alert ${fam}`;
     el.innerHTML = `<div class="band"><span class="k">${fam === 'objective' ? 'OBJECTIVE' : fam === 'clock' ? 'CLOCK' : fam === 'danger' ? 'ALERT' : 'MATCH'}</span><span class="t">${esc(String(d.text || d.kind || '').toUpperCase())}</span></div>`;
     const out = Math.max(2200, this._annHold(st, 400));   // docs/announcer.md: up while its line plays (a lead-lost line is 2.7 s)

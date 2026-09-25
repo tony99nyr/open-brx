@@ -27,6 +27,7 @@ export function startDemo({ engine, log }) {
   const q = (typeof location !== 'undefined') ? new URLSearchParams(location.search) : new URLSearchParams('');
   const kitOnly = q.has('kit'), locked = q.has('locked'), reject = q.has('reject'), setup = q.has('setup'), brief = q.has('brief');
   if (q.has('night')) engine.night = true;
+  if (['a', 'b', 'c', 'l1', 'l2', 'ln'].includes(q.get('kc'))) engine.killCard = q.get('kc');   // F352: &kc=a|b|c, a kill card variant under review
   const TEAMS = { blue: { team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, yellow: { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 },
     red: { team_id: 'red', name: 'RED', color: 'red', tid: 0 }, green: { team_id: 'green', name: 'GREEN', color: 'green', tid: 3 } };   // tids as MC's TEAM_DEFS / engine TEAM_KEY
   const teamKey = TEAMS[q.get('team')] ? q.get('team') : 'blue', foeKey = teamKey === 'yellow' ? 'blue' : 'yellow';
@@ -565,6 +566,22 @@ export function startDemo({ engine, log }) {
       // docs/announcer.md (field 2026-09-24, Tony: the lead banner and the kill confirm overlapped): MC's kill feedback and
       // its lead alert on the SAME tick. The announcer queue shows KILL CONFIRMED first, then the lead banner once its slot ends.
       'live-announcer':        [...live, [2300, () => { ev.killConfirm('VIPER'); ev.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD'); }]],
+      // F352: the kill card variants (&kc=a|b|c). A medal kill and the lead change on the same tick: the card, then the lead banner.
+      'live-announcer-medal':  [...live, [2300, () => { ev.killMedals(['double_kill'], 'VIPER'); ev.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD'); }]],
+      'live-kill-first-blood': [...live, [2300, () => ev.killMedals(['first_blood'], 'VIPER')]],
+      'live-announcer-fb':     [...live, [2300, () => { ev.killMedals(['first_blood'], 'VIPER'); ev.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD'); }]],
+      // F352 storyboard: a six-kill spree, 1 s apart, with the lead change, a hill capture and a teammate down landing inside it.
+      // KILLAMANJARO is not an MC medal yet (MC stops at killtacular / killing spree / unstoppable): that last frame is a proposal.
+      'live-spree':            [[0, () => { config.mode = 'koth'; ev.addMate(); }], ...live, [2200, () => ev.beacon(2)],
+        [3000, () => { ev.killMedals(['first_blood'], 'VIPER'); ev.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD'); }],
+        [4000, () => ev.killMedals(['double_kill'], 'GHOST')],
+        [5000, () => ev.hillTaken(team.tid)],
+        [5200, () => engine.feedFrame(`$HIR,4,15,23,3,${25 + team.tid},0,0,*`)],
+        [5500, () => ev.killMedals(['triple_kill'], 'SABLE')],
+        [6500, () => ev.killMedals(['killtacular'], 'HAVOC')],
+        [7500, () => ev.killMedals(['killtacular', 'killing_spree'], 'VIPER')],
+        [8500, () => ev.killMedals(['killamanjaro'], 'GHOST')]],
+      'live-lead-alone':       [...live, [2300, () => ev.alert('lead_taken', 'YOUR TEAM TAKES THE LEAD')]],   // a teammate's kill: the lead changes, I did nothing
       'live-lowhp':        [...live, [2300, 'lowHp']],
       'live-poison':       [[0, () => { bundle.dot = DEMO_DOT; }], ...live, [2300, () => ev.poison()]],          // S16: POISONED, counting down, health draining
       'live-smoke':        [...live, [2300, 'smoke']],                     // S53: SMOKED, where the reticle was
