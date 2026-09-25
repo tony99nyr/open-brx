@@ -129,44 +129,59 @@ else:
 FULLSCREEN
 fi
 
-# --- launch splash: centre the logo instead of stretching it (F395) --------------------------
-# Capacitor's stock template (`@capacitor/cli/assets/android-template.tar.gz`) sets
-# `AppTheme.NoActionBarLaunch`'s `android:background` straight to `@drawable/splash`, a plain
-# bitmap. A View/Window background has no ImageView scaleType: Android fills the window with a
-# plain BitmapDrawable by stretching it non-uniformly to the exact screen bounds (FIT_XY, no
-# aspect preservation), so on any device whose aspect ratio differs from the template art (every
-# modern phone; Pixel 5 is 1080x2340 / 19.5:9) the logo renders warped. Tony, bench sitting B,
-# 2026-09-25: "the loading screen white with brx logo, always renders stretched and broken."
-# Fix: wrap the same bitmap in a layer-list with `android:gravity="center"`, so it draws at its
-# natural size instead of being stretched to fill. This is regenerated with the platform, so it
-# lives here, not as a hand-edit under android/.
-SPLASH_DRAWABLE="android/app/src/main/res/drawable/splash_background.xml"
-if [ -f "$STYLES" ] && [ ! -f "$SPLASH_DRAWABLE" ]; then
-  echo "==> writing $SPLASH_DRAWABLE (centred, not stretched) and repointing styles.xml"
-  cat > "$SPLASH_DRAWABLE" <<'SPLASHXML'
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Open BRX: launch splash, centred not stretched (android-setup.sh, F395) -->
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@android:color/white" />
-    <item>
-        <bitmap
-            android:src="@drawable/splash"
-            android:gravity="center" />
-    </item>
-</layer-list>
-SPLASHXML
-  python3 - "$STYLES" <<'SPLASH'
+# --- launch splash: a plain fill of the app's own background colour, no logo (F395) ----------
+# Tony's decision, sitting B follow-up 2026-09-25: "Splash just do a black screen. Background
+# color of the app. Nothing fancy." (www/index.html's `html,body`/`#stage` background is #030407.)
+#
+# The FIRST fix here centred Capacitor's stock placeholder bitmap instead of stretching it, but
+# that patched the wrong attribute: `AppTheme.NoActionBarLaunch` extends the AndroidX
+# `Theme.SplashScreen` compat theme (androidx.core:core-splashscreen, `variables.gradle`), and
+# that theme's actual window background comes from its own `windowSplashScreenBackground` /
+# `windowSplashScreenAnimatedIcon` attrs, not from plain `android:background` -- confirmed by
+# reading the library's own resources (compat_splash_screen_no_icon_background.xml always draws
+# `?attr/windowSplashScreenBackground` plus a centred, size-boxed `?windowSplashScreenAnimatedIcon`;
+# on API 31+ those two attrs bridge straight to the platform's native SplashScreen API instead).
+# Neither path ever reads `android:background`, so that item was dead weight either way.
+# Fix: set the two attrs the theme actually uses. Background = the app's own colour; icon = fully
+# transparent, so nothing (not even Android's default placeholder icon) draws on top of it. Also
+# colour the status/nav bars for the moment right after the splash dismisses and before the
+# WebView has painted (`AppTheme.NoActionBar`, the runtime theme `BridgeActivity.onCreate` switches
+# to) so neither phase flashes the platform's default white. This is regenerated with the
+# platform, so it lives here, not as a hand-edit under android/.
+SPLASH_BG="#030407"
+if [ -f "$STYLES" ] && ! grep -q 'windowSplashScreenBackground' "$STYLES"; then
+  echo "==> styles.xml: plain $SPLASH_BG launch splash, no logo, no white flash on the bars"
+  python3 - "$STYLES" "$SPLASH_BG" <<'SPLASH'
 import sys, re
-p = sys.argv[1]; s = open(p, encoding="utf-8").read()
-new_s = s.replace(
-    '<style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">\n        <item name="android:background">@drawable/splash</item>',
-    '<style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">\n        <item name="android:background">@drawable/splash_background</item>',
+p, bg = sys.argv[1], sys.argv[2]
+s = open(p, encoding="utf-8").read()
+
+launch_old = '<style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">\n        <item name="android:background">@drawable/splash</item>\n    </style>'
+launch_new = (
+    '<style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">\n'
+    f'        <item name="windowSplashScreenBackground">{bg}</item>\n'
+    '        <!-- fully transparent: hides Android 12+\'s default placeholder icon too -->\n'
+    '        <item name="windowSplashScreenAnimatedIcon">@android:color/transparent</item>\n'
+    '    </style>'
 )
-if new_s == s:
-    print("   AppTheme.NoActionBarLaunch not found in the expected shape - repoint android:background by hand")
-else:
-    open(p, "w", encoding="utf-8").write(new_s)
-    print("   ok")
+if launch_old not in s:
+    print("   AppTheme.NoActionBarLaunch not found in the expected shape - set windowSplashScreenBackground/windowSplashScreenAnimatedIcon by hand", file=sys.stderr)
+    sys.exit(1)
+s = s.replace(launch_old, launch_new, 1)
+
+m = re.search(r'(<style name="AppTheme\.NoActionBar"[^>]*>)', s)
+if not m:
+    print("   AppTheme.NoActionBar not found in the expected shape - set statusBarColor/navigationBarColor by hand", file=sys.stderr)
+    sys.exit(1)
+bars = (
+    f'\n        <item name="android:statusBarColor">{bg}</item>'
+    f'\n        <item name="android:navigationBarColor">{bg}</item>'
+    f'\n        <item name="android:windowBackground">{bg}</item>'
+)
+s = s[:m.end()] + bars + s[m.end():]
+
+open(p, "w", encoding="utf-8").write(s)
+print("   ok")
 SPLASH
 fi
 
