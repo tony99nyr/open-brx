@@ -666,6 +666,7 @@ class GunStage:
         self.stations: dict[str, StationEntry] = {}  # 'station:<id>' -> the presence entry (beacon.js `Presence` shape + seen_at/advertising)
         self._control_site: int | None = None      # the point we are latched to, so walking between two does not read as a capture
         self._control_last_owner: dict | None = None  # the last owner across presence expiry
+        self._control_spoken_owner: dict | None = None  # owner represented by the last spoken station hill line
         self._hill_pending_callout: dict | None = None  # a transition inside the 3 s floor, replaced by a newer owner edge
         self._control_sig = ""                     # last published advert signature (a change is worth a log line)
         self._hill_said_at = 0.0                   # when a captured/lost line last played, for HILL_CALLOUT_MIN_S
@@ -3123,11 +3124,11 @@ class GunStage:
         cue_ms = self.bundle.get("cue_ms") or {}               # engine.js `frames.cue_ms`: a per-bundle override, in ms
         return frame, (float(cue_ms[kind]) / 1000.0 if kind in cue_ms else d["s"])
 
-    def _hill_audio_on(self) -> bool:
+    def _hill_audio_on(self, even_dead: bool = False) -> bool:
         """True while hill audio should be audible at all: in play, on our feet, and not a mode whose points we
-        cannot tell apart. Death is deliberately silent -- A16 makes the DOWN window hands-off and the death
-        scream owns the announcer; a player who respawns learns the owner from the tick within 1 s."""
-        return bool(self.spawned) and bool(self.alive) and self.config.get("mode") not in HILL_AUDIO_EXCLUDED_MODES
+        cannot tell apart. `even_dead` mirrors engine.js `_hillAudioOn(true)`: transition lines queue as game alerts
+        while the death scream plays, but the possession tick stays off until the player revives."""
+        return bool(self.spawned) and (bool(self.alive) or even_dead) and self.config.get("mode") not in HILL_AUDIO_EXCLUDED_MODES
 
     def _hill_source_allowed(self, source: str) -> bool:
         """B/F70 (engine.js `_hillSourceAllowed`): MC names ONE objective source per game
@@ -3283,10 +3284,11 @@ class GunStage:
         if pending:
             if h.get("source") != "station" or h.get("site") != pending["site"] or h["owner"] != pending["to"]:
                 self._hill_pending_callout = None
-            elif now - self._hill_said_at >= HILL_CALLOUT_MIN_S and self._hill_audio_on():
+            elif now - self._hill_said_at >= HILL_CALLOUT_MIN_S and self._hill_audio_on(even_dead=True):
                 self._hill_pending_callout = None
                 self._hill_said_at = now
                 self._hill_say(pending["kind"], f"control point {pending['site']}: team {pending['from']} -> {pending['to']} (deferred by callout floor)")
+                self._control_spoken_owner = {"site": pending["site"], "owner": pending["to"]}
         if not self._hill_audio_on() or not self._hill_mine():
             return
         if now < self._hill_busy_until:
@@ -3318,7 +3320,7 @@ class GunStage:
         once-per-game warnings (F82, the refused-source line). The injected station adverts stay -- they
         are the operator's field, not the game's state."""
         self.hill = None; self._hill_tick_at = 0.0; self._hill_busy_until = 0.0
-        self._control_site = None; self._control_last_owner = None; self._hill_pending_callout = None
+        self._control_site = None; self._control_last_owner = None; self._control_spoken_owner = None; self._hill_pending_callout = None
         self._control_sig = ""; self._hill_said_at = 0.0
         self._hill_was_contested = False; self._hill_contested_at = 0.0; self._hill_owner_when_silenced = _UNSET
         self._hill_team2_warned = False; self._hill_source_warned = ""
@@ -3393,25 +3395,31 @@ class GunStage:
                      "on_point": bool(e.get("present"))}
         # C: a transition that lands while we are DOWN is owed, not swallowed: remember the owner as we last
         # heard it WITH audio on, and on the first advert after revive say the one line for the NET change.
-        audio = self._hill_audio_on()
+        audio = self._hill_audio_on(even_dead=True)
         said = False
         silenced = self._hill_owner_when_silenced
         announce_from = silenced if (audio and silenced is not _UNSET and silenced != prev_owner) else prev_owner
+        spoken_owner = (self._control_spoken_owner["owner"] if self._control_spoken_owner and self._control_spoken_owner["site"] == e["id"] else prev_owner)
+        callout_from = spoken_owner if spoken_owner is not None else announce_from
         owner_changed = prev_owner is not None and prev_owner != owner
-        owed_change = audio and silenced is not _UNSET and silenced != owner
-        if owner_changed or owed_change:
-            kind = self._hill_callout(announce_from, owner) if audio else None
+        net_change = spoken_owner is not None and spoken_owner != owner
+        owed_change = audio and silenced is not _UNSET and silenced is not None and silenced != owner
+        if (owner_changed or owed_change) and net_change:
+            kind = self._hill_callout(callout_from, owner) if audio else None
             if audio and kind:
                 if now - self._hill_said_at >= HILL_CALLOUT_MIN_S:
                     self._hill_pending_callout = None
                     self._hill_said_at = now
-                    self._hill_say(kind, f"control point {e['id']}: team {prev_owner} -> {owner}" if announce_from == prev_owner
-                                   else f"control point {e['id']}: it changed hands while we were down (team {announce_from} -> {owner})")
+                    self._hill_say(kind, f"control point {e['id']}: team {prev_owner} -> {owner}" if callout_from == prev_owner
+                                   else f"control point {e['id']}: it changed hands while we were down (team {callout_from} -> {owner})")
+                    self._control_spoken_owner = {"site": e["id"], "owner": owner}
                     said = True
                 else:
-                    self._hill_pending_callout = {"site": e["id"], "from": announce_from, "to": owner, "kind": kind}
+                    self._hill_pending_callout = {"site": e["id"], "from": callout_from, "to": owner, "kind": kind}
             elif self._hill_pending_callout and self._hill_pending_callout["site"] == e["id"]:
                 self._hill_pending_callout = None
+        elif not net_change and self._hill_pending_callout and self._hill_pending_callout["site"] == e["id"]:
+            self._hill_pending_callout = None
         self._control_last_owner = {"site": e["id"], "owner": owner}
         self._hill_owner_when_silenced = _UNSET if audio else (prev_owner if silenced is _UNSET else silenced)
         # Contested, on the RISING EDGE only, floored at HILL_CONTESTED_MIN_S, and only to players the fight

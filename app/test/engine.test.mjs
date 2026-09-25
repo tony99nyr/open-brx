@@ -520,6 +520,48 @@ test('control point: the FIRST advert adopts the owner silently, and a real hand
   assert.equal(nWrites(h, HILL_CAPTURED_F), 1, 'BLUE taking it says Hill Captured, once');
 });
 
+test('control point: an unchanged owner first seen while armed is not announced at go-live', () => {
+  const h = harness({ mode: 'koth' }).kit().config_().echo().start(20000);
+  control(h, { team: 1, state: HELD, value: 100 });             // first seen before LIVE
+  assert.equal(h.eng.phase, 'armed');
+  assert.equal(h.eng.state().hill.owner, 1, 'the armed advert establishes the known owner');
+  assert.equal(nWrites(h, HILL_CAPTURED_F), 0);
+  h.adv(20000); h.eng.tick();
+  assert.equal(h.eng.phase, 'live');
+  assert.equal(h.eng.alive, true);
+  assert.equal(h.eng._hillOwnerWhenSilenced, null, 'the armed window retained an unknown spoken owner');
+  assert.equal(h.eng._controlLastOwner?.owner, 1, 'the station owner remains latched across go-live');
+  assert.equal(h.eng._hillAudioOn(true), true);
+  assert.equal(h.eng._hillCallout(null, 1), 'hill_captured');
+  control(h, { team: 1, state: HELD, value: 100 });             // same owner after go-live
+  assert.equal(h.eng.state().hill.owner, 1, 'the live heartbeat still names the same owner');
+  runControl(h, 4000, { team: 1, state: HELD, value: 100 });
+  assert.equal(nWrites(h, HILL_CAPTURED_F), 0, 'the first live heartbeat is not a capture');
+});
+
+test('control point: a transition back to the last spoken owner cancels the redundant pending line', () => {
+  const h = koth();
+  control(h, { team: 1, state: HELD, value: 100 });
+  runControl(h, 3000, { team: 1, state: HELD, value: 100 });
+  control(h, { team: 255, state: 0, value: 0 });
+  assert.equal(nWrites(h, HILL_LOST_F), 1, 'we say the loss');
+  control(h, { team: 1, state: HELD, value: 100 });
+  control(h, { team: 255, state: 0, value: 0 });
+  runControl(h, 3500, { team: 255, state: 0, value: 0 });
+  assert.equal(nWrites(h, HILL_LOST_F), 1, 'the pending duplicate loss is cancelled');
+  assert.equal(nWrites(h, HILL_CAPTURED_F), 0, 'the unspoken capture is cancelled too');
+});
+
+test('control point: the hill badge expires while the gun is locked', () => {
+  const h = koth();
+  control(h, { team: 0, state: HELD, value: 100 });
+  control(h, { team: 1, state: HELD, value: 100 });
+  assert.ok(h.eng.state().lanes.obj.hill, 'capture callout creates the badge');
+  h.eng.gunLocked = true;
+  h.adv(8001); h.eng.tick();
+  assert.equal(h.eng.state().lanes.obj.hill, undefined, 'badge expires even during gun recovery');
+});
+
 // Mutation audit 2026-09-11: `_onControlAdvert` restated `claimable()` by hand as `e.team <= 3`, and
 // flipping that literal to `<= 4` left the whole suite green -- so a station advertising tid 4 with `held`
 // set would have installed a real owner and nothing would have said so. tids 4-7 are COLOUR tids, not
@@ -815,7 +857,7 @@ test('control point: a transition inside the floor waits, and a newer owner repl
   assert.equal(nWrites(replaced, HILL_CAPTURED_F), 0, 'the obsolete recapture does not play');
   runControl(replaced, 3000, { team: 0, state: HELD, value: 100 });
   assert.equal(nWrites(replaced, HILL_CAPTURED_F), 0, 'the pending line follows the current owner');
-  assert.equal(nWrites(replaced, HILL_LOST_F), 2, 'the current loss replaces the pending capture');
+  assert.equal(nWrites(replaced, HILL_LOST_F), 1, 'an enemy taking over from the last spoken neutral state adds no loss line');
 });
 
 test('control point: after expiry, a different owner is an edge but the same owner is not', () => {

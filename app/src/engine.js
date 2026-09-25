@@ -812,6 +812,7 @@ export class Engine {
     this._controlSig = '';          // the control-point advert fields that are worth a re-render
     this._controlSite = null;       // the point we are latched to, so walking between two does not read as a capture
     this._controlLastOwner = null;  // keep the last owner across presence expiry, for a returning point
+    this._controlSpokenOwner = null; // owner represented by the last spoken station hill line
     this._hillPendingCallout = null; // a transition inside the 3 s floor, replaced by each newer owner edge
     this._hillSaidAt = 0;           // when a captured/lost line last played, for HILL_CALLOUT_MIN_MS
     this._hillOwnerWhenSilenced = undefined;  // C: the owner as we last heard it while audio was ON (undefined = never)
@@ -3345,25 +3346,31 @@ export class Engine {
     let said = false;
     const announceFrom = audio && this._hillOwnerWhenSilenced !== undefined && this._hillOwnerWhenSilenced !== prevOwner
       ? this._hillOwnerWhenSilenced : prevOwner;
+    const spokenOwner = this._controlSpokenOwner?.site === e.id ? this._controlSpokenOwner.owner : prevOwner;
+    const calloutFrom = spokenOwner ?? announceFrom;
     const ownerChanged = prevOwner != null && prevOwner !== owner;
-    const owedChange = audio && this._hillOwnerWhenSilenced !== undefined && this._hillOwnerWhenSilenced !== owner;
-    if (ownerChanged || owedChange) {
-      const kind = audio ? this._hillCallout(announceFrom, owner) : null;
+    const netChange = spokenOwner != null && spokenOwner !== owner;
+    const owedChange = audio && this._hillOwnerWhenSilenced != null && this._hillOwnerWhenSilenced !== owner;
+    if ((ownerChanged || owedChange) && netChange) {
+      const kind = audio ? this._hillCallout(calloutFrom, owner) : null;
       if (audio && kind) {
         // A transition inside the floor stays pending. A later owner edge replaces or cancels it, so the
         // tick never announces a state that the latest advert has already disproved.
         if (now - this._hillSaidAt >= HILL_CALLOUT_MIN_MS) {
           this._hillPendingCallout = null;
           this._hillSaidAt = now;
-          this._hillSay(kind, announceFrom === prevOwner ? `control point ${e.id}: team ${prevOwner} -> ${owner}`
-            : `control point ${e.id}: it changed hands while we were down (team ${announceFrom} -> ${owner})`);
+          this._hillSay(kind, calloutFrom === prevOwner ? `control point ${e.id}: team ${prevOwner} -> ${owner}`
+            : `control point ${e.id}: it changed hands while we were down (team ${calloutFrom} -> ${owner})`);
+          this._controlSpokenOwner = { site: e.id, owner };
           said = true;
         } else {
-          this._hillPendingCallout = { site: e.id, from: announceFrom, to: owner, kind };
+          this._hillPendingCallout = { site: e.id, from: calloutFrom, to: owner, kind };
         }
       } else if (this._hillPendingCallout?.site === e.id) {
         this._hillPendingCallout = null;
       }
+    } else if (!netChange && this._hillPendingCallout?.site === e.id) {
+      this._hillPendingCallout = null;
     }
     this._controlLastOwner = { site: e.id, owner };
     // Track the owner we last heard with audio ON, so the line above can be owed across a death window.
@@ -3437,7 +3444,7 @@ export class Engine {
   /** A new match must not inherit the last one's point, its tally, or its once-per-game warnings. */
   _resetHill() {
     this.hill = null; this.hillCallout = null; this._hillTickAt = 0;
-    this._controlSite = null; this._controlLastOwner = null; this._hillPendingCallout = null; this._controlSig = ''; this._hillSaidAt = 0;
+    this._controlSite = null; this._controlLastOwner = null; this._controlSpokenOwner = null; this._hillPendingCallout = null; this._controlSig = ''; this._hillSaidAt = 0;
     this._hillWasContested = false; this._hillContestedAt = 0; this._hillOwnerWhenSilenced = undefined;
     this._hillTeam2Warned = false; this._hillSourceWarned = '';
     this.hold = {}; this.observed = {}; this._holdAt = 0; this._holdSource = null;
@@ -3474,6 +3481,7 @@ export class Engine {
         this._hillPendingCallout = null;
         this._hillSaidAt = now;
         this._hillSay(pending.kind, `control point ${pending.site}: team ${pending.from} -> ${pending.to} (deferred by callout floor)`);
+        this._controlSpokenOwner = { site: pending.site, owner: pending.to };
       }
     }
     if (!this._hillAudioOn() || !this._hillMine()) return;
@@ -3760,6 +3768,12 @@ export class Engine {
     }
     if (this.phase === 'live') {
       if (this.endT && now >= this.endT) { this._endLocal('time-expiry'); return; }
+      const hillBadge = this._lanes?.obj?.hill;
+      if (hillBadge && now - hillBadge.at >= LANE_HILL_CLEAR_MS) {
+        const { hill: _hill, ...obj } = this._lanes.obj;
+        this._lanes.obj = obj;
+        this._changed();
+      }
       this._heroUntil(now);   // F368: keeps a kill card that waits behind a takeover open (GUN STOPPED returns below), so a new kill joins it
       // F272 recovery is a hard gameplay stand-down. The model intentionally stays alive until the replacement
       // head is confirmed, but no poison/shield/recoil/poll/death clock may run behind that instruction.
