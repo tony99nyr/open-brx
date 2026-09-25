@@ -5383,7 +5383,7 @@ export class Engine {
     this.shield = to; this._prevShield = to;
     this._shieldRegen = null;   // S29: no refill may be in flight under it
     const name = String(item.name || 'OVERSHIELD').toUpperCase();
-    this._overshield = { station: id, base, amount: to - base, name, color: item.color || null, at: now, max };
+    this._overshield = { station: id, base, amount: to - base, name, color: item.color || null, at: now, max, hp: this.hp, armor: this.armor };   // hp/armor: the pools the grant wrote (R2-21: its echo is no pickup)
     this.powerupGrant = { kind: 'overshield', name, color: item.color || null, at: now };
     return true;
   }
@@ -6460,9 +6460,11 @@ export class Engine {
         if (fillEcho) {
           if (shield >= this.maxShield) { this._shieldFillAt = 0; this._shieldCharged(); }
           this.log(`spawn shield fill: ${shield}/${this.maxShield}`, 'li');
-        } else if (gains.length && gains.some(g => g[0] !== 'shield') && this._overshield && this.now() - this._overshield.at <= OVERSHIELD_ECHO_MS) {
-          // HUD QA R2-21: the overshield grant's echo carries the pools the grant wrote. A health or armour rise in it is the
-          // gun catching up with the node's own numbers, never a pickup: no "+55 HEALTH" float, no voice line.
+        } else if (gains.length && gains.some(g => g[0] !== 'shield') && this._overshield && this.now() - this._overshield.at <= OVERSHIELD_ECHO_MS
+                   && hp === this._overshield.hp && armor === this._overshield.armor) {
+          // HUD QA R2-21: the overshield grant's echo carries the pools the grant wrote. A rise TO exactly those pools is the
+          // gun catching up with the node's own numbers, never a pickup: no "+55 HEALTH" float. Any other rise (a real heal
+          // inside the echo window) still floats.
           this.log(`pool rise to ${hp}/${armor}/${shield} in the overshield grant's echo: no gain moment`, 'li');
         } else if (gains.length && this._gainOverCeiling(hp, armor, shield)) {
           // F341 x HUD QA R2-02: a pool ABOVE the armed ceiling is a misread `$PSET` (`$HP,4545,7070`), never a pickup.
