@@ -129,6 +129,47 @@ else:
 FULLSCREEN
 fi
 
+# --- launch splash: centre the logo instead of stretching it (F395) --------------------------
+# Capacitor's stock template (`@capacitor/cli/assets/android-template.tar.gz`) sets
+# `AppTheme.NoActionBarLaunch`'s `android:background` straight to `@drawable/splash`, a plain
+# bitmap. A View/Window background has no ImageView scaleType: Android fills the window with a
+# plain BitmapDrawable by stretching it non-uniformly to the exact screen bounds (FIT_XY, no
+# aspect preservation), so on any device whose aspect ratio differs from the template art (every
+# modern phone; Pixel 5 is 1080x2340 / 19.5:9) the logo renders warped. Tony, bench sitting B,
+# 2026-09-25: "the loading screen white with brx logo, always renders stretched and broken."
+# Fix: wrap the same bitmap in a layer-list with `android:gravity="center"`, so it draws at its
+# natural size instead of being stretched to fill. This is regenerated with the platform, so it
+# lives here, not as a hand-edit under android/.
+SPLASH_DRAWABLE="android/app/src/main/res/drawable/splash_background.xml"
+if [ -f "$STYLES" ] && [ ! -f "$SPLASH_DRAWABLE" ]; then
+  echo "==> writing $SPLASH_DRAWABLE (centred, not stretched) and repointing styles.xml"
+  cat > "$SPLASH_DRAWABLE" <<'SPLASHXML'
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Open BRX: launch splash, centred not stretched (android-setup.sh, F395) -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@android:color/white" />
+    <item>
+        <bitmap
+            android:src="@drawable/splash"
+            android:gravity="center" />
+    </item>
+</layer-list>
+SPLASHXML
+  python3 - "$STYLES" <<'SPLASH'
+import sys, re
+p = sys.argv[1]; s = open(p, encoding="utf-8").read()
+new_s = s.replace(
+    '<style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">\n        <item name="android:background">@drawable/splash</item>',
+    '<style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">\n        <item name="android:background">@drawable/splash_background</item>',
+)
+if new_s == s:
+    print("   AppTheme.NoActionBarLaunch not found in the expected shape - repoint android:background by hand")
+else:
+    open(p, "w", encoding="utf-8").write(new_s)
+    print("   ok")
+SPLASH
+fi
+
 # --- fullscreen HUD, part 2: hide the system bars at runtime ---------------------------------
 # Office test 2026-09-19 (Android 13/14): `android:windowFullscreen` above is ignored since API 30 --
 # edge-to-edge is the platform default and the status bar drew back over the HUD's top-right corner. The
