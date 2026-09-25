@@ -738,7 +738,12 @@ export class Engine {
     this._sirSound = {};   // `${proto}:${subtype}` -> the sound id on the `$SIR` row the gun holds (from what we wrote)
     this._psetSounds = null;   // the last `$PSET` written, split: t10 = native death scream
     this._nextPlayAt = 0;
+    this._lastPlayAt = null;
     this._pendingPlayWrites = new Set();
+    this._playQueue = [];
+    this._playBusy = false;
+    this._playInFlight = false;
+    this._playRunGen = 0;
     this.reset();
     this._load();
     this._loadNight();
@@ -1178,7 +1183,6 @@ export class Engine {
    *  `docs/spec/transport-hardening.md` §4. */
   _write(frames, why, options = undefined, playScheduled = false, onSent = null, mustHear = false) {
     if (!frames || !frames.length) return;
-    let scheduledPromise = null;
     // DENY FIRST, THEN THE TEAM. Do not swap these two steps for tidiness: the order is the behaviour, and
     // stage.py `write` does it in exactly this order (`test_stage_mirror` reads both bodies and fails on
     // whichever one moves). Restore the team first and a denied `$PSET` dropped afterwards leaves its `$TID`
@@ -1198,62 +1202,94 @@ export class Engine {
     if (!playScheduled) {
       const playIndexes = frames.map((f, i) => typeof f === 'string' && f.startsWith('$PLAY,') ? i : -1).filter(i => i >= 0);
       if (playIndexes.length) {
-        const now = this.now(), firstAt = Math.max(now, this._nextPlayAt || 0), groups = [];
+        const now = this.now(), groups = [];
         let startAt = 0;
         for (const ix of playIndexes.slice(1)) { groups.push(frames.slice(startAt, ix)); startAt = ix; }
         groups.push(frames.slice(startAt));
         const fillerIds = new Set(['VAG', 'VAE', 'N74', 'U100']);
         groups.forEach((group, i) => {
-          const target = firstAt + i * PLAY_GAP_MS;
           const sound = group.find(f => typeof f === 'string' && f.startsWith('$PLAY,'));
-          if (target > now && fillerIds.has(clipId(sound))) {
+          const delayed = i > 0 || this._playBusy || this._playQueue.length || (this._nextPlayAt || 0) > now || (this._lastPlayAt != null && this._lastPlayAt + PLAY_GAP_MS > now);
+          if (delayed && fillerIds.has(clipId(sound))) {
             this.log(`audio: ${why}: filler dropped inside the ${PLAY_GAP_MS} ms PLAY gap`, 'li');
             group.splice(group.indexOf(sound), 1);
           }
         });
-        this._nextPlayAt = firstAt + groups.length * PLAY_GAP_MS;
-        if (firstAt > now) {
-          const pending = groups.filter(group => group.length);
-          return Promise.all(pending.map((group, i) => new Promise(resolve => {
-            const job = { cancelled: false, resolve, onSent: i === pending.length - 1 ? onSent : null, mustHear };
-            this._pendingPlayWrites.add(job);
-            job.timer = this.delay(firstAt + i * PLAY_GAP_MS - now, () => {
-              this._pendingPlayWrites.delete(job);
-              if (job.cancelled) return resolve(true);
-              Promise.resolve(this._write(group, why, options, true, job.onSent, mustHear)).then(resolve, () => resolve(false));
-            });
-          }))).then(results => results.every(ok => ok !== false));
-        }
-        const rest = groups.slice(1).filter(group => group.length);
-        const scheduled = rest.map((group, i) => new Promise(resolve => {
-          const job = { cancelled: false, resolve, onSent: i === rest.length - 1 ? onSent : null, mustHear };
+        const pending = groups.filter(group => group.length);
+        const writes = pending.map((group, i) => new Promise(resolve => {
+          const job = { group, why, options, onSent: i === pending.length - 1 ? onSent : null, mustHear, resolve, cancelled: false };
           this._pendingPlayWrites.add(job);
-          job.timer = this.delay((i + 1) * PLAY_GAP_MS, () => {
-            this._pendingPlayWrites.delete(job);
-            if (job.cancelled) return resolve(true);
-            Promise.resolve(this._write(group, why, options, true, job.onSent, mustHear)).then(resolve, () => resolve(false));
-          });
+          this._playQueue.push(job);
         }));
-        frames = groups[0];
-        playScheduled = true;
-        if (rest.length) onSent = null;
-        scheduledPromise = scheduled.length ? Promise.all(scheduled).then(results => results.every(ok => ok !== false)) : null;
+        this._drainPlayWrites();
+        return Promise.all(writes).then(results => results.every(ok => ok !== false));
       }
     }
     // F121 rebuild: a `$SIR` row or a `$CLEAR` leaves the gun's table something other than a `sir_pool` take, so the
     // next protection release must write one. Marked at CALL time, like the write order itself. stage.py `write` mirrors it.
     if (frames.some(f => typeof f === 'string' && (f.startsWith('$SIR,') || f.startsWith('$CLEAR')))) { this._sirGen++; this._sirLive = false; }
-    frames = this._audioWrite(frames, why);   // docs/announcer.md: the gun's audio FIFO sees every sound-bearing frame
+    const hasPlay = frames.some(f => typeof f === 'string' && f.startsWith('$PLAY,'));
+    frames = this._audioWrite(frames, why, hasPlay);   // admit a PLAY only when the link sends it
     if (!frames.length) return;
     this.log(`write ${why}: ${frames.length} frame(s)`, 'li');
     try {
-      const result = this.writer(frames, why, options);
-      if (onSent) onSent();
-      return scheduledPromise ? Promise.all([result, scheduledPromise]).then(results => results.flat().every(ok => ok !== false)) : result;
+      let noted = false;
+      const stopsExpected = frames.filter(f => f === PLAYX).length;
+      let stopsApplied = 0;
+      const applyStop = () => {
+        if (stopsExpected >= 2 && stopsApplied === 1) this._gun.clear();
+        else this._audioWrite([PLAYX], why);
+        stopsApplied++;
+      };
+      const applyMissingStops = () => { while (stopsApplied < stopsExpected) applyStop(); };
+      const notePlay = frame => {
+        applyMissingStops();
+        this._lastPlayAt = this.now();
+        if (noted) return;
+        noted = true;
+        this._gun.add(this._clipLen(frame), why, this.now(), clipId(frame));
+        if (onSent) onSent();
+      };
+      const writeOptions = hasPlay ? { ...options, onFrameSent: frame => {
+        if (options && options.onFrameSent) options.onFrameSent(frame);
+        if (frame === PLAYX) applyStop();
+        if (typeof frame === 'string' && frame.startsWith('$PLAY,')) notePlay(frame);
+      } } : options;
+      const result = this.writer(frames, why, writeOptions);
+      if (!hasPlay && onSent) onSent();
+      const playFrame = hasPlay ? frames.find(f => typeof f === 'string' && f.startsWith('$PLAY,')) : null;
+      if (hasPlay && result && typeof result.then === 'function') return result.then(ok => { if (ok !== false && ok !== null && !noted) notePlay(playFrame); return ok; });
+      if (hasPlay && result !== false && result !== null && !noted) notePlay(playFrame);
+      return result;
     } catch (e) { this.log(`write ${why} failed: ${e && e.message || e}`, 'le'); return false; }
   }
+  _drainPlayWrites() {
+    if (this._playBusy || !this._playQueue.length) return;
+    const job = this._playQueue.shift(), generation = this._playRunGen;
+    this._playBusy = true;
+    const target = Math.max(this._nextPlayAt || 0, this._lastPlayAt == null ? 0 : this._lastPlayAt + PLAY_GAP_MS);
+    const send = () => {
+      if (job.cancelled || generation !== this._playRunGen) return;
+      this._nextPlayAt = 0;
+      const finish = ok => {
+        this._pendingPlayWrites.delete(job);
+        job.resolve(ok);
+        this._playInFlight = false;
+        this._playBusy = false;
+        this._drainPlayWrites();
+      };
+      this._playInFlight = true;
+      const options = { ...job.options, shouldSend: () => !job.cancelled && generation === this._playRunGen
+        && (!job.options || !job.options.shouldSend || job.options.shouldSend()) };
+      const result = this._write(job.group, job.why, options, true, job.onSent, job.mustHear);
+      if (result && typeof result.then === 'function') result.then(finish, () => finish(false));
+      else finish(result);
+    };
+    if (target > this.now()) job.timer = this.delay(target - this.now(), send);
+    else send();
+  }
   /** Record the sounds and stops the phone writes. */
-  _audioWrite(frames, why) {
+  _audioWrite(frames, why, deferPlay = false) {
     const now = this.now(), g = this._gun;
     this._audioSync(now);
     let stops = 0, out = frames;
@@ -1262,14 +1298,14 @@ export class Engine {
       if (f.startsWith('$CLEAR')) this._sirSound = {};
       else if (f.startsWith('$SIR,')) { const t = f.split(','); this._sirSound[`${t[1]}:${t[2]}`] = (t[3] || '').trim(); }
       else if (f.startsWith('$PSET,')) this._psetSounds = f.split(',');
-      else if (f === PLAYX && !this._mustWrite) stops++;
+      else if (f === PLAYX && !this._mustWrite && !deferPlay) stops++;
     }
     if (this._mustWrite) return frames;   // `_sayMust` keeps the model itself
     if (stops >= 2) g.clear();
     else if (stops === 1) { g._prune(now); g.clips.splice(0, 1); }
     out = [];
     for (const f of frames) {
-      if (typeof f === 'string' && f.startsWith('$PLAY,')) {
+      if (!deferPlay && typeof f === 'string' && f.startsWith('$PLAY,')) {
         g.add(this._clipLen(f), why, now, clipId(f));
       }
       out.push(f);
@@ -1303,6 +1339,10 @@ export class Engine {
       this._pendingPlayWrites.delete(job);
       job.resolve(true);
     }
+    this._playQueue.length = 0;
+    this._playRunGen++;
+    this._playBusy = this._playInFlight;
+    this._nextPlayAt = this._lastPlayAt == null ? this.now() : this._lastPlayAt + PLAY_GAP_MS;
     return mustHear;
   }
   /** F348: a spawn fill went out less than SHIELD_FILL_ECHO_MS ago and the gun has not answered it yet. PURE. */
@@ -1614,6 +1654,7 @@ export class Engine {
     this._changed();
   }
   onBleDropped() {
+    this._cancelPendingPlayWrites();
     const pendingResync = this._operatorResyncPending;
     this.bleUp = false; this.lastGunFrameAt = 0; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this._cure = null; this._queryAt = 0; this._operatorResyncPending = null; this.configQuery = null;   // F264/F287: no link, no answer -- an ask in flight can never resolve, and it must not act on the relink
     if (pendingResync) this._operatorResult('resync', 'gun link down (RELINK first)', pendingResync);
@@ -3869,6 +3910,7 @@ export class Engine {
 
   _endLocal(why) {
     if (this.ended) return;
+    this._cancelPendingPlayWrites();
     this.ended = true; this._panicked = null; this.endAck = false; this._armPending = null; this._triggerPending = null; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this.gunLocked = null;   // F209/F272: never arm or keep a lock verdict for an ended match
     this.endedAt = this.now();   // the results screen's settle window runs from HERE, not from the result's arrival
     this._lightGen = (this._lightGen || 0) + 1;   // no delayed $GLED/$HLED/cue step from before teardown may land after it
@@ -4719,6 +4761,7 @@ export class Engine {
   ackEnd() { if (this.ended) { this.endAck = true; this._changed(); } }
 
   _writeTeardown(kind, why) {
+    this._cancelPendingPlayWrites();
     this._armPending = null; this._triggerPending = null;   // F209
     this._pendingHurtWrite = false;   // review 2026-09-19: panic/end teardown must cancel a queued low-health alert too
     if (kind === 'panic') { this._shieldFillAt = 0; if (this.frames && this.frames.panic) this._write(this.frames.panic, `panic (${why})`); else this._write(['$CLEAR,*', '$SP,99,*'], `panic (${why})`); return; }
@@ -4761,6 +4804,7 @@ export class Engine {
         if (player_id && this.player && this.player.player_id && player_id !== this.player.player_id) { this.log(`operator ${cmd} for player ${player_id} — not this player — ignored`, 'li'); return; }
         return this._operator(cmd);
       case 'panic':
+        this._cancelPendingPlayWrites();
         this._lightGen = (this._lightGen || 0) + 1;   // same as _endLocal: cut off any pending delayed light/cue step immediately, not just once delivered
         this._ann.clear(); this._gun.clear();
         this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this.gunLocked = null; this.downReason = null; this._pendingPhase = null;
@@ -6881,7 +6925,9 @@ export class Engine {
     // A line on air is cut, and its unsaid rest requeued, only when one of ITS clips is among the stopped ones.
     const cur = this._ann.current, stopped = aheadClips.slice(0, stops);
     this._ann.death(this.now(), cancelledMustHear || (stops > 0 && (screamAhead == null || (!!cur && stopped.some(c => c.item === cur)))));
+    const deathLife = this._lifeSeq, deathLightGen = this._lightGen;
     const sendStop = i => {
+      if (this._lifeSeq !== deathLife || this._lightGen !== deathLightGen || this.ended) return;
       if (i >= stops) return;
       this._mustWrite = true;
       try { this._write([PLAYX], `death: stop ${i + 1}/${stops} for a clip ahead of the scream${stopWait ? `, after ${stopWait} ms slack` : ''}`); }

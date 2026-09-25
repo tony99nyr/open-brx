@@ -733,6 +733,7 @@ export class BrxLink {
     const list = Array.isArray(frames) ? frames : [frames];
     const batch = { failed: null, open: true, label, list, id, cur: 0 };   // `failed`: the earliest frame index a late error hit; `cur`: the frame sending now
     this._q = this._q.then(async () => {
+      if (options && typeof options.shouldSend === 'function' && !options.shouldSend()) return null;
       if (options && typeof options.onStart === 'function') options.onStart();
       let late = 0, chunks = 0, resends = 0, lost = false, sentFrames = 0;
       // F341: one `$*` on its own, then the frame gap. Its own chunk error marks the batch like any other, so the
@@ -747,8 +748,10 @@ export class BrxLink {
       this._openBatch = batch;
       try {
         for (let i = 0; i < list.length;) {
+          if (options && typeof options.shouldSend === 'function' && !options.shouldSend()) return null;
           const frame = list[i];
           if (this._resetOwed.has(id)) await reset(i, 'the link dropped or an earlier write lost a chunk');
+          if (options && typeof options.shouldSend === 'function' && !options.shouldSend()) return null;
           batch.cur = i;
           this._note('tx', frame);
           const useResponse = this.responseForMultiPacket && frame.length > 20;
@@ -757,6 +760,7 @@ export class BrxLink {
             if (!await this._sendChunk(id, textToDataView(frame.substr(o, 20)), batch, i, useResponse)) late++;
             if (frame.length > 20) await sleep(this.chunkGapMs);
           }
+          if (options && typeof options.onFrameSent === 'function') options.onFrameSent(frame);
           await sleep(this.frameGapMs);
           i++;
           if (batch.failed != null) {

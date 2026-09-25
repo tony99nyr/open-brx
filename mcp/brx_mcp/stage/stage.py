@@ -579,7 +579,10 @@ class GunStage:
                                         # callback and a later poll() never react to the same frame twice
         self.scream_this_life: str | None = None   # A15.3: the death-scream id last written into a $PSET, or None
         self._last_play_at: float | None = None
+        self._last_play_sent_at: float | None = None
         self._play_generation = 0
+        self._play_lock = asyncio.Lock()
+        self._play_cancel_event = asyncio.Event()
         # F209: {at, until, shot_ends, off, shield} from a spawn/revive write until `_arm_life` ends spawn protection
         # (engine.js `_armPending`; `at` and `until` are in seconds here)
         self._arm_pending: ArmPending | None = None
@@ -1146,6 +1149,7 @@ class GunStage:
         return self.state()
 
     async def disconnect(self) -> dict:
+        self._cancel_pending_play_writes()
         if self.connected:
             try:
                 await self.mgr.disconnect(self.alias)
@@ -1212,6 +1216,7 @@ class GunStage:
         # `$PSET` on purpose; every game write restores the team (F206).
         frames = frames if exact else self._tid_after_pset(frames)
         play_indexes = [i for i, frame in enumerate(frames) if frame.startswith("$PLAY,")]
+        play_lock_held = False
         if len(play_indexes) > 1:
             chunks: list[list[str]] = []
             start = 0
@@ -1236,25 +1241,39 @@ class GunStage:
                 await self.write(chunk, why, **options)
             return
         if play_indexes:
-            play_frame = frames[play_indexes[0]]
             play_generation = self._play_generation
+            await self._play_lock.acquire()
+            play_lock_held = True
+            play_frame = frames[play_indexes[0]]
+            if play_generation != self._play_generation:
+                self._play_lock.release()
+                return
             now = self.now()
-            planned_at = now
-            if self._last_play_at is not None:
-                elapsed_ms = (now - self._last_play_at) * 1000
+            previous_at = self._last_play_at
+            previous_sent_at = self._last_play_sent_at
+            if previous_at is not None:
+                elapsed_ms = (now - (previous_sent_at if previous_sent_at is not None else previous_at)) * 1000
                 if elapsed_ms < PLAY_GAP_MS:
                     if self._is_exempt_filler(play_frame):
                         self._log(f"dropped filler inside {PLAY_GAP_MS} ms play gap", "info", why)
+                        self._play_lock.release()
                         return
-                    planned_at = self._last_play_at + PLAY_GAP_MS / 1000
-                    self._last_play_at = planned_at   # reserve before awaiting; concurrent writes see this slot
-                    await self.sleep(max(0, planned_at - self.now()))
+                    planned_at = (previous_sent_at if previous_sent_at is not None else previous_at) + PLAY_GAP_MS / 1000
+                    cancel_event = self._play_cancel_event
+                    sleep_task = asyncio.ensure_future(self.sleep(max(0, planned_at - self.now())))
+                    cancel_task = asyncio.create_task(cancel_event.wait())
+                    wait_tasks = (sleep_task, cancel_task)
+                    try:
+                        await asyncio.wait(wait_tasks, return_when=asyncio.FIRST_COMPLETED)
+                    finally:
+                        for task in wait_tasks:
+                            if not task.done():
+                                task.cancel()
+                        await asyncio.gather(*wait_tasks, return_exceptions=True)
                     if play_generation != self._play_generation:
+                        self._play_lock.release()
                         return
-                else:
-                    self._last_play_at = now
-            else:
-                self._last_play_at = now
+            self._last_play_at = now
         # F121 rebuild (engine.js `_write`): a `$SIR` row or a `$CLEAR` leaves the gun's table something other
         # than a `sir_pool` take, so the next protection release must write one. Marked at call time. `take`:
         # this write IS a `sir_pool` take (`_arm_life`), which claims the table, as engine.js `_armLife` does.
@@ -1264,16 +1283,29 @@ class GunStage:
         for f in frames:
             self._log(f, "tx", why)
         if not self.connected:
+            if play_lock_held:
+                self._play_lock.release()
             return
         try:
             await self._send(frames, gap_ms, on_start=on_start)
+            if play_indexes:
+                self._last_play_sent_at = self.now()
+                self._last_play_at = self._last_play_sent_at
+                self._play_lock.release()
         except Exception as e:
             # 2026-09-04 walkthrough: the link dropped under the stage ("arm failed: Not connected" while the
             # page said LINKED). Mark it, reconnect once, retry once; only then surface the failure.
             self._log(f"link lost while writing ({e}) -- reconnecting", "warn")
             self.connected = False
-            await self._reconnect()
-            await self._send(frames, gap_ms, on_start=on_start)
+            try:
+                await self._reconnect()
+                await self._send(frames, gap_ms, on_start=on_start)
+                if play_indexes:
+                    self._last_play_sent_at = self.now()
+                    self._last_play_at = self._last_play_sent_at
+            finally:
+                if play_lock_held and self._play_lock.locked():
+                    self._play_lock.release()
 
     def _is_exempt_filler(self, frame: str) -> bool:
         """Return whether a filler sound must drop instead of waiting for the play gap."""
@@ -1286,6 +1318,9 @@ class GunStage:
     def _cancel_pending_play_writes(self) -> None:
         """Cancel play writes that still wait for the reserved gap when death arrives."""
         self._play_generation += 1
+        self._play_cancel_event.set()
+        self._play_cancel_event = asyncio.Event()
+        self._last_play_at = self._last_play_sent_at
 
     async def _send(self, frames: list[str], gap_ms: int, on_start: Callable[[], None] | None = None) -> None:
         if hasattr(self.mgr, "send_batch"):
@@ -2510,6 +2545,7 @@ class GunStage:
         return await self.end()
 
     async def end(self) -> dict:
+        self._cancel_pending_play_writes()
         await self.write(self.bundle["end"], "end")
         self._arm_pending = None; self._trigger_pending = None   # F209: never arm an ended gun
         self.spawned = False; self.alive = False; self.stunned = None; self.poison = None   # F15/S16: the end frames own the gun now
@@ -2520,6 +2556,7 @@ class GunStage:
         return self.state()
 
     async def panic(self) -> dict:
+        self._cancel_pending_play_writes()
         await self.write(self.bundle["panic"], "PANIC")
         self._arm_pending = None; self._trigger_pending = None   # F209
         self.spawned = False; self.alive = False; self.stunned = None; self.poison = None   # S16: no life left to tick

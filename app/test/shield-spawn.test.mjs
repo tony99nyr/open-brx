@@ -164,8 +164,8 @@ test('X3: the spawn line and klaxon precede the fill in separate writes 150 ms a
   const lineWrite = h.writeGroups.findIndex(g => g.frames.includes(golden.cues.spawn));
   const klaxonWrite = h.writeGroups.findIndex(g => g.frames.includes(golden.cues.klaxon));
   assert.notEqual(lineWrite, klaxonWrite, 'the spawn line and klaxon use separate writes');
-  assert.equal(h.writeGroups[klaxonWrite].gapMs - h.writeGroups[lineWrite].gapMs, 150,
-    'the klaxon write is scheduled 150 ms after the spawn line write');
+  assert.equal(h.writeGroups[klaxonWrite].gapMs, 150,
+    'the klaxon waits 150 ms after the spawn line transmission');
 });
 
 test('X3: a revive puts its line before the fill', () => {

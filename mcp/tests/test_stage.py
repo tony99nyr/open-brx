@@ -65,10 +65,17 @@ def tid_follows_pset(frames, tid):
 
 
 async def settle(st):
-    for _ in range(3):
+    idle_passes = 0
+    for _ in range(20):
         await asyncio.sleep(0)
-    if st._pending:
-        await asyncio.gather(*st._pending, return_exceptions=True)
+        pending = set(st._pending)
+        if pending:
+            idle_passes = 0
+            await asyncio.gather(*pending, return_exceptions=True)
+        else:
+            idle_passes += 1
+            if idle_passes == 2:
+                return
 
 
 def test_profile_drives_the_bundle_and_the_event_buttons():
@@ -149,7 +156,8 @@ def test_arm_spawn_event_kill_and_headset_write_the_bundles_frames():
         n = len(tx(mgr))
         st.kill(["double_kill", "killing_spree"]); await settle(st)
         new = tx(mgr)[n:]
-        assert new[0] == "$SFLASH,*" and new[1] == st.bundle["cues"]["double_kill"] and new[2] == st.bundle["cues"]["killing_spree"]
+        sound_order = [f for f in new if f == "$SFLASH,*" or f.startswith("$PLAY,")]
+        assert sound_order == ["$SFLASH,*", st.bundle["cues"]["double_kill"], st.bundle["cues"]["killing_spree"]]
         n = len(tx(mgr))
         # A16 §3.3: carrier is ONE flat WHITE role now (never the flag's team colour, finding #11) --
         # `tid` says WHOSE flag for bookkeeping (`st.carrying`), it does not change the frame.
@@ -791,16 +799,19 @@ def test_a_kill_and_the_kill_event_play_one_random_take_of_the_pool_and_name_it(
             n = len(tx(mgr))
             st.kill(); await settle(st)
             new = tx(mgr)[n:]
-            assert new[0] == "$SFLASH,*" and new[1] in pool, new
-            picks.add(new[1])
-            why = next(l["why"] for l in reversed(st.log) if l["text"] == new[1])
-            assert why.startswith("kill (") and new[1].split(",")[4] in why, why
+            sound_order = [f for f in new if f == "$SFLASH,*" or f.startswith("$PLAY,")]
+            assert len(sound_order) == 2 and sound_order[0] == "$SFLASH,*" and sound_order[1] in pool, new
+            picks.add(sound_order[1])
+            why = next(l["why"] for l in reversed(st.log) if l["text"] == sound_order[1])
+            assert why.startswith("kill (") and sound_order[1].split(",")[4] in why, why
         assert len(picks) > 1, "the pick is random, not always cues['kill']"
         n = len(tx(mgr)); st.event("kill"); await settle(st)
-        assert tx(mgr)[n] in pool and next(l["why"] for l in reversed(st.log) if l["text"] == tx(mgr)[n]).startswith("event cue kill (")
+        event_sound = next(f for f in tx(mgr)[n:] if f.startswith("$PLAY,"))
+        assert event_sound in pool and next(l["why"] for l in reversed(st.log) if l["text"] == event_sound).startswith("event cue kill (")
         # medal stacks are announcer lines: untouched by the pool
         n = len(tx(mgr)); st.kill(["first_blood"]); await settle(st)
-        assert tx(mgr)[n + 1] == st.bundle["cues"]["first_blood"]
+        medal_sounds = [f for f in tx(mgr)[n:] if f == "$SFLASH,*" or f.startswith("$PLAY,")]
+        assert medal_sounds == ["$SFLASH,*", st.bundle["cues"]["first_blood"]]
         # an event without a pool plays its single cue, and a muted profile plays nothing from the pool
         n = len(tx(mgr)); st.event("game_over"); await settle(st)
         assert tx(mgr)[n] == st.bundle["cues"]["game_over"]
@@ -1466,24 +1477,53 @@ def test_stage_reserves_concurrent_play_slots_before_waiting():
 
         async def sleep(seconds):
             waits.append(seconds)
-            await asyncio.sleep(0)
+            clock.advance(seconds)
 
         st = GunStage(FakeConnectionManager([]), None, sleep=sleep, now=clock, voice_verdict_sink=lambda _r: None)
         st.connected = True
         sent = []
 
         async def send(frames, gap_ms, on_start=None):
-            sent.append(frames)
+            sent.append((clock.t, frames))
             await asyncio.sleep(0)
 
         st._send = send
         await asyncio.gather(
             st.write(["$PLAY,,4,6,VA6D,,,,*"], "concurrent A", gap_ms=0),
             st.write(["$PLAY,,4,6,VA6E,,,,*"], "concurrent B", gap_ms=0),
+            st.write(["$PLAY,,4,6,VA6F,,,,*"], "concurrent C", gap_ms=0),
         )
+        assert len(sent) == 3
+        starts = [at for at, _frames in sent]
+        assert all(right - left >= S.PLAY_GAP_MS / 1000 - 1e-9 for left, right in zip(starts, starts[1:])), starts
+        assert st._last_play_sent_at == clock()
+
+    asyncio.run(run())
+
+
+def test_stage_play_gap_starts_when_previous_transmission_finishes():
+    async def run():
+        clock = _Clock()
+        waits = []
+
+        async def sleep(seconds):
+            waits.append(seconds)
+            clock.advance(seconds)
+
+        st = GunStage(FakeConnectionManager([]), None, sleep=sleep, now=clock, voice_verdict_sink=lambda _r: None)
+        st.connected = True
+        sent = []
+
+        async def send(frames, gap_ms, on_start=None):
+            sent.append((clock.t, frames))
+            clock.advance(0.2)
+
+        st._send = send
+        await st.write(["$PLAY,,4,6,VA6D,,,,*"], "slow A", gap_ms=0)
+        await st.write(["$PLAY,,4,6,VA6E,,,,*"], "slow B", gap_ms=0)
         assert len(sent) == 2
-        assert len(waits) == 1 and waits[0] >= S.PLAY_GAP_MS / 1000 - 1e-9, waits
-        assert abs(st._last_play_at - (clock() + S.PLAY_GAP_MS / 1000)) < 1e-9
+        assert sent[1][0] - (sent[0][0] + 0.2) >= S.PLAY_GAP_MS / 1000 - 1e-9
+        assert waits and waits[0] >= S.PLAY_GAP_MS / 1000 - 1e-9
 
     asyncio.run(run())
 
@@ -1492,12 +1532,11 @@ def test_stage_death_cancels_a_play_waiting_for_its_gap():
     async def run():
         clock = _Clock()
         waiting = asyncio.Event()
-        release = asyncio.Event()
         sent = []
 
         async def sleep(_seconds):
             waiting.set()
-            await release.wait()
+            await asyncio.Event().wait()
 
         st = GunStage(FakeConnectionManager([]), None, sleep=sleep, now=clock, voice_verdict_sink=lambda _r: None)
         st.connected = True
@@ -1514,9 +1553,44 @@ def test_stage_death_cancels_a_play_waiting_for_its_gap():
         task = asyncio.create_task(st.write(["$PLAY,,4,6,VA86,,,,*"], "low health", gap_ms=0))
         await waiting.wait()
         st._on_rx("$HP,0,0,0,*")
-        release.set()
-        await task
+        await asyncio.wait_for(task, 0.2)
         assert "$PLAY,,4,6,VA86,,,,*" not in sent
+        assert not st._play_lock.locked(), "death releases the cancelled PLAY reservation"
+        await st.write(["$PLAY,,4,6,VA86,,,,*"], "respawn", gap_ms=0)
+        assert sent[-1] == "$PLAY,,4,6,VA86,,,,*", "the next life does not wait for the cancelled gap timer"
+
+    asyncio.run(run())
+
+
+def test_stage_end_panic_and_disconnect_cancel_play_gap_waiters():
+    async def exercise(teardown):
+        clock = _Clock()
+        waiting = asyncio.Event()
+        sent = []
+
+        async def sleep(_seconds):
+            waiting.set()
+            await asyncio.Event().wait()
+
+        st = GunStage(FakeConnectionManager([]), None, sleep=sleep, now=clock, voice_verdict_sink=lambda _r: None)
+        st.connected = True
+        st._last_play_sent_at = clock() - 0.01
+        st._last_play_at = st._last_play_sent_at
+
+        async def send(frames, gap_ms, on_start=None):
+            sent.extend(frames)
+
+        st._send = send
+        queued = asyncio.create_task(st.write(["$PLAY,,4,6,VA86,,,,*"], "queued", gap_ms=0))
+        await waiting.wait()
+        await teardown(st)
+        await asyncio.wait_for(queued, 0.2)
+        assert not st._play_lock.locked(), f"{teardown.__name__} releases the cancelled PLAY reservation"
+
+    async def run():
+        await exercise(lambda st: st.end())
+        await exercise(lambda st: st.panic())
+        await exercise(lambda st: st.disconnect())
 
     asyncio.run(run())
 

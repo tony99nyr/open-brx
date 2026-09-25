@@ -401,6 +401,7 @@ test('S29: no heartbeat is written in the same tick the recharge starts', () => 
   g.eng._shieldLoopAt = now2 - 1940;
   g.eng._gun.clear();   // the break cue has finished (as above): only the ordering is pinned
   g.eng._nextPlayAt = 0;  // ...and so has its F347 play gap, or the filler heartbeat is dropped inside it
+  g.eng._lastPlayAt = null;
   const m = g.writes.length;
   g.eng._shieldTick(now2);
   assert.ok(g.writes.slice(m).includes(LOOP), 'control: a heartbeat alone is written');

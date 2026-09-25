@@ -63,8 +63,8 @@ Rules:
    the model says the gun holds, in the same write, then the line. `MUST_HEAR_MAX_STOPS` caps the count to limit
    fragments and bound the flush. A write with 2 or more stops can clear the whole queue. No stop goes out when the gun
    is quiet. Each medal line goes out after the one before it has ended.
-3. **Spacing** (`PLAY_GAP_MS = 150`): a phone write carries at most one `$PLAY`. The announcer and spawn line wait until
-   150 ms have passed since the previous phone-written `$PLAY`. Pain grunts, the shield-down heartbeat and possession
+3. **Spacing** (`PLAY_GAP_MS = 150`): a phone write carries at most one `$PLAY`. The next write waits for the previous
+   write to complete and for 150 ms after its `$PLAY` reached the link. Pain grunts, the shield-down heartbeat and possession
    ticks drop if they fall inside the gap. The gap is unproven; zero-gap bursts dropped a clip on 2026-09-25.
 4. **Spawn and revive** (`X3`): the phone sends the spawn line and klaxon before F348's `$LIFE,0,0,<max>,*` fill.
    Spacing splits those sounds across writes. A must-hear line may flush the queue that remains.

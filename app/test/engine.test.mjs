@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Engine, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, SMOKE_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand, isPoolProbe, PROBE_LIFE } from '../src/engine.js';
+import { BrxLink } from '../src/brxlink.js';
 import { Hud } from '../src/hud/hud.js';
 import * as W from '../src/transport/envelope.js';
 import { CONTROL_STATE } from '../src/control.js';   // the phone control point's advert bits (K1)
@@ -2654,10 +2655,11 @@ test('F375 review: low-health stays pending through the play gap and death cance
   assert.equal(h.eng._hurtSent, false, 'the critical line is not marked sent before its scheduled write');
   assert.equal(h.eng._pendingHurtWrite, true, 'the critical line stays pending in the play gap');
   assert.ok(h.eng._pendingPlayWrites.size > 0);
+  const playGap = delayed.at(-1);
   h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');
   assert.equal(h.eng._pendingHurtWrite, false);
   assert.equal(h.eng._hurtSent, false);
-  h.adv(200);
+  playGap.fn(); // captured play-gap callback must remain harmless after death
   assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 0, 'VA86 never leaves after the death');
 });
 
@@ -2678,6 +2680,210 @@ test('F347 review: _writeLife receives a later split-group failure', async () =>
   assert.equal(ok, false, 'the outer write reports the delayed group failure');
   assert.ok(calls >= 2, 'the failed group is followed by the existing pool repair path');
   assert.equal(h.eng._writeLost, life, 'the failed life write is visible to Mission Control');
+});
+
+test('F347 review: a split PLAY waits for transmission and completion before its next gap', async () => {
+  let clock = 1000, finishFirst;
+  const timers = [], sent = [];
+  const eng = new Engine({ now: () => clock, delay: (ms, fn) => timers.push({ ms, fn }),
+    writer: frames => { sent.push({ at: clock, frames }); return sent.length === 1 ? new Promise(resolve => { finishFirst = resolve; }) : true; } });
+  const pending = eng._write(['$PLAY,,4,6,VA6D,,,,*', '$PLAY,,4,6,VA6E,,,,*'], 'split completion');
+  assert.equal(sent.length, 1);
+  clock += 150;
+  for (const timer of timers.splice(0)) timer.fn();
+  assert.equal(sent.length, 1, 'the second PLAY waits for the first write to finish');
+  finishFirst(true);
+  await new Promise(resolve => setImmediate(resolve));
+  for (const timer of timers.splice(0)) timer.fn();
+  assert.equal(sent.length, 2);
+  assert.ok(sent[1].at - sent[0].at >= 150);
+  assert.equal(await pending, true);
+});
+
+test('F347 review: the remaining gap starts when BrxLink reports the PLAY frame sent', async () => {
+  let clock = 1000, finishFirst, firstOptions;
+  const timers = [], sent = [];
+  const eng = new Engine({ now: () => clock, delay: (ms, fn) => timers.push({ ms, fn }),
+    writer: (frames, _why, options) => {
+      sent.push({ at: clock, frames });
+      if (sent.length === 1) { firstOptions = options; return new Promise(resolve => { finishFirst = resolve; }); }
+      return true;
+    } });
+  const pending = eng._write(['$PLAY,,4,6,VA6D,,,,*', '$PLAY,,4,6,VA6E,,,,*'], 'transmission gap');
+  clock = 1200;
+  firstOptions.onFrameSent('$PLAY,,4,6,VA6D,,,,*');
+  clock = 1250;
+  finishFirst(true);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(sent.length, 1);
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0].ms, 100, 'only the gap remaining after completion is delayed');
+  clock = 1350;
+  timers.shift().fn();
+  assert.equal(sent.length, 2);
+  assert.equal(await pending, true);
+});
+
+test('F347 review: a PLAY resend restarts the gap without adding a phantom clip', async () => {
+  let clock = 1000, finishFirst, firstOptions;
+  const timers = [], sent = [];
+  const eng = new Engine({ now: () => clock, delay: (ms, fn) => timers.push({ ms, fn }),
+    writer: (frames, _why, options) => {
+      sent.push({ at: clock, frames });
+      if (sent.length === 1) { firstOptions = options; return new Promise(resolve => { finishFirst = resolve; }); }
+      return true;
+    } });
+  const pending = eng._write(['$PLAY,,4,6,VA6D,,,,*', '$PLAY,,4,6,VA6E,,,,*'], 'resend gap');
+  assert.equal(eng._gun.clips.length, 0, 'a queued write has not reached the gun');
+  firstOptions.onFrameSent('$PLAY,,4,6,VA6D,,,,*');
+  clock = 1300;
+  firstOptions.onFrameSent('$PLAY,,4,6,VA6D,,,,*');
+  assert.equal(eng._gun.clips.length, 1, 'the retry keeps one logical clip in the model');
+  clock = 1350;
+  finishFirst(true);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(timers[0].ms, 100, 'the second PLAY waits from the latest transmission');
+  clock = 1450;
+  timers.shift().fn();
+  assert.equal(await pending, true);
+});
+
+test('F347 review: a failed writer does not mark an unsent PLAY as heard', async () => {
+  let marked = 0;
+  const eng = new Engine({ now: () => 1000, writer: () => Promise.resolve(false) });
+  assert.equal(await eng._write(['$PLAY,,4,6,VA86,,,,*'], 'failed PLAY', undefined, false, () => marked++), false);
+  assert.equal(marked, 0);
+  assert.equal(eng._lastPlayAt, null);
+});
+
+test('F347 review: teardown cancels a PLAY waiting inside the link queue', async () => {
+  for (const teardown of ['_endLocal', 'panic', 'onBleDropped']) {
+    const h = goLive(harness());
+    let release;
+    h.eng.writer = (frames, _why, options) => new Promise(resolve => { release = () => {
+      if (!options.shouldSend()) return resolve(null);
+      h.writes.push(...frames);
+      for (const frame of frames) options.onFrameSent(frame);
+      resolve(true);
+    }; });
+    const from = h.writes.length;
+    const pending = h.eng._write(['$PLAY,,4,6,VA6D,,,,*'], 'queued in link');
+    const releasePlay = release;
+    if (teardown === '_endLocal') h.eng._endLocal('test');
+    else if (teardown === 'panic') h.eng.control({ cmd: 'panic' });
+    else h.eng.onBleDropped();
+    releasePlay();
+    await pending;
+    assert.ok(!h.writes.slice(from).includes('$PLAY,,4,6,VA6D,,,,*'), `${teardown} cancels the queued link write`);
+  }
+});
+
+test('F375 review: a cancelled link-queued PLAY cannot cause a death stop', async () => {
+  const h = goLive(harness());
+  h.eng._gun.clear();
+  let release;
+  h.eng.writer = (frames, _why, options) => new Promise(resolve => { release = () => {
+    if (!options.shouldSend()) return resolve(null);
+    h.writes.push(...frames);
+    for (const frame of frames) options.onFrameSent(frame);
+    resolve(true);
+  }; });
+  const pending = h.eng._write(['$PLAY,,4,6,VA86,,,,*'], 'link-queued low health');
+  const releasePlay = release;
+  assert.equal(h.eng._gun.clips.length, 0, 'the queued line is absent from the gun model');
+  const before = h.writes.filter(f => f === PLAYX).length;
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');
+  releasePlay();
+  await pending;
+  assert.equal(h.writes.filter(f => f === PLAYX).length, before, 'death does not stop an unsent line or its native scream');
+});
+
+test('F347 review: BrxLink checks cancellation before queued frames and reports PLAY transmission', async () => {
+  let releaseQueue, allowed = true, chunks = 0;
+  const noted = [];
+  const link = new BrxLink({ headsetProbe: false, frameGapMs: 0, chunkGapMs: 0,
+    writeChunk: async () => { chunks++; } });
+  link.deviceId = 'gun';
+  link._q = new Promise(resolve => { releaseQueue = resolve; });
+  const skipped = link.write(['$PLAY,,4,6,VA6D,,,,*'], 'queued PLAY',
+    { shouldSend: () => allowed, onFrameSent: frame => noted.push(frame) });
+  allowed = false;
+  releaseQueue();
+  assert.equal(await skipped, null);
+  assert.equal(chunks, 0);
+  assert.deepEqual(noted, []);
+  allowed = true;
+  assert.equal(await link.write(['$PLAY,,4,6,VA6E,,,,*'], 'sent PLAY',
+    { shouldSend: () => allowed, onFrameSent: frame => noted.push(frame) }), true);
+  assert.ok(chunks > 0);
+  assert.deepEqual(noted, ['$PLAY,,4,6,VA6E,,,,*']);
+});
+
+test('F347 review: BrxLink rechecks cancellation after a parser reset', async () => {
+  let allowed = true, releaseReset, chunks = 0;
+  const noted = [];
+  const link = new BrxLink({ headsetProbe: false, frameGapMs: 0, chunkGapMs: 0,
+    writeChunk: async () => { chunks++; if (chunks === 1) await new Promise(resolve => { releaseReset = resolve; }); } });
+  link.deviceId = 'gun';
+  link._resetOwed.add('gun');
+  const pending = link.write(['$PLAY,,4,6,VA6D,,,,*'], 'reset then PLAY',
+    { shouldSend: () => allowed, onFrameSent: frame => noted.push(frame) });
+  for (let i = 0; i < 10 && !releaseReset; i++) await new Promise(resolve => setImmediate(resolve));
+  assert.ok(releaseReset, 'the reset reached the paused write');
+  allowed = false;
+  releaseReset();
+  assert.equal(await pending, null);
+  assert.equal(chunks, 1, 'only the parser reset was sent');
+  assert.deepEqual(noted, []);
+});
+
+test('F347 review: cancelled PLAY reservations release the unused slots', () => {
+  let clock = 1000;
+  const timers = [], sent = [];
+  const eng = new Engine({ now: () => clock, delay: (ms, fn) => timers.push(fn), writer: frames => { sent.push(...frames); return true; } });
+  eng._write(['$PLAY,,4,6,VA6D,,,,*', '$PLAY,,4,6,VA6E,,,,*', '$PLAY,,4,6,VA7,,,,*'], 'reserved pair');
+  eng._cancelPendingPlayWrites();
+  clock += 150;
+  eng._write(['$PLAY,,4,6,VA6F,,,,*'], 'after cancellation');
+  assert.ok(sent.includes('$PLAY,,4,6,VA6F,,,,*'), 'the new line uses the gap after the last transmitted PLAY');
+  for (const fn of timers) fn();
+  assert.ok(!sent.includes('$PLAY,,4,6,VA6E,,,,*'), 'the cancelled PLAY remains cancelled');
+});
+
+test('F347 review: match end, panic and BLE drop cancel captured PLAY gap callbacks', () => {
+  for (const teardown of ['_endLocal', 'panic', 'onBleDropped']) {
+    const h = goLive(harness());
+    const timers = [];
+    h.eng.delay = (ms, fn) => timers.push(fn);
+    const from = h.writes.length;
+    h.eng._write(['$PLAY,,4,6,VA6D,,,,*', '$PLAY,,4,6,VA6E,,,,*', '$LIFE,0,0,105,*'], 'split before teardown');
+    if (teardown === '_endLocal') h.eng._endLocal('test');
+    else if (teardown === 'panic') h.eng.control({ cmd: 'panic' });
+    else h.eng.onBleDropped();
+    for (const fn of timers) fn();
+    assert.ok(!h.writes.slice(from).includes('$PLAY,,4,6,VA6E,,,,*'), `${teardown} cancelled the second PLAY`);
+    assert.ok(!h.writes.slice(from).includes('$LIFE,0,0,105,*'), `${teardown} cancelled the split shield fill`);
+  }
+});
+
+test('F347 review: a delayed death stop cannot cut a new life or ended match', () => {
+  for (const teardown of ['respawn', 'end']) {
+    const h = goLive(harness());
+    const timers = [];
+    h.eng.delay = (ms, fn) => timers.push(fn);
+    h.eng._gun.clear();
+    h.eng._gun.add(3000, 'ahead one', h.eng.now(), 'VA8C');
+    h.eng._gun.add(3000, 'ahead two', h.eng.now(), 'VA7');
+    h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');
+    const stops = () => h.writes.filter(f => f === PLAYX).length;
+    const before = stops();
+    if (teardown === 'respawn') h.eng._lifeSeq++;
+    else h.eng._endLocal('test');
+    const afterTeardown = stops();
+    for (const fn of timers) fn();
+    assert.ok(before > 0);
+    assert.equal(stops(), afterTeardown, `${teardown} blocks later death stops`);
+  }
 });
 
 // ── review 2026-09-19: a queued low-health alert must not survive match end/teardown/panic ────────
