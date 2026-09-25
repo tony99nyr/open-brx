@@ -836,7 +836,7 @@ def _arrival_crossing(world: World, match_id: str, keys: set, cap: int) -> int |
         for f in taken_facts(world, s):
             if f["key"] in seen:
                 continue
-            seen.add(f["key"])
+            seen.add(f["key"])            # the FIRST taking decides, even when it did not score
             if f["key"] not in keys or f["status"] != "scored" or f["kind"] != "death" or not f["killer"]:
                 continue
             kills[f["killer"]] += -1 if _friendly(world, f["killer"], f["pid"]) else 1
@@ -869,7 +869,7 @@ def frag_cap_ends_match(world: World) -> None:
     MC held at that end: a late flush that lifts the board to the cap afterwards does not re-label it."""
     s = world.session
     sc = s.scorer
-    cap = (s.config.get("scoring") or {}).get("frag_limit")
+    cap = sc.frag_limit if sc is not None else None      # the scorer's cap, not the operator's draft
     if sc is None or not cap or sc.win_by != "kills":
         return
     reason = next((f["reason"] for f in world.finishes if f["match_id"] == world.match_id), None)
@@ -880,25 +880,24 @@ def frag_cap_ends_match(world: World) -> None:
             _fail("frag_cap_ends_match", f"a frag-limit end froze at {sc.end_t}, the cap was reached at {sc.limit_reached_t}")
         if top < cap and not sc.cap_tie:
             _fail("frag_cap_ends_match", f"ended on the frag limit {cap} with a top score of {top}")
-    elif top >= cap:
-        if reason in ("host", "time") and world.end_delivered is not None:
-            # F362 (l): the operator's END (or the clock) stands. Facts stamped before it can still flush
-            # after it and lift the board to the cap, but a late flush never re-labels the end as a
-            # frag-cap win. Judge the end on the facts MC held at the end, by the ledger's account.
-            _sc, facts = _current(world)
-            held = [f for f in facts if (f[0], f[1]) in world.end_delivered]
-            kills, _d, _h, _p = _expected(world, sc, held)
-            top_then = _top_score(world, sc, kills)
-            # polish r2: a cap held in play and lost again inside one step (a flush with the capping kill and
-            # then a team kill) sums below the cap at every step boundary, so check the arrival order too.
-            crossed = _arrival_crossing(world, sc.match_id, world.end_delivered, cap)
-            if top_then < cap and crossed is None:
-                return
-            if crossed is not None:
-                _fail("frag_cap_ends_match", f"the facts held at the end reached the cap ({crossed} >= {cap}) in "
-                                             f"the order MC received them, but the match ended by {reason!r}")
+    elif reason in ("host", "time") and world.end_delivered is not None:
+        # F362 (l): the operator's END (or the clock) stands. Facts stamped before it can still flush after
+        # it and lift the board to the cap, but a late flush never re-labels the end as a frag-cap win. So
+        # judge the end on the facts MC held at the end, by the ledger's account. Polish r2/r3: check them in
+        # the order MC first received them as well, for EVERY such end: a flush with the capping kill and then
+        # a team kill sums below the cap at every step boundary and at the end.
+        crossed = _arrival_crossing(world, sc.match_id, world.end_delivered, cap)
+        if crossed is not None:
+            _fail("frag_cap_ends_match", f"the facts held at the end reached the cap ({crossed} >= {cap}) in "
+                                         f"the order MC received them, but the match ended by {reason!r}")
+        _sc, facts = _current(world)
+        held = [f for f in facts if (f[0], f[1]) in world.end_delivered]
+        kills, _d, _h, _p = _expected(world, sc, held)
+        top_then = _top_score(world, sc, kills)
+        if top_then >= cap:
             _fail("frag_cap_ends_match", f"the board held at the end reached the cap ({top_then} >= {cap}) "
                                          f"but the match ended by {reason!r}")
+    elif top >= cap:
         _fail("frag_cap_ends_match", f"the board reached the cap ({top} >= {cap}) but the match ended by {reason!r}")
 
 

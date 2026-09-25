@@ -5327,9 +5327,10 @@ class Session:
                        list(like.teams.values()), like.node_player, like.synced_at_lobby, now_ms=self.now_ms,
                        win_by=like.win_by, frag_limit=like.frag_limit)
         probe.joined_t = dict(like.joined_t)
-        # `facts` come in store insertion order (`_match_facts(arrival=True)`), and the sort is stable, so two
-        # facts on the same `t_recv` millisecond keep the order MC received them in (polish r1).
-        for r in sorted(facts, key=lambda r: r.get("t_recv") or 0):
+        # `facts` come in store insertion order (`_match_facts(arrival=True)`), which IS the order MC received
+        # them, across a restart too (`_import_facts` copies the old rows first). No sort on `t_recv`: two facts
+        # on one millisecond keep their order, and a new process's clock cannot reorder the old one's facts.
+        for r in facts:
             probe.ingest(r["node_id"], cast(Event, dict(r["body"])), r.get("t_recv") or 0, seq=r.get("seq"))
             if probe.limit_reached_t is not None:
                 return r.get("t_recv") or 0
