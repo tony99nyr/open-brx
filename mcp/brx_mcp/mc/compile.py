@@ -2768,7 +2768,7 @@ class Compiler:
         sir = self.sir_table(plan, None)
         # $PSET,0 = "no identity" (A5.1) so a stray try-out hit reports shooter 0, never credited.
         # F206: token 2 = 1, the same team as the `$TID,1` below (one team byte, last writer wins).
-        pset = "$PSET,0,1,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*"
+        pset = "$PSET,0,1,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,,*"
         frames = [
             f"$VOL,{self.tryout_volume()},0,*", "$CLEAR,*", "$START,*",   # $START IS required — bench 2026-08-25: without it the gun
                                                      # spawns but the trigger only reloads, it will not fire IR

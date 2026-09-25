@@ -91,9 +91,8 @@ def test_the_control_point_reload_and_ammo_actions_through_the_api():
         assert c.post("/api/do", json={"action": "station_advert", "uuid": "nope"}).status_code == 400
         r = c.post("/api/do", json={"action": "station_stop"}).json()
         assert r["stations"][0]["advertising"] is False
-        # F54: a reload before any ammo report is ignored (the phone knows no reserve); after one it glances
-        r = c.post("/api/do", json={"action": "reload"}).json()
-        assert r["model"]["reloading"] is None and any("no reserve known" in l["text"] for l in r["log"])
+        # F54: after an ammo report the reload glances. The "no reserve known" control is in test_stage_mirror:
+        # here the fake gun's `$ALCD` replies to the spawn's `$AMMO` land during the F347 play gap.
         r = c.post("/api/do", json={"action": "alcd", "mag": 10, "reserve": 20}).json()
         assert r["model"]["reserve"] == 20 and any(l["why"] == "injected by the page" for l in r["log"])
         r = c.post("/api/do", json={"action": "reload"}).json()

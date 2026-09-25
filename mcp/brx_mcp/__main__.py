@@ -210,7 +210,7 @@ GAME_CONFIG = [
     # t7 (crit_modifier) is 0: the GameConfig default (2026-09-17, arsenal review).
     "$GSET,1,0,1,0,1,0,0,1,*",
     # tokens 3-5 = HP,armor,shield (45,70,70); tail is the app's audio set
-    "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*",
+    "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,,*",
     # slot 0 primary, slot 1 secondary, slot 4 melee
     "$WEAP,0,,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*",
     "$WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*",

@@ -52,16 +52,7 @@ hardware settled, including the things it settled against me:
      the MATERIAL layer compete for one hit. They are not orthogonal after all -- the paragraph above
      that says they are is describing the tables, not the audio. Only one can speak, and the material
      layer wins by default: it is ear-confirmed, the class pools are not.
-  4. **Position 7 (`energyShieldLoop`) is a REAL LOOP** that runs while the shield is up, survives a
-     `$PSET` rewrite, and is stopped by `$PLAYX,0,*`. Callsign's inherited `A10` is a geiger-ish tick and
-     it ran under every shield-band hit all session. Left EMPTY here; picking a hum is a followup.
-     ⚠️ CORRECTED 2026-09-11 (evening, Tony at the bench): the "geiger-ish tick" read was CONTEXT, not
-     the clip -- it was heard under a barrage of shield-band hits during a readings session, where every
-     hit's own material sound was landing on top of the loop. Heard ALONE tonight (gun armed with the
-     golden bundle, `$LIFE,0,0,20,*` raised the shield, `$LIFE,0,0,-20,*` dropped it and the loop stopped
-     with it), `A10` is a real hum: "oh this is a nice humming of shield or energy." `SHIELD_LOOP` below
-     is now wired to it. `U100` and `U13` were also tried in the slot on this pass and both read as "a
-     bomb ticking about to blow" -- rejected.
+  4. **F347 (bench 2026-09-25):** `A10` was a real hum, and it blocked the audio FIFO. The shipped slot is now empty.
 
 ⚠️ **THE METHOD THAT BUILT THE FIRST VERSION OF THIS FILE DOES NOT WORK, and that is the transferable
 finding.** Every id was originally chosen by ACOUSTIC SHAPE from `data/sound_catalog.json`. Not one
@@ -153,11 +144,10 @@ MATERIAL_POOLS: dict[str, tuple[str, ...]] = {
     # the audit rather than from any rolling machinery. `H13`, Callsign's own stock armour id, is NOT here:
     # second pass called it "like the stock hit sound, less metal". Their choice was mediocre, not wrong.
     "hit_armor":  ("H02", "H36", "H37"),
-    # SHIELD. ONE take, on purpose. `H22` was independently named "shield hit" twice, and beat the entire
-    # `fx:electrical` family head to head ("none of the others were nearly as good"). Padding this with
-    # shape picks is exactly the mistake above, so it stays a single confirmed id until a second audit pass
-    # earns a second one. Shield is IR-granted only (P16) so it is the rarest pool in play anyway.
-    "hit_shield": ("H22",),
+    # SHIELD. ONE take, on purpose. F350 (bench 2026-09-25, t23 empty, A/B/A, 10 rig hits a set): `H22`
+    # carried a random geiger-like rattle on 4-6 of 10 hits; `H21` (Callsign's own stock id) on 0 of 10,
+    # and Tony hears both as a shield hit. Rejected, not a shield hit: `L03`, `R110`, `U02`, `H51`.
+    "hit_shield": ("H21",),
     # CRIT. EAR-CONFIRMED 2026-09-11 (Tony at the bench, `X49` heard three times solo): "metal hit, yeah
     # use it for crit" -- matching its 2026-09-04 audit label ("metal hitting sound"). No longer a shape
     # pick. The earlier placeholder `H43` was REJECTED on this pass ("dropped a gun on the ground", not
@@ -171,21 +161,9 @@ MATERIAL_POOLS: dict[str, tuple[str, ...]] = {
 # rather than carrying the news alone. Armour and shield have nothing else speaking for them.
 MATERIAL_DEFAULT = {r: MATERIAL_POOLS[r][0] for r in MATERIAL_ROLES}
 
-# `$PSET` foot position 7, `energyShieldLoop`. BENCH 2026-09-07: it is a REAL LOOP that runs while the
-# shield is UP, survives a `$PSET` rewrite, and stops only on `$PLAYX,0,*` or the shield reaching zero.
-# That session's read of Callsign's inherited `A10` as a "geiger-ish tick" was CONTEXT, not the clip --
-# every shield-band hit's own material sound was landing on top of the loop, and an hour of readings
-# under that barrage came back incoherent ("that geiger counter hit came back", "wtf").
-# BENCH 2026-09-11: the low-hum shortlist tried in between FAILED by ear -- `N71`/`N72` read as "security
-# alert", `N67` as "a very annoying security alarm", `CC07` as an "8-bit level-clear jingle", `Y07` as a
-# "high-pitch drill", `JAS`/`JAQ` are hype tracks not ambience, and `U100`/`U13` (heard again this pass,
-# in the slot) both read as "a bomb ticking about to blow" -- rejected.
-# CLOSED 2026-09-11 (evening, Tony at the bench, one Tactix2): `A10` heard ALONE -- `$LIFE,0,0,20,*`
-# raised the shield, the loop started, `$LIFE,0,0,-20,*` dropped the shield and the loop stopped with it
-# -- is a real hum: "oh this is a nice humming of shield or energy." Callsign's own inherited id turns
-# out to be the right one; F44 closed.
+# A10 was a real hum, and it blocked the audio FIFO; $PLAYX does not stop it (bench 2026-09-25 F347).
 SHIELD_LOOP_INDEX = 7
-SHIELD_LOOP = "A10"
+SHIELD_LOOP = ""
 
 # `A08`/`A09` sit either side of `A10` in the Callsign app's own FSET enum order (ShieldOnHeal,
 # ShieldOffExpire, ShieldLoop -- `protocol/callsign-extract/protocol-classes.md` FSET slots) and were

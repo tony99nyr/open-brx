@@ -544,7 +544,7 @@ def test_reconnect_is_not_declared_until_the_gun_answers_the_probe():
 # Field 2026-09-24 (app 0.4.11, Tactix-FE30): a `$PSET` whose `*` chunk was lost, then the same `$PSET` again from its
 # first byte, armed `$HP,4545,7070,0`. The parser keeps tokens 1..59 across a `$` (transport-hardening.md §1.3),
 # so the second copy is appended to the first. `feed_bytes` is that parser; `$*` (screamers A4) resets it.
-_PSET = "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H22,X49,U15,W71,A10,*"
+_PSET = "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H22,X49,U15,W71,,*"
 
 
 def test_faketagger_parser_appends_a_resent_pset_to_a_partial_one():

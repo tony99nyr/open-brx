@@ -19,7 +19,7 @@ function mkStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m
 
 // Me: p1, player_num 7, BLUE (tid 1). VIPER: 19, YELLOW (tid 2).
 function harness({ num = 7, mode = 'tdm', shieldMax = null, teams: teamsIn = null } = {}) {
-  const writes = [], logs = []; let clock = 1_000_000; const timers = [];
+  const writes = [], logs = []; let clock = 1_000_000, writeSeq = 0; const timers = [];
   const teams = teamsIn || [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
   const config = { config_id: golden.config_id, mode, environment: 'outdoor', night: false, time_limit_s: 600,
     respawn: { type: 'auto', delay_s: 5 }, scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams };
@@ -27,7 +27,7 @@ function harness({ num = 7, mode = 'tdm', shieldMax = null, teams: teamsIn = nul
   const roster = [{ player_id: 'p1', player_num: num, display: 'REAPER', team_id: 'blue' }, { player_id: 'p2', player_num: 19, display: 'VIPER', team_id: 'yellow' },
     { player_id: 'p3', player_num: 20, display: 'GHOST', team_id: 'blue' }, { player_id: 'p4', player_num: 21, display: 'SABLE', team_id: 'yellow' }];
   // `delay` is the engine's own timer seam: here it runs on the mocked clock, so a 120 ms flash-then-line gap is real
-  const eng = new Engine({ writer: fr => fr.forEach(f => writes.push({ f, t: clock })), emit: () => {}, report: () => {}, now: () => clock,
+  const eng = new Engine({ writer: fr => { const group = ++writeSeq; fr.forEach(f => writes.push({ f, t: clock, group })); }, emit: () => {}, report: () => {}, now: () => clock,
     synced: () => true, storage: mkStorage(), log: m => logs.push(String(m)), delay: (ms, fn) => timers.push({ at: clock + ms, fn }), rng: () => 0 });
   const bundle = { ...golden, player_id: 'p1', callout_team: 0 };
   if (shieldMax != null) {   // a shield ceiling on every $PSET the gun is armed with (F341 repairs a pool above its ceiling)
@@ -464,52 +464,54 @@ test('shield heartbeat: a kill mid-beat stops the beat (and any hit clip), then 
   assert.ok(beats.length >= 1 && beats[0].t - vaa.t >= CLIP_MS.VAA, `the next beat waits out the kill line (${beats.length ? beats[0].t - vaa.t : 'none'} ms)`);
 });
 
-// The shield loop: `$PSET` t23 (`energyShieldLoop`, A10 in the golden bundle) plays while the shield is above 0 and
-// blocks the gun's FIFO indefinitely; `$PLAYX,0` stops it and it RESUMES on its own (bench 2026-09-24).
+// Shield-up is not an audio state. `$PSET` t23 is empty in shipped bundles.
 const shieldUp = h => { h.eng.feedFrame('$HP,45,70,105,*'); if (h.eng.shield <= 0) { h.eng.shield = 105; h.eng._audioSync(); } return h; };
 
-test('shield loop: shield 105, kill confirm: $PLAYX,0 then VAA at once', () => {
+test('F347: the phone splits PLAY pairs and keeps PLAY_GAP_MS between writes', () => {
+  const h = harness().live();
+  h.eng._nextPlayAt = h.now();
+  const from = h.writes.length;
+  h.eng._write(['$PLAY,,4,6,VA6D,,,,*', '$PLAY,,4,6,VA6E,,,,*'], 'test: paired clips');
+  h.adv(500);
+  const sent = h.writes.slice(from).filter(w => w.f.startsWith('$PLAY,'));
+  const byWrite = new Map();
+  for (const w of sent) byWrite.set(w.group, (byWrite.get(w.group) || 0) + 1);
+  assert.ok([...byWrite.values()].every(n => n === 1), 'each write carries at most one $PLAY');
+  assert.ok(sent.length >= 2 && sent[1].t - sent[0].t >= ann.PLAY_GAP_MS, 'the pair is at least PLAY_GAP_MS apart');
+});
+
+test('docs: announcer stop rules name both measured stop behaviours', () => {
+  const docs = readFileSync(new URL('../../docs/announcer.md', import.meta.url), 'utf8');
+  assert.match(docs, /One `\$PLAYX,0,\*` in a write\s+stops only the clip playing/);
+  assert.match(docs, /Two or more `\$PLAYX,0,\*` frames in one write can clear the whole queue/);
+});
+
+test('F347 review: death cancels a gap-delayed must-hear write and requeues its line', () => {
+  const h = harness().live();
+  h.eng._nextPlayAt = h.now() + ann.PLAY_GAP_MS;
+  h.kill();
+  h.adv(120);
+  assert.ok(h.eng._pendingPlayWrites.size > 0, 'the kill line waits for the reserved play slot');
+  h.eng.feedFrame('$HIR,4,0,19,2,60,0,0,*'); h.eng.feedFrame('$HP,0,0,0,*');
+  assert.ok(h.eng._ann.queue.some(item => item.kind === 'kill_confirmed'), 'death returns the cancelled line to the announcer queue');
+  h.adv(ann.PLAY_GAP_MS + 50);
+  assert.equal(h.plays(KILL).length, 0, 'the cancelled write does not reach the gun during the scream');
+});
+
+test('F347: shield up does not block the FIFO or add a stop to a quiet kill confirm', () => {
   const h = shieldUp(harness({ shieldMax: 125 }).live());
-  assert.equal(h.eng._gun.blocked, true, 'setup: the loop blocks the gun');
+  h.eng._gun.clear();
   const n = h.writes.length;
-  h.kill(); h.adv(150);
-  assert.deepEqual(tail(h, n), ['X', 'VAA']);
-  h.adv(3000); const m = h.writes.length;
-  h.kill(); h.adv(150);
-  assert.deepEqual(tail(h, m), ['X', 'VAA'], 'the loop resumed, so the next must-hear line gets its own stop');
+  h.eng._sayMust('$PLAY,,4,6,VAA,,,,*', 'test kill line'); h.adv(200);
+  assert.deepEqual(tail(h, n), ['VAA'], 'the line plays without a loop stop');
 });
 
-test('shield loop: a clip stuck behind it before the kill: two stops then the line; nothing ambient is written while it blocks', () => {
-  const h = harness({ shieldMax: 125 }).live();
-  h.eng._write(['$PLAY,,4,6,VA8C,,,,*'], 'test: a body clip');         // written just before the shield came up
-  shieldUp(h);
-  const n = h.writes.length;
-  h.alert('next_kill_wins');                                           // an ambient alert: not must-hear, not objective
-  h.eng._write(['$PLAY,,4,6,VA7,,,,*'], 'test: a body sound while blocked');
-  h.adv(3000);
-  assert.deepEqual(tail(h, n), [], 'no ambient write while the loop blocks: it would all play late at once');
-  assert.equal(h.eng.state().card.data.kind, 'next_kill_wins', 'the banner still shows');
-  h.kill(); h.adv(150);
-  assert.deepEqual(tail(h, n), ['X', 'X', 'VAA'], 'one stop for the loop, one for the stuck clip, then the kill line');
-});
-
-test('shield loop: "Target down" is an objective line: it cuts the loop (a stop, then VB8), it is not muted (gap B2)', () => {
+test('F347: a non-must-hear objective waits on a busy gun and goes stale', () => {
   const h = shieldUp(harness({ shieldMax: 125 }).live());
-  const n = h.writes.length;
-  h.irWord(20, IR_CALLOUT.DOWN_BY + 2); h.adv(200);
-  assert.deepEqual(tail(h, n), ['X', ENEMY_DOWN]);
-  assert.equal(h.eng.state().callout.kind, 'enemy_down');
-});
-
-test('shield loop: the hill lines are objective lines: each cuts the loop and is said (gap B2)', () => {
-  const h = shieldUp(harness({ mode: 'koth', shieldMax: 125 }).live());
-  h.eng.feedFrame('$HIR,4,15,0,2,8,0,0,*'); h.adv(50);                // the point, neutral
-  const n = h.writes.length;
-  h.eng.feedFrame('$HIR,4,15,0,1,50,0,0,*'); h.adv(200);              // BLUE (us) captures it
-  assert.deepEqual(tail(h, n), ['X', 'VB0N'], 'Hill Captured, through the loop');
-  h.adv(5000); const m = h.writes.length;
-  h.eng.feedFrame('$HIR,4,15,0,0,50,0,0,*'); h.adv(200);              // RED takes it off us
-  assert.deepEqual(tail(h, m), ['X', 'VB0P'], 'Hill Lost, through the loop');
+  h.eng._write(['$PLAY,,4,6,JAS,,,,*'], 'test: long clip');
+  h.irWord(20, IR_CALLOUT.DOWN_BY + 2); h.adv(4000);
+  assert.equal(h.plays(ENEMY_DOWN).length, 0, 'the objective line went stale while the gun stayed busy');
+  assert.equal(h.eng.state().callout.kind, 'enemy_down', 'the callout remains visible');
 });
 
 test('H1: first blood waits behind the lead change, a double kill arrives: first blood is never folded, and the HUD keeps it', () => {
@@ -617,21 +619,17 @@ test('the possession tick never sounds while my kill or its medal lines are on a
 
 // ---------- round 3 ----------
 
-test('H1: 20 hits under the shield loop, then a kill: at most 4 stops; once the shield breaks the gun is free within one clip', () => {
+test('F347: 20 hit sounds stay in the FIFO; a multi-stop must-hear write clears the queued audio', () => {
   const h = harness({ shieldMax: 125 }).live();
   h.eng._write(['$SIR,0,3,X13,1,9,0,0,0,*'], 'test: a hit row with a 1.548 s sound');
-  shieldUp(h);
   for (let i = 0; i < 20; i++) { h.eng.feedFrame('$HIR,4,0,19,2,9,0,3,*'); h.adv(100); }
+  assert.ok(h.eng._gun.clips.filter(c => c.id === 'X13').length >= 19, 'each hit sound enters the FIFO, except any clip already ended');
   const n = h.writes.length;
   h.kill(); h.adv(150);
   const t = tail(h, n);
   assert.ok(t.filter(x => x === 'X').length <= 4 && t[t.length - 1] === 'VAA', 'a bounded flush, then the line: ' + t.join(' '));
-  for (let i = 0; i < 20; i++) { h.eng.feedFrame('$HIR,4,0,19,2,9,0,3,*'); h.adv(100); }
-  h.eng.feedFrame('$HP,45,70,0,*'); if (h.eng.shield > 0) { h.eng.shield = 0; } h.eng._audioSync();   // the shield breaks: the loop stops
-  // Twenty hits replay as ONE hit clip, then the break cue the shield's fall itself plays (shield_down, N101).
-  assert.equal(h.eng._gun.clips.filter(c => c.id === 'X13').length, 1, 'the hits collapsed to one pending clip');
-  const busy = h.eng._gun.freeAt(h.now()) - h.now();
-  assert.ok(busy <= CLIP_MS.X13 + CLIP_MS.N101, `free within one hit clip and the break cue (${busy} ms)`);
+  assert.equal(t.filter(x => x === 'X').length, 4, 'the must-hear stop cap holds');
+  assert.deepEqual(h.eng._gun.clips.map(c => c.id), ['VAA'], 'the multi-stop write clears old queued clips before VAA');
 });
 
 test('M2: the gun audio model is cleared with the announcer queue (a dropped link: the gun is power-cycled or gone)', () => {
@@ -641,12 +639,13 @@ test('M2: the gun audio model is cleared with the announcer queue (a dropped lin
   assert.ok(!h.eng._gun.clips.some(c => c.why === 'test: stale'), 'the stale clip is gone: ' + JSON.stringify(h.eng._gun.clips.map(c => c.why)));
 });
 
-test('M3: shield up, a 2-medal kill: both medal lines are written, each right after its own stop', () => {
+test('M3: a 2-medal kill on a quiet gun writes both medal lines without stops', () => {
   const h = shieldUp(harness({ shieldMax: 125 }).live());
   const n = h.writes.length;
   h.kill({ medals: ['killtacular', 'killing_spree'] }); h.adv(6000);
   const ids = ['killtacular', 'killing_spree'].map(m => golden.cues[m].split(',')[4]);
-  assert.deepEqual(tail(h, n), ['X', ids[0], 'X', ids[1]]);
+  assert.ok(!tail(h, n).includes('X'), 'a quiet gun needs no stop');
+  assert.deepEqual(tail(h, n).filter(x => ids.includes(x)), ids);
 });
 
 test('M4: a double kill with medals: the second kill starts after the first kill\'s last clip, and nothing cuts the first', () => {
@@ -766,6 +765,20 @@ test('H1: the lethal hit\'s own $SIR row sound is not counted ahead of the screa
   assert.deepEqual(stopsIn(h, n, h.now() + 1).map(w => w.t), [], 'no stop: it could land on the scream');
 });
 
+test('F347: death sends stops one per write, spaced by PLAY_GAP_MS, so two clips ahead cannot cut the scream', () => {
+  const h = harness().live();
+  h.eng._gun.clear();
+  h.eng._gun.add(3000, 'clip one', h.now(), 'VA8C');
+  h.eng._gun.add(3000, 'clip two', h.now(), 'VA7');
+  const start = h.writes.length;
+  die(h);
+  h.adv(500);
+  const stops = stopsIn(h, start, h.now());
+  assert.equal(stops.length, 2);
+  assert.notEqual(stops[1].group, stops[0].group, 'each stop has its own write');
+  assert.ok(stops[1].t - stops[0].t >= ann.PLAY_GAP_MS, 'stops are at least PLAY_GAP_MS apart');
+});
+
 test('H2: a clip that ends within DEATH_STOP_SLACK_MS of the death is not stopped', () => {
   const h = harness().live();
   h.eng._write(['$PLAY,,4,6,VAA,,,,*'], 'test: a 636 ms line'); h.adv(550);   // it ends in about 86 ms
@@ -822,14 +835,14 @@ test('M3: a hill change while I am dead is queued and said after the scream', ()
 });
 
 // ---------- round 2 review of death-wins ----------
-test('H-A unit: after the respawn my kept KC waits only for real clips, not for the shield loop (F348: a life starts at full shield)', () => {
+test('H-A unit: after respawn my kept KC starts when real clips clear', () => {
   const r = deadRig();
   r.gun.add(7000, 'the scream and a long line', 0);
   r.die(true); r.a.push(r.item('kill_confirmed', 756));
   r.at(5000); r.die(false); r.a.respawn(5000, false);
-  r.gun.clips = []; r.gun.setBlocked(true, 5000);           // the new life's shield loop, nothing else on the gun
+  r.gun.clips = [];
   for (let t = 5050; t < 6000; t += 50) { r.at(t); r.a.tick(t); }
-  assert.deepEqual(r.log.map(x => x[0]), ['kill_confirmed'], 'said: the loop is cut by its own must-hear flush');
+  assert.deepEqual(r.log.map(x => x[0]), ['kill_confirmed'], 'said after the FIFO is silent');
 });
 
 test('M-A: a medal stack cut at my death, then folded into my next kill, never says first blood twice', () => {

@@ -225,6 +225,7 @@ def _set_profile_field(profile: Profile, key: str, value: object) -> None:
 
 SFLASH = "$SFLASH,*"
 PLAYX = "$PLAYX,0,*"           # engine.js PLAYX: stop whatever line the gun is speaking (used only to PREEMPT our own hill callout)
+PLAY_GAP_MS = 150               # F347: keep successive `$PLAY` writes at least 150 ms apart.
 QUERY = "$QUERY,*"             # F264 (engine.js QUERY): one 8-byte ask -- see `_ask_gun`
 # F264 (engine.js PROBE_LIFE): a dead gun ignores $LIFE unless token 1 is 0, so a bare $LIFE,0,0,0,* asks
 # a SILENT dead gun to speak without healing or harming anything. THE HAZARD: a non-zero token 1 is the
@@ -577,6 +578,8 @@ class GunStage:
                                         # `_last_seq` (poll's own fetch cursor) so the instant on_frame
                                         # callback and a later poll() never react to the same frame twice
         self.scream_this_life: str | None = None   # A15.3: the death-scream id last written into a $PSET, or None
+        self._last_play_at: float | None = None
+        self._play_generation = 0
         # F209: {at, until, shot_ends, off, shield} from a spawn/revive write until `_arm_life` ends spawn protection
         # (engine.js `_armPending`; `at` and `until` are in seconds here)
         self._arm_pending: ArmPending | None = None
@@ -1208,6 +1211,50 @@ class GunStage:
         # `raw` bench hatch only) writes the operator's frames untouched, so a rung can still send a lone
         # `$PSET` on purpose; every game write restores the team (F206).
         frames = frames if exact else self._tid_after_pset(frames)
+        play_indexes = [i for i, frame in enumerate(frames) if frame.startswith("$PLAY,")]
+        if len(play_indexes) > 1:
+            chunks: list[list[str]] = []
+            start = 0
+            for index in play_indexes:
+                chunks.append(frames[start:index + 1])
+                start = index + 1
+            if start < len(frames):
+                chunks[-1].extend(frames[start:])
+            take_pending = take
+            for index, chunk in enumerate(chunks):
+                # The outer write has already filtered and transformed the frames. Re-entry must
+                # not restore `$TID` again, claim the SIR pool again, or repeat the start callback.
+                chunk_changes_sir = any(f.startswith(("$SIR,", "$CLEAR")) for f in chunk)
+                options = {
+                    "gap_ms": gap_ms,
+                    "exact": True,
+                    "take": take_pending and chunk_changes_sir,
+                }
+                take_pending = take_pending and not chunk_changes_sir
+                if index == 0 and on_start is not None:
+                    options["on_start"] = on_start
+                await self.write(chunk, why, **options)
+            return
+        if play_indexes:
+            play_frame = frames[play_indexes[0]]
+            play_generation = self._play_generation
+            now = self.now()
+            planned_at = now
+            if self._last_play_at is not None:
+                elapsed_ms = (now - self._last_play_at) * 1000
+                if elapsed_ms < PLAY_GAP_MS:
+                    if self._is_exempt_filler(play_frame):
+                        self._log(f"dropped filler inside {PLAY_GAP_MS} ms play gap", "info", why)
+                        return
+                    planned_at = self._last_play_at + PLAY_GAP_MS / 1000
+                    self._last_play_at = planned_at   # reserve before awaiting; concurrent writes see this slot
+                    await self.sleep(max(0, planned_at - self.now()))
+                    if play_generation != self._play_generation:
+                        return
+                else:
+                    self._last_play_at = now
+            else:
+                self._last_play_at = now
         # F121 rebuild (engine.js `_write`): a `$SIR` row or a `$CLEAR` leaves the gun's table something other
         # than a `sir_pool` take, so the next protection release must write one. Marked at call time. `take`:
         # this write IS a `sir_pool` take (`_arm_life`), which claims the table, as engine.js `_armLife` does.
@@ -1227,6 +1274,18 @@ class GunStage:
             self.connected = False
             await self._reconnect()
             await self._send(frames, gap_ms, on_start=on_start)
+
+    def _is_exempt_filler(self, frame: str) -> bool:
+        """Return whether a filler sound must drop instead of waiting for the play gap."""
+        cue = _cue_id(frame)
+        if cue == "U100":
+            return True
+        cues = self.bundle.get("cues") or {}
+        return any(cues.get(key) == frame for key in ("pain_short", "pain_long", "pain_melee", "shield_loop"))
+
+    def _cancel_pending_play_writes(self) -> None:
+        """Cancel play writes that still wait for the reserved gap when death arrives."""
+        self._play_generation += 1
 
     async def _send(self, frames: list[str], gap_ms: int, on_start: Callable[[], None] | None = None) -> None:
         if hasattr(self.mgr, "send_batch"):
@@ -2218,7 +2277,7 @@ class GunStage:
             self._arm_after_spawn()                              # F209 (an older bundle): hits stay silent until the gun fires or the cap
         fill = self._spawn_shield_fill()                          # F348: a shields life starts at full shield
         self._shield_fill_start(fill)
-        # engine.js X3: the spawn line and the klaxon go out BEFORE the fill, so the shield loop cannot bury them
+        # engine.js X3: the spawn line and the klaxon go out BEFORE the fill, and the play gap separates the sound writes
         kx = cues.get("klaxon", "")
         await self.write(late + ([ps] if ps else []) + list(rp["spawn"] if rp else self.bundle["spawn"]) + [SFLASH]
                           + ([fr] if fr else []) + ([kx] if kx else []) + fill,
@@ -2751,7 +2810,7 @@ class GunStage:
         if self.stunned and now >= self.stunned["until"]:
             self._stun_restore("expired")        # F15: the stun timer -- restore the LIVE counts (engine.js tick())
         self._poison_tick(now)                   # S16: the poison tick clock (engine.js tick())
-        self._shield_tick(now)                   # S29 (engine.js tick()): the recharge, and the heartbeat while the shield is gone
+        self._shield_tick(now)                   # S29 (engine.js tick()): shield recharge
         self._stations_tick(now)                 # K1: the scanner's callback (an advertising station is heard again)
         self._hill_tick(now)
         return seen
@@ -2765,8 +2824,7 @@ class GunStage:
         return int((self.config.get("health") or {}).get("max_armor") or 0) == 0 and self.max_shield > 0
 
     def _shield_tick(self, now: float) -> None:
-        """engine.js `_shieldTick` (S29): the four moments of a recharge. The shield breaks (`shield_down`),
-        the heartbeat loops while it is gone, SHIELD_REGEN_DELAY_S of no damage starts a refill
+        """engine.js `_shieldTick` (S29): the break cue, heartbeat and recharge timing. SHIELD_REGEN_DELAY_S of no damage starts a refill
         (`shield_charging`, once), `$LIFE` grants land every SHIELD_REGEN_STEP_S until the gun says the pool is
         full, and that frame says `shield_online`. Any damage restarts the clock (`_on_pools`)."""
         if not self.shield_regen_on:
@@ -2845,10 +2903,7 @@ class GunStage:
             self.shield = 0
 
     def _shield_loop_tick(self, now: float) -> None:
-        """engine.js `_shieldLoopTick`: the heartbeat, replayed while the shield is down and the recharge has
-        not started. A LOOP the node drives, because the gun has no looping `$PLAY` -- the hill possession
-        tick's shape, and for the hill's reason: a clip relaunched faster than it runs stacks and drifts (F74).
-        The period is the clip's own length. `""` = the host turned the loop off."""
+        """Replay the shield-down voice cue at its measured length until recharge starts."""
         fr = (self.bundle.get("cues") or {}).get("shield_loop")
         if not fr:
             return
@@ -3441,11 +3496,12 @@ class GunStage:
         # on a break that happened while we were away. Announcing it then names a hit taken minutes ago.
         if not self._stand_down(("spawned", "ble", "alive")) and self.max_shield > 0 and prev_shield > 0 and shield == 0:
             self._shield_down = True
-            self._shield_loop_at = self.now()   # the heartbeat starts one period LATER, not under the break cue
+            self._shield_loop_at = self.now()   # heartbeat starts one period after the break cue
             self._log(f"shield depleted ({self.max_shield} gone) -- health is all that is left", "info")
             self._event_now("shield_down")
         if hp == 0 and self.alive:
             self.alive = False
+            self._cancel_pending_play_writes()
             self._arm_pending = None; self._trigger_pending = None   # F209 (engine.js `_death`): never arm a dead gun
             self._pending_hurt_write = False   # HURT_DEBOUNCE_S (mirrors engine.js `_death`): a death inside the hold cancels the queued alert outright
             # 2026-09-19: killed this soon after a timed respawn = spawn-killed; the down-screen warning gets
@@ -3455,7 +3511,7 @@ class GunStage:
                 self._down_warn += 1
                 self._log(f"killed {self.now() - self._timed_life_at:.1f}s after a timed respawn: down warning level {self._down_warn}", "info")
             self._timed_life_at = None
-            self._shield_regen = None; self._shield_down = False   # S29: a dead gun is not refilled, and the heartbeat stops with the life
+            self._shield_regen = None; self._shield_down = False; self._shield_loop_at = 0.0   # S29: the heartbeat stops with the life
             self._shield_fill_at = 0.0                                   # engine.js X3: a dead gun holds no shield, so no fill is in flight
             self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None   # engine.js `_death`: the gun stops the reload when you drop; so does the HUD
             self._stun_restore("died")             # F15: death cancels the stun -- no restore write; the revive's own $AMMO re-arms the next life

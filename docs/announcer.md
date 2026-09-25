@@ -30,8 +30,7 @@ named `kill` is refused.
 
 **Exempt, by design** (they answer the player's own body or trigger at once, or play before go-live when nothing
 else is on air): the pain grunts (`pain_short`, `pain_long`, `pain_melee`; a grunt that would start more than 500 ms
-after its hit, `PAIN_STALE_MS`, is dropped: behind the shield-break line of the same hit it would play 2.6 s late; while
-the shield loop blocks the gun, every grunt is dropped), `hit_taken`, `died`, the low-health
+after its hit, `PAIN_STALE_MS`, is dropped: behind the shield-break line of the same hit it would play 2.6 s late; when the `$PLAY` gap blocks the write, the grunt is dropped), `hit_taken`, `died`, the low-health
 loop (`hurt`), `shield_down` and its heartbeat (`shield_loop`), `stunned`, `stun_over`, `poisoned`, `poison_tick`,
 `smoked`, `reload_nag`, the spawn line (`spawn`, `respawned`), `countdown`, `klaxon`, `runway_30/20/10`, the whistle's
 `game_over` and `survivors_win` (written at match end, after the queue is cleared), and the gun's sight flash `$SFLASH`. The hill possession tick (`hill_tick`, 0.11 s) and the shield heartbeat (`shield_loop`)
@@ -43,8 +42,8 @@ a clip in the gun's audio model below, so a must-hear line stops it.
 
 ## The gun's audio FIFO (`GunAudio`)
 
-Bench 2026-09-24 (brx2, Tactix-FE30): the gun QUEUES clips first in, first out. `$PLAYX,0,*` stops only the clip
-playing, so N stops flush N clips (with audible fragments). Tony's match heard lines 10 to 15 s late: the phone wrote
+Bench 2026-09-24 and 2026-09-25 (Tactix-FE30): the gun QUEUES clips first in, first out. One `$PLAYX,0,*` in a write
+stops only the clip playing. Two or more `$PLAYX,0,*` frames in one write can clear the whole queue. Tony's match heard lines 10 to 15 s late: the phone wrote
 each on time, and the gun held them behind audio already queued.
 
 The phone keeps ONE model of that FIFO (`GunAudio` in `app/src/announcer.js`, `_gun` in the engine), fed with lengths
@@ -60,34 +59,19 @@ Rules:
 1. **At most one clip outstanding for anything not must-hear.** A non-must-hear item waits while the gun holds a clip,
    and past `ANNOUNCE_AUDIO_LATE_MS` it shows its card without its line. The pool lines' pre-emption waits for a silent
    gun too, so they no longer overlap.
-2. **Must-hear flush** (`_sayMust`): my own kill line, its medal lines and a lead change send one `$PLAYX,0,*` per clip the model says
-   the gun holds, in the same write, then the line, capped at 4 stops (`MUST_HEAR_MAX_STOPS`: the loop plus 3). No
-   stop when nothing is outstanding. Every line of my kill is must-hear, and each medal line goes out after the one
-   before it has ENDED, so its flush never cuts my own audio. The kill item's sound is the sum of its clips, and a
-   must-hear item never starts while my kill still has a clip on the gun.
-3. **The shield loop blocks the FIFO.** `$PSET` t23 `energyShieldLoop` (our arm sends `A10`) is a real loop that plays
-   while the shield is above 0. With it running, a queued line never plays (60+ s at the bench). So while it runs,
-   the phone writes NO `$PLAY` that is not must-hear (it would all play late, at once, when the loop stops), and a
-   must-hear line sends one stop for the loop plus one per clip stuck behind it (within the cap). The **objective
-   lines** (`OBJECTIVE`: hill captured, hill lost, "Target down") are the exception: while the loop blocks, the queue
-   starts them with `flush`, and the engine says them like a must-hear line. Stopping the loop cuts nothing anyone
-   wants to hear. They still wait for a silent gun when the loop is not running, and still go stale. The ambient
-   lines (every other alert, the pool lines) are still muted while the loop blocks. While the loop
-   blocks, the model keeps at most one pending clip per sound id, so twenty hits under a shield count as one hit
-   sound, not twenty. **The loop resumes on its own after
-   `$PLAYX,0` (bench 2026-09-24, shield still up)**, so every must-hear line in that state gets its own stop. Whether MC
-   stops shipping the loop (t23 EMPTY, `audio-queue-scenarios.md` bench step 2) is open under F347; until then this
-   is what keeps a kill confirm on time.
-4. **The spawn fill starts the loop behind the spawn lines (X3).** F348's `$LIFE,0,0,<max>,*` goes LAST in the spawn and
-   revive writes, after the spawn line and the klaxon. The model blocks at the fill, not at its echo, and lets the lines
-   already queued play first (`setBlocked(…, queueFirst)`, an assumption for bench Block 10 step 4). `$SPAWN` in a write
-   stops the loop, and the end teardown sets the shield to 0, so the whistle line is written (X1).
-   A must-hear line in the first seconds of a Shields life flushes the spawn line and the klaxon too (F362 (e)).
+2. **Must-hear flush** (`_sayMust`): my own kill line, its medal lines and a lead change send one `$PLAYX,0,*` per clip
+   the model says the gun holds, in the same write, then the line. `MUST_HEAR_MAX_STOPS` caps the count to limit
+   fragments and bound the flush. A write with 2 or more stops can clear the whole queue. No stop goes out when the gun
+   is quiet. Each medal line goes out after the one before it has ended.
+3. **Spacing** (`PLAY_GAP_MS = 150`): a phone write carries at most one `$PLAY`. The announcer and spawn line wait until
+   150 ms have passed since the previous phone-written `$PLAY`. Pain grunts, the shield-down heartbeat and possession
+   ticks drop if they fall inside the gap. The gap is unproven; zero-gap bursts dropped a clip on 2026-09-25.
+4. **Spawn and revive** (`X3`): the phone sends the spawn line and klaxon before F348's `$LIFE,0,0,<max>,*` fill.
+   Spacing splits those sounds across writes. A must-hear line may flush the queue that remains.
 
 **Not modelled** (assumed not to use the announcer FIFO, unconfirmed): the gun's own fire, reload, empty-click and
 weapon-swap sounds, and whatever the native `$SPAWN` plays. If any of them do queue there, the flush count is low by
-that many. **Bench check:** a shield that is up during the countdown (the loop blocking the runway lines and the
-klaxon) has not been tried.
+that many. **History:** A10 was a real hum and blocked the audio FIFO. `$PLAYX` did not stop it. The 2026-09-25 F347 bench led to empty t23.
 
 One more finding from the model: at go-live, the runway lines, the countdown, the klaxon and the spawn line can hold the
 gun for many seconds (the golden bundle's runway cues are long clips). Nothing waits on that except non-must-hear
@@ -273,14 +257,14 @@ the new item is a duplicate and the waiting item is false: both are dropped.
 **Tony**, 2026-09-25 (F149, F351, X4): "your death wins. delaying the death scream would be bad. while you are dead you
 can listen to the queue of KCs and game alerts".
 
-1. **The scream first, never cut.** At my death (`_death`) the phone sends one `$PLAYX,0,*` for each clip its model says
-   the gun holds truly AHEAD of the native scream (the low-health line, my own kill line), and none for the scream
+1. **The scream first, never cut.** At my death (`_death`) the phone sends one `$PLAYX,0,*` per write for each clip its model says
+   the gun holds truly AHEAD of the native scream, with `PLAY_GAP_MS` between writes (the low-health line, my own kill line), and none for the scream
    itself. Not counted: the lethal hit's own `$SIR` row sound (the gun may play none on a lethal hit, or the scream
    may interrupt it: F158), and a clip that ends within `DEATH_STOP_SLACK_MS` (150 ms), since a stop that arrives
    after it lands on the scream. An extra stop here is not harmless. If such a spared clip is still playing at the
    front of the gun's queue, the stops wait until it ends, so none lands on it. Exactly the stopped clips leave the
    model. An ordinary death with a quiet gun sends no stop.
-   With no scream id known, F149's one stop for the low-health line stays.
+   With no scream id known, F149's one stop for the low-health line stays. The death path sends each stop in its own write because two stops in one write can clear the scream.
 2. **A line the death stop cut is said again, and only what was not said.** Only when one of the item's OWN clips is
    among the stopped ones is it cut (`Announcer.death`; a must-hear or hill clip carries its item): its pending lines check `cut` and do not go out, and a copy holding the lines
    not yet finished goes back in the queue (`resume`). A medal stack cut on its second line says that line again, not
@@ -295,8 +279,7 @@ can listen to the queue of KCs and game alerts".
    line with its flash (0.76 s), two medal lines (up to 2.5 s each) and a lead line (2.7 s) come to about 10 s.
 5. **The respawn ends it** (`Announcer.respawn`). What is left of the dead queue keeps only my kill confirm and the
    lead change (`KEEP_AT_RESPAWN`), with normal TTLs from the respawn, and each waits for the gun's real clips to end
-   (the spawn line), so nothing flushes over it. The new life's shield loop does not count (F348 starts a Shields life
-   at full shield); the must-hear flush cuts the loop as usual. The line on air is cut there too (its pending lines would flush the spawn line): a
+   (the spawn line), so nothing flushes over it. The gun model has no hum state. The line on air is cut there too (its pending lines would flush the spawn line): a
    kill or lead item keeps its unsaid lines, anything else is dropped. Then the normal rules resume, the streak
    silence included.
 6. **A match end inside the scream** keeps the dead rules until the scream has ended (`_screamUntil`).

@@ -29,7 +29,7 @@ BURST = "$WEAP,0,,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,
 # match number. The trailing 50 is $PSET's criticalDamageBonus, a SEPARATE and confirmed-inert
 # field (protocol-classes.md), not the $GSET crit_modifier below — do not read it as t7.
 # `{pid}` is the player id; call `PSET.format(pid=…)`.
-PSET = "$PSET,{pid},0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*"
+PSET = "$PSET,{pid},0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,,*"
 
 # The two-sided $SIR function map as bench-measured 2026-08-26 (experiment-log: "the COMPLETE
 # two-sided $SIR function map"). ⚠ Rows 36/37 are the sensor-gated multiplier pair, RESOLVED

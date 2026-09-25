@@ -1433,6 +1433,94 @@ def mk_hill(tid: int = 1, **profile):
     return st, mgr, clock
 
 
+def test_stage_spaces_play_frames_and_drops_fillers_inside_the_gap():
+    async def run():
+        clock = _Clock()
+
+        async def sleep(seconds):
+            clock.advance(seconds)
+
+        mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1)])
+        st = GunStage(mgr, None, sleep=sleep, now=clock, voice_verdict_sink=lambda _r: None)
+        await st.connect("FA:KE:00:00:00:01")
+        line_a = "$PLAY,,4,6,VA6D,,,,*"
+        line_b = "$PLAY,,4,6,VA6E,,,,*"
+        tick = "$PLAY,U100,4,6,,,,,*"
+
+        await st.write([line_a, "$SFLASH,*", line_b], "spacing regression", gap_ms=0)
+        plays = [event for event in mgr.sessions["stage"].buffer if event.direction == "tx" and event.raw.startswith("$PLAY,")]
+        assert [event.raw for event in plays] == [line_a, line_b]
+        assert clock.t == 1000.15
+
+        await st.write([tick], "filler regression", gap_ms=0)
+        plays = [event.raw for event in mgr.sessions["stage"].buffer if event.direction == "tx" and event.raw.startswith("$PLAY,")]
+        assert plays == [line_a, line_b], "a filler inside the gap is dropped, not delayed"
+
+    asyncio.run(run())
+
+
+def test_stage_reserves_concurrent_play_slots_before_waiting():
+    async def run():
+        clock = _Clock()
+        waits = []
+
+        async def sleep(seconds):
+            waits.append(seconds)
+            await asyncio.sleep(0)
+
+        st = GunStage(FakeConnectionManager([]), None, sleep=sleep, now=clock, voice_verdict_sink=lambda _r: None)
+        st.connected = True
+        sent = []
+
+        async def send(frames, gap_ms, on_start=None):
+            sent.append(frames)
+            await asyncio.sleep(0)
+
+        st._send = send
+        await asyncio.gather(
+            st.write(["$PLAY,,4,6,VA6D,,,,*"], "concurrent A", gap_ms=0),
+            st.write(["$PLAY,,4,6,VA6E,,,,*"], "concurrent B", gap_ms=0),
+        )
+        assert len(sent) == 2
+        assert len(waits) == 1 and waits[0] >= S.PLAY_GAP_MS / 1000 - 1e-9, waits
+        assert abs(st._last_play_at - (clock() + S.PLAY_GAP_MS / 1000)) < 1e-9
+
+    asyncio.run(run())
+
+
+def test_stage_death_cancels_a_play_waiting_for_its_gap():
+    async def run():
+        clock = _Clock()
+        waiting = asyncio.Event()
+        release = asyncio.Event()
+        sent = []
+
+        async def sleep(_seconds):
+            waiting.set()
+            await release.wait()
+
+        st = GunStage(FakeConnectionManager([]), None, sleep=sleep, now=clock, voice_verdict_sink=lambda _r: None)
+        st.connected = True
+        st.alive = True
+        st.spawned = True
+        st.hp = 45
+        st.scream_this_life = "VA3"
+        st._last_play_at = clock() - 0.01
+
+        async def send(frames, gap_ms, on_start=None):
+            sent.extend(frames)
+
+        st._send = send
+        task = asyncio.create_task(st.write(["$PLAY,,4,6,VA86,,,,*"], "low health", gap_ms=0))
+        await waiting.wait()
+        st._on_rx("$HP,0,0,0,*")
+        release.set()
+        await task
+        assert "$PLAY,,4,6,VA86,,,,*" not in sent
+
+    asyncio.run(run())
+
+
 async def in_play(st):
     """Armed, spawned and alive, with everything the spawn burst wrote already drained and settled."""
     await st.connect("FA:KE:00:00:00:01")
@@ -1664,7 +1752,7 @@ def test_the_same_capture_frame_is_lost_for_the_outgoing_team():
         await in_play(st)
         n = mark(mgr)
         await feed(st, mgr, clock, BLUE_TO_RED[:1])              # blue still holds it: OUR point, so it ticks
-        assert hill_audio(mgr, n) == [TICK], hill_audio(mgr, n)
+        assert hill_audio(mgr, n) == [], "the possession tick drops inside the 150 ms play gap"
         n = mark(mgr)
         await feed(st, mgr, clock, BLUE_TO_RED[1:])
         heard = hill_audio(mgr, n)
@@ -1678,7 +1766,7 @@ def test_the_same_capture_frame_is_lost_for_the_outgoing_team():
         await feed(st2, mgr2, clock2, BLUE_TO_RED)
         heard2 = hill_audio(mgr2, n2)
         assert CAPTURED in heard2 and LOST not in heard2, heard2
-        assert TICK in heard2, "we hold it now: it must tick"
+        assert TICK in heard2, "the captured stream places its possession tick outside the play gap"
     asyncio.run(go())
 
 
@@ -2135,4 +2223,3 @@ def test_f213_max_armor_comes_from_the_compiled_pset_not_config_health():
     assert st.config["health"]["max_armor"] == 70, "the config itself is untouched -- only the head is bumped"
     assert st.max_armor == 120, "the stage's ceiling follows the compiled $PSET, not config.health"
     assert st.max_hp == 45, "hp is unaffected by the armour-only bump"
-

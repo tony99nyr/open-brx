@@ -1528,7 +1528,7 @@ KNOWN_UNMIRRORED = {
     # skip a beat that would sound over the refill. A stage/phone divergence on audio timing only, no game rule.
     "_audioWrite", "_clipLen", "_sayMust", "_audioSync", "_audioHit", "_shieldLoopPeriod",   # the pool voice lines, the same queue; the stage speaks them at once
     # X3 (2026-09-24): the fill-last write order IS mirrored, inline in `spawn`/`revive`; the helper's other half marks
-    # the audio model blocked at the fill, and the stage has no audio model (see `_audioWrite` above)
+    # the phone schedules sounds after the fill, and the stage has no audio model (see `_audioWrite` above)
     "_writeSpawnBurst",
     # bench 2026-09-17: the phone's day/night HUD skin and its per-MC-session pick; HUD chrome, no LED or game rule
     "setNight", "ownNightChoice", "_autoNight", "_loadNight", "_storeNight",
@@ -1658,7 +1658,7 @@ def test_f206_every_stage_write_puts_the_team_back_after_a_pset_like_the_phone()
     # a team byte for a `$PSET` that never arrived. Both `_write` bodies must therefore DENY FIRST, then
     # restore the team, and this guard reads both bodies rather than trusting either comment.
     for label, body, deny, tid in (
-            ("engine.js `_write`", _fn_body(js, "  _write(frames, why, options = undefined) {", "\n  }"),
+            ("engine.js `_write`", _fn_body(js, "  _write(frames, why, options = undefined, playScheduled = false, onSent = null, mustHear = false) {", "\n  }"),
              "deniedCommand(f)", "frames = this._tidAfterPset(frames);"),
             ("stage.py `write`", _fn_body(_STAGE_PY.read_text(encoding="utf-8"),
                                           "    async def write(self, frames: list[str], why: str", "\n    def "),
@@ -2109,7 +2109,7 @@ def test_f344_every_shields_life_starts_at_full_shield_like_the_phone():
 
 def test_x3_the_spawn_line_and_the_klaxon_go_before_the_fill_like_the_phone():
     """X3 (integration review 2026-09-24): engine.js writes the fill LAST in the spawn and revive bursts, after the spawn
-    line and the klaxon, so the shield loop the fill starts cannot bury them. The stage writes the same order."""
+    line and the klaxon, and `PLAY_GAP_MS` keeps their writes apart. The stage writes the same order."""
     async def go():
         st, mgr, clock = mk_shields()
         fill = f"$LIFE,0,0,{st.max_shield},*"
@@ -2129,6 +2129,14 @@ def test_x3_the_spawn_line_and_the_klaxon_go_before_the_fill_like_the_phone():
         plays = [i for i, f in enumerate(burst) if f.startswith("$PLAY,")]
         assert plays and max(plays) < burst.index(fill), burst
     asyncio.run(go())
+
+
+def test_live_bench_arming_literals_leave_t23_empty():
+    root = pathlib.Path(__file__).resolve().parents[2]
+    for name in ("mcp/tools/bench_common.py", "mcp/tools/ally_remeasure.py"):
+        source = (root / name).read_text(encoding="utf-8")
+        assert "W71,A10,*" not in source, name
+        assert "W71,,*" in source, name
 
 
 def test_x5_x6_x7_the_pool_repair_keeps_armour_the_fill_and_a_no_shield_grant_like_the_phone():
@@ -2425,6 +2433,7 @@ def test_no_heartbeat_is_written_in_the_same_tick_the_recharge_starts():
         await shielded(st2, mgr2, clock2)
         clock2.advance(1.0)
         gun_says(st2, "$HP,30,0,0,*"); await settle(st2)
+        clock2.advance(S.PLAY_GAP_MS / 1000 + 0.001)  # let the break cue's play gap end
         now2 = st2.now()
         st2._shield_loop_at = now2 - SHIELD_LOOP_S_TEST
         n2 = mark(mgr2)

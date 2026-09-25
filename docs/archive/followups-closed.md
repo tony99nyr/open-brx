@@ -796,3 +796,10 @@ closed in the same pass, each checked against the code, the git log or the exper
   `bench-2026-09-24.md` Block 2 step 6 (the field shape reproduces on line 2, the reset fixes it on line 3, and the
   node's repair on a 4545/7070 gun holds through one rig hit on line 4). See `experiment-log/2026-09.md`'s
   2026-09-25 bench entry.
+- 2026-09-25 **F347** closed at the desk (brx5): sitting A showed `$PLAYX,0` does not stop the A10 t23 hum, and t23 EMPTY
+  plays no hum. Every `$PSET` now ships t23 empty and the hum model is gone. The in-game A/B/A is a sitting C step.
+- 2026-09-25 **F350** closed at the desk (brx5): the shield-hit sound (`$PSET` t19) is H21, not H22. H22 rattled on
+  4-6 of 10 rig hits, H21 on 0 of 10. The in-play check is sitting C step 11.1 (c).
+- 2026-09-25 **F378** closed at the desk (brx5, with F347): the gun simulator models the burst drop, no write carries
+  two `$PLAY` frames, and `$PLAY` writes are `PLAY_GAP_MS` (150 ms, UNPROVEN) apart. Sitting C's spacing check proves
+  or moves the gap.

@@ -89,7 +89,7 @@ class FakeCompiler:
         weapons = [w["weapon_id"] for w in player["loadout"]["weapons"]] or ["assault_rifle"]
         head = [f"$VOL,{head_volume(config) if self.bench_volume is None else self.bench_volume},0,*", "$CLEAR,*", "$START,*",
                 f"$GSET,{1 if config['mode'] == 'ffa' else 0},{GSET_T2_SAFE},1,0,1,0,0,1,*",  # t7 (crit_modifier) 0: the GameConfig default (2026-09-17)
-                f"$PSET,{player['player_num']},0,{hp},{ar},{ar},50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*"]
+                f"$PSET,{player['player_num']},0,{hp},{ar},{ar},50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,,*"]
         head += [f"$WEAP,{i},<{w}>,*" for i, w in enumerate(weapons[:2])] + ["$WEAP,4,<melee>,*"]
         # F121/A23: this class is a RUNTIME FALLBACK that can reach a real tagger, so it is spawn-protected
         # like the real compiler -- fn 28 pregame (registers a `$HIR`, moves no pool, no player feedback),
@@ -128,7 +128,7 @@ class FakeCompiler:
         # raises -- so this bundle can reach a real tagger, and without the row it would leave that
         # player unhittable for the match. `test_clear_safety` now enumerates this file.
         return [f"$VOL,{VOL_TRYOUT if self.bench_volume is None else self.bench_volume},0,*", "$CLEAR,*", f"$GSET,0,{GSET_T2_SAFE},1,0,1,0,0,1,*",   # t7 (crit_modifier) 0: the GameConfig default (2026-09-17)
-                "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*",
+                "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,,*",
                 "$SIR,0,0,,1,0,0,1,,*",
                 f"$WEAP,0,<{weapon['weapon_id']}>,*", "$SPAWN,,*", "$PLAYX,0,*", "$AMMO,0,36,108,1,*", "$BMAP,0,0,,,,,*"]
 

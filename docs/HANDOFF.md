@@ -21,8 +21,8 @@ open MVP rows (desk 3, bench 51, decision 2). Built today after the docs pass: F
 alert colours, F366 gamertag limit, D5 pistol Extended Mags (+50%), B6 and I2b recap icons, F375 no critical line after
 the death scream, F374 a pickup Stick waits for START, F164 reconcile ammo, F319, Q13's solo-game fix, B21's Android
 switch. Decided and recorded (do not re-ask): everything in the FOLLOWUPS rows, plus D5, F366 and F317 (post-MVP).
-- **Next:** run [`bench-2026-09-25.md`](bench-2026-09-25.md) with Tony. Route sitting A's results to the t23 value,
-  rule B and F350's pick, then cut 0.4.12 (RELEASING.md); sitting C's powerup result goes to F372.
+- **Next:** run [`bench-2026-09-25.md`](bench-2026-09-25.md) with Tony. Sitting A's audio results are built (brx5,
+  t23 empty and the shield-hit clip); cut 0.4.12 after A4 (RELEASING.md); sitting C's powerup result goes to F372.
 - **Desk:** F377 (solo LMS picks no winner), B21's iOS half (needs the MacBook), F372 after the bench.
 - **Awaiting Tony:** F221 (look at `C:\Users\Tony\brx-mc-alerts\index.html`) and S32 (the koth and melee art).
 - **Parked, not merged:** `pu-select` 1fb1aec9 (brx5, SELECT swap; later powerup work on main likely supersedes it).
@@ -44,7 +44,7 @@ the rest; the simulator does not model it), P19 (does the native Shields hum blo
 ## Lane: brx3, releases and Mission Control
 APKs 0.4.7-0.4.11 published, each on green CI. 2026-09-25: F319 built and closed; Q13's desk half built (one
 team-damage rule, `compile.team_damage_on`, which also fixed solo LMS: no hit could register); S32's fallback shipped.
-- **Next:** cut 0.4.12 once sitting A passes A4 and F347 (and brx5's t23 fix lands). Its notes add the infection, extraction and feed fixes, and TEAM DAMAGE: OFF.
+- **Next:** cut 0.4.12 once sitting A passes A4 and brx5's t23 fix is on main. Its notes add the infection, extraction and feed fixes, and TEAM DAMAGE: OFF.
 - **Desk (MVP):** F377 (solo LMS picks no winner), the MC half of F372 after sitting C. S32 waits on Tony's two renders.
 ## Lane: brx4, the StickS3
 Stick stations are Bluetooth-only for MVP (hill, pickup, respawn); Stick IR receive, the grenade hill, revive
@@ -61,13 +61,15 @@ item, with the phone guard in `_puClaimable`. F333's desk half is closed: every 
   `cd mcp && /mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp.mc --host 0.0.0.0 --port 8785 --ws-port
   8786 --ephemeral --powerups`.
 ## Lane: brx5, powerups, the HUD and gun audio
-On main: S58 powerups behind `--powerups` (the heavy on the trigger, SELECT toggles, the protected overshield, no
-claim RSSI floor, a phone powerup station advertises -55); S59 Visor; F348/F349; death first (`7173d400`); the
-three-lane alerts and the style B recap icons; B21's Android half, the WebView debugging switch in the ⓘ panel
-(`app/plugins/brx-debug`, default ON, not yet on a phone); today's doc-rot fixes.
-- **Next desk task:** F347's compile change once sitting A picks a silent t23; F350's clip once Tony picks it;
-  F372 (powerups on by default, after sitting C) with the calibrated claim thresholds; B21's iOS half on the MacBook.
-- **Next bench task:** sitting C's powerup setup (11.3) and 11.8; flip the B21 switch on a Pixel after the next cut.
+On main: S58 powerups behind `--powerups`; S59 Visor; F348/F349; death first; the three-lane alerts and the style B
+recap icons; B21's Android half (the WebView debugging switch, default ON, not yet on a phone). 2026-09-25, from
+sitting A: F347, F350 and F378 closed at the desk. Every `$PSET` ships t23 empty (no shield hum), the gun audio model
+has no hum, `$PLAY` writes are 150 ms apart from transmission (`PLAY_GAP_MS`, UNPROVEN), a death stop goes one per
+write, and the shield hit is H21.
+- **Next desk task:** F372 (powerups on by default, after sitting C) with the calibrated claim thresholds; B21's iOS
+  half on the MacBook; `PLAY_GAP_MS` from sitting C's spacing check (a drop at 150 ms moves it to 300).
+- **Next bench task:** sitting C: the powerup setup (11.3), the shield-up kill-cue A/B/A and the spacing check,
+  11.1 (c), 11.8; flip the B21 switch on a Pixel after the next cut.
 
 ## Start here
 

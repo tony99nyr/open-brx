@@ -14,7 +14,7 @@ import * as W from './transport/envelope.js';   // single source for the contrac
 import { SPAWN_KILL_WINDOW_MS, READOUT_LEAD_MS, READOUT_BLINK_GAP_MS, READOUT_STEP_MS, READOUT_BLINK_MS, READOUT_MIN_GAP_MS, READOUT_HOLD_S } from './transport/contract.gen.js';   // the spawn-kill window (2026-09-19) and the A16.3 readout timings (F52)
 import { stationView, TEAM_ANY, configGameByte } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
 import { CONTROL_STATE, claimable } from './control.js';   // the phone control point's advert bits + who may own a point (utility.md §5 `control`, K1)
-import { Announcer, GunAudio, clipMs, clipId, CLIP_MS, ANNOUNCE_GAP_MS, DEATH_STOP_SLACK_MS } from './announcer.js';
+import { Announcer, GunAudio, clipMs, clipId, CLIP_MS, ANNOUNCE_GAP_MS, DEATH_STOP_SLACK_MS, PLAY_GAP_MS } from './announcer.js';
 import { LANE_HERO_MS, redeployOutMs } from './lanes.js';
 import { MEDALS } from './transport/contract.gen.js';
 const MEDAL_KIND = Object.fromEntries(MEDALS.map(m => [m.key, m.kind]));   // first | multi | streak (Tony's ladder)   // docs/announcer.md "The three lanes": when a spree's HERO ends   // the ONE announcer queue: every voice line and banner (docs/announcer.md)
@@ -328,7 +328,7 @@ const STUN_PLAY = '$PLAY,X17,4,6,,,,,*';
  *  value as `gameconfig.MIN_RESPAWN_S` on the CLI path. */
 const MIN_RESPAWN_S = 3;
 const MEDAL_GAP_MS = 2000;       // A11.4: medal lines are 1.5-2.5 s; play them back to back, not on top of each other   // A11: no two LED bursts inside a second (three flashes per second is the ceiling)
-const MUST_HEAR_MAX_STOPS = 4;  // round 3 H1: at most this many `$PLAYX,0` before a must-hear line (the shield loop + 3 clips)
+const MUST_HEAR_MAX_STOPS = 4;  // a flush has a fixed cap to limit fragments and write size
 const KILL_CARD_MS = 1800;      // hud.js `_kill`'s card hold: MC's kill card owns the announcer slot at least this long
 const LANE_FEED_MAX = 6;           // docs/announcer.md "The three lanes": the FEED rows kept (the HUD draws the newest three)
 const ECHO_WINDOW_MS = 1500;     // how long after the last head frame is written the node waits for the gun's echo
@@ -736,7 +736,9 @@ export class Engine {
     // inside it, so no must-hear flush of the whistle's lines can land on the scream.
     this._ann.dead = () => (this.phase === 'live' && this.spawned && !this.alive) || this.now() < (this._screamUntil || 0);
     this._sirSound = {};   // `${proto}:${subtype}` -> the sound id on the `$SIR` row the gun holds (from what we wrote)
-    this._psetSounds = null;   // the last `$PSET` written, split: t10 = deathScream, t23 = energyShieldLoop
+    this._psetSounds = null;   // the last `$PSET` written, split: t10 = native death scream
+    this._nextPlayAt = 0;
+    this._pendingPlayWrites = new Set();
     this.reset();
     this._load();
     this._loadNight();
@@ -1174,8 +1176,9 @@ export class Engine {
    *  pairing, DFU, the IR word-format switch, factory tests, and `$DPLAY`, which blocks the gun's main loop
    *  with the serial port unread) is dropped and logged, whatever MC, a debug panel or a stale bundle says.
    *  `docs/spec/transport-hardening.md` §4. */
-  _write(frames, why, options = undefined) {
+  _write(frames, why, options = undefined, playScheduled = false, onSent = null, mustHear = false) {
     if (!frames || !frames.length) return;
+    let scheduledPromise = null;
     // DENY FIRST, THEN THE TEAM. Do not swap these two steps for tidiness: the order is the behaviour, and
     // stage.py `write` does it in exactly this order (`test_stage_mirror` reads both bodies and fails on
     // whichever one moves). Restore the team first and a denied `$PSET` dropped afterwards leaves its `$TID`
@@ -1192,51 +1195,85 @@ export class Engine {
       if (!frames.length) return;
     }
     frames = this._tidAfterPset(frames);   // LAST, and after the deny filter above, for the orphan `$TID` reason written there (F206)
+    if (!playScheduled) {
+      const playIndexes = frames.map((f, i) => typeof f === 'string' && f.startsWith('$PLAY,') ? i : -1).filter(i => i >= 0);
+      if (playIndexes.length) {
+        const now = this.now(), firstAt = Math.max(now, this._nextPlayAt || 0), groups = [];
+        let startAt = 0;
+        for (const ix of playIndexes.slice(1)) { groups.push(frames.slice(startAt, ix)); startAt = ix; }
+        groups.push(frames.slice(startAt));
+        const fillerIds = new Set(['VAG', 'VAE', 'N74', 'U100']);
+        groups.forEach((group, i) => {
+          const target = firstAt + i * PLAY_GAP_MS;
+          const sound = group.find(f => typeof f === 'string' && f.startsWith('$PLAY,'));
+          if (target > now && fillerIds.has(clipId(sound))) {
+            this.log(`audio: ${why}: filler dropped inside the ${PLAY_GAP_MS} ms PLAY gap`, 'li');
+            group.splice(group.indexOf(sound), 1);
+          }
+        });
+        this._nextPlayAt = firstAt + groups.length * PLAY_GAP_MS;
+        if (firstAt > now) {
+          const pending = groups.filter(group => group.length);
+          return Promise.all(pending.map((group, i) => new Promise(resolve => {
+            const job = { cancelled: false, resolve, onSent: i === pending.length - 1 ? onSent : null, mustHear };
+            this._pendingPlayWrites.add(job);
+            job.timer = this.delay(firstAt + i * PLAY_GAP_MS - now, () => {
+              this._pendingPlayWrites.delete(job);
+              if (job.cancelled) return resolve(true);
+              Promise.resolve(this._write(group, why, options, true, job.onSent, mustHear)).then(resolve, () => resolve(false));
+            });
+          }))).then(results => results.every(ok => ok !== false));
+        }
+        const rest = groups.slice(1).filter(group => group.length);
+        const scheduled = rest.map((group, i) => new Promise(resolve => {
+          const job = { cancelled: false, resolve, onSent: i === rest.length - 1 ? onSent : null, mustHear };
+          this._pendingPlayWrites.add(job);
+          job.timer = this.delay((i + 1) * PLAY_GAP_MS, () => {
+            this._pendingPlayWrites.delete(job);
+            if (job.cancelled) return resolve(true);
+            Promise.resolve(this._write(group, why, options, true, job.onSent, mustHear)).then(resolve, () => resolve(false));
+          });
+        }));
+        frames = groups[0];
+        playScheduled = true;
+        if (rest.length) onSent = null;
+        scheduledPromise = scheduled.length ? Promise.all(scheduled).then(results => results.every(ok => ok !== false)) : null;
+      }
+    }
     // F121 rebuild: a `$SIR` row or a `$CLEAR` leaves the gun's table something other than a `sir_pool` take, so the
     // next protection release must write one. Marked at CALL time, like the write order itself. stage.py `write` mirrors it.
     if (frames.some(f => typeof f === 'string' && (f.startsWith('$SIR,') || f.startsWith('$CLEAR')))) { this._sirGen++; this._sirLive = false; }
     frames = this._audioWrite(frames, why);   // docs/announcer.md: the gun's audio FIFO sees every sound-bearing frame
     if (!frames.length) return;
     this.log(`write ${why}: ${frames.length} frame(s)`, 'li');
-    try { return this.writer(frames, why, options); } catch (e) { this.log(`write ${why} failed: ${e && e.message || e}`, 'le'); return false; }
+    try {
+      const result = this.writer(frames, why, options);
+      if (onSent) onSent();
+      return scheduledPromise ? Promise.all([result, scheduledPromise]).then(results => results.flat().every(ok => ok !== false)) : result;
+    } catch (e) { this.log(`write ${why} failed: ${e && e.message || e}`, 'le'); return false; }
   }
-  /** docs/announcer.md, the gun's audio FIFO. Records what a write puts on (or takes off) the gun's audio queue, keeps the
-   *  `$SIR` sound map and the `$PSET` sound slots current, and, while the shield loop blocks the FIFO, drops every
-   *  `$PLAY` that is not a must-hear line (`_sayMust` writes those itself): anything written then would play late,
-   *  all at once, when the loop stops (bench 2026-09-24: a queued line waited 60+ s). */
+  /** Record the sounds and stops the phone writes. */
   _audioWrite(frames, why) {
     const now = this.now(), g = this._gun;
-    this._audioSync(now);   // the shield as it stands NOW (a hit that just broke it has unblocked the gun)
+    this._audioSync(now);
     let stops = 0, out = frames;
     for (const f of frames) {
       if (typeof f !== 'string') continue;
       if (f.startsWith('$CLEAR')) this._sirSound = {};
       else if (f.startsWith('$SIR,')) { const t = f.split(','); this._sirSound[`${t[1]}:${t[2]}`] = (t[3] || '').trim(); }
-      else if (f.startsWith('$PSET,')) { this._psetSounds = f.split(','); this._audioSync(now); }
+      else if (f.startsWith('$PSET,')) this._psetSounds = f.split(',');
       else if (f === PLAYX && !this._mustWrite) stops++;
     }
     if (this._mustWrite) return frames;   // `_sayMust` keeps the model itself
-    if (stops) {   // a stop takes the playing clip off (the loop, while it blocks: it resumes, so it frees nothing)
-      g._prune(now);
-      g.clips.splice(0, g.blocked ? stops - 1 : stops);
-    }
-    // In write order (X3): a `$PLAY` ahead of the spawn fill goes on the FIFO; the fill starts the loop behind it
-    // (`queueFirst`), and a `$PLAY` after the fill, or in a write while the loop blocks, is not written.
-    let dropped = 0;
+    if (stops >= 2) g.clear();
+    else if (stops === 1) { g._prune(now); g.clips.splice(0, 1); }
     out = [];
     for (const f of frames) {
       if (typeof f === 'string' && f.startsWith('$PLAY,')) {
-        if (g.blocked) { dropped++; continue; }
         g.add(this._clipLen(f), why, now, clipId(f));
-      } else if (f.startsWith && f.startsWith('$SPAWN')) {
-        g.setBlocked(false, now);   // `$SPAWN` empties the shield pool on the gun, and the loop stops with it
-      } else if (f === this._fillFrame) {
-        const loop = this._psetSounds && (this._psetSounds[23] || '').replace('*', '').trim();
-        if (loop) g.setBlocked(true, now, true);
       }
       out.push(f);
     }
-    if (dropped && (!this._blockedLogAt || now - this._blockedLogAt > 5000)) { this._blockedLogAt = now; this.log(`audio: ${why}: not written, the shield loop blocks the gun's audio (docs/announcer.md)`, 'li'); }
     return out;
   }
   /** A cue frame's real length: the bundle's `cue_ms` for the kind that ships this frame, else CLIP_MS. */
@@ -1246,27 +1283,27 @@ export class Engine {
     return clipMs(frame);
   }
   /** A must-hear line (my kill confirm, a lead change): one `$PLAYX,0,*` per clip the model says the gun still holds
-   *  (the shield loop counts as one while it blocks, and resumes after, so every must-hear line gets its own), sent
-   *  tightly in the same write, then the line. No stop when nothing is outstanding. */
+   *  in the same write, then the line. No stop when nothing is outstanding. */
   _sayMust(frame, why) {
     const now = this.now(); this._audioSync(now);
-    let k = Math.min(this._gun.outstanding(now), MUST_HEAR_MAX_STOPS);   // the loop + 3: an over-count costs a fragment, 20 stops cost a stutter
+    let k = Math.min(this._gun.outstanding(now), MUST_HEAR_MAX_STOPS);   // the cap limits fragments and keeps a flush bounded
     // X4 (Tony 2026-09-25, "your death wins"): no stop while I am dead. The queue waits for a silent gun then, so this
     // only guards a line that would still find the scream on the gun.
-    let held = false;
-    if (k && this._ann.dead()) { this.log(`${why}: no $PLAYX while dead (the scream is never cut)`, 'li'); k = 0; held = true; }
-    this._mustWrite = true;
-    try { this._write([...Array(k).fill(PLAYX), frame], k ? `${why} (after ${k} × $PLAYX: the gun held ${k} clip${k > 1 ? 's' : ''}${this._gun.blocked ? ', the shield loop among them' : ''})` : why); }
-    finally { this._mustWrite = false; }
-    const clip = held ? this._gun.add(this._clipLen(frame), why, now, clipId(frame))   // nothing was stopped: it queues behind the scream
-      : this._gun.flushed(now, { ms: this._clipLen(frame), why });
-    if (clip) clip.item = this._ann.current;   // whose line this is: `_death` requeues an item only when one of ITS clips was stopped
+    if (k && this._ann.dead()) { this.log(`${why}: no $PLAYX while dead (the scream is never cut)`, 'li'); k = 0; }
+    const item = this._ann.current;
+    this._write([...Array(k).fill(PLAYX), frame], k ? `${why} (after ${k} × $PLAYX: the gun held ${k} clip${k > 1 ? 's' : ''})` : why,
+      undefined, false, () => { const clip = this._gun.clips[this._gun.clips.length - 1]; if (clip && clip.id === clipId(frame)) clip.item = item; }, true);
   }
-  /** Is the `$PSET` t23 shield loop playing? It runs while a loop is armed and the shield is above 0. A spawn fill the
-   *  gun has not answered yet counts as a full shield (X3): the pool rises on the gun at the fill, not at its echo. */
-  _audioSync(now = this.now()) {
-    const loop = this._psetSounds && (this._psetSounds[23] || '').replace('*', '').trim();
-    this._gun.setBlocked(!!loop && ((this.shield > 0 && this.phase === 'live') || this._shieldFillPending(now)), now);
+  _audioSync(now = this.now()) { this._gun._prune(now); }
+  _cancelPendingPlayWrites() {
+    let mustHear = false;
+    for (const job of this._pendingPlayWrites) {
+      job.cancelled = true;
+      mustHear ||= job.mustHear;
+      this._pendingPlayWrites.delete(job);
+      job.resolve(true);
+    }
+    return mustHear;
   }
   /** F348: a spawn fill went out less than SHIELD_FILL_ECHO_MS ago and the gun has not answered it yet. PURE. */
   _shieldFillPending(now = this.now()) {
@@ -1282,7 +1319,7 @@ export class Engine {
       if (!(this._hitSoundWarned || (this._hitSoundWarned = new Set())).has(key)) { this._hitSoundWarned.add(key); this.log(`audio: a hit on $SIR ${proto},${subtype} has ${id ? `sound ${id}, of unknown length` : 'no row sound'}: counted as 0 ms`, 'li'); }
       return;
     }
-    const clip = this._gun.add(ms, `hit sound ${id}`, now, id);   // under the shield loop, hits of one sound collapse to one clip
+    const clip = this._gun.add(ms, `hit sound ${id}`, now, id);   // each hit is a separate FIFO clip
     if (clip) this._lastHitClip = clip;   // `_death`: the lethal hit's own row sound is never counted ahead of the scream (F158)
   }
   /** pl3 (2026-09-17): a write the gun must not miss AND that is harmless to repeat -- the stun restore and the
@@ -2761,8 +2798,8 @@ export class Engine {
     const now = this.now();
     if (this._lastPainAt != null && now - this._lastPainAt < PAIN_GAP_MS) return;   // drop, never queue
     // docs/announcer.md: a grunt is stale PAIN_STALE_MS after its hit. One that would wait longer than that in the gun's
-    // FIFO (behind the shield-break line of the same hit, say) is dropped, not queued. While the loop blocks, never.
-    this._audioSync(now);   // the shield as it stands NOW: the hit may just have broken it
+    // FIFO (behind the shield-break line of the same hit, for example) is dropped, not queued.
+    this._audioSync(now);
     if (this._gun.freeAt(now) - now > PAIN_STALE_MS) { this.log(`pain ${kind.slice(5)} dropped: the gun is busy for ${this._gun.freeAt(now) - now} ms`, 'li'); return; }
     this._lastPainAt = now;
     const pick = this._pickCue(kind);
@@ -2813,12 +2850,9 @@ export class Engine {
     if (!SPAWN_SHIELD_FULL || !this.shieldRegenOn) return [];
     return [`$LIFE,0,0,${this.maxShield},*`];
   }
-  /** X3: a spawn or revive burst, with the fill LAST (after the spawn line and the klaxon), so the lines go on the gun's
-   *  FIFO ahead of the shield loop the fill starts. The audio model blocks at the fill (`_audioWrite`), and from here on
-   *  counts the fill as shield up until the gun answers it (`_shieldFillAt`, `_audioSync`). */
+  /** X3: a spawn or revive burst, with the fill LAST after the spawn line and klaxon. */
   _writeSpawnBurst(frames, fill, why, life) {
-    this._fillFrame = fill.length ? fill[0] : null;
-    try { this._writeLife([...frames, ...fill], why, life); } finally { this._fillFrame = null; }
+    this._writeLife([...frames, ...fill], why, life);
     this._shieldFillAt = fill.length ? this.now() : 0;   // F348: the pool is 0 until the gun answers the fill
   }
   _spawn(withCountdown) {
@@ -2839,7 +2873,7 @@ export class Engine {
     const late = rpSpawn && !this._sirLive ? this._pickTable('sir_pool') : [];
     if (rpSpawn && !late.length && !this._sirLive) this.log('*** T-0 spawn: no live hit table to write (no sir_pool) ***', 'le');
     const fill = this._spawnShieldFill();   // F348: a Shields life starts at full shield
-    // X3: the klaxon rides the spawn write, after the spawn line and BEFORE the fill, so the shield loop cannot bury it
+    // X3: keep the klaxon after the spawn line and before the fill
     const kx = this.frames.cues && this.frames.cues.klaxon && !this.cuesFired.has('klaxon') ? this.frames.cues.klaxon : null;
     if (kx) this.cuesFired.add('klaxon');
     this._writeSpawnBurst([...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), SFLASH, ...(sp.frame ? [sp.frame] : []), ...(kx ? [kx] : [])], fill, 'spawn' + (late.length ? ` + hit table ${late.length}r (late)` : '') + this._lineTag(sp) + (kx ? ' + klaxon' : '') + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life);
@@ -2966,14 +3000,12 @@ export class Engine {
     if (!cue.frame && !card) return;
     this._ann.push({ kind: card ? kind : 'alert', key: 'hill', preemptKey: true, stopsOwn: true, audioMs: cue.frame ? cue.ms : 0, ...(card ? {} : { bannerMs: 0 }),
       ok: () => this._hillAudioOn(true),   // Tony 2026-09-25: a hill line already queued is still said while I am dead
-      play: ({ preempted, muted, flush }, self) => {
+      play: ({ preempted, muted }, self) => {
         // QA-05: the HUD's HILL CAPTURED / HILL LOST card reads this, set when the line starts (a muted line still shows).
         if (card) this.hillCallout = { kind, at: this.now() };
-        // docs/announcer.md: an objective line cuts the shield loop (`flush`) rather than being muted by it
-        if (cue.frame && !muted && flush) this._sayMust(cue.frame, `hill ${kind} (through the shield loop) — ${why}`);
-        else if (cue.frame && !muted && preempted && this._ann.dead()) this._sayMust(cue.frame, `hill ${kind} (preempting, while dead: no stop) — ${why}`);   // X4
+        if (cue.frame && !muted && preempted && this._ann.dead()) this._sayMust(cue.frame, `hill ${kind} (preempting, while dead: no stop) — ${why}`);   // X4
         else if (cue.frame && !muted) this._write(preempted ? [PLAYX, cue.frame] : [cue.frame], `hill ${kind}${preempted ? ' (preempting the line still playing)' : ''} — ${why}`);
-        if (cue.frame && !muted && !flush) { const c = this._gun.clips[this._gun.clips.length - 1]; if (c && c.id === clipId(cue.frame)) c.item = self; }   // whose line: see `_death`
+        if (cue.frame && !muted) { const c = this._gun.clips[this._gun.clips.length - 1]; if (c && c.id === clipId(cue.frame)) c.item = self; }   // whose line: see `_death`
         this._changed();
       } });
   }
@@ -3111,10 +3143,9 @@ export class Engine {
     const it = this._ann.push({ kind, src: 'ir', audioMs: line ? clipMs(line) : 0,
       callout: { kind, name: isDownBy ? null : this.nameOf(player), team: TEAM_KEY[victimTeam] || null, at: now, ...(by ? { by } : {}) },
       ok: () => this.alive && this.phase === 'live',
-      play: ({ muted, flush }, self) => {
+      play: ({ muted }, self) => {
         this.callout = self.shown = { ...self.callout, at: self.startedAt };   // the SAME instant the queue stamped (MC's `ir_at` names it): never a second clock read
-        if (line && !muted && flush) this._sayMust(line, 'S57 ENEMY DOWN (through the shield loop)');   // an objective line (docs/announcer.md)
-        else if (line && !muted) this._write([line], 'S57 ENEMY DOWN');
+        if (line && !muted) this._write([line], 'S57 ENEMY DOWN');
         this._changed();
       } });
     if (entry) entry.item = it;
@@ -4693,9 +4724,7 @@ export class Engine {
     if (kind === 'panic') { this._shieldFillAt = 0; if (this.frames && this.frames.panic) this._write(this.frames.panic, `panic (${why})`); else this._write(['$CLEAR,*', '$SP,99,*'], `panic (${why})`); return; }
     if (this.frames) {
       this._write(this.frames.end, `end (${why})`);
-      // X1: the end frames (`$SPAWN`, `$CLEAR`) stop the shield loop on the gun. The phase is still live and the model's
-      // shield is still up here, so without this the audio model thinks the loop blocks the gun and drops the whistle.
-      this.shield = 0; this._shieldFillAt = 0; this._gun.setBlocked(false, this.now());
+      this.shield = 0; this._shieldFillAt = 0;
       // A11.4 HUD-driven ending: in infection a survivor whose clock ran out KNOWS it survived -- it never
       // turned -- so it plays "the survivors have held their ground" itself; everyone else gets game_over.
       const c = this.frames.cues || {};
@@ -5036,7 +5065,7 @@ export class Engine {
         // hardware-proven gap (seed): the flash, then the line; medal lines back to back, MEDAL_GAP_MS apart
         if (muted && mcEntry) mcEntry.killLine = false;   // said nothing after all: a later IR twin speaks for itself
         // My own kill is must-hear, every line of it (round 3 M3): each medal line goes out after the one before it has
-        // ended, so its flush finds nothing of ours to cut, and under the shield loop each gets its own stop.
+        // ended, so its flush finds nothing of ours to cut.
         // `cut`: my death stopped it; `from`: a cut item said again starts at its first line not yet said
         const from = self.from || 0, t0 = timing(from);
         if (!muted) lines.slice(from).forEach((x, i) => this.delay(t0.at[i], () => { if (this._lightGen === lg && !self.cut) this._sayMust(x.f, x.why); }));
@@ -6574,8 +6603,8 @@ export class Engine {
             if (want - crossedAt > HURT_MAX_WAIT_MS) { this._pendingHurtWrite = false; this.log(`low-health line dropped: no quiet gun within ${HURT_MAX_WAIT_MS} ms (F375)`, 'lk'); return; }
             const wait = want - Math.max(due, now); due = want; this.delay(wait, tryHurt); return;
           }
-          this._pendingHurtWrite = false;
-          this._hurtSent = true; this._hsGen = (this._hsGen || 0) + 1; this._write(fr, 'low health');   // cancels a pending hit-flash rest step (polish 2026-09-04)
+          this._hsGen = (this._hsGen || 0) + 1;
+          this._write(fr, 'low health', undefined, false, () => { this._pendingHurtWrite = false; this._hurtSent = true; });   // cancels a pending hit-flash rest step (polish 2026-09-04)
         };
         this.delay(HURT_DEBOUNCE_MS, tryHurt);
       }
@@ -6670,7 +6699,7 @@ export class Engine {
       const RARE_GUARD_MS = 250;
       // F348 / polish r2: a shield rise inside the fill window is the gun's answer to the spawn fill. It ends the window
       // HERE, before the moment gates below, because a revive's `redeploy` moment would otherwise swallow the echo and
-      // leave the audio model blocked (`_shieldFillPending`) after the shield breaks.
+      // keep the spawn-fill accounting until the gun answers the pool update.
       const fillAnswer = !!this._shieldFillAt && this.now() - this._shieldFillAt <= SHIELD_FILL_ECHO_MS && shield > this._prevShield;
       if (fillAnswer) this._shieldFillAt = 0;
       const m = this.moment;
@@ -6737,7 +6766,7 @@ export class Engine {
       }
     }
     this._prevHp = hp; this._prevArmor = armor; this._prevShield = shield;
-    this._audioSync();   // the shield loop plays while the shield is above 0
+    this._audioSync();
     if (hp > 0) this._gunPoolPaint(movedPool);   // A16 §3.1 (readout) / A11.7 legacy (a hit does not clear a held paint, bench 2026-09-04; only the band change is written)
     const wasResync = !!this.resync || !!this.reconciling;
     if (this.resync) this._resyncEvidence('hp');
@@ -6843,6 +6872,7 @@ export class Engine {
     // an extra frame. ⚠ NOT bench-verified: whether this also clips the firmware's own native scream, which
     // fires off the same $HP,0 packet -- needs a real gun (FOLLOWUPS F149).
     if (this._pendingHurtWrite) { this._pendingHurtWrite = false; this.log('low-health alert cancelled — a death landed inside the debounce window (2026-09-19)', 'lk'); }
+    const cancelledMustHear = this._cancelPendingPlayWrites();
     // Tony 2026-09-25 (F149 / F351 / X4): "your death wins. delaying the death scream would be bad. while you are dead you
     // can listen to the queue of KCs and game alerts". The death stop takes off every clip the gun holds AHEAD of the
     // scream (the low-health line, my own kill line) and never the scream itself; an announcer line it cut is said again
@@ -6850,16 +6880,21 @@ export class Engine {
     const stops = screamAhead != null ? Math.min(screamAhead, MUST_HEAR_MAX_STOPS) : (this._hurtSent ? 1 : 0);   // F375: only a line that went out
     // A line on air is cut, and its unsaid rest requeued, only when one of ITS clips is among the stopped ones.
     const cur = this._ann.current, stopped = aheadClips.slice(0, stops);
-    this._ann.death(this.now(), stops > 0 && (screamAhead == null || (!!cur && stopped.some(c => c.item === cur))));
-    const sendStops = () => {
-      if (!stops) return;
-      this._mustWrite = true;   // the model is kept here: exactly the stopped clips leave it
-      try { this._write(Array(stops).fill(PLAYX), `death: ${stops} stop(s) for what the gun held ahead of the scream${this.hurtFired ? ' (the low-health line, F149)' : ''}${stopWait ? `, after the ${stopWait} ms the clip the slack spared still had` : ''}`); }
+    this._ann.death(this.now(), cancelledMustHear || (stops > 0 && (screamAhead == null || (!!cur && stopped.some(c => c.item === cur)))));
+    const sendStop = i => {
+      if (i >= stops) return;
+      this._mustWrite = true;
+      try { this._write([PLAYX], `death: stop ${i + 1}/${stops} for a clip ahead of the scream${stopWait ? `, after ${stopWait} ms slack` : ''}`); }
       finally { this._mustWrite = false; }
-      if (screamAhead != null) this._gun.clips = this._gun.clips.filter(c => !stopped.includes(c));
-      else this._gun.clips.splice(0, stops);
+      const cutClip = stopped[i];
+      if (cutClip) this._gun.clips = this._gun.clips.filter(c => c !== cutClip);
+      else this._gun.clips.splice(0, 1);
+      let tail = this.now();
+      for (const c of this._gun.clips) { c.start = tail; c.end = tail + c.ms; tail = c.end; }
+      if (i + 1 < stops) this.delay(PLAY_GAP_MS, () => sendStop(i + 1));
     };
-    if (stopWait) { const lg = this._lightGen; this.delay(stopWait, () => { if (this._lightGen === lg) sendStops(); }); } else sendStops();
+    if (stopWait) { const lg = this._lightGen; this.delay(stopWait, () => { if (this._lightGen === lg) sendStop(0); }); }
+    else sendStop(0);
     if (screamAhead != null) { this._gun.add(CLIP_MS[screamId], `native death scream ${screamId}`, this.now(), screamId); this._screamUntil = this.now() + CLIP_MS[screamId]; }
     this._stunRestore('died');   // F15: death cancels the stun -- no restore write; the revive's own $AMMO re-arms the next life
     this._puDeath();             // A56: a weapon item's charges are lost and the overshield is gone

@@ -2632,17 +2632,52 @@ test('office test 2026-09-19: a death that lands inside HURT_DEBOUNCE_MS cancels
   assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 0, 'cancelled -- the queued alert must not play after death');
 });
 
-test('office test 2026-09-19: a death that lands AFTER the debounce has already fired still gets the $PLAYX stop', () => {
-  const pending = [];
-  const h = goLive(harness({ delay: (ms, fn) => pending.push({ ms, fn }) }));
-  h.writes.length = 0; pending.length = 0;
-  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,12,0,0,*');
-  const alert = pending.find(p => p.ms === 400); assert.ok(alert);
-  alert.fn();   // the debounce elapses first -- the alert really did reach the gun
-  assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 1, 'sanity: it played');
+test('F149/F375: death stops a low-health clip that already reached a quiet gun', () => {
+  const h = goLive(harness());
   h.writes.length = 0;
+  h.eng._gun.clear();
+  h.eng._gun.add(1984, 'low-health cue already written', h.eng.now(), 'VA86');
+  h.eng._hurtSent = true;
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,0,0,0,*');
-  assert.equal(h.writes.filter(f => f === PLAYX).length, 1, 'past the window, the existing F149 stop still fires');
+  assert.equal(h.writes.filter(f => f === PLAYX).length, 1, 'one stop removes the clip ahead of the native scream');
+});
+
+test('F375 review: low-health stays pending through the play gap and death cancels it', () => {
+  const h = goLive(harness());
+  const delayed = [];
+  h.eng.delay = (ms, fn) => delayed.push({ ms, fn });
+  h.eng._nextPlayAt = h.eng.now() + 1050;
+  h.frame('$HP,14,0,0,*');
+  h.adv(1000);
+  const debounce = delayed.shift(); assert.ok(debounce);
+  debounce.fn();
+  assert.equal(h.eng._hurtSent, false, 'the critical line is not marked sent before its scheduled write');
+  assert.equal(h.eng._pendingHurtWrite, true, 'the critical line stays pending in the play gap');
+  assert.ok(h.eng._pendingPlayWrites.size > 0);
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');
+  assert.equal(h.eng._pendingHurtWrite, false);
+  assert.equal(h.eng._hurtSent, false);
+  h.adv(200);
+  assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 0, 'VA86 never leaves after the death');
+});
+
+test('F347 review: _writeLife receives a later split-group failure', async () => {
+  const h = goLive(harness());
+  const life = h.eng._lifeSeq;
+  const timers = [];
+  h.eng.delay = (ms, fn) => timers.push({ ms, fn });
+  let calls = 0;
+  h.eng.writer = frames => { calls++; h.writes.push(...frames); return calls === 2 ? false : true; };
+  h.eng._nextPlayAt = h.eng.now();
+  const pending = h.eng._writeLife(['$PLAY,,4,6,VA6D,,,,*', '$PLAY,,4,6,VA6E,,,,*'], 'F347 grouped life write', life);
+  assert.equal(calls, 1, 'only the first group has left');
+  assert.equal(timers.length, 1);
+  timers[0].fn();
+  const ok = await pending;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ok, false, 'the outer write reports the delayed group failure');
+  assert.ok(calls >= 2, 'the failed group is followed by the existing pool repair path');
+  assert.equal(h.eng._writeLost, life, 'the failed life write is visible to Mission Control');
 });
 
 // ── review 2026-09-19: a queued low-health alert must not survive match end/teardown/panic ────────

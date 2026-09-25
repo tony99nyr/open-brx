@@ -644,7 +644,7 @@ function gunParser() {
     },
   };
 }
-const PSET = '$PSET,0,1,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*';
+const PSET = '$PSET,0,1,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,,*';
 const LIFE_BURST = [PSET, '$SPAWN,,*', '$TID,1,*', '$AMMO,0,30,90,1,*'];
 const textOf = w => w.value.match(/../g).map(h => String.fromCharCode(parseInt(h, 16))).join('');
 

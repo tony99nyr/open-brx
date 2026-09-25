@@ -32,14 +32,14 @@ function atPools(bundle, h) {
 }
 
 function harness({ health = SHIELDS, respawn = 'auto' } = {}) {
-  const writes = []; let clock = 1_000_000;
+  const writes = [], writeGroups = []; let scheduledGap = null; let clock = 1_000_000;
   const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
   const bundle = atPools(golden, health);
   const config = { config_id: bundle.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 600,
     respawn: { type: respawn, delay_s: 8 }, scoring: { frag_limit: 25, win_by: 'kills' }, health, teams };
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
-  const eng = new Engine({ writer: fr => writes.push(...fr), emit: () => {}, report: () => {}, now: () => clock,
-    synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
+  const eng = new Engine({ writer: fr => { const frames = [...fr]; writes.push(...frames); writeGroups.push({ frames, gapMs: scheduledGap }); scheduledGap = null; }, emit: () => {}, report: () => {}, now: () => clock,
+    synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => { scheduledGap = ms; fn(); scheduledGap = null; }, rng: () => 0 });
   // The gun's side of every pool write: a `$SPAWN` empties the shield, a `$LIFE` grant adds and clamps, and the
   // gun answers the grant with `$HP` (bench 2026-09-09). Played after each tick, so the node sees what a real gun says.
   const gun = { hp: 0, armor: 0, shield: 0, seen: 0 };
@@ -59,7 +59,7 @@ function harness({ health = SHIELDS, respawn = 'auto' } = {}) {
   eng.onMcMessage({ kind: 'config', body: { config, frames: { ...bundle, player_id: 'p1' }, roster: [] } });
   eng.feedFrame('$LCD,0,0,0,0,0,0,*');
   const h = {
-    eng, writes, gun,
+    eng, writes, writeGroups, gun,
     adv(ms, step = 50) { const end = clock + ms; while (clock < end) { clock = Math.min(end, clock + step); eng.tick(); answer(); } return h; },
     frame(f) { eng.feedFrame(f); answer(); return h; },
     mark() { return writes.length; },
@@ -155,19 +155,20 @@ test('F348 control: a shield broken in play still recharges the old way (and, To
 // ---------- integration review 2026-09-24 (X1, X3, X5, X6, X7): the fill against the audio model and the pool repair ----------
 const REPAIRS = (h, n) => h.since(n).filter(w => /^\$LIFE,\d+,\d+,\d+,1,\*$/.test(w));
 
-test('X3: the spawn line and the klaxon go out BEFORE the fill, and the audio model counts them played, then blocks', () => {
+test('X3: the spawn line and klaxon precede the fill in separate writes 150 ms apart', () => {
   const h = harness();
   const burst = h.since(h.startAt);
   const fill = burst.indexOf(FILL), line = burst.indexOf(golden.cues.spawn), klaxon = burst.indexOf(golden.cues.klaxon);
   assert.ok(line >= 0 && klaxon >= 0 && fill >= 0, `setup: all three went out: ${JSON.stringify(burst)}`);
-  assert.ok(line < fill && klaxon < fill, `the lines are on the FIFO ahead of the loop the fill starts: ${JSON.stringify(burst)}`);
-  const g = h.eng._gun;
-  assert.equal(g.blocked, true, 'the fill started the shield loop in the model');
-  assert.equal(g.clips.length, 2, 'the spawn line and the klaxon are queued');
-  assert.ok(g.clips.every(c => Number.isFinite(c.end)), 'and they PLAY: they are ahead of the loop, not stuck behind it');
+  assert.ok(line < fill && klaxon < fill, `both lines precede the fill: ${JSON.stringify(burst)}`);
+  const lineWrite = h.writeGroups.findIndex(g => g.frames.includes(golden.cues.spawn));
+  const klaxonWrite = h.writeGroups.findIndex(g => g.frames.includes(golden.cues.klaxon));
+  assert.notEqual(lineWrite, klaxonWrite, 'the spawn line and klaxon use separate writes');
+  assert.equal(h.writeGroups[klaxonWrite].gapMs - h.writeGroups[lineWrite].gapMs, 150,
+    'the klaxon write is scheduled 150 ms after the spawn line write');
 });
 
-test('X3: a revive puts its line before the fill, and the model stays blocked through the fill, not only after its echo', () => {
+test('X3: a revive puts its line before the fill', () => {
   const h = harness();
   h.adv(5000).die();
   h.adv(7900);
@@ -178,10 +179,9 @@ test('X3: a revive puts its line before the fill, and the model stays blocked th
   const burst = h.since(n);
   assert.ok(burst.indexOf(golden.cues.respawned) < burst.indexOf(FILL), `the line before the fill: ${JSON.stringify(burst)}`);
   assert.equal(h.eng.shield, 0, 'setup: no echo yet');
-  assert.equal(h.eng._gun.blocked, true, 'the loop blocks from the fill, before the gun answers it');
 });
 
-test('polish r2: after a revive the fill echo ends the fill window, so a shield broken at +0.5 s unblocks the audio model', () => {
+test('F348: after a revive, the fill echo ends the fill window before a later shield break', () => {
   const h = harness();
   h.adv(5000).die();
   h.adv(7900);
@@ -192,14 +192,12 @@ test('polish r2: after a revive the fill echo ends the fill window, so a shield 
   h.adv(200);
   h.gun.shield = 0; h.frame('$HIR,4,0,19,2,105,0,3,*'); h.frame('$HP,45,0,0,*');
   assert.equal(h.eng.shield, 0, 'setup: the shield broke');
-  assert.equal(h.eng._gun.blocked, false, 'no shield, no loop: the model does not block');
 });
 
 test('X1: the game_over line is written at the whistle while the shield is up', () => {
   const h = harness();
   h.adv(3000);
   assert.equal(h.eng.shield, 105, 'setup: full shield');
-  assert.equal(h.eng._gun.blocked, true, 'setup: the model has the loop blocking');
   const n = h.mark();
   h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
   assert.ok(h.since(n).includes('$CLEAR,*'), 'setup: the end frames went out');

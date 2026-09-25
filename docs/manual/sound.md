@@ -34,7 +34,8 @@ Only one sound is truly stuck: the boot chime.
 | Two slots at once | `$PLAY,,4,6,V3A,,,,*` leaves the effect slot empty and says "kill". Both slots can carry an id at once: the app's game-end frame is `$PLAY,VSF,4,6,JAY,,,,*` (victory sting plus "victory"). |
 | Slots behave differently | Token 1 interrupts: sending a new id there cuts off whatever is playing, in either slot, even mid-word. Token 4 queues: a new id there waits its turn and plays after what is ahead of it, several deep. This is true of the slot, not the id: an effect id sent through token 4 queues exactly like a voice line does. Put anything that must never be cut off in token 4, and accept that anything urgent in token 1 can cut a line short. |
 | Required tokens | Volume and priority are required. `$PLAY,VA33,,,,,,,*` was silent on the bench; `$PLAY,VA33,4,6,,,,,*` spoke "game over". The official apps use `3,9` (Android) and `3,6` / `4,6` (iOS Callsign): app conventions, not protocol constants. |
-| Stop playback | `$PLAYX,0,*` stops playback right away. The app sends it just after `$STOP` on connect, and it also silences a spawn voice line if sent right after `$SPAWN`. |
+| Stop playback | `$PLAYX,0,*` stops playback right away. The app sends it just after `$STOP` on connect, and it also silences a spawn voice line if sent right after `$SPAWN`. One stop per write stops only the clip playing; several stops in one write can clear every queued clip. |
+| Queue | `$PLAY` clips queue first in, first out. Four `$PLAY` frames written with no gap between them lost one clip, in 2 of 2 runs, so Open BRX spaces its `$PLAY` writes. The smallest safe gap is not measured. |
 | Unknown id | Any id not in the bank is invalid. For an unknown id the gun plays a fallback sound instead of staying silent. That is why a microphone sweep can't list the bank: a nonsense id produced audio at 150x the noise floor. |
 
 ### Where kill feedback comes from, and what the green sight flash is
@@ -79,7 +80,7 @@ The voice pack has **seventeen wire slots**, `$PSET` tokens 7 through 23, in the
 | hitCrit | Critical hit |
 | emptyUnboundButtonSound | Pressing a button with nothing bound (the "can't do that" chirp) |
 | ammoOrGearPickUp | Ammo / gear pickup |
-| energyShieldLoop | Looping shield hum (e.g. `A10`). Stops only when the shield reaches zero, not on `$PLAYX,0,*` (confirmed 2026-09-25). |
+| energyShieldLoop | Looping shield hum (e.g. `A10`). Stops only when the shield reaches zero, not on `$PLAYX,0,*` (confirmed 2026-09-25). It holds every queued clip back, so Open BRX ships it empty. |
 
 The "Get some" respawn line was traced to this block on the bench.
 

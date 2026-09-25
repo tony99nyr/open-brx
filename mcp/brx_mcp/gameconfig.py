@@ -51,7 +51,7 @@ WEAPON_AMMO: dict[str, tuple[int, int]] = {
 }
 
 # $PSET template — the app's voice-pack tail; tokens 3–5 (HP,armor,shield) are ours.
-# tokenize: PSET,0,0,<HP>,<armor>,<shield>,50,,H44,...,A10
+# tokenize: PSET,0,0,<HP>,<armor>,<shield>,50,,H44,...,
 # $PSET token 1 = player id (§7p): a 6-bit wire value. The BRX hardware accepts 0–63; the
 # platform reserves wire 0 for "no identity" (tutorial / unknown shooter) and assigns real
 # players 1–63 (contracts A5.1). The MC compiler passes `player_num` (1–63) straight through.
@@ -68,7 +68,7 @@ _PSET_HEAD = ["50", "", "H44", "JAD"]           # criticalDamageBonus, deathAlar
 # firmware's own branch on WHICH POOL a hit bit into. They shipped as Callsign's inherited ids in
 # every game we have run; `hitaudio.MATERIAL_POOLS` chooses and rolls them instead (metal for armour,
 # body for health, energy for shield). `pset_foot(None)` still returns the inherited frame.
-_PSET_FOOT_INHERITED = ["H06", "H55", "H13", "H21", "H02", "U15", "W71", "A10"]   # shared, not voice
+_PSET_FOOT_INHERITED = ["H06", "H55", "H13", "H21", "H02", "U15", "W71", ""]      # F347: no shield hum
 _PSET_FOOT = _PSET_FOOT_INHERITED                                                 # back-compat alias
 
 
@@ -81,9 +81,7 @@ def pset_foot(hits: dict | None = None) -> list[str]:
     four hit slots and `energyShieldLoop` are still inherited untouched."""
     from .hitaudio import MATERIAL_DEFAULT, MATERIAL_ROLES, SHIELD_LOOP, SHIELD_LOOP_INDEX
     foot = list(_PSET_FOOT_INHERITED)
-    foot[SHIELD_LOOP_INDEX] = SHIELD_LOOP     # A17/F44 (closed 2026-09-11): Callsign's own A10 is a real
-                                               # shield hum, ear-confirmed alone with $LIFE raising/dropping
-                                               # the shield -- writes back the same id the gun already inherits
+    foot[SHIELD_LOOP_INDEX] = SHIELD_LOOP     # F347: leave the shield loop empty; the hum blocked queued audio.
     # A17: the four hit slots default to the EAR-CONFIRMED heads, not the inherited ids, so a gun that
     # is armed but not yet spawned already sounds right. `hits` (a roll or an operator pin) overrides.
     for i, role in enumerate(MATERIAL_ROLES, start=1):
