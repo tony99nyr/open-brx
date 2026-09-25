@@ -4498,7 +4498,7 @@ for (const view of VIEWS) for (const night of [false, true]) {
   });
   await step(`${tag}: another player won it: TAKEN BY VIPER, with the countdown to the next spawn`, async () => {
     const pg = await open(view, 'live-pu-taken-by', N, 3300); const r = await puWait(pg, r => r.hint && r.hint.kind === 'taken_by', 2000); await shot(pg, 'taken-by'); await puClose(pg, night);
-    must(r.hint && /^TAKEN · 1:5\d$/.test(r.hint.act) && r.hint.lab === 'BY VIPER', `the countdown is in the action line: ${JSON.stringify(r.hint)}`);
+    must(r.hint && /^ROCKETS TAKEN · 1:5\d$/.test(r.hint.act) && r.hint.lab === 'BY VIPER', `the countdown is in the action line: ${JSON.stringify(r.hint)}`);
     must(r.hint.actPx >= 14 && r.hint.labPx >= 11, `type floors: ${r.hint.actPx}/${r.hint.labPx}`);
     must(inside(r.hint.box, r.frame) && vclear(r.hint.box, r) && apart(r.hint.box, r.ammo), `a long line wraps, it never reaches the vitals: ${JSON.stringify(r.hint.box)} vitals ${JSON.stringify(r.vitals)}`);
   });

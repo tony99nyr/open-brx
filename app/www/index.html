@@ -799,7 +799,9 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 #frame[data-screen="lo"] .pill,#frame[data-screen="panel"] .pill{font-size:11px;letter-spacing:.14em;padding:5px 12px}
 #frame[data-screen="lobby"] .pill{font-size:11px;letter-spacing:.14em;padding:5px 12px}
 #frame[data-screen="lobby"] button.pill{min-height:0;position:relative}#frame[data-screen="lobby"] button.pill::after{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:56px}   /* HUD QA R2-05: 56 frame px = 44 px on the SE */
-#frame[data-screen="lobby"] button.pill,#frame[data-screen="lobby"] .pill[data-headset]{font-size:14px;letter-spacing:.08em}   /* R2-05/R2-07: 11 px on the SE screen, not 8.7 */
+#frame[data-screen="lobby"] button.pill,#frame[data-screen="lobby"] .pill[data-headset]{font-size:14px;letter-spacing:.08em}
+#frame[data-screen="lobby"] .chipbar{align-items:stretch}   /* audit-1: a 14 px button beside an 11 px line still shares one row top */
+#frame[data-screen="lobby"] .chipbar .pill:not(button){display:flex;align-items:center}   /* R2-05/R2-07: 11 px on the SE screen, not 8.7 */
 .lobby .note .warnnote{color:var(--warn);font-weight:700}
 [data-env="night"] .pill.bad[data-headset],[data-env="night"] .chipbar button.pill.warn{animation:none;border-color:#ef6868;color:#ef6868}   /* R2-05: the bright night red, and no blink at night */
 .pill{font-size:11px;letter-spacing:.2em;font-weight:700;padding:4px 14px;transform:skewX(-10deg);background:var(--plate);border:1px solid var(--edge);color:var(--mut)}
@@ -1381,6 +1383,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .down .co .cl,.down .lab,.down .recap .rl,.down .recap .rv,.down .recap .tm,.down .recap .ld,.down .recap .ag,.down .recap .capwarn{font-size:14px}
 .down .co .cl{letter-spacing:.14em}.down .lab{letter-spacing:.2em}.down .recap .rl{letter-spacing:.16em}
 #frame[data-screen="live"] .chipbar .pill{font-size:14px;letter-spacing:.14em}
+#frame[data-screen="live"] .chipbar .pill.bad.gunlost{font-size:16px;letter-spacing:.16em}   /* QA-02: the link bar stays 16 px */
 [data-env="night"] .hplab,[data-env="night"] .stats,.nightlab{font-size:14px}
 [data-env="night"] .hplab{letter-spacing:.16em}[data-env="night"] .stats{letter-spacing:.16em}
 /* HUD QA gate "a persistent KOTH hill state on the live HUD": the hill chip rides in the clock plate, in the owner's colour, day
@@ -1405,8 +1408,9 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .bigbtn.ghost,.othertog{position:relative}
 .bigbtn.ghost::after,.othertog::after{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:56px}
 .othertog{font-size:14px;letter-spacing:.1em;min-height:56px;padding-top:0;padding-bottom:0}   /* inside the scrolling list, which clips an ::after */
-#diag .btns{gap:4px;padding-left:10px;padding-right:10px}
-#diag .btns button{min-height:56px;font-size:14px;letter-spacing:0;padding:8px 5px}
+#diag .btns{gap:4px;padding:3px 10px calc(3px + env(safe-area-inset-bottom,0px))}   /* F122: the row stays <= 56 design px */
+#diag .btns button{min-height:48px;font-size:14px;letter-spacing:0;padding:6px 5px;position:relative}
+#diag .btns button::after{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:58px}   /* 56 px of the row and the log's last 2 px: 44 on the SE screen */
 .infobtn::after{left:auto;right:-2px;transform:translateY(-50%)}
 #info::after{top:-2px;height:60px;transform:none}   /* 58 px of the frame below its top edge: 46 px on the SE screen */
 #skin{top:70px}   /* its area (60-116) starts where the ⓘ area ends */
