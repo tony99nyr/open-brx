@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-09-25 (F384 and F385 built, bench checks left; F382 Stick half, F383, F386, F387, F388 and F399 built at the desk, A68; F399 filed; F347, F350 and F378 closed at the desk; F319 closed, Q13 to the bench, S32 to DECISION, F377 filed; F375 filed; F164 and F161 closed; F342 to the bench; B21 Android half built; F221 to DECISION; bench sitting A: F341 closed, F376 and F378 filed; bench sitting B: F332, H9 and F333 closed; F374, F353, F365 and S58 updated; F379-F398 filed).
+Updated: 2026-09-25 (F384 and F385 built, bench checks left; F382 Stick half, F383, F386, F387, F388 and F399 built at the desk, A68; F399 filed; F347, F350 and F378 closed at the desk; F319 closed, Q13 to the bench, S32 to DECISION, F377 filed; F375 filed; F164 and F161 closed; F342 to the bench; B21 Android half built; F221 to DECISION; bench sitting A: F341 closed, F376 and F378 filed; bench sitting B: F332, H9 and F333 closed; F374, F353, F365 and S58 updated; F379-F398 filed; F400 filed).
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -9,10 +9,10 @@ Updated: 2026-09-25 (F384 and F385 built, bench checks left; F382 Stick half, F3
 This file holds the open MVP work and nothing else, in three groups. A row moves between the three files and never
 changes its id. The evidence behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date).
 
-**MVP open: 72.** Desk 3 · bench 66 · decision 3.
+**MVP open: 73.** Desk 4 · bench 66 · decision 3.
 
-**MVP DESK (3),** a keyboard is enough:
-- 🟠 **B21** · **F372**
+**MVP DESK (4),** a keyboard is enough:
+- 🟠 **B21** · **F372** · **F400**
 - 🟡 **F377**
 
 **MVP BENCH (66),** needs a gun, a Stick, phones or a field (the order is the bench plan):
@@ -31,7 +31,7 @@ marker. If a list disagrees with a row, the ROW is right.
 **Ids.** One capital letter + number. Never renumbered, never reused, unique across this file, `post-mvp.md` and the
 archive. **Claim an id by writing its row first, before doing the work:** a stub row and the bumped "next free"
 below, committed, then the investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F400 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F401 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -59,6 +59,8 @@ A keyboard is enough. Highest value first.
   `assembleRelease`, version bump per build; iOS = TestFlight or source build). `build`. **→ Tony 2026-09-23:** release-sign at the NEXT APK cut, and cut only after the open desk fixes land. Testers uninstall once at that cut. `build`. **→ 2026-09-23: Tony created the release key outside the repo (`~/.brx/`, private, backed up).** The next cut is `npm run android:release` once the open desk fixes land. **→ 2026-09-24, the Android half shipped:** 0.4.6 was the first release-signed build (its release notes tell players to uninstall once), and 0.4.7 to 0.4.11 followed, each published as an `app-v<version>` release (`webapp/download/build.json` names 0.4.11). Open: `webContentsDebuggingEnabled` is still `true` in `app/capacitor.config.json`, and iOS has no distribution path yet. **→ Tony 2026-09-25, decided:** WebView debugging becomes a TOGGLE, not a removal ("can be a toggle to help dev and debugging. we may need that on as we build features"). Build: a runtime switch (the Android WebView `setWebContentsDebuggingEnabled`, called from a small native hook) in the app's ⓘ diag panel, persisted, defaulting ON while MVP features are still being built; the release build keeps the ability; the diag panel shows the current state. Flip the default to OFF for a public release later (a note on the row). `build`. **→ 2026-09-25, Android toggle built (brx5):** an in-app setting, not a build flag, because a tester must flip it on a release APK. `app/plugins/brx-debug` stores it in SharedPreferences and applies it at start (plugins load after Capacitor's config value). The ⓘ panel's DEVELOPER row shows it; default ON (`DEFAULT_ON`, flip for a public release: `app/RELEASING.md`). Not yet on a phone: it ships at the next cut.
 
 - **F372 🟠 TURN POWERUPS ON BY DEFAULT ONCE THE POWERUP BENCH PASSES.** Tony 2026-09-25: "yes powerups an mvp feature, lets bench it". Today MC grants items only with `--powerups` (`mc/__main__.py`), and the banner says "not bench-proven yet". Gate: every step of the powerups setup in [`bench-2026-09-25.md`](bench-2026-09-25.md) passes (3.4, 3.5, 11.2 and 4.11 for the phone station and the Stick). Then: make powerups the default (keep a way to switch them off), replace the -55 claim placeholder (`POWERUP_THRESHOLD_DEFAULT`, `beacon.js POWERUP_RSSI_DBM`) and the Stick's -57 with the calibrated values, and update [`spec/powerups.md`](spec/powerups.md) "Bench gate". `build`.
+
+- **F400 🟠 A POWERUP PICKUP MUST SHOW THE FULL ALT SWITCH SCREEN, NOT ONLY THE SMALL HINT CHIP.** Tony, 2026-09-25: "we need a louder rockets have the trigger alert on hud. that is pretty small. we probably need the switching screen like the alt button. players need to know their active switched." Today a powerup weapon landing on the trigger shows only the small hint chip (`<ITEM> ON TRIGGER`, `_puHint`, `spec/powerups.md` §"The mechanism"). Proposal: reuse the same full weapon-switch callout an ALT press shows, both when the pickup lands on the trigger and on the switch-back to the player's own weapon (charges run out, and the SELECT toggle). Tony also flagged the pickup's sound, 2026-09-25: "we didnt have the proper rockets pickup sound... it sounded like the shotgun. is there a voice callout for Rockets or Rocket Launcher?" (today's shotgun-like sound is suspected to be the equip sound riding inside the rocket's captured `$WEAP` head, unverified); the storyboard adds an AUDIO panel proposing VA56 "Rocket Launcher!" on the trigger landing, V130 "Overshield" on an Overshield pickup and VX0S "Weapon Swap" on the switch-back, with VZ10 "Mini Rocket Launcher" and VA9T "One more weapon ready for duty." as Rail Gun alternatives (`docs/reference/sound-catalog.md`; all unconfirmed community labels, audition on the gun first). Storyboard first: brx2 builds the options at `C:\Users\Tony\brx-pu-switch` from the real HUD (`ui:stage`), Tony picks, then brx5 builds it. Owner: brx5 (build), brx2 (storyboard). `eyes` + `build`.
 
 
 
