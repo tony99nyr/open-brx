@@ -71,7 +71,7 @@ describe('ITEMS — the powerup item picker', () => {
     const orig = api.putStation.bind(api);
     api.putStation = (async (n, a) => { sent.push(a); return orig(n, a); }) as Api['putStation'];
     await m.click('ASSIGN + ARM');
-    expect(sent).toEqual([{ kind: 'powerup', team: 1, id: 1, threshold: 0, item_preset: 'overshield' }]);
+    expect(sent).toEqual([{ kind: 'powerup', team: 1, threshold: 0, item_preset: 'overshield' }]);
     await settle();
     const row = m.find(`[data-station-card="${NODE}"] [data-testid="station-item"]`)[0];
     expect(row, `no item row, card says: ${card().textContent}`).toBeTruthy();

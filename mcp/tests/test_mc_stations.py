@@ -968,3 +968,114 @@ def test_an_old_phone_powerup_station_gets_the_1ft_claim_default_not_the_3m_one(
     assert PHONE_POWERUP_THRESHOLD_DBM == -55
     got = Session._wire_threshold("util-old", {"app_ver": "0.4.11+f366156e"}, {"threshold": 0, "kind": "powerup", "team": 255, "id": 9})
     assert got == -55, got
+
+
+# --------------------------------------------------------------------------- F364: MC assigns the station id
+def _restart_mc(s):
+    """A new MC process reading the old one's session.json."""
+    import tempfile
+    if s._persist_path is None:
+        s._persist_path = pathlib.Path(tempfile.mkdtemp(prefix="brx-ids-test-")) / "session.json"
+    s._persist_last = 0.0
+    s._persist()
+    s2 = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()))
+    s2._persist_path = s._persist_path
+    s2.restore_snapshot()
+    return s2
+
+
+def test_f364_mc_assigns_1_2_3_across_a_phone_and_a_stick():
+    s = _sess()
+    for nid in ("util-a", "stick-0123456789ab", "util-b"):
+        s.net.simulate_utility_hello(nid)
+    got = [s.set_station(nid, {"kind": "respawn", "team": "any"})["assigned"]["id"]
+           for nid in ("util-a", "stick-0123456789ab", "util-b")]
+    assert got == [1, 2, 3], got
+    assert _pushed(s, "station_config", "stick-0123456789ab")[-1]["id"] == 2
+    assert _pushed(s, "station_config", "util-a")[-1]["valid_ids"] == [1, 2, 3]
+    # a re-assignment with no id (a kind change) keeps the station's own number
+    assert s.set_station("util-a", {"kind": "control", "team": "any"})["assigned"]["id"] == 1
+
+
+def test_f364_a_station_keeps_its_id_across_its_restart_a_relink_and_a_clear():
+    s = _sess()
+    for nid in ("util-a", "stick-1"):
+        s.net.simulate_utility_hello(nid)
+        s.set_station(nid, {"kind": "respawn", "team": "any"})
+    s.net.simulate_utility_hello("stick-1")                       # the Stick rebooted: same node_id, new hello
+    assert s.stations["stick-1"]["assigned"]["id"] == 2
+    assert _pushed(s, "station_config", "stick-1")[-1]["id"] == 2
+    s.clear_station("stick-1")                                    # cleared, then a new station joins
+    s.net.simulate_utility_hello("util-new")
+    assert s.set_station("util-new", {"kind": "respawn", "team": "any"})["assigned"]["id"] == 3, \
+        "a new station must not take the number a cleared station still owns"
+    s.net.simulate_utility_hello("stick-1")                       # the Stick relinks and is assigned again
+    assert s.set_station("stick-1", {"kind": "respawn", "team": "any"})["assigned"]["id"] == 2
+
+
+def test_f364_an_mc_restart_keeps_every_station_id():
+    s = _sess()
+    for nid in ("util-a", "stick-1", "util-c"):
+        s.net.simulate_utility_hello(nid)
+        s.set_station(nid, {"kind": "respawn", "team": "any"})
+    s.clear_station("util-c")
+    s2 = _restart_mc(s)
+    assert {n: st["assigned"]["id"] for n, st in s2.stations.items() if st.get("assigned")} == {"util-a": 1, "stick-1": 2}
+    s2.net.simulate_utility_hello("util-c")
+    s2.net.simulate_utility_hello("util-d")
+    assert s2.set_station("util-d", {"kind": "respawn", "team": "any"})["assigned"]["id"] == 4
+    assert s2.set_station("util-c", {"kind": "respawn", "team": "any"})["assigned"]["id"] == 3, \
+        "a cleared station's number survives the restart too"
+
+
+def test_f364_an_explicit_id_from_an_older_console_is_still_validated_for_uniqueness():
+    s = _sess()
+    s.net.simulate_utility_hello("util-a")
+    s.net.simulate_utility_hello("stick-1")
+    s.set_station("util-a", {"kind": "respawn", "team": "any"})                  # MC gives it 1
+    try:
+        s.set_station("stick-1", {"kind": "respawn", "team": "any", "id": 1})
+        raise AssertionError("an explicit id that clashes with an MC-assigned one was accepted")
+    except ValueError as e:
+        assert "already assigned to util-a" in str(e), e
+    assert s.set_station("stick-1", {"kind": "respawn", "team": "any", "id": 7})["assigned"]["id"] == 7
+    s.net.simulate_utility_hello("util-b")
+    assert s.set_station("util-b", {"kind": "respawn", "team": "any"})["assigned"]["id"] == 2
+    for bad in (0, "3", True):
+        try:
+            s.set_station("util-b", {"kind": "respawn", "team": "any", "id": bad})
+            raise AssertionError(f"accepted id {bad!r}")
+        except ValueError as e:
+            assert "id must be" in str(e)
+
+
+def test_f364_polish_a_reinstall_frees_the_old_number_once_the_old_node_is_evicted():
+    s = _sess()
+    for nid in ("util-a", "util-old"):
+        s.net.simulate_utility_hello(nid)
+        s.set_station(nid, {"kind": "respawn", "team": "any"})       # 1, 2
+    s.clear_station("util-a")
+    s.evict_node("util-a")                                           # the phone was reinstalled: a new node_id
+    s.net.simulate_utility_hello("util-a-new")
+    assert s.set_station("util-a-new", {"kind": "respawn", "team": "any"})["assigned"]["id"] == 1, \
+        "the evicted node's number is free again"
+    # control: a CLEARED (not evicted) station keeps its number reserved
+    s.clear_station("util-old")
+    s.net.simulate_utility_hello("util-c")
+    assert s.set_station("util-c", {"kind": "respawn", "team": "any"})["assigned"]["id"] == 3
+
+
+def test_f364_polish_a_new_session_without_the_roster_starts_at_1_and_one_with_it_keeps_ids():
+    s = _sess()
+    for nid in ("util-a", "util-b"):
+        s.net.simulate_utility_hello(nid)
+        s.set_station(nid, {"kind": "respawn", "team": "any"})
+        s.clear_station(nid)
+    s.new_session(keep_roster=True)
+    s.net.simulate_utility_hello("util-x")
+    assert s.set_station("util-x", {"kind": "respawn", "team": "any"})["assigned"]["id"] == 3, "keep_roster keeps the ids"
+    s.clear_station("util-x")
+    s.new_session(keep_roster=False)
+    s.set_config({"mode": "tdm"})
+    s.net.simulate_utility_hello("util-y")
+    assert s.set_station("util-y", {"kind": "respawn", "team": "any"})["assigned"]["id"] == 1

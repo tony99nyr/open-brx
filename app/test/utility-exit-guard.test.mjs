@@ -133,6 +133,7 @@ test('F184: BACK TO HUD persists the utility identity proof for the new HUD tran
   api.transport.nodeKey = 'utility-proof';
   await api.exitToHud();
   assert.deepEqual(JSON.parse(store.get('brx.prior_utility')), {
-    node_id: api.transport.nodeId, node_key: 'utility-proof',
+    node_id: api.transport.nodeId, node_key: 'utility-proof', mc_url: api.transport.url,
   });
+  assert.ok(api.transport.url, 'F346 (d) r1: the proof is bound to the MC url it came from');
 });
