@@ -78,7 +78,7 @@ That README's CLI table is the canonical command list; bare `python -m brx_mcp` 
 > field Wi-Fi** path has run **two whole matches on real hardware**: a 300 s FFA on 2026-08-30 (two phones,
 > two taggers, one MacBook hosting; 12 kills, 126 landed hits, 12 respawns, a winner) and an outdoor TDM on
 > 2026-09-01 with two Android HUDs. Still unproven: a dispersed start with players out of Wi-Fi range before
-> T-0, more than two phones, the 20-minute soak, phone auto-rejoin and iOS locked-phone BLE (`docs/FOLLOWUPS.md`
+> T-0, more than two phones, the 20-minute soak, phone auto-rejoin and iOS locked-phone BLE (`docs/post-mvp.md`
 > "System proofs"). See [`docs/architecture-topology.md`](docs/architecture-topology.md) §7 for the line-by-line.
 
 > **You do not need the phone app for any of the above.** The phone node is what lifts the BLE-range

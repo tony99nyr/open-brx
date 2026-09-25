@@ -739,5 +739,39 @@ block's *internal* statuses were true when it closed and may since have been sup
   `docs/announcer.md`.
 - 2026-09-25 **F361** decided (Tony): KILLJOY keeps the green gun flash, like every medal;
   `test_mc_awards.py::test_killjoy_keeps_its_gun_flash_like_every_medal` guards it.
+
+# Closed 2026-09-25: the final docs pass (the MVP split)
+
+*FOLLOWUPS now holds open MVP work only; the post-MVP rows moved to `docs/post-mvp.md` with their ids. These rows
+closed in the same pass, each checked against the code, the git log or the experiment log.*
+
+- 2026-09-25 **B23** superseded: a hosted game's respawn station works over Bluetooth presence (the phone and Stick
+  utility stations; the 2026-09-24 field log has `respawn{station:2}`, F344). The IR station-word rungs (levers §16
+  step 6.3, §17) stay in the levers sheet as research.
+- 2026-09-25 **F352** fixed: Tony picked the three-lane HUD alerts, merged in `ea678b6a`.
+- 2026-09-25 **S46** superseded by **S58**: the heavies are powerup pickups.
+- 2026-09-25 **F233** superseded by **S58**: bench 3.3 (2026-09-24) found that a slot button fires its own slot, so a
+  pickup goes straight onto the trigger and SELECT toggles it.
+- 2026-09-25 **S56** built (A52 and `deathscreen.js`); its field check and Lows continue as **F313**.
+- 2026-09-25 **F123** built 2026-09-12 and code-confirmed: `policy.py` refuses Easy Reload on a chain-reload primary
+  (`test_mc_loadout.py`), and the reload bar follows the gun's `$ALCD`. Its bench gate was never logged. The chain
+  reload itself continues as **F128**.
+- 2026-09-25 **F113** built 2026-09-12 and code-confirmed: `engine.js _gunBlankOnDeath` blanks the gun strip at death
+  (`engine.test.mjs`, the two F113 tests). Its bench gate was never logged.
+- 2026-09-25 **F183** confirmed by the 2026-09-17 verification bench (two guns through Mission Control, after the
+  addressed START fan-out): the trigger stayed dead until T-0 and both guns went live.
+- 2026-09-25 **S29** superseded by the shipped Shields preset; the recharge feel continues as **F349**, the shield
+  hum as **F347** and the shield-hit sound as **F350**.
+- 2026-09-25 **F43** a method rule, not a task: sound picks by acoustic shape are untrustworthy. The rule moved to
+  `docs/gotchas.md` ("Two lessons that are not tasks").
+- 2026-09-25 **S8** superseded by the scan guard (`app/src/scanwatch.js`, the F237 and F342 work); the two-Pixel
+  confirm continues as **F237**.
+- 2026-09-25 **B30** field-proven 2026-09-12 (backhaul, A28). Only the optional named tunnel was left, and it is not
+  planned.
+- 2026-09-25 **F40** a lesson, not a task: "absence reports as health". Every listed instance is fixed; the rule
+  moved to `docs/gotchas.md` ("Two lessons that are not tasks").
+- 2026-09-25 **F369** decided (Tony): "Lets document the medals are named after the sounds they emit in game from the
+  battle company product. If any dispute we are happy to rename them." The note is in `spec/modes.md` §5b, the
+  `types.py` MEDALS comment and `platform/run.md`.
 - 2026-09-25 **F367** decided and built (Tony): BEAT DOWN is B6, the fist and impact, and IRON MAN is I2b, the
   bevelled iron heart, in `app/src/hud/medalicons.js` (style B); `app/test/medal-icons.test.mjs` fails on either placeholder.

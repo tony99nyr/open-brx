@@ -347,7 +347,7 @@ and the catalog in `assign`, all-ready advance, ready-ends-tryout. UI rig: Kit t
 phone browser at 844×390 (+ short viewport), FFA hides heavies on BOTH UIs, snipers preset locks both, phone
 TRY IT → MC roster shows TRYING → READY → MC shows READY.
 
-## 7. Bench items (docs/FOLLOWUPS.md, "Needs Tony at the bench", A10a-e)
+## 7. Bench items (A10a-e; `docs/post-mvp.md` → *Old bench rungs*)
 Body Armor: push head with $PSET armor +50 → `$LCD` shows it → a hit absorbs. Extended Mags: HUD max matches
 `$AMMO`. Easy Reload: ALT reloads. Empty slot 1: ALT press → reload, no crash. Quick Hands: reload chain timing.
 

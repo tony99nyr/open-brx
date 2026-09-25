@@ -20,4 +20,4 @@ version-tagged (the older/newer-model gotcha matters):
 **Every part above is blocked on caliper measurements of a real gun** — the reload socket, the D-pad
 pocket, and the rail/body profile the Companion mount clips to. Nothing can be modelled to fit until
 those numbers exist, and no amount of photographs substitutes. Tracked as **H1–H5** in
-`docs/FOLLOWUPS.md` §4.
+`docs/post-mvp.md` (Hardware, tooling, the site and the docs).

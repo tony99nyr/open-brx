@@ -143,9 +143,10 @@ files (see [`docs/README.md`](docs/README.md)):
 
 1. **`docs/experiment-log/`** — an append-only, dated lab notebook, one file per month. Add an entry
    for what you did and observed; never edit past entries.
-2. **`docs/FOLLOWUPS.md`** — every open item and nothing else. Strike or add rows as a diff, not prose.
+2. **`docs/FOLLOWUPS.md`** — open MVP work and nothing else (desk, bench, decision). Strike or add rows as a diff, not prose.
    A closed item moves to `docs/archive/followups-closed.md` as one dated line with a link to the log
-   entry. **Ids are permanent**: never renumbered, never reused, even after an item closes.
+   entry; a row that is not for MVP moves to `docs/post-mvp.md` with its id. **Ids are permanent**: never
+   renumbered, never reused, even after an item closes.
 3. **`docs/HANDOFF.md`** — one screen: what's true today, what changed, the next few actions. Each
    session overwrites only its own lane section, never another lane's, never stacked.
 
@@ -157,7 +158,7 @@ gets a FOLLOWUPS row saying "promote X" if it isn't ready yet.
 Most claims about tagger behavior need a real gun to back them. If your change asserts something about
 hardware behavior (a command's effect, a timing value, an LED pattern), it needs a bench observation
 behind it, not just a reading of the protocol docs or the APK teardown. `docs/FOLLOWUPS.md` has a
-"Needs Tony at the bench" section (§9) for exactly this: things that need someone with hands on a gun
+"MVP BENCH" group for exactly this: things that need someone with hands on a gun
 and headset to settle. If you can't get bench time, open the question there instead of guessing at an
 answer and writing it into the manual.
 
