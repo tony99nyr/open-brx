@@ -1,0 +1,3 @@
+# the screen simulator: build cache and generated gallery (python3 sim/stick_sim.py rebuilds both)
+.build/
+out/
